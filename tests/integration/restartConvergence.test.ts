@@ -392,7 +392,7 @@ describe(
       await dropSchema(baseUrl, schema);
     });
 
-    test("the reclaim, the end-match vote and the forfeit all survive the restart", async () => {
+    test("the reclaim, the end-match vote and the abandonment all survive the restart", async () => {
       const [a, b, c] = clients;
 
       // Three seats, not two: a vacate that leaves one human disposes the
@@ -415,7 +415,7 @@ describe(
       const cSeat = c.game?.viewerSeatIndex as number;
       assert.ok(Number.isInteger(cSeat), "the third seat never learned which seat it was");
 
-      // Mid-hand, so the walkout is a forfeit and the takeover is held weak:
+      // Mid-hand, so the walkout is an abandonment and the takeover is held weak:
       // nobody has played, so no seat can have finished its hand.
       c.socket.close();
       await until(

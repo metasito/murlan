@@ -194,7 +194,7 @@ describe("§7.3 — \"A bomb is beaten only by a higher bomb — with one except
   });
 });
 
-describe("§7.4 — royal straight / flush: ranked above bombs, beaten only by a higher royal straight of the same length", () => {
+describe("§7.4 — royal straight: ranked above bombs, beaten only by a higher royal straight of the same length", () => {
   // docs/GAME-RULES.md § Decisions ("Royal straight") records the decision behind this:
   // keep the royal straight beating bombs, no engine change. §7.3 now states
   // the exception itself; this block owns the detailed royal-straight

@@ -50,7 +50,7 @@ import { useRingProbe } from "@/lib/diagnostics";
 /** An exchange's marks on a seat: lit while its card is in the air, pinged as it leaves or rests. */
 export interface SeatMark { lit: boolean; seat: number; flash: SharedValue<RingFlash> }
 
-/** A seat is lit while it is on move or the trade marks it: its ring, its glow and its name all read this. */
+/** A seat is lit while it is on move or the exchange marks it: its ring, its glow and its name all read this. */
 const seatLit = (isActive: boolean, mark?: Pick<SeatMark, "lit">) => isActive || mark?.lit === true;
 
 /** A slot takes its mark as separate values: one object built per table render would re-render the memoized slot on every commit. */

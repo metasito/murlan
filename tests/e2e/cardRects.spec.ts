@@ -202,7 +202,7 @@ for (const vp of VIEWPORTS) {
       expectOnTheCards(await sample(page, 4_000), ["deal", "fan", "hand"]);
     });
 
-    test("mid-exchange, both traded cards are where they are drawn", async ({ page, baseURL }) => {
+    test("mid-exchange, both exchanged cards are where they are drawn", async ({ page, baseURL }) => {
       test.setTimeout(90_000);
       const save = offlineGameSave(2);
       await resumeSaved(page, baseURL!, {

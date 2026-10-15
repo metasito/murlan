@@ -220,7 +220,7 @@ function takeOfARank(deck: Card[], size: number): Combination | null {
  * The table as a capture wants it: mid-hand, only the pile in flight, no deal
  * running, and the turn pinned where the state says.
  *
- * Pinned is the point. `app/game.tsx` runs the AI turn loop, so a seeded save
+ * Pinned is the point. `app/game.tsx` runs the bot turn loop, so a seeded save
  * with the turn on a bot is a bot's turn for about a second — long enough to
  * navigate to and not to photograph. Nothing here advances the turn on its own.
  */

@@ -1,4 +1,4 @@
-// Plays a real offline match against AI, end to end, through the rendered UI:
+// Plays a real offline match against bots, end to end, through the rendered UI:
 // several hands, each ending on the table into the next deal, and the card
 // exchange that runs between them.
 //
@@ -12,7 +12,7 @@ import { driveGameToCompletion, untilNextDeal } from "./helpers/bot";
 
 const GAME_URL = /\/game/;
 
-test("offline vs AI — a match plays multiple hands on the table and exercises the card exchange between them", async ({
+test("offline vs bots — a match plays multiple rounds on the table and exercises the card exchange between them", async ({
   page,
   baseURL,
   consoleErrors,

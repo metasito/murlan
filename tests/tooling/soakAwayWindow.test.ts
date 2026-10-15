@@ -18,7 +18,7 @@ import { disconnectGraceMs, lobbyGraceMs } from "../../server/game/gameTimers.ts
 const longest = AWAY_WINDOW_MS.floor + AWAY_WINDOW_MS.spread;
 
 describe("the soak's away window", () => {
-  test("is inside the grace the server actually holds a dropped seat for", () => {
+  test("is inside the grace the server actually holds a disconnected seat for", () => {
     assert.equal(
       awayWindowOutsideGrace(AWAY_WINDOW_MS, heldSeatGraceMs()),
       null,

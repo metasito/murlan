@@ -24,7 +24,7 @@ export function readPersistedPlayerMap(storedMap: unknown): Record<number, strin
  * pairs, Sets as plain arrays. Its four fields are the live collections of the
  * same names on `OnlineGameState`, and the instance taking a table over reads
  * them from here and nowhere else — they are what make a vacated seat
- * reclaimable, the end-match vote reachable, the walkout a forfeit and the
+ * reclaimable, the end-match vote reachable, the walkout an abandonment and the
  * takeover weak for the rest of the hand (docs/GAME-RULES.md § Decisions).
  */
 export interface PersistedSeats {

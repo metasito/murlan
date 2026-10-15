@@ -448,7 +448,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     }
   });
 
-  // ── RES-03: a cosmetic DB failure must not forfeit a live seat ──────────
+  // ── RES-03: a cosmetic DB failure must not cost a live seat ──────────
 
   /**
    * `emitRoomStateTo` re-sends the roster, which costs two DB reads the rejoin

@@ -82,7 +82,7 @@ export function redealExactly(io: SocketServer, roomId: string, hands: string[][
 /**
  * A snapshot of the seat -> userId map a room's live game is routing hands
  * by. It is the only thing that decides whose cards a viewer is sent, and
- * which seats the turn arbiter drives with the AI, so a test asserting that a
+ * which seats the turn arbiter drives with the bot, so a test asserting that a
  * seat did not move under a player has to read it directly.
  */
 export function seatedUsers(roomId: string): Record<number, string> | null {

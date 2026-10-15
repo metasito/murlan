@@ -495,7 +495,7 @@ export function GameTable({
   const shownExchange: ExchangeAnnounceData | null =
     announcement ??
     (phase?.active && !phase.twoJokerException ? buildExchangeAnnounce(players, phase, { received: phase.cardFromLoser }) : null);
-  // A pairing and its card repeat across rounds, so each trade is also counted.
+  // A pairing and its card repeat across rounds, so each exchange is also counted.
   const [exchangeSeq, setExchangeSeq] = useState({ open: false, seq: 0 });
   if (!!shownExchange !== exchangeSeq.open) setExchangeSeq({ open: !!shownExchange, seq: exchangeSeq.seq + (shownExchange ? 1 : 0) });
   const exchangeId = shownExchange ? `${exchangeSeq.seq}:${exchangeKey(shownExchange)}` : "";
@@ -1127,7 +1127,7 @@ export function GameTable({
     ? null
     : shownExchange.twoJokerException
       ? stages.receive === "rest"
-        ? { text: t("exchangeAnnouncement.noExchangeText"), testID: "exchange-no-swap", cards: JOKERS }
+        ? { text: t("exchangeAnnouncement.noExchangeText"), testID: "exchange-none", cards: JOKERS }
         : null
       : stages.receive === "rest" && shownExchange.cardReceived
         ? { text: giveNote(shownExchange.cardReceived, shownExchange.loserIdx, shownExchange.winnerIdx), testID: "exchange-pile-label", cards: [shownExchange.cardReceived] }

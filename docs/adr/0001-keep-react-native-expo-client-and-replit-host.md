@@ -41,7 +41,7 @@ Roughly 19,700 lines of client code plus 5,000 lines of tests to reproduce, to r
 the behaviour that exists today. Beyond the line count: the whole safety net (including the
 property test proving the straight enumerator is complete) has to be re-earned in Dart;
 every bug already fixed here — impersonation, the permanently deadlocking table, the deal
-that removed a Joker from ~7% of games, three exchange-phase freezes, the AI lead deadlock,
+that removed a Joker from ~7% of games, three exchange-phase freezes, the bot lead deadlock,
 four separate invisible-colour bugs — would need to not be reintroduced, since rewrites do
 not carry fixes across; Expo Go testing disappears, closing the free device-testing path
 available today; and `expo-audio`, `expo-haptics`, `expo-screen-orientation`,

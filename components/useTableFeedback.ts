@@ -375,7 +375,7 @@ export function useTableFeedback({
 
   const celebrateGoingOut = useCallback(() => {
     if (reduceMotion) return;
-    traceOnset("moment", "flush");
+    traceOnset("moment", "goingOut");
     setGoingOutTrigger((t) => t + 1);
   }, [reduceMotion]);
 

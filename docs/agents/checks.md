@@ -300,7 +300,7 @@ one that doesn't needs a device capture (above).
 
 ## What a green loop does not mean
 
-- **`EXPO_PUBLIC_E2E_FAST=1`** (set by `scripts/e2e-server.mjs`) zeroes every AI delay, so **no
+- **`EXPO_PUBLIC_E2E_FAST=1`** (set by `scripts/e2e-server.mjs`) zeroes every bot delay, so **no
   screenshot is ever taken on a bot's turn** — turn it off to look at turn-handover. Exception:
   `openCaptureState` (`tests/e2e/helpers/offlineSeed.ts`) writes the suspend flag
   (`lib/e2eBotSuspend.ts`) so a seeded capture-state spec holds its turn regardless. Play real

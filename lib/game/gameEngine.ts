@@ -49,7 +49,7 @@ export interface Player {
   name: string;
   hand: Card[];
   type: PlayerType;
-  /** AI seats only. Absent means the default personality (lib/game/botPersonalities.ts). */
+  /** bot seats only. Absent means the default personality (lib/game/botPersonalities.ts). */
   personality?: BotPersonalityId;
   team?: "A" | "B";
   finishPosition?: number;
@@ -616,7 +616,7 @@ function placeLastSeat(state: GameState): void {
 
 /**
  * The engine's own floor under a play. Every caller gates as well — the server
- * by seat, the offline context before it commits, and an AI play is legal by
+ * by seat, the offline context before it commits, and a bot play is legal by
  * construction — but a caller that forgot would otherwise strip cards a hand
  * never held and leave the state quietly wrong rather than loudly refused.
  *
@@ -921,7 +921,7 @@ export function processExchangeChoice(state: GameState, cardId: string): GameSta
  * no card in 3-10 at all, and an empty result deadlocks the exchange behind an
  * undismissable overlay, so there the single lowest card is the giveback.
  */
-/** The card an AI gives back: the weakest legal choice, or the lowest card in
+/** The card a bot gives back: the weakest legal choice, or the lowest card in
  *  hand when nothing is in the 3-10 range. Never undefined for a non-empty hand. */
 export function pickGivebackCard(hand: Card[], excludeCardId?: string): Card | undefined {
   return sortHand(getValidGivebackCards(hand, excludeCardId))[0];

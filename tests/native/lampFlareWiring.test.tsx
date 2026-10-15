@@ -120,7 +120,7 @@ describe("the lamp's flare, wired off the same tier the shake reads (#765)", () 
 
   it.each<[string, GameState, boolean, string]>([
     ["a bomb", inPlay(BOMB_PLAY), false, "bomb"],
-    ["a straight or flush", inPlay(ROYAL_PLAY), false, "straight"],
+    ["a straight or royal straight", inPlay(ROYAL_PLAY), false, "straight"],
     ["the round rung", ROUND_CLOSED, false, "roundWon"],
     ["the match rung, when the match closed with the hand", ROUND_CLOSED, true, "matchWon"],
   ])("%s lands once, as its own tier", async (_, state, matchOver, tier) => {

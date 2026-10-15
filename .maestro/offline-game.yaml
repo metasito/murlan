@@ -1,7 +1,7 @@
 ##
-# Offline gameplay flow: starts a real offline match vs one AI opponent
+# Offline gameplay flow: starts a real offline match vs one bot opponent
 # and plays it through to the end-of-match board using the server-validated
-# game engine — not a mock. Exercises real turn-taking, the AI, and the
+# game engine — not a mock. Exercises real turn-taking, the bot, and the
 # board on the felt, none of which the web/native/unit suites can see
 # (see docs/agents/checks.md).
 #
@@ -12,7 +12,7 @@
 # playing the 3 of Spades specifically (see docs/GAME-RULES.md). If this
 # seat is dealt 3♠ it plays it; otherwise it only ever passes. Passing
 # is not "not playing" — it drives real turn cycling through the
-# server-authoritative engine and the AI until someone empties their
+# server-authoritative engine and the bot until someone empties their
 # hand, which is what actually ends the match. This is a
 # deliberate simplification, not full strategic play.
 #
@@ -77,7 +77,7 @@ appId: "${MAESTRO_APP_ID}"
           notVisible: "Salta il tutorial"
           timeout: 30000
 
-# --- Lobby: offline vs AI, 2 players, single hand ---
+# --- Lobby: offline vs bots, 2 players, single hand ---
 - assertVisible: "Offline"
 - tapOn: "Offline"
 # The format tiles carry a second line, and Maestro matches the *whole*
@@ -207,7 +207,7 @@ appId: "${MAESTRO_APP_ID}"
           waitToSettleTimeoutMs: 500
 
 # Pass whenever it is legal to. With two players a pass ends the round in the
-# AI's favour, so this cycles real turns through the AI until a hand empties.
+# Bot's favour, so this cycles real turns through the bot until a hand empties.
 # `optional` keeps a tap on the off-turn button a no-op rather than a failure.
 #
 # `while` is what ends the loop: the moment `btn-passa` is gone it stops instead

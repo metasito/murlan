@@ -188,7 +188,7 @@ export async function announceRejoin(
   const seatIndex = seatOfUser(game, userId);
   const username = seatName(game, seatIndex);
   // Caught, not propagated: the handler's blanket catch would turn a failed
-  // roster refresh into a SERVER_ERROR that forfeits a live game.
+  // roster refresh into a SERVER_ERROR that costs a live game.
   await emitRoomStateTo(io, userId, roomId, game).catch((err: unknown) =>
     logger.warn({ err, roomId, userId }, "emitRoomStateTo failed")
   );

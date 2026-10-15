@@ -40,7 +40,7 @@ process.env.MURLAN_LOBBY_GRACE_MS = "800";
  * roster, never from `room_players`: that table holds humans only, so a roster
  * rebuilt from it drops every bot seat and renumbers the survivors — which
  * moves seats under `playerMap`, the one thing deciding whose cards a viewer
- * is sent and which seats the turn arbiter drives with the AI.
+ * is sent and which seats the turn arbiter drives with the bot.
  */
 describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -96,7 +96,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.equal(next.players.filter((p) => p.type === "bot").length, 3);
     assertHandSecrecy(next, "solo rematch deal");
     // A seat with no playerMap entry is exactly what armTurn drives with the
-    // AI, so this is the assertion that the three bot seats are still bots and
+    // Bot, so this is the assertion that the three bot seats are still bots and
     // that the human's seat did not move under him.
     assert.deepEqual(
       seatedUsers(room.roomId),
@@ -195,7 +195,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
    * only at the end of a match, so the room row alone cannot tell a running
    * match from an ended one. Accepting room:start on that status is a second
    * deal path: it deals with `initializeGame` (no exchange phase, so the
-   * loser never forfeits their strongest card) and takes `matchLength`
+   * loser never gives up their strongest card) and takes `matchLength`
    * straight from the payload while the running match's scores and target
    * carry on.
    */

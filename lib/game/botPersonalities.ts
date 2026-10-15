@@ -1,4 +1,4 @@
-// Named AI opponents. A personality is a preset over the engine's existing
+// Named bot opponents. A personality is a preset over the engine's existing
 // strategy tier plus two knobs that re-rank an already-legal candidate list —
 // it never changes what is legal, which stays entirely in getAllValidPlays.
 //

@@ -46,7 +46,7 @@ export interface OnlineGameState {
    * seat -> the userId who walked out on the hand being played. `playerMap` has
    * forgotten them by then and a seat missing from it scores as `bot:<seat>`,
    * which every stats and ladder write drops — so this is the only thing still
-   * tying the seat to a person. Cleared wherever a new hand deals: the forfeit
+   * tying the seat to a person. Cleared wherever a new hand deals: the abandonment
    * is recorded once, not in every remaining round.
    *
    * Persisted in the game_state envelope's `seats` block: which instance owns

@@ -67,7 +67,7 @@ export interface AutoMoveContext {
 /**
  * One automated action for a seat, or null when the seat cannot act at all.
  *
- * `useBot` picks the real engine AI (a seat with nobody behind it), otherwise
+ * `useBot` picks the real engine bot (a seat with nobody behind it), otherwise
  * the minimum legal move — an AFK human should not be played *well* on their
  * behalf.
  */

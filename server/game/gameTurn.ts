@@ -303,7 +303,7 @@ function concedeRound(game: OnlineGameState, winnerSeat: number | undefined) {
  * Frees a seat whose player is gone for good — grace period expired, or an
  * explicit leave, either mid-hand or at the results screen — and hands it to a
  * bot. The hand stays in play, so the table can always continue: the seat must
- * be removed from `playerMap` *and* marked AI-controlled together, or the table
+ * be removed from `playerMap` *and* marked bot-controlled together, or the table
  * deadlocks as soon as the turn comes round to it.
  */
 export async function vacateSeat(
@@ -340,8 +340,8 @@ export async function vacateSeat(
   // joined" — a roster change makes that question new again.
   game.endMatchVotes.clear();
 
-  // Walking out on a hand still holding cards is a forfeit, and is recorded as
-  // one at game over. A seat between hands has no hand to forfeit, and a seat
+  // Walking out on a hand still holding cards is an abandonment, and is recorded as
+  // one at game over. A seat between hands has no round to abandon, and a seat
   // that already emptied its hand has finished the one it was playing.
   if (!game.gameState.roundOver && seatPlayer?.finishPosition === undefined) {
     game.abandonedSeats.set(seat, userId);
@@ -380,7 +380,7 @@ export async function vacateSeat(
       disposeGame(roomId);
       return;
     }
-    // The same write the mid-hand tail makes. Nothing above this branch forfeits
+    // The same write the mid-hand tail makes. Nothing above this branch records an abandonment
     // a hand there is none of, but `releasedSeats` and `vacatedSeats` were both
     // written, and a seat vacated between hands is as reclaimable as one vacated
     // during one (docs/GAME-RULES.md § Decisions).
@@ -412,7 +412,7 @@ export async function vacateSeat(
     // The hand is scored rather than discarded. The win goes to the last seat
     // still held by a person; concedeRound places every seat still holding
     // cards behind them, the walkout included as the last-place finish a
-    // forfeit is. `survivorSeat` is undefined when the departing seat was the
+    // abandonment is. `survivorSeat` is undefined when the departing seat was the
     // only human — the remaining bots then place among themselves, and
     // isContestedTable drops every write for such a table anyway.
     const survivorSeat = Object.keys(game.playerMap).map(Number)[0];

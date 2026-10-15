@@ -9,7 +9,7 @@
 ## 1. Product vision
 
 **Murlan** is a traditional Albanian shedding-type card game. The app is the definitive digital
-version of it: fast, beautiful, fair, and playable both solo against credible AI and online
+version of it: fast, beautiful, fair, and playable both solo against credible bot and online
 against friends and strangers.
 
 The goal is not "more features". The goal is: **a player can install this from the App Store,
@@ -172,7 +172,7 @@ persistence round-trip, and scoring identity. Property-based tests over the engi
 
 **W3 — Resilience.** Make disconnect, rejoin, seat vacancy, host migration, and server
 restart survivable states rather than deadlocks. A vacated seat must be resolvable —
-either bot takeover or forfeit — never a hang.
+either bot takeover or abandonment — never a hang.
 
 **W4 — Client architecture.** Collapse the offline/online game screen duplication into a
 single presentational component driven by a common state interface. Delete the legacy

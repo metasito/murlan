@@ -237,7 +237,7 @@ test("the bomb — kick (useTableFeedback.ts) and flare/wave/flash (moments.tsx)
   assert.deepEqual(ungatedAnimationBlocks(moments), []);
 });
 
-test("the flush — the sweep (moments.tsx) and the pile's own catch (pile.tsx) both skip under reduced motion", () => {
+test("going out — the sweep (moments.tsx) and the pile's own catch (pile.tsx) both skip under reduced motion", () => {
   const moments = readFileSync(path.join(repoRoot, "components/table/moments.tsx"), "utf8");
   const pile = readFileSync(path.join(repoRoot, "components/table/pile.tsx"), "utf8");
   assert.deepEqual(ungatedAnimationBlocks(moments), []);

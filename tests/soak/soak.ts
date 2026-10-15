@@ -72,7 +72,7 @@ function makeRng(seed: number): () => number {
 export const REJOIN_BUDGET_MS = 5_000 * DEADLINE_SCALE;
 
 /**
- * How long a dropped seat stays away, and why it may not grow.
+ * How long a disconnected seat stays away, and why it may not grow.
  *
  * The oracle below calls an unanswered rejoin a violation. That holds only while the seat
  * still exists; once the server has released it the refusal is correct, and only
@@ -162,7 +162,7 @@ export function awayWindowOutsideGrace(
   const longest = window.floor + window.spread;
   if (longest * AWAY_HEADROOM < graceMs) return null;
   return (
-    `a dropped seat can stay away ${longest}ms, and the shortest grace holding it is ` +
+    `a disconnected seat can stay away ${longest}ms, and the shortest grace holding it is ` +
     `${graceMs}ms — under the ${AWAY_HEADROOM}x headroom the reconnect's own cost needs. ` +
     `The server may release the seat while the soak still expects it held, and every ` +
     `unanswered rejoin past that point reports working behaviour as a defect. Shorten the ` +

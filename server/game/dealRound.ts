@@ -29,7 +29,7 @@ export async function dealRound(
   game.moveLog = startReplayLog();
   game.abandonedSeats.clear();
   // Minimum-legal play (docs/GAME-RULES.md § Decisions) is scoped to the hand a seat was
-  // taken over mid-play; a fresh deal always starts full AI. The end-match
+  // taken over mid-play; a fresh deal always starts full-strength bots. The end-match
   // vote is answered against the table as it stands now, not a stalled tally
   // from the hand that just ended.
   game.weakSeats.clear();

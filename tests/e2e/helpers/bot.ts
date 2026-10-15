@@ -4,7 +4,7 @@
 // selects real cards by their `accessibilityLabel`, and asserts the game
 // keeps progressing. A game that stops advancing is treated as a failure,
 // not something to wait out — that is exactly how the exchange-phase
-// freezes and the AI-lead deadlock this suite targets used to present.
+// freezes and the bot-lead deadlock this suite targets used to present.
 //
 // Card legality itself is never modelled here: every candidate combination
 // is verified against the real GIOCA button state ("Gioca le carte
@@ -523,7 +523,7 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
   const maxStatesWithoutProgress = opts.maxStatesWithoutProgress ?? 100;
   // Generous relative to a normal turn (a few seconds, measured, with
   // EXPO_PUBLIC_E2E_FAST and reduced motion both active) without being so
-  // tight that one slow AI response false-positives a healthy game.
+  // tight that one slow bot response false-positives a healthy game.
   const stallMs = opts.stallMs ?? 15_000;
   const maxTotalMs = opts.maxTotalMs ?? 240_000;
   const maxCombosTried = opts.maxCombosTried ?? DEFAULT_MAX_COMBOS_TRIED;

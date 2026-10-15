@@ -108,7 +108,7 @@ seen red first (rule 6). New files are in italics.
 
 Every task keeps these selectors on the element the old one occupied, because specs, helpers and
 `.maestro` flows read them: `combo-chip`, `turn-chip-dot`, `seat-reconnect-chip`,
-`seat-vacated-chip`, `exchange-prompt`, `exchange-pile-label`, `exchange-no-swap`,
+`seat-vacated-chip`, `exchange-prompt`, `exchange-pile-label`, `exchange-none`,
 `start-reason-gate`, `game-top-bar`, `game-hud-stack`, `offline-banner`, `pile-prev-layer`,
 `seat-name`, `seat-card-count`, `btn-passa`, `score-pill`.
 
@@ -282,7 +282,7 @@ Old task 4's `ExchangeTag` migration is void: plan 2 deleted the tag.
   text at 10) for every combination, keeping `combo-chip`. The power styling (the red, the `✦`
   prefix, the sheen and its `onLayout` size) is deleted (Q5).
 - The round winner's tag is the same mark with the literal `star` glyph.
-- The exchange's pile label (`exchange-pile-label`, `exchange-no-swap`) is the same mark, still
+- The exchange's pile label (`exchange-pile-label`, `exchange-none`) is the same mark, still
   shown on the frame it mounts, because the exchange leg's own clock times it; its text stays on
   one line, as plan 2 fixed.
 - No pile style paints a plate; the pile's contrast rows name *TableNotice*'s plate.

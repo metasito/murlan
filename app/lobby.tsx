@@ -133,7 +133,7 @@ export default function LobbyScreen() {
       ? { title: t("lobby.formatMatch"), detail: t("lobby.formatMatchSub", { target: firstTargetFor(playerCount) }) }
       : { title: t("lobby.formatSingle"), detail: t("lobby.formatSingleSub") };
 
-  /** An AI seat is called after its personality; humans keep the name they were given. */
+  /** A bot seat is called after its personality; humans keep the name they were given. */
   const withBotNames = (configs: PlayerSetupConfig[]): PlayerSetupConfig[] => {
     const botSeats = configs.flatMap((p, i) => (p.type === "bot" ? [i] : []));
     const names = botSeatNames(botSeats.map((i) => getBotPersonality(configs[i].personality).id));

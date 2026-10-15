@@ -24,7 +24,7 @@ import { isBotSeatKey } from "./botSeat.ts";
 export const MAX_HISTORY_ROWS_PER_USER = 50;
 
 /**
- * Per-hand score for a placement, mirroring lib/game/gameEngine.ts's `scoreRound`
+ * Placement points for one round, mirroring lib/game/gameEngine.ts's `scoreRound`
  * exactly (N-1 for 1st, down to 0), so round_history.points always agrees
  * with what the scoreboard actually awarded. GameResult (lib/achievements.ts)
  * does not carry the raw score, only placement/playerCount, so this

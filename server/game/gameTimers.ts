@@ -56,7 +56,7 @@ export const seatHoldMs = () => timeoutFromEnv("MURLAN_SEAT_HOLD_MS", 120_000);
 export const stateAckTimeoutMs = () => timeoutFromEnv("MURLAN_STATE_ACK_TIMEOUT_MS", 5_000);
 // Paced so a bot seat reads as thinking rather than as an instant reflex.
 // Tunable for tests, which otherwise pay it on every move of every table a
-// disconnect hands over to the AI.
+// disconnect hands over to the bot.
 export const botMoveDelayMs = () => timeoutFromEnv("MURLAN_BOT_MOVE_DELAY_MS", 1_200);
 export const sweepIntervalMs = () => timeoutFromEnv("MURLAN_SWEEP_INTERVAL_MS", 5 * 60_000);
 /**

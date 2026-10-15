@@ -251,7 +251,7 @@ describe("offlineBotMove", () => {
     const floor = autoMoveForSeat(state, 0, false, {})!.lastPlayedCombination!.cards.map((c) => c.id);
     const played = offlineBotMove(state)?.lastPlayedCombination?.cards.map((c) => c.id);
     assert.equal(floor.length, 1);
-    assert.deepEqual(played?.toSorted(), ["9h", "9s"], "the AI finishes with the pair; the floor would lead one card");
+    assert.deepEqual(played?.toSorted(), ["9h", "9s"], "the bot finishes with the pair; the floor would lead one card");
   });
 
   test("leaves a human's turn alone", () => {

@@ -16,7 +16,7 @@ here because the work deserves it.
 | Verified | The pack's own `_LICENSE.txt`: *"has waived all copyright and related or neighboring rights"* |
 
 Commercial use and modification are permitted. The creator asks that these are
-not used in NFT, AI/ML, or resale-of-unmodified-assets projects — none of which
+not used in NFT, machine-learning, or resale-of-unmodified-assets projects — none of which
 applies here.
 
 ## What they are

@@ -1,5 +1,5 @@
 // #839 needed two things from tests/helpers/offlineMatch.ts that did not
-// exist before: a match reproducible end to end (deal *and* the AI's
+// exist before: a match reproducible end to end (deal *and* the bot's
 // aggression/unpredictability knobs) from one seed, via `botRng`, and each
 // round's top-card counts, via `SimulatedRound.topCardCounts`. Pinned here
 // rather than only exercised by the measurement script
@@ -12,7 +12,7 @@ import { mulberry32 } from "./helpers.ts";
 
 const seededBot = (s: number) => mulberry32(s + 1);
 
-test("botRng makes a whole match — deal and AI knobs both — reproducible from one seed", () => {
+test("botRng makes a whole match — deal and bot knobs both — reproducible from one seed", () => {
   const players: OfflinePlayerSetup[] = [
     { name: "A", type: "bot", personality: "besnik" },
     { name: "B", type: "bot", personality: "gent" },

@@ -5,7 +5,7 @@
 // (lib/game/gameEngine.ts's dealCards), or the default bot personality being the
 // passive one (lib/game/botPersonalities.ts).
 //
-// Calls the real engine and the real bot AI through
+// Calls the real engine and the real bot through
 // tests/helpers/offlineMatch.ts's `simulateOfflineMatch` — no copy of
 // either, per the ticket's own constraint. `botRng` (added to that harness
 // for this ticket) makes a whole match, deal and personality knobs both,
@@ -162,7 +162,7 @@ function runMatches(
         players,
         gameMode: "free_for_all",
         length: "match",
-        // See the file banner: this is what makes the AI's aggression/
+        // See the file banner: this is what makes the bot's aggression/
         // unpredictability knobs, not just the deal, reproducible from `seed`.
         botRng: (s) => mulberry32(s + 1),
       })

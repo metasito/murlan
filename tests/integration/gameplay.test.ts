@@ -289,7 +289,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
 
     // Past the shortened grace period the seat must be handed to a bot
     // instead of stalling the table: the seat must be removed from
-    // playerMap AND marked AI-controlled together, or play deadlocks the
+    // playerMap AND marked bot-controlled together, or play deadlocks the
     // moment the turn comes back around to it.
     const takeover = await waitFor<{ seatIndex: number }>(
       alice.socket,
@@ -304,7 +304,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     // turn has come up and gone: proof the table kept advancing instead of
     // freezing on the empty seat. #850 clause 3 plays this seat at minimum
     // legal strength until the hand ends, which passes far more often than
-    // the old full-AI takeover did — a pass resolves the turn exactly as
+    // the old full-bot takeover did — a pass resolves the turn exactly as
     // well as a play, so it is the turn moving on that proves no deadlock,
     // not which of the two the seat chose.
     let sawVacatedSeatsTurn = false;

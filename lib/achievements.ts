@@ -42,7 +42,7 @@ export interface GameResult {
    */
   opponentsFinished: number;
   /**
-   * The player walked out on this hand and it was scored as a forfeit rather
+   * The player walked out on this hand and it was scored as an abandonment rather
    * than played to its placement. Nothing is earned from one.
    */
   abandoned?: boolean;
@@ -130,7 +130,7 @@ const RULES: readonly AchievementRule[] = [
 export const ACHIEVEMENTS: readonly AchievementDef[] = RULES;
 
 /**
- * Returns the ids of every achievement `result` qualifies for. A forfeited
+ * Returns the ids of every achievement `result` qualifies for. An abandoned
  * hand qualifies for none: the placement it carries was assigned when the
  * player left, not earned at the table.
  */

@@ -1,4 +1,4 @@
-// tests/native/exchangeHoldsTheTurn.test.tsx — the table waits for the trade.
+// tests/native/exchangeHoldsTheTurn.test.tsx — the table waits for the exchange.
 //
 // The exchange closes its own phase the moment the card is chosen, so
 // `exchangePhase.active` is already false while the two cards are still

@@ -227,7 +227,7 @@ describe("resolveRoundEnd — gameResults shaping", () => {
     // Two humans; rotonmeta wins hand 1. drita then leaves (vacateSeat: her
     // seat drops out of playerMap; abandonedSeats and botSeatsAtStart are
     // both left untouched, exactly as vacateSeat leaves them between hands).
-    // The AI now driving her seat wins hand 2.
+    // The bot now driving her seat wins hand 2.
     const players = [player("p0", "rotonmeta", 3), player("p1", "drita", 0)];
     const hand1 = resolveRoundEnd({
       state: mkState(players, ["p0", "p1"]),

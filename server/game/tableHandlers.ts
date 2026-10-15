@@ -34,7 +34,7 @@
 //
 // `roundOver.ts` `handleRoundOver` has more entry points than a play: an
 // AFK/bot auto-move (`gameTurn.ts` `runBotTurn`, `handleAutoPass`) and
-// `vacateSeat`'s forfeit branch reach it too. Inside, it resolves the hand
+// `vacateSeat`'s abandonment branch reach it too. Inside, it resolves the hand
 // through `onlineGameLogic.ts` `resolveRoundEnd`, emits `game:round_over`, then
 // writes it through the `RoundOverWriters` `gamePersistence.ts` implements.
 import type { ServerPayload } from "../../shared/protocol.ts";
@@ -710,7 +710,7 @@ async function startMatchAction(
 
   // Engine seat index is the position in this roster, sorted by seat, and
   // playerMap is keyed the same way. Bot seats are left out of playerMap,
-  // which armTurn already reads as "drive this seat with the AI".
+  // which armTurn already reads as "drive this seat with the bot".
   const rosterOf = (seated: { seatIndex: number; userId: string; user: { username: string } }[]) =>
     buildSeatRoster(
       seated.map((p) => ({ seatIndex: p.seatIndex, userId: p.userId, username: p.user.username })),

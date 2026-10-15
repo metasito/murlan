@@ -240,7 +240,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
         );
         return res.rows[0] ?? null;
       });
-      assert.equal(Number(history.placement), 4, "a forfeit is recorded as last of the table");
+      assert.equal(Number(history.placement), 4, "an abandonment is recorded as last of the table");
       assert.equal(Number(history.player_count), 4);
 
       const stats = await dbPool.query(
@@ -266,7 +266,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
   /**
    * The walkout is last, and every seat that played the hand out keeps the
    * position it earned — one total order, so no two seats share a number.
-   * The AI that inherits a vacated seat routinely finishes ahead of a player
+   * The bot that inherits a vacated seat routinely finishes ahead of a player
    * who stayed, and placing the walkout last while everyone else is numbered
    * by their own ranking index hands the same placement to two seats. Nothing
    * refuses that: round_history stores it verbatim, and lib/game/rating.ts breaks

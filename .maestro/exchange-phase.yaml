@@ -50,7 +50,7 @@ appId: "${MAESTRO_APP_ID}"
           notVisible: "Salta il tutorial"
           timeout: 30000
 
-# --- Lobby: offline vs AI, 2 players, match format ("Match") ---
+# --- Lobby: offline vs bots, 2 players, match format ("Match") ---
 - assertVisible: "Offline"
 - tapOn: "Offline"
 - assertVisible: "Partita.*"

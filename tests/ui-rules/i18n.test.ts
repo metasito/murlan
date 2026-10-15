@@ -1211,7 +1211,7 @@ describe("Albanian card terminology", () => {
 
   /**
    * "mund" is a modal clitic here, not the bare verb "beats" — the literal
-   * calque ("Shkalla Mbretërore mund gjithçka") is ungrammatical Albanian.
+   * calque ("… mund gjithçka") is ungrammatical Albanian.
    * Fixed to "i mund të gjitha" / "nuk mund t'i përgjigjesh" per #29.
    */
   test("the royal-straight-is-unbeatable strings use the fixed mund clitic", () => {

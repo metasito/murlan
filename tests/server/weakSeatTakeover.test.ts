@@ -1,5 +1,5 @@
 // #850 clause 3: a takeover finishes the current hand at minimum legal
-// strength — a raw boolean, not the engine AI — and the engine only plays the
+// strength — a raw boolean, not the engine's bot — and the engine only plays the
 // seat properly from the next deal. Two things are pinned here: `vacateSeat`
 // marking the seat weak only for a mid-hand departure (server/game/gameTurn.ts's
 // own `!game.gameState.roundOver` guard), and `autoMoveForSeat`'s `useBot=false`
@@ -132,10 +132,10 @@ describe("a mid-hand takeover is weak only for the hand it happened on (#850 cla
   });
 });
 
-describe("runBotTurn plays a weak seat at the floor and a bot seat with the AI", () => {
+describe("runBotTurn plays a weak seat at the floor and a bot seat with the bot", () => {
   const card = (id: string, rank: Card["rank"], suit: Card["suit"]): Card => ({ id, rank, suit, isJoker: false });
 
-  // A pair that empties the hand: the AI always finishes, the floor leads one card.
+  // A pair that empties the hand: the bot always finishes, the floor leads one card.
   function leadingPair(): GameState {
     return {
       players: [
@@ -183,7 +183,7 @@ describe("runBotTurn plays a weak seat at the floor and a bot seat with the AI",
     assert.deepEqual(played, floor, "runBotTurn must read weakSeats and play the seat at the floor");
   });
 
-  test("a seat that is not weak plays the AI's own choice, which differs from the floor", async (t) => {
+  test("a seat that is not weak plays the bot's own choice, which differs from the floor", async (t) => {
     t.mock.method(persistence, "writeActiveGame", async () => {});
     const { state, played } = await botPlays(false);
     const ai = chooseMove(state, 0, true, {})!.lastPlayedCombination!.cards.map((c) => c.id);
@@ -340,7 +340,7 @@ describe("autoMoveForSeat(useBot=false) — what a weak seat's turn resolves to 
   // weakSeats — takes the table's shape, not a bare GameState.
   const mkGame = (gameState: GameState) => ({ gameState, handFlags: {}, moveLog: null });
 
-  test("opening a fresh round plays the single lowest card, never the AI's own choice of combination", () => {
+  test("opening a fresh round plays the single lowest card, never the bot's own choice of combination", () => {
     const state: GameState = {
       players: [
         player("p0", "Alice", [
@@ -366,10 +366,10 @@ describe("autoMoveForSeat(useBot=false) — what a weak seat's turn resolves to 
     assert.deepEqual(next!.lastPlayedCombination?.cards.map((c) => c.id ?? c.rank), [
       lowest.id ?? lowest.rank,
     ]);
-    assert.equal(next!.lastPlayedCombination?.cards.length, 1, "minimum legal, not a bigger combination the AI could see");
+    assert.equal(next!.lastPlayedCombination?.cards.length, 1, "minimum legal, not a bigger combination the bot could see");
   });
 
-  test("mid-round with nothing worth playing, it passes rather than reaching for the AI's judgement", () => {
+  test("mid-round with nothing worth playing, it passes rather than reaching for the bot's judgement", () => {
     const state: GameState = {
       players: [
         player("p0", "Alice", [{ rank: "3", suit: "spades" } as never]),

@@ -354,7 +354,7 @@ test("leading a round always produces a play, for every personality and hand siz
   }
 });
 
-// Every table above is a 4-seat free-for-all. The AI reads the opponent hand
+// Every table above is a 4-seat free-for-all. The bot reads the opponent hand
 // counts and, in teams mode, its partner's seat, so neither the shorter table
 // nor the paired one is the same problem.
 test("every personality finishes a hand at 2 and 3 seats, and in teams mode", () => {

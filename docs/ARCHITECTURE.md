@@ -159,14 +159,14 @@ room screen already offers bot-fill and the match-length picker together, so a s
 against bots plays a complete match to the target, the same as a full human table — not a
 single round.
 
-**Disconnect → grace period → bot takeover (not forfeit):**
+**Disconnect → grace period → bot takeover (not abandonment):**
 - On `disconnect`, if the user has no other live socket, the server emits
   `game:player_disconnected` to the room, arms a fresh turn cycle so the table doesn't
   stall on the disconnected seat, and starts a `disconnectGraceMs()` (60s default) timer.
 - If the same `userId` reconnects and emits `game:rejoin` before the timer fires, the timer
   is cleared and the seat is unaffected.
 - If the grace period expires, `vacateSeat()` runs: the seat's player row is removed, the
-  seat's `type` flips to `"bot"` so the engine's own AI plays it, and the room is told via
+  seat's `type` flips to `"bot"` so the engine's own bot plays it, and the room is told via
   `game:seat_bot_takeover` — **not** `game:player_left`, which is reserved for genuine
   game-over/abandonment so it doesn't eject the remaining humans from a game the server is
   actively keeping alive. If the vacancy leaves ≤1 human seated, the game really is
@@ -270,7 +270,7 @@ collapsed:
 - **`components/GameTable.tsx`** — the one presentational table. It takes a `GameState`, a
   `viewerSeat`, and a small set of slots (`turnTimer`, `exchangeAnnouncement`,
   `disconnectedSeats`, `railExtra`, `banners`, `overlays`) through which the
-  offline and online adapters inject exactly what differs between them (a local AI turn loop and
+  offline and online adapters inject exactly what differs between them (a local bot turn loop and
   its response timer offline; server acknowledgement,
   reactions, and connection-loss banners online). It contains no `isOnline &&` branching.
 - **`components/table/`** — the table's own components, grouped by what they draw:

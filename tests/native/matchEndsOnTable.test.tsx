@@ -196,7 +196,7 @@ describe('New match on the board', () => {
     await view.unmount();
   });
 
-  it('holds the online board until the round scores arrive', async () => {
+  it('holds the online board until the placement points arrive', async () => {
     mockScoresCurrent = false;
     const view = await render(wrap(OnlineGameScreen));
     await advance(settled + 100);

@@ -223,7 +223,7 @@ function OfflineTable() {
   );
 }
 
-describe('an AI taking its turn offline', () => {
+describe('a bot taking its turn offline', () => {
   it('leaves the staged selection alone', async () => {
     const r = await render(
       <SafeAreaProvider initialMetrics={METRICS}>

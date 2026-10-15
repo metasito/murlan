@@ -242,7 +242,7 @@ describe("hand-to-hand exchange setup", () => {
       ]);
       const phase = state.exchangePhase!;
       if (phase.twoJokerException) {
-        assert.equal(phase.active, false, "no swap happens on the two-joker exception");
+        assert.equal(phase.active, false, "no exchange happens on the two-joker exception");
         assert.equal(getStartingPlayerAfterExchange(state), phase.winnerIdx);
         continue;
       }

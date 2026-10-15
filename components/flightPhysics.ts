@@ -439,7 +439,7 @@ export function readExchange(
   };
 }
 
-/** Each leg's stage, as `ExchangeLegs` reports it, for the trade `key` names. */
+/** Each leg's stage, as `ExchangeLegs` reports it, for the exchange `key` names. */
 export interface ExchangeStages { key: string; receive: LegStage; give: LegStage; ready: boolean }
 
 export const exchangeKey = (announced: ExchangeAnnounceData): string =>
@@ -450,7 +450,7 @@ export const NO_STAGES: Omit<ExchangeStages, "key"> = { receive: "waiting", give
 const airborne = (s: LegStage) => s === "flying" || s === "rest" || s === "tuck";
 
 /**
- * The seats a trade marks, and how far each opponent's drawn count is from its state's. The engine
+ * The seats an exchange marks, and how far each opponent's drawn count is from its state's. The engine
  * moves a card when the phase opens or the choice lands, so the giver shows one more until its card
  * leaves and the receiver one fewer until it lands (the fixture's `S.counts`).
  */
@@ -481,7 +481,7 @@ export function readExchangeSeats(announced: ExchangeAnnounceData | null, stages
 }
 
 interface HandArrival {
-  /** Drawn although the state has already moved it: the viewer's traded card, until its leg leaves the hand. */
+  /** Drawn although the state has already moved it: the viewer's exchanged card, until its leg leaves the hand. */
   lent?: Card;
   /** Kept out of the fan, because a flier is drawing them. */
   withheldIds: string[];
@@ -494,7 +494,7 @@ interface HandArrival {
 }
 
 /**
- * The viewer's traded cards, each drawn in exactly one place: in the hand until its leg's first
+ * The viewer's exchanged cards, each drawn in exactly one place: in the hand until its leg's first
  * visible frame, as its flier until it lands, and in the hand again from then on (#650).
  */
 export function readHandArrival(input: {
@@ -544,7 +544,7 @@ interface ThrownPlay {
   pile: { x: number; y: number };
   /** Impact reads heavier for these. */
   heavy: boolean;
-  /** The throw emptied the hand it came from, so the flush is owed. */
+  /** The throw emptied the hand it came from, so the going-out catch is owed. */
   emptiedHand: boolean;
 }
 
@@ -618,7 +618,7 @@ export const JOKERS: Card[] = [
 ];
 const JOKER_SPREAD = 18;
 
-/** The trade's legs, in the pile-relative points a throw flies in: from a fan or the card's own hand slot, through the pile. */
+/** The exchange's legs, in the pile-relative points a throw flies in: from a fan or the card's own hand slot, through the pile. */
 export function readExchangeLegs(
   input: SeatGeometry & { announced: ExchangeAnnounceData },
   handOrigins?: ReadonlyMap<string, CardFrom>

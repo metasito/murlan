@@ -25,7 +25,7 @@ export function seatOfUser(
 
 /**
  * The key a seat's score accumulates under: the seated userId, or the
- * `bot:<seat>` sentinel for a seat vacated to AI takeover.
+ * `bot:<seat>` sentinel for a seat vacated to a bot.
  */
 export function scoreKeyForSeat(
   playerMap: Record<number, string>,
@@ -69,12 +69,12 @@ export interface VisibleExchangePhaseInput {
 /**
  * Whether the ceremony that reads `cardToLoser` is still on screen. An
  * unstamped closed phase reads as over: with no window to be inside, a seat
- * that never watched the trade cross is told nothing.
+ * that never watched the exchange cross is told nothing.
  *
  * The window has to outlast `STATE_ACK_TIMEOUT_MS`, because `sendGameStateTo`
  * owes one resend to a client that never acknowledged the settle and that
  * resend re-derives from live state — answering it after the window would hand
- * over half a trade, which `OnlineGameContext`'s `cardReceived || cardGiven`
+ * over half an exchange, which `OnlineGameContext`'s `cardReceived || cardGiven`
  * guard raises as a one-legged ceremony rather than refusing. That ordering is
  * asserted in `tests/server/exchangeVisibility.test.ts` rather than added to the window
  * here, so the two clocks stay independent of each other.
@@ -236,7 +236,7 @@ export function seatAssignmentsFromRoster(roster: SeatEntry[]): {
 /**
  * `botSeatsAtStart`, read back from a restored game rather than a fresh
  * roster. `personality` is set once, at `seatAssignmentsFromRoster` time, for
- * a born-bot seat only — `vacateSeat` flips a human seat to AI without ever
+ * a born-bot seat only — `vacateSeat` flips a human seat to a bot without ever
  * setting it — and rides every hand's persisted envelope after that, so it
  * survives a restart the roster itself does not.
  */
@@ -437,7 +437,7 @@ export function resolveRoundEnd(input: ResolveRoundEndInput): ResolveRoundEndRes
   // seat's own index in `state.finishingOrder`: the seats that played the hand out
   // in ranking order, then the abandoned ones behind them, ranking order kept
   // within each group so several walkouts fill the last slots stably. That is
-  // what makes a forfeit genuinely last (docs/GAME-RULES.md § Decisions) while every
+  // what makes an abandonment genuinely last (docs/GAME-RULES.md § Decisions) while every
   // placement stays distinct — lib/game/rating.ts renumbers the human seats 1..n
   // by sorting on placement, so two seats sharing one would rate a quitter
   // ahead of a player who stayed to the end.

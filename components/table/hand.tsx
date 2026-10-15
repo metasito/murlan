@@ -58,7 +58,7 @@ import { useCardRect, useCardTable, type CardTable } from "./useCardRects";
 import { handCardZ, handPaintOrder } from "./cardShadows";
 
 /**
- * The viewer's hand as the table draws it while a traded card is on its way in or out.
+ * The viewer's hand as the table draws it while a exchanged card is on its way in or out.
  *
  * Held back at display rather than by deferring the state: online the state is
  * the server's, and freezing a whole snapshot for the length of a phase would

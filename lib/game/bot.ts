@@ -215,7 +215,7 @@ export function isExchangeCardStillOut(
 }
 
 /**
- * The AI's move for `player`, or null to pass. `rng` is a parameter so that
+ * The bot's move for `player`, or null to pass. `rng` is a parameter so that
  * personalities can vary their play without making the engine untestable —
  * tests inject a fixed sequence and stay deterministic.
  */
@@ -319,7 +319,7 @@ export function botChoosePlay(
     return withPersonality(pool.sort((a, b) => a.strength - b.strength)[0]);
   }
 
-  // ── Hard AI ──────────────────────────────────────────────────────────────
+  // ── Hard bot ──────────────────────────────────────────────────────────────
   const conservative = normal.filter(
     (p) => !p.cards.some((c) => c.rank === "2" || c.isJoker)
   );

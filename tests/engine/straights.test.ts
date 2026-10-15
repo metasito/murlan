@@ -160,7 +160,7 @@ describe("enumeration completeness", () => {
     ];
     const found = straightsOf(hand, 5);
     const types = new Set(found.map((p) => p.type));
-    assert.ok(types.has("royal_straight"), "the all-spades flush must be offered");
+    assert.ok(types.has("royal_straight"), "the all-spades royal straight must be offered");
     assert.ok(types.has("straight"), "the mixed-suit plain straight must also be offered");
   });
 

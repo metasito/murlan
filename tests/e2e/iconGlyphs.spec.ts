@@ -32,7 +32,7 @@ test("menu screens render every icon glyph, across the states reachable with no 
   // all four avatar icons are already on screen with no further click. #904
   // replaced the per-seat personality button (an Ionicons chevron-down) with
   // DifficultyLadder's own bar glyph, which draws Views rather than an icon
-  // font glyph, so the AI seats no longer add to this count.
+  // font glyph, so the bot seats no longer add to this count.
   await page.getByRole("radio", { name: "4 giocatori" }).click();
   await assertAllGlyphsRender(page, "offline lobby — 4 players", 8);
   await page.goBack();

@@ -1,5 +1,5 @@
-// tests/e2e/exchangeNoOverlap.spec.ts — the two traded cards never share the table, and the pile
-// label that names each trade covers no card and stays on screen. Only a browser can say where
+// tests/e2e/exchangeNoOverlap.spec.ts — the two exchanged cards never share the table, and the pile
+// label that names each exchange covers no card and stays on screen. Only a browser can say where
 // transformed views and a label actually land (docs/agents/checks.md).
 import { test, expect } from "./fixtures";
 import { resumeSaved } from "./helpers/offlineSeed";

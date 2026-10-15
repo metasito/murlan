@@ -187,7 +187,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
      * #850 clause 11 (docs/GAME-RULES.md § Decisions) carved a narrow exception into that
      * fix: a match abandoned before its very first point is scored — this
      * one, still mid-deal-one with nothing on the board — is voided and
-     * rated for nobody, not scored as a forfeit. Was pinned the other way
+     * rated for nobody, not scored as an abandonment. Was pinned the other way
      * (quitter rated down, survivor rated up); re-pinned to the decided rule,
      * proved by the absence of a `user_ratings` row for either seat rather
      * than by a rating value.

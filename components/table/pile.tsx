@@ -106,7 +106,7 @@ function wobbleAt(elapsed: number, end: number, still: boolean): WobblePose {
   return { scale, rot: rotate };
 }
 
-// The flush's "catch": a hand-emptying play's own cards bloom gold and lift,
+// Going out's "catch": a hand-emptying play's own cards bloom gold and lift,
 // same 620ms every time — verbatim off the prototype's `catch` keyframe.
 // Two segments (0-50%, 50-100%), each ease-out, rather than one duration
 // straight through: the bloom and lift both peak at the midpoint and return,
@@ -170,19 +170,19 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, lit, flinchY, 
     clock.arm(armed.landing);
     clock.begin(armed.spec);
   }, [clock, armed, report]);
-  const flush = armed?.landing.flush ?? false;
+  const goingOut = armed?.landing.goingOut ?? false;
   const catching = useSharedValue(0);
   const settled = useRef<Flight | null>(null);
   useEffect(() => {
     if (flying || !armed || settled.current === armed) return;
     settled.current = armed;
     // Only a flight that came to rest on its own frames catches; one withdrawn unseen lands in silence.
-    if (flush && !still && clock.elapsed.get() >= armed.spec.end + LAND_WOBBLE_MS) {
+    if (goingOut && !still && clock.elapsed.get() >= armed.spec.end + LAND_WOBBLE_MS) {
       const half = CATCH_MS / 2;
       catching.set(withSequence(withTiming(1, { duration: half, easing: CATCH_EASING }), withTiming(0, { duration: half, easing: CATCH_EASING })));
     }
     clock.halt();
-  }, [flying, armed, clock, flush, still, catching]);
+  }, [flying, armed, clock, goingOut, still, catching]);
   useEffect(() => () => cancelAnimation(catching), [catching]);
 
   const heavy = armed?.landing.heavy ?? false;
@@ -253,7 +253,7 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, lit, flinchY, 
           return (
             <Fragment key={card.id}>
               {flying && <View testID="flight-slot" pointerEvents="none" style={box} />}
-              <PlayCard card={card} i={i} spec={spec} still={still} elapsed={clock.elapsed} box={box} flying={flying} catching={flush ? catching : null} turned={turned} cardScale={cardScale} group={group} out={out} lit={lit && i === cards.length - 1} />
+              <PlayCard card={card} i={i} spec={spec} still={still} elapsed={clock.elapsed} box={box} flying={flying} catching={goingOut ? catching : null} turned={turned} cardScale={cardScale} group={group} out={out} lit={lit && i === cards.length - 1} />
             </Fragment>
           );
         })}
@@ -769,7 +769,7 @@ export function usePileFlight({
       cards: thrown.cards.length,
       x: thrown.pile.x,
       y: thrown.pile.y,
-      flush: thrown.emptiedHand,
+      goingOut: thrown.emptiedHand,
       heavy: thrown.heavy,
       mine: thrown.dir === "bottom",
       catchUp,
@@ -844,7 +844,7 @@ export function usePileFlight({
     (key: string) => {
       touched.current.add(key);
       const flight = flightsRef.current.find((f) => f.key === key);
-      if (flight?.landing.flush) celebrateGoingOut();
+      if (flight?.landing.goingOut) celebrateGoingOut();
     },
     [celebrateGoingOut]
   );

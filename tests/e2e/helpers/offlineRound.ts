@@ -1,8 +1,8 @@
-// Plays real offline games against AI, end to end, through the rendered UI.
+// Plays real offline games against bots, end to end, through the rendered UI.
 //
 // This is the suite that would have caught the exchange-phase freezes and
-// the AI-lead deadlock (git history: "Fix three exchange-phase freezes and
-// an AI lead deadlock") — those bugs left the table exactly where
+// the bot-lead deadlock (git history: the fix for three exchange-phase freezes and
+// a bot-lead deadlock) — those bugs left the table exactly where
 // `driveGameToCompletion` refuses to sit quietly: a played move, or a
 // giveback, that never changed the table's state.
 
@@ -18,7 +18,7 @@ export interface RoundConfig {
 
 /** Registers one test per config; `offline*.spec.ts` share them out so no file outgrows a shard. */
 export function offlineRoundTests(configs: RoundConfig[]) {
-  test.describe("offline vs AI — single hand, reaches a result", () => {
+  test.describe("offline vs bots — single round, reaches a result", () => {
     for (const config of configs) {
       test(config.name, async ({ page, baseURL, consoleErrors }) => {
         // How long a hand takes here is decided by the deal, not by the app:
