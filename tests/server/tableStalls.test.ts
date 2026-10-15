@@ -10,6 +10,7 @@ import { roomStore } from "../../server/store/roomStore.ts";
 import { db } from "../../server/store/db.ts";
 import { packPersistedState } from "../../shared/persistedEnvelope.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
+import { onlineTable } from "../helpers/onlineTable.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 
 const ROOM = "table-stalls-room";
@@ -34,30 +35,7 @@ function finishedHand(players: Player[], finishingOrder: string[]): GameState {
 }
 
 function baseGame(overrides: Partial<OnlineGameState>): OnlineGameState {
-  return {
-    roomId: ROOM,
-    joinCode: "AAAAAA",
-    playerMap: {},
-    rematchVotes: new Set(),
-    cumulativeScores: {},
-    gameMode: "free_for_all",
-    maxPlayers: 2,
-    matchTarget: 21,
-    matchLength: "match",
-    roundsPlayed: 1,
-    matchOver: false,
-    roundFlags: {},
-    abandonedSeats: new Map(),
-    botSeatsAtStart: new Set(),
-    releasedSeats: new Set(),
-    vacatedSeats: new Map(),
-    weakSeats: new Set(),
-    endMatchVotes: new Set(),
-    dealFirstSeat: 0,
-    spectators: new Set(),
-    moveLog: null,
-    ...overrides,
-  } as OnlineGameState;
+  return onlineTable({ roomId: ROOM, maxPlayers: 2, roundsPlayed: 1, ...overrides });
 }
 
 function stubIo() {
