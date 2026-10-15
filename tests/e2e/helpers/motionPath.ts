@@ -145,23 +145,29 @@ async function playOn(page: Page, stop: () => boolean): Promise<void> {
     } else if (Date.now() - since > STALL_MS) {
       throw new Error(`the table sat ${STALL_MS} ms on "${desc}"`);
     }
+    const mine = desc?.startsWith(YOUR_TURN_PREFIX) ?? false;
+    let acted = false;
     if (desc?.startsWith(EXCHANGE_GIVE_PREFIX)) {
-      await giveExchangeCard(page);
-    } else if (desc?.startsWith(YOUR_TURN_PREFIX) && (await settledTable(page))) {
+      acted = await giveExchangeCard(page);
+    } else if (mine && (await settledTable(page))) {
       if (await pass.isEnabled({ timeout: 1_000 }).catch(() => false)) {
         await tap(page, pass).catch(() => {});
       } else {
         await lead(page, gioca);
       }
-      await page
-        .waitForFunction(
-          ({ sel, attr, was }) => document.querySelector(sel)?.getAttribute(attr) !== was,
-          { sel: TABLE, attr: TABLE_STATE, was: desc },
-          { timeout: 3_000 }
-        )
-        .catch(() => {});
+      acted = true;
     }
-    await page.waitForTimeout(100);
+    await page
+      .waitForFunction(
+        ({ sel, attr, dealing, was, wake }) => {
+          const table = document.querySelector(sel);
+          if (table?.getAttribute(attr) !== was) return true;
+          return wake && table?.getAttribute(dealing) === "false" && !document.querySelector('[data-testid="exchange-announce"]');
+        },
+        { sel: TABLE, attr: TABLE_STATE, dealing: TABLE_DEALING, was: desc, wake: mine && !acted },
+        { timeout: 3_000, polling: 100 }
+      )
+      .catch(() => {});
   }
 }
 
