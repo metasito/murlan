@@ -21,7 +21,7 @@ import { dismissStartAnnouncement } from "./navigation.ts";
 
 import { tap } from "./press.ts";
 import { HAND_CARDS, TABLE, TABLE_STATE } from "./selectors.ts";
-const EXCHANGE_GIVE_PREFIX = "Fase di scambio: devi dare una carta a";
+export const EXCHANGE_GIVE_PREFIX = "Fase di scambio: devi dare una carta a";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -455,7 +455,7 @@ async function giveCandidateLabels(page: Page): Promise<string[]> {
  * prompt leaving the felt is what proves the give landed — a click that
  * silently missed the gesture responder throws nothing.
  */
-async function giveExchangeCard(page: Page): Promise<boolean> {
+export async function giveExchangeCard(page: Page): Promise<boolean> {
   const prompt = page.locator(EXCHANGE_PROMPT);
   if ((await prompt.count()) === 0) return false;
 

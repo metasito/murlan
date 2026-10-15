@@ -27,6 +27,7 @@ import { offlineBotMove, resolveStuckExchange } from "@/lib/game/autoMove";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform, Settings } from "react-native";
 import { initializeOpeningAt, E2E_OPENER_KEY } from "@/lib/e2eOpener";
+import { realExchange } from "@/lib/e2eRealExchange";
 import {
   OFFLINE_SAVE_KEY,
   decodeOfflineSave,
@@ -48,6 +49,7 @@ import type { RoundResult, MatchState, PlayerSetupConfig } from "@/lib/game/matc
 // at bundle build time, so this only ever takes the fast path in a build the
 // E2E harness produced itself.
 const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
+const E2E_REAL_EXCHANGE = realExchange(E2E_FAST);
 // A launch argument on iOS lands in NSUserDefaults, which `Settings` reads; Android and web have no such channel.
 const E2E_OPENER = E2E_FAST && Platform.OS === "ios" && String(Settings.get(E2E_OPENER_KEY)) === "1";
 /**
@@ -115,7 +117,7 @@ interface GameContextValue {
   match: MatchState;
   exchangeAnnouncing: boolean;
   exchangeAnnounceData: ExchangeAnnounceData | null;
-  /** Set only under `EXPO_PUBLIC_E2E_FAST` (#915); undefined for a real player. */
+  /** Set only under `EXPO_PUBLIC_E2E_FAST` (#915), unless a spec opted out (`lib/e2eRealExchange.ts`); undefined for a real player. */
   exchangeHoldMsOverride: ExchangeHold | undefined;
   setupGame: (players: PlayerSetupConfig[], mode: GameMode, length?: MatchLength) => void;
   startNextRound: () => void;
@@ -152,7 +154,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const savedRef = useRef<OfflineSave | null>(null);
   const { showNotification } = useNotification();
 
-  const exchangeHoldMsOverride = E2E_FAST ? E2E_EXCHANGE_HOLD : undefined;
+  const exchangeHoldMsOverride = E2E_FAST && !E2E_REAL_EXCHANGE ? E2E_EXCHANGE_HOLD : undefined;
   const {
     announcing: exchangeAnnouncing,
     data: exchangeAnnounceData,
