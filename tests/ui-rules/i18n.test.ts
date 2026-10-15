@@ -304,7 +304,7 @@ describe("the server writes its fallbacks in the source language", () => {
   // vocabulary that shipped, not Italian in general, so a fresh sentence
   // reaching for different words is past it.
   const ITALIAN =
-    /\b(?:devi|deve|giocare|lasciato|match|valido|valida|eliminazione|codice|carta|prima|della|dello|questa|questo|posto|solo|lettere|numeri|utente|nome|scegli|inserisci|riprova|errore|impossibile|almeno|troppo|essere|sono|hanno|degli|delle)\b/i;
+    /\b(?:devi|deve|giocare|lasciato|partita|valido|valida|eliminazione|codice|carta|prima|della|dello|questa|questo|posto|solo|lettere|numeri|utente|nome|scegli|inserisci|riprova|errore|impossibile|almeno|troppo|essere|sono|hanno|degli|delle)\b/i;
 
   test("the marker list can see an Italian sentence", () => {
     // Without this the assertion below would also hold on a list that matches
