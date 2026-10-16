@@ -3,7 +3,7 @@
 // turn pill standing in for a seat's ring.
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import { act, render, within, type RenderResult } from '@testing-library/react-native';
-import { getAnimatedStyle } from 'react-native-reanimated';
+import Animated, { getAnimatedStyle, useAnimatedStyle } from 'react-native-reanimated';
 
 const mockReduceMotion = { on: false };
 jest.mock('@/lib/accessibility', () => ({
@@ -23,7 +23,6 @@ jest.mock('react-native-worklets', () => {
   };
 });
 
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useClockFade } from '@/components/table/useClockFade';
 import { bootFeedback } from './helpers/feedback';
 import { PAIR, tableAfter } from './helpers/landing';
