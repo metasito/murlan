@@ -56,6 +56,8 @@ function exchangeState(): GameState {
   };
 }
 
+let playResult: boolean | undefined;
+
 function Probe() {
   const {
     gameState,
@@ -64,6 +66,7 @@ function Probe() {
     hasSavedGame,
     resumeGame,
     chooseExchangeCard,
+    playCards,
     setupGame,
   } = useGame();
   return (
@@ -73,6 +76,12 @@ function Probe() {
       </Pressable>
       <Pressable testID="choose" onPress={() => chooseExchangeCard("4_clubs")}>
         <Text>choose</Text>
+      </Pressable>
+      <Pressable testID="chooseUnheld" onPress={() => chooseExchangeCard("ace_hearts")}>
+        <Text>choose unheld</Text>
+      </Pressable>
+      <Pressable testID="play" onPress={() => (playResult = playCards(["4_clubs"]))}>
+        <Text>play</Text>
       </Pressable>
       <Pressable
         testID="newMatch"
@@ -119,8 +128,8 @@ const press = async (view: View, id: string) => {
 
 const shown = (view: View, id: string) => view.getByTestId(id).props.children;
 
-test("choosing an exchange card moves the card and announces it through the real provider", async () => {
-  await AsyncStorage.setItem(
+const saveExchange = () =>
+  AsyncStorage.setItem(
     OFFLINE_SAVE_KEY,
     encodeOfflineSave({
       gameState: exchangeState(),
@@ -133,6 +142,48 @@ test("choosing an exchange card moves the card and announces it through the real
       dealFirstSeat: 0,
     })
   );
+
+test("a give the engine refuses opens no announcement, and a valid one after it still does", async () => {
+  await saveExchange();
+  const view = await mount();
+  await waitFor(() => expect(shown(view, "saved")).toBe("true"));
+  await press(view, "resume");
+
+  await press(view, "chooseUnheld");
+
+  expect(shown(view, "announcing")).toBe("false");
+  expect(shown(view, "active")).toBe("true");
+  expect(shown(view, "winnerHand")).toBe("4_clubs");
+  expect(shown(view, "loserHand")).toBe("3_spades");
+
+  await press(view, "choose");
+
+  expect(shown(view, "active")).toBe("false");
+  expect(shown(view, "announcing")).toBe("true");
+  expect(shown(view, "announceGiven")).toBe("4_clubs");
+
+  await view.unmount();
+});
+
+test("playCards during an open exchange is refused and moves no card", async () => {
+  await saveExchange();
+  const view = await mount();
+  await waitFor(() => expect(shown(view, "saved")).toBe("true"));
+  await press(view, "resume");
+  playResult = undefined;
+
+  await press(view, "play");
+
+  expect(playResult).toBe(false);
+  expect(shown(view, "active")).toBe("true");
+  expect(shown(view, "winnerHand")).toBe("4_clubs");
+  expect(shown(view, "loserHand")).toBe("3_spades");
+
+  await view.unmount();
+});
+
+test("choosing an exchange card moves the card and announces it through the real provider", async () => {
+  await saveExchange();
 
   const view = await mount();
   await waitFor(() => expect(shown(view, "saved")).toBe("true"));
@@ -163,19 +214,7 @@ test("choosing an exchange card moves the card and announces it through the real
 // would then still read "true" after `setupGame`, deposed only by the timer
 // this test never advances.
 test("a fresh match clears the announcement outright, not on the old ceremony's clock", async () => {
-  await AsyncStorage.setItem(
-    OFFLINE_SAVE_KEY,
-    encodeOfflineSave({
-      gameState: exchangeState(),
-      match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
-      players: [
-        { name: "Ana", type: "human" },
-        { name: "Gent", type: "bot" },
-      ],
-      gameMode: "free_for_all",
-      dealFirstSeat: 0,
-    })
-  );
+  await saveExchange();
 
   const view = await mount();
   await waitFor(() => expect(shown(view, "saved")).toBe("true"));
