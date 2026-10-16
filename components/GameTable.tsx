@@ -114,7 +114,7 @@ import { useRoundEnding } from "@/components/table/useRoundEnding";
 import { roundVoteShown } from "@/lib/game/roundEnding";
 import { roundOutcomeFor, matchOutcomeFor, scoredOutcome } from "@/lib/game/matchState";
 import { ParticleLayer } from "@/components/table/particleLayer";
-import { HandRow } from "@/components/table/hand";
+import { HandRow } from "@/components/table/handRow";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
 import { GameSettingsSheet } from "@/components/table/settingsSheet";
 import { useShownTurn, useTableFeedback } from "@/components/useTableFeedback";

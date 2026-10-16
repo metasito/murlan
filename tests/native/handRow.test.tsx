@@ -8,7 +8,7 @@ import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { screen, render, fireEvent } from '@testing-library/react-native';
 import { makeMutable } from 'react-native-reanimated';
-import { HandRow } from '@/components/table/hand';
+import { HandRow } from '@/components/table/handRow';
 import type { TableFacts } from '@/components/table/stagedPlay';
 import type { ExchangeStages } from '@/components/table/exchangeModel';
 import type { ExchangeAnnounceData } from '@/lib/game/sharedGameFlow';
