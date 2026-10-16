@@ -258,6 +258,14 @@ describe("stepSettle, fed recorded landing states", () => {
     assert.deepEqual(judged, [NEW]);
   });
 
+  test("#1602: a branch that conflicts with main settles as a rebase round, disarmed first, at the head it read", () => {
+    const { out, did } = replay([recorded(at(GREEN, { mergeable: "CONFLICTING", mergeStateStatus: "DIRTY" }), { armed: true })]);
+    assert.equal(out.action, "rebase");
+    assert.equal(out.reason, "the branch conflicts with main");
+    assert.equal(out.head, SHA);
+    assert.deepEqual(did, ["disarm"]);
+  });
+
   test("an armed branch is disarmed before main is merged into it", () => {
     const { did } = replay([recorded(BEHIND, { armed: true }), recorded(GREEN, { head: NEW, merged: true })]);
     assert.deepEqual(did.slice(0, 2), ["disarm", "update-branch"]);

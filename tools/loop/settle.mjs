@@ -123,6 +123,7 @@ export function endSettle(state, end) {
     return { state: s, effects, outcome: { action: "already-merged", reason: end.reason, ...(s.flake && { flake: s.flake }) } };
   }
   disarm(end.reason);
+  if (end.action === "rebase") return { state: s, effects, outcome: { action: "rebase", reason: end.reason, head: s.head } };
   return { state: s, effects, outcome: ownerOut(s, end.reason) };
 }
 
@@ -175,7 +176,7 @@ export function stepSettle(state, read) {
 
   if (step.kind === "settled") {
     if (step.action === "hand-back") return withEffects(effects, endSettle(s, { action: "hand-back", next }));
-    if (step.action === "owner" || step.action === "already-merged") return withEffects(effects, endSettle(s, { action: step.action, reason: step.why }));
+    if (step.action === "owner" || step.action === "already-merged" || step.action === "rebase") return withEffects(effects, endSettle(s, { action: step.action, reason: step.why }));
     return { state: s, effects, outcome: next };
   }
   s.last = step.why;

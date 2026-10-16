@@ -43,10 +43,12 @@ export function report(s, reason = process.env.LOOP_REASON) {
   const next =
     {
       B: "B — Scope. One sonnet subagent maps the change, then build.",
-      C: s.fix
-        ? `C (fix round ${s.ciRounds || 1}) — CI failed at ${s.ci?.step ?? "an unnamed step"}; ` +
-          "read the CI-RED comment, fix, hand off to D."
-        : "C — Build. Commit each slice as you finish it.",
+      C: s.rebase
+        ? "C (rebase round) — the pushed head conflicts with main; rebase it onto origin/main, hand off to D."
+        : s.fix
+          ? `C (fix round ${s.ciRounds || 1}) — CI failed at ${s.ci?.step ?? "an unnamed step"}; ` +
+            "read the CI-RED comment, fix, hand off to D."
+          : "C — Build. Commit each slice as you finish it.",
       D: "D — Review. A fresh subagent reads the diff; post its verdict on the issue.",
       E: "E — Land. Run the gate, then the check, then push.",
       G: 'G — Settle. Pushed and waiting for CI; declare {"phase":"G"} and exit, the supervisor lands it.',

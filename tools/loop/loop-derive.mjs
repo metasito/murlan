@@ -35,6 +35,9 @@ const CLAIM_RE = /^Claimed by `/m;
 
 const CI_RED_RE = /^CI-RED\s+([0-9a-f]{7,40})\b/;
 
+/** The supervisor's mark on a head that conflicts with main, which routes it to a rebase round. */
+const CONFLICT_RE = /^CONFLICT\s+([0-9a-f]{7,40})\b/;
+
 /**
  * How many CI rounds have gone red since the ticket was last claimed — the newest claim, not the
  * first, so a ticket reclaimed after a restart starts the count over rather than inheriting a run
@@ -78,6 +81,9 @@ function ciRedStep(comments, sha) {
 export function ciRedPosted(comments, sha) {
   return ciRedStep(comments, sha) !== undefined;
 }
+
+const conflictPosted = (comments, sha) =>
+  sinceClaim(comments).some((c) => CONFLICT_RE.exec(fenceStripped(c.body).trimStart())?.[1].slice(0, 7) === sha.slice(0, 7));
 
 /** @returns {string|null} */
 export function currentBranch(cwd) {
@@ -297,7 +303,7 @@ function countedVerdicts(comments) {
     if (PARK_RE.test(b)) parked = true;
     else if (parked && CLAIM_RE.test(b)) [since, parked] = [i, false];
   });
-  const firstRed = bodies.findIndex((b, i) => i >= since && CI_RED_RE.test(b.trimStart()));
+  const firstRed = bodies.findIndex((b, i) => i >= since && (CI_RED_RE.test(b.trimStart()) || CONFLICT_RE.test(b.trimStart())));
   return bodies.slice(since).flatMap((body) => {
     const v = VERDICT_RE.exec(body);
     if (!v) return [];
@@ -482,7 +488,8 @@ export function derive({
   const verdict = trackerReadable ? verdictFor(comments, head) : null;
   const land = commits > 0 && verdict?.decision === "LAND";
   const ciRead = ci && land ? readCi(cwd, branch, head, comments, exec) : null;
-  const fix = Boolean(ciRead?.pushed && ciRead.pr !== null && ciRead.state === "red");
+  const rebase = Boolean(ciRead?.pushed && ciRead.pr !== null && conflictPosted(comments, head));
+  const fix = !rebase && Boolean(ciRead?.pushed && ciRead.pr !== null && ciRead.state === "red");
   // A claimed worktree that is clean and has no commits has not been worked yet, so it owes its
   // scope pass; an edit in the tree means C has begun.
   const scoping = commits === 0 && !dirty;
@@ -508,6 +515,9 @@ export function derive({
     why = "reviewed and cleared, but its pull request could not be read in time — the supervisor settles it";
   } else if (ciRead && !ciRead.pushed) {
     why = "reviewed and cleared, and no open pull request carries this head yet";
+  } else if (rebase) {
+    phase = "C";
+    why = "the pushed head conflicts with main";
   } else if (fix) {
     phase = "C";
     why = `CI failed at ${ciRead.step ?? "an unnamed step"} on the pushed head`;
@@ -540,6 +550,7 @@ export function derive({
     review: trackerReadable ? reviewFor(comments, head) : null,
     ci: ciRead,
     fix,
+    rebase,
     ciRounds: trackerReadable ? ciRedRounds(comments) : null,
     phase,
     why,

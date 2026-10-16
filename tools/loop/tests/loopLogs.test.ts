@@ -597,6 +597,7 @@ describe("ticketTally", () => {
       handoffWhy: null,
       lastRedHead: null,
       retries: 0,
+      rebases: 0,
       undeclared: 0,
       armedFlake: null,
     });
@@ -654,6 +655,12 @@ describe("tallyOf", () => {
     assert.deepEqual([t.handoffsThisRound, t.retries, t.lastRedHead], [1, 1, "a"]);
     assert.deepEqual([t.lastHandoff, t.handoffWhy], ["D", "round 1 HOLD"]);
     assert.equal(tallyOf([proc({ outcome: "handoff", handoff: { phase: "E" } }), out({ outcome: "retry" })]).lastHandoff, null);
+  });
+
+  test("a rebase row is counted, and like a retry clears the handed phase so the CONFLICT routes the next pass", () => {
+    const t = tallyOf([proc({ outcome: "handoff", handoff: { phase: "E" } }), out({ outcome: "rebase", head: "a" })]);
+    assert.deepEqual([t.rebases, t.lastHandoff, t.handoffsThisRound], [1, null, 0]);
+    assert.equal(tallyOf([]).rebases, 0);
   });
 
   test("the supervisor's reason outranks what the session said", () => {

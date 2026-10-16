@@ -41,7 +41,15 @@ function laterDelta(wt, base) {
   );
 }
 
-const diff = (wt, base) => (base === "origin/main" ? `\`git -C ${wt} diff ${base}...HEAD\`` : laterDelta(wt, base));
+const rebasedFrom = (wt, base) => statusOf(() => gitAt(wt)(["merge-base", "--is-ancestor", base, "HEAD"])) === 1;
+
+/** A base a rebase moved the branch from: a plain delta would carry the whole ticket and main, a range-diff only the resolution. */
+const diff = (wt, base) =>
+  base === "origin/main"
+    ? `\`git -C ${wt} diff ${base}...HEAD\``
+    : rebasedFrom(wt, base)
+      ? `\`git -C ${wt} range-diff ${base}...HEAD\``
+      : laterDelta(wt, base);
 export const TRUSTED_SELECT = `select(.authorAssociation|IN(${TRUSTED_AUTHORS.map((a) => `"${a}"`).join(",")}))`;
 /** Rule 25's read, keeping only trusted authors' comments: a later comment overrides the body. */
 export const readIssue = (n) =>
@@ -96,8 +104,8 @@ function unreadable(n, worktree, base) {
     return `the worktree must be ${WORKTREE_DIR}/agent-${n}, not ${worktree}`;
   }
   if (base && base !== "origin/main") {
-    if (statusOf(() => gitAt(worktree)(["merge-base", "--is-ancestor", base, "HEAD"])) !== 0) {
-      return `${base} is not an ancestor of HEAD in ${worktree}: a rebase moved the branch, so the delta would carry the whole ticket and main`;
+    if (statusOf(() => gitAt(worktree)(["rev-parse", "--verify", "-q", `${base}^{commit}`])) !== 0) {
+      return `${base} is not a commit in ${worktree}`;
     }
   }
   return null;
