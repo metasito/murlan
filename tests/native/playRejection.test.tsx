@@ -3,7 +3,7 @@
 // Every rejection with a built combination used to read "TROPPO BASSA",
 // including a pair offered against a single and the opening play without the
 // 3♠ — the two cases where "too low" teaches the wrong rule.
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { activate } from './tapHelpers';
@@ -13,6 +13,9 @@ import { bootFeedback, haptics, sounds } from './helpers/feedback';
 import { GameTable } from '@/components/GameTable';
 import { t } from '@/lib/i18n';
 import { cardSpokenName } from '@/lib/cardNames';
+import { dealEndMs } from '@/lib/game/dealTimeline';
+import { Motion } from '@/lib/tokens';
+import { steps } from './helpers/steps';
 import {
   type Card,
   type Combination,
@@ -74,6 +77,7 @@ const table = (gameState: GameState, onPlay: (ids: string[]) => void = noop) => 
 
 const mount = async (gameState: GameState, picked: Card[], onPlay?: (ids: string[]) => void) => {
   const r = await render(table(gameState, onPlay));
+  if (!gameState.firstPlayMade) await steps(dealEndMs(gameState.players.map((p) => p.hand.length), Motion.duration.reveal) + 200);
   for (const c of picked) {
     await act(async () => {
       await activate(screen.getByLabelText(cardSpokenName(c, t)));
@@ -90,6 +94,10 @@ const mount = async (gameState: GameState, picked: Card[], onPlay?: (ids: string
 describe('the refused GIOCA names the right reason', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   const reasonOf = () => screen.getByTestId('btn-gioca').props.accessibilityLabel as string;

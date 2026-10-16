@@ -16,6 +16,7 @@ let mockQueryResult: { data: unknown; isError: boolean; isLoading: boolean; erro
   isLoading: true,
 };
 jest.mock('@tanstack/react-query', () => ({
+  ...jest.requireActual<object>('@tanstack/react-query'),
   useQuery: () => mockQueryResult,
   useQueryClient: () => ({ setQueryData: jest.fn(), invalidateQueries: jest.fn() }),
 }));

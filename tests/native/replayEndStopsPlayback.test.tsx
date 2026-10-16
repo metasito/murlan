@@ -29,6 +29,7 @@ const mockReplay = {
 };
 
 jest.mock('@tanstack/react-query', () => ({
+  ...jest.requireActual<object>('@tanstack/react-query'),
   useQuery: () => ({ data: mockReplay, isError: false, isLoading: false }),
   useQueryClient: () => ({ setQueryData: jest.fn(), invalidateQueries: jest.fn() }),
 }));
