@@ -2,7 +2,7 @@
 // is the table that was packed, minus what never leaves memory. No database.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { MEMORY_ONLY, fromEnvelope, newTable, toEnvelope } from "../../server/game/tableState.ts";
+import { MEMORY_ONLY, PERSISTED, fromEnvelope, newTable, toEnvelope } from "../../server/game/tableState.ts";
 import { GAME_SCHEMA_VERSION } from "../../shared/persistedEnvelope.ts";
 import { firstTargetFor, initializeGame } from "../../lib/game/gameEngine.ts";
 import type { GameState } from "../../lib/game/gameEngine.ts";
@@ -29,17 +29,22 @@ function dealt(): GameState {
   );
 }
 
+// Every field set, none to the value a read-back would default it to: a field
+// packed but dropped on the way back then differs.
 function midMatch(): OnlineGameState {
-  return onlineTable({
+  const table: Required<OnlineGameState> = {
     roomId: ROOM,
     joinCode: "QW3RTY",
     gameState: dealt(),
     playerMap: { 0: "alice", 2: "carl" },
     cumulativeScores: { alice: 7, bob: 3, carl: 12, "bot:3": 4 },
+    gameMode: "teams",
     maxPlayers: 4,
     matchTarget: 31,
+    matchLength: "single",
     roundsPlayed: 2,
-    endedByVote: false,
+    matchOver: true,
+    endedByVote: true,
     roundFlags: { 0: { bomb: true, joker: false } },
     abandonedSeats: new Map([[1, "bob"]]),
     botSeatsAtStart: new Set([3]),
@@ -54,7 +59,8 @@ function midMatch(): OnlineGameState {
     turnDeadlineMs: 123,
     lastRoundOverPayload: {} as RoundOverPayload,
     resultWrites: Promise.resolve(),
-  });
+  };
+  return table;
 }
 
 const persisted = (game: OnlineGameState) => ({ roomId: game.roomId, gameState: viaJson(toEnvelope(game)) });
@@ -70,6 +76,7 @@ describe("a table's round trip through active_games", () => {
     const game = midMatch();
     const back = fromEnvelope(persisted(game));
     assert.ok(back.ok, back.ok ? "" : back.reason);
+    assert.deepEqual(Object.keys(game).sort(), [...PERSISTED, ...MEMORY_ONLY].sort());
     assert.deepEqual(withoutMemoryOnly(back.game), withoutMemoryOnly(game));
   });
 
@@ -96,12 +103,12 @@ describe("a table's round trip through active_games", () => {
       match: {
         playerMap: { 0: "alice", 2: "carl" },
         scores: { alice: 7, bob: 3, carl: 12, "bot:3": 4 },
-        gameMode: "free_for_all",
-        matchLength: "match",
+        gameMode: "teams",
+        matchLength: "single",
         matchTarget: 31,
         maxPlayers: 4,
         roundsPlayed: 2,
-        endedByVote: false,
+        endedByVote: true,
       },
       seats: {
         vacatedSeats: [[1, { userId: "bob", username: "Bob" }]],
@@ -115,6 +122,7 @@ describe("a table's round trip through active_games", () => {
   test("a single round that was over comes back as a finished match", () => {
     const game = midMatch();
     game.matchLength = "single";
+    game.endedByVote = false;
     game.gameState = { ...game.gameState, roundOver: true };
     const back = fromEnvelope(persisted(game));
     assert.ok(back.ok);
