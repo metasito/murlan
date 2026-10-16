@@ -240,7 +240,7 @@ interface CardItemProps {
   received?: boolean;
   /** Ids drawn by an exchange flier instead, set on the UI thread on the frame it shows. */
   hidden?: SharedValue<string[]>;
-  rects?: HandRow;
+  rects?: HandRects;
 }
 
 interface DrawnCard { liftY: SharedValue<number>; tilt: SharedValue<number>; shift: SharedValue<number> }
@@ -252,7 +252,7 @@ interface CardDeal { clock: SharedValue<number>; leaveMs: number; onDealt: (x: n
 export interface HandDeal { offsetMs: number; clock: SharedValue<number>; pile: { dx: number; dy: number }; onDealt: (x: number, y: number) => void }
 
 /** The registry apart from the place: a mapper reading it would re-run on its own every write. */
-interface HandRow {
+interface HandRects {
   table: CardTable;
   place: HandPlace & { felt: Felt; pan: SharedValue<number>; panLimit: number; lift: SharedValue<number>; motion: SharedValue<TableMotion> };
 }

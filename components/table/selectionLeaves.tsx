@@ -1,7 +1,6 @@
 import React, { useMemo, useSyncExternalStore } from "react";
 import { View } from "react-native";
 import type { SharedValue } from "react-native-reanimated";
-import type { Card, Combination, GameState } from "@/lib/game/gameEngine";
 import { useTranslation } from "@/lib/i18n";
 import { A11yStatus } from "@/lib/a11y";
 import { event, uiFeedback } from "@/lib/device/feedback";
@@ -9,7 +8,7 @@ import { useGiocaCues } from "@/components/useTableFeedback";
 import { GiocaButton } from "./actions";
 import { harnessState } from "./chrome";
 import { handLabel, playRefusalLabel } from "./spokenLabels";
-import { readStagedPlay } from "./stagedPlay";
+import { readStagedPlay, type TableFacts } from "./stagedPlay";
 import { NO_SELECTION, settle, type Selection, type SelectionMode, type SelectionStore } from "./selection";
 
 /** The selection as it applies to one hand and mode, which is what every leaf subscribes to. */
@@ -60,13 +59,7 @@ export function HandStatus({
 /** GIOCA with what it stages: the play and why it is refused, or the exchange's pick. */
 export function GiocaControl({
   store,
-  hand,
-  lastPlayedCombination,
-  startCard,
-  firstPlayMade,
-  isNewTrick,
-  isMyTurn,
-  isFinished,
+  facts,
   giveTo,
   lit,
   rejectX,
@@ -78,13 +71,7 @@ export function GiocaControl({
   scale,
 }: {
   store: SettledSelection;
-  hand: Card[];
-  lastPlayedCombination: Combination | null;
-  startCard: GameState["startCard"];
-  firstPlayMade: boolean;
-  isNewTrick: boolean;
-  isMyTurn: boolean;
-  isFinished: boolean;
+  facts: TableFacts;
   /** Who the exchange's card goes to, while the exchange has borrowed the key; null for a play. */
   giveTo: string | null;
   lit: boolean;
@@ -100,20 +87,8 @@ export function GiocaControl({
   const ids = useSyncExternalStore(store.subscribe, () => store.get().ids);
   const giving = giveTo !== null;
   const selectedIds = giving ? NO_IDS : ids;
-  const staged = useMemo(
-    () =>
-      readStagedPlay({
-        hand,
-        selectedIds,
-        lastPlayedCombination,
-        startCard,
-        firstPlayMade,
-        isNewTrick,
-        isMyTurn,
-        isFinished,
-      }),
-    [hand, selectedIds, lastPlayedCombination, startCard, firstPlayMade, isNewTrick, isMyTurn, isFinished]
-  );
+  const { hand, isMyTurn, isFinished, startCard } = facts;
+  const staged = useMemo(() => readStagedPlay({ ...facts, selectedIds }), [facts, selectedIds]);
   const reason = playRefusalLabel({ refusal: staged.refusal, isMyTurn, isFinished, startCard }, t);
   const pick = giving ? (ids[0] ?? null) : null;
   const picked = pick === null ? null : (hand.find((c) => c.id === pick) ?? null);

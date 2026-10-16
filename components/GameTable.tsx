@@ -87,12 +87,11 @@ import {
 } from "@/components/table/chrome";
 import { WhoStartsPanel } from "@/components/table/notices/panels";
 import {
-  arrangedLabel,
   lastPlayLabel,
   tableStrings,
   topBarLabel,
 } from "@/components/table/spokenLabels";
-import { canBeatPileOf } from "@/components/table/stagedPlay";
+import { canBeatPileOf, type TableFacts } from "@/components/table/stagedPlay";
 import {
   createSelectionStore,
   press,
@@ -101,7 +100,7 @@ import {
   type SelectionMode,
 } from "@/components/table/selection";
 import { useSelection } from "@/components/table/useSelection";
-import { GiocaControl, HandStatus, settledSelection } from "@/components/table/selectionLeaves";
+import { GiocaControl, settledSelection } from "@/components/table/selectionLeaves";
 import { PassaButton } from "@/components/table/actions";
 import { Felt } from "@/components/table/feltSkia";
 import { HandShade } from "@/components/table/handShade";
@@ -115,7 +114,7 @@ import { useRoundEnding } from "@/components/table/useRoundEnding";
 import { roundVoteShown } from "@/lib/game/roundEnding";
 import { roundOutcomeFor, matchOutcomeFor, scoredOutcome } from "@/lib/game/matchState";
 import { ParticleLayer } from "@/components/table/particleLayer";
-import { StraightHand, useHandArrival } from "@/components/table/hand";
+import { HandRow } from "@/components/table/handRow";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
 import { GameSettingsSheet } from "@/components/table/settingsSheet";
 import { useShownTurn, useTableFeedback } from "@/components/useTableFeedback";
@@ -477,7 +476,7 @@ export function GameTable({
   // The engine's order is the fallback; what the player sees is whatever they
   // have arranged on top of it (#531). Spectated hands are excluded by the
   // seat's own cards being synthetic above — there is nothing there to arrange.
-  const { arranged: shownHand, moveTo, order: handOrder } = useHandOrder(viewerSeat, sortedHand);
+  const handOrder = useHandOrder(viewerSeat, sortedHand);
   const {
     exchange,
     shownExchange,
@@ -503,25 +502,6 @@ export function GameTable({
   });
   const ringFlash = useSharedValue<RingFlash>({ seq: 0, seat: -1 });
   const lifted = useSharedValue<string[]>([]);
-  const { handOnTable, holding, arrivingIndex, descendingId, receivedId } = useHandArrival({
-    hand: shownHand,
-    sorted: sortedHand,
-    order: handOrder,
-    announced: shownExchange,
-    stages,
-    viewerSeat: spectating ? null : viewerSeat,
-  });
-  // Where the last move put a card. A drag shows its own answer; the discrete
-  // actions behind it (WCAG 2.5.7) move a card with nothing on screen changing
-  // for whoever asked, so the live region below says where it went.
-  const [arranged, setArranged] = React.useState<{ id: string; to: number } | null>(null);
-  const arrange = React.useCallback(
-    (id: string, to: number) => {
-      moveTo(id, to);
-      setArranged({ id, to });
-    },
-    [moveTo]
-  );
   const selectionMode: SelectionMode = exchangeIsMine ? "exchange" : "play";
   // Nothing here subscribes to the selection: a tap renders only the leaves that show it.
   const [selection] = useState(() => createSelectionStore());
@@ -536,20 +516,17 @@ export function GameTable({
     () => canPassNowOf({ isMyTurn, isFinished, isNewTrick }),
     [isMyTurn, isFinished, isNewTrick]
   );
-  const passIsOnlyMove = React.useMemo(
-    () =>
-      canPass &&
-      !canBeatPileOf({
-        hand: sortedHand,
-        lastPlayedCombination: gameState.lastPlayedCombination,
-        startCard: gameState.startCard,
-        firstPlayMade: gameState.firstPlayMade,
-        isNewTrick,
-        isMyTurn,
-        isFinished,
-      }),
+  const facts = React.useMemo<TableFacts>(
+    () => ({
+      hand: sortedHand,
+      lastPlayedCombination: gameState.lastPlayedCombination,
+      startCard: gameState.startCard,
+      firstPlayMade: gameState.firstPlayMade,
+      isNewTrick,
+      isMyTurn,
+      isFinished,
+    }),
     [
-      canPass,
       sortedHand,
       gameState.lastPlayedCombination,
       gameState.startCard,
@@ -559,6 +536,7 @@ export function GameTable({
       isFinished,
     ]
   );
+  const passIsOnlyMove = React.useMemo(() => canPass && !canBeatPileOf(facts), [canPass, facts]);
   const passed = usePassedSeats(
     gameState.currentTurnIndex,
     gameState.lastPlayedBy,
@@ -716,7 +694,7 @@ export function GameTable({
       {
         isMyTurn: turnShown,
         currentTurnName: players[gameState.currentTurnIndex]?.name ?? "",
-        myCardCount: handOnTable.length,
+        myCardCount: sortedHand.length,
         lastPlay,
         opponents: opponentsA11y,
         exchange: exchangeA11y,
@@ -734,7 +712,7 @@ export function GameTable({
     gameState.currentTurnIndex,
     players,
     viewerSeat,
-    handOnTable.length,
+    sortedHand.length,
     turnShown,
     deal.dealing,
     spectating,
@@ -742,19 +720,6 @@ export function GameTable({
     tableA11yStrings,
     t,
   ]);
-
-  const arrangedA11yLabel = React.useMemo(
-    () =>
-      arranged === null
-        ? null
-        : arrangedLabel(
-            shownHand.find((c) => c.id === arranged.id),
-            arranged.to,
-            handOnTable.length,
-            t
-          ),
-    [arranged, shownHand, handOnTable.length, t]
-  );
 
   const landingSignal = useSharedValue<LandingSignal>(NO_LANDING);
   const timeline = useTableTimeline();
@@ -1477,54 +1442,28 @@ export function GameTable({
                   <WaitingLine scale={scale} />
                 </View>
               ) : (
-                <HandStatus store={shownSelection} cardCount={handOnTable.length}>
-                  {arrangedA11yLabel !== null && <A11yStatus label={arrangedA11yLabel} />}
-                  <StraightHand
-                    key={deal.key}
-                    faceDown={spectating}
-                    cards={handOnTable}
-                    store={shownSelection}
-                    selection={uiSelection}
-                    onActivate={handleCardPress}
-                    disabled={isFinished || spectating}
-                    giveableIds={giveableIds}
-                    giveHint={t("exchange.cardA11yHint")}
-                    refuseHint={t("exchange.cardA11yNotGiveable")}
-                    availW={frame.handAvailW}
-                    roomW={frame.handRoomW}
-                    isMyTurn={turnShown && !isFinished}
-                    scale={scale}
-                    // Off whenever a card is held back or lent: the fan is drawn
-                    // without the state's hand, but `arrange` moves within it, so
-                    // a drop would land a slot from where the finger let go.
-                    onReorder={spectating || holding ? undefined : arrange}
-                    arrivingIndex={arrivingIndex}
-                    descendingId={descendingId}
-                    receivedId={receivedId}
-                    lifted={lifted}
-                    handBottomPad={frame.bottomPad}
-                    onOrigins={onHandOrigins}
-                    // Only while the opening is still owed. Named rather than
-                    // counted to: Maestro's `index` sorts by position, and the
-                    // arc puts the outermost card below its neighbours (#757).
-                    deal={deal.hand && { ...deal.hand, onDealt }}
-                    startCardId={
-                      gameState.firstPlayMade ? undefined : gameState.startCard?.id
-                    }
-                  />
-                </HandStatus>
+                <HandRow
+                  facts={facts}
+                  turnShown={turnShown}
+                  viewerSeat={spectating ? null : viewerSeat}
+                  arrangement={handOrder}
+                  exchange={{ shown: shownExchange, stages, giveableIds, lifted }}
+                  deal={{ key: deal.key, hand: deal.hand && { ...deal.hand, onDealt } }}
+                  geometry={{
+                    availW: frame.handAvailW,
+                    roomW: frame.handRoomW,
+                    bottomPad: frame.bottomPad,
+                    scale,
+                    onOrigins: onHandOrigins,
+                  }}
+                  selection={{ store: shownSelection, ui: uiSelection, onActivate: handleCardPress }}
+                />
               )}
 
               {!spectating && (
                 <GiocaControl
                   store={shownSelection}
-                  hand={sortedHand}
-                  lastPlayedCombination={gameState.lastPlayedCombination}
-                  startCard={gameState.startCard}
-                  firstPlayMade={gameState.firstPlayMade}
-                  isNewTrick={isNewTrick}
-                  isMyTurn={isMyTurn}
-                  isFinished={isFinished}
+                  facts={facts}
                   giveTo={exchangeIsMine ? exchangeLoserName : null}
                   lit={exchangeIsMine || (turnShown && !isFinished && !exchange.active)}
                   rejectX={giocaRejectX}
