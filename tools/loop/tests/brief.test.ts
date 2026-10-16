@@ -61,7 +61,7 @@ describe("brief", () => {
     for (const n of [47, 48, 49]) assert.match(rules, new RegExp(`^${n}\\. \\*\\*`, "m"), `rule ${n} is retired or gone; the review still blocks on it`);
     for (const kind of ["review", "fix"]) {
       assert.match(role(kind), /## Blocking`, `## Nits` and `## Pre-existing/, kind);
-      assert.match(role(kind), /a breach of rule 47, 48 or 49 \(`docs\/agents\/RULES\.md`\) this change introduces, naming the owner's file:line \(47\), both copies' file:line \(48\)/, kind);
+      assert.match(role(kind), /a breach of rule 47, 48 or 49 \(`docs\/agents\/RULES\.md`\) in what this change adds or edits, naming the owner's file:line \(47\), both copies' file:line \(48\), or the planted defect or emptied input the check passes on \(49\)/, kind);
       assert.match(role(kind), /Any other rule breach, a name, a comment, an untested branch or a style preference is a Nit/, kind);
     }
   });

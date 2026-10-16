@@ -24,7 +24,7 @@ Does every rebased commit still do what it did before, against main as it is now
 Answer under `## Blocking`, `## Nits` and `## Pre-existing`. Blocking is only: a bug, with the
 input or sequence that makes it go wrong; a Definition-of-done box left unmet, quoted; a regression
 or red CI run this change causes; a security or data-loss risk; a breach of rule 47, 48 or 49
-(`docs/agents/RULES.md`) this change introduces, naming the owner's file:line (47), both copies'
+(`docs/agents/RULES.md`) in what this change adds or edits, naming the owner's file:line (47), both copies'
 file:line (48), or the planted defect or emptied input the check passes on (49). A box built for its intent because
 a test rules out the form it prescribes, the test named in a commit body (`.claude/commands/queue.md`
 phase C), is met: unmet only if that test does not rule the form out or the intent is not built.

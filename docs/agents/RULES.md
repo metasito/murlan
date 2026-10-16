@@ -112,6 +112,7 @@ Another agent is working in this repository, on this machine, right now.
 
 ## Design
 
-47. **A decision another module owns is asked of that module, never re-derived or restated.** A rule, timing, policy, mapping or threshold computed again in a caller or restated in a doc is a copy of the owner's, even when it agrees today.
-48. **One decision has one copy.** A change that leaves two copies of a constant, rule, policy or mapping, where one existed or where one should, deletes one or routes it through the other in the same change.
-49. **A new invariant, guard or check lands proven and floored**: it fails on a planted defect for the reason claimed (rule 6), and it fails when what it inspects is gone, empty or renamed, so it cannot pass by not looking.
+47. **A decision another module owns is asked of that module, never re-derived or restated.** A rule, timing, policy, mapping or threshold computed again in a caller is a copy of the owner's, even when it agrees today. A doc describing it (rule 43) names the owner rather than becoming a second source.
+48. **One decision has one copy.** A change that adds a second copy of a constant, rule, policy or mapping, or edits one of two existing copies without merging them, deletes one or routes it through the other in the same change.
+49. **A new guard, check or scan lands proven and floored**: it meets rule 6, and it fails when what it inspects is gone, empty or renamed, so it cannot pass by not looking.
+50. **No seam, interface or adapter layer until a second adapter exists.**

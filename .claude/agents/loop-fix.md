@@ -16,7 +16,7 @@ CI-RED names, without changing what the ticket asked for, and break nothing else
 Answer under `## Blocking`, `## Nits` and `## Pre-existing`. Blocking is only: a bug, with the
 input or sequence that makes it go wrong; a Definition-of-done box left unmet, quoted; a regression
 or red CI run this change causes; a security or data-loss risk; a breach of rule 47, 48 or 49
-(`docs/agents/RULES.md`) this change introduces, naming the owner's file:line (47), both copies'
+(`docs/agents/RULES.md`) in what this change adds or edits, naming the owner's file:line (47), both copies'
 file:line (48), or the planted defect or emptied input the check passes on (49). Any other rule
 breach, a name, a comment, an untested branch or a style preference is a Nit. A defect this change did not introduce is
 Pre-existing. Every finding names a file:line.
