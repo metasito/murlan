@@ -33,7 +33,11 @@ import type { Card } from "@/lib/game/gameEngine";
 import { computeHandLayout, hitWidth, slotForCard } from "@/components/handLayout";
 import { dropIndex, lendBack, stripAt } from "@/components/handOrder";
 import type { HandSelection } from "./useSelection";
-import type { SettledSelection } from "./selectionLeaves";
+import { HandStatus, type SettledSelection } from "./selectionLeaves";
+import type { TableFacts } from "./stagedPlay";
+import { arrangedLabel } from "./spokenLabels";
+import { A11yStatus } from "@/lib/a11y";
+import type { HandOrder } from "@/components/useHandOrder";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
 import { DEAL_FLIGHT_MS, dealLeaveMs } from "@/lib/game/dealTimeline";
 import { dealEase, handDealArc } from "@/components/table/dealPose";
@@ -240,7 +244,7 @@ interface CardItemProps {
   received?: boolean;
   /** Ids drawn by an exchange flier instead, set on the UI thread on the frame it shows. */
   hidden?: SharedValue<string[]>;
-  rects?: HandRow;
+  rects?: HandRects;
 }
 
 interface DrawnCard { liftY: SharedValue<number>; tilt: SharedValue<number>; shift: SharedValue<number> }
@@ -252,7 +256,7 @@ interface CardDeal { clock: SharedValue<number>; leaveMs: number; onDealt: (x: n
 export interface HandDeal { offsetMs: number; clock: SharedValue<number>; pile: { dx: number; dy: number }; onDealt: (x: number, y: number) => void }
 
 /** The registry apart from the place: a mapper reading it would re-run on its own every write. */
-interface HandRow {
+interface HandRects {
   table: CardTable;
   place: HandPlace & { felt: Felt; pan: SharedValue<number>; panLimit: number; lift: SharedValue<number>; motion: SharedValue<TableMotion> };
 }
@@ -1441,6 +1445,114 @@ export const StraightHand = React.memo(function StraightHand({
     </View>
   );
 });
+
+// ─── HandRow ──────────────────────────────────────────────────────────────────
+
+/** The viewer's own row: the hand as the exchange leaves it on the table, arranged, and announced. */
+export function HandRow({
+  facts,
+  turnShown,
+  viewerSeat,
+  arrangement,
+  exchange,
+  deal,
+  geometry,
+  selection,
+}: {
+  facts: TableFacts;
+  /** The turn as the table shows it, which waits out the deal. */
+  turnShown: boolean;
+  /** Null for a spectator, whose hand is backs and is nobody's to arrange. */
+  viewerSeat: number | null;
+  arrangement: HandOrder;
+  exchange: {
+    shown: ExchangeAnnounceData | null;
+    stages: ExchangeStages;
+    giveableIds: string[] | undefined;
+    lifted: SharedValue<string[]>;
+  };
+  deal: { key: number; hand: HandDeal | undefined };
+  geometry: {
+    availW: number;
+    roomW: number;
+    bottomPad: number;
+    scale: number;
+    onOrigins: (origins: ReadonlyMap<string, CardFrom>) => void;
+  };
+  selection: { store: SettledSelection; ui: HandSelection; onActivate: (id: string) => void };
+}) {
+  const { t } = useTranslation();
+  const spectating = viewerSeat === null;
+  const { arranged: shownHand, moveTo, order } = arrangement;
+  const { handOnTable, holding, arrivingIndex, descendingId, receivedId } = useHandArrival({
+    hand: shownHand,
+    sorted: facts.hand,
+    order,
+    announced: exchange.shown,
+    stages: exchange.stages,
+    viewerSeat,
+  });
+  // Where the last move put a card. A drag shows its own answer; the discrete
+  // actions behind it (WCAG 2.5.7) move a card with nothing on screen changing
+  // for whoever asked, so the live region below says where it went.
+  const [arranged, setArranged] = useState<{ id: string; to: number } | null>(null);
+  const arrange = useCallback(
+    (id: string, to: number) => {
+      moveTo(id, to);
+      setArranged({ id, to });
+    },
+    [moveTo]
+  );
+  const arrangedA11yLabel = useMemo(
+    () =>
+      arranged === null
+        ? null
+        : arrangedLabel(
+            shownHand.find((c) => c.id === arranged.id),
+            arranged.to,
+            handOnTable.length,
+            t
+          ),
+    [arranged, shownHand, handOnTable.length, t]
+  );
+
+  return (
+    <HandStatus store={selection.store} cardCount={handOnTable.length}>
+      {arrangedA11yLabel !== null && <A11yStatus label={arrangedA11yLabel} />}
+      <StraightHand
+        key={deal.key}
+        faceDown={spectating}
+        cards={handOnTable}
+        store={selection.store}
+        selection={selection.ui}
+        onActivate={selection.onActivate}
+        disabled={facts.isFinished || spectating}
+        giveableIds={exchange.giveableIds}
+        giveHint={t("exchange.cardA11yHint")}
+        refuseHint={t("exchange.cardA11yNotGiveable")}
+        availW={geometry.availW}
+        roomW={geometry.roomW}
+        isMyTurn={turnShown && !facts.isFinished}
+        scale={geometry.scale}
+        // Off whenever a card is held back or lent: the fan is drawn
+        // without the state's hand, but `arrange` moves within it, so
+        // a drop would land a slot from where the finger let go.
+        onReorder={spectating || holding ? undefined : arrange}
+        arrivingIndex={arrivingIndex}
+        descendingId={descendingId}
+        receivedId={receivedId}
+        lifted={exchange.lifted}
+        handBottomPad={geometry.bottomPad}
+        onOrigins={geometry.onOrigins}
+        // Only while the opening is still owed. Named rather than
+        // counted to: Maestro's `index` sorts by position, and the
+        // arc puts the outermost card below its neighbours (#757).
+        deal={deal.hand}
+        startCardId={facts.firstPlayMade ? undefined : facts.startCard?.id}
+      />
+    </HandStatus>
+  );
+}
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 

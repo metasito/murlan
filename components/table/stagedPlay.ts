@@ -27,7 +27,7 @@ export interface StagedPlay {
   refusal: PlayButtonLabel;
 }
 
-type TableFacts = {
+export type TableFacts = {
   hand: Card[];
   lastPlayedCombination: Combination | null;
   startCard: GameState["startCard"];
