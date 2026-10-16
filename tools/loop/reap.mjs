@@ -6,6 +6,7 @@
  */
 import { execFileSync } from "node:child_process";
 import os from "node:os";
+import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { checkoutRoot } from "./cli.mjs";
 
@@ -357,6 +358,38 @@ export async function reap({ dryRun = false, stale: takeStale = false, say = con
   if (!stale.length) say(`reap: nothing of ours older than ${STALE_AGE_MS / 3_600_000}h`);
 
   return { took: staleHolders.length + parentless.length + stale.length, blind: blind ?? refused };
+}
+
+const isNode = (name) => /^node(\.exe)?$/i.test(path.basename(String(name)));
+
+/**
+ * The node processes left in `worktree` by its own ticket's sessions, whatever their age: only
+ * that ticket runs there, so no live peer can be among them. The separator after the root is what
+ * keeps `agent-16` from claiming `agent-1641`'s processes.
+ */
+export function worktreeOrphans(table, { worktree, selfPid, keep = new Set(), platform = process.platform }) {
+  const root = normalizePath(worktree, platform).replace(/\\+$/, "") + "\\";
+  const ancestors = ancestry(table, selfPid);
+  return table.filter(
+    (p) =>
+      isNode(p.name) &&
+      !ancestors.has(p.pid) &&
+      !keep.has(p.pid) &&
+      !isSessionHost(p.commandLine, { platform }) &&
+      normalizePath(p.commandLine ?? "", platform).includes(root)
+  );
+}
+
+/** `worktreeOrphans`, killed: the agent:check preflight's sweep of its own tree. */
+export function reapWorktree(worktree, { dryRun = false, say = console.log, readTable = processTable, listening = listeningPids } = {}) {
+  const { rows: table, blind } = readTable();
+  if (blind) say(`reap: ${blind}`);
+  const found = worktreeOrphans(table, { worktree, selfPid: process.pid, keep: listening() });
+  for (const p of found) {
+    say(`reap: ${dryRun ? "would kill" : "killed"} ${p.name} pid ${p.pid}, left running in ${worktree}`);
+    killPid(p.pid, dryRun, say, readTable);
+  }
+  return found.map((p) => p.pid);
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
