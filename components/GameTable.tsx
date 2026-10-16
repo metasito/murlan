@@ -282,6 +282,8 @@ export interface GameTableProps {
   onExchangeGive: (cardId: string) => void;
   /** The exchange's choice opens: the received card has landed and been read. The offline bot winner gives on it. */
   onExchangeReady?: () => void;
+  /** Whether a deal is in flight; the offline table holds the round's opener until it lands. */
+  onDealing?: (dealing: boolean) => void;
   /**
    * Present where a round ends on the table: the score pill's payoff runs, and this hears the
    * landing that ended it, which the next round is timed from (`RoundEnding.deal`).
@@ -351,6 +353,7 @@ export function GameTable({
   onQuit,
   onExchangeGive,
   onExchangeReady,
+  onDealing,
   onRoundLanded,
   turnTimer,
   exchangeAnnouncement,
@@ -646,8 +649,12 @@ export function GameTable({
     entryMs,
     reduceMotion,
   });
-  // What the table shows, not what the player may do: `canPass` and the clock keep the true turn.
+  // What the table shows, and what Gioca follows; `canPass` and the clock keep the true turn.
   const turnShown = isMyTurn && !deal.dealing;
+  useEffect(() => {
+    onDealing?.(deal.dealing);
+  }, [onDealing, deal.dealing]);
+  const giocaFacts = React.useMemo<TableFacts>(() => ({ ...facts, isMyTurn: turnShown }), [facts, turnShown]);
   const particles = useRef<ParticleEmitter>(null);
   const onDealt = useCallback(
     (x: number, y: number) => {
@@ -1463,7 +1470,7 @@ export function GameTable({
               {!spectating && (
                 <GiocaControl
                   store={shownSelection}
-                  facts={facts}
+                  facts={giocaFacts}
                   giveTo={exchangeIsMine ? exchangeLoserName : null}
                   lit={exchangeIsMine || (turnShown && !isFinished && !exchange.active)}
                   rejectX={giocaRejectX}

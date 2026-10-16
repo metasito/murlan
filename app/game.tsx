@@ -110,9 +110,11 @@ export default function GameScreen() {
   // false while the two cards are still crossing the table. A play made into
   // that is a play made over the ceremony announcing it, which is the one
   // moment every seat is watching the middle.
+  const [dealing, setDealing] = useState(false);
   const botTurnKey = BOT_SUSPENDED
     ? null
     : gameState &&
+        !dealing &&
         !gameState.roundOver &&
         !gameState.exchangePhase?.active &&
         !exchangeAnnouncing &&
@@ -191,6 +193,7 @@ export default function GameScreen() {
       onPass={passTurn}
       onExchangeGive={chooseExchangeCard}
       onExchangeReady={onExchangeReady}
+      onDealing={setDealing}
       onRoundLanded={roundEnding ? setRoundLandedAt : undefined}
       onQuit={() =>
         setConfirming({
