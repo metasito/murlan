@@ -61,8 +61,12 @@ const advance = async (ms: number) => {
 };
 
 describe('the next-round vote deadline on the results screen', () => {
-  beforeEach(() => jest.useFakeTimers());
-  afterEach(() => jest.useRealTimers());
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
 
   it('counts down from the seconds the server sent', async () => {
     const view = await render(table({ ...vote, deadline: { seconds: 30, resetKey: '1000' } }));
