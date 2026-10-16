@@ -72,6 +72,11 @@ describe("brief", () => {
     assert.match(role("review"), /unmet only if that test does not rule the form out or the intent is not built/);
   });
 
+  test("a bug's likelihood never makes it a Nit, and a finding against a quoted box is Blocking", () => {
+    assert.match(role("review"), /How rare its sequence is never makes a bug a Nit/);
+    assert.match(role("review"), /contradicts a Definition-of-done line is Blocking, quoted, even when the box is ticked/);
+  });
+
   test("a later round reviews only the fix and checks the earlier Blocking findings", () => {
     assert.match(role("review"), /does it do what the Definition of done asks/);
     assert.match(role("review"), /Any other `<base>` is a later round\. Review only the fix/);
