@@ -19,23 +19,35 @@ appId: "${MAESTRO_APP_ID}"
           waitToSettleTimeoutMs: 500
 # Not `game-table`: the table felt-opaque.yaml left open already matches it, before the link lands.
 - extendedWaitUntil:
-    visible: "Move the lamp to the next seat"
+    visible:
+      id: "capture-lamp-bottom"
     timeout: 60000
+- waitForAnimationToEnd:
+    timeout: 3000
 - takeScreenshot: lamp-bottom
 - openLink: "murlan://capture?state=pile-right"
 - extendedWaitUntil:
-    visible: "Throw the pile again"
+    visible:
+      id: "capture-pile-right"
     timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 3000
 - takeScreenshot: pile-right
 - openLink: "murlan://capture?state=play-right-landed"
 - extendedWaitUntil:
-    visible: "Throw the pile again"
+    visible:
+      id: "capture-play-right-landed"
     timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 3000
 - takeScreenshot: play-right-landed
 - openLink: "murlan://capture?state=bomb-landed"
 - extendedWaitUntil:
-    visible: "Throw the pile again"
+    visible:
+      id: "capture-bomb-landed"
     timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 3000
 # The link's own landing is over by the time openLink settles. The settle cap keeps the shot inside
 # FLARE_BRIEF_MS of the rethrow's landing (components/table/moments.tsx).
 - tapOn:
@@ -44,6 +56,9 @@ appId: "${MAESTRO_APP_ID}"
 - takeScreenshot: bomb-landed
 - openLink: "murlan://capture?state=held"
 - extendedWaitUntil:
-    visible: "Throw the pile again"
+    visible:
+      id: "capture-held"
     timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 3000
 - takeScreenshot: held

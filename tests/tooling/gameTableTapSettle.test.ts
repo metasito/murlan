@@ -24,7 +24,7 @@ const FLOW_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 
 /** A flow's text with each `runFlow` of a `_*.yaml` sibling replaced by that file's commands. */
 function withIncludes(text: string): string {
-  return text.replace(/^- runFlow:(?:\n {4}\S.*|\n {6}.*)*|^- runFlow: (_\w+\.yaml)$/gm, (block, bare) => {
+  return text.replace(/^- runFlow: (_\w+\.yaml)$|^- runFlow:(?:\n {4}\S.*|\n {6}.*)*/gm, (block, bare) => {
     const file = bare ?? block.match(/file: (_\w+\.yaml)/)?.[1];
     if (!file) return block;
     return readFileSync(path.join(FLOW_DIR, file), "utf8").split(/^---$/m).slice(1).join("---");
