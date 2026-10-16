@@ -29,7 +29,9 @@
 // arms `socketTable.ts` `armLobbyGrace`, whose own expiry (`handleSeatRelease`)
 // reaches the same `vacateSeat`/`dealIfSeatLeftGateClosed` pair through a
 // `vacate` intent routed back through `applyOrForward`, landing on the
-// `"vacate"` case here rather than `seatLostAction`.
+// `"vacate"` case here rather than `seatLostAction`. A third timer reaches the
+// same pair with nobody disconnected: `roundOver.ts` `armVoteDeadline`, whose
+// expiry (`expireVoteDeadline` here) vacates every seat that has not voted.
 //
 // `roundOver.ts` `handleRoundOver` has more entry points than a play: an
 // AFK/bot auto-move (`gameTurn.ts` `runBotTurn`, `handleAutoPass`) and
@@ -59,7 +61,7 @@ import {
   persistGameState,
   sendGameStateTo,
 } from "./gamePersistence.ts";
-import { endMatchByAgreement } from "./roundOver.ts";
+import { armVoteDeadline, endMatchByAgreement, setVoteDeadlineExpiry } from "./roundOver.ts";
 import { armTurnIfIdle, commitMove, recordPlayFlags, vacateSeat } from "./gameTurn.ts";
 import {
   disconnectGraceMs,
@@ -168,6 +170,8 @@ export async function rehydrateGame(
   }
   activeGames.set(roomId, game);
   logger.info({ roomId }, "Took over a table from active_games");
+  // Not a grace: it vacates connected players too, so it needs no presence.
+  if (game.gameState.roundOver && !game.matchOver) armVoteDeadline(io, roomId);
 
   // The graces their disconnects armed died with the process that held them.
   const presence = await tablePresence(roomId);
@@ -459,6 +463,33 @@ async function dealIfSeatLeftGateClosed(
   if (rematchRefused(game)) return OK;
   if (Object.keys(game.playerMap).length === 0) return OK;
   return dealVotedRound(io, game, roomId, null);
+}
+
+/**
+ * Every seated human who has not voted goes as a disconnect's grace expiry
+ * takes a seat — connected or not, which is the ruling — and the rest deal.
+ */
+async function expireVoteDeadline(io: SocketServer, roomId: string): Promise<void> {
+  try {
+    const game = activeGames.get(roomId);
+    if (!game || !game.gameState.roundOver || game.matchOver || rematchRefused(game)) return;
+    const silent = Object.values(game.playerMap).filter((userId) => !game.rematchVotes.has(userId));
+    for (const userId of silent) {
+      await roomStore
+        .releaseSeat(roomId, userId)
+        .catch((err) =>
+          logger.warn(
+            { err, roomId, userId },
+            "Failed to delete the room_players row after the vote deadline — the seat stays counted as taken"
+          )
+        );
+      await vacateSeat(io, roomId, userId, roundOverWriters);
+    }
+    await dealIfSeatLeftGateClosed(io, roomId);
+    logger.info({ roomId, vacated: silent }, "Next-round vote deadline expired");
+  } catch (err) {
+    logger.error({ err, roomId }, "Vote deadline handler failed");
+  }
 }
 
 async function rejoinAction(
@@ -832,6 +863,7 @@ export async function resumeOrphanedTables(io: SocketServer): Promise<void> {
  */
 export function installTableHandlers(io: SocketServer): void {
   setTableHandlers(applyTableAction, rehydrateGame);
+  setVoteDeadlineExpiry(expireVoteDeadline);
   setRoomLostHandler((roomId) => disposeGame(roomId, false));
   registerTableRouting(io);
 }

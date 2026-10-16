@@ -217,6 +217,28 @@ export function waitFor<T = unknown>(socket: Socket, event: string, ms = 5000): 
   });
 }
 
+/** `waitFor` the first occurrence whose payload `matches`, for an event the server also sends unprompted. */
+export function waitForWhere<T = unknown>(
+  socket: Socket,
+  event: string,
+  matches: (payload: T) => boolean,
+  ms = 5000
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const onEvent = (payload: T) => {
+      if (!matches(payload)) return;
+      clearTimeout(timer);
+      socket.off(event, onEvent);
+      resolve(payload);
+    };
+    const timer = setTimeout(() => {
+      socket.off(event, onEvent);
+      reject(new Error(`timed out waiting for a matching "${event}"`));
+    }, ms * DEADLINE_SCALE);
+    socket.on(event, onEvent);
+  });
+}
+
 /** `waitFor` for an event that may rightly never come: null once the scaled window passes. */
 export function waitForOrNull<T = unknown>(socket: Socket, event: string, ms = 5000): Promise<T | null> {
   return waitFor<T>(socket, event, ms).catch(() => null);

@@ -2,7 +2,7 @@ import { test, before, after, describe, mock } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { io as ioClient, type Socket } from "socket.io-client";
-import { PROTOCOL_AUTH, reconnectAs, register, waitFor } from "../helpers/client.ts";
+import { PROTOCOL_AUTH, reconnectAs, register, waitFor, waitForWhere } from "../helpers/client.ts";
 import { eq } from "drizzle-orm";
 import { logger } from "../../server/http/logger.ts";
 import { createDeck, getAllValidPlays } from "../../lib/game/gameEngine.ts";
@@ -541,9 +541,10 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
       bob.socket,
       "game:seat_bot_takeover"
     );
-    const voteState = waitFor<{ votes: string[]; total: number }>(
+    const voteState = waitForWhere<{ votes: string[]; total: number }>(
       carol.socket,
-      "game:vote_state"
+      "game:vote_state",
+      (v) => v.total < 3
     );
     alice.socket.emit("room:leave");
 

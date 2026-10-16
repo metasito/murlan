@@ -1,7 +1,7 @@
 import type { SocketServer } from "../socket/socketTypes.ts";
 import { logger } from "../http/logger.ts";
-import { clearRoomTimers, clearRoomDisconnectTimers } from "./gameTimers.ts";
-import type { OnlineGameState } from "./gameRoom.ts";
+import { arm, clearRoomTimers, clearRoomDisconnectTimers, voteDeadlineMs } from "./gameTimers.ts";
+import { voteStateOf, type OnlineGameState } from "./gameRoom.ts";
 import { resolveRoundEnd, seatTotal } from "./onlineGameLogic.ts";
 import { replaySeatsOf } from "./replayShape.ts";
 import { firstTargetFor } from "../../lib/game/gameEngine.ts";
@@ -56,6 +56,21 @@ export interface RoundOverWriters {
   }) => Promise<void>;
 }
 
+type VoteDeadlineExpiry = (io: SocketServer, roomId: string) => Promise<void>;
+
+// Installed by `tableHandlers.ts`, whose vacate-and-deal sequence this module
+// cannot import without a cycle through `gameTurn.ts`.
+let expireVoteDeadline: VoteDeadlineExpiry = async () => {};
+
+export function setVoteDeadlineExpiry(fn: VoteDeadlineExpiry) {
+  expireVoteDeadline = fn;
+}
+
+/** docs/GAME-RULES.md § Decisions, "The next-round vote deadline". The next deal clears it. */
+export function armVoteDeadline(io: SocketServer, roomId: string) {
+  arm("voteDeadline", roomId, voteDeadlineMs(), () => void expireVoteDeadline(io, roomId));
+}
+
 export async function handleRoundOver(
   io: SocketServer,
   roomId: string,
@@ -93,6 +108,8 @@ export async function handleRoundOver(
   game.roundsPlayed += 1;
 
   game.rematchVotes = new Set();
+  // Before the awaits below, so no rejoin can read the vote without its deadline.
+  if (!game.matchOver) armVoteDeadline(io, roomId);
 
   // One clock for the preview, the emit and the rated write below: two calls
   // to `new Date()` can straddle a month boundary, and the season key is
@@ -136,6 +153,7 @@ export async function handleRoundOver(
     voided: false,
   };
   io.to(roomId).emit("game:round_over", over);
+  if (!game.matchOver) io.to(roomId).emit("game:vote_state", voteStateOf(game));
   // Kept so `announceRejoin` can hand this round's scores to a client that
   // rejoins after everyone still in the room has already been sent them.
   game.lastRoundOverPayload = over;

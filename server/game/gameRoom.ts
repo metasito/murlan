@@ -4,6 +4,7 @@
 import type { GameState, GameMode, MatchLength } from "../../lib/game/gameEngine.ts";
 import type { ReplayMove } from "../../lib/game/replay.ts";
 import type { RoundOverPayload } from "../../lib/game/matchState.ts";
+import { deadline, secondsUntil } from "./gameTimers.ts";
 
 export interface OnlineGameState {
   gameState: GameState;
@@ -201,6 +202,16 @@ export function userRoom(userId: string): string {
  * a bot, and a seat whose player left, can answer nothing and hold no vote. */
 export function voterCount(game: OnlineGameState): number {
   return Object.keys(game.playerMap).length;
+}
+
+/** The next-round tally, with its deadline while one is armed. */
+export function voteStateOf(game: OnlineGameState) {
+  const deadlineMs = deadline("voteDeadline", game.roomId);
+  return {
+    votes: Array.from(game.rematchVotes),
+    total: voterCount(game),
+    ...(deadlineMs === undefined ? {} : { deadlineMs, secondsRemaining: secondsUntil(deadlineMs) }),
+  };
 }
 
 /** The name a table shows for a seat: read from the database at the deal, never from a socket. */

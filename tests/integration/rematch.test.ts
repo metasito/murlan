@@ -6,7 +6,7 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { waitFor } from "../helpers/client.ts";
+import { waitFor, waitForWhere } from "../helpers/client.ts";
 import {
   assertHandSecrecy,
   driveRoundToExchangeOrOver,
@@ -279,7 +279,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
         pia.socket.emit("room:start");
       })
     );
-    const voted = waitFor(pia.socket, "game:vote_state", 5_000);
+    const voted = waitForWhere<{ votes: string[] }>(pia.socket, "game:vote_state", (v) => v.votes.length > 0, 5_000);
     remy.socket.emit("game:rematch_vote");
     await voted;
 

@@ -125,11 +125,13 @@ export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDe
   const game = activeGames.get(roomId);
   if (!game) return;
 
-  clearRoomTimers(roomId);
+  // Ahead of the clear: a rejoin at the results screen reaches here through
+  // `armTurnIfIdle`, and must not cancel the vote deadline the table is under.
   if (game.gameState.roundOver) {
     game.turnDeadlineMs = undefined;
     return;
   }
+  clearRoomTimers(roomId);
 
   const seat = actingSeat(game.gameState);
   const userId = game.playerMap[seat];

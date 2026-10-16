@@ -1,5 +1,5 @@
 import type { SocketServer } from "./socketTypes.ts";
-import { voterCount, type OnlineGameState } from "../game/gameRoom.ts";
+import { voterCount, voteStateOf, type OnlineGameState } from "../game/gameRoom.ts";
 import { scoresByEngineId } from "../game/roundOver.ts";
 
 /** The framing of the round now running: what it is worth and where it stands. */
@@ -19,10 +19,7 @@ export function emitMatchState(io: SocketServer, room: string, game: OnlineGameS
  * compares against: a bot, and a seat whose player left, hold no vote.
  */
 export function emitVoteState(io: SocketServer, room: string, game: OnlineGameState) {
-  io.to(room).emit("game:vote_state", {
-    votes: Array.from(game.rematchVotes),
-    total: voterCount(game),
-  });
+  io.to(room).emit("game:vote_state", voteStateOf(game));
 }
 
 /**
