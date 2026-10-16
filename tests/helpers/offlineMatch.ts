@@ -235,7 +235,7 @@ export class SilentSeatError extends Error {
  * A turn landed on a seat other than the one `getNextActivePlayer`'s own
  * contract — decrement from the acting seat, skip empty hands — promises.
  * Reimplemented independently below (`expectedNextActive`) rather than
- * imported: `getNextActivePlayer` is not exported, and importing it would
+ * imported: importing `getNextActivePlayer` would
  * let a bug inside it grade its own homework.
  */
 export class RotationOrderError extends Error {

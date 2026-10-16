@@ -3,7 +3,7 @@ const JOIN_LINK = /^(?:murlan:\/\/|https?:\/\/[^/]+\/|\/)?join\/([^/?#]*)\/?(?:[
 
 export function joinCode(code: unknown): string | null {
   if (typeof code !== "string") return null;
-  const upper = code.toUpperCase();
+  const upper = code.trim().toUpperCase();
   return CODE.test(upper) ? upper : null;
 }
 

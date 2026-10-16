@@ -2,8 +2,11 @@
 // white sprite per shape and glow radius, tinted per particle, so nothing is blurred per frame.
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
-import { alpha, P, rgba, SHAPES, STRIDE, type ParticleShape, type Particles } from "./particles.ts";
-import { M, MOTE_STRIDE, MOTES, moteAlpha, type Air, type AirLight } from "./air.ts";
+import { alpha, createParticles, P, PARTICLE_BUDGET, rgba, SHAPES, spawn, step, STRIDE, type ParticleShape, type Particles, type Rng } from "./particles.ts";
+import { createAir, M, MOTE_STRIDE, MOTES, moteAlpha, mothPose, relit, stepAir, type Air, type AirLight, type MothPose, type MoteLight } from "./air.ts";
+import { coneRainFrame, idleRain, type RainRun } from "./coneRain.ts";
+import { emberFrame, idleEmber, type EmberRun } from "./ember.ts";
+import type { Lamp } from "./lampRig.ts";
 import { RestAir } from "../../lib/tokens.ts";
 
 /** A dot's or a soft puff's radius on the sheet, and a spark's half-width. */
@@ -120,4 +123,58 @@ export function layoutMotes(a: Air, l: AirLight, out: Float32Array, from: number
     if (out[d + D.a] > 0) lit++;
   }
   return lit;
+}
+
+/** Everything one frame of the particle layer steps and draws from; both adapters hold one. */
+export interface Scene {
+  s: Particles;
+  d: Float32Array;
+  air: Air;
+  lit: number;
+  shown: number;
+  light: MoteLight;
+  ember: EmberRun;
+  rain: RainRun;
+  moth: MothPose | null;
+}
+
+export function createScene(rng: Rng): Scene {
+  return {
+    s: createParticles(),
+    d: new Float32Array(PARTICLE_BUDGET * DRAW_STRIDE),
+    air: createAir(rng),
+    lit: 0,
+    shown: 0,
+    light: { lx: NaN, ly: NaN, level: NaN, f: NaN, r: NaN },
+    ember: idleEmber(),
+    rain: idleRain(),
+    moth: null,
+  };
+}
+
+/** Nothing is flying or was drawn last frame. */
+export function sceneIdle(v: Scene): boolean {
+  "worklet";
+  return !v.s.live && !v.shown && v.ember.t < 0 && v.rain.t < 0;
+}
+
+/** Idle, and nothing in the air moves or relights: a frame would draw what the last one did. */
+export function sceneAsleep(v: Scene, l: Lamp, still: boolean): boolean {
+  "worklet";
+  return sceneIdle(v) && still && v.air.mothT < 0 && !relit(v.light, l);
+}
+
+/** Steps the scene `dt` seconds and lays it out into `v.d`; true when a moth sets off. */
+export function stepScene(v: Scene, l: Lamp, dt: number, still: boolean, rng: Rng): boolean {
+  "worklet";
+  for (const p of emberFrame(v.ember, dt, rng)) spawn(v.s, p);
+  for (const p of coneRainFrame(v.rain, l, dt, rng)) spawn(v.s, p);
+  step(v.s, dt);
+  const onset = stepAir(v.air, dt, l, still, rng);
+  layout(v.s, v.d);
+  v.lit = layoutMotes(v.air, l, v.d, v.s.live);
+  relit(v.light, l);
+  v.shown = v.s.live;
+  v.moth = mothPose(v.air, l);
+  return onset;
 }

@@ -6,8 +6,9 @@ import { decide, WAIT } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
 import { BREAKER, CI_ROUNDS, MAX_HANDOFFS, SETTLE, TICKET_HOLDS, UPDATES } from "../queue-loop.mjs";
 import { USD_BY_SIZE, USD_DEFAULT } from "../loop-cost.mjs";
+import { READ_RETRIES } from "../settle.mjs";
 
-const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT, WAIT, UPDATES };
+const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT, WAIT, UPDATES, READ_RETRIES };
 const NOW = Date.parse("2026-10-12T20:00:00Z");
 
 const route = { n: 42, skill: "implement", title: "the ticket", phase: "C", size: "size:S", fix: false, head: null };
@@ -213,7 +214,11 @@ const ROWS: Row[] = [
   ["poll: a merged pull request is the verdict", land({ action: "already-merged", reason: "the pull request is already merged" }), { kind: "settled", action: "already-merged" }],
   ["poll: CI unreadable since the machine woke is asked again", land({ error: { why: "ENOTFOUND api.github.com", offline: true, woke: true } }),
     { kind: "settle", act: "wait", why: "could not read CI since the machine woke — ENOTFOUND api.github.com; asking again" }],
-  ["poll: CI unreadable for any other reason goes to the owner", land({ error: { why: "HTTP 403", offline: false, woke: false } }), { kind: "settled", action: "owner", why: "could not read CI — HTTP 403" }],
+  ["poll: CI unreadable for any other reason goes to the owner", land({ error: { why: "HTTP 403", offline: false, transient: false, woke: false, tries: 1 } }), { kind: "settled", action: "owner", why: "could not read CI — HTTP 403" }],
+  ["poll: a transient read error is asked again", land({ error: { why: "HTTP 502: Bad Gateway", offline: false, transient: true, woke: false, tries: 1 } }),
+    { kind: "settle", act: "wait", why: `could not read CI — HTTP 502: Bad Gateway; asking again (1 of ${READ_RETRIES})` }],
+  ["poll: a transient read error past its retries goes to the owner", land({ error: { why: "ECONNRESET", offline: true, transient: true, woke: false, tries: READ_RETRIES + 1 } }),
+    { kind: "settled", action: "owner", why: "could not read CI — ECONNRESET" }],
 
   // runOnce, what poll's verdict costs the ticket
   ["a ticket that pushes and merges is landed, in one pass", settled({ action: "already-merged", reason: "the pull request is already merged" }),

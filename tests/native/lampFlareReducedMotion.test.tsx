@@ -1,11 +1,9 @@
 // tests/native/lampFlareReducedMotion.test.tsx — "Reduced motion lands at
 // exactly zero" (#765), pinned end to end rather than trusted from the
 // generic ungated-animation-block scan (tests/ui-rules/reducedMotion.test.ts) alone:
-// that scan can only see that `Flare` carries a
-// reduceMotion guard in their own source, not that a bomb landing under the
-// setting a player actually chose leaves what they draw at rest.
-// A separate file, not a second describe in lampFlareWiring.test.tsx: the
-// preference is mocked at module scope, so the two cannot share one file.
+// that scan can only see that the source carries a reduceMotion guard, not
+// that a bomb landing under the setting a player actually chose leaves what
+// they draw at rest.
 import { describe, it, expect, jest, beforeEach, afterEach } from "@jest/globals";
 import React from "react";
 import { act, render, screen, within } from "@testing-library/react-native";

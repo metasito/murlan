@@ -20,7 +20,6 @@ const SETUP = [
   { name: "Luan", type: "bot" as const, personality: "luan" as const },
 ];
 
-/** Reports the bits of context state the persistence is supposed to carry. */
 /**
  * A save taken while the between-rounds exchange is open.
  *
@@ -65,6 +64,7 @@ const midExchangeSave = () => {
   });
 };
 
+/** Reports the bits of context state the persistence is supposed to carry. */
 function Probe() {
   const {
     gameState,

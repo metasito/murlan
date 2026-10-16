@@ -185,10 +185,9 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     // skipping the exchange are 6.4%^20, which is not a number this suite will
     // meet.
     //
-    // The alternative — dealing the loser a stacked hand — is deliberately not
-    // taken. It would mean a seam that rigs the deal in a server whose entire
-    // model is that the server alone decides what the cards are, and no test
-    // is worth putting that seam within reach of production.
+    // The alternative — dealing the loser a stacked hand — is not taken here:
+    // `redealExactly` (tests/helpers/liveGame.ts) is the seam for that, and
+    // this test deliberately plays the natural deal.
     let exchange: Map<Client, SanitizedState> | null = null;
     for (let attempt = 0; attempt < 20 && !exchange; attempt++) {
       const result = await driveRoundToExchangeOrOver([alice, bob], () => {

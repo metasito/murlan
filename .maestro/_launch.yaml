@@ -1,0 +1,12 @@
+# The tutorial every cleared launch pushes over home, waited for and skipped. Run after `launchApp`.
+# The Skip button is waited for, not asked about: home renders first, so a wait on either screen is
+# satisfied by home (#353). The tap targets its accessibilityLabel; the Text child is `a11yHidden`.
+appId: "${MAESTRO_APP_ID}"
+---
+- extendedWaitUntil:
+    visible: "Salta il tutorial"
+    timeout: 180000
+- tapOn: "Salta il tutorial"
+- extendedWaitUntil:
+    notVisible: "Salta il tutorial"
+    timeout: 30000

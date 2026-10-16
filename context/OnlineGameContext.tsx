@@ -9,7 +9,6 @@ import React, {
   useSyncExternalStore,
   ReactNode,
 } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
@@ -28,7 +27,9 @@ import {
 import { requireUpdate } from "@/lib/updateRequired";
 import { reportError } from "@/lib/errorReporting";
 import { clearReactions, pushReaction } from "@/lib/reactions";
-import { ACTIVE_ROOM_KEY, WAITING_ROOM_KEY } from "@/lib/storageKeys";
+import { joinCode } from "@/lib/deepLink";
+import { handlesFor } from "@/lib/tableHandles";
+import { useRejoin } from "@/context/useRejoin";
 import type { GameState, MatchLength } from "@/lib/game/gameEngine";
 import type { RoundOverPayload, MatchVerdict, RatingAfter } from "@/lib/game/matchState";
 import {
@@ -239,33 +240,6 @@ export {
   useExchangeSlice,
 };
 
-// ACTIVE_ROOM_KEY is persisted so a cold start — or leaving the (online) route
-// group, which unmounts this provider — does not lock a player out of a live game.
-// WAITING_ROOM_KEY is kept apart because a waiting room has no live game: its id
-// would produce a `game:rejoin` the server can never satisfy. It holds the room
-// *code*, which is what `room:rejoin` takes.
-
-// A SERVER_ERROR rejoin failure is the server handler's blanket catch, not a
-// verdict on the table, so it is retried rather than treated as terminal. The
-// cap keeps the retries well inside the server's 20-per-60s rejoin limit,
-// past which the reply would be a `game:error` this path does not listen for.
-const REJOIN_RETRY_DELAY_MS = 2000;
-const MAX_REJOIN_RETRIES = 3;
-
-// The `room:rejoin` rejections that mean the seat is gone for good (see the
-// handler in server/socket/socket.ts). `room:error` carries no room id, so the code is
-// the only thing that separates the answer to an outstanding rejoin from an
-// error about an action inside a room the player is still sitting in — and only
-// the first may take the lobby down with it.
-const TERMINAL_ROOM_REJOIN_CODES = new Set([
-  "ROOM_NOT_FOUND",
-  "NOT_IN_ROOM",
-  "GAME_ALREADY_STARTED",
-  "ROOM_FULL",
-  "SEAT_HELD",
-  "INVALID_PAYLOAD",
-]);
-
 export interface TurnDeadline {
   turnDeadlineMs?: number;
   turnSecondsRemaining: number;
@@ -313,24 +287,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const roomRef = useRef<RoomState | null>(null);
   const gameStateRef = useRef<GameState | null>(null);
   const reconnectNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Room id read back from storage — the only rejoin handle available after a cold start.
-  const persistedRoomIdRef = useRef<string | null>(null);
-  // The waiting lobby's code, same purpose for `room:rejoin`.
-  const persistedWaitingCodeRef = useRef<string | null>(null);
-  // The room a `room:rejoin` is in flight for. A `room:error` that answers it
-  // means the seat is gone, and unlike every other room:error — which answers
-  // an action taken inside a room the player still holds — the stale lobby has
-  // to go with it.
-  const rejoiningRoomCodeRef = useRef<string | null>(null);
-  // The room id a `game:rejoin` is currently in flight for, cleared by the
-  // live state that answers it. A `game:rejoin_failed` may only tear down
-  // state when it names *this* room: the round-trip is async, so a failure for
-  // an old room can otherwise land after the player has already moved to
-  // another one and wipe that one out instead. Null means nothing is
-  // outstanding, so no reply is allowed to act.
-  const requestedRoomIdRef = useRef<string | null>(null);
-  const rejoinRetriesRef = useRef(0);
-  const rejoinRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The server stamps every game:state with the viewer's seat index
   // (sanitizeStateForPlayer). -1 is an explicit "unknown" — never a real seat.
   const [mySeatIndex, setMySeatIndex] = useState(-1);
@@ -338,6 +294,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
   const { socket } = useSocket();
   const ownLink = useOwnLink(socket);
+  const rejoin = useRejoin(socket, userId, roomRef, gameStateRef);
 
   // Listeners attached to a socket that is already connected have no `connect`
   // left to hear, so anything holding this as its own state has to seed it by
@@ -359,86 +316,39 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     () => false
   );
 
-  const persistActiveRoom = useCallback((roomId: string | null) => {
-    persistedRoomIdRef.current = roomId;
-    if (roomId) {
-      AsyncStorage.setItem(ACTIVE_ROOM_KEY, roomId).catch(() => {});
-    } else {
-      AsyncStorage.removeItem(ACTIVE_ROOM_KEY).catch(() => {});
-    }
-  }, []);
-
-  const persistWaitingRoom = useCallback((code: string | null) => {
-    persistedWaitingCodeRef.current = code;
-    if (code) {
-      AsyncStorage.setItem(WAITING_ROOM_KEY, code).catch(() => {});
-    } else {
-      AsyncStorage.removeItem(WAITING_ROOM_KEY).catch(() => {});
-    }
-  }, []);
-
-  /** Nothing is outstanding: no reply may act, and no retry is pending. */
-  const forgetRejoinAttempt = useCallback(() => {
-    requestedRoomIdRef.current = null;
-    rejoinRetriesRef.current = 0;
-    if (rejoinRetryTimerRef.current) {
-      clearTimeout(rejoinRetryTimerRef.current);
-      rejoinRetryTimerRef.current = null;
-    }
-  }, []);
-
-  /**
-   * Asks the server for whatever this provider is still holding: a live game,
-   * or a seat in a waiting lobby.
-   *
-   * Returns whether anything was sent. Not every state has a question to ask —
-   * an in-progress room with no game state matches no branch — and a caller
-   * that is waiting for a reply has to know it will never come.
-   */
-  const attemptRejoin = useCallback((): boolean => {
-    const currentRoom = roomRef.current;
-    const currentGame = gameStateRef.current;
-    // A room the server calls `in_progress` is worth rejoining even with no
-    // hand on this side. Requiring one made the client's own copy of the deal
-    // the only route into the table: miss it, and the room screen asks for a
-    // seat in a lobby that is already playing, forever.
-    const playing = currentRoom?.status === "in_progress";
-    if (currentRoom && ((currentGame && !currentGame.roundOver) || playing)) {
-      requestedRoomIdRef.current = currentRoom.roomId;
-      void send(socket, "game:rejoin", { roomId: currentRoom.roomId }, { retry: false });
-      return true;
-    }
-    // Cold start / remounted provider: no in-memory room, but storage may hold one.
-    if (!currentRoom && persistedRoomIdRef.current) {
-      requestedRoomIdRef.current = persistedRoomIdRef.current;
-      void send(socket, "game:rejoin", { roomId: persistedRoomIdRef.current }, { retry: false });
-      return true;
-    }
-
-    // A waiting lobby has no game to rejoin, only a seat — and the seat was
-    // released the moment the old socket dropped. `room:rejoin` takes it back
-    // and re-maps the new socket to the room; without it the server resolves
-    // every later room event to nothing and answers none of them.
-    if (currentGame) return false;
-    const waitingCode = currentRoom
-      ? currentRoom.status === "waiting"
-        ? currentRoom.code
-        : null
-      : persistedWaitingCodeRef.current;
-    if (waitingCode) {
-      rejoiningRoomCodeRef.current = waitingCode;
-      void send(socket, "room:rejoin", { code: waitingCode }, { retry: false });
-      return true;
-    }
-    return false;
-  }, [socket]);
+  /** The one teardown: whatever ends a table, nothing of it survives into the next. */
+  const resetTable = useCallback(() => {
+    rejoin.release();
+    roomRef.current = null;
+    gameStateRef.current = null;
+    setRoom(null);
+    setGameState(null);
+    setMySeatIndex(-1);
+    setTurnDeadline(NO_TURN_DEADLINE);
+    setIsSpectator(false);
+    setPlayerLeft(false);
+    setRejoinFailed(false);
+    setError(null);
+    setReconnectNotice(null);
+    if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
+    setRematchVoteState(null);
+    setEndMatchVoteState(null);
+    setDisconnectedSeats({});
+    setAutoPassed(0);
+    setMatchState(INITIAL_MATCH);
+    setCumulativeScores({});
+    setPlacementPoints({});
+    setPlacementPointsCurrent(false);
+    setRatingDeltas({});
+    setRoundRecorded(false);
+    setRatingsAfter({});
+  }, [rejoin]);
 
   /**
-   * Gives up on the rejoin: the player is told why, then everything holding the
-   * table open goes, which is what sends them back to the lobby. The reason is
-   * shown first — the server distinguishes a vacated seat from a finished match
-   * from a deploy that invalidated it, and the teardown alone reads as the
-   * table simply vanishing.
+   * Gives up on the rejoin: the player is told why, then the table goes, which
+   * is what sends them back to the lobby. The reason is shown first — the server
+   * distinguishes a vacated seat from a finished match from a deploy that
+   * invalidated it, and the teardown alone reads as the table simply vanishing.
    */
   const abandonRejoin = useCallback(
     (payload: ServerPayload) => {
@@ -452,55 +362,21 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         message: translateServerPayload(payload),
         duration: Reading.notice,
       });
-      forgetRejoinAttempt();
-      persistActiveRoom(null);
-      persistWaitingRoom(null);
-      gameStateRef.current = null;
-      setGameState(null);
-      setRoom(null);
-      roomRef.current = null;
-      setMySeatIndex(-1);
-      setPlayerLeft(false);
-      setRematchVoteState(null);
-      setEndMatchVoteState(null);
-      setDisconnectedSeats({});
-      setCumulativeScores({});
-      setPlacementPointsCurrent(false);
-      setReconnectNotice(null);
-      if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
+      resetTable();
       setRejoinFailed(true);
     },
-    [showNotification, forgetRejoinAttempt, persistActiveRoom, persistWaitingRoom]
+    [showNotification, resetTable]
   );
-
-  // Load the persisted handles, then rejoin immediately if the socket is already up.
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([
-      AsyncStorage.getItem(ACTIVE_ROOM_KEY),
-      AsyncStorage.getItem(WAITING_ROOM_KEY),
-    ])
-      .then(([storedRoomId, storedWaitingCode]) => {
-        if (cancelled || (!storedRoomId && !storedWaitingCode)) return;
-        persistedRoomIdRef.current = storedRoomId;
-        persistedWaitingCodeRef.current = storedWaitingCode;
-        if (socket?.connected) attemptRejoin();
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [socket, userId, attemptRejoin]);
 
   useEffect(() => {
     const onConnect = () => {
-      attemptRejoin();
+      rejoin.attempt();
     };
 
     // Rendering is all the parse protects; the server decides every outcome.
     // The room is forgotten so a cold start does not rejoin into the same payload.
     const unreadable = (event: string, error: unknown) => {
-      persistActiveRoom(null);
+      rejoin.hold({ roomId: null });
       reportError(new Error(`${event} does not match this bundle's protocol: ${String(error)}`));
       requireUpdate();
     };
@@ -511,14 +387,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       const data = parsed.data as unknown as RoomState;
       roomRef.current = data;
       setRoom(data);
-      forgetRejoinAttempt();
-      rejoiningRoomCodeRef.current = null;
-      // One handle per event, and only a live game is worth a `game:rejoin`: a
-      // waiting room has no `active_games` row, so its id under ACTIVE_ROOM_KEY
-      // asks the server a question it can only ever answer with a terminal
-      // rejoin failure. The lobby is recovered by `room:rejoin` off its own key.
-      persistActiveRoom(data.status === "in_progress" ? data.roomId : null);
-      persistWaitingRoom(data.status === "waiting" ? data.code : null);
+      rejoin.answered();
+      rejoin.hold(handlesFor(data));
     };
 
     // Server payloads carry { code, params, message }; render the code in the
@@ -529,12 +399,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // player no longer holds: the lobby on screen is a roster the server has
       // already dropped them from, so it goes with the error rather than
       // leaving them waiting on a game they are not in.
-      if (rejoiningRoomCodeRef.current && TERMINAL_ROOM_REJOIN_CODES.has(payload.code ?? "")) {
-        rejoiningRoomCodeRef.current = null;
-        persistWaitingRoom(null);
-        setRoom(null);
-        roomRef.current = null;
-      }
+      if (rejoin.lobbyRefused(payload.code)) resetTable();
       // `spectateRoom` claims the flag before the server has answered, and a
       // refusal is the only answer some attempts ever get. Left set it would
       // send `room:unspectate` for the next table the player actually sits at,
@@ -553,7 +418,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       const parsed = gameStateSchema.safeParse(raw);
       if (!parsed.success) return unreadable("game:state", parsed.error);
       const state = parsed.data as unknown as GameStateBroadcast;
-      forgetRejoinAttempt();
+      rejoin.answered();
       if (typeof state.turnSecondsRemaining === "number") {
         setTurnDeadline({
           turnDeadlineMs: state.turnDeadlineMs,
@@ -579,13 +444,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // The match genuinely ending is the only reason to forget the room while
       // still seated; a rematch re-arms it on the next non-final state.
       if (state.roundOver) {
-        persistActiveRoom(null);
+        rejoin.hold({ roomId: null });
       } else if (roomRef.current) {
-        persistActiveRoom(roomRef.current.roomId);
+        rejoin.hold({ roomId: roomRef.current.roomId });
       }
       // A dealt table is not a lobby any more, and `room:start` broadcasts no
       // fresh room:state — this is the only thing that retires the handle.
-      persistWaitingRoom(null);
+      rejoin.hold({ waitingCode: null });
     };
 
     const onGameError = (payload: ServerPayload) => {
@@ -772,24 +637,14 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // echoes the requested room id verbatim at every emit site, and live
       // state for any room clears the ref — so anything that does not match
       // answers an attempt the player has already moved past.
-      if (data.roomId && data.roomId !== requestedRoomIdRef.current) return;
+      if (!rejoin.answers(data.roomId)) return;
 
       // SERVER_ERROR is the rejoin handler's blanket catch — a database blip
       // during the round-trip, not a table that has gone. Everything the next
-      // attempt needs (the room, the state, the persisted id) is kept and the
-      // attempt stays outstanding, so its reply is still allowed to act.
-      if (data.code === "SERVER_ERROR" && rejoinRetriesRef.current < MAX_REJOIN_RETRIES) {
-        rejoinRetriesRef.current += 1;
-        if (rejoinRetryTimerRef.current) clearTimeout(rejoinRetryTimerRef.current);
-        rejoinRetryTimerRef.current = setTimeout(() => {
-          rejoinRetryTimerRef.current = null;
-          // A retry that sends nothing is the end of the line, not a wait: no
-          // reply is coming, the attempt would stay outstanding forever and
-          // the player would sit on a table the server is not answering for.
-          if (!attemptRejoin()) abandonRejoin(data);
-        }, REJOIN_RETRY_DELAY_MS);
-        return;
-      }
+      // attempt needs is kept and the attempt stays outstanding, so its reply
+      // is still allowed to act. A retry that sends nothing is the end of the
+      // line: no reply is coming.
+      if (data.code === "SERVER_ERROR" && rejoin.retry(() => abandonRejoin(data))) return;
 
       abandonRejoin(data);
     };
@@ -800,7 +655,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     // a missed deal into one extra round trip instead of a stranded screen.
     const onGameStarted = () => {
       if (gameStateRef.current) return;
-      attemptRejoin();
+      rejoin.attempt();
     };
 
     socket?.on("game:started", onGameStarted);
@@ -841,26 +696,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       socket?.off("game:player_disconnected", onPlayerDisconnected);
       socket?.off("game:player_reconnected", onPlayerReconnected);
       socket?.off("game:rejoin_failed", onRejoinFailed);
-      // These timers own setState calls (and, for the rejoin retry, an emit)
-      // that would otherwise fire after unmount.
+      // This timer owns a setState that would otherwise fire after unmount.
       if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
-      if (rejoinRetryTimerRef.current) clearTimeout(rejoinRetryTimerRef.current);
       // The reaction store outlives this provider, so its contents and its
       // pending removals both have to go with the table.
       clearReactions();
     };
-  }, [
-    socket,
-    userId,
-    attemptRejoin,
-    abandonRejoin,
-    forgetRejoinAttempt,
-    persistActiveRoom,
-    persistWaitingRoom,
-    showNotification,
-    qc,
-    announce,
-  ]);
+  }, [socket, rejoin, resetTable, abandonRejoin, showNotification, qc, announce]);
 
   /**
    * Every intent waits to be told it arrived and says so if it never was — a
@@ -895,7 +737,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     deliver("room:create", { gameMode, maxPlayers }, { retry: false });
   }, [deliver]);
 
-  const joinRoom = useCallback((code: string) => {
+  const joinRoom = useCallback((input: string) => {
+    const code = joinCode(input);
+    if (!code) return;
     setEntrySource("friends");
     setRejoinFailed(false);
     setIsSpectator(false);
@@ -907,11 +751,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   }, [deliver]);
 
   const spectateRoom = useCallback(
-    (code: string) => {
+    (input: string) => {
+      const code = joinCode(input);
+      if (!code) return;
       setIsSpectator(true);
       setRejoinFailed(false);
       setError(null);
-      deliver("room:spectate", { code: code.toUpperCase() });
+      deliver("room:spectate", { code });
     },
     [deliver]
   );
@@ -920,35 +766,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     // A spectator never took a seat, so room:leave has nothing to release —
     // sending it anyway would run the seated teardown for a table this socket
     // does not occupy.
-    if (isSpectator) {
-      deliver("room:unspectate");
-      setIsSpectator(false);
-    } else {
-      deliver("room:leave");
-    }
-    persistActiveRoom(null);
-    // Leaving is deliberate: neither handle may bring this room back on the
-    // next connect.
-    persistWaitingRoom(null);
-    rejoiningRoomCodeRef.current = null;
-    setRoom(null);
-    roomRef.current = null;
-    setGameState(null);
-    gameStateRef.current = null;
-    setRematchVoteState(null);
-    setEndMatchVoteState(null);
-    setDisconnectedSeats({});
-    setCumulativeScores({});
-    setPlacementPointsCurrent(false);
-    setPlayerLeft(false);
-    setRejoinFailed(false);
-    // The lobby stays mounted under the table: a refusal about it would greet the player there.
-    setError(null);
-    setReconnectNotice(null);
-    if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
-    forgetRejoinAttempt();
-    setMySeatIndex(-1);
-  }, [deliver, isSpectator, persistActiveRoom, persistWaitingRoom, forgetRejoinAttempt]);
+    deliver(isSpectator ? "room:unspectate" : "room:leave");
+    resetTable();
+  }, [deliver, isSpectator, resetTable]);
 
   const quickmatch = useCallback((maxPlayers: number, gameMode: "free_for_all" | "teams") => {
     setEntrySource("quickmatch");

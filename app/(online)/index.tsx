@@ -30,6 +30,7 @@ import { ChoiceChips } from "@/components/ChoiceChips";
 import { useTranslation } from "@/lib/i18n";
 import { A11yStatus, a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 import { AppModal } from "@/components/AppModal";
+import { joinCode as roomCodeOf } from "@/lib/deepLink";
 
 export default function OnlineLobbyScreen() {
   const { t } = useTranslation();
@@ -43,6 +44,7 @@ export default function OnlineLobbyScreen() {
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [joiningInvite, setJoiningInvite] = useState(false);
   const [joinCode, setJoinCode] = useState("");
+  const canJoin = roomCodeOf(joinCode) !== null;
   const [createMode, setCreateMode] = useState<"free_for_all" | "teams">("free_for_all");
   const [createPlayers, setCreatePlayers] = useState(4);
 
@@ -123,16 +125,16 @@ export default function OnlineLobbyScreen() {
   }
 
   function handleJoin() {
-    if (joinCode.length < 4) return;
+    if (!canJoin) return;
     uiFeedback("medium");
-    joinRoom(joinCode.trim().toUpperCase());
+    joinRoom(joinCode);
     closeJoin();
   }
 
   function handleSpectate() {
-    if (joinCode.length < 4) return;
+    if (!canJoin) return;
     uiFeedback("medium");
-    spectateRoom(joinCode.trim().toUpperCase());
+    spectateRoom(joinCode);
     closeJoin();
   }
 
@@ -388,29 +390,29 @@ export default function OnlineLobbyScreen() {
                 </Pressable>
                 <Pressable
                   onPress={handleSpectate}
-                  disabled={joinCode.length < 4}
+                  disabled={!canJoin}
                   style={({ pressed }) => [
                     styles.modalCancelBtn,
-                    joinCode.length < 4 && styles.modalBtnDisabled,
+                    !canJoin && styles.modalBtnDisabled,
                     pressed && { opacity: PRESSED_OPACITY },
                   ]}
                   accessibilityLabel={t("onlineLobby.watch")}
                   {...watchHint.props}
-                  {...a11yState({ role: "button", disabled: joinCode.length < 4 })}
+                  {...a11yState({ role: "button", disabled: !canJoin })}
                 >
                   {watchHint.node}
                   <Text style={styles.modalCancelText} {...a11yHidden()}>{t("onlineLobby.watch")}</Text>
                 </Pressable>
                 <Pressable
                   onPress={handleJoin}
-                  disabled={joinCode.length < 4}
+                  disabled={!canJoin}
                   style={({ pressed }) => [
                     styles.modalOkBtn,
-                    joinCode.length < 4 && styles.modalBtnDisabled,
+                    !canJoin && styles.modalBtnDisabled,
                     pressed && { opacity: PRESSED_OPACITY },
                   ]}
                   accessibilityLabel={t("onlineLobby.enter")}
-                  {...a11yState({ role: "button", disabled: joinCode.length < 4 })}
+                  {...a11yState({ role: "button", disabled: !canJoin })}
                 >
                   <Text style={styles.modalOkText} {...a11yHidden()}>{t("onlineLobby.enter")}</Text>
                 </Pressable>

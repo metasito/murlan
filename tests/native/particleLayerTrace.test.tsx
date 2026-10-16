@@ -32,7 +32,7 @@ jest.mock('@shopify/react-native-skia', () => {
 let mockLaid = 0;
 jest.mock('@/components/table/particleSprites', () => {
   const actual = jest.requireActual<typeof import('@/components/table/particleSprites')>('@/components/table/particleSprites');
-  return { ...actual, layoutMotes: (...args: Parameters<typeof actual.layoutMotes>) => (mockLaid++, actual.layoutMotes(...args)) };
+  return { ...actual, stepScene: (...args: Parameters<typeof actual.stepScene>) => (mockLaid++, actual.stepScene(...args)) };
 });
 
 let mockAirs = 0;

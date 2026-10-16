@@ -17,6 +17,7 @@ import type { MatchState, PlayerSetupConfig } from "./game/matchState.ts";
  * makes for `active_games`, and for the same reason: restoring a round into a
  * shape the engine no longer expects corrupts a match silently, while losing one
  * abandoned match costs nothing.
+ * Held to the stored shape by tests/server/storedShapeVersions.test.ts.
  */
 export const OFFLINE_SAVE_VERSION = 3;
 

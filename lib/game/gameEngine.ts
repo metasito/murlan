@@ -504,7 +504,7 @@ export function checkPass(state: GameState): { ok: true } | { ok: false; code: P
 
 // ─── Complete, correct valid-play enumeration ─────────────────────────────────
 // Handles any hand size by enumerating by combination structure,
-// not bitmask (bitmask fails for 2-player hands of 26 cards).
+// not bitmask, so no hand size is a special case.
 
 export function getAllValidPlays(
   hand: Card[],

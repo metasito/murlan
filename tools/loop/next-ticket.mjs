@@ -251,6 +251,18 @@ export function takeableReasons(issue) {
   return reasons;
 }
 
+/** The loop's own claim, since taking the worktree is what wins the ticket. A title only names the branch, so what the shell would expand is dropped. */
+export const claimCommand = (n, title) => `npm run queue:claim -- ${n} "${String(title).replace(/["`$\\]/g, " ")}"`;
+
+export function issueComments(n, run = gh) {
+  const all = [];
+  for (let page = 1; ; page++) {
+    const got = JSON.parse(run(["api", `repos/{owner}/{repo}/issues/${n}/comments?per_page=100&page=${page}`]));
+    all.push(...got);
+    if (got.length < 100) return all;
+  }
+}
+
 function printDetail(issue, comments) {
   const ls = labelNames(issue);
   console.log(`\n===== TICKET #${issue.number} - ${issue.title} =====`);
@@ -275,11 +287,8 @@ function printDetail(issue, comments) {
   if (reasons.length === 0) {
     const n = issue.number;
     console.log("\n----- NEXT -----");
-    console.log("Claim (first write; then confirm you won the race):");
-    // Not an inline --body: PowerShell turns backticks into a BEL. Not `--comments`: rule 25, it
-    // prints the thread instead of the body.
-    console.log(`  gh issue edit ${n} --add-label in-progress`);
-    console.log(`  gh issue comment ${n} --body-file <file>   # holding: Claimed by \`<branch>\`.`);
+    console.log("Claim (it labels, comments and takes the worktree; a lost race says so), then read:");
+    console.log(`  ${claimCommand(n, issue.title)}`);
     console.log(`  ${readIssue(n)}`);
   }
 }
@@ -294,7 +303,7 @@ if (invokedDirectly) {
     try {
       return [
         ghJson(["api", `repos/{owner}/{repo}/issues/${n}`]),
-        ghJson(["api", `repos/{owner}/{repo}/issues/${n}/comments?per_page=100`]),
+        issueComments(n),
       ];
     } catch {
       console.error(`#${n} could not be read (a pull request, or gh unreachable)`);
