@@ -75,12 +75,35 @@ const succeeds = (args, run) => {
  * Where the worktree starts — asked after the fetch, so the answer is current. Whichever of the
  * local and pushed branch holds the other's commits; one ahead of origin is never reset to it.
  */
+const localOnly = (upstream, branch, run) =>
+  String(run("git", ["cherry", upstream, branch])).split("\n").flatMap((l) => (l.startsWith("+ ") ? [l.slice(2).trim()] : []));
+
+/** Applying `sha` onto `upstream` changes nothing: the same edit under another patch-id. */
+const appliesEmpty = (sha, upstream, run) => {
+  try {
+    const tree = String(run("git", ["merge-tree", "--write-tree", "--merge-base", `${sha}^`, upstream, sha])).split("\n")[0].trim();
+    return tree === String(run("git", ["rev-parse", `${upstream}^{tree}`])).trim();
+  } catch {
+    return false;
+  }
+};
+
+/** Every patch only the local branch has is already on origin's branch or on main. */
+function onlyUpstream(branch, run) {
+  const upstreams = [`origin/${branch}`, "origin/main"];
+  const onMain = new Set(localOnly("origin/main", branch, run));
+  return localOnly(`origin/${branch}`, branch, run).every((sha) => !onMain.has(sha) || upstreams.some((u) => appliesEmpty(sha, u, run)));
+}
+
 export function baseOf(branch, run) {
   const remote = succeeds(["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}`], run);
   const local = succeeds(["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], run);
   if (!remote) return local ? branch : "origin/main";
   if (!local || succeeds(["merge-base", "--is-ancestor", branch, `origin/${branch}`], run)) return `origin/${branch}`;
   if (succeeds(["merge-base", "--is-ancestor", `origin/${branch}`, branch], run)) return branch;
+  // The stale local branch a rebase and force-push leave behind: `git worktree add -B` refuses a
+  // branch a worktree holds, so resetting it loses only patches no upstream already carries.
+  if (onlyUpstream(branch, run)) return `origin/${branch}`;
   throw new Error(`${branch} has diverged from origin/${branch}: resetting either side would lose commits`);
 }
 

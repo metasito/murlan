@@ -115,6 +115,15 @@ Phase C is a fix round when `loop-status.mjs` says `fix round`. Skip the plannin
    `gh issue comment <n> --body-file <file>`, first line `FIX-NOTES <sha>` (`git rev-parse --short
    HEAD`). Then leave through **Leaving C**.
 
+### A rebase round
+
+Phase C is a rebase round when `loop-status.mjs` says `rebase round`. Skip the planning. Note
+`git rev-parse HEAD` as the old head, then `git fetch origin && git rebase origin/main`. A commit
+main already carries goes empty or redundant: `git rebase --skip` it. Where both sides changed the
+same behaviour, park it (**Never stall**). Run `npx tsc --noEmit` and the tests the branch adds or
+edits, `git push --force-with-lease=agent/<n>-<slug>:<old head> origin HEAD:agent/<n>-<slug>`,
+then leave through **Leaving C**.
+
 ### How to work
 
 - **Read ranges, not files.** Read the ranges phase B or the newest `HANDOFF` named. A question
@@ -178,12 +187,13 @@ round 1, then the sha the previous round reviewed.
    node tools/loop/brief.mjs fix <n> .worktrees/agent-<n> <landSha>     # a fix round
    ```
 2. **Post the report** as one comment, first line naming the head it read (`REVIEW <sha> fix`
-   in a fix round, under its own cap):
+   in a fix or rebase round, under its own cap):
    ```
    REVIEW <sha>
    ## Blocking
    ## Nits
    ## Pre-existing
+   ## Checked
    ```
 3. **Post the verdict** as its own comment, first line `VERDICT: LAND <sha>`
    (`git rev-parse --short HEAD`), through `gh issue comment <n> --body-file <file>`.
