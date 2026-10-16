@@ -367,8 +367,10 @@ const isNode = (name) => /^node(\.exe)?$/i.test(path.basename(String(name)));
  * that ticket runs there, so no live peer can be among them. The separator after the root is what
  * keeps `agent-16` from claiming `agent-1641`'s processes.
  */
-export function worktreeOrphans(table, { worktree, selfPid, keep = new Set(), platform = process.platform }) {
+export function worktreeOrphans(table, { worktree, checkout = checkoutRoot(), selfPid, keep = new Set(), platform = process.platform }) {
   const root = normalizePath(worktree, platform).replace(/\\+$/, "") + "\\";
+  // The shared checkout holds every worktree and the supervisor; none of it is one ticket's.
+  if (root === normalizePath(checkout, platform).replace(/\\+$/, "") + "\\") return [];
   const ancestors = ancestry(table, selfPid);
   return table.filter(
     (p) =>

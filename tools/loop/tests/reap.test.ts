@@ -513,6 +513,11 @@ describe("worktreeOrphans", () => {
     assert.deepEqual(peer.map((p: { pid: number }) => p.pid), [32]);
   });
 
+  test("run from the shared checkout it takes nothing: every peer and the supervisor sit below that root", () => {
+    const shared = worktreeOrphans(table, { worktree: `${ROOT}\\`, checkout: ROOT, selfPid: 22, platform: "win32" });
+    assert.deepEqual(shared, []);
+  });
+
   test("keeps what it is told to, such as a server holding a port", () => {
     assert.deepEqual(take(), [30, 34]);
   });
