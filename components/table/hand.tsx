@@ -50,7 +50,8 @@ import {
   HAND_SCALE_ON_TURN,
 } from "@/components/cardFaceModel";
 import type { CardFrom } from "@/components/flightPose";
-import { readHandArrival, type ExchangeStages } from "@/components/flightPhysics";
+import { readHandArrival } from "@/components/flightPhysics";
+import type { ExchangeStages } from "@/components/table/exchangeModel";
 import { useSameCards } from "@/components/useSameCards";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 import { designRect, handCard, panShown, type Felt, type HandPlace, type TableMotion } from "./cardRects";

@@ -263,8 +263,9 @@ collapsed:
   number reached only from a `.tsx` — or from a `.ts` that imports through `@/` at runtime —
   is tested.
   `seatLayout` holds the layout constants and the seating/opponent-position math;
-  `flightPhysics` the card flight, pile advancement, impact feedback and exchange-state
-  reads; `turnTimerUi` the play-button labels and the turn clock; `tableFrame` the
+  `flightPhysics` the card flight, pile advancement and impact feedback;
+  `table/exchangeModel` the exchange-state reads, its legs and its chip and pile note;
+  `turnTimerUi` the play-button labels and the turn clock; `tableFrame` the
   safe-area/rail arithmetic; `tableA11y` the screen-reader description. `flightPhysics`
   takes `seatDirection` from `seatLayout`; the reverse must never happen.
 - **`components/GameTable.tsx`** — the one presentational table. It takes a `GameState`, a

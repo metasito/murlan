@@ -28,11 +28,7 @@ import { sideSlotHeight, topBandHeight } from "../../components/tableFrame.ts";
 import {
   arrivingCard,
   readHandArrival,
-  readExchangeSeats,
-  NO_STAGES,
-  JOKERS,
   readThrownPlay,
-  readExchangeLegs,
   anchorPoints,
   tableGeometry,
   type SeatPlace,
@@ -42,8 +38,6 @@ import {
   turnKey,
   seatPoint,
   trickClosedWithWinner,
-  readExchange,
-  INACTIVE_EXCHANGE,
   landWobble,
   LAND_WOBBLE_MS,
   comboImpactTier,
@@ -60,6 +54,14 @@ import {
   type ImpactTier,
   type FlareKind,
 } from "../../components/flightPhysics.ts";
+import {
+  INACTIVE_EXCHANGE,
+  JOKERS,
+  NO_STAGES,
+  readExchange,
+  readExchangeLegs,
+  readExchangeSeats,
+} from "../../components/table/exchangeModel.ts";
 import {
   buildCombination,
   processPass,

@@ -6,12 +6,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const MODULE = "components/flightPhysics.ts";
+const MODULES = ["components/flightPhysics.ts", "components/table/exchangeModel.ts"];
 
 const OWNERS: Record<string, string> = {
   readHandArrival: "components/table/hand.tsx",
   readExchangeLegs: "components/table/ExchangeLegs.tsx",
-  readExchangeSeats: "components/GameTable.tsx",
+  readExchangeSeats: "components/table/useTableExchange.ts",
   passedSeats: "components/table/seats.tsx",
 };
 
@@ -21,16 +21,19 @@ function walk(dir: string): string[] {
     .filter((f) => /\.tsx?$/.test(f) && !f.includes("node_modules"));
 }
 
-function namesImportedFromModule(rel: string): string[] {
+function namesImportedFromModule(rel: string, module: string): string[] {
   const src = readFileSync(path.join(repoRoot, rel), "utf8");
-  return [...src.matchAll(/import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+["'][^"']*flightPhysics(?:\.ts)?["']/g)]
+  const name = path.basename(module, ".ts");
+  return [...src.matchAll(new RegExp(`import\\s+(?:type\\s+)?\\{([^}]*)\\}\\s+from\\s+["'][^"']*/${name}(?:\\.ts)?["']`, "g"))]
     .flatMap((m) => m[1].split(","))
     .map((name) => name.replace(/^\s*type\s+/, "").split(/\s+as\s+/)[0].trim())
     .filter(Boolean);
 }
 
-const appFiles = ["app", "components", "lib"].flatMap(walk).filter((f) => f !== MODULE);
-const importers = [...appFiles, ...walk("tests")].map((rel) => ({ rel, names: namesImportedFromModule(rel) }));
+const files = [...["app", "components", "lib"].flatMap(walk), ...walk("tests")];
+const importersOf = (module: string) =>
+  files.filter((rel) => rel !== module).map((rel) => ({ rel, names: namesImportedFromModule(rel, module) }));
+const importers = MODULES.flatMap(importersOf);
 
 test("each hand-arrival, exchange-leg and passed-seat helper has one component owner", () => {
   const strays = importers
@@ -43,11 +46,13 @@ test("each hand-arrival, exchange-leg and passed-seat helper has one component o
   assert.deepEqual(strays, []);
 });
 
-test("every export of flightPhysics.ts is imported somewhere", () => {
-  const src = readFileSync(path.join(repoRoot, MODULE), "utf8");
-  const exported = [...src.matchAll(/^export (?:const|function|interface|type) (\w+)/gm)].map((m) => m[1]);
-  const used = new Set(importers.flatMap(({ names }) => names));
+for (const module of MODULES) {
+  test(`every export of ${module} is imported somewhere`, () => {
+    const src = readFileSync(path.join(repoRoot, module), "utf8");
+    const exported = [...src.matchAll(/^export (?:const|function|interface|type) (\w+)/gm)].map((m) => m[1]);
+    const used = new Set(importersOf(module).flatMap(({ names }) => names));
 
-  assert.ok(exported.length > 0);
-  assert.deepEqual(exported.filter((name) => !used.has(name)), []);
-});
+    assert.ok(exported.length > 0);
+    assert.deepEqual(exported.filter((name) => !used.has(name)), []);
+  });
+}

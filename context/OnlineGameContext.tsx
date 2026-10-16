@@ -32,7 +32,7 @@ import { ACTIVE_ROOM_KEY, WAITING_ROOM_KEY } from "@/lib/storageKeys";
 import type { GameState, MatchLength } from "@/lib/game/gameEngine";
 import type { RoundOverPayload, MatchVerdict, RatingAfter } from "@/lib/game/matchState";
 import {
-  buildExchangeAnnounce,
+  exchangeAnnouncementOf,
   useExchangeAnnouncement,
   type ExchangeAnnounceData,
 } from "@/lib/game/sharedGameFlow";
@@ -308,9 +308,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [reconnectNotice, setReconnectNotice] = useState<ReconnectNotice | null>(null);
   const [isSpectator, setIsSpectator] = useState(false);
 
-  const prevExchangeActiveRef = useRef(false);
-  const prevGameStateRef = useRef<GameState | null>(null);
-  const prevBothJokersExceptionRef = useRef(false);
   const roomRef = useRef<RoomState | null>(null);
   const gameStateRef = useRef<GameState | null>(null);
   const reconnectNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -467,8 +464,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       setDisconnectedSeats({});
       setCumulativeScores({});
       setPlacementPointsCurrent(false);
-      prevExchangeActiveRef.current = false;
-      prevBothJokersExceptionRef.current = false;
       setReconnectNotice(null);
       if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
       setRejoinFailed(true);
@@ -567,39 +562,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         setMySeatIndex(state.viewerSeatIndex);
       }
 
-      const wasActive = prevExchangeActiveRef.current;
-      const isActive = state.exchangePhase?.active === true;
-      prevExchangeActiveRef.current = isActive;
-
-      if (wasActive && !isActive && state.exchangePhase) {
-        // `cardFromLoser` is withheld the moment the phase closes, so the leg
-        // into the winner's hand is read from the state before this one.
-        // `cardToLoser` only exists from this state onward.
-        const prevPhase = prevGameStateRef.current?.exchangePhase;
-        const cardReceived = prevPhase?.cardFromLoser;
-        const cardGiven = state.exchangePhase.cardToLoser;
-        if (cardReceived || cardGiven) {
-          announce(
-            buildExchangeAnnounce(state.players, state.exchangePhase, {
-              given: cardGiven,
-              received: cardReceived,
-            })
-          );
-        }
-      }
-
-      const prevBothJolly = prevBothJokersExceptionRef.current;
-      const currBothJolly = state.exchangePhase?.twoJokerException ?? false;
-      prevBothJokersExceptionRef.current = currBothJolly;
-
-      if (!isActive && currBothJolly && !prevBothJolly) {
-        announce(buildExchangeAnnounce(state.players, state.exchangePhase!));
-      }
+      const prev = gameStateRef.current;
+      const announced = exchangeAnnouncementOf(prev, state);
+      if (announced) announce(announced);
 
       // A finished table re-sent (a reclaimed seat, say) comes without the
       // tally, which the server still holds.
-      const sameResults = state.roundOver && prevGameStateRef.current?.roundOver === true;
-      prevGameStateRef.current = state;
+      const sameResults = state.roundOver && prev?.roundOver === true;
       gameStateRef.current = state;
       setGameState(state);
       if (!sameResults) setRematchVoteState(null);
@@ -977,8 +946,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
     forgetRejoinAttempt();
     setMySeatIndex(-1);
-    prevBothJokersExceptionRef.current = false;
-    prevExchangeActiveRef.current = false;
   }, [deliver, isSpectator, persistActiveRoom, persistWaitingRoom, forgetRejoinAttempt]);
 
   const quickmatch = useCallback((maxPlayers: number, gameMode: "free_for_all" | "teams") => {

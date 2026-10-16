@@ -11,7 +11,8 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import { CardView } from "@/components/CardView";
 import { BACK_SCALE, CARD_BACK_H, CARD_BACK_W, CARD_H, CARD_W, FIELD_SCALE } from "@/components/cardFaceModel";
-import { FAN_CARD_SCALE, JOKERS, readExchangeLegs, type SeatGeometry, type ExchangeStages } from "@/components/flightPhysics";
+import { FAN_CARD_SCALE, type SeatGeometry } from "@/components/flightPhysics";
+import { JOKERS, readExchangeLegs, type ExchangeStages } from "@/components/table/exchangeModel";
 import type { CardFrom } from "@/components/flightPose";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { A11yStatus, a11yHidden } from "@/lib/a11y";
