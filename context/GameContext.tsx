@@ -27,6 +27,7 @@ import { offlineBotMove, resolveStuckExchange } from "@/lib/game/autoMove";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform, Settings } from "react-native";
 import { initializeOpeningAt, E2E_OPENER_KEY } from "@/lib/e2eOpener";
+import { realExchange } from "@/lib/e2eRealExchange";
 import {
   OFFLINE_SAVE_KEY,
   decodeOfflineSave,
@@ -48,6 +49,7 @@ import type { RoundResult, MatchState, PlayerSetupConfig } from "@/lib/game/matc
 // at bundle build time, so this only ever takes the fast path in a build the
 // E2E harness produced itself.
 const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
+const E2E_REAL_EXCHANGE = realExchange(E2E_FAST);
 // A launch argument on iOS lands in NSUserDefaults, which `Settings` reads; Android and web have no such channel.
 const E2E_OPENER = E2E_FAST && Platform.OS === "ios" && String(Settings.get(E2E_OPENER_KEY)) === "1";
 /**
@@ -115,7 +117,7 @@ interface GameContextValue {
   match: MatchState;
   exchangeAnnouncing: boolean;
   exchangeAnnounceData: ExchangeAnnounceData | null;
-  /** Set only under `EXPO_PUBLIC_E2E_FAST` (#915); undefined for a real player. */
+  /** Set only under `EXPO_PUBLIC_E2E_FAST` (#915), unless a spec opted out (`lib/e2eRealExchange.ts`); undefined for a real player. */
   exchangeHoldMsOverride: ExchangeHold | undefined;
   setupGame: (players: PlayerSetupConfig[], mode: GameMode, length?: MatchLength) => void;
   startNextRound: () => void;
@@ -132,12 +134,16 @@ interface GameContextValue {
   hasSavedGame: boolean;
   /** Restores that match. False if there was nothing worth restoring. */
   resumeGame: () => boolean;
+  /** `gameState` is still the one `resumeGame` restored, so its last play was already thrown. */
+  restored: boolean;
 }
 
 const GameContext = createContext<GameContextValue | null>(null);
 
 export function GameProvider({ children }: { children: ReactNode }) {
   const [gameState, setGameState] = useState<GameState | null>(null);
+  const [resumedFrom, setResumedFrom] = useState<GameState | null>(null);
+  const restored = gameState !== null && gameState === resumedFrom;
 
   const [match, setMatch] = useState<MatchState>(() => freshMatch("match", 4));
   const [savedPlayerConfigs, setSavedPlayerConfigs] = useState<PlayerSetupConfig[]>([]);
@@ -152,7 +158,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const savedRef = useRef<OfflineSave | null>(null);
   const { showNotification } = useNotification();
 
-  const exchangeHoldMsOverride = E2E_FAST ? E2E_EXCHANGE_HOLD : undefined;
+  const exchangeHoldMsOverride = E2E_FAST && !E2E_REAL_EXCHANGE ? E2E_EXCHANGE_HOLD : undefined;
   const {
     announcing: exchangeAnnouncing,
     data: exchangeAnnounceData,
@@ -223,19 +229,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const chooseExchangeCard = useCallback(
     (cardId: string) => {
-      if (gameState?.exchangePhase?.active) {
-        const ep = gameState.exchangePhase;
-        announce(
-          buildExchangeAnnounce(gameState.players, ep, {
-            given: gameState.players[ep.winnerIdx]?.hand.find((c) => c.id === cardId),
-            received: ep.cardFromLoser,
-          })
-        );
-      }
-      setGameState((prev) => {
-        if (!prev) return prev;
-        return processExchangeChoice(prev, cardId);
-      });
+      if (!gameState?.exchangePhase?.active) return;
+      const next = processExchangeChoice(gameState, cardId);
+      if (next === gameState) return;
+      const ep = gameState.exchangePhase;
+      announce(
+        buildExchangeAnnounce(gameState.players, ep, {
+          given: gameState.players[ep.winnerIdx]?.hand.find((c) => c.id === cardId),
+          received: ep.cardFromLoser,
+        })
+      );
+      setGameState(next);
     },
     [gameState, announce]
   );
@@ -290,6 +294,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const save = savedRef.current;
     if (!isResumable(save)) return false;
     setGameState(save.gameState);
+    setResumedFrom(save.gameState);
     setMatch(save.match);
     setSavedPlayerConfigs(save.players);
     setSavedGameMode(save.gameMode);
@@ -371,6 +376,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       releaseStuckExchange,
       hasSavedGame,
       resumeGame,
+      restored,
     }),
     [
       gameState,
@@ -390,6 +396,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       releaseStuckExchange,
       hasSavedGame,
       resumeGame,
+      restored,
     ]
   );
 

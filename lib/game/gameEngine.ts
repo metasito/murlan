@@ -59,7 +59,8 @@ export interface ExchangePhase {
   active: boolean;
   winnerIdx: number;
   loserIdx: number;
-  cardFromLoser: Card;
+  /** Absent on the two-Jokers exception, where no card moves. */
+  cardFromLoser?: Card;
   /**
    * What the winner handed back. Absent until they choose, so it arrives in
    * the same state that closes the phase. Online this is the only record of
@@ -818,7 +819,7 @@ export function processPass(state: GameState): GameState {
   return newState;
 }
 
-function getNextActivePlayer(state: GameState): number {
+export function getNextActivePlayer(state: GameState): number {
   const total = state.players.length;
   let next = (state.currentTurnIndex - 1 + total) % total;
   let attempts = 0;
@@ -910,7 +911,6 @@ export function initializeRematch(
         active: false,
         winnerIdx: safeWinnerIdx,
         loserIdx: safeLoserIdx,
-        cardFromLoser: loserHand[0],
         twoJokerException: true,
       },
     };

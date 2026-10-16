@@ -40,7 +40,7 @@ export default function GameScreen() {
   const [autoPassed, setAutoPassed] = useState(0);
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
   const { gameState, playCards, passTurn, runBotTurn } = useLocalTable();
-  const { resetGame } = useLocalSession();
+  const { resetGame, restored } = useLocalSession();
   const {
     exchangeAnnouncing,
     exchangeAnnounceData,
@@ -83,7 +83,8 @@ export default function GameScreen() {
 
   // Pass and play seats several humans at one device, so the table belongs to
   // whichever of them is on move; a bot's turn leaves it with the first human.
-  const seatOnMove = gameState?.exchangePhase?.active
+  // The exchange winner keeps it until the ceremony ends, not just the phase.
+  const seatOnMove = gameState?.exchangePhase && (gameState.exchangePhase.active || exchangeAnnouncing)
     ? gameState.exchangePhase.winnerIdx
     : gameState?.currentTurnIndex;
   const humanIdx =
@@ -169,6 +170,7 @@ export default function GameScreen() {
   return (
     <GameTable
       gameState={gameState}
+      restored={restored}
       matchOver={match.over}
       matchWinners={match.winners}
       placementPoints={lastPlacementPoints}

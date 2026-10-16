@@ -607,6 +607,8 @@ export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "played
   roomW: number;
   /** A reconnect is replaying the table, so the throw is the mockup's shorter catch-up. */
   catchUp: boolean;
+  /** Read at mount only: the play the table mounts on was thrown before a save, so it rests on the pile. */
+  restored: boolean;
 }
 
 /**
@@ -640,6 +642,7 @@ export function usePileFlight({
   handOrigins,
   roomW,
   catchUp,
+  restored,
 }: PileFlightInput) {
   const reduceMotion = usePrefersReducedMotion();
   const { awaitFlight, moment, flightStarted, drop } = timeline;
@@ -667,6 +670,7 @@ export function usePileFlight({
     null
   );
   const prevComboKeyRef = useRef<string>("");
+  const atRestRef = useRef(restored);
   const trickClosedRef = useRef(false);
   const closureRef = useRef({ matchOver, viewerWon });
   const clocks = useRef(new Map<string, FlightClock>());
@@ -723,6 +727,8 @@ export function usePileFlight({
       handCardH,
     };
     const combo = lastPlayedCombination;
+    const atRest = atRestRef.current;
+    atRestRef.current = false;
     if (combo === null) {
       // The winning cards are being held for the tag; nothing may take the
       // felt out from under them until the hold expires or a new lead arrives.
@@ -756,6 +762,12 @@ export function usePileFlight({
     prevComboKeyRef.current = key;
 
     const thrown = readThrownPlay({ ...geometry, combo, playedBy: lastPlayedBy }, handOrigins.current);
+    const to = pileSlots(thrown.cards.length, CARD_W(scale * FIELD_SCALE), roomW);
+    const play: TrickPlay = { key, combo, playedBy: lastPlayedBy, spec: flightSpec(key, thrown.from, to, catchUp, reduceMotion) };
+    if (atRest) {
+      setTrick((t) => playOnto(t, play));
+      return;
+    }
 
     // The owner's ruling: throws queued while nothing was drawn land at once and in silence, all but the newest.
     const unseen = new Set(flightsRef.current.filter((f) => f.hidden && !started.current.has(f.key)).map((f) => f.key));
@@ -763,7 +775,6 @@ export function usePileFlight({
     awaitFlight(key);
     moment({ kind: "landing", cards: combo.cards.length, bomb: thrown.heavy, mine: thrown.dir === "bottom" });
 
-    const to = pileSlots(thrown.cards.length, CARD_W(scale * FIELD_SCALE), roomW);
     const landing: LandingPayload = {
       tier: landingTier({ comboType: combo.type, roundOver: roundOver, ...closureRef.current }),
       cards: thrown.cards.length,
@@ -780,7 +791,6 @@ export function usePileFlight({
         closesMatch: roundOver && closureRef.current.matchOver,
       }),
     };
-    const play: TrickPlay = { key, combo, playedBy: lastPlayedBy, spec: flightSpec(key, thrown.from, to, catchUp, reduceMotion) };
     setTrick((t) => playOnto(t, play));
     unseen.forEach((k) => clocks.current.delete(k));
     touched.current.delete(key);

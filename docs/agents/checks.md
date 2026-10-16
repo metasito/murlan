@@ -303,7 +303,11 @@ one that doesn't needs a device capture (above).
 - **`EXPO_PUBLIC_E2E_FAST=1`** (set by `scripts/e2e-server.mjs`) zeroes every bot delay, so **no
   screenshot is ever taken on a bot's turn** — turn it off to look at turn-handover. Exception:
   `openCaptureState` (`tests/e2e/helpers/offlineSeed.ts`) writes the suspend flag
-  (`lib/e2eBotSuspend.ts`) so a seeded capture-state spec holds its turn regardless. Play real
+  (`lib/e2eBotSuspend.ts`) so a seeded capture-state spec holds its turn regardless. The same build
+  holds the offline exchange open on a timer, and the `consoleErrors` fixture reduces motion. A
+  few specs turn motion back on; only `tests/e2e/helpers/motionPath.ts` also drops the hold
+  (`lib/e2eRealExchange.ts`), so only its specs (`motionMatch`, `motionThirdDeal`) deal and
+  exchange round after round the way a player's build does. Play real
   hands (`tests/e2e/helpers/bot.ts`) and sample *through* a turn handover — one frame is not a
   state.
 - **Metro caches the transform that inlines `process.env.EXPO_PUBLIC_*`** — flipping the env var
@@ -509,8 +513,8 @@ no other session starts them:
   the worktrees under `.worktrees/` and `.loop-logs/` stay writable; the shared checkout and every
   path outside the repo do not (rules 8, 31 and 32).
 
-No hook refuses a `VERDICT: LAND`. Before it arms auto-merge, the supervisor's `poll`
-(`tools/loop/queue-loop.mjs`) asks `reviewerRan` (`tools/loop/loop-gate.mjs`) whether a
+No hook refuses a `VERDICT: LAND`. Before it arms auto-merge, the supervisor's `runSettle`
+(`tools/loop/settle.mjs`) asks `reviewerRan` (`tools/loop/loop-gate.mjs`) whether a
 `loop-review` or `loop-fix` agent completed for the ticket inside the process that posted the
 LAND, after that process's last commit, read from the ticket's stream, and leaves a head no
 reviewer cleared to the owner (rule 29). There is no LAND at the round cap: the ticket goes to the

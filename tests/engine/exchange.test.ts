@@ -14,7 +14,7 @@ import {
   processExchangeChoice,
   type Card,
 } from "./helpers.ts";
-import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
+import { autoMoveForSeat, resolveStuckExchange } from "../../lib/game/autoMove.ts";
 
 const ids = (cards: Card[]) => cards.map((card) => card.id).sort();
 
@@ -169,6 +169,44 @@ describe("processExchangeChoice", () => {
   });
 });
 
+describe("resolveStuckExchange", () => {
+  const stuck = (loserHand: Card[]) =>
+    makeState(
+      [
+        makePlayer("winner", []),
+        makePlayer("loser", loserHand),
+        makePlayer("c", [c("5", "clubs")]),
+        makePlayer("d", [c("6", "clubs")]),
+      ],
+      {
+        currentTurnIndex: 0,
+        exchangePhase: {
+          active: true,
+          winnerIdx: 0,
+          loserIdx: 1,
+          cardFromLoser: c("A", "spades"),
+          twoJokerException: false,
+        },
+      }
+    );
+
+  test("hands the lead to the loser when they hold cards", () => {
+    const next = resolveStuckExchange(stuck([c("4", "hearts")]));
+    assert.equal(next.exchangePhase?.active, false);
+    assert.equal(next.currentTurnIndex, 1);
+    assert.equal(next.lastPlayedBy, 1);
+  });
+
+  test("an empty-handed loser passes the lead to the next seat holding cards in turn order", () => {
+    const state = stuck([]);
+    assert.equal(getStartingPlayerAfterExchange(state), 1);
+    const next = resolveStuckExchange(state);
+    assert.equal(next.exchangePhase?.active, false);
+    assert.equal(next.currentTurnIndex, 3);
+    assert.equal(next.lastPlayedBy, 3);
+  });
+});
+
 // #784 — `autoMoveForSeat` re-asks whichever seat `exchangePhase.winnerIdx`
 // still names for as long as `exchangePhase.active` stays true. A correct
 // `processExchangeChoice` clears it on the winner's first giveback
@@ -249,12 +287,14 @@ describe("round-to-round exchange setup", () => {
       assert.equal(phase.active, true);
       assert.equal(phase.winnerIdx, 0);
       assert.equal(phase.loserIdx, 3);
+      const given = phase.cardFromLoser;
+      assert.ok(given, "an ordinary exchange records the loser's card");
       assert.ok(
-        state.players[0].hand.some((card) => card.id === phase.cardFromLoser.id),
+        state.players[0].hand.some((card) => card.id === given.id),
         "the winner received the loser's card"
       );
       assert.ok(
-        !state.players[3].hand.some((card) => card.id === phase.cardFromLoser.id),
+        !state.players[3].hand.some((card) => card.id === given.id),
         "the loser gave it up"
       );
       assert.equal(getStartingPlayerAfterExchange(state), phase.loserIdx);
@@ -298,6 +338,7 @@ describe("the two-joker exception, on a fixed deal", () => {
     const phase = state.exchangePhase!;
     assert.equal(phase.twoJokerException, true);
     assert.equal(phase.active, false);
+    assert.equal("cardFromLoser" in phase, false, "no card moved, so none is recorded as given");
     assert.equal(state.currentTurnIndex, phase.winnerIdx);
     assert.equal(getStartingPlayerAfterExchange(state), phase.winnerIdx);
     assert.equal(state.startReason?.type, "won_no_exchange");

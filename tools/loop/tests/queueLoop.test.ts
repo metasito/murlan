@@ -1,15 +1,13 @@
 // tools/loop/tests/queueLoop.test.ts
 import { test, describe, after, mock } from "node:test";
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
-import { Readable } from "node:stream";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
-import { LAND } from "../loop-render.mjs";
-import { readLine } from "../loop-stream.mjs";
+import { act, clockAt, closing, header, LAND, note, PLAIN, recap, stepRow, tasksDetail, thought } from "../loop-render.mjs";
+import { closePhase, readLine, reduceSession, sessionStart } from "../loop-stream.mjs";
 import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, USD_BY_SIZE } from "../loop-cost.mjs";
 import { ticker } from "../loop-screen.mjs";
 import {
@@ -19,6 +17,8 @@ import {
   syncCheckout,
   reinstall,
   runTicket,
+  screenEvents,
+  sessionView,
   park,
   repark,
   holdFor,
@@ -34,26 +34,31 @@ import {
 import { afterRefusal, apiFailure, exhausted, outcomeOf, reasonFor, resumePhase, WAIT, waitFor } from "../decide.mjs";
 import { fakeTracker } from "../tracker.mjs";
 
-/** Enough IO for `runOnce` to reach a decision without git, the tracker or a `claude` binary. */
-const stubIo = () => ({
-  stopFile: () => false,
-  syncCheckout: () => true,
-  housekeeping: () => ({ verdict: "ok", rows: [] }),
-  pick: () => ({ skill: "implement", number: 42, title: "t", size: "size:S", queue: null }),
-  spawn: async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", declared: null }),
-  standing: () => null,
-  pushedPr: () => null,
-  settle: async () => ({ action: "already-merged", reason: "" }),
-  park: () => {},
-  teardown: () => {},
-  bell: () => {},
-  record: () => {},
-  facts: () => ({ title: "t", size: null, reviewRounds: null }),
-  tally: () => ({ sessions: 0, spend: 0, handoffsThisRound: 0, lastHandoff: null, lastRedHead: null, retries: 0, ciRounds: 0 }),
-  log: () => {},
-  buildPassed: () => true,
-  announce: () => {},
+/** Enough ports for `runOnce` to reach a decision without git, the tracker or a `claude` binary. */
+const stubPorts = () => ({
+  tracker: {
+    pick: () => ({ skill: "implement", number: 42, title: "t", size: "size:S", queue: null }),
+    pushedPr: () => null,
+    settle: async () => ({ action: "already-merged", reason: "" }),
+    park: () => {},
+    release: () => {},
+    facts: () => ({ title: "t", size: null, reviewRounds: null }),
+  },
+  workspace: {
+    stopFile: () => false,
+    syncCheckout: () => true,
+    housekeeping: () => ({ verdict: "ok", rows: [] }),
+    standing: () => null,
+    buildPassed: () => true,
+    remove: () => {},
+  },
+  session: { spawn: async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", declared: null }) },
+  ledger: {
+    record: () => {},
+    tally: () => ({ sessions: 0, spend: 0, handoffsThisRound: 0, lastHandoff: null, lastRedHead: null, retries: 0, ciRounds: 0 }),
+  },
 });
+const quiet = { bell: () => {}, log: () => {}, announce: () => {} };
 
 describe("queueLoopArgs", () => {
   test("runs /queue unattended, with no MCP tools an empty run could stall waiting on", () => {
@@ -435,13 +440,24 @@ const SCRATCH = path.join("tests", ".scratch-loop");
 describe("runTicket", () => {
   after(() => rmSync(SCRATCH, { recursive: true, force: true }));
 
-  /** A `claude` that emits the given lines on stdout and then exits with `status`. */
-  const fakeSpawn = (lines: string[], status = 0, errLines: string[] = []) => () => {
-    const child: any = new EventEmitter();
-    child.stdout = Readable.from(lines.map((l) => `${l}\n`));
-    child.stderr = Readable.from(errLines.map((l) => `${l}\n`));
-    child.stdout.on("end", () => setImmediate(() => child.emit("close", status)));
-    return child;
+  /** `runSession` with no child: the lines go through the real reducer, then it exits with `status`. */
+  const replay = (lines: string[], status: number | "stalled" = 0) => async (_argv: string[], o: any) => {
+    let state = sessionStart(o.at, Date.now());
+    for (const line of lines) {
+      const next = reduceSession(state, line, { now: Date.now(), at: o.at, planned: o.planned });
+      state = next.state;
+      o.onState(state, next.effects);
+    }
+    return { status, state: closePhase(state, Date.now()), stderr: "", started: new Date().toISOString(), ms: 0, asleepMs: 0 };
+  };
+  /** A session that records what `runTicket` handed it. */
+  const capturing = (lines: string[] = [RESULT]) => {
+    const seen: { args: string[]; env: Record<string, string>; planned: string } = { args: [], env: {}, planned: "" };
+    const session = (args: string[], o: any) => {
+      Object.assign(seen, { args, env: o.env, planned: o.planned });
+      return replay(lines)(args, o);
+    };
+    return { seen, session };
   };
 
   const phase = (letter: string) =>
@@ -489,30 +505,19 @@ describe("runTicket", () => {
     });
 
   test("subagents run in the foreground, so a poll turn is unreachable", async () => {
-    let env: Record<string, string> | undefined;
-    const capturing = (_cmd: string, _args: string[], o: any) => {
-      env = o.env;
-      const child: any = new EventEmitter();
-      child.stdout = Readable.from([`${RESULT}\n`]);
-      child.stderr = Readable.from([]);
-      child.stdout.on("end", () => setImmediate(() => child.emit("close", 0)));
-      return child;
-    };
-    await runTicket(capturing as never, opts());
+    const { seen, session } = capturing();
+    await runTicket(session as never, opts());
     assert.equal(
-      env?.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS,
+      seen.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS,
       "1",
       "without it `-p` leaves fork mode off, subagents default to background, and the session polls them",
     );
   });
 
   test("a Bash call defaults well short of agent:check's ceiling, which stops short of the stall watchdog", async () => {
-    let env: Record<string, string> | undefined;
-    const capturing = (_cmd: string, _args: string[], o: any) => {
-      env = o.env;
-      return fakeSpawn([RESULT])();
-    };
-    await runTicket(capturing as never, opts());
+    const { seen, session } = capturing();
+    await runTicket(session as never, opts());
+    const env = seen.env;
     const [def, max] = [Number(env?.BASH_DEFAULT_TIMEOUT_MS), Number(env?.BASH_MAX_TIMEOUT_MS)];
     assert.deepEqual([def, max], [BASH_DEFAULT_TIMEOUT_MS, CHECK_BASH_TIMEOUT_MS]);
     assert.ok(def < max && max < STALL_MS, `${def} < ${max} < ${STALL_MS}`);
@@ -531,22 +536,22 @@ describe("runTicket", () => {
       });
     // One message streamed as two lines, each repeating its usage: it is billed once.
     const lines = [message("m1", "claude-opus-5-5"), message("m1", "claude-opus-5-5"), message("m2", "claude-opus-5-5")];
-    const run = await runTicket(fakeSpawn(lines, 1), opts());
+    const run = await runTicket(replay(lines, 1), opts());
     assert.equal(run.result, null);
-    assert.ok(Math.abs(run.estimatedCost - 2 * (0.5 + 0.25 + 0.5 + 0.3125)) < 1e-9, String(run.estimatedCost));
-    const done = await runTicket(fakeSpawn([...lines, RESULT], 0), opts());
+    assert.ok(Math.abs(Number(run.estimatedCost) - 2 * (0.5 + 0.25 + 0.5 + 0.3125)) < 1e-9, String(run.estimatedCost));
+    const done = await runTicket(replay([...lines, RESULT], 0), opts());
     assert.equal(done.estimatedCost, null, "a reported cost is never second-guessed");
   });
 
   test("the night #1156 met an overloaded API reaches the caller as a 529, not as a bare exit", async () => {
     const lines = readFileSync(path.join(import.meta.dirname, "fixtures", "api-529.jsonl"), "utf8").trim().split("\n");
-    const run = await runTicket(fakeSpawn(lines, 1), opts());
+    const run = await runTicket(replay(lines, 1), opts());
     assert.equal(apiFailure(run), 529);
   });
 
   test("the night the login expired reaches the caller as an account error (#1261)", async () => {
     const lines = readFileSync(path.join(import.meta.dirname, "fixtures", "auth-expired.jsonl"), "utf8").trim().split("\n");
-    const run = await runTicket(fakeSpawn(lines, 1), opts());
+    const run = await runTicket(replay(lines, 1), opts());
     assert.match(String(run.accountError), /^authentication_failed: Failed to authenticate/);
     assert.equal(apiFailure(run), null);
   });
@@ -555,28 +560,17 @@ describe("runTicket", () => {
     const text = "API Error: Unable to connect to API: SSL certificate hostname mismatch";
     const apiError = JSON.stringify({ type: "assistant", error: "server_error", message: { content: [{ type: "text", text }] } });
     const end = result({ is_error: true, api_error_status: null, terminal_reason: "api_error" });
-    const run = await runTicket(fakeSpawn([apiError, end], 1), opts());
+    const run = await runTicket(replay([apiError, end], 1), opts());
     assert.equal(apiFailure(run), "unreachable");
     const refused = apiError.replace('"server_error"', '"invalid_request"');
-    assert.equal(apiFailure(await runTicket(fakeSpawn([refused, end], 1), opts())), null);
+    assert.equal(apiFailure(await runTicket(replay([refused, end], 1), opts())), null);
   });
 
   // `.loop-logs/1465.jsonl` lines 969–998: a phase D session whose last line is an `api_retry`, after
   // which the stream went silent until the watchdog killed it (K2).
   test("a session that stalls mid-retry is held as unreachable, not parked", async () => {
     const lines = readFileSync(path.join(import.meta.dirname, "fixtures", "api-retry-stall.jsonl"), "utf8").trim().split("\n");
-    const replayed = () => {
-      const child: any = new EventEmitter();
-      child.stdout = new Readable({ read() {} });
-      child.stderr = new Readable({ read() {} });
-      for (const l of lines) child.stdout.push(`${l}\n`);
-      child.kill = () => {
-        child.stdout.push(null);
-        setImmediate(() => child.emit("close", null));
-      };
-      return child;
-    };
-    const run = await runTicket(replayed, opts({ at: "D", stallMs: 50, tick: 10 }));
+    const run = await runTicket(replay(lines, "stalled") as never, opts({ at: "D" }));
     assert.equal(run.status, "stalled");
     assert.equal(apiFailure(run), "unreachable");
   });
@@ -590,22 +584,18 @@ describe("runTicket", () => {
       const narrated: string[] = [];
       const said = screen.said;
       screen.said = (t: string) => (narrated.push(t), said(t));
-      const run = await runTicket(fakeSpawn([apiError, end], 1), opts({ screen }));
+      const run = await runTicket(replay([apiError, end], 1), opts({ screen }));
       assert.deepEqual(narrated, [text]);
       assert.equal(run.accountError, null);
-      const without = await runTicket(fakeSpawn([end], 1), opts());
+      const without = await runTicket(replay([end], 1), opts());
       assert.equal(apiFailure(run), status);
       assert.equal(apiFailure(run), apiFailure(without));
     });
   }
 
   test("nothing that varies between processes sits ahead of the cached prompt prefix", async () => {
-    let seen: { args: string[]; env: Record<string, string> } | undefined;
-    const capturing = (_cmd: string, args: string[], o: any) => {
-      seen = { args, env: o.env };
-      return fakeSpawn([RESULT])();
-    };
-    await runTicket(capturing as never, opts());
+    const { seen, session } = capturing();
+    await runTicket(session as never, opts());
     assert.ok(seen?.args.includes("--exclude-dynamic-system-prompt-sections"));
     assert.equal(seen?.env.CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS, "1", "the git status would break the prefix");
     assert.equal(seen?.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "1", "the owner's memory would ride in every prefix and move it on every write");
@@ -617,32 +607,24 @@ describe("runTicket", () => {
     const seen: unknown[] = [];
     const context = screen.context;
     screen.context = (next: any) => (seen.push(next.branch), context(next));
-    await runTicket(fakeSpawn([RESULT]), opts({ screen, branch: "agent/953-x" }));
-    await runTicket(fakeSpawn([RESULT]), opts({ screen }));
+    await runTicket(replay([RESULT]), opts({ screen, branch: "agent/953-x" }));
+    await runTicket(replay([RESULT]), opts({ screen }));
     assert.deepEqual(seen.filter((b) => b !== undefined), ["agent/953-x", null]);
   });
 
   test("a session compacts at its size's context ceiling, and is told its ticket", async () => {
-    let env: Record<string, string> | undefined;
-    const capturing = (_cmd: string, _args: string[], o: any) => {
-      env = o.env;
-      return fakeSpawn([RESULT])();
-    };
-    await runTicket(capturing as never, opts({ number: 1529 }));
-    assert.equal(env?.LOOP_TICKET, "1529");
-    assert.equal(env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW, String(contextFor(null)));
-    await runTicket(capturing as never, opts({ number: 1529, size: "size:M" }));
-    assert.equal(env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW, String(contextFor("size:M")));
+    const { seen, session } = capturing();
+    await runTicket(session as never, opts({ number: 1529 }));
+    assert.equal(seen.env.LOOP_TICKET, "1529");
+    assert.equal(seen.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW, String(contextFor(null)));
+    await runTicket(session as never, opts({ number: 1529, size: "size:M" }));
+    assert.equal(seen.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW, String(contextFor("size:M")));
     assert.notEqual(contextFor("size:M"), contextFor(null), "the two sizes must differ for this to tell them apart");
   });
 
   test("the spawn turns off what a loop session never uses, and a subagent spawns no other", async () => {
-    let seen: { args: string[]; env: Record<string, string> } | undefined;
-    const capturing = (_cmd: string, args: string[], o: any) => {
-      seen = { args, env: o.env };
-      return fakeSpawn([RESULT])();
-    };
-    await runTicket(capturing as never, opts());
+    const { seen, session } = capturing();
+    await runTicket(session as never, opts());
     for (const off of ["EXPLORE_PLAN_AGENTS", "BUNDLED_SKILLS", "WORKFLOWS", "CRON", "FEEDBACK_SURVEY", "FILE_CHECKPOINTING"]) {
       assert.equal(seen?.env[`CLAUDE_CODE_DISABLE_${off}`], "1", off);
     }
@@ -654,7 +636,7 @@ describe("runTicket", () => {
   });
 
   test("a refusal reaches the caller, as milliseconds", async () => {
-    const run = await runTicket(fakeSpawn([meter("rejected"), RESULT]), opts({ number: 962 }));
+    const run = await runTicket(replay([meter("rejected"), RESULT]), opts({ number: 962 }));
     assert.equal(run.blocked, true);
     assert.equal(run.blockedUntil, 1789134000000);
   });
@@ -662,7 +644,7 @@ describe("runTicket", () => {
   test("a healthy meter reading reaches it as nothing at all", async () => {
     const { said, screen } = sink();
     const run = await runTicket(
-      fakeSpawn([meter("allowed"), meter("allowed_warning"), RESULT]),
+      replay([meter("allowed"), meter("allowed_warning"), RESULT]),
       opts({ number: 962, screen }),
     );
     assert.equal(run.blocked, false);
@@ -673,7 +655,7 @@ describe("runTicket", () => {
   test("the phase comes from the session's own line", async () => {
     const { said, screen } = sink();
     const run = await runTicket(
-      fakeSpawn([phase("A"), phase("C"), phase("E"), RESULT]),
+      replay([phase("A"), phase("C"), phase("E"), RESULT]),
       opts({ screen }),
     );
     const out = said.join("\n");
@@ -687,7 +669,7 @@ describe("runTicket", () => {
   // caller passed `{}` — a test proving the function can hold a value nothing ever gives it. The
   // durations exist here, in the one place that sees the markers arrive.
   test("times each phase, which is what the record is built from", async () => {
-    const run = await runTicket(fakeSpawn([phase("A"), phase("C"), phase("F"), RESULT]), opts());
+    const run = await runTicket(replay([phase("A"), phase("C"), phase("F"), RESULT]), opts());
     assert.deepEqual(Object.keys(run.phases).sort(), ["A", "C", "F"]);
     for (const [letter, secs] of Object.entries(run.phases) as [string, number][]) {
       assert.ok(Number.isInteger(secs) && secs >= 0, `phase ${letter} timed as ${secs}`);
@@ -698,30 +680,30 @@ describe("runTicket", () => {
     const said = (content: object[]) => JSON.stringify({ type: "assistant", message: { content } });
     const scout = said([{ type: "text", text: "PHASE B" }, { type: "tool_use", name: "Agent", input: {} }]);
     const read = said([{ type: "tool_use", name: "Bash", input: { command: "gh issue view 1" } }]);
-    const readOnly = await runTicket(fakeSpawn([scout, read, RESULT]), opts());
+    const readOnly = await runTicket(replay([scout, read, RESULT]), opts());
     assert.deepEqual(Object.keys(readOnly.phases), ["B"]);
     const edit = said([{ type: "tool_use", name: "Edit", input: {} }]);
-    const run = await runTicket(fakeSpawn([scout, read, edit, RESULT]), opts());
+    const run = await runTicket(replay([scout, read, edit, RESULT]), opts());
     assert.deepEqual(Object.keys(run.phases).sort(), ["B", "C"]);
   });
 
   // The marker is repeated on every message of a long phase, not only on the first.
   test("a phase said twice running is one phase, not two openings", async () => {
     const { said, screen } = sink();
-    await runTicket(fakeSpawn([phase("C"), phase("C"), phase("C"), RESULT]), opts({ screen }));
+    await runTicket(replay([phase("C"), phase("C"), phase("C"), RESULT]), opts({ screen }));
     assert.equal(said.join("\n").match(/✓ {2}build/g)?.length, 1);
   });
 
   test("the session's closing declaration reaches the caller", async () => {
     const declare = result({ structured_output: { ticket: 953, branch: "agent/953-x", pr: 1204, phase: "F", handoff: null, stoodDown: false } });
-    const run = await runTicket(fakeSpawn([phase("F"), declare]), opts());
+    const run = await runTicket(replay([phase("F"), declare]), opts());
     assert.equal(run.declared?.pr, 1204);
     assert.equal(run.declared?.branch, "agent/953-x");
   });
 
   test("a structured declaration's handoff and why reach the caller", async () => {
     const structured = result({ structured_output: { ticket: 953, phase: "C", handoff: "C", why: "two tests left" } });
-    const run = await runTicket(fakeSpawn([phase("C"), structured]), opts());
+    const run = await runTicket(replay([phase("C"), structured]), opts());
     assert.equal(run.declared?.handoff, "C");
     assert.equal(run.declared?.why, "two tests left");
   });
@@ -729,7 +711,7 @@ describe("runTicket", () => {
   // Sticky, it pre-empted everything else: a session refused at minute 2 that recovered and
   // pushed at minute 40 was reported refused, and its pull request was never looked for.
   test("a refusal the session recovers from does not survive to the caller", async () => {
-    const run = await runTicket(fakeSpawn([meter("rejected"), meter("allowed"), RESULT]), opts({ number: 962 }));
+    const run = await runTicket(replay([meter("rejected"), meter("allowed"), RESULT]), opts({ number: 962 }));
     assert.equal(run.blocked, false);
     assert.equal(run.blockedUntil, 0);
   });
@@ -738,13 +720,13 @@ describe("runTicket", () => {
   // phase is open", and the marker it waited for never parsed. The row exists before one arrives.
   test("the board is live before the session has named a phase", async () => {
     const { said, screen } = sink();
-    await runTicket(fakeSpawn([RESULT]), opts({ screen }));
+    await runTicket(replay([RESULT]), opts({ screen }));
     assert.match(said.join("\n"), /✓ {2}\?/, "a session that named no phase left no row at all");
   });
 
   test("the first marker replaces that row rather than closing it as a phase", async () => {
     const { said, screen } = sink();
-    await runTicket(fakeSpawn([phase("A"), RESULT]), opts({ screen }));
+    await runTicket(replay([phase("A"), RESULT]), opts({ screen }));
     const out = said.join("\n");
     assert.equal(out.match(/✓ {2}\?/g), null, "the placeholder was reported as a finished phase");
     assert.match(out, /✓ {2}claim/);
@@ -752,51 +734,37 @@ describe("runTicket", () => {
 
   test("draws the header once", async () => {
     const { said, screen } = sink();
-    await runTicket(fakeSpawn([phase("A"), phase("C"), RESULT]), opts({ screen }));
+    await runTicket(replay([phase("A"), phase("C"), RESULT]), opts({ screen }));
     assert.equal(said.join("\n").match(/#953 {2}Rate limiter factory/g)?.length, 1);
   });
 
   // Four phases printed four header boxes, so one ticket read as four things having happened.
   test("a ticket handed off across phases draws its header once for the run", async () => {
     const { said, screen } = sink();
-    await runTicket(fakeSpawn([phase("C"), RESULT]), opts({ screen }));
-    await runTicket(fakeSpawn([RESULT]), opts({ at: "D", screen }));
+    await runTicket(replay([phase("C"), RESULT]), opts({ screen }));
+    await runTicket(replay([RESULT]), opts({ at: "D", screen }));
     assert.equal(said.join("\n").match(/#953 {2}Rate limiter factory/g)?.length, 1);
   });
 
   test("the next ticket on the same screen gets its own header", async () => {
     const { said, screen } = sink();
-    await runTicket(fakeSpawn([RESULT]), opts({ screen }));
-    await runTicket(fakeSpawn([RESULT]), opts({ number: 962, screen }));
+    await runTicket(replay([RESULT]), opts({ screen }));
+    await runTicket(replay([RESULT]), opts({ number: 962, screen }));
     const out = said.join("\n");
     assert.equal(out.match(/#953 {2}Rate limiter factory/g)?.length, 1);
     assert.equal(out.match(/#962 {2}Rate limiter factory/g)?.length, 1);
   });
 
-  const spawned = (lines: string[]) => {
-    const seen: { args: string[]; env: Record<string, string>; killed: string[] } = { args: [], env: {}, killed: [] };
-    const spawnFn = (_cmd: string, args: string[], o: any) => {
-      Object.assign(seen, { args, env: o.env });
-      const child: any = new EventEmitter();
-      child.stdout = Readable.from(lines.map((l) => `${l}\n`));
-      child.stderr = Readable.from([]);
-      child.kill = (sig: string) => seen.killed.push(sig);
-      child.stdout.on("end", () => setImmediate(() => child.emit("close", 0)));
-      return child;
-    };
-    return { seen, spawnFn };
-  };
-
   test("the session is told the phase it resumes at; a fresh one is told none and derives its own", async () => {
-    const resumed = spawned([RESULT]);
-    await runTicket(resumed.spawnFn as never, opts({ at: "D" }));
+    const resumed = capturing();
+    await runTicket(resumed.session as never, opts({ at: "D" }));
     const prior = process.env.LOOP_PHASE;
     process.env.LOOP_PHASE = "C";
-    const fresh = spawned([RESULT]);
-    const rebuilt = spawned([RESULT]);
+    const fresh = capturing();
+    const rebuilt = capturing();
     try {
-      await runTicket(fresh.spawnFn as never, opts());
-      await runTicket(rebuilt.spawnFn as never, opts({ at: "A" }));
+      await runTicket(fresh.session as never, opts());
+      await runTicket(rebuilt.session as never, opts({ at: "A" }));
     } finally {
       if (prior === undefined) delete process.env.LOOP_PHASE;
       else process.env.LOOP_PHASE = prior;
@@ -809,53 +777,41 @@ describe("runTicket", () => {
   });
 
   test("a handed reason reaches the session as LOOP_REASON, and none is sent without one", async () => {
-    const told = spawned([RESULT]);
-    await runTicket(told.spawnFn as never, opts({ at: "C", reason: "phase E's agent:check was red" }));
-    const plain = spawned([RESULT]);
-    await runTicket(plain.spawnFn as never, opts({ at: "C" }));
+    const told = capturing();
+    await runTicket(told.session as never, opts({ at: "C", reason: "phase E's agent:check was red" }));
+    const plain = capturing();
+    await runTicket(plain.session as never, opts({ at: "C" }));
     assert.deepEqual([told.seen.env.LOOP_REASON, plain.seen.env.LOOP_REASON], ["phase E's agent:check was red", undefined]);
-  });
-
-  // `--settings` and `--setting-sources project` pin the plugins before the session starts.
-  test("a plugin on the init line is never a reason to kill the session", async () => {
-    const init = JSON.stringify({ type: "system", subtype: "init", session_id: "s", model: "claude-sonnet-5", plugins: [{ source: "ponytail@ponytail" }] });
-    const session = spawned([init, RESULT]);
-    const run = await runTicket(session.spawnFn as never, opts({ at: "E" }));
-    assert.deepEqual(session.seen.killed, []);
-    assert.equal(run.status, 0);
   });
 
   test("the run carries the model its init line named, which the ledger judges it by", async () => {
     const init = JSON.stringify({ type: "system", subtype: "init", session_id: "s", model: "claude-sonnet-5" });
-    const run = await runTicket(fakeSpawn([init, RESULT]), opts({ at: "E" }));
+    const run = await runTicket(replay([init, RESULT]) as never, opts({ at: "E" }));
     assert.equal(run.model, "claude-sonnet-5");
-    assert.equal((await runTicket(fakeSpawn([RESULT]), opts({ at: "E" }))).model, null);
+    assert.equal((await runTicket(replay([RESULT]) as never, opts({ at: "E" }))).model, null);
   });
 
   // `--model` passes an alias, and ANTHROPIC_DEFAULT_*_MODEL in the inherited or project env remaps it.
-  test("an init model of another family than planned kills the session and says why; one of no known family does not", async () => {
+  test("the session is judged against the family its phase plans, and a wrong one is said", async () => {
     const init = (model: string) => JSON.stringify({ type: "system", subtype: "init", session_id: "s", model });
-    const wrong = spawned([init("claude-opus-5"), RESULT]);
-    const run = await runTicket(wrong.spawnFn as never, opts({ at: "E" }));
-    assert.deepEqual(wrong.seen.killed, ["SIGTERM"]);
+    const wrong = capturing([init("claude-opus-5"), RESULT]);
+    const run = await runTicket(wrong.session as never, opts({ at: "E" }));
+    assert.equal(wrong.seen.planned, MODEL_BY_PHASE.E);
     assert.match(String(run.wrongModel), /claude-opus-5.*sonnet/);
-    for (const model of ["claude-sonnet-5", "some-future-model"]) {
-      const fine = spawned([init(model), RESULT]);
-      const ok = await runTicket(fine.spawnFn as never, opts({ at: "E" }));
-      assert.deepEqual([fine.seen.killed, ok.wrongModel], [[], null], model);
-    }
+    const ok = await runTicket(replay([init("claude-sonnet-5"), RESULT]) as never, opts({ at: "E" }));
+    assert.equal(ok.wrongModel, null);
   });
 
   test("a fix round is named on the board with its round", async () => {
     const { said, screen } = sink();
-    await runTicket(fakeSpawn([RESULT]), opts({ at: "C", fix: true, retryCount: 1, screen }));
+    await runTicket(replay([RESULT]), opts({ at: "C", fix: true, retryCount: 1, screen }));
     assert.match(said.join("\n"), /fix 1 of 2/);
   });
 
   // The opening row said nothing its closing row does not, at 0:00.
   test("a resumed phase leaves one row in the scrollback, the finished one", async () => {
     const { said, screen } = sink();
-    await runTicket(fakeSpawn([RESULT]), opts({ number: 962, at: "D", screen }));
+    await runTicket(replay([RESULT]), opts({ number: 962, at: "D", screen }));
     const rows = said.filter((l) => /review/.test(l));
     assert.equal(rows.length, 1, rows.join("\n"));
     assert.doesNotMatch(rows[0], /resumed|↻/);
@@ -865,160 +821,162 @@ describe("runTicket", () => {
   // origin.kind "task-notification". Last-wins across all of them reported 144 turns as one.
   test("a background task's result does not overwrite the session's", async () => {
     const wake = result({ num_turns: 1, total_cost_usd: 0, origin: { kind: "task-notification" } });
-    const run = await runTicket(fakeSpawn([RESULT, wake]), opts());
+    const run = await runTicket(replay([RESULT, wake]), opts());
     assert.equal(run.result?.turns, 41);
     assert.equal(run.result?.cost, 1.82);
   });
 
   test("carries the final result out, which is what the row and the closing line are built from", async () => {
-    const run = await runTicket(fakeSpawn([phase("B"), RESULT]), opts());
+    const run = await runTicket(replay([phase("B"), RESULT]), opts());
     assert.equal(run.result?.cost, 1.82);
     assert.equal(run.result?.turns, 41);
     assert.deepEqual(run.result?.cache, { created: 10, read: 20 });
   });
 
-  // The budget message is the only place a budget stop is ever said: the result event for that
-  // session still reads subtype "success".
-  test("the child's stderr is captured, not only inherited", async () => {
-    const run = await runTicket(
-      fakeSpawn([RESULT], 0, ["Budget limit reached ($15.08 of $15); stopping background agents."]),
-      opts(),
-    );
-    assert.match(run.stderr, /Budget limit reached/);
-  });
-
-  test("a session that goes silent is killed and reported as stalled", async () => {
-    const killed: string[] = [];
-    const silent = () => {
-      const child: any = new EventEmitter();
-      // Never ends on its own: the watchdog is the only thing that can close this run.
-      child.stdout = new Readable({ read() {} });
-      child.stderr = new Readable({ read() {} });
-      child.kill = (sig: string) => {
-        killed.push(sig);
-        child.stdout.push(null);
-        setImmediate(() => child.emit("close", null));
-      };
-      return child;
-    };
-    const run = await runTicket(silent, opts({ stallMs: 20, tick: 10 }));
-    assert.equal(run.status, "stalled");
-    assert.equal(killed[0], "SIGTERM", "SIGTERM is what takes the child's Bash tree with it");
-  });
-
-  // #1389 and #1268: the watchdog fired, then the run waited 92 and 260 min for a pipe a grandchild held.
-  test("a stalled session whose pipes stay open after the kill still ends the run", async () => {
-    const held = () => {
-      const child: any = new EventEmitter();
-      child.stdout = new Readable({ read() {} });
-      child.stderr = new Readable({ read() {} });
-      child.kill = () => setImmediate(() => child.emit("exit", null));
-      return child;
-    };
-    const run = await runTicket(held, opts({ stallMs: 20, tick: 10, killGraceMs: 20 }));
-    assert.equal(run.status, "stalled");
-  });
-
-  /** A child that says nothing until told to, and closes when killed. */
-  const quiet = () => {
-    const child: any = new EventEmitter();
-    child.stdout = new Readable({ read() {} });
-    child.stderr = new Readable({ read() {} });
-    child.kill = () => {
-      child.stdout.push(null);
-      setImmediate(() => child.emit("close", null));
-    };
-    child.finish = (lines: string[]) => {
-      for (const l of lines) child.stdout.push(`${l}\n`);
-      child.stdout.push(null);
-      setImmediate(() => child.emit("close", 0));
-    };
-    return child;
-  };
-  const HOURS_2 = 2 * 3_600_000;
-
-  // Only `Date` is mocked: the watchdog's own interval stays real, as it does across a standby.
-  test("a session the machine slept through is not stalled, and the sleep is booked as asleep", async (t) => {
-    t.mock.timers.enable({ apis: ["Date"] });
-    const spawned = () => {
-      const child = quiet();
-      setTimeout(() => t.mock.timers.setTime(Date.now() + HOURS_2), 15);
-      setTimeout(() => child.finish([RESULT]), 80);
-      return child;
-    };
-    const run = await runTicket(spawned, opts({ tick: 10 }));
-    assert.equal(run.status, 0, "a tick two hours late is the machine asleep, not the session silent");
-    assert.equal(run.asleepMs, HOURS_2 - 10);
-  });
-
-  // #1466's parked row read 16:33Z for a session that started 13:39Z: it was dated now − ms, hours later.
-  test("a session carries the instant it was spawned, which its ledger row is dated from", async (t) => {
-    t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-11T13:39:32Z") });
-    const spawned = () => {
-      const child = quiet();
-      setTimeout(() => t.mock.timers.setTime(Date.now() + HOURS_2), 15);
-      setTimeout(() => child.finish([RESULT]), 60);
-      return child;
-    };
-    const run = await runTicket(spawned, opts({ tick: 10 }));
-    assert.equal(run.started, "2026-10-11T13:39:32.000Z");
-  });
-
-  test("a hung session whose every tick arrives late is still killed", async (t) => {
-    t.mock.timers.enable({ apis: ["Date"] });
-    const late = setInterval(() => t.mock.timers.setTime(Date.now() + HOURS_2), 5);
-    try {
-      const run = await Promise.race([
-        runTicket(quiet, opts({ stallMs: 20, tick: 10 })),
-        new Promise((r) => setTimeout(() => r({ status: "never killed" }), 2_000)),
-      ]);
-      assert.equal((run as { status: unknown }).status, "stalled");
-    } finally {
-      clearInterval(late);
-    }
-  });
-
-  test("a talking session is never killed, however long it runs", async () => {
-    const killed: string[] = [];
-    const chatty = () => {
-      const child: any = new EventEmitter();
-      const s = new Readable({ read() {} });
-      child.stdout = s;
-      child.stderr = new Readable({ read() {} });
-      child.kill = (sig: string) => killed.push(sig);
-      let n = 0;
-      const timer = setInterval(() => {
-        s.push(`${phase("C")}\n`);
-        if (++n === 8) {
-          clearInterval(timer);
-          s.push(`${RESULT}\n`);
-          s.push(null);
-          setImmediate(() => child.emit("close", 0));
-        }
-      }, 5);
-      return child;
-    };
-    const run = await runTicket(chatty, opts({ stallMs: 60, tick: 10 }));
-    assert.deepEqual(killed, [], "a session still emitting is working, not stalled");
-    assert.equal(run.status, 0);
-  });
-
-  test("a non-zero exit is reported, not thrown", async () => {
-    const run = await runTicket(fakeSpawn([RESULT], 1), opts());
+  test("a failed session closes its row as failed and reaches the caller as its status", async () => {
+    const { said, screen } = sink();
+    const run = await runTicket(replay([phase("C"), RESULT], 1) as never, opts({ screen }));
     assert.equal(run.status, 1);
+    assert.doesNotMatch(said.join("\n"), /✓ {2}build/);
   });
 
-  test("keeps the raw stream in the log directory, the fallback for what the board omits", async () => {
-    const run = await runTicket(fakeSpawn([phase("B"), RESULT]), opts({ number: 999 }));
+  test("the session's stream goes to the log directory, the fallback for what the board omits", async () => {
+    let handed = "";
+    const session = (args: string[], o: any) => ((handed = o.log), replay([RESULT])(args, o));
+    const run = await runTicket(session as never, opts({ number: 999 }));
+    assert.equal(run.log, handed);
     assert.match(run.log, /999\.jsonl$/);
-    // Before the removal, and before anything else: every fixture here names a live ticket, so a
-    // `dir` the callee quietly ignores has this line deleting a real night's stream log.
-    assert.ok(
-      path.resolve(run.log).startsWith(path.resolve(SCRATCH)),
-      `runTicket wrote outside the scratch directory: ${run.log}`,
-    );
-    assert.ok(readFileSync(run.log, "utf8").includes('"type":"result"'));
-    rmSync(run.log, { force: true });
+    // Every fixture here names a live ticket, so a `dir` the callee quietly ignores points a real
+    // session's stream at a real night's log.
+    assert.ok(path.resolve(run.log).startsWith(path.resolve(SCRATCH)), `runTicket logs outside the scratch directory: ${run.log}`);
+  });
+});
+
+describe("screenEvents", () => {
+  /** A screen that keeps what it was told, in the order it was told it. */
+  const recording = () => {
+    const theme = PLAIN();
+    const told: unknown[][] = [];
+    const headed = new Set<number>();
+    const screen = {
+      theme,
+      say: (s: string) => told.push(["say", s]),
+      notice: (label: string, text: string) => told.push(["notice", label, text]),
+      context: (c: object) => told.push(["context", c]),
+      set: (f: object) => told.push(["set", f]),
+      needsHeader: (n: number) => !headed.has(n) && Boolean(headed.add(n)),
+    };
+    return { theme, told, events: screenEvents(screen as never) };
+  };
+  const ticket = { number: 953, title: "Rate limiter factory", size: "size:S", url: "u", queue: { implement: 3, triage: 1, wayfinder: 0 } };
+
+  test("a ticket's header, once per ticket", () => {
+    const { theme, told, events } = recording();
+    events.header(ticket);
+    events.header(ticket);
+    assert.deepEqual(told, [["say", header(ticket, theme)]]);
+  });
+
+  test("a G route's announcement is its header, then its spend on the keys' context", () => {
+    const { theme, told, events } = recording();
+    events.announce(ticket, 90_000);
+    events.announce(ticket, 95_000);
+    assert.deepEqual(told, [["say", header(ticket, theme)], ["context", { spentMs: 90_000 }], ["context", { spentMs: 95_000 }]]);
+  });
+
+  test("the queue recap, between one pick and the next", () => {
+    const { theme, told, events } = recording();
+    const totals = { landed: 1, parked: 0, cost: 12 };
+    const after = { implement: 2, triage: 1, wayfinder: 0 };
+    events.recap(totals, ticket.queue, after);
+    assert.deepEqual(told, [["say", recap(totals, ticket.queue, after, theme)]]);
+  });
+
+  test("a step row, with its note beneath it when it has one", () => {
+    const { theme, told, events } = recording();
+    events.step({ label: "claim", detail: "won · agent/953-x", ms: null });
+    events.step({ label: "drift", detail: "reinstalled", ms: 2000, note: "npm ci\n  added 3" });
+    events.step({ label: "parity", detail: "", note: "  " });
+    assert.deepEqual(told, [
+      ["say", stepRow({ label: "claim", detail: "won · agent/953-x", ms: null }, theme)],
+      ["say", `${stepRow({ label: "drift", detail: "reinstalled", ms: 2000 as never }, theme)}\n${note("npm ci\n  added 3", theme)}`],
+      ["say", stepRow({ label: "parity", detail: "" }, theme)],
+    ]);
+  });
+
+  test("a recorded row's closing line, a landing as merged; the rows the next line says draw none", () => {
+    const { theme, told, events } = recording();
+    const bill = { ms: 60_000, cost: 3.5, turns: 40 };
+    const run = { log: ".loop-logs/953.jsonl" };
+    events.recorded({ number: 953, outcome: "landed", files: 4, why: "merged", run }, bill);
+    events.recorded({ number: 953, outcome: "parked", why: "the cap", run }, bill);
+    for (const outcome of ["handoff", "retry", "pushed", "reparked", "armed"]) events.recorded({ number: 953, outcome, run }, bill);
+    assert.deepEqual(told, [
+      ["say", closing({ outcome: "merged", number: 953, files: 4, ...bill, why: "merged", log: undefined }, theme)],
+      ["say", closing({ outcome: "parked", number: 953, files: 0, ...bill, why: "the cap", log: run.log }, theme)],
+    ]);
+  });
+
+  test("a log line is a notice under its label, the loop's by default; a publish sets the pull request", () => {
+    const { told, events } = recording();
+    events.log("main moved");
+    events.log("is still standing", "worktree");
+    events.published(1204);
+    assert.deepEqual(told, [["notice", "loop", "main moved"], ["notice", "worktree", "is still standing"], ["set", { pr: 1204 }]]);
+  });
+
+  test("the bell rings the terminal's bell, and only on a terminal", (t) => {
+    const { events } = recording();
+    const wrote: string[] = [];
+    t.mock.method(process.stderr, "write", (s: string) => (wrote.push(s), true));
+    const tty = Object.getOwnPropertyDescriptor(process.stderr, "isTTY");
+    try {
+      Object.defineProperty(process.stderr, "isTTY", { value: false, configurable: true });
+      events.bell();
+      Object.defineProperty(process.stderr, "isTTY", { value: true, configurable: true });
+      events.bell();
+    } finally {
+      if (tty) Object.defineProperty(process.stderr, "isTTY", tty);
+      else delete (process.stderr as any).isTTY;
+    }
+    assert.deepEqual(wrote, ["\x07"]);
+  });
+});
+
+describe("sessionView", () => {
+  const view = () => {
+    const theme = PLAIN();
+    const told: unknown[][] = [];
+    const screen = {
+      theme,
+      say: (s: string) => told.push(["say", s]),
+      said: (s: string | null) => told.push(["said", s]),
+      call: (name: string, detail: string) => told.push(["call", name, detail]),
+      start: (letter: string, round: unknown) => told.push(["start", letter, round]),
+      set: (f: object) => told.push(["set", f]),
+    };
+    return { theme, told, draw: sessionView(screen as never, { number: 962, round: (p: string) => (p === "D" ? { n: 2, of: 3 } : null) }) };
+  };
+
+  test("each effect is its line: the session, a phase with its round, what was said, each call", () => {
+    const { told, draw } = view();
+    const call = { name: "Read", input: { file_path: "a.ts" } };
+    draw({}, [{ kind: "session", id: "s1" }, { kind: "start", letter: "D" }, { kind: "said", text: "PHASE D\nreviewing" }, { kind: "call", call }]);
+    assert.deepEqual(told, [["set", { session: "s1" }], ["start", "D", { n: 2, of: 3 }], ["said", thought("PHASE D\nreviewing")], ["call", "Read", act(call)]]);
+  });
+
+  test("the running subagents are said as one detail; none running says nothing", () => {
+    const { told, draw } = view();
+    const tasks = [{ id: "a", what: "Review #962", tool: null }];
+    draw({}, [{ kind: "tasks", tasks }, { kind: "tasks", tasks: [] }]);
+    assert.deepEqual(told, [["said", tasksDetail(tasks)]]);
+  });
+
+  test("a refusal is its rate-limited closing line, naming the window and when it resets", () => {
+    const { theme, told, draw } = view();
+    draw({}, [{ kind: "refused", window: "five_hour", resetsAt: 1789134000 }]);
+    const why = `the five_hour limit is spent — resets ${clockAt(1789134000)}`;
+    assert.deepEqual(told, [["say", closing({ outcome: "rate_limited", number: 962, why, ms: 0, cost: 0 }, theme)]]);
   });
 });
 
@@ -1599,27 +1557,33 @@ describe("the land phase", () => {
 describe("a phase handoff", () => {
   test("a handoff re-spawns the same ticket instead of parking it", async () => {
     const spawned: number[] = [];
-    const io = {
-      ...stubIo(),
-      pick: (pinned: number | null) => ({
-        skill: "implement",
-        number: pinned ?? 41,
-        title: "t",
-        size: "size:S",
-        queue: null,
-      }),
-      spawn: (route: { number: number }) => {
-        spawned.push(route.number);
-        return Promise.resolve({
-          status: 0,
-          ms: 1,
-          log: "x",
-          result: { cost: 1 },
-          declared: { ticket: 41, phase: "C", handoff: "D", stoodDown: false },
-        });
+    const stub = stubPorts();
+    const ports = {
+      ...stub,
+      tracker: {
+        ...stub.tracker,
+        pick: (pinned: number | null) => ({
+          skill: "implement",
+          number: pinned ?? 41,
+          title: "t",
+          size: "size:S",
+          queue: null,
+        }),
+      },
+      session: {
+        spawn: (route: { number: number }) => {
+          spawned.push(route.number);
+          return Promise.resolve({
+            status: 0,
+            ms: 1,
+            log: "x",
+            result: { cost: 1 },
+            declared: { ticket: 41, phase: "C", handoff: "D", stoodDown: false },
+          });
+        },
       },
     };
-    const pass = await runOnce(io as never, null);
+    const pass = await runOnce(ports as never, quiet as never, null);
     assert.equal(pass.outcome, "handoff");
     assert.equal(pass.phase, "D");
     assert.deepEqual(spawned, [41]);

@@ -602,7 +602,7 @@ describe("ticketTally", () => {
     });
   });
 
-  // Written when poll arms on a rerun's green, so a restart before the merge still knows the flake.
+  // Written when runSettle arms on a rerun's green, so a restart before the merge still knows the flake.
   test("an armed row carries its flake and head to the tally, is no session, and a landing clears it", () => {
     const flake = { runId: 7, tests: ["t"], step: "Test" };
     const armed = row({ outcome: "armed", head: "h1", flake });

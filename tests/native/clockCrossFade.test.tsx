@@ -83,4 +83,24 @@ describe('the turn clocks across a hand-off', () => {
     expect(end).toEqual([[2, 1]]);
     await view.unmount();
   });
+
+  it('lets the old clock go when reduced motion turns on mid-fade', async () => {
+    const view = await render(tableAfter({ by: 0, combo: PAIR, turn: 3, turnSeconds: 30 }));
+    await act(async () => {
+      jest.advanceTimersByTime(1500);
+    });
+    const next = tableAfter({ by: 0, combo: PAIR, passCount: 1, turn: 2, turnSeconds: 30 });
+    await act(async () => view.rerender(next));
+    await act(async () => {
+      jest.advanceTimersByTime(48);
+    });
+    expect(clocks(view).filter(([seat, o]) => seat === 3 && o > 0 && o < 1)).toHaveLength(1);
+    mockReduceMotion.on = true;
+    await act(async () => view.rerender(tableAfter({ by: 0, combo: PAIR, passCount: 1, turn: 2, turnSeconds: 30 })));
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(clocks(view)).toEqual([[2, 1]]);
+    await view.unmount();
+  });
 });

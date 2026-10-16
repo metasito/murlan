@@ -443,7 +443,7 @@ export function readExchange(
 export interface ExchangeStages { key: string; receive: LegStage; give: LegStage; ready: boolean }
 
 export const exchangeKey = (announced: ExchangeAnnounceData): string =>
-  announced.twoJokerException ? `jokers:${announced.loserIdx}` : `${announced.loserIdx}>${announced.winnerIdx}:${announced.cardReceived?.id ?? ""}`;
+  announced.twoJokerException ? `jokers:${announced.loserIdx}` : `${announced.loserIdx}>${announced.winnerIdx}`;
 
 export const NO_STAGES: Omit<ExchangeStages, "key"> = { receive: "waiting", give: "waiting", ready: false };
 

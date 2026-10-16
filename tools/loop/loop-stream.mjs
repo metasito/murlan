@@ -231,3 +231,132 @@ export function readEvent(e) {
   }
   return null;
 }
+
+/** The CLI's assistant-error codes no unattended wait cures: someone has to act on the account. */
+export const ACCOUNT_ERRORS = new Set(["authentication_failed", "oauth_org_not_allowed", "account_on_hold", "verification_required", "billing_error"]);
+
+/**
+ * The model family an id names. Keyed on the family word rather than on a full id, because the logs
+ * carry four spellings of two models — `claude-opus-5`, `opus`, `claude-opus-5[1m]`, `sonnet`.
+ */
+export const familyOf = (model) => ["opus", "sonnet", "haiku"].find((f) => String(model).includes(f)) ?? null;
+
+/**
+ * Whether a task event says that task is over.
+ *
+ * A `task_updated` carries a status only when it is closing one; mid-run it says something else
+ * entirely — a task flipping to the background — and reading that as "finished" empties the board
+ * while the agent is still working.
+ *
+ * @param {{event: string, status: string|null}} fact
+ */
+export function closesTask({ event, status }) {
+  if (event === "notification") return true;
+  return event === "updated" && status !== null && status !== "in_progress";
+}
+
+/** A session before its first line, spawned into phase `at` (null: it names its own). */
+export function sessionStart(at, now) {
+  return {
+    phase: at,
+    phaseAt: now,
+    phases: {},
+    result: /** @type {any} */ (null),
+    /** Each message's billed tokens by id, for a session that dies before it reports a cost. */
+    usage: new Map(),
+    declared: /** @type {any} */ (null),
+    version: null,
+    model: null,
+    lastFact: null,
+    blocked: false,
+    blockedUntil: 0,
+    accountError: null,
+    wrongModel: null,
+    apiErrorCode: null,
+    /** Subagents running right now, in the order they were last heard from. */
+    tasks: new Map(),
+  };
+}
+
+/** Seconds in the phase just left, so the record carries where a night's time actually goes. */
+export function closePhase(state, now) {
+  if (!state.phase) return state;
+  const secs = Math.round((now - state.phaseAt) / 1000);
+  return { ...state, phases: { ...state.phases, [state.phase]: (state.phases[state.phase] ?? 0) + secs }, phaseAt: now };
+}
+
+/**
+ * One stream line folded into a session's state, with what it asks of the supervisor: `session`,
+ * `start`, `said`, `call`, `tasks` and `refused` for the screen, `kill` for the process. Reads no
+ * clock, so `now` is handed in; `planned` is the model family phase `at` runs on.
+ *
+ * @param {ReturnType<typeof sessionStart>} state
+ * @param {string} line
+ * @param {{now: number, at?: string|null, planned: string}} ctx
+ */
+export function reduceSession(state, line, { now, at = null, planned }) {
+  const effects = [];
+  let next = state;
+  const billed = usageOf(line);
+  if (billed) next = { ...next, usage: new Map(next.usage).set(billed.id, billed) };
+  const fact = readLine(line);
+  if (!fact) return { state: next, effects };
+  next = { ...next, lastFact: fact.kind };
+  if (fact.kind === "init") {
+    next.version = fact.version;
+    next.model = fact.model;
+    effects.push({ kind: "session", id: fact.sessionId });
+    // `--model` passes an alias, which ANTHROPIC_DEFAULT_*_MODEL in the inherited or project env remaps.
+    const family = familyOf(fact.model);
+    if (family && family !== planned && !next.wrongModel) {
+      next.wrongModel = `the session started on ${fact.model}, but phase ${at ?? "A"} runs on ${planned}`;
+      effects.push({ kind: "kill" });
+    }
+  }
+  if (fact.kind === "assistant") {
+    const letter = fact.letter ?? (next.phase === "B" && scopeEnds(fact.calls) ? "C" : null);
+    if (letter && letter !== next.phase) {
+      next = { ...closePhase(next, now), phase: letter };
+      effects.push({ kind: "start", letter });
+    }
+    // What the session said about what it is doing, then the calls it made.
+    effects.push({ kind: "said", text: fact.text });
+    for (const call of fact.calls) effects.push({ kind: "call", call });
+  }
+  // A foreground subagent emits nothing else into the parent stream, so without these the phase
+  // line freezes on its last fact for the whole of phase D and a working session looks hung.
+  if (fact.kind === "task") {
+    const tasks = new Map(next.tasks);
+    // Deleted before set, so the insertion order stays "least recently heard from first" and the
+    // detail names the agent that just moved.
+    tasks.delete(fact.id);
+    if (!closesTask(fact)) tasks.set(fact.id, fact);
+    next.tasks = tasks;
+    effects.push({ kind: "tasks", tasks: [...tasks.values()] });
+  }
+  if (fact.kind === "api_error") {
+    effects.push({ kind: "said", text: fact.text });
+    if (ACCOUNT_ERRORS.has(fact.code)) next.accountError ??= `${fact.code}: ${fact.text}`;
+    next.apiErrorCode = fact.code;
+  }
+  // A session emits one result per turn, and a background task's wake-up is a turn. The real one
+  // carries `origin: null`; every other carries origin.kind "task-notification".
+  if (fact.kind === "result" && !fact.origin) {
+    next.result = fact;
+    if (fact.declared) next.declared = fact.declared;
+  }
+  if (fact.kind === "rate_limit") {
+    // Cleared on the next reading that is not a refusal: a session refused early that recovers
+    // and pushes has done its work, and a sticky flag pre-empts every other reading of it.
+    if (!fact.blocked && next.blocked) {
+      next.blocked = false;
+      next.blockedUntil = 0;
+    }
+    if (fact.blocked && !next.blocked) {
+      next.blocked = true;
+      next.blockedUntil = fact.resetsAtMs ?? 0;
+      effects.push({ kind: "refused", window: fact.window, resetsAt: fact.resetsAt });
+    }
+  }
+  return { state: next, effects };
+}
