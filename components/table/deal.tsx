@@ -17,6 +17,8 @@ import { handCountOf } from "@/shared/protocol";
 import { seatPoint, type SeatGeometry } from "@/components/flightPhysics";
 import type { HandDeal } from "@/components/table/hand";
 import { dealArrivalsMs, dealEndMs } from "@/lib/game/dealTimeline";
+import { GATE_WATCHDOG_MS } from "@/lib/game/gateWatchdog";
+import { gateForced } from "@/components/table/gateForced";
 import { dealLegs, dealSlotOf, dealSlots, legAt, type DealLeg } from "@/components/table/dealSlots";
 import { dealBreath, dealFlight, dealPose } from "@/components/table/dealPose";
 import { useTraceSource } from "@/lib/e2eTrace";
@@ -97,6 +99,14 @@ export function useDeal({
   const dealKey = deal?.key;
   // Bound to its deal: a landing still queued from the last deal's frames must not land the next one.
   const onLanded = useCallback(() => setLast((d) => (d && d.key === dealKey ? { ...d, landed: true } : d)), [dealKey]);
+  useEffect(() => {
+    if (dealKey === undefined || reduceMotion) return;
+    const forced = setTimeout(() => {
+      gateForced("deal");
+      onLanded();
+    }, GATE_WATCHDOG_MS);
+    return () => clearTimeout(forced);
+  }, [dealKey, reduceMotion, onLanded]);
   const cards = deal && arrivals ? deal.legs : [];
   return {
     cards,
