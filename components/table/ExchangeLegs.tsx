@@ -8,7 +8,7 @@ import Animated, {
   type FrameInfo,
   type SharedValue,
 } from "react-native-reanimated";
-import { scheduleOnRN } from "react-native-worklets";
+import { scheduleOnRN, scheduleOnUI } from "react-native-worklets";
 import { CardView } from "@/components/CardView";
 import { BACK_SCALE, CARD_BACK_H, CARD_BACK_W, CARD_H, CARD_W, FIELD_SCALE } from "@/components/cardFaceModel";
 import { FAN_CARD_SCALE, type SeatGeometry } from "@/components/flightPhysics";
@@ -22,6 +22,7 @@ import type { Card } from "@/lib/game/gameEngine";
 import type { ExchangeAnnounceData, ExchangeHold } from "@/lib/game/sharedGameFlow";
 import { ceremonyEndsAt, choiceOpensAt, legPose, legShows, legStage, legTimes, type LegPoints, type LegStage } from "@/lib/game/exchangeTimeline";
 import { useTranslation } from "@/lib/i18n";
+import { armGateWatchdog, gateForced } from "./gateForced";
 import { inBackground } from "./useFlightClock";
 import { designRect, legCard } from "./cardRects";
 import { useCardRect, useCardTable } from "./useCardRects";
@@ -96,6 +97,15 @@ function stepper(
       scheduleOnRN(report.done);
     }
   };
+}
+
+/** A gate released off the frame clock: on the UI thread, through the same latch, so it fires at most once whoever gets there first. */
+function release(run: SharedValue<Run>, gate: "ready" | "done", then: () => void) {
+  "worklet";
+  const r = run.value;
+  if (r[gate]) return;
+  r[gate] = true;
+  scheduleOnRN(then);
 }
 
 function useLegClock(...args: Parameters<typeof stepper>) {
@@ -218,10 +228,22 @@ export function ExchangeLegs({
     (leg: number, s: number) => calls.current.onStage(calls.current.key, leg === 0 ? "receive" : "give", STAGES[s]),
     []
   );
-  const ready = useCallback(() => calls.current.onReady(calls.current.key), []);
+  const [opened, setOpened] = useState(false);
+  const ready = useCallback(() => {
+    setOpened(true);
+    calls.current.onReady(calls.current.key);
+  }, []);
   const done = useCallback(() => {
     if (holdRef.current === undefined) calls.current.onDismiss();
   }, []);
+  const forcedReady = useCallback(() => {
+    gateForced("exchangeReady");
+    ready();
+  }, [ready]);
+  const forcedDone = useCallback(() => {
+    gateForced("exchangeDone");
+    done();
+  }, [done]);
   const mine = (seat: number, card: Card | undefined) => (seat === viewerSeat && card ? [card.id] : []);
   const out = jokers
     ? [announced.loserIdx === viewerSeat ? JOKERS.map((j) => j.id) : [], []]
@@ -270,6 +292,15 @@ export function ExchangeLegs({
       ...(fresh(stages.receive) ? next.jokers : cur.slice(2)),
     ]);
   });
+  useEffect(() => {
+    if (!go || !(goAt.get() < Infinity)) return;
+    return armGateWatchdog(() => scheduleOnUI(release, run, jokers ? "done" : "ready", jokers ? forcedDone : forcedReady));
+  }, [go, goAt, jokers, run, forcedReady, forcedDone]);
+  useEffect(() => {
+    // From the later of the choice and its opening: a choice made before the choice opens still gives only after it.
+    if (jokers || !opened || !chosen || !(choiceAt.get() < Infinity)) return;
+    return armGateWatchdog(() => scheduleOnUI(release, run, "done", forcedDone));
+  }, [jokers, opened, chosen, choiceAt, run, forcedDone]);
   useEffect(() => {
     if (run.get().done) frames.setActive(false);
   });

@@ -17,6 +17,7 @@ import { handCountOf } from "@/shared/protocol";
 import { seatPoint, type SeatGeometry } from "@/components/flightPhysics";
 import type { HandDeal } from "@/components/table/hand";
 import { dealArrivalsMs, dealEndMs } from "@/lib/game/dealTimeline";
+import { armGateWatchdog, gateForced } from "@/components/table/gateForced";
 import { dealLegs, dealSlotOf, dealSlots, legAt, type DealLeg } from "@/components/table/dealSlots";
 import { dealBreath, dealFlight, dealPose } from "@/components/table/dealPose";
 import { useTraceSource } from "@/lib/e2eTrace";
@@ -97,6 +98,13 @@ export function useDeal({
   const dealKey = deal?.key;
   // Bound to its deal: a landing still queued from the last deal's frames must not land the next one.
   const onLanded = useCallback(() => setLast((d) => (d && d.key === dealKey ? { ...d, landed: true } : d)), [dealKey]);
+  useEffect(() => {
+    if (dealKey === undefined || reduceMotion) return;
+    return armGateWatchdog(() => {
+      gateForced("deal");
+      onLanded();
+    });
+  }, [dealKey, reduceMotion, onLanded]);
   const cards = deal && arrivals ? deal.legs : [];
   return {
     cards,
@@ -152,7 +160,13 @@ function DealtBack({ legs, scale, clock }: { legs: readonly DealLeg[]; scale: nu
 function dealStepper(clock: SharedValue<number>, origin: SharedValue<number>, startMs: number, endMs: number, started: (at: number) => void, landed: () => void) {
   return (frame: FrameInfo) => {
     "worklet";
-    if (clock.value >= endMs) return;
+    if (clock.value >= endMs) {
+      if (origin.value < 0) {
+        origin.value = frame.timestamp;
+        scheduleOnRN(landed);
+      }
+      return;
+    }
     if (origin.value < 0) {
       origin.value = frame.timestamp;
       scheduleOnRN(started, frame.timestamp + startMs);
