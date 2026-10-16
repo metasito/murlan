@@ -77,6 +77,15 @@ describe("brief", () => {
     assert.match(role("review"), /contradicts a Definition-of-done line is Blocking, quoted, even when the box is ticked/);
   });
 
+  test("the reviewer holds a guard that misses a common input and an unasked player-visible change, and shows what it checked", () => {
+    const review = role("review");
+    assert.match(review, /when a box's deliverable is a check, scan or guard, a common input it misses is an unmet box/);
+    assert.match(review, /player-visible behaviour the change removes or alters that the issue did not ask for/);
+    assert.match(review, /Before posting, move to Blocking every Nit or Pre-existing item that names an input or sequence this change introduced/);
+    assert.match(review, /## Checked/);
+    assert.doesNotMatch(review, /what checked out is not reported/);
+  });
+
   test("a later round reviews only the fix and checks the earlier Blocking findings", () => {
     assert.match(role("review"), /does it do what the Definition of done asks/);
     assert.match(role("review"), /Any other `<base>` is a later round\. Review only the fix/);
