@@ -83,7 +83,8 @@ export default function GameScreen() {
 
   // Pass and play seats several humans at one device, so the table belongs to
   // whichever of them is on move; a bot's turn leaves it with the first human.
-  const seatOnMove = gameState?.exchangePhase?.active
+  // The exchange winner keeps it until the ceremony ends, not just the phase.
+  const seatOnMove = gameState?.exchangePhase && (gameState.exchangePhase.active || exchangeAnnouncing)
     ? gameState.exchangePhase.winnerIdx
     : gameState?.currentTurnIndex;
   const humanIdx =
