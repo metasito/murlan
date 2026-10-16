@@ -12,6 +12,19 @@ jest.mock('@/lib/accessibility', () => ({
   getMotionPreference: () => 'off',
 }));
 
+// While held, every UI-to-JS report waits in `queue` until the test lets the hop land.
+const mockHop: { held: boolean; queue: (() => void)[] } = { held: false, queue: [] };
+jest.mock('react-native-worklets', () => {
+  const actual = jest.requireActual('react-native-worklets') as typeof import('react-native-worklets');
+  return {
+    ...actual,
+    scheduleOnRN: (fn: (...args: unknown[]) => void, ...args: unknown[]) =>
+      mockHop.held ? mockHop.queue.push(() => fn(...args)) : actual.scheduleOnRN(fn, ...args),
+  };
+});
+
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import { useClockFade } from '@/components/table/useClockFade';
 import { bootFeedback } from './helpers/feedback';
 import { PAIR, tableAfter } from './helpers/landing';
 
@@ -103,4 +116,44 @@ describe('the turn clocks across a hand-off', () => {
     expect(clocks(view)).toEqual([[2, 1]]);
     await view.unmount();
   });
+
+  function Clock({ clock }: { clock: string | null }) {
+    const { shown, opacity } = useClockFade(clock, (c) => c);
+    const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+    return shown === null ? null : <Animated.View testID="clock" style={style} />;
+  }
+
+  for (const [firstFadeMs, onMs, what] of [[48, 0, 'cut short'], [150, 150, 'run out']] as const) {
+    it(`a fade ${what} inside one UI-to-JS hop cannot end the fade after it: off, on, off`, async () => {
+      const view = await render(<Clock clock="a" />);
+      await act(async () => {
+        jest.advanceTimersByTime(1500);
+      });
+      mockHop.held = true;
+      await act(async () => view.rerender(<Clock clock={null} />));
+      await act(async () => {
+        jest.advanceTimersByTime(firstFadeMs);
+      });
+      await act(async () => view.rerender(<Clock clock="a" />));
+      await act(async () => {
+        jest.advanceTimersByTime(onMs);
+      });
+      await act(async () => view.rerender(<Clock clock={null} />));
+      expect(mockHop.queue.length).toBeGreaterThan(0);
+      mockHop.held = false;
+      await act(async () => mockHop.queue.splice(0).forEach((land) => land()));
+      await act(async () => {
+        jest.advanceTimersByTime(32);
+      });
+      const fading = view.queryByTestId('clock', all);
+      expect(fading).not.toBeNull();
+      expect(opacity(fading!)).toBeGreaterThan(0);
+      expect(opacity(fading!)).toBeLessThan(1);
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+      expect(view.queryByTestId('clock', all)).toBeNull();
+      await view.unmount();
+    });
+  }
 });

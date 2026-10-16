@@ -18,24 +18,26 @@ export function useClockFade<T>(
 ): { shown: T | null; opacity: SharedValue<number> } {
   const reduced = usePrefersReducedMotion();
   const on = clock !== null;
-  const [held, setHeld] = useState({ on, last: clock, leaving: false });
+  const [held, setHeld] = useState({ on, last: clock, leaving: false, fade: 0 });
   if (on !== held.on || (clock !== null && (held.last === null || key(clock) !== key(held.last)))) {
-    setHeld({ on, last: clock ?? held.last, leaving: !on && !reduced });
+    setHeld({ on, last: clock ?? held.last, leaving: !on && !reduced, fade: held.fade + (on ? 0 : 1) });
   } else if (reduced && held.leaving) {
     setHeld({ ...held, leaving: false });
   }
   // Unmounting hides a clock under reduced motion, so its opacity stays at 1 for the next to mount at.
   const opacity = useSharedValue(on || reduced ? 1 : 0);
-  const gone = useCallback(() => setHeld((h) => (h.on ? h : { ...h, leaving: false })), []);
+  // A fade's report lands a hop after it ends, past any later fade the clock went off for meanwhile.
+  const gone = useCallback((fade: number) => setHeld((h) => (h.on || h.fade !== fade ? h : { ...h, leaving: false })), []);
+  const fade = held.fade;
   useEffect(() => {
     if (reduced) opacity.value = 1;
     else if (on) opacity.value = withDelay(Handoff.clockOutMs, withTiming(1, { duration: Handoff.clockInMs }), ReduceMotion.Never);
     else {
       opacity.value = withTiming(0, { duration: Handoff.clockOutMs }, () => {
-        scheduleOnRN(gone);
+        scheduleOnRN(gone, fade);
       });
     }
-  }, [on, reduced, opacity, gone]);
+  }, [on, reduced, opacity, gone, fade]);
   const shown = on ? clock : held.leaving ? held.last : null;
   const drawn = shown !== null;
   const read = useCallback(() => [seat ?? "", drawn ? opacity.value : 0] as const, [seat, drawn, opacity]);
