@@ -415,6 +415,55 @@ describe("the next-round vote deadline", () => {
     assert.equal(game.playerMap[1], "besi", "besi could not reclaim the seat");
   });
 
+  test("a vote landing while the deadline expires never abandons the match", async (t) => {
+    const { io, emitted, game, clock } = await roundJustEnded(t);
+    await vote(io, "ana");
+    t.mock.method(roomStore, "releaseSeat", async (_roomId: string, userId: string) => {
+      if (userId === "besi") await vote(io, "besi");
+      return null;
+    });
+
+    clock.advance(30_000);
+    await sleep(20);
+
+    assert.ok(!emitted.some((e) => e.event === "game:player_left"), "a vacate ran against the hand the vote dealt");
+    assert.equal(activeGames.get(ROOM), game, "the match was disposed");
+    assert.equal(game.gameState.roundOver, false, "the next round never dealt");
+  });
+
+  test("a silent seat that votes before its turn to go keeps its seat", async (t) => {
+    const clock = fakeClock();
+    setClock(clock);
+    t.after(() => setClock());
+    t.after(() => clearAllTimersForUser("cleo", ROOM));
+    const { io } = stubIo();
+    t.mock.method(roomStore, "getRoomById", async () => ({ ...room, maxPlayers: 3 }));
+    t.mock.method(roomStore, "updateRoomStatus", async () => {});
+    t.mock.method(roomStore, "upsertRoomPlayer", async () => {});
+    t.mock.method(roomStore, "releaseSeat", async (_roomId: string, userId: string) => {
+      if (userId === "besi") await vote(io, "cleo");
+      return null;
+    });
+    const game = baseGame({
+      maxPlayers: 3,
+      gameState: finishedHand(
+        [...twoHumans(), player("player_2", "Cleo")],
+        ["player_0", "player_1", "player_2"]
+      ),
+      playerMap: { 0: "ana", 1: "besi", 2: "cleo" },
+    });
+    activeGames.set(ROOM, game);
+    await handleRoundOver(io, ROOM, game, quietWriters);
+    await vote(io, "ana");
+
+    clock.advance(30_000);
+    await sleep(20);
+
+    assert.equal(game.playerMap[1], undefined, "besi never voted and still holds the seat");
+    assert.equal(game.playerMap[2], "cleo", "cleo was vacated after her vote counted");
+    assert.equal(game.gameState.roundOver, false, "ana's and cleo's votes did not deal");
+  });
+
   test("a rejoin at the results screen neither clears nor restarts it", async (t) => {
     const { io, emitted, clock } = await roundJustEnded(t);
     const armedAt = deadline("voteDeadline", ROOM);

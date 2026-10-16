@@ -474,7 +474,12 @@ async function expireVoteDeadline(io: SocketServer, roomId: string): Promise<voi
     const game = activeGames.get(roomId);
     if (!game || !game.gameState.roundOver || game.matchOver || rematchRefused(game)) return;
     const silent = Object.values(game.playerMap).filter((userId) => !game.rematchVotes.has(userId));
+    // Votes keep landing through every await below, so each seat is judged
+    // again just before it goes, and leaves the map before its row is released.
     for (const userId of silent) {
+      if (activeGames.get(roomId) !== game || !game.gameState.roundOver) break;
+      if (game.rematchVotes.has(userId)) continue;
+      await vacateSeat(io, roomId, userId, roundOverWriters);
       await roomStore
         .releaseSeat(roomId, userId)
         .catch((err) =>
@@ -483,7 +488,6 @@ async function expireVoteDeadline(io: SocketServer, roomId: string): Promise<voi
             "Failed to delete the room_players row after the vote deadline — the seat stays counted as taken"
           )
         );
-      await vacateSeat(io, roomId, userId, roundOverWriters);
     }
     await dealIfSeatLeftGateClosed(io, roomId);
     logger.info({ roomId, vacated: silent }, "Next-round vote deadline expired");
