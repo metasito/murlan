@@ -283,6 +283,13 @@ export function ledger(io = {}) {
   /** The report row of every ticket this run closed — what the exit summary prints. */
   const tickets = [];
 
+  const toReport = (runId, sha, report) => {
+    const file = reportPath(runId);
+    const loop = sha ? ` · loop ${sha.slice(0, 7)}` : "";
+    if (!exists(file)) write(file, `# queue-loop ${runId.replace(/-(\d\d)-(\d\d)$/, " $1:$2")}${loop}\n\n`);
+    append(file, `${reportRow(report, PLAIN())}\n`);
+  };
+
   return {
     get totals() {
       return totalsOf(rows);
@@ -335,10 +342,7 @@ export function ledger(io = {}) {
 
       const bill = billOf(entry, prior);
       const report = { number, title: title ?? `ticket #${number}`, outcome, pr, ms: bill.ms, cost: bill.cost, why: why ?? undefined };
-      const file = reportPath(runId);
-      const sha = loopSha ? ` · loop ${loopSha.slice(0, 7)}` : "";
-      if (!exists(file)) write(file, `# queue-loop ${runId.replace(/-(\d\d)-(\d\d)$/, " $1:$2")}${sha}\n\n`);
-      append(file, `${reportRow(report, PLAIN())}\n`);
+      toReport(runId, loopSha, report);
 
       if (ENDS_TICKET.has(outcome)) tickets.push(report);
       rows.push(entry);
@@ -346,8 +350,8 @@ export function ledger(io = {}) {
     },
     /**
      * The row a session that died with its supervisor never wrote. Its start's `run_id` is what
-     * closes the start in `killedStarts`; it is the dead run's, so it joins neither this run's
-     * report nor its totals.
+     * closes the start in `killedStarts`; it is the dead run's, so it goes to that run's report
+     * and joins neither this run's report nor its totals.
      *
      * @param {{n: number, phase: string|null, started: string, run_id: string|null, loop_sha: string|null, ms: number}} k
      * @param {{phases: Record<string, number>, estimatedCost: number|null, model: string|null, version: string|null}} run
@@ -372,6 +376,7 @@ export function ledger(io = {}) {
       });
       mkdir();
       append(ledgerPath(), `${JSON.stringify(entry)}\n`);
+      if (k.run_id) toReport(k.run_id, k.loop_sha, { number: k.n, title: `ticket #${k.n}`, outcome: "killed", pr: null, ms: k.ms, cost: entry.cost });
       return entry;
     },
     /** The closing total under the night's rows, and the recap above them, under the title. */

@@ -776,17 +776,18 @@ export function sessionView(screen, { number, round }) {
 }
 
 /**
- * A killed session's run, replayed from its ticket's stream log: the lines after the last `init`,
- * since every session of the ticket appends to the one log. Its lines carry no clock, so its whole
- * time goes to the phase it was spawned at; one that wrote nothing after its start (`ms` 0) would
- * otherwise be billed the session before it.
+ * A killed session's run, replayed from its ticket's stream log: the lines from the last session
+ * start, since every session of the ticket appends to the one log. A session writes its
+ * `SessionStart` hook lines before its `init`, so taking `init` alone bills one killed between the
+ * two for the session before it. Its lines carry no clock, so its whole time goes to the phase it
+ * was spawned at; one that wrote nothing after its start (`ms` 0) has no lines of its own.
  *
  * @param {{phase: string|null, ms: number}} k a `killedStarts` entry
  * @param {string} stream
  */
 export function killedRun(k, stream) {
   const lines = stream.split("\n");
-  const from = k.ms > 0 ? lines.findLastIndex((l) => readLine(l)?.kind === "init") : -1;
+  const from = k.ms > 0 ? lines.findLastIndex(opensSession) : -1;
   let state = sessionStart(k.phase, 0);
   if (from >= 0) {
     for (const line of lines.slice(from)) state = reduceSession(state, line, { now: 0, at: k.phase, planned: "" }).state;
@@ -797,6 +798,16 @@ export function killedRun(k, stream) {
     model: state.model,
     version: state.version,
   };
+}
+
+function opensSession(line) {
+  if (readLine(line)?.kind === "init") return true;
+  try {
+    const e = JSON.parse(line);
+    return e.type === "system" && e.subtype === "hook_started" && e.hook_event === "SessionStart";
+  } catch {
+    return false;
+  }
 }
 
 /** What `runTicket` reports: a finished session's state, flattened with its exit. */

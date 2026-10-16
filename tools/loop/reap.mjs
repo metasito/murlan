@@ -377,8 +377,7 @@ export function worktreeOrphans(table, { worktree, checkout = checkoutRoot(), se
       isNode(p.name) &&
       !ancestors.has(p.pid) &&
       !keep.has(p.pid) &&
-      !isSessionHost(p.commandLine, { platform }) &&
-      normalizePath(p.commandLine ?? "", platform).includes(root)
+      ownedByTooling(p.commandLine, [root], platform)
   );
 }
 
