@@ -314,6 +314,14 @@ const STEPS = {
     const { action, reason, head } = settled;
     if (action === "already-merged") return { kind: "landed", n, why: reason, head };
     if (action === "hand-back") return redRound({ n, why: reason, head }, input);
+    // The floor: one rebase round per ticket. A branch that conflicts again is main racing it, or a
+    // resolution that did not take, and either way a second round is a loop.
+    if (action === "rebase") {
+      if (input.tally.rebases) return { kind: "park", n, phase: "E", why: `${reason} again after its one rebase round`, head };
+      if (input.posted === undefined) return ask("posted");
+      if (!input.posted) return { kind: "park", n, phase: "E", why: `${reason}, and its CONFLICT comment could not be posted`, head };
+      return { kind: "rebase", n, why: reason, head };
+    }
     // A red whose CI-RED the tracker would not take: no round is spent until a later settle posts it.
     if (action === "hold") {
       const round = redRound({ n, why: reason, head }, input);
@@ -339,7 +347,7 @@ function capped(action, input) {
   const { kind } = action;
   const park = (why, phase) => ({ kind: "park", n: action.n, phase, why, head: action.head, instead: action });
 
-  if (asked && action.n != null && (kind === "handoff" || kind === "retry" || kind === "hold")) {
+  if (asked && action.n != null && (kind === "handoff" || kind === "retry" || kind === "rebase" || kind === "hold")) {
     return { ...park("parked by owner", action.phase ?? own?.phase ?? "?"), byOwner: true };
   }
   if (kind !== "handoff" && kind !== "retry" && action.wait !== "undeclared") return action;
@@ -411,6 +419,7 @@ function tallied(action, { loop, limits, step, now }) {
     }
     case "handoff":
     case "retry":
+    case "rebase":
       return { ...action, loop: { ...unheld, overloads: 0, pinned: action.n } };
     case "repick":
       return { ...action, loop: { ...loop, pinned: pinned === action.n ? null : pinned } };

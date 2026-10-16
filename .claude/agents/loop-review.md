@@ -18,6 +18,9 @@ Any other `<base>` is a later round. Review only the fix the `Change:` command p
 earlier Blocking finding listed after the brief fixed, and does the fix break anything? Read every
 caller of what it changes.
 
+A `Change:` that is a `range-diff` is a rebase round: review only how each conflict was resolved.
+Does every rebased commit still do what it did before, against main as it is now?
+
 Answer under `## Blocking`, `## Nits` and `## Pre-existing`. Blocking is only: a bug, with the
 input or sequence that makes it go wrong; a Definition-of-done box left unmet, quoted; a regression
 or red CI run this change causes; a security or data-loss risk. A box built for its intent because

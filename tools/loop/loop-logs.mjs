@@ -24,6 +24,7 @@ export const ARTEFACTS = {
   ciTail: { path: (t, dir = DIR) => path.join(dir, `ci-${t}.log`), name: /^ci-\d+\.log$/, ephemeral: true },
   ciRedNote: { path: (t, dir = DIR) => path.join(dir, `ci-red-${t}.md`), name: /^ci-red-\d+\.md$/, ephemeral: true },
   parkNote: { path: (t, dir = DIR) => path.join(dir, `park-${t}.md`), name: /^park-\d+\.md$/, ephemeral: true },
+  conflictNote: { path: (t, dir = DIR) => path.join(dir, `conflict-${t}.md`), name: /^conflict-\d+\.md$/, ephemeral: true },
   leftover: { path: (t, dir = DIR) => path.join(dir, `leftover-${t}.patch`), name: /^leftover-\d+\.patch$/, ephemeral: false },
   report: { path: (runId, dir = DIR) => path.join(dir, `run-${runId}.md`), name: /^run-.+\.md$/, ephemeral: false },
   // `_` so every builder takes the same two arguments: the table is only useful if one loop can
@@ -36,6 +37,7 @@ export const streamLog = ARTEFACTS.stream.path;
 export const ciLogPath = ARTEFACTS.ciTail.path;
 export const ciRedNotePath = ARTEFACTS.ciRedNote.path;
 export const parkNotePath = ARTEFACTS.parkNote.path;
+export const conflictNotePath = ARTEFACTS.conflictNote.path;
 export const reportPath = ARTEFACTS.report.path;
 export const leftoverPath = ARTEFACTS.leftover.path;
 export const ledgerPath = ARTEFACTS.ledger.path;
@@ -394,7 +396,7 @@ export const handoffIn = ({ handoff }) => (handoff ? { phase: handoff.phase, why
 
 /** @param {string} outcome @param {string|null|undefined} why @param {object|null} [error] */
 export const parkReasonOf = (outcome, why, error = null) =>
-  outcome === "landed" || outcome === "closed" || outcome === "retry" || outcome === "pushed" || outcome === "armed"
+  outcome === "landed" || outcome === "closed" || outcome === "retry" || outcome === "rebase" || outcome === "pushed" || outcome === "armed"
     ? null
     : outcome === "parked" && error && why
       ? `${why} — ${errorLine(error)}`
@@ -486,6 +488,7 @@ export function tallyOf(rows) {
     handoffWhy: /** @type {string|null} */ (null),
     lastRedHead: /** @type {string|null} */ (null),
     retries: 0,
+    rebases: 0,
     undeclared: 0,
     armedFlake: /** @type {object|null} */ (null),
   };
@@ -508,6 +511,11 @@ export function tallyOf(rows) {
       t.handoffWhy = null;
       t.lastRedHead = r.head ?? null;
       fixing = true;
+    } else if (r.outcome === "rebase") {
+      t.rebases += 1;
+      t.handoffsThisRound = 0;
+      t.lastHandoff = null;
+      t.handoffWhy = null;
     } else if (r.outcome === "handoff") {
       t.handoffsThisRound += 1;
       const handed = handoffIn(r);

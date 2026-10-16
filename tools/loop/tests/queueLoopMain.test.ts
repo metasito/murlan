@@ -2374,7 +2374,7 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
     }, ledger);
     const first = await runOnce(conflicted);
     assert.equal(first.outcome, "rebase");
-    assert.equal(first.loop.pinned, 42);
+    assert.equal((first.loop as { pinned: number | null }).pinned, 42);
     assert.deepEqual(posted, [[42, "abc1234"]]);
     assert.deepEqual(ledger.map((x) => x.outcome), ["pushed", "rebase"]);
 

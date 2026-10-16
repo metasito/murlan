@@ -55,6 +55,7 @@ import {
   leftoverPath,
   ledgerPath,
   ledger as openLedger,
+  conflictNotePath,
   parkNotePath,
   pendingReparks,
   prune as pruneLogs,
@@ -1054,7 +1055,7 @@ async function preflight(workspace, pinned) {
 const HELD_AS = { preflight: "hold", usage: "refused", api: "overloaded", undeclared: "undeclared" };
 
 /** The passes that leave the ticket standing, which the owner's park takes over. */
-const PARKABLE = new Set(["handoff", "retry", "refused", "overloaded", "hold", "undeclared"]);
+const PARKABLE = new Set(["handoff", "retry", "rebase", "refused", "overloaded", "hold", "undeclared"]);
 
 /** What `main` says over each held pass, and the row it waits on. */
 const HOLDS = {
@@ -1091,7 +1092,7 @@ const HOLDS = {
  * @param {string|null} [at] the phase a handoff said the next process starts at
  * @param {{failures: number, holds: number, waits: number, overloads: number, pinned: number|null}} [loop]
  *   the run's counters, which the pass returns updated
- * @returns {Promise<{outcome: "landed"|"closed"|"parked"|"stop"|"hold"|"retry"|"refused"|"overloaded"|"undeclared"|"handoff"|"restart",
+ * @returns {Promise<{outcome: "landed"|"closed"|"parked"|"stop"|"hold"|"retry"|"rebase"|"refused"|"overloaded"|"undeclared"|"handoff"|"restart",
  *   loop: object, halt: string|null, ticket?: number, why?: string, until?: number, hold?: number, byOwner?: boolean,
  *   cwd?: string|null, branch?: string|null, pr?: number, files?: number, phase?: string, run?: any, size?: string|null}>}
  */
@@ -1268,13 +1269,16 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
   // what CI answers.
   const head = settled.head ?? facts.pushed?.sha ?? null;
   const owned = owner();
-  const verdict = decideAt("settled", { route: ticket, settled: { ...settled, head }, tally: ledger.tally(n), ...owned });
+  const judging = { route: ticket, settled: { ...settled, head }, tally: ledger.tally(n), ...owned };
+  let verdict = decideAt("settled", judging);
+  // The CONFLICT comment is what routes the next pass to the rebase round, as CI-RED routes a fix round.
+  if (verdict.kind === "ask") verdict = decideAt("settled", { ...judging, posted: tracker.conflict(n, head) });
   const red = verdict.instead ?? verdict;
-  if (red.kind === "retry" || red.kind === "hold") {
-    record({ number: n, outcome: red.kind === "hold" ? HELD_AS[red.wait] : "retry", why: settled.reason, run: billed, pr: action.pr, merged: false, files: files(), head, flake: settled.flake ?? null });
+  if (red.kind === "retry" || red.kind === "rebase" || red.kind === "hold") {
+    record({ number: n, outcome: red.kind === "hold" ? HELD_AS[red.wait] : red.kind, why: settled.reason, run: billed, pr: action.pr, merged: false, files: files(), head, flake: settled.flake ?? null });
     if (verdict.kind === "park") return parkOver(verdict, owned.own, red.kind === "hold" ? streamLog(n) : run.log);
     // The worktree and the run come with it: the next round works in that worktree.
-    if (verdict.kind === "retry") {
+    if (verdict.kind === "retry" || verdict.kind === "rebase") {
       return pass(verdict, { cwd: after?.cwd ?? null, branch: after?.branch ?? facts.pushed.head, pr: action.pr, sha: head, files: files(), run, size });
     }
     return pass(verdict);
@@ -1383,6 +1387,17 @@ function realPorts(book, screen, events) {
     pushedPr,
     settle,
     park,
+    conflict: (number, head) => {
+      try {
+        mkdirSync(DIR, { recursive: true });
+        writeFileSync(conflictNotePath(number), `CONFLICT ${head}\nThe branch conflicts with main: the next process rebases it onto origin/main.`, "utf8");
+        ghTracker().comment(number, conflictNotePath(number));
+        return true;
+      } catch (err) {
+        events.log(`#${number}: could not post CONFLICT — ${String(err.message).split("\n")[0]}`, "conflict");
+        return false;
+      }
+    },
     repark: (number, steps) => repark(number, steps),
     /**
      * **The claim comes off here, and nowhere else on the success paths**, with the worktree
