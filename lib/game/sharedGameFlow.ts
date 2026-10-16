@@ -58,8 +58,8 @@ export function exchangeAnnouncementOf(prev: GameState | null, next: GameState):
     const given = phase.cardToLoser;
     return received || given ? buildExchangeAnnounce(next.players, phase, { given, received }) : null;
   }
-  const jokersBefore = !!prev && !prev.roundOver && prev.exchangePhase?.twoJokerException === true;
-  return phase.twoJokerException && !next.roundOver && !jokersBefore ? buildExchangeAnnounce(next.players, phase) : null;
+  const jokersBefore = prev?.exchangePhase?.twoJokerException === true && (!prev.roundOver || next.roundOver);
+  return phase.twoJokerException && !jokersBefore ? buildExchangeAnnounce(next.players, phase) : null;
 }
 
 export interface ExchangeAnnouncement {

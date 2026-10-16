@@ -82,7 +82,7 @@ const rows: [string, GameState | null, GameState, ReturnType<typeof exchangeAnno
   ["8: a fresh deal opening the phase, none before", state(undefined, true), state(open({ cardFromLoser: THREE })), null],
   ["9: the same state again", same, same, null],
   ["a two-joker round over, re-sent", state(jokers, true), state(jokers, true), null],
-  ["a two-joker round over, seen first", null, state(jokers, true), null],
+  ["a two-joker round over, seen first", null, state(jokers, true), jokersAnnounced],
 ];
 
 for (const [name, prev, next, expected] of rows) {
