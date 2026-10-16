@@ -1,7 +1,7 @@
 // tests/native/exchangeWatchdog.test.tsx — an exchange whose frame clock never advances still opens its choice and closes (#1624).
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
-import { AppState } from 'react-native';
+import { AppState, type AppStateStatus } from 'react-native';
 import { act, render } from '@testing-library/react-native';
 
 jest.mock('react-native-reanimated', () => {
@@ -27,6 +27,7 @@ const reported = () => jest.mocked(reportError).mock.calls.map(([e]) => (e as Er
 
 describe('an exchange whose frame clock never advances', () => {
   let was: typeof AppState.currentState;
+  const subscribe = AppState.addEventListener;
   beforeEach(() => {
     jest.useFakeTimers();
     jest.mocked(reportError).mockClear();
@@ -34,6 +35,7 @@ describe('an exchange whose frame clock never advances', () => {
   });
   afterEach(() => {
     AppState.currentState = was;
+    AppState.addEventListener = subscribe;
     jest.useRealTimers();
   });
 
@@ -91,6 +93,32 @@ describe('an exchange whose frame clock never advances', () => {
       dismissed: 0,
       reported: [],
     });
+    await view.unmount();
+  });
+
+  it('counts no hidden time: a watchdog running when the page hides waits a full span once it is back', async () => {
+    const listeners = new Set<(state: AppStateStatus) => void>();
+    AppState.addEventListener = (_type, handler) => {
+      listeners.add(handler);
+      return { remove: () => listeners.delete(handler) };
+    };
+    const pageGoes = (state: AppStateStatus) =>
+      act(async () => {
+        AppState.currentState = state;
+        listeners.forEach((h) => h(state));
+      });
+    const onReady = jest.fn();
+    const view = await render(<Legs announced={announced()} onReady={onReady} />);
+    await advance(GATE_WATCHDOG_MS / 2);
+    await pageGoes('background');
+    await advance(GATE_WATCHDOG_MS * 3);
+    expect({ ready: onReady.mock.calls.length, reported: reported() }).toEqual({ ready: 0, reported: [] });
+
+    await pageGoes('active');
+    await advance(GATE_WATCHDOG_MS - 100);
+    expect({ ready: onReady.mock.calls.length, reported: reported() }).toEqual({ ready: 0, reported: [] });
+    await advance(200);
+    expect({ ready: onReady.mock.calls.length, reported: reported() }).toEqual({ ready: 1, reported: ['table gate forced: exchangeReady'] });
     await view.unmount();
   });
 

@@ -21,9 +21,8 @@ import { event, withdraw } from "@/lib/device/feedback";
 import type { Card } from "@/lib/game/gameEngine";
 import type { ExchangeAnnounceData, ExchangeHold } from "@/lib/game/sharedGameFlow";
 import { ceremonyEndsAt, choiceOpensAt, legPose, legShows, legStage, legTimes, type LegPoints, type LegStage } from "@/lib/game/exchangeTimeline";
-import { GATE_WATCHDOG_MS } from "@/lib/game/gateWatchdog";
 import { useTranslation } from "@/lib/i18n";
-import { gateForced } from "./gateForced";
+import { armGateWatchdog, gateForced } from "./gateForced";
 import { inBackground } from "./useFlightClock";
 import { designRect, legCard } from "./cardRects";
 import { useCardRect, useCardTable } from "./useCardRects";
@@ -295,17 +294,12 @@ export function ExchangeLegs({
   });
   useEffect(() => {
     if (!go || !(goAt.get() < Infinity)) return;
-    const forced = setTimeout(
-      () => scheduleOnUI(release, run, jokers ? "done" : "ready", jokers ? forcedDone : forcedReady),
-      GATE_WATCHDOG_MS
-    );
-    return () => clearTimeout(forced);
+    return armGateWatchdog(() => scheduleOnUI(release, run, jokers ? "done" : "ready", jokers ? forcedDone : forcedReady));
   }, [go, goAt, jokers, run, forcedReady, forcedDone]);
   useEffect(() => {
     // From the later of the choice and its opening: a choice made before the choice opens still gives only after it.
     if (jokers || !opened || !chosen || !(choiceAt.get() < Infinity)) return;
-    const forced = setTimeout(() => scheduleOnUI(release, run, "done", forcedDone), GATE_WATCHDOG_MS);
-    return () => clearTimeout(forced);
+    return armGateWatchdog(() => scheduleOnUI(release, run, "done", forcedDone));
   }, [jokers, opened, chosen, choiceAt, run, forcedDone]);
   useEffect(() => {
     if (run.get().done) frames.setActive(false);

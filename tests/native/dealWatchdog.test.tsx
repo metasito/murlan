@@ -1,6 +1,7 @@
 // tests/native/dealWatchdog.test.tsx — a deal whose frames never run still releases the exchange, and says so (#1624).
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
+import { AppState } from 'react-native';
 import { act, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -48,12 +49,15 @@ const exchange: GameState = {
 const prompt = () => screen.queryByTestId('exchange-prompt');
 
 describe('a deal whose frame clock never advances', () => {
+  let was: typeof AppState.currentState;
   beforeEach(async () => {
     jest.useFakeTimers();
     jest.mocked(reportError).mockClear();
+    was = AppState.currentState;
     await bootFeedback();
   });
   afterEach(() => {
+    AppState.currentState = was;
     jest.useRealTimers();
   });
 
@@ -69,6 +73,19 @@ describe('a deal whose frame clock never advances', () => {
     await steps(500 + choiceOpensAt(false) + 200);
     expect(prompt()).not.toBeNull();
     expect(jest.mocked(reportError).mock.calls.map(([e]) => (e as Error).message)).toEqual(['table gate forced: deal']);
+    await view.unmount();
+  }, 60_000);
+
+  it('forces nothing while the page is hidden', async () => {
+    const view = await render(
+      <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } }}>
+        <GameTable gameState={exchange} viewerSeat={0} onPlay={() => {}} onPass={() => {}} onQuit={() => {}} onExchangeGive={() => {}} />
+      </SafeAreaProvider>
+    );
+    await act(async () => jest.advanceTimersByTime(500));
+    AppState.currentState = 'background';
+    await act(async () => jest.advanceTimersByTime(GATE_WATCHDOG_MS * 3));
+    expect({ prompt: prompt() !== null, reported: jest.mocked(reportError).mock.calls.length }).toEqual({ prompt: false, reported: 0 });
     await view.unmount();
   }, 60_000);
 });
