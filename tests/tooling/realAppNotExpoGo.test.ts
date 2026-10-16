@@ -55,7 +55,11 @@ function topLevelCommands(rel: string): string[] {
 
 /** Everything after the `---` that ends the config header. */
 function flowBody(rel: string, src: (rel: string) => string = read): string {
-  return src(rel).split(/^---$/m).slice(1).join("---");
+  return src(rel)
+    .split(/^---$/m)
+    .slice(1)
+    .join("---")
+    .replace(/^- runFlow:(?:\n {4}file: (_\w+\.yaml)(?:\n {4,}.*)*)/gm, (_m, file) => flowBody(`.maestro/${file}`, src));
 }
 
 /** The one top-level block containing a device-wide `setOrientation: LANDSCAPE_*`. */

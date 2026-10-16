@@ -22,6 +22,15 @@ import path from "node:path";
 
 const FLOW_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", ".maestro");
 
+/** A flow's text with each `runFlow` of a `_*.yaml` sibling replaced by that file's commands. */
+function withIncludes(text: string): string {
+  return text.replace(/^- runFlow:(?:\n {4}\S.*|\n {6}.*)*|^- runFlow: (_\w+\.yaml)$/gm, (block, bare) => {
+    const file = bare ?? block.match(/file: (_\w+\.yaml)/)?.[1];
+    if (!file) return block;
+    return readFileSync(path.join(FLOW_DIR, file), "utf8").split(/^---$/m).slice(1).join("---");
+  });
+}
+
 /** The line each `tapOn` starts on, and every line of the block it owns. */
 function tapsIn(lines: string[]): { line: number; block: string[] }[] {
   const taps: { line: number; block: string[] }[] = [];
@@ -48,7 +57,7 @@ function tapsIn(lines: string[]): { line: number; block: string[] }[] {
 function flowsReachingTheTable(): { name: string; lines: string[]; rotation: number }[] {
   const found = [];
   for (const name of readdirSync(FLOW_DIR).filter((f) => /\.ya?ml$/.test(f))) {
-    const lines = readFileSync(path.join(FLOW_DIR, name), "utf8").split("\n");
+    const lines = withIncludes(readFileSync(path.join(FLOW_DIR, name), "utf8")).split("\n");
     const rotation = lines.findIndex((l) => /^\s*-?\s*setOrientation:\s*LANDSCAPE/.test(l));
     if (rotation !== -1) found.push({ name, lines, rotation });
   }

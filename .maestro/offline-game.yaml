@@ -47,90 +47,11 @@ appId: "${MAESTRO_APP_ID}"
       AppleLanguages: "(it-IT)"
       AppleLocale: "it_IT"
       MurlanE2EOpener: "1"
-# Waited for and exited on the Skip button, which the header carries on every beat.
-# "GUIDA RAPIDA" is the card title of an `info` beat only — a `play` beat titles the card
-# after itself and `complete` has its own — so gating on it would skip the block on most of
-# the tutorial, and waiting for it to go would be satisfied by the tutorial merely advancing
-# a beat.
-#
-# The tap targets the button's accessibilityLabel, not its visible "Salta": the Text child is
-# `a11yHidden` on purpose, so the label is the only node the control exposes.
+- runFlow: _launch.yaml
 - runFlow:
-    commands:
-      # Waited for, not asked about. `clearState` means the tutorial has never
-      # been seen, so on a cleared launch it always comes — but it is *pushed
-      # over* home rather than rendered instead of it, and home gets there
-      # first. A wait on "either screen" was satisfied by home, this block found
-      # nothing and skipped itself, and the assertions after it ran against a
-      # tutorial that arrived in the meantime (#353).
-      #
-      # A CI device is slower than a developer's on a cold start, and running
-      # out of budget here reads identically to the app never loading at all.
-      - extendedWaitUntil:
-          visible: "Salta il tutorial"
-          timeout: 180000
-      - tapOn: "Salta il tutorial"
-      # Ten seconds was a developer machine dismissing a sheet. A device on a
-      # shared runner is slower, and running out there reads as a dead control
-      # rather than a slow one.
-      - extendedWaitUntil:
-          notVisible: "Salta il tutorial"
-          timeout: 30000
-
-# --- Lobby: offline vs bots, 2 players, single round ---
-- assertVisible: "Offline"
-- tapOn: "Offline"
-# The format tiles carry a second line, and Maestro matches the *whole*
-# element: iOS exposes this one as its title and subtitle joined by a colon, so the bare
-# title matches nothing. The trailing `.*` carries the subtitle and the
-# platforms that compose it differently, without pinning today's wording.
-- assertVisible: "Manche secca.*"
-- tapOn: "Manche secca.*"
-- assertVisible: "Inizia Partita"
-# Capped like the taps on the table itself, because this is the one that lands
-# there: the wait runs after the tap, against the screen it opened.
-- tapOn:
-    text: "Inizia Partita"
-    waitToSettleTimeoutMs: 500
-
-# The device, not the app. This screen is landscape-locked and iOS draws it
-# turned inside a portrait simulator, and XCUITest then returns only the part
-# of the tree that starts within the unrotated width: measured at 173 nodes
-# with every origin x ≤ 445 of 912, which is 7 of the 14 cards and no play
-# button, all of them painted in the same run's screenshot. Rotating the device
-# so the two agree returns 345 nodes reaching 848 (#685).
-#
-# Here rather than at launch because this is the last point before the only
-# screen that is locked to landscape. The menus render either way, so rotating
-# earlier would work - it would just leave every assertion above this line
-# reading a layout no other flow reads.
-#
-# iOS only. The Android emulator has no such mismatch: run 33553366797's own
-# logcat shows the AVD's WindowManager finishing a real ROTATION_90 (mBounds
-# 2400x1080) a full second before this command starts, driven by the app's own
-# `ScreenOrientation.lockAsync(LANDSCAPE)` taking effect on the emulator as
-# soon as the table mounts. Asking Maestro to set the same rotation again is a
-# no-op the WindowManager never reports as a change, and `setOrientation` — unlike
-# `tapOn` — takes no `waitToSettleTimeoutMs` of its own: the settle-wait Maestro
-# always runs after it then polls this screen's own looping Reanimated
-# glow/pulse for something that never stops changing, and never returns. Same
-# class #762 fixed on `tapOn`, on a command with no cap to give it (#768).
-- runFlow:
-    when:
-      platform: iOS
-    commands:
-      - setOrientation: LANDSCAPE_LEFT
-
-# The game table is landscape-locked and the screen physically
-# rotates on entry — give it time to settle before looking for
-# anything, or a rotation-mid-flight screenshot reads as blank.
-- extendedWaitUntil:
-    visible:
-      id: "game-table"
-    # Twenty seconds is a developer machine entering this screen. A CI
-    # emulator rotates and mounts the table a good deal slower than that, and
-    # running out here reads as the table never arriving.
-    timeout: 90000
+    file: _lobby.yaml
+    env:
+      FORMAT: "Manche secca.*"
 
 # --- Opening move, only if this seat was dealt the 3 of Spades ---
 # The card by its own name, which is the only thing here that is the same on
@@ -210,16 +131,13 @@ appId: "${MAESTRO_APP_ID}"
 # Bot's favour, so this cycles real turns through the bot until a hand empties.
 # `optional` keeps a tap on the off-turn button a no-op rather than a failure.
 #
-# `while` is what ends the loop: the moment `btn-passa` is gone it stops instead
-# of spending its remaining turns on a table with nothing to pass on. `times` is the ceiling — one pass per turn
-# the opponent takes, against a hand of about twenty, so thirty is the hand plus
-# margin. Each surplus iteration costs a full screen read on a table whose
-# animations never stop, which is where this flow's minutes went.
+# The loop ends on the board's Home button: `btn-passa` stays drawn, disabled, through the table's
+# ending, so it cannot mark the round's end. `times` is the ceiling, the hand plus margin.
 - repeat:
     times: 30
     while:
-      visible:
-        id: "btn-passa"
+      notVisible:
+        id: "btn-home"
     commands:
       - tapOn:
           id: "btn-passa"

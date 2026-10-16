@@ -9,10 +9,6 @@
 # on wall-clock already too slow to gate a PR, and a 7-round "Match" would
 # have cost several extra minutes for no more evidence.
 #
-# Maestro has no import mechanism, so the launch/tutorial/lobby boilerplate
-# below is duplicated from offline-game.yaml on purpose, the way smoke.yaml
-# and offline-game.yaml already duplicate it against each other.
-#
 # "Same seats": `startNewMatch` (context/GameContext.tsx) deals a fresh round
 # from `savedPlayerConfigs` — the seats already on the table — rather than
 # returning to the lobby, so there is no player-setup screen to re-drive and
@@ -29,36 +25,11 @@ appId: "${MAESTRO_APP_ID}"
       AppleLanguages: "(it-IT)"
       AppleLocale: "it_IT"
       MurlanE2EOpener: "1"
+- runFlow: _launch.yaml
 - runFlow:
-    commands:
-      - extendedWaitUntil:
-          visible: "Salta il tutorial"
-          timeout: 180000
-      - tapOn: "Salta il tutorial"
-      - extendedWaitUntil:
-          notVisible: "Salta il tutorial"
-          timeout: 30000
-
-# --- Lobby: offline vs bots, 2 players, single round ---
-- assertVisible: "Offline"
-- tapOn: "Offline"
-- assertVisible: "Manche secca.*"
-- tapOn: "Manche secca.*"
-- assertVisible: "Inizia Partita"
-- tapOn:
-    text: "Inizia Partita"
-    waitToSettleTimeoutMs: 500
-
-- runFlow:
-    when:
-      platform: iOS
-    commands:
-      - setOrientation: LANDSCAPE_LEFT
-
-- extendedWaitUntil:
-    visible:
-      id: "game-table"
-    timeout: 90000
+    file: _lobby.yaml
+    env:
+      FORMAT: "Manche secca.*"
 
 # --- Opening move, always on iOS, and on Android only if this seat was dealt the forced opener ---
 - extendedWaitUntil:
@@ -89,8 +60,8 @@ appId: "${MAESTRO_APP_ID}"
 - repeat:
     times: 30
     while:
-      visible:
-        id: "btn-passa"
+      notVisible:
+        id: "btn-new-match"
     commands:
       - tapOn:
           id: "btn-passa"
