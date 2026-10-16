@@ -6,7 +6,7 @@ import { NoticeBadge, NoticeGlyph, NoticeText, TableNotice } from "../TableNotic
 import { noticeBox, type NoticeKind } from "../noticeModel";
 
 export type EndMatchVoteNote = { voted: boolean; votes: number; total: number; onPress: () => void };
-export type RoundVoteNote = EndMatchVoteNote;
+export type RoundVoteNote = EndMatchVoteNote & { deadline?: { seconds: number; resetKey: string } };
 
 /** The pill's own box grown to the floor, its footprint unchanged: react-native-web ignores `hitSlop` on a Pressable. */
 function reach(kind: NoticeKind, scale: number) {

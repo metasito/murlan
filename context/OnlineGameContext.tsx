@@ -46,6 +46,8 @@ export type RoomState = WireRoomState;
 export interface RematchVoteState {
   votes: string[];
   total: number;
+  deadlineMs?: number;
+  secondsRemaining?: number;
 }
 
 /** The running match, as the server reports it. */

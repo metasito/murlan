@@ -326,6 +326,10 @@ export default function OnlineGameScreen() {
               votes: nextRoundVotes.length,
               total: rematchVoteState?.total ?? gameState.players.length,
               onPress: voteRematchNow,
+              deadline:
+                rematchVoteState?.secondsRemaining === undefined
+                  ? undefined
+                  : { seconds: rematchVoteState.secondsRemaining, resetKey: String(rematchVoteState.deadlineMs ?? "") },
             }
           : null
       }
