@@ -1,4 +1,4 @@
-// Pure helpers used by server/socket/socket.ts, kept here so a test can reach them
+// Pure helpers used by the server's game and socket modules, kept here so a test can reach them
 // without pulling storage/db/session — and the pg pool they build at import —
 // onto a path that needs none of it.
 import { botSeatIndex, botSeatKey, isBotSeatKey } from "./botSeat.ts";
