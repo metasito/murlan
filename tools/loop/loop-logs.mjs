@@ -228,7 +228,7 @@ export function killedStarts(rows, lastSeen = () => null) {
   let open = null;
   const close = (until, trailing) => {
     const end = Math.min(lastSeen(open, until) ?? until, until);
-    killed.push({ n: open.n, phase: open.phase ?? null, started: open.started, loop_sha: open.loop_sha ?? null, ms: Math.max(0, end - Date.parse(open.started)), trailing });
+    killed.push({ n: open.n, phase: open.phase ?? null, started: open.started, run_id: open.run_id ?? null, loop_sha: open.loop_sha ?? null, ms: Math.max(0, end - Date.parse(open.started)), trailing });
   };
   for (const r of rows) {
     if (r.outcome === "started") {
@@ -343,6 +343,36 @@ export function ledger(io = {}) {
       if (ENDS_TICKET.has(outcome)) tickets.push(report);
       rows.push(entry);
       return { entry, bill };
+    },
+    /**
+     * The row a session that died with its supervisor never wrote. Its start's `run_id` is what
+     * closes the start in `killedStarts`; it is the dead run's, so it joins neither this run's
+     * report nor its totals.
+     *
+     * @param {{n: number, phase: string|null, started: string, run_id: string|null, loop_sha: string|null, ms: number}} k
+     * @param {{phases: Record<string, number>, estimatedCost: number|null, model: string|null, version: string|null}} run
+     */
+    killed(k, run) {
+      const entry = sessionRow({
+        number: k.n,
+        size: null,
+        outcome: "killed",
+        pr: null,
+        phases: run.phases,
+        result: null,
+        estimatedCost: run.estimatedCost,
+        merged: false,
+        reviewRounds: null,
+        startedAt: k.started,
+        ms: k.ms,
+        version: run.version,
+        model: run.model,
+        runId: k.run_id,
+        loopSha: k.loop_sha,
+      });
+      mkdir();
+      append(ledgerPath(), `${JSON.stringify(entry)}\n`);
+      return entry;
     },
     /** The closing total under the night's rows, and the recap above them, under the title. */
     close(runId, line, recap = "") {
