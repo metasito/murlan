@@ -12,15 +12,10 @@
  * local game lives in `lib/game/sharedGameFlow.ts`.
  *
  * Each reads its own context, and that is where the render saving is: a field
- * change wakes only the screens reading the slice it belongs to. The `useMemo`
- * around each result is about identity, not renders — the destructure builds a
- * new object, so the first call site to keep it rather than unpack it, a
- * dependency array or a memoized child, would otherwise get a new one every
- * render, and that failure looks like an unrelated render loop.
- * `exhaustive-deps` is an error in this repo, so the lists cannot drift out of
- * step with the destructures above them.
+ * change wakes only the screens reading the slice it belongs to. Each returns
+ * the provider's memoized slice as it is, so its identity is the provider's
+ * memo; a field belongs to a slice by its `Pick` in `OnlineGameContext.tsx`.
  */
-import { useMemo } from "react";
 import {
   useConnectionSlice,
   useExchangeSlice,
@@ -32,96 +27,17 @@ import {
 
 /** Whether there is a live table at all, and the ways of being thrown off one. */
 export function useOnlineConnection() {
-  const {
-    connected,
-    error,
-    reconnectNotice,
-    playerLeft,
-    rejoinFailed,
-    clearError,
-    clearPlayerLeft,
-    clearRejoinFailed,
-    retryConnection,
-    ownLink,
-  } = useConnectionSlice();
-  return useMemo(
-    () => ({
-      connected,
-      error,
-      reconnectNotice,
-      playerLeft,
-      rejoinFailed,
-      clearError,
-      clearPlayerLeft,
-      clearRejoinFailed,
-      retryConnection,
-      ownLink,
-    }),
-    [
-      connected,
-      error,
-      reconnectNotice,
-      playerLeft,
-      rejoinFailed,
-      clearError,
-      clearPlayerLeft,
-      clearRejoinFailed,
-      retryConnection,
-      ownLink,
-    ]
-  );
+  return useConnectionSlice();
 }
 
 /** Getting to a table, and leaving one. Nothing about playing at it. */
 export function useOnlineRoom() {
-  const {
-    room,
-    entrySource,
-    isSpectator,
-    createRoom,
-    joinRoom,
-    spectateRoom,
-    leaveRoom,
-    quickmatch,
-    setRoomVisibility,
-    startGame,
-  } = useRoomSlice();
-  return useMemo(
-    () => ({
-      room,
-      entrySource,
-      isSpectator,
-      createRoom,
-      joinRoom,
-      spectateRoom,
-      leaveRoom,
-      quickmatch,
-      setRoomVisibility,
-      startGame,
-    }),
-    [
-      room,
-      entrySource,
-      isSpectator,
-      createRoom,
-      joinRoom,
-      spectateRoom,
-      leaveRoom,
-      quickmatch,
-      setRoomVisibility,
-      startGame,
-    ]
-  );
+  return useRoomSlice();
 }
 
 /** The hand in front of you and the two things you can do with it. */
 export function useOnlineTable() {
-  const { gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats, autoPassed } =
-    useTableSlice();
-  return useMemo(
-    () => ({ gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats, autoPassed }),
-    [gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats, autoPassed]
-  );
+  return useTableSlice();
 }
 
 /**
@@ -130,61 +46,15 @@ export function useOnlineTable() {
  * be an abstraction telling a lie.
  */
 export function useOnlineTurnClock() {
-  const { turnSeconds, turnDeadlineMs } = useTurnClockSlice();
-  return useMemo(() => ({ turnSeconds, turnDeadlineMs }), [turnSeconds, turnDeadlineMs]);
+  return useTurnClockSlice();
 }
 
 /** Where the match stands, and whether the table wants another. */
 export function useOnlineMatch() {
-  const {
-    matchState,
-    cumulativeScores,
-    placementPoints,
-    placementPointsCurrent,
-    ratingDeltas,
-    roundRecorded,
-    ratingsAfter,
-    rematchVoteState,
-    endMatchVoteState,
-    voteRematch,
-    voteToEndMatch,
-  } = useMatchSlice();
-  return useMemo(
-    () => ({
-      matchState,
-      cumulativeScores,
-      placementPoints,
-      placementPointsCurrent,
-      ratingDeltas,
-      roundRecorded,
-      ratingsAfter,
-      rematchVoteState,
-      endMatchVoteState,
-      voteRematch,
-      voteToEndMatch,
-    }),
-    [
-      matchState,
-      cumulativeScores,
-      placementPoints,
-      placementPointsCurrent,
-      ratingDeltas,
-      roundRecorded,
-      ratingsAfter,
-      rematchVoteState,
-      endMatchVoteState,
-      voteRematch,
-      voteToEndMatch,
-    ]
-  );
+  return useMatchSlice();
 }
 
 /** The card that changes hands between rounds, and the banner about it. */
 export function useOnlineExchange() {
-  const { exchangeAnnouncing, exchangeAnnounceData, giveExchangeCard, acknowledgeExchange } =
-    useExchangeSlice();
-  return useMemo(
-    () => ({ exchangeAnnouncing, exchangeAnnounceData, giveExchangeCard, acknowledgeExchange }),
-    [exchangeAnnouncing, exchangeAnnounceData, giveExchangeCard, acknowledgeExchange]
-  );
+  return useExchangeSlice();
 }
