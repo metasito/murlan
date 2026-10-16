@@ -10,7 +10,7 @@ const MARGIN = 1.5;
 const healthy: Record<string, number> = {
   "deal, 2 seats, with the entry beat": dealEndMs([27, 27], Motion.duration.reveal),
   "exchange ready, from go": choiceOpensAt(false),
-  "exchange done, from the choice": GIVE_MS + Motion.exchange.read,
+  "exchange done, from the later of the choice and its opening": GIVE_MS + Motion.exchange.read,
   "exchange done, both Jokers, from go": ceremonyEndsAt(legShows(null, false), false, true),
 };
 

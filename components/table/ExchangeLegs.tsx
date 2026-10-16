@@ -229,7 +229,11 @@ export function ExchangeLegs({
     (leg: number, s: number) => calls.current.onStage(calls.current.key, leg === 0 ? "receive" : "give", STAGES[s]),
     []
   );
-  const ready = useCallback(() => calls.current.onReady(calls.current.key), []);
+  const [opened, setOpened] = useState(false);
+  const ready = useCallback(() => {
+    setOpened(true);
+    calls.current.onReady(calls.current.key);
+  }, []);
   const done = useCallback(() => {
     if (holdRef.current === undefined) calls.current.onDismiss();
   }, []);
@@ -298,10 +302,11 @@ export function ExchangeLegs({
     return () => clearTimeout(forced);
   }, [go, goAt, jokers, run, forcedReady, forcedDone]);
   useEffect(() => {
-    if (jokers || !go || !chosen || !(goAt.get() < Infinity) || !(choiceAt.get() < Infinity)) return;
+    // From the later of the choice and its opening: a choice made before the choice opens still gives only after it.
+    if (jokers || !opened || !chosen || !(choiceAt.get() < Infinity)) return;
     const forced = setTimeout(() => scheduleOnUI(release, run, "done", forcedDone), GATE_WATCHDOG_MS);
     return () => clearTimeout(forced);
-  }, [jokers, go, chosen, goAt, choiceAt, run, forcedDone]);
+  }, [jokers, opened, chosen, choiceAt, run, forcedDone]);
   useEffect(() => {
     if (run.get().done) frames.setActive(false);
   });

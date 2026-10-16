@@ -94,10 +94,14 @@ describe('an exchange whose frame clock never advances', () => {
     await view.unmount();
   });
 
-  it('closes through the ceremony hold: a forced done does not dismiss what an e2e hold is keeping', async () => {
+  it('times done from the choice opening when the choice came first, and a forced done keeps an e2e hold', async () => {
     const onDismiss = jest.fn();
     const view = await render(<Legs announced={announced({ cardGiven: card('4_clubs', '4') })} onDismiss={onDismiss} holdMsOverride={GATE_WATCHDOG_MS * 5} />);
     await advance(GATE_WATCHDOG_MS + 100);
+    expect(reported()).toEqual(['table gate forced: exchangeReady']);
+    await advance(GATE_WATCHDOG_MS - 200);
+    expect(reported()).toEqual(['table gate forced: exchangeReady']);
+    await advance(300);
     expect({ dismissed: onDismiss.mock.calls.length, reported: reported() }).toEqual({
       dismissed: 0,
       reported: ['table gate forced: exchangeReady', 'table gate forced: exchangeDone'],
