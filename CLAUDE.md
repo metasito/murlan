@@ -43,6 +43,12 @@ Verify against source before changing any.
   `react-test-renderer`, which never runs flexbox. Only `tests/e2e/` (Playwright) catches that
   class — a card fan sat off-screen for months against a green native suite.
 
+## Design
+
+A module offers decisions, not steps: when it offers steps, callers re-derive the decision and
+the copies drift. `docs/agents/RULES.md` 47–50 hold the line; the loop's review blocks a merge on
+a breach of 47–49.
+
 ## Comments
 
 **Default is no comment, and the default is what almost every line gets.** Four things earn one: an
