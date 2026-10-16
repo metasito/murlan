@@ -150,6 +150,10 @@ describe("the session declares what it did before it exits", () => {
     }
   });
 
+  test("the schema refuses a field it does not name", () => {
+    assert.equal(schema.additionalProperties, false, "a misspelt field would pass, and the one it meant would read as absent");
+  });
+
   test("phase F declares and leaves its worktree standing for the supervisor", () => {
     const text = read(QUEUE);
     const from = text.indexOf("## F — Close out");

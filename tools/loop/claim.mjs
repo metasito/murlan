@@ -7,7 +7,7 @@
  *        exit 0 - claimed, worktree standing; exit 1 - lost the race, or could not
  */
 import { gh, git } from "./cli.mjs";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WORKTREE_DIR } from "./loop-derive.mjs";
@@ -115,28 +115,33 @@ export function claim(
 ) {
   const branch = branchOf(number, title);
   const cwd = `${WORKTREE_DIR}/agent-${number}`;
-  const noteFile = join(mkdtempSync(join(tmpdir(), "claim-")), "claim.md");
+  const noteDir = mkdtempSync(join(tmpdir(), "claim-"));
+  const noteFile = join(noteDir, "claim.md");
   writeFileSync(noteFile, `Claimed by \`${branch}\`.\n`, "utf8");
 
-  for (const step of claimSteps(number, title, noteFile)) {
-    const args =
-      step.name === "worktree" ? claimSteps(number, title, noteFile, baseOf(branch, run)).at(-1).args : step.args;
-    try {
-      if (step.tracker) step.tracker(tracker);
-      else run(step.file, args);
-    } catch (err) {
-      // Only the path being taken means a peer holds this ticket. A stale local branch is a
-      // different failure, and reporting it as a peer leaves `in-progress` on for ever.
-      if (step.name !== "worktree" || !taken(err, cwd)) throw err;
-      return {
-        branch,
-        cwd,
-        won: false,
-        why: `${cwd} is already standing — if no run is working it, \`npm run worktrees:remove -- ${cwd}\``,
-      };
+  try {
+    for (const step of claimSteps(number, title, noteFile)) {
+      const args =
+        step.name === "worktree" ? claimSteps(number, title, noteFile, baseOf(branch, run)).at(-1).args : step.args;
+      try {
+        if (step.tracker) step.tracker(tracker);
+        else run(step.file, args);
+      } catch (err) {
+        // Only the path being taken means a peer holds this ticket. A stale local branch is a
+        // different failure, and reporting it as a peer leaves `in-progress` on for ever.
+        if (step.name !== "worktree" || !taken(err, cwd)) throw err;
+        return {
+          branch,
+          cwd,
+          won: false,
+          why: `${cwd} is already standing — if no run is working it, \`npm run worktrees:remove -- ${cwd}\``,
+        };
+      }
     }
+    return { branch, cwd, won: true, why: null };
+  } finally {
+    rmSync(noteDir, { recursive: true, force: true });
   }
-  return { branch, cwd, won: true, why: null };
 }
 
 /** The line the supervisor reads a failed claim's reason from — git's own words, never a stack. */

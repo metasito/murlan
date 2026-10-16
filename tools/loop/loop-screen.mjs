@@ -466,7 +466,7 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
  * from `gh`, a log path this file generated); this is the one place a string that is not entirely
  * ours is handed to a shell, so it is refused rather than escaped.
  */
-function openExternally(target) {
+export function openExternally(target) {
   if (/[&|^<>"'`\r\n]/.test(target)) return;
   const [cmd, args] =
     process.platform === "win32"
@@ -475,7 +475,9 @@ function openExternally(target) {
         ? ["open", [target]]
         : ["xdg-open", [target]];
   try {
-    spawn(cmd, args, { stdio: "ignore", detached: true }).unref();
+    const child = spawn(cmd, args, { stdio: "ignore", detached: true });
+    child.on("error", () => {});
+    child.unref();
   } catch {
     /* a key that opens nothing is not a reason to stop the run */
   }

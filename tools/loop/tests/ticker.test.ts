@@ -1,5 +1,6 @@
 // tools/loop/tests/ticker.test.ts
 import { test, describe } from "node:test";
+import { spawnSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -685,4 +686,11 @@ describe("ticker", () => {
       assert.equal(out.wrote.length, after);
     });
   });
+});
+
+test("a key whose opener is missing does not take the run down with it", () => {
+  const screen = new URL("../loop-screen.mjs", import.meta.url).href;
+  const script = `const { openExternally } = await import(${JSON.stringify(screen)}); openExternally("https://example.com"); setTimeout(() => {}, 300);`;
+  const r = spawnSync(process.execPath, ["--input-type=module", "-e", script], { env: { ...process.env, PATH: "" }, encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
 });
