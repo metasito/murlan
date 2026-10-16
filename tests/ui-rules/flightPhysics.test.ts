@@ -39,6 +39,7 @@ import {
   type TableGeometry,
   flightOrigin,
   comboKey,
+  turnKey,
   seatPoint,
   trickClosedWithWinner,
   readExchange,
@@ -164,6 +165,25 @@ describe("comboKey", () => {
 
   test("the same play produces a stable key", () => {
     assert.equal(comboKey(combo(["a", "b"]), 2), comboKey(combo(["a", "b"]), 2));
+  });
+});
+
+describe("turnKey", () => {
+  const turn = { currentTurnIndex: 1, passCount: 0, lastPlayedCombination: combo(["a"]), lastPlayedBy: 0 };
+
+  test("a pass is a new turn", () => {
+    assert.notEqual(turnKey(turn), turnKey({ ...turn, currentTurnIndex: 2, passCount: 1 }));
+  });
+
+  test("the trick's winner leading on an empty table is a new turn", () => {
+    const lastToPlay = { ...turn, currentTurnIndex: 0, passCount: 0 };
+    const won = { ...lastToPlay, lastPlayedCombination: null };
+    assert.equal(turnKey(won), "0|0|-");
+    assert.notEqual(turnKey(won), turnKey(lastToPlay));
+  });
+
+  test("the same state is the same turn", () => {
+    assert.equal(turnKey(turn), turnKey({ ...turn }));
   });
 });
 

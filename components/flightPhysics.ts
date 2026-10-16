@@ -333,6 +333,16 @@ export function comboKey(combo: Combination, playedBy: number): string {
   return combo.cards.map((c) => c.id).join(",") + "_" + playedBy;
 }
 
+/** Changes on every move and every pass, including the same seat leading a new trick after winning one. */
+export function turnKey(
+  state: Pick<GameState, "currentTurnIndex" | "passCount" | "lastPlayedCombination" | "lastPlayedBy">,
+): string {
+  return (
+    `${state.currentTurnIndex}|${state.passCount}|` +
+    (state.lastPlayedCombination ? comboKey(state.lastPlayedCombination, state.lastPlayedBy) : "-")
+  );
+}
+
 /**
  * The pass that just closed a trick, seen from one state. `processPass`
  * (lib/game/gameEngine.ts) clears `lastPlayedCombination` and credits `trickWinner`

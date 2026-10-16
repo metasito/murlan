@@ -179,7 +179,7 @@ export function computeTableFrame(opts: {
 // Sized for the drawn cap, never for a count: a seat's place, and the pile's between them, must
 // not move as a hand shrinks or a seat goes out.
 
-/** The top seat's column: its label, ring and fan (components/table/seats.tsx `TopOppSlot`). */
+/** The top seat's column: its label, ring and fan (components/table/seats.tsx `OpponentSeat`). */
 export function topBandHeight(scale: number): number {
   return seatLabelH(scale) + SEAT_DISC * scale + seatGap(scale) + drawnFanBounds(scale).topH;
 }

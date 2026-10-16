@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { celebratesViewer, isDrawnRound, roundOutcomeFor, matchOutcomeFor } from "../../lib/game/matchState.ts";
+import { celebratesViewer, isDrawnRound, roundOutcomeFor, matchOutcomeFor, scoredOutcome } from "../../lib/game/matchState.ts";
 import { autoMoveForSeat, offlineBotMove } from "../../lib/game/autoMove.ts";
 import { emptyRankTally, type Card, type GameState, type PlayerType } from "../../lib/game/gameEngine.ts";
 
@@ -161,6 +161,22 @@ describe("roundOutcomeFor", () => {
   // not stall a mode that was never waiting on one.
   test("free-for-all is never pending, even with no scores at all", () => {
     assert.equal(roundOutcomeFor(TEAMS_TABLE, drawnFinishingOrder, {}, "player_0", false), "won");
+  });
+});
+
+// The sting is latched once, so it waits for every ranked id's score in every mode: online, that is
+// also when a match's winners have arrived, and a match-ending round must not sting as a round.
+describe("scoredOutcome", () => {
+  const order = ["player_0", "player_1"];
+
+  test("holds a free-for-all outcome at pending until every ranked id is scored", () => {
+    assert.equal(scoredOutcome("won", order, {}), "pending");
+    assert.equal(scoredOutcome("won", order, { player_0: 3 }), "pending");
+    assert.equal(scoredOutcome("won", order, { player_0: 3, player_1: 0 }), "won");
+  });
+
+  test("a round nobody finished has nothing to wait for", () => {
+    assert.equal(scoredOutcome("neutral", [], {}), "neutral");
   });
 });
 

@@ -24,7 +24,7 @@ import {
   shakeAmplitudeFor,
 } from "@/components/flightPhysics";
 import { cancelLandingPulses, runLandingPulses } from "@/lib/device/feedback";
-import { roundOutcomeFor, matchOutcomeFor } from "@/lib/game/matchState";
+import type { RoundOutcome } from "@/lib/game/matchState";
 import { Hold, Motion, motionMs } from "@/lib/theme";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { useLandingReaction } from "@/components/table/useLandingReaction";
@@ -62,8 +62,6 @@ export const KICK_JOLTS = [
   { x: 0, y: 0, ms: 416 },
 ] as const;
 
-const NO_WINNERS: readonly string[] = [];
-
 interface TableFeedbackState {
   isMyTurn: boolean;
   isFinished: boolean;
@@ -72,19 +70,12 @@ interface TableFeedbackState {
   lastPlayedCombination: Combination | null;
   trickWinner: number | null;
   roundOver: boolean;
-  finishingOrder: string[];
-  /** Only `id` and `team` are read — enough to resolve `roundOutcomeFor`. */
-  players: readonly { id: string; team?: string }[];
-  isTeamMode: boolean;
-  /** What the round just played awarded, by engine player id — `roundOutcomeFor`'s draw check. */
-  placementPoints: Record<string, number>;
-  viewerId: string | undefined;
+  /** The round's, `"pending"` until it is scored (`scoredOutcome`). */
+  outcome: RoundOutcome;
+  /** The match's once it is decided, `"pending"` until then; its sting replaces the round's. */
+  matchOutcome: RoundOutcome;
   /** The table's own scale — the kick's travel and the burst's size read off it. */
   scale: number;
-  /** The match is decided; its sting replaces the round's. */
-  matchOver?: boolean;
-  /** Engine player ids, as `MatchVerdict.winners`. */
-  matchWinners?: readonly string[];
   /** Written by the flight clock on the contact frame; the shake, the kick and the landing pulses react to it. */
   landing: SharedValue<LandingSignal>;
   /** Every cue goes out through it, at its flight's reported times. */
@@ -261,14 +252,9 @@ export function useTableFeedback({
   lastPlayedCombination,
   trickWinner,
   roundOver,
-  finishingOrder,
-  players,
-  isTeamMode,
-  placementPoints,
-  viewerId,
+  outcome,
+  matchOutcome,
   scale,
-  matchOver = false,
-  matchWinners = NO_WINNERS,
   landing,
   timeline,
 }: TableFeedbackState): TableFeedback {
@@ -331,28 +317,22 @@ export function useTableFeedback({
     if (prevRoundOverRef.current) return;
     // The round/match shake itself is NOT fired here: it reacts to the
     // winning card's own landing signal, on its contact frame.
-    // `finishingOrder` holds engine player ids (`player_0`), never display names.
-    // `lib/game/matchState.ts` decides who a round celebrates, from the caller's
-    // own `placementPoints`: a teams-mode 3-3 round (GAME-RULES.md §11) celebrates no seat.
-    const outcome = roundOutcomeFor(players, finishingOrder, placementPoints, viewerId, isTeamMode);
     // Online, `roundOver` reaches this effect (`game:state`) a render ahead of
     // the scores that decide it (`game:round_over`, unawaited server-side and
     // strictly later) — `"pending"` is that gap. Latching here would freeze
     // the decision on data that was never real; returning without touching
-    // the ref lets the next render, carrying the real `placementPoints`, run this
+    // the ref lets the next render, carrying the real scores, run this
     // same effect again instead.
     // The sting is placed in the engine ahead of time, so leaving the
-    // table cannot cancel it (#5); every ranked id must carry a score, which is
-    // also when an online match's winners have arrived.
-    if (outcome === "pending" || finishingOrder.some((id) => !(id in placementPoints))) return;
+    // table cannot cancel it (#5).
+    if (outcome === "pending") return;
     prevRoundOverRef.current = true;
-    const match = matchOver ? matchOutcomeFor(players, matchWinners, viewerId, isTeamMode) : "pending";
     moment(
-      match !== "pending" ? { kind: "matchOver", outcome: match } : { kind: "roundOver", outcome },
+      matchOutcome !== "pending" ? { kind: "matchOver", outcome: matchOutcome } : { kind: "roundOver", outcome },
       "landing",
       Hold.sting
     );
-  }, [roundOver, finishingOrder, players, isTeamMode, placementPoints, viewerId, matchOver, matchWinners, moment]);
+  }, [roundOver, outcome, matchOutcome, moment]);
 
   // PASSA flash the moment passing becomes possible. `canPass` already folds in
   // whose turn it is, whether the viewer has finished, and whether the round is

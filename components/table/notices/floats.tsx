@@ -3,14 +3,14 @@ import { Layer } from "@/lib/theme";
 import { A11yStatus, a11yHidden } from "@/lib/a11y";
 import { NoticeDot, NoticeText, TableNotice } from "../TableNotice";
 import { mockupPx } from "../noticeModel";
+import type { Float } from "../floatModel";
+
+export type { Float };
 
 /** Any width past the widest float, G2's toast: the slot only centres it. */
 const FLOAT_SLOT = 440;
 /** G2: the reject float's foot over GIOCA's top. */
 const ABOVE_GIOCA = 8;
-
-/** `live` while the state that raised it stands: the region's text goes with it, so the next float is a change. */
-export type Float = { id: number; kind: "pass" | "autoPass" | "reject" | "toast"; text: string; live: boolean };
 
 /** GIOCA's top edge, up from the window's foot, and the table's edges it sits against. */
 export type BesideGioca = { giocaTop: number; left: number; right: number; mirrored: boolean };

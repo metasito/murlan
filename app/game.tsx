@@ -19,7 +19,7 @@ import { suspendBot } from "@/lib/e2eBotSuspend";
 import { flushSync } from "@/lib/flushSync";
 import { OFFLINE_BOT_DELAY_MS } from "@/lib/game/offlineBotDelay";
 import { GameTable } from "@/components/GameTable";
-import { comboKey } from "@/components/flightPhysics";
+import { turnKey } from "@/components/flightPhysics";
 import { uiFeedback } from "@/lib/device/feedback";
 import { useTranslation } from "@/lib/i18n";
 import { RoundEnding } from "@/lib/theme";
@@ -117,10 +117,7 @@ export default function GameScreen() {
         !gameState.exchangePhase?.active &&
         !exchangeAnnouncing &&
         gameState.players[gameState.currentTurnIndex]?.type === "bot"
-      ? `${gameState.currentTurnIndex}|${gameState.passCount}|` +
-        (gameState.lastPlayedCombination
-          ? comboKey(gameState.lastPlayedCombination, gameState.lastPlayedBy)
-          : "-")
+      ? turnKey(gameState)
       : null;
 
   useEffect(() => {

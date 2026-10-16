@@ -47,12 +47,24 @@ function sliceRead(source: string, hookName: string): { via: string; fields: str
   );
   const via = calls[0];
 
+  if (new RegExp(`return\\s+${via}\\(\\);`).test(body)) return { via, fields: pickedBy(via) };
+
   const fields = [...body.matchAll(new RegExp(`const\\s*\\{([^}]*)\\}\\s*=\\s*\\n?\\s*${via}\\(\\)`, "g"))]
     .flatMap((m) => m[1].split(","))
     .map((s) => s.trim())
     .filter(Boolean);
-  assert.ok(fields.length, `${hookName} does not read ${via} by destructuring`);
+  assert.ok(fields.length, `${hookName} neither returns ${via}() whole nor reads it by destructuring`);
   return { via, fields };
+}
+
+/** A hook returning its slice whole reads what the provider's `Pick` for that slice names. */
+function pickedBy(via: string): string[] {
+  const provider = read("context/OnlineGameContext.tsx");
+  const type = provider.match(new RegExp(`\\[\\s*\\w+\\s*,\\s*${via}\\s*\\]\\s*=\\s*sliceContext<(\\w+)>`))?.[1];
+  assert.ok(type, `${via} is not made by sliceContext`);
+  const pick = provider.match(new RegExp(`type ${type} = Pick<\\s*OnlineGameContextValue,([^>]*)>`))?.[1];
+  assert.ok(pick, `${type} is not a Pick of OnlineGameContextValue`);
+  return [...pick.matchAll(/"(\w+)"/g)].map((m) => m[1]);
 }
 
 const ONLINE: Record<string, string[]> = {
