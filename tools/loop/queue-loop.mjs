@@ -25,6 +25,7 @@ import {
   WORKTREE_DIR,
 } from "./loop-derive.mjs";
 import { runSession } from "./loop-session.mjs";
+import { readLine, reduceSession, sessionStart } from "./loop-stream.mjs";
 import {
   act,
   bell,
@@ -774,6 +775,41 @@ export function sessionView(screen, { number, round }) {
   };
 }
 
+/**
+ * A killed session's run, replayed from its ticket's stream log: the lines from the last session
+ * start, since every session of the ticket appends to the one log. A session writes its
+ * `SessionStart` hook lines before its `init`, so taking `init` alone bills one killed between the
+ * two for the session before it. Its lines carry no clock, so its whole time goes to the phase it
+ * was spawned at; one that wrote nothing after its start (`ms` 0) has no lines of its own.
+ *
+ * @param {{phase: string|null, ms: number}} k a `killedStarts` entry
+ * @param {string} stream
+ */
+export function killedRun(k, stream) {
+  const lines = stream.split("\n");
+  const from = k.ms > 0 ? lines.findLastIndex(opensSession) : -1;
+  let state = sessionStart(k.phase, 0);
+  if (from >= 0) {
+    for (const line of lines.slice(from)) state = reduceSession(state, line, { now: 0, at: k.phase, planned: "" }).state;
+  }
+  return {
+    phases: k.phase ? { [k.phase]: Math.round(k.ms / 1000) } : {},
+    estimatedCost: state.usage.size ? estimateCost(state.usage.values()) : null,
+    model: state.model,
+    version: state.version,
+  };
+}
+
+function opensSession(line) {
+  if (readLine(line)?.kind === "init") return true;
+  try {
+    const e = JSON.parse(line);
+    return e.type === "system" && e.subtype === "hook_started" && e.hook_event === "SessionStart";
+  } catch {
+    return false;
+  }
+}
+
 /** What `runTicket` reports: a finished session's state, flattened with its exit. */
 export function ticketRun({ status, state, stderr, started, ms, asleepMs }, { size = null, log }) {
   return {
@@ -1490,7 +1526,10 @@ function realPorts(book, screen, events) {
     record: (row) => events.recorded(row, book.record(row, RUN_ID).bill),
     killed: () => {
       const last = killedStarts(readLedger(undefined, { starts: true }), lastWrite).at(-1);
-      return last?.trailing ? last : null;
+      if (!last?.trailing) return null;
+      const log = streamLog(last.n);
+      book.killed(last, killedRun(last, fs.existsSync(log) ? fs.readFileSync(log, "utf8") : ""));
+      return last;
     },
     journal: (line) => appendSupervisor(line),
   };
@@ -1546,7 +1585,7 @@ export async function main({
   if (killed) {
     screen.notice(
       "killed",
-      `#${killed.n}'s phase ${killed.phase ?? "?"} session from ${new Date(killed.started).toISOString().slice(11, 16)}Z was killed after ${Math.round(killed.ms / 60_000)} min and left no row`,
+      `#${killed.n}'s phase ${killed.phase ?? "?"} session from ${new Date(killed.started).toISOString().slice(11, 16)}Z was killed after ${Math.round(killed.ms / 60_000)} min and left no row; recorded it as killed`,
     );
   }
 
