@@ -12,7 +12,8 @@ command that prints the change.
 Read issue #<n> with its `Issue:` command (a later comment overrides the body) and the change with
 its `Change:` command. For each Definition-of-done box, answer done, partial or missing. Done names
 the `<path>:<line>` that does it and the test that covers it; a pure deletion or a docs change says
-"no test applicable". Then list what the issue asks for that no box covers, and every caller of a
+"no test applicable". A box built for its intent because a test rules out the form it prescribes,
+the test named in a commit body (`.claude/commands/queue.md` phase C), is done. Then list what the issue asks for that no box covers, and every caller of a
 changed function the diff did not update. Then list every name the diff removes or renames —
 identifier, export, env var, file path, npm script, locale key, testID, CLI flag, workflow or job
 name — run `git -C <worktree> grep -n -F <name>` for each, and report every remaining mention

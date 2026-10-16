@@ -20,7 +20,10 @@ caller of what it changes.
 
 Answer under `## Blocking`, `## Nits` and `## Pre-existing`. Blocking is only: a bug, with the
 input or sequence that makes it go wrong; a Definition-of-done box left unmet, quoted; a regression
-or red CI run this change causes; a security or data-loss risk. A rule breach, a name, a comment,
+or red CI run this change causes; a security or data-loss risk. A box built for its intent because
+a test rules out the form it prescribes, the test named in a commit body (`.claude/commands/queue.md`
+phase C), is met: unmet only if that test does not rule the form out or the intent is not built.
+A rule breach, a name, a comment,
 an untested branch or a style preference is a Nit. A defect this change did not introduce is
 Pre-existing. Every finding names a file:line.
 

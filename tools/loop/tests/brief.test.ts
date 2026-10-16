@@ -63,6 +63,15 @@ describe("brief", () => {
     }
   });
 
+  test("a box built for its intent, where a test rules out its form, is met for every check that judges boxes", () => {
+    const queue = readFileSync(new URL("../../../.claude/commands/queue.md", import.meta.url), "utf8").replace(/\s+/g, " ");
+    assert.match(queue, /A ticket's prescribed form is a proposal\.\*\* If a test rules it out, build its intent; say why in the commit\./);
+    for (const kind of ["review", "completeness"]) {
+      assert.match(role(kind), /built for its intent because a test rules out the form it prescribes, the test named in a commit body/, kind);
+    }
+    assert.match(role("review"), /unmet only if that test does not rule the form out or the intent is not built/);
+  });
+
   test("a later round reviews only the fix and checks the earlier Blocking findings", () => {
     assert.match(role("review"), /does it do what the Definition of done asks/);
     assert.match(role("review"), /Any other `<base>` is a later round\. Review only the fix/);
