@@ -85,6 +85,23 @@ describe("runSession", () => {
     assert.equal((await runSession([], opts({ spawnFn: fakeSpawn([RESULT], null).spawnFn }))).status, 1);
   });
 
+  test("a claude that cannot be spawned is a failed session, not a supervisor crash", async () => {
+    const spawnFn = () => {
+      const child: any = new EventEmitter();
+      child.stdout = Readable.from([]);
+      child.stderr = Readable.from([]);
+      child.kill = () => {};
+      setImmediate(() => {
+        child.emit("error", Object.assign(new Error("spawn claude ENOENT"), { code: "ENOENT" }));
+        child.emit("close", -4058);
+      });
+      return child;
+    };
+    const run = await runSession([], opts({ spawnFn }));
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /spawn claude ENOENT/);
+  });
+
   test("keeps the raw stream in the log it is handed, whole by the time it resolves", async () => {
     const log = path.join(SCRATCH, "999.jsonl");
     await runSession([], opts({ spawnFn: fakeSpawn([phase("B"), RESULT]).spawnFn, log }));
