@@ -38,7 +38,7 @@ import {
 import { useNotification } from "@/context/NotificationContext";
 import { t } from "@/lib/i18n";
 import {
-  buildExchangeAnnounce,
+  exchangeAnnouncementOf,
   useExchangeAnnouncement,
   type ExchangeAnnounceData,
   type ExchangeHold,
@@ -172,10 +172,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
    * recompute totals and none can disagree about them.
    */
   const commitState = useCallback((next: GameState, previous: GameState) => {
+    const announced = exchangeAnnouncementOf(previous, next);
+    if (announced) announce(announced);
     setGameState(next);
     if (!next.roundOver || previous.roundOver) return;
     setMatch((prev) => applyRoundToMatch(prev, next));
-  }, []);
+  }, [announce]);
 
   const setupGame = useCallback(
     (players: PlayerSetupConfig[], mode: GameMode, length: MatchLength = "match") => {
@@ -201,16 +203,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
    * new match (reset to seat 0) or continues the current one (rotate).
    */
   const dealFrom = useCallback(
-    (prevFinishingOrder: string[], matchIsOver = false) => {
+    (previous: GameState, matchIsOver = false) => {
       const playersWithId = savedPlayerConfigs.map((p, i) => ({ ...p, id: `player_${i}` }));
       const nextFirstSeat = dealFirstSeatFor(matchIsOver, dealFirstSeat, playersWithId.length);
-      const state = initializeRematch(playersWithId, savedGameMode, prevFinishingOrder, nextFirstSeat);
+      const state = initializeRematch(playersWithId, savedGameMode, previous.finishingOrder, nextFirstSeat);
       setDealFirstSeat(nextFirstSeat);
-
-      if (state.exchangePhase?.twoJokerException) {
-        announce(buildExchangeAnnounce(state.players, state.exchangePhase));
-      }
-
+      const announced = exchangeAnnouncementOf(previous, state);
+      if (announced) announce(announced);
       setGameState(state);
     },
     [savedPlayerConfigs, savedGameMode, dealFirstSeat, announce]
@@ -218,27 +217,21 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const startNextRound = useCallback(() => {
     if (!gameState) return;
-    dealFrom(gameState.finishingOrder);
+    dealFrom(gameState);
   }, [gameState, dealFrom]);
 
   const startNewMatch = useCallback(() => {
     if (!gameState) return;
     setMatch(freshMatch(match.length, gameState.players.length));
-    dealFrom(gameState.finishingOrder, true);
+    dealFrom(gameState, true);
   }, [gameState, match.length, dealFrom]);
 
   const chooseExchangeCard = useCallback(
     (cardId: string) => {
       if (!gameState?.exchangePhase?.active) return;
       const next = processExchangeChoice(gameState, cardId);
-      if (next === gameState) return;
-      const ep = gameState.exchangePhase;
-      announce(
-        buildExchangeAnnounce(gameState.players, ep, {
-          given: gameState.players[ep.winnerIdx]?.hand.find((c) => c.id === cardId),
-          received: ep.cardFromLoser,
-        })
-      );
+      const announced = exchangeAnnouncementOf(gameState, next);
+      if (announced) announce(announced);
       setGameState(next);
     },
     [gameState, announce]

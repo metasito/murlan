@@ -8,8 +8,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { buildExchangeAnnounce } from "../../lib/game/sharedGameFlow.ts";
-import type { Card } from "../../lib/game/gameEngine.ts";
+import { buildExchangeAnnounce, exchangeAnnouncementOf } from "../../lib/game/sharedGameFlow.ts";
+import type { Card, ExchangePhase, GameState } from "../../lib/game/gameEngine.ts";
 
 const ACE: Card = { id: "a", rank: "A", suit: "spades", isJoker: false };
 const THREE: Card = { id: "b", rank: "3", suit: "hearts", isJoker: false };
@@ -56,6 +56,40 @@ test("the seats survive two players sharing a name", () => {
   assert.equal(announce.winnerIdx, 1);
   assert.equal(announce.loserIdx, 0);
 });
+
+const state = (exchangePhase: ExchangePhase | undefined, roundOver = false): GameState =>
+  ({ players: PLAYERS, exchangePhase, roundOver }) as unknown as GameState;
+const open = (cards: Partial<ExchangePhase> = {}): ExchangePhase =>
+  ({ active: true, winnerIdx: 2, loserIdx: 0, twoJokerException: false, ...cards });
+const closed = (cards: Partial<ExchangePhase> = {}): ExchangePhase => ({ ...open(cards), active: false });
+const jokers: ExchangePhase = { active: false, winnerIdx: 2, loserIdx: 0, twoJokerException: true };
+const announced = (cards: { given?: Card; received?: Card } = {}) =>
+  buildExchangeAnnounce(PLAYERS, { winnerIdx: 2, loserIdx: 0 }, cards);
+const jokersAnnounced = buildExchangeAnnounce(PLAYERS, jokers);
+const same = state(jokers);
+
+// Online's closing state withholds `cardFromLoser`; offline's keeps it. The received card is read from `prev` in both.
+const rows: [string, GameState | null, GameState, ReturnType<typeof exchangeAnnouncementOf>][] = [
+  ["1 offline: the give closes the phase", state(open({ cardFromLoser: THREE })), state(closed({ cardFromLoser: THREE, cardToLoser: ACE })), announced({ received: THREE, given: ACE })],
+  ["1 online: the give closes the phase", state(open({ cardFromLoser: THREE })), state(closed({ cardToLoser: ACE })), announced({ received: THREE, given: ACE })],
+  ["2: a stuck release closes it with no give", state(open({ cardFromLoser: THREE })), state(closed({ cardFromLoser: THREE })), announced({ received: THREE })],
+  ["3: a two-joker deal seen first", null, state(jokers), jokersAnnounced],
+  ["4: a two-joker deal after a round over one", state(jokers, true), state(jokers), jokersAnnounced],
+  ["5: the two-joker round, a move later", state(jokers), state(jokers), null],
+  ["6: an open phase re-sent", state(open({ cardFromLoser: THREE })), state(open({ cardFromLoser: THREE })), null],
+  ["7: a closed phase, a move later", state(closed({ cardToLoser: ACE })), state(closed({ cardToLoser: ACE })), null],
+  ["8: a fresh deal opening the phase", state(closed(), true), state(open({ cardFromLoser: THREE })), null],
+  ["8: a fresh deal opening the phase, none before", state(undefined, true), state(open({ cardFromLoser: THREE })), null],
+  ["9: the same state again", same, same, null],
+  ["a two-joker round over, re-sent", state(jokers, true), state(jokers, true), null],
+  ["a two-joker round over, seen first", null, state(jokers, true), null],
+];
+
+for (const [name, prev, next, expected] of rows) {
+  test(`exchangeAnnouncementOf, row ${name}`, () => {
+    assert.deepEqual(exchangeAnnouncementOf(prev, next), expected);
+  });
+}
 
 /**
  * The point of the shared form: a change to the ceremony is one change.
