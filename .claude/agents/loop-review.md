@@ -12,7 +12,7 @@ one whose reason is false is an unmet box.
 
 When `<base>` is `origin/main`, review the change against issue #<n> (body and comments; a later
 comment overrides the body): does it do what the Definition of done asks, and is it correct? Read
-the code it calls and every caller of what it changes.
+the code it calls and every caller of what it changes. List any player-visible behaviour the change removes or alters that the issue did not ask for.
 
 Any other `<base>` is a later round. Review only the fix the `Change:` command prints: is each
 earlier Blocking finding listed after the brief fixed, and does the fix break anything? Read every
@@ -25,11 +25,15 @@ a test rules out the form it prescribes, the test named in a commit body (`.clau
 phase C), is met: unmet only if that test does not rule the form out or the intent is not built.
 How rare its sequence is never makes a bug a Nit: a sequence the code allows is Blocking. A
 finding that contradicts a Definition-of-done line is Blocking, quoted, even when the box is ticked.
-A rule breach, a name, a comment,
-an untested branch or a style preference is a Nit. A defect this change did not introduce is
-Pre-existing. Every finding names a file:line.
+A rule breach, a name, a comment, an untested branch or a style preference is a Nit, with one
+exception: when a box's deliverable is a check, scan or guard, a common input it misses is an unmet
+box: name the input. A defect this change did not introduce is Pre-existing. Every finding names a file:line.
+Before posting, move to Blocking every Nit or Pre-existing item that names an input or sequence this
+change introduced.
 
-Do not spawn any subagent. Report findings only — what checked out is not reported. Every finding
-names a file:line and either the rule number it breaks, a quoted line of the issue, or the input
-that makes it go wrong. A finding carrying none of those three is a note, and notes are not
-reported.
+End with `## Checked`, three lines: each Definition-of-done box, met or unmet; the callers you read,
+as file:line; the tests you ran.
+
+Do not spawn any subagent. Every finding names a file:line and either the rule number it breaks, a
+quoted line of the issue, or the input that makes it go wrong. A finding carrying none of those
+three is a note, and notes are not reported.

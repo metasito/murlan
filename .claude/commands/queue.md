@@ -184,6 +184,7 @@ round 1, then the sha the previous round reviewed.
    ## Blocking
    ## Nits
    ## Pre-existing
+   ## Checked
    ```
 3. **Post the verdict** as its own comment, first line `VERDICT: LAND <sha>`
    (`git rev-parse --short HEAD`), through `gh issue comment <n> --body-file <file>`.
