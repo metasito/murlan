@@ -41,6 +41,34 @@ type MemoryOnly = Pick<OnlineGameState, MemoryOnlyField>;
 
 export const MEMORY_ONLY = Object.keys(MEMORY_ONLY_START) as MemoryOnlyField[];
 
+/**
+ * Every other field: packed by `toEnvelope`, or derived by `fromEnvelope` from
+ * the row. A field missing here or in `MEMORY_ONLY_START` fails to compile.
+ */
+const PERSISTED_FIELDS: { [K in Exclude<keyof OnlineGameState, MemoryOnlyField>]: true } = {
+  gameState: true,
+  playerMap: true,
+  roomId: true,
+  joinCode: true,
+  cumulativeScores: true,
+  gameMode: true,
+  maxPlayers: true,
+  matchTarget: true,
+  matchLength: true,
+  roundsPlayed: true,
+  matchOver: true,
+  endedByVote: true,
+  roundFlags: true,
+  abandonedSeats: true,
+  botSeatsAtStart: true,
+  releasedSeats: true,
+  vacatedSeats: true,
+  weakSeats: true,
+  dealFirstSeat: true,
+};
+
+export const PERSISTED = Object.keys(PERSISTED_FIELDS) as Exclude<keyof OnlineGameState, MemoryOnlyField>[];
+
 export function freshMemory(moveLog: OnlineGameState["moveLog"]): MemoryOnly {
   const memory: Record<string, unknown> = {};
   for (const field of MEMORY_ONLY) {
