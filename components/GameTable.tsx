@@ -44,13 +44,13 @@ import {
   arrangeOpponents,
   seatDirection,
   viewerOwnsSeat,
+  type OpponentSide,
 } from "@/components/seatLayout";
-import { handCountOf, vacatedOf } from "@/shared/protocol";
+import { handCountOf } from "@/shared/protocol";
 import type { CardFrom } from "@/components/flightPose";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
 import {
   anchorPoints,
-  comboKey,
   JOKERS,
   NO_STAGES,
   readExchange,
@@ -59,9 +59,11 @@ import {
   seatsJustPassed,
   tableGeometry,
   exchangeKey,
+  turnKey,
   type ExchangeStages,
 } from "@/components/flightPhysics";
-import { FloatSlot, type Float } from "@/components/table/notices/floats";
+import { FloatSlot } from "@/components/table/notices/floats";
+import { nextFloat, raised, type Float } from "@/components/table/floatModel";
 import type { ServerError } from "@/context/OnlineGameContext";
 import { EndMatchVote, RoundVote, type EndMatchVoteNote, type RoundVoteNote } from "@/components/table/notices/netNotes";
 import { mockupPx } from "@/components/table/noticeModel";
@@ -121,7 +123,7 @@ import { lampPools } from "@/components/table/lampRig";
 import { useTableTimeline } from "@/components/table/tableTimeline";
 import { useRoundEnding } from "@/components/table/useRoundEnding";
 import { roundVoteShown } from "@/lib/game/roundEnding";
-import { roundOutcomeFor, matchOutcomeFor } from "@/lib/game/matchState";
+import { roundOutcomeFor, matchOutcomeFor, scoredOutcome } from "@/lib/game/matchState";
 import { ParticleLayer } from "@/components/table/particleLayer";
 import { StraightHand, useHandArrival } from "@/components/table/hand";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
@@ -133,7 +135,8 @@ import { PileLayer, getComboLabel, usePileFlight } from "@/components/table/pile
 import { topPlay } from "@/components/table/trick";
 import { warmCardArt } from "@/components/CardView";
 import { BombBurst, BombFlash, FeltScrim, Sweep } from "@/components/table/moments";
-import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seats";
+import { OpponentSeat, usePassedSeats } from "@/components/table/seats";
+import { seatView, type SeatTable } from "@/components/table/seatView";
 import { CardCastContext, useCardCast, useFeltReady } from "@/components/table/feltReady";
 import { restingCast } from "@/components/table/cardShadows";
 import { DealFlights, useDeal, useDealBreath } from "@/components/table/deal";
@@ -196,12 +199,6 @@ const RAIL_Z = { zIndex: Layer.rail } as const;
 const HELD_CLOCK_Z = { zIndex: Layer.clock } as const;
 
 const passView = (s: GameState) => ({ ...s, outOfCards: s.players.map((p) => handCountOf(p) === 0) });
-const raised = (standing: Float | null, kind: Float["kind"], text: string, live = true): Float => ({
-  id: (standing?.id ?? 0) + 1,
-  kind,
-  text,
-  live,
-});
 
 const NO_DISMISS = () => {};
 const trickStart = () => event([{ kind: "trickStart" }]);
@@ -582,36 +579,28 @@ export function GameTable({
     gameState.lastPlayedCombination,
     players
   );
-  const [passSeen, setPassSeen] = useState(gameState);
-  const [errorSeen, setErrorSeen] = useState<ServerError | null>(null);
-  const [autoSeen, setAutoSeen] = useState(autoPassed);
+  const floatInputs = { gameState, error, autoPassed, tableWithdrawn };
+  const [floatSeen, setFloatSeen] = useState<typeof floatInputs>({ ...floatInputs, error: null });
   const [float, setFloat] = useState<Float | null>(null);
-  let floatNow = float;
-  if (passSeen !== gameState) {
-    setPassSeen(gameState);
-    if (!spectating && seatsJustPassed(passView(passSeen), passView(gameState)).includes(viewerSeat)) {
-      floatNow = raised(floatNow, "pass", t("gameShared.passedLabel"), !tableWithdrawn);
-    } else if (floatNow?.live) {
-      floatNow = { ...floatNow, live: false };
-    }
+  const moved = floatSeen.gameState !== gameState;
+  const erred = floatSeen.error?.seq !== error?.seq;
+  if (moved || erred || floatSeen.autoPassed !== autoPassed || floatSeen.tableWithdrawn !== tableWithdrawn) {
+    setFloatSeen(floatInputs);
+    const floatNow = nextFloat(
+      float,
+      {
+        viewerPassed: moved
+          ? !spectating && seatsJustPassed(passView(floatSeen.gameState), passView(gameState)).includes(viewerSeat)
+          : undefined,
+        error: erred ? error : undefined,
+        autoPassed: floatSeen.autoPassed !== autoPassed,
+        withdrawn: tableWithdrawn,
+        withdrew: tableWithdrawn && !floatSeen.tableWithdrawn,
+      },
+      { passed: t("gameShared.passedLabel"), autoPass: t("game.autoPassTitle") }
+    );
+    if (floatNow !== float) setFloat(floatNow);
   }
-  if (errorSeen?.seq !== error?.seq) {
-    setErrorSeen(error);
-    if (error) floatNow = raised(floatNow, "toast", error.text, !tableWithdrawn);
-    else if (floatNow?.kind === "toast" && floatNow.live) floatNow = { ...floatNow, live: false };
-  }
-  if (autoSeen !== autoPassed) {
-    setAutoSeen(autoPassed);
-    // The state lands no later than the notice (offline one batch, online the server's order). Only a pass is
-    // re-titled, in its own life: a timed-out lead is a card the server played, and raises nothing.
-    if (floatNow?.kind === "pass" && floatNow.live) floatNow = { ...floatNow, kind: "autoPass", text: t("game.autoPassTitle") };
-  }
-  const [withdrawnSeen, setWithdrawnSeen] = useState(tableWithdrawn);
-  if (withdrawnSeen !== tableWithdrawn) {
-    setWithdrawnSeen(tableWithdrawn);
-    if (tableWithdrawn && floatNow?.live) floatNow = { ...floatNow, live: false };
-  }
-  if (floatNow !== float) setFloat(floatNow);
 
   // ── The exchange, on the table ──────────────────────────────────────────────
   //
@@ -816,14 +805,9 @@ export function GameTable({
     lastPlayedCombination: gameState.lastPlayedCombination,
     trickWinner: gameState.trickWinner,
     roundOver: gameState.roundOver,
-    finishingOrder: gameState.finishingOrder,
-    players,
-    isTeamMode,
-    placementPoints,
-    viewerId: viewer?.id,
+    outcome: scoredOutcome(outcome, gameState.finishingOrder, placementPoints),
+    matchOutcome: matchOver ? matchOutcome : "pending",
     scale,
-    matchOver,
-    matchWinners,
     landing: landingSignal,
     timeline,
   });
@@ -1049,13 +1033,7 @@ export function GameTable({
       announcementHolds,
     });
 
-  // Changes on every move and every pass, so the countdown restarts once per
-  // turn — including when the same seat leads a new trick after winning one.
-  const turnToken =
-    `${gameState.currentTurnIndex}|${gameState.passCount}|` +
-    (gameState.lastPlayedCombination
-      ? comboKey(gameState.lastPlayedCombination, gameState.lastPlayedBy)
-      : "-");
+  const turnToken = turnKey(gameState);
 
   const top = topPlay(trick.plays);
   const onTop = top?.combo ?? null;
@@ -1152,10 +1130,31 @@ export function GameTable({
         : exchange.viewerIsLoser
           ? t("exchange.waitingForYou", { winner: exchange.winner?.name ?? "" })
           : t("exchange.watching", { winner: exchange.winner?.name ?? "", loser: exchangeLoserName });
-  const seatMark = (seat: number) => ({ marked: exchangeSeats.lit.includes(seat), seat, flash: ringFlash });
-  const onMove = (seat: number) => !shownExchange && shown === null && seat === shownTurnIndex;
   useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
-  const seatCount = (seat: number, player: (typeof players)[number]) => handCountOf(player) + (exchangeSeats.shift.get(seat) ?? 0);
+  const seatTable: SeatTable = {
+    onMoveSeat: !shownExchange && shown === null ? shownTurnIndex : null,
+    passed,
+    disconnectedSeats,
+    exchangeLit: exchangeSeats.lit,
+    exchangeShift: exchangeSeats.shift,
+  };
+  const opponentSeat = (place: OpponentSide) => {
+    const opponent = opponents[place];
+    return (
+      opponent && (
+        <OpponentSeat
+          place={place}
+          player={opponent.player}
+          {...seatView(opponent.seat, opponent.player, seatTable)}
+          dealArrivals={deal.arrivalsFor(opponent.seat)}
+          scale={scale}
+          countdown={seatCountdown}
+          focusMode={focusMode}
+          flash={ringFlash}
+        />
+      )
+    );
+  };
 
   // The last hook: effects run in declaration order, so every producer above has queued its moments.
   useEffect(() => timeline.flush());
@@ -1423,23 +1422,7 @@ export function GameTable({
           <A11yVeil veil={behindVeil}>
           <Animated.View style={[sharedTableStyles.tableContent, shakeStyle]}>
             <View testID="table-top-section" style={[sharedTableStyles.topSection, { height: topBandHeight(scale) }]}>
-              {opponents.top ? (
-                <TopOppSlot
-                  player={opponents.top.player}
-                  isActive={onMove(opponents.top.seat)}
-                  cardCount={seatCount(opponents.top.seat, opponents.top.player)}
-                  dealArrivals={deal.arrivalsFor(opponents.top.seat)}
-                  passed={passed.includes(opponents.top.seat)}
-                  vacated={vacatedOf(opponents.top.player)}
-                  reconnecting={disconnectedSeats[opponents.top.seat]}
-                  scale={scale}
-                  countdown={seatCountdown}
-                  focusMode={focusMode}
-                  {...seatMark(opponents.top.seat)}
-                />
-              ) : (
-                <View />
-              )}
+              {opponentSeat("top") ?? <View />}
             </View>
 
             {/* The band left over between the top band and the hand. The seats
@@ -1448,22 +1431,7 @@ export function GameTable({
             {/* The flier's first frame sits on its own hand slot or fan, so the pile's band paints above both while one is up. */}
             <View style={[sharedTableStyles.midSection, (flights.length > 0 || shownExchange !== null) && { zIndex: Layer.moment }]}>
               <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft, { height: sideSlotHeight(scale) }]}>
-                {opponents.left && (
-                  <SideOppSlot
-                    player={opponents.left.player}
-                    isActive={onMove(opponents.left.seat)}
-                    side="left"
-                    cardCount={seatCount(opponents.left.seat, opponents.left.player)}
-                    dealArrivals={deal.arrivalsFor(opponents.left.seat)}
-                    passed={passed.includes(opponents.left.seat)}
-                    vacated={vacatedOf(opponents.left.player)}
-                    reconnecting={disconnectedSeats[opponents.left.seat]}
-                    scale={scale}
-                    countdown={seatCountdown}
-                    focusMode={focusMode}
-                    {...seatMark(opponents.left.seat)}
-                  />
-                )}
+                {opponentSeat("left")}
               </View>
 
               <View style={sharedTableStyles.centerSection}>
@@ -1529,22 +1497,7 @@ export function GameTable({
               </View>
 
               <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionRight, { height: sideSlotHeight(scale) }]}>
-                {opponents.right && (
-                  <SideOppSlot
-                    player={opponents.right.player}
-                    isActive={onMove(opponents.right.seat)}
-                    side="right"
-                    cardCount={seatCount(opponents.right.seat, opponents.right.player)}
-                    dealArrivals={deal.arrivalsFor(opponents.right.seat)}
-                    passed={passed.includes(opponents.right.seat)}
-                    vacated={vacatedOf(opponents.right.player)}
-                    reconnecting={disconnectedSeats[opponents.right.seat]}
-                    scale={scale}
-                    countdown={seatCountdown}
-                    focusMode={focusMode}
-                    {...seatMark(opponents.right.seat)}
-                  />
-                )}
+                {opponentSeat("right")}
               </View>
             </View>
 

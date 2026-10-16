@@ -25,11 +25,8 @@ const idleState = () => ({
   lastPlayedCombination: null,
   trickWinner: null,
   roundOver: false,
-  finishingOrder: [],
-  players: [],
-  isTeamMode: false,
-  placementPoints: {},
-  viewerId: undefined,
+  outcome: "neutral" as const,
+  matchOutcome: "pending" as const,
   scale: 1,
   landing: makeMutable(NO_LANDING),
 });

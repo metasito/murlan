@@ -10,14 +10,14 @@ jest.mock('@/lib/accessibility', () => ({
   getMotionPreference: () => 'off',
 }));
 
-import { TopOppSlot } from '@/components/table/seats';
+import { OpponentSeat } from '@/components/table/seats';
 import { LastCard } from '@/lib/theme';
 import type { Player } from '@/lib/game/gameEngine';
 
 const PLAYER: Player = { id: 'player_1', name: 'Besi', hand: [], type: 'human' };
 
 async function badgeAt(cardCount: number) {
-  const r = await render(<TopOppSlot player={PLAYER} isActive={false} cardCount={cardCount} />);
+  const r = await render(<OpponentSeat place="top" player={PLAYER} isActive={false} cardCount={cardCount} />);
   const bubble = StyleSheet.flatten(screen.getByTestId('seat-card-count').props.style);
   const digit = StyleSheet.flatten(screen.getByText(String(cardCount)).props.style);
   await r.unmount();
@@ -42,7 +42,7 @@ describe('a seat down to its last card', () => {
 
   it('is not the last card while a deal has landed only one of thirteen', async () => {
     const dealArrivals = { at: Array.from({ length: 13 }, (_, i) => i * 100), clock: makeMutable(50) };
-    const r = await render(<TopOppSlot player={PLAYER} isActive={false} cardCount={13} dealArrivals={dealArrivals} />);
+    const r = await render(<OpponentSeat place="top" player={PLAYER} isActive={false} cardCount={13} dealArrivals={dealArrivals} />);
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });

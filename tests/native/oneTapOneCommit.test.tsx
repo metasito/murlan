@@ -67,7 +67,7 @@ jest.mock('@/components/table/seats', () => {
     mockCount.seat += 1;
     return R.createElement(C, p);
   };
-  return { ...actual, TopOppSlot: counted(actual.TopOppSlot), SideOppSlot: counted(actual.SideOppSlot) };
+  return { ...actual, OpponentSeat: counted(actual.OpponentSeat) };
 });
 
 jest.mock('@/components/table/pile', () => {

@@ -596,9 +596,10 @@ function SeatBadges({
   );
 }
 
-// ─── TopOppSlot ───────────────────────────────────────────────────────────────
+// ─── OpponentSeat ─────────────────────────────────────────────────────────────
 
-export const TopOppSlot = memo(function TopOppSlot({
+export const OpponentSeat = memo(function OpponentSeat({
+  place,
   player,
   isActive,
   cardCount,
@@ -611,6 +612,7 @@ export const TopOppSlot = memo(function TopOppSlot({
   dealArrivals,
   ...marking
 }: SlotMark & {
+  place: OpponentSide;
   player: Player;
   isActive: boolean;
   cardCount?: number;
@@ -634,12 +636,15 @@ export const TopOppSlot = memo(function TopOppSlot({
   const displayed = Math.min(held, arrived);
   const wentOut = wentOutAt(player, held);
   const mark = markOf(marking);
+  const top = place === "top";
   return (
     <View
-      testID="top-seat"
+      testID={top ? "top-seat" : `side-seat-${place}`}
       style={[
-        seatStyles.topOppSlot,
-        { paddingTop: seatLabelH(scale), gap: seatGap(scale) },
+        top
+          ? [seatStyles.topOppSlot, { paddingTop: seatLabelH(scale) }]
+          : [seatStyles.sideOppSlot, place === "left" ? seatStyles.sideLeft : seatStyles.sideRight],
+        { gap: seatGap(scale) },
         !!reconnecting && seatStyles.seatDim,
       ]}
     >
@@ -654,12 +659,11 @@ export const TopOppSlot = memo(function TopOppSlot({
         reconnecting={reconnecting}
         scale={scale}
         countdown={countdown}
+        anchor={top ? "centre" : place}
         focusMode={focusMode}
         mark={mark}
       />
-      {wentOut === undefined && displayed > 0 && (
-        <CardFan count={displayed} side="top" scale={scale} />
-      )}
+      {wentOut === undefined && displayed > 0 && <CardFan count={displayed} side={place} scale={scale} />}
     </View>
   );
 });
@@ -771,79 +775,6 @@ function SeatWho({
     </View>
   );
 }
-
-// ─── SideOppSlot ──────────────────────────────────────────────────────────────
-
-export const SideOppSlot = memo(function SideOppSlot({
-  player,
-  isActive,
-  side,
-  cardCount,
-  passed = false,
-  vacated = false,
-  reconnecting,
-  scale = 1,
-  countdown,
-  focusMode = false,
-  dealArrivals,
-  ...marking
-}: SlotMark & {
-  player: Player;
-  isActive: boolean;
-  side: "left" | "right";
-  cardCount?: number;
-  /** This seat has passed in the round on the table. */
-  passed?: boolean;
-  /** The seat is a human's that left, played on by the engine. */
-  vacated?: boolean;
-  /** The seat's own disconnect countdown, for the whole grace. */
-  reconnecting?: { seconds: number; resetKey: string };
-  /** The table's own scale — the seat's fan draws its backs at `scale * BACK_SCALE`. */
-  scale?: number;
-  /** The turn window, so the seat on move can sweep its own rim. */
-  countdown?: SeatCountdown;
-  /** Cards only: the name, the badges and the card count fall away. */
-  focusMode?: boolean;
-  /** While a deal runs, when each of this seat's cards lands — see useArrivedCount. */
-  dealArrivals?: DealArrivals;
-}) {
-  const arrived = useArrivedCount(dealArrivals);
-  const held = cardCount ?? player.hand.length;
-  const displayed = Math.min(held, arrived);
-  const wentOut = wentOutAt(player, held);
-  const isLeft = side === "left";
-  const mark = markOf(marking);
-  return (
-    <View
-      testID={`side-seat-${side}`}
-      style={[
-        seatStyles.sideOppSlot,
-        { gap: seatGap(scale) },
-        isLeft ? seatStyles.sideLeft : seatStyles.sideRight,
-        !!reconnecting && seatStyles.seatDim,
-      ]}
-    >
-      <SeatWho
-        name={player.name}
-        isActive={isActive}
-        count={displayed}
-        held={held}
-        finishPos={wentOut}
-        passed={passed}
-        vacated={vacated}
-        reconnecting={reconnecting}
-        scale={scale}
-        countdown={countdown}
-        anchor={isLeft ? "left" : "right"}
-        focusMode={focusMode}
-        mark={mark}
-      />
-      {displayed > 0 && wentOut === undefined && (
-        <CardFan count={displayed} side={side} scale={scale} />
-      )}
-    </View>
-  );
-});
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 

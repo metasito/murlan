@@ -19,7 +19,7 @@ jest.mock('@/lib/accessibility', () => ({
 import { bootFeedback, settle, sounds } from './helpers/feedback';
 import { GameTable } from '@/components/GameTable';
 import { PILE_UP_WINDOW_MS } from '@/lib/device/moments';
-import { TopOppSlot, SideOppSlot } from '@/components/table/seats';
+import { OpponentSeat } from '@/components/table/seats';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
 import { en as locale } from '@/locales/en';
 
@@ -187,20 +187,20 @@ describe('the per-seat pass marker', () => {
 
   it('is rendered by the slot itself only when the seat has passed', async () => {
     const top = await render(
-      withSafeArea(<TopOppSlot player={seat(1, 'Besi')} isActive={false} cardCount={5} passed />)
+      withSafeArea(<OpponentSeat place="top" player={seat(1, 'Besi')} isActive={false} cardCount={5} passed />)
     );
     expect(top.queryByTestId('notice-passed')).toBeTruthy();
     await top.unmount();
 
     const topClear = await render(
-      withSafeArea(<TopOppSlot player={seat(1, 'Besi')} isActive={false} cardCount={5} />)
+      withSafeArea(<OpponentSeat place="top" player={seat(1, 'Besi')} isActive={false} cardCount={5} />)
     );
     expect(topClear.queryByTestId('notice-passed')).toBeNull();
     await topClear.unmount();
 
     const side = await render(
       withSafeArea(
-        <SideOppSlot player={seat(2, 'Cimi')} isActive={false} side="left" cardCount={5} passed />
+        <OpponentSeat place="left" player={seat(2, 'Cimi')} isActive={false} cardCount={5} passed />
       )
     );
     expect(side.queryByTestId('notice-passed')).toBeTruthy();
@@ -208,7 +208,7 @@ describe('the per-seat pass marker', () => {
 
     const sideClear = await render(
       withSafeArea(
-        <SideOppSlot player={seat(2, 'Cimi')} isActive={false} side="right" cardCount={5} />
+        <OpponentSeat place="right" player={seat(2, 'Cimi')} isActive={false} cardCount={5} />
       )
     );
     expect(sideClear.queryByTestId('notice-passed')).toBeNull();

@@ -24,8 +24,9 @@ function mockProfiled(path: string, names: string[]) {
   const wrap = (name: string) => {
     const c = actual[name];
     const body = typeof c === 'function' ? c : c.type;
-    const counted = (p: object) => {
-      mockRenders[name] = (mockRenders[name] ?? 0) + 1;
+    const counted = (p: object & { place?: string }) => {
+      const key = p.place === undefined ? name : `${name}:${p.place}`;
+      mockRenders[key] = (mockRenders[key] ?? 0) + 1;
       return body(p);
     };
     return typeof c === 'function' ? counted : R.memo(counted, c.compare);
@@ -33,7 +34,7 @@ function mockProfiled(path: string, names: string[]) {
   return { ...actual, ...Object.fromEntries(names.map((name) => [name, wrap(name)])) };
 }
 
-jest.mock('@/components/table/seats', () => mockProfiled('@/components/table/seats', ['TopOppSlot', 'SideOppSlot']));
+jest.mock('@/components/table/seats', () => mockProfiled('@/components/table/seats', ['OpponentSeat']));
 jest.mock('@/components/table/pile', () => mockProfiled('@/components/table/pile', ['PileLayer']));
 jest.mock('@/components/table/hand', () => mockProfiled('@/components/table/hand', ['StraightHand']));
 jest.mock('react-native-svg', () => {
@@ -60,8 +61,8 @@ const table = (s: GameState) => (
 
 type Cost = {
   commits: number;
-  TopOppSlot: number;
-  SideOppSlot: number;
+  topSeat: number;
+  sideSeats: number;
   PileLayer: number;
   StraightHand: number;
   Svg: number;
@@ -80,12 +81,14 @@ async function costPerMove(): Promise<Cost[]> {
     for (const k of Object.keys(mockRenders)) delete mockRenders[k];
     await act(async () => view.rerender(table(s)));
     await settle(STEP_MS);
-    const { commits = 0, TopOppSlot = 0, SideOppSlot = 0, PileLayer = 0, StraightHand = 0, Svg = 0 } = mockRenders;
+    const { commits = 0, PileLayer = 0, StraightHand = 0, Svg = 0 } = mockRenders;
+    const topSeat = mockRenders['OpponentSeat:top'] ?? 0;
+    const sideSeats = (mockRenders['OpponentSeat:left'] ?? 0) + (mockRenders['OpponentSeat:right'] ?? 0);
     const play = s.lastPlayedCombination;
     const thrown = play && ids(play) !== ids(prev.lastPlayedCombination) ? play.cards.length : 0;
     const resized = (prev.currentTurnIndex === 0) !== (s.currentTurnIndex === 0);
     const art = thrown + (resized ? Math.max(prev.players[0].hand.length, s.players[0].hand.length) : 0);
-    costs.push({ commits, TopOppSlot, SideOppSlot, PileLayer, StraightHand, Svg, art });
+    costs.push({ commits, topSeat, sideSeats, PileLayer, StraightHand, Svg, art });
     prev = s;
   }
   await view.unmount();
@@ -120,7 +123,8 @@ describe('one bot move', () => {
     expect(most(costs, 'PileLayer')).toBeGreaterThanOrEqual(2);
     expect(total(costs, 'StraightHand')).toBeLessThanOrEqual(commits / 2);
     expect(total(costs, 'PileLayer')).toBeLessThan(commits);
-    expect(most(costs, 'TopOppSlot')).toBeLessThanOrEqual(2);
-    expect(most(costs, 'SideOppSlot')).toBeLessThanOrEqual(4);
+    expect(total(costs, 'topSeat')).toBeGreaterThan(0);
+    expect(most(costs, 'topSeat')).toBeLessThanOrEqual(2);
+    expect(most(costs, 'sideSeats')).toBeLessThanOrEqual(4);
   }, 120_000);
 });
