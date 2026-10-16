@@ -20,7 +20,7 @@ import { reportError } from '@/lib/errorReporting';
 import { GATE_WATCHDOG_MS } from '@/lib/game/gateWatchdog';
 import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
 import { emptyRankTally, type Card, type GameState, type Player, type Rank, type Suit } from '@/lib/game/gameEngine';
-import { frames } from './helpers/exchangeLegs';
+import { steps } from './helpers/steps';
 import { bootFeedback } from './helpers/feedback';
 
 const card = (rank: Rank, suit: Suit): Card => ({ id: `${rank}_${suit}`, rank, suit, isJoker: false });
@@ -66,7 +66,7 @@ describe('a deal whose frame clock never advances', () => {
     await act(async () => jest.advanceTimersByTime(GATE_WATCHDOG_MS - 500));
     expect({ prompt: prompt() !== null, reported: jest.mocked(reportError).mock.calls.length }).toEqual({ prompt: false, reported: 0 });
 
-    await frames(500 + choiceOpensAt(false) + 200);
+    await steps(500 + choiceOpensAt(false) + 200);
     expect(prompt()).not.toBeNull();
     expect(jest.mocked(reportError).mock.calls.map(([e]) => (e as Error).message)).toEqual(['table gate forced: deal']);
     await view.unmount();

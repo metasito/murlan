@@ -7,7 +7,7 @@ import type { Card, GameState, Rank, Suit } from '@/lib/game/gameEngine';
 import { dealEndMs } from '@/lib/game/dealTimeline';
 import { OFFLINE_BOT_DELAY_MS } from '@/lib/game/offlineBotDelay';
 import { Motion } from '@/lib/tokens';
-import { frames } from './helpers/exchangeLegs';
+import { steps } from './helpers/steps';
 import { bootFeedback } from './helpers/feedback';
 
 jest.mock('expo-router', () => ({
@@ -82,12 +82,12 @@ describe('the first round, offline', () => {
         <GameScreen />
       </SafeAreaProvider>
     );
-    await frames(OFFLINE_BOT_DELAY_MS + 100);
+    await steps(OFFLINE_BOT_DELAY_MS + 100);
     expect(mockRunBotTurn).not.toHaveBeenCalled();
 
-    await frames(DEAL_ENDS - OFFLINE_BOT_DELAY_MS + 100);
+    await steps(DEAL_ENDS - OFFLINE_BOT_DELAY_MS + 100);
     expect(mockRunBotTurn).not.toHaveBeenCalled();
-    await frames(OFFLINE_BOT_DELAY_MS + 100);
+    await steps(OFFLINE_BOT_DELAY_MS + 100);
     expect(mockRunBotTurn).toHaveBeenCalledTimes(1);
     await view.unmount();
   }, 30_000);

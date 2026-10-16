@@ -16,7 +16,6 @@ import { GATE_WATCHDOG_MS } from '@/lib/game/gateWatchdog';
 import { emptyRankTally, type Card, type GameState, type Player, type Rank, type Suit } from '@/lib/game/gameEngine';
 import type { ExchangeAnnounceData } from '@/lib/game/sharedGameFlow';
 import { en } from '@/locales/en';
-import { FRAME_MS } from './helpers/frames';
 import { bootFeedback } from './helpers/feedback';
 
 const card = (rank: Rank, suit: Suit): Card => ({ id: `${rank}_${suit}`, rank, suit, isJoker: false });
@@ -90,6 +89,7 @@ const ENDINGS = [
 ];
 
 const HIDDEN_TOO = { includeHiddenElements: true };
+const STEP_MS = 100;
 const chipReads = (seatOnMove: number) =>
   within(screen.getByTestId('game-hud-stack')).queryByText(
     seatOnMove === 0 ? en['gameShared.yourTurn'] : en['gameShared.turnOf'].replace('{{name}}', NAMES[seatOnMove]),
@@ -98,9 +98,9 @@ const chipReads = (seatOnMove: number) =>
 
 /** Frame by frame until `done` holds, inside the gate watchdog: a healthy run never waits it out. */
 async function until(done: () => boolean, what: string): Promise<void> {
-  for (let t = 0; !done(); t += FRAME_MS) {
+  for (let t = 0; !done(); t += STEP_MS) {
     if (t > GATE_WATCHDOG_MS - 1000) throw new Error(`${what}: not within ${t} ms`);
-    await act(async () => jest.advanceTimersByTime(FRAME_MS));
+    await act(async () => jest.advanceTimersByTime(STEP_MS));
   }
 }
 

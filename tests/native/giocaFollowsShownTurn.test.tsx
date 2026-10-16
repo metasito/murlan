@@ -8,7 +8,7 @@ import { GameTable } from '@/components/GameTable';
 import { dealEndMs } from '@/lib/game/dealTimeline';
 import type { Card, GameState, Rank } from '@/lib/game/gameEngine';
 import { Motion } from '@/lib/tokens';
-import { frames } from './helpers/exchangeLegs';
+import { steps } from './helpers/steps';
 import { bootFeedback } from './helpers/feedback';
 
 const RANKS: Rank[] = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'];
@@ -49,10 +49,10 @@ describe('the viewer opening the first round', () => {
         <GameTable gameState={OPENING} viewerSeat={0} onPlay={() => {}} onPass={() => {}} onQuit={() => {}} onExchangeGive={() => {}} onDealing={onDealing} />
       </SafeAreaProvider>
     );
-    await frames(160);
+    await steps(160);
     expect({ notYourTurn: notYourTurn(), dealing: onDealing.mock.calls.at(-1) }).toEqual({ notYourTurn: true, dealing: [true] });
 
-    await frames(dealEndMs([13, 13], Motion.duration.reveal) + 200);
+    await steps(dealEndMs([13, 13], Motion.duration.reveal) + 200);
     expect({ notYourTurn: notYourTurn(), dealing: onDealing.mock.calls.at(-1) }).toEqual({ notYourTurn: false, dealing: [false] });
     await view.unmount();
   }, 20_000);
