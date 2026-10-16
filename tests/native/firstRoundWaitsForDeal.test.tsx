@@ -17,17 +17,11 @@ jest.mock('expo-router', () => ({
 const mockRunBotTurn = jest.fn();
 
 const RANKS: Rank[] = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'];
-const SUITS: Suit[] = ['spades', 'hearts', 'clubs', 'diamonds'];
-const hand = (suit: Suit): Card[] => RANKS.map((rank) => ({ id: `${rank}_${suit}`, rank, suit, isJoker: false }));
+const card = (rank: Rank, suit: Suit): Card => ({ id: `${rank}_${suit}`, rank, suit, isJoker: false });
+const hand = (suit: Suit): Card[] => RANKS.map((rank) => card(rank, suit));
 
-/** Four seats dealt thirteen each; the bot in seat 1 holds the 3♠ and opens. */
-const mockOpening: GameState = {
-  players: [
-    { id: 'player_0', name: 'Ana', hand: hand('hearts'), type: 'human' },
-    { id: 'player_1', name: 'Luan', hand: hand('spades'), type: 'bot' },
-    { id: 'player_2', name: 'Besnik', hand: hand('clubs'), type: 'bot' },
-    { id: 'player_3', name: 'Gent', hand: hand('diamonds'), type: 'bot' },
-  ],
+const opening = (players: GameState['players']): GameState => ({
+  players,
   currentTurnIndex: 1,
   lastPlayedCombination: null,
   lastPlayedBy: -1,
@@ -38,8 +32,28 @@ const mockOpening: GameState = {
   finishingOrder: [],
   firstPlayMade: false,
   startCard: hand('spades')[0],
-};
-const DEAL_ENDS = dealEndMs(SUITS.map(() => RANKS.length), Motion.duration.reveal);
+});
+
+/** The bot in seat 1 holds the 3♠ and opens, at either table shape. */
+const TABLES: [string, GameState][] = [
+  [
+    'four seats',
+    opening([
+      { id: 'player_0', name: 'Ana', hand: hand('hearts'), type: 'human' },
+      { id: 'player_1', name: 'Luan', hand: hand('spades'), type: 'bot' },
+      { id: 'player_2', name: 'Besnik', hand: hand('clubs'), type: 'bot' },
+      { id: 'player_3', name: 'Gent', hand: hand('diamonds'), type: 'bot' },
+    ]),
+  ],
+  [
+    'two seats',
+    opening([
+      { id: 'player_0', name: 'Ana', hand: [...hand('hearts'), card('2', 'clubs')], type: 'human' },
+      { id: 'player_1', name: 'Luan', hand: [...hand('spades'), card('A', 'clubs')], type: 'bot' },
+    ]),
+  ],
+];
+let mockOpening: GameState = TABLES[0][1];
 
 jest.mock('@/context/GameContext', () => ({
   useGame: () => ({
@@ -75,7 +89,9 @@ describe('the first round, offline', () => {
     jest.useRealTimers();
   });
 
-  it('holds the bot holding the 3♠ until the deal has landed, then plays', async () => {
+  it.each(TABLES)('%s: holds the bot holding the 3♠ until the deal has landed, then plays', async (_, table) => {
+    mockOpening = table;
+    const DEAL_ENDS = dealEndMs(table.players.map((p) => p.hand.length), Motion.duration.reveal);
     expect(DEAL_ENDS).toBeGreaterThan(OFFLINE_BOT_DELAY_MS + 200);
     const view = await render(
       <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } }}>
