@@ -45,11 +45,10 @@ Verify against source before changing any.
 
 ## Design
 
-The 2026-10-16 audit's 238 findings had one root: a module offered steps, not decisions, so
-callers re-derived them and the copies drifted (map #1650). So: one owner per decision, which
-callers ask (rule 47); a second copy is a defect (rule 48); a new invariant lands with a check
-proven on a planted defect and floored against an empty input (rule 49). No seam, interface or
-adapter layer until a second adapter exists. The loop's review blocks a merge on 47–49.
+A module offers decisions, not steps: when it offers steps, callers re-derive the decision and
+the copies drift. One owner per decision, which callers ask (rule 47); a second copy is a defect
+(rule 48); a new invariant lands with a check proven on a planted defect and floored against an
+empty input (rule 49). No seam, interface or adapter layer until a second adapter exists.
 
 ## Comments
 
