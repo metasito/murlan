@@ -26,7 +26,7 @@ import { decide } from "./decide.mjs";
 const ts = (file) => createRequire(import.meta.url)(file);
 
 /**
- * The supervisor's half has no watchdog over it — `runTicket`'s watches the child and is cleared
+ * The supervisor's half has no watchdog over it — `runSession`'s (`loop-session.mjs`) watches the child and is cleared
  * when the child closes — so `settle` as a whole is bounded here instead, and a branch that keeps
  * asking for one more round cannot hold the night open. Each individual `gh` call carries its own
  * ceiling in `ciVerdict.ts`'s `ghExecOptions`, which is where the one that can block lives.

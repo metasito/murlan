@@ -26,6 +26,8 @@ input or sequence that makes it go wrong; a Definition-of-done box left unmet, q
 or red CI run this change causes; a security or data-loss risk. A box built for its intent because
 a test rules out the form it prescribes, the test named in a commit body (`.claude/commands/queue.md`
 phase C), is met: unmet only if that test does not rule the form out or the intent is not built.
+How rare its sequence is never makes a bug a Nit: a sequence the code allows is Blocking. A
+finding that contradicts a Definition-of-done line is Blocking, quoted, even when the box is ticked.
 A rule breach, a name, a comment,
 an untested branch or a style preference is a Nit. A defect this change did not introduce is
 Pre-existing. Every finding names a file:line.

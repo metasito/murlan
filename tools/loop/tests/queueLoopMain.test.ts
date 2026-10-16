@@ -1439,6 +1439,7 @@ describe("main", () => {
       runId: "t",
     });
     assert.ok(said.some((m) => /#1094's phase D session .* killed after 12 min/.test(m)), said.join("\n"));
+    assert.ok(said.some((m) => /session from 08:05Z was killed/.test(m)), `the start is in the log's own zone: ${said.join("\n")}`);
   });
 
   test("a moved tools/loop ends main with the restart code, before anything is picked", async () => {

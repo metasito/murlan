@@ -1546,7 +1546,7 @@ export async function main({
   if (killed) {
     screen.notice(
       "killed",
-      `#${killed.n}'s phase ${killed.phase ?? "?"} session from ${clockAt(Date.parse(killed.started))} was killed after ${Math.round(killed.ms / 60_000)} min and left no row`,
+      `#${killed.n}'s phase ${killed.phase ?? "?"} session from ${new Date(killed.started).toISOString().slice(11, 16)}Z was killed after ${Math.round(killed.ms / 60_000)} min and left no row`,
     );
   }
 
