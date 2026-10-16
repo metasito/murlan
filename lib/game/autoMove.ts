@@ -13,6 +13,7 @@ import {
   sortHand,
   pickGivebackCard,
   getStartingPlayerAfterExchange,
+  getNextActivePlayer,
 } from "./gameEngine.ts";
 import { botChoosePlay, knownOpponentExchangeCard, opponentsOf } from "./bot.ts";
 import type { GameState, Combination } from "./gameEngine.ts";
@@ -43,6 +44,9 @@ export function resolveStuckExchange(state: GameState): GameState {
   const next = structuredClone(state);
   if (next.exchangePhase) next.exchangePhase.active = false;
   next.currentTurnIndex = getStartingPlayerAfterExchange(state);
+  if (next.players[next.currentTurnIndex].hand.length === 0) {
+    next.currentTurnIndex = getNextActivePlayer(next);
+  }
   next.lastPlayedBy = next.currentTurnIndex;
   return next;
 }

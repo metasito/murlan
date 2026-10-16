@@ -818,7 +818,7 @@ export function processPass(state: GameState): GameState {
   return newState;
 }
 
-function getNextActivePlayer(state: GameState): number {
+export function getNextActivePlayer(state: GameState): number {
   const total = state.players.length;
   let next = (state.currentTurnIndex - 1 + total) % total;
   let attempts = 0;

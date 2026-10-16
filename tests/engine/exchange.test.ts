@@ -14,7 +14,7 @@ import {
   processExchangeChoice,
   type Card,
 } from "./helpers.ts";
-import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
+import { autoMoveForSeat, resolveStuckExchange } from "../../lib/game/autoMove.ts";
 
 const ids = (cards: Card[]) => cards.map((card) => card.id).sort();
 
@@ -166,6 +166,44 @@ describe("processExchangeChoice", () => {
   test("does nothing when the exchange phase is not active", () => {
     const state = makeState([makePlayer("a", [c("4", "hearts")]), makePlayer("b", [])]);
     assert.equal(processExchangeChoice(state, "4_hearts"), state);
+  });
+});
+
+describe("resolveStuckExchange", () => {
+  const stuck = (loserHand: Card[]) =>
+    makeState(
+      [
+        makePlayer("winner", []),
+        makePlayer("loser", loserHand),
+        makePlayer("c", [c("5", "clubs")]),
+        makePlayer("d", [c("6", "clubs")]),
+      ],
+      {
+        currentTurnIndex: 0,
+        exchangePhase: {
+          active: true,
+          winnerIdx: 0,
+          loserIdx: 1,
+          cardFromLoser: c("A", "spades"),
+          twoJokerException: false,
+        },
+      }
+    );
+
+  test("hands the lead to the loser when they hold cards", () => {
+    const next = resolveStuckExchange(stuck([c("4", "hearts")]));
+    assert.equal(next.exchangePhase?.active, false);
+    assert.equal(next.currentTurnIndex, 1);
+    assert.equal(next.lastPlayedBy, 1);
+  });
+
+  test("an empty-handed loser passes the lead to the next seat holding cards in turn order", () => {
+    const state = stuck([]);
+    assert.equal(getStartingPlayerAfterExchange(state), 1);
+    const next = resolveStuckExchange(state);
+    assert.equal(next.exchangePhase?.active, false);
+    assert.equal(next.currentTurnIndex, 3);
+    assert.equal(next.lastPlayedBy, 3);
   });
 });
 
