@@ -34,7 +34,8 @@ import {
 } from "../../lib/game/autoMove.ts";
 import { roundUnplayed, openingIsPending } from "../../lib/game/gameEngine.ts";
 import type { GameState, Combination } from "../../lib/game/gameEngine.ts";
-import { Reading } from "../../lib/tokens.ts";
+import { Motion, Reading } from "../../lib/tokens.ts";
+import { dealEndMs } from "../../lib/game/dealTimeline.ts";
 import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
 import { exchangeGiveDelayMs } from "../../lib/game/exchangeTimeline.ts";
 import { handCountOf } from "../../shared/protocol.ts";
@@ -140,9 +141,12 @@ export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDe
     game.turnDeadlineMs = undefined;
     const phase = game.gameState.exchangePhase;
     const exchangeOnTable = phase?.active || (phase?.twoJokerException && roundUnplayed(game.gameState));
+    const counts = game.gameState.players.map(handCountOf);
     const delayMs = exchangeOnTable
-      ? Math.max(botDelayMs, exchangeGiveDelayMs(game.gameState.players.map(handCountOf)))
-      : botDelayMs;
+      ? Math.max(botDelayMs, exchangeGiveDelayMs(counts))
+      : roundUnplayed(game.gameState)
+        ? Math.max(botDelayMs, dealEndMs(counts, Motion.duration.reveal))
+        : botDelayMs;
     arm("bot", roomId, delayMs, () => safeTimer(io, "botTurn", roomId, () => runBotTurn(io, roomId)));
     emitTurnDeadline(io, roomId, game);
     return;
