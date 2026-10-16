@@ -207,7 +207,8 @@ function anchored(rel: string, construct: RegExp, what: string) {
 
 const STATE_DECLARATION = /^([ \t]*)const \[\w+, set\w+\] = useState/m;
 const FIRST_EFFECT = /^([ \t]*)useEffect\(/m;
-const DEPENDENCY_ARRAY = /\}, \[[^[\]\n]+\]\)/;
+// Two entries at least: reversing one changes nothing, so the edit below would match and do nothing.
+const DEPENDENCY_ARRAY = /\}, \[([^[\]\n]+,[^[\]\n]+)\]\)/;
 
 /**
  * A render-time ref write, in the body that declares the file's first piece of
@@ -442,7 +443,7 @@ const ORDINARY_EDITS = [
     what: "the first dependency array reversed",
     needs: DEPENDENCY_ARRAY,
     apply: (source: string) =>
-      source.replace(/\}, \[([^[\]\n]+)\]\)/, (_whole, deps: string) => {
+      source.replace(DEPENDENCY_ARRAY, (_whole, deps: string) => {
         const parts = deps.split(",").map((d) => d.trim());
         return `}, [${[...parts].reverse().join(", ")}])`;
       }),
