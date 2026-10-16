@@ -311,6 +311,11 @@ describe("counting review rounds", () => {
     assert.equal(fixHolds([{ body: "VERDICT: HOLD abc1234 — no" }]), 0);
   });
 
+  test("a rebase round's REVIEW <sha> fix, after a CONFLICT, does not count toward the cap", () => {
+    const comments = [{ body: "VERDICT: LAND abc1234" }, { body: "CONFLICT abc1234" }, fixReview, { body: "VERDICT: LAND def5678" }];
+    assert.equal(reviewRounds(comments), 1);
+  });
+
   test("a fix label with no CI-RED before it, since the count last started, still counts", () => {
     const hold = { body: "VERDICT: HOLD def5678 — no" };
     assert.equal(reviewRounds([{ body: "VERDICT: HOLD abc1234 — no" }, fixReview, hold]), 2);
@@ -667,6 +672,15 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
     assert.equal(s.fix, true);
     assert.equal(s.ciRounds, 2);
     assert.deepEqual(s.ci, { pushed: true, pr: 5, sha: head, state: "red", step: "npm test" });
+  });
+
+  test("#1602: LAND + pushed + a CONFLICT for the head → C with rebase, outranking a CI-RED; another head's is none", () => {
+    const conflict = (sha: string) => ({ body: `CONFLICT ${sha}\nthe branch conflicts with main` });
+    const s = at(pushed({ issue: { comments: [...land(), red(), conflict(head)] } }));
+    assert.deepEqual([s.phase, s.rebase, s.fix], ["C", true, false]);
+    assert.match(s.why, /conflicts with main/);
+    const other = at(pushed({ issue: { comments: [...land(), conflict("aaaaaaa")] } }));
+    assert.deepEqual([other.phase, other.rebase], ["G", false]);
   });
 
   test("LAND + update-branch merge commit on the remote → still pushed", () => {

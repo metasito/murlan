@@ -23,13 +23,15 @@ export type Landing =
   | { action: "recheck"; reason: string }
   /** CI is red and a fresh session can fix it. */
   | { action: "hand-back"; reason: string }
+  /** The branch conflicts with main and a fresh session can rebase it. */
+  | { action: "rebase"; reason: string }
   /** Only a person can move this. */
   | { action: "owner"; reason: string };
 
 /**
  * What to do with a pushed pull request, over the pull request and the CI verdict together.
  *
- * Six arms rather than four, because the caller genuinely does something different for
+ * Seven arms rather than five, because the caller genuinely does something different for
  * `already-merged` (nothing to arm), `update-branch` (`gh pr update-branch`) and `recheck`
  * (wait and ask again) — collapsing them and re-splitting downstream rebuilds the same fan-out one
  * layer lower.
@@ -52,13 +54,13 @@ export function landing(pr: PrState, ci: CiVerdict): Landing {
     return { action: "recheck", reason: `the pull request state reads ${pr.state}` };
   }
 
-  // Ahead of both CI checks on purpose. A fix round rebuilds the worktree from the branch and
-  // commits to it, which cannot clear a conflict with main; and rechecking cannot either, so a
-  // conflict read as an infrastructure stall spends every retry round and then tells the owner the
-  // runner is sick. ci.yml's concurrency group cancels a superseded push, and a cancelled run is
-  // exactly what `infrastructure` means.
+  // Ahead of both CI checks on purpose. A fix round only commits on top of the branch, which cannot
+  // clear a conflict with main; and rechecking cannot either, so a conflict read as an
+  // infrastructure stall spends every retry round and then tells the owner the runner is sick.
+  // ci.yml's concurrency group cancels a superseded push, and a cancelled run is exactly what
+  // `infrastructure` means.
   if (pr.mergeable === "CONFLICTING") {
-    return { action: "owner", reason: "the branch conflicts with main" };
+    return { action: "rebase", reason: "the branch conflicts with main" };
   }
 
   // A run still going is not a verdict. `pr.mergeStateStatus` reads UNSTABLE the moment one job

@@ -664,6 +664,7 @@ const OUTCOME = {
   stalled: ["!", "warn"],
   rate_limited: ["⏸", "warn"],
   retry: ["↻", "accent"],
+  rebase: ["↻", "accent"],
   handoff: ["→", "muted"],
   pushed: ["↑", "muted"],
   failed: ["✗", "bad"],

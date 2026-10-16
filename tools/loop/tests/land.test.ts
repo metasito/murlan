@@ -16,6 +16,7 @@ const ACTIONS: readonly Landing["action"][] = [
   "update-branch",
   "recheck",
   "hand-back",
+  "rebase",
   "owner",
 ];
 
@@ -99,26 +100,26 @@ const cases: Case[] = [
     reason: /^the run was cancelled$/,
   },
   {
-    name: "CONFLICTING is the owner's even when CI is green",
+    name: "CONFLICTING is a rebase round even when CI is green",
     pr: pr({ mergeable: "CONFLICTING" }),
     ci: GREEN,
-    action: "owner",
+    action: "rebase",
     reason: /conflicts with main/,
   },
   {
-    name: "CONFLICTING is the owner's rather than a fix round when CI is red",
+    name: "CONFLICTING is a rebase round rather than a fix round when CI is red",
     pr: pr({ mergeable: "CONFLICTING" }),
     ci: RED,
-    action: "owner",
+    action: "rebase",
   },
   {
     // ci.yml cancels a superseded push, so this is the ordinary shape of a conflicted branch that
     // was pushed to twice, not a rare one. Read as infrastructure it spends every retry round and
     // then reports a sick runner.
-    name: "CONFLICTING is the owner's even when the run was cancelled",
+    name: "CONFLICTING is a rebase round even when the run was cancelled",
     pr: pr({ mergeable: "CONFLICTING" }),
     ci: CANCELLED,
-    action: "owner",
+    action: "rebase",
     reason: /conflicts with main/,
   },
   {
@@ -285,7 +286,7 @@ describe("landing", () => {
   // The point of making the function total: no input reaches an unhandled path, and no input is
   // answered with silence. Asserted over the cross-product rather than over a list of cases,
   // because the values that strand a ticket are the ones nobody thought to write down.
-  test("every combination answers with one of the six actions and never throws", () => {
+  test("every combination answers with one of the seven actions and never throws", () => {
     const states = ["OPEN", "MERGED", "CLOSED", "LOCKED", ""];
     const statuses = ["CLEAN", "HAS_HOOKS", "UNSTABLE", "BEHIND", "BLOCKED", "DIRTY", "UNKNOWN", "DRAFT", ""];
     const mergeables = ["MERGEABLE", "CONFLICTING", "UNKNOWN", ""];

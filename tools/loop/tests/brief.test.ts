@@ -163,11 +163,11 @@ describe("the brief CLI refuses a worktree or base the delta cannot be read from
     assert.doesNotMatch(r.stdout, /--diff-merges/);
   });
 
-  test("a base the branch was rebased away from exits 2", () => {
+  test("a base the branch was rebased away from gives the range-diff, which is the conflict resolution alone", () => {
     const r = cli("review", "7", wt, rebased.slice(0, 7));
-    assert.equal(r.status, 2, r.stdout);
-    assert.match(r.stderr, /not an ancestor of HEAD/);
-    assert.equal(cli("fix", "7", wt, rebased.slice(0, 7)).status, 2);
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(r.stdout.includes(`git -C ${wt} range-diff ${rebased.slice(0, 7)}...HEAD`), r.stdout);
+    assert.ok(r.stdout.startsWith(brief("review", { n: 7, worktree: wt, base: rebased.slice(0, 7) }).trimEnd()), "the guard's rebuild matches");
   });
 
   test("the review brief lists every n/a box of this head's DOD-CHECK for the reviewer to judge", () => {

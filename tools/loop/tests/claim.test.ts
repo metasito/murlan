@@ -1,7 +1,10 @@
 // tools/loop/tests/claim.test.ts
-import test from "node:test";
+import test, { afterEach, beforeEach, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { slugOf, claimSteps, claim, failedClaim, baseOf } from "../claim.mjs";
 import { fakeTracker } from "../tracker.mjs";
 
@@ -69,14 +72,72 @@ test("a branch only this machine holds is checked out as it stands, never cut ag
   assert.deepEqual(add, ["git", "worktree", "add", ".worktrees/agent-1090", "agent/1090-parked-unpushed"]);
 });
 
-test("a local branch ahead of its pushed one is used as it stands; a diverged pair is refused", () => {
+test("a local branch ahead of its pushed one is used as it stands", () => {
   const git = (ancestor: string) => (_file: string, args: string[]) => {
     if (args[0] === "merge-base" && `${args[2]} ${args[3]}` !== ancestor) throw new Error("not an ancestor");
     return "";
   };
   assert.equal(baseOf("agent/7-x", git("origin/agent/7-x agent/7-x")), "agent/7-x");
   assert.equal(baseOf("agent/7-x", git("agent/7-x origin/agent/7-x")), "origin/agent/7-x");
-  assert.throws(() => baseOf("agent/7-x", git("none")), /diverged/);
+});
+
+// #1602 parked in phase A on 2026-10-16: origin was rebased and force-pushed, and the shared
+// checkout kept the stale local branch, whose one local-only patch main already carried.
+describe("a local branch diverged from a rebased origin", () => {
+  const B = "agent/1602-x";
+  let root = "";
+  let dir = "";
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "-c", "advice.skippedCherryPicks=false", ...args], { cwd, encoding: "utf8" }).trim();
+  const run = (_file: string, args: string[]) => git(dir, ...args);
+  const commit = (file: string, body: string) => {
+    writeFileSync(join(dir, file), body);
+    git(dir, "add", "-A");
+    git(dir, "commit", "-qm", file);
+    return git(dir, "rev-parse", "HEAD");
+  };
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "claim-diverged-"));
+    dir = join(root, "work");
+    const origin = join(root, "origin.git");
+    git(root, "init", "-q", "--bare", "-b", "main", origin);
+    git(root, "init", "-q", "-b", "main", dir);
+    git(dir, "remote", "add", "origin", origin);
+    commit("base.txt", "0");
+    git(dir, "checkout", "-qb", B);
+    commit("work.txt", "1");
+    const duplicate = commit("shared.txt", "2");
+    git(dir, "checkout", "-q", "main");
+    git(dir, "cherry-pick", duplicate);
+    writeFileSync(join(dir, "notes.txt"), "n");
+    commit("main.txt", "3");
+    git(dir, "checkout", "-q", "-b", "rebased", B);
+    git(dir, "rebase", "-q", "main");
+    git(dir, "push", "-q", "origin", "main", `rebased:${B}`);
+    git(dir, "checkout", "-q", "main");
+    git(dir, "fetch", "-q", "origin");
+  });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  test("every local-only patch already upstream: the claim resets to origin", () => {
+    assert.equal(baseOf(B, run), `origin/${B}`);
+  });
+
+  test("a local-only patch main carries under another patch-id, applying as an empty diff, still resets", () => {
+    git(dir, "checkout", "-q", B);
+    const byHand = commit("main.txt", "3");
+    git(dir, "checkout", "-q", "main");
+    assert.ok(git(dir, "cherry", "origin/main", B).includes(`+ ${byHand}`), "main's commit also added notes.txt, so no patch-id matches");
+    assert.equal(baseOf(B, run), `origin/${B}`);
+  });
+
+  test("a local-only patch absent from both origin and main is refused", () => {
+    git(dir, "checkout", "-q", B);
+    commit("only-here.txt", "4");
+    git(dir, "checkout", "-q", "main");
+    assert.throws(() => baseOf(B, run), /diverged/);
+  });
 });
 
 // #1090 was parked "already standing" with no worktree anywhere: the command line in the message

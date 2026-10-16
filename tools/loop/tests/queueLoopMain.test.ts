@@ -85,6 +85,7 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []): Fake => {
         pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x" }),
         settle: async () => ({ action: "already-merged", reason: "merged" }),
         park: () => {},
+        conflict: () => true,
         repark: () => ({ failed: [], why: null }),
         release: () => {},
       },
@@ -2361,6 +2362,38 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
     const whys: string[] = [];
     await runOnce(io({ settle: async () => ({ action: "owner", reason: "the branch conflicts with main" }), park: (_n: number, c: { why: string }) => whys.push(c.why) }));
     assert.deepEqual(whys, ["the branch conflicts with main"]);
+  });
+
+  test("#1602: a conflict posts CONFLICT on the head and hands the ticket back once; the second conflict parks", async () => {
+    const ledger: any[] = [];
+    const posted: [number, string][] = [];
+    const whys: string[] = [];
+    const conflicted = io({
+      settle: async () => ({ action: "rebase", reason: "the branch conflicts with main", head: "abc1234" }),
+      conflict: (n: number, head: string) => (posted.push([n, head]), true),
+      park: (_n: number, c: { why: string }) => whys.push(c.why),
+    }, ledger);
+    const first = await runOnce(conflicted);
+    assert.equal(first.outcome, "rebase");
+    assert.equal((first.loop as { pinned: number | null }).pinned, 42);
+    assert.deepEqual(posted, [[42, "abc1234"]]);
+    assert.deepEqual(ledger.map((x) => x.outcome), ["pushed", "rebase"]);
+
+    const second = await runOnce(conflicted);
+    assert.equal(second.outcome, "parked");
+    assert.deepEqual(posted, [[42, "abc1234"]], "no second CONFLICT, no second round");
+    assert.deepEqual(whys, ["the branch conflicts with main again after its one rebase round"]);
+  });
+
+  test("a CONFLICT the tracker would not take parks rather than spawning a round nothing names", async () => {
+    const whys: string[] = [];
+    const r = await runOnce(io({
+      settle: async () => ({ action: "rebase", reason: "the branch conflicts with main", head: "abc1234" }),
+      conflict: () => false,
+      park: (_n: number, c: { why: string }) => whys.push(c.why),
+    }));
+    assert.equal(r.outcome, "parked");
+    assert.deepEqual(whys, ["the branch conflicts with main, and its CONFLICT comment could not be posted"]);
   });
 
   test("a red on an armed pull request is disarmed before any fix round is spawned", async () => {
