@@ -464,6 +464,26 @@ describe("the next-round vote deadline", () => {
     assert.equal(game.gameState.roundOver, false, "ana's and cleo's votes did not deal");
   });
 
+  test("a seat reclaimed while its row is being released keeps its row", async (t) => {
+    const { io, game, clock } = await roundJustEnded(t);
+    const rows = new Set(["ana", "besi"]);
+    t.mock.method(roomStore, "upsertRoomPlayer", async (_roomId: string, userId: string) => {
+      rows.add(userId);
+    });
+    t.mock.method(roomStore, "releaseSeat", async (_roomId: string, userId: string) => {
+      if (userId === "besi") await applyOrForward(io, { kind: "rejoin", roomId: ROOM, userId: "besi" });
+      rows.delete(userId);
+      return null;
+    });
+    await vote(io, "ana");
+
+    clock.advance(30_000);
+    await sleep(20);
+
+    assert.equal(game.playerMap[1], "besi", "besi's rejoin never reclaimed the seat");
+    assert.ok(rows.has("besi"), "besi is seated with no room_players row");
+  });
+
   test("a rejoin at the results screen neither clears nor restarts it", async (t) => {
     const { io, emitted, clock } = await roundJustEnded(t);
     const armedAt = deadline("voteDeadline", ROOM);

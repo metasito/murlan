@@ -488,6 +488,13 @@ async function expireVoteDeadline(io: SocketServer, roomId: string): Promise<voi
             "Failed to delete the room_players row after the vote deadline — the seat stays counted as taken"
           )
         );
+      // A rejoin inside the release reclaims the seat and upserts before the delete commits.
+      const reclaimed = seatOfUser(game.playerMap, userId);
+      if (reclaimed !== null) {
+        await roomStore
+          .upsertRoomPlayer(roomId, userId, reclaimed)
+          .catch((err: unknown) => logger.warn({ err, roomId, userId }, "upsertRoomPlayer failed"));
+      }
     }
     await dealIfSeatLeftGateClosed(io, roomId);
     logger.info({ roomId, vacated: silent }, "Next-round vote deadline expired");
