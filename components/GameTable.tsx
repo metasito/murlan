@@ -22,10 +22,6 @@ import type { NativeStackNavigationProp } from "expo-router";
 import { NavigationContext, type ParamListBase } from "expo-router/react-navigation";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
-  getCardDisplayRank,
-  getSuitSymbol,
-  getValidGivebackCards,
-  givebackIsFallback,
   roundUnplayed,
   openingIsPending,
   sortHand,
@@ -33,8 +29,7 @@ import {
   type GameState,
   type StartReason,
 } from "@/lib/game/gameEngine";
-import { buildExchangeAnnounce, type ExchangeAnnounceData, type ExchangeHold } from "@/lib/game/sharedGameFlow";
-import type { LegStage } from "@/lib/game/exchangeTimeline";
+import type { ExchangeAnnounceData, ExchangeHold } from "@/lib/game/sharedGameFlow";
 import {
   CHIP_H,
   HAND_ZONE_H,
@@ -51,24 +46,19 @@ import type { CardFrom } from "@/components/flightPose";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
 import {
   anchorPoints,
-  JOKERS,
-  NO_STAGES,
-  readExchange,
-  readExchangeSeats,
   floatTop,
   seatsJustPassed,
   tableGeometry,
-  exchangeKey,
   turnKey,
-  type ExchangeStages,
 } from "@/components/flightPhysics";
+import { useTableExchange } from "@/components/table/useTableExchange";
 import { FloatSlot } from "@/components/table/notices/floats";
 import { nextFloat, raised, type Float } from "@/components/table/floatModel";
 import type { ServerError } from "@/context/OnlineGameContext";
 import { EndMatchVote, RoundVote, type EndMatchVoteNote, type RoundVoteNote } from "@/components/table/notices/netNotes";
 import { mockupPx } from "@/components/table/noticeModel";
 import { WaitingLine } from "@/components/table/notices/tableLines";
-import { ExchangeLegs, type LegName, type RingFlash } from "@/components/table/ExchangeLegs";
+import { ExchangeLegs, type RingFlash } from "@/components/table/ExchangeLegs";
 import { canPassNow as canPassNowOf, turnTimerActive } from "@/components/turnTimerUi";
 import { computeTableFrame, sideSlotHeight, topBandHeight } from "@/components/tableFrame";
 import { describeTableForA11y, type TableA11yExchange, type TableA11yLastPlay, type TableA11yOpponent } from "@/components/tableA11y";
@@ -467,7 +457,6 @@ export function GameTable({
   // The round's end places the last player too, still holding cards: they keep their hand, untold.
   const wentOut = viewer?.finishPosition !== undefined && handCountOf(viewer) === 0;
   const isNewTrick = gameState.lastPlayedCombination === null;
-  const exchange = readExchange(gameState, viewerSeat, spectating);
 
   // A spectator receives every hand blanked, so the bottom seat's cards come
   // from its count. They carry synthetic ids because nothing may identify a
@@ -489,32 +478,31 @@ export function GameTable({
   // have arranged on top of it (#531). Spectated hands are excluded by the
   // seat's own cards being synthetic above — there is nothing there to arrange.
   const { arranged: shownHand, moveTo, order: handOrder } = useHandOrder(viewerSeat, sortedHand);
-  // The exchange runs from the phase opening, before any announcement: the receive flies ahead of the choice.
-  const announcement = exchangeAnnouncement?.visible ? exchangeAnnouncement.data : null;
-  const phase = gameState.exchangePhase;
-  const shownExchange: ExchangeAnnounceData | null =
-    announcement ??
-    (phase?.active && !phase.twoJokerException ? buildExchangeAnnounce(players, phase, { received: phase.cardFromLoser }) : null);
-  // A pairing and its card repeat across rounds, so each exchange is also counted.
-  const [exchangeSeq, setExchangeSeq] = useState({ open: false, seq: 0 });
-  if (!!shownExchange !== exchangeSeq.open) setExchangeSeq({ open: !!shownExchange, seq: exchangeSeq.seq + (shownExchange ? 1 : 0) });
-  const exchangeId = shownExchange ? `${exchangeSeq.seq}:${exchangeKey(shownExchange)}` : "";
-  const [reported, setReported] = useState<ExchangeStages>({ key: "", ...NO_STAGES });
-  const stages: ExchangeStages = shownExchange && reported.key === exchangeId ? reported : { key: exchangeId, ...NO_STAGES };
-  const choiceReady = reported.key === exchangeId && reported.ready;
-  const onExchangeStage = useCallback((key: string, leg: LegName, stage: LegStage) => {
-    setReported((s) => ({ ...(s.key === key ? s : { key, ...NO_STAGES }), [leg]: stage }));
-  }, []);
-  const onExchangeLegsReady = useCallback(
-    (key: string) => {
-      setReported((s) => ({ ...(s.key === key ? s : { key, ...NO_STAGES }), ready: true }));
-      onExchangeReady?.();
-    },
-    [onExchangeReady]
-  );
+  const {
+    exchange,
+    shownExchange,
+    stages,
+    onExchangeStage,
+    onExchangeLegsReady,
+    exchangeLit,
+    exchangeShift,
+    exchangeIsWinners,
+    exchangeIsMine,
+    giveableIds,
+    exchangeLoserName,
+    choiceOpen,
+    exchangeChip,
+    pileNote,
+  } = useTableExchange({
+    gameState,
+    viewerSeat,
+    spectating,
+    announcement: exchangeAnnouncement?.visible ? exchangeAnnouncement.data : null,
+    onExchangeReady,
+    sortedHand,
+  });
   const ringFlash = useSharedValue<RingFlash>({ seq: 0, seat: -1 });
   const lifted = useSharedValue<string[]>([]);
-  const exchangeSeats = readExchangeSeats(shownExchange, stages);
   const { handOnTable, holding, arrivingIndex, descendingId, receivedId } = useHandArrival({
     hand: shownHand,
     sorted: sortedHand,
@@ -534,8 +522,6 @@ export function GameTable({
     },
     [moveTo]
   );
-  const exchangeIsWinners = exchange.active && exchange.viewerIsWinner;
-  const exchangeIsMine = exchangeIsWinners && choiceReady;
   const selectionMode: SelectionMode = exchangeIsMine ? "exchange" : "play";
   // Nothing here subscribes to the selection: a tap renders only the leaves that show it.
   const [selection] = useState(() => createSelectionStore());
@@ -602,19 +588,6 @@ export function GameTable({
     if (floatNow !== float) setFloat(floatNow);
   }
 
-  // ── The exchange, on the table ──────────────────────────────────────────────
-  //
-  // The winner picks from their own hand rather than from a filtered row in a
-  // dialog, so the legality the engine enforces has to be readable in the fan:
-  // `getValidGivebackCards` is the same call `processExchangeChoice` validates
-  // against, asked here only to decide which cards light up.
-  const giveable = React.useMemo(
-    () =>
-      exchangeIsMine ? getValidGivebackCards(sortedHand, exchange.cardFromLoser?.id) : undefined,
-    [exchangeIsMine, sortedHand, exchange.cardFromLoser?.id]
-  );
-  const giveableIds = React.useMemo(() => giveable?.map((c) => c.id), [giveable]);
-  const exchangeLoserName = exchange.loser?.name ?? "";
 
   const opponents = React.useMemo(
     () => arrangeOpponents(players, viewerSeat),
@@ -1096,47 +1069,13 @@ export function GameTable({
       : undefined);
   const startGated = holdingForStart && !!startReason;
 
-  const exchangeName = (seat: number) => players[seat]?.name ?? "";
-  const shortName = (card: Card) => `${getCardDisplayRank(card.rank)}${getSuitSymbol(card.suit)}`;
-  const giveNote = (card: Card | undefined, from: number, to: number) => {
-    if (!card) return "";
-    const c = shortName(card);
-    if (viewerOwnsSeat(from, viewerSeat, spectating)) return t("exchange.pileYouGive", { card: c, to: exchangeName(to) });
-    if (viewerOwnsSeat(to, viewerSeat, spectating)) return t("exchange.pileGivesYou", { from: exchangeName(from), card: c });
-    return t("exchange.pileGives", { from: exchangeName(from), card: c, to: exchangeName(to) });
-  };
-  const pileNote = !shownExchange
-    ? null
-    : shownExchange.twoJokerException
-      ? stages.receive === "rest"
-        ? { text: t("exchangeAnnouncement.noExchangeText"), testID: "exchange-none", cards: JOKERS }
-        : null
-      : stages.receive === "rest" && shownExchange.cardReceived
-        ? { text: giveNote(shownExchange.cardReceived, shownExchange.loserIdx, shownExchange.winnerIdx), testID: "exchange-pile-label", cards: [shownExchange.cardReceived] }
-        : stages.give === "rest" && shownExchange.cardGiven
-          ? { text: giveNote(shownExchange.cardGiven, shownExchange.winnerIdx, shownExchange.loserIdx), testID: "exchange-pile-label", cards: [shownExchange.cardGiven] }
-          : null;
-
-  // The choice opens once the received card has landed and been read; until then the chip names the exchange.
-  const choiceOpen = exchange.active && stages.ready;
-  const exchangeChip = !shownExchange
-    ? null
-    : !choiceOpen
-      ? t("exchange.chipTitle")
-      : exchange.viewerIsWinner
-        ? giveable && givebackIsFallback(giveable)
-          ? t("exchange.noValidCards")
-          : t("exchange.chipGive", { name: exchangeLoserName })
-        : exchange.viewerIsLoser
-          ? t("exchange.waitingForYou", { winner: exchange.winner?.name ?? "" })
-          : t("exchange.watching", { winner: exchange.winner?.name ?? "", loser: exchangeLoserName });
   useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
   const seatTable: SeatTable = {
     onMoveSeat: !shownExchange && shown === null ? shownTurnIndex : null,
     passed,
     disconnectedSeats,
-    exchangeLit: exchangeSeats.lit,
-    exchangeShift: exchangeSeats.shift,
+    exchangeLit,
+    exchangeShift,
   };
   const opponentSeat = (place: OpponentSide) => {
     const opponent = opponents[place];
