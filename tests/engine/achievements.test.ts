@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { evaluateAchievements, ACHIEVEMENTS } from "../../lib/achievements.ts";
+import { drawnTeamsMatch } from "../helpers/drawnTeamsMatch.ts";
 
 const base = { userId: "u1", placement: 1, playerCount: 4, playedBomb: false, playedJoker: false, matchWon: false, opponentsFinished: 3 };
 
@@ -24,6 +25,14 @@ test("an abandoned round unlocks nothing, whatever it would otherwise have earne
   const winning = { ...base, matchWon: true, playedBomb: true, playedJoker: true };
   assert.ok(evaluateAchievements(winning).length > 0);
   assert.deepEqual(evaluateAchievements({ ...winning, abandoned: true }), []);
+});
+
+test("a drawn teams match earns no match-win achievement for either pair", () => {
+  const { gameResults } = drawnTeamsMatch();
+  const earned = gameResults.flatMap((r) => evaluateAchievements(r));
+  assert.ok(earned.includes("first_win"), "the round winner still earns the round's own achievements");
+  assert.ok(!earned.includes("match_champion"));
+  assert.ok(!earned.includes("iron_will"));
 });
 
 test("every achievement has translation keys present in the catalogue", async () => {
