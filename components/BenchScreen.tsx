@@ -60,54 +60,67 @@ export function BenchScreen() {
   const shown = useRef<() => void>(() => {});
   const autoRan = useRef(false);
   const stopJs = useRef<(() => void) | null>(null);
+  const drain = useRef<ReturnType<typeof setInterval> | null>(null);
   const showNotice = useRef<(shot: NoticeShot | null) => void>(() => {});
   const bindStage = useCallback((show: (shot: NoticeShot | null) => void) => {
     showNotice.current = show;
   }, []);
 
+  const stopDrain = useCallback(() => {
+    if (drain.current) clearInterval(drain.current);
+    drain.current = null;
+  }, []);
+  useEffect(() => stopDrain, [stopDrain]);
+
   const run = useCallback(
     async (only?: string[]) => {
       if (benchRunning) return;
       benchRunning = true;
-      recorder.postTo(collectorHost(params.host));
-      const capturing = params.capture !== "0" && probe.canCapture() && (await probe.startCapture(true).catch(() => false));
-      const drain = setInterval(() => probe.drain(), 1000);
-      diag({ k: "build", t: performance.now(), ...benchBuild() });
-      const ctx: BenchContext = {
-        params,
-        showTable: (state) =>
-          new Promise((resolve) => {
-            shown.current = resolve;
-            setTable({ state });
-          }),
-        sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
-        frames: (on, until) => {
-          recordFrames(on, until);
-          stopJs.current?.();
-          stopJs.current = on ? startJsLag() : null;
-        },
-        armFrames,
-        feltSample,
-        gallery: GALLERY,
-        showNotice: (shot) => showNotice.current(shot),
-      };
-      const queued = benchScenarios().filter(([name]) => !only || only.includes(name));
-      const names = queued.map(([name]) => name);
-      diag({ k: "run", t: performance.now(), phase: "start", names });
-      for (const [name, scenario] of queued) {
-        diag({ k: "scenario", t: performance.now(), name, phase: "start" });
-        diag({ k: "latency", t: performance.now(), outputMs: probe.outputLatencyMs(), ioMs: probe.ioBufferMs(), inputMs: probe.inputLatencyMs() });
-        const error = await scenario(ctx).then(() => null, (e: unknown) => String(e));
-        diag({ k: "scenario", t: performance.now(), name, phase: "end", error });
-        setResults((r) => ({ ...r, [name]: error ?? "done" }));
+      try {
+        recorder.postTo(collectorHost(params.host));
+        const capturing = params.capture !== "0" && probe.canCapture() && (await probe.startCapture(true).catch(() => false));
+        drain.current = setInterval(() => probe.drain(), 1000);
+        diag({ k: "build", t: performance.now(), ...benchBuild() });
+        const ctx: BenchContext = {
+          params,
+          showTable: (state) =>
+            new Promise((resolve) => {
+              shown.current = resolve;
+              setTable({ state });
+            }),
+          sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+          frames: (on, until) => {
+            recordFrames(on, until);
+            stopJs.current?.();
+            stopJs.current = on ? startJsLag() : null;
+          },
+          armFrames,
+          feltSample,
+          gallery: GALLERY,
+          showNotice: (shot) => showNotice.current(shot),
+        };
+        const queued = benchScenarios().filter(([name]) => !only || only.includes(name));
+        const names = queued.map(([name]) => name);
+        diag({ k: "run", t: performance.now(), phase: "start", names });
+        for (const [name, scenario] of queued) {
+          diag({ k: "scenario", t: performance.now(), name, phase: "start" });
+          diag({ k: "latency", t: performance.now(), outputMs: probe.outputLatencyMs(), ioMs: probe.ioBufferMs(), inputMs: probe.inputLatencyMs() });
+          const error = await scenario(ctx).then(() => null, (e: unknown) => String(e));
+          diag({ k: "scenario", t: performance.now(), name, phase: "end", error });
+          setResults((r) => ({ ...r, [name]: error ?? "done" }));
+        }
+        stopDrain();
+        probe.drain();
+        if (capturing) await probe.stopCapture().catch(() => false);
+        diag({ k: "run", t: performance.now(), phase: "end", names });
+      } catch (e) {
+        console.error("bench run failed", e);
+      } finally {
+        stopDrain();
+        benchRunning = false;
       }
-      clearInterval(drain);
-      probe.drain();
-      if (capturing) await probe.stopCapture().catch(() => false);
-      diag({ k: "run", t: performance.now(), phase: "end", names });
-      benchRunning = false;
     },
-    [params]
+    [params, stopDrain]
   );
 
   useEffect(() => {

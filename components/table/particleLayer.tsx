@@ -23,28 +23,20 @@ import { scheduleOnRN } from "react-native-worklets";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { RestAir } from "@/lib/tokens";
-import { createAir, mothPose, MOTES, relit, stepAir, type Air, type MothPose, type MoteLight } from "./air";
+import { MOTES, type MothPose } from "./air";
 import type { Lamp } from "./lampRig";
 import type { LampRig } from "./useLampRig";
-import { bombFx, createParticles, landingDust, PARTICLE_BUDGET, spawn, step, type ParticleEmitter, type Particles } from "./particles";
-import { emberFrame, idleEmber, startEmber, type EmberRun } from "./ember";
-import { coneRainFrame, idleRain, startRain, type RainRun } from "./coneRain";
+import { bombFx, landingDust, PARTICLE_BUDGET, spawn, type ParticleEmitter } from "./particles";
+import { startEmber } from "./ember";
+import { startRain } from "./coneRain";
 import { useGreyLayer } from "./greyLayer";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
 import type { LandingSignal } from "./useFlightClock";
-import { CELLS, D, DRAW_STRIDE, layout, layoutMotes, SHEET, SPARK_LEN, SPRITE_R } from "./particleSprites";
+import { CELLS, createScene, D, DRAW_STRIDE, sceneAsleep, sceneIdle, SHEET, SPARK_LEN, SPRITE_R, stepScene, type Scene } from "./particleSprites";
 
-interface Field {
-  s: Particles;
-  d: Float32Array;
-  air: Air;
-  lit: number;
-  shown: number;
-  light: MoteLight;
+interface Field extends Scene {
   due: number;
-  ember: EmberRun;
-  rain: RainRun;
 }
 
 // Above any display's refresh, so a device lays out every frame.
@@ -89,20 +81,12 @@ function stepper(field: SharedValue<Field>, lamp: SharedValue<Lamp>, still: Shar
     const v = field.value;
     const l = lamp.value;
     v.due += (frame.timeSincePreviousFrame ?? 0) / 1000;
-    const idle = !v.s.live && !v.shown && v.ember.t < 0 && v.rain.t < 0;
-    if (idle && v.due < AIR_TICK_S) return;
-    if (idle && still.value && v.air.mothT < 0 && !relit(v.light, l)) return;
+    if (sceneIdle(v) && v.due < AIR_TICK_S) return;
+    if (sceneAsleep(v, l, still.value)) return;
     const dt = Math.min(0.05, v.due);
     v.due = 0;
-    for (const p of emberFrame(v.ember, dt, Math.random)) spawn(v.s, p);
-    for (const p of coneRainFrame(v.rain, l, dt, Math.random)) spawn(v.s, p);
-    step(v.s, dt);
-    if (stepAir(v.air, dt, l, still.value, Math.random)) scheduleOnRN(traceOnset, "moment", "moth");
-    layout(v.s, v.d);
-    v.lit = layoutMotes(v.air, l, v.d, v.s.live);
-    relit(v.light, l);
-    v.shown = v.s.live;
-    const p = mothPose(v.air, l);
+    if (stepScene(v, l, dt, still.value, Math.random)) scheduleOnRN(traceOnset, "moment", "moth");
+    const p = v.moth;
     if (p || moth.value) moth.value = p;
     field.modify(undefined, true);
   };
@@ -128,17 +112,7 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
   const { lamp, sx, sy } = rig;
   const greyLayer = useGreyLayer(grey);
   const [sheet] = useState(bakeSheet);
-  const [initial] = useState<Field>(() => ({
-    s: createParticles(),
-    d: new Float32Array(PARTICLE_BUDGET * DRAW_STRIDE),
-    air: createAir(Math.random),
-    lit: 0,
-    shown: 0,
-    light: { lx: NaN, ly: NaN, level: NaN, f: NaN, r: NaN },
-    due: 0,
-    ember: idleEmber(),
-    rain: idleRain(),
-  }));
+  const [initial] = useState<Field>(() => ({ ...createScene(Math.random), due: 0 }));
   const field = useSharedValue(initial);
   const moth = useSharedValue<MothPose | null>(null);
   const reduced = usePrefersReducedMotion();

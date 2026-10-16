@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createParticles, spawn } from "../../components/table/particles.ts";
-import { CELLS, D, DRAW_STRIDE, SHEET, SPRITE_R, layout } from "../../components/table/particleSprites.ts";
+import { CELLS, createScene, D, DRAW_STRIDE, SHEET, SPRITE_R, layout, sceneAsleep, stepScene } from "../../components/table/particleSprites.ts";
+import { restingLamp, TABLE_CENTRE } from "../../components/table/lampRig.ts";
 
 function drawOf(p: Parameters<typeof spawn>[1]) {
   const s = createParticles(1);
@@ -59,6 +60,21 @@ test("a spark runs from its head back along −v·0.035, as wide as its size", (
   close(tail.y, 100 + 50 * 0.035, "tail y");
   close(scale * 2 * SPRITE_R, 2, "width");
   close(out[D.w], cell.cx + len / scale + SPRITE_R, "sprite cut past the tail's cap");
+});
+
+test("a still scene with nothing flying sleeps, and a spawn wakes it", () => {
+  const lamp = restingLamp(TABLE_CENTRE);
+  const scene = createScene(() => 0.5);
+  assert.equal(sceneAsleep(scene, lamp, true), false, "the first frame draws");
+  stepScene(scene, lamp, 0.016, true, () => 0.5);
+  assert.equal(sceneAsleep(scene, lamp, true), true);
+  spawn(scene.s, { x: 100, y: 100, life: 0.1, size: 4 });
+  assert.equal(sceneAsleep(scene, lamp, true), false);
+  stepScene(scene, lamp, 0.016, true, () => 0.5);
+  stepScene(scene, lamp, 0.5, true, () => 0.5);
+  assert.equal(scene.shown, 0);
+  assert.equal(sceneAsleep(scene, lamp, true), true);
+  assert.equal(sceneAsleep(scene, { ...lamp, level: lamp.level / 2 }, true), false, "a relight wakes it");
 });
 
 test("a soft puff carries its colour's own alpha", () => {
