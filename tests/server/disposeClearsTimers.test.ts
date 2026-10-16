@@ -34,6 +34,7 @@ const KEY_OF: Record<TimerKind, string> = {
   lobbyGrace: seatKey(ROOM, SEATED),
   bot: ROOM,
   autoStart: ROOM,
+  voteDeadline: ROOM,
 };
 
 describe("disposing a room", () => {

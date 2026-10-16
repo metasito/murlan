@@ -978,6 +978,10 @@ export function GameTable({
       announcementHolds,
     });
 
+  // The next-round vote's deadline takes the turn clock's chip: `turnTimerActive`
+  // stays false at a round's end, since no turn is running.
+  const voteClock = roundVote?.deadline ?? null;
+
   const turnToken = turnKey(gameState);
 
   const top = topPlay(trick.plays);
@@ -1150,12 +1154,12 @@ export function GameTable({
                         ? t("gameTable.a11yYourTurn")
                         : t("gameTable.a11yTurnOf", { name: onMoveName }))
                 }
-                seconds={turnTimer?.seconds ?? 0}
-                active={timerActive}
-                revealed={viewerClockShown}
-                resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
-                onExpire={turnTimer?.onExpire}
-                frozen={clockHeld}
+                seconds={voteClock?.seconds ?? turnTimer?.seconds ?? 0}
+                active={voteClock !== null || timerActive}
+                revealed={voteClock !== null || viewerClockShown}
+                resetKey={voteClock ? `vote|${voteClock.resetKey}` : `${turnToken}|${turnTimer?.resetKey ?? ""}`}
+                onExpire={voteClock ? undefined : turnTimer?.onExpire}
+                frozen={voteClock ? false : clockHeld}
                 connection={choiceOpen && connectionNote?.state === "reconnected" ? null : connectionNote}
               />
             </View>

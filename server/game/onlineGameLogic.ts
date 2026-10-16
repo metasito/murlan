@@ -463,7 +463,7 @@ export function resolveRoundEnd(input: ResolveRoundEndInput): ResolveRoundEndRes
       playerCount,
       playedBomb: flags.bomb,
       playedJoker: flags.joker,
-      matchWon: matchWinners.includes(key),
+      matchWon: !isDraw && matchWinners.includes(key),
       opponentsFinished: Math.max(realFinisherCount - (emptiedOwnHand ? 1 : 0), 0),
       abandoned: abandonedBy !== undefined,
     };

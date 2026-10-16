@@ -2,6 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { resolveRoundEnd } from "../../server/game/onlineGameLogic.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
+import { drawnTeamsMatch } from "../helpers/drawnTeamsMatch.ts";
 
 function player(id: string, name: string, handSize: number, extra: Partial<Player> = {}): Player {
   return {
@@ -148,6 +149,18 @@ describe("resolveRoundEnd — teams", () => {
 
     assert.equal(result.matchOver, true);
     assert.deepEqual(result.matchWinners.sort(), ["a1", "a2"]);
+  });
+
+  test("a drawn match is a win for nobody", () => {
+    const result = drawnTeamsMatch();
+
+    assert.equal(result.isDraw, true);
+    assert.deepEqual(result.matchWinners.sort(), ["a1", "a2", "b1", "b2"]);
+    assert.equal(result.gameResults.length, 4);
+    assert.deepEqual(
+      result.gameResults.map((r) => r.matchWon),
+      [false, false, false, false]
+    );
   });
 });
 

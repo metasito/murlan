@@ -165,8 +165,8 @@ describe("handleRoundOver — the broadcast", () => {
     );
     assert.deepEqual(
       s.emitted.map((e) => e.event),
-      ["game:round_over"],
-      "one round, one game:over"
+      ["game:round_over", "game:vote_state"],
+      "one round, one game:over, then the next-round vote and its deadline"
     );
     assert.equal(s.emitted[0].room, ROOM);
   });
@@ -391,7 +391,7 @@ describe("handleRoundOver — a failing write is not the table's problem", () =>
 
     assert.deepEqual(
       s.emitted.map((e) => e.event),
-      ["game:round_over"],
+      ["game:round_over", "game:vote_state"],
       "the table still heard the result"
     );
   });

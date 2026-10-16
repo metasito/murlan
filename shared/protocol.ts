@@ -8,7 +8,7 @@ import type { FriendRequestAccepted, FriendRequestIncoming } from "../lib/wire.t
 import type * as Inbound from "./socketSchemas.ts";
 import type { TranslationParams } from "./i18n.ts";
 
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 export const MIN_PROTOCOL_VERSION = 6;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */
@@ -60,6 +60,9 @@ type MaybeSeated = Omit<SeatEvent, "seatIndex"> & { seatIndex: number | null };
 interface VoteState {
   votes: string[];
   total: number;
+  /** The next-round vote's deadline: a reset key, never read as a time, since device clocks drift. */
+  deadlineMs?: number;
+  secondsRemaining?: number;
 }
 
 export interface ServerToClientEvents {

@@ -1,10 +1,19 @@
 // Tables that stopped answering: a deal, a vote or a grace that never came.
-import { test, describe, before, afterEach } from "node:test";
+import { test, describe, before, afterEach, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
 import { installTableHandlers, applyOrForward, rehydrateGame } from "../../server/game/tableHandlers.ts";
+import { handleRoundOver, type RoundOverWriters } from "../../server/game/roundOver.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
-import { clearAllTimersForUser, clearRoomTimers, pending, usersInLobbyGrace } from "../../server/game/gameTimers.ts";
+import {
+  clearAllTimersForUser,
+  clearRoomTimers,
+  deadline,
+  pending,
+  setClock,
+  usersInLobbyGrace,
+} from "../../server/game/gameTimers.ts";
+import { fakeClock } from "../helpers/fakeClock.ts";
 import { setSocketServer } from "../../server/socket/socketRegistry.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { db } from "../../server/store/db.ts";
@@ -102,7 +111,9 @@ describe("a table restored after a restart", () => {
 
     const tally = emitted.filter((e) => e.event === "game:vote_state").pop();
     assert.ok(tally, "a client still showing its pre-restart vote is never corrected");
-    assert.deepEqual(tally.payload, { votes: [], total: 2 });
+    const { deadlineMs, ...counts } = tally.payload as { deadlineMs?: number; secondsRemaining?: number };
+    assert.deepEqual(counts, { votes: [], total: 2, secondsRemaining: 30 });
+    assert.ok(deadlineMs, "the restore re-armed no vote deadline");
   });
 
   test("a between-hands seat nobody came back to is released, so the vote it held up deals", async (t) => {
@@ -341,4 +352,220 @@ describe("a seatLost that arrives after its player is back", () => {
       assert.deepEqual(usersInLobbyGrace(ROOM), []);
     });
   }
+});
+
+const quietWriters: RoundOverWriters = {
+  updateRoomStatus: async () => {},
+  persistGameState: async () => {},
+  recordGameResult: async () => {},
+  previewRatedDeltas: async () => new Map(),
+  recordRatedResult: async () => new Map(),
+  saveReplay: async () => {},
+};
+
+/** Two humans at a round that has just ended, short of the match target. */
+async function roundJustEnded(t: TestContext) {
+  const clock = fakeClock();
+  setClock(clock);
+  t.after(() => setClock());
+  const { io, emitted } = stubIo();
+  t.mock.method(roomStore, "getRoomById", async () => room);
+  t.mock.method(roomStore, "updateRoomStatus", async () => {});
+  t.mock.method(roomStore, "releaseSeat", async () => null);
+  t.mock.method(roomStore, "upsertRoomPlayer", async () => {});
+  const game = baseGame({
+    gameState: finishedHand(twoHumans(), ["player_0", "player_1"]),
+    playerMap: { 0: "ana", 1: "besi" },
+  });
+  activeGames.set(ROOM, game);
+  await handleRoundOver(io, ROOM, game, quietWriters);
+  return { io, emitted, game, clock };
+}
+
+const lastVoteState = (emitted: { event: string; payload: unknown }[]) =>
+  emitted.filter((e) => e.event === "game:vote_state").pop()?.payload as
+    | { votes: string[]; total: number; deadlineMs?: number; secondsRemaining?: number }
+    | undefined;
+
+describe("the next-round vote deadline", () => {
+  test("a seated human who never votes is handed to a bot, the round deals, and the seat can be reclaimed", async (t) => {
+    const { io, emitted, game, clock } = await roundJustEnded(t);
+    assert.equal(game.matchOver, false);
+    assert.ok(pending("voteDeadline", ROOM), "a round of a continuing match ended with no deadline");
+    assert.equal(lastVoteState(emitted)?.secondsRemaining, 30, "the clients were never told the deadline");
+
+    await vote(io, "ana");
+    assert.ok(pending("voteDeadline", ROOM), "a vote cleared the deadline the other seat is held to");
+    assert.equal(game.gameState.roundOver, true);
+
+    clock.advance(29_000);
+    await sleep(20);
+    assert.equal(game.playerMap[1], "besi", "the seat went before its 30 s were up");
+
+    clock.advance(1_000);
+    await sleep(20);
+    assert.equal(game.playerMap[1], undefined, "besi still holds the seat past the deadline");
+    assert.equal(game.gameState.players[1]!.type, "bot");
+    assert.equal(game.playerMap[0], "ana", "the voter was vacated too");
+    assert.equal(game.gameState.roundOver, false, "ana's vote did not deal once besi was gone");
+    assert.ok(emitted.some((e) => e.event === "game:started"));
+    assert.ok(!pending("voteDeadline", ROOM), "the deal left the deadline armed into the round");
+
+    assert.deepEqual(await applyOrForward(io, { kind: "rejoin", roomId: ROOM, userId: "besi" }), { ok: true });
+    assert.equal(game.playerMap[1], "besi", "besi could not reclaim the seat");
+  });
+
+  test("a vote landing while the deadline expires never abandons the match", async (t) => {
+    const { io, emitted, game, clock } = await roundJustEnded(t);
+    await vote(io, "ana");
+    t.mock.method(roomStore, "releaseSeat", async (_roomId: string, userId: string) => {
+      if (userId === "besi") await vote(io, "besi");
+      return null;
+    });
+
+    clock.advance(30_000);
+    await sleep(20);
+
+    assert.ok(!emitted.some((e) => e.event === "game:player_left"), "a vacate ran against the hand the vote dealt");
+    assert.equal(activeGames.get(ROOM), game, "the match was disposed");
+    assert.equal(game.gameState.roundOver, false, "the next round never dealt");
+  });
+
+  test("a silent seat that votes before its turn to go keeps its seat", async (t) => {
+    const clock = fakeClock();
+    setClock(clock);
+    t.after(() => setClock());
+    t.after(() => clearAllTimersForUser("cleo", ROOM));
+    const { io } = stubIo();
+    t.mock.method(roomStore, "getRoomById", async () => ({ ...room, maxPlayers: 3 }));
+    t.mock.method(roomStore, "updateRoomStatus", async () => {});
+    t.mock.method(roomStore, "upsertRoomPlayer", async () => {});
+    t.mock.method(roomStore, "releaseSeat", async (_roomId: string, userId: string) => {
+      if (userId === "besi") await vote(io, "cleo");
+      return null;
+    });
+    const game = baseGame({
+      maxPlayers: 3,
+      gameState: finishedHand(
+        [...twoHumans(), player("player_2", "Cleo")],
+        ["player_0", "player_1", "player_2"]
+      ),
+      playerMap: { 0: "ana", 1: "besi", 2: "cleo" },
+    });
+    activeGames.set(ROOM, game);
+    await handleRoundOver(io, ROOM, game, quietWriters);
+    await vote(io, "ana");
+
+    clock.advance(30_000);
+    await sleep(20);
+
+    assert.equal(game.playerMap[1], undefined, "besi never voted and still holds the seat");
+    assert.equal(game.playerMap[2], "cleo", "cleo was vacated after her vote counted");
+    assert.equal(game.gameState.roundOver, false, "ana's and cleo's votes did not deal");
+  });
+
+  test("a seat reclaimed while its row is being released keeps its row and the room", async (t) => {
+    const { io, game, clock } = await roundJustEnded(t);
+    const rows = new Set(["ana", "besi"]);
+    let host = "besi";
+    const upsert = async (_roomId: string, userId: string) => {
+      rows.add(userId);
+    };
+    t.mock.method(roomStore, "upsertRoomPlayer", upsert);
+    t.mock.method(roomStore, "restoreSeat", async (roomId: string, userId: string, _seat: number, asHost: boolean) => {
+      await upsert(roomId, userId);
+      if (asHost) host = userId;
+    });
+    t.mock.method(roomStore, "releaseSeat", async (_roomId: string, userId: string) => {
+      if (userId === "besi") await applyOrForward(io, { kind: "rejoin", roomId: ROOM, userId: "besi" });
+      rows.delete(userId);
+      const wasHost = host === userId;
+      if (wasHost) host = [...rows][0]!;
+      return { room: { ...room, hostUserId: host }, remaining: [], emptied: false, wasHost };
+    });
+    await vote(io, "ana");
+
+    clock.advance(30_000);
+    await sleep(20);
+
+    assert.equal(game.playerMap[1], "besi", "besi's rejoin never reclaimed the seat");
+    assert.ok(rows.has("besi"), "besi is seated with no room_players row");
+    assert.equal(host, "besi", "besi is seated but the release handed the room to ana");
+  });
+
+  test("a rejoin at the results screen neither clears nor restarts it", async (t) => {
+    const { io, emitted, clock } = await roundJustEnded(t);
+    const armedAt = deadline("voteDeadline", ROOM);
+    assert.ok(armedAt !== undefined);
+
+    clock.advance(20_000);
+    await applyOrForward(io, { kind: "rejoin", roomId: ROOM, userId: "besi" });
+
+    assert.equal(deadline("voteDeadline", ROOM), armedAt, "a rejoin loop would hold the table forever");
+    assert.equal(lastVoteState(emitted)?.secondsRemaining, 10, "the rejoining client sees a full clock");
+  });
+
+  test("a table where nobody voted loses every human seat", async (t) => {
+    const { clock } = await roundJustEnded(t);
+
+    clock.advance(30_000);
+    await sleep(20);
+
+    assert.equal(activeGames.has(ROOM), false, "a table of bots alone was kept between rounds");
+    assert.ok(!pending("voteDeadline", ROOM));
+  });
+
+  test("the round that ends the match arms none: the new-match vote is optional", async (t) => {
+    const clock = fakeClock();
+    setClock(clock);
+    t.after(() => setClock());
+    const { io } = stubIo();
+    t.mock.method(roomStore, "updateRoomStatus", async () => {});
+    const game = baseGame({
+      gameState: finishedHand(twoHumans(), ["player_0", "player_1"]),
+      playerMap: { 0: "ana", 1: "besi" },
+      cumulativeScores: { ana: 6, besi: 0 },
+      matchTarget: 7,
+    });
+    activeGames.set(ROOM, game);
+
+    await handleRoundOver(io, ROOM, game, quietWriters);
+
+    assert.equal(game.matchOver, true);
+    assert.ok(!pending("voteDeadline", ROOM));
+  });
+
+  test("a restore between rounds re-arms a full one, even when the cluster never said who is away", async (t) => {
+    const clock = fakeClock();
+    setClock(clock);
+    t.after(() => setClock());
+    const { io } = stubIo();
+    setSocketServer({
+      fetchSockets: async () => {
+        throw new Error("timeout reached: only 0 responses received out of 1");
+      },
+    } as unknown as SocketServer);
+    t.after(() => setSocketServer(null as unknown as SocketServer));
+    const row = finishedRow();
+    t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
+
+    assert.equal(await rehydrateGame(ROOM, "ana", io), "restored");
+
+    assert.equal(deadline("voteDeadline", ROOM), clock.now() + 30_000);
+  });
+
+  test("a restore mid-hand arms none", async (t) => {
+    const { io } = stubIo();
+    useCluster(t, [
+      { userId: "ana", rooms: [ROOM] },
+      { userId: "besi", rooms: [ROOM] },
+    ]);
+    const state = finishedHand(twoHumans(), []);
+    state.roundOver = false;
+    const row = packPersistedState(state, {}, 0, "AAAAAA", unpackedMatch(), noSeats);
+    t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
+
+    assert.equal(await rehydrateGame(ROOM, null, io), "restored");
+    assert.ok(!pending("voteDeadline", ROOM));
+  });
 });

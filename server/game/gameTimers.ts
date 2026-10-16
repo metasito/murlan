@@ -3,10 +3,10 @@ import { testOnlyEnv } from "../http/testOnlyEnv.ts";
 import { TURN_TIMEOUT_MS } from "../../lib/game/gameEngine.ts";
 
 /**
- * Keys: `afk` and `lobbyGrace` are `roomId:userId` (`seatKey`), `bot` and
- * `autoStart` are the room id, `disconnect` is the user id.
+ * Keys: `afk` and `lobbyGrace` are `roomId:userId` (`seatKey`), `bot`,
+ * `autoStart` and `voteDeadline` are the room id, `disconnect` is the user id.
  */
-export const TIMER_KINDS = ["afk", "disconnect", "lobbyGrace", "bot", "autoStart"] as const;
+export const TIMER_KINDS = ["afk", "disconnect", "lobbyGrace", "bot", "autoStart", "voteDeadline"] as const;
 export type TimerKind = (typeof TIMER_KINDS)[number];
 
 export interface Clock {
@@ -35,9 +35,10 @@ export function now(): number {
 /**
  * A seat waiting to be given back must not be what keeps the process alive:
  * shutdown disconnects every socket, which arms a lobby grace per lobby, and
- * the row outlives the process either way.
+ * the row outlives the process either way. A vote deadline is armed at every
+ * round's end and a restore re-arms it, so nothing is lost by not waiting.
  */
-const UNREF: ReadonlySet<TimerKind> = new Set(["lobbyGrace"]);
+const UNREF: ReadonlySet<TimerKind> = new Set(["lobbyGrace", "voteDeadline"]);
 
 interface Armed {
   handle: unknown;
@@ -139,6 +140,8 @@ export const sweepIntervalMs = () => timeoutFromEnv("MURLAN_SWEEP_INTERVAL_MS", 
  * round already in flight, short enough that nobody reads it as a stall.
  */
 export const autoStartDelayMs = () => timeoutFromEnv("MURLAN_AUTOSTART_DELAY_MS", 4_000);
+/** docs/GAME-RULES.md § Decisions, "The next-round vote deadline". */
+export const voteDeadlineMs = () => timeoutFromEnv("MURLAN_VOTE_DEADLINE_MS", 30_000);
 
 export function clearAutoStart(roomId: string) {
   clear("autoStart", roomId);
@@ -163,6 +166,7 @@ export function clearRoomTimers(roomId: string) {
   clearByPrefix("afk", `${roomId}:`);
   clear("bot", roomId);
   clearAutoStart(roomId);
+  clear("voteDeadline", roomId);
 }
 
 /** Who is holding a seat in this room without a connection to it. */
