@@ -75,9 +75,16 @@ export const NoticeSource = createContext<DiagRows["notice"]["src"]>(undefined);
 
 type Probe = { kind: NoticeKind; shape: NoticeShape; src: DiagRows["notice"]["src"] };
 
-function probed<T>(animation: T, probe: Probe, phase: DiagRows["notice"]["phase"], logged?: () => void): T {
+function probed<T>(
+  animation: T,
+  probe: Probe,
+  phase: DiagRows["notice"]["phase"],
+  logged?: () => void,
+  live?: { current: boolean }
+): T {
   if (!DIAGNOSTICS) return animation;
   return clocked(animation, (ms, dt) => {
+    if (live && !live.current) return;
     diag({ k: "notice", t: performance.now(), ...probe, phase, ms, dt });
     logged?.();
   });
@@ -113,6 +120,8 @@ export function TableNotice<K extends NoticeKind>({
   const risen = useSharedValue(still ? 1 : 0);
   const wasShown = useRef(false);
   const up = useRef<{ at: number; probe: Probe } | null>(null);
+  // An exit report reaches JS a hop after its last frame; one landing after `unmounted` was written would be a second row.
+  const mounted = useRef(true);
   useEffect(() => {
     const leaving = wasShown.current && !shown;
     const arriving = !wasShown.current && shown;
@@ -132,8 +141,8 @@ export function TableNotice<K extends NoticeKind>({
     const entrance = arriving ? probed(fadeIn, probe, "enter") : fadeIn;
     const out = withTiming(0, { duration: exit, reduceMotion: ANSWERED });
     life.value = held !== null && shown
-      ? withSequence(ANSWERED, entrance, withTiming(1, { duration: held, reduceMotion: ANSWERED }), probed(out, probe, "exit", exited))
-      : shown ? entrance : leaving ? probed(out, probe, "exit", exited) : out;
+      ? withSequence(ANSWERED, entrance, withTiming(1, { duration: held, reduceMotion: ANSWERED }), probed(out, probe, "exit", exited, mounted))
+      : shown ? entrance : leaving ? probed(out, probe, "exit", exited, mounted) : out;
     if (shown) {
       risen.value = 0;
       risen.value = withTiming(1, { duration: enter, reduceMotion: ANSWERED });
@@ -143,15 +152,16 @@ export function TableNotice<K extends NoticeKind>({
       cancelAnimation(risen);
     };
   }, [shown, still, held, enter, exit, life, risen, kind, shape, src]);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
       const arrived = up.current;
       if (!DIAGNOSTICS || !arrived) return;
       const t = performance.now();
       diag({ k: "notice", t, ...arrived.probe, phase: "unmounted", ms: t - arrived.at, dt: 0 });
-    },
-    []
-  );
+    };
+  }, []);
   const motion = useAnimatedStyle(() => ({
     opacity: life.value,
     transform: [{ translateY: (1 - risen.value) * rise }],

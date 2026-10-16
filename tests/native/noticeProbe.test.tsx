@@ -5,6 +5,16 @@ import type { DiagRow } from '@/lib/diagnostics';
 
 const mockRows: DiagRow[] = [];
 jest.mock('@/lib/diagnostics/recorder', () => ({ recorder: { push: (row: DiagRow) => mockRows.push(row) } }));
+// While held, every UI-to-JS report waits in `queue` until the test lets the hop land.
+const mockHop: { held: boolean; queue: (() => void)[] } = { held: false, queue: [] };
+jest.mock('react-native-worklets', () => {
+  const actual = jest.requireActual('react-native-worklets') as typeof import('react-native-worklets');
+  return {
+    ...actual,
+    scheduleOnRN: (fn: (...args: unknown[]) => void, ...args: unknown[]) =>
+      mockHop.held ? mockHop.queue.push(() => fn(...args)) : actual.scheduleOnRN(fn, ...args),
+  };
+});
 
 let gallery: typeof import('@/components/table/notices/gallery').NOTICE_GALLERY;
 let setMotionPreference: typeof import('@/lib/accessibility').setMotionPreference;
@@ -120,6 +130,21 @@ describe('a diagnostics build times every notice in UI frames', () => {
     await advance(2000);
     await still.unmount();
     expect(rows('notice').map((r) => r.phase)).toEqual(['still']);
+  });
+
+  it('a notice unmounted on the frame its out-fade ends, before that report reaches JS, records one exit row', async () => {
+    const view = await render(gallery.passFloat[0].render(1));
+    await advance(500);
+    expect(rows('notice').map((r) => r.phase)).toEqual(['enter']);
+    mockHop.held = true;
+    await advance(1500);
+    expect(mockHop.queue).toHaveLength(1);
+    await view.unmount();
+    mockHop.held = false;
+    await act(async () => mockHop.queue.splice(0).forEach((land) => land()));
+    const exits = rows('notice').slice(1).map((r) => r.phase);
+    expect(exits).toHaveLength(1);
+    expect(['exit', 'unmounted']).toContain(exits[0]);
   });
 
   it("the reconnecting dot records each 900 ms blink, and under reduced motion no blink and an opacity of 1", async () => {
