@@ -21,6 +21,8 @@ export function useClockFade<T>(
   const [held, setHeld] = useState({ on, last: clock, leaving: false });
   if (on !== held.on || (clock !== null && (held.last === null || key(clock) !== key(held.last)))) {
     setHeld({ on, last: clock ?? held.last, leaving: !on && !reduced });
+  } else if (reduced && held.leaving) {
+    setHeld({ ...held, leaving: false });
   }
   // Unmounting hides a clock under reduced motion, so its opacity stays at 1 for the next to mount at.
   const opacity = useSharedValue(on || reduced ? 1 : 0);
@@ -29,8 +31,8 @@ export function useClockFade<T>(
     if (reduced) opacity.value = 1;
     else if (on) opacity.value = withDelay(Handoff.clockOutMs, withTiming(1, { duration: Handoff.clockInMs }), ReduceMotion.Never);
     else {
-      opacity.value = withTiming(0, { duration: Handoff.clockOutMs }, (finished) => {
-        if (finished) scheduleOnRN(gone);
+      opacity.value = withTiming(0, { duration: Handoff.clockOutMs }, () => {
+        scheduleOnRN(gone);
       });
     }
   }, [on, reduced, opacity, gone]);

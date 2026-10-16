@@ -327,6 +327,8 @@ export interface GameTableProps {
   connection?: ConnectionNote | null;
   /** The table is being replayed after a reconnect: a throw takes the catch-up timing. */
   catchUp?: boolean;
+  /** Mounting on a match restored from its save: the play on the pile was thrown before, so it mounts at rest. */
+  restored?: boolean;
   /** The viewer's own link; anything but `up` holds the table (#1268). */
   ownLink?: OwnLink;
   /**
@@ -375,6 +377,7 @@ export function GameTable({
   roundVote = null,
   connection,
   catchUp = false,
+  restored = false,
   ownLink = "up",
   overlays,
   tableCovered = false,
@@ -860,6 +863,7 @@ export function GameTable({
     handOrigins,
     roomW: frame.fieldRoomW,
     catchUp,
+    restored,
   });
   const roundEnding = useRoundEnding({
     ended: gameState.roundOver && !matchOver && (onRoundLanded !== undefined || roundVote !== null),

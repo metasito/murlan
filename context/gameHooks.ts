@@ -24,10 +24,10 @@ export function useLocalTable() {
 
 /** Starting a match, abandoning one, and picking up the one that was interrupted. */
 export function useLocalSession() {
-  const { setupGame, resetGame, hasSavedGame, resumeGame } = useGame();
+  const { setupGame, resetGame, hasSavedGame, resumeGame, restored } = useGame();
   return useMemo(
-    () => ({ setupGame, resetGame, hasSavedGame, resumeGame }),
-    [setupGame, resetGame, hasSavedGame, resumeGame]
+    () => ({ setupGame, resetGame, hasSavedGame, resumeGame, restored }),
+    [setupGame, resetGame, hasSavedGame, resumeGame, restored]
   );
 }
 

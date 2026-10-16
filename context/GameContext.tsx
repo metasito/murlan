@@ -134,12 +134,16 @@ interface GameContextValue {
   hasSavedGame: boolean;
   /** Restores that match. False if there was nothing worth restoring. */
   resumeGame: () => boolean;
+  /** `gameState` is still the one `resumeGame` restored, so its last play was already thrown. */
+  restored: boolean;
 }
 
 const GameContext = createContext<GameContextValue | null>(null);
 
 export function GameProvider({ children }: { children: ReactNode }) {
   const [gameState, setGameState] = useState<GameState | null>(null);
+  const [resumedFrom, setResumedFrom] = useState<GameState | null>(null);
+  const restored = gameState !== null && gameState === resumedFrom;
 
   const [match, setMatch] = useState<MatchState>(() => freshMatch("match", 4));
   const [savedPlayerConfigs, setSavedPlayerConfigs] = useState<PlayerSetupConfig[]>([]);
@@ -292,6 +296,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const save = savedRef.current;
     if (!isResumable(save)) return false;
     setGameState(save.gameState);
+    setResumedFrom(save.gameState);
     setMatch(save.match);
     setSavedPlayerConfigs(save.players);
     setSavedGameMode(save.gameMode);
@@ -373,6 +378,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       releaseStuckExchange,
       hasSavedGame,
       resumeGame,
+      restored,
     }),
     [
       gameState,
@@ -392,6 +398,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       releaseStuckExchange,
       hasSavedGame,
       resumeGame,
+      restored,
     ]
   );
 

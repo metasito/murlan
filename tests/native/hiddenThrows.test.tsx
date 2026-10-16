@@ -1,5 +1,5 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
-import { act, render } from '@testing-library/react-native';
+import { act, render, within } from '@testing-library/react-native';
 import { AppState } from 'react-native';
 
 jest.mock('@/components/table/particles', () => {
@@ -15,6 +15,11 @@ import { card, PAIR, tableAfter } from './helpers/landing';
 const SINGLE: Combination = { type: 'single', cards: [card('c', '4', 'hearts')], strength: 4 };
 const frames = (n: number) => settle(16 * n);
 const fliers = (view: Awaited<ReturnType<typeof render>>) => view.queryAllByTestId('flying-card', { includeHiddenElements: true }).length;
+const SEATS: Record<number, string> = { 1: 'side-seat-right', 2: 'top-seat', 3: 'side-seat-left' };
+const clockSeats = (view: Awaited<ReturnType<typeof render>>) => [
+  ...Object.entries(SEATS).filter(([, id]) => within(view.getByTestId(id)).queryAllByTestId('seat-turn-clock', { includeHiddenElements: true }).length > 0).map(([seat]) => Number(seat)),
+  ...(view.queryAllByTestId('turn-chip-clock', { includeHiddenElements: true }).length > 0 ? [0] : []),
+];
 const dusts = () => jest.mocked(landingDust).mock.calls.map(([l]) => l.cards);
 
 describe('throws committed while no frame is drawn', () => {
@@ -42,6 +47,26 @@ describe('throws committed while no frame is drawn', () => {
     expect(sounds()).toContain('combo');
     expect(sounds()).not.toContain('play');
     expect(fliers(view)).toBe(0);
+    await view.unmount();
+  });
+
+  it('flies a throw whose trick cleared while no frame was drawn, then hands the turn on', async () => {
+    AppState.currentState = 'active';
+    const view = await render(tableAfter({ by: 3, combo: SINGLE, turnSeconds: 30 }));
+    await frames(60);
+    expect(clockSeats(view)).toEqual([0]);
+
+    AppState.currentState = 'background';
+    await act(async () => view.rerender(tableAfter({ by: 0, combo: PAIR, turn: 1, turnSeconds: 30 })));
+    await act(async () => view.rerender(tableAfter({ by: 0, combo: null, turn: 1, turnSeconds: 30 })));
+    expect(fliers(view)).toBe(PAIR.cards.length);
+    expect(clockSeats(view)).toEqual([0]);
+
+    AppState.currentState = 'active';
+    await frames(120);
+    expect(dusts()).toContain(2);
+    expect(fliers(view)).toBe(0);
+    expect(clockSeats(view)).toEqual([1]);
     await view.unmount();
   });
 

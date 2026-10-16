@@ -91,12 +91,35 @@ describe('a diagnostics build times every notice in UI frames', () => {
     let view = await render(<NoticeSource.Provider value="gallery">{pill.render(1)}</NoticeSource.Provider>);
     await advance(2000);
     await view.unmount();
-    expect(rows('notice').map((r) => r.src)).toEqual(['gallery']);
+    expect(rows('notice').map((r) => [r.phase, r.src])).toEqual([['enter', 'gallery'], ['unmounted', 'gallery']]);
     mockRows.length = 0;
     view = await render(pill.render(1));
     await advance(2000);
     await view.unmount();
-    expect(rows('notice').map((r) => r.src)).toEqual([undefined]);
+    expect(rows('notice').map((r) => [r.phase, r.src])).toEqual([['enter', undefined], ['unmounted', undefined]]);
+  });
+
+  it('a notice unmounted before its exit row records how long it was up, entrance finished or not', async () => {
+    const float = gallery.passFloat[0];
+    const view = await render(float.render(1));
+    await advance(3 * FRAME);
+    await view.unmount();
+    const got = rows('notice');
+    expect(got.map((r) => [r.kind, r.phase, r.dt])).toEqual([['passFloat', 'unmounted', 0]]);
+    expect(got[0].ms).toBeGreaterThanOrEqual(3 * FRAME);
+    expect(got[0].ms).toBeLessThan(4 * FRAME);
+
+    mockRows.length = 0;
+    const done = await render(float.render(1));
+    await advance(2000);
+    await done.unmount();
+    expect(rows('notice').map((r) => r.phase)).toEqual(['enter', 'exit']);
+
+    mockRows.length = 0;
+    const still = await render(gallery.pileLabel[0].render(1));
+    await advance(2000);
+    await still.unmount();
+    expect(rows('notice').map((r) => r.phase)).toEqual(['still']);
   });
 
   it("the reconnecting dot records each 900 ms blink, and under reduced motion no blink and an opacity of 1", async () => {
