@@ -42,6 +42,12 @@ export function runSession(
 
   const child = spawnFn("claude", argv, { stdio: ["ignore", "pipe", "pipe"], env });
 
+  // A spawn failure (ENOENT) emits `error` and then `close`; unhandled, it takes the supervisor down.
+  child.on("error", (e) => {
+    stderr += `${e.message}\n`;
+    onStderr(`${e.message}\n`);
+  });
+
   // Mirrored, not swallowed: a crash must still print itself.
   child.stderr?.on("data", (chunk) => {
     stderr += chunk;
