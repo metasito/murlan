@@ -34,8 +34,7 @@ import {
   type FloatingCardSpec,
 } from "@/components/homeCardField";
 import { homeMenu, type HomeAction, type HomeTile } from "@/components/homeMenuModel";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { ACTIVE_ROOM_KEY } from "@/lib/storageKeys";
+import { holdsLiveTable } from "@/lib/tableHandles";
 import { uiFeedback } from "@/lib/device/feedback";
 import Feather from "@expo/vector-icons/Feather";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -658,17 +657,16 @@ export default function HomeScreen() {
   const isLandscape = useIsLandscape();
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [activeRoom, setActiveRoom] = useState(false);
-  // Re-read on focus rather than from a context: `OnlineGameContext` owns the
-  // key and unmounts with the `(online)` route, so the only moment home can
+  // Re-read on focus rather than from a context: `OnlineGameContext` holds the
+  // table and unmounts with the `(online)` route, so the only moment home can
   // trust is the one it is looked at.
   const homeFocused = useIsFocused();
   useEffect(() => {
     let cancelled = false;
-    const read =
-      homeFocused && user ? AsyncStorage.getItem(ACTIVE_ROOM_KEY) : Promise.resolve(null);
+    const read = homeFocused && user ? holdsLiveTable() : Promise.resolve(false);
     read
-      .then((roomId) => {
-        if (!cancelled) setActiveRoom(!!roomId);
+      .then((live) => {
+        if (!cancelled) setActiveRoom(live);
       })
       .catch(() => {});
     return () => {
