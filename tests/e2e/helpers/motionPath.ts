@@ -54,7 +54,7 @@ export async function onShippedMotion(page: Page): Promise<void> {
 }
 
 const edges = (page: Page) =>
-  page.evaluate(() => (window as unknown as { __motion: Seen[] }).__motion.map((s) => s.kind).join(" "));
+  page.evaluate(() => (window as unknown as { __motion: Seen[] }).__motion.map((s) => `${s.kind}@${Math.round(s.at)}`).join(" "));
 
 /** The index of the `nth` `kind` after `from`, waited for no longer than its own gate. */
 async function gate(page: Page, round: number, kind: Kind, from: number, nth = 1): Promise<number> {
@@ -85,6 +85,16 @@ async function gate(page: Page, round: number, kind: Kind, from: number, nth = 1
 async function roundGates(page: Page, round: number, deal: number): Promise<void> {
   const dealt = await gate(page, round, "deal", -1, deal);
   const landed = await gate(page, round, "landed", dealt);
+  if (deal === 1) {
+    // A resumed table's first deal follows the seeded round's last play, which flies before it.
+    const early = await page.evaluate(
+      ({ from, to }) => (window as unknown as { __motion: Seen[] }).__motion.slice(from, to).some((s) => s.kind === "play"),
+      { from: round === 1 ? 0 : dealt, to: landed }
+    );
+    if (early) {
+      throw new Error(`round ${round}: a card flew before the table's first deal landed. Edges seen: ${await edges(page)}`);
+    }
+  }
   let before = landed;
   if (round > 1) {
     // The overlay mounts with the deal; it only starts once the deal lands (`GameTable.tsx` `go`).
