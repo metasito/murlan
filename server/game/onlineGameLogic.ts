@@ -59,7 +59,7 @@ export interface VisibleExchangePhaseInput {
   winnerIdx: number;
   loserIdx: number;
   twoJokerException: boolean;
-  cardFromLoser: unknown;
+  cardFromLoser?: unknown;
   cardToLoser?: unknown;
   settledAt?: number;
 }

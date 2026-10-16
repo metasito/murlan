@@ -287,12 +287,14 @@ describe("round-to-round exchange setup", () => {
       assert.equal(phase.active, true);
       assert.equal(phase.winnerIdx, 0);
       assert.equal(phase.loserIdx, 3);
+      const given = phase.cardFromLoser;
+      assert.ok(given, "an ordinary exchange records the loser's card");
       assert.ok(
-        state.players[0].hand.some((card) => card.id === phase.cardFromLoser.id),
+        state.players[0].hand.some((card) => card.id === given.id),
         "the winner received the loser's card"
       );
       assert.ok(
-        !state.players[3].hand.some((card) => card.id === phase.cardFromLoser.id),
+        !state.players[3].hand.some((card) => card.id === given.id),
         "the loser gave it up"
       );
       assert.equal(getStartingPlayerAfterExchange(state), phase.loserIdx);
@@ -336,6 +338,7 @@ describe("the two-joker exception, on a fixed deal", () => {
     const phase = state.exchangePhase!;
     assert.equal(phase.twoJokerException, true);
     assert.equal(phase.active, false);
+    assert.equal("cardFromLoser" in phase, false, "no card moved, so none is recorded as given");
     assert.equal(state.currentTurnIndex, phase.winnerIdx);
     assert.equal(getStartingPlayerAfterExchange(state), phase.winnerIdx);
     assert.equal(state.startReason?.type, "won_no_exchange");

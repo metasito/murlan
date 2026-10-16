@@ -436,9 +436,10 @@ function evaluatePlay(selectedIds: Set<string>, beat: PlayBeat, t: TFn): { ok: b
 
 function evaluateExchange(selected: Card, beat: ExchangeBeat, t: TFn): { ok: boolean; message: string } {
   const winnerHand = beat.state.players[beat.state.exchangePhase!.winnerIdx].hand;
-  const valid = getValidGivebackCards(winnerHand, beat.state.exchangePhase!.cardFromLoser.id);
+  const receivedId = beat.state.exchangePhase!.cardFromLoser?.id;
+  const valid = getValidGivebackCards(winnerHand, receivedId);
   if (!valid.some((c) => c.id === selected.id)) {
-    if (selected.id === beat.state.exchangePhase!.cardFromLoser.id) {
+    if (selected.id === receivedId) {
       return { ok: false, message: t("tutorial.errJustReceived") };
     }
     return { ok: false, message: t("tutorial.errExchangeRange") };
@@ -729,7 +730,7 @@ export default function TutorialScreen() {
 
     // exchange
     const winnerHand = beat.state.players[beat.state.exchangePhase!.winnerIdx].hand;
-    const receivedId = beat.state.exchangePhase!.cardFromLoser.id;
+    const receivedId = beat.state.exchangePhase!.cardFromLoser?.id;
     return (
       <>
         <MenuCard title={beat.title}>
