@@ -17,7 +17,8 @@ const SEAT0_REST = card('s0-4', '4');
 const SEAT1_CARD = card('s1-9', '9');
 
 /** Two humans at one device; seat 0 leads a fresh round. */
-const mockTable: { state: GameState } = {
+const mockTable: { state: GameState; announcing: boolean } = {
+  announcing: false,
   state: {
     players: [
       { id: 'player_0', name: 'Ana', hand: [SEAT0_LEAD, SEAT0_REST], type: 'human' },
@@ -55,7 +56,7 @@ jest.mock('@/context/GameContext', () => ({
     runBotTurn: () => {},
     chooseExchangeCard: () => {},
     releaseStuckExchange: () => {},
-    exchangeAnnouncing: false,
+    exchangeAnnouncing: mockTable.announcing,
     exchangeAnnounceData: null,
     acknowledgeExchange: () => {},
     match: { length: 'single', target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
@@ -119,6 +120,47 @@ describe('pass and play', () => {
     expect(
       screen.getByLabelText(`${t('gameTable.a11yYourTurn')} ${tn('gameTable.a11ySecondsLeft', HUMAN_TURN_SECONDS - 2)}`)
     ).toBeTruthy();
+
+    await view.unmount();
+  });
+
+  it('keeps the table on the exchange winner while the exchange is announced, then hands it to the loser on move', async () => {
+    const winnerCard = card('s0-8', '8');
+    const loserCard = card('s1-6', '6');
+    mockTable.state = {
+      players: [
+        { id: 'player_0', name: 'Ana', hand: [winnerCard], type: 'human' },
+        { id: 'player_1', name: 'Besi', hand: [loserCard, card('s1-k', 'K')], type: 'human' },
+      ],
+      currentTurnIndex: 1,
+      lastPlayedCombination: null,
+      lastPlayedBy: 1,
+      passCount: 0,
+      gameMode: 'free_for_all',
+      trickWinner: null,
+      roundOver: false,
+      finishingOrder: [],
+      firstPlayMade: true,
+      exchangePhase: {
+        active: false,
+        winnerIdx: 0,
+        loserIdx: 1,
+        cardFromLoser: card('s1-a', 'A'),
+        cardToLoser: card('s1-k', 'K'),
+        twoJokerException: false,
+      },
+    };
+    mockTable.announcing = true;
+    const view = await render(screenTree());
+    expect(cardShown(winnerCard)).toBe(true);
+    expect(cardShown(loserCard)).toBe(false);
+
+    mockTable.announcing = false;
+    await act(async () => {
+      view.rerender(screenTree());
+    });
+    expect(cardShown(loserCard)).toBe(true);
+    expect(cardShown(winnerCard)).toBe(false);
 
     await view.unmount();
   });

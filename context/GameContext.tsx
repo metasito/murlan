@@ -229,19 +229,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const chooseExchangeCard = useCallback(
     (cardId: string) => {
-      if (gameState?.exchangePhase?.active) {
-        const ep = gameState.exchangePhase;
-        announce(
-          buildExchangeAnnounce(gameState.players, ep, {
-            given: gameState.players[ep.winnerIdx]?.hand.find((c) => c.id === cardId),
-            received: ep.cardFromLoser,
-          })
-        );
-      }
-      setGameState((prev) => {
-        if (!prev) return prev;
-        return processExchangeChoice(prev, cardId);
-      });
+      if (!gameState?.exchangePhase?.active) return;
+      const next = processExchangeChoice(gameState, cardId);
+      if (next === gameState) return;
+      const ep = gameState.exchangePhase;
+      announce(
+        buildExchangeAnnounce(gameState.players, ep, {
+          given: gameState.players[ep.winnerIdx]?.hand.find((c) => c.id === cardId),
+          received: ep.cardFromLoser,
+        })
+      );
+      setGameState(next);
     },
     [gameState, announce]
   );
