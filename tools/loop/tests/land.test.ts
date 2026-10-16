@@ -99,26 +99,26 @@ const cases: Case[] = [
     reason: /^the run was cancelled$/,
   },
   {
-    name: "CONFLICTING is the owner's even when CI is green",
+    name: "CONFLICTING is a rebase round even when CI is green",
     pr: pr({ mergeable: "CONFLICTING" }),
     ci: GREEN,
-    action: "owner",
+    action: "rebase",
     reason: /conflicts with main/,
   },
   {
-    name: "CONFLICTING is the owner's rather than a fix round when CI is red",
+    name: "CONFLICTING is a rebase round rather than a fix round when CI is red",
     pr: pr({ mergeable: "CONFLICTING" }),
     ci: RED,
-    action: "owner",
+    action: "rebase",
   },
   {
     // ci.yml cancels a superseded push, so this is the ordinary shape of a conflicted branch that
     // was pushed to twice, not a rare one. Read as infrastructure it spends every retry round and
     // then reports a sick runner.
-    name: "CONFLICTING is the owner's even when the run was cancelled",
+    name: "CONFLICTING is a rebase round even when the run was cancelled",
     pr: pr({ mergeable: "CONFLICTING" }),
     ci: CANCELLED,
-    action: "owner",
+    action: "rebase",
     reason: /conflicts with main/,
   },
   {

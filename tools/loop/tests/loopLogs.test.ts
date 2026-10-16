@@ -656,6 +656,12 @@ describe("tallyOf", () => {
     assert.equal(tallyOf([proc({ outcome: "handoff", handoff: { phase: "E" } }), out({ outcome: "retry" })]).lastHandoff, null);
   });
 
+  test("a rebase row is counted, and like a retry clears the handed phase so the CONFLICT routes the next pass", () => {
+    const t = tallyOf([proc({ outcome: "handoff", handoff: { phase: "E" } }), out({ outcome: "rebase", head: "a" })]);
+    assert.deepEqual([t.rebases, t.lastHandoff, t.handoffsThisRound], [1, null, 0]);
+    assert.equal(tallyOf([]).rebases, 0);
+  });
+
   test("the supervisor's reason outranks what the session said", () => {
     const t = tallyOf([proc({ outcome: "handoff", handoff: { phase: "C", why: "no local pass", said: "x" } })]);
     assert.deepEqual([t.lastHandoff, t.handoffWhy], ["C", "no local pass"]);
