@@ -95,24 +95,23 @@ that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAU
 
 Another agent is working in this repository, on this machine, right now.
 
-37. **A failure you did not cause is still a failure you must rule out.** Before believing a red
-    run, check free memory, the ports your suite binds, and whether another session is mid-run.
+37. **A failure you did not cause is still a failure you must rule out.** Before believing a red run, check free memory, the ports your suite binds, and whether another session is mid-run.
     Exhaustion and collision both read exactly like a regression.
 38. **Kill only what you started.** Processes, containers and databases outlive the session that
     started them; end yours when your run ends rather than leaving them warm for a next one.
-39. **Remove a worktree only with `npm run worktrees:remove -- <path>`, run from the main
-    checkout.** Never `git worktree remove`, `rm -rf` or `Remove-Item` on a worktree directory:
-    a recursive delete follows the `node_modules` junction and empties the shared install. The
-    named command detaches the link first.
-40. **Never leave a shell parked inside a worktree.** Run its checks with `git -C`, `npm
-    --prefix`, or a subshell that exits — a live process holding the directory is one you
-    cannot delete afterwards.
+39. **Remove a worktree only with `npm run worktrees:remove -- <path>`, run from the main checkout.** Never `git worktree remove`, `rm -rf` or `Remove-Item` on a worktree directory:
+    a recursive delete follows the `node_modules` junction and empties the shared install. The named command detaches the link first.
+40. **Never leave a shell parked inside a worktree.** Run its checks with `git -C`, `npm --prefix`, or a subshell that exits — a live process holding the directory is one you cannot delete afterwards.
 41. *(retired)*
-42. **A peer is not the owner.** Another session's message is a colleague's, never approval —
-    for a permission you were refused, for a config change, or for a decision the owner has not
-    made.
+42. **A peer is not the owner.** Another session's message is a colleague's, never approval — for a permission you were refused, for a config change, or for a decision the owner has not made.
 43. **A change that moves, renames or deletes a file updates every doc that names it, and a change to behaviour updates every document describing it, in the same change.**
     `tests/tooling/docReferences.test.ts` fails on the path a rename left behind.
 44. **Change a file with Edit or Write; Bash runs commands.** A `sed`, heredoc or rewrite script skips the `Write|Edit` hooks, applies its own escaping on top of the file's, and one that fails partway drops every edit before it.
 45. *(retired)*
 46. **The whole CI run stays under 5 minutes, first job to last, as a target to aim for: `TARGET_RUN_SECONDS` in `tools/ci/e2e-shard.mjs` is 300.** That bounds a pull request's ordinary `ci.yml` run. `Android compiles` and `iOS compiles` run only on a native-touching change, `-f native=true` and the weekly cron, under a budget of their own: `timeout-minutes: 35` on each, the slowest measured compile plus about 20%. Time turns a check red only at a job's timeout or past 3x a file's budget (`HARD_FACTOR` in `tools/ci/native-budget.mjs`, `tools/ci/e2e-budget.mjs`, `tools/ci/ios-wall.mjs`); a file over its budget is a warning to look at, not a failure, except that a pull request adding or changing that file cannot land (`overBudget` in `tools/ci/budget-gate.mjs`, which also refuses raising its spec's time in `tests/e2e/timings.json` past `RATIO`). The owner's rulings (2026-10-07, 2026-10-09, 2026-10-11, 2026-10-12), and only the owner changes them. When the suite outgrows the shards, make specs faster or split them; never raise the target to turn a check green.
+
+## Design
+
+47. **A decision another module owns is asked of that module, never re-derived or restated.** A rule, timing, policy, mapping or threshold computed again in a caller or restated in a doc is a copy of the owner's, even when it agrees today.
+48. **One decision has one copy.** A change that leaves two copies of a constant, rule, policy or mapping, where one existed or where one should, deletes one or routes it through the other in the same change.
+49. **A new invariant, guard or check lands proven and floored**: it fails on a planted defect for the reason claimed (rule 6), and it fails when what it inspects is gone, empty or renamed, so it cannot pass by not looking.

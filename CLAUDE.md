@@ -43,6 +43,14 @@ Verify against source before changing any.
   `react-test-renderer`, which never runs flexbox. Only `tests/e2e/` (Playwright) catches that
   class — a card fan sat off-screen for months against a green native suite.
 
+## Design
+
+The 2026-10-16 audit's 238 findings had one root: a module offered steps, not decisions, so
+callers re-derived them and the copies drifted (map #1650). So: one owner per decision, which
+callers ask (rule 47); a second copy is a defect (rule 48); a new invariant lands with a check
+proven on a planted defect and floored against an empty input (rule 49). No seam, interface or
+adapter layer until a second adapter exists. The loop's review blocks a merge on 47–49.
+
 ## Comments
 
 **Default is no comment, and the default is what almost every line gets.** Four things earn one: an

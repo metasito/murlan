@@ -56,10 +56,13 @@ describe("brief", () => {
     assert.match(role("completeness"), /git -C <worktree> grep -n -F <name>/);
   });
 
-  test("a review sorts findings so that only a bug, an unmet box, a regression or a security risk blocks", () => {
+  test("a review blocks on a bug, an unmet box, a regression, a security risk or a design-rule breach, and nothing else", () => {
+    const rules = readFileSync(new URL("../../../docs/agents/RULES.md", import.meta.url), "utf8");
+    for (const n of [47, 48, 49]) assert.match(rules, new RegExp(`^${n}\\. \\*\\*`, "m"), `rule ${n} is retired or gone; the review still blocks on it`);
     for (const kind of ["review", "fix"]) {
       assert.match(role(kind), /## Blocking`, `## Nits` and `## Pre-existing/, kind);
-      assert.match(role(kind), /A rule breach, a name, a comment, an untested branch or a style preference is a Nit/, kind);
+      assert.match(role(kind), /a breach of rule 47, 48 or 49 \(`docs\/agents\/RULES\.md`\) this change introduces, naming the owner's file:line \(47\), both copies' file:line \(48\)/, kind);
+      assert.match(role(kind), /Any other rule breach, a name, a comment, an untested branch or a style preference is a Nit/, kind);
     }
   });
 

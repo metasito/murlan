@@ -23,12 +23,14 @@ Does every rebased commit still do what it did before, against main as it is now
 
 Answer under `## Blocking`, `## Nits` and `## Pre-existing`. Blocking is only: a bug, with the
 input or sequence that makes it go wrong; a Definition-of-done box left unmet, quoted; a regression
-or red CI run this change causes; a security or data-loss risk. A box built for its intent because
+or red CI run this change causes; a security or data-loss risk; a breach of rule 47, 48 or 49
+(`docs/agents/RULES.md`) this change introduces, naming the owner's file:line (47), both copies'
+file:line (48), or the planted defect or emptied input the check passes on (49). A box built for its intent because
 a test rules out the form it prescribes, the test named in a commit body (`.claude/commands/queue.md`
 phase C), is met: unmet only if that test does not rule the form out or the intent is not built.
 How rare its sequence is never makes a bug a Nit: a sequence the code allows is Blocking. A
 finding that contradicts a Definition-of-done line is Blocking, quoted, even when the box is ticked.
-A rule breach, a name, a comment, an untested branch or a style preference is a Nit, with one
+Any other rule breach, a name, a comment, an untested branch or a style preference is a Nit, with one
 exception: when a box's deliverable is a check, scan or guard, a common input it misses is an unmet
 box: name the input. A defect this change did not introduce is Pre-existing. Every finding names a file:line.
 Before posting, move to Blocking every Nit or Pre-existing item that names an input or sequence this
