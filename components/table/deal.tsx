@@ -152,7 +152,13 @@ function DealtBack({ legs, scale, clock }: { legs: readonly DealLeg[]; scale: nu
 function dealStepper(clock: SharedValue<number>, origin: SharedValue<number>, startMs: number, endMs: number, started: (at: number) => void, landed: () => void) {
   return (frame: FrameInfo) => {
     "worklet";
-    if (clock.value >= endMs) return;
+    if (clock.value >= endMs) {
+      if (origin.value < 0) {
+        origin.value = frame.timestamp;
+        scheduleOnRN(landed);
+      }
+      return;
+    }
     if (origin.value < 0) {
       origin.value = frame.timestamp;
       scheduleOnRN(started, frame.timestamp + startMs);
