@@ -26,6 +26,24 @@ async function lockRoom(tx: Tx, roomId: string): Promise<Room | undefined> {
   return room;
 }
 
+async function upsertSeatRow(tx: Tx, roomId: string, userId: string, seatIndex: number) {
+  const [existing] = await tx
+    .select()
+    .from(roomPlayers)
+    .where(and(eq(roomPlayers.roomId, roomId), eq(roomPlayers.userId, userId)));
+
+  if (!existing) {
+    await tx.insert(roomPlayers).values({ roomId, userId, seatIndex });
+    return;
+  }
+  if (existing.seatIndex !== seatIndex) {
+    await tx
+      .update(roomPlayers)
+      .set({ seatIndex })
+      .where(eq(roomPlayers.id, existing.id));
+  }
+}
+
 async function seatedUsers(tx: Tx | typeof db, roomId: string): Promise<SeatedUser[]> {
   const rows = await tx
     .select()
@@ -160,12 +178,13 @@ export const roomStore = {
   /**
    * Frees a seat and settles who holds the room: a lobby left empty is
    * finished, and otherwise a host who is no longer seated hands it to the
-   * lowest seat. `emptied` says this release is the one that finished it.
+   * lowest seat. `emptied` says this release is the one that finished it;
+   * `wasHost` that the player held the room before it.
    */
   async releaseSeat(
     roomId: string,
     userId: string
-  ): Promise<{ room: Room; remaining: SeatedUser[]; emptied: boolean } | null> {
+  ): Promise<{ room: Room; remaining: SeatedUser[]; emptied: boolean; wasHost: boolean } | null> {
     return db.transaction(async (tx) => {
       const room = await lockRoom(tx, roomId);
       if (!room) return null;
@@ -175,15 +194,29 @@ export const roomStore = {
       const remaining = await seatedUsers(tx, roomId);
 
       const emptied = remaining.length === 0 && room.status === "waiting";
+      const wasHost = room.hostUserId === userId;
       const [next] = remaining;
       const set = emptied
         ? { status: "finished" as const }
         : next && !remaining.some((p) => p.userId === room.hostUserId)
           ? { hostUserId: next.userId }
           : null;
-      if (!set) return { room, remaining, emptied };
+      if (!set) return { room, remaining, emptied, wasHost };
       const [updated] = await tx.update(rooms).set(set).where(eq(rooms.id, roomId)).returning();
-      return { room: updated!, remaining, emptied };
+      return { room: updated!, remaining, emptied, wasHost };
+    });
+  },
+
+  /**
+   * Puts back what `releaseSeat` took from a player whose seat a rejoin
+   * reclaimed while the release was in flight: the row, and the room when
+   * they held it.
+   */
+  async restoreSeat(roomId: string, userId: string, seatIndex: number, host: boolean) {
+    await db.transaction(async (tx) => {
+      if (!(await lockRoom(tx, roomId))) return;
+      await upsertSeatRow(tx, roomId, userId, seatIndex);
+      if (host) await tx.update(rooms).set({ hostUserId: userId }).where(eq(rooms.id, roomId));
     });
   },
 
@@ -197,23 +230,7 @@ export const roomStore = {
    * mapping on the next rematch.
    */
   async upsertRoomPlayer(roomId: string, userId: string, seatIndex: number) {
-    await db.transaction(async (tx) => {
-      const [existing] = await tx
-        .select()
-        .from(roomPlayers)
-        .where(and(eq(roomPlayers.roomId, roomId), eq(roomPlayers.userId, userId)));
-
-      if (!existing) {
-        await tx.insert(roomPlayers).values({ roomId, userId, seatIndex });
-        return;
-      }
-      if (existing.seatIndex !== seatIndex) {
-        await tx
-          .update(roomPlayers)
-          .set({ seatIndex })
-          .where(eq(roomPlayers.id, existing.id));
-      }
-    });
+    await db.transaction((tx) => upsertSeatRow(tx, roomId, userId, seatIndex));
   },
 
   /**

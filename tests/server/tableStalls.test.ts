@@ -464,16 +464,24 @@ describe("the next-round vote deadline", () => {
     assert.equal(game.gameState.roundOver, false, "ana's and cleo's votes did not deal");
   });
 
-  test("a seat reclaimed while its row is being released keeps its row", async (t) => {
+  test("a seat reclaimed while its row is being released keeps its row and the room", async (t) => {
     const { io, game, clock } = await roundJustEnded(t);
     const rows = new Set(["ana", "besi"]);
-    t.mock.method(roomStore, "upsertRoomPlayer", async (_roomId: string, userId: string) => {
+    let host = "besi";
+    const upsert = async (_roomId: string, userId: string) => {
       rows.add(userId);
+    };
+    t.mock.method(roomStore, "upsertRoomPlayer", upsert);
+    t.mock.method(roomStore, "restoreSeat", async (roomId: string, userId: string, _seat: number, asHost: boolean) => {
+      await upsert(roomId, userId);
+      if (asHost) host = userId;
     });
     t.mock.method(roomStore, "releaseSeat", async (_roomId: string, userId: string) => {
       if (userId === "besi") await applyOrForward(io, { kind: "rejoin", roomId: ROOM, userId: "besi" });
       rows.delete(userId);
-      return null;
+      const wasHost = host === userId;
+      if (wasHost) host = [...rows][0]!;
+      return { room: { ...room, hostUserId: host }, remaining: [], emptied: false, wasHost };
     });
     await vote(io, "ana");
 
@@ -482,6 +490,7 @@ describe("the next-round vote deadline", () => {
 
     assert.equal(game.playerMap[1], "besi", "besi's rejoin never reclaimed the seat");
     assert.ok(rows.has("besi"), "besi is seated with no room_players row");
+    assert.equal(host, "besi", "besi is seated but the release handed the room to ana");
   });
 
   test("a rejoin at the results screen neither clears nor restarts it", async (t) => {

@@ -480,20 +480,21 @@ async function expireVoteDeadline(io: SocketServer, roomId: string): Promise<voi
       if (activeGames.get(roomId) !== game || !game.gameState.roundOver) break;
       if (game.rematchVotes.has(userId)) continue;
       await vacateSeat(io, roomId, userId, roundOverWriters);
-      await roomStore
-        .releaseSeat(roomId, userId)
-        .catch((err) =>
-          logger.warn(
-            { err, roomId, userId },
-            "Failed to delete the room_players row after the vote deadline — the seat stays counted as taken"
-          )
+      const released = await roomStore.releaseSeat(roomId, userId).catch((err) => {
+        logger.warn(
+          { err, roomId, userId },
+          "Failed to delete the room_players row after the vote deadline — the seat stays counted as taken"
         );
+        return null;
+      });
       // A rejoin inside the release reclaims the seat and upserts before the delete commits.
       const reclaimed = seatOfUser(game.playerMap, userId);
       if (reclaimed !== null) {
         await roomStore
-          .upsertRoomPlayer(roomId, userId, reclaimed)
-          .catch((err: unknown) => logger.warn({ err, roomId, userId }, "upsertRoomPlayer failed"));
+          .restoreSeat(roomId, userId, reclaimed, released?.wasHost ?? false)
+          .catch((err: unknown) =>
+            logger.warn({ err, roomId, userId }, "Failed to restore a seat reclaimed during the vote deadline's release")
+          );
       }
     }
     await dealIfSeatLeftGateClosed(io, roomId);
