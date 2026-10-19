@@ -592,9 +592,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     const onPlayerDisconnected = (
       payload: ServerPayload & { userId: string; seatIndex?: number | null }
     ) => {
-      // The server sends { code, params, message }; rendering it here rather
-      // than rebuilding the sentence keeps this in the player's language and
-      // keeps the grace period truthful — it is configurable server-side.
+      // Kept as the server's payload, not rebuilt as a sentence: its
+      // `params.seconds` is the grace the server is configured with.
       const notice = { payload, back: false };
       setReconnectNotice(notice);
       if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
