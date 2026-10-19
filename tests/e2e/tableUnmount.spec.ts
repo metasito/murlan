@@ -2,7 +2,7 @@
 // end-of-match board through Home, and mid-round through the table menu.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
+import { offlineSave, resumeSaved } from "./helpers/offlineSeed";
 import { skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
 import { GIOCA_VALID_LABEL } from "./helpers/labels";
 import { tap } from "./helpers/press";
@@ -27,8 +27,7 @@ async function untilHome(page: Page): Promise<void> {
 test("Home on the end-of-match board leaves the Skia felt without an error", async ({ page, baseURL }) => {
   test.setTimeout(3 * 60_000);
   const errors = pageErrors(page);
-  const save = offlineGameSave(2, 1, 0);
-  save.match.length = "single";
+  const save = offlineSave({ seats: 2, hand: 1, length: "single" });
   await skiaOnSoftware(page);
   await resumeSaved(page, baseURL!, save);
   await untilSkiaFelt(page);
@@ -44,7 +43,7 @@ test("leaving mid-round through the menu leaves the Skia felt without an error",
   test.setTimeout(3 * 60_000);
   const errors = pageErrors(page);
   await skiaOnSoftware(page);
-  await resumeSaved(page, baseURL!, offlineGameSave(2, 13, 0));
+  await resumeSaved(page, baseURL!, offlineSave({ seats: 2 }));
   await untilSkiaFelt(page);
 
   await playTopCard(page);

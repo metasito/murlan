@@ -4,12 +4,12 @@ import { test, expect } from "./fixtures";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { appAt, appResumed, mockupAt, type PlatePaint, type Rect, type Stage } from "./helpers/mockupStage";
-import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
+import { exchangeSave, offlineSave, resumeSaved } from "./helpers/offlineSeed";
 import { tap } from "./helpers/press";
 import { captureStateById, type CaptureState } from "../../lib/captureStates";
 import { CARD_H, cardScale, HAND_SCALE } from "../../components/cardFaceModel";
 import { handVisibleH } from "../../components/seatLayout";
-import { buildCombination, RANK_SLOTS, type Card } from "../../lib/game/gameEngine";
+import { RANK_SLOTS, type Card } from "../../lib/game/gameEngine";
 
 const HALF_PT = 0.5;
 const ONE_PT = 1;
@@ -134,30 +134,15 @@ for (const phone of STAGES) {
 const LONGEST = ["Konstantinos", "Maximilianus"];
 const SMALLEST = STAGES[STAGES.length - 1];
 
-function exchangeBetweenBots() {
-  const names = ["Ana", ...LONGEST];
-  const hands = [[card("5", "hearts"), card("K", "spades")], [card("2", "spades"), card("6", "diamonds"), card("K", "diamonds")], [card("7", "clubs"), card("8", "clubs")]];
-  return {
-    version: 3,
-    gameState: {
-      players: names.map((name, i) => ({ id: `player_${i}`, name, hand: hands[i], type: i === 0 ? "human" : "bot" })),
-      currentTurnIndex: 1,
-      lastPlayedCombination: null,
-      lastPlayedBy: -1,
-      passCount: 0,
-      gameMode: "free_for_all",
-      trickWinner: null,
-      roundOver: false,
-      finishingOrder: [],
-      firstPlayMade: true,
-      exchangePhase: { active: true, winnerIdx: 1, loserIdx: 2, cardFromLoser: card("2", "spades"), twoJokerException: false },
-    },
-    match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
-    players: names.map((name, i) => ({ name, type: i === 0 ? "human" : "bot" })),
-    gameMode: "free_for_all",
-    dealFirstSeat: 0,
-  };
-}
+const exchangeBetweenBots = () =>
+  exchangeSave({
+    seats: 3,
+    names: ["Ana", ...LONGEST],
+    winner: 1,
+    loser: 2,
+    cardFromLoser: "2_spades",
+    holding: [["5_hearts", "K_spades"], ["2_spades", "6_diamonds", "K_diamonds"], ["7_clubs", "8_clubs"]],
+  });
 
 test(`exchange label: two of the longest names stay whole on one line — ${SMALLEST.name}`, async ({ page, baseURL }) => {
   test.setTimeout(120_000);
@@ -213,10 +198,12 @@ for (const phone of STAGES) {
 const FLOAT = '[data-testid="notice-passFloat"]';
 
 /** The mockup's clock chapter: seat 1 has played, and the turn runs down to you. */
-function seatOneLedYouAnswer() {
-  const save = offlineGameSave(4, undefined, 0, {}, [["5_hearts", "K_spades"], ["J_hearts"], ["7_clubs"], ["4_diamonds"]]);
-  return { ...save, gameState: { ...save.gameState, lastPlayedCombination: buildCombination([card("9", "spades") as Card]), lastPlayedBy: 1 } };
-}
+const seatOneLedYouAnswer = () =>
+  offlineSave({
+    seats: 4,
+    holding: [["5_hearts", "K_spades"], ["J_hearts"], ["7_clubs"], ["4_diamonds"]],
+    pile: { cards: ["9_spades"], by: 1 },
+  });
 
 test("float: the viewer's own pass is the mockup's .floatchip, in its place, and goes", async ({ browser, baseURL }) => {
   test.setTimeout(120_000);
@@ -309,35 +296,18 @@ type Plate = { x: number; y: number; w: number; h: number; pad: number; gap: num
 const card = (rank: string, suit: string) => ({ id: `${rank}_${suit}`, rank, suit, isJoker: false });
 
 function openingWithStartCard() {
-  const hand = [card("5", "hearts"), card("K", "spades")];
-  return {
-    version: 3,
-    gameState: {
-      players: [
-        { id: "player_0", name: "Ana", hand: [card("3", "clubs"), ...hand], type: "human" },
-        { id: "player_1", name: "Besnik", hand: [card("J", "hearts"), card("Q", "diamonds")], type: "bot" },
-      ],
-      currentTurnIndex: 0,
-      lastPlayedCombination: null,
-      lastPlayedBy: -1,
-      passCount: 0,
-      gameMode: "free_for_all",
-      trickWinner: null,
-      roundOver: false,
-      finishingOrder: [],
+  const three = card("3", "clubs") as Card;
+  return offlineSave({
+    seats: 2,
+    names: ["Ana", "Besnik"],
+    holding: [["3_clubs", "5_hearts", "K_spades"], ["J_hearts", "Q_diamonds"]],
+    state: {
       firstPlayMade: false,
-      startCard: card("3", "clubs"),
-      startReason: { type: "start_card", card: card("3", "clubs"), playerIdx: 0 },
+      startCard: three,
+      startReason: { type: "start_card", card: three, playerIdx: 0 },
       playedRanks: Array.from({ length: RANK_SLOTS }, () => 0),
     },
-    match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
-    players: [
-      { name: "Ana", type: "human" },
-      { name: "Besnik", type: "bot", personality: "luan" },
-    ],
-    gameMode: "free_for_all",
-    dealFirstSeat: 0,
-  };
+  });
 }
 
 /** The plate in design points, whatever the page's own scale: `stage` is the element the design is drawn in. */
@@ -527,11 +497,15 @@ test("reject: a refused GIOCA floats G2's reason, its right edge on GIOCA's and 
   test.setTimeout(120_000);
   const want = await g2(page, "#sc-reject", "#n-reject", ".gioca");
 
-  const save = offlineGameSave(4, undefined, 0, {}, [["4_hearts", "5_hearts"], ["J_hearts"], ["7_clubs"], ["4_diamonds"]]);
-  const app = await appResumed(browser, baseURL!, {
-    ...save,
-    gameState: { ...save.gameState, lastPlayedCombination: buildCombination([card("9", "spades") as Card]), lastPlayedBy: 1 },
-  });
+  const app = await appResumed(
+    browser,
+    baseURL!,
+    offlineSave({
+      seats: 4,
+      holding: [["4_hearts", "5_hearts"], ["J_hearts"], ["7_clubs"], ["4_diamonds"]],
+      pile: { cards: ["9_spades"], by: 1 },
+    })
+  );
   await tap(app.page, app.page.locator('[data-hand-state] [data-testid="card-box"]').first());
   await expect(app.page.locator('[data-hand-state] [aria-pressed="true"]')).toHaveCount(1);
   await tap(app.page, app.page.getByTestId("btn-gioca"));
@@ -557,15 +531,14 @@ test("waiting: a seat gone out waits on G2's gold pill, centred on the hand row"
   test.setTimeout(120_000);
   const want = await g2(page, "#sc-waiting", "#n-waiting", ".hand");
 
-  const save = offlineGameSave(4, undefined, 1, {}, [[], ["J_hearts", "Q_hearts"], ["7_clubs"], ["4_diamonds"]]);
-  const app = await appResumed(browser, baseURL!, {
-    ...save,
-    gameState: {
-      ...save.gameState,
-      players: save.gameState.players.map((p, i) => (i === 0 ? { ...p, finishPosition: 1 } : p)),
-      finishingOrder: ["player_0"],
-    },
+  const save = offlineSave({
+    seats: 4,
+    turn: 1,
+    holding: [[], ["J_hearts", "Q_hearts"], ["7_clubs"], ["4_diamonds"]],
+    state: { finishingOrder: ["player_0"] },
   });
+  save.gameState.players[0].finishPosition = 1;
+  const app = await appResumed(browser, baseURL!, save);
   await expect.poll(async () => (await app.plate(WAITING))?.opacity, { message: "the line shown", timeout: 30_000 }).toBe(1);
   const got = await readExtra(app.page, { stage: "body", plate: WAITING, beside: '[data-testid="hand-zone"]' });
   await app.close();

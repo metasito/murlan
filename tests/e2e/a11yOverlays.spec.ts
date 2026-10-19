@@ -11,7 +11,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
-import { OFFLINE_SAVE_KEY } from "../../lib/storageKeys";
+import { exchangeSave, resumeSaved } from "./helpers/offlineSeed";
 
 import { HAND_CARDS, TABLE } from "./helpers/selectors.ts";
 
@@ -35,55 +35,14 @@ const UNGIVEABLE_SPOKEN = "Re di Picche";
  * plain localStorage on web — so this arrives at the exchange through the same
  * code a player's interrupted match does.
  */
-function midExchangeSave() {
-  const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
-  const winnerHand = [
-    card("4_hearts", "4", "hearts"),
-    card("9_clubs", "9", "clubs"),
-    card("K_spades", "K", "spades"),
-  ];
-  const loserHand = [card("5_diamonds", "5", "diamonds"), card("J_hearts", "J", "hearts")];
-  return {
-    version: 3,
-    gameState: {
-      players: [
-        { id: "player_0", name: "Ana", hand: winnerHand, type: "human" },
-        { id: "player_1", name: "Luan", hand: loserHand, type: "bot" },
-      ],
-      currentTurnIndex: 0,
-      lastPlayedCombination: null,
-      lastPlayedBy: -1,
-      passCount: 0,
-      gameMode: "free_for_all",
-      trickWinner: null,
-      roundOver: false,
-      finishingOrder: [],
-      firstPlayMade: true,
-      exchangePhase: {
-        active: true,
-        winnerIdx: 0,
-        loserIdx: 1,
-        cardFromLoser: card("2_spades", "2", "spades"),
-        twoJokerException: false,
-      },
-    },
-    match: {
-      length: "match",
-      target: 21,
-      scores: {},
-      rounds: [],
-      over: false,
-      winners: [],
-      isDraw: false,
-    },
-    players: [
-      { name: "Ana", type: "human" },
-      { name: "Luan", type: "bot", personality: "luan" },
-    ],
-    gameMode: "free_for_all",
-    dealFirstSeat: 0,
-  };
-}
+const midExchangeSave = () =>
+  exchangeSave({
+    seats: 2,
+    winner: 0,
+    loser: 1,
+    cardFromLoser: "2_spades",
+    holding: [["4_hearts", "9_clubs", "K_spades"], ["5_diamonds", "J_hearts"]],
+  });
 
 /** Every name focus lands on across `presses` tabs, in order. */
 async function tabTour(page: Page, presses: number): Promise<string[]> {
@@ -106,16 +65,7 @@ test("the exchange leaves reachable exactly the cards the rules allow", async ({
   baseURL,
 }) => {
   test.setTimeout(120_000);
-  await openApp(page, baseURL!);
-  await page.evaluate(
-    ({ key, save }) => window.localStorage.setItem(key, JSON.stringify(save)),
-    { key: OFFLINE_SAVE_KEY, save: midExchangeSave() }
-  );
-  await page.reload();
-  await page.waitForLoadState("networkidle");
-
-  await page.getByRole("button", { name: "Riprendi partita" }).click();
-  await page.locator(TABLE).waitFor({ timeout: 30_000 });
+  await resumeSaved(page, baseURL!, midExchangeSave());
   await expect(
     page.getByTestId("exchange-prompt"),
     "the exchange asks on the felt"

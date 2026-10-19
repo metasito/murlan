@@ -7,13 +7,25 @@
 //
 // `lib/offlineSave.ts` is the app's own restore path, and AsyncStorage is plain
 // localStorage on web, so a seeded table arrives through exactly the code a
-// player's interrupted match does. `a11yOverlays.spec.ts` established the
-// shape; this is it, generalised over the seat count.
+// player's interrupted match does. Every save a spec seeds is built here and
+// encoded by `encodeOfflineSave`, so a change to the stored shape fails `tsc` in
+// this one file rather than in a hand-written copy per spec.
 import type { Page } from "@playwright/test";
 import { openApp } from "./navigation";
-import { createDeck, dealCards } from "../../../lib/game/gameEngine";
+import { stepUntil, takeOver } from "./virtualClock";
+import {
+  buildCombination,
+  createDeck,
+  dealCards,
+  targetsFor,
+  type Card,
+  type GameState,
+  type MatchLength,
+} from "../../../lib/game/gameEngine";
 import { captureGameState, type CaptureState } from "../../../lib/captureStates";
-import { E2E_SUSPEND_BOT_KEY, OFFLINE_SAVE_KEY } from "../../../lib/storageKeys";
+import { encodeOfflineSave, OFFLINE_SAVE_VERSION, type OfflineSave } from "../../../lib/offlineSave";
+import { E2E_SUSPEND_BOT_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../../lib/storageKeys";
+import { state } from "../../support/game";
 
 /** Bot names and personalities as app/lobby.tsx fills empty seats. */
 const BOTS = [
@@ -34,66 +46,80 @@ export const DEAL_SIZE: Record<2 | 3 | 4, number> = {
   4: Math.max(...dealCards(4).hands.map((h) => h.length)),
 };
 
+const DECK = new Map(createDeck().map((c) => [c.id, c]));
+
+/** The engine's own cards for `ids`, so a typo is a thrown error rather than a card drawn as undefined. */
+export function cards(ids: string[]): Card[] {
+  return ids.map((id) => {
+    const c = DECK.get(id);
+    if (!c) throw new Error(`no card ${id} in the deck`);
+    return c;
+  });
+}
+
 /**
  * `handSize` cards a seat, dealt round-robin from a full deck so no two seats
  * share one. A full hand matters: the side fans are deliberately wider than
  * their column, and a short hand would not reproduce the overflow this exists
  * to measure.
  */
-function hands(playerCount: number, handSize: number) {
+function hands(seats: number, handSize: number): Card[][] {
   // The engine's own deck, unshuffled. Rebuilding a 52-card copy here left the
   // two jokers out, and 54 is what makes a four-player seat hold fourteen.
   const deck = createDeck();
-  return Array.from({ length: playerCount }, (_, seat) =>
-    deck.filter((_c, i) => i % playerCount === seat).slice(0, handSize)
+  return Array.from({ length: seats }, (_, seat) =>
+    deck.filter((_c, i) => i % seats === seat).slice(0, handSize)
   );
 }
 
-/**
- * A mid-hand offline save for `playerCount` seats, viewer at seat 0.
- *
- * `turn` is the seat on move. It defaults to the viewer's, and every capture
- * this suite ever took used that default — which is why the lamp was only ever
- * photographed at the bottom edge. The felt, the seats and the action buttons
- * all key off whose turn it is, so a seat count is only half a state.
- */
-export function offlineGameSave(
-  playerCount: 2 | 3 | 4,
-  handSize: number = 13,
-  turn: number = 0,
-  scores: Record<string, number> = {},
+export interface SaveOptions {
+  seats: 2 | 3 | 4;
+  /** Cards a seat in the round-robin deal; ignored with `holding`. */
+  hand?: number;
   /** Card ids per seat, in place of the round-robin deal. */
-  holding?: string[][]
-) {
-  const deck = new Map(createDeck().map((c) => [c.id, c]));
-  const dealt = holding?.map((ids) => ids.map((id) => deck.get(id)!)) ?? hands(playerCount, handSize);
-  const players = Array.from({ length: playerCount }, (_, i) => ({
-    id: `player_${i}`,
-    name: i === 0 ? "Ana" : BOTS[i - 1].name,
-    hand: dealt[i],
-    type: i === 0 ? "human" : "bot",
-  }));
+  holding?: string[][];
+  /**
+   * The seat on move. It defaults to the viewer's, and every capture this suite
+   * ever took used that default — which is why the lamp was only ever
+   * photographed at the bottom edge.
+   */
+  turn?: number;
+  scores?: Record<string, number>;
+  length?: MatchLength;
+  target?: number;
+  /** Seat names, viewer first; the lobby's own bot names by default. */
+  names?: string[];
+  /** A play already on the felt, built by the engine so its strength is the rules' own. */
+  pile?: { cards: string[]; by: number };
+  state?: Partial<GameState>;
+}
 
+/** A mid-hand offline save, viewer at seat 0, past the opening. */
+export function offlineSave(o: SaveOptions): OfflineSave {
+  const names = o.names ?? ["Ana", ...BOTS.map((b) => b.name)];
+  const dealt = o.holding?.map(cards) ?? hands(o.seats, o.hand ?? 13);
+  const gameState = state({
+    players: Array.from({ length: o.seats }, (_, i) => ({
+      id: `player_${i}`,
+      name: names[i],
+      hand: dealt[i],
+      type: i === 0 ? "human" : "bot",
+    })),
+    currentTurnIndex: o.turn ?? 0,
+    lastPlayedBy: -1,
+    // Past the opening, so nothing is waiting on the 3 of spades and the
+    // table renders as a round in progress rather than a first move.
+    firstPlayMade: true,
+    ...(o.pile && { lastPlayedCombination: buildCombination(cards(o.pile.cards)), lastPlayedBy: o.pile.by }),
+    ...o.state,
+  });
   return {
-    version: 3,
-    gameState: {
-      players,
-      currentTurnIndex: turn,
-      lastPlayedCombination: null,
-      lastPlayedBy: -1,
-      passCount: 0,
-      gameMode: "free_for_all",
-      trickWinner: null,
-      roundOver: false,
-      finishingOrder: [],
-      // Past the opening, so nothing is waiting on the 3 of spades and the
-      // table renders as a round in progress rather than a first move.
-      firstPlayMade: true,
-    },
+    version: OFFLINE_SAVE_VERSION,
+    gameState,
     match: {
-      length: "match",
-      target: 21,
-      scores,
+      length: o.length ?? "match",
+      target: o.target ?? 21,
+      scores: o.scores ?? {},
       rounds: [],
       // isResumable() refuses a finished match, and a refused save silently
       // leaves the home screen with no Resume button at all.
@@ -101,27 +127,76 @@ export function offlineGameSave(
       winners: [],
       isDraw: false,
     },
-    players: Array.from({ length: playerCount }, (_, i) =>
+    players: Array.from({ length: o.seats }, (_, i) =>
       i === 0
-        ? { name: "Ana", type: "human" }
-        : { name: BOTS[i - 1].name, type: "bot", personality: BOTS[i - 1].personality }
+        ? { name: names[0], type: "human" as const }
+        : { name: names[i], type: "bot" as const, personality: BOTS[i - 1].personality }
     ),
-    gameMode: "free_for_all",
+    gameMode: gameState.gameMode,
     dealFirstSeat: 0,
   };
 }
 
 /**
- * Holds whichever seat the save is on, before the bundle evaluates.
- *
- * `EXPO_PUBLIC_E2E_FAST` takes the offline bot's own delay to zero, so a seeded
- * bot turn is over before a spec can measure it (`lib/e2eBotSuspend.ts`).
+ * A round mid-exchange, `winner` choosing a giveback for `loser`, on move.
+ * `cardFromLoser` defaults to the loser's first card, taken out of their hand so
+ * it is not in two places.
  */
-export async function holdSeededTurn(page: Page): Promise<void> {
-  await page.addInitScript(
-    ({ key }) => window.localStorage.setItem(key, "1"),
-    { key: E2E_SUSPEND_BOT_KEY }
-  );
+export function exchangeSave(o: SaveOptions & { winner: number; loser: number; cardFromLoser?: string }): OfflineSave {
+  const save = offlineSave({ ...o, turn: o.turn ?? o.winner });
+  const [cardFromLoser] = o.cardFromLoser
+    ? cards([o.cardFromLoser])
+    : save.gameState.players[o.loser].hand.splice(0, 1);
+  save.gameState.exchangePhase = {
+    active: true,
+    winnerIdx: o.winner,
+    loserIdx: o.loser,
+    cardFromLoser,
+    twoJokerException: false,
+  };
+  return save;
+}
+
+/**
+ * The viewer on move holding only `last`, which ends the match when it lands:
+ * every other seat holds one card, so a two-seat round closes on it, and a
+ * `match` sits one point short of its first target.
+ */
+export function oneCardFromFinishing(o: { seats: 2 | 3 | 4; length: MatchLength; last: Card; pile?: Card[] }): OfflineSave {
+  const used = new Set([o.last.id, ...(o.pile ?? []).map((c) => c.id)]);
+  const rest = createDeck().filter((c) => !used.has(c.id));
+  const target = targetsFor(o.seats)[0];
+  return offlineSave({
+    seats: o.seats,
+    length: o.length,
+    holding: [[o.last.id], ...rest.slice(0, o.seats - 1).map((c) => [c.id])],
+    ...(o.pile && { pile: { cards: o.pile.map((c) => c.id), by: o.seats - 1 } }),
+    ...(o.length === "match" && {
+      target,
+      scores: Object.fromEntries(Array.from({ length: o.seats }, (_, i) => [`player_${i}`, i === 0 ? target - 1 : 0])),
+    }),
+  });
+}
+
+export interface SeedOptions {
+  /**
+   * Holds whichever seat the save is on, before the bundle evaluates.
+   * `EXPO_PUBLIC_E2E_FAST` takes the offline bot's own delay to zero, so a
+   * seeded bot turn is over before a spec can measure it (`lib/e2eBotSuspend.ts`).
+   */
+  holdTurn?: boolean;
+}
+
+/**
+ * Writes `save` before the first document runs, leaving the home screen to
+ * offer it. The only writer of the save and the bot hold in `tests/e2e`.
+ */
+export async function seedSave(page: Page, save: OfflineSave, o: SeedOptions = {}): Promise<void> {
+  const entries: [string, string][] = [[OFFLINE_SAVE_KEY, encodeOfflineSave(save)]];
+  if (o.holdTurn) entries.push([E2E_SUSPEND_BOT_KEY, "1"]);
+  await page.addInitScript((entries) => {
+    for (const [k, v] of entries) window.localStorage.setItem(k, v);
+  }, entries);
 }
 
 /**
@@ -140,8 +215,7 @@ export async function openSeededGame(
   turn: number = 0,
   holdTurn: boolean = false
 ): Promise<void> {
-  if (holdTurn) await holdSeededTurn(page);
-  await resumeSaved(page, baseURL, offlineGameSave(playerCount, handSize, turn));
+  await resumeSaved(page, baseURL, offlineSave({ seats: playerCount, hand: handSize, turn }), { holdTurn });
 }
 
 /**
@@ -157,11 +231,10 @@ export async function openSeededGame(
 export async function openCaptureState(
   page: Page,
   baseURL: string,
-  state: CaptureState
+  capture: CaptureState
 ): Promise<void> {
-  const save = offlineGameSave(state.playerCount, DEAL_SIZE[state.playerCount], state.turn);
-  await holdSeededTurn(page);
-  await resumeSaved(page, baseURL, { ...save, gameState: captureGameState(state) });
+  const save = offlineSave({ seats: capture.playerCount, hand: DEAL_SIZE[capture.playerCount], turn: capture.turn });
+  await resumeSaved(page, baseURL, { ...save, gameState: captureGameState(capture) }, { holdTurn: true });
 }
 
 /**
@@ -173,11 +246,8 @@ export async function openCaptureState(
  * point: a write-then-reload costs a second load of the bundle, which is about
  * what the lobby clicks cost, and saves nothing.
  */
-export async function resumeSaved(page: Page, baseURL: string, save: object): Promise<void> {
-  await page.addInitScript(
-    ({ key, value }) => window.localStorage.setItem(key, value),
-    { key: OFFLINE_SAVE_KEY, value: JSON.stringify(save) }
-  );
+export async function resumeSaved(page: Page, baseURL: string, save: OfflineSave, o: SeedOptions = {}): Promise<void> {
+  await seedSave(page, save, o);
   await openApp(page, baseURL);
   // Waited for, not clicked at. `openApp` returns on networkidle, which is the
   // bundle arriving rather than the app becoming interactive — on a loaded
@@ -188,4 +258,25 @@ export async function resumeSaved(page: Page, baseURL: string, save: object): Pr
   await resume.waitFor({ state: "visible", timeout: 60_000 });
   await resume.click();
   await page.locator('[data-testid="game-table"]').waitFor({ timeout: 30_000 });
+}
+
+/**
+ * `resumeSaved` on a page whose clock `installVirtualClock` already holds, every
+ * seat held: the home screen is stepped to rather than waited for, and
+ * `beforeResume` runs on it before the click.
+ */
+export async function resumeOnVirtualClock(
+  page: Page,
+  baseURL: string,
+  save: OfflineSave,
+  beforeResume?: () => Promise<void>
+): Promise<void> {
+  await seedSave(page, save, { holdTurn: true });
+  await page.addInitScript((key) => window.localStorage.setItem(key, "1"), TUTORIAL_SEEN_KEY);
+  await page.goto(baseURL);
+  await takeOver(page);
+  const resume = page.getByRole("button", { name: "Riprendi partita" });
+  await stepUntil(page, () => resume.isVisible(), "the home screen");
+  await beforeResume?.();
+  await resume.click({ force: true });
 }

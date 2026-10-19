@@ -8,13 +8,11 @@
 // the wrong one. Only a real re-render, in a real browser, catches it — #328.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { resumeSaved } from "./helpers/offlineSeed";
+import { exchangeSave, resumeSaved } from "./helpers/offlineSeed";
 import { HAND_ZONE, TABLE } from "./helpers/selectors.ts";
 import { tap } from "./helpers/press";
 
 /** Two cards in the 3–10 giveback range, so both are valid picks. */
-const FIVE = { id: "5_hearts", rank: "5", suit: "hearts", isJoker: false };
-const NINE = { id: "9_clubs", rank: "9", suit: "clubs", isJoker: false };
 const FIVE_SPOKEN = "5 di Cuori";
 const NINE_SPOKEN = "9 di Fiori";
 
@@ -24,51 +22,14 @@ const NINE_SPOKEN = "9 di Fiori";
  * reaches this phase. `lib/offlineSave.ts` is the app's own restore path, so
  * this arrives at the exchange through the same code an interrupted match does.
  */
-function midExchangeSave() {
-  const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
-  const winnerHand = [FIVE, NINE, card("K_spades", "K", "spades")];
-  const loserHand = [card("J_hearts", "J", "hearts"), card("Q_diamonds", "Q", "diamonds")];
-  return {
-    version: 3,
-    gameState: {
-      players: [
-        { id: "player_0", name: "Ana", hand: winnerHand, type: "human" },
-        { id: "player_1", name: "Bea", hand: loserHand, type: "bot" },
-      ],
-      currentTurnIndex: 0,
-      lastPlayedCombination: null,
-      lastPlayedBy: -1,
-      passCount: 0,
-      gameMode: "free_for_all",
-      trickWinner: null,
-      roundOver: false,
-      finishingOrder: [],
-      firstPlayMade: true,
-      exchangePhase: {
-        active: true,
-        winnerIdx: 0,
-        loserIdx: 1,
-        cardFromLoser: card("2_spades", "2", "spades"),
-        twoJokerException: false,
-      },
-    },
-    match: {
-      length: "match",
-      target: 21,
-      scores: {},
-      rounds: [],
-      over: false,
-      winners: [],
-      isDraw: false,
-    },
-    players: [
-      { name: "Ana", type: "human" },
-      { name: "Bea", type: "bot", personality: "luan" },
-    ],
-    gameMode: "free_for_all",
-    dealFirstSeat: 0,
-  };
-}
+const midExchangeSave = () =>
+  exchangeSave({
+    seats: 2,
+    winner: 0,
+    loser: 1,
+    cardFromLoser: "2_spades",
+    holding: [["5_hearts", "9_clubs", "K_spades"], ["J_hearts", "Q_diamonds"]],
+  });
 
 /**
  * The exchange, open on the felt. Scoped to the table because that is where the
@@ -103,14 +64,14 @@ test("changing the exchange pick before confirming gives the last card chosen", 
   // A second `role="alert"` exists for the play-sound notification banner
   // this same confirm triggers, so the exchange announcement is picked out
   // by the leg it always states: "<winner> dà ... a <loser>".
-  const alert = page.getByRole("alert", { name: /Ana dà .+ a Bea/ });
+  const alert = page.getByRole("alert", { name: /Ana dà .+ a Luan/ });
   await expect(alert).toBeVisible({ timeout: 15_000 });
   const label = (await alert.getAttribute("aria-label")) ?? "";
   expect(label, "the second pick has to be the one announced as given").toContain(
-    `Ana dà ${NINE_SPOKEN} a Bea`
+    `Ana dà ${NINE_SPOKEN} a Luan`
   );
   expect(label, "the first pick must not be announced as given").not.toContain(
-    `Ana dà ${FIVE_SPOKEN} a Bea`
+    `Ana dà ${FIVE_SPOKEN} a Luan`
   );
 
   // Ground truth in the actual hand, once the announcement has cleared itself:

@@ -1,7 +1,7 @@
 // tests/e2e/exchangeTeleport.spec.ts — each exchanged card is drawn on every frame of its leg, one
 // frame's travel from the last, and face up from the lift until it leaves the pile (#1259).
 import { test, expect } from "./fixtures";
-import { resumeSaved } from "./helpers/offlineSeed";
+import { exchangeSave, resumeSaved } from "./helpers/offlineSeed";
 import { tap } from "./helpers/press";
 import { Motion } from "../../lib/tokens";
 import { LEG } from "../../lib/game/exchangeTimeline";
@@ -14,31 +14,15 @@ const MAX_STEP = 40;
 
 interface Sample { leg: string; t: number; x: number; y: number; back: number }
 
-const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
-/** The viewer, Ana, has just won a round and is choosing what to hand back to Bea. */
-const midExchangeSave = () => ({
-  version: 3,
-  gameState: {
-    players: [
-      { id: "player_0", name: "Ana", hand: [card("5_hearts", "5", "hearts"), card("K_spades", "K", "spades")], type: "human" },
-      { id: "player_1", name: "Bea", hand: [card("J_hearts", "J", "hearts"), card("Q_diamonds", "Q", "diamonds")], type: "bot" },
-    ],
-    currentTurnIndex: 0,
-    lastPlayedCombination: null,
-    lastPlayedBy: -1,
-    passCount: 0,
-    gameMode: "free_for_all",
-    trickWinner: null,
-    roundOver: false,
-    finishingOrder: [],
-    firstPlayMade: true,
-    exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card("2_spades", "2", "spades"), twoJokerException: false },
-  },
-  match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
-  players: [{ name: "Ana", type: "human" }, { name: "Bea", type: "bot", personality: "luan" }],
-  gameMode: "free_for_all",
-  dealFirstSeat: 0,
-});
+/** The viewer, Ana, has just won a round and is choosing what to hand back to Luan. */
+const midExchangeSave = () =>
+  exchangeSave({
+    seats: 2,
+    winner: 0,
+    loser: 1,
+    cardFromLoser: "2_spades",
+    holding: [["5_hearts", "K_spades"], ["J_hearts", "Q_diamonds"]],
+  });
 
 test("the exchanged cards fly through the pile, never jumping, face up from the lift to the tuck", async ({ page, baseURL }) => {
   test.setTimeout(120_000);

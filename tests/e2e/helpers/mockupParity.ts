@@ -10,7 +10,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { GIOCA_VALID_LABEL } from "./labels";
 import { DEPART_SCRIPT, expectDeparted } from "./lanternDepartures";
-import { offlineGameSave } from "./offlineSeed";
+import { cards, offlineSave, resumeOnVirtualClock } from "./offlineSeed";
 import { buildCombination, createDeck } from "../../../lib/game/gameEngine";
 import { BombFx, Motion } from "../../../lib/tokens";
 import { seatAnchor, settledLight, skiaOnSoftware } from "./tableTrace";
@@ -28,7 +28,7 @@ import {
   type TraceFrame,
 } from "./traceDiff";
 import { regionBrightness, regionsFor, TABLE, type Region, type SideLayout } from "./parityRegions";
-import { E2E_SUSPEND_BOT_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../../lib/storageKeys";
+import type { OfflineSave } from "../../../lib/offlineSave";
 
 export const FIXTURE = pathToFileURL(path.resolve(__dirname, "..", "fixtures", "lantern-table", "index.html")).href;
 const DPR = 2;
@@ -112,7 +112,7 @@ const othersBesides = (hand: string[]) => {
 /** The mockup's `rest` hand (`HT`) in yours, so the `hand` region compares the same faces. */
 const REST_HAND = mockupCards(["3h", "5c", "5d", "6s", "7h", "8s", "9c", "10d", "Jh", "Qs", "Kc", "Ad", "2h"]);
 export const heldTurnTable = (page: Page, baseURL: string) =>
-  seatTable(page, baseURL, offlineGameSave(4, 13, 0, MOCKUP_SCORES, [REST_HAND, ...othersBesides(REST_HAND).map((h) => h.slice(0, 13))]));
+  seatTable(page, baseURL, offlineSave({ seats: 4, turn: 0, scores: MOCKUP_SCORES, holding: [REST_HAND, ...othersBesides(REST_HAND).map((h) => h.slice(0, 13))] }));
 
 /** The mockup's `trick`: a pair of fives in your hand, nines at the next seat on move (the left) and queens at the last. */
 const TRICK_HANDS = [
@@ -122,17 +122,17 @@ const TRICK_HANDS = [
   ["9_hearts", "9_spades", "3_spades", "4_hearts", "6_clubs", "7_diamonds", "8_clubs", "10_diamonds", "J_clubs", "Q_clubs", "K_diamonds", "A_hearts", "2_diamonds"],
 ];
 export const pairsTable = (page: Page, baseURL: string) =>
-  seatTable(page, baseURL, offlineGameSave(4, 13, 0, MOCKUP_SCORES, TRICK_HANDS));
+  seatTable(page, baseURL, offlineSave({ seats: 4, turn: 0, scores: MOCKUP_SCORES, holding: TRICK_HANDS }));
 
 /** Every opponent below its fan cap (top 7, sides 5), so a fan's centre moves with its count; a bot leads. */
 const BELOW_CAPS = [TRICK_HANDS[0], TRICK_HANDS[1].slice(0, 4), TRICK_HANDS[2].slice(0, 5), TRICK_HANDS[3].slice(0, 2)];
 export const belowCapsTable = (page: Page, baseURL: string) =>
-  seatTable(page, baseURL, offlineGameSave(4, 13, 1, MOCKUP_SCORES, BELOW_CAPS));
+  seatTable(page, baseURL, offlineSave({ seats: 4, turn: 1, scores: MOCKUP_SCORES, holding: BELOW_CAPS }));
 
 /** The mockup's `H13` in your hand, the rest of the deck round the others, 13 across as `dealRun` deals; nobody has played yet. */
 const MOCKUP_DEAL = mockupCards(["3h", "4c", "5c", "5d", "6s", "7h", "8s", "9c", "10d", "Jh", "Qs", "Kc", "Ad"]);
 const dealTable = (page: Page, baseURL: string) => {
-  const save = offlineGameSave(4, 13, 0, MOCKUP_SCORES, [MOCKUP_DEAL, ...othersBesides(MOCKUP_DEAL)]);
+  const save = offlineSave({ seats: 4, turn: 0, scores: MOCKUP_SCORES, holding: [MOCKUP_DEAL, ...othersBesides(MOCKUP_DEAL)] });
   save.gameState.firstPlayMade = false;
   return seatTable(page, baseURL, save);
 };
@@ -143,7 +143,7 @@ const SEVENS = ["7_hearts", "7_diamonds"];
 const bombTable = (page: Page, baseURL: string) => {
   const rest = createDeck().map((c) => c.id).filter((id) => !BOMB.includes(id) && !SEVENS.includes(id));
   const [you, luan, gent] = [0, 1, 2].map((s) => rest.filter((_, i) => i % 3 === s).slice(0, 13));
-  return pileTable(page, baseURL, offlineGameSave(4, 13, 2, MOCKUP_SCORES, [you, gent, BOMB, luan]), SEVENS, 3);
+  return pileTable(page, baseURL, offlineSave({ seats: 4, turn: 2, scores: MOCKUP_SCORES, holding: [you, gent, BOMB, luan] }), SEVENS, 3);
 };
 
 /** The app's seats by the mockup's names: luan right, besnik across, gent left. */
@@ -151,50 +151,49 @@ const SEAT = { you: 0, luan: 1, besnik: 2, gent: 3 } as const;
 const scoresBy = (s: Record<keyof typeof SEAT, number>) =>
   Object.fromEntries(Object.entries(SEAT).map(([k, seat]) => [`player_${seat}`, s[k as keyof typeof SEAT]]));
 /** The seats already out, in their order; a seat's badge reads its `finishPosition`, not `finishingOrder`. */
-const outInOrder = (save: ReturnType<typeof offlineGameSave>, ...seats: number[]) => {
+const outInOrder = (save: OfflineSave, ...seats: number[]) => {
   seats.forEach((seat, i) => Object.assign(save.gameState.players[seat], { finishPosition: i + 1 }));
   Object.assign(save.gameState, { finishingOrder: seats.map((seat) => `player_${seat}`) });
 };
 
 /** The mockup's `pwin`: you and besnik out, luan on move with his last card, the 2c, over gent's 9h. */
 const pwinTable = (page: Page, baseURL: string) => {
-  const save = offlineGameSave(4, 13, SEAT.luan, scoresBy({ you: 19, besnik: 17, luan: 14, gent: 13 }), [
+  const save = offlineSave({ seats: 4, turn: SEAT.luan, scores: scoresBy({ you: 19, besnik: 17, luan: 14, gent: 13 }), holding: [
     [], ["2_clubs"], [], ["3_clubs", "4_diamonds", "5_spades", "6_hearts"],
-  ]);
+  ] });
   outInOrder(save, SEAT.you, SEAT.besnik);
   return pileTable(page, baseURL, save, ["9_hearts"], SEAT.gent);
 };
 
 /** The mockup's `plose`: besnik and luan out, your last card the Ks, over gent's Jh. */
 const ploseTable = (page: Page, baseURL: string) => {
-  const save = offlineGameSave(4, 13, SEAT.you, scoresBy({ you: 19, besnik: 19, luan: 14, gent: 13 }), [
+  const save = offlineSave({ seats: 4, turn: SEAT.you, scores: scoresBy({ you: 19, besnik: 19, luan: 14, gent: 13 }), holding: [
     ["K_spades"], [], [], ["3_clubs", "4_diamonds", "5_spades"],
-  ]);
+  ] });
   outInOrder(save, SEAT.besnik, SEAT.luan);
   return pileTable(page, baseURL, save, ["J_hearts"], SEAT.gent);
 };
 
 /** The mockup's `mwin`: you and gent out, besnik on move with his last card, the Kd, over luan's 8c. */
 const mwinTable = (page: Page, baseURL: string) => {
-  const save = offlineGameSave(4, 13, SEAT.besnik, scoresBy({ you: 15, besnik: 16, luan: 11, gent: 10 }), [
+  const save = offlineSave({ seats: 4, turn: SEAT.besnik, scores: scoresBy({ you: 15, besnik: 16, luan: 11, gent: 10 }), holding: [
     [], ["3_clubs", "4_diamonds", "5_spades", "6_hearts", "9_spades"], ["K_diamonds"], [],
-  ]);
+  ] });
   outInOrder(save, SEAT.you, SEAT.gent);
   return pileTable(page, baseURL, save, ["8_clubs"], SEAT.luan);
 };
 
 /** The mockup's `mlose`: luan and besnik out, gent on move with his last card, the Ac, over your 7c. */
 const mloseTable = (page: Page, baseURL: string) => {
-  const save = offlineGameSave(4, 13, SEAT.gent, scoresBy({ you: 18, besnik: 17, luan: 11, gent: 12 }), [
+  const save = offlineSave({ seats: 4, turn: SEAT.gent, scores: scoresBy({ you: 18, besnik: 17, luan: 11, gent: 12 }), holding: [
     ["4_diamonds", "8_diamonds", "10_hearts", "Q_diamonds"], [], [], ["A_clubs"],
-  ]);
+  ] });
   outInOrder(save, SEAT.luan, SEAT.besnik);
   return pileTable(page, baseURL, save, ["7_clubs"], SEAT.you);
 };
 
-const pileTable = async (page: Page, baseURL: string, save: ReturnType<typeof offlineGameSave>, pile: string[], by: number) => {
-  const deck = new Map(createDeck().map((c) => [c.id, c]));
-  Object.assign(save.gameState, { lastPlayedCombination: buildCombination(pile.map((id) => deck.get(id)!)), lastPlayedBy: by });
+const pileTable = async (page: Page, baseURL: string, save: OfflineSave, pile: string[], by: number) => {
+  Object.assign(save.gameState, { lastPlayedCombination: buildCombination(cards(pile)), lastPlayedBy: by });
   await seatTable(page, baseURL, save);
   await stepUntil(
     page,
@@ -210,24 +209,11 @@ const pileTable = async (page: Page, baseURL: string, save: ReturnType<typeof of
   await page.evaluate(() => (window as unknown as { murlanTrace: { start(): void } }).murlanTrace.start());
 };
 
-const seatTable = async (page: Page, baseURL: string, save: ReturnType<typeof offlineGameSave>) => {
+const seatTable = async (page: Page, baseURL: string, save: OfflineSave) => {
   await skiaOnSoftware(page);
-  await page.addInitScript(
-    (entries) => {
-      for (const [k, v] of entries) window.localStorage.setItem(k, v);
-    },
-    [
-      [TUTORIAL_SEEN_KEY, "1"],
-      [E2E_SUSPEND_BOT_KEY, "1"],
-      [OFFLINE_SAVE_KEY, JSON.stringify(save)],
-    ]
+  await resumeOnVirtualClock(page, baseURL, save, () =>
+    page.evaluate(() => (window as unknown as { murlanTrace: { start(): void } }).murlanTrace.start())
   );
-  await page.goto(baseURL);
-  await takeOver(page);
-  const resume = page.getByRole("button", { name: "Riprendi partita" });
-  await stepUntil(page, () => resume.isVisible(), "the home screen");
-  await page.evaluate(() => (window as unknown as { murlanTrace: { start(): void } }).murlanTrace.start());
-  await resume.click({ force: true });
 };
 
 export const pass = (page: Page) => page.evaluate(() => (globalThis as unknown as { murlanPass: () => void }).murlanPass());

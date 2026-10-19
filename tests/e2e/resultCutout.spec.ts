@@ -12,13 +12,12 @@
 // padding walks the same path a real device does rather than mocking it.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { openApp, startOfflineGame } from "./helpers/navigation";
 import { driveGameToCompletion } from "./helpers/bot";
+import { oneCardFromFinishing, resumeSaved } from "./helpers/offlineSeed";
 import { atRest } from "./helpers/settle";
-import { seedRandomness } from "./helpers/seededRandomness";
+import { card } from "../support/game.ts";
 
 const VIEWPORT = { width: 844, height: 390 };
-const DEAL_SEED = 1;
 const BOARD = '[data-testid="score-pill-layer"]';
 
 /**
@@ -82,11 +81,9 @@ async function boardBoxes(page: Page): Promise<Box[]> {
 }
 
 test("the board keeps its content out of the cutout, on either edge", async ({ page, baseURL }) => {
-  test.setTimeout(5 * 60_000);
+  test.setTimeout(2 * 60_000);
   await page.setViewportSize(VIEWPORT);
-  await seedRandomness(page, DEAL_SEED);
-  await openApp(page, baseURL!);
-  await startOfflineGame(page, { playerCount: 2, gameMode: "free_for_all", format: "single" });
+  await resumeSaved(page, baseURL!, oneCardFromFinishing({ seats: 2, length: "single", last: card("5", "hearts") }));
   await driveGameToCompletion(page, {
     isFinished: (p) => p.getByTestId("btn-home").isVisible(),
     log: (line) => test.info().annotations.push({ type: "move", description: line }),

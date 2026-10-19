@@ -15,7 +15,7 @@
 // (CLAUDE.md, *Known pitfalls*), and the other exchange specs set no viewport,
 // so they run at the 720pt-tall desktop default where everything fits.
 import { test, expect } from "./fixtures";
-import { resumeSaved, offlineGameSave, DEAL_SIZE } from "./helpers/offlineSeed";
+import { resumeSaved, exchangeSave, DEAL_SIZE } from "./helpers/offlineSeed";
 import { TOUCH_TARGET_MIN } from "../../lib/tokens";
 import { HAND_CARDS, TABLE, TABLE_SCREEN } from "./helpers/selectors.ts";
 import { atRest } from "./helpers/settle";
@@ -32,20 +32,8 @@ const VIEWPORTS = [
  * the fan holds every card the winner was given, which is the most the table
  * ever has to fit at once during an exchange.
  */
-function midExchangeSave(): object {
-  const save: any = offlineGameSave(2, DEAL_SIZE[2], 0);
-  // The loser's own card, taken out of their hand so it is not in two places —
-  // and not out of the winner's, which would leave it a legal giveback.
-  const cardFromLoser = save.gameState.players[1].hand.shift();
-  save.gameState.exchangePhase = {
-    active: true,
-    winnerIdx: 0,
-    loserIdx: 1,
-    cardFromLoser,
-    twoJokerException: false,
-  };
-  return save;
-}
+const midExchangeSave = () =>
+  exchangeSave({ seats: 2, hand: DEAL_SIZE[2], winner: 0, loser: 1 });
 
 for (const vp of VIEWPORTS) {
   test(`the whole exchange is on screen and hittable — ${vp.name}`, async ({ page, baseURL }) => {

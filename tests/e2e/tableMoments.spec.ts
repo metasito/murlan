@@ -4,13 +4,12 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp } from "./helpers/navigation";
-import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
-import { buildCombination, targetsFor, type Card } from "../../lib/game/gameEngine";
+import { offlineSave, oneCardFromFinishing, resumeSaved, seedSave } from "./helpers/offlineSeed";
+import type { Card } from "../../lib/game/gameEngine";
 import { GIOCA_VALID_LABEL } from "./helpers/labels";
 import { TABLE, HAND_ZONE } from "./helpers/selectors";
 import { tap } from "./helpers/press";
 import { settled } from "./helpers/settle";
-import { OFFLINE_SAVE_KEY } from "../../lib/storageKeys";
 import { Motion } from "../../lib/tokens";
 import { STEP_MS } from "./helpers/traceDiff";
 
@@ -57,12 +56,7 @@ async function readEntry(page: Page, windowMs: number): Promise<EntryFrame[]> {
 
 /** A fresh, undealt hand — the state `GameTable`'s own `freshDeal` arms on. */
 async function openFreshTable(page: Page, baseURL: string): Promise<EntryFrame[]> {
-  const save: any = offlineGameSave(4, SEAT_HAND, 0);
-  save.gameState.firstPlayMade = false;
-  await page.addInitScript(
-    ({ key, value }) => window.localStorage.setItem(key, value),
-    { key: OFFLINE_SAVE_KEY, value: JSON.stringify(save) }
-  );
+  await seedSave(page, offlineSave({ seats: 4, hand: SEAT_HAND, state: { firstPlayMade: false } }));
   await openApp(page, baseURL);
   const resume = page.getByRole("button", { name: "Riprendi partita" });
   await resume.waitFor({ state: "visible", timeout: 60_000 });
@@ -128,57 +122,17 @@ test.describe("opponent deal", () => {
   });
 });
 
-// ─── Flight shadow ──────────────────────────────────────────────────────────
+// ─── A match won on the felt ────────────────────────────────────────────────
 
 const PILE_CARD: Card = { id: "3_clubs", rank: "3", suit: "clubs", isJoker: false };
 const BEATER: Card = { id: "8_hearts", rank: "8", suit: "hearts", isJoker: false };
-const SPARE: Card = { id: "4_clubs", rank: "4", suit: "clubs", isJoker: false };
-/** Loses to `BEATER`, so the bot passes rather than throwing a second flight into the sample window. */
-const BOT_CARD: Card = { id: "5_spades", rank: "5", suit: "spades", isJoker: false };
 const BEATER_LABEL = "8 di Cuori";
-
-function flightSave(): object {
-  return {
-    version: 3,
-    gameState: {
-      players: [
-        { id: "player_0", name: "Ana", hand: [BEATER, SPARE], type: "human" },
-        { id: "player_1", name: "Bea", hand: [BOT_CARD], type: "bot" },
-      ],
-      currentTurnIndex: 0,
-      lastPlayedCombination: buildCombination([PILE_CARD]),
-      lastPlayedBy: 1,
-      passCount: 0,
-      gameMode: "free_for_all",
-      trickWinner: null,
-      roundOver: false,
-      finishingOrder: [],
-      firstPlayMade: true,
-    },
-    match: { length: "single", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
-    players: [
-      { name: "Ana", type: "human" },
-      { name: "Bea", type: "bot", personality: "luan" },
-    ],
-    gameMode: "free_for_all",
-    dealFirstSeat: 0,
-  };
-}
-
-/** The viewer one card and one point short of the match, so throwing `BEATER` wins it. */
-function matchPointSave(): object {
-  const save: any = flightSave();
-  const target = targetsFor(2)[0];
-  save.gameState.players[0].hand = [BEATER];
-  save.match = { ...save.match, length: "match", target, scores: { player_0: target - 1, player_1: 0 } };
-  return save;
-}
 
 test.describe("a match won on the felt", () => {
   test("winning the match turns the score pill into the board, on the table", async ({ page, baseURL }) => {
     test.setTimeout(60_000);
     await page.setViewportSize(VIEWPORT);
-    await resumeSaved(page, baseURL!, matchPointSave());
+    await resumeSaved(page, baseURL!, oneCardFromFinishing({ seats: 2, length: "match", last: BEATER, pile: [PILE_CARD] }));
     await settled(page, 1_500, TABLE);
 
     await tap(page, page.locator(HAND_ZONE).getByRole("button", { name: BEATER_LABEL, exact: true }));

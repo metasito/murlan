@@ -2,7 +2,7 @@
 // label that names each exchange covers no card and stays on screen. Only a browser can say where
 // transformed views and a label actually land (docs/agents/checks.md).
 import { test, expect } from "./fixtures";
-import { resumeSaved } from "./helpers/offlineSeed";
+import { exchangeSave, resumeSaved } from "./helpers/offlineSeed";
 import { tap } from "./helpers/press";
 
 const GIVEBACK_SPOKEN = "5 di Cuori";
@@ -22,61 +22,15 @@ function intersection(a: Box, b: Box): number {
   return w > 0 && h > 0 ? w * h : 0;
 }
 
-const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
-
 /** The viewer has just won a round and is about to choose what to hand back. */
-function midExchangeSave() {
-  return {
-    version: 3,
-    gameState: {
-      players: [
-        {
-          id: "player_0",
-          name: "Ana",
-          hand: [card("5_hearts", "5", "hearts"), card("K_spades", "K", "spades")],
-          type: "human",
-        },
-        {
-          id: "player_1",
-          name: "Bea",
-          hand: [card("J_hearts", "J", "hearts"), card("Q_diamonds", "Q", "diamonds")],
-          type: "bot",
-        },
-      ],
-      currentTurnIndex: 0,
-      lastPlayedCombination: null,
-      lastPlayedBy: -1,
-      passCount: 0,
-      gameMode: "free_for_all",
-      trickWinner: null,
-      roundOver: false,
-      finishingOrder: [],
-      firstPlayMade: true,
-      exchangePhase: {
-        active: true,
-        winnerIdx: 0,
-        loserIdx: 1,
-        cardFromLoser: card("2_spades", "2", "spades"),
-        twoJokerException: false,
-      },
-    },
-    match: {
-      length: "match",
-      target: 21,
-      scores: {},
-      rounds: [],
-      over: false,
-      winners: [],
-      isDraw: false,
-    },
-    players: [
-      { name: "Ana", type: "human" },
-      { name: "Bea", type: "bot", personality: "luan" },
-    ],
-    gameMode: "free_for_all",
-    dealFirstSeat: 0,
-  };
-}
+const midExchangeSave = () =>
+  exchangeSave({
+    seats: 2,
+    winner: 0,
+    loser: 1,
+    cardFromLoser: "2_spades",
+    holding: [["5_hearts", "K_spades"], ["J_hearts", "Q_diamonds"]],
+  });
 
 test("the give shows only once the receive has landed: never two cards in the air", async ({ page, baseURL }) => {
   test.setTimeout(120_000);

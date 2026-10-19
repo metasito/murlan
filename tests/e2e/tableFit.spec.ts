@@ -10,7 +10,8 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
-import { openSeededGame, offlineGameSave, resumeSaved, DEAL_SIZE } from "./helpers/offlineSeed";
+import { openSeededGame, offlineSave, resumeSaved, DEAL_SIZE } from "./helpers/offlineSeed";
+import type { OfflineSave } from "../../lib/offlineSave";
 import { openOnlineTable } from "./helpers/onlineTable";
 import { buildCombination } from "../../lib/game/gameEngine";
 import { GIOCA_VALID_LABEL, YOUR_TURN_PREFIX } from "./helpers/labels";
@@ -97,11 +98,9 @@ test.describe("the top-left chip's player name", () => {
   const LONG_NAME_B = LONG_NAME_A + " " + LONG_NAME_A;
 
   /** A 2-seat offline save with `name`'s play already on the felt. */
-  function nameSave(name: string): object {
-    const save: any = offlineGameSave(2, DEAL_SIZE[2], 0);
-    const pileCard = save.gameState.players[1].hand.shift();
-    save.gameState.players[1].name = name;
-    save.players[1].name = name;
+  function nameSave(name: string): OfflineSave {
+    const save = offlineSave({ seats: 2, hand: DEAL_SIZE[2], names: ["Ana", name] });
+    const pileCard = save.gameState.players[1].hand.shift()!;
     save.gameState.lastPlayedCombination = buildCombination([pileCard]);
     save.gameState.lastPlayedBy = 1;
     return save;

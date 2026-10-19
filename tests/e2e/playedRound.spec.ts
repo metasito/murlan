@@ -16,8 +16,8 @@
 // a layout box in `tests/e2e/handTapStrips.spec.ts` (#720), not here.
 import { expect, test } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { resumeSaved } from "./helpers/offlineSeed";
-import { buildCombination, type Card, type Rank, type Suit } from "../../lib/game/gameEngine";
+import { exchangeSave, offlineSave, resumeSaved } from "./helpers/offlineSeed";
+import type { Card, Rank, Suit } from "../../lib/game/gameEngine";
 import { GIOCA_VALID_LABEL, YOUR_TURN_PREFIX } from "./helpers/labels.ts";
 import { HAND_CARDS, HAND_ZONE, TABLE, TABLE_STATE } from "./helpers/selectors.ts";
 import { PHONES } from "./helpers/phones.ts";
@@ -85,48 +85,14 @@ const AFTER_PLAY = spoken(card("7_clubs", "7", "clubs"));
 /** The same card, and deliberately: it is in the 3–10 the rules allow back (§10). */
 const GIVEBACK = TO_SELECT;
 
-function save(gameState: Record<string, unknown>) {
-  return {
-    version: 3,
-    gameState: {
-      currentTurnIndex: 0,
-      lastPlayedCombination: null,
-      lastPlayedBy: -1,
-      passCount: 0,
-      gameMode: "free_for_all",
-      trickWinner: null,
-      roundOver: false,
-      finishingOrder: [],
-      // Past the opening, so the table renders a round in progress rather than a
-      // first move waiting on the 3 of spades.
-      firstPlayMade: true,
-      ...gameState,
-    },
-    // One round: a match deals every round after this one by a real shuffle,
-    // so anything played past the seeded hand would be undealt. A match belongs
-    // in `offlineMatch.spec.ts`.
-    match: {
-      length: "single",
-      target: 21,
-      scores: {},
-      rounds: [],
-      over: false,
-      winners: [],
-      isDraw: false,
-    },
-    players: [
-      { name: "Ana", type: "human" },
-      { name: "Bea", type: "bot", personality: "luan" },
-    ],
-    gameMode: "free_for_all",
-    dealFirstSeat: 0,
-  };
-}
+const ids = (hand: Card[]) => hand.map((c) => c.id);
 
-const seats = (viewer: Card[], bot: Card[]) => [
-  { id: "player_0", name: "Ana", hand: viewer, type: "human" },
-  { id: "player_1", name: "Bea", hand: bot, type: "bot" },
-];
+/**
+ * One round: a match deals every round after this one by a real shuffle, so
+ * anything played past the seeded hand would be undealt. A match belongs in
+ * `offlineMatch.spec.ts`.
+ */
+const LENGTH = "single";
 
 /**
  * The viewer on move with a single on the felt that their whole hand beats.
@@ -136,23 +102,22 @@ const seats = (viewer: Card[], bot: Card[]) => [
  * would have to keep in step with `getCombinationStrength`.
  */
 const midRoundSave = () =>
-  save({
-    players: seats(VIEWER_HAND, BOT_HAND),
-    lastPlayedCombination: buildCombination([PILE_CARD]),
-    lastPlayedBy: 1,
+  offlineSave({
+    seats: 2,
+    length: LENGTH,
+    holding: [ids(VIEWER_HAND), ids(BOT_HAND)],
+    pile: { cards: [PILE_CARD.id], by: 1 },
   });
 
 /** The viewer as the round's winner, choosing what to give back. */
-const exchangeSave = () =>
-  save({
-    players: seats(VIEWER_HAND, BOT_HAND.slice(0, 2)),
-    exchangePhase: {
-      active: true,
-      winnerIdx: 0,
-      loserIdx: 1,
-      cardFromLoser: card("2_spades", "2", "spades"),
-      twoJokerException: false,
-    },
+const midExchangeSave = () =>
+  exchangeSave({
+    seats: 2,
+    length: LENGTH,
+    winner: 0,
+    loser: 1,
+    cardFromLoser: "2_spades",
+    holding: [ids(VIEWER_HAND), ids(BOT_HAND.slice(0, 2))],
   });
 
 /** Every hand card, left to right as drawn, by accessible name. */
@@ -302,7 +267,7 @@ test("one round, played through every interaction the table has", async ({ page,
   //
   // Seeded rather than played to: which seat wins a round is the bot's
   // business, so a spec that waits for the viewer to win one fails on the deal.
-  await resumeSaved(page, baseURL!, exchangeSave());
+  await resumeSaved(page, baseURL!, midExchangeSave());
   await expect(page.getByTestId("exchange-prompt"), "the exchange asks on the felt").toBeVisible({
     timeout: 15_000,
   });
