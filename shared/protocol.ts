@@ -4,11 +4,11 @@
 import { z } from "zod";
 import type { GameState, MatchLength, Player } from "../lib/game/gameEngine.ts";
 import type { RoundOverPayload } from "../lib/game/matchState.ts";
-import type { FriendRequestAccepted, FriendRequestIncoming } from "../lib/wire.ts";
+import type { FriendRequestAccepted, FriendRequestIncoming } from "./http.ts";
 import type * as Inbound from "./socketSchemas.ts";
 import type { TranslationParams } from "./i18n.ts";
 
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 export const MIN_PROTOCOL_VERSION = 6;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */
@@ -43,8 +43,6 @@ export interface WireRoomState {
 export interface ServerPayload {
   code?: string;
   message?: string;
-  /** A few endpoints (e.g. the rate limiters) use `error` instead of `message`. */
-  error?: string;
   params?: TranslationParams;
 }
 

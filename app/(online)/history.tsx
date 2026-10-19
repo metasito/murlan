@@ -15,7 +15,7 @@ import { LoadingBlock, ErrorBlock, EmptyBlock } from "@/components/StateBlock";
 import { HistoryRow } from "@/components/HistoryRow";
 import { Colors, Spacing, Type } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
-import type { RoundHistoryDto } from "@/lib/wire";
+import type { RoundHistoryDto } from "@/shared/http";
 
 /** Rows per page. Chosen to fill a phone in portrait without spilling. */
 const PAGE_SIZE = 10;

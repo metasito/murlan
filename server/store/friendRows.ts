@@ -5,7 +5,7 @@
 // second copy of the field list is a list that will flicker between two
 // versions of one request the first time either side changes.
 import type { Friend, User } from "../../shared/schema.ts";
-import type { FriendInfo, FriendRequestInfo } from "../../lib/wire.ts";
+import type { FriendInfo, FriendRequestInfo } from "../../shared/http.ts";
 
 export function friendRow(friend: User): FriendInfo {
   return {

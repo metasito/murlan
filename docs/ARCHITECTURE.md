@@ -316,7 +316,7 @@ they *decide*, so a rule cannot hold in one mode and not the other:
 
 A module here that the server bundles (`autoMove`, `matchState`, `standings`,
 `exchangeCeremony`) imports with a relative path and an explicit `.ts`, and touches nothing
-from `react-native`. `lib/wire.ts` and `lib/game/placement.ts` are client-only.
+from `react-native`. `lib/game/placement.ts` is client-only; the HTTP DTOs both sides read live in `shared/http.ts`.
 
 ## 7. Fixed bug: "Rendered fewer hooks than expected" in `OnlineGameScreen`
 

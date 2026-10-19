@@ -41,7 +41,7 @@ import { serverErrorMessage } from "@/lib/apiError";
 import { apiRequest } from "@/lib/query-client";
 import { USERNAME_MAX, USERNAME_MIN, usernameProblem } from "@/shared/username";
 import { placementColor, positionLabelKey } from "@/lib/game/placement";
-import type { UserStatsDto, RatingDto, AchievementStatusDto, RoundHistoryDto } from "@/lib/wire";
+import type { UserStatsDto, RatingDto, AchievementStatusDto, RoundHistoryDto } from "@/shared/http";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 

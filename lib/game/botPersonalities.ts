@@ -4,7 +4,7 @@
 //
 // Loads under `node --test` — docs/agents/checks.md, "Node's TypeScript loader".
 import type { BotDifficulty } from "./gameEngine.ts";
-import type { TranslationKey } from "../i18n.ts";
+import type { TranslationKey } from "../../shared/i18n.ts";
 
 export type BotPersonalityId = "luan" | "besnik" | "gent";
 

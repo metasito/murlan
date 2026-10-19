@@ -14,7 +14,7 @@ import React from 'react';
 import { Text } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render } from '@testing-library/react-native';
-import type { FriendInfo, FriendRequestInfo } from '@/lib/wire';
+import type { FriendInfo, FriendRequestInfo } from '@/shared/http';
 
 type Listener = (...args: unknown[]) => void;
 

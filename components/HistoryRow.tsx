@@ -9,7 +9,7 @@ import { useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { positionLabelKey } from "@/lib/game/placement";
-import type { RoundHistoryDto } from "@/lib/wire";
+import type { RoundHistoryDto } from "@/shared/http";
 
 
 

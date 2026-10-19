@@ -17,6 +17,15 @@ const SCREENS = ["{app,components,context,lib}/**/*.{ts,tsx}"];
 const DRAWN = ["{app,components}/**/*.tsx"];
 const TEST_RUNNERS = "/^(it|test|describe|suite)$/";
 const SEAT_IDENTITY = "/^(viewerSeat|mySeatIndex)$/";
+// esquery's regex literal ends at its first slash, so a path separator is written \x2F.
+const importsOf = (source, kind = "") =>
+  [
+    `ImportDeclaration${kind}[source.value=${source}]`,
+    `ExportNamedDeclaration${kind.replace("importKind", "exportKind")}[source.value=${source}]`,
+    `ExportAllDeclaration${kind.replace("importKind", "exportKind")}[source.value=${source}]`,
+    `ImportExpression[source.value=${source}]`,
+    `CallExpression[callee.name="require"][arguments.0.value=${source}]`,
+  ].join(", ");
 
 /** @type {readonly Guard[]} */
 const GUARDS = [
@@ -222,6 +231,61 @@ const GUARDS = [
     ],
     plant: { file: "tests/server/plant.test.ts", code: ['const root = path.resolve(process.cwd(), "sourcemaps");', "const home = process.cwd();"].join("\n"), hits: 2 },
     spare: [{ file: "tests/server/plant.test.ts", code: '// process.cwd() is wherever the run started\nconst s = "process.cwd()";\nconst root = path.resolve(import.meta.dirname, "..", "..");' }],
+  },
+  {
+    id: "modules-no-audio-layer",
+    why: "ADR-0009 gives each audio and haptics layer one owner, and none is under modules/: play through lib/device/feedback.ts, which owns lib/device/audioEngine.ts and lib/device/hapticsEngine.ts.",
+    selector: importsOf(
+      "/^(react-native-audio-api|react-native-turbo-haptics|expo-audio|expo-haptics)$|(^|\\x2F)(audioEngine|hapticsEngine|murlan-audio-session|murlan-diagnostics)(\\.ts)?$/",
+      '[importKind!="type"]'
+    ),
+    files: ["modules/**/*.{ts,tsx}"],
+    plant: { file: "modules/murlan-orientation/plant.ts", code: [
+      'import { AudioContext } from "react-native-audio-api";',
+      'export { trigger } from "react-native-turbo-haptics";',
+      'const a = require("expo-audio");',
+      'const s = import("../murlan-audio-session");',
+      'import { play } from "../../lib/device/audioEngine.ts";',
+    ].join("\n"), hits: 5 },
+    spare: [
+      'import { requireOptionalNativeModule } from "expo";',
+      'import type { AudioContext } from "react-native-audio-api";',
+      '// import "expo-haptics"\nconst s = "expo-haptics";',
+    ].map((code) => ({ file: "modules/murlan-orientation/plant.ts", code })),
+  },
+  {
+    id: "shared-no-client",
+    why: "shared/ is what the server and the client both read, so it may import the domain (lib/game/) and never a client module: take TranslationKey from shared/i18n.ts, and move a type both sides need into shared/.",
+    selector: importsOf("/(^|\\x2F)(app|components|context)\\x2F|(^|\\x2F)lib\\x2F(?!game\\x2F)/"),
+    files: ["shared/**/*.{ts,tsx}"],
+    plant: { file: "shared/plant.ts", code: [
+      'import type { TranslationKey } from "../lib/i18n";',
+      'import { t } from "@/lib/i18n";',
+      'export type { RoundHistoryDto } from "../lib/wire.ts";',
+      'import type { Auth } from "../context/AuthContext";',
+    ].join("\n"), hits: 4 },
+    spare: [
+      'import type { Card } from "../lib/game/gameEngine.ts";',
+      'import { en } from "../locales/en.ts";',
+      'import type { TranslationParams } from "./i18n.ts";',
+      '// import "../lib/i18n"\nconst s = "../lib/i18n";',
+    ].map((code) => ({ file: "shared/plant.ts", code })),
+  },
+  {
+    id: "game-no-client-i18n",
+    why: "lib/i18n.ts is the client's catalogue runtime, and the server bundles lib/game/: take TranslationKey from shared/i18n.ts, and leave the words to the caller.",
+    selector: importsOf("/^(?!.*shared\\x2Fi18n).*(^|\\x2F)i18n(\\.ts)?$/"),
+    files: ["lib/game/**/*.{ts,tsx}"],
+    plant: { file: "lib/game/plant.ts", code: [
+      'import type { TranslationKey } from "../i18n";',
+      'import { t } from "@/lib/i18n";',
+      'import type { TFn } from "../i18n.ts";',
+    ].join("\n"), hits: 3 },
+    spare: [
+      'import type { TranslationKey } from "../../shared/i18n.ts";',
+      'import type { TranslationKey } from "@/shared/i18n";',
+      '// import "../i18n"\nconst s = "../i18n";',
+    ].map((code) => ({ file: "lib/game/plant.ts", code })),
   },
 ];
 

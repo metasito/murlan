@@ -22,7 +22,7 @@ const {
   NOTICE_PAINT_IMPORTS,
 } = require('./eslint.selectors.cjs');
 
-const ONLY_OWNERS = "ADR-0009: one owner per audio layer (tests/tooling/audioOwners.test.ts).";
+const ONLY_OWNERS = "ADR-0009: one owner per audio layer (docs/adr/0009-audio-and-haptics-libraries.md).";
 const PACKAGE_OWNERS = {
   "react-native-audio-api": "lib/device/audioEngine.ts",
   "react-native-turbo-haptics": "lib/device/hapticsEngine.ts",

@@ -17,7 +17,7 @@
 // ones already unlocked. server/game/stats.ts persists with `onConflictDoNothing`,
 // so idempotent writes — not first-ever tracking — are what make "first_win"
 // mean first.
-import type { TranslationKey } from "./i18n.ts";
+import type { TranslationKey } from "../shared/i18n.ts";
 
 /** One completed round's outcome for a single player, as recorded at round over. */
 export interface GameResult {

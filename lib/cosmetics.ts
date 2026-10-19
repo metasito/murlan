@@ -10,7 +10,7 @@
 // Loads under `node --test` — docs/agents/checks.md, "Node's TypeScript loader".
 import { useSyncExternalStore } from "react";
 import { CardBacks, FeltGradients } from "./tokens.ts";
-import type { TranslationKey } from "./i18n.ts";
+import type { TranslationKey } from "../shared/i18n.ts";
 
 export type CardBackId = keyof typeof CardBacks;
 export type TableFeltId = keyof typeof FeltGradients;

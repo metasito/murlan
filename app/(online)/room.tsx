@@ -41,7 +41,7 @@ import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useTranslation } from "@/lib/i18n";
 import { A11yStatus, a11yHidden, a11yState } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import type { FriendInfo } from "@/lib/wire";
+import type { FriendInfo } from "@/shared/http";
 import { LoadingBlock, ErrorBlock } from "@/components/StateBlock";
 import { INTENT_ACK_TIMEOUT_MS } from "@/lib/sendIntent";
 import { getApiUrl } from "@/lib/query-client";

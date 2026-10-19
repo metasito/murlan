@@ -163,7 +163,7 @@ function serverPayloadKey(payload: ServerPayload): TranslationKey | null {
 export function translateServerPayload(payload: ServerPayload): string {
   const key = serverPayloadKey(payload);
   if (key) return translate(currentLocale, key, payload.params);
-  return payload.message ?? payload.error ?? t("common.unknownError");
+  return payload.message ?? t("common.unknownError");
 }
 
 /** React hook: re-renders the caller whenever the active locale changes. */
@@ -183,7 +183,7 @@ export function useTranslation() {
     (payload: ServerPayload) => {
       const key = serverPayloadKey(payload);
       if (key) return translate(locale, key, payload.params);
-      return payload.message ?? payload.error ?? tBound("common.unknownError");
+      return payload.message ?? tBound("common.unknownError");
     },
     [locale, tBound]
   );

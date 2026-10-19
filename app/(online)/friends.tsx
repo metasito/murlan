@@ -25,7 +25,7 @@ import { useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
 import { registerForPush } from "@/lib/device/pushRegistration";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
-import type { FriendInfo, FriendRequestInfo } from "@/lib/wire";
+import type { FriendInfo, FriendRequestInfo } from "@/shared/http";
 
 
 interface SearchResult { id: string; username: string }
