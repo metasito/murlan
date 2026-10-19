@@ -2,7 +2,8 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -18,7 +19,7 @@ type Guard = { id: string; why: string; selector: string; files: string[]; ignor
 type Block = { files?: string[]; ignores?: string[]; plugins?: Record<string, unknown>; rules?: Record<string, unknown> };
 const { GUARDS, plugin, guardBlocks } = require("../../eslint.guards.cjs") as {
   GUARDS: Guard[];
-  plugin: { rules: Record<string, unknown> };
+  plugin: { meta: { name: string; version?: string }; rules: Record<string, unknown> };
   guardBlocks: () => Block[];
 };
 const config = require("../../eslint.config.js") as Block[];
@@ -170,6 +171,26 @@ describe("the guard registry's floor", () => {
       for (const p of named) if (!existsSync(path.join(ROOT, p))) dangling.push(`${guard.id}: ${p}`);
     }
     assert.deepEqual(dangling, [], "a why must point the reader at the owner module or doc, and that file must exist");
+  });
+
+  test("the plugin's version moves with every guard, so eslint's content cache cannot serve a stale result", () => {
+    const source = readFileSync(path.join(ROOT, "eslint.guards.cjs"), "utf8");
+    const versionAfter = (edit: (src: string) => string) => {
+      const dir = mkdtempSync(path.join(tmpdir(), "murlan-guards-"));
+      try {
+        const file = path.join(dir, "guards.cjs");
+        writeFileSync(file, edit(source));
+        return (require(file) as { plugin: { meta: { version?: string } } }).plugin.meta.version;
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    const version = plugin.meta.version;
+    assert.ok(version, "the plugin has no version, so a guard edit leaves cached results standing");
+    assert.equal(versionAfter((src) => src), version);
+    assert.notEqual(versionAfter((src) => src.replace("CallExpression[callee.name=/^f(it|describe)$/]", "CallExpression[callee.name=/^f(it)$/]")), version);
+    assert.notEqual(versionAfter((src) => src.replace("drop the `.only`", "drop it")), version);
+    assert.notEqual(versionAfter((src) => src.replace('reason: "the sign-out, which empties the query cache"', 'reason: "x"')), version);
   });
 
   test("a stale directive is an error, and npm run lint reads the whole tree as configured", async () => {

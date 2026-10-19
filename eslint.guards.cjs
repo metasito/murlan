@@ -218,8 +218,16 @@ const GUARDS = [
   },
 ];
 
+// eslint's --cache keys a plugin's results on its meta.version, so an unversioned guard edit would
+// leave cached results standing.
+const version = require("node:crypto")
+  .createHash("sha256")
+  .update(JSON.stringify(GUARDS.map(({ id, why, selector, files, ignores }) => ({ id, why, selector, files, ignores }))))
+  .digest("hex")
+  .slice(0, 16);
+
 const plugin = {
-  meta: { name: "murlan" },
+  meta: { name: "murlan", version },
   rules: Object.fromEntries(
     GUARDS.map((guard) => [
       guard.id,
