@@ -169,7 +169,7 @@ const GUARDS = [
     message:
       "A bare `emit` is at-most-once and carries no intentId, so its loss is silent and its retry is a second intent: send it through `send()` in lib/sendIntent.ts.",
     files: CLIENT,
-    ignores: ["lib/sendIntent.ts"],
+    ignores: [{ glob: "lib/sendIntent.ts", reason: "send() is the one emit the rest go through" }],
     plant: ['socket?.emit("room:leave");', "socket.emit(`game:play`, { cards });"],
     spare: ['socket.emit("connect_error");', 'send(socket, "room:leave", {});', 'emitter.on("room:leave", f);'],
     create: (report) => ({
@@ -185,7 +185,7 @@ const GUARDS = [
     message:
       "This declares a spring instead of naming one, so the design system cannot reach it: use Motion.spring.* from lib/tokens.ts, and if none fits, the design wants a new one.",
     files: SCREENS,
-    ignores: ["lib/tokens.ts"],
+    ignores: [{ glob: "lib/tokens.ts", reason: "the tokens are where a spring is declared" }],
     plant: ["const s = { damping: D, stiffness: 200 };", "withSpring(1, { dampingRatio: 0.4 });", 'const s = { "damping": 12 };'],
     spare: ["const s = { stiffness: 200 };", "type Spring = { damping: number };", "const { damping } = Motion.spring.land;"],
     create: (report) => ({
@@ -229,7 +229,7 @@ const GUARDS = [
     message:
       "Render <AppModal> instead: a second <Modal> is a second place to get supportedOrientations, statusBarTranslucent and onRequestClose wrong.",
     files: DRAWN,
-    ignores: ["components/AppModal.tsx"],
+    ignores: [{ glob: "components/AppModal.tsx", reason: "the one shell every modal renders through" }],
     plant: [
       "const x = <Modal visible />;",
       'import * as RN from "react-native";\nconst x = <RN.Modal visible />;',
@@ -250,7 +250,7 @@ const GUARDS = [
     id: "one-modal-import",
     message: "components/AppModal.tsx is the only reader of react-native's Modal, under any name: render <AppModal>.",
     files: SCREENS,
-    ignores: ["components/AppModal.tsx"],
+    ignores: [{ glob: "components/AppModal.tsx", reason: "the one shell every modal renders through" }],
     plant: [
       'import { View, Modal as Sheet } from "react-native";',
       'import * as RN from "react-native";\nconst x = <RN.Modal visible />;',
@@ -326,7 +326,7 @@ const GUARDS = [
     id: "orientation-lock-owner",
     message: "Only the game table forces an orientation (components/GameTable.tsx): it is the one screen that needs the width.",
     files: SCREENS,
-    ignores: ["components/GameTable.tsx"],
+    ignores: [{ glob: "components/GameTable.tsx", reason: "the one screen that needs the width" }],
     plant: ["ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);", 'import { lockPlatformAsync } from "expo-screen-orientation";'],
     spare: ["ScreenOrientation.unlockAsync();", "const locked = true;"],
     create: (report) => ({
@@ -371,7 +371,7 @@ const GUARDS = [
     message:
       "Leave through `leaveScreen` (components/ScreenHeader.tsx): a screen a link opened has no history, and a bare back does nothing there.",
     files: SCREENS,
-    ignores: ["components/ScreenHeader.tsx"],
+    ignores: [{ glob: "components/ScreenHeader.tsx", reason: "leaveScreen is the one place a screen goes back" }],
     plant: ["router.back();", 'router["back"]();', "const { back } = router;"],
     spare: ["leaveScreen(router);", "Easing.out(Easing.back(1.7));", "if (router.canGoBack()) leaveScreen(router);"],
     create: (report) => ({
@@ -405,7 +405,7 @@ function guardBlocks() {
     { plugins: { murlan: plugin }, linterOptions: { reportUnusedDisableDirectives: "error" } },
     ...GUARDS.map((guard) => ({
       files: guard.files,
-      ...(guard.ignores ? { ignores: guard.ignores } : {}),
+      ...(guard.ignores ? { ignores: guard.ignores.map((i) => i.glob) } : {}),
       rules: { [`murlan/${guard.id}`]: "error" },
     })),
   ];

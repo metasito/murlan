@@ -12,7 +12,8 @@ import { directives } from "../helpers/hookSuppression.ts";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const require = createRequire(import.meta.url);
 
-type Guard = { id: string; files: string[]; ignores?: string[]; plant: string[]; spare: string[] };
+type Ignore = { glob: string; reason: string };
+type Guard = { id: string; files: string[]; ignores?: Ignore[]; plant: string[]; spare: string[] };
 type Block = { files?: string[]; ignores?: string[]; plugins?: Record<string, unknown>; rules?: Record<string, unknown> };
 const { GUARDS, plugin, guardBlocks } = require("../../eslint.guards.cjs") as {
   GUARDS: Guard[];
@@ -25,7 +26,8 @@ const tsParser = require("@typescript-eslint/parser") as Linter.Parser;
 
 const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" }).split("\0").filter(Boolean);
 const matches = (file: string, globs: string[]) => globs.some((glob) => minimatch(file, glob, { dot: true }));
-const targets = (guard: Guard) => tracked.filter((f) => matches(f, guard.files) && !(guard.ignores ?? []).includes(f));
+const globsOf = (guard: Guard) => (guard.ignores ?? []).map((i) => i.glob);
+const targets = (guard: Guard) => tracked.filter((f) => matches(f, guard.files) && !matches(f, globsOf(guard)));
 const targetOf = (guard: Guard) => {
   const all = targets(guard);
   return all.find((f) => f.endsWith(".tsx")) ?? all[0]!;
@@ -111,13 +113,13 @@ describe("the guard registry's floor", () => {
     assert.deepEqual(unguarded, [], "eslint.config.js ignores or turns off a guard where the registry says it runs");
   });
 
-  test("4. an exemption is one tracked file the guard would otherwise read", () => {
+  test("4. an exemption reads a tracked file the guard would otherwise read, and says why", () => {
     const loose = GUARDS.flatMap((guard) =>
       (guard.ignores ?? [])
-        .filter((file) => /[*?{}[\]!]/.test(file) || !tracked.includes(file) || !matches(file, guard.files))
-        .map((file) => `${guard.id}: ${file}`)
+        .filter(({ glob, reason }) => !reason?.trim() || !tracked.some((f) => matches(f, [glob]) && matches(f, guard.files)))
+        .map(({ glob }) => `${guard.id}: ${glob}`)
     );
-    assert.deepEqual(loose, [], "a glob, a file that is gone, or one the guard never read is not an exemption");
+    assert.deepEqual(loose, [], "an exemption with no reason, or one naming no file the guard reads, exempts nothing it can defend");
   });
 
   test("5. no source switches a guard off, and no directive is bare", () => {
