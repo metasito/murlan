@@ -7,7 +7,7 @@ const TABLE: LocalTable = {
   exchangeAnnouncing: false,
   exchangeAnnounceData: null,
   playCards: () => false,
-  passTurn: noop,
+  passTurn: () => false,
   runBotTurn: noop,
   chooseExchangeCard: noop,
   acknowledgeExchange: noop,

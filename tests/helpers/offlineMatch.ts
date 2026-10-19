@@ -6,7 +6,7 @@
 // A bot seat's turn is `offlineBotMove`, the function GameContext.tsx calls
 // (tests/engine/matchState.test.ts pins both callers), and the round->match
 // accounting is `lib/game/matchFlow.ts`, which GameContext.tsx imports too.
-// The next deal (`dealFrom`) is still a hand-carried copy of GameContext.tsx's:
+// The next deal (`dealNext`) is still a hand-carried copy of GameContext.tsx's:
 // that file pulls in `react` and AsyncStorage, which `node --test` cannot load.
 import {
   initializeGame,
@@ -230,7 +230,7 @@ export class HandNotShrunkError extends Error {
 }
 
 /**
- * `app/game.tsx`'s own key for "does the bot turn effect need to reschedule",
+ * `context/offlineDriver.ts`'s own key for "does the bot turn effect need to reschedule",
  * reproduced exactly: seat, pass count, and the table's last combination —
  * gated on `!roundOver`, `!exchangePhase.active` and the acting seat being
  * `"bot"`, matching that file's `botTurnKey`. `exchangeAnnouncing` is not
@@ -308,7 +308,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
         );
       }
 
-      // Mirrors `GameContext.tsx`'s `dealFrom` exactly: it advances
+      // Mirrors `GameContext.tsx`'s `dealNext` exactly: it advances
       // `dealFirstSeat` *before* dealing the rematch and deals from the new
       // value, so the first rematch opens one seat past `initializeGame`'s own
       // implicit seat 0 rather than from it again.
@@ -338,7 +338,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
         .map((s) => s.i);
       const actedSeats = new Set<number>();
 
-      // `app/game.tsx`'s `botTurnKey`, reset per round because that screen
+      // `context/offlineDriver.ts`'s `botTurnKey`, reset per round because that screen
       // remounts on every navigation to /game (a fresh component instance
       // has no previous effect value to compare against) — see
       // `computeBotTurnKey`'s own comment for what this is chasing.

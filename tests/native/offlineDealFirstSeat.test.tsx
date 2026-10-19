@@ -72,6 +72,15 @@ function Probe() {
       <Pressable testID="next" onPress={() => startNextRound()}>
         <Text>next</Text>
       </Pressable>
+      <Pressable
+        testID="nextTwice"
+        onPress={() => {
+          startNextRound();
+          startNextRound();
+        }}
+      >
+        <Text>next twice</Text>
+      </Pressable>
       <Pressable testID="newMatch" onPress={() => startNewMatch()}>
         <Text>newMatch</Text>
       </Pressable>
@@ -134,6 +143,20 @@ test("a rematch after the match ends resets the deal to seat 0, not a further ro
 
   await waitFor(async () => {
     expect(await savedDealFirstSeat()).toBe(0);
+  });
+  await unmount(r);
+});
+
+test("a second deal in the same tick is refused: the round it would deal from has not ended", async () => {
+  await AsyncStorage.setItem(OFFLINE_SAVE_KEY, roundJustEndedSave());
+  const r = await mount();
+  await waitFor(() => expect(textOf(r, "saved")).toBe("true"));
+
+  await press(r, "resume");
+  await press(r, "nextTwice");
+
+  await waitFor(async () => {
+    expect(await savedDealFirstSeat()).toBe(2);
   });
   await unmount(r);
 });

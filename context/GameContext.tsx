@@ -27,7 +27,8 @@ import { applyRoundToMatch, freshMatch } from "@/lib/game/matchFlow";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform, Settings } from "react-native";
 import { initializeOpeningAt, E2E_OPENER_KEY } from "@/lib/e2eOpener";
-import { e2eFast } from "@/lib/e2eConfig";
+import { opener } from "@/lib/e2eConfig";
+import { turnKey } from "@/components/flightPhysics";
 import {
   OFFLINE_SAVE_KEY,
   decodeOfflineSave,
@@ -40,9 +41,6 @@ import { t } from "@/lib/i18n";
 import { exchangeAnnouncementOf, type ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 import { useExchangeAnnouncement } from "@/context/useExchangeAnnouncement";
 import type { RoundResult, MatchState, PlayerSetupConfig } from "@/lib/game/matchState";
-
-// A launch argument on iOS lands in NSUserDefaults, which `Settings` reads; Android and web have no such channel.
-const E2E_OPENER = e2eFast() && Platform.OS === "ios" && String(Settings.get(E2E_OPENER_KEY)) === "1";
 
 export type { PlayerSetupConfig, RoundResult, MatchState };
 
@@ -65,7 +63,8 @@ export interface LocalTable {
   exchangeAnnouncing: boolean;
   exchangeAnnounceData: ExchangeAnnounceData | null;
   playCards: (cardIds: string[]) => boolean;
-  passTurn: () => void;
+  /** `expectedTurn` is the `turnKey` the caller saw; a pass for a turn that has since moved on is refused. */
+  passTurn: (expectedTurn?: string) => boolean;
   runBotTurn: () => void;
   chooseExchangeCard: (cardId: string) => void;
   acknowledgeExchange: () => void;
@@ -90,9 +89,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const [bootSave, setBootSave] = useState<OfflineSave | null>(null);
   const bootRef = useRef<OfflineSave | null>(null);
-  const keepBoot = useCallback((save: OfflineSave | null) => {
-    bootRef.current = save;
-    setBootSave(save);
+  // Once a table has been taken, set up or left, the boot read is stale: what it found was replaced.
+  const bootPassed = useRef(false);
+  const dropBoot = useCallback(() => {
+    bootPassed.current = true;
+    bootRef.current = null;
+    setBootSave(null);
   }, []);
 
   const [resumedFrom, setResumedFrom] = useState<GameState | null>(null);
@@ -132,14 +134,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // A brand-new table is always "a new match", so `matchOver` is unconditionally `true` here.
       const firstSeat = dealFirstSeatFor(true, 0, players.length);
       const viewer = Math.max(0, players.findIndex((p) => p.type === "human"));
-      const state = E2E_OPENER
+      const state = opener(Platform.OS, () => Settings.get(E2E_OPENER_KEY))
         ? initializeOpeningAt(players, mode, firstSeat, viewer)
         : initializeGame(players, mode, firstSeat);
       configRef.current = { players, mode, dealFirstSeat: firstSeat };
-      keepBoot(null);
+      dropBoot();
       write({ gameState: state, match: freshMatch(length, players.length) });
     },
-    [keepBoot, write]
+    [dropBoot, write]
   );
 
   /**
@@ -150,7 +152,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const dealNext = useCallback(
     (matchIsOver: boolean) => {
       const { gameState: previous, match } = stateRef.current;
-      if (!previous) return;
+      if (!previous?.roundOver) return;
       const { players, mode, dealFirstSeat } = configRef.current;
       const playersWithId = players.map((p, i) => ({ ...p, id: `player_${i}` }));
       const nextFirstSeat = dealFirstSeatFor(matchIsOver, dealFirstSeat, playersWithId.length);
@@ -178,9 +180,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const phase = state?.exchangePhase;
     if (!state || !phase?.active) return;
     const winner = state.players[phase.winnerIdx];
-    const giveback = winner ? pickGivebackCard(winner.hand, phase.cardFromLoser?.id) : undefined;
-    if (!giveback) commit(resolveStuckExchange(state));
-    else if (winner?.type === "bot") commit(processExchangeChoice(state, giveback.id));
+    if (winner?.type === "bot") {
+      const next = offlineBotMove(state);
+      if (next) commit(next);
+    } else if (!winner || !pickGivebackCard(winner.hand, phase.cardFromLoser?.id)) {
+      commit(resolveStuckExchange(state));
+    }
   }, [commit]);
 
   const playCards = useCallback(
@@ -195,11 +200,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [commit]
   );
 
-  const passTurn = useCallback(() => {
-    const state = stateRef.current.gameState;
-    if (!state || !checkPass(state).ok) return;
-    commit(processPass(state));
-  }, [commit]);
+  const passTurn = useCallback(
+    (expectedTurn?: string): boolean => {
+      const state = stateRef.current.gameState;
+      if (!state || !checkPass(state).ok) return false;
+      if (expectedTurn !== undefined && expectedTurn !== turnKey(state)) return false;
+      commit(processPass(state));
+      return true;
+    },
+    [commit]
+  );
 
   const runBotTurn = useCallback(() => {
     const state = stateRef.current.gameState;
@@ -210,26 +220,30 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const resetGame = useCallback(() => {
     write({ gameState: null, match: freshMatch("match", stateRef.current.gameState?.players.length ?? 4) });
-    keepBoot(null);
+    dropBoot();
     AsyncStorage.removeItem(OFFLINE_SAVE_KEY).catch(() => {});
-  }, [keepBoot, write]);
+  }, [dropBoot, write]);
 
   const resumeGame = useCallback(() => {
     const live = stateRef.current;
-    if (live.gameState && !live.match.over) return true;
+    if (live.gameState && !live.match.over) {
+      setResumedFrom(live.gameState);
+      return true;
+    }
     const save = bootRef.current;
     if (!isResumable(save)) return false;
     configRef.current = { players: save.players, mode: save.gameMode, dealFirstSeat: save.dealFirstSeat };
-    keepBoot(null);
+    dropBoot();
     setResumedFrom(save.gameState);
     write({ gameState: save.gameState, match: save.match });
     return true;
-  }, [keepBoot, write]);
+  }, [dropBoot, write]);
 
   // Read once, before anything can overwrite it.
   useEffect(() => {
     AsyncStorage.getItem(OFFLINE_SAVE_KEY)
       .then((raw) => {
+        if (bootPassed.current) return;
         const stored = decodeOfflineSave(raw);
         if (stored.kind === "incompatible") {
           AsyncStorage.removeItem(OFFLINE_SAVE_KEY).catch(() => {});
@@ -239,10 +253,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
             message: t("offlineGame.saveDiscardedBody"),
           });
         }
-        keepBoot(stored.kind === "ok" ? stored.save : null);
+        bootRef.current = stored.kind === "ok" ? stored.save : null;
+        setBootSave(bootRef.current);
       })
       .catch(() => {});
-  }, [showNotification, keepBoot]);
+  }, [showNotification]);
 
   /**
    * Written on every change to anything the restore needs; the config changes only with a deal, which

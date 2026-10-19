@@ -6,6 +6,7 @@ import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GameProvider, useGameSession, useGameTable } from "@/context/GameContext";
 import { NotificationProvider } from "@/context/NotificationContext";
+import { useOfflineDriver } from "@/context/offlineDriver";
 import { encodeOfflineSave, OFFLINE_SAVE_KEY } from "@/lib/offlineSave";
 import { buildCombination, processPass, type Card, type GameState } from "@/lib/game/gameEngine";
 
@@ -169,4 +170,71 @@ test("a human winner is left to choose", async () => {
 
 test("a winner holding no card it may give back releases the phase rather than holding the table forever", async () => {
   expect((await settled(exchange("human", []))).active).toBe("false");
+});
+
+function ExpiryProbe() {
+  const { gameState, hasSavedGame, resumeGame, playCards } = useGame();
+  const { turnTimer } = useOfflineDriver();
+  return (
+    <>
+      <Text testID="saved">{String(hasSavedGame)}</Text>
+      <Text testID="turn">{String(gameState?.currentTurnIndex ?? "-")}</Text>
+      <Text testID="passes">{String(gameState?.passCount ?? "-")}</Text>
+      <Pressable testID="resume" onPress={() => resumeGame()}><Text>resume</Text></Pressable>
+      <Pressable
+        testID="playAsTheClockRunsOut"
+        onPress={() => {
+          playCards(["4_clubs"]);
+          turnTimer.onExpire();
+        }}
+      >
+        <Text>play as the clock runs out</Text>
+      </Pressable>
+    </>
+  );
+}
+
+test("a clock that runs out in the tick the turn moved on passes nobody", async () => {
+  await AsyncStorage.setItem(
+    OFFLINE_SAVE_KEY,
+    encodeOfflineSave({
+      // Pass and play, so no bot loop moves the table while the clock is under test.
+      gameState: {
+        ...trick(),
+        players: trick().players.map((p) => ({ ...p, type: "human" as const })),
+        lastPlayedCombination: null,
+        lastPlayedBy: -1,
+      },
+      match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
+      players: [
+        { name: "Ana", type: "human" },
+        { name: "Gent", type: "human" },
+        { name: "Luan", type: "human" },
+      ],
+      gameMode: "free_for_all",
+      dealFirstSeat: 0,
+    })
+  );
+  const view = await render(
+    <NotificationProvider>
+      <GameProvider>
+        <ExpiryProbe />
+      </GameProvider>
+    </NotificationProvider>
+  );
+  await waitFor(() => expect(view.getByTestId("saved").props.children).toBe("true"));
+  await act(async () => {
+    fireEvent.press(view.getByTestId("resume"));
+  });
+
+  await act(async () => {
+    fireEvent.press(view.getByTestId("playAsTheClockRunsOut"));
+  });
+
+  // Play goes to the right, so the 4 hands the turn to Luan, and Luan is still on move.
+  expect(view.getByTestId("turn").props.children).toBe("2");
+  expect(view.getByTestId("passes").props.children).toBe("0");
+  await act(async () => {
+    view.unmount();
+  });
 });

@@ -35,7 +35,7 @@ function sourceConstant(relPath: string, name: string): number {
 }
 
 test("tableFit's offline clock has not drifted from HUMAN_TURN_SECONDS", () => {
-  const game = blankComments(readFileSync(path.join(repoRoot, "app/game.tsx"), "utf8"));
+  const game = blankComments(readFileSync(path.join(repoRoot, "context/offlineDriver.ts"), "utf8"));
   assert.match(game, /\bHUMAN_TURN_SECONDS\s*=\s*TURN_TIMEOUT_MS\s*\/\s*1_?000\s*;/);
   assert.equal(
     sourceConstant("tests/e2e/tableFit.spec.ts", "OFFLINE_CLOCK_MS"),

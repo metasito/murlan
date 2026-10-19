@@ -27,7 +27,7 @@ import {
 import { useAnimatedReaction, useDerivedValue, useSharedValue, type SharedValue } from "react-native-reanimated";
 import type { FeltStops } from "@/lib/cosmetics";
 import { useBenchHandle } from "@/lib/diagnostics";
-import { e2eFast } from "@/lib/e2eConfig";
+import { E2E_FAST } from "@/lib/e2eConfig";
 import type { Pixels } from "@/lib/diagnostics/lampLegibility";
 import { CardGlow, Colors, withAlpha } from "@/lib/theme";
 import { DESIGN, lightUniforms, type Lamp } from "./lampRig";
@@ -132,7 +132,7 @@ function useShadowPicture(kinds: readonly ShadowPath[], shape: SharedValue<numbe
   }, [recorder]);
   const drawn = useSharedValue<SkPicture>(empty);
   const paths = useSharedValue<Record<string, SkPath>>({});
-  const e2e = e2eFast();
+  const e2e = E2E_FAST;
   // A reaction, not a derived value: a mapper takes every shared value in its closure as an input, and one writing `drawn` re-ran each frame.
   // `rects` is read in the handler, outside the inputs, so a glow-only change builds nothing.
   useAnimatedReaction(
@@ -207,7 +207,7 @@ function useGlow(rects: SharedValue<CardRects>, felt: CardTable["felt"], midX: n
   }, [recorder]);
   const drawn = useSharedValue<SkPicture>(empty);
   const lit = useSharedValue(false);
-  const e2e = e2eFast();
+  const e2e = E2E_FAST;
   useAnimatedReaction(
     () => rects.value,
     (all) => {
@@ -332,7 +332,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
   const shadows = useCardShadowsOn();
   const [glows, setGlows] = useState(true);
   useEffect(() => {
-    if (!e2eFast()) return;
+    if (!E2E_FAST) return;
     const e2e = globalThis as { murlanCardGlow?: (on: boolean) => void };
     e2e.murlanCardGlow = setGlows;
     return () => {

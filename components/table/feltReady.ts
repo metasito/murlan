@@ -2,7 +2,7 @@ import { createContext, useCallback, useMemo, useState, useSyncExternalStore } f
 import { Platform } from "react-native";
 import type { SharedValue } from "react-native-reanimated";
 import type { FeltStops } from "@/lib/cosmetics";
-import { e2eFast } from "@/lib/e2eConfig";
+import { E2E_FAST } from "@/lib/e2eConfig";
 import { useTraceSource } from "@/lib/e2eTrace";
 import type { CardTable } from "./useCardRects";
 import type { Point } from "./cardRects";
@@ -45,7 +45,7 @@ const onShadows = (listener: () => void) => {
   shadowListeners.add(listener);
   return () => void shadowListeners.delete(listener);
 };
-if (e2eFast()) {
+if (E2E_FAST) {
   (globalThis as { murlanCardShadows?: (on: boolean) => void }).murlanCardShadows = (on) => {
     shadowsOn = on;
     for (const listener of shadowListeners) listener();

@@ -5,7 +5,7 @@
 // happens without anyone asking for it, and that what comes back is the same
 // match rather than a fresh deal. Two providers, one storage between them —
 // which is exactly what a kill and a relaunch look like.
-import { test, expect, beforeEach } from "@jest/globals";
+import { test, expect, beforeEach, jest } from "@jest/globals";
 import React from "react";
 import { Text, Pressable } from "react-native";
 import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
@@ -77,6 +77,7 @@ function Probe() {
     resetGame,
     playCards,
     exchangeAnnouncing,
+    restored,
   } = useGame();
   // The opening play is forced to the 3♠, so it is the one move that is always
   // legal and always available without reading the engine's rules here.
@@ -92,6 +93,7 @@ function Probe() {
           : "none"}
       </Text>
       <Text testID="announcing">{String(exchangeAnnouncing)}</Text>
+      <Text testID="restored">{String(restored)}</Text>
       <Pressable testID="setup" onPress={() => setupGame(SETUP, "free_for_all")}>
         <Text>setup</Text>
       </Pressable>
@@ -261,5 +263,36 @@ test("resuming again after a move goes back to the live table, not the save the 
   expect(textOf(r, "saved")).toBe("true");
   await press(r, "resume");
   expect(textOf(r, "hand")).toBe("1");
+  await unmount(r);
+});
+
+// GameTable mounts a restored table at rest; a live one it remounts would throw its last play and deal again.
+test("resuming the live table mounts it at rest", async () => {
+  await AsyncStorage.setItem(OFFLINE_SAVE_KEY, freeLeadSave());
+  const r = await mount();
+  await waitFor(() => expect(textOf(r, "saved")).toBe("true"));
+  await press(r, "resume");
+  await press(r, "playFirst");
+  expect(textOf(r, "restored")).toBe("false");
+
+  await press(r, "resume");
+  expect(textOf(r, "restored")).toBe("true");
+  await unmount(r);
+});
+
+test("a boot read that lands after the table was set up and left offers nothing back", async () => {
+  await AsyncStorage.setItem(OFFLINE_SAVE_KEY, freeLeadSave());
+  let land: (raw: string | null) => void = () => {};
+  const read = jest.spyOn(AsyncStorage, "getItem").mockImplementationOnce(
+    () => new Promise<string | null>((resolve) => (land = resolve))
+  );
+  const r = await mount();
+  await press(r, "setup");
+  await press(r, "reset");
+  expect(textOf(r, "saved")).toBe("false");
+
+  await act(async () => land(freeLeadSave()));
+  expect(textOf(r, "saved")).toBe("false");
+  read.mockRestore();
   await unmount(r);
 });

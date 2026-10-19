@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { e2eFast } from "./e2eConfig.ts";
+import { E2E_FAST } from "./e2eConfig.ts";
 
 /** One animation frame of the table, as `tests/e2e/helpers/mockupParity.ts` compares it with its mockup's. */
 export interface TraceFrame {
@@ -156,7 +156,7 @@ export function traceRecorder(host: FrameHost): TraceRecorder {
   };
 }
 
-if (e2eFast()) {
+if (E2E_FAST) {
   (globalThis as { murlanTrace?: TraceRecorder }).murlanTrace = traceRecorder(globalThis as unknown as FrameHost);
 }
 
@@ -167,7 +167,7 @@ export function traceOnset(kind: "sound" | "haptic" | "moment", name: string): v
 /** Registers what this component draws with the trace, for as long as it is mounted. */
 export function useTraceSource<K extends keyof Sources>(field: K, read: Sources[K] | null): void {
   useEffect(() => {
-    if (!e2eFast() || !read) return;
+    if (!E2E_FAST || !read) return;
     sources[field].add(read);
     return () => {
       sources[field].delete(read);

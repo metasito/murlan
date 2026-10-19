@@ -6,7 +6,7 @@ import { Platform } from "react-native";
 import { useLocalExchange, useLocalMatch, useLocalTable } from "@/context/gameHooks";
 import { TURN_TIMEOUT_MS } from "@/lib/game/gameEngine";
 import type { ExchangeHold } from "@/lib/game/sharedGameFlow";
-import { e2e, e2eFast } from "@/lib/e2eConfig";
+import { e2e, exchangeHold } from "@/lib/e2eConfig";
 import { flushSync } from "@/lib/flushSync";
 import { OFFLINE_BOT_DELAY_MS } from "@/lib/timeline/offlineBotDelay";
 import { turnKey } from "@/components/flightPhysics";
@@ -16,21 +16,7 @@ import { RoundEnding } from "@/lib/theme";
 /** Local response deadline. Offline there is no server, so the client enforces it. */
 export const HUMAN_TURN_SECONDS = TURN_TIMEOUT_MS / 1000;
 
-/**
- * How long the offline exchange overlay holds in an e2e build. Under Maestro it
- * holds until `.maestro/exchange-phase.yaml` taps it: no fixed hold covers how
- * long a device can keep Maestro from reading the screen. One view-hierarchy
- * read on the Android emulator took 22 s while the round ended, and a Passa tap
- * returned 37.5 s later, past the whole ceremony (#1560).
- * The web build keeps a timed hold, because Playwright specs play through the
- * exchange without ever tapping it.
- */
-const MEASURED_TAP_RETURN_MS = 8200;
-const E2E_EXCHANGE_HOLD_MARGIN_MS = 4000;
-const E2E_EXCHANGE_HOLD: ExchangeHold =
-  Platform.OS === "web" ? MEASURED_TAP_RETURN_MS + E2E_EXCHANGE_HOLD_MARGIN_MS : "untilTapped";
-/** Set only in an e2e build (#915), unless a spec opted out; undefined for a real player. */
-const EXCHANGE_HOLD = e2eFast() && !e2e.realExchange ? E2E_EXCHANGE_HOLD : undefined;
+const EXCHANGE_HOLD = exchangeHold(Platform.OS);
 
 export interface OfflineDriver {
   viewerSeat: number;
@@ -113,11 +99,13 @@ export function useOfflineDriver(): OfflineDriver {
   // turn would simply vanish. The pass sound is the table's, fired off
   // the committed state; what is added here is the warn haptic and the
   // reason, which the table floats in place of its own pass.
+  // The turn the clock was kept for: if it has moved on by the time the clock fires, nobody is passed.
+  const clockTurn = gameState ? turnKey(gameState) : undefined;
   const onExpire = useCallback(() => {
+    if (clockTurn === undefined || !passTurn(clockTurn)) return;
     uiFeedback("warn");
     setAutoPassed((n) => n + 1);
-    passTurn();
-  }, [passTurn]);
+  }, [clockTurn, passTurn]);
 
   return {
     viewerSeat,

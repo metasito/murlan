@@ -84,12 +84,11 @@ describe("the offline exchange overlay's E2E hold", () => {
   test("the offline driver only overrides the hold when EXPO_PUBLIC_E2E_FAST is set", () => {
     assert.match(
       driver,
-      /const EXCHANGE_HOLD = e2eFast\(\) && !e2e\.realExchange \? E2E_EXCHANGE_HOLD : undefined;/,
-      "the override is no longer undefined when EXPO_PUBLIC_E2E_FAST is unset — " +
-        "a real player would get a held-open overlay; the gate and the opt-out are lib/e2eConfig.ts's, " +
-        "whose floor test proves no build without the flag reads its key"
+      /const EXCHANGE_HOLD = exchangeHold\(Platform\.OS\);/,
+      "the driver no longer takes its hold from lib/e2eConfig.ts, whose floor test " +
+        "(tests/tooling/e2eConfig.test.ts) proves a player's build gets none"
     );
-    assert.match(driver, /import \{ e2e, e2eFast \} from "@\/lib\/e2eConfig";/);
+    assert.match(driver, /import \{ e2e, exchangeHold \} from "@\/lib\/e2eConfig";/);
     assert.doesNotMatch(gameContext, /\bholdMsOverride|ExchangeHold\b/, "the hold is back in a context");
   });
 
@@ -115,8 +114,8 @@ describe("the offline exchange overlay's E2E hold", () => {
 
   test("a device build holds the overlay until exchange-phase.yaml taps it, and the flow does", () => {
     assert.match(
-      driver,
-      /E2E_EXCHANGE_HOLD: ExchangeHold =\s*Platform\.OS === "web" \? [^:]+ : "untilTapped";/,
+      read("lib/e2eConfig.ts"),
+      /return os === "web" \? [^:]+ : "untilTapped";/,
       "a device e2e build is back on a timed hold, which a slow hierarchy read outlasts (#1560)"
     );
     const flow = read(".maestro/exchange-phase.yaml");

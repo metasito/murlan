@@ -10,11 +10,8 @@ const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
 const gameContext = read("context/GameContext.tsx");
 
 test("only an E2E_FAST build on iOS reads the opener launch argument", () => {
-  assert.match(gameContext, /^import \{ e2eFast \} from "@\/lib\/e2eConfig";$/m);
-  assert.match(
-    gameContext,
-    /^const E2E_OPENER = e2eFast\(\) && Platform\.OS === "ios" && String\(Settings\.get\(E2E_OPENER_KEY\)\) === "1";$/m
-  );
+  // The gate itself is lib/e2eConfig.ts's opener(), whose floor tests/tooling/e2eConfig.test.ts holds.
+  assert.match(gameContext, /^import \{ opener \} from "@\/lib\/e2eConfig";$/m);
 });
 
 test("setupGame, and nothing else, deals the opener to the viewer, and only behind the gate", () => {
@@ -24,7 +21,7 @@ test("setupGame, and nothing else, deals the opener to the viewer, and only behi
   const setupGame = gameContext.indexOf("const setupGame");
   const next = gameContext.indexOf("const dealNext");
   assert.ok(setupGame >= 0 && setupGame < at && at < next, "the call sits inside setupGame");
-  assert.match(gameContext.slice(setupGame, next), /E2E_OPENER\s*\?\s*initializeOpeningAt\(/);
+  assert.match(gameContext.slice(setupGame, next), /opener\(Platform\.OS, \(\) => Settings\.get\(E2E_OPENER_KEY\)\)\s*\?\s*initializeOpeningAt\(/);
 });
 
 test("every flow that taps the opening card asks for the opener by the key the app reads, and waits for it on iOS", () => {
