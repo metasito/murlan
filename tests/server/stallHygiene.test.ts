@@ -108,3 +108,34 @@ test("the server-error recorder does not queue behind a starved pool", async (t)
   logger.error("served");
   assert.equal(inserts.mock.callCount(), 1);
 });
+
+test("a room's status writes land in the order they were issued", async (t) => {
+  const started: string[] = [];
+  const landed: string[] = [];
+  const release = new Map<string, () => void>();
+  t.mock.method(db, "update", () => ({
+    set: ({ status }: { status: string }) => ({
+      where: () => {
+        started.push(status);
+        return new Promise<void>((resolve) =>
+          release.set(status, () => {
+            landed.push(status);
+            resolve();
+          })
+        );
+      },
+    }),
+  }));
+
+  const dealt = roomStore.updateRoomStatus("ordered-room", "in_progress");
+  const closed = roomStore.updateRoomStatus("ordered-room", "finished");
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(started, ["in_progress"], "the later write ran beside the earlier one");
+
+  release.get("in_progress")!();
+  await dealt;
+  await new Promise((r) => setImmediate(r));
+  release.get("finished")!();
+  await closed;
+  assert.deepEqual(landed, ["in_progress", "finished"]);
+});
