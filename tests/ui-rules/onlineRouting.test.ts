@@ -153,6 +153,13 @@ test("no source but the router navigates to the room or the game", () => {
   ]);
 });
 
+test("where a table was entered from is spelled once", () => {
+  const SPELLED = /["']quickmatch["']\s*\|\s*["']friends["']|["']friends["']\s*\|\s*["']quickmatch["']/g;
+  const sources = sourcesUnder(repoRoot, ["app", "components", "lib", "context"]);
+  assert.deepEqual(scanSources(SPELLED, sources), [`context/onlineRouting.ts: "quickmatch" | "friends"`]);
+  assert.equal(scanSources(SPELLED, [["planted.ts", `let s: "friends" | "quickmatch";`]]).length, 1);
+});
+
 test("no online screen routes from an effect", () => {
   const effects = sourcesUnder(repoRoot, ["app/(online)"]).flatMap(([file, src]) =>
     effectBodies(src).map((body) => [file, body] as const)

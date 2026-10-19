@@ -25,6 +25,7 @@ import {
 } from "@/shared/protocol";
 import { requireUpdate } from "@/lib/updateRequired";
 import { reportError } from "@/lib/errorReporting";
+import type { EntrySource } from "@/context/onlineRouting";
 import { clearReactions, pushReaction } from "@/lib/reactions";
 import { joinCode } from "@/lib/deepLink";
 import { handlesFor } from "@/lib/tableHandles";
@@ -96,7 +97,7 @@ interface OnlineGameContextValue {
   turnSeconds: number;
   /** Opaque: changes whenever the server re-arms, so the clock restarts. */
   turnDeadlineMs: number | undefined;
-  entrySource: "quickmatch" | "friends" | null;
+  entrySource: EntrySource;
   rematchVoteState: RematchVoteState | null;
   /** Votes to end the match outright, once a seat has been vacated. */
   endMatchVoteState: RematchVoteState | null;
@@ -274,7 +275,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [error, setError] = useState<ServerNotice | null>(null);
   const errorSeqRef = useRef(0);
   const [playerLeft, setPlayerLeft] = useState(false);
-  const [entrySource, setEntrySource] = useState<"quickmatch" | "friends" | null>(null);
+  const [entrySource, setEntrySource] = useState<EntrySource>(null);
   const [rematchVoteState, setRematchVoteState] = useState<RematchVoteState | null>(null);
   const [endMatchVoteState, setEndMatchVoteState] = useState<RematchVoteState | null>(null);
   /** Seats mid disconnect grace, by seat — the countdown for the whole 60 s window. */
