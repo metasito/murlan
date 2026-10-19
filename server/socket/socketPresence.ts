@@ -250,7 +250,7 @@ export function evictRemoteSessions(io: SocketServer, userId: string, keep: Sock
   io.serverSideEmit(SESSION_EVICTION_EVENT, eviction);
 }
 
-export const SESSION_EVICTION_EVENT = "murlan:evict-session";
+const SESSION_EVICTION_EVENT = "murlan:evict-session";
 
 interface Eviction {
   userId: string;

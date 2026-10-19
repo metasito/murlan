@@ -1,7 +1,0 @@
-#!/bin/bash
-set -e
-
-# Idempotent: installs any new/updated dependencies from a merged branch.
-# Schema changes apply automatically at server boot (server/store/schemaDdl.ts),
-# so no destructive `db:push` runs here — see docs/DEPLOY-RUNBOOK.md.
-npm install

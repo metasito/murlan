@@ -3,13 +3,13 @@ import { STALL_MS } from "./limits.mjs";
 const sha7 = (head) => String(head ?? "an unread head").slice(0, 7);
 
 /** @param {{declared: {handoff?: string|null, stoodDown?: boolean}|null}} run */
-export const handoffOf = (run) => (run.declared?.stoodDown ? null : (run.declared?.handoff ?? null));
+const handoffOf = (run) => (run.declared?.stoodDown ? null : (run.declared?.handoff ?? null));
 
 export const exhausted = (run) =>
   run.result?.subtype === "error_max_turns" || /Budget limit reached/.test(run.stderr ?? "");
 
 /** The phases a synthesised handoff may name. E and G are the pushed head's, which `settle` owns. */
-export const RESUMABLE = new Set(["B", "C", "D"]);
+const RESUMABLE = new Set(["B", "C", "D"]);
 
 /**
  * @param {{declared: object|null, phase: string|null}} run

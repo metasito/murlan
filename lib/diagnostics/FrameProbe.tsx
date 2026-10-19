@@ -12,9 +12,11 @@ let armed = false;
 let open: { at: number; until: number } | null = null;
 const awaitingFrame = makeMutable(false);
 let firstFrame: (() => void) | null = null;
+let firstFrameDeadline: ReturnType<typeof setTimeout> | undefined;
 const sync = () => probe?.setActive(armed);
 
 function frameSeen(): void {
+  clearTimeout(firstFrameDeadline);
   firstFrame?.();
   firstFrame = null;
 }
@@ -45,7 +47,7 @@ export function armFrames(on: boolean): Promise<void> {
   const seen = on
     ? new Promise<void>((resolve, reject) => {
         firstFrame = resolve;
-        setTimeout(() => reject(new Error("the frame loop ran no frame within 1 s of arming")), 1000);
+        firstFrameDeadline = setTimeout(() => reject(new Error("the frame loop ran no frame within 1 s of arming")), 1000);
       })
     : Promise.resolve();
   sync();

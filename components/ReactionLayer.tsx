@@ -26,7 +26,7 @@ import { a11yHidden } from "@/lib/a11y";
 
 // The spoken word travels with the glyph: a label built from the glyph alone leaves
 // the announcement to the OS's emoji pronunciation.
-export const EMOJIS = [
+const EMOJIS = [
   { glyph: "😂", labelKey: "reactionLayer.emoji.laugh" },
   { glyph: "🔥", labelKey: "reactionLayer.emoji.fire" },
   { glyph: "😤", labelKey: "reactionLayer.emoji.frustrated" },

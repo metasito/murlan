@@ -183,7 +183,7 @@ export function headline(pid, windows, fetches, jank) {
 }
 
 /** @param {ReturnType<typeof summarize>} rows */
-export function toMarkdownTable(rows) {
+function toMarkdownTable(rows) {
   const header = "| Command | Status | Elapsed | Fetches | Fetch total | Fetch mean | Janky frames | Jank mean |";
   const sep = "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |";
   const lines = rows

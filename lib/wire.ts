@@ -68,7 +68,7 @@ export interface FriendRequestAccepted {
   friend?: FriendInfo;
 }
 
-export interface HistoryParticipantDto {
+interface HistoryParticipantDto {
   name: string | null;
   bot: boolean;
 }

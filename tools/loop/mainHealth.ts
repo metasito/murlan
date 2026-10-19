@@ -57,7 +57,7 @@ export function alreadyFiled(runId: number, issues: FiledIssue[]): FiledIssue | 
 }
 
 /** Only issues naming an older run: run ids only climb, so one naming a newer run is news this green predates. */
-export function staleIssues(greenRunId: number, issues: FiledIssue[]): number[] {
+function staleIssues(greenRunId: number, issues: FiledIssue[]): number[] {
   return issues.filter((i) => i.state === "OPEN" && runOf(i) < greenRunId).map((i) => i.number);
 }
 
@@ -109,7 +109,7 @@ export function filedIssueArgs(repo: string): string[] {
   ];
 }
 
-export function closeArgs(repo: string, issue: number, greenRunId: number): string[] {
+function closeArgs(repo: string, issue: number, greenRunId: number): string[] {
   return ["issue", "close", String(issue), "--repo", repo, "--comment", `main is green again: ci.yml run ${greenRunId}.`];
 }
 
@@ -117,7 +117,7 @@ export function jobArgs(repo: string, runId: number): string[] {
   return ["run", "view", String(runId), "--repo", repo, "--json", "jobs"];
 }
 
-export function issueArgs(
+function issueArgs(
   repo: string,
   health: Extract<MainHealth, { state: "file" }>,
   headSha: string | undefined,
@@ -169,7 +169,7 @@ function jobRows(gh: Gh, repo: string, raw: RawJobs): JobRow[] {
 }
 
 /** Jobs are fetched only when the answer can turn on them. */
-export function readMain(gh: Gh, repo: string): { run?: MainRun; jobs: JobRow[] } {
+function readMain(gh: Gh, repo: string): { run?: MainRun; jobs: JobRow[] } {
   const [run] = parse<MainRun[]>(gh(mainRunArgs(repo)), []);
   if (!run || run.status !== "completed" || run.conclusion === "success") return { run, jobs: [] };
   return { run, jobs: jobRows(gh, repo, parse<RawJobs>(gh(jobArgs(repo, run.databaseId)), {})) };

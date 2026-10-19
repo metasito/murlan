@@ -7,7 +7,7 @@ import type { ReplayDto, ReplayMove, ReplaySeat, ReplaySummary } from "../../lib
 import type { GameMode } from "../../lib/game/gameEngine.ts";
 
 /** The read is bounded too, so the list never grows with a busy fortnight. */
-export const MAX_REPLAYS_LISTED = 20;
+const MAX_REPLAYS_LISTED = 20;
 
 /** Rows whose player_ids contain this user — the only ones they may read. */
 const ownedBy = (userId: string) =>

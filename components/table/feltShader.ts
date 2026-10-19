@@ -19,7 +19,7 @@ export const TWILL = {
   uPitch: 1.1 * 0.75,
 } as const;
 
-export const LAMP_HEIGHT = 200;
+const LAMP_HEIGHT = 200;
 
 const UNIFORMS = `uniform vec2 uLamp;
 uniform float uK,uLampH,uFlare,uPoolR,uVigR,uPitch,uType,uDepth,uCover,uFuzz,uSheen,uAniso,uTwo,uMott;

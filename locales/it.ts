@@ -584,8 +584,6 @@ export const it: Record<keyof typeof en, string> = {
 
   // ------------------------------------------------------------------ lobby.*
   "lobby.team": "Team {{team}}",
-  "lobby.botNameA11yLabel": "Nome giocatore intelligente",
-  "lobby.botNameA11yHint": "Inserisci il nome per questo giocatore controllato dal computer",
   "lobby.difficultyA11yLabel": "Difficoltà di {{name}}: {{difficulty}}",
   "bot.difficultyEasy": "Facile",
   "bot.difficultyNormal": "Normale",

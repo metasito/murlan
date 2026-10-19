@@ -321,7 +321,7 @@ export interface ResolveRoundEndInput {
   vacatedSeats?: Map<number, { userId: string; username: string }>;
 }
 
-export type ScoreboardRow = ScoreLine;
+type ScoreboardRow = ScoreLine;
 
 export interface ResolveRoundEndResult {
   roundByKey: Record<string, number>;

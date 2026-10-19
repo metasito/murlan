@@ -20,9 +20,9 @@ import { mailHealth, type MailHealth } from "./mail.ts";
 /** How far back the time series look. One screen, not an analytics product. */
 export const WINDOW_DAYS = 30;
 /** The longest list any panel will render. */
-export const ROW_LIMIT = 30;
+const ROW_LIMIT = 30;
 
-export interface DayCount {
+interface DayCount {
   day: string;
   n: number;
 }

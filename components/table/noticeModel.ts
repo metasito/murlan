@@ -5,7 +5,7 @@ import { CHIP_H } from "../seatLayout.ts";
 
 export type NoticeShape = "pill" | "chip" | "float" | "panel";
 export type NoticeTone = "neutral" | "lit" | "urgent" | "ok" | "bad" | "solid" | "gold";
-export type ToneOf<S extends NoticeShape> = keyof (typeof NoticePalette)[S] & NoticeTone;
+type ToneOf<S extends NoticeShape> = keyof (typeof NoticePalette)[S] & NoticeTone;
 
 const FULL = "full";
 const CHIP = { height: FULL, padX: 12, gapX: 6, radius: FULL, font: 10, weight: 600, tracking: 1.55 } as const;

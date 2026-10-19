@@ -25,7 +25,7 @@ const SEAT_LIST_GAP_COMPACT = 4;
  */
 const HOLD_LAPSE_MARGIN_MS = 1;
 
-export interface SeatHoldView {
+interface SeatHoldView {
   seatIndex: number;
   username: string;
   /** As the server measured it when it sent the room, not a wall-clock time. */

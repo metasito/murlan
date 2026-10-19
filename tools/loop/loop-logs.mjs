@@ -38,7 +38,7 @@ export const ciLogPath = ARTEFACTS.ciTail.path;
 export const ciRedNotePath = ARTEFACTS.ciRedNote.path;
 export const parkNotePath = ARTEFACTS.parkNote.path;
 export const conflictNotePath = ARTEFACTS.conflictNote.path;
-export const reportPath = ARTEFACTS.report.path;
+const reportPath = ARTEFACTS.report.path;
 export const leftoverPath = ARTEFACTS.leftover.path;
 export const ledgerPath = ARTEFACTS.ledger.path;
 export const supervisorLogPath = ARTEFACTS.supervisor.path;
@@ -204,7 +204,7 @@ export function pendingReparks(rows) {
 }
 
 /** A spawn, written before the session can die with its supervisor and leave no row of its own. */
-export const startRow = ({ number, phase = null, runId = null, loopSha = null, at = new Date() }) => ({
+const startRow = ({ number, phase = null, runId = null, loopSha = null, at = new Date() }) => ({
   schema: SCHEMA,
   n: number,
   outcome: "started",
@@ -245,7 +245,7 @@ export const lastWrite = (row) => (fsNode.existsSync(streamLog(row.n)) ? fsNode.
 /** A ticket is a row that ended one; a fix round, a handoff or a refusal is a session, not a ticket. */
 const ENDS_TICKET = new Set(["landed", "closed", "parked"]);
 
-export function totalsOf(rows) {
+function totalsOf(rows) {
   const sum = (key) => rows.reduce((n, r) => n + (r[key] ?? 0), 0);
   const ended = rows.filter((r) => ENDS_TICKET.has(r.outcome));
   const parked = ended.filter((r) => r.outcome === "parked").length;

@@ -1,10 +1,10 @@
-export interface ParamEvent {
+interface ParamEvent {
   kind: "set" | "ramp" | "target" | "cancel" | "hold";
   value: number;
   time: number;
 }
 
-export interface MockParam {
+interface MockParam {
   value: number;
   events: ParamEvent[];
   setValueAtTime(v: number, t: number): MockParam;
@@ -14,7 +14,7 @@ export interface MockParam {
   cancelAndHoldAtTime(t: number): MockParam;
 }
 
-export interface MockBuffer {
+interface MockBuffer {
   path: string;
   duration: number;
   sampleRate: number;
@@ -39,7 +39,7 @@ export interface MockNode {
   stop(when?: number): void;
 }
 
-export interface AudioApiState {
+interface AudioApiState {
   log: string[];
   session: unknown[];
   contexts: MockContext[];
@@ -90,7 +90,7 @@ function node(kind: MockNode["kind"], ctx: MockContext | null): MockNode {
   return n;
 }
 
-export class MockContext {
+class MockContext {
   state: "running" | "suspended" | "closed" = "suspended";
   readonly sampleRate: number;
   readonly destination = node("destination", null);

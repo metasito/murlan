@@ -44,7 +44,7 @@ async function centre(target: Locator): Promise<{ x: number; y: number }> {
  * Takes the duration rather than defaulting to one: at every call site the
  * length of the press is the thing being asserted.
  */
-export async function pressFor(page: Page, target: Locator, ms: number): Promise<void> {
+async function pressFor(page: Page, target: Locator, ms: number): Promise<void> {
   const { x, y } = await centre(target);
   await page.mouse.move(x, y);
   await page.mouse.down();
@@ -66,7 +66,7 @@ export const holdPast = (page: Page, target: Locator): Promise<void> =>
  * first and press the coordinates they read, because the assertion is about
  * geometry rather than about which node answered.
  */
-export async function pressPointFor(page: Page, x: number, y: number, ms: number): Promise<void> {
+async function pressPointFor(page: Page, x: number, y: number, ms: number): Promise<void> {
   await page.mouse.move(x, y);
   await page.mouse.down();
   await page.waitForTimeout(ms); // fixed wait on purpose: the press's length is what the app reads

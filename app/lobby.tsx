@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TextInput,
 } from "react-native";
 import { useIsLandscape } from "@/lib/device/orientation";
 import { router, useLocalSearchParams } from "expo-router";
@@ -24,21 +23,18 @@ import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
 import { ChoiceChips } from "@/components/ChoiceChips";
 import { useTranslation } from "@/lib/i18n";
-import { a11yHidden, useA11yHint } from "@/lib/a11y";
+import { a11yHidden } from "@/lib/a11y";
 
 type LobbyMode = "bot" | "local";
 
 interface PlayerRowProps {
-  index: number;
   config: PlayerSetupConfig;
   onChange: (config: PlayerSetupConfig) => void;
   isHuman?: boolean;
-  lobbyMode: LobbyMode;
 }
 
-function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowProps) {
+function PlayerRow({ config, onChange, isHuman }: PlayerRowProps) {
   const { t } = useTranslation();
-  const botNameHint = useA11yHint(t("lobby.botNameA11yHint"));
   const isBot = config.type === "bot";
 
   const teamLabel = config.team ? t("lobby.team", { team: config.team }) : null;
@@ -64,22 +60,7 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
         </View>
 
         <View style={styles.playerInfo}>
-          {lobbyMode === "local" && !isHuman ? (
-            <>
-              <TextInput
-                value={config.name}
-                onChangeText={(newName) => onChange({ ...config, name: newName })}
-                style={styles.nameInput}
-                placeholderTextColor={Colors.textMuted}
-                maxLength={12}
-                accessibilityLabel={t("lobby.botNameA11yLabel")}
-                {...botNameHint.props}
-              />
-              {botNameHint.node}
-            </>
-          ) : (
-            <Text style={styles.playerName}>{config.name}</Text>
-          )}
+          <Text style={styles.playerName}>{config.name}</Text>
           {teamLabel && (
             <Text
               style={[
@@ -268,7 +249,7 @@ export default function LobbyScreen() {
       <Text style={styles.sectionLabel}>{t("lobby.playersLabel")}</Text>
       <View style={styles.playerList}>
         {players.map((p, i) => (
-          <PlayerRow key={i} index={i} config={p} isHuman={p.type === "human"} onChange={(c) => handlePlayerChange(i, c)} lobbyMode={mode ?? "bot"} />
+          <PlayerRow key={i} config={p} isHuman={p.type === "human"} onChange={(c) => handlePlayerChange(i, c)} />
         ))}
       </View>
     </View>
@@ -373,15 +354,6 @@ const styles = StyleSheet.create({
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: FontSize.md,
     color: Colors.text,
-  },
-  nameInput: {
-    fontFamily: "Rajdhani_600SemiBold",
-    fontSize: FontSize.md,
-    color: Colors.text,
-    padding: 0,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    paddingBottom: Spacing.xxs,
   },
   teamBadge: {
     fontFamily: "Inter_500Medium",

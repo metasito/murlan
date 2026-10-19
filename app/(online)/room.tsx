@@ -190,12 +190,10 @@ const formatStyles = StyleSheet.create({
 function InviteFriendsPanel({
   roomCode,
   playerUserIds,
-  myUserId,
   isLandscape,
 }: {
   roomCode: string;
   playerUserIds: string[];
-  myUserId: string;
   isLandscape: boolean;
 }) {
   const { t } = useTranslation();
@@ -619,7 +617,6 @@ export default function RoomScreen() {
               <InviteFriendsPanel
                 roomCode={room.code}
                 playerUserIds={playerUserIds}
-                myUserId={user!.id}
                 isLandscape={isLandscape}
               />
             )}
@@ -663,7 +660,6 @@ export default function RoomScreen() {
           <InviteFriendsPanel
             roomCode={room.code}
             playerUserIds={playerUserIds}
-            myUserId={user!.id}
             isLandscape={isLandscape}
           />
         )}

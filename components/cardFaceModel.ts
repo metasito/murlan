@@ -184,16 +184,16 @@ export function indexBox(rank: string, w: number, h: number): Box {
 // the index entirely: a pip drawn over the rank character is the defect this
 // geometry exists to prevent.
 
-export const PIP_COL = { left: 0.33, centre: 0.5, right: 0.67 } as const;
-export const PIP_TOP = 0.16;
-export const PIP_BOTTOM = 0.84;
-export const PIP_SIZE = 0.145;    // of card height
-export const ACE_PIP_SIZE = 0.30;
+const PIP_COL = { left: 0.33, centre: 0.5, right: 0.67 } as const;
+const PIP_TOP = 0.16;
+const PIP_BOTTOM = 0.84;
+const PIP_SIZE = 0.145;    // of card height
+const ACE_PIP_SIZE = 0.30;
 /** Ranks with more than six pips draw them slightly smaller to stay uncrowded. */
-export const CROWDED_PIP_SCALE = 0.70;
+const CROWDED_PIP_SCALE = 0.70;
 const CROWDED_ABOVE = 6;
 
-export type PipColumn = keyof typeof PIP_COL;
+type PipColumn = keyof typeof PIP_COL;
 export interface PipSpot {
   col: PipColumn;
   /** 0 = top row of the pip field, 1 = bottom row. */

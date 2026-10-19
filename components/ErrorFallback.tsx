@@ -18,7 +18,7 @@ import { useTranslation } from "@/lib/i18n";
 import { a11yHidden } from "@/lib/a11y";
 import { AppModal } from "./AppModal";
 
-export type ErrorFallbackProps = {
+type ErrorFallbackProps = {
   error: Error;
   resetError: () => void;
 };
