@@ -155,8 +155,8 @@ describe("no git or gh outside cli.mjs", () => {
 /**
  * A gh argv — an array opening on one of gh's own commands, on one line or across several — is built
  * in these files and no other loop module: the tracker for issues, pull requests and runs, and
- * ciVerdict.ts for the two reads REST has no form of: the pull request's check rollup and a run's
- * failed-step log.
+ * ciVerdict.ts for the one read REST has no form of: a run's failed-step log, whose argv a CI-RED
+ * also prints for the fix session to run.
  */
 describe("no gh argv outside the tracker and ciVerdict", () => {
   const ALLOWED = new Set(["cli.mjs", "tracker.mjs", "ciVerdict.ts"]);

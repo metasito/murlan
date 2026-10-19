@@ -37,6 +37,49 @@ export const restJobs = (jobs: Job[]) => [
 
 export const restRuns = (runs: Run[]) => ({ total_count: runs.length, workflow_runs: runs.map(restRun) });
 
+type View = {
+  headRefOid?: string;
+  state?: string;
+  mergeable?: string;
+  mergeStateStatus?: string;
+  autoMergeRequest?: unknown;
+  statusCheckRollup?: { name?: string; context?: string; status?: string; conclusion?: string; state?: string; detailsUrl?: string; startedAt?: string; completedAt?: string }[];
+};
+
+/** A recorded `gh pr view` as the three REST reads `landingView` makes of it. */
+export const restLanding = (view: View) => {
+  const lower = (s?: string | null) => (s ? s.toLowerCase() : null);
+  const entries = view.statusCheckRollup ?? [];
+  return {
+    pull: {
+      head: { sha: view.headRefOid },
+      state: view.state === "OPEN" ? "open" : "closed",
+      merged_at: view.state === "MERGED" ? "2026-10-12T00:00:00Z" : null,
+      mergeable: view.mergeable === "MERGEABLE" ? true : view.mergeable === "CONFLICTING" ? false : null,
+      mergeable_state: lower(view.mergeStateStatus) ?? "unknown",
+      auto_merge: view.autoMergeRequest ?? null,
+    },
+    checks: [
+      {
+        check_runs: entries
+          .filter((e) => e.name)
+          .map((e) => ({ name: e.name, status: lower(e.status), conclusion: lower(e.conclusion), details_url: e.detailsUrl, started_at: e.startedAt, completed_at: e.completedAt })),
+      },
+    ],
+    status: { statuses: entries.filter((e) => e.context).map((e) => ({ context: e.context, state: lower(e.state) })) },
+  };
+};
+
+/** The answer to one of `landingView`'s reads, or null when `args` is none of them. */
+export const landingAnswer = (args: string[], view: View): string | null => {
+  const kind = ciCall(args)?.kind;
+  const rest = restLanding(view);
+  if (kind === "pull") return JSON.stringify(rest.pull);
+  if (kind === "check-runs") return JSON.stringify(rest.checks);
+  if (kind === "status") return JSON.stringify(rest.status);
+  return null;
+};
+
 /** What a tracker call asks for, from its REST path; null for anything else. */
 export function ciCall(args: string[]): { kind: string; id?: number; attempt?: number; query: URLSearchParams } | null {
   if (args[0] !== "api") return null;
@@ -49,6 +92,9 @@ export function ciCall(args: string[]): { kind: string; id?: number; attempt?: n
   if ((m = /\/actions\/runs\/(\d+)(?:\/attempts\/(\d+))?$/.exec(bare))) return { kind: "run", id: Number(m[1]), attempt: m[2] ? Number(m[2]) : undefined, query };
   if (/\/actions\/workflows\/ci\.yml\/runs$/.test(bare)) return { kind: "runs", query };
   if ((m = /\/check-runs\/(\d+)\/annotations$/.exec(bare))) return { kind: "annotations", id: Number(m[1]), query };
+  if ((m = /\/pulls\/(\d+)$/.exec(bare)) && method === "GET") return { kind: "pull", id: Number(m[1]), query };
+  if (/\/commits\/[^/]+\/check-runs$/.test(bare)) return { kind: "check-runs", query };
+  if (/\/commits\/[^/]+\/status$/.test(bare)) return { kind: "status", query };
   if ((m = /\/commits\/([^/]+)\/pulls$/.exec(bare))) return { kind: "commit-pulls", query };
   if ((m = /\/commits\/([^/]+)$/.exec(bare))) return { kind: "commit", query };
   if ((m = /\/issues\/(\d+)\/comments$/.exec(bare))) return { kind: method === "POST" ? "comment" : "comments", id: Number(m[1]), query };

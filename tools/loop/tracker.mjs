@@ -192,6 +192,28 @@ export function ghTracker(gh = ghCli, repo = REPO) {
           databaseId: j.id,
           steps: (j.steps ?? []).map((s) => ({ name: s.name, conclusion: s.conclusion })),
         })),
+    /**
+     * A pull request's head, merge state, arming and checks, in the shape `gh pr view --json
+     * headRefOid,state,mergeable,mergeStateStatus,autoMergeRequest,statusCheckRollup` gave them:
+     * REST's `mergeable_state` is GraphQL's `mergeStateStatus` lower-cased, and the rollup is the
+     * head's check runs (every page) beside its commit statuses.
+     */
+    landingView: (n, opts) => {
+      const p = get(`${pulls}/${n}`, opts);
+      const sha = p.head.sha;
+      const runs = JSON.parse(gh(["api", "--paginate", "--slurp", `repos/${repo}/commits/${sha}/check-runs?per_page=100`], opts))
+        .flatMap((page) => page.check_runs ?? [])
+        .map((c) => ({ name: c.name, status: upper(c.status), conclusion: upper(c.conclusion), detailsUrl: c.details_url, startedAt: c.started_at, completedAt: c.completed_at }));
+      const statuses = (get(`repos/${repo}/commits/${sha}/status`, opts).statuses ?? []).map((s) => ({ context: s.context, state: upper(s.state), targetUrl: s.target_url }));
+      return {
+        headRefOid: sha,
+        state: p.merged_at ? "MERGED" : String(p.state).toUpperCase(),
+        mergeable: p.mergeable === true ? "MERGEABLE" : p.mergeable === false ? "CONFLICTING" : "UNKNOWN",
+        mergeStateStatus: upper(p.mergeable_state) ?? "UNKNOWN",
+        autoMergeRequest: p.auto_merge ?? null,
+        statusCheckRollup: [...runs, ...statuses],
+      };
+    },
     /** @returns {string[]} */
     annotations: (checkRunId, opts) => get(`repos/${repo}/check-runs/${checkRunId}/annotations`, opts).map((a) => a.message),
     treeOf: (sha, opts) => get(`repos/${repo}/commits/${sha}`, opts).commit.tree.sha,
@@ -377,6 +399,7 @@ export function fakeTracker(issues = {}, { fail = [], prs = [] } = {}) {
     annotations: noCi("annotations"),
     treeOf: noCi("treeOf"),
     prHeadOf: noCi("prHeadOf"),
+    landingView: noCi("landingView"),
     /** The writes with no issue to hold them, in order. */
     writes: () => [...writes],
     held: (n) => {

@@ -14,7 +14,7 @@ import { appendSupervisor, supervisorLogPath } from "../loop-logs.mjs";
 import { readLandingState } from "../ciVerdict.ts";
 import { armArgs, disarmArgs } from "../tracker.mjs";
 import { readLine } from "../loop-stream.mjs";
-import { ciCall, restJobs, restRun, restRuns } from "./helpers/restCi.ts";
+import { ciCall, landingAnswer, restJobs, restRun, restRuns } from "./helpers/restCi.ts";
 
 const REPO = "metasito/murlan";
 const PENDING = { ticket: 1028, pr: 1053, branch: "agent/1028-the-turn-chip" };
@@ -63,6 +63,7 @@ function rollupFake({
   const asked: string[][] = [];
   const pr = { head: SHA, armed, merged: false, attempt };
   let read = 0;
+  let current: Fixture["view"] = views[0].view;
   const gh = (args: string[], file = "gh") => {
     assert.equal(file, "gh", `a ${file} call reached the gh fake: ${args.join(" ")}`);
     asked.push(args);
@@ -89,15 +90,18 @@ function rollupFake({
       open.push(titleOf(args));
       return JSON.stringify({ html_url: `https://github.com/${REPO}/issues/${1999 + open.length}` });
     }
-    if (cmd === "pr" && sub === "view") {
+    // One landing read is the pull request, then its head's checks and statuses: the script steps on the first.
+    if (ciCall(args)?.kind === "pull") {
       const f = views[Math.min(read++, views.length - 1)];
-      return JSON.stringify({
+      current = {
         ...f.view,
         headRefOid: pr.head,
         autoMergeRequest: pr.armed ? { mergeMethod: "MERGE" } : null,
         ...(pr.merged ? { state: "MERGED" } : {}),
-      });
+      };
     }
+    const landing = landingAnswer(args, current as never);
+    if (landing !== null) return landing;
     if (cmd === "pr" && sub === "merge") {
       if (args.includes("--disable-auto")) {
         if (refuse.disarm) throw new Error(refuse.disarm);
@@ -637,7 +641,7 @@ describe("a red is rerun once per head", () => {
       const [create, ...more] = creates(asked);
       assert.equal(more.length, 0);
       assert.equal(titleOf(create), `CI flake: ${ID}`);
-      const mergedAt = asked.findIndex((a, i) => i > indexOf(asked, (b) => b.includes("--auto")) && a[1] === "view" && a[0] === "pr");
+      const mergedAt = asked.findIndex((a, i) => i > indexOf(asked, (b) => b.includes("--auto")) && ciCall(a)?.kind === "pull");
       assert.ok(indexOf(asked, (a) => kindOf(a) === "create") > mergedAt, "filed once the merge is read back, never before it");
     });
 

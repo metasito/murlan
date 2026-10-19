@@ -1,6 +1,6 @@
 import { gh } from "./cli.mjs";
 import { ghTracker } from "./tracker.mjs";
-import { decideVerdict, failedLogArgs, failingTestIds, markTimedOut, stripLogPrefix, type JobRow, type RunRow } from "./ciVerdict.ts";
+import { decideVerdict, failedLogArgs, failingTestIds, jobRowsOf, markTimedOut, stripLogPrefix, type JobRow, type RunRow, type Tracker } from "./ciVerdict.ts";
 
 /**
  * Whether `main` itself is green, and filing a ticket when it is not.
@@ -109,21 +109,9 @@ export type Gh = (args: string[]) => string;
 
 const ghCli: Gh = (args) => gh(args);
 
-const trackerOf = (gh: Gh, repo: string) => ghTracker((args: string[]) => gh(args), repo);
-type Tracker = ReturnType<typeof trackerOf>;
-
-
-type RawJobs = { jobs?: { name: string; conclusion: string | null; steps?: { name?: string; conclusion?: string | null }[]; databaseId?: number }[] };
-
-function jobRows(gh: Gh, repo: string, raw: RawJobs): JobRow[] {
-  const jobs: JobRow[] = (raw.jobs ?? []).map((j) => ({
-    name: j.name,
-    conclusion: j.conclusion,
-    steps: j.steps?.length ?? 0,
-    id: j.databaseId,
-    failedSteps: (j.steps ?? []).filter((s) => s?.conclusion === "failure").map((s) => String(s.name)),
-  }));
-  markTimedOut(jobs, gh, repo);
+function jobRows(t: Tracker, runId: number, attempt?: number): JobRow[] {
+  const jobs = jobRowsOf(t.runJobs(runId, { attempt }));
+  markTimedOut(jobs, t);
   return jobs;
 }
 
@@ -131,7 +119,7 @@ function jobRows(gh: Gh, repo: string, raw: RawJobs): JobRow[] {
 function readMain(gh: Gh, repo: string, t: Tracker): { run?: MainRun; jobs: JobRow[] } {
   const [run]: MainRun[] = t.ciRuns({ branch: "main", limit: 1 });
   if (!run || run.status !== "completed" || run.conclusion === "success") return { run, jobs: [] };
-  return { run, jobs: jobRows(gh, repo, { jobs: t.runJobs(run.databaseId) }) };
+  return { run, jobs: jobRows(t, run.databaseId) };
 }
 
 /**
@@ -142,7 +130,7 @@ function readMain(gh: Gh, repo: string, t: Tracker): { run?: MainRun; jobs: JobR
  * briefly unreachable turns a check into an outage.
  */
 export function checkMain({ repo, gh = ghCli }: { repo: string; gh?: Gh }): MainHealth {
-  const t = trackerOf(gh, repo);
+  const t = ghTracker(gh, repo);
   try {
     const { run, jobs } = readMain(gh, repo, t);
     // `state: all`: a closed issue still means this run was reported. Listed, never searched: search trails its own writes.
@@ -198,13 +186,13 @@ function firstAttemptFlakes(gh: Gh, repo: string, t: Tracker, green: { databaseI
   if ((green.attempt ?? 1) < 2) return null;
   const first = t.run(green.databaseId, { attempt: 1 });
   const run: RunRow = { databaseId: green.databaseId, status: first.status ?? "", conclusion: first.conclusion ?? null };
-  const ids = failuresOf(gh, repo, run, jobRows(gh, repo, { jobs: t.runJobs(green.databaseId, { attempt: 1 }) }), 1);
+  const ids = failuresOf(gh, repo, run, jobRows(t, green.databaseId, 1), 1);
   return ids ? { runId: green.databaseId, url: green.url && `${green.url}/attempts/1`, ids, flaky: true } : null;
 }
 
 /** Main's latest completed red run and its failing test ids, or a green main's rerun-hidden flakes; null when main has none to give, never a throw. */
 export function mainFailures(gh: Gh, repo: string): MainFailures | null {
-  const t = trackerOf(gh, repo);
+  const t = ghTracker(gh, repo);
   try {
     const { run, jobs } = readMain(gh, repo, t);
     if (!run || run.status !== "completed") return null;
