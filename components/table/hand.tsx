@@ -244,7 +244,7 @@ interface HandRects {
 function CardItemBase({
   card,
   store,
-  place: at,
+  place,
   size,
   entry,
   onActivate,
@@ -263,7 +263,7 @@ function CardItemBase({
   hidden,
   rects,
 }: CardItemProps) {
-  const { left, bottom, rot: arcRot, shift: shiftX, hitW, restX, restY } = at;
+  const { left, bottom, rot: arcRot, shift: shiftX, hitW, restX, restY } = place;
   const { w: cardW, h: cardH } = size;
   const { dx: dealFromX, dy: dealRise } = entry;
   const reduceMotion = usePrefersReducedMotion();
@@ -418,19 +418,19 @@ function CardItemBase({
     return { ...p, tx: p.tx + from.dx * k, ty: p.ty + from.dy * k, scale: p.scale * (1 + (from.s - 1) * k) };
   };
   const aStyle = useAnimatedStyle(() => {
-    const at = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, !!hidden?.value.includes(cardId), dealClock ? dealClock.value : 0);
-    const p = resized(at, resizeFrom.value, resizing.value);
+    const posed = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, !!hidden?.value.includes(cardId), dealClock ? dealClock.value : 0);
+    const p = resized(posed, resizeFrom.value, resizing.value);
     return {
       opacity: p.opacity,
       transform: [{ translateX: p.tx }, { translateY: p.ty }, { rotate: `${p.rot}deg` }, { scale: p.scale }],
     };
   });
-  const place = rects?.place;
+  const registryPlace = rects?.place;
   const rectOf = (p: ReturnType<typeof pose>, liftNow: number, glowNow: number, panNow: number, handLift: number, motionNow: TableMotion) => {
     "worklet";
-    if (!place) return null;
+    if (!registryPlace) return null;
     const card = { left, bottom, w: cardW, h: cardH, tx: p.tx, ty: p.ty, rot: p.rot, scale: p.scale, back: faceDown, lift: liftNow / selectLift, glow: glowNow };
-    return designRect(handCard(place, card, panShown(panNow, place.panLimit), handLift), place.felt, motionNow);
+    return designRect(handCard(registryPlace, card, panShown(panNow, registryPlace.panLimit), handLift), registryPlace.felt, motionNow);
   };
   const ownRects = useCardRect(
     rects?.table ?? null,
@@ -438,19 +438,19 @@ function CardItemBase({
     true,
     () => {
       "worklet";
-      const at = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, !!hidden?.value.includes(cardId), dealClock ? dealClock.value : 0);
-      const p = resized(at, resizeFrom.value, resizing.value);
-      if (!place || p.opacity <= 0) return null;
-      return rectOf(p, liftY.value, glow.value, place.pan.value, place.lift.value, place.motion.value);
+      const posed = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, !!hidden?.value.includes(cardId), dealClock ? dealClock.value : 0);
+      const p = resized(posed, resizeFrom.value, resizing.value);
+      if (!registryPlace || p.opacity <= 0) return null;
+      return rectOf(p, liftY.value, glow.value, registryPlace.pan.value, registryPlace.lift.value, registryPlace.motion.value);
     }
   );
   useAnimatedReaction(
     () => (dealClock ? dealClock.value : -1),
     (now, prev) => {
       const landAt = dealAt + DEAL_FLIGHT_MS;
-      if (!onDealt || !place || prev === null || prev >= landAt || now < landAt) return;
+      if (!onDealt || !registryPlace || prev === null || prev >= landAt || now < landAt) return;
       const p = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, false, now);
-      const r = rectOf(p, liftY.value, glow.value, place.pan.value, place.lift.value, place.motion.value);
+      const r = rectOf(p, liftY.value, glow.value, registryPlace.pan.value, registryPlace.lift.value, registryPlace.motion.value);
       if (r) scheduleOnRN(onDealt, r.x, r.y);
     }
   );
