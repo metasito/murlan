@@ -1,14 +1,16 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { canBeatPileOf, readStagedPlay } from "../../components/table/stagedPlay.ts";
-import type { Card, Combination, Rank } from "../../lib/game/gameEngine.ts";
-
-const card = (rank: Rank, suit: Card["suit"]): Card => ({
-  id: `${rank}_${suit}`,
-  rank,
-  suit,
-  isJoker: false,
-});
+import { TUTORIAL_REFUSAL_KEYS } from "../../components/tutorialRefusal.ts";
+import { card, seat as makePlayer, state as makeState } from "../support/game.ts";
+import {
+  buildCombination,
+  checkPlay,
+  type Card,
+  type Combination,
+  type Rank,
+  type Suit,
+} from "../../lib/game/gameEngine.ts";
 
 const THREE_SPADES = card("3", "spades");
 const HAND = [THREE_SPADES, card("3", "hearts"), card("5", "clubs"), card("9", "diamonds")];
@@ -38,6 +40,13 @@ describe("what the selected cards amount to", () => {
     assert.deepEqual(s.cards, []);
     assert.equal(s.playable, false);
     assert.equal(s.refusal, "play");
+  });
+
+  test("a selection of cards no longer in the hand is refused with the engine's code, not waved through", () => {
+    const s = staged({ selectedIds: ["Q_hearts"] });
+    assert.deepEqual(s.cards, []);
+    assert.equal(s.playable, false);
+    assert.equal(s.refusal, "notACombination");
   });
 
   test("cards that are not a combination are refused as such", () => {
@@ -154,5 +163,82 @@ describe("whether the hand can answer the trick at all", () => {
     const opening = { startCard: card("4", "clubs"), firstPlayMade: false };
     assert.equal(beatable(opening), false);
     assert.equal(beatable({ ...opening, startCard: THREE_SPADES }), true);
+  });
+});
+
+
+const run = (suit: Suit, ranks: Rank[]) => ranks.map((rank) => card(rank, suit));
+const bombOf = (rank: Rank) =>
+  (["spades", "hearts", "clubs", "diamonds"] as const).map((s) => card(rank, s));
+
+const START = card("3", "spades");
+
+type Row = {
+  name: string;
+  selection: Card[];
+  pile: Card[] | null;
+  opening?: boolean;
+  refusal: string;
+  tutorialKey?: string;
+};
+
+const rows: Row[] = [
+  { name: "no combination", selection: [card("5", "hearts"), card("K", "hearts")], pile: null, refusal: "notACombination", tutorialKey: "tutorial.errNotAValidCombo" },
+  { name: "an opening without the start card", selection: [card("5", "hearts")], pile: null, opening: true, refusal: "needsStartCard" },
+  { name: "an opening without the start card, on a pile it would not beat", selection: [card("5", "hearts")], pile: [card("A", "clubs")], opening: true, refusal: "needsStartCard" },
+  { name: "a single on a royal straight", selection: [card("K", "hearts")], pile: run("diamonds", ["9", "10", "J", "Q", "K"]), refusal: "royalUnbeatable", tutorialKey: "tutorial.errRoyalBeatsAll" },
+  { name: "a bomb on a royal straight", selection: bombOf("6"), pile: run("diamonds", ["9", "10", "J", "Q", "K"]), refusal: "royalUnbeatable", tutorialKey: "tutorial.errRoyalBeatsAll" },
+  { name: "a single on a bomb", selection: [card("K", "hearts")], pile: bombOf("4"), refusal: "bombOnly", tutorialKey: "tutorial.errOnlyHigherBomb" },
+  { name: "a pair on a single", selection: [card("5", "hearts"), card("5", "clubs")], pile: [card("4", "diamonds")], refusal: "wrongType", tutorialKey: "tutorial.errSameType" },
+  { name: "a five-card straight on a six-card one", selection: [card("4", "hearts"), card("5", "clubs"), card("6", "hearts"), card("7", "hearts"), card("8", "clubs")], pile: [card("4", "diamonds"), card("5", "diamonds"), card("6", "clubs"), card("7", "diamonds"), card("8", "diamonds"), card("9", "clubs")], refusal: "wrongLength", tutorialKey: "tutorial.errSameLength" },
+  { name: "a royal straight on a royal straight of another length", selection: run("spades", ["8", "9", "10", "J", "Q", "K"]), pile: run("hearts", ["3", "4", "5", "6", "7"]), refusal: "wrongLength", tutorialKey: "tutorial.errSameLength" },
+  { name: "a royal straight on a higher one of its length", selection: run("spades", ["4", "5", "6", "7", "8"]), pile: run("hearts", ["9", "10", "J", "Q", "K"]), refusal: "tooLow", tutorialKey: "tutorial.errTooWeak" },
+  { name: "a single too low", selection: [card("K", "hearts")], pile: [card("A", "diamonds")], refusal: "tooLow", tutorialKey: "tutorial.errTooWeak" },
+  { name: "a bomb too low", selection: bombOf("6"), pile: bombOf("J"), refusal: "tooLow", tutorialKey: "tutorial.errTooWeak" },
+];
+
+
+describe("one reason for a refused play", () => {
+  for (const row of rows) {
+    test(row.name, () => {
+      const hand = [START, ...row.selection];
+      const lastPlayedCombination = row.pile ? buildCombination(row.pile) : null;
+      const table = {
+        lastPlayedCombination,
+        startCard: START,
+        firstPlayMade: !row.opening,
+      };
+      const ids = row.selection.map((card) => card.id);
+
+      const engine = checkPlay(
+        makeState({ players: [makePlayer(0, hand), makePlayer(1, [card("2", "clubs")])],
+          ...table,
+          lastPlayedBy: 1,
+        }),
+        0,
+        ids
+      );
+      assert.deepEqual(engine, { ok: false, code: row.refusal }, "the engine");
+
+      const read = readStagedPlay({
+        ...table,
+        hand,
+        selectedIds: ids,
+        isNewTrick: lastPlayedCombination === null,
+        isMyTurn: true,
+        isFinished: false,
+      });
+      assert.equal(read.playable, false);
+      assert.equal(read.refusal, row.refusal, "GIOCA's label");
+      assert.equal(TUTORIAL_REFUSAL_KEYS[read.refusal], row.tutorialKey, "the tutorial's sentence");
+    });
+  }
+
+  test("empty selection, not my turn and finished all read play", () => {
+    const hand = [START, card("5", "hearts")];
+    const base = { hand, lastPlayedCombination: null, startCard: START, firstPlayMade: true, isNewTrick: true, isMyTurn: true, isFinished: false };
+    assert.equal(readStagedPlay({ ...base, selectedIds: [] }).refusal, "play");
+    assert.equal(readStagedPlay({ ...base, selectedIds: ["5_hearts"], isMyTurn: false }).refusal, "play");
+    assert.equal(readStagedPlay({ ...base, selectedIds: ["5_hearts"], isFinished: true }).refusal, "play");
   });
 });

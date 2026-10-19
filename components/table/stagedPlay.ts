@@ -1,22 +1,19 @@
 // What the cards a player has picked up amount to, and whether GIOCA will take
 // them.
 //
-// Its own file rather than `turnTimerUi.ts`, which takes nothing from
-// `lib/game/gameEngine` but a type — see `playButtonLabel`'s docstring, which states
-// that only the caller can run the engine. This file is that caller, and it runs
-// `checkSelection` for real.
-
 // Relative and extensioned, not `@/`: these are runtime imports — docs/agents/checks.md,
 // "Node's TypeScript loader".
 import {
-  buildCombination,
   checkSelection,
   getAllValidPlays,
   type Card,
   type Combination,
   type GameState,
+  type SelectionRefusal,
 } from "../../lib/game/gameEngine.ts";
-import { playButtonLabel, type PlayButtonLabel } from "../turnTimerUi.ts";
+
+/** Why GIOCA is dim: the engine's code, or "play" when the selection is not what is wrong. */
+export type PlayButtonLabel = "play" | SelectionRefusal;
 
 export interface StagedPlay {
   /** The selection as cards, in hand order. */
@@ -53,30 +50,16 @@ export function canBeatPileOf(input: TableFacts): boolean {
 
 export function readStagedPlay(input: TableFacts & { selectedIds: string[] }): StagedPlay {
   const cards = input.hand.filter((c) => input.selectedIds.includes(c.id));
-  const { toBeat, requiredCard } = whatMustBeMet(input);
+  const { toBeat } = whatMustBeMet(input);
   const check = checkSelection(cards, {
     lastPlayedCombination: toBeat,
     firstPlayMade: input.firstPlayMade,
     startCard: input.startCard,
   });
-  const combo = check.ok ? check.combo : buildCombination(cards);
-  const requiresStartCard = !!requiredCard;
-  const selectionHasStartCard =
-    !!input.startCard && cards.some((c) => c.id === input.startCard!.id);
-
-  const pile = input.lastPlayedCombination;
   const myMove = input.isMyTurn && !input.isFinished;
   return {
     cards,
     playable: check.ok && myMove,
-    refusal: playButtonLabel({
-      isMyTurn: input.isMyTurn,
-      isFinished: input.isFinished,
-      selectedCount: input.selectedIds.length,
-      selection: combo ? { type: combo.type, length: combo.cards.length } : null,
-      pile: pile ? { type: pile.type, length: pile.cards.length } : null,
-      requiresStartCard,
-      selectionHasStartCard,
-    }),
+    refusal: !myMove || input.selectedIds.length === 0 || check.ok ? "play" : check.code,
   };
 }

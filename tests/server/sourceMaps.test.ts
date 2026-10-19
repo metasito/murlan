@@ -5,12 +5,14 @@
 // platform this app never ships web maps for.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import fs, { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+import os from "node:os";
 import path from "node:path";
 import { SourceMapGenerator } from "source-map";
 import { symbolicate } from "../../server/http/sourceMaps.ts";
 
-const MAPS_ROOT = path.resolve(import.meta.dirname, "..", "..", "sourcemaps");
+const MAPS_ROOT = mkdtempSync(path.join(os.tmpdir(), "murlan-sourcemaps-"));
 const FIXTURE_DIR = path.join(MAPS_ROOT, "_expo", "static", "js", "web");
 const FIXTURE_MAP = path.join(FIXTURE_DIR, "entry-test123.js.map");
 
@@ -35,35 +37,61 @@ after(() => {
 
 test("a V8 frame resolves through its build's map", async () => {
   const resolved = await symbolicate(
-    "    at foo (https://murlan.example/_expo/static/js/web/entry-test123.js:1:41)"
+    "    at foo (https://murlan.example/_expo/static/js/web/entry-test123.js:1:41)",
+    MAPS_ROOT
   );
   assert.equal(resolved, "components/table/hand.tsx:5 (CardView)");
 });
 
 test("a Safari/Hermes-shaped frame resolves the same way", async () => {
   const resolved = await symbolicate(
-    "foo@https://murlan.example/_expo/static/js/web/entry-test123.js:1:41"
+    "foo@https://murlan.example/_expo/static/js/web/entry-test123.js:1:41",
+    MAPS_ROOT
   );
   assert.equal(resolved, "components/table/hand.tsx:5 (CardView)");
 });
 
 test("a frame for a build with no map on disk falls back to its raw text", async () => {
   const raw = "at foo (https://murlan.example/_expo/static/js/web/entry-unknown.js:1:41)";
-  assert.equal(await symbolicate(raw), raw);
+  assert.equal(await symbolicate(raw, MAPS_ROOT), raw);
 });
 
 test("text that isn't a stack frame falls back to itself, not a crash", async () => {
-  assert.equal(await symbolicate("totally not a stack trace"), "totally not a stack trace");
+  assert.equal(await symbolicate("totally not a stack trace", MAPS_ROOT), "totally not a stack trace");
 });
 
 test("no stack at all resolves to null", async () => {
-  assert.equal(await symbolicate(undefined), null);
-  assert.equal(await symbolicate(""), null);
+  assert.equal(await symbolicate(undefined, MAPS_ROOT), null);
+  assert.equal(await symbolicate("", MAPS_ROOT), null);
 });
 
 test("a path attempting to leave sourcemaps/ never resolves outside it", async () => {
   const raw = "at foo (https://murlan.example/../../../../etc/passwd:1:1)";
   // The URL parser collapses the traversal before it ever reaches disk, so
   // this is exactly a map that does not exist — same fallback as any other.
-  assert.equal(await symbolicate(raw), raw);
+  assert.equal(await symbolicate(raw, MAPS_ROOT), raw);
+});
+
+test("a root given relative or with a trailing separator resolves the same frame", async () => {
+  const raw = "    at foo (https://murlan.example/_expo/static/js/web/entry-test123.js:1:41)";
+  for (const root of [`.${path.sep}${path.relative(process.cwd(), MAPS_ROOT)}`, MAPS_ROOT + path.sep]) {
+    assert.equal(await symbolicate(raw, root), "components/table/hand.tsx:5 (CardView)", root);
+  }
+});
+
+test("with no root it looks in the production sourcemaps/ under the working directory", async (t) => {
+  const asked: string[] = [];
+  t.mock.method(fs, "existsSync", (p: string) => {
+    asked.push(p);
+    return false;
+  });
+  // `sourceMaps.ts` holds ESM bindings to node:fs, which see a patched builtin only once synced.
+  syncBuiltinESMExports();
+  try {
+    await symbolicate("at foo (https://murlan.example/_expo/static/js/web/entry-default-root.js:1:41)");
+  } finally {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  }
+  assert.deepEqual(asked, [path.join(process.cwd(), "sourcemaps", "_expo", "static", "js", "web", "entry-default-root.js.map")]);
 });

@@ -9,6 +9,7 @@ import { Text } from 'react-native';
 import { render, waitFor } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { stubFetch } from './helpers/stubFetch';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 
 jest.mock('@/lib/query-client', () => ({
@@ -56,7 +57,7 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   mockFetch.mockReset();
   flush.mockClear();
-  (globalThis as { fetch: unknown }).fetch = mockFetch;
+  stubFetch(mockFetch);
 });
 
 describe('the boot check', () => {

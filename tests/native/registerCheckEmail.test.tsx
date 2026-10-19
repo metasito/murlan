@@ -29,6 +29,7 @@ jest.mock('@react-native-community/netinfo', () => ({
 }));
 
 import AuthScreen from '@/app/auth';
+import { stubFetch } from './helpers/stubFetch';
 import { AuthProvider } from '@/context/AuthContext';
 import { en as locale } from '@/locales/en';
 
@@ -77,7 +78,7 @@ async function fillAndSubmitRegister() {
 beforeEach(() => {
   jest.clearAllMocks();
   mockApiRequest.mockResolvedValue({ ok: true, json: async () => ({}) });
-  (globalThis as { fetch: unknown }).fetch = mockFetch;
+  stubFetch(mockFetch);
 });
 
 describe('registering signs this device in', () => {

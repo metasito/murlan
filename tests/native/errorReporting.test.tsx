@@ -216,8 +216,9 @@ describe('a report the server never took', () => {
 
 describe('teardown', () => {
   it('stops reporting once removed', () => {
+    const registered = () => [...listeners.values()].reduce((n, fns) => n + fns.size, 0);
+    expect(registered()).toBeGreaterThan(0);
     teardown();
-    listeners.clear();
-    expect(listeners.size).toBe(0);
+    expect(registered()).toBe(0);
   });
 });

@@ -5,6 +5,7 @@
 //
 // Both halves are asserted here. A test that only proved "nothing is built on
 // mount" would pass just as green on a build that never plays audio at all.
+import { stubFetch } from './helpers/stubFetch';
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 
 type Handler = () => void;
@@ -60,15 +61,12 @@ beforeEach(() => {
   (globalThis as Record<string, unknown>).document = {
     addEventListener: (event: string, fn: Handler) => handlers.set(event, fn),
   };
-  (globalThis as Record<string, unknown>).fetch = jest.fn(async () => ({
-    arrayBuffer: async () => new ArrayBuffer(8),
-  })) as never;
+  stubFetch(jest.fn(async () => ({ arrayBuffer: async () => new ArrayBuffer(8) })));
 });
 
 afterEach(() => {
   delete (globalThis as Record<string, unknown>).window;
   delete (globalThis as Record<string, unknown>).document;
-  delete (globalThis as Record<string, unknown>).fetch;
   delete (globalThis as Record<string, unknown>).navigator;
 });
 

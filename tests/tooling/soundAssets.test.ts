@@ -36,7 +36,14 @@ interface Decoded {
   soundEndsAt: number;
 }
 
-async function readMp3(file: string): Promise<Decoded> {
+const decoded = new Map<string, Promise<Decoded>>();
+function readMp3(file: string): Promise<Decoded> {
+  let once = decoded.get(file);
+  if (!once) decoded.set(file, (once = decodeMp3(file)));
+  return once;
+}
+
+async function decodeMp3(file: string): Promise<Decoded> {
   const buf = readFileSync(path.join(soundsDir, file));
 
   const decoder = new MPEGDecoder();

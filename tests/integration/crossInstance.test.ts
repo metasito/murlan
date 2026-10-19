@@ -88,7 +88,11 @@ describe("broadcasts cross server instances", {
   after(async () => {
     for (const s of sockets) s.close();
     for (const i of instances) i.child.kill("SIGKILL");
-    await dropSchema(baseUrl, schema);
+    try {
+      await dropSchema(baseUrl, schema);
+    } finally {
+      process.env.DATABASE_URL = baseUrl;
+    }
   });
 
   test("a room broadcast reaches the player on the other instance", async () => {

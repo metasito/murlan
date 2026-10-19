@@ -23,9 +23,8 @@ describe("a card's hit box", () => {
 
     const box = view.getByTestId("card-box");
     expect(box.props.pointerEvents).toBe("none");
-    expect(box.props.style).toEqual(
-      expect.arrayContaining([expect.objectContaining({ width: expect.any(Number) })])
-    );
+    expect(StyleSheet.flatten(box.props.style).width).toBeGreaterThan(40);
+    expect(StyleSheet.flatten(view.getByRole("button").props.style).width).toBe(40);
 
     await view.unmount();
   });

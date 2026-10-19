@@ -38,8 +38,12 @@ test("a ticket with one signature character changed is refused", () => {
 
 test("a ticket signed under a different SESSION_SECRET is refused", () => {
   process.env.SESSION_SECRET = "some-other-secret";
-  const { ticket } = mintSocketTicket("user-1", "sid-1");
-  process.env.SESSION_SECRET = SECRET;
+  let ticket: string;
+  try {
+    ({ ticket } = mintSocketTicket("user-1", "sid-1"));
+  } finally {
+    process.env.SESSION_SECRET = SECRET;
+  }
   assert.equal(verifySocketTicket(ticket), null);
 });
 

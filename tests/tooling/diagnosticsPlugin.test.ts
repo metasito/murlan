@@ -6,11 +6,16 @@ const plugin = createRequire(import.meta.url)("../../modules/murlan-diagnostics/
 
 test("cleartext traffic and the microphone prompt are added to a diagnostics prebuild and never to any other", () => {
   const config = { name: "murlan", slug: "murlan" };
-  delete process.env.EXPO_PUBLIC_DIAGNOSTICS;
-  assert.equal(plugin(config), config);
-  process.env.EXPO_PUBLIC_DIAGNOSTICS = "1";
-  const flagged = plugin({ ...config });
-  assert.equal(typeof flagged.mods?.android?.manifest, "function");
-  assert.equal(typeof flagged.mods?.ios?.infoPlist, "function");
-  delete process.env.EXPO_PUBLIC_DIAGNOSTICS;
+  const prior = process.env.EXPO_PUBLIC_DIAGNOSTICS;
+  try {
+    delete process.env.EXPO_PUBLIC_DIAGNOSTICS;
+    assert.equal(plugin(config), config);
+    process.env.EXPO_PUBLIC_DIAGNOSTICS = "1";
+    const flagged = plugin({ ...config });
+    assert.equal(typeof flagged.mods?.android?.manifest, "function");
+    assert.equal(typeof flagged.mods?.ios?.infoPlist, "function");
+  } finally {
+    if (prior === undefined) delete process.env.EXPO_PUBLIC_DIAGNOSTICS;
+    else process.env.EXPO_PUBLIC_DIAGNOSTICS = prior;
+  }
 });

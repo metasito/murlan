@@ -25,9 +25,11 @@ describe("the soak harness drives a real game", {
   skip: hasDatabase() ? false : skipMessage(),
 }, () => {
   let restore: (() => void) | undefined;
+  let priorGraces: (string | undefined)[] = [];
 
   before(() => {
     // No chaos here, so no seat relies on a grace; the teardown check waits them out.
+    priorGraces = [process.env.MURLAN_DISCONNECT_GRACE_MS, process.env.MURLAN_LOBBY_GRACE_MS];
     process.env.MURLAN_DISCONNECT_GRACE_MS = "1000";
     process.env.MURLAN_LOBBY_GRACE_MS = "1000";
     // The runner's own progress lines would drown the test output.
@@ -37,7 +39,13 @@ describe("the soak harness drives a real game", {
       console.log = original;
     };
   });
-  after(() => restore?.());
+  after(() => {
+    restore?.();
+    for (const [i, name] of ["MURLAN_DISCONNECT_GRACE_MS", "MURLAN_LOBBY_GRACE_MS"].entries()) {
+      if (priorGraces[i] === undefined) delete process.env[name];
+      else process.env[name] = priorGraces[i];
+    }
+  });
 
   // Its own timeout: this is the one test whose cost is a wall clock the runner's
   // speed cannot shorten, and `--test-timeout` serves every other test in the repo.

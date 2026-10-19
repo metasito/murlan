@@ -5,6 +5,7 @@ import React from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { stubFetch } from './helpers/stubFetch';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { queryClient } from '@/lib/query-client';
 
@@ -62,7 +63,7 @@ beforeEach(async () => {
   // `fetchMe` uses a raw fetch rather than apiRequest, so the boot check is
   // steered here and every apiRequest below belongs to logout itself.
   mockFetch.mockResolvedValue({ status: 200, ok: true, json: async () => SIGNED_IN });
-  (globalThis as { fetch: unknown }).fetch = mockFetch;
+  stubFetch(mockFetch);
 });
 
 describe('a logout the server refuses', () => {

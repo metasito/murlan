@@ -28,10 +28,9 @@ function pressableWidth(): number | undefined {
 describe('a hand card is pressable exactly where it is visible', () => {
   it('presses on the strip it exposes, not on the whole card', async () => {
     const strip = 24;
-    const r = await render(<CardView card={CARD} onPress={() => {}} hitWidth={strip} />);
+    const r = await render(<CardView card={CARD} onPress={() => {}} hitWidth={strip} scale={1} />);
     expect(pressableWidth()).toBe(strip);
-    // The point a driver aims at has to be inside that strip.
-    expect(strip / 2).toBeLessThan(strip);
+    expect(pressableWidth()).toBeLessThan(CARD_W(1));
     await r.unmount();
   });
 
