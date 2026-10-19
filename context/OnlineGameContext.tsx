@@ -766,7 +766,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     // A spectator never took a seat, so room:leave has nothing to release —
     // sending it anyway would run the seated teardown for a table this socket
     // does not occupy.
-    deliver(isSpectator ? "room:unspectate" : "room:leave");
+    if (isSpectator) deliver("room:unspectate");
+    else deliver("room:leave");
     resetTable();
   }, [deliver, isSpectator, resetTable]);
 
