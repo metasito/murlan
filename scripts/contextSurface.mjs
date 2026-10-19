@@ -101,11 +101,15 @@ function destructuredNames(source, hookName) {
   return names;
 }
 
-function readersOf(fields, files, hookNames) {
+/** `readsFor` maps a hook that reads fields on its caller's behalf to the fields it reads. */
+function readersOf(fields, files, hookNames, readsFor = {}) {
   const readers = new Map(fields.map((f) => [f, []]));
   for (const file of files) {
     const src = readFileSync(file, "utf8");
     const taken = new Set(hookNames.flatMap((hook) => (src.includes(hook) ? [...destructuredNames(src, hook)] : [])));
+    for (const [hook, read] of Object.entries(readsFor)) {
+      if (new RegExp(`\\b${hook}\\s*\\(`).test(src)) read.forEach((field) => taken.add(field));
+    }
     for (const field of fields) {
       if (taken.has(field)) readers.get(field).push(path.relative(ROOT, file));
     }
@@ -115,16 +119,17 @@ function readersOf(fields, files, hookNames) {
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const files = walk(ROOT).filter((f) => !/[\\/]context[\\/](Online)?GameContext\.tsx$/.test(f));
-  for (const [file, iface, hooks] of [
+  for (const [file, iface, hooks, readsFor] of [
     [
       "context/OnlineGameContext.tsx",
       "OnlineGameContextValue",
       ["useOnlineConnection", "useOnlineRoom", "useOnlineTable", "useOnlineTurnClock", "useOnlineMatch", "useOnlineExchange"],
+      { useServerError: ["error"] },
     ],
     ["context/GameContext.tsx", "GameContextValue", ["useGame"]],
   ]) {
     const fields = fieldsOf(readFileSync(path.join(ROOT, file), "utf8"), iface);
-    const readers = readersOf(fields, files, hooks);
+    const readers = readersOf(fields, files, hooks, readsFor);
     const single = [...readers].filter(([, r]) => r.length === 1);
     const none = [...readers].filter(([, r]) => r.length === 0);
     console.log(`\n=== ${iface}: ${fields.length} fields ===`);
