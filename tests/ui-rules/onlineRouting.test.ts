@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { blankComments, scanSources, sourcesUnder } from "../helpers/sourceScan.ts";
 import {
   NO_TABLE,
   lobbyFor,
@@ -105,4 +108,47 @@ test("segments name the online place the player is on", () => {
   assert.equal(onlineRouteOf(["(online)", "game"]), "game");
   assert.equal(onlineRouteOf(["(online)", "friends"]), "other");
   assert.equal(onlineRouteOf([]), "other");
+});
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const ROUTER = "context/useOnlineRouting.ts";
+const SCREENS = ["index", "quickmatch", "friends", "room", "game"].map((s) => `app/(online)/${s}.tsx`);
+const TO_TABLE = /router\.(?:push|replace)\(\s*["'`]\/\(online\)\/(?:room|game)["'`]/g;
+const ROUTES = /\brouter\./;
+
+/** The argument text of every effect call, balanced by parentheses. */
+function effectBodies(source: string): string[] {
+  const code = blankComments(source);
+  const bodies: string[] = [];
+  for (const m of code.matchAll(/\b(?:useEffect|useLayoutEffect|useFocusEffect)\(/g)) {
+    const open = m.index + m[0].length;
+    let depth = 1;
+    let i = open;
+    while (i < code.length && depth > 0) {
+      if (code[i] === "(") depth++;
+      else if (code[i] === ")") depth--;
+      i++;
+    }
+    bodies.push(code.slice(open, i - 1));
+  }
+  return bodies;
+}
+
+test("no source but the router navigates to the room or the game", () => {
+  const sources = sourcesUnder(repoRoot, ["app", "components", "lib", "context"]);
+  for (const file of [...SCREENS, ROUTER]) assert.ok(sources.some(([f]) => f === file), `${file} is scanned`);
+  assert.deepEqual(scanSources(TO_TABLE, sources.filter(([f]) => f !== ROUTER)), []);
+  assert.deepEqual(scanSources(TO_TABLE, [["planted.tsx", 'router.push("/(online)/room");']]), [
+    'planted.tsx: router.push("/(online)/room"',
+  ]);
+});
+
+test("no online screen routes from an effect", () => {
+  const effects = sourcesUnder(repoRoot, ["app/(online)"]).flatMap(([file, src]) =>
+    effectBodies(src).map((body) => [file, body] as const)
+  );
+  assert.ok(effects.length > 0, "the online screens' effects are read");
+  assert.deepEqual(effects.filter(([, body]) => ROUTES.test(body)).map(([file]) => file), []);
+  const planted = 'useEffect(() => {\n  if (roomId) router.push("/(online)/room");\n}, [roomId]);';
+  assert.ok(effectBodies(planted).some((body) => ROUTES.test(body)), "a planted effect is caught");
 });

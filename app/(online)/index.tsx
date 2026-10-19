@@ -10,14 +10,12 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useIsLandscape } from "@/lib/device/orientation";
-import { router } from "expo-router";
 import { uiFeedback } from "@/lib/device/feedback";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
   useOnlineConnection,
   useOnlineRoom,
-  useOnlineTable,
   useServerError,
 } from "@/context/onlineGameHooks";
 import { useAuth } from "@/context/AuthContext";
@@ -38,11 +36,10 @@ export default function OnlineLobbyScreen() {
   const roomCodeHint = useA11yHint(t("onlineLobby.roomCodeA11yHint"));
   const watchHint = useA11yHint(t("onlineLobby.watchA11yHint"));
   const { user } = useAuth();
-  const { createRoom, joinRoom, spectateRoom, room, isSpectator } = useOnlineRoom();
-  const { gameState } = useOnlineTable();
+  const { createRoom, joinRoom, spectateRoom, room } = useOnlineRoom();
   const { connected, clearError } = useOnlineConnection();
   const error = useServerError("lobby");
-  const { pendingInvite, clearInvite, acceptedInvite, clearAcceptedInvite } = useSocket();
+  const { pendingInvite, clearInvite, acceptedInvite } = useSocket();
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [joiningInvite, setJoiningInvite] = useState(false);
   const [joinCode, setJoinCode] = useState("");
@@ -52,28 +49,12 @@ export default function OnlineLobbyScreen() {
 
   const isLandscape = useIsLandscape();
 
-  // The id, not the room: every field update would otherwise push the route again.
   const roomId = room?.roomId;
-  useEffect(() => {
-    if (roomId) {
-      router.push("/(online)/room");
-    }
-  }, [roomId]);
-
-  // The table a spectate asked for, once the server has actually sent it. Four
-  // refusals answer `room:spectate` with a `room:error` and no state at all, so
-  // the request alone is not enough to leave the lobby on — and the refusal is
-  // rendered here, where nothing on the game screen would show it.
-  const watching = isSpectator && gameState !== null;
-  useEffect(() => {
-    if (watching) router.push("/(online)/game");
-  }, [watching]);
 
   // A tap on home's invite card is the player already saying yes, so asking
-  // again with the code prefilled is a step that answers nothing. Held until
-  // the socket is up: `joinRoom` emits, and an emit on a socket that has not
-  // connected is dropped without a word, which would land the player here with
-  // nothing happening and nothing said.
+  // again with the code prefilled is a step that answers nothing. The join
+  // itself waits for the socket in `context/useOnlineRouting.ts`; this says so
+  // meanwhile, so the wait is not a dead screen.
   // Seeded empty, not with the current value: both of these arrive as context
   // from another screen, so they are usually already set on the first render
   // here — which is the render that has to act on them.
@@ -103,12 +84,6 @@ export default function OnlineLobbyScreen() {
       setJoinModalVisible(true);
     }
   }
-
-  useEffect(() => {
-    if (!acceptedInvite || !connected) return;
-    clearAcceptedInvite();
-    joinRoom(acceptedInvite);
-  }, [acceptedInvite, connected, clearAcceptedInvite, joinRoom]);
 
   // The invite belongs to SocketContext, so retiring it is that provider's
   // state and cannot be touched from this one's render.

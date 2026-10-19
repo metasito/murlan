@@ -1,5 +1,5 @@
 // tests/native/friendsInviteJoin.test.tsx — joining from the friends screen's
-// invite row keeps the invite's seat hold: the row is hidden, never declined.
+// invite row accepts it, which keeps the invite's seat hold: never declined.
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react-native';
@@ -20,20 +20,15 @@ jest.mock('@/lib/device/pushRegistration', () => ({
 }));
 
 const mockDismiss = jest.fn();
-const mockHide = jest.fn();
+const mockAccept = jest.fn();
 jest.mock('@/context/SocketContext', () => ({
   useSocket: () => ({
     socket: null,
     onlineIds: new Set(),
     gameInvites: [{ from: 'Besi', roomCode: 'ABC123' }],
     dismissGameInvite: mockDismiss,
-    hideGameInvite: mockHide,
+    acceptInvite: mockAccept,
   }),
-}));
-
-const mockJoinRoom = jest.fn();
-jest.mock('@/context/onlineGameHooks', () => ({
-  useOnlineRoom: () => ({ joinRoom: mockJoinRoom, room: null }),
 }));
 
 jest.mock('@/context/NotificationContext', () => ({
@@ -49,7 +44,7 @@ const METRICS = {
 };
 
 describe('joining from a friends-screen invite', () => {
-  it('joins the room and hides the invite without declining it', async () => {
+  it('accepts the invite without declining it', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false, queryFn: async () => [] } } });
     const view = await render(
       <QueryClientProvider client={qc}>
@@ -61,8 +56,7 @@ describe('joining from a friends-screen invite', () => {
 
     await fireEvent.press(screen.getByLabelText(/join besi/i));
 
-    expect(mockJoinRoom).toHaveBeenCalledWith('ABC123');
-    expect(mockHide).toHaveBeenCalledWith('ABC123');
+    expect(mockAccept).toHaveBeenCalledWith('ABC123');
     expect(mockDismiss).not.toHaveBeenCalled();
     await view.unmount();
   });

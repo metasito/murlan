@@ -10,7 +10,6 @@ import {
   Platform,
 } from "react-native";
 import { useIsLandscape } from "@/lib/device/orientation";
-import { router } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { uiFeedback } from "@/lib/device/feedback";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -22,7 +21,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   useOnlineConnection,
   useOnlineRoom,
-  useOnlineTable,
   useServerError,
 } from "@/context/onlineGameHooks";
 import { useNotification } from "@/context/NotificationContext";
@@ -312,8 +310,7 @@ export default function RoomScreen() {
   const reduceMotion = usePrefersReducedMotion();
   const entering = reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel);
   const { user } = useAuth();
-  const { room, leaveRoom, startGame, setRoomVisibility, entrySource } = useOnlineRoom();
-  const { gameState } = useOnlineTable();
+  const { room, leaveRoom, startGame, setRoomVisibility } = useOnlineRoom();
   const { clearError } = useOnlineConnection();
   const error = useServerError("room");
   const { showNotification } = useNotification();
@@ -345,23 +342,6 @@ export default function RoomScreen() {
     }, COUNTDOWN_TICK_MS);
     return () => clearInterval(timer);
   }, []);
-
-  const hasGameState = !!gameState;
-  useEffect(() => {
-    if (hasGameState) {
-      router.replace("/(online)/game");
-    }
-  }, [hasGameState]);
-
-  useEffect(() => {
-    if (!room) {
-      if (entrySource === "quickmatch") {
-        router.replace("/(online)/quickmatch");
-      } else {
-        router.replace("/(online)");
-      }
-    }
-  }, [room, entrySource]);
 
   useEffect(() => {
     if (error) {
@@ -444,11 +424,6 @@ export default function RoomScreen() {
       destructive: true,
       onConfirm: () => {
         leaveRoom();
-        if (entrySource === "quickmatch") {
-          router.replace("/(online)/quickmatch");
-        } else {
-          router.replace("/(online)");
-        }
       },
     });
   }

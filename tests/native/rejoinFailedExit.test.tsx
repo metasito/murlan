@@ -1,4 +1,4 @@
-// tests/native/rejoinFailedExit.test.tsx — how the online game screen leaves a
+// tests/native/rejoinFailedExit.test.tsx — how the online router leaves a
 // table the server refused to let the player back into.
 //
 // It must navigate without emitting `room:leave`: mid-game that reaches
@@ -7,94 +7,83 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { render, waitFor } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 const mockReplace = jest.fn();
+const mockPush = jest.fn();
 const mockLeaveRoom = jest.fn();
 const mockClearRejoinFailed = jest.fn();
+let mockSegments = ['(online)', 'game'];
 
 jest.mock('expo-router', () => ({
-  router: { replace: mockReplace, push: jest.fn(), back: jest.fn() },
+  router: { replace: mockReplace, push: mockPush, back: jest.fn() },
+  useSegments: () => mockSegments,
 }));
 
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' } }),
+jest.mock('@/context/SocketContext', () => ({
+  useSocket: () => ({ acceptedInvite: null, clearAcceptedInvite: jest.fn() }),
 }));
 
 jest.mock('@/context/OnlineGameContext', () =>
   (require('./onlineContextMock') as typeof import('./onlineContextMock')).onlineContextMock(
     () => ({
-      // A failed rejoin has already cleared the state, so the screen renders
-      // nothing — every hook still runs, which is what this test drives.
+      // A failed rejoin has already cleared the state.
+      room: null,
       gameState: null,
-      mySeatIndex: -1,
       isSpectator: false,
-      playerLeft: false,
       rejoinFailed: true,
-      reconnectNotice: null,
       connected: true,
-      error: null,
-      clearError: jest.fn(),
-      playCards: jest.fn(),
-      pass: jest.fn(),
-      giveExchangeCard: jest.fn(),
-      sendReaction: jest.fn(),
       leaveRoom: mockLeaveRoom,
-      voteRematch: jest.fn(),
+      joinRoom: jest.fn(),
       entrySource: null,
-      rematchVoteState: null,
-      cumulativeScores: {},
-      matchState: { target: 21, length: 'match', over: false, winners: [], isDraw: false, continues: false },
-      exchangeAnnouncing: false,
-      exchangeAnnounceData: null,
-      acknowledgeExchange: jest.fn(),
-      clearPlayerLeft: jest.fn(),
       clearRejoinFailed: mockClearRejoinFailed,
     })
   )
 );
 
-// Required, not imported: an import is hoisted above the mock functions the
-// factories above close over, and expo-router's would capture an undefined one.
-const OnlineGameScreen = (require('@/app/(online)/game') as { default: React.ComponentType })
-  .default;
+const { useOnlineRouting } = require('@/context/useOnlineRouting') as typeof import('@/context/useOnlineRouting');
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 844, height: 390 },
-  insets: { top: 0, left: 47, right: 34, bottom: 0 },
+const Router = () => {
+  useOnlineRouting();
+  return null;
 };
 
 describe('a refused rejoin', () => {
   beforeEach(() => {
     mockReplace.mockClear();
+    mockPush.mockClear();
     mockLeaveRoom.mockClear();
     mockClearRejoinFailed.mockClear();
+    mockSegments = ['(online)', 'game'];
   });
 
   it('returns to the lobby without releasing the seat', async () => {
-    const view = await render(
-      <SafeAreaProvider initialMetrics={METRICS}>
-        <OnlineGameScreen />
-      </SafeAreaProvider>
-    );
+    const view = await render(<Router />);
 
-    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/(online)'));
+    expect(mockReplace).toHaveBeenCalledTimes(1);
     expect(mockLeaveRoom).not.toHaveBeenCalled();
 
     await view.unmount();
   });
 
-  // The flag outlives the screen that reads it — the provider sits above the
-  // route group. Whatever the player opens next, a game or a spectated table,
-  // is bounced straight back out unless the bounce is consumed here.
+  // The flag outlives the screen that was on when it latched — the provider
+  // sits above the route group. Whatever the player opens next, a game or a
+  // spectated table, is bounced straight back out unless the bounce is consumed.
   it('consumes the flag on the way out', async () => {
-    const view = await render(
-      <SafeAreaProvider initialMetrics={METRICS}>
-        <OnlineGameScreen />
-      </SafeAreaProvider>
-    );
+    const view = await render(<Router />);
 
     await waitFor(() => expect(mockClearRejoinFailed).toHaveBeenCalled());
+
+    await view.unmount();
+  });
+
+  it('consumes the flag where the player is, and moves nobody off a lobby', async () => {
+    mockSegments = ['(online)'];
+    const view = await render(<Router />);
+
+    await waitFor(() => expect(mockClearRejoinFailed).toHaveBeenCalled());
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalled();
 
     await view.unmount();
   });

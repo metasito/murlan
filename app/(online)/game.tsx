@@ -5,9 +5,10 @@
 // play, reactions, the end-of-match board's rematch vote, and the connection-loss
 // states (reconnect notice, a player leaving, a failed rejoin).
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, ActivityIndicator, useWindowDimensions } from "react-native";
 import { router } from "expo-router";
+import { lobbyFor } from "@/context/onlineRouting";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useOnlineConnection,
@@ -54,14 +55,12 @@ export default function OnlineGameScreen() {
   const { gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats, autoPassed } =
     useOnlineTable();
   const { turnSeconds, turnDeadlineMs } = useOnlineTurnClock();
-  const { isSpectator, entrySource, leaveRoom } = useOnlineRoom();
+  const { room, isSpectator, entrySource, leaveRoom } = useOnlineRoom();
   const {
     pill,
     reconnectNotice,
     playerLeft,
-    rejoinFailed,
     clearPlayerLeft,
-    clearRejoinFailed,
     retryConnection,
     ownLink,
   } = useOnlineConnection();
@@ -98,11 +97,6 @@ export default function OnlineGameScreen() {
     []
   );
 
-  const goToLobby = useCallback(() => {
-    if (entrySource === "quickmatch") router.replace("/(online)/quickmatch");
-    else router.replace("/(online)");
-  }, [entrySource]);
-
   // Another player abandoned the table — there is no match left to play, so
   // this one has no way out but the acknowledgement.
   // Seeded empty: the notice can already be standing when this screen mounts.
@@ -117,21 +111,10 @@ export default function OnlineGameScreen() {
         onConfirm: () => {
           clearPlayerLeft();
           leaveRoom();
-          goToLobby();
         },
       });
     }
   }
-
-  // A rejoin the server refused is not the player choosing to leave, so no
-  // room:leave: the seat belongs to the 60s disconnect grace until it expires.
-  // The context has already dropped the local state and shown the reason; all
-  // that is left is getting off a table that is no longer there.
-  useEffect(() => {
-    if (!rejoinFailed) return;
-    goToLobby();
-    clearRejoinFailed();
-  }, [rejoinFailed, clearRejoinFailed, goToLobby]);
 
   // No state yet: the first `game:state` is either still in flight or was never
   // coming, because the request that would have produced it was refused. The
@@ -147,8 +130,10 @@ export default function OnlineGameScreen() {
             label={t("onlineGame.backToLobby")}
             variant="secondary"
             onPress={() => {
+              // With no room held, leaving changes nothing the router follows.
+              const followed = room != null;
               leaveRoom();
-              goToLobby();
+              if (!followed) router.replace(lobbyFor(entrySource));
             }}
           />
         </View>
@@ -180,10 +165,7 @@ export default function OnlineGameScreen() {
     }
   };
 
-  const leaveAndExit = () => {
-    leaveRoom();
-    goToLobby();
-  };
+  const leaveAndExit = () => leaveRoom();
 
   // A match already decided is left without a question: there is nothing to discard.
   const requestLeave = () =>

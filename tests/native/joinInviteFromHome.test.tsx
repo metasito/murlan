@@ -4,9 +4,9 @@
 // The invite lives in `SocketContext`, above the whole app; `joinRoom` lives in
 // `OnlineGameContext`, mounted inside the `(online)` group alone. So the tap
 // records which room was asked for and the group performs it. What this pins is
-// the half that silently stops working: that the online hub acts on an accepted
-// invite, and that it does NOT re-open the join modal to ask for a code the
-// player has already chosen (#398).
+// the half that silently stops working: that the group's router acts on an
+// accepted invite, and that the hub does NOT re-open the join modal to ask for a
+// code the player has already chosen (#398).
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
@@ -49,9 +49,16 @@ jest.mock('@/context/SocketContext', () => ({
 
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), back: jest.fn(), replace: jest.fn() },
+  useSegments: () => ['(online)'],
 }));
 
 import OnlineLobbyScreen from '@/app/(online)/index';
+import { useOnlineRouting } from '@/context/useOnlineRouting';
+
+const Router = () => {
+  useOnlineRouting();
+  return null;
+};
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -61,6 +68,7 @@ const METRICS = {
 const mount = () =>
   render(
     <SafeAreaProvider initialMetrics={METRICS}>
+      <Router />
       <OnlineLobbyScreen />
     </SafeAreaProvider>
   );
