@@ -134,7 +134,10 @@ export async function shutdown(
     // `pool.end()` makes every subsequent checkout fail, which would drop
     // exactly the stats, ladder and replay rows this shutdown exists to save.
     if (await drainPool(pool, { timeoutMs: SHUTDOWN_BUDGET.drain })) {
-      await within(SHUTDOWN_BUDGET.poolEnd, pool.end());
+      await within(
+        SHUTDOWN_BUDGET.poolEnd,
+        pool.end().catch((err) => logger.error({ err }, "Pool close failed"))
+      );
     } else {
       logger.error(
         { busy: pool.totalCount - pool.idleCount, waiting: pool.waitingCount },
