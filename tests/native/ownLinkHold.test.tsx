@@ -94,6 +94,31 @@ describe("the viewer's own link", () => {
     await second.unmount();
     await first.unmount();
   });
+
+  it('a reader arriving long after a way back nobody watched reads the link as up, not just back', async () => {
+    const socket = fakeSocket(true);
+    const first = await renderHook(() => useOwnLink(socket).link);
+    await act(async () => socket.flip(false));
+    await first.unmount();
+    socket.flip(true);
+    await wait(Reconnect.back);
+    const later = await renderHook(() => useOwnLink(socket).link);
+    expect(later.result.current).toBe('up');
+    await later.unmount();
+  });
+
+  it('a reader arriving at the start of an outage nobody watched reads it as new, not as the old one', async () => {
+    const socket = fakeSocket(true);
+    const first = await renderHook(() => useOwnLink(socket).link);
+    await act(async () => socket.flip(false));
+    await first.unmount();
+    socket.flip(true);
+    await wait(Reconnect.giveUp);
+    socket.flip(false);
+    const later = await renderHook(() => useOwnLink(socket).link);
+    expect(later.result.current).toBe('dropped');
+    await later.unmount();
+  });
 });
 
 describe('the table holding its breath', () => {
