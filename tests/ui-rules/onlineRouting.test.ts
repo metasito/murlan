@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { blankComments, scanSources, sourcesUnder } from "../helpers/sourceScan.ts";
+import { blankCommentsAndStrings, scanSources, sourcesUnder } from "../helpers/sourceScan.ts";
 import {
   NO_TABLE,
   lobbyFor,
@@ -118,7 +118,7 @@ const ROUTES = /\brouter\./;
 
 /** The argument text of every effect call, balanced by parentheses. */
 function effectBodies(source: string): string[] {
-  const code = blankComments(source);
+  const code = blankCommentsAndStrings(source);
   const bodies: string[] = [];
   for (const m of code.matchAll(/\b(?:useEffect|useLayoutEffect|useFocusEffect)\(/g)) {
     const open = m.index + m[0].length;
@@ -151,4 +151,6 @@ test("no online screen routes from an effect", () => {
   assert.deepEqual(effects.filter(([, body]) => ROUTES.test(body)).map(([file]) => file), []);
   const planted = 'useEffect(() => {\n  if (roomId) router.push("/(online)/room");\n}, [roomId]);';
   assert.ok(effectBodies(planted).some((body) => ROUTES.test(body)), "a planted effect is caught");
+  const behindAParen = 'useEffect(() => {\n  log("closed)");\n  router.push("/(online)/room");\n}, []);';
+  assert.ok(effectBodies(behindAParen).some((body) => ROUTES.test(body)), "a ')' in a string ends no effect");
 });
