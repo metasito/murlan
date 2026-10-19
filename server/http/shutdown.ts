@@ -39,6 +39,7 @@ export const SHUTDOWN_BUDGET = {
   stopTables: 250,
   adapterPoolEnd: 250,
   drain: DRAIN_TIMEOUT_MS,
+  poolEnd: 200,
   closeOwnership: 250,
 } as const;
 
@@ -133,7 +134,7 @@ export async function shutdown(
     // `pool.end()` makes every subsequent checkout fail, which would drop
     // exactly the stats, ladder and replay rows this shutdown exists to save.
     if (await drainPool(pool, { timeoutMs: SHUTDOWN_BUDGET.drain })) {
-      await pool.end();
+      await within(SHUTDOWN_BUDGET.poolEnd, pool.end());
     } else {
       logger.error(
         { busy: pool.totalCount - pool.idleCount, waiting: pool.waitingCount },
