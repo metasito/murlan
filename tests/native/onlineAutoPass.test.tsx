@@ -3,7 +3,8 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react-native';
 
-import { OnlineGameProvider, type GameStateBroadcast } from '@/context/OnlineGameContext';
+import { OnlineGameProvider } from '@/context/OnlineGameContext';
+import type { WireGameState } from '@/shared/protocol';
 import { useOnlineTable } from '@/context/onlineGameHooks';
 
 type Listener = (...args: unknown[]) => void;
@@ -31,7 +32,7 @@ jest.mock('@/context/NotificationContext', () => ({
 }));
 
 /** The name the server reads for its notice is the dealt seat's, `gameState.players[seat].name`. */
-const DEALT: GameStateBroadcast = {
+const DEALT: WireGameState = {
   players: [
     { id: 'player_0', name: 'Ana', hand: [], type: 'human', handCount: 0, vacated: false },
     { id: 'player_1', name: 'Besi', hand: [], type: 'human', handCount: 0, vacated: false },

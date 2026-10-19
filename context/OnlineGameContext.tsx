@@ -264,8 +264,6 @@ export interface TurnDeadline {
   turnSecondsRemaining: number;
 }
 
-export type GameStateBroadcast = WireGameState;
-
 const NO_TURN_DEADLINE: TurnDeadline = { turnSecondsRemaining: 0 };
 
 export function OnlineGameProvider({ userId, children }: { userId: string; children: ReactNode }) {
@@ -455,10 +453,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // A dealt table is not a lobby any more, and `room:start` broadcasts no
       // fresh room:state — this is the only thing that retires the handle.
       rejoin.hold({ waitingCode: null });
-    };
-
-    const onGameError = (payload: ServerPayload) => {
-      refuse(payload);
     };
 
     const onGameNotification = (
@@ -667,7 +661,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket?.on("room:error", onRoomError);
     socket?.on("game:state", onGameState);
     socket?.on("game:turn_deadline", setTurnDeadline);
-    socket?.on("game:error", onGameError);
+    socket?.on("game:error", refuse);
     socket?.on("game:notification", onGameNotification);
     socket?.on("game:round_over", onRoundOver);
     socket?.on("game:match_state", onMatchState);
@@ -687,7 +681,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       socket?.off("room:error", onRoomError);
       socket?.off("game:state", onGameState);
       socket?.off("game:turn_deadline", setTurnDeadline);
-      socket?.off("game:error", onGameError);
+      socket?.off("game:error", refuse);
       socket?.off("game:notification", onGameNotification);
       socket?.off("game:round_over", onRoundOver);
       socket?.off("game:match_state", onMatchState);
