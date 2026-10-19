@@ -1,7 +1,7 @@
 // tests/native/inviteSend.test.tsx — `useInvites().send` is the one way a
-// screen invites a friend, and it tells the player itself when the invite did
-// not go: a refusal in the server's words, silence as a request that never
-// arrived.
+// screen invites a friend. A refusal is told once, by the `friend:error` the
+// server sends with it; only silence is this hook's to tell, as a request that
+// never arrived.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -12,10 +12,15 @@ import { en as locale } from '@/locales/en';
 type Ack = (err: unknown, reply?: { ok: boolean; code?: string }) => void;
 const mockAcks: { event: string; payload: unknown; ack: Ack }[] = [];
 
+type Listener = (payload: unknown) => void;
+const mockListeners = new Map<string, Listener>();
+
 const mockSocket = {
   connected: false,
   active: true,
-  on() {},
+  on(event: string, fn: Listener) {
+    mockListeners.set(event, fn);
+  },
   off() {},
   emit() {},
   timeout: () => ({
@@ -63,8 +68,13 @@ async function sendAnswered(...answer: Parameters<Ack>) {
     sent = result.current.send('f1', 'ABC123');
   });
   expect(mockAcks[0].event).toBe('friend:invite');
-  expect(mockAcks[0].payload).toEqual({ friendUserId: 'f1', roomCode: 'ABC123' });
-  await act(async () => mockAcks[0].ack(...answer));
+  expect(mockAcks[0].payload).toEqual(expect.objectContaining({ friendUserId: 'f1', roomCode: 'ABC123' }));
+  await act(async () => {
+    const [, reply] = answer;
+    // As the server does: a refusal is acked and announced as `friend:error`.
+    if (reply && !reply.ok) mockListeners.get('friend:error')?.({ code: reply.code, message: 'refused' });
+    mockAcks[0].ack(...answer);
+  });
   const outcome = await sent;
   await unmount();
   return outcome;
@@ -72,6 +82,7 @@ async function sendAnswered(...answer: Parameters<Ack>) {
 
 beforeEach(() => {
   mockAcks.length = 0;
+  mockListeners.clear();
   mockShowNotification.mockClear();
 });
 
@@ -81,15 +92,22 @@ describe('sending an invite', () => {
     expect(mockShowNotification).not.toHaveBeenCalled();
   });
 
-  it('tells the player the server refused, in its words', async () => {
+  it('tells the player the server refused, in its words, once', async () => {
     expect(await sendAnswered(null, { ok: false, code: 'NOT_FRIENDS' })).toBe(false);
+    expect(mockShowNotification).toHaveBeenCalledTimes(1);
     expect(mockShowNotification).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'game_error', message: locale['server.NOT_FRIENDS'] })
     );
   });
 
+  it('counts an ack with no reply as heard, as every intent does', async () => {
+    expect(await sendAnswered(null)).toBe(true);
+    expect(mockShowNotification).not.toHaveBeenCalled();
+  });
+
   it('tells the player the invite never arrived', async () => {
     expect(await sendAnswered(new Error('timeout'))).toBe(false);
+    expect(mockShowNotification).toHaveBeenCalledTimes(1);
     expect(mockShowNotification).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'game_error', message: locale['room.requestNotDelivered'] })
     );

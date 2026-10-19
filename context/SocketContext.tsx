@@ -28,9 +28,8 @@ import { SessionReplacedNotice } from "@/components/SessionReplacedNotice";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
 import { reconnectDelayMs } from "@/lib/reconnectDelay";
-import { INTENT_ACK_TIMEOUT_MS } from "@/lib/sendIntent";
+import { sendInvite, undelivered } from "@/lib/sendIntent";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "@/shared/http";
-import type { IntentReply } from "@/shared/protocol";
 import type { Socket as UntypedSocket } from "socket.io-client";
 
 /**
@@ -96,7 +95,7 @@ interface Invites {
   hide: (roomCode: string) => void;
   clearPrompt: () => void;
   clearAccepted: () => void;
-  /** `friend:invite` with its ack; false on a timeout or a refusal, which this has already told the player about. */
+  /** `friend:invite` with its ack; false on a timeout or a refusal, and the player has been told either way. */
   send: (friendUserId: string, roomCode: string) => Promise<boolean>;
 }
 
@@ -504,26 +503,20 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   }, [socket]);
   const presence = useMemo(() => ({ onlineIds, refresh }), [onlineIds, refresh]);
 
+  // A refusal arrives as `friend:error` too, and `onFriendError` tells it: only silence is told here.
   const send = useCallback(
-    (friendUserId: string, roomCode: string) =>
-      new Promise<boolean>((resolve) => {
-        const settle = (reply: IntentReply | null) => {
-          if (reply?.ok) return resolve(true);
-          showNotification({
-            type: "game_error",
-            title: t("common.error"),
-            message: reply ? translateServerPayload(reply) : t("room.requestNotDelivered"),
-            duration: Reading.notice,
-          });
-          resolve(false);
-        };
-        if (!socket) return settle(null);
-        socket
-          .timeout(INTENT_ACK_TIMEOUT_MS)
-          .emit("friend:invite", { friendUserId, roomCode }, (err: unknown, reply?: IntentReply) =>
-            settle(err ? null : (reply ?? null))
-          );
-      }),
+    async (friendUserId: string, roomCode: string) => {
+      const outcome = await sendInvite(socket, { friendUserId, roomCode });
+      if (undelivered(outcome)) {
+        showNotification({
+          type: "game_error",
+          title: t("common.error"),
+          message: t("room.requestNotDelivered"),
+          duration: Reading.notice,
+        });
+      }
+      return outcome.ok;
+    },
     [socket, showNotification]
   );
 

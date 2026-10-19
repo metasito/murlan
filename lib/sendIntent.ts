@@ -1,4 +1,4 @@
-import type { IntentEvent, IntentPayload, IntentReply } from "../shared/protocol.ts";
+import type { ClientToServerEvents, IntentEvent, IntentPayload, IntentReply } from "../shared/protocol.ts";
 import type { Socket } from "./socket.ts";
 
 /**
@@ -14,6 +14,9 @@ const INTENT_ATTEMPTS = 3;
 
 /** A `room:` or `game:` intent emitted any other way: the `intents-through-send` guard in eslint.guards.cjs refuses it. */
 export type { IntentEvent };
+
+/** Acked as an intent is, but not deduped by the server, so it is sent once. */
+type InvitePayload = Parameters<ClientToServerEvents["friend:invite"]>[0];
 
 /**
  * Refusals that mean "not yet" rather than "no": the socket is between a
@@ -70,11 +73,17 @@ export function sendIntent<E extends IntentEvent>(
   payload?: IntentPayload<E>,
   options?: { attempts?: number; timeoutMs?: number }
 ): Promise<IntentOutcome>;
+export function sendIntent(
+  socket: Socket | null,
+  event: "friend:invite",
+  payload: InvitePayload,
+  options: { attempts: 1; timeoutMs?: number }
+): Promise<IntentOutcome>;
 // Not generic: TypeScript cannot carry one `E` through socket.io's event-map types. The signature above pairs them.
 export async function sendIntent(
   socket: Socket | null,
-  event: IntentEvent,
-  payload?: IntentPayload<IntentEvent>,
+  event: IntentEvent | "friend:invite",
+  payload?: IntentPayload<IntentEvent> | InvitePayload,
   { attempts = INTENT_ATTEMPTS, timeoutMs = INTENT_ACK_TIMEOUT_MS } = {}
 ): Promise<IntentOutcome> {
   if (!socket) return { ok: false };
@@ -108,6 +117,11 @@ export function send<E extends IntentEvent>(
   { retry = true }: { retry?: boolean } = {}
 ): Promise<IntentOutcome> {
   return sendIntent(socket, event, payload, { attempts: retry ? INTENT_ATTEMPTS : 1 });
+}
+
+/** `friend:invite`, acked and judged as every intent is. */
+export function sendInvite(socket: Socket | null, invite: InvitePayload): Promise<IntentOutcome> {
+  return sendIntent(socket, "friend:invite", invite, { attempts: 1 });
 }
 
 /** Whether the player should be told the intent never landed. */
