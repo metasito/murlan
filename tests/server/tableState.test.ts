@@ -109,6 +109,7 @@ describe("a table's round trip through active_games", () => {
         maxPlayers: 4,
         roundsPlayed: 2,
         endedByVote: true,
+        matchOver: true,
       },
       seats: {
         vacatedSeats: [[1, { userId: "bob", username: "Bob" }]],
@@ -123,10 +124,56 @@ describe("a table's round trip through active_games", () => {
     const game = midMatch();
     game.matchLength = "single";
     game.endedByVote = false;
+    game.matchOver = true;
     game.gameState = { ...game.gameState, roundOver: true };
     const back = fromEnvelope(persisted(game));
     assert.ok(back.ok);
     assert.equal(back.game.matchOver, true);
+  });
+
+  describe("the verdict the fold reached is the one that comes back", () => {
+    const teamsTable = (matchOver: boolean, scores: Record<string, number>, playerMap: Record<number, string>) => {
+      const game = midMatch();
+      game.gameMode = "teams";
+      game.matchLength = "match";
+      game.endedByVote = false;
+      game.matchTarget = 21;
+      game.matchOver = matchOver;
+      game.cumulativeScores = scores;
+      game.playerMap = playerMap;
+      game.vacatedSeats = new Map();
+      game.gameState = {
+        ...dealt(),
+        roundOver: true,
+        players: dealt().players.map((p, seat) => ({ ...p, team: seat % 2 === 0 ? "A" : "B" })),
+      };
+      return game;
+    };
+    const restoredOver = (game: OnlineGameState) => {
+      const back = fromEnvelope(persisted(game));
+      assert.ok(back.ok);
+      return back.game.matchOver;
+    };
+
+    test("a pair that crossed through a bot: key stays over after the seat is taken by a newcomer", () => {
+      const game = teamsTable(true, { alice: 11, "bot:2": 11, bob: 5 }, { 0: "alice", 1: "bob", 2: "newcomer" });
+      assert.equal(restoredOver(game), true);
+    });
+
+    test("a pair that crossed stays over when the seat key no longer maps to its team", () => {
+      const game = teamsTable(true, { alice: 11, "bot:2": 11, bob: 5 }, { 0: "alice", 1: "bob" });
+      assert.equal(restoredOver(game), true);
+    });
+
+    test("a tie at the target stays a running match", () => {
+      const game = teamsTable(false, { alice: 22, carl: 0, bob: 22, "bot:3": 0 }, { 0: "alice", 1: "bob", 2: "carl" });
+      assert.equal(restoredOver(game), false);
+    });
+
+    test("a verdict of running is not re-derived from scores that look finished", () => {
+      const game = teamsTable(false, { alice: 30, bob: 5 }, { 0: "alice", 1: "bob", 2: "carl", 3: "dan" });
+      assert.equal(restoredOver(game), false);
+    });
   });
 
   test("a newer revision's row is refused as newer, an older one as unrestorable", () => {

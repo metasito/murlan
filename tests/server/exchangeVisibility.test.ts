@@ -213,6 +213,7 @@ describe("visibleExchangePhase", () => {
           playerMap: { 0: "u" },
           scores: { u: 0 },
           endedByVote: false,
+          matchOver: false,
           gameMode: "free_for_all",
           matchLength: "match",
           roundsPlayed: 0,

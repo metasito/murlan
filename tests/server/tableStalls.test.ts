@@ -90,6 +90,7 @@ const unpackedMatch = () => ({
   maxPlayers: 2,
   roundsPlayed: 1,
   endedByVote: false,
+  matchOver: false,
 });
 const noSeats = { vacatedSeats: [], releasedSeats: [], weakSeats: [], abandonedSeats: [] };
 

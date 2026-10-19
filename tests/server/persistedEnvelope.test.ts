@@ -30,6 +30,7 @@ const match: PersistedMatch = {
   maxPlayers: 4,
   roundsPlayed: 2,
   endedByVote: true,
+  matchOver: true,
 };
 
 const seats: PersistedSeats = {
@@ -172,6 +173,11 @@ describe("rows the restore path refuses", () => {
   test("an unexpected game mode or match length", () => {
     assert.match(refusal(pack({ gameMode: "solo" as never })), /game mode solo/);
     assert.match(refusal(pack({ matchLength: "best_of_3" as never })), /match length/);
+  });
+
+  test("a missing match verdict", () => {
+    assert.match(refusal(pack({ matchOver: undefined as never })), /match verdict/);
+    assert.match(refusal(pack({ matchOver: "yes" as never })), /match verdict/);
   });
 
   test("a missing or nonsensical match target or table size", () => {

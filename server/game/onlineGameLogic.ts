@@ -5,7 +5,7 @@ import { botSeatIndex, botSeatKey, isBotSeatKey } from "./botSeat.ts";
 import type { ScoreLine } from "../../lib/game/matchState.ts";
 import { botSeatNames, getBotPersonality } from "../../lib/game/botPersonalities.ts";
 import type { BotPersonalityId } from "../../lib/game/botPersonalities.ts";
-import { foldRoundIntoMatch, resolveMatchFor } from "../../lib/game/gameEngine.ts";
+import { foldRoundIntoMatch } from "../../lib/game/gameEngine.ts";
 import type { GameState, GameMode, MatchLength } from "../../lib/game/gameEngine.ts";
 import type { GameResult } from "../../lib/achievements.ts";
 import { exchangeAnnounceMs } from "../../lib/timeline/exchangeTimeline.ts";
@@ -244,55 +244,6 @@ export function botSeatsFromPersonality(players: readonly { personality?: BotPer
     if (p.personality !== undefined) seats.add(seat);
   });
   return seats;
-}
-
-/**
- * Scoring key -> team id, for every key whose points belong to a team: the
- * seat's own key, plus the frozen row of a player who left it. A team keeps a
- * departed partner's points (docs/GAME-RULES.md § Decisions); who may be *named* a winner
- * is `resolveRoundEnd`'s `winEligible`, not this map.
- */
-export function teamKeyMap(
-  playerMap: Record<number, string>,
-  players: { team?: "A" | "B" }[],
-  vacatedSeats: Map<number, { userId: string }> = new Map()
-): Record<string, string> {
-  const map: Record<string, string> = {};
-  players.forEach((p, seat) => {
-    if (!p.team) return;
-    map[scoreKeyForSeat(playerMap, seat)] = p.team;
-    const vacated = vacatedSeats.get(seat);
-    if (vacated) map[vacated.userId] = p.team;
-  });
-  return map;
-}
-
-/**
- * Whether the match a stored row belongs to had already been decided when it
- * was written. Teams races to the target as a *team* (docs/GAME-RULES.md §11), so
- * it must be read back through the same resolver the live path uses — no
- * individual key in a team on 11 + 11 reaches a target of 21, and restoring
- * that match as still running plays on inside a match that was already won.
- */
-export function restoredMatchOver(args: {
-  matchLength: MatchLength;
-  gameMode: GameMode;
-  roundOver: boolean;
-  scores: Record<string, number>;
-  target: number;
-  teamOfKey: Record<string, string>;
-  playerCount: number;
-}): boolean {
-  const { matchLength, gameMode, roundOver, scores, target, teamOfKey, playerCount } = args;
-  if (matchLength === "single") return roundOver;
-  const resolution = resolveMatchFor({
-    gameMode,
-    cumulative: scores,
-    teamOfKey,
-    target,
-    playerCount,
-  });
-  return !!resolution && resolution.newTarget === null;
 }
 
 export interface ResolveRoundEndInput {

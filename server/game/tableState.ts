@@ -4,9 +4,7 @@
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
   botSeatsFromPersonality,
-  restoredMatchOver,
   seatAssignmentsFromRoster,
-  teamKeyMap,
   type SeatEntry,
 } from "./onlineGameLogic.ts";
 import { botSeatKey } from "./botSeat.ts";
@@ -176,6 +174,7 @@ export function toEnvelope(game: OnlineGameState): PersistedEnvelope<GameState> 
     maxPlayers: game.maxPlayers,
     roundsPlayed: game.roundsPlayed,
     endedByVote: !!game.endedByVote,
+    matchOver: game.matchOver,
   }, {
     vacatedSeats: [...game.vacatedSeats],
     releasedSeats: [...game.releasedSeats],
@@ -189,14 +188,14 @@ export type TableRestore =
   | { ok: false; reason: string; newer?: true };
 
 /**
- * An active_games row as a live table, or why it cannot be one. `matchOver`
- * and `botSeatsAtStart` are not stored: they are derived from what is.
+ * An active_games row as a live table, or why it cannot be one. `botSeatsAtStart`
+ * is not stored: it is derived from what is.
  */
 export function fromEnvelope(row: { roomId: string; gameState: unknown }): TableRestore {
   const restored = unpackPersistedState<GameState>(row.gameState);
   if (!restored.ok) return restored;
 
-  const { playerMap, scores, gameMode, matchLength, matchTarget, maxPlayers, roundsPlayed, endedByVote } =
+  const { playerMap, scores, gameMode, matchLength, matchTarget, maxPlayers, roundsPlayed, endedByVote, matchOver } =
     restored.match;
   const gameState = restored.gameState;
   const vacatedSeats = new Map(restored.seats.vacatedSeats);
@@ -214,15 +213,7 @@ export function fromEnvelope(row: { roomId: string; gameState: unknown }): Table
       matchLength,
       roundsPlayed,
       endedByVote,
-      matchOver: endedByVote || restoredMatchOver({
-        matchLength,
-        gameMode,
-        roundOver: gameState.roundOver,
-        scores,
-        target: matchTarget,
-        teamOfKey: teamKeyMap(playerMap, gameState.players, vacatedSeats),
-        playerCount: gameState.players.length,
-      }),
+      matchOver,
       roundFlags: restored.roundFlags,
       abandonedSeats: new Map(restored.seats.abandonedSeats),
       botSeatsAtStart: botSeatsFromPersonality(gameState.players),
