@@ -1,3 +1,4 @@
+import { now } from "../clock.ts";
 import { randomBytes, randomInt, createHash } from "node:crypto";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
@@ -45,7 +46,7 @@ async function insertCredential(executor: typeof db | Tx, params: {
     purpose,
     tokenHash,
     attempts,
-    expiresAt: new Date(Date.now() + ttlMs),
+    expiresAt: new Date(now() + ttlMs),
   });
 }
 
@@ -100,8 +101,8 @@ export async function redeemAuthToken(rawToken: string, purpose: AuthTokenPurpos
  * forgetting it is what keeps five typos from locking an account out for good.
  */
 function spentAttempts(replaced: { attempts: number; expiresAt: Date }[]): number {
-  const now = Date.now();
-  return Math.max(0, ...replaced.filter((r) => r.expiresAt.getTime() > now).map((r) => r.attempts));
+  const at = now();
+  return Math.max(0, ...replaced.filter((r) => r.expiresAt.getTime() > at).map((r) => r.attempts));
 }
 
 /**

@@ -1,4 +1,5 @@
 // Every server log line at `error` or above, kept long enough to be read on /admin.
+import { now } from "../clock.ts";
 import { sql } from "drizzle-orm";
 import { db, pool } from "../store/db.ts";
 import { serverErrors } from "../../shared/schema.ts";
@@ -20,16 +21,16 @@ const WINDOW_HOURS = WINDOW_MS / HOUR_MS;
 /** Lines skipped while the pool starved: one slot per hour of the window, stamped with its hour; this process only. */
 const dropped = Array.from({ length: WINDOW_HOURS }, () => ({ hour: -1, count: 0 }));
 
-function countDropped(now: number): void {
-  const hour = Math.floor(now / HOUR_MS);
+function countDropped(at: number): void {
+  const hour = Math.floor(at / HOUR_MS);
   const slot = dropped[hour % WINDOW_HOURS]!;
   if (slot.hour !== hour) Object.assign(slot, { hour, count: 0 });
   slot.count += 1;
 }
 
 /** Server error lines this process skipped writing within the error-group window. */
-export function serverErrorsDropped(now = Date.now()): number {
-  const hour = Math.floor(now / HOUR_MS);
+export function serverErrorsDropped(at = now()): number {
+  const hour = Math.floor(at / HOUR_MS);
   return dropped.reduce((total, slot) => (slot.hour > hour - WINDOW_HOURS ? total + slot.count : total), 0);
 }
 
@@ -38,7 +39,7 @@ export function installServerErrorRecorder(): void {
     // An error burst is usually the pool starving; an insert per line would
     // queue behind the very requests that are failing.
     if (pool.waitingCount > 0) {
-      countDropped(Date.now());
+      countDropped(now());
       process.stderr.write(
         `server_errors insert skipped, pool starved (${serverErrorsDropped()} dropped in ` +
           `${ERROR_GROUP_WINDOW_DAYS} days): ${String(msg ?? "")}\n`

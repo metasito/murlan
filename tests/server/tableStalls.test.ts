@@ -10,9 +10,9 @@ import {
   clearRoomTimers,
   deadline,
   pending,
-  setClock,
   usersInLobbyGrace,
 } from "../../server/game/gameTimers.ts";
+import { installClock } from "../../server/clock.ts";
 import { fakeClock } from "../helpers/fakeClock.ts";
 import { setSocketServer } from "../../server/socket/socketRegistry.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
@@ -366,8 +366,7 @@ const quietWriters: RoundOverWriters = {
 /** Two humans at a round that has just ended, short of the match target. */
 async function roundJustEnded(t: TestContext) {
   const clock = fakeClock();
-  setClock(clock);
-  t.after(() => setClock());
+  t.after(installClock(clock));
   const { io, emitted } = stubIo();
   t.mock.method(roomStore, "getRoomById", async () => room);
   t.mock.method(roomStore, "updateRoomStatus", async () => {});
@@ -433,8 +432,7 @@ describe("the next-round vote deadline", () => {
 
   test("a silent seat that votes before its turn to go keeps its seat", async (t) => {
     const clock = fakeClock();
-    setClock(clock);
-    t.after(() => setClock());
+    t.after(installClock(clock));
     t.after(() => clearAllTimersForUser("cleo", ROOM));
     const { io } = stubIo();
     t.mock.method(roomStore, "getRoomById", async () => ({ ...room, maxPlayers: 3 }));
@@ -517,8 +515,7 @@ describe("the next-round vote deadline", () => {
 
   test("the round that ends the match arms none: the new-match vote is optional", async (t) => {
     const clock = fakeClock();
-    setClock(clock);
-    t.after(() => setClock());
+    t.after(installClock(clock));
     const { io } = stubIo();
     t.mock.method(roomStore, "updateRoomStatus", async () => {});
     const game = baseGame({
@@ -537,8 +534,7 @@ describe("the next-round vote deadline", () => {
 
   test("a restore between rounds re-arms a full one, even when the cluster never said who is away", async (t) => {
     const clock = fakeClock();
-    setClock(clock);
-    t.after(() => setClock());
+    t.after(installClock(clock));
     const { io } = stubIo();
     setSocketServer({
       fetchSockets: async () => {

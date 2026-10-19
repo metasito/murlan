@@ -8,21 +8,23 @@ import {
   deadline,
   pending,
   pendingKeys,
-  setClock,
 } from "../../server/game/gameTimers.ts";
+import { installClock } from "../../server/clock.ts";
 import { fakeClock } from "../helpers/fakeClock.ts";
+
+let restoreClock = () => {};
 
 const USER = "game-timers-user";
 
 afterEach(() => {
   clear("disconnect", USER);
-  setClock();
+  restoreClock();
 });
 
 describe("a timer armed through gameTimers", () => {
   test("records its deadline on the injected clock and drops it when it fires", () => {
     const clock = fakeClock();
-    setClock(clock);
+    restoreClock = installClock(clock);
     let fired = 0;
     let pendingInside: boolean | undefined;
 
@@ -47,7 +49,7 @@ describe("a timer armed through gameTimers", () => {
 
   test("re-arming replaces the timer and its deadline together", () => {
     const clock = fakeClock();
-    setClock(clock);
+    restoreClock = installClock(clock);
     let first = 0;
     let second = 0;
 
@@ -63,7 +65,7 @@ describe("a timer armed through gameTimers", () => {
 
   test("clearing it drops the deadline with the timer", () => {
     const clock = fakeClock();
-    setClock(clock);
+    restoreClock = installClock(clock);
     let fired = 0;
 
     arm("disconnect", USER, 10_000, () => fired++);

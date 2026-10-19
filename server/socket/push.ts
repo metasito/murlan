@@ -4,6 +4,7 @@
 // comes down to the two clocks in server/socket/socket.ts: a player is
 // auto-passed after 30s and loses the seat to a bot after 60s, which no
 // notification can beat.
+import { now } from "../clock.ts";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { lockUsers } from "../store/userLock.ts";
@@ -53,10 +54,10 @@ export async function savePushToken(
     await lockUsers(tx, [userId]);
     await tx
       .insert(pushTokens)
-      .values({ token, userId, platform, locale, updatedAt: new Date() })
+      .values({ token, userId, platform, locale, updatedAt: new Date(now()) })
       .onConflictDoUpdate({
         target: pushTokens.token,
-        set: { userId, platform, locale, updatedAt: new Date() },
+        set: { userId, platform, locale, updatedAt: new Date(now()) },
       });
     await tx.delete(pushTokens).where(
       and(

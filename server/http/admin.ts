@@ -8,6 +8,7 @@
 // Every query is bounded — by an aggregate, a date window, or a LIMIT. This
 // database has tables that grow with every match played, and a dashboard that
 // gets slower the more the game is used is a dashboard that stops being opened.
+import { now } from "../clock.ts";
 import { sql } from "drizzle-orm";
 import { db, POOL_MAX } from "../store/db.ts";
 import { funnel, type FunnelStep } from "../socket/events.ts";
@@ -279,7 +280,7 @@ export async function adminSnapshot(provisionalRounds: number): Promise<AdminSna
   ]);
 
   return {
-    generatedAt: new Date().toISOString(),
+    generatedAt: new Date(now()).toISOString(),
     signups: signupRows,
     totalUsers: users,
     activeToday: today,

@@ -1,14 +1,14 @@
 // The exchange ceremony window is measured on the server's one clock: the
 // broadcast that closes the phase stamps it, and the sanitizer that ends it
 // reads it, from the same `now()` the turn clock runs on.
-import { test, describe, afterEach } from "node:test";
+import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { broadcastGameState, sanitizeStateForPlayer } from "../../server/game/gamePersistence.ts";
-import { setClock } from "../../server/game/gameTimers.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { SocketServer } from "../../server/socket/socketTypes.ts";
 import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
+import { installClock } from "../../server/clock.ts";
 import { fakeClock } from "../helpers/fakeClock.ts";
 
 const RETURNED = { id: "6_clubs", suit: "clubs", rank: "6", isJoker: false } as const;
@@ -55,11 +55,9 @@ function recordingIo(sent: Map<string, unknown>): SocketServer {
 }
 
 describe("the exchange ceremony runs on the server clock", () => {
-  afterEach(() => setClock());
-
-  test("advancing the clock past the ceremony ends it for the table, and the loser keeps the card", () => {
+  test("advancing the clock past the ceremony ends it for the table, and the loser keeps the card", (t) => {
     const clock = fakeClock();
-    setClock(clock);
+    t.after(installClock(clock));
     const game = justClosedExchange();
     const sent = new Map<string, unknown>();
 

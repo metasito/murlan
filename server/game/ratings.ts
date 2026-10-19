@@ -1,3 +1,4 @@
+import { now } from "../clock.ts";
 import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { userRatings, users } from "../../shared/schema.ts";
@@ -182,7 +183,7 @@ export async function recordRatedResult(
           set: {
             rating: seat.rating + delta,
             rounds: seat.rounds + 1,
-            updatedAt: new Date(),
+            updatedAt: new Date(now()),
           },
         });
     }
@@ -191,15 +192,15 @@ export async function recordRatedResult(
 }
 
 /** This season's standing for one player, seeded but not yet written if unplayed. */
-export async function getRating(userId: string, now: Date): Promise<RatingDto> {
-  const season = seasonKey(now);
+export async function getRating(userId: string, asOf: Date): Promise<RatingDto> {
+  const season = seasonKey(asOf);
   const { rating, rounds } = await currentRow(db, userId, season);
   return { season, rating, rounds, provisional: rounds < PROVISIONAL_ROUNDS };
 }
 
 /** The current season's ladder. Provisional records are not listed. */
-export async function getLeaderboard(now: Date): Promise<LeaderboardEntryDto[]> {
-  const season = seasonKey(now);
+export async function getLeaderboard(asOf: Date): Promise<LeaderboardEntryDto[]> {
+  const season = seasonKey(asOf);
   const rows = await db
     .select({
       userId: userRatings.userId,
@@ -221,8 +222,8 @@ export async function getLeaderboard(now: Date): Promise<LeaderboardEntryDto[]> 
  * Unlike the public ladder it lists provisional and unplayed records, each on
  * the rating `getRating` would report for them.
  */
-export async function getCircleLeaderboard(userIds: string[], now: Date): Promise<LeaderboardEntryDto[]> {
-  const season = seasonKey(now);
+export async function getCircleLeaderboard(userIds: string[], asOf: Date): Promise<LeaderboardEntryDto[]> {
+  const season = seasonKey(asOf);
   const members = await db
     .select({ userId: users.id, username: users.username })
     .from(users)

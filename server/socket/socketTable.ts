@@ -4,6 +4,7 @@
 // These are shared by the room handlers, the gameplay handlers and the
 // disconnect path alike, so they live apart from all three: leaving them in
 // socket.ts while socket.ts imports the room family would be a cycle.
+import { now } from "../clock.ts";
 import type { SocketServer } from "./socketTypes.ts";
 import { friendStore } from "../store/friendStore.ts";
 import { roomStore } from "../store/roomStore.ts";
@@ -22,7 +23,6 @@ import {
   arm,
   deadline as timerDeadline,
   pending,
-  now as clockNow,
   seatKey,
   clearAllTimersForUser,
   autoStartDelayMs,
@@ -61,7 +61,7 @@ export async function roomStatePayload(
           return [];
         })
       : [];
-  const now = Date.now();
+  const at = now();
   return {
     roomId: room.id,
     code: room.code,
@@ -80,7 +80,7 @@ export async function roomStatePayload(
     seatHolds: holds.map((hold) => ({
       seatIndex: hold.seatIndex,
       username: hold.username,
-      expiresInMs: Math.max(0, hold.expiresAt - now),
+      expiresInMs: Math.max(0, hold.expiresAt - at),
     })),
   };
 }
@@ -212,7 +212,7 @@ export async function announceRejoin(
     if (other === userId || deadline === undefined) continue;
     const otherSeat = seatOfUser(game.playerMap, other);
     const otherName = seatName(game, otherSeat);
-    const seconds = Math.max(1, Math.ceil((deadline - clockNow()) / 1000));
+    const seconds = Math.max(1, Math.ceil((deadline - now()) / 1000));
     io.to(userRoom(userId)).emit("game:player_disconnected", {
       userId: other,
       username: otherName,

@@ -11,6 +11,8 @@ import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
 import { stateAckTimeoutMs } from "../../server/game/gameTimers.ts";
 import { readFileSync } from "node:fs";
 
+/** Any instant: these phases carry no settle stamp, so no ceremony is measured. */
+const AT = 1_700_000_000_000;
 const CARD = { id: "2_spades", suit: "spades", rank: "2", isJoker: false };
 
 const activePhase = {
@@ -23,11 +25,11 @@ const activePhase = {
 
 describe("visibleExchangePhase", () => {
   test("the winner sees the card they were handed", () => {
-    assert.deepEqual(visibleExchangePhase(activePhase, 1)?.cardFromLoser, CARD);
+    assert.deepEqual(visibleExchangePhase(activePhase, 1, AT)?.cardFromLoser, CARD);
   });
 
   test("the loser sees the card taken off them", () => {
-    assert.deepEqual(visibleExchangePhase(activePhase, 3)?.cardFromLoser, CARD);
+    assert.deepEqual(visibleExchangePhase(activePhase, 3, AT)?.cardFromLoser, CARD);
   });
 
   // #602: the card has to be on the felt for every seat, not just the two
@@ -35,7 +37,7 @@ describe("visibleExchangePhase", () => {
   test("the seats watching see it too", () => {
     for (const seat of [0, 2]) {
       assert.deepEqual(
-        visibleExchangePhase(activePhase, seat)?.cardFromLoser,
+        visibleExchangePhase(activePhase, seat, AT)?.cardFromLoser,
         CARD,
         `seat ${seat} was not shown the card`
       );
@@ -43,14 +45,14 @@ describe("visibleExchangePhase", () => {
   });
 
   test("a viewer with no seat (spectator, unknown user) sees it", () => {
-    assert.deepEqual(visibleExchangePhase(activePhase, null)?.cardFromLoser, CARD);
+    assert.deepEqual(visibleExchangePhase(activePhase, null, AT)?.cardFromLoser, CARD);
   });
 
   test("the card stops being sent once the phase closes, at every seat", () => {
     const closed = { ...activePhase, active: false };
     for (const seat of [0, 1, 2, 3, null]) {
       assert.equal(
-        "cardFromLoser" in visibleExchangePhase(closed, seat)!,
+        "cardFromLoser" in visibleExchangePhase(closed, seat, AT)!,
         false,
         `seat ${seat} was still being sent the card`
       );
@@ -60,7 +62,7 @@ describe("visibleExchangePhase", () => {
   test("everything the announcement banner reads is still sent to everyone", () => {
     for (const seat of [0, 1, 2, 3]) {
       assert.deepEqual(
-        { ...visibleExchangePhase(activePhase, seat), cardFromLoser: undefined },
+        { ...visibleExchangePhase(activePhase, seat, AT), cardFromLoser: undefined },
         {
           active: true,
           winnerIdx: 1,
@@ -73,7 +75,7 @@ describe("visibleExchangePhase", () => {
   });
 
   test("no phase at all stays absent", () => {
-    assert.equal(visibleExchangePhase(undefined, 0), undefined);
+    assert.equal(visibleExchangePhase(undefined, 0, AT), undefined);
   });
 
   // `cardToLoser` is a named card out of a named player's hand, and no rule
@@ -232,13 +234,13 @@ describe("visibleExchangePhase", () => {
       const leaking = { ...activePhase, cardToLoser: RETURNED };
       for (const seat of [0, 2, null]) {
         assert.equal(
-          "cardToLoser" in visibleExchangePhase(leaking, seat)!,
+          "cardToLoser" in visibleExchangePhase(leaking, seat, AT)!,
           false,
           `seat ${seat} was shown the winner's card a beat early`
         );
       }
-      assert.deepEqual(visibleExchangePhase(leaking, 1)?.cardToLoser, RETURNED);
-      assert.deepEqual(visibleExchangePhase(leaking, 3)?.cardToLoser, RETURNED);
+      assert.deepEqual(visibleExchangePhase(leaking, 1, AT)?.cardToLoser, RETURNED);
+      assert.deepEqual(visibleExchangePhase(leaking, 3, AT)?.cardToLoser, RETURNED);
     });
 
     // The floor: with nothing chosen there is nothing to reveal, so the key is
@@ -247,7 +249,7 @@ describe("visibleExchangePhase", () => {
     test("is absent from every view before the winner chooses", () => {
       for (const seat of [0, 1, 2, 3, null]) {
         assert.equal(
-          "cardToLoser" in visibleExchangePhase(activePhase, seat)!,
+          "cardToLoser" in visibleExchangePhase(activePhase, seat, AT)!,
           false,
           `seat ${seat} was told a card that had not been chosen`
         );
@@ -257,7 +259,7 @@ describe("visibleExchangePhase", () => {
 
   test("the two-joker exception is visible to the table", () => {
     const both = { ...activePhase, active: false, twoJokerException: true };
-    assert.equal(visibleExchangePhase(both, 0)?.twoJokerException, true);
+    assert.equal(visibleExchangePhase(both, 0, AT)?.twoJokerException, true);
   });
 });
 

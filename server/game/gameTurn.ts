@@ -7,11 +7,11 @@ import { activeGames, seatName } from "./gameRoom.ts";
 import { seatOfUser } from "./onlineGameLogic.ts";
 import { vacate } from "./seatLedger.ts";
 import { payload } from "../socket/payload.ts";
+import { now } from "../clock.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
   arm,
   pending,
-  now,
   seatKey,
   afkTimeoutMs,
   botMoveDelayMs,

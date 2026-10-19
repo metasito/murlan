@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
 
 import { armTurn } from "../../server/game/gameTurn.ts";
-import { botMoveDelayMs, clearRoomTimers, deadline, setClock } from "../../server/game/gameTimers.ts";
+import { botMoveDelayMs, clearRoomTimers, deadline } from "../../server/game/gameTimers.ts";
+import { installClock } from "../../server/clock.ts";
 import { fakeClock } from "../helpers/fakeClock.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
@@ -11,6 +12,8 @@ import { createDeck, emptyRankTally } from "../../lib/game/gameEngine.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 import { dealEndMs } from "../../lib/game/dealTimeline.ts";
 import { Motion } from "../../lib/tokens.ts";
+
+let restoreClock = () => {};
 
 const ROOM = "bot-waits-for-deal-room";
 const io = { to: () => ({ emit: () => {} }) } as unknown as SocketServer;
@@ -42,14 +45,14 @@ function dealtRound(seats: number): GameState {
 function teardown() {
   clearRoomTimers(ROOM);
   activeGames.delete(ROOM);
-  setClock();
+  restoreClock();
 }
 
 describe("a vacant opener waits out the deal (#1726)", () => {
   for (const seats of [4, 2]) {
     test(`${seats} bots, no exchange: the first play lands at dealEndMs, not botMoveDelayMs`, () => {
       const clock = fakeClock();
-      setClock(clock);
+      restoreClock = installClock(clock);
       const gameState = dealtRound(seats);
       activeGames.set(ROOM, { roomId: ROOM, gameState, playerMap: {} } as unknown as OnlineGameState);
       try {
@@ -68,7 +71,7 @@ describe("a vacant opener waits out the deal (#1726)", () => {
 
   test("a round already in play keeps the bot's own delay", () => {
     const clock = fakeClock();
-    setClock(clock);
+    restoreClock = installClock(clock);
     const gameState = dealtRound(4);
     gameState.firstPlayMade = true;
     gameState.playedRanks![0] = 1;

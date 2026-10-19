@@ -350,6 +350,30 @@ const GUARDS = [
       '// import "../i18n"\nconst s = "../i18n";',
     ].map((code) => ({ file: "lib/game/rating.ts", code })),
   },
+  {
+    id: "server-reads-one-clock",
+    why: "The server tells time through one clock a test can install: read it with now() from server/clock.ts, and write a timestamp as new Date(now()).",
+    selector: 'MemberExpression[object.name="Date"][property.name="now"], NewExpression[callee.name="Date"][arguments.length=0]',
+    files: ["server/**/*.ts"],
+    ignores: [
+      { glob: "server/clock.ts", reason: "the real clock is the one wall-time read the rest go through" },
+      { glob: "server/store/drainPool.ts", reason: "waits on real pool I/O at shutdown; under an installed fake clock the wait would spin forever" },
+      { glob: "server/socket/socketAdapter.ts", reason: "waits on a real Postgres LISTEN subscription; under an installed fake clock the wait would spin forever" },
+    ],
+    plant: { file: "server/game/plant.ts", code: [
+      "const at = Date.now();",
+      "const stamp = new Date();",
+      "const read = Date.now;",
+      "setTimeout(() => {}, Date.now() - since);",
+    ].join("\n"), hits: 4 },
+    spare: [
+      "const at = now();",
+      "const stamp = new Date(now());",
+      "const when = new Date(row.createdAt);",
+      "const t = Date.parse(raw);",
+      '// Date.now() is the wall clock\nconst s = "new Date()";',
+    ].map((code) => ({ file: "server/game/plant.ts", code })),
+  },
 ];
 
 // eslint's --cache keys a plugin's results on its meta.version, so an unversioned guard edit would

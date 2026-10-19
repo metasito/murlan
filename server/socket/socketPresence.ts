@@ -7,6 +7,7 @@
 // `registerDisconnect` registers synchronously, before `announcePresence`'s
 // own awaits (server/socket/socket.ts): a socket that closes while those are still
 // running has no other listener that will ever see it.
+import { now } from "../clock.ts";
 import type { DisconnectReason } from "socket.io";
 import type { SocketServer, GameSocket as Socket } from "./socketTypes.ts";
 import { friendStore } from "../store/friendStore.ts";
@@ -159,7 +160,7 @@ export function registerDisconnect({ io, socket, userId }: PresenceContext) {
               logger.debug({ err, userId }, "Failed to update users.last_seen on disconnect")
             );
 
-          const lastSeen = new Date().toISOString();
+          const lastSeen = new Date(now()).toISOString();
           void emitFriendStatusOffline(userId, lastSeen);
 
           const currentRoomId = socketRoomMap.get(socket.id);

@@ -1,3 +1,4 @@
+import { now } from "../clock.ts";
 import { eq, and, or, sql, desc, inArray } from "drizzle-orm";
 import { db } from "./db.ts";
 import { uniqueViolation } from "./userStore.ts";
@@ -205,7 +206,7 @@ export const friendStore = {
   ): Promise<void> {
     await db
       .insert(gameInvites)
-      .values({ roomId, inviterId, inviteeId })
+      .values({ roomId, inviterId, inviteeId, createdAt: new Date(now()) })
       .onConflictDoUpdate({
         target: [gameInvites.roomId, gameInvites.inviteeId],
         set: { inviterId },

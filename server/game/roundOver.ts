@@ -1,3 +1,4 @@
+import { now } from "../clock.ts";
 import type { SocketServer } from "../socket/socketTypes.ts";
 import { logger } from "../http/logger.ts";
 import { arm, clearRoomTimers, clearRoomDisconnectTimers, voteDeadlineMs } from "./gameTimers.ts";
@@ -111,11 +112,11 @@ export async function handleRoundOver(
   // Before the awaits below, so no rejoin can read the vote without its deadline.
   if (!game.matchOver) armVoteDeadline(io, roomId);
 
-  // One clock for the preview, the emit and the rated write below: two calls
-  // to `new Date()` can straddle a month boundary, and the season key is
+  // One clock for the preview, the emit and the rated write below: two reads
+  // of the clock can straddle a month boundary, and the season key is
   // derived from it — the delta shown would then belong to a different season
   // from the one written.
-  const finishedAt = new Date();
+  const finishedAt = new Date(now());
   // Awaited, unlike the writes below, and deliberately: this is a read, and
   // it is the only moment the delta exists. `user_ratings` keeps only the
   // current rating, so once the rated write lands nothing can reconstruct what

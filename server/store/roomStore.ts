@@ -1,3 +1,4 @@
+import { now } from "../clock.ts";
 import { eq, and, asc, sql } from "drizzle-orm";
 import { db } from "./db.ts";
 import { users, rooms, roomPlayers, gameInvites } from "../../shared/schema.ts";
@@ -289,7 +290,7 @@ export const roomStore = {
         room,
         seated,
         invites,
-        now: Date.now(),
+        now: now(),
         holdMs: seatHoldMs(),
         userId,
       });
@@ -326,7 +327,7 @@ export const roomStore = {
       room,
       seated,
       invites,
-      now: Date.now(),
+      now: now(),
       holdMs: seatHoldMs(),
     }).map((hold) => ({ ...hold, username: nameOf.get(hold.inviteeId) ?? "" }));
   },

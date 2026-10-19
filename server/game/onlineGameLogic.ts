@@ -92,7 +92,7 @@ function ceremonyRunning(phase: VisibleExchangePhaseInput, now: number): boolean
  */
 export function markExchangeSettled(
   phase: Pick<VisibleExchangePhaseInput, "active" | "settledAt"> | undefined,
-  now: number = Date.now()
+  now: number
 ): void {
   if (!phase) return;
   if (phase.active) delete phase.settledAt;
@@ -121,7 +121,7 @@ export function markExchangeSettled(
 export function visibleExchangePhase(
   phase: VisibleExchangePhaseInput | undefined,
   viewerSeatIndex: number | null,
-  now: number = Date.now()
+  now: number
 ): Record<string, unknown> | undefined {
   if (!phase) return undefined;
 

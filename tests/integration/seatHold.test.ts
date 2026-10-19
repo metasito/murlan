@@ -16,6 +16,8 @@ import {
 } from "../helpers/testServer.ts";
 import { connectAs, waitFor } from "../helpers/client.ts";
 import { befriend, inviteRowsFor } from "../helpers/friends.ts";
+import { skewedClock } from "../helpers/fakeClock.ts";
+import { seatHoldMs } from "../../server/game/gameTimers.ts";
 import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/game/gameEngine.ts";
 
 interface RoomState {
@@ -40,14 +42,14 @@ describe(
     let server: TestServer;
     const sockets: Socket[] = [];
     let n = 0;
+    const clock = skewedClock();
 
     before(async () => {
-      server = await startTestServer();
+      server = await startTestServer({ clock });
     });
     after(async () => {
       for (const s of sockets) if (s.connected) s.close();
       await server.stop();
-      delete process.env.MURLAN_SEAT_HOLD_MS;
     });
 
     async function player(tag: string) {
@@ -158,19 +160,14 @@ describe(
 
       // The same account, the same room, the same last seat: only the length of
       // the hold changes, so nothing but its expiry can explain the difference.
-      process.env.MURLAN_SEAT_HOLD_MS = "1";
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      try {
-        const seated = await joins(latecomer, room.code, host.socket);
-        assert.equal(
-          seated.players.find((p) => p.userId === latecomer.user.id)?.seatIndex,
-          2,
-          "once the hold has run out the seat is anyone's"
-        );
-        assert.deepEqual(seated.seatHolds, [], "and the room stops promising it");
-      } finally {
-        delete process.env.MURLAN_SEAT_HOLD_MS;
-      }
+      clock.skip(seatHoldMs() + 1);
+      const seated = await joins(latecomer, room.code, host.socket);
+      assert.equal(
+        seated.players.find((p) => p.userId === latecomer.user.id)?.seatIndex,
+        2,
+        "once the hold has run out the seat is anyone's"
+      );
+      assert.deepEqual(seated.seatHolds, [], "and the room stops promising it");
     });
 
     test("is not taken out of a free-for-all lobby", async () => {
@@ -196,46 +193,42 @@ describe(
     });
 
     test("a re-invite does not extend the hold — it still runs from the first invite", async () => {
-      process.env.MURLAN_SEAT_HOLD_MS = "1000";
-      try {
-        const host = await player("rn_host");
-        const friend = await player("rn_friend");
-        await befriend(server, host, friend);
+      const step = Math.ceil(seatHoldMs() * 0.6);
+      const host = await player("rn_host");
+      const friend = await player("rn_friend");
+      await befriend(server, host, friend);
 
-        const made = waitFor<RoomState>(host.socket, "room:state");
-        host.socket.emit("room:create", { gameMode: "teams", maxPlayers: TEAMS_PLAYER_COUNT });
-        const room = await made;
+      const made = waitFor<RoomState>(host.socket, "room:state");
+      host.socket.emit("room:create", { gameMode: "teams", maxPlayers: TEAMS_PLAYER_COUNT });
+      const room = await made;
 
-        const firstInvite = waitFor<RoomState>(host.socket, "room:state");
-        host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
-        await firstInvite;
+      const firstInvite = waitFor<RoomState>(host.socket, "room:state");
+      host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
+      await firstInvite;
 
-        const strangerA = await player("rn_sA");
-        await joins(strangerA, room.code, host.socket);
-        const strangerB = await player("rn_sB");
-        await joins(strangerB, room.code, host.socket);
+      const strangerA = await player("rn_sA");
+      await joins(strangerA, room.code, host.socket);
+      const strangerB = await player("rn_sB");
+      await joins(strangerB, room.code, host.socket);
 
-        await new Promise((resolve) => setTimeout(resolve, 600));
+      clock.skip(step);
 
-        // If the conflict path still restamped created_at, this would buy the
-        // hold another 1000ms from here instead of leaving the first invite's
-        // clock alone.
-        const reinvite = waitFor<RoomState>(host.socket, "room:state");
-        host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
-        await reinvite;
+      // If the conflict path still restamped created_at, this would buy the
+      // hold another full length from here instead of leaving the first invite's
+      // clock alone.
+      const reinvite = waitFor<RoomState>(host.socket, "room:state");
+      host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
+      await reinvite;
 
-        await new Promise((resolve) => setTimeout(resolve, 600));
+      clock.skip(step);
 
-        const latecomer = await player("rn_late");
-        const seated = await joins(latecomer, room.code, host.socket);
-        assert.equal(
-          seated.players.find((p) => p.userId === latecomer.user.id)?.seatIndex,
-          2,
-          "1200ms after the first invite the hold must be gone, no matter how many re-invites followed it"
-        );
-      } finally {
-        delete process.env.MURLAN_SEAT_HOLD_MS;
-      }
+      const latecomer = await player("rn_late");
+      const seated = await joins(latecomer, room.code, host.socket);
+      assert.equal(
+        seated.players.find((p) => p.userId === latecomer.user.id)?.seatIndex,
+        2,
+        "1.2 holds after the first invite the hold must be gone, no matter how many re-invites followed it"
+      );
     });
 
     test("unfriending withdraws the invite and frees the seat it held", async () => {

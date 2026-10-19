@@ -16,14 +16,16 @@ import {
   pending,
   pendingKeys,
   seatKey,
-  setClock,
 } from "../../server/game/gameTimers.ts";
+import { installClock } from "../../server/clock.ts";
 import { fakeClock } from "../helpers/fakeClock.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { emptyRankTally } from "../../lib/game/gameEngine.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 import { Reading } from "../../lib/tokens.ts";
+
+let restoreClock = () => {};
 
 const ROOM = "opening-grace-room";
 const OPENER = "opening-grace-opener";
@@ -63,7 +65,7 @@ function seat(gameState: GameState, playerMap: Record<number, string>): OnlineGa
 function teardown() {
   clearRoomTimers(ROOM);
   activeGames.delete(ROOM);
-  setClock();
+  restoreClock();
 }
 
 const afkKeysInRoom = () => pendingKeys("afk").filter((k) => k.startsWith(`${ROOM}:`));
@@ -71,7 +73,7 @@ const afkKeysInRoom = () => pendingKeys("afk").filter((k) => k.startsWith(`${ROO
 describe("the opener's first-turn AFK grace (#830)", () => {
   test("grants Reading.notice on the opener's first turn, and never again once the round has a play in it", () => {
     const clock = fakeClock();
-    setClock(clock);
+    restoreClock = installClock(clock);
     const game = seat(freshRound(), { 0: OPENER, 1: OTHER });
     try {
       armTurn(io, ROOM);
@@ -116,7 +118,7 @@ describe("the opener's first-turn AFK grace (#830)", () => {
 
   test("a rejoin mid-opening does not renew the grant, and nobody but the opener carries a timer", () => {
     const clock = fakeClock();
-    setClock(clock);
+    restoreClock = installClock(clock);
     const game = seat(freshRound(), { 0: OPENER, 1: OTHER });
     try {
       armTurn(io, ROOM);
@@ -148,7 +150,7 @@ describe("the opener's first-turn AFK grace (#830)", () => {
 
   test("the opener's AFK timer expires at the granted deadline, not at the bare AFK window", () => {
     const clock = fakeClock();
-    setClock(clock);
+    restoreClock = installClock(clock);
     const game = seat(freshRound(), { 0: OPENER, 1: OTHER });
     try {
       armTurn(io, ROOM);

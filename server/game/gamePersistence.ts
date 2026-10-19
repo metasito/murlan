@@ -14,6 +14,7 @@ import {
 } from "../../shared/schema.ts";
 import { activeGames, userRoom } from "./gameRoom.ts";
 import { payload } from "../socket/payload.ts";
+import { now } from "../clock.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { RoundOverWriters } from "./roundOver.ts";
 import { releaseRoom, releaseRoomAfter, unclaimedRooms } from "./gameOwnership.ts";
@@ -86,7 +87,8 @@ export function sanitizeStateForPlayer(
     turnSecondsRemaining: secondsUntil(turnDeadlineMs),
     exchangePhase: visibleExchangePhase(
       state.exchangePhase,
-      viewerSeatIndex
+      viewerSeatIndex,
+      now()
     ) as GameState["exchangePhase"],
     players: state.players.map((p, idx) => {
       const isViewer = playerMap[idx] === viewerUserId;
@@ -145,7 +147,7 @@ export async function stopTables(): Promise<void> {
 /** An object rather than a bare function so a test can hold one write, as with `roomStore`. */
 export const persistence = {
   async writeActiveGame(roomId: string, gameState: PersistedEnvelope<GameState>) {
-    const updatedAt = new Date();
+    const updatedAt = new Date(now());
     await db
       .insert(activeGamesTable)
       .values({ roomId, gameState, updatedAt })
@@ -237,7 +239,7 @@ export function sendGameStateTo(io: SocketServer, uid: string, game: OnlineGameS
 export function broadcastGameState(io: SocketServer, game: OnlineGameState) {
   // Before the first seat is served, so the broadcast that closes an exchange
   // is inside its own ceremony window rather than one tick outside it.
-  markExchangeSettled(game.gameState.exchangePhase);
+  markExchangeSettled(game.gameState.exchangePhase, now());
   Object.values(game.playerMap).forEach((uid) => sendGameStateTo(io, uid, game));
   // Spectators go through the same sanitiser. seatOfUser returns null for
   // a userId that holds no seat, and every hand is blanked on that basis, so a
@@ -288,7 +290,7 @@ export function safeTimer(
  * "nothing to do" from "did not run".
  */
 export async function pruneAbandonedGames(): Promise<number> {
-  const cutoff = new Date(Date.now() - ABANDONED_GAME_MAX_AGE_MS);
+  const cutoff = new Date(now() - ABANDONED_GAME_MAX_AGE_MS);
   const gone = await db
     .delete(activeGamesTable)
     .where(lt(activeGamesTable.updatedAt, cutoff))
@@ -311,7 +313,7 @@ export async function pruneAbandonedGames(): Promise<number> {
  * A room still in the in-memory map is never a candidate, whatever its age.
  */
 export async function pruneStaleRooms(): Promise<number> {
-  const cutoff = new Date(Date.now() - STALE_ROOM_MAX_AGE_MS);
+  const cutoff = new Date(now() - STALE_ROOM_MAX_AGE_MS);
   const candidates = await db
     .select({ id: roomsTable.id })
     .from(roomsTable)
