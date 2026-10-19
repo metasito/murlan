@@ -17,6 +17,8 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 
+const repoRoot = path.resolve(import.meta.dirname, "..", "..");
+
 // This suite serves a synthetic dist/ tree. node --test runs files concurrently
 // and every other integration suite's server reads dist/ from process.cwd() too,
 // so the tree is built in a directory of this suite's own and cwd moves onto it
@@ -37,7 +39,6 @@ const FIXTURE_FAVICON = Buffer.from("00000100", "hex");
 
 describe("static asset compression and caching", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  let originalCwd: string;
   let sandbox: string;
 
   before(async () => {
@@ -51,7 +52,6 @@ describe("static asset compression and caching", { skip: hasDatabase() ? false :
     fs.writeFileSync(path.join(distDir, "favicon.ico"), FIXTURE_FAVICON);
     fs.writeFileSync(path.join(assetDir, ASSET_NAME), FIXTURE_JS);
 
-    originalCwd = process.cwd();
     process.chdir(sandbox);
     server = await startTestServer();
   });
@@ -61,7 +61,7 @@ describe("static asset compression and caching", { skip: hasDatabase() ? false :
       if (server) await server.stop();
     } finally {
       try {
-        if (originalCwd) process.chdir(originalCwd);
+        process.chdir(repoRoot);
       } finally {
         if (sandbox) fs.rmSync(sandbox, { recursive: true, force: true });
       }
