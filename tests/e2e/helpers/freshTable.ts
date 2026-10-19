@@ -12,12 +12,15 @@ export interface SeatCount {
  * which makes this a different table than the record — measuring it anyway is
  * what reported a false layout break twice.
  *
- * `seats` are the opponent seats the table actually renders (#792), not the
- * seat count a table was asked for.
+ * `seats` are the opponent seats the table actually renders (#792); they must
+ * be every opponent of a `seatCount`-seat table, or a read that found no seat
+ * would pass for a fresh one.
  */
-export function assertFresh(seats: SeatCount[]): void {
-  const seatsOnScreen = 1 + seats.length;
-  const floor = freshHandFloor(seatsOnScreen);
+export function assertFresh(seats: SeatCount[], seatCount: number): void {
+  if (seats.length !== seatCount - 1) {
+    throw new Error(`read ${seats.length} opponent seat(s) on a ${seatCount}-seat table`);
+  }
+  const floor = freshHandFloor(seatCount);
   for (const seat of seats) {
     const text = seat.count.trim();
     if (!/^\d+$/.test(text)) {
@@ -27,7 +30,7 @@ export function assertFresh(seats: SeatCount[]): void {
     if (count < floor) {
       throw new Error(
         `the ${seat.testId} seat already holds ${seat.count} card(s), fewer than the ` +
-          `${floor} a fresh deal leaves any of this ${seatsOnScreen}-seat table's seats ` +
+          `${floor} a fresh deal leaves any of this ${seatCount}-seat table's seats ` +
           `— this table has already been played into and cannot be measured against a ` +
           `record of an unplayed one`
       );

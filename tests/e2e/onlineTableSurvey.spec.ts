@@ -260,7 +260,7 @@ async function readTable(page: Page): Promise<Measurement> {
       yourTurn: YOUR_TURN_PREFIX,
     }
   );
-  assertFresh(m.debug.seatSlots);
+  assertFresh(m.debug.seatSlots, SEATS);
   return m;
 }
 
