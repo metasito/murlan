@@ -18,6 +18,8 @@ import { REPLAY_RETENTION_DAYS } from "../../lib/game/replay.ts";
 import { BUG_REPORT_RETENTION_DAYS } from "../http/bugReports.ts";
 import { logger } from "../http/logger.ts";
 
+const DAY_MS = 24 * 60 * 60_000;
+
 /**
  * Never thrown: this is diagnostic hygiene, not gameplay, and one rule
  * failing (e.g. a transient connection error) must not stop the others —
@@ -40,7 +42,7 @@ export async function sweepRetention(): Promise<void> {
   await pruneOlderThan("round_replays", () =>
     db
       .delete(roundReplays)
-      .where(lt(roundReplays.finishedAt, sql`now() - make_interval(days => ${REPLAY_RETENTION_DAYS})`))
+      .where(lt(roundReplays.finishedAt, new Date(now() - REPLAY_RETENTION_DAYS * DAY_MS)))
   );
   await pruneOlderThan("auth_tokens", () =>
     db.delete(authTokens).where(lt(authTokens.expiresAt, new Date(now())))

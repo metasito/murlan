@@ -103,6 +103,7 @@ export const roomStore = {
           maxPlayers,
           visibility,
           autoStart,
+          createdAt: new Date(now()),
         }).returning();
         if (!room) throw new Error("createRoom: insert returned no row");
         return room;
