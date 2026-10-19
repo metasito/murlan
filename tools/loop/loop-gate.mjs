@@ -28,6 +28,7 @@ import { testSeams } from "./session-env.mjs";
 import { parseHeader } from "./brief.mjs";
 import { COMMITTING } from "./loop-stream.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import { LIMITS } from "./limits.mjs";
 
 /** A supervisor calls this in-process; the CLI below is the same read from a fresh one. */
 export function buildPassed(cwd) {
@@ -82,17 +83,7 @@ export function buildReady(cwd, ticket, comments = ticketComments) {
   return dodVerdict(comments(ticket), gitAt(cwd).text(["rev-parse", "HEAD"]), lineResolver(cwd), true);
 }
 
-/**
- * Phase D's ceiling, here rather than in `queue.md`'s prose, because that is the difference
- * between a bound a test can fail and a sentence.
- *
- * The full review, then at most two reviews of a fix. A third review that still blocks means each fix
- * is making the next defect, which a reviewer owes the owner, not another round.
- */
-export const MAX_REVIEW_ROUNDS = 3;
-
-/** CI fix rounds the reviewer held, which `MAX_REVIEW_ROUNDS` does not count. */
-export const MAX_FIX_HOLDS = 2;
+const { MAX_REVIEW_ROUNDS, MAX_FIX_HOLDS } = LIMITS;
 
 /** @param {{reviewRounds?: number|null, fixHolds?: number|null}} s */
 export function roundVerdict({ reviewRounds, fixHolds = 0 }) {

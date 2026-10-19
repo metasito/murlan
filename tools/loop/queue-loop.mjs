@@ -66,27 +66,28 @@ import {
   typicalMs,
 } from "./loop-logs.mjs";
 import { checkLockDrift, housekeeping, listWorktreeDirNames } from "./workspace.mjs";
-import { buildReady, MAX_REVIEW_ROUNDS } from "./loop-gate.mjs";
+import { buildReady } from "./loop-gate.mjs";
 import { ghTracker } from "./tracker.mjs";
-import {
-  CONTEXT_BY_SIZE,
-  CONTEXT_DEFAULT,
-  EFFORT_BY_PHASE,
-  estimateCost,
-  MODEL_BY_PHASE,
-  TICKET_BUDGET_USD,
-  TURNS_BY_SIZE,
-  TURNS_DEFAULT,
-  turnHeadroom,
-  USD_BY_SIZE,
-  USD_DEFAULT,
-} from "./loop-cost.mjs";
+import { estimateCost, turnHeadroom } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { CHECK_BASH_TIMEOUT_MS, REFRESH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
+import {
+  BASH_DEFAULT_TIMEOUT_MS,
+  CHECK_BASH_TIMEOUT_MS,
+  HEARTBEAT_MS,
+  LIMITS,
+  REFRESH_TIMEOUT_MS,
+  RESTART,
+  SESSION_POLICY,
+  STALL_MS,
+  sleepClock,
+} from "./limits.mjs";
 import { nextPick } from "./next-ticket.mjs";
 import { branchOf } from "./claim.mjs";
-import { afterSession, decide, WAIT } from "./decide.mjs";
-import { CI_RED_TIMEOUT_MS, runSettle, SETTLE, UPDATES } from "./settle.mjs";
+import { afterSession, decide } from "./decide.mjs";
+import { CI_RED_TIMEOUT_MS, runSettle } from "./settle.mjs";
+
+const { CI_ROUNDS, MAX_REVIEW_ROUNDS, SETTLE, TICKET_HOLDS, WAIT } = LIMITS;
+const { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, MODEL_BY_PHASE, TICKET_BUDGET_USD, TURNS_BY_SIZE, TURNS_DEFAULT } = SESSION_POLICY;
 
 // Spawning a sibling by its own directory, not the cwd: the supervisor runs from the repo root,
 // but nothing guarantees that, and the sibling is beside this file either way.
@@ -274,34 +275,6 @@ export function syncCheckout(
   return true;
 }
 
-/**
- * A session's own longest silence. Phase D's review subagent emits nothing into the parent
- * stream while it reads, and a large diff keeps it there past twenty minutes. Any ceiling at or
- * under that reads a working run as a stalled one. `CHECK_BASH_TIMEOUT_MS` is the session's Bash
- * ceiling, which `agent:check` needs and a stall must outlast.
- */
-export { STALL_MS, CHECK_BASH_TIMEOUT_MS };
-
-/**
- * Every other call's: a command waiting on a stdin nothing will write is killed at this, not at the
- * ceiling. `await-run` waits a minute less, and each re-issue of it is a turn at full context, so
- * this stays well past the CI run's target.
- */
-export const BASH_DEFAULT_TIMEOUT_MS = 10 * 60_000;
-
-export { SETTLE, UPDATES };
-
-/** Consecutive red CI rounds on one ticket before it stops being the loop's to fix. */
-export const CI_ROUNDS = 3;
-
-/**
- * Processes one ticket may be spawned as. A+B+C is one, each review round is one and the last also
- * lands — five for a ticket that uses every round, and the slack is for a resume that re-enters a phase.
- *
- * A ceiling, not a budget: the thing that actually stops a runaway ticket is `USD_BY_SIZE`.
- */
-export const MAX_HANDOFFS = 8;
-
 // `npm` and `npx` are `.cmd` shims, and since the fix for CVE-2024-27980 node will not resolve one
 // from execFileSync. Both are reached only with argument lists this file writes itself, never with
 // anything a ticket or the tracker supplies.
@@ -321,15 +294,6 @@ const sh = (file, args, opts = {}) => {
   }
   return execFileSync(file, args, base);
 };
-
-/** One bad ticket is a ticket. Three in a row is the loop or the machine, and a night proving it. */
-export const BREAKER = 3;
-
-/**
- * How often a long hold says it is still there. The hold is the one stretch of the run that
- * prints nothing, and a silent terminal reads exactly like a dead one.
- */
-export const HEARTBEAT_MS = 15 * 60_000;
 
 /**
  * Sliced, so `.loop-stop` still reaches the loop across a long wait.
@@ -782,7 +746,6 @@ const git = (...args) => gitAt()(args);
  */
 const RUN_ID = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
 
-export const RESTART = 75;
 /** The supervisor's own code moved under it: `syncCheckout` updated the checkout, not the running process. */
 export function loopMoved(startSha, run = git) {
   if (!startSha) return null;
@@ -902,9 +865,6 @@ export async function settle(pending, screen, opts = {}) {
   }
 }
 
-/** Passes one ticket may hold in a row before it is parked: `WAIT.FLOOR` apart, they outlast a short GitHub outage. */
-export const TICKET_HOLDS = 10;
-
 const standing = () => {
   const s = derive();
   return s.onTicket
@@ -961,8 +921,6 @@ export function parkAndRecord({ tracker, events, record }, number, { run = null,
   });
   return { outcome: "parked", ticket: number, why: ctx.why };
 }
-
-const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT, WAIT, UPDATES };
 
 /** Read in order, and only as far as the first that ends the pass. */
 async function preflight(workspace, pinned) {
@@ -1054,7 +1012,7 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
     workspace.remove(cwd, number);
   };
   const decideAt = (step, facts) => {
-    const action = decide({ limits: LIMITS, now: Date.now(), asked: false, own: null, ...facts, step, loop });
+    const action = decide({ now: Date.now(), asked: false, own: null, ...facts, step, loop });
     loop = action.loop;
     return action;
   };
@@ -1632,7 +1590,7 @@ export async function main({
       // No row: there is no run to write one from, and an invented row is a ledger trusted while
       // wrong. The claim is the part that strands the ticket, and it comes off here.
       const own = claimed === null ? null : worktreeOf(workspace, claimed);
-      const threw = decide({ step: "threw", route: claimed === null ? null : { n: claimed }, error: String(err?.message ?? err), own, loop, limits: LIMITS, now: Date.now() });
+      const threw = decide({ step: "threw", route: claimed === null ? null : { n: claimed }, error: String(err?.message ?? err), own, loop, now: Date.now() });
       if (threw.kind === "park") {
         try {
           parkAndRecord({ tracker, events, record }, claimed, { ...own, phase: threw.phase, why: threw.why, log: streamLog(claimed) });
@@ -1693,7 +1651,7 @@ export function check({ say = console.log } = {}) {
   );
   const loop = { failures: 0, holds: 0, waits: 0, overloads: 0, pinned: null };
   const action = choose({ pinned: null, at: null, repicked: false }, said, (facts) =>
-    decide({ limits: LIMITS, now: Date.now(), asked: false, own: null, ...facts, step: "pick", loop }),
+    decide({ now: Date.now(), asked: false, own: null, ...facts, step: "pick", loop }),
   );
   say(`PICK\t${JSON.stringify(action)}`);
 }

@@ -18,19 +18,18 @@ import {
   publishForReview,
   removeLanded,
   removeWorktree,
-  MAX_HANDOFFS,
-  RESTART,
   loopMoved,
 } from "../queue-loop.mjs";
+import { LIMITS, RESTART } from "../limits.mjs";
 import { fakeTracker } from "../tracker.mjs";
-import { USD_BY_SIZE } from "../loop-cost.mjs";
-import { afterSession, WAIT } from "../decide.mjs";
+import { afterSession } from "../decide.mjs";
 import { readLine } from "../loop-stream.mjs";
 import { parkReasonOf, ticketTally } from "../loop-logs.mjs";
 import { PLAIN } from "../loop-render.mjs";
 import { parkAsked } from "../loop-screen.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
+const { MAX_HANDOFFS, USD_BY_SIZE, WAIT } = LIMITS;
 
 const rowOf = (x: any) => ({
   n: x.number,

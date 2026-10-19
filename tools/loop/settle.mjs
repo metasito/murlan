@@ -20,37 +20,22 @@ import { readLine } from "./loop-stream.mjs";
 import { ciLine } from "./loop-render.mjs";
 import { DIR, ciLogPath, ciRedNotePath, streamLog } from "./loop-logs.mjs";
 import { landable, reviewerRan } from "./loop-gate.mjs";
-import { REFRESH_TIMEOUT_MS, sleepClock } from "./limits.mjs";
+import { LIMITS, REFRESH_TIMEOUT_MS, sleepClock } from "./limits.mjs";
 import { decide } from "./decide.mjs";
 
 // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
 const ts = (file) => createRequire(import.meta.url)(file);
 
-/**
- * The supervisor's half has no watchdog over it — `runSession`'s (`loop-session.mjs`) watches the child and is cleared
- * when the child closes — so `settle` as a whole is bounded here instead, and a branch that keeps
- * asking for one more round cannot hold the night open. Each individual `gh` call carries its own
- * ceiling in `ciVerdict.ts`'s `ghExecOptions`, which is where the one that can block lives.
- */
-export const SETTLE = { DEADLINE_MS: 90 * 60_000, STUCK_MS: 3 * 60_000 };
-
-/** Each update-branch is a new head, which restarts the deadline: without a cap, a busy main never lets it run out. */
-export const UPDATES = 3;
-
 /** Bounds each `gh` call settling makes, so a wedged one cannot stall the supervisor. */
 export const CI_RED_TIMEOUT_MS = 30_000;
 
-/** How many times a hand-back reads the tracker and posts a CI-RED before it holds the red. */
-const CI_RED_TRIES = 3;
+const { SETTLE, CI_RED_TRIES } = LIMITS;
 
 /** A `gh` failure that is the network's, not GitHub's answer: `execFileSync` puts it in `stderr` or `code`. */
 const OFFLINE = /error connecting to|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|i\/o timeout|TLS handshake timeout/i;
 
 /** GitHub's own failure to answer, which a later read can get past; a 4xx, a 403 above all, is its answer. */
 const SERVER = /HTTP 5\d\d\b|Bad Gateway|Service Unavailable|Gateway Timeout|Something went wrong while executing your query/i;
-
-/** How many reads in a row may fail on the network or GitHub's side before settling stops asking. */
-export const READ_RETRIES = 3;
 
 const sha7 = (sha) => String(sha).slice(0, 7);
 
@@ -183,7 +168,7 @@ export function stepSettle(state, read) {
   // Landing reads move no run counter.
   const stuck = read.at - s.stuckSince >= s.stuckMs;
   const facts = { ...next, head: s.head, armed: s.armed, overdue, deadline: s.deadline, updates: s.updates, last: s.last, stuck, ci: s.ci, error, reran: s.reran, cleared: read.cleared };
-  const step = decide({ step: "landing", limits: { UPDATES, READ_RETRIES }, loop: {}, landing: facts });
+  const step = decide({ step: "landing", loop: {}, landing: facts });
   if (step.kind === "ask") return { state, effects: [], ask: "cleared", head: s.head };
 
   if (step.kind === "settled") {

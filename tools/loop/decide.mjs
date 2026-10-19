@@ -1,4 +1,4 @@
-import { STALL_MS } from "./limits.mjs";
+import { LIMITS, STALL_MS } from "./limits.mjs";
 import { OWNER_LABELS } from "./tracker.mjs";
 
 const sha7 = (head) => String(head ?? "an unread head").slice(0, 7);
@@ -62,21 +62,7 @@ function apiFailure(run) {
   return s == null && run.apiErrorCode === "server_error" ? "unreachable" : null;
 }
 
-/**
- * How long to wait out a spent usage window.
- *
- * The loop must not exit on a refusal: the owner is away, and an exit that nothing recovers costs
- * every remaining ticket of the night. `CAP` bounds one hold against a wrong clock, not the total
- * — a gap longer than it is held in pieces and asked again, so a seven-day window resumes within
- * `CAP` of its reset rather than never. `TRIES` is the floor under all of it: that many refusals
- * in a row, each after a full wait, is an account that is not coming back on its own.
- */
-export const WAIT = {
-  CAP: 12 * 60 * 60_000,
-  FLOOR: 60_000,
-  MARGIN: 30_000,
-  TRIES: 20,
-};
+const { WAIT } = LIMITS;
 
 /** @param {{blocked?: boolean, blockedUntil?: number, done?: boolean}} run */
 function waitFor({ blocked, blockedUntil, done }, now = Date.now()) {
@@ -514,5 +500,6 @@ function tallied(action, { loop, limits, step, now }) {
  * @param {Record<string, any>} input
  */
 export function decide(input) {
-  return tallied(capped(STEPS[input.step](input), input), input);
+  const capsOf = { ...input, limits: input.limits ?? LIMITS };
+  return tallied(capped(STEPS[input.step](capsOf), capsOf), capsOf);
 }

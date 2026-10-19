@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { RESTART } from "./queue-loop.mjs";
+import { RESTART } from "./limits.mjs";
 
 export function supervise(
   spawn = (args) => spawnSync(process.execPath, args, { stdio: "inherit" }).status ?? 1,

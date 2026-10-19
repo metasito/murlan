@@ -2,14 +2,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { decide, WAIT } from "../decide.mjs";
+import { decide } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
-import { BREAKER, CI_ROUNDS, choose as drive, MAX_HANDOFFS, SETTLE, TICKET_HOLDS, UPDATES } from "../queue-loop.mjs";
+import { choose as drive } from "../queue-loop.mjs";
+import { LIMITS } from "../limits.mjs";
 import { ledgerFixture } from "./helpers/ledgerFixture.ts";
-import { USD_BY_SIZE, USD_DEFAULT } from "../loop-cost.mjs";
-import { READ_RETRIES } from "../settle.mjs";
 
-const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT, WAIT, UPDATES, READ_RETRIES };
+const { BREAKER, CI_ROUNDS, MAX_HANDOFFS, READ_RETRIES, SETTLE, TICKET_HOLDS, UPDATES, USD_BY_SIZE, USD_DEFAULT, WAIT } = LIMITS;
 const NOW = Date.parse("2026-10-12T20:00:00Z");
 
 const route = { n: 42, skill: "implement", title: "the ticket", phase: "C", size: "size:S", fix: false, head: null };

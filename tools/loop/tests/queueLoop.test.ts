@@ -8,7 +8,6 @@ import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { act, clockAt, closing, header, LAND, note, PLAIN, recap, stepRow, tasksDetail, thought } from "../loop-render.mjs";
 import { closePhase, readLine, reduceSession, sessionStart } from "../loop-stream.mjs";
-import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, USD_BY_SIZE, USD_DEFAULT } from "../loop-cost.mjs";
 import { ticker } from "../loop-screen.mjs";
 import {
   pushedPr,
@@ -24,20 +23,12 @@ import {
   settle,
   runOnce,
   loopSha,
-  CHECK_BASH_TIMEOUT_MS,
-  BASH_DEFAULT_TIMEOUT_MS,
-  STALL_MS,
   ticketFacts,
   contextFor,
-  BREAKER,
-  CI_ROUNDS,
-  MAX_HANDOFFS,
-  TICKET_HOLDS,
-  UPDATES,
 } from "../queue-loop.mjs";
-import { decide, WAIT } from "../decide.mjs";
+import { BASH_DEFAULT_TIMEOUT_MS, CHECK_BASH_TIMEOUT_MS, LIMITS, SESSION_POLICY, STALL_MS } from "../limits.mjs";
+import { decide } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
-import { READ_RETRIES } from "../settle.mjs";
 import { fakeTracker, ghTracker } from "../tracker.mjs";
 
 /** Enough ports for `runOnce` to reach a decision without git, the tracker or a `claude` binary. */
@@ -71,7 +62,8 @@ const quiet = { bell: () => {}, log: () => {}, announce: () => {} };
  * One session's exit as `decide` reads it. `outcomeOf`, `reasonFor`, `resumePhase`, `apiFailure` and
  * the refusal wait are its private parts, so each is tested through the action it shapes.
  */
-const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT, WAIT, UPDATES, READ_RETRIES };
+const { USD_BY_SIZE, WAIT } = LIMITS;
+const { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT } = SESSION_POLICY;
 const FRESH = { failures: 0, holds: 0, waits: 0, overloads: 0, pinned: null, heldTicket: null, ticketHolds: 0 };
 const NOW = 1_000_000_000_000;
 const exited = (run: object, over: object = {}): Record<string, any> =>

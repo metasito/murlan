@@ -8,67 +8,11 @@ import { atOf, closesWindow, isProcess, killedStarts, lastWrite, readLedger, RET
 import { shortOfTurns } from "./loop-render.mjs";
 import { familyOf } from "./loop-stream.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import { SESSION_POLICY } from "./limits.mjs";
+
+const { MODEL_BY_PHASE, TURNS_BY_SIZE } = SESSION_POLICY;
 
 const ORDER = ["pre", "A", "B", "C", "D", "E", "F", "G"];
-
-/**
- * The model a process is spawned on, keyed by the phase it starts at — not every phase it runs:
- * after a LAND, E and F continue inside D's process on D's model. Defined here, not in `queue-loop.mjs`: that file
- * statically imports `.ts` sources, which crashes a light CLI importing it on Windows. `queue-loop`
- * imports this instead.
- */
-export const MODEL_BY_PHASE = { A: "opus", B: "opus", C: "opus", D: "opus", E: "sonnet", F: "sonnet" };
-/**
- * A fresh ticket is built at medium; a process that starts at C or D is a fix round or a review,
- * and runs at high. Anthropic's measured trade on Opus 5.5: medium first, failures re-run at high.
- */
-export const EFFORT_BY_PHASE = { A: "medium", B: "medium", C: "high", D: "high", E: "medium", F: "medium" };
-
-/**
- * Each size's `CLAUDE_CODE_AUTO_COMPACT_WINDOW`; a compaction fires about 33k below it. A handoff
- * costs the next process 5-14 min re-reading what this one knew; a larger ceiling costs every later
- * turn its extra context. Sized from each size's measured need.
- */
-export const CONTEXT_BY_SIZE = { "size:M": 300_000, "size:L": 330_000, "size:XL": 330_000 };
-export const CONTEXT_DEFAULT = 200_000;
-
-/**
- * Each cap stays above twice the busiest healthy process of its size; `loop-cost` and the run recap
- * print any size where it does not. A raised context ceiling raises its cap with it, so that one is met first.
- */
-export const TURNS_BY_SIZE = {
-  "size:XS": 60,
-  "size:S": 320,
-  "size:M": 505,
-  "size:L": 560,
-  "size:XL": 600,
-};
-export const TURNS_DEFAULT = 150;
-
-/**
- * The real bound is turns. A dollar cap is checked only after a turn settles, so where it stops
- * moves with the model and the context — measured 8x to 42x over a small cap — and with subagents
- * in flight it stops the *subagents* and lets the session carry on. The dollar figure stays as a
- * backstop against one pathological turn, well above what a healthy ticket reaches.
- */
-export const TICKET_BUDGET_USD = "40";
-
-/**
- * What one ticket may cost across every process it is spawned as.
- *
- * `TICKET_BUDGET_USD` bounds a single session; with phase handoffs a ticket is up to
- * `MAX_HANDOFFS` of them, so the per-ticket figure is the supervisor's, the only thing that
- * survives them all. Set above the fleet median for the size, so it catches a runaway and never a
- * healthy run.
- */
-export const USD_BY_SIZE = {
-  "size:XS": 20,
-  "size:S": 30,
-  "size:M": 45,
-  "size:L": 70,
-  "size:XL": 90,
-};
-export const USD_DEFAULT = 40;
 
 /** @param {{size?: string, turns?: number, outcome?: string}[]} rows @param {Record<string, number>} [caps] */
 export function turnHeadroom(rows, caps = TURNS_BY_SIZE) {
