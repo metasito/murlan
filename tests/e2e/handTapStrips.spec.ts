@@ -84,6 +84,20 @@ function expected(n: number, onTurn: boolean): { left: number; width: number }[]
   return strips.lefts.map((left, i) => ({ left, width: strips.widths[i] }));
 }
 
+function gaps(row: Strip[]): string[] {
+  const wrong: string[] = [];
+  for (let i = 0; i < row.length - 1; i++) {
+    const end = row[i].left + row[i].width;
+    if (Math.abs(end - row[i + 1].left) > TOLERANCE_PX) {
+      wrong.push(
+        `${row[i].label} ends at ${end.toFixed(1)} but ${row[i + 1].label} starts at ` +
+          `${row[i + 1].left.toFixed(1)}`
+      );
+    }
+  }
+  return wrong;
+}
+
 function mismatches(row: Strip[], want: { left: number; width: number }[]): string[] {
   if (row.length !== want.length) return [`${row.length} strips drawn, ${want.length} laid out`];
   return row.flatMap((s, i) =>
@@ -108,6 +122,7 @@ test.describe("the hand's tap strips", () => {
 
     const dealt = await strips(page);
     expect(dealt.length, "the seeded hand rendered no cards").toBeGreaterThan(4);
+    expect(gaps(dealt), "the strips leave gaps or overlap in a freshly dealt hand").toEqual([]);
     expect(mismatches(dealt, expected(dealt.length, true)), "a freshly dealt hand's strips are not the row's").toEqual([]);
     // The last card's strip is the card itself, so a row of equal strips would
     // mean `hitWidth` is not being applied at all and the case below proves
@@ -127,6 +142,7 @@ test.describe("the hand's tap strips", () => {
     await page.waitForTimeout(600);
 
     const after = await strips(page);
+    expect(gaps(after), "after a play the strips no longer tile").toEqual([]);
     expect(
       mismatches(after, expected(after.length, false)),
       "after a play the strips are not the row's — a card is keeping the width the row had " +

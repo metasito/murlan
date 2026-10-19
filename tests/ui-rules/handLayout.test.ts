@@ -3,7 +3,10 @@
 // here — docs/agents/checks.md.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { CARD_H, CARD_W } from "../../components/cardFaceModel.ts";
+import { CARD_H, CARD_W, cardScale, handCardSize } from "../../components/cardFaceModel.ts";
+import { computeTableFrame } from "../../components/tableFrame.ts";
+import { PHONES } from "../e2e/helpers/phones.ts";
+import { dealCards } from "../../lib/game/gameEngine.ts";
 import {
   MAX_STEP_RATIO,
   MIN_READABLE_STEP,
@@ -13,6 +16,7 @@ import {
   computeHandLayout,
   slotForCard,
   hitWidth,
+  layoutHandRow,
   type HandStrips,
 } from "../../components/handLayout.ts";
 import { HAND_ARC } from "../../components/tableArc.ts";
@@ -210,21 +214,43 @@ describe("which card a tap belongs to", () => {
   const N = 14;
   const { step } = computeHandLayout(N, 600, CW);
 
-  test("the strips tile the row: no overlap, no gap", () => {
+  // The arc lays each slot out along a curve and projects it onto the row, so a strip's left drifts
+  // from the step its neighbour's width is; the drift stays under this (0.08 px at most today).
+  const ARC_DRIFT = 0.1;
+  for (const phone of PHONES) {
+    const scale = cardScale(Math.min(phone.width, phone.height));
+    const frame = computeTableFrame({ width: phone.width, height: phone.height, insets: { top: 0, bottom: 0, left: 0, right: 0 }, scale });
+    for (const seats of [2, 3, 4]) {
+      const n = Math.max(...dealCards(seats).hands.map((h) => h.length));
+      for (const onTurn of [false, true]) {
+        test(`${phone.name}, ${seats} seats, ${onTurn ? "on" : "off"} turn: the strips tile the row, no overlap, no gap`, () => {
+          const row = layoutHandRow({
+            ids: Array.from({ length: n }, (_, i) => `c${i}`),
+            size: handCardSize(scale, onTurn, false),
+            roomW: frame.handRoomW,
+            availW: frame.handAvailW,
+            bottomPad: frame.bottomPad,
+          });
+          const { lefts, widths } = row.strips;
+          assert.equal(lefts.length, n);
+          for (let i = 0; i < n - 1; i++) {
+            assert.ok(Math.abs(lefts[i] + widths[i] - lefts[i + 1]) < ARC_DRIFT, `card ${i}'s strip ends at ${lefts[i] + widths[i]}, card ${i + 1}'s starts at ${lefts[i + 1]}`);
+          }
+          // The last card owns a whole card rather than a step, so the strips end exactly where the row does.
+          assert.ok(Math.abs(lefts[n - 1] + widths[n - 1] - lefts[0] - (row.step * (n - 1) + row.size.w)) < 1e-9);
+        });
+      }
+    }
+  }
+
+  test("a level row's strip edges belong to their own card", () => {
     let x = 0;
     for (let i = 0; i < N; i++) {
       assert.equal(cardAtX(x, N, step), i, `the left edge of card ${i} belongs to it`);
       const w = hitWidth(i, N, step, CW);
-      assert.equal(
-        cardAtX(x + w - 1e-6, N, step),
-        i,
-        `the right edge of card ${i}'s strip belongs to it`
-      );
+      assert.equal(cardAtX(x + w - 1e-6, N, step), i, `the right edge of card ${i}'s strip belongs to it`);
       x += w;
     }
-    // The last card owns a whole card rather than a step, so the strips end
-    // exactly where the row does.
-    assert.equal(x, step * (N - 1) + CW);
   });
 
   test("only the last card is as wide as it is drawn", () => {
