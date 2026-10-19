@@ -13,8 +13,8 @@ const finding = (title: string, severity: string, path: string) => ({
   locations: [{ path, line: 10 }], evidence: `NARRATIVE of ${title}`, failure_scenario: `${title} breaks`,
   defect_class: title, fix: `FIX for ${title}`, size: "S", tracked: null,
 });
-const PROVEN = finding("proven one", "low", "lib/a.ts");
-const DISPROVEN = finding("disproven one", "medium", "server/b.ts");
+const PROVEN = finding("proven one", "low", "src/a.ts");
+const DISPROVEN = finding("disproven one", "medium", "api/b.ts");
 
 async function run(args: Record<string, unknown>) {
   const prompts: { label: string; prompt: string }[] = [];
@@ -43,7 +43,7 @@ async function run(args: Record<string, unknown>) {
 const ARGS = {
   repo: "C:/r", sha: "abc", openIssues: [], webUrl: null, scratch: "C:/s",
   lenses: ["game-logic", "network"],
-  staticLayer: { alerts: [{ tool: "knip", rule: "files", path: "lib/x.web.ts", line: 1, message: "files" }], failed: [] },
+  staticLayer: { alerts: [{ tool: "knip", rule: "files", path: "src/x.web.ts", line: 1, message: "files" }], failed: [] },
 };
 
 test("a skeptic sees the claim, not the finder's argument, and refutes what it cannot confirm", async () => {
