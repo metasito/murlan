@@ -475,6 +475,17 @@ const claimOf = f => ({ title: f.title, severity: f.severity, platform: f.platfo
 const findingKey = f => `${f.locations[0].path}:${Math.floor(f.locations[0].line / 10)}:${f.defect_class.toLowerCase()}`
 const uniqueByKey = list => [...new Map(list.map(f => [findingKey(f), f])).values()]
 const rank = severity => SEVERITIES.indexOf(severity)
+const foldDuplicates = (raw, groups) => {
+  const owner = new Map()
+  groups.forEach((g, n) => g.forEach(i => { if (raw[i] && !owner.has(i)) owner.set(i, n) }))
+  return raw.flatMap((f, i) => {
+    if (!owner.has(i)) return [f]
+    const members = raw.filter((_, j) => owner.get(j) === owner.get(i))
+    if (members[0] !== f) return []
+    const best = members.reduce((a, b) => (rank(b.severity) > rank(a.severity) ? b : a))
+    return [{ ...best, locations: members.flatMap(m => m.locations), lens: [...new Set(members.map(m => m.lens))].join('+') }]
+  })
+}
 const settledSeverity = (claimed, verdicts) => {
   const ranks = verdicts.map(v => rank(v.severity)).sort((a, b) => a - b)
   return SEVERITIES[Math.min(rank(claimed), ranks[Math.floor(ranks.length / 2)])]
@@ -622,20 +633,16 @@ const rawFindings = [
   ...uniqueByKey(reports.flatMap(r => (r.findings || []).map(f => ({ ...f, lens: r.lens })))),
   ...uniqueByKey(investigations.filter(Boolean).flatMap(r => r.findings)),
 ]
-const merged = await agent(`Merge duplicates in these audit findings. Two findings are duplicates when fixing one fixes the other.
-For each group:
-- keep the best-evidenced version;
-- union the locations;
-- keep the highest severity;
-- join the contributing lenses in "lens" with "+".
-Every input must survive in some output.
-${JSON.stringify(rawFindings)}`, {
+// The agent only names duplicate groups; the script folds them, so no finding can be lost on the way.
+const dupes = await agent(`Group duplicates among these audit findings, by index. Two findings are duplicates when fixing one fixes the other.
+Return only groups of two or more; a finding with no duplicate is left out.
+${JSON.stringify(rawFindings.map((f, i) => ({ i, title: f.title, locations: f.locations, defect_class: f.defect_class })))}`, {
   label: 'merge',
   phase: 'Merge',
   model: 'sonnet',
-  schema: { type: 'object', properties: { findings: { type: 'array', items: FINDING } }, required: ['findings'] },
+  schema: { type: 'object', properties: { groups: { type: 'array', items: { type: 'array', items: { type: 'integer' } } } }, required: ['groups'] },
 })
-const findings = merged && merged.findings.length ? merged.findings : rawFindings
+const findings = foldDuplicates(rawFindings, dupes?.groups ?? [])
 log(`${rawFindings.length} raw findings -> ${findings.length} merged`)
 
 phase('Verify')

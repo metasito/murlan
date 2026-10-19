@@ -18,12 +18,13 @@ const LOW = finding("low one", "low", "src/c.ts");
 const ASIDE = finding("aside one", "info", "src/d.ts");
 const DISPROVEN = finding("disproven one", "medium", "api/b.ts");
 
-async function run(args: Record<string, unknown>) {
+async function run(args: Record<string, unknown>, merge: unknown = null) {
   const prompts: { label: string; prompt: string }[] = [];
   const agent = async (prompt: string, opts: { label?: string } = {}) => {
     const label = opts.label ?? "";
     prompts.push({ label, prompt });
     if (label === "cartographer") return "map";
+    if (label === "merge") return merge;
     if (label.startsWith("lens:")) {
       const empty = { strengths: [], score: 5, score_rationale: "", coverage: { read: [], not_reached: [], skills_used: [] } };
       return { ...empty, findings: label === "lens:game-logic" ? [PROVEN, LOW, ASIDE] : [], opportunities: [], platform: undefined };
@@ -79,4 +80,13 @@ test("a reproduction that fails as claimed proves a finding; one that passes ref
 
 test("the audit refuses to start without its tool layer", async () => {
   await assert.rejects(run({ ...ARGS, staticLayer: undefined }), /staticLayer/);
+});
+
+test("the merge folds the duplicates it names and drops nothing", async () => {
+  const { result, prompts } = await run(ARGS, { groups: [[0, 1]] });
+  assert.doesNotMatch(prompts.find((p) => p.label === "merge")!.prompt, /NARRATIVE|FIX for/);
+  assert.equal(result.record.raw, 4);
+  assert.equal(result.record.merged, 3);
+  const folded = result.judged.find((f: { title: string }) => f.title === "proven one");
+  assert.deepEqual(folded.locations.map((l: { path: string }) => l.path), ["src/a.ts", "src/c.ts"]);
 });
