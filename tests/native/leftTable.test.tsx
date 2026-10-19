@@ -182,6 +182,29 @@ describe('leftTable', () => {
     await view.unmount();
   });
 
+  // The rooms row reads `finished` between the rounds of a live match, and a room broadcast
+  // (an invite declined, a friend removed) carries it to a player sitting on the results screen.
+  it("still reclaims after a room:state reading 'finished' between rounds", async () => {
+    const view = await mount();
+    await deliver('game:seat_bot_takeover', takeover('u1', 'Ana', 0));
+    await deliver('room:state', { ...ROOM, status: 'finished' });
+
+    await act(async () => view.result.current.reclaimSeat());
+    expect(rejoins()).toEqual([{ event: 'game:rejoin', payload: expect.objectContaining({ roomId: 'R1' }) }]);
+    expect(view.result.current.leftTable).toBe('reclaiming');
+    await view.unmount();
+  });
+
+  it('a reconnect does not reclaim the seat for the player', async () => {
+    const view = await mount();
+    await deliver('game:seat_bot_takeover', takeover('u1', 'Ana', 0));
+
+    await deliver('connect', undefined);
+    expect(rejoins()).toEqual([]);
+    expect(view.result.current.leftTable).toBe('vacated');
+    await view.unmount();
+  });
+
   it('is cleared by leaving the table', async () => {
     const view = await mount();
     await deliver('game:seat_bot_takeover', takeover('u1', 'Ana', 0));

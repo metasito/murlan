@@ -310,7 +310,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [ratingsAfter, setRatingsAfter] = useState<Record<string, RatingAfter>>({});
   const [matchState, setMatchState] = useState<OnlineMatchState>(INITIAL_MATCH);
   const [rejoinFailed, setRejoinFailed] = useState(false);
-  const [leftTable, setLeftTable] = useState<SeatLoss | null>(null);
+  const [leftTable, setLeftTableState] = useState<SeatLoss | null>(null);
+  // The rejoin decision reads it outside render, from socket handlers and its retry timer.
+  const seatLossRef = useRef<SeatLoss | null>(null);
+  const setLeftTable = useCallback((next: SeatLoss | null) => {
+    seatLossRef.current = next;
+    setLeftTableState(next);
+  }, []);
 
   const {
     announcing: exchangeAnnouncing,
@@ -331,7 +337,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
   const socket = useSocketConnection();
   const { link: ownLink, connected } = useOwnLink(socket);
-  const rejoin = useRejoin(socket, userId, roomRef, gameStateRef);
+  const rejoin = useRejoin(socket, userId, roomRef, gameStateRef, seatLossRef);
 
   const refuse = useCallback((payload: ServerPayload) => {
     const surface = gameStateRef.current ? "table" : roomRef.current ? "room" : "lobby";
@@ -365,7 +371,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setRatingDeltas({});
     setRoundRecorded(false);
     setRatingsAfter({});
-  }, [rejoin]);
+  }, [rejoin, setLeftTable]);
 
   /**
    * Gives up on the rejoin: the player is told why, then the table goes, which
@@ -725,7 +731,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // pending removals both have to go with the table.
       clearReactions();
     };
-  }, [socket, userId, rejoin, resetTable, abandonRejoin, showNotification, qc, announce, refuse]);
+  }, [socket, userId, rejoin, resetTable, abandonRejoin, showNotification, qc, announce, refuse, setLeftTable]);
 
   /**
    * Every intent waits to be told it arrived and says so if it never was — a
@@ -837,8 +843,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   );
 
   const reclaimSeat = useCallback(() => {
-    if (leftTable === "vacated" && rejoin.attempt()) setLeftTable("reclaiming");
-  }, [leftTable, rejoin]);
+    if (seatLossRef.current !== "vacated") return;
+    setLeftTable("reclaiming");
+    if (!rejoin.attempt()) setLeftTable("vacated");
+  }, [rejoin, setLeftTable]);
 
   const sendReaction = useCallback((emoji: string) => {
     deliver("game:reaction", { emoji });

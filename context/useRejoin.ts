@@ -60,7 +60,8 @@ export function useRejoin(
   socket: Socket | null,
   userId: string,
   roomRef: RefObject<WireRoomState | null>,
-  gameStateRef: RefObject<GameState | null>
+  gameStateRef: RefObject<GameState | null>,
+  seatLossRef: RefObject<"vacated" | "reclaiming" | null>
 ): Rejoin {
   const handlesRef = useRef<TableHandles>({ roomId: null, waitingCode: null });
   // The room id a `game:rejoin` is in flight for. The round-trip is async, so a
@@ -94,7 +95,12 @@ export function useRejoin(
     // A room the server calls `in_progress` is worth rejoining even with no
     // hand on this side: requiring one made the client's own copy of the deal
     // the only route into the table.
-    const playing = currentRoom?.status === "in_progress";
+    // A seat the vote deadline gave away comes back only on the player's own press (docs/GAME-RULES.md
+    // § Decisions), and the press is the fact the table is live: the rooms row reads `finished`
+    // between the rounds of a running match.
+    const seatLoss = seatLossRef.current;
+    if (seatLoss === "vacated") return false;
+    const playing = currentRoom?.status === "in_progress" || seatLoss === "reclaiming";
     if (currentRoom && ((currentGame && !currentGame.roundOver) || playing)) {
       requestedRoomIdRef.current = currentRoom.roomId;
       void send(socket, "game:rejoin", { roomId: currentRoom.roomId }, { retry: false });
@@ -122,7 +128,7 @@ export function useRejoin(
       return true;
     }
     return false;
-  }, [socket, roomRef, gameStateRef]);
+  }, [socket, roomRef, gameStateRef, seatLossRef]);
 
   const release = useCallback(() => {
     answered();
