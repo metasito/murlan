@@ -1,4 +1,4 @@
-import { now } from "../clock.ts";
+import { now } from "./clock.ts";
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import bcrypt from "bcryptjs";

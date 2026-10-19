@@ -1,4 +1,4 @@
-// An auth token's expiry is written on the server clock (server/clock.ts), so
+// An auth token's expiry is written on the server clock (server/http/clock.ts), so
 // every query that judges it compares against that clock too, never against
 // Postgres' own now(): under an installed clock the two disagree, and a token
 // would be born expired or never expire.
@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { PgDialect } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
 import { db } from "../../server/store/db.ts";
-import { installClock } from "../../server/clock.ts";
+import { installClock } from "../../server/http/clock.ts";
 import { redeemAuthCode, redeemAuthToken } from "../../server/http/authTokens.ts";
 import { sweepRetention } from "../../server/game/retention.ts";
 import { userStore } from "../../server/store/userStore.ts";

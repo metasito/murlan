@@ -12,7 +12,7 @@ import {
   pending,
   usersInLobbyGrace,
 } from "../../server/game/gameTimers.ts";
-import { installClock } from "../../server/clock.ts";
+import { installClock } from "../../server/http/clock.ts";
 import { fakeClock } from "../helpers/fakeClock.ts";
 import { setSocketServer } from "../../server/socket/socketRegistry.ts";
 import { roomStore } from "../../server/store/roomStore.ts";

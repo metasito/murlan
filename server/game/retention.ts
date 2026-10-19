@@ -9,7 +9,7 @@
 // startSweeper interval, replaces all five.
 import { lt, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
-import { now } from "../clock.ts";
+import { now } from "../http/clock.ts";
 import { events, clientErrors, roundReplays, authTokens, bugReports, serverErrors } from "../../shared/schema.ts";
 import { EVENT_RETENTION_DAYS } from "../socket/events.ts";
 import { CLIENT_ERROR_RETENTION_DAYS } from "../http/clientErrors.ts";

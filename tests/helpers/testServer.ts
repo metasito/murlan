@@ -5,7 +5,7 @@ import type { Server as SocketIOServer } from "socket.io";
 // scope here would build the app's Pool before startTestServer() has pointed
 // DATABASE_URL at the throwaway schema.
 import { drainPool } from "../../server/store/drainPool.ts";
-import { installClock, type Clock } from "../../server/clock.ts";
+import { installClock, type Clock } from "../../server/http/clock.ts";
 
 /**
  * `node --test` runs as many test files at once as there are cores, and every

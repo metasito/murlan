@@ -1,4 +1,4 @@
-import { now } from "../clock.ts";
+import { now } from "../http/clock.ts";
 import type { SocketServer } from "../socket/socketTypes.ts";
 import { logger } from "../http/logger.ts";
 import { arm, clearRoomTimers, clearRoomDisconnectTimers, voteDeadlineMs } from "./gameTimers.ts";

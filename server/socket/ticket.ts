@@ -1,4 +1,4 @@
-import { now } from "../clock.ts";
+import { now } from "../http/clock.ts";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { lt, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";

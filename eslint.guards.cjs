@@ -351,7 +351,7 @@ const GUARDS = [
   },
   {
     id: "server-reads-one-clock",
-    why: "The server tells time through one clock a test can install: read it with now() from server/clock.ts, and write a timestamp as new Date(now()).",
+    why: "The server tells time through one clock a test can install: read it with now() from server/http/clock.ts, and write a timestamp as new Date(now()).",
     selector: [
       'MemberExpression[property.name="now"]:matches([object.name="Date"], [object.property.name="Date"])',
       'NewExpression[arguments.length=0]:matches([callee.name="Date"], [callee.property.name="Date"])',
@@ -360,7 +360,7 @@ const GUARDS = [
     ].join(", "),
     files: ["server/**/*.ts"],
     ignores: [
-      { glob: "server/clock.ts", reason: "the real clock is the one wall-time read the rest go through" },
+      { glob: "server/http/clock.ts", reason: "the real clock is the one wall-time read the rest go through" },
       { glob: "server/store/drainPool.ts", reason: "waits on real pool I/O at shutdown; under an installed fake clock the wait would spin forever" },
       { glob: "server/socket/socketAdapter.ts", reason: "waits on a real Postgres LISTEN subscription; under an installed fake clock the wait would spin forever" },
     ],

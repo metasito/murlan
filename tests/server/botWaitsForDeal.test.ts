@@ -4,7 +4,7 @@ import type { Server as SocketServer } from "socket.io";
 
 import { armTurn } from "../../server/game/gameTurn.ts";
 import { botMoveDelayMs, clearRoomTimers, deadline } from "../../server/game/gameTimers.ts";
-import { installClock } from "../../server/clock.ts";
+import { installClock } from "../../server/http/clock.ts";
 import { fakeClock } from "../helpers/fakeClock.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";

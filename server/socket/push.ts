@@ -4,7 +4,7 @@
 // comes down to the two clocks in server/socket/socket.ts: a player is
 // auto-passed after 30s and loses the seat to a bot after 60s, which no
 // notification can beat.
-import { now } from "../clock.ts";
+import { now } from "../http/clock.ts";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { lockUsers } from "../store/userLock.ts";

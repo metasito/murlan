@@ -4,7 +4,7 @@
 // These are shared by the room handlers, the gameplay handlers and the
 // disconnect path alike, so they live apart from all three: leaving them in
 // socket.ts while socket.ts imports the room family would be a cycle.
-import { now } from "../clock.ts";
+import { now } from "../http/clock.ts";
 import type { SocketServer } from "./socketTypes.ts";
 import { friendStore } from "../store/friendStore.ts";
 import { roomStore } from "../store/roomStore.ts";

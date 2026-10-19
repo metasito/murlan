@@ -1,4 +1,4 @@
-import { realClock, type Clock } from "../../server/clock.ts";
+import { realClock, type Clock } from "../../server/http/clock.ts";
 
 export interface FakeClock extends Clock {
   /** Moves time forward, firing every timer due on the way in deadline order. */

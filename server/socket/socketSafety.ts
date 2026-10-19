@@ -1,4 +1,4 @@
-import { now } from "../clock.ts";
+import { now } from "../http/clock.ts";
 import type { InboundSchemas, IntentReply } from "../../shared/protocol.ts";
 import type { GameSocket as Socket } from "./socketTypes.ts";
 import { z } from "zod";

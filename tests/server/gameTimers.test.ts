@@ -9,7 +9,7 @@ import {
   pending,
   pendingKeys,
 } from "../../server/game/gameTimers.ts";
-import { installClock } from "../../server/clock.ts";
+import { installClock } from "../../server/http/clock.ts";
 import { fakeClock } from "../helpers/fakeClock.ts";
 
 let restoreClock = () => {};

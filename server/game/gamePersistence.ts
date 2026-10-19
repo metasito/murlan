@@ -14,7 +14,7 @@ import {
 } from "../../shared/schema.ts";
 import { activeGames, userRoom } from "./gameRoom.ts";
 import { payload } from "../socket/payload.ts";
-import { now } from "../clock.ts";
+import { now } from "../http/clock.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { RoundOverWriters } from "./roundOver.ts";
 import { releaseRoom, releaseRoomAfter, unclaimedRooms } from "./gameOwnership.ts";

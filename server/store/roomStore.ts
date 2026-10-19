@@ -1,4 +1,4 @@
-import { now } from "../clock.ts";
+import { now } from "../http/clock.ts";
 import { eq, and, asc, sql } from "drizzle-orm";
 import { db } from "./db.ts";
 import { users, rooms, roomPlayers, gameInvites } from "../../shared/schema.ts";

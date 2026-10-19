@@ -10,7 +10,7 @@
 // The carrier is the adapter's own `serverSideEmit`, which the Postgres adapter
 // already implements with acknowledgements. No second channel, and it inherits
 // the adapter's delivery rather than inventing one.
-import { now } from "../clock.ts";
+import { now } from "../http/clock.ts";
 import { randomUUID } from "node:crypto";
 import type { SocketServer } from "../socket/socketTypes.ts";
 import { logger } from "../http/logger.ts";

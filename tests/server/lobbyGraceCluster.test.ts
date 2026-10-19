@@ -6,7 +6,7 @@ import type { SocketServer } from "../../server/socket/socketTypes.ts";
 import { armLobbyGrace } from "../../server/socket/socketTable.ts";
 import { setSocketServer } from "../../server/socket/socketRegistry.ts";
 import { clearLobbyGrace } from "../../server/game/gameTimers.ts";
-import { installClock } from "../../server/clock.ts";
+import { installClock } from "../../server/http/clock.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { socketRoomMap, userSocketMap } from "../../server/game/gameRoom.ts";
 

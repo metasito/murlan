@@ -1,4 +1,4 @@
-import { now } from "../clock.ts";
+import { now } from "./clock.ts";
 import { randomBytes, randomInt, createHash } from "node:crypto";
 import { and, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";

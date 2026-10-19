@@ -1,5 +1,5 @@
 // Every server log line at `error` or above, kept long enough to be read on /admin.
-import { now } from "../clock.ts";
+import { now } from "./clock.ts";
 import { sql } from "drizzle-orm";
 import { db, pool } from "../store/db.ts";
 import { serverErrors } from "../../shared/schema.ts";

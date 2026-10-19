@@ -7,7 +7,7 @@ import { activeGames, seatName } from "./gameRoom.ts";
 import { seatOfUser } from "./onlineGameLogic.ts";
 import { vacate } from "./seatLedger.ts";
 import { payload } from "../socket/payload.ts";
-import { now } from "../clock.ts";
+import { now } from "../http/clock.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
   arm,

@@ -1,12 +1,12 @@
 // A cutoff and the column it is compared with read one clock. A column the
-// server writes is written from server/clock.ts and judged against it; a column
+// server writes is written from server/http/clock.ts and judged against it; a column
 // Postgres stamps (defaultNow) is judged against Postgres' now().
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { PgDialect } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
 import { db } from "../../server/store/db.ts";
-import { installClock } from "../../server/clock.ts";
+import { installClock } from "../../server/http/clock.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { adminSnapshot } from "../../server/http/admin.ts";
 import { sweepRetention } from "../../server/game/retention.ts";

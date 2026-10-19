@@ -1,7 +1,7 @@
 import type { OnlineGameState } from "./gameRoom.ts";
 import { testOnlyEnv } from "../http/testOnlyEnv.ts";
 import { TURN_TIMEOUT_MS } from "../../lib/game/gameEngine.ts";
-import { clock, now } from "../clock.ts";
+import { clock, now } from "../http/clock.ts";
 
 /**
  * Keys: `afk` and `lobbyGrace` are `roomId:userId` (`seatKey`), `bot`,

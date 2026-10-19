@@ -17,7 +17,7 @@ import {
   pendingKeys,
   seatKey,
 } from "../../server/game/gameTimers.ts";
-import { installClock } from "../../server/clock.ts";
+import { installClock } from "../../server/http/clock.ts";
 import { fakeClock } from "../helpers/fakeClock.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
