@@ -97,7 +97,7 @@ export function comboImpactTier(comboType: Combination["type"]): ImpactTier {
  * calling that "the hand is decided", which `docs/GAME-RULES.md` names the
  * round. A match closing is a *further* fact about that same landing,
  * carried by the match verdict (`lib/game/matchState.ts` `MatchVerdict.over`,
- * `context/GameContext.tsx` `applyRoundToMatch`, the online
+ * `lib/game/matchFlow.ts` `applyRoundToMatch`, the online
  * `game:round_over`/`matchOver` payload): the play that empties a seat's hand is
  * also the play that happens to close the match, never a second, later
  * event. `GameState.trickWinner` is not read here — `docs/GAME-RULES.md` §9

@@ -1,12 +1,12 @@
 // Pure helpers used by the server's game and socket modules, kept here so a test can reach them
 // without pulling storage/db/session — and the pg pool they build at import —
 // onto a path that needs none of it.
-import { botSeatIndex, botSeatKey, isBotSeatKey } from "./botSeat.ts";
+import { botSeatKey, isBotSeatKey } from "../../lib/game/botSeat.ts";
 import type { ScoreLine } from "../../lib/game/matchState.ts";
 import { botSeatNames, getBotPersonality } from "../../lib/game/botPersonalities.ts";
 import type { BotPersonalityId } from "../../lib/game/botPersonalities.ts";
-import { foldRoundIntoMatch } from "../../lib/game/gameEngine.ts";
-import type { GameState, GameMode, MatchLength } from "../../lib/game/gameEngine.ts";
+import { foldRound } from "../../lib/game/gameEngine.ts";
+import type { GameState, GameMode, MatchLength, SeatScoring } from "../../lib/game/gameEngine.ts";
 import type { GameResult } from "../../lib/achievements.ts";
 import { exchangeAnnounceMs } from "../../lib/timeline/exchangeTimeline.ts";
 
@@ -161,7 +161,7 @@ export function isContestedTable(humanSeats: number, botSeats: number): boolean 
 
 export interface SeatEntry {
   seatIndex: number;
-  userId: string;      // for bots, a synthetic "bot:<seat>" id
+  userId: string;      // for bots, `botSeatKey(seat)`
   username: string;
   isBot: boolean;
   personality?: BotPersonalityId;
@@ -198,9 +198,7 @@ export function buildSeatRoster(
     }
     roster.push({
       seatIndex: seat,
-      // Synthetic id: bot seats must never collide with a real user id, and the
-      // scoring path already excludes ids with this prefix.
-      userId: `bot:${seat}`,
+      userId: botSeatKey(seat),
       username,
       isBot: true,
       personality,
@@ -272,8 +270,6 @@ export interface ResolveRoundEndInput {
   vacatedSeats?: Map<number, { userId: string; username: string }>;
 }
 
-type ScoreboardRow = ScoreLine;
-
 export interface ResolveRoundEndResult {
   roundByKey: Record<string, number>;
   cumulativeScores: Record<string, number>;
@@ -281,12 +277,34 @@ export interface ResolveRoundEndResult {
   matchTarget: number;
   matchWinners: string[];
   isDraw: boolean;
-  detailed: ScoreboardRow[];
+  detailed: ScoreLine[];
   /** The match winners as engine player ids — the space `finishingOrder` is in. */
   winnerEngineIds: string[];
   gameResults: GameResult[];
   /** Whether the table was contested by enough real people to record. */
   recordable: boolean;
+}
+
+/**
+ * How each seat scores online: under its seated userId, or `bot:<seat>` once its human left. A seat
+ * becomes a bot scoring exactly as one born a bot (docs/GAME-RULES.md § Decisions, the disconnect
+ * policy), but only a born bot's key may be crowned — never a seat a human left — and a departed
+ * player's frozen row still counts for the seat's team.
+ */
+export function seatScoringOf(
+  game: Pick<ResolveRoundEndInput, "state" | "playerMap" | "botSeatsAtStart" | "vacatedSeats">
+): SeatScoring[] {
+  const botSeatsAtStart = game.botSeatsAtStart ?? new Set<number>();
+  return game.state.players.map((p, seat) => {
+    const key = scoreKeyForSeat(game.playerMap, seat);
+    return {
+      engineId: p.id,
+      key,
+      team: p.team,
+      crownable: !isBotSeatKey(key) || botSeatsAtStart.has(seat),
+      frozenKey: game.vacatedSeats?.get(seat)?.userId,
+    };
+  });
 }
 
 /**
@@ -298,19 +316,10 @@ export interface ResolveRoundEndResult {
  */
 export function resolveRoundEnd(input: ResolveRoundEndInput): ResolveRoundEndResult {
   const { state, playerMap, matchLength, gameMode, roundFlags, abandonedSeats } = input;
-  const botSeatsAtStart = input.botSeatsAtStart ?? new Set<number>();
   const vacatedSeats = input.vacatedSeats ?? new Map<number, { userId: string; username: string }>();
 
-  // finishingOrder hold engine player ids ("player_0"); score by seat -> user so the
-  // scoreboard is keyed by a real identity instead of an engine id wearing a
-  // username label.
   const seatOfEngineId = new Map<string, number>();
   state.players.forEach((p, idx) => seatOfEngineId.set(p.id, idx));
-
-  const teamOf: Record<string, string> = {};
-  for (const p of state.players) {
-    if (p.team) teamOf[p.id] = p.team;
-  }
 
   const {
     roundByKey,
@@ -319,40 +328,21 @@ export function resolveRoundEnd(input: ResolveRoundEndInput): ResolveRoundEndRes
     target: matchTarget,
     winners: matchWinners,
     isDraw,
-  } = foldRoundIntoMatch({
-    finishingOrder: state.finishingOrder,
-    playerCount: state.players.length,
-    length: matchLength,
-    gameMode,
-    target: input.matchTarget,
-    cumulative: input.cumulativeScores,
-    keyOf: (engineId) => {
-      const seat = seatOfEngineId.get(engineId);
-      return seat === undefined ? null : scoreKeyForSeat(playerMap, seat);
+  } = foldRound(
+    {
+      finishingOrder: state.finishingOrder,
+      playerCount: state.players.length,
+      gameMode,
+      length: matchLength,
     },
-    // A seat that becomes a bot scores exactly as a seat that was born one
-    // (docs/GAME-RULES.md § Decisions, the disconnect policy) — every key accumulates.
-    // Win eligibility is the one thing that still tells them apart: a `bot:
-    // <seat>` key can cross the target or be named a winner only when that
-    // seat was dealt to a bot when this match started (a straight duel, or a
-    // bot-filled table) — never a seat a human left.
-    winEligible: (key) => {
-      if (!isBotSeatKey(key)) return true;
-      const seat = botSeatIndex(key);
-      return seat !== null && botSeatsAtStart.has(seat);
-    },
-    teamOf,
-    frozenKeysOf: (engineId) => {
-      const seat = seatOfEngineId.get(engineId);
-      const vacated = seat === undefined ? undefined : vacatedSeats.get(seat);
-      return vacated ? [vacated.userId] : [];
-    },
-  });
+    { cumulative: input.cumulativeScores, target: input.matchTarget },
+    seatScoringOf(input)
+  );
 
   // One row per seat, carrying every identity the clients index it by. It was
   // once also sent as a name -> total map alongside; two seats sharing a name
   // collapsed into one entry there, silently.
-  const detailed: ScoreboardRow[] = state.players.map((p, seat) => {
+  const detailed: ScoreLine[] = state.players.map((p, seat) => {
     const key = scoreKeyForSeat(playerMap, seat);
     const vacated = vacatedSeats.get(seat);
     const total = seatTotal(cumulativeScores, playerMap, vacatedSeats, seat);

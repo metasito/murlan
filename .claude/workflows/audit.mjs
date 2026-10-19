@@ -50,7 +50,7 @@ const LENSES = [
   },
   {
     key: 'game-logic', model: 'opus', skills: [],
-    start: 'lib/game/gameEngine.ts, docs/GAME-RULES.md, docs/GAME-RULES.md § Decisions, lib/game/autoMove.ts, server/game/botSeat.ts, server/game/dealRound.ts, lib/timeline/exchangeTimeline.ts, lib/placement.ts, lib/game/standings.ts, lib/game/rating.ts, server/game/ratings.ts, lib/game/replay.ts, lib/game/matchState.ts, lib/offlineSave.ts, lib/game/sharedGameFlow.ts, server/game/roundOver.ts',
+    start: 'lib/game/gameEngine.ts, docs/GAME-RULES.md, docs/GAME-RULES.md § Decisions, lib/game/autoMove.ts, lib/game/botSeat.ts, server/game/dealRound.ts, lib/timeline/exchangeTimeline.ts, lib/placement.ts, lib/game/standings.ts, lib/game/rating.ts, server/game/ratings.ts, lib/game/replay.ts, lib/game/matchState.ts, lib/offlineSave.ts, lib/game/sharedGameFlow.ts, server/game/roundOver.ts',
     refs: 'docs/GAME-RULES.md is the specification; docs/GAME-RULES.md § Decisions records every rule change.',
     ask: `Build a matrix: rule in docs/GAME-RULES.md -> engine code -> pinning test. Report every row with a gap on any side.
 Edge cases to cover:

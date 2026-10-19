@@ -6,7 +6,7 @@ import {
   buildSeatRoster,
 } from "../../server/game/onlineGameLogic.ts";
 import { readPersistedPlayerMap } from "../../shared/persistedEnvelope.ts";
-import { isBotSeatKey } from "../../server/game/botSeat.ts";
+import { isBotSeatKey } from "../../lib/game/botSeat.ts";
 import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/game/gameEngine.ts";
 
 describe("readPersistedPlayerMap (seat resolution on rejoin)", () => {

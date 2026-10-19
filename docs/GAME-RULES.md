@@ -139,7 +139,7 @@ The 3♠ opening requirement (§4) is **not** re-applied — it belongs to the f
 
 ## 11. Teams (2 v 2)
 
-*Engine: `teamForSeat`, `TEAMS_PLAYER_COUNT`, `resolveTeamMatch`, `aggregateTeamScores`
+*Engine: `teamForSeat`, `TEAMS_PLAYER_COUNT`, `foldRound`, `aggregateTeamScores`
 (`lib/game/gameEngine.ts`).*
 
 - Not part of the Tier-1 traditional description; it is a documented mode in modern implementations (murlan.app, murlanarena, Murlan Pro).
@@ -150,7 +150,7 @@ The 3♠ opening requirement (§4) is **not** re-applied — it belongs to the f
 
 ## 12. Scoring
 
-*Engine: `scoreRound`, `targetsFor`, `nextMatchTarget`, `resolveMatch`, `MATCH_TARGETS`
+*Engine: `placementPoints`, `scoreRound`, `targetsFor`, `foldRound`, `MATCH_TARGETS`
 (`lib/game/gameEngine.ts`).*
 
 - **Per round (4 players):** 1st = **3** points, 2nd = **2**, 3rd = **1**, last = **0**. Unanimous across catsatcards, visixplay IT/EN/AL, Murlan Pro, murlanarena, murlan.app.

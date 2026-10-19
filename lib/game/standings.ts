@@ -21,7 +21,7 @@ export interface StandingRow {
  * just played.
  *
  * Presentation order, not a rule — who actually wins the match is decided by
- * `resolveMatchFor` in lib/game/gameEngine.ts (docs/GAME-RULES.md §12). This is the one
+ * `foldRound` in lib/game/gameEngine.ts (docs/GAME-RULES.md §12). This is the one
  * place the *listing* order is decided, so the two end-of-round screens
  * cannot rank the same table differently.
  */

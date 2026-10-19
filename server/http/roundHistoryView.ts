@@ -10,7 +10,7 @@ import { db } from "../store/db.ts";
 import { roundReplays } from "../../shared/schema.ts";
 import type { RoundHistory } from "../../shared/schema.ts";
 import type { ReplaySeat } from "../../lib/game/replay.ts";
-import { botSeatIndex, isBotSeatKey } from "../game/botSeat.ts";
+import { botSeatIndex, isBotSeatKey } from "../../lib/game/botSeat.ts";
 import { getRoundHistory } from "../game/stats.ts";
 import { namesOf } from "../game/userNames.ts";
 

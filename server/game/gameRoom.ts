@@ -54,10 +54,9 @@ export interface OnlineGameState {
   /**
    * Seats dealt to a bot when this match's roster was built — a straight duel
    * or a bot-filled table from the start, never a human's seat this match.
-   * `foldRoundIntoMatch` reads this to tell that seat apart from one a human
+   * `seatScoringOf` reads this to tell that seat apart from one a human
    * later walked out of: both score under the same `bot:<seat>` key, but only
-   * the latter must be kept from accumulating under a name nobody left behind
-   * to claim it. Not in `playerMap`'s own shape (a `Record` can't say "was
+   * the former may be crowned — nobody is left behind the latter to claim it. Not in `playerMap`'s own shape (a `Record` can't say "was
    * never a key"), so it travels beside it rather than folding in.
    *
    * Restored from `personality` on a restart (`botSeatsFromPersonality`)
