@@ -72,10 +72,19 @@ const GUARDS = [
   {
     id: "seat-identity",
     why: "A watcher's seat answers yes to this: ask `viewerOwnsSeat(seat, viewerSeat, spectating)` from components/seatLayout.ts instead of comparing by hand.",
-    selector: `BinaryExpression[operator="==="]:matches([left.name=${SEAT_IDENTITY}], [right.name=${SEAT_IDENTITY}], [left.property.name=${SEAT_IDENTITY}], [right.property.name=${SEAT_IDENTITY}])`,
-    files: ["components/GameTable.tsx", "app/(online)/game.tsx", "app/(online)/replay.tsx"],
-    plant: { file: "components/GameTable.tsx", code: ["const mine = seat === viewerSeat;", "if (mySeatIndex === p.seat) go();", "const me = state.viewerSeat === seat;"].join("\n"), hits: 3 },
-    spare: ["const others = players.filter((p) => p.seat !== viewerSeat);", "const mine = viewerOwnsSeat(seat, viewerSeat, spectating);"].map((code) => ({ file: "components/GameTable.tsx", code })),
+    selector: `BinaryExpression[operator="==="]:matches([left.name=${SEAT_IDENTITY}], [right.name=${SEAT_IDENTITY}], [left.property.name=${SEAT_IDENTITY}], [right.property.name=${SEAT_IDENTITY}]):not([left.raw="null"], [right.raw="null"])`,
+    files: ["components/**/*.{ts,tsx}", "app/**/*.{ts,tsx}"],
+    ignores: [
+      { glob: "components/seatLayout.ts", reason: "viewerOwnsSeat is the one comparison the rest ask" },
+      { glob: "components/flightPhysics.ts", reason: "handed a seat GameTable already nulled for a watcher, so a raw comparison answers no for one" },
+      { glob: "components/table/ExchangeLegs.tsx", reason: "handed a seat GameTable already nulled for a watcher, so a raw comparison answers no for one" },
+    ],
+    plant: { file: "components/table/Plant.tsx", code: ["const mine = seat === viewerSeat;", "if (mySeatIndex === p.seat) go();", "const me = state.viewerSeat === seat;"].join("\n"), hits: 3 },
+    spare: [
+      "const others = players.filter((p) => p.seat !== viewerSeat);",
+      "const mine = viewerOwnsSeat(seat, viewerSeat, spectating);",
+      "const spectating = viewerSeat === null;",
+    ].map((code) => ({ file: "components/table/Plant.tsx", code })),
   },
   {
     id: "one-modal",
