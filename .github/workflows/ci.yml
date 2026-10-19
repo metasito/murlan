@@ -445,6 +445,16 @@ jobs:
       - run: npm run loop:test
         env:
           GH_TOKEN: ${{ github.token }}
+      # It skips where gh has no credentials; this is the one runner that must not.
+      - name: The repository-settings test ran, and did not skip
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          node --test --test-timeout=30000 --test-force-exit --test-reporter=tap tools/loop/tests/deleteBranchOnMerge.test.ts | tee settings.tap
+          grep -qE '^# skipped 0$' settings.tap || { echo "::error::deleteBranchOnMerge skipped on the runner that has a token."; exit 1; }
+          grep -qE '^# pass 1$' settings.tap || { echo "::error::deleteBranchOnMerge did not pass."; exit 1; }
 
   # Linux skips the loop tests that only win32 can run, so this is the one place they are heard from.
   harness-windows:

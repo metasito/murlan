@@ -15,6 +15,7 @@ import React from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { stubFetch } from './helpers/stubFetch';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 
 const mockApiRequest = jest.fn<(...args: unknown[]) => Promise<unknown>>();
@@ -58,7 +59,7 @@ beforeEach(async () => {
   // `fetchMe` uses a raw fetch rather than apiRequest, so the boot check is
   // steered here and every apiRequest below belongs to the rename itself.
   mockFetch.mockResolvedValue({ status: 200, ok: true, json: async () => SIGNED_IN });
-  (globalThis as { fetch: unknown }).fetch = mockFetch;
+  stubFetch(mockFetch);
 });
 
 describe('renaming the signed-in account', () => {

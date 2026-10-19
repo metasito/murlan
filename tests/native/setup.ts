@@ -161,6 +161,15 @@ const testingLibrary = require('@testing-library/react-native') as {
   screen: { toJSON: () => unknown };
 };
 
+// A fake-timer test that fails before restoring leaves the next one on a clock nothing advances.
+// Declared below the testing library's `require` so its cleanup unmounts under the clock the tree
+// was rendered on. Spies and replaced properties only: `restoreMocks` in the config would also
+// wipe the `jest.fn(impl)` inside module-factory mocks.
+afterEach(() => {
+  jest.useRealTimers();
+  jest.restoreAllMocks();
+});
+
 // The one mock of each audio layer: every other test reads what it recorded.
 jest.mock('react-native-audio-api', () => require('./mocks/audioApi').audioApiModule());
 jest.mock('@/modules/murlan-audio-session', () => require('./mocks/audioApi').audioSessionModule());

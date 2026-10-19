@@ -34,18 +34,18 @@ function parseFrame(raw: string): ParsedFrame | null {
 
 /**
  * `raw` is client-supplied text (server/http/schemas.ts's ClientErrorSchema), so
- * the resolved path must never leave MAPS_ROOT — checked explicitly rather
+ * the resolved path must never leave `root` — checked explicitly rather
  * than trusted from the URL parse alone.
  */
-function mapPathFor(url: string): string | null {
+function mapPathFor(url: string, root: string): string | null {
   let pathname: string;
   try {
     pathname = new URL(url, "http://_/").pathname;
   } catch {
     return null;
   }
-  const full = path.join(MAPS_ROOT, `${pathname}.map`);
-  return full === MAPS_ROOT || full.startsWith(MAPS_ROOT + path.sep) ? full : null;
+  const full = path.join(root, `${pathname}.map`);
+  return full === root || full.startsWith(root + path.sep) ? full : null;
 }
 
 // Text cached by path, parsed per lookup — this app has two map
@@ -66,13 +66,16 @@ function readMapFile(mapPath: string): string | null {
  * when no build map covers it — an unrecognized shape, a non-web platform,
  * or a deploy this process has no map for.
  */
-export async function symbolicate(raw: string | null | undefined): Promise<string | null> {
+export async function symbolicate(
+  raw: string | null | undefined,
+  root: string = MAPS_ROOT
+): Promise<string | null> {
   if (!raw) return null;
   const trimmed = raw.trim();
   if (!trimmed) return null;
   const frame = parseFrame(trimmed);
   if (!frame) return trimmed;
-  const mapPath = mapPathFor(frame.url);
+  const mapPath = mapPathFor(frame.url, root);
   const mapText = mapPath && readMapFile(mapPath);
   if (!mapText) return trimmed;
   try {

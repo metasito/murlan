@@ -37,6 +37,7 @@ jest.mock('@react-native-community/netinfo', () => ({
 import VerifyEmailScreen from '@/app/verify-email';
 import RecoverScreen from '@/app/recover';
 import AuthScreen from '@/app/auth';
+import { stubFetch } from './helpers/stubFetch';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import * as i18n from '@/lib/i18n';
 import { en as locale } from '@/locales/en';
@@ -58,7 +59,7 @@ beforeEach(() => {
   mockFetch.mockResolvedValue({ status: 401, ok: false });
   mockCanGoBack.mockReturnValue(true);
   mockUseLocalSearchParams.mockReturnValue({});
-  (globalThis as { fetch: unknown }).fetch = mockFetch;
+  stubFetch(mockFetch);
 });
 
 afterEach(() => {
