@@ -23,14 +23,13 @@ import {
   type GameState,
   type Player,
 } from "./game/gameEngine.ts";
-import { BOT_PERSONALITIES } from "./game/botPersonalities.ts";
+import { BOT_PERSONALITIES, botSeatNames } from "./game/botPersonalities.ts";
 import type { OwnLink } from "./ownLink.ts";
 
-/** A seat's bot as `app/lobby.tsx` fills the seats past the viewer's. */
-const botAt = (seat: number): string => BOT_PERSONALITIES[(seat - 1) % BOT_PERSONALITIES.length].name;
-const RIGHT = botAt(1);
-const TOP = botAt(2);
-const LEFT = botAt(3);
+/** The bots `app/lobby.tsx` fills the seats past the viewer's with, named as it names them. */
+const lobbyBots = (playerCount: number): string[] =>
+  botSeatNames(Array.from({ length: playerCount - 1 }, (_, i) => BOT_PERSONALITIES[i % BOT_PERSONALITIES.length].id));
+const [RIGHT, TOP, LEFT] = lobbyBots(4);
 const VIEWER = "Ana";
 
 /** The seat every capture is taken from. */
@@ -236,6 +235,7 @@ export function captureGameState(state: CaptureState): GameState {
   const pileFrom = pile ? (state.turn + state.playerCount - 1) % state.playerCount : -1;
   const dealt = hands(deck, state.playerCount);
   const finishingOrder: string[] = [];
+  const bots = lobbyBots(state.playerCount);
 
   const players: Player[] = Array.from({ length: state.playerCount }, (_, seat) => {
     const id = `capture_${seat}`;
@@ -243,7 +243,7 @@ export function captureGameState(state: CaptureState): GameState {
     if (held === "out") finishingOrder.push(id);
     return {
       id,
-      name: seat === CAPTURE_VIEWER_SEAT ? VIEWER : botAt(seat),
+      name: seat === CAPTURE_VIEWER_SEAT ? VIEWER : bots[seat - 1],
       hand: held === "out" ? [] : dealt[seat].slice(0, held),
       type: seat === CAPTURE_VIEWER_SEAT ? "human" : "bot",
       ...(held === "out" && { finishPosition: finishingOrder.length }),
