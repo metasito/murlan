@@ -6,12 +6,10 @@ import { installTableHandlers, applyOrForward } from "../../server/game/tableHan
 import { activeGames, beginShutdown } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
-import type { OnlineGameState } from "../../server/game/gameRoom.ts";
-import type { Player } from "../../lib/game/gameEngine.ts";
+import { onlineTable } from "../helpers/onlineTable.ts";
+import { seat, state } from "../support/game.ts";
 
 const ROOM = "shutdown-seat-lost-room";
-
-const player = (id: string, name: string): Player => ({ id, name, hand: [], type: "human" });
 
 test("a shutdown keeps a between-hands seat, so the vote it held cannot deal without it", async (t) => {
   const emitted: string[] = [];
@@ -22,41 +20,20 @@ test("a shutdown keeps a between-hands seat, so the vote it held cannot deal wit
   t.mock.method(roomStore, "updateRoomStatus", async () => {});
   t.mock.method(roomStore, "releaseSeat", async () => null);
 
-  const game = {
+  const game = onlineTable({
     roomId: ROOM,
-    joinCode: "AAAAAA",
-    gameState: {
-      players: [player("player_0", "Ana"), player("player_1", "Besi")],
-      currentTurnIndex: 0,
-      lastPlayedCombination: null,
+    gameState: state({
+      players: [seat(0, [], { name: "Ana" }), seat(1, [], { name: "Besi" })],
       lastPlayedBy: -1,
-      passCount: 0,
-      gameMode: "free_for_all",
-      roundWinner: null,
       roundOver: true,
-      finishingOrder: ["player_0", "player_1"],
+      finishingOrder: ["p0", "p1"],
       firstPlayMade: true,
-    },
+    }),
     playerMap: { 0: "ana", 1: "besi" },
     rematchVotes: new Set(["ana"]),
-    cumulativeScores: {},
-    gameMode: "free_for_all",
     maxPlayers: 2,
-    matchTarget: 21,
-    matchLength: "match",
     roundsPlayed: 1,
-    matchOver: false,
-    roundFlags: {},
-    abandonedSeats: new Map(),
-    botSeatsAtStart: new Set(),
-    releasedSeats: new Set(),
-    vacatedSeats: new Map(),
-    weakSeats: new Set(),
-    endMatchVotes: new Set(),
-    dealFirstSeat: 0,
-    spectators: new Set(),
-    moveLog: null,
-  } as unknown as OnlineGameState;
+  });
   activeGames.set(ROOM, game);
 
   try {
