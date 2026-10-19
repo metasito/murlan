@@ -12,7 +12,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { ADOPTED, SHIPPED } from "../helpers/adoptedHookRules.ts";
@@ -20,6 +21,7 @@ import { directives } from "../helpers/hookSuppression.ts";
 import { runBin } from "../../scripts/lib/proc.mjs";
 import { presetRequire, reactCompiler, reactCompilerOptions } from "../../scripts/reactCompilerOptions.mjs";
 import { scanSources, sourcesUnder } from "../helpers/sourceScan.ts";
+import { cacheDir } from "../helpers/cacheDir.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 // The shared checkout, via `--git-common-dir` rather than `--show-toplevel` (RULES.md rule 10:
@@ -153,10 +155,36 @@ type CompilerEvent = {
   detail?: { reason?: string; description?: string };
 };
 
+const compiledCache = cacheDir("murlan-react-compiler");
+// The compiler's own code, not its version string: a patched or rebuilt plugin at the same version
+// must not be answered from a cache its predecessor filled.
+const compilerKey = createHash("sha256")
+  .update(readFileSync(presetRequire.resolve("babel-plugin-react-compiler")))
+  .update(require("@babel/core/package.json").version)
+  .update(JSON.stringify(COMPILER_OPTIONS, (_k, v) => (typeof v === "function" ? String(v) : v)))
+  .digest("hex");
+
+/** One file's bailouts, from the cache when this compiler has compiled these exact bytes before. */
 function compile(rel: string, source?: string): CompilerEvent[] {
+  const text = source ?? readFileSync(path.join(repoRoot, rel), "utf8");
+  const key = createHash("sha256").update(compilerKey).update(rel).update("\0").update(text).digest("hex");
+  const entry = path.join(compiledCache, `${key}.json`);
+  try {
+    return JSON.parse(readFileSync(entry, "utf8")) as CompilerEvent[];
+  } catch {
+    const events = compileUncached(rel, text);
+    mkdirSync(compiledCache, { recursive: true });
+    const partial = `${entry}.${process.pid}`;
+    writeFileSync(partial, JSON.stringify(events));
+    renameSync(partial, entry);
+    return events;
+  }
+}
+
+function compileUncached(rel: string, source: string): CompilerEvent[] {
   const events: CompilerEvent[] = [];
   const filename = path.join(repoRoot, rel);
-  transformSync(source ?? readFileSync(filename, "utf8"), {
+  transformSync(source, {
     filename,
     babelrc: false,
     configFile: false,
@@ -168,7 +196,15 @@ function compile(rel: string, source?: string): CompilerEvent[] {
       ],
     ],
   });
-  return events.filter((e) => e.kind === "CompileError");
+  // Read off here rather than stored whole: `detail` is a class whose `reason` may be a getter,
+  // which JSON would drop on the way into the cache.
+  return events
+    .filter((e) => e.kind === "CompileError")
+    .map((e) => ({
+      kind: e.kind,
+      fnLoc: { start: { line: e.fnLoc?.start?.line } },
+      detail: { reason: e.detail?.reason, description: e.detail?.description },
+    }));
 }
 
 test("every screen and component compiles with no bailouts", () => {
