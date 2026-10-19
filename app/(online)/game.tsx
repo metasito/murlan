@@ -16,6 +16,7 @@ import {
   useOnlineRoom,
   useOnlineTable,
   useOnlineTurnClock,
+  useServerError,
 } from "@/context/onlineGameHooks";
 import { useAuth } from "@/context/AuthContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
@@ -34,7 +35,6 @@ import { MenuButton } from "@/components/MenuButton";
 import { Colors, FontSize, Reading, Spacing, Type, Layer } from "@/lib/theme";
 import { uiFeedback } from "@/lib/device/feedback";
 import { useTranslation } from "@/lib/i18n";
-import { linkPill } from "@/lib/ownLink";
 import { useCatchUp } from "@/lib/useOwnLink";
 
 /**
@@ -49,15 +49,14 @@ const OVERLAY_LAYER_Z = Layer.overlay;
 export default function OnlineGameScreen() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
-  const { t } = useTranslation();
+  const { t, translateServerPayload } = useTranslation();
   const { user } = useAuth();
   const { gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats, autoPassed } =
     useOnlineTable();
   const { turnSeconds, turnDeadlineMs } = useOnlineTurnClock();
   const { isSpectator, entrySource, leaveRoom } = useOnlineRoom();
   const {
-    connected,
-    error,
+    pill,
     reconnectNotice,
     playerLeft,
     rejoinFailed,
@@ -88,7 +87,7 @@ export default function OnlineGameScreen() {
 
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const catchUp = useCatchUp(ownLink, gameState);
-  const pill = linkPill(ownLink, connected, !!reconnectNotice?.back);
+  const error = useServerError("table");
 
   // Every hook must run unconditionally, before the `if (!gameState)` guard below.
 
@@ -291,7 +290,7 @@ export default function OnlineGameScreen() {
             : pill === "reconnecting"
               ? { state: "reconnecting", text: t("onlineGame.reconnecting") }
               : pill === "reconnected" && reconnectNotice
-                ? { state: "reconnected", text: reconnectNotice.text }
+                ? { state: "reconnected", text: translateServerPayload(reconnectNotice.payload) }
                 : null
       }
       autoPassed={autoPassed}

@@ -2,9 +2,10 @@
 // (tests/e2e/fixtures/exchange-legs, "Through the pile"), frame by frame on the virtual clock.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { installVirtualClock, step, stepUntil, takeOver } from "./helpers/virtualClock";
+import { installVirtualClock, step, stepUntil } from "./helpers/virtualClock";
 import { HAND_CARDS } from "./helpers/selectors";
-import { E2E_SUSPEND_BOT_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../lib/storageKeys";
+import { exchangeSave, offlineSave, resumeOnVirtualClock } from "./helpers/offlineSeed";
+import type { OfflineSave } from "../../lib/offlineSave";
 import { LEG } from "../../lib/game/exchangeTimeline";
 import { Hold, RoundEnding, Motion } from "../../lib/tokens";
 
@@ -28,52 +29,12 @@ interface Frame {
   dealt: number;
 }
 
-const card = (id: string) => {
-  const [rank, suit] = id.split("_");
-  return { id, rank, suit, isJoker: false };
-};
+const save = (winner: number, loser: number, holding: string[][]) =>
+  exchangeSave({ seats: 3, names: NAMES, winner, loser, cardFromLoser: "2_spades", holding });
 
-function save(winnerIdx: number, loserIdx: number, hands: string[][], over: object = {}) {
-  return {
-    version: 3,
-    gameState: {
-      players: NAMES.map((name, i) => ({ id: `player_${i}`, name, hand: hands[i].map(card), type: i === 0 ? "human" : "bot" })),
-      currentTurnIndex: winnerIdx,
-      lastPlayedCombination: null,
-      lastPlayedBy: -1,
-      passCount: 0,
-      gameMode: "free_for_all",
-      trickWinner: null,
-      roundOver: false,
-      finishingOrder: [],
-      firstPlayMade: true,
-      exchangePhase: { active: true, winnerIdx, loserIdx, cardFromLoser: card("2_spades"), twoJokerException: false },
-      ...over,
-    },
-    match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
-    players: NAMES.map((name, i) => ({ name, type: i === 0 ? "human" : "bot" })),
-    gameMode: "free_for_all",
-    dealFirstSeat: 0,
-  };
-}
-
-async function open(page: Page, baseURL: string, seed: object) {
+async function open(page: Page, baseURL: string, seed: OfflineSave) {
   await installVirtualClock(page, 1259);
-  await page.addInitScript(
-    (entries) => {
-      for (const [k, v] of entries) window.localStorage.setItem(k, v);
-    },
-    [
-      [TUTORIAL_SEEN_KEY, "1"],
-      [E2E_SUSPEND_BOT_KEY, "1"],
-      [OFFLINE_SAVE_KEY, JSON.stringify(seed)],
-    ]
-  );
-  await page.goto(baseURL);
-  await takeOver(page);
-  const resume = page.getByRole("button", { name: "Riprendi partita" });
-  await stepUntil(page, () => resume.isVisible(), "the home screen");
-  await resume.click({ force: true });
+  await resumeOnVirtualClock(page, baseURL, seed);
 }
 
 const table = (page: Page) =>
@@ -237,7 +198,12 @@ test("a seat outside the announced reads both legs off the pile and the lit seat
 // A deal the loser holds both Jokers in: the shuffle draws from `crypto.getRandomValues`, held at 92
 // for the deal (found by running `initializeRematch` under the same stub).
 test("both Jokers rest side by side on the pile under their notice, and go back", async ({ page, baseURL }) => {
-  const over = save(0, 2, [[], [], []], { roundOver: true, exchangePhase: undefined, finishingOrder: ["player_0", "player_1", "player_2"] });
+  const over = offlineSave({
+    seats: 3,
+    names: NAMES,
+    holding: [[], [], []],
+    state: { roundOver: true, finishingOrder: ["player_0", "player_1", "player_2"] },
+  });
   await open(page, baseURL!, over);
   await page.evaluate(() => {
     crypto.getRandomValues = (<T extends ArrayBufferView | null>(a: T) => {

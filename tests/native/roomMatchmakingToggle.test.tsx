@@ -46,7 +46,8 @@ jest.mock('@/context/onlineGameHooks', () => ({
     setRoomVisibility: mockSetRoomVisibility,
   }),
   useOnlineTable: () => ({ gameState: null }),
-  useOnlineConnection: () => ({ error: null, clearError: jest.fn() }),
+  useOnlineConnection: () => ({ clearError: jest.fn() }),
+  useServerError: () => null,
 }));
 
 const roomModule = require('@/app/(online)/room') as {

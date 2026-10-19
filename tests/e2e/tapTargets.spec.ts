@@ -24,7 +24,7 @@ import { test, expect } from "./fixtures";
 import { openApp, registerNewAccount, startOfflineGame, uniqueUsername } from "./helpers/navigation";
 import { createRoom, goToOnlineLobby } from "./helpers/online";
 import { driveGameToCompletion } from "./helpers/bot";
-import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
+import { offlineSave, resumeSaved } from "./helpers/offlineSeed";
 import { settled } from "./helpers/settle";
 import { TABLE, TABLE_DEALING } from "./helpers/selectors";
 import { sweepSizes, UNDERSIZED_BY_DESIGN } from "./helpers/tapTargets";
@@ -375,8 +375,7 @@ for (const size of SIZES.filter((s) => s.width > s.height)) {
     test.setTimeout(2 * 60_000);
     await page.setViewportSize({ width: size.width, height: size.height });
 
-    const save = offlineGameSave(4, SHORT_HAND);
-    await resumeSaved(page, baseURL!, { ...save, match: { ...save.match, length: "single" } });
+    await resumeSaved(page, baseURL!, offlineSave({ seats: 4, hand: SHORT_HAND, length: "single" }));
     await settled(page, 2500);
 
     await page.getByRole("button", { name: "Impostazioni" }).click();
@@ -389,8 +388,7 @@ for (const size of SIZES.filter((s) => s.width > s.height)) {
     test.setTimeout(4 * 60_000);
     await page.setViewportSize({ width: size.width, height: size.height });
 
-    const save = offlineGameSave(4, SHORT_HAND);
-    await resumeSaved(page, baseURL!, { ...save, match: { ...save.match, length: "single" } });
+    await resumeSaved(page, baseURL!, offlineSave({ seats: 4, hand: SHORT_HAND, length: "single" }));
     await driveGameToCompletion(page, { isFinished: (p) => p.getByTestId("btn-home").isVisible() });
     await expect(page.getByTestId("btn-new-match")).toBeVisible({ timeout: 15_000 });
     await settled(page, 2500);

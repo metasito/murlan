@@ -3,7 +3,7 @@
 // file: two deals on one mount, the viewer giving in round 2's exchange.
 
 import { test } from "./fixtures";
-import { resumeSaved, offlineGameSave } from "./helpers/offlineSeed";
+import { resumeSaved, offlineSave } from "./helpers/offlineSeed";
 import { onShippedMotion, playRounds } from "./helpers/motionPath";
 
 test("offline vs bots, with motion — the second and third deals animate in, and each exchange closes itself", async ({
@@ -13,6 +13,6 @@ test("offline vs bots, with motion — the second and third deals animate in, an
 }) => {
   test.setTimeout(2 * 60_000);
   await onShippedMotion(page);
-  await resumeSaved(page, baseURL!, offlineGameSave(2, undefined, 0, {}, [["4_clubs"], ["5_hearts", "9_spades"]]));
+  await resumeSaved(page, baseURL!, offlineSave({ seats: 2, holding: [["4_clubs"], ["5_hearts", "9_spades"]] }));
   await playRounds(page, 2, 3);
 });

@@ -60,7 +60,7 @@ const wait = async (ms: number) => {
 describe("the viewer's own link", () => {
   it('walks drop, reconnecting, give-up and back on the socket and the clock', async () => {
     const socket = fakeSocket(true);
-    const { result, unmount } = await renderHook(() => useOwnLink(socket));
+    const { result, unmount } = await renderHook(() => useOwnLink(socket).link);
     expect(result.current).toBe('up');
     await act(async () => socket.flip(false));
     expect(result.current).toBe('dropped');
@@ -77,10 +77,47 @@ describe("the viewer's own link", () => {
 
   it('never holds a table whose socket was never up', async () => {
     const socket = fakeSocket(false);
-    const { result, unmount } = await renderHook(() => useOwnLink(socket));
+    const { result, unmount } = await renderHook(() => useOwnLink(socket).link);
     await wait(Reconnect.giveUp);
     expect(result.current).toBe('up');
     await unmount();
+  });
+
+  it('a second reader arriving mid-outage finds the outage, and leaves the first one in it', async () => {
+    const socket = fakeSocket(true);
+    const first = await renderHook(() => useOwnLink(socket).link);
+    await act(async () => socket.flip(false));
+    await wait(Reconnect.pillAfter);
+    const second = await renderHook(() => useOwnLink(socket).link);
+    await wait(0);
+    expect([first.result.current, second.result.current]).toEqual(['reconnecting', 'reconnecting']);
+    await second.unmount();
+    await first.unmount();
+  });
+
+  it('a reader arriving long after a way back nobody watched reads the link as up, not just back', async () => {
+    const socket = fakeSocket(true);
+    const first = await renderHook(() => useOwnLink(socket).link);
+    await act(async () => socket.flip(false));
+    await first.unmount();
+    socket.flip(true);
+    await wait(Reconnect.back);
+    const later = await renderHook(() => useOwnLink(socket).link);
+    expect(later.result.current).toBe('up');
+    await later.unmount();
+  });
+
+  it('a reader arriving at the start of an outage nobody watched reads it as new, not as the old one', async () => {
+    const socket = fakeSocket(true);
+    const first = await renderHook(() => useOwnLink(socket).link);
+    await act(async () => socket.flip(false));
+    await first.unmount();
+    socket.flip(true);
+    await wait(Reconnect.giveUp);
+    socket.flip(false);
+    const later = await renderHook(() => useOwnLink(socket).link);
+    expect(later.result.current).toBe('dropped');
+    await later.unmount();
   });
 });
 

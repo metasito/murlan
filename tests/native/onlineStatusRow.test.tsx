@@ -31,6 +31,7 @@ jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn(), re
 
 const mockUseOnlineConnection = jest.fn();
 jest.mock('@/context/onlineGameHooks', () => ({
+  useServerError: () => null,
   useOnlineRoom: () => ({
     createRoom: jest.fn(),
     joinRoom: jest.fn(),

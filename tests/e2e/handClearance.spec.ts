@@ -14,7 +14,7 @@
 // smallest handset here is where the same branch is reached in Chromium.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { resumeSaved, offlineGameSave, DEAL_SIZE } from "./helpers/offlineSeed";
+import { resumeSaved, exchangeSave, offlineSave, DEAL_SIZE } from "./helpers/offlineSeed";
 import { PHONES } from "./helpers/phones";
 import { TABLE, HAND_CARDS, HAND_ZONE } from "./helpers/selectors";
 
@@ -37,18 +37,8 @@ const DRAG_ALONG = 60;
 const DRAG_UP = 40;
 
 /** Mid-exchange with the viewer choosing: the worst case for the clip. */
-function midExchangeSave(): object {
-  const save: Record<string, any> = offlineGameSave(WIDEST_SEATS, DEAL_SIZE[WIDEST_SEATS], 0);
-  const cardFromLoser = save.gameState.players[1].hand.shift();
-  save.gameState.exchangePhase = {
-    active: true,
-    winnerIdx: 0,
-    loserIdx: 1,
-    cardFromLoser,
-    twoJokerException: false,
-  };
-  return save;
-}
+const midExchangeSave = () =>
+  exchangeSave({ seats: WIDEST_SEATS, hand: DEAL_SIZE[WIDEST_SEATS], winner: 0, loser: 1 });
 
 interface Cut {
   label: string;
@@ -193,7 +183,7 @@ test(`a card dragged out of the fan is not cut off — ${NARROWEST.name}`, async
 }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: NARROWEST.width, height: NARROWEST.height });
-  await resumeSaved(page, baseURL!, offlineGameSave(WIDEST_SEATS, DEAL_SIZE[WIDEST_SEATS], 0));
+  await resumeSaved(page, baseURL!, offlineSave({ seats: WIDEST_SEATS, hand: DEAL_SIZE[WIDEST_SEATS] }));
   await page.locator(TABLE).waitFor({ timeout: 30_000 });
   await page.waitForTimeout(1_200);
   expect(await clippedCards(page), "no clipping window to test against").toBeGreaterThan(0);

@@ -1,7 +1,7 @@
 // One virtual clock for both sides of tests/e2e/helpers/mockupParity.ts (#1255). The measurements
 // behind each step are #1250's findings, § "What I measured".
 import type { Page } from "@playwright/test";
-import { STEP_MS } from "./traceDiff";
+import { STEP_MS } from "./traceDiff.ts";
 import { mulberry32 } from "../../support/game.ts";
 
 const EPOCH = new Date("2026-09-24T12:00:00Z");

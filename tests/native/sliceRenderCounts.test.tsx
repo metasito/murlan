@@ -15,8 +15,10 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render } from '@testing-library/react-native';
 
-import { OnlineGameProvider, useOnlineGame } from '@/context/OnlineGameContext';
-import type { GameStateBroadcast, RoomState, TurnDeadline } from '@/context/OnlineGameContext';
+import { OnlineGameProvider } from '@/context/OnlineGameContext';
+import { useOnlineGame } from './onlineSurface';
+import type { RoomState, TurnDeadline } from '@/context/OnlineGameContext';
+import type { WireGameState } from '@/shared/protocol';
 import {
   useOnlineConnection,
   useOnlineExchange,
@@ -97,7 +99,7 @@ const deliver = async (event: string, payload: Broadcast['payloads'][number]) =>
   });
 };
 
-const gameState: Omit<GameStateBroadcast, 'viewerSeatIndex' | 'turnSecondsRemaining'> = {
+const gameState: Omit<WireGameState, 'viewerSeatIndex' | 'turnSecondsRemaining'> = {
   players: [
     { id: 'player_0', name: 'Ana', hand: [], type: 'human', handCount: 0, vacated: false },
     { id: 'player_1', name: 'Besi', hand: [], type: 'human', handCount: 0, vacated: false },
@@ -127,7 +129,7 @@ const roomState: RoomState = {
 type Broadcast =
   | { event: 'game:turn_deadline'; payloads: [TurnDeadline, TurnDeadline] }
   | { event: 'room:state'; payloads: [RoomState, RoomState] }
-  | { event: 'game:state'; payloads: [GameStateBroadcast, GameStateBroadcast] };
+  | { event: 'game:state'; payloads: [WireGameState, WireGameState] };
 
 /**
  * One broadcast per case, delivered twice, and what each slice owes it. The

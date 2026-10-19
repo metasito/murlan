@@ -3,18 +3,16 @@
 // match deals a new match without leaving the table.
 //
 // Only a browser can answer it: `react-test-renderer` never runs flexbox, so a native test cannot
-// say where the pair landed relative to the board. One single-round match is played, once,
-// and the window is then resized through the list.
+// say where the pair landed relative to the board. The match is seeded one card from its end,
+// that card is played, and the window is then resized through the list.
 import { test, expect } from "./fixtures";
-import { openApp, startOfflineGame } from "./helpers/navigation";
 import { driveGameToCompletion } from "./helpers/bot";
+import { oneCardFromFinishing, resumeSaved } from "./helpers/offlineSeed";
 import { atRest } from "./helpers/settle";
-import { seedRandomness } from "./helpers/seededRandomness";
+import { card } from "../support/game.ts";
 
 const PRIMARY = "btn-new-match";
 const BOARD = '[data-testid="score-pill-layer"]';
-/** Nothing here reads the hand, only the board after it; a fixed deal holds its length steady. */
-const DEAL_SEED = 1;
 /** Layout rounds; a sub-pixel overlap is not something anyone can see. */
 const TOLERANCE = 1;
 
@@ -51,10 +49,8 @@ test("the board's actions read as a pair inside it, below the rows, at every lan
   page,
   baseURL,
 }) => {
-  test.setTimeout(5 * 60_000);
-  await seedRandomness(page, DEAL_SEED);
-  await openApp(page, baseURL!);
-  await startOfflineGame(page, { playerCount: 2, gameMode: "free_for_all", format: "single" });
+  test.setTimeout(2 * 60_000);
+  await resumeSaved(page, baseURL!, oneCardFromFinishing({ seats: 2, length: "single", last: card("5", "hearts") }));
   await driveGameToCompletion(page, {
     isFinished: (p) => p.getByTestId("btn-home").isVisible(),
     log: (line) => test.info().annotations.push({ type: "move", description: line }),

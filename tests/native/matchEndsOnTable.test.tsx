@@ -62,6 +62,7 @@ jest.mock('@/context/GameContext', () => ({
   }),
 }));
 jest.mock('@/context/onlineGameHooks', () => ({
+  useServerError: (surface: string) => (surface === 'table' ? mockError : null),
   useOnlineTable: () => ({
     gameState: MOCK_ENDED,
     mySeatIndex: 0,
@@ -74,7 +75,6 @@ jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineRoom: () => ({ isSpectator: false, entrySource: 'lobby', leaveRoom: jest.fn() }),
   useOnlineConnection: () => ({
     connected: true,
-    error: mockError,
     reconnectNotice: null,
     playerLeft: false,
     rejoinFailed: false,

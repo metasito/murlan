@@ -10,8 +10,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigation";
-import { offlineGameSave } from "./helpers/offlineSeed";
-import { OFFLINE_SAVE_KEY } from "../../lib/storageKeys";
+import { offlineSave, seedSave } from "./helpers/offlineSeed";
 // The suite runs the app in Italian. Read from the locale rather than restated
 // here: a spec holding its own copy of the copy goes stale on the next rename
 // and fails naming a string nobody changed.
@@ -26,10 +25,7 @@ const HOW_TO_PLAY = '[data-testid="home-how-to-play"]';
 
 /** Opens home with a game already saved, without resuming it. */
 async function openWithSave(page: Page, baseURL: string): Promise<void> {
-  await page.addInitScript(
-    ({ key, value }) => window.localStorage.setItem(key, value),
-    { key: OFFLINE_SAVE_KEY, value: JSON.stringify(offlineGameSave(4, 13)) }
-  );
+  await seedSave(page, offlineSave({ seats: 4 }));
   await openApp(page, baseURL);
 }
 

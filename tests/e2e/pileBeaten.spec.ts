@@ -3,9 +3,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
+import { offlineSave, resumeSaved } from "./helpers/offlineSeed";
 import { settled } from "./helpers/settle";
-import { E2E_SUSPEND_BOT_KEY } from "../../lib/storageKeys";
 
 const VIEWPORT = { width: 844, height: 390 };
 const LEAD = 2;
@@ -46,8 +45,7 @@ test("the beaten play turns and darkens as the mockup's, on the cards that lande
     requestAnimationFrame(sample);
   });
 
-  await page.addInitScript((key) => window.localStorage.setItem(key, "1"), E2E_SUSPEND_BOT_KEY);
-  await resumeSaved(page, baseURL!, offlineGameSave(4, undefined, LEAD, {}, HOLDING));
+  await resumeSaved(page, baseURL!, offlineSave({ seats: 4, turn: LEAD, holding: HOLDING }), { holdTurn: true });
   await botPlays(page);
   await botPlays(page);
   await page.getByTestId("pile-prev-layer").waitFor({ state: "attached", timeout: 5_000 });

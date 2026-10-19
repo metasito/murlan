@@ -34,6 +34,7 @@ let mockVotes: { votes: string[]; total: number } | null = null;
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() } }));
 jest.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: { id: 'alice', username: 'Alice' } }) }));
 jest.mock('@/context/onlineGameHooks', () => ({
+  useServerError: () => null,
   useOnlineTable: () => ({
     gameState: mockGameState,
     mySeatIndex: 0,

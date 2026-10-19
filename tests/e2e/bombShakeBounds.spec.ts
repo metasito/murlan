@@ -21,9 +21,8 @@
 // coverage assertion below while proving nothing.
 import { expect, test } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { resumeSaved } from "./helpers/offlineSeed";
-import { E2E_SUSPEND_BOT_KEY } from "../../lib/e2eBotSuspend";
-import { buildCombination, type Card, type Rank, type Suit } from "../../lib/game/gameEngine";
+import { offlineSave, resumeSaved } from "./helpers/offlineSeed";
+import type { Card, Rank, Suit } from "../../lib/game/gameEngine";
 import { GIOCA_VALID_LABEL } from "./helpers/labels.ts";
 import { HAND_ZONE, TABLE } from "./helpers/selectors.ts";
 import { tap } from "./helpers/press";
@@ -97,41 +96,13 @@ const BOT_HAND = (["4", "6", "8", "10", "Q"] as const).map((r) => card(r, "spade
 /** A single the bomb beats — a bomb beats anything but a higher bomb (`canBeat`). */
 const PILE_CARD = card("3", "clubs");
 
-function bombSave() {
-  return {
-    version: 3,
-    gameState: {
-      players: [
-        { id: "player_0", name: "Ana", hand: VIEWER_HAND, type: "human" },
-        { id: "player_1", name: "Bea", hand: BOT_HAND, type: "bot" },
-      ],
-      currentTurnIndex: 0,
-      lastPlayedCombination: buildCombination([PILE_CARD]),
-      lastPlayedBy: 1,
-      passCount: 0,
-      gameMode: "free_for_all",
-      trickWinner: null,
-      roundOver: false,
-      finishingOrder: [],
-      firstPlayMade: true,
-    },
-    match: {
-      length: "single",
-      target: 21,
-      scores: {},
-      rounds: [],
-      over: false,
-      winners: [],
-      isDraw: false,
-    },
-    players: [
-      { name: "Ana", type: "human" },
-      { name: "Bea", type: "bot", personality: "luan" },
-    ],
-    gameMode: "free_for_all",
-    dealFirstSeat: 0,
-  };
-}
+const bombSave = () =>
+  offlineSave({
+    seats: 2,
+    length: "single",
+    holding: [VIEWER_HAND.map((c) => c.id), BOT_HAND.map((c) => c.id)],
+    pile: { cards: [PILE_CARD.id], by: 1 },
+  });
 
 interface Landing {
   frames: number;
@@ -263,11 +234,7 @@ async function armedBomb(page: Page, baseURL: string): Promise<void> {
   // The tier lands at zero under reduced motion — no kick, no flare — so a run
   // that inherited it would assert nothing at all.
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  await page.addInitScript((key: string) => {
-    window.localStorage.setItem(key, "1");
-  }, E2E_SUSPEND_BOT_KEY);
-
-  await resumeSaved(page, baseURL, bombSave());
+  await resumeSaved(page, baseURL, bombSave(), { holdTurn: true });
   await page.locator(TABLE).waitFor({ timeout: 30_000 });
 
   expect(

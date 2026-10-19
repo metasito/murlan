@@ -18,6 +18,7 @@ import {
   useOnlineConnection,
   useOnlineRoom,
   useOnlineTable,
+  useServerError,
 } from "@/context/onlineGameHooks";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
@@ -39,7 +40,8 @@ export default function OnlineLobbyScreen() {
   const { user } = useAuth();
   const { createRoom, joinRoom, spectateRoom, room, isSpectator } = useOnlineRoom();
   const { gameState } = useOnlineTable();
-  const { connected, error, clearError } = useOnlineConnection();
+  const { connected, clearError } = useOnlineConnection();
+  const error = useServerError("lobby");
   const { pendingInvite, clearInvite, acceptedInvite, clearAcceptedInvite } = useSocket();
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [joiningInvite, setJoiningInvite] = useState(false);
@@ -257,7 +259,7 @@ export default function OnlineLobbyScreen() {
           {/* A floor-sized box laid out at the icon's size: a box taking its own room
               would take the banner from 32pt to 60 on a single-line message. */}
           <Pressable
-            onPress={clearError}
+            onPress={() => clearError(error.seq)}
             style={styles.errorBannerClose}
             accessibilityRole="button"
             accessibilityLabel={t("common.close")}

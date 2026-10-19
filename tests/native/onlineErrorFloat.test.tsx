@@ -30,12 +30,13 @@ const mockState: GameState = {
 };
 
 jest.mock('@/context/onlineGameHooks', () => ({
+  useServerError: (surface: string) => (surface === 'table' ? { text: ERROR, seq: 1 } : null),
   useOnlineTable: () => ({ gameState: mockState, mySeatIndex: 0, playCards: jest.fn(), pass: jest.fn(), sendReaction: jest.fn(), disconnectedSeats: {} }),
   useOnlineTurnClock: () => ({}),
   useOnlineRoom: () => ({ isSpectator: false, entrySource: 'lobby', leaveRoom: jest.fn() }),
   useOnlineConnection: () => ({
     connected: true,
-    error: { text: ERROR, seq: 1 },
+    error: { payload: { message: ERROR }, seq: 1, surface: 'table' },
     reconnectNotice: null,
     playerLeft: false,
     rejoinFailed: false,

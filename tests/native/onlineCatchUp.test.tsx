@@ -8,7 +8,7 @@ import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 
 const mockTableProps = jest.fn();
 const mockRetry = jest.fn();
-const mockOwnLink = { current: 'up' };
+const mockOwnLink: { current: import('@/lib/ownLink').OwnLink } = { current: 'up' };
 const mockMatchOver = { current: false };
 const mockConnected = { current: true };
 const mockState: { current?: GameState } = {};
@@ -36,6 +36,7 @@ const mockMidRound: GameState = {
 };
 
 jest.mock('@/context/onlineGameHooks', () => ({
+  useServerError: () => null,
   useOnlineTable: () => ({
     gameState: mockState.current ?? mockMidRound,
     mySeatIndex: 0,
@@ -49,7 +50,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineConnection: () => ({
     connected: mockConnected.current,
     error: null,
-    reconnectNotice: { text: 'Carl disconnected', back: false },
+    reconnectNotice: { payload: { message: 'Carl disconnected' }, back: false },
     playerLeft: false,
     rejoinFailed: false,
     clearError: jest.fn(),
@@ -57,6 +58,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
     clearRejoinFailed: jest.fn(),
     retryConnection: mockRetry,
     ownLink: mockOwnLink.current,
+    pill: jest.requireActual<typeof import('@/lib/ownLink')>('@/lib/ownLink').linkPill(mockOwnLink.current, mockConnected.current, false),
   }),
   useOnlineMatch: () => ({
     matchState: { target: 21, length: 'match', over: mockMatchOver.current, winners: [], isDraw: false, continues: true, roundsPlayed: 0 },
@@ -130,7 +132,7 @@ describe("the online table on the viewer's own link", () => {
       </SafeAreaProvider>
     );
     const view = await render(screen());
-    const at = async (link: string, state?: GameState) => {
+    const at = async (link: typeof mockOwnLink.current, state?: GameState) => {
       mockOwnLink.current = link;
       if (state) mockState.current = state;
       await view.rerender(screen());

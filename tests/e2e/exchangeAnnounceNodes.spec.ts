@@ -10,7 +10,7 @@
 // Chromium's own accessibility tree, the instrument `oneAccessibleNode.spec.ts`
 // uses and for the same reason.
 import { test, expect } from "./fixtures";
-import { resumeSaved } from "./helpers/offlineSeed";
+import { exchangeSave, resumeSaved } from "./helpers/offlineSeed";
 import { tap } from "./helpers/press";
 
 /** Roles a reader lands on. An announcement must hold none of them. */
@@ -28,63 +28,18 @@ interface AxNode {
 
 /**
  * A two-seat hand mid-exchange with the viewer as the winner, about to choose
- * a giveback. Written out rather than derived from `offlineGameSave` because
+ * a giveback. Held to named cards rather than the round-robin deal because
  * the card clicked below has to be a known one in the 3–10 giveback range —
  * and the King beside it has to be one that is not.
  */
-function midExchangeSave() {
-  const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
-  return {
-    version: 3,
-    gameState: {
-      players: [
-        {
-          id: "player_0",
-          name: "Ana",
-          hand: [card("5_hearts", "5", "hearts"), card("K_spades", "K", "spades")],
-          type: "human",
-        },
-        {
-          id: "player_1",
-          name: "Bea",
-          hand: [card("J_hearts", "J", "hearts"), card("Q_diamonds", "Q", "diamonds")],
-          type: "bot",
-        },
-      ],
-      currentTurnIndex: 0,
-      lastPlayedCombination: null,
-      lastPlayedBy: -1,
-      passCount: 0,
-      gameMode: "free_for_all",
-      trickWinner: null,
-      roundOver: false,
-      finishingOrder: [],
-      firstPlayMade: true,
-      exchangePhase: {
-        active: true,
-        winnerIdx: 0,
-        loserIdx: 1,
-        cardFromLoser: card("2_spades", "2", "spades"),
-        twoJokerException: false,
-      },
-    },
-    match: {
-      length: "match",
-      target: 21,
-      scores: {},
-      rounds: [],
-      over: false,
-      winners: [],
-      isDraw: false,
-    },
-    players: [
-      { name: "Ana", type: "human" },
-      { name: "Bea", type: "bot", personality: "luan" },
-    ],
-    gameMode: "free_for_all",
-    dealFirstSeat: 0,
-  };
-}
+const midExchangeSave = () =>
+  exchangeSave({
+    seats: 2,
+    winner: 0,
+    loser: 1,
+    cardFromLoser: "2_spades",
+    holding: [["5_hearts", "K_spades"], ["J_hearts", "Q_diamonds"]],
+  });
 
 test("the exchange announcement speaks without becoming a control", async ({
   page,
@@ -104,7 +59,7 @@ test("the exchange announcement speaks without becoming a control", async ({
 
   // The sentence is on screen before the tree is read; it clears itself on a
   // timer, so an unwaited read races it.
-  const announcement = page.getByRole("alert", { name: /Ana dà .+ a Bea/ });
+  const announcement = page.getByRole("alert", { name: /Ana dà .+ a Luan/ });
   await expect(announcement).toBeVisible({ timeout: 15_000 });
   const spoken = (await announcement.getAttribute("aria-label")) ?? "";
 

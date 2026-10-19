@@ -12,7 +12,7 @@
 // announcement cannot outlive the turn it names.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { resumeSaved } from "./helpers/offlineSeed";
+import { offlineSave, resumeSaved } from "./helpers/offlineSeed";
 import { setSafeArea } from "./helpers/safeArea";
 import { settledLight, tracedLamp } from "./helpers/tableTrace";
 import { RANK_SLOTS } from "../../lib/game/gameEngine";
@@ -23,56 +23,17 @@ const VIEWPORT = { width: 874, height: 402 };
 const NEAREST_PT = 0.5;
 
 /** A round just dealt, opened by the viewer's own seat because it lost the last round. */
-function openingSave() {
-  const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
-  return {
-    version: 3,
-    gameState: {
-      players: [
-        {
-          id: "player_0",
-          name: "Ana",
-          hand: [card("5_hearts", "5", "hearts"), card("K_spades", "K", "spades")],
-          type: "human",
-        },
-        {
-          id: "player_1",
-          name: "Bea",
-          hand: [card("J_hearts", "J", "hearts"), card("Q_diamonds", "Q", "diamonds")],
-          type: "bot",
-        },
-      ],
-      currentTurnIndex: 0,
-      lastPlayedCombination: null,
-      lastPlayedBy: -1,
-      passCount: 0,
-      gameMode: "free_for_all",
-      trickWinner: null,
-      roundOver: false,
-      finishingOrder: [],
-      firstPlayMade: true,
+const openingSave = () =>
+  offlineSave({
+    seats: 2,
+    holding: [["5_hearts", "K_spades"], ["J_hearts", "Q_diamonds"]],
+    state: {
       startReason: { type: "lost_round", playerIdx: 0 },
       // Nothing played yet — the round the `startReason` describes is still at
       // its opening, which is the whole condition for announcing it.
       playedRanks: Array.from({ length: RANK_SLOTS }, () => 0),
     },
-    match: {
-      length: "match",
-      target: 21,
-      scores: {},
-      rounds: [],
-      over: false,
-      winners: [],
-      isDraw: false,
-    },
-    players: [
-      { name: "Ana", type: "human" },
-      { name: "Bea", type: "bot", personality: "luan" },
-    ],
-    gameMode: "free_for_all",
-    dealFirstSeat: 0,
-  };
-}
+  });
 
 /** Whether the gate is what a finger would land on at this control's own centre. */
 async function coveredByGate(page: Page, testId: string): Promise<boolean> {

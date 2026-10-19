@@ -43,6 +43,7 @@ const mockFinished: GameState = {
 };
 
 jest.mock('@/context/onlineGameHooks', () => ({
+  useServerError: () => null,
   useOnlineTable: () => ({
     gameState: mockFinished,
     mySeatIndex: 0,

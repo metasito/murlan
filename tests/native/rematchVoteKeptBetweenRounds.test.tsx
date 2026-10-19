@@ -5,7 +5,8 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react-native';
 
-import { OnlineGameProvider, type GameStateBroadcast } from '@/context/OnlineGameContext';
+import { OnlineGameProvider } from '@/context/OnlineGameContext';
+import type { WireGameState } from '@/shared/protocol';
 import { useOnlineMatch } from '@/context/onlineGameHooks';
 
 type Listener = (...args: unknown[]) => void;
@@ -30,7 +31,7 @@ jest.mock('@/context/NotificationContext', () => ({
   useNotification: () => ({ showNotification: jest.fn() }),
 }));
 
-const table = (roundOver: boolean): GameStateBroadcast => ({
+const table = (roundOver: boolean): WireGameState => ({
   players: [
     { id: 'player_0', name: 'Ana', hand: [], type: 'human', handCount: 0, vacated: false },
     { id: 'player_1', name: 'Besi', hand: [], type: 'human', handCount: 0, vacated: false },

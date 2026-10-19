@@ -3,13 +3,10 @@
 // and through a bomb's kick, on a phone and on a 4:3 tablet (#1259 plan 4, task 11).
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
+import { exchangeSave, offlineSave, resumeSaved } from "./helpers/offlineSeed";
 import { settled } from "./helpers/settle";
 import { tap, tapPoint } from "./helpers/press";
-import { E2E_SUSPEND_BOT_KEY } from "../../lib/storageKeys";
 import { HAND_ZONE } from "./helpers/selectors.ts";
-import { buildCombination } from "../../lib/game/gameEngine";
-import { card } from "../support/game.ts";
 
 const VIEWPORTS = [
   { name: "phone", width: 844, height: 390 },
@@ -124,37 +121,29 @@ function expectOnTheCards(w: Worst, scopes: string[]) {
   expect(w.rot, `turn off by ${w.rot.toFixed(2)}° (${w.badFrames} of ${w.frames} frames), worst ${w.worstAt}`).toBeLessThanOrEqual(TOLERANCE);
 }
 
+const HELD = { holdTurn: true };
+
 /** Four sevens over a single, three cards to spare so the play is a bomb and not the hand's last. */
-function bombSave() {
-  const save = offlineGameSave(2);
-  const bomb = (["hearts", "diamonds", "clubs", "spades"] as const).map((s) => card("7", s));
-  return {
-    ...save,
-    gameState: {
-      ...save.gameState,
-      players: [
-        { id: "player_0", name: "Ana", hand: [...bomb, card("4", "hearts"), card("5", "diamonds"), card("6", "clubs")], type: "human" },
-        { id: "player_1", name: "Bea", hand: (["4", "6", "8", "10", "Q"] as const).map((r) => card(r, "spades")), type: "bot" },
-      ],
-      currentTurnIndex: 0,
-      lastPlayedCombination: buildCombination([card("3", "clubs")]),
-      lastPlayedBy: 1,
-      passCount: 0,
-    },
-  };
-}
+const bombSave = () =>
+  offlineSave({
+    seats: 2,
+    holding: [
+      ["7_hearts", "7_diamonds", "7_clubs", "7_spades", "4_hearts", "5_diamonds", "6_clubs"],
+      ["4_spades", "6_spades", "8_spades", "10_spades", "Q_spades"],
+    ],
+    pile: { cards: ["3_clubs"], by: 1 },
+  });
 
 for (const vp of VIEWPORTS) {
   test.describe(`on a ${vp.name}`, () => {
     test.beforeEach(async ({ page }) => {
       await page.setViewportSize({ width: vp.width, height: vp.height });
       await page.emulateMedia({ reducedMotion: "no-preference" });
-      await page.addInitScript((key) => window.localStorage.setItem(key, "1"), E2E_SUSPEND_BOT_KEY);
     });
 
     test("at rest and through a throw, every hand card, back and played card is where it is drawn", async ({ page, baseURL }) => {
       test.setTimeout(90_000);
-      await resumeSaved(page, baseURL!, offlineGameSave(4, 8, 1));
+      await resumeSaved(page, baseURL!, offlineSave({ seats: 4, hand: 8, turn: 1 }), HELD);
       await settled(page, 3_000, '[data-testid="game-table"]');
       expectOnTheCards(await sample(page, 500), ["fan", "hand"]);
 
@@ -168,7 +157,7 @@ for (const vp of VIEWPORTS) {
 
     test("through a bomb's kick and shake, every card is where it is drawn", async ({ page, baseURL }) => {
       test.setTimeout(90_000);
-      await resumeSaved(page, baseURL!, bombSave());
+      await resumeSaved(page, baseURL!, bombSave(), HELD);
       await settled(page, 3_000, '[data-testid="game-table"]');
       for (const c of ["7 di Cuori", "7 di Quadri", "7 di Fiori", "7 di Picche"]) {
         await tap(page, page.locator(HAND_ZONE).getByRole("button", { name: c, exact: true }));
@@ -182,7 +171,7 @@ for (const vp of VIEWPORTS) {
 
     test("a picked card is where it is drawn through its lift, and publishes its lift and glow", async ({ page, baseURL }) => {
       test.setTimeout(90_000);
-      await resumeSaved(page, baseURL!, offlineGameSave(2, 9, 0));
+      await resumeSaved(page, baseURL!, offlineSave({ seats: 2, hand: 9 }), HELD);
       await settled(page, 3_000, '[data-testid="game-table"]');
       const picked = page.locator('[data-testid^="hand-card-"]').last();
       const id = (await picked.getAttribute("data-testid"))!.slice("hand-card-".length);
@@ -196,25 +185,24 @@ for (const vp of VIEWPORTS) {
 
     test("mid-deal, every back in the air is where it is drawn", async ({ page, baseURL }) => {
       test.setTimeout(90_000);
-      const save = offlineGameSave(4);
-      await resumeSaved(page, baseURL!, { ...save, gameState: { ...save.gameState, firstPlayMade: false } });
+      await resumeSaved(page, baseURL!, offlineSave({ seats: 4, state: { firstPlayMade: false } }), HELD);
       expectOnTheCards(await sample(page, 4_000), ["deal", "fan", "hand"]);
     });
 
     test("mid-exchange, both exchanged cards are where they are drawn", async ({ page, baseURL }) => {
       test.setTimeout(90_000);
-      const save = offlineGameSave(2);
-      await resumeSaved(page, baseURL!, {
-        ...save,
-        gameState: {
-          ...save.gameState,
-          players: [
-            { id: "player_0", name: "Ana", hand: [card("5", "hearts"), card("K", "spades"), card("2", "spades")], type: "human" },
-            { id: "player_1", name: "Bea", hand: [card("J", "hearts"), card("Q", "diamonds")], type: "bot" },
-          ],
-          exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card("2", "spades"), twoJokerException: false },
-        },
-      });
+      await resumeSaved(
+        page,
+        baseURL!,
+        exchangeSave({
+          seats: 2,
+          winner: 0,
+          loser: 1,
+          cardFromLoser: "2_spades",
+          holding: [["5_hearts", "K_spades", "2_spades"], ["J_hearts", "Q_diamonds"]],
+        }),
+        HELD
+      );
       expectOnTheCards(await sample(page, 4_000), ["fan", "hand", "leg"]);
     });
   });
@@ -223,8 +211,7 @@ for (const vp of VIEWPORTS) {
 test("on a 4:3 tablet, Tab onto a card the scrolled hand clips pans the row to it, and its rect follows", async ({ page, baseURL }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1024, height: 768 });
-  await page.addInitScript((key) => window.localStorage.setItem(key, "1"), E2E_SUSPEND_BOT_KEY);
-  await resumeSaved(page, baseURL!, offlineGameSave(2, 13, 0));
+  await resumeSaved(page, baseURL!, offlineSave({ seats: 2 }), HELD);
   await settled(page, 3_000, '[data-testid="game-table"]');
   // Measured about the centre at the unturned width: a tilted card's bounding box outgrows what the row can show.
   const hand = () =>
@@ -263,8 +250,7 @@ test("on a 4:3 tablet, Tab onto a card the scrolled hand clips pans the row to i
 test("on a 4:3 tablet, a mouse press on the scrolled hand's clipped edge card leaves the row where it is", async ({ page, baseURL }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1024, height: 768 });
-  await page.addInitScript((key) => window.localStorage.setItem(key, "1"), E2E_SUSPEND_BOT_KEY);
-  await resumeSaved(page, baseURL!, offlineGameSave(2, 13, 0));
+  await resumeSaved(page, baseURL!, offlineSave({ seats: 2 }), HELD);
   await settled(page, 3_000, '[data-testid="game-table"]');
   const row = () =>
     page.evaluate(() => {

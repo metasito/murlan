@@ -20,9 +20,9 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
 import { openOnlineTable } from "./helpers/onlineTable";
+import { assertFresh } from "./helpers/freshTable";
 import { HAND_CARDS, HAND_ZONE, TABLE, TABLE_STATE } from "./helpers/selectors";
 import { YOUR_TURN_PREFIX } from "./helpers/labels";
-import { createDeck, HEADS_UP_HAND } from "../../lib/game/gameEngine";
 
 /** The audit's own four, named as `content.txt` and `table.txt` name them. */
 const VIEWPORTS = [
@@ -34,25 +34,6 @@ const VIEWPORTS = [
 
 /** Four seats fills the top seat and both side columns — the arrangement with the most to measure. */
 const SEATS = 4;
-
-/**
- * #785: the fewest cards a freshly-dealt seat can hold. A seat reading below
- * this floor has necessarily played at least one card since the deal, which
- * makes it a different table than the one `tests/e2e/57-polish-audit/`
- * records: the record's own bots never move (`openSeededGame`'s pile is
- * always empty), so comparing to it only means something when the online
- * table hasn't moved either.
- *
- * #792: computed inside `readTable`, from the seat count the table actually
- * renders — never from `SEATS` above, which is only what this suite asked
- * for. `freshHandFloor` (`lib/game/gameEngine.ts`) is the source of truth; its
- * math is mirrored here rather than called, because a `page.evaluate`
- * callback runs in the browser and cannot reach a Node import. Two seats get
- * the fixed `HEADS_UP_HAND` deal in full — `dealCards` never round-robins the
- * whole deck for a duel — every other seat count round-robins it, so the
- * floor is what an even split loses to its own remainder.
- */
-const DECK_LENGTH = createDeck().length;
 
 const AUDIT_DIR = path.resolve(__dirname, "57-polish-audit");
 const RECORD = path.join(AUDIT_DIR, "online-table.txt");
@@ -156,9 +137,9 @@ async function measure(page: Page): Promise<Measurement> {
   return { ...second, wide: second.wide.filter((node) => first.wide.includes(node)) };
 }
 
-function readTable(page: Page): Promise<Measurement> {
-  return page.evaluate(
-    ({ table: tableSel, hand: handSel, cards: cardSel, turn: turnAttr, yourTurn, deckLength, headsUpHand }) => {
+async function readTable(page: Page): Promise<Measurement> {
+  const m = await page.evaluate(
+    ({ table: tableSel, hand: handSel, cards: cardSel, turn: turnAttr, yourTurn }) => {
       const round = (n: number) => Math.round(n);
       const table = document.querySelector(tableSel);
       if (!table) throw new Error("the table never rendered");
@@ -214,29 +195,6 @@ function readTable(page: Page): Promise<Measurement> {
           bottom: r.bottom,
           count: countEl ? (countEl.textContent ?? "") : "?",
         });
-      }
-
-      // #792: the seats this table actually renders — the viewer plus every
-      // opponent slot present in the DOM — not the seat count this suite
-      // asked `openOnlineTable` for. Mirrors `freshHandFloor` (lib/game/gameEngine.ts).
-      const seatsOnScreen = 1 + seatSlots.length;
-      const freshFloor =
-        seatsOnScreen === 2 ? headsUpHand : Math.floor(deckLength / seatsOnScreen);
-
-      // #785: the state this measurement requires, asserted rather than
-      // hoped for. A seat below the floor a fresh deal leaves it has already
-      // played, which makes this a different table than the record —
-      // measuring it anyway is what reported a false layout break twice.
-      for (const slot of seatSlots) {
-        const count = Number(slot.count);
-        if (Number.isFinite(count) && count < freshFloor) {
-          throw new Error(
-            `the ${slot.testId} seat already holds ${slot.count} card(s), fewer than the ` +
-              `${freshFloor} a fresh deal leaves any of this ${seatsOnScreen}-seat table's seats ` +
-              `— this table has already been played into and cannot be measured against a ` +
-              `record of an unplayed one`
-          );
-        }
       }
 
       // Laid-out boxes that nothing clips, exactly as tableFit.spec.ts counts
@@ -300,10 +258,10 @@ function readTable(page: Page): Promise<Measurement> {
       cards: HAND_CARDS,
       turn: TABLE_STATE,
       yourTurn: YOUR_TURN_PREFIX,
-      deckLength: DECK_LENGTH,
-      headsUpHand: HEADS_UP_HAND,
     }
   );
+  assertFresh(m.debug.seatSlots, SEATS);
+  return m;
 }
 
 /**
@@ -518,32 +476,4 @@ test.describe("the online table, at the audit's viewports", () => {
     for (const row of rows) merged.set(keyOf(row), row);
     writeFileSync(RECORD, [...merged.values()].join("\n") + "\n", "utf8");
   });
-});
-
-/**
- * #785's own guard, unrelated to #800's fix but sitting on the same table
- * this file just changed how it reaches — proof the two are independent.
- * `readTable` throws rather than measuring the instant any opponent seat
- * reads below `freshFloor`, and this plants that exact condition at the DOM
- * `readTable` reads it from, with no actual play needed to reach it.
- */
-test("refuses to measure a table already played into", async ({ browser, baseURL }) => {
-  test.setTimeout(120_000);
-  const table = await openOnlineTable(browser, baseURL!, {
-    playerCount: SEATS,
-    gameMode: "free_for_all",
-    viewport: VIEWPORTS[0],
-  });
-  try {
-    await table.page.evaluate(() => {
-      const el = document.querySelector(
-        '[data-testid="top-seat"] [data-testid="seat-card-count"]'
-      );
-      if (!el) throw new Error("no top-seat card count on screen to plant a defect on");
-      el.textContent = "0";
-    });
-    await expect(measure(table.page)).rejects.toThrow(/already been played into/);
-  } finally {
-    await table.close();
-  }
 });
