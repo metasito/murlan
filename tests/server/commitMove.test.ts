@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SocketServer } from "../../server/socket/socketTypes.ts";
 import { commitMove } from "../../server/game/gameTurn.ts";
-import { persistence, roundOverWriters } from "../../server/game/gamePersistence.ts";
+import { roundOverWriters } from "../../server/game/gamePersistence.ts";
+import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { startReplayLog } from "../../server/game/replayShape.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
 import { botMoveDelayMs, clearRoomTimers, pending } from "../../server/game/gameTimers.ts";
@@ -84,7 +85,7 @@ async function assertCommitted(
 
 for (const kind of ["play", "pass"] as const) {
   test(`a ${kind} is logged once, persisted and re-armed at the ordinary bot delay`, async (t) => {
-    const writes = t.mock.method(persistence, "writeActiveGame", async () => {});
+    const writes = t.mock.method(activeGameStore, "write", async () => {});
     t.mock.timers.enable({ apis: ["setTimeout"] });
     try {
       if (kind === "play") {
@@ -110,7 +111,7 @@ for (const kind of ["play", "pass"] as const) {
 }
 
 test("a play that ends the round is logged, persisted, and handed to round over instead of arming a seat", async (t) => {
-  const writes = t.mock.method(persistence, "writeActiveGame", async () => {});
+  const writes = t.mock.method(activeGameStore, "write", async () => {});
   for (const key of ["updateRoomStatus", "recordGameResult", "recordRatedResult", "saveReplay"] as const) {
     t.mock.method(roundOverWriters, key, async () => {});
   }
@@ -139,7 +140,7 @@ test("a play that ends the round is logged, persisted, and handed to round over 
 });
 
 test("an exchange logs no replay move, persists, and holds the next seat for the ceremony", async (t) => {
-  const writes = t.mock.method(persistence, "writeActiveGame", async () => {});
+  const writes = t.mock.method(activeGameStore, "write", async () => {});
   t.mock.timers.enable({ apis: ["setTimeout"] });
   try {
     const deck = createDeck();

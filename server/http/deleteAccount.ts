@@ -1,11 +1,11 @@
-import { eq, or, sql, inArray } from "drizzle-orm";
+import { eq, or, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
+import { roomStore } from "../store/roomStore.ts";
 import {
   users,
   rooms,
   roomPlayers,
   friends,
-  activeGames,
   roundReplays,
 } from "../../shared/schema.ts";
 
@@ -15,8 +15,8 @@ import {
  * the endpoint 500s: friends (both directions), room_players, the rooms this
  * user hosts (plus their players and any persisted game), and the sessions.
  *
- * All of it in one transaction, which is why it writes the rows itself rather
- * than calling the stores — each of those opens its own.
+ * All of it in one transaction, which is why it writes the rows itself or hands
+ * the store its `tx`, rather than calling a store method that opens its own.
  */
 export async function deleteUser(userId: string): Promise<string[]> {
   return db.transaction(async (tx) => {
@@ -33,15 +33,8 @@ export async function deleteUser(userId: string): Promise<string[]> {
       .select({ id: rooms.id })
       .from(rooms)
       .where(eq(rooms.hostUserId, userId));
-    const hostedIds = hosted.map((r) => r.id);
 
-    if (hostedIds.length > 0) {
-      await tx.delete(roomPlayers).where(inArray(roomPlayers.roomId, hostedIds));
-      await tx
-        .delete(activeGames)
-        .where(inArray(activeGames.roomId, hostedIds));
-      await tx.delete(rooms).where(inArray(rooms.id, hostedIds));
-    }
+    await roomStore.purgeRooms(tx, hosted.map((r) => r.id));
 
     // Every other table that names a user carries a cascading foreign key.
     // round_replays cannot: a replay belongs to up to four players, so it

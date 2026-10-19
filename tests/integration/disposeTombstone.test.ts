@@ -65,9 +65,8 @@ describe("a disposed table", { skip: hasDatabase() ? false : skipMessage() }, ()
 
   test("stays disposed: its row is deleted before the lock goes, and never written again", async () => {
     const { activeGames } = await import("../../server/game/gameRoom.ts");
-    const { disposeGame, persistGameState, persistence } = await import(
-      "../../server/game/gamePersistence.ts"
-    );
+    const { disposeGame, persistGameState } = await import("../../server/game/gamePersistence.ts");
+    const { activeGameStore } = await import("../../server/store/activeGameStore.ts");
     const { claimRoom, ownershipKey } = await import("../../server/game/gameOwnership.ts");
     const roomId = `tombstone-${Date.now()}`;
     const key = ownershipKey(roomId);
@@ -92,11 +91,11 @@ describe("a disposed table", { skip: hasDatabase() ? false : skipMessage() }, ()
     const gate = new Promise<void>((resolve) => (open = resolve));
     let entered!: () => void;
     const writing = new Promise<void>((resolve) => (entered = resolve));
-    const real = persistence.writeActiveGame;
-    persistence.writeActiveGame = async (...args) => {
+    const real = activeGameStore.write;
+    activeGameStore.write = async (...args) => {
       entered();
       await gate;
-      return real.apply(persistence, args);
+      return real.apply(activeGameStore, args);
     };
     try {
       const held = persistGameState(roomId, game);
@@ -111,7 +110,7 @@ describe("a disposed table", { skip: hasDatabase() ? false : skipMessage() }, ()
       open();
       await held;
     } finally {
-      persistence.writeActiveGame = real;
+      activeGameStore.write = real;
     }
 
     const deadline = Date.now() + 5_000;

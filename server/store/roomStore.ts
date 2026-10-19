@@ -1,7 +1,7 @@
 import { now } from "../http/clock.ts";
-import { eq, and, asc, sql } from "drizzle-orm";
+import { eq, and, asc, inArray, sql } from "drizzle-orm";
 import { db } from "./db.ts";
-import { users, rooms, roomPlayers, gameInvites } from "../../shared/schema.ts";
+import { users, rooms, roomPlayers, gameInvites, activeGames } from "../../shared/schema.ts";
 import type { User, Room, RoomPlayer, RoomVisibility } from "../../shared/schema.ts";
 import { heldSeats, seatForClaim } from "../game/seatAllocation.ts";
 import type { SeatHold, SeatInvite, SeatedPlayer, SeatingRoom } from "../game/seatAllocation.ts";
@@ -364,6 +364,15 @@ export const roomStore = {
       playerCount: Number(r.playerCount),
       containsUser: !!r.containsUser,
     }));
+  },
+
+  /** `room_players` has no cascade, so its rows go before the rooms they name. Returns how many rooms went. */
+  async purgeRooms(tx: Tx | typeof db, ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    await tx.delete(roomPlayers).where(inArray(roomPlayers.roomId, ids));
+    await tx.delete(activeGames).where(inArray(activeGames.roomId, ids));
+    const gone = await tx.delete(rooms).where(inArray(rooms.id, ids)).returning({ id: rooms.id });
+    return gone.length;
   },
 
   async removeRoomPlayer(roomId: string, userId: string) {

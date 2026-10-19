@@ -40,15 +40,13 @@
 // writes it through the `RoundOverWriters` `gamePersistence.ts` implements.
 import type { TranslationParams } from "../../shared/i18n.ts";
 import type { SocketServer } from "../socket/socketTypes.ts";
-import { eq } from "drizzle-orm";
-import { db } from "../store/db.ts";
 import { roomStore } from "../store/roomStore.ts";
 import { emitVoteState, emitEndMatchVoteState } from "../socket/emit.ts";
 import { payload } from "../shared/payload.ts";
 import { OK, refuse, type Outcome, type Refusal } from "../shared/refusal.ts";
 import { logger } from "../http/logger.ts";
 import { trackEvent } from "../socket/events.ts";
-import { activeGames as activeGamesTable } from "../../shared/schema.ts";
+import { activeGameStore } from "../store/activeGameStore.ts";
 import { activeGames, isShuttingDown, seatName, voterCount } from "./gameRoom.ts";
 import { isUserAtTable, isUserOnline, onlineUserIds, tablePresence } from "../socket/socketRegistry.ts";
 import { stopSpectatingEverywhere } from "../socket/seating.ts";
@@ -127,9 +125,7 @@ export async function rehydrateGame(
   forUserId: string | null,
   io: SocketServer
 ): Promise<RehydrateOutcome> {
-  const row = await db.query.activeGames.findFirst({
-    where: eq(activeGamesTable.roomId, roomId),
-  });
+  const row = await activeGameStore.load(roomId);
   if (!row) return "missing";
 
   const restored = fromEnvelope(row);
@@ -819,9 +815,7 @@ async function applyTableAction(
  */
 export async function resumeOrphanedTables(io: SocketServer): Promise<void> {
   if (isShuttingDown()) return;
-  const rows = await db
-    .select({ roomId: activeGamesTable.roomId, gameState: activeGamesTable.gameState })
-    .from(activeGamesTable);
+  const rows = await activeGameStore.list();
   const online = await onlineUserIds();
   for (const row of rows) {
     if (activeGames.has(row.roomId) || isShuttingDown()) continue;
