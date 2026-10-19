@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { blankCommentsAndStrings, scanSources, sourcesUnder } from "../helpers/sourceScan.ts";
+import { blankComments, blankCommentsAndStrings, scanSources, sourcesUnder } from "../helpers/sourceScan.ts";
 import {
   NO_TABLE,
   leaveNavigation,
@@ -122,8 +122,9 @@ test("segments name the online place the player is on", () => {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const ROUTER = "context/useOnlineRouting.ts";
+const TABLE = "context/onlineRouting.ts";
 const SCREENS = ["index", "quickmatch", "friends", "room", "game"].map((s) => `app/(online)/${s}.tsx`);
-const TO_TABLE = /router\.(?:push|replace)\(\s*["'`]\/\(online\)\/(?:room|game)["'`]/g;
+const TO_TABLE = /["'`](?:\/\(online\)\/(?:room|game)|\/room)["'`]/g;
 const ROUTES = /\brouter\./;
 
 /** The argument text of every effect call, balanced by parentheses. */
@@ -144,13 +145,23 @@ function effectBodies(source: string): string[] {
   return bodies;
 }
 
-test("no source but the router navigates to the room or the game", () => {
+test("no source but the routing table names the room or the game", () => {
   const sources = sourcesUnder(repoRoot, ["app", "components", "lib", "context"]);
   for (const file of [...SCREENS, ROUTER]) assert.ok(sources.some(([f]) => f === file), `${file} is scanned`);
-  assert.deepEqual(scanSources(TO_TABLE, sources.filter(([f]) => f !== ROUTER)), []);
-  assert.deepEqual(scanSources(TO_TABLE, [["planted.tsx", 'router.push("/(online)/room");']]), [
-    'planted.tsx: router.push("/(online)/room"',
-  ]);
+  const code = sources.map(([f, src]): [string, string] => [f, blankComments(src)]);
+  const owned = scanSources(TO_TABLE, code.filter(([f]) => f === TABLE)).join("\n");
+  for (const place of ["/(online)/room", "/(online)/game"]) assert.ok(owned.includes(place), `${TABLE} spells ${place}`);
+  assert.deepEqual(scanSources(TO_TABLE, code.filter(([f]) => f !== TABLE)), []);
+  const plants = [
+    'router.push("/(online)/room");',
+    'router.navigate("/(online)/game");',
+    'router.replace({ pathname: "/(online)/room" });',
+    '<Redirect href="/(online)/game" />',
+    "<Link href='/room'>",
+    "const ROOM = `/(online)/room`;",
+  ];
+  for (const plant of plants) assert.equal(scanSources(TO_TABLE, [["planted.tsx", plant]]).length, 1, plant);
+  assert.deepEqual(scanSources(TO_TABLE, [["offline.tsx", 'router.push("/game");']]), []);
 });
 
 test("where a table was entered from is spelled once", () => {
