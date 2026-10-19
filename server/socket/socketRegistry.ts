@@ -56,6 +56,10 @@ export async function isUserOnline(userId: string): Promise<boolean> {
  * `roomId` — back at the table, not merely online. Never throws, as above.
  */
 export async function isUserAtTable(userId: string, roomId: string): Promise<boolean> {
+  // This instance's own sockets first: they need no cluster to answer, and one that fails must
+  // not unseat a player sitting here.
+  const local = userSocketMap.get(userId);
+  if (local && socketRoomMap.get(local) === roomId) return true;
   if (!_io) return false;
   try {
     return (await _io.in(userRoom(userId)).fetchSockets()).some((s) => s.rooms.has(roomId));
