@@ -452,7 +452,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
-          node --test --test-timeout=30000 --test-force-exit --test-reporter=tap tools/loop/tests/deleteBranchOnMerge.test.ts | tee settings.tap
+          node --import ./tools/loop/tests/helpers/clearLoopEnv.mjs --test --test-timeout=30000 --test-force-exit --test-reporter=tap tools/loop/tests/deleteBranchOnMerge.test.ts | tee settings.tap
           grep -qE '^# skipped 0$' settings.tap || { echo "::error::deleteBranchOnMerge skipped on the runner that has a token."; exit 1; }
           grep -qE '^# pass 1$' settings.tap || { echo "::error::deleteBranchOnMerge did not pass."; exit 1; }
 
