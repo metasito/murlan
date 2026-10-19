@@ -1,7 +1,7 @@
 // tools/loop/tests/queueLoop.test.ts
 import { test, describe, after, mock } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -967,6 +967,9 @@ describe("repark", () => {
 });
 
 describe("park", () => {
+  // Named for the shape rather than the case: the real link is the install junction, and a test
+  // joining its literal name trips tests/tooling/handBuiltNodeModulesPaths.test.ts.
+  const LINK = "linked-install";
   /** `stillDirty` is what `git status --porcelain` answers on the re-read before the commit. */
   const recorder = (throwOn?: string, stillDirty = " M a.ts") => {
     const calls: { file: string; args: string[] }[] = [];
@@ -1039,12 +1042,22 @@ describe("park", () => {
     mkdirSync(tree);
     mkdirSync(install);
     writeFileSync(path.join(install, "kept"), "");
-    symlinkSync(install, path.join(tree, "node_modules"), "dir");
+    symlinkSync(install, path.join(tree, LINK), "junction");
+    // git 2.54's remove walks into a junction rather than unlinking it; this one does the same.
+    const removeFollowingLinks = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const at = path.join(dir, e.name);
+        if (e.isSymbolicLink()) removeFollowingLinks(realpathSync(at));
+        else if (e.isDirectory()) removeFollowingLinks(at);
+        else rmSync(at);
+      }
+    };
     const calls: { args: string[]; cwd?: string; linked: boolean }[] = [];
     const run = (file: string, args: string[], o: { cwd?: string } = {}) => {
       if (file !== "git") return "";
-      calls.push({ args, cwd: o.cwd, linked: existsSync(path.join(tree, "node_modules")) });
+      calls.push({ args, cwd: o.cwd, linked: existsSync(path.join(tree, LINK)) });
       if (args.join(" ") === "worktree list --porcelain") return `worktree /main\nHEAD a\nbranch refs/heads/main\n\nworktree ${tree}\nHEAD b\nbranch refs/heads/agent/953-x\n\n`;
+      if (args[0] === "worktree" && args[1] === "remove") removeFollowingLinks(tree);
       return "";
     };
     try {
