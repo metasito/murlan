@@ -87,9 +87,6 @@ export function useHandArrival(input: {
 // caller passes one unchanged reference for every card and CardItem binds its
 // own id once. CardView then sees a new `onActivate` only when this card's id or
 // the callback changes — not when some other card's selection does.
-// A selected card tips as it is picked up (`SELECT_TILT`): the rotation is what
-// stops the lift reading as a flat slide. The lift itself is `handRowHeadroom`, a
-// share of the card, so the row's reserved headroom cannot fall short of it.
 const DESCEND_EASING = Easing.bezier(0.2, 0.85, 0.3, 1);
 // The exchange's two states. Colour cannot be the only channel that carries
 // them, and it is not: the ungiveable card recedes under a veil, which is

@@ -88,7 +88,11 @@ export function slotForCard(i: number, arrivingIndex: number | undefined): numbe
   return arrivingIndex === undefined || i < arrivingIndex ? i : i + 1;
 }
 
-/** How far a selected card tips as it is picked up, in degrees. */
+/**
+ * How far a selected card tips as it is picked up, in degrees: the rotation is what stops the lift
+ * reading as a flat slide. The lift itself is `handRowHeadroom`, a share of the card, so the row's
+ * reserved headroom cannot fall short of it.
+ */
 export const SELECT_TILT = -3;
 /** How much bigger a card held out of the fan is drawn. */
 export const HELD_SCALE = 1.06;
