@@ -293,7 +293,11 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     // The ticket endpoint reported the session is dead (401): no amount of
     // retrying will ever succeed. Stop hammering it, log out locally and
     // send the user back to auth instead of looping forever.
+    // Bound to this run alone: after an account switch the previous socket can
+    // still be minting, and its 401 says nothing about the session now signed in.
+    let bound = true;
     const onAuthFailure = () => {
+      if (!bound) return;
       if (retryTimerRef.current) {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
@@ -479,6 +483,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     if (socket.connected) socket.emit("friend:get_online_list");
 
     return () => {
+      bound = false;
       if (retryTimerRef.current) {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
