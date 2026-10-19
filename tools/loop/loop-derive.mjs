@@ -331,7 +331,7 @@ export function fixHolds(comments) {
 /** The SessionStart hook runs this, so a wedged `gh` must not hold the session. */
 export const CI_BUDGET_MS = 10_000;
 
-const budgeted = (gh = ghCli) => ghTracker((args, opts) => gh(args, { timeout: CI_BUDGET_MS, ...opts }));
+export const budgeted = (gh = ghCli) => ghTracker((args, opts) => gh(args, { timeout: CI_BUDGET_MS, ...opts }));
 
 /**
  * The open issue `parity-nightly.yml` files on a red, as `{number, since}`; null when there is none
@@ -393,6 +393,11 @@ function readCi(cwd, branch, head, comments, tracker, git) {
   return { pushed, pr: open.number, sha: open.headRefOid, state, step: step ?? null };
 }
 
+function landing(commits, comments, head) {
+  const verdict = comments === null ? null : verdictFor(comments, head);
+  return { verdict, land: commits > 0 && verdict?.decision === "LAND" };
+}
+
 /**
  * Every read the run's phase is judged from, and nothing judged. `comments` is null when the tracker
  * could not be read; `ci` is read only for a head a LAND covers, and only when asked for, since it
@@ -403,9 +408,9 @@ function readCi(cwd, branch, head, comments, tracker, git) {
  * about to be pushed, `worktree` clears a review that never looked at this branch's head.
  *
  * @param {{ cwd?: string, base?: string, worktree?: string, ci?: boolean,
- *   git?: typeof gitAt, gh?: typeof ghCli, tracker?: ReturnType<typeof ghTracker> }} [options]
+ *   git?: typeof gitAt, tracker?: ReturnType<typeof ghTracker> }} [options]
  */
-export function readRun({ cwd = undefined, base = "origin/main", worktree = undefined, ci = false, git = gitAt, gh = ghCli, tracker = budgeted(gh) } = {}) {
+export function readRun({ cwd = undefined, base = "origin/main", worktree = undefined, ci = false, git = gitAt, tracker = budgeted() } = {}) {
   const at = locateRun(cwd, worktree, git);
   if (at.detached && at.ticket) {
     return {
@@ -439,14 +444,13 @@ export function readRun({ cwd = undefined, base = "origin/main", worktree = unde
   } catch {
     return { kind: "unknown", ticket, branch, cwd: at.cwd, why: `cannot read history against ${base}` };
   }
-  let comments = null;
+  let comments;
   try {
     comments = tracker.comments(ticket);
   } catch {
     comments = null;
   }
-  const land = history.commits > 0 && comments !== null && verdictFor(comments, history.head)?.decision === "LAND";
-  const ciRead = ci && land ? readCi(at.cwd, branch, history.head, comments, tracker, git) : null;
+  const ciRead = ci && landing(history.commits, comments, history.head).land ? readCi(at.cwd, branch, history.head, comments, tracker, git) : null;
   return { kind: "ticket", ticket, branch, cwd: at.cwd, base, ...history, comments, ci: ciRead };
 }
 
@@ -468,8 +472,7 @@ export function phaseOf(facts, handed = null) {
   const { ticket, branch, cwd, base, head, headSubject, commits, changed, dirty, comments, ci: ciRead } = facts;
   const trackerReadable = comments !== null;
   const read = comments ?? [];
-  const verdict = trackerReadable ? verdictFor(read, head) : null;
-  const land = commits > 0 && verdict?.decision === "LAND";
+  const { verdict, land } = landing(commits, comments, head);
   const rebase = Boolean(ciRead?.pushed && ciRead.pr !== null && conflictPosted(read, head));
   const fix = !rebase && Boolean(ciRead?.pushed && ciRead.pr !== null && ciRead.state === "red");
   // A claimed worktree that is clean and has no commits has not been worked yet, so it owes its

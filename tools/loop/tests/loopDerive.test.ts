@@ -21,6 +21,7 @@ import {
   locateRun,
   BRANCH,
   CI_BUDGET_MS,
+  budgeted,
 } from "../loop-derive.mjs";
 import { report, standing } from "../loop-status.mjs";
 import { park } from "../queue-loop.mjs";
@@ -726,7 +727,7 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
       timeouts.push(o?.timeout);
       return restAnswer(a, [...land(), red()]);
     };
-    const s = (derive as any)({ cwd: dir, base: "main", ci: true, gh: exec });
+    const s = (derive as any)({ cwd: dir, base: "main", ci: true, tracker: budgeted(exec) });
     assert.equal(s.ci.state, "red");
     assert.equal(CI_BUDGET_MS, 10_000);
     assert.equal(timeouts.length, 2);
@@ -740,7 +741,7 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
         asked.push(a);
         return restAnswer(a, comments as { body: string }[]);
       };
-      return { s: (derive as any)({ cwd: dir, base: "main", ci: true, gh: exec }), asked };
+      return { s: (derive as any)({ cwd: dir, base: "main", ci: true, tracker: budgeted(exec) }), asked };
     };
 
     // `runSettle` reads the run, reruns it once and posts the CI-RED; until then the head is G's.
