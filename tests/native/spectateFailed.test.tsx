@@ -91,7 +91,7 @@ describe('a refused spectate', () => {
     await waitFor(() => expect(result.current.isSpectator).toBe(false));
 
     emitted.length = 0;
-    await waitFor(() => result.current.leaveRoom());
+    await act(async () => result.current.leaveRoom());
 
     expect(emitted.map((e) => e.event)).toContain('room:leave');
     expect(emitted.map((e) => e.event)).not.toContain('room:unspectate');
@@ -107,11 +107,11 @@ describe('a refused spectate', () => {
     await act(async () => result.current.spectateRoom('ZZZZZZ'));
     await waitFor(() => expect(result.current.isSpectator).toBe(true));
 
-    await waitFor(() => result.current.joinRoom('ABCDEF'));
+    await act(async () => result.current.joinRoom('ABCDEF'));
     await waitFor(() => expect(result.current.isSpectator).toBe(false));
 
     emitted.length = 0;
-    await waitFor(() => result.current.leaveRoom());
+    await act(async () => result.current.leaveRoom());
 
     expect(emitted.map((e) => e.event)).toContain('room:leave');
     expect(emitted.map((e) => e.event)).not.toContain('room:unspectate');
@@ -130,7 +130,7 @@ describe('a refused spectate', () => {
     await waitFor(() => expect(result.current.isSpectator).toBe(true));
 
     emitted.length = 0;
-    await waitFor(() => result.current.leaveRoom());
+    await act(async () => result.current.leaveRoom());
 
     expect(emitted.map((e) => e.event)).toContain('room:unspectate');
     expect(emitted.map((e) => e.event)).not.toContain('room:leave');
