@@ -225,11 +225,11 @@ export async function allLimited<const T extends readonly (() => Promise<unknown
   tasks: T
 ): Promise<Results<T>> {
   const results: unknown[] = new Array(tasks.length);
-  let next = 0;
+  const queue = tasks.map((task, i) => [task, i] as const);
   const worker = async () => {
-    while (next < tasks.length) {
-      const i = next++;
-      results[i] = await tasks[i]();
+    for (let item = queue.shift(); item; item = queue.shift()) {
+      const [task, i] = item;
+      results[i] = await task();
     }
   };
   await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
