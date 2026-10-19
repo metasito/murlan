@@ -297,12 +297,6 @@ describe("every subagent brief comes from brief.mjs", () => {
   });
 });
 
-describe("the supervisor tears the worktree down", () => {
-  test("with the script that detaches the junction first", () => {
-    assert.match(read("tools/loop/queue-loop.mjs"), /"worktrees:remove", "--"/);
-  });
-});
-
 describe("the --tools list is queue.md's own declaration", () => {
   test("parsed from the frontmatter rather than copied into the supervisor", () => {
     const tools = allowedTools(read(QUEUE));

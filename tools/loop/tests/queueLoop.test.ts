@@ -1013,7 +1013,7 @@ describe("park", () => {
   };
   const ran = (calls: { file: string; args: string[] }[], needle: string) =>
     calls.some((c) => [c.file, ...c.args].join(" ").includes(needle));
-  const opts = (extra: object) => ({
+  const opts = (extra: { run?: (file: string, args: string[]) => unknown } & Record<string, unknown>) => ({
     phase: "C",
     why: "stalled",
     log: "x.jsonl",
@@ -1021,6 +1021,7 @@ describe("park", () => {
     branch: "agent/953-x",
     dirty: false,
     write: () => {},
+    remove: (cwd: string) => extra.run?.("removeWorktree", [cwd]),
     ...extra,
   });
 
@@ -1028,7 +1029,7 @@ describe("park", () => {
     const { calls, run } = recorder();
     park(953, opts({ dirty: true, run }));
     const commitAt = calls.findIndex((c) => c.args.includes("commit"));
-    const removeAt = calls.findIndex((c) => c.args.join(" ").includes("worktrees:remove"));
+    const removeAt = calls.findIndex((c) => c.file === "removeWorktree");
     assert.ok(commitAt !== -1, "a dirty worktree must be committed");
     assert.ok(removeAt > commitAt, "the worktree is removed only after its work is committed");
   });
@@ -1036,7 +1037,7 @@ describe("park", () => {
   test("keeps the branch: the next run resumes from it", () => {
     const { calls, run } = recorder();
     park(953, opts({ dirty: true, run }));
-    assert.ok(ran(calls, "worktrees:remove"));
+    assert.ok(ran(calls, "removeWorktree .worktrees/agent-953"));
     assert.equal(ran(calls, "branch -d"), false);
   });
 
@@ -1061,10 +1062,10 @@ describe("park", () => {
     assert.deepEqual(tracker.held(953).comments, [wrote]);
   });
 
-  test("removes the worktree only through the named script, never git worktree remove", () => {
+  test("removes the worktree only through workspace's removeWorktree, never git worktree remove", () => {
     const { calls, run } = recorder();
     park(953, opts({ run }));
-    assert.ok(ran(calls, "worktrees:remove"));
+    assert.ok(ran(calls, "removeWorktree .worktrees/agent-953"));
     assert.ok(!ran(calls, "worktree remove"), "a recursive delete follows the node_modules junction");
   });
 

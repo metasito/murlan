@@ -144,9 +144,10 @@ export function claim(
   }
 }
 
-/** The line the supervisor reads a failed claim's reason from — git's own words, never a stack. */
-export const failedClaim = (err) =>
-  `CLAIM\tfailed\t\t\t${String(err?.stderr || err?.message || err).trim().split("\n").at(-1)}`;
+/** Why a claim threw — git's own words, never a stack. */
+export const claimError = (err) => String(err?.stderr || err?.message || err).trim().split("\n").at(-1);
+
+export const failedClaim = (err) => `CLAIM\tfailed\t\t\t${claimError(err)}`;
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const [n, title] = process.argv.slice(2);

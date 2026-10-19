@@ -959,19 +959,17 @@ describe("runOnce", () => {
     }
   });
 
-  test("a landed or parked ticket removes the worktree from the main checkout", () => {
-    const calls: [string, string[], { cwd?: string } | undefined][] = [];
-    const run = (file: string, args: string[], opts?: { cwd?: string }) => {
-      calls.push([file, args, opts]);
-      return "";
+  test("a parked ticket's worktree is removed in-process, by the shared checkout's git", () => {
+    const removed: string[] = [];
+    park(42, { phase: "E", why: "x", log: "l", cwd: "w", branch: "b", dirty: false, run: () => "", write: () => {}, remove: (cwd: string) => void removed.push(cwd) });
+    assert.deepEqual(removed, ["w"]);
+    const asked: string[][] = [];
+    const git = (args: string[]) => {
+      asked.push(args);
+      return "worktree /main\nHEAD a\nbranch refs/heads/main\n\n";
     };
-    removeWorktree("w", run);
-    park(42, { phase: "E", why: "x", log: "l", cwd: "w", branch: "b", dirty: false, run, write: () => {} });
-    const removals = calls.filter(([, args]) => args.includes("worktrees:remove"));
-    assert.equal(removals.length, 2);
-    for (const [file, args, opts] of removals) {
-      assert.deepEqual([file, args, path.resolve(opts?.cwd ?? "")], ["npm", ["run", "worktrees:remove", "--", "w"], ROOT]);
-    }
+    assert.throws(() => removeWorktree("w", { git }), /w is not a linked worktree of this repository/);
+    assert.deepEqual(asked, [["worktree", "list", "--porcelain"]]);
   });
 
   const retryRow = (head: string) => ({ n: 42, outcome: "retry", cost: 1, park_reason: null, head });
@@ -1144,6 +1142,7 @@ describe("runOnce", () => {
     const written: string[] = [];
     const said: string[] = [];
     removeLanded(".worktrees/agent-42", 42, {
+      remove: (cwd: string, opts?: { force?: boolean }) => void calls.push(["removeWorktree", opts?.force ? [cwd, "--force"] : [cwd], undefined]),
       run: (file: string, args: string[], opts?: { cwd?: string; encoding?: string }) => {
         calls.push([file, args, opts]);
         if (args.includes("--porcelain")) return dirty;
@@ -1157,7 +1156,7 @@ describe("runOnce", () => {
       },
       say: (m: string) => said.push(m),
     } as never);
-    const removals = calls.filter(([, args]) => args.includes("worktrees:remove"));
+    const removals = calls.filter(([file]) => file === "removeWorktree");
     const deletes = calls.filter(([, args]) => args[0] === "branch" && args[1] === "-d");
     return { calls, written, said, removals, deletes };
   };
@@ -1165,7 +1164,7 @@ describe("runOnce", () => {
   test("landing deletes the branch after the worktree, from the shared checkout", () => {
     const { calls, deletes } = landedRun("");
     assert.deepEqual(deletes.map(([, a, o]) => [a, path.resolve(o?.cwd ?? "")]), [[["branch", "-d", "agent/42-x"], ROOT]]);
-    assert.ok(calls.findIndex(([, a]) => a.includes("worktrees:remove")) < calls.indexOf(deletes[0]));
+    assert.ok(calls.findIndex(([file]) => file === "removeWorktree") < calls.indexOf(deletes[0]));
   });
 
   test("a branch -d refuses is said, and the land still returns", () => {
@@ -1187,9 +1186,7 @@ describe("runOnce", () => {
     assert.equal(written.length, 1);
     assert.match(written[0], /leftover-42\.patch=PATCH$/);
     assert.match(said.join("\n"), /leftover-42\.patch/);
-    assert.deepEqual(removals.map(([, a, o]) => [a, path.resolve(o?.cwd ?? "")]), [
-      [["run", "worktrees:remove", "--", ".worktrees/agent-42", "--force"], ROOT],
-    ]);
+    assert.deepEqual(removals.map(([, a]) => a), [[".worktrees/agent-42", "--force"]]);
   });
 
   test("a leftover patch that cannot be written keeps the worktree", () => {
@@ -1201,7 +1198,7 @@ describe("runOnce", () => {
   test("a clean landed worktree is removed without --force", () => {
     const { removals, written } = landedRun("");
     assert.deepEqual(written, []);
-    assert.deepEqual(removals.map(([, a]) => a), [["run", "worktrees:remove", "--", ".worktrees/agent-42"]]);
+    assert.deepEqual(removals.map(([, a]) => a), [[".worktrees/agent-42"]]);
   });
 
   test("a dirtied shared checkout is named, not fatal", async () => {

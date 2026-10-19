@@ -485,7 +485,7 @@ const ELSEWHERE: Record<string, [file: string, why: string]> = {
   "the sweep in housekeeping runs before the pick": ["queueLoopMain.test.ts", "io"],
   "refreshWorktree fetches the branch and fast-forwards onto it": ["queueLoopMain.test.ts", "io"],
   "publishForReview pushes, then opens it ready only when no pull request is open": ["queueLoopMain.test.ts", "io"],
-  "a landed or parked ticket removes the worktree from the main checkout": ["queueLoopMain.test.ts", "io"],
+  "a parked ticket's worktree is removed in-process, by the shared checkout's git": ["queueLoopMain.test.ts", "io"],
   "prints the pick through the real ports and writes nothing to the tracker": ["queueLoopMain.test.ts", "io"],
   "a fix round's spawn carries the rounds already spent": ["queueLoopMain.test.ts", "io"],
   "landing deletes the branch after the worktree, from the shared checkout": ["queueLoopMain.test.ts", "io"],

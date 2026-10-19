@@ -40,23 +40,20 @@ import {
   ticketTally,
   typicalMs,
 } from "./loop-logs.mjs";
-import { checkLockDrift, housekeeping, listWorktreeDirNames } from "./workspace.mjs";
+import { checkLockDrift, housekeeping, listWorktreeDirNames, removeWorktree as removeTree } from "./workspace.mjs";
 import { buildReady } from "./loop-gate.mjs";
 import { ghTracker } from "./tracker.mjs";
 import { turnHeadroom } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { HEARTBEAT_MS, LIMITS, REFRESH_TIMEOUT_MS, RESTART, sleepClock } from "./limits.mjs";
 import { nextPick } from "./next-ticket.mjs";
-import { branchOf } from "./claim.mjs";
+import { branchOf, claim, claimError } from "./claim.mjs";
 import { afterSession, decide } from "./decide.mjs";
 import { CI_RED_TIMEOUT_MS, runSettle } from "./settle.mjs";
 
 const { SETTLE, TICKET_HOLDS, WAIT } = LIMITS;
 
-// Spawning a sibling by its own directory, not the cwd: the supervisor runs from the repo root,
-// but nothing guarantees that, and the sibling is beside this file either way.
-const HERE = import.meta.dirname;
-const ROOT = path.resolve(HERE, "..", "..");
+const ROOT = path.resolve(import.meta.dirname, "..", "..");
 
 // The session and the loop read these from the shared checkout, not from the ticket's worktree.
 const PROTOCOL = ["CLAUDE.md", ".claude", "tools/loop", "scripts/lib"];
@@ -253,6 +250,7 @@ export function park(
     run = sh,
     tracker = ghTracker((args, opts) => run("gh", args, opts)),
     write = writeFileSync,
+    remove = removeWorktree,
   },
 ) {
   const failed = [];
@@ -300,7 +298,7 @@ export function park(
     PARK_STEPS.comment(number, tracker);
   });
 
-  if (cwd) step("worktree", () => removeWorktree(cwd, run));
+  if (cwd) step("worktree", () => remove(cwd));
 
   return { ok: failed.length === 0, failed };
 }
@@ -346,9 +344,14 @@ export function repark(number, steps, tracker = ghTracker(), exists = (f) => fs.
   return { failed, why: pruned ? "the park note was pruned, so its comment is not posted" : null };
 }
 
-/** From the main checkout: `removeWorktree` in workspace.mjs refuses a caller standing inside the tree it removes. */
-export function removeWorktree(cwd, run = sh) {
-  return run("npm", ["run", "worktrees:remove", "--", cwd], { cwd: ROOT });
+/**
+ * In-process, against the shared checkout: the supervisor runs from ROOT, which `removeTree`'s own
+ * refusal of a caller standing inside the tree requires. A refusal throws, as the script's exit did.
+ */
+export function removeWorktree(cwd, { force = false, git: run = gitAt(ROOT) } = {}) {
+  const { removed, why } = removeTree(cwd, { force, git: (args) => run(args) });
+  if (!removed) throw new Error(why);
+  return why;
 }
 
 const writeLeftover = (file, body) => {
@@ -360,9 +363,9 @@ const writeLeftover = (file, body) => {
  * Only after a confirmed merge. `--force` is safe here because the script detaches the junction
  * before removing, and the leftovers are on disk first; a patch that cannot be written keeps the tree.
  */
-export function removeLanded(cwd, number, { run = sh, write = writeLeftover, say = console.error } = {}) {
+export function removeLanded(cwd, number, { run = sh, write = writeLeftover, say = console.error, remove = removeWorktree } = {}) {
   const branch = run("git", ["-C", cwd, "branch", "--show-current"]).trim();
-  const removed = removeLandedTree(cwd, number, { run, write, say });
+  const removed = removeLandedTree(cwd, number, { run, write, say, remove });
   if (removed === null || !branch) return removed;
   try {
     run("git", ["branch", "-d", branch], { cwd: ROOT });
@@ -372,8 +375,8 @@ export function removeLanded(cwd, number, { run = sh, write = writeLeftover, say
   return removed;
 }
 
-function removeLandedTree(cwd, number, { run, write, say }) {
-  if (!run("git", ["-C", cwd, "status", "--porcelain"]).trim()) return removeWorktree(cwd, run);
+function removeLandedTree(cwd, number, { run, write, say, remove }) {
+  if (!run("git", ["-C", cwd, "status", "--porcelain"]).trim()) return remove(cwd);
   const file = leftoverPath(number);
   try {
     run("git", ["-C", cwd, "add", "-A"]);
@@ -384,7 +387,7 @@ function removeLandedTree(cwd, number, { run, write, say }) {
     return null;
   }
   say(`#${number} landed with uncommitted leftovers in its worktree — saved to ${file}`);
-  return run("npm", ["run", "worktrees:remove", "--", cwd, "--force"], { cwd: ROOT });
+  return remove(cwd, { force: true });
 }
 
 /**
@@ -974,15 +977,20 @@ function realPorts(book, screen, events) {
       let branch = route.branch ?? null;
       if (!route.resuming) {
         events.header({ number: route.number, title: route.title, size: route.size, url: `https://github.com/${REPO}/issues/${route.number}`, queue: route.queue });
-        // A lost race exits 1, which `sh` raises. It is not a failure of this run: the ticket is
-        // someone else's, and the shape that says so is the stand-down every other path already
-        // reads — so the session is never spawned and `runOnce` parks it from the declaration.
+        // A lost race is not a failure of this run: the ticket is someone else's, and the shape that
+        // says so is the stand-down every other path already reads — so the session is never
+        // spawned and `runOnce` parks it from the declaration.
+        let claimed;
         try {
-          const claimed = sh("node", [HERE + "/claim.mjs", String(route.number), route.title]);
-          branch = claimed.split("\t")[2]?.trim() || null;
-          events.step({ label: "claim", detail: `won · ${branch ?? ""}`, ms: null });
+          claimed = claim(route.number, route.title);
         } catch (err) {
-          const why = String(err.stdout ?? "").split("\t").at(-1)?.trim() || "the claim did not stand";
+          claimed = { won: false, why: claimError(err) };
+        }
+        if (claimed.won) {
+          branch = claimed.branch;
+          events.step({ label: "claim", detail: `won · ${branch}`, ms: null });
+        } else {
+          const why = claimed.why || "the claim did not stand";
           events.step({ label: "claim", detail: why, ms: null, state: "failed" });
           return Promise.resolve({
             status: 0,
