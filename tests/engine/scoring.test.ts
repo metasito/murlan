@@ -494,3 +494,145 @@ describe("foldRoundIntoMatch", () => {
     });
   });
 });
+
+// Every outcome the server's scoring reaches, as literals: a change to how seats are described to
+// the fold has to reproduce each one.
+describe("the fold matrix", () => {
+  type Scenario = {
+    playerMap: Record<number, string>;
+    botSeatsAtStart: number[];
+    vacatedSeats: Record<number, string>;
+    finishingOrder: string[];
+    cumulative: Record<string, number>;
+    target: number;
+  };
+  const scenarios: Record<string, Scenario> = {
+    vacated: {
+      playerMap: { 0: "u0", 2: "u2", 3: "u3" },
+      botSeatsAtStart: [],
+      vacatedSeats: {},
+      finishingOrder: ["player_1", "player_0", "player_2", "player_3"],
+      cumulative: { u0: 17, u2: 9, u3: 4, "bot:1": 20 },
+      target: 21,
+    },
+    "frozen partner": {
+      playerMap: { 0: "u0", 2: "u2", 3: "u3" },
+      botSeatsAtStart: [],
+      vacatedSeats: { 1: "u1" },
+      finishingOrder: ["player_1", "player_3", "player_0", "player_2"],
+      cumulative: { u0: 6, u2: 5, u3: 8, u1: 9, "bot:1": 2 },
+      target: 21,
+    },
+    "born bot": {
+      playerMap: { 0: "u0", 2: "u2", 3: "u3" },
+      botSeatsAtStart: [1],
+      vacatedSeats: {},
+      finishingOrder: ["player_1", "player_0", "player_2", "player_3"],
+      cumulative: { u0: 10, u2: 4, u3: 3, "bot:1": 18 },
+      target: 21,
+    },
+    "tie at target": {
+      playerMap: { 0: "u0", 1: "u1", 2: "u2", 3: "u3" },
+      botSeatsAtStart: [],
+      vacatedSeats: {},
+      finishingOrder: ["player_0", "player_1", "player_2", "player_3"],
+      cumulative: { u0: 18, u1: 19, u2: 8, u3: 9 },
+      target: 21,
+    },
+    "tie at final rung": {
+      playerMap: { 0: "u0", 1: "u1", 2: "u2", 3: "u3" },
+      botSeatsAtStart: [],
+      vacatedSeats: {},
+      finishingOrder: ["player_0", "player_1", "player_2", "player_3"],
+      cumulative: { u0: 48, u1: 49, u2: 40, u3: 41 },
+      target: 51,
+    },
+  };
+
+  const totals: Record<string, Record<string, number>> = {
+    vacated: { u0: 19, u2: 10, u3: 4, "bot:1": 23 },
+    "frozen partner": { u0: 7, u2: 5, u3: 10, u1: 9, "bot:1": 5 },
+    "born bot": { u0: 12, u2: 5, u3: 3, "bot:1": 21 },
+    "tie at target": { u0: 21, u1: 21, u2: 9, u3: 9 },
+    "tie at final rung": { u0: 51, u1: 51, u2: 41, u3: 41 },
+  };
+  type Outcome = { target: number; over: boolean; winners: string[]; isDraw: boolean };
+  const expected: Record<"free_for_all" | "teams", Record<"match" | "single", Record<string, Outcome>>> = {
+    free_for_all: {
+      match: {
+        vacated: { target: 21, over: false, winners: [], isDraw: false },
+        "frozen partner": { target: 21, over: false, winners: [], isDraw: false },
+        "born bot": { target: 21, over: true, winners: ["bot:1"], isDraw: false },
+        "tie at target": { target: 31, over: false, winners: [], isDraw: false },
+        "tie at final rung": { target: 51, over: true, winners: ["u0", "u1"], isDraw: true },
+      },
+      single: {
+        vacated: { target: 21, over: true, winners: ["u0"], isDraw: false },
+        "frozen partner": { target: 21, over: true, winners: ["u3"], isDraw: false },
+        "born bot": { target: 21, over: true, winners: ["bot:1"], isDraw: false },
+        "tie at target": { target: 21, over: true, winners: ["u0"], isDraw: false },
+        "tie at final rung": { target: 51, over: true, winners: ["u0"], isDraw: false },
+      },
+    },
+    teams: {
+      match: {
+        vacated: { target: 31, over: false, winners: [], isDraw: false },
+        "frozen partner": { target: 21, over: true, winners: ["u3"], isDraw: false },
+        "born bot": { target: 21, over: true, winners: ["bot:1", "u3"], isDraw: false },
+        "tie at target": { target: 31, over: false, winners: [], isDraw: false },
+        "tie at final rung": { target: 51, over: true, winners: ["u0", "u1", "u2", "u3"], isDraw: true },
+      },
+      single: {
+        vacated: { target: 21, over: true, winners: ["u0", "u2", "u3"], isDraw: true },
+        "frozen partner": { target: 21, over: true, winners: ["u3"], isDraw: false },
+        "born bot": { target: 21, over: true, winners: ["u0", "bot:1", "u2", "u3"], isDraw: true },
+        "tie at target": { target: 21, over: true, winners: ["u0", "u2"], isDraw: false },
+        "tie at final rung": { target: 51, over: true, winners: ["u0", "u2"], isDraw: false },
+      },
+    },
+  };
+
+  const fold = (gameMode: "free_for_all" | "teams", length: "match" | "single", s: Scenario) => {
+    const players = [0, 1, 2, 3].map((seat) => ({
+      id: `player_${seat}`,
+      team: gameMode === "teams" ? (seat % 2 === 0 ? "A" : "B") : undefined,
+    }));
+    const seatOf = new Map(players.map((p, seat) => [p.id, seat]));
+    const teamOf: Record<string, string> = {};
+    for (const p of players) if (p.team) teamOf[p.id] = p.team;
+    const botSeatsAtStart = new Set(s.botSeatsAtStart);
+    return foldRoundIntoMatch({
+      finishingOrder: s.finishingOrder,
+      playerCount: 4,
+      length,
+      gameMode,
+      target: s.target,
+      cumulative: s.cumulative,
+      keyOf: (engineId) => {
+        const seat = seatOf.get(engineId);
+        return seat === undefined ? null : (s.playerMap[seat] ?? `bot:${seat}`);
+      },
+      winEligible: (key) => !key.startsWith("bot:") || botSeatsAtStart.has(Number(key.slice(4))),
+      teamOf,
+      frozenKeysOf: (engineId) => {
+        const frozen = s.vacatedSeats[seatOf.get(engineId) ?? -1];
+        return frozen ? [frozen] : [];
+      },
+    });
+  };
+
+  for (const gameMode of ["free_for_all", "teams"] as const) {
+    for (const length of ["match", "single"] as const) {
+      for (const [name, outcome] of Object.entries(expected[gameMode][length])) {
+        test(`${gameMode}, ${length}, ${name}`, () => {
+          const result = fold(gameMode, length, scenarios[name]);
+          assert.deepEqual(
+            { target: result.target, over: result.over, winners: result.winners, isDraw: result.isDraw },
+            outcome
+          );
+          assert.deepEqual(result.cumulative, totals[name]);
+        });
+      }
+    }
+  }
+});
