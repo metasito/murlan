@@ -1811,6 +1811,8 @@ describe("a park asked from the board", () => {
     assert.equal(parkAsked(41, () => "41\n"), true);
     assert.equal(parkAsked(42, () => "41\n"), false);
     assert.equal(parkAsked(null, () => "41\n"), false);
+    // The reader says which checkout's file; without one there is no answer, not a "no".
+    assert.throws(() => (parkAsked as (n: number) => boolean)(41), /reader/);
   });
 });
 
