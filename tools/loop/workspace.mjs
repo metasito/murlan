@@ -731,13 +731,14 @@ export function worktreeOf(read, number, kept = () => null) {
  * The workspace port: git and the disk under `root`, as `runOnce` and `main` reach them. What it
  * says goes through `events`.
  *
- * @param {{root?: string, git?: (args: string[]) => string, events: {log: Function, step: Function}}} opts
+ * @param {{root?: string, git?: (args: string[]) => string, events: {log: Function, step: Function},
+ *   read?: typeof derive, housekeep?: typeof housekeeping}} opts
  */
-export function workspacePort({ root = ROOT, git: run = gitAt(root), events }) {
+export function workspacePort({ root = ROOT, git: run = gitAt(root), events, read = derive, housekeep = housekeeping }) {
   const at = (/** @type {string} */ file) => path.resolve(root, file);
   const g = (...args) => run(args);
   const started = loopSha(g);
-  const standing = () => standingOf(() => derive({ cwd: root }));
+  const standing = () => standingOf(() => read({ cwd: root }));
   return {
     // Read, never removed: a scheduled restart must see the stop too.
     stopFile: () => fs.existsSync(at(STOP_FILE)),
@@ -747,10 +748,10 @@ export function workspacePort({ root = ROOT, git: run = gitAt(root), events }) {
     worktreeOf: (n) => worktreeOf(standing, n, (k) => (fs.existsSync(at(`${WORKTREE_DIR}/agent-${k}`)) ? at(`${WORKTREE_DIR}/agent-${k}`) : null)),
     loopMoved: () => loopMoved(started, g),
     syncCheckout: (pinned) => syncCheckout(g, (m) => events.log(m, "checkout"), () => reinstall(sh, root), { pinned, stamp: stampAt(root) }),
-    housekeeping: (pinned) => housekeeping({ pinned, say: events.step, git: run }),
+    housekeeping: (pinned) => housekeep({ pinned, say: events.step, git: run }),
     parity: () => parityRed(),
     standing,
-    derive: () => derive({ cwd: root, ci: true }),
+    derive: () => read({ cwd: root, ci: true }),
     refreshWorktree: (cwd, branch) => refreshWorktree(at(cwd), branch),
     sharedCheckoutDirty: () => g("status", "--porcelain").trim(),
     remove: (cwd, number) => {
