@@ -55,39 +55,129 @@ describe("a test file that never finishes fails npm test by name", () => {
 
 describe("a test file that passed always exits", () => {
   const FORCE_EXIT = ["--test", "force-exit"].join("-");
-  const COMMAND = new RegExp(`\\bnode\\b.*${FORCE_EXIT}`);
-  const ARGV = new RegExp(`["']${FORCE_EXIT}["']`);
-  const OWNER = /\bnode scripts\/nodeTest\.mjs\b/;
+  const FORCE_EXIT_ANY = new RegExp(`${FORCE_EXIT}(?:=\\S*)?`);
   const COMMENT = /^\s*(#|\/\/|\/?\*)/;
+  const CONTINUATION = /\\\r?\n\s*/g;
+  const OWNER = /^(?:\.\/)?scripts\/nodeTest\.mjs$/;
 
-  /** Each line that force-exits a test run without going through `scripts/nodeTest.mjs`. */
-  const bypasses = (where: string, text: string) =>
-    text
-      .split("\n")
-      .filter((l) => !COMMENT.test(l) && ((COMMAND.test(l) && !OWNER.test(l)) || (ARGV.test(l) && !l.includes("NO_BACKGROUND_JIT"))))
-      .map((l) => `${where}: ${l.trim()}`);
+  /** The `run:` values of a workflow or action, each read as one shell script. */
+  function runBlocks(text: string): string[] {
+    const lines = text.split("\n");
+    const blocks: string[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      const key = /^(\s*)(?:-\s+)?run:\s*(.*)$/.exec(lines[i]);
+      if (!key) continue;
+      if (!/^[|>][-+]?\s*$/.test(key[2])) {
+        blocks.push(key[2]);
+        continue;
+      }
+      const body: string[] = [];
+      while (i + 1 < lines.length && (lines[i + 1].trim() === "" || lines[i + 1].search(/\S/) > key[1].length)) body.push(lines[++i]);
+      const kept = body.filter((l) => !COMMENT.test(l));
+      blocks.push(key[2].startsWith(">") ? kept.map((l) => l.trim()).join(" ") : kept.join("\n"));
+    }
+    return blocks;
+  }
+
+  /** Each shell invocation in `script`: continuations joined, split at `&&`, `||`, `;`, `|` and newlines. */
+  const invocations = (script: string) =>
+    script
+      .replace(CONTINUATION, " ")
+      .split(/\n|&&|\|\||;|\|/)
+      .map((s) => s.trim())
+      .filter((s) => s && !COMMENT.test(s));
+
+  /** The command from its `node` on, when the first program it runs is the owner. */
+  function routedFrom(invocation: string): string | undefined {
+    const node = /(?:^|[\s"'`=(])node\s+(\S+)/.exec(invocation);
+    if (!node || !OWNER.test(node[1].replace(/["'`]/g, ""))) return undefined;
+    return invocation.slice(invocation.indexOf("node", node.index)).replace(/["'`,]+$/, "");
+  }
+
+  /** Every run that force-exits, split into those through `scripts/nodeTest.mjs` and those around it. */
+  function scan(file: string, text: string): { routed: string[]; bypasses: string[] } {
+    const routed: string[] = [];
+    const bypasses: string[] = [];
+    const judge = (invocation: string) => {
+      if (!FORCE_EXIT_ANY.test(invocation)) return;
+      const through = routedFrom(invocation);
+      if (through) routed.push(through);
+      else bypasses.push(`${file}: ${invocation}`);
+    };
+    let shell = text.split("\n").filter((l) => !COMMENT.test(l)).join("\n");
+    if (/\.[cm]?[jt]s$/.test(file)) {
+      for (const option of shell.matchAll(new RegExp(`\\b${FORCE_EXIT_OPTION}\\s*:\\s*(?!false\\b)\\S`, "g"))) bypasses.push(`${file}: ${option[0]}`);
+      shell = shell.replace(/\[[^[\]]*\]/g, (argv) => {
+        if (!FORCE_EXIT_ANY.test(argv)) return argv;
+        const first = /^\[\s*["'`]([^"'`]*)["'`]/.exec(argv)?.[1] ?? "";
+        if (OWNER.test(first)) routed.push(argv);
+        else bypasses.push(`${file}: ${argv.replace(/\s+/g, " ")}`);
+        return "[]";
+      });
+    }
+    const scripts = /\.ya?ml$/.test(file) ? runBlocks(text) : [shell];
+    for (const script of scripts) for (const invocation of invocations(script)) judge(invocation);
+    return { routed, bypasses };
+  }
+
+  const scanned = () =>
+    trackedFiles(repoRoot, "package.json", ".github", ".claude", "scripts", "tools", "tests")
+      .filter((f) => /\.(json|ya?ml|sh|md|[cm]?[jt]s)$/.test(f))
+      .map((f) => [f, scan(f, readFileSync(path.join(repoRoot, f), "utf8"))] as const);
 
   test("every command that force-exits a test run goes through scripts/nodeTest.mjs", () => {
-    const files = trackedFiles(repoRoot, "package.json", ".github", "scripts", "tools", "tests").filter((f) =>
-      /\.(json|ya?ml|sh|[cm]?js|ts)$/.test(f)
-    );
-    const texts = files.map((f) => [f, readFileSync(path.join(repoRoot, f), "utf8")] as const);
-    const routed = texts.flatMap(([, t]) => t.split("\n").filter((l) => OWNER.test(l) && l.includes(FORCE_EXIT)));
-    assert.ok(routed.length >= 4, `the scan found ${routed.length} routed call sites; it has stopped seeing them`);
-    assert.deepEqual(texts.flatMap(([f, t]) => bypasses(f, t)), []);
+    const found = scanned();
+    assert.ok(found.some(([f]) => f === ".claude/settings.json"), "the scan no longer reads .claude/");
+    const routed = found.flatMap(([, s]) => s.routed);
+    assert.ok(routed.length >= 4, `the scan found ${routed.length} routed runs; it has stopped seeing them`);
+    assert.deepEqual(found.flatMap(([, s]) => s.bypasses), []);
   });
 
-  test("the scan flags a planted bypass, in a command or in an argv", () => {
-    const run = (cmd: string) => `      run: ${cmd} --test --test-timeout=30000 ${FORCE_EXIT} x.test.ts`;
-    assert.equal(bypasses("plant.yml", run("node")).length, 1);
-    assert.equal(bypasses("plant.json", `"t": "${run("node --import ./x.mjs").trim()}"`).length, 1);
-    assert.equal(bypasses("plant.mjs", `spawn(process.execPath, ["--test", "${FORCE_EXIT}", file]);`).length, 1);
-    assert.equal(bypasses("plant.yml", run("node scripts/nodeTest.mjs")).length, 0);
-    assert.equal(bypasses("plant.yml", `      # ${run("node")}`).length, 0);
-  });
+  const FORCE_EXIT_OPTION = ["force", "Exit"].join("");
+  const ROUTED = "node scripts/nodeTest.mjs";
+  const PLANTS: [string, string, string, { routed: number; bypasses: number }][] = [
+    ["a comment naming a routed run", "scripts/x.mjs", `// runs as \`${ROUTED} --test ${FORCE_EXIT}\``, { routed: 0, bypasses: 0 }],
+    ["a routed command", "package.json", `"t": "${ROUTED} --import ./x.mjs --test ${FORCE_EXIT} \\"g\\""`, { routed: 1, bypasses: 0 }],
+    ["a bare command", ".github/workflows/x.yml", `      - run: node --test ${FORCE_EXIT} x.test.ts`, { routed: 0, bypasses: 1 }],
+    ["a commented-out command", ".github/workflows/x.yml", `      # - run: node --test ${FORCE_EXIT} x`, { routed: 0, bypasses: 0 }],
+    ["a backslash continuation", "scripts/x.sh", `node --test \\\n  ${FORCE_EXIT} x.test.ts`, { routed: 0, bypasses: 1 }],
+    ["a literal run block", ".github/workflows/x.yml", `      - run: |\n          set -e\n          node --test \\\n            ${FORCE_EXIT} x.test.ts\n      - name: next`, { routed: 0, bypasses: 1 }],
+    ["a folded run block", ".github/workflows/x.yml", `      - run: >\n          node --test\n          ${FORCE_EXIT} x.test.ts`, { routed: 0, bypasses: 1 }],
+    ["a folded routed block", ".github/workflows/x.yml", `      - run: >\n          ${ROUTED}\n          --test ${FORCE_EXIT} x.test.ts`, { routed: 1, bypasses: 0 }],
+    ["a bypass sharing a line with a routed run", "scripts/x.sh", `${ROUTED} --version && node --test ${FORCE_EXIT} x`, { routed: 0, bypasses: 1 }],
+    ["an argv on a line naming the constant", "tools/x.mjs", `const NO_BACKGROUND_JIT = 1, argv = ["--test", "${FORCE_EXIT}"];`, { routed: 0, bypasses: 1 }],
+    ["a quoted argv", "tools/x.mjs", `spawn(process.execPath, ["--test", "${FORCE_EXIT}", file]);`, { routed: 0, bypasses: 1 }],
+    ["a template-literal argv", "tools/x.ts", `spawn(process.execPath, [\`${FORCE_EXIT}\`, file]);`, { routed: 0, bypasses: 1 }],
+    ["an argv with a value", "tools/x.mjs", `spawn(process.execPath, ["--test",\n  "${FORCE_EXIT}=true", file]);`, { routed: 0, bypasses: 1 }],
+    ["a routed argv", "tools/x.mjs", `spawn(process.execPath, ["scripts/nodeTest.mjs", "--test", "${FORCE_EXIT}", file]);`, { routed: 1, bypasses: 0 }],
+    ["node:test's run() forcing exit", "tools/x.mjs", `await run({ files, ${FORCE_EXIT_OPTION}: true });`, { routed: 0, bypasses: 1 }],
+    ["node:test's run() not forcing exit", "tools/x.mjs", `await run({ files, ${FORCE_EXIT_OPTION}: false });`, { routed: 0, bypasses: 0 }],
+    ["a hook in .claude", ".claude/settings.json", `{ "command": "node --test ${FORCE_EXIT} x.test.ts" }`, { routed: 0, bypasses: 1 }],
+  ];
 
-  test("npm test's own flags reach every file's process and keep the JIT off background threads", async () => {
-    const [, ...args] = script.split(" ").slice(0, -1);
+  for (const [name, file, text, expected] of PLANTS) {
+    test(`the scan judges a plant: ${name}`, () => {
+      const found = scan(file, text);
+      assert.deepEqual({ routed: found.routed.length, bypasses: found.bypasses.length }, expected, JSON.stringify(found));
+    });
+  }
+
+  /** A routed command's own arguments after `node`, with its file operands dropped. */
+  function argvOf(command: string): string[] {
+    const words = command.split(/\s+/).slice(1).map((w) => w.replace(/^["'`]|["'`]$/g, ""));
+    while (words.length > 0 && !words.at(-1)!.startsWith("-") && words.at(-2) !== "--import") words.pop();
+    return words;
+  }
+
+  test("each routed run's own flags reach every file's process and keep the JIT off background threads", async () => {
+    const scripts: Record<string, string> = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")).scripts;
+    const runs = [
+      ...["test", "loop:test"].map((name) => [`npm run ${name}`, scan("package.json", scripts[name]).routed] as const),
+      ...[".github/workflows/ci.yml"].flatMap((f) =>
+        scan(f, readFileSync(path.join(repoRoot, f), "utf8")).routed.map((r) => [`${f}: ${r}`, [r]] as const)
+      ),
+    ];
+    assert.ok(runs.length >= 4, `found ${runs.length} routed runs to probe`);
     const dir = mkdtempSync(path.join(tmpdir(), "jit-flags-"));
     try {
       const probe = path.join(dir, "flags.test.mjs");
@@ -98,12 +188,15 @@ describe("a test file that passed always exits", () => {
       );
       const env = { ...process.env };
       delete env.NODE_TEST_CONTEXT;
-      const run = await new Promise<{ code: unknown; out: string }>((resolve) =>
-        execFile(process.execPath, [...args, probe], { cwd: repoRoot, env, timeout: 60_000 }, (err, stdout, stderr) =>
-          resolve({ code: err ? err.code : 0, out: stdout + stderr })
-        )
-      );
-      assert.equal(run.code, 0, run.out);
+      for (const [where, routed] of runs) {
+        assert.equal(routed.length, 1, `${where} is not one routed run`);
+        const run = await new Promise<{ code: unknown; out: string }>((resolve) =>
+          execFile(process.execPath, [...argvOf(routed[0]), probe], { cwd: repoRoot, env, timeout: 60_000 }, (err, stdout, stderr) =>
+            resolve({ code: err ? err.code : 0, out: stdout + stderr })
+          )
+        );
+        assert.equal(run.code, 0, `${where}\n${run.out}`);
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
