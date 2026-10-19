@@ -9,6 +9,7 @@
 // startSweeper interval, replaces all five.
 import { lt, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
+import { now } from "../http/clock.ts";
 import { events, clientErrors, roundReplays, authTokens, bugReports, serverErrors } from "../../shared/schema.ts";
 import { EVENT_RETENTION_DAYS } from "../socket/events.ts";
 import { CLIENT_ERROR_RETENTION_DAYS } from "../http/clientErrors.ts";
@@ -16,6 +17,8 @@ import { SERVER_ERROR_RETENTION_DAYS } from "../http/serverErrors.ts";
 import { REPLAY_RETENTION_DAYS } from "../../lib/game/replay.ts";
 import { BUG_REPORT_RETENTION_DAYS } from "../http/bugReports.ts";
 import { logger } from "../http/logger.ts";
+
+const DAY_MS = 24 * 60 * 60_000;
 
 /**
  * Never thrown: this is diagnostic hygiene, not gameplay, and one rule
@@ -39,10 +42,10 @@ export async function sweepRetention(): Promise<void> {
   await pruneOlderThan("round_replays", () =>
     db
       .delete(roundReplays)
-      .where(lt(roundReplays.finishedAt, sql`now() - make_interval(days => ${REPLAY_RETENTION_DAYS})`))
+      .where(lt(roundReplays.finishedAt, new Date(now() - REPLAY_RETENTION_DAYS * DAY_MS)))
   );
   await pruneOlderThan("auth_tokens", () =>
-    db.delete(authTokens).where(lt(authTokens.expiresAt, sql`now()`))
+    db.delete(authTokens).where(lt(authTokens.expiresAt, new Date(now())))
   );
   await pruneOlderThan("bug_reports", () =>
     db

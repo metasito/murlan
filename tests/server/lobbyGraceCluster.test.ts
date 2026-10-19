@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import type { SocketServer } from "../../server/socket/socketTypes.ts";
 import { armLobbyGrace } from "../../server/socket/socketTable.ts";
 import { setSocketServer } from "../../server/socket/socketRegistry.ts";
-import { setClock, clearLobbyGrace } from "../../server/game/gameTimers.ts";
+import { clearLobbyGrace } from "../../server/game/gameTimers.ts";
+import { installClock } from "../../server/http/clock.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { socketRoomMap, userSocketMap } from "../../server/game/gameRoom.ts";
 
@@ -14,9 +15,9 @@ const USER = "back-elsewhere";
 
 test("a seat is kept for a player back at the table on another instance", async (t) => {
   const expiries: (() => void)[] = [];
-  setClock({ now: () => 0, setTimeout: (fn) => expiries.push(fn), clearTimeout: () => {} });
+  const restoreClock = installClock({ now: () => 0, setTimeout: (fn) => expiries.push(fn), clearTimeout: () => {} });
   t.after(() => {
-    setClock();
+    restoreClock();
     clearLobbyGrace(ROOM, USER);
   });
   const released = t.mock.method(roomStore, "releaseSeat", async () => null);
@@ -39,11 +40,11 @@ test("a seat is kept for a player back at the table on another instance", async 
 
 test("a seat is kept for a player at the table here when the cluster does not answer", async (t) => {
   const expiries: (() => void)[] = [];
-  setClock({ now: () => 0, setTimeout: (fn) => expiries.push(fn), clearTimeout: () => {} });
+  const restoreClock = installClock({ now: () => 0, setTimeout: (fn) => expiries.push(fn), clearTimeout: () => {} });
   userSocketMap.set(USER, "local-socket");
   socketRoomMap.set("local-socket", ROOM);
   t.after(() => {
-    setClock();
+    restoreClock();
     clearLobbyGrace(ROOM, USER);
     userSocketMap.delete(USER);
     socketRoomMap.delete("local-socket");

@@ -8,6 +8,7 @@
 // Every query is bounded — by an aggregate, a date window, or a LIMIT. This
 // database has tables that grow with every match played, and a dashboard that
 // gets slower the more the game is used is a dashboard that stops being opened.
+import { now } from "./clock.ts";
 import { sql } from "drizzle-orm";
 import { db, POOL_MAX } from "../store/db.ts";
 import { funnel, type FunnelStep } from "../socket/events.ts";
@@ -16,11 +17,19 @@ import { recentServerErrorGroups, serverErrorsDropped, serverErrorsThisWeek, typ
 import { recentBugReports } from "./bugReports.ts";
 import { symbolicate } from "./sourceMaps.ts";
 import { mailHealth, type MailHealth } from "./mail.ts";
+import { seasonKey } from "../../lib/game/rating.ts";
 
 /** How far back the time series look. One screen, not an analytics product. */
 export const WINDOW_DAYS = 30;
 /** The longest list any panel will render. */
 const ROW_LIMIT = 30;
+
+/**
+ * The server clock as a timestamp, for the columns the server writes. Drizzle
+ * writes those as UTC ISO text into `timestamp` (no zone), so this is cast the
+ * same way; Postgres-stamped columns keep Postgres' now().
+ */
+const serverNow = () => sql`${new Date(now()).toISOString()}::timestamp`;
 
 interface DayCount {
   day: string;
@@ -70,7 +79,7 @@ async function activePlayers(days: number): Promise<number> {
   const rows = await db.execute<{ n: number }>(sql`
     SELECT count(DISTINCT user_id)::int AS n
     FROM round_history
-    WHERE finished_at >= now() - make_interval(days => ${days})
+    WHERE finished_at >= ${serverNow()} - make_interval(days => ${days})
   `);
   return rows.rows[0]?.n ?? 0;
 }
@@ -100,11 +109,11 @@ async function aroundNotPlaying(): Promise<number> {
   const rows = await db.execute<{ n: number }>(sql`
     SELECT count(*)::int AS n
     FROM users u
-    WHERE u.last_seen >= now() - make_interval(days => 7)
+    WHERE u.last_seen >= ${serverNow()} - make_interval(days => 7)
       AND NOT EXISTS (
         SELECT 1 FROM round_history m
         WHERE m.user_id = u.id
-          AND m.finished_at >= now() - make_interval(days => 7)
+          AND m.finished_at >= ${serverNow()} - make_interval(days => 7)
       )
   `);
   return rows.rows[0]?.n ?? 0;
@@ -119,7 +128,7 @@ async function ratingSpread(): Promise<{ bucket: string; n: number }[]> {
     SELECT (floor(rating / 100) * 100)::int || '–' || ((floor(rating / 100) * 100) + 99)::int AS bucket,
            count(*)::int AS n
     FROM user_ratings
-    WHERE season = to_char(now(), 'YYYY-MM')
+    WHERE season = ${seasonKey(new Date(now()))}
     GROUP BY floor(rating / 100)
     ORDER BY floor(rating / 100)
     LIMIT ${ROW_LIMIT}
@@ -131,7 +140,7 @@ async function provisionalPlayers(provisionalRounds: number): Promise<number> {
   const rows = await db.execute<{ n: number }>(sql`
     SELECT count(*)::int AS n
     FROM user_ratings
-    WHERE season = to_char(now(), 'YYYY-MM') AND rounds < ${provisionalRounds}
+    WHERE season = ${seasonKey(new Date(now()))} AND rounds < ${provisionalRounds}
   `);
   return rows.rows[0]?.n ?? 0;
 }
@@ -143,7 +152,7 @@ async function matchBalance(): Promise<{ playerCount: number; matches: number; a
            count(*)::int AS matches,
            round(avg(points)::numeric, 1)::float8 AS "averagePoints"
     FROM round_history
-    WHERE finished_at >= now() - make_interval(days => ${WINDOW_DAYS})
+    WHERE finished_at >= ${serverNow()} - make_interval(days => ${WINDOW_DAYS})
     GROUP BY 1
     ORDER BY 1
     LIMIT ${ROW_LIMIT}
@@ -155,7 +164,7 @@ async function placements(): Promise<{ placement: number; n: number }[]> {
   const rows = await db.execute<{ placement: number; n: number }>(sql`
     SELECT placement, count(*)::int AS n
     FROM round_history
-    WHERE finished_at >= now() - make_interval(days => ${WINDOW_DAYS})
+    WHERE finished_at >= ${serverNow()} - make_interval(days => ${WINDOW_DAYS})
     GROUP BY 1
     ORDER BY 1
     LIMIT ${ROW_LIMIT}
@@ -179,7 +188,7 @@ async function staleGames(): Promise<number> {
   const rows = await db.execute<{ n: number }>(sql`
     SELECT count(*)::int AS n
     FROM active_games
-    WHERE updated_at < now() - make_interval(days => 1)
+    WHERE updated_at < ${serverNow()} - make_interval(days => 1)
   `);
   return rows.rows[0]?.n ?? 0;
 }
@@ -279,7 +288,7 @@ export async function adminSnapshot(provisionalRounds: number): Promise<AdminSna
   ]);
 
   return {
-    generatedAt: new Date().toISOString(),
+    generatedAt: new Date(now()).toISOString(),
     signups: signupRows,
     totalUsers: users,
     activeToday: today,

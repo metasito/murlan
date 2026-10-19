@@ -5,6 +5,7 @@ import type { Server as SocketIOServer } from "socket.io";
 // scope here would build the app's Pool before startTestServer() has pointed
 // DATABASE_URL at the throwaway schema.
 import { drainPool } from "../../server/store/drainPool.ts";
+import { installClock, type Clock } from "../../server/http/clock.ts";
 
 /**
  * `node --test` runs as many test files at once as there are cores, and every
@@ -137,14 +138,16 @@ export async function dropSchema(baseUrl: string, schema: string): Promise<void>
   }
 }
 
-/**
- * Test-only escape hatch so a test can force a failure *after* the Postgres
- * schema has been created, to prove startTestServer()'s cleanup-on-failure
- * path actually runs (see tests/integration/testServerCleanup.test.ts). Not
- * part of the documented public contract — real callers never pass this.
- */
 export interface StartTestServerOptions {
+  /**
+   * Test-only escape hatch so a test can force a failure *after* the Postgres
+   * schema has been created, to prove startTestServer()'s cleanup-on-failure
+   * path actually runs (see tests/integration/testServerCleanup.test.ts). Not
+   * part of the documented public contract — real callers never pass this.
+   */
   failAfterSchemaCreate?: boolean;
+  /** Installed process-wide before the app is built, restored by `stop()`. */
+  clock?: Clock;
 }
 
 /**
@@ -166,6 +169,7 @@ export async function startTestServer(
   const admin = new pg.Pool({ connectionString: baseUrl });
   await admin.query(`CREATE SCHEMA "${schema}"`);
   await admin.end();
+  const restoreClock = opts.clock ? installClock(opts.clock) : () => {};
 
   try {
     // Point every connection at the throwaway schema via search_path, and at
@@ -254,6 +258,7 @@ export async function startTestServer(
           // Always run, even if closing the server/pool above threw: a
           // failed shutdown must not also leak the schema or leave
           // DATABASE_URL pointed at the throwaway connection string.
+          restoreClock();
           try {
             await dropSchema(baseUrl, schema);
           } finally {
@@ -266,6 +271,7 @@ export async function startTestServer(
     // Nothing was returned to the caller, so there is no stop() to call —
     // this is the only chance to undo the CREATE SCHEMA above and the
     // DATABASE_URL mutation.
+    restoreClock();
     process.env.DATABASE_URL = baseUrl;
     try {
       await dropSchema(baseUrl, schema);

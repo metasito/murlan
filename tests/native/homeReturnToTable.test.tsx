@@ -33,7 +33,7 @@ jest.mock('@/context/AuthContext', () => ({
 jest.mock('@/context/GameContext', () => ({
   useGame: () => ({ hasSavedGame: true, resumeGame: () => false }),
 }));
-jest.mock('@/context/SocketContext', () => ({ useSocket: () => ({ gameInvites: [] }) }));
+jest.mock('@/context/SocketContext', () => ({ useInvites: () => ({ invites: [], accept: () => {} }) }));
 jest.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: [] }) }));
 jest.mock('@/lib/query-client', () => ({
   getApiUrl: () => 'http://localhost',

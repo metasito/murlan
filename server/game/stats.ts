@@ -1,3 +1,4 @@
+import { now } from "../http/clock.ts";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { lockUsers } from "../store/userLock.ts";
@@ -89,7 +90,7 @@ export async function recordGameResult(
             currentStreak: won ? 1 : 0,
             bestStreak: won ? 1 : 0,
             bombsPlayed: playedBomb ? 1 : 0,
-            updatedAt: new Date(),
+            updatedAt: new Date(now()),
           })
           .onConflictDoUpdate({
             target: userStats.userId,
@@ -102,7 +103,7 @@ export async function recordGameResult(
                 ? sql`GREATEST(${userStats.bestStreak}, ${userStats.currentStreak} + 1)`
                 : sql`${userStats.bestStreak}`,
               bombsPlayed: sql`${userStats.bombsPlayed} + ${playedBomb ? 1 : 0}`,
-              updatedAt: new Date(),
+              updatedAt: new Date(now()),
             },
           });
 
@@ -205,7 +206,7 @@ export async function getUserStats(userId: string): Promise<UserStatsView> {
     ...(row ?? emptyStats(userId)),
     dailyStreak: dailyStreak(
       played.map((r) => r.finishedAt),
-      utcDay(new Date())
+      utcDay(new Date(now()))
     ),
   };
 }

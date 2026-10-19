@@ -10,6 +10,7 @@
 // The carrier is the adapter's own `serverSideEmit`, which the Postgres adapter
 // already implements with acknowledgements. No second channel, and it inherits
 // the adapter's delivery rather than inventing one.
+import { now } from "../http/clock.ts";
 import { randomUUID } from "node:crypto";
 import type { SocketServer } from "../socket/socketTypes.ts";
 import { logger } from "../http/logger.ts";
@@ -84,9 +85,9 @@ export function setTableHandlers(applier: Applier, rehydrator: Rehydrator): void
 const applied = new Map<string, { outcome: Promise<EventOutcome>; at: number }>();
 
 function remember(id: string, outcome: Promise<EventOutcome>): Promise<EventOutcome> {
-  const now = Date.now();
+  const at = now();
   for (const [key, entry] of applied) {
-    if (now - entry.at > APPLIED_TTL_MS) applied.delete(key);
+    if (at - entry.at > APPLIED_TTL_MS) applied.delete(key);
     else break;
   }
   // A bound as well as an expiry: a table storming actions must not be able to
@@ -96,7 +97,7 @@ function remember(id: string, outcome: Promise<EventOutcome>): Promise<EventOutc
     if (oldest === undefined) break;
     applied.delete(oldest);
   }
-  applied.set(id, { outcome, at: now });
+  applied.set(id, { outcome, at });
   return outcome;
 }
 
@@ -106,7 +107,7 @@ function remember(id: string, outcome: Promise<EventOutcome>): Promise<EventOutc
  */
 function applyOnce(io: SocketServer, action: TableAction): Promise<EventOutcome> {
   const seen = applied.get(action.id);
-  if (seen && Date.now() - seen.at <= APPLIED_TTL_MS) return seen.outcome;
+  if (seen && now() - seen.at <= APPLIED_TTL_MS) return seen.outcome;
   const outcome = apply(io, action);
   outcome.catch(() => applied.delete(action.id));
   return remember(action.id, outcome);

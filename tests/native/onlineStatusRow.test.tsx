@@ -16,14 +16,14 @@ jest.mock('@/context/AuthContext', () => ({
 }));
 
 jest.mock('@/context/SocketContext', () => ({
-  useSocket: () => ({
-    pendingInvite: null,
-    clearInvite: jest.fn(),
-    gameInvites: [],
-    dismissGameInvite: jest.fn(),
-    acceptedInvite: null,
-    acceptInvite: jest.fn(),
-    clearAcceptedInvite: jest.fn(),
+  useInvites: () => ({
+    prompt: null,
+    clearPrompt: jest.fn(),
+    invites: [],
+    dismiss: jest.fn(),
+    accepted: null,
+    accept: jest.fn(),
+    clearAccepted: jest.fn(),
   }),
 }));
 

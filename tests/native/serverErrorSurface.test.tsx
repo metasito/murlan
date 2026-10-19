@@ -34,7 +34,11 @@ jest.mock('@/context/SocketContext', () => {
     timeout: () => socket,
     emit: () => {},
   };
-  return { useSocket: () => ({ socket }) };
+  return {
+    useSocketConnection: () => socket,
+    usePresence: () => ({ onlineIds: new Set(), refresh: () => {} }),
+    useInvites: () => ({ send: async () => false }),
+  };
 });
 
 jest.mock('@/context/NotificationContext', () => ({

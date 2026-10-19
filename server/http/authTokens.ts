@@ -1,5 +1,6 @@
+import { now } from "./clock.ts";
 import { randomBytes, randomInt, createHash } from "node:crypto";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { lockUsers, type Tx } from "../store/userLock.ts";
 import { userStore, uniqueViolation } from "../store/userStore.ts";
@@ -45,13 +46,13 @@ async function insertCredential(executor: typeof db | Tx, params: {
     purpose,
     tokenHash,
     attempts,
-    expiresAt: new Date(Date.now() + ttlMs),
+    expiresAt: new Date(now() + ttlMs),
   });
 }
 
 /**
  * Shared atomic claim behind both redeem shapes below: single-use via the
- * `used_at IS NULL AND expires_at > now()` guard inside the same UPDATE, so
+ * `used_at IS NULL AND expires_at > <server clock>` guard inside the same UPDATE, so
  * two near-simultaneous redemptions cannot both succeed.
  */
 async function claimCredential(params: {
@@ -67,7 +68,7 @@ async function claimCredential(params: {
     WHERE token_hash = ${tokenHash}
       AND purpose = ${purpose}
       AND used_at IS NULL
-      AND expires_at > now()
+      AND ${gt(authTokens.expiresAt, new Date(now()))}
       ${attemptsGuard}
     RETURNING user_id
   `);
@@ -100,8 +101,8 @@ export async function redeemAuthToken(rawToken: string, purpose: AuthTokenPurpos
  * forgetting it is what keeps five typos from locking an account out for good.
  */
 function spentAttempts(replaced: { attempts: number; expiresAt: Date }[]): number {
-  const now = Date.now();
-  return Math.max(0, ...replaced.filter((r) => r.expiresAt.getTime() > now).map((r) => r.attempts));
+  const at = now();
+  return Math.max(0, ...replaced.filter((r) => r.expiresAt.getTime() > at).map((r) => r.attempts));
 }
 
 /**
@@ -177,7 +178,7 @@ export async function redeemAuthCode(params: {
     SET attempts = attempts + 1
     WHERE purpose = ${purpose}
       AND used_at IS NULL
-      AND expires_at > now()
+      AND ${gt(authTokens.expiresAt, new Date(now()))}
       AND ${inArray(authTokens.userId, userIds)}
   `);
   return null;

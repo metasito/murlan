@@ -1,3 +1,4 @@
+import { now } from "../http/clock.ts";
 import { eq, and, sql, isNull, isNotNull } from "drizzle-orm";
 import { db } from "./db.ts";
 import { pushTokens, users } from "../../shared/schema.ts";
@@ -123,7 +124,7 @@ export const userStore = {
     try {
       const [row] = await db
         .update(users)
-        .set({ emailVerifiedAt: new Date() })
+        .set({ emailVerifiedAt: new Date(now()) })
         .where(ownClaim)
         .returning({ id: users.id });
       return row ? "verified" : "not_found";
@@ -194,14 +195,14 @@ export const userStore = {
   },
 
   async updateLastSeen(userId: string): Promise<void> {
-    await db.update(users).set({ lastSeen: new Date() }).where(eq(users.id, userId));
+    await db.update(users).set({ lastSeen: new Date(now()) }).where(eq(users.id, userId));
   },
 
   /** First time only: the answer is "has it ever been offered", so the first date is the true one. */
   async markTutorialSeen(userId: string): Promise<void> {
     await db
       .update(users)
-      .set({ tutorialSeenAt: new Date() })
+      .set({ tutorialSeenAt: new Date(now()) })
       .where(and(eq(users.id, userId), isNull(users.tutorialSeenAt)));
   },
 };

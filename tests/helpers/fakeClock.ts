@@ -1,4 +1,4 @@
-import type { Clock } from "../../server/game/gameTimers.ts";
+import { realClock, type Clock } from "../../server/http/clock.ts";
 
 export interface FakeClock extends Clock {
   /** Moves time forward, firing every timer due on the way in deadline order. */
@@ -29,6 +29,22 @@ export function fakeClock(startMs = 1_000_000): FakeClock {
         next[1].fn();
       }
       now = end;
+    },
+  };
+}
+
+export interface SkewedClock extends Clock {
+  /** Moves `now()` forward without waiting; armed timers keep their real schedule. */
+  skip(ms: number): void;
+}
+
+export function skewedClock(): SkewedClock {
+  let skew = 0;
+  return {
+    ...realClock,
+    now: () => Date.now() + skew,
+    skip(ms) {
+      skew += ms;
     },
   };
 }

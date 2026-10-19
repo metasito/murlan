@@ -17,7 +17,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 const mockJoinRoom = jest.fn();
 const mockClearAccepted = jest.fn();
 const mockState = {
-  socket: {} as Record<string, unknown>,
+  invites: {} as Record<string, unknown>,
   connected: true,
   room: null as { roomId: string } | null,
 };
@@ -45,7 +45,7 @@ jest.mock('@/context/AuthContext', () => ({
 }));
 
 jest.mock('@/context/SocketContext', () => ({
-  useSocket: () => mockState.socket,
+  useInvites: () => mockState.invites,
 }));
 
 jest.mock('expo-router', () => ({
@@ -75,13 +75,13 @@ const mount = () =>
   );
 
 const base = {
-  pendingInvite: null,
-  clearInvite: jest.fn(),
-  gameInvites: [],
-  dismissGameInvite: jest.fn(),
-  acceptedInvite: null,
-  acceptInvite: jest.fn(),
-  clearAcceptedInvite: mockClearAccepted,
+  prompt: null,
+  clearPrompt: jest.fn(),
+  invites: [],
+  dismiss: jest.fn(),
+  accepted: null,
+  accept: jest.fn(),
+  clearAccepted: mockClearAccepted,
 };
 
 beforeEach(() => {
@@ -89,12 +89,12 @@ beforeEach(() => {
   mockClearAccepted.mockClear();
   mockState.connected = true;
   mockState.room = null;
-  mockState.socket = { ...base };
+  mockState.invites = { ...base };
 });
 
 describe('an invite the player has already accepted', () => {
   it('joins that room without asking again', async () => {
-    mockState.socket = { ...base, acceptedInvite: 'ABC123' };
+    mockState.invites = { ...base, accepted: 'ABC123' };
     const r = await mount();
 
     expect(mockJoinRoom).toHaveBeenCalledWith('ABC123');
@@ -106,7 +106,7 @@ describe('an invite the player has already accepted', () => {
   });
 
   it('consumes it, so a re-render cannot join twice', async () => {
-    mockState.socket = { ...base, acceptedInvite: 'ABC123' };
+    mockState.invites = { ...base, accepted: 'ABC123' };
     const r = await mount();
 
     expect(mockClearAccepted).toHaveBeenCalledTimes(1);
@@ -118,7 +118,7 @@ describe('an invite the player has already accepted', () => {
     // `joinRoom` is `socket?.emit`, which is a silent no-op before the socket
     // connects — the player would sit on an unchanged lobby forever.
     mockState.connected = false;
-    mockState.socket = { ...base, acceptedInvite: 'ABC123' };
+    mockState.invites = { ...base, accepted: 'ABC123' };
     const r = await mount();
 
     expect(mockJoinRoom).not.toHaveBeenCalled();
@@ -129,7 +129,7 @@ describe('an invite the player has already accepted', () => {
 
   it('says it is joining, so the wait is not a dead screen', async () => {
     mockState.connected = false;
-    mockState.socket = { ...base, acceptedInvite: 'ABC123' };
+    mockState.invites = { ...base, accepted: 'ABC123' };
     const r = await mount();
 
     expect(screen.getByText('Joining the table…')).toBeTruthy();
@@ -141,7 +141,7 @@ describe('an invite the player has already accepted', () => {
     // The room is pushed *on top of* this screen rather than replacing it, so
     // this instance survives the join and is what back returns to.
     mockState.room = { roomId: 'r1' };
-    mockState.socket = { ...base, acceptedInvite: 'ABC123' };
+    mockState.invites = { ...base, accepted: 'ABC123' };
     const r = await mount();
 
     expect(screen.queryByText('Joining the table…')).toBeNull();
@@ -152,7 +152,7 @@ describe('an invite the player has already accepted', () => {
 
 describe('an invite that merely arrived', () => {
   it('still asks, because nobody has answered it', async () => {
-    mockState.socket = { ...base, pendingInvite: { from: 'ana', roomCode: 'ZZZ999' } };
+    mockState.invites = { ...base, prompt: { from: 'ana', roomCode: 'ZZZ999' } };
     const r = await mount();
 
     // An invite turning up must never move anyone: it prefills and asks.

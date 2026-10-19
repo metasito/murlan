@@ -1,3 +1,4 @@
+import { now } from "./clock.ts";
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import bcrypt from "bcryptjs";
@@ -924,7 +925,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // needs no job to cross: `getRating` seeds the new season from the previous
   // one and only writes when a rated round actually finishes.
   app.get("/api/ratings/me", requireAuth, async (req, res) => {
-    res.json(await getRating(req.session.userId!, new Date()));
+    res.json(await getRating(req.session.userId!, new Date(now())));
   });
 
   // ── Admin ─────────────────────────────────────────────────────────────────
@@ -946,13 +947,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/ratings/leaderboard", requireAuth, async (_req, res) => {
-    res.json(await getLeaderboard(new Date()));
+    res.json(await getLeaderboard(new Date(now())));
   });
 
   app.get("/api/ratings/leaderboard/friends", requireAuth, async (req, res) => {
     const viewerId = req.session.userId!;
     const friends = await friendStore.getFriends(viewerId);
-    res.json(await getCircleLeaderboard([viewerId, ...friends.map((f) => f.friendUserId)], new Date()));
+    res.json(await getCircleLeaderboard([viewerId, ...friends.map((f) => f.friendUserId)], new Date(now())));
   });
 
   // ── Replays ───────────────────────────────────────────────────────────────

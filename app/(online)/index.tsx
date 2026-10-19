@@ -19,7 +19,7 @@ import {
   useServerError,
 } from "@/context/onlineGameHooks";
 import { useAuth } from "@/context/AuthContext";
-import { useSocket } from "@/context/SocketContext";
+import { useInvites } from "@/context/SocketContext";
 import { Colors, Spacing, FontSize, Radius, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { keyboardBehavior } from "@/lib/device/keyboard";
 import { MenuLayout } from "@/components/MenuLayout";
@@ -39,7 +39,7 @@ export default function OnlineLobbyScreen() {
   const { createRoom, joinRoom, spectateRoom, room } = useOnlineRoom();
   const { connected, clearError } = useOnlineConnection();
   const error = useServerError("lobby");
-  const { pendingInvite, clearInvite, acceptedInvite } = useSocket();
+  const { prompt: pendingInvite, clearPrompt: clearInvite, accepted: acceptedInvite } = useInvites();
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [joiningInvite, setJoiningInvite] = useState(false);
   const [joinCode, setJoinCode] = useState("");

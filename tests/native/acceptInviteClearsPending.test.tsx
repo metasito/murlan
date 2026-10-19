@@ -1,7 +1,7 @@
 // tests/native/acceptInviteClearsPending.test.tsx — answering an invite answers
 // it for both signals.
 //
-// `pendingInvite` says one arrived and `acceptedInvite` says the player said
+// `prompt` says one arrived and `accepted` says the player said
 // yes, and the online hub acts on each: the first prefills the code and asks,
 // the second joins. Leaving the first up while setting the second puts the two
 // on the same room at the same time — a code prompt over a join already in
@@ -33,7 +33,6 @@ jest.mock('@/lib/socket', () => ({
   disconnectSocket: () => {},
   peekSocket: (userId?: string | null) => (userId ? mockSocket : null),
   subscribeToSockets: () => () => {},
-  setSocketAuthFailureHandler: () => {},
 }));
 
 const mockApiRequest = jest.fn(async (..._args: unknown[]) => ({}));
@@ -79,14 +78,14 @@ jest.mock('@/context/onlineGameHooks', () => ({
   }),
 }));
 
-const { SocketProvider, useSocket } =
+const { SocketProvider, useInvites } =
   require('@/context/SocketContext') as typeof import('@/context/SocketContext');
 const { NotificationProvider } =
   require('@/context/NotificationContext') as typeof import('@/context/NotificationContext');
 
 const mount = (client = new QueryClient()) => {
   // Out here, not in the wrapper's body, which React re-runs on every render.
-  return renderHook(() => useSocket(), {
+  return renderHook(() => useInvites(), {
     wrapper: ({ children }: { children: React.ReactNode }) => (
       <QueryClientProvider client={client}>
         <NotificationProvider>
@@ -115,12 +114,12 @@ describe('accepting an invite', () => {
   it('takes the arrival down with it', async () => {
     const { result, unmount } = await mount();
     await invite();
-    expect(result.current.pendingInvite).not.toBeNull();
+    expect(result.current.prompt).not.toBeNull();
 
-    await act(async () => result.current.acceptInvite('ABC123'));
+    await act(async () => result.current.accept('ABC123'));
 
-    expect(result.current.acceptedInvite).toBe('ABC123');
-    expect(result.current.pendingInvite).toBeNull();
+    expect(result.current.accepted).toBe('ABC123');
+    expect(result.current.prompt).toBeNull();
 
     await unmount();
   });
@@ -132,9 +131,9 @@ describe('accepting an invite', () => {
       mockSocket.listeners.get('friend:invite')?.({ from: 'bob', roomCode: 'XYZ789' });
     });
 
-    await act(async () => result.current.acceptInvite('ABC123'));
+    await act(async () => result.current.accept('ABC123'));
 
-    expect(result.current.pendingInvite).toEqual({ from: 'bob', roomCode: 'XYZ789' });
+    expect(result.current.prompt).toEqual({ from: 'bob', roomCode: 'XYZ789' });
 
     await unmount();
   });
@@ -143,11 +142,11 @@ describe('accepting an invite', () => {
     const client = new QueryClient();
     client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'ana', roomCode: 'ABC123' }]);
     const { result, unmount } = await mount(client);
-    expect(result.current.gameInvites).toHaveLength(1);
+    expect(result.current.invites).toHaveLength(1);
 
-    await act(async () => result.current.acceptInvite('ABC123'));
+    await act(async () => result.current.accept('ABC123'));
 
-    expect(result.current.gameInvites).toEqual([]);
+    expect(result.current.invites).toEqual([]);
     expect(mockApiRequest).not.toHaveBeenCalledWith('DELETE', '/api/friends/invites/ABC123');
 
     await unmount();
@@ -164,13 +163,13 @@ describe('accepting an invite', () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
 
-    await act(async () => result.current.acceptInvite('ABC123'));
+    await act(async () => result.current.accept('ABC123'));
     await serverStillReturnsRow();
-    expect(result.current.gameInvites).toEqual([]);
+    expect(result.current.invites).toEqual([]);
 
     await invite();
     await serverStillReturnsRow();
-    expect(result.current.gameInvites).toEqual([{ from: 'ana', roomCode: 'ABC123' }]);
+    expect(result.current.invites).toEqual([{ from: 'ana', roomCode: 'ABC123' }]);
 
     await unmount();
   });
@@ -184,11 +183,11 @@ describe('accepting an invite', () => {
       () => new Promise((_resolve, reject) => (rejectDecline = reject))
     );
 
-    await act(async () => result.current.dismissGameInvite('ABC123'));
-    expect(result.current.gameInvites).toEqual([]);
+    await act(async () => result.current.dismiss('ABC123'));
+    expect(result.current.invites).toEqual([]);
 
     await act(async () => rejectDecline(new Error('offline')));
-    expect(result.current.gameInvites).toEqual([{ from: 'ana', roomCode: 'ABC123' }]);
+    expect(result.current.invites).toEqual([{ from: 'ana', roomCode: 'ABC123' }]);
 
     await unmount();
   });
@@ -197,8 +196,8 @@ describe('accepting an invite', () => {
     const { result, unmount } = await mount();
     await invite();
 
-    expect(result.current.pendingInvite).toEqual({ from: 'ana', roomCode: 'ABC123' });
-    expect(result.current.acceptedInvite).toBeNull();
+    expect(result.current.prompt).toEqual({ from: 'ana', roomCode: 'ABC123' });
+    expect(result.current.accepted).toBeNull();
 
     await unmount();
   });
@@ -213,7 +212,7 @@ describe('hidden invites across accounts', () => {
     mockApiRequest.mockImplementationOnce(
       () => new Promise((_resolve, reject) => (rejectDecline = reject))
     );
-    await act(async () => result.current.dismissGameInvite('ABC123'));
+    await act(async () => result.current.dismiss('ABC123'));
 
     mockUser = null;
     await act(async () => rerender({}));
@@ -222,11 +221,11 @@ describe('hidden invites across accounts', () => {
     await act(async () => {
       client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'cleo', roomCode: 'XYZ789' }]);
     });
-    await act(async () => result.current.acceptInvite('XYZ789'));
-    expect(result.current.gameInvites).toEqual([]);
+    await act(async () => result.current.accept('XYZ789'));
+    expect(result.current.invites).toEqual([]);
 
     await act(async () => rejectDecline(new Error('unauthorized')));
-    expect(result.current.gameInvites).toEqual([]);
+    expect(result.current.invites).toEqual([]);
 
     await unmount();
   });
@@ -236,7 +235,7 @@ describe('hidden invites across accounts', () => {
     const row = { fromUsername: 'ana', roomCode: 'ABC123' };
     client.setQueryData(['/api/friends/invites'], [row]);
     const { result, rerender, unmount } = await mount(client);
-    await act(async () => result.current.acceptInvite('ABC123'));
+    await act(async () => result.current.accept('ABC123'));
 
     mockUser = null;
     await act(async () => rerender({}));
@@ -246,7 +245,7 @@ describe('hidden invites across accounts', () => {
       client.setQueryData(['/api/friends/invites'], [row]);
     });
 
-    expect(result.current.gameInvites).toEqual([]);
+    expect(result.current.invites).toEqual([]);
 
     await unmount();
   });
@@ -258,13 +257,13 @@ describe('hidden invites across accounts', () => {
     client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'cleo', roomCode: 'XYZ789' }]);
     const { result, rerender, unmount } = await renderHook(
       () => {
-        const socket = useSocket();
-        const { acceptInvite } = socket;
+        const invites = useInvites();
+        const { accept } = invites;
         const signedIn = useAuth().user !== null;
         React.useEffect(() => {
-          if (signedIn) acceptInvite('XYZ789');
-        }, [signedIn, acceptInvite]);
-        return socket;
+          if (signedIn) accept('XYZ789');
+        }, [signedIn, accept]);
+        return invites;
       },
       {
         wrapper: ({ children }: { children: React.ReactNode }) => (
@@ -277,13 +276,13 @@ describe('hidden invites across accounts', () => {
       }
     );
 
-    expect(result.current.gameInvites).toEqual([{ from: 'cleo', roomCode: 'XYZ789' }]);
+    expect(result.current.invites).toEqual([{ from: 'cleo', roomCode: 'XYZ789' }]);
 
     mockUser = { id: 'u2', username: 'Ben' };
     await act(async () => rerender({}));
 
-    expect(result.current.acceptedInvite).toBe('XYZ789');
-    expect(result.current.gameInvites).toEqual([]);
+    expect(result.current.accepted).toBe('XYZ789');
+    expect(result.current.invites).toEqual([]);
 
     await unmount();
   });
@@ -306,11 +305,11 @@ describe('accepting from the friends screen', () => {
         },
       },
     });
-    const seen: { current: ReturnType<typeof useSocket> | null } = { current: null };
+    const seen: { current: ReturnType<typeof useInvites> | null } = { current: null };
     const { useOnlineRouting } =
       require('@/context/useOnlineRouting') as typeof import('@/context/useOnlineRouting');
     const Probe = () => {
-      seen.current = useSocket();
+      seen.current = useInvites();
       useOnlineRouting();
       return null;
     };
@@ -333,12 +332,12 @@ describe('accepting from the friends screen', () => {
   it('answers the invite for both signals, as the home card does', async () => {
     const { view, seen } = await mountFriends();
     await invite();
-    expect(seen.current?.pendingInvite).not.toBeNull();
+    expect(seen.current?.prompt).not.toBeNull();
 
     await fireEvent.press(screen.getByLabelText(/join ana/i));
 
-    expect(seen.current?.pendingInvite).toBeNull();
-    expect(seen.current?.acceptedInvite).toBe('ABC123');
+    expect(seen.current?.prompt).toBeNull();
+    expect(seen.current?.accepted).toBe('ABC123');
     expect(mockJoinRoom).not.toHaveBeenCalled();
 
     await view.unmount();
@@ -357,7 +356,7 @@ describe('accepting from the friends screen', () => {
 
     expect(mockJoinRoom).toHaveBeenCalledTimes(1);
     expect(mockJoinRoom).toHaveBeenCalledWith('ABC123');
-    expect(seen.current?.acceptedInvite).toBeNull();
+    expect(seen.current?.accepted).toBeNull();
 
     await view.unmount();
   });

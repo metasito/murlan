@@ -24,7 +24,9 @@ jest.mock('@/context/AuthContext', () => ({
 }));
 
 jest.mock('@/context/SocketContext', () => ({
-  useSocket: () => ({ socket: null }),
+  useSocketConnection: () => null,
+  usePresence: () => ({ onlineIds: new Set(), refresh: () => {} }),
+  useInvites: () => ({ send: async () => false }),
 }));
 
 jest.mock('@/context/NotificationContext', () => ({

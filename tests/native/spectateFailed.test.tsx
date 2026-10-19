@@ -40,7 +40,7 @@ const mockSocket = {
 };
 
 jest.mock('@/context/SocketContext', () => ({
-  useSocket: () => ({ socket: mockSocket }),
+  useSocketConnection: () => mockSocket,
 }));
 
 async function mountProvider() {

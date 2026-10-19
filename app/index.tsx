@@ -41,7 +41,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { useLocalSession } from "@/context/gameHooks";
-import { useSocket } from "@/context/SocketContext";
+import { useInvites } from "@/context/SocketContext";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useEntrance } from "@/lib/useEntrance";
 import { Colors, FontSize, makeShadow, Motion, motionMs, Radius, Spacing, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
@@ -609,7 +609,7 @@ function HomeInviteCard({
 }) {
   const { t } = useTranslation();
   const entrance = useEntrance(step);
-  const { acceptInvite } = useSocket();
+  const { accept: acceptInvite } = useInvites();
 
   return (
     <Animated.View style={[styles.inviteCard, entrance]}>
@@ -652,7 +652,7 @@ export default function HomeScreen() {
   const { user, loading: authLoading } = useAuth();
   const tutorialDecided = useRef(false);
   const { hasSavedGame, resumeGame } = useLocalSession();
-  const { gameInvites } = useSocket();
+  const { invites: gameInvites } = useInvites();
   const { t } = useTranslation();
   const isLandscape = useIsLandscape();
   const [settingsVisible, setSettingsVisible] = useState(false);

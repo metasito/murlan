@@ -48,7 +48,7 @@ const mockSocket = {
 };
 
 jest.mock('@/context/SocketContext', () => ({
-  useSocket: () => ({ socket: mockSocket }),
+  useSocketConnection: () => mockSocket,
 }));
 
 import { ACTIVE_ROOM_KEY } from '@/lib/storageKeys';

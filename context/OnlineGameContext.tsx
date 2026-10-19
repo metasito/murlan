@@ -9,7 +9,7 @@ import React, {
   ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useSocket } from "@/context/SocketContext";
+import { useSocketConnection } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
 import { t, translateServerPayload, useTranslation, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
@@ -313,7 +313,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [mySeatIndex, setMySeatIndex] = useState(-1);
   const [turnDeadline, setTurnDeadline] = useState<TurnDeadline>(NO_TURN_DEADLINE);
 
-  const { socket } = useSocket();
+  const socket = useSocketConnection();
   const { link: ownLink, connected } = useOwnLink(socket);
   const rejoin = useRejoin(socket, userId, roomRef, gameStateRef);
 

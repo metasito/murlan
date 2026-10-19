@@ -10,6 +10,10 @@
 // everything. The wide `useOnlineGame()` probe is the control: it reads all
 // six, so it wakes on any of them, and a run where nothing wakes proves
 // nothing.
+//
+// The socket's three slices ride along under the real `SocketProvider`: a
+// friend coming online is the hottest field there, and neither the table nor
+// an invites-only reader may wake with it.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -28,6 +32,7 @@ import {
   useOnlineTurnClock,
 } from '@/context/onlineGameHooks';
 import { NotificationProvider } from '@/context/NotificationContext';
+import { SocketProvider, useInvites, usePresence, useSocketConnection } from '@/context/SocketContext';
 
 type Listener = (...args: unknown[]) => void;
 
@@ -37,6 +42,10 @@ const listeners = new Map<string, Set<Listener>>();
 
 const mockSocket = {
   connected: true,
+  active: true,
+  io: { reconnection() {} },
+  connect() {},
+  disconnect() {},
   on(event: string, fn: Listener) {
     if (!listeners.has(event)) listeners.set(event, new Set());
     listeners.get(event)!.add(fn);
@@ -49,8 +58,15 @@ const mockSocket = {
   emit() {},
 };
 
-jest.mock('@/context/SocketContext', () => ({
-  useSocket: () => ({ socket: mockSocket }),
+jest.mock('@/lib/socket', () => ({
+  connectSocket: () => mockSocket,
+  disconnectSocket: () => {},
+  peekSocket: (userId?: string | null) => (userId ? mockSocket : null),
+  subscribeToSockets: () => () => {},
+}));
+
+jest.mock('@/context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, logout: async () => {} }),
 }));
 
 jest.mock('expo-router', () => ({
@@ -74,6 +90,9 @@ const PROBES = {
   // appearing and going, never a move.
   router: useOnlineRouting,
   wide: useOnlineGame,
+  socket: useSocketConnection,
+  presence: usePresence,
+  invites: useInvites,
 } as const;
 
 function probe(name: keyof typeof PROBES) {
@@ -93,11 +112,13 @@ function mount() {
   return render(
     <QueryClientProvider client={new QueryClient()}>
       <NotificationProvider>
-        <OnlineGameProvider userId="u1">
-          {Probes.map((P, i) => (
-            <P key={i} />
-          ))}
-        </OnlineGameProvider>
+        <SocketProvider>
+          <OnlineGameProvider userId="u1">
+            {Probes.map((P, i) => (
+              <P key={i} />
+            ))}
+          </OnlineGameProvider>
+        </SocketProvider>
       </NotificationProvider>
     </QueryClientProvider>
   );
@@ -139,7 +160,10 @@ const roomState: RoomState = {
 type Broadcast =
   | { event: 'game:turn_deadline'; payloads: [TurnDeadline, TurnDeadline] }
   | { event: 'room:state'; payloads: [RoomState, RoomState] }
-  | { event: 'game:state'; payloads: [WireGameState, WireGameState] };
+  | { event: 'game:state'; payloads: [WireGameState, WireGameState] }
+  | { event: 'friend:status'; payloads: [FriendStatus, FriendStatus] };
+
+type FriendStatus = { userId: string; online: boolean };
 
 /**
  * One broadcast per case, delivered twice, and what each slice owes it. The
@@ -166,13 +190,13 @@ const CASES: (Broadcast & {
       { turnDeadlineMs: 1000, turnSecondsRemaining: 30 },
       { turnDeadlineMs: 2000, turnSecondsRemaining: 30 },
     ],
-    expected: { connection: 0, room: 0, table: 0, turnClock: 2, match: 0, exchange: 0, router: 0, wide: 2 },
+    expected: { connection: 0, room: 0, table: 0, turnClock: 2, match: 0, exchange: 0, router: 0, wide: 2, socket: 0, presence: 0, invites: 0 },
   },
   {
     what: 'a roster change',
     event: 'room:state',
     payloads: [roomState, { ...roomState, players: [] }],
-    expected: { connection: 0, room: 2, table: 0, turnClock: 0, match: 0, exchange: 0, router: 2, wide: 2 },
+    expected: { connection: 0, room: 2, table: 0, turnClock: 0, match: 0, exchange: 0, router: 2, wide: 2, socket: 0, presence: 0, invites: 0 },
   },
   {
     what: 'a move',
@@ -186,7 +210,16 @@ const CASES: (Broadcast & {
       { ...gameState, viewerSeatIndex: 0, turnDeadlineMs: 1000, turnSecondsRemaining: 30 },
       { ...gameState, viewerSeatIndex: 0, turnDeadlineMs: 1000, turnSecondsRemaining: 30 },
     ],
-    expected: { connection: 0, room: 0, table: 2, turnClock: 2, match: 0, exchange: 0, router: 0, wide: 2 },
+    expected: { connection: 0, room: 0, table: 2, turnClock: 2, match: 0, exchange: 0, router: 0, wide: 2, socket: 0, presence: 0, invites: 0 },
+  },
+  {
+    what: 'a friend coming online and going',
+    event: 'friend:status',
+    payloads: [
+      { userId: 'f1', online: true },
+      { userId: 'f1', online: false },
+    ],
+    expected: { connection: 0, room: 0, table: 0, turnClock: 0, match: 0, exchange: 0, router: 0, wide: 0, socket: 0, presence: 2, invites: 0 },
   },
 ];
 

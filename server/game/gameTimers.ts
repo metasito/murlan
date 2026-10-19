@@ -1,6 +1,7 @@
 import type { OnlineGameState } from "./gameRoom.ts";
 import { testOnlyEnv } from "../http/testOnlyEnv.ts";
 import { TURN_TIMEOUT_MS } from "../../lib/game/gameEngine.ts";
+import { clock, now } from "../http/clock.ts";
 
 /**
  * Keys: `afk` and `lobbyGrace` are `roomId:userId` (`seatKey`), `bot`,
@@ -8,29 +9,6 @@ import { TURN_TIMEOUT_MS } from "../../lib/game/gameEngine.ts";
  */
 export const TIMER_KINDS = ["afk", "disconnect", "lobbyGrace", "bot", "autoStart", "voteDeadline"] as const;
 export type TimerKind = (typeof TIMER_KINDS)[number];
-
-export interface Clock {
-  now(): number;
-  setTimeout(fn: () => void, ms: number): unknown;
-  clearTimeout(handle: unknown): void;
-}
-
-const realClock: Clock = {
-  now: () => Date.now(),
-  setTimeout: (fn, ms) => setTimeout(fn, ms),
-  clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
-};
-
-let clock = realClock;
-
-/** Swaps the clock every timer here runs on; no argument restores the real one. */
-export function setClock(next: Clock = realClock) {
-  clock = next;
-}
-
-export function now(): number {
-  return clock.now();
-}
 
 /**
  * A seat waiting to be given back must not be what keeps the process alive:
@@ -59,12 +37,12 @@ export function arm(kind: TimerKind, key: string, ms: number, onExpire: () => vo
   clear(kind, key);
   if (stopped) return;
   const entries = timers.get(kind)!;
-  const handle = clock.setTimeout(() => {
+  const handle = clock().setTimeout(() => {
     entries.delete(key);
     onExpire();
   }, ms);
   if (UNREF.has(kind)) (handle as { unref?: () => void }).unref?.();
-  entries.set(key, { handle, deadline: clock.now() + ms });
+  entries.set(key, { handle, deadline: now() + ms });
 }
 
 /** Returns whether one was armed. */
@@ -72,7 +50,7 @@ export function clear(kind: TimerKind, key: string): boolean {
   const entries = timers.get(kind)!;
   const armed = entries.get(key);
   if (!armed) return false;
-  clock.clearTimeout(armed.handle);
+  clock().clearTimeout(armed.handle);
   entries.delete(key);
   return true;
 }

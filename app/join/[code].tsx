@@ -2,14 +2,14 @@ import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { Redirect, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
-import { useSocket } from "@/context/SocketContext";
+import { useInvites } from "@/context/SocketContext";
 import { joinCode, joinRouteFor } from "@/lib/deepLink";
 import { Colors } from "@/lib/theme";
 
 export default function JoinScreen() {
   const { code } = useLocalSearchParams<{ code: string }>();
   const { user, loading } = useAuth();
-  const { acceptInvite } = useSocket();
+  const { accept: acceptInvite } = useInvites();
   const roomCode = joinCode(code);
   const signedIn = user !== null;
 

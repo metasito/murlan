@@ -35,7 +35,6 @@ jest.mock('@/lib/socket', () => ({
   disconnectSocket: () => {},
   peekSocket: (userId?: string | null) => (userId ? mockSocket : null),
   subscribeToSockets: () => () => {},
-  setSocketAuthFailureHandler: () => {},
 }));
 
 jest.mock('@/context/AuthContext', () => ({

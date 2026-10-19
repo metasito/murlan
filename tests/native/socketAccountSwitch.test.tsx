@@ -27,7 +27,6 @@ jest.mock('@/lib/socket', () => ({
   disconnectSocket: () => {},
   peekSocket: (userId?: string | null) => (userId ? mockSocket : null),
   subscribeToSockets: () => () => {},
-  setSocketAuthFailureHandler: () => {},
 }));
 
 let mockUser: { id: string; username: string } | null = { id: 'u1', username: 'Ana' };
@@ -35,11 +34,11 @@ jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: mockUser, logout: async () => {} }),
 }));
 
-const { SocketProvider, useSocket } = require('@/context/SocketContext') as typeof import('@/context/SocketContext');
+const { SocketProvider, useInvites } = require('@/context/SocketContext') as typeof import('@/context/SocketContext');
 const { NotificationProvider } = require('@/context/NotificationContext') as typeof import('@/context/NotificationContext');
 
 function Probe() {
-  const { pendingInvite, acceptedInvite, acceptInvite } = useSocket();
+  const { prompt: pendingInvite, accepted: acceptedInvite, accept: acceptInvite } = useInvites();
   return (
     <>
       <Text testID="pending">{pendingInvite?.roomCode ?? 'none'}</Text>

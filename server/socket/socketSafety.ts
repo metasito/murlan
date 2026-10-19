@@ -1,3 +1,4 @@
+import { now } from "../http/clock.ts";
 import type { InboundSchemas, IntentReply } from "../../shared/protocol.ts";
 import type { GameSocket as Socket } from "./socketTypes.ts";
 import { z } from "zod";
@@ -68,18 +69,18 @@ const userBuckets = new Map<string, Map<string, RateWindow>>();
 const SWEEP_INTERVAL_MS = 60_000;
 let lastSweepAt = 0;
 
-function sweepExpired(now: number): void {
-  if (now - lastSweepAt < SWEEP_INTERVAL_MS) return;
-  lastSweepAt = now;
+function sweepExpired(at: number): void {
+  if (at - lastSweepAt < SWEEP_INTERVAL_MS) return;
+  lastSweepAt = at;
   for (const [userId, windows] of userBuckets) {
     for (const [key, window] of windows) {
-      if (window.resetAt <= now) windows.delete(key);
+      if (window.resetAt <= at) windows.delete(key);
     }
     if (windows.size === 0) userBuckets.delete(userId);
   }
 }
 
-function bucketsFor(socket: Socket, now: number): Map<string, RateWindow> {
+function bucketsFor(socket: Socket, at: number): Map<string, RateWindow> {
   const userId = socket.data?.userId as string | undefined;
   if (!userId) {
     // No authenticated identity to key on (should be unreachable — the
@@ -87,7 +88,7 @@ function bucketsFor(socket: Socket, now: number): Map<string, RateWindow> {
     // per-socket state so the limiter still applies rather than opening up.
     return socket.data.rateBuckets ?? (socket.data.rateBuckets = new Map());
   }
-  sweepExpired(now);
+  sweepExpired(at);
   let windows = userBuckets.get(userId);
   if (!windows) {
     windows = new Map();
@@ -117,11 +118,11 @@ export function allowSocketAction(
   limit: number,
   windowMs: number
 ): boolean {
-  const now = Date.now();
-  const buckets = bucketsFor(socket, now);
+  const at = now();
+  const buckets = bucketsFor(socket, at);
   const bucket = buckets.get(key);
-  if (!bucket || bucket.resetAt <= now) {
-    buckets.set(key, { count: 1, resetAt: now + windowMs });
+  if (!bucket || bucket.resetAt <= at) {
+    buckets.set(key, { count: 1, resetAt: at + windowMs });
     return true;
   }
   if (bucket.count >= limit) {

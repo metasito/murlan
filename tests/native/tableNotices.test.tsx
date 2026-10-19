@@ -39,7 +39,7 @@ jest.mock('@/context/SocketContext', () => {
     timeout: () => socket,
     emit: () => {},
   };
-  return { useSocket: () => ({ socket }) };
+  return { useSocketConnection: () => socket };
 });
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

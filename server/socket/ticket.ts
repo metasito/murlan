@@ -1,3 +1,4 @@
+import { now } from "../http/clock.ts";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { lt, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
@@ -40,7 +41,7 @@ export function mintSocketTicket(userId: string, sid: string): {
   expiresAt: number;
 } {
   const nonce = randomBytes(16).toString("base64url");
-  const expiresAt = Date.now() + TICKET_TTL_MS;
+  const expiresAt = now() + TICKET_TTL_MS;
   const payload = `${encode(userId)}.${encode(sid)}.${nonce}.${expiresAt}`;
   return { ticket: `${payload}.${sign(payload)}`, expiresAt };
 }
@@ -65,9 +66,9 @@ export function verifySocketTicket(raw: unknown): SocketTicket | null {
     string,
   ];
   const expiresAt = Number(expiresAtRaw);
-  const now = Date.now();
-  if (!Number.isFinite(expiresAt) || expiresAt <= now) return null;
-  if (expiresAt > now + TICKET_TTL_MS * 2) return null;
+  const at = now();
+  if (!Number.isFinite(expiresAt) || expiresAt <= at) return null;
+  if (expiresAt > at + TICKET_TTL_MS * 2) return null;
 
   const expected = sign(`${encodedUserId}.${encodedSid}.${nonce}.${expiresAtRaw}`);
   const given = Buffer.from(signature);
@@ -86,7 +87,7 @@ export function verifySocketTicket(raw: unknown): SocketTicket | null {
  * session, and a ticket minted before it must not open a socket after it.
  */
 export async function redeemSocketTicket(ticket: SocketTicket): Promise<boolean> {
-  await db.delete(socketTicketNonces).where(lt(socketTicketNonces.expiresAt, new Date()));
+  await db.delete(socketTicketNonces).where(lt(socketTicketNonces.expiresAt, new Date(now())));
   const burned = await db
     .insert(socketTicketNonces)
     .values({ nonce: ticket.nonce, expiresAt: new Date(ticket.expiresAt) })

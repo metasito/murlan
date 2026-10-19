@@ -28,7 +28,7 @@ const mockSocket = {
 };
 
 jest.mock('@/context/SocketContext', () => ({
-  useSocket: () => ({ socket: mockSocket }),
+  useSocketConnection: () => mockSocket,
 }));
 
 const mockReportError = jest.fn(() => true);
