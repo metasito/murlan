@@ -214,8 +214,29 @@ test("nothing reaches past the slices for the whole surface", () => {
   );
 });
 
-test("no wide online hook is left in context/ for a screen to reach for", () => {
-  for (const file of walk(path.join(ROOT, "context"))) {
-    assert.doesNotMatch(readFileSync(file, "utf8"), /function useOnlineGame\b/, `${path.relative(ROOT, file)} defines useOnlineGame`);
+/** Whether `code` defines or exports a hook named `useOnlineGame`, in any form; comments are not code. */
+const definesWideOnlineHook = (code: string) =>
+  /\b(?:function|const|let|var)\s+useOnlineGame\b|\bas\s+useOnlineGame\b|export\s*\{[^}]*\buseOnlineGame\b/.test(
+    code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "")
+  );
+
+test("the wide-hook guard knows every way of defining one, and not a mention", () => {
+  for (const form of [
+    "export function useOnlineGame() {}",
+    "export const useOnlineGame = () => {};",
+    "const useOnlineGame = wide;\nexport { useOnlineGame };",
+    "export { wide as useOnlineGame } from './x';",
+    "export { useOnlineGame } from './x';",
+  ]) {
+    assert.ok(definesWideOnlineHook(form), form);
   }
+  assert.ok(!definesWideOnlineHook("// useOnlineGame is gone\nconst x = useOnlineGameish;"));
+});
+
+test("no wide online hook is defined outside tests/ for a screen to reach for", () => {
+  const TESTS = path.join(ROOT, "tests") + path.sep;
+  const offenders = walk(ROOT)
+    .filter((file) => !file.startsWith(TESTS) && definesWideOnlineHook(readFileSync(file, "utf8")))
+    .map((file) => path.relative(ROOT, file));
+  assert.deepEqual(offenders, [], "useOnlineGame is defined outside tests/");
 });
