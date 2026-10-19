@@ -73,7 +73,7 @@ function drawMoth(c: CanvasRenderingContext2D, p: MothPose) {
   c.fill();
 }
 
-function animate(
+export function animate(
   cv: HTMLCanvasElement,
   scene: Scene,
   lamp: SharedValue<Lamp>,
@@ -89,11 +89,14 @@ function animate(
   const white = bakeSheet();
   const sheets = new Map<string, HTMLCanvasElement>();
   let last = performance.now();
+  // Setting the size above cleared the canvas, so an asleep scene must still paint it once.
+  let cleared = true;
   let id = requestAnimationFrame(function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     const l = lamp.value;
     last = now;
-    if (sceneAsleep(scene, l, reduced)) return void (id = requestAnimationFrame(frame));
+    if (!cleared && sceneAsleep(scene, l, reduced)) return void (id = requestAnimationFrame(frame));
+    cleared = false;
     if (stepScene(scene, l, dt, reduced, Math.random)) traceOnset("moment", "moth");
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.clearRect(0, 0, cv.width, cv.height);
