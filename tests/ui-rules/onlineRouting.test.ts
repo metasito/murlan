@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { blankCommentsAndStrings, scanSources, sourcesUnder } from "../helpers/sourceScan.ts";
 import {
   NO_TABLE,
+  leaveNavigation,
   lobbyFor,
   navigationFor,
   onlineRouteOf,
@@ -92,6 +93,15 @@ test("a spectator is never sent to a room, and a lobby the player backed into st
   assert.equal(navigationFor(watching, { ...watching, roomId: "r1" }, "game", null), null);
   assert.equal(navigationFor(NO_TABLE, { ...NO_TABLE, roomId: "r1", isSpectator: true }, "lobby", null), null);
   assert.equal(navigationFor(room(), seated(), "lobby", "friends"), null);
+});
+
+test("a leave owes its own way out only when it gives up nothing the router follows", () => {
+  assert.deepEqual(leaveNavigation(NO_TABLE, "quickmatch"), { kind: "replace", to: "/(online)/quickmatch" });
+  assert.deepEqual(leaveNavigation(NO_TABLE, null), { kind: "replace", to: "/(online)" });
+  for (const held of [room(), seated(), watching]) {
+    assert.equal(leaveNavigation(held, "friends"), null);
+    assert.deepEqual(navigationFor(held, NO_TABLE, "game", "friends"), { kind: "replace", to: "/(online)" });
+  }
 });
 
 test("the lobby is quickmatch's for a quickmatch table and the hub's otherwise", () => {

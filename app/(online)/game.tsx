@@ -8,7 +8,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, ActivityIndicator, useWindowDimensions } from "react-native";
 import { router } from "expo-router";
-import { lobbyFor } from "@/context/onlineRouting";
+import { leaveNavigation } from "@/context/onlineRouting";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useOnlineConnection,
@@ -130,10 +130,9 @@ export default function OnlineGameScreen() {
             label={t("onlineGame.backToLobby")}
             variant="secondary"
             onPress={() => {
-              // With no room held, leaving changes nothing the router follows.
-              const followed = room != null;
+              const exit = leaveNavigation({ roomId: room?.roomId ?? null, hasGame: false }, entrySource);
               leaveRoom();
-              if (!followed) router.replace(lobbyFor(entrySource));
+              if (exit) router.replace(exit.to);
             }}
           />
         </View>

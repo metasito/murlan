@@ -21,6 +21,18 @@ export function onlineRouteOf(segments: readonly string[]): OnlineRoute {
   return "other";
 }
 
+function holdsTable(facts: Pick<OnlineFacts, "roomId" | "hasGame">): boolean {
+  return facts.roomId !== null || facts.hasGame;
+}
+
+/** A leave from a table never held changes no fact `navigationFor` follows, so it owes its own way out. */
+export function leaveNavigation(
+  held: Pick<OnlineFacts, "roomId" | "hasGame">,
+  entrySource: EntrySource
+): Navigation {
+  return holdsTable(held) ? null : { kind: "replace", to: lobbyFor(entrySource) };
+}
+
 export function lobbyFor(entrySource: EntrySource): LobbyPath {
   return entrySource === "quickmatch" ? "/(online)/quickmatch" : "/(online)";
 }
@@ -49,8 +61,7 @@ export function navigationFor(
   }
 
   if (here === "game") {
-    const held = prev.roomId !== null || prev.hasGame;
-    return held && !next.roomId && !next.hasGame ? lobby : null;
+    return holdsTable(prev) && !holdsTable(next) ? lobby : null;
   }
 
   const enter = (to: OnlinePath): Navigation => ({ kind: here === "quickmatch" ? "replace" : "push", to });
