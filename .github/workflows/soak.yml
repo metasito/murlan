@@ -159,6 +159,12 @@ jobs:
       - name: Play
         run: node --test tests/engine/matchTerminates.test.ts
 
+      - name: Search the engine's invariants from today's band
+        if: ${{ !cancelled() }}
+        env:
+          FC_RUNS: "3000"
+        run: FC_SEED="$MURLAN_MATCH_SOAK_START" node --test tests/engine/engineInvariants.property.test.ts
+
       - name: Report the failure to the tracker
         if: failure()
         env:

@@ -68,7 +68,7 @@ const E2E_EXCHANGE_HOLD: ExchangeHold =
 
 export type { PlayerSetupConfig, RoundResult, MatchState };
 
-function freshMatch(length: MatchLength, playerCount: number): MatchState {
+export function freshMatch(length: MatchLength, playerCount: number): MatchState {
   return {
     length,
     target: firstTargetFor(playerCount),
