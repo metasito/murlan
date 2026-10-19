@@ -915,7 +915,7 @@ export function loopSha(run = git) {
  * @param {number|null} [declared]
  * @param {number} [since] epoch ms; a merge older than this is not this session's
  * @param {ReturnType<typeof ghTracker>} [tracker]
- * @returns {{number: number, state: string, head: string, sha: string|null, changedFiles: number}|null}
+ * @returns {{number: number, state: string, head: string, sha: string|null, changedFiles: number|null}|null}
  */
 export function pushedPr(branch, ticket, declared = null, since = 0, tracker = ghTracker()) {
   // Matched on the head ref rather than by search: `#42` in a body also matches PR #942. With a
@@ -930,14 +930,14 @@ export function pushedPr(branch, ticket, declared = null, since = 0, tracker = g
     pr.state === "MERGED" && since > 0 && Date.parse(pr.mergedAt ?? "") < since;
   const take = (pr) =>
     pr && mine(pr) && !stale(pr)
-      ? { number: pr.number, state: pr.state, head: pr.headRefName, sha: pr.headRefOid ?? null, changedFiles: pr.changedFiles ?? 0 }
+      ? { number: pr.number, state: pr.state, head: pr.headRefName, sha: pr.headRefOid ?? null, changedFiles: pr.changedFiles ?? null }
       : null;
-  // A listing carries no file count; only the pull request itself does.
+  // A listing carries no file count; only the pull request itself does, and an unread one is unknown, not none.
   const counted = (pr) => {
     try {
-      return { ...pr, changedFiles: tracker.pr(pr.number).changedFiles };
+      return { ...pr, changedFiles: tracker.pr(pr.number).changedFiles ?? null };
     } catch {
-      return pr;
+      return { ...pr, changedFiles: null };
     }
   };
   try {
@@ -1216,8 +1216,12 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
     action = decideAt("session", facts);
   }
 
-  // The pull request's own count when derive() read no worktree.
-  const files = () => (facts.pushed === undefined ? 0 : after?.changed?.length || facts.pushed?.changedFiles || 0);
+  // The pull request's own count when derive() read no worktree; null when that count was not read.
+  const files = () => {
+    if (facts.pushed === undefined) return 0;
+    if (after?.changed?.length) return after.changed.length;
+    return facts.pushed ? (facts.pushed.changedFiles ?? null) : 0;
+  };
   let billed = run;
   const worked = (pr, log = billed.log) => ({ log, cwd: after?.cwd ?? null, branch: after?.branch ?? null, dirty: after?.dirty ?? false, run: billed, pr: pr ?? null, files: files() });
 
@@ -1358,7 +1362,7 @@ export function screenEvents(screen) {
       // result. The log is offered only where something needs reading.
       if (["handoff", "retry", "pushed", "reparked", "armed"].includes(row.outcome)) return;
       const landed = row.outcome === "landed";
-      screen.say(closing({ outcome: landed ? "merged" : row.outcome, number: row.number, files: row.files ?? 0, ...bill, why: row.why ?? undefined, log: landed ? undefined : row.run.log }, screen.theme));
+      screen.say(closing({ outcome: landed ? "merged" : row.outcome, number: row.number, files: row.files === undefined ? 0 : row.files, ...bill, why: row.why ?? undefined, log: landed ? undefined : row.run.log }, screen.theme));
     },
   };
 }

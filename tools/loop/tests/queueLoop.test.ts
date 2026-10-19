@@ -1435,7 +1435,7 @@ describe("pushedPr only ever answers with this ticket's own pull request", () =>
       changedFiles: 3,
     });
     const listed = { ...prs([open]), pr: () => { throw new Error("HTTP 502"); } };
-    assert.equal(pushedPr("agent/42-x", 42, null, 0, listed)?.changedFiles, 0, "a count the tracker would not give is none");
+    assert.equal(pushedPr("agent/42-x", 42, null, 0, listed)?.changedFiles, null, "a count the tracker would not give is unknown, not none");
   });
 
   test("a pull request on another branch is not this ticket's, whatever the tracker returned", () => {

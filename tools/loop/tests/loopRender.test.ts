@@ -616,6 +616,11 @@ describe("closing", () => {
     assert.match(out, /23:44 · \$3\.90 · 132 turns · 9 files/);
   });
 
+  test("a file count nobody could read says so, never zero", () => {
+    const out = strip(closing({ ...landed, files: null }, tPlain));
+    assert.match(out, /132 turns · files unknown/);
+  });
+
   test("a ticket closed as done carries the same facts, not its reason", () => {
     const out = strip(closing({ ...landed, outcome: "closed", why: "closed as done" }, tPlain));
     assert.match(out, /23:44 · \$3\.90 · 132 turns · 9 files/);
