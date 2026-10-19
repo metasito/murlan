@@ -31,7 +31,7 @@ import {
   autoMoveForSeat as sharedAutoMove,
   recordPlayFlags as recordFlags,
 } from "../../lib/game/autoMove.ts";
-import { roundUnplayed, openingIsPending } from "../../lib/game/gameEngine.ts";
+import { concedeRound, roundUnplayed, openingIsPending } from "../../lib/game/gameEngine.ts";
 import type { GameState, Combination } from "../../lib/game/gameEngine.ts";
 import { Motion, Reading } from "../../lib/tokens.ts";
 import { dealEndMs } from "../../lib/timeline/dealTimeline.ts";
@@ -276,34 +276,6 @@ function startAfkTimer(
 // ─── Seat vacancy ─────────────────────────────────────────────────────────────
 
 /**
- * Ends a round nobody is left to play: `winnerSeat` takes it, and every seat
- * still holding cards is placed behind them — closest to finishing first, seat
- * order as a stable tiebreak.
- *
- * Every seat must reach `finishingOrder` — the scoreboard awards from it and the
- * stats writer reads it. Seats that already emptied their hand keep the
- * position they earned.
- */
-function concedeRound(game: OnlineGameState, winnerSeat: number | undefined) {
-  const state = game.gameState;
-  const place = (seat: number) => {
-    const player = state.players[seat];
-    if (!player || player.finishPosition !== undefined) return;
-    player.finishPosition = state.finishingOrder.length + 1;
-    state.finishingOrder.push(player.id);
-  };
-
-  if (winnerSeat !== undefined) place(winnerSeat);
-  state.players
-    .map((player, seat) => ({ player, seat }))
-    .filter(({ player }) => player.finishPosition === undefined)
-    .sort((a, b) => a.player.hand.length - b.player.hand.length || a.seat - b.seat)
-    .forEach(({ seat }) => place(seat));
-
-  state.roundOver = true;
-}
-
-/**
  * Frees a seat whose player is gone for good — grace period expired, or an
  * explicit leave, either mid-round or at the results screen — and hands it to a
  * bot. The round stays in play, so the table can always continue: the seat must
@@ -391,7 +363,7 @@ export async function vacateSeat(
     // only human — the remaining bots then place among themselves, and
     // isContestedTable drops every write for such a table anyway.
     const survivorSeat = Object.keys(game.playerMap).map(Number)[0];
-    concedeRound(game, survivorSeat);
+    game.gameState = concedeRound(game.gameState, survivorSeat);
     // Sets rooms.status = "finished" and writes the row itself; the write is
     // awaited so the disposal below deletes a row that already exists.
     await handleRoundOver(io, roomId, game, writers);

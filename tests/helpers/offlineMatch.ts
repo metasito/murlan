@@ -4,16 +4,14 @@
 // round it deals resolves.
 //
 // A bot seat's turn is `offlineBotMove`, the function GameContext.tsx calls
-// (tests/engine/matchState.test.ts pins both callers). The round->match
-// wiring (`applyRoundToMatch`, `dealFrom`) is mirrored rather than imported:
-// that file pulls in `react` and AsyncStorage, which `node --test` cannot
-// load, so a change to either copy has to be carried to the other by hand.
+// (tests/engine/matchState.test.ts pins both callers), and the round->match
+// accounting is `lib/game/matchFlow.ts`, which GameContext.tsx imports too.
+// The next deal (`dealFrom`) is still a hand-carried copy of GameContext.tsx's:
+// that file pulls in `react` and AsyncStorage, which `node --test` cannot load.
 import {
-  foldRoundIntoMatch,
   initializeGame,
   initializeRematch,
   nextDealFirstSeat,
-  firstTargetFor,
   getAllValidPlays,
   processPlay,
   processPass,
@@ -23,67 +21,11 @@ import {
   type MatchLength,
   type PlayerType,
 } from "../../lib/game/gameEngine.ts";
+import { applyRoundToMatch, freshMatch } from "../../lib/game/matchFlow.ts";
 import { autoMoveForSeat, offlineBotMove, type AutoMoveContext } from "../../lib/game/autoMove.ts";
 import { comboKey } from "../../components/flightPhysics.ts";
 import { rng } from "../support/game.ts";
 import type { BotPersonalityId } from "../../lib/game/botPersonalities.ts";
-
-interface RoundResult {
-  finishingOrder: string[];
-  pointsAwarded: Record<string, number>;
-}
-
-interface MatchState {
-  length: MatchLength;
-  target: number;
-  scores: Record<string, number>;
-  rounds: RoundResult[];
-  over: boolean;
-  winners: string[];
-  isDraw: boolean;
-}
-
-function freshMatch(length: MatchLength, playerCount: number): MatchState {
-  return {
-    length,
-    target: firstTargetFor(playerCount),
-    scores: {},
-    rounds: [],
-    over: false,
-    winners: [],
-    isDraw: false,
-  };
-}
-
-/** Verbatim copy of context/GameContext.tsx's `applyRoundToMatch` — see the
- * file banner for why this cannot just import it. */
-function applyRoundToMatch(match: MatchState, finished: GameState): MatchState {
-  const teamOf: Record<string, string> = {};
-  for (const p of finished.players) {
-    if (p.team) teamOf[p.id] = p.team;
-  }
-
-  const folded = foldRoundIntoMatch({
-    finishingOrder: finished.finishingOrder,
-    playerCount: finished.players.length,
-    length: match.length,
-    gameMode: finished.gameMode,
-    target: match.target,
-    cumulative: match.scores,
-    keyOf: (engineId) => engineId,
-    teamOf,
-  });
-
-  return {
-    ...match,
-    scores: folded.cumulative,
-    rounds: [...match.rounds, { finishingOrder: finished.finishingOrder, pointsAwarded: folded.roundByKey }],
-    target: folded.target,
-    over: folded.over,
-    winners: folded.winners,
-    isDraw: folded.isDraw,
-  };
-}
 
 /**
  * `lib/game/gameEngine.ts`'s `shuffleDeck` draws from `globalThis.crypto`

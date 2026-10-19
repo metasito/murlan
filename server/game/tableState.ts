@@ -7,7 +7,7 @@ import {
   seatAssignmentsFromRoster,
   type SeatEntry,
 } from "./onlineGameLogic.ts";
-import { botSeatKey } from "./botSeat.ts";
+import { botSeatKey } from "../../lib/game/botSeat.ts";
 import { startReplayLog } from "./replayShape.ts";
 import {
   packPersistedState,

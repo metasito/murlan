@@ -93,7 +93,7 @@ export type RoundOutcome = "won" | "lost" | "neutral" | "draw" | "pending";
  * `placementPoints` is a parameter rather than recomputed here, so the round is
  * scored from the one value its caller already holds (the server's
  * `game:round_over` payload online, the played round's own `pointsAwarded` offline)
- * instead of a second call to `scoreRound` that happens to agree today.
+ * instead of a second call to `placementPoints` that happens to agree today.
  *
  * `"pending"` is an answer of its own, not a stand-in for `"draw"`: online, a
  * finished round's `finishingOrder` reach the client (`game:state`, `roundOver:
