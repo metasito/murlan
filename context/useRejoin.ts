@@ -72,14 +72,8 @@ export function useRejoin(
   }, []);
 
   const hold = useCallback((next: Partial<TableHandles>) => {
-    const held = handlesRef.current;
-    const changed: Partial<TableHandles> = {};
-    if (next.roomId !== undefined && next.roomId !== held.roomId) changed.roomId = next.roomId;
-    if (next.waitingCode !== undefined && next.waitingCode !== held.waitingCode) {
-      changed.waitingCode = next.waitingCode;
-    }
-    handlesRef.current = { ...held, ...changed };
-    storeTableHandles(changed);
+    handlesRef.current = { ...handlesRef.current, ...next };
+    storeTableHandles(next);
   }, []);
 
   const answered = useCallback(() => {
