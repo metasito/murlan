@@ -3,9 +3,8 @@
 // Only a card's own strip receives its presses, and the strips are laid out
 // end to end: `hitWidth` gives every card but the last the row's step, so
 // card `i`'s strip runs from where it starts to where card `i + 1` starts.
-// `cardUnder` (`tests/ui-rules/handLayout.test.ts`) does the same arithmetic on the other
-// side of the DOM. What only the browser can say is whether the element the
-// finger actually lands on carries the width that arithmetic computed.
+// `layoutHandRow` lays them out. What only the browser can say is whether the
+// element the finger actually lands on carries the strip that layout computed.
 //
 // Read as a *layout* box. The fan rotates each card, so `boundingBox()` reports
 // the rotated envelope, which varies along the row with the tilt — 28.8 to 38.9
@@ -13,6 +12,9 @@
 // delivered to that element whatever its box says. Neither a press nor a
 // rendered box can see this.
 import type { Page } from "@playwright/test";
+import { cardScale, handCardSize } from "../../components/cardFaceModel";
+import { layoutHandRow } from "../../components/handLayout";
+import { computeTableFrame } from "../../components/tableFrame";
 import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
 import { GIOCA_VALID_LABEL } from "./helpers/labels";
@@ -67,18 +69,28 @@ async function strips(page: Page): Promise<Strip[]> {
 /** The step is fractional and the browser rounds every offset it reports. */
 const TOLERANCE_PX = 1;
 
-function gaps(row: Strip[]): string[] {
-  const wrong: string[] = [];
-  for (let i = 0; i < row.length - 1; i++) {
-    const end = row[i].left + row[i].width;
-    if (Math.abs(end - row[i + 1].left) > TOLERANCE_PX) {
-      wrong.push(
-        `${row[i].label} ends at ${end.toFixed(1)} but ${row[i + 1].label} starts at ` +
-          `${row[i + 1].left.toFixed(1)}`
-      );
-    }
-  }
-  return wrong;
+/** The strips `layoutHandRow` lays out for `n` cards at this viewport, the hand at its turn size or not. */
+function expected(n: number, onTurn: boolean): { left: number; width: number }[] {
+  const scale = cardScale(Math.min(VIEWPORT.width, VIEWPORT.height));
+  const frame = computeTableFrame({ ...VIEWPORT, insets: { top: 0, bottom: 0, left: 0, right: 0 }, scale });
+  const { strips } = layoutHandRow({
+    ids: Array.from({ length: n }, (_, i) => `c${i}`),
+    held: null,
+    size: handCardSize(scale, onTurn, false),
+    roomW: frame.handRoomW,
+    availW: frame.handAvailW,
+    bottomPad: frame.bottomPad,
+  });
+  return strips.lefts.map((left, i) => ({ left, width: strips.widths[i] }));
+}
+
+function mismatches(row: Strip[], want: { left: number; width: number }[]): string[] {
+  if (row.length !== want.length) return [`${row.length} strips drawn, ${want.length} laid out`];
+  return row.flatMap((s, i) =>
+    Math.abs(s.left - want[i].left) > TOLERANCE_PX || Math.abs(s.width - want[i].width) > TOLERANCE_PX
+      ? [`${s.label} is ${s.left.toFixed(1)} + ${s.width.toFixed(1)}, laid out as ${want[i].left.toFixed(1)} + ${want[i].width.toFixed(1)}`]
+      : []
+  );
 }
 
 test.describe("the hand's tap strips", () => {
@@ -96,7 +108,7 @@ test.describe("the hand's tap strips", () => {
 
     const dealt = await strips(page);
     expect(dealt.length, "the seeded hand rendered no cards").toBeGreaterThan(4);
-    expect(gaps(dealt), "the strips leave gaps or overlap in a freshly dealt hand").toEqual([]);
+    expect(mismatches(dealt, expected(dealt.length, true)), "a freshly dealt hand's strips are not the row's").toEqual([]);
     // The last card's strip is the card itself, so a row of equal strips would
     // mean `hitWidth` is not being applied at all and the case below proves
     // nothing about it.
@@ -116,8 +128,8 @@ test.describe("the hand's tap strips", () => {
 
     const after = await strips(page);
     expect(
-      gaps(after),
-      "after a play the strips no longer tile — a card is keeping the width the row had " +
+      mismatches(after, expected(after.length, false)),
+      "after a play the strips are not the row's — a card is keeping the width the row had " +
         "before it, so presses near its right edge go to its neighbour"
     ).toEqual([]);
     // The step, and by more than the tolerance the tiling above allows: a step
