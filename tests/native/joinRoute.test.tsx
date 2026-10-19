@@ -20,7 +20,7 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('@/context/AuthContext', () => ({ useAuth: () => mockState.auth }));
 jest.mock('@/context/SocketContext', () => ({
-  useSocket: () => ({ acceptInvite: mockAcceptInvite }),
+  useInvites: () => ({ accept: mockAcceptInvite }),
 }));
 
 import JoinScreen from '@/app/join/[code]';

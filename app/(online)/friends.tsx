@@ -12,7 +12,7 @@ import { uiFeedback } from "@/lib/device/feedback";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useSocket } from "@/context/SocketContext";
+import { useInvites, usePresence } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
 import { serverErrorMessage } from "@/lib/apiError";
 import { apiRequest } from "@/lib/query-client";
@@ -51,7 +51,8 @@ function GroupLabel({ text }: { text: string }) {
 export default function FriendsScreen() {
   const { t, tn } = useTranslation();
   const searchHint = useA11yHint(t("friends.searchA11yHint"));
-  const { socket, onlineIds, gameInvites, dismissGameInvite, acceptInvite } = useSocket();
+  const { onlineIds, refresh } = usePresence();
+  const { invites: gameInvites, dismiss: dismissGameInvite, accept: acceptInvite } = useInvites();
   const qc = useQueryClient();
   const [addLoading, setAddLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -198,8 +199,8 @@ export default function FriendsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (socket) socket.emit("friend:get_online_list");
-    }, [socket])
+      refresh();
+    }, [refresh])
   );
 
   // Asked here rather than at launch: the only notification the app sends is

@@ -8,7 +8,17 @@ import {
 
 export type Socket = UntypedSocket<ServerToClientEvents, ClientToServerEvents>;
 
-const socketMap = new Map<string, Socket>();
+/**
+ * `onAuthFailure` fires when the ticket endpoint reports the session is dead
+ * (401): a ticket mint can never succeed again until the user signs in, so the
+ * owner stops retrying instead.
+ */
+interface SocketEntry {
+  socket: Socket;
+  handlers: { onAuthFailure: () => void };
+}
+
+const socketMap = new Map<string, SocketEntry>();
 
 /**
  * The map, readable by React without owning a copy of it.
@@ -27,18 +37,7 @@ export function subscribeToSockets(onChange: () => void): () => void {
 }
 
 export function peekSocket(userId: string | null | undefined): Socket | null {
-  return userId ? (socketMap.get(userId) ?? null) : null;
-}
-
-/**
- * Fired when the ticket endpoint reports the session is dead (401). Retrying
- * a ticket mint after that can never succeed until the user logs in again —
- * SocketContext registers this to stop hammering the endpoint and route to
- * auth instead.
- */
-let authFailureHandler: (() => void) | null = null;
-export function setSocketAuthFailureHandler(handler: (() => void) | null) {
-  authFailureHandler = handler;
+  return userId ? (socketMap.get(userId)?.socket ?? null) : null;
 }
 
 /**
@@ -49,7 +48,7 @@ export function setSocketAuthFailureHandler(handler: (() => void) | null) {
  * Uses a raw fetch (not apiRequest) so a 401 can be told apart from a
  * transient network failure instead of being swallowed identically.
  */
-async function fetchSocketTicket(): Promise<string | null> {
+async function fetchSocketTicket(onAuthFailure: () => void): Promise<string | null> {
   try {
     const baseUrl = getApiUrl().replace(/\/$/, "");
     const res = await fetch(`${baseUrl}/api/auth/socket-ticket`, {
@@ -57,7 +56,7 @@ async function fetchSocketTicket(): Promise<string | null> {
       credentials: "include",
     });
     if (res.status === 401) {
-      authFailureHandler?.();
+      onAuthFailure();
       return null;
     }
     if (!res.ok) return null;
@@ -68,16 +67,19 @@ async function fetchSocketTicket(): Promise<string | null> {
   }
 }
 
-export function connectSocket(userId: string): Socket {
-  if (socketMap.has(userId)) {
-    return socketMap.get(userId)!;
+export function connectSocket(userId: string, { onAuthFailure }: { onAuthFailure: () => void }): Socket {
+  const existing = socketMap.get(userId);
+  if (existing) {
+    existing.handlers.onAuthFailure = onAuthFailure;
+    return existing.socket;
   }
+  const handlers = { onAuthFailure };
   const baseUrl = getApiUrl().replace(/\/$/, "");
   const socket = io(baseUrl, {
     // Called before every connection attempt, including each reconnect, so a
     // fresh ticket is minted every time (tickets are single-use).
     auth: (cb: (data: Record<string, unknown>) => void) => {
-      void fetchSocketTicket().then((ticket) =>
+      void fetchSocketTicket(() => handlers.onAuthFailure()).then((ticket) =>
         cb(ticket ? { ticket, protocolVersion: PROTOCOL_VERSION } : { protocolVersion: PROTOCOL_VERSION })
       );
     },
@@ -93,14 +95,14 @@ export function connectSocket(userId: string): Socket {
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
   });
-  socketMap.set(userId, socket);
+  socketMap.set(userId, { socket, handlers });
   mapListeners.forEach((fn) => fn());
   return socket;
 }
 
 
 export function disconnectSocket(userId: string) {
-  const s = socketMap.get(userId);
+  const s = socketMap.get(userId)?.socket;
   if (s) {
     s.removeAllListeners();
     s.disconnect();

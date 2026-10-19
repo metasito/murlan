@@ -17,7 +17,6 @@ import {
   connectSocket,
   disconnectSocket,
   peekSocket,
-  setSocketAuthFailureHandler,
   subscribeToSockets,
   type Socket,
 } from "@/lib/socket";
@@ -29,7 +28,9 @@ import { SessionReplacedNotice } from "@/components/SessionReplacedNotice";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
 import { reconnectDelayMs } from "@/lib/reconnectDelay";
+import { INTENT_ACK_TIMEOUT_MS } from "@/lib/sendIntent";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "@/shared/http";
+import type { IntentReply } from "@/shared/protocol";
 import type { Socket as UntypedSocket } from "socket.io-client";
 
 /**
@@ -69,28 +70,34 @@ interface InviteRow {
   createdAt: string;
 }
 
-interface SocketContextValue {
-  socket: Socket | null;
-  connected: boolean;
-  onlineIds: Set<string>;
-  pendingInvite: PendingInvite | null;
-  clearInvite: () => void;
-  gameInvites: PendingInvite[];
-  dismissGameInvite: (roomCode: string) => void;
-  hideGameInvite: (roomCode: string) => void;
+interface Presence {
+  onlineIds: ReadonlySet<string>;
+  /** Asks the server who is online now: `friend:get_online_list`. */
+  refresh: () => void;
+}
+
+interface Invites {
+  invites: PendingInvite[];
+  /** The invite that just arrived, which the online hub prefills and asks about; never a move. */
+  prompt: PendingInvite | null;
   /**
    * The room the player has asked to be put into, set by tapping Join on an
    * invite or by opening app/join/[code].tsx (a join link, a tapped invite
    * push), and consumed by the online group, which is the only place
    * `joinRoom` exists.
    *
-   * Distinct from `pendingInvite`, which only says one arrived: an invite that
+   * Distinct from `prompt`, which only says one arrived: an invite that
    * merely turns up must never move anyone, and this is what separates "look
    * now" from "take me there".
    */
-  acceptedInvite: string | null;
-  acceptInvite: (roomCode: string) => void;
-  clearAcceptedInvite: () => void;
+  accepted: string | null;
+  accept: (roomCode: string) => void;
+  dismiss: (roomCode: string) => void;
+  hide: (roomCode: string) => void;
+  clearPrompt: () => void;
+  clearAccepted: () => void;
+  /** `friend:invite` with its ack; false on a timeout or a refusal, which this has already told the player about. */
+  send: (friendUserId: string, roomCode: string) => Promise<boolean>;
 }
 
 /**
@@ -107,12 +114,31 @@ const RECONCILED_ON_CONNECT = [
 ] as const;
 
 const NO_HIDDEN_INVITES: ReadonlySet<string> = new Set();
+// One empty list, not `= []`: a fresh default every render would wake every invites reader.
+const NO_INVITE_ROWS: InviteRow[] = [];
+const NO_PROVIDER = Symbol("no SocketProvider");
 
-const SocketContext = createContext<SocketContextValue | null>(null);
+// Three contexts over one provider, so a friend coming online wakes only the
+// presence readers, and the account-switch reset below stays in one place.
+const ConnectionContext = createContext<Socket | null | typeof NO_PROVIDER>(NO_PROVIDER);
+const PresenceContext = createContext<Presence | null>(null);
+const InvitesContext = createContext<Invites | null>(null);
 
-export function useSocket() {
-  const ctx = useContext(SocketContext);
-  if (!ctx) throw new Error("useSocket must be used within SocketProvider");
+export function useSocketConnection(): Socket | null {
+  const socket = useContext(ConnectionContext);
+  if (socket === NO_PROVIDER) throw new Error("useSocketConnection must be used within SocketProvider");
+  return socket;
+}
+
+export function usePresence(): Presence {
+  const ctx = useContext(PresenceContext);
+  if (!ctx) throw new Error("usePresence must be used within SocketProvider");
+  return ctx;
+}
+
+export function useInvites(): Invites {
+  const ctx = useContext(InvitesContext);
+  if (!ctx) throw new Error("useInvites must be used within SocketProvider");
   return ctx;
 }
 
@@ -130,13 +156,12 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     () => peekSocket(userId),
     () => null
   );
-  const [connected, setConnected] = useState(false);
-  const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
+  const [onlineIds, setOnlineIds] = useState<ReadonlySet<string>>(() => new Set());
   const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null);
   // The row is the invite; the socket event and the push are both only "look
   // now". Holding this in component state instead was why an invite that
   // arrived while the socket was down could not be seen anywhere afterwards.
-  const { data: inviteRows = [] } = useQuery<InviteRow[]>({
+  const { data: inviteRows = NO_INVITE_ROWS } = useQuery<InviteRow[]>({
     queryKey: ["/api/friends/invites"],
     enabled: !!userId,
     refetchOnWindowFocus: true,
@@ -245,7 +270,6 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const [shownUserId, setShownUserId] = useState(userId);
   if (userId !== shownUserId) {
     setShownUserId(userId);
-    setConnected(false);
     setOnlineIds(new Set());
     setSessionReplaced(null);
     setPendingInvite(null);
@@ -258,7 +282,6 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
       }
-      setSocketAuthFailureHandler(null);
       if (socketRef.current) {
         const uid = connectedUserIdRef.current;
         if (uid) disconnectSocket(uid);
@@ -267,10 +290,6 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       }
       return;
     }
-
-    const socket = connectSocket(userId);
-    socketRef.current = socket;
-    connectedUserIdRef.current = userId;
 
     // The ticket endpoint reported the session is dead (401): no amount of
     // retrying will ever succeed. Stop hammering it, log out locally and
@@ -285,10 +304,11 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       socket.disconnect();
       void logout().finally(() => router.replace("/auth"));
     };
-    setSocketAuthFailureHandler(onAuthFailure);
+    const socket = connectSocket(userId, { onAuthFailure });
+    socketRef.current = socket;
+    connectedUserIdRef.current = userId;
 
     const onConnect = () => {
-      setConnected(true);
       setSessionReplaced(null);
       retryAttemptRef.current = 0;
       socket.emit("friend:get_online_list");
@@ -300,10 +320,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       for (const queryKey of RECONCILED_ON_CONNECT) qc.invalidateQueries({ queryKey });
     };
 
-    const onDisconnect = (reason: UntypedSocket.DisconnectReason) => {
-      setConnected(false);
-      reportSocketClose(reason);
-    };
+    const onDisconnect = (reason: UntypedSocket.DisconnectReason) => reportSocketClose(reason);
 
     // A handshake rejected by server middleware (expired or already-used
     // ticket) destroys the socket's subscriptions, so socket.io will not retry
@@ -312,7 +329,6 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     // per attempt. While `active` is true the library's own reconnection is
     // still running and owns the retry.
     const onConnectError = (err: Error) => {
-      setConnected(false);
       // Retrying cannot help: this bundle is below the server's floor.
       if (err.message === CLIENT_OUTDATED) return requireUpdate();
       if (socket.active) return;
@@ -461,17 +477,13 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     socket.on("friend:error", onFriendError);
     socket.on("socket:error", onSocketError);
 
-    if (socket.connected) {
-      setConnected(true);
-      socket.emit("friend:get_online_list");
-    }
+    if (socket.connected) socket.emit("friend:get_online_list");
 
     return () => {
       if (retryTimerRef.current) {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
       }
-      setSocketAuthFailureHandler(null);
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
       socket.off("connect_error", onConnectError);
@@ -487,41 +499,69 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     };
   }, [userId, logout, qc, showNotification, unhideGameInvite]);
 
-  const contextValue = useMemo(
+  const refresh = useCallback(() => {
+    socket?.emit("friend:get_online_list");
+  }, [socket]);
+  const presence = useMemo(() => ({ onlineIds, refresh }), [onlineIds, refresh]);
+
+  const send = useCallback(
+    (friendUserId: string, roomCode: string) =>
+      new Promise<boolean>((resolve) => {
+        const settle = (reply: IntentReply | null) => {
+          if (reply?.ok) return resolve(true);
+          showNotification({
+            type: "game_error",
+            title: t("common.error"),
+            message: reply ? translateServerPayload(reply) : t("room.requestNotDelivered"),
+            duration: Reading.notice,
+          });
+          resolve(false);
+        };
+        if (!socket) return settle(null);
+        socket
+          .timeout(INTENT_ACK_TIMEOUT_MS)
+          .emit("friend:invite", { friendUserId, roomCode }, (err: unknown, reply?: IntentReply) =>
+            settle(err ? null : (reply ?? null))
+          );
+      }),
+    [socket, showNotification]
+  );
+
+  const invites = useMemo(
     () => ({
-      socket,
-      connected,
-      onlineIds,
-      pendingInvite,
-      clearInvite,
-      gameInvites,
-      dismissGameInvite,
-      hideGameInvite,
-      acceptedInvite,
-      acceptInvite,
-      clearAcceptedInvite,
+      invites: gameInvites,
+      prompt: pendingInvite,
+      accepted: acceptedInvite,
+      accept: acceptInvite,
+      dismiss: dismissGameInvite,
+      hide: hideGameInvite,
+      clearPrompt: clearInvite,
+      clearAccepted: clearAcceptedInvite,
+      send,
     }),
     [
-      socket,
-      connected,
-      onlineIds,
-      pendingInvite,
       gameInvites,
-      clearInvite,
-      dismissGameInvite,
-      hideGameInvite,
+      pendingInvite,
       acceptedInvite,
       acceptInvite,
+      dismissGameInvite,
+      hideGameInvite,
+      clearInvite,
       clearAcceptedInvite,
+      send,
     ]
   );
 
   return (
-    <SocketContext.Provider value={contextValue}>
-      {children}
-      {sessionReplaced ? (
-        <SessionReplacedNotice payload={sessionReplaced} onReconnect={reconnectHere} />
-      ) : null}
-    </SocketContext.Provider>
+    <ConnectionContext.Provider value={socket}>
+      <PresenceContext.Provider value={presence}>
+        <InvitesContext.Provider value={invites}>
+          {children}
+          {sessionReplaced ? (
+            <SessionReplacedNotice payload={sessionReplaced} onReconnect={reconnectHere} />
+          ) : null}
+        </InvitesContext.Provider>
+      </PresenceContext.Provider>
+    </ConnectionContext.Provider>
   );
 }

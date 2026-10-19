@@ -23,7 +23,7 @@ const mockSocket = {
   emit() {},
 };
 jest.mock('@/context/SocketContext', () => ({
-  useSocket: () => ({ socket: mockSocket }),
+  useSocketConnection: () => mockSocket,
 }));
 
 const mockShowNotification = jest.fn();

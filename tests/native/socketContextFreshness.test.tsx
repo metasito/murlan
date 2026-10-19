@@ -1,7 +1,7 @@
-// tests/native/socketContextFreshness.test.tsx — useSocket().socket must
+// tests/native/socketContextFreshness.test.tsx — useSocketConnection() must
 // reflect the connected-socket instance on any render once it exists, not
-// only on a render that connected/onlineIds/pendingInvite/gameInvites
-// happens to trigger. A render forced by something else, before "connect"
+// only on a render that onlineIds/pendingInvite/gameInvites happens to
+// trigger. A render forced by something else, before "connect"
 // fires, is exactly the window a ref-backed memo goes stale in.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React, { useState } from 'react';
@@ -30,21 +30,20 @@ jest.mock('@/lib/socket', () => ({
   disconnectSocket: () => {},
   peekSocket: (userId?: string | null) => (userId ? mockSocket : null),
   subscribeToSockets: () => () => {},
-  setSocketAuthFailureHandler: () => {},
 }));
 
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, logout: async () => {} }),
 }));
 
-const { SocketProvider, useSocket } = require('@/context/SocketContext') as typeof import('@/context/SocketContext');
+const { SocketProvider, useSocketConnection } = require('@/context/SocketContext') as typeof import('@/context/SocketContext');
 const { NotificationProvider } = require('@/context/NotificationContext') as typeof import('@/context/NotificationContext');
 
-let seen: { hasSocket: boolean; connected: boolean }[] = [];
+let seen: { hasSocket: boolean }[] = [];
 
 function Probe() {
-  const { socket, connected } = useSocket();
-  seen.push({ hasSocket: socket !== null, connected });
+  const socket = useSocketConnection();
+  seen.push({ hasSocket: socket !== null });
   return <Text>probe</Text>;
 }
 
@@ -64,7 +63,7 @@ function Harness() {
   );
 }
 
-describe('useSocket().socket freshness', () => {
+describe('useSocketConnection() freshness', () => {
   beforeEach(() => {
     mockSocket.connected = false;
     mockSocket.listeners.clear();
@@ -79,7 +78,6 @@ describe('useSocket().socket freshness', () => {
     await fireEvent.press(view.getByTestId('tick'));
 
     const last = seen[seen.length - 1];
-    expect(last.connected).toBe(false);
     expect(last.hasSocket).toBe(true);
 
     await view.unmount();

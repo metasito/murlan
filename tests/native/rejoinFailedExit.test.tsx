@@ -20,7 +20,7 @@ jest.mock('expo-router', () => ({
 }));
 
 jest.mock('@/context/SocketContext', () => ({
-  useSocket: () => ({ acceptedInvite: null, clearAcceptedInvite: jest.fn() }),
+  useInvites: () => ({ accepted: null, clearAccepted: jest.fn() }),
 }));
 
 jest.mock('@/context/OnlineGameContext', () =>

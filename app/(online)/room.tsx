@@ -25,7 +25,7 @@ import {
 } from "@/context/onlineGameHooks";
 import { useNotification } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
-import { useSocket } from "@/context/SocketContext";
+import { useInvites, usePresence } from "@/context/SocketContext";
 import { Colors, Spacing, Radius, FontSize, Motion, TOUCH_TARGET_MIN } from '@/lib/theme';
 import { firstTargetFor, TEAMS_PLAYER_COUNT } from "@/lib/game/gameEngine";
 import type { MatchLength } from "@/lib/game/gameEngine";
@@ -43,7 +43,6 @@ import { A11yStatus, a11yHidden, a11yState } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { FriendInfo } from "@/shared/http";
 import { LoadingBlock, ErrorBlock } from "@/components/StateBlock";
-import { INTENT_ACK_TIMEOUT_MS } from "@/lib/sendIntent";
 import { getApiUrl } from "@/lib/query-client";
 import { joinUrl } from "@/lib/deepLink";
 
@@ -196,13 +195,14 @@ function InviteFriendsPanel({
   isLandscape: boolean;
 }) {
   const { t } = useTranslation();
-  const { onlineIds, socket } = useSocket();
+  const { onlineIds, refresh } = usePresence();
+  const { send } = useInvites();
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (socket) socket.emit("friend:get_online_list");
-  }, [socket]);
+    refresh();
+  }, [refresh]);
 
   const { data: friends = [], isLoading, isError, refetch } = useQuery<FriendInfo[]>({
     queryKey: ["/api/friends"],
@@ -220,16 +220,13 @@ function InviteFriendsPanel({
     });
 
   function handleInvite(friend: FriendInfo) {
-    if (!socket) return;
     setSendingIds((prev) => new Set(prev).add(friend.id));
-    socket
-      .timeout(INTENT_ACK_TIMEOUT_MS)
-      .emit("friend:invite", { friendUserId: friend.id, roomCode }, (err: unknown, reply?: { ok: boolean }) => {
-        forget(setSendingIds, friend.id);
-        if (err || !reply?.ok) return;
-        setSentIds((prev) => new Set(prev).add(friend.id));
-        setTimeout(() => forget(setSentIds, friend.id), 2000);
-      });
+    void send(friend.id, roomCode).then((sent) => {
+      forget(setSendingIds, friend.id);
+      if (!sent) return;
+      setSentIds((prev) => new Set(prev).add(friend.id));
+      setTimeout(() => forget(setSentIds, friend.id), 2000);
+    });
   }
 
   // The list does not scroll, so its height is exactly the rows it shows: landscape keeps

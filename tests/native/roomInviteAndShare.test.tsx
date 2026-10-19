@@ -10,16 +10,7 @@ import { en as locale } from '@/locales/en';
 import { it as itLocale } from '@/locales/it';
 import { sq as sqLocale } from '@/locales/sq';
 
-type Ack = (err: unknown, reply?: { ok: boolean; code?: string }) => void;
-const mockAcks: Ack[] = [];
-const mockSocket = {
-  emit: jest.fn(),
-  timeout: () => ({
-    emit: (_event: string, _payload: unknown, ack: Ack) => {
-      mockAcks.push(ack);
-    },
-  }),
-};
+const mockAcks: ((sent: boolean) => void)[] = [];
 
 const mockShowNotification = jest.fn();
 const mockSetString = jest.fn(async (_s: string) => true);
@@ -38,7 +29,10 @@ jest.mock('@/context/AuthContext', () => ({
 }));
 
 jest.mock('@/context/SocketContext', () => ({
-  useSocket: () => ({ socket: mockSocket, onlineIds: new Set(['f1']) }),
+  usePresence: () => ({ onlineIds: new Set(['f1']), refresh: () => {} }),
+  useInvites: () => ({
+    send: () => new Promise<boolean>((resolve) => mockAcks.push(resolve)),
+  }),
 }));
 
 jest.mock('@/context/NotificationContext', () => ({
@@ -105,24 +99,16 @@ describe('the invite panel waits for the server', () => {
     const view = await renderRoom();
     await fireEvent.press(view.getByLabelText(INVITE));
     expect(view.queryByLabelText(SENT)).toBeNull();
-    await act(async () => mockAcks[0](null, { ok: true, code: 'INVITE_SHOWN' }));
+    await act(async () => mockAcks[0](true));
     expect(view.getByLabelText(SENT)).toBeTruthy();
     await view.unmount();
   });
 
-  it('resets the row when the server refuses', async () => {
+  it('resets the row when the invite was not sent', async () => {
     const view = await renderRoom();
     await fireEvent.press(view.getByLabelText(INVITE));
-    await act(async () => mockAcks[0](null, { ok: false, code: 'NOT_FRIENDS' }));
+    await act(async () => mockAcks[0](false));
     expect(view.queryByLabelText(SENT)).toBeNull();
-    expect(view.getByLabelText(INVITE)).toBeTruthy();
-    await view.unmount();
-  });
-
-  it('resets the row when no answer arrives', async () => {
-    const view = await renderRoom();
-    await fireEvent.press(view.getByLabelText(INVITE));
-    await act(async () => mockAcks[0](new Error('timeout')));
     expect(view.getByLabelText(INVITE)).toBeTruthy();
     await view.unmount();
   });

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { router, useSegments } from "expo-router";
-import { useSocket } from "./SocketContext";
+import { useInvites } from "./SocketContext";
 import { useOnlineConnection, useOnlineRoom } from "./onlineGameHooks";
 import { NO_TABLE, navigationFor, onlineRouteOf, type OnlineFacts, type OnlineRoute } from "./onlineRouting";
 
@@ -8,7 +8,7 @@ import { NO_TABLE, navigationFor, onlineRouteOf, type OnlineFacts, type OnlineRo
 export function useOnlineRouting(): void {
   const { room, hasGame, isSpectator, entrySource, joinRoom } = useOnlineRoom();
   const { connected, rejoinFailed, clearRejoinFailed } = useOnlineConnection();
-  const { acceptedInvite, clearAcceptedInvite } = useSocket();
+  const { accepted: acceptedInvite, clearAccepted: clearAcceptedInvite } = useInvites();
   const here = onlineRouteOf(useSegments());
 
   const roomId = room?.roomId ?? null;

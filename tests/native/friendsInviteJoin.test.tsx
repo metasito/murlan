@@ -22,12 +22,11 @@ jest.mock('@/lib/device/pushRegistration', () => ({
 const mockDismiss = jest.fn();
 const mockAccept = jest.fn();
 jest.mock('@/context/SocketContext', () => ({
-  useSocket: () => ({
-    socket: null,
-    onlineIds: new Set(),
-    gameInvites: [{ from: 'Besi', roomCode: 'ABC123' }],
-    dismissGameInvite: mockDismiss,
-    acceptInvite: mockAccept,
+  usePresence: () => ({ onlineIds: new Set(), refresh: () => {} }),
+  useInvites: () => ({
+    invites: [{ from: 'Besi', roomCode: 'ABC123' }],
+    dismiss: mockDismiss,
+    accept: mockAccept,
   }),
 }));
 

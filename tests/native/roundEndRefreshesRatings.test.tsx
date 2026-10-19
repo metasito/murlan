@@ -27,7 +27,7 @@ const mockSocket = {
 };
 
 jest.mock('@/context/SocketContext', () => ({
-  useSocket: () => ({ socket: mockSocket }),
+  useSocketConnection: () => mockSocket,
 }));
 
 describe('game:round_over', () => {

@@ -23,7 +23,6 @@ jest.mock('@/lib/socket', () => ({
   disconnectSocket: () => {},
   peekSocket: (userId?: string | null) => (userId ? mockSocket : null),
   subscribeToSockets: () => () => {},
-  setSocketAuthFailureHandler: () => {},
 }));
 
 let mockUser: { id: string; username: string } | null = { id: 'u1', username: 'Ana' };
