@@ -101,6 +101,13 @@ export function inform(s, at = new Date(), parity = null) {
   return said.length ? `loop-status, derived ${at.toISOString()}, for information: ${said.join("; ")}.` : "";
 }
 
+/**
+ * The run as this session stands in it: a loop session is read at the phase it was handed.
+ *
+ * @param {Record<string, string | undefined>} [env]
+ */
+export const standing = (env = process.env, read = derive) => read({ ci: true, handed: fromEnv(env).phase });
+
 /** @param {{number: number, since: string}|null} [parity] */
 export const statusFor = (s, env, at = new Date(), parity = null) =>
   fromEnv(env).loop ? report(s, fromEnv(env).reason) : inform(s, at, parity);
@@ -110,7 +117,7 @@ if (isInvokedDirectly(process.argv[1], import.meta.url) && !silentAt(process.arg
   const { loop } = fromEnv();
   const parity = loop ? null : parityRed();
   try {
-    const out = statusFor(derive({ ci: true }), process.env, at, parity);
+    const out = statusFor(standing(), process.env, at, parity);
     if (out) console.log(out);
   } catch (err) {
     const why = String(err?.message ?? err).split("\n")[0];

@@ -82,15 +82,20 @@ export type TableActionDraft = TableAction extends infer T
  * `forward` — do nothing. Reviving a stranded round to hand one seat to a bot
  * would set the whole table playing itself with nobody watching.
  */
-export function takeoverMode(kind: TableActionKind): "create" | "restore" | "forward" {
-  if (kind === "startMatch") return "create";
-  return kind === "play" ||
-    kind === "pass" ||
-    kind === "exchange" ||
-    kind === "rematchVote" ||
-    kind === "endMatchVote" ||
-    kind === "rejoin" ||
-    kind === "resume"
-    ? "restore"
-    : "forward";
-}
+export type TakeoverMode = "create" | "restore" | "forward";
+
+export const TAKEOVER = {
+  startMatch: "create",
+  play: "restore",
+  pass: "restore",
+  exchange: "restore",
+  rematchVote: "restore",
+  endMatchVote: "restore",
+  rejoin: "restore",
+  resume: "restore",
+  reaction: "forward",
+  spectate: "forward",
+  unspectate: "forward",
+  seatLost: "forward",
+  vacate: "forward",
+} as const satisfies Record<TableActionKind, TakeoverMode>;

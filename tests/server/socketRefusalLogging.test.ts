@@ -14,9 +14,11 @@
 // inherits whichever answer this file pins.
 import { test, describe, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
-import { GameRejoinSchema as Payload } from "../../shared/socketSchemas.ts";
+import { GameRejoinSchema as Payload, NoPayloadSchema, RoomJoinSchema } from "../../shared/socketSchemas.ts";
+import { payload } from "../../server/shared/payload.ts";
 import { onEvent, __resetRateLimits } from "../../server/socket/socketSafety.ts";
 import { logger } from "../../server/http/logger.ts";
+import { OK, refuse } from "../../server/shared/refusal.ts";
 
 interface Recorded {
   level: string;
@@ -38,12 +40,16 @@ function fakeSocket(userId = "u1") {
     },
     /** Delivers a packet the way socket.io would, and waits for the handler. */
     async send(event: string, payload?: unknown) {
+      return (await this.sendAll(event, payload))[0];
+    },
+    /** Every acknowledgement the wrapper gave the packet. */
+    async sendAll(event: string, payload?: unknown) {
       const replies: any[] = [];
       handlers.get(event)!(payload, (reply: unknown) => replies.push(reply));
       // The wrapper runs its body in a detached async IIFE, so the answer is
       // never ready in the same tick the packet arrives in.
       await new Promise((r) => setImmediate(r));
-      return replies[0];
+      return replies;
     },
     emitted,
   };
@@ -71,7 +77,7 @@ describe("onEvent leaves every refusal in the log", () => {
 
   test("a rate-limited packet is named in the log", async () => {
     const socket = fakeSocket();
-    onEvent(socket as any, "game:rejoin", Payload, async () => undefined, {
+    onEvent(socket as any, "game:rejoin", Payload, async () => OK, {
       limit: 1,
       windowMs: 60_000,
     });
@@ -92,7 +98,7 @@ describe("onEvent leaves every refusal in the log", () => {
     // The limiter exists to make excess cheap. A line per rejected packet
     // would hand whoever is flooding a disk-filling primitive for free.
     const socket = fakeSocket();
-    onEvent(socket as any, "game:rejoin", Payload, async () => undefined, {
+    onEvent(socket as any, "game:rejoin", Payload, async () => OK, {
       limit: 1,
       windowMs: 60_000,
     });
@@ -111,7 +117,7 @@ describe("onEvent leaves every refusal in the log", () => {
     const socket = fakeSocket();
     // Wide enough that both packets of a pair land in the same window even on
     // a loaded machine: a window this test outran would count three.
-    onEvent(socket as any, "game:rejoin", Payload, async () => undefined, {
+    onEvent(socket as any, "game:rejoin", Payload, async () => OK, {
       limit: 1,
       windowMs: 200,
     });
@@ -142,9 +148,41 @@ describe("onEvent leaves every refusal in the log", () => {
     assert.equal(refusal.fields.event, "game:rejoin");
   });
 
+  test("a returned refusal is logged once, told once on its channel, and acked without its notice", async () => {
+    const socket = fakeSocket();
+    onEvent(socket as any, "room:join", RoomJoinSchema, async () => refuse("ROOM_FULL"));
+
+    const reply = await socket.send("room:join", { code: "ABCDEF" });
+    assert.deepEqual(reply, { ok: false, code: "ROOM_FULL" });
+    assert.ok(!("notice" in reply), "the ack's shape on the wire is IntentReply");
+    assert.equal(lines.filter((l) => l.fields.code === "ROOM_FULL").length, 1);
+    assert.deepEqual(socket.emitted, [{ event: "room:error", payload: payload("ROOM_FULL") }]);
+  });
+
+  test("a refusal sink that throws still leaves the intent answered, once, and logged", async () => {
+    const socket = fakeSocket();
+    onEvent(socket as any, "room:join", RoomJoinSchema, async () => refuse("ROOM_FULL"), {
+      refuse: () => {
+        throw new Error("sink down");
+      },
+    });
+
+    assert.deepEqual(await socket.sendAll("room:join", { code: "ABCDEF" }), [{ ok: false, code: "ROOM_FULL" }]);
+    assert.ok(lines.some((l) => l.level === "error" && l.fields.code === "ROOM_FULL"));
+  });
+
+  test("a silent refusal is acked and logged, and tells the socket nothing", async () => {
+    const socket = fakeSocket();
+    onEvent(socket as any, "game:pass", NoPayloadSchema, async () => ({ ok: false, code: "NOT_YOUR_TURN" }));
+
+    assert.deepEqual(await socket.send("game:pass"), { ok: false, code: "NOT_YOUR_TURN" });
+    assert.equal(lines.filter((l) => l.fields.code === "NOT_YOUR_TURN").length, 1);
+    assert.deepEqual(socket.emitted, []);
+  });
+
   test("a malformed packet is named in the log", async () => {
     const socket = fakeSocket();
-    onEvent(socket as any, "game:rejoin", Payload, async () => undefined);
+    onEvent(socket as any, "game:rejoin", Payload, async () => OK);
 
     assert.deepEqual(await socket.send("game:rejoin", { roomId: "" }), {
       ok: false,
@@ -193,7 +231,7 @@ describe("onEvent leaves every refusal in the log", () => {
 
   test("an accepted packet says nothing — a log of every move is a log nobody reads", async () => {
     const socket = fakeSocket();
-    onEvent(socket as any, "game:rejoin", Payload, async () => undefined, {
+    onEvent(socket as any, "game:rejoin", Payload, async () => OK, {
       limit: 10,
       windowMs: 60_000,
     });

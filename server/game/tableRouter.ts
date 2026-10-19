@@ -16,9 +16,9 @@ import type { SocketServer } from "../socket/socketTypes.ts";
 import { logger } from "../http/logger.ts";
 import { activeGames, isShuttingDown } from "./gameRoom.ts";
 import { claimRoom, ownsRoom, releaseRoom } from "./gameOwnership.ts";
-import type { EventOutcome } from "../socket/socketSafety.ts";
-import type { TableAction, TableActionDraft } from "./tableActions.ts";
-import { takeoverMode } from "./tableActions.ts";
+import type { Outcome } from "../shared/refusal.ts";
+import type { TableAction, TableActionDraft, TakeoverMode } from "./tableActions.ts";
+import { TAKEOVER } from "./tableActions.ts";
 
 export const TABLE_ACTION_EVENT = "murlan:table";
 
@@ -29,7 +29,7 @@ export const TABLE_ACTION_EVENT = "murlan:table";
  */
 const NOT_MINE = "NOT_THIS_INSTANCE";
 
-const UNOWNED: EventOutcome = { ok: false, code: "NO_LIVE_GAME" };
+const UNOWNED: Outcome = { ok: false, code: "NO_LIVE_GAME" };
 
 /**
  * Someone holds the room and could not be reached. Deliberately not
@@ -37,9 +37,9 @@ const UNOWNED: EventOutcome = { ok: false, code: "NO_LIVE_GAME" };
  * disconnect path releases the seat as a lobby seat — and doing that because a
  * message was slow is worse than doing nothing.
  */
-const UNREACHABLE: EventOutcome = { ok: false, code: "TABLE_UNREACHABLE" };
+const UNREACHABLE: Outcome = { ok: false, code: "TABLE_UNREACHABLE" };
 
-export const UNKNOWN_ACTION: EventOutcome = { ok: false, code: "UNKNOWN_ACTION" };
+export const UNKNOWN_ACTION: Outcome = { ok: false, code: "UNKNOWN_ACTION" };
 
 /** How many times an unanswered forward is tried again before giving up. */
 const ASK_ATTEMPTS = 3;
@@ -56,7 +56,7 @@ const RETRY_BASE_MS = 120;
 const APPLIED_TTL_MS = 60_000;
 const APPLIED_MAX = 2_000;
 
-type Applier = (io: SocketServer, action: TableAction) => Promise<EventOutcome>;
+type Applier = (io: SocketServer, action: TableAction) => Promise<Outcome>;
 /**
  * Puts a persisted game back in memory, for the caller named by `forUserId`.
  *
@@ -82,9 +82,9 @@ export function setTableHandlers(applier: Applier, rehydrator: Rehydrator): void
 }
 
 /** Every action this process has already applied, by id. */
-const applied = new Map<string, { outcome: Promise<EventOutcome>; at: number }>();
+const applied = new Map<string, { outcome: Promise<Outcome>; at: number }>();
 
-function remember(id: string, outcome: Promise<EventOutcome>): Promise<EventOutcome> {
+function remember(id: string, outcome: Promise<Outcome>): Promise<Outcome> {
   const at = now();
   for (const [key, entry] of applied) {
     if (at - entry.at > APPLIED_TTL_MS) applied.delete(key);
@@ -105,7 +105,7 @@ function remember(id: string, outcome: Promise<EventOutcome>): Promise<EventOutc
  * Remembered before it settles: a client retry can arrive on another socket
  * while the first attempt is still being applied.
  */
-function applyOnce(io: SocketServer, action: TableAction): Promise<EventOutcome> {
+function applyOnce(io: SocketServer, action: TableAction): Promise<Outcome> {
   const seen = applied.get(action.id);
   if (seen && now() - seen.at <= APPLIED_TTL_MS) return seen.outcome;
   const outcome = apply(io, action);
@@ -127,7 +127,7 @@ function applyOnce(io: SocketServer, action: TableAction): Promise<EventOutcome>
  * restore — which is exactly the moment they are all acting at once.
  */
 export function registerTableRouting(io: SocketServer): void {
-  io.on(TABLE_ACTION_EVENT, (action: TableAction, reply?: (r: EventOutcome) => void) => {
+  io.on(TABLE_ACTION_EVENT, (action: TableAction, reply?: (r: Outcome) => void) => {
     if (typeof reply !== "function") return;
     void (async () => {
       if (!activeGames.has(action.roomId)) {
@@ -153,12 +153,12 @@ export function registerTableRouting(io: SocketServer): void {
 function askOtherInstances(
   io: SocketServer,
   action: TableAction
-): Promise<EventOutcome | null | undefined> {
+): Promise<Outcome | null | undefined> {
   return new Promise((resolve) => {
     io.serverSideEmit(
       TABLE_ACTION_EVENT,
       action,
-      (err: unknown, replies: EventOutcome[] = []) => {
+      (err: unknown, replies: Outcome[] = []) => {
         // An owner running a revision without a `default` for this kind acks
         // with nothing; it answered, and it did not apply the action.
         const owner = replies.findIndex((r) => r?.code !== NOT_MINE);
@@ -193,7 +193,7 @@ export const inFlight = new Map<string, Promise<unknown>>();
 /**
  * What `askClaimAndApply` returns when this attempt settled nothing: another
  * instance holds the room and could not be reached, so the caller sleeps and
- * asks again. Distinct from every `EventOutcome`, so "no answer yet" can never
+ * asks again. Distinct from every `Outcome`, so "no answer yet" can never
  * be mistaken for one.
  */
 const RETRY = Symbol("retry");
@@ -204,7 +204,7 @@ async function takeOverAndApply(
   io: SocketServer,
   action: TableAction,
   mayCreate: boolean
-): Promise<EventOutcome> {
+): Promise<Outcome> {
   const { roomId } = action;
   const restored = await rehydrate(roomId, mayCreate ? null : action.userId, io);
   if (restored === "newer") {
@@ -239,8 +239,8 @@ async function takeOverAndApply(
 async function askClaimAndApply(
   io: SocketServer,
   action: TableAction,
-  mode: ReturnType<typeof takeoverMode>
-): Promise<EventOutcome | typeof RETRY> {
+  mode: TakeoverMode
+): Promise<Outcome | typeof RETRY> {
   const { roomId } = action;
   const answer = await askOtherInstances(io, action);
   if (answer) return answer;
@@ -274,7 +274,7 @@ async function askClaimAndApply(
 export async function applyOrForward(
   io: SocketServer,
   draft: TableActionDraft
-): Promise<EventOutcome> {
+): Promise<Outcome> {
   // Stamped once and kept across every retry below: a forward whose answer was
   // slow is re-sent, and the owner must recognise it rather than play it again.
   // Scoped by user so one player's id can never answer for another's intent.
@@ -282,7 +282,7 @@ export async function applyOrForward(
   const id = intentId ? `${draft.userId}:${intentId}` : randomUUID();
   const action: TableAction = { ...rest, id } as TableAction;
   const { roomId } = action;
-  const mode = takeoverMode(action.kind);
+  const mode = TAKEOVER[action.kind];
 
   // A process on its way out takes nothing over: its ownership connection is
   // closing and the next process restores every table from `active_games`. It
@@ -307,7 +307,7 @@ export async function applyOrForward(
     // the room by the re-entrant lock, and restore over the first.
     const attemptSpan = askClaimAndApply(io, action, mode);
     inFlight.set(roomId, attemptSpan);
-    let settled: EventOutcome | typeof RETRY;
+    let settled: Outcome | typeof RETRY;
     try {
       settled = await attemptSpan;
     } finally {

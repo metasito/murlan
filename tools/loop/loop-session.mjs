@@ -71,6 +71,8 @@ export function runSession(
     // still-running Bash command and then runs SessionEnd, which is what a wedged session needs.
     // SIGINT only ends the turn, and a session with nothing to end ignores it.
     const clock = sleepClock(tick);
+    /** @type {NodeJS.Timeout | undefined} */
+    let grace;
     const watchdog = setInterval(() => {
       const slept = clock.lap();
       const now = Date.now();
@@ -88,14 +90,13 @@ export function runSession(
           /* already gone */
         }
       } else child.kill("SIGTERM");
-      setTimeout(() => {
+      grace = setTimeout(() => {
         child.kill("SIGKILL");
         child.stdout.destroy();
         child.stderr.destroy();
         finish(null);
-      }, killGraceMs).unref();
+      }, killGraceMs);
     }, tick);
-    watchdog.unref();
 
     let finished = false;
     child.on("close", (status) => finish(status));
@@ -103,6 +104,7 @@ export function runSession(
       if (finished) return;
       finished = true;
       clearInterval(watchdog);
+      clearTimeout(grace);
       // The session emits no marker for a phase it did not finish.
       state = closePhase(state, Date.now());
       // Resolved on the sink's own finish, not on the child's close: `end()` only asks, and a

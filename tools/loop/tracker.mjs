@@ -29,6 +29,8 @@ export function issueText(n, tracker = ghTracker()) {
   return [title, body ?? "", ...tracker.comments(n).map((c) => `--- ${c.author.login}: ${c.body}`)].join("\n");
 }
 
+export const OWNER_LABELS = new Set(["ready-for-human", "needs-info", "rejected", "deferred"]);
+
 /** `[remove, add]` for each transition, read by both trackers so they cannot drift apart. */
 const TRANSITIONS = {
   claim: [[], ["in-progress"]],

@@ -29,16 +29,12 @@ import { parseHeader } from "./brief.mjs";
 import { COMMITTING } from "./loop-stream.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
-function git(args, cwd) {
-  return gitAt(cwd)(args).trim();
-}
-
 /** A supervisor calls this in-process; the CLI below is the same read from a fresh one. */
 export function buildPassed(cwd) {
   let head, dirty, file;
   try {
-    head = git(["rev-parse", "HEAD"], cwd);
-    dirty = git(["status", "--porcelain"], cwd).length > 0;
+    head = gitAt(cwd).text(["rev-parse", "HEAD"]);
+    dirty = gitAt(cwd).text(["status", "--porcelain"]).length > 0;
     file = cachePath(cwd);
   } catch {
     return false;
@@ -83,7 +79,7 @@ export function buildReady(cwd, ticket, comments = ticketComments) {
   if (!buildPassed(cwd)) {
     return { ok: false, why: "no cached LOCAL PASS for HEAD on a clean tree; run `npm run agent:check`" };
   }
-  return dodVerdict(comments(ticket), git(["rev-parse", "HEAD"], cwd), lineResolver(cwd), true);
+  return dodVerdict(comments(ticket), gitAt(cwd).text(["rev-parse", "HEAD"]), lineResolver(cwd), true);
 }
 
 /**
@@ -206,8 +202,13 @@ export function reviewerRan(facts, n) {
   return round.some((f) => f?.kind === "task" && mine.has(f.id) && f.status === "completed");
 }
 
+const standing = () => {
+  const { base, worktree } = testSeams();
+  return derive({ base, worktree });
+};
+
 function reviewRound() {
-  const s = derive();
+  const s = standing();
   if (!s.onTicket) {
     console.error(`loop-gate: ${s.why} (${s.branch ?? "no branch"}) — nothing to judge`);
     return 2;
@@ -247,7 +248,7 @@ function buildGate(draft) {
 }
 
 function main() {
-  const s = derive();
+  const s = standing();
   const base = s.base ?? "origin/main";
 
   if (!s.onTicket) {
@@ -266,7 +267,7 @@ function main() {
     return 2;
   }
 
-  const v = landable(ticketComments(s.ticket), s.head, (args) => git(args, s.cwd), base);
+  const v = landable(ticketComments(s.ticket), s.head, gitAt(s.cwd).text, base);
   if (!v.ok) {
     if (!v.lines) {
       console.error(`loop-gate: #${s.ticket} — ${v.why}`);

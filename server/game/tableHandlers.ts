@@ -38,19 +38,18 @@
 // `vacateSeat`'s abandonment branch reach it too. Inside, it resolves the round
 // through `onlineGameLogic.ts` `resolveRoundEnd`, emits `game:round_over`, then
 // writes it through the `RoundOverWriters` `gamePersistence.ts` implements.
-import type { ServerPayload } from "../../shared/protocol.ts";
 import type { TranslationParams } from "../../shared/i18n.ts";
 import type { SocketServer } from "../socket/socketTypes.ts";
 import { eq } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { roomStore } from "../store/roomStore.ts";
 import { emitVoteState, emitEndMatchVoteState } from "../socket/emit.ts";
-import { payload } from "../socket/payload.ts";
+import { payload } from "../shared/payload.ts";
+import { OK, refuse, type Outcome, type Refusal } from "../shared/refusal.ts";
 import { logger } from "../http/logger.ts";
 import { trackEvent } from "../socket/events.ts";
 import { activeGames as activeGamesTable } from "../../shared/schema.ts";
-import type { EventOutcome } from "../socket/socketSafety.ts";
-import { activeGames, isShuttingDown, seatName, userRoom, voterCount } from "./gameRoom.ts";
+import { activeGames, isShuttingDown, seatName, voterCount } from "./gameRoom.ts";
 import { isUserAtTable, isUserOnline, onlineUserIds, tablePresence } from "../socket/socketRegistry.ts";
 import { stopSpectatingEverywhere } from "../socket/seating.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
@@ -105,18 +104,6 @@ import {
   type RehydrateOutcome,
 } from "./tableRouter.ts";
 import { setRoomLostHandler } from "./gameOwnership.ts";
-
-const OK: EventOutcome = { ok: true };
-
-// Addressed to the account rather than to a socket, and each naming its event
-// literally so the outbound scan in `tests/server/socketEvents.test.ts` can still see
-// what this file sends.
-function gameError(io: SocketServer, userId: string, payload: ServerPayload): void {
-  io.to(userRoom(userId)).emit("game:error", payload);
-}
-function roomError(io: SocketServer, userId: string, payload: ServerPayload): void {
-  io.to(userRoom(userId)).emit("room:error", payload);
-}
 
 /**
  * Puts a persisted game back in memory, for an instance that has just claimed
@@ -204,17 +191,14 @@ function playAction(
   io: SocketServer,
   game: OnlineGameState,
   action: Extract<TableAction, { kind: "play" }>
-): Promise<EventOutcome> | EventOutcome {
+): Promise<Outcome> | Outcome {
   const { roomId, userId, cardIds } = action;
   if (game.gameState.roundOver) return { ok: false, code: "NO_LIVE_GAME" };
   const { gameState, playerMap } = game;
 
   // The round winner owes a card: nobody may play until it is given, otherwise
   // they keep the card and freeze the table behind the exchange overlay.
-  if (gameState.exchangePhase?.active) {
-    gameError(io, userId, payload("EXCHANGE_PENDING"));
-    return { ok: false, code: "EXCHANGE_PENDING" };
-  }
+  if (gameState.exchangePhase?.active) return refuse("EXCHANGE_PENDING");
 
   const currentIdx = gameState.currentTurnIndex;
   if (playerMap[currentIdx] !== userId) return { ok: false, code: "NOT_YOUR_TURN" };
@@ -226,8 +210,7 @@ function playAction(
     const code = PLAY_REFUSAL_CODES[check.code];
     const params: TranslationParams =
       code === "MUST_PLAY_START_CARD" ? { rank: gameState.startCard!.rank } : {};
-    gameError(io, userId, payload(code, params));
-    return { ok: false, code };
+    return refuse(code, params);
   }
   const combo = check.combo;
 
@@ -262,22 +245,17 @@ function passAction(
   io: SocketServer,
   game: OnlineGameState,
   action: Extract<TableAction, { kind: "pass" }>
-): EventOutcome {
+): Outcome {
   const { userId } = action;
   if (game.gameState.roundOver) return { ok: false, code: "NO_LIVE_GAME" };
   const { gameState, playerMap } = game;
-  if (gameState.exchangePhase?.active) {
-    gameError(io, userId, payload("EXCHANGE_PENDING"));
-    return { ok: false, code: "EXCHANGE_PENDING" };
-  }
+  if (gameState.exchangePhase?.active) return refuse("EXCHANGE_PENDING");
 
   const currentIdx = gameState.currentTurnIndex;
   if (playerMap[currentIdx] !== userId) return { ok: false, code: "NOT_YOUR_TURN" };
   const check = checkPass(gameState);
   if (!check.ok) {
-    const code = check.code === "exchangeOpen" ? "EXCHANGE_PENDING" : "CANNOT_PASS";
-    gameError(io, userId, payload(code));
-    return { ok: false, code };
+    return refuse(check.code === "exchangeOpen" ? "EXCHANGE_PENDING" : "CANNOT_PASS");
   }
 
   commitMove(io, game, processPass(gameState), { seat: currentIdx, combo: null });
@@ -288,7 +266,7 @@ function exchangeAction(
   io: SocketServer,
   game: OnlineGameState,
   action: Extract<TableAction, { kind: "exchange" }>
-): EventOutcome {
+): Outcome {
   const { userId, cardId } = action;
   if (!game.gameState.exchangePhase?.active) return { ok: false, code: "NO_EXCHANGE" };
 
@@ -298,10 +276,7 @@ function exchangeAction(
   }
 
   const next = processExchangeChoice(game.gameState, cardId);
-  if (next === game.gameState) {
-    gameError(io, userId, payload("INVALID_CARD"));
-    return { ok: false, code: "INVALID_CARD" };
-  }
+  if (next === game.gameState) return refuse("INVALID_CARD");
   commitMove(io, game, next, null);
   return OK;
 }
@@ -339,11 +314,11 @@ async function dealVotedRound(
   game: OnlineGameState,
   roomId: string,
   notifyUserId: string | null
-): Promise<EventOutcome> {
-  const refuse = (code: string, message: string): EventOutcome => {
-    if (notifyUserId) gameError(io, notifyUserId, { message, code });
-    else logger.warn({ roomId, code }, "The next round could not be dealt");
+): Promise<Outcome> {
+  const decline = (code: "ROOM_NOT_FOUND" | "MIN_PLAYERS_REQUIRED"): Outcome => {
     emitVoteState(io, roomId, game);
+    if (notifyUserId) return refuse(code);
+    logger.warn({ roomId, code }, "The next round could not be dealt");
     return { ok: false, code };
   };
 
@@ -355,10 +330,10 @@ async function dealVotedRound(
   // Every gate-closer reaches the read above, so the first one back deals and
   // the rest find the votes it cleared.
   if (!game.gameState.roundOver || !rematchAnswered(game)) return OK;
-  if (!room) return refuse("ROOM_NOT_FOUND", "Room not found");
+  if (!room) return decline("ROOM_NOT_FOUND");
 
   const seats = game.gameState.players;
-  if (seats.length < 2) return refuse("MIN_PLAYERS_REQUIRED", "At least 2 players are required");
+  if (seats.length < 2) return decline("MIN_PLAYERS_REQUIRED");
 
   // Cleared only once the next round is certain to be dealt. A vote discarded
   // on the way out of a bail-out can never be retried: the overlay would sit
@@ -405,16 +380,13 @@ async function rematchVoteAction(
   io: SocketServer,
   game: OnlineGameState,
   action: Extract<TableAction, { kind: "rematchVote" }>
-): Promise<EventOutcome> {
+): Promise<Outcome> {
   const { roomId, userId } = action;
   if (!game.gameState.roundOver) return { ok: false, code: "NO_LIVE_GAME" };
   if (seatOfUser(game.playerMap, userId) === null) return { ok: false, code: "NOT_SEATED" };
 
   // Nobody gets to restart it from the results screen after that.
-  if (rematchRefused(game)) {
-    gameError(io, userId, payload("REMATCH_DECLINED"));
-    return { ok: false, code: "REMATCH_DECLINED" };
-  }
+  if (rematchRefused(game)) return refuse("REMATCH_DECLINED");
 
   game.rematchVotes.add(userId);
   emitVoteState(io, roomId, game);
@@ -433,7 +405,7 @@ async function endMatchVoteAction(
   io: SocketServer,
   game: OnlineGameState,
   action: Extract<TableAction, { kind: "endMatchVote" }>
-): Promise<EventOutcome> {
+): Promise<Outcome> {
   const { roomId, userId, wants } = action;
   if (seatOfUser(game.playerMap, userId) === null) return { ok: false, code: "NOT_SEATED" };
   if (game.vacatedSeats.size === 0) return { ok: false, code: "NO_VACANCY_TO_END" };
@@ -459,7 +431,7 @@ async function endMatchVoteAction(
 async function dealIfSeatLeftGateClosed(
   io: SocketServer,
   roomId: string
-): Promise<EventOutcome> {
+): Promise<Outcome> {
   const game = activeGames.get(roomId);
   if (!game || !game.gameState.roundOver || !rematchAnswered(game)) return OK;
   if (rematchRefused(game)) return OK;
@@ -510,7 +482,7 @@ async function rejoinAction(
   io: SocketServer,
   game: OnlineGameState,
   action: Extract<TableAction, { kind: "rejoin" }>
-): Promise<EventOutcome> {
+): Promise<Outcome> {
   const { roomId, userId } = action;
   let seat = seatOfUser(game.playerMap, userId);
   if (seat === null) {
@@ -554,7 +526,7 @@ async function rejoinAction(
 async function startMatchAction(
   io: SocketServer,
   action: Extract<TableAction, { kind: "startMatch" }>
-): Promise<EventOutcome> {
+): Promise<Outcome> {
   const { roomId, userId, fillWithBots, botPersonality, matchLength } = action;
 
   const room = await roomStore.getRoomById(roomId);
@@ -573,8 +545,7 @@ async function startMatchAction(
       // it here would deal without an exchange phase, and would let the
       // payload's matchLength rewrite the format of a match that is already
       // being scored.
-      roomError(io, userId, payload("MATCH_IN_PROGRESS"));
-      return { ok: false, code: "MATCH_IN_PROGRESS" };
+      return refuse("MATCH_IN_PROGRESS");
     }
 
     // A finished match releases every player's commitment, so the next one is
@@ -585,10 +556,7 @@ async function startMatchAction(
     if (seatOfUser(previous.playerMap, userId) !== null) previous.rematchVotes.add(userId);
     const seatedIds = Object.values(previous.playerMap);
     emitVoteState(io, roomId, previous);
-    if (!seatedIds.every((uid) => previous.rematchVotes.has(uid))) {
-      roomError(io, userId, payload("NEW_MATCH_NOT_READY"));
-      return { ok: false, code: "NEW_MATCH_NOT_READY" };
-    }
+    if (!seatedIds.every((uid) => previous.rematchVotes.has(uid))) return refuse("NEW_MATCH_NOT_READY");
   } else if (room.status !== "waiting" && room.status !== "finished") {
     // No game in memory or on disk: the room row is all there is, and a room
     // mid-game there is one a restart stranded, not one to deal into.
@@ -621,28 +589,22 @@ async function startMatchAction(
       room.maxPlayers,
       { fillWithBots, botPersonality }
     );
-  const refusal = (
-    seated: Parameters<typeof rosterOf>[0],
-    report: (p: { message: string; code: string }) => void
-  ): EventOutcome | null => {
+  const refusal = (seated: Parameters<typeof rosterOf>[0]): Refusal | null => {
     // With bots filling every empty seat, one seated human is enough — the
     // min-2 guard only matters for an all-human table.
-    if (!fillWithBots && seated.length < 2) {
-      report(payload("MIN_PLAYERS_REQUIRED"));
-      return { ok: false, code: "MIN_PLAYERS_REQUIRED" };
-    }
+    if (!fillWithBots && seated.length < 2) return refuse("MIN_PLAYERS_REQUIRED");
     if (seated.length < 1) return { ok: false, code: "MIN_PLAYERS_REQUIRED" };
-    return teamsSizeRefusal(report, room.gameMode, rosterOf(seated).length);
+    return teamsSizeRefusal(room.gameMode, rosterOf(seated).length);
   };
 
   const closed = await roomStore.closeForStart(roomId, userId, {
     liveMatch: previous !== undefined,
     renumber: !fillWithBots,
-    admits: (seated) => refusal(seated, () => {}) === null,
+    admits: (seated) => refusal(seated) === null,
   });
   if (!closed.ok) {
     if (closed.reason === "refused") {
-      return refusal(closed.roster, (p) => roomError(io, userId, p)) ?? { ok: false, code: "MIN_PLAYERS_REQUIRED" };
+      return refusal(closed.roster) ?? { ok: false, code: "MIN_PLAYERS_REQUIRED" };
     }
     return { ok: false, code: closed.reason === "not_waiting" ? "ROOM_NOT_WAITING" : "NOT_THE_HOST" };
   }
@@ -699,7 +661,7 @@ async function seatLostAction(
   io: SocketServer,
   game: OnlineGameState,
   action: Extract<TableAction, { kind: "seatLost" }>
-): Promise<EventOutcome> {
+): Promise<Outcome> {
   const { roomId, userId } = action;
   // Every socket drops at a shutdown, and the next process restores this table
   // from active_games and arms the graces itself.
@@ -786,7 +748,7 @@ function armSeatGrace(
 async function applyTableAction(
   io: SocketServer,
   action: TableAction
-): Promise<EventOutcome> {
+): Promise<Outcome> {
   if (action.kind === "startMatch") return startMatchAction(io, action);
 
   const game = activeGames.get(action.roomId);
@@ -844,6 +806,7 @@ async function applyTableAction(
         () => dealIfSeatLeftGateClosed(io, action.roomId)
       );
     default:
+      action satisfies never;
       // A newer revision forwards kinds this one has never heard of.
       return UNKNOWN_ACTION;
   }

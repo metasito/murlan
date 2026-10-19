@@ -17,14 +17,15 @@ import {
   ciRedRounds,
   ciRedPosted,
   derive,
+  phaseOf,
   locateRun,
   BRANCH,
   CI_BUDGET_MS,
+  budgeted,
 } from "../loop-derive.mjs";
-import { report } from "../loop-status.mjs";
+import { report, standing } from "../loop-status.mjs";
 import { park } from "../queue-loop.mjs";
 import { ciRedBody } from "../settle.mjs";
-import { reasonFor } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
 
 const callersPhase = process.env.LOOP_PHASE;
@@ -227,8 +228,7 @@ describe("counting review rounds", () => {
     assert.match(body, /^Parked by the queue loop/);
     return { body };
   };
-  const stoodDown = () =>
-    parkedFor(String(reasonFor({ status: 0, declared: { pr: null, stoodDown: true, why: "round 3 still blocks" } }, { ticket: 1 }, 1).why));
+  const stoodDown = () => parkedFor("round 3 still blocks");
   const parkedBeforeThisChange = {
     body: [
       "Parked by the queue loop in **phase D**.",
@@ -727,7 +727,7 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
       timeouts.push(o?.timeout);
       return restAnswer(a, [...land(), red()]);
     };
-    const s = (derive as any)({ cwd: dir, base: "main", ci: true, exec });
+    const s = (derive as any)({ cwd: dir, base: "main", ci: true, tracker: budgeted(exec) });
     assert.equal(s.ci.state, "red");
     assert.equal(CI_BUDGET_MS, 10_000);
     assert.equal(timeouts.length, 2);
@@ -741,7 +741,7 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
         asked.push(a);
         return restAnswer(a, comments as { body: string }[]);
       };
-      return { s: (derive as any)({ cwd: dir, base: "main", ci: true, exec }), asked };
+      return { s: (derive as any)({ cwd: dir, base: "main", ci: true, tracker: budgeted(exec) }), asked };
     };
 
     // `runSettle` reads the run, reruns it once and posts the CI-RED; until then the head is G's.
@@ -764,12 +764,8 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
   });
 
   test("a session's LOOP_PHASE is the phase it was handed", () => {
-    process.env.LOOP_PHASE = "C";
-    try {
-      assert.equal(at({ issue: { comments: [] } }).phase, "C");
-    } finally {
-      delete process.env.LOOP_PHASE;
-    }
+    assert.equal(standing({ LOOP_PHASE: "C" }, (o: any) => at({ issue: { comments: [] } }, { phase: o.handed ?? undefined })).phase, "C");
+    assert.equal(at({ issue: { comments: [] } }).phase, "D", "derive reads no LOOP_PHASE of its own");
   });
 
   test("a handed phase still computes the fix round", () => {
@@ -1005,4 +1001,34 @@ describe("locateRun", () => {
     assert.equal(typeof at.cwd, "string", "an answer naming no tree is the defect");
     assert.equal(resolve(at.cwd), resolve(bare));
   });
+});
+
+describe("phaseOf judges readRun's facts alone", () => {
+  const H = "abcdef1234567890abcdef1234567890abcdef12";
+  const land = [{ body: `VERDICT: LAND ${H}` }];
+  const ticket = (over: object = {}) => ({
+    kind: "ticket", ticket: 7, branch: "agent/7-x", cwd: "w", base: "main", head: H, headSubject: "feat: x",
+    commits: 1, changed: ["a.ts"], dirty: false, comments: land, ci: null, ...over,
+  });
+  const pr = (over: object = {}) => ({ pushed: true, pr: 9, sha: H, state: "settling", step: null, ...over });
+  const rows: [string, object, string | null, Record<string, unknown>][] = [
+    ["a scan that could not list worktrees", { kind: "unknown", ticket: null, branch: "main", why: "cannot list" }, null, { onTicket: false, phase: "?", ambiguous: true }],
+    ["a detached ticket worktree", { kind: "unknown", ticket: 7, branch: null, cwd: "w", why: "detached" }, "C", { onTicket: true, ticket: 7, phase: "?" }],
+    ["no run", { kind: "none", branch: "main", why: "not on an agent branch", ambiguous: false }, "C", { onTicket: false, phase: "A" }],
+    ["claimed and untouched", ticket({ commits: 0, changed: [], comments: [] }), null, { phase: "B" }],
+    ["no review", ticket({ comments: [] }), null, { phase: "D", reviewRounds: 0 }],
+    ["an unreadable tracker", ticket({ comments: null }), null, { phase: "D", trackerReadable: false, reviewRounds: null, fixHolds: null, ciRounds: null }],
+    ["LAND, not read for CI", ticket(), null, { phase: "E", fix: false }],
+    ["LAND, pushed and settling", ticket({ ci: pr() }), null, { phase: "G", fix: false }],
+    ["LAND, pushed and red", ticket({ ci: pr({ state: "red", step: "Lint" }) }), null, { phase: "C", fix: true }],
+    ["LAND, CI unreadable", ticket({ ci: pr({ pushed: false, pr: null, state: "unreadable" }) }), null, { phase: "G" }],
+    ["a handed phase wins", ticket({ ci: pr({ state: "red" }) }), "D", { phase: "D", fix: true }],
+    ["only a phase letter is handed", ticket({ comments: [] }), "Z", { phase: "D" }],
+  ];
+  for (const [name, facts, handed, want] of rows) {
+    test(name, () => {
+      const got: Record<string, unknown> = phaseOf(facts as never, handed);
+      for (const [key, value] of Object.entries(want)) assert.deepEqual(got[key], value, key);
+    });
+  }
 });

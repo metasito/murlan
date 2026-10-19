@@ -19,7 +19,8 @@ import {
 import { PROTOCOL_AUTH, connectAs, waitFor } from "../helpers/client.ts";
 import { AUTH_UNAVAILABLE } from "../../shared/protocol.ts";
 import type { SanitizedState } from "../helpers/table.ts";
-import type { EventOutcome } from "../../server/socket/socketSafety.ts";
+import type { IntentReply } from "../../shared/protocol.ts";
+import { payload } from "../../server/shared/payload.ts";
 
 interface RoomState {
   code: string;
@@ -182,7 +183,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
       { ok: true },
       "the retry is the same intent, not a second pass out of turn"
     );
-    const fresh = (await ackOf(waiting.socket, "game:pass", { intentId: "pass-retry-2" })) as EventOutcome;
+    const fresh = (await ackOf(waiting.socket, "game:pass", { intentId: "pass-retry-2" })) as IntentReply;
     assert.equal(fresh.code, "NOT_YOUR_TURN", "a new intent is judged on its own");
   });
 
@@ -191,7 +192,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
     const created = ackOf(c.socket, "room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const left = ackOf(c.socket, "room:leave", undefined);
     await Promise.all([created, left]);
-    const reply = (await ackOf(c.socket, "room:setVisibility", { visibility: "public" })) as EventOutcome;
+    const reply = (await ackOf(c.socket, "room:setVisibility", { visibility: "public" })) as IntentReply;
     assert.equal(reply.code, "NOT_AT_A_TABLE", "the leave ran after the create, not before it");
   });
 
@@ -203,7 +204,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
   test("a rejoin refused at the boundary is answered on the rejoin's own channel", async () => {
     const c = await player("badrejoin");
     const failed = waitFor<{ code: string }>(c.socket, "game:rejoin_failed");
-    const reply = (await ackOf(c.socket, "game:rejoin", { roomId: 42 })) as EventOutcome;
+    const reply = (await ackOf(c.socket, "game:rejoin", { roomId: 42 })) as IntentReply;
     assert.equal(reply.code, "INVALID_PAYLOAD");
     assert.equal((await failed).code, "INVALID_PAYLOAD");
   });
@@ -246,7 +247,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
     const { host } = await table("refuse");
     const reply = (await ackOf(host.socket, "game:play", {
       cardIds: ["definitely-not-a-card"],
-    })) as EventOutcome | null;
+    })) as IntentReply | null;
     assert.notEqual(reply, null, "a rejected intent is still acknowledged");
     assert.equal(reply?.ok, false, "and the answer says it was refused");
     assert.equal(typeof reply?.code, "string", "carrying why, so the client does not retry it");
@@ -261,15 +262,61 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
    */
   test("an intent the server silently drops is not answered ok", async () => {
     const c = await player("noroom");
-    const reply = (await ackOf(c.socket, "game:play", { cardIds: ["x"] })) as EventOutcome | null;
+    const reply = (await ackOf(c.socket, "game:play", { cardIds: ["x"] })) as IntentReply | null;
     assert.notEqual(reply, null, "it is still answered");
     assert.equal(reply?.ok, false, "a play that reached no table did not happen");
     assert.equal(reply?.code, "NOT_AT_A_TABLE");
   });
 
+  /** The ack, and every `room:error` the socket hears while the intent is answered. */
+  async function refusedInLobby(socket: Socket, event: string, body: unknown) {
+    const told: unknown[] = [];
+    const listen = (p: unknown) => told.push(p);
+    socket.on("room:error", listen);
+    const reply = (await ackOf(socket, event, body)) as IntentReply | null;
+    await new Promise((r) => setTimeout(r, 200));
+    socket.off("room:error", listen);
+    return { reply, told };
+  }
+
+  async function lobby(tag: string) {
+    const host = await player(`${tag}_host`);
+    const made = waitFor<RoomState>(host.socket, "room:state");
+    host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
+    return { host, room: await made };
+  }
+
+  test("a join to a full room is acked as refused, and told once", async () => {
+    const { host, room } = await lobby("full");
+    const second = await player("full_second");
+    const seated = waitFor<RoomState>(host.socket, "room:state");
+    second.socket.emit("room:join", { code: room.code });
+    await seated;
+
+    const late = await player("full_late");
+    const { reply, told } = await refusedInLobby(late.socket, "room:join", { code: room.code });
+    assert.deepEqual(reply, { ok: false, code: "ROOM_FULL" });
+    assert.deepEqual(told, [payload("ROOM_FULL")]);
+  });
+
+  test("a join to an unknown code is acked as refused, and told once", async () => {
+    const c = await player("nocode");
+    const { reply, told } = await refusedInLobby(c.socket, "room:join", { code: "ZZZZZZ" });
+    assert.deepEqual(reply, { ok: false, code: "ROOM_NOT_FOUND" });
+    assert.deepEqual(told, [payload("ROOM_NOT_FOUND")]);
+  });
+
+  test("a lobby rejoin from someone never seated is acked as refused, and told once", async () => {
+    const { room } = await lobby("stranger");
+    const stranger = await player("stranger_c");
+    const { reply, told } = await refusedInLobby(stranger.socket, "room:rejoin", { code: room.code });
+    assert.deepEqual(reply, { ok: false, code: "NOT_IN_ROOM" });
+    assert.deepEqual(told, [payload("NOT_IN_ROOM")]);
+  });
+
   test("a pass out of turn is refused rather than reported as done", async () => {
     const { waiting } = await dealtPair("outofturn");
-    const reply = (await ackOf(waiting.socket, "game:pass", undefined)) as EventOutcome | null;
+    const reply = (await ackOf(waiting.socket, "game:pass", undefined)) as IntentReply | null;
     assert.equal(reply?.ok, false, "it is not this seat's turn");
     assert.equal(reply?.code, "NOT_YOUR_TURN");
   });

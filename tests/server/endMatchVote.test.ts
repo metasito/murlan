@@ -17,6 +17,7 @@ import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import type { RoundOverPayload } from "../../lib/game/matchState.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
+import { refuse } from "../../server/shared/refusal.ts";
 
 const ROOM = "end-match-vote-room";
 
@@ -251,7 +252,7 @@ describe("a match ended by the vote is never rematched (docs/GAME-RULES.md § De
         roomId: ROOM,
         userId: "alice",
       });
-      assert.deepEqual(outcome, { ok: false, code: "REMATCH_DECLINED" });
+      assert.deepEqual(outcome, refuse("REMATCH_DECLINED"));
       assert.equal(game.gameState.exchangePhase, undefined, "nothing was dealt");
       assert.deepEqual(game.gameState.finishingOrder, ["p0", "p2"]);
     } finally {
@@ -284,7 +285,7 @@ describe("a match ended by the vote is never rematched (docs/GAME-RULES.md § De
         roomId: ROOM,
         userId: "alice",
       });
-      assert.deepEqual(outcome, { ok: false, code: "REMATCH_DECLINED" });
+      assert.deepEqual(outcome, refuse("REMATCH_DECLINED"));
     } finally {
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);

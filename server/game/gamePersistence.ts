@@ -13,7 +13,7 @@ import {
   rooms as roomsTable,
 } from "../../shared/schema.ts";
 import { activeGames, userRoom } from "./gameRoom.ts";
-import { payload } from "../socket/payload.ts";
+import { payload } from "../shared/payload.ts";
 import { now } from "../http/clock.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { RoundOverWriters } from "./roundOver.ts";

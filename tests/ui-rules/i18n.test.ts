@@ -128,7 +128,7 @@ function payloadSentences(sourceFile: ts.SourceFile): string[] {
 }
 
 /**
- * `payload()` (server/socket/payload.ts) moved most of a payload's own fallback
+ * `payload()` (server/shared/payload.ts) moved most of a payload's own fallback
  * text out of server/ source — where payloadSentences() above can see it —
  * and into `locales/en.ts`'s `server.*` values, resolved at runtime through
  * a call this scan deliberately stops at. Both scans below that walk
@@ -651,10 +651,10 @@ describe("translate() produces the expected output per locale", () => {
       // seatClaimCode() and its siblings return the code directly.
       for (const m of rendered.matchAll(/return "([A-Z][A-Z_]{3,})";/g)) emitted.add(m[1]);
     }
-    // payload("CODE") calls carry no literal `code: "..."` property at all
+    // payload("CODE") and refuse("CODE") calls carry no literal `code: "..."` property at all
     // (#896) — a call the two regexes above cannot see.
     for (const { source } of serverSources()) {
-      for (const m of source.matchAll(/payload\("([A-Z][A-Z_]*)"/g)) emitted.add(m[1]);
+      for (const m of source.matchAll(/\b(?:payload|refuse)\("([A-Z][A-Z_]*)"/g)) emitted.add(m[1]);
     }
     assert.ok(
       emitted.has("EXCHANGE_PENDING"),
@@ -663,7 +663,7 @@ describe("translate() produces the expected output per locale", () => {
     // It moved down for the same reason as the floors above: a code reached
     // only through payload("CODE") (#896) carries no literal `code: "..."`
     // property for this regex to see, and is checked at compile time instead
-    // (server/socket/payload.ts's ServerCode constraint) rather than by this scan.
+    // (server/shared/payload.ts's ServerCode constraint) rather than by this scan.
     assert.ok(
       emitted.size > 34,
       `expected to find the server's codes, got ${emitted.size} (38 when this floor was set)`
@@ -927,7 +927,7 @@ describe("every player-facing server response carries a code", () => {
 
   /**
    * An object literal's own top-level property names. `...payload("CODE")`
-   * (server/socket/payload.ts) always spreads in `code`, `message` and `params`, so
+   * (server/shared/payload.ts) always spreads in `code`, `message` and `params`, so
    * it counts as naming those without the scan having to evaluate the call.
    */
   function propertyNames(obj: ts.ObjectLiteralExpression): Set<string> {

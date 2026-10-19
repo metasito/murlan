@@ -67,7 +67,6 @@ import {
 } from "./loop-logs.mjs";
 import { checkLockDrift, housekeeping, listWorktreeDirNames } from "./workspace.mjs";
 import { buildReady, MAX_REVIEW_ROUNDS } from "./loop-gate.mjs";
-import { branchOf } from "./claim.mjs";
 import { ghTracker } from "./tracker.mjs";
 import {
   CONTEXT_BY_SIZE,
@@ -84,7 +83,8 @@ import {
 } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, REFRESH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
-import { nextPick, OWNER_LABELS } from "./next-ticket.mjs";
+import { nextPick } from "./next-ticket.mjs";
+import { branchOf } from "./claim.mjs";
 import { afterSession, decide, WAIT } from "./decide.mjs";
 import { CI_RED_TIMEOUT_MS, runSettle, SETTLE, UPDATES } from "./settle.mjs";
 
@@ -92,97 +92,6 @@ import { CI_RED_TIMEOUT_MS, runSettle, SETTLE, UPDATES } from "./settle.mjs";
 // but nothing guarantees that, and the sibling is beside this file either way.
 const HERE = import.meta.dirname;
 const ROOT = path.resolve(HERE, "..", "..");
-
-/**
- * @param {string[]|null} [labels] the live ticket's labels, null when the tracker could not say
- * @returns {{skill: string, number: number, title: string, phase?: string, resuming: boolean}|null}
- */
-export function liveRoute(status, labels = null) {
-  // locateRun refuses to guess between two live ticket worktrees: returning null here would read
-  // as "no run is live", and the picker would take a third.
-  if (status.ambiguous)
-    return {
-      skill: "ambiguous",
-      number: 0,
-      title: status.why ?? "more than one live worktree",
-      resuming: false,
-    };
-  if (!status.onTicket || !status.ticket) return null;
-  if (labels && !labels.includes("in-progress")) return null;
-  return {
-    skill: "implement",
-    number: status.ticket,
-    title: status.branch ?? `ticket #${status.ticket}`,
-    // A resumed session re-emits no marker for a phase it has already passed.
-    phase: status.phase && status.phase !== "?" ? status.phase : "C",
-    resuming: true,
-  };
-}
-
-/**
- * `pinned` is a ticket the run is not finished with — a red CI round hands the same number back,
- * and letting the picker choose again leaves that one labelled `in-progress` with an open pull
- * request nothing will return to.
- *
- * A resumed route carries the ticket's size, or `TURNS_BY_SIZE` falls through to the default and
- * bounds the second attempt tighter than the one that already failed to finish.
- *
- * A pushed head's own reading — CI to settle, or a red run to fix — outranks a handoff the ledger
- * still holds from before the push.
- *
- * @param {number|null} [pinned]
- */
-export function nextRoute(
-  pinned = null,
-  at = null,
-  {
-    read = derive,
-    facts = ticketFacts,
-    ledger = readLedger,
-    picker = nextPick,
-  } = {},
-) {
-  const status = read({ ci: true });
-  const known = status.onTicket && status.ticket ? facts(status.ticket) : null;
-  if (known?.state === "CLOSED") {
-    return { skill: "closed", number: status.ticket, title: known.title, cwd: status.cwd ?? null, resuming: true, queue: null };
-  }
-  const live = liveRoute(status, known?.labels ?? null);
-  if (live) {
-    const tally = ticketTally(live.number, ledger());
-    // A red with no CI-RED is G's too: `runSettle` posts it, once per head, before it hands the red back.
-    const fix = Boolean(status.fix);
-    const handed = at ?? (fix ? "C" : null) ?? tally.lastHandoff;
-    const settles = live.phase === "G" && status.ci?.pushed === true;
-    const derived = live.phase === "G" ? "E" : live.phase;
-    // A LAND on this head ends the review the handoff was for; D lands its own, so no row says E.
-    const phase = settles ? "G" : handed === "D" && derived === "E" ? "E" : (handed ?? derived);
-    return {
-      ...live,
-      title: known?.title ?? live.title,
-      reviewRounds: status.reviewRounds ?? null,
-      phase,
-      fix: fix && phase !== "G",
-      head: status.ci?.sha ?? status.head ?? null,
-      cwd: status.cwd ?? null,
-      branch: status.branch ?? null,
-      dirty: status.dirty ?? false,
-      size: known?.size ?? null,
-      ciRounds: known?.ciRounds ?? 0,
-      queue: null,
-    };
-  }
-  if (pinned) {
-    const { title, size, ciRounds, labels } = facts(pinned);
-    // A handoff here would stop the run over one ticket the owner took back; the picker decides.
-    // `ready-for-agent` alone is still ours: an API failure before phase A's claim holds it pinned.
-    const released =
-      labels &&
-      (labels.some((l) => OWNER_LABELS.has(l)) || !labels.some((l) => l === "in-progress" || l === "ready-for-agent"));
-    if (!released) return { skill: "implement", number: pinned, title, size, ciRounds, queue: null, resuming: true, phase: "A", branch: branchOf(pinned, title) };
-  }
-  return { ...picker(), resuming: false };
-}
 
 /** @param {string|null} [size] a `size:*` label, or null */
 export const turnsFor = (size) => TURNS_BY_SIZE[size ?? ""] ?? TURNS_DEFAULT;
@@ -1090,6 +999,36 @@ const HOLDS = {
 };
 
 /**
+ * The pick step driven to an answer: each fact it asks for is read with `reads[fact](action, picking)`
+ * and it is decided again. `decideAt` is `decide` given the pass's own limits, clock and counters.
+ *
+ * @param {Record<string, any>} picking what has been read so far; filled in as the step asks
+ * @param {Record<string, (action: {n?: number}, picking: Record<string, any>) => any>} reads
+ * @param {(facts: Record<string, any>) => any} decideAt
+ */
+export function choose(picking, reads, decideAt) {
+  let action = decideAt(picking);
+  while (action.kind === "ask") {
+    picking[action.fact] = reads[action.fact](action, picking) ?? null;
+    action = decideAt(picking);
+  }
+  return action;
+}
+
+/** What the pick step's facts are read from, through the pass's ports. */
+const pickReads = ({ tracker, workspace, ledger }) => ({
+  standing: () => workspace.derive(),
+  known: (_, { standing }) => tracker.facts(standing.ticket),
+  tally: ({ n }) => ledger.tally(n),
+  // No claim runs on a resume, so the pinned ticket's branch is the one its claim would cut.
+  pinnedFacts: (_, { pinned }) => {
+    const facts = tracker.facts(pinned);
+    return facts && { ...facts, branch: branchOf(pinned, facts.title) };
+  },
+  picked: () => tracker.pick(),
+});
+
+/**
  * One ticket, start to finish. Serialised deliberately: overlapping the next ticket with the last
  * one's CI wait buys ~22% wall clock and costs pending state nothing recovers when the process
  * dies, a worktree released under a live `derive()`, and two sessions cutting branches from a
@@ -1132,15 +1071,19 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
   const begun = decideAt("pre", { pre: await preflight(workspace, pinned) });
   if (begun.kind !== "go") return pass(begun);
 
-  let route = tracker.pick(pinned, at);
-  let picking = { route: { ...route, n: route.number }, tally: ledger.tally(route.number), repicked: false };
-  let picked = decideAt("pick", picking);
+  const reads = pickReads(ports);
+  const pick = (picking) => {
+    const action = choose(picking, reads, (facts) => decideAt("pick", facts));
+    events.picked?.(action.n ?? null);
+    return action;
+  };
+  let picked = pick({ pinned, at, repicked: false });
   if (picked.kind === "repick") {
-    teardown(route.cwd, route.number);
-    route = tracker.pick(loop.pinned, loop.pinned === null ? null : at);
-    picking = { route: { ...route, n: route.number }, tally: ledger.tally(route.number), repicked: true };
-    picked = decideAt("pick", picking);
+    teardown(picked.cwd, picked.n);
+    picked = pick({ pinned: loop.pinned, at: loop.pinned === null ? null : at, repicked: true });
   }
+  if (picked.kind !== "go" && picked.kind !== "park") return pass(picked);
+  const { route } = picked;
   const n = route.number;
   const ticket = { ...route, n };
   const size = route.size ?? null;
@@ -1156,10 +1099,10 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
   // with it: a handoff leaves one standing on purpose, so a park without it leaves `derive()` a live
   // run to resume.
   const parkOver = (over, own, log) => parkHere(over, { ...(own ?? worktreeOf(workspace, n)), log });
-  let { tally } = picking;
   const unrun = { log: streamLog(n), cwd: route.cwd ?? null, branch: route.branch ?? null, dirty: route.dirty ?? false };
   if (picked.kind === "park") return parkHere(picked, unrun);
-  if (picked.kind !== "go") return pass(picked);
+  const tallyNow = () => ledger.tally(n);
+  let tally = picked.tally ?? tallyNow();
 
   if (picked.redWhileDown) {
     record({
@@ -1169,7 +1112,7 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
       run: { result: null, ms: 0, log: streamLog(n), phases: {} },
       head: route.head,
     });
-    tally = ledger.tally(n);
+    tally = tallyNow();
   }
   if (route.fix) {
     let error = null;
@@ -1188,7 +1131,7 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
     ? { status: 0, result: null, declared: null, ms: 0, log: streamLog(route.number), phase: "G", phases: {} }
     : await session.spawn({
         ...route,
-        retryCount: Math.max(tally.retries, tally.ciRounds ?? 0),
+        retryCount: Math.max(tally.retries, route.ciRounds ?? 0),
         reason: route.phase === tally.lastHandoff ? tally.handoffWhy : null,
       });
 
@@ -1285,7 +1228,7 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
   // what CI answers.
   const head = settled.head ?? facts.pushed?.sha ?? null;
   const owned = owner();
-  const judging = { route: ticket, settled: { ...settled, head }, tally: ledger.tally(n), ...owned };
+  const judging = { route: ticket, settled: { ...settled, head }, tally: tallyNow(), ...owned };
   let verdict = decideAt("settled", judging);
   // The CONFLICT comment is what routes the next pass to the rebase round, as CI-RED routes a fix round.
   if (verdict.kind === "ask") verdict = decideAt("settled", { ...judging, posted: tracker.conflict(n, head) });
@@ -1376,13 +1319,10 @@ function realPorts(book, screen, events) {
   // The queue as the *previous* pick read it. The direction is what a night is made of, and this
   // is the one reading that costs nothing — the next pick is being made anyway.
   let before = null;
-  let picked = null;
   const started = loopSha();
   const tracker = {
-    pick: (pinned, at) => {
-      const route = nextRoute(pinned, at);
-      picked = route;
-      if (route.resuming) return route;
+    pick: () => {
+      const route = nextPick();
       if (before) events.recap(book.totals, before, route.queue);
       before = route.queue;
       return route;
@@ -1437,6 +1377,7 @@ function realPorts(book, screen, events) {
     housekeeping: (pinned) => housekeeping({ pinned, say: events.step }),
     parity: () => parityRed(),
     standing,
+    derive: () => derive({ ci: true }),
     refreshWorktree: (cwd, branch) => refreshWorktree(cwd, branch),
     buildPassed: (cwd, ticket) => {
       try {
@@ -1497,11 +1438,7 @@ function realPorts(book, screen, events) {
     },
   };
   const ledger = {
-    // A fresh pick has no CI rounds: its claim comment is newer than any CI-RED before it.
-    tally: (n) => ({
-      ...ticketTally(n, readLedger()),
-      ciRounds: picked?.number === n ? (picked.ciRounds ?? 0) : 0,
-    }),
+    tally: (n) => ticketTally(n, readLedger()),
     rows: () => readLedger(),
     record: (row) => events.recorded(row, book.record(row, RUN_ID).bill),
     killed: () => {
@@ -1553,7 +1490,7 @@ export async function main({
    *
    * `runOnce`'s own exits all route through `park`, but a throw routes through none of them, and
    * an `in-progress` label nothing removes is a ticket `next-ticket.mjs` skips for good.
-   * `tracker.pick` is the claim, so wrapping it is where the answer is knowable.
+   * `runOnce` says which ticket its pick settled on, so that is where the answer is knowable.
    */
   let claimed = null;
   screen = journaled(screen, () => claimed, (line) => ports?.ledger.journal?.(line));
@@ -1619,13 +1556,18 @@ export async function main({
     ...ports,
     tracker: {
       ...tracker,
-      pick: (p, at) => {
-        const route = tracker.pick(p, at);
-        claimed = typeof route?.number === "number" ? route.number : null;
+      pick: () => {
+        const route = tracker.pick();
         if (route?.queue) launch = route.queue.launch ?? null;
         return route;
       },
       settle: (pending) => timed("ci", () => tracker.settle(pending, screen)),
+    },
+  };
+  const told = {
+    ...events,
+    picked: (n) => {
+      claimed = n;
     },
   };
 
@@ -1684,7 +1626,7 @@ export async function main({
 
     let pass;
     try {
-      pass = await runOnce(watched, events, loop.pinned, loop.pinned ? ledger.tally(loop.pinned).lastHandoff : null, loop);
+      pass = await runOnce(watched, told, loop.pinned, loop.pinned ? ledger.tally(loop.pinned).lastHandoff : null, loop);
     } catch (err) {
       screen.warn(`queue-loop: the iteration threw — ${String(err?.stack ?? err)}`);
       // No row: there is no run to write one from, and an invented row is a ledger trusted while
@@ -1729,18 +1671,31 @@ export async function main({
 }
 
 /**
- * `--check`: the reads a pass starts from — the standing ticket, its facts and tally, and the next
- * pick — printed one per line, with nothing synced, claimed, pruned, spawned or written. It runs the
- * real ports' read wiring, which the loop's tests stub out.
+ * `--check`: the reads a pass's pick makes, in the order `decide` asks for them, each printed as
+ * `<fact>\t<json>`, then the pick's answer as `PICK\t<json>` — with nothing synced, claimed, pruned,
+ * spawned or written. It runs the real ports' read wiring, which the loop's tests stub out.
  */
-export function check({ say = console.log, standingOf = standing, facts = ticketFacts, ledger = readLedger, picker = nextPick } = {}) {
-  const at = standingOf();
-  say(`STANDING\t${JSON.stringify(at)}`);
-  if (at) {
-    say(`FACTS\t${JSON.stringify(facts(at.ticket))}`);
-    say(`TALLY\t${JSON.stringify(ticketTally(at.ticket, ledger()))}`);
-  }
-  say(`PICK\t${JSON.stringify(picker())}`);
+export function check({ say = console.log } = {}) {
+  const reads = pickReads({
+    workspace: { derive: () => derive({ ci: true }) },
+    tracker: { facts: ticketFacts, pick: nextPick },
+    ledger: { tally: (n) => ticketTally(n, readLedger()) },
+  });
+  const said = Object.fromEntries(
+    Object.entries(reads).map(([fact, read]) => [
+      fact,
+      (action, picking) => {
+        const value = read(action, picking);
+        say(`${fact}\t${JSON.stringify(value)}`);
+        return value;
+      },
+    ]),
+  );
+  const loop = { failures: 0, holds: 0, waits: 0, overloads: 0, pinned: null };
+  const action = choose({ pinned: null, at: null, repicked: false }, said, (facts) =>
+    decide({ limits: LIMITS, now: Date.now(), asked: false, own: null, ...facts, step: "pick", loop }),
+  );
+  say(`PICK\t${JSON.stringify(action)}`);
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url) && process.argv.includes("--check")) {
