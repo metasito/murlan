@@ -2,7 +2,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SESSION_POLICY } from "../../tools/loop/limits.mjs";
@@ -156,11 +156,14 @@ describe("every agent rule is written down exactly once", () => {
     }
     // Excludes its own path: this test's source has to name the two gone files to check for
     // them, which is not a reader being pointed at a document that no longer exists.
-    const stale = execSync(
-      'git grep -l -E "loops\\.md|TESTING\\.md" -- ":!docs/adr" ' +
-        '":!tests/tooling/rulesAreSingleSourced.test.ts" || true',
+    const grep = spawnSync(
+      "git",
+      ["grep", "-l", "-E", "loops\\.md|TESTING\\.md", "--", ":!docs/adr", ":!tests/tooling/rulesAreSingleSourced.test.ts"],
       { cwd: repoRoot, encoding: "utf8" },
-    ).trim();
+    );
+    // git grep exits 1 for no match, which is the pass; anything above that is a grep that did not run.
+    assert.ok(grep.status === 0 || grep.status === 1, `git grep failed: ${grep.stderr}`);
+    const stale = grep.stdout.trim();
     assert.equal(stale, "", `these still cite a deleted document:\n${stale}`);
   });
 });

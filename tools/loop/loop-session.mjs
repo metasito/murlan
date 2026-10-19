@@ -3,7 +3,7 @@
  * `reduceSession`, and the watchdog kills one that goes silent. What the state means is the
  * caller's, through `onState`.
  */
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createWriteStream, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
@@ -15,6 +15,7 @@ import { DIR, streamLog } from "./loop-logs.mjs";
 import { ticker } from "./loop-screen.mjs";
 import { ROOT } from "./paths.mjs";
 import { openTicket, roundOf, sessionView, ticketFacts } from "./loop-board.mjs";
+import * as realProc from "../../scripts/lib/proc.mjs";
 
 const { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, MODEL_BY_PHASE, TICKET_BUDGET_USD, TURNS_BY_SIZE, TURNS_DEFAULT } = SESSION_POLICY;
 const HERE = import.meta.dirname;
@@ -23,7 +24,7 @@ const HERE = import.meta.dirname;
  * @param {string[]} argv
  * @param {{spawnFn?: Function, env?: object, log: string, at?: string|null, planned: string,
  *   onState?: (state: object, effects: object[]) => void, onStderr?: (chunk: string) => void,
- *   stallMs?: number, tick?: number, killGraceMs?: number}} opts
+ *   stallMs?: number, tick?: number, killGraceMs?: number, proc?: {stopTree: Function}}} opts
  */
 export function runSession(
   argv,
@@ -38,6 +39,7 @@ export function runSession(
     stallMs = STALL_MS,
     tick = 30_000,
     killGraceMs = 10_000,
+    proc = realProc,
   },
 ) {
   mkdirSync(path.dirname(log), { recursive: true });
@@ -63,25 +65,23 @@ export function runSession(
     onStderr(String(chunk));
   });
 
+  // SIGTERM, not SIGINT: the docs give SIGTERM as the one that terminates the process tree of a
+  // still-running Bash command and then runs SessionEnd, which is what a wedged session needs.
+  // SIGINT only ends the turn, and a session with nothing to end ignores it.
+  const stop = () =>
+    proc.stopTree(child.pid, { graceMs: killGraceMs }).catch((err) => onStderr(`${err.message}\n`));
+
   createInterface({ input: child.stdout }).on("line", (line) => {
     sink.write(`${line}\n`);
     heardAt = Date.now();
     const next = reduceSession(state, line, { now: heardAt, at, planned });
     state = next.state;
-    if (next.effects.some((e) => e.kind === "kill")) {
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), killGraceMs).unref();
-    }
+    if (next.effects.some((e) => e.kind === "kill")) stop();
     onState(state, next.effects);
   });
 
   return new Promise((resolve) => {
-    // SIGTERM, not SIGINT: the docs give SIGTERM as the one that terminates the process tree of a
-    // still-running Bash command and then runs SessionEnd, which is what a wedged session needs.
-    // SIGINT only ends the turn, and a session with nothing to end ignores it.
     const clock = sleepClock(tick);
-    /** @type {NodeJS.Timeout | undefined} */
-    let grace;
     const watchdog = setInterval(() => {
       const slept = clock.lap();
       const now = Date.now();
@@ -90,21 +90,12 @@ export function runSession(
       if (now - heardAt <= stallMs) return;
       stalled = true;
       clearInterval(watchdog);
-      // Windows' SIGTERM takes `claude.exe` alone, and a grandchild left holding its stdout keeps
-      // `close` from ever firing. So the tree, then a deadline.
-      if (process.platform === "win32" && child.pid) {
-        try {
-          execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
-        } catch {
-          /* already gone */
-        }
-      } else child.kill("SIGTERM");
-      grace = setTimeout(() => {
-        child.kill("SIGKILL");
+      // A grandchild left holding stdout keeps `close` from ever firing, so the run ends on the stop.
+      stop().then(() => {
         child.stdout.destroy();
         child.stderr.destroy();
         finish(null);
-      }, killGraceMs);
+      });
     }, tick);
 
     let finished = false;
@@ -113,7 +104,6 @@ export function runSession(
       if (finished) return;
       finished = true;
       clearInterval(watchdog);
-      clearTimeout(grace);
       // The session emits no marker for a phase it did not finish.
       state = closePhase(state, Date.now());
       // Resolved on the sink's own finish, not on the child's close: `end()` only asks, and a

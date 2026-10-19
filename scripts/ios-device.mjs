@@ -20,6 +20,7 @@ import readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { gateTable, readRows, waitForRunEnd } from "./bench-gates.mjs";
 import { rewriteZipText } from "./lib/zipEntry.mjs";
+import { killTree, runBin, startBin } from "./lib/proc.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PLUMESIGN = {
@@ -321,8 +322,8 @@ function portOpen(port) {
   });
 }
 
-function killTree(child) {
-  if (child.pid && child.exitCode === null) spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+function stopChild(child) {
+  if (child.exitCode === null) killTree(child.pid);
 }
 
 export function metroEnv(env, ip, diagnostics) {
@@ -342,7 +343,7 @@ async function benchServe(ip, gates) {
   const file = path.join(ROOT, "diagnostics", `${stamp}.ndjson`);
   if (await portOpen(COLLECTOR_PORT)) fail(`Port ${COLLECTOR_PORT} is taken (a leftover collector?); stop it and rerun.`);
   const collector = spawn(process.execPath, [path.join(ROOT, "scripts", "diagnostics-collector.mjs"), file], { cwd: ROOT, stdio: "inherit" });
-  process.on("exit", () => killTree(collector));
+  process.on("exit", () => stopChild(collector));
   if (gates) collector.on("exit", (code) => fail(`The diagnostics collector exited (${code}); no rows can land.`));
   console.log(`• Bench build installed. Tap the Murlan icon on the iPhone (or open ${benchUrl(ip)}, not both) and leave it face up.`);
   if (!gates) return;
@@ -376,7 +377,7 @@ async function serve(home, diagnostics) {
       env: { ...process.env, E2E_SKIP_BUILD: undefined },
     });
     const exited = new Promise((resolve) => server.on("exit", (code, signal) => resolve(code ?? signal)));
-    process.on("exit", () => killTree(server));
+    process.on("exit", () => stopChild(server));
     process.on("SIGINT", () => process.exit(130));
     while (!(await portOpen(SERVER_PORT))) {
       const code = await Promise.race([exited, new Promise((r) => setTimeout(() => r(null), 2000))]);
@@ -389,13 +390,12 @@ async function serve(home, diagnostics) {
   // Production JS, as a player runs it: dev-mode JS drops the table well under 60 fps.
   if (diagnostics) {
     const collector = spawn(process.execPath, [path.join(ROOT, "scripts", "diagnostics-collector.mjs")], { cwd: ROOT, stdio: "inherit" });
-    process.on("exit", () => killTree(collector));
+    process.on("exit", () => stopChild(collector));
     console.log(`• Diagnostics build: once the app loads, open murlan://bench?host=${ip}&scenario=all on the phone.`);
   }
-  const metro = spawn("npx expo start --dev-client --lan --no-dev --minify", {
+  const metro = startBin("npx", ["expo", "start", "--dev-client", "--lan", "--no-dev", "--minify"], {
     cwd: ROOT,
     stdio: "inherit",
-    shell: true,
     env: metroEnv(process.env, ip, diagnostics),
   });
   metro.on("exit", (code) => process.exit(code ?? 0));
@@ -410,7 +410,11 @@ async function main() {
     createRequire(path.join(ROOT, "package.json")).resolve("expo-dev-client/package.json");
   } catch {
     console.log("• Installing dependencies (expo-dev-client is missing)…");
-    if (spawnSync("npm install", { cwd: ROOT, stdio: "inherit", shell: true }).status !== 0) fail("npm install failed.");
+    try {
+      runBin("npm", ["install"], { cwd: ROOT, stdio: "inherit" });
+    } catch {
+      fail("npm install failed.");
+    }
   }
   const home = path.join(process.env.LOCALAPPDATA ?? os.homedir(), "murlan-ios");
   mkdirSync(path.join(home, "builds"), { recursive: true });

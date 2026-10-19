@@ -12,8 +12,9 @@
  * The container is disposable and named distinctly so it can never be confused
  * with a real database.
  */
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { sleepSync } from "./lib/proc.mjs";
 import { dockerDesktopPaths, dockerInfo, ensureEngine, pullImage } from "./dockerEngine.mjs";
 import {
   hostPortOf,
@@ -92,8 +93,6 @@ function canBind(port) {
   return r.status === 0;
 }
 
-const sleep = (ms) => execFileSync(process.execPath, ["-e", `setTimeout(()=>{},${ms})`]);
-
 /**
  * Whether Postgres — not merely something — answers on the host port.
  *
@@ -125,7 +124,7 @@ function containerReady(timeoutMs = 60_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (docker(["exec", NAME, "pg_isready", "-U", "postgres"]).status === 0) return true;
-    sleep(1000);
+    sleepSync(1000);
   }
   return false;
 }
@@ -136,7 +135,7 @@ function reachableOn(port) {
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     if (postgresAnswers(port)) return true;
-    sleep(500);
+    sleepSync(500);
   }
   return false;
 }
@@ -164,7 +163,7 @@ try {
     engineUp: dockerInfo(run),
     exists: existsSync,
     launch: (p) => spawn(p, [], { detached: true, stdio: "ignore" }).unref(),
-    sleep,
+    sleep: sleepSync,
     paths: dockerDesktopPaths(),
   });
 
@@ -181,7 +180,7 @@ try {
     pullImage({
       present: () => docker(["image", "inspect", IMAGE]).status === 0,
       pull: () => docker(["pull", "-q", IMAGE]),
-      sleep,
+      sleep: sleepSync,
     });
     port = startOnFreePort({
       start: BASE_PORT,

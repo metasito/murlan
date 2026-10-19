@@ -5,13 +5,13 @@
  * Usage: npm run agent:check          run, or replay a cached verdict
  *        npm run agent:check -- --force   ignore the cache
  */
-import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { git as gitAt } from "./cli.mjs";
 import { checkLockDrift, parseWorktreeList } from "./workspace.mjs";
 import { STEPS, LOCAL, DELEGATED, cmd, BANNER } from "./check-steps.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import { spawnBin } from "../../scripts/lib/proc.mjs";
 import preflightMemory from "../ci/preflightMemory.mjs";
 import { reapWorktree } from "./reap.mjs";
 
@@ -82,17 +82,6 @@ export function clip(output) {
   return [...head, `… ${lines.length - SHOWN_LINES} lines omitted …`, ...tail, ""].join("\n");
 }
 
-const spawnAsync = (file, args, opts) =>
-  new Promise((resolve) => {
-    // One command line under `shell`: node joins them anyway, and passing both is DEP0190.
-    const [cmdLine, argv] = opts.shell ? [[file, ...args].join(" "), []] : [file, args];
-    execFile(cmdLine, argv, opts, (err, stdout, stderr) => {
-      const status = err ? (typeof err.code === "number" ? err.code : null) : 0;
-      const error = err?.killed ? { code: "ETIMEDOUT" } : status === null ? err : undefined;
-      resolve({ status, stdout, stderr, error });
-    });
-  });
-
 /**
  * The parent's environment minus npm's log level. `npm run -s` exports it as silent, and a step's
  * npm inherits that and prints nothing — so a failed step would be reported with no reason.
@@ -100,22 +89,15 @@ const spawnAsync = (file, args, opts) =>
 export const stepEnv = (env = process.env) =>
   Object.fromEntries(Object.entries(env).filter(([k]) => k.toLowerCase() !== "npm_config_loglevel"));
 
-export async function runStep(step, spawn = spawnAsync, write = (s) => void process.stdout.write(s)) {
+export async function runStep(step, spawn = spawnBin, write = (s) => void process.stdout.write(s)) {
   write(`▸ ${step.name} …\n`);
-  const run = await spawn("npm", step.args, {
-    encoding: "utf8",
-    env: stepEnv(),
-    shell: process.platform === "win32",
-    timeout: STEP_TIMEOUT_MS,
-    maxBuffer: 256 * 1024 * 1024,
-  });
-  // A timeout leaves `status` null and sets `error.code` to ETIMEDOUT. Only one of them says
-  // anything about the code, so they are reported apart.
-  const timedOut = run.error?.code === "ETIMEDOUT";
+  const run = await spawn("npm", step.args, { env: stepEnv(), timeoutMs: STEP_TIMEOUT_MS });
+  const { timedOut } = run;
   const title = `${BANNER}${step.name} ===`;
   if (!timedOut && run.status === 0) return { failed: null, text: `${title} ok\n` };
   const shown = clip(`${run.stdout ?? ""}${run.stderr ?? ""}`.replace(/\n$/, ""));
-  if (!timedOut) return { failed: step.name, text: `\n${title} FAILED\n${shown}` };
+  const signalled = run.signal ? `${step.name} was ended by ${run.signal}\n` : "";
+  if (!timedOut) return { failed: step.name, text: `\n${title} FAILED\n${shown}${signalled}` };
   return {
     failed: `${step.name} (timed out)`,
     text: `\n${title} FAILED\n${shown}${step.name} timed out after ${STEP_TIMEOUT_MS / 60_000} minutes\n`,
