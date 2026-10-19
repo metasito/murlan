@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fieldsOf, walk } from "../../scripts/contextSurface.mjs";
+import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..");
 const read = (...p: string[]) => readFileSync(path.join(ROOT, ...p), "utf8");
@@ -234,9 +235,7 @@ test("the wide-hook guard knows every way of defining one, and not a mention", (
 });
 
 test("no wide online hook is defined outside tests/ for a screen to reach for", () => {
-  const TESTS = path.join(ROOT, "tests") + path.sep;
-  const offenders = walk(ROOT)
-    .filter((file) => !file.startsWith(TESTS) && definesWideOnlineHook(readFileSync(file, "utf8")))
-    .map((file) => path.relative(ROOT, file));
+  const offenders = trackedFiles(ROOT, "*.ts", "*.tsx", "*.js", "*.mjs", "*.cjs", ":!tests/")
+    .filter((file) => definesWideOnlineHook(readFileSync(path.join(ROOT, file), "utf8")));
   assert.deepEqual(offenders, [], "useOnlineGame is defined outside tests/");
 });
