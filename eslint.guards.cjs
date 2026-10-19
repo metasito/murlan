@@ -23,6 +23,19 @@ const nameOf = (node) =>
       ? node.value
       : null;
 const propertyName = (member) => (member.computed && member.property.type !== "Literal" ? null : nameOf(member.property));
+/** Names a JSX element as react-native's Modal: as `Modal`, under the alias a file imported it as, or as `X.Modal`. */
+function modalElements() {
+  const names = new Set(["Modal"]);
+  return {
+    ImportDeclaration(node) {
+      if (node.source?.value !== "react-native") return;
+      for (const spec of node.specifiers) {
+        if (spec.type === "ImportSpecifier" && nameOf(spec.imported) === "Modal") names.add(spec.local.name);
+      }
+    },
+    isModal: (name) => (name.type === "JSXMemberExpression" ? nameOf(name.property) === "Modal" : names.has(nameOf(name))),
+  };
+}
 const isMember = (node, object, property) =>
   node?.type === "MemberExpression" && nameOf(node.object) === object && propertyName(node) === property;
 
@@ -211,13 +224,21 @@ const GUARDS = [
       "Render <AppModal> instead: a second <Modal> is a second place to get supportedOrientations, statusBarTranslucent and onRequestClose wrong.",
     files: DRAWN,
     ignores: ["components/AppModal.tsx"],
-    plant: ["const x = <Modal visible />;"],
-    spare: ["const x = <AppModal visible />;", "const x = <ModalFoo />;"],
-    create: (report) => ({
-      JSXOpeningElement(node) {
-        if (nameOf(node.name) === "Modal") report(node);
-      },
-    }),
+    plant: [
+      "const x = <Modal visible />;",
+      'import * as RN from "react-native";\nconst x = <RN.Modal visible />;',
+      'import { Modal as Sheet } from "react-native";\nconst x = <Sheet visible />;',
+    ],
+    spare: ["const x = <AppModal visible />;", "const x = <ModalFoo />;", "const x = <RN.ModalFoo />;"],
+    create: (report) => {
+      const modal = modalElements();
+      return {
+        ImportDeclaration: modal.ImportDeclaration,
+        JSXOpeningElement(node) {
+          if (modal.isModal(node.name)) report(node);
+        },
+      };
+    },
   },
   {
     id: "one-modal-import",
@@ -226,6 +247,7 @@ const GUARDS = [
     ignores: ["components/AppModal.tsx"],
     plant: [
       'import { View, Modal as Sheet } from "react-native";',
+      'import * as RN from "react-native";\nconst x = <RN.Modal visible />;',
       'import * as RN from "react-native";\nconst x = RN.Modal;',
       'export { Modal } from "react-native";',
       'import {\n  Text,\n  Modal,\n} from "react-native";',
@@ -243,6 +265,7 @@ const GUARDS = [
         const id = ref.identifier;
         const p = id.parent;
         if (p.type === "MemberExpression" && p.object === id && propertyName(p) === "Modal") return true;
+        if (p.type === "JSXMemberExpression" && p.object === id && nameOf(p.property) === "Modal") return true;
         return (
           p.type === "VariableDeclarator" &&
           p.init === id &&
@@ -274,15 +297,24 @@ const GUARDS = [
     message:
       "React Native's <Modal> defaults to portrait on iOS, so opening one in landscape rotates the app and every tap lands on nothing: declare supportedOrientations including landscape.",
     files: DRAWN,
-    plant: ["const x = <Modal visible />;", 'const x = <Modal supportedOrientations={["portrait"]} />;'],
+    plant: [
+      "const x = <Modal visible />;",
+      'const x = <Modal supportedOrientations={["portrait"]} />;',
+      'import * as RN from "react-native";\nconst x = <RN.Modal visible />;',
+      'import { Modal as Sheet } from "react-native";\nconst x = <Sheet visible />;',
+    ],
     spare: ['const x = <Modal supportedOrientations={["portrait", "landscape"]} />;', "const x = <AppModal visible />;"],
-    create: (report, context) => ({
-      JSXOpeningElement(node) {
-        if (nameOf(node.name) !== "Modal") return;
-        const prop = node.attributes.find((a) => a.type === "JSXAttribute" && nameOf(a.name) === "supportedOrientations");
-        if (!prop || !context.sourceCode.getText(prop).includes("landscape")) report(node);
-      },
-    }),
+    create: (report, context) => {
+      const modal = modalElements();
+      return {
+        ImportDeclaration: modal.ImportDeclaration,
+        JSXOpeningElement(node) {
+          if (!modal.isModal(node.name)) return;
+          const prop = node.attributes.find((a) => a.type === "JSXAttribute" && nameOf(a.name) === "supportedOrientations");
+          if (!prop || !context.sourceCode.getText(prop).includes("landscape")) report(node);
+        },
+      };
+    },
   },
   {
     id: "orientation-lock-owner",
