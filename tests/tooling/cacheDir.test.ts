@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { cacheBase, cacheFor, sharedCheckout } from "../helpers/cacheDir.ts";
 
+const PROBE = path.join("tests", "probe.test.ts");
+
 function sandbox() {
   const dir = mkdtempSync(path.join(tmpdir(), "murlan-cachedir-"));
   const root = path.join(dir, "repo");
@@ -16,14 +18,14 @@ function sandbox() {
     "eslint.config.js": "module.exports = [];",
     "eslint.guards.cjs": "module.exports = {};",
     "eslint.selectors.cjs": "module.exports = {};",
-    "tests/x.test.ts": "transformSync(source, {});",
+    [PROBE]: "transformSync(source, {});",
   };
   const write = (rel: string, text: string) => {
     mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
     writeFileSync(path.join(root, rel), text);
   };
   for (const [rel, text] of Object.entries(files)) write(rel, text);
-  const use = () => cacheFor("probe", [path.join(root, "tests/x.test.ts")], { root, base });
+  const use = () => cacheFor("probe", [path.join(root, PROBE)], { root, base });
   return { dir, root, base, files, write, use, done: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
