@@ -1,11 +1,11 @@
 // The audit's tool layer: four analysers run at pinned versions, their output
 // reduced to one alert shape for the workflow's investigators.
 // node tools/audit/staticLayer.mjs --repo <checkout> --out <alerts.json> [--skip codeql,...]
-import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MAX_OUTPUT, runBin } from '../../scripts/lib/proc.mjs';
 
 export const PRODUCTION = ['app', 'components', 'context', 'lib', 'server', 'shared'];
 const ROOTS = [...PRODUCTION, 'tests', 'tools', 'scripts'];
@@ -69,31 +69,41 @@ export function fromCodeql(pages) {
   }));
 }
 
-function run(command, repo, env = {}) {
-  const r = spawnSync(command, { cwd: repo, shell: true, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, env: { ...process.env, ...env } });
-  if (r.error) throw r.error;
-  if (!r.stdout.trim()) throw new Error(`${command.split(' ')[2]} printed nothing: ${r.stderr.slice(-500)}`);
-  return r.stdout;
+// A tool that exits non-zero on findings still printed its report; only an empty stdout is a failure.
+function run(file, args, repo, env = {}) {
+  let stdout;
+  try {
+    stdout = runBin(file, args, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: MAX_OUTPUT, env: { ...process.env, ...env } });
+  } catch (error) {
+    if (!error.stdout?.trim()) throw new Error(`${args[2] ?? file} printed nothing: ${String(error.stderr ?? error.message).slice(-500)}`);
+    stdout = error.stdout;
+  }
+  if (!stdout.trim()) throw new Error(`${args[2] ?? file} printed nothing`);
+  return stdout;
 }
 
 const TOOLS = {
-  'dependency-cruiser': (repo) => fromDepcruise(JSON.parse(run(
-    `npx --yes -p dependency-cruiser@18.5.0 -p typescript@6.0.3 depcruise --config "${fileURLToPath(new URL('depcruise.cjs', import.meta.url))}" --output-type json ${ROOTS.join(' ')}`, repo))),
+  'dependency-cruiser': (repo) => fromDepcruise(JSON.parse(run('npx', ['--yes', '-p', 'dependency-cruiser@18.5.0', '-p', 'typescript@6.0.3', 'depcruise',
+    '--config', fileURLToPath(new URL('depcruise.cjs', import.meta.url)), '--output-type', 'json', ...ROOTS], repo))),
   // drizzle.config.ts throws without DATABASE_URL; knip only loads it, never connects.
-  knip: (repo) => fromKnip(JSON.parse(run('npx --yes knip@6.39.0 --reporter json --no-exit-code', repo,
+  knip: (repo) => fromKnip(JSON.parse(run('npx', ['--yes', 'knip@6.39.0', '--reporter', 'json', '--no-exit-code'], repo,
     { DATABASE_URL: 'postgres://audit@127.0.0.1:1/none' }))),
   jscpd: (repo) => {
     const out = mkdtempSync(path.join(tmpdir(), 'jscpd-'));
     try {
-      spawnSync(`npx --yes jscpd@5.4.0 --silent --absolute --reporters json --output "${out}" --min-tokens 70 --ignore "**/node_modules/**,**/*.json" ${PRODUCTION.join(' ')}`,
-        { cwd: repo, shell: true, encoding: 'utf8' });
+      try {
+        runBin('npx', ['--yes', 'jscpd@5.4.0', '--silent', '--absolute', '--reporters', 'json', '--output', out, '--min-tokens', '70',
+          '--ignore', '**/node_modules/**,**/*.json', ...PRODUCTION], { cwd: repo, stdio: 'ignore' });
+      } catch {
+        // jscpd's exit code is not its verdict; the report below is, and fromJscpd floors it.
+      }
       return fromJscpd(JSON.parse(readFileSync(path.join(out, 'jscpd-report.json'), 'utf8')), repo);
     } finally {
       rmSync(out, { recursive: true, force: true });
     }
   },
-  codeql: (repo) => fromCodeql(JSON.parse(run(
-    `gh api --paginate --slurp "repos/${GH_REPO}/code-scanning/alerts?state=open&ref=refs/heads/main&per_page=100"`, repo))),
+  codeql: (repo) => fromCodeql(JSON.parse(run('gh', ['api', '--paginate', '--slurp',
+    `repos/${GH_REPO}/code-scanning/alerts?state=open&ref=refs/heads/main&per_page=100`], repo))),
 };
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
