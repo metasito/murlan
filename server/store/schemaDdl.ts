@@ -312,16 +312,7 @@ function dedupeForIndex(
   );
 }
 
-/**
- * Every statement needed to bring an empty or partially-populated database up
- * to `shared/schema.ts`, in application order: enum types, then tables, then
- * columns added to tables that already existed, then indexes (which may target
- * one of those new columns), then the session table.
- *
- * Deliberately narrow: it understands only the schema features
- * `shared/schema.ts` uses today, and throws a descriptive error naming itself
- * for anything else rather than emitting incomplete DDL.
- */
+/** What the database already holds, as `ensureSchema` reads it from the catalog. */
 export type SchemaCatalog = {
   /** `table.column` */
   columns: ReadonlySet<string>;
@@ -331,9 +322,18 @@ export type SchemaCatalog = {
 const EMPTY_CATALOG: SchemaCatalog = { columns: new Set(), indexes: new Set() };
 
 /**
- * `existing` lets a boot skip the `ADD COLUMN`s and `CREATE INDEX`es (with an
- * index's dedupe) the database already has: each `ADD COLUMN IF NOT EXISTS`
- * takes ACCESS EXCLUSIVE on its table even when it adds nothing.
+ * Every statement needed to bring an empty or partially-populated database up
+ * to `shared/schema.ts`, in application order: enum types, then tables, then
+ * columns added to tables that already existed, then indexes (which may target
+ * one of those new columns), then the session table.
+ *
+ * `existing` drops the `ADD COLUMN`s and `CREATE INDEX`es (with an index's
+ * dedupe) the database already has: each `ADD COLUMN IF NOT EXISTS` takes
+ * ACCESS EXCLUSIVE on its table even when it adds nothing.
+ *
+ * Deliberately narrow: it understands only the schema features
+ * `shared/schema.ts` uses today, and throws a descriptive error naming itself
+ * for anything else rather than emitting incomplete DDL.
  */
 export function schemaStatements(existing: SchemaCatalog = EMPTY_CATALOG): string[] {
   const tables = Object.values(schema).filter((v) => is(v, PgTable)) as PgTable[];
@@ -490,17 +490,6 @@ export async function assertRenamesApplied(pool: Pick<Pool, "query">): Promise<v
   }
 }
 
-/**
- * Brings the connected database up to `shared/schema.ts`. Every statement it
- * emits is idempotent and additive, but running it is not unconditionally
- * safe: it throws against a database that still holds a column
- * `shared/schema.ts` has renamed, which only `npm run db:push` can carry out.
- *
- * Not wrapped in a transaction: Postgres restricts `ALTER TYPE ... ADD VALUE`
- * inside one, and a half-applied additive schema is recoverable next boot. A
- * failure is rethrown so the server refuses to start on a schema it knows is
- * wrong.
- */
 async function readCatalog(pool: Pick<Pool, "query">): Promise<SchemaCatalog> {
   const { rows } = await pool.query<{ kind: "column" | "index"; name: string }>(
     `SELECT 'column' AS kind, table_name || '.' || column_name AS name
@@ -514,6 +503,17 @@ async function readCatalog(pool: Pick<Pool, "query">): Promise<SchemaCatalog> {
   return { columns, indexes };
 }
 
+/**
+ * Brings the connected database up to `shared/schema.ts`. Every statement it
+ * emits is idempotent and additive, but running it is not unconditionally
+ * safe: it throws against a database that still holds a column
+ * `shared/schema.ts` has renamed, which only `npm run db:push` can carry out.
+ *
+ * Not wrapped in a transaction: Postgres restricts `ALTER TYPE ... ADD VALUE`
+ * inside one, and a half-applied additive schema is recoverable next boot. A
+ * failure is rethrown so the server refuses to start on a schema it knows is
+ * wrong.
+ */
 export async function ensureSchema(pool: Pool): Promise<void> {
   await assertRenamesApplied(pool);
   const statements = schemaStatements(await readCatalog(pool));
