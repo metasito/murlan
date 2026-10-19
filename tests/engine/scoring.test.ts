@@ -5,12 +5,11 @@ import {
   targetsFor,
   foldRound,
   placementPoints,
-  scoreRound,
   type GameMode,
   type MatchLength,
   type SeatScoring,
 } from "../../lib/game/gameEngine.ts";
-import { seatScoringOf } from "../../server/game/onlineGameLogic.ts";
+import { resolveRoundEnd, seatScoringOf, type ResolveRoundEndInput } from "../../server/game/onlineGameLogic.ts";
 import { seat as makePlayer, state as makeState } from "../support/game.ts";
 
 /** Seats that each score under their own id, every one of them crownable. */
@@ -34,6 +33,13 @@ const standing = (
     opts.seats ?? seatsFor(Object.keys(cumulative))
   );
 
+const paid = (finishingOrder: string[], playerCount: number) =>
+  foldRound(
+    { finishingOrder, playerCount, gameMode: "free_for_all", length: "match" },
+    { cumulative: {}, target: 21 },
+    seatsFor(finishingOrder)
+  ).roundByKey;
+
 describe("placementPoints", () => {
   test("is read by 0-based finish index", () => {
     assert.deepEqual([0, 1, 2, 3].map((i) => placementPoints(i, 4)), [3, 2, 1, 0]);
@@ -45,24 +51,24 @@ describe("placementPoints", () => {
   });
 });
 
-describe("scoreRound", () => {
+describe("what a round pays", () => {
   test("4 players award 3/2/1/0", () => {
-    assert.deepEqual(scoreRound(["a", "b", "c", "d"], 4), { a: 3, b: 2, c: 1, d: 0 });
+    assert.deepEqual(paid(["a", "b", "c", "d"], 4), { a: 3, b: 2, c: 1, d: 0 });
   });
 
   test("generalises to 3 and 2 players", () => {
-    assert.deepEqual(scoreRound(["a", "b", "c"], 3), { a: 2, b: 1, c: 0 });
-    assert.deepEqual(scoreRound(["a", "b"], 2), { a: 1, b: 0 });
+    assert.deepEqual(paid(["a", "b", "c"], 3), { a: 2, b: 1, c: 0 });
+    assert.deepEqual(paid(["a", "b"], 2), { a: 1, b: 0 });
   });
 
   test("never awards negative points if the finishingOrder run long", () => {
-    const scores = scoreRound(["a", "b", "c", "d", "e"], 4);
+    const scores = paid(["a", "b", "c", "d", "e"], 4);
     assert.equal(scores.e, 0);
     assert.ok(Object.values(scores).every((v) => v >= 0));
   });
 
   test("an empty finishing order scores nobody", () => {
-    assert.deepEqual(scoreRound([], 4), {});
+    assert.deepEqual(paid([], 4), {});
   });
 });
 
@@ -492,7 +498,6 @@ describe("foldRound", () => {
   });
 });
 
-
 // Every outcome the server's scoring reaches, as literals: a change to how seats are described to
 // the fold has to reproduce each one.
 describe("the fold matrix", () => {
@@ -545,6 +550,22 @@ describe("the fold matrix", () => {
       cumulative: { u0: 48, u1: 49, u2: 40, u3: 41 },
       target: 51,
     },
+    "frozen row past target": {
+      playerMap: { 0: "u0", 2: "u2", 3: "u3" },
+      botSeatsAtStart: [],
+      vacatedSeats: { 1: "u1" },
+      finishingOrder: ["player_0", "player_1", "player_2", "player_3"],
+      cumulative: { u0: 4, u2: 3, u3: 2, u1: 25 },
+      target: 21,
+    },
+    "unlisted row past target": {
+      playerMap: { 0: "u0", 1: "u1", 2: "u2", 3: "u3" },
+      botSeatsAtStart: [],
+      vacatedSeats: {},
+      finishingOrder: ["player_0", "player_1", "player_2", "player_3"],
+      cumulative: { gone: 30, u0: 2 },
+      target: 21,
+    },
   };
 
   const totals: Record<string, Record<string, number>> = {
@@ -553,6 +574,8 @@ describe("the fold matrix", () => {
     "born bot": { u0: 12, u2: 5, u3: 3, "bot:1": 21 },
     "tie at target": { u0: 21, u1: 21, u2: 9, u3: 9 },
     "tie at final rung": { u0: 51, u1: 51, u2: 41, u3: 41 },
+    "frozen row past target": { u0: 7, "bot:1": 2, u2: 4, u3: 2, u1: 25 },
+    "unlisted row past target": { gone: 30, u0: 5, u1: 2, u2: 1, u3: 0 },
   };
   type Outcome = { target: number; over: boolean; winners: string[]; isDraw: boolean };
   const expected: Record<"free_for_all" | "teams", Record<"match" | "single", Record<string, Outcome>>> = {
@@ -563,6 +586,9 @@ describe("the fold matrix", () => {
         "born bot": { target: 21, over: true, winners: ["bot:1"], isDraw: false },
         "tie at target": { target: 31, over: false, winners: [], isDraw: false },
         "tie at final rung": { target: 51, over: true, winners: ["u0", "u1"], isDraw: true },
+        // docs/GAME-RULES.md § Decisions, "Who may be crowned".
+        "frozen row past target": { target: 21, over: false, winners: [], isDraw: false },
+        "unlisted row past target": { target: 21, over: false, winners: [], isDraw: false },
       },
       single: {
         vacated: { target: 21, over: true, winners: ["u0"], isDraw: false },
@@ -590,9 +616,10 @@ describe("the fold matrix", () => {
     },
   };
 
-  const fold = (gameMode: GameMode, length: MatchLength, s: Scenario) => {
-    const state = makeState({
+  const roundEndInput = (gameMode: GameMode, length: MatchLength, s: Scenario): ResolveRoundEndInput => ({
+    state: makeState({
       gameMode,
+      roundOver: true,
       finishingOrder: s.finishingOrder,
       players: [0, 1, 2, 3].map((seat) =>
         makePlayer(seat, [], {
@@ -600,28 +627,53 @@ describe("the fold matrix", () => {
           team: gameMode === "teams" ? (seat % 2 === 0 ? "A" : "B") : undefined,
         })
       ),
-    });
-    const vacatedSeats = new Map(
+    }),
+    playerMap: s.playerMap,
+    cumulativeScores: s.cumulative,
+    matchTarget: s.target,
+    matchLength: length,
+    gameMode,
+    roundFlags: {},
+    abandonedSeats: new Map(),
+    botSeatsAtStart: new Set(s.botSeatsAtStart),
+    vacatedSeats: new Map(
       Object.entries(s.vacatedSeats).map(([seat, userId]) => [Number(seat), { userId, username: userId }])
-    );
-    return foldRound(
+    ),
+  });
+
+  const viaFold = (gameMode: GameMode, length: MatchLength, s: Scenario) => {
+    const input = roundEndInput(gameMode, length, s);
+    const result = foldRound(
       { finishingOrder: s.finishingOrder, playerCount: 4, gameMode, length },
       { cumulative: s.cumulative, target: s.target },
-      seatScoringOf({ state, playerMap: s.playerMap, botSeatsAtStart: new Set(s.botSeatsAtStart), vacatedSeats })
+      seatScoringOf(input)
     );
+    return { ...result, outcome: { target: result.target, over: result.over, winners: result.winners, isDraw: result.isDraw } };
+  };
+
+  const viaServer = (gameMode: GameMode, length: MatchLength, s: Scenario) => {
+    const result = resolveRoundEnd(roundEndInput(gameMode, length, s));
+    return {
+      cumulative: result.cumulativeScores,
+      outcome: {
+        target: result.matchTarget,
+        over: result.matchOver,
+        winners: result.matchWinners,
+        isDraw: result.isDraw,
+      },
+    };
   };
 
   for (const gameMode of ["free_for_all", "teams"] as const) {
     for (const length of ["match", "single"] as const) {
       for (const [name, outcome] of Object.entries(expected[gameMode][length])) {
-        test(`${gameMode}, ${length}, ${name}`, () => {
-          const result = fold(gameMode, length, scenarios[name]);
-          assert.deepEqual(
-            { target: result.target, over: result.over, winners: result.winners, isDraw: result.isDraw },
-            outcome
-          );
-          assert.deepEqual(result.cumulative, totals[name]);
-        });
+        for (const [path, run] of [["foldRound", viaFold], ["resolveRoundEnd", viaServer]] as const) {
+          test(`${gameMode}, ${length}, ${name}, through ${path}`, () => {
+            const result = run(gameMode, length, scenarios[name]);
+            assert.deepEqual(result.outcome, outcome);
+            assert.deepEqual(result.cumulative, totals[name]);
+          });
+        }
       }
     }
   }

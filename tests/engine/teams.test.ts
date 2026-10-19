@@ -17,11 +17,11 @@ import {
   buildCombination,
   foldRound,
   processPlay,
-  scoreRound,
   type GameMode,
   type MatchLength,
   type SeatScoring,
 } from "../../lib/game/gameEngine.ts";
+import { offlineSeats } from "../../lib/game/matchFlow.ts";
 
 /**
  * Seats 0/2 are team A, seats 1/3 are team B (partners sit opposite).
@@ -75,7 +75,11 @@ describe("teams: every seat gets a placement", () => {
     assert.deepEqual(done.finishingOrder, ["p0", "p2", "p3", "p1"]);
     assert.equal(done.players[1].finishPosition, 4, "the seat still holding cards is last");
 
-    const points = scoreRound(done.finishingOrder, 4);
+    const points = foldRound(
+      { finishingOrder: done.finishingOrder, playerCount: 4, gameMode: "teams", length: "match" },
+      { cumulative: {}, target: 21 },
+      offlineSeats(done)
+    ).roundByKey;
     assert.deepEqual(points, {
       p0: 3,
       p2: 2,

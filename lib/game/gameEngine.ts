@@ -1216,11 +1216,8 @@ export function placementPoints(finishIndex: number, playerCount: number): numbe
   return Math.max(playerCount - 1 - finishIndex, 0);
 }
 
-/**
- * Points awarded for one round, by id. `finishingOrder` is best first; players absent from it score
- * 0 and are not present in the result.
- */
-export function scoreRound(
+/** Points for one round, by id; players absent from `finishingOrder` are absent from the result. */
+function scoreRound(
   finishingOrder: string[],
   playerCount: number
 ): Record<string, number> {

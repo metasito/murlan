@@ -56,8 +56,9 @@ export interface OnlineGameState {
    * or a bot-filled table from the start, never a human's seat this match.
    * `seatScoringOf` reads this to tell that seat apart from one a human
    * later walked out of: both score under the same `bot:<seat>` key, but only
-   * the former may be crowned — nobody is left behind the latter to claim it. Not in `playerMap`'s own shape (a `Record` can't say "was
-   * never a key"), so it travels beside it rather than folding in.
+   * the former may be crowned — nobody is left behind the latter to claim it.
+   * Not in `playerMap`'s own shape (a `Record` can't say "was never a key"),
+   * so it travels beside it rather than folding in.
    *
    * Restored from `personality` on a restart (`botSeatsFromPersonality`)
    * rather than from the `seats` block, because the engine state already
