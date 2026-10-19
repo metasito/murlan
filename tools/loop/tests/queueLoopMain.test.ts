@@ -25,7 +25,7 @@ import { afterSession } from "../decide.mjs";
 import { readLine } from "../loop-stream.mjs";
 import { ticketTally } from "../loop-logs.mjs";
 import { PLAIN } from "../loop-render.mjs";
-import { parkAsked } from "../loop-screen.mjs";
+import { parkAsked } from "../paths.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
 const { MAX_HANDOFFS, USD_BY_SIZE, WAIT } = LIMITS;

@@ -13,11 +13,11 @@ import { spawnEnv } from "./session-env.mjs";
 import { estimateCost } from "./loop-cost.mjs";
 import { DIR, streamLog } from "./loop-logs.mjs";
 import { ticker } from "./loop-screen.mjs";
+import { ROOT } from "./paths.mjs";
 import { openTicket, roundOf, sessionView, ticketFacts } from "./loop-board.mjs";
 
 const { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, MODEL_BY_PHASE, TICKET_BUDGET_USD, TURNS_BY_SIZE, TURNS_DEFAULT } = SESSION_POLICY;
 const HERE = import.meta.dirname;
-const ROOT = path.resolve(HERE, "..", "..");
 
 /**
  * @param {string[]} argv

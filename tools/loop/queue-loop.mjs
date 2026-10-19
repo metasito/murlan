@@ -12,12 +12,12 @@
  *
  * Usage: npm run queue:loop (tools/loop/run-loop.mjs, which restarts this on exit 75)
  */
-import path from "node:path";
 import { git as gitAt, REPO } from "./cli.mjs";
 import { derive } from "./loop-derive.mjs";
 import { killedRun, runSession, runTicket } from "./loop-session.mjs";
 import { bell, clockAt, LAND, PLAIN, reportRow, runRecap, runTotal, stepRow } from "./loop-render.mjs";
 import { ticker } from "./loop-screen.mjs";
+import { ROOT } from "./paths.mjs";
 import { journaled, screenEvents, ticketFacts } from "./loop-board.mjs";
 import {
   appendSupervisor,
@@ -51,7 +51,6 @@ import { CI_RED_TIMEOUT_MS, runSettle } from "./settle.mjs";
 
 const { SETTLE, TICKET_HOLDS, WAIT } = LIMITS;
 
-const ROOT = path.resolve(import.meta.dirname, "..", "..");
 
 /**
  * Sliced, so `.loop-stop` still reaches the loop across a long wait.

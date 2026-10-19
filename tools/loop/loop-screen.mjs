@@ -18,20 +18,8 @@ import {
   theme,
   UNNAMED,
 } from "./loop-render.mjs";
+import { PARK_FILE, parkAsked, ROOT, STOP_FILE } from "./paths.mjs";
 
-export const STOP_FILE = ".loop-stop";
-export const PARK_FILE = ".loop-park";
-
-const ROOT = path.resolve(import.meta.dirname, "..", "..");
-
-export const parkAsked = (number, read = (f) => fs.readFileSync(f, "utf8")) => {
-  if (number == null) return false;
-  try {
-    return Number(read(PARK_FILE).trim()) === number;
-  } catch {
-    return false;
-  }
-};
 
 const ERASE = "\r\u001B[2K";
 const HIDE = "\u001B[?25l";

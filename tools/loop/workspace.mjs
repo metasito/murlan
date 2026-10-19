@@ -14,8 +14,8 @@ import { execFileSync } from "node:child_process";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { firstLine, gh as ghCli, git as gitAt, MAX_BUFFER, REPO } from "./cli.mjs";
 import { AGENT_DIR, derive, parityRed, WORKTREE_DIR } from "./loop-derive.mjs";
-import { ciLogPath, leftoverPath } from "./loop-logs.mjs";
-import { PARK_FILE, parkAsked, STOP_FILE } from "./loop-screen.mjs";
+import { ciLogPath, leftoverPath, writeNote } from "./loop-logs.mjs";
+import { PARK_FILE, parkAsked, ROOT, STOP_FILE } from "./paths.mjs";
 import { REFRESH_TIMEOUT_MS } from "./limits.mjs";
 import { capabilities, note, stepRow, theme } from "./loop-render.mjs";
 import { reap as reapSweep } from "./reap.mjs";
@@ -483,8 +483,6 @@ export function checkLockDrift(root) {
   return lockDrift(packageJson, packageLock, installed);
 }
 
-const ROOT = path.resolve(import.meta.dirname, "..", "..");
-
 // The session and the loop read these from the shared checkout, not from the ticket's worktree.
 const PROTOCOL = ["CLAUDE.md", ".claude", "tools/loop", "scripts/lib"];
 
@@ -631,16 +629,11 @@ export function tearDown(cwd, { force = false, git: run = gitAt(ROOT) } = {}) {
   return why;
 }
 
-const writeLeftover = (file, body) => {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, body);
-};
-
 /**
  * Only after a confirmed merge. `force` is safe here because `removeWorktree` detaches the junction
  * before removing, and the leftovers are on disk first; a patch that cannot be written keeps the tree.
  */
-export function removeLanded(cwd, number, { run = sh, write = writeLeftover, say = console.error, remove = tearDown } = {}) {
+export function removeLanded(cwd, number, { run = sh, write = writeNote, say = console.error, remove = tearDown } = {}) {
   const branch = run("git", ["-C", cwd, "branch", "--show-current"]).trim();
   const removed = removeLandedTree(cwd, number, { run, write, say, remove });
   if (removed === null || !branch) return removed;
