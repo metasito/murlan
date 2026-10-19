@@ -53,6 +53,13 @@ jest.mock('@/context/SocketContext', () => ({
   useSocket: () => ({ socket: mockSocket }),
 }));
 
+jest.mock('expo-router', () => ({
+  router: { push: () => {}, replace: () => {}, back: () => {} },
+  useSegments: () => ['(online)', 'game'],
+}));
+
+const { useOnlineRouting } = require('@/context/useOnlineRouting') as typeof import('@/context/useOnlineRouting');
+
 const renders: Record<string, number> = {};
 
 /** One probe per slice, each reading its own and nothing else — and `wide`. */
@@ -63,6 +70,9 @@ const PROBES = {
   turnClock: useOnlineTurnClock,
   match: useOnlineMatch,
   exchange: useOnlineExchange,
+  // The layout's router, mounted for the whole group: it follows the table
+  // appearing and going, never a move.
+  router: useOnlineRouting,
   wide: useOnlineGame,
 } as const;
 
@@ -145,6 +155,8 @@ type Broadcast =
  */
 const CASES: (Broadcast & {
   what: string;
+  /** Delivered once before counting: what is measured is a table already standing. */
+  primed?: boolean;
   expected: Record<keyof typeof PROBES, number>;
 })[] = [
   {
@@ -154,17 +166,18 @@ const CASES: (Broadcast & {
       { turnDeadlineMs: 1000, turnSecondsRemaining: 30 },
       { turnDeadlineMs: 2000, turnSecondsRemaining: 30 },
     ],
-    expected: { connection: 0, room: 0, table: 0, turnClock: 2, match: 0, exchange: 0, wide: 2 },
+    expected: { connection: 0, room: 0, table: 0, turnClock: 2, match: 0, exchange: 0, router: 0, wide: 2 },
   },
   {
     what: 'a roster change',
     event: 'room:state',
     payloads: [roomState, { ...roomState, players: [] }],
-    expected: { connection: 0, room: 2, table: 0, turnClock: 0, match: 0, exchange: 0, wide: 2 },
+    expected: { connection: 0, room: 2, table: 0, turnClock: 0, match: 0, exchange: 0, router: 2, wide: 2 },
   },
   {
     what: 'a move',
     event: 'game:state',
+    primed: true,
     // The same window twice, because `onGameState` re-arms the clock with a
     // fresh object on every broadcast carrying one: the clock wakes on a state
     // that moved nothing about it, and a fixture that varied the numbers could
@@ -173,7 +186,7 @@ const CASES: (Broadcast & {
       { ...gameState, viewerSeatIndex: 0, turnDeadlineMs: 1000, turnSecondsRemaining: 30 },
       { ...gameState, viewerSeatIndex: 0, turnDeadlineMs: 1000, turnSecondsRemaining: 30 },
     ],
-    expected: { connection: 0, room: 0, table: 2, turnClock: 2, match: 0, exchange: 0, wide: 2 },
+    expected: { connection: 0, room: 0, table: 2, turnClock: 2, match: 0, exchange: 0, router: 0, wide: 2 },
   },
 ];
 
@@ -183,9 +196,10 @@ describe('a field change wakes its own slice', () => {
     for (const key of Object.keys(renders)) delete renders[key];
   });
 
-  for (const { what, event, payloads, expected } of CASES) {
+  for (const { what, event, payloads, expected, primed } of CASES) {
     it(`leaves the slices ${what} says nothing about unrendered`, async () => {
       const view = await mount();
+      if (primed) await deliver(event, payloads[0]);
       // Mount settles first: what is measured is the delta a field change
       // costs, not the mount that had to happen either way.
       for (const key of Object.keys(renders)) renders[key] = 0;

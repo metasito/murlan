@@ -29,6 +29,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
     joinRoom: mockJoinRoom,
     spectateRoom: jest.fn(),
     room: mockState.room,
+    hasGame: false,
     isSpectator: false,
   }),
   useOnlineTable: () => ({ gameState: null }),

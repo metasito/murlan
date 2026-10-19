@@ -65,8 +65,13 @@ jest.mock('@/lib/device/pushRegistration', () => ({
 const mockJoinRoom = jest.fn();
 const mockOnline = { connected: false };
 jest.mock('@/context/onlineGameHooks', () => ({
-  useOnlineRoom: () => ({ joinRoom: mockJoinRoom, room: null, isSpectator: false, entrySource: null }),
-  useOnlineTable: () => ({ gameState: null }),
+  useOnlineRoom: () => ({
+    joinRoom: mockJoinRoom,
+    room: null,
+    hasGame: false,
+    isSpectator: false,
+    entrySource: null,
+  }),
   useOnlineConnection: () => ({
     connected: mockOnline.connected,
     rejoinFailed: false,

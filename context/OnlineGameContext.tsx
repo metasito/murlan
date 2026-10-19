@@ -125,6 +125,8 @@ interface OnlineGameContextValue {
   spectateRoom: (code: string) => void;
   /** True while watching. No seat, no actions, every hand hidden. */
   isSpectator: boolean;
+  /** Whether a table's state has arrived: `gameState !== null`, without waking on every move. */
+  hasGame: boolean;
   leaveRoom: () => void;
   quickmatch: (maxPlayers: number, gameMode: "free_for_all" | "teams") => void;
   /** Host-only: whether the matcher may seat strangers into the empty seats. */
@@ -192,6 +194,7 @@ type RoomSlice = Pick<
   | "room"
   | "entrySource"
   | "isSpectator"
+  | "hasGame"
   | "createRoom"
   | "joinRoom"
   | "spectateRoom"
@@ -850,11 +853,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     [connected, error, reconnectNotice, playerLeft, rejoinFailed, clearError, clearPlayerLeft, clearRejoinFailed, retryConnection, ownLink, pill]
   );
 
+  const hasGame = gameState !== null;
   const roomValue = useMemo(
     () => ({
       room,
       entrySource,
       isSpectator,
+      hasGame,
       createRoom,
       joinRoom,
       spectateRoom,
@@ -863,7 +868,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       setRoomVisibility,
       startGame,
     }),
-    [room, entrySource, isSpectator, createRoom, joinRoom, spectateRoom, leaveRoom, quickmatch, setRoomVisibility, startGame]
+    [room, entrySource, isSpectator, hasGame, createRoom, joinRoom, spectateRoom, leaveRoom, quickmatch, setRoomVisibility, startGame]
   );
 
   const tableValue = useMemo(

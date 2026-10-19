@@ -36,7 +36,6 @@ jest.mock('@/context/onlineGameHooks', () => ({
     entrySource: 'friends',
     joinRoom: () => {},
   }),
-  useOnlineTable: () => ({ gameState: mockState.hasGame ? {} : null }),
   useOnlineConnection: () => ({
     connected: true,
     rejoinFailed: mockState.rejoinFailed,

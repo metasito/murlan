@@ -1,19 +1,17 @@
 import { useEffect, useRef } from "react";
 import { router, useSegments } from "expo-router";
 import { useSocket } from "./SocketContext";
-import { useOnlineConnection, useOnlineRoom, useOnlineTable } from "./onlineGameHooks";
+import { useOnlineConnection, useOnlineRoom } from "./onlineGameHooks";
 import { NO_TABLE, navigationFor, onlineRouteOf, type OnlineFacts, type OnlineRoute } from "./onlineRouting";
 
 /** Mounted once, inside `OnlineGameProvider`, in `app/(online)/_layout.tsx`: screens only render. */
 export function useOnlineRouting(): void {
-  const { room, isSpectator, entrySource, joinRoom } = useOnlineRoom();
-  const { gameState } = useOnlineTable();
+  const { room, hasGame, isSpectator, entrySource, joinRoom } = useOnlineRoom();
   const { connected, rejoinFailed, clearRejoinFailed } = useOnlineConnection();
   const { acceptedInvite, clearAcceptedInvite } = useSocket();
   const here = onlineRouteOf(useSegments());
 
   const roomId = room?.roomId ?? null;
-  const hasGame = gameState != null;
   // `left` is the place a navigation was sent from: `useSegments` still names it until the
   // router lands, and judging that stale place again would send the player off it twice.
   // What changes meanwhile is judged on landing, against the facts the navigation left with.

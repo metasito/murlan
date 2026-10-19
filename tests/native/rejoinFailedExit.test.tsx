@@ -29,6 +29,7 @@ jest.mock('@/context/OnlineGameContext', () =>
       // A failed rejoin has already cleared the state.
       room: null,
       gameState: null,
+      hasGame: false,
       isSpectator: false,
       rejoinFailed: true,
       connected: true,
