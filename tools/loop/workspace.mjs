@@ -823,7 +823,7 @@ export function workspacePort({ root = ROOT, git: run = gitAt(root), events }) {
     stopFile: () => fs.existsSync(at(STOP_FILE)),
     parkAsked: (n) => parkAsked(n, (f) => fs.readFileSync(at(f), "utf8")),
     clearParkAsk: () => fs.rmSync(at(PARK_FILE), { force: true }),
-    ciLog: (n) => (fs.existsSync(at(ciLogPath(n))) ? at(ciLogPath(n)) : null),
+    ciLog: (n) => (fs.existsSync(at(ciLogPath(n))) ? ciLogPath(n) : null),
     worktreeOf: (n) => worktreeOf(standing, n, (k) => (fs.existsSync(at(`${WORKTREE_DIR}/agent-${k}`)) ? at(`${WORKTREE_DIR}/agent-${k}`) : null)),
     loopMoved: () => loopMoved(started, g),
     syncCheckout: (pinned) => syncCheckout(g, (m) => events.log(m, "checkout"), () => reinstall(sh, root), { pinned, stamp: stampAt(root) }),

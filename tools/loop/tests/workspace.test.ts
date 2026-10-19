@@ -6,7 +6,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
-import { housekeeping, sweep, workspacePort, worktreeOf } from "../workspace.mjs";
+import { housekeeping, park, sweep, workspacePort, worktreeOf } from "../workspace.mjs";
+import { fakeTracker } from "../tracker.mjs";
 import { checkoutRoot, reap as realReap } from "../reap.mjs";
 
 // Named for the shape rather than the case: a test file joining the install's literal name trips
@@ -561,12 +562,18 @@ describe("workspacePort's disk, under its root", () => {
     assert.equal(fs.existsSync(path.join(root, ".loop-park")), false);
   });
 
-  test("a CI log is offered only when it is on disk", () => {
+  // The log a park posts is on a public issue and in the ledger: the repo's path, never this machine's.
+  test("a CI log is offered only when it is on disk, by its path in the repo, and the park note posts that", () => {
     const { root, ws } = port();
     assert.equal(ws.ciLog(42), null);
     fs.mkdirSync(path.join(root, ".loop-logs"));
     fs.writeFileSync(path.join(root, ".loop-logs", "ci-42.log"), "red");
-    assert.equal(ws.ciLog(42), path.join(root, ".loop-logs", "ci-42.log"));
+    const log = ws.ciLog(42);
+    assert.equal(log, path.join(".loop-logs", "ci-42.log"));
+    let body = "";
+    park(42, { phase: "E", why: "CI is red", log: log!, cwd: null, branch: "agent/42-x", dirty: false, run: () => "", tracker: fakeTracker(), write: (_file: string, text: string) => void (body = text) });
+    assert.match(body, /- log: `\.loop-logs[\\/]ci-42\.log`/);
+    assert.ok(!body.includes(root), body);
   });
 
   // The supervisor's cwd is ROOT only because its CLI says so; a port given a root reads that root.
@@ -585,7 +592,7 @@ describe("workspacePort's disk, under its root", () => {
     const ws = workspacePort({ root, git, events: { log: (m: string) => said.push(m), step: () => {} } });
     assert.equal(ws.derive().branch, "rooted-here");
     assert.match(ws.sharedCheckoutDirty(), /stray\.txt/);
-    assert.equal(ws.ciLog(9), path.join(root, ".loop-logs", "ci-9.log"));
+    assert.equal(ws.ciLog(9), path.join(".loop-logs", "ci-9.log"));
     ws.remove(".worktrees/agent-9", 9);
     assert.match(said.join("\n"), /agent-9 is still standing/, "a worktree under the root is the one removed");
   });
