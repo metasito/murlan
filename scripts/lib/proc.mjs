@@ -4,6 +4,7 @@
  * `tools/loop/cli.mjs` stays independent of it.
  */
 import * as childProcess from "node:child_process";
+import { readFileSync } from "node:fs";
 import os from "node:os";
 
 // `npm` and `npx` are `.cmd` shims on Windows, and since the fix for CVE-2024-27980 node will not run
@@ -26,7 +27,7 @@ export function cmdArg(arg) {
 const gone = (err) => err?.code === "ESRCH";
 
 /** A stalled `ps` would otherwise stall whatever waits on it, a watchdog included. */
-const TABLE_TIMEOUT_MS = 10_000;
+export const TABLE_TIMEOUT_MS = 10_000;
 
 /** The helpers over injected platform and process primitives; the module's exports are its defaults. */
 export function procFor({
@@ -35,6 +36,7 @@ export function procFor({
   execFileSync = childProcess.execFileSync,
   kill = (pid, signal) => process.kill(pid, signal),
   selfPid = process.pid,
+  readProcStat = (pid) => readFileSync(`/proc/${pid}/stat`, "utf8"),
 } = {}) {
   const win = platform === "win32";
 
@@ -141,43 +143,28 @@ export function procFor({
   };
 
   /**
-   * Each live process's start, in epoch ms, from one read; a zombie has exited and is left out.
-   * POSIX reads it to the second, which only ever rounds a start down.
+   * A process's exact identity: Linux's start time in clock ticks since boot, which no later process
+   * with the same pid can share. Undefined when it is gone or a zombie; null where no exact identity
+   * is to be had without a spawn, which is everywhere else.
+   * @returns {string | undefined | null}
    */
-  function processStarts() {
-    const starts = new Map();
-    if (win) {
-      const ps =
-        "Get-CimInstance Win32_Process | ForEach-Object { if ($_.CreationDate) " +
-        '{ "$($_.ProcessId) $(([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds())" } }';
-      const out = execFileSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", ps], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: TABLE_TIMEOUT_MS });
-      for (const line of String(out).split(/\r?\n/)) {
-        const m = line.trim().match(/^(\d+) (\d+)$/);
-        if (m) starts.set(Number(m[1]), Number(m[2]));
-      }
-      return starts;
+  function identityOf(pid) {
+    if (platform !== "linux") return null;
+    let stat;
+    try {
+      stat = readProcStat(pid);
+    } catch {
+      return undefined;
     }
-    const out = execFileSync("ps", ["-A", "-o", "pid=,stat=,lstart="], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: TABLE_TIMEOUT_MS });
-    for (const line of String(out).split("\n")) {
-      const m = line.trim().match(/^(\d+)\s+(\S+)\s+(.+)$/);
-      if (m && !m[2].startsWith("Z")) starts.set(Number(m[1]), Date.parse(m[3]));
-    }
-    return starts;
+    // The command name before ")" may itself hold spaces and parentheses.
+    const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+    return fields[0] === "Z" || !/^\d+$/.test(fields[19] ?? "") ? undefined : fields[19];
   }
 
-  /**
-   * Ends the tree of `pid` only while it is a process that started no later than `startedBy`: a
-   * stranger that took the pid after it exited started later. True when it ended one.
-   */
-  function endTreeIfSame(pid, startedBy) {
-    if (win) {
-      if (!(processStarts().get(pid) <= startedBy)) return false;
-      taskkill(pid, true);
-      return true;
-    }
-    const started = readTable().get(pid)?.started;
-    if (started === undefined || !(Date.parse(started) <= startedBy)) return false;
-    freezeAndKill(new Map([[pid, started]]));
+  /** Ends the tree of `pid` only while it is still the process `identity` names. True when it did. */
+  function endTreeIf(pid, identity) {
+    if (identity == null || identityOf(pid) !== identity) return false;
+    killTree(pid);
     return true;
   }
 
@@ -305,10 +292,10 @@ export function procFor({
     return child;
   }
 
-  return { runBin, startBin, spawnBin, killTree, processStarts, endTreeIfSame, stopTree, relay };
+  return { runBin, startBin, spawnBin, killTree, identityOf, endTreeIf, alive, stopTree, relay };
 }
 
-export const { runBin, startBin, spawnBin, killTree, processStarts, endTreeIfSame, stopTree, relay } = procFor();
+export const { runBin, startBin, spawnBin, killTree, identityOf, endTreeIf, alive, stopTree, relay } = procFor();
 
 export function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);

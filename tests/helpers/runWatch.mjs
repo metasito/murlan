@@ -2,8 +2,8 @@
 // reporter stamps a heartbeat on every event, and a runner whose loop is blocked stamps nothing.
 import { readdirSync, readFileSync, rmSync, writeSync } from "node:fs";
 import { parentPort, workerData } from "node:worker_threads";
-import { endTreeIfSame, processStarts } from "../../scripts/lib/proc.mjs";
-import { exitGuard } from "./exitGuard.mjs";
+import { alive, endTreeIf, identityOf } from "../../scripts/lib/proc.mjs";
+import { EXIT_TICK_MS, exitGuard } from "./exitGuard.mjs";
 
 const { heartbeat, idleMs, exits } = workerData;
 let inFlight = [];
@@ -31,6 +31,7 @@ setInterval(() => {
 }, Math.min(1000, idleMs / 4));
 
 if (exits.graceMs !== undefined) {
-  const tick = exitGuard({ ...exits, proc: { processStarts, endTreeIfSame }, write: (line) => writeSync(2, `\n${line}\n`) });
-  setInterval(tick, Math.min(250, exits.graceMs / 4));
+  const proc = { identityOf, endTreeIf, alive };
+  const tick = exitGuard({ ...exits, platform: process.platform, proc, write: (line) => writeSync(2, `\n${line}\n`) });
+  setInterval(tick, EXIT_TICK_MS);
 }
