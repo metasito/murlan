@@ -6,6 +6,7 @@ import { readLine } from "../loop-stream.mjs";
 import { allowedTools, queueLoopArgs, CHECK_BASH_TIMEOUT_MS, BASH_DEFAULT_TIMEOUT_MS } from "../queue-loop.mjs";
 import { ciRedBody } from "../settle.mjs";
 import { ciLogPath } from "../loop-logs.mjs";
+import { fakeTracker, runCli } from "../tracker.mjs";
 
 /**
  * The loop's instructions name commands and files. Prose cannot be run, so every one of those
@@ -35,6 +36,21 @@ describe("the loop's instructions name only things that exist", () => {
   // like the one above was the only way to check. They are static imports of queue-loop.mjs now, so
   // a missing one is a load error before any test in this file runs — which is why there is no scan
   // for them.
+
+  test("every tracker.mjs verb a recipe names is one its CLI runs", () => {
+    const docs = [QUEUE, "docs/agents/issue-tracker.md", "docs/agents/RULES.md", ".claude/commands/audit.md"];
+    const verbs = [...new Set(docs.flatMap((d) => [...read(d).matchAll(/tracker\.mjs ([a-z][\w-]*)/g)].map((m) => m[1])))];
+    assert.ok(verbs.length >= 6, `only ${verbs.join(", ")}; the pattern has drifted`);
+    const unknown = verbs.filter((verb) => {
+      try {
+        runCli([verb], fakeTracker() as never, () => {});
+        return false;
+      } catch (err) {
+        return /^usage:/.test(String((err as Error).message));
+      }
+    });
+    assert.deepEqual(unknown, [], "a recipe names a tracker verb the CLI does not have");
+  });
 
   test("every `npm run x` it tells you to run is a real script", () => {
     const pkg = JSON.parse(read("package.json")).scripts ?? {};
@@ -226,7 +242,7 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
   // An open pull request is what the supervisor settles: one opened mid-C turns a refused or stalled build into a CI round.
   test("phase C never opens the pull request; the supervisor does at the D handoff", () => {
     const c = read(QUEUE).split("## C — Build")[1]?.split("## D — Review")[0] ?? "";
-    assert.doesNotMatch(c, /gh pr create/);
+    assert.doesNotMatch(c, /gh pr create|tracker\.mjs pr-create/);
   });
 
   test("files nothing as agent work", () => {
@@ -276,7 +292,7 @@ describe("every subagent brief comes from brief.mjs", () => {
   });
   test("phase B never splits a ticket into new ones", () => {
     const b = queue().split("## B — Scope")[1]?.split("## C — Build")[0] ?? "";
-    assert.doesNotMatch(b, /gh issue create|split/);
+    assert.doesNotMatch(b, /gh issue create|tracker\.mjs create|split/);
   });
 });
 

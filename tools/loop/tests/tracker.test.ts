@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { armArgs, disarmArgs, fakeTracker, ghTracker, issueText, isTrusted, readIssue, TRUSTED_AUTHORS, TRUSTED_SELECT, trustedComments } from "../tracker.mjs";
+import { armArgs, disarmArgs, fakeTracker, flagsOf, ghTracker, issueText, runCli, isTrusted, readIssue, TRUSTED_AUTHORS, TRUSTED_SELECT, trustedComments } from "../tracker.mjs";
 
 type Seed = Record<number, { state?: string; labels?: string[]; title?: string }>;
 
@@ -138,6 +138,49 @@ describe("the gh tracker and the fake agree", () => {
     const r = both(seed, numbers);
     assert.deepEqual(r.real, [[8, 3], [8, 5, 3], [8, 5], [5]]);
     assert.deepEqual(r.fake, r.real);
+  });
+});
+
+describe("the tracker's CLI, a session's writes over REST", () => {
+  const said: string[] = [];
+  const cli = (t: ReturnType<typeof fakeTracker>, ...argv: string[]) => runCli(argv, t as never, (line: string) => void said.push(line));
+
+  test("every verb a recipe names reaches the tracker", () => {
+    const t = fakeTracker({ 5: { labels: ["ready-for-agent", "in-progress"] }, 6: { labels: ["parity"] } });
+    cli(t, "comment", "5", "--body-file", "note.md");
+    cli(t, "label", "5", "--remove", "ready-for-agent", "--remove", "in-progress", "--add", "ready-for-human");
+    cli(t, "create", "--title", "a thing", "--body-file", "b.md", "--label", "ready-for-human");
+    cli(t, "pr-create", "--head", "agent/5-x", "--title", "T", "--body-file", "pr.md");
+    cli(t, "pr-edit", "1", "--body-file", "pr.md");
+    cli(t, "close", "6", "--comment", "done");
+    assert.deepEqual(t.held(5), { state: "OPEN", labels: ["ready-for-human"], comments: ["note.md"] });
+    assert.equal(t.held(6).state, "CLOSED");
+    assert.deepEqual(t.writes(), [
+      ["createIssue", { title: "a thing", bodyFile: "b.md", labels: ["ready-for-human"] }],
+      ["editPr", 1, "pr.md"],
+    ]);
+    assert.deepEqual(t.prs().map((p) => p.headRefName), ["agent/5-x"]);
+  });
+
+  test("list prints the issues as JSON, by label when asked", () => {
+    const t = fakeTracker({ 3: { labels: ["parity"], title: "p" }, 4: { labels: ["ready-for-agent"], title: "r" } });
+    said.length = 0;
+    cli(t, "list", "--label", "parity");
+    cli(t, "list");
+    assert.deepEqual(JSON.parse(said[0]), [{ number: 3, title: "p" }]);
+    assert.deepEqual(JSON.parse(said[1]).map((i: { number: number }) => i.number), [3, 4]);
+  });
+
+  test("a missing flag or number is refused with the usage, and writes nothing", () => {
+    const t = fakeTracker({ 5: {} });
+    assert.throws(() => cli(t, "comment", "5"), /comment needs --body-file/);
+    assert.throws(() => cli(t, "label", "x", "--add", "y"), /needs an issue or pull request number/);
+    assert.throws(() => cli(t, "merge", "5"), /usage:/);
+    assert.deepEqual(t.held(5).comments, []);
+  });
+
+  test("flags repeat, and what is not a flag is positional", () => {
+    assert.deepEqual(flagsOf(["5", "--add", "a", "--add", "b"]), { _: ["5"], add: ["a", "b"] });
   });
 });
 

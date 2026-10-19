@@ -48,7 +48,7 @@ describe("every agent rule is written down exactly once", () => {
   // The steps belong to queue.md alone.
   for (const [name, pattern] of [
     ["how the review is recorded", /VERDICT: LAND/],
-    ["where an out-of-scope finding goes", /gh issue create/i],
+    ["where an out-of-scope finding goes", /tracker\.mjs create/i],
     ["how the run is recovered", /loop-status\.mjs/],
     ["one ticket at a time", /one ticket at a time/i],
     ["what to preserve when compacting", /failing test output/i],

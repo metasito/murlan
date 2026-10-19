@@ -988,11 +988,11 @@ describe("runOnce", () => {
       const calls: string[][] = [];
       const timeouts: unknown[] = [];
       const fake = fakeTracker({}, { prs: open });
-      const created: { head: string; title: string; body: string }[] = [];
+      const created: { head: string; title: string; body?: string }[] = [];
       const tracker = {
         ...fake,
         openPrFor: (branch: string, o?: { timeout?: number }) => (timeouts.push(o?.timeout), fake.openPrFor(branch)),
-        createPr: (pr: { head: string; title: string; body: string }, o?: { timeout?: number }) => (timeouts.push(o?.timeout), created.push(pr), fake.createPr(pr)),
+        createPr: (pr: { head: string; title: string; body?: string }, o?: { timeout?: number }) => (timeouts.push(o?.timeout), created.push(pr), fake.createPr(pr)),
       };
       const url = publishForReview(42, "agent/42-x", "w", "the title", (file: string, args: string[], o?: { timeout?: number }) => {
         calls.push([file, ...args]);
@@ -1005,7 +1005,7 @@ describe("runOnce", () => {
         assert.deepEqual([created, url], [[], "https://github.com/metasito/murlan/pull/7"]);
         continue;
       }
-      assert.match(created[0].body, /^Closes #42\n/);
+      assert.match(String(created[0].body), /^Closes #42\n/);
       assert.deepEqual([created[0].head, created[0].title], ["agent/42-x", "the title"]);
     }
   });

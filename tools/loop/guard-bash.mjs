@@ -88,8 +88,13 @@ function apiLabels(args) {
 }
 
 function filesAgentWork(c) {
-  if (c.cmd !== "gh") return false;
   const fresh = (labels) => labels.some((l) => AGENT_WORK.test(l)) || !labels.some((l) => CHANNELS.test(l));
+  // The tracker's CLI makes the same writes as `gh` over REST, so it is read the same way.
+  if (c.cmd === "node" && /(^|[\\/])tools[\\/]loop[\\/]tracker\.mjs$/.test(c.args[0] ?? "")) {
+    if (c.args[1] === "create") return fresh(labelsOf(c.args, ["--label"]));
+    return c.args[1] === "label" && labelsOf(c.args, ["--add"]).some((l) => AGENT_WORK.test(l));
+  }
+  if (c.cmd !== "gh") return false;
   if (c.args[0] === "api" && apiMethod(c.args) !== "GET") {
     // `--input` labels are in a file this cannot read; `gh issue create|edit` says them where it can.
     const unseen = c.args.includes("--input");

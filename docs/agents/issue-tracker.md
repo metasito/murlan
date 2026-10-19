@@ -50,12 +50,11 @@ Every multi-line body goes through `--body-file` (the shell contract, `docs/agen
 ```sh
 # Read one issue or pull request: rule 25's command.
 node tools/loop/tracker.mjs read <n>
-gh issue list --state open --label <label> --json number,title,labels \
-  --jq '[.[] | {number, title, labels: [.labels[].name]}]'
-gh issue create --title "<title>" --body-file <file> --label <label> --label size:<size>
-gh issue comment <n> --body-file <file>
-gh issue edit <n> --add-label <label> --remove-label <label>
-gh issue close <n> --comment "<why>"
+node tools/loop/tracker.mjs list --label <label>              # JSON: number, title
+node tools/loop/tracker.mjs create --title "<title>" --body-file <file> --label <label> --label size:<size>
+node tools/loop/tracker.mjs comment <n> --body-file <file>
+node tools/loop/tracker.mjs label <n> --add <label> --remove <label>
+node tools/loop/tracker.mjs close <n> --comment "<why>"
 
 # <db-id> is the database id — gh api repos/{owner}/{repo}/issues/<n> --jq .id — never #<n> or node_id
 gh api -X POST repos/{owner}/{repo}/issues/<n>/dependencies/blocked_by -F issue_id=<blocker-db-id>
@@ -112,8 +111,8 @@ requests; `/triage` reads this flag.)_
 
 When `yes`, PRs run through the same labels and states, with the `gh pr` equivalents: read with
 rule 25's command (an issue's number space holds pull requests too) plus `gh pr diff <n>`; list with
-`gh pr list --state open --json number,title,body,labels,author,authorAssociation,comments`,
-keeping only `authorAssociation` of `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR` or `NONE`. Issues and
+`gh api 'repos/{owner}/{repo}/pulls?state=open&per_page=100' --paginate`, keeping only
+`author_association` of `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR` or `NONE`. Issues and
 PRs share one number space, so rule 25's command reads a bare `#42` whichever it is.
 
 ## Writing an issue body an agent can execute

@@ -518,6 +518,10 @@ describe("an implement session files no agent work", () => {
     "gh api repos/o/r/issues/5/labels -f 'labels[]=ready-for-agent'",
     "gh api -X PUT repos/o/r/issues/5/labels -f 'labels[]=main-red'",
     "gh api repos/o/r/issues --input new.json",
+    "node tools/loop/tracker.mjs create --title x --body-file b.md",
+    "node tools/loop/tracker.mjs create --title x --body-file b.md --label ready-for-human --label ready-for-agent",
+    "node tools/loop/tracker.mjs label 5 --add main-red",
+    "cd .worktrees/agent-5 && node ../../tools/loop/tracker.mjs label 5 --add ci-flake",
   ];
   for (const cmd of refused) {
     test(`refuses in an implement session: ${cmd}`, () => assert.match(String(check(cmd, stale, true, implementing)), AGENT_WORK));
@@ -536,6 +540,10 @@ describe("an implement session files no agent work", () => {
     "gh api repos/o/r/issues/5/labels -f 'labels[]=ready-for-human'",
     "gh api repos/o/r/issues/5/comments -f body=x",
     "gh api repos/o/r/issues --jq '.[].number'",
+    "node tools/loop/tracker.mjs create --title x --body-file b.md --label ready-for-human",
+    "node tools/loop/tracker.mjs label 5 --remove ready-for-agent --remove in-progress --add ready-for-human",
+    "node tools/loop/tracker.mjs comment 5 --body-file b.md",
+    "node tools/loop/tracker.mjs read 5",
   ]) {
     test(`allows in an implement session: ${cmd}`, () => assert.equal(check(cmd, stale, true, implementing), null));
   }

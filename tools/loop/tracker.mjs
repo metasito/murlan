@@ -93,14 +93,15 @@ export function ghTracker(gh = ghCli, repo = REPO) {
 
   // One replace of the whole set, so a transition lands whole or not at all: an add and a remove sent
   // apart leave both sets on when the second fails. Labels the transition does not name are kept.
-  const move = (name) => (n) => {
-    const [remove, add] = TRANSITIONS[name];
+  /** @type {(n: number, change: {add?: string[], remove?: string[]}) => void} */
+  const relabel = (n, { add = [], remove = [] }) => {
     const now = get(`${issues}/${n}`).labels.map((l) => l.name);
     const target = [...new Set([...now.filter((l) => !remove.includes(l)), ...add])];
     if (target.length === now.length && target.every((l) => now.includes(l))) return;
     if (target.length === 0) gh(["api", "-X", "DELETE", `${issues}/${n}/labels`]);
     else gh(["api", "-X", "PUT", `${issues}/${n}/labels`, ...target.flatMap((l) => ["-f", `labels[]=${l}`])]);
   };
+  const move = (name) => (n) => relabel(n, { remove: TRANSITIONS[name][0], add: TRANSITIONS[name][1] });
   /** @type {(n: number, opts?: {all?: boolean} & import("./cli.mjs").RunOptions) => Comment[]} */
   const comments = (n, { all: everyone = false, ...opts } = {}) => {
     const got = all(`${issues}/${n}/comments?per_page=100`, opts).map(commentOf);
@@ -111,6 +112,7 @@ export function ghTracker(gh = ghCli, repo = REPO) {
     claim: move("claim"),
     release: move("release"),
     park: move("park"),
+    relabel,
     comment: (n, bodyFile) => void gh(["api", "-X", "POST", `${issues}/${n}/comments`, "-F", `body=@${bodyFile}`]),
     /** @returns {{state: string, labels: string[]}} */
     issue: (n, opts) => {
@@ -152,8 +154,12 @@ export function ghTracker(gh = ghCli, repo = REPO) {
     /** @returns {Pr[]} */
     openPrs: (opts) => all(`${pulls}?state=open&per_page=100`, opts).map(prOf),
     /** @returns {string} the new pull request's URL */
-    createPr: ({ head, title, body }, opts) =>
-      JSON.parse(gh(["api", "-X", "POST", pulls, "-f", "base=main", "-f", `head=${head}`, "-f", `title=${title}`, "-f", `body=${body}`], opts)).html_url,
+    /** @type {(o: {head: string, title: string, body?: string, bodyFile?: string}, opts?: import("./cli.mjs").RunOptions) => string} the new pull request's URL */
+    createPr: ({ head, title, body, bodyFile }, opts) =>
+      JSON.parse(
+        gh(["api", "-X", "POST", pulls, "-f", "base=main", "-f", `head=${head}`, "-f", `title=${title}`, ...(body === undefined ? ["-F", `body=@${bodyFile}`] : ["-f", `body=${body}`])], opts),
+      ).html_url,
+    editPr: (n, bodyFile, opts) => void gh(["api", "-X", "PATCH", `${pulls}/${n}`, "-F", `body=@${bodyFile}`], opts),
     /** @returns {OpenIssue[]} */
     openIssues: (opts) => all(`${issues}?state=open&per_page=100`, opts).filter((i) => !i.pull_request).map(openIssueOf),
     /** @type {(o: {title: string, bodyFile?: string, body?: string, labels?: string[]}, opts?: import("./cli.mjs").RunOptions) => string} the new issue's URL */
@@ -220,8 +226,9 @@ export function ghTracker(gh = ghCli, repo = REPO) {
     /** The head of the pull request `sha` was merged from, or null. */
     prHeadOf: (sha, opts) => get(`repos/${repo}/commits/${sha}/pulls`, opts)[0]?.head?.sha ?? null,
     /** Closed as completed, with `why` as its last comment. */
+    /** Closed as completed, with `why`, when given, as its last comment. */
     closeIssue: (n, why, opts) => {
-      gh(["api", "-X", "POST", `${issues}/${n}/comments`, "-f", `body=${why}`], opts);
+      if (why) gh(["api", "-X", "POST", `${issues}/${n}/comments`, "-f", `body=${why}`], opts);
       gh(["api", "-X", "PATCH", `${issues}/${n}`, "-f", "state=closed", "-f", "state_reason=completed"], opts);
     },
     rerunFailed: (runId, opts) => void gh(["api", "-X", "POST", `repos/${repo}/actions/runs/${runId}/rerun-failed-jobs`], opts),
@@ -282,12 +289,13 @@ export function fakeTracker(issues = {}, { fail = [], prs = [] } = {}) {
     refuse(name, `#${n}`);
     return fn(at(n), ...rest);
   };
-  const move = (name) =>
-    op(name, (issue) => {
-      const [remove, add] = TRANSITIONS[name];
-      for (const l of remove) issue.labels.delete(l);
-      for (const l of add) issue.labels.add(l);
-    });
+  const applyLabels = (issue, { add = [], remove = [] }) => {
+    for (const l of remove) issue.labels.delete(l);
+    for (const l of add) issue.labels.add(l);
+  };
+  /** @type {(n: number, change: {add?: string[], remove?: string[]}) => void} */
+  const relabel = op("relabel", applyLabels);
+  const move = (name) => op(name, (issue) => applyLabels(issue, { remove: TRANSITIONS[name][0], add: TRANSITIONS[name][1] }));
   const pulls = [...prs];
   /** What a posted comment reads back as: the file's text, as `gh api -F body=@file` sends it; a file never written posts its name. */
   const readBody = (file) => {
@@ -318,6 +326,7 @@ export function fakeTracker(issues = {}, { fail = [], prs = [] } = {}) {
     claim: move("claim"),
     release: move("release"),
     park: move("park"),
+    relabel,
     comment: op("comment", (issue, bodyFile) => post(issue, bodyFile, readBody(bodyFile))),
     issue: op("issue", (issue) => ({ state: issue.state, labels: [...issue.labels] })),
     read: op("read", (issue) => ({
@@ -383,6 +392,7 @@ export function fakeTracker(issues = {}, { fail = [], prs = [] } = {}) {
     arm: list("arm", (n, sha) => void writes.push(["arm", n, sha])),
     disarm: list("disarm", (n) => void writes.push(["disarm", n])),
     merge: list("merge", (n, sha) => void writes.push(["merge", n, sha])),
+    editPr: list("editPr", (n, bodyFile) => void writes.push(["editPr", n, bodyFile])),
     /** @type {(label: string, o?: {state?: "open"|"closed"|"all", limit?: number}) => Labelled[]} */
     labelled: list("labelled", (label, { state = "open", limit } = {}) =>
       Object.keys(issues)
@@ -411,11 +421,82 @@ export function fakeTracker(issues = {}, { fail = [], prs = [] } = {}) {
 }
 
 // Rule 25 names this entry, so a session reads an issue the same way wherever gh can reach REST.
+/** `--flag value` pairs, repeatable flags gathered: what the CLI below reads. */
+export function flagsOf(args) {
+  /** @type {Record<string, string[]>} */
+  const out = { _: [] };
+  for (let i = 0; i < args.length; i++) {
+    const m = /^--([\w-]+)$/.exec(args[i]);
+    if (m && i + 1 < args.length) (out[m[1]] ??= []).push(args[++i]);
+    else out._.push(args[i]);
+  }
+  return out;
+}
+
+const USAGE = `usage: node tools/loop/tracker.mjs <verb> …
+  read <n>                                       rule 25: title, body, trusted comments
+  comment <n> --body-file <file>
+  label <n> [--add <label>]… [--remove <label>]…
+  create --title <title> --body-file <file> [--label <label>]…   prints the issue's URL
+  close <n> [--comment <why>]                    closed as completed
+  list [--label <label>] [--state open|closed|all]   open issues as JSON
+  pr-create --head <branch> --title <title> --body-file <file>  prints the pull request's URL
+  pr-edit <pr> --body-file <file>`;
+
+/**
+ * The tracker as a session's commands: every write a session makes on an issue or pull request,
+ * over REST. `gh issue` and `gh pr` are GraphQL, which a Claude Code cloud session is refused.
+ */
+export function runCli(argv, tracker = ghTracker(), say = console.log) {
+  const [verb, ...rest] = argv;
+  const f = flagsOf(rest);
+  const n = Number(f._[0]);
+  const one = (name) => f[name]?.[0];
+  const need = (...names) => {
+    for (const name of names) if (!one(name)) throw new Error(`${verb} needs --${name}\n${USAGE}`);
+  };
+  const numbered = () => {
+    if (!Number.isInteger(n) || n <= 0) throw new Error(`${verb} needs an issue or pull request number\n${USAGE}`);
+  };
+  switch (verb) {
+    case "read":
+      numbered();
+      return say(issueText(n, tracker));
+    case "comment":
+      numbered();
+      need("body-file");
+      return tracker.comment(n, one("body-file"));
+    case "label":
+      numbered();
+      return tracker.relabel(n, { add: f.add ?? [], remove: f.remove ?? [] });
+    case "create":
+      need("title", "body-file");
+      return say(tracker.createIssue({ title: one("title"), bodyFile: one("body-file"), labels: f.label ?? [] }));
+    case "close":
+      numbered();
+      return tracker.closeIssue(n, one("comment"));
+    case "list": {
+      const state = /** @type {"open"|"closed"|"all"} */ (one("state") ?? "open");
+      const rows = one("label") ? tracker.labelled(one("label"), { state }) : tracker.openIssues();
+      return say(JSON.stringify(rows.map((i) => ({ number: i.number, title: i.title, ...("labels" in i ? { labels: i.labels.map((l) => l.name) } : {}) }))));
+    }
+    case "pr-create":
+      need("head", "title", "body-file");
+      return say(tracker.createPr({ head: one("head"), title: one("title"), bodyFile: one("body-file") }));
+    case "pr-edit":
+      numbered();
+      need("body-file");
+      return tracker.editPr(n, one("body-file"));
+    default:
+      throw new Error(USAGE);
+  }
+}
+
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
-  const [verb, n] = process.argv.slice(2);
-  if (verb !== "read" || !/^\d+$/.test(n ?? "")) {
-    console.error("usage: node tools/loop/tracker.mjs read <n>");
+  try {
+    runCli(process.argv.slice(2));
+  } catch (err) {
+    console.error(String(err?.stderr?.trim() || err?.message || err));
     process.exit(2);
   }
-  console.log(issueText(Number(n)));
 }

@@ -21,7 +21,7 @@ What it must deliver:
 1. Pin the checkout and the commit, from the checkout you are in:
    `git fetch origin && git rev-parse --show-toplevel origin/main` → `repo`, then `sha`.
 2. Load the open tracker, so that known issues come back marked `tracked`:
-   `gh issue list --repo metasito/murlan --state open --limit 300 --json number,title --jq '[.[]|{n:.number,t:.title}]'`
+   `node tools/loop/tracker.mjs list` (every open issue, as JSON `number` and `title`)
    → `openIssues`.
 3. Check for peers with `git worktree list` and look at free RAM. Audit agents are read-only, so a
    live peer does not block the run — rule 2 still applies, and that matters more with another
