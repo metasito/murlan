@@ -1,7 +1,7 @@
 // tools/loop/tests/queueLoop.test.ts
 import { test, describe, after, mock } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -11,6 +11,7 @@ import { closePhase, readLine, reduceSession, sessionStart } from "../loop-strea
 import { ticker } from "../loop-screen.mjs";
 import { holdFor, runOnce } from "../queue-loop.mjs";
 import { fakeTracker, ghTracker, pushedPr, repark } from "../tracker.mjs";
+import { ROOT } from "../paths.mjs";
 import { settle } from "../settle.mjs";
 import { contextFor, queueLoopArgs, runTicket } from "../loop-session.mjs";
 import { screenEvents, sessionView, ticketFacts } from "../loop-board.mjs";
@@ -1030,11 +1031,31 @@ describe("park", () => {
     assert.deepEqual(tracker.held(953).comments, [wrote]);
   });
 
-  test("removes the worktree only through workspace's removeWorktree, never git worktree remove", () => {
-    const { calls, run } = recorder();
-    park(953, opts({ run }));
-    assert.ok(ran(calls, "removeWorktree .worktrees/agent-953"));
-    assert.ok(!ran(calls, "worktree remove"), "a recursive delete follows the node_modules junction");
+  // Nothing injected for the removal: the default is what the supervisor runs.
+  test("by default removes the worktree through tearDown, which detaches the install link before git removes it", () => {
+    const base = mkdtempSync(path.join(tmpdir(), "park-default-"));
+    const tree = path.join(base, "agent-953");
+    const install = path.join(base, "install");
+    mkdirSync(tree);
+    mkdirSync(install);
+    writeFileSync(path.join(install, "kept"), "");
+    symlinkSync(install, path.join(tree, "node_modules"), "dir");
+    const calls: { args: string[]; cwd?: string; linked: boolean }[] = [];
+    const run = (file: string, args: string[], o: { cwd?: string } = {}) => {
+      if (file !== "git") return "";
+      calls.push({ args, cwd: o.cwd, linked: existsSync(path.join(tree, "node_modules")) });
+      if (args.join(" ") === "worktree list --porcelain") return `worktree /main\nHEAD a\nbranch refs/heads/main\n\nworktree ${tree}\nHEAD b\nbranch refs/heads/agent/953-x\n\n`;
+      return "";
+    };
+    try {
+      const out = park(953, { phase: "C", why: "stalled", log: "x.jsonl", cwd: tree, branch: "agent/953-x", dirty: false, run, tracker: fakeTracker(), write: () => {} });
+      assert.deepEqual(out, { ok: true, failed: [] });
+      const removal = calls.find((c) => c.args[0] === "worktree" && c.args[1] === "remove");
+      assert.deepEqual(removal && [removal.args, path.resolve(removal.cwd ?? ""), removal.linked], [["worktree", "remove", tree], ROOT, false], JSON.stringify(calls));
+      assert.ok(existsSync(path.join(install, "kept")), "the removal followed the install link");
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 
   test("the body carries the error the session died of, and its stderr tail", () => {

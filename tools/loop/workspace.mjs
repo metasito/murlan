@@ -735,7 +735,7 @@ export function park(
     run = sh,
     tracker = ghTracker((args, opts) => run("gh", args, opts)),
     write = writeNote,
-    remove = tearDown,
+    remove = (tree) => tearDown(tree, { git: (args) => run("git", args, { cwd: ROOT }) }),
   },
 ) {
   const failed = [];
