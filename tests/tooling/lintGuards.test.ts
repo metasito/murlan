@@ -13,7 +13,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
 const require = createRequire(import.meta.url);
 
 type Ignore = { glob: string; reason: string };
-type Guard = { id: string; files: string[]; ignores?: Ignore[]; plant: string[]; spare: string[] };
+type Sample = { file: string; code: string };
+type Guard = { id: string; files: string[]; ignores?: Ignore[]; plant: Sample & { hits: number }; spare: Sample[] };
 type Block = { files?: string[]; ignores?: string[]; plugins?: Record<string, unknown>; rules?: Record<string, unknown> };
 const { GUARDS, plugin, guardBlocks } = require("../../eslint.guards.cjs") as {
   GUARDS: Guard[];
@@ -28,10 +29,6 @@ const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "
 const matches = (file: string, globs: string[]) => globs.some((glob) => minimatch(file, glob, { dot: true }));
 const globsOf = (guard: Guard) => (guard.ignores ?? []).map((i) => i.glob);
 const targets = (guard: Guard) => tracked.filter((f) => matches(f, guard.files) && !matches(f, globsOf(guard)));
-const targetOf = (guard: Guard) => {
-  const all = targets(guard);
-  return all.find((f) => f.endsWith(".tsx")) ?? all[0]!;
-};
 const ruleOf = (guard: Guard) => `murlan/${guard.id}`;
 const real = new ESLint({ cwd: ROOT });
 
@@ -65,27 +62,19 @@ describe("the guard registry's floor", () => {
     assert.deepEqual(naming, registered, "a block outside guardBlocks() sets a guard, or one guard is missing from the config");
   });
 
-  test("2. every guard reports each plant and none of its spares", async () => {
+  test("2. every guard's plant fires it exactly `hits` times under the real config, and no spare fires it", async () => {
     for (const guard of GUARDS) {
-      assert.ok(guard.plant.length > 0 && guard.spare.length > 0, `${guard.id} needs a plant and a spare`);
-      const alone = new ESLint({
-        cwd: ROOT,
-        overrideConfigFile: true,
-        overrideConfig: [
-          {
-            files: ["**/*.{ts,tsx,js,cjs,mjs}"],
-            languageOptions: { parser: tsParser, parserOptions: { ecmaFeatures: { jsx: true } } },
-            plugins: { murlan: plugin as ESLint.Plugin },
-            rules: { [ruleOf(guard)]: "error" },
-          },
-        ],
-      });
-      const file = targetOf(guard);
-      for (const sample of guard.plant) {
-        assert.ok((await reports(alone, sample, file, ruleOf(guard))) > 0, `${guard.id} misses its plant:\n${sample}`);
+      const { file, code, hits } = guard.plant;
+      assert.ok(hits > 0 && guard.spare.length > 0, `${guard.id} needs a plant that fires and a spare`);
+      for (const sample of [guard.plant, ...guard.spare]) {
+        assert.ok(
+          matches(sample.file, guard.files) && !matches(sample.file, globsOf(guard)),
+          `${guard.id}: ${sample.file} is outside what it reads, so its sample tests nothing`
+        );
       }
-      for (const sample of guard.spare) {
-        assert.equal(await reports(alone, sample, file, ruleOf(guard)), 0, `${guard.id} reports its spare:\n${sample}`);
+      assert.equal(await reports(real, code, file, ruleOf(guard)), hits, `${guard.id}'s plant at ${file}:\n${code}`);
+      for (const spare of guard.spare) {
+        assert.equal(await reports(real, spare.code, spare.file, ruleOf(guard)), 0, `${guard.id} reports its spare at ${spare.file}:\n${spare.code}`);
       }
     }
   });
@@ -97,10 +86,6 @@ describe("the guard registry's floor", () => {
         assert.ok(tracked.some((f) => matches(f, [glob])), `${guard.id}: ${glob} reads nothing`);
       }
       for (const file of targets(guard)) byFile.set(file, [...(byFile.get(file) ?? []), guard]);
-      assert.ok(
-        (await reports(real, guard.plant[0]!, targetOf(guard), ruleOf(guard))) > 0,
-        `eslint.config.js does not report ${guard.id}'s plant at ${targetOf(guard)}`
-      );
     }
     const unguarded: string[] = [];
     for (const [file, guards] of byFile) {

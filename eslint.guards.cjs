@@ -81,7 +81,7 @@ const GUARDS = [
     message:
       "A focused test makes jest skip the rest of its file and Playwright the rest of its shard, green either way: drop the `.only`.",
     files: ["tests/**/*.{ts,tsx,mjs}", "tools/loop/tests/**/*.{ts,mjs}"],
-    plant: [
+    plant: { file: "tests/ui-rules/plant.test.ts", code: [
       'it.only("x", () => {});',
       'test.describe.only("y", () => {});',
       'fit("x", () => {});',
@@ -91,8 +91,8 @@ const GUARDS = [
       'test.only.each([1])("x %s", () => {});',
       'describe.only.each([1])("y %s", () => {});',
       'test.describe.parallel.only("y", () => {});',
-    ],
-    spare: ['// it.only("x")\nconst profit = 1; benefit(2); onlyOnce(); split(".only(");', 'test("z", { only: false }, () => {});', "cache.only.each(x);"],
+    ].join("\n"), hits: 9 },
+    spare: ['// it.only("x")\nconst profit = 1; benefit(2); onlyOnce(); split(".only(");', 'test("z", { only: false }, () => {});', "cache.only.each(x);"].map((code) => ({ file: "tests/ui-rules/plant.test.ts", code })),
     create: (report) => ({
       CallExpression(node) {
         const c = node.callee;
@@ -115,7 +115,7 @@ const GUARDS = [
     message:
       "This asserts on how fast the machine ran, so a loaded runner fails it on code that is fine. Assert what the timing stood in for (a marker, a work counter, a state count) and leave the clock to the test's own timeout. Comparing one measurement against another stays allowed.",
     files: ["tests/**/*.{ts,tsx}"],
-    plant: [
+    plant: { file: "tests/tooling/plant.test.ts", code: [
       'const elapsedMs = Date.now() - start;\nassert.ok(elapsedMs < 2000, "slow");',
       "const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;\nassert.ok(elapsedMs < 50);",
       'const elapsed = Date.now() - startedAt;\nassert.ok(\n  elapsed < PROMPT_MS,\n  "hung"\n);',
@@ -124,14 +124,14 @@ const GUARDS = [
       "const start = Date.now();\nconst end = Date.now();\nassert.ok(end - start < 2000);",
       "let took = performance.now() - t0;\nexpect(took).toBeLessThanOrEqual(100);",
       "const took = Date.now() - t0;\nassert.ok(2000 > took);",
-    ],
+    ].join("\n"), hits: 8 },
     spare: [
       "const limitedMs = performance.now() - t0;\nassert.ok(limitedMs > genuineAvg * 0.5);",
       'const elapsedMs = Date.now() - t0;\nassert.ok(elapsedMs > 0, "the clock was never read");',
       "const elapsedMs = Date.now() - t0;\nif (elapsedMs > 100) retry();",
       "const started = Date.now();\nassert.ok(frames > 30);",
       'const deadline = Date.now() + 5000;\nawait waitFor(socket, "x", 5000);',
-    ],
+    ].map((code) => ({ file: "tests/tooling/plant.test.ts", code })),
     create: (report, context) => {
       const held = new Set();
       const candidates = [];
@@ -170,8 +170,8 @@ const GUARDS = [
       "A bare `emit` is at-most-once and carries no intentId, so its loss is silent and its retry is a second intent: send it through `send()` in lib/sendIntent.ts.",
     files: CLIENT,
     ignores: [{ glob: "lib/sendIntent.ts", reason: "send() is the one emit the rest go through" }],
-    plant: ['socket?.emit("room:leave");', "socket.emit(`game:play`, { cards });"],
-    spare: ['socket.emit("connect_error");', 'send(socket, "room:leave", {});', 'emitter.on("room:leave", f);'],
+    plant: { file: "context/Plant.tsx", code: ['socket?.emit("room:leave");', "socket.emit(`game:play`, { cards });"].join("\n"), hits: 2 },
+    spare: ['socket.emit("connect_error");', 'send(socket, "room:leave", {});', 'emitter.on("room:leave", f);'].map((code) => ({ file: "context/Plant.tsx", code })),
     create: (report) => ({
       CallExpression(node) {
         if (node.callee.type === "MemberExpression" && propertyName(node.callee) === "emit" && startsWith(node.arguments[0], /^(?:room|game):/)) {
@@ -186,8 +186,8 @@ const GUARDS = [
       "This declares a spring instead of naming one, so the design system cannot reach it: use Motion.spring.* from lib/tokens.ts, and if none fits, the design wants a new one.",
     files: SCREENS,
     ignores: [{ glob: "lib/tokens.ts", reason: "the tokens are where a spring is declared" }],
-    plant: ["const s = { damping: D, stiffness: 200 };", "withSpring(1, { dampingRatio: 0.4 });", 'const s = { "damping": 12 };'],
-    spare: ["const s = { stiffness: 200 };", "type Spring = { damping: number };", "const { damping } = Motion.spring.land;"],
+    plant: { file: "components/Plant.tsx", code: ["const s = { damping: D, stiffness: 200 };", "withSpring(1, { dampingRatio: 0.4 });", 'const s = { "damping": 12 };'].join("\n"), hits: 3 },
+    spare: ["const s = { stiffness: 200 };", "type Spring = { damping: number };", "const { damping } = Motion.spring.land;"].map((code) => ({ file: "components/Plant.tsx", code })),
     create: (report) => ({
       Property(node) {
         if (node.parent.type === "ObjectExpression" && ["damping", "dampingRatio"].includes(nameOf(node.key))) report(node);
@@ -199,8 +199,8 @@ const GUARDS = [
     message:
       "The home screen's drifting cards are a fixed composition (components/homeCardField.ts), so no part of it is drawn at random.",
     files: ["app/index.tsx", "components/homeCardField.ts"],
-    plant: ["const x = Math.random() * 10;"],
-    spare: ["const x = restingPose(card).rise;", "const random = 1; const y = rng.random();"],
+    plant: { file: "app/index.tsx", code: ["const x = Math.random() * 10;"].join("\n"), hits: 1 },
+    spare: ["const x = restingPose(card).rise;", "const random = 1; const y = rng.random();"].map((code) => ({ file: "app/index.tsx", code })),
     create: (report) => ({
       CallExpression(node) {
         if (isMember(node.callee, "Math", "random")) report(node);
@@ -212,8 +212,8 @@ const GUARDS = [
     message:
       "A watcher's seat answers yes to this: ask `viewerOwnsSeat(seat, viewerSeat, spectating)` from components/seatLayout.ts instead of comparing by hand.",
     files: ["components/GameTable.tsx", "app/(online)/game.tsx", "app/(online)/replay.tsx"],
-    plant: ["const mine = seat === viewerSeat;", "if (mySeatIndex === p.seat) go();", "const me = state.viewerSeat === seat;"],
-    spare: ["const others = players.filter((p) => p.seat !== viewerSeat);", "const mine = viewerOwnsSeat(seat, viewerSeat, spectating);"],
+    plant: { file: "components/GameTable.tsx", code: ["const mine = seat === viewerSeat;", "if (mySeatIndex === p.seat) go();", "const me = state.viewerSeat === seat;"].join("\n"), hits: 3 },
+    spare: ["const others = players.filter((p) => p.seat !== viewerSeat);", "const mine = viewerOwnsSeat(seat, viewerSeat, spectating);"].map((code) => ({ file: "components/GameTable.tsx", code })),
     create: (report) => {
       const identity = (n) =>
         ["viewerSeat", "mySeatIndex"].includes(n.type === "MemberExpression" ? propertyName(n) : nameOf(n));
@@ -230,12 +230,12 @@ const GUARDS = [
       "Render <AppModal> instead: a second <Modal> is a second place to get supportedOrientations, statusBarTranslucent and onRequestClose wrong.",
     files: DRAWN,
     ignores: [{ glob: "components/AppModal.tsx", reason: "the one shell every modal renders through" }],
-    plant: [
+    plant: { file: "components/Plant.tsx", code: [
       "const x = <Modal visible />;",
       'import * as RN from "react-native";\nconst x = <RN.Modal visible />;',
       'import { Modal as Sheet } from "react-native";\nconst x = <Sheet visible />;',
-    ],
-    spare: ["const x = <AppModal visible />;", "const x = <ModalFoo />;", "const x = <RN.ModalFoo />;"],
+    ].join("\n"), hits: 3 },
+    spare: ["const x = <AppModal visible />;", "const x = <ModalFoo />;", "const x = <RN.ModalFoo />;"].map((code) => ({ file: "components/Plant.tsx", code })),
     create: (report) => {
       const modal = modalElements();
       return {
@@ -251,7 +251,7 @@ const GUARDS = [
     message: "components/AppModal.tsx is the only reader of react-native's Modal, under any name: render <AppModal>.",
     files: SCREENS,
     ignores: [{ glob: "components/AppModal.tsx", reason: "the one shell every modal renders through" }],
-    plant: [
+    plant: { file: "components/Plant.tsx", code: [
       'import { View, Modal as Sheet } from "react-native";',
       'import * as RN from "react-native";\nconst x = <RN.Modal visible />;',
       'import * as RN from "react-native";\nconst x = RN.Modal;',
@@ -259,12 +259,12 @@ const GUARDS = [
       'import {\n  Text,\n  Modal,\n} from "react-native";',
       'import * as N from "react-native";\nconst { View, Modal: M } = N;',
       'import * as B from "react-native";\nconst Sheet = B["Modal"];',
-    ],
+    ].join("\n"), hits: 9 },
     spare: [
       'import { type ModalProps, Pressable } from "react-native";',
       'import { Modal as Other } from "./Modal";',
       'import * as Unused from "react-native";',
-    ],
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
     create: (report, context) => {
       const fromRN = (node) => node.source?.value === "react-native";
       const modalVia = (ref) => {
@@ -303,13 +303,13 @@ const GUARDS = [
     message:
       "React Native's <Modal> defaults to portrait on iOS, so opening one in landscape rotates the app and every tap lands on nothing: declare supportedOrientations including landscape.",
     files: DRAWN,
-    plant: [
+    plant: { file: "components/Plant.tsx", code: [
       "const x = <Modal visible />;",
       'const x = <Modal supportedOrientations={["portrait"]} />;',
       'import * as RN from "react-native";\nconst x = <RN.Modal visible />;',
       'import { Modal as Sheet } from "react-native";\nconst x = <Sheet visible />;',
-    ],
-    spare: ['const x = <Modal supportedOrientations={["portrait", "landscape"]} />;', "const x = <AppModal visible />;"],
+    ].join("\n"), hits: 4 },
+    spare: ['const x = <Modal supportedOrientations={["portrait", "landscape"]} />;', "const x = <AppModal visible />;"].map((code) => ({ file: "components/Plant.tsx", code })),
     create: (report, context) => {
       const modal = modalElements();
       return {
@@ -327,8 +327,8 @@ const GUARDS = [
     message: "Only the game table forces an orientation (components/GameTable.tsx): it is the one screen that needs the width.",
     files: SCREENS,
     ignores: [{ glob: "components/GameTable.tsx", reason: "the one screen that needs the width" }],
-    plant: ["ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);", 'import { lockPlatformAsync } from "expo-screen-orientation";'],
-    spare: ["ScreenOrientation.unlockAsync();", "const locked = true;"],
+    plant: { file: "components/Plant.tsx", code: ["ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);", 'import { lockPlatformAsync } from "expo-screen-orientation";'].join("\n"), hits: 3 },
+    spare: ["ScreenOrientation.unlockAsync();", "const locked = true;"].map((code) => ({ file: "components/Plant.tsx", code })),
     create: (report) => ({
       Identifier(node) {
         if (/^lock\w*Async$/.test(node.name)) report(node);
@@ -339,8 +339,8 @@ const GUARDS = [
     id: "never-portrait-lock",
     message: "Nothing may lock the player into portrait: one held in landscape would be yanked round behind their back.",
     files: SCREENS,
-    plant: ["lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);", "lockAsync(OrientationLock.PORTRAIT_UP);"],
-    spare: ["lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);", "const PORTRAIT = 1;"],
+    plant: { file: "components/Plant.tsx", code: ["lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);", "lockAsync(OrientationLock.PORTRAIT_UP);"].join("\n"), hits: 2 },
+    spare: ["lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);", "const PORTRAIT = 1;"].map((code) => ({ file: "components/Plant.tsx", code })),
     create: (report) => ({
       MemberExpression(node) {
         const owner = node.object.type === "MemberExpression" ? propertyName(node.object) : nameOf(node.object);
@@ -353,11 +353,11 @@ const GUARDS = [
     message:
       "expo-router hands a falsy child to the navigator, which logs \"Layout children must be of type Screen\" on every render: guard the route with <Stack.Protected guard={…}>.",
     files: ["app/**/_layout.tsx"],
-    plant: ['const x = <Stack>{__DEV__ && <Stack.Screen name="capture" />}</Stack>;', 'const x = <Tabs>{ready ? <Tabs.Screen name="x" /> : null}</Tabs>;'],
+    plant: { file: "app/_layout.tsx", code: ['const x = <Stack>{__DEV__ && <Stack.Screen name="capture" />}</Stack>;', 'const x = <Tabs>{ready ? <Tabs.Screen name="x" /> : null}</Tabs>;'].join("\n"), hits: 2 },
     spare: [
       'const x = <Stack><Stack.Screen name="index" /></Stack>;',
       'const x = <Stack><Stack.Protected guard={ok}><Stack.Screen name="capture" /></Stack.Protected></Stack>;',
-    ],
+    ].map((code) => ({ file: "app/_layout.tsx", code })),
     create: (report) => ({
       "JSXExpressionContainer > :matches(LogicalExpression, ConditionalExpression)"(node) {
         if (some(node, (n) => n.type === "JSXOpeningElement" && n.name.type === "JSXMemberExpression" && n.name.property.name === "Screen")) {
@@ -372,8 +372,8 @@ const GUARDS = [
       "Leave through `leaveScreen` (components/ScreenHeader.tsx): a screen a link opened has no history, and a bare back does nothing there.",
     files: SCREENS,
     ignores: [{ glob: "components/ScreenHeader.tsx", reason: "leaveScreen is the one place a screen goes back" }],
-    plant: ["router.back();", 'router["back"]();', "const { back } = router;"],
-    spare: ["leaveScreen(router);", "Easing.out(Easing.back(1.7));", "if (router.canGoBack()) leaveScreen(router);"],
+    plant: { file: "app/plant.tsx", code: ["router.back();", 'router["back"]();', "const { back } = router;"].join("\n"), hits: 3 },
+    spare: ["leaveScreen(router);", "Easing.out(Easing.back(1.7));", "if (router.canGoBack()) leaveScreen(router);"].map((code) => ({ file: "app/plant.tsx", code })),
     create: (report) => ({
       MemberExpression(node) {
         if (isMember(node, "router", "back")) report(node);
