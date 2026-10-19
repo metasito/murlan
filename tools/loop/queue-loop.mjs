@@ -16,13 +16,16 @@ import { git as gitAt, REPO } from "./cli.mjs";
 import { killedRun, runSession, runTicket } from "./loop-session.mjs";
 import { bell, clockAt, PLAIN, reportRow, runRecap, runTotal, stepRow } from "./loop-render.mjs";
 import { ticker } from "./loop-screen.mjs";
+import path from "node:path";
 import { ROOT } from "./paths.mjs";
 import { journaled, screenEvents, ticketFacts } from "./loop-board.mjs";
 import {
   appendSupervisor,
+  DIR,
+  ledgerPath,
   errorOf,
   killedStarts,
-  lastWrite,
+  lastWriteIn,
   ledger as openLedger,
   pendingReparks,
   prune as pruneLogs,
@@ -413,7 +416,9 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
  * `tracker` is everything GitHub, `workspace` git and the disk, `session` the `claude` process,
  * `ledger` the record of the night. Whatever they draw goes through `events`.
  */
-export function realPorts(book, screen, events, { claimTicket = claim, ticket = runTicket, root = ROOT } = {}) {
+export function realPorts(book, screen, events, { claimTicket = claim, ticket = runTicket, issues = ghTracker(), root = ROOT } = {}) {
+  // Every path a port reads or writes is under `root`: the worktrees and the logs both.
+  const logs = path.join(root, DIR);
   // The queue as the *previous* pick read it. The direction is what a night is made of, and this
   // is the one reading that costs nothing — the next pick is being made anyway.
   let before = null;
@@ -438,25 +443,25 @@ export function realPorts(book, screen, events, { claimTicket = claim, ticket = 
       }
     },
     pushedPr,
-    settle,
-    park,
+    settle: (pending, screen) => settle(pending, screen, { dir: logs }),
+    park: (number, ctx) => park(number, { ...ctx, tracker: issues, root }),
     conflict: (number, head) => {
       try {
-        postConflict(number, head);
+        postConflict(number, head, issues, logs);
         return true;
       } catch (err) {
         events.log(`#${number}: could not post CONFLICT — ${String(err.message).split("\n")[0]}`, "conflict");
         return false;
       }
     },
-    repark: (number, steps) => repark(number, steps),
+    repark: (number, steps) => repark(number, steps, issues, undefined, logs),
     /**
      * **The claim comes off here, and nowhere else on the success paths**, with the worktree
      * (`runOnce`'s teardown) — and `in-progress` left on is a ticket `next-ticket.mjs` skips for good.
      */
     release: (number) => {
       try {
-        ghTracker().release(number);
+        issues.release(number);
       } catch (err) {
         // Said out loud, because silence here is permanent: the picker skips `in-progress`, so a
         // swallowed failure leaves a finished ticket nothing will ever take again.
@@ -499,7 +504,7 @@ export function realPorts(book, screen, events, { claimTicket = claim, ticket = 
             blocked: false,
             result: null,
             ms: 0,
-            log: streamLog(route.number),
+            log: streamLog(route.number, logs),
             phases: {},
             declared: { ticket: route.number, branch: null, pr: null, phase: "A", handoff: null, stoodDown: true, why },
           });
@@ -508,6 +513,7 @@ export function realPorts(book, screen, events, { claimTicket = claim, ticket = 
       const at = route.resuming ? (route.phase ?? "C") : null;
       book.start(route.number, at ?? "A", RUN_ID);
       return ticket(runSession, {
+        dir: logs,
         number: route.number,
         branch,
         queue: route.queue,
@@ -521,17 +527,17 @@ export function realPorts(book, screen, events, { claimTicket = claim, ticket = 
     },
   };
   const ledger = {
-    tally: (n) => ticketTally(n, readLedger()),
-    rows: () => readLedger(),
+    tally: (n) => ticketTally(n, readLedger(ledgerPath(undefined, logs))),
+    rows: () => readLedger(ledgerPath(undefined, logs)),
     record: (row) => events.recorded(row, book.record(row, RUN_ID).bill),
     killed: () => {
-      const last = killedStarts(readLedger(undefined, { starts: true }), lastWrite).at(-1);
+      const last = killedStarts(readLedger(ledgerPath(undefined, logs), { starts: true }), lastWriteIn(logs)).at(-1);
       if (!last?.trailing) return null;
-      book.killed(last, killedRun(last, logOf(last.n)));
+      book.killed(last, killedRun(last, logOf(last.n, logs)));
       return last;
     },
-    journal: (line) => appendSupervisor(line),
-    prune: () => pruneLogs(),
+    journal: (line) => appendSupervisor(line, logs),
+    prune: () => pruneLogs(undefined, undefined, logs),
   };
   return { tracker, workspace, session, ledger };
 }

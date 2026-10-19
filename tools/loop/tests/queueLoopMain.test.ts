@@ -5,7 +5,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { runSettle, settle } from "../settle.mjs";
@@ -2278,6 +2278,38 @@ describe("the port contract", () => {
     const planted = source.replace("const derived = workspace.standing();", "const derived = workspace.standingNow();");
     assert.notEqual(planted, source, "the plant site moved");
     assert.deepEqual(unknownReads(portReads(planted, SCANNED), realOnes()), ["workspace.standingNow"]);
+  });
+});
+
+describe("realPorts' root", () => {
+  test("every port reads and writes under the root it is given, not the cwd", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "ports-root-"));
+    const logs = path.join(root, ".loop-logs");
+    try {
+      assert.notEqual(path.resolve(process.cwd()), root);
+      mkdirSync(logs);
+      writeFileSync(path.join(logs, "tickets.jsonl"), `${JSON.stringify({ schema: 9, n: 7, outcome: "landed", started: "2026-10-01T00:00:00.000Z" })}\n`);
+      const issues = fakeTracker({ 9: { labels: ["in-progress"] } });
+      const quiet = () => {};
+      const { tracker, ledger, session } = realPorts({ totals: {}, start: quiet } as never, {} as never, { log: quiet, step: quiet, header: quiet } as never, {
+        root,
+        issues,
+        claimTicket: () => ({ won: false, why: "taken" }),
+      } as never);
+      assert.deepEqual(ledger.rows().map((r: { n: number }) => r.n), [7]);
+      ledger.journal("a line\n");
+      assert.ok(existsSync(path.join(logs, "supervisor.log")), "journal");
+      assert.equal(tracker.conflict(9, "abc1234"), true);
+      assert.ok(existsSync(path.join(logs, "conflict-9.md")), "CONFLICT note");
+      tracker.park(9, { phase: "C", why: "w", log: "l", cwd: null, branch: "b", dirty: false });
+      assert.ok(existsSync(path.join(logs, "park-9.md")), "park note");
+      assert.deepEqual(tracker.repark(9, ["comment"]), { failed: [], why: null }, "the re-park finds its note under the root");
+      assert.deepEqual(issues.held(9).comments, [path.join(logs, "conflict-9.md"), path.join(logs, "park-9.md"), path.join(logs, "park-9.md")]);
+      const stood = await session.spawn({ number: 42, title: "t", size: null, queue: null, resuming: false });
+      assert.equal(stood.log, path.join(logs, "42.jsonl"));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

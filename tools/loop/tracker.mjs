@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { gh as ghCli, REPO, viaCli } from "./cli.mjs";
-import { conflictNotePath, noted, parkNotePath, writeNote } from "./loop-logs.mjs";
+import { conflictNotePath, DIR, noted, parkNotePath, writeNote } from "./loop-logs.mjs";
 import { CI_RED_TIMEOUT_MS, REFRESH_TIMEOUT_MS } from "./limits.mjs";
 
 export const TRUSTED_AUTHORS = ["OWNER", "MEMBER", "COLLABORATOR"];
@@ -499,7 +499,7 @@ export function runCli(argv, tracker = ghTracker(), say = console.log) {
 /** The tracker's half of a park, each a step a later pass can apply again on its own. */
 export const PARK_STEPS = {
   label: (number, tracker) => tracker.park(number),
-  comment: (number, tracker) => tracker.comment(number, parkNotePath(number)),
+  comment: (number, tracker, logs = DIR) => tracker.comment(number, parkNotePath(number, logs)),
 };
 
 /**
@@ -509,7 +509,7 @@ export const PARK_STEPS = {
  * @param {number} number @param {string[]} steps
  * @returns {{failed: string[], why: string|null}}
  */
-export function repark(number, steps, tracker = ghTracker(), exists = noted) {
+export function repark(number, steps, tracker = ghTracker(), exists = noted, logs = DIR) {
   let issue;
   try {
     issue = tracker.issue(number, { timeout: CI_RED_TIMEOUT_MS });
@@ -523,11 +523,11 @@ export function repark(number, steps, tracker = ghTracker(), exists = noted) {
   if (issue.state !== "OPEN" || !issue.labels.includes(mark)) {
     return { failed: [], why: "the owner already acted on the issue" };
   }
-  const pruned = steps.includes("comment") && !exists(parkNotePath(number));
+  const pruned = steps.includes("comment") && !exists(parkNotePath(number, logs));
   const failed = steps.filter((s) => {
     if (s === "comment" && pruned) return false;
     try {
-      PARK_STEPS[s](number, tracker);
+      PARK_STEPS[s](number, tracker, logs);
       return false;
     } catch (err) {
       console.error(`  ⚠️ park #${number}: ${s} failed again — ${String(err.message).split("\n")[0]}`);
@@ -553,9 +553,9 @@ export function publishForReview(number, branch, cwd, title, run = viaCli, track
 export const prUrl = (n) => `https://github.com/${REPO}/pull/${n}`;
 
 /** The CONFLICT comment that routes the next pass to the rebase round. Throws when it is not posted. */
-export function postConflict(number, head, tracker = ghTracker()) {
-  writeNote(conflictNotePath(number), `CONFLICT ${head}\nThe branch conflicts with main: the next process rebases it onto origin/main.`);
-  tracker.comment(number, conflictNotePath(number));
+export function postConflict(number, head, tracker = ghTracker(), logs = DIR) {
+  writeNote(conflictNotePath(number, logs), `CONFLICT ${head}\nThe branch conflicts with main: the next process rebases it onto origin/main.`);
+  tracker.comment(number, conflictNotePath(number, logs));
 }
 
 /**

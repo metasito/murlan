@@ -2,7 +2,8 @@
  * The park: the one operation that reaches both the worktree (its commit and its removal) and the
  * tracker (its label and note), so it sits above `workspace.mjs` and `tracker.mjs` alike.
  */
-import { errorLine, parkNotePath, writeNote } from "./loop-logs.mjs";
+import path from "node:path";
+import { DIR, errorLine, parkNotePath, writeNote } from "./loop-logs.mjs";
 import { ROOT } from "./paths.mjs";
 import { ghTracker, PARK_STEPS } from "./tracker.mjs";
 import { sh, tearDown } from "./workspace.mjs";
@@ -17,7 +18,7 @@ import { sh, tearDown } from "./workspace.mjs";
  *
  * @param {number} number
  * @param {{phase: string, why: string, log: string, cwd: string|null, branch: string|null,
- *   dirty: boolean, error?: object|null, run?: Function, tracker?: object, write?: Function, remove?: Function}} ctx
+ *   dirty: boolean, error?: object|null, run?: Function, tracker?: object, write?: Function, root?: string, remove?: Function}} ctx
  * @returns {{ok: boolean, failed: string[]}}
  */
 export function park(
@@ -33,9 +34,11 @@ export function park(
     run = sh,
     tracker = ghTracker((args, opts) => run("gh", args, opts)),
     write = writeNote,
-    remove = (tree) => tearDown(tree, { git: (args) => run("git", args, { cwd: ROOT }) }),
+    root = ROOT,
+    remove = (tree) => tearDown(tree, { git: (args) => run("git", args, { cwd: root }) }),
   },
 ) {
+  const logs = path.join(root, DIR);
   const failed = [];
   const step = (name, fn) => {
     try {
@@ -77,8 +80,8 @@ export function park(
       " The next run resumes from the branch as it stands.",
   ].join("\n");
   step("comment", () => {
-    write(parkNotePath(number), body);
-    PARK_STEPS.comment(number, tracker);
+    write(parkNotePath(number, logs), body);
+    PARK_STEPS.comment(number, tracker, logs);
   });
 
   if (cwd) step("worktree", () => remove(cwd));

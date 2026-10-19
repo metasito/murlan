@@ -13,7 +13,7 @@
 import fs, { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { firstLine, gh as ghCli, git as gitAt, REPO } from "./cli.mjs";
+import { firstLine, REPO, viaCli } from "./cli.mjs";
 import { ciRedPosted } from "./loop-derive.mjs";
 import { ghTracker, prUrl } from "./tracker.mjs";
 import { readLine } from "./loop-stream.mjs";
@@ -271,9 +271,11 @@ const listed = (names) =>
  * review cleared a head; `sleep` waits out the pause and resolves to the time a standby added to it.
  */
 function settlePorts(pending, log, pause, io) {
-  const run = io.run ?? ((file, args, opts = {}) => (file === "git" ? gitAt(opts.cwd)(args, opts) : ghCli(args, opts)));
-  const facts = io.facts ?? (() => streamFacts(pending.ticket));
+  const run = io.run ?? viaCli;
+  const dir = io.dir ?? DIR;
+  const facts = io.facts ?? (() => streamFacts(pending.ticket, dir));
   const ports = {
+    dir,
     run,
     tracker: io.tracker ?? ghTracker((args, opts) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS, ...opts })),
     stateOf: io.stateOf ?? ((pr) => ts("./ciVerdict.ts").readLandingState(REPO, pr)),
@@ -308,8 +310,8 @@ function settlePorts(pending, log, pause, io) {
   return ports;
 }
 
-function streamFacts(ticket) {
-  const file = streamLog(ticket);
+function streamFacts(ticket, dir) {
+  const file = streamLog(ticket, dir);
   return fs.existsSync(file) ? fs.readFileSync(file, "utf8").split("\n").map(readLine).filter(Boolean) : [];
 }
 
@@ -329,7 +331,7 @@ function readTicketComments(ticket, { tracker, log }) {
  *
  * @returns {boolean} whether the tracker carries it now
  */
-function postCiRedOnce(ticket, ci, { onMain, flaky }, comments, { tracker, write, log }) {
+function postCiRedOnce(ticket, ci, { onMain, flaky }, comments, { tracker, write, log, dir }) {
   const sha = ci.head;
   if (!comments) return false;
   if (!sha || ciRedPosted(comments, sha)) return true;
@@ -347,7 +349,7 @@ function postCiRedOnce(ticket, ci, { onMain, flaky }, comments, { tracker, write
     attempt: ci.attempt,
   });
   try {
-    const file = ciRedNotePath(ticket);
+    const file = ciRedNotePath(ticket, dir);
     write(file, body, "utf8");
     tracker.comment(ticket, file);
     return true;
@@ -363,10 +365,10 @@ function postCiRedOnce(ticket, ci, { onMain, flaky }, comments, { tracker, write
  * Never call it when `output` is the reason rather than the log: round one's real failure is
  * already in that file, and this would paint over it.
  */
-function prepareRed(ticket, ci, { mkdir, write, mainFailures, log }) {
+function prepareRed(ticket, ci, { mkdir, write, mainFailures, log, dir }) {
   try {
-    mkdir(DIR, { recursive: true });
-    write(ciLogPath(ticket), ci.output, "utf8");
+    mkdir(dir, { recursive: true });
+    write(ciLogPath(ticket, dir), ci.output, "utf8");
   } catch (err) {
     log(`CI-RED: could not write the CI log — ${firstLine(err)}`);
   }
@@ -376,8 +378,8 @@ function prepareRed(ticket, ci, { mkdir, write, mainFailures, log }) {
 }
 
 /** The merge message's body, written to a file: an inline argument has no bound. */
-function flakeMergeFile(red, ticket, write) {
-  const file = path.join(DIR, `flake-merge-${ticket}.md`);
+function flakeMergeFile(red, ticket, write, dir) {
+  const file = path.join(dir, `flake-merge-${ticket}.md`);
   write(file, [`Merged on a rerun's green: attempt 1 of ci.yml run ${red.runId} failed`, ...listed(flakeNames(red))].join("\n"), "utf8");
   return file;
 }
@@ -387,7 +389,7 @@ function flakeMergeFile(red, ticket, write) {
  * search trails its own writes, and promoting one swaps its label. `ready-for-human`, not
  * `ci-flake`: ADR 0011 keeps that label, and the rank it carries, the owner's to add.
  */
-function fileFlakes(red, { tracker, log, write }) {
+function fileFlakes(red, { tracker, log, write, dir }) {
   let open;
   try {
     open = tracker.openIssues();
@@ -407,7 +409,7 @@ function fileFlakes(red, { tracker, log, write }) {
       "Filed by the supervisor (`tools/loop/settle.mjs`). The title is what stops a second issue for the same failure, so keep it.",
     ].join("\n");
     try {
-      const file = path.join(DIR, `flake-issue-${red.ticket}.md`);
+      const file = path.join(dir, `flake-issue-${red.ticket}.md`);
       write(file, body, "utf8");
       tracker.createIssue({ title, bodyFile: file, labels: ["ready-for-human"] });
       log(`filed ${title}`);
@@ -469,8 +471,8 @@ async function perform(effect, pending, ports) {
       let message;
       try {
         if (effect.flake) {
-          ports.mkdir(DIR, { recursive: true });
-          message = flakeMergeFile(effect.flake, pending.ticket, ports.write);
+          ports.mkdir(ports.dir, { recursive: true });
+          message = flakeMergeFile(effect.flake, pending.ticket, ports.write, ports.dir);
         }
       } catch (err) {
         log(`could not write the flake into the merge message — ${firstLine(err)}`);
@@ -553,7 +555,7 @@ const SETTLE_PAUSE_MS = 15_000;
  * twenty-minute CI wait reads as a hang.
  */
 export async function settle(pending, screen, opts = {}) {
-  const { pause = SETTLE_PAUSE_MS, deadline = SETTLE.DEADLINE_MS, watch = runSettle } = opts;
+  const { pause = SETTLE_PAUSE_MS, deadline = SETTLE.DEADLINE_MS, watch = runSettle, dir = DIR } = opts;
   screen.start(LAND);
   screen.set({ pr: prUrl(pending.pr) });
   screen.said(`waiting for ci.yml on ${pending.branch}`);
@@ -566,6 +568,7 @@ export async function settle(pending, screen, opts = {}) {
       },
       pause,
       deadline,
+      { dir },
     );
     const landed = out.action === "already-merged";
     screen.close(landed ? "done" : "failed", landed ? `#${pending.pr} merged` : out.reason);
