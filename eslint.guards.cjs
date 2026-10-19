@@ -87,17 +87,23 @@ const GUARDS = [
       'fit("x", () => {});',
       'fdescribe("y", () => {});',
       'test("z", { only: true }, () => {});',
+      'it.only.each([1])("x %s", () => {});',
+      'test.only.each([1])("x %s", () => {});',
+      'describe.only.each([1])("y %s", () => {});',
+      'test.describe.parallel.only("y", () => {});',
     ],
-    spare: ['// it.only("x")\nconst profit = 1; benefit(2); onlyOnce(); split(".only(");', 'test("z", { only: false }, () => {});'],
+    spare: ['// it.only("x")\nconst profit = 1; benefit(2); onlyOnce(); split(".only(");', 'test("z", { only: false }, () => {});', "cache.only.each(x);"],
     create: (report) => ({
       CallExpression(node) {
         const c = node.callee;
         const tests = ["it", "test", "describe", "suite"];
-        const only =
-          c.type === "MemberExpression" &&
-          propertyName(c) === "only" &&
-          (tests.includes(nameOf(c.object)) || (c.object.type === "MemberExpression" && propertyName(c.object) === "describe" && tests.includes(nameOf(c.object.object))));
-        if (only || ["fit", "fdescribe"].includes(nameOf(c))) report(node);
+        let focused = false;
+        let root = c;
+        while (root.type === "MemberExpression") {
+          if (propertyName(root) === "only") focused = true;
+          root = root.object;
+        }
+        if ((focused && tests.includes(nameOf(root))) || ["fit", "fdescribe"].includes(nameOf(c))) report(node);
       },
       Property(node) {
         if (nameOf(node.key) === "only" && node.value.type === "Literal" && node.value.value === true) report(node);
