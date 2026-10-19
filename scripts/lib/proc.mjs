@@ -138,6 +138,24 @@ export function procFor({
   };
 
   /**
+   * Waits up to `ms` for `pid` to end; past that, calls `overdue` and kills `pid` alone, since a
+   * watcher it started is inside its tree. True when it had to.
+   */
+  async function killOverdue(pid, ms, overdue) {
+    const deadline = Date.now() + ms;
+    while (alive(pid)) {
+      if (Date.now() >= deadline) {
+        overdue();
+        if (win) taskkill(pid, true);
+        else signal(pid, "SIGKILL");
+        return true;
+      }
+      await new Promise((r) => setTimeout(r, Math.min(100, ms)));
+    }
+    return false;
+  }
+
+  /**
    * Asks the root to end (SIGTERM; on Windows a close to the whole tree, which keeps the root alive
    * for the forced `/T` when it is refused), waits up to `graceMs` for it, then kills whatever is
    * left of the tree it had. POSIX re-parents an exited root's children, so the tree is read first.
@@ -261,10 +279,10 @@ export function procFor({
     return child;
   }
 
-  return { runBin, startBin, spawnBin, killTree, stopTree, relay };
+  return { runBin, startBin, spawnBin, killTree, killOverdue, stopTree, relay };
 }
 
-export const { runBin, startBin, spawnBin, killTree, stopTree, relay } = procFor();
+export const { runBin, startBin, spawnBin, killTree, killOverdue, stopTree, relay } = procFor();
 
 export function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);

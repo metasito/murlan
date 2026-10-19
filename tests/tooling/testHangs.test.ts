@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { deadlineMs, FILE_DEADLINE_MS } from "../helpers/fileDeadline.mjs";
+import { deadlineMs, EXIT_GRACE_MS, exitGraceMs, FILE_DEADLINE_MS } from "../helpers/fileDeadline.mjs";
 import { RUN_IDLE_MS, runIdleMs } from "../helpers/filesRunReporter.mjs";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 import { NO_BACKGROUND_JIT } from "../../scripts/nodeTest.mjs";
@@ -49,6 +49,45 @@ describe("a test file that never finishes fails npm test by name", () => {
     assert.equal(deadlineMs({ MURLAN_TEST_FILE_DEADLINE_MS: "2000" }), 2000);
     for (const asked of [String(FILE_DEADLINE_MS * 10), "0", "-1", "off", undefined]) {
       assert.equal(deadlineMs({ MURLAN_TEST_FILE_DEADLINE_MS: asked }), FILE_DEADLINE_MS);
+    }
+  });
+});
+
+describe("a test file that hangs on its way out fails npm test by name", () => {
+  const hangsOnExit =
+    'import { test } from "node:test";\ntest("passes", () => {});\n' +
+    "process.on(\"exit\", () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0));\n";
+
+  test("a file that passed and never finished exiting is killed after the grace, and named", async () => {
+    const [, ...args] = script.split(" ").slice(0, -1);
+    const dir = mkdtempSync(path.join(tmpdir(), "planted-exit-hang-"));
+    try {
+      writeFileSync(path.join(dir, "hangsOnExit.test.mjs"), hangsOnExit);
+      writeFileSync(path.join(dir, "exits.test.mjs"), 'import { test } from "node:test";\ntest("passes", () => {});\n');
+      const env = { ...process.env };
+      env.MURLAN_TEST_EXIT_GRACE_MS = "2000";
+      delete env.MURLAN_TEST_FILE_DEADLINE_MS;
+      delete env.MURLAN_TEST_RUN_IDLE_MS;
+      delete env.NODE_TEST_CONTEXT;
+      const run = await new Promise<{ code: unknown; out: string }>((resolve) =>
+        execFile(process.execPath, [...args, path.relative(repoRoot, path.join(dir, "*.test.mjs"))], { cwd: repoRoot, env, timeout: 60_000 }, (err, stdout, stderr) =>
+          resolve({ code: err ? err.code : 0, out: stdout + stderr })
+        )
+      );
+      assert.equal(run.code, 1, run.out);
+      assert.match(run.out, /hangsOnExit\.test\.mjs: hung after its tests finished, killed 2s into its exit/);
+      assert.doesNotMatch(run.out, /exits\.test\.mjs: hung/);
+      assert.doesNotMatch(run.out, /still running after|nothing reported for/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the grace fits inside a file's own deadline, and can only be shortened", () => {
+    assert.ok(EXIT_GRACE_MS < FILE_DEADLINE_MS);
+    assert.equal(exitGraceMs({ MURLAN_TEST_EXIT_GRACE_MS: "2000" }), 2000);
+    for (const asked of [String(EXIT_GRACE_MS * 10), "0", "-1", "off", undefined]) {
+      assert.equal(exitGraceMs({ MURLAN_TEST_EXIT_GRACE_MS: asked }), EXIT_GRACE_MS);
     }
   });
 });
