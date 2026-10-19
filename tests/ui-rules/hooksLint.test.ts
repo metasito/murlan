@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { ADOPTED } from "../helpers/adoptedHookRules.ts";
 import { directives, syntaxErrors, type Directive } from "../helpers/hookSuppression.ts";
-import { cacheDir } from "../helpers/cacheDir.ts";
+import { cacheFor } from "../helpers/cacheDir.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const require = createRequire(import.meta.url);
@@ -136,10 +136,11 @@ describe("the react-hooks 7 rules #891 adopted stay adopted", () => {
     const lint = new ESLint({
       overrideConfig: { rules: { [OFF_FOR_TESTS]: "error" } },
       ruleFilter: ({ ruleId }) => ruleId === OFF_FOR_TESTS,
-      // Its own location: ESLint keys the cache on the config, and `ruleFilter` is not part of it.
+      // A location of its own, keyed by cacheFor: ESLint's key leaves out `ruleFilter`, and trusts a
+      // plugin's meta version, which react-hooks 7.1.1 leaves at 7.0.0.
       cache: true,
       cacheStrategy: "content",
-      cacheLocation: `${cacheDir("murlan-hooks-globals")}/`,
+      cacheLocation: `${cacheFor("murlan-hooks-globals", [fileURLToPath(import.meta.url)])}/`,
     });
     const scanned = [...new Set(OFF_ONLY_FOR.map((file) => path.dirname(file)))];
     const reporting = (await lint.lintFiles(scanned))

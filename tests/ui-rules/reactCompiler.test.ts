@@ -11,8 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { execFileSync } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -21,17 +20,12 @@ import { directives } from "../helpers/hookSuppression.ts";
 import { runBin } from "../../scripts/lib/proc.mjs";
 import { presetRequire, reactCompiler, reactCompilerOptions } from "../../scripts/reactCompilerOptions.mjs";
 import { scanSources, sourcesUnder } from "../helpers/sourceScan.ts";
-import { cacheDir } from "../helpers/cacheDir.ts";
+import { cacheFor, sharedCheckout } from "../helpers/cacheDir.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-// The shared checkout, via `--git-common-dir` rather than `--show-toplevel` (RULES.md rule 10:
-// the latter returns the worktree's own path from inside one). `npm ls`, unlike `require()`,
-// needs a real `node_modules` in its own cwd — only the shared checkout is guaranteed to have one.
-const sharedCheckout = path.dirname(
-  execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
-    encoding: "utf8",
-  }).trim()
-);
+// `npm ls`, unlike `require()`, needs a real `node_modules` in its own cwd — only the shared
+// checkout is guaranteed to have one.
+const sharedInstall = sharedCheckout();
 const require = createRequire(path.join(repoRoot, "package.json"));
 const { transformSync } = require("@babel/core");
 
@@ -47,7 +41,7 @@ const { transformSync } = require("@babel/core");
  */
 function occurrencesInTree(name: string): number {
   const tree = JSON.parse(
-    runBin("npm", ["ls", name, "--all", "--json"], { cwd: sharedCheckout, encoding: "utf8" }) as string
+    runBin("npm", ["ls", name, "--all", "--json"], { cwd: sharedInstall, encoding: "utf8" }) as string
   ) as { dependencies?: Record<string, { dependencies?: unknown }> };
   let count = 0;
   const walk = (deps: Record<string, { dependencies?: unknown }> | undefined) => {
@@ -155,28 +149,22 @@ type CompilerEvent = {
   detail?: { reason?: string; description?: string };
 };
 
-const compiledCache = cacheDir("murlan-react-compiler");
-// The compiler's own code, not its version string: a patched or rebuilt plugin at the same version
-// must not be answered from a cache its predecessor filled.
-const compilerKey = createHash("sha256")
-  .update(readFileSync(presetRequire.resolve("babel-plugin-react-compiler")))
-  .update(require("@babel/core/package.json").version)
-  .update(JSON.stringify(COMPILER_OPTIONS, (_k, v) => (typeof v === "function" ? String(v) : v)))
-  .digest("hex");
+const compiledCache = cacheFor("murlan-react-compiler", [fileURLToPath(import.meta.url)]);
 
-/** One file's bailouts, from the cache when this compiler has compiled these exact bytes before. */
+/** One file's bailouts, from the cache when these exact bytes compiled under today's key before. */
 function compile(rel: string, source?: string): CompilerEvent[] {
   const text = source ?? readFileSync(path.join(repoRoot, rel), "utf8");
-  const key = createHash("sha256").update(compilerKey).update(rel).update("\0").update(text).digest("hex");
-  const entry = path.join(compiledCache, `${key}.json`);
+  const entry = path.join(compiledCache, `${createHash("sha256").update(`${rel}\0${text}`).digest("hex")}.json`);
   try {
     return JSON.parse(readFileSync(entry, "utf8")) as CompilerEvent[];
   } catch {
     const events = compileUncached(rel, text);
-    mkdirSync(compiledCache, { recursive: true });
+    // Another key's run prunes this directory, so a write that loses that race is just not kept.
     const partial = `${entry}.${process.pid}`;
-    writeFileSync(partial, JSON.stringify(events));
-    renameSync(partial, entry);
+    try {
+      writeFileSync(partial, JSON.stringify(events));
+      renameSync(partial, entry);
+    } catch {}
     return events;
   }
 }
