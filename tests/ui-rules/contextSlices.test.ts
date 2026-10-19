@@ -77,7 +77,7 @@ const ONLINE: Record<string, string[]> = {
     "clearError", "clearPlayerLeft", "clearRejoinFailed", "retryConnection", "ownLink", "pill",
   ],
   useOnlineRoom: [
-    "room", "entrySource", "isSpectator", "createRoom", "joinRoom",
+    "room", "entrySource", "isSpectator", "hasGame", "createRoom", "joinRoom",
     "spectateRoom", "leaveRoom", "quickmatch", "setRoomVisibility", "startGame",
   ],
   useOnlineTable: ["gameState", "mySeatIndex", "playCards", "pass", "sendReaction", "disconnectedSeats", "autoPassed"],

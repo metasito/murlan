@@ -17,7 +17,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from "react-native-reanimated";
-import { router, useNavigation } from "expo-router";
+import { useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useOnlineRoom, useServerError } from "@/context/onlineGameHooks";
@@ -84,7 +84,7 @@ export default function QuickmatchScreen() {
   const { t } = useTranslation();
   const MODES = React.useMemo(() => buildModes(t), [t]);
   const { width: W, height: H } = useOrientedWindow();
-  const { quickmatch, leaveRoom, room } = useOnlineRoom();
+  const { quickmatch, leaveRoom } = useOnlineRoom();
   const error = useServerError("lobby");
   const navigation = useNavigation();
 
@@ -95,14 +95,6 @@ export default function QuickmatchScreen() {
   const reduceMotion = usePrefersReducedMotion();
 
   const isLandscape = W > H;
-
-  // The id, not the room: every field update would otherwise replace the route again.
-  const roomId = room?.roomId;
-  useEffect(() => {
-    if (roomId) {
-      router.replace("/(online)/room");
-    }
-  }, [roomId]);
 
   const handleCancelSearch = React.useCallback(() => {
     leaveRoom();

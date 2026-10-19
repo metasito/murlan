@@ -15,7 +15,7 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { connectAs, waitFor } from "../helpers/client.ts";
-import type { FriendInfo, FriendRequestInfo } from "../../lib/wire.ts";
+import type { FriendInfo, FriendRequestInfo } from "../../shared/http.ts";
 
 interface Incoming {
   from: string;

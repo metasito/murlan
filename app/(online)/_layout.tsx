@@ -1,8 +1,14 @@
 import { Stack, Redirect } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
 import { OnlineGameProvider } from "@/context/OnlineGameContext";
+import { useOnlineRouting } from "@/context/useOnlineRouting";
 import { View, ActivityIndicator } from "react-native";
 import { Colors } from '@/lib/theme';
+
+function FollowTable() {
+  useOnlineRouting();
+  return null;
+}
 
 export default function OnlineLayout() {
   const { user, loading } = useAuth();
@@ -19,6 +25,7 @@ export default function OnlineLayout() {
 
   return (
     <OnlineGameProvider userId={user.id}>
+      <FollowTable />
       <Stack screenOptions={{ headerShown: false, animation: "fade" }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="room" />

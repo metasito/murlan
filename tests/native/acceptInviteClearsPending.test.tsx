@@ -9,7 +9,8 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, act } from '@testing-library/react-native';
+import { renderHook, act, render, fireEvent, screen } from '@testing-library/react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 type Listener = (...args: unknown[]) => void;
 
@@ -47,6 +48,37 @@ jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: mockUser, logout: async () => {} }),
 }));
 
+jest.mock('expo-router', () => {
+  const ReactActual = require('react');
+  return {
+    router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() },
+    useFocusEffect: (cb: () => void) => ReactActual.useEffect(cb, []),
+    useSegments: () => ['(online)', 'friends'],
+  };
+});
+
+jest.mock('@/lib/device/pushRegistration', () => ({
+  registerForPush: async () => {},
+  forgetPushRegistration: () => {},
+}));
+
+const mockJoinRoom = jest.fn();
+const mockOnline = { connected: false };
+jest.mock('@/context/onlineGameHooks', () => ({
+  useOnlineRoom: () => ({
+    joinRoom: mockJoinRoom,
+    room: null,
+    hasGame: false,
+    isSpectator: false,
+    entrySource: null,
+  }),
+  useOnlineConnection: () => ({
+    connected: mockOnline.connected,
+    rejoinFailed: false,
+    clearRejoinFailed: () => {},
+  }),
+}));
+
 const { SocketProvider, useSocket } =
   require('@/context/SocketContext') as typeof import('@/context/SocketContext');
 const { NotificationProvider } =
@@ -75,6 +107,8 @@ const invite = async () => {
 beforeEach(() => {
   mockSocket.listeners.clear();
   mockUser = ANA;
+  mockJoinRoom.mockClear();
+  mockOnline.connected = false;
 });
 
 describe('accepting an invite', () => {
@@ -87,6 +121,20 @@ describe('accepting an invite', () => {
 
     expect(result.current.acceptedInvite).toBe('ABC123');
     expect(result.current.pendingInvite).toBeNull();
+
+    await unmount();
+  });
+
+  it('leaves an invite to another room standing', async () => {
+    const { result, unmount } = await mount();
+    await invite();
+    await act(async () => {
+      mockSocket.listeners.get('friend:invite')?.({ from: 'bob', roomCode: 'XYZ789' });
+    });
+
+    await act(async () => result.current.acceptInvite('ABC123'));
+
+    expect(result.current.pendingInvite).toEqual({ from: 'bob', roomCode: 'XYZ789' });
 
     await unmount();
   });
@@ -238,5 +286,79 @@ describe('hidden invites across accounts', () => {
     expect(result.current.gameInvites).toEqual([]);
 
     await unmount();
+  });
+});
+
+describe('accepting from the friends screen', () => {
+  const METRICS = {
+    frame: { x: 0, y: 0, width: 390, height: 844 },
+    insets: { top: 0, left: 0, right: 0, bottom: 0 },
+  };
+
+  const mountFriends = async () => {
+    const FriendsScreen = (require('@/app/(online)/friends') as { default: React.ComponentType }).default;
+    const row = { fromUsername: 'ana', roomCode: 'ABC123' };
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          queryFn: async ({ queryKey }) => (queryKey[0] === '/api/friends/invites' ? [row] : []),
+        },
+      },
+    });
+    const seen: { current: ReturnType<typeof useSocket> | null } = { current: null };
+    const { useOnlineRouting } =
+      require('@/context/useOnlineRouting') as typeof import('@/context/useOnlineRouting');
+    const Probe = () => {
+      seen.current = useSocket();
+      useOnlineRouting();
+      return null;
+    };
+    const tree = () => (
+      <QueryClientProvider client={client}>
+        <NotificationProvider>
+          <SocketProvider>
+            <SafeAreaProvider initialMetrics={METRICS}>
+              <Probe />
+              <FriendsScreen />
+            </SafeAreaProvider>
+          </SocketProvider>
+        </NotificationProvider>
+      </QueryClientProvider>
+    );
+    const view = await render(tree());
+    return { view, seen, rerender: () => view.rerender(tree()) };
+  };
+
+  it('answers the invite for both signals, as the home card does', async () => {
+    const { view, seen } = await mountFriends();
+    await invite();
+    expect(seen.current?.pendingInvite).not.toBeNull();
+
+    await fireEvent.press(screen.getByLabelText(/join ana/i));
+
+    expect(seen.current?.pendingInvite).toBeNull();
+    expect(seen.current?.acceptedInvite).toBe('ABC123');
+    expect(mockJoinRoom).not.toHaveBeenCalled();
+
+    await view.unmount();
+  });
+
+  it('joins from the layout once the socket is up, and only once', async () => {
+    const { view, seen, rerender } = await mountFriends();
+    await invite();
+
+    await fireEvent.press(screen.getByLabelText(/join ana/i));
+    expect(mockJoinRoom).not.toHaveBeenCalled();
+
+    mockOnline.connected = true;
+    await rerender();
+    await rerender();
+
+    expect(mockJoinRoom).toHaveBeenCalledTimes(1);
+    expect(mockJoinRoom).toHaveBeenCalledWith('ABC123');
+    expect(seen.current?.acceptedInvite).toBeNull();
+
+    await view.unmount();
   });
 });

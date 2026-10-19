@@ -12,28 +12,13 @@ import {
   type RatedSeat,
 } from "../../lib/game/rating.ts";
 import type { RatingAfter } from "../../lib/game/matchState.ts";
+import type { LeaderboardEntryDto, RatingDto } from "../../shared/http.ts";
 
 /** How many players the public ladder shows. */
 const LEADERBOARD_SIZE = 50;
 
-export interface RatingView {
-  season: string;
-  rating: number;
-  rounds: number;
-  /** True until the record is long enough to list publicly. */
-  provisional: boolean;
-}
-
 export interface RatedPreview extends RatingAfter {
   delta: number;
-}
-
-export interface LeaderboardEntry {
-  rank: number;
-  userId: string;
-  username: string;
-  rating: number;
-  rounds: number;
 }
 
 /** Either the pool or an open transaction — currentRows only ever reads. */
@@ -206,14 +191,14 @@ export async function recordRatedResult(
 }
 
 /** This season's standing for one player, seeded but not yet written if unplayed. */
-export async function getRating(userId: string, now: Date): Promise<RatingView> {
+export async function getRating(userId: string, now: Date): Promise<RatingDto> {
   const season = seasonKey(now);
   const { rating, rounds } = await currentRow(db, userId, season);
   return { season, rating, rounds, provisional: rounds < PROVISIONAL_ROUNDS };
 }
 
 /** The current season's ladder. Provisional records are not listed. */
-export async function getLeaderboard(now: Date): Promise<LeaderboardEntry[]> {
+export async function getLeaderboard(now: Date): Promise<LeaderboardEntryDto[]> {
   const season = seasonKey(now);
   const rows = await db
     .select({
@@ -236,7 +221,7 @@ export async function getLeaderboard(now: Date): Promise<LeaderboardEntry[]> {
  * Unlike the public ladder it lists provisional and unplayed records, each on
  * the rating `getRating` would report for them.
  */
-export async function getCircleLeaderboard(userIds: string[], now: Date): Promise<LeaderboardEntry[]> {
+export async function getCircleLeaderboard(userIds: string[], now: Date): Promise<LeaderboardEntryDto[]> {
   const season = seasonKey(now);
   const members = await db
     .select({ userId: users.id, username: users.username })

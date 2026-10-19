@@ -17,6 +17,17 @@ const SCREENS = ["{app,components,context,lib}/**/*.{ts,tsx}"];
 const DRAWN = ["{app,components}/**/*.tsx"];
 const TEST_RUNNERS = "/^(it|test|describe|suite)$/";
 const SEAT_IDENTITY = "/^(viewerSeat|mySeatIndex)$/";
+const AUDIO_LAYERED = ["{app,components,context,lib,modules}/**/*.{ts,tsx}"];
+// esquery's regex literal ends at its first slash, so a path separator is written \x2F.
+// With `values`, a declaration whose every specifier is `type` is spared: it never reaches the bundle.
+const importsOf = (source, { values = false } = {}) =>
+  [
+    `ImportDeclaration${values ? ':not([importKind="type"]):matches([specifiers.length=0], :has(ImportSpecifier[importKind="value"]), :has(ImportDefaultSpecifier), :has(ImportNamespaceSpecifier))' : ""}[source.value=${source}]`,
+    `ExportNamedDeclaration${values ? ':not([exportKind="type"]):has(ExportSpecifier[exportKind="value"])' : ""}[source.value=${source}]`,
+    `ExportAllDeclaration${values ? ':not([exportKind="type"])' : ""}[source.value=${source}]`,
+    `ImportExpression[source.value=${source}]`,
+    `CallExpression[callee.name="require"][arguments.0.value=${source}]`,
+  ].join(", ");
 
 /** @type {readonly Guard[]} */
 const GUARDS = [
@@ -222,6 +233,122 @@ const GUARDS = [
     ],
     plant: { file: "tests/server/plant.test.ts", code: ['const root = path.resolve(process.cwd(), "sourcemaps");', "const home = process.cwd();"].join("\n"), hits: 2 },
     spare: [{ file: "tests/server/plant.test.ts", code: '// process.cwd() is wherever the run started\nconst s = "process.cwd()";\nconst root = path.resolve(import.meta.dirname, "..", "..");' }],
+  },
+  {
+    id: "audio-engine-owner",
+    why: "ADR-0009 (docs/adr/0009-audio-and-haptics-libraries.md) gives react-native-audio-api and the audio-session module one owner, lib/device/audioEngine.ts: play through lib/device/feedback.ts.",
+    selector: importsOf("/^react-native-audio-api(\\x2F|$)|(^|\\x2F)murlan-audio-session(\\x2F|$)/", { values: true }),
+    files: AUDIO_LAYERED,
+    ignores: [{ glob: "lib/device/audioEngine.ts", reason: "the owner of the audio engine" }],
+    plant: { file: "components/Plant.tsx", code: [
+      'import { AudioContext } from "react-native-audio-api";',
+      'import { type AudioBuffer, AudioContext as Ctx } from "react-native-audio-api";',
+      'import "react-native-audio-api";',
+      'export { AudioContext } from "react-native-audio-api";',
+      'export * from "react-native-audio-api";',
+      'const api = import("react-native-audio-api");',
+      'const m = require("react-native-audio-api");',
+      'import { setCategory } from "../modules/murlan-audio-session";',
+      'import Session from "@/modules/murlan-audio-session/index.ts";',
+    ].join("\n"), hits: 9 },
+    spare: [
+      'import type { AudioContext } from "react-native-audio-api";',
+      'import { type AudioContext, type AudioBuffer } from "react-native-audio-api";',
+      'export { type AudioContext } from "react-native-audio-api";',
+      'export type * from "react-native-audio-api";',
+      'import { x } from "react-native-audio-api-shim";',
+      '// import "react-native-audio-api"\nconst s = "react-native-audio-api";',
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "haptics-engine-owner",
+    why: "ADR-0009 (docs/adr/0009-audio-and-haptics-libraries.md) gives react-native-turbo-haptics one owner, lib/device/hapticsEngine.ts: buzz through lib/device/feedback.ts.",
+    selector: importsOf("/^react-native-turbo-haptics(\\x2F|$)/", { values: true }),
+    files: AUDIO_LAYERED,
+    ignores: [{ glob: "lib/device/hapticsEngine.ts", reason: "the owner of the haptics engine" }],
+    plant: { file: "modules/murlan-orientation/plant.ts", code: [
+      'import { trigger } from "react-native-turbo-haptics";',
+      'export { trigger } from "react-native-turbo-haptics";',
+      'const h = import("react-native-turbo-haptics");',
+    ].join("\n"), hits: 3 },
+    spare: ['import type { HapticType } from "react-native-turbo-haptics";'].map((code) => ({ file: "modules/murlan-orientation/plant.ts", code })),
+  },
+  {
+    id: "no-expo-audio",
+    why: "ADR-0009 (docs/adr/0009-audio-and-haptics-libraries.md) chose react-native-audio-api and react-native-turbo-haptics over expo-audio and expo-haptics, so neither has an owner: play through lib/device/feedback.ts.",
+    selector: importsOf("/^expo-(audio|haptics)(\\x2F|$)/", { values: true }),
+    files: AUDIO_LAYERED,
+    plant: { file: "context/Plant.tsx", code: [
+      'import * as Haptics from "expo-haptics";',
+      'import { useAudioPlayer } from "expo-audio";',
+      'const a = require("expo-audio");',
+    ].join("\n"), hits: 3 },
+    spare: ['import type { AudioPlayer } from "expo-audio";', 'import { Image } from "expo-image";'].map((code) => ({ file: "context/Plant.tsx", code })),
+  },
+  {
+    id: "diagnostics-owner",
+    why: "ADR-0009 (docs/adr/0009-audio-and-haptics-libraries.md) layers the native modules: the diagnostics module has one reader, lib/diagnostics/probe.ts, and the rest ask it.",
+    selector: importsOf("/(^|\\x2F)murlan-diagnostics(\\x2F|$)/", { values: true }),
+    files: AUDIO_LAYERED,
+    ignores: [{ glob: "lib/diagnostics/probe.ts", reason: "the one reader of the diagnostics module" }],
+    plant: { file: "app/Plant.tsx", code: [
+      'import { probe } from "@/modules/murlan-diagnostics";',
+      'const d = import("../modules/murlan-diagnostics/index.ts");',
+    ].join("\n"), hits: 2 },
+    spare: ['import type { Probe } from "@/modules/murlan-diagnostics";', 'import { probe } from "@/lib/diagnostics/probe";'].map((code) => ({ file: "app/Plant.tsx", code })),
+  },
+  {
+    id: "feedback-owner",
+    why: "ADR-0009 (docs/adr/0009-audio-and-haptics-libraries.md) puts both engines behind one owner, lib/device/feedback.ts: play and buzz through it.",
+    selector: importsOf("/(^|\\x2F)(audioEngine|hapticsEngine)(\\.ts)?$/", { values: true }),
+    files: AUDIO_LAYERED,
+    ignores: [{ glob: "lib/device/feedback.ts", reason: "the one owner of both engines" }],
+    plant: { file: "components/Plant.tsx", code: [
+      'import { play } from "@/lib/device/audioEngine";',
+      'import { play } from "../lib/device/audioEngine.ts";',
+      'import { buzz } from "./device/hapticsEngine.ts";',
+      'const e = import("@/lib/device/audioEngine");',
+      'const h = require("../lib/device/hapticsEngine");',
+    ].join("\n"), hits: 5 },
+    spare: [
+      'import type { Bus } from "@/lib/device/audioEngine";',
+      'import { playSound } from "@/lib/device/feedback";',
+      'import { x } from "./audioEngineTiming";',
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "shared-no-client",
+    why: "shared/ is what the server and the client both read, so it may import the domain (lib/game/) and never a client module: take TranslationKey from shared/i18n.ts, and move a type both sides need into shared/.",
+    selector: importsOf("/(^|\\x2F)(app|components|context)\\x2F|(^|\\x2F)lib\\x2F(?!game\\x2F)/"),
+    files: ["shared/**/*.{ts,tsx}"],
+    plant: { file: "shared/plant.ts", code: [
+      'import type { TranslationKey } from "../lib/i18n";',
+      'import { t } from "@/lib/i18n";',
+      'export type { RoundHistoryDto } from "../lib/wire.ts";',
+      'import type { Auth } from "../context/AuthContext";',
+    ].join("\n"), hits: 4 },
+    spare: [
+      'import type { Card } from "../lib/game/gameEngine.ts";',
+      'import { en } from "../locales/en.ts";',
+      'import type { TranslationParams } from "./i18n.ts";',
+      '// import "../lib/i18n"\nconst s = "../lib/i18n";',
+    ].map((code) => ({ file: "shared/plant.ts", code })),
+  },
+  {
+    id: "game-no-client-i18n",
+    why: "lib/i18n.ts is the client's catalogue runtime, and the server bundles lib/game/: take TranslationKey from shared/i18n.ts, and leave the words to the caller.",
+    selector: importsOf("/^(?!.*shared\\x2Fi18n).*(^|\\x2F)i18n(\\.ts)?$/"),
+    files: ["lib/game/**/*.{ts,tsx}"],
+    plant: { file: "lib/game/rating.ts", code: [
+      'import type { TranslationKey } from "../i18n";',
+      'import { t } from "@/lib/i18n";',
+      'import type { TFn } from "../i18n.ts";',
+    ].join("\n"), hits: 3 },
+    spare: [
+      'import type { TranslationKey } from "../../shared/i18n.ts";',
+      'import type { TranslationKey } from "@/shared/i18n";',
+      '// import "../i18n"\nconst s = "../i18n";',
+    ].map((code) => ({ file: "lib/game/rating.ts", code })),
   },
 ];
 

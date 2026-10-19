@@ -6,7 +6,8 @@
 // `t` is a parameter rather than a hook call so this stays pure and testable.
 
 import type { Card } from "@/lib/game/gameEngine";
-import type { TFn, TranslationKey } from "@/lib/i18n";
+import type { TFn } from "@/lib/i18n";
+import type { TranslationKey } from "@/shared/i18n";
 
 // Only the ranks whose spoken word differs from the glyph printed on the card.
 // Numbers speak as themselves.

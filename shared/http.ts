@@ -1,6 +1,6 @@
 // The HTTP shapes as JSON delivers them — not shared/schema.ts's row types,
 // because a `Date` column arrives here as an ISO string.
-import type { GameMode } from "./game/gameEngine";
+import type { GameMode } from "../lib/game/gameEngine.ts";
 
 export interface UserStatsDto {
   userId: string;
@@ -18,6 +18,7 @@ export interface RatingDto {
   season: string;
   rating: number;
   rounds: number;
+  /** True until the record is long enough to list publicly. */
   provisional: boolean;
 }
 
@@ -68,7 +69,7 @@ export interface FriendRequestAccepted {
   friend?: FriendInfo;
 }
 
-interface HistoryParticipantDto {
+export interface HistoryParticipantDto {
   name: string | null;
   bot: boolean;
 }

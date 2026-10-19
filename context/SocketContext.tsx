@@ -29,7 +29,7 @@ import { SessionReplacedNotice } from "@/components/SessionReplacedNotice";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
 import { reconnectDelayMs } from "@/lib/reconnectDelay";
-import type { FriendRequestAccepted, FriendRequestIncoming } from "@/lib/wire";
+import type { FriendRequestAccepted, FriendRequestIncoming } from "@/shared/http";
 import type { Socket as UntypedSocket } from "socket.io-client";
 
 /**
@@ -218,7 +218,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const acceptInvite = useCallback(
     (roomCode: string) => {
       hideGameInvite(roomCode);
-      setPendingInvite(null);
+      setPendingInvite((pending) => (pending?.roomCode === roomCode ? null : pending));
       setAcceptedInvite(roomCode);
     },
     [hideGameInvite]

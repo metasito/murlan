@@ -4,6 +4,7 @@ import { lockUsers } from "../store/userLock.ts";
 import { logger } from "../http/logger.ts";
 import { userStats, roundHistory, userAchievements } from "../../shared/schema.ts";
 import type { UserStats, RoundHistory } from "../../shared/schema.ts";
+import type { AchievementStatusDto } from "../../shared/http.ts";
 import { evaluateAchievements, ACHIEVEMENTS } from "../../lib/achievements.ts";
 import type { GameResult } from "../../lib/achievements.ts";
 import type { GameMode } from "../../lib/game/gameEngine.ts";
@@ -217,16 +218,8 @@ export async function getRoundHistory(userId: string): Promise<RoundHistory[]> {
   });
 }
 
-export interface AchievementStatus {
-  id: string;
-  nameKey: string;
-  descKey: string;
-  unlocked: boolean;
-  unlockedAt: string | null;
-}
-
 /** The full catalogue (locked and unlocked), for a profile/achievements screen. */
-export async function getUserAchievements(userId: string): Promise<AchievementStatus[]> {
+export async function getUserAchievements(userId: string): Promise<AchievementStatusDto[]> {
   const rows = await db.query.userAchievements.findMany({
     where: eq(userAchievements.userId, userId),
   });

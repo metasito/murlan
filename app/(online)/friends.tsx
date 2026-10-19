@@ -7,13 +7,12 @@ import {
   TextInput,
   ActivityIndicator,
 } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { uiFeedback } from "@/lib/device/feedback";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "@/context/SocketContext";
-import { useOnlineRoom } from "@/context/onlineGameHooks";
 import { useNotification } from "@/context/NotificationContext";
 import { serverErrorMessage } from "@/lib/apiError";
 import { apiRequest } from "@/lib/query-client";
@@ -26,7 +25,7 @@ import { useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
 import { registerForPush } from "@/lib/device/pushRegistration";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
-import type { FriendInfo, FriendRequestInfo } from "@/lib/wire";
+import type { FriendInfo, FriendRequestInfo } from "@/shared/http";
 
 
 interface SearchResult { id: string; username: string }
@@ -52,8 +51,7 @@ function GroupLabel({ text }: { text: string }) {
 export default function FriendsScreen() {
   const { t, tn } = useTranslation();
   const searchHint = useA11yHint(t("friends.searchA11yHint"));
-  const { socket, onlineIds, gameInvites, dismissGameInvite, hideGameInvite } = useSocket();
-  const { joinRoom, room } = useOnlineRoom();
+  const { socket, onlineIds, gameInvites, dismissGameInvite, acceptInvite } = useSocket();
   const qc = useQueryClient();
   const [addLoading, setAddLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -198,14 +196,6 @@ export default function FriendsScreen() {
     setAddLoading(false);
   }
 
-  // The id, not the room: every field update would otherwise push the route again.
-  const roomId = room?.roomId;
-  useEffect(() => {
-    if (roomId) {
-      router.push("/(online)/room");
-    }
-  }, [roomId]);
-
   useFocusEffect(
     useCallback(() => {
       if (socket) socket.emit("friend:get_online_list");
@@ -222,8 +212,7 @@ export default function FriendsScreen() {
 
   function handleJoinGameInvite(roomCode: string) {
     uiFeedback("medium");
-    hideGameInvite(roomCode);
-    joinRoom(roomCode);
+    acceptInvite(roomCode);
   }
 
   return (

@@ -6,7 +6,7 @@
 // fetches — nothing new is stored, and nothing reads further back than the
 // server already sends.
 
-import type { RoundHistoryDto } from "./wire";
+import type { RoundHistoryDto } from "../shared/http.ts";
 
 /** The three fields of a history row these trends read. */
 export type MatchRecord = Pick<RoundHistoryDto, "finishedAt" | "placement" | "playerCount">;

@@ -17,7 +17,7 @@ import { Colors, FontSize, Radius, Spacing, Type } from "@/lib/theme";
 import { PROVISIONAL_ROUNDS, formatSeason } from "@/lib/game/rating";
 import { useTranslation } from "@/lib/i18n";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
-import type { LeaderboardEntryDto, RatingDto } from "@/lib/wire";
+import type { LeaderboardEntryDto, RatingDto } from "@/shared/http";
 import { ladderKey, type LadderScope } from "@/lib/ladderQuery";
 
 

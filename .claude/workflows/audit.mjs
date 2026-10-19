@@ -20,7 +20,7 @@ const MAX_GAP_ROUNDS = 3
 const LENSES = [
   {
     key: 'security', model: 'opus', skills: ['security-review', 'best-practices'],
-    start: 'server/ (authTokens, ticket, session, socketSafety, validate, schemas, cors, admin, adminPage, bugReports, clientErrors, codes, routes, mail, deleteAccount), shared/socketSchemas.ts, lib/wire.ts, app/(online), app/+native-intent.tsx, app.json, .github/workflows',
+    start: 'server/ (authTokens, ticket, session, socketSafety, validate, schemas, cors, admin, adminPage, bugReports, clientErrors, codes, routes, mail, deleteAccount), shared/socketSchemas.ts, shared/http.ts, app/(online), app/+native-intent.tsx, app.json, .github/workflows',
     refs: 'OWASP ASVS 5.0 (V6 auth, V7 session, V8 authz, V13 config, V16 logging); OWASP Top 10:2025 (A01 access control, A02 misconfiguration, A10 exceptional conditions); OWASP MASVS for token storage on device; expressjs.com security best practices; socket.io docs on auth and middleware.',
     ask: `Threat-model first: a hostile client holds a valid session and a seat at the table.
 - Handshake: only a ticket or a live session is accepted.
@@ -107,7 +107,7 @@ Quote measured numbers from the docs, and name what is still unmeasured.`,
   },
   {
     key: 'perf-server', model: 'sonnet', skills: [],
-    start: 'server/socket/socketGameplay.ts, server/socket/socketTable.ts, server/game/tableActions.ts, server/game/tableHandlers.ts, server/game/gamePersistence.ts, server/socket/emit.ts, lib/wire.ts, server/app.ts, server/http/staticPaths.ts, tests/soak/',
+    start: 'server/socket/socketGameplay.ts, server/socket/socketTable.ts, server/game/tableActions.ts, server/game/tableHandlers.ts, server/game/gamePersistence.ts, server/socket/emit.ts, shared/http.ts, server/app.ts, server/http/staticPaths.ts, tests/soak/',
     refs: 'socket.io/docs/v4 adapter and performance-tuning pages.',
     ask: `- DB writes per move.
 - Broadcast fan-out and state payload size.
