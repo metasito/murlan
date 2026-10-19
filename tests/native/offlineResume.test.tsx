@@ -280,6 +280,29 @@ test("resuming the live table mounts it at rest", async () => {
   await unmount(r);
 });
 
+// A replaced match is gone for good: the next resume cannot bring the old one back.
+test("starting a new match drops the saved one rather than offering it back", async () => {
+  await AsyncStorage.setItem(OFFLINE_SAVE_KEY, midExchangeSave());
+  const r = await mount();
+  await waitFor(() => expect(textOf(r, "saved")).toBe("true"));
+  await press(r, "setup");
+  expect(textOf(r, "exchange")).toBe("none");
+  await press(r, "reset");
+  expect(textOf(r, "saved")).toBe("false");
+  await press(r, "resume");
+  expect(textOf(r, "hand")).toBe("none");
+  await unmount(r);
+});
+
+test("a saved match nobody replaced stays resumable", async () => {
+  await AsyncStorage.setItem(OFFLINE_SAVE_KEY, midExchangeSave());
+  const r = await mount();
+  await waitFor(() => expect(textOf(r, "saved")).toBe("true"));
+  await press(r, "resume");
+  expect(textOf(r, "exchange")).toBe("1>0 jokers");
+  await unmount(r);
+});
+
 test("a boot read that lands after the table was set up and left offers nothing back", async () => {
   await AsyncStorage.setItem(OFFLINE_SAVE_KEY, freeLeadSave());
   let land: (raw: string | null) => void = () => {};

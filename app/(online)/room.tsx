@@ -211,10 +211,11 @@ function InviteFriendsPanel({
     refresh();
   }, [refresh]);
 
-  const { data: friends = [], isLoading, isError, refetch } = useQuery<FriendInfo[]>({
+  const { data: friendsData, isLoading, isError, refetch } = useQuery<FriendInfo[]>({
     queryKey: ["/api/friends"],
   });
 
+  const friends = friendsData ?? [];
   const onlineFriendsNotInRoom = friends.filter(
     (f) => onlineIds.has(f.id) && !playerUserIds.includes(f.id)
   );
@@ -251,6 +252,7 @@ function InviteFriendsPanel({
         <LoadingBlock label={t("common.loading")} />
       ) : isError ? (
         <ErrorBlock
+          stale={friendsData !== undefined}
           title={t("friends.loadErrorTitle")}
           retry={{ label: t("common.retry"), a11yLabel: t("friends.loadRetryA11yLabel"), onPress: () => refetch() }}
         />

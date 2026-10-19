@@ -150,6 +150,7 @@ export default function ReplayScreen() {
       <MenuLayout>
         <MenuCard title={t("replay.title")}>
           <ErrorBlock
+            stale={data !== undefined}
             title={t("replay.loadFailedTitle")}
             retry={{ label: t("common.retry"), a11yLabel: t("replay.retryA11yLabel"), onPress: () => refetch() }}
           />

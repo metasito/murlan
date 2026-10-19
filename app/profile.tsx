@@ -629,6 +629,7 @@ export default function ProfileScreen() {
               {statsQuery.isLoading && <LoadingBlock label={t("profile.statsLoadingA11yLabel")} />}
               {statsQuery.isError && (
                 <ErrorBlock
+                  stale={statsQuery.data !== undefined}
                   title={t("profile.statsErrorTitle")}
                   retry={{ label: t("common.retry"), a11yLabel: t("profile.retryStatsA11yLabel"), onPress: () => statsQuery.refetch() }}
                 />
@@ -796,6 +797,7 @@ export default function ProfileScreen() {
               {achievementsQuery.isLoading && <LoadingBlock label={t("profile.achievementsLoadingA11yLabel")} />}
               {achievementsQuery.isError && (
                 <ErrorBlock
+                  stale={achievementsQuery.data !== undefined}
                   title={t("profile.achievementsErrorTitle")}
                   retry={{ label: t("common.retry"), a11yLabel: t("profile.retryAchievementsA11yLabel"), onPress: () => achievementsQuery.refetch() }}
                 />

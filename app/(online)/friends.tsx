@@ -15,7 +15,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useInvites, usePresence } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
 import { useOnlineConnection, useServerError } from "@/context/onlineGameHooks";
-import { serverErrorMessage } from "@/lib/apiError";
+import { ApiError, serverErrorMessage } from "@/lib/apiError";
 import { apiRequest } from "@/lib/query-client";
 import { Colors, Spacing, FontSize, Radius, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { MenuLayout, takesSlack } from "@/components/MenuLayout";
@@ -79,7 +79,7 @@ export default function FriendsScreen() {
   }, [joinError, clearError, notifyError]);
 
   const {
-    data: friends = [],
+    data: friendsData,
     isLoading: friendsLoading,
     isError: friendsErrored,
     refetch: refetchFriends,
@@ -87,6 +87,7 @@ export default function FriendsScreen() {
     queryKey: ["/api/friends"],
     refetchOnWindowFocus: true,
   });
+  const friends = friendsData ?? [];
 
   const requestsQuery = useQuery<FriendRequestInfo[]>({
     queryKey: ["/api/friends/requests"],
@@ -182,7 +183,7 @@ export default function FriendsScreen() {
       setSearchResult(data);
       setSearchDone(true);
     } catch (e: unknown) {
-      setSearchError(serverErrorMessage(e, t("friends.userNotFound")));
+      setSearchError(e instanceof ApiError && e.status === 404 ? t("friends.userNotFound") : t("friends.searchFailed"));
       setSearchDone(true);
     }
     setSearchLoading(false);
@@ -331,6 +332,7 @@ export default function FriendsScreen() {
         )}
         {!friendsLoading && friendsErrored && (
           <ErrorBlock
+            stale={friendsData !== undefined}
             title={t("friends.loadErrorTitle")}
             retry={{ label: t("common.retry"), a11yLabel: t("friends.loadRetryA11yLabel"), onPress: () => refetchFriends() }}
           />
@@ -431,6 +433,7 @@ export default function FriendsScreen() {
         )}
         {!pendingLoading && pendingErrored && (
           <ErrorBlock
+            stale={requestsQuery.data !== undefined || sentQuery.data !== undefined}
             title={t("friends.pendingLoadErrorTitle")}
             retry={{
               label: t("common.retry"),
