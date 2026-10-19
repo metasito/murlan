@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Reads built output for lib/e2eBuildMark.ts's string.
+// Reads built output for lib/e2eConfig.ts's string.
 //   node scripts/e2eBuildMark.mjs --absent|--present <dir>... [--mark e2e|diagnostics]
 //   node scripts/e2eBuildMark.mjs --present dist-e2e   the e2e build, so the mark is known to work
 import fs from "node:fs";

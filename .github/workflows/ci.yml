@@ -992,7 +992,7 @@ jobs:
       - name: The web bundle is within its size budget
         run: npm run bundle:budget
 
-      # lib/e2eBuildMark.ts survives only in a bundle built with a test-only flag.
+      # lib/e2eConfig.ts's build mark survives only in a bundle built with a test-only flag.
       - name: The production web bundle carries no test-only flag
         run: node scripts/e2eBuildMark.mjs --absent dist
 

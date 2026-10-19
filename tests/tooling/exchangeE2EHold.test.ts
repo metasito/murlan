@@ -16,8 +16,8 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
 
 const gameContext = read("context/GameContext.tsx");
+const driver = read("context/offlineDriver.ts");
 const onlineGameContext = read("context/OnlineGameContext.tsx");
-const gameHooks = read("context/gameHooks.ts");
 const offlineScreen = read("app/game.tsx");
 
 /**
@@ -50,8 +50,8 @@ function hasTopLevelComma(args: string): boolean {
 
 describe("the offline exchange overlay's E2E hold", () => {
   test("only the E2E harness's own build configs ever set EXPO_PUBLIC_E2E_FAST", () => {
-    // A plain assignment (`= "1"` / `: "1"`), never a read: `app/game.tsx` and
-    // `context/GameContext.tsx` compare against it with `===`, which this flag
+    // A plain assignment (`= "1"` / `: "1"`), never a read: `lib/e2eConfig.ts`
+    // compares against it with `===`, which this flag
     // does not match, so a reader gating its own behaviour is not a setter.
     const FLAG = /EXPO_PUBLIC_E2E_FAST\s*[:=]\s*["']1["']/;
     const workflows = readdirSync(path.join(repoRoot, ".github/workflows")).map(
@@ -81,37 +81,24 @@ describe("the offline exchange overlay's E2E hold", () => {
     );
   });
 
-  test("GameContext only overrides the hold when EXPO_PUBLIC_E2E_FAST is set", () => {
+  test("the offline driver only overrides the hold when EXPO_PUBLIC_E2E_FAST is set", () => {
     assert.match(
-      gameContext,
-      /const E2E_FAST = process\.env\.EXPO_PUBLIC_E2E_FAST === "1";/,
-      "GameContext no longer gates on EXPO_PUBLIC_E2E_FAST the same way app/game.tsx does"
-    );
-    assert.match(
-      gameContext,
-      /exchangeHoldMsOverride = E2E_FAST && !E2E_REAL_EXCHANGE \? E2E_EXCHANGE_HOLD : undefined/,
+      driver,
+      /const EXCHANGE_HOLD = e2eFast\(\) && !e2e\.realExchange \? E2E_EXCHANGE_HOLD : undefined;/,
       "the override is no longer undefined when EXPO_PUBLIC_E2E_FAST is unset — " +
-        "a real player would get a held-open overlay"
+        "a real player would get a held-open overlay; the gate and the opt-out are lib/e2eConfig.ts's, " +
+        "whose floor test proves no build without the flag reads its key"
     );
-    assert.match(
-      gameContext,
-      /const E2E_REAL_EXCHANGE = realExchange\(E2E_FAST\);/,
-      "the opt-out no longer goes through lib/e2eRealExchange.ts, whose floor test proves no " +
-        "build without EXPO_PUBLIC_E2E_FAST reads its key"
-    );
+    assert.match(driver, /import \{ e2e, e2eFast \} from "@\/lib\/e2eConfig";/);
+    assert.doesNotMatch(gameContext, /\bholdMsOverride|ExchangeHold\b/, "the hold is back in a context");
   });
 
   test("the override reaches the offline screen's own exchangeAnnouncement slot", () => {
-    assert.match(
-      gameHooks,
-      /exchangeHoldMsOverride/,
-      "useLocalExchange no longer forwards exchangeHoldMsOverride out of GameContext"
-    );
+    assert.match(driver, /exchangeHold: EXCHANGE_HOLD/, "useOfflineDriver no longer hands the hold out");
     assert.match(
       offlineScreen,
-      /holdMsOverride:\s*exchangeHoldMsOverride/,
-      "app/game.tsx no longer passes exchangeHoldMsOverride into the exchangeAnnouncement slot " +
-        "it hands to GameTable"
+      /holdMsOverride:\s*driver\.exchangeHold/,
+      "app/game.tsx no longer passes the driver's hold into the exchangeAnnouncement slot it hands to GameTable"
     );
   });
 
@@ -128,7 +115,7 @@ describe("the offline exchange overlay's E2E hold", () => {
 
   test("a device build holds the overlay until exchange-phase.yaml taps it, and the flow does", () => {
     assert.match(
-      gameContext,
+      driver,
       /E2E_EXCHANGE_HOLD: ExchangeHold =\s*Platform\.OS === "web" \? [^:]+ : "untilTapped";/,
       "a device e2e build is back on a timed hold, which a slow hierarchy read outlasts (#1560)"
     );

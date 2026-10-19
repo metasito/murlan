@@ -10,10 +10,13 @@ import React from "react";
 import { Text, Pressable } from "react-native";
 import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { GameProvider, useGame } from "@/context/GameContext";
+import { GameProvider, useGameSession, useGameTable } from "@/context/GameContext";
 import { OFFLINE_SAVE_KEY, OFFLINE_SAVE_VERSION, decodeOfflineSave } from "@/lib/offlineSave";
 import { NotificationProvider, useBanner } from "@/context/NotificationContext";
 import { t } from "@/lib/i18n";
+
+/** Both halves of the provider, for a probe that reads across them. */
+const useGame = () => ({ ...useGameSession(), ...useGameTable() });
 
 const SETUP = [
   { name: "Ana", type: "human" as const },
@@ -95,6 +98,9 @@ function Probe() {
       <Pressable testID="resume" onPress={() => resumeGame()}><Text>resume</Text></Pressable>
       <Pressable testID="reset" onPress={() => resetGame()}><Text>reset</Text></Pressable>
       <Pressable testID="play" onPress={() => start && playCards([start.id])}><Text>play</Text></Pressable>
+      <Pressable testID="playFirst" onPress={() => gameState && playCards([gameState.players[0].hand[0].id])}>
+        <Text>play first</Text>
+      </Pressable>
     </>
   );
 }
@@ -216,4 +222,44 @@ test("a game killed mid-exchange comes back with the exchange, and no stuck over
 
   expect(textOf(r, "exchange")).toBe("1>0 jokers");
   expect(textOf(r, "announcing")).toBe("false");
+});
+
+/** Ana on move with a free lead, so her first card is always a legal single. */
+const freeLeadSave = () => {
+  const card = (rank: string, suit: string) => ({ id: `${rank}_${suit}`, rank, suit, isJoker: false });
+  return JSON.stringify({
+    ...JSON.parse(midExchangeSave()),
+    gameState: {
+      players: [
+        { id: "player_0", name: "Ana", hand: [card("7", "hearts"), card("9", "hearts")], type: "human" },
+        { id: "player_1", name: "Luan", hand: [card("5", "clubs"), card("8", "clubs")], type: "bot" },
+      ],
+      currentTurnIndex: 0,
+      lastPlayedCombination: null,
+      lastPlayedBy: -1,
+      passCount: 0,
+      gameMode: "free_for_all",
+      trickWinner: null,
+      roundOver: false,
+      finishingOrder: [],
+      firstPlayMade: true,
+    },
+  });
+};
+
+// Back from the table to Home leaves the provider's table live; Home's resume must pick that up, not the boot save.
+test("resuming again after a move goes back to the live table, not the save the app booted with", async () => {
+  await AsyncStorage.setItem(OFFLINE_SAVE_KEY, freeLeadSave());
+
+  const r = await mount();
+  await waitFor(() => expect(textOf(r, "saved")).toBe("true"));
+  await press(r, "resume");
+  expect(textOf(r, "hand")).toBe("2");
+  await press(r, "playFirst");
+  expect(textOf(r, "hand")).toBe("1");
+
+  expect(textOf(r, "saved")).toBe("true");
+  await press(r, "resume");
+  expect(textOf(r, "hand")).toBe("1");
+  await unmount(r);
 });

@@ -11,20 +11,20 @@
  * lives in `lib/game/sharedGameFlow.ts` and both modes call it.
  */
 import { useMemo } from "react";
-import { useGame } from "./GameContext";
+import { useGameSession, useGameTable } from "./GameContext";
 
 /** The hand and the ways to spend a turn. */
 export function useLocalTable() {
-  const { gameState, playCards, passTurn, runBotTurn } = useGame();
+  const { gameState, playCards, passTurn, runBotTurn } = useGameTable();
   return useMemo(
     () => ({ gameState, playCards, passTurn, runBotTurn }),
     [gameState, playCards, passTurn, runBotTurn]
   );
 }
 
-/** Starting a match, abandoning one, and picking up the one that was interrupted. */
+/** Starting a match, abandoning one, and picking up the one that was interrupted. Its own context: a move wakes none of its readers. */
 export function useLocalSession() {
-  const { setupGame, resetGame, hasSavedGame, resumeGame, restored } = useGame();
+  const { setupGame, resetGame, hasSavedGame, resumeGame, restored } = useGameSession();
   return useMemo(
     () => ({ setupGame, resetGame, hasSavedGame, resumeGame, restored }),
     [setupGame, resetGame, hasSavedGame, resumeGame, restored]
@@ -33,7 +33,7 @@ export function useLocalSession() {
 
 /** Where the match stands, and how the table goes on from it. */
 export function useLocalMatch() {
-  const { match, startNextRound, startNewMatch } = useGame();
+  const { match, startNextRound, startNewMatch } = useGameTable();
   return useMemo(
     () => ({ match, startNextRound, startNewMatch }),
     [match, startNextRound, startNewMatch]
@@ -45,27 +45,18 @@ export function useLocalExchange() {
   const {
     exchangeAnnouncing,
     exchangeAnnounceData,
-    exchangeHoldMsOverride,
     chooseExchangeCard,
     acknowledgeExchange,
-    releaseStuckExchange,
-  } = useGame();
+    settleExchange,
+  } = useGameTable();
   return useMemo(
     () => ({
       exchangeAnnouncing,
       exchangeAnnounceData,
-      exchangeHoldMsOverride,
       chooseExchangeCard,
       acknowledgeExchange,
-      releaseStuckExchange,
+      settleExchange,
     }),
-    [
-      exchangeAnnouncing,
-      exchangeAnnounceData,
-      exchangeHoldMsOverride,
-      chooseExchangeCard,
-      acknowledgeExchange,
-      releaseStuckExchange,
-    ]
+    [exchangeAnnouncing, exchangeAnnounceData, chooseExchangeCard, acknowledgeExchange, settleExchange]
   );
 }

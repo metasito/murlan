@@ -4,6 +4,7 @@
 import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
+import { e2eFast } from "@/lib/e2eConfig";
 import { FeltFallback } from "./feltFallback";
 import type { FeltProps } from "./feltReady";
 import { levelShade } from "./rail";
@@ -18,7 +19,7 @@ let onGpu: boolean | undefined;
 export function drawsOnGpu(): boolean {
   if (onGpu !== undefined) return onGpu;
   const e2e = globalThis as { murlanSkiaOnSoftware?: boolean };
-  if (process.env.EXPO_PUBLIC_E2E_FAST === "1" && e2e.murlanSkiaOnSoftware) return (onGpu = true);
+  if (e2eFast() && e2e.murlanSkiaOnSoftware) return (onGpu = true);
   const gl = document.createElement("canvas").getContext("webgl", { failIfMajorPerformanceCaveat: true });
   if (!gl) return (onGpu = false);
   const info = gl.getExtension("WEBGL_debug_renderer_info");

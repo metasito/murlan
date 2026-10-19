@@ -25,9 +25,12 @@ jest.mock('react-native-reanimated', () => {
 
 jest.mock('@/components/SettingsModal', () => ({ SettingsModal: () => null }));
 jest.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: null, loading: false }) }));
-jest.mock('@/context/GameContext', () => ({
-  useGame: () => ({ hasSavedGame: false, resumeGame: () => false }),
-}));
+jest.mock('@/context/GameContext', () =>
+  (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(undefined, () => ({
+    hasSavedGame: false,
+    resumeGame: () => false,
+  }))
+);
 jest.mock('@/context/SocketContext', () => ({ useInvites: () => ({ invites: [], accept: () => {} }) }));
 jest.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: [] }) }));
 jest.mock('@/lib/query-client', () => ({

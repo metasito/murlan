@@ -17,7 +17,7 @@ jest.mock('expo-router', () => ({
 }));
 
 const mockRunBotTurn = jest.fn();
-const mockChoose = jest.fn();
+const mockSettle = jest.fn();
 const mockTable: { props: { onExchangeReady?: () => void } } = { props: {} };
 
 /** The bot is on move and the exchange has just resolved. */
@@ -50,21 +50,16 @@ const CHOOSING: GameState = {
 /** Flipped between renders: prefixed so jest.mock may close over it. */
 const mockCeremony = { announcing: false, state: STATE };
 
-jest.mock('@/context/GameContext', () => ({
-  useGame: () => ({
+jest.mock('@/context/GameContext', () =>
+  (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(() => ({
     gameState: mockCeremony.state,
-    chooseExchangeCard: mockChoose,
-    releaseStuckExchange: () => {},
-    playCards: () => {},
-    passTurn: () => {},
-    resetGame: () => {},
+    settleExchange: mockSettle,
     runBotTurn: mockRunBotTurn,
     exchangeAnnouncing: mockCeremony.announcing,
     exchangeAnnounceData: null,
-    acknowledgeExchange: () => {},
     match: { length: 'single', target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
-  }),
-}));
+  }))
+);
 
 jest.mock('@/context/NotificationContext', () =>
   (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
@@ -85,7 +80,7 @@ jest.mock('@/components/GameTable', () => {
 
 import GameScreen from '@/app/game';
 
-/** Comfortably past BOT_DELAY, whatever it is set to (app/game.tsx). */
+/** Comfortably past the bot's think, whatever it is set to (lib/timeline/offlineBotDelay.ts). */
 const PAST_THE_THINK = 5_000;
 
 describe('a bot on move while the exchange is being announced', () => {
@@ -97,15 +92,16 @@ describe('a bot on move while the exchange is being announced', () => {
     jest.useRealTimers();
   });
 
+  // What the bot gives is the provider's (tests/native/offlineDriver.test.tsx); when is the table's.
   it('a bot winner gives when the table opens the choice, not on a clock of its own', async () => {
     mockCeremony.state = CHOOSING;
     const view = await render(<GameScreen />);
     await act(async () => {
       jest.advanceTimersByTime(PAST_THE_THINK * 4);
     });
-    expect(mockChoose).not.toHaveBeenCalled();
+    expect(mockSettle).not.toHaveBeenCalled();
     await act(async () => mockTable.props.onExchangeReady?.());
-    expect(mockChoose).toHaveBeenCalledWith('6_clubs');
+    expect(mockSettle).toHaveBeenCalledTimes(1);
     await view.unmount();
     mockCeremony.state = STATE;
   });

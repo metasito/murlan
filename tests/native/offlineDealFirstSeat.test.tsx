@@ -11,9 +11,12 @@ import React from "react";
 import { Text, Pressable } from "react-native";
 import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { GameProvider, useGame } from "@/context/GameContext";
+import { GameProvider, useGameSession, useGameTable } from "@/context/GameContext";
 import { OFFLINE_SAVE_KEY, OFFLINE_SAVE_VERSION, decodeOfflineSave } from "@/lib/offlineSave";
 import { NotificationProvider } from "@/context/NotificationContext";
+
+/** Both halves of the provider, for a probe that reads across them. */
+const useGame = () => ({ ...useGameSession(), ...useGameTable() });
 
 const FOUR_PLAYERS = [
   { name: "Ana", type: "human" as const },

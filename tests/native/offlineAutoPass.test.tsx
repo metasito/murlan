@@ -37,20 +37,15 @@ const STATE: GameState = {
   firstPlayMade: true,
 };
 
-jest.mock('@/context/GameContext', () => ({
-  useGame: () => ({
+jest.mock('@/context/GameContext', () =>
+  (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(() => ({
     gameState: STATE,
-    playCards: () => {},
     passTurn: mockPassTurn,
-    resetGame: () => {},
-    runBotTurn: () => {},
-    chooseExchangeCard: () => {},
     exchangeAnnouncing: false,
     exchangeAnnounceData: null,
-    acknowledgeExchange: () => {},
     match: { length: 'single', target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
-  }),
-}));
+  }))
+);
 
 jest.mock('@/context/NotificationContext', () =>
   (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock(() => mockShowNotification)

@@ -12,11 +12,14 @@ jest.mock('expo-router', () => ({
 }));
 
 import GameScreen from '@/app/game';
-import { GameProvider, useGame } from '@/context/GameContext';
+import { GameProvider, useGameSession, useGameTable } from '@/context/GameContext';
 import { NotificationProvider } from '@/context/NotificationContext';
 import { encodeOfflineSave, OFFLINE_SAVE_KEY } from '@/lib/offlineSave';
 import type { Card, Combination, GameState, Rank, Suit } from '@/lib/game/gameEngine';
 import { bootFeedback, settle, sounds } from './helpers/feedback';
+
+/** Both halves of the provider, for a probe that reads across them. */
+const useGame = () => ({ ...useGameSession(), ...useGameTable() });
 
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
 const card = (rank: Rank, suit: Suit): Card => ({ id: `${rank}_${suit}`, rank, suit, isJoker: false });

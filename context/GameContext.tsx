@@ -15,6 +15,7 @@ import {
   dealFirstSeatFor,
   initializeGame,
   initializeRematch,
+  pickGivebackCard,
   processExchangeChoice,
   processPlay,
   processPass,
@@ -26,7 +27,7 @@ import { applyRoundToMatch, freshMatch } from "@/lib/game/matchFlow";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform, Settings } from "react-native";
 import { initializeOpeningAt, E2E_OPENER_KEY } from "@/lib/e2eOpener";
-import { realExchange } from "@/lib/e2eRealExchange";
+import { e2eFast } from "@/lib/e2eConfig";
 import {
   OFFLINE_SAVE_KEY,
   decodeOfflineSave,
@@ -36,84 +37,69 @@ import {
 } from "@/lib/offlineSave";
 import { useNotification } from "@/context/NotificationContext";
 import { t } from "@/lib/i18n";
-import {
-  exchangeAnnouncementOf,
-  type ExchangeAnnounceData,
-  type ExchangeHold,
-} from "@/lib/game/sharedGameFlow";
+import { exchangeAnnouncementOf, type ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 import { useExchangeAnnouncement } from "@/context/useExchangeAnnouncement";
 import type { RoundResult, MatchState, PlayerSetupConfig } from "@/lib/game/matchState";
 
-// Read once at module scope, matching app/game.tsx's own E2E_FAST — inlined
-// at bundle build time, so this only ever takes the fast path in a build the
-// E2E harness produced itself.
-const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
-const E2E_REAL_EXCHANGE = realExchange(E2E_FAST);
 // A launch argument on iOS lands in NSUserDefaults, which `Settings` reads; Android and web have no such channel.
-const E2E_OPENER = E2E_FAST && Platform.OS === "ios" && String(Settings.get(E2E_OPENER_KEY)) === "1";
-/**
- * How long the offline exchange overlay holds in an e2e build. Under Maestro it
- * holds until `.maestro/exchange-phase.yaml` taps it: no fixed hold covers how
- * long a device can keep Maestro from reading the screen. One view-hierarchy
- * read on the Android emulator took 22 s while the round ended, and a Passa tap
- * returned 37.5 s later, past the whole ceremony (#1560).
- * The web build keeps a timed hold, because Playwright specs play through the
- * exchange without ever tapping it.
- */
-const MEASURED_TAP_RETURN_MS = 8200;
-const E2E_EXCHANGE_HOLD_MARGIN_MS = 4000;
-const E2E_EXCHANGE_HOLD: ExchangeHold =
-  Platform.OS === "web" ? MEASURED_TAP_RETURN_MS + E2E_EXCHANGE_HOLD_MARGIN_MS : "untilTapped";
+const E2E_OPENER = e2eFast() && Platform.OS === "ios" && String(Settings.get(E2E_OPENER_KEY)) === "1";
 
 export type { PlayerSetupConfig, RoundResult, MatchState };
 
-interface GameContextValue {
-  gameState: GameState | null;
-  match: MatchState;
-  exchangeAnnouncing: boolean;
-  exchangeAnnounceData: ExchangeAnnounceData | null;
-  /** Set only under `EXPO_PUBLIC_E2E_FAST` (#915), unless a spec opted out (`lib/e2eRealExchange.ts`); undefined for a real player. */
-  exchangeHoldMsOverride: ExchangeHold | undefined;
+/** Changes only when `hasSavedGame` or `restored` flips, so a move re-renders none of its readers. */
+export interface LocalSession {
   setupGame: (players: PlayerSetupConfig[], mode: GameMode, length?: MatchLength) => void;
-  startNextRound: () => void;
-  startNewMatch: () => void;
-  chooseExchangeCard: (cardId: string) => void;
-  acknowledgeExchange: () => void;
-  playCards: (cardIds: string[]) => boolean;
-  passTurn: () => void;
   resetGame: () => void;
-  runBotTurn: () => void;
-  /** Closes an exchange nobody at the table holds a legal card for. */
-  releaseStuckExchange: () => void;
-  /** A match the app was killed in the middle of, waiting to be picked up. */
+  /** A match waiting to be picked up: the live table, or the one the app was killed in. */
   hasSavedGame: boolean;
-  /** Restores that match. False if there was nothing worth restoring. */
+  /** Goes back to the live table, or else restores the one the app booted with. False if there was neither. */
   resumeGame: () => boolean;
   /** `gameState` is still the one `resumeGame` restored, so its last play was already thrown. */
   restored: boolean;
 }
 
-const GameContext = createContext<GameContextValue | null>(null);
+/** Every command has a stable identity and reads the state the last one committed. */
+export interface LocalTable {
+  gameState: GameState | null;
+  match: MatchState;
+  exchangeAnnouncing: boolean;
+  exchangeAnnounceData: ExchangeAnnounceData | null;
+  playCards: (cardIds: string[]) => boolean;
+  passTurn: () => void;
+  runBotTurn: () => void;
+  chooseExchangeCard: (cardId: string) => void;
+  acknowledgeExchange: () => void;
+  /** The table has shown the received card: a bot winner gives back its weakest legal card; a winner with no legal card releases the phase; a human winner waits. */
+  settleExchange: () => void;
+  startNextRound: () => void;
+  startNewMatch: () => void;
+}
+
+type Table = { gameState: GameState | null; match: MatchState };
+type Config = { players: PlayerSetupConfig[]; mode: GameMode; dealFirstSeat: number };
+
+const SessionContext = createContext<LocalSession | null>(null);
+const TableContext = createContext<LocalTable | null>(null);
 
 export function GameProvider({ children }: { children: ReactNode }) {
-  const [gameState, setGameState] = useState<GameState | null>(null);
+  const [table, setTable] = useState<Table>(() => ({ gameState: null, match: freshMatch("match", 4) }));
+  const { gameState, match } = table;
+  // Assigned before the render is asked for, so a second command in the same tick reads the first one's state.
+  const stateRef = useRef(table);
+  const configRef = useRef<Config>({ players: [], mode: "free_for_all", dealFirstSeat: 0 });
+
+  const [bootSave, setBootSave] = useState<OfflineSave | null>(null);
+  const bootRef = useRef<OfflineSave | null>(null);
+  const keepBoot = useCallback((save: OfflineSave | null) => {
+    bootRef.current = save;
+    setBootSave(save);
+  }, []);
+
   const [resumedFrom, setResumedFrom] = useState<GameState | null>(null);
   const restored = gameState !== null && gameState === resumedFrom;
-
-  const [match, setMatch] = useState<MatchState>(() => freshMatch("match", 4));
-  const [savedPlayerConfigs, setSavedPlayerConfigs] = useState<PlayerSetupConfig[]>([]);
-  const [savedGameMode, setSavedGameMode] = useState<GameMode>("free_for_all");
-  const [dealFirstSeat, setDealFirstSeat] = useState(0);
-
-  /**
-   * Whether a match interrupted by the app going away is waiting to be picked
-   * up. Loaded once on mount; the home screen offers it, `resumeGame` takes it.
-   */
-  const [hasSavedGame, setHasSavedGame] = useState(false);
-  const savedRef = useRef<OfflineSave | null>(null);
+  const hasSavedGame = gameState ? !match.over : isResumable(bootSave);
   const { showNotification } = useNotification();
 
-  const exchangeHoldMsOverride = E2E_FAST && !E2E_REAL_EXCHANGE ? E2E_EXCHANGE_HOLD : undefined;
   const {
     announcing: exchangeAnnouncing,
     data: exchangeAnnounceData,
@@ -121,134 +107,124 @@ export function GameProvider({ children }: { children: ReactNode }) {
     end: acknowledgeExchange,
   } = useExchangeAnnouncement(gameState?.exchangePhase !== undefined);
 
-  /**
-   * The single write path for engine output: a round that has just ended is
-   * scored into the match here and nowhere else, so no screen has to
-   * recompute totals and none can disagree about them.
-   */
-  const commitState = useCallback((next: GameState, previous: GameState) => {
-    const announced = exchangeAnnouncementOf(previous, next);
-    if (announced) announce(announced);
-    setGameState(next);
-    if (!next.roundOver || previous.roundOver) return;
-    setMatch((prev) => applyRoundToMatch(prev, next));
-  }, [announce]);
+  const write = useCallback((next: Table) => {
+    stateRef.current = next;
+    setTable(next);
+  }, []);
+
+  /** The only writer of engine output: a round that has just ended is scored into the match here and nowhere else. */
+  const commit = useCallback(
+    (next: GameState, matchBefore?: MatchState) => {
+      const previous = stateRef.current.gameState;
+      const match = matchBefore ?? stateRef.current.match;
+      if (previous) {
+        const announced = exchangeAnnouncementOf(previous, next);
+        if (announced) announce(announced);
+      }
+      const scores = previous !== null && next.roundOver && !previous.roundOver;
+      write({ gameState: next, match: scores ? applyRoundToMatch(match, next) : match });
+    },
+    [announce, write]
+  );
 
   const setupGame = useCallback(
     (players: PlayerSetupConfig[], mode: GameMode, length: MatchLength = "match") => {
-      // A brand-new table is always "a new match", so `matchOver` is
-      // unconditionally `true` here.
+      // A brand-new table is always "a new match", so `matchOver` is unconditionally `true` here.
       const firstSeat = dealFirstSeatFor(true, 0, players.length);
       const viewer = Math.max(0, players.findIndex((p) => p.type === "human"));
       const state = E2E_OPENER
         ? initializeOpeningAt(players, mode, firstSeat, viewer)
         : initializeGame(players, mode, firstSeat);
-      setGameState(state);
-      setDealFirstSeat(firstSeat);
-      setMatch(freshMatch(length, players.length));
-      setSavedPlayerConfigs(players);
-      setSavedGameMode(mode);
+      configRef.current = { players, mode, dealFirstSeat: firstSeat };
+      keepBoot(null);
+      write({ gameState: state, match: freshMatch(length, players.length) });
     },
-    []
+    [keepBoot, write]
   );
 
   /**
-   * Deals the next round, seeded by the last one's order. `matchIsOver`
-   * tells `dealFirstSeatFor` (`lib/game/gameEngine.ts`) whether this round starts a
-   * new match (reset to seat 0) or continues the current one (rotate).
+   * Deals the next round, seeded by the last one's order. `matchIsOver` tells `dealFirstSeatFor`
+   * (`lib/game/gameEngine.ts`) whether this round starts a new match (reset to seat 0) or continues
+   * the current one (rotate).
    */
-  const dealFrom = useCallback(
-    (previous: GameState, matchIsOver = false) => {
-      const playersWithId = savedPlayerConfigs.map((p, i) => ({ ...p, id: `player_${i}` }));
+  const dealNext = useCallback(
+    (matchIsOver: boolean) => {
+      const { gameState: previous, match } = stateRef.current;
+      if (!previous) return;
+      const { players, mode, dealFirstSeat } = configRef.current;
+      const playersWithId = players.map((p, i) => ({ ...p, id: `player_${i}` }));
       const nextFirstSeat = dealFirstSeatFor(matchIsOver, dealFirstSeat, playersWithId.length);
-      const state = initializeRematch(playersWithId, savedGameMode, previous.finishingOrder, nextFirstSeat);
-      setDealFirstSeat(nextFirstSeat);
-      const announced = exchangeAnnouncementOf(previous, state);
-      if (announced) announce(announced);
-      setGameState(state);
+      configRef.current = { players, mode, dealFirstSeat: nextFirstSeat };
+      const state = initializeRematch(playersWithId, mode, previous.finishingOrder, nextFirstSeat);
+      commit(state, matchIsOver ? freshMatch(match.length, previous.players.length) : match);
     },
-    [savedPlayerConfigs, savedGameMode, dealFirstSeat, announce]
+    [commit]
   );
 
-  const startNextRound = useCallback(() => {
-    if (!gameState) return;
-    dealFrom(gameState);
-  }, [gameState, dealFrom]);
-
-  const startNewMatch = useCallback(() => {
-    if (!gameState) return;
-    setMatch(freshMatch(match.length, gameState.players.length));
-    dealFrom(gameState, true);
-  }, [gameState, match.length, dealFrom]);
+  const startNextRound = useCallback(() => dealNext(false), [dealNext]);
+  const startNewMatch = useCallback(() => dealNext(true), [dealNext]);
 
   const chooseExchangeCard = useCallback(
     (cardId: string) => {
-      if (!gameState?.exchangePhase?.active) return;
-      const next = processExchangeChoice(gameState, cardId);
-      const announced = exchangeAnnouncementOf(gameState, next);
-      if (announced) announce(announced);
-      setGameState(next);
+      const state = stateRef.current.gameState;
+      if (!state?.exchangePhase?.active) return;
+      commit(processExchangeChoice(state, cardId));
     },
-    [gameState, announce]
+    [commit]
   );
 
-  const playCards = useCallback((cardIds: string[]): boolean => {
-    if (!gameState) return false;
-    const check = checkPlay(gameState, gameState.currentTurnIndex, cardIds);
-    if (!check.ok) return false;
+  const settleExchange = useCallback(() => {
+    const state = stateRef.current.gameState;
+    const phase = state?.exchangePhase;
+    if (!state || !phase?.active) return;
+    const winner = state.players[phase.winnerIdx];
+    const giveback = winner ? pickGivebackCard(winner.hand, phase.cardFromLoser?.id) : undefined;
+    if (!giveback) commit(resolveStuckExchange(state));
+    else if (winner?.type === "bot") commit(processExchangeChoice(state, giveback.id));
+  }, [commit]);
 
-    commitState(processPlay(gameState, check.combo), gameState);
-    return true;
-  }, [gameState, commitState]);
+  const playCards = useCallback(
+    (cardIds: string[]): boolean => {
+      const state = stateRef.current.gameState;
+      if (!state) return false;
+      const check = checkPlay(state, state.currentTurnIndex, cardIds);
+      if (!check.ok) return false;
+      commit(processPlay(state, check.combo));
+      return true;
+    },
+    [commit]
+  );
 
   const passTurn = useCallback(() => {
-    if (!gameState) return;
-    if (!checkPass(gameState).ok) return;
-
-    const newState = processPass(gameState);
-    commitState(newState, gameState);
-  }, [gameState, commitState]);
+    const state = stateRef.current.gameState;
+    if (!state || !checkPass(state).ok) return;
+    commit(processPass(state));
+  }, [commit]);
 
   const runBotTurn = useCallback(() => {
-    if (!gameState) return;
-    const next = offlineBotMove(gameState);
-    if (next) commitState(next, gameState);
-  }, [gameState, commitState]);
-
-  const releaseStuckExchange = useCallback(() => {
-    if (!gameState?.exchangePhase?.active) return;
-    commitState(resolveStuckExchange(gameState), gameState);
-  }, [gameState, commitState]);
-
-  /** The stored row alone. Safe from an effect, which the flag below is not. */
-  const dropSavedRow = useCallback(() => {
-    savedRef.current = null;
-    AsyncStorage.removeItem(OFFLINE_SAVE_KEY).catch(() => {});
-  }, []);
-
-  const clearSavedGame = useCallback(() => {
-    dropSavedRow();
-    setHasSavedGame(false);
-  }, [dropSavedRow]);
+    const state = stateRef.current.gameState;
+    if (!state) return;
+    const next = offlineBotMove(state);
+    if (next) commit(next);
+  }, [commit]);
 
   const resetGame = useCallback(() => {
-    setGameState(null);
-    setMatch(freshMatch("match", gameState?.players.length ?? 4));
-    clearSavedGame();
-  }, [clearSavedGame, gameState?.players.length]);
+    write({ gameState: null, match: freshMatch("match", stateRef.current.gameState?.players.length ?? 4) });
+    keepBoot(null);
+    AsyncStorage.removeItem(OFFLINE_SAVE_KEY).catch(() => {});
+  }, [keepBoot, write]);
 
-  /** Puts an interrupted match back exactly where it was. */
   const resumeGame = useCallback(() => {
-    const save = savedRef.current;
+    const live = stateRef.current;
+    if (live.gameState && !live.match.over) return true;
+    const save = bootRef.current;
     if (!isResumable(save)) return false;
-    setGameState(save.gameState);
+    configRef.current = { players: save.players, mode: save.gameMode, dealFirstSeat: save.dealFirstSeat };
+    keepBoot(null);
     setResumedFrom(save.gameState);
-    setMatch(save.match);
-    setSavedPlayerConfigs(save.players);
-    setSavedGameMode(save.gameMode);
-    setDealFirstSeat(save.dealFirstSeat);
+    write({ gameState: save.gameState, match: save.match });
     return true;
-  }, []);
+  }, [keepBoot, write]);
 
   // Read once, before anything can overwrite it.
   useEffect(() => {
@@ -263,96 +239,83 @@ export function GameProvider({ children }: { children: ReactNode }) {
             message: t("offlineGame.saveDiscardedBody"),
           });
         }
-        const save = stored.kind === "ok" ? stored.save : null;
-        savedRef.current = save;
-        setHasSavedGame(isResumable(save));
+        keepBoot(stored.kind === "ok" ? stored.save : null);
       })
       .catch(() => {});
-  }, [showNotification]);
+  }, [showNotification, keepBoot]);
 
   /**
-   * Written on every change to anything the restore needs.
+   * Written on every change to anything the restore needs; the config changes only with a deal, which
+   * changes `gameState` too.
    *
-   * Not debounced: the online path persists to Postgres on every move, and this
-   * is a few kilobytes to local storage. A write that loses a race with the
-   * next one costs a move; a debounce that loses the last write before a kill
-   * costs the round, which is the thing this exists to prevent.
+   * Not debounced: the online path persists to Postgres on every move, and this is a few kilobytes to
+   * local storage. A write that loses a race with the next one costs a move; a debounce that loses the
+   * last write before a kill costs the round, which is the thing this exists to prevent.
    */
-  // The flag reports the stored row, so the match ending retires both — this
-  // half here because the row's removal belongs to the effect below and a flag
-  // does not.
-  const [flaggedForOver, setFlaggedForOver] = useState(false);
-  if (match.over !== flaggedForOver) {
-    setFlaggedForOver(match.over);
-    if (match.over && gameState) setHasSavedGame(false);
-  }
-
   useEffect(() => {
     if (!gameState) return;
     if (match.over) {
-      dropSavedRow();
+      AsyncStorage.removeItem(OFFLINE_SAVE_KEY).catch(() => {});
       return;
     }
+    const { players, mode, dealFirstSeat } = configRef.current;
     AsyncStorage.setItem(
       OFFLINE_SAVE_KEY,
-      encodeOfflineSave({
-        gameState,
-        match,
-        players: savedPlayerConfigs,
-        gameMode: savedGameMode,
-        dealFirstSeat,
-      })
+      encodeOfflineSave({ gameState, match, players, gameMode: mode, dealFirstSeat })
     ).catch(() => {});
-  }, [gameState, match, savedPlayerConfigs, savedGameMode, dealFirstSeat, dropSavedRow]);
+  }, [gameState, match]);
 
-  const value = useMemo(
+  const session = useMemo<LocalSession>(
+    () => ({ setupGame, resetGame, hasSavedGame, resumeGame, restored }),
+    [setupGame, resetGame, hasSavedGame, resumeGame, restored]
+  );
+
+  const tableValue = useMemo<LocalTable>(
     () => ({
       gameState,
       match,
       exchangeAnnouncing,
       exchangeAnnounceData,
-      exchangeHoldMsOverride,
-      setupGame,
-      startNextRound,
-      startNewMatch,
-      chooseExchangeCard,
-      acknowledgeExchange,
       playCards,
       passTurn,
-      resetGame,
       runBotTurn,
-      releaseStuckExchange,
-      hasSavedGame,
-      resumeGame,
-      restored,
+      chooseExchangeCard,
+      acknowledgeExchange,
+      settleExchange,
+      startNextRound,
+      startNewMatch,
     }),
     [
       gameState,
       match,
       exchangeAnnouncing,
       exchangeAnnounceData,
-      exchangeHoldMsOverride,
-      setupGame,
-      startNextRound,
-      startNewMatch,
-      chooseExchangeCard,
-      acknowledgeExchange,
       playCards,
       passTurn,
-      resetGame,
       runBotTurn,
-      releaseStuckExchange,
-      hasSavedGame,
-      resumeGame,
-      restored,
+      chooseExchangeCard,
+      acknowledgeExchange,
+      settleExchange,
+      startNextRound,
+      startNewMatch,
     ]
   );
 
-  return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
+  return (
+    <SessionContext.Provider value={session}>
+      <TableContext.Provider value={tableValue}>{children}</TableContext.Provider>
+    </SessionContext.Provider>
+  );
 }
 
-export function useGame() {
-  const ctx = useContext(GameContext);
-  if (!ctx) throw new Error("useGame must be used within GameProvider");
+export function useGameSession(): LocalSession {
+  const ctx = useContext(SessionContext);
+  if (!ctx) throw new Error("useGameSession must be used within GameProvider");
+  return ctx;
+}
+
+export function useGameTable(): LocalTable {
+  const ctx = useContext(TableContext);
+  if (!ctx) throw new Error("useGameTable must be used within GameProvider");
   return ctx;
 }

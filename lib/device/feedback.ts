@@ -3,6 +3,7 @@ import { makeMutable } from "react-native-reanimated";
 import { scheduleOnUI } from "react-native-worklets";
 import { SETTINGS_KEY } from "@/lib/storageKeys";
 import { LATE_SOUND_MS } from "@/lib/tokens";
+import { e2eFast } from "@/lib/e2eConfig";
 import { traceOnset } from "@/lib/e2eTrace";
 import { audioState, cut, durationMs, engineStats, music, play, ramp, setBusTrim, startAudio } from "./audioEngine";
 import { pulse, setHapticsGate, tap, type TapHaptic } from "./hapticsEngine";
@@ -74,7 +75,7 @@ function excuseStall(at: number | undefined, sentAt: number, now: number): numbe
 
 function trace(kind: "sound" | "haptic", name: string, at: number, now: number): void {
   if (at <= now) traceOnset(kind, name);
-  else if (process.env.EXPO_PUBLIC_E2E_FAST === "1") setTimeout(() => traceOnset(kind, name), at - now);
+  else if (e2eFast()) setTimeout(() => traceOnset(kind, name), at - now);
 }
 
 // A given `at` goes through untouched, past or not: the engine drops what is more than one IO buffer late. Only an absent `at` means now.

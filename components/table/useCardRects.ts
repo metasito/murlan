@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo } from "react";
 import { makeMutable, startMapper, stopMapper, useSharedValue, type SharedValue } from "react-native-reanimated";
 import type { OpponentSide } from "@/components/seatLayout";
+import { e2eFast } from "@/lib/e2eConfig";
 import { designRect, sameRect, type CardRect, type CardRects, type DrawnCard, type Felt, type Point, type TableMotion } from "./cardRects";
 import type { GlossLight } from "./cardGloss";
 
@@ -43,7 +44,7 @@ export function useCardTableValue(places: Places, motion: SharedValue<TableMotio
   const pileOrder = useSharedValue<readonly string[]>([]);
   const key = JSON.stringify(places);
   useEffect(() => {
-    if (process.env.EXPO_PUBLIC_E2E_FAST !== "1") return;
+    if (!e2eFast()) return;
     const e2e = globalThis as { murlanCardRects?: () => CardRects; murlanCardFelt?: () => Felt; murlanCardPile?: () => Places["pile"] };
     const read = () => ({ ...rects.get() });
     const felt = () => (JSON.parse(key) as Places).felt;

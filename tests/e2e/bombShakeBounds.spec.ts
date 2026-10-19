@@ -222,7 +222,7 @@ const named = (page: Page, name: string) =>
 /**
  * A table with the bomb selected and GIOCA armed, one tap from the landing.
  *
- * The bot is held for the life of the page (`lib/e2eBotSuspend.ts`). It is not a
+ * The bot is held for the life of the page (`lib/e2eConfig.ts`). It is not a
  * convenience: `EXPO_PUBLIC_E2E_FAST` answers for the seat in ~0ms, and a pass
  * closes the trick heads-up, which takes `GameTable`'s own pile effect down the
  * `combo === null` branch and **clears the pending impact timer** — so the

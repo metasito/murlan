@@ -9,8 +9,8 @@
  * Set E2E_SKIP_BUILD=1 to reuse an existing dist-e2e/ build across repeated
  * local runs — the suite itself never sets it, so CI always builds fresh.
  *
- * EXPO_PUBLIC_E2E_FAST=1 is set before the build so app/game.tsx and
- * app/(online)/game.tsx bake in a zero-delay bot/result pacing instead of
+ * EXPO_PUBLIC_E2E_FAST=1 is set before the build so lib/e2eConfig.ts, which every
+ * offline and online pacing reads, bakes in a zero-delay bot/result pacing instead of
  * their production values (EXPO_PUBLIC_ vars are inlined at bundle build
  * time, not read at runtime — production builds never set this, so their
  * pacing is untouched). The AFK/disconnect-grace timers are the server's

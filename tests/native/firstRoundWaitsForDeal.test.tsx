@@ -55,23 +55,15 @@ const TABLES: [string, GameState][] = [
 ];
 let mockOpening: GameState = TABLES[0][1];
 
-jest.mock('@/context/GameContext', () => ({
-  useGame: () => ({
+jest.mock('@/context/GameContext', () =>
+  (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(() => ({
     gameState: mockOpening,
-    chooseExchangeCard: () => {},
-    releaseStuckExchange: () => {},
-    playCards: () => {},
-    passTurn: () => {},
-    resetGame: () => {},
     runBotTurn: mockRunBotTurn,
     exchangeAnnouncing: false,
     exchangeAnnounceData: null,
-    acknowledgeExchange: () => {},
-    startNextRound: () => {},
-    startNewMatch: () => {},
     match: { length: 'single', target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
-  }),
-}));
+  }))
+);
 
 jest.mock('@/context/NotificationContext', () =>
   (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
