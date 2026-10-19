@@ -78,7 +78,7 @@ function run(command, repo, env = {}) {
 
 const TOOLS = {
   'dependency-cruiser': (repo) => fromDepcruise(JSON.parse(run(
-    `npx --yes -p dependency-cruiser@18.5.0 -p typescript@6.0.3 depcruise --config tools/audit/depcruise.cjs --output-type json ${ROOTS.join(' ')}`, repo))),
+    `npx --yes -p dependency-cruiser@18.5.0 -p typescript@6.0.3 depcruise --config "${fileURLToPath(new URL('depcruise.cjs', import.meta.url))}" --output-type json ${ROOTS.join(' ')}`, repo))),
   // drizzle.config.ts throws without DATABASE_URL; knip only loads it, never connects.
   knip: (repo) => fromKnip(JSON.parse(run('npx --yes knip@6.39.0 --reporter json --no-exit-code', repo,
     { DATABASE_URL: 'postgres://audit@127.0.0.1:1/none' }))),
