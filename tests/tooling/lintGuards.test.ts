@@ -30,7 +30,7 @@ const targetOf = (guard: Guard) => {
   const all = targets(guard);
   return all.find((f) => f.endsWith(".tsx")) ?? all[0]!;
 };
-const ruleOf = (guard: Guard) => `guards/${guard.id}`;
+const ruleOf = (guard: Guard) => `murlan/${guard.id}`;
 const real = new ESLint({ cwd: ROOT });
 
 async function reports(lint: ESLint, source: string, file: string, rule: string): Promise<number> {
@@ -44,7 +44,7 @@ async function reports(lint: ESLint, source: string, file: string, rule: string)
 function guardSwitches(source: string, file: string): string[] {
   return directives(source, file).flatMap(({ line, keyword, rules }) => {
     if (keyword !== "eslint" && rules.length === 0) return [`${file}:${line}: ${keyword} names no rule`];
-    return rules.filter((r) => r.startsWith("guards/")).map((r) => `${file}:${line}: ${keyword} ${r}`);
+    return rules.filter((r) => r.startsWith("murlan/")).map((r) => `${file}:${line}: ${keyword} ${r}`);
   });
 }
 
@@ -53,9 +53,9 @@ describe("the guard registry's floor", () => {
     const ids = GUARDS.map((g) => g.id);
     assert.equal(new Set(ids).size, ids.length, "two guards share an id");
     assert.deepEqual(Object.keys(plugin.rules).sort(), [...ids].sort());
-    assert.ok(config.some((block) => block.plugins?.guards === plugin), "eslint.config.js never registers the plugin");
+    assert.ok(config.some((block) => block.plugins?.murlan === plugin), "eslint.config.js never registers the plugin");
     const naming = config
-      .filter((block) => Object.keys(block.rules ?? {}).some((r) => r.startsWith("guards/")))
+      .filter((block) => Object.keys(block.rules ?? {}).some((r) => r.startsWith("murlan/")))
       .map(({ files, ignores, rules }) => ({ files, ignores, rules }));
     const registered = guardBlocks()
       .filter((block) => block.rules)
@@ -73,7 +73,7 @@ describe("the guard registry's floor", () => {
           {
             files: ["**/*.{ts,tsx,js,cjs,mjs}"],
             languageOptions: { parser: tsParser, parserOptions: { ecmaFeatures: { jsx: true } } },
-            plugins: { guards: plugin as ESLint.Plugin },
+            plugins: { murlan: plugin as ESLint.Plugin },
             rules: { [ruleOf(guard)]: "error" },
           },
         ],
@@ -130,9 +130,9 @@ describe("the guard registry's floor", () => {
   test("5b. the directive scan sees each way to switch a guard off", () => {
     assert.equal(guardSwitches("/* eslint-disable */", "a.ts").length, 1);
     assert.equal(guardSwitches("// eslint-disable-next-line -- why", "a.ts").length, 1);
-    assert.equal(guardSwitches("// eslint-disable-line guards/no-focused-test", "a.ts").length, 1);
-    assert.equal(guardSwitches('/* eslint guards/no-focused-test: "off" */', "a.ts").length, 1);
-    assert.equal(guardSwitches("// eslint-disable-next-line no-console, guards/one-modal-element", "a.tsx").length, 1);
+    assert.equal(guardSwitches("// eslint-disable-line murlan/no-focused-test", "a.ts").length, 1);
+    assert.equal(guardSwitches('/* eslint murlan/no-focused-test: "off" */', "a.ts").length, 1);
+    assert.equal(guardSwitches("// eslint-disable-next-line no-console, murlan/one-modal-element", "a.tsx").length, 1);
     assert.deepEqual(guardSwitches("// eslint-disable-next-line no-console -- why", "a.ts"), []);
     assert.deepEqual(guardSwitches('const s = "/* eslint-disable */";', "a.ts"), []);
   });
@@ -147,7 +147,7 @@ describe("the guard registry's floor", () => {
         {
           files: ["**/*.{ts,tsx}"],
           languageOptions: { parser: tsParser, parserOptions: { ecmaFeatures: { jsx: true } } },
-          plugins: { guards: plugin as ESLint.Plugin },
+          plugins: { murlan: plugin as ESLint.Plugin },
           rules: { [ruleOf(importGuard)]: "error" },
         },
       ],
@@ -158,7 +158,7 @@ describe("the guard registry's floor", () => {
     }
     assert.deepEqual(importing, [SHELL], "exactly one file reads react-native's Modal, and it is the shell");
 
-    const rule = "guards/modal-keeps-landscape";
+    const rule = "murlan/modal-keeps-landscape";
     const shell = readFileSync(path.join(ROOT, SHELL), "utf8");
     const portrait = shell.replace(/supportedOrientations=\{[^}]*\}/g, "");
     assert.notEqual(portrait, shell, `${SHELL} no longer declares supportedOrientations`);

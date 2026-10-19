@@ -388,7 +388,7 @@ const GUARDS = [
 ];
 
 const plugin = {
-  meta: { name: "guards" },
+  meta: { name: "murlan" },
   rules: Object.fromEntries(
     GUARDS.map((guard) => [
       guard.id,
@@ -402,11 +402,11 @@ const plugin = {
 
 function guardBlocks() {
   return [
-    { plugins: { guards: plugin }, linterOptions: { reportUnusedDisableDirectives: "error" } },
+    { plugins: { murlan: plugin }, linterOptions: { reportUnusedDisableDirectives: "error" } },
     ...GUARDS.map((guard) => ({
       files: guard.files,
       ...(guard.ignores ? { ignores: guard.ignores } : {}),
-      rules: { [`guards/${guard.id}`]: "error" },
+      rules: { [`murlan/${guard.id}`]: "error" },
     })),
   ];
 }
