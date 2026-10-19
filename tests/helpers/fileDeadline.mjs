@@ -2,9 +2,9 @@
 // synchronous child, a top-level await that never settles — outlives --test-timeout and
 // --test-force-exit alike, since both need the loop it is blocking. A worker's timer does not.
 import { Worker, isMainThread, workerData } from "node:worker_threads";
-import { writeSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { startBin } from "../../scripts/lib/proc.mjs";
+import { writeFileSync, writeSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 /** Three times the slowest file CI has measured: `tests/integration/reconnect.test.ts`, 47 s. */
 export const FILE_DEADLINE_MS = 150_000;
@@ -18,24 +18,26 @@ export function deadlineMs(env = process.env) {
   return asked > 0 ? Math.min(asked, FILE_DEADLINE_MS) : FILE_DEADLINE_MS;
 }
 
-/** An exit takes milliseconds; --test-force-exit makes every file's one process.exit. */
-export const EXIT_GRACE_MS = 15_000;
-
 /**
- * Only ever shortens the grace, so no setting of it switches the guard off.
- * @param {Record<string, string | undefined>} env
+ * Where a file's process, as its exit begins, leaves word for the run that spawned it: the exit
+ * stops this file's own deadline worker in its teardown, after the exit listeners have run, so
+ * tests/helpers/runWatch.mjs keeps the deadline for what follows.
+ * @param {number} runnerPid
  */
-export function exitGraceMs(env = process.env) {
-  const asked = Number(env.MURLAN_TEST_EXIT_GRACE_MS);
-  return asked > 0 ? Math.min(asked, EXIT_GRACE_MS) : EXIT_GRACE_MS;
+export function exitMarkers(runnerPid) {
+  return path.join(os.tmpdir(), `murlan-exiting-${runnerPid}`);
 }
 
 if (isMainThread && process.env.NODE_TEST_CONTEXT) {
   const watch = { file: process.argv[1], ms: deadlineMs() };
-  // process.exit stops the worker below before it ends, so a hang inside the exit needs a process.
+  // Read now: a file may change TMPDIR or its cwd before it exits.
+  const marker = path.join(exitMarkers(process.ppid), String(process.pid));
   process.once("exit", () => {
-    const watcher = fileURLToPath(new URL("./exitWatch.mjs", import.meta.url));
-    startBin(process.execPath, [watcher, String(process.pid), String(exitGraceMs()), watch.file], { stdio: ["ignore", "ignore", "inherit"] }).unref();
+    try {
+      writeFileSync(marker, JSON.stringify({ file: watch.file, at: Date.now() }));
+    } catch (err) {
+      writeSync(2, `\n${watch.file}: its exit is unwatched, a hang in it goes unnamed: ${err.message}\n`);
+    }
   });
   // Not the inherited execArgv: its `--import ./tests/…` resolves against the cwd when the worker
   // boots, and a file that chdirs before then kills the worker, and with it the deadline.

@@ -1,7 +1,7 @@
-import { readdirSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
-import { FILE_DEADLINE_MS } from "./fileDeadline.mjs";
+import { deadlineMs, exitMarkers, FILE_DEADLINE_MS } from "./fileDeadline.mjs";
 
 /** The suites' roots: a run that loads anything under one is answerable for everything under it. */
 const ROOTS = ["tools/loop/tests", "tests"];
@@ -19,6 +19,20 @@ export const RUN_IDLE_MS = FILE_DEADLINE_MS + 30_000;
 export function runIdleMs(env = process.env) {
   const asked = Number(env.MURLAN_TEST_RUN_IDLE_MS);
   return asked > 0 ? Math.min(asked, RUN_IDLE_MS) : RUN_IDLE_MS;
+}
+
+/** An exit takes milliseconds: --test-force-exit makes each file's one process.exit. */
+export const EXIT_GRACE_MS = 15_000;
+
+/**
+ * Only ever shortens the grace, and keeps a file's deadline and grace inside the run's idle limit,
+ * so a file stuck in its exit is named by this guard before the run's.
+ * @param {Record<string, string | undefined>} env
+ */
+export function exitGraceMs(env = process.env) {
+  const asked = Number(env.MURLAN_TEST_EXIT_GRACE_MS);
+  const wanted = asked > 0 ? Math.min(asked, EXIT_GRACE_MS) : EXIT_GRACE_MS;
+  return Math.max(1, Math.min(wanted, runIdleMs(env) - deadlineMs(env) - 1));
 }
 
 const isFile = (data) => data?.nesting === 0 && path.resolve(data.name ?? "") === path.resolve(data.file ?? "");
@@ -39,7 +53,10 @@ export default async function* filesRun(source) {
   const beat = () => Atomics.store(heartbeat, 0, BigInt(Date.now()));
   beat();
   // No inherited execArgv: the runner's own `--test …` or `-e` would make the worker something else.
-  const watch = new Worker(new URL("./runWatch.mjs", import.meta.url), { execArgv: [], workerData: { heartbeat, idleMs: runIdleMs() } });
+  const markers = exitMarkers(process.pid);
+  mkdirSync(markers, { recursive: true });
+  const exits = { markers, graceMs: exitGraceMs() };
+  const watch = new Worker(new URL("./runWatch.mjs", import.meta.url), { execArgv: [], workerData: { heartbeat, idleMs: runIdleMs(), exits } });
   watch.unref();
   const tell = () => watch.postMessage([...inFlight].map((f) => path.relative(process.cwd(), f)));
   for await (const { type, data } of source) {
@@ -56,6 +73,7 @@ export default async function* filesRun(source) {
     if (type === "test:pass" && !data.skip && !data.todo && !standIn) ran.add(data.file);
   }
   void watch.terminate();
+  rmSync(markers, { recursive: true, force: true });
   const perDir = new Map();
   for (const file of ran) {
     const dir = path.relative(process.cwd(), path.dirname(file)).split(path.sep).join("/");

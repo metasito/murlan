@@ -138,21 +138,18 @@ export function procFor({
   };
 
   /**
-   * Waits up to `ms` for `pid` to end; past that, calls `overdue` and kills `pid` alone, since a
-   * watcher it started is inside its tree. True when it had to.
+   * One process held by its start time, so a stranger that later takes its pid reads as gone and is
+   * never ended. win32 has no start time to read here, and holds the bare pid.
    */
-  async function killOverdue(pid, ms, overdue) {
-    const deadline = Date.now() + ms;
-    while (alive(pid)) {
-      if (Date.now() >= deadline) {
-        overdue();
-        if (win) taskkill(pid, true);
-        else signal(pid, "SIGKILL");
-        return true;
-      }
-      await new Promise((r) => setTimeout(r, Math.min(100, ms)));
-    }
-    return false;
+  function hold(pid) {
+    if (win) return { running: () => alive(pid), endTree: () => taskkill(pid, true) };
+    const started = alive(pid) ? readTable().get(pid)?.started : undefined;
+    return {
+      running: () => started !== undefined && alive(pid) && readTable().get(pid)?.started === started,
+      endTree: () => {
+        if (started !== undefined) freezeAndKill(new Map([[pid, started]]));
+      },
+    };
   }
 
   /**
@@ -279,10 +276,10 @@ export function procFor({
     return child;
   }
 
-  return { runBin, startBin, spawnBin, killTree, killOverdue, stopTree, relay };
+  return { runBin, startBin, spawnBin, killTree, hold, stopTree, relay };
 }
 
-export const { runBin, startBin, spawnBin, killTree, killOverdue, stopTree, relay } = procFor();
+export const { runBin, startBin, spawnBin, killTree, hold, stopTree, relay } = procFor();
 
 export function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);

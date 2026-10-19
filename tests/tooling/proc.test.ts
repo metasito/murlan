@@ -37,6 +37,16 @@ describe("on win32", () => {
     assert.deepEqual(world.alive(), []);
   });
 
+  test("a held process ends with its whole tree, the runner that held it outside it", () => {
+    const world = windowsWorld();
+    const child = world.proc.startBin("node", ["a.js"], {});
+    const held = world.proc.hold(child.pid);
+    assert.equal(held.running(), true);
+    held.endTree();
+    assert.equal(held.running(), false);
+    assert.deepEqual(world.alive(), []);
+  });
+
   test("killTree takes the tree and no other, and a tree already gone is not an error", () => {
     const world = windowsWorld();
     const child = world.proc.startBin("npx", ["tsx", "index.ts"], {});
@@ -168,6 +178,38 @@ describe("on POSIX, modelled", () => {
     await stopping;
     assert.deepEqual(world.alive(), [grandchild]);
     assert.deepEqual(world.stopped(), []);
+  });
+
+  test("a held process ends with its whole tree", () => {
+    const world = posixWorld();
+    const child = world.proc.startBin("node", ["a.js"], {});
+    const held = world.proc.hold(child.pid);
+    assert.equal(held.running(), true);
+    held.endTree();
+    assert.equal(held.running(), false);
+    assert.deepEqual(world.alive(), []);
+  });
+
+  test("a held pid reused by a stranger reads as gone, and the stranger is never ended", () => {
+    const world = posixWorld({ depth: 0 });
+    const child = world.proc.startBin("node", ["a.js"], {});
+    const held = world.proc.hold(child.pid);
+    world.reuse(child.pid!);
+    assert.equal(held.running(), false);
+    held.endTree();
+    assert.deepEqual(world.alive(), [child.pid]);
+    assert.deepEqual(world.signals.filter(([, s]) => s !== 0), []);
+  });
+
+  test("a pid already gone when held is never ended, whoever takes it after", () => {
+    const world = posixWorld({ depth: 0 });
+    const child = world.proc.startBin("node", ["a.js"], {});
+    world.end(child.pid!);
+    const held = world.proc.hold(child.pid);
+    world.reuse(child.pid!);
+    assert.equal(held.running(), false);
+    held.endTree();
+    assert.deepEqual(world.alive(), [child.pid]);
   });
 });
 
