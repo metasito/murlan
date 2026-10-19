@@ -413,7 +413,7 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
  * `tracker` is everything GitHub, `workspace` git and the disk, `session` the `claude` process,
  * `ledger` the record of the night. Whatever they draw goes through `events`.
  */
-export function realPorts(book, screen, events) {
+export function realPorts(book, screen, events, { claimTicket = claim, ticket = runTicket } = {}) {
   // The queue as the *previous* pick read it. The direction is what a night is made of, and this
   // is the one reading that costs nothing — the next pick is being made anyway.
   let before = null;
@@ -484,7 +484,7 @@ export function realPorts(book, screen, events) {
         // spawned and `runOnce` parks it from the declaration.
         let claimed;
         try {
-          claimed = claim(route.number, route.title);
+          claimed = claimTicket(route.number, route.title);
         } catch (err) {
           claimed = { won: false, why: claimError(err) };
         }
@@ -507,7 +507,7 @@ export function realPorts(book, screen, events) {
       }
       const at = route.resuming ? (route.phase ?? "C") : null;
       book.start(route.number, at ?? "A", RUN_ID);
-      return runTicket(runSession, {
+      return ticket(runSession, {
         number: route.number,
         branch,
         queue: route.queue,

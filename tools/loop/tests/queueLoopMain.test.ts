@@ -2253,6 +2253,58 @@ describe("the port contract", () => {
   });
 });
 
+describe("the real session port claims in-process", () => {
+  const route = { number: 42, title: "the title", size: "size:S", queue: null, resuming: false };
+  const spawnWith = async (claimTicket: (n: number, title: string) => unknown) => {
+    const steps: { label: string; detail: string; state?: string }[] = [];
+    const tickets: { branch: string | null }[] = [];
+    const asked: [number, string][] = [];
+    const book = { totals: {}, start: () => {} };
+    const events = { log: () => {}, step: (row: (typeof steps)[number]) => steps.push(row), header: () => {} };
+    const { session } = realPorts(book as never, {} as never, events as never, {
+      claimTicket: (n: number, title: string) => (asked.push([n, title]), claimTicket(n, title)),
+      ticket: async (_run: unknown, opts: { branch: string | null }) => (tickets.push({ branch: opts.branch }), { status: 0, declared: null }),
+    });
+    const run = await session.spawn(route);
+    return { run, steps, tickets, asked };
+  };
+
+  test("a won claim spawns the session on the branch it cut, and says so", async () => {
+    const { run, steps, tickets, asked } = await spawnWith(() => ({ branch: "agent/42-the-title", cwd: "w", won: true, why: null }));
+    assert.deepEqual(asked, [[42, "the title"]]);
+    assert.deepEqual(tickets, [{ branch: "agent/42-the-title" }]);
+    assert.deepEqual(steps, [{ label: "claim", detail: "won · agent/42-the-title", ms: null }]);
+    assert.equal(run.declared, null);
+  });
+
+  test("a lost claim spawns nothing and stands down with the claim's own reason", async () => {
+    const { run, steps, tickets } = await spawnWith(() => ({ branch: "agent/42-the-title", cwd: "w", won: false, why: "w is already standing" }));
+    assert.deepEqual(tickets, []);
+    assert.deepEqual(steps, [{ label: "claim", detail: "w is already standing", ms: null, state: "failed" }]);
+    assert.deepEqual([run.declared.stoodDown, run.declared.why, run.declared.branch], [true, "w is already standing", null]);
+  });
+
+  test("a claim that throws stands down with git's last line, never a stack", async () => {
+    const { run, steps, tickets } = await spawnWith(() => {
+      throw Object.assign(new Error("Command failed: git worktree add"), { stderr: "Preparing worktree\nfatal: 'agent/42-the-title' is already used\n" });
+    });
+    assert.deepEqual(tickets, []);
+    assert.deepEqual(steps.map((s) => [s.detail, s.state]), [["fatal: 'agent/42-the-title' is already used", "failed"]]);
+    assert.deepEqual([run.declared.stoodDown, run.declared.why], [true, "fatal: 'agent/42-the-title' is already used"]);
+  });
+
+  test("a resume claims nothing and keeps the route's branch", async () => {
+    const asked: number[] = [];
+    const tickets: (string | null)[] = [];
+    const { session } = realPorts({ totals: {}, start: () => {} } as never, {} as never, { log: () => {}, step: () => {} } as never, {
+      claimTicket: (n: number) => (asked.push(n), { won: true, branch: "x" }),
+      ticket: async (_run: unknown, opts: { branch: string | null }) => (tickets.push(opts.branch), { status: 0 }),
+    });
+    await session.spawn({ ...route, resuming: true, branch: "agent/42-kept", phase: "D" });
+    assert.deepEqual([asked, tickets], [[], ["agent/42-kept"]]);
+  });
+});
+
 describe("queue-loop.mjs --check", () => {
   test("prints the pick through the real ports and writes nothing to the tracker", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "loop-check-"));
