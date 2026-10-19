@@ -66,19 +66,26 @@ export function apiMethod(args) {
 }
 
 /** `gh`'s arguments, verb first, read an issue's or pull request's thread or reviews. */
+/** Rule 25's read, which keeps only trusted authors' comments in code rather than in a jq string. */
+const rule25Read = (args) => args[0] === "tracker.mjs" && args[1] === "read";
 export const readsComments = (args) =>
+  rule25Read(args) ||
   (/^(issue|pr)$/.test(args[0] ?? "") && args[1] === "view" && ASKS_COMMENTS.test(args.slice(2).join(" "))) ||
   (args[0] === "api" && apiMethod(args) === "GET" && args.some((a) => API_THREAD.test(a)));
 /** A thread read without rule 25's filter, where an outsider's `DOD-CHECK` or `REVIEW` reads as the loop's own. */
-export const untrustedRead = (args) => readsComments(args) && !args.some((a) => a.includes(TRUSTED_SELECT));
-/** Each thread read a document gives, as `gh`'s arguments; a `\` continuation joins its lines. */
+export const untrustedRead = (args) => readsComments(args) && !rule25Read(args) && !args.some((a) => a.includes(TRUSTED_SELECT));
+/**
+ * Each thread read a document gives: `gh`'s arguments, or `tracker.mjs read <n>` for rule 25's. A
+ * `\` continuation joins its lines.
+ */
 export const commentReads = (text) =>
   text
     .replace(/\\\r?\n\s*/g, " ")
     .split("\n")
     .flatMap((line) => {
+      const rule25 = /\btools\/loop\/(tracker\.mjs) (read) (\S+?)`?(?:\s|$)/.exec(line);
       const at = line.search(/\bgh ((issue|pr) view|api)\b/);
-      return at < 0 ? [] : [line.slice(at + 3).split(/[\s`]+/).filter(Boolean)];
+      return [...(rule25 ? [rule25.slice(1)] : []), ...(at < 0 ? [] : [line.slice(at + 3).split(/[\s`]+/).filter(Boolean)])];
     })
     .filter(readsComments);
 
