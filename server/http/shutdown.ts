@@ -8,6 +8,7 @@ import { drainPool } from "../store/drainPool.ts";
 import { beginShutdown } from "../game/gameRoom.ts";
 import { socketAdapterPool, socketAdapterReady } from "../socket/socketAdapter.ts";
 import { closeOwnership } from "../game/gameOwnership.ts";
+import { stopTables } from "../game/gamePersistence.ts";
 import { settleDisconnects } from "../socket/socketPresence.ts";
 
 /**
@@ -28,10 +29,39 @@ export const DRAIN_TIMEOUT_MS = QUERY_TIMEOUT_MS + 1_000;
 export const DISCONNECT_SETTLE_MS = 1_500;
 
 /**
- * Last resort. Strictly after the drain, so the ordinary path always reaches
+ * The most each step of `shutdown` may take, in the order they run. Every step
+ * is bounded by its entry, so their sum is the longest a shutdown can take.
+ */
+export const SHUTDOWN_BUDGET = {
+  adapterReady: 750,
+  ioClose: 500,
+  settleDisconnects: DISCONNECT_SETTLE_MS,
+  stopTables: 250,
+  adapterPoolEnd: 250,
+  drain: DRAIN_TIMEOUT_MS,
+  closeOwnership: 250,
+} as const;
+
+const SHUTDOWN_STEPS_MS = Object.values(SHUTDOWN_BUDGET).reduce((sum, ms) => sum + ms, 0);
+
+/**
+ * Last resort. Strictly after every step, so the ordinary path always reaches
  * exit(0) first, and strictly inside PLATFORM_GRACE_MS, so it can fire at all.
  */
-export const FORCED_EXIT_MS = DISCONNECT_SETTLE_MS + DRAIN_TIMEOUT_MS + 2_000;
+export const FORCED_EXIT_MS = SHUTDOWN_STEPS_MS + 250;
+
+/** Settles with `work`, or with nothing once `ms` has passed. */
+export async function within<T>(ms: number, work: Promise<T>): Promise<T | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), ms);
+  });
+  try {
+    return await Promise.race([work, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export interface ShutdownDeps {
   io: SocketIOServer;
@@ -75,31 +105,34 @@ export async function shutdown(
     // A SIGTERM arriving moments after boot would otherwise close the adapter
     // while it is still taking out its subscription, stranding that client so
     // the pool below never finishes closing.
-    await socketAdapterReady(1_000);
+    await socketAdapterReady(SHUTDOWN_BUDGET.adapterReady);
     // Closes the adapter too, which releases the client parked on `LISTEN` and
     // stops its cleanup timer — so the pool below has nothing checked out.
-    await io.close();
-    await settleDisconnects(DISCONNECT_SETTLE_MS);
-    // After `io.close()`, never before: the locks go with this connection, and
-    // handing a room back while its game is still in memory and still being
-    // played lets another instance restore the same table and write over it.
-    await closeOwnership();
+    await within(
+      SHUTDOWN_BUDGET.ioClose,
+      (async () => {
+        await io.close();
+        // Only reachable if `io` was never attached to this server.
+        if (server.listening) {
+          await new Promise<void>((resolve) => server.close(() => resolve()));
+        }
+      })()
+    );
+    await settleDisconnects(SHUTDOWN_BUDGET.settleDisconnects);
+    await within(SHUTDOWN_BUDGET.stopTables, stopTables());
     const adapterPool = socketAdapterPool();
     if (adapterPool) {
-      await adapterPool.end().catch((err) =>
-        logger.error({ err }, "Socket adapter pool close failed")
+      await within(
+        SHUTDOWN_BUDGET.adapterPoolEnd,
+        adapterPool.end().catch((err) => logger.error({ err }, "Socket adapter pool close failed"))
       );
-    }
-    // Only reachable if `io` was never attached to this server.
-    if (server.listening) {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
     // Disconnecting the sockets above starts writes — updateLastSeen, the
     // lobby teardown — and `handleRoundOver` and `persistGameState` are
     // fire-and-forget, so nothing else holds a promise for any of them.
     // `pool.end()` makes every subsequent checkout fail, which would drop
     // exactly the stats, ladder and replay rows this shutdown exists to save.
-    if (await drainPool(pool, { timeoutMs: DRAIN_TIMEOUT_MS })) {
+    if (await drainPool(pool, { timeoutMs: SHUTDOWN_BUDGET.drain })) {
       await pool.end();
     } else {
       logger.error(
@@ -112,6 +145,10 @@ export async function shutdown(
       // process teardown drop the sockets.
       void pool.end().catch((err) => logger.error({ err }, "Pool close failed"));
     }
+    // After the drain, never before: the locks go with this connection, and a
+    // table write still in flight once they are gone lands over the row of
+    // whichever instance restored the table meanwhile.
+    await within(SHUTDOWN_BUDGET.closeOwnership, closeOwnership());
     logger.info("Server shut down cleanly");
     exit(0);
   } catch (err) {

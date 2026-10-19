@@ -16,7 +16,7 @@ import { activeGames, userRoom } from "./gameRoom.ts";
 import { payload } from "../socket/payload.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { RoundOverWriters } from "./roundOver.ts";
-import { releaseRoom, unclaimedRooms } from "./gameOwnership.ts";
+import { releaseRoom, releaseRoomAfter, unclaimedRooms } from "./gameOwnership.ts";
 import {
   stateAckTimeoutMs,
   sweepIntervalMs,
@@ -109,19 +109,35 @@ export function disposeGame(roomId: string, deleteRow = true) {
   clearRoomTimers(roomId);
   clearRoomLobbyGraces(roomId);
   activeGames.delete(roomId);
-  // Handed back the moment the game leaves memory: the claim is what keeps
-  // every other instance off this room, and a lock outliving the table it
-  // protected is a room nobody can ever take over.
-  void releaseRoom(roomId);
-  if (deleteRow) {
-    void inRoomOrder(roomId, () =>
-      db.delete(activeGamesTable)
-        .where(eq(activeGamesTable.roomId, roomId))
-        .catch((err: unknown) =>
-          logger.error({ err, roomId }, "Failed to delete persisted game")
-        )
-    );
+  // Handed back only once the row is gone: a claim landing between the two
+  // restores the table this has just ended.
+  if (deleteRow) void releaseRoomAfter(roomId, discardPersistedGame(roomId));
+  else void releaseRoom(roomId);
+}
+
+/** Deletes the room's `active_games` row after every earlier write to it. Never rejects. */
+export function discardPersistedGame(roomId: string): Promise<unknown> {
+  return inRoomOrder(roomId, () =>
+    db.delete(activeGamesTable)
+      .where(eq(activeGamesTable.roomId, roomId))
+      .catch((err: unknown) =>
+        logger.error({ err, roomId }, "Failed to delete persisted game")
+      )
+  );
+}
+
+/**
+ * Ends play on every table this process holds — nothing armed on one fires
+ * again — and waits for the row writes already queued. The games stay in
+ * memory, so those writes still land.
+ */
+export async function stopTables(): Promise<void> {
+  for (const [roomId, game] of activeGames) {
+    clearRoomDisconnectTimers(game);
+    clearRoomTimers(roomId);
+    clearRoomLobbyGraces(roomId);
   }
+  await Promise.all(roomWriteTails.values());
 }
 
 /** An object rather than a bare function so a test can hold one write, as with `roomStore`. */
@@ -162,11 +178,14 @@ export function persistGameState(roomId: string, game: OnlineGameState): Promise
   // Stamped so a restart can tell a current-shape row from a stale one (see
   // GAME_SCHEMA_VERSION) rather than restoring a corrupt round silently.
   const gameState = toEnvelope(game);
-  return inRoomOrder(roomId, () =>
-    persistence
+  return inRoomOrder(roomId, async () => {
+    // Judged when the write runs, not when it was queued: a table disposed in
+    // between has had its row deleted, or handed to another instance.
+    if (activeGames.get(roomId) !== game) return;
+    await persistence
       .writeActiveGame(roomId, gameState)
-      .catch((err: unknown) => logger.error({ err, roomId }, "Failed to persist game state"))
-  );
+      .catch((err: unknown) => logger.error({ err, roomId }, "Failed to persist game state"));
+  });
 }
 
 /**

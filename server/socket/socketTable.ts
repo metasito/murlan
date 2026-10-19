@@ -11,10 +11,9 @@ import { logger } from "../http/logger.ts";
 import {
   isShuttingDown,
   seatName,
-  socketRoomMap,
   userRoom,
-  userSocketMap,
 } from "../game/gameRoom.ts";
+import { isUserAtTable } from "./socketRegistry.ts";
 import { seatOfUser } from "../game/onlineGameLogic.ts";
 import type { OnlineGameState } from "../game/gameRoom.ts";
 import { applyOrForward } from "../game/tableRouter.ts";
@@ -254,8 +253,7 @@ export function armLobbyGrace(
         // Back in *this* room, not merely back online: a player who reconnects
         // straight into a different lobby is no longer holding this seat, and
         // asking only whether they have a socket would leave it held.
-        const liveSocket = userSocketMap.get(userId);
-        if (liveSocket && socketRoomMap.get(liveSocket) === roomId) return;
+        if (await isUserAtTable(userId, roomId)) return;
         await handleSeatRelease(io, roomId, userId, { source: "disconnect" });
         logger.info({ userId, roomId }, "Lobby grace expired — seat released");
       } catch (err) {

@@ -56,6 +56,7 @@ import { stopSpectatingEverywhere } from "../socket/seating.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
   broadcastGameState,
+  discardPersistedGame,
   disposeGame,
   roundOverWriters,
   persistGameState,
@@ -155,7 +156,8 @@ export async function rehydrateGame(
     // path would carry straight into the engine. Restoring it deals a silently
     // corrupt round rather than crashing, which is worse than refusing outright.
     logger.warn({ roomId, reason: restored.reason }, "Discarding unrestorable persisted game");
-    disposeGame(roomId);
+    // The claim stays: a deal may follow on this very room.
+    await discardPersistedGame(roomId);
     return "unrestorable";
   }
 

@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pool, QUERY_TIMEOUT_MS } from "../../server/store/db.ts";
-import { DRAIN_TIMEOUT_MS, FORCED_EXIT_MS } from "../../server/http/shutdown.ts";
+import { DRAIN_TIMEOUT_MS, FORCED_EXIT_MS, SHUTDOWN_BUDGET } from "../../server/http/shutdown.ts";
 
 const { sigtermGraceMs } = JSON.parse(
   readFileSync(path.resolve(import.meta.dirname, "..", "..", "deploy", "runtime.json"), "utf8")
@@ -19,6 +19,23 @@ test("the drain outlasts a single query's own timeout", () => {
     DRAIN_TIMEOUT_MS > QUERY_TIMEOUT_MS,
     `a client stuck on a query is released only when the query aborts at ${QUERY_TIMEOUT_MS}ms; ` +
       `a ${DRAIN_TIMEOUT_MS}ms drain gives up first and reports live writes abandoned`
+  );
+});
+
+const stepsMs = Object.values(SHUTDOWN_BUDGET).reduce((sum, ms) => sum + ms, 0);
+
+test("every step of the shutdown, end to end, fits inside the host's SIGTERM grace", () => {
+  assert.equal(SHUTDOWN_BUDGET.drain, DRAIN_TIMEOUT_MS);
+  assert.ok(
+    stepsMs < sigtermGraceMs,
+    `the steps take up to ${stepsMs}ms between them; the host SIGKILLs at ~${sigtermGraceMs}ms`
+  );
+});
+
+test("the watchdog outlasts every step together", () => {
+  assert.ok(
+    FORCED_EXIT_MS > stepsMs,
+    `a shutdown whose steps each stay inside their budget can take ${stepsMs}ms; a ${FORCED_EXIT_MS}ms watchdog exits 1 under it`
   );
 });
 
