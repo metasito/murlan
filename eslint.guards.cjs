@@ -59,7 +59,6 @@ const GUARDS = [
     selector:
       'CallExpression[callee.property.name="emit"]:matches([arguments.0.value=/^(room|game):/], [arguments.0.quasis.0.value.raw=/^(room|game):/])',
     files: CLIENT,
-    ignores: [{ glob: "lib/sendIntent.ts", reason: "send() is the one emit the rest go through" }],
     plant: { file: "context/Plant.tsx", code: ['socket?.emit("room:leave");', "socket.emit(`game:play`, { cards });", 'socket.emit(\n  "room:join",\n  code\n);'].join("\n"), hits: 3 },
     spare: ['socket.emit("connect_error");', 'send(socket, "room:leave", {});', 'emitter.on("room:leave", f);', '// socket.emit("room:leave")\nconst s = \'emit("room:leave")\';'].map((code) => ({ file: "context/Plant.tsx", code })),
   },

@@ -94,6 +94,33 @@ describe("the guard registry's floor", () => {
     assert.deepEqual(loose, [], "an exemption with no reason, or one naming no file the guard reads, exempts nothing it can defend");
   });
 
+  test("3, stale: every exemption still covers a file the guard would report", async () => {
+    const stale: string[] = [];
+    for (const guard of GUARDS) {
+      const alone = new ESLint({
+        cwd: ROOT,
+        overrideConfigFile: true,
+        overrideConfig: [
+          {
+            files: ["**/*.{ts,tsx,js,mjs,cjs}"],
+            languageOptions: { parser: tsParser, parserOptions: { ecmaFeatures: { jsx: true } } },
+            plugins: { murlan: plugin as ESLint.Plugin },
+            rules: { [ruleOf(guard)]: "error" },
+          },
+        ],
+      });
+      for (const { glob } of guard.ignores ?? []) {
+        let hits = 0;
+        for (const file of tracked.filter((f) => matches(f, [glob]) && matches(f, guard.files))) {
+          hits += await reports(alone, readFileSync(path.join(ROOT, file), "utf8"), file, ruleOf(guard));
+          if (hits > 0) break;
+        }
+        if (hits === 0) stale.push(`${guard.id}: ${glob}`);
+      }
+    }
+    assert.deepEqual(stale, [], "an exemption over files the guard would not report exempts nothing, and hides the next one there");
+  });
+
   test("4. no block in the config sets a guard below error, and only guardBlocks() sets one", () => {
     const below = config.flatMap((block) =>
       Object.entries(block.rules ?? {})

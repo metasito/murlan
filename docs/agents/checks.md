@@ -366,8 +366,8 @@ its `files`, its exemptions as `{ glob, reason }` in `ignores`, a `plant` it mus
 `hits` times and the `spare`s it must not; `guardBlocks()` is the only thing that switches guards
 on, and the plant is the guard's floor. `tests/tooling/lintGuards.test.ts` holds six points under
 all of them: each plant fires exactly its hits under the real config and no spare fires; every glob
-reads a tracked file and the real config runs the guard there; every exemption reads a tracked file
-and gives a reason; no config block sets a guard below `error`; no source switches a guard off
+reads a tracked file and the real config runs the guard there; every exemption reads a tracked file,
+gives a reason and still covers a file the guard would report; no config block sets a guard below `error`; no source switches a guard off
 inline or carries a bare `eslint-disable` (D17); and the ids are unique, each guard is only a
 selector entry, and its `why` names a path that exists. A stale directive is an error. An exception is the guard's to change, in
 review, never a comment's at the site. A rule about prose, JSON, or a relation between two files is
