@@ -13,7 +13,6 @@
  * Usage: npm run queue:loop (tools/loop/run-loop.mjs, which restarts this on exit 75)
  */
 import { git as gitAt, REPO } from "./cli.mjs";
-import { derive } from "./loop-derive.mjs";
 import { killedRun, runSession, runTicket } from "./loop-session.mjs";
 import { bell, clockAt, PLAIN, reportRow, runRecap, runTotal, stepRow } from "./loop-render.mjs";
 import { ticker } from "./loop-screen.mjs";
@@ -413,7 +412,7 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
  * `tracker` is everything GitHub, `workspace` git and the disk, `session` the `claude` process,
  * `ledger` the record of the night. Whatever they draw goes through `events`.
  */
-export function realPorts(book, screen, events, { claimTicket = claim, ticket = runTicket } = {}) {
+export function realPorts(book, screen, events, { claimTicket = claim, ticket = runTicket, root = ROOT } = {}) {
   // The queue as the *previous* pick read it. The direction is what a night is made of, and this
   // is the one reading that costs nothing — the next pick is being made anyway.
   let before = null;
@@ -465,7 +464,7 @@ export function realPorts(book, screen, events, { claimTicket = claim, ticket = 
     },
   };
   const workspace = {
-    ...workspacePort({ root: ROOT, git: gitAt(ROOT), events }),
+    ...workspacePort({ root, git: gitAt(root), events }),
     buildPassed: (cwd, ticket) => {
       try {
         return Boolean(cwd) && buildReady(cwd, ticket).ok;
@@ -757,14 +756,12 @@ export async function main({
 /**
  * `--check`: the reads a pass's pick makes, in the order `decide` asks for them, each printed as
  * `<fact>\t<json>`, then the pick's answer as `PICK\t<json>` — with nothing synced, claimed, pruned,
- * spawned or written. It runs the real ports' read wiring, which the loop's tests stub out.
+ * spawned or written. It reads through `realPorts`, the wiring the loop's tests replace with fakes,
+ * rooted at the caller's checkout.
  */
-export function check({ say = console.log } = {}) {
-  const reads = pickReads({
-    workspace: { derive: () => derive({ ci: true }) },
-    tracker: { facts: ticketFacts, pick: nextPick },
-    ledger: { tally: (n) => ticketTally(n, readLedger()) },
-  });
+export function check({ say = console.log, root = process.cwd() } = {}) {
+  const quiet = () => {};
+  const reads = pickReads(realPorts({ totals: null }, null, { log: quiet, step: quiet, recap: quiet }, { root }));
   const said = Object.fromEntries(
     Object.entries(reads).map(([fact, read]) => [
       fact,
