@@ -28,7 +28,7 @@ import {
 } from "./schemas.ts";
 import { deletePushToken, savePushToken } from "../socket/push.ts";
 import { DEFAULT_LOCALE, isLocale, translate, type Locale } from "../../shared/i18n.ts";
-import { evictUser, revokeAccountSockets } from "../socket/socket.ts";
+import { evictUser, revokeAccountSockets } from "../socket/socketRegistry.ts";
 import { mintSocketTicket } from "../socket/ticket.ts";
 import {
   mintAuthToken,
@@ -49,7 +49,7 @@ import { recordBugReport } from "./bugReports.ts";
 import { adminSnapshot } from "./admin.ts";
 import { trackEvent } from "../socket/events.ts";
 import { renderAdminPage } from "./adminPage.ts";
-import { payload } from "../socket/payload.ts";
+import { payload } from "../shared/payload.ts";
 import { z } from "zod";
 
 // Every JSON error body carries a stable machine-readable `code` alongside

@@ -31,9 +31,9 @@ import {
 import { sendGameStateTo } from "../game/gamePersistence.ts";
 import { emitEndMatchVoteState, emitMatchState, emitVoteState } from "./emit.ts";
 import { armTurnIfIdle } from "../game/gameTurn.ts";
-import { payload } from "./payload.ts";
+import { payload } from "../shared/payload.ts";
 import { TEAMS_PLAYER_COUNT } from "../../lib/game/gameEngine.ts";
-import type { EventOutcome } from "./socketSafety.ts";
+import { refuse, type Refusal } from "../shared/refusal.ts";
 import type { ServerToClientEvents, WireRoomState } from "../../shared/protocol.ts";
 
 /**
@@ -116,23 +116,11 @@ function roomOf(game: OnlineGameState) {
 /**
  * Teams is the one mode with a fixed size, checked both where a room is sized
  * and where it is seated. Returns the refusal when the size is wrong, null when
- * the caller may carry on — one spelling of the code, whether it goes out as an
- * acknowledgement or as a `room:error`.
- *
- * Takes a sink rather than a socket: one caller is a lobby handler holding the
- * player's own socket, the other runs on the instance that owns the table and
- * has only the player's user room. The sink names the event, so it stays a
- * literal at each call site.
+ * the caller may carry on.
  */
-export function teamsSizeRefusal(
-  refuse: (refusal: { message: string; code: string }) => void,
-  gameMode: string,
-  playerCount: number
-): EventOutcome | null {
+export function teamsSizeRefusal(gameMode: string, playerCount: number): Refusal | null {
   if (gameMode !== "teams" || playerCount === TEAMS_PLAYER_COUNT) return null;
-  const code = "TEAMS_REQUIRE_FOUR";
-  refuse(payload(code));
-  return { ok: false, code };
+  return refuse("TEAMS_REQUIRE_FOUR");
 }
 
 /**

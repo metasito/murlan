@@ -8,7 +8,7 @@ import { DEFAULT_LOCALE, translate } from "../../shared/i18n.ts";
 import type { TranslationKey, TranslationParams } from "../../shared/i18n.ts";
 
 type ExtractServerCode<K> = K extends `server.${infer C}` ? C : never;
-type ServerCode = ExtractServerCode<TranslationKey>;
+export type ServerCode = ExtractServerCode<TranslationKey>;
 
 export function payload<C extends ServerCode>(code: C, params: TranslationParams = {}) {
   return { code, message: translate(DEFAULT_LOCALE, `server.${code}`, params), params };

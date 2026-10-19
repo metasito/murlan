@@ -10,7 +10,7 @@ import { socketRoomMap, userRoom, userSocketMap } from "../game/gameRoom.ts";
 import { safeTimer } from "../game/gamePersistence.ts";
 import { announceRoomChanged, handleSeatRelease } from "./socketTable.ts";
 import { applyOrForward } from "../game/tableRouter.ts";
-import { payload } from "./payload.ts";
+import { payload } from "../shared/payload.ts";
 
 let _io: SocketServer | null = null;
 

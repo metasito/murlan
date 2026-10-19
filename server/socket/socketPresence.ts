@@ -9,7 +9,7 @@
 // running has no other listener that will ever see it.
 import { now } from "../http/clock.ts";
 import type { DisconnectReason } from "socket.io";
-import type { SocketServer, GameSocket as Socket } from "./socketTypes.ts";
+import type { HandlerContext, SocketServer, GameSocket as Socket } from "./socketTypes.ts";
 import { friendStore } from "../store/friendStore.ts";
 import { roomStore } from "../store/roomStore.ts";
 import { userStore } from "../store/userStore.ts";
@@ -31,22 +31,16 @@ import { seatSocket, stopSpectating } from "./seating.ts";
 import { applyOrForward } from "../game/tableRouter.ts";
 import { NoPayloadSchema, FriendInviteSchema } from "../../shared/socketSchemas.ts";
 import { isUserOnline, onlineUserIds } from "./socketRegistry.ts";
-import { payload } from "./payload.ts";
+import { payload } from "../shared/payload.ts";
+import { OK, refuse } from "../shared/refusal.ts";
 
-/** Spelled out because tests/tooling/refusalCodesTested.test.ts reads a refusal's code only as a literal. */
 const INVITE_REFUSAL_CODE = {
   NOT_FRIENDS: "NOT_FRIENDS",
   ROOM_NOT_FOUND: "ROOM_NOT_FOUND",
   NOT_IN_ROOM: "NOT_IN_ROOM",
 } as const satisfies { [C in InviteRefusal]: C };
 
-export interface PresenceContext {
-  io: SocketServer;
-  socket: Socket;
-  userId: string;
-}
-
-export function registerFriendHandlers({ socket, userId }: PresenceContext) {
+export function registerFriendHandlers({ socket, userId }: HandlerContext) {
 
     onEvent(
       socket,
@@ -54,8 +48,7 @@ export function registerFriendHandlers({ socket, userId }: PresenceContext) {
       FriendInviteSchema,
       async ({ friendUserId, roomCode }) => {
         const result = await friendships.invite(userId, friendUserId, roomCode);
-        if (!result.ok) socket.emit("friend:error", payload(INVITE_REFUSAL_CODE[result.code]));
-        return result;
+        return result.ok ? OK : refuse(INVITE_REFUSAL_CODE[result.code]);
       },
       // An invite is a broadcast to another account: only a few per minute.
       { limit: 5, windowMs: 60_000 }
@@ -72,6 +65,7 @@ export function registerFriendHandlers({ socket, userId }: PresenceContext) {
           .map((f) => f.friend.id)
           .filter((id) => online.has(id));
         socket.emit("friend:online_list", { onlineIds });
+        return OK;
       },
       { limit: 20, windowMs: 60_000 }
     );
@@ -84,7 +78,7 @@ export function registerFriendHandlers({ socket, userId }: PresenceContext) {
  * Deliberately after every listener is registered — these awaits are exactly
  * the window in which a packet arriving with no listener would be dropped.
  */
-export async function announcePresence({ io, socket, userId }: PresenceContext) {
+export async function announcePresence({ io, socket, userId }: HandlerContext) {
 
     if (clearDisconnectGrace(userId)) {
       for (const [roomId, game] of activeGames.entries()) {
@@ -138,7 +132,7 @@ export async function settleDisconnects(timeoutMs: number): Promise<void> {
   clearTimeout(timer);
 }
 
-export function registerDisconnect({ io, socket, userId }: PresenceContext) {
+export function registerDisconnect({ io, socket, userId }: HandlerContext) {
 
     socket.on("disconnect", (reason: DisconnectReason) => {
       trackEvent("socket.closed", userId, { reason });

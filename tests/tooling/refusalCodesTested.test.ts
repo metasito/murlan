@@ -25,24 +25,52 @@ function declarationOf(name: ts.Identifier): ts.VariableDeclaration | ts.Paramet
   return undefined;
 }
 
-/** The literals an expression can evaluate to, following constants, ternary branches and a helper's parameter back to its calls. */
-function literalsOf(expr: ts.Expression, sf: ts.SourceFile, unread: string[]): string[] {
+/** Every call, in any scanned file, of a function another file imports, keyed `file#name` of its declaration. */
+type ImportedCalls = Map<string, [ts.CallExpression, ts.SourceFile][]>;
+
+function importedCalls(sfs: ts.SourceFile[]): ImportedCalls {
+  const calls: ImportedCalls = new Map();
+  for (const sf of sfs) {
+    const bound = new Map<string, string>();
+    for (const statement of sf.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+      const spec = statement.moduleSpecifier.text;
+      if (!spec.startsWith(".")) continue;
+      const target = path.posix.normalize(path.posix.join(path.posix.dirname(sf.fileName), spec));
+      const named = statement.importClause?.namedBindings;
+      if (!named || !ts.isNamedImports(named)) continue;
+      for (const el of named.elements) bound.set(el.name.text, `${target}#${(el.propertyName ?? el.name).text}`);
+    }
+    const visit = (n: ts.Node) => {
+      if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && !declarationOf(n.expression)) {
+        const key = bound.get(n.expression.text);
+        if (key) calls.set(key, [...(calls.get(key) ?? []), [n, sf]]);
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+  }
+  return calls;
+}
+
+/** The literals an expression can evaluate to, following constants, ternary branches and a helper's parameter back to its calls, in this file or, for an exported function, in every file importing it. */
+function literalsOf(expr: ts.Expression, sf: ts.SourceFile, unread: string[], imported: ImportedCalls): string[] {
   const where = () => `${sf.fileName}:${sf.getLineAndCharacterOfPosition(expr.getStart()).line + 1}`;
   if (ts.isStringLiteralLike(expr)) return [expr.text];
   if (ts.isParenthesizedExpression(expr) || ts.isAsExpression(expr) || ts.isSatisfiesExpression(expr)) {
-    return literalsOf(expr.expression, sf, unread);
+    return literalsOf(expr.expression, sf, unread, imported);
   }
   if (ts.isObjectLiteralExpression(expr) && expr.properties.every(ts.isPropertyAssignment)) {
-    return expr.properties.flatMap((p) => literalsOf((p as ts.PropertyAssignment).initializer, sf, unread));
+    return expr.properties.flatMap((p) => literalsOf((p as ts.PropertyAssignment).initializer, sf, unread, imported));
   }
-  if (ts.isElementAccessExpression(expr)) return literalsOf(expr.expression, sf, unread);
+  if (ts.isElementAccessExpression(expr)) return literalsOf(expr.expression, sf, unread, imported);
   if (ts.isConditionalExpression(expr)) {
-    return [...literalsOf(expr.whenTrue, sf, unread), ...literalsOf(expr.whenFalse, sf, unread)];
+    return [...literalsOf(expr.whenTrue, sf, unread, imported), ...literalsOf(expr.whenFalse, sf, unread, imported)];
   }
   const decl = ts.isIdentifier(expr) ? declarationOf(expr) : undefined;
   const isConst = (d: ts.Node): d is ts.VariableDeclaration =>
     ts.isVariableDeclaration(d) && (d.parent.flags & ts.NodeFlags.Const) !== 0;
-  if (decl && isConst(decl) && decl.initializer) return literalsOf(decl.initializer, sf, unread);
+  if (decl && isConst(decl) && decl.initializer) return literalsOf(decl.initializer, sf, unread, imported);
   const helper = decl && ts.isParameter(decl) ? decl.parent.parent : undefined;
   if (decl && helper && isConst(helper)) {
     const index = (decl.parent as ts.SignatureDeclaration).parameters.indexOf(decl as ts.ParameterDeclaration);
@@ -54,7 +82,16 @@ function literalsOf(expr: ts.Expression, sf: ts.SourceFile, unread: string[]): s
       ts.forEachChild(n, findCalls);
     };
     findCalls(sf);
-    if (args.length > 0) return args.flatMap((arg) => literalsOf(arg, sf, unread));
+    if (args.length > 0) return args.flatMap((arg) => literalsOf(arg, sf, unread, imported));
+  }
+  const exported =
+    decl && ts.isParameter(decl) && ts.isFunctionDeclaration(decl.parent) && decl.parent.name ? decl.parent : undefined;
+  if (decl && exported?.name && exported.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {
+    const index = exported.parameters.indexOf(decl as ts.ParameterDeclaration);
+    const sites = (imported.get(`${sf.fileName}#${exported.name.text}`) ?? []).flatMap(([call, callSf]) =>
+      call.arguments[index] ? [[call.arguments[index], callSf] as const] : []
+    );
+    if (sites.length > 0) return sites.flatMap(([arg, callSf]) => literalsOf(arg, callSf, unread, imported));
   }
   unread.push(where());
   return [];
@@ -90,8 +127,9 @@ function refusalCodes(
 ): { codes: Map<string, string>; unread: string[] } {
   const codes = new Map<string, string>();
   const unread: string[] = [];
-  for (const [file, source] of files) {
-    const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const sfs = files.map(([file, source]) => ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS));
+  const imported = importedCalls(sfs);
+  for (const sf of sfs) {
     const visit = (node: ts.Node) => {
       if (ts.isObjectLiteralExpression(node)) {
         const prop = (name: string) =>
@@ -100,12 +138,12 @@ function refusalCodes(
         const code = prop("code");
         if (ok && ts.isPropertyAssignment(ok) && ok.initializer.kind === ts.SyntaxKind.FalseKeyword && code) {
           const expr = ts.isPropertyAssignment(code) ? code.initializer : (code as ts.ShorthandPropertyAssignment).name;
-          for (const literal of literalsOf(expr, sf, unread)) codes.set(literal, sf.fileName);
+          for (const literal of literalsOf(expr, sf, unread, imported)) codes.set(literal, sf.fileName);
         }
       }
       if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "payload") {
         if (node.arguments[0] && isRefusalPayload(node)) {
-          for (const literal of literalsOf(node.arguments[0], sf, unread)) codes.set(literal, sf.fileName);
+          for (const literal of literalsOf(node.arguments[0], sf, unread, imported)) codes.set(literal, sf.fileName);
         }
       }
       ts.forEachChild(node, visit);
@@ -125,6 +163,17 @@ test("a reassigned code is unread, and a same-named helper elsewhere is not foll
     ],
   ]);
   assert.deepEqual([...codes.keys()], ["REAL"]);
+  assert.equal(unread.length, 1);
+});
+
+test("an exported helper's parameter is read at every importer's call, and one nobody calls is unread", () => {
+  const { codes, unread } = refusalCodes([
+    ["server/shared/refusal.ts", `export function refuse(code) { return { ok: false, code }; }`],
+    ["server/socket/lobbyIntents.ts", `import { refuse as no } from "../shared/refusal.ts"; function f() { return no("IMPORTED"); }`],
+    ["server/socket/socketRooms.ts", `import { refuse } from "../shared/payload.ts"; function g() { return refuse("ELSEWHERE"); }`],
+    ["server/socket/socketTable.ts", `export function unused(code) { return { ok: false, code }; }`],
+  ]);
+  assert.deepEqual([...codes.keys()], ["IMPORTED"]);
   assert.equal(unread.length, 1);
 });
 
@@ -246,6 +295,8 @@ test("every refusal code the server returns is asserted by a test", () => {
     "ALREADY_FRIENDS",
     "SESSION_REVOKED",
     "AUTH_RATE_LIMITED",
+    "REMATCH_DECLINED",
+    "SEAT_HELD",
   ]) {
     assert.ok(codes.has(known), `the scan no longer finds ${known}, so it is not reading what it claims to`);
   }

@@ -3,7 +3,7 @@ import type { InboundSchemas, IntentReply } from "../../shared/protocol.ts";
 import type { GameSocket as Socket } from "./socketTypes.ts";
 import { z } from "zod";
 import { logger } from "../http/logger.ts";
-import { payload } from "./payload.ts";
+import { refuse as refusal, type Outcome, type Refusal } from "../shared/refusal.ts";
 
 /**
  * Boundary wrapper for socket events: validate the payload, rate limit the
@@ -45,11 +45,12 @@ export interface EventOptions {
   /** Window length in ms (default 10s). */
   windowMs?: number;
   /**
-   * Tells the client about a refusal this wrapper made itself. Defaults to the
-   * namespace's error event; an event whose client listens on a channel of its
-   * own must say so here, or its refusal reaches nothing that acts on it.
+   * Tells the client about a refusal, wrapper-made or returned. Defaults to the
+   * namespace's error event carrying the refusal's notice, when it has one; an
+   * event whose client listens on a channel of its own must say so here, or its
+   * refusal reaches nothing that acts on it.
    */
-  refuse?: (code: "RATE_LIMITED" | "INVALID_PAYLOAD" | "SERVER_ERROR", raw: unknown) => void;
+  refuse?: (refusal: Refusal, raw: unknown) => void;
 }
 
 /**
@@ -137,27 +138,6 @@ export function allowSocketAction(
 }
 
 /**
- * What an intent's acknowledgement carries back.
- *
- * `ok: false` is an answer, not a silence: a client that retries when nothing
- * comes back must be able to tell "the server never heard me" from "the server
- * heard me and said no", or it retries a thing that will never work.
- */
-export type EventOutcome = IntentReply;
-
-/**
- * A handler that returns nothing did the thing. One that turned the intent
- * away returns why.
- *
- * Returning is what makes the refusal reachable: a handler that emitted
- * `game:error` and returned, or that returned in silence because the socket
- * held no room, is indistinguishable from success to the wrapper — and
- * answering `ok: true` there is worse than the silence acknowledgement
- * replaced, because the client stops retrying and tells the player it worked.
- */
-type EventResult = void | EventOutcome;
-
-/**
  * The client's name for one logical intent, the same on every retry of it. A
  * dedupe key only: the handler still judges the intent on its merits.
  */
@@ -177,7 +157,7 @@ export function onEvent<E extends keyof InboundSchemas>(
   socket: Socket,
   event: E,
   schema: InboundSchemas[E],
-  handler: (payload: z.infer<InboundSchemas[E]>, context: EventContext) => EventResult | Promise<EventResult>,
+  handler: (payload: z.infer<InboundSchemas[E]>, context: EventContext) => Outcome | Promise<Outcome>,
   options: EventOptions = {}
 ): void {
   // Unknown until the schema below parses it: the map types what a client should send, not what it did.
@@ -185,20 +165,29 @@ export function onEvent<E extends keyof InboundSchemas>(
     // Socket.IO appends the client's acknowledgement callback as the last
     // argument when there is one, so the payload is not always args[0] alone.
     const ack = typeof args[args.length - 1] === "function"
-      ? (args.pop() as (reply: EventOutcome) => void)
+      ? (args.pop() as (reply: IntentReply) => void)
       : undefined;
     const rawPayload = args[0];
     // Exactly once, whatever the handler does. A client that retries on
     // silence must not be answered twice, and must not be left waiting
     // because a handler threw before saying anything.
     let answered = false;
-    const answer = (reply: EventOutcome) => {
+    const answer = (reply: IntentReply) => {
       if (answered) return;
       answered = true;
       ack?.(reply);
     };
 
-    const refuse = options.refuse ?? ((code) => socket.emit(errorEventFor(event), payload(code)));
+    const tell =
+      options.refuse ??
+      ((r: Refusal) => {
+        if (r.notice) socket.emit(errorEventFor(event), r.notice);
+      });
+    const decline = (r: Refusal) => {
+      tell(r, rawPayload);
+      const { ok, code } = r;
+      answer({ ok, code });
+    };
 
     // One socket's intents run in the order it sent them: a leave sent straight
     // after a create must not run first and find no room to leave.
@@ -210,8 +199,7 @@ export function onEvent<E extends keyof InboundSchemas>(
           // Records its own refusal, once per window rather than per packet.
           !allowSocketAction(socket, event, options.limit, options.windowMs ?? 10_000)
         ) {
-          refuse("RATE_LIMITED", rawPayload);
-          answer({ ok: false, code: "RATE_LIMITED" });
+          decline(refusal("RATE_LIMITED"));
           return;
         }
 
@@ -219,23 +207,24 @@ export function onEvent<E extends keyof InboundSchemas>(
         const intent = intentIdOf(rawPayload);
         if (!parsed.success || !intent.ok) {
           logRefusal(event, socket, "INVALID_PAYLOAD");
-          refuse("INVALID_PAYLOAD", rawPayload);
-          answer({ ok: false, code: "INVALID_PAYLOAD" });
+          decline(refusal("INVALID_PAYLOAD"));
           return;
         }
 
-        const outcome = (await handler(parsed.data, { intentId: intent.intentId })) ?? { ok: true };
-        if (!outcome.ok) {
-          logRefusal(event, socket, outcome.code ?? "UNSPECIFIED", { payload: parsed.data });
+        const outcome = await handler(parsed.data, { intentId: intent.intentId });
+        if (outcome.ok) {
+          answer({ ok: true });
+          return;
         }
-        answer(outcome);
+        logRefusal(event, socket, outcome.code, { payload: parsed.data });
+        decline(outcome);
       } catch (err) {
         logger.error(
           { err, event, userId: socket.data?.userId, code: "SERVER_ERROR" },
           "Socket handler threw — contained"
         );
-        answer({ ok: false, code: "SERVER_ERROR" });
-        refuse("SERVER_ERROR", rawPayload);
+        if (answered) return;
+        decline(refusal("SERVER_ERROR"));
       }
     });
     socket.data.intentQueue = run.catch((err: unknown) => {

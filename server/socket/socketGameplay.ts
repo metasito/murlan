@@ -11,14 +11,14 @@
 // `await`, exactly as it did inline — `game:rejoin` in particular is emitted
 // by the client from its own `connect` handler, and a packet that arrives
 // with no listener attached is dropped.
-import type { SocketServer, GameSocket as Socket } from "./socketTypes.ts";
-import { logger } from "../http/logger.ts";
-import { onEvent } from "./socketSafety.ts";
-import type { EventOutcome } from "./socketSafety.ts";
+import type { HandlerContext } from "./socketTypes.ts";
+import { onEvent, type EventContext } from "./socketSafety.ts";
 import { socketRoomMap } from "../game/gameRoom.ts";
 import { applyOrForward } from "../game/tableRouter.ts";
+import type { TableActionDraft } from "../game/tableActions.ts";
+import type { Outcome } from "../shared/refusal.ts";
 import { seatSocket } from "./seating.ts";
-import { payload } from "./payload.ts";
+import { payload } from "../shared/payload.ts";
 import {
   NoPayloadSchema,
   GamePlaySchema,
@@ -42,13 +42,21 @@ function gameActionLimitFromEnv(): number {
 }
 const GAME_ACTION_RATE_LIMIT = gameActionLimitFromEnv();
 
+type RejoinCode =
+  | "UNAUTHORIZED"
+  | "SEAT_RELEASED"
+  | "NO_LIVE_GAME"
+  | "GAME_NO_LONGER_VALID"
+  | "INVALID_PAYLOAD"
+  | "SERVER_ERROR";
+
 /**
  * What the client is told when a rejoin fails, keyed by the refusal the owning
  * instance gave. `game:rejoin_failed` is the only failure the client's rejoin
  * handling listens for, and `roomId` stays top-level because its stale-reply
  * guard matches on it.
  */
-const REJOIN_FAILURE: Record<string, ReturnType<typeof payload>> = {
+const REJOIN_FAILURE: Record<RejoinCode, ReturnType<typeof payload>> = {
   UNAUTHORIZED: payload("UNAUTHORIZED"),
   SEAT_RELEASED: payload("SEAT_RELEASED"),
   NO_LIVE_GAME: payload("GAME_NOT_FOUND"),
@@ -57,93 +65,43 @@ const REJOIN_FAILURE: Record<string, ReturnType<typeof payload>> = {
   SERVER_ERROR: payload("SERVER_ERROR"),
 };
 
-export interface GameplayHandlerContext {
-  io: SocketServer;
-  socket: Socket;
-  userId: string;
-}
+type DraftBody = TableActionDraft extends infer T
+  ? T extends TableActionDraft
+    ? Omit<T, "roomId" | "userId" | "intentId">
+    : never
+  : never;
 
-export function registerGameplayHandlers({
-  io,
-  socket,
-  userId,
-}: GameplayHandlerContext) {
+export function registerGameplayHandlers({ io, socket, userId }: HandlerContext) {
 
     const rejoinFailed = (code: string, roomId: unknown) => {
-      const failure = REJOIN_FAILURE[code] ?? REJOIN_FAILURE.SERVER_ERROR;
+      const failure = REJOIN_FAILURE[code as RejoinCode] ?? REJOIN_FAILURE.SERVER_ERROR;
       socket.emit("game:rejoin_failed", { ...failure, roomId: typeof roomId === "string" ? roomId : undefined });
     };
 
-    /** The table this socket is at, or the refusal to send back. */
-    const atTable = (): string | null => socketRoomMap.get(socket.id) ?? null;
-
-    onEvent(
-      socket,
-      "game:play",
-      GamePlaySchema,
-      async ({ cardIds }, { intentId }) => {
-        const roomId = atTable();
+    /** Routes the intent to this socket's table, or refuses it when the socket is at none. */
+    const atTable =
+      <P,>(toDraft: (p: P) => DraftBody) =>
+      async (p: P, { intentId }: EventContext): Promise<Outcome> => {
+        const roomId = socketRoomMap.get(socket.id);
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "play", roomId, userId, cardIds, intentId });
-      },
-      { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 }
-    );
+        return applyOrForward(io, { ...toDraft(p), roomId, userId, intentId });
+      };
 
-    onEvent(
-      socket,
-      "game:pass",
-      NoPayloadSchema,
-      async (_payload, { intentId }) => {
-        const roomId = atTable();
-        if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "pass", roomId, userId, intentId });
-      },
-      { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 }
-    );
+    onEvent(socket, "game:play", GamePlaySchema, atTable(({ cardIds }) => ({ kind: "play", cardIds })), { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 });
 
-    onEvent(
-      socket,
-      "game:rematch_vote",
-      NoPayloadSchema,
-      async (_payload, { intentId }) => {
-        const roomId = atTable();
-        if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "rematchVote", roomId, userId, intentId });
-      },
-      { limit: 20, windowMs: 60_000 }
-    );
+    onEvent(socket, "game:pass", NoPayloadSchema, atTable(() => ({ kind: "pass" })), { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 });
 
-    onEvent(
-      socket,
-      "game:end_match_vote",
-      GameEndMatchVoteSchema,
-      async ({ wants }, { intentId }) => {
-        const roomId = atTable();
-        if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "endMatchVote", roomId, userId, wants, intentId });
-      },
-      { limit: 20, windowMs: 60_000 }
-    );
+    onEvent(socket, "game:rematch_vote", NoPayloadSchema, atTable(() => ({ kind: "rematchVote" })), { limit: 20, windowMs: 60_000 });
+
+    onEvent(socket, "game:end_match_vote", GameEndMatchVoteSchema, atTable(({ wants }) => ({ kind: "endMatchVote", wants })), { limit: 20, windowMs: 60_000 });
 
     onEvent(
       socket,
       "game:rejoin",
       GameRejoinSchema,
       async ({ roomId }) => {
-        // onEvent's catch turns a throw into a generic `game:error`, which the
-        // client's rejoin-failed handling never listens for. Every failure in
-        // here must resolve as game:rejoin_failed instead.
-        let outcome: EventOutcome;
-        try {
-          outcome = await applyOrForward(io, { kind: "rejoin", roomId, userId });
-        } catch (err) {
-          logger.error({ err, roomId, userId }, "game:rejoin failed");
-          outcome = { ok: false, code: "SERVER_ERROR" };
-        }
-        if (!outcome.ok) {
-          rejoinFailed(outcome.code ?? "", roomId);
-          return outcome;
-        }
+        const outcome = await applyOrForward(io, { kind: "rejoin", roomId, userId });
+        if (!outcome.ok) return outcome;
         // Only once the table has accepted them: a socket joined to a room it
         // holds no seat at would receive every broadcast for that table.
         await seatSocket(io, socket, userId, roomId);
@@ -152,31 +110,13 @@ export function registerGameplayHandlers({
       {
         limit: 20,
         windowMs: 60_000,
-        refuse: (code, raw) => rejoinFailed(code, (raw as { roomId?: unknown } | undefined)?.roomId),
+        // Every failure, a thrown handler's SERVER_ERROR included, resolves on
+        // the one channel the client's rejoin handling listens on.
+        refuse: (refusal, raw) => rejoinFailed(refusal.code, (raw as { roomId?: unknown } | undefined)?.roomId),
       }
     );
 
-    onEvent(
-      socket,
-      "game:reaction",
-      GameReactionSchema,
-      async ({ emoji }, { intentId }) => {
-        const roomId = atTable();
-        if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "reaction", roomId, userId, emoji, intentId });
-      },
-      { limit: 8, windowMs: 10_000 }
-    );
+    onEvent(socket, "game:reaction", GameReactionSchema, atTable(({ emoji }) => ({ kind: "reaction", emoji })), { limit: 8, windowMs: 10_000 });
 
-    onEvent(
-      socket,
-      "game:exchange_give_card",
-      GameExchangeGiveCardSchema,
-      async ({ cardId }, { intentId }) => {
-        const roomId = atTable();
-        if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "exchange", roomId, userId, cardId, intentId });
-      },
-      { limit: 30, windowMs: 60_000 }
-    );
+    onEvent(socket, "game:exchange_give_card", GameExchangeGiveCardSchema, atTable(({ cardId }) => ({ kind: "exchange", cardId })), { limit: 30, windowMs: 60_000 });
 }
