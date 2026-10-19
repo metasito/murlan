@@ -52,7 +52,7 @@ interface Moment {
   /** In the chapter's time, which both sides label their frames with. */
   checkpoints: number[];
   /** Brings the app to the instant before its onset; the onset is the first traced frame `appOnset` accepts. */
-  appTrigger: (page: Page, baseURL: string) => Promise<void>;
+  appTrigger: (page: Page, baseURL: string, feltDrawn: () => Promise<void>) => Promise<void>;
   appOnset: (frame: TraceFrame) => boolean;
   mode: "determinism" | "parity";
   /** Determinism mode: exactly the fields each side must move over the window; every other must hold still. */
@@ -140,10 +140,10 @@ const dealTable = (page: Page, baseURL: string) => {
 /** The mockup's `bomb`: luan's sevens on the pile, besnik across on move with four sixes. */
 const BOMB = ["6_spades", "6_hearts", "6_diamonds", "6_clubs", "3_clubs", "4_diamonds"];
 const SEVENS = ["7_hearts", "7_diamonds"];
-const bombTable = (page: Page, baseURL: string) => {
+const bombTable = (page: Page, baseURL: string, feltDrawn: () => Promise<void>) => {
   const rest = createDeck().map((c) => c.id).filter((id) => !BOMB.includes(id) && !SEVENS.includes(id));
   const [you, luan, gent] = [0, 1, 2].map((s) => rest.filter((_, i) => i % 3 === s).slice(0, 13));
-  return pileTable(page, baseURL, offlineSave({ seats: 4, turn: 2, scores: MOCKUP_SCORES, holding: [you, gent, BOMB, luan] }), SEVENS, 3);
+  return pileTable(page, baseURL, offlineSave({ seats: 4, turn: 2, scores: MOCKUP_SCORES, holding: [you, gent, BOMB, luan] }), SEVENS, 3, feltDrawn);
 };
 
 /** The app's seats by the mockup's names: luan right, besnik across, gent left. */
@@ -157,42 +157,43 @@ const outInOrder = (save: OfflineSave, ...seats: number[]) => {
 };
 
 /** The mockup's `pwin`: you and besnik out, luan on move with his last card, the 2c, over gent's 9h. */
-const pwinTable = (page: Page, baseURL: string) => {
+const pwinTable = (page: Page, baseURL: string, feltDrawn: () => Promise<void>) => {
   const save = offlineSave({ seats: 4, turn: SEAT.luan, scores: scoresBy({ you: 19, besnik: 17, luan: 14, gent: 13 }), holding: [
     [], ["2_clubs"], [], ["3_clubs", "4_diamonds", "5_spades", "6_hearts"],
   ] });
   outInOrder(save, SEAT.you, SEAT.besnik);
-  return pileTable(page, baseURL, save, ["9_hearts"], SEAT.gent);
+  return pileTable(page, baseURL, save, ["9_hearts"], SEAT.gent, feltDrawn);
 };
 
 /** The mockup's `plose`: besnik and luan out, your last card the Ks, over gent's Jh. */
-const ploseTable = (page: Page, baseURL: string) => {
+const ploseTable = (page: Page, baseURL: string, feltDrawn: () => Promise<void>) => {
   const save = offlineSave({ seats: 4, turn: SEAT.you, scores: scoresBy({ you: 19, besnik: 19, luan: 14, gent: 13 }), holding: [
     ["K_spades"], [], [], ["3_clubs", "4_diamonds", "5_spades"],
   ] });
   outInOrder(save, SEAT.besnik, SEAT.luan);
-  return pileTable(page, baseURL, save, ["J_hearts"], SEAT.gent);
+  return pileTable(page, baseURL, save, ["J_hearts"], SEAT.gent, feltDrawn);
 };
 
 /** The mockup's `mwin`: you and gent out, besnik on move with his last card, the Kd, over luan's 8c. */
-const mwinTable = (page: Page, baseURL: string) => {
+const mwinTable = (page: Page, baseURL: string, feltDrawn: () => Promise<void>) => {
   const save = offlineSave({ seats: 4, turn: SEAT.besnik, scores: scoresBy({ you: 15, besnik: 16, luan: 11, gent: 10 }), holding: [
     [], ["3_clubs", "4_diamonds", "5_spades", "6_hearts", "9_spades"], ["K_diamonds"], [],
   ] });
   outInOrder(save, SEAT.you, SEAT.gent);
-  return pileTable(page, baseURL, save, ["8_clubs"], SEAT.luan);
+  return pileTable(page, baseURL, save, ["8_clubs"], SEAT.luan, feltDrawn);
 };
 
 /** The mockup's `mlose`: luan and besnik out, gent on move with his last card, the Ac, over your 7c. */
-const mloseTable = (page: Page, baseURL: string) => {
+const mloseTable = (page: Page, baseURL: string, feltDrawn: () => Promise<void>) => {
   const save = offlineSave({ seats: 4, turn: SEAT.gent, scores: scoresBy({ you: 18, besnik: 17, luan: 11, gent: 12 }), holding: [
     ["4_diamonds", "8_diamonds", "10_hearts", "Q_diamonds"], [], [], ["A_clubs"],
   ] });
   outInOrder(save, SEAT.luan, SEAT.besnik);
-  return pileTable(page, baseURL, save, ["7_clubs"], SEAT.you);
+  return pileTable(page, baseURL, save, ["7_clubs"], SEAT.you, feltDrawn);
 };
 
-const pileTable = async (page: Page, baseURL: string, save: OfflineSave, pile: string[], by: number) => {
+/** The chapter opens on the drawn felt: an action Skia's load would outlast cannot be taken in the app's pre-roll. */
+const pileTable = async (page: Page, baseURL: string, save: OfflineSave, pile: string[], by: number, feltDrawn: () => Promise<void>) => {
   Object.assign(save.gameState, { lastPlayedCombination: buildCombination(cards(pile)), lastPlayedBy: by });
   await seatTable(page, baseURL, save);
   await stepUntil(
@@ -206,6 +207,7 @@ const pileTable = async (page: Page, baseURL: string, save: OfflineSave, pile: s
       ),
     "the restored pile at rest"
   );
+  await feltDrawn();
   await page.evaluate(() => (window as unknown as { murlanTrace: { start(): void } }).murlanTrace.start());
 };
 
@@ -680,6 +682,7 @@ async function strip(
   };
   const cdp = await page.context().newCDPSession(page);
   const due = [...(m.actions ?? [])];
+  expect(due.filter((a) => a.atMs < startMs).map((a) => a.atMs), `the actions the ${startMs} ms pre-roll would delay`).toEqual([]);
   for (let k = 0; startMs + k * STEP_MS <= m.windowMs; k++) {
     const t = startMs + k * STEP_MS;
     // Each side is at t - STEP_MS here, so an action is taken at its own atMs, not up to a frame before it.
@@ -818,7 +821,10 @@ async function openAppSide(browser: Browser, baseURL: string, m: Moment, variant
     headers: { "access-control-allow-origin": "*" },
   }));
   const started = Date.now();
-  await m.appTrigger(page, baseURL);
+  const feltDrawn = async () => {
+    if (variant === "skia") await skiaOnset(page, await traced(page, m.appOnset, `the app's onset of ${m.key}`), loading);
+  };
+  await m.appTrigger(page, baseURL, feltDrawn);
   const mounted = await traced(page, m.appOnset, `the app's onset of ${m.key}`);
   const onset = variant === "skia" ? await skiaOnset(page, mounted, loading) : mounted;
   const preRollMs = Math.ceil((onset - mounted) / STEP_MS) * STEP_MS;
