@@ -112,6 +112,8 @@ const RECONCILED_ON_CONNECT = [
   ["/api/friends/invites"],
 ] as const;
 
+const askWhoIsOnline = (socket: Socket) => socket.emit("friend:get_online_list");
+
 const NO_HIDDEN_INVITES: ReadonlySet<string> = new Set();
 // One empty list, not `= []`: a fresh default every render would wake every invites reader.
 const NO_INVITE_ROWS: InviteRow[] = [];
@@ -314,7 +316,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     const onConnect = () => {
       setSessionReplaced(null);
       retryAttemptRef.current = 0;
-      socket.emit("friend:get_online_list");
+      askWhoIsOnline(socket);
       // Anything that happened while the socket was down was pushed to nobody:
       // `emitToUser` drops the event when the recipient has no socket, and no
       // second attempt is ever made. The rows are the truth, so connecting is
@@ -393,7 +395,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       qc.invalidateQueries({ queryKey: ["/api/friends"] });
       qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
       qc.invalidateQueries({ queryKey: ["/api/friends/sent"] });
-      socket.emit("friend:get_online_list");
+      askWhoIsOnline(socket);
       showNotification({
         type: "friend_accepted",
         title: t("notifications.friendAcceptedTitle"),
@@ -480,7 +482,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     socket.on("friend:error", onFriendError);
     socket.on("socket:error", onSocketError);
 
-    if (socket.connected) socket.emit("friend:get_online_list");
+    if (socket.connected) askWhoIsOnline(socket);
 
     return () => {
       bound = false;
@@ -504,7 +506,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   }, [userId, logout, qc, showNotification, unhideGameInvite]);
 
   const refresh = useCallback(() => {
-    socket?.emit("friend:get_online_list");
+    if (socket) askWhoIsOnline(socket);
   }, [socket]);
   const presence = useMemo(() => ({ onlineIds, refresh }), [onlineIds, refresh]);
 
