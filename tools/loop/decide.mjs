@@ -62,15 +62,17 @@ function apiFailure(run) {
   return s == null && run.apiErrorCode === "server_error" ? "unreachable" : null;
 }
 
-const { WAIT } = LIMITS;
-
-/** @param {{blocked?: boolean, blockedUntil?: number, done?: boolean}} run */
-function waitFor({ blocked, blockedUntil, done }, now = Date.now()) {
+/**
+ * @param {{blocked?: boolean, blockedUntil?: number, done?: boolean}} run
+ * @param {number} now
+ * @param {typeof LIMITS.WAIT} wait
+ */
+function waitFor({ blocked, blockedUntil, done }, now, wait) {
   if (!blocked || done) return 0;
-  if (!blockedUntil) return WAIT.FLOOR;
+  if (!blockedUntil) return wait.FLOOR;
   const gap = blockedUntil - now;
   if (gap <= 0) return 0;
-  return Math.min(gap + WAIT.MARGIN, WAIT.CAP);
+  return Math.min(gap + wait.MARGIN, wait.CAP);
 }
 
 /**
@@ -81,11 +83,13 @@ function waitFor({ blocked, blockedUntil, done }, now = Date.now()) {
  * and cruel when it did fire, parking one ticket for a limit it had no part in.
  *
  * @param {{waits: number, blocked?: boolean, blockedUntil?: number, done?: boolean}} run
+ * @param {number} now
+ * @param {typeof LIMITS.WAIT} wait
  * @returns {{action: "proceed"|"wait"|"give-up", hold: number, waits: number, why?: string}}
  */
-function afterRefusal({ waits, blocked, blockedUntil, done }, now = Date.now()) {
+function afterRefusal({ waits, blocked, blockedUntil, done }, now, wait) {
   if (!blocked || done) return { action: "proceed", hold: 0, waits: 0 };
-  if (waits >= WAIT.TRIES) {
+  if (waits >= wait.TRIES) {
     return {
       action: "give-up",
       hold: 0,
@@ -96,7 +100,7 @@ function afterRefusal({ waits, blocked, blockedUntil, done }, now = Date.now()) 
   // Floored, always: a reset timestamp already in the past — clock skew, a stale window, a
   // seven-day limit reported with an expired short-window reset — makes `waitFor` answer 0, and a
   // hold of 0 is a knob with no floor, spawning back to back until the ceiling stops it.
-  const hold = Math.max(waitFor({ blocked, blockedUntil, done }, now), WAIT.FLOOR);
+  const hold = Math.max(waitFor({ blocked, blockedUntil, done }, now, wait), wait.FLOOR);
   return { action: "wait", hold, waits: waits + 1 };
 }
 
@@ -468,7 +472,7 @@ function tallied(action, { loop, limits, step, now }) {
       }
       if (action.wait === "undeclared") return { ...action, loop: { ...unheld, pinned: action.n } };
       if (action.wait === "usage") {
-        const refused = afterRefusal({ waits, blocked: true, blockedUntil: action.until }, now);
+        const refused = afterRefusal({ waits, blocked: true, blockedUntil: action.until }, now ?? Date.now(), wait);
         if (refused.action === "give-up") return stop(refused.why, unheld);
         return { ...action, hold: refused.hold, loop: { ...unheld, waits: refused.waits } };
       }

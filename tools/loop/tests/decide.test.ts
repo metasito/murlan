@@ -440,6 +440,16 @@ const matches = (got: Record<string, unknown>, want: Record<string, unknown>, at
 
 for (const [name, input, want] of ROWS) test(name, () => matches("world" in input ? choose(input as never) : decide(input), want));
 
+test("a usage window is held to the injected WAIT, not the module's", () => {
+  const small = { ...LIMITS, WAIT: { CAP: 5_000, FLOOR: 1_000, MARGIN: 10, TRIES: 2 } };
+  const refused = (blockedUntil: number, loop = fresh) =>
+    decide({ ...session({ run: silent({ result: null, blocked: true, blockedUntil }) }), limits: small, loop });
+  assert.equal(refused(NOW + 3_600_000).hold, 5_000, "the cap");
+  assert.equal(refused(NOW + 100).hold, 1_000, "the floor");
+  assert.equal(refused(NOW + 2_000).hold, 2_010, "the margin");
+  assert.equal(refused(NOW + 2_000, { ...fresh, waits: 2 }).kind, "stop", "the tries");
+});
+
 test("replays 2026-09-21/22: every session starts where the ledger before it pointed", () => {
   const rows = ledgerFixture("ledger-2026-09-21.jsonl");
   const settle = { phase: "G", ci: { pushed: true } };
