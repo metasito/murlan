@@ -8,25 +8,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import {
-  cardScale,
-  CARD_W,
-  CARD_H,
-  CARD_BACK_W,
-  CARD_BACK_H,
-  HAND_NEAR_RATIO,
-  HAND_SCALE,
-  HAND_SCALE_ON_TURN,
-} from "../../components/cardFaceModel.ts";
+import { cardScale, handCardSize } from "../../components/cardFaceModel.ts";
 import { computeTableFrame } from "../../components/tableFrame.ts";
-import { computeHandLayout, hitWidth, slotForCard } from "../../components/handLayout.ts";
-import { HAND_ARC, solveArc } from "../../components/tableArc.ts";
-import { HAND_CROP, HAND_ZONE_H, exchangeArrivalRise, handRowHeadroom } from "../../components/seatLayout.ts";
+import { entryOffset, layoutHandRow } from "../../components/handLayout.ts";
 import { PHONES } from "../e2e/helpers/phones.ts";
 import { dealCards } from "../../lib/game/gameEngine.ts";
 
-const SELECT_TILT = -3;
-const HELD_SCALE = 1.06;
 const PILE = { dx: 37, dy: -110 };
 
 interface Case {
@@ -69,77 +56,41 @@ function frameOf(name: string) {
 
 function row(c: Case) {
   const { scale, frame } = frameOf(c.phone);
-  const n = c.n;
-  const parting = c.held === undefined ? c.arriving : undefined;
-  const slotCount = parting === undefined ? n : n + 1;
-  const cs = scale * (c.onTurn ? HAND_SCALE_ON_TURN : HAND_SCALE);
-  const room = c.onTurn ? frame.handRoomW * HAND_NEAR_RATIO : frame.handRoomW;
-  const cardW = c.faceDown ? CARD_BACK_W(cs) : CARD_W(cs);
-  const cardH = c.faceDown ? CARD_BACK_H(cs) : CARD_H(cs);
-  const crop = cardH * HAND_CROP;
-  const visibleH = cardH - crop;
-  const availW = frame.handAvailW;
-  const bottomPad = frame.bottomPad;
-  const { step, totalW, scrollable } = computeHandLayout(slotCount, room, cardW, availW);
-  const rowW = Math.min(totalW, availW);
-  const overhang = Math.max(0, totalW - availW);
-  const solve = (count: number) => solveArc(count, { budget: HAND_ARC, cardW, cardH, scale: cs, room: totalW, step });
-  const full = solve(slotCount);
-  const arcRise = full.box.h - cardH;
-  const arrivalRise = exchangeArrivalRise(CARD_H(scale * HAND_SCALE), bottomPad, arcRise / 2);
-  const maxRot = full.cards.reduce((m, at) => Math.max(m, Math.abs(at.rot)), 0);
-  const tiltRad = ((maxRot + Math.abs(SELECT_TILT)) * Math.PI) / 180;
-  const tiltOverhang = (cardW * Math.sin(tiltRad) + cardH * Math.cos(tiltRad) - cardH) / 2;
-  const fanRise = arcRise + handRowHeadroom(cardH);
-  const topClearance = fanRise + tiltOverhang;
-  const heldCeiling = crop - fanRise + (cardH * (HELD_SCALE - 1)) / 2;
-  const ids = Array.from({ length: n }, (_, i) => i);
-  const rest = c.held === undefined ? ids : ids.filter((i) => i !== c.held);
-  const arc = c.held === undefined ? full.cards : solve(rest.length).cards;
-  const rowMid = (scrollable ? totalW : rowW) / 2;
-  const closed = parting === undefined ? full : solve(n);
-  const zoneH = HAND_ZONE_H(CARD_H(scale * HAND_SCALE), bottomPad);
-  const rowCentreY = zoneH / 2 - bottomPad - (visibleH + arcRise) / 2;
-  const rowBase = rowCentreY + visibleH / 2;
-  const cards = rest.map((j, i) => {
-    const slot = slotForCard(i, parting);
-    const at = arc[slot] ?? arc[arc.length - 1];
-    const home = closed.cards[j] ?? at;
-    return {
-      left: rowMid + home.x,
-      bottom: -crop - home.y,
-      rot: home.rot,
-      shift: at.x - home.x,
-      restX: home.x + cardW / 2,
-      restY: rowBase + crop + home.y - cardH / 2,
-      hitW: hitWidth(slot, arc.length, step, cardW),
-      stripTop: visibleH + crop + home.y - cardH,
-      dealFromX: -home.x + PILE.dx,
-      dealRise: cardH / 2 - crop - home.y - arrivalRise + PILE.dy,
-    };
+  const ids = Array.from({ length: c.n }, (_, i) => `c${i}`);
+  const r = layoutHandRow({
+    ids,
+    arriving: c.arriving,
+    held: c.held === undefined ? null : ids[c.held],
+    size: handCardSize(scale, c.onTurn, c.faceDown),
+    roomW: frame.handRoomW,
+    availW: frame.handAvailW,
+    bottomPad: frame.bottomPad,
   });
   return {
-    cardScale: cs,
-    cardW,
-    cardH,
-    step,
-    totalW,
-    scrollable,
-    width: scrollable ? totalW : rowW,
-    panLimit: overhang / 2,
-    visibleH,
-    crop,
-    arcRise,
-    tiltOverhang,
-    topClearance,
-    heldCeiling,
-    rowCentreY,
-    rowBase,
-    cards,
-    slots: full.cards.map((at) => ({ x: rowMid + at.x, y: crop + at.y, rot: at.rot })),
+    cardScale: r.size.scale,
+    cardW: r.size.w,
+    cardH: r.size.h,
+    step: r.step,
+    totalW: r.totalW,
+    scrollable: r.scrollable,
+    width: r.width,
+    panLimit: r.panLimit,
+    visibleH: r.visibleH,
+    crop: r.crop,
+    arcRise: r.arcRise,
+    tiltOverhang: r.tiltOverhang,
+    topClearance: r.topClearance,
+    heldCeiling: r.heldCeiling,
+    rowCentreY: r.base - r.visibleH / 2,
+    rowBase: r.base,
+    cards: r.cards.map((p, i) => {
+      const dealt = entryOffset(r, p, PILE);
+      const { left, bottom, rot, shift, restX, restY, hitW } = p;
+      return { left, bottom, rot, shift, restX, restY, hitW, stripTop: r.strips.tops[i], dealFromX: dealt.dx, dealRise: dealt.dy };
+    }),
+    slots: r.slots,
   };
 }
-
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const PIN = JSON.parse(readFileSync(path.join(repoRoot, "tests/fixtures/handRow.json"), "utf8")) as {

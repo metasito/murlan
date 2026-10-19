@@ -17,7 +17,6 @@ import Animated, {
   useSharedValue,
   withSpring,
   withTiming,
-  withDelay,
   withSequence,
   cancelAnimation,
   Easing,
@@ -30,25 +29,23 @@ import { CardGlow, Colors, Layer, Motion, motionMs, Radius, Scrim, Shadow, Spaci
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/game/gameEngine";
-import { computeHandLayout, hitWidth, slotForCard } from "@/components/handLayout";
-import { dropIndex, lendBack, stripAt } from "@/components/handOrder";
+import {
+  HELD_SCALE,
+  SELECT_TILT,
+  cardUnder,
+  entryOffset,
+  layoutHandRow,
+  restingOrigin,
+  type CardPlace,
+} from "@/components/handLayout";
+import { dropIndex, lendBack } from "@/components/handOrder";
+import { byId, propsEqualExcept, shallowEqual } from "@/lib/memo";
 import type { HandSelection } from "./useSelection";
 import type { SettledSelection } from "./selectionLeaves";
-import { HAND_ARC, solveArc } from "@/components/tableArc";
 import { DEAL_FLIGHT_MS, dealLeaveMs } from "@/lib/game/dealTimeline";
 import { dealEase, handDealArc } from "@/components/table/dealPose";
-import { HAND_CROP, HAND_ZONE_H, exchangeArrivalRise, handRowHeadroom } from "@/components/seatLayout";
-import {
-  CARD_W,
-  CARD_H,
-  CARD_BACK_W,
-  CARD_BACK_H,
-  cardRadius,
-  FIELD_SCALE,
-  HAND_NEAR_RATIO,
-  HAND_SCALE,
-  HAND_SCALE_ON_TURN,
-} from "@/components/cardFaceModel";
+import { handRowHeadroom } from "@/components/seatLayout";
+import { CARD_W, cardRadius, FIELD_SCALE, handCardSize, type HandCardSize } from "@/components/cardFaceModel";
 import type { CardFrom } from "@/components/flightPose";
 import { readHandArrival } from "@/components/flightPhysics";
 import type { ExchangeStages } from "@/components/table/exchangeModel";
@@ -90,12 +87,10 @@ export function useHandArrival(input: {
 // caller passes one unchanged reference for every card and CardItem binds its
 // own id once. CardView then sees a new `onActivate` only when this card's id or
 // the callback changes — not when some other card's selection does.
-// How far a selected card tips as it is picked up. The rotation is what stops
-// the lift reading as a flat slide; the lift itself is `handRowHeadroom`, a
+// A selected card tips as it is picked up (`SELECT_TILT`): the rotation is what
+// stops the lift reading as a flat slide. The lift itself is `handRowHeadroom`, a
 // share of the card, so the row's reserved headroom cannot fall short of it.
-const SELECT_TILT = -3;
-const DEAL_DURATION_MS = 500;
-const DEAL_EASING = Easing.bezier(0.2, 0.85, 0.3, 1);
+const DESCEND_EASING = Easing.bezier(0.2, 0.85, 0.3, 1);
 // The exchange's two states. Colour cannot be the only channel that carries
 // them, and it is not: the ungiveable card recedes under a veil, which is
 // luminance and survives a monochrome screen, while the giveable one glows,
@@ -150,7 +145,6 @@ const DRAG_SLOP = 10;
 const ANY_PRESS_MS = 2 ** 31 - 1;
 // Off the fan rather than up in the air: the card stays where it came from and
 // reads as one being picked out of a hand still being held.
-const HELD_SCALE = 1.06;
 const HELD_RISE = 8;
 /** The gap opens by a whole card — unmissable, and the hand's centre holds still. */
 const GAP_CARDS = 1;
@@ -173,15 +167,20 @@ const GIVEABLE_HALO_PAD = 2;
  */
 const HELD_Z = Layer.held;
 
+const NO_OFFSET = { dx: 0, dy: 0 };
+
 interface CardItemProps {
   card: Card;
   /** The selection, which this card's accessible state follows by its own membership. */
   store: SettledSelection;
-  left: number;
-  /** How far the card's own bottom sits below the row's, from the arc. */
-  bottom: number;
-  /** The card's own tilt on the arc, in degrees. */
-  arcRot: number;
+  /** Where the row puts it, the shift to where it is drawn included: a resize carries the card in from the last one. */
+  place: CardPlace;
+  /**
+   * The box CardView draws at `size.scale`. A spectated hand draws backs, which are their own
+   * aspect, and the row's arc is solved against whichever of the two CardView will draw.
+   */
+  size: HandCardSize;
+  entry: CardEntry;
   onActivate: (id: string) => void;
   /** The selection on the UI thread, which the lift, tilt and glow follow. */
   shown: DerivedValue<string[]>;
@@ -199,18 +198,6 @@ interface CardItemProps {
   giveable?: boolean;
   /** What a tap does, when it is not "play this card". */
   hint?: string;
-  /** ms to wait before this card descends, or -1 for none. */
-  dealDelay: number;
-  /** Read once, at mount, like `dealDelay`. */
-  deal?: CardDeal;
-  /** Horizontal distance back to where the card flies in from. */
-  dealFromX: number;
-  /** The table's own scale, times HAND_SCALE — this hand's card size. */
-  cardScale: number;
-  /** Vertical distance back to where the card flies in from. */
-  dealRise: number;
-  /** The strip of this card a tap can reach — the rest is under its neighbour. */
-  hitW: number;
   /**
    * Set only on the card the opening play must include, so a device flow can
    * name it instead of counting to it. Maestro's `index` sorts by position, and
@@ -218,18 +205,6 @@ interface CardItemProps {
    * sort it last (#757).
    */
   isStartCard: boolean;
-  /**
-   * The card's own box. Passed in rather than derived from `cardScale`: a
-   * spectated hand draws backs, which are their own aspect, and the row's arc
-   * is solved against whichever of the two CardView will actually draw.
-   */
-  cardW: number;
-  cardH: number;
-  /** Where the card's centre rests, off the hand zone's centre: a resize carries the card in from the last one. */
-  restX: number;
-  restY: number;
-  /** How far the gap under a held card pushes this one aside. */
-  shiftX: number;
   /** The drag's discrete equivalents, for assistive technology (WCAG 2.5.7). */
   a11yActions?: { name: string; label?: string }[];
   /** Bound to this card's own id, the way `onPress` is. */
@@ -248,6 +223,13 @@ interface DrawnCard { liftY: SharedValue<number>; tilt: SharedValue<number>; shi
 /** A card dealt from the pile on the deal's clock, `onDealt` given its landing point in design points. */
 interface CardDeal { clock: SharedValue<number>; leaveMs: number; onDealt: (x: number, y: number) => void }
 
+/**
+ * How a card comes into the row. `dx`/`dy` lead back to where it comes from, and follow the row.
+ * `deal` and `descends` are read once, at mount: the deal is disarmed one render after the hand
+ * appears, while its cards are still flying in.
+ */
+interface CardEntry { dx: number; dy: number; deal?: CardDeal; descends: boolean }
+
 /** The deal under way, on its own clock: `pile` is where it flies from, off the hand zone's centre. */
 export interface HandDeal { offsetMs: number; clock: SharedValue<number>; pile: { dx: number; dy: number }; onDealt: (x: number, y: number) => void }
 
@@ -260,26 +242,15 @@ interface HandRects {
 function CardItemBase({
   card,
   store,
-  left,
-  bottom,
-  arcRot,
+  place: at,
+  size,
+  entry,
   onActivate,
   shown,
   pressed,
   disabled,
   zIndex,
-  dealDelay,
-  deal,
-  dealFromX,
-  cardScale,
-  dealRise,
-  hitW,
   isStartCard,
-  cardW,
-  cardH,
-  restX,
-  restY,
-  shiftX,
   faceDown = false,
   giveable,
   hint,
@@ -290,6 +261,9 @@ function CardItemBase({
   hidden,
   rects,
 }: CardItemProps) {
+  const { left, bottom, rot: arcRot, shift: shiftX, hitW, restX, restY } = at;
+  const { w: cardW, h: cardH } = size;
+  const { dx: dealFromX, dy: dealRise } = entry;
   const reduceMotion = usePrefersReducedMotion();
   const halo = useSharedValue(0);
   useEffect(() => {
@@ -308,12 +282,9 @@ function CardItemBase({
   const tilt = useSharedValue(0);
   const glow = useSharedValue(0);
   const exchangeState = useSharedValue(0);
-  const dealing = useSharedValue(dealDelay >= 0 && !reduceMotion ? 1 : 0);
-  // The stagger is disarmed one render after the hand appears, so `dealDelay`
-  // becomes -1 while this card is still flying in. The deal owes its timing to
-  // the value the card mounted with.
-  const dealDelayRef = useRef(dealDelay);
-  const [mountedDeal] = useState(deal);
+  const [mounted] = useState(entry);
+  const dealing = useSharedValue(mounted.descends && !reduceMotion ? 1 : 0);
+  const mountedDeal = mounted.deal;
   // Reduced motion ends the deal's clock, so a card still waiting on it would never be shown.
   const dealt = reduceMotion ? undefined : mountedDeal;
   const dealClock = dealt?.clock;
@@ -330,11 +301,7 @@ function CardItemBase({
 
   useEffect(() => {
     if (dealing.value === 0) return;
-    dealing.value = withDelay(
-      dealDelayRef.current,
-      withTiming(0, { duration: DEAL_DURATION_MS, easing: DEAL_EASING }),
-      ReduceMotion.System
-    );
+    dealing.value = withTiming(0, { duration: Motion.exchange.descend, easing: DESCEND_EASING, reduceMotion: ReduceMotion.System });
   }, [dealing]);
 
   const press = useSharedValue(0);
@@ -538,7 +505,7 @@ function CardItemBase({
         onActivate={handleActivate}
         disabled={disabled}
         faceDown={faceDown}
-        scale={cardScale}
+        scale={size.scale}
         rectKey={`hand:${cardId}`}
         rects={ownRects}
         hitWidth={hitW}
@@ -560,45 +527,13 @@ function CardItemBase({
   );
 }
 
-/**
- * Compares the card by id for the same reason CardView does: an incoming
- * `game:state` rebuilds every card object, and `dealDelay` and `deal` are deliberately
- * excluded because the card reads them once at mount, so a
- * later change to it must not remount the card mid-flight.
- */
-export function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean {
-  return (
-    a.card.id === b.card.id &&
-    a.store === b.store &&
-    a.left === b.left &&
-    a.bottom === b.bottom &&
-    a.arcRot === b.arcRot &&
-    a.onActivate === b.onActivate &&
-    a.shown === b.shown &&
-    a.pressed === b.pressed &&
-    a.disabled === b.disabled &&
-    a.zIndex === b.zIndex &&
-    a.faceDown === b.faceDown &&
-    a.giveable === b.giveable &&
-    a.hint === b.hint &&
-    a.dealFromX === b.dealFromX &&
-    a.cardScale === b.cardScale &&
-    a.dealRise === b.dealRise &&
-    a.hitW === b.hitW &&
-    a.isStartCard === b.isStartCard &&
-    a.cardW === b.cardW &&
-    a.cardH === b.cardH &&
-    a.restX === b.restX &&
-    a.restY === b.restY &&
-    a.shiftX === b.shiftX &&
-    a.a11yActions === b.a11yActions &&
-    a.onMove === b.onMove &&
-    a.onDrawn === b.onDrawn &&
-    a.received === b.received &&
-    a.hidden === b.hidden &&
-    a.rects === b.rects
-  );
-}
+/** The card by id, as CardView compares it: every `game:state` rebuilds every card object. */
+export const cardItemPropsEqual = propsEqualExcept<CardItemProps>({
+  card: byId,
+  place: shallowEqual,
+  size: shallowEqual,
+  entry: (a, b) => a.dx === b.dx && a.dy === b.dy,
+});
 
 const CardItem = React.memo(CardItemBase, cardItemPropsEqual);
 CardItem.displayName = "CardItem";
@@ -739,31 +674,10 @@ export const StraightHand = React.memo(function StraightHand({
   // for an arriving card only when nothing is held, and the layout is solved
   // above that section.
   const [heldId, setHeldId] = useState<string | null>(null);
-  // A drag already under way owns the row: it solves the arc for the hand
-  // *without* the card the finger holds, and a slot held open for an arrival on
-  // top of that is two index spaces at once. The caller stops offering
-  // `onReorder` when a card is in the air, but a gesture already in progress
-  // keeps its held card for at least one render past that.
-  const parting = heldId === null ? arrivingIndex : undefined;
-  /** Slots the row is stepped for — the cards it draws, plus the one arriving. */
-  const slotCount = parting === undefined ? n : n + 1;
-  const slotOf = (i: number) => slotForCard(i, parting);
   const onTurn = isMyTurn === true;
-  // Bigger cards *and* the same fraction more air between them: the share the
-  // row aims at grows with the card, so the fan opens rather than just
-  // overlapping harder at a larger size.
-  const cardScale = scale * (onTurn ? HAND_SCALE_ON_TURN : HAND_SCALE);
-  const room = onTurn ? roomW * HAND_NEAR_RATIO : roomW;
-  // A spectated hand draws backs (CardItem passes faceDown straight to
-  // CardView), which are their own narrower aspect — the row's own layout
-  // math has to size against the same dimensions CardView actually draws.
-  const cardW = faceDown ? CARD_BACK_W(cardScale) : CARD_W(cardScale);
-  const cardH = faceDown ? CARD_BACK_H(cardScale) : CARD_H(cardScale);
-  // The bottom edge crops the card; only the redundant upside-down index at
-  // its foot is lost, and the row keeps the height that buys for the table.
-  const crop = cardH * HAND_CROP;
-  const visibleH = cardH - crop;
-  const pile = deal?.pile ?? { dx: 0, dy: 0 };
+  const size = useMemo(() => handCardSize(scale, onTurn, faceDown), [scale, onTurn, faceDown]);
+  const { w: cardW, h: cardH } = size;
+  const pile = deal?.pile ?? NO_OFFSET;
   const drawnRef = useRef(new Map<string, DrawnCard>());
   const onDrawn = useCallback((id: string, d: DrawnCard) => void drawnRef.current.set(id, d), []);
   const giveableSet = useMemo(
@@ -782,15 +696,16 @@ export const StraightHand = React.memo(function StraightHand({
     setDealArmed(shownCount === 0);
   }
 
-  // The overlap step is solved against the share, not against everything the
-  // row could reach — a hand of three does not stretch across the felt, and a
-  // hand of eighteen compresses inside the same span rather than reaching
-  // past it. Only `availW` is hard: past that the row scrolls. Solved above
-  // the empty-hand return so the scroll effect below it can be a hook.
-  const { step, totalW, scrollable } = computeHandLayout(slotCount, room, cardW, availW);
-  const rowW = Math.min(totalW, availW);
-  /** How much of a scrolling row lies outside the window, both ends together. */
-  const overhang = Math.max(0, totalW - availW);
+  // A drag already under way owns the row, which then holds no slot open for an
+  // arrival: the caller stops offering `onReorder` when a card is in the air, but
+  // a gesture already in progress keeps its held card for at least one render past that.
+  // Solved above the empty-hand return so the scroll effect below it can be a hook.
+  const ids = useMemo(() => cards.map((c) => c.id), [cards]);
+  const row = useMemo(
+    () => layoutHandRow({ ids, arriving: arrivingIndex, held: heldId, size, roomW, availW, bottomPad: handBottomPad }),
+    [ids, arrivingIndex, heldId, size, roomW, availW, handBottomPad]
+  );
+  const { totalW, scrollable, crop, visibleH, arcRise, tiltOverhang, topClearance, heldCeiling, strips } = row;
 
   // A row wider than its window is moved by this offset rather than by a
   // ScrollView. The gesture below already has to arbitrate between scrolling
@@ -807,7 +722,7 @@ export const StraightHand = React.memo(function StraightHand({
   // overhang, and the clamp below carries the row in with it.
   const pan = useSharedValue(0);
   const panFrom = useSharedValue(0);
-  const panLimit = overhang / 2;
+  const panLimit = row.panLimit;
   const panReach = useSharedValue(panLimit);
   useLayoutEffect(() => {
     panReach.set(panLimit);
@@ -899,49 +814,6 @@ export const StraightHand = React.memo(function StraightHand({
     [cards, onReorder]
   );
 
-  // Solved for the span the step produced, so the arc and the overlap floor
-  // cannot disagree about how wide the hand is. Above the empty-hand return,
-  // because the clearance it feeds is read by a hook.
-  const solve = useCallback(
-    (count: number) => solveArc(count, { budget: HAND_ARC, cardW, cardH, scale: cardScale, room: totalW, step }),
-    [cardW, cardH, cardScale, totalW, step]
-  );
-  const full = useMemo(() => solve(slotCount), [solve, slotCount]);
-  const box = full.box;
-  // The middle card rides highest, so the row is as tall as the card plus the
-  // climb; the whole arc is then pushed past the bottom edge by the crop.
-  const arcRise = box.h - cardH;
-  // Where the exchange's flying card retires, in the row's own baseline units
-  // (`exchangeArrivalRise`'s own doc). The arriving card's descent starts
-  // there, not at the pile a dealt card flies from.
-  //
-  // `handCenter` is `arcRise` taller than the row and centres it, so the row's
-  // baseline sits half the climb above the zone's own padded floor; and the
-  // resting card height, not this hand's, because the flight was solved
-  // against the resting one whether or not the turn is the viewer's.
-  const exchangeArrivalDealRise = exchangeArrivalRise(
-    CARD_H(scale * HAND_SCALE),
-    handBottomPad,
-    arcRise / 2
-  );
-  // A tilted card stands taller than the card: its box grows by
-  // `w·sin(a) + h·cos(a) − h`, half of it above and half below. The end cards
-  // carry the most of the arc's own tilt and a chosen one adds SELECT_TILT on
-  // top, so the worst case is the two together.
-  const maxRot = full.cards.reduce((m, at) => Math.max(m, Math.abs(at.rot)), 0);
-  const tiltRad = ((maxRot + Math.abs(SELECT_TILT)) * Math.PI) / 180;
-  const tiltOverhang = (cardW * Math.sin(tiltRad) + cardH * Math.cos(tiltRad) - cardH) / 2;
-  /** The highest a card in the fan ever sits above the row's own top edge. */
-  const fanRise = arcRise + handRowHeadroom(cardH);
-  // Everything a card can occupy above that edge: the fan's own reach, and the
-  // box a tilt adds on top of it.
-  const topClearance = fanRise + tiltOverhang;
-  // A held card follows the finger, and a finger goes as high as it likes. It
-  // stops level with the fan's own high point: the card is lifted out of the
-  // hand, not thrown into the air, and a rise the row can state is a rise the
-  // window can clear.
-  const heldCeiling = crop - fanRise + (cardH * (HELD_SCALE - 1)) / 2;
-
   // The held card is the only thing on this table that leaves the arc and
   // follows a finger in free two dimensions, which is what makes "held" legible
   // beside "selected" without a legend — selection has already spent lift,
@@ -977,80 +849,29 @@ export const StraightHand = React.memo(function StraightHand({
     [cards, heldCard]
   );
 
-  // The second arc: where the rest of the hand closes to with one card lifted
-  // out. Every card is *placed* by `full` and moved to this, so the closing is
-  // one animated value rather than a new `left` landing in a single frame — the
-  // fan has to close continuously, or the cards jump between two arrangements
-  // while the finger is still between them.
-  const arc = useMemo(
-    () => (heldCard === null ? full.cards : solve(rest.length).cards),
-    [heldCard, full, solve, rest.length]
-  );
-  const rowMid = (scrollable ? totalW : rowW) / 2;
-  // Every card is *placed* by the row as it stood and *moved* to the row with
-  // the slot in it. `left` is a plain style entry and never animates, so a card
-  // placed straight at its n+1 slot would jump there in a frame; anchoring it
-  // where it already was and carrying the whole delta in `shiftX` is what makes
-  // the row visibly part (#650).
-  const closed = useMemo(() => (parting === undefined ? full : solve(n)), [parting, full, solve, n]);
-  const place = useMemo(() => new Map(cards.map((card, j) => [card.id, closed.cards[j]])), [cards, closed]);
+  const rowMid = row.width / 2;
   // Split either side of the slot, so the hand's centre holds still while the
   // gap opens and nothing shifts out from under the thumb.
   const gapW = heldCard === null ? 0 : cardW * GAP_CARDS;
   const gapShift = (i: number) => (gapAt === null ? 0 : i >= gapAt ? gapW / 2 : -gapW / 2);
-  // Where the drop index is measured from: the arc without the gap in it. The
-  // gap is a consequence of the slot, so measuring the slot against a row the
-  // gap has already moved makes the two chase each other.
-  // The one table a finger is resolved against, the drag's pickup and drop and the tap alike: each
-  // card's strip where it is drawn, and its top edge at rest, in the row's own coordinates.
-  const strips = useMemo(() => {
-    const table = {
-      ids: [] as string[],
-      lefts: [] as number[],
-      widths: [] as number[],
-      tops: [] as number[],
-      rots: [] as number[],
-      refused: [] as boolean[],
-    };
-    rest.forEach((card, i) => {
-      table.refused.push(giveableSet?.has(card.id) === false);
-      const slot = slotForCard(i, parting);
-      const at = arc[slot] ?? arc[arc.length - 1];
-      const home = place.get(card.id) ?? at;
-      table.ids.push(card.id);
-      table.lefts.push(rowMid + at.x);
-      table.widths.push(hitWidth(slot, arc.length, step, cardW));
-      table.tops.push(visibleH + crop + home.y - cardH);
-      table.rots.push(home.rot);
-    });
-    return table;
-  }, [rest, parting, arc, rowMid, step, cardW, visibleH, crop, place, cardH, giveableSet]);
+  const places = row.cards.map((p, i) => (gapShift(i) === 0 ? p : { ...p, shift: p.shift + gapShift(i) }));
+  // The drop index is measured against the strips, which carry no gap: the gap
+  // is a consequence of the slot, so measuring the slot against a row the gap
+  // has already moved makes the two chase each other.
   const lefts = strips.lefts;
-  const ids = strips.ids;
-  const liftH = handRowHeadroom(cardH);
+  const refused = useMemo(() => rest.map((c) => giveableSet?.has(c.id) === false), [rest, giveableSet]);
   const shownIds = selection.shown;
-  const cardUnder = (x: number, y: number): number | null => {
+  const liftH = handRowHeadroom(cardH);
+  const tilt = reduceMotion ? 0 : SELECT_TILT;
+  const fingerOn = (x: number, y: number): number | null => {
     'worklet';
-    const i = stripAt(strips.lefts, strips.widths, x);
-    if (i === null) return null;
-    const id = strips.ids[i];
-    if (lifted?.value.includes(id)) return null;
-    const on = shownIds.value.includes(id);
-    // Turned about the card's centre as the card is drawn, so a raised corner is still the card.
-    const rad = ((strips.rots[i] + (on && !reduceMotion ? SELECT_TILT : 0)) * Math.PI) / 180;
-    const dx = x - strips.lefts[i] - cardW / 2;
-    const dy = y - (strips.tops[i] - (on ? liftH : 0)) - cardH / 2;
-    return dy * Math.cos(rad) - dx * Math.sin(rad) < -cardH / 2 ? null : i;
+    return cardUnder(strips, x, y, size, { raised: shownIds.value, gone: lifted?.value ?? [], lift: liftH, tilt });
   };
-  // Where each slot of the *whole* hand sits — where a released card is going.
-  const slots = full.cards.map((at) => ({ x: rowMid + at.x, y: crop + at.y, rot: at.rot }));
+  const slots = row.slots;
 
-  // `handCenter` stands on the zone's padded floor (`handSection`, flex-end), and the row is centred in it.
-  const zoneH = HAND_ZONE_H(CARD_H(scale * HAND_SCALE), handBottomPad);
-  const rowCentreY = zoneH / 2 - handBottomPad - (visibleH + arcRise) / 2;
   const fieldW = CARD_W(scale * FIELD_SCALE);
   const cardTable = useCardTable();
-  const rowBase = rowCentreY + visibleH / 2;
+  const rowBase = row.base;
   const handRow = useMemo(() => {
     if (!cardTable) return undefined;
     const { felt, hand, handLift, motion } = cardTable;
@@ -1078,20 +899,19 @@ export const StraightHand = React.memo(function StraightHand({
     const panNow = () => panShown(pan.get(), panLimit);
     const origins = new Map<string, CardFrom>();
     rest.forEach((card, i) => {
-      const at = arc[slotOf(i)] ?? arc[arc.length - 1];
-      const home = place.get(card.id) ?? at;
+      const place = places[i];
       const selected = () => store.get().ids.includes(card.id);
       const d = drawnRef.current.get(card.id);
-      const shiftTo = at.x - home.x + gapShift(i);
-      const y0 = rowCentreY + visibleH / 2 + crop + home.y - cardH / 2;
+      const now = () =>
+        restingOrigin(
+          place,
+          d
+            ? { shift: d.shift.get(), lift: d.liftY.get(), tilt: d.tilt.get() }
+            : { shift: place.shift, lift: selected() ? -liftH : 0, tilt: selected() ? SELECT_TILT : 0 }
+        );
       origins.set(
         card.id,
-        liveFrom(
-          () => home.x + (d ? d.shift.get() : shiftTo) + cardW / 2 - panNow(),
-          () => y0 + (d ? d.liftY.get() : selected() ? -handRowHeadroom(cardH) : 0),
-          () => home.rot + (d ? d.tilt.get() : selected() ? SELECT_TILT : 0),
-          cardW / fieldW
-        )
+        liveFrom(() => now().x - panNow(), () => now().y, () => now().rot, cardW / fieldW)
       );
     });
     onOrigins(origins);
@@ -1114,16 +934,16 @@ export const StraightHand = React.memo(function StraightHand({
 
   const grab = (x: number, y: number) => {
     if (held.value !== null) return;
-    const i = cardUnder(x, y);
+    const i = fingerOn(x, y);
     if (i === null) return;
     // The card comes up under the part of it the finger is actually on. Every
     // card but the last shows only a `step`-wide strip, so a finger almost
     // always lands near a left edge, and centring the card on it instead threw
     // it half a card sideways at the moment of pickup.
     grabOffset.value = x - lefts[i];
-    held.value = ids[i];
+    held.value = strips.ids[i];
     gap.value = i;
-    setHeldId(ids[i]);
+    setHeldId(strips.ids[i]);
     setGapAt(i);
   };
 
@@ -1230,7 +1050,7 @@ export const StraightHand = React.memo(function StraightHand({
           armed.value = false;
           scheduleOnRN(disarmHold);
         }
-        if (overhang > 0) pan.set(panFrom.value - dx);
+        if (panLimit > 0) pan.set(panFrom.value - dx);
       }
     },
     onUpdate: (e) => {
@@ -1277,8 +1097,8 @@ export const StraightHand = React.memo(function StraightHand({
       // The web handler turns Enter and Space into a touch at the centre of whatever holds focus, in
       // that element's own coordinates; the card's `onActivate` already answers both.
       if (e.pointerType === PointerType.KEY) return;
-      const i = cardUnder(e.x, e.y);
-      pressed.value = i === null || strips.refused[i] ? null : strips.ids[i];
+      const i = fingerOn(e.x, e.y);
+      pressed.value = i === null || refused[i] ? null : strips.ids[i];
     },
     onActivate: () => {
       const id = pressed.value;
@@ -1298,23 +1118,19 @@ export const StraightHand = React.memo(function StraightHand({
     );
   }
 
-  const row = (
+  const rowView = (
     <GestureDetector gesture={gestures}>
     <View
       testID="hand-row"
       style={[
         handStyles.handRow,
-        { width: scrollable ? totalW : rowW, height: visibleH },
+        { width: row.width, height: visibleH },
       ]}
     >
       {rest.map((card, i) => {
-        const slot = slotOf(i);
-        const at = arc[slot] ?? arc[arc.length - 1];
         const descending = card.id === descendingId;
         const giveable = giveableSet?.has(card.id);
-        // Placed where it sits in the whole hand; moved from there to where the
-        // closed fan wants it, plus its share of the gap.
-        const home = place.get(card.id) ?? at;
+        const place = places[i];
         // A card the exchange has ruled out is a control reporting itself
         // unavailable; offering it two working actions anyway says the opposite
         // in the same breath.
@@ -1324,12 +1140,16 @@ export const StraightHand = React.memo(function StraightHand({
           key={card.id}
           card={card}
           store={store}
-          left={rowMid + home.x}
-          shiftX={at.x - home.x + gapShift(i)}
-          bottom={-crop - home.y}
-          restX={home.x + cardW / 2}
-          restY={rowBase + crop + home.y - cardH / 2}
-          arcRot={home.rot}
+          place={place}
+          size={size}
+          // A descending card starts at the row's own centre, where the flight
+          // carrying it stops (`flightOrigin`'s `bottom` is `dx: 0`), so crossing
+          // and descent are one continuous move; a dealt one starts at the pile.
+          entry={{
+            ...entryOffset(row, place, descending ? NO_OFFSET : pile),
+            deal: dealArmed && deal && !descending ? { clock: deal.clock, leaveMs: deal.offsetMs + dealLeaveMs(i, null), onDealt: deal.onDealt } : undefined,
+            descends: descending,
+          }}
           onActivate={onActivate}
           shown={selection.shown}
           pressed={pressed}
@@ -1353,20 +1173,7 @@ export const StraightHand = React.memo(function StraightHand({
           // hand this row could ever be handed is what makes the ceiling hold,
           // not an assumption about how big one gets.
           zIndex={handCardZ(i, rest.length, giveable)}
-          dealDelay={descending ? 0 : -1}
-          deal={dealArmed && deal && !descending ? { clock: deal.clock, leaveMs: deal.offsetMs + dealLeaveMs(i, null), onDealt: deal.onDealt } : undefined}
-          // A descending card starts at the row's own centre, where the flight
-          // carrying it stops (`flightOrigin`'s `bottom` is `dx: 0`), so crossing
-          // and descent are one continuous move; a dealt one starts at the pile.
-          dealFromX={-home.x + (descending ? 0 : pile.dx)}
-          cardScale={cardScale}
-          // A descending card starts its fall from where the exchange's own
-          // flying card retires; a dealt one from the pile, off that same point.
-          dealRise={cardH / 2 - crop - home.y - exchangeArrivalDealRise + (descending ? 0 : pile.dy)}
-          hitW={hitWidth(slot, arc.length, step, cardW)}
           isStartCard={card.id === startCardId}
-          cardW={cardW}
-          cardH={cardH}
         />
         );
       })}
@@ -1384,7 +1191,7 @@ export const StraightHand = React.memo(function StraightHand({
             card={heldCard}
             selected={heldSelected}
             faceDown={faceDown}
-            scale={cardScale}
+            scale={size.scale}
             rectKey={`hand:${heldCard.id}`}
             rects={heldRects}
             decorative
@@ -1435,7 +1242,7 @@ export const StraightHand = React.memo(function StraightHand({
           }
           onFocus={scrollable && Platform.OS === "web" ? panToFocused : undefined}
         >
-          <Animated.View testID="hand-pan" style={[{ width: totalW }, rowShiftStyle]}>{row}</Animated.View>
+          <Animated.View testID="hand-pan" style={[{ width: totalW }, rowShiftStyle]}>{rowView}</Animated.View>
         </View>
       </View>
     </View>

@@ -51,6 +51,30 @@ export const HAND_SCALE_ON_TURN = 1.2;
 export const HAND_NEAR_RATIO = HAND_SCALE_ON_TURN / HAND_SCALE;
 export const BACK_SCALE = 0.88;
 
+/**
+ * A hand card as the row draws it: `scale` and the box CardView paints at it (a spectated hand
+ * paints backs, their own aspect), the share of the row's room it aims at, and `restH`, the resting
+ * face's height, which the hand zone stands on whatever the turn.
+ */
+export interface HandCardSize {
+  scale: number;
+  w: number;
+  h: number;
+  reach: number;
+  restH: number;
+}
+
+export function handCardSize(tableScale: number, onTurn: boolean, faceDown: boolean): HandCardSize {
+  const scale = tableScale * (onTurn ? HAND_SCALE_ON_TURN : HAND_SCALE);
+  return {
+    scale,
+    w: faceDown ? CARD_BACK_W(scale) : CARD_W(scale),
+    h: faceDown ? CARD_BACK_H(scale) : CARD_H(scale),
+    reach: onTurn ? HAND_NEAR_RATIO : 1,
+    restH: CARD_H(tableScale * HAND_SCALE),
+  };
+}
+
 // ─── Card stock ─────────────────────────────────────────────────────────────
 //
 // A card is a physical object, not a flat swatch: a corner cut and a lit lip

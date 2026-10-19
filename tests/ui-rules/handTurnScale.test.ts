@@ -20,15 +20,15 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   cardScale,
-  CARD_W,
   FIELD_SCALE,
+  handCardSize,
   HAND_NEAR_RATIO,
   HAND_SCALE,
   HAND_SCALE_ON_TURN,
 } from "../../components/cardFaceModel.ts";
 import { HAND_ZONE_GAP } from "../../components/seatLayout.ts";
 import { computeTableFrame } from "../../components/tableFrame.ts";
-import { computeHandLayout, MIN_READABLE_STEP } from "../../components/handLayout.ts";
+import { layoutHandRow, MIN_READABLE_STEP } from "../../components/handLayout.ts";
 import { PHONES, type Phone } from "../e2e/helpers/phones.ts";
 import { dealCards } from "../../lib/game/gameEngine.ts";
 
@@ -54,13 +54,17 @@ function row(phone: Phone, n: number, onTurn: boolean) {
     insets: { top: 0, bottom: 0, left: 0, right: 0 },
     scale,
   });
-  const cardW = CARD_W(scale * (onTurn ? HAND_SCALE_ON_TURN : HAND_SCALE));
-  const room = onTurn ? frame.handRoomW * HAND_NEAR_RATIO : frame.handRoomW;
-  const { step, totalW, scrollable } = computeHandLayout(n, room, cardW, frame.handAvailW);
+  const { step, totalW, scrollable } = layoutHandRow({
+    ids: Array.from({ length: n }, (_, i) => `c${i}`),
+    size: handCardSize(scale, onTurn, false),
+    roomW: frame.handRoomW,
+    availW: frame.handAvailW,
+    bottomPad: frame.bottomPad,
+  });
   return {
     step,
     scrollable,
-    /** What the row actually spans: past `availW` the ScrollView is the edge. */
+    /** What the row actually spans: past `availW` the pan's window is the edge. */
     width: Math.min(totalW, frame.handAvailW),
     availW: frame.handAvailW,
     gap: HAND_ZONE_GAP * scale,
