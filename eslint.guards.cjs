@@ -199,13 +199,13 @@ const GUARDS = [
       { glob: "lib/errorReporting.ts", reason: "clears a Set it owns" },
       { glob: "lib/reactions.ts", reason: "clears a Map it owns" },
     ],
-    plant: { file: "lib/Plant.ts", code: [
+    plant: { file: "context/Plant.ts", code: [
       "queryClient.clear();",
       "qc.clear ();",
       'queryClient.removeQueries({ queryKey: ["/api/friends"] });',
       "queryClient.resetQueries();",
     ].join("\n"), hits: 4 },
-    spare: ['url.searchParams.clear("x");', "queryClient.invalidateQueries();", '// qc.clear()\nconst s = "qc.clear()";'].map((code) => ({ file: "lib/Plant.ts", code })),
+    spare: ['url.searchParams.clear("x");', "queryClient.invalidateQueries();", '// qc.clear()\nconst s = "qc.clear()";'].map((code) => ({ file: "context/Plant.ts", code })),
   },
   {
     id: "no-cwd-root",
