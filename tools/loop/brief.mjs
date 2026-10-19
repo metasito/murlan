@@ -7,7 +7,8 @@
  */
 import { git as gitAt, statusOf } from "./cli.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { dodCheckFor, ticketComments, TRUSTED_AUTHORS, WORKTREE_DIR } from "./loop-derive.mjs";
+import { dodCheckFor, ticketComments, WORKTREE_DIR } from "./loop-derive.mjs";
+import { readIssue, TRUSTED_SELECT } from "./tracker.mjs";
 
 export const KINDS = ["scope", "completeness", "review", "fix"];
 
@@ -50,10 +51,6 @@ const diff = (wt, base) =>
     : rebasedFrom(wt, base)
       ? `\`git -C ${wt} range-diff ${base}...HEAD\``
       : laterDelta(wt, base);
-export const TRUSTED_SELECT = `select(.authorAssociation|IN(${TRUSTED_AUTHORS.map((a) => `"${a}"`).join(",")}))`;
-/** Rule 25's read, keeping only trusted authors' comments: a later comment overrides the body. */
-export const readIssue = (n) =>
-  `gh issue view ${n} --json title,body,comments --jq '.title, .body, (.comments[]|${TRUSTED_SELECT}|"--- "+.author.login+": "+.body)'`;
 const issue = (n) => `\`${readIssue(n)}\``;
 
 const ASKS_COMMENTS = /(^|\s)(--comments|-c)(\s|$)|--json[\s=]\S*\bcomments\b/;
@@ -69,19 +66,26 @@ export function apiMethod(args) {
 }
 
 /** `gh`'s arguments, verb first, read an issue's or pull request's thread or reviews. */
+/** Rule 25's read, which keeps only trusted authors' comments in code rather than in a jq string. */
+const rule25Read = (args) => args[0] === "tracker.mjs" && args[1] === "read";
 export const readsComments = (args) =>
+  rule25Read(args) ||
   (/^(issue|pr)$/.test(args[0] ?? "") && args[1] === "view" && ASKS_COMMENTS.test(args.slice(2).join(" "))) ||
   (args[0] === "api" && apiMethod(args) === "GET" && args.some((a) => API_THREAD.test(a)));
 /** A thread read without rule 25's filter, where an outsider's `DOD-CHECK` or `REVIEW` reads as the loop's own. */
-export const untrustedRead = (args) => readsComments(args) && !args.some((a) => a.includes(TRUSTED_SELECT));
-/** Each thread read a document gives, as `gh`'s arguments; a `\` continuation joins its lines. */
+export const untrustedRead = (args) => readsComments(args) && !rule25Read(args) && !args.some((a) => a.includes(TRUSTED_SELECT));
+/**
+ * Each thread read a document gives: `gh`'s arguments, or `tracker.mjs read <n>` for rule 25's. A
+ * `\` continuation joins its lines.
+ */
 export const commentReads = (text) =>
   text
     .replace(/\\\r?\n\s*/g, " ")
     .split("\n")
     .flatMap((line) => {
-      const at = line.search(/\bgh (issue|pr) view\b/);
-      return at < 0 ? [] : [line.slice(at + 3).split(/[\s`]+/).filter(Boolean)];
+      const rule25 = /\btools\/loop\/(tracker\.mjs) (read) (\S+?)`?(?:\s|$)/.exec(line);
+      const at = line.search(/\bgh ((issue|pr) view|api)\b/);
+      return [...(rule25 ? [rule25.slice(1)] : []), ...(at < 0 ? [] : [line.slice(at + 3).split(/[\s`]+/).filter(Boolean)])];
     })
     .filter(readsComments);
 
@@ -113,7 +117,7 @@ function unreadable(n, worktree, base) {
 
 /** This head's `n/a` boxes, which follow a review brief, or why they cannot be read. */
 function naBoxes(n, worktree) {
-  const comments = ticketComments(n, worktree);
+  const comments = ticketComments(n);
   if (!comments) return `cannot read #${n}'s DOD-CHECK from the tracker`;
   let head = null;
   try {

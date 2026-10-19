@@ -4,6 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { brief, KINDS, MODEL_BY_KIND } from "../brief.mjs";
+import { readIssue } from "../tracker.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../guard-agent-model.mjs", import.meta.url));
 
@@ -136,7 +137,7 @@ describe("a named loop agent carries its own model and effort", () => {
 
   test("a brief whose diff range or issue read was edited is denied, so the session cannot narrow what is reviewed", () => {
     assert.match(run(named("loop-review", review.replace("origin/main...HEAD", "HEAD~1..HEAD"))), /brief was edited/);
-    assert.match(run(named("loop-review", review.replace(/\|select\([^)]*\)\)/, ""))), /brief was edited/);
+    assert.match(run(named("loop-review", review.replace(readIssue(42), "gh issue view 42 --comments"))), /brief was edited/);
   });
 
   test("a loop agent that does not exist is denied, naming the ones that do", () => {

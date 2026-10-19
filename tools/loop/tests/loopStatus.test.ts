@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { report, silentAt, statusFor } from "../loop-status.mjs";
 import { parityRed } from "../loop-derive.mjs";
+import { ghTracker } from "../tracker.mjs";
 
 const live = {
   onTicket: true,
@@ -83,20 +84,20 @@ test("parityRed asks once for open parity issues and names the oldest; none or a
   const read = (args: string[]) => {
     asked.push(args);
     return JSON.stringify([
-      { number: 1600, createdAt: "2026-10-20T00:00:00Z" },
-      { number: 1544, createdAt: "2026-10-12T11:40:08Z" },
+      [
+        { number: 1600, created_at: "2026-10-20T00:00:00Z" },
+        { number: 1544, created_at: "2026-10-12T11:40:08Z" },
+      ],
     ]);
   };
-  assert.deepEqual(parityRed(read), parity);
+  assert.deepEqual(parityRed(ghTracker(read)), parity);
   assert.equal(asked.length, 1);
-  assert.deepEqual(asked[0].slice(0, 2), ["issue", "list"]);
-  assert.equal(asked[0][asked[0].indexOf("--label") + 1], "parity");
-  assert.equal(asked[0][asked[0].indexOf("--state") + 1], "open");
-  assert.equal(parityRed(() => "[]"), null);
+  assert.match(asked[0].at(-1) ?? "", /^repos\/metasito\/murlan\/issues\?labels=parity&state=open&/);
+  assert.equal(parityRed(ghTracker(() => "[[]]")), null);
   const offline = () => {
     throw new Error("gh: could not connect");
   };
-  assert.equal(parityRed(offline), null);
+  assert.equal(parityRed(ghTracker(offline)), null);
 });
 
 test("a loop child is still given the imperative", () => {

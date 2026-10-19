@@ -4,7 +4,7 @@ import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { firstLine, gh, git, statusOf } from "../cli.mjs";
+import { firstLine, gh, git, REPO, statusOf } from "../cli.mjs";
 
 const LOOP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = mkdtempSync(path.join(tmpdir(), "loop-cli-"));
@@ -30,6 +30,14 @@ describe("the test override", () => {
       gh(["issue", "view", "7"]),
     );
     assert.deepEqual(JSON.parse(out), ["issue", "view", "7"]);
+  });
+
+  test("every gh names the loop's repository through GH_REPO, whatever the caller's environment or cwd says", () => {
+    const out = withEnv("GH_REPO", "someone/else", () =>
+      withEnv("LOOP_TEST_GH_SCRIPT", stub("gh", "console.log(process.env.GH_REPO);"), () => gh(["api", "repos/{owner}/{repo}"], { cwd: tmpdir() })),
+    );
+    assert.equal(out.trim(), REPO);
+    assert.equal(REPO, "metasito/murlan");
   });
 
   test("LOOP_TEST_GIT_SCRIPT does the same for git, in the cwd it was handed", () => {
@@ -141,5 +149,40 @@ describe("no git or gh outside cli.mjs", () => {
     assert.ok(SPAWN.test(`const x = execFileSync("git", ["status"]);`));
     assert.ok(SPAWN.test(`spawnSync('gh', args)`));
     assert.ok(VIA_VARIABLE.test(`execFileSync(file, args, { encoding: "utf8" })`));
+  });
+});
+
+/**
+ * A gh argv — an array opening on one of gh's own commands, on one line or across several — is built
+ * in these files and no other loop module: the tracker for issues, pull requests and runs, and
+ * ciVerdict.ts for the one read REST has no form of: a run's failed-step log, whose argv a CI-RED
+ * also prints for the fix session to run.
+ */
+describe("no gh argv outside the tracker and ciVerdict", () => {
+  const ALLOWED = new Set(["cli.mjs", "tracker.mjs", "ciVerdict.ts"]);
+  const GH_ARGV = /\[\s*["'`](?:issue|pr|api|repo|release|workflow|search|secret|gist)["'`]\s*,|\[\s*["'`]run["'`]\s*,\s*["'`](?:view|list|rerun|watch|download|cancel|delete)["'`]/;
+  const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, (c) => c.replace(/[^\n]/g, " "));
+  const files = readdirSync(LOOP).filter((f) => /\.(mjs|ts)$/.test(f) && !ALLOWED.has(f));
+
+  test("the scan reads the loop's modules and every allowed one exists", () => {
+    assert.ok(files.includes("queue-loop.mjs") && files.includes("settle.mjs") && files.includes("mainHealth.ts"), files.join(" "));
+    for (const f of ALLOWED) assert.ok(readdirSync(LOOP).includes(f), f);
+  });
+
+  for (const file of files) {
+    test(file, () => {
+      const text = code(readFileSync(path.join(LOOP, file), "utf8"));
+      const at = GH_ARGV.exec(text)?.index;
+      assert.equal(at, undefined, `${file}:${text.slice(0, at).split("\n").length} builds a gh argv; ask tools/loop/tracker.mjs`);
+    });
+  }
+
+  test("a planted argv is caught, across lines too, and an npm one is not", () => {
+    assert.ok(GH_ARGV.test(`run("gh", ["pr", "list", "--head", b])`));
+    assert.ok(GH_ARGV.test(`gh(['api', path])`));
+    assert.ok(GH_ARGV.test(`gh(["run", "view", id])`));
+    assert.ok(GH_ARGV.test(code(`gh([\n  "pr",\n  "view",\n])`)));
+    assert.ok(!GH_ARGV.test(`run("npm", ["run", "worktrees:remove", "--", cwd])`));
+    assert.ok(!GH_ARGV.test(`{ name: "lint", args: ["run", "lint"] }`));
   });
 });

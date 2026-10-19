@@ -1,46 +1,10 @@
-import { gh, REPO } from "./cli.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { readIssue } from "./brief.mjs";
-import { BRANCH, ticketOf, TRUSTED_AUTHORS, worktrees } from "./loop-derive.mjs";
+import { BRANCH, ticketOf, worktrees } from "./loop-derive.mjs";
+import { ghTracker, isTrusted as trusted, readIssue } from "./tracker.mjs";
 
 const SIZE_ORDER = ["size:XS", "size:S", "size:M", "size:L", "size:XL"];
 export const OWNER_LABELS = new Set(["ready-for-human", "needs-info", "rejected", "deferred"]);
 export const LAUNCH_MILESTONE = "Launch";
-function trusted(issueOrComment) {
-  return TRUSTED_AUTHORS.includes(issueOrComment.author_association);
-}
-
-function ghJson(args) {
-  return JSON.parse(gh(args));
-}
-
-const QUERY = `query($owner:String!,$name:String!,$after:String){repository(owner:$owner,name:$name){issues(states:OPEN,first:100,after:$after){pageInfo{hasNextPage endCursor}nodes{number title authorAssociation labels(first:100){nodes{name}} milestone{title} issueDependenciesSummary{blockedBy}}}}}`;
-
-/** GraphQL, not `gh issue list`: only it carries both the author association and the dependency summary. */
-export function openIssues(run = gh) {
-  const [owner, name] = REPO.split("/");
-  const nodes = [];
-  let after = null;
-  do {
-    const args = ["api", "graphql", "-f", `query=${QUERY}`, "-F", `owner=${owner}`, "-F", `name=${name}`];
-    if (after) args.push("-f", `after=${after}`);
-    const { issues } = JSON.parse(run(args)).data.repository;
-    nodes.push(...issues.nodes);
-    if (issues.pageInfo.hasNextPage && !issues.pageInfo.endCursor) {
-      throw new Error(`after ${nodes.length} open issues, GraphQL reads hasNextPage with no endCursor; the rest are unreachable`);
-    }
-    after = issues.pageInfo.hasNextPage ? issues.pageInfo.endCursor : null;
-  } while (after);
-  return nodes.map((n) => ({
-    number: n.number,
-    title: n.title,
-    author_association: n.authorAssociation,
-    labels: n.labels.nodes,
-    milestone: n.milestone,
-    blocked: n.issueDependenciesSummary.blockedBy > 0,
-  }));
-}
-
 function labelNames(issue) {
   return issue.labels.map((l) => l.name);
 }
@@ -104,7 +68,7 @@ export function launchOpen(/** @type {Issue[]} */ openIssues) {
  * @param {Issue[]} openIssues
  * @returns {{ frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[], stranded: Issue[] }}
  */
-export function classify(openIssues, io = realClassifyIo()) {
+export function classify(openIssues, io = realClassifyIo(prListing(ghTracker()))) {
   /** @type {{frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[], stranded: Issue[]}} */
   const buckets = { frontier: [], triage: [], wayfinder: [], owner: [], stranded: [] };
   // Asked once, and only once a ticket has an open pull request: it costs a subprocess, and with no
@@ -140,9 +104,9 @@ export function classify(openIssues, io = realClassifyIo()) {
   return buckets;
 }
 
-function realClassifyIo(run = gh) {
+function realClassifyIo(listing) {
   return {
-    openPr: (n) => claimedElsewhere(n, (k) => openPrsFor(k, run)),
+    openPr: claimedBy(listing),
     liveWorktrees: () => {
       try {
         const live = new Set();
@@ -172,14 +136,18 @@ export function claimedElsewhere(number, list) {
   }
 }
 
-let openPrs = null;
-/** One listing per pick (`nextPick` clears it), matched on the head ref: `#42` in a body also matches PR #942. */
-function openPrsFor(number, run = gh) {
-  openPrs ??= JSON.parse(run(["pr", "list", "--state", "open", "--limit", "100", "--json", "number,state,headRefName"]));
-  return openPrs.filter((pr) => Number(BRANCH.exec(pr.headRefName ?? "")?.[1]) === number);
-}
+/** The open pull requests, listed once per pick and only when first asked: a pick spans one moment of the tracker. */
+const prListing = (tracker) => {
+  let prs;
+  return () => (prs ??= tracker.openPrs());
+};
 
-export function takeable(frontier, limit, claimed = (n) => claimedElsewhere(n, openPrsFor)) {
+/** Matched on the head ref: `#42` in a body also matches PR #942. */
+const openPrsFor = (number, listing) => listing().filter((pr) => Number(BRANCH.exec(pr.headRefName ?? "")?.[1]) === number);
+
+const claimedBy = (listing) => (n) => claimedElsewhere(n, (k) => openPrsFor(k, listing));
+
+export function takeable(frontier, limit, claimed = claimedBy(prListing(ghTracker()))) {
   const out = [];
   for (const issue of frontier) {
     if (issue.blocked) continue;
@@ -225,11 +193,11 @@ export function pickRoute(buckets, take = takeable) {
   return { skill: "handoff", ticket: null };
 }
 
-export function nextPick(run = gh) {
-  openPrs = null;
-  const issues = openIssues(run);
-  const buckets = classify(issues, realClassifyIo(run));
-  const { skill, ticket } = pickRoute(buckets, (list, limit) => takeable(list, limit, (n) => claimedElsewhere(n, (k) => openPrsFor(k, run))));
+export function nextPick(tracker = ghTracker()) {
+  const listing = prListing(tracker);
+  const issues = tracker.openIssues();
+  const buckets = classify(issues, realClassifyIo(listing));
+  const { skill, ticket } = pickRoute(buckets, (list, limit) => takeable(list, limit, claimedBy(listing)));
   return {
     skill,
     number: ticket?.number ?? 0,
@@ -254,23 +222,14 @@ export function takeableReasons(issue) {
 /** The loop's own claim, since taking the worktree is what wins the ticket. A title only names the branch, so what the shell would expand is dropped. */
 export const claimCommand = (n, title) => `npm run queue:claim -- ${n} "${String(title).replace(/["`$\\]/g, " ")}"`;
 
-export function issueComments(n, run = gh) {
-  const all = [];
-  for (let page = 1; ; page++) {
-    const got = JSON.parse(run(["api", `repos/{owner}/{repo}/issues/${n}/comments?per_page=100&page=${page}`]));
-    all.push(...got);
-    if (got.length < 100) return all;
-  }
-}
-
-function printDetail(issue, comments) {
+function printDetail(issue, comments, listing) {
   const ls = labelNames(issue);
   console.log(`\n===== TICKET #${issue.number} - ${issue.title} =====`);
   console.log(`Labels: ${ls.join(", ")}`);
   console.log(`Open blockers: ${issue.issue_dependencies_summary?.blocked_by ?? 0}`);
   // A CI fix round is handed back by ticket number, and that session's first question — does the
   // branch already exist — cannot be answered from labels.
-  for (const pr of openPrsFor(issue.number)) {
+  for (const pr of openPrsFor(issue.number, listing)) {
     if (pr.state === "OPEN") console.log(`Open pull request: #${pr.number} on ${pr.headRefName}`);
   }
   const reasons = takeableReasons(issue);
@@ -281,7 +240,7 @@ function printDetail(issue, comments) {
   console.log(`----- COMMENTS (${shown.length}) -----`);
   if (shown.length < comments.length) console.log(`(${comments.length - shown.length} from outside the repo not shown)`);
   for (const c of shown) {
-    console.log(`\n[${c.user.login} | ${c.created_at}]`);
+    console.log(`\n[${c.author.login} | ${c.createdAt}]`);
     console.log(c.body);
   }
   if (reasons.length === 0) {
@@ -299,12 +258,11 @@ const invokedDirectly = isInvokedDirectly(process.argv[1], import.meta.url);
 if (invokedDirectly) {
   const args = process.argv.slice(2);
   const explicit = args.map(Number).find((n) => Number.isInteger(n) && n > 0);
+  const tracker = ghTracker();
+  const listing = prListing(tracker);
   const read = (n) => {
     try {
-      return [
-        ghJson(["api", `repos/{owner}/{repo}/issues/${n}`]),
-        issueComments(n),
-      ];
+      return [tracker.read(n), tracker.comments(n, { all: true }), listing];
     } catch {
       console.error(`#${n} could not be read (a pull request, or gh unreachable)`);
       process.exit(1);
@@ -315,11 +273,11 @@ if (invokedDirectly) {
     const [issue, comments] = read(explicit);
     // `queue.md` branches on implement / triage / wayfinder / handoff and has no fifth case.
     console.log(`ROUTE\t${routeOf(issue) ?? "handoff"}\t${explicit}\t${issue.title}\t${sizeOf(issue) ?? ""}`);
-    printDetail(issue, comments);
+    printDetail(issue, comments, listing);
     process.exit(0);
   }
 
-  const { skill, number, title, size, queue } = nextPick();
+  const { skill, number, title, size, queue } = nextPick(tracker);
   console.log(`ROUTE\t${skill}\t${number}\t${title}\t${size ?? ""}`);
   console.log(`STATUS\t${Object.entries(queue).map(([k, v]) => `${k}:${v}`).join("\t")}`);
 

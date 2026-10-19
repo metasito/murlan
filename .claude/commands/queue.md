@@ -22,7 +22,7 @@ No run state is stored: `node tools/loop/loop-status.mjs` derives it from git an
   the user a question while a run is live.
 
   ```sh
-  gh issue edit <n> --remove-label ready-for-agent --remove-label in-progress --add-label ready-for-human
+  node tools/loop/tracker.mjs label <n> --remove ready-for-agent --remove in-progress --add ready-for-human
   ```
 
   Then declare:
@@ -33,7 +33,7 @@ No run state is stored: `node tools/loop/loop-status.mjs` derives it from git an
 - **The turn budget** is `$LOOP_TURNS`. Past two thirds with nothing committed, commit what works
   and narrow the slice.
 - **Compaction fires ~33k below `$CLAUDE_CODE_AUTO_COMPACT_WINDOW`**; nearing it, commit, post
-  `HANDOFF <sha>` first-line on the issue (`gh issue comment <n> --body-file <file>`): steps left as
+  `HANDOFF <sha>` first-line on the issue (`node tools/loop/tracker.mjs comment <n> --body-file <file>`): steps left as
   `- [ ] …`, then `Read first:` file ranges. Declare `handoff` = your phase; its `"why"` is the next process's brief, in one sentence.
 - **After a compaction** the `SessionStart` hook reruns `tools/loop/loop-status.mjs`. Preserve
   **failing test output** through it.
@@ -112,7 +112,7 @@ Phase C is a fix round when `loop-status.mjs` says `fix round`. Skip the plannin
    `flaky on main:` failures are neither this diff's nor this round's. Any other failure is this diff's where `CI-RED` reads `rerun: survived one`; where it reads `rerun: none`, rule out a flake first.
 4. Fix what CI named, then run `npm run agent:check`.
 5. Commit, then post what this round ruled out, each hypothesis on one line with its evidence:
-   `gh issue comment <n> --body-file <file>`, first line `FIX-NOTES <sha>` (`git rev-parse --short
+   `node tools/loop/tracker.mjs comment <n> --body-file <file>`, first line `FIX-NOTES <sha>` (`git rev-parse --short
    HEAD`). Then leave through **Leaving C**.
 
 ### A rebase round
@@ -138,7 +138,7 @@ then leave through **Leaving C**.
   Definition-of-done box, name it in the PR body. A defect in your own tools, checks or worktree
   is rule 34's. Anything else is not built here. A security, data-loss or player-visible defect gets
   its own issue for the owner, never `ready-for-agent`:
-  `gh issue create --title "<what>" --body-file <file> --label ready-for-human`. Anything smaller is
+  `node tools/loop/tracker.mjs create --title "<what>" --body-file <file> --label ready-for-human`. Anything smaller is
   one comment on the open issue labelled `noticed` (create it with that label if none is open).
 - **A ticket's prescribed form is a proposal.** If a test rules it out, build its intent; say
   why in the commit.
@@ -163,7 +163,7 @@ then leave through **Leaving C**.
    The agent:check box cites nothing; a box with no code site says `n/a: <reason>`.
    A box you cannot close stays `- [ ]` with why: keep building or park it (**Never stall**).
 4. `node tools/loop/loop-gate.mjs --build .loop-logs/dod-<n>.md` must exit 0, and prints what is
-   missing. Only then post it: `gh issue comment <n> --body-file .loop-logs/dod-<n>.md`.
+   missing. Only then post it: `node tools/loop/tracker.mjs comment <n> --body-file .loop-logs/dod-<n>.md`.
 
 Only then declare handoff D and exit. The supervisor re-gates it.
 
@@ -196,7 +196,7 @@ round 1, then the sha the previous round reviewed.
    ## Checked
    ```
 3. **Post the verdict** as its own comment, first line `VERDICT: LAND <sha>`
-   (`git rev-parse --short HEAD`), through `gh issue comment <n> --body-file <file>`.
+   (`git rev-parse --short HEAD`), through `node tools/loop/tracker.mjs comment <n> --body-file <file>`.
    LAND when the report has no Blocking finding; CI is the supervisor's. Otherwise
    `VERDICT: HOLD <sha> — <one sentence>`. A HOLD is final for its head (`loop-derive.mjs`
    `verdictFor`). Never write the report yourself (rule 29). Nits go in the PR body, unfixed. Where you disagree with a Blocking finding, put one line in the commit body.
@@ -231,9 +231,9 @@ Phase D's LAND continues here; a process starts at E only to resume.
    {"ticket":<n>,"branch":"agent/<n>-slug","phase":"E","handoff":"C","stoodDown":false,"why":"<what-is-red>"}
    ```
 3. Push and write the PR body: `git push -u origin HEAD:agent/<n>-<slug>`, then
-   `gh pr edit <pr> --body-file <file>`. The supervisor opened the pull request when review
+   `node tools/loop/tracker.mjs pr-edit <pr> --body-file <file>`. The supervisor opened the pull request when review
    started; only if none is open,
-   `gh pr create --base main --head agent/<n>-<slug> --title "<title>" --body-file <file>`. The
+   `node tools/loop/tracker.mjs pr-create --head agent/<n>-<slug> --title "<title>" --body-file <file>`. The
    body says what changed, how you know, which Definition-of-done boxes are closed, and
    `Closes #<n>` (rule 13), through `--body-file`, never `--body` (`docs/agents/checks.md`).
 
@@ -254,7 +254,7 @@ CI and the merge are `tools/loop/queue-loop.mjs`'s; a red CI run comes back as a
    {"ticket":891,"branch":"agent/891-slug","pr":1003,"phase":"F","handoff":null,"stoodDown":false}
    ```
    Omit `pr` only if you pushed none. Verification-only work posts its DOD-CHECK, runs
-   `gh issue close <n> --reason completed` and omits `pr`: it is recorded closed. Commits with no pull request park. `stoodDown` means
+   `node tools/loop/tracker.mjs close <n>` and omits `pr`: it is recorded closed. Commits with no pull request park. `stoodDown` means
    you gave the ticket up, with `"why"` in one sentence. Phase F never sets `handoff`. Exiting
    without it records an error: declare even on bad news.
 5. **Exit.** Never loop back to phase A.

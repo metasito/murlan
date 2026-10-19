@@ -1,6 +1,7 @@
 import { gh, MAX_BUFFER } from "./cli.mjs";
 import { UNREAD_STEP } from "../ci/budget-gate.mjs";
 import type { PrState } from "./land.ts";
+import { ghTracker } from "./tracker.mjs";
 
 const CI_GATE = "CI gate";
 
@@ -27,11 +28,11 @@ export interface JobRow {
  * GitHub reports a job stopped by its own `timeout-minutes` exactly as one cancelled by a newer
  * push: job and run `cancelled`, a cancelled step. Only its check-run annotation tells them apart.
  */
-export function markTimedOut(jobs: JobRow[], gh: (args: string[]) => string, repo: string): void {
+export function markTimedOut(jobs: JobRow[], tracker: Pick<Tracker, "annotations">): void {
   for (const job of jobs) {
     if (job.conclusion !== "cancelled" || job.steps === 0 || job.id === undefined) continue;
     try {
-      const messages = JSON.parse(gh(["api", `repos/${repo}/check-runs/${job.id}/annotations`, "--jq", "[.[].message]"]));
+      const messages = tracker.annotations(job.id);
       job.timedOut = messages.some((m: string) => /exceeded the maximum execution time/.test(m));
     } catch {
       job.timedOut = false;
@@ -238,49 +239,46 @@ export type GhExec = (args: string[], until: number) => string;
 
 const realGh: GhExec = (args, until) => gh(args, ghExecOptions(until));
 
-function ghJson<T>(gh: GhExec, args: string[], fallback: T, until: number): T {
-  try {
-    return JSON.parse(gh(args, until)) as T;
-  } catch {
-    return fallback;
-  }
+export type Tracker = ReturnType<typeof ghTracker>;
+
+/** A run's jobs as the verdict reads them, from the tracker's REST jobs. */
+export function jobRowsOf(jobs: ReturnType<Tracker["runJobs"]>): JobRow[] {
+  return jobs.map((j) => ({
+    name: j.name,
+    conclusion: j.conclusion,
+    status: j.status,
+    steps: j.steps.length,
+    id: j.databaseId,
+    failedSteps: j.steps.filter((st) => st.conclusion === "failure").map((st) => String(st.name)),
+  }));
 }
 
-function jobsAndLog(
-  repo: string,
-  run: RunRow | undefined,
-  gh: GhExec,
-  until: number
-): { verdict: Verdict; testIds: string[] } {
+/** One read's tracker, and the `gh` its failed log is read through: both bounded by the read's deadline. */
+interface Reads {
+  tracker: Tracker;
+  log: (args: string[]) => string;
+}
+
+function jobsAndLog(repo: string, run: RunRow | undefined, { tracker, log }: Reads): { verdict: Verdict; testIds: string[] } {
   if (!run || run.conclusion === "success") {
     return { verdict: decideVerdict(run, []), testIds: [] };
   }
-  const jobs = ghJson<JobRow[]>(
-    gh,
-    [
-      "run",
-      "view",
-      String(run.databaseId),
-      "--repo",
-      repo,
-      "--json",
-      "jobs",
-      "--jq",
-      '[.jobs[] | {name, conclusion, status, steps: (.steps | length), id: .databaseId, failedSteps: [.steps[] | select(.conclusion == "failure") | .name]}]',
-    ],
-    [],
-    until
-  );
+  let jobs: JobRow[] = [];
+  try {
+    jobs = jobRowsOf(tracker.runJobs(run.databaseId));
+  } catch {
+    // An unread job list is no jobs: the verdict below says the run, not a step, failed.
+  }
   if (run.status !== "completed") {
     return { verdict: { ...decideVerdict(run, []), progress: ciProgress(jobs) }, testIds: [] };
   }
-  markTimedOut(jobs, (args) => gh(args, until), repo);
+  markTimedOut(jobs, tracker);
   const verdict = decideVerdict(run, jobs);
   let testIds: string[] = [];
   if (!verdict.pass && !verdict.infrastructure) {
     verdict.logArgs = failedLogArgs(repo, run.databaseId, jobs, verdict.failedStep);
     try {
-      const strippedLines = gh(verdict.logArgs, until)
+      const strippedLines = log(verdict.logArgs)
         .split("\n")
         .map(stripLogPrefix);
       testIds = failingTestIds(strippedLines.join("\n"));
@@ -296,7 +294,7 @@ function jobsAndLog(
   return { verdict, testIds };
 }
 
-/** One entry of `gh pr view --json statusCheckRollup`; a commit status carries `context` instead of `name`. */
+/** One entry of the tracker's `landingView` rollup; a commit status carries `context` instead of `name`. */
 interface RollupEntry {
   name?: string;
   status?: string;
@@ -325,7 +323,7 @@ function rollupProgress(entries: RollupEntry[]): CiProgress {
   );
 }
 
-function gateVerdict(repo: string, entries: RollupEntry[], gh: GhExec, until: number): Verdict {
+function gateVerdict(repo: string, entries: RollupEntry[], reads: Reads): Verdict {
   // A workflow_dispatch run on the same head reports a gate of its own beside the push's.
   const gate = entries.filter((e) => e.name === CI_GATE).reduce<RollupEntry | undefined>((a, e) => (a && lastMoved(a) > lastMoved(e) ? a : e), undefined);
   if (!gate) {
@@ -341,20 +339,20 @@ function gateVerdict(repo: string, entries: RollupEntry[], gh: GhExec, until: nu
   if (!runId) {
     return { pass: false, infrastructure: true, reason: `${CI_GATE} concluded ${gate.conclusion} on a run its link does not name` };
   }
-  const run = ghJson<RunRow | undefined>(
-    gh,
-    ["run", "view", String(runId), "--repo", repo, "--json", "databaseId,status,conclusion,headSha,attempt"],
-    undefined,
-    until
-  );
-  const { verdict, testIds } = jobsAndLog(repo, run, gh, until);
+  let run: (RunRow & { attempt?: number }) | undefined;
+  try {
+    run = reads.tracker.run(runId);
+  } catch {
+    run = undefined;
+  }
+  const { verdict, testIds } = jobsAndLog(repo, run, reads);
   return { ...verdict, testIds, attempt: run?.attempt };
 }
 
 /**
- * The pull request and its required gate, from one read. The gate's own run is read only when the
- * gate is red, for the jobs and log a fix round is built on. A `pr view` that fails throws: whether
- * that is the network or GitHub's refusal is the caller's to judge.
+ * The pull request and its required gate, read over REST. The gate's own run is read only when the
+ * gate is red, for the jobs and log a fix round is built on. A pull request read that fails throws:
+ * whether that is the network or GitHub's refusal is the caller's to judge.
  */
 export function readLandingState(
   repo: string,
@@ -362,23 +360,12 @@ export function readLandingState(
   gh: GhExec = realGh,
   until = Date.now() + READ_DEADLINE_MS
 ): LandingState {
-  const view = JSON.parse(
-    gh(
-      [
-        "pr",
-        "view",
-        String(prNumber),
-        "--repo",
-        repo,
-        "--json",
-        "headRefOid,state,mergeable,mergeStateStatus,autoMergeRequest,statusCheckRollup",
-      ],
-      until
-    )
-  );
+  const log = (args: string[]) => gh(args, until);
+  const reads: Reads = { tracker: ghTracker(log, repo), log };
+  const view = reads.tracker.landingView(prNumber);
   const entries: RollupEntry[] = view.statusCheckRollup ?? [];
   const progress = rollupProgress(entries);
-  const ci = gateVerdict(repo, entries, gh, until);
+  const ci = gateVerdict(repo, entries, reads);
   return {
     pr: {
       headRefOid: view.headRefOid,

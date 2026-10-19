@@ -672,13 +672,13 @@ const OUTCOME = {
 
 /**
  * @param {{outcome: string, number: number, ms: number, cost: number,
- *   files?: number, turns?: number, log?: string, why?: string}} run
+ *   files?: number|null, turns?: number, log?: string, why?: string}} run
  */
 export function closing({ outcome, number, files, turns, ms, cost, why, log }, t) {
   const [glyph, colour] = OUTCOME[outcome] ?? ["·", "faint"];
   const landed = outcome === "landed" || outcome === "merged" || outcome === "closed";
   const facts = landed
-    ? `${elapsed(ms)} · ${money(cost)} · ${plural(turns, "turn")} · ${plural(files, "file")}`
+    ? `${elapsed(ms)} · ${money(cost)} · ${plural(turns, "turn")} · ${files == null ? "files unknown" : plural(files, "file")}`
     : (why ?? "");
   const state = outcome.replace("_", " ");
   const id = `#${number}`;

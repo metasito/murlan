@@ -67,8 +67,8 @@ test("a branch already on origin is reset to, never cut fresh from main", () => 
   const asked: string[][] = [];
   claim(1043, "Stranded", (file: string, args: string[]) => {
     asked.push([file, ...args]);
-    return args.includes("--json") ? JSON.stringify({ comments: [] }) : "";
-  });
+    return "";
+  }, fakeTracker());
   const add = asked.find((a) => a[1] === "worktree");
   assert.deepEqual(add?.slice(0, 4), ["git", "worktree", "add", "-B"]);
   assert.equal(add?.at(-1), "origin/agent/1043-stranded");
@@ -79,8 +79,8 @@ test("no branch on origin cuts a fresh one from main", () => {
   claim(44, "Fresh", (file: string, args: string[]) => {
     asked.push([file, ...args]);
     if (args[0] === "rev-parse") throw new Error("not a ref");
-    return args.includes("--json") ? JSON.stringify({ comments: [] }) : "";
-  });
+    return "";
+  }, fakeTracker());
   const add = asked.find((a) => a[1] === "worktree");
   assert.deepEqual(add?.slice(0, 4), ["git", "worktree", "add", "-b"]);
   assert.equal(add?.at(-1), "origin/main");
@@ -96,7 +96,7 @@ test("a branch only this machine holds is checked out as it stands, never cut ag
     asked.push([file, ...args]);
     if (args[0] === "rev-parse" && args.at(-1)?.startsWith("refs/remotes/")) throw new Error("not a ref");
     return "";
-  });
+  }, fakeTracker());
   assert.equal(out.won, true);
   const add = asked.find((a) => a[1] === "worktree");
   assert.deepEqual(add, ["git", "worktree", "add", ".worktrees/agent-1090", "agent/1090-parked-unpushed"]);
@@ -179,7 +179,7 @@ test("a branch git refuses to cut is an error, never a peer holding the worktree
         if (args[0] === "rev-parse") throw new Error("not a ref");
         if (args[0] === "worktree") throw gitFailure(args, "fatal: a branch named 'agent/42-some-ticket' already exists");
         return "";
-      }),
+      }, fakeTracker()),
     /a branch named/,
   );
   const line = failedClaim(gitFailure(["worktree"], "Preparing worktree\nfatal: a branch named 'x' already exists\n"));
@@ -201,8 +201,6 @@ test("a worktree already standing loses the ticket, and keeps the holder's label
 });
 
 test("a stale claim comment from a dead run does not lose the ticket", () => {
-  const out = claim(1043, "Stranded", (_file: string, args: string[]) =>
-    args.includes("--json") ? JSON.stringify({ comments: [{ body: "Claimed by `agent/1043-old-slug`." }] }) : "",
-  );
+  const out = claim(1043, "Stranded", () => "", fakeTracker({ 1043: { comments: [{ body: "Claimed by `agent/1043-old-slug`." }] } }));
   assert.equal(out.won, true);
 });

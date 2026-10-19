@@ -116,16 +116,3 @@ export function landing(pr: PrState, ci: CiVerdict): Landing {
   // up again: the caller's stall path leaves `in-progress` on the issue.
   return { action: "recheck", reason: `unrecognised mergeStateStatus ${pr.mergeStateStatus}` };
 }
-
-/**
- * `--merge`, never `--squash`. `--match-head-commit` sends `expectedHeadOid`, which GitHub checks
- * when it arms: a head that moved past the cleared commit is refused. It is not documented to be
- * checked again at merge time, so the caller disarms before anything can push.
- */
-export function armArgs(repo: string, prNumber: number, sha: string, bodyFile?: string): string[] {
-  return ["pr", "merge", String(prNumber), "--repo", repo, "--auto", "--merge", "--match-head-commit", sha, ...(bodyFile ? ["--body-file", bodyFile] : [])];
-}
-
-export function disarmArgs(repo: string, prNumber: number): string[] {
-  return ["pr", "merge", String(prNumber), "--repo", repo, "--disable-auto"];
-}

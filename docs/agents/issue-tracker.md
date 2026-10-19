@@ -7,7 +7,7 @@ the vocabulary, the recipes, and how to write a ticket.
 ## Labels
 
 `tools/loop/next-ticket.mjs` routes on labels (`routeOf`, `classify`), and only issues opened by
-an `OWNER`, `MEMBER` or `COLLABORATOR` (`TRUSTED_AUTHORS` in `tools/loop/loop-derive.mjs`, which
+an `OWNER`, `MEMBER` or `COLLABORATOR` (`TRUSTED_AUTHORS` in `tools/loop/tracker.mjs`, which
 also decides whose comments carry a loop marker): anyone else's goes to the owner whatever it
 carries. Their comments reach an agent through no read here: the picker, rule 25's command and
 every `tools/loop/brief.mjs` brief keep only those authors' (`tests/tooling/issueReadsAreTrusted.test.ts`).
@@ -48,13 +48,13 @@ the owner decides whether it is work.
 Every multi-line body goes through `--body-file` (the shell contract, `docs/agents/checks.md`).
 
 ```sh
-# Read one issue: rule 25's command. Add `labels` to --json when they matter.
-gh issue list --state open --label <label> --json number,title,labels \
-  --jq '[.[] | {number, title, labels: [.labels[].name]}]'
-gh issue create --title "<title>" --body-file <file> --label <label> --label size:<size>
-gh issue comment <n> --body-file <file>
-gh issue edit <n> --add-label <label> --remove-label <label>
-gh issue close <n> --comment "<why>"
+# Read one issue or pull request: rule 25's command.
+node tools/loop/tracker.mjs read <n>
+node tools/loop/tracker.mjs list --label <label>              # JSON: number, title
+node tools/loop/tracker.mjs create --title "<title>" --body-file <file> --label <label> --label size:<size>
+node tools/loop/tracker.mjs comment <n> --body-file <file>
+node tools/loop/tracker.mjs label <n> --add <label> --remove <label>
+node tools/loop/tracker.mjs close <n> --comment "<why>"
 
 # <db-id> is the database id — gh api repos/{owner}/{repo}/issues/<n> --jq .id — never #<n> or node_id
 gh api -X POST repos/{owner}/{repo}/issues/<n>/dependencies/blocked_by -F issue_id=<blocker-db-id>
@@ -77,8 +77,8 @@ their procedures, and the command files carry only this repo's specifics.
 ticket here: its frontier query drops candidates on assignee, and every session authenticates as
 the same GitHub account.
 
-- **Pick** — `node tools/loop/next-ticket.mjs`, the single picker (rule 22), from a GraphQL
-  query of the open issues, read a page of 100 at a time. A bare issue number
+- **Pick** — `node tools/loop/next-ticket.mjs`, the single picker (rule 22), from a REST
+  listing of the open issues, read whole through `tools/loop/tracker.mjs`. A bare issue number
   inspects that ticket without picking it. Precedence: implement → triage → wayfinder → handoff. Implement takes *stranded*
   tickets first (`in-progress` or `ready-for-agent`, an open pull request on its own `agent/<n>-`
   branch, no worktree on this machine: a run whose supervisor died between CI rounds, or a park the
@@ -110,11 +110,10 @@ the same GitHub account.
 requests; `/triage` reads this flag.)_
 
 When `yes`, PRs run through the same labels and states, with the `gh pr` equivalents: read with
-the rule 25 shape on `gh pr view` plus `gh pr diff <n>`; list with
-`gh pr list --state open --json number,title,body,labels,author,authorAssociation,comments`,
-keeping only `authorAssociation` of `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR` or `NONE`. Issues and
-PRs share one number space: resolve a bare `#42` with `gh pr view 42`, falling back to
-`gh issue view 42`.
+rule 25's command (an issue's number space holds pull requests too) plus `gh pr diff <n>`; list with
+`gh api 'repos/{owner}/{repo}/pulls?state=open&per_page=100' --paginate`, keeping only
+`author_association` of `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR` or `NONE`. Issues and
+PRs share one number space, so rule 25's command reads a bare `#42` whichever it is.
 
 ## Writing an issue body an agent can execute
 

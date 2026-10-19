@@ -294,7 +294,7 @@ const COMMON = `You are one specialist in a READ-ONLY audit of Murlan (${REPO}) 
 - Change nothing: no edits, commits, branch or worktree changes, and spawn no subagents.
 - First run \`git -C ${REPO} rev-parse HEAD\`. If it prints ${sha}, read files whole with Read and search with Grep.
   Otherwise the checkout is not the audited commit: read with \`git -C ${REPO} show ${sha}:<path>\` and search with \`git -C ${REPO} grep -n <pattern> ${sha}\`.
-- Allowed commands: npx tsc --noEmit, npx eslint <paths>, npm audit --omit=dev, npx expo install --check, one node --test <file>, git rev-parse/show/grep/log/blame, gh issue view.
+- Allowed commands: npx tsc --noEmit, npx eslint <paths>, npm audit --omit=dev, npx expo install --check, one node --test <file>, git rev-parse/show/grep/log/blame, node tools/loop/tracker.mjs read <n>.
   Nothing wider: rule 2 holds here too, and another session may be sharing this machine.
 - Load every skill named for your lens with the Skill tool first, and apply its checklist.
 - Every finding cites path:line with the quoted line and is marked measured (you ran it or traced the full path) or inferred.

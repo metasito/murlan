@@ -1,5 +1,6 @@
 import { gh } from "./cli.mjs";
-import { decideVerdict, failedLogArgs, failingTestIds, markTimedOut, stripLogPrefix, type JobRow, type RunRow } from "./ciVerdict.ts";
+import { ghTracker } from "./tracker.mjs";
+import { decideVerdict, failedLogArgs, failingTestIds, jobRowsOf, markTimedOut, stripLogPrefix, type JobRow, type RunRow, type Tracker } from "./ciVerdict.ts";
 
 /**
  * Whether `main` itself is green, and filing a ticket when it is not.
@@ -88,50 +89,6 @@ export function decideMainHealth(
     : { state: "file", runId, failedStep: verdict.failedStep, url: run.url, title, why };
 }
 
-/**
- * `--workflow ci.yml`: `main` carries other workflows that finish on their own schedule, and
- * unfiltered `--limit 1` answers with whichever ran last.
- */
-export function mainRunArgs(repo: string): string[] {
-  // prettier-ignore
-  return [
-    "run", "list", "--repo", repo, "--branch", "main",
-    "--workflow", "ci.yml", "--limit", "1",
-    "--json", "databaseId,conclusion,status,headSha,url,attempt",
-  ];
-}
-
-export function filedIssueArgs(repo: string): string[] {
-  // prettier-ignore
-  return [
-    "issue", "list", "--repo", repo, "--label", MAIN_RED_LABEL,
-    "--state", "all", "--limit", String(WINDOW), "--json", "number,title,url,state",
-  ];
-}
-
-function closeArgs(repo: string, issue: number, greenRunId: number): string[] {
-  return ["issue", "close", String(issue), "--repo", repo, "--comment", `main is green again: ci.yml run ${greenRunId}.`];
-}
-
-export function jobArgs(repo: string, runId: number): string[] {
-  return ["run", "view", String(runId), "--repo", repo, "--json", "jobs"];
-}
-
-function issueArgs(
-  repo: string,
-  health: Extract<MainHealth, { state: "file" }>,
-  headSha: string | undefined,
-  labels: string[],
-): string[] {
-  // prettier-ignore
-  return [
-    "issue", "create", "--repo", repo,
-    "--title", health.title,
-    "--body", bodyFor(health, headSha),
-    ...labels.flatMap((l) => ["--label", l]),
-  ];
-}
-
 export function bodyFor(health: Extract<MainHealth, { state: "file" }>, headSha?: string): string {
   return [
     "The most recent `ci.yml` run on `main` failed.",
@@ -152,27 +109,17 @@ export type Gh = (args: string[]) => string;
 
 const ghCli: Gh = (args) => gh(args);
 
-const parse = <T,>(text: string, fallback: T): T => (text.trim() ? JSON.parse(text) : fallback);
-
-type RawJobs = { jobs?: { name: string; conclusion: string | null; steps?: { name?: string; conclusion?: string | null }[]; databaseId?: number }[] };
-
-function jobRows(gh: Gh, repo: string, raw: RawJobs): JobRow[] {
-  const jobs: JobRow[] = (raw.jobs ?? []).map((j) => ({
-    name: j.name,
-    conclusion: j.conclusion,
-    steps: j.steps?.length ?? 0,
-    id: j.databaseId,
-    failedSteps: (j.steps ?? []).filter((s) => s?.conclusion === "failure").map((s) => String(s.name)),
-  }));
-  markTimedOut(jobs, gh, repo);
+function jobRows(t: Tracker, runId: number, attempt?: number): JobRow[] {
+  const jobs = jobRowsOf(t.runJobs(runId, { attempt }));
+  markTimedOut(jobs, t);
   return jobs;
 }
 
 /** Jobs are fetched only when the answer can turn on them. */
-function readMain(gh: Gh, repo: string): { run?: MainRun; jobs: JobRow[] } {
-  const [run] = parse<MainRun[]>(gh(mainRunArgs(repo)), []);
+function readMain(gh: Gh, repo: string, t: Tracker): { run?: MainRun; jobs: JobRow[] } {
+  const [run]: MainRun[] = t.ciRuns({ branch: "main", limit: 1 });
   if (!run || run.status !== "completed" || run.conclusion === "success") return { run, jobs: [] };
-  return { run, jobs: jobRows(gh, repo, parse<RawJobs>(gh(jobArgs(repo, run.databaseId)), {})) };
+  return { run, jobs: jobRows(t, run.databaseId) };
 }
 
 /**
@@ -183,20 +130,22 @@ function readMain(gh: Gh, repo: string): { run?: MainRun; jobs: JobRow[] } {
  * briefly unreachable turns a check into an outage.
  */
 export function checkMain({ repo, gh = ghCli }: { repo: string; gh?: Gh }): MainHealth {
+  const t = ghTracker(gh, repo);
   try {
-    const { run, jobs } = readMain(gh, repo);
-    const health = decideMainHealth(run, jobs, parse<FiledIssue[]>(gh(filedIssueArgs(repo)), []));
+    const { run, jobs } = readMain(gh, repo, t);
+    // `state: all`: a closed issue still means this run was reported. Listed, never searched: search trails its own writes.
+    const health = decideMainHealth(run, jobs, t.labelled(MAIN_RED_LABEL, { state: "all", limit: WINDOW }));
     if (health.state === "green") {
       for (const issue of health.close) {
         try {
-          gh(closeArgs(repo, issue, health.runId));
+          t.closeIssue(issue, `main is green again: ci.yml run ${health.runId}.`);
         } catch {
           // A close that fails is retried by the next green read; it must not make green read as unknown.
         }
       }
     }
     if (health.state !== "file") return health;
-    const url = gh(issueArgs(repo, health, run?.headSha, MAIN_RED_LABELS)).trim().split("\n").at(-1);
+    const url = t.createIssue({ title: health.title, body: bodyFor(health, run?.headSha), labels: MAIN_RED_LABELS });
     return { state: "filed", runId: health.runId, title: health.title, why: health.why, url };
   } catch (e) {
     const [first] = String((e as Error).message).split("\n");
@@ -219,42 +168,35 @@ function failuresOf(gh: Gh, repo: string, run: RunRow, jobs: JobRow[], attempt?:
   return failingTestIds(log.split("\n").map(stripLogPrefix).join("\n"));
 }
 
-const treeOf = (gh: Gh, repo: string, sha: string) => gh(["api", `repos/${repo}/commits/${sha}`, "--jq", ".commit.tree.sha"]).trim();
 
 /**
  * ci.yml's scope job skips main's suite when main's tree is a pull-request head's that already has a
  * green run, so main's green is that run's — and a rerun's green says nothing of its attempt 1.
  */
-function inheritedFlakes(gh: Gh, repo: string, main: MainRun): MainFailures | null {
+function inheritedFlakes(gh: Gh, repo: string, t: Tracker, main: MainRun): MainFailures | null {
   if (!main.headSha) return null;
-  const head = gh(["api", `repos/${repo}/commits/${main.headSha}/pulls`, "--jq", ".[0].head.sha // empty"]).trim();
-  if (!head || treeOf(gh, repo, main.headSha) !== treeOf(gh, repo, head)) return null;
-  // prettier-ignore
-  const [source] = parse<{ databaseId: number; attempt?: number; url?: string }[]>(gh([
-    "run", "list", "--repo", repo, "--workflow", "ci.yml", "--commit", head,
-    "--status", "success", "--limit", "1", "--json", "databaseId,attempt,url",
-  ]), []);
-  return source ? firstAttemptFlakes(gh, repo, source) : null;
+  const head = t.prHeadOf(main.headSha);
+  if (!head || t.treeOf(main.headSha) !== t.treeOf(head)) return null;
+  const [source] = t.ciRuns({ commit: head, status: "success", limit: 1 });
+  return source ? firstAttemptFlakes(gh, repo, t, source) : null;
 }
 
 /** A green run won on a rerun: attempt 1's failing ids, as flakes. */
-function firstAttemptFlakes(gh: Gh, repo: string, green: { databaseId: number; attempt?: number; url?: string }): MainFailures | null {
+function firstAttemptFlakes(gh: Gh, repo: string, t: Tracker, green: { databaseId: number; attempt?: number; url?: string }): MainFailures | null {
   if ((green.attempt ?? 1) < 2) return null;
-  const first = parse<RawJobs & { status?: string; conclusion?: string | null }>(
-    gh(["run", "view", String(green.databaseId), "--repo", repo, "--attempt", "1", "--json", "status,conclusion,jobs"]),
-    {},
-  );
+  const first = t.run(green.databaseId, { attempt: 1 });
   const run: RunRow = { databaseId: green.databaseId, status: first.status ?? "", conclusion: first.conclusion ?? null };
-  const ids = failuresOf(gh, repo, run, jobRows(gh, repo, first), 1);
+  const ids = failuresOf(gh, repo, run, jobRows(t, green.databaseId, 1), 1);
   return ids ? { runId: green.databaseId, url: green.url && `${green.url}/attempts/1`, ids, flaky: true } : null;
 }
 
 /** Main's latest completed red run and its failing test ids, or a green main's rerun-hidden flakes; null when main has none to give, never a throw. */
 export function mainFailures(gh: Gh, repo: string): MainFailures | null {
+  const t = ghTracker(gh, repo);
   try {
-    const { run, jobs } = readMain(gh, repo);
+    const { run, jobs } = readMain(gh, repo, t);
     if (!run || run.status !== "completed") return null;
-    if (run.conclusion === "success") return firstAttemptFlakes(gh, repo, run) ?? inheritedFlakes(gh, repo, run);
+    if (run.conclusion === "success") return firstAttemptFlakes(gh, repo, t, run) ?? inheritedFlakes(gh, repo, t, run);
     const ids = failuresOf(gh, repo, run, jobs);
     return ids && { runId: run.databaseId, url: run.url, ids };
   } catch {

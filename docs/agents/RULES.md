@@ -41,7 +41,7 @@ that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAU
 13. **`Closes #NN` goes in the pull request body, never in a commit message.**
 14. **Merge with `--merge --delete-branch`, never `--squash`, and confirm the remote branch is actually gone** (`git ls-remote origin <branch>` returns nothing).
     In the loop the supervisor arms auto-merge with `--merge`, then deletes the merged branch and checks it is gone.
-15. **Bring a stale branch up to date before merging** (`gh pr update-branch`), not after.
+15. **Bring a stale branch up to date before merging** (the supervisor's update-branch, `PUT pulls/<n>/update-branch`), not after.
 
 ## Reading and writing code
 
@@ -62,8 +62,8 @@ that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAU
 23. *(retired)*
 24. *(retired)*
 25. **Read an issue with one command, at pick-up and again before finishing:**
-    `gh issue view <n> --json title,body,comments --jq '.title, .body, (.comments[]|select(.authorAssociation|IN("OWNER","MEMBER","COLLABORATOR"))|"--- "+.author.login+": "+.body)'`.
-    `--comments` prints the thread *instead of* the body, outsiders' comments too; `--json body` drops it.
+    `node tools/loop/tracker.mjs read <n>` — title, body and trusted authors' comments, over REST.
+    Not the `gh issue` porcelain: GraphQL, refused in a cloud session, and its thread keeps outsiders.
 26. **Release the claim whenever you stop without landing** — remove `in-progress`, say why.
 27. **A routed `implement` goes through `/queue`**; `triage` through `/triage`; `wayfinder`
     through `/wayfinder`.

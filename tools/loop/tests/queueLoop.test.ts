@@ -32,7 +32,7 @@ import {
   contextFor,
 } from "../queue-loop.mjs";
 import { afterRefusal, apiFailure, exhausted, outcomeOf, reasonFor, resumePhase, WAIT, waitFor } from "../decide.mjs";
-import { fakeTracker } from "../tracker.mjs";
+import { fakeTracker, ghTracker } from "../tracker.mjs";
 
 /** Enough ports for `runOnce` to reach a decision without git, the tracker or a `claude` binary. */
 const stubPorts = () => ({
@@ -1022,6 +1022,7 @@ describe("park", () => {
       run: (file: string, args: string[]) => {
         calls.push({ file, args });
         if (throwOn && args.includes(throwOn)) throw new Error(`${file} refused ${throwOn}`);
+        if (file === "gh" && !args.includes("-X")) return JSON.stringify({ labels: [{ name: "in-progress" }] });
         return args.includes("--porcelain") ? stillDirty : "";
       },
     };
@@ -1416,18 +1417,7 @@ describe("afterRefusal", () => {
 // path through it therefore checks the head ref, including the one that trusts the number the
 // session declared — a number a model wrote into a line of text.
 describe("pushedPr only ever answers with this ticket's own pull request", () => {
-  // Projected to the fields the call actually asked for, the way `gh` itself answers. A fake that
-  // hands back the whole row lets a field dropped from `--json` pass every assertion below.
-  const only = (row: object, args: string[]) => {
-    const asked = (args[args.indexOf("--json") + 1] ?? "").split(",");
-    return Object.fromEntries(Object.entries(row).filter(([k]) => asked.includes(k)));
-  };
-  const gh = (rows: object[], view: object | null = null) => {
-    return (_cmd: string, args: string[]) =>
-      args[1] === "view"
-        ? JSON.stringify(view ? only(view, args) : {})
-        : JSON.stringify(rows.map((r) => only(r, args)));
-  };
+  const prs = (rows: object[]) => fakeTracker({}, { prs: rows as never });
   const open = {
     number: 984,
     state: "OPEN",
@@ -1436,33 +1426,30 @@ describe("pushedPr only ever answers with this ticket's own pull request", () =>
     mergedAt: null,
   };
 
-  test("the branch's own pull request is taken", () => {
-    assert.deepEqual(pushedPr("agent/42-x", 42, null, 0, gh([open])), {
+  test("the branch's own pull request is taken, with the file count only the pull request itself carries", () => {
+    assert.deepEqual(pushedPr("agent/42-x", 42, null, 0, prs([{ ...open, changedFiles: 3 }])), {
       number: 984,
       state: "OPEN",
       head: "agent/42-x",
-      // The head the no-op-round guard in `main` is judged on. Asserted against a projecting fake,
-      // so dropping `headRefOid` from the query reds this rather than answering null for ever.
       sha: "5bb5dcf22b863994fc138ab773976e9539d78539",
-      changedFiles: 0,
+      changedFiles: 3,
     });
+    const listed = { ...prs([open]), pr: () => { throw new Error("HTTP 502"); } };
+    assert.equal(pushedPr("agent/42-x", 42, null, 0, listed)?.changedFiles, null, "a count the tracker would not give is unknown, not none");
   });
 
-  test("a pull request on another branch is not this ticket's, whatever gh returned", () => {
-    const other = { number: 990, state: "OPEN", headRefName: "agent/77-y", mergedAt: null };
-    assert.equal(pushedPr("agent/42-x", 42, null, 0, gh([other])), null);
-    assert.equal(pushedPr(null, 42, null, 0, gh([other])), null);
+  test("a pull request on another branch is not this ticket's, whatever the tracker returned", () => {
+    const other = { number: 990, state: "OPEN", headRefName: "agent/77-y", headRefOid: null, mergedAt: null };
+    const anyRow = { ...prs([]), prsFor: () => [other] };
+    assert.equal(pushedPr("agent/42-x", 42, null, 0, anyRow), null);
+    assert.equal(pushedPr(null, 42, null, 0, anyRow), null);
   });
 
   test("a declared number is checked against the head ref like everything else", () => {
     const peer = { number: 1003, state: "OPEN", headRefName: "agent/891-rescue", mergedAt: null };
-    assert.equal(
-      pushedPr("agent/42-x", 42, 1003, 0, gh([], peer)),
-      null,
-      "a transposed number reached a peer's pull request",
-    );
+    assert.equal(pushedPr("agent/42-x", 42, 1003, 0, prs([peer])), null, "a transposed number reached a peer's pull request");
     const mine = { number: 1003, state: "OPEN", headRefName: "agent/42-x", mergedAt: null };
-    assert.equal(pushedPr("agent/42-x", 42, 1003, 0, gh([], mine))?.number, 1003);
+    assert.equal(pushedPr("agent/42-x", 42, 1003, 0, { ...prs([mine]), prsFor: () => [] })?.number, 1003);
   });
 
   // A ticket re-opened and re-queued still has its old agent/<n>-… pull request on the tracker.
@@ -1475,17 +1462,15 @@ describe("pushedPr only ever answers with this ticket's own pull request", () =>
       headRefName: "agent/42-x",
       mergedAt: new Date(started - 86_400_000).toISOString(),
     };
-    assert.equal(pushedPr("agent/42-x", 42, null, started, gh([oldRow])), null);
+    assert.equal(pushedPr("agent/42-x", 42, null, started, prs([oldRow])), null);
 
     const freshRow = { ...oldRow, mergedAt: new Date(started + 60_000).toISOString() };
-    assert.equal(pushedPr("agent/42-x", 42, null, started, gh([freshRow]))?.state, "MERGED");
+    assert.equal(pushedPr("agent/42-x", 42, null, started, prs([freshRow]))?.state, "MERGED");
   });
 
-  test("gh failing is not a pull request", () => {
-    const throws = () => {
-      throw new Error("gh: not authenticated");
-    };
-    assert.equal(pushedPr("agent/42-x", 42, 1003, 0, throws), null);
+  test("a tracker failing is not a pull request", () => {
+    const down = fakeTracker({}, { fail: ["prsFor", "pr"] });
+    assert.equal(pushedPr("agent/42-x", 42, 1003, 0, down), null);
   });
 });
 
@@ -1620,13 +1605,13 @@ test("importing the supervisor strips no TypeScript, so an exit right after it c
 });
 
 describe("ticketFacts", () => {
-  test("its gh read is bounded, and a timeout is the failed-read shape rather than a throw", () => {
+  test("its tracker read is bounded, and a timeout is the failed-read shape rather than a throw", () => {
     const seen: any[] = [];
-    const timedOut = (_cmd: string, _args: string[], o: object) => {
+    const timedOut = (_args: string[], o: object) => {
       seen.push(o);
       throw Object.assign(new Error("spawnSync gh ETIMEDOUT"), { code: "ETIMEDOUT" });
     };
-    const facts = ticketFacts(7, timedOut as never);
+    const facts = ticketFacts(7, ghTracker(timedOut as never));
     assert.equal(seen[0].timeout, 30_000);
     assert.equal(facts.reviewRounds, null);
     assert.equal(facts.title, "ticket #7");
@@ -1635,12 +1620,11 @@ describe("ticketFacts", () => {
   test("a VERDICT or CI-RED from outside the repo counts no round (#1397)", () => {
     const sha = "a".repeat(40);
     const markers = [{ body: `VERDICT: HOLD ${sha} — no` }, { body: `CI-RED ${sha}` }];
-    const read = (authorAssociation: string) => () =>
-      JSON.stringify({ title: "t", url: "u", labels: [], state: "OPEN", comments: markers.map((c) => ({ ...c, authorAssociation })) });
-    const outside = ticketFacts(7, read("NONE") as never);
+    const read = (authorAssociation: string) => fakeTracker({ 7: { title: "t", comments: markers.map((c) => ({ ...c, authorAssociation })) } });
+    const outside = ticketFacts(7, read("NONE"));
     assert.equal(outside.title, "t");
     assert.deepEqual([outside.reviewRounds, outside.ciRounds], [0, 0]);
-    const own = ticketFacts(7, read("MEMBER") as never);
+    const own = ticketFacts(7, read("MEMBER"));
     assert.deepEqual([own.reviewRounds, own.ciRounds], [1, 1]);
   });
 });
