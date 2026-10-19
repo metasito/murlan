@@ -17,6 +17,7 @@ import {
   isSessionHost,
   parseWindowsProcessJson,
   readProcessTable,
+  processTable,
   reap,
   worktreeOrphans,
   reapWorktree,
@@ -549,14 +550,33 @@ describe("the sweep, called in-process as housekeeping calls it", () => {
   test("says each line through its caller and counts exactly what it named to take", async () => {
     const said: string[] = [];
     const self = { pid: process.pid, ppid: 1, name: "node", commandLine: "node reap-test", startedAt: Date.now() };
-    const { took, blind } = await reap({
+    const { took } = await reap({
       dryRun: true,
       stale: true,
       say: (l: string) => said.push(l),
       readTable: () => ({ rows: [self], blind: null }),
     });
-    assert.equal(blind, null, said.join("\n"));
     assert.ok(said.some((l) => /e2e port/.test(l)), said.join("\n"));
     assert.equal(took, said.filter((l) => /would (kill|clear)/.test(l)).length, said.join("\n"));
+  });
+
+  test("a blind table comes back blind and is said, never read as a clean machine", async () => {
+    const said: string[] = [];
+    const { took, blind } = await reap({
+      dryRun: true,
+      say: (l: string) => said.push(l),
+      readTable: () => ({ rows: [], blind: "no table" }),
+    });
+    assert.equal(blind, "no table");
+    assert.ok(said.includes("reap: no table"), said.join("\n"));
+    assert.equal(took, 0);
+  });
+});
+
+describe("processTable", () => {
+  test("sees this host's processes, this one among them", () => {
+    const { rows, blind } = processTable();
+    assert.equal(blind, null);
+    assert.ok(rows.some((p: { pid: number }) => p.pid === process.pid), "the table does not show the process reading it");
   });
 });

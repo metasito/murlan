@@ -124,7 +124,7 @@ export function readProcessTable(json, exeName) {
 }
 
 /** Every process on the box, so a candidate's parent can be looked up rather than assumed dead. */
-function processTable() {
+export function processTable() {
   if (process.platform === "win32") {
     const json = sh(POWERSHELL, [
       "-NoProfile",
