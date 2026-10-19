@@ -6,13 +6,12 @@ import React, {
   useEffect,
   useRef,
   useMemo,
-  useSyncExternalStore,
   ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
-import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
+import { t, translateServerPayload, useTranslation, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
 import { send, undelivered, type IntentEvent } from "@/lib/sendIntent";
 import { MATCH_TARGETS } from "@/lib/game/gameEngine";
@@ -30,7 +29,7 @@ import { clearReactions, pushReaction } from "@/lib/reactions";
 import { joinCode } from "@/lib/deepLink";
 import { handlesFor } from "@/lib/tableHandles";
 import { useRejoin } from "@/context/useRejoin";
-import type { GameState, MatchLength } from "@/lib/game/gameEngine";
+import type { MatchLength } from "@/lib/game/gameEngine";
 import type { RoundOverPayload, MatchVerdict, RatingAfter } from "@/lib/game/matchState";
 import {
   exchangeAnnouncementOf,
@@ -40,7 +39,7 @@ import {
 import type { BotPersonalityId } from "@/lib/game/botPersonalities";
 import { LADDER_KEY } from "@/lib/ladderQuery";
 import { useOwnLink } from "@/lib/useOwnLink";
-import type { OwnLink } from "@/lib/ownLink";
+import { linkPill, type LinkPill, type OwnLink } from "@/lib/ownLink";
 
 export type RoomState = WireRoomState;
 
@@ -72,17 +71,23 @@ const INITIAL_MATCH: OnlineMatchState = {
   continues: false,
 };
 
-/** Another seat dropping (`back: false`) or returning, in the viewer's language. */
-export type ReconnectNotice = { text: string; back: boolean };
+/** Another seat dropping (`back: false`) or returning; worded where it is shown. */
+export type ReconnectNotice = { payload: ServerPayload; back: boolean };
 
-/** A server refusal. `seq` is new per event, so the same words arriving twice are two changes. */
+/**
+ * A server refusal, and the surface it answered: the table once dealt, else the room once held, else
+ * the lobby. `seq` is new per event, so the same words arriving twice are two changes.
+ */
+export type ServerNotice = { payload: ServerPayload; seq: number; surface: "lobby" | "room" | "table" };
+
+/** A refusal as one surface shows it, in the language on screen. */
 export type ServerError = { text: string; seq: number };
 
 interface OnlineGameContextValue {
   room: RoomState | null;
-  gameState: GameState | null;
+  gameState: WireGameState | null;
   connected: boolean;
-  error: ServerError | null;
+  error: ServerNotice | null;
   playerLeft: boolean;
   rejoinFailed: boolean;
   reconnectNotice: ReconnectNotice | null;
@@ -139,7 +144,8 @@ interface OnlineGameContextValue {
   giveExchangeCard: (cardId: string) => void;
   acknowledgeExchange: () => void;
   sendReaction: (emoji: string) => void;
-  clearError: () => void;
+  /** Clears the standing refusal only while it is still the one numbered `seq`. */
+  clearError: (seq: number) => void;
   clearPlayerLeft: () => void;
   /**
    * Consumes the bounce back to the lobby. `rejoinFailed` stays true until the
@@ -152,6 +158,8 @@ interface OnlineGameContextValue {
   retryConnection: () => void;
   /** The viewer's own link as the table shows it (`lib/ownLink.ts`). */
   ownLink: OwnLink;
+  /** What the connection pill says, the viewer's own link outranking another seat's return. */
+  pill: LinkPill | null;
 }
 
 /**
@@ -176,6 +184,7 @@ type ConnectionSlice = Pick<
   | "clearRejoinFailed"
   | "retryConnection"
   | "ownLink"
+  | "pill"
 >;
 type RoomSlice = Pick<
   OnlineGameContextValue,
@@ -224,21 +233,31 @@ function sliceContext<T>(hookName: string) {
   return [Context, useSlice] as const;
 }
 
-const [ConnectionContext, useConnectionSlice] = sliceContext<ConnectionSlice>("useOnlineConnection");
-const [RoomContext, useRoomSlice] = sliceContext<RoomSlice>("useOnlineRoom");
-const [TableContext, useTableSlice] = sliceContext<TableSlice>("useOnlineTable");
-const [TurnClockContext, useTurnClockSlice] = sliceContext<TurnClockSlice>("useOnlineTurnClock");
-const [MatchContext, useMatchSlice] = sliceContext<MatchSlice>("useOnlineMatch");
-const [ExchangeContext, useExchangeSlice] = sliceContext<ExchangeSlice>("useOnlineExchange");
+const [ConnectionContext, useOnlineConnection] = sliceContext<ConnectionSlice>("useOnlineConnection");
+const [RoomContext, useOnlineRoom] = sliceContext<RoomSlice>("useOnlineRoom");
+const [TableContext, useOnlineTable] = sliceContext<TableSlice>("useOnlineTable");
+const [TurnClockContext, useOnlineTurnClock] = sliceContext<TurnClockSlice>("useOnlineTurnClock");
+const [MatchContext, useOnlineMatch] = sliceContext<MatchSlice>("useOnlineMatch");
+const [ExchangeContext, useOnlineExchange] = sliceContext<ExchangeSlice>("useOnlineExchange");
 
 export {
-  useConnectionSlice,
-  useRoomSlice,
-  useTableSlice,
-  useTurnClockSlice,
-  useMatchSlice,
-  useExchangeSlice,
+  useOnlineConnection,
+  useOnlineRoom,
+  useOnlineTable,
+  useOnlineTurnClock,
+  useOnlineMatch,
+  useOnlineExchange,
 };
+
+/** The standing refusal if it answered `surface`, worded at render so a language switch reaches it. */
+export function useServerError(surface: ServerNotice["surface"]): ServerError | null {
+  const { error } = useOnlineConnection();
+  const { translateServerPayload: translate } = useTranslation();
+  return useMemo(
+    () => (error?.surface === surface ? { text: translate(error.payload), seq: error.seq } : null),
+    [error, surface, translate]
+  );
+}
 
 export interface TurnDeadline {
   turnDeadlineMs?: number;
@@ -253,8 +272,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const { showNotification } = useNotification();
   const qc = useQueryClient();
   const [room, setRoom] = useState<RoomState | null>(null);
-  const [gameState, setGameState] = useState<GameState | null>(null);
-  const [error, setError] = useState<ServerError | null>(null);
+  const [gameState, setGameState] = useState<WireGameState | null>(null);
+  const [error, setError] = useState<ServerNotice | null>(null);
   const errorSeqRef = useRef(0);
   const [playerLeft, setPlayerLeft] = useState(false);
   const [entrySource, setEntrySource] = useState<"quickmatch" | "friends" | null>(null);
@@ -285,7 +304,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [isSpectator, setIsSpectator] = useState(false);
 
   const roomRef = useRef<RoomState | null>(null);
-  const gameStateRef = useRef<GameState | null>(null);
+  const gameStateRef = useRef<WireGameState | null>(null);
   const reconnectNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The server stamps every game:state with the viewer's seat index
   // (sanitizeStateForPlayer). -1 is an explicit "unknown" — never a real seat.
@@ -293,28 +312,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [turnDeadline, setTurnDeadline] = useState<TurnDeadline>(NO_TURN_DEADLINE);
 
   const { socket } = useSocket();
-  const ownLink = useOwnLink(socket);
+  const { link: ownLink, connected } = useOwnLink(socket);
   const rejoin = useRejoin(socket, userId, roomRef, gameStateRef);
 
-  // Listeners attached to a socket that is already connected have no `connect`
-  // left to hear, so anything holding this as its own state has to seed it by
-  // hand and is wrong for exactly as long as it has not.
-  const connected = useSyncExternalStore(
-    useCallback(
-      (onChange: () => void) => {
-        if (!socket) return () => {};
-        socket.on("connect", onChange);
-        socket.on("disconnect", onChange);
-        return () => {
-          socket.off("connect", onChange);
-          socket.off("disconnect", onChange);
-        };
-      },
-      [socket]
-    ),
-    () => socket?.connected ?? false,
-    () => false
-  );
+  const refuse = useCallback((payload: ServerPayload) => {
+    const surface = gameStateRef.current ? "table" : roomRef.current ? "room" : "lobby";
+    setError({ payload, seq: ++errorSeqRef.current, surface });
+  }, []);
 
   /** The one teardown: whatever ends a table, nothing of it survives into the next. */
   const resetTable = useCallback(() => {
@@ -405,7 +409,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // send `room:unspectate` for the next table the player actually sits at,
       // which releases nothing — the seat stays occupied and keeps being dealt.
       setIsSpectator(false);
-      setError({ text: translateServerPayload(payload), seq: ++errorSeqRef.current });
+      refuse(payload);
     };
 
     const onGameState = (
@@ -417,7 +421,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       ack?.();
       const parsed = gameStateSchema.safeParse(raw);
       if (!parsed.success) return unreadable("game:state", parsed.error);
-      const state = parsed.data as unknown as GameStateBroadcast;
+      const state = parsed.data as unknown as WireGameState;
       rejoin.answered();
       if (typeof state.turnSecondsRemaining === "number") {
         setTurnDeadline({
@@ -454,14 +458,14 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     };
 
     const onGameError = (payload: ServerPayload) => {
-      setError({ text: translateServerPayload(payload), seq: ++errorSeqRef.current });
+      refuse(payload);
     };
 
     const onGameNotification = (
       payload: ServerPayload & { type: string }
     ) => {
       const text = translateServerPayload(payload);
-      const dealt = gameStateRef.current as GameStateBroadcast | null;
+      const dealt = gameStateRef.current;
       const me = dealt?.players[dealt.viewerSeatIndex ?? -1]?.name;
       // The server names the seat by the dealt `players[seat].name`, so that is what is compared; the
       // viewer's own pass is the table's float, not a banner.
@@ -591,7 +595,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // The server sends { code, params, message }; rendering it here rather
       // than rebuilding the sentence keeps this in the player's language and
       // keeps the grace period truthful — it is configurable server-side.
-      const notice = { text: translateServerPayload(payload), back: false };
+      const notice = { payload, back: false };
       setReconnectNotice(notice);
       if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
       reconnectNoticeTimerRef.current = setTimeout(() => {
@@ -614,7 +618,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     const onPlayerReconnected = (
       payload: ServerPayload & { userId: string; seatIndex?: number | null }
     ) => {
-      const notice = { text: translateServerPayload(payload), back: true };
+      const notice = { payload, back: true };
       setReconnectNotice(notice);
       if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
       reconnectNoticeTimerRef.current = setTimeout(() => {
@@ -702,7 +706,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // pending removals both have to go with the table.
       clearReactions();
     };
-  }, [socket, rejoin, resetTable, abandonRejoin, showNotification, qc, announce]);
+  }, [socket, rejoin, resetTable, abandonRejoin, showNotification, qc, announce, refuse]);
 
   /**
    * Every intent waits to be told it arrived and says so if it never was — a
@@ -778,6 +782,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setEntrySource("quickmatch");
     setRejoinFailed(false);
     setIsSpectator(false);
+    setError(null);
     rejoin.cancelLobby();
     deliver("room:quickmatch", { maxPlayers, gameMode }, { retry: false });
   }, [deliver, rejoin]);
@@ -818,7 +823,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     deliver("game:reaction", { emoji });
   }, [deliver]);
 
-  const clearError = useCallback(() => setError(null), []);
+  const clearError = useCallback(
+    (seq: number) => setError((cur) => (cur?.seq === seq ? null : cur)),
+    []
+  );
   const clearPlayerLeft = useCallback(() => setPlayerLeft(false), []);
   const clearRejoinFailed = useCallback(() => setRejoinFailed(false), []);
   const retryConnection = useCallback(() => {
@@ -829,6 +837,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   // memo, or a dep list reaching past its own slice, is a split that passes
   // every shape check and saves nothing — which is why what pins these is a
   // render count (tests/native/sliceRenderCounts.test.tsx).
+  const pill = linkPill(ownLink, connected, !!reconnectNotice?.back);
   const connectionValue = useMemo(
     () => ({
       connected,
@@ -841,8 +850,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       clearRejoinFailed,
       retryConnection,
       ownLink,
+      pill,
     }),
-    [connected, error, reconnectNotice, playerLeft, rejoinFailed, clearError, clearPlayerLeft, clearRejoinFailed, retryConnection, ownLink]
+    [connected, error, reconnectNotice, playerLeft, rejoinFailed, clearError, clearPlayerLeft, clearRejoinFailed, retryConnection, ownLink, pill]
   );
 
   const roomValue = useMemo(
@@ -910,22 +920,5 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         </TableContext.Provider>
       </RoomContext.Provider>
     </ConnectionContext.Provider>
-  );
-}
-
-/**
- * The whole surface, as the composition of the six. A consumer of this wakes on
- * any field, which is why the slices are the way in for a screen.
- */
-export function useOnlineGame(): OnlineGameContextValue {
-  const connection = useConnectionSlice();
-  const room = useRoomSlice();
-  const table = useTableSlice();
-  const turnClock = useTurnClockSlice();
-  const match = useMatchSlice();
-  const exchange = useExchangeSlice();
-  return useMemo(
-    () => ({ ...connection, ...room, ...table, ...turnClock, ...match, ...exchange }),
-    [connection, room, table, turnClock, match, exchange]
   );
 }

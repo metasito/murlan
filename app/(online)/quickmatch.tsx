@@ -20,7 +20,7 @@ import Animated, {
 import { router, useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useOnlineConnection, useOnlineRoom } from "@/context/onlineGameHooks";
+import { useOnlineRoom, useServerError } from "@/context/onlineGameHooks";
 import { Colors, FontSize, Motion, Radius, Spacing } from '@/lib/theme';
 import { MenuLayout, CONTENT_H_PAD } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
@@ -85,7 +85,7 @@ export default function QuickmatchScreen() {
   const MODES = React.useMemo(() => buildModes(t), [t]);
   const { width: W, height: H } = useOrientedWindow();
   const { quickmatch, leaveRoom, room } = useOnlineRoom();
-  const { error, clearError } = useOnlineConnection();
+  const error = useServerError("lobby");
   const navigation = useNavigation();
 
   const [phase, setPhase] = useState<"selecting" | "searching">("selecting");
@@ -106,10 +106,9 @@ export default function QuickmatchScreen() {
 
   const handleCancelSearch = React.useCallback(() => {
     leaveRoom();
-    clearError();
     setPhase("selecting");
     setSelectedMode(null);
-  }, [leaveRoom, clearError]);
+  }, [leaveRoom]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -151,14 +150,12 @@ export default function QuickmatchScreen() {
 
   const handleSelectMode = (mode: ModeOption) => {
     setSelectedMode(mode);
-    clearError();
     quickmatch(mode.maxPlayers, mode.gameMode);
     setPhase("searching");
   };
 
   const handleRetry = () => {
     if (!selectedMode) return;
-    clearError();
     quickmatch(selectedMode.maxPlayers, selectedMode.gameMode);
   };
 

@@ -90,7 +90,7 @@ function destructuredNames(source, hookName) {
       if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) names.add(name);
     }
   }
-  // `const ctx = useOnlineGame()` then `ctx.field` reads the same way.
+  // `const ctx = useOnlineTable()` then `ctx.field` reads the same way.
   for (const m of source.matchAll(
     new RegExp(`(?:const|let)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*${hookName}\\s*\\(`, "g")
   )) {
@@ -101,12 +101,11 @@ function destructuredNames(source, hookName) {
   return names;
 }
 
-function readersOf(fields, files, hookName) {
+function readersOf(fields, files, hookNames) {
   const readers = new Map(fields.map((f) => [f, []]));
   for (const file of files) {
     const src = readFileSync(file, "utf8");
-    if (!src.includes(hookName)) continue;
-    const taken = destructuredNames(src, hookName);
+    const taken = new Set(hookNames.flatMap((hook) => (src.includes(hook) ? [...destructuredNames(src, hook)] : [])));
     for (const field of fields) {
       if (taken.has(field)) readers.get(field).push(path.relative(ROOT, file));
     }
@@ -116,12 +115,16 @@ function readersOf(fields, files, hookName) {
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const files = walk(ROOT).filter((f) => !/[\\/]context[\\/](Online)?GameContext\.tsx$/.test(f));
-  for (const [file, iface, hook] of [
-    ["context/OnlineGameContext.tsx", "OnlineGameContextValue", "useOnlineGame"],
-    ["context/GameContext.tsx", "GameContextValue", "useGame"],
+  for (const [file, iface, hooks] of [
+    [
+      "context/OnlineGameContext.tsx",
+      "OnlineGameContextValue",
+      ["useOnlineConnection", "useOnlineRoom", "useOnlineTable", "useOnlineTurnClock", "useOnlineMatch", "useOnlineExchange"],
+    ],
+    ["context/GameContext.tsx", "GameContextValue", ["useGame"]],
   ]) {
     const fields = fieldsOf(readFileSync(path.join(ROOT, file), "utf8"), iface);
-    const readers = readersOf(fields, files, hook);
+    const readers = readersOf(fields, files, hooks);
     const single = [...readers].filter(([, r]) => r.length === 1);
     const none = [...readers].filter(([, r]) => r.length === 0);
     console.log(`\n=== ${iface}: ${fields.length} fields ===`);

@@ -44,7 +44,7 @@ jest.mock('@/context/SocketContext', () => {
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { OnlineGameProvider, type ServerError } from '@/context/OnlineGameContext';
-import { useOnlineConnection, useOnlineRoom } from '@/context/onlineGameHooks';
+import { useOnlineRoom, useServerError } from '@/context/onlineGameHooks';
 import { NotificationProvider } from '@/context/NotificationContext';
 import { NOTICE_GALLERY, type NoticeFixture } from '@/components/table/notices/gallery';
 import { NOTICES, type NoticeKind } from '@/components/table/noticeModel';
@@ -537,11 +537,24 @@ describe("the table's refusals and lines", () => {
   );
   const refuse = () => act(async () => mockSocketListeners.get('game:error')?.forEach((fn) => fn({ message: 'Nope' })));
 
+  const deal = () =>
+    act(async () =>
+      mockSocketListeners.get('game:state')?.forEach((fn) =>
+        fn({
+          ...STATE,
+          players: STATE.players.map((p) => ({ ...p, handCount: p.hand.length, vacated: false })),
+          viewerSeatIndex: 0,
+          turnSecondsRemaining: 0,
+        })
+      )
+    );
+
   it('the same server error arriving twice floats twice', async () => {
     const OnlineTable = () => (
-      <GameTable gameState={STATE} viewerSeat={0} error={useOnlineConnection().error} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
+      <GameTable gameState={STATE} viewerSeat={0} error={useServerError('table')} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
     );
     const r = await render(online(<OnlineTable />));
+    await deal();
     await refuse();
     const first = screen.getByTestId('notice-errorToast', hidden);
     await refuse();
@@ -552,7 +565,7 @@ describe("the table's refusals and lines", () => {
   it('leaving the table retires its refusal, so the lobby under it does not show one', async () => {
     const seen: { error?: ServerError | null; leaveRoom?: () => void } = {};
     const Probe = () => {
-      seen.error = useOnlineConnection().error;
+      seen.error = useServerError('lobby');
       seen.leaveRoom = useOnlineRoom().leaveRoom;
       return null;
     };

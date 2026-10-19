@@ -23,6 +23,7 @@ const mockState = {
 };
 
 jest.mock('@/context/onlineGameHooks', () => ({
+  useServerError: () => null,
   useOnlineRoom: () => ({
     createRoom: jest.fn(),
     joinRoom: mockJoinRoom,

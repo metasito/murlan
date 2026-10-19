@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   NO_CATCH_UP,
   NO_LINK,
@@ -19,17 +19,28 @@ type LinkSocket = {
 
 const edgesOf = new WeakMap<LinkSocket, LinkEdges>();
 
-/** The viewer's own link as the table shows it: the socket's edges, and the time since the last one. */
-export function useOwnLink(socket: LinkSocket | null): OwnLink {
+function edgesFor(socket: LinkSocket): LinkEdges {
+  let edges = edgesOf.get(socket);
+  if (!edges) {
+    edges = observeLink(NO_LINK, socket.connected, Date.now());
+    edgesOf.set(socket, edges);
+  }
+  return edges;
+}
+
+/**
+ * The viewer's own link as the table shows it: the socket's edges, and the time since the last one.
+ * `connected` is read off the same edges, so a socket never up reads as not connected.
+ */
+export function useOwnLink(socket: LinkSocket | null): { link: OwnLink; connected: boolean } {
   const edges = useSyncExternalStore(
     useCallback(
       (onChange: () => void) => {
         if (!socket) return () => {};
         const observe = () => {
-          edgesOf.set(socket, observeLink(edgesOf.get(socket) ?? NO_LINK, socket.connected, Date.now()));
+          edgesOf.set(socket, observeLink(edgesFor(socket), socket.connected, Date.now()));
           onChange();
         };
-        edgesOf.set(socket, NO_LINK);
         observe();
         socket.on("connect", observe);
         socket.on("disconnect", observe);
@@ -40,7 +51,7 @@ export function useOwnLink(socket: LinkSocket | null): OwnLink {
       },
       [socket]
     ),
-    () => (socket && edgesOf.get(socket)) || NO_LINK,
+    () => (socket ? edgesFor(socket) : NO_LINK),
     () => NO_LINK
   );
   const [now, setNow] = useState(() => Date.now());
@@ -52,7 +63,9 @@ export function useOwnLink(socket: LinkSocket | null): OwnLink {
     return () => clearTimeout(id);
   }, [edges, now]);
 
-  return ownLinkAt(edges, Math.max(now, edges.downAt ?? edges.upAt ?? 0));
+  const link = ownLinkAt(edges, Math.max(now, edges.downAt ?? edges.upAt ?? 0));
+  const connected = edges.everUp && edges.downAt === null;
+  return useMemo(() => ({ link, connected }), [link, connected]);
 }
 
 /** Whether `state` brings cards the viewer missed: from the drop through the first state after it (`observeCatchUp`). */

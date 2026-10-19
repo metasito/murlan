@@ -24,6 +24,7 @@ jest.mock('@/context/AuthContext', () => ({
 }));
 
 jest.mock('@/context/onlineGameHooks', () => ({
+  useServerError: () => null,
   // A spectate the server refused: no state, and no rejoin failure to bounce
   // off the screen either. Only the concerns this path actually reads.
   useOnlineTable: () => ({ gameState: null, mySeatIndex: -1 }),

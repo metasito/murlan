@@ -70,7 +70,8 @@ jest.mock('@/context/onlineGameHooks', () => ({
     setRoomVisibility: jest.fn(),
   }),
   useOnlineTable: () => ({ gameState: null }),
-  useOnlineConnection: () => ({ error: null, clearError: jest.fn() }),
+  useOnlineConnection: () => ({ clearError: jest.fn() }),
+  useServerError: () => null,
 }));
 
 const RoomScreen = (require('@/app/(online)/room') as { default: React.ComponentType }).default;

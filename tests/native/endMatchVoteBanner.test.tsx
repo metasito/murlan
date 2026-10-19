@@ -50,6 +50,7 @@ const mockVoteToEndMatch = jest.fn();
 let mockEndMatchVoteState: { votes: string[]; total: number } | null = null;
 
 jest.mock('@/context/onlineGameHooks', () => ({
+  useServerError: () => null,
   useOnlineTable: () => ({
     gameState: stateWith({}),
     mySeatIndex: 0,

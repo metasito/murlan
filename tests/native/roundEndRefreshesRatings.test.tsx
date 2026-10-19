@@ -5,7 +5,8 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react-native';
 
-import { OnlineGameProvider, useOnlineGame } from '@/context/OnlineGameContext';
+import { OnlineGameProvider } from '@/context/OnlineGameContext';
+import { useOnlineGame } from './onlineSurface';
 import { NotificationProvider } from '@/context/NotificationContext';
 
 type Listener = (...args: unknown[]) => void;

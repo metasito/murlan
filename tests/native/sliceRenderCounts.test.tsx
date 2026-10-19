@@ -15,7 +15,8 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render } from '@testing-library/react-native';
 
-import { OnlineGameProvider, useOnlineGame } from '@/context/OnlineGameContext';
+import { OnlineGameProvider } from '@/context/OnlineGameContext';
+import { useOnlineGame } from './onlineSurface';
 import type { GameStateBroadcast, RoomState, TurnDeadline } from '@/context/OnlineGameContext';
 import {
   useOnlineConnection,

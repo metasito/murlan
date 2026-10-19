@@ -23,6 +23,7 @@ import {
   useOnlineConnection,
   useOnlineRoom,
   useOnlineTable,
+  useServerError,
 } from "@/context/onlineGameHooks";
 import { useNotification } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
@@ -313,7 +314,8 @@ export default function RoomScreen() {
   const { user } = useAuth();
   const { room, leaveRoom, startGame, setRoomVisibility, entrySource } = useOnlineRoom();
   const { gameState } = useOnlineTable();
-  const { error, clearError } = useOnlineConnection();
+  const { clearError } = useOnlineConnection();
+  const error = useServerError("room");
   const { showNotification } = useNotification();
 
   const [fillWithBots, setFillWithBots] = useState(false);
@@ -364,7 +366,7 @@ export default function RoomScreen() {
   useEffect(() => {
     if (error) {
       showNotification({ type: "game_error", title: t("common.error"), message: error.text });
-      clearError();
+      clearError(error.seq);
     }
   }, [error, clearError, showNotification, t]);
 
