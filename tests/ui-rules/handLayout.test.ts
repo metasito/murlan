@@ -11,6 +11,7 @@ import {
   MAX_STEP_RATIO,
   MIN_READABLE_STEP,
   SELECT_TILT,
+  selectTilt,
   cardUnder,
   restingOrigin,
   computeHandLayout,
@@ -207,6 +208,13 @@ describe("computeHandLayout", () => {
         assert.ok(totalW <= room + 1e-9, `n=${n} spans ${totalW} of a ${room} share`);
       }
     }
+  });
+});
+
+describe("a selected card's tilt", () => {
+  test("tips by SELECT_TILT, and not at all under reduced motion", () => {
+    assert.equal(selectTilt(false), SELECT_TILT);
+    assert.equal(selectTilt(true), 0);
   });
 });
 

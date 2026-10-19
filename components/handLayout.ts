@@ -94,6 +94,11 @@ export function slotForCard(i: number, arrivingIndex: number | undefined): numbe
  * reserved headroom cannot fall short of it.
  */
 export const SELECT_TILT = -3;
+/** The tilt a selected card is drawn with: reduced motion lifts it without tipping it. */
+export function selectTilt(reduceMotion: boolean): number {
+  "worklet";
+  return reduceMotion ? 0 : SELECT_TILT;
+}
 /** How much bigger a card held out of the fan is drawn. */
 export const HELD_SCALE = 1.06;
 

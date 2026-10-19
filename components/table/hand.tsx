@@ -31,7 +31,7 @@ import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/game/gameEngine";
 import {
   HELD_SCALE,
-  SELECT_TILT,
+  selectTilt,
   cardUnder,
   entryOffset,
   layoutHandRow,
@@ -327,7 +327,7 @@ function CardItemBase({
         return;
       }
       liftY.value = withSpring(on ? selectLift : 0, Motion.spring.pickup);
-      tilt.value = withSpring(on ? SELECT_TILT : 0, Motion.spring.pickup);
+      tilt.value = withSpring(on ? selectTilt(false) : 0, Motion.spring.pickup);
     },
     [reduceMotion, selectLift]
   );
@@ -858,7 +858,7 @@ export const StraightHand = React.memo(function StraightHand({
   const refused = useMemo(() => rest.map((c) => giveableSet?.has(c.id) === false), [rest, giveableSet]);
   const shownIds = selection.shown;
   const liftH = handRowHeadroom(cardH);
-  const tilt = reduceMotion ? 0 : SELECT_TILT;
+  const tilt = selectTilt(reduceMotion);
   const fingerOn = (x: number, y: number): number | null => {
     'worklet';
     return cardUnder(strips, x, y, size, { raised: shownIds.value, gone: lifted?.value ?? [], lift: liftH, tilt });
@@ -902,7 +902,7 @@ export const StraightHand = React.memo(function StraightHand({
         place,
         d
           ? { shift: () => d.shift.get(), lift: () => d.liftY.get(), tilt: () => d.tilt.get() }
-          : { shift: () => place.shift, lift: () => (selected() ? -liftH : 0), tilt: () => (selected() ? SELECT_TILT : 0) }
+          : { shift: () => place.shift, lift: () => (selected() ? -liftH : 0), tilt: () => (selected() ? tilt : 0) }
       );
       origins.set(
         card.id,
