@@ -92,7 +92,7 @@ test("parityRed asks once for open parity issues and names the oldest; none or a
   };
   assert.deepEqual(parityRed(ghTracker(read)), parity);
   assert.equal(asked.length, 1);
-  assert.match(asked[0].at(-1) ?? "", /^repos\/metasito\/murlan\/issues\?state=open&labels=parity&/);
+  assert.match(asked[0].at(-1) ?? "", /^repos\/metasito\/murlan\/issues\?labels=parity&state=open&/);
   assert.equal(parityRed(ghTracker(() => "[[]]")), null);
   const offline = () => {
     throw new Error("gh: could not connect");

@@ -1022,6 +1022,7 @@ describe("park", () => {
       run: (file: string, args: string[]) => {
         calls.push({ file, args });
         if (throwOn && args.includes(throwOn)) throw new Error(`${file} refused ${throwOn}`);
+        if (file === "gh" && !args.includes("-X")) return JSON.stringify({ labels: [{ name: "in-progress" }] });
         return args.includes("--porcelain") ? stillDirty : "";
       },
     };

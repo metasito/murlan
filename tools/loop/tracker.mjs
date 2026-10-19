@@ -5,6 +5,7 @@
  *
  * REST only: `gh issue` and `gh pr` go through GraphQL, which a Claude Code cloud session is refused.
  */
+import fs from "node:fs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { gh as ghCli, REPO } from "./cli.mjs";
 
@@ -39,7 +40,6 @@ const TRANSITIONS = {
 
 const upper = (s) => (s ? String(s).toUpperCase() : null);
 const sizeOf = (labels) => labels.find((l) => l.startsWith("size:")) ?? null;
-const notFound = (err) => /HTTP 404/.test(String(err?.stderr ?? "") + String(err?.message ?? ""));
 
 /** @typedef {{body: string, authorAssociation: string, author: {login: string}, createdAt: string}} Comment */
 /** @returns {Comment} */
@@ -78,6 +78,8 @@ const openIssueOf = (i) => ({
 /** @returns {CiRun} */
 const runOf = (r) => ({ databaseId: r.id, status: r.status, conclusion: r.conclusion ?? null, headSha: r.head_sha, attempt: r.run_attempt, url: r.html_url });
 
+/** @typedef {{number: number, title: string, url: string, state: string, createdAt: string}} Labelled */
+
 /** @typedef {(args: string[], opts?: import("./cli.mjs").RunOptions) => string} Gh */
 /** @param {Gh} [gh] */
 export function ghTracker(gh = ghCli, repo = REPO) {
@@ -89,16 +91,15 @@ export function ghTracker(gh = ghCli, repo = REPO) {
   const all = (path, opts) => JSON.parse(gh(["api", "--paginate", "--slurp", path], opts)).flat();
   const headOf = (branch) => encodeURIComponent(`${repo.split("/")[0]}:${branch}`);
 
+  // One replace of the whole set, so a transition lands whole or not at all: an add and a remove sent
+  // apart leave both sets on when the second fails. Labels the transition does not name are kept.
   const move = (name) => (n) => {
     const [remove, add] = TRANSITIONS[name];
-    if (add.length) gh(["api", "-X", "POST", `${issues}/${n}/labels`, ...add.flatMap((l) => ["-f", `labels[]=${l}`])]);
-    for (const l of remove) {
-      try {
-        gh(["api", "-X", "DELETE", `${issues}/${n}/labels/${encodeURIComponent(l)}`]);
-      } catch (err) {
-        if (!notFound(err)) throw err;
-      }
-    }
+    const now = get(`${issues}/${n}`).labels.map((l) => l.name);
+    const target = [...new Set([...now.filter((l) => !remove.includes(l)), ...add])];
+    if (target.length === now.length && target.every((l) => now.includes(l))) return;
+    if (target.length === 0) gh(["api", "-X", "DELETE", `${issues}/${n}/labels`]);
+    else gh(["api", "-X", "PUT", `${issues}/${n}/labels`, ...target.flatMap((l) => ["-f", `labels[]=${l}`])]);
   };
   /** @type {(n: number, opts?: {all?: boolean} & import("./cli.mjs").RunOptions) => Comment[]} */
   const comments = (n, { all: everyone = false, ...opts } = {}) => {
@@ -153,11 +154,6 @@ export function ghTracker(gh = ghCli, repo = REPO) {
     /** @returns {string} the new pull request's URL */
     createPr: ({ head, title, body }, opts) =>
       JSON.parse(gh(["api", "-X", "POST", pulls, "-f", "base=main", "-f", `head=${head}`, "-f", `title=${title}`, "-f", `body=${body}`], opts)).html_url,
-    /** Issues only: REST lists pull requests among them. */
-    openLabelled: (label, opts) =>
-      all(`${issues}?state=open&labels=${encodeURIComponent(label)}&per_page=100`, opts)
-        .filter((i) => !i.pull_request)
-        .map((i) => ({ number: i.number, title: i.title, createdAt: i.created_at })),
     /** @returns {OpenIssue[]} */
     openIssues: (opts) => all(`${issues}?state=open&per_page=100`, opts).filter((i) => !i.pull_request).map(openIssueOf),
     /** @type {(o: {title: string, bodyFile?: string, body?: string, labels?: string[]}, opts?: import("./cli.mjs").RunOptions) => string} the new issue's URL */
@@ -165,12 +161,17 @@ export function ghTracker(gh = ghCli, repo = REPO) {
       JSON.parse(
         gh(["api", "-X", "POST", issues, "-f", `title=${title}`, ...(body === undefined ? ["-F", `body=@${bodyFile}`] : ["-f", `body=${body}`]), ...labels.flatMap((l) => ["-f", `labels[]=${l}`])], opts),
       ).html_url,
-    /** Issues and pull requests alike carry labels; only issues are kept. Newest first, `limit` of them. */
-    /** @type {(label: string, o?: {state?: string, limit?: number}, opts?: import("./cli.mjs").RunOptions) => {number: number, title: string, url: string, state: string}[]} */
-    labelled: (label, { state = "open", limit = 100 } = {}, opts) =>
-      get(`${issues}?labels=${encodeURIComponent(label)}&state=${state}&per_page=${limit}`, opts)
+    /**
+     * Issues carrying `label`, newest first: every page, or the newest `limit` alone. REST lists pull
+     * requests among issues; they are dropped.
+     * @type {(label: string, o?: {state?: "open"|"closed"|"all", limit?: number}, opts?: import("./cli.mjs").RunOptions) => Labelled[]}
+     */
+    labelled: (label, { state = "open", limit } = {}, opts) => {
+      const path = `${issues}?labels=${encodeURIComponent(label)}&state=${state}&per_page=${limit ?? 100}`;
+      return (limit ? get(path, opts) : all(path, opts))
         .filter((i) => !i.pull_request)
-        .map((i) => ({ number: i.number, title: i.title, url: i.html_url, state: upper(i.state) })),
+        .map((i) => ({ number: i.number, title: i.title, url: i.html_url, state: upper(i.state), createdAt: i.created_at }));
+    },
     /** ci.yml's runs only — `main` carries other workflows on their own schedule — newest first. */
     /** @type {(q: {branch?: string, commit?: string, status?: string, limit?: number}, opts?: import("./cli.mjs").RunOptions) => CiRun[]} */
     ciRuns: ({ branch, commit, status, limit = 1 }, opts) => {
@@ -266,6 +267,19 @@ export function fakeTracker(issues = {}, { fail = [], prs = [] } = {}) {
       for (const l of add) issue.labels.add(l);
     });
   const pulls = [...prs];
+  /** What a posted comment reads back as: the file's text, as `gh api -F body=@file` sends it; a file never written posts its name. */
+  const readBody = (file) => {
+    try {
+      return fs.readFileSync(file, "utf8");
+    } catch {
+      return file;
+    }
+  };
+  /** `held(n).comments` keeps what was posted, the thread what a read gets back, as the loop's own trusted comment. */
+  const post = (issue, posted, body) => {
+    issue.comments.push(posted);
+    issue.thread.push({ body, authorAssociation: "OWNER", author: { login: "loop" }, createdAt: "" });
+  };
   /** @type {unknown[][]} */
   const writes = [];
   /** @type {(n: number, opts?: {all?: boolean}) => Comment[]} */
@@ -282,7 +296,7 @@ export function fakeTracker(issues = {}, { fail = [], prs = [] } = {}) {
     claim: move("claim"),
     release: move("release"),
     park: move("park"),
-    comment: op("comment", (issue, bodyFile) => void issue.comments.push(bodyFile)),
+    comment: op("comment", (issue, bodyFile) => post(issue, bodyFile, readBody(bodyFile))),
     issue: op("issue", (issue) => ({ state: issue.state, labels: [...issue.labels] })),
     read: op("read", (issue) => ({
       title: issue.title ?? "",
@@ -323,13 +337,6 @@ export function fakeTracker(issues = {}, { fail = [], prs = [] } = {}) {
       pulls.push({ number, state: "OPEN", headRefName: head, headRefOid: null, mergedAt: null });
       return `https://github.com/${REPO}/pull/${number}`;
     }),
-    openLabelled: list("openLabelled", (label) =>
-      Object.keys(issues)
-        .map(Number)
-        .map((n) => [n, at(n)])
-        .filter(([, i]) => i.state === "OPEN" && i.labels.has(label))
-        .map(([number, i]) => ({ number, title: i.title ?? `issue ${number}`, createdAt: i.createdAt ?? "" })),
-    ),
     openIssues: list("openIssues", () =>
       Object.keys(issues)
         .map(Number)
@@ -346,20 +353,23 @@ export function fakeTracker(issues = {}, { fail = [], prs = [] } = {}) {
     ),
     createIssue: list("createIssue", (o) => (writes.push(["createIssue", o]), `https://github.com/${REPO}/issues/${writes.length}`)),
     closeIssue: op("closeIssue", (issue, why) => {
+      post(issue, why, why);
       issue.state = "CLOSED";
-      issue.comments.push(why);
     }),
     rerunFailed: list("rerunFailed", (runId) => void writes.push(["rerunFailed", runId])),
     updateBranch: list("updateBranch", (n) => void writes.push(["updateBranch", n])),
     arm: list("arm", (n, sha) => void writes.push(["arm", n, sha])),
     disarm: list("disarm", (n) => void writes.push(["disarm", n])),
     merge: list("merge", (n, sha) => void writes.push(["merge", n, sha])),
-    labelled: list("labelled", (label) =>
+    /** @type {(label: string, o?: {state?: "open"|"closed"|"all", limit?: number}) => Labelled[]} */
+    labelled: list("labelled", (label, { state = "open", limit } = {}) =>
       Object.keys(issues)
         .map(Number)
+        .sort((a, b) => b - a)
         .map((n) => [n, at(n)])
-        .filter(([, i]) => i.labels.has(label))
-        .map(([number, i]) => ({ number, title: i.title ?? `issue ${number}`, url: `https://github.com/${REPO}/issues/${number}`, state: i.state })),
+        .filter(([, i]) => i.labels.has(label) && (state === "all" || i.state === state.toUpperCase()))
+        .slice(0, limit ?? Infinity)
+        .map(([number, i]) => ({ number, title: i.title ?? `issue ${number}`, url: `https://github.com/${REPO}/issues/${number}`, state: i.state, createdAt: i.createdAt ?? "" })),
     ),
     ciRuns: noCi("ciRuns"),
     run: noCi("run"),

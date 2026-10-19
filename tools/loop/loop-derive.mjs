@@ -342,7 +342,7 @@ const budgeted = (gh = ghCli) => ghTracker((args, opts) => gh(args, { timeout: C
  */
 export function parityRed(tracker = budgeted()) {
   try {
-    const [oldest] = tracker.openLabelled("parity").sort((a, b) => a.number - b.number);
+    const [oldest] = tracker.labelled("parity").sort((a, b) => a.number - b.number);
     return oldest ? { number: oldest.number, since: oldest.createdAt } : null;
   } catch {
     return null;
