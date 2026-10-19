@@ -12,7 +12,7 @@ import type { Socket } from "./socket.ts";
 export const INTENT_ACK_TIMEOUT_MS = 4000;
 const INTENT_ATTEMPTS = 3;
 
-/** A `room:` or `game:` intent emitted any other way: `tests/ui-rules/intentsGoThroughSend.test.ts` refuses it. */
+/** A `room:` or `game:` intent emitted any other way: the `intents-go-through-send` guard in eslint.guards.cjs refuses it. */
 export type { IntentEvent };
 
 /**

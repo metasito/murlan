@@ -4,20 +4,23 @@ import { existsSync, readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { dirname, join, normalize } from "node:path";
+import { fileURLToPath } from "node:url";
 import { classify } from "../../scripts/lib/commentShape.ts";
 
 // .claude/skills is vendored upstream (the plan's Global Constraints forbid touching it), so a
 // code snippet inside it is not a claim this repo's own docs make. Excluded here, not silently:
 // this comment is the exclusion's record.
 const EXCLUDED_DIRS = [".claude/skills/"];
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const at = (file: string) => join(ROOT, file);
 
-const docs = execSync('git ls-files "*.md"', { encoding: "utf8" })
+const docs = execSync('git ls-files "*.md"', { cwd: ROOT, encoding: "utf8" })
   .trim().split("\n").filter((f) => !f.startsWith("node_modules/"))
   .filter((f) => !EXCLUDED_DIRS.some((dir) => f.startsWith(dir)));
-const scripts = new Set(Object.keys(JSON.parse(readFileSync("package.json", "utf8")).scripts));
+const scripts = new Set(Object.keys(JSON.parse(readFileSync(at("package.json"), "utf8")).scripts));
 const RULES = "docs/agents/RULES.md";
 const ruleNumbers = new Set(
-  [...readFileSync(RULES, "utf8").matchAll(/^(\d+)\.\s+\*\*/gm)].map((m) => Number(m[1])),
+  [...readFileSync(at(RULES), "utf8").matchAll(/^(\d+)\.\s+\*\*/gm)].map((m) => Number(m[1])),
 );
 
 /** `](relative/path.md)` and `](relative/path.md#anchor)`, skipping URLs and bare anchors. */
@@ -35,10 +38,10 @@ const RULE_CITATION = /\b[Rr]ule (\d+)\b/g;
 test("every relative link in a doc resolves", () => {
   const broken: string[] = [];
   for (const doc of docs) {
-    const body = readFileSync(doc, "utf8");
+    const body = readFileSync(at(doc), "utf8");
     for (const [, target] of body.matchAll(LINK)) {
       const resolved = normalize(join(dirname(doc), target));
-      if (!existsSync(resolved)) broken.push(`${doc} -> ${target}`);
+      if (!existsSync(at(resolved))) broken.push(`${doc} -> ${target}`);
     }
   }
   assert.deepEqual(broken, []);
@@ -47,9 +50,9 @@ test("every relative link in a doc resolves", () => {
 test("every repo path a doc names in backticks exists", () => {
   const broken: string[] = [];
   for (const doc of docs) {
-    const body = readFileSync(doc, "utf8");
+    const body = readFileSync(at(doc), "utf8");
     for (const [, target] of body.matchAll(CODE_PATH)) {
-      if (!existsSync(normalize(target.replace(/\/$/, "")))) broken.push(`${doc} -> ${target}`);
+      if (!existsSync(at(normalize(target.replace(/\/$/, ""))))) broken.push(`${doc} -> ${target}`);
     }
   }
   assert.deepEqual(broken, []);
@@ -58,7 +61,7 @@ test("every repo path a doc names in backticks exists", () => {
 test("every npm script a doc names is defined", () => {
   const broken: string[] = [];
   for (const doc of docs) {
-    for (const [, name] of readFileSync(doc, "utf8").matchAll(NPM_RUN)) {
+    for (const [, name] of readFileSync(at(doc), "utf8").matchAll(NPM_RUN)) {
       if (!scripts.has(name)) broken.push(`${doc} -> npm run ${name}`);
     }
   }
@@ -68,7 +71,7 @@ test("every npm script a doc names is defined", () => {
 test("every rule N citation names a rule that exists in RULES.md", () => {
   const broken: string[] = [];
   for (const doc of docs) {
-    for (const [, num] of readFileSync(doc, "utf8").matchAll(RULE_CITATION)) {
+    for (const [, num] of readFileSync(at(doc), "utf8").matchAll(RULE_CITATION)) {
       if (!ruleNumbers.has(Number(num))) broken.push(`${doc} -> rule ${num}`);
     }
   }
@@ -94,12 +97,12 @@ const PROMPT_SOURCES = [".claude/workflows/"];
 
 test("every docs/ path a comment in tracked source, or a workflow prompt, names exists", () => {
   const broken: string[] = [];
-  const sourceFiles = execSync('git ls-files "*.ts" "*.tsx" "*.mjs"', { encoding: "utf8" })
+  const sourceFiles = execSync('git ls-files "*.ts" "*.tsx" "*.mjs"', { cwd: ROOT, encoding: "utf8" })
     .trim().split("\n").filter(Boolean)
     .filter((f) => !EXCLUDED_DIRS.some((dir) => f.startsWith(dir)))
     .filter((f) => f !== "tests/tooling/docReferences.test.ts");
   for (const file of sourceFiles) {
-    const lines = classify(readFileSync(file, "utf8"), file);
+    const lines = classify(readFileSync(at(file), "utf8"), file);
     for (const line of lines) {
       if (line.kind !== "comment" && !PROMPT_SOURCES.some((dir) => file.startsWith(dir))) continue;
       for (const [raw] of line.text.matchAll(SOURCE_DOC_PATH)) {
@@ -110,7 +113,7 @@ test("every docs/ path a comment in tracked source, or a workflow prompt, names 
         const target = raw.replace(/\.$/, "");
         const last = target.replace(/\/$/, "").split("/").pop()!;
         if (!target.endsWith("/") && !last.includes(".")) continue;
-        if (!existsSync(normalize(target.replace(/\/$/, "")))) broken.push(`${file} -> ${target}`);
+        if (!existsSync(at(normalize(target.replace(/\/$/, ""))))) broken.push(`${file} -> ${target}`);
       }
     }
   }

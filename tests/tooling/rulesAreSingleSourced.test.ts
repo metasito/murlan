@@ -14,15 +14,16 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const INSTRUCTION_FILES = [
   "CLAUDE.md",
   ...[".claude/commands", "docs/agents"].flatMap((dir) =>
-    readdirSync(dir)
+    readdirSync(path.join(repoRoot, dir))
       .filter((name) => name.endsWith(".md"))
       .map((name) => `${dir}/${name}`)
       .filter((file) => file !== RULES),
   ),
 ];
 
-function read(path: string): string {
-  return existsSync(path) ? readFileSync(path, "utf8") : "";
+function read(file: string): string {
+  const at = path.join(repoRoot, file);
+  return existsSync(at) ? readFileSync(at, "utf8") : "";
 }
 
 describe("every agent rule is written down exactly once", () => {
@@ -131,7 +132,7 @@ describe("every agent rule is written down exactly once", () => {
   // one of these files takes it out of the guard silently.
   test("every instruction file is still where the list says", () => {
     assert.ok(INSTRUCTION_FILES.length >= 7, `only ${INSTRUCTION_FILES.length} instruction files found`);
-    const gone = INSTRUCTION_FILES.filter((f) => !existsSync(f));
+    const gone = INSTRUCTION_FILES.filter((f) => !existsSync(path.join(repoRoot, f)));
     assert.deepEqual(gone, [], `listed but missing: ${gone.join(", ")}`);
   });
 

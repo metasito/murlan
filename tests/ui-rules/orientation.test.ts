@@ -6,173 +6,21 @@
 // orientation, and only to landscape, because it is the one screen that needs
 // the width.
 //
-// The prop used to be declared at each modal, which is one place per modal to
-// forget it. components/AppModal.tsx is now the only <Modal> in the app, and
-// what this pins is that it stays the only one.
+// components/AppModal.tsx is the only <Modal>, and the rest of this is lint guards in
+// eslint.guards.cjs: `one-modal-element`, `one-modal-import`, `modal-keeps-landscape`,
+// `orientation-lock-owner` and `never-portrait-lock`.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { blankComments, sourcesUnder } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-/** Every .tsx under app/ and components/, as [repoRelativePath, source]. */
-function screenSources(): [string, string][] {
-  return ["app", "components"].flatMap((dir) =>
-    readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
-      .filter((f) => f.endsWith(".tsx"))
-      .map((f): [string, string] => {
-        const rel = path.posix.join(dir, f.split(path.sep).join("/"));
-        return [rel, blankComments(readFileSync(path.join(repoRoot, dir, f), "utf8"))];
-      })
-  );
-}
-
-/**
- * The text of every `<Modal …>` opening tag in `src`. Scans to the matching
- * `>` while skipping strings and braced expressions, so a `>` inside a prop
- * value does not end the tag early.
- */
-function modalOpeningTags(src: string): string[] {
-  const tags: string[] = [];
-  const TAG = "<Modal";
-  for (let i = src.indexOf(TAG); i !== -1; i = src.indexOf(TAG, i + 1)) {
-    // `<ModalFoo` is a different component.
-    if (/[A-Za-z0-9_]/.test(src[i + TAG.length] ?? "")) continue;
-    let depth = 0;
-    let quote = "";
-    for (let j = i + TAG.length; j < src.length; j++) {
-      const c = src[j];
-      if (quote) {
-        if (c === quote) quote = "";
-      } else if (c === '"' || c === "'" || c === "`") {
-        quote = c;
-      } else if (c === "{") {
-        depth++;
-      } else if (c === "}") {
-        depth--;
-      } else if (c === ">" && depth === 0) {
-        tags.push(src.slice(i, j + 1));
-        break;
-      }
-    }
-  }
-  return tags;
-}
-
-const FROM_RN = /\b(?:import|export)\s+(?:type\s+)?([^;'"`]*?)\s*from\s*["']react-native["']/g;
-
-/** Every name under which `src` reaches react-native's own `Modal`: named, aliased, re-exported or via a namespace. */
-function rnModalImports(src: string): string[] {
-  const hits: string[] = [];
-  for (const [, clause] of src.matchAll(FROM_RN)) {
-    for (const spec of clause.match(/\{([^}]*)\}/)?.[1].split(",") ?? []) {
-      const m = spec.trim().match(/^(?:type\s+)?Modal(?:\s+as\s+([\w$]+))?$/);
-      if (m) hits.push(m[1] ? `Modal as ${m[1]}` : "Modal");
-    }
-    for (const part of clause.replace(/\{[^}]*\}/, "").split(",")) {
-      const ns = part.trim().match(/^(?:\*\s*as\s+)?([\w$]+)$/)?.[1];
-      const n = ns?.replace(/\$/g, "\\$");
-      const reached = new RegExp(
-        `(?<![\\w$])${n}\\s*(?:\\.\\s*Modal(?![\\w$])|\\[\\s*["'\`]Modal["'\`]\\s*\\])|\\{[^}]*(?<![\\w$])Modal(?![\\w$])[^}]*\\}\\s*=\\s*${n}(?![\\w$])`
-      );
-      if (ns && reached.test(src)) {
-        hits.push(`${ns}.Modal`);
-      }
-    }
-  }
-  return hits;
-}
-
 describe("orientation is never narrowed behind the player's back", () => {
-  test("every <Modal> declares supportedOrientations including landscape", () => {
-    const offenders: string[] = [];
-    for (const [file, src] of screenSources()) {
-      for (const tag of modalOpeningTags(src)) {
-        if (!tag.includes("supportedOrientations")) {
-          offenders.push(`${file}: <Modal> without supportedOrientations`);
-        } else if (!tag.includes("landscape")) {
-          offenders.push(`${file}: supportedOrientations omits landscape`);
-        }
-      }
-    }
-    assert.deepEqual(
-      offenders,
-      [],
-      `a <Modal> without landscape support rotates the app to portrait on iOS:\n${offenders.join("\n")}`
-    );
-  });
-
-  test("at least one <Modal> is actually covered, so the scan cannot pass vacuously", () => {
-    const total = screenSources().reduce(
-      (n, [, src]) => n + modalOpeningTags(src).length,
-      0
-    );
-    assert.ok(total > 0, "found no <Modal> at all — the scanner is broken");
-  });
-
-  // Strictly stronger than the prop check above, which a new modal passes by
-  // remembering the prop. One shell is a site nobody has to remember at.
-  test("components/AppModal.tsx is the app's only <Modal>", () => {
-    const SHELL = "components/AppModal.tsx";
-    const declaring = screenSources()
-      .filter(([, src]) => modalOpeningTags(src).length > 0)
-      .map(([file]) => file);
-    assert.deepEqual(
-      declaring,
-      [SHELL],
-      `render <AppModal> instead — a second <Modal> is a second place to get ` +
-        `supportedOrientations, statusBarTranslucent and onRequestClose wrong: ${declaring.join(", ")}`
-    );
-  });
-
-  test("components/AppModal.tsx is the only file that imports react-native's Modal, under any name", () => {
-    const reaching = sourcesUnder(repoRoot, ["app", "components", "lib"]).flatMap(([file, src]) =>
-      rnModalImports(blankComments(src)).map((how) => `${file}: ${how}`)
-    );
-    assert.deepEqual(reaching, ["components/AppModal.tsx: Modal"]);  });
-
-  test("the import scan sees Modal renamed, re-exported or behind a namespace, and nothing else", () => {
-    const planted = [
-      'import { View, Modal as Sheet } from "react-native";',
-      'import * as RN from "react-native";',
-      "const x = <RN.Modal visible />;",
-      'export { Modal } from "react-native";',
-      "import {",
-      "  Text,",
-      "  Modal,",
-      '} from "react-native";',
-      'import { type ModalProps, Pressable } from "react-native";',
-      'import { Modal as Other } from "./Modal";',
-      'import * as Unused from "react-native";',
-      'import * as N from "react-native";',
-      "const { View, Modal: M } = N;",
-      'import * as B from "react-native";',
-      'const Sheet = B["Modal"];',
-    ].join("\n");
-    assert.deepEqual(rnModalImports(planted), ["Modal as Sheet", "RN.Modal", "Modal", "Modal", "N.Modal", "B.Modal"]);
-  });
-
-  test("only the game table forces an orientation", () => {
-    const lockers = screenSources()
-      .filter(([, src]) => src.includes("lockAsync"))
-      .map(([file]) => file);
-    assert.deepEqual(
-      lockers,
-      ["components/GameTable.tsx"],
-      "the game table is the only screen allowed to force an orientation"
-    );
-  });
-
-  test("the game table forces landscape, never portrait", () => {
+  test("the game table forces landscape", () => {
     const src = readFileSync(path.join(repoRoot, "components", "GameTable.tsx"), "utf8");
     assert.match(src, /lockAsync\(\s*ScreenOrientation\.OrientationLock\.LANDSCAPE\s*\)/);
-    assert.ok(
-      !/OrientationLock\.PORTRAIT/.test(src),
-      "nothing may lock the player into portrait"
-    );
   });
 
   test("app.json leaves the app free to rotate", () => {

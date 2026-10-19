@@ -241,7 +241,8 @@ export function seatLabelH(scale: number): number {
  * seat is a real player they are not, so every question of identity answers no
  * for them. Questions of *geometry* — which side a seat draws on — still use
  * `viewerSeat` raw, because a watcher's table is laid out from a seat all the
- * same. `tests/ui-rules/seatLayout.test.ts` pins that identity never asks directly.
+ * same. The `seat-identity-through-viewer-owns-seat` guard in eslint.guards.cjs pins that identity never
+ * asks directly.
  */
 export function viewerOwnsSeat(
   seat: number | null,

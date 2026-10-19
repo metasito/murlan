@@ -1,9 +1,6 @@
 // The seats' own geometry: where each one sits, which way it faces, and how its fan is counted.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
 import {
   handVisibleH,
   handRowHeadroom,
@@ -15,9 +12,6 @@ import {
 } from "../../components/seatLayout.ts";
 import { fanCounts } from "../../components/fanGeometry.ts";
 import { handCountOf, vacatedOf } from "../../shared/protocol.ts";
-
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-
 
 describe("getOpponentPosition", () => {
   test("a lone opponent always sits opposite", () => {
@@ -156,33 +150,6 @@ describe("viewerOwnsSeat", () => {
       assert.equal(viewerOwnsSeat(seat, seat, true), false, `seat ${seat} was owned`);
     }
   });
-});
-
-// `viewerOwnsSeat` is the only place identity is decided. `readExchange` takes
-// `spectating` as a required argument, so tsc names any caller that forgets it;
-// these are the screens, where the question would otherwise be asked by hand.
-//
-// `===` only: `seat !== viewerSeat` is "everyone else", which is how the
-// opponent list and the seat ring are built and is right for a watcher too.
-test("no screen asks whether a seat is the viewer's by hand", () => {
-  const IDENTITY = new RegExp(
-    String.raw`(?:===\s*(?:viewerSeat|mySeatIndex)\b)|(?:\b(?:viewerSeat|mySeatIndex)\s*===)`
-  );
-  const asked: string[] = [];
-  for (const rel of ["components/GameTable.tsx", "app/(online)/game.tsx", "app/(online)/replay.tsx"]) {
-    readFileSync(path.join(repoRoot, rel), "utf8")
-      .split("\n")
-      .forEach((line, i) => {
-        if (IDENTITY.test(line)) asked.push(`${rel}:${i + 1}: ${line.trim()}`);
-      });
-  }
-
-  assert.deepEqual(
-    asked,
-    [],
-    `a watcher's seat answers yes to these: ${asked.join(" | ")}. ` +
-      `Use viewerOwnsSeat(seat, viewerSeat, spectating) from components/seatLayout.`
-  );
 });
 
 describe("exchangeArrivalRise", () => {
