@@ -9,8 +9,10 @@ report and proposes tickets. It changes no code.
 
 What it must deliver:
 - **Verified findings.** Each finding points at a line, names a concrete failure, and has survived
-  a skeptic whose job was to refute it. Ten true findings are worth more than a hundred plausible
-  ones.
+  a skeptic who saw only the claim and refutes what it cannot confirm. A finding a test can reach
+  is **proven** only by a failing test that a second agent, blind to why it was written, re-ran;
+  the rest stay **upheld**, and the report says which is which. Ten true findings are worth more
+  than a hundred plausible ones.
 - **Polish opportunities** from the `polish` lens: animation, sound, haptics and effects. These are
   proposals rather than defects, so they are judged on value and on whether they can be built.
 - **An infrastructure recommendation** from the `infra` lens: where to host now that Replit is
@@ -28,16 +30,23 @@ What it must deliver:
    session sharing the machine.
 4. `webUrl`: the URL of a web build that is **already** being served, or `null`. Do not start a
    build for the audit.
+5. `scratch`: a new, empty directory outside every checkout, for the reproductions the audit
+   writes: `C:/Users/roton/murlan-plans/audit-<first 8 of sha>/`, with a `proofs/` folder in it.
+6. The tool layer: `node tools/audit/staticLayer.mjs --repo <repo> --out <scratch>/alerts.json`
+   runs dependency-cruiser, knip, jscpd and reads CodeQL's open alerts on main. Its JSON is
+   `staticLayer`. A tool listed in `failed` is reported as a coverage gap, never read as clean.
 
-**Done when:** you hold `repo`, `sha`, `openIssues` and `webUrl`.
+**Done when:** you hold `repo`, `sha`, `openIssues`, `webUrl`, `scratch` and `staticLayer`.
 
 ## Step 2 — Run the workflow
 
 Call `Workflow` with `scriptPath: ".claude/workflows/audit.mjs"` and pass
-`args: { repo, sha, openIssues, webUrl }` as a real JSON object, not a JSON-encoded string. Follow
-progress in `/workflows`. If a run dies, resume it with `resumeFromRunId`; do not restart it.
+`args: { repo, sha, openIssues, webUrl, scratch, staticLayer }` as a real JSON object, not a
+JSON-encoded string. `lenses: [...]` limits the run to those lens keys. Follow progress in
+`/workflows`. If a run dies, resume it with `resumeFromRunId`; do not restart it.
 
-**Done when:** it returns `{ report, confirmed, opportunities, infra, refuted, failedLenses, coverage }`.
+**Done when:** it returns `{ report, confirmed, opportunities, infra, refuted, failedLenses,
+coverage, dismissedAlerts, judged, record }`.
 
 ## Step 3 — Publish, then propose tickets
 
@@ -58,11 +67,34 @@ progress in `/workflows`. If a run dies, resume it with `resumeFromRunId`; do no
    - A move off Replit (ADR-0006) is already tracked as `wayfinder:map` #1105 — comment findings
      onto it rather than filing a new map or a loose ticket.
 
+4. **Record the run.** Append `record`, with today's date and `"kind": "audit"`, as one JSON line
+   to `C:/Users/roton/murlan-plans/audit-runs.jsonl`. When an issue filed from an audit is later
+   closed as not a defect, that is the audit's precision, read against this line.
+
 **Done when:** your final message contains:
 - the artifact link;
 - the numbers of the issues you filed;
 - every failed lens;
 - every finding `docs/agents/RULES.md` rule 36 applies to.
+
+## Calibration — how many known defects the audit finds
+
+Run this instead of Steps 2–3 when the owner asks to calibrate the audit, and after any change to
+`.claude/workflows/audit.mjs` that could change what it finds.
+
+1. `node tools/audit/plantDefects.mjs --repo <main checkout> --sha <sha> --into
+   C:/Users/roton/murlan-calibration/<first 8 of sha> --count 10` reverts the production half of up
+   to ten past `bug` fixes into a detached checkout and prints its `repo`, `sha` and `record` file.
+   The record names each planted defect; never pass it, or its path, to the workflow.
+2. Run Step 1 items 5–6 and Step 2 against that checkout: its `repo` and `sha`, `openIssues: []`,
+   `webUrl: null`, and `lenses` set to every lens except `polish` and `infra`.
+3. Write the result's `judged` to `<scratch>/judged.json`, then
+   `node tools/audit/plantDefects.mjs --score <record file> --judged <scratch>/judged.json`.
+   `recall` is the share of planted defects a kept finding landed on; `refuted` counts the ones a
+   skeptic or a passing reproduction talked the audit out of.
+4. Append `record` plus the score, with today's date and `"kind": "calibration"`, to
+   `C:/Users/roton/murlan-plans/audit-runs.jsonl`. File no tickets: these defects were planted.
+5. From the main checkout, `npm run worktrees:remove -- <the calibration checkout>` (rule 39).
 
 ## Owner context the code cannot tell you
 
