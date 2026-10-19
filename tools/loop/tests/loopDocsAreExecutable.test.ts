@@ -3,7 +3,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { readLine } from "../loop-stream.mjs";
-import { allowedTools, queueLoopArgs } from "../queue-loop.mjs";
+import { allowedTools, queueLoopArgs } from "../loop-session.mjs";
 import { CHECK_BASH_TIMEOUT_MS, BASH_DEFAULT_TIMEOUT_MS } from "../limits.mjs";
 import { ciRedBody } from "../settle.mjs";
 import { ciLogPath } from "../loop-logs.mjs";
@@ -34,8 +34,8 @@ describe("the loop's instructions name only things that exist", () => {
   });
 
   // `ciVerdict.ts` and `land.ts` used to be named here as `npx tsx` argument strings, which a scan
-  // like the one above was the only way to check. They are static imports of queue-loop.mjs now, so
-  // a missing one is a load error before any test in this file runs — which is why there is no scan
+  // like the one above was the only way to check. They are imports of the loop's modules now, so
+  // a missing one is a load error before any test of those modules runs — which is why there is no scan
   // for them.
 
   test("every tracker.mjs verb a recipe names is one its CLI runs", () => {

@@ -11,18 +11,16 @@ import { closePhase, readLine, reduceSession, sessionStart } from "../loop-strea
 import { ticker } from "../loop-screen.mjs";
 import {
   pushedPr,
-  queueLoopArgs,
   syncCheckout,
   reinstall,
-  runTicket,
   park,
   repark,
   holdFor,
   settle,
   runOnce,
   loopSha,
-  contextFor,
 } from "../queue-loop.mjs";
+import { contextFor, queueLoopArgs, runTicket } from "../loop-session.mjs";
 import { screenEvents, sessionView, ticketFacts } from "../loop-board.mjs";
 import { BASH_DEFAULT_TIMEOUT_MS, CHECK_BASH_TIMEOUT_MS, LIMITS, SESSION_POLICY, STALL_MS } from "../limits.mjs";
 import { decide } from "../decide.mjs";
