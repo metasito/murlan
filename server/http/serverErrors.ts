@@ -15,19 +15,22 @@ export const ERROR_GROUP_WINDOW_DAYS = 7;
 const HOUR_MS = 3_600_000;
 const WINDOW_MS = ERROR_GROUP_WINDOW_DAYS * 24 * HOUR_MS;
 
-/** Lines skipped while the pool starved, by the hour they fell in; this process only. */
-const droppedByHour = new Map<number, number>();
+const WINDOW_HOURS = WINDOW_MS / HOUR_MS;
 
-function pruneDropped(now: number): void {
-  for (const hour of droppedByHour.keys()) if (hour <= now - WINDOW_MS) droppedByHour.delete(hour);
+/** Lines skipped while the pool starved: one slot per hour of the window, stamped with its hour; this process only. */
+const dropped = Array.from({ length: WINDOW_HOURS }, () => ({ hour: -1, count: 0 }));
+
+function countDropped(now: number): void {
+  const hour = Math.floor(now / HOUR_MS);
+  const slot = dropped[hour % WINDOW_HOURS]!;
+  if (slot.hour !== hour) Object.assign(slot, { hour, count: 0 });
+  slot.count += 1;
 }
 
 /** Server error lines this process skipped writing within the error-group window. */
-export function serverErrorsDropped(): number {
-  pruneDropped(Date.now());
-  let total = 0;
-  for (const n of droppedByHour.values()) total += n;
-  return total;
+export function serverErrorsDropped(now = Date.now()): number {
+  const hour = Math.floor(now / HOUR_MS);
+  return dropped.reduce((total, slot) => (slot.hour > hour - WINDOW_HOURS ? total + slot.count : total), 0);
 }
 
 export function installServerErrorRecorder(): void {
@@ -35,9 +38,7 @@ export function installServerErrorRecorder(): void {
     // An error burst is usually the pool starving; an insert per line would
     // queue behind the very requests that are failing.
     if (pool.waitingCount > 0) {
-      const now = Date.now();
-      const hour = now - (now % HOUR_MS);
-      droppedByHour.set(hour, (droppedByHour.get(hour) ?? 0) + 1);
+      countDropped(Date.now());
       process.stderr.write(
         `server_errors insert skipped, pool starved (${serverErrorsDropped()} dropped in ` +
           `${ERROR_GROUP_WINDOW_DAYS} days): ${String(msg ?? "")}\n`
