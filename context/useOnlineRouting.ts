@@ -16,6 +16,7 @@ export function useOnlineRouting(): void {
   const hasGame = gameState != null;
   // `left` is the place a navigation was sent from: `useSegments` still names it until the
   // router lands, and judging that stale place again would send the player off it twice.
+  // What changes meanwhile is judged on landing, against the facts the navigation left with.
   const seen = useRef<{ facts: OnlineFacts; here: OnlineRoute; left: OnlineRoute | null }>({
     facts: NO_TABLE,
     here: "other",
@@ -31,16 +32,13 @@ export function useOnlineRouting(): void {
     };
     const { facts: prev, here: was, left } = seen.current;
     if (was === here && sameFacts(prev, next)) return;
-    if (next.rejoinFailed) clearRejoinFailed();
-    if (left === here) {
-      seen.current = { facts: next, here, left };
-      return;
-    }
+    if (left === here) return;
 
     const navigation = navigationFor(prev, next, here, entrySource);
     seen.current = { facts: next, here, left: navigation ? here : null };
     if (navigation?.kind === "push") router.push(navigation.to);
     else if (navigation?.kind === "replace") router.replace(navigation.to);
+    if (next.rejoinFailed) clearRejoinFailed();
   }, [roomId, hasGame, isSpectator, rejoinFailed, here, entrySource, clearRejoinFailed]);
 
   // Held until the socket is up: `joinRoom` emits, and an emit on a socket that has not
