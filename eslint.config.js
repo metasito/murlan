@@ -247,5 +247,6 @@ module.exports = defineConfig([
       "@typescript-eslint/no-require-imports": ["warn", { allow: ["\\.flac$"] }],
     },
   },
+  { linterOptions: { reportUnusedDisableDirectives: "error" } },
   ...guardBlocks(),
 ]);

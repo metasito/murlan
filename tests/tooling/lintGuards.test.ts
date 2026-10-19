@@ -14,7 +14,7 @@ const require = createRequire(import.meta.url);
 
 type Ignore = { glob: string; reason: string };
 type Sample = { file: string; code: string };
-type Guard = { id: string; files: string[]; ignores?: Ignore[]; plant: Sample & { hits: number }; spare: Sample[] };
+type Guard = { id: string; why: string; selector: string; files: string[]; ignores?: Ignore[]; plant: Sample & { hits: number }; spare: Sample[] };
 type Block = { files?: string[]; ignores?: string[]; plugins?: Record<string, unknown>; rules?: Record<string, unknown> };
 const { GUARDS, plugin, guardBlocks } = require("../../eslint.guards.cjs") as {
   GUARDS: Guard[];
@@ -51,6 +51,11 @@ describe("the guard registry's floor", () => {
   test("1. every guard is a rule of the plugin, and eslint.config.js runs it exactly as registered", () => {
     const ids = GUARDS.map((g) => g.id);
     assert.equal(new Set(ids).size, ids.length, "two guards share an id");
+    const FIELDS = ["id", "why", "selector", "files", "ignores", "plant", "spare"];
+    for (const guard of GUARDS) {
+      assert.deepEqual(Object.keys(guard).filter((k) => !FIELDS.includes(k)), [], `${guard.id} is more than a selector entry`);
+      assert.ok(typeof guard.selector === "string" && guard.selector.trim(), `${guard.id} has no selector`);
+    }
     assert.deepEqual(Object.keys(plugin.rules).sort(), [...ids].sort());
     assert.ok(config.some((block) => block.plugins?.murlan === plugin), "eslint.config.js never registers the plugin");
     const naming = config
