@@ -44,8 +44,9 @@ function mapPathFor(url: string, root: string): string | null {
   } catch {
     return null;
   }
-  const full = path.join(root, `${pathname}.map`);
-  return full === root || full.startsWith(root + path.sep) ? full : null;
+  const base = path.resolve(root);
+  const full = path.join(base, `${pathname}.map`);
+  return full === base || full.startsWith(base + path.sep) ? full : null;
 }
 
 // Text cached by path, parsed per lookup — this app has two map

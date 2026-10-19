@@ -70,3 +70,10 @@ test("a path attempting to leave sourcemaps/ never resolves outside it", async (
   // this is exactly a map that does not exist — same fallback as any other.
   assert.equal(await symbolicate(raw, MAPS_ROOT), raw);
 });
+
+test("a root given relative or with a trailing separator resolves the same frame", async () => {
+  const raw = "    at foo (https://murlan.example/_expo/static/js/web/entry-test123.js:1:41)";
+  for (const root of [`.${path.sep}${path.relative(process.cwd(), MAPS_ROOT)}`, MAPS_ROOT + path.sep]) {
+    assert.equal(await symbolicate(raw, root), "components/table/hand.tsx:5 (CardView)", root);
+  }
+});

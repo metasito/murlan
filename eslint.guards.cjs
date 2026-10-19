@@ -218,6 +218,7 @@ const GUARDS = [
     ignores: [
       { glob: "tests/tooling/entry.test.ts", reason: "isInvokedDirectly resolves a relative argv1 against the cwd, which is the case it pins" },
       { glob: "tests/helpers/filesRunReporter.mjs", reason: "a reporter names files relative to where the run was started" },
+      { glob: "tests/server/sourceMaps.test.ts", reason: "symbolicate resolves its root against the cwd, as production does, which the default- and relative-root cases pin" },
     ],
     plant: { file: "tests/server/plant.test.ts", code: ['const root = path.resolve(process.cwd(), "sourcemaps");', "const home = process.cwd();"].join("\n"), hits: 2 },
     spare: [{ file: "tests/server/plant.test.ts", code: '// process.cwd() is wherever the run started\nconst s = "process.cwd()";\nconst root = path.resolve(import.meta.dirname, "..", "..");' }],
