@@ -217,7 +217,13 @@ function killPid(pid, dryRun, say = console.log, readTable = processTable) {
     say(`reap: refused to kill pid ${pid} — this session is inside its process tree`);
     return null;
   }
-  killTree(pid);
+  try {
+    killTree(pid);
+  } catch (err) {
+    const why = `could not kill pid ${pid} — ${err.message}`;
+    say(`reap: ${why}`);
+    return why;
+  }
   return null;
 }
 

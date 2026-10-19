@@ -2,7 +2,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -118,7 +118,7 @@ describe("a word CONTEXT.md retires stays retired", () => {
 
   test("no tracked file outside locales/ and vendored sources uses one", () => {
     const locales = localeText();
-    const files = execSync("git ls-files -z", { cwd: repoRoot, encoding: "utf8" })
+    const files = execFileSync("git", ["ls-files", "-z"], { cwd: repoRoot, encoding: "utf8" })
       .split("\0")
       .filter((f) => f && !f.startsWith("locales/") && !VENDORED.some((v) => f.startsWith(v)))
       .filter((f) => existsSync(path.join(repoRoot, f)));

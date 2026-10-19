@@ -96,7 +96,8 @@ export async function runStep(step, spawn = spawnBin, write = (s) => void proces
   const title = `${BANNER}${step.name} ===`;
   if (!timedOut && run.status === 0) return { failed: null, text: `${title} ok\n` };
   const shown = clip(`${run.stdout ?? ""}${run.stderr ?? ""}`.replace(/\n$/, ""));
-  if (!timedOut) return { failed: step.name, text: `\n${title} FAILED\n${shown}` };
+  const signalled = run.signal ? `${step.name} was ended by ${run.signal}\n` : "";
+  if (!timedOut) return { failed: step.name, text: `\n${title} FAILED\n${shown}${signalled}` };
   return {
     failed: `${step.name} (timed out)`,
     text: `\n${title} FAILED\n${shown}${step.name} timed out after ${STEP_TIMEOUT_MS / 60_000} minutes\n`,

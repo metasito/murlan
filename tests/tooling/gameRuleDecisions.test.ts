@@ -1,7 +1,7 @@
 // tests/tooling/gameRuleDecisions.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,7 +27,7 @@ const EXCLUDED = /^docs\/(adr|plans|research|specs|design)\//;
 const staleCitation = /BRIEF\.md`?\s*[§#]?\s*3\.1\b/;
 
 function citingOldLocation(): string[] {
-  const files = execSync("git ls-files", { cwd: root, encoding: "utf8" })
+  const files = execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" })
     .trim()
     .split("\n")
     .filter((f) => !EXCLUDED.test(f));

@@ -26,7 +26,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertBundleHasRoutes } from "./bundleRoutes.mjs";
 import { assertMark } from "./e2eBuildMark.mjs";
-import { killTree, startBin } from "./lib/proc.mjs";
+import { startBin, stopTree } from "./lib/proc.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PLAY = process.argv.includes("--play");
@@ -36,7 +36,11 @@ const DIST = PLAY ? "dist" : "dist-e2e";
 
 const children = new Set();
 // Two steps run at once, so one failing must not leave the other running with nobody waiting on it.
-process.on("exit", () => children.forEach((c) => killTree(c.pid)));
+const STOP_GRACE_MS = 5_000;
+async function stopTheRest(err) {
+  await Promise.allSettled([...children].map((c) => stopTree(c.pid, { graceMs: STOP_GRACE_MS })));
+  throw err;
+}
 
 function run(cmd, args) {
   return new Promise((resolve, reject) => {
@@ -83,7 +87,7 @@ const build =
         ["expo", "export", "--platform", "web", "--output-dir", DIST, ...(PLAY ? ["--clear"] : [])]
       )
     : Promise.resolve();
-await Promise.all([run(process.execPath, [DEV_STACK, "up"]), build]);
+await Promise.all([run(process.execPath, [DEV_STACK, "up"]), build]).catch(stopTheRest);
 
 assertBundleHasRoutes(path.join(ROOT, DIST), path.join(ROOT, "app"));
 assertMark(PLAY ? "--absent" : "--present", [path.join(ROOT, DIST)]);

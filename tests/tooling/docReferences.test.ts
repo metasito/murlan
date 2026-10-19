@@ -1,5 +1,5 @@
 // tests/tooling/docReferences.test.ts
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -14,7 +14,7 @@ const EXCLUDED_DIRS = [".claude/skills/"];
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const at = (file: string) => join(ROOT, file);
 
-const docs = execSync('git ls-files "*.md"', { cwd: ROOT, encoding: "utf8" })
+const docs = execFileSync("git", ["ls-files", "*.md"], { cwd: ROOT, encoding: "utf8" })
   .trim().split("\n").filter((f) => !f.startsWith("node_modules/"))
   .filter((f) => !EXCLUDED_DIRS.some((dir) => f.startsWith(dir)));
 const scripts = new Set(Object.keys(JSON.parse(readFileSync(at("package.json"), "utf8")).scripts));
@@ -97,7 +97,7 @@ const PROMPT_SOURCES = [".claude/workflows/"];
 
 test("every docs/ path a comment in tracked source, or a workflow prompt, names exists", () => {
   const broken: string[] = [];
-  const sourceFiles = execSync('git ls-files "*.ts" "*.tsx" "*.mjs"', { cwd: ROOT, encoding: "utf8" })
+  const sourceFiles = execFileSync("git", ["ls-files", "*.ts", "*.tsx", "*.mjs"], { cwd: ROOT, encoding: "utf8" })
     .trim().split("\n").filter(Boolean)
     .filter((f) => !EXCLUDED_DIRS.some((dir) => f.startsWith(dir)));
   for (const file of sourceFiles) {

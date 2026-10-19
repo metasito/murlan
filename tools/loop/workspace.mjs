@@ -595,10 +595,10 @@ export function syncCheckout(
   return true;
 }
 
-export const sh = (file, args, opts = {}) =>
-  CLI_TOOLS.has(file)
-    ? viaCli(file, args, opts)
-    : runBin(file, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: MAX_BUFFER, ...opts });
+export const sh = (file, args, opts = {}) => {
+  if (CLI_TOOLS.has(file)) return viaCli(file, args, opts);
+  return runBin(file, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: MAX_BUFFER, ...opts });
+};
 
 /**
  * In-process, against the shared checkout: the supervisor runs from ROOT, which `removeWorktree`'s own

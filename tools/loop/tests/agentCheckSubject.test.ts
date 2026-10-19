@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { BANNER } from "../check-steps.mjs";
-import { windowsWorld } from "../../../tests/helpers/windowsProcessWorld.ts";
+import { windowsWorld } from "../../../tests/helpers/processWorlds.ts";
 import { cacheEntry, checkSubject, cleanPassFor, judge, readSubject, replays, runAll, runStep } from "../agent-check.mjs";
 
 const REAP = { recursive: true, force: true, maxRetries: 3, retryDelay: 100 } as const;

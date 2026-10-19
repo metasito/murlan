@@ -1,7 +1,7 @@
 // Every `node --test … --test-force-exit` in the repo runs as `node scripts/nodeTest.mjs …`, so these
 // flags have one owner (tests/tooling/testHangs.test.ts fails a call site that skips it).
-import { spawn } from "node:child_process";
 import { isInvokedDirectly } from "./lib/entry.mjs";
+import { relay } from "./lib/proc.mjs";
 
 /**
  * --test-force-exit ends each file with process.exit, which on Node 24 joins V8's compiler threads
@@ -10,8 +10,4 @@ import { isInvokedDirectly } from "./lib/entry.mjs";
  */
 export const NO_BACKGROUND_JIT = ["--no-concurrent-recompilation", "--no-concurrent-sparkplug"];
 
-if (isInvokedDirectly(process.argv[1], import.meta.url)) {
-  const child = spawn(process.execPath, [...NO_BACKGROUND_JIT, ...process.argv.slice(2)], { stdio: "inherit" });
-  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => child.kill(signal));
-  child.on("exit", (code, signal) => (signal ? process.kill(process.pid, signal) : process.exit(code ?? 1)));
-}
+if (isInvokedDirectly(process.argv[1], import.meta.url)) relay(process.execPath, [...NO_BACKGROUND_JIT, ...process.argv.slice(2)]);

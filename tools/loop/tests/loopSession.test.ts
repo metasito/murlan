@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import { readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { runSession } from "../loop-session.mjs";
+import { adoptingWorld, windowsWorld } from "../../../tests/helpers/processWorlds.ts";
 
 // Its own directory, deleted after: the sink appends a real stream to the log it is handed.
 const SCRATCH = path.join("tests", ".scratch-loop-session");
@@ -32,7 +33,18 @@ describe("runSession", () => {
     };
     return { seen, spawnFn };
   };
-  const opts = (extra: object = {}) => ({ log: path.join(SCRATCH, "953.jsonl"), planned: "opus", ...extra });
+  /** Each hand-made child gets a pid in a modelled table, so the signals `stopTree` sends reach its `kill`. */
+  const opts = (extra: { spawnFn?: (...a: any[]) => any; [k: string]: unknown } = {}) => {
+    const world = adoptingWorld();
+    const { spawnFn } = extra;
+    return {
+      log: path.join(SCRATCH, "953.jsonl"),
+      planned: "opus",
+      proc: world.proc,
+      ...extra,
+      ...(spawnFn && { spawnFn: (...a: any[]) => world.adopt(spawnFn(...a)) }),
+    };
+  };
 
   test("spawns claude with the argv and env it is handed", async () => {
     const { seen, spawnFn } = fakeSpawn([RESULT]);
@@ -158,6 +170,32 @@ describe("runSession", () => {
     };
     const run = await runSession([], opts({ spawnFn: held, stallMs: 20, tick: 10, killGraceMs: 20 }));
     assert.equal(run.status, "stalled");
+  });
+
+  describe("on win32", () => {
+    const winOpts = (extra: object) => {
+      const world = windowsWorld();
+      return { world, o: { log: path.join(SCRATCH, "953.jsonl"), planned: "sonnet", proc: world.proc, spawnFn: world.spawn, killGraceMs: 20, ...extra } };
+    };
+
+    test("a session killed for its model leaves no descendant holding its stdout", async () => {
+      const { world, o } = winOpts({ at: "E" });
+      const spawnFn = (cmd: string, args: string[], so: object) => {
+        const child = world.spawn(cmd, args, so);
+        child.stdout.write(`${init("claude-opus-5")}\n`);
+        return child;
+      };
+      const run = await runSession([], { ...o, spawnFn });
+      assert.notEqual(run.status, 0);
+      assert.deepEqual(world.alive(), []);
+    });
+
+    test("a stalled session leaves no descendant holding its stdout", async () => {
+      const { world, o } = winOpts({ stallMs: 20, tick: 10 });
+      const run = await runSession([], o);
+      assert.equal(run.status, "stalled");
+      assert.deepEqual(world.alive(), []);
+    });
   });
 
   /** A child that says nothing until told to, and closes when killed. */
