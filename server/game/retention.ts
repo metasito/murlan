@@ -9,6 +9,7 @@
 // startSweeper interval, replaces all five.
 import { lt, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
+import { now } from "../clock.ts";
 import { events, clientErrors, roundReplays, authTokens, bugReports, serverErrors } from "../../shared/schema.ts";
 import { EVENT_RETENTION_DAYS } from "../socket/events.ts";
 import { CLIENT_ERROR_RETENTION_DAYS } from "../http/clientErrors.ts";
@@ -42,7 +43,7 @@ export async function sweepRetention(): Promise<void> {
       .where(lt(roundReplays.finishedAt, sql`now() - make_interval(days => ${REPLAY_RETENTION_DAYS})`))
   );
   await pruneOlderThan("auth_tokens", () =>
-    db.delete(authTokens).where(lt(authTokens.expiresAt, sql`now()`))
+    db.delete(authTokens).where(lt(authTokens.expiresAt, new Date(now())))
   );
   await pruneOlderThan("bug_reports", () =>
     db

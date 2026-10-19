@@ -1,6 +1,6 @@
 import { now } from "../clock.ts";
 import { randomBytes, randomInt, createHash } from "node:crypto";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { lockUsers, type Tx } from "../store/userLock.ts";
 import { userStore, uniqueViolation } from "../store/userStore.ts";
@@ -52,7 +52,7 @@ async function insertCredential(executor: typeof db | Tx, params: {
 
 /**
  * Shared atomic claim behind both redeem shapes below: single-use via the
- * `used_at IS NULL AND expires_at > now()` guard inside the same UPDATE, so
+ * `used_at IS NULL AND expires_at > <server clock>` guard inside the same UPDATE, so
  * two near-simultaneous redemptions cannot both succeed.
  */
 async function claimCredential(params: {
@@ -68,7 +68,7 @@ async function claimCredential(params: {
     WHERE token_hash = ${tokenHash}
       AND purpose = ${purpose}
       AND used_at IS NULL
-      AND expires_at > now()
+      AND ${gt(authTokens.expiresAt, new Date(now()))}
       ${attemptsGuard}
     RETURNING user_id
   `);
@@ -178,7 +178,7 @@ export async function redeemAuthCode(params: {
     SET attempts = attempts + 1
     WHERE purpose = ${purpose}
       AND used_at IS NULL
-      AND expires_at > now()
+      AND ${gt(authTokens.expiresAt, new Date(now()))}
       AND ${inArray(authTokens.userId, userIds)}
   `);
   return null;
