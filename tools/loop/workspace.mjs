@@ -633,21 +633,21 @@ export function tearDown(cwd, { force = false, git: run = gitAt(ROOT) } = {}) {
  * Only after a confirmed merge. `force` is safe here because `removeWorktree` detaches the junction
  * before removing, and the leftovers are on disk first; a patch that cannot be written keeps the tree.
  */
-export function removeLanded(cwd, number, { run = sh, write = writeNote, say = console.error, remove = tearDown } = {}) {
+export function removeLanded(cwd, number, { run = sh, write = writeNote, say = console.error, remove = tearDown, root = ROOT } = {}) {
   const branch = run("git", ["-C", cwd, "branch", "--show-current"]).trim();
-  const removed = removeLandedTree(cwd, number, { run, write, say, remove });
+  const removed = removeLandedTree(cwd, number, { run, write, say, remove, root });
   if (removed === null || !branch) return removed;
   try {
-    run("git", ["branch", "-d", branch], { cwd: ROOT });
+    run("git", ["branch", "-d", branch], { cwd: root });
   } catch (err) {
     say(`${branch} was kept — ${String(err.message).split("\n")[0]}`);
   }
   return removed;
 }
 
-function removeLandedTree(cwd, number, { run, write, say, remove }) {
+function removeLandedTree(cwd, number, { run, write, say, remove, root }) {
   if (!run("git", ["-C", cwd, "status", "--porcelain"]).trim()) return remove(cwd);
-  const file = leftoverPath(number);
+  const file = path.join(root, leftoverPath(number));
   try {
     run("git", ["-C", cwd, "add", "-A"]);
     const patch = run("git", ["-C", cwd, "diff", "--cached", "--binary", "HEAD"], { encoding: "buffer" });
@@ -690,8 +690,9 @@ export function refreshWorktree(cwd, branch, run = sh) {
   run("git", ["-C", cwd, "merge", "--ff-only", `origin/${branch}`], opts);
 }
 
-const standing = () => {
-  const s = derive();
+/** @param {() => ReturnType<typeof derive>} read */
+const standingOf = (read) => {
+  const s = read();
   return s.onTicket
     ? {
         ticket: s.ticket,
@@ -734,33 +735,32 @@ export function worktreeOf(read, number, kept = () => null) {
  * @param {{root?: string, git?: (args: string[]) => string, events: {log: Function, step: Function}}} opts
  */
 export function workspacePort({ root = ROOT, git: run = gitAt(root), events }) {
+  const at = (/** @type {string} */ file) => path.resolve(root, file);
   const g = (...args) => run(args);
   const started = loopSha(g);
+  const standing = () => standingOf(() => derive({ cwd: root }));
   return {
     // Read, never removed: a scheduled restart must see the stop too.
-    stopFile: () => fs.existsSync(path.join(root, STOP_FILE)),
-    parkAsked: (n) => parkAsked(n, (f) => fs.readFileSync(path.join(root, f), "utf8")),
-    clearParkAsk: () => fs.rmSync(path.join(root, PARK_FILE), { force: true }),
-    ciLog: (n) => (fs.existsSync(path.join(root, ciLogPath(n))) ? ciLogPath(n) : null),
-    worktreeOf: (n) =>
-      worktreeOf(standing, n, (k) => {
-        const kept = path.join(root, WORKTREE_DIR, `agent-${k}`);
-        return fs.existsSync(kept) ? kept : null;
-      }),
+    stopFile: () => fs.existsSync(at(STOP_FILE)),
+    parkAsked: (n) => parkAsked(n, (f) => fs.readFileSync(at(f), "utf8")),
+    clearParkAsk: () => fs.rmSync(at(PARK_FILE), { force: true }),
+    ciLog: (n) => (fs.existsSync(at(ciLogPath(n))) ? at(ciLogPath(n)) : null),
+    worktreeOf: (n) => worktreeOf(standing, n, (k) => (fs.existsSync(at(`${WORKTREE_DIR}/agent-${k}`)) ? at(`${WORKTREE_DIR}/agent-${k}`) : null)),
     loopMoved: () => loopMoved(started, g),
     syncCheckout: (pinned) => syncCheckout(g, (m) => events.log(m, "checkout"), () => reinstall(sh, root), { pinned, stamp: stampAt(root) }),
-    housekeeping: (pinned) => housekeeping({ pinned, say: events.step }),
+    housekeeping: (pinned) => housekeeping({ pinned, say: events.step, git: run }),
     parity: () => parityRed(),
     standing,
-    derive: () => derive({ ci: true }),
-    refreshWorktree: (cwd, branch) => refreshWorktree(cwd, branch),
+    derive: () => derive({ cwd: root, ci: true }),
+    refreshWorktree: (cwd, branch) => refreshWorktree(at(cwd), branch),
     sharedCheckoutDirty: () => g("status", "--porcelain").trim(),
     remove: (cwd, number) => {
-      if (!cwd || !fs.existsSync(cwd)) return;
+      const dir = cwd && at(cwd);
+      if (!dir || !fs.existsSync(dir)) return;
       try {
-        removeLanded(cwd, number, { say: (m) => events.log(m, "worktree"), remove: (at, opts) => tearDown(at, { ...opts, git: run }) });
+        removeLanded(dir, number, { root, say: (m) => events.log(m, "worktree"), remove: (tree, opts) => tearDown(tree, { ...opts, git: run }) });
       } catch {
-        events.log(`${cwd} is still standing — derive() will read it as a live run`, "worktree");
+        events.log(`${dir} is still standing — derive() will read it as a live run`, "worktree");
       }
     },
   };

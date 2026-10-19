@@ -566,7 +566,28 @@ describe("workspacePort's disk, under its root", () => {
     assert.equal(ws.ciLog(42), null);
     fs.mkdirSync(path.join(root, ".loop-logs"));
     fs.writeFileSync(path.join(root, ".loop-logs", "ci-42.log"), "red");
-    assert.equal(ws.ciLog(42), path.join(".loop-logs", "ci-42.log"));
+    assert.equal(ws.ciLog(42), path.join(root, ".loop-logs", "ci-42.log"));
+  });
+
+  // The supervisor's cwd is ROOT only because its CLI says so; a port given a root reads that root.
+  test("every member reads its root, not the process's cwd", () => {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ws-root-")));
+    roots.push(root);
+    const git = (args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    git(["init", "-q", "-b", "rooted-here"]);
+    git(["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "base"]);
+    fs.writeFileSync(path.join(root, "stray.txt"), "x");
+    fs.mkdirSync(path.join(root, ".loop-logs"));
+    fs.writeFileSync(path.join(root, ".loop-logs", "ci-9.log"), "red");
+    fs.mkdirSync(path.join(root, ".worktrees", "agent-9"), { recursive: true });
+    assert.notEqual(path.resolve(process.cwd()), root);
+    const said: string[] = [];
+    const ws = workspacePort({ root, git, events: { log: (m: string) => said.push(m), step: () => {} } });
+    assert.equal(ws.derive().branch, "rooted-here");
+    assert.match(ws.sharedCheckoutDirty(), /stray\.txt/);
+    assert.equal(ws.ciLog(9), path.join(root, ".loop-logs", "ci-9.log"));
+    ws.remove(".worktrees/agent-9", 9);
+    assert.match(said.join("\n"), /agent-9 is still standing/, "a worktree under the root is the one removed");
   });
 
   test("a standing() that throws falls back to the worktree left on disk, and to none", () => {
