@@ -65,6 +65,9 @@ const REJOIN_FAILURE: Record<RejoinCode, ReturnType<typeof payload>> = {
   SERVER_ERROR: payload("SERVER_ERROR"),
 };
 
+// Own keys only: `in` would also accept "constructor" and every other prototype name.
+const isRejoinCode = (code: string): code is RejoinCode => Object.hasOwn(REJOIN_FAILURE, code);
+
 type DraftBody = TableActionDraft extends infer T
   ? T extends TableActionDraft
     ? Omit<T, "roomId" | "userId" | "intentId">
@@ -74,7 +77,7 @@ type DraftBody = TableActionDraft extends infer T
 export function registerGameplayHandlers({ io, socket, userId }: HandlerContext) {
 
     const rejoinFailed = (code: string, roomId: unknown) => {
-      const failure = REJOIN_FAILURE[code as RejoinCode] ?? REJOIN_FAILURE.SERVER_ERROR;
+      const failure = isRejoinCode(code) ? REJOIN_FAILURE[code] : REJOIN_FAILURE.SERVER_ERROR;
       socket.emit("game:rejoin_failed", { ...failure, roomId: typeof roomId === "string" ? roomId : undefined });
     };
 

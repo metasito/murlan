@@ -64,22 +64,41 @@ export const SEAT_CLAIM_REFUSAL = {
 
 type ClaimedRoom = Extract<SeatClaim, { ok: true }>["room"];
 
-/** The tail every claimed seat runs, whichever intent claimed it. */
-async function takeClaimedSeat(port: LobbyPort, room: ClaimedRoom): Promise<number> {
+/**
+ * The tail every claimed seat runs, whichever intent claimed it. `seated` runs
+ * before the fill is announced, so a failed announcement cannot lose it.
+ */
+async function takeClaimedSeat(
+  port: LobbyPort,
+  room: ClaimedRoom,
+  seated: (count: number) => void = () => {}
+): Promise<void> {
   await port.seat(room.id);
   const players = await port.store.getRoomPlayers(room.id);
   port.broadcastState(room.id, await port.roomState(room, players));
+  seated(players.length);
   await port.announceFilled(room, players.length);
-  return players.length;
 }
+
+/**
+ * Codes that say nothing about the room: the table could not be asked. They go
+ * back as they came, so the client can retry the ones it retries.
+ */
+const UNANSWERED: ReadonlySet<string> = new Set(["TABLE_UNREACHABLE", "UNKNOWN_ACTION", "SERVER_ERROR"]);
 
 export async function createRoomIntent(
   port: LobbyPort,
-  { gameMode, maxPlayers }: z.infer<typeof RoomCreateSchema>,
-  opts: { visibility: "public"; autoStart: true } | undefined = undefined
+  p: z.infer<typeof RoomCreateSchema>
 ): Promise<Outcome> {
-  const teams = teamsSizeRefusal(gameMode, maxPlayers);
-  if (teams) return teams;
+  return teamsSizeRefusal(p.gameMode, p.maxPlayers) ?? openRoom(port, p);
+}
+
+/** Opens a room the caller has already sized. */
+async function openRoom(
+  port: LobbyPort,
+  { gameMode, maxPlayers }: z.infer<typeof RoomCreateSchema>,
+  opts?: { visibility: "public"; autoStart: true }
+): Promise<Outcome> {
   const room = await port.store.createRoom(
     port.userId,
     gameMode,
@@ -105,8 +124,9 @@ export async function joinRoomIntent(port: LobbyPort, { code }: z.infer<typeof R
   const claim = await port.store.claimRoomSeat(room.id, port.userId);
   if (!claim.ok) return refuse(SEAT_CLAIM_REFUSAL[claim.reason]);
 
-  const seated = await takeClaimedSeat(port, claim.room);
-  port.track("room.joined", port.userId, { playerCount: seated, gameMode: claim.room.gameMode });
+  await takeClaimedSeat(port, claim.room, (playerCount) =>
+    port.track("room.joined", port.userId, { playerCount, gameMode: claim.room.gameMode })
+  );
   return OK;
 }
 
@@ -122,6 +142,7 @@ export async function spectateRoomIntent(
 
   const admitted = await port.table({ kind: "spectate", roomId: room.id, userId: port.userId });
   if (!admitted.ok) {
+    if (UNANSWERED.has(admitted.code)) return admitted;
     return admitted.code === "ALREADY_IN_ROOM" ? refuse("ALREADY_IN_ROOM") : refuse("GAME_NOT_FOUND");
   }
 
@@ -209,5 +230,5 @@ export async function quickmatchIntent(
     return OK;
   }
 
-  return createRoomIntent(port, { gameMode, maxPlayers }, { visibility: "public", autoStart: true });
+  return openRoom(port, { gameMode, maxPlayers }, { visibility: "public", autoStart: true });
 }

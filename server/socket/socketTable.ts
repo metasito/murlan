@@ -367,12 +367,16 @@ function scheduleAutoStart(
         if (!current || current.status !== "waiting" || !current.hostUserId) return;
         const players = await roomStore.getRoomPlayers(room.id);
         if (players.length < current.maxPlayers) return;
-        await applyOrForward(io, {
+        const outcome = await applyOrForward(io, {
           kind: "startMatch",
           roomId: room.id,
           userId: current.hostUserId,
           fillWithBots: false,
         });
+        // Nobody pressed anything, so a refusal is logged, never shown.
+        if (!outcome.ok) {
+          logger.warn({ roomId: room.id, code: outcome.code }, "Matchmade table refused to deal itself");
+        }
       } catch (err) {
         logger.warn({ err, roomId: room.id }, "Matchmade table failed to deal itself");
       }

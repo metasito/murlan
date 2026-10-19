@@ -35,6 +35,7 @@ function fakePort(opts: {
   watching?: [string, string][];
   seated?: string[];
   waiting?: Candidate[];
+  announceThrows?: boolean;
 }) {
   const calls: string[] = [];
   const room = opts.room === null ? undefined : { ...ROOM, ...opts.room };
@@ -84,6 +85,7 @@ function fakePort(opts: {
     },
     announceFilled: async (_r: unknown, seated: number) => {
       calls.push(`announceFilled ${seated}`);
+      if (opts.announceThrows) throw new Error("invitees unreadable");
     },
     announceChanged: async (id: string) => {
       calls.push(`announceChanged ${id}`);
@@ -136,17 +138,23 @@ describe("room:join", () => {
     assert.equal(seats.size, 0);
   });
 
-  test("a claimed seat joins, is broadcast to the room, checked for fill and tracked", async () => {
+  test("a claimed seat joins, is broadcast to the room, tracked and checked for fill", async () => {
     const { port, calls, seats } = fakePort({});
     assert.deepEqual(await joinRoomIntent(port, { code: "ABCDEF" }), { ok: true });
     assert.deepEqual(calls.slice(1), [
       "claimRoomSeat room-1 u1",
       "seat room-1",
       "broadcastState room-1",
-      "announceFilled 2",
       "track room.joined",
+      "announceFilled 2",
     ]);
     assert.equal(seats.get("s1"), "room-1");
+  });
+
+  test("a join that happened is recorded even when announcing the fill throws", async () => {
+    const { port, calls } = fakePort({ announceThrows: true });
+    await assert.rejects(joinRoomIntent(port, { code: "ABCDEF" }));
+    assert.ok(calls.includes("track room.joined"));
   });
 });
 
@@ -165,6 +173,14 @@ describe("room:spectate", () => {
       const { port, calls, watching } = fakePort({ admit: { ok: false, code } });
       assert.deepEqual(await spectateRoomIntent(port, { code: "ABCDEF" }), told(sent));
       assert.deepEqual(calls.slice(1), ["spectate room-1"]);
+      assert.equal(watching.size, 0);
+    }
+  });
+
+  test("a refusal the client may retry, or the server's own failure, is passed through as it came", async () => {
+    for (const code of ["TABLE_UNREACHABLE", "UNKNOWN_ACTION", "SERVER_ERROR"]) {
+      const { port, watching } = fakePort({ admit: { ok: false, code } });
+      assert.deepEqual(await spectateRoomIntent(port, { code: "ABCDEF" }), { ok: false, code });
       assert.equal(watching.size, 0);
     }
   });

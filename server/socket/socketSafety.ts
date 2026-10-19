@@ -183,10 +183,15 @@ export function onEvent<E extends keyof InboundSchemas>(
       ((r: Refusal) => {
         if (r.notice) socket.emit(errorEventFor(event), r.notice);
       });
+    // Answered before it is told: a sink that throws must not cost the ack.
     const decline = (r: Refusal) => {
-      tell(r, rawPayload);
       const { ok, code } = r;
       answer({ ok, code });
+      try {
+        tell(r, rawPayload);
+      } catch (err) {
+        logger.error({ err, event, userId: socket.data?.userId, code }, "Socket refusal could not be sent");
+      }
     };
 
     // One socket's intents run in the order it sent them: a leave sent straight
@@ -223,7 +228,6 @@ export function onEvent<E extends keyof InboundSchemas>(
           { err, event, userId: socket.data?.userId, code: "SERVER_ERROR" },
           "Socket handler threw — contained"
         );
-        if (answered) return;
         decline(refusal("SERVER_ERROR"));
       }
     });
