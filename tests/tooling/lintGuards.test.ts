@@ -119,14 +119,14 @@ describe("the guard registry's floor", () => {
     assert.equal(guardSwitches("// eslint-disable-next-line -- why", "a.ts").length, 1);
     assert.equal(guardSwitches("// eslint-disable-line murlan/no-focused-test", "a.ts").length, 1);
     assert.equal(guardSwitches('/* eslint murlan/no-focused-test: "off" */', "a.ts").length, 1);
-    assert.equal(guardSwitches("// eslint-disable-next-line no-console, murlan/one-modal-element", "a.tsx").length, 1);
+    assert.equal(guardSwitches("// eslint-disable-next-line no-console, murlan/one-modal", "a.tsx").length, 1);
     assert.deepEqual(guardSwitches("// eslint-disable-next-line no-console -- why", "a.ts"), []);
     assert.deepEqual(guardSwitches('const s = "/* eslint-disable */";', "a.ts"), []);
   });
 
   test("5c. the one Modal is components/AppModal.tsx, and the real config holds its orientations", async () => {
     const SHELL = "components/AppModal.tsx";
-    const importGuard = GUARDS.find((g) => g.id === "one-modal-import")!;
+    const importGuard = GUARDS.find((g) => g.id === "one-modal")!;
     const alone = new ESLint({
       cwd: ROOT,
       overrideConfigFile: true,

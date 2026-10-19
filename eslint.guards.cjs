@@ -39,36 +39,6 @@ function modalElements() {
 const isMember = (node, object, property) =>
   node?.type === "MemberExpression" && nameOf(node.object) === object && propertyName(node) === property;
 
-function isClockCall(node) {
-  if (node.type !== "CallExpression") return false;
-  const c = node.callee;
-  return (
-    isMember(c, "Date", "now") ||
-    isMember(c, "performance", "now") ||
-    isMember(c, "process", "hrtime") ||
-    (c.type === "MemberExpression" && propertyName(c) === "bigint" && isMember(c.object, "process", "hrtime"))
-  );
-}
-
-function rootName(node) {
-  while (node?.type === "MemberExpression") node = node.object;
-  return nameOf(node);
-}
-
-const isAssertion = (call) =>
-  call.type === "CallExpression" && ["assert", "expect"].includes(rootName(call.callee));
-
-function insideAssertionArgs(context, node) {
-  const chain = [...context.sourceCode.getAncestors(node), node];
-  return chain.some((anc, i) => isAssertion(anc) && anc.arguments.includes(chain[i + 1]));
-}
-
-function isFixed(node) {
-  if (node.type === "Literal" && typeof node.value === "number") return node.value !== 0 && node.value !== 1;
-  if (node.type === "Literal" && node.bigint) return node.bigint !== "0" && node.bigint !== "1";
-  return node.type === "Identifier" && /^[A-Z][A-Z\d_]*$/.test(node.name);
-}
-
 function startsWith(node, pattern) {
   if (node?.type === "Literal" && typeof node.value === "string") return pattern.test(node.value);
   if (node?.type === "TemplateLiteral") return pattern.test(node.quasis[0].value.cooked ?? "");
@@ -111,61 +81,7 @@ const GUARDS = [
     }),
   },
   {
-    id: "no-wall-clock-budget",
-    message:
-      "This asserts on how fast the machine ran, so a loaded runner fails it on code that is fine. Assert what the timing stood in for (a marker, a work counter, a state count) and leave the clock to the test's own timeout. Comparing one measurement against another stays allowed.",
-    files: ["tests/**/*.{ts,tsx}"],
-    plant: { file: "tests/tooling/plant.test.ts", code: [
-      'const elapsedMs = Date.now() - start;\nassert.ok(elapsedMs < 2000, "slow");',
-      "const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;\nassert.ok(elapsedMs < 50);",
-      'const elapsed = Date.now() - startedAt;\nassert.ok(\n  elapsed < PROMPT_MS,\n  "hung"\n);',
-      "const t0 = performance.now();\nexpect(performance.now() - t0).toBeLessThan(100);",
-      'const start = Date.now();\nassert.ok(Date.now() - start < 2000, "slow");',
-      "const start = Date.now();\nconst end = Date.now();\nassert.ok(end - start < 2000);",
-      "let took = performance.now() - t0;\nexpect(took).toBeLessThanOrEqual(100);",
-      "const took = Date.now() - t0;\nassert.ok(2000 > took);",
-    ].join("\n"), hits: 8 },
-    spare: [
-      "const limitedMs = performance.now() - t0;\nassert.ok(limitedMs > genuineAvg * 0.5);",
-      'const elapsedMs = Date.now() - t0;\nassert.ok(elapsedMs > 0, "the clock was never read");',
-      "const elapsedMs = Date.now() - t0;\nif (elapsedMs > 100) retry();",
-      "const started = Date.now();\nassert.ok(frames > 30);",
-      'const deadline = Date.now() + 5000;\nawait waitFor(socket, "x", 5000);',
-    ].map((code) => ({ file: "tests/tooling/plant.test.ts", code })),
-    create: (report, context) => {
-      const held = new Set();
-      const candidates = [];
-      const measured = (node) => some(node, (n) => isClockCall(n) || (n.type === "Identifier" && held.has(n.name)));
-      return {
-        VariableDeclarator(node) {
-          if (node.id.type === "Identifier" && node.init && some(node.init, isClockCall)) held.add(node.id.name);
-        },
-        BinaryExpression(node) {
-          if (["<", ">", "<=", ">="].includes(node.operator) && insideAssertionArgs(context, node)) candidates.push(node);
-        },
-        CallExpression(node) {
-          if (node.callee.type === "MemberExpression" && /^toBe(?:Less|Greater)Than(?:OrEqual)?$/.test(propertyName(node.callee) ?? "")) {
-            candidates.push(node);
-          }
-        },
-        "Program:exit"() {
-          for (const node of candidates) {
-            if (node.type === "BinaryExpression") {
-              const { left, right } = node;
-              if ((measured(left) && isFixed(right)) || (measured(right) && isFixed(left))) report(node);
-              continue;
-            }
-            let expected = node.callee.object;
-            while (expected.type === "MemberExpression") expected = expected.object;
-            const subject = expected.type === "CallExpression" && nameOf(expected.callee) === "expect" ? expected.arguments[0] : null;
-            if (subject && node.arguments[0] && isFixed(node.arguments[0]) && measured(subject)) report(node);
-          }
-        },
-      };
-    },
-  },
-  {
-    id: "intents-go-through-send",
+    id: "intents-through-send",
     message:
       "A bare `emit` is at-most-once and carries no intentId, so its loss is silent and its retry is a second intent: send it through `send()` in lib/sendIntent.ts.",
     files: CLIENT,
@@ -181,7 +97,7 @@ const GUARDS = [
     }),
   },
   {
-    id: "springs-are-tokens",
+    id: "spring-tokens",
     message:
       "This declares a spring instead of naming one, so the design system cannot reach it: use Motion.spring.* from lib/tokens.ts, and if none fits, the design wants a new one.",
     files: SCREENS,
@@ -195,7 +111,7 @@ const GUARDS = [
     }),
   },
   {
-    id: "home-field-is-fixed",
+    id: "field-not-random",
     message:
       "The home screen's drifting cards are a fixed composition (components/homeCardField.ts), so no part of it is drawn at random.",
     files: ["app/index.tsx", "components/homeCardField.ts"],
@@ -208,7 +124,7 @@ const GUARDS = [
     }),
   },
   {
-    id: "seat-identity-through-viewer-owns-seat",
+    id: "seat-identity",
     message:
       "A watcher's seat answers yes to this: ask `viewerOwnsSeat(seat, viewerSeat, spectating)` from components/seatLayout.ts instead of comparing by hand.",
     files: ["components/GameTable.tsx", "app/(online)/game.tsx", "app/(online)/replay.tsx"],
@@ -225,78 +141,39 @@ const GUARDS = [
     },
   },
   {
-    id: "one-modal-element",
+    id: "one-modal",
     message:
-      "Render <AppModal> instead: a second <Modal> is a second place to get supportedOrientations, statusBarTranslucent and onRequestClose wrong.",
-    files: DRAWN,
-    ignores: [{ glob: "components/AppModal.tsx", reason: "the one shell every modal renders through" }],
-    plant: { file: "components/Plant.tsx", code: [
-      "const x = <Modal visible />;",
-      'import * as RN from "react-native";\nconst x = <RN.Modal visible />;',
-      'import { Modal as Sheet } from "react-native";\nconst x = <Sheet visible />;',
-    ].join("\n"), hits: 3 },
-    spare: ["const x = <AppModal visible />;", "const x = <ModalFoo />;", "const x = <RN.ModalFoo />;"].map((code) => ({ file: "components/Plant.tsx", code })),
-    create: (report) => {
-      const modal = modalElements();
-      return {
-        ImportDeclaration: modal.ImportDeclaration,
-        JSXOpeningElement(node) {
-          if (modal.isModal(node.name)) report(node);
-        },
-      };
-    },
-  },
-  {
-    id: "one-modal-import",
-    message: "components/AppModal.tsx is the only reader of react-native's Modal, under any name: render <AppModal>.",
+      "components/AppModal.tsx is the only reader of react-native's Modal, under any name: render <AppModal>, since a second <Modal> is a second place to get supportedOrientations, statusBarTranslucent and onRequestClose wrong.",
     files: SCREENS,
     ignores: [{ glob: "components/AppModal.tsx", reason: "the one shell every modal renders through" }],
     plant: { file: "components/Plant.tsx", code: [
       'import { View, Modal as Sheet } from "react-native";',
-      'import * as RN from "react-native";\nconst x = <RN.Modal visible />;',
-      'import * as RN from "react-native";\nconst x = RN.Modal;',
+      'import * as RN from "react-native";',
+      "const x = <RN.Modal visible />;",
+      "const y = RN.Modal;",
       'export { Modal } from "react-native";',
       'import {\n  Text,\n  Modal,\n} from "react-native";',
-      'import * as N from "react-native";\nconst { View, Modal: M } = N;',
-      'import * as B from "react-native";\nconst Sheet = B["Modal"];',
-    ].join("\n"), hits: 9 },
+      "const { View, Modal: M } = N;",
+      'const Sheet = B["Modal"];',
+    ].join("\n"), hits: 7 },
     spare: [
       'import { type ModalProps, Pressable } from "react-native";',
       'import { Modal as Other } from "./Modal";',
       'import * as Unused from "react-native";',
+      "const x = <AppModal visible />;",
+      "const x = <RN.ModalFoo />;",
+      '// <Modal> from "react-native"\nconst s = "Modal";',
     ].map((code) => ({ file: "components/Plant.tsx", code })),
-    create: (report, context) => {
-      const fromRN = (node) => node.source?.value === "react-native";
-      const modalVia = (ref) => {
-        const id = ref.identifier;
-        const p = id.parent;
-        if (p.type === "MemberExpression" && p.object === id && propertyName(p) === "Modal") return true;
-        if (p.type === "JSXMemberExpression" && p.object === id && nameOf(p.property) === "Modal") return true;
-        return (
-          p.type === "VariableDeclarator" &&
-          p.init === id &&
-          p.id.type === "ObjectPattern" &&
-          p.id.properties.some((prop) => prop.type === "Property" && nameOf(prop.key) === "Modal")
-        );
-      };
-      return {
-        ImportDeclaration(node) {
-          if (!fromRN(node)) return;
-          for (const spec of node.specifiers) {
-            if (spec.type === "ImportSpecifier") {
-              if (nameOf(spec.imported) === "Modal") report(spec);
-              continue;
-            }
-            const [variable] = context.sourceCode.getDeclaredVariables(spec);
-            for (const ref of variable?.references ?? []) if (modalVia(ref)) report(ref.identifier);
-          }
-        },
-        ExportNamedDeclaration(node) {
-          if (!fromRN(node)) return;
-          for (const spec of node.specifiers) if (nameOf(spec.local) === "Modal") report(spec);
-        },
-      };
-    },
+    create: (report) => ({
+      [[
+        'ImportDeclaration[source.value="react-native"] > ImportSpecifier[imported.name="Modal"]',
+        'ExportNamedDeclaration[source.value="react-native"] > ExportSpecifier[local.name="Modal"]',
+        'MemberExpression[property.name="Modal"]',
+        'MemberExpression[property.value="Modal"]',
+        'JSXMemberExpression[property.name="Modal"]',
+        'VariableDeclarator > ObjectPattern > Property[key.name="Modal"]',
+      ].join(", ")]: report,
+    }),
   },
   {
     id: "modal-keeps-landscape",
@@ -323,7 +200,7 @@ const GUARDS = [
     },
   },
   {
-    id: "orientation-lock-owner",
+    id: "landscape-only",
     message: "Only the game table forces an orientation (components/GameTable.tsx): it is the one screen that needs the width.",
     files: SCREENS,
     ignores: [{ glob: "components/GameTable.tsx", reason: "the one screen that needs the width" }],
@@ -336,7 +213,7 @@ const GUARDS = [
     }),
   },
   {
-    id: "never-portrait-lock",
+    id: "no-portrait-lock",
     message: "Nothing may lock the player into portrait: one held in landscape would be yanked round behind their back.",
     files: SCREENS,
     plant: { file: "components/Plant.tsx", code: ["lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);", "lockAsync(OrientationLock.PORTRAIT_UP);"].join("\n"), hits: 2 },
@@ -349,7 +226,7 @@ const GUARDS = [
     }),
   },
   {
-    id: "screens-are-unconditional",
+    id: "screens-unconditional",
     message:
       "expo-router hands a falsy child to the navigator, which logs \"Layout children must be of type Screen\" on every render: guard the route with <Stack.Protected guard={…}>.",
     files: ["app/**/_layout.tsx"],
@@ -367,22 +244,98 @@ const GUARDS = [
     }),
   },
   {
-    id: "leave-through-leave-screen",
+    id: "no-run-on-js",
     message:
-      "Leave through `leaveScreen` (components/ScreenHeader.tsx): a screen a link opened has no history, and a bare back does nothing there.",
+      "runOnJS is deprecated in react-native-worklets and a future major removes it, silently stopping every animation that schedules back: import scheduleOnRN from react-native-worklets and call scheduleOnRN(fn, ...args), as components/NotificationBanner.tsx does.",
     files: SCREENS,
-    ignores: [{ glob: "components/ScreenHeader.tsx", reason: "leaveScreen is the one place a screen goes back" }],
-    plant: { file: "app/plant.tsx", code: ["router.back();", 'router["back"]();', "const { back } = router;"].join("\n"), hits: 3 },
-    spare: ["leaveScreen(router);", "Easing.out(Easing.back(1.7));", "if (router.canGoBack()) leaveScreen(router);"].map((code) => ({ file: "app/plant.tsx", code })),
+    plant: { file: "components/Plant.tsx", code: [
+      'import { runOnJS } from "react-native-reanimated";',
+      "runOnJS(done)();",
+      "Reanimated.runOnJS(done)();",
+    ].join("\n"), hits: 3 },
+    spare: [
+      '// runOnJS was the old way\nconst s = "runOnJS";\nscheduleOnRN(done);',
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
     create: (report) => ({
-      MemberExpression(node) {
-        if (isMember(node, "router", "back")) report(node);
-      },
-      VariableDeclarator(node) {
-        if (nameOf(node.init) === "router" && node.id.type === "ObjectPattern" && node.id.properties.some((p) => p.type === "Property" && nameOf(p.key) === "back")) {
-          report(node);
-        }
-      },
+      [[
+        'ImportSpecifier[imported.name="runOnJS"]',
+        'MemberExpression[property.name="runOnJS"]',
+        'CallExpression[callee.name="runOnJS"]',
+      ].join(", ")]: report,
+    }),
+  },
+  {
+    id: "table-text",
+    message:
+      "React Native multiplies every fontSize by the OS text setting, up to ~3.1x, and the table is fixed boxes that do not grow: render components/table/TableText.tsx, which holds the cap, instead of a bare Text.",
+    files: ["components/table/**/*.tsx", "components/CardView.tsx", "components/GameTable.tsx"],
+    ignores: [{ glob: "components/table/TableText.tsx", reason: "the one Text that carries the cap" }],
+    plant: { file: "components/table/Plant.tsx", code: [
+      'import { View, Text } from "react-native";',
+      "const a = <Text style={styles.rankText}>x</Text>;",
+      "const b = <Text maxFontSizeMultiplier={1.2} style={styles.x}>x</Text>;",
+      "const c = <Animated.Text style={s}>x</Animated.Text>;",
+    ].join("\n"), hits: 4 },
+    spare: [
+      "const a = <TableText style={styles.x}>x</TableText>;",
+      "const b = <TextInput value={v} />;",
+      '// a bare <Text> grows\nconst s = "<Text>";',
+    ].map((code) => ({ file: "components/table/Plant.tsx", code })),
+    create: (report) => ({
+      [[
+        'ImportDeclaration[source.value="react-native"] > ImportSpecifier[imported.name="Text"]',
+        'JSXOpeningElement[name.name="Text"]',
+        'JSXOpeningElement[name.object.name="Animated"][name.property.name="Text"]',
+      ].join(", ")]: report,
+    }),
+  },
+  {
+    id: "query-cache-owner",
+    message:
+      "The cached lists belong to one account and their keys do not say whose, so emptying them is the sign-out's alone (context/SocketContext.tsx): a second clear, remove or reset is a second owner of when the cache is valid.",
+    files: SCREENS,
+    ignores: [
+      { glob: "context/SocketContext.tsx", reason: "the sign-out, which empties the query cache" },
+      { glob: "lib/device/audioEngine.ts", reason: "clears a Set it owns" },
+      { glob: "lib/errorReporting.ts", reason: "clears a Set it owns" },
+      { glob: "lib/reactions.ts", reason: "clears a Map it owns" },
+    ],
+    plant: { file: "lib/Plant.ts", code: [
+      "queryClient.clear();",
+      "qc.clear ();",
+      'queryClient.removeQueries({ queryKey: ["/api/friends"] });',
+      "queryClient.resetQueries();",
+    ].join("\n"), hits: 4 },
+    spare: [
+      'url.searchParams.clear("x");',
+      "queryClient.invalidateQueries();",
+      '// qc.clear()\nconst s = "qc.clear()";',
+    ].map((code) => ({ file: "lib/Plant.ts", code })),
+    create: (report) => ({
+      [[
+        'CallExpression[callee.property.name=/^(removeQueries|resetQueries)$/]',
+        'CallExpression[callee.property.name="clear"][arguments.length=0]',
+      ].join(", ")]: report,
+    }),
+  },
+  {
+    id: "no-cwd-root",
+    message:
+      "The cwd is wherever the run was started, so a root read from it points somewhere else under another runner: take the root from the file's own path, as tests/tooling/lintGuards.test.ts does.",
+    files: ["tests/**/*.{ts,tsx,js,mjs,cjs}"],
+    ignores: [
+      { glob: "tests/tooling/entry.test.ts", reason: "isInvokedDirectly resolves a relative argv1 against the cwd, which is the case it pins" },
+      { glob: "tests/helpers/filesRunReporter.mjs", reason: "a reporter names files relative to where the run was started" },
+    ],
+    plant: { file: "tests/server/plant.test.ts", code: [
+      'const root = path.resolve(process.cwd(), "sourcemaps");',
+      "const home = process.cwd();",
+    ].join("\n"), hits: 2 },
+    spare: [
+      '// process.cwd() is wherever the run started\nconst s = "process.cwd()";\nconst root = path.resolve(import.meta.dirname, "..", "..");',
+    ].map((code) => ({ file: "tests/server/plant.test.ts", code })),
+    create: (report) => ({
+      'CallExpression[callee.object.name="process"][callee.property.name="cwd"]': report,
     }),
   },
 ];

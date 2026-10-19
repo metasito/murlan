@@ -7,8 +7,8 @@
 // the width.
 //
 // components/AppModal.tsx is the only <Modal>, and the rest of this is lint guards in
-// eslint.guards.cjs: `one-modal-element`, `one-modal-import`, `modal-keeps-landscape`,
-// `orientation-lock-owner` and `never-portrait-lock`.
+// eslint.guards.cjs: `one-modal`, `modal-keeps-landscape`, `landscape-only` and
+// `no-portrait-lock`.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

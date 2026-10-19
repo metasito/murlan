@@ -8,8 +8,8 @@
 // menus scroll and are deliberately left fully scalable.
 //
 // components/table/TableText.tsx holds the cap, so a table file cannot render
-// uncapped text by forgetting a prop — it would have to import bare Text. That
-// is what this scan refuses.
+// uncapped text by forgetting a prop — it would have to import bare Text, which
+// the `table-text` guard in eslint.guards.cjs refuses.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -34,21 +34,6 @@ const FIXED_GEOMETRY = [
     .map((f) => `components/table/${f.split(path.sep).join("/")}`),
 ].filter((rel) => rel !== CAP);
 
-const TEXT_TAG = /<(Text|Animated\.Text)(?=[\s>])/g;
-const COMMENT = /\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
-
-/** `line: tag` for every bare Text in `source`, capped or not. */
-export function bareText(source: string): string[] {
-  const out: string[] = [];
-  // Prose that names a <Text> is not a <Text>. Blanking comments in place
-  // keeps the line numbers the reader is given.
-  const code = source.replace(COMMENT, (c) => c.replace(/[^\n]/g, " "));
-  for (const m of code.matchAll(TEXT_TAG)) {
-    out.push(`${code.slice(0, m.index).split("\n").length}: <${m[1]}>`);
-  }
-  return out;
-}
-
 test("capping degrades rather than refuses", () => {
   assert.ok(TABLE_FONT_SCALE_MAX > 1, "allowFontScaling={false} refuses the setting outright");
   assert.ok(TABLE_FONT_SCALE_MAX <= 1.5, "a cap this high puts the rank glyph back outside the card");
@@ -69,24 +54,4 @@ test("TableText caps after the spread, so a caller cannot pass a larger multipli
   // The loop above is vacuous if the spread is ever renamed away, so the count is what proves
   // it ran against something. One component, one spread.
   assert.equal([...source.matchAll(/\{\.\.\.props\}/g)].length, 1);
-});
-
-for (const rel of FIXED_GEOMETRY) {
-  test(`${rel} renders no bare Text`, () => {
-    const offenders = bareText(readFileSync(path.join(repoRoot, rel), "utf8"));
-    assert.deepEqual(
-      offenders,
-      [],
-      `these can grow past their fixed box — use TableText:\n${offenders.join("\n")}`
-    );
-  });
-}
-
-test("the scanner matches a real use", () => {
-  assert.deepEqual(bareText('  <Text style={styles.rankText}>\n'), ["1: <Text>"]);
-  // The prop is no longer an escape hatch: a bare Text is an offender either way.
-  assert.deepEqual(bareText('  <Text maxFontSizeMultiplier={1.2} style={styles.x}>\n'), ["1: <Text>"]);
-  assert.deepEqual(bareText('  <Animated.Text style={s}>x</Animated.Text>\n'), ["1: <Animated.Text>"]);
-  assert.deepEqual(bareText('  <TableText style={styles.x}>\n'), []);
-  assert.deepEqual(bareText('  <TextInput value={v} />\n'), []);
 });

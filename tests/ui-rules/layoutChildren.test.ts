@@ -11,7 +11,7 @@
 // `<Stack.Protected guard={…}>` is the API for a route that is not always
 // there. Nothing falsy reaches the navigator.
 //
-// The inline shape is the `screens-are-unconditional` guard in eslint.guards.cjs. An element
+// The inline shape is the `screens-unconditional` guard in eslint.guards.cjs. An element
 // hoisted to a variable, or built by a helper the layout only calls, is past it.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
