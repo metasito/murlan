@@ -17,7 +17,7 @@ const CASES = [
   { file: "modules/x/index.ts", code: 'import { AudioContext } from "react-native-audio-api";', rule: "murlan/modules-no-audio-layer", fires: true },
   { file: "shared/x.ts", code: 'import type { TranslationKey } from "../lib/i18n";', rule: "murlan/shared-no-client", fires: true },
   { file: "shared/x.ts", code: 'import type { Card } from "../lib/game/gameEngine";', rule: "murlan/shared-no-client", fires: false },
-  { file: "lib/game/x.ts", code: 'import type { TranslationKey } from "../i18n";', rule: "murlan/game-no-client-i18n", fires: true },
+  { file: "lib/game/rating.ts", code: 'import type { TranslationKey } from "../i18n";', rule: "murlan/game-no-client-i18n", fires: true },
 ];
 
 for (const { file, code, rule, fires } of CASES) {

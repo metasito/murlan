@@ -276,7 +276,7 @@ const GUARDS = [
     why: "lib/i18n.ts is the client's catalogue runtime, and the server bundles lib/game/: take TranslationKey from shared/i18n.ts, and leave the words to the caller.",
     selector: importsOf("/^(?!.*shared\\x2Fi18n).*(^|\\x2F)i18n(\\.ts)?$/"),
     files: ["lib/game/**/*.{ts,tsx}"],
-    plant: { file: "lib/game/plant.ts", code: [
+    plant: { file: "lib/game/rating.ts", code: [
       'import type { TranslationKey } from "../i18n";',
       'import { t } from "@/lib/i18n";',
       'import type { TFn } from "../i18n.ts";',
@@ -285,7 +285,7 @@ const GUARDS = [
       'import type { TranslationKey } from "../../shared/i18n.ts";',
       'import type { TranslationKey } from "@/shared/i18n";',
       '// import "../i18n"\nconst s = "../i18n";',
-    ].map((code) => ({ file: "lib/game/plant.ts", code })),
+    ].map((code) => ({ file: "lib/game/rating.ts", code })),
   },
 ];
 
