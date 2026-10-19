@@ -470,6 +470,7 @@ test("every row's name is its own", () => {
  */
 const ELSEWHERE: Record<string, [file: string, why: string]> = {
   "settle runs before the pass returns": ["queueLoopMain.test.ts", "io"],
+  "each fake carries exactly the members its real port does": ["queueLoopMain.test.ts", "io"],
   "every teardown is told which ticket's claim it is releasing": ["queueLoopMain.test.ts", "io"],
   "no terminal outcome leaves the worktree standing": ["queueLoopMain.test.ts", "io"],
   "housekeeping is asked about the pinned ticket, and waited for": ["queueLoopMain.test.ts", "io"],

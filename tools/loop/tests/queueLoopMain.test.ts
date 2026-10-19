@@ -12,56 +12,23 @@ import { runSettle } from "../settle.mjs";
 import {
   runOnce as realRunOnce,
   main as realMain,
+  realPorts,
   settle,
   park,
   publishForReview,
 } from "../queue-loop.mjs";
 import { LIMITS, RESTART } from "../limits.mjs";
-import { loopMoved, refreshWorktree, removeLanded, tearDown as removeWorktree, workspacePort, worktreeOf } from "../workspace.mjs";
+import { loopMoved, refreshWorktree, removeLanded, tearDown as removeWorktree, workspacePort } from "../workspace.mjs";
+import { fakePorts, rowOf, withMembers } from "./helpers/fakePorts.ts";
 import { fakeTracker } from "../tracker.mjs";
 import { afterSession } from "../decide.mjs";
 import { readLine } from "../loop-stream.mjs";
-import { parkReasonOf, ticketTally } from "../loop-logs.mjs";
+import { ticketTally } from "../loop-logs.mjs";
 import { PLAIN } from "../loop-render.mjs";
 import { parkAsked } from "../loop-screen.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
 const { MAX_HANDOFFS, USD_BY_SIZE, WAIT } = LIMITS;
-
-const rowOf = (x: any) => ({
-  n: x.number,
-  outcome: x.outcome,
-  cost: x.run?.result?.cost ?? 0,
-  park_reason: parkReasonOf(x.outcome, x.why),
-  head: x.head ?? null,
-  handoff: x.handoff ?? null,
-  park_failed: x.parkFailed ?? null,
-  flake: x.flake ?? null,
-});
-
-type Fake = { ports: Record<"tracker" | "workspace" | "session" | "ledger", Record<string, any>>; events: Record<string, any> };
-
-/** The members a port carries only when a test gives it one. */
-const OPTIONAL: Record<string, "tracker" | "workspace" | "ledger"> = {
-  queue: "tracker",
-  loopMoved: "workspace",
-  refreshWorktree: "workspace",
-  parity: "workspace",
-  killed: "ledger",
-  journal: "ledger",
-};
-
-/** A copy of `fake` with each override, a member by name, on the port that carries it. */
-const place = (fake: Fake, over: Record<string, unknown>): Fake => {
-  const ports = Object.fromEntries(Object.entries(fake.ports).map(([name, port]) => [name, { ...port }])) as Fake["ports"];
-  const events = { ...fake.events };
-  for (const [member, value] of Object.entries(over)) {
-    const home = member in events ? events : (Object.values(ports).find((p) => member in p) ?? ports[OPTIONAL[member]]);
-    if (!home) throw new Error(`no port carries ${member}`);
-    home[member] = value;
-  }
-  return { ports, events };
-};
 
 /** What `derive({ ci: true })` reads with ticket 42's worktree standing; its issue's default facts name no labels, so it resumes. */
 const standing42 = (over: object = {}) => ({
@@ -82,83 +49,14 @@ const settling42 = () => ({ derive: () => standing42({ phase: "G", ci: { pushed:
 /** A pushed head a CI-RED names: a fix round. */
 const fixing42 = (head: string) => ({ derive: () => standing42({ fix: true, ci: { pushed: true, state: "red", sha: head } }) });
 
-/** `runOnce`'s ports and events, quiet and landing ticket 42. */
-const io = (over: Record<string, unknown> = {}, ledger: any[] = []): Fake => {
-  const fake: Fake = {
-    ports: {
-      tracker: {
-        pick: () => ({
-          skill: "implement",
-          number: 42,
-          title: "t",
-          size: "size:S",
-          queue: { implement: 1, triage: 0, wayfinder: 0 },
-        }),
-        facts: () => ({ title: "t", size: "size:S", reviewRounds: null }),
-        issueState: () => ({ state: "OPEN", stateReason: null }),
-        publish: () => {},
-        pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x" }),
-        settle: async () => ({ action: "already-merged", reason: "merged" }),
-        park: () => {},
-        conflict: () => true,
-        repark: () => ({ failed: [], why: null }),
-        release: () => {},
-      },
-      workspace: {
-        stopFile: () => false,
-        syncCheckout: () => true,
-        housekeeping: () => ({ verdict: "ok", rows: [] }),
-        standing: () => ({
-          ticket: 42,
-          branch: "agent/42-x",
-          cwd: ".worktrees/agent-42",
-          head: "a",
-          commits: 1,
-          changed: [],
-          dirty: false,
-          phase: "E",
-        }),
-        derive: () => ({ onTicket: false, phase: "A", why: "not on an agent branch", ambiguous: false }),
-        buildPassed: () => true,
-        sharedCheckoutDirty: () => "",
-        remove: () => {},
-        parkAsked: () => false,
-        clearParkAsk: () => {},
-        ciLog: () => null,
-        worktreeOf(this: { standing: () => any }, n: number) {
-          return worktreeOf(() => this.standing(), n);
-        },
-      },
-      session: {
-        spawn: async () => ({
-          status: 0,
-          blocked: false,
-          result: { cost: 1, turns: 9 },
-          ms: 1000,
-          log: "l",
-          phase: "F",
-          declared: { ticket: 42, branch: "agent/42-x", pr: 984, phase: "F", stoodDown: false, why: null },
-        }),
-      },
-      ledger: {
-        tally: (n: number) => ticketTally(n, ledger),
-        rows: () => ledger,
-        record: (x: unknown) => ledger.push(rowOf(x)),
-        prune: () => {},
-        logOf: () => "",
-      },
-    },
-    events: { announce: () => {}, log: () => {}, bell: () => {}, picked: () => {} },
-  };
-  return place(fake, over);
-};
+const io = fakePorts;
 // A fake spread into a literal beside more members, `{ ...io(), stopFile }`, has those placed too.
 const runOnce = ({ ports, events, ...more }: any, ...rest: any[]) => {
-  const fake = place({ ports, events }, more);
+  const fake = withMembers({ ports, events }, more);
   return realRunOnce(fake.ports, fake.events, ...rest);
 };
 /** `main` given the fake's ports and events in place of its own. */
-const main = ({ io: { ports, events, ...more }, ...deps }: any) => realMain({ ...deps, ...place({ ports, events }, more) });
+const main = ({ io: { ports, events, ...more }, ...deps }: any) => realMain({ ...deps, ...withMembers({ ports, events }, more) });
 
 describe("runOnce", () => {
   test("a ticket that pushes and merges is landed, in one pass", async () => {
@@ -2343,6 +2241,19 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
     assert.equal(r.outcome, "overloaded");
   });
 
+});
+
+describe("the port contract", () => {
+  // A fake short of a member drives `runOnce` through a path the real port cannot take, and a
+  // fake with one the real port lacks tests a member nothing calls.
+  test("each fake carries exactly the members its real port does", () => {
+    const quiet = () => {};
+    const real = realPorts({ totals: {} } as never, {} as never, { log: quiet, step: quiet } as never);
+    const { ports: fake } = io();
+    for (const name of ["tracker", "workspace", "session", "ledger"] as const) {
+      assert.deepEqual(Object.keys(fake[name]).sort(), Object.keys(real[name]).sort(), name);
+    }
+  });
 });
 
 describe("queue-loop.mjs --check", () => {

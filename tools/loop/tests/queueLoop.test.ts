@@ -24,36 +24,8 @@ import { BASH_DEFAULT_TIMEOUT_MS, CHECK_BASH_TIMEOUT_MS, LIMITS, SESSION_POLICY,
 import { decide } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
 import { fakeTracker, ghTracker } from "../tracker.mjs";
+import { fakePorts } from "./helpers/fakePorts.ts";
 
-/** Enough ports for `runOnce` to reach a decision without git, the tracker or a `claude` binary. */
-const stubPorts = () => ({
-  tracker: {
-    pick: () => ({ skill: "implement", number: 42, title: "t", size: "size:S", queue: null }),
-    pushedPr: () => null,
-    settle: async () => ({ action: "already-merged", reason: "" }),
-    park: () => {},
-    release: () => {},
-    facts: () => ({ title: "t", size: null, reviewRounds: null }),
-  },
-  workspace: {
-    stopFile: () => false,
-    syncCheckout: () => true,
-    housekeeping: () => ({ verdict: "ok", rows: [] }),
-    standing: () => null,
-    derive: () => ({ onTicket: false, phase: "A" }),
-    buildPassed: () => true,
-    remove: () => {},
-    parkAsked: () => false,
-    clearParkAsk: () => {},
-    ciLog: () => null,
-    worktreeOf: () => ({ cwd: null, branch: null, dirty: false, phase: null }),
-  },
-  session: { spawn: async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", declared: null }) },
-  ledger: {
-    record: () => {},
-    tally: () => ({ sessions: 0, spend: 0, handoffsThisRound: 0, lastHandoff: null, lastRedHead: null, retries: 0 }),
-  },
-});
 const quiet = { bell: () => {}, log: () => {}, announce: () => {} };
 
 /**
@@ -1501,32 +1473,23 @@ describe("the land phase", () => {
 describe("a phase handoff", () => {
   test("a handoff re-spawns the same ticket instead of parking it", async () => {
     const spawned: number[] = [];
-    const stub = stubPorts();
-    const ports = {
-      ...stub,
-      tracker: {
-        ...stub.tracker,
-        pick: (pinned: number | null) => ({
-          skill: "implement",
-          number: pinned ?? 41,
-          title: "t",
-          size: "size:S",
-          queue: null,
-        }),
+    const { ports } = fakePorts({
+      derive: () => ({ onTicket: false, phase: "A" }),
+      standing: () => null,
+      pushedPr: () => null,
+      settle: async () => ({ action: "already-merged", reason: "" }),
+      pick: (pinned: number | null) => ({ skill: "implement", number: pinned ?? 41, title: "t", size: "size:S", queue: null }),
+      spawn: (route: { number: number }) => {
+        spawned.push(route.number);
+        return Promise.resolve({
+          status: 0,
+          ms: 1,
+          log: "x",
+          result: { cost: 1 },
+          declared: { ticket: 41, phase: "C", handoff: "D", stoodDown: false },
+        });
       },
-      session: {
-        spawn: (route: { number: number }) => {
-          spawned.push(route.number);
-          return Promise.resolve({
-            status: 0,
-            ms: 1,
-            log: "x",
-            result: { cost: 1 },
-            declared: { ticket: 41, phase: "C", handoff: "D", stoodDown: false },
-          });
-        },
-      },
-    };
+    });
     const pass = await runOnce(ports as never, quiet as never, null);
     assert.equal(pass.outcome, "handoff");
     assert.equal(pass.phase, "D");

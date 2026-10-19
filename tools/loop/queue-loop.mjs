@@ -100,7 +100,7 @@ export async function holdFor(
  *
  * @param {number} number
  * @param {{phase: string, why: string, log: string, cwd: string|null, branch: string|null,
- *   dirty: boolean, error?: object|null, run?: Function, tracker?: object, write?: Function}} ctx
+ *   dirty: boolean, error?: object|null, run?: Function, tracker?: object, write?: Function, remove?: Function}} ctx
  * @returns {{ok: boolean, failed: string[]}}
  */
 export function park(
@@ -363,7 +363,7 @@ export function parkAndRecord({ tracker, events, record }, number, { run = null,
 async function preflight(workspace, pinned) {
   if (workspace.stopFile()) return { stop: true };
   if (!workspace.syncCheckout(pinned)) return { unusable: true };
-  const moved = workspace.loopMoved?.();
+  const moved = workspace.loopMoved();
   if (moved) return { moved };
   return { housekeeping: await workspace.housekeeping(pinned) };
 }
@@ -530,7 +530,7 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
         reason: route.phase === tally.lastHandoff ? tally.handoffWhy : null,
       });
 
-  const dirtied = workspace.sharedCheckoutDirty?.();
+  const dirtied = workspace.sharedCheckoutDirty();
   if (dirtied) events.log(`#${route.number}'s session left the shared checkout dirty:\n${dirtied}`, "session");
 
   const derived = workspace.standing();
@@ -653,7 +653,7 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
  * `tracker` is everything GitHub, `workspace` git and the disk, `session` the `claude` process,
  * `ledger` the record of the night. Whatever they draw goes through `events`.
  */
-function realPorts(book, screen, events) {
+export function realPorts(book, screen, events) {
   // The queue as the *previous* pick read it. The direction is what a night is made of, and this
   // is the one reading that costs nothing — the next pick is being made anyway.
   let before = null;
@@ -818,12 +818,12 @@ export async function main({
    * `runOnce` says which ticket its pick settled on, so that is where the answer is knowable.
    */
   let claimed = null;
-  screen = journaled(screen, () => claimed, (line) => ports?.ledger.journal?.(line));
+  screen = journaled(screen, () => claimed, (line) => ports?.ledger.journal(line));
   install(screen);
   events ??= screenEvents(screen);
   ports ??= realPorts(book, screen, events);
   const { tracker, workspace, ledger } = ports;
-  const killed = ledger.killed?.();
+  const killed = ledger.killed();
   if (killed) {
     screen.notice(
       "killed",
@@ -922,7 +922,7 @@ export async function main({
       return how;
     });
   const queued = () => {
-    const q = tracker.queue?.();
+    const q = tracker.queue();
     return q ? ` · queue ${q.implement} to implement, ${q.triage} to triage` : "";
   };
   const record = (row) => {
@@ -934,7 +934,7 @@ export async function main({
     claimed = null;
     // Per iteration, not once per process: a run lasting past midnight would never prune.
     ledger.prune();
-    parity = workspace.parity?.() ?? null;
+    parity = workspace.parity();
     const rows = ledger.rows();
     screen.board?.({ typical: typicalMs(rows) });
     // From the ledger, not memory: the outage that failed a park outlasts any backoff, and a restart.
@@ -1024,12 +1024,12 @@ export function check({ say = console.log } = {}) {
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
-  // Here, not in `main`, which tests call in-process: `.loop-logs/` and `tearDown`'s refusal of a
-  // caller standing inside the tree it removes both read the supervisor's cwd as ROOT.
-  process.chdir(ROOT);
   if (process.argv.includes("--check")) {
     check();
   } else {
+    // Here, not in `main`, which tests call in-process: `.loop-logs/` and `tearDown`'s refusal of a
+    // caller standing inside the tree it removes both read the supervisor's cwd as ROOT.
+    process.chdir(ROOT);
     // An unhandled rejection here would end the night with a one-line node trace and no exit
     // status, in the one process whose job is to say what happened.
     main({})

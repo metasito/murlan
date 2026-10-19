@@ -619,7 +619,11 @@ export const sh = (file, args, opts = {}) => {
 
 /**
  * In-process, against the shared checkout: the supervisor runs from ROOT, which `removeWorktree`'s own
- * refusal of a caller standing inside the tree requires. A refusal throws, as the script's exit did.
+ * refusal of a caller standing inside the tree requires. A refusal throws, so a caller's step that
+ * removed nothing reports as failed.
+ *
+ * @param {string} cwd
+ * @param {{force?: boolean, git?: (args: string[]) => string}} [opts]
  */
 export function tearDown(cwd, { force = false, git: run = gitAt(ROOT) } = {}) {
   const { removed, why } = removeWorktree(cwd, { force, git: (args) => run(args) });
@@ -633,7 +637,7 @@ const writeLeftover = (file, body) => {
 };
 
 /**
- * Only after a confirmed merge. `--force` is safe here because the script detaches the junction
+ * Only after a confirmed merge. `force` is safe here because `removeWorktree` detaches the junction
  * before removing, and the leftovers are on disk first; a patch that cannot be written keeps the tree.
  */
 export function removeLanded(cwd, number, { run = sh, write = writeLeftover, say = console.error, remove = tearDown } = {}) {
@@ -733,6 +737,8 @@ export function worktreeOf(read, number, kept = () => null) {
 /**
  * The workspace port: git and the disk under `root`, as `runOnce` and `main` reach them. What it
  * says goes through `events`.
+ *
+ * @param {{root?: string, git?: (args: string[]) => string, events: {log: Function, step: Function}}} opts
  */
 export function workspacePort({ root = ROOT, git: run = gitAt(root), events }) {
   const g = (...args) => run(args);
