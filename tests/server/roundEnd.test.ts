@@ -435,4 +435,27 @@ describe("resolveRoundEnd — a vacated seat's win eligibility and frozen points
     // Nobody else reads as vacated.
     assert.ok(result.detailed.filter((r) => r.vacated).every((r) => r.seatIndex === 1));
   });
+
+  test("a vacated partner's frozen userId key counts toward its pair (frozenKeysOf)", () => {
+    const team = (t: "A" | "B") => (id: string, n: number) => player(id, id, n, { team: t });
+    const state = (): GameState => ({
+      ...mkState(
+        [team("A")("p0", 0), team("B")("p1", 0), team("A")("p2", 0), team("B")("p3", 3)],
+        ["p0", "p1", "p2", "p3"]
+      ),
+      gameMode: "teams",
+    });
+    const input = {
+      playerMap: { 0: "a1", 1: "b1", 3: "b2" },
+      cumulativeScores: { a1: 11, b1: 5, a2: 11, b2: 4 },
+      matchTarget: 21,
+      matchLength: "match" as const,
+      gameMode: "teams" as const,
+      roundFlags: {},
+      abandonedSeats: new Map(),
+    };
+    const vacatedSeats = new Map([[2, { userId: "a2", username: "A2" }]]);
+    assert.equal(resolveRoundEnd({ ...input, state: state(), vacatedSeats }).matchOver, true);
+    assert.equal(resolveRoundEnd({ ...input, state: state() }).matchOver, false, "without the frozen key a2's 11 is lost");
+  });
 });
