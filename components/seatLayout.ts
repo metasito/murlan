@@ -99,7 +99,7 @@ export function HAND_ZONE_H(cardH: number, bottomPad: number): number {
  * drawn larger because the turn is the viewer's own does not move where the
  * flier stopped.
  *
- * The arriving card's own descent (`hand.tsx`'s `dealRise`) starts from this
+ * The arriving card's own descent (`hand.tsx`'s descend entry) starts from this
  * point instead of the pile a freshly dealt card flies from
  * (`HandDeal.pile`), so the flier's landing and the card's mount are the same
  * point rather than two guesses that happen to be close.
