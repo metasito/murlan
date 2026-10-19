@@ -17,6 +17,7 @@ const SCREENS = ["{app,components,context,lib}/**/*.{ts,tsx}"];
 const DRAWN = ["{app,components}/**/*.tsx"];
 const TEST_RUNNERS = "/^(it|test|describe|suite)$/";
 const SEAT_IDENTITY = "/^(viewerSeat|mySeatIndex)$/";
+const AUDIO_LAYERED = ["{app,components,context,lib,modules}/**/*.{ts,tsx}"];
 // esquery's regex literal ends at its first slash, so a path separator is written \x2F.
 // With `values`, a declaration whose every specifier is `type` is spared: it never reaches the bundle.
 const importsOf = (source, { values = false } = {}) =>
@@ -234,29 +235,86 @@ const GUARDS = [
     spare: [{ file: "tests/server/plant.test.ts", code: '// process.cwd() is wherever the run started\nconst s = "process.cwd()";\nconst root = path.resolve(import.meta.dirname, "..", "..");' }],
   },
   {
-    id: "modules-no-audio-layer",
-    why: "ADR-0009 gives each audio and haptics layer one owner, and none is under modules/: play through lib/device/feedback.ts, which owns lib/device/audioEngine.ts and lib/device/hapticsEngine.ts.",
-    selector: importsOf(
-      "/^(react-native-audio-api|react-native-turbo-haptics|expo-audio|expo-haptics)$|(^|\\x2F)(audioEngine|hapticsEngine|murlan-audio-session|murlan-diagnostics)(\\.ts)?$/",
-      { values: true }
-    ),
-    files: ["modules/**/*.{ts,tsx}"],
-    plant: { file: "modules/murlan-orientation/plant.ts", code: [
+    id: "audio-engine-owner",
+    why: "ADR-0009 (docs/adr/0009-audio-and-haptics-libraries.md) gives react-native-audio-api and the audio-session module one owner, lib/device/audioEngine.ts: play through lib/device/feedback.ts.",
+    selector: importsOf("/^react-native-audio-api(\\x2F|$)|(^|\\x2F)murlan-audio-session(\\x2F|$)/", { values: true }),
+    files: AUDIO_LAYERED,
+    ignores: [{ glob: "lib/device/audioEngine.ts", reason: "the owner of the audio engine" }],
+    plant: { file: "components/Plant.tsx", code: [
       'import { AudioContext } from "react-native-audio-api";',
-      'export { trigger } from "react-native-turbo-haptics";',
-      'const a = require("expo-audio");',
-      'const s = import("../murlan-audio-session");',
-      'import { play } from "../../lib/device/audioEngine.ts";',
       'import { type AudioBuffer, AudioContext as Ctx } from "react-native-audio-api";',
-      'import "expo-haptics";',
-    ].join("\n"), hits: 7 },
+      'import "react-native-audio-api";',
+      'export { AudioContext } from "react-native-audio-api";',
+      'export * from "react-native-audio-api";',
+      'const api = import("react-native-audio-api");',
+      'const m = require("react-native-audio-api");',
+      'import { setCategory } from "../modules/murlan-audio-session";',
+      'import Session from "@/modules/murlan-audio-session/index.ts";',
+    ].join("\n"), hits: 9 },
     spare: [
-      'import { requireOptionalNativeModule } from "expo";',
       'import type { AudioContext } from "react-native-audio-api";',
       'import { type AudioContext, type AudioBuffer } from "react-native-audio-api";',
       'export { type AudioContext } from "react-native-audio-api";',
-      '// import "expo-haptics"\nconst s = "expo-haptics";',
-    ].map((code) => ({ file: "modules/murlan-orientation/plant.ts", code })),
+      'export type * from "react-native-audio-api";',
+      'import { x } from "react-native-audio-api-shim";',
+      '// import "react-native-audio-api"\nconst s = "react-native-audio-api";',
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "haptics-engine-owner",
+    why: "ADR-0009 (docs/adr/0009-audio-and-haptics-libraries.md) gives react-native-turbo-haptics one owner, lib/device/hapticsEngine.ts: buzz through lib/device/feedback.ts.",
+    selector: importsOf("/^react-native-turbo-haptics(\\x2F|$)/", { values: true }),
+    files: AUDIO_LAYERED,
+    ignores: [{ glob: "lib/device/hapticsEngine.ts", reason: "the owner of the haptics engine" }],
+    plant: { file: "modules/murlan-orientation/plant.ts", code: [
+      'import { trigger } from "react-native-turbo-haptics";',
+      'export { trigger } from "react-native-turbo-haptics";',
+      'const h = import("react-native-turbo-haptics");',
+    ].join("\n"), hits: 3 },
+    spare: ['import type { HapticType } from "react-native-turbo-haptics";'].map((code) => ({ file: "modules/murlan-orientation/plant.ts", code })),
+  },
+  {
+    id: "no-expo-audio",
+    why: "ADR-0009 (docs/adr/0009-audio-and-haptics-libraries.md) chose react-native-audio-api and react-native-turbo-haptics over expo-audio and expo-haptics, so neither has an owner: play through lib/device/feedback.ts.",
+    selector: importsOf("/^expo-(audio|haptics)(\\x2F|$)/", { values: true }),
+    files: AUDIO_LAYERED,
+    plant: { file: "context/Plant.tsx", code: [
+      'import * as Haptics from "expo-haptics";',
+      'import { useAudioPlayer } from "expo-audio";',
+      'const a = require("expo-audio");',
+    ].join("\n"), hits: 3 },
+    spare: ['import type { AudioPlayer } from "expo-audio";', 'import { Image } from "expo-image";'].map((code) => ({ file: "context/Plant.tsx", code })),
+  },
+  {
+    id: "diagnostics-owner",
+    why: "ADR-0009 (docs/adr/0009-audio-and-haptics-libraries.md) layers the native modules: the diagnostics module has one reader, lib/diagnostics/probe.ts, and the rest ask it.",
+    selector: importsOf("/(^|\\x2F)murlan-diagnostics(\\x2F|$)/", { values: true }),
+    files: AUDIO_LAYERED,
+    ignores: [{ glob: "lib/diagnostics/probe.ts", reason: "the one reader of the diagnostics module" }],
+    plant: { file: "app/Plant.tsx", code: [
+      'import { probe } from "@/modules/murlan-diagnostics";',
+      'const d = import("../modules/murlan-diagnostics/index.ts");',
+    ].join("\n"), hits: 2 },
+    spare: ['import type { Probe } from "@/modules/murlan-diagnostics";', 'import { probe } from "@/lib/diagnostics/probe";'].map((code) => ({ file: "app/Plant.tsx", code })),
+  },
+  {
+    id: "feedback-owner",
+    why: "ADR-0009 (docs/adr/0009-audio-and-haptics-libraries.md) puts both engines behind one owner, lib/device/feedback.ts: play and buzz through it.",
+    selector: importsOf("/(^|\\x2F)(audioEngine|hapticsEngine)(\\.ts)?$/", { values: true }),
+    files: AUDIO_LAYERED,
+    ignores: [{ glob: "lib/device/feedback.ts", reason: "the one owner of both engines" }],
+    plant: { file: "components/Plant.tsx", code: [
+      'import { play } from "@/lib/device/audioEngine";',
+      'import { play } from "../lib/device/audioEngine.ts";',
+      'import { buzz } from "./device/hapticsEngine.ts";',
+      'const e = import("@/lib/device/audioEngine");',
+      'const h = require("../lib/device/hapticsEngine");',
+    ].join("\n"), hits: 5 },
+    spare: [
+      'import type { Bus } from "@/lib/device/audioEngine";',
+      'import { playSound } from "@/lib/device/feedback";',
+      'import { x } from "./audioEngineTiming";',
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
   },
   {
     id: "shared-no-client",

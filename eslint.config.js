@@ -22,28 +22,6 @@ const {
   NOTICE_PAINT_IMPORTS,
 } = require('./eslint.selectors.cjs');
 
-const ONLY_OWNERS = "ADR-0009: one owner per audio layer (docs/adr/0009-audio-and-haptics-libraries.md).";
-const PACKAGE_OWNERS = {
-  "react-native-audio-api": "lib/device/audioEngine.ts",
-  "react-native-turbo-haptics": "lib/device/hapticsEngine.ts",
-  "expo-audio": null,
-  "expo-haptics": null,
-};
-const GROUP_OWNERS = [
-  { group: ["**/modules/murlan-audio-session", "**/modules/murlan-audio-session/*"], owner: "lib/device/audioEngine.ts" },
-  { group: ["**/modules/murlan-diagnostics", "**/modules/murlan-diagnostics/*"], owner: "lib/diagnostics/probe.ts" },
-  { group: ["**/audioEngine", "**/hapticsEngine"], owner: "lib/device/feedback.ts" },
-];
-const audioLayers = (file) => [
-  "error",
-  {
-    paths: Object.entries(PACKAGE_OWNERS)
-      .filter(([, owner]) => owner !== file)
-      .map(([name]) => ({ name, allowTypeImports: true, message: ONLY_OWNERS })),
-    patterns: GROUP_OWNERS.filter((g) => g.owner !== file).map(({ group }) => ({ group, allowTypeImports: true, message: ONLY_OWNERS })),
-  },
-];
-
 const TOKEN_SYNTAX = [
   {
     // `color: "Colors.success"` type-checks (any string is a valid
@@ -80,21 +58,17 @@ const TOKEN_SYNTAX = [
   },
 ];
 
-// A later block replaces a rule's options rather than adding to them, so this one restates both.
 const NOTICES_DIR = "components/table/notices/**/*.{ts,tsx}";
-const restrictTheme = ([level, { paths, patterns }], importNames, message, allowTypeImports) => [
-  level,
+const restrictTheme = (importNames, message, allowTypeImports) => [
+  "error",
   {
-    paths: [...paths, ...["@/lib/theme", "@/lib/tokens"].map((name) => ({ name, importNames, message, allowTypeImports }))],
-    patterns: [
-      ...patterns,
-      { group: ["**/lib/theme", "**/lib/theme.ts", "**/lib/tokens", "**/lib/tokens.ts"], importNames, message, allowTypeImports },
-    ],
+    paths: ["@/lib/theme", "@/lib/tokens"].map((name) => ({ name, importNames, message, allowTypeImports })),
+    patterns: [{ group: ["**/lib/theme", "**/lib/theme.ts", "**/lib/tokens", "**/lib/tokens.ts"], importNames, message, allowTypeImports }],
   },
 ];
 const PALETTE_READER = "components/table/TableNotice.tsx";
 const PALETTE_MESSAGE = `${PALETTE_READER} is the one reader of NoticePalette: paint a notice through it.`;
-const paletteLayers = (file) => restrictTheme(audioLayers(file), ["NoticePalette"], PALETTE_MESSAGE, true);
+const PALETTE_LAYERS = restrictTheme(["NoticePalette"], PALETTE_MESSAGE, true);
 
 module.exports = defineConfig([
   expoConfig,
@@ -153,23 +127,19 @@ module.exports = defineConfig([
   },
   {
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "context/**/*.{ts,tsx}", "lib/**/*.{ts,tsx}"],
-    rules: { "@typescript-eslint/no-restricted-imports": paletteLayers(null) },
+    rules: { "@typescript-eslint/no-restricted-imports": PALETTE_LAYERS },
   },
   {
     files: [PALETTE_READER],
-    rules: { "@typescript-eslint/no-restricted-imports": audioLayers(null) },
+    rules: { "@typescript-eslint/no-restricted-imports": "off" },
   },
   {
     files: [NOTICES_DIR],
     rules: {
       "no-restricted-syntax": ["error", ...TOKEN_SYNTAX, { selector: NOTICE_PAINT, message: NOTICE_PAINT_MESSAGE }],
-      "@typescript-eslint/no-restricted-imports": restrictTheme(audioLayers(null), NOTICE_PAINT_IMPORTS, NOTICE_PAINT_MESSAGE, false),
+      "@typescript-eslint/no-restricted-imports": restrictTheme(NOTICE_PAINT_IMPORTS, NOTICE_PAINT_MESSAGE, false),
     },
   },
-  ...["lib/device/audioEngine.ts", "lib/device/hapticsEngine.ts", "lib/device/feedback.ts", "lib/diagnostics/probe.ts"].map((file) => ({
-    files: [file],
-    rules: { "@typescript-eslint/no-restricted-imports": paletteLayers(file) },
-  })),
   {
     // `eslint-config-expo` registers `@typescript-eslint` only for TS files, and
     // a flat-config block may only name a rule from a plugin registered for the
