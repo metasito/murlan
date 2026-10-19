@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { getValidGivebackCards, type Card, type GameState } from "@/lib/game/gameEngine";
 import { buildExchangeAnnounce, type ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
-import type { LegStage } from "@/lib/game/exchangeTimeline";
+import type { LegStage } from "@/lib/timeline/exchangeTimeline";
 import { useTranslation } from "@/lib/i18n";
 import type { LegName } from "./ExchangeLegs";
 import {

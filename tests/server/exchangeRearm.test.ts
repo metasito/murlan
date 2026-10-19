@@ -6,9 +6,8 @@ import { persistence } from "../../server/game/gamePersistence.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
 import { botMoveDelayMs, clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { createDeck, initializeRematch, type GameState } from "../../lib/game/gameEngine.ts";
-import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
-import { LEG, exchangeGiveDelayMs, legPose, legShows, restPoint } from "../../lib/game/exchangeTimeline.ts";
-import { dealEndMs } from "../../lib/game/dealTimeline.ts";
+import { LEG, exchangeAnnounceMs, exchangeGiveDelayMs, legPose, legShows, restPoint } from "../../lib/timeline/exchangeTimeline.ts";
+import { dealEndMs } from "../../lib/timeline/dealTimeline.ts";
 import { Motion } from "../../lib/tokens.ts";
 
 const ROOM = "exchange-rearm-room";

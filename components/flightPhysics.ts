@@ -13,7 +13,7 @@ import { FIELD_SCALE, HAND_SCALE } from "./cardFaceModel.ts";
 import { floatAboveFoot } from "./table/noticeModel.ts";
 import { fanPoint } from "./fanGeometry.ts";
 import type { CardFrom } from "./flightPose.ts";
-import type { LegStage } from "../lib/game/exchangeTimeline.ts";
+import type { LegStage } from "../lib/timeline/exchangeTimeline.ts";
 import type { ExchangeStages } from "./table/exchangeModel.ts";
 
 /** A card leaving a fan starts at the mockup's `.4` of its size on the felt (index.html `play()`). */

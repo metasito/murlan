@@ -1,7 +1,7 @@
 // Where a seat finished, as the app draws it: the podium colour and the words
 // on the badge.
-import { Colors } from "../theme";
-import type { TranslationKey } from "../../shared/i18n.ts";
+import { Colors } from "./theme";
+import type { TranslationKey } from "../shared/i18n.ts";
 
 const PLACEMENT_COLORS = [
   Colors.podiumGold,

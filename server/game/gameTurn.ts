@@ -34,9 +34,8 @@ import {
 import { roundUnplayed, openingIsPending } from "../../lib/game/gameEngine.ts";
 import type { GameState, Combination } from "../../lib/game/gameEngine.ts";
 import { Motion, Reading } from "../../lib/tokens.ts";
-import { dealEndMs } from "../../lib/game/dealTimeline.ts";
-import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
-import { exchangeGiveDelayMs } from "../../lib/game/exchangeTimeline.ts";
+import { dealEndMs } from "../../lib/timeline/dealTimeline.ts";
+import { exchangeAnnounceMs, exchangeGiveDelayMs } from "../../lib/timeline/exchangeTimeline.ts";
 import { handCountOf } from "../../shared/protocol.ts";
 
 /** The seat that must act right now: the exchange winner, or the turn holder. */

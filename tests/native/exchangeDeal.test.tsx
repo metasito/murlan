@@ -6,8 +6,8 @@ import { getAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { GameTable } from '@/components/GameTable';
-import { dealEndMs } from '@/lib/game/dealTimeline';
-import { LEG, choiceOpensAt } from '@/lib/game/exchangeTimeline';
+import { dealEndMs } from '@/lib/timeline/dealTimeline';
+import { LEG, choiceOpensAt } from '@/lib/timeline/exchangeTimeline';
 import { emptyRankTally, type Card, type GameState, type Player, type Rank, type Suit } from '@/lib/game/gameEngine';
 import { frames } from './helpers/exchangeLegs';
 import { bootFeedback } from './helpers/feedback';

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { broadcastGameState, sanitizeStateForPlayer } from "../../server/game/gamePersistence.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { SocketServer } from "../../server/socket/socketTypes.ts";
-import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
+import { exchangeAnnounceMs } from "../../lib/timeline/exchangeTimeline.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 import { installClock } from "../../server/http/clock.ts";
 import { fakeClock } from "../helpers/fakeClock.ts";

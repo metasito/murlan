@@ -39,10 +39,10 @@ import { useNotification } from "@/context/NotificationContext";
 import { t } from "@/lib/i18n";
 import {
   exchangeAnnouncementOf,
-  useExchangeAnnouncement,
   type ExchangeAnnounceData,
   type ExchangeHold,
 } from "@/lib/game/sharedGameFlow";
+import { useExchangeAnnouncement } from "@/context/useExchangeAnnouncement";
 import type { RoundResult, MatchState, PlayerSetupConfig } from "@/lib/game/matchState";
 
 // Read once at module scope, matching app/game.tsx's own E2E_FAST — inlined

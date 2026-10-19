@@ -102,7 +102,7 @@ test("neither provider keeps its own ceremony", () => {
     const source = readFileSync(new URL(file, root), "utf8");
     assert.ok(
       source.includes("useExchangeAnnouncement("),
-      `${file} does not drive the ceremony from lib/game/sharedGameFlow.ts`
+      `${file} does not drive the ceremony from context/useExchangeAnnouncement.ts`
     );
     assert.equal(
       /useState[^\n]*\bexchangeAnnounc|setExchangeAnnouncing/i.test(source),

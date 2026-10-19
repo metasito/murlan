@@ -304,19 +304,22 @@ they *decide*, so a rule cannot hold in one mode and not the other:
   (server/CLAUDE.md's rule). `matchWinnerIds` may be empty on a match that
   *is* over — a client rejoining a finished table never receives the event — so
   `celebratesViewer()` takes an ordered candidate list and passes over any id naming no seat.
-- **`lib/game/standings.ts`**, **`lib/game/placement.ts`**, **`lib/exchangeCeremony.ts`** — scoring
-  order, placement colours and labels, and the ceremony's own clock.
+- **`lib/game/standings.ts`**, **`lib/placement.ts`**, **`lib/timeline/exchangeTimeline.ts`** — scoring
+  order, placement colours and labels, and the ceremony's own clock (`exchangeAnnounceMs`).
 - **The endings, on the table.** A round ends in the score pill's payoff
-  (`lib/game/roundEnding.ts`): offline it deals the next one, online the pill holds open with the
+  (`lib/timeline/roundEnding.ts`): offline it deals the next one, online the pill holds open with the
   next-round vote at its foot until the deal arrives. A match ends with the pill growing into the
-  result board over the dimmed table (`lib/game/matchEnding.ts`, `components/table/matchBoard.tsx`),
+  result board over the dimmed table (`lib/timeline/matchEnding.ts`, `components/table/matchBoard.tsx`),
   with Home and New match; online, New match is the rematch vote. There is no result route.
 - **`server/socket/emit.ts`** — every `game:match_state` and `game:vote_state` broadcast, so the
   vote total is derived once rather than at each call site.
 
-A module here that the server bundles (`autoMove`, `matchState`, `standings`,
-`exchangeCeremony`) imports with a relative path and an explicit `.ts`, and touches nothing
-from `react-native`. `lib/game/placement.ts` is client-only; the HTTP DTOs both sides read live in `shared/http.ts`.
+`lib/game/` holds the rules, the bots, the match flow and pure derivations only: every runtime
+import there resolves inside it (`tests/tooling/libGameBoundary.test.ts`). The motion timelines
+live in `lib/timeline/`. A module here that the server bundles (`autoMove`, `matchState`,
+`standings`, `dealTimeline`, `exchangeTimeline`) imports with a relative path and an explicit
+`.ts`, and touches nothing from `react-native`. `lib/placement.ts` is client-only; the HTTP DTOs
+both sides read live in `shared/http.ts`.
 
 ## 7. Fixed bug: "Rendered fewer hooks than expected" in `OnlineGameScreen`
 

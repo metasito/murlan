@@ -1,7 +1,7 @@
 import { AppState } from "react-native";
 import { diag, type DiagRows } from "@/lib/diagnostics";
 import { reportError } from "@/lib/errorReporting";
-import { GATE_WATCHDOG_MS } from "@/lib/game/gateWatchdog";
+import { GATE_WATCHDOG_MS } from "@/lib/timeline/gateWatchdog";
 import { inBackground } from "./useFlightClock";
 
 /** A table gate its frame clock never released, let go by its watchdog (`GATE_WATCHDOG_MS`). */

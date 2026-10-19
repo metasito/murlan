@@ -8,7 +8,7 @@ import { ReduceMotion, ReducedMotionConfig, getAnimatedStyle } from 'react-nativ
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GameTable } from '@/components/GameTable';
 import { setMotionPreference } from '@/lib/accessibility';
-import { roundEndingOnsets } from '@/lib/game/roundEnding';
+import { roundEndingOnsets } from '@/lib/timeline/roundEnding';
 import type { GameState, Player } from '@/lib/game/gameEngine';
 
 const METRICS = {

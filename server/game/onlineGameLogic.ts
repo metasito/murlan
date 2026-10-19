@@ -8,7 +8,7 @@ import type { BotPersonalityId } from "../../lib/game/botPersonalities.ts";
 import { foldRoundIntoMatch, resolveMatchFor } from "../../lib/game/gameEngine.ts";
 import type { GameState, GameMode, MatchLength } from "../../lib/game/gameEngine.ts";
 import type { GameResult } from "../../lib/achievements.ts";
-import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
+import { exchangeAnnounceMs } from "../../lib/timeline/exchangeTimeline.ts";
 
 import type { RoundFlags } from "../../shared/persistedEnvelope.ts";
 

@@ -8,7 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as particles from '@/components/table/particles';
 import { setMotionPreference } from '@/lib/accessibility';
 import type { GameState, Player } from '@/lib/game/gameEngine';
-import { roundEndingOnsets } from '@/lib/game/roundEnding';
+import { roundEndingOnsets } from '@/lib/timeline/roundEnding';
 import { t } from '@/lib/i18n';
 
 const mockVoteRematch = jest.fn();

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ROUND_IDLE, roundGlow, roundOpen, roundRerank, roundRowCount, roundRowPop } from "../../lib/game/roundEnding.ts";
+import { ROUND_IDLE, roundGlow, roundOpen, roundRerank, roundRowCount, roundRowPop } from "../../lib/timeline/roundEnding.ts";
 import {
   MATCH_STEPS,
   matchActions,
@@ -8,7 +8,7 @@ import {
   matchDim,
   matchEndingOnsets,
   matchWinnerBox,
-} from "../../lib/game/matchEnding.ts";
+} from "../../lib/timeline/matchEnding.ts";
 
 for (const seats of [2, 3, 4]) {
   test(`a ${seats}-seat match ends on the mockup's onsets`, () => {

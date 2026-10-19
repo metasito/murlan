@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { GATE_WATCHDOG_MS } from "../../lib/game/gateWatchdog.ts";
-import { dealEndMs } from "../../lib/game/dealTimeline.ts";
-import { GIVE_MS, ceremonyEndsAt, choiceOpensAt, legShows } from "../../lib/game/exchangeTimeline.ts";
+import { GATE_WATCHDOG_MS } from "../../lib/timeline/gateWatchdog.ts";
+import { dealEndMs } from "../../lib/timeline/dealTimeline.ts";
+import { GIVE_MS, ceremonyEndsAt, choiceOpensAt, legShows } from "../../lib/timeline/exchangeTimeline.ts";
 import { Motion } from "../../lib/tokens.ts";
 
 const MARGIN = 1.5;

@@ -10,7 +10,7 @@ import {
   Motion,
   Spacing,
 } from "../../lib/tokens.ts";
-import { LEG, legPose, type LegStage } from "../../lib/game/exchangeTimeline.ts";
+import { LEG, legPose, type LegStage } from "../../lib/timeline/exchangeTimeline.ts";
 import type { CardFrom } from "../../components/flightPose.ts";
 import {
   arrangeOpponents,

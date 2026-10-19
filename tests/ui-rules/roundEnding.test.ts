@@ -9,7 +9,7 @@ import {
   roundRerank,
   roundRowCount,
   roundRowPop,
-} from "../../lib/game/roundEnding.ts";
+} from "../../lib/timeline/roundEnding.ts";
 
 for (const seats of [2, 3, 4]) {
   test(`a ${seats}-seat round ends on the mockup's onsets`, () => {

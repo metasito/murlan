@@ -16,7 +16,7 @@ import {
   processPlay,
   type GameState,
 } from "../../lib/game/gameEngine.ts";
-import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
+import { exchangeAnnounceMs } from "../../lib/timeline/exchangeTimeline.ts";
 
 const ROOM = "commit-move-room";
 const io = { to: () => ({ emit: () => {} }) } as unknown as SocketServer;

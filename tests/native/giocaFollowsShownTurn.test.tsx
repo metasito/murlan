@@ -5,7 +5,7 @@ import { render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { GameTable } from '@/components/GameTable';
-import { dealEndMs } from '@/lib/game/dealTimeline';
+import { dealEndMs } from '@/lib/timeline/dealTimeline';
 import type { Card, GameState, Rank } from '@/lib/game/gameEngine';
 import { Motion } from '@/lib/tokens';
 import { steps } from './helpers/steps';

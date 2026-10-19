@@ -34,9 +34,9 @@ import type { MatchLength } from "@/lib/game/gameEngine";
 import type { RoundOverPayload, MatchVerdict, RatingAfter } from "@/lib/game/matchState";
 import {
   exchangeAnnouncementOf,
-  useExchangeAnnouncement,
   type ExchangeAnnounceData,
 } from "@/lib/game/sharedGameFlow";
+import { useExchangeAnnouncement } from "@/context/useExchangeAnnouncement";
 import type { BotPersonalityId } from "@/lib/game/botPersonalities";
 import { LADDER_KEY } from "@/lib/ladderQuery";
 import { useOwnLink } from "@/lib/useOwnLink";

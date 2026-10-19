@@ -42,7 +42,7 @@ import { dropIndex, lendBack } from "@/components/handOrder";
 import { byId, propsEqualExcept, shallowEqual } from "@/lib/memo";
 import type { HandSelection } from "./useSelection";
 import type { SettledSelection } from "./selectionLeaves";
-import { DEAL_FLIGHT_MS, dealLeaveMs } from "@/lib/game/dealTimeline";
+import { DEAL_FLIGHT_MS, dealLeaveMs } from "@/lib/timeline/dealTimeline";
 import { dealEase, handDealArc } from "@/components/table/dealPose";
 import { handRowHeadroom } from "@/components/seatLayout";
 import { CARD_W, cardRadius, FIELD_SCALE, handCardSize, type HandCardSize } from "@/components/cardFaceModel";

@@ -6,7 +6,7 @@ import { installVirtualClock, step, stepUntil } from "./helpers/virtualClock";
 import { HAND_CARDS } from "./helpers/selectors";
 import { exchangeSave, offlineSave, resumeOnVirtualClock } from "./helpers/offlineSeed";
 import type { OfflineSave } from "../../lib/offlineSave";
-import { LEG } from "../../lib/game/exchangeTimeline";
+import { LEG } from "../../lib/timeline/exchangeTimeline";
 import { Hold, RoundEnding, Motion } from "../../lib/tokens";
 
 const X = Motion.exchange;

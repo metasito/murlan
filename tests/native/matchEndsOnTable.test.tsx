@@ -9,7 +9,7 @@ import { ReduceMotion, ReducedMotionConfig, getAnimatedStyle } from 'react-nativ
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { setMotionPreference } from '@/lib/accessibility';
 import type { GameState, Player } from '@/lib/game/gameEngine';
-import { matchEndingOnsets } from '@/lib/game/matchEnding';
+import { matchEndingOnsets } from '@/lib/timeline/matchEnding';
 import { t } from '@/lib/i18n';
 import { Layer } from '@/lib/theme';
 import { StyleSheet } from 'react-native';
