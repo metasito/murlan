@@ -4,8 +4,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { lockDrift, checkLockDrift } from "../workspace.mjs";
-import { syncCheckout } from "../queue-loop.mjs";
+import { lockDrift, checkLockDrift, stampAt, syncCheckout } from "../workspace.mjs";
 
 describe("node_modules drift from package-lock.json", () => {
   const packageJson = { dependencies: { "react-native": "0.86.3" }, devDependencies: { typescript: "5.0.0" } };
@@ -108,7 +107,6 @@ describe("checkLockDrift reads a real root, not just in-memory objects", () => {
 describe("syncCheckout's reinstall, against the lockfile npm last installed from", () => {
   // On disk, as npm leaves it: `npm ci` writes node_modules/.package-lock.json after the lockfile it read.
   test("a fast-forward that rewrites the lockfile reinstalls; the same tree twice does not", () => {
-    const prior = process.cwd();
     const dir = mkdtempSync(join(tmpdir(), "loop-lock-"));
     let clock = 1_000_000;
     const lockfile = (content: string) => {
@@ -128,16 +126,14 @@ describe("syncCheckout's reinstall, against the lockfile npm last installed from
       return ({ "rev-parse": "main" } as Record<string, string>)[args[0]] ?? "";
     };
     try {
-      process.chdir(dir);
-      writeFileSync("package.json", "{}");
+      writeFileSync(join(dir, "package.json"), "{}");
       lockfile("a");
       for (const lock of [null, null, "b", null]) {
         next = lock;
-        assert.equal(syncCheckout(git, () => {}, reinstall), true);
+        assert.equal(syncCheckout(git, () => {}, reinstall, { stamp: stampAt(dir) }), true);
       }
       assert.equal(reinstall.mock.calls.length, 2, "the first install, then the rewrite's");
     } finally {
-      process.chdir(prior);
       rmSync(dir, { recursive: true, force: true });
     }
   });

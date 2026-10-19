@@ -10,9 +10,13 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { firstLine, gh as ghCli, git as gitAt, REPO } from "./cli.mjs";
-import { AGENT_DIR, WORKTREE_DIR } from "./loop-derive.mjs";
+import { CLI_TOOLS, firstLine, gh as ghCli, git as gitAt, MAX_BUFFER, REPO, viaCli } from "./cli.mjs";
+import { AGENT_DIR, derive, parityRed, WORKTREE_DIR } from "./loop-derive.mjs";
+import { ciLogPath, leftoverPath, writeNote } from "./loop-logs.mjs";
+import { PARK_FILE, parkAsked, ROOT, STOP_FILE } from "./paths.mjs";
+import { REFRESH_TIMEOUT_MS } from "./limits.mjs";
 import { capabilities, note, stepRow, theme } from "./loop-render.mjs";
 import { reap as reapSweep } from "./reap.mjs";
 import { ghTracker } from "./tracker.mjs";
@@ -477,6 +481,289 @@ export function checkLockDrift(root) {
     installed[name] = installedVersion(root, name);
   }
   return lockDrift(packageJson, packageLock, installed);
+}
+
+// The session and the loop read these from the shared checkout, not from the ticket's worktree.
+const PROTOCOL = ["CLAUDE.md", ".claude", "tools/loop", "scripts/lib"];
+
+function peerWorktrees(dir = path.join(ROOT, WORKTREE_DIR)) {
+  return listWorktreeDirNames(dir).filter((name) => name.startsWith("agent-"));
+}
+
+const mtime = (file) => (fs.existsSync(file) ? fs.statSync(file).mtimeMs : null);
+const DRIFT_MARK = "node_modules/.loop-drift-reinstalled";
+
+/**
+ * npm's hidden lockfile, which every install writes after reading `package-lock.json`: a lockfile
+ * newer than it is one no install has run against. The drift mark names the lockfile a drift
+ * reinstall already ran for, so drift that `npm ci` cannot cure costs one install, not one a pass.
+ */
+export const stampAt = (root) => ({
+  lockfile: () => mtime(path.join(root, "package-lock.json")),
+  installed: () => mtime(path.join(root, "node_modules/.package-lock.json")),
+  stored: () => (fs.existsSync(path.join(root, DRIFT_MARK)) ? fs.readFileSync(path.join(root, DRIFT_MARK), "utf8").trim() : null),
+  write: (lock) => fs.writeFileSync(path.join(root, DRIFT_MARK), lock),
+  peers: () => peerWorktrees(path.join(root, WORKTREE_DIR)),
+  drifted: () => checkLockDrift(root).length > 0,
+});
+
+/** Captured, not inherited: npm's own report would draw over the board. A failure still carries it. */
+export const reinstall = (run = sh, root = ROOT) => run("npm", ["ci", "--no-audit", "--no-fund"], { cwd: root });
+
+/**
+ * Leaves the shared checkout on an up-to-date `main`, or refuses and says why.
+ *
+ * It asks whether the protocol files are *dirty*, not whether they differ from `origin/main`.
+ * Those are different questions: the loop's own tickets edit its own code, so the moment one
+ * merges the checkout differs from origin until it is fast-forwarded — which is staleness,
+ * repaired here rather than reported. Only an uncommitted edit is drift, and it belongs to someone.
+ *
+ * @param {{lockfile: () => number|null, installed: () => number|null, stored: () => string|null,
+ *   write: (lock: string) => void, peers: () => string[], drifted: () => boolean}} [stamp]
+ * @param {number|null} [pinned] the ticket whose own worktree, if any, is not another session
+ */
+export function syncCheckout(
+  git,
+  log,
+  install = reinstall,
+  { stamp = stampAt(ROOT), pinned = /** @type {number|null} */ (null) } = {},
+) {
+  const branch = git("rev-parse", "--abbrev-ref", "HEAD").trim();
+  if (branch === "HEAD") {
+    log("the shared checkout is on a detached HEAD — put it back on main first.");
+    return false;
+  }
+
+  const dirty = git("status", "--porcelain", "--", ...PROTOCOL).trim();
+  if (dirty) {
+    // One call, not one per file: the caller renders a message as a row and its note, and a line at
+    // a time gives each file a row of its own with nothing in the column that says what they are.
+    log(
+      `the protocol files here have uncommitted edits:\n${dirty}\n` +
+        `Commit them, or put them somewhere else. Nothing here will discard them.`,
+    );
+    return false;
+  }
+
+  if (branch !== "main") {
+    const own = Number(git("rev-list", "--count", "origin/main..HEAD").trim()) || 0;
+    if (own > 0) {
+      log(`${branch} is checked out with ${own} commit(s) of its own — not moving it.`);
+      return false;
+    }
+    try {
+      git("checkout", "main");
+    } catch (err) {
+      log(`cannot return to main — ${String(err.message).split("\n")[0]}`);
+      return false;
+    }
+  }
+
+  try {
+    git("fetch", "origin", "--quiet");
+    git("merge", "--ff-only", "origin/main");
+  } catch (err) {
+    log(`cannot fast-forward main — ${String(err.message).split("\n")[0]}`);
+    return false;
+  }
+
+  // Keyed on what was installed, not the fast-forward's own diff: a diff seen once and skipped
+  // for a live peer is gone for good, so a worktree standing at merge time must not cost the loop
+  // its only chance to notice. `housekeeping` refuses to start a ticket on top of a drifted install,
+  // so leaving the repair to the next iteration is the loop poisoning its own precondition. It
+  // runs only when no *other* ticket's worktree is standing: every worktree's node_modules is a
+  // junction into this install, so reinstalling under a live session empties the tree it is in.
+  try {
+    const lock = stamp.lockfile();
+    const installed = stamp.installed();
+    const changed = installed === null || lock > installed;
+    if (lock !== null && (changed || (stamp.stored() !== String(lock) && stamp.drifted()))) {
+      const what = changed ? "package-lock.json differs from the last install" : "node_modules has drifted from package-lock.json";
+      const live = stamp.peers().filter((name) => name !== `agent-${pinned}`);
+      if (live.length) {
+        log(`${what}, but ${live.join(", ")} is live — not reinstalling`);
+        return true;
+      }
+      log(`${what} — reinstalling before the next ticket`);
+      install();
+      if (!changed) stamp.write(String(lock));
+    }
+  } catch (err) {
+    log(`could not reinstall — ${String(err.message).split("\n")[0]}`);
+    return false;
+  }
+  return true;
+}
+
+// `npm` and `npx` are `.cmd` shims, and since the fix for CVE-2024-27980 node will not resolve one
+// from execFileSync. Both are reached only with argument lists this file writes itself, never with
+// anything a ticket or the tracker supplies.
+const SHIMMED = new Set(["npm", "npx"]);
+
+export const sh = (file, args, opts = {}) => {
+  if (CLI_TOOLS.has(file)) return viaCli(file, args, opts);
+  const shell = SHIMMED.has(file) && process.platform === "win32";
+  const base = { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: MAX_BUFFER, ...opts };
+  // A command line, not a file plus arguments: under `shell` node concatenates them anyway, and
+  // passing both is DEP0190. The quoting is this file's own, and one argument is a worktree path,
+  // which carries whatever spaces the checkout's location has.
+  if (shell) {
+    const line = [file, ...args.map((a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a))].join(" ");
+    return execFileSync(line, { ...base, shell: true });
+  }
+  return execFileSync(file, args, base);
+};
+
+/**
+ * In-process, against the shared checkout: the supervisor runs from ROOT, which `removeWorktree`'s own
+ * refusal of a caller standing inside the tree requires. A refusal throws, so a caller's step that
+ * removed nothing reports as failed.
+ *
+ * @param {string} cwd
+ * @param {{force?: boolean, git?: (args: string[]) => string}} [opts]
+ */
+export function tearDown(cwd, { force = false, git: run = gitAt(ROOT) } = {}) {
+  const { removed, why } = removeWorktree(cwd, { force, git: (args) => run(args) });
+  if (!removed) throw new Error(why);
+  return why;
+}
+
+/**
+ * Only after a confirmed merge. `force` is safe here because `removeWorktree` detaches the junction
+ * before removing, and the leftovers are on disk first; a patch that cannot be written keeps the tree.
+ */
+export function removeLanded(cwd, number, { run = sh, write = writeNote, say = console.error, remove = tearDown, root = ROOT } = {}) {
+  const branch = run("git", ["-C", cwd, "branch", "--show-current"]).trim();
+  const removed = removeLandedTree(cwd, number, { run, write, say, remove, root });
+  if (removed === null || !branch) return removed;
+  try {
+    run("git", ["branch", "-d", branch], { cwd: root });
+  } catch (err) {
+    say(`${branch} was kept — ${String(err.message).split("\n")[0]}`);
+  }
+  return removed;
+}
+
+function removeLandedTree(cwd, number, { run, write, say, remove, root }) {
+  if (!run("git", ["-C", cwd, "status", "--porcelain"]).trim()) return remove(cwd);
+  const file = path.join(root, leftoverPath(number));
+  try {
+    run("git", ["-C", cwd, "add", "-A"]);
+    const patch = run("git", ["-C", cwd, "diff", "--cached", "--binary", "HEAD"], { encoding: "buffer" });
+    write(file, patch);
+  } catch (err) {
+    say(`#${number}'s worktree has uncommitted leftovers and ${file} could not be written — ${String(err.message).split("\n")[0]}`);
+    return null;
+  }
+  say(`#${number} landed with uncommitted leftovers in its worktree — saved to ${file}`);
+  return remove(cwd, { force: true });
+}
+
+
+const git = (...args) => gitAt()(args);
+
+/** The supervisor's own code moved under it: `syncCheckout` updated the checkout, not the running process. */
+export function loopMoved(startSha, run = git) {
+  if (!startSha) return null;
+  try {
+    run("diff", "--quiet", startSha, "HEAD", "--", "tools/loop", "scripts/lib");
+    return null;
+  } catch (err) {
+    return err.status === 1 ? run("rev-parse", "--short", "HEAD").trim() : null;
+  }
+}
+
+/** The commit this supervisor runs, or null: two loop versions are otherwise one in the record. */
+export function loopSha(run = git) {
+  try {
+    return run("rev-parse", "HEAD").trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** A red round's `update-branch` moved the remote head, and the fix is built on top of it. */
+export function refreshWorktree(cwd, branch, run = sh) {
+  const opts = { timeout: REFRESH_TIMEOUT_MS };
+  run("git", ["-C", cwd, "fetch", "--quiet", "origin", branch], opts);
+  run("git", ["-C", cwd, "merge", "--ff-only", `origin/${branch}`], opts);
+}
+
+/** @param {() => ReturnType<typeof derive>} read */
+const standingOf = (read) => {
+  const s = read();
+  return s.onTicket
+    ? {
+        ticket: s.ticket,
+        head: s.head ?? null,
+        commits: s.commits ?? 0,
+        changed: s.changed ?? [],
+        cwd: s.cwd,
+        branch: s.branch,
+        dirty: s.dirty,
+        phase: s.phase,
+        reviewRounds: s.reviewRounds ?? null,
+      }
+    : null;
+};
+
+
+/**
+ * The ticket's worktree as git has it now: a retry or refused pass carries none of it. `kept` is
+ * the worktree directory left on disk, read only when `standing` itself cannot be.
+ *
+ * @param {() => {ticket: number, cwd: string, branch: string, dirty: boolean, phase?: string}|null} read
+ * @param {number} number
+ * @param {(number: number) => string|null} [kept]
+ */
+export function worktreeOf(read, number, kept = () => null) {
+  try {
+    const at = read();
+    if (at?.ticket === number) return { cwd: at.cwd, branch: at.branch, dirty: at.dirty, phase: at.phase ?? null };
+  } catch {
+    const cwd = kept(number);
+    if (cwd) return { cwd, branch: null, dirty: false, phase: null };
+  }
+  return { cwd: null, branch: null, dirty: false, phase: null };
+}
+
+/**
+ * The workspace port: git and the disk under `root`, as `runOnce` and `main` reach them. What it
+ * says goes through `events`.
+ *
+ * @param {{root?: string, git?: (args: string[]) => string, events: {log: Function, step: Function},
+ *   read?: typeof derive, housekeep?: typeof housekeeping}} opts
+ */
+export function workspacePort({ root = ROOT, git: run = gitAt(root), events, read = derive, housekeep = housekeeping }) {
+  const at = (/** @type {string} */ file) => path.resolve(root, file);
+  const g = (...args) => run(args);
+  const started = loopSha(g);
+  const standing = () => standingOf(() => read({ cwd: root }));
+  return {
+    // Read, never removed: a scheduled restart must see the stop too.
+    stopFile: () => fs.existsSync(at(STOP_FILE)),
+    parkAsked: (n) => parkAsked(n, (f) => fs.readFileSync(at(f), "utf8")),
+    clearParkAsk: () => fs.rmSync(at(PARK_FILE), { force: true }),
+    ciLog: (n) => (fs.existsSync(at(ciLogPath(n))) ? ciLogPath(n) : null),
+    worktreeOf: (n) => worktreeOf(standing, n, (k) => (fs.existsSync(at(`${WORKTREE_DIR}/agent-${k}`)) ? at(`${WORKTREE_DIR}/agent-${k}`) : null)),
+    loopMoved: () => loopMoved(started, g),
+    syncCheckout: (pinned) => syncCheckout(g, (m) => events.log(m, "checkout"), () => reinstall(sh, root), { pinned, stamp: stampAt(root) }),
+    housekeeping: (pinned) => housekeep({ pinned, say: events.step, git: run }),
+    parity: () => parityRed(),
+    standing,
+    derive: () => read({ cwd: root, ci: true }),
+    refreshWorktree: (cwd, branch) => refreshWorktree(at(cwd), branch),
+    sharedCheckoutDirty: () => g("status", "--porcelain").trim(),
+    remove: (cwd, number) => {
+      const dir = cwd && at(cwd);
+      if (!dir || !fs.existsSync(dir)) return;
+      try {
+        removeLanded(dir, number, { root, say: (m) => events.log(m, "worktree"), remove: (tree, opts) => tearDown(tree, { ...opts, git: run }) });
+      } catch {
+        events.log(`${dir} is still standing — derive() will read it as a live run`, "worktree");
+      }
+    },
+  };
 }
 
 function printRow({ note: words = "", ...row }) {

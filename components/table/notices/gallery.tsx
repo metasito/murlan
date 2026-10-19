@@ -5,7 +5,7 @@ import type { KindTone, NoticeKind } from "../noticeModel";
 import { ErrorToast, PassFloat, RejectFloat } from "./floats";
 import { EmptyHandLine, WaitingLine } from "./tableLines";
 import { HudComboPill, OfflinePill, TurnChip } from "./hud";
-import { EndMatchVote, RoundVote } from "./netNotes";
+import { EndMatchVote, LeftTable, RoundVote } from "./netNotes";
 import { WhoStartsCard } from "./panels";
 import { ComboMark, PileLabelMark, TrickWinnerMark } from "./pileNotices";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./seatMarks";
@@ -71,6 +71,13 @@ export const NOTICE_GALLERY = {
     },
   ],
   offline: [{ name: "off the table", tone: "solid", render: (scale) => <OfflinePill scale={scale} /> }],
+  leftTable: [
+    {
+      name: "the vote deadline gave your seat to a bot",
+      tone: "neutral",
+      render: (scale) => <LeftTable scale={scale} live reclaiming={false} onReclaim={() => {}} onLeave={() => {}} />,
+    },
+  ],
   whoStarts: [
     {
       name: "a seat holds the start card, gated",

@@ -1,77 +1,35 @@
 // tools/loop/tests/queueLoop.test.ts
 import { test, describe, after, mock } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { act, clockAt, closing, header, LAND, note, PLAIN, recap, stepRow, tasksDetail, thought } from "../loop-render.mjs";
 import { closePhase, readLine, reduceSession, sessionStart } from "../loop-stream.mjs";
-import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, USD_BY_SIZE, USD_DEFAULT } from "../loop-cost.mjs";
 import { ticker } from "../loop-screen.mjs";
-import {
-  pushedPr,
-  queueLoopArgs,
-  syncCheckout,
-  reinstall,
-  runTicket,
-  screenEvents,
-  sessionView,
-  park,
-  repark,
-  holdFor,
-  settle,
-  runOnce,
-  loopSha,
-  CHECK_BASH_TIMEOUT_MS,
-  BASH_DEFAULT_TIMEOUT_MS,
-  STALL_MS,
-  ticketFacts,
-  contextFor,
-  BREAKER,
-  CI_ROUNDS,
-  MAX_HANDOFFS,
-  TICKET_HOLDS,
-  UPDATES,
-} from "../queue-loop.mjs";
-import { decide, WAIT } from "../decide.mjs";
+import { holdFor, runOnce } from "../queue-loop.mjs";
+import { fakeTracker, ghTracker, pushedPr, repark } from "../tracker.mjs";
+import { ROOT } from "../paths.mjs";
+import { settle } from "../settle.mjs";
+import { contextFor, queueLoopArgs, runTicket } from "../loop-session.mjs";
+import { screenEvents, sessionView, ticketFacts } from "../loop-board.mjs";
+import { syncCheckout, reinstall, loopSha, workspacePort } from "../workspace.mjs";
+import { park } from "../park.mjs";
+import { BASH_DEFAULT_TIMEOUT_MS, CHECK_BASH_TIMEOUT_MS, LIMITS, SESSION_POLICY, STALL_MS } from "../limits.mjs";
+import { decide } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
-import { READ_RETRIES } from "../settle.mjs";
-import { fakeTracker, ghTracker } from "../tracker.mjs";
+import { fakePorts } from "./helpers/fakePorts.ts";
 
-/** Enough ports for `runOnce` to reach a decision without git, the tracker or a `claude` binary. */
-const stubPorts = () => ({
-  tracker: {
-    pick: () => ({ skill: "implement", number: 42, title: "t", size: "size:S", queue: null }),
-    pushedPr: () => null,
-    settle: async () => ({ action: "already-merged", reason: "" }),
-    park: () => {},
-    release: () => {},
-    facts: () => ({ title: "t", size: null, reviewRounds: null }),
-  },
-  workspace: {
-    stopFile: () => false,
-    syncCheckout: () => true,
-    housekeeping: () => ({ verdict: "ok", rows: [] }),
-    standing: () => null,
-    derive: () => ({ onTicket: false, phase: "A" }),
-    buildPassed: () => true,
-    remove: () => {},
-  },
-  session: { spawn: async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", declared: null }) },
-  ledger: {
-    record: () => {},
-    tally: () => ({ sessions: 0, spend: 0, handoffsThisRound: 0, lastHandoff: null, lastRedHead: null, retries: 0 }),
-  },
-});
 const quiet = { bell: () => {}, log: () => {}, announce: () => {} };
 
 /**
  * One session's exit as `decide` reads it. `outcomeOf`, `reasonFor`, `resumePhase`, `apiFailure` and
  * the refusal wait are its private parts, so each is tested through the action it shapes.
  */
-const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT, WAIT, UPDATES, READ_RETRIES };
+const { USD_BY_SIZE, WAIT } = LIMITS;
+const { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT } = SESSION_POLICY;
 const FRESH = { failures: 0, holds: 0, waits: 0, overloads: 0, pinned: null, heldTicket: null, ticketHolds: 0 };
 const NOW = 1_000_000_000_000;
 const exited = (run: object, over: object = {}): Record<string, any> =>
@@ -256,8 +214,8 @@ describe("queueLoopArgs", () => {
 describe("syncCheckout", () => {
   test("the reinstall captures npm's output rather than printing it over the board", () => {
     const calls: unknown[][] = [];
-    reinstall((...args: unknown[]) => String(calls.push(args)));
-    assert.deepEqual(calls, [["npm", ["ci", "--no-audit", "--no-fund"]]], "no stdio option: sh pipes by default");
+    reinstall((...args: unknown[]) => String(calls.push(args)), "/repo");
+    assert.deepEqual(calls, [["npm", ["ci", "--no-audit", "--no-fund"], { cwd: "/repo" }]], "no stdio option: sh pipes by default");
   });
 
   const fake =(answers: Record<string, string>, fails?: string) => {
@@ -1010,6 +968,9 @@ describe("repark", () => {
 });
 
 describe("park", () => {
+  // Named for the shape rather than the case: the real link is the install junction, and a test
+  // joining its literal name trips tests/tooling/handBuiltNodeModulesPaths.test.ts.
+  const LINK = "linked-install";
   /** `stillDirty` is what `git status --porcelain` answers on the re-read before the commit. */
   const recorder = (throwOn?: string, stillDirty = " M a.ts") => {
     const calls: { file: string; args: string[] }[] = [];
@@ -1025,7 +986,7 @@ describe("park", () => {
   };
   const ran = (calls: { file: string; args: string[] }[], needle: string) =>
     calls.some((c) => [c.file, ...c.args].join(" ").includes(needle));
-  const opts = (extra: object) => ({
+  const opts = (extra: { run?: (file: string, args: string[]) => unknown } & Record<string, unknown>) => ({
     phase: "C",
     why: "stalled",
     log: "x.jsonl",
@@ -1033,6 +994,7 @@ describe("park", () => {
     branch: "agent/953-x",
     dirty: false,
     write: () => {},
+    remove: (cwd: string) => extra.run?.("removeWorktree", [cwd]),
     ...extra,
   });
 
@@ -1040,7 +1002,7 @@ describe("park", () => {
     const { calls, run } = recorder();
     park(953, opts({ dirty: true, run }));
     const commitAt = calls.findIndex((c) => c.args.includes("commit"));
-    const removeAt = calls.findIndex((c) => c.args.join(" ").includes("worktrees:remove"));
+    const removeAt = calls.findIndex((c) => c.file === "removeWorktree");
     assert.ok(commitAt !== -1, "a dirty worktree must be committed");
     assert.ok(removeAt > commitAt, "the worktree is removed only after its work is committed");
   });
@@ -1048,7 +1010,7 @@ describe("park", () => {
   test("keeps the branch: the next run resumes from it", () => {
     const { calls, run } = recorder();
     park(953, opts({ dirty: true, run }));
-    assert.ok(ran(calls, "worktrees:remove"));
+    assert.ok(ran(calls, "removeWorktree .worktrees/agent-953"));
     assert.equal(ran(calls, "branch -d"), false);
   });
 
@@ -1073,11 +1035,41 @@ describe("park", () => {
     assert.deepEqual(tracker.held(953).comments, [wrote]);
   });
 
-  test("removes the worktree only through the named script, never git worktree remove", () => {
-    const { calls, run } = recorder();
-    park(953, opts({ run }));
-    assert.ok(ran(calls, "worktrees:remove"));
-    assert.ok(!ran(calls, "worktree remove"), "a recursive delete follows the node_modules junction");
+  // Nothing injected for the removal: the default is what the supervisor runs.
+  test("by default removes the worktree through tearDown, which detaches the install link before git removes it", () => {
+    const base = mkdtempSync(path.join(tmpdir(), "park-default-"));
+    const tree = path.join(base, "agent-953");
+    const install = path.join(base, "install");
+    mkdirSync(tree);
+    mkdirSync(install);
+    writeFileSync(path.join(install, "kept"), "");
+    symlinkSync(install, path.join(tree, LINK), "junction");
+    // git 2.54's remove walks into a junction rather than unlinking it; this one does the same.
+    const removeFollowingLinks = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const at = path.join(dir, e.name);
+        if (e.isSymbolicLink()) removeFollowingLinks(realpathSync(at));
+        else if (e.isDirectory()) removeFollowingLinks(at);
+        else rmSync(at);
+      }
+    };
+    const calls: { args: string[]; cwd?: string; linked: boolean }[] = [];
+    const run = (file: string, args: string[], o: { cwd?: string } = {}) => {
+      if (file !== "git") return "";
+      calls.push({ args, cwd: o.cwd, linked: existsSync(path.join(tree, LINK)) });
+      if (args.join(" ") === "worktree list --porcelain") return `worktree /main\nHEAD a\nbranch refs/heads/main\n\nworktree ${tree}\nHEAD b\nbranch refs/heads/agent/953-x\n\n`;
+      if (args[0] === "worktree" && args[1] === "remove") removeFollowingLinks(tree);
+      return "";
+    };
+    try {
+      const out = park(953, { phase: "C", why: "stalled", log: "x.jsonl", cwd: tree, branch: "agent/953-x", dirty: false, run, tracker: fakeTracker(), write: () => {} });
+      assert.deepEqual(out, { ok: true, failed: [] });
+      const removal = calls.find((c) => c.args[0] === "worktree" && c.args[1] === "remove");
+      assert.deepEqual(removal && [removal.args, path.resolve(removal.cwd ?? ""), removal.linked], [["worktree", "remove", tree], ROOT, false], JSON.stringify(calls));
+      assert.ok(existsSync(path.join(install, "kept")), "the removal followed the install link");
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 
   test("the body carries the error the session died of, and its stderr tail", () => {
@@ -1357,14 +1349,12 @@ describe("holdFor", () => {
   // Reading .loop-stop must not delete it: the next run, and a scheduled restart, must see it too.
   test(".loop-stop on disk ends the wait and is still there afterwards", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "loop-stop-"));
-    const cwd = process.cwd();
-    process.chdir(dir);
     try {
-      writeFileSync(".loop-stop", "");
-      assert.equal(await holdFor(60_000, undefined, 5), "stopped");
-      assert.equal(existsSync(".loop-stop"), true);
+      writeFileSync(path.join(dir, ".loop-stop"), "");
+      const { stopFile } = workspacePort({ root: dir, git: () => "", events: {} as never });
+      assert.equal(await holdFor(60_000, stopFile, 5), "stopped");
+      assert.equal(existsSync(path.join(dir, ".loop-stop")), true);
     } finally {
-      process.chdir(cwd);
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -1512,32 +1502,23 @@ describe("the land phase", () => {
 describe("a phase handoff", () => {
   test("a handoff re-spawns the same ticket instead of parking it", async () => {
     const spawned: number[] = [];
-    const stub = stubPorts();
-    const ports = {
-      ...stub,
-      tracker: {
-        ...stub.tracker,
-        pick: (pinned: number | null) => ({
-          skill: "implement",
-          number: pinned ?? 41,
-          title: "t",
-          size: "size:S",
-          queue: null,
-        }),
+    const { ports } = fakePorts({
+      derive: () => ({ onTicket: false, phase: "A" }),
+      standing: () => null,
+      pushedPr: () => null,
+      settle: async () => ({ action: "already-merged", reason: "" }),
+      pick: (pinned: number | null) => ({ skill: "implement", number: pinned ?? 41, title: "t", size: "size:S", queue: null }),
+      spawn: (route: { number: number }) => {
+        spawned.push(route.number);
+        return Promise.resolve({
+          status: 0,
+          ms: 1,
+          log: "x",
+          result: { cost: 1 },
+          declared: { ticket: 41, phase: "C", handoff: "D", stoodDown: false },
+        });
       },
-      session: {
-        spawn: (route: { number: number }) => {
-          spawned.push(route.number);
-          return Promise.resolve({
-            status: 0,
-            ms: 1,
-            log: "x",
-            result: { cost: 1 },
-            declared: { ticket: 41, phase: "C", handoff: "D", stoodDown: false },
-          });
-        },
-      },
-    };
+    });
     const pass = await runOnce(ports as never, quiet as never, null);
     assert.equal(pass.outcome, "handoff");
     assert.equal(pass.phase, "D");

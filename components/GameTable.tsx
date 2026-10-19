@@ -16,7 +16,8 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import Animated, { useAnimatedReaction, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import * as ScreenOrientation from "expo-screen-orientation";
 import type { NativeStackNavigationProp } from "expo-router";
 import { NavigationContext, type ParamListBase } from "expo-router/react-navigation";
@@ -55,7 +56,14 @@ import { useTableExchange } from "@/components/table/useTableExchange";
 import { FloatSlot } from "@/components/table/notices/floats";
 import { nextFloat, raised, type Float } from "@/components/table/floatModel";
 import type { ServerError } from "@/context/OnlineGameContext";
-import { EndMatchVote, RoundVote, type EndMatchVoteNote, type RoundVoteNote } from "@/components/table/notices/netNotes";
+import {
+  EndMatchVote,
+  LeftTable,
+  RoundVote,
+  type EndMatchVoteNote,
+  type LeftTableNote,
+  type RoundVoteNote,
+} from "@/components/table/notices/netNotes";
 import { mockupPx } from "@/components/table/noticeModel";
 import { WaitingLine } from "@/components/table/notices/tableLines";
 import { ExchangeLegs, type RingFlash } from "@/components/table/ExchangeLegs";
@@ -311,6 +319,8 @@ export interface GameTableProps {
   endMatchVote?: EndMatchVoteNote | null;
   /** Present where the next round waits on a vote: the round's ending holds the pill open with this at its foot. */
   roundVote?: RoundVoteNote | null;
+  /** Present once the vote deadline gave the viewer's own seat to a bot: it takes the vote's place under the open pill. */
+  leftTable?: LeftTableNote | null;
   /** The online connection, carried by the turn pill; the device being offline outranks it. Left out, the table needs no network and shows neither. */
   connection?: ConnectionNote | null;
   /** The table is being replayed after a reconnect: a throw takes the catch-up timing. */
@@ -364,6 +374,7 @@ export function GameTable({
   autoPassed = 0,
   endMatchVote = null,
   roundVote = null,
+  leftTable = null,
   connection,
   catchUp = false,
   restored = false,
@@ -795,8 +806,8 @@ export function GameTable({
     restored,
   });
   const roundEnding = useRoundEnding({
-    ended: gameState.roundOver && !matchOver && (onRoundLanded !== undefined || roundVote !== null),
-    hold: roundVote !== null,
+    ended: gameState.roundOver && !matchOver && (onRoundLanded !== undefined || roundVote !== null || leftTable !== null),
+    hold: roundVote !== null || leftTable !== null,
     timeline,
     pileEmpty: trick.plays.length === 0,
     onLanded: onRoundLanded,
@@ -821,6 +832,13 @@ export function GameTable({
     const shown = roundVoteShown(roundEnding.clock.value);
     return { opacity: shown, display: shown > 0 ? "flex" : "none" };
   });
+  const [leftTableLive, setLeftTableLive] = useState(false);
+  useAnimatedReaction(
+    () => roundVoteShown(roundEnding.clock.value) >= 1,
+    (live, prev) => {
+      if (live !== prev) scheduleOnRN(setLeftTableLive, live);
+    }
+  );
   const openPill = scorePillBox(1, 0, pillAnchor);
   const shownTurnIndex = useShownTurn(gameState.currentTurnIndex, timeline);
   const shownTurnIsMine = viewerOwnsSeat(shownTurnIndex, viewerSeat, spectating);
@@ -1198,10 +1216,10 @@ export function GameTable({
           </View>
         )}
 
-        {roundVote && (
+        {(leftTable || roundVote) && (
           <Animated.View
             {...behindVeil}
-            testID="round-vote"
+            testID={leftTable ? "left-table" : "round-vote"}
             pointerEvents="box-none"
             style={[
               styles.voteSpot,
@@ -1210,7 +1228,11 @@ export function GameTable({
             ]}
           >
             <A11yVeil veil={behindVeil}>
-              <RoundVote {...roundVote} scale={scale} />
+              {leftTable ? (
+                <LeftTable {...leftTable} live={leftTableLive} scale={scale} />
+              ) : (
+                roundVote && <RoundVote {...roundVote} scale={scale} />
+              )}
             </A11yVeil>
           </Animated.View>
         )}

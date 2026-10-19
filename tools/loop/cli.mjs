@@ -65,6 +65,15 @@ export const git = (cwd) => {
 /** stdout, untrimmed. A non-zero exit throws. */
 export const gh = (/** @type {string[]} */ args, /** @type {RunOptions} */ opts = {}) => run("gh", args, opts);
 
+export const CLI_TOOLS = new Set(["git", "gh"]);
+
+/** git, at `opts.cwd`, or gh, for a `run(file, args, opts)` seam. Any other binary is not this module's. */
+export const viaCli = (/** @type {string} */ file, /** @type {string[]} */ args, /** @type {RunOptions} */ opts = {}) => {
+  if (file === "git") return git(opts.cwd)(args, opts);
+  if (file === "gh") return gh(args, opts);
+  throw new Error(`${file} is not git or gh`);
+};
+
 /** The exit status of `call`, which throws on failure: `null` when it never exited (a timeout, no binary). */
 export function statusOf(call) {
   try {

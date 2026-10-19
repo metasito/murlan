@@ -5,7 +5,9 @@ import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { MODEL_BY_PHASE } from "../../tools/loop/loop-cost.mjs";
+import { SESSION_POLICY } from "../../tools/loop/limits.mjs";
+
+const { MODEL_BY_PHASE } = SESSION_POLICY;
 
 const RULES = "docs/agents/RULES.md";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");

@@ -5,67 +5,30 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
-import { runSettle } from "../settle.mjs";
+import { pathToFileURL } from "node:url";
+import { runSettle, settle } from "../settle.mjs";
 import {
   runOnce as realRunOnce,
   main as realMain,
-  settle,
-  park,
-  refreshWorktree,
-  publishForReview,
-  removeLanded,
-  removeWorktree,
-  MAX_HANDOFFS,
-  RESTART,
-  loopMoved,
+  realPorts,
 } from "../queue-loop.mjs";
-import { fakeTracker } from "../tracker.mjs";
-import { USD_BY_SIZE } from "../loop-cost.mjs";
-import { afterSession, WAIT } from "../decide.mjs";
+import { fakeTracker, publishForReview } from "../tracker.mjs";
+import { LIMITS, RESTART } from "../limits.mjs";
+import { park } from "../park.mjs";
+import { loopMoved, refreshWorktree, removeLanded, tearDown as removeWorktree, workspacePort } from "../workspace.mjs";
+import { fakePorts, rowOf, withMembers } from "./helpers/fakePorts.ts";
+import { portReads, unknownReads } from "./helpers/portReads.ts";
+import { afterSession } from "../decide.mjs";
 import { readLine } from "../loop-stream.mjs";
-import { parkReasonOf, ticketTally } from "../loop-logs.mjs";
+import { ticketTally } from "../loop-logs.mjs";
 import { PLAIN } from "../loop-render.mjs";
-import { parkAsked } from "../loop-screen.mjs";
+import { parkAsked } from "../paths.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
-
-const rowOf = (x: any) => ({
-  n: x.number,
-  outcome: x.outcome,
-  cost: x.run?.result?.cost ?? 0,
-  park_reason: parkReasonOf(x.outcome, x.why),
-  head: x.head ?? null,
-  handoff: x.handoff ?? null,
-  park_failed: x.parkFailed ?? null,
-  flake: x.flake ?? null,
-});
-
-type Fake = { ports: Record<"tracker" | "workspace" | "session" | "ledger", Record<string, any>>; events: Record<string, any> };
-
-/** The members a port carries only when a test gives it one. */
-const OPTIONAL: Record<string, "tracker" | "workspace" | "ledger"> = {
-  queue: "tracker",
-  loopMoved: "workspace",
-  refreshWorktree: "workspace",
-  parity: "workspace",
-  killed: "ledger",
-  journal: "ledger",
-};
-
-/** A copy of `fake` with each override, a member by name, on the port that carries it. */
-const place = (fake: Fake, over: Record<string, unknown>): Fake => {
-  const ports = Object.fromEntries(Object.entries(fake.ports).map(([name, port]) => [name, { ...port }])) as Fake["ports"];
-  const events = { ...fake.events };
-  for (const [member, value] of Object.entries(over)) {
-    const home = member in events ? events : (Object.values(ports).find((p) => member in p) ?? ports[OPTIONAL[member]]);
-    if (!home) throw new Error(`no port carries ${member}`);
-    home[member] = value;
-  }
-  return { ports, events };
-};
+const { MAX_HANDOFFS, USD_BY_SIZE, WAIT } = LIMITS;
 
 /** What `derive({ ci: true })` reads with ticket 42's worktree standing; its issue's default facts name no labels, so it resumes. */
 const standing42 = (over: object = {}) => ({
@@ -86,75 +49,14 @@ const settling42 = () => ({ derive: () => standing42({ phase: "G", ci: { pushed:
 /** A pushed head a CI-RED names: a fix round. */
 const fixing42 = (head: string) => ({ derive: () => standing42({ fix: true, ci: { pushed: true, state: "red", sha: head } }) });
 
-/** `runOnce`'s ports and events, quiet and landing ticket 42. */
-const io = (over: Record<string, unknown> = {}, ledger: any[] = []): Fake => {
-  const fake: Fake = {
-    ports: {
-      tracker: {
-        pick: () => ({
-          skill: "implement",
-          number: 42,
-          title: "t",
-          size: "size:S",
-          queue: { implement: 1, triage: 0, wayfinder: 0 },
-        }),
-        facts: () => ({ title: "t", size: "size:S", reviewRounds: null }),
-        issueState: () => ({ state: "OPEN", stateReason: null }),
-        publish: () => {},
-        pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x" }),
-        settle: async () => ({ action: "already-merged", reason: "merged" }),
-        park: () => {},
-        conflict: () => true,
-        repark: () => ({ failed: [], why: null }),
-        release: () => {},
-      },
-      workspace: {
-        stopFile: () => false,
-        syncCheckout: () => true,
-        housekeeping: () => ({ verdict: "ok", rows: [] }),
-        standing: () => ({
-          ticket: 42,
-          branch: "agent/42-x",
-          cwd: ".worktrees/agent-42",
-          head: "a",
-          commits: 1,
-          changed: [],
-          dirty: false,
-          phase: "E",
-        }),
-        derive: () => ({ onTicket: false, phase: "A", why: "not on an agent branch", ambiguous: false }),
-        buildPassed: () => true,
-        sharedCheckoutDirty: () => "",
-        remove: () => {},
-      },
-      session: {
-        spawn: async () => ({
-          status: 0,
-          blocked: false,
-          result: { cost: 1, turns: 9 },
-          ms: 1000,
-          log: "l",
-          phase: "F",
-          declared: { ticket: 42, branch: "agent/42-x", pr: 984, phase: "F", stoodDown: false, why: null },
-        }),
-      },
-      ledger: {
-        tally: (n: number) => ticketTally(n, ledger),
-        rows: () => ledger,
-        record: (x: unknown) => ledger.push(rowOf(x)),
-      },
-    },
-    events: { announce: () => {}, log: () => {}, bell: () => {}, picked: () => {} },
-  };
-  return place(fake, over);
-};
+const io = fakePorts;
 // A fake spread into a literal beside more members, `{ ...io(), stopFile }`, has those placed too.
 const runOnce = ({ ports, events, ...more }: any, ...rest: any[]) => {
-  const fake = place({ ports, events }, more);
+  const fake = withMembers({ ports, events }, more);
   return realRunOnce(fake.ports, fake.events, ...rest);
 };
 /** `main` given the fake's ports and events in place of its own. */
-const main = ({ io: { ports, events, ...more }, ...deps }: any) => realMain({ ...deps, ...place({ ports, events }, more) });
+const main = ({ io: { ports, events, ...more }, ...deps }: any) => realMain({ ...deps, ...withMembers({ ports, events }, more) });
 
 describe("runOnce", () => {
   test("a ticket that pushes and merges is landed, in one pass", async () => {
@@ -960,19 +862,17 @@ describe("runOnce", () => {
     }
   });
 
-  test("a landed or parked ticket removes the worktree from the main checkout", () => {
-    const calls: [string, string[], { cwd?: string } | undefined][] = [];
-    const run = (file: string, args: string[], opts?: { cwd?: string }) => {
-      calls.push([file, args, opts]);
-      return "";
+  test("a parked ticket's worktree is removed in-process, by the shared checkout's git", () => {
+    const removed: string[] = [];
+    park(42, { phase: "E", why: "x", log: "l", cwd: "w", branch: "b", dirty: false, run: () => "", write: () => {}, remove: (cwd: string) => void removed.push(cwd) });
+    assert.deepEqual(removed, ["w"]);
+    const asked: string[][] = [];
+    const git = (args: string[]) => {
+      asked.push(args);
+      return "worktree /main\nHEAD a\nbranch refs/heads/main\n\n";
     };
-    removeWorktree("w", run);
-    park(42, { phase: "E", why: "x", log: "l", cwd: "w", branch: "b", dirty: false, run, write: () => {} });
-    const removals = calls.filter(([, args]) => args.includes("worktrees:remove"));
-    assert.equal(removals.length, 2);
-    for (const [file, args, opts] of removals) {
-      assert.deepEqual([file, args, path.resolve(opts?.cwd ?? "")], ["npm", ["run", "worktrees:remove", "--", "w"], ROOT]);
-    }
+    assert.throws(() => removeWorktree("w", { git }), /w is not a linked worktree of this repository/);
+    assert.deepEqual(asked, [["worktree", "list", "--porcelain"]]);
   });
 
   const retryRow = (head: string) => ({ n: 42, outcome: "retry", cost: 1, park_reason: null, head });
@@ -1145,6 +1045,7 @@ describe("runOnce", () => {
     const written: string[] = [];
     const said: string[] = [];
     removeLanded(".worktrees/agent-42", 42, {
+      remove: (cwd: string, opts?: { force?: boolean }) => void calls.push(["removeWorktree", opts?.force ? [cwd, "--force"] : [cwd], undefined]),
       run: (file: string, args: string[], opts?: { cwd?: string; encoding?: string }) => {
         calls.push([file, args, opts]);
         if (args.includes("--porcelain")) return dirty;
@@ -1158,7 +1059,7 @@ describe("runOnce", () => {
       },
       say: (m: string) => said.push(m),
     } as never);
-    const removals = calls.filter(([, args]) => args.includes("worktrees:remove"));
+    const removals = calls.filter(([file]) => file === "removeWorktree");
     const deletes = calls.filter(([, args]) => args[0] === "branch" && args[1] === "-d");
     return { calls, written, said, removals, deletes };
   };
@@ -1166,7 +1067,7 @@ describe("runOnce", () => {
   test("landing deletes the branch after the worktree, from the shared checkout", () => {
     const { calls, deletes } = landedRun("");
     assert.deepEqual(deletes.map(([, a, o]) => [a, path.resolve(o?.cwd ?? "")]), [[["branch", "-d", "agent/42-x"], ROOT]]);
-    assert.ok(calls.findIndex(([, a]) => a.includes("worktrees:remove")) < calls.indexOf(deletes[0]));
+    assert.ok(calls.findIndex(([file]) => file === "removeWorktree") < calls.indexOf(deletes[0]));
   });
 
   test("a branch -d refuses is said, and the land still returns", () => {
@@ -1188,9 +1089,7 @@ describe("runOnce", () => {
     assert.equal(written.length, 1);
     assert.match(written[0], /leftover-42\.patch=PATCH$/);
     assert.match(said.join("\n"), /leftover-42\.patch/);
-    assert.deepEqual(removals.map(([, a, o]) => [a, path.resolve(o?.cwd ?? "")]), [
-      [["run", "worktrees:remove", "--", ".worktrees/agent-42", "--force"], ROOT],
-    ]);
+    assert.deepEqual(removals.map(([, a]) => a), [[".worktrees/agent-42", "--force"]]);
   });
 
   test("a leftover patch that cannot be written keeps the worktree", () => {
@@ -1202,7 +1101,7 @@ describe("runOnce", () => {
   test("a clean landed worktree is removed without --force", () => {
     const { removals, written } = landedRun("");
     assert.deepEqual(written, []);
-    assert.deepEqual(removals.map(([, a]) => a), [["run", "worktrees:remove", "--", ".worktrees/agent-42"]]);
+    assert.deepEqual(removals.map(([, a]) => a), [[".worktrees/agent-42"]]);
   });
 
   test("a dirtied shared checkout is named, not fatal", async () => {
@@ -1670,7 +1569,9 @@ describe("the run recap", () => {
     const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
     const spy = {
       ...(io() as any),
-      stopFile: () => passes++ >= stopAfter,
+      // Counted at the sync, not the stop read: the hold reads `.loop-stop` too.
+      stopFile: () => passes >= stopAfter,
+      syncCheckout: () => (passes++, true),
       housekeeping: () => (checks++ < preflights ? { verdict: "hold", why: "drift", rows: [] } : { verdict: "ok", rows: [] }),
       derive: () => heldRun,
       settle: async () => unposted,
@@ -1705,7 +1606,9 @@ describe("the run recap", () => {
     const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
     const spy = {
       ...(io() as any),
-      stopFile: () => passes++ > TICKET_HOLDS + 1,
+      // Counted at the sync, not the stop read: the hold reads `.loop-stop` too.
+      stopFile: () => passes > TICKET_HOLDS + 1,
+      syncCheckout: () => (passes++, true),
       derive: () => heldRun,
       settle: async () => unposted,
       park: (n: number, c: { why: string }) => parked.push({ n, why: c.why }),
@@ -1831,15 +1734,20 @@ describe("a handoff", () => {
 describe("a park asked from the board", () => {
   const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} });
   const screen = () => ({ say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} });
+  /** The board's request as the real port reads and clears it, under `dir`. */
+  const asked = (dir: string) => {
+    const { parkAsked: read, clearParkAsk } = workspacePort({ root: dir, git: () => "", events: {} as never });
+    return { parkAsked: read, clearParkAsk };
+  };
 
   test("parks the ticket once its session exits, and forgets the request", async () => {
-    const cwd = process.cwd();
     const dir = mkdtempSync(path.join(tmpdir(), "park-"));
     const parked: { why: string; cwd: string | null; dirty: boolean }[] = [];
     const resumed: boolean[] = [];
     let n = 0;
     const spy = {
       ...(io() as any),
+      ...asked(dir),
       pick: () =>
         resumed.length >= 2 ? { skill: "handoff", number: 0, title: "queue empty" } : { skill: "implement", number: 41, title: "t", size: "size:S", queue: null },
       spawn: async (route: { resuming: boolean }) => (resumed.push(route.resuming), {
@@ -1856,54 +1764,47 @@ describe("a park asked from the board", () => {
       standing: () => (n >= 1 ? { ticket: 41, branch: "agent/41-x", cwd: ".worktrees/agent-41", dirty: true, phase: "D" } : null),
     };
     try {
-      process.chdir(dir);
-      writeFileSync(".loop-park", "41\n");
+      writeFileSync(path.join(dir, ".loop-park"), "41\n");
       await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
       assert.deepEqual(parked[0], { why: "parked by owner", cwd: ".worktrees/agent-41", dirty: true }, "the worktree's edits are kept");
       assert.deepEqual(resumed, [false, false], "a parked ticket is not pinned for the next pass");
-      assert.equal(existsSync(".loop-park"), false);
+      assert.equal(existsSync(path.join(dir, ".loop-park")), false);
     } finally {
-      process.chdir(cwd);
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
   test("a red CI round parks in the phase git reports, with its worktree", async () => {
-    const cwd = process.cwd();
     const dir = mkdtempSync(path.join(tmpdir(), "park-"));
     const parked: { why: string; phase: string; cwd: string | null }[] = [];
     const spy = {
       ...(io() as any),
+      ...asked(dir),
       spawn: async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", phase: "F", declared: null }),
       pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x", sha: "aaa111", changedFiles: 2 }),
       settle: async () => ({ action: "hand-back", reason: "CI failed at Native tests" }),
       park: (_n: number, { why, phase, cwd }: { why: string; phase: string; cwd: string | null }) => parked.push({ why, phase, cwd }),
     };
     try {
-      process.chdir(dir);
-      writeFileSync(".loop-park", "42\n");
+      writeFileSync(path.join(dir, ".loop-park"), "42\n");
       await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
       assert.deepEqual(parked[0], { why: "parked by owner", phase: "E", cwd: ".worktrees/agent-42" });
     } finally {
-      process.chdir(cwd);
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
   test("a ticket that lands before the park can act says the request was dropped", async () => {
-    const cwd = process.cwd();
     const dir = mkdtempSync(path.join(tmpdir(), "park-"));
     const said: string[] = [];
     const board = { ...screen(), notice: (kind: string, m: string) => said.push(`${kind}: ${m}`) };
     let picks = 0;
     try {
-      process.chdir(dir);
-      writeFileSync(".loop-park", "42\n");
-      await main({ io: io({ pick: () => (picks++ ? { skill: "handoff", number: 0, title: "queue empty" } : io().ports.tracker.pick()) }), book: book(), screen: board, install: () => {}, runId: "t" });
+      writeFileSync(path.join(dir, ".loop-park"), "42\n");
+      await main({ io: io({ pick: () => (picks++ ? { skill: "handoff", number: 0, title: "queue empty" } : io().ports.tracker.pick()), ...asked(dir) }), book: book(), screen: board, install: () => {}, runId: "t" });
       assert.ok(said.some((m) => /^park: #42 landed before the park could act/.test(m)), JSON.stringify(said));
-      assert.equal(existsSync(".loop-park"), false);
+      assert.equal(existsSync(path.join(dir, ".loop-park")), false);
     } finally {
-      process.chdir(cwd);
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -1912,6 +1813,8 @@ describe("a park asked from the board", () => {
     assert.equal(parkAsked(41, () => "41\n"), true);
     assert.equal(parkAsked(42, () => "41\n"), false);
     assert.equal(parkAsked(null, () => "41\n"), false);
+    // The reader says which checkout's file; without one there is no answer, not a "no".
+    assert.throws(() => (parkAsked as (n: number) => boolean)(41), /reader/);
   });
 });
 
@@ -2342,6 +2245,127 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
 
 });
 
+describe("the port contract", () => {
+  // A fake short of a member drives `runOnce` through a path the real port cannot take, and a
+  // fake with one the real port lacks tests a member nothing calls.
+  test("each fake carries exactly the members its real port does", () => {
+    const quiet = () => {};
+    const real = realPorts({ totals: {} } as never, {} as never, { log: quiet, step: quiet } as never);
+    const { ports: fake } = io();
+    for (const name of ["tracker", "workspace", "session", "ledger"] as const) {
+      assert.deepEqual(Object.keys(fake[name]).sort(), Object.keys(real[name]).sort(), name);
+    }
+  });
+
+  // From the source, so a move that drops a member the pass reads goes red here, not on a night.
+  const SCANNED = ["runOnce", "main", "pickReads", "preflight", "parkAndRecord"];
+  const source = readFileSync(path.join(ROOT, "tools/loop/queue-loop.mjs"), "utf8");
+  const realOnes = () => {
+    const quiet = () => {};
+    return realPorts({ totals: {} } as never, {} as never, { log: quiet, step: quiet } as never) as Record<string, Record<string, unknown>>;
+  };
+
+  test("every port member runOnce and main read is on the real ports and the fakes, and none goes unread", () => {
+    const reads = portReads(source, SCANNED);
+    assert.ok(reads.size >= 25 && reads.has("workspace.standing") && reads.has("ledger.journal"), [...reads].join(" "));
+    assert.deepEqual(unknownReads(reads, realOnes()), [], "read but not on realPorts");
+    assert.deepEqual(unknownReads(reads, io().ports), [], "read but not on the fakes");
+    const real = realOnes();
+    const unread = Object.entries(real).flatMap(([port, members]) => Object.keys(members).map((m) => `${port}.${m}`)).filter((m) => !reads.has(m));
+    assert.deepEqual(unread, [], "on realPorts but read by nothing");
+  });
+
+  test("a member the pass reads and no port carries is caught", () => {
+    const planted = source.replace("const derived = workspace.standing();", "const derived = workspace.standingNow();");
+    assert.notEqual(planted, source, "the plant site moved");
+    assert.deepEqual(unknownReads(portReads(planted, SCANNED), realOnes()), ["workspace.standingNow"]);
+  });
+});
+
+describe("realPorts' root", () => {
+  test("every port reads and writes under the root it is given, not the cwd", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "ports-root-"));
+    const logs = path.join(root, ".loop-logs");
+    try {
+      assert.notEqual(path.resolve(process.cwd()), root);
+      mkdirSync(logs);
+      writeFileSync(path.join(logs, "tickets.jsonl"), `${JSON.stringify({ schema: 9, n: 7, outcome: "landed", started: "2026-10-01T00:00:00.000Z" })}\n`);
+      const issues = fakeTracker({ 9: { labels: ["in-progress"] } });
+      const quiet = () => {};
+      const { tracker, ledger, session } = realPorts({ totals: {}, start: quiet } as never, {} as never, { log: quiet, step: quiet, header: quiet } as never, {
+        root,
+        issues,
+        claimTicket: () => ({ won: false, why: "taken" }),
+      } as never);
+      assert.deepEqual(ledger.rows().map((r: { n: number }) => r.n), [7]);
+      ledger.journal("a line\n");
+      assert.ok(existsSync(path.join(logs, "supervisor.log")), "journal");
+      assert.equal(tracker.conflict(9, "abc1234"), true);
+      assert.ok(existsSync(path.join(logs, "conflict-9.md")), "CONFLICT note");
+      tracker.park(9, { phase: "C", why: "w", log: "l", cwd: null, branch: "b", dirty: false });
+      assert.ok(existsSync(path.join(logs, "park-9.md")), "park note");
+      assert.deepEqual(tracker.repark(9, ["comment"]), { failed: [], why: null }, "the re-park finds its note under the root");
+      assert.deepEqual(issues.held(9).comments, [path.join(logs, "conflict-9.md"), path.join(logs, "park-9.md"), path.join(logs, "park-9.md")]);
+      const stood = await session.spawn({ number: 42, title: "t", size: null, queue: null, resuming: false });
+      assert.equal(stood.log, path.join(logs, "42.jsonl"));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the real session port claims in-process", () => {
+  const route = { number: 42, title: "the title", size: "size:S", queue: null, resuming: false };
+  const spawnWith = async (claimTicket: (n: number, title: string) => unknown) => {
+    const steps: { label: string; detail: string; state?: string }[] = [];
+    const tickets: { branch: string | null }[] = [];
+    const asked: [number, string][] = [];
+    const book = { totals: {}, start: () => {} };
+    const events = { log: () => {}, step: (row: (typeof steps)[number]) => steps.push(row), header: () => {} };
+    const { session } = realPorts(book as never, {} as never, events as never, {
+      claimTicket: (n: number, title: string) => (asked.push([n, title]), claimTicket(n, title)),
+      ticket: async (_run: unknown, opts: { branch: string | null }) => (tickets.push({ branch: opts.branch }), { status: 0, declared: null }),
+    } as never);
+    const run = await session.spawn(route);
+    return { run, steps, tickets, asked };
+  };
+
+  test("a won claim spawns the session on the branch it cut, and says so", async () => {
+    const { run, steps, tickets, asked } = await spawnWith(() => ({ branch: "agent/42-the-title", cwd: "w", won: true, why: null }));
+    assert.deepEqual(asked, [[42, "the title"]]);
+    assert.deepEqual(tickets, [{ branch: "agent/42-the-title" }]);
+    assert.deepEqual(steps, [{ label: "claim", detail: "won · agent/42-the-title", ms: null }]);
+    assert.equal(run.declared, null);
+  });
+
+  test("a lost claim spawns nothing and stands down with the claim's own reason", async () => {
+    const { run, steps, tickets } = await spawnWith(() => ({ branch: "agent/42-the-title", cwd: "w", won: false, why: "w is already standing" }));
+    assert.deepEqual(tickets, []);
+    assert.deepEqual(steps, [{ label: "claim", detail: "w is already standing", ms: null, state: "failed" }]);
+    assert.deepEqual([run.declared.stoodDown, run.declared.why, run.declared.branch], [true, "w is already standing", null]);
+  });
+
+  test("a claim that throws stands down with git's last line, never a stack", async () => {
+    const { run, steps, tickets } = await spawnWith(() => {
+      throw Object.assign(new Error("Command failed: git worktree add"), { stderr: "Preparing worktree\nfatal: 'agent/42-the-title' is already used\n" });
+    });
+    assert.deepEqual(tickets, []);
+    assert.deepEqual(steps.map((s) => [s.detail, s.state]), [["fatal: 'agent/42-the-title' is already used", "failed"]]);
+    assert.deepEqual([run.declared.stoodDown, run.declared.why], [true, "fatal: 'agent/42-the-title' is already used"]);
+  });
+
+  test("a resume claims nothing and keeps the route's branch", async () => {
+    const asked: number[] = [];
+    const tickets: (string | null)[] = [];
+    const { session } = realPorts({ totals: {}, start: () => {} } as never, {} as never, { log: () => {}, step: () => {} } as never, {
+      claimTicket: (n: number) => (asked.push(n), { won: true, branch: "x" }),
+      ticket: async (_run: unknown, opts: { branch: string | null }) => (tickets.push(opts.branch), { status: 0 }),
+    } as never);
+    await session.spawn({ ...route, resuming: true, branch: "agent/42-kept", phase: "D" });
+    assert.deepEqual([asked, tickets], [[], ["agent/42-kept"]]);
+  });
+});
+
 describe("queue-loop.mjs --check", () => {
   test("prints the pick through the real ports and writes nothing to the tracker", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "loop-check-"));
@@ -2376,6 +2400,33 @@ describe("queue-loop.mjs --check", () => {
       assert.ok(asked.length > 0 && asked.every((l) => l.startsWith("api ") && !/\s-X\s/.test(l)), asked.join("\n"));
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // Run from one directory and rooted at another: only realPorts' rooted workspace reads the root.
+  test("reads its standing through realPorts' workspace, at the root it is given", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "loop-check-root-"));
+    const elsewhere = mkdtempSync(path.join(tmpdir(), "loop-check-cwd-"));
+    try {
+      spawnSync("git", ["init", "-q", "-b", "check-root"], { cwd: root });
+      spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "base"], { cwd: root });
+      const stub = path.join(elsewhere, "gh.mjs");
+      writeFileSync(stub, 'process.stdout.write(JSON.stringify([[]]));');
+      const loop = pathToFileURL(path.join(ROOT, "tools/loop/queue-loop.mjs")).href;
+      const r = spawnSync(process.execPath, ["--input-type=module", "-e", `const m = await import(${JSON.stringify(loop)}); m.check({ root: ${JSON.stringify(root)} });`], {
+        cwd: elsewhere,
+        encoding: "utf8",
+        env: { ...process.env, LOOP_TEST_GH_SCRIPT: stub },
+      });
+      assert.equal(r.status, 0, r.stderr);
+      const standing = JSON.parse(r.stdout.split("\n")[0].replace(/^standing\t/, ""));
+      const quiet = () => {};
+      const viaPorts = realPorts({ totals: {} } as never, {} as never, { log: quiet, step: quiet } as never, { root } as never).workspace.derive();
+      assert.equal(standing.branch, "check-root");
+      assert.deepEqual(standing, JSON.parse(JSON.stringify(viaPorts)));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(elsewhere, { recursive: true, force: true });
     }
   });
 });

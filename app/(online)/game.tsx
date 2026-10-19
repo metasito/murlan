@@ -52,8 +52,17 @@ export default function OnlineGameScreen() {
   const { width, height } = useWindowDimensions();
   const { t, translateServerPayload } = useTranslation();
   const { user } = useAuth();
-  const { gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats, autoPassed } =
-    useOnlineTable();
+  const {
+    gameState,
+    mySeatIndex,
+    playCards,
+    pass,
+    sendReaction,
+    disconnectedSeats,
+    autoPassed,
+    leftTable,
+    reclaimSeat,
+  } = useOnlineTable();
   const { turnSeconds, turnDeadlineMs } = useOnlineTurnClock();
   const { room, isSpectator, entrySource, leaveRoom } = useOnlineRoom();
   const {
@@ -299,8 +308,11 @@ export default function OnlineGameScreen() {
             }
           : null
       }
+      leftTable={
+        leftTable ? { reclaiming: leftTable === "reclaiming", onReclaim: reclaimSeat, onLeave: leaveAndExit } : null
+      }
       roundVote={
-        roundOnTable
+        roundOnTable && !leftTable
           ? {
               voted: nextRoundVotes.includes(user?.id ?? ""),
               votes: nextRoundVotes.length,

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { supervise } from "../run-loop.mjs";
-import { RESTART } from "../queue-loop.mjs";
+import { RESTART } from "../limits.mjs";
 
 test("a restart code respawns the supervisor; any other ends it", () => {
   const codes = [RESTART, RESTART, 0];

@@ -81,5 +81,5 @@ Claude Code 2.1.293 accepts Haiku 5.5 as both main model and advisor. Anthropic'
 - The context ceilings are not raised. Claude Code's docs say native-1M models compact near 967k,
   but every loop session that reached compaction compacted at 366–368k
   under the owner's 400k window. Since loop sessions stopped reading the owner's settings, each size's
-  ceiling is its own `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (`CONTEXT_BY_SIZE` in `tools/loop/loop-cost.mjs`),
+  ceiling is its own `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (`SESSION_POLICY.CONTEXT_BY_SIZE` in `tools/loop/limits.mjs`),
   and a compaction fires about 33k below each window.

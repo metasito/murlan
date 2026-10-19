@@ -2,14 +2,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { decide, WAIT } from "../decide.mjs";
+import { decide } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
-import { BREAKER, CI_ROUNDS, choose as drive, MAX_HANDOFFS, SETTLE, TICKET_HOLDS, UPDATES } from "../queue-loop.mjs";
+import { choose as drive } from "../queue-loop.mjs";
+import { LIMITS } from "../limits.mjs";
 import { ledgerFixture } from "./helpers/ledgerFixture.ts";
-import { USD_BY_SIZE, USD_DEFAULT } from "../loop-cost.mjs";
-import { READ_RETRIES } from "../settle.mjs";
 
-const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT, WAIT, UPDATES, READ_RETRIES };
+const { BREAKER, CI_ROUNDS, MAX_HANDOFFS, READ_RETRIES, SETTLE, TICKET_HOLDS, UPDATES, USD_BY_SIZE, USD_DEFAULT, WAIT } = LIMITS;
 const NOW = Date.parse("2026-10-12T20:00:00Z");
 
 const route = { n: 42, skill: "implement", title: "the ticket", phase: "C", size: "size:S", fix: false, head: null };
@@ -441,6 +440,16 @@ const matches = (got: Record<string, unknown>, want: Record<string, unknown>, at
 
 for (const [name, input, want] of ROWS) test(name, () => matches("world" in input ? choose(input as never) : decide(input), want));
 
+test("a usage window is held to the injected WAIT, not the module's", () => {
+  const small = { ...LIMITS, WAIT: { CAP: 5_000, FLOOR: 1_000, MARGIN: 10, TRIES: 2 } };
+  const refused = (blockedUntil: number, loop = fresh) =>
+    decide({ ...session({ run: silent({ result: null, blocked: true, blockedUntil }) }), limits: small, loop });
+  assert.equal(refused(NOW + 3_600_000).hold, 5_000, "the cap");
+  assert.equal(refused(NOW + 100).hold, 1_000, "the floor");
+  assert.equal(refused(NOW + 2_000).hold, 2_010, "the margin");
+  assert.equal(refused(NOW + 2_000, { ...fresh, waits: 2 }).kind, "stop", "the tries");
+});
+
 test("replays 2026-09-21/22: every session starts where the ledger before it pointed", () => {
   const rows = ledgerFixture("ledger-2026-09-21.jsonl");
   const settle = { phase: "G", ci: { pushed: true } };
@@ -471,6 +480,15 @@ test("every row's name is its own", () => {
  */
 const ELSEWHERE: Record<string, [file: string, why: string]> = {
   "settle runs before the pass returns": ["queueLoopMain.test.ts", "io"],
+  "each fake carries exactly the members its real port does": ["queueLoopMain.test.ts", "io"],
+  "every port reads and writes under the root it is given, not the cwd": ["queueLoopMain.test.ts", "io"],
+  "reads its standing through realPorts' workspace, at the root it is given": ["queueLoopMain.test.ts", "io"],
+  "every port member runOnce and main read is on the real ports and the fakes, and none goes unread": ["queueLoopMain.test.ts", "io"],
+  "a member the pass reads and no port carries is caught": ["queueLoopMain.test.ts", "io"],
+  "a won claim spawns the session on the branch it cut, and says so": ["queueLoopMain.test.ts", "io"],
+  "a lost claim spawns nothing and stands down with the claim's own reason": ["queueLoopMain.test.ts", "io"],
+  "a claim that throws stands down with git's last line, never a stack": ["queueLoopMain.test.ts", "io"],
+  "a resume claims nothing and keeps the route's branch": ["queueLoopMain.test.ts", "io"],
   "every teardown is told which ticket's claim it is releasing": ["queueLoopMain.test.ts", "io"],
   "no terminal outcome leaves the worktree standing": ["queueLoopMain.test.ts", "io"],
   "housekeeping is asked about the pinned ticket, and waited for": ["queueLoopMain.test.ts", "io"],
@@ -486,7 +504,7 @@ const ELSEWHERE: Record<string, [file: string, why: string]> = {
   "the sweep in housekeeping runs before the pick": ["queueLoopMain.test.ts", "io"],
   "refreshWorktree fetches the branch and fast-forwards onto it": ["queueLoopMain.test.ts", "io"],
   "publishForReview pushes, then opens it ready only when no pull request is open": ["queueLoopMain.test.ts", "io"],
-  "a landed or parked ticket removes the worktree from the main checkout": ["queueLoopMain.test.ts", "io"],
+  "a parked ticket's worktree is removed in-process, by the shared checkout's git": ["queueLoopMain.test.ts", "io"],
   "prints the pick through the real ports and writes nothing to the tracker": ["queueLoopMain.test.ts", "io"],
   "a fix round's spawn carries the rounds already spent": ["queueLoopMain.test.ts", "io"],
   "landing deletes the branch after the worktree, from the shared checkout": ["queueLoopMain.test.ts", "io"],

@@ -7,7 +7,9 @@
  */
 import fs from "node:fs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { gh as ghCli, REPO } from "./cli.mjs";
+import { gh as ghCli, REPO, viaCli } from "./cli.mjs";
+import { conflictNotePath, DIR, noted, parkNotePath, writeNote } from "./loop-logs.mjs";
+import { CI_RED_TIMEOUT_MS, REFRESH_TIMEOUT_MS } from "./limits.mjs";
 
 export const TRUSTED_AUTHORS = ["OWNER", "MEMBER", "COLLABORATOR"];
 
@@ -491,6 +493,130 @@ export function runCli(argv, tracker = ghTracker(), say = console.log) {
       return tracker.editPr(n, one("body-file"));
     default:
       throw new Error(USAGE);
+  }
+}
+
+/** The tracker's half of a park, each a step a later pass can apply again on its own. */
+export const PARK_STEPS = {
+  label: (number, tracker) => tracker.park(number),
+  comment: (number, tracker, logs = DIR) => tracker.comment(number, parkNotePath(number, logs)),
+};
+
+/**
+ * The park steps that failed, applied again from what the park left on disk — only while the park
+ * still stands. `why` says why a debt closed without being applied; `failed` is what is still owed.
+ *
+ * @param {number} number @param {string[]} steps
+ * @returns {{failed: string[], why: string|null}}
+ */
+export function repark(number, steps, tracker = ghTracker(), exists = noted, logs = DIR) {
+  let issue;
+  try {
+    issue = tracker.issue(number, { timeout: CI_RED_TIMEOUT_MS });
+  } catch (err) {
+    console.error(`  ⚠️ park #${number}: the issue could not be read — ${String(err.message).split("\n")[0]}`);
+    return { failed: steps, why: null };
+  }
+  // The label step owed leaves `in-progress` on; once it landed, `ready-for-human` is the park's own.
+  // Anything else is the owner's doing, which a retry must not undo.
+  const mark = steps.includes("label") ? "in-progress" : "ready-for-human";
+  if (issue.state !== "OPEN" || !issue.labels.includes(mark)) {
+    return { failed: [], why: "the owner already acted on the issue" };
+  }
+  const pruned = steps.includes("comment") && !exists(parkNotePath(number, logs));
+  const failed = steps.filter((s) => {
+    if (s === "comment" && pruned) return false;
+    try {
+      PARK_STEPS[s](number, tracker, logs);
+      return false;
+    } catch (err) {
+      console.error(`  ⚠️ park #${number}: ${s} failed again — ${String(err.message).split("\n")[0]}`);
+      return true;
+    }
+  });
+  return { failed, why: pruned ? "the park note was pruned, so its comment is not posted" : null };
+}
+
+/**
+ * Pushes the head review is about to read, and opens its pull request when none is open,
+ * so CI runs while the review does. Not a gate: phase D's land step pushes again if this failed.
+ */
+export function publishForReview(number, branch, cwd, title, run = viaCli, tracker = ghTracker()) {
+  const opts = { timeout: REFRESH_TIMEOUT_MS };
+  run("git", ["-C", cwd, "push", "--quiet", "-u", "origin", branch], opts);
+  const open = tracker.openPrFor(branch, opts);
+  if (open) return prUrl(open.number);
+  const body = `Closes #${number}\n\nOpened when review started. Phase D writes this description on LAND.`;
+  return tracker.createPr({ head: branch, title, body }, opts);
+}
+
+export const prUrl = (n) => `https://github.com/${REPO}/pull/${n}`;
+
+/** The CONFLICT comment that routes the next pass to the rebase round. Throws when it is not posted. */
+export function postConflict(number, head, tracker = ghTracker(), logs = DIR) {
+  writeNote(conflictNotePath(number, logs), `CONFLICT ${head}\nThe branch conflicts with main: the next process rebases it onto origin/main.`);
+  tracker.comment(number, conflictNotePath(number, logs));
+}
+
+/**
+ * The pull request this ticket pushed, if it pushed one.
+ *
+ * Falls back to the ticket number when the branch is unknown.
+ *
+ * `--state all`, because a pull request merged between the session's exit and this read — a peer,
+ * an auto-merge, the owner — is a landing, not a session that pushed nothing. The head ref comes
+ * back too: `ciVerdict` is asked for a branch's run, not a pull request's.
+ *
+ * `declared` is the number the session stated on its way out, asked for directly when the listing
+ * has not caught up or does not reach back far enough.
+ *
+ * `since` bounds what counts as merged. A ticket re-opened and re-queued still has its old
+ * `agent/<n>-…` pull request on the tracker, and reading that as a landing releases the claim on a
+ * session that pushed nothing.
+ *
+ * @param {string|null} branch
+ * @param {number} ticket
+ * @param {number|null} [declared]
+ * @param {number} [since] epoch ms; a merge older than this is not this session's
+ * @param {ReturnType<typeof ghTracker>} [tracker]
+ * @returns {{number: number, state: string, head: string, sha: string|null, changedFiles: number|null}|null}
+ */
+export function pushedPr(branch, ticket, declared = null, since = 0, tracker = ghTracker()) {
+  // Matched on the head ref rather than by search: `#42` in a body also matches PR #942. With a
+  // branch in hand the listing is exact; without one the newest 100 are scanned, which reaches back
+  // far enough for a branch pushed minutes ago.
+  // The head ref is the only thing that makes a pull request this ticket's, and it is checked on
+  // every path including the declared one. `declared` is a number a model wrote, and what it
+  // reaches is `gh pr merge`.
+  const mine = (pr) =>
+    branch ? pr?.headRefName === branch : new RegExp(`^agent/${ticket}-`).test(pr?.headRefName ?? "");
+  const stale = (pr) =>
+    pr.state === "MERGED" && since > 0 && Date.parse(pr.mergedAt ?? "") < since;
+  const take = (pr) =>
+    pr && mine(pr) && !stale(pr)
+      ? { number: pr.number, state: pr.state, head: pr.headRefName, sha: pr.headRefOid ?? null, changedFiles: pr.changedFiles ?? null }
+      : null;
+  // A listing carries no file count; only the pull request itself does, and an unread one is unknown, not none.
+  const counted = (pr) => {
+    try {
+      return { ...pr, changedFiles: tracker.pr(pr.number).changedFiles ?? null };
+    } catch {
+      return { ...pr, changedFiles: null };
+    }
+  };
+  try {
+    const rows = tracker.prsFor({ branch, ticket }).filter((pr) => mine(pr) && !stale(pr));
+    const row = rows.find((p) => p.state === "OPEN") ?? rows.find((p) => p.state === "MERGED") ?? rows[0];
+    const found = row && take(counted(row));
+    if (found) return found;
+  } catch {
+    /* falls through to the declared number */
+  }
+  if (!declared) return null;
+  try {
+    return take(tracker.pr(declared));
+  } catch {
+    return null;
   }
 }
 

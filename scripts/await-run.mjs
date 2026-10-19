@@ -5,7 +5,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { isInvokedDirectly } from "./lib/entry.mjs";
-import { BASH_DEFAULT_TIMEOUT_MS } from "../tools/loop/queue-loop.mjs";
+import { BASH_DEFAULT_TIMEOUT_MS } from "../tools/loop/limits.mjs";
 
 export const BUDGET_MS = BASH_DEFAULT_TIMEOUT_MS - 60_000;
 export const EVERY_MS = 30_000;

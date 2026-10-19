@@ -5,7 +5,7 @@ import path from "node:path";
 import { killedStarts, ledger, reportPath } from "../loop-logs.mjs";
 import { estimateCost, killedLine, report, shaTable } from "../loop-cost.mjs";
 import { usageOf } from "../loop-stream.mjs";
-import { killedRun } from "../queue-loop.mjs";
+import { killedRun } from "../loop-session.mjs";
 
 const STREAM = readFileSync(path.join(import.meta.dirname, "fixtures", "killed-session.jsonl"), "utf8");
 const START = "2026-10-15T17:42:00.000Z";

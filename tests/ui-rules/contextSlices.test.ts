@@ -80,7 +80,10 @@ const ONLINE: Record<string, string[]> = {
     "room", "entrySource", "isSpectator", "hasGame", "createRoom", "joinRoom",
     "spectateRoom", "leaveRoom", "quickmatch", "setRoomVisibility", "startGame",
   ],
-  useOnlineTable: ["gameState", "mySeatIndex", "playCards", "pass", "sendReaction", "disconnectedSeats", "autoPassed"],
+  useOnlineTable: [
+    "gameState", "mySeatIndex", "playCards", "pass", "sendReaction", "disconnectedSeats", "autoPassed",
+    "leftTable", "reclaimSeat",
+  ],
   useOnlineTurnClock: ["turnSeconds", "turnDeadlineMs"],
   useOnlineMatch: [
     "matchState", "cumulativeScores", "placementPoints", "placementPointsCurrent", "ratingDeltas", "roundRecorded", "ratingsAfter",
