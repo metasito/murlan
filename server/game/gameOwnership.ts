@@ -229,7 +229,7 @@ async function unlock(roomId: string): Promise<void> {
 export function releaseRoomAfter(roomId: string, settled: Promise<unknown>): Promise<void> {
   const released: Promise<void> = settled
     .catch(() => {})
-    .then(() => unlock(roomId))
+    .then(() => (releasing.get(roomId) === released ? unlock(roomId) : undefined))
     .finally(() => {
       if (releasing.get(roomId) === released) releasing.delete(roomId);
     });

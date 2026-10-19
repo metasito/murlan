@@ -73,3 +73,32 @@ test("a release while the room's delete is pending does not unlock it early", as
   assert.equal(unlocks, 1);
   assert.equal(ownsRoom("dying-room"), false);
 });
+
+test("an earlier pending release does not unlock under a later one", async (t) => {
+  let unlocks = 0;
+  t.mock.method(Client.prototype, "connect", async () => {});
+  t.mock.method(Client.prototype, "end", async () => {});
+  t.mock.method(Client.prototype, "query", async (sql: string) => {
+    if (/pg_advisory_unlock/.test(sql)) unlocks++;
+    if (/pg_try_advisory_lock/.test(sql)) return { rows: [{ locked: true }] };
+    return { rows: [] };
+  });
+  reopenOwnership();
+  t.after(() => closeOwnership());
+
+  assert.equal(await claimRoom("twice-dying-room"), true);
+  let firstLands!: () => void;
+  let secondLands!: () => void;
+  const first = releaseRoomAfter("twice-dying-room", new Promise<void>((r) => (firstLands = r)));
+  const second = releaseRoomAfter("twice-dying-room", new Promise<void>((r) => (secondLands = r)));
+
+  firstLands();
+  await first;
+  assert.equal(unlocks, 0, "the first release unlocked while the second delete was still pending");
+  assert.equal(ownsRoom("twice-dying-room"), true);
+
+  secondLands();
+  await second;
+  assert.equal(unlocks, 1);
+  assert.equal(ownsRoom("twice-dying-room"), false);
+});
