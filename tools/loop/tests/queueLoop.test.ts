@@ -8,12 +8,11 @@ import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { act, clockAt, closing, header, LAND, note, PLAIN, recap, stepRow, tasksDetail, thought } from "../loop-render.mjs";
 import { closePhase, readLine, reduceSession, sessionStart } from "../loop-stream.mjs";
-import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, USD_BY_SIZE } from "../loop-cost.mjs";
+import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, USD_BY_SIZE, USD_DEFAULT } from "../loop-cost.mjs";
 import { ticker } from "../loop-screen.mjs";
 import {
   pushedPr,
   queueLoopArgs,
-  liveRoute,
   syncCheckout,
   reinstall,
   runTicket,
@@ -30,8 +29,15 @@ import {
   STALL_MS,
   ticketFacts,
   contextFor,
+  BREAKER,
+  CI_ROUNDS,
+  MAX_HANDOFFS,
+  TICKET_HOLDS,
+  UPDATES,
 } from "../queue-loop.mjs";
-import { afterRefusal, apiFailure, exhausted, outcomeOf, reasonFor, resumePhase, WAIT, waitFor } from "../decide.mjs";
+import { decide, WAIT } from "../decide.mjs";
+import { ticketTally } from "../loop-logs.mjs";
+import { READ_RETRIES } from "../settle.mjs";
 import { fakeTracker, ghTracker } from "../tracker.mjs";
 
 /** Enough ports for `runOnce` to reach a decision without git, the tracker or a `claude` binary. */
@@ -49,6 +55,7 @@ const stubPorts = () => ({
     syncCheckout: () => true,
     housekeeping: () => ({ verdict: "ok", rows: [] }),
     standing: () => null,
+    derive: () => ({ onTicket: false, phase: "A" }),
     buildPassed: () => true,
     remove: () => {},
   },
@@ -59,6 +66,39 @@ const stubPorts = () => ({
   },
 });
 const quiet = { bell: () => {}, log: () => {}, announce: () => {} };
+
+/**
+ * One session's exit as `decide` reads it. `outcomeOf`, `reasonFor`, `resumePhase`, `apiFailure` and
+ * the refusal wait are its private parts, so each is tested through the action it shapes.
+ */
+const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT, WAIT, UPDATES, READ_RETRIES };
+const FRESH = { failures: 0, holds: 0, waits: 0, overloads: 0, pinned: null, heldTicket: null, ticketHolds: 0 };
+const NOW = 1_000_000_000_000;
+const exited = (run: object, over: object = {}): Record<string, any> =>
+  decide({
+    step: "session",
+    route: { n: 42, phase: "C", size: "size:S" },
+    run: { status: 0, phase: "C", stderr: "", result: {}, declared: null, blocked: false, ...run },
+    after: { ticket: 42, branch: "agent/42-x", cwd: "w", phase: "C", commits: 1 },
+    built: true,
+    pushed: null,
+    issue: null,
+    tally: { ...ticketTally(42, []), ciRounds: 0 },
+    loop: FRESH,
+    limits: LIMITS,
+    now: NOW,
+    asked: false,
+    own: null,
+    ...over,
+  });
+const finished = { phase: "F", declared: { ticket: 42, pr: 984, phase: "F", handoff: null, stoodDown: false, why: null } };
+
+/** The API status a session is held on, as `decide` names it, or null when it is not held for the API. */
+const heldFor = (run: object): number | "unreachable" | null => {
+  const o = exited(run, { after: null });
+  if (o.kind !== "hold" || o.wait !== "api") return null;
+  return o.why === "the API could not be reached" ? "unreachable" : Number(/answered (\d+)/.exec(o.why)?.[1]);
+};
 
 describe("queueLoopArgs", () => {
   test("runs /queue unattended, with no MCP tools an empty run could stall waiting on", () => {
@@ -210,50 +250,6 @@ describe("queueLoopArgs", () => {
     for (const size of ["size:XS", "size:S", "size:M", "size:L", "size:XL"]) {
       assert.ok((TURNS_BY_SIZE as Record<string, number>)[size] > 0, `${size} has no turn bound`);
     }
-  });
-});
-
-describe("liveRoute", () => {
-  test("no route when no ticket is live — the picker should run", () => {
-    assert.equal(liveRoute({ onTicket: false }), null);
-  });
-
-  test("a clean derive off a ticket is still no route", () => {
-    assert.equal(liveRoute({ onTicket: false, ambiguous: false, why: "not on an agent branch" }), null);
-  });
-
-  // locateRun refuses to guess between two live ticket worktrees, and that refusal is the whole
-  // point of it. Returning null turned it into "no run is live" and the picker took a third.
-  test("an ambiguous derive is a route, not an absence", () => {
-    const r = liveRoute({ onTicket: false, ambiguous: true, why: "2 live agent/* worktrees" });
-    assert.equal(r?.skill, "ambiguous");
-    assert.match(r!.title, /2 live/);
-  });
-
-  test("resumes the live ticket instead of asking the picker for a new one", () => {
-    assert.deepEqual(liveRoute({ onTicket: true, ticket: 911, branch: "agent/911-x", phase: "D" }), {
-      skill: "implement",
-      number: 911,
-      title: "agent/911-x",
-      phase: "D",
-      resuming: true,
-    });
-  });
-
-  test("skips a ticket not labelled in-progress", () => {
-    const live = { onTicket: true, ticket: 911, branch: "agent/911-x", phase: "D" };
-    assert.equal(liveRoute(live, ["ready-for-human"]), null);
-    assert.equal(liveRoute(live, ["in-progress"])?.number, 911);
-  });
-
-  test("falls back to a bare ticket label when derive() found no branch (the stuck/'?' case)", () => {
-    assert.deepEqual(liveRoute({ onTicket: true, ticket: 911, branch: null, phase: "?" }), {
-      skill: "implement",
-      number: 911,
-      title: "ticket #911",
-      phase: "C",
-      resuming: true,
-    });
   });
 });
 
@@ -546,14 +542,14 @@ describe("runTicket", () => {
   test("the night #1156 met an overloaded API reaches the caller as a 529, not as a bare exit", async () => {
     const lines = readFileSync(path.join(import.meta.dirname, "fixtures", "api-529.jsonl"), "utf8").trim().split("\n");
     const run = await runTicket(replay(lines, 1), opts());
-    assert.equal(apiFailure(run), 529);
+    assert.equal(heldFor(run), 529);
   });
 
   test("the night the login expired reaches the caller as an account error (#1261)", async () => {
     const lines = readFileSync(path.join(import.meta.dirname, "fixtures", "auth-expired.jsonl"), "utf8").trim().split("\n");
     const run = await runTicket(replay(lines, 1), opts());
     assert.match(String(run.accountError), /^authentication_failed: Failed to authenticate/);
-    assert.equal(apiFailure(run), null);
+    assert.equal(heldFor(run), null);
   });
 
   test("a session whose connection dropped is held like an outage, not parked (#1466)", async () => {
@@ -561,9 +557,9 @@ describe("runTicket", () => {
     const apiError = JSON.stringify({ type: "assistant", error: "server_error", message: { content: [{ type: "text", text }] } });
     const end = result({ is_error: true, api_error_status: null, terminal_reason: "api_error" });
     const run = await runTicket(replay([apiError, end], 1), opts());
-    assert.equal(apiFailure(run), "unreachable");
+    assert.equal(heldFor(run), "unreachable");
     const refused = apiError.replace('"server_error"', '"invalid_request"');
-    assert.equal(apiFailure(await runTicket(replay([refused, end], 1), opts())), null);
+    assert.equal(heldFor(await runTicket(replay([refused, end], 1), opts())), null);
   });
 
   // `.loop-logs/1465.jsonl` lines 969–998: a phase D session whose last line is an `api_retry`, after
@@ -572,7 +568,7 @@ describe("runTicket", () => {
     const lines = readFileSync(path.join(import.meta.dirname, "fixtures", "api-retry-stall.jsonl"), "utf8").trim().split("\n");
     const run = await runTicket(replay(lines, "stalled") as never, opts({ at: "D" }));
     assert.equal(run.status, "stalled");
-    assert.equal(apiFailure(run), "unreachable");
+    assert.equal(heldFor(run), "unreachable");
   });
 
   for (const [code, status] of [["overloaded", 529], ["server_error", 500]] as const) {
@@ -588,8 +584,8 @@ describe("runTicket", () => {
       assert.deepEqual(narrated, [text]);
       assert.equal(run.accountError, null);
       const without = await runTicket(replay([end], 1), opts());
-      assert.equal(apiFailure(run), status);
-      assert.equal(apiFailure(run), apiFailure(without));
+      assert.equal(heldFor(run), status);
+      assert.equal(heldFor(run), heldFor(without));
     });
   }
 
@@ -1125,124 +1121,116 @@ describe("park", () => {
   });
 });
 
-describe("outcomeOf", () => {
+describe("what a session's exit leaves: the pull request first", () => {
   const open = { number: 984, state: "OPEN", head: "agent/42-x" };
-  const fine = { why: null, hard: false };
 
   test("an open pull request is settled, not yet landed", () => {
-    assert.deepEqual(outcomeOf({ pr: open, reason: fine }), { action: "settle", pr: 984 });
+    assert.deepEqual([exited(finished, { pushed: open }).kind, exited(finished, { pushed: open }).pr], ["settle", 984]);
   });
 
   // A peer, an auto-merge or the owner between the session's exit and this read. Asked with
   // `--state open` this answered "pushed nothing" and false-parked a ticket that had landed.
   test("one merged while the supervisor was not looking is a landing", () => {
-    const o = outcomeOf({ pr: { ...open, state: "MERGED" }, reason: fine });
-    assert.equal(o.action, "landed");
-    assert.equal(o.pr, 984);
+    const o = exited(finished, { pushed: { ...open, state: "MERGED" } });
+    assert.deepEqual([o.kind, o.pr], ["landed", 984]);
   });
 
   test("one closed without merging is the owner's, and says so by number", () => {
-    const o = outcomeOf({ pr: { ...open, state: "CLOSED" }, reason: fine });
-    assert.equal(o.action, "park");
+    const o = exited(finished, { pushed: { ...open, state: "CLOSED" } });
+    assert.equal(o.kind, "park");
     assert.match(String(o.why), /#984 is closed/);
   });
 
   // The session stood down on a lost claim race, or derive() could not read the run. Both used to
   // read as "the worktree is gone, so it landed".
   test("no pull request and no reason is not landed either", () => {
-    const o = outcomeOf({ pr: null, reason: fine });
-    assert.equal(o.action, "park");
+    const o = exited(finished);
+    assert.equal(o.kind, "park");
     assert.match(String(o.why), /pushed no pull request/);
   });
 
   // Eleven tickets whose pull requests merged were written down as parks, because how the session
   // ended was read before what it had already pushed.
   test("a soft reason never beats a pushed pull request", () => {
-    const o = outcomeOf({ pr: open, reason: { why: "the session ran out of turns", hard: false } });
-    assert.deepEqual(o, { action: "settle", pr: 984 });
+    const o = exited({ result: { subtype: "error_max_turns" } }, { after: null, pushed: open });
+    assert.deepEqual([o.kind, o.pr], ["settle", 984]);
   });
 
   test("a soft reason on a merged pull request is still a landing", () => {
-    const o = outcomeOf({
-      pr: { ...open, state: "MERGED" },
-      reason: { why: "the session exited without a declaration", hard: false },
-    });
-    assert.equal(o.action, "landed");
+    assert.equal(exited({}, { pushed: { ...open, state: "MERGED" } }).kind, "landed");
   });
 
   test("a hard reason parks even over an open pull request, and keeps its number", () => {
-    const o = outcomeOf({ pr: open, reason: { why: "the session stood down", hard: true } });
-    assert.equal(o.action, "park");
-    assert.equal(o.pr, 984);
+    const o = exited({ declared: { pr: 984, stoodDown: true, why: "the session stood down" } }, { pushed: open });
+    assert.deepEqual([o.kind, o.pr], ["park", 984]);
     assert.match(String(o.why), /stood down/);
   });
 
   test("an issue closed as done with no commits and no pull request is closed, not parked", () => {
     const closed = { state: "CLOSED", stateReason: "COMPLETED" };
-    assert.equal(outcomeOf({ pr: null, reason: fine, issue: closed, commits: 0 }).action, "closed");
-    assert.equal(outcomeOf({ pr: null, reason: fine, issue: closed, commits: 1 }).action, "park");
-    assert.equal(outcomeOf({ pr: null, reason: fine, issue: closed, commits: null }).action, "park");
-    assert.equal(outcomeOf({ pr: null, reason: fine, issue: { ...closed, stateReason: "NOT_PLANNED" }, commits: 0 }).action, "park");
+    const at = (commits: number | null) => (commits === null ? null : { ticket: 42, cwd: "w", phase: "F", commits });
+    assert.equal(exited(finished, { issue: closed, after: at(0) }).kind, "closed");
+    assert.equal(exited(finished, { issue: closed, after: at(1) }).kind, "park");
+    assert.equal(exited(finished, { issue: closed, after: at(null) }).kind, "park");
+    assert.equal(exited(finished, { issue: { ...closed, stateReason: "NOT_PLANNED" }, after: at(0) }).kind, "park");
   });
 
   test("a soft reason is what a pull-request-less park is named after", () => {
-    const o = outcomeOf({ pr: null, reason: { why: "the session ran out of turns", hard: false } });
-    assert.equal(o.action, "park");
+    const o = exited({ result: { subtype: "error_max_turns" } }, { after: null });
+    assert.equal(o.kind, "park");
     assert.match(String(o.why), /out of turns/);
   });
 });
 
-describe("reasonFor", () => {
-  const run = (over: object = {}) =>
-    ({ status: 0, phase: "E", stderr: "", result: {}, declared: { pr: 9, stoodDown: false }, ...over }) as never;
-  const after = { ticket: 42 };
+describe("why a session did not finish its ticket", () => {
+  const said = { pr: 9, stoodDown: false };
+  const open = { number: 9, state: "OPEN", head: "agent/42-x" };
+  const why = (run: object, over: object = {}) => String(exited({ phase: "E", declared: said, ...run }, over).why);
 
   test("a finished session has no reason", () => {
-    assert.deepEqual(reasonFor(run(), after, 42), { why: null, hard: false });
+    assert.equal(why({}), "the session pushed no pull request");
+    assert.equal(exited({ declared: said }, { pushed: open }).kind, "settle");
   });
 
   test("standing down is hard: the session's own branch is not this ticket's answer", () => {
-    const r = reasonFor(run({ declared: { stoodDown: true, why: "lost the claim race" } }), after, 42);
-    assert.equal(r.hard, true);
-    assert.match(String(r.why), /claim race/);
+    const o = exited({ declared: { stoodDown: true, why: "lost the claim race" } }, { pushed: open });
+    assert.equal(o.kind, "park");
+    assert.match(String(o.why), /claim race/);
   });
 
   test("a session that worked another ticket says so, and that is hard too", () => {
-    const r = reasonFor(run(), { ticket: 955 }, 42);
-    assert.equal(r.hard, true);
-    assert.match(String(r.why), /worked #955, not #42/);
+    const o = exited({ declared: said }, { pushed: open, after: { ticket: 955, cwd: "w", phase: "C" } });
+    assert.equal(o.kind, "park");
+    assert.match(String(o.why), /worked #955, not #42/);
   });
 
   test("a budget stop is read from stderr, because the result still says success", () => {
-    const r = reasonFor(run({ stderr: "Budget limit reached ($15.08 of $15)" }), after, 42);
-    assert.match(String(r.why), /spent its budget/);
-    assert.equal(r.hard, false);
+    assert.match(why({ stderr: "Budget limit reached ($15.08 of $15)" }), /spent its budget/);
+    assert.equal(exited({ declared: said, stderr: "Budget limit reached ($15.08 of $15)" }, { pushed: open }).kind, "settle");
   });
 
   test("running out of turns is named, and yields to a pushed branch", () => {
-    const r = reasonFor(run({ result: { subtype: "error_max_turns" } }), after, 42);
-    assert.match(String(r.why), /out of turns/);
-    assert.equal(r.hard, false);
+    assert.match(why({ result: { subtype: "error_max_turns" } }), /out of turns/);
+    assert.equal(exited({ declared: said, result: { subtype: "error_max_turns" } }, { pushed: open }).kind, "settle");
   });
 
   test("a stall names the ceiling it passed", () => {
-    assert.match(String(reasonFor(run({ status: "stalled" }), after, 42).why), /no output for 30m/);
+    assert.match(why({ status: "stalled" }), /no output for 30m/);
   });
 
   test("a non-zero exit names the phase", () => {
-    assert.match(String(reasonFor(run({ status: 1 }), after, 42).why), /exited 1 in phase E/);
+    assert.match(why({ status: 1 }), /exited 1 in phase E/);
   });
 
   // Seventeen of nineteen sessions never emitted one, and the supervisor absorbed that silently by
   // inferring every fact about them from side effects phase F had just been told to delete.
   test("a clean exit with no declaration is an error, not a silent fallback", () => {
-    const r = reasonFor(run({ declared: null }), after, 42);
-    assert.match(String(r.why), /without a declaration/);
-    assert.equal(r.hard, false);
+    assert.match(why({ declared: null }), /without a declaration/);
+    assert.equal(exited({ declared: null }, { pushed: open }).kind, "settle");
   });
 
   test("no live ticket at all is not a reason on its own", () => {
-    assert.deepEqual(reasonFor(run(), null, 42), { why: null, hard: false });
+    assert.equal(why({}, { after: null }), "the session pushed no pull request");
   });
 });
 
@@ -1250,77 +1238,110 @@ describe("reasonFor", () => {
 // line it had no turn left to write.
 describe("a session cut off mid-phase", () => {
   const cut = { result: { subtype: "error_max_turns" }, declared: null, stderr: "" };
+  const at = (phase: string, ticket = 42) => ({ cwd: ".worktrees/agent-42", phase, ticket });
+  // No phase of the run's own, so the worktree's is the one read.
+  const handed = (run: object, after: object | null) => {
+    const o = exited({ phase: undefined, ...run }, { after });
+    return o.kind === "handoff" ? o.phase : null;
+  };
 
-  test("exhausted() names the turn cap and the dollar cap, and nothing else", () => {
-    assert.equal(exhausted(cut as never), true);
-    assert.equal(exhausted({ stderr: "Budget limit reached ($15.08 of $15); stopping." } as never), true);
-    assert.equal(exhausted({ result: { subtype: "success" }, stderr: "" } as never), false);
+  test("the turn cap and the dollar cap cut a session off, and nothing else does", () => {
+    assert.equal(handed(cut, at("C")), "C");
+    assert.equal(handed({ stderr: "Budget limit reached ($15.08 of $15); stopping." }, at("C")), "C");
+    assert.equal(handed({ result: { subtype: "success" } }, at("C")), null);
   });
 
-  const at = (phase: string, ticket = 42) => ({ cwd: ".worktrees/agent-42", phase, ticket });
-
   test("with a live worktree it hands the derived phase on, rather than parking", () => {
-    for (const p of ["B", "C", "D"]) assert.equal(resumePhase(cut as never, at(p) as never, 42), p);
+    for (const p of ["B", "C", "D"]) assert.equal(handed(cut, at(p)), p);
   });
 
   // A head that is already pushed is settle's to merge. Handing E back spends a whole session
   // re-running a gate and a push that are done, and never reaches the open pull request.
   test("a pushed head is left to settle, never handed back", () => {
-    assert.equal(resumePhase(cut as never, at("E") as never, 42), null);
-    assert.equal(resumePhase(cut as never, at("G") as never, 42), null);
+    assert.equal(handed(cut, at("E")), null);
+    assert.equal(handed(cut, at("G")), null);
   });
 
   test("no worktree, no derivable phase, or another ticket's worktree, is still a park", () => {
-    assert.equal(resumePhase(cut as never, { cwd: null, phase: "C", ticket: 42 } as never, 42), null);
-    assert.equal(resumePhase(cut as never, at("?") as never, 42), null);
-    assert.equal(resumePhase(cut as never, at("C", 955) as never, 42), null);
-    assert.equal(resumePhase(cut as never, null, 42), null);
+    assert.equal(handed(cut, { cwd: null, phase: "C", ticket: 42 }), null);
+    assert.equal(handed(cut, at("?")), null);
+    assert.equal(handed(cut, at("C", 955)), null);
+    assert.equal(handed(cut, null), null);
   });
 
   // The dollar cap stops subagents and lets the session run on, so a finished session can carry
   // that line in its stderr. Declaring anything at all is the test of having chosen an ending.
   test("a session that declared anything chose its ending, and is untouched", () => {
     const spent = { result: { subtype: "success" }, stderr: "Budget limit reached ($15.08 of $15)" };
-    for (const declared of [{ handoff: "D" }, { handoff: null, pr: 9 }, { stoodDown: true, why: "lost" }]) {
-      assert.equal(resumePhase({ ...spent, declared } as never, at("C") as never, 42), null);
+    const own = exited({ ...spent, phase: undefined, declared: { handoff: "D" } }, { after: at("C") });
+    assert.deepEqual([own.kind, own.phase, own.why], ["handoff", "D", null], "the declared handoff, with no reason of the supervisor's");
+    for (const declared of [{ handoff: null, pr: 9 }, { stoodDown: true, why: "lost" }]) {
+      assert.equal(handed({ ...spent, declared }, at("C")), null);
     }
-    assert.equal(resumePhase({ ...spent, declared: null } as never, at("C") as never, 42), "C");
+    assert.equal(handed({ ...spent, declared: null }, at("C")), "C");
   });
 });
 
 /** Every way a wait goes wrong: waiting on nothing, for ever, on a passed reset, or on done work. */
-describe("waitFor", () => {
-  const now = 1_000_000_000_000;
+describe("a refused session's wait", () => {
   const mins = (n: number) => n * 60_000;
+  const refused = (blockedUntil: number, over: object = {}) => exited({ blocked: true, blockedUntil, status: 1 }, over);
 
   test("a meter reading that is not a refusal waits for nothing", () => {
-    assert.equal(waitFor({ blocked: false, blockedUntil: now + mins(300) }, now), 0);
+    assert.notEqual(exited({ blocked: false, blockedUntil: NOW + mins(300) }).wait, "usage");
   });
 
   test("a refusal waits until the reset, plus a small margin, and no longer", () => {
-    const hold = waitFor({ blocked: true, blockedUntil: now + mins(265) }, now);
-    assert.equal(hold, mins(265) + WAIT.MARGIN);
+    assert.equal(refused(NOW + mins(265)).hold, mins(265) + WAIT.MARGIN);
     assert.ok(WAIT.MARGIN <= mins(1), "the point is to resume almost as the window rolls over");
   });
 
-  test("a reset that has already passed is not a wait — try again now", () => {
-    assert.equal(waitFor({ blocked: true, blockedUntil: now - mins(5) }, now), 0);
-  });
-
   test("a refusal naming no reset looks again shortly, rather than giving up", () => {
-    assert.equal(waitFor({ blocked: true, blockedUntil: 0 }, now), WAIT.FLOOR);
+    assert.equal(refused(0).hold, WAIT.FLOOR);
   });
 
   // The cap bounds one hold, not the total: a seven-day window is waited out in pieces and asked
   // again, so the loop resumes within CAP of the reset rather than exiting the night.
   test("a reset a year out is held in one capped piece, not slept through", () => {
-    const hold = waitFor({ blocked: true, blockedUntil: now + 365 * 24 * 60 * 60_000 }, now);
-    assert.equal(hold, WAIT.CAP);
+    assert.equal(refused(NOW + 365 * 24 * 60 * 60_000).hold, WAIT.CAP);
     assert.ok(WAIT.CAP >= mins(330), "the five-hour window must be waited out in one piece");
   });
 
   test("a session that got the work done does not wait, whatever the meter said", () => {
-    assert.equal(waitFor({ blocked: true, blockedUntil: now + mins(300), done: true }, now), 0);
+    assert.equal(refused(NOW + mins(300), { pushed: { number: 9, state: "OPEN", head: "agent/42-x" } }).kind, "settle");
+  });
+
+  test("a refusal waits and counts", () => {
+    const step = refused(NOW + 60_000);
+    assert.deepEqual([step.kind, step.wait, step.loop.waits], ["hold", "usage", 1]);
+    assert.ok(step.hold > 0);
+  });
+
+  // A hold of 0 is skipped entirely, so a refusal naming a reset already in the past — a clock
+  // skew, a stale window, a seven-day limit reported with an expired short-window reset — spun
+  // through twenty full `claude` spawns back to back, each paying its context creation.
+  test("a window that has already reset still waits the floor, never nothing", () => {
+    assert.equal(refused(NOW - 1).hold, WAIT.FLOOR);
+  });
+
+  test("no refusal ever produces a hold of zero", () => {
+    for (const blockedUntil of [0, NOW - 86_400_000, NOW - 1, NOW, NOW + 1, NOW + 600_000]) {
+      const step = refused(blockedUntil);
+      assert.ok(step.hold >= WAIT.FLOOR, `blockedUntil ${blockedUntil} held for ${step.hold}ms`);
+    }
+  });
+
+  // A usage refusal is a property of the account. Keyed per ticket the counter was inert —
+  // twenty tickets refused once each never reached the ceiling — and cruel when it did fire.
+  test("the count is the run's, not the ticket's", () => {
+    assert.equal(refused(NOW + 60_000, { loop: { ...FRESH, waits: 7 } }).loop.waits, 8);
+  });
+
+  test("refused past the ceiling gives up, and says what it tried", () => {
+    const step = refused(NOW + 60_000, { loop: { ...FRESH, waits: WAIT.TRIES } });
+    assert.equal(step.kind, "stop");
+    assert.match(step.why ?? "", /refused 20 times running/);
+    assert.match(step.why ?? "", /after waiting out the window/);
   });
 });
 
@@ -1359,57 +1380,6 @@ describe("holdFor", () => {
 
   test("a hold nobody is watching stays silent", async () => {
     assert.equal(await holdFor(30, () => false, 5, null, 10), "waited");
-  });
-});
-
-describe("afterRefusal", () => {
-  const now = 1_000_000_000_000;
-  const base = { waits: 0, blocked: true, blockedUntil: now + 60_000 };
-
-  test("a session that was not refused just proceeds", () => {
-    const step = afterRefusal({ ...base, blocked: false }, now);
-    assert.equal(step.action, "proceed");
-    assert.equal(step.waits, 0);
-  });
-
-  test("a refusal waits and counts", () => {
-    const step = afterRefusal(base, now);
-    assert.equal(step.action, "wait");
-    assert.equal(step.waits, 1);
-    assert.ok(step.hold > 0);
-  });
-
-  // A hold of 0 is skipped entirely, so a refusal naming a reset already in the past — a clock
-  // skew, a stale window, a seven-day limit reported with an expired short-window reset — spun
-  // through twenty full `claude` spawns back to back, each paying its context creation.
-  test("a window that has already reset still waits the floor, never nothing", () => {
-    const step = afterRefusal({ ...base, blockedUntil: now - 1 }, now);
-    assert.equal(step.action, "wait");
-    assert.equal(step.hold, WAIT.FLOOR);
-  });
-
-  test("no refusal ever produces a hold of zero", () => {
-    for (const blockedUntil of [0, now - 86_400_000, now - 1, now, now + 1, now + 600_000]) {
-      const step = afterRefusal({ ...base, blockedUntil }, now);
-      assert.ok(step.hold >= WAIT.FLOOR, `blockedUntil ${blockedUntil} held for ${step.hold}ms`);
-    }
-  });
-
-  // A usage refusal is a property of the account. Keyed per ticket the counter was inert —
-  // twenty tickets refused once each never reached the ceiling — and cruel when it did fire.
-  test("the count is the run's, not the ticket's", () => {
-    assert.equal(afterRefusal({ ...base, waits: 7 }, now).waits, 8);
-  });
-
-  test("refused past the ceiling gives up, and says what it tried", () => {
-    const step = afterRefusal({ ...base, waits: WAIT.TRIES }, now);
-    assert.equal(step.action, "give-up");
-    assert.match(step.why ?? "", /refused 20 times running/);
-    assert.match(step.why ?? "", /after waiting out the window/);
-  });
-
-  test("a session that pushed never waits, whatever the meter said", () => {
-    assert.equal(afterRefusal({ ...base, done: true }, now).action, "proceed");
   });
 });
 

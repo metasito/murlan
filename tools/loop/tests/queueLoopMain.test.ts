@@ -13,7 +13,6 @@ import {
   runOnce as realRunOnce,
   main as realMain,
   settle,
-  nextRoute,
   park,
   refreshWorktree,
   publishForReview,
@@ -29,7 +28,6 @@ import { afterSession, WAIT } from "../decide.mjs";
 import { readLine } from "../loop-stream.mjs";
 import { parkReasonOf, ticketTally } from "../loop-logs.mjs";
 import { PLAIN } from "../loop-render.mjs";
-import { ledgerFixture } from "./helpers/ledgerFixture.ts";
 import { parkAsked } from "../loop-screen.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
@@ -69,6 +67,25 @@ const place = (fake: Fake, over: Record<string, unknown>): Fake => {
   return { ports, events };
 };
 
+/** What `derive({ ci: true })` reads with ticket 42's worktree standing; its issue's default facts name no labels, so it resumes. */
+const standing42 = (over: object = {}) => ({
+  onTicket: true,
+  ticket: 42,
+  branch: "agent/42-x",
+  cwd: ".worktrees/agent-42",
+  phase: "C",
+  fix: false,
+  head: "a",
+  dirty: false,
+  reviewRounds: null,
+  ci: null,
+  ...over,
+});
+/** A pushed head CI has not answered for: a G pass. */
+const settling42 = () => ({ derive: () => standing42({ phase: "G", ci: { pushed: true, state: "settling", sha: "a" } }) });
+/** A pushed head a CI-RED names: a fix round. */
+const fixing42 = (head: string) => ({ derive: () => standing42({ fix: true, ci: { pushed: true, state: "red", sha: head } }) });
+
 /** `runOnce`'s ports and events, quiet and landing ticket 42. */
 const io = (over: Record<string, unknown> = {}, ledger: any[] = []): Fake => {
   const fake: Fake = {
@@ -105,6 +122,7 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []): Fake => {
           dirty: false,
           phase: "E",
         }),
+        derive: () => ({ onTicket: false, phase: "A", why: "not on an agent branch", ambiguous: false }),
         buildPassed: () => true,
         sharedCheckoutDirty: () => "",
         remove: () => {},
@@ -126,7 +144,7 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []): Fake => {
         record: (x: unknown) => ledger.push(rowOf(x)),
       },
     },
-    events: { announce: () => {}, log: () => {}, bell: () => {} },
+    events: { announce: () => {}, log: () => {}, bell: () => {}, picked: () => {} },
   };
   return place(fake, over);
 };
@@ -406,7 +424,7 @@ describe("runOnce", () => {
   });
 
   test("an ambiguous pick stops rather than taking a third ticket", async () => {
-    const r = await runOnce(io({ pick: () => ({ skill: "ambiguous", title: "2 live worktrees" }) }));
+    const r = await runOnce(io({ derive: () => ({ onTicket: false, phase: "A", ambiguous: true, why: "2 live worktrees" }) }));
     assert.equal(r.outcome, "stop");
   });
 
@@ -444,18 +462,43 @@ describe("runOnce", () => {
     assert.deepEqual(asked, [42, null]);
   });
 
+  // Each read is a gh or git call: a pass makes no more of them than its answer needs.
+  test("a pick reads the standing run once, then only the issue or picker its answer needs", async () => {
+    const reads = async (over: Record<string, unknown>, pinned: number | null = null) => {
+      const order: string[] = [];
+      const fake = io(over);
+      const { derive, facts, pick } = { ...fake.ports.workspace, ...fake.ports.tracker };
+      await runOnce(
+        io({
+          ...over,
+          derive: () => (order.push("derive"), derive()),
+          facts: (n: number) => (order.push(`facts ${n}`), facts(n)),
+          pick: () => (order.push("pick"), pick()),
+          spawn: async () => (order.push("spawn"), io().ports.session.spawn()),
+        }),
+        pinned,
+      );
+      return order.slice(0, order.indexOf("spawn"));
+    };
+    const ours = { title: "t", size: "size:S", reviewRounds: null, labels: ["in-progress"] };
+    assert.deepEqual(await reads({}), ["derive", "pick"]);
+    assert.deepEqual(await reads({ derive: () => standing42(), facts: () => ours }), ["derive", "facts 42"]);
+    assert.deepEqual(await reads({ derive: () => standing42(), facts: () => ({ ...ours, labels: ["ready-for-human"] }) }), ["derive", "facts 42", "pick"]);
+    assert.deepEqual(await reads({ facts: () => ours }, 42), ["derive", "facts 42"]);
+    assert.deepEqual(await reads({ facts: () => ({ ...ours, labels: ["deferred"] }) }, 42), ["derive", "facts 42", "pick"]);
+  });
+
   test("a pinned ticket is what the picker is asked for", async () => {
     const asked: unknown[] = [];
     await runOnce(
       io({
-        pick: (n: number) => {
-          asked.push(n);
-          return { skill: "implement", number: 42, title: "t", size: "size:S", queue: null };
-        },
+        facts: (n: number) => (asked.push(n), { title: "t", size: "size:S", reviewRounds: null }),
+        pick: () => (asked.push("picker"), { skill: "implement", number: 7, title: "t", size: "size:S", queue: null }),
       }),
       42,
     );
-    assert.deepEqual(asked, [42]);
+    assert.deepEqual(asked[0], 42);
+    assert.ok(!asked.includes("picker"), "a pinned ticket still ours is resumed, not picked over");
   });
 
   // A refusal is the account, not the ticket: main() waits it out rather than ending the night.
@@ -542,7 +585,7 @@ describe("runOnce", () => {
     let spawns = 0;
     const r = await runOnce(
       io({
-        pick: () => ({ skill: "implement", number: 42, title: "t", size: "size:S", queue: null, resuming: true, phase: "G" }),
+        ...settling42(),
         spawn: async () => (spawns += 1) as never,
         pushedPr: (_b: unknown, _n: unknown, _d: unknown, since: number) =>
           since === 0 ? { number: 984, state: "OPEN", head: "agent/42-x" } : null,
@@ -563,7 +606,7 @@ describe("runOnce", () => {
     const order: string[] = [];
     await runOnce(
       io({
-        pick: () => ({ skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "G" }),
+        ...settling42(),
         facts: () => ({ title: "Rate limiter factory", size: "size:S", reviewRounds: null }),
         announce: (t: { number: number; title: string }, spentMs: number) => order.push(`announce #${t.number} ${t.title} ${spentMs}`),
         settle: async () => (order.push("settle"), { action: "already-merged", reason: "merged" }),
@@ -659,8 +702,8 @@ describe("runOnce", () => {
   test("a C handoff out of a refused D or a red E carries its reason to the next C session only", async () => {
     const next = async (ledger: any[], phase: string) => {
       const seen: unknown[] = [];
-      const pick = () => ({ skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase });
-      await runOnce(io({ pick, spawn: async (s: { reason?: string | null }) => (seen.push(s.reason), handingOff(phase, "F")()) }, ledger), 42, phase);
+      const derive = () => standing42();
+      await runOnce(io({ derive, spawn: async (s: { reason?: string | null }) => (seen.push(s.reason), handingOff(phase, "F")()) }, ledger), 42, phase);
       return seen[0];
     };
     const cases: [string, string, boolean, string, RegExp | null][] = [
@@ -739,22 +782,11 @@ describe("runOnce", () => {
     assert.equal(red.outcome, "retry");
     assert.deepEqual([torn, parked], [[], []]);
 
-    const asked: unknown[] = [];
-    const route: any = nextRoute(42, null, {
-      read: (o: unknown) => {
-        asked.push(o);
-        return { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: red.cwd, dirty: false, phase: "C", fix: true };
-      },
-      facts: () => ({ title: "t", url: "", size: "size:S", labels: ["in-progress"], reviewRounds: 1, ciRounds: 1 }),
-      ledger: () => [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "E" }, head: null }],
-    } as never);
-    assert.deepEqual(asked, [{ ci: true }]);
-    assert.deepEqual([route.phase, route.fix, route.cwd, route.branch], ["C", true, red.cwd, "agent/42-x"]);
-
     const order: string[] = [];
     await runOnce(
       io({
-        pick: () => route,
+        derive: () => standing42({ cwd: red.cwd, fix: true, ci: { pushed: true, state: "red", sha: "h1" } }),
+        facts: () => ({ title: "t", url: "", size: "size:S", labels: ["in-progress"], reviewRounds: 1, ciRounds: 1 }),
         refreshWorktree: (cwd: string, branch: string) => order.push(`refresh ${cwd} ${branch}`),
         spawn: async (r: { phase: string }) => {
           order.push(`spawn ${r.phase}`);
@@ -764,28 +796,6 @@ describe("runOnce", () => {
       42,
     );
     assert.deepEqual(order, [`refresh ${red.cwd} agent/42-x`, "spawn C"]);
-  });
-
-  test("nextRoute replays 2026-09-21/22: every session starts where the ledger before it pointed", () => {
-    const rows = ledgerFixture("ledger-2026-09-21.jsonl");
-    const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
-    const settle = { phase: "G", ci: { pushed: true } };
-    const status = { handoff: { phase: "C" }, pushed: settle, retry: { phase: "C", fix: true } };
-    let replayed = 0;
-    rows.forEach((row, i) => {
-      const next = rows.slice(i + 1).find((r) => r.n === row.n);
-      if (!next || !(row.outcome in status)) return;
-      // A next row with no phases is a settle: derive() read a pushed head, which outranks a handoff.
-      const derived = Object.keys(next.phases).length ? status[row.outcome as keyof typeof status] : settle;
-      const route = nextRoute(null, null, {
-        read: () => ({ onTicket: true, ticket: row.n, branch: "b", cwd: "w", fix: false, ...derived }),
-        facts,
-        ledger: () => rows.slice(0, i + 1),
-      } as never);
-      assert.equal(route.phase, Object.keys(next.phases)[0] ?? "G", `#${row.n} after its ${row.outcome} row at ${row.started}`);
-      replayed += 1;
-    });
-    assert.equal(replayed, 86);
   });
 
   test("a row names the route's title and size and the review rounds read after the session, with no tracker read of its own", async () => {
@@ -832,82 +842,16 @@ describe("runOnce", () => {
     ]);
   });
 
-  test("nextRoute: a resumed ticket carries its issue's title and review rounds, not its branch name", () => {
-    const facts = () => ({ title: "Fix the card fan!", url: "", size: "size:S", labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
-    const read = () => ({ onTicket: true, ticket: 42, branch: "agent/42-fix-the-card-fan", cwd: "w", phase: "D", reviewRounds: 3 });
-    const route: any = nextRoute(null, null, { read, facts, ledger: () => [] } as never);
-    assert.deepEqual([route.title, route.reviewRounds], ["Fix the card fan!", 3]);
-  });
-
-  test("nextRoute: a pinned ticket with no worktree rebuilds at A", () => {
-    const facts = () => ({ title: "Fix the card fan!", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
-    const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "E" }, head: null }];
-    const stranded: any = nextRoute(42, null, { read: () => ({ onTicket: false, phase: "A" }), facts, ledger } as never);
-    assert.deepEqual([stranded.phase, stranded.resuming], ["A", true]);
-    assert.equal(stranded.branch, "agent/42-fix-the-card-fan", "no claim runs on a resume, so the route names the branch the claim would");
-  });
-
-  test("nextRoute: a pinned ticket the tracker no longer shows as ours goes back to the picker", () => {
-    const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "E" }, head: null }];
-    const picked: number[] = [];
-    const picker = () => {
-      picked.push(1);
-      return { skill: "implement", number: 77, title: "other", size: "size:S", queue: { implement: 3, triage: 0, wayfinder: 0, owner: 1, launch: 0 } };
-    };
-    const route = (labels: string[] | null) =>
-      nextRoute(42, null, {
-        read: () => ({ onTicket: false, phase: "A" }),
-        facts: () => ({ title: "t", url: "", size: "size:S", labels, reviewRounds: 1, ciRounds: 0 }),
-        ledger,
-        picker,
-      } as never);
-    for (const labels of [["in-progress", "ready-for-human"], ["size:S"], ["in-progress", "deferred"]]) {
-      const r: any = route(labels);
-      assert.deepEqual([r.skill, r.number, r.resuming], ["implement", 77, false], labels.join(","));
-    }
-    assert.equal(picked.length, 3);
-    const unread: any = route(null);
-    assert.deepEqual([unread.number, unread.resuming, unread.phase], [42, true, "A"], "an unreadable tracker keeps resuming");
-    // An overloaded hold of a session the API failed before its phase-A claim: still ours, and its
-    // kept worktree is waiting for it.
-    const unclaimed: any = route(["ready-for-agent", "size:S"]);
-    assert.deepEqual([unclaimed.number, unclaimed.resuming, unclaimed.phase], [42, true, "A"], "a pre-claim hold keeps resuming");
-    assert.equal(picked.length, 3);
-  });
-
-  test("nextRoute: a LAND on the head outranks a handoff to review, and nothing else does", () => {
-    const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
-    const toReview = () => [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "D" }, head: null }];
-    const at = (phase: string, pinned: string | null = null) =>
-      nextRoute(42, pinned as never, {
-        read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase, fix: false }),
-        facts,
-        ledger: toReview,
-      } as never).phase;
-    assert.deepEqual([at("E"), at("E", "D"), at("D"), at("C")], ["E", "E", "D", "D"]);
-  });
-
   test("a closed ticket whose worktree still stands is torn down and the queue picked again, with no spawn on it", async () => {
-    const facts = (state: string, labels: string[]) => () =>
-      ({ title: "t", url: "", size: null, labels, reviewRounds: 1, ciRounds: 0, state }) as never;
-    const status = { onTicket: true, ticket: 7, branch: "agent/7-x", cwd: "w7", phase: "C", fix: false };
-    for (const labels of [["in-progress"], []]) {
-      const route: any = nextRoute(null, null, { read: () => status, facts: facts("CLOSED", labels), ledger: () => [] } as never);
-      assert.deepEqual([route.skill, route.number, route.cwd], ["closed", 7, "w7"]);
-    }
-    const open: any = nextRoute(null, null, { read: () => status, facts: facts("OPEN", ["in-progress"]), ledger: () => [] } as never);
-    assert.equal(open.skill, "implement");
-
-    const picks: unknown[] = [];
+    const order: string[] = [];
     const torn: unknown[] = [];
     const spawned: number[] = [];
-    const routes = [{ skill: "closed", number: 7, title: "t", cwd: "w7", queue: null, resuming: false }, undefined];
+    const standings: object[] = [standing42({ ticket: 7, branch: "agent/7-x", cwd: "w7" }), { onTicket: false, phase: "A" }];
     const r = await runOnce(
       io({
-        pick: (p: unknown, at: unknown) => {
-          picks.push([p, at]);
-          return routes.shift() ?? io().ports.tracker.pick();
-        },
+        derive: () => standings.shift(),
+        facts: (n: number) => (order.push(`facts ${n}`), n === 7 ? { title: "t", size: null, labels: ["in-progress"], reviewRounds: 1, state: "CLOSED" } : io().ports.tracker.facts()),
+        pick: () => (order.push("pick"), io().ports.tracker.pick()),
         remove: (cwd: string | null, n: number) => torn.push([cwd, n]),
         spawn: async (s: { number: number }) => {
           spawned.push(s.number);
@@ -917,24 +861,23 @@ describe("runOnce", () => {
       7,
       "C",
     );
-    assert.deepEqual([torn[0], spawned, picks, r.ticket], [["w7", 7], [42], [[7, "C"], [null, null]], 42]);
+    assert.deepEqual([torn[0], spawned, order.slice(0, 2), r.ticket], [["w7", 7], [42], ["facts 7", "pick"], 42]);
   });
 
   test("a closed ticket unrelated to the pinned one keeps the pin, and its phase, on re-pick", async () => {
-    const picks: unknown[] = [];
-    const routes = [{ skill: "closed", number: 7, title: "t", cwd: "w7", queue: null, resuming: false }, undefined];
+    const spawned: unknown[] = [];
+    const standings: object[] = [standing42({ ticket: 7, branch: "agent/7-x", cwd: "w7" }), standing42({ ticket: 99, branch: "agent/99-x" })];
     await runOnce(
       io({
-        pick: (p: unknown, at: unknown) => {
-          picks.push([p, at]);
-          return routes.shift() ?? io().ports.tracker.pick();
-        },
+        derive: () => standings.shift(),
+        facts: (n: number) => (n === 7 ? { title: "t", size: null, labels: [], reviewRounds: 1, state: "CLOSED" } : io().ports.tracker.facts()),
         remove: () => {},
+        spawn: async (s: { number: number; phase: string }) => (spawned.push([s.number, s.phase]), io().ports.session.spawn()),
       }),
       99,
       "D",
     );
-    assert.deepEqual(picks, [[99, "D"], [99, "D"]]);
+    assert.deepEqual(spawned, [[99, "D"]]);
   });
 
   test("an ff failure before a fix parks", async () => {
@@ -942,18 +885,7 @@ describe("runOnce", () => {
     let spawns = 0;
     const r = await runOnce(
       io({
-        pick: () => ({
-          skill: "implement",
-          number: 42,
-          title: "t",
-          size: null,
-          queue: null,
-          resuming: true,
-          phase: "C",
-          fix: true,
-          cwd: ".worktrees/agent-42",
-          branch: "agent/42-x",
-        }),
+        ...fixing42("h9"),
         refreshWorktree: () => {
           throw Object.assign(new Error("Command failed: git merge"), {
             stderr: "fatal: Not possible to fast-forward, aborting.\nhint: x",
@@ -1025,50 +957,6 @@ describe("runOnce", () => {
     }
   });
 
-  test("an unreadable CI read on a head not known pushed is not a no-spawn G", () => {
-    const route: any = nextRoute(null, null, {
-      read: () => ({
-        onTicket: true,
-        ticket: 42,
-        branch: "agent/42-x",
-        cwd: "w",
-        phase: "G",
-        fix: false,
-        ci: { state: "unreadable", pushed: false, pr: 5 },
-      }),
-      facts: () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 }),
-      ledger: () => [],
-    } as never);
-    assert.equal(route.phase, "E");
-  });
-
-  test("a handed phase wins over a derived fix; only a pushed G outranks it", () => {
-    const status = { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", fix: true };
-    const deps = (s: object) =>
-      ({
-        read: () => s,
-        facts: () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 }),
-        ledger: () => [],
-      }) as never;
-    const handed: any = nextRoute(42, "D" as never, deps({ ...status, phase: "C", ci: { pushed: true, state: "red" } }));
-    assert.deepEqual([handed.phase, handed.fix], ["D", true]);
-    const settling: any = nextRoute(42, "D" as never, deps({ ...status, fix: false, phase: "G", ci: { pushed: true } }));
-    assert.equal(settling.phase, "G");
-  });
-
-  const fixRoute = (head: string) => ({
-    skill: "implement",
-    number: 42,
-    title: "t",
-    size: null,
-    queue: null,
-    resuming: true,
-    phase: "C",
-    fix: true,
-    head,
-    cwd: ".worktrees/agent-42",
-    branch: "agent/42-x",
-  });
   const retryRow = (head: string) => ({ n: 42, outcome: "retry", cost: 1, park_reason: null, head });
 
   test("a red round nobody recorded counts toward the cap, and the last one parks before the refresh", async () => {
@@ -1077,7 +965,7 @@ describe("runOnce", () => {
     const r = await runOnce(
       io(
         {
-          pick: () => fixRoute("h3"),
+          ...fixing42("h3"),
           refreshWorktree: () => order.push("refresh"),
           spawn: async () => order.push("spawn") as never,
           park: (_n: number, c: { why: string }) => order.push(c.why),
@@ -1099,7 +987,7 @@ describe("runOnce", () => {
       const r = await runOnce(
         io(
           {
-            pick: () => fixRoute("h2"),
+            ...fixing42("h2"),
             refreshWorktree: () => {},
             tally: (n: number) => ({ ...ticketTally(n, ledger), ciRounds }),
             spawn: async (s: { retryCount: number }) => {
@@ -1135,7 +1023,8 @@ describe("runOnce", () => {
       const r = await runOnce(
         io(
           {
-            pick: () => nextRoute(null, null, { read: () => held, facts, ledger: () => ledger } as never),
+            derive: () => held,
+            facts,
             pushedPr: () => ({ number: 5, state: "OPEN", head: "agent/42-x", sha: "h1" }),
             settle: async () => (order.push("settle"), { action: "hold", reason: "CI-RED for h1 could not be posted", head: "h1" }),
             spawn: async () => order.push("spawn") as never,
@@ -1162,7 +1051,8 @@ describe("runOnce", () => {
       };
       const fake = io(
         {
-          pick: () => nextRoute(null, null, { read, facts, ledger: () => ledger } as never),
+          derive: read,
+          facts,
           pushedPr: () => ({ number: 5, state: "OPEN", head: "agent/42-x", sha: "h1" }),
           refreshWorktree: () => {},
           settle: async () =>
@@ -1186,7 +1076,7 @@ describe("runOnce", () => {
   test("a red round nobody recorded is written down before the fix round; a recorded one is not", async () => {
     const spawn = async () => ({ status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null });
     const unrecorded: any[] = [retryRow("h1")];
-    await runOnce(io({ pick: () => fixRoute("h2"), refreshWorktree: () => {}, spawn }, unrecorded), 42);
+    await runOnce(io({ ...fixing42("h2"), refreshWorktree: () => {}, spawn }, unrecorded), 42);
     assert.deepEqual(unrecorded.map((x) => [x.outcome, x.head, x.cost]), [
       ["retry", "h1", 1],
       ["retry", "h2", 0],
@@ -1194,7 +1084,7 @@ describe("runOnce", () => {
       ["landed", null, 0],
     ]);
     const recorded: any[] = [retryRow("h1")];
-    await runOnce(io({ pick: () => fixRoute("h1"), refreshWorktree: () => {}, spawn }, recorded), 42);
+    await runOnce(io({ ...fixing42("h1"), refreshWorktree: () => {}, spawn }, recorded), 42);
     assert.deepEqual(recorded.map((x) => x.outcome), ["retry", "pushed", "landed"]);
   });
 
@@ -1204,7 +1094,7 @@ describe("runOnce", () => {
       seen.push([r.fix, r.retryCount]);
       return { status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null };
     };
-    await runOnce(io({ pick: () => fixRoute("h2"), refreshWorktree: () => {}, spawn }, [retryRow("h1")]), 42);
+    await runOnce(io({ ...fixing42("h2"), refreshWorktree: () => {}, spawn }, [retryRow("h1")]), 42);
     assert.deepEqual(seen, [[true, 2]]);
   });
 
@@ -1212,7 +1102,7 @@ describe("runOnce", () => {
     const parked: string[] = [];
     await runOnce(
       io({
-        pick: () => ({ skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "G" }),
+        ...settling42(),
         pushedPr: () => null,
         park: (_n: number, c: { why: string }) => parked.push(c.why),
       }),
@@ -1744,7 +1634,7 @@ describe("the run recap", () => {
   // The literal, not the module's constant: ten passes outlast a short GitHub outage, and a test
   // reading the value it pins moves with it.
   const TICKET_HOLDS = 10;
-  const heldRoute = { skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "G", cwd: "w", branch: "agent/42-x" };
+  const heldRun = standing42({ phase: "G", cwd: "w", ci: { pushed: true, state: "settling", sha: "a" } });
   const unposted = { action: "hold", reason: "CI-RED for h1 could not be posted", head: "h1" };
   const heldNight = async (stopAfter: number, preflights = 0) => {
     const parked: number[] = [];
@@ -1764,7 +1654,7 @@ describe("the run recap", () => {
       ...(io() as any),
       stopFile: () => passes++ >= stopAfter,
       housekeeping: () => (checks++ < preflights ? { verdict: "hold", why: "drift", rows: [] } : { verdict: "ok", rows: [] }),
-      pick: () => heldRoute,
+      derive: () => heldRun,
       settle: async () => unposted,
       park: (n: number) => parked.push(n),
     };
@@ -1798,7 +1688,7 @@ describe("the run recap", () => {
     const spy = {
       ...(io() as any),
       stopFile: () => passes++ > TICKET_HOLDS + 1,
-      pick: () => heldRoute,
+      derive: () => heldRun,
       settle: async () => unposted,
       park: (n: number, c: { why: string }) => parked.push({ n, why: c.why }),
     };
@@ -1900,11 +1790,9 @@ describe("a handoff", () => {
     let n = 0;
     const spy = {
       ...(io() as any),
-      pick: (_pinned: number | null, phase: string | null) => {
-        at.push(phase);
-        return { skill: "implement", number: 41, title: "t", size: "size:S", queue: null };
-      },
-      spawn: async () => ({
+      pick: () => ({ skill: "implement", number: 41, title: "t", size: "size:S", queue: null }),
+      derive: () => (n >= 1 ? standing42({ ticket: 41, branch: "agent/41-x" }) : { onTicket: false, phase: "A" }),
+      spawn: async (route: { resuming: boolean; phase: string }) => (at.push(route.resuming ? route.phase : null), {
         status: 0,
         blocked: false,
         result: { cost: 1, turns: 2 },
@@ -1930,16 +1818,13 @@ describe("a park asked from the board", () => {
     const cwd = process.cwd();
     const dir = mkdtempSync(path.join(tmpdir(), "park-"));
     const parked: { why: string; cwd: string | null; dirty: boolean }[] = [];
-    const picks: (number | null)[] = [];
+    const resumed: boolean[] = [];
     let n = 0;
     const spy = {
       ...(io() as any),
-      pick: (pinned: number | null) => {
-        picks.push(pinned);
-        if (picks.length > 2) return null;
-        return { skill: "implement", number: 41, title: "t", size: "size:S", queue: null };
-      },
-      spawn: async () => ({
+      pick: () =>
+        resumed.length >= 2 ? { skill: "handoff", number: 0, title: "queue empty" } : { skill: "implement", number: 41, title: "t", size: "size:S", queue: null },
+      spawn: async (route: { resuming: boolean }) => (resumed.push(route.resuming), {
         status: 0,
         blocked: false,
         result: { cost: 1, turns: 2 },
@@ -1957,7 +1842,7 @@ describe("a park asked from the board", () => {
       writeFileSync(".loop-park", "41\n");
       await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
       assert.deepEqual(parked[0], { why: "parked by owner", cwd: ".worktrees/agent-41", dirty: true }, "the worktree's edits are kept");
-      assert.equal(picks[1], null, "a parked ticket is not pinned for the next pass");
+      assert.deepEqual(resumed, [false, false], "a parked ticket is not pinned for the next pass");
       assert.equal(existsSync(".loop-park"), false);
     } finally {
       process.chdir(cwd);
@@ -1996,7 +1881,7 @@ describe("a park asked from the board", () => {
     try {
       process.chdir(dir);
       writeFileSync(".loop-park", "42\n");
-      await main({ io: io({ pick: () => (picks++ ? null : io().ports.tracker.pick()) }), book: book(), screen: board, install: () => {}, runId: "t" });
+      await main({ io: io({ pick: () => (picks++ ? { skill: "handoff", number: 0, title: "queue empty" } : io().ports.tracker.pick()) }), book: book(), screen: board, install: () => {}, runId: "t" });
       assert.ok(said.some((m) => /^park: #42 landed before the park could act/.test(m)), JSON.stringify(said));
       assert.equal(existsSync(".loop-park"), false);
     } finally {
@@ -2047,8 +1932,7 @@ describe("a session's cost is in the ledger before CI is waited on", () => {
     await assert.rejects(died, /killed/);
     assert.equal(ticketTally(42, ledger).spend, 1);
 
-    const g = { skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "G" };
-    const r = await runOnce(io({ pick: () => g }, ledger));
+    const r = await runOnce(io(settling42(), ledger));
     assert.equal(r.outcome, "landed");
     assert.equal(ledger.reduce((a, x) => a + x.cost, 0), 1);
   });
@@ -2115,7 +1999,9 @@ describe("a ticket's tally comes from the ledger, not from memory", () => {
   const plan = (sessions: object[]) => {
     let s = 0;
     return {
-      pick: (_p: number | null, at: string | null) => (s < sessions.length ? { ...ticket, at } : done),
+      pick: () => (s < sessions.length ? ticket : done),
+      // Once its first session has run, the ticket's worktree stands and is what the next pass resumes.
+      derive: () => (s === 0 ? { onTicket: false, phase: "A" } : s < sessions.length ? standing42() : { onTicket: false, ambiguous: true, why: "the plan is spent" }),
       spawn: async () => sessions[s++],
     };
   };
@@ -2131,21 +2017,18 @@ describe("a ticket's tally comes from the ledger, not from memory", () => {
   test("a retry resets handoffsThisRound and the handed phase", async () => {
     const at: (string | null)[] = [];
     const parked: string[] = [];
-    const sessions = [...Array(MAX_HANDOFFS - 1).fill(0).map(() => session(1, "D")), session(1, null), session(1, "E")];
+    const sessions = [...Array(MAX_HANDOFFS - 1).fill(0).map(() => session(1, "D")), session(1, null), session(1, "E"), session(1, "C")];
     const p = plan(sessions);
     await go(
       io({
         ...p,
-        pick: (pin: number | null, phase: string | null) => {
-          at.push(phase);
-          return p.pick(pin, phase);
-        },
+        spawn: async (route: { resuming: boolean; phase: string }) => (at.push(route.resuming ? route.phase : null), p.spawn()),
         ...red("h1"),
         park: (_n: number, c: { why: string }) => parked.push(c.why),
       }),
     );
     assert.deepEqual(parked, []);
-    assert.deepEqual(at, [null, ...Array(MAX_HANDOFFS - 1).fill("D"), null, "E"]);
+    assert.deepEqual(at, [null, ...Array(MAX_HANDOFFS - 1).fill("D"), "C", "E"]);
   });
 
   test("the retry session's cost counts toward the spend ceiling", async () => {
@@ -2199,7 +2082,8 @@ describe("a ticket's tally comes from the ledger, not from memory", () => {
     const cwds: (string | null)[] = [];
     await go(
       io({
-        pick: once({ ...ticket, resuming: true, phase: "C" }),
+        derive: once(standing42()),
+        pick: () => done,
         sharedCheckoutDirty: () => {
           throw new Error("index.lock");
         },
@@ -2253,19 +2137,20 @@ describe("a session the API failed", () => {
   });
 
   test("in phase E, with a pull request open, E is spawned again rather than the head settled", async () => {
-    const picked: [number | null, string | null][] = [];
+    let picked = 0;
     const phases: string[] = [];
     let settled = 0;
     await night({
       stopFile: () => phases.length >= 2,
-      pick: (p: number | null, at: string | null) => (picked.push([p, at]), ticket),
+      pick: () => (picked++, ticket),
+      derive: () => (phases.length ? standing42({ phase: "E" }) : { onTicket: false, phase: "A" }),
       spawn: async (route: { phase: string }) => (phases.push(route.phase), died(overloaded)()),
       pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x" }),
       settle: async () => (settled++, { action: "already-merged" }),
     });
     assert.equal(settled, 0);
     assert.deepEqual(phases, ["E", "E"]);
-    assert.deepEqual(picked, [[null, null], [42, null]]);
+    assert.equal(picked, 1, "the held ticket is resumed from its worktree, not picked again");
   });
 
   test(`${WAIT.TRIES} in a row end the run and say why; a served session in between resets the count`, async () => {
@@ -2414,7 +2299,7 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
     const settle = (p: any) => runSettle(p, () => {}, 0, 60_000, { run, stateOf: () => red, write: () => {}, mkdir: () => {}, mainFailures: () => null });
     const r = await runOnce(
       io({
-        pick: () => ({ skill: "implement", number: 42, title: "t", size: "size:S", queue: null, resuming: true, phase: "G" }),
+        ...settling42(),
         spawn: async () => (calls.push(["spawn"]), null) as never,
         settle,
       }),
@@ -2437,28 +2322,6 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
     assert.equal(r.outcome, "overloaded");
   });
 
-  test("nextRoute: a pushed head settles ahead of a handoff the ledger holds from before the push", () => {
-    const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
-    const rows = [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "C", why: "a declared one" }, head: "a" }];
-    const route: any = nextRoute(42, ticketTally(42, rows as never).lastHandoff as never, {
-      read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true } }),
-      facts,
-      ledger: () => rows,
-    } as never);
-    assert.equal(route.phase, "G");
-  });
-
-  describe("nextRoute: a red no CI-RED names", () => {
-    const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
-    const status = { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true, state: "settling", sha: "abc" } };
-    const route = (rows: object[]): any => nextRoute(null, null, { read: () => status, facts, ledger: () => rows } as never);
-
-    test("is G, so poll posts its CI-RED, whether the supervisor held it or stopped mid-settle", () => {
-      const held = [{ n: 42, outcome: "hold", head: "abc", cost: 0 }];
-      const earlier = [{ n: 42, outcome: "retry", head: "old", cost: 0 }];
-      assert.deepEqual([route(held), route([]), route(earlier)].map((r) => [r.phase, r.fix]), [["G", false], ["G", false], ["G", false]]);
-    });
-  });
 });
 
 describe("queue-loop.mjs --check", () => {

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { decide, WAIT } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
-import { BREAKER, CI_ROUNDS, MAX_HANDOFFS, nextRoute, SETTLE, TICKET_HOLDS, UPDATES } from "../queue-loop.mjs";
+import { BREAKER, CI_ROUNDS, MAX_HANDOFFS, SETTLE, TICKET_HOLDS, UPDATES } from "../queue-loop.mjs";
 import { ledgerFixture } from "./helpers/ledgerFixture.ts";
 import { USD_BY_SIZE, USD_DEFAULT } from "../loop-cost.mjs";
 import { READ_RETRIES } from "../settle.mjs";
@@ -46,24 +46,13 @@ const fixRoute = (rows: object[] = [], known: object = {}) =>
  */
 const choose = ({ world, ...input }: { world: World; pinned: number | null; at: string | null; repicked: boolean }) => {
   const asked: string[] = [];
-  let knownRead = false;
-  const standing = world.standing as { onTicket?: boolean; ticket?: number };
-  const route = nextRoute(input.pinned, input.at as never, {
-    read: () => (asked.push("standing"), world.standing),
-    facts: (n: number) => {
-      if (!knownRead && standing.onTicket && n === standing.ticket) {
-        knownRead = true;
-        asked.push("known");
-        return world.known;
-      }
-      asked.push("pinnedFacts");
-      return world.pinnedFacts;
-    },
-    ledger: () => world.rows,
-    picker: () => (asked.push("picked"), world.picked),
-  } as never) as Record<string, any>;
-  const tally = { ...ticketTally(route.number, world.rows as never), ciRounds: route.ciRounds ?? 0 };
-  return { ...decide({ ...input, route: { ...route, n: route.number }, tally }), route, asked };
+  const facts: Record<string, unknown> = { ...input };
+  for (;;) {
+    const action = decide(facts);
+    if (action.kind !== "ask") return { ...action, asked: asked.filter((f) => f !== "tally") };
+    asked.push(action.fact);
+    facts[action.fact] = action.fact === "tally" ? ticketTally(action.n, world.rows as never) : world[action.fact as keyof World];
+  }
 };
 
 const said = (over: object = {}) => ({ ticket: 42, branch: "agent/42-x", pr: null, phase: "C", handoff: null, stoodDown: false, why: null, ...over });
@@ -110,7 +99,7 @@ const ROWS: Row[] = [
   ["an ambiguous pick stops rather than taking a third ticket", pick({ standing: { onTicket: false, phase: "A", ambiguous: true, why: "two live worktrees" } }),
     { kind: "stop", why: "two live worktrees", asked: ["standing"] }],
   ["a closed ticket whose worktree still stands is torn down and the queue picked again, with no spawn on it", pick({ standing: live({ cwd: "w7" }), known: issue({ state: "CLOSED" }) }, { pinned: 42, loop: { ...fresh, pinned: 42 } }),
-    { kind: "repick", n: 42, loop: fresh, asked: ["standing", "known"] }],
+    { kind: "repick", n: 42, cwd: "w7", loop: fresh, asked: ["standing", "known"] }],
   ["a closed ticket with no labels left is closed all the same", pick({ standing: live(), known: issue({ state: "CLOSED", labels: [] }) }), { kind: "repick", n: 42 }],
   ["an open live ticket is not closed", pick({ standing: live() }), { kind: "go", route: { skill: "implement", number: 42 } }],
   ["a closed ticket unrelated to the pinned one keeps the pin, and its phase, on re-pick", pick({ standing: live({ ticket: 9, branch: "agent/9-x" }), known: issue({ state: "CLOSED" }) }, { pinned: 42, loop: { ...fresh, pinned: 42 } }),
@@ -126,7 +115,7 @@ const ROWS: Row[] = [
   ["a CI-RED already posted for the unrecorded head counts that round once, not twice", fixRoute([redRow("h2")], { ciRounds: 2 }), { kind: "go", redWhileDown: true }],
   ["runOnce: a tracker's CI-RED count past the ledger's reaches the cap", fixRoute([], { ciRounds: CI_ROUNDS }), { kind: "park", phase: "C" }],
 
-  // the live run: liveRoute's rules
+  // the pick: whether the standing run is resumed
   ["no route when no ticket is live — the picker should run", pick({ standing: { onTicket: false } }), { kind: "go", route: { number: 42, resuming: false }, asked: ["standing", "picked"] }],
   ["a clean derive off a ticket is still no route", pick(), { kind: "go", route: { resuming: false }, asked: ["standing", "picked"] }],
   ["an ambiguous derive is a route, not an absence", pick({ standing: { onTicket: false, ambiguous: true, why: "2 live agent/* worktrees" } }), { kind: "stop", why: /2 live/ }],
@@ -138,7 +127,7 @@ const ROWS: Row[] = [
   ["falls back to a bare ticket label when derive() found no branch (the stuck/'?' case)", pick({ standing: live({ ticket: 911, branch: null, phase: "?" }), known: issue({ title: undefined }) }),
     { kind: "go", route: { number: 911, title: "ticket #911", phase: "C", resuming: true } }],
 
-  // the live run's phase and the pin: nextRoute's rules
+  // the pick: the resumed run's phase, and the pin
   ["a resumed ticket carries its issue's title and review rounds, not its branch name", pick({ standing: live({ branch: "agent/42-fix-the-card-fan", phase: "D", reviewRounds: 3 }), known: issue({ title: "Fix the card fan!" }) }),
     { kind: "go", route: { title: "Fix the card fan!", reviewRounds: 3 } }],
   ["a pinned ticket with no worktree rebuilds at A", pick({ pinnedFacts: issue({ title: "Fix the card fan!", size: null }), rows: [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "E" }, head: null }] }, { pinned: 42 }),
@@ -488,6 +477,7 @@ const ELSEWHERE: Record<string, [file: string, why: string]> = {
   "no terminal outcome leaves the worktree standing": ["queueLoopMain.test.ts", "io"],
   "housekeeping is asked about the pinned ticket, and waited for": ["queueLoopMain.test.ts", "io"],
   "a pinned ticket is what the picker is asked for": ["queueLoopMain.test.ts", "picker"],
+  "a pick reads the standing run once, then only the issue or picker its answer needs": ["queueLoopMain.test.ts", "io: the reads a pick costs"],
   "a park rings once and a landing does not": ["queueLoopMain.test.ts", "io"],
   "each with its timestamp and, once a ticket is picked, its number": ["queueLoopMain.test.ts", "io"],
   "a journal that throws costs the line, never the loop": ["queueLoopMain.test.ts", "io"],
@@ -495,17 +485,10 @@ const ELSEWHERE: Record<string, [file: string, why: string]> = {
   "loopMoved answers a diff, not an error": ["queueLoopMain.test.ts", "io"],
   "a refused session's dirty worktree is left standing as it is, with no copy taken": ["queueLoopMain.test.ts", "io"],
   "the sweep in housekeeping runs before the pick": ["queueLoopMain.test.ts", "io"],
-  "nextRoute replays 2026-09-21/22: every session starts where the ledger before it pointed": ["queueLoopMain.test.ts", "picker"],
-  "nextRoute: a pinned ticket with no worktree rebuilds at A": ["queueLoopMain.test.ts", "picker"],
-  "nextRoute: a pinned ticket the tracker no longer shows as ours goes back to the picker": ["queueLoopMain.test.ts", "picker"],
-  "nextRoute: a LAND on the head outranks a handoff to review, and nothing else does": ["queueLoopMain.test.ts", "picker"],
-  "nextRoute: a pushed head settles ahead of a handoff the ledger holds from before the push": ["queueLoopMain.test.ts", "picker"],
   "refreshWorktree fetches the branch and fast-forwards onto it": ["queueLoopMain.test.ts", "io"],
   "publishForReview pushes, then opens it ready only when no pull request is open": ["queueLoopMain.test.ts", "io"],
   "a landed or parked ticket removes the worktree from the main checkout": ["queueLoopMain.test.ts", "io"],
   "prints the pick through the real ports and writes nothing to the tracker": ["queueLoopMain.test.ts", "io"],
-  "an unreadable CI read on a head not known pushed is not a no-spawn G": ["queueLoopMain.test.ts", "picker"],
-  "a handed phase wins over a derived fix; only a pushed G outranks it": ["queueLoopMain.test.ts", "picker"],
   "a fix round's spawn carries the rounds already spent": ["queueLoopMain.test.ts", "io"],
   "landing deletes the branch after the worktree, from the shared checkout": ["queueLoopMain.test.ts", "io"],
   "a branch -d refuses is said, and the land still returns": ["queueLoopMain.test.ts", "io"],
@@ -537,7 +520,6 @@ const ELSEWHERE: Record<string, [file: string, why: string]> = {
   "a row names the route's title and size and the review rounds read after the session, with no tracker read of its own": ["queueLoopMain.test.ts", "io"],
   "a derive off the ticket, or with no count, is not the ticket's review rounds; the tracker's are": ["queueLoopMain.test.ts", "io"],
   "a row main writes names its ticket as the tracker does: a repark, and the park after a throw": ["queueLoopMain.test.ts", "io"],
-  "nextRoute: a resumed ticket carries its issue's title and review rounds, not its branch name": ["queueLoopMain.test.ts", "picker"],
   "a retry resets handoffsThisRound and the handed phase": ["queueLoopMain.test.ts", "tally"],
   "overSpend, overHandoffs, the no-commit park and a thrown iteration each write exactly one parked row": ["queueLoopMain.test.ts", "io"],
   "a throw during a resumed run parks with standing().cwd": ["queueLoopMain.test.ts", "io"],
@@ -547,7 +529,6 @@ const ELSEWHERE: Record<string, [file: string, why: string]> = {
   "a landing a rerun won writes the flake on its row": ["queueLoopMain.test.ts", "io"],
   "a rerun's green whose merge then failed still writes the flake, on the park row": ["queueLoopMain.test.ts", "io"],
   "a red whose CI-RED a settle could not post reaches its fix round with exactly one posted": ["queueLoopMain.test.ts", "io: three passes, one CI-RED"],
-  "is G, so poll posts its CI-RED, whether the supervisor held it or stopped mid-settle": ["queueLoopMain.test.ts", "picker"],
   "a ticket's hold says which ticket and why, not a pre-flight's words": ["queueLoopMain.test.ts", "io: main's notice"],
   "the settle is handed the flake the ledger armed with, and writes an armed row when it arms": ["queueLoopMain.test.ts", "io"],
   "a red on an armed pull request is disarmed before any fix round is spawned": ["queueLoopMain.test.ts", "io: poll's call order"],

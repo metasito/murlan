@@ -25,7 +25,6 @@ import {
 import { report, standing } from "../loop-status.mjs";
 import { park } from "../queue-loop.mjs";
 import { ciRedBody } from "../settle.mjs";
-import { reasonFor } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
 
 const callersPhase = process.env.LOOP_PHASE;
@@ -228,8 +227,7 @@ describe("counting review rounds", () => {
     assert.match(body, /^Parked by the queue loop/);
     return { body };
   };
-  const stoodDown = () =>
-    parkedFor(String(reasonFor({ status: 0, declared: { pr: null, stoodDown: true, why: "round 3 still blocks" } }, { ticket: 1 }, 1).why));
+  const stoodDown = () => parkedFor("round 3 still blocks");
   const parkedBeforeThisChange = {
     body: [
       "Parked by the queue loop in **phase D**.",
