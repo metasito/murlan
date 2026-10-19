@@ -63,9 +63,9 @@ jest.mock('@/context/GameContext', () => ({
   }),
 }));
 
-jest.mock('@/context/NotificationContext', () => ({
-  useNotification: () => ({ showNotification: jest.fn() }),
-}));
+jest.mock('@/context/NotificationContext', () =>
+  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
+);
 
 import GameScreen, { HUMAN_TURN_SECONDS } from '@/app/game';
 import { cardSpokenName } from '@/lib/cardNames';

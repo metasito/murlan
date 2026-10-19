@@ -34,9 +34,9 @@ import type { MatchLength } from "@/lib/game/gameEngine";
 import type { RoundOverPayload, MatchVerdict, RatingAfter } from "@/lib/game/matchState";
 import {
   exchangeAnnouncementOf,
-  useExchangeAnnouncement,
   type ExchangeAnnounceData,
 } from "@/lib/game/sharedGameFlow";
+import { useExchangeAnnouncement } from "@/context/useExchangeAnnouncement";
 import type { BotPersonalityId } from "@/lib/game/botPersonalities";
 import { LADDER_KEY } from "@/lib/ladderQuery";
 import { useOwnLink } from "@/lib/useOwnLink";
@@ -271,7 +271,7 @@ export interface TurnDeadline {
 const NO_TURN_DEADLINE: TurnDeadline = { turnSecondsRemaining: 0 };
 
 export function OnlineGameProvider({ userId, children }: { userId: string; children: ReactNode }) {
-  const { showNotification } = useNotification();
+  const { showNotification, notifyError } = useNotification();
   const qc = useQueryClient();
   const [room, setRoom] = useState<RoomState | null>(null);
   const [gameState, setGameState] = useState<WireGameState | null>(null);
@@ -713,15 +713,12 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     <E extends IntentEvent>(event: E, payload?: IntentPayload<E>, options?: { retry?: boolean }) => {
       void send(socket, event, payload, options).then((outcome) => {
         if (!undelivered(outcome)) return;
-        showNotification({
-          type: "game_error",
-          title: t("common.error"),
-          message: t(event.startsWith("game:") ? "game.moveNotDelivered" : "room.requestNotDelivered"),
+        notifyError(t(event.startsWith("game:") ? "game.moveNotDelivered" : "room.requestNotDelivered"), {
           duration: Reading.notice,
         });
       });
     },
-    [socket, showNotification]
+    [socket, notifyError]
   );
 
   const createRoom = useCallback((gameMode: "free_for_all" | "teams", maxPlayers: number) => {

@@ -27,9 +27,9 @@ jest.mock('@/context/SocketContext', () => ({
 }));
 
 const mockShowNotification = jest.fn();
-jest.mock('@/context/NotificationContext', () => ({
-  useNotification: () => ({ showNotification: mockShowNotification }),
-}));
+jest.mock('@/context/NotificationContext', () =>
+  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock(() => mockShowNotification)
+);
 
 /** The name the server reads for its notice is the dealt seat's, `gameState.players[seat].name`. */
 const DEALT: WireGameState = {

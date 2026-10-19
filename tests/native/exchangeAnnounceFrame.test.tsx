@@ -5,7 +5,7 @@ import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { StyleSheet, type ViewStyle } from 'react-native';
 import { act, render } from '@testing-library/react-native';
-import { LEG } from '@/lib/game/exchangeTimeline';
+import { LEG } from '@/lib/timeline/exchangeTimeline';
 import { Motion } from '@/lib/tokens';
 import { GEOMETRY, Legs, card, frames, announced } from './helpers/exchangeLegs';
 

@@ -18,8 +18,8 @@ jest.mock('@/lib/errorReporting', () => ({
 
 import { GameTable } from '@/components/GameTable';
 import { reportError } from '@/lib/errorReporting';
-import { GATE_WATCHDOG_MS } from '@/lib/game/gateWatchdog';
-import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
+import { GATE_WATCHDOG_MS } from '@/lib/timeline/gateWatchdog';
+import { choiceOpensAt } from '@/lib/timeline/exchangeTimeline';
 import { emptyRankTally, type Card, type GameState, type Player, type Rank, type Suit } from '@/lib/game/gameEngine';
 import { steps } from './helpers/steps';
 import { bootFeedback } from './helpers/feedback';

@@ -41,7 +41,7 @@ a run of arriving elements should sit inside.
   confirmed against a second system.
 - Frame check: no card in the deal moves before `t = 40ms`; at `t = 40ms + 42ms × n` the
   n-th card (0-indexed) has just started its own travel, matching `Motion.stagger.deal`
-  (`lib/game/dealTimeline.ts`), and no two cards' travel windows are byte-identical in start time.
+  (`lib/timeline/dealTimeline.ts`), and no two cards' travel windows are byte-identical in start time.
 
 **2. Casino dealing pace, as a real-product ceiling on how long a deal may take**
 `https://wizardofodds.com/ask-the-wizard/136/` and
@@ -61,7 +61,7 @@ casino product, not an afterthought.
   money-facing products tune and advertise, which argues against treating `stagger.deal`
   as a fixed constant nobody revisits.
 - Frame check: the full 13-card deal (`t=0` to its end at `t = 40 + 13×42 + 320 = 906ms`,
-  `dealEndMs` in `lib/game/dealTimeline.ts`) completes in under 1 second — nowhere near the
+  `dealEndMs` in `lib/timeline/dealTimeline.ts`) completes in under 1 second — nowhere near the
   ~42.9s/hand pace a real table tolerates, which is the point: our deal can afford to be
   unhurried relative to the casino floor, not raced against it.
 

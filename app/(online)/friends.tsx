@@ -61,9 +61,7 @@ export default function FriendsScreen() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchDone, setSearchDone] = useState(false);
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
-  const { showNotification } = useNotification();
-  const showError = (message: string) =>
-    showNotification({ type: "game_error", title: t("common.error"), message });
+  const { showNotification, notifyError } = useNotification();
 
   const {
     data: friends = [],
@@ -100,7 +98,7 @@ export default function FriendsScreen() {
     },
     onError: (e: unknown, _id: string, context?: { previous?: { id: string }[] }) => {
       qc.setQueryData([key], context?.previous);
-      showError(serverErrorMessage(e, t("friends.actionFailed")));
+      notifyError(serverErrorMessage(e, t("friends.actionFailed")));
     },
   });
 
@@ -192,7 +190,7 @@ export default function FriendsScreen() {
       setSearchDone(false);
       qc.invalidateQueries({ queryKey: ["/api/friends/sent"] });
     } catch (e: unknown) {
-      showError(serverErrorMessage(e, t("common.error")));
+      notifyError(serverErrorMessage(e, t("common.error")));
     }
     setAddLoading(false);
   }

@@ -25,6 +25,7 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
 import { MenuLayout } from '@/components/MenuLayout';
 import {
   NotificationProvider,
+  useBanner,
   useNotification,
   type NotificationData,
 } from '@/context/NotificationContext';
@@ -47,7 +48,8 @@ let measure: (bottom: number) => void = () => {};
 let dismiss: () => void = () => {};
 
 function Harness() {
-  const { showNotification, reportBannerBottom, dismissNotification } = useNotification();
+  const { showNotification } = useNotification();
+  const { reportBannerBottom, dismissNotification } = useBanner();
   raise = showNotification;
   measure = reportBannerBottom;
   dismiss = dismissNotification;

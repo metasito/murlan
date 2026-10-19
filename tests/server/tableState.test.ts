@@ -109,6 +109,7 @@ describe("a table's round trip through active_games", () => {
         maxPlayers: 4,
         roundsPlayed: 2,
         endedByVote: true,
+        matchOver: true,
       },
       seats: {
         vacatedSeats: [[1, { userId: "bob", username: "Bob" }]],
@@ -119,14 +120,24 @@ describe("a table's round trip through active_games", () => {
     });
   });
 
-  test("a single round that was over comes back as a finished match", () => {
-    const game = midMatch();
-    game.matchLength = "single";
-    game.endedByVote = false;
-    game.gameState = { ...game.gameState, roundOver: true };
-    const back = fromEnvelope(persisted(game));
-    assert.ok(back.ok);
-    assert.equal(back.game.matchOver, true);
+  describe("matchOver is stored, not re-derived (a boolean round trip; the fold's own verdict is tests/server/restoredVerdict.test.ts)", () => {
+    const restoredOver = (matchOver: boolean, scores: Record<string, number>) => {
+      const game = midMatch();
+      game.endedByVote = false;
+      game.matchOver = matchOver;
+      game.cumulativeScores = scores;
+      const back = fromEnvelope(persisted(game));
+      assert.ok(back.ok);
+      return back.game.matchOver;
+    };
+
+    test("a stored true survives scores that look unfinished", () => {
+      assert.equal(restoredOver(true, {}), true);
+    });
+
+    test("a stored false survives scores far past the target", () => {
+      assert.equal(restoredOver(false, { alice: 99, bob: 0 }), false);
+    });
   });
 
   test("a newer revision's row is refused as newer, an older one as unrestorable", () => {

@@ -12,7 +12,7 @@ import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GameProvider, useGame } from "@/context/GameContext";
 import { OFFLINE_SAVE_KEY, OFFLINE_SAVE_VERSION, decodeOfflineSave } from "@/lib/offlineSave";
-import { NotificationProvider, useNotification } from "@/context/NotificationContext";
+import { NotificationProvider, useBanner } from "@/context/NotificationContext";
 import { t } from "@/lib/i18n";
 
 const SETUP = [
@@ -100,7 +100,7 @@ function Probe() {
 }
 
 function NoticeProbe() {
-  const { notification } = useNotification();
+  const { notification } = useBanner();
   return <Text testID="notice">{notification?.title ?? "none"}</Text>;
 }
 

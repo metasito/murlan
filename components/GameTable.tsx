@@ -71,7 +71,7 @@ import {
 } from "@/components/cardFaceModel";
 import { ScorePill } from "@/components/table/scorePill";
 import type { MatchBoardActions, MatchRating } from "@/components/table/matchBoard";
-import { matchDim } from "@/lib/game/matchEnding";
+import { matchDim } from "@/lib/timeline/matchEnding";
 import { MOCKUP_SHORT_EDGE, scorePillBox, scorePillHitBox } from "@/components/table/scorePillModel";
 import { scorePillStandings } from "@/lib/game/scorePill";
 import { useTranslation } from "@/lib/i18n";
@@ -111,7 +111,7 @@ import { CardTableProvider, useCardTableValue } from "@/components/table/useCard
 import { lampPools } from "@/components/table/lampRig";
 import { useTableTimeline } from "@/components/table/tableTimeline";
 import { useRoundEnding } from "@/components/table/useRoundEnding";
-import { roundVoteShown } from "@/lib/game/roundEnding";
+import { roundVoteShown } from "@/lib/timeline/roundEnding";
 import { roundOutcomeFor, matchOutcomeFor, scoredOutcome } from "@/lib/game/matchState";
 import { ParticleLayer } from "@/components/table/particleLayer";
 import { HandRow } from "@/components/table/handRow";

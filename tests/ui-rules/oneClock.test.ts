@@ -6,7 +6,7 @@ import ts from "typescript";
 const root = path.resolve(import.meta.dirname, "..", "..");
 const SCOPE = ["app", "components", "context", "lib"].map((d) => path.join(root, d) + path.sep);
 const PROBE = path.join(root, "components", "__oneClockProbe.ts");
-const MOTION_FILES = ["components/flightPose.ts", "lib/game/dealTimeline.ts", "lib/game/exchangeTimeline.ts"].map((p) => path.join(root, p));
+const MOTION_FILES = ["components/flightPose.ts", "lib/timeline/dealTimeline.ts", "lib/timeline/exchangeTimeline.ts"].map((p) => path.join(root, p));
 const PHYSICS = path.join(root, "components", "flightPhysics.ts");
 const TOKENS = path.join(root, "lib", "tokens.ts");
 

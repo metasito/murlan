@@ -30,10 +30,9 @@ jest.mock('@/context/onlineGameHooks', () => ({
 }));
 
 const mockShowNotification = jest.fn();
-jest.mock('@/context/NotificationContext', () => ({
-  useNotification: () => ({ showNotification: mockShowNotification }),
-  useBannerBottom: () => 0,
-}));
+jest.mock('@/context/NotificationContext', () =>
+  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock(() => mockShowNotification)
+);
 
 jest.mock('@/lib/query-client', () => ({
   ...(jest.requireActual('@/lib/query-client') as object),

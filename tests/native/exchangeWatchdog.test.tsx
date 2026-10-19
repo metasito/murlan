@@ -19,7 +19,7 @@ jest.mock('@/lib/errorReporting', () => ({
 }));
 
 import { reportError } from '@/lib/errorReporting';
-import { GATE_WATCHDOG_MS } from '@/lib/game/gateWatchdog';
+import { GATE_WATCHDOG_MS } from '@/lib/timeline/gateWatchdog';
 import { Legs, announced, card } from './helpers/exchangeLegs';
 
 const advance = (ms: number) => act(async () => jest.advanceTimersByTime(ms));

@@ -11,16 +11,15 @@ jest.mock('expo-router', () => ({
 }));
 
 const mockShowNotification = jest.fn();
-jest.mock('@/context/NotificationContext', () => ({
-  useNotification: () => ({ showNotification: mockShowNotification }),
-  useBannerBottom: () => 0,
-}));
+jest.mock('@/context/NotificationContext', () =>
+  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock(() => mockShowNotification)
+);
 
 let mockUser: Record<string, unknown> = { id: 'u1', username: 'Ana' };
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({
     user: mockUser,
-    logout: async () => {},
+    forgetSession: async () => {},
     changePassword: async () => {},
     rename: async () => {},
   }),

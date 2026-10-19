@@ -39,13 +39,13 @@ jest.mock('@/lib/socket', () => ({
 }));
 
 jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, logout: async () => {} }),
+  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
 }));
 
 const mockShowNotification = jest.fn();
-jest.mock('@/context/NotificationContext', () => ({
-  useNotification: () => ({ showNotification: mockShowNotification }),
-}));
+jest.mock('@/context/NotificationContext', () =>
+  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock(() => mockShowNotification)
+);
 
 const { SocketProvider, useInvites } =
   require('@/context/SocketContext') as typeof import('@/context/SocketContext');

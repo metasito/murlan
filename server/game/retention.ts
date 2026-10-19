@@ -10,7 +10,15 @@
 import { lt, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { now } from "../http/clock.ts";
-import { events, clientErrors, roundReplays, authTokens, bugReports, serverErrors } from "../../shared/schema.ts";
+import {
+  activeGames,
+  events,
+  clientErrors,
+  roundReplays,
+  authTokens,
+  bugReports,
+  serverErrors,
+} from "../../shared/schema.ts";
 import { EVENT_RETENTION_DAYS } from "../socket/events.ts";
 import { CLIENT_ERROR_RETENTION_DAYS } from "../http/clientErrors.ts";
 import { SERVER_ERROR_RETENTION_DAYS } from "../http/serverErrors.ts";
@@ -19,6 +27,34 @@ import { BUG_REPORT_RETENTION_DAYS } from "../http/bugReports.ts";
 import { logger } from "../http/logger.ts";
 
 const DAY_MS = 24 * 60 * 60_000;
+
+/**
+ * How long an `active_games` row may sit untouched before it is abandoned.
+ *
+ * Every path that deletes a row walks the in-memory `activeGames`, which a
+ * restart empties — so a game live when the process went down, and never
+ * rejoined, is invisible to all of them. On a host that sleeps, that is every
+ * sleep with a game open.
+ *
+ * A day is far past any live game: `persistGameState` refreshes `updated_at`
+ * on every move. The margin is so a rejoinable row is never taken from under
+ * a player.
+ */
+export const ABANDONED_GAME_MAX_AGE_MS = 24 * 60 * 60_000;
+
+/**
+ * Deletes `active_games` rows untouched for longer than
+ * `ABANDONED_GAME_MAX_AGE_MS`. Returns how many went, so a caller can tell
+ * "nothing to do" from "did not run".
+ */
+export async function pruneAbandonedGames(): Promise<number> {
+  const gone = await db
+    .delete(activeGames)
+    .where(lt(activeGames.updatedAt, new Date(now() - ABANDONED_GAME_MAX_AGE_MS)))
+    .returning({ roomId: activeGames.roomId });
+  if (gone.length > 0) logger.info({ count: gone.length }, "Pruned abandoned games orphaned by a restart");
+  return gone.length;
+}
 
 /**
  * Never thrown: this is diagnostic hygiene, not gameplay, and one rule

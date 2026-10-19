@@ -16,7 +16,7 @@ import { installClock } from "../../server/http/clock.ts";
 import { fakeClock } from "../helpers/fakeClock.ts";
 import { setSocketServer } from "../../server/socket/socketRegistry.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
-import { db } from "../../server/store/db.ts";
+import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { packPersistedState } from "../../shared/persistedEnvelope.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
@@ -64,7 +64,7 @@ function stubIo() {
 
 const twoHumans = () => [player("player_0", "Ana"), player("player_1", "Besi")];
 
-const room = { id: ROOM, code: "AAAAAA", gameMode: "free_for_all", maxPlayers: 2 };
+const room = { id: ROOM, code: "AAAAAA", gameMode: "free_for_all" as const, maxPlayers: 2 };
 
 const vote = (io: SocketServer, userId: string) =>
   applyOrForward(io, { kind: "rematchVote", roomId: ROOM, userId });
@@ -90,6 +90,7 @@ const unpackedMatch = () => ({
   maxPlayers: 2,
   roundsPlayed: 1,
   endedByVote: false,
+  matchOver: false,
 });
 const noSeats = { vacatedSeats: [], releasedSeats: [], weakSeats: [], abandonedSeats: [] };
 
@@ -100,10 +101,7 @@ describe("a table restored after a restart", () => {
   test("a rejoin at the results screen is told the tally, which the restart emptied", async (t) => {
     const { io, emitted } = stubIo();
     const row = finishedRow();
-    t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
-    t.mock.method(roomStore, "getRoomById", async () => room);
-    t.mock.method(roomStore, "getRoomPlayers", async () => []);
-    t.mock.method(roomStore, "upsertRoomPlayer", async () => {});
+    useMemoryTableStores(t, { rooms: [[ROOM, room]], rows: [[ROOM, row]] });
 
     assert.equal(await rehydrateGame(ROOM, "ana", io), "restored");
     assert.equal(activeGames.get(ROOM)!.lastRoundOverPayload, undefined, "nothing persisted the game:over");
@@ -121,7 +119,7 @@ describe("a table restored after a restart", () => {
     t.after(() => delete process.env.MURLAN_LOBBY_GRACE_MS);
     const { io, emitted } = stubIo();
     const row = finishedRow();
-    t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
+    useMemoryTableStores(t, { rows: [[ROOM, row]] });
     t.mock.method(roomStore, "getRoomById", async () => room);
     t.mock.method(roomStore, "updateRoomStatus", async () => {});
     t.mock.method(roomStore, "releaseSeat", async () => null);
@@ -287,7 +285,7 @@ describe("between hands, online elsewhere is not back at this table", () => {
       { userId: "besi", rooms: ["another-lobby"] },
     ]);
     const row = finishedRow();
-    t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
+    useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
     assert.equal(await rehydrateGame(ROOM, "ana", io), "restored");
     assert.deepEqual(usersInLobbyGrace(ROOM), ["besi"]);
@@ -299,7 +297,7 @@ describe("a restore with one player present and one away", () => {
     const { io } = stubIo();
     useCluster(t, [{ userId: "ana", rooms: [ROOM] }]);
     const row = finishedRow();
-    t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
+    useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
     assert.equal(await rehydrateGame(ROOM, null, io), "restored");
     assert.deepEqual(usersInLobbyGrace(ROOM), ["besi"]);
@@ -311,7 +309,7 @@ describe("a restore with one player present and one away", () => {
     const state = finishedHand(twoHumans(), []);
     state.roundOver = false;
     const row = packPersistedState(state, {}, 0, "AAAAAA", unpackedMatch(), noSeats);
-    t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
+    useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
     assert.equal(await rehydrateGame(ROOM, null, io), "restored");
     assert.ok(pending("disconnect", "besi"));
@@ -329,7 +327,7 @@ describe("a restore whose presence sweep fails", () => {
     } as unknown as SocketServer);
     t.after(() => setSocketServer(null as unknown as SocketServer));
     const row = finishedRow();
-    t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
+    useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
     assert.equal(await rehydrateGame(ROOM, "ana", io), "restored");
     assert.deepEqual(usersInLobbyGrace(ROOM), [], "a grace whose expiry releases a player seated elsewhere");
@@ -543,7 +541,7 @@ describe("the next-round vote deadline", () => {
     } as unknown as SocketServer);
     t.after(() => setSocketServer(null as unknown as SocketServer));
     const row = finishedRow();
-    t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
+    useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
     assert.equal(await rehydrateGame(ROOM, "ana", io), "restored");
 
@@ -559,7 +557,7 @@ describe("the next-round vote deadline", () => {
     const state = finishedHand(twoHumans(), []);
     state.roundOver = false;
     const row = packPersistedState(state, {}, 0, "AAAAAA", unpackedMatch(), noSeats);
-    t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
+    useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
     assert.equal(await rehydrateGame(ROOM, null, io), "restored");
     assert.ok(!pending("voteDeadline", ROOM));

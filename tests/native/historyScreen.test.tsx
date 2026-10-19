@@ -11,7 +11,7 @@ jest.mock('expo-router', () => ({
 }));
 
 jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, logout: async () => {} }),
+  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
 }));
 
 const mockScrollTo = jest.fn();

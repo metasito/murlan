@@ -7,7 +7,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { markExchangeSettled, visibleExchangePhase } from "../../server/game/onlineGameLogic.ts";
 import { packPersistedState, unpackPersistedState } from "../../shared/persistedEnvelope.ts";
-import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
+import { exchangeAnnounceMs } from "../../lib/timeline/exchangeTimeline.ts";
 import { stateAckTimeoutMs } from "../../server/game/gameTimers.ts";
 import { readFileSync } from "node:fs";
 
@@ -213,6 +213,7 @@ describe("visibleExchangePhase", () => {
           playerMap: { 0: "u" },
           scores: { u: 0 },
           endedByVote: false,
+          matchOver: false,
           gameMode: "free_for_all",
           matchLength: "match",
           roundsPlayed: 0,

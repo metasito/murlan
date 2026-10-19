@@ -35,10 +35,9 @@ jest.mock('@/context/SocketContext', () => ({
   }),
 }));
 
-jest.mock('@/context/NotificationContext', () => ({
-  useNotification: () => ({ showNotification: mockShowNotification }),
-  useBannerBottom: () => 0,
-}));
+jest.mock('@/context/NotificationContext', () =>
+  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock(() => mockShowNotification)
+);
 
 jest.mock('@tanstack/react-query', () => ({
   ...jest.requireActual<object>('@tanstack/react-query'),

@@ -44,7 +44,7 @@ jest.mock('@/lib/query-client', () => ({
 const ANA = { id: 'u1', username: 'Ana' };
 let mockUser: { id: string; username: string } | null = ANA;
 jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: mockUser, logout: async () => {} }),
+  useAuth: () => ({ user: mockUser, forgetSession: async () => {} }),
 }));
 
 jest.mock('expo-router', () => {

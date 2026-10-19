@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { heldSeats, seatForClaim } from "../../server/game/seatAllocation.ts";
+import { heldSeats, renumbering, seatForClaim, settleRelease, startRefusal } from "../../server/game/seatAllocation.ts";
 import type { SeatInvite, SeatedPlayer } from "../../server/game/seatAllocation.ts";
 import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/game/gameEngine.ts";
 
@@ -278,5 +278,63 @@ describe("the age the hold is measured on", () => {
       !/createdAt/.test(conflictUpdate),
       "the conflict path restamps created_at, so a re-invite renews a hold that must not be renewable"
     );
+  });
+});
+
+describe("what a released seat does to its room", () => {
+  const seat = (userId: string, seatIndex: number) => ({ userId, seatIndex });
+
+  test("the last player out of a lobby finishes it", () => {
+    assert.deepEqual(settleRelease({ status: "waiting", hostUserId: "a" }, "a", []), {
+      emptied: true,
+      wasHost: true,
+      set: { status: "finished" },
+    });
+  });
+
+  test("an emptied room already playing is not finished by the release", () => {
+    assert.deepEqual(settleRelease({ status: "in_progress", hostUserId: "a" }, "a", []), {
+      emptied: false,
+      wasHost: true,
+      set: null,
+    });
+  });
+
+  test("a departing host hands the room to the lowest seat left", () => {
+    assert.deepEqual(settleRelease({ status: "waiting", hostUserId: "a" }, "a", [seat("b", 1), seat("c", 2)]), {
+      emptied: false,
+      wasHost: true,
+      set: { hostUserId: "b" },
+    });
+  });
+
+  test("a guest leaving changes nothing about who holds the room", () => {
+    assert.deepEqual(settleRelease({ status: "waiting", hostUserId: "a" }, "b", [seat("a", 0)]), {
+      emptied: false,
+      wasHost: false,
+      set: null,
+    });
+  });
+});
+
+describe("closing a lobby to a start", () => {
+  test("only the host starts, and only a lobby that is not mid-match unless the match is live", () => {
+    assert.equal(startRefusal({ status: "waiting", hostUserId: "a" }, "b", false), "not_host");
+    assert.equal(startRefusal({ status: "in_progress", hostUserId: "a" }, "a", false), "not_waiting");
+    assert.equal(startRefusal({ status: "in_progress", hostUserId: "a" }, "a", true), null);
+    assert.equal(startRefusal({ status: "finished", hostUserId: "a" }, "a", false), null);
+    assert.equal(startRefusal({ status: "waiting", hostUserId: "a" }, "a", false), null);
+  });
+
+  test("renumbering closes the gaps and moves no seat upwards", () => {
+    const roster = [
+      { userId: "a", seatIndex: 0 },
+      { userId: "b", seatIndex: 2 },
+      { userId: "c", seatIndex: 3 },
+    ];
+    assert.deepEqual(renumbering(roster), [
+      [roster[1], 1],
+      [roster[2], 2],
+    ]);
   });
 });

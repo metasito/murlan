@@ -4,7 +4,7 @@ import { test, expect } from "./fixtures";
 import { exchangeSave, resumeSaved } from "./helpers/offlineSeed";
 import { tap } from "./helpers/press";
 import { Motion } from "../../lib/tokens";
-import { LEG } from "../../lib/game/exchangeTimeline";
+import { LEG } from "../../lib/timeline/exchangeTimeline";
 
 const LEGS = ["exchange-flier-to-winner", "exchange-flier-to-loser"] as const;
 /** The receive, its read, the choice, then the give. */

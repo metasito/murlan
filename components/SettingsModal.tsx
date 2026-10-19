@@ -13,7 +13,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useRouter, usePathname } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
 import { useSettings } from "@/context/SettingsContext";
-import { useNotification } from "@/context/NotificationContext";
+import { useBanner, useNotification } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import NotificationBanner from "@/components/NotificationBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
@@ -74,8 +74,9 @@ export function SettingsModal({ visible, onClose }: Props) {
     setScreenShake,
     setMotion,
   } = useSettings();
-  const { logout } = useAuth();
-  const { notification, showNotification, dismissNotification } = useNotification();
+  const { logout, forgetSession } = useAuth();
+  const { showNotification, notifyError } = useNotification();
+  const { notification, dismissNotification } = useBanner();
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
@@ -121,11 +122,7 @@ export function SettingsModal({ visible, onClose }: Props) {
       // Compiler cannot lower a try statement with one, and bails the whole
       // component out of memoization if it meets it (tests/ui-rules/reactCompiler).
       setSendingBug(false);
-      showNotification({
-        type: "game_error",
-        title: t("settings.reportBugFailedTitle"),
-        message: t("settings.reportBugFailedBody"),
-      });
+      notifyError(t("settings.reportBugFailedBody"), { title: t("settings.reportBugFailedTitle") });
     }
   }
 
@@ -140,11 +137,7 @@ export function SettingsModal({ visible, onClose }: Props) {
       // Compiler cannot lower a try statement with one, and bails the whole
       // component out of memoization if it meets it (tests/ui-rules/reactCompiler).
       setLoggingOut(false);
-      showNotification({
-        type: "game_error",
-        title: t("settings.logoutFailedTitle"),
-        message: t("settings.logoutFailedBody"),
-      });
+      notifyError(t("settings.logoutFailedBody"), { title: t("settings.logoutFailedTitle") });
     }
   }
 
@@ -154,17 +147,14 @@ export function SettingsModal({ visible, onClose }: Props) {
       // apiRequest throws on a non-ok response, so a failed deletion always
       // lands in the catch below instead of silently logging the user out.
       await apiRequest("DELETE", "/api/users/me");
-      onClose();
-      await logout();
-      router.replace("/auth");
     } catch {
       setDeleting(false);
-      showNotification({
-        type: "game_error",
-        title: t("settings.deleteFailedTitle"),
-        message: t("settings.deleteFailedBody"),
-      });
+      notifyError(t("settings.deleteFailedBody"), { title: t("settings.deleteFailedTitle") });
+      return;
     }
+    onClose();
+    await forgetSession();
+    router.replace("/auth");
   }
 
   function confirmLogout() {

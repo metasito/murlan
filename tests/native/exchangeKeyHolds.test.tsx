@@ -22,7 +22,7 @@ jest.mock('@/components/table/ExchangeLegs', () => {
 
 import { GameTable } from '@/components/GameTable';
 import { bootFeedback, settle, startsOf } from './helpers/feedback';
-import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
+import { choiceOpensAt } from '@/lib/timeline/exchangeTimeline';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
 
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };

@@ -4,7 +4,7 @@ import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { render } from '@testing-library/react-native';
 import { getAnimatedStyle, makeMutable } from 'react-native-reanimated';
-import { LEG } from '@/lib/game/exchangeTimeline';
+import { LEG } from '@/lib/timeline/exchangeTimeline';
 import { Motion } from '@/lib/tokens';
 import { Legs, frames, announced } from './helpers/exchangeLegs';
 

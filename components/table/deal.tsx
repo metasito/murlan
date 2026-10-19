@@ -16,7 +16,7 @@ import { withdraw } from "@/lib/device/feedback";
 import { handCountOf } from "@/shared/protocol";
 import { seatPoint, type SeatGeometry } from "@/components/flightPhysics";
 import type { HandDeal } from "@/components/table/hand";
-import { dealArrivalsMs, dealEndMs } from "@/lib/game/dealTimeline";
+import { dealArrivalsMs, dealEndMs } from "@/lib/timeline/dealTimeline";
 import { armGateWatchdog, gateForced } from "@/components/table/gateForced";
 import { dealLegs, dealSlotOf, dealSlots, legAt, type DealLeg } from "@/components/table/dealSlots";
 import { dealBreath, dealFlight, dealPose } from "@/components/table/dealPose";

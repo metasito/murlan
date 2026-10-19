@@ -10,7 +10,7 @@ import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';
 import { MOMENTS, type MomentKind } from '@/lib/device/moments';
 import type { OwnLink } from '@/lib/ownLink';
-import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
+import { choiceOpensAt } from '@/lib/timeline/exchangeTimeline';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { bootFeedback, ctxTime, effects, settle, soundOf, sounds } from './helpers/feedback';
 import { botRound, playBotRound } from './helpers/botRound';

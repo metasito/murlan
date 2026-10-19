@@ -8,7 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t, tn } from '@/lib/i18n';
 import { handLabel } from '@/components/table/spokenLabels';
-import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
+import { choiceOpensAt } from '@/lib/timeline/exchangeTimeline';
 import * as engine from '@/lib/game/gameEngine';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { GameProvider } from '@/context/GameContext';

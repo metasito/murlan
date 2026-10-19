@@ -12,7 +12,7 @@ import { GameProvider } from "@/context/GameContext";
 import { AuthProvider } from "@/context/AuthContext";
 import { SocketProvider } from "@/context/SocketContext";
 import { SettingsProvider } from "@/context/SettingsContext";
-import { NotificationProvider, useNotification } from "@/context/NotificationContext";
+import { NotificationProvider, useBanner } from "@/context/NotificationContext";
 import NotificationBanner from "@/components/NotificationBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { OrientationProvider } from "@/lib/device/orientation";
@@ -49,7 +49,7 @@ const BenchAutostart: () => null =
   process.env.EXPO_PUBLIC_DIAGNOSTICS === "1" ? require("@/lib/diagnostics/BenchAutostart").BenchAutostart : () => null;
 
 export function RootLayoutNav() {
-  const { notification, dismissNotification, reportBannerBottom } = useNotification();
+  const { notification, dismissNotification, reportBannerBottom } = useBanner();
   const pathname = usePathname();
   const reduceMotion = usePrefersReducedMotion();
 

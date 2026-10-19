@@ -6,7 +6,7 @@ import type { Card, GameState, Player } from "@/lib/game/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 import type { TFn } from "@/lib/i18n";
 import { getCardDisplayRank, getSuitSymbol, givebackIsFallback } from "../../lib/game/gameEngine.ts";
-import { restPoint, type LegPoints, type LegStage } from "../../lib/game/exchangeTimeline.ts";
+import { restPoint, type LegPoints, type LegStage } from "../../lib/timeline/exchangeTimeline.ts";
 import { handCountOf } from "../../shared/protocol.ts";
 import { FIELD_SCALE, HAND_SCALE } from "../cardFaceModel.ts";
 import { fanPoint } from "../fanGeometry.ts";

@@ -85,7 +85,7 @@ function readPersistedSeats(stored: unknown): PersistedSeats {
  * crashing, so it must be rejected, not restored.
  * Held to the stored shape by tests/server/storedShapeVersions.test.ts.
  */
-export const GAME_SCHEMA_VERSION = 3;
+export const GAME_SCHEMA_VERSION = 4;
 
 export type RoundFlags = Record<number, { bomb: boolean; joker: boolean }>;
 
@@ -125,6 +125,10 @@ export const persistedMatchSchema = z.object({
   // board one number and never the round.
   roundsPlayed: z.number().int().min(0).catch(0).default(0),
   endedByVote: z.boolean().catch(false).default(false),
+  matchOver: z.boolean({
+    required_error: "match verdict missing",
+    invalid_type_error: "match verdict missing",
+  }),
 }, { required_error: "no match state", invalid_type_error: "no match state" });
 
 export type PersistedMatch = z.infer<typeof persistedMatchSchema>;

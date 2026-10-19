@@ -33,7 +33,7 @@ jest.mock('@/lib/socket', () => ({
 const mockLogout = jest.fn(async () => {});
 let mockUser: { id: string; username: string } | null = null;
 jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: mockUser, logout: mockLogout }),
+  useAuth: () => ({ user: mockUser, forgetSession: mockLogout }),
 }));
 
 const mockReplace = jest.fn();

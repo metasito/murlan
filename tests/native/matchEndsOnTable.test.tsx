@@ -9,7 +9,7 @@ import { ReduceMotion, ReducedMotionConfig, getAnimatedStyle } from 'react-nativ
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { setMotionPreference } from '@/lib/accessibility';
 import type { GameState, Player } from '@/lib/game/gameEngine';
-import { matchEndingOnsets } from '@/lib/game/matchEnding';
+import { matchEndingOnsets } from '@/lib/timeline/matchEnding';
 import { t } from '@/lib/i18n';
 import { Layer } from '@/lib/theme';
 import { StyleSheet } from 'react-native';
@@ -42,7 +42,9 @@ let mockRecorded = true;
 let mockRatingsAfter: Record<string, { rating: number; rounds: number }> = {};
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() } }));
-jest.mock('@/context/NotificationContext', () => ({ useNotification: () => ({ showNotification: jest.fn() }) }));
+jest.mock('@/context/NotificationContext', () =>
+  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
+);
 jest.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: { id: 'alice', username: 'Alice' } }) }));
 jest.mock('@/context/GameContext', () => ({
   useGame: () => ({

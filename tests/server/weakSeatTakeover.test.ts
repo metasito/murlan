@@ -13,7 +13,8 @@ import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
 import { vacateSeat, autoMoveForSeat, armTurn } from "../../server/game/gameTurn.ts";
 import { autoMoveForSeat as chooseMove } from "../../lib/game/autoMove.ts";
-import { roundOverWriters, persistence } from "../../server/game/gamePersistence.ts";
+import { roundOverWriters } from "../../server/game/gamePersistence.ts";
+import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
@@ -154,7 +155,7 @@ describe("runBotTurn plays a weak seat at the floor and a bot seat with the bot"
   }
 
   test("a weak seat plays exactly the minimum legal move", async (t) => {
-    t.mock.method(persistence, "writeActiveGame", async () => {});
+    t.mock.method(activeGameStore, "write", async () => {});
     const { state, played } = await botPlays(true);
     const floor = chooseMove(state, 0, false, {})!.lastPlayedCombination!.cards.map((c) => c.id);
     assert.equal(floor.length, 1);
@@ -162,7 +163,7 @@ describe("runBotTurn plays a weak seat at the floor and a bot seat with the bot"
   });
 
   test("a seat that is not weak plays the bot's own choice, which differs from the floor", async (t) => {
-    t.mock.method(persistence, "writeActiveGame", async () => {});
+    t.mock.method(activeGameStore, "write", async () => {});
     const { state, played } = await botPlays(false);
     const ai = chooseMove(state, 0, true, {})!.lastPlayedCombination!.cards.map((c) => c.id);
     assert.equal(ai.length, 2);

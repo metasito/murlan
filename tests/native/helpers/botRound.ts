@@ -2,7 +2,7 @@ import type { ReactElement } from 'react';
 import { act, render } from '@testing-library/react-native';
 import { initializeGame, type GameState } from '@/lib/game/gameEngine';
 import { offlineBotMove, resolveStuckExchange } from '@/lib/game/autoMove';
-import { OFFLINE_BOT_DELAY_MS } from '@/lib/game/offlineBotDelay';
+import { OFFLINE_BOT_DELAY_MS } from '@/lib/timeline/offlineBotDelay';
 import { settle } from './feedback';
 
 export const STEP_MS = 1500;

@@ -58,7 +58,7 @@ describe("docs/PRIVACY.md states the retention the code enforces", () => {
     ],
     [
       "abandoned games",
-      () => `${hours(constantFrom("server/game/gamePersistence.ts", "ABANDONED_GAME_MAX_AGE_MS"))} hours`,
+      () => `${hours(constantFrom("server/game/retention.ts", "ABANDONED_GAME_MAX_AGE_MS"))} hours`,
     ],
     [
       "the session cookie",

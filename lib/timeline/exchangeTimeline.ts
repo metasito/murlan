@@ -1,3 +1,5 @@
+// The server imports this: relative `.ts` imports only (tests/tooling/libGameBoundary.test.ts) —
+// docs/agents/checks.md, "Node's TypeScript loader".
 import { Hold, Motion } from "../tokens.ts";
 import { dealEndMs } from "./dealTimeline.ts";
 
@@ -123,6 +125,6 @@ export function exchangeGiveDelayMs(counts: readonly number[]): number {
 }
 
 /** From the choice to the ceremony's close; for both Jokers, from the deal's end. */
-export function exchangeAnnounceFrom(twoJokerException: boolean): number {
+export function exchangeAnnounceMs(twoJokerException: boolean): number {
   return (twoJokerException ? X.beat : X.giveWait) + LEG.end + X.read;
 }

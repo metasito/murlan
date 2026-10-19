@@ -4,8 +4,8 @@ import React from 'react';
 import { render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState, Rank, Suit } from '@/lib/game/gameEngine';
-import { dealEndMs } from '@/lib/game/dealTimeline';
-import { OFFLINE_BOT_DELAY_MS } from '@/lib/game/offlineBotDelay';
+import { dealEndMs } from '@/lib/timeline/dealTimeline';
+import { OFFLINE_BOT_DELAY_MS } from '@/lib/timeline/offlineBotDelay';
 import { Motion } from '@/lib/tokens';
 import { steps } from './helpers/steps';
 import { bootFeedback } from './helpers/feedback';
@@ -73,9 +73,9 @@ jest.mock('@/context/GameContext', () => ({
   }),
 }));
 
-jest.mock('@/context/NotificationContext', () => ({
-  useNotification: () => ({ showNotification: jest.fn() }),
-}));
+jest.mock('@/context/NotificationContext', () =>
+  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
+);
 
 import GameScreen from '@/app/game';
 

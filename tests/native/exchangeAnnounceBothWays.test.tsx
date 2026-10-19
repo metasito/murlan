@@ -4,7 +4,7 @@ import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals
 
 import React from 'react';
 import { render, within } from '@testing-library/react-native';
-import { LEG } from '@/lib/game/exchangeTimeline';
+import { LEG } from '@/lib/timeline/exchangeTimeline';
 import { Motion } from '@/lib/tokens';
 import { Legs, card, frames, announced } from './helpers/exchangeLegs';
 
