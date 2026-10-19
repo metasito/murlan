@@ -137,6 +137,35 @@ describe("the guard registry's floor", () => {
     assert.deepEqual(guardSwitches('const s = "/* eslint-disable */";', "a.ts"), []);
   });
 
+  test("5c. the one Modal is components/AppModal.tsx, and the real config holds its orientations", async () => {
+    const SHELL = "components/AppModal.tsx";
+    const importGuard = GUARDS.find((g) => g.id === "one-modal-import")!;
+    const alone = new ESLint({
+      cwd: ROOT,
+      overrideConfigFile: true,
+      overrideConfig: [
+        {
+          files: ["**/*.{ts,tsx}"],
+          languageOptions: { parser: tsParser, parserOptions: { ecmaFeatures: { jsx: true } } },
+          plugins: { guards: plugin as ESLint.Plugin },
+          rules: { [ruleOf(importGuard)]: "error" },
+        },
+      ],
+    });
+    const importing: string[] = [];
+    for (const file of tracked.filter((f) => matches(f, importGuard.files))) {
+      if ((await reports(alone, readFileSync(path.join(ROOT, file), "utf8"), file, ruleOf(importGuard))) > 0) importing.push(file);
+    }
+    assert.deepEqual(importing, [SHELL], "exactly one file reads react-native's Modal, and it is the shell");
+
+    const rule = "guards/modal-keeps-landscape";
+    const shell = readFileSync(path.join(ROOT, SHELL), "utf8");
+    const portrait = shell.replace(/supportedOrientations=\{[^}]*\}/g, "");
+    assert.notEqual(portrait, shell, `${SHELL} no longer declares supportedOrientations`);
+    assert.equal(await reports(real, shell, SHELL, rule), 0);
+    assert.ok((await reports(real, portrait, SHELL, rule)) > 0, `eslint.config.js does not hold ${SHELL}'s <Modal> to landscape`);
+  });
+
   test("6. a stale directive is an error, and npm run lint reads the whole tree as configured", async () => {
     const [result] = await real.lintText("// eslint-disable-next-line no-console\nexport const a = 1;\n", {
       filePath: path.join(ROOT, "lib/sendIntent.ts"),
