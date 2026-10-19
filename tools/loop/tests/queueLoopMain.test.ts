@@ -17,7 +17,7 @@ import {
   publishForReview,
 } from "../queue-loop.mjs";
 import { LIMITS, RESTART } from "../limits.mjs";
-import { loopMoved, refreshWorktree, removeLanded, tearDown as removeWorktree } from "../workspace.mjs";
+import { loopMoved, refreshWorktree, removeLanded, tearDown as removeWorktree, workspacePort, worktreeOf } from "../workspace.mjs";
 import { fakeTracker } from "../tracker.mjs";
 import { afterSession } from "../decide.mjs";
 import { readLine } from "../loop-stream.mjs";
@@ -122,6 +122,12 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []): Fake => {
         buildPassed: () => true,
         sharedCheckoutDirty: () => "",
         remove: () => {},
+        parkAsked: () => false,
+        clearParkAsk: () => {},
+        ciLog: () => null,
+        worktreeOf(this: { standing: () => any }, n: number) {
+          return worktreeOf(() => this.standing(), n);
+        },
       },
       session: {
         spawn: async () => ({
@@ -138,6 +144,8 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []): Fake => {
         tally: (n: number) => ticketTally(n, ledger),
         rows: () => ledger,
         record: (x: unknown) => ledger.push(rowOf(x)),
+        prune: () => {},
+        logOf: () => "",
       },
     },
     events: { announce: () => {}, log: () => {}, bell: () => {}, picked: () => {} },
@@ -1663,7 +1671,9 @@ describe("the run recap", () => {
     const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
     const spy = {
       ...(io() as any),
-      stopFile: () => passes++ >= stopAfter,
+      // Counted at the sync, not the stop read: the hold reads `.loop-stop` too.
+      stopFile: () => passes >= stopAfter,
+      syncCheckout: () => (passes++, true),
       housekeeping: () => (checks++ < preflights ? { verdict: "hold", why: "drift", rows: [] } : { verdict: "ok", rows: [] }),
       derive: () => heldRun,
       settle: async () => unposted,
@@ -1698,7 +1708,9 @@ describe("the run recap", () => {
     const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
     const spy = {
       ...(io() as any),
-      stopFile: () => passes++ > TICKET_HOLDS + 1,
+      // Counted at the sync, not the stop read: the hold reads `.loop-stop` too.
+      stopFile: () => passes > TICKET_HOLDS + 1,
+      syncCheckout: () => (passes++, true),
       derive: () => heldRun,
       settle: async () => unposted,
       park: (n: number, c: { why: string }) => parked.push({ n, why: c.why }),
@@ -1824,15 +1836,20 @@ describe("a handoff", () => {
 describe("a park asked from the board", () => {
   const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} });
   const screen = () => ({ say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} });
+  /** The board's request as the real port reads and clears it, under `dir`. */
+  const asked = (dir: string) => {
+    const { parkAsked: read, clearParkAsk } = workspacePort({ root: dir, git: () => "", events: {} as never });
+    return { parkAsked: read, clearParkAsk };
+  };
 
   test("parks the ticket once its session exits, and forgets the request", async () => {
-    const cwd = process.cwd();
     const dir = mkdtempSync(path.join(tmpdir(), "park-"));
     const parked: { why: string; cwd: string | null; dirty: boolean }[] = [];
     const resumed: boolean[] = [];
     let n = 0;
     const spy = {
       ...(io() as any),
+      ...asked(dir),
       pick: () =>
         resumed.length >= 2 ? { skill: "handoff", number: 0, title: "queue empty" } : { skill: "implement", number: 41, title: "t", size: "size:S", queue: null },
       spawn: async (route: { resuming: boolean }) => (resumed.push(route.resuming), {
@@ -1849,54 +1866,47 @@ describe("a park asked from the board", () => {
       standing: () => (n >= 1 ? { ticket: 41, branch: "agent/41-x", cwd: ".worktrees/agent-41", dirty: true, phase: "D" } : null),
     };
     try {
-      process.chdir(dir);
-      writeFileSync(".loop-park", "41\n");
+      writeFileSync(path.join(dir, ".loop-park"), "41\n");
       await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
       assert.deepEqual(parked[0], { why: "parked by owner", cwd: ".worktrees/agent-41", dirty: true }, "the worktree's edits are kept");
       assert.deepEqual(resumed, [false, false], "a parked ticket is not pinned for the next pass");
-      assert.equal(existsSync(".loop-park"), false);
+      assert.equal(existsSync(path.join(dir, ".loop-park")), false);
     } finally {
-      process.chdir(cwd);
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
   test("a red CI round parks in the phase git reports, with its worktree", async () => {
-    const cwd = process.cwd();
     const dir = mkdtempSync(path.join(tmpdir(), "park-"));
     const parked: { why: string; phase: string; cwd: string | null }[] = [];
     const spy = {
       ...(io() as any),
+      ...asked(dir),
       spawn: async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", phase: "F", declared: null }),
       pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x", sha: "aaa111", changedFiles: 2 }),
       settle: async () => ({ action: "hand-back", reason: "CI failed at Native tests" }),
       park: (_n: number, { why, phase, cwd }: { why: string; phase: string; cwd: string | null }) => parked.push({ why, phase, cwd }),
     };
     try {
-      process.chdir(dir);
-      writeFileSync(".loop-park", "42\n");
+      writeFileSync(path.join(dir, ".loop-park"), "42\n");
       await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
       assert.deepEqual(parked[0], { why: "parked by owner", phase: "E", cwd: ".worktrees/agent-42" });
     } finally {
-      process.chdir(cwd);
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
   test("a ticket that lands before the park can act says the request was dropped", async () => {
-    const cwd = process.cwd();
     const dir = mkdtempSync(path.join(tmpdir(), "park-"));
     const said: string[] = [];
     const board = { ...screen(), notice: (kind: string, m: string) => said.push(`${kind}: ${m}`) };
     let picks = 0;
     try {
-      process.chdir(dir);
-      writeFileSync(".loop-park", "42\n");
-      await main({ io: io({ pick: () => (picks++ ? { skill: "handoff", number: 0, title: "queue empty" } : io().ports.tracker.pick()) }), book: book(), screen: board, install: () => {}, runId: "t" });
+      writeFileSync(path.join(dir, ".loop-park"), "42\n");
+      await main({ io: io({ pick: () => (picks++ ? { skill: "handoff", number: 0, title: "queue empty" } : io().ports.tracker.pick()), ...asked(dir) }), book: book(), screen: board, install: () => {}, runId: "t" });
       assert.ok(said.some((m) => /^park: #42 landed before the park could act/.test(m)), JSON.stringify(said));
-      assert.equal(existsSync(".loop-park"), false);
+      assert.equal(existsSync(path.join(dir, ".loop-park")), false);
     } finally {
-      process.chdir(cwd);
       rmSync(dir, { recursive: true, force: true });
     }
   });

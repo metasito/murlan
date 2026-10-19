@@ -49,6 +49,17 @@ export function appendSupervisor(line, dir = DIR) {
   fsNode.appendFileSync(supervisorLogPath(null, dir), line);
 }
 
+/** One of the files above, written whole, its directory made first. */
+export function writeNote(file, body) {
+  fsNode.mkdirSync(path.dirname(file), { recursive: true });
+  fsNode.writeFileSync(file, body);
+}
+
+export const noted = (file) => fsNode.existsSync(file);
+
+/** A ticket's stream log as written so far: every session of the ticket appends to it. */
+export const logOf = (n, dir = DIR) => (fsNode.existsSync(streamLog(n, dir)) ? fsNode.readFileSync(streamLog(n, dir), "utf8") : "");
+
 /**
  * An entry in `.loop-logs/` the pruner may delete once it is old enough: anything but the record,
  * because sessions write there under names no artefact declares.

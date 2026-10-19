@@ -12,17 +12,14 @@
  *
  * Usage: npm run queue:loop (tools/loop/run-loop.mjs, which restarts this on exit 75)
  */
-import fs, { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { git as gitAt, REPO } from "./cli.mjs";
-import { derive, WORKTREE_DIR } from "./loop-derive.mjs";
+import { derive } from "./loop-derive.mjs";
 import { killedRun, runSession, runTicket } from "./loop-session.mjs";
 import { bell, clockAt, LAND, PLAIN, reportRow, runRecap, runTotal, stepRow } from "./loop-render.mjs";
-import { PARK_FILE, parkAsked, STOP_FILE, ticker } from "./loop-screen.mjs";
+import { ticker } from "./loop-screen.mjs";
 import { journaled, screenEvents, ticketFacts } from "./loop-board.mjs";
 import {
-  DIR,
-  ciLogPath,
   appendSupervisor,
   errorLine,
   errorOf,
@@ -33,6 +30,9 @@ import {
   parkNotePath,
   pendingReparks,
   prune as pruneLogs,
+  logOf,
+  noted,
+  writeNote,
   readLedger,
   streamLog,
   ticketTally,
@@ -57,7 +57,7 @@ const ROOT = path.resolve(import.meta.dirname, "..", "..");
  * Sliced, so `.loop-stop` still reaches the loop across a long wait.
  *
  * @param {number} ms
- * @param {(f: string) => boolean} [exists]
+ * @param {() => boolean} stopped whether `.loop-stop` is on disk
  * @param {number} [slice]
  * @param {((line: string) => void)|null} [say]
  * @param {number} [beat]
@@ -65,7 +65,7 @@ const ROOT = path.resolve(import.meta.dirname, "..", "..");
  */
 export async function holdFor(
   ms,
-  exists = (f) => fs.existsSync(f),
+  stopped,
   slice = 30_000,
   say = null,
   beat = HEARTBEAT_MS,
@@ -76,7 +76,7 @@ export async function holdFor(
   let wake = false;
   woken?.then(() => (wake = true));
   while (Date.now() < until) {
-    if (exists(STOP_FILE)) return "stopped";
+    if (stopped()) return "stopped";
     if (wake) return "woken";
     if (say && Date.now() >= next) {
       say(`still waiting — back at ${clockAt(until)}`);
@@ -115,7 +115,7 @@ export function park(
     error = null,
     run = sh,
     tracker = ghTracker((args, opts) => run("gh", args, opts)),
-    write = writeFileSync,
+    write = writeNote,
     remove = tearDown,
   },
 ) {
@@ -160,7 +160,7 @@ export function park(
       " The next run resumes from the branch as it stands.",
   ].join("\n");
   step("comment", () => {
-    write(parkNotePath(number), body, "utf8");
+    write(parkNotePath(number), body);
     PARK_STEPS.comment(number, tracker);
   });
 
@@ -182,7 +182,7 @@ const PARK_STEPS = {
  * @param {number} number @param {string[]} steps
  * @returns {{failed: string[], why: string|null}}
  */
-export function repark(number, steps, tracker = ghTracker(), exists = (f) => fs.existsSync(f)) {
+export function repark(number, steps, tracker = ghTracker(), exists = noted) {
   let issue;
   try {
     issue = tracker.issue(number, { timeout: CI_RED_TIMEOUT_MS });
@@ -329,18 +329,6 @@ export async function settle(pending, screen, opts = {}) {
     screen.close("failed", String(err.message).split("\n")[0]);
     throw err;
   }
-}
-
-/** The ticket's worktree as git has it now: a retry or refused pass carries none of it. */
-function worktreeOf(workspace, number) {
-  try {
-    const at = workspace.standing();
-    if (at?.ticket === number) return { cwd: at.cwd, branch: at.branch, dirty: at.dirty, phase: at.phase ?? null };
-  } catch {
-    const kept = path.join(ROOT, WORKTREE_DIR, `agent-${number}`);
-    if (fs.existsSync(kept)) return { cwd: kept, branch: null, dirty: false, phase: null };
-  }
-  return { cwd: null, branch: null, dirty: false, phase: null };
 }
 
 /**
@@ -496,16 +484,16 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
   const size = route.size ?? null;
   const about = { title: route.title, size, reviewRounds: route.reviewRounds ?? null };
   const record = (row) => ledger.record({ ...about, ...row });
-  const owner = () => (parkAsked(n) ? { asked: true, own: worktreeOf(workspace, n) } : { asked: false, own: null });
+  const owner = () => (workspace.parkAsked(n) ? { asked: true, own: workspace.worktreeOf(n) } : { asked: false, own: null });
   const parkHere = (action, ctx) => {
-    if (action.byOwner) fs.rmSync(PARK_FILE, { force: true });
+    if (action.byOwner) workspace.clearParkAsk();
     const parked = parkAndRecord({ tracker, events, record }, n, { ...ctx, phase: action.phase, why: action.why });
     return { ...parked, loop, halt: action.halt ?? null, ...(action.byOwner && { byOwner: true }) };
   };
   // A cap's or the owner's park comes after the row of what it replaced, and carries the worktree
   // with it: a handoff leaves one standing on purpose, so a park without it leaves `derive()` a live
   // run to resume.
-  const parkOver = (over, own, log) => parkHere(over, { ...(own ?? worktreeOf(workspace, n)), log });
+  const parkOver = (over, own, log) => parkHere(over, { ...(own ?? workspace.worktreeOf(n)), log });
   const unrun = { log: streamLog(n), cwd: route.cwd ?? null, branch: route.branch ?? null, dirty: route.dirty ?? false };
   if (picked.kind === "park") return parkHere(picked, unrun);
   const tallyNow = () => ledger.tally(n);
@@ -656,7 +644,7 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
   }
   // The failed CI log, when there is one: it is what the owner needs and the session's own stream
   // log is not.
-  const log = verdict.ciRed && fs.existsSync(ciLogPath(n)) ? ciLogPath(n) : billed.log;
+  const log = (verdict.ciRed && workspace.ciLog(n)) || billed.log;
   return parkHere(verdict, { ...worked(action.pr, log), flake: verdict.ciRed ? null : (settled.flake ?? null) });
 }
 
@@ -694,8 +682,7 @@ function realPorts(book, screen, events) {
     park,
     conflict: (number, head) => {
       try {
-        mkdirSync(DIR, { recursive: true });
-        writeFileSync(conflictNotePath(number), `CONFLICT ${head}\nThe branch conflicts with main: the next process rebases it onto origin/main.`, "utf8");
+        writeNote(conflictNotePath(number), `CONFLICT ${head}\nThe branch conflicts with main: the next process rebases it onto origin/main.`);
         ghTracker().comment(number, conflictNotePath(number));
         return true;
       } catch (err) {
@@ -781,11 +768,12 @@ function realPorts(book, screen, events) {
     killed: () => {
       const last = killedStarts(readLedger(undefined, { starts: true }), lastWrite).at(-1);
       if (!last?.trailing) return null;
-      const log = streamLog(last.n);
-      book.killed(last, killedRun(last, fs.existsSync(log) ? fs.readFileSync(log, "utf8") : ""));
+      book.killed(last, killedRun(last, logOf(last.n)));
       return last;
     },
     journal: (line) => appendSupervisor(line),
+    logOf: (n) => logOf(n),
+    prune: () => pruneLogs(),
   };
   return { tracker, workspace, session, ledger };
 }
@@ -929,7 +917,7 @@ export async function main({
   const hold = (ms, label, then) =>
     timed("wait", async () => {
       const { woken, say } = screen.wait(label, Date.now() + ms, then);
-      const how = await holdFor(ms, undefined, undefined, say, undefined, woken);
+      const how = await holdFor(ms, workspace.stopFile, undefined, say, undefined, woken);
       screen.close();
       return how;
     });
@@ -945,7 +933,7 @@ export async function main({
   for (;;) {
     claimed = null;
     // Per iteration, not once per process: a run lasting past midnight would never prune.
-    pruneLogs();
+    ledger.prune();
     parity = workspace.parity?.() ?? null;
     const rows = ledger.rows();
     screen.board?.({ typical: typicalMs(rows) });
@@ -968,7 +956,7 @@ export async function main({
       screen.warn(`queue-loop: the iteration threw — ${String(err?.stack ?? err)}`);
       // No row: there is no run to write one from, and an invented row is a ledger trusted while
       // wrong. The claim is the part that strands the ticket, and it comes off here.
-      const own = claimed === null ? null : worktreeOf(workspace, claimed);
+      const own = claimed === null ? null : workspace.worktreeOf(claimed);
       const threw = decide({ step: "threw", route: claimed === null ? null : { n: claimed }, error: String(err?.message ?? err), own, loop, now: Date.now() });
       if (threw.kind === "park") {
         try {
@@ -988,8 +976,8 @@ export async function main({
 
     // A pass that left the ticket standing was the park's to take, and `runOnce` took it; this one
     // ended the ticket first.
-    if (pass.ticket != null && !PARKABLE.has(pass.outcome) && parkAsked(pass.ticket)) {
-      fs.rmSync(PARK_FILE, { force: true });
+    if (pass.ticket != null && !PARKABLE.has(pass.outcome) && workspace.parkAsked(pass.ticket)) {
+      workspace.clearParkAsk();
       screen.notice("park", `#${pass.ticket} ${pass.outcome} before the park could act`);
     }
 

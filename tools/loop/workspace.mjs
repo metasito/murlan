@@ -14,8 +14,8 @@ import { execFileSync } from "node:child_process";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { firstLine, gh as ghCli, git as gitAt, MAX_BUFFER, REPO } from "./cli.mjs";
 import { AGENT_DIR, derive, parityRed, WORKTREE_DIR } from "./loop-derive.mjs";
-import { leftoverPath } from "./loop-logs.mjs";
-import { STOP_FILE } from "./loop-screen.mjs";
+import { ciLogPath, leftoverPath } from "./loop-logs.mjs";
+import { PARK_FILE, parkAsked, STOP_FILE } from "./loop-screen.mjs";
 import { REFRESH_TIMEOUT_MS } from "./limits.mjs";
 import { capabilities, note, stepRow, theme } from "./loop-render.mjs";
 import { reap as reapSweep } from "./reap.mjs";
@@ -712,6 +712,25 @@ const standing = () => {
 
 
 /**
+ * The ticket's worktree as git has it now: a retry or refused pass carries none of it. `kept` is
+ * the worktree directory left on disk, read only when `standing` itself cannot be.
+ *
+ * @param {() => {ticket: number, cwd: string, branch: string, dirty: boolean, phase?: string}|null} read
+ * @param {number} number
+ * @param {(number: number) => string|null} [kept]
+ */
+export function worktreeOf(read, number, kept = () => null) {
+  try {
+    const at = read();
+    if (at?.ticket === number) return { cwd: at.cwd, branch: at.branch, dirty: at.dirty, phase: at.phase ?? null };
+  } catch {
+    const cwd = kept(number);
+    if (cwd) return { cwd, branch: null, dirty: false, phase: null };
+  }
+  return { cwd: null, branch: null, dirty: false, phase: null };
+}
+
+/**
  * The workspace port: git and the disk under `root`, as `runOnce` and `main` reach them. What it
  * says goes through `events`.
  */
@@ -721,6 +740,14 @@ export function workspacePort({ root = ROOT, git: run = gitAt(root), events }) {
   return {
     // Read, never removed: a scheduled restart must see the stop too.
     stopFile: () => fs.existsSync(path.join(root, STOP_FILE)),
+    parkAsked: (n) => parkAsked(n, (f) => fs.readFileSync(path.join(root, f), "utf8")),
+    clearParkAsk: () => fs.rmSync(path.join(root, PARK_FILE), { force: true }),
+    ciLog: (n) => (fs.existsSync(path.join(root, ciLogPath(n))) ? ciLogPath(n) : null),
+    worktreeOf: (n) =>
+      worktreeOf(standing, n, (k) => {
+        const kept = path.join(root, WORKTREE_DIR, `agent-${k}`);
+        return fs.existsSync(kept) ? kept : null;
+      }),
     loopMoved: () => loopMoved(started, g),
     syncCheckout: (pinned) => syncCheckout(g, (m) => events.log(m, "checkout"), () => reinstall(sh, root), { pinned, stamp: stampAt(root) }),
     housekeeping: (pinned) => housekeeping({ pinned, say: events.step }),

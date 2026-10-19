@@ -19,7 +19,7 @@ import {
 } from "../queue-loop.mjs";
 import { contextFor, queueLoopArgs, runTicket } from "../loop-session.mjs";
 import { screenEvents, sessionView, ticketFacts } from "../loop-board.mjs";
-import { syncCheckout, reinstall, loopSha } from "../workspace.mjs";
+import { syncCheckout, reinstall, loopSha, workspacePort } from "../workspace.mjs";
 import { BASH_DEFAULT_TIMEOUT_MS, CHECK_BASH_TIMEOUT_MS, LIMITS, SESSION_POLICY, STALL_MS } from "../limits.mjs";
 import { decide } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
@@ -43,6 +43,10 @@ const stubPorts = () => ({
     derive: () => ({ onTicket: false, phase: "A" }),
     buildPassed: () => true,
     remove: () => {},
+    parkAsked: () => false,
+    clearParkAsk: () => {},
+    ciLog: () => null,
+    worktreeOf: () => ({ cwd: null, branch: null, dirty: false, phase: null }),
   },
   session: { spawn: async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", declared: null }) },
   ledger: {
@@ -1344,14 +1348,12 @@ describe("holdFor", () => {
   // Reading .loop-stop must not delete it: the next run, and a scheduled restart, must see it too.
   test(".loop-stop on disk ends the wait and is still there afterwards", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "loop-stop-"));
-    const cwd = process.cwd();
-    process.chdir(dir);
     try {
-      writeFileSync(".loop-stop", "");
-      assert.equal(await holdFor(60_000, undefined, 5), "stopped");
-      assert.equal(existsSync(".loop-stop"), true);
+      writeFileSync(path.join(dir, ".loop-stop"), "");
+      const { stopFile } = workspacePort({ root: dir, git: () => "", events: {} as never });
+      assert.equal(await holdFor(60_000, stopFile, 5), "stopped");
+      assert.equal(existsSync(path.join(dir, ".loop-stop")), true);
     } finally {
-      process.chdir(cwd);
       rmSync(dir, { recursive: true, force: true });
     }
   });
