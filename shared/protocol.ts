@@ -101,7 +101,7 @@ export interface IntentReply {
 }
 
 /** Each intent and the schema the server parses it with, which is also its payload's type. */
-interface IntentSchemas {
+export interface IntentSchemas {
   "room:create": typeof Inbound.RoomCreateSchema;
   "room:join": typeof Inbound.RoomJoinSchema;
   "room:spectate": typeof Inbound.RoomSpectateSchema;
