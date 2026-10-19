@@ -1,4 +1,4 @@
-// tests/native/stubFetch.test.ts — the fetch stub takes, and gives back, whichever
+// tests/native/stubFetch.test.tsx — the fetch stub takes, and gives back, whichever
 // shape of `fetch` the environment installed.
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { stubFetch } from './helpers/stubFetch';
