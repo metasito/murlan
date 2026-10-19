@@ -2,7 +2,7 @@
 // refusal with none here gets the game's (`playRefusalLabel`).
 
 import type { TranslationKey } from "@/lib/i18n";
-import type { PlayButtonLabel } from "./turnTimerUi.ts";
+import type { PlayButtonLabel } from "./table/stagedPlay.ts";
 
 export const TUTORIAL_REFUSAL_KEYS: Partial<Record<PlayButtonLabel, TranslationKey>> = {
   notACombination: "tutorial.errNotAValidCombo",

@@ -2,8 +2,6 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import type { Combination, PlayRefusal } from "@/lib/game/gameEngine";
-
 // ─── Play / pass affordances ──────────────────────────────────────────────────
 
 export interface TurnFacts {
@@ -15,70 +13,6 @@ export interface TurnFacts {
 /** Leading a trick is compulsory: you may only pass in answer to a combination. */
 export function canPassNow(facts: TurnFacts): boolean {
   return !facts.isNewTrick && facts.isMyTurn && !facts.isFinished;
-}
-
-/**
- * Why a selection cannot be played. Identifiers, not copy: GameTable.tsx maps
- * each to a short button label and to the longer sentence a screen reader (and
- * the rejection toast) speaks. Only the refusals a selection itself earns: one
- * drawn from the hand is always held.
- */
-export type PlayButtonLabel = "play" | Exclude<PlayRefusal, "exchangeOpen" | "notHeld">;
-
-/** As much of a combination as the rejection ladder needs. */
-export interface ComboShape {
-  type: Combination["type"];
-  length: number;
-}
-
-/**
- * Why the GIOCA button is dim, in the same reason order `checkPlay`
- * (lib/game/gameEngine.ts) refuses in — so a pair offered against a single is told
- * it is the wrong shape, and the opening play is told it needs the 3♠, rather
- * than both being called too low. `tests/ui-rules/playRefusalParity.test.ts`
- * holds the two to the same answer.
- *
- * Answers "why would this be refused"; the caller decides whether to show it,
- * because only the caller can run the engine — this takes a `ComboShape`, and
- * `checkPlay` wants the whole cards.
- */
-export function playButtonLabel(opts: {
-  isMyTurn: boolean;
-  isFinished: boolean;
-  selectedCount: number;
-  /** The selection's shape, null when it is not a recognised combination. */
-  selection: ComboShape | null;
-  /** What has to be beaten. Null while leading a new trick. */
-  pile: ComboShape | null;
-  /** The opening play of a round must contain the 3♠. */
-  requiresStartCard: boolean;
-  selectionHasStartCard: boolean;
-}): PlayButtonLabel {
-  if (!opts.isMyTurn || opts.isFinished) return "play";
-  if (opts.selectedCount === 0) return "play";
-
-  const selection = opts.selection;
-  if (selection === null) return "notACombination";
-  if (opts.requiresStartCard && !opts.selectionHasStartCard) return "needsStartCard";
-
-  const pile = opts.pile;
-  if (pile === null) return "play";
-
-  if (selection.type === "royal_straight") {
-    // A royal straight answers everything except a same-length higher one.
-    return pile.type === "royal_straight" && selection.length !== pile.length
-      ? "wrongLength"
-      : "tooLow";
-  }
-  if (selection.type === "bomb") {
-    if (pile.type === "royal_straight") return "royalUnbeatable";
-    return "tooLow";
-  }
-  if (pile.type === "royal_straight") return "royalUnbeatable";
-  if (pile.type === "bomb") return "bombOnly";
-  if (selection.type !== pile.type) return "wrongType";
-  if (selection.length !== pile.length) return "wrongLength";
-  return "tooLow";
 }
 
 /** Seconds left at which the clock-running-out sound starts. */

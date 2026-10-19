@@ -15,7 +15,7 @@ import {
 import { rankSpokenName, cardSpokenName, suitSpokenName } from "@/lib/cardNames";
 import type { TFn, TnFn, TranslationKey } from "@/lib/i18n";
 import { straightTopRankChar } from "@/components/table/straightTopRank";
-import { type PlayButtonLabel } from "@/components/turnTimerUi";
+import { type PlayButtonLabel } from "@/components/table/stagedPlay";
 import { type TableA11yStrings } from "@/components/tableA11y";
 
 /**
@@ -118,10 +118,7 @@ export function arrangedLabel(
 
 /**
  * Why GIOCA is dim, as a sentence: what the screen reader speaks and what the
- * toast shows when the refusal is tapped. `playButtonLabel` answers "play" to
- * three different questions — not your turn, your hand is over, nothing
- * selected — and only the last is about the selection, so the first two are
- * decided here rather than in the model.
+ * toast shows when the refusal is tapped.
  *
  * Only the start-card reason reads the card. At 2 players the opening card can
  * be the fallback "lowest dealt card" rather than the 3♠ (docs/GAME-RULES.md §4).

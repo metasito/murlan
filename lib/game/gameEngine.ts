@@ -419,16 +419,16 @@ export function buildCombination(cards: Card[]): Combination | null {
 /** Why the table refuses a combination: what it fails to beat. */
 export type BeatRefusal = "royalUnbeatable" | "bombOnly" | "wrongType" | "wrongLength" | "tooLow";
 
-/**
- * Why a play is refused, in the order `checkPlay` asks. The UI's own ladder
- * (`playButtonLabel`, components/turnTimerUi.ts) uses these same names.
- */
+/** Why a play is refused, in the order `checkPlay` asks. */
 export type PlayRefusal =
   | "exchangeOpen"
   | "notHeld"
   | "notACombination"
   | "needsStartCard"
   | BeatRefusal;
+
+/** The refusals a selection itself earns: cards drawn from the hand are always held. */
+export type SelectionRefusal = Exclude<PlayRefusal, "exchangeOpen" | "notHeld">;
 
 export type PassRefusal = "exchangeOpen" | "mustLead";
 
@@ -480,11 +480,15 @@ export function checkPlay(
 
 export type PlayCheck = { ok: true; combo: Combination } | { ok: false; code: PlayRefusal };
 
+export type SelectionCheck =
+  | { ok: true; combo: Combination }
+  | { ok: false; code: SelectionRefusal };
+
 /** `checkPlay` past the seat: whether these cards, already known held, answer this table. */
 export function checkSelection(
   cards: Card[],
   table: Pick<GameState, "lastPlayedCombination" | "firstPlayMade" | "startCard">
-): PlayCheck {
+): SelectionCheck {
   const combo = buildCombination(cards);
   if (!combo) return { ok: false, code: "notACombination" };
   const startCard = table.firstPlayMade ? undefined : table.startCard;
