@@ -34,8 +34,7 @@ describe("brief", () => {
   });
 
   test("every brief reads the issue's body and only trusted comments", () => {
-    assert.match(readIssue(5), /^gh issue view 5 --json title,body,comments --jq '\.title, \.body, /);
-    assert.ok(readIssue(5).includes(`select(.authorAssociation|IN("OWNER","MEMBER","COLLABORATOR"))`));
+    assert.equal(readIssue(5), "node tools/loop/tracker.mjs read 5");
     for (const kind of KINDS) {
       const text = brief(kind, { n: 5, worktree: WT });
       assert.doesNotMatch(text, /--comments/, kind);

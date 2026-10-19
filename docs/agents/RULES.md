@@ -62,8 +62,8 @@ that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAU
 23. *(retired)*
 24. *(retired)*
 25. **Read an issue with one command, at pick-up and again before finishing:**
-    `gh issue view <n> --json title,body,comments --jq '.title, .body, (.comments[]|select(.authorAssociation|IN("OWNER","MEMBER","COLLABORATOR"))|"--- "+.author.login+": "+.body)'`.
-    `--comments` prints the thread *instead of* the body, outsiders' comments too; `--json body` drops it.
+    `node tools/loop/tracker.mjs read <n>` — title, body and trusted authors' comments, over REST.
+    Not the `gh issue` porcelain: GraphQL, refused in a cloud session, and its thread keeps outsiders.
 26. **Release the claim whenever you stop without landing** — remove `in-progress`, say why.
 27. **A routed `implement` goes through `/queue`**; `triage` through `/triage`; `wayfinder`
     through `/wayfinder`.

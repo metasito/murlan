@@ -77,7 +77,7 @@ export const commentReads = (text) =>
     .replace(/\\\r?\n\s*/g, " ")
     .split("\n")
     .flatMap((line) => {
-      const at = line.search(/\bgh (issue|pr) view\b/);
+      const at = line.search(/\bgh ((issue|pr) view|api)\b/);
       return at < 0 ? [] : [line.slice(at + 3).split(/[\s`]+/).filter(Boolean)];
     })
     .filter(readsComments);

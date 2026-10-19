@@ -391,7 +391,7 @@ describe("a loop session reads comments only through rule 25's filter", () => {
     "gh api -X GET repos/o/r/pulls/5/comments -f per_page=100",
     "gh api repos/o/r/issues/comments --paginate",
   ]) {
-    test(`refuses in the loop: ${cmd}`, () => assert.match(String(check(cmd, repo, true)), /--json title,body,comments --jq/));
+    test(`refuses in the loop: ${cmd}`, () => assert.match(String(check(cmd, repo, true)), /node tools\/loop\/tracker\.mjs read <n>/));
     test(`allows outside the loop: ${cmd}`, () => assert.equal(check(cmd, repo, false), null));
   }
   for (const cmd of [

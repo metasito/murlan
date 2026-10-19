@@ -48,7 +48,8 @@ the owner decides whether it is work.
 Every multi-line body goes through `--body-file` (the shell contract, `docs/agents/checks.md`).
 
 ```sh
-# Read one issue: rule 25's command. Add `labels` to --json when they matter.
+# Read one issue or pull request: rule 25's command.
+node tools/loop/tracker.mjs read <n>
 gh issue list --state open --label <label> --json number,title,labels \
   --jq '[.[] | {number, title, labels: [.labels[].name]}]'
 gh issue create --title "<title>" --body-file <file> --label <label> --label size:<size>
@@ -110,11 +111,10 @@ the same GitHub account.
 requests; `/triage` reads this flag.)_
 
 When `yes`, PRs run through the same labels and states, with the `gh pr` equivalents: read with
-the rule 25 shape on `gh pr view` plus `gh pr diff <n>`; list with
+rule 25's command (an issue's number space holds pull requests too) plus `gh pr diff <n>`; list with
 `gh pr list --state open --json number,title,body,labels,author,authorAssociation,comments`,
 keeping only `authorAssociation` of `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR` or `NONE`. Issues and
-PRs share one number space: resolve a bare `#42` with `gh pr view 42`, falling back to
-`gh issue view 42`.
+PRs share one number space, so rule 25's command reads a bare `#42` whichever it is.
 
 ## Writing an issue body an agent can execute
 

@@ -5,6 +5,7 @@
  *
  * REST only: `gh issue` and `gh pr` go through GraphQL, which a Claude Code cloud session is refused.
  */
+import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { gh as ghCli, REPO } from "./cli.mjs";
 
 export const TRUSTED_AUTHORS = ["OWNER", "MEMBER", "COLLABORATOR"];
@@ -16,10 +17,16 @@ export const isTrusted = (/** @type {{authorAssociation?: string, author_associa
 /** @template {{authorAssociation?: string, author_association?: string}} T @param {T[]} comments */
 export const trustedComments = (comments) => comments.filter(isTrusted);
 
-export const TRUSTED_SELECT = `select(.authorAssociation|IN(${TRUSTED_AUTHORS.map((a) => `"${a}"`).join(",")}))`;
+/** The jq form, for a session's own read of a thread: either API's spelling of the association. */
+export const TRUSTED_SELECT = `select((.authorAssociation//.author_association)|IN(${TRUSTED_AUTHORS.map((a) => `"${a}"`).join(",")}))`;
 /** Rule 25's read, keeping only trusted authors' comments: a later comment overrides the body. */
-export const readIssue = (n) =>
-  `gh issue view ${n} --json title,body,comments --jq '.title, .body, (.comments[]|${TRUSTED_SELECT}|"--- "+.author.login+": "+.body)'`;
+export const readIssue = (n) => `node tools/loop/tracker.mjs read ${n}`;
+
+/** What rule 25's read prints: the title, the body, then each trusted comment as `--- login: body`. */
+export function issueText(n, tracker = ghTracker()) {
+  const { title, body } = tracker.read(n);
+  return [title, body ?? "", ...tracker.comments(n).map((c) => `--- ${c.author.login}: ${c.body}`)].join("\n");
+}
 
 /** `[remove, add]` for each transition, read by both trackers so they cannot drift apart. */
 const TRANSITIONS = {
@@ -265,4 +272,14 @@ export function fakeTracker(issues = {}, { fail = [], prs = [] } = {}) {
     },
     prs: () => [...pulls],
   };
+}
+
+// Rule 25 names this entry, so a session reads an issue the same way wherever gh can reach REST.
+if (isInvokedDirectly(process.argv[1], import.meta.url)) {
+  const [verb, n] = process.argv.slice(2);
+  if (verb !== "read" || !/^\d+$/.test(n ?? "")) {
+    console.error("usage: node tools/loop/tracker.mjs read <n>");
+    process.exit(2);
+  }
+  console.log(issueText(Number(n)));
 }
