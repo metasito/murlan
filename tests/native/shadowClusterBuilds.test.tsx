@@ -12,7 +12,7 @@ import { TABLE_CENTRE, restingLamp } from '@/components/table/lampRig';
 import type { CardTable } from '@/components/table/useCardRects';
 import { FeltGradient } from '@/lib/tokens';
 import { frames } from './helpers/exchangeLegs';
-import { throwPair } from './helpers/landing';
+import { runScenario } from './helpers/cardScenarios';
 import { bootFeedback } from './helpers/feedback';
 
 jest.mock('@/components/table/cardShadows', () => jest.requireActual('@/components/table/cardShadows'));
@@ -46,8 +46,7 @@ describe('the felt during a bot throw', () => {
         shapes.set(key, shape);
       }
     };
-    const view = await throwPair(3);
-    await frames(2000, sample);
+    await runScenario('throw', sample);
 
     const builds = Object.entries(e2e.murlanShadowClusterBuilds ?? {});
     const still = builds.filter(([cluster]) => cluster.split('|')[1].split(',').every((key) => !moves.has(key)));
@@ -61,7 +60,6 @@ describe('the felt during a bot throw', () => {
     expect(kinds.size).toBeGreaterThan(1);
     expect([...movedIn].filter(([at, n]) => n < moves.get(at.split('|')[1])!)).toEqual([]);
     expect(still.filter(([, n]) => n > 1)).toEqual([]);
-    await view.unmount();
   }, 120_000);
 });
 

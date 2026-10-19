@@ -13,10 +13,9 @@ import { CARD_SCOPES, type CardRects } from '@/components/table/cardRects';
 import { CardCastContext } from '@/components/table/feltReady';
 import { dealCards } from '@/lib/game/gameEngine';
 import { CardShadow, cardShadow, Colors, Shadow, withAlpha } from '@/lib/theme';
-import { card, seat, state } from '../support/game.ts';
-import { cardScenarios, cardTable, dealtTable } from './helpers/cardScenarios';
+import { card } from '../support/game.ts';
+import { FLYING, THROW, cardTable, dealtTable, pairThrownBy3, runScenario, type Scenario } from './helpers/cardScenarios';
 import { frames } from './helpers/exchangeLegs';
-import { PAIR } from './helpers/landing';
 import { bootFeedback } from './helpers/feedback';
 
 const HIDDEN = { includeHiddenElements: true };
@@ -83,15 +82,15 @@ afterEach(() => {
 });
 
 describe('a card on the table', () => {
-  it.each(cardScenarios)('is registered exactly as drawn and casts no shadow of its own through $name', async (scenario) => {
+  it.each<Scenario>(['throw', 'deal', 'exchange'])('is registered exactly as drawn and casts no shadow of its own through a %s', async (scenario) => {
     let peak = 0;
-    await scenario.play((at) => {
+    await runScenario(scenario, (t) => {
       expectExactlyDrawn();
       expectNoCardShadow();
-      peak = Math.max(peak, scoped(scenario.flying).length);
-      if (at === 'frame') return;
+      peak = Math.max(peak, scoped(FLYING[scenario]).length);
+      if (scenario !== 'throw' || (t !== THROW.air && t !== THROW.rest)) return;
       expect(scoped('pile')).toEqual(['pile:a', 'pile:b']);
-      if (at === 'air') {
+      if (t === THROW.air) {
         expect(scoped('hand').length).toBeGreaterThan(0);
         expect(scoped('fan').length).toBeGreaterThan(0);
       }
@@ -102,20 +101,19 @@ describe('a card on the table', () => {
   }, 120_000);
 
   it("lights the pile's cards through a going-out catch, and not through a play that leaves cards in hand", async () => {
-    const hands = dealCards(4).hands;
-    const peak: number[] = [];
-    for (const emptied of [true, false]) {
-      const players = hands.map((h, i) => seat(i, i === 3 && emptied ? [] : h));
-      const view = await render(cardTable(state({ players, firstPlayMade: true, lastPlayedCombination: PAIR, lastPlayedBy: 3 })));
-      let lit = 0;
-      await frames(3000, () => {
-        lit = Math.max(lit, ...scoped('pile').map((k) => registry()[k].glow));
-      });
-      peak.push(lit);
-      await view.unmount();
-    }
-    expect(peak[0]).toBeGreaterThan(0.5);
-    expect(peak[1]).toBe(0);
+    const lit = (): number => Math.max(0, ...scoped('pile').map((k) => registry()[k].glow));
+    let caught = 0;
+    await runScenario('goingOut', () => {
+      caught = Math.max(caught, lit());
+    });
+    let kept = 0;
+    const view = await render(cardTable(pairThrownBy3(dealCards(4).hands, false)));
+    await frames(3000, () => {
+      kept = Math.max(kept, lit());
+    });
+    await view.unmount();
+    expect(caught).toBeGreaterThan(0.5);
+    expect(kept).toBe(0);
   }, 120_000);
 
   it('carries no shadow however many cards are held', async () => {

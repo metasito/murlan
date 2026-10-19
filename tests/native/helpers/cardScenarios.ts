@@ -4,10 +4,10 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { GameTable } from '@/components/GameTable';
 import type { CardScope } from '@/components/table/cardRects';
-import { dealCards, type GameState } from '@/lib/game/gameEngine';
+import { dealCards, type Card, type GameState } from '@/lib/game/gameEngine';
 import { card, seat, state } from '../../support/game.ts';
 import { frames } from './exchangeLegs';
-import { throwPair } from './landing';
+import { PAIR, throwPair } from './landing';
 
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
 const HIDDEN = { includeHiddenElements: true };
@@ -21,64 +21,52 @@ export const cardTable = (gameState: GameState) =>
   );
 
 export const dealtTable = (overrides: Partial<GameState> = {}): GameState =>
-  state(
-    { players: dealCards(4).hands.map((h, i) => seat(i, h)), firstPlayMade: true, ...overrides }
-  );
+  state({ players: dealCards(4).hands.map((h, i) => seat(i, h)), firstPlayMade: true, ...overrides });
 
-/** `air` and `rest` bracket one throw; `frame` is every frame of a deal or an exchange. */
-export type CardMoment = 'air' | 'rest' | 'frame';
-
-export interface CardScenario {
-  name: string;
-  /** The scope whose cards are in the air at some judged moment. */
-  flying: CardScope;
-  /** Mounts, calls `judge` at each moment the scenario is judged on, and unmounts. */
-  play(judge: (at: CardMoment) => void): Promise<void>;
-}
+/** Seat 3 has just thrown `PAIR`; `emptied`, it threw its last cards and the pile is caught going out. */
+export const pairThrownBy3 = (hands: Card[][], emptied: boolean): GameState =>
+  state({
+    players: hands.map((h, i) => seat(i, i === 3 && emptied ? [] : h)),
+    firstPlayMade: true,
+    lastPlayedCombination: PAIR,
+    lastPlayedBy: 3,
+  });
 
 const exchangeState = (): GameState =>
-  state(
-    { players: [
+  state({
+    players: [
       seat(0, [card('5', 'hearts'), card('K', 'diamonds'), card('2', 'spades')]),
       seat(1, [card('4', 'clubs')]),
       seat(2, [card('6', 'hearts')]),
     ],
-      firstPlayMade: true,
-      exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), twoJokerException: false },
-    }
-  );
+    firstPlayMade: true,
+    exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), twoJokerException: false },
+  });
 
-export const cardScenarios: readonly CardScenario[] = [
-  {
-    name: 'a throw, in the air and at rest',
-    flying: 'pile',
-    async play(judge) {
-      const view = await throwPair(3);
-      await frames(96);
-      if (screen.queryAllByTestId('flying-card', HIDDEN).length === 0) throw new Error('the throw is not in the air at 96 ms');
-      judge('air');
-      await frames(2000);
-      if (screen.queryAllByTestId('flying-card', HIDDEN).length > 0) throw new Error('the throw is still in the air at 2096 ms');
-      judge('rest');
-      await view.unmount();
-    },
-  },
-  {
-    name: 'a deal',
-    flying: 'deal',
-    async play(judge) {
-      const view = await render(cardTable(dealtTable({ firstPlayMade: false })));
-      await frames(1600, () => judge('frame'));
-      await view.unmount();
-    },
-  },
-  {
-    name: 'an exchange',
-    flying: 'leg',
-    async play(judge) {
-      const view = await render(cardTable(exchangeState()));
-      await frames(3000, () => judge('frame'));
-      await view.unmount();
-    },
-  },
-];
+export type Scenario = 'throw' | 'deal' | 'exchange' | 'goingOut';
+export const SCENARIOS: readonly Scenario[] = ['throw', 'deal', 'exchange', 'goingOut'];
+/** The scope whose cards are in the air at some frame of each scenario. */
+export const FLYING: Readonly<Record<Scenario, CardScope>> = { throw: 'pile', deal: 'deal', exchange: 'leg', goingOut: 'pile' };
+/** The throw's frames, in ms: its pair is in the air at `air` and has come to rest by `rest`. */
+export const THROW = { air: 96, rest: 2096 } as const;
+const LENGTH: Readonly<Record<Scenario, number>> = { throw: THROW.rest, deal: 1600, exchange: 3000, goingOut: 3000 };
+
+const inTheAir = () => screen.queryAllByTestId('flying-card', HIDDEN).length > 0;
+
+const mount = (s: Scenario) => {
+  if (s === 'throw') return throwPair(3);
+  if (s === 'deal') return render(cardTable(dealtTable({ firstPlayMade: false })));
+  if (s === 'exchange') return render(cardTable(exchangeState()));
+  return render(cardTable(pairThrownBy3(dealCards(4).hands, true)));
+};
+
+/** Mounts the scenario's table, calls `onFrame` with the elapsed ms after every 16 ms frame, and unmounts. */
+export async function runScenario(s: Scenario, onFrame: (frame: number) => void): Promise<void> {
+  const view = await mount(s);
+  await frames(LENGTH[s], (t) => {
+    if (s === 'throw' && t === THROW.air && !inTheAir()) throw new Error(`the throw is not in the air at ${t} ms`);
+    if (s === 'throw' && t === THROW.rest && inTheAir()) throw new Error(`the throw is still in the air at ${t} ms`);
+    onFrame(t);
+  });
+  await view.unmount();
+}
