@@ -530,7 +530,6 @@ export function realPorts(book, screen, events, { claimTicket = claim, ticket = 
       return last;
     },
     journal: (line) => appendSupervisor(line),
-    logOf: (n) => logOf(n),
     prune: () => pruneLogs(),
   };
   return { tracker, workspace, session, ledger };

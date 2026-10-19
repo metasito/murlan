@@ -481,6 +481,8 @@ test("every row's name is its own", () => {
 const ELSEWHERE: Record<string, [file: string, why: string]> = {
   "settle runs before the pass returns": ["queueLoopMain.test.ts", "io"],
   "each fake carries exactly the members its real port does": ["queueLoopMain.test.ts", "io"],
+  "every port member runOnce and main read is on the real ports and the fakes, and none goes unread": ["queueLoopMain.test.ts", "io"],
+  "a member the pass reads and no port carries is caught": ["queueLoopMain.test.ts", "io"],
   "a won claim spawns the session on the branch it cut, and says so": ["queueLoopMain.test.ts", "io"],
   "a lost claim spawns nothing and stands down with the claim's own reason": ["queueLoopMain.test.ts", "io"],
   "a claim that throws stands down with git's last line, never a stack": ["queueLoopMain.test.ts", "io"],

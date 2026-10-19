@@ -18,6 +18,7 @@ import { fakeTracker, publishForReview } from "../tracker.mjs";
 import { LIMITS, RESTART } from "../limits.mjs";
 import { loopMoved, park, refreshWorktree, removeLanded, tearDown as removeWorktree, workspacePort } from "../workspace.mjs";
 import { fakePorts, rowOf, withMembers } from "./helpers/fakePorts.ts";
+import { portReads, unknownReads } from "./helpers/portReads.ts";
 import { afterSession } from "../decide.mjs";
 import { readLine } from "../loop-stream.mjs";
 import { ticketTally } from "../loop-logs.mjs";
@@ -2251,6 +2252,30 @@ describe("the port contract", () => {
       assert.deepEqual(Object.keys(fake[name]).sort(), Object.keys(real[name]).sort(), name);
     }
   });
+
+  // From the source, so a move that drops a member the pass reads goes red here, not on a night.
+  const SCANNED = ["runOnce", "main", "pickReads", "preflight", "parkAndRecord"];
+  const source = readFileSync(path.join(ROOT, "tools/loop/queue-loop.mjs"), "utf8");
+  const realOnes = () => {
+    const quiet = () => {};
+    return realPorts({ totals: {} } as never, {} as never, { log: quiet, step: quiet } as never) as Record<string, Record<string, unknown>>;
+  };
+
+  test("every port member runOnce and main read is on the real ports and the fakes, and none goes unread", () => {
+    const reads = portReads(source, SCANNED);
+    assert.ok(reads.size >= 25 && reads.has("workspace.standing") && reads.has("ledger.journal"), [...reads].join(" "));
+    assert.deepEqual(unknownReads(reads, realOnes()), [], "read but not on realPorts");
+    assert.deepEqual(unknownReads(reads, io().ports), [], "read but not on the fakes");
+    const real = realOnes();
+    const unread = Object.entries(real).flatMap(([port, members]) => Object.keys(members).map((m) => `${port}.${m}`)).filter((m) => !reads.has(m));
+    assert.deepEqual(unread, [], "on realPorts but read by nothing");
+  });
+
+  test("a member the pass reads and no port carries is caught", () => {
+    const planted = source.replace("const derived = workspace.standing();", "const derived = workspace.standingNow();");
+    assert.notEqual(planted, source, "the plant site moved");
+    assert.deepEqual(unknownReads(portReads(planted, SCANNED), realOnes()), ["workspace.standingNow"]);
+  });
 });
 
 describe("the real session port claims in-process", () => {
@@ -2264,7 +2289,7 @@ describe("the real session port claims in-process", () => {
     const { session } = realPorts(book as never, {} as never, events as never, {
       claimTicket: (n: number, title: string) => (asked.push([n, title]), claimTicket(n, title)),
       ticket: async (_run: unknown, opts: { branch: string | null }) => (tickets.push({ branch: opts.branch }), { status: 0, declared: null }),
-    });
+    } as never);
     const run = await session.spawn(route);
     return { run, steps, tickets, asked };
   };
@@ -2299,7 +2324,7 @@ describe("the real session port claims in-process", () => {
     const { session } = realPorts({ totals: {}, start: () => {} } as never, {} as never, { log: () => {}, step: () => {} } as never, {
       claimTicket: (n: number) => (asked.push(n), { won: true, branch: "x" }),
       ticket: async (_run: unknown, opts: { branch: string | null }) => (tickets.push(opts.branch), { status: 0 }),
-    });
+    } as never);
     await session.spawn({ ...route, resuming: true, branch: "agent/42-kept", phase: "D" });
     assert.deepEqual([asked, tickets], [[], ["agent/42-kept"]]);
   });

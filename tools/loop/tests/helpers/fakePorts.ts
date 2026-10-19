@@ -74,7 +74,6 @@ export const fakeLedgerPort = (rows: any[] = []): Port => ({
   record: (x: unknown) => rows.push(rowOf(x)),
   killed: () => null,
   journal: () => {},
-  logOf: () => "",
   prune: () => {},
 });
 
