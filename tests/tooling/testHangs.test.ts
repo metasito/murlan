@@ -51,6 +51,36 @@ describe("a test file that never finishes fails npm test by name", () => {
   });
 });
 
+describe("a test file that passed always exits", () => {
+  // --test-force-exit ends each file with process.exit, which on Node 24 joins V8's compiler threads
+  // without the main thread collecting again: a background compile job waiting on a collection then
+  // hangs the exit forever, after it has already stopped the deadline's worker (#1590).
+  const NO_BACKGROUND_JIT = ["--no-concurrent-recompilation", "--no-concurrent-sparkplug"];
+
+  test("npm test's own flags reach every file's process and keep the JIT off background threads", async () => {
+    const [, ...args] = script.split(" ").slice(0, -1);
+    const dir = mkdtempSync(path.join(tmpdir(), "jit-flags-"));
+    try {
+      const probe = path.join(dir, "flags.test.mjs");
+      writeFileSync(
+        probe,
+        'import { test } from "node:test";\nimport assert from "node:assert/strict";\n' +
+          `test("compiles on the main thread", () => { for (const f of ${JSON.stringify(NO_BACKGROUND_JIT)}) assert.ok(process.execArgv.includes(f), f); });\n`
+      );
+      const env = { ...process.env };
+      delete env.NODE_TEST_CONTEXT;
+      const run = await new Promise<{ code: unknown; out: string }>((resolve) =>
+        execFile(process.execPath, [...args, probe], { cwd: repoRoot, env, timeout: 60_000 }, (err, stdout, stderr) =>
+          resolve({ code: err ? err.code : 0, out: stdout + stderr })
+        )
+      );
+      assert.equal(run.code, 0, run.out);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("a run that stops hearing from its files fails by name", () => {
   const reporter = pathToFileURL(path.join(repoRoot, "tests", "helpers", "filesRunReporter.mjs")).href;
   const file = JSON.stringify(path.join(tmpdir(), "fake.test.ts"));

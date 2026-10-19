@@ -63,6 +63,9 @@ const PLANTED = `import type { Card } from "../../lib/game/gameEngine.ts";
   export function plantedDeepParam(scale: number, p: { a: { b: { c: { d: { e: { n: number } } } } } }) { return scale; }
   export function plantedCallback(scale: number, getN: () => number) { return scale; }
   export function plantedCallbackParam(scale: number, cb: (n: number) => void) { return scale; }
+  export interface PlantedRing { scale: number; next: PlantedRing }
+  export function plantedCycle(ring: PlantedRing) { return ring.scale; }
+  export function plantedCycleBound<T extends PlantedRing>(ring: T) { return ring.scale; }
 `;
 const PLANTED_TWIN = `export function plantedScale(scale: number, n: number) { return scale * n; }`;
 const PROBES = new Map([[PROBE, PLANTED], [TWIN, PLANTED_TWIN]]);
@@ -235,6 +238,8 @@ test("a planted count is flagged wherever it hides, and a count-free place is no
     "seatLayoutProbe.ts:plantedDeepParam": { where: ["p.a.b.c.d.e"], fans: [] },
     "seatLayoutProbe.ts:plantedCallback": { where: ["getN()"], fans: [] },
     "seatLayoutProbe.ts:plantedCallbackParam": { where: ["cb.n"], fans: [] },
+    "seatLayoutProbe.ts:plantedCycle": { where: ["ring.next.next.next.next.next"], fans: [] },
+    "seatLayoutProbe.ts:plantedCycleBound": { where: ["ring.next.next.next.next.next"], fans: [] },
   });
 });
 
