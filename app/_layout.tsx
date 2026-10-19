@@ -9,7 +9,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { GameProvider } from "@/context/GameContext";
-import { AuthProvider } from "@/context/AuthContext";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { SocketProvider } from "@/context/SocketContext";
 import { SettingsProvider } from "@/context/SettingsContext";
 import { NotificationProvider, useBanner } from "@/context/NotificationContext";
@@ -47,6 +47,11 @@ function trackForRoute(pathname: string): TrackId {
 const BenchAutostart: () => null =
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- a static import would ship the bench
   process.env.EXPO_PUBLIC_DIAGNOSTICS === "1" ? require("@/lib/diagnostics/BenchAutostart").BenchAutostart : () => null;
+
+function AccountNotifications({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  return <NotificationProvider accountId={user?.id}>{children}</NotificationProvider>;
+}
 
 export function RootLayoutNav() {
   const { notification, dismissNotification, reportBannerBottom } = useBanner();
@@ -143,8 +148,9 @@ export default function RootLayout() {
   if (!localeReady) return null;
 
   // ErrorBoundary sits inside SafeAreaProvider: its fallback needs insets to
-  // lay itself out. ErrorFallback also tolerates their absence, so a crash in
-  // the providers above still renders a screen rather than nothing.
+  // lay itself out. Nothing catches a throw in Settings, Query or SafeArea
+  // above it. A table screen's crash stops at its route's own ErrorBoundary
+  // export, so the providers below this one stay mounted.
   return (
     <SettingsProvider>
       <QueryClientProvider client={queryClient}>
@@ -152,15 +158,15 @@ export default function RootLayout() {
           <ErrorBoundary>
             <GestureHandlerRootView style={{ flex: 1 }}>
               <OrientationProvider>
-                <NotificationProvider>
-                  <AuthProvider>
+                <AuthProvider>
+                  <AccountNotifications>
                     <SocketProvider>
                       <GameProvider>
                         <RootLayoutNav />
                       </GameProvider>
                     </SocketProvider>
-                  </AuthProvider>
-                </NotificationProvider>
+                  </AccountNotifications>
+                </AuthProvider>
               </OrientationProvider>
             </GestureHandlerRootView>
           </ErrorBoundary>

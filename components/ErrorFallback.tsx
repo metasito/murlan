@@ -16,6 +16,7 @@ import { Colors, Spacing, Radius, FontSize, Shadow, TOUCH_TARGET_MIN, Layer } fr
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden } from "@/lib/a11y";
+import { storeTableHandles } from "@/lib/tableHandles";
 import { AppModal } from "./AppModal";
 
 type ErrorFallbackProps = {
@@ -100,6 +101,8 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
           <MenuButton
             label={t("errorFallback.continue")}
             onPress={() => {
+              // Left in place, the stored handles rejoin the table that crashed.
+              storeTableHandles({ roomId: null, waitingCode: null });
               router.replace("/");
               resetError();
             }}

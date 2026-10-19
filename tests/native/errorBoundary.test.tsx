@@ -8,12 +8,16 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import React from 'react';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Try } from 'expo-router/build/views/Try';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ErrorFallback } from '@/components/ErrorFallback';
+import { RouteErrorBoundary } from '@/components/RouteErrorBoundary';
+import { ACTIVE_ROOM_KEY, WAITING_ROOM_KEY } from '@/lib/storageKeys';
 import { SettingsProvider } from '@/context/SettingsContext';
 import { t } from '@/lib/i18n';
 import { resetErrorReportingForTests } from '@/lib/errorReporting';
@@ -125,6 +129,66 @@ it('renders with no SafeAreaProvider anywhere', async () => {
   expect(view.getByText(t('errorFallback.title'))).toBeTruthy();
   expect(view.getByRole('button', { name: t('errorFallback.restart') })).toBeTruthy();
 
+  await view.unmount();
+});
+
+// A table screen's throw has to stop below Auth, Socket and Game: the root
+// boundary above them unmounts all three, and their remount rejoins the table.
+describe('a table route has its own boundary', () => {
+  it.each([
+    ['app', '(online)', '_layout.tsx'],
+    ['app', 'game.tsx'],
+  ])('%s/%s exports ErrorBoundary', (...segments) => {
+    const source = readFileSync(join(__dirname, '..', '..', ...segments), 'utf8');
+    expect(source).toMatch(/export \{ RouteErrorBoundary as ErrorBoundary \} from "@\/components\/RouteErrorBoundary";/);
+  });
+
+  it('shows the fallback and reports, with the providers outside it still mounted', async () => {
+    const outer = { mounts: 0, unmounts: 0 };
+    function Outer({ children }: { children: React.ReactNode }) {
+      React.useEffect(() => {
+        outer.mounts += 1;
+        return () => {
+          outer.unmounts += 1;
+        };
+      }, []);
+      return <>{children}</>;
+    }
+    const view = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <Outer>
+          <Try catch={RouteErrorBoundary}>
+            <Thrower />
+          </Try>
+        </Outer>
+      </SafeAreaProvider>
+    );
+
+    expect(view.getByText(t('errorFallback.title'))).toBeTruthy();
+    expect(outer).toEqual({ mounts: 1, unmounts: 0 });
+    expect(apiRequest).toHaveBeenCalledWith(
+      'POST',
+      '/api/client-errors',
+      expect.objectContaining({ message: 'boom' })
+    );
+    await view.unmount();
+  });
+});
+
+it('Continue forgets the table before leaving, so nothing rejoins it', async () => {
+  await AsyncStorage.setItem(ACTIVE_ROOM_KEY, 'room-1');
+  await AsyncStorage.setItem(WAITING_ROOM_KEY, 'ABCD');
+  const view = await render(<ErrorFallback error={new Error('boom')} resetError={() => {}} />);
+
+  await fireEvent.press(view.getByRole('button', { name: t('errorFallback.continue') }));
+
+  await waitFor(async () =>
+    expect(await AsyncStorage.multiGet([ACTIVE_ROOM_KEY, WAITING_ROOM_KEY])).toEqual([
+      [ACTIVE_ROOM_KEY, null],
+      [WAITING_ROOM_KEY, null],
+    ])
+  );
+  expect(replace).toHaveBeenCalledWith('/');
   await view.unmount();
 });
 

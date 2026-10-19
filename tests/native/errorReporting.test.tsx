@@ -14,11 +14,11 @@ jest.mock('@/lib/query-client', () => ({
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   PENDING_CRASH_REPORTS_MAX,
-  flushPendingCrashReports,
   installGlobalErrorHandlers,
   reportError,
   reportSocketClose,
   setCurrentScreen,
+  setReportingAccount,
   resetErrorReportingForTests,
 } from '@/lib/errorReporting';
 
@@ -196,7 +196,7 @@ describe('a report the server never took', () => {
     expect((await kept()).map((r) => r.message)).toEqual(['signed-out crash']);
 
     apiRequest.mockClear();
-    await flushPendingCrashReports();
+    await setReportingAccount('u1');
 
     expect(sent().map((r) => r.message)).toEqual(['signed-out crash']);
     expect(await kept()).toEqual([]);
@@ -211,6 +211,42 @@ describe('a report the server never took', () => {
       Array.from({ length: PENDING_CRASH_REPORTS_MAX }, (_, i) => `crash ${i + 2}`)
     );
     apiRequest.mockImplementation(() => Promise.resolve({ ok: true }));
+  });
+
+  it('overwrites a corrupt list rather than losing every later report', async () => {
+    await AsyncStorage.setItem(PENDING_CRASH_REPORTS_KEY, '{not json');
+    apiRequest.mockImplementationOnce(refused);
+    reportError(new Error('after the corruption'));
+    await eventually(async () => (await AsyncStorage.getItem(PENDING_CRASH_REPORTS_KEY)) !== '{not json');
+    expect((await kept()).map((r) => r.message)).toEqual(['after the corruption']);
+  });
+
+  it('is posted only by the account it was queued under', async () => {
+    await setReportingAccount('A');
+    apiRequest.mockImplementationOnce(refused);
+    reportError(new Error('crash of A'));
+    await eventually(async () => (await kept()).length > 0);
+
+    apiRequest.mockClear();
+    await setReportingAccount('B');
+    expect(sent()).toEqual([]);
+    expect((await kept()).map((r) => r.message)).toEqual(['crash of A']);
+
+    await setReportingAccount('A');
+    expect(sent().map((r) => r.message)).toEqual(['crash of A']);
+    expect(sent()[0]).not.toHaveProperty('account');
+    expect(await kept()).toEqual([]);
+  });
+
+  it('queued while signed out, goes with whoever signs in next', async () => {
+    await setReportingAccount(null);
+    apiRequest.mockImplementationOnce(refused);
+    reportError(new Error('nobody signed in'));
+    await eventually(async () => (await kept()).length > 0);
+
+    apiRequest.mockClear();
+    await setReportingAccount('B');
+    expect(sent().map((r) => r.message)).toEqual(['nobody signed in']);
   });
 });
 

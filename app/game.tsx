@@ -19,6 +19,7 @@ import { uiFeedback } from "@/lib/device/feedback";
 import { useTranslation } from "@/lib/i18n";
 
 export { HUMAN_TURN_SECONDS } from "@/context/offlineDriver";
+export { RouteErrorBoundary as ErrorBoundary } from "@/components/RouteErrorBoundary";
 
 export default function GameScreen() {
   const { t } = useTranslation();

@@ -6,6 +6,8 @@ import { useOnlineRouting } from "@/context/useOnlineRouting";
 import { View, ActivityIndicator } from "react-native";
 import { Colors } from '@/lib/theme';
 
+export { RouteErrorBoundary as ErrorBoundary } from "@/components/RouteErrorBoundary";
+
 function FollowTable() {
   useOnlineRouting();
   return null;
