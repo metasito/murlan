@@ -208,9 +208,7 @@ describe('the listener effect', () => {
 });
 
 describe('a room:error while a lobby rejoin is outstanding', () => {
-  // `room:error` carries no tag, so a join-by-code refusal reads exactly like the rejoin's own.
-  it('drops only the waiting room, not the rest of the table', async () => {
-    const { result, unmount } = await mount();
+  async function inALobbyRejoining(result: { current: OnlineGameContextValue }) {
     await deliver('room:state', {
       roomId: 'R1',
       code: 'ABCD',
@@ -223,15 +221,34 @@ describe('a room:error while a lobby rejoin is outstanding', () => {
     await deliver('game:match_state', { target: 41, length: 'match', roundsPlayed: 1, scores: { player_0: 5 } });
     await deliver('connect');
     expect(emitted).toContainEqual({ event: 'room:rejoin', payload: expect.objectContaining({ code: 'ABCD' }) });
-    const before = dataOf(result.current);
+    expect(result.current.matchState.target).toBe(41);
+  }
+
+  it('is the refusal of that rejoin, and resets the whole table', async () => {
+    const { result, unmount } = await mount();
+    const { error: _fresh, ...fresh } = dataOf(result.current);
+    await inALobbyRejoining(result);
 
     await deliver('room:error', { code: 'ROOM_FULL', message: 'Room is full' });
 
-    const { room, error: _error, ...rest } = dataOf(result.current);
-    const { room: _room, error: _before, ...restBefore } = before;
-    expect(room).toBeNull();
-    expect(rest).toEqual(restBefore);
+    const { error, ...rest } = dataOf(result.current);
+    expect(rest).toEqual(fresh);
+    expect(error).not.toBeNull();
     expect(await AsyncStorage.getAllKeys()).toEqual([]);
+    await unmount();
+  });
+
+  it('answers a join sent since, which cancelled the rejoin, and resets nothing', async () => {
+    const { result, unmount } = await mount();
+    await inALobbyRejoining(result);
+    await act(async () => result.current.joinRoom('WXYZ'));
+    const { error: _before, ...before } = dataOf(result.current);
+
+    await deliver('room:error', { code: 'ROOM_FULL', message: 'Room is full' });
+
+    const { error, ...rest } = dataOf(result.current);
+    expect(rest).toEqual(before);
+    expect(error).not.toBeNull();
     await unmount();
   });
 });

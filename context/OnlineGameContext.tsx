@@ -398,13 +398,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // A refused `room:rejoin` is the one room:error that answers a room the
       // player no longer holds: the lobby on screen is a roster the server has
       // already dropped them from, so it goes with the error rather than
-      // leaving them waiting on a game they are not in. Only the lobby goes: `room:error` is
-      // untagged, so this may as well be a join-by-code refused while the rejoin was in flight.
-      if (rejoin.lobbyRefused(payload.code)) {
-        rejoin.hold({ waitingCode: null });
-        roomRef.current = null;
-        setRoom(null);
-      }
+      // leaving them waiting on a game they are not in.
+      if (rejoin.lobbyRefused(payload.code)) resetTable();
       // `spectateRoom` claims the flag before the server has answered, and a
       // refusal is the only answer some attempts ever get. Left set it would
       // send `room:unspectate` for the next table the player actually sits at,
@@ -707,7 +702,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // pending removals both have to go with the table.
       clearReactions();
     };
-  }, [socket, rejoin, abandonRejoin, showNotification, qc, announce]);
+  }, [socket, rejoin, resetTable, abandonRejoin, showNotification, qc, announce]);
 
   /**
    * Every intent waits to be told it arrived and says so if it never was — a
@@ -732,15 +727,16 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setEntrySource("friends");
     // A rejoin_failed latched by an earlier, unrelated room (e.g. a
     // force-quit from a waiting lobby) must not survive into a room the
-    // player is deliberately starting fresh. The outstanding-rejoin ref is
-    // left alone on purpose — it is cleared only by a reply that matches it,
+    // player is deliberately starting fresh. The outstanding `game:rejoin` ref
+    // is left alone on purpose — it is cleared only by a reply that matches it,
     // which is what makes the stale-reply guard a guard.
     setRejoinFailed(false);
     // Taking a seat is not watching, whatever an earlier spectate attempt left
     // behind: the flag decides whether leaving this room releases the seat.
     setIsSpectator(false);
+    rejoin.cancelLobby();
     deliver("room:create", { gameMode, maxPlayers }, { retry: false });
-  }, [deliver]);
+  }, [deliver, rejoin]);
 
   const joinRoom = useCallback((input: string) => {
     const code = joinCode(input);
@@ -752,8 +748,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     // hand and by nothing else, so a standing error otherwise outlives the
     // table it was about and hides this join's own answer behind it.
     setError(null);
+    rejoin.cancelLobby();
     deliver("room:join", { code }, { retry: false });
-  }, [deliver]);
+  }, [deliver, rejoin]);
 
   const spectateRoom = useCallback(
     (input: string) => {
@@ -762,9 +759,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       setIsSpectator(true);
       setRejoinFailed(false);
       setError(null);
+      rejoin.cancelLobby();
       deliver("room:spectate", { code });
     },
-    [deliver]
+    [deliver, rejoin]
   );
 
   const leaveRoom = useCallback(() => {
@@ -780,8 +778,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setEntrySource("quickmatch");
     setRejoinFailed(false);
     setIsSpectator(false);
+    rejoin.cancelLobby();
     deliver("room:quickmatch", { maxPlayers, gameMode }, { retry: false });
-  }, [deliver]);
+  }, [deliver, rejoin]);
 
   const setRoomVisibility = useCallback((visibility: "public" | "private") => {
     deliver("room:setVisibility", { visibility });

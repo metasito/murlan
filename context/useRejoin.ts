@@ -46,8 +46,13 @@ export interface Rejoin {
    * `onNothingSent` runs if the retry finds nothing left to ask for.
    */
   retry(onNothingSent: () => void): boolean;
-  /** Whether a `room:error` with `code` is the refusal of the outstanding `room:rejoin`. */
+  /**
+   * Whether a `room:error` with `code` is the refusal of the outstanding `room:rejoin`. Sound only
+   * because every new room request calls `cancelLobby` first: `room:error` carries no tag.
+   */
   lobbyRefused(code: string | undefined): boolean;
+  /** A new room request was sent: no later `room:error` answers the `room:rejoin`. */
+  cancelLobby(): void;
 }
 
 /** Owns the stored handles and every outstanding rejoin; returns one object per socket. */
@@ -149,6 +154,10 @@ export function useRejoin(
     return true;
   }, []);
 
+  const cancelLobby = useCallback(() => {
+    rejoiningCodeRef.current = null;
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     readTableHandles()
@@ -167,7 +176,7 @@ export function useRejoin(
   useEffect(() => clearRetryTimer, [socket, clearRetryTimer]);
 
   return useMemo(
-    () => ({ attempt, answered, hold, release, answers, retry, lobbyRefused }),
-    [attempt, answered, hold, release, answers, retry, lobbyRefused]
+    () => ({ attempt, answered, hold, release, answers, retry, lobbyRefused, cancelLobby }),
+    [attempt, answered, hold, release, answers, retry, lobbyRefused, cancelLobby]
   );
 }
