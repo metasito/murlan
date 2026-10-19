@@ -364,7 +364,7 @@ const GUARDS = [
       { glob: "server/store/drainPool.ts", reason: "waits on real pool I/O at shutdown; under an installed fake clock the wait would spin forever" },
       { glob: "server/socket/socketAdapter.ts", reason: "waits on a real Postgres LISTEN subscription; under an installed fake clock the wait would spin forever" },
     ],
-    plant: { file: "server/game/plant.ts", code: [
+    plant: { file: "server/game/stats.ts", code: [
       "const at = Date.now();",
       "const stamp = new Date();",
       "const read = Date.now;",
@@ -385,7 +385,7 @@ const GUARDS = [
       "const g = new globalThis.Date(now());",
       "const { parse } = Date;",
       '// Date.now() is the wall clock\nconst s = "new Date()";',
-    ].map((code) => ({ file: "server/game/plant.ts", code })),
+    ].map((code) => ({ file: "server/game/stats.ts", code })),
   },
 ];
 
