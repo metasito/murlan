@@ -22,7 +22,7 @@ const SEAT_IDENTITY = "/^(viewerSeat|mySeatIndex)$/";
 const GUARDS = [
   {
     id: "no-focused-test",
-    why: "A focused test makes jest skip the rest of its file and Playwright the rest of its shard, green either way: drop the `.only`.",
+    why: "A focused test makes jest skip the rest of its file and Playwright the rest of its shard, green either way: drop the `.only` (tests/e2e/playwright.config.ts forbids one on CI alone).",
     selector: [
       `MemberExpression[property.name="only"]:matches([object.name=${TEST_RUNNERS}], [object.object.name=${TEST_RUNNERS}], [object.object.object.name=${TEST_RUNNERS}])`,
       "CallExpression[callee.name=/^f(it|describe)$/]",
@@ -120,7 +120,7 @@ const GUARDS = [
   },
   {
     id: "modal-keeps-landscape",
-    why: "React Native's <Modal> defaults to portrait on iOS, so opening one in landscape rotates the app and every tap lands on nothing: declare supportedOrientations including landscape.",
+    why: "React Native's <Modal> defaults to portrait on iOS, so opening one in landscape rotates the app and every tap lands on nothing: declare supportedOrientations including landscape, once, in components/AppModal.tsx.",
     selector:
       'JSXOpeningElement[name.name="Modal"]:not(:has(JSXAttribute[name.name="supportedOrientations"] Literal[value="landscape"]))',
     files: DRAWN,
@@ -138,7 +138,7 @@ const GUARDS = [
   },
   {
     id: "no-portrait-lock",
-    why: "Nothing may lock the player into portrait: one held in landscape would be yanked round behind their back.",
+    why: "Nothing may lock the player into portrait: one held in landscape would be yanked round behind their back, and components/GameTable.tsx locks landscape alone.",
     selector: 'MemberExpression[property.name=/^PORTRAIT/]:matches([object.name="OrientationLock"], [object.property.name="OrientationLock"])',
     files: SCREENS,
     plant: { file: "components/Plant.tsx", code: ["lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);", "lockAsync(OrientationLock.PORTRAIT_UP);"].join("\n"), hits: 2 },
@@ -146,7 +146,7 @@ const GUARDS = [
   },
   {
     id: "screens-unconditional",
-    why: "expo-router hands a falsy child to the navigator, which logs \"Layout children must be of type Screen\" on every render: guard the route with <Stack.Protected guard={…}>.",
+    why: "expo-router hands a falsy child to the navigator, which logs \"Layout children must be of type Screen\" on every render: guard the route with <Stack.Protected guard={…}>, as app/_layout.tsx does.",
     selector: 'JSXExpressionContainer :matches(LogicalExpression, ConditionalExpression) JSXElement[openingElement.name.property.name="Screen"]',
     files: ["app/**/_layout.tsx"],
     plant: { file: "app/_layout.tsx", code: ['const x = <Stack>{__DEV__ && <Stack.Screen name="capture" />}</Stack>;', 'const x = <Tabs>{ready ? <Tabs.Screen name="x" /> : null}</Tabs>;'].join("\n"), hits: 2 },

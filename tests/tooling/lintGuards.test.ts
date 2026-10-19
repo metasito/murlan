@@ -2,7 +2,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -48,26 +48,7 @@ function guardSwitches(source: string, file: string): string[] {
 }
 
 describe("the guard registry's floor", () => {
-  test("1. every guard is a rule of the plugin, and eslint.config.js runs it exactly as registered", () => {
-    const ids = GUARDS.map((g) => g.id);
-    assert.equal(new Set(ids).size, ids.length, "two guards share an id");
-    const FIELDS = ["id", "why", "selector", "files", "ignores", "plant", "spare"];
-    for (const guard of GUARDS) {
-      assert.deepEqual(Object.keys(guard).filter((k) => !FIELDS.includes(k)), [], `${guard.id} is more than a selector entry`);
-      assert.ok(typeof guard.selector === "string" && guard.selector.trim(), `${guard.id} has no selector`);
-    }
-    assert.deepEqual(Object.keys(plugin.rules).sort(), [...ids].sort());
-    assert.ok(config.some((block) => block.plugins?.murlan === plugin), "eslint.config.js never registers the plugin");
-    const naming = config
-      .filter((block) => Object.keys(block.rules ?? {}).some((r) => r.startsWith("murlan/")))
-      .map(({ files, ignores, rules }) => ({ files, ignores, rules }));
-    const registered = guardBlocks()
-      .filter((block) => block.rules)
-      .map(({ files, ignores, rules }) => ({ files, ignores, rules }));
-    assert.deepEqual(naming, registered, "a block outside guardBlocks() sets a guard, or one guard is missing from the config");
-  });
-
-  test("2. every guard's plant fires it exactly `hits` times under the real config, and no spare fires it", async () => {
+  test("1. every guard's plant fires it exactly `hits` times under the real config, and no spare fires it", async () => {
     for (const guard of GUARDS) {
       const { file, code, hits } = guard.plant;
       assert.ok(hits > 0 && guard.spare.length > 0, `${guard.id} needs a plant that fires and a spare`);
@@ -84,7 +65,7 @@ describe("the guard registry's floor", () => {
     }
   });
 
-  test("3. every glob a guard names reads a tracked file, and the real config runs the guard on each", async () => {
+  test("2. every glob a guard names reads a tracked file, and the real config runs the guard on each", async () => {
     const byFile = new Map<string, Guard[]>();
     for (const guard of GUARDS) {
       for (const glob of guard.files) {
@@ -103,13 +84,31 @@ describe("the guard registry's floor", () => {
     assert.deepEqual(unguarded, [], "eslint.config.js ignores or turns off a guard where the registry says it runs");
   });
 
-  test("4. an exemption reads a tracked file the guard would otherwise read, and says why", () => {
+  test("3. an exemption reads a tracked file the guard would otherwise read, and says why", () => {
     const loose = GUARDS.flatMap((guard) =>
       (guard.ignores ?? [])
         .filter(({ glob, reason }) => !reason?.trim() || !tracked.some((f) => matches(f, [glob]) && matches(f, guard.files)))
         .map(({ glob }) => `${guard.id}: ${glob}`)
     );
     assert.deepEqual(loose, [], "an exemption with no reason, or one naming no file the guard reads, exempts nothing it can defend");
+  });
+
+  test("4. no block in the config sets a guard below error, and only guardBlocks() sets one", () => {
+    const below = config.flatMap((block) =>
+      Object.entries(block.rules ?? {})
+        .filter(([rule, level]) => rule.startsWith("murlan/") && !["error", 2].includes(Array.isArray(level) ? level[0] : level))
+        .map(([rule, level]) => `${rule}: ${JSON.stringify(level)}`)
+    );
+    assert.deepEqual(below, [], "a guard set to off or warn reports green without looking");
+    assert.deepEqual(Object.keys(plugin.rules).sort(), GUARDS.map((g) => g.id).sort());
+    assert.ok(config.some((block) => block.plugins?.murlan === plugin), "eslint.config.js never registers the plugin");
+    const naming = config
+      .filter((block) => Object.keys(block.rules ?? {}).some((r) => r.startsWith("murlan/")))
+      .map(({ files, ignores, rules }) => ({ files, ignores, rules }));
+    const registered = guardBlocks()
+      .filter((block) => block.rules)
+      .map(({ files, ignores, rules }) => ({ files, ignores, rules }));
+    assert.deepEqual(naming, registered, "a block outside guardBlocks() sets a guard, or one guard is missing from the config");
   });
 
   test("5. no source switches a guard off, and no directive is bare", () => {
@@ -119,7 +118,7 @@ describe("the guard registry's floor", () => {
     assert.deepEqual(switched, [], "a guard has no inline exemption (D17): change the guard, or change the code");
   });
 
-  test("5b. the directive scan sees each way to switch a guard off", () => {
+  test("5, seen: the directive scan sees each way to switch a guard off", () => {
     assert.equal(guardSwitches("/* eslint-disable */", "a.ts").length, 1);
     assert.equal(guardSwitches("// eslint-disable-next-line -- why", "a.ts").length, 1);
     assert.equal(guardSwitches("// eslint-disable-line murlan/no-focused-test", "a.ts").length, 1);
@@ -129,7 +128,7 @@ describe("the guard registry's floor", () => {
     assert.deepEqual(guardSwitches('const s = "/* eslint-disable */";', "a.ts"), []);
   });
 
-  test("5c. the one Modal is components/AppModal.tsx, and the real config holds its orientations", async () => {
+  test("the one Modal is components/AppModal.tsx, and the real config holds its orientations", async () => {
     const SHELL = "components/AppModal.tsx";
     const importGuard = GUARDS.find((g) => g.id === "one-modal")!;
     const alone = new ESLint({
@@ -158,7 +157,22 @@ describe("the guard registry's floor", () => {
     assert.ok((await reports(real, portrait, SHELL, rule)) > 0, `eslint.config.js does not hold ${SHELL}'s <Modal> to landscape`);
   });
 
-  test("6. a stale directive is an error, and npm run lint reads the whole tree as configured", async () => {
+  test("6. the registry's ids are unique, each guard is a selector entry, and its why names a path that exists", () => {
+    const ids = GUARDS.map((g) => g.id);
+    assert.equal(new Set(ids).size, ids.length, "two guards share an id");
+    const FIELDS = ["id", "why", "selector", "files", "ignores", "plant", "spare"];
+    const dangling: string[] = [];
+    for (const guard of GUARDS) {
+      assert.deepEqual(Object.keys(guard).filter((k) => !FIELDS.includes(k)), [], `${guard.id} is more than a selector entry`);
+      assert.ok(typeof guard.selector === "string" && guard.selector.trim(), `${guard.id} has no selector`);
+      const named = [...guard.why.matchAll(/(?<![\w./-])[\w.][\w.()-]*\/(?:[\w.()-]+\/)*[\w.-]+\.[a-z]+\b/g)].map(([p]) => p);
+      if (named.length === 0) dangling.push(`${guard.id}: names no path`);
+      for (const p of named) if (!existsSync(path.join(ROOT, p))) dangling.push(`${guard.id}: ${p}`);
+    }
+    assert.deepEqual(dangling, [], "a why must point the reader at the owner module or doc, and that file must exist");
+  });
+
+  test("a stale directive is an error, and npm run lint reads the whole tree as configured", async () => {
     const [result] = await real.lintText("// eslint-disable-next-line no-console\nexport const a = 1;\n", {
       filePath: path.join(ROOT, "lib/sendIntent.ts"),
     });

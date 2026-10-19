@@ -361,13 +361,15 @@ repo-level gate could have seen either. The enforcement point is your own loop.
 
 A rule that says "this shape of code must not appear here" — a call, an import, a JSX element, a
 literal — is a guard in `eslint.guards.cjs`, never a regex scan in a test and never a loose block in
-`eslint.config.js`. A guard names its `files`, its exemptions as literal tracked paths in `ignores`,
-and at least one `plant` it must report and one `spare` it must not; `guardBlocks()` is the only
-thing that switches guards on. `tests/tooling/lintGuards.test.ts` is the floor under all of them:
-every guard is a plugin rule the real config runs as registered, every plant is reported and no
-spare is, every glob reads a tracked file and the real config runs the guard on each, an exemption
-is one file the guard would otherwise read, no source switches a guard off inline or carries a bare
-`eslint-disable` (D17), and a stale directive is an error. An exception is the guard's to change, in
+`eslint.config.js`. A guard is an esquery `selector` over the AST with a `why` naming its owner,
+its `files`, its exemptions as `{ glob, reason }` in `ignores`, a `plant` it must report exactly
+`hits` times and the `spare`s it must not; `guardBlocks()` is the only thing that switches guards
+on, and the plant is the guard's floor. `tests/tooling/lintGuards.test.ts` holds six points under
+all of them: each plant fires exactly its hits under the real config and no spare fires; every glob
+reads a tracked file and the real config runs the guard there; every exemption reads a tracked file
+and gives a reason; no config block sets a guard below `error`; no source switches a guard off
+inline or carries a bare `eslint-disable` (D17); and the ids are unique, each guard is only a
+selector entry, and its `why` names a path that exists. A stale directive is an error. An exception is the guard's to change, in
 review, never a comment's at the site. A rule about prose, JSON, or a relation between two files is
 not a shape and stays a test.
 
