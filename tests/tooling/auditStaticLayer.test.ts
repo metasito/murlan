@@ -17,9 +17,10 @@ test("each tool's output becomes path:line alerts", () => {
       .map((a) => `${a.path}:${a.line} ${a.message}`),
     ["app/a.tsx:4 9 lines also at app/b.tsx:40"],
   );
+  const alert = (path: string) => ({ rule: { id: "js/xss", description: "XSS" }, most_recent_instance: { location: { path, start_line: 12 }, message: { text: "flows" } } });
   assert.deepEqual(
-    fromCodeql([{ rule: { id: "js/xss", description: "XSS" }, most_recent_instance: { location: { path: "server/a.ts", start_line: 12 }, message: { text: "flows" } } }]),
-    [{ tool: "codeql", rule: "js/xss", path: "server/a.ts", line: 12, message: "XSS: flows" }],
+    fromCodeql([[alert("server/a.ts")], [alert("server/b.ts")]]).map((a) => `${a.rule} ${a.path}:${a.line} ${a.message}`),
+    ["js/xss server/a.ts:12 XSS: flows", "js/xss server/b.ts:12 XSS: flows"],
   );
 });
 
@@ -28,4 +29,5 @@ test("a tool that looked at nothing is a failure, not a clean bill", () => {
   assert.throws(() => fromKnip({}), /no issue list/);
   assert.throws(() => fromJscpd({ statistics: { total: { sources: 0 } }, duplicates: [] }, "."), /no sources/);
   assert.throws(() => fromCodeql({ message: "no analysis found" }), /no analysis found/);
+  assert.throws(() => fromCodeql([{ message: "no analysis found" }]), /no analysis found/);
 });

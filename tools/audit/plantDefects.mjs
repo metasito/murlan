@@ -9,8 +9,10 @@ import { readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const PRODUCTION = ['app', 'components', 'context', 'lib', 'server', 'shared'];
+import { PRODUCTION } from './staticLayer.mjs';
+
 const MAX_CHANGED_LINES = 60;
+const AS_AUDIT = ['-c', 'user.name=audit', '-c', 'user.email=audit@localhost'];
 
 /** The new-side line span of every hunk in a `git diff -U0`, by file. */
 export function hunkRanges(diff) {
@@ -80,7 +82,8 @@ if (isMain && arg('--score')) {
   for (const { pr, merge, issue } of prs) {
     if (planted.length >= count) break;
     const fix = sh(repo, ['diff', '-U3', `${merge}^1`, merge, '--', ...PRODUCTION]);
-    const files = [...fix.matchAll(/^\+\+\+ b\/(.+)$/gm)].map((m) => m[1]);
+    // A file the fix deleted appears only on the --- side, and its revert recreates it.
+    const files = [...new Set([...fix.matchAll(/^(?:---|\+\+\+) [ab]\/(.+)$/gm)].map((m) => m[1]))];
     const changed = fix.split('\n').filter((l) => /^[+-][^+-]/.test(l)).length;
     if (!files.length || changed > MAX_CHANGED_LINES || files.some((f) => touched.has(f))) continue;
     try {
@@ -89,15 +92,16 @@ if (isMain && arg('--score')) {
       continue;
     }
     sh(into, ['apply', '-R'], fix);
-    const locations = hunkRanges(sh(into, ['diff', '-U0']));
     sh(into, ['add', '-A', '--', ...files]);
-    sh(into, ['-c', 'user.name=audit', '-c', 'user.email=audit@localhost', 'commit', '-q', '-m', 'snapshot']);
+    const locations = hunkRanges(sh(into, ['diff', '-U0', '--cached']));
+    sh(into, [...AS_AUDIT, 'commit', '-q', '-m', 'snapshot']);
     files.forEach((f) => touched.add(f));
     planted.push({ issue, pr, title: bugs.get(issue), locations });
   }
-  sh(into, ['reset', '--soft', sha]);
-  sh(into, ['-c', 'user.name=audit', '-c', 'user.email=audit@localhost', 'commit', '-q', '-m', 'snapshot']);
-  const head = sh(into, ['rev-parse', 'HEAD']).trim();
+  // A parentless commit: with `sha` as its parent, `git show` would print every plant.
+  const tree = sh(into, ['rev-parse', 'HEAD^{tree}']).trim();
+  const head = sh(into, [...AS_AUDIT, 'commit-tree', tree, '-m', 'snapshot']).trim();
+  sh(into, ['reset', '-q', '--soft', head]);
   const out = path.join(path.dirname(into), `${path.basename(into)}.planted.json`);
   writeFileSync(out, JSON.stringify({ repo: into, sha: head, base: sha, planted }, null, 1));
   console.log(JSON.stringify({ repo: into, sha: head, planted: planted.length, record: out }));

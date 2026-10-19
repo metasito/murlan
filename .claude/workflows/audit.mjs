@@ -502,8 +502,9 @@ const prove = async finding => {
 
 Exception to "change nothing": you may write exactly one file, ${testPath}, and nothing else.
 Write a node:test file there that FAILS because of the defect below and would pass once it is fixed.
-Import the code under test by absolute path into ${REPO} (node --experimental-strip-types loads .ts directly) and
-exercise the real entry point the claim names; a test that re-implements the logic proves nothing.
+Import the code under test from ${REPO} through file URLs (node:url's pathToFileURL): Node loads .ts directly, but a bare
+C:/ path is not a valid import specifier on Windows. Exercise the real entry point the claim names; a test that
+re-implements the logic proves nothing.
 Run it with \`node --test ${testPath}\`. If no node --test file can reach the claim (layout, pixels, docs, infrastructure,
 a native-only path), set runnable=false and say why; do not write a test that cannot fail for the right reason.
 ${JSON.stringify(claimOf(finding))}`, {
@@ -615,10 +616,11 @@ const failedInvestigations = toolBatches.filter((_, i) => !investigations[i]).ma
 const dismissedAlerts = investigations.filter(Boolean).flatMap(r => r.dismissed)
 
 phase('Merge')
-const rawFindings = uniqueByKey([
-  ...reports.flatMap(r => (r.findings || []).map(f => ({ ...f, lens: r.lens }))),
-  ...investigations.filter(Boolean).flatMap(r => r.findings),
-])
+// Deduplicated per source: a lens and a tool investigator at one place both reach the merge, which unions them.
+const rawFindings = [
+  ...uniqueByKey(reports.flatMap(r => (r.findings || []).map(f => ({ ...f, lens: r.lens })))),
+  ...uniqueByKey(investigations.filter(Boolean).flatMap(r => r.findings)),
+]
 const merged = await agent(`Merge duplicates in these audit findings. Two findings are duplicates when fixing one fixes the other.
 For each group:
 - keep the best-evidenced version;

@@ -1,13 +1,13 @@
 // The audit's tool layer: four analysers run at pinned versions, their output
 // reduced to one alert shape for the workflow's investigators.
-// node tools/audit/staticLayer.mjs --repo <checkout> --out <alerts.json>
+// node tools/audit/staticLayer.mjs --repo <checkout> --out <alerts.json> [--skip codeql,...]
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const PRODUCTION = ['app', 'components', 'context', 'lib', 'server', 'shared'];
+export const PRODUCTION = ['app', 'components', 'context', 'lib', 'server', 'shared'];
 const ROOTS = [...PRODUCTION, 'tests', 'tools', 'scripts'];
 const GH_REPO = process.env.GH_REPO ?? 'metasito/murlan';
 
@@ -55,10 +55,12 @@ export function fromJscpd(report, repo) {
   }));
 }
 
-/** @returns {Alert[]} */
-export function fromCodeql(alerts) {
-  if (!Array.isArray(alerts)) throw new Error(`code scanning returned ${JSON.stringify(alerts).slice(0, 200)}`);
-  return alerts.map((a) => ({
+/** @returns {Alert[]} `pages` is `gh api --paginate --slurp` output: one array per page. */
+export function fromCodeql(pages) {
+  if (!Array.isArray(pages) || !pages.every(Array.isArray)) {
+    throw new Error(`code scanning returned ${JSON.stringify(pages).slice(0, 200)}`);
+  }
+  return pages.flat().map((a) => ({
     tool: 'codeql',
     rule: a.rule.id,
     path: a.most_recent_instance.location.path,
@@ -69,6 +71,7 @@ export function fromCodeql(alerts) {
 
 function run(command, repo, env = {}) {
   const r = spawnSync(command, { cwd: repo, shell: true, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, env: { ...process.env, ...env } });
+  if (r.error) throw r.error;
   if (!r.stdout.trim()) throw new Error(`${command.split(' ')[2]} printed nothing: ${r.stderr.slice(-500)}`);
   return r.stdout;
 }
@@ -90,7 +93,7 @@ const TOOLS = {
     }
   },
   codeql: (repo) => fromCodeql(JSON.parse(run(
-    `gh api --paginate "repos/${GH_REPO}/code-scanning/alerts?state=open&ref=refs/heads/main&per_page=100"`, repo))),
+    `gh api --paginate --slurp "repos/${GH_REPO}/code-scanning/alerts?state=open&ref=refs/heads/main&per_page=100"`, repo))),
 };
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -98,9 +101,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const repo = path.resolve(arg('--repo') ?? '.');
   const out = arg('--out');
   if (!out) throw new Error('--out <file> is required');
+  const skip = process.argv.includes('--skip') ? arg('--skip').split(',') : [];
   const alerts = [];
   const failed = [];
-  for (const [tool, collect] of Object.entries(TOOLS)) {
+  for (const [tool, collect] of Object.entries(TOOLS).filter(([tool]) => !skip.includes(tool))) {
     try {
       alerts.push(...collect(repo));
     } catch (error) {

@@ -87,7 +87,8 @@ Run this instead of Steps 2–3 when the owner asks to calibrate the audit, and 
    to ten past `bug` fixes into a detached checkout and prints its `repo`, `sha` and `record` file.
    The record names each planted defect; never pass it, or its path, to the workflow.
 2. Run Step 1 items 5–6 and Step 2 against that checkout: its `repo` and `sha`, `openIssues: []`,
-   `webUrl: null`, and `lenses` set to every lens except `polish` and `infra`.
+   `webUrl: null`, and `lenses` set to every lens except `polish` and `infra`. Add `--skip codeql`
+   to the tool layer: CodeQL's alerts are main's lines, not the planted tree's.
 3. Write the result's `judged` to `<scratch>/judged.json`, then
    `node tools/audit/plantDefects.mjs --score <record file> --judged <scratch>/judged.json`.
    `recall` is the share of planted defects a kept finding landed on; `refuted` counts the ones a
