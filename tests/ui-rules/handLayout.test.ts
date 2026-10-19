@@ -9,6 +9,7 @@ import {
   MIN_READABLE_STEP,
   SELECT_TILT,
   cardUnder,
+  restingOrigin,
   computeHandLayout,
   slotForCard,
   hitWidth,
@@ -267,6 +268,23 @@ describe("which card a tap belongs to", () => {
 // *including* the card still in the air, and the slot it is coming to is left
 // empty — so the card lands in a space already waiting rather than over a fan
 // that has not moved.
+describe("restingOrigin", () => {
+  test("reads only the axis asked for, each time it is asked", () => {
+    const reads = { shift: 0, lift: 0, tilt: 0 };
+    const place = { left: 0, bottom: 0, rot: 2, shift: 0, hitW: 24, restX: 10, restY: 20 };
+    const o = restingOrigin(place, {
+      shift: () => (reads.shift++, 3),
+      lift: () => (reads.lift++, -4),
+      tilt: () => (reads.tilt++, 5),
+    });
+    assert.equal(o.x, 13);
+    assert.deepEqual(reads, { shift: 1, lift: 0, tilt: 0 });
+    assert.equal(o.y, 16);
+    assert.equal(o.rot, 7);
+    assert.deepEqual(reads, { shift: 1, lift: 1, tilt: 1 });
+  });
+});
+
 describe("slotForCard", () => {
   test("nothing arriving leaves every card where it is", () => {
     for (let i = 0; i < 14; i++) assert.equal(slotForCard(i, undefined), i);

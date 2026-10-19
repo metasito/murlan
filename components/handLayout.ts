@@ -232,13 +232,23 @@ export function layoutHandRow(input: {
 
 /**
  * Where a card's centre is drawn, off the hand zone's centre: its place, moved by the shift, lift
- * and tilt drawn on it. At rest those are `place.shift`, 0 and 0.
+ * and tilt drawn on it, each read when its own axis is. At rest those are `place.shift`, 0 and 0.
  */
 export function restingOrigin(
   place: CardPlace,
-  drawn: { shift: number; lift: number; tilt: number }
-): { x: number; y: number; rot: number } {
-  return { x: place.restX + drawn.shift, y: place.restY + drawn.lift, rot: place.rot + drawn.tilt };
+  drawn: { shift: () => number; lift: () => number; tilt: () => number }
+): { readonly x: number; readonly y: number; readonly rot: number } {
+  return {
+    get x() {
+      return place.restX + drawn.shift();
+    },
+    get y() {
+      return place.restY + drawn.lift();
+    },
+    get rot() {
+      return place.rot + drawn.tilt();
+    },
+  };
 }
 
 /**

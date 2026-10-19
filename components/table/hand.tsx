@@ -909,16 +909,15 @@ export const StraightHand = React.memo(function StraightHand({
       const place = places[i];
       const selected = () => store.get().ids.includes(card.id);
       const d = drawnRef.current.get(card.id);
-      const now = () =>
-        restingOrigin(
-          place,
-          d
-            ? { shift: d.shift.get(), lift: d.liftY.get(), tilt: d.tilt.get() }
-            : { shift: place.shift, lift: selected() ? -liftH : 0, tilt: selected() ? SELECT_TILT : 0 }
-        );
+      const drawn = restingOrigin(
+        place,
+        d
+          ? { shift: () => d.shift.get(), lift: () => d.liftY.get(), tilt: () => d.tilt.get() }
+          : { shift: () => place.shift, lift: () => (selected() ? -liftH : 0), tilt: () => (selected() ? SELECT_TILT : 0) }
+      );
       origins.set(
         card.id,
-        liveFrom(() => now().x - panNow(), () => now().y, () => now().rot, cardW / fieldW)
+        liveFrom(() => drawn.x - panNow(), () => drawn.y, () => drawn.rot, cardW / fieldW)
       );
     });
     onOrigins(origins);
