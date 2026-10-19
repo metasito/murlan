@@ -1,8 +1,8 @@
-// What the play/pass controls say, and when the turn clock is running.
+// Whether passing is open, and when the turn clock is running.
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-// ─── Play / pass affordances ──────────────────────────────────────────────────
+// ─── Pass affordance ─────────────────────────────────────────────────────────
 
 export interface TurnFacts {
   isMyTurn: boolean;

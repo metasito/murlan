@@ -265,7 +265,8 @@ collapsed:
   `seatLayout` holds the layout constants and the seating/opponent-position math;
   `flightPhysics` the card flight, pile advancement and impact feedback;
   `table/exchangeModel` the exchange-state reads, its legs and its chip and pile note;
-  `turnTimerUi` the play-button labels and the turn clock; `tableFrame` the
+  `turnTimerUi` whether passing is open and the turn clock; `table/stagedPlay` the play-button
+  label, which is the engine's `SelectionRefusal` or `"play"`; `tableFrame` the
   safe-area/rail arithmetic; `tableA11y` the screen-reader description. `flightPhysics`
   takes `seatDirection` from `seatLayout`; the reverse must never happen.
 - **`components/GameTable.tsx`** — the one presentational table. It takes a `GameState`, a
