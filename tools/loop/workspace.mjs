@@ -233,10 +233,11 @@ function judgeWorktree(entry, ticket, { git, gh }) {
   // A peer mid-rebase reads detached, and a commit reachable only from this HEAD goes with the
   // reflog: nothing here can tell which, so a person decides.
   if (entry.branch === null) return { keep: "detached HEAD — a rebase in progress or commits only it reaches; decide by hand" };
-  const issue = ghTracker(gh).issue(ticket, { timeout: 30_000 });
+  const tracker = ghTracker(gh);
+  const issue = tracker.issue(ticket, { timeout: 30_000 });
   if (issue.state === "CLOSED") return { remove: "its issue is closed" };
   if (issue.labels.includes("in-progress")) return null;
-  const [pr] = JSON.parse(gh(["pr", "list", "--head", entry.branch, "--state", "all", "--json", "state", "--limit", "1"], { timeout: 30_000 }));
+  const [pr] = tracker.prsFor({ branch: entry.branch }, { timeout: 30_000 });
   if (pr) return { remove: `its issue is no longer in-progress and its pull request is ${pr.state.toLowerCase()}` };
   if (merged(git, entry.branch)) return { remove: "its issue is no longer in-progress and its branch is merged" };
   return { keep: "unmerged, no pull request found" };

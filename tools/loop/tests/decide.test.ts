@@ -396,6 +396,7 @@ const ELSEWHERE: Record<string, [file: string, why: string]> = {
   "refreshWorktree fetches the branch and fast-forwards onto it": ["queueLoopMain.test.ts", "io"],
   "publishForReview pushes, then opens it ready only when no pull request is open": ["queueLoopMain.test.ts", "io"],
   "a landed or parked ticket removes the worktree from the main checkout": ["queueLoopMain.test.ts", "io"],
+  "prints the pick through the real ports and writes nothing to the tracker": ["queueLoopMain.test.ts", "io"],
   "an unreadable CI read on a head not known pushed is not a no-spawn G": ["queueLoopMain.test.ts", "picker"],
   "a handed phase wins over a derived fix; only a pushed G outranks it": ["queueLoopMain.test.ts", "picker"],
   "a fix round's spawn carries the rounds already spent": ["queueLoopMain.test.ts", "io"],

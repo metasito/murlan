@@ -16,8 +16,9 @@
 import { readFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { apiMethod, readIssue, TRUSTED_SELECT, untrustedRead } from "./brief.mjs";
+import { apiMethod, untrustedRead } from "./brief.mjs";
 import { firstLine, git } from "./cli.mjs";
+import { readIssue, TRUSTED_SELECT } from "./tracker.mjs";
 import { locateRun } from "./loop-derive.mjs";
 import { readLine } from "./loop-stream.mjs";
 import { codeSetsLoopVariable, fromEnv, isLoopVariable } from "./session-env.mjs";

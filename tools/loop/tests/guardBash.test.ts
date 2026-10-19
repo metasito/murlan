@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { check, gitAt, implementRoute } from "../guard-bash.mjs";
-import { readIssue, TRUSTED_SELECT } from "../brief.mjs";
+import { readIssue, TRUSTED_SELECT } from "../tracker.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../guard-bash.mjs", import.meta.url));
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));

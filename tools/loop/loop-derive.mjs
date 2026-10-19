@@ -6,7 +6,8 @@
  * git will not let you be on two at once.
  */
 import { basename, dirname } from "node:path";
-import { gh as ghCli, git as gitAt, REPO, statusOf } from "./cli.mjs";
+import { gh as ghCli, git as gitAt, statusOf } from "./cli.mjs";
+import { ghTracker } from "./tracker.mjs";
 import { fromEnv, testSeams } from "./session-env.mjs";
 
 export const BRANCH = /^agent\/(\d+)-/;
@@ -330,46 +331,34 @@ export function fixHolds(comments) {
   return countedVerdicts(comments).filter((v) => v.fix && v.decision === "HOLD").length;
 }
 
-const gh = (args, cwd, timeout) => ghCli(args, { cwd, timeout }).trim();
+/** The SessionStart hook runs this, so a wedged `gh` must not hold the session. */
+export const CI_BUDGET_MS = 10_000;
 
-export const TRUSTED_AUTHORS = ["OWNER", "MEMBER", "COLLABORATOR"];
-
-/** The repo is public: every marker parser reads only what this keeps. */
-export function trustedComments(comments) {
-  return comments.filter((c) => TRUSTED_AUTHORS.includes(c.authorAssociation));
-}
+const budgeted = (gh = ghCli) => ghTracker((args, opts) => gh(args, { timeout: CI_BUDGET_MS, ...opts }));
 
 /**
  * The open issue `parity-nightly.yml` files on a red, as `{number, since}`; null when there is none
  * or the tracker cannot say. The owner's to read, never the picker's to route.
  */
-export function parityRed(read = (args) => gh(args, undefined, CI_BUDGET_MS)) {
+export function parityRed(tracker = budgeted()) {
   try {
-    const open = JSON.parse(read(["issue", "list", "--repo", REPO, "--label", "parity", "--state", "open", "--json", "number,createdAt"]));
-    const [oldest] = open.sort((a, b) => a.number - b.number);
+    const [oldest] = tracker.openLabelled("parity").sort((a, b) => a.number - b.number);
     return oldest ? { number: oldest.number, since: oldest.createdAt } : null;
   } catch {
     return null;
   }
 }
 
-function readComments(ticket, cwd, exec) {
-  return trustedComments(JSON.parse(exec(["issue", "view", String(ticket), "--json", "comments"], cwd, CI_BUDGET_MS)).comments);
-}
-
 /** @returns {{body: string}[] | null} null when the tracker cannot be read */
-export function ticketComments(ticket, cwd) {
+export function ticketComments(ticket, tracker = budgeted()) {
   try {
-    return readComments(ticket, cwd, gh);
+    return tracker.comments(ticket);
   } catch {
     return null;
   }
 }
 
 const SETTLE = "G";
-
-/** The SessionStart hook runs this, so a wedged `gh` must not hold the session. */
-export const CI_BUDGET_MS = 10_000;
 
 const HANDED = /^[A-G]$/;
 
@@ -392,18 +381,12 @@ function under(cwd, head, remote, branch, until, failed) {
  * The pushed head and its pull request, from one listing. A red is the supervisor's `CI-RED` for
  * that head; a head none names is still `runSettle`'s to settle, red or not.
  */
-function readCi(cwd, branch, head, comments, exec) {
+function readCi(cwd, branch, head, comments, tracker) {
   const until = Date.now() + CI_BUDGET_MS;
   const failed = [];
   let open;
   try {
-    [open] = JSON.parse(
-      exec(
-        ["pr", "list", "--repo", REPO, "--head", branch, "--state", "open", "--json", "number,headRefOid"],
-        cwd,
-        CI_BUDGET_MS,
-      ),
-    );
+    open = tracker.openPrFor(branch);
   } catch {
     return { pushed: false, pr: null, sha: null, state: "unreadable", step: null };
   }
@@ -428,14 +411,14 @@ function readCi(cwd, branch, head, comments, exec) {
  * `handed` is the phase `queue-loop.mjs` spawned this session at; a test passes it, because a test
  * run inside a loop session inherits that session's.
  *
- * @param {{ cwd?: string, base?: string, worktree?: string, ci?: boolean, exec?: typeof gh, handed?: string }} [options]
+ * @param {{ cwd?: string, base?: string, worktree?: string, ci?: boolean, exec?: typeof ghCli, handed?: string }} [options]
  */
 export function derive({
   cwd = undefined,
   base = testSeams().base ?? "origin/main",
   worktree = testSeams().worktree,
   ci = false,
-  exec = gh,
+  exec = ghCli,
   handed = fromEnv().phase ?? "",
 } = {}) {
   const at = locateRun(cwd, worktree);
@@ -478,17 +461,18 @@ export function derive({
     return { onTicket: true, ticket, branch, cwd, phase: "?", why: `cannot read history against ${base}` };
   }
 
+  const tracker = budgeted(exec);
   let comments = [];
   let trackerReadable = true;
   try {
-    comments = readComments(ticket, cwd, exec);
+    comments = tracker.comments(ticket);
   } catch {
     trackerReadable = false;
   }
 
   const verdict = trackerReadable ? verdictFor(comments, head) : null;
   const land = commits > 0 && verdict?.decision === "LAND";
-  const ciRead = ci && land ? readCi(cwd, branch, head, comments, exec) : null;
+  const ciRead = ci && land ? readCi(cwd, branch, head, comments, tracker) : null;
   const rebase = Boolean(ciRead?.pushed && ciRead.pr !== null && conflictPosted(comments, head));
   const fix = !rebase && Boolean(ciRead?.pushed && ciRead.pr !== null && ciRead.state === "red");
   // A claimed worktree that is clean and has no commits has not been worked yet, so it owes its

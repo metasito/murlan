@@ -7,7 +7,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { testSeams } from "./session-env.mjs";
 
-/** The repository every `gh` call in the loop names, so no two of them can name different ones. */
+/**
+ * The repository every `gh` call in the loop names, so no two of them can name different ones. It
+ * reaches gh as `GH_REPO`, which gh reads before the cwd's remotes, so a call made from any directory
+ * — or one that forgets `--repo` — still names this one.
+ */
 export const REPO = "metasito/murlan";
 
 /**
@@ -35,6 +39,7 @@ function run(tool, args, { cwd, timeout, stderr = "pipe", maxBuffer = MAX_BUFFER
   return execFileSync(script ? process.execPath : tool, script ? [script, ...args] : args, {
     encoding,
     cwd,
+    ...(tool === "gh" ? { env: { ...process.env, GH_REPO: REPO } } : {}),
     stdio: ["ignore", "pipe", stderr],
     maxBuffer,
     timeout: timeout === undefined ? undefined : Math.max(1, timeout),

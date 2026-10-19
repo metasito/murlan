@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { commentReads, readIssue, untrustedRead } from "../../tools/loop/brief.mjs";
+import { commentReads, untrustedRead } from "../../tools/loop/brief.mjs";
+import { readIssue } from "../../tools/loop/tracker.mjs";
 
 const DIRS = ["docs/agents", ".claude/commands"];
 

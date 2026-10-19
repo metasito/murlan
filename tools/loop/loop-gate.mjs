@@ -83,7 +83,7 @@ export function buildReady(cwd, ticket, comments = ticketComments) {
   if (!buildPassed(cwd)) {
     return { ok: false, why: "no cached LOCAL PASS for HEAD on a clean tree; run `npm run agent:check`" };
   }
-  return dodVerdict(comments(ticket, cwd), git(["rev-parse", "HEAD"], cwd), lineResolver(cwd), true);
+  return dodVerdict(comments(ticket), git(["rev-parse", "HEAD"], cwd), lineResolver(cwd), true);
 }
 
 /**
@@ -266,7 +266,7 @@ function main() {
     return 2;
   }
 
-  const v = landable(ticketComments(s.ticket, s.cwd), s.head, (args) => git(args, s.cwd), base);
+  const v = landable(ticketComments(s.ticket), s.head, (args) => git(args, s.cwd), base);
   if (!v.ok) {
     if (!v.lines) {
       console.error(`loop-gate: #${s.ticket} — ${v.why}`);

@@ -67,8 +67,8 @@ function commit(wt: string, file: string, body = "\n// probe\n") {
  */
 function stubGh(comments: { body: string }[]): string {
   const js = join(dir, `fake-gh-${Math.random().toString(36).slice(2)}.mjs`);
-  const owned = comments.map((c) => ({ authorAssociation: "OWNER", ...c }));
-  writeFileSync(js, `console.log(JSON.stringify(${JSON.stringify({ comments: owned })}));`);
+  const owned = [comments.map((c) => ({ author_association: "OWNER", user: { login: "o" }, ...c }))];
+  writeFileSync(js, `console.log(JSON.stringify(${JSON.stringify(owned)}));`);
   return js;
 }
 

@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 import { runSettle } from "../settle.mjs";
 import {
   runOnce as realRunOnce,
@@ -22,6 +23,7 @@ import {
   RESTART,
   loopMoved,
 } from "../queue-loop.mjs";
+import { fakeTracker } from "../tracker.mjs";
 import { USD_BY_SIZE } from "../loop-cost.mjs";
 import { afterSession, WAIT } from "../decide.mjs";
 import { readLine } from "../loop-stream.mjs";
@@ -982,24 +984,29 @@ describe("runOnce", () => {
   });
 
   test("publishForReview pushes, then opens it ready only when no pull request is open", () => {
-    for (const open of [[], [{ number: 7 }]]) {
+    for (const open of [[], [{ number: 7, state: "OPEN", headRefName: "agent/42-x", headRefOid: "h", mergedAt: null }]]) {
       const calls: string[][] = [];
       const timeouts: unknown[] = [];
-      publishForReview(42, "agent/42-x", "w", "the title", (file: string, args: string[], o?: { timeout?: number }) => {
+      const fake = fakeTracker({}, { prs: open });
+      const created: { head: string; title: string; body: string }[] = [];
+      const tracker = {
+        ...fake,
+        openPrFor: (branch: string, o?: { timeout?: number }) => (timeouts.push(o?.timeout), fake.openPrFor(branch)),
+        createPr: (pr: { head: string; title: string; body: string }, o?: { timeout?: number }) => (timeouts.push(o?.timeout), created.push(pr), fake.createPr(pr)),
+      };
+      const url = publishForReview(42, "agent/42-x", "w", "the title", (file: string, args: string[], o?: { timeout?: number }) => {
         calls.push([file, ...args]);
         timeouts.push(o?.timeout);
-        return args[1] === "list" ? JSON.stringify(open) : "";
-      });
+        return "";
+      }, tracker);
       assert.ok(timeouts.every((t) => typeof t === "number" && t > 0));
-      assert.deepEqual(calls[0], ["git", "-C", "w", "push", "--quiet", "-u", "origin", "agent/42-x"]);
-      const create = calls.find((c) => c[2] === "create");
+      assert.deepEqual(calls, [["git", "-C", "w", "push", "--quiet", "-u", "origin", "agent/42-x"]]);
       if (open.length) {
-        assert.equal(create, undefined);
+        assert.deepEqual([created, url], [[], "https://github.com/metasito/murlan/pull/7"]);
         continue;
       }
-      assert.ok(create && !create.includes("--draft"));
-      assert.match(String(create?.[create.indexOf("--body") + 1]), /^Closes #42\n/);
-      assert.equal(create?.[create.indexOf("--head") + 1], "agent/42-x");
+      assert.match(created[0].body, /^Closes #42\n/);
+      assert.deepEqual([created[0].head, created[0].title], ["agent/42-x", "the title"]);
     }
   });
 
@@ -2451,5 +2458,39 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
       const earlier = [{ n: 42, outcome: "retry", head: "old", cost: 0 }];
       assert.deepEqual([route(held), route([]), route(earlier)].map((r) => [r.phase, r.fix]), [["G", false], ["G", false], ["G", false]]);
     });
+  });
+});
+
+describe("queue-loop.mjs --check", () => {
+  test("prints the pick through the real ports and writes nothing to the tracker", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "loop-check-"));
+    const calls = path.join(dir, "calls.txt");
+    const stub = path.join(dir, "gh.mjs");
+    const issue = { number: 77, title: "a ticket", author_association: "OWNER", labels: [{ name: "ready-for-agent" }, { name: "size:S" }], milestone: null };
+    const answers = JSON.stringify({ calls, issues: [[issue]] });
+    const script = [
+      'import { appendFileSync } from "node:fs";',
+      "const m = " + answers + ";",
+      "const a = process.argv.slice(2);",
+      'appendFileSync(m.calls, a.join(" ") + "\\n");',
+      'process.stdout.write(JSON.stringify(a.at(-1).includes("/issues?") ? m.issues : [[]]));',
+    ];
+    writeFileSync(stub, script.join("\n"));
+    try {
+      const r = spawnSync(process.execPath, [path.join(ROOT, "tools/loop/queue-loop.mjs"), "--check"], {
+        cwd: dir,
+        encoding: "utf8",
+        env: { ...process.env, LOOP_TEST_GH_SCRIPT: stub },
+      });
+      assert.equal(r.status, 0, r.stderr);
+      const lines = r.stdout.trim().split("\n");
+      assert.deepEqual(lines[0], "STANDING\tnull");
+      const pick = JSON.parse(lines.at(-1)!.replace(/^PICK\t/, ""));
+      assert.deepEqual([pick.skill, pick.number, pick.size], ["implement", 77, "size:S"]);
+      const asked = readFileSync(calls, "utf8").trim().split("\n");
+      assert.ok(asked.length > 0 && asked.every((l) => l.startsWith("api ") && !/\s-X\s/.test(l)), asked.join("\n"));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

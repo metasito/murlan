@@ -469,14 +469,16 @@ function fakeGh(dir: string, answers: GhAnswers): string {
   const m = ${JSON.stringify(answers)};
   const a = process.argv.slice(2);
   if (m.calls) appendFileSync(m.calls, a.join(" ") + "\\n");
-  const key = a[0] === "issue" ? "issue" : a[0] === "api" && /\\/pulls\\/\\d+\\/files/.test(a[1]) ? "files"
-    : a[0] === "api" ? "ref" : a[0] === "pr" ? "prs"
+  const path = a[0] === "api" ? a.at(-1) : "";
+  const key = /\\/issues\\/\\d+\\/comments/.test(path) ? "issue" : /\\/pulls\\/\\d+\\/files/.test(path) ? "files"
+    : /\\/pulls\\?/.test(path) ? "prs" : a[0] === "api" ? "ref"
     : a[1] === "list" ? "runs" : a.includes("--log-failed") ? "log" : "jobs";
   if ((m.fail ?? []).includes(key)) { process.stderr.write("gh: connection reset\\n"); process.exit(1); }
   if (key === "ref" && m.ref === undefined) { process.stderr.write("gh: Not Found (HTTP 404)\\n"); process.exit(1); }
-  const v = m[key] ?? { prs: [], runs: [], jobs: [], log: "", files: "" }[key];
+  let v = m[key] ?? { prs: [], runs: [], jobs: [], log: "", files: "" }[key];
   if (v === undefined) process.exit(1);
-  if (key === "issue") v.comments = v.comments.map((c) => ({ authorAssociation: "OWNER", ...c }));
+  if (key === "issue") v = [v.comments.map((c) => ({ body: c.body, author_association: c.authorAssociation ?? "OWNER", user: { login: "o" } }))];
+  if (key === "prs") v = v.map((p) => ({ number: p.number, state: "open", head: { sha: p.headRefOid } }));
   process.stdout.write(typeof v === "string" ? v : JSON.stringify(v));
 `,
   );
@@ -608,6 +610,12 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
     process.env.LOOP_TEST_GH_SCRIPT = fakeGh(root, answers);
     return derive({ cwd: dir, base: opts.base ?? "main", ci: opts.ci ?? true, handed: opts.phase }) as any;
   };
+  /** What `gh api` answers for this ticket's comments, or its one open pull request on `head`. */
+  const restAnswer = (a: string[], comments: { body: string; authorAssociation?: string }[]) =>
+    String(a.at(-1)).includes("/comments")
+      ? JSON.stringify([comments.map((c) => ({ body: c.body, author_association: c.authorAssociation ?? "OWNER", user: { login: "o" } }))])
+      : JSON.stringify([{ number: 5, state: "open", head: { sha: head } }]);
+  const resource = (line: string) => String(line.split(" ").at(-1)).replace(/^repos\/metasito\/murlan\//, "").replace(/\?.*$/, "");
   const pushed = (extra: GhAnswers) => ({ issue: { comments: land() }, prs: [{ number: 5, headRefOid: head }], ...extra });
 
   test("claimed and untouched → B, so the scope pass is what the board shows", () => {
@@ -701,7 +709,7 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
     const s = at(pushed({ calls }), { ci: false });
     assert.equal(s.phase, "E");
     assert.equal(s.ci, null);
-    assert.deepEqual(readFileSync(calls, "utf8").trim().split("\n").map((l) => l.split(" ").slice(0, 2).join(" ")), ["issue view"]);
+    assert.deepEqual(readFileSync(calls, "utf8").trim().split("\n").map(resource), ["issues/1234/comments"]);
   });
 
   test("reading CI is one pull request listing: no run, job or log is read", () => {
@@ -709,17 +717,15 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
     const s = at(pushed({ issue: { comments: [...land(), red()] }, calls }));
     assert.equal(s.ci.state, "red");
     const asked = readFileSync(calls, "utf8").trim().split("\n");
-    assert.deepEqual(asked.map((l) => l.split(" ").slice(0, 2).join(" ")), ["issue view", "pr list"]);
-    assert.match(asked[1], /--head agent\/1234-x .*--state open .*--json number,headRefOid/);
+    assert.deepEqual(asked.map(resource), ["issues/1234/comments", "pulls"]);
+    assert.match(asked[1], /pulls\?state=open&head=metasito%3Aagent%2F1234-x/);
   });
 
   test("every gh call, tracker and CI alike, runs under CI_BUDGET_MS", () => {
     const timeouts: (number | undefined)[] = [];
-    const answer = (a: string[]) =>
-      a[0] === "issue" ? { comments: [...land(), { ...red(), authorAssociation: "OWNER" }] } : [{ number: 5, headRefOid: head }];
-    const exec = (a: string[], _cwd: string, timeout?: number) => {
-      timeouts.push(timeout);
-      return JSON.stringify(answer(a));
+    const exec = (a: string[], o?: { timeout?: number }) => {
+      timeouts.push(o?.timeout);
+      return restAnswer(a, [...land(), red()]);
     };
     const s = (derive as any)({ cwd: dir, base: "main", ci: true, exec });
     assert.equal(s.ci.state, "red");
@@ -733,7 +739,7 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
       const asked: string[][] = [];
       const exec = (a: string[]) => {
         asked.push(a);
-        return a[0] === "issue" ? JSON.stringify({ comments }) : JSON.stringify([{ number: 5, headRefOid: head }]);
+        return restAnswer(a, comments as { body: string }[]);
       };
       return { s: (derive as any)({ cwd: dir, base: "main", ci: true, exec }), asked };
     };

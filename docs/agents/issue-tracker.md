@@ -7,7 +7,7 @@ the vocabulary, the recipes, and how to write a ticket.
 ## Labels
 
 `tools/loop/next-ticket.mjs` routes on labels (`routeOf`, `classify`), and only issues opened by
-an `OWNER`, `MEMBER` or `COLLABORATOR` (`TRUSTED_AUTHORS` in `tools/loop/loop-derive.mjs`, which
+an `OWNER`, `MEMBER` or `COLLABORATOR` (`TRUSTED_AUTHORS` in `tools/loop/tracker.mjs`, which
 also decides whose comments carry a loop marker): anyone else's goes to the owner whatever it
 carries. Their comments reach an agent through no read here: the picker, rule 25's command and
 every `tools/loop/brief.mjs` brief keep only those authors' (`tests/tooling/issueReadsAreTrusted.test.ts`).
@@ -77,8 +77,8 @@ their procedures, and the command files carry only this repo's specifics.
 ticket here: its frontier query drops candidates on assignee, and every session authenticates as
 the same GitHub account.
 
-- **Pick** — `node tools/loop/next-ticket.mjs`, the single picker (rule 22), from a GraphQL
-  query of the open issues, read a page of 100 at a time. A bare issue number
+- **Pick** — `node tools/loop/next-ticket.mjs`, the single picker (rule 22), from a REST
+  listing of the open issues, read whole through `tools/loop/tracker.mjs`. A bare issue number
   inspects that ticket without picking it. Precedence: implement → triage → wayfinder → handoff. Implement takes *stranded*
   tickets first (`in-progress` or `ready-for-agent`, an open pull request on its own `agent/<n>-`
   branch, no worktree on this machine: a run whose supervisor died between CI rounds, or a park the

@@ -5,7 +5,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { brief, parseHeader, readIssue, KINDS } from "../brief.mjs";
+import { brief, parseHeader, KINDS } from "../brief.mjs";
+import { readIssue } from "../tracker.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../brief.mjs", import.meta.url));
 const WT = "C:/Users/roton/murlan/.worktrees/agent-42";
@@ -144,8 +145,8 @@ describe("the brief CLI refuses a worktree or base the delta cannot be read from
   };
   const tracker = (comments: { body: string }[] = []) => {
     const js = join(root, `gh-${Math.random().toString(36).slice(2)}.mjs`);
-    const owned = comments.map((c) => ({ authorAssociation: "OWNER", ...c }));
-    writeFileSync(js, `console.log(${JSON.stringify(JSON.stringify({ comments: owned }))});`);
+    const owned = [comments.map((c) => ({ author_association: "OWNER", user: { login: "o" }, ...c }))];
+    writeFileSync(js, `console.log(${JSON.stringify(JSON.stringify(owned))});`);
     return js;
   };
   const cli = (...args: string[]) => cliReading([], ...args);

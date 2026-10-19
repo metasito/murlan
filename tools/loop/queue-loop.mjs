@@ -21,7 +21,6 @@ import {
   derive,
   parityRed,
   reviewRounds,
-  trustedComments,
   WORKTREE_DIR,
 } from "./loop-derive.mjs";
 import { runSession } from "./loop-session.mjs";
@@ -624,17 +623,13 @@ function removeLandedTree(cwd, number, { run, write, say }) {
  * Pushes the head review is about to read, and opens its pull request when none is open,
  * so CI runs while the review does. Not a gate: phase D's land step pushes again if this failed.
  */
-export function publishForReview(number, branch, cwd, title, run = sh) {
+export function publishForReview(number, branch, cwd, title, run = sh, tracker = ghTracker()) {
   const opts = { timeout: REFRESH_TIMEOUT_MS };
   run("git", ["-C", cwd, "push", "--quiet", "-u", "origin", branch], opts);
-  const open = JSON.parse(
-    run("gh", ["pr", "list", "--repo", REPO, "--head", branch, "--state", "open", "--json", "number"], opts),
-  );
-  if (open.length > 0) return prUrl(open[0].number);
+  const open = tracker.openPrFor(branch, opts);
+  if (open) return prUrl(open.number);
   const body = `Closes #${number}\n\nOpened when review started. Phase D writes this description on LAND.`;
-  return String(
-    run("gh", ["pr", "create", "--repo", REPO, "--base", "main", "--head", branch, "--title", title, "--body", body], opts),
-  ).trim();
+  return tracker.createPr({ head: branch, title, body }, opts);
 }
 
 const prUrl = (n) => `https://github.com/${REPO}/pull/${n}`;
@@ -654,27 +649,11 @@ export function refreshWorktree(cwd, branch, run = sh) {
  *
  * `reviewRounds: null` on a failed read, never 0: a count nobody could take is not a count of none.
  */
-export function ticketFacts(number, run = sh) {
-  try {
-    const issue = JSON.parse(
-      run("gh", ["issue", "view", String(number), "--json", "title,labels,url,comments,state,stateReason"], {
-        stderr: "ignore",
-        timeout: 30_000,
-      }),
-    );
-    return {
-      title: issue.title,
-      url: issue.url,
-      size: issue.labels.map((l) => l.name).find((n) => n.startsWith("size:")) ?? null,
-      labels: issue.labels.map((l) => l.name),
-      reviewRounds: reviewRounds(trustedComments(issue.comments ?? [])),
-      ciRounds: ciRedRounds(trustedComments(issue.comments ?? [])),
-      state: issue.state,
-      stateReason: issue.stateReason ?? null,
-    };
-  } catch {
-    return { title: `ticket #${number}`, url: "", size: null, labels: null, reviewRounds: null, ciRounds: 0 };
-  }
+export function ticketFacts(number, tracker = ghTracker()) {
+  const issue = tracker.facts(number, { stderr: "ignore", timeout: 30_000 });
+  if (!issue) return { title: `ticket #${number}`, url: "", size: null, labels: null, reviewRounds: null, ciRounds: 0 };
+  const { comments, ...facts } = issue;
+  return { ...facts, reviewRounds: reviewRounds(comments), ciRounds: ciRedRounds(comments) };
 }
 
 /**
@@ -935,14 +914,13 @@ export function loopSha(run = git) {
  * @param {number} ticket
  * @param {number|null} [declared]
  * @param {number} [since] epoch ms; a merge older than this is not this session's
- * @param {Function} [run]
+ * @param {ReturnType<typeof ghTracker>} [tracker]
  * @returns {{number: number, state: string, head: string, sha: string|null, changedFiles: number}|null}
  */
-export function pushedPr(branch, ticket, declared = null, since = 0, run = sh) {
+export function pushedPr(branch, ticket, declared = null, since = 0, tracker = ghTracker()) {
   // Matched on the head ref rather than by search: `#42` in a body also matches PR #942. With a
-  // branch in hand `--head` is exact; without one the newest 100 are scanned, which reaches back
-  // far enough for a branch pushed minutes ago. `gh` lists newest first.
-  const json = ["--json", "number,state,headRefName,headRefOid,mergedAt,changedFiles"];
+  // branch in hand the listing is exact; without one the newest 100 are scanned, which reaches back
+  // far enough for a branch pushed minutes ago.
   // The head ref is the only thing that makes a pull request this ticket's, and it is checked on
   // every path including the declared one. `declared` is a number a model wrote, and what it
   // reaches is `gh pr merge`.
@@ -954,23 +932,25 @@ export function pushedPr(branch, ticket, declared = null, since = 0, run = sh) {
     pr && mine(pr) && !stale(pr)
       ? { number: pr.number, state: pr.state, head: pr.headRefName, sha: pr.headRefOid ?? null, changedFiles: pr.changedFiles ?? 0 }
       : null;
-  const query = branch
-    ? ["pr", "list", "--state", "all", "--head", branch, "--limit", "20", ...json]
-    : ["pr", "list", "--state", "all", "--limit", "100", ...json];
+  // A listing carries no file count; only the pull request itself does.
+  const counted = (pr) => {
+    try {
+      return { ...pr, changedFiles: tracker.pr(pr.number).changedFiles };
+    } catch {
+      return pr;
+    }
+  };
   try {
-    const rows = JSON.parse(run("gh", query)).filter((pr) => mine(pr) && !stale(pr));
-    const found = take(
-      rows.find((p) => p.state === "OPEN") ?? rows.find((p) => p.state === "MERGED") ?? rows[0],
-    );
+    const rows = tracker.prsFor({ branch, ticket }).filter((pr) => mine(pr) && !stale(pr));
+    const row = rows.find((p) => p.state === "OPEN") ?? rows.find((p) => p.state === "MERGED") ?? rows[0];
+    const found = row && take(counted(row));
     if (found) return found;
   } catch {
     /* falls through to the declared number */
   }
   if (!declared) return null;
   try {
-    return take(
-      JSON.parse(run("gh", ["pr", "view", String(declared), "--json", "number,state,headRefName,headRefOid,changedFiles"])),
-    );
+    return take(tracker.pr(declared));
   } catch {
     return null;
   }
@@ -1744,7 +1724,24 @@ export async function main({
   }
 }
 
-if (isInvokedDirectly(process.argv[1], import.meta.url)) {
+/**
+ * `--check`: the reads a pass starts from — the standing ticket, its facts and tally, and the next
+ * pick — printed one per line, with nothing synced, claimed, pruned, spawned or written. It runs the
+ * real ports' read wiring, which the loop's tests stub out.
+ */
+export function check({ say = console.log, standingOf = standing, facts = ticketFacts, ledger = readLedger, picker = nextPick } = {}) {
+  const at = standingOf();
+  say(`STANDING\t${JSON.stringify(at)}`);
+  if (at) {
+    say(`FACTS\t${JSON.stringify(facts(at.ticket))}`);
+    say(`TALLY\t${JSON.stringify(ticketTally(at.ticket, ledger()))}`);
+  }
+  say(`PICK\t${JSON.stringify(picker())}`);
+}
+
+if (isInvokedDirectly(process.argv[1], import.meta.url) && process.argv.includes("--check")) {
+  check();
+} else if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   // An unhandled rejection here would end the night with a one-line node trace and no exit status,
   // in the one process whose job is to say what happened.
   main({})

@@ -1,12 +1,11 @@
 // #293
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { claimCommand, classify, pickRoute, claimedElsewhere, issueComments, launchOpen, nextPick, openIssues, routeOf, sizeOf, stranded, takeable, takeableReasons, waitingOn, LAUNCH_MILESTONE } from "../next-ticket.mjs";
+import { claimCommand, classify, pickRoute, claimedElsewhere, launchOpen, nextPick, routeOf, sizeOf, stranded, takeable, takeableReasons, waitingOn, LAUNCH_MILESTONE } from "../next-ticket.mjs";
 import { slugOf } from "../claim.mjs";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
-import { TRUSTED_AUTHORS } from "../loop-derive.mjs";
+import { fakeTracker, TRUSTED_AUTHORS } from "../tracker.mjs";
 import { park } from "../queue-loop.mjs";
-import { fakeTracker } from "../tracker.mjs";
 
 function issue(number: number, labelNames: string[], author_association = "OWNER") {
   return { number, title: `issue ${number}`, labels: labelNames.map((name) => ({ name })), author_association };
@@ -289,66 +288,7 @@ describe("claimedElsewhere", () => {
   });
 });
 
-describe("the open issues, from one query", () => {
-  const answer = (hasNextPage: boolean) => () =>
-    JSON.stringify({
-      data: {
-        repository: {
-          issues: {
-            pageInfo: { hasNextPage, endCursor: hasNextPage ? "c1" : null },
-            nodes: [
-              {
-                number: 12,
-                title: "a ticket",
-                authorAssociation: "OWNER",
-                labels: { nodes: [{ name: "ready-for-agent" }, { name: "size:S" }] },
-                milestone: { title: LAUNCH_MILESTONE },
-                issueDependenciesSummary: { blockedBy: 2 },
-              },
-              {
-                number: 13,
-                title: "another",
-                authorAssociation: "NONE",
-                labels: { nodes: [] },
-                milestone: null,
-                issueDependenciesSummary: { blockedBy: 0 },
-              },
-            ],
-          },
-        },
-      },
-    });
-
-  test("each node arrives in the shape the policy reads", () => {
-    assert.deepEqual(openIssues(answer(false)), [
-      {
-        number: 12,
-        title: "a ticket",
-        author_association: "OWNER",
-        labels: [{ name: "ready-for-agent" }, { name: "size:S" }],
-        milestone: { title: LAUNCH_MILESTONE },
-        blocked: true,
-      },
-      { number: 13, title: "another", author_association: "NONE", labels: [], milestone: null, blocked: false },
-    ]);
-  });
-
-  test("a second page is read from the first page's cursor, never truncated", () => {
-    const calls: string[][] = [];
-    const run = (args: string[]) => {
-      calls.push(args);
-      return args.includes("after=c1") ? answer(false)() : answer(true)();
-    };
-    assert.deepEqual(openIssues(run).map((i: { number: number }) => i.number), [12, 13, 12, 13]);
-    assert.equal(calls.length, 2);
-    assert.ok(!calls[0].some((a) => a.startsWith("after=")), "the first page has no cursor");
-  });
-
-  test("a next page with no cursor to reach it throws, never drops the pages after it", () => {
-    const noCursor = () => answer(false)().replace('"hasNextPage":false', '"hasNextPage":true');
-    assert.throws(() => openIssues(noCursor), /hasNextPage.*endCursor/);
-  });
-
+describe("a ticket's own takeability", () => {
   test("an inspected ticket says why it is not takeable", () => {
     assert.deepEqual(takeableReasons({ ...issue(1, ["ready-for-agent"]), issue_dependencies_summary: { blocked_by: 0 } }), []);
     const gated = { ...issue(2, ["ready-for-human", "in-progress", "blocked"], "NONE"), issue_dependencies_summary: { blocked_by: 1 } };
@@ -370,33 +310,38 @@ describe("the open issues, from one query", () => {
 });
 
 describe("nextPick", () => {
+  const open = (number: number, labels: string[]) => ({
+    number, title: `issue ${number}`, author_association: "OWNER", labels: labels.map((name) => ({ name })), milestone: null, blocked: false,
+  });
+
   // In-process, the supervisor picks many times in one process: a listing cached across picks would
   // never see a pull request opened since the first.
   test("two picks in one process each read the open pull requests afresh", () => {
-    const node = (number: number, labels: string[]) => ({
-      number, title: `issue ${number}`, authorAssociation: "OWNER", labels: { nodes: labels.map((name) => ({ name })) },
-      milestone: null, issueDependenciesSummary: { blockedBy: 0 },
-    });
     let prs: object[] = [];
-    const run = (args: string[]) =>
-      args[0] === "api"
-        ? JSON.stringify({ data: { repository: { issues: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [node(990007, ["in-progress"]), node(990008, ["ready-for-agent", "size:S"])] } } } })
-        : JSON.stringify(prs);
-    assert.deepEqual(nextPick(run), {
+    let listings = 0;
+    const tracker = {
+      openIssues: () => [open(990007, ["in-progress"]), open(990008, ["ready-for-agent", "size:S"])],
+      openPrs: () => (listings++, prs),
+    };
+    assert.deepEqual(nextPick(tracker as never), {
       skill: "implement", number: 990008, title: "issue 990008", size: "size:S",
       queue: { implement: 1, triage: 0, wayfinder: 0, owner: 0, launch: 0 },
     });
     prs = [{ number: 1, state: "OPEN", headRefName: "agent/990007-x" }];
-    assert.equal(nextPick(run).number, 990007, "the claimed ticket's pull request opened since the first pick strands it");
+    assert.equal(nextPick(tracker as never).number, 990007, "the claimed ticket's pull request opened since the first pick strands it");
+    assert.equal(listings, 2, "one listing per pick");
   });
 
   test("the handoff route carries no ticket and no size", () => {
-    const run = (args: string[]) =>
-      args[0] === "api" ? JSON.stringify({ data: { repository: { issues: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } } }) : "[]";
-    assert.deepEqual(nextPick(run), {
+    assert.deepEqual(nextPick(fakeTracker() as never), {
       skill: "handoff", number: 0, title: "nothing agent-takeable", size: null,
       queue: { implement: 0, triage: 0, wayfinder: 0, owner: 0, launch: 0 },
     });
+  });
+
+  test("an open pull request listing that fails takes nothing off the queue", () => {
+    const tracker = fakeTracker({ 5: { labels: ["ready-for-agent"] } }, { fail: ["openPrs"] });
+    assert.equal(nextPick(tracker as never).number, 5);
   });
 });
 
@@ -428,19 +373,5 @@ describe("printing a ticket", () => {
     const quoted = line.slice(line.indexOf('"') + 1, -1);
     assert.doesNotMatch(quoted, /["`$\\]/);
     assert.equal(slugOf(quoted), slugOf(title));
-  });
-
-  test("every page of comments is read, not the first", () => {
-    const asked: string[] = [];
-    const page = (k: number, n: number) => Array.from({ length: n }, (_, i) => ({ id: k * 1000 + i }));
-    const run = (args: string[]) => {
-      const path = String(args.at(-1));
-      asked.push(path);
-      const k = Number(/[?&]page=(\d+)/.exec(path)?.[1]);
-      return JSON.stringify(k === 1 ? page(1, 100) : k === 2 ? page(2, 100) : page(3, 7));
-    };
-    assert.equal(issueComments(42, run).length, 207);
-    assert.equal(asked.length, 3);
-    assert.ok(asked.every((a) => a.startsWith("repos/{owner}/{repo}/issues/42/comments?per_page=100&page=")), String(asked));
   });
 });

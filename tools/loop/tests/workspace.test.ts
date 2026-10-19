@@ -65,11 +65,13 @@ type Issue = { state: string; labels: string[] } | Error;
 function fakeGh(issues: Record<number, Issue>, prs: Record<string, string> = {}) {
   const asked: number[] = [];
   const gh = (args: string[]) => {
-    if (args[0] === "pr") {
-      const state = prs[args[args.indexOf("--head") + 1]];
-      return JSON.stringify(state ? [{ state }] : []);
+    const path = args[args.length - 1];
+    if (path.includes("/pulls?")) {
+      const head = decodeURIComponent(/[?&]head=([^&]+)/.exec(path)?.[1] ?? "").replace(/^[^:]+:/, "");
+      const state = prs[head];
+      return JSON.stringify(state ? [{ number: 1, state: state === "MERGED" ? "closed" : state.toLowerCase(), merged_at: state === "MERGED" ? "2026-01-01T00:00:00Z" : null, head: { ref: head } }] : []);
     }
-    const n = Number(args[2]);
+    const n = Number(/\/issues\/(\d+)$/.exec(path)?.[1]);
     asked.push(n);
     const issue = issues[n];
     if (!issue) throw new Error(`no fixture for #${n}`);
