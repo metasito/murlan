@@ -39,9 +39,8 @@ test("every flow runs in exactly one shard, bar those another workflow drives", 
   const run = [...shards.flatMap((s) => s.flows), FELT, CAPTURES].sort();
   assert.equal(new Set(run).size, run.length, `a flow runs twice: ${run}`);
   const expected = readdirSync(path.join(root, ".maestro"))
-    .filter((f) => f.endsWith(".yaml") && !(f in OWN_WORKFLOW))
+    .filter((f) => f.endsWith(".yaml") && !f.startsWith("_") && !(f in OWN_WORKFLOW))
     .map((f) => `.maestro/${f}`)
-    .filter((f) => f !== WARMUP)
     .sort();
   assert.deepEqual(run, expected);
   for (const [flow, workflow] of Object.entries(OWN_WORKFLOW)) assert.match(code(workflow), new RegExp(`\\.maestro/${flow}`));
