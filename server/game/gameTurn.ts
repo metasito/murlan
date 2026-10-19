@@ -3,7 +3,7 @@ import { roomStore } from "../store/roomStore.ts";
 import { emitVoteState } from "../socket/emit.ts";
 import { logger } from "../http/logger.ts";
 import { DEFAULT_LOCALE, translate } from "../../shared/i18n.ts";
-import { activeGames, isShuttingDown, seatName } from "./gameRoom.ts";
+import { activeGames, seatName } from "./gameRoom.ts";
 import { seatOfUser } from "./onlineGameLogic.ts";
 import { vacate } from "./seatLedger.ts";
 import { payload } from "../socket/payload.ts";
@@ -123,8 +123,6 @@ function emitTurnDeadline(io: SocketServer, roomId: string, game: OnlineGameStat
  * move before it.
  */
 export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDelayMs()) {
-  // `stopTables` has already cleared every timer; a late caller must not arm one behind it.
-  if (isShuttingDown()) return;
   const game = activeGames.get(roomId);
   if (!game) return;
 

@@ -24,6 +24,7 @@ import {
   clearRoomDisconnectTimers,
   clearRoomLobbyGraces,
   secondsUntil,
+  stopArming,
 } from "./gameTimers.ts";
 import {
   seatOfUser,
@@ -132,6 +133,7 @@ export function discardPersistedGame(roomId: string): Promise<unknown> {
  * memory, so those writes still land.
  */
 export async function stopTables(): Promise<void> {
+  stopArming();
   for (const [roomId, game] of activeGames) {
     clearRoomDisconnectTimers(game);
     clearRoomTimers(roomId);

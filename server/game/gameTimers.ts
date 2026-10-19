@@ -47,9 +47,17 @@ interface Armed {
 
 const timers = new Map<TimerKind, Map<string, Armed>>(TIMER_KINDS.map((kind) => [kind, new Map()]));
 
+let stopped = false;
+
+/** Every later `arm` arms nothing: a shutdown has cleared the tables' timers for good. */
+export function stopArming(): void {
+  stopped = true;
+}
+
 /** Replaces whatever this key had armed. The entry is gone before `onExpire` runs. */
 export function arm(kind: TimerKind, key: string, ms: number, onExpire: () => void) {
   clear(kind, key);
+  if (stopped) return;
   const entries = timers.get(kind)!;
   const handle = clock.setTimeout(() => {
     entries.delete(key);
