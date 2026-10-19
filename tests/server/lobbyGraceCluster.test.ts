@@ -13,7 +13,7 @@ const ROOM = "lobby-grace-cluster-room";
 const USER = "back-elsewhere";
 
 test("a seat is kept for a player back at the table on another instance", async (t) => {
-  const expiries: Array<() => void> = [];
+  const expiries: (() => void)[] = [];
   setClock({ now: () => 0, setTimeout: (fn) => expiries.push(fn), clearTimeout: () => {} });
   t.after(() => {
     setClock();
