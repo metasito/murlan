@@ -3,6 +3,7 @@ import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
 import { sendMail } from "../../server/http/mail.ts";
+import { OUTBOUND_TIMEOUT_MS } from "../../server/http/outbound.ts";
 import { notifyUser } from "../../server/socket/push.ts";
 import { dealRound } from "../../server/game/dealRound.ts";
 import { ERROR_GROUP_WINDOW_DAYS, installServerErrorRecorder, serverErrorsDropped } from "../../server/http/serverErrors.ts";
@@ -48,7 +49,7 @@ test("a mail provider that never answers resolves false", async (t) => {
   const sent = sendMail("a@example.test", "s", "t", "user-1");
   fetchHangs.expire();
   assert.equal(await sent, false);
-  assert.deepEqual(fetchHangs.timeouts, [10_000]);
+  assert.deepEqual(fetchHangs.timeouts, [OUTBOUND_TIMEOUT_MS]);
 });
 
 test("a push service that never answers lets notifyUser return", async (t) => {
@@ -60,7 +61,7 @@ test("a push service that never answers lets notifyUser return", async (t) => {
   await new Promise((r) => setImmediate(r));
   fetchHangs.expire();
   await done;
-  assert.deepEqual(fetchHangs.timeouts, [10_000]);
+  assert.deepEqual(fetchHangs.timeouts, [OUTBOUND_TIMEOUT_MS]);
 });
 
 test("a hanging status write still deals the round", async (t) => {
