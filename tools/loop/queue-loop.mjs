@@ -1023,15 +1023,20 @@ export function check({ say = console.log } = {}) {
   say(`PICK\t${JSON.stringify(action)}`);
 }
 
-if (isInvokedDirectly(process.argv[1], import.meta.url) && process.argv.includes("--check")) {
-  check();
-} else if (isInvokedDirectly(process.argv[1], import.meta.url)) {
-  // An unhandled rejection here would end the night with a one-line node trace and no exit status,
-  // in the one process whose job is to say what happened.
-  main({})
-    .catch((err) => {
-      console.error(`queue-loop: stopped by an unhandled error — ${err?.stack ?? err}`);
-      return 1;
-    })
-    .then((code) => process.exit(code));
+if (isInvokedDirectly(process.argv[1], import.meta.url)) {
+  // Here, not in `main`, which tests call in-process: `.loop-logs/` and `tearDown`'s refusal of a
+  // caller standing inside the tree it removes both read the supervisor's cwd as ROOT.
+  process.chdir(ROOT);
+  if (process.argv.includes("--check")) {
+    check();
+  } else {
+    // An unhandled rejection here would end the night with a one-line node trace and no exit
+    // status, in the one process whose job is to say what happened.
+    main({})
+      .catch((err) => {
+        console.error(`queue-loop: stopped by an unhandled error — ${err?.stack ?? err}`);
+        return 1;
+      })
+      .then((code) => process.exit(code));
+  }
 }

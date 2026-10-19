@@ -432,17 +432,14 @@ describe("ticker", () => {
     test("s writes the stop file, and pressing it again takes it back", (t) => {
       t.mock.timers.enable({ apis: ["setInterval", "Date"] });
       const dir = mkdtempSync(join(tmpdir(), "loop-stop-"));
-      const cwd = process.cwd();
-      process.chdir(dir);
       try {
-        const tick = ticker(fake() as never);
+        const tick = ticker(fake() as never, undefined, undefined, undefined, dir);
         tick.start("C");
         tick.key("s");
-        assert.ok(existsSync(".loop-stop"), "s did not ask for a stop");
+        assert.ok(existsSync(join(dir, ".loop-stop")), "s did not ask for a stop");
         tick.key("s");
-        assert.ok(!existsSync(".loop-stop"), "s did not take the stop back");
+        assert.ok(!existsSync(join(dir, ".loop-stop")), "s did not take the stop back");
       } finally {
-        process.chdir(cwd);
         rmSync(dir, { recursive: true, force: true });
       }
     });
@@ -451,15 +448,12 @@ describe("ticker", () => {
       t.mock.timers.enable({ apis: ["setInterval", "Date"] });
       const out = fake();
       const dir = mkdtempSync(join(tmpdir(), "loop-stop-"));
-      const cwd = process.cwd();
-      process.chdir(dir);
       try {
-        const tick = ticker(out as never);
+        const tick = ticker(out as never, undefined, undefined, undefined, dir);
         tick.start("C");
         tick.key("s");
         assert.match(visible(out.wrote.at(-1) ?? ""), /stopping after this/);
       } finally {
-        process.chdir(cwd);
         rmSync(dir, { recursive: true, force: true });
       }
     });
@@ -469,16 +463,13 @@ describe("ticker", () => {
       t.mock.timers.enable({ apis: ["setInterval", "Date"] });
       const out = fake();
       const dir = mkdtempSync(join(tmpdir(), "loop-stop-"));
-      const cwd = process.cwd();
-      process.chdir(dir);
       try {
-        writeFileSync(".loop-stop", "by hand\n");
-        const tick = ticker(out as never);
+        writeFileSync(join(dir, ".loop-stop"), "by hand\n");
+        const tick = ticker(out as never, undefined, undefined, undefined, dir);
         tick.context({});
         tick.start("C");
         assert.match(visible(out.wrote.at(-1) ?? ""), /stopping after this/);
       } finally {
-        process.chdir(cwd);
         rmSync(dir, { recursive: true, force: true });
       }
     });
@@ -501,24 +492,21 @@ describe("ticker", () => {
       t.mock.timers.enable({ apis: ["setInterval", "Date"] });
       const out = fake();
       const dir = mkdtempSync(join(tmpdir(), "loop-park-"));
-      const cwd = process.cwd();
-      process.chdir(dir);
       try {
-        const tick = ticker(out as never);
+        const tick = ticker(out as never, undefined, undefined, undefined, dir);
         tick.context({ number: 1142 });
         tick.start("C");
         tick.key("k");
         assert.match(visible(out.wrote.at(-1) ?? ""), /park this ticket\?/);
         tick.key("e");
-        assert.ok(!existsSync(".loop-park"), "a stray key parked the ticket");
+        assert.ok(!existsSync(join(dir, ".loop-park")), "a stray key parked the ticket");
         tick.key("k");
         tick.key("y");
-        assert.equal(readFileSync(".loop-park", "utf8").trim(), "1142");
+        assert.equal(readFileSync(join(dir, ".loop-park"), "utf8").trim(), "1142");
         assert.match(visible(out.wrote.at(-1) ?? ""), /parking after this/);
         tick.key("k");
-        assert.ok(!existsSync(".loop-park"), "k did not take the park back");
+        assert.ok(!existsSync(join(dir, ".loop-park")), "k did not take the park back");
       } finally {
-        process.chdir(cwd);
         rmSync(dir, { recursive: true, force: true });
       }
     });
@@ -654,24 +642,21 @@ describe("ticker", () => {
       t.mock.timers.enable({ apis: ["setInterval", "Date"] });
       const out = fake();
       const dir = mkdtempSync(join(tmpdir(), "loop-stop-"));
-      const cwd = process.cwd();
       // A directory where the file should be: both the write and the removal fail, and the loop
       // still reads it as a stop.
       mkdirSync(join(dir, ".loop-stop"));
-      process.chdir(dir);
       try {
-        const tick = ticker(out as never, fake() as never);
+        const tick = ticker(out as never, fake() as never, undefined, undefined, dir);
         tick.start("C");
         tick.key("s");
         tick.key("s");
-        assert.ok(existsSync(".loop-stop"), "the fixture stopped being a stop");
+        assert.ok(existsSync(join(dir, ".loop-stop")), "the fixture stopped being a stop");
         assert.match(
           visible(out.wrote.at(-1) ?? ""),
           /stopping after this/,
           "the bar took the stop back while the loop will still stop",
         );
       } finally {
-        process.chdir(cwd);
         rmSync(dir, { recursive: true, force: true });
       }
     });
