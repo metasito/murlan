@@ -14,13 +14,10 @@ import {
   main as realMain,
   settle,
   park,
-  refreshWorktree,
   publishForReview,
-  removeLanded,
-  removeWorktree,
-  loopMoved,
 } from "../queue-loop.mjs";
 import { LIMITS, RESTART } from "../limits.mjs";
+import { loopMoved, refreshWorktree, removeLanded, tearDown as removeWorktree } from "../workspace.mjs";
 import { fakeTracker } from "../tracker.mjs";
 import { afterSession } from "../decide.mjs";
 import { readLine } from "../loop-stream.mjs";

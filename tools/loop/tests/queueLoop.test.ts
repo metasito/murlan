@@ -11,17 +11,15 @@ import { closePhase, readLine, reduceSession, sessionStart } from "../loop-strea
 import { ticker } from "../loop-screen.mjs";
 import {
   pushedPr,
-  syncCheckout,
-  reinstall,
   park,
   repark,
   holdFor,
   settle,
   runOnce,
-  loopSha,
 } from "../queue-loop.mjs";
 import { contextFor, queueLoopArgs, runTicket } from "../loop-session.mjs";
 import { screenEvents, sessionView, ticketFacts } from "../loop-board.mjs";
+import { syncCheckout, reinstall, loopSha } from "../workspace.mjs";
 import { BASH_DEFAULT_TIMEOUT_MS, CHECK_BASH_TIMEOUT_MS, LIMITS, SESSION_POLICY, STALL_MS } from "../limits.mjs";
 import { decide } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
@@ -244,8 +242,8 @@ describe("queueLoopArgs", () => {
 describe("syncCheckout", () => {
   test("the reinstall captures npm's output rather than printing it over the board", () => {
     const calls: unknown[][] = [];
-    reinstall((...args: unknown[]) => String(calls.push(args)));
-    assert.deepEqual(calls, [["npm", ["ci", "--no-audit", "--no-fund"]]], "no stdio option: sh pipes by default");
+    reinstall((...args: unknown[]) => String(calls.push(args)), "/repo");
+    assert.deepEqual(calls, [["npm", ["ci", "--no-audit", "--no-fund"], { cwd: "/repo" }]], "no stdio option: sh pipes by default");
   });
 
   const fake =(answers: Record<string, string>, fails?: string) => {

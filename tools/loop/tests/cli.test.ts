@@ -112,16 +112,16 @@ describe("no git or gh outside cli.mjs", () => {
   const namesNoGitOrGh = (text: string) => !/["'`](?:git|gh)["'`]/.test(text.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, ""));
   /** The files that start a binary a variable names, and why that is never git or gh there. */
   const OTHER_BINARIES: Record<string, (text: string) => boolean> = {
-    "queue-loop.mjs": (text) =>
+    "workspace.mjs": (text) =>
       /\bconst sh = \(file, args, opts = \{\}\) => \{\s*if \(file === "git"\) return gitAt\(opts\.cwd\)\(args, opts\);\s*if \(file === "gh"\) return ghCli\(args, opts\);/.test(text),
     "reap.mjs": (text) => namesNoGitOrGh(text) && [...text.matchAll(/\bsh\(\s*([^,)]*)/g)].every((m) => m[1] === "cmd" || /^(?:"[\w-]+"|[A-Z_]+)$/.test(m[1])),
     "loop-screen.mjs": namesNoGitOrGh,
   };
 
   test("an exemption fails on the git or gh it exists to rule out", () => {
-    const queueLoop = readFileSync(path.join(LOOP, "queue-loop.mjs"), "utf8");
-    assert.ok(OTHER_BINARIES["queue-loop.mjs"](queueLoop));
-    assert.ok(!OTHER_BINARIES["queue-loop.mjs"](queueLoop.replace('if (file === "gh") return ghCli(args, opts);', "")));
+    const workspace = readFileSync(path.join(LOOP, "workspace.mjs"), "utf8");
+    assert.ok(OTHER_BINARIES["workspace.mjs"](workspace));
+    assert.ok(!OTHER_BINARIES["workspace.mjs"](workspace.replace('if (file === "gh") return ghCli(args, opts);', "")));
     const reap = readFileSync(path.join(LOOP, "reap.mjs"), "utf8");
     assert.ok(OTHER_BINARIES["reap.mjs"](reap));
     assert.ok(!OTHER_BINARIES["reap.mjs"](`${reap}\nconst G = "git";`));
