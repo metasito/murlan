@@ -45,6 +45,12 @@ const CI_RED_TRIES = 3;
 /** A `gh` failure that is the network's, not GitHub's answer: `execFileSync` puts it in `stderr` or `code`. */
 const OFFLINE = /error connecting to|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|i\/o timeout|TLS handshake timeout/i;
 
+/** GitHub's own failure to answer, which a later read can get past; a 4xx, a 403 above all, is its answer. */
+const SERVER = /HTTP 5\d\d\b|Bad Gateway|Service Unavailable|Gateway Timeout|Something went wrong while executing your query/i;
+
+/** How many reads in a row may fail on the network or GitHub's side before settling stops asking. */
+export const READ_RETRIES = 3;
+
 const sha7 = (sha) => String(sha).slice(0, 7);
 
 /**
@@ -68,6 +74,7 @@ export function startSettle({ at, deadline, stuckMs = SETTLE.STUCK_MS, pr, ledge
     stuckSince: at,
     seen: null,
     woke: false,
+    errors: 0,
     head: null,
     armed: false,
     armedAt: null,
@@ -146,9 +153,13 @@ export function stepSettle(state, read) {
     s.seen = null;
     const err = read.error;
     // A machine waking from standby has no network for minutes to hours; the deadline still bounds it.
-    error = { why: firstLine(err), offline: OFFLINE.test(`${err.code ?? ""} ${err.message} ${err.stderr ?? ""}`), woke: s.woke };
+    const said = `${err.code ?? ""} ${err.message} ${err.stderr ?? ""}`;
+    const offline = OFFLINE.test(said);
+    s.errors += 1;
+    error = { why: firstLine(err), offline, transient: offline || SERVER.test(said), woke: s.woke, tries: s.errors };
   } else if (!overdue) {
     let { pr, ci } = read.landing;
+    s.errors = 0;
     s.ci = ci;
     s.armed = pr.armed === true;
     if (pr.headRefOid !== s.head) {
@@ -171,7 +182,7 @@ export function stepSettle(state, read) {
   // Landing reads move no run counter.
   const stuck = read.at - s.stuckSince >= s.stuckMs;
   const facts = { ...next, head: s.head, armed: s.armed, overdue, deadline: s.deadline, updates: s.updates, last: s.last, stuck, ci: s.ci, error, reran: s.reran, cleared: read.cleared };
-  const step = decide({ step: "landing", limits: { UPDATES }, loop: {}, landing: facts });
+  const step = decide({ step: "landing", limits: { UPDATES, READ_RETRIES }, loop: {}, landing: facts });
   if (step.kind === "ask") return { state, effects: [], ask: "cleared", head: s.head };
 
   if (step.kind === "settled") {

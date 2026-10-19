@@ -78,11 +78,11 @@ test("nothing stored, or nothing parseable, is simply nothing", () => {
 });
 
 test("the golden save of this version still decodes and plays a legal move", () => {
-  const raw = readFileSync(new URL("../fixtures/offlineSave.v3.json", import.meta.url), "utf8");
+  const raw = readFileSync(new URL("../fixtures/offlineSave.json", import.meta.url), "utf8");
   assert.equal(
     JSON.parse(raw).version,
     OFFLINE_SAVE_VERSION,
-    "OFFLINE_SAVE_VERSION moved: commit a fixture written by this version beside the old one and point this test at it"
+    "OFFLINE_SAVE_VERSION moved: regenerate tests/fixtures/offlineSave.json through encodeOfflineSave"
   );
   const restored = decodeOfflineSave(raw);
   assert.ok(restored, "the fixture no longer decodes");

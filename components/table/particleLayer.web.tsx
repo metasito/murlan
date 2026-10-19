@@ -5,22 +5,16 @@ import type { SharedValue } from "react-native-reanimated";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { RestAir } from "@/lib/tokens";
-import { createAir, mothPose, MOTES, stepAir, type Air, type MothPose } from "./air";
+import { MOTES, type MothPose } from "./air";
 import { DESIGN, type Lamp } from "./lampRig";
 import type { LampRig } from "./useLampRig";
-import { bombFx, createParticles, landingDust, PARTICLE_BUDGET, spawn, step, type ParticleEmitter, type Particles } from "./particles";
-import { emberFrame, idleEmber, startEmber, type EmberRun } from "./ember";
-import { coneRainFrame, idleRain, startRain, type RainRun } from "./coneRain";
+import { bombFx, landingDust, spawn, type ParticleEmitter } from "./particles";
+import { startEmber } from "./ember";
+import { startRain } from "./coneRain";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
 import type { LandingSignal } from "./useFlightClock";
-import { CELLS, D, DRAW_STRIDE, layout, layoutMotes, SHEET, SPARK_LEN, SPRITE_R } from "./particleSprites";
-
-interface AirView {
-  air: Air;
-  lit: number;
-  moth: MothPose | null;
-}
+import { CELLS, createScene, D, DRAW_STRIDE, sceneAsleep, SHEET, SPARK_LEN, SPRITE_R, stepScene, type Scene } from "./particleSprites";
 
 function bakeSheet(): HTMLCanvasElement {
   const sheet = document.createElement("canvas");
@@ -79,11 +73,9 @@ function drawMoth(c: CanvasRenderingContext2D, p: MothPose) {
   c.fill();
 }
 
-function animate(
+export function animate(
   cv: HTMLCanvasElement,
-  sim: Particles,
-  run: { ember: EmberRun; rain: RainRun },
-  view: AirView,
+  scene: Scene,
   lamp: SharedValue<Lamp>,
   reduced: boolean,
   sx: number,
@@ -96,21 +88,20 @@ function animate(
   cv.height = Math.round(DESIGN.height * sy * k);
   const white = bakeSheet();
   const sheets = new Map<string, HTMLCanvasElement>();
-  const draws = new Float32Array(PARTICLE_BUDGET * DRAW_STRIDE);
   let last = performance.now();
+  // Setting the size above cleared the canvas, so an asleep scene must still paint it once.
+  let cleared = true;
   let id = requestAnimationFrame(function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     const l = lamp.value;
     last = now;
-    for (const p of emberFrame(run.ember, dt, Math.random)) spawn(sim, p);
-    for (const p of coneRainFrame(run.rain, l, dt, Math.random)) spawn(sim, p);
-    step(sim, dt);
-    if (stepAir(view.air, dt, l, reduced, Math.random)) traceOnset("moment", "moth");
+    if (!cleared && sceneAsleep(scene, l, reduced)) return void (id = requestAnimationFrame(frame));
+    cleared = false;
+    if (stepScene(scene, l, dt, reduced, Math.random)) traceOnset("moment", "moth");
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.clearRect(0, 0, cv.width, cv.height);
-    layout(sim, draws);
-    view.lit = layoutMotes(view.air, l, draws, sim.live);
-    for (let i = 0; i < sim.live + MOTES; i++) {
+    const draws = scene.d;
+    for (let i = 0; i < scene.s.live + MOTES; i++) {
       const d = i * DRAW_STRIDE;
       if (!draws[d + D.a]) continue;
       const rgb = `${Math.round(draws[d + D.r] * 255)},${Math.round(draws[d + D.g] * 255)},${Math.round(draws[d + D.b] * 255)}`;
@@ -122,10 +113,9 @@ function animate(
       c.drawImage(sheet, draws[d + D.x], draws[d + D.y], draws[d + D.w], draws[d + D.h], 0, 0, draws[d + D.w], draws[d + D.h]);
     }
     c.globalAlpha = 1;
-    view.moth = mothPose(view.air, l);
-    if (view.moth) {
+    if (scene.moth) {
       c.setTransform(k * sx, 0, 0, k * sy, 0, 0);
-      drawMoth(c, view.moth);
+      drawMoth(c, scene.moth);
     }
     id = requestAnimationFrame(frame);
   });
@@ -138,41 +128,39 @@ export function ParticleLayer({ ref, rig, landing }: {
   landing: SharedValue<LandingSignal>;
 }) {
   const { lamp, sx, sy } = rig;
-  const [sim] = useState(() => createParticles());
-  const [run] = useState(() => ({ ember: idleEmber(), rain: idleRain() }));
-  const [view] = useState((): AirView => ({ air: createAir(Math.random), lit: 0, moth: null }));
+  const [scene] = useState(() => createScene(Math.random));
   const canvas = useRef<HTMLCanvasElement>(null);
   const reduced = usePrefersReducedMotion();
   useLandingReaction(landing, (l) => {
     "worklet";
-    for (const p of landingDust(l, reduced, sx, sy, Math.random)) spawn(sim, p);
+    for (const p of landingDust(l, reduced, sx, sy, Math.random)) spawn(scene.s, p);
   });
   useBombBeat(landing, reduced, (l) => {
     "worklet";
-    for (const p of bombFx(l, reduced, sx, sy, Math.random)) spawn(sim, p);
+    for (const p of bombFx(l, reduced, sx, sy, Math.random)) spawn(scene.s, p);
     traceOnset("moment", "bombFx");
   });
 
   useImperativeHandle(ref, () => ({
     emit(spawns) {
-      for (const p of spawns) spawn(sim, p);
+      for (const p of spawns) spawn(scene.s, p);
     },
     ember(from, to) {
-      if (!reduced) startEmber(run.ember, from, to);
+      if (!reduced) startEmber(scene.ember, from, to);
     },
     rain() {
-      if (!reduced) startRain(run.rain);
+      if (!reduced) startRain(scene.rain);
     },
-  }), [sim, run, reduced]);
+  }), [scene, reduced]);
 
-  useTraceSource("live", useCallback(() => sim.live + MOTES, [sim]));
-  useTraceSource("dropped", useCallback(() => sim.dropped, [sim]));
-  useTraceSource("motes", useCallback(() => view.lit, [view]));
-  useTraceSource("moth", useCallback(() => view.moth && { x: view.moth.mx * sx, y: view.moth.my * sy }, [view, sx, sy]));
+  useTraceSource("live", useCallback(() => scene.s.live + MOTES, [scene]));
+  useTraceSource("dropped", useCallback(() => scene.s.dropped, [scene]));
+  useTraceSource("motes", useCallback(() => scene.lit, [scene]));
+  useTraceSource("moth", useCallback(() => scene.moth && { x: scene.moth.mx * sx, y: scene.moth.my * sy }, [scene, sx, sy]));
 
   useEffect(
-    () => (canvas.current ? animate(canvas.current, sim, run, view, lamp, reduced, sx, sy) : undefined),
-    [sim, run, view, lamp, reduced, sx, sy]
+    () => (canvas.current ? animate(canvas.current, scene, lamp, reduced, sx, sy) : undefined),
+    [scene, lamp, reduced, sx, sy]
   );
 
   return (

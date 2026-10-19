@@ -49,6 +49,9 @@ const OWNERSHIP_RECLAIM_RETRY_MS = 1_000;
 /** Rooms this process holds the lock for. */
 const held = new Set<string>();
 
+/** Rooms whose lock is kept until what it guards has settled; see `releaseRoomAfter`. */
+const releasing = new Map<string, Promise<void>>();
+
 let client: Client | null = null;
 let connecting: Promise<Client | null> | null = null;
 let heartbeat: ReturnType<typeof setInterval> | null = null;
@@ -136,19 +139,25 @@ function connect(): Promise<Client | null> {
   return connecting;
 }
 
-/** Asks Postgres for the lock, whatever this process already believes; null when it cannot ask. */
-async function takeLock(roomId: string): Promise<boolean | null> {
+/**
+ * Postgres' answer to one lock request. `unreachable` is a question nobody answered — a refused
+ * connection, a failed query — and says nothing about who holds the room.
+ */
+export type LockAnswer = "taken" | "elsewhere" | "unreachable";
+
+/** Asks Postgres for the lock, whatever this process already believes. */
+async function takeLock(roomId: string): Promise<LockAnswer> {
   const c = await connect();
-  if (!c) return null;
+  if (!c) return "unreachable";
   try {
     const { rows } = await c.query<{ locked: boolean }>(
       "SELECT pg_try_advisory_lock($1::bigint) AS locked",
       [ownershipKey(roomId)]
     );
-    return rows[0]?.locked === true;
+    return rows[0]?.locked === true ? "taken" : "elsewhere";
   } catch (err) {
     logger.error({ err, roomId }, "Could not claim a room");
-    return false;
+    return "unreachable";
   }
 }
 
@@ -163,9 +172,9 @@ async function takeLock(roomId: string): Promise<boolean | null> {
 async function reclaim(): Promise<void> {
   let unreachable = false;
   for (const roomId of [...held]) {
-    const taken = await takeLock(roomId);
-    if (taken) continue;
-    if (taken === null) {
+    const answer = await takeLock(roomId);
+    if (answer === "taken") continue;
+    if (answer === "unreachable") {
       unreachable = true;
       continue;
     }
@@ -190,20 +199,42 @@ async function reclaim(): Promise<void> {
  * the second call free and the single unlock correct.
  */
 export async function claimRoom(roomId: string): Promise<boolean> {
+  if (releasing.has(roomId)) return false;
   if (held.has(roomId)) return true;
-  if (!(await takeLock(roomId))) return false;
+  if ((await takeLock(roomId)) !== "taken") return false;
   held.add(roomId);
   return true;
 }
 
-/** Hands a room back, so another instance may take it. */
+/** Hands a room back, so another instance may take it — unless `releaseRoomAfter` is holding it. */
 export async function releaseRoom(roomId: string): Promise<void> {
+  if (releasing.has(roomId)) return;
+  await unlock(roomId);
+}
+
+async function unlock(roomId: string): Promise<void> {
   if (!held.delete(roomId)) return;
   const c = client;
   if (!c) return;
   await c
     .query("SELECT pg_advisory_unlock($1::bigint)", [ownershipKey(roomId)])
     .catch((err: unknown) => logger.warn({ err, roomId }, "Could not release a room"));
+}
+
+/**
+ * Hands a room back once `settled` has, and refuses every claim on it until then — this
+ * process's own too, which the re-entrant lock would otherwise grant at once. For a room whose
+ * row is being deleted: a claim landing first restores the table from that row.
+ */
+export function releaseRoomAfter(roomId: string, settled: Promise<unknown>): Promise<void> {
+  const released: Promise<void> = settled
+    .catch(() => {})
+    .then(() => (releasing.get(roomId) === released ? unlock(roomId) : undefined))
+    .finally(() => {
+      if (releasing.get(roomId) === released) releasing.delete(roomId);
+    });
+  releasing.set(roomId, released);
+  return released;
 }
 
 /** Whether this process currently claims the room. */

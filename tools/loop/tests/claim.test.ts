@@ -2,7 +2,7 @@
 import test, { afterEach, beforeEach, describe } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { slugOf, claimSteps, claim, failedClaim, baseOf } from "../claim.mjs";
@@ -24,13 +24,43 @@ test("the fetch prunes, so a merged branch's tracking ref does not outlive it", 
 
 test("a claim labels the issue and comments the branch in the shape a peer's claim is matched on", () => {
   const tracker = fakeTracker({ 42: { labels: ["ready-for-agent"] } });
+  const posted: string[] = [];
+  const reading = { ...tracker, comment: (n: number, file: string) => (posted.push(readFileSync(file, "utf8")), tracker.comment(n, file)) };
   claim(42, "Some ticket", (_file: string, args: string[]) => {
     if (args[0] === "rev-parse") throw new Error("not a ref");
     return "";
-  }, tracker);
-  const { labels, comments } = tracker.held(42);
-  assert.deepEqual(labels, ["in-progress", "ready-for-agent"]);
-  assert.deepEqual(comments.map((f: string) => readFileSync(f, "utf8")), ["Claimed by `agent/42-some-ticket`.\n"]);
+  }, reading);
+  assert.deepEqual(tracker.held(42).labels, ["in-progress", "ready-for-agent"]);
+  assert.deepEqual(posted, ["Claimed by `agent/42-some-ticket`.\n"]);
+});
+
+describe("the claim note's tmp dir", () => {
+  let tmp: string;
+  let was: string | undefined;
+  beforeEach(() => {
+    was = process.env.TMPDIR;
+    tmp = mkdtempSync(join(tmpdir(), "claim-tmp-"));
+    process.env.TMPDIR = tmp;
+  });
+  afterEach(() => {
+    if (was === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = was;
+    rmSync(tmp, { recursive: true, force: true });
+  });
+  const noRef = (_file: string, args: string[]) => {
+    if (args[0] === "rev-parse") throw new Error("not a ref");
+    return "";
+  };
+
+  test("is gone once the claim is won", () => {
+    claim(42, "Some ticket", noRef, fakeTracker());
+    assert.deepEqual(readdirSync(tmp), []);
+  });
+
+  test("is gone when a step throws", () => {
+    assert.throws(() => claim(42, "Some ticket", noRef, fakeTracker({}, { fail: ["comment"] })));
+    assert.deepEqual(readdirSync(tmp), []);
+  });
 });
 
 test("a branch already on origin is reset to, never cut fresh from main", () => {

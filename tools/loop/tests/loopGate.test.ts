@@ -604,7 +604,7 @@ describe("landable", () => {
     git(["switch", "-q", "-c", "side", landed]);
     const side = edit("side.txt", "side\n");
     git(["switch", "-q", "-c", "agent/1-side", landed]);
-    git(["merge", "-q", "--no-edit", side]);
+    git(["merge", "-q", "--no-ff", "--no-edit", side]);
     assert.equal(check(said(...cleared(landed)), git(["rev-parse", "HEAD"])), false);
   });
 
@@ -659,12 +659,32 @@ describe("landable", () => {
     assert.match(land(said(...holds(MAX_REVIEW_ROUNDS), ...cleared(landed)), landed).why, /past the cap/);
   });
 
-  test("an unreadable tracker carries no lines, which is what makes the CLI exit 2", () => {
+  test("an unreadable tracker is named as such, and only a readable one carries lines", () => {
     const v = land(null, landed);
     assert.equal(v.ok, false);
     assert.match(v.why, /cannot reach the tracker/);
     assert.equal(v.lines, undefined);
     assert.ok(land([], landed).lines?.length);
+  });
+
+  test("a merge of a commit off main is refused for that, by git's answer and not its exit status", () => {
+    git(["switch", "-q", "-c", "off-main", landed]);
+    const side = edit("off.txt", "off\n");
+    git(["switch", "-q", "-c", "agent/1-off", landed]);
+    git(["merge", "-q", "--no-ff", "--no-edit", side]);
+    const head = git(["rev-parse", "HEAD"]);
+    const v = land(said(...cleared(landed)), head);
+    assert.equal(v.ok, false);
+    assert.match(v.why, new RegExp(`merges ${side.slice(0, 7)}, which is not on main`));
+    assert.ok(v.lines?.length, "a refusal, not a cannot-judge");
+    const lenient = (args: string[]) => {
+      try {
+        return git(args);
+      } catch {
+        return "";
+      }
+    };
+    assert.equal(landable(said(...cleared(landed)), head, lenient, "main").ok, false);
   });
 
   test("a head git cannot read is refused, never cleared", () => {

@@ -100,6 +100,7 @@ function CaptureHarness() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={COPY.swing}
+            testID={`capture-${picked.id}`}
             onPress={() => move((s) => ({ ...s, currentTurnIndex: nextTurn(s) }))}
             style={styles.swing}
           >

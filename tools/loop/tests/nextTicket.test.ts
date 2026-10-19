@@ -1,7 +1,8 @@
 // #293
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { classify, pickRoute, claimedElsewhere, launchOpen, nextPick, openIssues, routeOf, sizeOf, stranded, takeable, takeableReasons, waitingOn, LAUNCH_MILESTONE } from "../next-ticket.mjs";
+import { claimCommand, classify, pickRoute, claimedElsewhere, issueComments, launchOpen, nextPick, openIssues, routeOf, sizeOf, stranded, takeable, takeableReasons, waitingOn, LAUNCH_MILESTONE } from "../next-ticket.mjs";
+import { slugOf } from "../claim.mjs";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
 import { TRUSTED_AUTHORS } from "../loop-derive.mjs";
 import { park } from "../queue-loop.mjs";
@@ -413,5 +414,33 @@ describe("isInvokedDirectly", () => {
     const { shelledOutTo } = importUnderShellGuard(moduleUrl);
 
     assert.equal(shelledOutTo, null, "importing the module must not shell out to `gh`");
+  });
+});
+
+describe("printing a ticket", () => {
+  test("the claim it prints is the loop's own claim, which also takes the worktree", () => {
+    assert.equal(claimCommand(42, "Fix the thing"), `npm run queue:claim -- 42 "Fix the thing"`);
+  });
+
+  test("a title the shell would expand is printed as the same branch's, not as shell syntax", () => {
+    const title = 'Say "$HOME" `now` \\ here';
+    const line = claimCommand(42, title);
+    const quoted = line.slice(line.indexOf('"') + 1, -1);
+    assert.doesNotMatch(quoted, /["`$\\]/);
+    assert.equal(slugOf(quoted), slugOf(title));
+  });
+
+  test("every page of comments is read, not the first", () => {
+    const asked: string[] = [];
+    const page = (k: number, n: number) => Array.from({ length: n }, (_, i) => ({ id: k * 1000 + i }));
+    const run = (args: string[]) => {
+      const path = String(args.at(-1));
+      asked.push(path);
+      const k = Number(/[?&]page=(\d+)/.exec(path)?.[1]);
+      return JSON.stringify(k === 1 ? page(1, 100) : k === 2 ? page(2, 100) : page(3, 7));
+    };
+    assert.equal(issueComments(42, run).length, 207);
+    assert.equal(asked.length, 3);
+    assert.ok(asked.every((a) => a.startsWith("repos/{owner}/{repo}/issues/42/comments?per_page=100&page=")), String(asked));
   });
 });

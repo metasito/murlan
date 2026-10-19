@@ -30,7 +30,7 @@ import {
 import { testOnlyEnv } from "../http/testOnlyEnv.ts";
 
 /**
- * Read once at module scope — same shape as authMaxFromEnv in routes.ts — so
+ * Read once at module scope — same shape as the rate-limit env reads in server/http/routes.ts — so
  * a test process must set MURLAN_GAME_ACTION_RATE_LIMIT before this module
  * is first imported. Shared by game:play and game:pass: a suite replaying
  * several rounds down one socket to reach a probabilistic phase needs

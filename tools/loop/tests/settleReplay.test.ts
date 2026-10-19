@@ -9,7 +9,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { journaled, settle } from "../queue-loop.mjs";
-import { ciRedBody, endSettle, onMainLine, overdueAt, rested, runSettle, SETTLE, startSettle, stepSettle } from "../settle.mjs";
+import { ciRedBody, endSettle, onMainLine, overdueAt, READ_RETRIES, rested, runSettle, SETTLE, startSettle, stepSettle } from "../settle.mjs";
 import { appendSupervisor, supervisorLogPath } from "../loop-logs.mjs";
 import { readLandingState } from "../ciVerdict.ts";
 import { armArgs, disarmArgs } from "../land.ts";
@@ -382,8 +382,29 @@ describe("stepSettle, fed recorded landing states", () => {
       assert.match(String(out.reason), /^could not read CI/);
     });
 
-    test("a read the network refused with no standby before it is the owner's", () => {
-      const { out } = replay([recorded(GATE_RUNNING), ghFailed(OFFLINE)], { tick: 30 });
+    test("a read the network refused with no standby is asked again, and a green one lands", () => {
+      const reads = [recorded(GATE_RUNNING), ghFailed(OFFLINE), recorded(GREEN), recorded(GREEN, { armed: true, merged: true })];
+      const { out } = replay(reads, { tick: 30 });
+      assert.equal(out.action, "already-merged", String(out.reason));
+    });
+
+    test("a server error is asked again, and goes to the owner once it outlasts its retries", () => {
+      const bad = ghFailed("HTTP 502: Bad Gateway (https://api.github.com/graphql)");
+      const { out, said } = replay([recorded(GATE_RUNNING), bad], { tick: 30 });
+      assert.equal(out.action, "owner");
+      assert.match(String(out.reason), /^could not read CI — /);
+      assert.equal(said.filter((m) => /asking again/.test(m)).length, READ_RETRIES);
+    });
+
+    test("retries count errors in a row: a good read between them starts the count again", () => {
+      const bad = ghFailed("HTTP 503: Service Unavailable");
+      const reads = [...Array.from({ length: READ_RETRIES * 2 }, (_, i) => (i % 2 ? recorded(GATE_RUNNING) : bad)), recorded(GREEN), recorded(GREEN, { armed: true, merged: true })];
+      const { out } = replay(reads, { tick: 30 });
+      assert.equal(out.action, "already-merged", String(out.reason));
+    });
+
+    test("a 403 goes to the owner at once", () => {
+      const { out } = replay([recorded(GATE_RUNNING), ghFailed("HTTP 403: API rate limit exceeded"), recorded(GREEN)], { tick: 30 });
       assert.equal(out.action, "owner");
       assert.match(String(out.reason), /^could not read CI — /);
     });

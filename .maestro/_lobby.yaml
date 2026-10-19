@@ -1,0 +1,24 @@
+# Offline vs bots from home to the table. Takes FORMAT, the format tile's title: "Manche secca.*"
+# or "Partita.*". The `.*` carries the tile's subtitle, which iOS joins to the title with a colon.
+# The last tap lands on the table, so it caps the settle wait (tests/tooling/gameTableTapSettle.test.ts).
+appId: "${MAESTRO_APP_ID}"
+---
+- assertVisible: "Offline"
+- tapOn: "Offline"
+- assertVisible: "${FORMAT}"
+- tapOn: "${FORMAT}"
+- assertVisible: "Inizia Partita"
+- tapOn:
+    text: "Inizia Partita"
+    waitToSettleTimeoutMs: 500
+# iOS draws this landscape-locked screen turned inside a portrait simulator and XCUITest then returns
+# half the tree (#685). Android rotates itself and a second request never returns (#768).
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - setOrientation: LANDSCAPE_LEFT
+- extendedWaitUntil:
+    visible:
+      id: "game-table"
+    timeout: 90000

@@ -129,8 +129,8 @@ export function autoMoveForSeat(
   }
 
   if (isNewTrick) {
-    // Read the mandatory opening card from the state instead of assuming 3♣:
-    // with the full deal it is always present, but it is not always a club 3.
+    // Read the mandatory opening card from the state instead of assuming 3♠:
+    // with the full deal it is always present, but a short deal may lack it.
     const card = requireCard ?? sortHand([...player.hand])[0];
     if (!card) return null;
     const combo = buildCombination([card]);

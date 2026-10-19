@@ -218,11 +218,6 @@ async function takeOverAndApply(
     if (restored === "not_seated") return { ok: false, code: "UNAUTHORIZED" };
     return UNOWNED;
   }
-  if (restored === "unrestorable") {
-    // Discarding the row went through `disposeGame`, which hands the room back,
-    // and the deal about to run would otherwise write a game with no claim.
-    if (!(await claimRoom(roomId))) return UNREACHABLE;
-  }
   try {
     return await applyOnce(io, action);
   } finally {

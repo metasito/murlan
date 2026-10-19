@@ -1,7 +1,7 @@
 ##
 # Named states from lib/captureStates.ts, opened by link in the app felt-opaque.yaml left running (ios.yml).
 # iOS asks "Open in Murlan?" before the first link only, and its Open button carries no label: it is
-# tapped by position, in landscape points, where run 38061909920 found it.
+# tapped by position, as a share of the landscape screen.
 appId: "${MAESTRO_APP_ID}"
 ---
 - openLink: "murlan://capture?state=lamp-bottom"
@@ -14,25 +14,38 @@ appId: "${MAESTRO_APP_ID}"
       visible: "Cancel"
     commands:
       - tapOn:
-          point: "530,222"
+          point: "61%,55%"
           retryTapIfNoChange: false
           waitToSettleTimeoutMs: 500
 # Not `game-table`: the table felt-opaque.yaml left open already matches it, before the link lands.
 - extendedWaitUntil:
-    visible: "Move the lamp to the next seat"
+    visible:
+      id: "capture-lamp-bottom"
     timeout: 60000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: lamp-bottom
 - openLink: "murlan://capture?state=pile-right"
+- extendedWaitUntil:
+    visible:
+      id: "capture-pile-right"
+    timeout: 10000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: pile-right
 - openLink: "murlan://capture?state=play-right-landed"
+- extendedWaitUntil:
+    visible:
+      id: "capture-play-right-landed"
+    timeout: 10000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: play-right-landed
 - openLink: "murlan://capture?state=bomb-landed"
+- extendedWaitUntil:
+    visible:
+      id: "capture-bomb-landed"
+    timeout: 10000
 - waitForAnimationToEnd:
     timeout: 3000
 # The link's own landing is over by the time openLink settles. The settle cap keeps the shot inside
@@ -42,6 +55,10 @@ appId: "${MAESTRO_APP_ID}"
     waitToSettleTimeoutMs: 800
 - takeScreenshot: bomb-landed
 - openLink: "murlan://capture?state=held"
+- extendedWaitUntil:
+    visible:
+      id: "capture-held"
+    timeout: 10000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: held

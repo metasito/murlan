@@ -83,6 +83,7 @@ export function readPersistedSeats(stored: unknown): PersistedSeats {
  * written under an older version can hold hands that no longer match the
  * current rules — rehydrating it deals a silently corrupt game instead of
  * crashing, so it must be rejected, not restored.
+ * Held to the stored shape by tests/server/storedShapeVersions.test.ts.
  */
 export const GAME_SCHEMA_VERSION = 3;
 

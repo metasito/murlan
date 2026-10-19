@@ -277,14 +277,16 @@ const STEPS = {
   // and an armed head are exempt, since one long job or GitHub's merge queue changes nothing for minutes.
   landing({ landing, limits }) {
     const { action, reason, head, armed, overdue, updates, last, ci, reran, stuck } = landing;
-    const { UPDATES } = limits;
+    const { UPDATES, READ_RETRIES } = limits;
     const step = (act, why) => ({ kind: "settle", act, why });
     const verdict = (as, why) => ({ kind: "settled", action: as, why });
 
     if (overdue) return verdict("owner", `CI did not settle in ${Math.round(landing.deadline / 60_000)}m${last ? ` — last: ${last}` : ""}`);
     if (landing.error) {
-      const { why, offline, woke } = landing.error;
-      return offline && woke ? step("wait", `could not read CI since the machine woke — ${why}; asking again`) : verdict("owner", `could not read CI — ${why}`);
+      const { why, offline, transient, woke, tries } = landing.error;
+      if (offline && woke) return step("wait", `could not read CI since the machine woke — ${why}; asking again`);
+      if (transient && tries <= READ_RETRIES) return step("wait", `could not read CI — ${why}; asking again (${tries} of ${READ_RETRIES})`);
+      return verdict("owner", `could not read CI — ${why}`);
     }
     if (action === "hand-back" && ci.output && !ci.logUnread) {
       // `attempt` rather than a note of our own: a restart, or the owner's own rerun, is counted too.

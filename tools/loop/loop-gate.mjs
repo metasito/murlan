@@ -149,7 +149,9 @@ export function landable(comments, sha, git, main = "origin/main") {
       if (verdict) return verdictOn(comments, at, verdict);
       const [, mine, theirs, ...more] = git(["rev-list", "--parents", "-n", "1", at]).split(" ");
       if (!theirs || more.length) break;
-      git(["merge-base", "--is-ancestor", theirs, main]);
+      if (git(["merge-base", theirs, main]) !== theirs) return { ok: false, why: `${at.slice(0, 7)} merges ${theirs.slice(0, 7)}, which is not on ${main}`, lines: [
+        "Only a merge of main into a cleared head carries its review over: any other parent is a diff nobody read.",
+      ] };
       const clean = git(["merge-tree", "--write-tree", mine, theirs]).split("\n")[0];
       if (clean !== git(["rev-parse", `${at}^{tree}`])) break;
       at = mine;

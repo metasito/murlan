@@ -4,10 +4,6 @@
 # the second round itself, and drives the exchange the engine runs on
 # that deal — see #55 and docs/GAME-RULES.md §10.
 #
-# Maestro has no import mechanism, so the launch/tutorial/lobby boilerplate
-# below is duplicated from offline-game.yaml on purpose, the way smoke.yaml
-# and offline-game.yaml already duplicate it against each other.
-#
 # Strategy: same "pass whenever legal" play as offline-game.yaml for the
 # first round. The match format is the lobby's own default match length
 # (`app/lobby.tsx`'s `matchLength` state starts at `"match"`), so this only
@@ -40,36 +36,11 @@ appId: "${MAESTRO_APP_ID}"
       AppleLanguages: "(it-IT)"
       AppleLocale: "it_IT"
       MurlanE2EOpener: "1"
+- runFlow: _launch.yaml
 - runFlow:
-    commands:
-      - extendedWaitUntil:
-          visible: "Salta il tutorial"
-          timeout: 180000
-      - tapOn: "Salta il tutorial"
-      - extendedWaitUntil:
-          notVisible: "Salta il tutorial"
-          timeout: 30000
-
-# --- Lobby: offline vs bots, 2 players, match format ("Match") ---
-- assertVisible: "Offline"
-- tapOn: "Offline"
-- assertVisible: "Partita.*"
-- tapOn: "Partita.*"
-- assertVisible: "Inizia Partita"
-- tapOn:
-    text: "Inizia Partita"
-    waitToSettleTimeoutMs: 500
-
-- runFlow:
-    when:
-      platform: iOS
-    commands:
-      - setOrientation: LANDSCAPE_LEFT
-
-- extendedWaitUntil:
-    visible:
-      id: "game-table"
-    timeout: 90000
+    file: _lobby.yaml
+    env:
+      FORMAT: "Partita.*"
 
 # --- Round 1: opening move, always on iOS, and on Android only if this seat was dealt the forced opener ---
 - extendedWaitUntil:

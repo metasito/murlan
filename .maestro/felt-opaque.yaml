@@ -10,32 +10,11 @@ appId: "${MAESTRO_APP_ID}"
     arguments:
       AppleLanguages: "(it-IT)"
       AppleLocale: "it_IT"
+- runFlow: _launch.yaml
 - runFlow:
-    commands:
-      - extendedWaitUntil:
-          visible: "Salta il tutorial"
-          timeout: 180000
-      - tapOn: "Salta il tutorial"
-      - extendedWaitUntil:
-          notVisible: "Salta il tutorial"
-          timeout: 30000
-- assertVisible: "Offline"
-- tapOn: "Offline"
-- assertVisible: "Manche secca.*"
-- tapOn: "Manche secca.*"
-- assertVisible: "Inizia Partita"
-- tapOn:
-    text: "Inizia Partita"
-    waitToSettleTimeoutMs: 500
-- runFlow:
-    when:
-      platform: iOS
-    commands:
-      - setOrientation: LANDSCAPE_LEFT
-- extendedWaitUntil:
-    visible:
-      id: "game-table"
-    timeout: 90000
+    file: _lobby.yaml
+    env:
+      FORMAT: "Manche secca.*"
 - takeScreenshot: felt-first
 - waitForAnimationToEnd:
     timeout: 2000
