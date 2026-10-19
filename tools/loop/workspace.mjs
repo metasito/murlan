@@ -151,7 +151,7 @@ const dirty = (git, worktreePath) => git(["-C", worktreePath, "status", "--porce
  *
  * @returns {{ removed: boolean, why: string, detached?: string[] }}
  */
-export function removeWorktree(target, { force = false, dryRun = false, git = gitAt(process.cwd()) } = {}) {
+export function removeWorktree(target, { force = false, dryRun = false, git = /** @type {(args: string[]) => string} */ (gitAt(process.cwd())) } = {}) {
   const match = parseWorktreeList(git(["worktree", "list", "--porcelain"]))
     .slice(1)
     .find((entry) => samePath(entry.path, target));
@@ -252,7 +252,7 @@ function judgeWorktree(entry, ticket, { git, gh }) {
  *
  * @returns {Result}
  */
-export function sweep({ pinned = /** @type {number|null} */ (null), dryRun = false, git = gitAt(process.cwd()), gh = ghCli } = {}) {
+export function sweep({ pinned = /** @type {number|null} */ (null), dryRun = false, git = /** @type {(args: string[]) => string} */ (gitAt(process.cwd())), gh = ghCli } = {}) {
   git(["worktree", "prune"]);
   const entries = parseWorktreeList(git(["worktree", "list", "--porcelain"]));
   const dir = path.join(entries[0]?.path ?? process.cwd(), WORKTREE_DIR);
@@ -392,7 +392,7 @@ const mainHealth = (gh) => () => createRequire(import.meta.url)("./mainHealth.ts
  */
 export async function housekeeping({
   pinned = /** @type {number|null} */ (null),
-  git = gitAt(process.cwd()),
+  git = /** @type {(args: string[]) => string} */ (gitAt(process.cwd())),
   gh = ghCli,
   reap = (io) => reapSweep({ stale: true, ...io }),
   checkMain = mainHealth(gh),
