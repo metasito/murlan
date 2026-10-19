@@ -18,11 +18,12 @@ const DRAWN = ["{app,components}/**/*.tsx"];
 const TEST_RUNNERS = "/^(it|test|describe|suite)$/";
 const SEAT_IDENTITY = "/^(viewerSeat|mySeatIndex)$/";
 // esquery's regex literal ends at its first slash, so a path separator is written \x2F.
-const importsOf = (source, kind = "") =>
+// With `values`, a declaration whose every specifier is `type` is spared: it never reaches the bundle.
+const importsOf = (source, { values = false } = {}) =>
   [
-    `ImportDeclaration${kind}[source.value=${source}]`,
-    `ExportNamedDeclaration${kind.replace("importKind", "exportKind")}[source.value=${source}]`,
-    `ExportAllDeclaration${kind.replace("importKind", "exportKind")}[source.value=${source}]`,
+    `ImportDeclaration${values ? ':not([importKind="type"]):matches([specifiers.length=0], :has(ImportSpecifier[importKind="value"]), :has(ImportDefaultSpecifier), :has(ImportNamespaceSpecifier))' : ""}[source.value=${source}]`,
+    `ExportNamedDeclaration${values ? ':not([exportKind="type"]):has(ExportSpecifier[exportKind="value"])' : ""}[source.value=${source}]`,
+    `ExportAllDeclaration${values ? ':not([exportKind="type"])' : ""}[source.value=${source}]`,
     `ImportExpression[source.value=${source}]`,
     `CallExpression[callee.name="require"][arguments.0.value=${source}]`,
   ].join(", ");
@@ -237,7 +238,7 @@ const GUARDS = [
     why: "ADR-0009 gives each audio and haptics layer one owner, and none is under modules/: play through lib/device/feedback.ts, which owns lib/device/audioEngine.ts and lib/device/hapticsEngine.ts.",
     selector: importsOf(
       "/^(react-native-audio-api|react-native-turbo-haptics|expo-audio|expo-haptics)$|(^|\\x2F)(audioEngine|hapticsEngine|murlan-audio-session|murlan-diagnostics)(\\.ts)?$/",
-      '[importKind!="type"]'
+      { values: true }
     ),
     files: ["modules/**/*.{ts,tsx}"],
     plant: { file: "modules/murlan-orientation/plant.ts", code: [
@@ -246,10 +247,14 @@ const GUARDS = [
       'const a = require("expo-audio");',
       'const s = import("../murlan-audio-session");',
       'import { play } from "../../lib/device/audioEngine.ts";',
-    ].join("\n"), hits: 5 },
+      'import { type AudioBuffer, AudioContext as Ctx } from "react-native-audio-api";',
+      'import "expo-haptics";',
+    ].join("\n"), hits: 7 },
     spare: [
       'import { requireOptionalNativeModule } from "expo";',
       'import type { AudioContext } from "react-native-audio-api";',
+      'import { type AudioContext, type AudioBuffer } from "react-native-audio-api";',
+      'export { type AudioContext } from "react-native-audio-api";',
       '// import "expo-haptics"\nconst s = "expo-haptics";',
     ].map((code) => ({ file: "modules/murlan-orientation/plant.ts", code })),
   },
