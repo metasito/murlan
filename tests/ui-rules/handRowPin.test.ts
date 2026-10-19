@@ -1,8 +1,5 @@
-// tests/ui-rules/handRowPin.test.ts — the hand row as it was laid out before the layout had one
-// owner, on every phone, for the biggest hand each seat count deals.
-//
-// tests/fixtures/handRow.json was written from StraightHand's own arithmetic (#1653); the row
-// computed here must land on it.
+// tests/ui-rules/handRowPin.test.ts — layoutHandRow on every phone, for the biggest hand each seat
+// count deals, must land on the row pinned in tests/fixtures/handRow.json.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
