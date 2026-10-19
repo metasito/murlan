@@ -75,7 +75,9 @@ jest.mock('@/context/onlineGameHooks', () => ({
     connected: mockOnline.connected,
     rejoinFailed: false,
     clearRejoinFailed: () => {},
+    clearError: () => {},
   }),
+  useServerError: () => null,
 }));
 
 const { SocketProvider, useInvites } =

@@ -33,6 +33,7 @@ jest.mock('@/lib/query-client', () => ({
 }));
 
 import AuthScreen from '@/app/auth';
+import { returnPathFor } from '@/lib/authRedirect';
 import { en as locale } from '@/locales/en';
 
 const METRICS = {
@@ -68,6 +69,24 @@ describe('where signing in lands', () => {
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/(online)/quickmatch'));
 
     await view.unmount();
+  });
+
+  it('returns a deep link into the online group to the screen it named, params and all', async () => {
+    for (const [segments, params, landing] of [
+      [['(online)', 'replay'], { id: 'g 7' }, '/(online)/replay?id=g%207'],
+      [['(online)', 'history'], {}, '/(online)/history'],
+      [['(online)', 'friends'], {}, '/(online)/friends'],
+      [['(online)', 'leaderboard'], {}, '/(online)/leaderboard'],
+    ] as const) {
+      mockReplace.mockClear();
+      mockParams = { next: returnPathFor(segments, params) };
+      const view = await mount();
+
+      await signIn();
+      await waitFor(() => expect(mockReplace).toHaveBeenCalledWith(landing));
+
+      await view.unmount();
+    }
   });
 
   it('lands on home when nothing sent them', async () => {

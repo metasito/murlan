@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { blankComments, blankCommentsAndStrings, scanSources, sourcesUnder } from "../helpers/sourceScan.ts";
 import {
   NO_TABLE,
+  guardsRoomBack,
   leaveNavigation,
   lobbyFor,
   navigationFor,
@@ -181,4 +182,39 @@ test("no online screen routes from an effect", () => {
   assert.ok(effectBodies(planted).some((body) => ROUTES.test(body)), "a planted effect is caught");
   const behindAParen = 'useEffect(() => {\n  log("closed)");\n  router.push("/(online)/room");\n}, []);';
   assert.ok(effectBodies(behindAParen).some((body) => ROUTES.test(body)), "a ')' in a string ends no effect");
+});
+
+test("back on the room asks only while the room screen is the player's to leave", () => {
+  assert.equal(guardsRoomBack(room()), true);
+  for (const facts of [NO_TABLE, seated(), watching, refused, { ...room(), rejoinFailed: true }]) {
+    assert.equal(guardsRoomBack(facts), false, JSON.stringify(facts));
+  }
+});
+
+test("no navigation away from the room is ever met by the back guard", () => {
+  const all: OnlineFacts[] = [];
+  for (const roomId of [null, "r1", "r2"])
+    for (const hasGame of [false, true])
+      for (const isSpectator of [false, true])
+        for (const rejoinFailed of [false, true]) all.push({ roomId, hasGame, isSpectator, rejoinFailed });
+  let moves = 0;
+  for (const prev of all)
+    for (const next of all)
+      for (const entrySource of ["quickmatch", "friends", null] as const) {
+        if (!navigationFor(prev, next, "room", entrySource)) continue;
+        moves++;
+        assert.equal(guardsRoomBack(next), false, `${JSON.stringify(prev)} -> ${JSON.stringify(next)}`);
+      }
+  assert.ok(moves > 0, "the room's own navigations are enumerated");
+});
+
+test("no redirect to sign-in forgets where the player was going", () => {
+  const TO_AUTH = /<Redirect\b(?:(?!\/>)[\s\S])*?["'`]\/auth["'`](?:(?!\/>)[\s\S])*?\/>/g;
+  const bare = (hits: string[]) => hits.filter((hit) => !/\bnext\b/.test(hit));
+  const sources = sourcesUnder(repoRoot, ["app"]).map(([f, src]): [string, string] => [f, blankComments(src)]);
+  assert.ok(scanSources(TO_AUTH, sources).length >= 2, "the sign-in redirects are read");
+  assert.deepEqual(bare(scanSources(TO_AUTH, sources)), []);
+  for (const plant of ['<Redirect href="/auth" />', "<Redirect\n  href={{ pathname: '/auth' }}\n/>"]) {
+    assert.equal(bare(scanSources(TO_AUTH, [["planted.tsx", plant]])).length, 1, plant);
+  }
 });

@@ -14,6 +14,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useInvites, usePresence } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
+import { useOnlineConnection, useOnlineRoom, useServerError } from "@/context/onlineGameHooks";
 import { serverErrorMessage } from "@/lib/apiError";
 import { apiRequest } from "@/lib/query-client";
 import { Colors, Spacing, FontSize, Radius, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
@@ -24,7 +25,7 @@ import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
 import { registerForPush } from "@/lib/device/pushRegistration";
-import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
+import { A11yStatus, a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 import type { FriendInfo, FriendRequestInfo } from "@/shared/http";
 
 
@@ -52,7 +53,15 @@ export default function FriendsScreen() {
   const { t, tn } = useTranslation();
   const searchHint = useA11yHint(t("friends.searchA11yHint"));
   const { onlineIds, refresh } = usePresence();
-  const { invites: gameInvites, dismiss: dismissGameInvite, accept: acceptInvite } = useInvites();
+  const {
+    invites: gameInvites,
+    dismiss: dismissGameInvite,
+    accept: acceptInvite,
+    accepted: acceptedInvite,
+  } = useInvites();
+  const { room } = useOnlineRoom();
+  const { clearError } = useOnlineConnection();
+  const joinError = useServerError("lobby");
   const qc = useQueryClient();
   const [addLoading, setAddLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -62,6 +71,26 @@ export default function FriendsScreen() {
   const [searchDone, setSearchDone] = useState(false);
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
   const { showNotification, notifyError } = useNotification();
+
+  // Joining from the room a join started in: an accept while a room is held must wait for a
+  // different one, not read the held one as already arrived.
+  const roomId = room?.roomId ?? null;
+  const [joiningFrom, setJoiningFrom] = useState<{ roomId: string | null } | null>(null);
+  const [answeredInvite, setAnsweredInvite] = useState<typeof acceptedInvite>(null);
+  if (acceptedInvite !== answeredInvite) {
+    setAnsweredInvite(acceptedInvite);
+    if (acceptedInvite) setJoiningFrom({ roomId });
+  }
+  if (joiningFrom && (joinError || (roomId !== null && roomId !== joiningFrom.roomId))) {
+    setJoiningFrom(null);
+  }
+
+  useEffect(() => {
+    if (joinError) {
+      notifyError(joinError.text);
+      clearError(joinError.seq);
+    }
+  }, [joinError, clearError, notifyError]);
 
   const {
     data: friends = [],
@@ -217,6 +246,16 @@ export default function FriendsScreen() {
   return (
     <MenuLayout scrollable centered={false}>
       <ScreenHeader title={t("friends.title")} />
+
+      {joiningFrom && (
+        <View style={styles.joiningBanner}>
+          <A11yStatus label={t("onlineLobby.joiningInvite")} role="alert" live="polite" />
+          <ActivityIndicator size="small" color={Colors.gold} {...a11yHidden()} />
+          <Text style={styles.joiningBannerText} numberOfLines={1} {...a11yHidden()}>
+            {t("onlineLobby.joiningInvite")}
+          </Text>
+        </View>
+      )}
 
       <View style={styles.contentWrapper}>
         {/* ── SECTION 1: Aggiungi Amico ── */}
@@ -492,6 +531,21 @@ export default function FriendsScreen() {
 }
 
 const styles = StyleSheet.create({
+  joiningBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    backgroundColor: Colors.goldGhost,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  joiningBannerText: {
+    ...Type.body,
+    color: Colors.gold,
+    flex: 1,
+  },
   contentWrapper: {
     ...takesSlack,
     gap: Spacing.sm,

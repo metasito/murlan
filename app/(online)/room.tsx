@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,7 +8,11 @@ import {
   Share,
   FlatList,
   Platform,
+  BackHandler,
 } from "react-native";
+import { usePreventRemove } from "expo-router/react-navigation";
+import { guardsRoomBack } from "@/context/onlineRouting";
+import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { useIsLandscape } from "@/lib/device/orientation";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { uiFeedback } from "@/lib/device/feedback";
@@ -110,9 +114,11 @@ function BotFillControls({
 function MatchmakingToggle({
   open,
   onChange,
+  disabled,
 }: {
   open: boolean;
   onChange: (value: boolean) => void;
+  disabled: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -131,6 +137,7 @@ function MatchmakingToggle({
           }}
           a11yLabel={t("room.fillWithMatchmakingA11yLabel")}
           a11yHint={t("room.fillWithMatchmakingA11yHint")}
+          disabled={disabled}
         />
       </View>
     </View>
@@ -307,8 +314,8 @@ export default function RoomScreen() {
   const reduceMotion = usePrefersReducedMotion();
   const entering = reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel);
   const { user } = useAuth();
-  const { room, leaveRoom, startGame, setRoomVisibility } = useOnlineRoom();
-  const { clearError } = useOnlineConnection();
+  const { room, hasGame, isSpectator, leaveRoom, startGame, setRoomVisibility } = useOnlineRoom();
+  const { connected, rejoinFailed, clearError } = useOnlineConnection();
   const error = useServerError("room");
   const { notifyError } = useNotification();
 
@@ -347,6 +354,30 @@ export default function RoomScreen() {
     }
   }, [error, clearError, notifyError]);
 
+  const handleLeave = useCallback(() => {
+    setConfirming({
+      title: t("room.leaveConfirmTitle"),
+      body: t("room.leaveConfirmBody"),
+      cancelLabel: t("common.cancel"),
+      confirmLabel: t("room.leaveConfirmConfirm"),
+      destructive: true,
+      onConfirm: () => {
+        leaveRoom();
+      },
+    });
+  }, [t, leaveRoom]);
+
+  const guardsBack = guardsRoomBack({ roomId: room?.roomId ?? null, hasGame, isSpectator, rejoinFailed });
+  usePreventRemove(guardsBack, handleLeave);
+  useEffect(() => {
+    if (Platform.OS !== "android" || !guardsBack) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      handleLeave();
+      return true;
+    });
+    return () => sub.remove();
+  }, [guardsBack, handleLeave]);
+
   if (!room) return null;
 
   const isHost = room.hostUserId === user?.id;
@@ -360,7 +391,7 @@ export default function RoomScreen() {
   const teamsNeedFour =
     room.gameMode === "teams" && seatsAtStart !== TEAMS_PLAYER_COUNT;
   const canStart =
-    isHost && !notEnoughPlayers && !teamsNeedFour && room.status === "waiting";
+    isHost && connected && !notEnoughPlayers && !teamsNeedFour && room.status === "waiting";
   // Offered, never assumed: the card is not on screen until the host has
   // actually been kept waiting, so a bot can only ever be something they
   // reached for.
@@ -412,19 +443,6 @@ export default function RoomScreen() {
     }
   }
 
-  function handleLeave() {
-    setConfirming({
-      title: t("room.leaveConfirmTitle"),
-      body: t("room.leaveConfirmBody"),
-      cancelLabel: t("common.cancel"),
-      confirmLabel: t("room.leaveConfirmConfirm"),
-      destructive: true,
-      onConfirm: () => {
-        leaveRoom();
-      },
-    });
-  }
-
   function handleStart() {
     if (!canStart) return;
     uiFeedback("medium");
@@ -444,6 +462,7 @@ export default function RoomScreen() {
     <MatchmakingToggle
       open={room.visibility === "public"}
       onChange={(value) => setRoomVisibility(value ? "public" : "private")}
+      disabled={!connected}
     />
   ) : null;
 
@@ -520,6 +539,8 @@ export default function RoomScreen() {
     </Animated.View>
   );
 
+  const connectionStatus = <ConnectionStatus connected={connected} username={user?.username ?? ""} />;
+
   const modePill = (
     <View style={styles.modePill}>
       <Ionicons name={modeIcon} size={MODE_ICON} color={Colors.textMuted} {...a11yHidden()} />
@@ -562,6 +583,7 @@ export default function RoomScreen() {
               contentContainerStyle={styles.landscapeLeftScrollContent}
               showsVerticalScrollIndicator={false}
             >
+              {connectionStatus}
               {codeCard}
 
               {modePill}
@@ -615,6 +637,7 @@ export default function RoomScreen() {
         contentContainerStyle={{ paddingHorizontal: Spacing.roomy, paddingTop: Spacing.md, paddingBottom: Spacing.sm, gap: Spacing.cosy }}
         showsVerticalScrollIndicator={false}
       >
+        {connectionStatus}
         {codeCard}
 
         {modePill}

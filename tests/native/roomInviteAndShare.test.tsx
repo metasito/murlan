@@ -20,6 +20,8 @@ jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
+jest.mock('expo-router/react-navigation', () => ({ usePreventRemove: () => {} }));
+
 jest.mock('expo-clipboard', () => ({
   setStringAsync: (s: string) => mockSetString(s),
 }));
@@ -63,7 +65,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
     setRoomVisibility: jest.fn(),
   }),
   useOnlineTable: () => ({ gameState: null }),
-  useOnlineConnection: () => ({ clearError: jest.fn() }),
+  useOnlineConnection: () => ({ connected: true, clearError: jest.fn() }),
   useServerError: () => null,
 }));
 

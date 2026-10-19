@@ -18,6 +18,8 @@ jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
+jest.mock('expo-router/react-navigation', () => ({ usePreventRemove: () => {} }));
+
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' } }),
 }));
