@@ -218,7 +218,7 @@ describe("one reason for a refused play", () => {
       const ids = row.selection.map((card) => card.id);
 
       const engine = checkPlay(
-        makeState([makePlayer("p0", hand), makePlayer("p1", [c("2", "clubs")])], {
+        makeState({ players: [makePlayer(0, hand), makePlayer(1, [c("2", "clubs")])],
           ...table,
           lastPlayedBy: 1,
         }),
