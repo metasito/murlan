@@ -54,6 +54,13 @@ test("the watchdog fires inside the host's SIGTERM grace", () => {
   );
 });
 
+test("the watchdog leaves the host's grace a margin", () => {
+  assert.ok(
+    FORCED_EXIT_MS <= sigtermGraceMs - 250,
+    `a ${FORCED_EXIT_MS}ms watchdog sits within 250ms of the ~${sigtermGraceMs}ms SIGKILL, which is approximate`
+  );
+});
+
 test("the pool is the thing QUERY_TIMEOUT_MS bounds", () => {
   assert.deepEqual(
     {
