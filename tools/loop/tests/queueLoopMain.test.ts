@@ -16,7 +16,8 @@ import {
 } from "../queue-loop.mjs";
 import { fakeTracker, publishForReview } from "../tracker.mjs";
 import { LIMITS, RESTART } from "../limits.mjs";
-import { loopMoved, park, refreshWorktree, removeLanded, tearDown as removeWorktree, workspacePort } from "../workspace.mjs";
+import { park } from "../park.mjs";
+import { loopMoved, refreshWorktree, removeLanded, tearDown as removeWorktree, workspacePort } from "../workspace.mjs";
 import { fakePorts, rowOf, withMembers } from "./helpers/fakePorts.ts";
 import { portReads, unknownReads } from "./helpers/portReads.ts";
 import { afterSession } from "../decide.mjs";

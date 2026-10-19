@@ -5,7 +5,7 @@ import { claimCommand, classify, pickRoute, claimedElsewhere, launchOpen, nextPi
 import { slugOf } from "../claim.mjs";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
 import { fakeTracker, TRUSTED_AUTHORS } from "../tracker.mjs";
-import { park } from "../workspace.mjs";
+import { park } from "../park.mjs";
 
 function issue(number: number, labelNames: string[], author_association = "OWNER") {
   return { number, title: `issue ${number}`, labels: labelNames.map((name) => ({ name })), author_association };

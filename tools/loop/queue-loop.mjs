@@ -32,7 +32,8 @@ import {
   ticketTally,
   typicalMs,
 } from "./loop-logs.mjs";
-import { loopSha, park, workspacePort } from "./workspace.mjs";
+import { loopSha, workspacePort } from "./workspace.mjs";
+import { park } from "./park.mjs";
 import { buildReady } from "./loop-gate.mjs";
 import { ghTracker, postConflict, publishForReview, pushedPr, repark } from "./tracker.mjs";
 import { turnHeadroom } from "./loop-cost.mjs";

@@ -6,7 +6,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
-import { housekeeping, park, sweep, workspacePort, worktreeOf } from "../workspace.mjs";
+import { housekeeping, sweep, workspacePort, worktreeOf } from "../workspace.mjs";
+import { park } from "../park.mjs";
 import { fakeTracker } from "../tracker.mjs";
 import { checkoutRoot, reap as realReap } from "../reap.mjs";
 

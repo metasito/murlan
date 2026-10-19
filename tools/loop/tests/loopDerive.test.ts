@@ -24,7 +24,7 @@ import {
   budgeted,
 } from "../loop-derive.mjs";
 import { report, standing } from "../loop-status.mjs";
-import { park } from "../workspace.mjs";
+import { park } from "../park.mjs";
 import { ciRedBody } from "../settle.mjs";
 import { ticketTally } from "../loop-logs.mjs";
 
