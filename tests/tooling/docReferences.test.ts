@@ -99,8 +99,7 @@ test("every docs/ path a comment in tracked source, or a workflow prompt, names 
   const broken: string[] = [];
   const sourceFiles = execSync('git ls-files "*.ts" "*.tsx" "*.mjs"', { cwd: ROOT, encoding: "utf8" })
     .trim().split("\n").filter(Boolean)
-    .filter((f) => !EXCLUDED_DIRS.some((dir) => f.startsWith(dir)))
-    .filter((f) => f !== "tests/tooling/docReferences.test.ts");
+    .filter((f) => !EXCLUDED_DIRS.some((dir) => f.startsWith(dir)));
   for (const file of sourceFiles) {
     const lines = classify(readFileSync(at(file), "utf8"), file);
     for (const line of lines) {

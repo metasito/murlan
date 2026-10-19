@@ -147,9 +147,6 @@ describe("every agent rule is written down exactly once", () => {
   // replaces both. docs/adr is excluded because it is the historical record of decisions already
   // made, including the one that renamed these files — an ADR quoting the old name is describing
   // the past, not pointing a reader at a file that no longer exists.
-  // CLAUDE.md, components/CLAUDE.md and server/CLAUDE.md are excluded because a later, separate
-  // task owns their rewrite; the pointers they still carry are handed to that task rather than
-  // edited here.
   test("the checks document is one file", () => {
     assert.ok(existsSync(path.join(repoRoot, "docs/agents/checks.md")));
     for (const gone of ["docs/agents/loops.md", "docs/TESTING.md"]) {
@@ -159,8 +156,7 @@ describe("every agent rule is written down exactly once", () => {
     // them, which is not a reader being pointed at a document that no longer exists.
     const stale = execSync(
       'git grep -l -E "loops\\.md|TESTING\\.md" -- ":!docs/adr" ' +
-        '":!tests/tooling/rulesAreSingleSourced.test.ts" ":!CLAUDE.md" ' +
-        '":!components/CLAUDE.md" ":!server/CLAUDE.md" || true',
+        '":!tests/tooling/rulesAreSingleSourced.test.ts" || true',
       { cwd: repoRoot, encoding: "utf8" },
     ).trim();
     assert.equal(stale, "", `these still cite a deleted document:\n${stale}`);
