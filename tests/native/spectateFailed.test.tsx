@@ -86,7 +86,7 @@ describe('a refused spectate', () => {
   it('leaves the next table by releasing the seat, not by unspectating', async () => {
     const { result, unmount } = await mountProvider();
 
-    await waitFor(() => result.current.spectateRoom('ZZZZZZ'));
+    await act(async () => result.current.spectateRoom('ZZZZZZ'));
     await deliver('room:error', { code: 'GAME_NOT_FOUND', message: 'Game not found' });
     await waitFor(() => expect(result.current.isSpectator).toBe(false));
 
@@ -104,7 +104,7 @@ describe('a refused spectate', () => {
   it('does not survive into a room the player joins', async () => {
     const { result, unmount } = await mountProvider();
 
-    await waitFor(() => result.current.spectateRoom('ZZZZZZ'));
+    await act(async () => result.current.spectateRoom('ZZZZZZ'));
     await waitFor(() => expect(result.current.isSpectator).toBe(true));
 
     await waitFor(() => result.current.joinRoom('ABCDEF'));
@@ -125,7 +125,7 @@ describe('a refused spectate', () => {
   it('leaves a table it is genuinely watching with room:unspectate', async () => {
     const { result, unmount } = await mountProvider();
 
-    await waitFor(() => result.current.spectateRoom('ABCDEF'));
+    await act(async () => result.current.spectateRoom('ABCDEF'));
     await deliver('game:state', spectatorState());
     await waitFor(() => expect(result.current.isSpectator).toBe(true));
 
