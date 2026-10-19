@@ -120,6 +120,20 @@ describe('accepting an invite', () => {
     await unmount();
   });
 
+  it('leaves an invite to another room standing', async () => {
+    const { result, unmount } = await mount();
+    await invite();
+    await act(async () => {
+      mockSocket.listeners.get('friend:invite')?.({ from: 'bob', roomCode: 'XYZ789' });
+    });
+
+    await act(async () => result.current.acceptInvite('ABC123'));
+
+    expect(result.current.pendingInvite).toEqual({ from: 'bob', roomCode: 'XYZ789' });
+
+    await unmount();
+  });
+
   it('takes the invite off the list without declining the seat it holds', async () => {
     const client = new QueryClient();
     client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'ana', roomCode: 'ABC123' }]);

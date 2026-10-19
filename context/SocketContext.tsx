@@ -218,7 +218,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const acceptInvite = useCallback(
     (roomCode: string) => {
       hideGameInvite(roomCode);
-      setPendingInvite(null);
+      setPendingInvite((pending) => (pending?.roomCode === roomCode ? null : pending));
       setAcceptedInvite(roomCode);
     },
     [hideGameInvite]
