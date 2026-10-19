@@ -990,8 +990,12 @@ export const StraightHand = React.memo(function StraightHand({
     settleRot.value = target.rot;
     // The same step the gap closes on, so the card arrives as the fan closes
     // around it rather than into a hand still moving.
-    settle.value = withTiming(1, { duration: ms, reduceMotion: ReduceMotion.Never }, () => scheduleOnRN(commit));
+    settle.value = withTiming(1, { duration: ms, reduceMotion: ReduceMotion.Never }, (finished) => {
+      if (finished) scheduleOnRN(commit);
+    });
   };
+
+  useEffect(() => () => cancelAnimation(settle), [settle]);
 
   const drag = usePanGesture({
     // One finger owns the drag. A second one anywhere would otherwise rewrite

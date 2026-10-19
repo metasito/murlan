@@ -120,7 +120,8 @@ export default function NotificationBanner({ notification, onDismiss, onMeasure 
       const visibleDuration = notification.duration ?? DEFAULT_VISIBLE_DURATION;
       // The hold is reading time, not motion: under the system's reduced motion
       // Reanimated skips a delay not marked `Never`, and the banner flashes.
-      translateY.value = withTiming(0, { duration: slideDur }, () => {
+      translateY.value = withTiming(0, { duration: slideDur }, (finished) => {
+        if (!finished) return;
         translateY.value = withDelay(
           visibleDuration,
           withTiming(-120, { duration: slideDur }, (finished) => {
@@ -129,7 +130,8 @@ export default function NotificationBanner({ notification, onDismiss, onMeasure 
           ReduceMotion.Never
         );
       });
-      opacity.value = withTiming(1, { duration: slideDur }, () => {
+      opacity.value = withTiming(1, { duration: slideDur }, (finished) => {
+        if (!finished) return;
         opacity.value = withDelay(
           visibleDuration + slideDur * 0.5,
           withTiming(0, { duration: slideDur }),

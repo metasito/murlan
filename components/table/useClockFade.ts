@@ -33,8 +33,8 @@ export function useClockFade<T>(
     if (reduced) opacity.value = 1;
     else if (on) opacity.value = withDelay(Handoff.clockOutMs, withTiming(1, { duration: Handoff.clockInMs }), ReduceMotion.Never);
     else {
-      opacity.value = withTiming(0, { duration: Handoff.clockOutMs }, () => {
-        scheduleOnRN(gone, fade);
+      opacity.value = withTiming(0, { duration: Handoff.clockOutMs }, (finished) => {
+        if (finished) scheduleOnRN(gone, fade);
       });
     }
   }, [on, reduced, opacity, gone, fade]);

@@ -5,6 +5,7 @@ import {
   canPassNow,
   turnTimerActive,
   urgentThresholdSeconds,
+  pulseRepeats,
   CLOCK_RUNNING_OUT_SECONDS,
 } from "../../components/turnTimerUi.ts";
 
@@ -105,5 +106,17 @@ describe("urgentThresholdSeconds", () => {
     for (const clock of [7, 13, 20, 25, 30, 45]) {
       assert.equal(urgentThresholdSeconds(clock) % 1, 0, `clock ${clock}`);
     }
+  });
+});
+
+describe("pulseRepeats", () => {
+  test("a clock already out of time arms no pulse, since a count of 0 would repeat forever", () => {
+    assert.equal(pulseRepeats(4000, 0), 0);
+  });
+
+  test("counts a beat a second across the urgent stretch, rounding a partial beat up", () => {
+    assert.equal(pulseRepeats(4000, 10_000), 4);
+    assert.equal(pulseRepeats(4000, 2500), 3);
+    assert.equal(pulseRepeats(4000, 1), 1);
   });
 });

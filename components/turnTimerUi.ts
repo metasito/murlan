@@ -57,3 +57,11 @@ export function turnTimerActive(opts: {
   if (opts.isNewTrick && !opts.includeNewTrick) return false;
   return true;
 }
+
+/** The urgent ring's 1Hz dim-and-back: a repeating beat, not a one-shot transition, so not a Motion step. */
+export const RING_PULSE_MS = 1000;
+
+/** How many beats the ring has left to pulse; 0 means none, which `withRepeat` would read as forever. */
+export function pulseRepeats(urgentMs: number, leftMs: number): number {
+  return Math.ceil(Math.min(urgentMs, leftMs) / RING_PULSE_MS);
+}

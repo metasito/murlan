@@ -42,7 +42,7 @@ import type { ArcCard } from "@/components/tableArc";
 import type { OpponentSide } from "@/components/seatLayout";
 import { BACK_SCALE, tableFontSize } from "@/components/cardFaceModel";
 import { Colors, LastCard, makeShadow, Motion, motionMs, Spacing, withAlpha } from "@/lib/theme";
-import { urgentThresholdSeconds } from "@/components/turnTimerUi";
+import { pulseRepeats, RING_PULSE_MS, urgentThresholdSeconds } from "@/components/turnTimerUi";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { Combination, Player } from "@/lib/game/gameEngine";
 import { useRingProbe } from "@/lib/diagnostics";
@@ -239,8 +239,6 @@ const RING_STROKE = 2;
  * unswept leftover of the port.
  */
 const RING_PING_SCALE = 1.45;
-/** The urgent ring's 1Hz dim-and-back: a repeating beat, not a one-shot transition, so not a Motion step. */
-const RING_PULSE_MS = 1000;
 const RING_PULSE_LOW = 0.6;
 
 /** `held` stops the sweep where it stands, and it runs on from there once released. */
@@ -300,14 +298,14 @@ function CountdownRing({
     if (!reduceMotion) {
       swept.value = withTiming(1, { duration: leftMs, easing: Easing.linear });
       const dim = { duration: RING_PULSE_MS / 2, easing: Easing.inOut(Easing.sin) };
-      pulse.value = withDelay(
-        calmMs,
-        withRepeat(
-          withSequence(withTiming(RING_PULSE_LOW, dim), withTiming(1, dim)),
-          Math.ceil(Math.min(urgentFor * 1000, leftMs) / RING_PULSE_MS)
-        ),
-        ReduceMotion.Never
-      );
+      const beats = pulseRepeats(urgentFor * 1000, leftMs);
+      if (beats >= 1) {
+        pulse.value = withDelay(
+          calmMs,
+          withRepeat(withSequence(withTiming(RING_PULSE_LOW, dim), withTiming(1, dim)), beats),
+          ReduceMotion.Never
+        );
+      }
     }
     return () => {
       ran.current.ms += Date.now() - since;
