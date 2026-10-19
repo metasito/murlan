@@ -12,12 +12,36 @@ const MESSAGE_MAX = 500;
 /** How far back /admin's error groups look; the rows themselves are kept longer. */
 export const ERROR_GROUP_WINDOW_DAYS = 7;
 
+const HOUR_MS = 3_600_000;
+const WINDOW_MS = ERROR_GROUP_WINDOW_DAYS * 24 * HOUR_MS;
+
+/** Lines skipped while the pool starved, by the hour they fell in; this process only. */
+const droppedByHour = new Map<number, number>();
+
+function pruneDropped(now: number): void {
+  for (const hour of droppedByHour.keys()) if (hour <= now - WINDOW_MS) droppedByHour.delete(hour);
+}
+
+/** Server error lines this process skipped writing within the error-group window. */
+export function serverErrorsDropped(): number {
+  pruneDropped(Date.now());
+  let total = 0;
+  for (const n of droppedByHour.values()) total += n;
+  return total;
+}
+
 export function installServerErrorRecorder(): void {
   setErrorRecorder(({ level, msg, time: _time, pid: _pid, hostname: _host, ...context }) => {
     // An error burst is usually the pool starving; an insert per line would
     // queue behind the very requests that are failing.
     if (pool.waitingCount > 0) {
-      process.stderr.write(`server_errors insert skipped, pool starved: ${String(msg ?? "")}\n`);
+      const now = Date.now();
+      const hour = now - (now % HOUR_MS);
+      droppedByHour.set(hour, (droppedByHour.get(hour) ?? 0) + 1);
+      process.stderr.write(
+        `server_errors insert skipped, pool starved (${serverErrorsDropped()} dropped in ` +
+          `${ERROR_GROUP_WINDOW_DAYS} days): ${String(msg ?? "")}\n`
+      );
       return;
     }
     db.insert(serverErrors)

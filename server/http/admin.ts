@@ -12,7 +12,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { funnel, type FunnelStep } from "../socket/events.ts";
 import { recentClientErrorGroups, topFrame, type ClientErrorGroup } from "./clientErrors.ts";
-import { recentServerErrorGroups, serverErrorsThisWeek, type ServerErrorGroup } from "./serverErrors.ts";
+import { recentServerErrorGroups, serverErrorsDropped, serverErrorsThisWeek, type ServerErrorGroup } from "./serverErrors.ts";
 import { recentBugReports } from "./bugReports.ts";
 import { symbolicate } from "./sourceMaps.ts";
 import { mailHealth, type MailHealth } from "./mail.ts";
@@ -44,6 +44,7 @@ export interface AdminSnapshot {
   crashesThisWeek: number;
   crashGroups: { message: string; count: number; lastSeen: string; location: string }[];
   serverErrorsThisWeek: number;
+  serverErrorsDropped: number;
   serverErrorGroups: ServerErrorGroup[];
   bugReports: { at: string; who: string; description: string; where: string; build: string }[];
   funnel: FunnelStep[];
@@ -263,6 +264,7 @@ export async function adminSnapshot(provisionalRounds: number): Promise<AdminSna
     crashesThisWeek: crashes,
     crashGroups: await forDisplay(crashGroupRows),
     serverErrorsThisWeek: serverWeek,
+    serverErrorsDropped: serverErrorsDropped(),
     serverErrorGroups: serverGroupRows.map((g) => ({ ...g, lastSeen: new Date(g.lastSeen).toISOString() })),
     funnel: funnelRows,
     mail: mailHealth(),

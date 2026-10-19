@@ -156,6 +156,11 @@ export function renderAdminPage(snapshot: AdminSnapshot): string {
       12,
       "Server errors",
       `<p>${snapshot.serverErrorsThisWeek} logged in the last 7 days.</p>` +
+        (snapshot.serverErrorsDropped > 0
+          ? `<p>${snapshot.serverErrorsDropped} more were not recorded: the database pool was ` +
+            `starved when they were logged (this process, last ${ERROR_GROUP_WINDOW_DAYS} days; ` +
+            `the lines are in its stderr).</p>`
+          : "") +
         table(
           ["Error", "Count", "Last seen"],
           snapshot.serverErrorGroups.map((g) => [g.message, g.count, g.lastSeen])

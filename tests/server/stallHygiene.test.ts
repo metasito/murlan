@@ -5,7 +5,7 @@ import type { Server as SocketServer } from "socket.io";
 import { sendMail } from "../../server/http/mail.ts";
 import { notifyUser } from "../../server/socket/push.ts";
 import { dealRound } from "../../server/game/dealRound.ts";
-import { installServerErrorRecorder } from "../../server/http/serverErrors.ts";
+import { ERROR_GROUP_WINDOW_DAYS, installServerErrorRecorder, serverErrorsDropped } from "../../server/http/serverErrors.ts";
 import { logger, setErrorRecorder } from "../../server/http/logger.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { db, pool } from "../../server/store/db.ts";
@@ -100,13 +100,36 @@ test("the server-error recorder does not queue behind a starved pool", async (t)
   installServerErrorRecorder();
   t.after(() => setErrorRecorder(undefined));
 
+  const before = serverErrorsDropped();
   logger.error("starved");
+  logger.error("starved again");
   assert.equal(inserts.mock.callCount(), 0);
+  assert.equal(serverErrorsDropped(), before + 2, "a skipped line is still counted");
   assert.ok(stderr.mock.calls.some((c) => String(c.arguments[0]).includes("starved")));
+  assert.ok(
+    stderr.mock.calls.some((c) => String(c.arguments[0]).includes(`${before + 2} dropped`)),
+    "the stderr line carries the running count"
+  );
 
   waiting = 0;
   logger.error("served");
   assert.equal(inserts.mock.callCount(), 1);
+  assert.equal(serverErrorsDropped(), before + 2);
+});
+
+test("drops older than the error-group window fall out of the count", (t) => {
+  t.mock.method(process.stderr, "write", () => true);
+  t.mock.getter(pool, "waitingCount", () => 1);
+  const start = Date.now();
+  t.mock.timers.enable({ apis: ["Date"], now: start });
+  installServerErrorRecorder();
+  t.after(() => setErrorRecorder(undefined));
+
+  const before = serverErrorsDropped();
+  logger.error("old outage");
+  assert.equal(serverErrorsDropped(), before + 1);
+  t.mock.timers.setTime(start + (ERROR_GROUP_WINDOW_DAYS + 1) * 86_400_000);
+  assert.equal(serverErrorsDropped(), 0);
 });
 
 test("a room's status writes land in the order they were issued", async (t) => {

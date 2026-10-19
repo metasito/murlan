@@ -22,6 +22,7 @@ const snapshot: AdminSnapshot = {
   crashGroups: [],
   serverErrorsThisWeek: 0,
   serverErrorGroups: [],
+  serverErrorsDropped: 0,
   bugReports: [],
   funnel: [],
   mail: { configured: true, attempted: 0, succeeded: 0, failed: 0 },
@@ -41,4 +42,9 @@ test("both error panels state the window their groups are counted over", () => {
     assert.match(text, new RegExp(`Count and last-seen are over the last ${ERROR_GROUP_WINDOW_DAYS} days`), `${title}: ${text}`);
     assert.doesNotMatch(text, /Count and last-seen are over the 90-day/, title);
   }
+});
+
+test("server errors the recorder dropped are shown, not read as a quiet week", () => {
+  const text = panelText(renderAdminPage({ ...snapshot, serverErrorsDropped: 37 }), "Server errors");
+  assert.match(text, /37 more were not recorded/);
 });
