@@ -48,9 +48,9 @@ jest.mock('@/context/GameContext', () => ({
   }),
 }));
 
-jest.mock('@/context/NotificationContext', () => ({
-  useNotification: () => ({ showNotification: jest.fn() }),
-}));
+jest.mock('@/context/NotificationContext', () =>
+  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
+);
 
 jest.mock('@/components/GameTable', () => {
   const react = require('react') as typeof import('react');

@@ -50,13 +50,9 @@ jest.mock('@/context/AuthContext', () => ({
 // test and stops jest exiting. Capturing instead also makes 'the banner still
 // arrives' something this file can assert rather than assume.
 const mockShown: { type: string; message: string }[] = [];
-jest.mock('@/context/NotificationContext', () => ({
-  useNotification: () => ({
-    showNotification: (n: { type: string; message: string }) => {
-      mockShown.push(n);
-    },
-  }),
-}));
+jest.mock('@/context/NotificationContext', () =>
+  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock(() => (n) => void mockShown.push(n))
+);
 
 const { SocketProvider } = require('@/context/SocketContext') as typeof import('@/context/SocketContext');
 

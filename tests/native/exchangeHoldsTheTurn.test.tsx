@@ -66,9 +66,9 @@ jest.mock('@/context/GameContext', () => ({
   }),
 }));
 
-jest.mock('@/context/NotificationContext', () => ({
-  useNotification: () => ({ showNotification: jest.fn() }),
-}));
+jest.mock('@/context/NotificationContext', () =>
+  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
+);
 
 // The table draws nothing here: every path under test is the screen's own
 // effect, and a real table would bring the whole felt with it.

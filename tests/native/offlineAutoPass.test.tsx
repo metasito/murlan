@@ -52,9 +52,9 @@ jest.mock('@/context/GameContext', () => ({
   }),
 }));
 
-jest.mock('@/context/NotificationContext', () => ({
-  useNotification: () => ({ showNotification: mockShowNotification }),
-}));
+jest.mock('@/context/NotificationContext', () =>
+  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock(() => mockShowNotification)
+);
 
 // The clock itself is GameTable's; what is under test is what the screen wires
 // to its expiry. A button standing in for "the countdown reached zero" keeps

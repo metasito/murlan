@@ -27,7 +27,7 @@ export interface NotificationData {
   duration?: number;
 }
 
-interface NotificationCommands {
+export interface NotificationCommands {
   showNotification: (n: NotificationData) => void;
   /** A `game_error` banner titled `common.error` unless `opts.title` says otherwise. */
   notifyError: (message: string, opts?: { title?: string; duration?: number }) => void;
@@ -49,6 +49,24 @@ interface BannerValue {
 }
 
 export const NOTIFICATION_QUEUE_MAX = 3;
+
+export function createNotifyCommands(
+  showNotification: (n: NotificationData) => void
+): NotificationCommands {
+  const notifyError: NotificationCommands["notifyError"] = (message, opts) =>
+    showNotification({
+      type: "game_error",
+      title: opts?.title ?? t("common.error"),
+      message,
+      duration: opts?.duration,
+    });
+  return {
+    showNotification,
+    notifyError,
+    notifyServerError: (payload) =>
+      notifyError(translateServerPayload(payload), { duration: Reading.notice }),
+  };
+}
 
 const CommandsContext = createContext<NotificationCommands | null>(null);
 const BannerContext = createContext<BannerValue | null>(null);
@@ -110,27 +128,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setBannerBottom((prev) => (Math.abs(prev - bottom) < 1 ? prev : bottom));
   }, []);
 
-  const notifyError = useCallback(
-    (message: string, opts?: { title?: string; duration?: number }) =>
-      showNotification({
-        type: "game_error",
-        title: opts?.title ?? t("common.error"),
-        message,
-        duration: opts?.duration,
-      }),
-    [showNotification]
-  );
-
-  const notifyServerError = useCallback(
-    (payload: ServerPayload) =>
-      notifyError(translateServerPayload(payload), { duration: Reading.notice }),
-    [notifyError]
-  );
-
-  const commands = useMemo(
-    () => ({ showNotification, notifyError, notifyServerError }),
-    [showNotification, notifyError, notifyServerError]
-  );
+  const commands = useMemo(() => createNotifyCommands(showNotification), [showNotification]);
 
   const banner = useMemo(
     () => ({

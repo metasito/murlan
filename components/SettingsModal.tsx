@@ -75,7 +75,7 @@ export function SettingsModal({ visible, onClose }: Props) {
     setMotion,
   } = useSettings();
   const { logout, forgetSession } = useAuth();
-  const { showNotification } = useNotification();
+  const { showNotification, notifyError } = useNotification();
   const { notification, dismissNotification } = useBanner();
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
   const router = useRouter();
@@ -122,11 +122,7 @@ export function SettingsModal({ visible, onClose }: Props) {
       // Compiler cannot lower a try statement with one, and bails the whole
       // component out of memoization if it meets it (tests/ui-rules/reactCompiler).
       setSendingBug(false);
-      showNotification({
-        type: "game_error",
-        title: t("settings.reportBugFailedTitle"),
-        message: t("settings.reportBugFailedBody"),
-      });
+      notifyError(t("settings.reportBugFailedBody"), { title: t("settings.reportBugFailedTitle") });
     }
   }
 
@@ -141,11 +137,7 @@ export function SettingsModal({ visible, onClose }: Props) {
       // Compiler cannot lower a try statement with one, and bails the whole
       // component out of memoization if it meets it (tests/ui-rules/reactCompiler).
       setLoggingOut(false);
-      showNotification({
-        type: "game_error",
-        title: t("settings.logoutFailedTitle"),
-        message: t("settings.logoutFailedBody"),
-      });
+      notifyError(t("settings.logoutFailedBody"), { title: t("settings.logoutFailedTitle") });
     }
   }
 
@@ -157,11 +149,7 @@ export function SettingsModal({ visible, onClose }: Props) {
       await apiRequest("DELETE", "/api/users/me");
     } catch {
       setDeleting(false);
-      showNotification({
-        type: "game_error",
-        title: t("settings.deleteFailedTitle"),
-        message: t("settings.deleteFailedBody"),
-      });
+      notifyError(t("settings.deleteFailedBody"), { title: t("settings.deleteFailedTitle") });
       return;
     }
     onClose();
