@@ -101,4 +101,20 @@ describe('useRejoin', () => {
 
     expect(rejoins()).toBe(0);
   });
+
+  it('writes a handle to storage only when it changes', async () => {
+    const { result, unmount } = await mount(playing);
+    const setItem = jest.spyOn(AsyncStorage, 'setItem');
+    const removeItem = jest.spyOn(AsyncStorage, 'removeItem');
+
+    result.current.hold({ roomId: 'R1', waitingCode: null });
+    result.current.hold({ roomId: 'R1', waitingCode: null });
+    result.current.hold({ roomId: 'R1' });
+
+    expect(setItem).toHaveBeenCalledTimes(1);
+    expect(removeItem).not.toHaveBeenCalled();
+    setItem.mockRestore();
+    removeItem.mockRestore();
+    await unmount();
+  });
 });
