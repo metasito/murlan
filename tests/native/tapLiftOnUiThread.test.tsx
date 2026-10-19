@@ -13,7 +13,7 @@ import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { handRowHeadroom } from '@/components/seatLayout';
 import { setMotionPreference } from '@/lib/accessibility';
 import { bootFeedback, sounds } from './helpers/feedback';
-import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
+import { choiceOpensAt } from '@/lib/timeline/exchangeTimeline';
 import { activate, gesturesOf, storeOf, type Captured } from './tapHelpers';
 
 const mockHeld: { on: boolean; queue: (() => void)[] } = { on: false, queue: [] };

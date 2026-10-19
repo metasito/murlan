@@ -53,11 +53,25 @@ function literalEvents(sources: [string, string][], patterns: RegExp[]): Map<str
 const server = sourcesUnder(["server"]);
 const client = sourcesUnder(["app", "components", "context", "lib"]);
 
+/** `onEvent`'s default refusal channel: every event `errorEventFor`'s return type names, at the file emitting through it. */
+function errorEventEmits(sources: [string, string][]): Map<string, string[]> {
+  const found = new Map<string, string[]>();
+  for (const [file, source] of sources) {
+    const declared = /function errorEventFor\([^)]*\):\s*([^{]+)\{/.exec(source)?.[1];
+    if (!declared || !/\.emit\(\s*errorEventFor\(/.test(source)) continue;
+    for (const m of declared.matchAll(/"([^"]+)"/g)) found.set(m[1], [...(found.get(m[1]) ?? []), file]);
+  }
+  return found;
+}
+
 const sites = {
-  serverEmits: literalEvents(server, [
-    /\.emit\(\s*"([^"]+)"/g,
-    /\bemitToUser\(\s*[^,]+,\s*"([^"]+)"/g,
-    /\btellInvitees\(\s*[^,]+,\s*[^,]+,\s*"([^"]+)"/g,
+  serverEmits: new Map([
+    ...errorEventEmits(server),
+    ...literalEvents(server, [
+      /\.emit\(\s*"([^"]+)"/g,
+      /\bemitToUser\(\s*[^,]+,\s*"([^"]+)"/g,
+      /\btellInvitees\(\s*[^,]+,\s*[^,]+,\s*"([^"]+)"/g,
+    ]),
   ]),
   serverListens: literalEvents(server, [/\bonEvent\(\s*\w+,\s*"([^"]+)"/g]),
   clientEmits: literalEvents(client, [/\.emit\(\s*"([^"]+)"/g, /\bsend(?:Intent)?\(\s*[\w.?]+,\s*"([^"]+)"/g, /\bdeliver\(\s*"([^"]+)"/g]),
@@ -102,6 +116,7 @@ const PROBE_HEADER = [
   `import { send, sendIntent } from "../../lib/sendIntent.ts";`,
   `import { emitToUser } from "../../server/socket/socketRegistry.ts";`,
   `import { onEvent } from "../../server/socket/socketSafety.ts";`,
+  `import { OK } from "../../server/shared/refusal.ts";`,
   `import { GamePlaySchema, GameRejoinSchema } from "../../shared/socketSchemas.ts";`,
   `declare const client: Socket, io: SocketServer, socket: GameSocket;`,
   "",
@@ -111,7 +126,7 @@ const ACCEPTED = [
   `client.emit("friend:get_online_list");`,
   `void send(client, "game:play", { cardIds: ["a"] });`,
   `emitToUser("u", "friend:status", { userId: "u", online: true });`,
-  `onEvent(socket, "game:play", GamePlaySchema, () => undefined);`,
+  `onEvent(socket, "game:play", GamePlaySchema, () => OK);`,
 ];
 
 const REFUSED = [
@@ -123,8 +138,9 @@ const REFUSED = [
   `socket.emit("game:vote_state", { votes: 1, total: 2 });`,
   `emitToUser("u", "friend:unlisted", {});`,
   `emitToUser("u", "friend:status", { userId: "u" });`,
-  `onEvent(socket, "game:unlisted", GamePlaySchema, () => undefined);`,
-  `onEvent(socket, "game:play", GameRejoinSchema, () => undefined);`,
+  `onEvent(socket, "game:unlisted", GamePlaySchema, () => OK);`,
+  `onEvent(socket, "game:play", GameRejoinSchema, () => OK);`,
+  `onEvent(socket, "game:play", GamePlaySchema, () => undefined);`,
 ];
 
 test("every typed send and listen refuses a name or payload the maps do not hold", () => {

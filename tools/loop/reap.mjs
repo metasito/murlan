@@ -8,6 +8,7 @@ import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import { killTree } from "../../scripts/lib/proc.mjs";
 import { checkoutRoot } from "./cli.mjs";
 
 const ORPHAN_AGE_MS = 2 * 60 * 60 * 1000;
@@ -216,13 +217,12 @@ function killPid(pid, dryRun, say = console.log, readTable = processTable) {
     say(`reap: refused to kill pid ${pid} — this session is inside its process tree`);
     return null;
   }
-  if (process.platform === "win32") sh("taskkill", ["/PID", String(pid), "/T", "/F"]);
-  else {
-    try {
-      process.kill(pid, "SIGKILL");
-    } catch {
-      /* already gone */
-    }
+  try {
+    killTree(pid);
+  } catch (err) {
+    const why = `could not kill pid ${pid} — ${err.message}`;
+    say(`reap: ${why}`);
+    return why;
   }
   return null;
 }

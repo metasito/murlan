@@ -2,6 +2,7 @@
 // row, and reading it back is a trust boundary.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import {
   GAME_SCHEMA_VERSION,
   packPersistedState,
@@ -29,6 +30,7 @@ const match: PersistedMatch = {
   maxPlayers: 4,
   roundsPlayed: 2,
   endedByVote: true,
+  matchOver: true,
 };
 
 const seats: PersistedSeats = {
@@ -140,26 +142,20 @@ describe("rows the restore path refuses", () => {
   });
 
   test("a row a newer revision wrote is refused and kept; an older one is deleted", async (t) => {
-    const { db } = await import("../../server/store/db.ts");
     const { rehydrateGame } = await import("../../server/game/tableHandlers.ts");
-    let deletes = 0;
-    let stored: unknown;
-    t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: "r", gameState: stored }));
-    t.mock.method(db, "delete", () => {
-      deletes += 1;
-      return { where: () => ({ catch: async () => {} }) };
+    const newer = `version-${GAME_SCHEMA_VERSION + 1}`;
+    const older = `version-${GAME_SCHEMA_VERSION - 1}`;
+    const { rows } = useMemoryTableStores(t, {
+      rows: [
+        [newer, { ...pack(), schemaVersion: GAME_SCHEMA_VERSION + 1 }],
+        [older, { ...pack(), schemaVersion: GAME_SCHEMA_VERSION - 1 }],
+      ],
     });
-    const outcome = async (schemaVersion: number) => {
-      stored = { ...pack(), schemaVersion };
-      const result = await rehydrateGame(`version-${schemaVersion}`, null, {} as never);
-      await new Promise((r) => setTimeout(r, 20));
-      return result;
-    };
 
-    assert.equal(await outcome(GAME_SCHEMA_VERSION + 1), "newer");
-    assert.equal(deletes, 0, "a newer revision's live row was deleted");
-    assert.equal(await outcome(GAME_SCHEMA_VERSION - 1), "unrestorable");
-    assert.equal(deletes, 1, "the older row was not deleted, so the check above proves nothing");
+    assert.equal(await rehydrateGame(newer, null, {} as never), "newer");
+    assert.ok(rows.has(newer), "a newer revision's live row was deleted");
+    assert.equal(await rehydrateGame(older, null, {} as never), "unrestorable");
+    assert.ok(!rows.has(older), "the older row was not deleted, so the check above proves nothing");
   });
 
   test("a row with no version stamp at all", () => {
@@ -177,6 +173,11 @@ describe("rows the restore path refuses", () => {
   test("an unexpected game mode or match length", () => {
     assert.match(refusal(pack({ gameMode: "solo" as never })), /game mode solo/);
     assert.match(refusal(pack({ matchLength: "best_of_3" as never })), /match length/);
+  });
+
+  test("a missing match verdict", () => {
+    assert.match(refusal(pack({ matchOver: undefined as never })), /match verdict/);
+    assert.match(refusal(pack({ matchOver: "yes" as never })), /match verdict/);
   });
 
   test("a missing or nonsensical match target or table size", () => {

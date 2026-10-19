@@ -1,3 +1,5 @@
+// The server imports this: relative `.ts` imports only (tests/tooling/libGameBoundary.test.ts) —
+// docs/agents/checks.md, "Node's TypeScript loader".
 import { Motion } from "../tokens.ts";
 
 /** How long every dealt card flies, from the pile to its seat. */

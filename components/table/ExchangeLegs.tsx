@@ -20,7 +20,7 @@ import { cardSpokenName } from "@/lib/cardNames";
 import { event, withdraw } from "@/lib/device/feedback";
 import type { Card } from "@/lib/game/gameEngine";
 import type { ExchangeAnnounceData, ExchangeHold } from "@/lib/game/sharedGameFlow";
-import { ceremonyEndsAt, choiceOpensAt, legPose, legShows, legStage, legTimes, type LegPoints, type LegStage } from "@/lib/game/exchangeTimeline";
+import { ceremonyEndsAt, choiceOpensAt, legPose, legShows, legStage, legTimes, type LegPoints, type LegStage } from "@/lib/timeline/exchangeTimeline";
 import { useTranslation } from "@/lib/i18n";
 import { armGateWatchdog, gateForced } from "./gateForced";
 import { inBackground } from "./useFlightClock";

@@ -13,8 +13,6 @@ import {
   GameMode,
   MatchLength,
   dealFirstSeatFor,
-  firstTargetFor,
-  foldRoundIntoMatch,
   initializeGame,
   initializeRematch,
   processExchangeChoice,
@@ -24,6 +22,7 @@ import {
   checkPlay,
 } from "@/lib/game/gameEngine";
 import { offlineBotMove, resolveStuckExchange } from "@/lib/game/autoMove";
+import { applyRoundToMatch, freshMatch } from "@/lib/game/matchFlow";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform, Settings } from "react-native";
 import { initializeOpeningAt, E2E_OPENER_KEY } from "@/lib/e2eOpener";
@@ -39,10 +38,10 @@ import { useNotification } from "@/context/NotificationContext";
 import { t } from "@/lib/i18n";
 import {
   exchangeAnnouncementOf,
-  useExchangeAnnouncement,
   type ExchangeAnnounceData,
   type ExchangeHold,
 } from "@/lib/game/sharedGameFlow";
+import { useExchangeAnnouncement } from "@/context/useExchangeAnnouncement";
 import type { RoundResult, MatchState, PlayerSetupConfig } from "@/lib/game/matchState";
 
 // Read once at module scope, matching app/game.tsx's own E2E_FAST — inlined
@@ -67,50 +66,6 @@ const E2E_EXCHANGE_HOLD: ExchangeHold =
   Platform.OS === "web" ? MEASURED_TAP_RETURN_MS + E2E_EXCHANGE_HOLD_MARGIN_MS : "untilTapped";
 
 export type { PlayerSetupConfig, RoundResult, MatchState };
-
-export function freshMatch(length: MatchLength, playerCount: number): MatchState {
-  return {
-    length,
-    target: firstTargetFor(playerCount),
-    scores: {},
-    rounds: [],
-    over: false,
-    winners: [],
-    isDraw: false,
-  };
-}
-
-/**
- * `foldRoundIntoMatch` in the offline shape: every seat scores under its own
- * engine player id, and none of them is a vacated seat, so no key is excluded.
- */
-export function applyRoundToMatch(match: MatchState, finished: GameState): MatchState {
-  const teamOf: Record<string, string> = {};
-  for (const p of finished.players) {
-    if (p.team) teamOf[p.id] = p.team;
-  }
-
-  const folded = foldRoundIntoMatch({
-    finishingOrder: finished.finishingOrder,
-    playerCount: finished.players.length,
-    length: match.length,
-    gameMode: finished.gameMode,
-    target: match.target,
-    cumulative: match.scores,
-    keyOf: (engineId) => engineId,
-    teamOf,
-  });
-
-  return {
-    ...match,
-    scores: folded.cumulative,
-    rounds: [...match.rounds, { finishingOrder: finished.finishingOrder, pointsAwarded: folded.roundByKey }],
-    target: folded.target,
-    over: folded.over,
-    winners: folded.winners,
-    isDraw: folded.isDraw,
-  };
-}
 
 interface GameContextValue {
   gameState: GameState | null;

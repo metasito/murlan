@@ -36,16 +36,9 @@ jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineRoom: () => ({ joinRoom: jest.fn(), room: null }),
 }));
 
-jest.mock('@/context/NotificationContext', () => ({
-  useNotification: () => ({
-    showNotification: jest.fn(),
-    dismissNotification: jest.fn(),
-    notification: null,
-    bannerBottom: 0,
-    reportBannerBottom: jest.fn(),
-  }),
-  useBannerBottom: () => 0,
-}));
+jest.mock('@/context/NotificationContext', () =>
+  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
+);
 
 import FriendsScreen from '@/app/(online)/friends';
 

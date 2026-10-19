@@ -10,7 +10,7 @@ import { activeGames } from "../../server/game/gameRoom.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { createDeck, emptyRankTally } from "../../lib/game/gameEngine.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
-import { dealEndMs } from "../../lib/game/dealTimeline.ts";
+import { dealEndMs } from "../../lib/timeline/dealTimeline.ts";
 import { Motion } from "../../lib/tokens.ts";
 
 let restoreClock = () => {};

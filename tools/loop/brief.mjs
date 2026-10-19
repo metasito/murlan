@@ -25,7 +25,7 @@ const HEADER_RE = /^BRIEF (\w+) #(\d+) (\S+) (\S+)$/;
 function laterDelta(wt, base) {
   const git = (...args) => {
     try {
-      return gitAt(wt)(args).trim();
+      return gitAt(wt).text(args);
     } catch {
       return null;
     }
@@ -121,7 +121,7 @@ function naBoxes(n, worktree) {
   if (!comments) return `cannot read #${n}'s DOD-CHECK from the tracker`;
   let head = null;
   try {
-    head = gitAt(worktree)(["rev-parse", "HEAD"]).trim();
+    head = gitAt(worktree).text(["rev-parse", "HEAD"]);
   } catch {}
   if (!head) return `cannot read HEAD in ${worktree}`;
   const na = dodCheckFor(comments, head, () => false)?.na ?? [];

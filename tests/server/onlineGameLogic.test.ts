@@ -4,11 +4,9 @@ import {
   seatOfUser,
   scoreKeyForSeat,
   buildSeatRoster,
-  teamKeyMap,
-  restoredMatchOver,
 } from "../../server/game/onlineGameLogic.ts";
 import { readPersistedPlayerMap } from "../../shared/persistedEnvelope.ts";
-import { isBotSeatKey } from "../../server/game/botSeat.ts";
+import { isBotSeatKey } from "../../lib/game/botSeat.ts";
 import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/game/gameEngine.ts";
 
 describe("readPersistedPlayerMap (seat resolution on rejoin)", () => {
@@ -130,111 +128,5 @@ describe("teams seating (buildSeatRoster + teamForSeat)", () => {
       roster.map((_, idx) => teamForSeat(idx, roster.length, "free_for_all")),
       new Array(TEAMS_PLAYER_COUNT).fill(undefined)
     );
-  });
-});
-
-describe("restoredMatchOver (rehydrating a match after a restart)", () => {
-  const teamed = [{ team: "A" as const }, { team: "B" as const }, { team: "A" as const }, { team: "B" as const }];
-  const seats = { 0: "a1", 1: "b1", 2: "a2", 3: "b2" };
-
-  test("a teams pair that has crossed the target restores as over", () => {
-    // Neither key reaches 21 alone; the pair holds 22, so the match is won.
-    assert.equal(
-      restoredMatchOver({
-        matchLength: "match",
-        gameMode: "teams",
-        roundOver: true,
-        scores: { a1: 11, b1: 5, a2: 11, b2: 4 },
-        target: 21,
-        playerCount: 4,
-        teamOfKey: teamKeyMap(seats, teamed),
-      }),
-      true
-    );
-  });
-
-  test("the same totals in a free-for-all are still a running match", () => {
-    assert.equal(
-      restoredMatchOver({
-        matchLength: "match",
-        gameMode: "free_for_all",
-        roundOver: true,
-        scores: { a1: 11, b1: 5, a2: 11, b2: 4 },
-        target: 21,
-        playerCount: 4,
-        teamOfKey: {},
-      }),
-      false
-    );
-  });
-
-  test("a teams pair short of the target restores as still running", () => {
-    assert.equal(
-      restoredMatchOver({
-        matchLength: "match",
-        gameMode: "teams",
-        roundOver: true,
-        scores: { a1: 9, b1: 5, a2: 9, b2: 4 },
-        target: 21,
-        playerCount: 4,
-        teamOfKey: teamKeyMap(seats, teamed),
-      }),
-      false
-    );
-  });
-
-  test("a vacated partner's frozen points still count towards the pair", () => {
-    // docs/GAME-RULES.md § Decisions: the pair keeps what the departed partner won, so a2's
-    // 11 points ride on the seat's own key and carry team A over 21.
-    const withVacancy = teamKeyMap(
-      { 0: "a1", 1: "b1", 3: "b2" },
-      teamed,
-      new Map([[2, { userId: "a2" }]])
-    );
-    assert.deepEqual(withVacancy, { a1: "A", b1: "B", "bot:2": "A", a2: "A", b2: "B" });
-    assert.equal(
-      restoredMatchOver({
-        matchLength: "match",
-        gameMode: "teams",
-        roundOver: true,
-        scores: { a1: 11, b1: 5, a2: 11, b2: 4 },
-        target: 21,
-        playerCount: 4,
-        teamOfKey: withVacancy,
-      }),
-      true
-    );
-  });
-
-  test("a partner seat dealt to a bot counts towards the pair", () => {
-    const withBot = teamKeyMap({ 0: "a1", 1: "b1", 3: "b2" }, teamed);
-    assert.deepEqual(withBot, { a1: "A", b1: "B", "bot:2": "A", b2: "B" });
-    assert.equal(
-      restoredMatchOver({
-        matchLength: "match",
-        gameMode: "teams",
-        roundOver: true,
-        scores: { a1: 12, b1: 5, "bot:2": 10, b2: 4 },
-        target: 21,
-        playerCount: 4,
-        teamOfKey: withBot,
-      }),
-      true
-    );
-  });
-
-  test("a single-round match is over exactly when its round is", () => {
-    const single = (roundOver: boolean) =>
-      restoredMatchOver({
-        matchLength: "single",
-        gameMode: "teams",
-        roundOver,
-        scores: {},
-        target: 21,
-        playerCount: 4,
-        teamOfKey: teamKeyMap(seats, teamed),
-      });
-    assert.equal(single(true), true);
-    assert.equal(single(false), false);
   });
 });

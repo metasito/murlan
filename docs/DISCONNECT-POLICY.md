@@ -84,8 +84,10 @@ The behaviour is an escalation ladder assembled from four independently-made cho
 And at the round's end (`resolveRoundEnd`, `server/game/onlineGameLogic.ts`):
 
 - The seat's score key becomes `bot:<seat>` the moment `playerMap[seat]` is deleted.
-- Since #815, `accumulates` excludes a `bot:<seat>` key **only when that seat was not a bot
-  when the roster was built** — a straight-duel bot scores, a seat a human left does not.
+- Since #815, `accumulates` excluded a `bot:<seat>` key **only when that seat was not a bot
+  when the roster was built** — a straight-duel bot scored, a seat a human left did not. That
+  exclusion is gone (row D below); what still tells the two apart is `SeatScoring.crownable`,
+  built by `seatScoringOf` (`server/game/onlineGameLogic.ts`).
 - The abandoned seat is ordered **behind every seat that played the round out**, so a walkout
   is genuinely last, and that placement is what `recordRatedResult` rates (`server/game/ratings.ts`).
 - `gameResults` for that one round is keyed by the **departed userId**, not by `bot:<seat>` —
@@ -468,7 +470,7 @@ Sizes are the ticket scale used in the tracker.
 | A | Seat shows the reconnect state for the whole grace | 10 s banner → persistent seat state + countdown | **S**, client only; server already sends `seconds`, `game:turn_deadline` is the precedent | Low |
 | B | Vacated seat is labelled as vacated | name unchanged → `vacated` flag on the sanitized player and `ScoreLine`, `t()` in three locales | **S** | Low; touches the sanitizer and two render sites |
 | C | Takeover plays the current round at minimum strength | `useBot: true` at takeover → `false` until the round ends | **S**, one boolean in `runBotTurn` (`server/game/gameTurn.ts`) | Low; needs a test that the seat still always resolves |
-| D | Vacated seat scores as a bot seat | `accumulates` excludes it → excludes nothing | **S** in code (delete the exception added by #815's `botSeatsAtStart` for the vacate case), **M** in tests: the describe block "keys the table does not accumulate (vacated seats)" (`tests/engine/scoring.test.ts`) is written around the opposite rule and its intent has to be re-pinned, not just re-baselined | Medium — this is the row of the Decisions table's rationale that everyone has been reading as a decision |
+| D | Vacated seat scores as a bot seat | `accumulates` excludes it → excludes nothing (today every key accumulates; `SeatScoring.crownable` from `seatScoringOf` only gates the win) | **S** in code (delete the exception added by #815's `botSeatsAtStart` for the vacate case), **M** in tests: the describe block "keys the table does not accumulate (vacated seats)", now "seats that may not be crowned (vacated seats)" (`tests/engine/scoring.test.ts`), was written around the opposite rule and its intent had to be re-pinned, not just re-baselined | Medium — this is the row of the Decisions table's rationale that everyone has been reading as a decision |
 | E | Frozen pre-departure points are shown | seat row reads `bot:<seat>` total → row sums the person's frozen total and the seat's bot total | **S**, inside `resolveRoundEnd`'s `detailed` builder | Low |
 | F | Seat reclaimable for the life of the match | `releasedSeats` permanent → consulted only for a finished/disposed table | **M**; the rejoin path, the announcement both ways, and the AFK-rearm guard | Medium — this is the reconnection mechanics #820 explicitly deferred, so it is the one that most needs its own design pass |
 | G | Unanimous end-the-match vote after a vacancy | none → new vote, reusing the rematch gate's unanimity and abstention rules | **M**, server + one screen + locale keys | Medium |
@@ -503,7 +505,8 @@ worked.
 3. **A taken-over seat finishes the round at minimum legal strength** — the engine's bot starts at
    the next round, not at the moment of takeover. (C)
 4. **A seat that becomes a bot scores like a seat that was born one** — remove the vacate
-   exception from `accumulates`, and re-pin `tests/engine/scoring.test.ts` on the new rule. (D)
+   exception from `accumulates` (since replaced by `SeatScoring.crownable`, built by
+   `seatScoringOf`), and re-pin `tests/engine/scoring.test.ts` on the new rule. (D)
 5. **Show the points a departed player had already won** — the seat's row sums their frozen
    total and the bot's points since takeover. (E)
 6. **Let a player reclaim their seat for the life of the match** — `SEAT_RELEASED` answers only

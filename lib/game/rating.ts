@@ -1,6 +1,7 @@
 // The ranked ladder's arithmetic. No db, so it rides into the profile and leaderboard
 // screens' bundle; loads under `node --test` — docs/agents/checks.md, "Node's TypeScript loader".
 import type { TranslationKey } from "../../shared/i18n.ts";
+import { isBotSeatKey } from "./botSeat.ts";
 //
 // Every constant here carries its own reasoning; the two that are conventions
 // rather than measurements (SEASON_CARRY, the K tiers) say so.
@@ -75,10 +76,6 @@ export function expectedScore(a: number, b: number): number {
   return 1 / (1 + 10 ** ((b - a) / 400));
 }
 
-/** Bot seats carry this synthetic id instead of a real users.id — the same
- *  convention scoring and history already use (server/game/onlineGameLogic.ts). */
-const BOT_ID_PREFIX = "bot:";
-
 /**
  * The human seats of a finished round, renumbered 1..n among themselves.
  *
@@ -92,7 +89,7 @@ export function ratedFinishers(
   seatResults: { userId: string; placement: number }[]
 ): { userId: string; placement: number }[] {
   return seatResults
-    .filter((r) => !r.userId.startsWith(BOT_ID_PREFIX))
+    .filter((r) => !isBotSeatKey(r.userId))
     .sort((a, b) => a.placement - b.placement)
     .map((r, i) => ({ userId: r.userId, placement: i + 1 }));
 }

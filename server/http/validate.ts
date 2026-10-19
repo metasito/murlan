@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { RequestHandler } from "express";
 import type { ParamsDictionary } from "express-serve-static-core";
-import { payload } from "../socket/payload.ts";
+import { payload } from "../shared/payload.ts";
 
 export function validate<S extends z.ZodTypeAny>(schema: S): RequestHandler<ParamsDictionary, unknown, z.infer<S>> {
   return (req, res, next) => {

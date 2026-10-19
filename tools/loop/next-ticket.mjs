@@ -1,9 +1,8 @@
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { BRANCH, ticketOf, worktrees } from "./loop-derive.mjs";
-import { ghTracker, isTrusted as trusted, readIssue } from "./tracker.mjs";
+import { ghTracker, isTrusted as trusted, OWNER_LABELS, readIssue } from "./tracker.mjs";
 
 const SIZE_ORDER = ["size:XS", "size:S", "size:M", "size:L", "size:XL"];
-export const OWNER_LABELS = new Set(["ready-for-human", "needs-info", "rejected", "deferred"]);
 export const LAUNCH_MILESTONE = "Launch";
 function labelNames(issue) {
   return issue.labels.map((l) => l.name);

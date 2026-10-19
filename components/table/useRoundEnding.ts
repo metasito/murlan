@@ -9,8 +9,8 @@ import {
   type SharedValue,
 } from "react-native-reanimated";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { ROUND_IDLE, roundEndingOnsets } from "@/lib/game/roundEnding";
-import { matchEndingOnsets } from "@/lib/game/matchEnding";
+import { ROUND_IDLE, roundEndingOnsets } from "@/lib/timeline/roundEnding";
+import { matchEndingOnsets } from "@/lib/timeline/matchEnding";
 import { RoundEnding } from "@/lib/theme";
 import type { TableTimeline } from "./tableTimeline";
 
@@ -40,7 +40,7 @@ export function useRoundEnding({
   ended: boolean;
   /** Parks the ending on the open pill, re-ranked, until `ended` goes false. */
   hold?: boolean;
-  /** Runs `lib/game/matchEnding.ts` instead: it settles on the board, which stays until `ended` goes false. */
+  /** Runs `lib/timeline/matchEnding.ts` instead: it settles on the board, which stays until `ended` goes false. */
   match?: boolean;
   timeline: Pick<TableTimeline, "inFlight" | "landsAt" | "pending">;
   pileEmpty: boolean;

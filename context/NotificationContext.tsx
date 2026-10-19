@@ -6,6 +6,8 @@ import React, {
   useMemo,
   ReactNode,
 } from "react";
+import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
+import { Reading } from "@/lib/theme";
 
 export type NotificationType =
   | "friend_request"
@@ -25,9 +27,16 @@ export interface NotificationData {
   duration?: number;
 }
 
-interface NotificationContextValue {
-  notification: NotificationData | null;
+export interface NotificationCommands {
   showNotification: (n: NotificationData) => void;
+  /** A `game_error` banner titled `common.error` unless `opts.title` says otherwise. */
+  notifyError: (message: string, opts?: { title?: string; duration?: number }) => void;
+  /** A server refusal in the player's language, as a `game_error` banner. */
+  notifyServerError: (payload: ServerPayload) => void;
+}
+
+interface BannerValue {
+  notification: NotificationData | null;
   dismissNotification: () => void;
   /**
    * The window y a visible banner reaches down to, and 0 when none is up.
@@ -41,11 +50,37 @@ interface NotificationContextValue {
 
 export const NOTIFICATION_QUEUE_MAX = 3;
 
-const NotificationContext = createContext<NotificationContextValue | null>(null);
+export function createNotifyCommands(
+  showNotification: (n: NotificationData) => void
+): NotificationCommands {
+  const notifyError: NotificationCommands["notifyError"] = (message, opts) =>
+    showNotification({
+      type: "game_error",
+      title: opts?.title ?? t("common.error"),
+      message,
+      duration: opts?.duration,
+    });
+  return {
+    showNotification,
+    notifyError,
+    notifyServerError: (payload) =>
+      notifyError(translateServerPayload(payload), { duration: Reading.notice }),
+  };
+}
 
-export function useNotification() {
-  const ctx = useContext(NotificationContext);
+const CommandsContext = createContext<NotificationCommands | null>(null);
+const BannerContext = createContext<BannerValue | null>(null);
+
+/** Stable for the provider's life: a banner change never re-renders its consumers. */
+export function useNotification(): NotificationCommands {
+  const ctx = useContext(CommandsContext);
   if (!ctx) throw new Error("useNotification must be used within NotificationProvider");
+  return ctx;
+}
+
+export function useBanner(): BannerValue {
+  const ctx = useContext(BannerContext);
+  if (!ctx) throw new Error("useBanner must be used within NotificationProvider");
   return ctx;
 }
 
@@ -58,7 +93,7 @@ export function useNotification() {
  * harness and every component test do exactly that.
  */
 export function useBannerBottom(): number {
-  return useContext(NotificationContext)?.bannerBottom ?? 0;
+  return useContext(BannerContext)?.bannerBottom ?? 0;
 }
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
@@ -93,20 +128,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setBannerBottom((prev) => (Math.abs(prev - bottom) < 1 ? prev : bottom));
   }, []);
 
-  const contextValue = useMemo(
+  const commands = useMemo(() => createNotifyCommands(showNotification), [showNotification]);
+
+  const banner = useMemo(
     () => ({
       notification,
-      showNotification,
       dismissNotification,
       bannerBottom: notification ? bannerBottom : 0,
       reportBannerBottom,
     }),
-    [notification, showNotification, dismissNotification, bannerBottom, reportBannerBottom]
+    [notification, dismissNotification, bannerBottom, reportBannerBottom]
   );
 
   return (
-    <NotificationContext.Provider value={contextValue}>
-      {children}
-    </NotificationContext.Provider>
+    <CommandsContext.Provider value={commands}>
+      <BannerContext.Provider value={banner}>{children}</BannerContext.Provider>
+    </CommandsContext.Provider>
   );
 }

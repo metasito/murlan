@@ -15,12 +15,13 @@ import { card as c, seat as makePlayer, state as makeState } from "../support/ga
 import {
   aggregateTeamScores,
   buildCombination,
-  foldRoundIntoMatch,
+  foldRound,
   processPlay,
-  resolveMatch,
-  resolveTeamMatch,
-  scoreRound,
+  type GameMode,
+  type MatchLength,
+  type SeatScoring,
 } from "../../lib/game/gameEngine.ts";
+import { offlineSeats } from "../../lib/game/matchFlow.ts";
 
 /**
  * Seats 0/2 are team A, seats 1/3 are team B (partners sit opposite).
@@ -74,7 +75,11 @@ describe("teams: every seat gets a placement", () => {
     assert.deepEqual(done.finishingOrder, ["p0", "p2", "p3", "p1"]);
     assert.equal(done.players[1].finishPosition, 4, "the seat still holding cards is last");
 
-    const points = scoreRound(done.finishingOrder, 4);
+    const points = foldRound(
+      { finishingOrder: done.finishingOrder, playerCount: 4, gameMode: "teams", length: "match" },
+      { cumulative: {}, target: 21 },
+      offlineSeats(done)
+    ).roundByKey;
     assert.deepEqual(points, {
       p0: 3,
       p2: 2,
@@ -105,7 +110,25 @@ describe("teams: every seat gets a placement", () => {
 });
 
 describe("teams: the match resolves on the summed team total", () => {
-  const teamOfKey = { u0: "A", u2: "A", u1: "B", u3: "B" };
+  const teamOfKey = { u0: "A", u2: "A", u1: "B", u3: "B" } as const;
+  const teamSeats: SeatScoring[] = Object.entries(teamOfKey).map(([key, team]) => ({
+    engineId: key,
+    key,
+    team,
+    crownable: true,
+  }));
+  /** Where the match stands on `cumulative` alone: a round nobody finished, folded in. */
+  const standing = (
+    cumulative: Record<string, number>,
+    target: number,
+    gameMode: GameMode = "teams",
+    seats: SeatScoring[] = teamSeats
+  ) =>
+    foldRound(
+      { finishingOrder: [], playerCount: 4, gameMode, length: "match" },
+      { cumulative, target },
+      seats
+    );
 
   test("partners' points are summed", () => {
     assert.deepEqual(
@@ -117,26 +140,21 @@ describe("teams: the match resolves on the summed team total", () => {
   test("a pair on 20 + 1 has reached 21 even though no seat has", () => {
     const cumulative = { u0: 20, u2: 1, u1: 5, u3: 2 };
     // Per-seat resolution — the old behaviour — sees nobody at the target.
-    assert.equal(resolveMatch(cumulative, 21), null);
+    assert.equal(standing(cumulative, 21, "free_for_all").over, false);
 
-    const resolution = resolveTeamMatch(cumulative, teamOfKey, 21);
-    assert.ok(resolution);
-    assert.equal(resolution!.newTarget, null);
-    assert.equal(resolution!.isDraw, false);
+    const result = standing(cumulative, 21);
+    assert.equal(result.over, true);
+    assert.equal(result.isDraw, false);
     // BOTH partners are winners: the one who scored the 20 and the one who
     // scored the 1. Only naming the first denied the other its achievements.
-    assert.deepEqual(resolution!.winners.sort(), ["u0", "u2"]);
+    assert.deepEqual(result.winners.sort(), ["u0", "u2"]);
   });
 
   test("both partners are reported when one of them crosses alone", () => {
-    const resolution = resolveTeamMatch(
-      { u0: 21, u2: 0, u1: 5, u3: 5 },
-      teamOfKey,
-      21
-    );
-    assert.ok(resolution);
+    const result = standing({ u0: 21, u2: 0, u1: 5, u3: 5 }, 21);
+    assert.equal(result.over, true);
     // The server sets GameResult.matchWon from `matchWinners.includes(key)`.
-    const matchWon = (key: string) => resolution!.winners.includes(key);
+    const matchWon = (key: string) => result.winners.includes(key);
     assert.equal(matchWon("u0"), true);
     assert.equal(matchWon("u2"), true, "the partner must also win the match");
     assert.equal(matchWon("u1"), false);
@@ -144,133 +162,96 @@ describe("teams: the match resolves on the summed team total", () => {
   });
 
   test("both pairs reaching the target escalates instead of declaring a winner", () => {
-    const resolution = resolveTeamMatch(
-      { u0: 11, u2: 11, u1: 12, u3: 10 },
-      teamOfKey,
-      21
-    );
-    assert.ok(resolution);
-    assert.equal(resolution!.newTarget, 31);
-    assert.deepEqual(resolution!.winners, []);
+    const result = standing({ u0: 11, u2: 11, u1: 12, u3: 10 }, 21);
+    assert.equal(result.over, false);
+    assert.equal(result.target, 31);
+    assert.deepEqual(result.winners, []);
   });
 
   test("a tie at the final target is a draw, naming both pairs' members", () => {
-    const resolution = resolveTeamMatch(
-      { u0: 30, u2: 21, u1: 30, u3: 21 },
-      teamOfKey,
-      51
-    );
-    assert.ok(resolution);
-    assert.equal(resolution!.isDraw, true);
-    assert.deepEqual(resolution!.winners.sort(), ["u0", "u1", "u2", "u3"]);
+    const result = standing({ u0: 30, u2: 21, u1: 30, u3: 21 }, 51);
+    assert.equal(result.over, true);
+    assert.equal(result.isDraw, true);
+    assert.deepEqual(result.winners.sort(), ["u0", "u1", "u2", "u3"]);
   });
 
   test("a below-target pair does not end the match", () => {
-    assert.equal(
-      resolveTeamMatch({ u0: 10, u2: 10, u1: 9, u3: 1 }, teamOfKey, 21),
-      null
-    );
+    const result = standing({ u0: 10, u2: 10, u1: 9, u3: 1 }, 21);
+    assert.equal(result.over, false);
+    assert.equal(result.target, 21);
   });
 
   test("keys with no team (vacated bot seats) contribute nothing", () => {
-    // Only the seated humans appear in teamOfKey; a `bot:1` score must not
-    // push team B anywhere.
-    const resolution = resolveTeamMatch(
-      { u0: 11, u2: 10, "bot:1": 40 },
-      { u0: "A", u2: "A" },
-      21
-    );
-    assert.ok(resolution);
-    assert.deepEqual(resolution!.winners.sort(), ["u0", "u2"]);
+    // Only the seated humans carry a team; a `bot:1` score must not push team B anywhere.
+    const result = standing({ u0: 11, u2: 10, "bot:1": 40 }, 21, "teams", [
+      { engineId: "u0", key: "u0", team: "A", crownable: true },
+      { engineId: "u2", key: "u2", team: "A", crownable: true },
+    ]);
+    assert.equal(result.over, true);
+    assert.deepEqual(result.winners.sort(), ["u0", "u2"]);
   });
 });
 
-// Seats 0/2 are team A, 1/3 team B. `foldRoundIntoMatch` is where the team
-// rule meets match progression: both authorities call it, so a partner
-// crossing the line alone has to name the team on either side of the wire.
+// Seats 0/2 are team A, 1/3 team B. `foldRound` is where the team rule meets match progression:
+// both authorities call it, so a partner crossing the line alone has to name the team on either
+// side of the wire.
 describe("teams: folding a round into the match", () => {
-  const teamOf = { p0: "A", p1: "B", p2: "A", p3: "B" };
-  const base = {
-    playerCount: 4,
-    gameMode: "teams" as const,
-    length: "match" as const,
-    target: 21,
-    teamOf,
-    keyOf: (engineId: string) => engineId,
-  };
+  const teamOf = { p0: "A", p1: "B", p2: "A", p3: "B" } as const;
+  const seats: SeatScoring[] = Object.entries(teamOf).map(([id, team]) => ({
+    engineId: id,
+    key: id,
+    team,
+    crownable: true,
+  }));
+  const fold = (length: MatchLength, finishingOrder: string[], cumulative: Record<string, number>) =>
+    foldRound({ finishingOrder, playerCount: 4, gameMode: "teams", length }, { cumulative, target: 21 }, seats);
 
   test("the pair's summed total ends the match and names both partners", () => {
-    const result = foldRoundIntoMatch({
-      ...base,
-      finishingOrder: ["p0", "p1", "p2", "p3"],
-      cumulative: { p0: 15, p2: 2, p1: 9, p3: 8 },
-    });
+    const result = fold("match", ["p0", "p1", "p2", "p3"], { p0: 15, p2: 2, p1: 9, p3: 8 });
     assert.equal(result.over, true);
     assert.deepEqual(result.winners.sort(), ["p0", "p2"]);
     assert.equal(result.isDraw, false);
   });
 
   test("a single round is taken by the pair, not the seat that emptied first", () => {
-    const result = foldRoundIntoMatch({
-      ...base,
-      length: "single",
-      finishingOrder: ["p1", "p3", "p0", "p2"],
-      cumulative: {},
-    });
+    const result = fold("single", ["p1", "p3", "p0", "p2"], {});
     assert.equal(result.over, true);
     assert.equal(result.isDraw, false);
     assert.deepEqual(result.winners.sort(), ["p1", "p3"]);
   });
 
   test("a single round paying both teams 3 is a draw, whoever emptied first", () => {
-    const result = foldRoundIntoMatch({
-      ...base,
-      length: "single",
-      finishingOrder: ["p1", "p0", "p2", "p3"],
-      cumulative: {},
-    });
+    const result = fold("single", ["p1", "p0", "p2", "p3"], {});
     assert.equal(result.over, true);
     assert.equal(result.isDraw, true);
     assert.deepEqual(result.winners.sort(), ["p0", "p1", "p2", "p3"]);
   });
 
   describe("with a partner who walked out", () => {
-    // The server's own shape: every key accumulates, `winEligible` is what
-    // tells a vacated seat apart, and `u3`'s frozen row is the points seat 3
-    // won before leaving.
-    const seatOf: Record<string, number> = { p0: 0, p1: 1, p2: 2, p3: 3 };
-    const playerMap: Record<number, string> = { 0: "u0", 1: "u1", 2: "u2" };
-    const online = {
-      playerCount: 4,
-      gameMode: "teams" as const,
-      length: "match" as const,
-      target: 21,
-      teamOf: { p0: "A", p1: "B", p2: "A", p3: "B" },
-      keyOf: (engineId: string) => {
-        const seat = seatOf[engineId];
-        return seat === undefined ? null : (playerMap[seat] ?? `bot:${seat}`);
-      },
-      winEligible: (key: string) => !key.startsWith("bot:"),
-      frozenKeysOf: (engineId: string) => (engineId === "p3" ? ["u3"] : []),
-    };
+    // The server's own shape: seat 3 scores as `bot:3`, which is never crowned, and `u3`'s frozen
+    // row is the points seat 3 won before leaving.
+    const online: SeatScoring[] = [
+      { engineId: "p0", key: "u0", team: "A", crownable: true },
+      { engineId: "p1", key: "u1", team: "B", crownable: true },
+      { engineId: "p2", key: "u2", team: "A", crownable: true },
+      { engineId: "p3", key: "bot:3", team: "B", crownable: false, frozenKey: "u3" },
+    ];
+    const foldOnline = (finishingOrder: string[], cumulative: Record<string, number>) =>
+      foldRound(
+        { finishingOrder, playerCount: 4, gameMode: "teams", length: "match" },
+        { cumulative, target: 21 },
+        online
+      );
 
     test("the team keeps the departed partner's points, frozen", () => {
-      const result = foldRoundIntoMatch({
-        ...online,
-        finishingOrder: ["p3", "p1", "p0", "p2"],
-        cumulative: { u0: 9, u2: 8, u1: 12, u3: 6, "bot:3": 1 },
-      });
+      const result = foldOnline(["p3", "p1", "p0", "p2"], { u0: 9, u2: 8, u1: 12, u3: 6, "bot:3": 1 });
       // Team B: u1 on 12 + 2, u3's frozen 6, and the takeover's own 1 + 3 = 24.
       assert.equal(result.over, true);
       assert.deepEqual(result.winners, ["u1"], "only the partner still there is named");
     });
 
     test("short of the target, the pair plays on", () => {
-      const result = foldRoundIntoMatch({
-        ...online,
-        finishingOrder: ["p1", "p0", "p2", "p3"],
-        cumulative: { u0: 9, u2: 8, u1: 12, u3: 4 },
-      });
+      const result = foldOnline(["p1", "p0", "p2", "p3"], { u0: 9, u2: 8, u1: 12, u3: 4 });
       // Team B: u1 on 12 + 3, plus u3's frozen 4 = 19.
       assert.equal(result.over, false);
       assert.deepEqual(result.winners, []);

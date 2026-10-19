@@ -46,14 +46,33 @@ function run(tool, args, { cwd, timeout, stderr = "pipe", maxBuffer = MAX_BUFFER
   });
 }
 
-/** `git(cwd)(args, opts)`: stdout, untrimmed. A non-zero exit throws. */
-export const git =
-  (/** @type {string} [cwd] */ cwd) =>
-  (/** @type {string[]} */ args, /** @type {RunOptions} */ opts = {}) =>
-    run("git", args, { ...opts, cwd });
+/**
+ * `git(cwd)(args, opts)`: stdout, untrimmed; `.text` trims it and `.lines` splits it, dropping blank
+ * lines. A non-zero exit throws.
+ *
+ * @typedef {((args: string[], opts?: RunOptions) => string) & {text: (args: string[], opts?: RunOptions) => string,
+ *   lines: (args: string[], opts?: RunOptions) => string[]}} Git
+ * @param {string} [cwd]
+ * @returns {Git}
+ */
+export const git = (cwd) => {
+  const call = (/** @type {string[]} */ args, /** @type {RunOptions} */ opts = {}) => run("git", args, { ...opts, cwd });
+  const text = (/** @type {string[]} */ args, /** @type {RunOptions} */ opts = {}) => call(args, opts).trim();
+  const lines = (/** @type {string[]} */ args, /** @type {RunOptions} */ opts = {}) => text(args, opts).split("\n").filter(Boolean);
+  return Object.assign(call, { text, lines });
+};
 
 /** stdout, untrimmed. A non-zero exit throws. */
 export const gh = (/** @type {string[]} */ args, /** @type {RunOptions} */ opts = {}) => run("gh", args, opts);
+
+export const CLI_TOOLS = new Set(["git", "gh"]);
+
+/** git, at `opts.cwd`, or gh, for a `run(file, args, opts)` seam. Any other binary is not this module's. */
+export const viaCli = (/** @type {string} */ file, /** @type {string[]} */ args, /** @type {RunOptions} */ opts = {}) => {
+  if (file === "git") return git(opts.cwd)(args, opts);
+  if (file === "gh") return gh(args, opts);
+  throw new Error(`${file} is not git or gh`);
+};
 
 /** The exit status of `call`, which throws on failure: `null` when it never exited (a timeout, no binary). */
 export function statusOf(call) {
@@ -74,4 +93,4 @@ export const firstLine = (err) => String(err?.stderr?.trim() || err?.message || 
  * this file's own directory by default, so the answer does not depend on where a caller started.
  */
 export const checkoutRoot = (from = path.dirname(fileURLToPath(import.meta.url))) =>
-  path.dirname(git(from)(["rev-parse", "--path-format=absolute", "--git-common-dir"]).trim());
+  path.dirname(git(from).text(["rev-parse", "--path-format=absolute", "--git-common-dir"]));

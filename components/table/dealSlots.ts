@@ -1,4 +1,4 @@
-import { DEAL_FLIGHT_MS, dealLeaveMs } from "../../lib/game/dealTimeline.ts";
+import { DEAL_FLIGHT_MS, dealLeaveMs } from "../../lib/timeline/dealTimeline.ts";
 import { FAN_TURN } from "../fanGeometry.ts";
 import { seatPoint, type SeatGeometry } from "../flightPhysics.ts";
 import { seatDirection } from "../seatLayout.ts";

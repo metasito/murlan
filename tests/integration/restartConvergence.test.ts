@@ -479,9 +479,14 @@ describe(
         assert.equal((await failed)?.code, "UNAUTHORIZED");
         // Spectating never revives a table, so it is admitted only if the refused rejoin restored one.
         const watch = (await stranger.timeout(10_000).emitWithAck("room:spectate", { code: table.code })) as {
+          ok?: boolean;
           code?: string;
         };
-        assert.equal(watch.code, "NO_LIVE_GAME", "a never-seated account pulled the table into memory");
+        assert.deepEqual(
+          { ok: watch.ok, code: watch.code },
+          { ok: false, code: "GAME_NOT_FOUND" },
+          "a never-seated account pulled the table into memory"
+        );
       } finally {
         stranger.close();
       }

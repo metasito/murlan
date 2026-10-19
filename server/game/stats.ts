@@ -8,9 +8,9 @@ import type { UserStats, RoundHistory } from "../../shared/schema.ts";
 import type { AchievementStatusDto } from "../../shared/http.ts";
 import { evaluateAchievements, ACHIEVEMENTS } from "../../lib/achievements.ts";
 import type { GameResult } from "../../lib/achievements.ts";
-import type { GameMode } from "../../lib/game/gameEngine.ts";
+import { placementPoints, type GameMode } from "../../lib/game/gameEngine.ts";
 import { dailyStreak, utcDay } from "../../lib/streak.ts";
-import { isBotSeatKey } from "./botSeat.ts";
+import { isBotSeatKey } from "../../lib/game/botSeat.ts";
 
 /**
  * Match history kept per user, pruned on every write.
@@ -24,17 +24,6 @@ import { isBotSeatKey } from "./botSeat.ts";
  * deliberately retained. They must not become two numbers.
  */
 export const MAX_HISTORY_ROWS_PER_USER = 50;
-
-/**
- * Placement points for one round, mirroring lib/game/gameEngine.ts's `scoreRound`
- * exactly (N-1 for 1st, down to 0), so round_history.points always agrees
- * with what the scoreboard actually awarded. GameResult (lib/achievements.ts)
- * does not carry the raw score, only placement/playerCount, so this
- * recomputes the same published rule rather than inventing a new one.
- */
-function pointsForPlacement(placement: number, playerCount: number): number {
-  return Math.max(playerCount - placement, 0);
-}
 
 /**
  * Persists one round's outcome for every human in `results`. Bot seats
@@ -120,7 +109,7 @@ export async function recordGameResult(
           gameMode,
           placement,
           playerCount,
-          points: pointsForPlacement(placement, playerCount),
+          points: placementPoints(placement - 1, playerCount),
           opponents,
           ratingDelta: ratingDeltas.get(userId) ?? null,
           abandoned: abandoned ?? false,

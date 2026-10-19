@@ -19,13 +19,14 @@
  * `--play` (`npm run play`) boots the same stack with production pacing, into
  * dist/ on port 5000, to play it locally — on a phone, at http://<pc-ip>:5000.
  */
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertBundleHasRoutes } from "./bundleRoutes.mjs";
 import { assertMark } from "./e2eBuildMark.mjs";
+import { startBin, stopTree } from "./lib/proc.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PLAY = process.argv.includes("--play");
@@ -35,11 +36,15 @@ const DIST = PLAY ? "dist" : "dist-e2e";
 
 const children = new Set();
 // Two steps run at once, so one failing must not leave the other running with nobody waiting on it.
-process.on("exit", () => children.forEach((c) => c.kill()));
+const STOP_GRACE_MS = 5_000;
+async function stopTheRest(err) {
+  await Promise.allSettled([...children].map((c) => stopTree(c.pid, { graceMs: STOP_GRACE_MS })));
+  throw err;
+}
 
-function run(cmd, args, useShell) {
+function run(cmd, args) {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { cwd: ROOT, stdio: "inherit", shell: useShell });
+    const child = startBin(cmd, args, { cwd: ROOT, stdio: "inherit" });
     children.add(child);
     child
       .on("error", reject)
@@ -77,13 +82,12 @@ if (!PLAY) {
 const build =
   process.env.E2E_SKIP_BUILD !== "1" || !existsSync(path.join(ROOT, DIST, "index.html"))
     ? run(
-        process.platform === "win32" ? "npx.cmd" : "npx",
+        "npx",
         // Metro caches the inlined EXPO_PUBLIC_E2E_FAST, so an unflagged build after a flagged one needs --clear.
-        ["expo", "export", "--platform", "web", "--output-dir", DIST, ...(PLAY ? ["--clear"] : [])],
-        process.platform === "win32"
+        ["expo", "export", "--platform", "web", "--output-dir", DIST, ...(PLAY ? ["--clear"] : [])]
       )
     : Promise.resolve();
-await Promise.all([run(process.execPath, [DEV_STACK, "up"]), build]);
+await Promise.all([run(process.execPath, [DEV_STACK, "up"]), build]).catch(stopTheRest);
 
 assertBundleHasRoutes(path.join(ROOT, DIST), path.join(ROOT, "app"));
 assertMark(PLAY ? "--absent" : "--present", [path.join(ROOT, DIST)]);
@@ -94,8 +98,4 @@ process.env.SESSION_SECRET = PLAY ? randomBytes(32).toString("hex") : "e2e-test-
 process.env.PORT = PORT;
 process.env.MURLAN_WEB_DIST = DIST;
 
-await run(
-  process.platform === "win32" ? "npx.cmd" : "npx",
-  ["tsx", path.join(ROOT, "server", "index.ts")],
-  process.platform === "win32"
-);
+await run("npx", ["tsx", path.join(ROOT, "server", "index.ts")]);

@@ -17,7 +17,7 @@ import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { pickGivebackCard, TURN_TIMEOUT_MS } from "@/lib/game/gameEngine";
 import { suspendBot } from "@/lib/e2eBotSuspend";
 import { flushSync } from "@/lib/flushSync";
-import { OFFLINE_BOT_DELAY_MS } from "@/lib/game/offlineBotDelay";
+import { OFFLINE_BOT_DELAY_MS } from "@/lib/timeline/offlineBotDelay";
 import { GameTable } from "@/components/GameTable";
 import { turnKey } from "@/components/flightPhysics";
 import { uiFeedback } from "@/lib/device/feedback";

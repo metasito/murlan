@@ -13,44 +13,27 @@
 import fs, { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { firstLine, gh as ghCli, git as gitAt, REPO } from "./cli.mjs";
+import { firstLine, REPO, viaCli } from "./cli.mjs";
 import { ciRedPosted } from "./loop-derive.mjs";
-import { ghTracker } from "./tracker.mjs";
+import { ghTracker, prUrl } from "./tracker.mjs";
 import { readLine } from "./loop-stream.mjs";
-import { ciLine } from "./loop-render.mjs";
+import { ciLine, LAND } from "./loop-render.mjs";
 import { DIR, ciLogPath, ciRedNotePath, streamLog } from "./loop-logs.mjs";
 import { landable, reviewerRan } from "./loop-gate.mjs";
-import { REFRESH_TIMEOUT_MS, sleepClock } from "./limits.mjs";
+import { CI_RED_TIMEOUT_MS, LIMITS, REFRESH_TIMEOUT_MS, sleepClock } from "./limits.mjs";
 import { decide } from "./decide.mjs";
 
 // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
 const ts = (file) => createRequire(import.meta.url)(file);
 
-/**
- * The supervisor's half has no watchdog over it — `runSession`'s (`loop-session.mjs`) watches the child and is cleared
- * when the child closes — so `settle` as a whole is bounded here instead, and a branch that keeps
- * asking for one more round cannot hold the night open. Each individual `gh` call carries its own
- * ceiling in `ciVerdict.ts`'s `ghExecOptions`, which is where the one that can block lives.
- */
-export const SETTLE = { DEADLINE_MS: 90 * 60_000, STUCK_MS: 3 * 60_000 };
 
-/** Each update-branch is a new head, which restarts the deadline: without a cap, a busy main never lets it run out. */
-export const UPDATES = 3;
-
-/** Bounds each `gh` call settling makes, so a wedged one cannot stall the supervisor. */
-export const CI_RED_TIMEOUT_MS = 30_000;
-
-/** How many times a hand-back reads the tracker and posts a CI-RED before it holds the red. */
-const CI_RED_TRIES = 3;
+const { SETTLE, CI_RED_TRIES } = LIMITS;
 
 /** A `gh` failure that is the network's, not GitHub's answer: `execFileSync` puts it in `stderr` or `code`. */
 const OFFLINE = /error connecting to|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|i\/o timeout|TLS handshake timeout/i;
 
 /** GitHub's own failure to answer, which a later read can get past; a 4xx, a 403 above all, is its answer. */
 const SERVER = /HTTP 5\d\d\b|Bad Gateway|Service Unavailable|Gateway Timeout|Something went wrong while executing your query/i;
-
-/** How many reads in a row may fail on the network or GitHub's side before settling stops asking. */
-export const READ_RETRIES = 3;
 
 const sha7 = (sha) => String(sha).slice(0, 7);
 
@@ -183,7 +166,7 @@ export function stepSettle(state, read) {
   // Landing reads move no run counter.
   const stuck = read.at - s.stuckSince >= s.stuckMs;
   const facts = { ...next, head: s.head, armed: s.armed, overdue, deadline: s.deadline, updates: s.updates, last: s.last, stuck, ci: s.ci, error, reran: s.reran, cleared: read.cleared };
-  const step = decide({ step: "landing", limits: { UPDATES, READ_RETRIES }, loop: {}, landing: facts });
+  const step = decide({ step: "landing", loop: {}, landing: facts });
   if (step.kind === "ask") return { state, effects: [], ask: "cleared", head: s.head };
 
   if (step.kind === "settled") {
@@ -288,9 +271,11 @@ const listed = (names) =>
  * review cleared a head; `sleep` waits out the pause and resolves to the time a standby added to it.
  */
 function settlePorts(pending, log, pause, io) {
-  const run = io.run ?? ((file, args, opts = {}) => (file === "git" ? gitAt(opts.cwd)(args, opts) : ghCli(args, opts)));
-  const facts = io.facts ?? (() => streamFacts(pending.ticket));
+  const run = io.run ?? viaCli;
+  const dir = io.dir ?? DIR;
+  const facts = io.facts ?? (() => streamFacts(pending.ticket, dir));
   const ports = {
+    dir,
     run,
     tracker: io.tracker ?? ghTracker((args, opts) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS, ...opts })),
     stateOf: io.stateOf ?? ((pr) => ts("./ciVerdict.ts").readLandingState(REPO, pr)),
@@ -325,8 +310,8 @@ function settlePorts(pending, log, pause, io) {
   return ports;
 }
 
-function streamFacts(ticket) {
-  const file = streamLog(ticket);
+function streamFacts(ticket, dir) {
+  const file = streamLog(ticket, dir);
   return fs.existsSync(file) ? fs.readFileSync(file, "utf8").split("\n").map(readLine).filter(Boolean) : [];
 }
 
@@ -346,7 +331,7 @@ function readTicketComments(ticket, { tracker, log }) {
  *
  * @returns {boolean} whether the tracker carries it now
  */
-function postCiRedOnce(ticket, ci, { onMain, flaky }, comments, { tracker, write, log }) {
+function postCiRedOnce(ticket, ci, { onMain, flaky }, comments, { tracker, write, log, dir }) {
   const sha = ci.head;
   if (!comments) return false;
   if (!sha || ciRedPosted(comments, sha)) return true;
@@ -364,7 +349,7 @@ function postCiRedOnce(ticket, ci, { onMain, flaky }, comments, { tracker, write
     attempt: ci.attempt,
   });
   try {
-    const file = ciRedNotePath(ticket);
+    const file = ciRedNotePath(ticket, dir);
     write(file, body, "utf8");
     tracker.comment(ticket, file);
     return true;
@@ -380,10 +365,10 @@ function postCiRedOnce(ticket, ci, { onMain, flaky }, comments, { tracker, write
  * Never call it when `output` is the reason rather than the log: round one's real failure is
  * already in that file, and this would paint over it.
  */
-function prepareRed(ticket, ci, { mkdir, write, mainFailures, log }) {
+function prepareRed(ticket, ci, { mkdir, write, mainFailures, log, dir }) {
   try {
-    mkdir(DIR, { recursive: true });
-    write(ciLogPath(ticket), ci.output, "utf8");
+    mkdir(dir, { recursive: true });
+    write(ciLogPath(ticket, dir), ci.output, "utf8");
   } catch (err) {
     log(`CI-RED: could not write the CI log — ${firstLine(err)}`);
   }
@@ -393,8 +378,8 @@ function prepareRed(ticket, ci, { mkdir, write, mainFailures, log }) {
 }
 
 /** The merge message's body, written to a file: an inline argument has no bound. */
-function flakeMergeFile(red, ticket, write) {
-  const file = path.join(DIR, `flake-merge-${ticket}.md`);
+function flakeMergeFile(red, ticket, write, dir) {
+  const file = path.join(dir, `flake-merge-${ticket}.md`);
   write(file, [`Merged on a rerun's green: attempt 1 of ci.yml run ${red.runId} failed`, ...listed(flakeNames(red))].join("\n"), "utf8");
   return file;
 }
@@ -404,7 +389,7 @@ function flakeMergeFile(red, ticket, write) {
  * search trails its own writes, and promoting one swaps its label. `ready-for-human`, not
  * `ci-flake`: ADR 0011 keeps that label, and the rank it carries, the owner's to add.
  */
-function fileFlakes(red, { tracker, log, write }) {
+function fileFlakes(red, { tracker, log, write, dir }) {
   let open;
   try {
     open = tracker.openIssues();
@@ -424,7 +409,7 @@ function fileFlakes(red, { tracker, log, write }) {
       "Filed by the supervisor (`tools/loop/settle.mjs`). The title is what stops a second issue for the same failure, so keep it.",
     ].join("\n");
     try {
-      const file = path.join(DIR, `flake-issue-${red.ticket}.md`);
+      const file = path.join(dir, `flake-issue-${red.ticket}.md`);
       write(file, body, "utf8");
       tracker.createIssue({ title, bodyFile: file, labels: ["ready-for-human"] });
       log(`filed ${title}`);
@@ -486,8 +471,8 @@ async function perform(effect, pending, ports) {
       let message;
       try {
         if (effect.flake) {
-          ports.mkdir(DIR, { recursive: true });
-          message = flakeMergeFile(effect.flake, pending.ticket, ports.write);
+          ports.mkdir(ports.dir, { recursive: true });
+          message = flakeMergeFile(effect.flake, pending.ticket, ports.write, ports.dir);
         }
       } catch (err) {
         log(`could not write the flake into the merge message — ${firstLine(err)}`);
@@ -554,5 +539,43 @@ export async function runSettle(pending, log, pause, deadline, io = {}) {
     }
     if (outcome) return outcome;
     state = rested(state, await ports.sleep());
+  }
+}
+
+/** GitHub re-points the pull request head asynchronously; asked at once, CI answers for the old one. */
+const SETTLE_PAUSE_MS = 15_000;
+
+/**
+ * Waits for the pushed branch's CI and lands it. No judgement here — `readLandingState` says whether
+ * the gate passed and `landing()` says what that plus the merge state means — which is why the session
+ * that built the ticket has already exited by the time this runs.
+ *
+ * It owns a phase of its own because it is the longest stretch of a ticket and the session is gone:
+ * without a row with a clock on it, a board that has just ticked `close` reads as finished, and a
+ * twenty-minute CI wait reads as a hang.
+ */
+export async function settle(pending, screen, opts = {}) {
+  const { pause = SETTLE_PAUSE_MS, deadline = SETTLE.DEADLINE_MS, watch = runSettle, dir = DIR } = opts;
+  screen.start(LAND);
+  screen.set({ pr: prUrl(pending.pr) });
+  screen.said(`waiting for ci.yml on ${pending.branch}`);
+  try {
+    const out = await watch(
+      pending,
+      (m) => {
+        screen.said(m);
+        screen.keep(m);
+      },
+      pause,
+      deadline,
+      { dir },
+    );
+    const landed = out.action === "already-merged";
+    screen.close(landed ? "done" : "failed", landed ? `#${pending.pr} merged` : out.reason);
+    return out;
+  } catch (err) {
+    // An open phase is a spinner with no end. Whatever else is wrong, the row has to settle.
+    screen.close("failed", String(err.message).split("\n")[0]);
+    throw err;
   }
 }

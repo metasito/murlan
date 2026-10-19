@@ -493,14 +493,12 @@ describe("keybar", () => {
   // A key bar that lies is worse than no key bar. Every letter it offers is pressed here, against
   // the real handler, and has to do something.
   test("offers nothing the ticker does not bind", () => {
-    const cwd = process.cwd();
     const dir = mkdtempSync(join(tmpdir(), "keybar-"));
-    process.chdir(dir);
     try {
       for (const [k, word] of KEYS) {
         const wrote: string[] = [];
         const out = { isTTY: true, columns: WIDTH + 1, rows: 40, getColorDepth: () => 1, write: (s: string) => wrote.push(s) };
-        const tick = ticker(out as never, out as never, () => wrote.push("opened"), () => wrote.push("copied"));
+        const tick = ticker(out as never, out as never, () => wrote.push("opened"), () => wrote.push("copied"), dir);
         tick.context({ number: 7, url: "https://x", log: "x.jsonl", branch: "agent/7-x", pr: "https://x/pr/1", session: "s" });
         tick.board({ recap: () => ["the run"] });
         tick.wait("a hold", Date.now() + 60_000);
@@ -510,7 +508,6 @@ describe("keybar", () => {
         assert.ok(wrote.length > before, `"${word}" is offered on ${k}, which does nothing`);
       }
     } finally {
-      process.chdir(cwd);
       rmSync(dir, { recursive: true, force: true });
     }
   });

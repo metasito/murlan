@@ -1,11 +1,12 @@
-import { STALL_MS } from "./limits.mjs";
+import { LIMITS, STALL_MS } from "./limits.mjs";
+import { OWNER_LABELS } from "./tracker.mjs";
 
 const sha7 = (head) => String(head ?? "an unread head").slice(0, 7);
 
 /** @param {{declared: {handoff?: string|null, stoodDown?: boolean}|null}} run */
 const handoffOf = (run) => (run.declared?.stoodDown ? null : (run.declared?.handoff ?? null));
 
-export const exhausted = (run) =>
+const exhausted = (run) =>
   run.result?.subtype === "error_max_turns" || /Budget limit reached/.test(run.stderr ?? "");
 
 /** The phases a synthesised handoff may name. E and G are the pushed head's, which `settle` owns. */
@@ -38,7 +39,7 @@ export function afterSession(run, derived) {
  * ending, and the dollar cap stops subagents while letting such a session run on to declare one.
  * `after.ticket` is checked because `reasonFor`'s hard guards are downstream of this.
  */
-export function resumePhase(run, after, ticket) {
+function resumePhase(run, after, ticket) {
   if (run.declared || !exhausted(run)) return null;
   if (!after?.cwd || after.ticket !== ticket) return null;
   return RESUMABLE.has(after.phase) ? after.phase : null;
@@ -52,7 +53,7 @@ export function resumePhase(run, after, ticket) {
  * ends on a 429 too, and is `blocked`'s to wait out until its reset, not a minute at a time.
  * A session the watchdog killed mid-retry never wrote a result, and is the same outage.
  */
-export function apiFailure(run) {
+function apiFailure(run) {
   if (run.declared || run.blocked || run.accountError) return null;
   if (run.status === "stalled" && run.lastFact === "api_retry") return "unreachable";
   if (!run.result?.isError) return null;
@@ -62,28 +63,16 @@ export function apiFailure(run) {
 }
 
 /**
- * How long to wait out a spent usage window.
- *
- * The loop must not exit on a refusal: the owner is away, and an exit that nothing recovers costs
- * every remaining ticket of the night. `CAP` bounds one hold against a wrong clock, not the total
- * — a gap longer than it is held in pieces and asked again, so a seven-day window resumes within
- * `CAP` of its reset rather than never. `TRIES` is the floor under all of it: that many refusals
- * in a row, each after a full wait, is an account that is not coming back on its own.
+ * @param {{blocked?: boolean, blockedUntil?: number, done?: boolean}} run
+ * @param {number} now
+ * @param {typeof LIMITS.WAIT} wait
  */
-export const WAIT = {
-  CAP: 12 * 60 * 60_000,
-  FLOOR: 60_000,
-  MARGIN: 30_000,
-  TRIES: 20,
-};
-
-/** @param {{blocked?: boolean, blockedUntil?: number, done?: boolean}} run */
-export function waitFor({ blocked, blockedUntil, done }, now = Date.now()) {
+function waitFor({ blocked, blockedUntil, done }, now, wait) {
   if (!blocked || done) return 0;
-  if (!blockedUntil) return WAIT.FLOOR;
+  if (!blockedUntil) return wait.FLOOR;
   const gap = blockedUntil - now;
   if (gap <= 0) return 0;
-  return Math.min(gap + WAIT.MARGIN, WAIT.CAP);
+  return Math.min(gap + wait.MARGIN, wait.CAP);
 }
 
 /**
@@ -94,11 +83,13 @@ export function waitFor({ blocked, blockedUntil, done }, now = Date.now()) {
  * and cruel when it did fire, parking one ticket for a limit it had no part in.
  *
  * @param {{waits: number, blocked?: boolean, blockedUntil?: number, done?: boolean}} run
+ * @param {number} now
+ * @param {typeof LIMITS.WAIT} wait
  * @returns {{action: "proceed"|"wait"|"give-up", hold: number, waits: number, why?: string}}
  */
-export function afterRefusal({ waits, blocked, blockedUntil, done }, now = Date.now()) {
+function afterRefusal({ waits, blocked, blockedUntil, done }, now, wait) {
   if (!blocked || done) return { action: "proceed", hold: 0, waits: 0 };
-  if (waits >= WAIT.TRIES) {
+  if (waits >= wait.TRIES) {
     return {
       action: "give-up",
       hold: 0,
@@ -109,7 +100,7 @@ export function afterRefusal({ waits, blocked, blockedUntil, done }, now = Date.
   // Floored, always: a reset timestamp already in the past — clock skew, a stale window, a
   // seven-day limit reported with an expired short-window reset — makes `waitFor` answer 0, and a
   // hold of 0 is a knob with no floor, spawning back to back until the ceiling stops it.
-  const hold = Math.max(waitFor({ blocked, blockedUntil, done }, now), WAIT.FLOOR);
+  const hold = Math.max(waitFor({ blocked, blockedUntil, done }, now, wait), wait.FLOOR);
   return { action: "wait", hold, waits: waits + 1 };
 }
 
@@ -130,7 +121,7 @@ export function afterRefusal({ waits, blocked, blockedUntil, done }, now = Date.
  *   issue?: {state: string|null, stateReason: string|null}|null, commits?: number|null}} run
  * @returns {{action: "settle"|"landed"|"closed"|"park", pr?: number, why?: string}}
  */
-export function outcomeOf({ pr, reason, issue = null, commits = null }) {
+function outcomeOf({ pr, reason, issue = null, commits = null }) {
   if (reason.hard && reason.why) return { action: "park", why: reason.why, pr: pr?.number };
   if (!pr && commits === 0 && issue?.state === "CLOSED" && issue?.stateReason === "COMPLETED")
     return { action: "closed", why: "the session closed the issue as done, with no diff to land" };
@@ -153,7 +144,7 @@ export function outcomeOf({ pr, reason, issue = null, commits = null }) {
  *   declared?: {pr: number|null, stoodDown: boolean, why: string|null}|null}} run
  * @returns {{why: string|null, hard: boolean}}
  */
-export function reasonFor(run, after, ticket) {
+function reasonFor(run, after, ticket) {
   const said = run.declared;
   const hard = (why) => ({ why, hard: true });
   const soft = (why) => ({ why, hard: false });
@@ -174,16 +165,64 @@ export function reasonFor(run, after, ticket) {
   return soft(null);
 }
 
-function redRound({ n, why, head }, { tally, limits }) {
-  const rounds = Math.max(tally.retries, tally.ciRounds ?? 0) + 1;
+function redRound({ n, why, head }, { route, tally, limits }) {
+  const rounds = Math.max(tally.retries, route.ciRounds ?? 0) + 1;
   if (rounds >= limits.CI_ROUNDS) {
     return { kind: "park", n, phase: "E", why: `${rounds} CI rounds on the same branch did not go green — last: ${why}`, head, ciRed: true };
   }
   return { kind: "retry", n, why, head };
 }
 
+/**
+ * The live run, resumed. A pushed head's own reading — CI to settle, or a red run to fix —
+ * outranks a handoff the ledger still holds from before the push. A route carries the issue's
+ * size, or the turn bound falls through to the default and bounds the second attempt tighter than
+ * the one that already failed to finish.
+ */
+function resumed(standing, known, tally, at) {
+  const n = standing.ticket;
+  // A red with no CI-RED is G's too: `runSettle` posts it, once per head, before it hands the red back.
+  const fix = Boolean(standing.fix);
+  const handed = at ?? (fix ? "C" : null) ?? tally.lastHandoff;
+  // A resumed session re-emits no marker for a phase it has already passed.
+  const read = standing.phase && standing.phase !== "?" ? standing.phase : "C";
+  const settles = read === "G" && standing.ci?.pushed === true;
+  const derived = read === "G" ? "E" : read;
+  // A LAND on this head ends the review the handoff was for; D lands its own, so no row says E.
+  const phase = settles ? "G" : handed === "D" && derived === "E" ? "E" : (handed ?? derived);
+  return {
+    skill: "implement",
+    number: n,
+    title: known?.title ?? standing.branch ?? `ticket #${n}`,
+    resuming: true,
+    reviewRounds: standing.reviewRounds ?? null,
+    phase,
+    fix: fix && phase !== "G",
+    head: standing.ci?.sha ?? standing.head ?? null,
+    cwd: standing.cwd ?? null,
+    branch: standing.branch ?? null,
+    dirty: standing.dirty ?? false,
+    size: known?.size ?? null,
+    ciRounds: known?.ciRounds ?? 0,
+    queue: null,
+  };
+}
+
+/**
+ * A ticket the run is not finished with — a red CI round hands the same number back, and letting
+ * the picker choose again leaves that one `in-progress` with an open pull request nothing returns
+ * to — unless the owner took it back, which is the picker's to see. `ready-for-agent` alone is still
+ * ours: an API failure before phase A's claim holds it pinned. Null when it was released.
+ */
+function repinned(pinned, { title, size, ciRounds, labels, branch }) {
+  const released =
+    labels && (labels.some((l) => OWNER_LABELS.has(l)) || !labels.some((l) => l === "in-progress" || l === "ready-for-agent"));
+  if (released) return null;
+  return { skill: "implement", number: pinned, title, size, ciRounds, queue: null, resuming: true, phase: "A", branch };
+}
+
 /** A fact the step needs and the caller has not read: read it, then decide again. */
-const ask = (fact) => ({ kind: "ask", fact });
+const ask = (fact, n = undefined) => ({ kind: "ask", fact, ...(n !== undefined && { n }) });
 
 const STEPS = {
   pre({ pre }) {
@@ -196,22 +235,45 @@ const STEPS = {
     return { kind: "go" };
   },
 
-  pick({ route, repicked, tally, limits }) {
-    const { n } = route;
-    if (route.skill === "closed") {
+  // Each fact is asked for only when the answer needs it: the standing run, its issue, the tally of a
+  // live or pinned ticket, a pinned issue when nothing is live, the picker when nothing resumes.
+  pick(input) {
+    const { standing, known, tally, pinnedFacts, picked, pinned, at, repicked, limits } = input;
+    if (standing === undefined) return ask("standing");
+    // locateRun refuses to guess between two live ticket worktrees: reading that as "no run is
+    // live" lets the picker take a third.
+    if (standing.ambiguous) return { kind: "stop", why: standing.why ?? "more than one live worktree" };
+    const live = standing.onTicket && standing.ticket ? standing.ticket : null;
+    if (live && known === undefined) return ask("known");
+    if (live && known?.state === "CLOSED") {
       return repicked
-        ? { kind: "stop", why: `#${n} is closed and its worktree still stands` }
-        : { kind: "repick", n, why: `#${n} is closed` };
+        ? { kind: "stop", why: `#${live} is closed and its worktree still stands` }
+        : { kind: "repick", n: live, cwd: standing.cwd ?? null, why: `#${live} is closed` };
+    }
+    let route = null;
+    if (live && (!known?.labels || known.labels.includes("in-progress"))) {
+      if (tally === undefined) return ask("tally", live);
+      route = resumed(standing, known, tally, at);
+    } else if (pinned) {
+      if (pinnedFacts === undefined) return ask("pinnedFacts");
+      route = repinned(pinned, pinnedFacts);
+    }
+    if (!route) {
+      if (picked === undefined) return ask("picked");
+      route = { ...picked, resuming: false };
     }
     if (route.skill === "handoff" || route.skill === "ambiguous") return { kind: "stop", why: route.title };
+    const n = route.number;
+    if (!route.resuming) return { kind: "go", n, route, redWhileDown: false };
+    if (tally === undefined) return ask("tally", n);
     const redWhileDown = Boolean(route.fix && route.head && route.head !== tally.lastRedHead);
     if (redWhileDown) {
-      const rounds = Math.max(tally.retries + 1, tally.ciRounds ?? 0);
+      const rounds = Math.max(tally.retries + 1, route.ciRounds ?? 0);
       if (rounds >= limits.CI_ROUNDS) {
-        return { kind: "park", n, phase: "C", why: `${rounds} CI rounds on the same branch did not go green — the last one while the loop was down` };
+        return { kind: "park", n, route, phase: "C", why: `${rounds} CI rounds on the same branch did not go green — the last one while the loop was down` };
       }
     }
-    return { kind: "go", redWhileDown };
+    return { kind: "go", n, route, tally, redWhileDown };
   },
 
   refresh({ route, error }) {
@@ -384,7 +446,7 @@ function tallied(action, { loop, limits, step, now }) {
       // The owner's own park is not a ticket failing, and resets nothing.
       if (action.byOwner) return { ...action, halt: null, loop: { ...loop, pinned: null } };
       const f = failures + 1;
-      // A throw's park leaves the pin to `nextRoute`, which passes over a pinned ticket whose labels
+      // A throw's park leaves the pin to the next pick, which passes over a pinned ticket whose labels
       // say it was released.
       const next = step === "threw" ? { ...loop, failures: f } : { ...unheld, failures: f, overloads: 0, pinned: null };
       return { ...action, halt: breaker(f), loop: next };
@@ -410,7 +472,7 @@ function tallied(action, { loop, limits, step, now }) {
       }
       if (action.wait === "undeclared") return { ...action, loop: { ...unheld, pinned: action.n } };
       if (action.wait === "usage") {
-        const refused = afterRefusal({ waits, blocked: true, blockedUntil: action.until }, now);
+        const refused = afterRefusal({ waits, blocked: true, blockedUntil: action.until }, now ?? Date.now(), wait);
         if (refused.action === "give-up") return stop(refused.why, unheld);
         return { ...action, hold: refused.hold, loop: { ...unheld, waits: refused.waits } };
       }
@@ -432,14 +494,16 @@ function tallied(action, { loop, limits, step, now }) {
 
 /**
  * The supervisor's every routing outcome, from facts already read. `step` names the point in the
- * pass: `pre` (before the pick), `pick`, `refresh` (a fix route's fast-forward), `session` (a
+ * pass: `pre` (before the pick), `pick` (which ticket, at which phase, from raw facts; its `go`
+ * carries the route), `refresh` (a fix route's fast-forward), `session` (a
  * process exited, or `run` is null for a G route), `landing` (one read inside `stepSettle`, with the
  * rounds spent so far), `settled` (what `runSettle` returned), `threw`. `tally` is the ticket's
  * `ticketTally` without what is being decided; `loop` is the run's counters, returned updated.
- * `{kind: "ask", fact}` names a fact to read before deciding again.
+ * `{kind: "ask", fact, n?}` names a fact to read, for ticket `n` when it names one, before deciding again.
  *
  * @param {Record<string, any>} input
  */
 export function decide(input) {
-  return tallied(capped(STEPS[input.step](input), input), input);
+  const capsOf = { ...input, limits: input.limits ?? LIMITS };
+  return tallied(capped(STEPS[input.step](capsOf), capsOf), capsOf);
 }

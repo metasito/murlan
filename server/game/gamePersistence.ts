@@ -1,19 +1,16 @@
 import type { SocketServer } from "../socket/socketTypes.ts";
-import { eq, inArray, lt } from "drizzle-orm";
+import { lt } from "drizzle-orm";
 import { roomStore } from "../store/roomStore.ts";
 import { logger } from "../http/logger.ts";
 import { db } from "../store/db.ts";
+import { activeGameStore } from "../store/activeGameStore.ts";
 import { recordGameResult } from "./stats.ts";
 import { previewRatedDeltas, recordRatedResult } from "./ratings.ts";
 import { saveReplay } from "./replays.ts";
-import { sweepRetention } from "./retention.ts";
-import {
-  activeGames as activeGamesTable,
-  roomPlayers as roomPlayersTable,
-  rooms as roomsTable,
-} from "../../shared/schema.ts";
+import { pruneAbandonedGames, sweepRetention } from "./retention.ts";
+import { rooms as roomsTable } from "../../shared/schema.ts";
 import { activeGames, userRoom } from "./gameRoom.ts";
-import { payload } from "../socket/payload.ts";
+import { payload } from "../shared/payload.ts";
 import { now } from "../http/clock.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { RoundOverWriters } from "./roundOver.ts";
@@ -32,24 +29,9 @@ import {
   visibleExchangePhase,
   markExchangeSettled,
 } from "./onlineGameLogic.ts";
-import type { PersistedEnvelope } from "../../shared/persistedEnvelope.ts";
 import { toEnvelope } from "./tableState.ts";
 import type { GameState, Card } from "../../lib/game/gameEngine.ts";
 import type { WireGameState } from "../../shared/protocol.ts";
-
-/**
- * How long an `active_games` row may sit untouched before it is abandoned.
- *
- * Every path that deletes a row walks the in-memory `activeGames`, which a
- * restart empties — so a game live when the process went down, and never
- * rejoined, is invisible to all of them. On a host that sleeps, that is every
- * sleep with a game open.
- *
- * A day is far past any live game: `persistGameState` refreshes `updated_at`
- * on every move. The margin is so a rejoinable row is never taken from under
- * a player.
- */
-export const ABANDONED_GAME_MAX_AGE_MS = 24 * 60 * 60_000;
 
 /**
  * How long a `rooms` row may live before the sweeper takes it.
@@ -121,11 +103,9 @@ export function disposeGame(roomId: string, deleteRow = true) {
 /** Deletes the room's `active_games` row after every earlier write to it. Never rejects. */
 export function discardPersistedGame(roomId: string): Promise<unknown> {
   return inRoomOrder(roomId, () =>
-    db.delete(activeGamesTable)
-      .where(eq(activeGamesTable.roomId, roomId))
-      .catch((err: unknown) =>
-        logger.error({ err, roomId }, "Failed to delete persisted game")
-      )
+    activeGameStore
+      .remove(roomId)
+      .catch((err: unknown) => logger.error({ err, roomId }, "Failed to delete persisted game"))
   );
 }
 
@@ -143,17 +123,6 @@ export async function stopTables(): Promise<void> {
   }
   await Promise.all(roomWriteTails.values());
 }
-
-/** An object rather than a bare function so a test can hold one write, as with `roomStore`. */
-export const persistence = {
-  async writeActiveGame(roomId: string, gameState: PersistedEnvelope<GameState>) {
-    const updatedAt = new Date(now());
-    await db
-      .insert(activeGamesTable)
-      .values({ roomId, gameState, updatedAt })
-      .onConflictDoUpdate({ target: activeGamesTable.roomId, set: { gameState, updatedAt } });
-  },
-};
 
 const roomWriteTails = new Map<string, Promise<unknown>>();
 
@@ -186,8 +155,8 @@ export function persistGameState(roomId: string, game: OnlineGameState): Promise
     // Judged when the write runs, not when it was queued: a table disposed in
     // between has had its row deleted, or handed to another instance.
     if (activeGames.get(roomId) !== game) return;
-    await persistence
-      .writeActiveGame(roomId, gameState)
+    await activeGameStore
+      .write(roomId, gameState)
       .catch((err: unknown) => logger.error({ err, roomId }, "Failed to persist game state"));
   });
 }
@@ -285,30 +254,12 @@ export function safeTimer(
 }
 
 /**
- * Deletes `active_games` rows untouched for longer than
- * `ABANDONED_GAME_MAX_AGE_MS`. Returns how many went, so a caller can tell
- * "nothing to do" from "did not run".
- */
-export async function pruneAbandonedGames(): Promise<number> {
-  const cutoff = new Date(now() - ABANDONED_GAME_MAX_AGE_MS);
-  const gone = await db
-    .delete(activeGamesTable)
-    .where(lt(activeGamesTable.updatedAt, cutoff))
-    .returning({ roomId: activeGamesTable.roomId });
-  if (gone.length > 0) {
-    logger.info({ count: gone.length }, "Pruned abandoned games orphaned by a restart");
-  }
-  return gone.length;
-}
-
-/**
  * Deletes rooms nobody can still be playing in, and the seats that name them.
  *
  * `disposeGame` clears the `active_games` row when a table ends;
  * `updateRoomStatus(…, "finished")` is all that ever happened to the `rooms`
  * row, so every online game ever played left one behind, plus a
- * `room_players` row per seat. `room_players` has no cascade, so its rows go
- * first — the same order `deleteAccount.ts`'s `deleteUser` uses.
+ * `room_players` row per seat.
  *
  * A room still in the in-memory map is never a candidate, whatever its age.
  */
@@ -321,18 +272,9 @@ export async function pruneStaleRooms(): Promise<number> {
     .limit(STALE_ROOM_BATCH);
 
   const ids = candidates.map((r) => r.id).filter((id) => !activeGames.has(id));
-  if (ids.length === 0) return 0;
-  await db.delete(roomPlayersTable).where(inArray(roomPlayersTable.roomId, ids));
-  await db.delete(activeGamesTable).where(inArray(activeGamesTable.roomId, ids));
-  const gone = await db
-    .delete(roomsTable)
-    .where(inArray(roomsTable.id, ids))
-    .returning({ id: roomsTable.id });
-
-  if (gone.length > 0) {
-    logger.info({ count: gone.length }, "Pruned rooms nobody can still be playing in");
-  }
-  return gone.length;
+  const gone = await roomStore.purgeRooms(db, ids);
+  if (gone > 0) logger.info({ count: gone }, "Pruned rooms nobody can still be playing in");
+  return gone;
 }
 
 let sweeper: ReturnType<typeof setInterval> | null = null;

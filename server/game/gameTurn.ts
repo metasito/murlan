@@ -2,11 +2,10 @@ import type { SocketServer } from "../socket/socketTypes.ts";
 import { roomStore } from "../store/roomStore.ts";
 import { emitVoteState } from "../socket/emit.ts";
 import { logger } from "../http/logger.ts";
-import { DEFAULT_LOCALE, translate } from "../../shared/i18n.ts";
 import { activeGames, seatName } from "./gameRoom.ts";
 import { seatOfUser } from "./onlineGameLogic.ts";
 import { vacate } from "./seatLedger.ts";
-import { payload } from "../socket/payload.ts";
+import { payload } from "../shared/payload.ts";
 import { now } from "../http/clock.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
@@ -32,12 +31,11 @@ import {
   autoMoveForSeat as sharedAutoMove,
   recordPlayFlags as recordFlags,
 } from "../../lib/game/autoMove.ts";
-import { roundUnplayed, openingIsPending } from "../../lib/game/gameEngine.ts";
+import { concedeRound, roundUnplayed, openingIsPending } from "../../lib/game/gameEngine.ts";
 import type { GameState, Combination } from "../../lib/game/gameEngine.ts";
 import { Motion, Reading } from "../../lib/tokens.ts";
-import { dealEndMs } from "../../lib/game/dealTimeline.ts";
-import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
-import { exchangeGiveDelayMs } from "../../lib/game/exchangeTimeline.ts";
+import { dealEndMs } from "../../lib/timeline/dealTimeline.ts";
+import { exchangeAnnounceMs, exchangeGiveDelayMs } from "../../lib/timeline/exchangeTimeline.ts";
 import { handCountOf } from "../../shared/protocol.ts";
 
 /** The seat that must act right now: the exchange winner, or the turn holder. */
@@ -268,11 +266,7 @@ function startAfkTimer(
         const exchanged = acted === "exchange";
         io.to(roomId).emit("game:notification", {
           type: "afk",
-          code: exchanged ? "PLAYER_AFK_AUTO_EXCHANGE" : "PLAYER_AFK_AUTO_PASS",
-          message: exchanged
-            ? `${username} is inactive — the card was exchanged automatically`
-            : `${username} is inactive — passed automatically`,
-          params: { username },
+          ...payload(exchanged ? "PLAYER_AFK_AUTO_EXCHANGE" : "PLAYER_AFK_AUTO_PASS", { username }),
         });
       }
     });
@@ -280,34 +274,6 @@ function startAfkTimer(
 }
 
 // ─── Seat vacancy ─────────────────────────────────────────────────────────────
-
-/**
- * Ends a round nobody is left to play: `winnerSeat` takes it, and every seat
- * still holding cards is placed behind them — closest to finishing first, seat
- * order as a stable tiebreak.
- *
- * Every seat must reach `finishingOrder` — the scoreboard awards from it and the
- * stats writer reads it. Seats that already emptied their hand keep the
- * position they earned.
- */
-function concedeRound(game: OnlineGameState, winnerSeat: number | undefined) {
-  const state = game.gameState;
-  const place = (seat: number) => {
-    const player = state.players[seat];
-    if (!player || player.finishPosition !== undefined) return;
-    player.finishPosition = state.finishingOrder.length + 1;
-    state.finishingOrder.push(player.id);
-  };
-
-  if (winnerSeat !== undefined) place(winnerSeat);
-  state.players
-    .map((player, seat) => ({ player, seat }))
-    .filter(({ player }) => player.finishPosition === undefined)
-    .sort((a, b) => a.player.hand.length - b.player.hand.length || a.seat - b.seat)
-    .forEach(({ seat }) => place(seat));
-
-  state.roundOver = true;
-}
 
 /**
  * Frees a seat whose player is gone for good — grace period expired, or an
@@ -348,9 +314,7 @@ export async function vacateSeat(
       userId,
       username,
       seatIndex: seat,
-      code: "PLAYER_LEFT_BOT_TAKEOVER",
-      message: translate(DEFAULT_LOCALE, "server.PLAYER_LEFT_BOT_TAKEOVER", { username }),
-      params: { username },
+      ...payload("PLAYER_LEFT_BOT_TAKEOVER", { username }),
     });
     emitVoteState(io, roomId, game);
     if (remaining === 0) {
@@ -378,9 +342,7 @@ export async function vacateSeat(
     io.to(roomId).emit("game:player_left", { userId, username, seatIndex: seat });
     io.to(roomId).emit("game:notification", {
       type: "abandoned",
-      code: "PLAYER_LEFT_ABANDONED",
-      message: translate(DEFAULT_LOCALE, "server.PLAYER_LEFT_ABANDONED", { username }),
-      params: { username },
+      ...payload("PLAYER_LEFT_ABANDONED", { username }),
     });
 
     if (game.roundsPlayed === 0) {
@@ -401,7 +363,7 @@ export async function vacateSeat(
     // only human — the remaining bots then place among themselves, and
     // isContestedTable drops every write for such a table anyway.
     const survivorSeat = Object.keys(game.playerMap).map(Number)[0];
-    concedeRound(game, survivorSeat);
+    game.gameState = concedeRound(game.gameState, survivorSeat);
     // Sets rooms.status = "finished" and writes the row itself; the write is
     // awaited so the disposal below deletes a row that already exists.
     await handleRoundOver(io, roomId, game, writers);
@@ -417,9 +379,7 @@ export async function vacateSeat(
     userId,
     username,
     seatIndex: seat,
-    code: "PLAYER_LEFT_BOT_TAKEOVER",
-    message: translate(DEFAULT_LOCALE, "server.PLAYER_LEFT_BOT_TAKEOVER", { username }),
-    params: { username },
+    ...payload("PLAYER_LEFT_BOT_TAKEOVER", { username }),
   });
 
   broadcastGameState(io, game);

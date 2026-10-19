@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { logger } from "./logger.ts";
-import { payload } from "../socket/payload.ts";
+import { payload } from "../shared/payload.ts";
 
 export const errorHandler = (err: unknown, req: Request, res: Response, next: NextFunction): void => {
   const error = err as {

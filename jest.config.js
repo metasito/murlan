@@ -22,7 +22,6 @@ const IOS_ONLY = {
     'Asks which moment each table change raises; nothing from GameTable to lib/device/feedback branches on ios against android.',
   'oneSoundPerMoment.test.tsx':
     'Times the effects a bot round starts in the mocked audio graph; nothing from GameTable to lib/device/feedback branches on ios against android.',
-  'scoringParity.test.tsx': 'Folds finishing orders through two scorers; nothing from GameContext to onlineGameLogic branches on the platform.',
   'pileMountsOnceFull.test.tsx': PILE_ON_ONE_PLATFORM,
   'pileMountsOnceReduced.test.tsx': PILE_ON_ONE_PLATFORM,
 };

@@ -1,9 +1,9 @@
 import { now } from "../http/clock.ts";
-import { eq, and, asc, sql } from "drizzle-orm";
+import { eq, and, asc, inArray, sql } from "drizzle-orm";
 import { db } from "./db.ts";
-import { users, rooms, roomPlayers, gameInvites } from "../../shared/schema.ts";
+import { users, rooms, roomPlayers, gameInvites, activeGames } from "../../shared/schema.ts";
 import type { User, Room, RoomPlayer, RoomVisibility } from "../../shared/schema.ts";
-import { heldSeats, seatForClaim } from "../game/seatAllocation.ts";
+import { heldSeats, renumbering, seatForClaim, settleRelease, startRefusal } from "../game/seatAllocation.ts";
 import type { SeatHold, SeatInvite, SeatedPlayer, SeatingRoom } from "../game/seatAllocation.ts";
 import { seatHoldMs } from "../game/gameTimers.ts";
 import { randomCode } from "./codes.ts";
@@ -168,20 +168,14 @@ export const roomStore = {
     return db.transaction(async (tx): Promise<StartClose> => {
       const room = await lockRoom(tx, roomId);
       if (!room) return { ok: false, reason: "no_room" };
-      if (room.hostUserId !== userId) return { ok: false, reason: "not_host" };
-      if (!opts.liveMatch && room.status !== "waiting" && room.status !== "finished") {
-        return { ok: false, reason: "not_waiting" };
-      }
+      const refused = startRefusal(room, userId, opts.liveMatch);
+      if (refused) return { ok: false, reason: refused };
       const roster = await seatedUsers(tx, roomId);
       if (!opts.admits(roster)) return { ok: false, reason: "refused", roster };
 
-      if (opts.renumber) {
-        // Ascending, and never upwards, so no step collides on the seat index.
-        for (const [position, p] of roster.entries()) {
-          if (p.seatIndex === position) continue;
-          await tx.update(roomPlayers).set({ seatIndex: position }).where(eq(roomPlayers.id, p.id));
-          p.seatIndex = position;
-        }
+      for (const [p, position] of opts.renumber ? renumbering(roster) : []) {
+        await tx.update(roomPlayers).set({ seatIndex: position }).where(eq(roomPlayers.id, p.id));
+        p.seatIndex = position;
       }
       const [closed] = await tx
         .update(rooms)
@@ -210,14 +204,7 @@ export const roomStore = {
         .where(and(eq(roomPlayers.roomId, roomId), eq(roomPlayers.userId, userId)));
       const remaining = await seatedUsers(tx, roomId);
 
-      const emptied = remaining.length === 0 && room.status === "waiting";
-      const wasHost = room.hostUserId === userId;
-      const [next] = remaining;
-      const set = emptied
-        ? { status: "finished" as const }
-        : next && !remaining.some((p) => p.userId === room.hostUserId)
-          ? { hostUserId: next.userId }
-          : null;
+      const { emptied, wasHost, set } = settleRelease(room, userId, remaining);
       if (!set) return { room, remaining, emptied, wasHost };
       const [updated] = await tx.update(rooms).set(set).where(eq(rooms.id, roomId)).returning();
       return { room: updated!, remaining, emptied, wasHost };
@@ -364,6 +351,15 @@ export const roomStore = {
       playerCount: Number(r.playerCount),
       containsUser: !!r.containsUser,
     }));
+  },
+
+  /** `room_players` has no cascade, so its rows go before the rooms they name. Returns how many rooms went. */
+  async purgeRooms(tx: Tx | typeof db, ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    await tx.delete(roomPlayers).where(inArray(roomPlayers.roomId, ids));
+    await tx.delete(activeGames).where(inArray(activeGames.roomId, ids));
+    const gone = await tx.delete(rooms).where(inArray(rooms.id, ids)).returning({ id: rooms.id });
+    return gone.length;
   },
 
   async removeRoomPlayer(roomId: string, userId: string) {

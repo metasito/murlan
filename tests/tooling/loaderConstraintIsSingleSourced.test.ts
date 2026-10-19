@@ -51,6 +51,8 @@ const PINNED = [
   "lib/game/rating.ts",
   "lib/reactions.ts",
   "lib/game/replay.ts",
+  "lib/timeline/dealTimeline.ts",
+  "lib/timeline/exchangeTimeline.ts",
   "lib/game/standings.ts",
   "tests/ui-rules/contrast.test.ts",
 ];

@@ -414,9 +414,10 @@ describe("killPid consults the tree it is about to end", () => {
 
   test("checks wouldTakeSelf before any kill", () => {
     const guard = body.indexOf("wouldTakeSelf");
-    const taskkill = body.indexOf("taskkill");
+    const kill = body.indexOf("killTree(");
     assert.ok(guard > 0, "killPid must consult wouldTakeSelf");
-    assert.ok(guard < taskkill, "and must consult it before terminating anything");
+    assert.ok(kill > 0, "killPid must kill through killTree");
+    assert.ok(guard < kill, "and must consult it before terminating anything");
   });
 });
 

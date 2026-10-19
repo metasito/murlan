@@ -6,9 +6,12 @@ import { mkdtempSync, rmSync, mkdirSync, appendFileSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MAX_FIX_HOLDS, MAX_REVIEW_ROUNDS, roundVerdict, buildPassed, dodVerdict, landable, reviewerRan } from "../loop-gate.mjs";
+import { roundVerdict, buildPassed, dodVerdict, landable, reviewerRan } from "../loop-gate.mjs";
+import { LIMITS } from "../limits.mjs";
 import { readLine } from "../loop-stream.mjs";
 import { offTicketBranch, probeBranch, probeTicket, removeWorktree, sweep } from "./helpers/probeFixtures.mjs";
+
+const { MAX_FIX_HOLDS, MAX_REVIEW_ROUNDS } = LIMITS;
 
 /**
  * Phase E branches on this command's exit code, so the exit code is what is asserted — never a

@@ -8,13 +8,16 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { journaled, settle } from "../queue-loop.mjs";
-import { ciRedBody, endSettle, onMainLine, overdueAt, READ_RETRIES, rested, runSettle, SETTLE, startSettle, stepSettle } from "../settle.mjs";
+import { journaled } from "../loop-board.mjs";
+import { settle, ciRedBody, endSettle, onMainLine, overdueAt, rested, runSettle, startSettle, stepSettle } from "../settle.mjs";
+import { LIMITS } from "../limits.mjs";
 import { appendSupervisor, supervisorLogPath } from "../loop-logs.mjs";
 import { readLandingState } from "../ciVerdict.ts";
 import { armArgs, disarmArgs } from "../tracker.mjs";
 import { readLine } from "../loop-stream.mjs";
 import { ciCall, landingAnswer, restJobs, restRun, restRuns } from "./helpers/restCi.ts";
+
+const { READ_RETRIES, SETTLE } = LIMITS;
 
 const REPO = "metasito/murlan";
 const PENDING = { ticket: 1028, pr: 1053, branch: "agent/1028-the-turn-chip" };

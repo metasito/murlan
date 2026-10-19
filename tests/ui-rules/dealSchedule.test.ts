@@ -1,7 +1,7 @@
 // When each dealt card leaves the pile and lands, against the lantern mockup's `dealRun` (#1262).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { dealArrivalsMs, dealEndMs, dealLeaveMs } from "../../lib/game/dealTimeline.ts";
+import { dealArrivalsMs, dealEndMs, dealLeaveMs } from "../../lib/timeline/dealTimeline.ts";
 import { dealSlotOf } from "../../components/table/dealSlots.ts";
 
 describe("the deal's schedule", () => {

@@ -88,10 +88,10 @@ const FIRE_AND_FORGET = new Map<string, string>([]);
 /**
  * The two places an event name is computed rather than written out. Both stay
  * inside the scan's reach: `emitToUser`'s callers name the event with a
- * literal, and `errorEventFor` maps an inbound name onto one of the four
- * `*:error` events, each emitted literally elsewhere too. Anything else
- * computing a name is outside the reach of `literalEmittedEvents` and so has to
- * come back here first.
+ * literal, and `errorEventFor` maps an inbound name onto one of the `*:error`
+ * events its return type spells out, which `literalEmittedEvents` reads at the
+ * emit. Anything else computing a name is outside the reach of
+ * `literalEmittedEvents` and so has to come back here first.
  */
 const COMPUTED_EVENT_NAMES = new Set(["event", "errorEventFor(event)"]);
 
@@ -105,17 +105,30 @@ const EMIT_PATTERNS = [
   /\bemitToUser\(\s*[^,]*,\s*(["'`])((?:(?!\1).)*)\1/gs,
 ];
 
-/** Every literally-named emitted event, mapped to the `file:line` of each emit. */
+/** The events `errorEventFor`'s declared return type names, wherever it is declared. */
+function errorEventsDeclared(sources: [string, string][]): string[] {
+  const declared = sources
+    .map(([, source]) => /function errorEventFor\([^)]*\):\s*([^{]+)\{/.exec(stripComments(source))?.[1])
+    .find((union) => union !== undefined);
+  return [...(declared ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+}
+
+/** Every literally-named emitted event, and every one `errorEventFor` can name, mapped to the `file:line` of each emit. */
 function literalEmittedEvents(sources: [string, string][]): Map<string, string[]> {
   const found = new Map<string, string[]>();
+  const add = (event: string, site: string) => found.set(event, [...(found.get(event) ?? []), site]);
+  const errorEvents = errorEventsDeclared(sources);
   for (const [file, source] of sources) {
     const clean = stripComments(source);
+    const lineOf = (index: number | undefined) => clean.slice(0, index).split("\n").length;
     for (const pattern of EMIT_PATTERNS) {
       for (const m of clean.matchAll(pattern)) {
         if (m[1] === "`" && m[2].includes("${")) continue;
-        const line = clean.slice(0, m.index).split("\n").length;
-        found.set(m[2], [...(found.get(m[2]) ?? []), `${file}:${line}`]);
+        add(m[2], `${file}:${lineOf(m.index)}`);
       }
+    }
+    for (const m of clean.matchAll(/\.emit\(\s*errorEventFor\(/g)) {
+      for (const event of errorEvents) add(event, `${file}:${lineOf(m.index)}`);
     }
   }
   return found;
@@ -320,12 +333,14 @@ test("the outbound scanner reads every emit shape the server uses", () => {
         "replaced.emit(`game:e`, {});",
         'emitToUser(friend.id, "game:f", {});',
         "socket.emit(`game:${x}`, {});",
+        'function errorEventFor(e: string): "game:g" | "room:g" {}',
+        "socket.emit(errorEventFor(event), notice);",
       ].join("\n"),
     ],
   ]);
   assert.deepEqual(
     [...shapes.keys()].sort(),
-    ["game:a", "game:b", "game:c", "game:d", "game:e", "game:f"]
+    ["game:a", "game:b", "game:c", "game:d", "game:e", "game:f", "game:g", "room:g"]
   );
   assert.deepEqual(shapes.get("game:d"), ["example.ts:4"]);
 });
@@ -352,6 +367,20 @@ test("the computed-name scanner catches a constant event name", () => {
     computedEmitCalls("example.ts", "_io.to(socketId).emit(event, data);"),
     []
   );
+});
+
+test("a refusal is said by onEvent alone; every other *:error emit is a push", () => {
+  const sites = [...literalEmittedEvents(serverSources())]
+    .filter(([event]) => event.endsWith(":error"))
+    .flatMap(([event, where]) => where.map((w) => `${w.replace(/:\d+$/, "")} ${event}`));
+  assert.deepEqual([...new Set(sites)].sort(), [
+    "server/socket/socketPresence.ts socket:error",
+    "server/socket/socketRegistry.ts socket:error",
+    "server/socket/socketSafety.ts friend:error",
+    "server/socket/socketSafety.ts game:error",
+    "server/socket/socketSafety.ts room:error",
+    "server/socket/socketSafety.ts socket:error",
+  ]);
 });
 
 test("a refusal is spelled once, not once per place it can happen", () => {

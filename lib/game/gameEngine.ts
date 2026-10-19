@@ -1199,7 +1199,7 @@ export function targetsFor(playerCount: number): number[] {
   return MATCH_TARGETS.map((t) => Math.round((t * (playerCount - 1)) / 3));
 }
 
-export interface MatchResolution {
+interface MatchResolution {
   /** Match winner(s). Empty when the target merely escalated. */
   winners: string[];
   /** The new target to keep playing to, or null when the match has ended. */
@@ -1209,53 +1209,48 @@ export interface MatchResolution {
 }
 
 /**
- * Points awarded for one round. 4 players: 1st = 3, 2nd = 2, 3rd = 1, last = 0.
- * Generalised to N players as N-1 down to 0.
- *
- * `finishingOrder` is the finishing order (GameState.finishingOrder), best first. Players
- * absent from it score 0 and are not present in the result.
+ * Points for finishing at 0-based `finishIndex` of `playerCount` seats: N−1 for the first, down to 0
+ * (docs/GAME-RULES.md §12).
  */
-export function scoreRound(
+export function placementPoints(finishIndex: number, playerCount: number): number {
+  return Math.max(playerCount - 1 - finishIndex, 0);
+}
+
+/** Points for one round, by id; players absent from `finishingOrder` are absent from the result. */
+function scoreRound(
   finishingOrder: string[],
   playerCount: number
 ): Record<string, number> {
   const scores: Record<string, number> = {};
-  for (let i = 0; i < finishingOrder.length; i++) {
-    scores[finishingOrder[i]] = Math.max(playerCount - 1 - i, 0);
-  }
+  finishingOrder.forEach((id, i) => {
+    scores[id] = placementPoints(i, playerCount);
+  });
   return scores;
 }
 
-/** Adds a round's points onto the running totals. Returns a new object. */
-export function addPlacementPoints(
+function addPlacementPoints(
   cumulative: Record<string, number>,
-  placementPoints: Record<string, number>
+  points: Record<string, number>
 ): Record<string, number> {
   const merged: Record<string, number> = { ...cumulative };
-  for (const [id, points] of Object.entries(placementPoints)) {
-    merged[id] = (merged[id] ?? 0) + points;
+  for (const [id, earned] of Object.entries(points)) {
+    merged[id] = (merged[id] ?? 0) + earned;
   }
   return merged;
 }
 
-/** The target that follows `target`, or null when `target` is the last one. */
-export function nextMatchTarget(target: number, playerCount = 4): number | null {
+function nextMatchTarget(target: number, playerCount: number): number | null {
   return targetsFor(playerCount).find((t) => t > target) ?? null;
 }
 
 /**
- * Decides the state of the match after a round has been scored.
- *
- * - Nobody at the target yet          → null (keep playing to the same target)
- * - Exactly one player at the target  → { winners: [id], newTarget: null }
- * - Two or more at the target         → escalate: { winners: [], newTarget }
- * - One player alone at the final target → an ordinary win
- * - Two or more sharing the top score  → { winners: [tied ids], isDraw: true }
+ * Nobody at the target → null; one → they win; several → the target escalates, or at the final
+ * rung the top score wins, shared top scores being a draw.
  */
-export function resolveMatch(
+function resolveMatch(
   cumulative: Record<string, number>,
   target: number,
-  playerCount = 4
+  playerCount: number
 ): MatchResolution | null {
   const reached = Object.entries(cumulative)
     .filter(([, points]) => points >= target)
@@ -1276,13 +1271,7 @@ export function resolveMatch(
   return { winners, newTarget: null, isDraw: winners.length > 1 };
 }
 
-/**
- * Sums each partner's cumulative points onto their team.
- *
- * `teamOfKey` maps a scoring key (a userId) to its team id. Keys absent from
- * it are ignored entirely — that is how vacated/bot seats stay out of a team
- * total, mirroring `FoldRoundInput.accumulates` on the per-round path.
- */
+/** Sums each key's points onto its team. Keys absent from `teamOfKey` count for nobody. */
 export function aggregateTeamScores(
   cumulative: Record<string, number>,
   teamOfKey: Record<string, string>
@@ -1295,25 +1284,19 @@ export function aggregateTeamScores(
 }
 
 /**
- * Teams-mode match resolution. GAME-RULES.md §11: the partners' placement points are
- * **summed** and the team races to the target — never decided per seat.
- * Escalation and the draw rule apply to team totals, and winners expand back to
- * every member key so both partners are reported.
+ * GAME-RULES.md §11: the team races on its summed points; winners expand back to every member key
+ * that may be named.
  */
-export function resolveTeamMatch(
+function resolveTeamMatch(
   cumulative: Record<string, number>,
   teamOfKey: Record<string, string>,
   target: number,
-  playerCount = 4,
-  /** Keys that may be named among the winners; a departed partner's points
-   *  still count for the team (docs/GAME-RULES.md § Decisions) but the seat is never
-   *  crowned. */
-  nameable: (key: string) => boolean = () => true
+  playerCount: number,
+  nameable: (key: string) => boolean
 ): MatchResolution | null {
-  const totals = aggregateTeamScores(cumulative, teamOfKey);
-  // The ladder is the seated table's, not the two teams' — a team races to the
-  // four-seat target on the six points a four-seat round pays out.
-  const resolution = resolveMatch(totals, target, playerCount);
+  // The ladder is the seated table's, not the two teams': a team races to the four-seat target on
+  // the six points a four-seat round pays out.
+  const resolution = resolveMatch(aggregateTeamScores(cumulative, teamOfKey), target, playerCount);
   if (!resolution) return null;
 
   const winningTeams = new Set(resolution.winners);
@@ -1325,64 +1308,20 @@ export function resolveTeamMatch(
   };
 }
 
-/**
- * Both the live path and the restore path go through here, so they cannot
- * answer "is this match decided?" differently.
- */
-export function resolveMatchFor(args: {
-  gameMode: GameMode;
-  cumulative: Record<string, number>;
-  teamOfKey: Record<string, string>;
-  target: number;
-  playerCount: number;
-  nameable?: (key: string) => boolean;
-}): MatchResolution | null {
-  const { gameMode, cumulative, teamOfKey, target, playerCount } = args;
-  return gameMode === "teams" && Object.keys(teamOfKey).length > 0
-    ? resolveTeamMatch(cumulative, teamOfKey, target, playerCount, args.nameable)
-    : resolveMatch(cumulative, target, playerCount);
-}
-
-export interface FoldRoundInput {
-  /** The round's finishing order, best first, in engine player ids. */
-  finishingOrder: string[];
-  playerCount: number;
-  length: MatchLength;
-  gameMode: GameMode;
-  target: number;
-  cumulative: Record<string, number>;
-  /**
-   * The key an engine player id scores under. Offline that is the id itself;
-   * on the server it is the seated userId, or the `bot:<seat>` sentinel for a
-   * seat its human left. null drops the id — it belongs to no seat at all.
-   */
-  keyOf: (engineId: string) => string | null;
-  /**
-   * Whether a key's points join the running match total. Defaults to all of
-   * them.
-   */
-  accumulates?: (key: string) => boolean;
-  /**
-   * Whether a key may cross the target or be named a winner — of a round in
-   * `single` length, or of the match in `match` length. Defaults to
-   * `accumulates`. The server splits the two: a vacated seat's points join
-   * the running total (docs/GAME-RULES.md § Decisions, the disconnect policy) so the
-   * standings sum to the rounds played, but the seat itself must still never
-   * be crowned — the departed human left nobody behind to claim it.
-   */
-  winEligible?: (key: string) => boolean;
-  /** Engine player id -> team id, for every seat that has one. */
-  teamOf?: Record<string, string>;
-  /**
-   * Keys holding points a seat won before its player left. They still count
-   * for that player's team (docs/GAME-RULES.md § Decisions) and can never be named a
-   * winner — the person behind them is gone. Defaults to none.
-   */
-  frozenKeysOf?: (engineId: string) => string[];
+/** How one seat scores. Offline every seat is its engine id; the server builds these from its roster. */
+export interface SeatScoring {
+  engineId: string;
+  /** What the seat scores under; null: it scores for nobody. */
+  key: string | null;
+  team?: "A" | "B";
+  /** May cross the target alone, or be named a winner. */
+  crownable: boolean;
+  /** A departed player's row: counts for the seat's team, never crownable. */
+  frozenKey?: string;
 }
 
 export interface FoldRoundResult {
-  /** What the round paid, by scoring key. Non-accumulating keys included. */
+  /** What the round paid, by scoring key. */
   roundByKey: Record<string, number>;
   cumulative: Record<string, number>;
   /** What to play to next — escalated if this round tied at the old target. */
@@ -1393,56 +1332,53 @@ export interface FoldRoundResult {
 }
 
 /**
- * Folds a finished round into its match: awards the placement points, then
- * either escalates the target, ends the match, or leaves it running.
+ * Folds a finished round into its match: awards the placement points, then escalates the target,
+ * ends the match, or leaves it running. A `single` match ends here with no target involved — its
+ * winner is whoever took the round, or in teams the team with more points, a tie being a draw
+ * (docs/GAME-RULES.md §11, § Decisions).
  *
- * A single-round match ends here by definition, with no target involved — its
- * winner is whoever took the round, or in teams the team with more points, a
- * 3-3 being a draw (docs/GAME-RULES.md §11, § Decisions).
- *
- * Keyed by an opaque string so offline and the server share one progression:
- * offline scores by engine player id, the server by userId.
+ * Every key accumulates. Only a key some seat lists as its crownable `key` may cross the target or be
+ * named: frozen rows, a vacated `bot:<seat>` and a row nobody sits behind any more never are — the
+ * disconnect policy of docs/GAME-RULES.md § Decisions.
  */
-export function foldRoundIntoMatch(input: FoldRoundInput): FoldRoundResult {
-  const { finishingOrder, playerCount, length, gameMode, target, keyOf } = input;
-  const accumulates = input.accumulates ?? (() => true);
-  const winEligible = input.winEligible ?? accumulates;
-  const teamOf = input.teamOf ?? {};
+export function foldRound(
+  round: { finishingOrder: string[]; playerCount: number; gameMode: GameMode; length: MatchLength },
+  ledger: { cumulative: Record<string, number>; target: number },
+  seats: readonly SeatScoring[]
+): FoldRoundResult {
+  const { finishingOrder, playerCount, gameMode, length } = round;
+  const { target } = ledger;
+  const seatOf = new Map(seats.map((s) => [s.engineId, s]));
+  const keyOf = (engineId: string) => seatOf.get(engineId)?.key ?? null;
+  const crownable = new Set(
+    seats.flatMap((s) => (s.crownable && s.key !== null ? [s.key] : []))
+  );
 
   const roundByKey: Record<string, number> = {};
   for (const [engineId, points] of Object.entries(scoreRound(finishingOrder, playerCount))) {
     const key = keyOf(engineId);
-    if (key === null) continue;
-    roundByKey[key] = points;
+    if (key !== null) roundByKey[key] = points;
   }
+  const cumulative = addPlacementPoints(ledger.cumulative, roundByKey);
 
-  const scorable: Record<string, number> = {};
-  for (const [key, points] of Object.entries(roundByKey)) {
-    if (accumulates(key)) scorable[key] = points;
-  }
-  const cumulative = addPlacementPoints(input.cumulative, scorable);
-
-  // Every key with a team, a departed partner's frozen row included: the team
-  // keeps the points they won (docs/GAME-RULES.md § Decisions). Who may be *named* is
-  // `nameable` below, and never a key nobody is sitting behind.
-  const frozenKeysOf = input.frozenKeysOf ?? (() => []);
-  const frozen = new Set<string>();
+  const teamOf: Record<string, string> = {};
   const teamOfKey: Record<string, string> = {};
-  for (const [engineId, team] of Object.entries(teamOf)) {
-    const key = keyOf(engineId);
-    if (key !== null) teamOfKey[key] = team;
-    for (const frozenKey of frozenKeysOf(engineId)) {
-      teamOfKey[frozenKey] = team;
-      frozen.add(frozenKey);
+  const frozen = new Set<string>();
+  for (const s of seats) {
+    if (s.team === undefined) continue;
+    teamOf[s.engineId] = s.team;
+    if (s.key !== null) teamOfKey[s.key] = s.team;
+    if (s.frozenKey !== undefined) {
+      teamOfKey[s.frozenKey] = s.team;
+      frozen.add(s.frozenKey);
     }
   }
-  const nameable = (key: string) => winEligible(key) && !frozen.has(key);
+  const nameable = (key: string) => crownable.has(key) && !frozen.has(key);
+  const teams = gameMode === "teams" && Object.keys(teamOfKey).length > 0;
 
   if (length === "single") {
     const championId = finishingOrder[0];
     if (gameMode === "teams" && championId !== undefined && teamOf[championId] !== undefined) {
-      // A round is taken by a team (docs/GAME-RULES.md §11), so a vacated seat's
-      // partner is named and the seat itself never is.
       const teamPoints = aggregateTeamScores(scoreRound(finishingOrder, playerCount), teamOf);
       const best = Math.max(...Object.values(teamPoints));
       const topTeams = new Set(Object.keys(teamPoints).filter((team) => teamPoints[team] === best));
@@ -1451,12 +1387,9 @@ export function foldRoundIntoMatch(input: FoldRoundInput): FoldRoundResult {
         .map(([key]) => key);
       return { roundByKey, cumulative, target, over: true, winners, isDraw: topTeams.size > 1 };
     }
-    // The best-placed seat someone is still sitting in. The top one may have
-    // been walked out of, and `vacateSeat` keeps the departed player's name —
-    // announcing it credits the match to the person who left.
-    const championKey = finishingOrder
-      .map(keyOf)
-      .find((key) => key !== null && winEligible(key));
+    // The best-placed seat someone is still sitting in: `vacateSeat` keeps the departed player's
+    // name, so announcing the top seat could credit the person who left.
+    const championKey = finishingOrder.map(keyOf).find((key) => key !== null && crownable.has(key));
     return {
       roundByKey,
       cumulative,
@@ -1467,26 +1400,13 @@ export function foldRoundIntoMatch(input: FoldRoundInput): FoldRoundResult {
     };
   }
 
-  // Winner/target-crossing is decided on the win-eligible subset only — a
-  // vacated seat's points still land in `cumulative` above (so the standings
-  // sum to the rounds played), but they must never let it cross the target or
-  // escalate the match on its own.
-  const winEligibleCumulative: Record<string, number> = {};
+  const crownableCumulative: Record<string, number> = {};
   for (const [key, points] of Object.entries(cumulative)) {
-    if (winEligible(key)) winEligibleCumulative[key] = points;
+    if (crownable.has(key)) crownableCumulative[key] = points;
   }
-
-  // A team races on both partners' points, one of whom may have walked out;
-  // a single seat races on its own, and a vacated one must not cross alone.
-  const teams = gameMode === "teams" && Object.keys(teamOfKey).length > 0;
-  const resolution = resolveMatchFor({
-    gameMode,
-    cumulative: teams ? cumulative : winEligibleCumulative,
-    teamOfKey,
-    target,
-    playerCount,
-    nameable,
-  });
+  const resolution = teams
+    ? resolveTeamMatch(cumulative, teamOfKey, target, playerCount, nameable)
+    : resolveMatch(crownableCumulative, target, playerCount);
   if (!resolution) {
     return { roundByKey, cumulative, target, over: false, winners: [], isDraw: false };
   }
@@ -1508,6 +1428,32 @@ export function foldRoundIntoMatch(input: FoldRoundInput): FoldRoundResult {
     winners: resolution.winners,
     isDraw: resolution.isDraw,
   };
+}
+
+/**
+ * Ends a round nobody is left to play: `winnerSeat` takes it, and every seat still holding cards is
+ * placed behind them — closest to finishing first, seat order as a stable tiebreak. Every seat must
+ * reach `finishingOrder`: the scoreboard awards from it and the stats writer reads it. Seats that
+ * already emptied their hand keep the position they earned.
+ */
+export function concedeRound(state: GameState, winnerSeat?: number): GameState {
+  const players = state.players.map((p) => ({ ...p }));
+  const finishingOrder = [...state.finishingOrder];
+  const place = (seat: number) => {
+    const player = players[seat];
+    if (!player || player.finishPosition !== undefined) return;
+    player.finishPosition = finishingOrder.length + 1;
+    finishingOrder.push(player.id);
+  };
+
+  if (winnerSeat !== undefined) place(winnerSeat);
+  players
+    .map((player, seat) => ({ player, seat }))
+    .filter(({ player }) => player.finishPosition === undefined)
+    .sort((a, b) => a.player.hand.length - b.player.hand.length || a.seat - b.seat)
+    .forEach(({ seat }) => place(seat));
+
+  return { ...state, players, finishingOrder, roundOver: true };
 }
 
 // ─── Match length ─────────────────────────────────────────────────────────────

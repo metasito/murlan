@@ -6,7 +6,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
-import { housekeeping, sweep } from "../workspace.mjs";
+import { housekeeping, sweep, workspacePort, worktreeOf } from "../workspace.mjs";
+import { park } from "../park.mjs";
+import { fakeTracker } from "../tracker.mjs";
 import { checkoutRoot, reap as realReap } from "../reap.mjs";
 
 // Named for the shape rather than the case: a test file joining the install's literal name trips
@@ -542,5 +544,105 @@ describe("importing the module", () => {
   test("never shells out to git or gh", () => {
     const { shelledOutTo } = importUnderShellGuard(new URL("../workspace.mjs", import.meta.url).href);
     assert.equal(shelledOutTo, null);
+  });
+});
+
+describe("workspacePort's disk, under its root", () => {
+  const port = () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "ws-port-"));
+    roots.push(root);
+    return { root, ws: workspacePort({ root, git: () => "", events: {} as never }) };
+  };
+
+  test("a park request names one ticket, and clearing it leaves the file gone", () => {
+    const { root, ws } = port();
+    assert.equal(ws.parkAsked(42), false);
+    fs.writeFileSync(path.join(root, ".loop-park"), "42\n");
+    assert.deepEqual([ws.parkAsked(42), ws.parkAsked(41)], [true, false]);
+    ws.clearParkAsk();
+    assert.equal(fs.existsSync(path.join(root, ".loop-park")), false);
+  });
+
+  // The log a park posts is on a public issue and in the ledger: the repo's path, never this machine's.
+  test("a CI log is offered only when it is on disk, by its path in the repo, and the park note posts that", () => {
+    const { root, ws } = port();
+    assert.equal(ws.ciLog(42), null);
+    fs.mkdirSync(path.join(root, ".loop-logs"));
+    fs.writeFileSync(path.join(root, ".loop-logs", "ci-42.log"), "red");
+    const log = ws.ciLog(42);
+    assert.equal(log, path.join(".loop-logs", "ci-42.log"));
+    let body = "";
+    park(42, { phase: "E", why: "CI is red", log: log!, cwd: null, branch: "agent/42-x", dirty: false, run: () => "", tracker: fakeTracker(), write: (_file: string, text: string) => void (body = text) });
+    assert.match(body, /- log: `\.loop-logs[\\/]ci-42\.log`/);
+    assert.ok(!body.includes(root), body);
+  });
+
+  // The supervisor's cwd is ROOT only because its CLI says so; a port given a root reads that root.
+  test("every member reads its root, not the process's cwd", async () => {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ws-root-")));
+    roots.push(root);
+    const at = (...p: string[]) => path.join(root, ...p);
+    const gitIn = (dir: string) => (args: string[]) =>
+      execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    const git = gitIn(root);
+    git(["init", "-q", "-b", "rooted-here"]);
+    fs.writeFileSync(at(".gitignore"), ".worktrees/\n.loop-logs/\n");
+    git(["add", ".gitignore"]);
+    git(["commit", "-q", "-m", "base"]);
+    // A clone of the root, to fast-forward from it.
+    git(["clone", "-q", root, at(".worktrees", "agent-8")]);
+    git(["commit", "-q", "--allow-empty", "-m", "moved"]);
+    fs.writeFileSync(at("stray.txt"), "x");
+    fs.mkdirSync(at(".loop-logs"));
+    fs.writeFileSync(at(".loop-logs", "ci-9.log"), "red");
+    fs.writeFileSync(at(".loop-stop"), "");
+    fs.writeFileSync(at(".loop-park"), "9\n");
+    assert.notEqual(path.resolve(process.cwd()), root);
+
+    const said: string[] = [];
+    const housekept: { pinned: number | null; top: string }[] = [];
+    const events = { log: (m: string) => said.push(m), step: () => {} };
+    const ws = workspacePort({
+      root,
+      git,
+      events,
+      housekeep: async ({ pinned, git: g }: { pinned: number | null; git: (args: string[]) => string }) => {
+        housekept.push({ pinned, top: g(["rev-parse", "--show-toplevel"]).trim() });
+        return { rows: [], verdict: "ok" };
+      },
+    } as never);
+    assert.equal(ws.derive().branch, "rooted-here", "derive");
+    assert.equal(ws.standing(), null, "standing");
+    // Only now a linked worktree to remove: a live agent worktree is a run, which derive() reads the tracker for.
+    git(["worktree", "add", "-q", ".worktrees/agent-9", "-b", "agent/9-x"]);
+    assert.match(ws.sharedCheckoutDirty(), /stray\.txt/, "sharedCheckoutDirty");
+    assert.equal(ws.ciLog(9), path.join(".loop-logs", "ci-9.log"), "ciLog");
+    assert.equal(ws.stopFile(), true, "stopFile");
+    assert.deepEqual([ws.parkAsked(9), ws.parkAsked(8)], [true, false], "parkAsked");
+    ws.clearParkAsk();
+    assert.equal(fs.existsSync(at(".loop-park")), false, "clearParkAsk");
+    await ws.housekeeping(5);
+    assert.deepEqual(housekept, [{ pinned: 5, top: root }], "housekeeping");
+    ws.refreshWorktree(".worktrees/agent-8", "rooted-here");
+    assert.equal(gitIn(at(".worktrees", "agent-8"))(["rev-parse", "HEAD"]), git(["rev-parse", "HEAD"]), "refreshWorktree");
+    ws.remove(".worktrees/agent-9", 9);
+    assert.deepEqual(said, [], "remove reported a failure");
+    assert.equal(fs.existsSync(at(".worktrees", "agent-9")), false, "remove");
+    assert.equal(git(["branch", "--list", "agent/9-x"]).trim(), "", "remove deletes the landed branch in the root");
+
+    // standing() throwing is the one way to reach worktreeOf's fallback: the kept directory, under the root.
+    fs.mkdirSync(at(".worktrees", "agent-7"));
+    const broken = workspacePort({ root, git, events, read: () => { throw new Error("git is down"); } } as never);
+    assert.deepEqual(broken.worktreeOf(7), { cwd: at(".worktrees", "agent-7"), branch: null, dirty: false, phase: null }, "worktreeOf");
+  });
+
+  test("a standing() that throws falls back to the worktree left on disk, and to none", () => {
+    const kept = (n: number) => (n === 42 ? "/w/agent-42" : null);
+    const throws = () => {
+      throw new Error("git is down");
+    };
+    assert.deepEqual(worktreeOf(throws, 42, kept), { cwd: "/w/agent-42", branch: null, dirty: false, phase: null });
+    assert.deepEqual(worktreeOf(throws, 41, kept), { cwd: null, branch: null, dirty: false, phase: null });
+    assert.deepEqual(worktreeOf(() => ({ ticket: 42, cwd: "w", branch: "b", dirty: true }), 42), { cwd: "w", branch: "b", dirty: true, phase: null });
   });
 });

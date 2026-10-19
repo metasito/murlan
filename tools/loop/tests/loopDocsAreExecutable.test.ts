@@ -3,7 +3,8 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { readLine } from "../loop-stream.mjs";
-import { allowedTools, queueLoopArgs, CHECK_BASH_TIMEOUT_MS, BASH_DEFAULT_TIMEOUT_MS } from "../queue-loop.mjs";
+import { allowedTools, queueLoopArgs } from "../loop-session.mjs";
+import { CHECK_BASH_TIMEOUT_MS, BASH_DEFAULT_TIMEOUT_MS } from "../limits.mjs";
 import { ciRedBody } from "../settle.mjs";
 import { ciLogPath } from "../loop-logs.mjs";
 import { fakeTracker, runCli } from "../tracker.mjs";
@@ -33,8 +34,8 @@ describe("the loop's instructions name only things that exist", () => {
   });
 
   // `ciVerdict.ts` and `land.ts` used to be named here as `npx tsx` argument strings, which a scan
-  // like the one above was the only way to check. They are static imports of queue-loop.mjs now, so
-  // a missing one is a load error before any test in this file runs — which is why there is no scan
+  // like the one above was the only way to check. They are imports of the loop's modules now, so
+  // a missing one is a load error before any test of those modules runs — which is why there is no scan
   // for them.
 
   test("every tracker.mjs verb a recipe names is one its CLI runs", () => {
@@ -293,12 +294,6 @@ describe("every subagent brief comes from brief.mjs", () => {
   test("phase B never splits a ticket into new ones", () => {
     const b = queue().split("## B — Scope")[1]?.split("## C — Build")[0] ?? "";
     assert.doesNotMatch(b, /gh issue create|tracker\.mjs create|split/);
-  });
-});
-
-describe("the supervisor tears the worktree down", () => {
-  test("with the script that detaches the junction first", () => {
-    assert.match(read("tools/loop/queue-loop.mjs"), /"worktrees:remove", "--"/);
   });
 });
 

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import fs, { writeFileSync } from "node:fs";
+import path from "node:path";
 import {
   activity,
   ahead,
@@ -17,18 +18,8 @@ import {
   theme,
   UNNAMED,
 } from "./loop-render.mjs";
+import { PARK_FILE, parkAsked, ROOT, STOP_FILE } from "./paths.mjs";
 
-export const STOP_FILE = ".loop-stop";
-export const PARK_FILE = ".loop-park";
-
-export const parkAsked = (number, read = (f) => fs.readFileSync(f, "utf8")) => {
-  if (number == null) return false;
-  try {
-    return Number(read(PARK_FILE).trim()) === number;
-  } catch {
-    return false;
-  }
-};
 
 const ERASE = "\r\u001B[2K";
 const HIDE = "\u001B[?25l";
@@ -71,7 +62,10 @@ const FEED = 200;
  * At anything that is not a terminal every escape is suppressed and nothing is redrawn: the output
  * is the append-only stream `loop-render.mjs` produces, which is what `.loop-logs/run-*.md` wants.
  */
-export function ticker(out = process.stdout, err = process.stderr, reveal = openExternally, copy = toClipboard) {
+export function ticker(out = process.stdout, err = process.stderr, reveal = openExternally, copy = toClipboard, root = ROOT) {
+  const stopFile = path.join(root, STOP_FILE);
+  const parkFile = path.join(root, PARK_FILE);
+  const parkedHere = (number) => parkAsked(number, () => fs.readFileSync(parkFile, "utf8"));
   // A window too narrow to lay a row out in is a window the block cannot be drawn in: every row
   // would wrap, and a wrapped row is the cursor arithmetic wrong for the rest of the run. The
   // append-only stream is what such a terminal gets, the same as a pipe — and it can become one
@@ -291,12 +285,12 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
    */
   const askPark = (wanted) => {
     try {
-      if (wanted) writeFileSync(PARK_FILE, `${ctx.number}\n`);
-      else fs.rmSync(PARK_FILE, { force: true });
+      if (wanted) writeFileSync(parkFile, `${ctx.number}\n`);
+      else fs.rmSync(parkFile, { force: true });
     } catch (e) {
       api.notice("park", `could not ${wanted ? "write" : "remove"} ${PARK_FILE} — ${e}`);
     }
-    view.parking = parkAsked(ctx.number) ? "asked" : false;
+    view.parking = parkedHere(ctx.number) ? "asked" : false;
   };
 
   /**
@@ -307,12 +301,12 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
    */
   const askStop = (wanted) => {
     try {
-      if (wanted) writeFileSync(STOP_FILE, "asked for from the board\n");
-      else fs.rmSync(STOP_FILE, { force: true });
+      if (wanted) writeFileSync(stopFile, "asked for from the board\n");
+      else fs.rmSync(stopFile, { force: true });
       view.stopping = wanted;
     } catch (e) {
       api.notice("stop", `could not ${wanted ? "write" : "remove"} ${STOP_FILE} — ${e}`);
-      view.stopping = fs.existsSync(STOP_FILE);
+      view.stopping = fs.existsSync(stopFile);
     }
   };
 
@@ -376,8 +370,8 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
       // A ticket's pull request outlives the session that opened it: the next phase is the same ticket.
       const pr = rest.number != null && rest.number === ctx.number ? ctx.pr : null;
       ctx = { number: null, url: null, log: null, branch: null, session: null, pr, since: spentMs == null ? null : Date.now() - spentMs, ...rest };
-      view.stopping = fs.existsSync(STOP_FILE);
-      view.parking = parkAsked(ctx.number) ? "asked" : false;
+      view.stopping = fs.existsSync(stopFile);
+      view.parking = parkedHere(ctx.number) ? "asked" : false;
     },
     /** What outlives every ticket: the per-step medians, and the run's recap as a render. */
     board(fields) {

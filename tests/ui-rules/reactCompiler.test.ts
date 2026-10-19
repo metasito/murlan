@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { ADOPTED, SHIPPED } from "../helpers/adoptedHookRules.ts";
 import { directives } from "../helpers/hookSuppression.ts";
+import { runBin } from "../../scripts/lib/proc.mjs";
 import { presetRequire, reactCompiler, reactCompilerOptions } from "../../scripts/reactCompilerOptions.mjs";
 import { scanSources, sourcesUnder } from "../helpers/sourceScan.ts";
 
@@ -43,11 +44,8 @@ const { transformSync } = require("@babel/core");
  * about. This counts the dependency graph itself instead.
  */
 function occurrencesInTree(name: string): number {
-  // shell: true because npm ships as npm.cmd on Windows, which spawnSync
-  // refuses to exec directly. Every argument here is a static literal, never
-  // interpolated, so there is nothing for the shell to misinterpret.
   const tree = JSON.parse(
-    execFileSync("npm", ["ls", name, "--all", "--json"], { cwd: sharedCheckout, encoding: "utf8", shell: true })
+    runBin("npm", ["ls", name, "--all", "--json"], { cwd: sharedCheckout, encoding: "utf8" }) as string
   ) as { dependencies?: Record<string, { dependencies?: unknown }> };
   let count = 0;
   const walk = (deps: Record<string, { dependencies?: unknown }> | undefined) => {

@@ -5,6 +5,7 @@ import os from "node:os";
 import { writeFileSync } from "node:fs";
 import { localGlobalTimeoutMs } from "../../tools/ci/e2eGlobalTimeout.mjs";
 import { CHECK_BASH_TIMEOUT_MS } from "../../tools/loop/limits.mjs";
+import { E2E_VOTE_DEADLINE_MS } from "./helpers/voteDeadline";
 
 // This is the one place that knows both `baseURL` and the `webServer` command, so it is the one
 // place that can hand a single port to the server, the health check and every spec at once.
@@ -111,6 +112,7 @@ export default defineConfig({
       // outruns it gets auto-passed mid-selection.
       MURLAN_AFK_TIMEOUT_MS: "30000",
       MURLAN_BOT_MOVE_DELAY_MS: "200",
+      MURLAN_VOTE_DEADLINE_MS: String(E2E_VOTE_DEADLINE_MS),
     },
     stdout: "pipe",
     stderr: "pipe",

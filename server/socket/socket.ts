@@ -35,16 +35,6 @@ import { installTableHandlers, resumeOrphanedTables } from "../game/tableHandler
 import { reopenOwnership } from "../game/gameOwnership.ts";
 import { registerStopSpectating } from "./seating.ts";
 
-// The account-facing surface lives in socketRegistry.ts, apart from this file
-// so the presence family can reach it without an import cycle. Re-exported
-// because `server/http/routes.ts` and the timer-containment test ask for it here.
-export {
-  evictUser,
-  revokeAccountSockets,
-  onlineUserIds,
-  __testables,
-} from "./socketRegistry.ts";
-
 /**
  * Handshakes one account may complete per minute. Socket.io answers
  * `/socket.io/*` before Express sees it, so no express-rate-limit instance

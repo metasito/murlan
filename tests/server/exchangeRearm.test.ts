@@ -2,13 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SocketServer } from "../../server/socket/socketTypes.ts";
 import { armTurn } from "../../server/game/gameTurn.ts";
-import { persistence } from "../../server/game/gamePersistence.ts";
+import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
 import { botMoveDelayMs, clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { createDeck, initializeRematch, type GameState } from "../../lib/game/gameEngine.ts";
-import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
-import { LEG, exchangeGiveDelayMs, legPose, legShows, restPoint } from "../../lib/game/exchangeTimeline.ts";
-import { dealEndMs } from "../../lib/game/dealTimeline.ts";
+import { LEG, exchangeAnnounceMs, exchangeGiveDelayMs, legPose, legShows, restPoint } from "../../lib/timeline/exchangeTimeline.ts";
+import { dealEndMs } from "../../lib/timeline/dealTimeline.ts";
 import { Motion } from "../../lib/tokens.ts";
 
 const ROOM = "exchange-rearm-room";
@@ -52,7 +51,7 @@ function exchangeTable(loserHoldsBothJokers = false): OnlineGameState {
 }
 
 test("a bot winner gives no earlier than the receive has landed and been read, and the next seat waits out the ceremony", (t) => {
-  t.mock.method(persistence, "writeActiveGame", async () => {});
+  t.mock.method(activeGameStore, "write", async () => {});
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const game = exchangeTable();
   try {
@@ -80,7 +79,7 @@ test("a bot winner gives no earlier than the receive has landed and been read, a
 });
 
 test("a bot opening a both-Jokers round waits out the deal and the ceremony it opens with", (t) => {
-  t.mock.method(persistence, "writeActiveGame", async () => {});
+  t.mock.method(activeGameStore, "write", async () => {});
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const game = exchangeTable(true);
   try {

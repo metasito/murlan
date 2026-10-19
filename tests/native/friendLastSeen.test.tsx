@@ -33,7 +33,7 @@ jest.mock('@/lib/socket', () => ({
 }));
 
 jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, logout: async () => {} }),
+  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
 }));
 
 const { SocketProvider } = require('@/context/SocketContext') as typeof import('@/context/SocketContext');

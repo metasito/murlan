@@ -11,7 +11,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { GameTable } from '@/components/GameTable';
 import type { ExchangeHold } from '@/lib/game/sharedGameFlow';
-import { LEG } from '@/lib/game/exchangeTimeline';
+import { LEG } from '@/lib/timeline/exchangeTimeline';
 import { Motion } from '@/lib/tokens';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
 

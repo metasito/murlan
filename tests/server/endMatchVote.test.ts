@@ -9,14 +9,14 @@ import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
 import { installTableHandlers, applyOrForward, rehydrateGame } from "../../server/game/tableHandlers.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
-import { persistence } from "../../server/game/gamePersistence.ts";
-import { db } from "../../server/store/db.ts";
+import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { GameEndMatchVoteSchema } from "../../shared/socketSchemas.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import type { RoundOverPayload } from "../../lib/game/matchState.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
+import { refuse } from "../../server/shared/refusal.ts";
 
 const ROOM = "end-match-vote-room";
 
@@ -251,7 +251,7 @@ describe("a match ended by the vote is never rematched (docs/GAME-RULES.md § De
         roomId: ROOM,
         userId: "alice",
       });
-      assert.deepEqual(outcome, { ok: false, code: "REMATCH_DECLINED" });
+      assert.deepEqual(outcome, refuse("REMATCH_DECLINED"));
       assert.equal(game.gameState.exchangePhase, undefined, "nothing was dealt");
       assert.deepEqual(game.gameState.finishingOrder, ["p0", "p2"]);
     } finally {
@@ -262,11 +262,7 @@ describe("a match ended by the vote is never rematched (docs/GAME-RULES.md § De
 
   test("a restart does not reopen the rematch", async (t) => {
     const { io } = stubIo();
-    let row: unknown;
-    t.mock.method(persistence, "writeActiveGame", async (_roomId: string, envelope: unknown) => {
-      row = envelope;
-    });
-    t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
+    useMemoryTableStores(t);
     const game = baseGame({
       gameState: partlyRanked(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
@@ -284,7 +280,7 @@ describe("a match ended by the vote is never rematched (docs/GAME-RULES.md § De
         roomId: ROOM,
         userId: "alice",
       });
-      assert.deepEqual(outcome, { ok: false, code: "REMATCH_DECLINED" });
+      assert.deepEqual(outcome, refuse("REMATCH_DECLINED"));
     } finally {
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);

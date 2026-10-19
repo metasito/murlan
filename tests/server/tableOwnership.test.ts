@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { ownershipKey } from "../../server/game/gameOwnership.ts";
-import { takeoverMode } from "../../server/game/tableActions.ts";
+import { TAKEOVER } from "../../server/game/tableActions.ts";
 import type { TableActionKind } from "../../server/game/tableActions.ts";
 
 const SERVER_DIR = path.resolve(import.meta.dirname, "..", "..", "server");
@@ -181,7 +181,7 @@ describe("ownershipKey", () => {
   });
 });
 
-describe("takeoverMode", () => {
+describe("TAKEOVER", () => {
   /** Every `kind:` in the union, read from the source so a new one cannot hide. */
   function everyKind(): TableActionKind[] {
     const source = readFileSync(path.join(SERVER_DIR, "game", "tableActions.ts"), "utf8");
@@ -192,16 +192,14 @@ describe("takeoverMode", () => {
   test("every action says what an instance may do with an ownerless room", () => {
     const kinds = everyKind();
     assert.ok(kinds.length >= 12, `expected the whole union, got ${kinds.length}`);
-    for (const kind of kinds) {
-      assert.ok(
-        ["create", "restore", "forward"].includes(takeoverMode(kind)),
-        `${kind} has no takeover mode`
-      );
+    assert.deepEqual(Object.keys(TAKEOVER).sort(), [...kinds].sort());
+    for (const [kind, mode] of Object.entries(TAKEOVER)) {
+      assert.ok(["create", "restore", "forward"].includes(mode), `${kind} has no takeover mode`);
     }
   });
 
   test("only starting a match may bring a table into being", () => {
-    const creating = everyKind().filter((k) => takeoverMode(k) === "create");
+    const creating = Object.entries(TAKEOVER).flatMap(([kind, mode]) => (mode === "create" ? [kind] : []));
     assert.deepEqual(creating, ["startMatch"]);
   });
 
@@ -210,10 +208,10 @@ describe("takeoverMode", () => {
     // had gone is the whole of #570's second half. Reviving a table to hand one
     // seat to a bot is not: that sets the round playing itself with nobody there.
     for (const kind of ["play", "pass", "exchange", "rejoin"] as const) {
-      assert.equal(takeoverMode(kind), "restore", `${kind} must be able to take a table over`);
+      assert.equal(TAKEOVER[kind], "restore", `${kind} must be able to take a table over`);
     }
     for (const kind of ["seatLost", "vacate", "reaction", "spectate"] as const) {
-      assert.equal(takeoverMode(kind), "forward", `${kind} must not revive a stranded round`);
+      assert.equal(TAKEOVER[kind], "forward", `${kind} must not revive a stranded round`);
     }
   });
 });

@@ -8,7 +8,6 @@
 import { basename, dirname } from "node:path";
 import { gh as ghCli, git as gitAt, statusOf } from "./cli.mjs";
 import { ghTracker } from "./tracker.mjs";
-import { fromEnv, testSeams } from "./session-env.mjs";
 
 export const BRANCH = /^agent\/(\d+)-/;
 
@@ -16,8 +15,6 @@ export const WORKTREE_DIR = ".worktrees";
 
 /** A ticket worktree's own directory name, under `WORKTREE_DIR` — never its branch. */
 export const AGENT_DIR = /^agent-\d+$/;
-
-const run = (args, cwd) => gitAt(cwd)(args).trim();
 
 /** The one shape `verdictFor` and `reviewRounds` both look for, so they cannot drift apart. */
 const VERDICT_RE = /^VERDICT:\s*(LAND|HOLD)\b[^\n]*?\b([0-9a-f]{7,40})\b/m;
@@ -88,9 +85,9 @@ const conflictPosted = (comments, sha) =>
   sinceClaim(comments).some((c) => CONFLICT_RE.exec(fenceStripped(c.body).trimStart())?.[1].slice(0, 7) === sha.slice(0, 7));
 
 /** @returns {string|null} */
-function currentBranch(cwd) {
+function currentBranch(cwd, git) {
   try {
-    return run(["rev-parse", "--abbrev-ref", "HEAD"], cwd);
+    return git(cwd).text(["rev-parse", "--abbrev-ref", "HEAD"]);
   } catch {
     return null;
   }
@@ -104,8 +101,8 @@ export function ticketOf(branch) {
 /**
  * @param {string} [cwd]
  */
-export function worktrees(cwd) {
-  const out = run(["worktree", "list", "--porcelain"], cwd);
+export function worktrees(cwd, git = gitAt) {
+  const out = git(cwd).text(["worktree", "list", "--porcelain"]);
   return out.split(/\n\s*\n/).filter(Boolean).map((block) => {
     const dir = /^worktree (.+)$/m.exec(block)?.[1] ?? null;
     const branch = /^branch refs\/heads\/(.+)$/m.exec(block)?.[1] ?? null;
@@ -133,11 +130,11 @@ export function worktrees(cwd) {
  * @returns {{cwd: string, branch: string|null, ticket: number|null, detached: boolean,
  *   ambiguous?: number, worktrees?: string[], phase?: string, why?: string}}
  */
-export function locateRun(cwd, worktree) {
+export function locateRun(cwd, worktree, git = gitAt) {
   // Resolved, not passed through: git reads the process's own directory when given none, so a
   // caller omitting both arguments is answered *about* that directory, and must be told which.
   const at = worktree || cwd || process.cwd();
-  const here = currentBranch(at);
+  const here = currentBranch(at, git);
 
   // Every "nothing is running here" answer, in one place, so no branch can name a different tree.
   const idle = (extra) => ({
@@ -156,7 +153,7 @@ export function locateRun(cwd, worktree) {
   // it be found from a worktree that is not the one the `.worktrees/` hangs off.
   let list = [];
   try {
-    list = worktrees(at).filter((w) => w.dir && basename(dirname(w.dir)) === WORKTREE_DIR);
+    list = worktrees(at, git).filter((w) => w.dir && basename(dirname(w.dir)) === WORKTREE_DIR);
   } catch (err) {
     return idle({ phase: "?", why: `cannot list worktrees (${String(err?.message ?? err).split("\n")[0]})` });
   }
@@ -334,7 +331,7 @@ export function fixHolds(comments) {
 /** The SessionStart hook runs this, so a wedged `gh` must not hold the session. */
 export const CI_BUDGET_MS = 10_000;
 
-const budgeted = (gh = ghCli) => ghTracker((args, opts) => gh(args, { timeout: CI_BUDGET_MS, ...opts }));
+export const budgeted = (gh = ghCli) => ghTracker((args, opts) => gh(args, { timeout: CI_BUDGET_MS, ...opts }));
 
 /**
  * The open issue `parity-nightly.yml` files on a red, as `{number, since}`; null when there is none
@@ -362,18 +359,17 @@ const SETTLE = "G";
 
 const HANDED = /^[A-G]$/;
 
-function under(cwd, head, remote, branch, until, failed) {
+function under(cwd, head, remote, branch, until, failed, git) {
   if (remote === head) return true;
-  const git = (args) =>
-    statusOf(() => gitAt(cwd)(args, { stderr: "ignore", timeout: until - Date.now() }));
-  const ancestor = () => git(["merge-base", "--is-ancestor", head, remote]);
+  const at = (args) => statusOf(() => git(cwd)(args, { stderr: "ignore", timeout: until - Date.now() }));
+  const ancestor = () => at(["merge-base", "--is-ancestor", head, remote]);
   const first = ancestor();
   if (first === 0 || first === 1) return first === 0;
   if (Date.now() >= until) {
     failed.push("git");
     return false;
   }
-  git(["fetch", "--quiet", "origin", branch]);
+  at(["fetch", "--quiet", "origin", branch]);
   return ancestor() === 0;
 }
 
@@ -381,7 +377,7 @@ function under(cwd, head, remote, branch, until, failed) {
  * The pushed head and its pull request, from one listing. A red is the supervisor's `CI-RED` for
  * that head; a head none names is still `runSettle`'s to settle, red or not.
  */
-function readCi(cwd, branch, head, comments, tracker) {
+function readCi(cwd, branch, head, comments, tracker, git) {
   const until = Date.now() + CI_BUDGET_MS;
   const failed = [];
   let open;
@@ -391,95 +387,98 @@ function readCi(cwd, branch, head, comments, tracker) {
     return { pushed: false, pr: null, sha: null, state: "unreadable", step: null };
   }
   if (!open) return { pushed: false, pr: null, sha: null, state: "none", step: null };
-  const pushed = under(cwd, head, open.headRefOid, branch, until, failed);
+  const pushed = under(cwd, head, open.headRefOid, branch, until, failed, git);
   const step = ciRedStep(comments, open.headRefOid);
   const state = failed.length ? "unreadable" : step === undefined ? "settling" : "red";
   return { pushed, pr: open.number, sha: open.headRefOid, state, step: step ?? null };
 }
 
+function landing(commits, comments, head) {
+  const verdict = comments === null ? null : verdictFor(comments, head);
+  return { verdict, land: commits > 0 && verdict?.decision === "LAND" };
+}
+
 /**
- * The `base` seam overrides what the diff is measured against, for the tests' scratch worktrees
- * that have no `origin/main`. It is deliberately not a command-line flag: a documented flag is a
- * mistake the loop can make by reading its own usage text.
+ * Every read the run's phase is judged from, and nothing judged. `comments` is null when the tracker
+ * could not be read; `ci` is read only for a head a LAND covers, and only when asked for, since it
+ * costs `gh` calls on every read and the gate never needs it.
  *
- * The `worktree` seam is the same kind, and the same hazard if it ever became a real flag: pointed
- * at a worktree other than the one about to be pushed, it clears a review that never looked at this
- * branch's head. `testSeams()` returns neither inside a loop session.
+ * `base` is what the diff is measured against, and `worktree` says outright which worktree to read.
+ * Both are test seams, deliberately not command-line flags: pointed at a worktree other than the one
+ * about to be pushed, `worktree` clears a review that never looked at this branch's head.
  *
- * `ci` is opt-in because it costs `gh` calls on every read; the gate never needs it.
- *
- * `handed` is the phase `queue-loop.mjs` spawned this session at; a test passes it, because a test
- * run inside a loop session inherits that session's.
- *
- * @param {{ cwd?: string, base?: string, worktree?: string, ci?: boolean, exec?: typeof ghCli, handed?: string }} [options]
+ * @param {{ cwd?: string, base?: string, worktree?: string, ci?: boolean,
+ *   git?: typeof gitAt, tracker?: ReturnType<typeof ghTracker> }} [options]
  */
-export function derive({
-  cwd = undefined,
-  base = testSeams().base ?? "origin/main",
-  worktree = testSeams().worktree,
-  ci = false,
-  exec = ghCli,
-  handed = fromEnv().phase ?? "",
-} = {}) {
-  const at = locateRun(cwd, worktree);
+export function readRun({ cwd = undefined, base = "origin/main", worktree = undefined, ci = false, git = gitAt, tracker = budgeted() } = {}) {
+  const at = locateRun(cwd, worktree, git);
   if (at.detached && at.ticket) {
     return {
-      onTicket: true,
+      kind: "unknown",
       ticket: at.ticket,
       branch: null,
       cwd: at.cwd,
-      phase: "?",
       why: `#${at.ticket}'s worktree is on a detached HEAD — a rebase or checkout left it without a branch`,
     };
   }
-  if (at.phase === "?") {
-    return { onTicket: false, branch: at.branch, phase: "?", why: at.why, ambiguous: true };
-  }
+  if (at.phase === "?") return { kind: "unknown", ticket: null, branch: at.branch, why: at.why, ambiguous: true };
   if (!at.ticket) {
     const why = at.ambiguous
       ? `${at.ambiguous} live agent/* worktrees under .worktrees/ (${at.worktrees.join(", ")}) — cannot tell which one this run is`
       : at.detached
         ? "HEAD is detached, so there is no branch to read a ticket from"
         : "not on an agent branch";
-    return { onTicket: false, branch: at.branch, phase: "A", why, ambiguous: Boolean(at.ambiguous) };
+    return { kind: "none", branch: at.branch, why, ambiguous: Boolean(at.ambiguous) };
   }
   const { ticket, branch } = at;
-  cwd = at.cwd;
-
-  let head = null;
-  let commits = 0;
-  let changed = [];
-  let dirty = false;
-  let headSubject = "";
+  const read = git(at.cwd);
+  let history;
   try {
-    head = run(["rev-parse", "HEAD"], cwd);
-    headSubject = run(["log", "-1", "--format=%s"], cwd);
-    commits = Number(run(["rev-list", "--count", `${base}..HEAD`], cwd));
-    changed = run(["diff", "--name-only", `${base}...HEAD`], cwd).split("\n").filter(Boolean);
-    dirty = run(["status", "--porcelain"], cwd).length > 0;
+    history = {
+      head: read.text(["rev-parse", "HEAD"]),
+      headSubject: read.text(["log", "-1", "--format=%s"]),
+      commits: Number(read.text(["rev-list", "--count", `${base}..HEAD`])),
+      changed: read.lines(["diff", "--name-only", `${base}...HEAD`]),
+      dirty: read.text(["status", "--porcelain"]).length > 0,
+    };
   } catch {
-    return { onTicket: true, ticket, branch, cwd, phase: "?", why: `cannot read history against ${base}` };
+    return { kind: "unknown", ticket, branch, cwd: at.cwd, why: `cannot read history against ${base}` };
   }
-
-  const tracker = budgeted(exec);
-  let comments = [];
-  let trackerReadable = true;
+  let comments;
   try {
     comments = tracker.comments(ticket);
   } catch {
-    trackerReadable = false;
+    comments = null;
   }
+  const ciRead = ci && landing(history.commits, comments, history.head).land ? readCi(at.cwd, branch, history.head, comments, tracker, git) : null;
+  return { kind: "ticket", ticket, branch, cwd: at.cwd, base, ...history, comments, ci: ciRead };
+}
 
-  const verdict = trackerReadable ? verdictFor(comments, head) : null;
-  const land = commits > 0 && verdict?.decision === "LAND";
-  const ciRead = ci && land ? readCi(cwd, branch, head, comments, tracker) : null;
-  const rebase = Boolean(ciRead?.pushed && ciRead.pr !== null && conflictPosted(comments, head));
+/**
+ * Where the run stands, judged from `readRun`'s facts alone: no I/O, and no throw. `handed` is the
+ * phase `queue-loop.mjs` spawned this session at, which wins over the derived one.
+ *
+ * @param {ReturnType<typeof readRun>} facts
+ * @param {string|null} [handed]
+ */
+export function phaseOf(facts, handed = null) {
+  if (facts.kind === "unknown") {
+    return facts.ticket
+      ? { onTicket: true, ticket: facts.ticket, branch: facts.branch, cwd: facts.cwd, phase: "?", why: facts.why }
+      : { onTicket: false, branch: facts.branch, phase: "?", why: facts.why, ambiguous: true };
+  }
+  if (facts.kind === "none") return { onTicket: false, branch: facts.branch, phase: "A", why: facts.why, ambiguous: facts.ambiguous };
+
+  const { ticket, branch, cwd, base, head, headSubject, commits, changed, dirty, comments, ci: ciRead } = facts;
+  const trackerReadable = comments !== null;
+  const read = comments ?? [];
+  const { verdict, land } = landing(commits, comments, head);
+  const rebase = Boolean(ciRead?.pushed && ciRead.pr !== null && conflictPosted(read, head));
   const fix = !rebase && Boolean(ciRead?.pushed && ciRead.pr !== null && ciRead.state === "red");
   // A claimed worktree that is clean and has no commits has not been worked yet, so it owes its
   // scope pass; an edit in the tree means C has begun.
   const scoping = commits === 0 && !dirty;
-  const wipHead =
-    commits > 0 && !verdict && /^wip\(#\d+\):/.test(headSubject) && !dodCheckFor(comments, head, () => false);
+  const wipHead = commits > 0 && !verdict && /^wip\(#\d+\):/.test(headSubject) && !dodCheckFor(read, head, () => false);
   let phase = scoping ? "B" : commits === 0 || wipHead ? "C" : !verdict ? "D" : land ? "E" : "C";
   let why =
     commits === 0
@@ -510,7 +509,7 @@ export function derive({
     phase = SETTLE;
     why = "pushed, and CI is the supervisor's to settle";
   }
-  if (HANDED.test(handed)) {
+  if (HANDED.test(handed ?? "")) {
     phase = handed;
     why = `${why}; the supervisor handed this session phase ${handed}`;
   }
@@ -527,17 +526,20 @@ export function derive({
     dirty,
     // Null, not 0, when the tracker can't be read: a count nobody could take is not a count of
     // zero rounds, and `loop-gate.mjs` fails closed on the same distinction `verdict` already does.
-    reviewRounds: trackerReadable ? reviewRounds(comments) : null,
-    fixHolds: trackerReadable ? fixHolds(comments) : null,
+    reviewRounds: trackerReadable ? reviewRounds(read) : null,
+    fixHolds: trackerReadable ? fixHolds(read) : null,
     trackerReadable,
     verdict,
-    handoff: trackerReadable ? handoffFor(comments, head) : null,
-    review: trackerReadable ? reviewFor(comments, head) : null,
+    handoff: trackerReadable ? handoffFor(read, head) : null,
+    review: trackerReadable ? reviewFor(read, head) : null,
     ci: ciRead,
     fix,
     rebase,
-    ciRounds: trackerReadable ? ciRedRounds(comments) : null,
+    ciRounds: trackerReadable ? ciRedRounds(read) : null,
     phase,
     why,
   };
 }
+
+/** @param {Parameters<typeof readRun>[0] & { handed?: string|null }} [options] */
+export const derive = (options = {}) => phaseOf(readRun(options), options.handed ?? null);

@@ -30,10 +30,9 @@ jest.mock('@/context/SocketContext', () => ({
   }),
 }));
 
-jest.mock('@/context/NotificationContext', () => ({
-  useNotification: () => ({ showNotification: jest.fn() }),
-  useBannerBottom: () => 0,
-}));
+jest.mock('@/context/NotificationContext', () =>
+  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
+);
 
 import FriendsScreen from '@/app/(online)/friends';
 

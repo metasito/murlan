@@ -12,7 +12,7 @@ jest.mock('@/lib/errorReporting', () => ({
 
 import { GameTable, type ExchangeAnnouncementSlot } from '@/components/GameTable';
 import { reportError } from '@/lib/errorReporting';
-import { GATE_WATCHDOG_MS } from '@/lib/game/gateWatchdog';
+import { GATE_WATCHDOG_MS } from '@/lib/timeline/gateWatchdog';
 import { emptyRankTally, type Card, type GameState, type Player, type Rank, type Suit } from '@/lib/game/gameEngine';
 import type { ExchangeAnnounceData } from '@/lib/game/sharedGameFlow';
 import { en } from '@/locales/en';

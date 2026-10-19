@@ -48,7 +48,7 @@ describe(
       await startGame([alice, bob]);
 
       const { hasActiveGame } = await import("../helpers/liveGame.ts");
-      const { __testables } = await import("../../server/socket/socket.ts");
+      const { __testables } = await import("../../server/socket/socketRegistry.ts");
       assert.equal(
         hasActiveGame(room.roomId),
         true,

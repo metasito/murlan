@@ -43,11 +43,22 @@ export const leftoverPath = ARTEFACTS.leftover.path;
 export const ledgerPath = ARTEFACTS.ledger.path;
 export const supervisorLogPath = ARTEFACTS.supervisor.path;
 
-/** Throws on a failed write: `journaled` in `queue-loop.mjs` is what keeps that out of the loop. */
+/** Throws on a failed write: `journaled` in `loop-board.mjs` is what keeps that out of the loop. */
 export function appendSupervisor(line, dir = DIR) {
   fsNode.mkdirSync(dir, { recursive: true });
   fsNode.appendFileSync(supervisorLogPath(null, dir), line);
 }
+
+/** One of the files above, written whole, its directory made first. */
+export function writeNote(file, body) {
+  fsNode.mkdirSync(path.dirname(file), { recursive: true });
+  fsNode.writeFileSync(file, body);
+}
+
+export const noted = (file) => fsNode.existsSync(file);
+
+/** A ticket's stream log as written so far: every session of the ticket appends to it. */
+export const logOf = (n, dir = DIR) => (fsNode.existsSync(streamLog(n, dir)) ? fsNode.readFileSync(streamLog(n, dir), "utf8") : "");
 
 /**
  * An entry in `.loop-logs/` the pruner may delete once it is old enough: anything but the record,
@@ -240,7 +251,8 @@ export function killedStarts(rows, lastSeen = () => null) {
   return killed;
 }
 
-export const lastWrite = (row) => (fsNode.existsSync(streamLog(row.n)) ? fsNode.statSync(streamLog(row.n)).mtimeMs : null);
+export const lastWriteIn = (dir) => (row) => (fsNode.existsSync(streamLog(row.n, dir)) ? fsNode.statSync(streamLog(row.n, dir)).mtimeMs : null);
+export const lastWrite = lastWriteIn(DIR);
 
 /** A ticket is a row that ended one; a fix round, a handoff or a refusal is a session, not a ticket. */
 const ENDS_TICKET = new Set(["landed", "closed", "parked"]);

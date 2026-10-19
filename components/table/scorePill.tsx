@@ -20,8 +20,8 @@ import {
   roundRowCount,
   roundRowPop,
   type EndingSteps,
-} from "@/lib/game/roundEnding";
-import { MATCH_STEPS, matchActions, matchBoard, matchWinnerBox } from "@/lib/game/matchEnding";
+} from "@/lib/timeline/roundEnding";
+import { MATCH_STEPS, matchActions, matchBoard, matchWinnerBox } from "@/lib/timeline/matchEnding";
 import {
   BOARD_ACTIONS_AT,
   MatchBoardButtons,
@@ -123,9 +123,9 @@ export function ScorePill({
   /** Toggles `open`. A tap elsewhere on the table closing it is the table's job. */
   onPress: () => void;
   anchor: PillAnchor;
-  /** The ending's clock (`lib/game/roundEnding.ts`), which opens, counts in, re-ranks and closes the pill. */
+  /** The ending's clock (`lib/timeline/roundEnding.ts`), which opens, counts in, re-ranks and closes the pill. */
   ending?: SharedValue<number>;
-  /** The match is over: `ending` runs `lib/game/matchEnding.ts`, and the pill becomes the board. */
+  /** The match is over: `ending` runs `lib/timeline/matchEnding.ts`, and the pill becomes the board. */
   match?: { winner: MatchWinner; winnerKeys: readonly string[]; actions: MatchBoardActions } | null;
 }) {
   const { t, tn } = useTranslation();

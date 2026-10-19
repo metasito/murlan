@@ -274,7 +274,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
     }
   });
 
-  test("the carried points can be the difference in crossing the match target (finding 2: foldRoundIntoMatch)", async () => {
+  test("the carried points can be the difference in crossing the match target (finding 2: foldRound)", async () => {
     const { io } = stubIo();
     const game = baseGame({
       gameState: midRound(),

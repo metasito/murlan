@@ -308,13 +308,14 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     await Promise.all(dealt);
 
     const { activeGames } = await import("../../server/game/gameRoom.ts");
-    const { persistence, persistGameState } = await import("../../server/game/gamePersistence.ts");
+    const { persistGameState } = await import("../../server/game/gamePersistence.ts");
+    const { activeGameStore } = await import("../../server/store/activeGameStore.ts");
     const game = activeGames.get(room.roomId)!;
-    const real = persistence.writeActiveGame;
+    const real = activeGameStore.write;
     let open!: () => void;
     const gate = new Promise<void>((r) => (open = r));
     let held = 0;
-    persistence.writeActiveGame = async function (roomId, state) {
+    activeGameStore.write = async function (roomId, state) {
       if (roomId === room.roomId && state.match.roundsPlayed === 101) {
         held += 1;
         await gate;
@@ -330,7 +331,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
       open();
       await Promise.all([first, second]);
     } finally {
-      persistence.writeActiveGame = real;
+      activeGameStore.write = real;
     }
     assert.equal(held, 1);
     const { rows } = await pool.query<{ game_state: { match: { roundsPlayed: number } } }>(

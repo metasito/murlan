@@ -37,7 +37,8 @@ const playing: WireRoomState = {
 async function mount(room: WireRoomState | null) {
   const roomRef = { current: room };
   const gameStateRef = { current: null as GameState | null };
-  const view = await renderHook(() => useRejoin(mockSocket, 'u1', roomRef, gameStateRef));
+  const seatLossRef = { current: null };
+  const view = await renderHook(() => useRejoin(mockSocket, 'u1', roomRef, gameStateRef, seatLossRef));
   return { ...view, roomRef };
 }
 

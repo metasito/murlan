@@ -1,5 +1,6 @@
-// server/game/seatAllocation.ts — which seat a player gets, and which seats are
-// being held for someone who has not arrived yet.
+// server/game/seatAllocation.ts — which seat a player gets, which seats are
+// being held for someone who has not arrived yet, and what a release or a start
+// does to the room.
 //
 // Clockless on purpose: the caller passes `now` and the hold's length, so the
 // expiry is arithmetic a test can drive rather than a timer it has to outlast.
@@ -143,4 +144,44 @@ export function seatForClaim(input: SeatingInput & { userId: string }): number |
     ...held.map((h) => h.seatIndex),
   ]);
   return bestFreeSeat(input.room, input.seated, blocked, undefined);
+}
+
+export interface SettlingRoom {
+  status: string;
+  hostUserId: string | null;
+}
+
+/** `remaining` is in seat order: the lowest seat is who a departing host hands the room to. */
+export function settleRelease(
+  room: SettlingRoom,
+  userId: string,
+  remaining: readonly SeatedPlayer[]
+): { emptied: boolean; wasHost: boolean; set: { status: "finished" } | { hostUserId: string } | null } {
+  const emptied = remaining.length === 0 && room.status === "waiting";
+  const wasHost = room.hostUserId === userId;
+  const [next] = remaining;
+  const set = emptied
+    ? { status: "finished" as const }
+    : next && !remaining.some((p) => p.userId === room.hostUserId)
+      ? { hostUserId: next.userId }
+      : null;
+  return { emptied, wasHost, set };
+}
+
+export function startRefusal(
+  room: SettlingRoom,
+  userId: string,
+  liveMatch: boolean
+): "not_host" | "not_waiting" | null {
+  if (room.hostUserId !== userId) return "not_host";
+  if (!liveMatch && room.status !== "waiting" && room.status !== "finished") return "not_waiting";
+  return null;
+}
+
+/**
+ * The seats that move to close the gaps in a roster in seat order, with where
+ * each goes. Ascending, and never upwards, so no step collides on the seat index.
+ */
+export function renumbering<P extends SeatedPlayer>(roster: readonly P[]): [P, number][] {
+  return roster.flatMap((p, position): [P, number][] => (p.seatIndex === position ? [] : [[p, position]]));
 }

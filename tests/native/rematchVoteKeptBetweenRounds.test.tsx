@@ -27,9 +27,9 @@ const mockSocket = {
 jest.mock('@/context/SocketContext', () => ({
   useSocketConnection: () => mockSocket,
 }));
-jest.mock('@/context/NotificationContext', () => ({
-  useNotification: () => ({ showNotification: jest.fn() }),
-}));
+jest.mock('@/context/NotificationContext', () =>
+  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
+);
 
 const table = (roundOver: boolean): WireGameState => ({
   players: [

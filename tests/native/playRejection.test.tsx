@@ -13,7 +13,7 @@ import { bootFeedback, haptics, sounds } from './helpers/feedback';
 import { GameTable } from '@/components/GameTable';
 import { t } from '@/lib/i18n';
 import { cardSpokenName } from '@/lib/cardNames';
-import { dealEndMs } from '@/lib/game/dealTimeline';
+import { dealEndMs } from '@/lib/timeline/dealTimeline';
 import { Motion } from '@/lib/tokens';
 import { steps } from './helpers/steps';
 import {

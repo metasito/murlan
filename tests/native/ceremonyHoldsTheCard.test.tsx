@@ -12,7 +12,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GameTable } from '@/components/GameTable';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';
-import { LEG } from '@/lib/game/exchangeTimeline';
+import { LEG } from '@/lib/timeline/exchangeTimeline';
 import { Motion } from '@/lib/tokens';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
 

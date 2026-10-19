@@ -209,7 +209,7 @@ test("choosing an exchange card moves the card and announces it through the real
 // so a table that starts over while it is still counting down — a fresh
 // match dealt here, a room rejoin online — must not carry the old exchange's
 // announcement onto a felt with no record of it left. Turning `phasePresent`
-// off (`useExchangeAnnouncement`, lib/game/sharedGameFlow.ts) into a no-op — read
+// off (`useExchangeAnnouncement`, context/useExchangeAnnouncement.ts) into a no-op — read
 // but never acted on — is the one-line change that reds this: `announcing`
 // would then still read "true" after `setupGame`, deposed only by the timer
 // this test never advances.

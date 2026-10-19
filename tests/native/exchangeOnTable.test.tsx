@@ -14,7 +14,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GameTable } from '@/components/GameTable';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';
-import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
+import { choiceOpensAt } from '@/lib/timeline/exchangeTimeline';
 import { getValidGivebackCards } from '@/lib/game/gameEngine';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
 import { activate } from './tapHelpers';

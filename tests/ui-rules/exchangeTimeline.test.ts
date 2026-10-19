@@ -5,15 +5,15 @@ import {
   REDUCED_LEG,
   ceremonyEndsAt,
   choiceOpensAt,
+  exchangeAnnounceMs,
   exchangeGiveDelayMs,
   legPose,
   legShows,
   legStage,
   restPoint,
   type LegPoints,
-} from "../../lib/game/exchangeTimeline.ts";
-import { dealEndMs } from "../../lib/game/dealTimeline.ts";
-import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
+} from "../../lib/timeline/exchangeTimeline.ts";
+import { dealEndMs } from "../../lib/timeline/dealTimeline.ts";
 import { Hold, Motion } from "../../lib/tokens.ts";
 
 const X = Motion.exchange;

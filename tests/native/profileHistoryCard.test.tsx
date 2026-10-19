@@ -14,13 +14,12 @@ jest.mock('expo-router', () => ({
 }));
 
 jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, logout: async () => {} }),
+  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
 }));
 
-jest.mock('@/context/NotificationContext', () => ({
-  useNotification: () => ({ showNotification: jest.fn() }),
-  useBannerBottom: () => 0,
-}));
+jest.mock('@/context/NotificationContext', () =>
+  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
+);
 
 jest.mock('@/lib/query-client', () => ({
   getApiUrl: () => 'http://localhost',

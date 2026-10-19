@@ -3,3 +3,10 @@ import type { ClientToServerEvents, ServerToClientEvents } from "../../shared/pr
 
 export type SocketServer = Server<ClientToServerEvents, ServerToClientEvents>;
 export type GameSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
+
+/** What every per-socket handler family is registered with. */
+export interface HandlerContext {
+  io: SocketServer;
+  socket: GameSocket;
+  userId: string;
+}
