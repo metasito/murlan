@@ -8,7 +8,7 @@ import type { AdminSnapshot } from "./admin.ts";
 import { WINDOW_DAYS } from "./admin.ts";
 import { CLIENT_ERROR_RETENTION_DAYS } from "./clientErrors.ts";
 import { BUG_REPORT_RETENTION_DAYS } from "./bugReports.ts";
-import { SERVER_ERROR_RETENTION_DAYS } from "./serverErrors.ts";
+import { ERROR_GROUP_WINDOW_DAYS, SERVER_ERROR_RETENTION_DAYS } from "./serverErrors.ts";
 
 /**
  * Everything interpolated below goes through this. Nothing here is written by
@@ -123,7 +123,8 @@ export function renderAdminPage(snapshot: AdminSnapshot): string {
           snapshot.crashGroups.map((g) => [g.message, g.count, g.lastSeen, g.location])
         ) +
         `<p class="meta">One row per distinct crash. Count and last-seen are ` +
-        `over the ${CLIENT_ERROR_RETENTION_DAYS}-day retention window, not all-time.</p>`
+        `over the last ${ERROR_GROUP_WINDOW_DAYS} days; reports are kept ` +
+        `${CLIENT_ERROR_RETENTION_DAYS} days.</p>`
     ),
     panel(
       10,
@@ -159,8 +160,9 @@ export function renderAdminPage(snapshot: AdminSnapshot): string {
           ["Error", "Count", "Last seen"],
           snapshot.serverErrorGroups.map((g) => [g.message, g.count, g.lastSeen])
         ) +
-        `<p class="meta">Every server log line at error level or above, one row per message, ` +
-        `kept ${SERVER_ERROR_RETENTION_DAYS} days. The full line is in the server_errors table.</p>`
+        `<p class="meta">Every server log line at error level or above, one row per message. ` +
+        `Count and last-seen are over the last ${ERROR_GROUP_WINDOW_DAYS} days; rows are kept ` +
+        `${SERVER_ERROR_RETENTION_DAYS} days. The full line is in the server_errors table.</p>`
     ),
   ].join("");
 
