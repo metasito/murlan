@@ -62,7 +62,7 @@ const stubPorts = () => ({
   session: { spawn: async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", declared: null }) },
   ledger: {
     record: () => {},
-    tally: () => ({ sessions: 0, spend: 0, handoffsThisRound: 0, lastHandoff: null, lastRedHead: null, retries: 0, ciRounds: 0 }),
+    tally: () => ({ sessions: 0, spend: 0, handoffsThisRound: 0, lastHandoff: null, lastRedHead: null, retries: 0 }),
   },
 });
 const quiet = { bell: () => {}, log: () => {}, announce: () => {} };
@@ -83,7 +83,7 @@ const exited = (run: object, over: object = {}): Record<string, any> =>
     built: true,
     pushed: null,
     issue: null,
-    tally: { ...ticketTally(42, []), ciRounds: 0 },
+    tally: ticketTally(42, []),
     loop: FRESH,
     limits: LIMITS,
     now: NOW,

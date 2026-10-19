@@ -84,6 +84,7 @@ import {
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, REFRESH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
 import { nextPick } from "./next-ticket.mjs";
+import { branchOf } from "./claim.mjs";
 import { afterSession, decide, WAIT } from "./decide.mjs";
 import { CI_RED_TIMEOUT_MS, runSettle, SETTLE, UPDATES } from "./settle.mjs";
 
@@ -998,6 +999,36 @@ const HOLDS = {
 };
 
 /**
+ * The pick step driven to an answer: each fact it asks for is read with `reads[fact](action, picking)`
+ * and it is decided again. `decideAt` is `decide` given the pass's own limits, clock and counters.
+ *
+ * @param {Record<string, any>} picking what has been read so far; filled in as the step asks
+ * @param {Record<string, (action: {n?: number}, picking: Record<string, any>) => any>} reads
+ * @param {(facts: Record<string, any>) => any} decideAt
+ */
+export function choose(picking, reads, decideAt) {
+  let action = decideAt(picking);
+  while (action.kind === "ask") {
+    picking[action.fact] = reads[action.fact](action, picking) ?? null;
+    action = decideAt(picking);
+  }
+  return action;
+}
+
+/** What the pick step's facts are read from, through the pass's ports. */
+const pickReads = ({ tracker, workspace, ledger }) => ({
+  standing: () => workspace.derive(),
+  known: (_, { standing }) => tracker.facts(standing.ticket),
+  tally: ({ n }) => ledger.tally(n),
+  // No claim runs on a resume, so the pinned ticket's branch is the one its claim would cut.
+  pinnedFacts: (_, { pinned }) => {
+    const facts = tracker.facts(pinned);
+    return facts && { ...facts, branch: branchOf(pinned, facts.title) };
+  },
+  picked: () => tracker.pick(),
+});
+
+/**
  * One ticket, start to finish. Serialised deliberately: overlapping the next ticket with the last
  * one's CI wait buys ~22% wall clock and costs pending state nothing recovers when the process
  * dies, a worktree released under a live `derive()`, and two sessions cutting branches from a
@@ -1040,26 +1071,16 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
   const begun = decideAt("pre", { pre: await preflight(workspace, pinned) });
   if (begun.kind !== "go") return pass(begun);
 
-  const choose = (picking) => {
-    const read = {
-      standing: () => workspace.derive(),
-      known: () => tracker.facts(picking.standing.ticket),
-      tally: ({ n }) => ledger.tally(n),
-      pinnedFacts: () => tracker.facts(picking.pinned),
-      picked: () => tracker.pick(),
-    };
-    let action = decideAt("pick", picking);
-    while (action.kind === "ask") {
-      picking[action.fact] = read[action.fact](action) ?? null;
-      action = decideAt("pick", picking);
-    }
-    if (action.n != null) events.picked?.(action.n);
+  const reads = pickReads(ports);
+  const pick = (picking) => {
+    const action = choose(picking, reads, (facts) => decideAt("pick", facts));
+    events.picked?.(action.n ?? null);
     return action;
   };
-  let picked = choose({ pinned, at, repicked: false });
+  let picked = pick({ pinned, at, repicked: false });
   if (picked.kind === "repick") {
     teardown(picked.cwd, picked.n);
-    picked = choose({ pinned: loop.pinned, at: loop.pinned === null ? null : at, repicked: true });
+    picked = pick({ pinned: loop.pinned, at: loop.pinned === null ? null : at, repicked: true });
   }
   if (picked.kind !== "go" && picked.kind !== "park") return pass(picked);
   const { route } = picked;
@@ -1080,8 +1101,8 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
   const parkOver = (over, own, log) => parkHere(over, { ...(own ?? worktreeOf(workspace, n)), log });
   const unrun = { log: streamLog(n), cwd: route.cwd ?? null, branch: route.branch ?? null, dirty: route.dirty ?? false };
   if (picked.kind === "park") return parkHere(picked, unrun);
-  const tallyNow = () => ({ ciRounds: picked.tally.ciRounds, ...ledger.tally(n) });
-  let { tally } = picked;
+  const tallyNow = () => ledger.tally(n);
+  let tally = picked.tally ?? tallyNow();
 
   if (picked.redWhileDown) {
     record({
@@ -1110,7 +1131,7 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
     ? { status: 0, result: null, declared: null, ms: 0, log: streamLog(route.number), phase: "G", phases: {} }
     : await session.spawn({
         ...route,
-        retryCount: Math.max(tally.retries, tally.ciRounds ?? 0),
+        retryCount: Math.max(tally.retries, route.ciRounds ?? 0),
         reason: route.phase === tally.lastHandoff ? tally.handoffWhy : null,
       });
 
@@ -1650,18 +1671,31 @@ export async function main({
 }
 
 /**
- * `--check`: the reads a pass starts from — the standing ticket, its facts and tally, and the next
- * pick — printed one per line, with nothing synced, claimed, pruned, spawned or written. It runs the
- * real ports' read wiring, which the loop's tests stub out.
+ * `--check`: the reads a pass's pick makes, in the order `decide` asks for them, each printed as
+ * `<fact>\t<json>`, then the pick's answer as `PICK\t<json>` — with nothing synced, claimed, pruned,
+ * spawned or written. It runs the real ports' read wiring, which the loop's tests stub out.
  */
-export function check({ say = console.log, standingOf = standing, facts = ticketFacts, ledger = readLedger, picker = nextPick } = {}) {
-  const at = standingOf();
-  say(`STANDING\t${JSON.stringify(at)}`);
-  if (at) {
-    say(`FACTS\t${JSON.stringify(facts(at.ticket))}`);
-    say(`TALLY\t${JSON.stringify(ticketTally(at.ticket, ledger()))}`);
-  }
-  say(`PICK\t${JSON.stringify(picker())}`);
+export function check({ say = console.log } = {}) {
+  const reads = pickReads({
+    workspace: { derive: () => derive({ ci: true }) },
+    tracker: { facts: ticketFacts, pick: nextPick },
+    ledger: { tally: (n) => ticketTally(n, readLedger()) },
+  });
+  const said = Object.fromEntries(
+    Object.entries(reads).map(([fact, read]) => [
+      fact,
+      (action, picking) => {
+        const value = read(action, picking);
+        say(`${fact}\t${JSON.stringify(value)}`);
+        return value;
+      },
+    ]),
+  );
+  const loop = { failures: 0, holds: 0, waits: 0, overloads: 0, pinned: null };
+  const action = choose({ pinned: null, at: null, repicked: false }, said, (facts) =>
+    decide({ limits: LIMITS, now: Date.now(), asked: false, own: null, ...facts, step: "pick", loop }),
+  );
+  say(`PICK\t${JSON.stringify(action)}`);
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url) && process.argv.includes("--check")) {

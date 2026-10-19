@@ -139,7 +139,7 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []): Fake => {
         }),
       },
       ledger: {
-        tally: (n: number) => ({ ...ticketTally(n, ledger), ciRounds: 0 }),
+        tally: (n: number) => ticketTally(n, ledger),
         rows: () => ledger,
         record: (x: unknown) => ledger.push(rowOf(x)),
       },
@@ -490,15 +490,18 @@ describe("runOnce", () => {
 
   test("a pinned ticket is what the picker is asked for", async () => {
     const asked: unknown[] = [];
+    const spawned: unknown[] = [];
     await runOnce(
       io({
-        facts: (n: number) => (asked.push(n), { title: "t", size: "size:S", reviewRounds: null }),
+        facts: (n: number) => (asked.push(n), { title: "Fix the card fan!", size: "size:S", reviewRounds: null }),
         pick: () => (asked.push("picker"), { skill: "implement", number: 7, title: "t", size: "size:S", queue: null }),
+        spawn: async (s: { number: number; branch: string }) => (spawned.push([s.number, s.branch]), io().ports.session.spawn()),
       }),
       42,
     );
     assert.deepEqual(asked[0], 42);
     assert.ok(!asked.includes("picker"), "a pinned ticket still ours is resumed, not picked over");
+    assert.deepEqual(spawned, [[42, "agent/42-fix-the-card-fan"]], "no claim runs on a resume, so the route names the branch the claim would");
   });
 
   // A refusal is the account, not the ticket: main() waits it out rather than ending the night.
@@ -864,6 +867,21 @@ describe("runOnce", () => {
     assert.deepEqual([torn[0], spawned, order.slice(0, 2), r.ticket], [["w7", 7], [42], ["facts 7", "pick"], 42]);
   });
 
+  test("a re-pick that picks no ticket leaves none claimed, not the closed one it tore down", async () => {
+    const picked: unknown[] = [];
+    const standings: object[] = [standing42({ ticket: 7, branch: "agent/7-x", cwd: "w7" }), { onTicket: false, phase: "A" }];
+    const r = await runOnce(
+      io({
+        derive: () => standings.shift(),
+        facts: (n: number) => (n === 7 ? { title: "t", size: null, labels: ["in-progress"], reviewRounds: 1, state: "CLOSED" } : io().ports.tracker.facts()),
+        pick: () => ({ skill: "handoff", number: 0, title: "queue empty", queue: null }),
+        remove: () => {},
+        picked: (n: unknown) => picked.push(n),
+      }),
+    );
+    assert.deepEqual([r.outcome, picked], ["stop", [7, null]]);
+  });
+
   test("a closed ticket unrelated to the pinned one keeps the pin, and its phase, on re-pick", async () => {
     const spawned: unknown[] = [];
     const standings: object[] = [standing42({ ticket: 7, branch: "agent/7-x", cwd: "w7" }), standing42({ ticket: 99, branch: "agent/99-x" })];
@@ -989,7 +1007,7 @@ describe("runOnce", () => {
           {
             ...fixing42("h2"),
             refreshWorktree: () => {},
-            tally: (n: number) => ({ ...ticketTally(n, ledger), ciRounds }),
+            facts: () => ({ title: "t", size: "size:S", reviewRounds: null, ciRounds }),
             spawn: async (s: { retryCount: number }) => {
               spawned.push(s.retryCount);
               return { status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null };
@@ -2339,6 +2357,9 @@ describe("queue-loop.mjs --check", () => {
       'process.stdout.write(JSON.stringify(a.at(-1).includes("/issues?") ? m.issues : [[]]));',
     ];
     writeFileSync(stub, script.join("\n"));
+    // A checkout with no ticket's worktree: outside any repository the standing read cannot list
+    // worktrees, and the pick stops before the picker is asked.
+    spawnSync("git", ["init", "-q"], { cwd: dir });
     try {
       const r = spawnSync(process.execPath, [path.join(ROOT, "tools/loop/queue-loop.mjs"), "--check"], {
         cwd: dir,
@@ -2347,9 +2368,10 @@ describe("queue-loop.mjs --check", () => {
       });
       assert.equal(r.status, 0, r.stderr);
       const lines = r.stdout.trim().split("\n");
-      assert.deepEqual(lines[0], "STANDING\tnull");
+      assert.deepEqual(lines.map((l) => l.split("\t")[0]), ["standing", "picked", "PICK"], "the reads decide asked for, in its order");
+      assert.equal(JSON.parse(lines[0].split("\t")[1]).onTicket, false);
       const pick = JSON.parse(lines.at(-1)!.replace(/^PICK\t/, ""));
-      assert.deepEqual([pick.skill, pick.number, pick.size], ["implement", 77, "size:S"]);
+      assert.deepEqual([pick.kind, pick.route.skill, pick.route.number, pick.route.size], ["go", "implement", 77, "size:S"]);
       const asked = readFileSync(calls, "utf8").trim().split("\n");
       assert.ok(asked.length > 0 && asked.every((l) => l.startsWith("api ") && !/\s-X\s/.test(l)), asked.join("\n"));
     } finally {

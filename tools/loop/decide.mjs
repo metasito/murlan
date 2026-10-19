@@ -1,6 +1,5 @@
-import { branchOf } from "./claim.mjs";
 import { STALL_MS } from "./limits.mjs";
-import { OWNER_LABELS } from "./next-ticket.mjs";
+import { OWNER_LABELS } from "./tracker.mjs";
 
 const sha7 = (head) => String(head ?? "an unread head").slice(0, 7);
 
@@ -176,8 +175,8 @@ function reasonFor(run, after, ticket) {
   return soft(null);
 }
 
-function redRound({ n, why, head }, { tally, limits }) {
-  const rounds = Math.max(tally.retries, tally.ciRounds ?? 0) + 1;
+function redRound({ n, why, head }, { route, tally, limits }) {
+  const rounds = Math.max(tally.retries, route.ciRounds ?? 0) + 1;
   if (rounds >= limits.CI_ROUNDS) {
     return { kind: "park", n, phase: "E", why: `${rounds} CI rounds on the same branch did not go green — last: ${why}`, head, ciRed: true };
   }
@@ -225,12 +224,11 @@ function resumed(standing, known, tally, at) {
  * to — unless the owner took it back, which is the picker's to see. `ready-for-agent` alone is still
  * ours: an API failure before phase A's claim holds it pinned. Null when it was released.
  */
-function repinned(pinned, { title, size, ciRounds, labels }) {
+function repinned(pinned, { title, size, ciRounds, labels, branch }) {
   const released =
     labels && (labels.some((l) => OWNER_LABELS.has(l)) || !labels.some((l) => l === "in-progress" || l === "ready-for-agent"));
   if (released) return null;
-  // No claim runs on a resume, so the route names the branch the claim would.
-  return { skill: "implement", number: pinned, title, size, ciRounds, queue: null, resuming: true, phase: "A", branch: branchOf(pinned, title) };
+  return { skill: "implement", number: pinned, title, size, ciRounds, queue: null, resuming: true, phase: "A", branch };
 }
 
 /** A fact the step needs and the caller has not read: read it, then decide again. */
@@ -247,8 +245,8 @@ const STEPS = {
     return { kind: "go" };
   },
 
-  // Every fact but the tally costs a gh or git read, so each is asked for only when the answer needs
-  // it: the standing run, its issue, a pinned issue when nothing is live, the picker when nothing resumes.
+  // Each fact is asked for only when the answer needs it: the standing run, its issue, the tally of a
+  // live or pinned ticket, a pinned issue when nothing is live, the picker when nothing resumes.
   pick(input) {
     const { standing, known, tally, pinnedFacts, picked, pinned, at, repicked, limits } = input;
     if (standing === undefined) return ask("standing");
@@ -276,17 +274,16 @@ const STEPS = {
     }
     if (route.skill === "handoff" || route.skill === "ambiguous") return { kind: "stop", why: route.title };
     const n = route.number;
+    if (!route.resuming) return { kind: "go", n, route, redWhileDown: false };
     if (tally === undefined) return ask("tally", n);
-    // A fresh pick has no CI rounds: its claim comment is newer than any CI-RED before it.
-    const counted = { ciRounds: route.ciRounds ?? 0, ...tally };
-    const redWhileDown = Boolean(route.fix && route.head && route.head !== counted.lastRedHead);
+    const redWhileDown = Boolean(route.fix && route.head && route.head !== tally.lastRedHead);
     if (redWhileDown) {
-      const rounds = Math.max(counted.retries + 1, counted.ciRounds ?? 0);
+      const rounds = Math.max(tally.retries + 1, route.ciRounds ?? 0);
       if (rounds >= limits.CI_ROUNDS) {
         return { kind: "park", n, route, phase: "C", why: `${rounds} CI rounds on the same branch did not go green — the last one while the loop was down` };
       }
     }
-    return { kind: "go", n, route, tally: counted, redWhileDown };
+    return { kind: "go", n, route, tally, redWhileDown };
   },
 
   refresh({ route, error }) {

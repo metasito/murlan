@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { decide, WAIT } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
-import { BREAKER, CI_ROUNDS, MAX_HANDOFFS, SETTLE, TICKET_HOLDS, UPDATES } from "../queue-loop.mjs";
+import { BREAKER, CI_ROUNDS, choose as drive, MAX_HANDOFFS, SETTLE, TICKET_HOLDS, UPDATES } from "../queue-loop.mjs";
 import { ledgerFixture } from "./helpers/ledgerFixture.ts";
 import { USD_BY_SIZE, USD_DEFAULT } from "../loop-cost.mjs";
 import { READ_RETRIES } from "../settle.mjs";
@@ -13,7 +13,7 @@ const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, US
 const NOW = Date.parse("2026-10-12T20:00:00Z");
 
 const route = { n: 42, skill: "implement", title: "the ticket", phase: "C", size: "size:S", fix: false, head: null };
-const empty = { ...ticketTally(42, []), ciRounds: 0 };
+const empty = ticketTally(42, []);
 const fresh = { failures: 0, holds: 0, waits: 0, overloads: 0, pinned: null, heldTicket: null, ticketHolds: 0 };
 const own = { cwd: "/w/agent-42", branch: "agent/42-x", dirty: false, phase: "C" };
 const base = { route, tally: empty, loop: fresh, limits: LIMITS, now: NOW, asked: false, own };
@@ -40,19 +40,14 @@ const redRow = (head: string) => ({ n: 42, outcome: "retry", cost: 1, park_reaso
 const fixRoute = (rows: object[] = [], known: object = {}) =>
   pick({ standing: live({ fix: true, ci: { pushed: true, state: "red", sha: "h3" } }), rows, known: issue(known) });
 
-/**
- * The pick step driven as `runOnce` drives it: each fact it asks for is read from `world` and it is
- * asked again. `asked` is every read that costs a `gh` or `git` call, in order.
- */
+/** The pick step driven by `runOnce`'s own driver, its facts read from `world`. `asked` is every read, in order. */
+const FACTS = ["standing", "known", "tally", "pinnedFacts", "picked"] as const;
 const choose = ({ world, ...input }: { world: World; pinned: number | null; at: string | null; repicked: boolean }) => {
   const asked: string[] = [];
-  const facts: Record<string, unknown> = { ...input };
-  for (;;) {
-    const action = decide(facts);
-    if (action.kind !== "ask") return { ...action, asked: asked.filter((f) => f !== "tally") };
-    asked.push(action.fact);
-    facts[action.fact] = action.fact === "tally" ? ticketTally(action.n, world.rows as never) : world[action.fact as keyof World];
-  }
+  const reads = Object.fromEntries(
+    FACTS.map((fact) => [fact, ({ n }: { n?: number }) => (asked.push(fact), fact === "tally" ? ticketTally(n!, world.rows as never) : world[fact])]),
+  );
+  return { ...drive({ ...input }, reads, decide), asked };
 };
 
 const said = (over: object = {}) => ({ ticket: 42, branch: "agent/42-x", pr: null, phase: "C", handoff: null, stoodDown: false, why: null, ...over });
@@ -106,6 +101,8 @@ const ROWS: Row[] = [
     { kind: "repick", n: 9, loop: { ...fresh, pinned: 42 } }],
   ["runOnce: a closed ticket on the re-pick too stops", pick({ standing: live(), known: issue({ state: "CLOSED" }) }, { repicked: true }), { kind: "stop", why: "#42 is closed and its worktree still stands" }],
   ["runOnce: an implement route goes on to the spawn", pick(), { kind: "go", redWhileDown: false, route: { number: 42, resuming: false }, asked: ["standing", "picked"] }],
+  ["a fresh pick reads no tally and carries none", pick({ rows: [redRow("h1")] }), { kind: "go", n: 42, tally: undefined, asked: ["standing", "picked"] }],
+  ["a resumed ticket goes on with its tally", pick({ standing: live(), rows: [redRow("h1")] }), { kind: "go", tally: { retries: 1, lastRedHead: "h1" }, asked: ["standing", "known", "tally"] }],
   ["stops on handoff", picked({ skill: "handoff", number: 0, title: "nothing to do" }), { kind: "stop" }],
   ...["implement", "triage", "wayfinder"].map((skill): Row => [`keeps going on ${skill}`, picked({ skill }), { kind: "go", route: { skill } }]),
   ["a red round nobody recorded is written down before the fix round; a recorded one is not", fixRoute(), { kind: "go", redWhileDown: true, route: { phase: "C", fix: true, head: "h3" } }],
@@ -120,7 +117,7 @@ const ROWS: Row[] = [
   ["a clean derive off a ticket is still no route", pick(), { kind: "go", route: { resuming: false }, asked: ["standing", "picked"] }],
   ["an ambiguous derive is a route, not an absence", pick({ standing: { onTicket: false, ambiguous: true, why: "2 live agent/* worktrees" } }), { kind: "stop", why: /2 live/ }],
   ["resumes the live ticket instead of asking the picker for a new one", pick({ standing: live({ ticket: 911, branch: "agent/911-x", phase: "D" }), known: issue({ title: "Ticket 911" }) }),
-    { kind: "go", route: { skill: "implement", number: 911, title: "Ticket 911", phase: "D", resuming: true }, asked: ["standing", "known"] }],
+    { kind: "go", route: { skill: "implement", number: 911, title: "Ticket 911", phase: "D", resuming: true }, asked: ["standing", "known", "tally"] }],
   ["skips a ticket not labelled in-progress", pick({ standing: live({ ticket: 911, phase: "D" }), known: issue({ labels: ["ready-for-human"] }) }),
     { kind: "go", route: { number: 42, resuming: false }, asked: ["standing", "known", "picked"] }],
   ["a live ticket whose labels cannot be read is still live", pick({ standing: live({ ticket: 911, phase: "D" }), known: issue({ labels: null }) }), { kind: "go", route: { number: 911, resuming: true } }],
@@ -130,14 +127,14 @@ const ROWS: Row[] = [
   // the pick: the resumed run's phase, and the pin
   ["a resumed ticket carries its issue's title and review rounds, not its branch name", pick({ standing: live({ branch: "agent/42-fix-the-card-fan", phase: "D", reviewRounds: 3 }), known: issue({ title: "Fix the card fan!" }) }),
     { kind: "go", route: { title: "Fix the card fan!", reviewRounds: 3 } }],
-  ["a pinned ticket with no worktree rebuilds at A", pick({ pinnedFacts: issue({ title: "Fix the card fan!", size: null }), rows: [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "E" }, head: null }] }, { pinned: 42 }),
-    { kind: "go", route: { number: 42, phase: "A", resuming: true, branch: "agent/42-fix-the-card-fan" }, asked: ["standing", "pinnedFacts"] }],
+  ["a pinned ticket with no worktree rebuilds at A", pick({ pinnedFacts: issue({ title: "Fix the card fan!", size: null, branch: "agent/42-fix-the-card-fan" }), rows: [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "E" }, head: null }] }, { pinned: 42 }),
+    { kind: "go", route: { number: 42, phase: "A", resuming: true, branch: "agent/42-fix-the-card-fan" }, asked: ["standing", "pinnedFacts", "tally"] }],
   ...[["in-progress", "ready-for-human"], ["size:S"], ["in-progress", "deferred"]].map((labels): Row => [
     `a pinned ticket the tracker no longer shows as ours goes back to the picker: ${labels.join(",")}`,
     pick({ pinnedFacts: issue({ labels }), picked: { ...PICKED, number: 77, title: "other" } }, { pinned: 42 }),
     { kind: "go", route: { skill: "implement", number: 77, resuming: false }, asked: ["standing", "pinnedFacts", "picked"] },
   ]),
-  ["a pinned ticket whose labels cannot be read keeps resuming", pick({ pinnedFacts: issue({ labels: null }) }, { pinned: 42 }), { kind: "go", route: { number: 42, resuming: true, phase: "A" }, asked: ["standing", "pinnedFacts"] }],
+  ["a pinned ticket whose labels cannot be read keeps resuming", pick({ pinnedFacts: issue({ labels: null }) }, { pinned: 42 }), { kind: "go", route: { number: 42, resuming: true, phase: "A" }, asked: ["standing", "pinnedFacts", "tally"] }],
   ["a pinned ticket held before its claim keeps resuming", pick({ pinnedFacts: issue({ labels: ["ready-for-agent", "size:S"] }) }, { pinned: 42 }), { kind: "go", route: { number: 42, resuming: true, phase: "A" } }],
   ...([["E", null, "E"], ["E", "D", "E"], ["D", null, "D"], ["C", null, "D"]] as const).map(([phase, at, want]): Row => [
     `a LAND on the head outranks a handoff to review, and nothing else does: ${phase} at ${at}`,
@@ -309,7 +306,8 @@ const ROWS: Row[] = [
   [`runOnce: red round ${CI_ROUNDS} parks`, settled({}, { tally: { ...empty, retries: CI_ROUNDS - 1 } }),
     { kind: "park", phase: "E", ciRed: true, why: `${CI_ROUNDS} CI rounds on the same branch did not go green — last: CI failed at Typecheck and tests` }],
   ["a restart mid fix round keeps the round count: the third red run parks", settled({}, { tally: { ...empty, retries: CI_ROUNDS - 1 } }), { kind: "park" }],
-  ["runOnce: the tracker's CI-RED count stands in for rounds the ledger missed", settled({}, { tally: { ...empty, ciRounds: CI_ROUNDS - 1 } }), { kind: "park", ciRed: true }],
+  ["runOnce: the tracker's CI-RED count stands in for rounds the ledger missed", settled({}, { route: { ...route, ciRounds: CI_ROUNDS - 1 } }), { kind: "park", ciRed: true }],
+  ["a tally's own CI-RED count is not the tracker's: the route's count is", settled({}, { tally: { ...empty, ciRounds: CI_ROUNDS - 1 } }), { kind: "retry" }],
   ["a red whose CI-RED could not be posted is held: no park, the worktree kept, and no round spent until it is posted",
     settled({ action: "hold", reason: "CI-RED for abc could not be posted", head: "abc" }),
     { kind: "hold", wait: "preflight", n: 42, why: "CI-RED for abc could not be posted", head: "abc", record: undefined, hold: WAIT.FLOOR, loop: { ...fresh, heldTicket: 42, ticketHolds: 1 } }],
@@ -477,6 +475,7 @@ const ELSEWHERE: Record<string, [file: string, why: string]> = {
   "no terminal outcome leaves the worktree standing": ["queueLoopMain.test.ts", "io"],
   "housekeeping is asked about the pinned ticket, and waited for": ["queueLoopMain.test.ts", "io"],
   "a pinned ticket is what the picker is asked for": ["queueLoopMain.test.ts", "picker"],
+  "a re-pick that picks no ticket leaves none claimed, not the closed one it tore down": ["queueLoopMain.test.ts", "io: the ticket a throw would release"],
   "a pick reads the standing run once, then only the issue or picker its answer needs": ["queueLoopMain.test.ts", "io: the reads a pick costs"],
   "a park rings once and a landing does not": ["queueLoopMain.test.ts", "io"],
   "each with its timestamp and, once a ticket is picked, its number": ["queueLoopMain.test.ts", "io"],
