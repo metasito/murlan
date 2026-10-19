@@ -11,6 +11,7 @@
 //     from `finishingOrder`, and the exchange reads who came last.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
   aggregateTeamScores,
   buildCombination,
@@ -19,10 +20,7 @@ import {
   resolveMatch,
   resolveTeamMatch,
   scoreRound,
-  c,
-  makePlayer,
-  makeState,
-} from "./helpers.ts";
+} from "../../lib/game/gameEngine.ts";
 
 /**
  * Seats 0/2 are team A, seats 1/3 are team B (partners sit opposite).

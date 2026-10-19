@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { createDeck, type Combination } from "../../lib/game/gameEngine.ts";
 import { comboKey } from "../../components/flightPhysics.ts";
 import { beatenPlay, clearTrick, NO_TRICK, playOnto, roleOf, sweepEnded, sweepTrick, topPlay, type Trick, type TrickPlay } from "../../components/table/trick.ts";
+import { mulberry32 } from "../support/game.ts";
 
 const combo = (ids: string[]): Combination => ({ type: "single", strength: 1, cards: ids.map((id) => ({ id })) }) as unknown as Combination;
 
@@ -16,16 +17,6 @@ const thrown = (ids: string[], playedBy: number): TrickPlay => {
 const onFelt = (t: Trick) => [...t.plays, ...(t.swept?.plays ?? [])].flatMap((p) => p.combo.cards.map((c) => c.id));
 const keys = (plays: readonly TrickPlay[]) => plays.map((p) => p.key);
 const trickOf = (...plays: TrickPlay[]) => plays.reduce(playOnto, NO_TRICK);
-
-function mulberry32(seed: number): () => number {
-  let a = seed;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 const a = thrown(["3_hearts"], 0);
 const b = thrown(["5_clubs", "5_spades"], 1);

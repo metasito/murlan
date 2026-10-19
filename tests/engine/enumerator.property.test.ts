@@ -1,18 +1,16 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { cardKey, mulberry32, sample } from "../support/game.ts";
 import {
   buildCombination,
   canPlay,
   canPlayerPlay,
-  cardKey,
   createDeck,
   getAllValidPlays,
-  mulberry32,
-  sample,
   STRAIGHT_MAX_LEN,
   type Card,
   type Combination,
-} from "./helpers.ts";
+} from "../../lib/game/gameEngine.ts";
 
 /**
  * The oracle below is 2^n, which puts a ceiling on the hand sizes it can

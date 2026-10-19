@@ -1,19 +1,16 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { card as c, joker as j, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
-  c,
   getBestCardFromHand,
   getStartingPlayerAfterExchange,
   getValidGivebackCards,
   givebackIsFallback,
   initializeRematch,
-  j,
   loserHasBothJokers,
-  makePlayer,
-  makeState,
   processExchangeChoice,
   type Card,
-} from "./helpers.ts";
+} from "../../lib/game/gameEngine.ts";
 import { autoMoveForSeat, resolveStuckExchange } from "../../lib/game/autoMove.ts";
 
 const ids = (cards: Card[]) => cards.map((card) => card.id).sort();

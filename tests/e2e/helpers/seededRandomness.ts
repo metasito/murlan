@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { mulberry32 } from "../../support/game.ts";
 
 /**
  * Every deal and every bot choice in the page from one `mulberry32(seed)` stream, so a spec that
@@ -6,14 +7,8 @@ import type { Page } from "@playwright/test";
  * is the same swap for a match simulated in Node. Must run before the first navigation.
  */
 export async function seedRandomness(page: Page, seed: number): Promise<void> {
-  await page.addInitScript((seed) => {
-    let s = seed >>> 0;
-    const next = () => {
-      s = (s + 0x6d2b79f5) >>> 0;
-      let t = Math.imul(s ^ (s >>> 15), s | 1);
-      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
+  const install = (generator: typeof mulberry32, seed: number) => {
+    const next = generator(seed);
     Math.random = next;
     Object.defineProperty(crypto, "getRandomValues", {
       configurable: true,
@@ -23,5 +18,6 @@ export async function seedRandomness(page: Page, seed: number): Promise<void> {
         return buf;
       },
     });
-  }, seed);
+  };
+  await page.addInitScript({ content: `(${String(install)})(${String(mulberry32)}, ${seed});` });
 }

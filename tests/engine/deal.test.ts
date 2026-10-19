@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { card as c, joker as j, seat as makePlayer } from "../support/game.ts";
 import {
-  c,
   cardStrength,
   createDeck,
   dealCards,
@@ -12,12 +12,10 @@ import {
   findStartingPlayer,
   freshHandFloor,
   initializeGame,
-  j,
-  makePlayer,
   nextDealFirstSeat,
   shuffleDeck,
   type Card,
-} from "./helpers.ts";
+} from "../../lib/game/gameEngine.ts";
 
 const ids = (cards: Card[]) => cards.map((card) => card.id);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");

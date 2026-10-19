@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildCombination, canPlayerPlay, c } from "./helpers.ts";
+import { card as c } from "../support/game.ts";
+import { buildCombination, canPlayerPlay } from "../../lib/game/gameEngine.ts";
 
 test("harness works and engine imports", () => {
   assert.equal(buildCombination([c("3", "spades")])?.type, "single");

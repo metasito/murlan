@@ -23,7 +23,7 @@ import {
   processPlay,
   RANK_SLOTS,
 } from "../../lib/game/gameEngine.ts";
-import { c, j, makePlayer, makeState } from "../engine/helpers.ts";
+import { card as c, joker as j, seat as makePlayer, state as makeState } from "../support/game.ts";
 import type { Card, GameState, Rank } from "../../lib/game/gameEngine.ts";
 
 const seats = (n: number) =>

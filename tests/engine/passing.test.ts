@@ -18,16 +18,14 @@
 // §7.4's royal straight, not about §7.3's own clause.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
   buildCombination,
-  c,
   canPlay,
-  makePlayer,
-  makeState,
   processPass,
   processPlay,
   type Card,
-} from "./helpers.ts";
+} from "../../lib/game/gameEngine.ts";
 
 const pair = (rank: Parameters<typeof c>[0]): Card[] => [c(rank, "hearts"), c(rank, "clubs")];
 const combo = (cards: Card[]) => buildCombination(cards)!;

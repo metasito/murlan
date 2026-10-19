@@ -47,7 +47,7 @@ import {
   type OfflinePlayerSetup,
   type SimulateMatchResult,
 } from "../tests/helpers/offlineMatch.ts";
-import { mulberry32 } from "../tests/engine/helpers.ts";
+import { mulberry32 } from "../tests/support/game.ts";
 
 interface Options {
   seed: number;

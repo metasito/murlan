@@ -1,16 +1,14 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
   buildCombination,
-  c,
   getAllValidPlays,
   initializeGame,
-  makePlayer,
-  makeState,
   processPass,
   processPlay,
   type Card,
-} from "./helpers.ts";
+} from "../../lib/game/gameEngine.ts";
 import { seatDirection } from "../../components/seatLayout.ts";
 
 const pair = (rank: Parameters<typeof c>[0]): Card[] => [c(rank, "hearts"), c(rank, "clubs")];

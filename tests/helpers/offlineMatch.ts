@@ -25,7 +25,7 @@ import {
 } from "../../lib/game/gameEngine.ts";
 import { autoMoveForSeat, offlineBotMove, type AutoMoveContext } from "../../lib/game/autoMove.ts";
 import { comboKey } from "../../components/flightPhysics.ts";
-import { mulberry32 } from "../engine/helpers.ts";
+import { rng } from "../support/game.ts";
 import type { BotPersonalityId } from "../../lib/game/botPersonalities.ts";
 
 interface RoundResult {
@@ -88,22 +88,12 @@ function applyRoundToMatch(match: MatchState, finished: GameState): MatchState {
 /**
  * `lib/game/gameEngine.ts`'s `shuffleDeck` draws from `globalThis.crypto`
  * whenever it exists (Node 18+ always has it), which is unseedable. Swapping
- * in a `getRandomValues` backed by `mulberry32(seed)` for the duration of one
- * simulated match is what makes "seed 4242 stalls" a claim anyone can
- * reproduce, offline included — matching the convention `tests/engine/helpers.ts`'s
- * own `mulberry32` comment already states for the property suite.
+ * in `rng(seed).source` for the duration of one simulated match is what makes
+ * "seed 4242 stalls" a claim anyone can reproduce, offline included.
  */
 export function withSeededDeals<T>(seed: number, run: () => T): T {
-  const rand = mulberry32(seed);
   const original = Object.getOwnPropertyDescriptor(globalThis, "crypto");
-  const fake = {
-    getRandomValues(buf: Uint32Array) {
-      for (let i = 0; i < buf.length; i++) {
-        buf[i] = Math.floor(rand() * 0x100000000);
-      }
-      return buf;
-    },
-  };
+  const fake = rng(seed).source;
   // `crypto` is a non-configurable getter in some Node builds and a plain
   // property in others — defineProperty with configurable:true covers both,
   // where a bare assignment throws on the getter-only shape.

@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { simulateOfflineMatch, type OfflinePlayerSetup } from "../helpers/offlineMatch.ts";
-import { mulberry32 } from "./helpers.ts";
+import { mulberry32 } from "../support/game.ts";
 
 const seededBot = (s: number) => mulberry32(s + 1);
 

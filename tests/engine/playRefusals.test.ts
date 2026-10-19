@@ -4,18 +4,16 @@
 // words; one row per code is what keeps any of them from classifying on its own.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
   buildCombination,
-  c,
   checkPass,
   checkPlay,
-  makePlayer,
-  makeState,
   type Card,
   type GameState,
   type Rank,
   type Suit,
-} from "./helpers.ts";
+} from "../../lib/game/gameEngine.ts";
 
 const combo = (cards: Card[]) => buildCombination(cards)!;
 

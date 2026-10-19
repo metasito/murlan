@@ -10,15 +10,13 @@
 // case is here too: leading a fresh round, where there is nothing to beat.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
   buildCombination,
-  c,
-  makePlayer,
-  makeState,
   processPass,
   processPlay,
   type Card,
-} from "./helpers.ts";
+} from "../../lib/game/gameEngine.ts";
 
 const combo = (cards: Card[]) => buildCombination(cards)!;
 

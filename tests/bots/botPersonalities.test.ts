@@ -23,7 +23,7 @@ import {
   processPass,
   processPlay,
 } from "../../lib/game/gameEngine.ts";
-import { c, j, makePlayer } from "../engine/helpers.ts";
+import { card as c, joker as j, seat as makePlayer } from "../support/game.ts";
 import type { GameState } from "../../lib/game/gameEngine.ts";
 import type { BotPersonalityId } from "../../lib/game/botPersonalities.ts";
 

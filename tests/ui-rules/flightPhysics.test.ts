@@ -10,7 +10,6 @@ import {
   Motion,
   Spacing,
 } from "../../lib/tokens.ts";
-import type { Card, Combination } from "../../lib/game/gameEngine.ts";
 import { LEG, legPose, type LegStage } from "../../lib/game/exchangeTimeline.ts";
 import type { CardFrom } from "../../components/flightPose.ts";
 import {
@@ -62,16 +61,16 @@ import {
   readExchangeLegs,
   readExchangeSeats,
 } from "../../components/table/exchangeModel.ts";
+import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
   buildCombination,
   processPass,
   processPlay,
-  c,
-  makePlayer,
-  makeState,
+  type Card,
+  type Combination,
   type GameState,
   type Player,
-} from "../engine/helpers.ts";
+} from "../../lib/game/gameEngine.ts";
 import {
   blankComments,
   blankCommentsAndStrings,

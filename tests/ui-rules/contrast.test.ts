@@ -9,6 +9,7 @@
 // Imports lib/tokens — the same palette — not lib/theme, whose Shadow helper pulls
 // react-native in; that and the extension — docs/agents/checks.md, "Node's TypeScript loader".
 import { Colors, Garnet, Gradient, Scrim, FeltGradients, LastCard, NoticePalette, Type } from "../../lib/tokens.ts";
+import { contrastRatio as rgbContrast } from "../../lib/contrast.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -26,22 +27,9 @@ function hexToRgb(hex: string): [number, number, number] {
   ];
 }
 
-function srgbToLinear(c: number): number {
-  const v = c / 255;
-  return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
-}
-
-function relativeLuminance([r, g, b]: [number, number, number]): number {
-  const [rl, gl, bl] = [srgbToLinear(r), srgbToLinear(g), srgbToLinear(b)];
-  return 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
-}
-
 /** WCAG contrast ratio between two opaque hex colors, 1:1 to 21:1. */
 function contrastRatio(hexA: string, hexB: string): number {
-  const lA = relativeLuminance(hexToRgb(hexA));
-  const lB = relativeLuminance(hexToRgb(hexB));
-  const [lighter, darker] = lA > lB ? [lA, lB] : [lB, lA];
-  return (lighter + 0.05) / (darker + 0.05);
+  return rgbContrast(hexToRgb(hexA), hexToRgb(hexB));
 }
 
 /** Flattens `rgba(r,g,b,a)` (as used by several Colors entries) onto an opaque

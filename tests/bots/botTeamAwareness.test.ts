@@ -9,7 +9,7 @@ import {
   processPass,
   processPlay,
 } from "../../lib/game/gameEngine.ts";
-import { c, j, makePlayer, makeState, mulberry32 } from "../engine/helpers.ts";
+import { card as c, joker as j, seat as makePlayer, state as makeState, mulberry32 } from "../support/game.ts";
 import type { Card, GameState } from "../../lib/game/gameEngine.ts";
 
 const TOP_PLAY = buildCombination([c("2", "spades")])!;

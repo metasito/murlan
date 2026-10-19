@@ -1,3 +1,5 @@
+import { luminance } from "../contrast.ts";
+
 export interface Pixels {
   width: number;
   height: number;
@@ -29,13 +31,7 @@ export type LampSide = (typeof LAMP_SIDES)[number];
 export const LAMP_SWAY = { samples: 20, ms: 8000 } as const;
 
 const RGBA = 4;
-const CHANNEL_MAX = 255;
-const LUMA = [0.2126, 0.7152, 0.0722] as const;
-
-function linear(channel: number): number {
-  const c = channel / CHANNEL_MAX;
-  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-}
+const OPAQUE = 255;
 
 const percent = (share: number) => `${Math.round(share * 100)} %`;
 
@@ -59,9 +55,9 @@ export function annulusLuminance(pixels: Pixels, at: { x: number; y: number }, p
       if (x < 0 || x >= width || y < 0 || y >= height) continue;
       onImage++;
       const i = (y * width + x) * RGBA;
-      if (data[i + 3] !== CHANNEL_MAX) continue;
+      if (data[i + 3] !== OPAQUE) continue;
       onFelt++;
-      sum += LUMA[0] * linear(data[i]) + LUMA[1] * linear(data[i + 1]) + LUMA[2] * linear(data[i + 2]);
+      sum += luminance(data[i], data[i + 1], data[i + 2]);
     }
   }
   const where = `the ring at (${at.x}, ${at.y}) pt`;

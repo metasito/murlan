@@ -6,8 +6,8 @@ import assert from "node:assert/strict";
 import { botChoosePlay, knownOpponentExchangeCard } from "../../lib/game/bot.ts";
 import { buildCombination, getRankStrength, RANK_SLOTS } from "../../lib/game/gameEngine.ts";
 import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
-import { c, makePlayer, makeState } from "../engine/helpers.ts";
-import type { ExchangePhase } from "../engine/helpers.ts";
+import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
+import type { ExchangePhase } from "../../lib/game/gameEngine.ts";
 
 const exchange = (
   winnerIdx: number,
