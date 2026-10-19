@@ -12,7 +12,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { firstLine, gh as ghCli, git as gitAt, MAX_BUFFER, REPO } from "./cli.mjs";
+import { CLI_TOOLS, firstLine, gh as ghCli, git as gitAt, MAX_BUFFER, REPO, viaCli } from "./cli.mjs";
 import { AGENT_DIR, derive, parityRed, WORKTREE_DIR } from "./loop-derive.mjs";
 import { ciLogPath, errorLine, leftoverPath, parkNotePath, writeNote } from "./loop-logs.mjs";
 import { PARK_FILE, parkAsked, ROOT, STOP_FILE } from "./paths.mjs";
@@ -601,8 +601,7 @@ export function syncCheckout(
 const SHIMMED = new Set(["npm", "npx"]);
 
 export const sh = (file, args, opts = {}) => {
-  if (file === "git") return gitAt(opts.cwd)(args, opts);
-  if (file === "gh") return ghCli(args, opts);
+  if (CLI_TOOLS.has(file)) return viaCli(file, args, opts);
   const shell = SHIMMED.has(file) && process.platform === "win32";
   const base = { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: MAX_BUFFER, ...opts };
   // A command line, not a file plus arguments: under `shell` node concatenates them anyway, and

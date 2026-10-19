@@ -4,7 +4,7 @@ import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { firstLine, gh, git, REPO, statusOf } from "../cli.mjs";
+import { firstLine, gh, git, REPO, statusOf, viaCli } from "../cli.mjs";
 
 const LOOP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = mkdtempSync(path.join(tmpdir(), "loop-cli-"));
@@ -96,6 +96,14 @@ describe("one policy", () => {
     assert.equal(withEnv("LOOP_TEST_GIT_SCRIPT", stub("zero", ""), () => statusOf(() => git(scratch)(["merge-base"]))), 0);
   });
 
+  test("viaCli runs git at the cwd it is given and gh, and refuses any other binary", () => {
+    const echo = (name: string) => stub(name, "console.log(JSON.stringify([process.cwd(), ...process.argv.slice(2)]));");
+    const [at, ...gitArgs] = JSON.parse(withEnv("LOOP_TEST_GIT_SCRIPT", echo("git-echo"), () => viaCli("git", ["status"], { cwd: scratch })));
+    assert.deepEqual([path.resolve(at), gitArgs.at(-1)], [path.resolve(scratch), "status"]);
+    assert.equal(JSON.parse(withEnv("LOOP_TEST_GH_SCRIPT", echo("gh-echo"), () => viaCli("gh", ["api", "x"]))).at(-1), "x");
+    assert.throws(() => viaCli("npm", ["ci"]), /npm is not git or gh/);
+  });
+
   test("firstLine falls back to the message when the tool said nothing", () => {
     assert.equal(firstLine(Object.assign(new Error("Command failed: gh x\nrest"), { stderr: "  \n" })), "Command failed: gh x");
     assert.equal(firstLine("plain"), "plain");
@@ -112,8 +120,7 @@ describe("no git or gh outside cli.mjs", () => {
   const namesNoGitOrGh = (text: string) => !/["'`](?:git|gh)["'`]/.test(text.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, ""));
   /** The files that start a binary a variable names, and why that is never git or gh there. */
   const OTHER_BINARIES: Record<string, (text: string) => boolean> = {
-    "workspace.mjs": (text) =>
-      /\bconst sh = \(file, args, opts = \{\}\) => \{\s*if \(file === "git"\) return gitAt\(opts\.cwd\)\(args, opts\);\s*if \(file === "gh"\) return ghCli\(args, opts\);/.test(text),
+    "workspace.mjs": (text) => /\bconst sh = \(file, args, opts = \{\}\) => \{\s*if \(CLI_TOOLS\.has\(file\)\) return viaCli\(file, args, opts\);/.test(text),
     "reap.mjs": (text) => namesNoGitOrGh(text) && [...text.matchAll(/\bsh\(\s*([^,)]*)/g)].every((m) => m[1] === "cmd" || /^(?:"[\w-]+"|[A-Z_]+)$/.test(m[1])),
     "loop-screen.mjs": namesNoGitOrGh,
   };
@@ -121,7 +128,7 @@ describe("no git or gh outside cli.mjs", () => {
   test("an exemption fails on the git or gh it exists to rule out", () => {
     const workspace = readFileSync(path.join(LOOP, "workspace.mjs"), "utf8");
     assert.ok(OTHER_BINARIES["workspace.mjs"](workspace));
-    assert.ok(!OTHER_BINARIES["workspace.mjs"](workspace.replace('if (file === "gh") return ghCli(args, opts);', "")));
+    assert.ok(!OTHER_BINARIES["workspace.mjs"](workspace.replace("if (CLI_TOOLS.has(file)) return viaCli(file, args, opts);", "")));
     const reap = readFileSync(path.join(LOOP, "reap.mjs"), "utf8");
     assert.ok(OTHER_BINARIES["reap.mjs"](reap));
     assert.ok(!OTHER_BINARIES["reap.mjs"](`${reap}\nconst G = "git";`));

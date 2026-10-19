@@ -7,7 +7,7 @@
  */
 import fs from "node:fs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { gh as ghCli, git as gitAt, REPO } from "./cli.mjs";
+import { gh as ghCli, REPO, viaCli } from "./cli.mjs";
 import { conflictNotePath, noted, parkNotePath, writeNote } from "./loop-logs.mjs";
 import { CI_RED_TIMEOUT_MS, REFRESH_TIMEOUT_MS } from "./limits.mjs";
 
@@ -495,9 +495,6 @@ export function runCli(argv, tracker = ghTracker(), say = console.log) {
       throw new Error(USAGE);
   }
 }
-
-/** git for the push before review, gh for the rest. */
-const viaCli = (file, args, opts = {}) => (file === "git" ? gitAt(opts.cwd)(args, opts) : ghCli(args, opts));
 
 /** The tracker's half of a park, each a step a later pass can apply again on its own. */
 export const PARK_STEPS = {
