@@ -440,6 +440,10 @@ instead, because a webServer pulled from under Playwright manufactures a connect
 failure that reads like a defect (a truncated run can manufacture a **green** the same way — check
 the spec count, not the colour).
 
+`npm run agent:check` reaps first, and again before each memory preflight: any node process whose
+command line names its own worktree, whatever its age, except its own ancestors and a port's
+holder (`reapWorktree` in `tools/loop/reap.mjs`).
+
 ## Remaining traps
 
 - **`git worktree remove --force` deletes straight through a `node_modules` junction into the
