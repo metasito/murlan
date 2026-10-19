@@ -130,7 +130,8 @@ describe("runBotTurn plays a weak seat at the floor and a bot seat with the bot"
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: true,
-      playedRanks: emptyRankTally(),
+      // A tally of zero reads as a fresh deal, whose bot waits out the deal animation.
+      playedRanks: [1, ...emptyRankTally().slice(1)],
     };
   }
 
