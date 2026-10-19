@@ -398,8 +398,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // A refused `room:rejoin` is the one room:error that answers a room the
       // player no longer holds: the lobby on screen is a roster the server has
       // already dropped them from, so it goes with the error rather than
-      // leaving them waiting on a game they are not in.
-      if (rejoin.lobbyRefused(payload.code)) resetTable();
+      // leaving them waiting on a game they are not in. Only the lobby goes: `room:error` is
+      // untagged, so this may as well be a join-by-code refused while the rejoin was in flight.
+      if (rejoin.lobbyRefused(payload.code)) {
+        rejoin.hold({ waitingCode: null });
+        roomRef.current = null;
+        setRoom(null);
+      }
       // `spectateRoom` claims the flag before the server has answered, and a
       // refusal is the only answer some attempts ever get. Left set it would
       // send `room:unspectate` for the next table the player actually sits at,
@@ -702,7 +707,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // pending removals both have to go with the table.
       clearReactions();
     };
-  }, [socket, rejoin, resetTable, abandonRejoin, showNotification, qc, announce]);
+  }, [socket, rejoin, abandonRejoin, showNotification, qc, announce]);
 
   /**
    * Every intent waits to be told it arrived and says so if it never was — a

@@ -206,3 +206,32 @@ describe('the listener effect', () => {
     }
   });
 });
+
+describe('a room:error while a lobby rejoin is outstanding', () => {
+  // `room:error` carries no tag, so a join-by-code refusal reads exactly like the rejoin's own.
+  it('drops only the waiting room, not the rest of the table', async () => {
+    const { result, unmount } = await mount();
+    await deliver('room:state', {
+      roomId: 'R1',
+      code: 'ABCD',
+      hostUserId: 'u1',
+      status: 'waiting',
+      gameMode: 'free_for_all',
+      maxPlayers: 2,
+      players: [{ seatIndex: 0, userId: 'u1', username: 'Ana' }],
+    });
+    await deliver('game:match_state', { target: 41, length: 'match', roundsPlayed: 1, scores: { player_0: 5 } });
+    await deliver('connect');
+    expect(emitted).toContainEqual({ event: 'room:rejoin', payload: expect.objectContaining({ code: 'ABCD' }) });
+    const before = dataOf(result.current);
+
+    await deliver('room:error', { code: 'ROOM_FULL', message: 'Room is full' });
+
+    const { room, error: _error, ...rest } = dataOf(result.current);
+    const { room: _room, error: _before, ...restBefore } = before;
+    expect(room).toBeNull();
+    expect(rest).toEqual(restBefore);
+    expect(await AsyncStorage.getAllKeys()).toEqual([]);
+    await unmount();
+  });
+});
