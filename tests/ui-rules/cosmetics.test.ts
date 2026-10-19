@@ -2,7 +2,7 @@
 // backs, and neither choice may make the game harder to read.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { luminance } from "../../lib/contrast.ts";
+import { relativeLuminance } from "../../lib/contrast.ts";
 import { CardBacks, Colors, FeltGradient, FeltGradients } from "../../lib/tokens.ts";
 import {
   CARD_BACK_IDS,
@@ -19,7 +19,7 @@ import {
 /** WCAG relative luminance. Higher means lighter. */
 function luminanceOf(hex: string): number {
   const n = parseInt(hex.slice(1), 16);
-  return luminance((n >> 16) & 255, (n >> 8) & 255, n & 255);
+  return relativeLuminance([(n >> 16) & 255, (n >> 8) & 255, n & 255]);
 }
 
 // tests/ui-rules/contrast.test.ts pins every text token against Colors.felt. That check

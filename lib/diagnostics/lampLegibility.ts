@@ -1,4 +1,4 @@
-import { luminance } from "../contrast.ts";
+import { relativeLuminance } from "../contrast.ts";
 
 export interface Pixels {
   width: number;
@@ -57,7 +57,7 @@ export function annulusLuminance(pixels: Pixels, at: { x: number; y: number }, p
       const i = (y * width + x) * RGBA;
       if (data[i + 3] !== OPAQUE) continue;
       onFelt++;
-      sum += luminance(data[i], data[i + 1], data[i + 2]);
+      sum += relativeLuminance([data[i], data[i + 1], data[i + 2]]);
     }
   }
   const where = `the ring at (${at.x}, ${at.y}) pt`;

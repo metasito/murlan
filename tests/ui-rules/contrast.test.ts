@@ -9,7 +9,7 @@
 // Imports lib/tokens — the same palette — not lib/theme, whose Shadow helper pulls
 // react-native in; that and the extension — docs/agents/checks.md, "Node's TypeScript loader".
 import { Colors, Garnet, Gradient, Scrim, FeltGradients, LastCard, NoticePalette, Type } from "../../lib/tokens.ts";
-import { contrastRatio as rgbContrast } from "../../lib/contrast.ts";
+import { contrastRatio, relativeLuminance } from "../../lib/contrast.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -27,10 +27,13 @@ function hexToRgb(hex: string): [number, number, number] {
   ];
 }
 
-/** WCAG contrast ratio between two opaque hex colors, 1:1 to 21:1. */
-function contrastRatio(hexA: string, hexB: string): number {
-  return rgbContrast(hexToRgb(hexA), hexToRgb(hexB));
-}
+test("lib/contrast reads hex pairs either way round, from 1:1 to 21:1", () => {
+  assert.equal(relativeLuminance([255, 255, 255]), 1);
+  assert.equal(relativeLuminance([0, 0, 0]), 0);
+  assert.equal(contrastRatio("#000000", "#ffffff"), 21);
+  assert.equal(contrastRatio("#FFFFFF", "#000000"), 21);
+  assert.equal(contrastRatio("#777777", "#777777"), 1);
+});
 
 /** Flattens `rgba(r,g,b,a)` (as used by several Colors entries) onto an opaque
  *  hex background, returning the resulting opaque hex — this is what actually
