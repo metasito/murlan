@@ -34,11 +34,6 @@ export interface Rejoin {
    * to know it will never come.
    */
   attempt(): boolean;
-  /**
-   * Asks for a seat the table handed to a bot back, whatever the client holds of the game: the
-   * results screen it froze on reads as nothing to rejoin. False when no room is known.
-   */
-  reclaim(): boolean;
   /** Live state arrived: nothing is outstanding, and no reply may act. */
   answered(): void;
   hold(next: Partial<TableHandles>): void;
@@ -129,14 +124,6 @@ export function useRejoin(
     return false;
   }, [socket, roomRef, gameStateRef]);
 
-  const reclaim = useCallback((): boolean => {
-    const roomId = roomRef.current?.roomId ?? handlesRef.current.roomId;
-    if (!roomId) return false;
-    requestedRoomIdRef.current = roomId;
-    void send(socket, "game:rejoin", { roomId }, { retry: false });
-    return true;
-  }, [socket, roomRef]);
-
   const release = useCallback(() => {
     answered();
     hold({ roomId: null, waitingCode: null });
@@ -189,7 +176,7 @@ export function useRejoin(
   useEffect(() => clearRetryTimer, [socket, clearRetryTimer]);
 
   return useMemo(
-    () => ({ attempt, reclaim, answered, hold, release, answers, retry, lobbyRefused, cancelLobby }),
-    [attempt, reclaim, answered, hold, release, answers, retry, lobbyRefused, cancelLobby]
+    () => ({ attempt, answered, hold, release, answers, retry, lobbyRefused, cancelLobby }),
+    [attempt, answered, hold, release, answers, retry, lobbyRefused, cancelLobby]
   );
 }

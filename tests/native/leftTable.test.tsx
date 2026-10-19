@@ -8,6 +8,7 @@ import { act, renderHook } from '@testing-library/react-native';
 import { OnlineGameProvider } from '@/context/OnlineGameContext';
 import type { WireGameState } from '@/shared/protocol';
 import { useOnlineGame } from './onlineSurface';
+import { REJOIN_RETRY_DELAY_MS } from '@/context/useRejoin';
 
 type Listener = (...args: unknown[]) => void;
 const listeners = new Map<string, Set<Listener>>();
@@ -94,6 +95,8 @@ const mount = async () => {
   return view;
 };
 
+const rejoins = () => emitted.filter((e) => e.event === 'game:rejoin');
+
 describe('leftTable', () => {
   beforeEach(() => {
     listeners.clear();
@@ -103,25 +106,54 @@ describe('leftTable', () => {
   it("is set by a takeover naming the viewer's own userId", async () => {
     const view = await mount();
     await deliver('game:seat_bot_takeover', takeover('u1', 'Ana', 0));
-    expect(view.result.current.leftTable).toBe(true);
+    expect(view.result.current.leftTable).toBe('vacated');
     await view.unmount();
   });
 
   it('is not set by a takeover naming someone else', async () => {
     const view = await mount();
     await deliver('game:seat_bot_takeover', takeover('u2', 'Besi', 1));
-    expect(view.result.current.leftTable).toBe(false);
+    expect(view.result.current.leftTable).toBeNull();
     await view.unmount();
   });
 
   it('never reclaims on its own: game:rejoin goes out only on reclaimSeat', async () => {
     const view = await mount();
     await deliver('game:seat_bot_takeover', takeover('u1', 'Ana', 0));
-    expect(emitted.map((e) => e.event)).not.toContain('game:rejoin');
+    expect(rejoins()).toEqual([]);
 
     await act(async () => view.result.current.reclaimSeat());
-    expect(emitted).toContainEqual({ event: 'game:rejoin', payload: expect.objectContaining({ roomId: 'R1' }) });
+    expect(rejoins()).toEqual([{ event: 'game:rejoin', payload: expect.objectContaining({ roomId: 'R1' }) }]);
+    expect(view.result.current.leftTable).toBe('reclaiming');
     await view.unmount();
+  });
+
+  it('a second press while the reclaim is in flight sends nothing', async () => {
+    const view = await mount();
+    await deliver('game:seat_bot_takeover', takeover('u1', 'Ana', 0));
+    await act(async () => view.result.current.reclaimSeat());
+    await act(async () => view.result.current.reclaimSeat());
+    expect(rejoins()).toHaveLength(1);
+    await view.unmount();
+  });
+
+  it('a SERVER_ERROR reply retries through the same rejoin, still in flight', async () => {
+    jest.useFakeTimers();
+    try {
+      const view = await mount();
+      await deliver('game:seat_bot_takeover', takeover('u1', 'Ana', 0));
+      await act(async () => view.result.current.reclaimSeat());
+
+      await deliver('game:rejoin_failed', { roomId: 'R1', code: 'SERVER_ERROR', message: 'blip' });
+      expect(view.result.current.leftTable).toBe('reclaiming');
+      await act(async () => {
+        jest.advanceTimersByTime(REJOIN_RETRY_DELAY_MS);
+      });
+      expect(rejoins()).toHaveLength(2);
+      await view.unmount();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('is cleared by the game:state that seats the viewer again', async () => {
@@ -130,16 +162,23 @@ describe('leftTable', () => {
     await act(async () => view.result.current.reclaimSeat());
 
     await deliver('game:state', table(false));
-    expect(view.result.current.leftTable).toBe(false);
+    expect(view.result.current.leftTable).toBeNull();
     await view.unmount();
   });
 
-  it('survives a game:state that does not seat the viewer', async () => {
+  // The server sends a vacated player no game:state, only what goes to the whole room.
+  it('holds through the room broadcasts that still reach a vacated player', async () => {
     const view = await mount();
     await deliver('game:seat_bot_takeover', takeover('u1', 'Ana', 0));
 
-    await deliver('game:state', { ...table(false), viewerSeatIndex: null });
-    expect(view.result.current.leftTable).toBe(true);
+    await deliver('game:vote_state', { votes: ['u2'], total: 1 });
+    await deliver('room:state', ROOM);
+    await deliver('game:seat_bot_takeover', takeover('u2', 'Besi', 1));
+
+    expect(view.result.current.leftTable).toBe('vacated');
+    expect(view.result.current.mySeatIndex).toBe(0);
+    await act(async () => view.result.current.reclaimSeat());
+    expect(rejoins()).toEqual([{ event: 'game:rejoin', payload: expect.objectContaining({ roomId: 'R1' }) }]);
     await view.unmount();
   });
 
@@ -148,7 +187,7 @@ describe('leftTable', () => {
     await deliver('game:seat_bot_takeover', takeover('u1', 'Ana', 0));
 
     await act(async () => view.result.current.leaveRoom());
-    expect(view.result.current.leftTable).toBe(false);
+    expect(view.result.current.leftTable).toBeNull();
     await view.unmount();
   });
 
@@ -160,7 +199,7 @@ describe('leftTable', () => {
     await deliver('game:rejoin_failed', { roomId: 'R1', code: 'SEAT_RELEASED', message: 'released' });
     expect(view.result.current.rejoinFailed).toBe(true);
     expect(view.result.current.room).toBeNull();
-    expect(view.result.current.leftTable).toBe(false);
+    expect(view.result.current.leftTable).toBeNull();
     await view.unmount();
   });
 });

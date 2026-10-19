@@ -75,7 +75,7 @@ export const NOTICE_GALLERY = {
     {
       name: "the vote deadline gave your seat to a bot",
       tone: "neutral",
-      render: (scale) => <LeftTable scale={scale} onReclaim={() => {}} onLeave={() => {}} />,
+      render: (scale) => <LeftTable scale={scale} live reclaiming={false} onReclaim={() => {}} onLeave={() => {}} />,
     },
   ],
   whoStarts: [

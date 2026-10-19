@@ -8,10 +8,16 @@ import { mockupPx, noticeBox, panelParts, type NoticeKind } from "../noticeModel
 
 export type EndMatchVoteNote = { voted: boolean; votes: number; total: number; onPress: () => void };
 export type RoundVoteNote = EndMatchVoteNote & { deadline?: { seconds: number; resetKey: string } };
-export type LeftTableNote = { onReclaim: () => void; onLeave: () => void };
+export type LeftTableNote = { reclaiming: boolean; onReclaim: () => void; onLeave: () => void };
 
 /** The viewer's own seat went to a bot at the vote deadline: why, and the two ways on from there. */
-export function LeftTable({ scale, onReclaim, onLeave }: LeftTableNote & { scale: number }) {
+export function LeftTable({
+  scale,
+  live,
+  reclaiming,
+  onReclaim,
+  onLeave,
+}: LeftTableNote & { scale: number; live: boolean }) {
   const { t } = useTranslation();
   const part = panelParts(scale);
   const u = mockupPx(1, scale);
@@ -29,14 +35,21 @@ export function LeftTable({ scale, onReclaim, onLeave }: LeftTableNote & { scale
         </TableNotice>
       </View>
       <View style={[styles.actions, { gap: part.rowGap }]}>
-        <BoardButton testID="btn-left-table-leave" label={t("onlineGame.leftTableLeave")} onPress={onLeave} unit={u} live />
+        <BoardButton
+          testID="btn-left-table-leave"
+          label={t("onlineGame.leftTableLeave")}
+          onPress={onLeave}
+          unit={u}
+          live={live}
+        />
         <BoardButton
           primary
           testID="btn-left-table-reclaim"
           label={t("onlineGame.leftTableReclaim")}
           onPress={onReclaim}
+          disabled={reclaiming}
           unit={u}
-          live
+          live={live}
         />
       </View>
     </View>

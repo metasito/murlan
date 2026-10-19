@@ -84,6 +84,9 @@ export type ServerNotice = { payload: ServerPayload; seq: number; surface: "lobb
 /** A refusal as one surface shows it, in the language on screen. */
 export type ServerError = { text: string; seq: number };
 
+/** The vote deadline gave the viewer's seat to a bot; `reclaiming` once a rejoin for it is outstanding. */
+export type SeatLoss = "vacated" | "reclaiming";
+
 interface OnlineGameContextValue {
   room: RoomState | null;
   gameState: WireGameState | null;
@@ -106,8 +109,8 @@ interface OnlineGameContextValue {
   /** How many times the server has passed the viewer's turn for them. */
   autoPassed: number;
   /** The table handed the viewer's own seat to a bot while they were still here; only `reclaimSeat` takes it back. */
-  leftTable: boolean;
-  /** Asks for the seat `leftTable` names back; the next `game:state` that seats the viewer answers it. */
+  leftTable: SeatLoss | null;
+  /** Asks for that seat back through the one rejoin path; a press while one is in flight sends nothing. */
   reclaimSeat: () => void;
   cumulativeScores: Record<string, number>;
   /** What the round just played awarded, by engine player id. */
@@ -307,7 +310,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [ratingsAfter, setRatingsAfter] = useState<Record<string, RatingAfter>>({});
   const [matchState, setMatchState] = useState<OnlineMatchState>(INITIAL_MATCH);
   const [rejoinFailed, setRejoinFailed] = useState(false);
-  const [leftTable, setLeftTable] = useState(false);
+  const [leftTable, setLeftTable] = useState<SeatLoss | null>(null);
 
   const {
     announcing: exchangeAnnouncing,
@@ -347,7 +350,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setIsSpectator(false);
     setPlayerLeft(false);
     setRejoinFailed(false);
-    setLeftTable(false);
+    setLeftTable(null);
     setError(null);
     setReconnectNotice(null);
     if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
@@ -447,7 +450,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       }
       if (typeof state.viewerSeatIndex === "number") {
         setMySeatIndex(state.viewerSeatIndex);
-        setLeftTable(false);
+        setLeftTable(null);
       }
 
       const prev = gameStateRef.current;
@@ -587,7 +590,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       payload: ServerPayload & { userId: string; username: string; seatIndex: number }
     ) => {
       if (payload.userId === userId) {
-        setLeftTable(true);
+        setLeftTable("vacated");
       } else {
         showNotification({
           type: "game_info",
@@ -834,8 +837,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   );
 
   const reclaimSeat = useCallback(() => {
-    rejoin.reclaim();
-  }, [rejoin]);
+    if (leftTable === "vacated" && rejoin.attempt()) setLeftTable("reclaiming");
+  }, [leftTable, rejoin]);
 
   const sendReaction = useCallback((emoji: string) => {
     deliver("game:reaction", { emoji });

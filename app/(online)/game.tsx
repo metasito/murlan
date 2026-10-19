@@ -308,7 +308,9 @@ export default function OnlineGameScreen() {
             }
           : null
       }
-      leftTable={leftTable ? { onReclaim: reclaimSeat, onLeave: leaveAndExit } : null}
+      leftTable={
+        leftTable ? { reclaiming: leftTable === "reclaiming", onReclaim: reclaimSeat, onLeave: leaveAndExit } : null
+      }
       roundVote={
         roundOnTable && !leftTable
           ? {

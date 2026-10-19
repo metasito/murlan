@@ -6,22 +6,22 @@ import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigatio
 import { createRoom, goToOnlineLobby, joinRoom, startRoom } from "./helpers/online";
 import { driveGameToCompletion } from "./helpers/bot";
 import { HAND_CARDS } from "./helpers/selectors";
+import { E2E_VOTE_DEADLINE_MS } from "./helpers/voteDeadline";
 import { it as copy } from "../../locales/it";
 
-// The server's own default (`voteDeadlineMs`, server/game/gameTimers.ts): the shared e2e server
-// cannot shorten it for one spec without shortening it under every other spec that sits on a result.
-const VOTE_DEADLINE_MS = 30_000;
+const PHONE = { width: 844, height: 390 };
 
 const nextRoundVote = (page: Page) =>
   page.getByRole("button", { name: copy["roundOverOverlay.nextRoundA11yLabel"], exact: true });
 const reclaim = (page: Page) => page.getByRole("button", { name: copy["onlineGame.leftTableReclaim"], exact: true });
+const leave = (page: Page) => page.getByRole("button", { name: copy["onlineGame.leftTableLeave"], exact: true });
 
-test("online — a player vacated by the vote deadline sees it, and takes the seat back with a hand", async ({
+test("online — a player vacated by the vote deadline takes the seat back, with a hand", async ({
   browser,
   baseURL,
 }) => {
   test.setTimeout(8 * 60_000);
-  const contexts = await Promise.all([0, 1].map(() => browser.newContext({ locale: "it-IT" })));
+  const contexts = await Promise.all([0, 1].map(() => browser.newContext({ locale: "it-IT", viewport: PHONE })));
   try {
     const [voter, silent] = await Promise.all(contexts.map((c) => c.newPage()));
     for (const [p, name] of [[voter, "e2evote"], [silent, "e2esilent"]] as const) {
@@ -42,10 +42,18 @@ test("online — a player vacated by the vote deadline sees it, and takes the se
     );
     await nextRoundVote(voter).click();
 
-    await expect(silent.getByTestId("left-table")).toBeVisible({ timeout: VOTE_DEADLINE_MS + 30_000 });
+    await expect(silent.getByTestId("left-table")).toBeVisible({ timeout: E2E_VOTE_DEADLINE_MS + 30_000 });
     await expect(silent.getByTestId("notice-leftTable").getByText(copy["onlineGame.leftTableTitle"])).toBeVisible();
     await expect(nextRoundVote(silent), "the panel stands in the vote's place").toHaveCount(0);
-    await expect(silent.getByRole("button", { name: copy["onlineGame.leftTableLeave"], exact: true })).toBeVisible();
+    for (const button of [reclaim(silent), leave(silent)]) {
+      await expect(button).toBeEnabled();
+      const box = await button.boundingBox();
+      expect(box, "the button is laid out").not.toBeNull();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.y).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(PHONE.width);
+      expect(box!.y + box!.height).toBeLessThanOrEqual(PHONE.height);
+    }
 
     await reclaim(silent).click();
 

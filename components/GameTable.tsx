@@ -16,7 +16,8 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import Animated, { useAnimatedReaction, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import * as ScreenOrientation from "expo-screen-orientation";
 import type { NativeStackNavigationProp } from "expo-router";
 import { NavigationContext, type ParamListBase } from "expo-router/react-navigation";
@@ -831,6 +832,13 @@ export function GameTable({
     const shown = roundVoteShown(roundEnding.clock.value);
     return { opacity: shown, display: shown > 0 ? "flex" : "none" };
   });
+  const [leftTableLive, setLeftTableLive] = useState(false);
+  useAnimatedReaction(
+    () => roundVoteShown(roundEnding.clock.value) >= 1,
+    (live, prev) => {
+      if (live !== prev) scheduleOnRN(setLeftTableLive, live);
+    }
+  );
   const openPill = scorePillBox(1, 0, pillAnchor);
   const shownTurnIndex = useShownTurn(gameState.currentTurnIndex, timeline);
   const shownTurnIsMine = viewerOwnsSeat(shownTurnIndex, viewerSeat, spectating);
@@ -1221,7 +1229,7 @@ export function GameTable({
           >
             <A11yVeil veil={behindVeil}>
               {leftTable ? (
-                <LeftTable {...leftTable} scale={scale} />
+                <LeftTable {...leftTable} live={leftTableLive} scale={scale} />
               ) : (
                 roundVote && <RoundVote {...roundVote} scale={scale} />
               )}
