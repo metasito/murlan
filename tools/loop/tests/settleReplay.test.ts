@@ -12,7 +12,7 @@ import { journaled, settle } from "../queue-loop.mjs";
 import { ciRedBody, endSettle, onMainLine, overdueAt, READ_RETRIES, rested, runSettle, SETTLE, startSettle, stepSettle } from "../settle.mjs";
 import { appendSupervisor, supervisorLogPath } from "../loop-logs.mjs";
 import { readLandingState } from "../ciVerdict.ts";
-import { armArgs, disarmArgs } from "../land.ts";
+import { armArgs, disarmArgs } from "../tracker.mjs";
 import { readLine } from "../loop-stream.mjs";
 
 const REPO = "metasito/murlan";
@@ -66,6 +66,28 @@ function rollupFake({
     assert.equal(file, "gh", `a ${file} call reached the gh fake: ${args.join(" ")}`);
     asked.push(args);
     const [cmd, sub] = args;
+    const kind = kindOf(args);
+    if (kind === "update-branch") {
+      pr.head = NEW;
+      return "";
+    }
+    if (kind === "rerun") {
+      if (refuse.rerun) throw new Error(refuse.rerun);
+      pr.attempt += 1;
+      return "";
+    }
+    if (kind === "merge") {
+      if (refuse.merge) throw new Error(refuse.merge);
+      pr.merged = true;
+      return "";
+    }
+    if (kind === "read") return JSON.stringify([issueComments.map((c) => ({ author_association: "OWNER", user: { login: "o" }, ...c }))]);
+    if (kind === "comment") return "";
+    if (kind === "list") return JSON.stringify([open.map((title, i) => ({ number: 2000 + i, title }))]);
+    if (kind === "create") {
+      open.push(titleOf(args));
+      return JSON.stringify({ html_url: `https://github.com/${REPO}/issues/${1999 + open.length}` });
+    }
     if (cmd === "pr" && sub === "view") {
       const f = views[Math.min(read++, views.length - 1)];
       return JSON.stringify({
@@ -87,18 +109,7 @@ function rollupFake({
         pr.merged = autoMerges;
         return "";
       }
-      if (refuse.merge) throw new Error(refuse.merge);
-      pr.merged = true;
-      return "";
-    }
-    if (cmd === "pr" && sub === "update-branch") {
-      pr.head = NEW;
-      return "";
-    }
-    if (cmd === "run" && sub === "rerun") {
-      if (refuse.rerun) throw new Error(refuse.rerun);
-      pr.attempt += 1;
-      return "";
+      throw new Error(`a direct merge is REST's, not gh pr merge: ${args.join(" ")}`);
     }
     if (cmd === "run" && sub === "view" && args.includes("--log-failed")) {
       if (log === null) throw new Error("gh: could not read the log");
@@ -107,15 +118,6 @@ function rollupFake({
     if (cmd === "run" && sub === "view" && args.includes("jobs")) return JSON.stringify(RED.jobs);
     if (cmd === "run" && sub === "view") return JSON.stringify({ ...RED.run, headSha: pr.head, attempt: pr.attempt });
     if (cmd === "run" && sub === "list") return "[]";
-    if (cmd === "issue" && sub === "view") {
-      return JSON.stringify({ comments: issueComments.map((c) => ({ authorAssociation: "OWNER", ...c })) });
-    }
-    if (cmd === "issue" && sub === "comment") return "";
-    if (cmd === "issue" && sub === "list") return JSON.stringify(open.map((title, i) => ({ number: 2000 + i, title })));
-    if (cmd === "issue" && sub === "create") {
-      open.push(args[args.indexOf("--title") + 1]);
-      return `https://github.com/${REPO}/issues/${1999 + open.length}\n`;
-    }
     throw new Error(`the gh fake has no answer for: gh ${args.join(" ")}`);
   };
   return { gh, asked, pr };
@@ -134,14 +136,36 @@ const io = (gh: (args: string[], file?: string) => string, written: string[][] =
 });
 
 const DEADLINE = 60_000;
-const merges = (asked: string[][]) => asked.filter((a) => a[0] === "pr" && a[1] === "merge");
+/** What a tracker call does, from its REST path and method; null for the gh porcelain the fake answers itself. */
+const kindOf = (a: string[]) => {
+  if (a[0] !== "api") return null;
+  const path = String(a.find((x) => x.startsWith("repos/")) ?? "");
+  const method = a.includes("-X") ? a[a.indexOf("-X") + 1] : "GET";
+  if (/\/pulls\/\d+\/update-branch$/.test(path)) return "update-branch";
+  if (/\/actions\/runs\/\d+\/rerun-failed-jobs$/.test(path)) return "rerun";
+  if (/\/pulls\/\d+\/merge$/.test(path)) return "merge";
+  if (/\/issues\/\d+\/comments/.test(path)) return method === "POST" ? "comment" : "read";
+  if (/\/issues\?/.test(path)) return "list";
+  if (/\/issues$/.test(path) && method === "POST") return "create";
+  return null;
+};
+const fieldOf = (a: string[], name: string) => a.find((x) => x.startsWith(`${name}=`))?.slice(name.length + 1) ?? null;
+const titleOf = (a: string[]) => fieldOf(a, "title") ?? a[a.indexOf("--title") + 1];
+/** The file a call's body comes from: `--body-file`, or REST's `@file` field. */
+const bodyFileOf = (a: string[]) => {
+  const at = a.indexOf("--body-file");
+  if (at !== -1) return a[at + 1];
+  return (fieldOf(a, "body") ?? fieldOf(a, "commit_message"))?.replace(/^@/, "") ?? null;
+};
+const isDirectMerge = (a: string[]) => kindOf(a) === "merge";
+const merges = (asked: string[][]) => asked.filter((a) => (a[0] === "pr" && a[1] === "merge") || isDirectMerge(a));
 const indexOf = (asked: string[][], match: (a: string[]) => boolean) => asked.findIndex(match);
 const isDisarm = (a: string[]) => a[1] === "merge" && a.includes("--disable-auto");
-const isComment = (a: string[]) => a[0] === "issue" && a[1] === "comment";
+const isComment = (a: string[]) => kindOf(a) === "comment";
 /** The text a `--body-file` argument names, from what `io`'s `write` captured; "" when it names none. */
 const fileOf = (written: string[][], args: string[]) => {
-  const at = args.indexOf("--body-file");
-  return at === -1 ? "" : (written.findLast(([p]) => p === args[at + 1])?.[1] ?? "");
+  const file = bodyFileOf(args);
+  return file === null ? "" : (written.findLast(([p]) => p === file)?.[1] ?? "");
 };
 
 /**
@@ -458,7 +482,7 @@ describe("runSettle, through a fake gh over recorded rollups", () => {
     assert.equal(out.action, "already-merged");
     const [armed, direct] = merges(asked);
     assert.deepEqual(armed, armArgs(REPO, PENDING.pr, SHA));
-    assert.deepEqual(direct, armArgs(REPO, PENDING.pr, SHA).filter((a) => a !== "--auto"));
+    assert.deepEqual(direct, ["api", "-X", "PUT", `repos/${REPO}/pulls/${PENDING.pr}/merge`, "-f", "merge_method=merge", "-f", `sha=${SHA}`]);
   });
 
   test("a merge refused both ways is the owner's", async () => {
@@ -496,19 +520,19 @@ describe("runSettle, through a fake gh over recorded rollups", () => {
     const { gh, asked } = rollupFake({ views: [at(GREEN, { mergeStateStatus: "BEHIND" }), GREEN] });
     const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(out.action, "already-merged");
-    assert.ok(asked.some((a) => a[0] === "pr" && a[1] === "update-branch"), "the fake must see it");
+    assert.ok(asked.some((a) => kindOf(a) === "update-branch"), "the fake must see it");
     assert.deepEqual(merges(asked), [armArgs(REPO, PENDING.pr, NEW)]);
   });
 
   test("an update-branch GitHub refuses is the owner's", async () => {
     const fake = rollupFake({ views: [at(GREEN, { mergeStateStatus: "BEHIND" })] });
     const gh = (args: string[], file = "gh") => {
-      if (args[1] === "update-branch") throw new Error("GraphQL: merge conflict");
+      if (kindOf(args) === "update-branch") throw new Error("gh: merge conflict (HTTP 422)");
       return fake.gh(args, file);
     };
     const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(out.action, "owner");
-    assert.match(String(out.reason), /^could not update the branch — GraphQL: merge conflict/);
+    assert.match(String(out.reason), /^could not update the branch — gh: merge conflict/);
   });
 });
 
@@ -554,7 +578,7 @@ describe("an armed pull request is disarmed on every way out but a merge", () =>
       const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
       assert.equal(out.action, "owner");
       assert.match(String(out.reason), /the merge failed/);
-      assert.ok(indexOf(asked, isDisarm) > indexOf(asked, (a) => a[1] === "merge" && !a.includes("--auto")), JSON.stringify(asked));
+      assert.ok(indexOf(asked, isDisarm) > indexOf(asked, isDirectMerge), JSON.stringify(asked));
       assert.equal(pr.armed, false);
     });
 
@@ -587,18 +611,18 @@ describe("an armed pull request is disarmed on every way out but a merge", () =>
 });
 
 describe("a red is rerun once per head", () => {
-  const reruns = (asked: string[][]) => asked.filter((a) => a[0] === "run" && a[1] === "rerun");
+  const reruns = (asked: string[][]) => asked.filter((a) => kindOf(a) === "rerun");
 
   test("rerun once through gh, then handed back when the rerun is red too", async () => {
     const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, RED], log: UNNAMED });
     const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
-    assert.deepEqual(reruns(asked), [["run", "rerun", String(RED_RUN), "--failed", "--repo", REPO]]);
+    assert.deepEqual(reruns(asked), [["api", "-X", "POST", `repos/${REPO}/actions/runs/${RED_RUN}/rerun-failed-jobs`]]);
     assert.equal(out.action, "hand-back");
   });
 
   describe("a red a rerun turned green is a flake, said everywhere it lands", () => {
     const ID = "tools/loop/tests/x.test.ts › breaks";
-    const creates = (asked: string[][]) => asked.filter((a) => a[0] === "issue" && a[1] === "create");
+    const creates = (asked: string[][]) => asked.filter((a) => kindOf(a) === "create");
 
     test("the settle names the run and its tests, the merge says so, and one issue is filed per test", async () => {
       const written: string[][] = [];
@@ -610,9 +634,9 @@ describe("a red is rerun once per head", () => {
       assert.match(fileOf(written, arm), new RegExp(`${RED_RUN}[\\s\\S]*x\\.test\\.ts › breaks`));
       const [create, ...more] = creates(asked);
       assert.equal(more.length, 0);
-      assert.equal(create[create.indexOf("--title") + 1], `CI flake: ${ID}`);
+      assert.equal(titleOf(create), `CI flake: ${ID}`);
       const mergedAt = asked.findIndex((a, i) => i > indexOf(asked, (b) => b.includes("--auto")) && a[1] === "view" && a[0] === "pr");
-      assert.ok(indexOf(asked, (a) => a[1] === "create") > mergedAt, "filed once the merge is read back, never before it");
+      assert.ok(indexOf(asked, (a) => kindOf(a) === "create") > mergedAt, "filed once the merge is read back, never before it");
     });
 
     // The issue says the pull request merged on that green; the ledger row is the record either way.
@@ -651,7 +675,7 @@ describe("a red is rerun once per head", () => {
     // Promotion swaps `ready-for-human` for `ci-flake`, so a listing by either label misses it.
     test("a test filed and since promoted is not filed again, whatever its labels", async () => {
       const fake = rollupFake({ views: [RED, GATE_RUNNING, GREEN], open: [`CI flake: ${ID}`] });
-      const gh = (args: string[], file = "gh") => (args[1] === "list" && args.includes("--label") ? (fake.asked.push(args), "[]") : fake.gh(args, file));
+      const gh = (args: string[], file = "gh") => (kindOf(args) === "list" && args.some((a) => /[?&]labels=/.test(a)) ? (fake.asked.push(args), "[[]]") : fake.gh(args, file));
       await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
       assert.equal(creates(fake.asked).length, 0);
     });
@@ -665,8 +689,8 @@ describe("a red is rerun once per head", () => {
       test("files one issue for the run, and one gh listing before it", async () => {
         const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], log: many });
         await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
-        assert.deepEqual(creates(asked).map((c) => c[c.indexOf("--title") + 1]), [TITLE]);
-        assert.equal(asked.filter((a) => a[0] === "issue" && a[1] === "list").length, 1);
+        assert.deepEqual(creates(asked).map(titleOf), [TITLE]);
+        assert.equal(asked.filter((a) => kindOf(a) === "list").length, 1);
       });
 
       test("names at most twenty tests in the merge and the issue, both passed as files", async () => {
@@ -677,7 +701,7 @@ describe("a red is rerun once per head", () => {
         const arm = merges(asked).find((a) => a.includes("--auto"))!;
         const [create] = creates(asked);
         for (const args of [arm, create]) {
-          assert.ok(!args.includes("--body"), `no inline body: ${args.join(" ")}`);
+          assert.ok(!args.includes("--body") && !args.some((a) => /^body=[^@]/.test(a)), `no inline body: ${args.join(" ")}`);
           const text = fileOf(written, args);
           assert.equal((text.match(/t\d+\.test\.ts › breaks/g) ?? []).length, 20, text);
           assert.match(text, /and 5 more/);
@@ -764,7 +788,7 @@ describe("runSettle posts CI-RED once per red head", () => {
     await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh, written));
     const posted = asked.filter(isComment);
     assert.equal(posted.length, 1);
-    const file = posted[0][posted[0].indexOf("--body-file") + 1];
+    const file = bodyFileOf(posted[0]);
     const body = written.find(([p]) => p === file)?.[1];
     assert.match(String(body), new RegExp(`^CI-RED ${SHA}`));
   });
@@ -795,7 +819,7 @@ describe("runSettle posts CI-RED once per red head", () => {
     };
     return { ...fake, gh };
   };
-  const isRead = (a: string[]) => a[0] === "issue" && a[1] === "view";
+  const isRead = (a: string[]) => kindOf(a) === "read";
 
   test("an unreadable tracker is asked again, never posted to blind, and then held rather than handed back", async () => {
     const { gh, asked } = failing(isRead);
@@ -828,7 +852,7 @@ describe("runSettle posts CI-RED once per red head", () => {
     const { gh, asked } = rollupFake({ views: [RED], log: [old, ...filler].join("\n") });
     await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh, written));
     const post = asked.find(isComment)!;
-    const body = String(written.find(([p]) => p === post[post.indexOf("--body-file") + 1])?.[1]);
+    const body = String(written.find(([p]) => p === bodyFileOf(post))?.[1]);
     assert.match(body, /^- tests\/e2e\/old\.spec\.ts$/m);
   });
 
@@ -841,7 +865,7 @@ describe("runSettle posts CI-RED once per red head", () => {
       return gh(args, file);
     };
     await runSettle(PENDING, () => {}, 0, DEADLINE, { ...io(gh), run, mainFailures: undefined });
-    assert.deepEqual(calls.map((c) => c.args.slice(0, 2).join(" ")), ["run rerun", "run list", "issue view", "issue comment"]);
+    assert.deepEqual(calls.map((c) => kindOf(c.args) ?? c.args.slice(0, 2).join(" ")), ["rerun", "run list", "read", "comment"]);
     for (const c of calls) assert.equal(c.opts?.timeout, 30_000);
   });
 });
@@ -853,7 +877,7 @@ describe("a red head's failures that main has too", () => {
     rollupFake({ views: [RED], log: `Typecheck and tests\tTest\t2026-10-12T19:07:30Z   ${line}` });
   const bodyOf = (asked: string[][], written: string[][]) => {
     const post = asked.find(isComment);
-    return post ? String(written.find(([p]) => p === post[post.indexOf("--body-file") + 1])?.[1]) : null;
+    return post ? String(written.find(([p]) => p === bodyFileOf(post))?.[1]) : null;
   };
 
   test("onMainLine names the overlap and main's run, in the branch's order", () => {
@@ -934,7 +958,7 @@ describe("ciRedBody", () => {
     const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, RED] });
     await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh, written));
     const post = asked.find(isComment)!;
-    assert.match(String(written.find(([p]) => p === post[post.indexOf("--body-file") + 1])?.[1]), /^rerun: survived one$/m);
+    assert.match(String(written.find(([p]) => p === bodyFileOf(post))?.[1]), /^rerun: survived one$/m);
   });
 
   test("no failing file is dropped, however long the others are", () => {

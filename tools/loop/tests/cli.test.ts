@@ -154,12 +154,11 @@ describe("no git or gh outside cli.mjs", () => {
 
 /**
  * A gh argv — an array opening on one of gh's own commands — is built in these files and no other
- * loop module: the tracker for issues and pull requests, settle's executor (with the merge argv
- * `land.ts` hands it) for its effects, and the two CI readers, whose fakes are the REST rollup they
- * read.
+ * loop module: the tracker for issues, pull requests and runs, and the two CI readers, whose fakes
+ * are the rollup and run shapes they read.
  */
 describe("no gh argv outside the tracker and the CI modules", () => {
-  const ALLOWED = new Set(["cli.mjs", "tracker.mjs", "settle.mjs", "land.ts", "ciVerdict.ts", "mainHealth.ts"]);
+  const ALLOWED = new Set(["cli.mjs", "tracker.mjs", "ciVerdict.ts", "mainHealth.ts"]);
   const GH_ARGV = /\[\s*["'`](?:issue|pr|api|repo|release|workflow|search|secret|gist)["'`]\s*,|\[\s*["'`]run["'`]\s*,\s*["'`](?:view|list|rerun|watch|download|cancel|delete)["'`]/;
   const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
   const files = readdirSync(LOOP).filter((f) => /\.(mjs|ts)$/.test(f) && !ALLOWED.has(f));

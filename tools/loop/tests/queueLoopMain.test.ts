@@ -2410,7 +2410,7 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
       ci: { pass: false, runId: RUN, head: "a", attempt: 1, failedStep: "Typecheck and tests", testIds: ["x.test.ts › y"], output: "✖ y", reason: "CI failed at Typecheck and tests" },
       progress: { done: 1, total: 1, running: null, failed: "Typecheck and tests" },
     };
-    const run = (_file: string, args: string[]) => (calls.push(args), args[0] === "issue" && args[1] === "view" ? JSON.stringify({ comments: [] }) : "");
+    const run = (_file: string, args: string[]) => (calls.push(args), args[0] === "api" && !args.includes("-X") && /\/comments/.test(String(args.at(-1))) ? "[[]]" : "");
     const settle = (p: any) => runSettle(p, () => {}, 0, 60_000, { run, stateOf: () => red, write: () => {}, mkdir: () => {}, mainFailures: () => null });
     const r = await runOnce(
       io({
@@ -2422,7 +2422,7 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
     assert.equal(r.outcome, "retry");
     const disarm = calls.findIndex((a) => a.includes("--disable-auto"));
     const spawn = calls.findIndex((a) => a[0] === "spawn");
-    const posted = calls.findIndex((a) => a[0] === "issue" && a[1] === "comment");
+    const posted = calls.findIndex((a) => a.includes("POST") && a.some((x) => /\/issues\/\d+\/comments$/.test(x)));
     assert.ok(disarm !== -1 && (spawn === -1 || disarm < spawn) && disarm < posted, JSON.stringify(calls));
   });
 

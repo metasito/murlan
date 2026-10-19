@@ -3,8 +3,6 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   landing,
-  armArgs,
-  disarmArgs,
   type CiVerdict,
   type Landing,
   type PrState,
@@ -318,22 +316,5 @@ describe("landing", () => {
       const d = landing(pr({ mergeStateStatus }), GREEN);
       assert.ok(!terminal.includes(d.action), `${mergeStateStatus} answered ${d.action}`);
     }
-  });
-});
-
-describe("armArgs and disarmArgs", () => {
-  test("arm pins the head, with a merge commit", () => {
-    assert.deepEqual(armArgs("metasito/murlan", 7, "abc"), [
-      "pr", "merge", "7", "--repo", "metasito/murlan", "--auto", "--merge", "--match-head-commit", "abc",
-    ]);
-  });
-
-  test("arm never squashes, rebases or forces", () => {
-    const args = armArgs("metasito/murlan", 42, "abc");
-    for (const flag of ["--squash", "--rebase", "--admin"]) assert.ok(!args.includes(flag), flag);
-  });
-
-  test("disarm", () => {
-    assert.deepEqual(disarmArgs("metasito/murlan", 7), ["pr", "merge", "7", "--repo", "metasito/murlan", "--disable-auto"]);
   });
 });

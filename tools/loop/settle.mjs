@@ -15,7 +15,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { firstLine, gh as ghCli, git as gitAt, REPO } from "./cli.mjs";
 import { ciRedPosted } from "./loop-derive.mjs";
-import { trustedComments } from "./tracker.mjs";
+import { ghTracker } from "./tracker.mjs";
 import { readLine } from "./loop-stream.mjs";
 import { ciLine } from "./loop-render.mjs";
 import { DIR, ciLogPath, ciRedNotePath, streamLog } from "./loop-logs.mjs";
@@ -292,7 +292,7 @@ function settlePorts(pending, log, pause, io) {
   const facts = io.facts ?? (() => streamFacts(pending.ticket));
   const ports = {
     run,
-    gh: (args) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS }),
+    tracker: io.tracker ?? ghTracker((args, opts) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS, ...opts })),
     stateOf: io.stateOf ?? ((pr) => ts("./ciVerdict.ts").readLandingState(REPO, pr)),
     write: io.write ?? writeFileSync,
     mkdir: io.mkdir ?? mkdirSync,
@@ -331,9 +331,9 @@ function streamFacts(ticket) {
 }
 
 /** Null when the tracker cannot be read, which is a reason to skip posting, never to post blind. */
-function readTicketComments(ticket, { gh, log }) {
+function readTicketComments(ticket, { tracker, log }) {
   try {
-    return trustedComments(JSON.parse(gh(["issue", "view", String(ticket), "--json", "comments"])).comments);
+    return tracker.comments(ticket);
   } catch (err) {
     log(`CI-RED: could not read the tracker — ${firstLine(err)}`);
     return null;
@@ -346,7 +346,7 @@ function readTicketComments(ticket, { gh, log }) {
  *
  * @returns {boolean} whether the tracker carries it now
  */
-function postCiRedOnce(ticket, ci, { onMain, flaky }, comments, { gh, write, log }) {
+function postCiRedOnce(ticket, ci, { onMain, flaky }, comments, { tracker, write, log }) {
   const sha = ci.head;
   if (!comments) return false;
   if (!sha || ciRedPosted(comments, sha)) return true;
@@ -366,7 +366,7 @@ function postCiRedOnce(ticket, ci, { onMain, flaky }, comments, { gh, write, log
   try {
     const file = ciRedNotePath(ticket);
     write(file, body, "utf8");
-    gh(["issue", "comment", String(ticket), "--body-file", file]);
+    tracker.comment(ticket, file);
     return true;
   } catch (err) {
     log(`CI-RED: could not post — ${firstLine(err)}`);
@@ -404,16 +404,16 @@ function flakeMergeFile(red, ticket, write) {
  * search trails its own writes, and promoting one swaps its label. `ready-for-human`, not
  * `ci-flake`: ADR 0011 keeps that label, and the rank it carries, the owner's to add.
  */
-function fileFlakes(red, { gh, log, write }) {
+function fileFlakes(red, { tracker, log, write }) {
   let open;
   try {
-    open = JSON.parse(gh(["issue", "list", "--repo", REPO, "--state", "open", "--limit", "1000", "--json", "number,title"]));
+    open = tracker.openIssues();
   } catch (err) {
     log(`could not list the open flake issues — ${firstLine(err)}; the merge and the ledger still name it`);
     return;
   }
   const names = flakeNames(red);
-  // More reds than this cleared by one rerun reads as a starved runner, and it bounds the `gh` calls.
+  // More reds than this cleared by one rerun reads as a starved runner, and it bounds the tracker's writes.
   const titles = names.length > FLAKES_PER_RUN ? [`CI flake: ${names.length} tests in run ${red.runId}`] : names.map((n) => `CI flake: ${n}`);
   for (const title of titles) {
     if (open.some((i) => i.title === title)) continue;
@@ -426,7 +426,7 @@ function fileFlakes(red, { gh, log, write }) {
     try {
       const file = path.join(DIR, `flake-issue-${red.ticket}.md`);
       write(file, body, "utf8");
-      gh(["issue", "create", "--repo", REPO, "--title", title, "--body-file", file, "--label", "ready-for-human"]);
+      tracker.createIssue({ title, bodyFile: file, labels: ["ready-for-human"] });
       log(`filed ${title}`);
     } catch (err) {
       log(`could not file ${title} — ${firstLine(err)}`);
@@ -439,8 +439,7 @@ function fileFlakes(red, { gh, log, write }) {
  * the settle instead.
  */
 async function perform(effect, pending, ports) {
-  const { gh, log } = ports;
-  const { armArgs, disarmArgs } = ts("./land.ts");
+  const { tracker, log } = ports;
   switch (effect.do) {
     case "log":
       log(effect.line);
@@ -448,7 +447,7 @@ async function perform(effect, pending, ports) {
     // A refusal is asked about: GitHub refuses to disarm what never armed, and what already merged.
     case "disarm":
       try {
-        gh(disarmArgs(REPO, pending.pr));
+        tracker.disarm(pending.pr);
         return;
       } catch (err) {
         try {
@@ -462,7 +461,7 @@ async function perform(effect, pending, ports) {
       }
     case "rerun":
       try {
-        gh(["run", "rerun", String(effect.runId), "--failed", "--repo", REPO]);
+        tracker.rerunFailed(effect.runId);
         return;
       } catch (err) {
         log(`could not rerun ${effect.runId} — ${firstLine(err)}; handing the red back`);
@@ -470,7 +469,7 @@ async function perform(effect, pending, ports) {
       }
     case "update-branch":
       try {
-        gh(["pr", "update-branch", String(pending.pr)]);
+        tracker.updateBranch(pending.pr);
         return;
       } catch (err) {
         return { action: "owner", reason: `could not update the branch — ${firstLine(err)}` };
@@ -493,16 +492,15 @@ async function perform(effect, pending, ports) {
       } catch (err) {
         log(`could not write the flake into the merge message — ${firstLine(err)}`);
       }
-      const argv = armArgs(REPO, pending.pr, effect.head, message);
       try {
-        gh(argv);
+        tracker.arm(pending.pr, effect.head, message);
         log(`auto-merge armed at ${at}`);
       } catch (err) {
         // GitHub refuses `--auto` where auto-merge is off or the head is already mergeable; the
-        // gate is green here, and `--match-head-commit` still binds the merge to the cleared head.
+        // gate is green here, and the merge's `sha` still binds it to the cleared head.
         log(`could not arm auto-merge — ${firstLine(err)}; merging ${at} directly`);
         try {
-          gh(argv.filter((a) => a !== "--auto"));
+          tracker.merge(pending.pr, effect.head, message);
         } catch (again) {
           return { action: "owner", reason: `the merge failed — ${firstLine(again)}` };
         }

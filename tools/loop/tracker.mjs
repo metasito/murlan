@@ -155,7 +155,41 @@ export function ghTracker(gh = ghCli) {
         .map((i) => ({ number: i.number, title: i.title, createdAt: i.created_at })),
     /** @returns {OpenIssue[]} */
     openIssues: (opts) => all(`${issues}?state=open&per_page=100`, opts).filter((i) => !i.pull_request).map(openIssueOf),
+    /** @type {(o: {title: string, bodyFile: string, labels?: string[]}, opts?: import("./cli.mjs").RunOptions) => string} the new issue's URL */
+    createIssue: ({ title, bodyFile, labels = [] }, opts) =>
+      JSON.parse(gh(["api", "-X", "POST", issues, "-f", `title=${title}`, "-F", `body=@${bodyFile}`, ...labels.flatMap((l) => ["-f", `labels[]=${l}`])], opts)).html_url,
+    /** Closed as completed, with `why` as its last comment. */
+    closeIssue: (n, why, opts) => {
+      gh(["api", "-X", "POST", `${issues}/${n}/comments`, "-f", `body=${why}`], opts);
+      gh(["api", "-X", "PATCH", `${issues}/${n}`, "-f", "state=closed", "-f", "state_reason=completed"], opts);
+    },
+    rerunFailed: (runId, opts) => void gh(["api", "-X", "POST", `repos/${REPO}/actions/runs/${runId}/rerun-failed-jobs`], opts),
+    updateBranch: (n, opts) => void gh(["api", "-X", "PUT", `${pulls}/${n}/update-branch`], opts),
+    arm: (n, sha, bodyFile, opts) => void gh(armArgs(REPO, n, sha, bodyFile), opts),
+    disarm: (n, opts) => void gh(disarmArgs(REPO, n), opts),
+    /** Merges now, refused (409) when the head is no longer `sha`: what `--match-head-commit` binds. */
+    merge: (n, sha, bodyFile, opts) =>
+      void gh(["api", "-X", "PUT", `${pulls}/${n}/merge`, "-f", "merge_method=merge", "-f", `sha=${sha}`, ...(bodyFile ? ["-F", `commit_message=@${bodyFile}`] : [])], opts),
   };
+}
+
+/**
+ * Auto-merge, the one write here REST cannot make: arming and disarming it exist only as GraphQL
+ * mutations, so these stay `gh pr merge`, and a cloud session cannot arm.
+ *
+ * `--merge`, never `--squash`. `--match-head-commit` sends `expectedHeadOid`, which GitHub checks
+ * when it arms: a head that moved past the cleared commit is refused. It is not documented to be
+ * checked again at merge time, so the caller disarms before anything can push.
+ *
+ * @param {string} repo @param {number} prNumber @param {string} sha @param {string} [bodyFile]
+ */
+export function armArgs(repo, prNumber, sha, bodyFile) {
+  return ["pr", "merge", String(prNumber), "--repo", repo, "--auto", "--merge", "--match-head-commit", sha, ...(bodyFile ? ["--body-file", bodyFile] : [])];
+}
+
+/** @param {string} repo @param {number} prNumber */
+export function disarmArgs(repo, prNumber) {
+  return ["pr", "merge", String(prNumber), "--repo", repo, "--disable-auto"];
 }
 
 /**
@@ -194,6 +228,8 @@ export function fakeTracker(issues = {}, { fail = [], prs = [] } = {}) {
       for (const l of add) issue.labels.add(l);
     });
   const pulls = [...prs];
+  /** @type {unknown[][]} */
+  const writes = [];
   /** @type {(n: number, opts?: {all?: boolean}) => Comment[]} */
   const comments = op("comments", (issue, { all = false } = {}) => (all ? [...issue.thread] : trustedComments(issue.thread)));
   const list = (name, fn) => (...args) => {
@@ -266,6 +302,18 @@ export function fakeTracker(issues = {}, { fail = [], prs = [] } = {}) {
           blocked: Boolean(i.blocked),
         })),
     ),
+    createIssue: list("createIssue", (o) => (writes.push(["createIssue", o]), `https://github.com/${REPO}/issues/${writes.length}`)),
+    closeIssue: op("closeIssue", (issue, why) => {
+      issue.state = "CLOSED";
+      issue.comments.push(why);
+    }),
+    rerunFailed: list("rerunFailed", (runId) => void writes.push(["rerunFailed", runId])),
+    updateBranch: list("updateBranch", (n) => void writes.push(["updateBranch", n])),
+    arm: list("arm", (n, sha) => void writes.push(["arm", n, sha])),
+    disarm: list("disarm", (n) => void writes.push(["disarm", n])),
+    merge: list("merge", (n, sha) => void writes.push(["merge", n, sha])),
+    /** The writes with no issue to hold them, in order. */
+    writes: () => [...writes],
     held: (n) => {
       const issue = at(n);
       return { state: issue.state, labels: [...issue.labels].sort(), comments: [...issue.comments] };
