@@ -190,22 +190,19 @@ const GUARDS = [
     why: "The cached lists belong to one account and their keys do not say whose, so emptying them is the sign-out's alone (context/SocketContext.tsx): a second clear, remove or reset is a second owner of when the cache is valid.",
     selector: [
       "CallExpression[callee.property.name=/^(removeQueries|resetQueries)$/]",
-      'CallExpression[callee.property.name="clear"][arguments.length=0]',
+      // A Set or Map its module owns, by name: lastVoice (lib/device/audioEngine.ts),
+      // reportedSignatures (lib/errorReporting.ts), timers (lib/reactions.ts).
+      'CallExpression[callee.property.name="clear"][arguments.length=0]:not([callee.object.name=/^(lastVoice|reportedSignatures|timers)$/])',
     ].join(", "),
     files: SCREENS,
-    ignores: [
-      { glob: "context/SocketContext.tsx", reason: "the sign-out, which empties the query cache" },
-      { glob: "lib/device/audioEngine.ts", reason: "clears a Set it owns" },
-      { glob: "lib/errorReporting.ts", reason: "clears a Set it owns" },
-      { glob: "lib/reactions.ts", reason: "clears a Map it owns" },
-    ],
-    plant: { file: "context/Plant.ts", code: [
+    ignores: [{ glob: "context/SocketContext.tsx", reason: "the sign-out, which empties the query cache" }],
+    plant: { file: "lib/errorReporting.ts", code: [
       "queryClient.clear();",
       "qc.clear ();",
       'queryClient.removeQueries({ queryKey: ["/api/friends"] });',
       "queryClient.resetQueries();",
     ].join("\n"), hits: 4 },
-    spare: ['url.searchParams.clear("x");', "queryClient.invalidateQueries();", '// qc.clear()\nconst s = "qc.clear()";'].map((code) => ({ file: "context/Plant.ts", code })),
+    spare: ['url.searchParams.clear("x");', "reportedSignatures.clear();", "queryClient.invalidateQueries();", '// qc.clear()\nconst s = "qc.clear()";'].map((code) => ({ file: "lib/errorReporting.ts", code })),
   },
   {
     id: "no-cwd-root",
