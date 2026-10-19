@@ -42,6 +42,8 @@ export function emitToUser<E extends keyof ServerToClientEvents>(
  * connect handler that dies.
  */
 export async function isUserOnline(userId: string): Promise<boolean> {
+  // This instance's own socket needs no cluster to answer, and a failed query must not unseat it.
+  if (userSocketMap.has(userId)) return true;
   if (!_io) return false;
   try {
     return (await _io.in(userRoom(userId)).fetchSockets()).length > 0;
