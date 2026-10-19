@@ -18,16 +18,14 @@
 // §7.4's royal straight, not about §7.3's own clause.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
   buildCombination,
-  c,
   canPlay,
-  makePlayer,
-  makeState,
   processPass,
   processPlay,
   type Card,
-} from "./helpers.ts";
+} from "../../lib/game/gameEngine.ts";
 
 const pair = (rank: Parameters<typeof c>[0]): Card[] => [c(rank, "hearts"), c(rank, "clubs")];
 const combo = (cards: Card[]) => buildCombination(cards)!;
@@ -39,14 +37,13 @@ describe("§9.1 — \"A player who cannot or does not wish to beat the current p
     // possible threshold defect: it only claims the pass itself is accepted.
     // §9.2 owns the pass-count formula and can still turn this red.
     const state = makeState(
-      [
-        makePlayer("p0", pair("7")),
+      { players: [
+        makePlayer(0, pair("7")),
         // p1 holds a strictly higher pair (9 > 5) but chooses to pass anyway —
         // the clause says "does not wish to", not "cannot".
-        makePlayer("p1", pair("9")),
-        makePlayer("p2", pair("J")),
+        makePlayer(1, pair("9")),
+        makePlayer(2, pair("J")),
       ],
-      {
         currentTurnIndex: 1,
         lastPlayedBy: 0,
         lastPlayedCombination: combo(pair("5")),
@@ -68,12 +65,11 @@ describe("§9.2 — \"Passing does not lock a player out of the round … three 
     // A formula that subtracts 1 unconditionally closes the round after a
     // single opponent's pass, robbing the other of the chance to answer.
     let state = makeState(
-      [
-        makePlayer("p0", [], { finishPosition: 1 }),
-        makePlayer("p1", pair("9")),
-        makePlayer("p2", pair("K")),
+      { players: [
+        makePlayer(0, [], { finishPosition: 1 }),
+        makePlayer(1, pair("9")),
+        makePlayer(2, pair("K")),
       ],
-      {
         currentTurnIndex: 2,
         lastPlayedBy: 0,
         lastPlayedCombination: combo(pair("5")),
@@ -98,8 +94,7 @@ describe("§9.2 — \"Passing does not lock a player out of the round … three 
 describe("§9.3 — \"The player who made the last (unbeaten) play leads the next trick with any legal combination of their choice.\"", () => {
   test("once the round closes, the player who made the unbeaten play is on turn again", () => {
     const state = makeState(
-      [makePlayer("p0", pair("7")), makePlayer("p1", pair("9"))],
-      {
+      { players: [makePlayer(0, pair("7")), makePlayer(1, pair("9"))],
         currentTurnIndex: 1,
         lastPlayedBy: 0,
         lastPlayedCombination: combo(pair("5")),
@@ -115,12 +110,11 @@ describe("§9.3 — \"The player who made the last (unbeaten) play leads the nex
 describe("§9.4 — \"If that player has just gone out (played their last card), the lead passes to the next active player in turn order.\"", () => {
   test("the round winner's hand is empty, so the next active seat leads instead", () => {
     const state = makeState(
-      [
-        makePlayer("p0", [], { finishPosition: 1 }),
-        makePlayer("p1", pair("9")),
-        makePlayer("p2", pair("K")),
+      { players: [
+        makePlayer(0, [], { finishPosition: 1 }),
+        makePlayer(1, pair("9")),
+        makePlayer(2, pair("K")),
       ],
-      {
         currentTurnIndex: 2,
         lastPlayedBy: 0,
         lastPlayedCombination: combo(pair("5")),
@@ -141,8 +135,7 @@ describe("§9.4 — \"If that player has just gone out (played their last card),
 describe("§9.5 — \"A player who leads may not pass — leading requires playing something.\"", () => {
   test("passing while leading a new round (nothing on the table) is refused and changes nothing", () => {
     const state = makeState(
-      [makePlayer("p0", pair("7")), makePlayer("p1", pair("9"))],
-      { currentTurnIndex: 0, lastPlayedCombination: null }
+      { players: [makePlayer(0, pair("7")), makePlayer(1, pair("9"))], currentTurnIndex: 0, lastPlayedCombination: null }
     );
     const next = processPass(state);
     assert.equal(next, state, "the state is returned untouched — there is nothing to pass on");
@@ -154,8 +147,7 @@ describe("§9.5 — \"A player who leads may not pass — leading requires playi
 describe("§9.6 — \"Going out … Play continues among the rest. The hand ends when only one player still holds cards; that player is last.\"", () => {
   test("a player emptying their hand is recorded in the finishing order", () => {
     const state = makeState(
-      [makePlayer("p0", pair("7")), makePlayer("p1", [c("9", "spades"), c("9", "hearts")])],
-      { currentTurnIndex: 0 }
+      { players: [makePlayer(0, pair("7")), makePlayer(1, [c("9", "spades"), c("9", "hearts")])], currentTurnIndex: 0 }
     );
     const next = processPlay(state, combo(pair("7")));
     assert.equal(next.players[0].finishPosition, 1);
@@ -165,12 +157,11 @@ describe("§9.6 — \"Going out … Play continues among the rest. The hand ends
 
   test("play continues among the rest while more than one player still holds cards", () => {
     const state = makeState(
-      [
-        makePlayer("p0", pair("7")),
-        makePlayer("p1", [c("9", "spades"), c("9", "hearts")]),
-        makePlayer("p2", [c("K", "spades"), c("K", "hearts")]),
-      ],
-      { currentTurnIndex: 0 }
+      { players: [
+        makePlayer(0, pair("7")),
+        makePlayer(1, [c("9", "spades"), c("9", "hearts")]),
+        makePlayer(2, [c("K", "spades"), c("K", "hearts")]),
+      ], currentTurnIndex: 0 }
     );
     const next = processPlay(state, combo(pair("7")));
     assert.equal(next.roundOver, false, "two players still hold cards — the hand is not over");

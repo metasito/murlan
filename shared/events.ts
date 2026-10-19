@@ -47,7 +47,7 @@ export const SOCKET_CLOSE_REASONS = [
   "server namespace disconnect",
 ] as const;
 
-export type SocketCloseReason = (typeof SOCKET_CLOSE_REASONS)[number];
+type SocketCloseReason = (typeof SOCKET_CLOSE_REASONS)[number];
 
 /**
  * What may travel with an event. Small and non-identifying on purpose: player

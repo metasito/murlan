@@ -1,15 +1,13 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { card as c, cardKey, joker as j } from "../support/game.ts";
 import {
   buildCombination,
-  c,
   canPlayerPlay,
-  cardKey,
   getAllValidPlays,
   getCombinationType,
-  j,
   type Card,
-} from "./helpers.ts";
+} from "../../lib/game/gameEngine.ts";
 
 const straightsOf = (hand: Card[], length?: number) =>
   getAllValidPlays(hand, null, true).filter(

@@ -9,7 +9,7 @@ import {
   bombsPlayedBy,
 } from "../../lib/game/replay.ts";
 import { buildCombination } from "../../lib/game/gameEngine.ts";
-import { c } from "./helpers.ts";
+import { card as c } from "../support/game.ts";
 import { handCountOf } from "../../shared/protocol.ts";
 import type { ReplayDto } from "../../lib/game/replay.ts";
 

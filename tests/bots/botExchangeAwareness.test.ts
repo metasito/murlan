@@ -6,8 +6,8 @@ import assert from "node:assert/strict";
 import { botChoosePlay, knownOpponentExchangeCard } from "../../lib/game/bot.ts";
 import { buildCombination, getRankStrength, RANK_SLOTS } from "../../lib/game/gameEngine.ts";
 import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
-import { c, makePlayer, makeState } from "../engine/helpers.ts";
-import type { ExchangePhase } from "../engine/helpers.ts";
+import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
+import type { ExchangePhase } from "../../lib/game/gameEngine.ts";
 
 const exchange = (
   winnerIdx: number,
@@ -52,7 +52,7 @@ describe("every tier: never lead the exact card known to lose", () => {
   for (const personality of ["luan", "besnik", "gent"] as const) {
     test(`${personality} leads the safe alternative instead of the known-beaten card`, () => {
       const hand = [c("4", "hearts"), c("9", "clubs")];
-      const me = makePlayer("me", hand, { type: "bot", personality });
+      const me = makePlayer(0, hand, { type: "bot", personality });
       const knownOpponentCard = c("6", "spades");
 
       const choice = botChoosePlay(
@@ -65,7 +65,7 @@ describe("every tier: never lead the exact card known to lose", () => {
 
     test(`${personality} still leads something when every play loses to the known card`, () => {
       const hand = [c("4", "hearts"), c("5", "clubs")];
-      const me = makePlayer("me", hand, { type: "bot", personality });
+      const me = makePlayer(0, hand, { type: "bot", personality });
       const knownOpponentCard = c("9", "spades");
 
       const choice = botChoosePlay(
@@ -78,7 +78,7 @@ describe("every tier: never lead the exact card known to lose", () => {
 
   test("responding is not leading — the filter does not touch an answer to a play", () => {
     const hand = [c("4", "hearts"), c("9", "clubs")];
-    const me = makePlayer("me", hand, { type: "bot", personality: "besnik" });
+    const me = makePlayer(0, hand, { type: "bot", personality: "besnik" });
     const lastPlayed = buildCombination([c("3", "diamonds")])!;
     const knownOpponentCard = c("6", "spades");
 
@@ -94,7 +94,7 @@ describe("every tier: never lead the exact card known to lose", () => {
 
   test("a known card already spent no longer bends the lead — it is stale", () => {
     const hand = [c("4", "hearts"), c("9", "clubs")];
-    const me = makePlayer("me", hand, { type: "bot", personality: "luan" });
+    const me = makePlayer(0, hand, { type: "bot", personality: "luan" });
     const knownOpponentCard = c("6", "spades");
     // All four 6s accounted for by the public tally: the opponent cannot
     // still be holding the one the exchange gave it.
@@ -112,11 +112,10 @@ describe("every tier: never lead the exact card known to lose", () => {
 describe("autoMoveForSeat wires the exchange into the loser that leads next", () => {
   test("the loser does not lead under its own former card now in the winner's hand", () => {
     const state = makeState(
-      [
-        makePlayer("winner", [c("9", "clubs"), c("K", "hearts")], { type: "bot", personality: "luan" }),
-        makePlayer("loser", [c("4", "hearts"), c("Q", "spades")], { type: "bot", personality: "luan" }),
+      { players: [
+        makePlayer(0, [c("9", "clubs"), c("K", "hearts")], { type: "bot", personality: "luan" }),
+        makePlayer(1, [c("4", "hearts"), c("Q", "spades")], { type: "bot", personality: "luan" }),
       ],
-      {
         currentTurnIndex: 1,
         lastPlayedBy: 1,
         firstPlayMade: true,

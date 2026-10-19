@@ -591,8 +591,6 @@ export const sq: Record<keyof typeof en, string> = {
 
   // ------------------------------------------------------------------ lobby.*
   "lobby.team": "Ekipi {{team}}",
-  "lobby.botNameA11yLabel": "Emri i lojtarit AI",
-  "lobby.botNameA11yHint": "Shkruaj emrin për këtë lojtar të kontrolluar nga kompjuteri",
   "lobby.difficultyA11yLabel": "Vështirësia e {{name}}: {{difficulty}}",
   "bot.difficultyEasy": "Lehtë",
   "bot.difficultyNormal": "Normale",

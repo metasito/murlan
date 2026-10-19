@@ -533,7 +533,7 @@ export function analyzeSnippet(source) {
   return analyzeParsed([{ file: "snippet.tsx", sf }]);
 }
 
-export function iconNames(repoRoot) {
+function iconNames(repoRoot) {
   const analysis = analyzeIcons(repoRoot);
   return Object.fromEntries(FAMILIES.map((f) => [f, analysis[f]]));
 }

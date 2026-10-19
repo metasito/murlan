@@ -11,6 +11,7 @@
 //     from `finishingOrder`, and the exchange reads who came last.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
   aggregateTeamScores,
   buildCombination,
@@ -19,10 +20,7 @@ import {
   resolveMatch,
   resolveTeamMatch,
   scoreRound,
-  c,
-  makePlayer,
-  makeState,
-} from "./helpers.ts";
+} from "../../lib/game/gameEngine.ts";
 
 /**
  * Seats 0/2 are team A, seats 1/3 are team B (partners sit opposite).
@@ -33,12 +31,12 @@ function teamsState(handSizes: number[], overrides = {}) {
   const suits = ["spades", "hearts", "diamonds", "clubs"] as const;
   const players = handSizes.map((n, seat) =>
     makePlayer(
-      `player_${seat}`,
+      seat,
       Array.from({ length: n }, (_, i) => c(ranks[i % ranks.length], suits[seat])),
       { team: seat % 2 === 0 ? "A" : "B" }
     )
   );
-  return makeState(players, { gameMode: "teams", ...overrides });
+  return makeState({ players, gameMode: "teams", ...overrides });
 }
 
 describe("teams: every seat gets a placement", () => {
@@ -47,7 +45,7 @@ describe("teams: every seat gets a placement", () => {
   const pairGoesOut = () => {
     const state = teamsState([0, 3, 1, 5], {
       currentTurnIndex: 2,
-      finishingOrder: ["player_0"],
+      finishingOrder: ["p0"],
       firstPlayMade: true,
       lastPlayedCombination: null,
     });
@@ -59,7 +57,7 @@ describe("teams: every seat gets a placement", () => {
     const next = pairGoesOut();
 
     assert.equal(next.roundOver, false);
-    assert.deepEqual(next.finishingOrder, ["player_0", "player_2"]);
+    assert.deepEqual(next.finishingOrder, ["p0", "p2"]);
     assert.equal(next.players[1].finishPosition, undefined);
     assert.equal(next.players[3].finishPosition, undefined);
     assert.ok([1, 3].includes(next.currentTurnIndex), "a seat still holding cards is on move");
@@ -73,18 +71,18 @@ describe("teams: every seat gets a placement", () => {
     const done = processPlay(next, buildCombination(next.players[3].hand)!);
 
     assert.equal(done.roundOver, true);
-    assert.deepEqual(done.finishingOrder, ["player_0", "player_2", "player_3", "player_1"]);
+    assert.deepEqual(done.finishingOrder, ["p0", "p2", "p3", "p1"]);
     assert.equal(done.players[1].finishPosition, 4, "the seat still holding cards is last");
 
     const points = scoreRound(done.finishingOrder, 4);
     assert.deepEqual(points, {
-      player_0: 3,
-      player_2: 2,
-      player_3: 1,
-      player_1: 0,
+      p0: 3,
+      p2: 2,
+      p3: 1,
+      p1: 0,
     });
-    const teamA = points.player_0 + points.player_2;
-    const teamB = points.player_1 + points.player_3;
+    const teamA = points.p0 + points.p2;
+    const teamB = points.p1 + points.p3;
     assert.equal(teamA, 5);
     assert.equal(teamB, 1);
   });
@@ -94,7 +92,7 @@ describe("teams: every seat gets a placement", () => {
     // and leaving only seat 3.
     const state = teamsState([0, 0, 1, 4], {
       currentTurnIndex: 2,
-      finishingOrder: ["player_0", "player_1"],
+      finishingOrder: ["p0", "p1"],
       firstPlayMade: true,
     });
     state.players[0].finishPosition = 1;
@@ -102,7 +100,7 @@ describe("teams: every seat gets a placement", () => {
     const next = processPlay(state, buildCombination(state.players[2].hand)!);
 
     assert.equal(next.roundOver, true);
-    assert.deepEqual(next.finishingOrder, ["player_0", "player_1", "player_2", "player_3"]);
+    assert.deepEqual(next.finishingOrder, ["p0", "p1", "p2", "p3"]);
   });
 });
 
@@ -191,7 +189,7 @@ describe("teams: the match resolves on the summed team total", () => {
 // rule meets match progression: both authorities call it, so a partner
 // crossing the line alone has to name the team on either side of the wire.
 describe("teams: folding a round into the match", () => {
-  const teamOf = { player_0: "A", player_1: "B", player_2: "A", player_3: "B" };
+  const teamOf = { p0: "A", p1: "B", p2: "A", p3: "B" };
   const base = {
     playerCount: 4,
     gameMode: "teams" as const,
@@ -204,11 +202,11 @@ describe("teams: folding a round into the match", () => {
   test("the pair's summed total ends the match and names both partners", () => {
     const result = foldRoundIntoMatch({
       ...base,
-      finishingOrder: ["player_0", "player_1", "player_2", "player_3"],
-      cumulative: { player_0: 15, player_2: 2, player_1: 9, player_3: 8 },
+      finishingOrder: ["p0", "p1", "p2", "p3"],
+      cumulative: { p0: 15, p2: 2, p1: 9, p3: 8 },
     });
     assert.equal(result.over, true);
-    assert.deepEqual(result.winners.sort(), ["player_0", "player_2"]);
+    assert.deepEqual(result.winners.sort(), ["p0", "p2"]);
     assert.equal(result.isDraw, false);
   });
 
@@ -216,24 +214,24 @@ describe("teams: folding a round into the match", () => {
     const result = foldRoundIntoMatch({
       ...base,
       length: "single",
-      finishingOrder: ["player_1", "player_3", "player_0", "player_2"],
+      finishingOrder: ["p1", "p3", "p0", "p2"],
       cumulative: {},
     });
     assert.equal(result.over, true);
     assert.equal(result.isDraw, false);
-    assert.deepEqual(result.winners.sort(), ["player_1", "player_3"]);
+    assert.deepEqual(result.winners.sort(), ["p1", "p3"]);
   });
 
   test("a single round paying both teams 3 is a draw, whoever emptied first", () => {
     const result = foldRoundIntoMatch({
       ...base,
       length: "single",
-      finishingOrder: ["player_1", "player_0", "player_2", "player_3"],
+      finishingOrder: ["p1", "p0", "p2", "p3"],
       cumulative: {},
     });
     assert.equal(result.over, true);
     assert.equal(result.isDraw, true);
-    assert.deepEqual(result.winners.sort(), ["player_0", "player_1", "player_2", "player_3"]);
+    assert.deepEqual(result.winners.sort(), ["p0", "p1", "p2", "p3"]);
   });
 
   describe("with a partner who walked out", () => {

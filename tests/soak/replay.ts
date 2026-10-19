@@ -23,7 +23,7 @@ import { Seat, openTable, settle, type SoakLogEntry } from "./soak.ts";
 /** How long one replayed move may take to come back as a broadcast. */
 const MOVE_BUDGET_MS = 3_000 * DEADLINE_SCALE;
 
-export interface SkippedMove {
+interface SkippedMove {
   at: number;
   kind: string;
   why: string;

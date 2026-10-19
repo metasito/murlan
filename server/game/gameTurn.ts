@@ -167,7 +167,7 @@ export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDe
 }
 
 /** Every move re-arms here, so an exchange's ceremony holds the next seat on each path that closes it. */
-export function armAfterMove(io: SocketServer, roomId: string, prev: GameState) {
+function armAfterMove(io: SocketServer, roomId: string, prev: GameState) {
   const phase = prev.exchangePhase;
   armTurn(io, roomId, phase?.active ? exchangeAnnounceMs(phase.twoJokerException === true) : botMoveDelayMs());
 }

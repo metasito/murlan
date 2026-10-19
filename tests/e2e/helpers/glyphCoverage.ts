@@ -22,12 +22,12 @@ import { expect, type Page } from "@playwright/test";
 const MISSING_PROBE_CODEPOINT = 0xfffe;
 const ICON_FAMILIES = new Set(["ionicons", "feather"]);
 
-export interface GlyphFailure {
+interface GlyphFailure {
   family: string;
   codepoint: string;
 }
 
-export interface GlyphSweep {
+interface GlyphSweep {
   failures: GlyphFailure[];
   /** Glyph-bearing nodes the sweep actually measured. */
   examined: number;
@@ -40,7 +40,7 @@ export interface GlyphSweep {
  * not actually in the loaded font — alongside how many icon nodes carried a
  * character to measure at all.
  */
-export async function sweepGlyphs(page: Page): Promise<GlyphSweep> {
+async function sweepGlyphs(page: Page): Promise<GlyphSweep> {
   return page.evaluate(
     ({ missingCp, families }) => {
       const fonts = (document as unknown as { fonts: FontFaceSet }).fonts;

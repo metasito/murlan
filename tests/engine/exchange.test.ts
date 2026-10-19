@@ -1,19 +1,16 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { card as c, joker as j, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
-  c,
   getBestCardFromHand,
   getStartingPlayerAfterExchange,
   getValidGivebackCards,
   givebackIsFallback,
   initializeRematch,
-  j,
   loserHasBothJokers,
-  makePlayer,
-  makeState,
   processExchangeChoice,
   type Card,
-} from "./helpers.ts";
+} from "../../lib/game/gameEngine.ts";
 import { autoMoveForSeat, resolveStuckExchange } from "../../lib/game/autoMove.ts";
 
 const ids = (cards: Card[]) => cards.map((card) => card.id).sort();
@@ -56,8 +53,7 @@ describe("getValidGivebackCards (defect 7)", () => {
 describe("processExchangeChoice", () => {
   const buildState = (winnerHand: Card[], loserHand: Card[]) =>
     makeState(
-      [makePlayer("winner", winnerHand), makePlayer("loser", loserHand)],
-      {
+      { players: [makePlayer(0, winnerHand), makePlayer(1, loserHand)],
         currentTurnIndex: 0,
         lastPlayedBy: 0,
         exchangePhase: {
@@ -126,8 +122,7 @@ describe("processExchangeChoice", () => {
 
   const withReceived = (winnerHand: Card[], received: Card) =>
     makeState(
-      [makePlayer("winner", winnerHand), makePlayer("loser", [c("4", "clubs")])],
-      {
+      { players: [makePlayer(0, winnerHand), makePlayer(1, [c("4", "clubs")])],
         currentTurnIndex: 0,
         lastPlayedBy: 0,
         exchangePhase: {
@@ -164,7 +159,7 @@ describe("processExchangeChoice", () => {
   });
 
   test("does nothing when the exchange phase is not active", () => {
-    const state = makeState([makePlayer("a", [c("4", "hearts")]), makePlayer("b", [])]);
+    const state = makeState({ players: [makePlayer(0, [c("4", "hearts")]), makePlayer(1, [])] });
     assert.equal(processExchangeChoice(state, "4_hearts"), state);
   });
 });
@@ -172,13 +167,12 @@ describe("processExchangeChoice", () => {
 describe("resolveStuckExchange", () => {
   const stuck = (loserHand: Card[]) =>
     makeState(
-      [
-        makePlayer("winner", []),
-        makePlayer("loser", loserHand),
-        makePlayer("c", [c("5", "clubs")]),
-        makePlayer("d", [c("6", "clubs")]),
+      { players: [
+        makePlayer(0, []),
+        makePlayer(1, loserHand),
+        makePlayer(2, [c("5", "clubs")]),
+        makePlayer(3, [c("6", "clubs")]),
       ],
-      {
         currentTurnIndex: 0,
         exchangePhase: {
           active: true,
@@ -222,8 +216,7 @@ describe("REGRESSION (#784): exchangePhase.active clears after exactly one giveb
   test("the winner is not re-asked, and resolveStuckExchange is never needed", () => {
     const winnerHand = [c("3", "hearts"), c("4", "clubs")];
     let state = makeState(
-      [makePlayer("winner", winnerHand), makePlayer("loser", [c("9", "clubs")])],
-      {
+      { players: [makePlayer(0, winnerHand), makePlayer(1, [c("9", "clubs")])],
         currentTurnIndex: 0,
         lastPlayedBy: 0,
         exchangePhase: {

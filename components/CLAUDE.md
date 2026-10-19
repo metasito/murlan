@@ -48,7 +48,7 @@ Verify against source before changing any.
   on iOS the control would be sealed inside the leaf.
 - **`components/AppModal.tsx` is the app's only `<Modal>`, and it declares
   `supportedOrientations` including landscape**, or iOS rotates to portrait behind it and every tap
-  lands on nothing (`tests/ui-rules/orientation.test.ts` pins both).
+  lands on nothing (guards in `eslint.guards.cjs` pin both).
 - **`NotificationBanner` never returns null, and animates by callback chain** — parallel
   `withTiming` calls overwrite the slide-in.
 - **`OfflineBanner` flags offline only on `state.isConnected === false`**; `null` means unknown.

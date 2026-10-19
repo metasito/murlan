@@ -2,6 +2,7 @@
 // backs, and neither choice may make the game harder to read.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { relativeLuminance } from "../../lib/contrast.ts";
 import { CardBacks, Colors, FeltGradient, FeltGradients } from "../../lib/tokens.ts";
 import {
   CARD_BACK_IDS,
@@ -16,13 +17,9 @@ import {
 } from "../../lib/cosmetics.ts";
 
 /** WCAG relative luminance. Higher means lighter. */
-function luminance(hex: string): number {
+function luminanceOf(hex: string): number {
   const n = parseInt(hex.slice(1), 16);
-  const channels = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
-    const c = v / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  return relativeLuminance([(n >> 16) & 255, (n >> 8) & 255, n & 255]);
 }
 
 // tests/ui-rules/contrast.test.ts pins every text token against Colors.felt. That check
@@ -33,7 +30,7 @@ test("no alternate felt is lighter than the default at any stop", () => {
   for (const id of TABLE_FELT_IDS) {
     FeltGradients[id].forEach((stop, i) => {
       assert.ok(
-        luminance(stop) <= luminance(base[i]) + 1e-9,
+        luminanceOf(stop) <= luminanceOf(base[i]) + 1e-9,
         `felt "${id}" stop ${i} (${stop}) is lighter than the default's ${base[i]}`
       );
     });
@@ -49,7 +46,7 @@ test("every felt falls away from the lamp, stop by stop", () => {
     const stops = getTableFelt(id);
     for (let i = 1; i < stops.length; i++) {
       assert.ok(
-        luminance(stops[i]) < luminance(stops[i - 1]),
+        luminanceOf(stops[i]) < luminanceOf(stops[i - 1]),
         `felt "${id}" stop ${i} (${stops[i]}) is no darker than stop ${i - 1} (${stops[i - 1]})`
       );
     }
@@ -60,9 +57,9 @@ test("every felt ends dark enough to hand over to the room", () => {
   // Past the falloff the pool paints Colors.bg. A last stop far above it would
   // draw a visible ring where the cloth stops and the room starts.
   for (const id of TABLE_FELT_IDS) {
-    const last = luminance(getTableFelt(id)[4]);
+    const last = luminanceOf(getTableFelt(id)[4]);
     assert.ok(
-      last < luminance(Colors.felt),
+      last < luminanceOf(Colors.felt),
       `felt "${id}" ends at ${last.toFixed(4)}, no darker than Colors.felt`
     );
   }

@@ -28,7 +28,7 @@ export function kFactor(roundsPlayed: number): number {
  * ossifies the ladder around whoever played first. Halving is a convention
  * rather than a measurement, which is exactly why it is named.
  */
-export const SEASON_CARRY = 0.5;
+const SEASON_CARRY = 0.5;
 
 /**
  * The season a moment belongs to, as `YYYY-MM` in UTC.

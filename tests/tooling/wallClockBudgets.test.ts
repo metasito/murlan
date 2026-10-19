@@ -13,25 +13,12 @@
 // source is written, so it is checked by reading it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { blankCommentsAndStrings } from "../helpers/sourceScan.ts";
+import { trackedFiles } from "../helpers/trackedFiles.ts";
 
-const selfPath = fileURLToPath(import.meta.url);
-const repoRoot = path.resolve(path.dirname(selfPath), "..", "..");
-const SELF = path.relative(repoRoot, selfPath).replace(/\\/g, "/");
-
-function sourcesUnder(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
-    const rel = `${dir}/${entry.name}`;
-    if (entry.name === "node_modules") continue;
-    if (entry.isDirectory()) out.push(...sourcesUnder(rel));
-    else if (/\.tsx?$/.test(entry.name) && rel !== SELF) out.push(rel);
-  }
-  return out;
-}
+const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 
 const CLOCK = String.raw`(?:Date\.now\(\)|performance\.now\(\)|process\.hrtime(?:\.bigint)?\(\))`;
 /** Anything holding a clock reading: both `const t0 = Date.now()` and the delta off it. */
@@ -93,7 +80,7 @@ function offendingLines(rawSource: string): string[] {
 
 test("no test compares a measured duration against a fixed number", () => {
   const offenders: string[] = [];
-  for (const rel of sourcesUnder("tests")) {
+  for (const rel of trackedFiles(repoRoot, "tests").filter((f) => /\.tsx?$/.test(f))) {
     for (const line of offendingLines(readFileSync(path.join(repoRoot, rel), "utf8"))) {
       offenders.push(`${rel}:${line}`);
     }

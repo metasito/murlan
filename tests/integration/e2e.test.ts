@@ -18,6 +18,8 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 
+const repoRoot = path.resolve(import.meta.dirname, "..", "..");
+
 // Mirrors httpCaching.test.ts: a synthetic dist/ tree of this suite's own,
 // with cwd moved onto it for the life of the server so it never collides
 // with another integration suite's dist/ under the real process.cwd().
@@ -25,7 +27,6 @@ const FIXTURE_INDEX_HTML = `<!doctype html><html><body><div id="root">murlan-app
 
 describe("the SPA fallback from a dot-prefixed checkout", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  let originalCwd: string;
   let sandbox: string;
   let workDir: string;
 
@@ -40,7 +41,6 @@ describe("the SPA fallback from a dot-prefixed checkout", { skip: hasDatabase() 
     fs.mkdirSync(distDir, { recursive: true });
     fs.writeFileSync(path.join(distDir, "index.html"), FIXTURE_INDEX_HTML);
 
-    originalCwd = process.cwd();
     process.chdir(workDir);
     server = await startTestServer();
   });
@@ -50,7 +50,7 @@ describe("the SPA fallback from a dot-prefixed checkout", { skip: hasDatabase() 
       if (server) await server.stop();
     } finally {
       try {
-        if (originalCwd) process.chdir(originalCwd);
+        process.chdir(repoRoot);
       } finally {
         if (sandbox) fs.rmSync(sandbox, { recursive: true, force: true });
       }

@@ -26,7 +26,7 @@ export const PLATFORM_GRACE_MS = runtime.sigtermGraceMs;
 export const DRAIN_TIMEOUT_MS = QUERY_TIMEOUT_MS + 800;
 
 /** How long a departing player's seat has to reach the instance that owns their table. */
-export const DISCONNECT_SETTLE_MS = 1_500;
+const DISCONNECT_SETTLE_MS = 1_500;
 
 /**
  * The most each step of `shutdown` may take, in the order they run. Every step

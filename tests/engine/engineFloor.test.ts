@@ -10,25 +10,22 @@
 // case is here too: leading a fresh round, where there is nothing to beat.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
   buildCombination,
-  c,
-  makePlayer,
-  makeState,
   processPass,
   processPlay,
   type Card,
-} from "./helpers.ts";
+} from "../../lib/game/gameEngine.ts";
 
 const combo = (cards: Card[]) => buildCombination(cards)!;
 
-const table = (over: Parameters<typeof makeState>[1] = {}) =>
+const table = (over: Parameters<typeof makeState>[0] = {}) =>
   makeState(
-    [
-      makePlayer("p0", [c("5", "spades"), c("6", "spades"), c("K", "hearts")]),
-      makePlayer("p1", [c("9", "clubs"), c("10", "clubs")]),
-    ],
-    { currentTurnIndex: 0, ...over }
+    { players: [
+      makePlayer(0, [c("5", "spades"), c("6", "spades"), c("K", "hearts")]),
+      makePlayer(1, [c("9", "clubs"), c("10", "clubs")]),
+    ], currentTurnIndex: 0, ...over }
   );
 
 describe("the engine's floor under a play", () => {
@@ -100,8 +97,8 @@ describe("the engine's floor under a play", () => {
       firstPlayMade: false,
       startCard: c("3", "spades"),
       players: [
-        makePlayer("p0", [c("3", "spades"), c("5", "spades"), c("K", "hearts")]),
-        makePlayer("p1", [c("9", "clubs"), c("10", "clubs")]),
+        makePlayer(0, [c("3", "spades"), c("5", "spades"), c("K", "hearts")]),
+        makePlayer(1, [c("9", "clubs"), c("10", "clubs")]),
       ],
     });
     assert.throws(
@@ -115,8 +112,8 @@ describe("the engine's floor under a play", () => {
       firstPlayMade: false,
       startCard: c("3", "spades"),
       players: [
-        makePlayer("p0", [c("3", "spades"), c("5", "spades"), c("K", "hearts")]),
-        makePlayer("p1", [c("9", "clubs"), c("10", "clubs")]),
+        makePlayer(0, [c("3", "spades"), c("5", "spades"), c("K", "hearts")]),
+        makePlayer(1, [c("9", "clubs"), c("10", "clubs")]),
       ],
     });
     const next = processPlay(opening, combo([c("3", "spades")]));

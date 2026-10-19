@@ -9,7 +9,7 @@ import {
   processPass,
   processPlay,
 } from "../../lib/game/gameEngine.ts";
-import { c, j, makePlayer, makeState, mulberry32 } from "../engine/helpers.ts";
+import { card as c, joker as j, seat as makePlayer, state as makeState, mulberry32 } from "../support/game.ts";
 import type { Card, GameState } from "../../lib/game/gameEngine.ts";
 
 const TOP_PLAY = buildCombination([c("2", "spades")])!;
@@ -21,16 +21,15 @@ const TOP_PLAY = buildCombination([c("2", "spades")])!;
  */
 function table(hands: Card[][], overrides: Partial<GameState> = {}): GameState {
   return makeState(
-    hands.map((hand, seat) =>
-      makePlayer(`p${seat}`, hand, {
+    { players: hands.map((hand, seat) =>
+      makePlayer(seat, hand, {
         type: "bot",
         // Hard tier, aggression 0.85 — the tier that reaches for a bomb and the
         // knob that contests a round.
         personality: "gent",
         team: seat % 2 === 0 ? "A" : "B",
       })
-    ),
-    { gameMode: "teams", firstPlayMade: true, lastPlayedCombination: TOP_PLAY, ...overrides }
+    ), gameMode: "teams", firstPlayMade: true, lastPlayedCombination: TOP_PLAY, ...overrides }
   );
 }
 

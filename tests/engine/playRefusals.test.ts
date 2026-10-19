@@ -4,18 +4,16 @@
 // words; one row per code is what keeps any of them from classifying on its own.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
   buildCombination,
-  c,
   checkPass,
   checkPlay,
-  makePlayer,
-  makeState,
   type Card,
   type GameState,
   type Rank,
   type Suit,
-} from "./helpers.ts";
+} from "../../lib/game/gameEngine.ts";
 
 const combo = (cards: Card[]) => buildCombination(cards)!;
 
@@ -37,7 +35,7 @@ const hand = [
 ];
 
 const table = (pile: Card[] | null, over: Partial<GameState> = {}) =>
-  makeState([makePlayer("p0", hand), makePlayer("p1", [c("4", "clubs")])], {
+  makeState({ players: [makePlayer(0, hand), makePlayer(1, [c("4", "clubs")])],
     currentTurnIndex: 0,
     firstPlayMade: true,
     lastPlayedCombination: pile ? combo(pile) : null,
@@ -99,7 +97,7 @@ describe("checkPlay names the refusal", () => {
 
   test("a royal straight answers a lower one of its own length", () => {
     const state = table(straight("spades", ["7", "8", "9", "10", "J"]), {
-      players: [makePlayer("p0", highRoyal5), makePlayer("p1", [c("4", "clubs")])],
+      players: [makePlayer(0, highRoyal5), makePlayer(1, [c("4", "clubs")])],
     });
     assert.equal(checkPlay(state, 0, ids(highRoyal5)).ok, true);
   });

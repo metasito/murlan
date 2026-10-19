@@ -56,7 +56,7 @@ export const LANDING_PULSES: Record<LandingKind, readonly PulseStep[]> = {
 
 export const isCombo = (cards: number): boolean => cards > 1;
 
-export function landingKind(m: { cards: number; bomb: boolean }): LandingKind {
+function landingKind(m: { cards: number; bomb: boolean }): LandingKind {
   return m.bomb ? "bomb" : isCombo(m.cards) ? "combo" : "play";
 }
 

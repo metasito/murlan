@@ -9,7 +9,7 @@ import {
   resolveMatch,
   resolveTeamMatch,
   scoreRound,
-} from "./helpers.ts";
+} from "../../lib/game/gameEngine.ts";
 
 describe("scoreRound", () => {
   test("4 players award 3/2/1/0", () => {

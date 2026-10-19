@@ -4,13 +4,13 @@ import type { TraceFrame } from "../../../lib/e2eTrace.ts";
 import { STEP_MS, type Failure } from "./traceDiff.ts";
 
 /** One frame of jitter, on 60 Hz frames rather than the virtual clock's 16 ms grid. */
-export const JITTER_MS = Math.ceil(1000 / 60);
+const JITTER_MS = Math.ceil(1000 / 60);
 /** A due timer waits out the frame in progress, renders in the next and is read the frame after it painted: four frames, however long a stall makes them. */
 const STAMP_FRAMES = 4;
 /** The ceiling no stall lifts: the ten red CI traces of #1449 were late by 221 ms at most. */
 const LATE_CEILING_MS = 300;
 /** The grey moves 0.85 in 300 ms: one frame of jitter, and a little. */
-export const GREY_TOLERANCE = 0.06;
+const GREY_TOLERANCE = 0.06;
 /** The lamp's phase runs about 0.84 rad/s; frozen, it does not move at all. */
 const FROZEN_PH = 1e-3;
 const RUNNING_PH = 0.05;

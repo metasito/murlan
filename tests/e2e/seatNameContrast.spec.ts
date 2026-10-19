@@ -10,6 +10,7 @@ import { skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
 import { feltOnly } from "../../components/table/legibilityRing";
 import { CAPTURE_STATES } from "../../lib/captureStates";
 import { Colors } from "../../lib/tokens";
+import { contrastRatio, type Rgb } from "../../lib/contrast";
 import type { TraceFrame } from "../../lib/e2eTrace";
 
 const BODY_MIN = 4.5;
@@ -27,13 +28,8 @@ const parse = (css: string): Rgba => {
   const [r, g, b, a = 1] = css.match(/[\d.]+/g)!.map(Number);
   return [r, g, b, a];
 };
-const channel = (c: number) => (c / 255 <= 0.04045 ? c / 255 / 12.92 : ((c / 255 + 0.055) / 1.055) ** 2.4);
-const luminance = ([r, g, b]: number[]) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
-const over = ([r, g, b, a]: Rgba, bg: number[]) => [r, g, b].map((c, i) => c * a + bg[i] * (1 - a));
-const ratio = (ink: Rgba, bg: number[]) => {
-  const [hi, lo] = [luminance(over(ink, bg)), luminance(bg)].sort((a, b) => b - a);
-  return (hi + 0.05) / (lo + 0.05);
-};
+const over = ([r, g, b, a]: Rgba, bg: number[]): Rgb => [r * a + bg[0] * (1 - a), g * a + bg[1] * (1 - a), b * a + bg[2] * (1 - a)];
+const ratio = (ink: Rgba, bg: number[]) => contrastRatio(over(ink, bg), [bg[0], bg[1], bg[2]]);
 
 async function paint(page: Page, css: string): Promise<void> {
   await page.evaluate(([sel, css]) => {

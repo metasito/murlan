@@ -12,7 +12,7 @@
 import type { MatchLength } from "../../lib/game/gameEngine.ts";
 
 /** Every action names the room it is about; that is how the owner is found. */
-export interface TableActionBase {
+interface TableActionBase {
   /**
    * Stamped by the router, the same for every attempt of one intent — the
    * router's own forward retries and, when the client named its intent, the

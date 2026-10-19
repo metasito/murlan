@@ -4,7 +4,7 @@
  * A second copy of either is how a changed stamp format leaves the pruner
  * silently matching nothing.
  */
-export function dumpStamp(d) {
+function dumpStamp(d) {
   return d.toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
 }
 

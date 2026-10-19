@@ -63,7 +63,7 @@ const claimFile = (port) => path.join(os.tmpdir(), `murlan-e2e-port-${port}`);
  * claim outlive the run that filed it. Without this, a recycled pid reads as a live claim and
  * skips that port for as long as the unrelated process happens to live.
  */
-export const CLAIM_TTL_MS = 30 * 60_000;
+const CLAIM_TTL_MS = 30 * 60_000;
 
 const alive = (pid) => {
   try {
@@ -95,7 +95,7 @@ export function claimedBy(port, self, now = Date.now()) {
  * is merely *present* is not a winner — a dead or expired one is replaced, which is also the
  * only cleanup these files need.
  */
-export function claimPort(port, owner, now = Date.now()) {
+function claimPort(port, owner, now = Date.now()) {
   const file = claimFile(port);
   const write = (flag) => writeFileSync(file, `${owner} ${now}`, { flag });
   try {
@@ -121,7 +121,7 @@ export function claimPort(port, owner, now = Date.now()) {
  * instead, and the picker it spawns exits immediately, which would expire the claim the moment
  * it was made. The CLI below therefore claims for its parent.
  */
-export function takeE2ePort(base = Number(process.env.E2E_PORT ?? BASE_PORT), owner = process.pid) {
+function takeE2ePort(base = Number(process.env.E2E_PORT ?? BASE_PORT), owner = process.pid) {
   const chosen = chooseE2ePort(base, {
     listeners: portListeners,
     staleAmong,

@@ -55,7 +55,7 @@ function readPersistedPairs<V>(
  * collections, which is how a row written without one restores, and a
  * malformed one never throws.
  */
-export function readPersistedSeats(stored: unknown): PersistedSeats {
+function readPersistedSeats(stored: unknown): PersistedSeats {
   const block = stored && typeof stored === "object" && !Array.isArray(stored)
     ? (stored as Record<string, unknown>)
     : {};

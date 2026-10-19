@@ -86,7 +86,7 @@ export async function roomStatePayload(
 }
 
 /** The seats of a running table in the shape `room_players` reads back. */
-export function seatedHumansOf(game: OnlineGameState) {
+function seatedHumansOf(game: OnlineGameState) {
   return game.gameState.players.flatMap((player, seatIndex) => {
     const seatUserId = game.playerMap[seatIndex];
     return seatUserId
@@ -99,7 +99,7 @@ export function seatedHumansOf(game: OnlineGameState) {
  * The room as the live game knows it, for when the `rooms` row cannot be read.
  * `joinCode` rides in the persisted envelope so this survives a restart.
  */
-export function roomOf(game: OnlineGameState) {
+function roomOf(game: OnlineGameState) {
   return {
     id: game.roomId,
     code: game.joinCode,
@@ -320,7 +320,7 @@ export async function retireRoomInvites(
  * is not a finished one, and an invite deleted when a stranger sat down could
  * not return when they left.
  */
-export async function announceRoomJoinable(
+async function announceRoomJoinable(
   io: SocketServer,
   roomId: string,
   roomCode: string,

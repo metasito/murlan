@@ -52,7 +52,7 @@ export function buildPassed(cwd) {
 }
 
 /** A line that exists in `cwd`'s committed tree, so a cited `path:line` is checked, not believed. */
-export function lineResolver(cwd) {
+function lineResolver(cwd) {
   return (path, line) => {
     try {
       return line >= 1 && line <= readFileSync(join(cwd, path), "utf8").split("\n").length;

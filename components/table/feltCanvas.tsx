@@ -388,5 +388,3 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
     </Canvas>
   );
 }
-
-export default FeltCanvas;

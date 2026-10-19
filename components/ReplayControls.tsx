@@ -47,7 +47,7 @@ const MOVE_NUM_W = 28;
 export const REPLAY_SPEEDS = [1, 2, 0.5] as const;
 
 /** What a move reads as: "Bomb - 7 7 7 7", or "passed". */
-export function moveActionText(replay: ReplayDto, index: number, t: TFn): string {
+function moveActionText(replay: ReplayDto, index: number, t: TFn): string {
   const combo = replay.moves[index]?.combo;
   if (!combo) return t("replay.movePassed");
   const ranks = combo.cards.map((card) => getCardDisplayRank(card.rank)).join(" ");

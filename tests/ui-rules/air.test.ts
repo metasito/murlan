@@ -7,7 +7,7 @@ import { D, DRAW_STRIDE, SPRITE_R, layoutMotes } from "../../components/table/pa
 import { rgba } from "../../components/table/particles.ts";
 import { RestAir } from "../../lib/tokens.ts";
 import { fixtureBlock, fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
-import { mulberry32 } from "../engine/helpers.ts";
+import { mulberry32 } from "../support/game.ts";
 
 const DT = 1 / 60;
 

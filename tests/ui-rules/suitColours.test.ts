@@ -10,6 +10,7 @@
 // applied in linear RGB. Distance is CIE76 ΔE in Lab: crude next to CIEDE2000,
 // but these colours are far apart or not at all, and the margins below are wide
 // enough that the difference between the two metrics cannot change an answer.
+import { linear } from "../../lib/contrast.ts";
 import { Colors } from "../../lib/tokens.ts";
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
@@ -17,12 +18,9 @@ import assert from "node:assert/strict";
 type RGB = [number, number, number];
 type Lab = [number, number, number];
 
-const srgbToLinear = (c: number) =>
-  c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-
 function hexToLinear(hex: string): RGB {
   const h = hex.replace("#", "");
-  return [0, 2, 4].map((i) => srgbToLinear(parseInt(h.slice(i, i + 2), 16) / 255)) as RGB;
+  return [0, 2, 4].map((i) => linear(parseInt(h.slice(i, i + 2), 16))) as RGB;
 }
 
 const VISION: Record<string, number[][]> = {

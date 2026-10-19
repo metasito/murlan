@@ -13,7 +13,7 @@ export const MOCKUP_SEAT = { bottom: "you", right: "luan", top: "besnik", left: 
  * The app's pools at the mockup's own size and seating. `tests/ui-rules/lampRig.test.ts` holds its
  * discs within 1.2 pt of these anchors; its hand has no disc, and runs off the bottom edge.
  */
-export const MOCKUP_POOLS: Record<LampTarget, Pool> = lampPools(
+const MOCKUP_POOLS: Record<LampTarget, Pool> = lampPools(
   anchorPoints(phoneTable(DESIGN.width, DESIGN.height)),
   DESIGN.width,
   DESIGN.height

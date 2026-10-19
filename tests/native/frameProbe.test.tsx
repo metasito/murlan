@@ -110,3 +110,28 @@ describe('the frame loop runs only while armed or recording', () => {
     await view.unmount();
   });
 });
+
+describe('arming leaves no timer behind', () => {
+  // The first frame reaches JS through a microtask (scheduleOnRN).
+  beforeEach(() => {
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
+  });
+  afterEach(() => {
+    probe.armFrames(false);
+    jest.useRealTimers();
+  });
+
+  it('once the first frame lands', async () => {
+    const seen = probe.armFrames(true);
+    probe.sampleFrame({ timeSincePreviousFrame: null, timestamp: 0, timeSinceFirstFrame: 0 });
+    await seen;
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('once it is disarmed before any frame', async () => {
+    const seen = probe.armFrames(true);
+    probe.armFrames(false);
+    await seen;
+    expect(jest.getTimerCount()).toBe(0);
+  });
+});

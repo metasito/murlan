@@ -11,7 +11,7 @@ import { __testables } from "../../server/app.ts";
 const PLATFORMS = ["ios", "android"];
 const PLANTED = '{"planted":"a static-build manifest"}';
 const root = mkdtempSync(path.join(tmpdir(), "murlan-no-web-build-"));
-const home = process.cwd();
+const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 let server: http.Server;
 let port = 0;
 
@@ -32,7 +32,7 @@ before(async () => {
 
 after(async () => {
   await new Promise((resolve) => server.close(resolve));
-  process.chdir(home);
+  process.chdir(repoRoot);
   rmSync(root, { recursive: true, force: true });
 });
 

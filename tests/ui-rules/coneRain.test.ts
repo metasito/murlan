@@ -4,16 +4,7 @@ import { coneRainFrame, idleRain, startRain } from "../../components/table/coneR
 import { bombFx, createParticles, landingDust, roundMotes, PARTICLE_BUDGET, spawn, step, type ParticleSpawn } from "../../components/table/particles.ts";
 import { MOTES } from "../../components/table/air.ts";
 import { BombFx, ConeRain, RoundMoment } from "../../lib/tokens.ts";
-
-function mulberry32(seed: number): () => number {
-  let a = seed;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+import { mulberry32 } from "../support/game.ts";
 
 const DT = 1 / 60;
 const within = (v: number | undefined, lo: number, hi: number) => v !== undefined && v >= lo - 1e-9 && v <= hi + 1e-9;

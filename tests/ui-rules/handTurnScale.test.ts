@@ -20,16 +20,16 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   cardScale,
-  CARD_W,
   FIELD_SCALE,
+  handCardSize,
   HAND_NEAR_RATIO,
   HAND_SCALE,
   HAND_SCALE_ON_TURN,
 } from "../../components/cardFaceModel.ts";
 import { HAND_ZONE_GAP } from "../../components/seatLayout.ts";
 import { computeTableFrame } from "../../components/tableFrame.ts";
-import { computeHandLayout, MIN_READABLE_STEP } from "../../components/handLayout.ts";
-import { PHONES, type Phone } from "../e2e/helpers/phones.ts";
+import { layoutHandRow, MIN_READABLE_STEP } from "../../components/handLayout.ts";
+import { PHONES } from "../e2e/helpers/phones.ts";
 import { dealCards } from "../../lib/game/gameEngine.ts";
 
 /** The biggest hand each seat count deals, from the engine rather than restated. */
@@ -44,28 +44,6 @@ const DEALS = ([2, 3, 4] as const).map((seats) => ({
  * touching both buttons.
  */
 const GAP_HEADROOM = 0.5;
-
-/** The row hand.tsx lays out on `phone`, holding `n` cards, on or off turn. */
-function row(phone: Phone, n: number, onTurn: boolean) {
-  const scale = cardScale(Math.min(phone.width, phone.height));
-  const frame = computeTableFrame({
-    width: phone.width,
-    height: phone.height,
-    insets: { top: 0, bottom: 0, left: 0, right: 0 },
-    scale,
-  });
-  const cardW = CARD_W(scale * (onTurn ? HAND_SCALE_ON_TURN : HAND_SCALE));
-  const room = onTurn ? frame.handRoomW * HAND_NEAR_RATIO : frame.handRoomW;
-  const { step, totalW, scrollable } = computeHandLayout(n, room, cardW, frame.handAvailW);
-  return {
-    step,
-    scrollable,
-    /** What the row actually spans: past `availW` the ScrollView is the edge. */
-    width: Math.min(totalW, frame.handAvailW),
-    availW: frame.handAvailW,
-    gap: HAND_ZONE_GAP * scale,
-  };
-}
 
 describe("the hand's two sizes", () => {
   test("a hand card is bigger than a field card, and bigger still on your own turn", () => {
@@ -86,12 +64,28 @@ describe("the hand's two sizes", () => {
   });
 
   for (const phone of PHONES) {
+    const scale = cardScale(Math.min(phone.width, phone.height));
+    const frame = computeTableFrame({
+      width: phone.width,
+      height: phone.height,
+      insets: { top: 0, bottom: 0, left: 0, right: 0 },
+      scale,
+    });
+    const gap = HAND_ZONE_GAP * scale;
     for (const { seats, n } of DEALS) {
-      for (const onTurn of [false, true]) {
+      const [off, on] = [false, true].map((onTurn) =>
+        layoutHandRow({
+          ids: Array.from({ length: n }, (_, i) => `c${i}`),
+          size: handCardSize(scale, onTurn, false),
+          roomW: frame.handRoomW,
+          availW: frame.handAvailW,
+          bottomPad: frame.bottomPad,
+        })
+      );
+      for (const [onTurn, { step, totalW }] of [[false, off], [true, on]] as const) {
         const where = `${phone.name}, ${seats} seats, ${onTurn ? "on" : "off"} turn`;
 
         test(`${where}: the exposed strip is still a finger wide`, () => {
-          const { step } = row(phone, n, onTurn);
           assert.ok(
             step >= MIN_READABLE_STEP,
             `step ${step.toFixed(1)} is under the ${MIN_READABLE_STEP}px floor`
@@ -99,8 +93,9 @@ describe("the hand's two sizes", () => {
         });
 
         test(`${where}: the row keeps clear of the action buttons`, () => {
-          const { width, availW, gap } = row(phone, n, onTurn);
-          const ceiling = availW + gap * 2 * GAP_HEADROOM;
+          // Past `availW` the pan's window is the edge.
+          const width = Math.min(totalW, frame.handAvailW);
+          const ceiling = frame.handAvailW + gap * 2 * GAP_HEADROOM;
           assert.ok(
             width < ceiling,
             `the row spans ${width.toFixed(1)}px, past the ${ceiling.toFixed(1)}px it may reach`
@@ -111,8 +106,6 @@ describe("the hand's two sizes", () => {
       // The scroll fallback exists for a full deal on a small phone. A hand
       // that fits at rest must not start scrolling for the turn coming round.
       test(`${phone.name}, ${seats} seats: coming closer does not start a scroll`, () => {
-        const off = row(phone, n, false);
-        const on = row(phone, n, true);
         if (!off.scrollable) {
           assert.equal(on.scrollable, false, "the near hand scrolls where the far one did not");
         }
@@ -122,8 +115,6 @@ describe("the hand's two sizes", () => {
       // opening with them. Where the row is not already compressed onto the
       // finger floor, the gap between two cards has to grow.
       test(`${phone.name}, ${seats} seats: the fan opens, it does not just overlap harder`, () => {
-        const off = row(phone, n, false);
-        const on = row(phone, n, true);
         if (off.step > MIN_READABLE_STEP) {
           assert.ok(
             on.step > off.step,

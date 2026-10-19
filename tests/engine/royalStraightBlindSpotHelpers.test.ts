@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { c, j } from "./helpers.ts";
+import { card as c, joker as j } from "../support/game.ts";
 import { cardStrength, type Card } from "../../lib/game/gameEngine.ts";
 import {
   handHasLegalRoyalStraight,

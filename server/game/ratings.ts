@@ -14,7 +14,7 @@ import {
 import type { RatingAfter } from "../../lib/game/matchState.ts";
 
 /** How many players the public ladder shows. */
-export const LEADERBOARD_SIZE = 50;
+const LEADERBOARD_SIZE = 50;
 
 export interface RatingView {
   season: string;

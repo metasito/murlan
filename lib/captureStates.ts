@@ -23,10 +23,13 @@ import {
   type GameState,
   type Player,
 } from "./game/gameEngine.ts";
+import { BOT_PERSONALITIES, botSeatNames } from "./game/botPersonalities.ts";
 import type { OwnLink } from "./ownLink.ts";
 
-/** Bot names and seating as `app/lobby.tsx` fills empty seats. */
-const BOTS = ["Luan", "Drita", "Besnik"] as const;
+/** The bots `app/lobby.tsx` fills the seats past the viewer's with, named as it names them. */
+const lobbyBots = (playerCount: number): string[] =>
+  botSeatNames(Array.from({ length: playerCount - 1 }, (_, i) => BOT_PERSONALITIES[i % BOT_PERSONALITIES.length].id));
+const [RIGHT, TOP, LEFT] = lobbyBots(4);
 const VIEWER = "Ana";
 
 /** The seat every capture is taken from. */
@@ -72,7 +75,7 @@ export const CAPTURE_STATES: readonly CaptureState[] = [
   },
   {
     id: "lamp-right",
-    label: "Luan's turn — the lamp over the right seat",
+    label: `${RIGHT}'s turn — the lamp over the right seat`,
     playerCount: 4,
     turn: 1,
     side: "right",
@@ -80,7 +83,7 @@ export const CAPTURE_STATES: readonly CaptureState[] = [
   },
   {
     id: "lamp-top",
-    label: "Drita's turn — the lamp over the top seat",
+    label: `${TOP}'s turn — the lamp over the top seat`,
     playerCount: 4,
     turn: 2,
     side: "top",
@@ -88,7 +91,7 @@ export const CAPTURE_STATES: readonly CaptureState[] = [
   },
   {
     id: "lamp-left",
-    label: "Besnik's turn — the lamp over the left seat",
+    label: `${LEFT}'s turn — the lamp over the left seat`,
     playerCount: 4,
     turn: 3,
     side: "left",
@@ -96,7 +99,7 @@ export const CAPTURE_STATES: readonly CaptureState[] = [
   },
   {
     id: "pile-right",
-    label: "Luan's turn with a combination on the felt — the pile under a lamp that is not yours",
+    label: `${RIGHT}'s turn with a combination on the felt — the pile under a lamp that is not yours`,
     playerCount: 4,
     turn: 1,
     side: "right",
@@ -104,7 +107,7 @@ export const CAPTURE_STATES: readonly CaptureState[] = [
   },
   {
     id: "play-right-landed",
-    label: "Drita's turn after Luan's combination — the right seat's play landed on the pile",
+    label: `${TOP}'s turn after ${RIGHT}'s combination — the right seat's play landed on the pile`,
     playerCount: 4,
     turn: 2,
     side: "top",
@@ -151,10 +154,10 @@ export const LINK_STATES: readonly CaptureState[] = [
 ];
 
 /** Landing on the link that opens them, so a shot taken straight after it catches the moment mid-flight. */
-export const MOMENT_STATES: readonly CaptureState[] = [
+const MOMENT_STATES: readonly CaptureState[] = [
   {
     id: "bomb-landed",
-    label: "Drita's turn after Luan's bomb — the flare screening onto the felt",
+    label: `${TOP}'s turn after ${RIGHT}'s bomb — the flare screening onto the felt`,
     playerCount: 4,
     turn: 2,
     side: "top",
@@ -232,6 +235,7 @@ export function captureGameState(state: CaptureState): GameState {
   const pileFrom = pile ? (state.turn + state.playerCount - 1) % state.playerCount : -1;
   const dealt = hands(deck, state.playerCount);
   const finishingOrder: string[] = [];
+  const bots = lobbyBots(state.playerCount);
 
   const players: Player[] = Array.from({ length: state.playerCount }, (_, seat) => {
     const id = `capture_${seat}`;
@@ -239,7 +243,7 @@ export function captureGameState(state: CaptureState): GameState {
     if (held === "out") finishingOrder.push(id);
     return {
       id,
-      name: seat === CAPTURE_VIEWER_SEAT ? VIEWER : BOTS[seat - 1],
+      name: seat === CAPTURE_VIEWER_SEAT ? VIEWER : bots[seat - 1],
       hand: held === "out" ? [] : dealt[seat].slice(0, held),
       type: seat === CAPTURE_VIEWER_SEAT ? "human" : "bot",
       ...(held === "out" && { finishPosition: finishingOrder.length }),

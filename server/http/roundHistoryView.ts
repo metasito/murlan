@@ -15,7 +15,7 @@ import { getRoundHistory } from "../game/stats.ts";
 import { namesOf } from "../game/userNames.ts";
 
 /** One of the other seats at a round the reader played. */
-export interface HistoryParticipant {
+interface HistoryParticipant {
   /**
    * Null where nothing stored can name the seat: a bot at a round whose replay
    * has expired, or an account deleted since. The two are different sentences

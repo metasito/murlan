@@ -29,6 +29,9 @@ function propsOf(file: string, name: string): string[] {
 const CARD_A = { id: "3_spades", rank: "3", suit: "spades" };
 const CARD_B = { id: "4_hearts", rank: "4", suit: "hearts" };
 const noop = () => {};
+const PLACE = { left: 0, bottom: 0, rot: 0, shift: 0, hitW: 40, restX: 0, restY: 0 };
+const SIZE = { scale: 1, w: 64, h: 90, reach: 1, restH: 90 };
+const ENTRY = { kind: "descend", from: { dx: 0, dy: 0 } };
 
 const VALUES: Record<string, [unknown, unknown]> = {
   card: [CARD_A, CARD_B],
@@ -39,7 +42,6 @@ const VALUES: Record<string, [unknown, unknown]> = {
   shown: [{ value: [] }, { value: [] }],
   pressed: [{ value: null }, { value: null }],
   scale: [1, 2],
-  cardScale: [1, 2],
   compact: [false, true],
   faceDown: [false, true],
   backId: ["classic", "lantern"],
@@ -47,7 +49,6 @@ const VALUES: Record<string, [unknown, unknown]> = {
   style: [{ a: 1 }, { a: 1 }],
   noLift: [false, true],
   hitWidth: [40, 90],
-  hitW: [40, 90],
   testID: ["card-plain", "card-start"],
   isStartCard: [false, true],
   decorative: [false, true],
@@ -58,20 +59,11 @@ const VALUES: Record<string, [unknown, unknown]> = {
   a11yActionKeys: [{ ArrowLeft: "left" }, { ArrowRight: "right" }],
   onMove: [noop, () => {}],
   onDrawn: [noop, () => {}],
-  left: [0, 10],
-  bottom: [0, 10],
-  arcRot: [0, 10],
   zIndex: [0, 10],
   giveable: [false, true],
-  dealDelay: [0, 120],
-  dealFromX: [0, 120],
-  deal: [{ leaveMs: 0 }, { leaveMs: 42 }],
-  dealRise: [0, 120],
-  cardW: [64, 92],
-  cardH: [90, 128],
-  restX: [0, 24],
-  restY: [0, 24],
-  shiftX: [0, 24],
+  place: [PLACE, { ...PLACE, shift: 24 }],
+  size: [SIZE, { ...SIZE, w: 92 }],
+  entry: [ENTRY, { kind: "descend", from: { dx: 0, dy: 120 } }],
   received: [false, true],
   hidden: [{ value: [] }, { value: [] }],
   rects: [{ place: { x: 0 } }, { place: { x: 0 } }],
@@ -84,10 +76,7 @@ const VALUES: Record<string, [unknown, unknown]> = {
  */
 const EXEMPT: Record<string, Record<string, string>> = {
   cardItemPropsEqual: {
-    dealDelay:
-      "the deal reads it once at mount (dealDelayRef), so a later change must " +
-      "not restart a card that is already in flight",
-    deal: "read once at mount, like dealDelay",
+    entry: "read once, at mount: the deal is disarmed one render after the hand appears, while its cards are still flying in",
   },
   cardViewPropsEqual: {},
 };
@@ -132,10 +121,39 @@ describe.each(SUBJECTS)("$name compares every prop it is given", ({ name, equal,
     expect(stale).toEqual([]);
   });
 
+  it("compares the place and size by value, not by the object a render rebuilt", () => {
+    const rebuilt = Object.fromEntries(
+      keys.map((k) => [k, ["place", "size"].includes(k) ? { ...(base[k] as object) } : base[k]])
+    );
+    expect(equal(base, rebuilt)).toBe(true);
+  });
+
   // The floor: `propsOf` returning nothing would make every assertion above
   // pass on an empty list.
   it("read the props out of the source", () => {
     expect(keys.length).toBeGreaterThan(10);
     expect(keys).toContain("card");
+  });
+});
+
+// A card reads how it enters once, at mount: a card that noticed the deal disarm would restart mid-flight.
+describe("cardItemPropsEqual and a card's entry", () => {
+  const DEAL = { kind: "deal", clock: { value: 0 }, leaveMs: 0, from: { dx: 0, dy: 0 }, onDealt: noop };
+  const props = { card: CARD_A, place: PLACE, size: SIZE, entry: DEAL };
+  const withEntry = (entry: unknown) => cardItemPropsEqual(props as never, { ...props, entry } as never);
+
+  it.each([
+    ["the deal disarmed", null],
+    ["a descent instead", ENTRY],
+    ["another clock", { ...DEAL, clock: { value: 0 } }],
+    ["another leave", { ...DEAL, leaveMs: 120 }],
+    ["another origin", { ...DEAL, from: { dx: 5, dy: 5 } }],
+    ["another landing callback", { ...DEAL, onDealt: () => {} }],
+  ])("ignores %s", (_, entry) => {
+    expect(withEntry(entry)).toBe(true);
+  });
+
+  it("still notices every other prop beside it", () => {
+    expect(cardItemPropsEqual(props as never, { ...props, entry: null, place: { ...PLACE, shift: 24 } } as never)).toBe(false);
   });
 });

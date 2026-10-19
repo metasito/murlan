@@ -143,7 +143,7 @@ function connect(): Promise<Client | null> {
  * Postgres' answer to one lock request. `unreachable` is a question nobody answered — a refused
  * connection, a failed query — and says nothing about who holds the room.
  */
-export type LockAnswer = "taken" | "elsewhere" | "unreachable";
+type LockAnswer = "taken" | "elsewhere" | "unreachable";
 
 /** Asks Postgres for the lock, whatever this process already believes. */
 async function takeLock(roomId: string): Promise<LockAnswer> {

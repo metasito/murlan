@@ -18,7 +18,7 @@ import { pathToFileURL } from "node:url";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 describe("isInvokedDirectly", () => {
-  const self = path.resolve("scripts/lib/entry.mjs");
+  const self = path.resolve(import.meta.dirname, "..", "..", "scripts/lib/entry.mjs");
   const moduleUrl = pathToFileURL(self).href;
 
   test("an absolute argv1 matching the module's own path", () => {

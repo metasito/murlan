@@ -1,6 +1,7 @@
 const { defineConfig } = require('eslint/config');
 const expoConfig = require('eslint-config-expo/flat');
 const globals = require('globals');
+const { guardBlocks } = require('./eslint.guards.cjs');
 
 // The selectors live in eslint.selectors.cjs so tests/ui-rules/spacingLint can assert
 // against the string this actually runs, rather than a copy of it.
@@ -246,4 +247,6 @@ module.exports = defineConfig([
       "@typescript-eslint/no-require-imports": ["warn", { allow: ["\\.flac$"] }],
     },
   },
+  { linterOptions: { reportUnusedDisableDirectives: "error" } },
+  ...guardBlocks(),
 ]);

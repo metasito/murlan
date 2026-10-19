@@ -2,6 +2,7 @@
 // behind each step are #1250's findings, § "What I measured".
 import type { Page } from "@playwright/test";
 import { STEP_MS } from "./traceDiff";
+import { mulberry32 } from "../../support/game.ts";
 
 const EPOCH = new Date("2026-09-24T12:00:00Z");
 
@@ -15,20 +16,15 @@ export async function installVirtualClock(page: Page, seed: number): Promise<voi
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Animation.enable");
   await cdp.send("Animation.setPlaybackRate", { playbackRate: 0 });
-  await page.addInitScript((seed) => {
-    let s = seed >>> 0;
-    Math.random = () => {
-      s = (s + 0x6d2b79f5) >>> 0;
-      let t = Math.imul(s ^ (s >>> 15), s | 1);
-      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
+  const install = (generator: typeof mulberry32, seed: number) => {
+    Math.random = generator(seed);
     // `page.clock` fakes performance.now() but not this stamp's performanceTime, which stays on the
     // real clock; the engine maps a moment's `at` through it, so every sound would read seconds late.
     AudioContext.prototype.getOutputTimestamp = function () {
       return { contextTime: this.currentTime, performanceTime: performance.now() };
     };
-  }, seed);
+  };
+  await page.addInitScript({ content: `(${String(install)})(${String(mulberry32)}, ${seed});` });
   await page.clock.install({ time: EPOCH });
   await page.clock.pauseAt(EPOCH);
 }

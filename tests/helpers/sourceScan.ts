@@ -225,7 +225,7 @@ export function blankCommentsAndStrings(source: string): string {
  * The JSX tag enclosing `index`, as its opening-tag text, or null when the index
  * is not inside one. Brace-aware, so a `>` inside `style={{…}}` does not end it.
  */
-export function enclosingTag(source: string, index: number): string | null {
+function enclosingTag(source: string, index: number): string | null {
   // The innermost, not the first: a tag whose props hold JSX — `overlays={…}`
   // on GameTable — spans every node inside it, and the outermost match would
   // report the parent for each of its children.

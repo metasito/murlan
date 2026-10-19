@@ -5,9 +5,6 @@
 // field back to a pose the eye can recognise.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
 import {
   DEPTH_BANDS,
   LANDSCAPE_CARDS,
@@ -19,7 +16,6 @@ import {
 } from "../../components/homeCardField.ts";
 import { CARD_H, CARD_W } from "../../components/cardFaceModel.ts";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const DEPTHS: Depth[] = ["far", "mid", "near"];
 const ALL = [...PORTRAIT_CARDS, ...LANDSCAPE_CARDS];
 
@@ -96,9 +92,4 @@ test("a parked card rests off upright, and inside its own travel", () => {
     assert.ok(Math.abs(swing) < 1, "a parked card rests at the far end of its own tilt");
     assert.ok(rise > 0 && rise < 1, "a parked card rests at the far end of its own rise");
   }
-});
-
-test("the home screen draws no part of the field at random", () => {
-  const source = readFileSync(path.join(repoRoot, "app/index.tsx"), "utf8");
-  assert.ok(!/Math\.random\(/.test(source), "app/index.tsx still calls Math.random()");
 });

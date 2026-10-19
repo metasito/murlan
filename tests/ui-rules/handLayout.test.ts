@@ -3,14 +3,22 @@
 // here — docs/agents/checks.md.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { CARD_W } from "../../components/cardFaceModel.ts";
+import { CARD_H, CARD_W, cardScale, handCardSize } from "../../components/cardFaceModel.ts";
+import { computeTableFrame } from "../../components/tableFrame.ts";
+import { PHONES } from "../e2e/helpers/phones.ts";
+import { dealCards } from "../../lib/game/gameEngine.ts";
 import {
   MAX_STEP_RATIO,
   MIN_READABLE_STEP,
-  cardAtX,
+  SELECT_TILT,
+  selectTilt,
+  cardUnder,
+  restingOrigin,
   computeHandLayout,
   slotForCard,
   hitWidth,
+  layoutHandRow,
+  type HandStrips,
 } from "../../components/handLayout.ts";
 import { HAND_ARC } from "../../components/tableArc.ts";
 
@@ -18,6 +26,27 @@ import { HAND_ARC } from "../../components/tableArc.ts";
 // parameter now that CARD_W itself is scale-derived; these tests exercise the
 // math at one fixed width, same as before scale existed.
 const CW = CARD_W(1);
+const CH = CARD_H(1);
+const CARD = { w: CW, h: CH };
+const AT_REST = { raised: [], gone: [], lift: 16, tilt: 0 };
+
+/** A level row of `n` cards stepping `step`, every card at rest. */
+function flatRow(n: number, step: number): HandStrips {
+  const ids = Array.from({ length: n }, (_, i) => `c${i}`);
+  const widths = ids.map((_, i) => hitWidth(i, n, step, CW));
+  const lefts: number[] = [];
+  for (let i = 0, x = 0; i < n; x += widths[i++]) lefts.push(x);
+  return {
+    ids,
+    lefts,
+    widths,
+    tops: ids.map(() => 0),
+    rots: ids.map(() => 0),
+  };
+}
+
+/** The card a press `x` along a level row, halfway down the cards, lands on. */
+const cardAtX = (x: number, n: number, step: number) => cardUnder(flatRow(n, step), x, CH / 2, CARD, AT_REST);
 /** The widest this card ever steps — see MAX_STEP_RATIO. */
 const MAX_STEP_AT_CW = CW * MAX_STEP_RATIO;
 
@@ -182,25 +211,54 @@ describe("computeHandLayout", () => {
   });
 });
 
+describe("a selected card's tilt", () => {
+  test("tips by SELECT_TILT, and not at all under reduced motion", () => {
+    assert.equal(selectTilt(false), SELECT_TILT);
+    assert.equal(selectTilt(true), 0);
+  });
+});
+
 describe("which card a tap belongs to", () => {
   const N = 14;
   const { step } = computeHandLayout(N, 600, CW);
 
-  test("the strips tile the row: no overlap, no gap", () => {
+  // The arc lays each slot out along a curve and projects it onto the row, so a strip's left drifts
+  // from the step its neighbour's width is; the drift stays under this (0.08 px at most today).
+  const ARC_DRIFT = 0.1;
+  for (const phone of PHONES) {
+    const scale = cardScale(Math.min(phone.width, phone.height));
+    const frame = computeTableFrame({ width: phone.width, height: phone.height, insets: { top: 0, bottom: 0, left: 0, right: 0 }, scale });
+    for (const seats of [2, 3, 4]) {
+      const n = Math.max(...dealCards(seats).hands.map((h) => h.length));
+      for (const onTurn of [false, true]) {
+        test(`${phone.name}, ${seats} seats, ${onTurn ? "on" : "off"} turn: the strips tile the row, no overlap, no gap`, () => {
+          const row = layoutHandRow({
+            ids: Array.from({ length: n }, (_, i) => `c${i}`),
+            size: handCardSize(scale, onTurn, false),
+            roomW: frame.handRoomW,
+            availW: frame.handAvailW,
+            bottomPad: frame.bottomPad,
+          });
+          const { lefts, widths } = row.strips;
+          assert.equal(lefts.length, n);
+          for (let i = 0; i < n - 1; i++) {
+            assert.ok(Math.abs(lefts[i] + widths[i] - lefts[i + 1]) < ARC_DRIFT, `card ${i}'s strip ends at ${lefts[i] + widths[i]}, card ${i + 1}'s starts at ${lefts[i + 1]}`);
+          }
+          // The last card owns a whole card rather than a step, so the strips end exactly where the row does.
+          assert.ok(Math.abs(lefts[n - 1] + widths[n - 1] - lefts[0] - (row.step * (n - 1) + row.size.w)) < 1e-9);
+        });
+      }
+    }
+  }
+
+  test("a level row's strip edges belong to their own card", () => {
     let x = 0;
     for (let i = 0; i < N; i++) {
-      assert.equal(cardAtX(x, N, step, CW), i, `the left edge of card ${i} belongs to it`);
+      assert.equal(cardAtX(x, N, step), i, `the left edge of card ${i} belongs to it`);
       const w = hitWidth(i, N, step, CW);
-      assert.equal(
-        cardAtX(x + w - 1e-6, N, step, CW),
-        i,
-        `the right edge of card ${i}'s strip belongs to it`
-      );
+      assert.equal(cardAtX(x + w - 1e-6, N, step), i, `the right edge of card ${i}'s strip belongs to it`);
       x += w;
     }
-    // The last card owns a whole card rather than a step, so the strips end
-    // exactly where the row does.
-    assert.equal(x, step * (N - 1) + CW);
   });
 
   test("only the last card is as wide as it is drawn", () => {
@@ -209,16 +267,34 @@ describe("which card a tap belongs to", () => {
   });
 
   test("a tap off either end belongs to no card", () => {
-    assert.equal(cardAtX(-1, N, step, CW), null);
-    assert.equal(cardAtX(step * (N - 1) + CW, N, step, CW), null);
+    assert.equal(cardAtX(-1, N, step), null);
+    assert.equal(cardAtX(step * (N - 1) + CW, N, step), null);
   });
 
   test("a hand of one is the whole card", () => {
     const one = computeHandLayout(1, 600, CW);
     assert.equal(hitWidth(0, 1, one.step, CW), CW);
-    assert.equal(cardAtX(0, 1, one.step, CW), 0);
-    assert.equal(cardAtX(CW - 1e-6, 1, one.step, CW), 0);
-    assert.equal(cardAtX(CW, 1, one.step, CW), null);
+    assert.equal(cardAtX(0, 1, one.step), 0);
+    assert.equal(cardAtX(CW - 1e-6, 1, one.step), 0);
+    assert.equal(cardAtX(CW, 1, one.step), null);
+  });
+
+  test("the felt above a card's top edge is no card", () => {
+    const row = flatRow(N, step);
+    assert.equal(cardUnder(row, step / 2, 1, CARD, AT_REST), 0);
+    assert.equal(cardUnder(row, step / 2, -1, CARD, AT_REST), null);
+  });
+
+  test("a raised card is hit where it is drawn, lifted and tipped", () => {
+    const row = flatRow(N, step);
+    const raised = { ...AT_REST, raised: ["c3"], tilt: SELECT_TILT };
+    const x = 3 * step + step / 2;
+    assert.equal(cardUnder(row, x, -AT_REST.lift / 2, CARD, AT_REST), null, "at rest the lift is felt");
+    assert.equal(cardUnder(row, x, -AT_REST.lift / 2, CARD, raised), 3);
+  });
+
+  test("a card drawn elsewhere takes no tap", () => {
+    assert.equal(cardUnder(flatRow(N, step), step / 2, CH / 2, CARD, { ...AT_REST, gone: ["c0"] }), null);
   });
 });
 
@@ -226,6 +302,23 @@ describe("which card a tap belongs to", () => {
 // *including* the card still in the air, and the slot it is coming to is left
 // empty — so the card lands in a space already waiting rather than over a fan
 // that has not moved.
+describe("restingOrigin", () => {
+  test("reads only the axis asked for, each time it is asked", () => {
+    const reads = { shift: 0, lift: 0, tilt: 0 };
+    const place = { left: 0, bottom: 0, rot: 2, shift: 0, hitW: 24, restX: 10, restY: 20 };
+    const o = restingOrigin(place, {
+      shift: () => (reads.shift++, 3),
+      lift: () => (reads.lift++, -4),
+      tilt: () => (reads.tilt++, 5),
+    });
+    assert.equal(o.x, 13);
+    assert.deepEqual(reads, { shift: 1, lift: 0, tilt: 0 });
+    assert.equal(o.y, 16);
+    assert.equal(o.rot, 7);
+    assert.deepEqual(reads, { shift: 1, lift: 1, tilt: 1 });
+  });
+});
+
 describe("slotForCard", () => {
   test("nothing arriving leaves every card where it is", () => {
     for (let i = 0; i < 14; i++) assert.equal(slotForCard(i, undefined), i);
@@ -282,7 +375,7 @@ describe("a tap strip left at the previous hand's width", () => {
     const stale = computeHandLayout(n, room, CW).step;
     const fresh = computeHandLayout(n - 1, room, CW).step;
     for (let i = 0; i < n - 1; i++) {
-      if (cardAtX(aimAt(i, fresh), n - 1, stale, CW) !== i) return i;
+      if (cardAtX(aimAt(i, fresh), n - 1, stale) !== i) return i;
     }
     return -1;
   }

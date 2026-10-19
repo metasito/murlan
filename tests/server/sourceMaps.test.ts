@@ -10,7 +10,7 @@ import path from "node:path";
 import { SourceMapGenerator } from "source-map";
 import { symbolicate } from "../../server/http/sourceMaps.ts";
 
-const MAPS_ROOT = path.resolve(process.cwd(), "sourcemaps");
+const MAPS_ROOT = path.resolve(import.meta.dirname, "..", "..", "sourcemaps");
 const FIXTURE_DIR = path.join(MAPS_ROOT, "_expo", "static", "js", "web");
 const FIXTURE_MAP = path.join(FIXTURE_DIR, "entry-test123.js.map");
 

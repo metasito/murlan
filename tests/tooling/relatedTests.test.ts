@@ -2,9 +2,10 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { capNear, listedTests, LOCAL_PROJECTS, localProjectOf, nearTests, onLocalProjects } from "../../tools/loop/related-tests.mjs";
 
+const repoRoot = resolve(import.meta.dirname, "..", "..");
 const T = (n: string) => `tests/native/${n}.test.tsx`;
 const src: Record<string, string> = {
   [T("feltFallbackShade")]: "import { Felt } from '@/components/table/feltSkia.web';",
@@ -56,13 +57,12 @@ describe("what native:related runs and what it leaves to CI", () => {
     const selected = onLocalProjects(["--listTests"]);
     assert.equal(selected[0], "--listTests");
     for (const [file, project] of [[T("scorePill"), "ios"], ["tests/native/botMoveCost.compiled.test.tsx", "compiled"]]) {
-      assert.equal(localProjectOf(join(process.cwd(), file)), project);
+      assert.equal(localProjectOf(join(repoRoot, file)), project);
       assert.ok(selected.slice(selected.indexOf("--selectProjects") + 1).includes(project), `${file}: ${project} not selected`);
     }
   });
   test("--listTests output keeps only paths, repo-relative and posix", () => {
-    const cwd = process.cwd();
-    const out = ["Running one project: ios", join(cwd, "tests", "native", "a.test.tsx"), "", `${join(cwd, "tests", "native", "b.test.tsx")} `].join("\r\n");
-    assert.deepEqual(listedTests(out, cwd), [T("a"), T("b")]);
+    const out = ["Running one project: ios", join(repoRoot, "tests", "native", "a.test.tsx"), "", `${join(repoRoot, "tests", "native", "b.test.tsx")} `].join("\r\n");
+    assert.deepEqual(listedTests(out, repoRoot), [T("a"), T("b")]);
   });
 });

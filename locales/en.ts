@@ -588,8 +588,6 @@ export const en = {
 
   // ------------------------------------------------------------------ lobby.*
   "lobby.team": "Team {{team}}",
-  "lobby.botNameA11yLabel": "AI player name",
-  "lobby.botNameA11yHint": "Enter a name for this computer-controlled player",
   "lobby.difficultyA11yLabel": "{{name}} difficulty: {{difficulty}}",
   "bot.difficultyEasy": "Easy",
   "bot.difficultyNormal": "Normal",

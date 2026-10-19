@@ -1,14 +1,13 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { card as c, joker as j } from "../support/game.ts";
 import {
   buildCombination,
-  c,
   cardStrength,
   canPlay,
   getCombinationType,
   getRankStrength,
-  j,
-} from "./helpers.ts";
+} from "../../lib/game/gameEngine.ts";
 
 describe("card strength order", () => {
   test("3 < ... < A < 2 < black joker < red joker", () => {

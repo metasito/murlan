@@ -7,7 +7,7 @@ export type { TraceFrame };
 
 export const STEP_MS = 16;
 
-export interface RegionSample {
+interface RegionSample {
   t: number;
   regions: Record<string, number>;
 }
@@ -214,7 +214,7 @@ export function diffPillAtProgress(
   return out;
 }
 
-export function flightSegments(trace: Trace, tol: typeof TOLERANCES = TOLERANCES): { start: number; half: number; contact: number }[] {
+function flightSegments(trace: Trace, tol: typeof TOLERANCES = TOLERANCES): { start: number; half: number; contact: number }[] {
   const out: { start: number; half: number; contact: number }[] = [];
   let open: { start: number; from: number; half?: number } | null = null;
   for (const f of trace.frames) {

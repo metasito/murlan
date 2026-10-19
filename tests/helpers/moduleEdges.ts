@@ -8,7 +8,7 @@ export interface Edge {
   gated: boolean;
 }
 
-export function resolveSpec(file: string, spec: string): string {
+function resolveSpec(file: string, spec: string): string {
   const bare = spec.startsWith("@/")
     ? spec.slice(2)
     : spec.startsWith(".")

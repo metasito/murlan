@@ -28,7 +28,7 @@ export async function seatSocket(
   await unspectated;
 }
 
-export const STOP_SPECTATING_EVENT = "murlan:stop-spectating";
+const STOP_SPECTATING_EVENT = "murlan:stop-spectating";
 
 function stopLocalSpectating(io: SocketServer, userId: string): Promise<unknown> {
   const ids = [...(io.sockets.adapter.rooms.get(userRoom(userId)) ?? [])];

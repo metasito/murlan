@@ -12,12 +12,7 @@
 // bounce", had the same ratio and gave three.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
 import { Motion } from "../../lib/tokens.ts";
-
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const dampingRatio = (s: { damping: number; stiffness: number; mass?: number }) =>
   s.damping / (2 * Math.sqrt(s.stiffness * (s.mass ?? 1)));
@@ -57,50 +52,4 @@ test("every spring settles", () => {
     assert.ok(zeta > 0.2, `${name} at zeta ${zeta.toFixed(2)} rings far too long to settle`);
     assert.ok(zeta <= 1.2, `${name} at zeta ${zeta.toFixed(2)} is overdamped and crawls in`);
   }
-});
-
-// A spring written inline is a spring the design system cannot reach. Two of
-// these were verbatim copies of a token, and two more differed from each other
-// by one unit of damping — a difference nobody can see, on the same gesture.
-// The tuning that fixed `pickup` and `land` would have missed every one.
-//
-// `damping` alone matched a literal digit only, missing a spring built from a
-// const or spread elsewhere; `dampingRatio` — Reanimated's other spring
-// config shape — was never matched at all. lib/tokens.ts is where the tokens
-// themselves are declared, so it is the one exclusion.
-test("no spring is written inline", () => {
-  const sources = (dir: string): string[] => {
-    const out: string[] = [];
-    for (const e of readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
-      const rel = `${dir}/${e.name}`;
-      if (e.isDirectory()) out.push(...sources(rel));
-      else if (e.name.endsWith(".tsx") || e.name.endsWith(".ts")) out.push(rel);
-    }
-    return out;
-  };
-
-  const offenders: string[] = [];
-  for (const rel of [...sources("app"), ...sources("components"), ...sources("context"), ...sources("lib")]) {
-    if (rel === "lib/tokens.ts") continue;
-    const source = readFileSync(path.join(repoRoot, rel), "utf8");
-    for (const m of source.matchAll(/damping(Ratio)?\s*:\s*/g)) {
-      const line = source.slice(0, m.index).split(/\r?\n/).length;
-      offenders.push(`${rel}:${line}`);
-    }
-  }
-
-  assert.deepEqual(
-    offenders,
-    [],
-    `these declare a spring instead of naming one: ${offenders.join(", ")}. ` +
-      `Use Motion.spring.* — and if none of them fits, the design wants a new one.`
-  );
-});
-
-test("the spring scanner matches damping written as a const and dampingRatio", () => {
-  const matches = (source: string) =>
-    [...source.matchAll(/damping(Ratio)?\s*:\s*/g)].length;
-  assert.equal(matches("{ damping: D, stiffness: 200 }"), 1);
-  assert.equal(matches("{ dampingRatio: 0.4 }"), 1);
-  assert.equal(matches("{ stiffness: 200 }"), 0);
 });

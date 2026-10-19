@@ -224,7 +224,7 @@ const withEffects = (before, ended) => ({ ...ended, effects: [...before, ...ende
 const EXCERPT_LINES = 8;
 
 /** The distinct files behind a run's failing ids — the fix rounds the branch owes. */
-export const failingFiles = (testIds) => [...new Set(testIds.map((id) => id.split(" › ")[0]))];
+const failingFiles = (testIds) => [...new Set(testIds.map((id) => id.split(" › ")[0]))];
 
 /**
  * The CI-RED comment's exact shape, so `ciRedRounds` can count it and a fix round can find the

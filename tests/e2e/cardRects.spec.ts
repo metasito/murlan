@@ -8,7 +8,8 @@ import { settled } from "./helpers/settle";
 import { tap, tapPoint } from "./helpers/press";
 import { E2E_SUSPEND_BOT_KEY } from "../../lib/storageKeys";
 import { HAND_ZONE } from "./helpers/selectors.ts";
-import { buildCombination, type Card, type Rank, type Suit } from "../../lib/game/gameEngine";
+import { buildCombination } from "../../lib/game/gameEngine";
+import { card } from "../support/game.ts";
 
 const VIEWPORTS = [
   { name: "phone", width: 844, height: 390 },
@@ -122,8 +123,6 @@ function expectOnTheCards(w: Worst, scopes: string[]) {
   expect(w.size, `size off by ${w.size.toFixed(2)}pt, worst ${w.worstAt}`).toBeLessThanOrEqual(TOLERANCE);
   expect(w.rot, `turn off by ${w.rot.toFixed(2)}° (${w.badFrames} of ${w.frames} frames), worst ${w.worstAt}`).toBeLessThanOrEqual(TOLERANCE);
 }
-
-const card = (rank: Rank, suit: Suit): Card => ({ id: `${rank}_${suit}`, rank, suit, isJoker: false });
 
 /** Four sevens over a single, three cards to spare so the play is a bomb and not the hand's last. */
 function bombSave() {

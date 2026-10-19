@@ -4,7 +4,7 @@ import type { Moment } from "@/lib/device/moments";
 import { DIAGNOSTICS, diag } from "@/lib/diagnostics";
 import { Hold, LATE_SOUND_MS } from "@/lib/tokens";
 
-export type Anchor = "landing" | "handoff";
+type Anchor = "landing" | "handoff";
 export interface TableTimeline {
   /** performance.now() ms of the latest reported contact; null before the first flight. */
   landsAt: number | null;

@@ -10,7 +10,7 @@ import { getValidGivebackCards } from "../../lib/game/gameEngine.ts";
 import type { Card } from "../../lib/game/gameEngine.ts";
 import { DEADLINE_SCALE } from "./client.ts";
 
-export interface ExchangePhaseView {
+interface ExchangePhaseView {
   active: boolean;
   winnerIdx: number;
   loserIdx: number;

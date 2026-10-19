@@ -86,7 +86,7 @@ const conflictPosted = (comments, sha) =>
   sinceClaim(comments).some((c) => CONFLICT_RE.exec(fenceStripped(c.body).trimStart())?.[1].slice(0, 7) === sha.slice(0, 7));
 
 /** @returns {string|null} */
-export function currentBranch(cwd) {
+function currentBranch(cwd) {
   try {
     return run(["rev-parse", "--abbrev-ref", "HEAD"], cwd);
   } catch {

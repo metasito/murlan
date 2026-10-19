@@ -15,7 +15,7 @@ import { testOnlyEnv } from "./testOnlyEnv.ts";
  * behind requireAuth, so that bucket is only ever reached by a request that
  * was going to be refused anyway.
  */
-export type LimiterKey = "ip" | "session" | "email" | "username";
+type LimiterKey = "ip" | "session" | "email" | "username";
 
 const KEY_GENERATORS: Record<Exclude<LimiterKey, "ip">, (req: Request) => string> = {
   session: (req) => req.session?.userId ?? "anonymous",

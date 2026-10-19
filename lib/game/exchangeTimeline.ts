@@ -33,7 +33,7 @@ export const LEG: LegTimes = { rest: X.lift + X.fly, tuck: X.lift + X.fly + Hold
 /** Reduced motion keeps the rest, which is reading, and drops the travel either side of it. */
 export const REDUCED_LEG: LegTimes = { rest: 0, tuck: Hold.reveal, end: Hold.reveal };
 /** From the deal's end to the receive landing, and from the choice to the give landing. */
-export const RECEIVE_MS = X.beat + LEG.end;
+const RECEIVE_MS = X.beat + LEG.end;
 export const GIVE_MS = X.giveWait + LEG.end;
 
 export function legTimes(reduced: boolean): LegTimes {

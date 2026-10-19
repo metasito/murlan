@@ -10,16 +10,16 @@ import type { Socket } from "./socket.ts";
  * three attempts spans a reconnect without letting a doomed play sit on screen.
  */
 export const INTENT_ACK_TIMEOUT_MS = 4000;
-export const INTENT_ATTEMPTS = 3;
+const INTENT_ATTEMPTS = 3;
 
-/** A `room:` or `game:` intent emitted any other way: `tests/ui-rules/intentsGoThroughSend.test.ts` refuses it. */
+/** A `room:` or `game:` intent emitted any other way: the `intents-through-send` guard in eslint.guards.cjs refuses it. */
 export type { IntentEvent };
 
 /**
  * Refusals that mean "not yet" rather than "no": the socket is between a
  * reconnect and its rejoin, or the table's instance was slow to answer.
  */
-export const RETRYABLE_CODES: ReadonlySet<string> = new Set(["NOT_AT_A_TABLE", "TABLE_UNREACHABLE"]);
+const RETRYABLE_CODES: ReadonlySet<string> = new Set(["NOT_AT_A_TABLE", "TABLE_UNREACHABLE"]);
 
 let minted = 0;
 

@@ -13,7 +13,7 @@ const SHELL = "<!doctype html><title>the SPA shell</title>";
 const AASA = "/.well-known/apple-app-site-association";
 const ASSETLINKS = "/.well-known/assetlinks.json";
 const CERT = "AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89";
-const home = process.cwd();
+const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 const roots: string[] = [];
 const servers: http.Server[] = [];
 const ports = { web: 0, bare: 0 };
@@ -37,7 +37,7 @@ async function listen(withWebBuild: boolean) {
 before(async () => {
   ports.web = await listen(true);
   ports.bare = await listen(false);
-  process.chdir(home);
+  process.chdir(repoRoot);
 });
 
 afterEach(() => {

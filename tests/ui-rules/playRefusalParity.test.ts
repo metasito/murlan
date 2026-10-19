@@ -5,16 +5,14 @@ import assert from "node:assert/strict";
 import { readStagedPlay } from "../../components/table/stagedPlay.ts";
 import { playButtonLabel } from "../../components/turnTimerUi.ts";
 import { TUTORIAL_REFUSAL_KEYS } from "../../components/tutorialRefusal.ts";
+import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
   buildCombination,
-  c,
   checkPlay,
-  makePlayer,
-  makeState,
   type Card,
   type Rank,
   type Suit,
-} from "../engine/helpers.ts";
+} from "../../lib/game/gameEngine.ts";
 
 const run = (suit: Suit, ranks: Rank[]) => ranks.map((rank) => c(rank, suit));
 const bombOf = (rank: Rank) =>
@@ -64,7 +62,7 @@ describe("one reason for a refused play", () => {
       const ids = row.selection.map((card) => card.id);
 
       const engine = checkPlay(
-        makeState([makePlayer("p0", hand), makePlayer("p1", [c("2", "clubs")])], {
+        makeState({ players: [makePlayer(0, hand), makePlayer(1, [c("2", "clubs")])],
           ...table,
           lastPlayedBy: 1,
         }),

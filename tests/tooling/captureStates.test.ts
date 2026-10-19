@@ -23,6 +23,7 @@ import { holdGrey, linkHeld } from "../../lib/ownLink.ts";
 import { seatDirection } from "../../components/seatLayout.ts";
 import { comboKey, passedSeats } from "../../components/flightPhysics.ts";
 import { createDeck, dealCards } from "../../lib/game/gameEngine.ts";
+import { BOT_PERSONALITIES } from "../../lib/game/botPersonalities.ts";
 
 type Named = Partial<Record<"right" | "top" | "left", number | "out">>;
 
@@ -84,6 +85,16 @@ describe("link states", () => {
 });
 
 describe("capture states", () => {
+  test("every bot seated is one the lobby seats, and a label names only who is seated", () => {
+    const lobby = new Set(BOT_PERSONALITIES.map((p) => p.name));
+    for (const state of ALL_CAPTURE_STATES) {
+      const bots = captureGameState(state).players.filter((p) => p.type === "bot").map((p) => p.name);
+      for (const name of bots) assert.ok(lobby.has(name), `${state.id} seats ${name}, whom the lobby never seats`);
+      const named = state.label.match(/\b[A-Z][a-z]+(?='s)/g) ?? [];
+      for (const name of named) assert.ok(bots.includes(name), `${state.id}'s label names ${name}, who is not at its table`);
+    }
+  });
+
   test("every lamp position is covered", () => {
     const sides = new Set(CAPTURE_STATES.map((s) => s.side));
     for (const side of ["bottom", "top", "left", "right"]) {

@@ -77,7 +77,7 @@ export function fieldsOf(source, interfaceName) {
  * its own, which inflates every field to many readers and makes the "one
  * consumer" question unanswerable.
  */
-export function destructuredNames(source, hookName) {
+function destructuredNames(source, hookName) {
   const names = new Set();
   // Anchored on `const {`, not a bare brace. A destructure that is the first
   // statement inside a function has no `}` between the function's own opening
@@ -101,7 +101,7 @@ export function destructuredNames(source, hookName) {
   return names;
 }
 
-export function readersOf(fields, files, hookName) {
+function readersOf(fields, files, hookName) {
   const readers = new Map(fields.map((f) => [f, []]));
   for (const file of files) {
     const src = readFileSync(file, "utf8");

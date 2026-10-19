@@ -51,6 +51,30 @@ export const HAND_SCALE_ON_TURN = 1.2;
 export const HAND_NEAR_RATIO = HAND_SCALE_ON_TURN / HAND_SCALE;
 export const BACK_SCALE = 0.88;
 
+/**
+ * A hand card as the row draws it: `scale` and the box CardView paints at it (a spectated hand
+ * paints backs, their own aspect), the share of the row's room it aims at, and `restH`, the resting
+ * face's height, which the hand zone stands on whatever the turn.
+ */
+export interface HandCardSize {
+  scale: number;
+  w: number;
+  h: number;
+  reach: number;
+  restH: number;
+}
+
+export function handCardSize(tableScale: number, onTurn: boolean, faceDown: boolean): HandCardSize {
+  const scale = tableScale * (onTurn ? HAND_SCALE_ON_TURN : HAND_SCALE);
+  return {
+    scale,
+    w: faceDown ? CARD_BACK_W(scale) : CARD_W(scale),
+    h: faceDown ? CARD_BACK_H(scale) : CARD_H(scale),
+    reach: onTurn ? HAND_NEAR_RATIO : 1,
+    restH: CARD_H(tableScale * HAND_SCALE),
+  };
+}
+
 // ─── Card stock ─────────────────────────────────────────────────────────────
 //
 // A card is a physical object, not a flat swatch: a corner cut and a lit lip
@@ -184,16 +208,16 @@ export function indexBox(rank: string, w: number, h: number): Box {
 // the index entirely: a pip drawn over the rank character is the defect this
 // geometry exists to prevent.
 
-export const PIP_COL = { left: 0.33, centre: 0.5, right: 0.67 } as const;
-export const PIP_TOP = 0.16;
-export const PIP_BOTTOM = 0.84;
-export const PIP_SIZE = 0.145;    // of card height
-export const ACE_PIP_SIZE = 0.30;
+const PIP_COL = { left: 0.33, centre: 0.5, right: 0.67 } as const;
+const PIP_TOP = 0.16;
+const PIP_BOTTOM = 0.84;
+const PIP_SIZE = 0.145;    // of card height
+const ACE_PIP_SIZE = 0.30;
 /** Ranks with more than six pips draw them slightly smaller to stay uncrowded. */
-export const CROWDED_PIP_SCALE = 0.70;
+const CROWDED_PIP_SCALE = 0.70;
 const CROWDED_ABOVE = 6;
 
-export type PipColumn = keyof typeof PIP_COL;
+type PipColumn = keyof typeof PIP_COL;
 export interface PipSpot {
   col: PipColumn;
   /** 0 = top row of the pip field, 1 = bottom row. */
