@@ -25,6 +25,9 @@ export function cmdArg(arg) {
 
 const gone = (err) => err?.code === "ESRCH";
 
+/** A stalled `ps` would otherwise stall whatever waits on it, a watchdog included. */
+const TABLE_TIMEOUT_MS = 10_000;
+
 /** The helpers over injected platform and process primitives; the module's exports are its defaults. */
 export function procFor({
   platform = process.platform,
@@ -65,7 +68,7 @@ export function procFor({
   function readTable() {
     let out;
     try {
-      out = execFileSync("ps", ["-A", "-o", "pid=,ppid=,lstart="], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      out = execFileSync("ps", ["-A", "-o", "pid=,ppid=,lstart="], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: TABLE_TIMEOUT_MS });
     } catch (err) {
       throw new Error(`cannot read the process table, so no tree can be ended: ${err.message}`);
     }
@@ -138,18 +141,44 @@ export function procFor({
   };
 
   /**
-   * One process held by its start time, so a stranger that later takes its pid reads as gone and is
-   * never ended. win32 has no start time to read here, and holds the bare pid.
+   * Each live process's start, in epoch ms, from one read; a zombie has exited and is left out.
+   * POSIX reads it to the second, which only ever rounds a start down.
    */
-  function hold(pid) {
-    if (win) return { running: () => alive(pid), endTree: () => taskkill(pid, true) };
-    const started = alive(pid) ? readTable().get(pid)?.started : undefined;
-    return {
-      running: () => started !== undefined && alive(pid) && readTable().get(pid)?.started === started,
-      endTree: () => {
-        if (started !== undefined) freezeAndKill(new Map([[pid, started]]));
-      },
-    };
+  function processStarts() {
+    const starts = new Map();
+    if (win) {
+      const ps =
+        "Get-CimInstance Win32_Process | ForEach-Object { if ($_.CreationDate) " +
+        '{ "$($_.ProcessId) $(([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds())" } }';
+      const out = execFileSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", ps], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: TABLE_TIMEOUT_MS });
+      for (const line of String(out).split(/\r?\n/)) {
+        const m = line.trim().match(/^(\d+) (\d+)$/);
+        if (m) starts.set(Number(m[1]), Number(m[2]));
+      }
+      return starts;
+    }
+    const out = execFileSync("ps", ["-A", "-o", "pid=,stat=,lstart="], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: TABLE_TIMEOUT_MS });
+    for (const line of String(out).split("\n")) {
+      const m = line.trim().match(/^(\d+)\s+(\S+)\s+(.+)$/);
+      if (m && !m[2].startsWith("Z")) starts.set(Number(m[1]), Date.parse(m[3]));
+    }
+    return starts;
+  }
+
+  /**
+   * Ends the tree of `pid` only while it is a process that started no later than `startedBy`: a
+   * stranger that took the pid after it exited started later. True when it ended one.
+   */
+  function endTreeIfSame(pid, startedBy) {
+    if (win) {
+      if (!(processStarts().get(pid) <= startedBy)) return false;
+      taskkill(pid, true);
+      return true;
+    }
+    const started = readTable().get(pid)?.started;
+    if (started === undefined || !(Date.parse(started) <= startedBy)) return false;
+    freezeAndKill(new Map([[pid, started]]));
+    return true;
   }
 
   /**
@@ -276,10 +305,10 @@ export function procFor({
     return child;
   }
 
-  return { runBin, startBin, spawnBin, killTree, hold, stopTree, relay };
+  return { runBin, startBin, spawnBin, killTree, processStarts, endTreeIfSame, stopTree, relay };
 }
 
-export const { runBin, startBin, spawnBin, killTree, hold, stopTree, relay } = procFor();
+export const { runBin, startBin, spawnBin, killTree, processStarts, endTreeIfSame, stopTree, relay } = procFor();
 
 export function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);

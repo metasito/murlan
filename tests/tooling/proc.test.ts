@@ -37,13 +37,20 @@ describe("on win32", () => {
     assert.deepEqual(world.alive(), []);
   });
 
-  test("a held process ends with its whole tree, the runner that held it outside it", () => {
+  test("a process's start is its creation time, and a pid reused by a stranger is never ended", () => {
     const world = windowsWorld();
     const child = world.proc.startBin("node", ["a.js"], {});
-    const held = world.proc.hold(child.pid);
-    assert.equal(held.running(), true);
-    held.endTree();
-    assert.equal(held.running(), false);
+    const started = world.proc.processStarts().get(child.pid!);
+    assert.equal(started, world.startOf(child.pid!));
+    world.reuse(child.pid!);
+    assert.equal(world.proc.endTreeIfSame(child.pid!, started!), false);
+    assert.ok(world.alive().includes(child.pid!));
+  });
+
+  test("a process that started no later than asked is ended with its tree", () => {
+    const world = windowsWorld();
+    const child = world.proc.startBin("node", ["a.js"], {});
+    assert.equal(world.proc.endTreeIfSame(child.pid!, world.startOf(child.pid!)), true);
     assert.deepEqual(world.alive(), []);
   });
 
@@ -180,36 +187,29 @@ describe("on POSIX, modelled", () => {
     assert.deepEqual(world.stopped(), []);
   });
 
-  test("a held process ends with its whole tree", () => {
+  test("a process that started no later than asked is ended with its tree", () => {
     const world = posixWorld();
     const child = world.proc.startBin("node", ["a.js"], {});
-    const held = world.proc.hold(child.pid);
-    assert.equal(held.running(), true);
-    held.endTree();
-    assert.equal(held.running(), false);
+    assert.equal(world.proc.endTreeIfSame(child.pid!, world.startOf(child.pid!) + 500), true);
     assert.deepEqual(world.alive(), []);
   });
 
-  test("a held pid reused by a stranger reads as gone, and the stranger is never ended", () => {
+  test("a pid reused by a stranger, which started later, is never ended", () => {
     const world = posixWorld({ depth: 0 });
     const child = world.proc.startBin("node", ["a.js"], {});
-    const held = world.proc.hold(child.pid);
+    const startedBy = world.startOf(child.pid!) + 500;
     world.reuse(child.pid!);
-    assert.equal(held.running(), false);
-    held.endTree();
+    assert.equal(world.proc.endTreeIfSame(child.pid!, startedBy), false);
     assert.deepEqual(world.alive(), [child.pid]);
     assert.deepEqual(world.signals.filter(([, s]) => s !== 0), []);
   });
 
-  test("a pid already gone when held is never ended, whoever takes it after", () => {
+  test("a zombie has no start: it has exited", () => {
     const world = posixWorld({ depth: 0 });
     const child = world.proc.startBin("node", ["a.js"], {});
-    world.end(child.pid!);
-    const held = world.proc.hold(child.pid);
-    world.reuse(child.pid!);
-    assert.equal(held.running(), false);
-    held.endTree();
-    assert.deepEqual(world.alive(), [child.pid]);
+    assert.equal(world.proc.processStarts().get(child.pid!), world.startOf(child.pid!));
+    world.zombie(child.pid!);
+    assert.equal(world.proc.processStarts().has(child.pid!), false);
   });
 });
 

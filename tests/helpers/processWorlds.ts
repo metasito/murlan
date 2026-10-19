@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { procFor } from "../../scripts/lib/proc.mjs";
 
-type Row = { ppid: number; started: string; alive: boolean; stopped: boolean; ignoresTerm: boolean; forks: number; child?: FakeChild };
+type Row = { ppid: number; started: string; zombie?: boolean; alive: boolean; stopped: boolean; ignoresTerm: boolean; forks: number; child?: FakeChild };
 
 export class FakeChild extends EventEmitter {
   stdout = new PassThrough();
@@ -33,9 +33,11 @@ function table(init: number) {
   const rows = new Map<number, Row>();
   let next = 1000;
   let clock = 0;
+  // A start as `ps -o lstart` prints it, a second apart: what proc.mjs both compares and parses.
+  const stamp = () => new Date(Date.UTC(2026, 0, 1) + clock++ * 1000).toString();
   const add = (ppid: number, extra: Partial<Row> = {}) => {
     const pid = next++;
-    rows.set(pid, { ppid, started: `t${clock++}`, alive: true, stopped: false, ignoresTerm: false, forks: 0, ...extra });
+    rows.set(pid, { ppid, started: stamp(), alive: true, stopped: false, ignoresTerm: false, forks: 0, ...extra });
     return pid;
   };
   const die = (pid: number, reparentTo: number | null) => {
@@ -58,7 +60,7 @@ function table(init: number) {
     return out;
   };
   const alive = () => [...rows].filter(([, r]) => r.alive).map(([p]) => p).filter((p) => p !== init);
-  return { rows, add, die, below, alive };
+  return { rows, add, die, below, alive, stamp };
 }
 
 /**
@@ -91,6 +93,7 @@ export function windowsWorld({ depth = 3 } = {}) {
   const execFileSync = (file: string, args: string[], opts: Record<string, any> = {}) => {
     calls.push({ file, args, opts });
     if (isCmd(file) && !opts.shell) throw einval();
+    if (file === "powershell") return [...t.rows].filter(([, r]) => r.alive).map(([p, r]) => `${p} ${Date.parse(r.started)}`).join("\r\n");
     if (!/^taskkill(\.exe)?$/i.test(file)) throw new Error(`unexpected ${file}`);
     const pid = Number(args[args.indexOf("/PID") + 1]);
     if (!t.rows.get(pid)?.alive) throw Object.assign(new Error("not found"), { status: 128, stderr: "not found" });
@@ -104,6 +107,12 @@ export function windowsWorld({ depth = 3 } = {}) {
     alive: t.alive,
     end: (pid: number) => t.die(pid, null),
     below: t.below,
+    startOf: (pid: number) => Date.parse(t.rows.get(pid)!.started),
+    /** The pid dies and a stranger, started later, takes its number. */
+    reuse(pid: number) {
+      t.die(pid, null);
+      t.rows.set(pid, { ppid: 0, started: t.stamp(), alive: true, stopped: false, ignoresTerm: true, forks: 0 });
+    },
     calls,
     spawn,
   };
@@ -116,7 +125,7 @@ export function windowsWorld({ depth = 3 } = {}) {
 export function posixWorld({ depth = 2, forks = 0, ignoresTerm = false } = {}) {
   const INIT = 1;
   const t = table(INIT);
-  t.rows.set(INIT, { ppid: 0, started: "t-init", alive: true, stopped: false, ignoresTerm: true, forks: 0 });
+  t.rows.set(INIT, { ppid: 0, started: t.stamp(), alive: true, stopped: false, ignoresTerm: true, forks: 0 });
   const self = t.add(INIT);
   const signals: [number, string | number][] = [];
   let psFails = false;
@@ -140,10 +149,12 @@ export function posixWorld({ depth = 2, forks = 0, ignoresTerm = false } = {}) {
     return child;
   };
 
-  const execFileSync = (file: string) => {
+  const execFileSync = (file: string, args: string[] = []) => {
     if (file !== "ps") throw new Error(`unexpected ${file}`);
     if (psFails) throw new Error("ps: command not found");
-    const listing = [...t.rows].filter(([, r]) => r.alive).map(([p, r]) => `${p} ${r.ppid} ${r.started}`).join("\n");
+    const live = [...t.rows].filter(([, r]) => r.alive);
+    if (args.includes("pid=,stat=,lstart=")) return live.map(([p, r]) => `${p} ${r.zombie ? "Z" : "S"} ${r.started}`).join("\n");
+    const listing = live.map(([p, r]) => `${p} ${r.ppid} ${r.started}`).join("\n");
     // After the listing, as in life: what a read shows is already behind what runs.
     for (const [pid, row] of [...t.rows]) {
       if (row.alive && !row.stopped && row.forks > 0) {
@@ -165,8 +176,11 @@ export function posixWorld({ depth = 2, forks = 0, ignoresTerm = false } = {}) {
     /** The pid dies and a stranger, started later, takes its number. */
     reuse(pid: number) {
       t.die(pid, INIT);
-      t.rows.set(pid, { ppid: INIT, started: "t-stranger", alive: true, stopped: false, ignoresTerm: true, forks: 0 });
+      t.rows.set(pid, { ppid: INIT, started: t.stamp(), alive: true, stopped: false, ignoresTerm: true, forks: 0 });
     },
+    startOf: (pid: number) => Date.parse(t.rows.get(pid)!.started),
+    /** It has exited and nobody has reaped it yet. */
+    zombie: (pid: number) => (t.rows.get(pid)!.zombie = true),
     stopped: () => [...t.rows].filter(([, r]) => r.alive && r.stopped).map(([p]) => p),
     failPs: () => (psFails = true),
     /** Each step runs right after one read of the table, in order. */

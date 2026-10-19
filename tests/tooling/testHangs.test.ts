@@ -6,7 +6,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { deadlineMs, FILE_DEADLINE_MS } from "../helpers/fileDeadline.mjs";
-import { EXIT_GRACE_MS, exitGraceMs, RUN_IDLE_MS, runIdleMs } from "../helpers/filesRunReporter.mjs";
+import { EXIT_GRACE_MS, exitGraceMs, MIN_EXIT_GRACE_MS, RUN_IDLE_MS, runIdleMs } from "../helpers/filesRunReporter.mjs";
+import { exitGuard } from "../helpers/exitGuard.mjs";
+import { posixWorld, windowsWorld } from "../helpers/processWorlds.ts";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 import { NO_BACKGROUND_JIT } from "../../scripts/nodeTest.mjs";
 
@@ -89,29 +91,156 @@ describe("a test file that hangs on its way out fails npm test by name", () => {
     }
   });
 
-  test("a file whose exit cannot be watched says so", async () => {
+  test("a run without the exit watch says nothing of it", async () => {
     const { dir, glob } = planted({ "exits.test.mjs": passes });
     try {
       const argv = ["scripts/nodeTest.mjs", "--import", "./tests/helpers/fileDeadline.mjs", "--test", "--test-force-exit", "--test-reporter=spec", glob];
       const { code, out } = await run(argv, quiet());
       assert.equal(code, 0, out);
-      assert.match(out, /exits\.test\.mjs: its exit is unwatched, a hang in it goes unnamed: ENOENT/);
+      assert.doesNotMatch(out, /unwatched|exit guard/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test("a file's deadline and exit grace end inside the run's idle limit, and the grace can only be shortened", () => {
+  test("the exit grace ends inside the run's idle limit, never under its floor, and can only be shortened", () => {
     const settings = [
       {},
-      { MURLAN_TEST_RUN_IDLE_MS: "160000" },
-      { MURLAN_TEST_RUN_IDLE_MS: "8000", MURLAN_TEST_FILE_DEADLINE_MS: "2000" },
-      { MURLAN_TEST_RUN_IDLE_MS: "8000", MURLAN_TEST_FILE_DEADLINE_MS: "2000", MURLAN_TEST_EXIT_GRACE_MS: "999999" },
+      { MURLAN_TEST_RUN_IDLE_MS: "8000" },
+      { MURLAN_TEST_RUN_IDLE_MS: "8000", MURLAN_TEST_EXIT_GRACE_MS: "999999" },
+      { MURLAN_TEST_RUN_IDLE_MS: "1001" },
+      { MURLAN_TEST_EXIT_GRACE_MS: "1" },
     ];
-    for (const env of settings) assert.ok(deadlineMs(env) + exitGraceMs(env) < runIdleMs(env), JSON.stringify(env));
+    for (const env of settings) {
+      const grace = exitGraceMs(env);
+      assert.ok(grace !== undefined && grace >= MIN_EXIT_GRACE_MS && grace < runIdleMs(env), `${JSON.stringify(env)}: ${grace}`);
+    }
+    for (const idle of ["1000", "500"]) assert.equal(exitGraceMs({ MURLAN_TEST_RUN_IDLE_MS: idle }), undefined, idle);
     assert.equal(exitGraceMs({ MURLAN_TEST_EXIT_GRACE_MS: "2000" }), 2000);
     for (const asked of [String(EXIT_GRACE_MS * 10), "0", "-1", "off", undefined]) {
       assert.equal(exitGraceMs({ MURLAN_TEST_EXIT_GRACE_MS: asked }), EXIT_GRACE_MS);
+    }
+  });
+});
+
+describe("the exit guard, over modelled process tables", () => {
+  const GRACE = 1000;
+  const guarded = (proc: Parameters<typeof exitGuard>[0]["proc"], since = 0) => {
+    const markers = mkdtempSync(path.join(tmpdir(), "exit-markers-"));
+    const lines: string[] = [];
+    const tick = exitGuard({ markers, graceMs: GRACE, since, proc, write: (l) => lines.push(l) });
+    const mark = (pid: number, body: object | string) =>
+      writeFileSync(path.join(markers, String(pid)), typeof body === "string" ? body : JSON.stringify(body));
+    return { markers, lines, tick, mark, done: () => rmSync(markers, { recursive: true, force: true }) };
+  };
+  // A file that began exiting past its grace, whose runtime began half a second after its process.
+  const overdue = (started: number) => ({ file: "f.test.ts", started: started + 500, at: Date.now() - GRACE - 1 });
+
+  for (const [platform, world] of [["POSIX", () => posixWorld()], ["win32", () => windowsWorld()]] as const) {
+    test(`${platform}: a file still in its exit past the grace is ended with its tree, and named`, () => {
+      const w = world();
+      const child = w.proc.startBin("node", ["f.test.ts"], {});
+      const g = guarded(w.proc);
+      try {
+        g.mark(child.pid!, overdue(w.startOf(child.pid!)));
+        g.tick();
+        assert.deepEqual(w.alive(), []);
+        assert.equal(g.lines.length, 1);
+        assert.match(g.lines[0], /f\.test\.ts: hung after its tests finished, killed 1s into its exit/);
+      } finally {
+        g.done();
+      }
+    });
+
+    test(`${platform}: a pid reused after its file exited, before the poll, is never ended`, () => {
+      const w = world();
+      const child = w.proc.startBin("node", ["f.test.ts"], {});
+      const g = guarded(w.proc);
+      try {
+        g.mark(child.pid!, overdue(w.startOf(child.pid!)));
+        w.reuse(child.pid!);
+        g.tick();
+        assert.ok(w.alive().includes(child.pid!));
+        assert.deepEqual(g.lines, []);
+      } finally {
+        g.done();
+      }
+    });
+  }
+
+  test("it never asks to end a pid whose process started after the file's", () => {
+    const ended: number[] = [];
+    const proc = { processStarts: () => new Map([[77, 10_000]]), endTreeIfSame: (pid: number) => (ended.push(pid), true) };
+    const g = guarded(proc);
+    try {
+      g.mark(77, { ...overdue(0), started: 9_999 });
+      g.tick();
+      assert.deepEqual(ended, []);
+      assert.deepEqual(g.lines, []);
+    } finally {
+      g.done();
+    }
+  });
+
+  test("a previous run's marker is dropped unread", () => {
+    const w = posixWorld({ depth: 0 });
+    const child = w.proc.startBin("node", ["f.test.ts"], {});
+    const g = guarded(w.proc, Date.now());
+    try {
+      g.mark(child.pid!, overdue(w.startOf(child.pid!)));
+      g.tick();
+      assert.deepEqual(w.alive(), [child.pid]);
+      assert.deepEqual(readdirSync(g.markers), []);
+    } finally {
+      g.done();
+    }
+  });
+
+  test("an exit nobody has reaped yet is not a hang", () => {
+    const w = posixWorld({ depth: 0 });
+    const child = w.proc.startBin("node", ["f.test.ts"], {});
+    const g = guarded(w.proc);
+    try {
+      g.mark(child.pid!, overdue(w.startOf(child.pid!)));
+      w.zombie(child.pid!);
+      g.tick();
+      assert.deepEqual(g.lines, []);
+      assert.deepEqual(w.signals.filter(([, s]) => s !== 0), []);
+    } finally {
+      g.done();
+    }
+  });
+
+  test("a process table it cannot read is reported once, and no tick throws", () => {
+    const w = posixWorld({ depth: 0 });
+    const child = w.proc.startBin("node", ["f.test.ts"], {});
+    const g = guarded(w.proc);
+    try {
+      w.failPs();
+      for (let i = 0; i < 3; i++) {
+        g.mark(child.pid!, overdue(0));
+        g.tick();
+      }
+      assert.deepEqual(g.lines, ["exit guard unavailable: ps: command not found"]);
+    } finally {
+      g.done();
+    }
+  });
+
+  test("a marker that never parses is dropped after three polls, with a notice", () => {
+    const w = posixWorld({ depth: 0 });
+    const g = guarded(w.proc);
+    try {
+      g.mark(4242, "{");
+      g.tick();
+      g.tick();
+      assert.deepEqual(g.lines, []);
+      g.tick();
+      assert.equal(g.lines.length, 1);
+      assert.match(g.lines[0], /dropped the unreadable marker of pid 4242/);
+      assert.deepEqual(readdirSync(g.markers), []);
+    } finally {
+      g.done();
     }
   });
 });
@@ -317,6 +446,12 @@ describe("a run that stops hearing from its files fails by name", () => {
     const run = await drive(steady, "await new Promise((r) => setTimeout(r, 2500));", "1000");
     assert.equal(run.signal, null, run.out);
     assert.doesNotMatch(run.out, /nothing reported/);
+  });
+
+  test("a run whose idle limit leaves no room for an exit grace says so once", async () => {
+    const run = await drive(`yield ${dequeued};`, "", "1000");
+    assert.equal(run.signal, null, run.out);
+    assert.equal(run.out.match(/no room for an exit grace/g)?.length, 1, run.out);
   });
 
   test("its idle limit outlasts a file's own deadline, and can only be shortened", () => {

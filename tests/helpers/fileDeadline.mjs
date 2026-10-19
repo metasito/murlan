@@ -2,7 +2,7 @@
 // synchronous child, a top-level await that never settles — outlives --test-timeout and
 // --test-force-exit alike, since both need the loop it is blocking. A worker's timer does not.
 import { Worker, isMainThread, workerData } from "node:worker_threads";
-import { writeFileSync, writeSync } from "node:fs";
+import { renameSync, writeFileSync, writeSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -33,10 +33,15 @@ if (isMainThread && process.env.NODE_TEST_CONTEXT) {
   // Read now: a file may change TMPDIR or its cwd before it exits.
   const marker = path.join(exitMarkers(process.ppid), String(process.pid));
   process.once("exit", () => {
+    // Renamed into place, so the watcher never reads half a marker. `started` is no earlier than
+    // this process's start, which is how a stranger that later takes the pid is told apart.
+    const started = Math.floor(performance.timeOrigin);
     try {
-      writeFileSync(marker, JSON.stringify({ file: watch.file, at: Date.now() }));
+      writeFileSync(`${marker}.tmp`, JSON.stringify({ file: watch.file, started, at: Date.now() }));
+      renameSync(`${marker}.tmp`, marker);
     } catch (err) {
-      writeSync(2, `\n${watch.file}: its exit is unwatched, a hang in it goes unnamed: ${err.message}\n`);
+      // No directory: no run is watching, as when this preload runs without filesRunReporter.mjs.
+      if (err.code !== "ENOENT") writeSync(2, `\n${watch.file}: its exit is unwatched: ${err.message}\n`);
     }
   });
   // Not the inherited execArgv: its `--import ./tests/…` resolves against the cwd when the worker
