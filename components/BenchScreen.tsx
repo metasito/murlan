@@ -52,6 +52,20 @@ const collectorHost = (param: string | undefined) =>
 /** Module-wide: a second screen instance, e.g. the link opened over an icon-started run, must not start a second run. */
 let benchRunning = false;
 
+/** Outside the component: the React Compiler bails out on a `try` holding a conditional or a `finally`. */
+async function latched(stop: () => void, body: () => Promise<void>) {
+  if (benchRunning) return;
+  benchRunning = true;
+  try {
+    await body();
+  } catch (e) {
+    console.error("bench run failed", e);
+  } finally {
+    stop();
+    benchRunning = false;
+  }
+}
+
 export function BenchScreen() {
   useKeepAwake();
   const params = useLocalSearchParams<Record<string, string>>();
@@ -73,10 +87,8 @@ export function BenchScreen() {
   useEffect(() => stopDrain, [stopDrain]);
 
   const run = useCallback(
-    async (only?: string[]) => {
-      if (benchRunning) return;
-      benchRunning = true;
-      try {
+    (only?: string[]) =>
+      latched(stopDrain, async () => {
         recorder.postTo(collectorHost(params.host));
         const capturing = params.capture !== "0" && probe.canCapture() && (await probe.startCapture(true).catch(() => false));
         drain.current = setInterval(() => probe.drain(), 1000);
@@ -113,13 +125,7 @@ export function BenchScreen() {
         probe.drain();
         if (capturing) await probe.stopCapture().catch(() => false);
         diag({ k: "run", t: performance.now(), phase: "end", names });
-      } catch (e) {
-        console.error("bench run failed", e);
-      } finally {
-        stopDrain();
-        benchRunning = false;
-      }
-    },
+      }),
     [params, stopDrain]
   );
 
