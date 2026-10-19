@@ -280,7 +280,79 @@ const setsLoopVariableIn = (runnable) =>
   (/\benv\b/.test(runnable) && [...runnable.matchAll(/\s(?:-u\s*|--unset[=\s]\s*)['"]?(\w+)/g)].some((m) => namesLoopVariable(m[1]))) ||
   [...runnable.matchAll(/SetEnvironmentVariable\s*\(\s*['"]?(\w+)/gi)].some((m) => namesLoopVariable(m[1]));
 
-const NAMES_CHECK_CACHE = /agent-check-cache\.json/i;
+const INTERPRETER = /^(node|nodejs|deno|bun|python[\d.]*|py|perl|ruby|php)$/;
+
+/** The code an interpreter runs from the line itself (`-e`, `-c`, stdin), not from a script file. */
+const runsInlineCode = (c) =>
+  INTERPRETER.test(c.cmd) && (has(c.args, /^(-e|--eval|-p|--print|-c|-E|-r)$/) || c.args.includes("-") || !c.args.some((a) => !a.startsWith("-")));
+
+/** `'a' + 'b'` and Python's `'a' 'b'` read as the one string they build. */
+const joinedStrings = (code) => code.replace(/['"`]\s*\+\s*['"`]/g, "").replace(/(['"])[ \t]+['"]/g, "");
+
+/** The line's inline interpreter code, heredoc and piped bodies included, or null when it runs none. */
+const inlineCode = (parsed, raw) => (parsed.some(runsInlineCode) ? joinedStrings(raw) : null);
+
+const CACHE_NAME = "agent-check-cache.json";
+
+/** `{a,b}` and `{1..3}` stand for any of their words; unexpanded, the parser splits on the brace. */
+const unbraced = (text) => text.replace(/\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}/g, "*");
+
+/**
+ * Whether a file a command writes may be agent:check's cache: its name as a glob (`*`, `?`, `[…]`,
+ * and any expansion the line does not assign literally) matches it, and it is no bare wildcard —
+ * one spelled with part of the name, or one inside `.git`.
+ */
+function mayBeCheckCache(word, vars) {
+  const resolved = word.replace(/\$\{(\w+)\}|\$(\w+)/g, (m, a, b) => vars[a ?? b] ?? "\0");
+  const wild = resolved.replace(/\$\([^)]*\)|`[^`]*`|\$\{[^}]*\}/g, "\0");
+  const base = wild.split(/[\\/]/).pop() ?? "";
+  let pattern = "";
+  for (let i = 0; i < base.length; i++) {
+    const ch = base[i];
+    if (ch === "*" || ch === "\0") pattern += ".*";
+    else if (ch === "?") pattern += ".";
+    else if (ch === "[" && base.indexOf("]", i) > i) {
+      const end = base.indexOf("]", i);
+      pattern += `[${base.slice(i + 1, end).replace(/^!/, "^").replace(/\\/g, "\\\\")}]`;
+      i = end;
+    } else pattern += ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  if (!new RegExp(`^${pattern}$`, "i").test(CACHE_NAME)) return false;
+  const spelled = base
+    .split(/[*?\0[\]]/)
+    .some((run) => CACHE_NAME.includes(run.toLowerCase()) && /[a-z-]{4}/i.test(run.replace(/\.?json$/i, "")));
+  return spelled || /(^|[\\/])\.git([\\/]|$)/i.test(wild);
+}
+
+const WRITES_EVERY_OPERAND = /^(rm|unlink|shred|truncate|touch|tee|sponge|mv|rename|out-file|tee-object)$/;
+const WRITES_LAST_OPERAND = /^(cp|ln|install|rsync|scp)$/;
+
+/** The files one command writes, removes or replaces: redirects, and the operands that are destinations. */
+function filesWritten(c) {
+  const named = c.args.filter((a) => !a.startsWith("-"));
+  const targets = [...c.writes];
+  if (WRITES_EVERY_OPERAND.test(c.cmd) || (WRITES_ITEM.test(c.cmd) && !WRITES_LAST_OPERAND.test(c.cmd))) targets.push(...named);
+  if (WRITES_LAST_OPERAND.test(c.cmd)) {
+    const into = c.args.findIndex((a) => a === "-t" || a.startsWith("--target-directory"));
+    if (into >= 0) targets.push(c.args[into].split("=")[1] ?? c.args[into + 1] ?? "");
+    else if (named.length > 0) targets.push(named[named.length - 1]);
+  }
+  if (c.cmd === "dd") targets.push(...c.args.filter((a) => a.startsWith("of=")).map((a) => a.slice(3)));
+  return targets;
+}
+
+const CODE_WRITES =
+  /\b(?:writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|rm|rmSync|unlink|unlinkSync|rename|renameSync|copyFile|copyFileSync|cp|cpSync|truncate|truncateSync|symlink|symlinkSync|link|linkSync|outputFile|ensureFile|remove|removedirs|rmtree|move|copy|copyfile|copy2|replace|touch|write_text|write_bytes)\s*\(|\bopen(?:Sync)?\s*\([^)]*,\s*['"`][^'"`]*[wax+]|\bopen\s*\([^)]*['"]\+?>/;
+
+const codeNamesCache = (code) => /agent-check-cache\.json/i.test(code) || [/agent/i, /check/i, /cache/i].filter((re) => re.test(code)).length >= 2;
+
+/** Writes, removes or replaces agent:check's cache — reads it, or names it in a message, it does not. */
+function writesCheckCache(runnable, raw, vars) {
+  const parsed = commands(unbraced(runnable));
+  if (parsed.some((c) => filesWritten(c).some((f) => mayBeCheckCache(f, vars)))) return true;
+  const code = inlineCode(parsed, raw);
+  return code !== null && CODE_WRITES.test(code) && codeNamesCache(code);
+}
 
 const RULES = [
   {
@@ -436,7 +508,7 @@ const RULES = [
   },
   {
     test: () => false,
-    line: (_parsed, runnable, { loop }) => loop && NAMES_CHECK_CACHE.test(runnable),
+    line: (_parsed, runnable, { loop, raw, vars }) => loop && writesCheckCache(runnable, raw, vars),
     message:
       "agent-check-cache.json is agent:check's verdict, and only `npm run agent:check` writes it; the gate reads it as a check that ran.\n" +
       "Run `npm run agent:check`, or `npm run agent:check -- --force` to ignore the cache.",
@@ -455,7 +527,7 @@ export function check(
   // The payload's cwd is where the line starts, not where a `cd` in it leaves git.
   const moved = parsed.some((c) => MOVES.test(c.cmd));
   for (const rule of RULES) {
-    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop }) || parsed.some((c) => rule.test(c, { repo, moved, vars: c.scope ? literal(c.scope) : vars, loop, session }))) {
+    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop, raw: command, vars }) || parsed.some((c) => rule.test(c, { repo, moved, vars: c.scope ? literal(c.scope) : vars, loop, session }))) {
       return typeof rule.message === "function" ? rule.message() : rule.message;
     }
   }

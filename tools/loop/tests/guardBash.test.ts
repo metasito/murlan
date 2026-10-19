@@ -659,9 +659,43 @@ describe("a loop session leaves agent:check's cache to agent:check", () => {
     "cp /tmp/x .git/agent-check-cache.json",
     `node -e "require('fs').writeFileSync('.git/agent-check-cache.json', '{}')"`,
     "Set-Content .git\\Agent-Check-Cache.json '{}'",
+    "node x.mjs 2> .git/agent-check-cache.json",
+    "cd .git && echo '{}' > agent-check-cache.json",
+    "cd .git && rm agent*",
+    "cat /tmp/x >> .git/agent-check-cache.json",
+    "cat /tmp/x | tee .git/agent-check-cache.json",
+    "mv .git/agent-check-cache.json /tmp/x",
+    "truncate -s 0 .git/agent-check-cache.json",
+    "ln -sf /tmp/x .git/agent-check-cache.json",
+    "touch .git/agent-check-cache.json",
+    "rm .git/agent-check-cache.j*",
+    "echo '{}' > .git/agent-check-*.json",
+    "cp /tmp/x .git/agent-check-cache.js?n",
+    "rm .git/agent-check-cache.{json,bak}",
+    `cp /tmp/x ".git/agent-check-"'cache.json'`,
+    "f=agent-check; cp /tmp/x .git/$f-cache.json",
+    "cp /tmp/x .git/$NAME",
+    `node -e "require('fs').writeFileSync('.git/agent-check-' + 'cache.json', '{}')"`,
+    `node -e "require('fs').rmSync(['.git/agent', 'check', 'cache.json'].join('-'))"`,
+    `python3 -c "open('.git/agent-check-' 'cache.json', 'w').write('{}')"`,
+    `node <<'EOF'\nrequire('fs').writeFileSync('.git/agent-check-cache.json', '{}');\nEOF`,
   ]) {
     test(`refuses in the loop: ${cmd}`, () => assert.match(String(check(cmd, repo, true)), /only `npm run agent:check` writes it/));
     test(`allows outside the loop: ${cmd}`, () => assert.equal(check(cmd, repo, false), null));
+  }
+  for (const cmd of [
+    "cat .git/agent-check-cache.json",
+    "grep -c pass .git/agent-check-cache.json",
+    "jq . .git/agent-check-cache.json > /tmp/verdict.json",
+    "cp .git/agent-check-cache.json /tmp/seen.json",
+    `node -e "console.log(require('fs').readFileSync('.git/agent-check-cache.json', 'utf8'))"`,
+    `git commit -m "agent-check-cache.json is written by agent:check alone"`,
+    `gh pr comment 12 --body "do not rm .git/agent-check-cache.json by hand"`,
+    "git commit -F - <<'EOF'\nnever echo '{}' > .git/agent-check-cache.json\nEOF",
+    "rm *.log",
+    "echo hi > $TMPFILE",
+  ]) {
+    test(`allows in the loop: ${cmd}`, () => assert.equal(check(cmd, repo, true), null));
   }
   test("agent:check itself is allowed", () => {
     for (const cmd of ["npm run agent:check", "npm run agent:check -- --force"]) assert.equal(check(cmd, repo, true), null, cmd);
