@@ -75,10 +75,10 @@ function run(file, args, repo, env = {}) {
   try {
     stdout = runBin(file, args, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: MAX_OUTPUT, env: { ...process.env, ...env } });
   } catch (error) {
-    if (!error.stdout?.trim()) throw new Error(`${args[2] ?? file} printed nothing: ${String(error.stderr ?? error.message).slice(-500)}`);
+    if (!error.stdout?.trim()) throw new Error(`printed nothing: ${String(error.stderr ?? error.message).slice(-500)}`);
     stdout = error.stdout;
   }
-  if (!stdout.trim()) throw new Error(`${args[2] ?? file} printed nothing`);
+  if (!stdout.trim()) throw new Error('printed nothing');
   return stdout;
 }
 

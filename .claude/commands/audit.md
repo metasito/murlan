@@ -8,11 +8,12 @@ Use a workflow: this prompt asks for multi-agent orchestration. Run the `Workflo
 report and proposes tickets. It changes no code.
 
 What it must deliver:
-- **Verified findings.** Each finding points at a line, names a concrete failure, and has survived
-  a skeptic who saw only the claim and refutes what it cannot confirm. A finding a test can reach
-  is **proven** only by a failing test that a second agent, blind to why it was written, re-ran;
-  the rest stay **upheld**, and the report says which is which. Ten true findings are worth more
-  than a hundred plausible ones.
+- **Verified findings.** Each finding points at a line and names a concrete failure. Skeptics who
+  see only the claim try to refute it: none for info, one for low and medium, two for high, three
+  for critical. A medium-or-worse finding a test can reach is **proven** only by a failing test
+  that a second agent, blind to why it was written, re-ran; the rest stay **upheld**, info stays
+  **unverified**, and the report says which is which. Ten true findings are worth more than a
+  hundred plausible ones.
 - **Polish opportunities** from the `polish` lens: animation, sound, haptics and effects. These are
   proposals rather than defects, so they are judged on value and on whether they can be built.
 - **An infrastructure recommendation** from the `infra` lens: where to host now that Replit is

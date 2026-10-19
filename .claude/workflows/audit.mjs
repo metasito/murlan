@@ -557,7 +557,8 @@ ${JSON.stringify(claimOf(finding))}`, {
   })))).filter(Boolean)
   if (!votes.length) return { ...finding, verdict: 'unverified' }
   const upheld = votes.filter(v => !v.refuted)
-  if (upheld.length * 2 <= votes.length) return { ...finding, votes, verdict: 'refuted' }
+  // A split vote survives to the reproduction, which settles it.
+  if (upheld.length * 2 < votes.length) return { ...finding, votes, verdict: 'refuted' }
   const settled = { ...finding, votes, severity: settledSeverity(finding.severity, upheld) }
   return rank(settled.severity) < PROVE_FROM ? { ...settled, verdict: 'upheld', proof: `${settled.severity}: not reproduced` } : prove(settled)
 }

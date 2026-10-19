@@ -16,6 +16,7 @@ const finding = (title: string, severity: string, path: string) => ({
 const PROVEN = finding("proven one", "medium", "src/a.ts");
 const LOW = finding("low one", "low", "src/c.ts");
 const ASIDE = finding("aside one", "info", "src/d.ts");
+const SPLIT = finding("split one", "high", "src/e.ts");
 const DISPROVEN = finding("disproven one", "medium", "api/b.ts");
 
 async function run(args: Record<string, unknown>, merge: unknown = null) {
@@ -27,10 +28,10 @@ async function run(args: Record<string, unknown>, merge: unknown = null) {
     if (label === "merge") return merge;
     if (label.startsWith("lens:")) {
       const empty = { strengths: [], score: 5, score_rationale: "", coverage: { read: [], not_reached: [], skills_used: [] } };
-      return { ...empty, findings: label === "lens:game-logic" ? [PROVEN, LOW, ASIDE] : [], opportunities: [], platform: undefined };
+      return { ...empty, findings: label === "lens:game-logic" ? [PROVEN, LOW, ASIDE] : label === "lens:network" ? [SPLIT] : [], opportunities: [], platform: undefined };
     }
     if (label.startsWith("tools:")) return { findings: [DISPROVEN], dismissed: [{ alert: "knip files", reason: "a .web.ts twin" }] };
-    if (label.startsWith("verify:")) return { refuted: false, reason: "seen", severity: "medium" };
+    if (label.startsWith("verify:")) return { refuted: label === "verify:intent:split one", reason: "seen", severity: "high" };
     if (label.startsWith("prove:")) return { runnable: true, test_path: "proof.test.ts", reason: "" };
     if (label.startsWith("check:")) return { outcome: prompt.includes('"title":"proven one"') ? "fails-as-claimed" : "passes", reason: "ran it" };
     if (label.startsWith("critic:")) return { gaps: [] };
@@ -54,15 +55,16 @@ test("a skeptic sees the claim, not the finder's argument, and refutes what it c
   const skeptics = prompts.filter((p) => p.label.startsWith("verify:"));
   assert.deepEqual(
     skeptics.map((p) => p.label.split(":")[2]).sort(),
-    ["disproven one", "low one", "proven one"],
-    "one skeptic each below high, none for info",
+    ["disproven one", "low one", "proven one", "split one", "split one"],
+    "one skeptic each below high, two for high, none for info",
   );
   for (const { prompt } of skeptics) {
     assert.doesNotMatch(prompt, /NARRATIVE|FIX for/);
     assert.match(prompt, /set refuted=true/);
   }
   const checkers = prompts.filter((p) => p.label.startsWith("check:"));
-  assert.equal(checkers.length, 2, "only medium and up are reproduced");
+  assert.equal(checkers.length, 3, "only medium and up are reproduced");
+  assert.ok(prompts.some((p) => p.label === "prove:split one"), "a split vote goes on to the reproduction");
   for (const { prompt } of checkers) assert.doesNotMatch(prompt, /NARRATIVE|FIX for/);
 });
 
@@ -70,10 +72,10 @@ test("a reproduction that fails as claimed proves a finding; one that passes ref
   const { result } = await run(ARGS);
   assert.deepEqual(
     result.judged.map((f: { title: string; verdict: string }) => `${f.title}: ${f.verdict}`).sort(),
-    ["aside one: unverified", "disproven one: refuted", "low one: upheld", "proven one: proven"],
+    ["aside one: unverified", "disproven one: refuted", "low one: upheld", "proven one: proven", "split one: refuted"],
   );
   assert.equal(result.record.proven, 1);
-  assert.equal(result.record.refuted, 1);
+  assert.equal(result.record.refuted, 2);
   assert.equal(result.record.alertsDismissed, 1);
   assert.deepEqual(result.record.lenses, ["network", "game-logic"]);
 });
@@ -83,10 +85,10 @@ test("the audit refuses to start without its tool layer", async () => {
 });
 
 test("the merge folds the duplicates it names and drops nothing", async () => {
-  const { result, prompts } = await run(ARGS, { groups: [[0, 1]] });
+  const { result, prompts } = await run(ARGS, { groups: [[1, 2]] });
   assert.doesNotMatch(prompts.find((p) => p.label === "merge")!.prompt, /NARRATIVE|FIX for/);
-  assert.equal(result.record.raw, 4);
-  assert.equal(result.record.merged, 3);
+  assert.equal(result.record.raw, 5);
+  assert.equal(result.record.merged, 4);
   const folded = result.judged.find((f: { title: string }) => f.title === "proven one");
   assert.deepEqual(folded.locations.map((l: { path: string }) => l.path), ["src/a.ts", "src/c.ts"]);
 });
