@@ -181,7 +181,7 @@ export function MatchBoardButtons({ actions, unit: u, live }: { actions: MatchBo
   );
 }
 
-function BoardButton({
+export function BoardButton({
   label,
   a11yLabel,
   testID,

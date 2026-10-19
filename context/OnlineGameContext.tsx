@@ -105,6 +105,10 @@ interface OnlineGameContextValue {
   disconnectedSeats: Record<number, { seconds: number; resetKey: string }>;
   /** How many times the server has passed the viewer's turn for them. */
   autoPassed: number;
+  /** The table handed the viewer's own seat to a bot while they were still here; only `reclaimSeat` takes it back. */
+  leftTable: boolean;
+  /** Asks for the seat `leftTable` names back; the next `game:state` that seats the viewer answers it. */
+  reclaimSeat: () => void;
   cumulativeScores: Record<string, number>;
   /** What the round just played awarded, by engine player id. */
   placementPoints: Record<string, number>;
@@ -205,7 +209,15 @@ type RoomSlice = Pick<
 >;
 type TableSlice = Pick<
   OnlineGameContextValue,
-  "gameState" | "mySeatIndex" | "playCards" | "pass" | "sendReaction" | "disconnectedSeats" | "autoPassed"
+  | "gameState"
+  | "mySeatIndex"
+  | "playCards"
+  | "pass"
+  | "sendReaction"
+  | "disconnectedSeats"
+  | "autoPassed"
+  | "leftTable"
+  | "reclaimSeat"
 >;
 type TurnClockSlice = Pick<OnlineGameContextValue, "turnSeconds" | "turnDeadlineMs">;
 type MatchSlice = Pick<
@@ -295,6 +307,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [ratingsAfter, setRatingsAfter] = useState<Record<string, RatingAfter>>({});
   const [matchState, setMatchState] = useState<OnlineMatchState>(INITIAL_MATCH);
   const [rejoinFailed, setRejoinFailed] = useState(false);
+  const [leftTable, setLeftTable] = useState(false);
 
   const {
     announcing: exchangeAnnouncing,
@@ -334,6 +347,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setIsSpectator(false);
     setPlayerLeft(false);
     setRejoinFailed(false);
+    setLeftTable(false);
     setError(null);
     setReconnectNotice(null);
     if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
@@ -433,6 +447,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       }
       if (typeof state.viewerSeatIndex === "number") {
         setMySeatIndex(state.viewerSeatIndex);
+        setLeftTable(false);
       }
 
       const prev = gameStateRef.current;
@@ -571,12 +586,16 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     const onSeatBotTakeover = (
       payload: ServerPayload & { userId: string; username: string; seatIndex: number }
     ) => {
-      showNotification({
-        type: "game_info",
-        title: t("common.notice"),
-        message: translateServerPayload(payload),
-        duration: Reading.notice,
-      });
+      if (payload.userId === userId) {
+        setLeftTable(true);
+      } else {
+        showNotification({
+          type: "game_info",
+          title: t("common.notice"),
+          message: translateServerPayload(payload),
+          duration: Reading.notice,
+        });
+      }
       // The seat is vacated now, not merely disconnecting — the sanitized
       // state's own `vacated` flag carries the label from here on.
       setDisconnectedSeats((cur) => {
@@ -703,7 +722,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // pending removals both have to go with the table.
       clearReactions();
     };
-  }, [socket, rejoin, resetTable, abandonRejoin, showNotification, qc, announce, refuse]);
+  }, [socket, userId, rejoin, resetTable, abandonRejoin, showNotification, qc, announce, refuse]);
 
   /**
    * Every intent waits to be told it arrived and says so if it never was — a
@@ -814,6 +833,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     [deliver]
   );
 
+  const reclaimSeat = useCallback(() => {
+    rejoin.reclaim();
+  }, [rejoin]);
+
   const sendReaction = useCallback((emoji: string) => {
     deliver("game:reaction", { emoji });
   }, [deliver]);
@@ -869,8 +892,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   );
 
   const tableValue = useMemo(
-    () => ({ gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats, autoPassed }),
-    [gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats, autoPassed]
+    () => ({ gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats, autoPassed, leftTable, reclaimSeat }),
+    [gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats, autoPassed, leftTable, reclaimSeat]
   );
 
   const turnClockValue = useMemo(

@@ -53,6 +53,7 @@ export const NOTICES = {
   turn: { shape: "pill", selector: "#turn", tones: ["neutral", "lit", "urgent", "ok", "bad"], keepsEmber: true },
   offline: { shape: "pill", selector: "#n-offline", tones: ["solid"] },
   whoStarts: { shape: "panel", selector: "#panel", tones: ["neutral"] },
+  leftTable: { shape: "panel", selector: "#panel", tones: ["neutral"] },
   passed: { shape: "chip", selector: ".passo", tones: ["neutral"] },
   reconnecting: { shape: "chip", selector: ".passo", tones: ["neutral"] },
   vacated: { shape: "chip", selector: ".passo", tones: ["neutral"] },

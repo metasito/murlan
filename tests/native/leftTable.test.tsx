@@ -1,0 +1,166 @@
+// The vote deadline hands a still-connected player's seat to a bot (#1731): their own
+// takeover is a state with a way back, everyone else's is only a notice.
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, renderHook } from '@testing-library/react-native';
+
+import { OnlineGameProvider } from '@/context/OnlineGameContext';
+import type { WireGameState } from '@/shared/protocol';
+import { useOnlineGame } from './onlineSurface';
+
+type Listener = (...args: unknown[]) => void;
+const listeners = new Map<string, Set<Listener>>();
+const emitted: { event: string; payload?: unknown }[] = [];
+const mockSocket = {
+  connected: true,
+  on(event: string, fn: Listener) {
+    if (!listeners.has(event)) listeners.set(event, new Set());
+    listeners.get(event)!.add(fn);
+  },
+  off() {},
+  once() {},
+  timeout() {
+    return mockSocket;
+  },
+  emit(event: string, payload?: unknown) {
+    emitted.push({ event, payload });
+  },
+};
+jest.mock('@/context/SocketContext', () => ({
+  useSocketConnection: () => mockSocket,
+}));
+jest.mock('@/context/NotificationContext', () =>
+  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
+);
+
+const ROOM = {
+  roomId: 'R1',
+  code: 'R1',
+  hostUserId: 'u1',
+  status: 'in_progress' as const,
+  gameMode: 'free_for_all' as const,
+  maxPlayers: 2,
+  players: [
+    { seatIndex: 0, userId: 'u1', username: 'Ana' },
+    { seatIndex: 1, userId: 'u2', username: 'Besi' },
+  ],
+};
+
+const table = (roundOver: boolean): WireGameState => ({
+  players: [
+    { id: 'player_0', name: 'Ana', hand: [], type: 'human', handCount: 0, vacated: false },
+    { id: 'player_1', name: 'Besi', hand: [], type: 'human', handCount: 0, vacated: false },
+  ],
+  currentTurnIndex: 0,
+  lastPlayedCombination: null,
+  lastPlayedBy: -1,
+  passCount: 0,
+  gameMode: 'free_for_all',
+  trickWinner: null,
+  roundOver,
+  finishingOrder: roundOver ? ['player_0', 'player_1'] : [],
+  firstPlayMade: true,
+  viewerSeatIndex: 0,
+  turnSecondsRemaining: 30,
+});
+
+const takeover = (userId: string, username: string, seatIndex: number) => ({
+  userId,
+  username,
+  seatIndex,
+  code: 'PLAYER_LEFT_BOT_TAKEOVER',
+  params: { username },
+  message: `${username} left`,
+});
+
+const deliver = (event: string, payload: unknown) =>
+  act(async () => {
+    listeners.get(event)?.forEach((fn) => fn(payload));
+  });
+
+const mount = async () => {
+  const client = new QueryClient();
+  const view = await renderHook(() => useOnlineGame(), {
+    wrapper: ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <OnlineGameProvider userId="u1">{children}</OnlineGameProvider>
+      </QueryClientProvider>
+    ),
+  });
+  await deliver('room:state', ROOM);
+  await deliver('game:state', table(true));
+  emitted.length = 0;
+  return view;
+};
+
+describe('leftTable', () => {
+  beforeEach(() => {
+    listeners.clear();
+    emitted.length = 0;
+  });
+
+  it("is set by a takeover naming the viewer's own userId", async () => {
+    const view = await mount();
+    await deliver('game:seat_bot_takeover', takeover('u1', 'Ana', 0));
+    expect(view.result.current.leftTable).toBe(true);
+    await view.unmount();
+  });
+
+  it('is not set by a takeover naming someone else', async () => {
+    const view = await mount();
+    await deliver('game:seat_bot_takeover', takeover('u2', 'Besi', 1));
+    expect(view.result.current.leftTable).toBe(false);
+    await view.unmount();
+  });
+
+  it('never reclaims on its own: game:rejoin goes out only on reclaimSeat', async () => {
+    const view = await mount();
+    await deliver('game:seat_bot_takeover', takeover('u1', 'Ana', 0));
+    expect(emitted.map((e) => e.event)).not.toContain('game:rejoin');
+
+    await act(async () => view.result.current.reclaimSeat());
+    expect(emitted).toContainEqual({ event: 'game:rejoin', payload: expect.objectContaining({ roomId: 'R1' }) });
+    await view.unmount();
+  });
+
+  it('is cleared by the game:state that seats the viewer again', async () => {
+    const view = await mount();
+    await deliver('game:seat_bot_takeover', takeover('u1', 'Ana', 0));
+    await act(async () => view.result.current.reclaimSeat());
+
+    await deliver('game:state', table(false));
+    expect(view.result.current.leftTable).toBe(false);
+    await view.unmount();
+  });
+
+  it('survives a game:state that does not seat the viewer', async () => {
+    const view = await mount();
+    await deliver('game:seat_bot_takeover', takeover('u1', 'Ana', 0));
+
+    await deliver('game:state', { ...table(false), viewerSeatIndex: null });
+    expect(view.result.current.leftTable).toBe(true);
+    await view.unmount();
+  });
+
+  it('is cleared by leaving the table', async () => {
+    const view = await mount();
+    await deliver('game:seat_bot_takeover', takeover('u1', 'Ana', 0));
+
+    await act(async () => view.result.current.leaveRoom());
+    expect(view.result.current.leftTable).toBe(false);
+    await view.unmount();
+  });
+
+  it('a released seat after the reclaim goes through the rejoin teardown', async () => {
+    const view = await mount();
+    await deliver('game:seat_bot_takeover', takeover('u1', 'Ana', 0));
+    await act(async () => view.result.current.reclaimSeat());
+
+    await deliver('game:rejoin_failed', { roomId: 'R1', code: 'SEAT_RELEASED', message: 'released' });
+    expect(view.result.current.rejoinFailed).toBe(true);
+    expect(view.result.current.room).toBeNull();
+    expect(view.result.current.leftTable).toBe(false);
+    await view.unmount();
+  });
+});

@@ -1,12 +1,47 @@
-import { Pressable, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { A11yStatus, a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
 import { TOUCH_TARGET_MIN } from "@/lib/theme";
-import { NoticeBadge, NoticeGlyph, NoticeText, TableNotice } from "../TableNotice";
-import { noticeBox, type NoticeKind } from "../noticeModel";
+import { BoardButton } from "../matchBoard";
+import { NoticeBadge, NoticeGlyph, NoticeLine, NoticeText, TableNotice } from "../TableNotice";
+import { mockupPx, noticeBox, panelParts, type NoticeKind } from "../noticeModel";
 
 export type EndMatchVoteNote = { voted: boolean; votes: number; total: number; onPress: () => void };
 export type RoundVoteNote = EndMatchVoteNote & { deadline?: { seconds: number; resetKey: string } };
+export type LeftTableNote = { onReclaim: () => void; onLeave: () => void };
+
+/** The viewer's own seat went to a bot at the vote deadline: why, and the two ways on from there. */
+export function LeftTable({ scale, onReclaim, onLeave }: LeftTableNote & { scale: number }) {
+  const { t } = useTranslation();
+  const part = panelParts(scale);
+  const u = mockupPx(1, scale);
+  const title = t("onlineGame.leftTableTitle");
+  const body = t("onlineGame.leftTableBody");
+  return (
+    <View style={[styles.leftTable, { gap: part.rowGap }]}>
+      <A11yStatus label={`${title}. ${body}`} role="alert" live="assertive" />
+      <View {...a11yHidden()}>
+        <TableNotice kind="leftTable" tone="neutral" scale={scale}>
+          <View style={{ gap: part.subGap }}>
+            <NoticeLine line="main">{title}</NoticeLine>
+            <NoticeLine line="sub">{body}</NoticeLine>
+          </View>
+        </TableNotice>
+      </View>
+      <View style={[styles.actions, { gap: part.rowGap }]}>
+        <BoardButton testID="btn-left-table-leave" label={t("onlineGame.leftTableLeave")} onPress={onLeave} unit={u} live />
+        <BoardButton
+          primary
+          testID="btn-left-table-reclaim"
+          label={t("onlineGame.leftTableReclaim")}
+          onPress={onReclaim}
+          unit={u}
+          live
+        />
+      </View>
+    </View>
+  );
+}
 
 /** The pill's own box grown to the floor, its footprint unchanged: react-native-web ignores `hitSlop` on a Pressable. */
 function reach(kind: NoticeKind, scale: number) {
@@ -67,3 +102,8 @@ export function EndMatchVote({ scale, voted, votes, total, onPress }: EndMatchVo
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  leftTable: { alignItems: "flex-end" },
+  actions: { flexDirection: "row", alignItems: "center" },
+});
