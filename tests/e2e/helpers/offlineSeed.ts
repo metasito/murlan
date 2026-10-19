@@ -11,8 +11,8 @@
 // encoded by `encodeOfflineSave`, so a change to the stored shape fails `tsc` in
 // this one file rather than in a hand-written copy per spec.
 import type { Page } from "@playwright/test";
-import { openApp } from "./navigation";
-import { stepUntil, takeOver } from "./virtualClock";
+import { openApp } from "./navigation.ts";
+import { stepUntil, takeOver } from "./virtualClock.ts";
 import {
   buildCombination,
   createDeck,
@@ -21,11 +21,12 @@ import {
   type Card,
   type GameState,
   type MatchLength,
-} from "../../../lib/game/gameEngine";
-import { captureGameState, type CaptureState } from "../../../lib/captureStates";
-import { encodeOfflineSave, OFFLINE_SAVE_VERSION, type OfflineSave } from "../../../lib/offlineSave";
-import { E2E_SUSPEND_BOT_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../../lib/storageKeys";
-import { state } from "../../support/game";
+} from "../../../lib/game/gameEngine.ts";
+import type { BotPersonalityId } from "../../../lib/game/botPersonalities.ts";
+import { captureGameState, type CaptureState } from "../../../lib/captureStates.ts";
+import { encodeOfflineSave, OFFLINE_SAVE_VERSION, type OfflineSave } from "../../../lib/offlineSave.ts";
+import { E2E_SUSPEND_BOT_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../../lib/storageKeys.ts";
+import { state } from "../../support/game.ts";
 
 /** Bot names and personalities as app/lobby.tsx fills empty seats. */
 const BOTS = [
@@ -89,6 +90,11 @@ export interface SaveOptions {
   target?: number;
   /** Seat names, viewer first; the lobby's own bot names by default. */
   names?: string[];
+  /**
+   * Bot personalities per seat. The lobby's own bots carry theirs; named seats
+   * carry none unless given, so a spec's names never pick a strategy for it.
+   */
+  personalities?: (BotPersonalityId | undefined)[];
   /** A play already on the felt, built by the engine so its strength is the rules' own. */
   pile?: { cards: string[]; by: number };
   state?: Partial<GameState>;
@@ -97,6 +103,7 @@ export interface SaveOptions {
 /** A mid-hand offline save, viewer at seat 0, past the opening. */
 export function offlineSave(o: SaveOptions): OfflineSave {
   const names = o.names ?? ["Ana", ...BOTS.map((b) => b.name)];
+  const personalities = o.personalities ?? (o.names ? [] : [undefined, ...BOTS.map((b) => b.personality)]);
   const dealt = o.holding?.map(cards) ?? hands(o.seats, o.hand ?? 13);
   const gameState = state({
     players: Array.from({ length: o.seats }, (_, i) => ({
@@ -130,7 +137,7 @@ export function offlineSave(o: SaveOptions): OfflineSave {
     players: Array.from({ length: o.seats }, (_, i) =>
       i === 0
         ? { name: names[0], type: "human" as const }
-        : { name: names[i], type: "bot" as const, personality: BOTS[i - 1].personality }
+        : { name: names[i], type: "bot" as const, personality: personalities[i] }
     ),
     gameMode: gameState.gameMode,
     dealFirstSeat: 0,

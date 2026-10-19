@@ -99,7 +99,7 @@ test.describe("the top-left chip's player name", () => {
 
   /** A 2-seat offline save with `name`'s play already on the felt. */
   function nameSave(name: string): OfflineSave {
-    const save = offlineSave({ seats: 2, hand: DEAL_SIZE[2], names: ["Ana", name] });
+    const save = offlineSave({ seats: 2, hand: DEAL_SIZE[2], names: ["Ana", name], personalities: [undefined, "luan"] });
     const pileCard = save.gameState.players[1].hand.shift()!;
     save.gameState.lastPlayedCombination = buildCombination([pileCard]);
     save.gameState.lastPlayedBy = 1;

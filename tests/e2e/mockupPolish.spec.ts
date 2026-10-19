@@ -300,6 +300,7 @@ function openingWithStartCard() {
   return offlineSave({
     seats: 2,
     names: ["Ana", "Besnik"],
+    personalities: [undefined, "luan"],
     holding: [["3_clubs", "5_hearts", "K_spades"], ["J_hearts", "Q_diamonds"]],
     state: {
       firstPlayMade: false,
