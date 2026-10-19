@@ -2,8 +2,10 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { trackedRootFiles } from "./trackedFiles.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -15,12 +17,10 @@ export function sharedCheckout(): string {
   return path.dirname(common);
 }
 
-/** Inside an install npm made, or the temp dir: a `node_modules` created here would shadow none and hold only this. */
+/** Inside the install Node resolves packages from, or the temp dir: a cache never creates a `node_modules` of its own. */
 export function cacheBase(): string {
-  for (const checkout of [sharedCheckout(), repoRoot]) {
-    const install = path.join(checkout, "node_modules");
-    if (existsSync(path.join(install, ".package-lock.json"))) return path.join(install, ".cache");
-  }
+  const install = path.resolve(createRequire(import.meta.url).resolve("typescript/package.json"), "..", "..");
+  if (existsSync(path.join(install, ".package-lock.json"))) return path.join(install, ".cache");
   return path.join(tmpdir(), "murlan-cache");
 }
 
@@ -30,7 +30,7 @@ export function cacheBase(): string {
  * produced it.
  */
 function keyInputs(root: string): string[] {
-  const configs = readdirSync(root).filter((name) => /^eslint\./.test(name));
+  const configs = trackedRootFiles(root).filter((name) => /^eslint\./.test(name));
   return ["package-lock.json", "patches", "babel.config.js", ...configs];
 }
 

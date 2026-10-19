@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -23,8 +24,11 @@ function sandbox() {
   const write = (rel: string, text: string) => {
     mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
     writeFileSync(path.join(root, rel), text);
+    if (existsSync(path.join(root, ".git"))) execFileSync("git", ["add", "--", rel], { cwd: root });
   };
   for (const [rel, text] of Object.entries(files)) write(rel, text);
+  execFileSync("git", ["init", "-q"], { cwd: root });
+  execFileSync("git", ["add", "-A"], { cwd: root });
   const use = () => cacheFor("probe", [path.join(root, PROBE)], { root, base });
   return { dir, root, base, files, write, use, done: () => rmSync(dir, { recursive: true, force: true }) };
 }
