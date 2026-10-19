@@ -112,11 +112,16 @@ test("a limiter from the factory sends standard headers and no legacy ones", asy
 });
 
 test("defaultMax gives way to a valid env var, and survives a junk one", async () => {
-  process.env.MURLAN_TEST_RATE_LIMIT = "2";
-  const two = routeLimiter({ windowMs: 60_000, defaultMax: 9, envVar: "MURLAN_TEST_RATE_LIMIT", message: {} });
-  process.env.MURLAN_TEST_RATE_LIMIT = "nonsense";
-  const fallback = routeLimiter({ windowMs: 60_000, defaultMax: 1, envVar: "MURLAN_TEST_RATE_LIMIT", message: {} });
-  delete process.env.MURLAN_TEST_RATE_LIMIT;
+  let two: ReturnType<typeof routeLimiter>;
+  let fallback: ReturnType<typeof routeLimiter>;
+  try {
+    process.env.MURLAN_TEST_RATE_LIMIT = "2";
+    two = routeLimiter({ windowMs: 60_000, defaultMax: 9, envVar: "MURLAN_TEST_RATE_LIMIT", message: {} });
+    process.env.MURLAN_TEST_RATE_LIMIT = "nonsense";
+    fallback = routeLimiter({ windowMs: 60_000, defaultMax: 1, envVar: "MURLAN_TEST_RATE_LIMIT", message: {} });
+  } finally {
+    delete process.env.MURLAN_TEST_RATE_LIMIT;
+  }
 
   const a = await serve(limited(two));
   const b = await serve(limited(fallback));
