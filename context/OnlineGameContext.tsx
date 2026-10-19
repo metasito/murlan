@@ -738,6 +738,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     // Taking a seat is not watching, whatever an earlier spectate attempt left
     // behind: the flag decides whether leaving this room releases the seat.
     setIsSpectator(false);
+    setError(null);
     rejoin.cancelLobby();
     deliver("room:create", { gameMode, maxPlayers }, { retry: false });
   }, [deliver, rejoin]);

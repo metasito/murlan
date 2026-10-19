@@ -6,8 +6,8 @@
 // consume what another is showing.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
-import { act, render, screen } from '@testing-library/react-native';
-import { Text } from 'react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { Pressable, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -48,7 +48,7 @@ jest.mock('@tanstack/react-query', () => ({
 }));
 
 import { OnlineGameProvider } from '@/context/OnlineGameContext';
-import { useServerError } from '@/context/onlineGameHooks';
+import { useOnlineRoom, useServerError } from '@/context/onlineGameHooks';
 import { setLocale } from '@/lib/i18n';
 import { en } from '@/locales/en';
 import { sq } from '@/locales/sq';
@@ -77,6 +77,23 @@ const emit = (event: string, payload: unknown) =>
 
 function LobbyProbe() {
   return <Text testID="lobby-error">{useServerError('lobby')?.text ?? ''}</Text>;
+}
+type Attempt = 'createRoom' | 'joinRoom' | 'spectateRoom' | 'quickmatch';
+function Attempts() {
+  const room = useOnlineRoom();
+  const tries: Record<Attempt, () => void> = {
+    createRoom: () => room.createRoom('free_for_all', 4),
+    joinRoom: () => room.joinRoom('ABCDEF'),
+    spectateRoom: () => room.spectateRoom('ABCDEF'),
+    quickmatch: () => room.quickmatch(4, 'free_for_all'),
+  };
+  return (
+    <>
+      {Object.entries(tries).map(([name, run]) => (
+        <Pressable key={name} testID={name} onPress={run} />
+      ))}
+    </>
+  );
 }
 const lobbyError = () => screen.getByTestId('lobby-error').props.children;
 
@@ -126,6 +143,15 @@ describe('a server refusal', () => {
     expect(lobbyError()).toBe(en['server.ROOM_NOT_FOUND']);
     await act(() => setLocale('sq'));
     expect(lobbyError()).toBe(sq['server.ROOM_NOT_FOUND']);
+    await r.unmount();
+  });
+
+  it.each<Attempt>(['createRoom', 'joinRoom', 'spectateRoom', 'quickmatch'])('is retired by a new attempt: %s', async (attempt) => {
+    const r = await mount(<Attempts />);
+    await emit('room:error', { code: 'ROOM_NOT_FOUND', message: 'Room not found' });
+    expect(lobbyError()).toBe(en['server.ROOM_NOT_FOUND']);
+    await fireEvent.press(screen.getByTestId(attempt));
+    expect(lobbyError()).toBe('');
     await r.unmount();
   });
 });
