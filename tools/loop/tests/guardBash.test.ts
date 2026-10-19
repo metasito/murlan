@@ -719,14 +719,22 @@ describe("a loop session leaves agent:check's cache to agent:check", () => {
   for (const cmd of [
     "cat .git/agent-check-cache.json",
     "grep -c pass .git/agent-check-cache.json",
-    "jq . .git/agent-check-cache.json > /tmp/verdict.json",
+    "jq . < .git/agent-check-cache.json",
+    "cat .git/agent-check-cache.j*",
     "cp .git/agent-check-cache.json /tmp/seen.json",
-    `node -e "console.log(require('fs').readFileSync('.git/agent-check-cache.json', 'utf8'))"`,
+    `node -e "console.log(require('fs').readFileSync('.git/agent-check-' + 'cache.json', 'utf8'))"`,
+    "node -e \"console.log(require('fs').readFileSync('.git/agent-check-cache.json', 'utf8'))\"",
     `git commit -m "agent-check-cache.json is written by agent:check alone"`,
     `gh pr comment 12 --body "do not rm .git/agent-check-cache.json by hand"`,
+  ]) {
+    test(`refuses in the loop: ${cmd}`, () => assert.match(String(check(cmd, repo, true)), /only `npm run agent:check` writes it/));
+    test(`allows outside the loop: ${cmd}`, () => assert.equal(check(cmd, repo, false), null));
+  }
+  for (const cmd of [
     "git commit -F - <<'EOF'\nnever echo '{}' > .git/agent-check-cache.json\nEOF",
     "rm *.log",
     "echo hi > $TMPFILE",
+    "cat .github/workflows/ci.yml",
   ]) {
     test(`allows in the loop: ${cmd}`, () => assert.equal(check(cmd, repo, true), null));
   }

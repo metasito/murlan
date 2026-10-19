@@ -131,7 +131,7 @@ function shellBodyOf(cmd, rest) {
  * One segment as `{ cmd, env, dir, args, piped }`: leading assignments, wrappers and redirections
  * gone, a shell's `-c` body parsed in its place, and git's or gh's global options taken off so
  * `args[0]` is the verb. `env` holds the leading assignments; `dir` is git's last `-C`; `out` is
- * its stdout redirect targets, `writes` every file a redirect writes; `wrapped` the wrappers
+ * its stdout redirect targets, `redirected` every file a redirect reads or writes; `wrapped` the wrappers
  * (`env`, `exec`, …) taken off with their flags; `piped` means its output feeds a `|`.
  */
 function normalize(words, depth) {
@@ -177,7 +177,7 @@ function normalize(words, depth) {
 
   const args = [];
   const out = [];
-  const writes = [];
+  const redirected = [];
   for (let j = 0; j < rest.length; j++) {
     const redirect = REDIRECT.exec(rest[j]);
     if (!redirect) {
@@ -186,7 +186,7 @@ function normalize(words, depth) {
     }
     const target = redirect[1] || rest[j + 1] || "";
     if (/^[1&]?>/.test(rest[j]) && target && !target.startsWith("&")) out.push(target);
-    if (/^\d*>|^&>/.test(rest[j]) && target && !target.startsWith("&")) writes.push(target);
+    if (target && !target.startsWith("&")) redirected.push(target);
     j += redirect[1] ? 0 : 1;
   }
   let dir = null;
@@ -196,7 +196,7 @@ function normalize(words, depth) {
     if (cmd === "git" && args[0] === "-C") dir = args[1] ?? dir;
     args.splice(0, takes ? 2 : 1);
   }
-  return [{ cmd, env, dir, args, out, writes, wrapped, piped: words.piped === true }];
+  return [{ cmd, env, dir, args, out, redirected, wrapped, piped: words.piped === true }];
 }
 
 export function commands(text, depth = 0) {

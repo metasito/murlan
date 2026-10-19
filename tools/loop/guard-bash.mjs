@@ -336,34 +336,24 @@ function mayBeCheckCache(word, vars) {
   return spelled || /(^|[\\/])\.git([\\/]|$)/i.test(wild);
 }
 
-const WRITES_EVERY_OPERAND = /^(rm|unlink|shred|truncate|touch|tee|sponge|mv|rename|out-file|tee-object)$/;
-const WRITES_LAST_OPERAND = /^(cp|ln|install|rsync|scp)$/;
-
-/** The files one command writes, removes or replaces: redirects, and the operands that are destinations. */
-function filesWritten(c) {
-  const named = c.args.filter((a) => !a.startsWith("-"));
-  const targets = [...c.writes];
-  if (WRITES_EVERY_OPERAND.test(c.cmd) || (WRITES_ITEM.test(c.cmd) && !WRITES_LAST_OPERAND.test(c.cmd))) targets.push(...named);
-  if (WRITES_LAST_OPERAND.test(c.cmd)) {
-    const into = c.args.findIndex((a) => a === "-t" || a.startsWith("--target-directory"));
-    if (into >= 0) targets.push(c.args[into].split("=")[1] ?? c.args[into + 1] ?? "");
-    else if (named.length > 0) targets.push(named[named.length - 1]);
-  }
-  if (c.cmd === "dd") targets.push(...c.args.filter((a) => a.startsWith("of=")).map((a) => a.slice(3)));
-  return targets;
-}
-
 const CODE_WRITES =
   /\b(?:writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|rm|rmSync|unlink|unlinkSync|rename|renameSync|copyFile|copyFileSync|cp|cpSync|truncate|truncateSync|symlink|symlinkSync|link|linkSync|outputFile|ensureFile|remove|removedirs|rmtree|move|copy|copyfile|copy2|replace|touch|write_text|write_bytes)\s*\(|\bopen(?:Sync)?\s*\([^)]*,\s*['"`][^'"`]*[wax+]|\bopen\s*\([^)]*['"]\+?>/;
 
-const codeNamesCache = (code) => /agent-check-cache\.json/i.test(code) || [/agent/i, /check/i, /cache/i].filter((re) => re.test(code)).length >= 2;
+/** Inline code building the name in pieces it never spells whole (`['agent', 'check', …].join('-')`). */
+const codeAssemblesCache = (code) => CODE_WRITES.test(code) && [/agent/i, /check/i, /cache/i].filter((re) => re.test(code)).length >= 2;
 
-/** Writes, removes or replaces agent:check's cache — reads it, or names it in a message, it does not. */
-function writesCheckCache(runnable, raw, vars) {
+/**
+ * Names agent:check's cache anywhere in the command (design 11-loop §4.5): spelled out, or as a word
+ * that expands to it — a glob, a brace list, joined quotes, a variable the line assigns, a path in
+ * `.git` left to an expansion — or in inline interpreter code, joined strings read through.
+ */
+function namesCheckCache(runnable, raw, vars) {
+  if (/agent-check-cache\.json/i.test(runnable)) return true;
   const parsed = commands(unbraced(runnable));
-  if (parsed.some((c) => filesWritten(c).some((f) => mayBeCheckCache(f, vars)))) return true;
+  const words = (c) => [c.cmd, ...c.args, ...c.redirected, ...Object.values(c.env), ...Object.values(c.scope ?? {})];
+  if (parsed.some((c) => words(c).some((w) => mayBeCheckCache(w, vars)))) return true;
   const code = inlineCode(parsed, raw);
-  return code !== null && CODE_WRITES.test(code) && codeNamesCache(code);
+  return code !== null && (/agent-check-cache\.json/i.test(code) || codeAssemblesCache(code));
 }
 
 const RULES = [
@@ -525,9 +515,9 @@ const RULES = [
   },
   {
     test: () => false,
-    line: (_parsed, runnable, { loop, raw, vars }) => loop && writesCheckCache(runnable, raw, vars),
+    line: (_parsed, runnable, { loop, raw, vars }) => loop && namesCheckCache(runnable, raw, vars),
     message:
-      "agent-check-cache.json is agent:check's verdict, and only `npm run agent:check` writes it; the gate reads it as a check that ran.\n" +
+      "agent-check-cache.json is agent:check's verdict, and only `npm run agent:check` writes it; the gate reads it as a check that ran, so a loop session does not name it at all.\n" +
       "Run `npm run agent:check`, or `npm run agent:check -- --force` to ignore the cache.",
   },
 ];
