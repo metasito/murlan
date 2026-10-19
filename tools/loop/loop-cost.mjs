@@ -246,6 +246,7 @@ export function shaTable(rows, killed = []) {
     g.cost += r.cost ?? 0;
     if (r.outcome === "landed" || r.outcome === "closed") g.landed += 1;
     if (r.outcome === "parked") g.parked += 1;
+    if (r.outcome === "killed") g.killed += 1;
   }
   for (const k of killed) of(k.loop_sha).killed += 1;
   return [

@@ -18,6 +18,8 @@ import {
   parseWindowsProcessJson,
   readProcessTable,
   reap,
+  worktreeOrphans,
+  reapWorktree,
 } from "../reap.mjs";
 
 const HOUR = 60 * 60 * 1000;
@@ -481,6 +483,65 @@ describe("readProcessTable", () => {
     const out = readProcessTable('[{"ProcessId":1,"ParentProcessId":0,"Name":"x","CommandLine":"x","Started":1}]', "pwsh");
     assert.equal(out.rows.length, 1);
     assert.equal(out.blind, null);
+  });
+});
+
+describe("worktreeOrphans", () => {
+  const ROOT = "C:\\Users\\roton\\murlan";
+  const TREE = `${ROOT}\\.worktrees\\agent-1641`;
+  const row = (pid: number, ppid: number, name: string, commandLine: string) => ({ pid, ppid, name, commandLine, startedAt: NOW - 60_000 });
+  const table = [
+    row(10, 1, "node.exe", `node ${ROOT}\\tools\\loop\\queue-loop.mjs`),
+    row(20, 10, "claude.exe", `claude.exe -p "/queue 1641" --cwd ${TREE}`),
+    row(21, 20, "node.exe", `node ${ROOT}\\node_modules\\npm\\bin\\npm-cli.js run agent:check --prefix ${TREE}`),
+    row(22, 21, "node.exe", `node ${TREE}\\tools\\loop\\agent-check.mjs`),
+    row(30, 999, "node.exe", `node ${TREE}\\node_modules\\eslint\\bin\\eslint.js --cache-location=${TREE}\\.expo\\cache\\eslint\\`),
+    row(31, 999, "node.exe", `node ${ROOT}\\.worktrees\\agent-1650\\tools\\loop\\agent-check.mjs`),
+    row(32, 999, "node.exe", `node ${ROOT}\\.worktrees\\agent-16\\node_modules\\jest\\bin\\jest.js`),
+    row(33, 999, "bash.exe", `bash.exe -c "cd ${TREE} && sleep 1000"`),
+    row(34, 999, "node.exe", `node ${TREE}\\node_modules\\expo\\bin\\cli start --port 5199`),
+  ];
+  const take = (keep = new Set<number>()) =>
+    worktreeOrphans(table, { worktree: TREE, selfPid: 22, keep, platform: "win32" }).map((p: { pid: number }) => p.pid);
+
+  test("reaps this worktree's stale eslint however young it is, and keeps the peer, the supervisor and its own chain", () => {
+    assert.deepEqual(take(new Set([34])), [30]);
+  });
+
+  test("a peer worktree whose name is a prefix of this one is not this one", () => {
+    const peer = worktreeOrphans(table, { worktree: `${ROOT}\\.worktrees\\agent-16`, selfPid: 22, platform: "win32" });
+    assert.deepEqual(peer.map((p: { pid: number }) => p.pid), [32]);
+  });
+
+  test("run from the shared checkout it takes nothing: every peer and the supervisor sit below that root", () => {
+    const shared = worktreeOrphans(table, { worktree: `${ROOT}\\`, checkout: ROOT, selfPid: 22, platform: "win32" });
+    assert.deepEqual(shared, []);
+  });
+
+  test("keeps what it is told to, such as a server holding a port", () => {
+    assert.deepEqual(take(), [30, 34]);
+  });
+
+  test("takes only node, never a shell that merely sits in the tree", () => {
+    assert.ok(!take().includes(33));
+  });
+
+  test("a worktree path given with forward slashes or a trailing separator matches the same processes", () => {
+    const slashed = worktreeOrphans(table, { worktree: `${TREE.replace(/\\/g, "/")}/`, selfPid: 22, keep: new Set([34]), platform: "win32" });
+    assert.deepEqual(slashed.map((p: { pid: number }) => p.pid), [30]);
+  });
+
+  test("reapWorktree names each one it would take, and kills nothing on a dry run", () => {
+    const said: string[] = [];
+    const self = row(process.pid, 22, "node.exe", `node ${TREE}\\tools\\loop\\agent-check.mjs`);
+    const took = reapWorktree(TREE, {
+      dryRun: true,
+      say: (l: string) => said.push(l),
+      readTable: () => ({ rows: [...table, self], blind: null }),
+      listening: () => new Set([34]),
+    });
+    assert.deepEqual(took, [30]);
+    assert.match(said.join("\n"), /would kill node\.exe pid 30/);
   });
 });
 

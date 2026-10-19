@@ -13,6 +13,7 @@ import { checkLockDrift, parseWorktreeList } from "./workspace.mjs";
 import { STEPS, LOCAL, DELEGATED, cmd, BANNER } from "./check-steps.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import preflightMemory from "../ci/preflightMemory.mjs";
+import { reapWorktree } from "./reap.mjs";
 
 /**
  * A subject with nothing in it is a refusal rather than a pass: a check looking at no diff has
@@ -221,13 +222,21 @@ async function main() {
 
   const head = git("rev-parse", "HEAD").trim();
   const clean = git("status", "--porcelain").trim() === "";
-  const roomFor = () => preflightMemory().then(() => true, () => false);
+  const reapOwn = () => reapWorktree(subject.root, { say: (line) => console.log(`agent:check  ${line}`) });
+  // Again before each preflight: a step's own child can outlive its shell (STEP_TIMEOUT_MS).
+  const roomFor = () => {
+    reapOwn();
+    return preflightMemory().then(() => true, () => false);
+  };
   const out = await judge({
     head,
     clean,
     force: process.argv.includes("--force"),
     cache: readCache(),
-    run: () => runAll(LOCAL, runStep, roomFor),
+    run: () => {
+      reapOwn();
+      return runAll(LOCAL, runStep, roomFor);
+    },
   });
 
   if (out.replayed) {
