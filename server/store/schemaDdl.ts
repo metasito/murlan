@@ -312,17 +312,30 @@ function dedupeForIndex(
   );
 }
 
+/** What the database already holds, as `ensureSchema` reads it from the catalog. */
+export type SchemaCatalog = {
+  /** `table.column` */
+  columns: ReadonlySet<string>;
+  indexes: ReadonlySet<string>;
+};
+
+const EMPTY_CATALOG: SchemaCatalog = { columns: new Set(), indexes: new Set() };
+
 /**
  * Every statement needed to bring an empty or partially-populated database up
  * to `shared/schema.ts`, in application order: enum types, then tables, then
  * columns added to tables that already existed, then indexes (which may target
  * one of those new columns), then the session table.
  *
+ * `existing` drops the `ADD COLUMN`s and `CREATE INDEX`es (with an index's
+ * dedupe) the database already has: each `ADD COLUMN IF NOT EXISTS` takes
+ * ACCESS EXCLUSIVE on its table even when it adds nothing.
+ *
  * Deliberately narrow: it understands only the schema features
  * `shared/schema.ts` uses today, and throws a descriptive error naming itself
  * for anything else rather than emitting incomplete DDL.
  */
-export function schemaStatements(): string[] {
+export function schemaStatements(existing: SchemaCatalog = EMPTY_CATALOG): string[] {
   const tables = Object.values(schema).filter((v) => is(v, PgTable)) as PgTable[];
   const configs = tables.map((table) => ({ cfg: getTableConfig(table as PgTable<any>) }));
   assertSupported(configs);
@@ -362,6 +375,7 @@ export function schemaStatements(): string[] {
     tableStatements.push(`CREATE TABLE IF NOT EXISTS ${quoteIdent(cfg.name)} (\n${body}\n);`);
 
     for (const col of cfg.columns) {
+      if (existing.columns.has(`${cfg.name}.${col.name}`)) continue;
       addColumnStatements.push(
         `ALTER TABLE ${quoteIdent(cfg.name)} ADD COLUMN IF NOT EXISTS ` +
           `${columnDefinition(col, cfg, fkByColumn, false)};`
@@ -396,8 +410,9 @@ export function schemaStatements(): string[] {
       const predicate = idx.config.where
         ? renderSqlExpression(idx.config.where, `index "${indexName}"'s WHERE clause`, cfg.name)
         : undefined;
+      if (DEDUPE_ON_BOOT.has(indexName)) declaredDedupes.add(indexName);
+      if (existing.indexes.has(indexName)) continue;
       if (DEDUPE_ON_BOOT.has(indexName)) {
-        declaredDedupes.add(indexName);
         indexStatements.push(dedupeForIndex(cfg, cols, predicate));
       }
       indexStatements.push(
@@ -475,6 +490,19 @@ export async function assertRenamesApplied(pool: Pick<Pool, "query">): Promise<v
   }
 }
 
+async function readCatalog(pool: Pick<Pool, "query">): Promise<SchemaCatalog> {
+  const { rows } = await pool.query<{ kind: "column" | "index"; name: string }>(
+    `SELECT 'column' AS kind, table_name || '.' || column_name AS name
+       FROM information_schema.columns WHERE table_schema = current_schema()
+     UNION ALL
+     SELECT 'index', indexname FROM pg_indexes WHERE schemaname = current_schema()`
+  );
+  const columns = new Set<string>();
+  const indexes = new Set<string>();
+  for (const row of rows) (row.kind === "column" ? columns : indexes).add(row.name);
+  return { columns, indexes };
+}
+
 /**
  * Brings the connected database up to `shared/schema.ts`. Every statement it
  * emits is idempotent and additive, but running it is not unconditionally
@@ -488,7 +516,7 @@ export async function assertRenamesApplied(pool: Pick<Pool, "query">): Promise<v
  */
 export async function ensureSchema(pool: Pool): Promise<void> {
   await assertRenamesApplied(pool);
-  const statements = schemaStatements();
+  const statements = schemaStatements(await readCatalog(pool));
   for (const statement of statements) {
     await pool.query(statement);
   }

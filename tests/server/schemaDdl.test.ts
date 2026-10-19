@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Pool } from "pg";
-import { schemaStatements, assertRenamesApplied } from "../../server/store/schemaDdl.ts";
+import { schemaStatements, assertRenamesApplied, ensureSchema } from "../../server/store/schemaDdl.ts";
 
 const statements = schemaStatements();
 
@@ -334,4 +334,55 @@ test("boot deletes on its own authority only where this list says it may", () =>
       : []
   );
   assert.deepEqual(cleared.sort(), [`"friends_accepted_uq"`, `"friends_pending_pair_uq"`]);
+});
+
+function catalogOf(list: string[]) {
+  const columns = new Set<string>();
+  const indexes = new Set<string>();
+  for (const s of list) {
+    const col = /^ALTER TABLE "([^"]+)" ADD COLUMN IF NOT EXISTS "([^"]+)"/.exec(s);
+    if (col) columns.add(`${col[1]}.${col[2]}`);
+    const idx = /^CREATE (?:UNIQUE )?INDEX IF NOT EXISTS "([^"]+)"/.exec(s);
+    if (idx) indexes.add(idx[1]);
+  }
+  return { columns, indexes };
+}
+
+test("what the catalog already holds is not altered again", () => {
+  const full = catalogOf(statements);
+  assert.ok(full.columns.size > 0 && full.indexes.size > 0);
+  const again = schemaStatements(full);
+  assert.deepEqual(again.filter((s) => /ADD COLUMN/.test(s)), []);
+  assert.deepEqual(again.filter((s) => /^CREATE (UNIQUE )?INDEX IF NOT EXISTS "(?!IDX_session)/.test(s)), []);
+  assert.deepEqual(again.filter((s) => /^DELETE /.test(s)), [], "a dedupe runs only before an index it clears the way for");
+  assert.ok(again.some((s) => /^CREATE TABLE IF NOT EXISTS/.test(s)), "tables and enums are still ensured");
+
+  const [someIndex] = [...full.indexes].filter((n) => /friends_accepted_uq/.test(n));
+  const partial = schemaStatements({ columns: full.columns, indexes: new Set([...full.indexes].filter((n) => n !== someIndex)) });
+  const at = partial.findIndex((s) => s.includes(`"${someIndex}"`));
+  assert.ok(at > 0, "a missing index is still created");
+  assert.equal(dedupeTableFor(partial, at - 1), '"friends"', "and still preceded by its dedupe");
+  assert.deepEqual(schemaStatements({ columns: new Set(), indexes: new Set() }), statements);
+});
+
+test("a second boot emits no ADD COLUMN, from one catalog read", async () => {
+  const full = catalogOf(statements);
+  const ran: string[] = [];
+  const booted = {
+    query: async (sql: string) => {
+      ran.push(sql);
+      if (/pg_indexes/.test(sql)) {
+        return {
+          rows: [
+            ...[...full.columns].map((c) => ({ kind: "column", name: c })),
+            ...[...full.indexes].map((i) => ({ kind: "index", name: i })),
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+  } as unknown as Pool;
+  await ensureSchema(booted);
+  assert.equal(ran.filter((s) => /pg_indexes/.test(s)).length, 1);
+  assert.deepEqual(ran.filter((s) => /ADD COLUMN/.test(s)), []);
 });

@@ -20,7 +20,8 @@ import { apiMethod, readIssue, TRUSTED_SELECT, untrustedRead } from "./brief.mjs
 import { firstLine, git } from "./cli.mjs";
 import { locateRun } from "./loop-derive.mjs";
 import { readLine } from "./loop-stream.mjs";
-import { commands, has, literal, literalAssignments, loopBodies, MOVES, operands, toNative, withoutQuotedBodies } from "./shell.mjs";
+import { codeSetsLoopVariable, fromEnv, isLoopVariable } from "./session-env.mjs";
+import { assignedNames, commands, has, literal, literalAssignments, loopBodies, MOVES, operands, toNative, withoutQuotedBodies } from "./shell.mjs";
 
 const HTTP_CLIENT = /^(gh|curl|wget|invoke-restmethod|invoke-webrequest|irm|iwr)$/;
 
@@ -101,12 +102,12 @@ function filesAgentWork(c) {
 }
 
 /**
- * Whether this loop session is on the implement route, judged by its own phase: `LOOP_PHASE` when
- * the supervisor resumed it past A, else the markers in its transcript, since triage and wayfinder
+ * Whether this loop session is on the implement route, judged by its own phase: the one it was
+ * handed when the supervisor resumed it past A, else the markers in its transcript, since triage and wayfinder
  * never report past A. Only with no transcript to read does a standing ticket worktree decide.
  */
 export function implementRoute(env, transcriptPath, standing = () => false, read = (p) => readFileSync(p, "utf8")) {
-  if (/^[B-G]$/.test(env.LOOP_PHASE ?? "")) return true;
+  if (fromEnv(env).phase) return true;
   let text;
   try {
     text = read(transcriptPath);
@@ -209,7 +210,7 @@ function discards(c, repo) {
 
 const PUSH_TAKES_A_VALUE = /^(-o|--push-option|--repo|--receive-pack|--exec)$/;
 
-const loopTicket = () => (/^\d+$/.test(process.env.LOOP_TICKET ?? "") ? process.env.LOOP_TICKET : null);
+const loopTicket = () => fromEnv().ticket;
 
 /**
  * A push, or a ref write through the API, landing anywhere but `agent/<ticket>-…`, named by an
@@ -258,6 +259,101 @@ function runsPlaywright(c) {
     return run >= 0 && runsPlaywrightScript(operands[run + 1]);
   }
   return false;
+}
+
+const DECLARES = /^(export|unset|declare|typeset|readonly|local|set-variable|sv|setx)$/;
+const WRITES_ITEM = /^(remove-item|ri|del|erase|rm|rd|rmdir|set-item|si|new-item|ni|clear-item|cli|rename-item|rni|move-item|mi|mv|copy-item|cp|cpi|set-content|sc|add-content|ac|clear-content|clc)$/;
+const ENV_DRIVE = /^\$?\{?env:[\\/]*/i;
+const namesLoopVariable = (word) => isLoopVariable(word.replace(/^-+/, "").replace(ENV_DRIVE, "").split(/\+?=/)[0].replace(/\}$/, ""));
+
+/** In this one command: `X=… cmd`, `env X=… cmd`, `export`/`unset`, `$env:X = …`, `Remove-Item env:X`. */
+function setsLoopVariable(c) {
+  if ([...Object.keys(c.env), ...Object.keys(c.scope ?? {})].some(namesLoopVariable)) return true;
+  if (DECLARES.test(c.cmd)) return c.args.some(namesLoopVariable);
+  if (WRITES_ITEM.test(c.cmd)) return c.args.some((a) => ENV_DRIVE.test(a) && namesLoopVariable(a));
+  return ENV_DRIVE.test(c.cmd) && namesLoopVariable(c.cmd) && (c.cmd.includes("=") || /^\+?=/.test(c.args[0] ?? ""));
+}
+
+/** Across the line: a bare `X=…` statement, `env -u X`, `[Environment]::SetEnvironmentVariable('X', …)`. */
+const setsLoopVariableIn = (runnable) =>
+  assignedNames(runnable).some(namesLoopVariable) ||
+  (/\benv\b/.test(runnable) && [...runnable.matchAll(/\s(?:-u\s*|--unset[=\s]\s*)['"]?(\w+)/g)].some((m) => namesLoopVariable(m[1]))) ||
+  [...runnable.matchAll(/SetEnvironmentVariable\s*\(\s*['"]?(\w+)/gi)].some((m) => namesLoopVariable(m[1]));
+
+const INTERPRETER = /^(node|nodejs|deno|bun|python[\d.]*|py|perl|ruby|php)$/;
+
+/** The code an interpreter runs from the line itself (`-e`, `-c`, stdin), not from a script file. */
+const runsInlineCode = (c) =>
+  INTERPRETER.test(c.cmd) && (has(c.args, /^(-e|--eval|-p|--print|-c|-E|-r)$/) || c.args.includes("-") || !c.args.some((a) => !a.startsWith("-")));
+
+/** `'a' + 'b'` and Python's `'a' 'b'` read as the one string they build. */
+const joinedStrings = (code) => code.replace(/['"`]\s*\+\s*['"`]/g, "").replace(/(['"])[ \t]+['"]/g, "");
+
+/** The line's inline interpreter code, heredoc and piped bodies included, or null when it runs none. */
+const inlineCode = (parsed, raw) => (parsed.some(runsInlineCode) ? joinedStrings(raw) : null);
+
+/** A whole environment dropped or replaced, here or for a child: no variable of its survives. */
+const CODE_CLEARS_ENV =
+  /delete\s+process\.env\b|process\.env\s*=(?!=)|(?:Object\.assign|Reflect\.deleteProperty|Object\.defineProperty)\s*\(\s*process\.env|\benv\s*:\s*(?:\{(?![^}]*process\.env)|Object\.create)|os\.environ\.clear\s*\(|os\.environ\s*=(?!=)|\bdel\s+os\.environ\b|\benv\s*=\s*\{(?![^}]*os\.environ)|%ENV\s*=(?!=)|delete\s+\$ENV\{/;
+
+/** `env -i`, `env -`, `env --ignore-environment`, `exec -c`: the command runs with none of them. */
+const clearsEnvironment = (c) =>
+  c.wrapped.some(
+    (w) =>
+      (w.name === "env" && w.flags.some((f) => /^(-[A-Za-z]*i[A-Za-z]*|--ignore-environment|-)$/.test(f))) ||
+      (w.name === "exec" && w.flags.some((f) => /^-[a-z]*c/.test(f)))
+  );
+
+const CACHE_NAME = "agent-check-cache.json";
+
+/** `{a,b}` and `{1..3}` stand for any of their words; unexpanded, the parser splits on the brace. */
+const unbraced = (text) => text.replace(/\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}/g, "*");
+
+/**
+ * Whether a file a command writes may be agent:check's cache: its name as a glob (`*`, `?`, `[…]`,
+ * and any expansion the line does not assign literally) matches it, and it is no bare wildcard —
+ * one spelled with part of the name, or one inside `.git`.
+ */
+function mayBeCheckCache(word, vars) {
+  const resolved = word.replace(/\$\{(\w+)\}|\$(\w+)/g, (m, a, b) => vars[a ?? b] ?? "\0");
+  const wild = resolved.replace(/\$\([^)]*\)|`[^`]*`|\$\{[^}]*\}/g, "\0");
+  const base = wild.split(/[\\/]/).pop() ?? "";
+  let pattern = "";
+  for (let i = 0; i < base.length; i++) {
+    const ch = base[i];
+    if (ch === "*" || ch === "\0") pattern += ".*";
+    else if (ch === "?") pattern += ".";
+    else if (ch === "[" && base.indexOf("]", i) > i) {
+      const end = base.indexOf("]", i);
+      pattern += `[${base.slice(i + 1, end).replace(/^!/, "^").replace(/\\/g, "\\\\")}]`;
+      i = end;
+    } else pattern += ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  if (!new RegExp(`^${pattern}$`, "i").test(CACHE_NAME)) return false;
+  const spelled = base
+    .split(/[*?\0[\]]/)
+    .some((run) => CACHE_NAME.includes(run.toLowerCase()) && /[a-z-]{4}/i.test(run.replace(/\.?json$/i, "")));
+  return spelled || /(^|[\\/])\.git([\\/]|$)/i.test(wild);
+}
+
+const CODE_WRITES =
+  /\b(?:writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|rm|rmSync|unlink|unlinkSync|rename|renameSync|copyFile|copyFileSync|cp|cpSync|truncate|truncateSync|symlink|symlinkSync|link|linkSync|outputFile|ensureFile|remove|removedirs|rmtree|move|copy|copyfile|copy2|replace|touch|write_text|write_bytes)\s*\(|\bopen(?:Sync)?\s*\([^)]*,\s*['"`][^'"`]*[wax+]|\bopen\s*\([^)]*['"]\+?>/;
+
+/** Inline code building the name in pieces it never spells whole (`['agent', 'check', …].join('-')`). */
+const codeAssemblesCache = (code) => CODE_WRITES.test(code) && [/agent/i, /check/i, /cache/i].filter((re) => re.test(code)).length >= 2;
+
+/**
+ * Names agent:check's cache anywhere in the command (design 11-loop §4.5): spelled out, or as a word
+ * that expands to it — a glob, a brace list, joined quotes, a variable the line assigns, a path in
+ * `.git` left to an expansion — or in inline interpreter code, joined strings read through.
+ */
+function namesCheckCache(runnable, raw, vars) {
+  if (/agent-check-cache\.json/i.test(runnable)) return true;
+  const parsed = commands(unbraced(runnable));
+  const words = (c) => [c.cmd, ...c.args, ...c.redirected, ...Object.values(c.env), ...Object.values(c.scope ?? {})];
+  if (parsed.some((c) => words(c).some((w) => mayBeCheckCache(w, vars)))) return true;
+  const code = inlineCode(parsed, raw);
+  return code !== null && (/agent-check-cache\.json/i.test(code) || codeAssemblesCache(code));
 }
 
 const RULES = [
@@ -313,7 +409,7 @@ const RULES = [
     test: (c, { loop }) => loop && pushesElsewhere(c, loopTicket()),
     message: () =>
       loopTicket() === null
-        ? "A loop session pushes only its own ticket's branch, and this session's LOOP_TICKET, which names it, is not set. " +
+        ? "A loop session pushes only its own ticket's branch, and this session was spawned without the ticket number that names it. " +
           "Nothing can be pushed: say so on the issue and park it for the owner."
         : "A loop session pushes only its own ticket's branch, named explicitly:\n" +
           `  git push -u origin HEAD:agent/${loopTicket()}-<slug>\n` +
@@ -402,12 +498,34 @@ const RULES = [
       "Waiting on a run inside one call — gh run watch, gh pr checks --watch, or a sleep loop over gh run view/list, gh pr checks|view|status or gh api …actions/runs|check-runs — outlasts the Bash timeout on a device run: the call is killed and returns nothing.\n" +
       "Wait with `node scripts/await-run.mjs <run-id> [<run-id>…]`. It returns before the default Bash timeout; exit 3 means run the same command again.",
   },
+  {
+    // The floor under session-env.mjs: unsetting the loop's own variable is what would re-open its test seams.
+    test: (c, { loop }) => loop && (setsLoopVariable(c) || clearsEnvironment(c)),
+    line: (parsed, runnable, { loop, raw }) => {
+      if (!loop) return false;
+      if (setsLoopVariableIn(runnable)) return true;
+      const code = inlineCode(parsed, raw);
+      return code !== null && (codeSetsLoopVariable(code) || CODE_CLEARS_ENV.test(code));
+    },
+    message:
+      "A loop session does not assign, export or unset a variable tools/loop/session-env.mjs owns: the supervisor set " +
+      "them when it spawned this session, and the guards and the gate read them as its facts.\n" +
+      "To test a loop tool, run it the way its tests do: `npm run loop:test`, or " +
+      "`node --import ./tools/loop/tests/helpers/clearLoopEnv.mjs --test <file>`.",
+  },
+  {
+    test: () => false,
+    line: (_parsed, runnable, { loop, raw, vars }) => loop && namesCheckCache(runnable, raw, vars),
+    message:
+      "agent-check-cache.json is agent:check's verdict, and only `npm run agent:check` writes it; the gate reads it as a check that ran, so a loop session does not name it at all.\n" +
+      "Run `npm run agent:check`, or `npm run agent:check -- --force` to ignore the cache.",
+  },
 ];
 
 export function check(
   command,
   repo = gitAt(process.cwd()),
-  loop = Boolean(process.env.LOOP_TURNS),
+  loop = fromEnv().loop,
   session = { implementing: () => implementRoute(process.env, null, () => repo.onTicket()) },
 ) {
   const runnable = withoutQuotedBodies(command);
@@ -416,7 +534,7 @@ export function check(
   // The payload's cwd is where the line starts, not where a `cd` in it leaves git.
   const moved = parsed.some((c) => MOVES.test(c.cmd));
   for (const rule of RULES) {
-    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop }) || parsed.some((c) => rule.test(c, { repo, moved, vars: c.scope ? literal(c.scope) : vars, loop, session }))) {
+    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop, raw: command, vars }) || parsed.some((c) => rule.test(c, { repo, moved, vars: c.scope ? literal(c.scope) : vars, loop, session }))) {
       return typeof rule.message === "function" ? rule.message() : rule.message;
     }
   }
@@ -437,9 +555,15 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
     process.stderr.write(`guard-bash: could not read the tool call on stdin (${firstLine(err)}); allowing it.\n`);
     process.exit(0);
   }
-  const repo = gitAt(cwd);
-  const session = { implementing: () => implementRoute(process.env, transcript, () => repo.onTicket()) };
-  const message = check(command, repo, Boolean(process.env.LOOP_TURNS), session);
+  let message;
+  try {
+    const repo = gitAt(cwd);
+    const session = { implementing: () => implementRoute(process.env, transcript, () => repo.onTicket()) };
+    message = check(command, repo, fromEnv().loop, session);
+  } catch (err) {
+    process.stderr.write(`guard-bash: could not judge this call (${firstLine(err)}); refusing it.\n`);
+    process.exit(2);
+  }
   if (message) {
     process.stderr.write(message + "\n");
     process.exit(2);

@@ -39,7 +39,7 @@ test("only a loop process's startup hook is silent", () => {
   assert.equal(silentAt([process.execPath, script, "--startup"], {}), false);
   const run = spawnSync(process.execPath, [script, "--startup"], {
     encoding: "utf8",
-    env: { ...process.env, ...loop, LOOP_GH_SCRIPT: "does-not-exist.mjs" },
+    env: { ...process.env, ...loop, LOOP_TEST_GH_SCRIPT: "does-not-exist.mjs" },
   });
   assert.deepEqual([run.status, run.stdout], [0, ""]);
 });
@@ -105,7 +105,7 @@ test("a loop child is still given the imperative", () => {
 
 test("run by the hook outside a loop, whatever it derives, it prints at most one line and no order", () => {
   const script = fileURLToPath(new URL("../loop-status.mjs", import.meta.url));
-  const env: NodeJS.ProcessEnv = { ...process.env, LOOP_GH_SCRIPT: "does-not-exist.mjs" };
+  const env: NodeJS.ProcessEnv = { ...process.env, LOOP_TEST_GH_SCRIPT: "does-not-exist.mjs" };
   delete env.LOOP_TURNS;
   const run = spawnSync(process.execPath, [script], { encoding: "utf8", env });
   assert.equal(run.status, 0);

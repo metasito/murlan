@@ -2,6 +2,7 @@ import { appendFile } from "node:fs/promises";
 import { logger } from "./logger.ts";
 import { trackEvent } from "../socket/events.ts";
 import { testOnlyEnv } from "./testOnlyEnv.ts";
+import { OUTBOUND_TIMEOUT_MS } from "./outbound.ts";
 
 /** Since this process started — reset by every restart, like the rest of memory. */
 const counts = { attempted: 0, succeeded: 0, failed: 0 };
@@ -79,6 +80,7 @@ export async function sendMail(
         "content-type": "application/json",
       },
       body: JSON.stringify({ from, to, subject, text }),
+      signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
     });
     if (!res.ok) {
       logger.error({ status: res.status, userId }, "sendMail: provider rejected the send");
@@ -98,10 +100,9 @@ export async function sendMail(
 
 /**
  * Once, at boot, at `error` level, naming what is missing — not per-request,
- * buried in request logs. Does not refuse to boot: `CLAUDE.md` requires the
- * app to launch from the Run button with no setup, and taking production
- * down because recovery mail is unconfigured would trade an inert feature
- * for an outage.
+ * buried in request logs. Does not refuse to boot: taking production down
+ * because recovery mail is unconfigured would trade an inert feature for an
+ * outage.
  */
 export function checkMailConfigOnBoot(): void {
   const missing = [

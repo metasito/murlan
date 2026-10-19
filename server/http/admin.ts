@@ -9,10 +9,10 @@
 // database has tables that grow with every match played, and a dashboard that
 // gets slower the more the game is used is a dashboard that stops being opened.
 import { sql } from "drizzle-orm";
-import { db } from "../store/db.ts";
+import { db, POOL_MAX } from "../store/db.ts";
 import { funnel, type FunnelStep } from "../socket/events.ts";
 import { recentClientErrorGroups, topFrame, type ClientErrorGroup } from "./clientErrors.ts";
-import { recentServerErrorGroups, serverErrorsThisWeek, type ServerErrorGroup } from "./serverErrors.ts";
+import { recentServerErrorGroups, serverErrorsDropped, serverErrorsThisWeek, type ServerErrorGroup } from "./serverErrors.ts";
 import { recentBugReports } from "./bugReports.ts";
 import { symbolicate } from "./sourceMaps.ts";
 import { mailHealth, type MailHealth } from "./mail.ts";
@@ -44,6 +44,7 @@ export interface AdminSnapshot {
   crashesThisWeek: number;
   crashGroups: { message: string; count: number; lastSeen: string; location: string }[];
   serverErrorsThisWeek: number;
+  serverErrorsDropped: number;
   serverErrorGroups: ServerErrorGroup[];
   bugReports: { at: string; who: string; description: string; where: string; build: string }[];
   funnel: FunnelStep[];
@@ -211,7 +212,31 @@ async function forDisplay(groups: ClientErrorGroup[]): Promise<AdminSnapshot["cr
   );
 }
 
-/** Every panel on the page, gathered concurrently. */
+/** At most two-fifths of the pool, at least one: the rest stays with the tables. */
+export function adminQueryLimit(poolMax: number): number {
+  return Math.max(1, Math.floor((poolMax * 2) / 5));
+}
+
+type Results<T extends readonly (() => Promise<unknown>)[]> = { -readonly [K in keyof T]: Awaited<ReturnType<T[K]>> };
+
+/** `Promise.all` over `tasks`, never more than `limit` of them running at once. */
+export async function allLimited<const T extends readonly (() => Promise<unknown>)[]>(
+  limit: number,
+  tasks: T
+): Promise<Results<T>> {
+  const results: unknown[] = new Array(tasks.length);
+  const queue = tasks.map((task, i) => [task, i] as const);
+  const worker = async () => {
+    for (let item = queue.shift(); item; item = queue.shift()) {
+      const [task, i] = item;
+      results[i] = await task();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+  return results as Results<T>;
+}
+
+/** Every panel on the page, gathered concurrently up to `adminQueryLimit` of the app pool. */
 export async function adminSnapshot(provisionalRounds: number): Promise<AdminSnapshot> {
   const [
     signupRows,
@@ -232,25 +257,25 @@ export async function adminSnapshot(provisionalRounds: number): Promise<AdminSna
     bugReportRows,
     serverWeek,
     serverGroupRows,
-  ] = await Promise.all([
-    signups(),
-    totalUsers(),
-    activePlayers(1),
-    activePlayers(7),
-    retention(),
-    aroundNotPlaying(),
-    ratingSpread(),
-    provisionalPlayers(provisionalRounds),
-    matchBalance(),
-    placements(),
-    unfinished(),
-    staleGames(),
-    crashesThisWeek(),
-    recentClientErrorGroups(ROW_LIMIT),
-    funnel(WINDOW_DAYS),
-    recentBugReports(ROW_LIMIT),
-    serverErrorsThisWeek(),
-    recentServerErrorGroups(ROW_LIMIT),
+  ] = await allLimited(adminQueryLimit(POOL_MAX), [
+    () => signups(),
+    () => totalUsers(),
+    () => activePlayers(1),
+    () => activePlayers(7),
+    () => retention(),
+    () => aroundNotPlaying(),
+    () => ratingSpread(),
+    () => provisionalPlayers(provisionalRounds),
+    () => matchBalance(),
+    () => placements(),
+    () => unfinished(),
+    () => staleGames(),
+    () => crashesThisWeek(),
+    () => recentClientErrorGroups(ROW_LIMIT),
+    () => funnel(WINDOW_DAYS),
+    () => recentBugReports(ROW_LIMIT),
+    () => serverErrorsThisWeek(),
+    () => recentServerErrorGroups(ROW_LIMIT),
   ]);
 
   return {
@@ -270,6 +295,7 @@ export async function adminSnapshot(provisionalRounds: number): Promise<AdminSna
     crashesThisWeek: crashes,
     crashGroups: await forDisplay(crashGroupRows),
     serverErrorsThisWeek: serverWeek,
+    serverErrorsDropped: serverErrorsDropped(),
     serverErrorGroups: serverGroupRows.map((g) => ({ ...g, lastSeen: new Date(g.lastSeen).toISOString() })),
     funnel: funnelRows,
     mail: mailHealth(),

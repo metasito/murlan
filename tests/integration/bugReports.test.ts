@@ -35,7 +35,7 @@ const CAP = { description: 2000, screen: 200 } as const;
 
 describe("bug reports", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  // Four accounts, not one. `errorReportLimiter` allows five posts a minute
+  // Four accounts, not one. `bugReportLimiter` allows five posts a minute
   // per account and counts rejected ones too, so a single cookie would spend
   // its budget on the cap tests and hand the next one a 429 where it expects a
   // 400 — a test that passes for the wrong reason if it expects 4xx loosely.
@@ -166,7 +166,7 @@ describe("bug reports", { skip: hasDatabase() ? false : skipMessage() }, () => {
   test("the rate limit trips when it is exceeded", async () => {
     const { cookie: spender } = await register(server, `bug_spammer_${suffix}`);
     const statuses: number[] = [];
-    // errorReportLimiter allows 5 a minute per account; ten is past it twice
+    // bugReportLimiter allows 5 a minute per account; ten is past it twice
     // over, so this cannot pass by the limiter merely being slow.
     for (let i = 0; i < 10; i++) {
       statuses.push((await post({ description: `spam ${i}` }, spender)).status);

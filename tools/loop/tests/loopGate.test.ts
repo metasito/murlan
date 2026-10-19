@@ -61,7 +61,7 @@ function commit(wt: string, file: string, body = "\n// probe\n") {
 }
 
 /**
- * A stub tracker, so the verdict branches run through the real binary. `LOOP_GH_SCRIPT` is the
+ * A stub tracker, so the verdict branches run through the real binary. `LOOP_TEST_GH_SCRIPT` is the
  * seam: a `gh.cmd` on PATH cannot work, because node will not resolve a `.cmd` from
  * `execFileSync` since the fix for CVE-2024-27980.
  */
@@ -73,7 +73,7 @@ function stubGh(comments: { body: string }[]): string {
 }
 
 /**
- * `LOOP_BASE` rather than `origin/main`, because CI checks this job out shallow and `origin/main`
+ * `LOOP_TEST_BASE` rather than `origin/main`, because CI checks this job out shallow and `origin/main`
  * is not a ref there — the suite went red on the runner while passing locally, for a reason that
  * had nothing to do with the code under test. Pass `base: undefined` to exercise the real default.
  */
@@ -85,13 +85,13 @@ function gate(
   args: string[] = []
 ): { code: number; out: string } {
   const env: NodeJS.ProcessEnv = { ...process.env };
-  if (comments) env.LOOP_GH_SCRIPT = stubGh(comments);
-  if (base) env.LOOP_BASE = base;
-  else delete env.LOOP_BASE;
+  if (comments) env.LOOP_TEST_GH_SCRIPT = stubGh(comments);
+  if (base) env.LOOP_TEST_BASE = base;
+  else delete env.LOOP_TEST_BASE;
   // Points the gate at exactly one worktree, so a real agent/* run left live elsewhere on the
   // machine (this suite's own, or a peer's) cannot be mistaken for the one under test here.
-  if (worktree) env.LOOP_WORKTREE = worktree;
-  else delete env.LOOP_WORKTREE;
+  if (worktree) env.LOOP_TEST_WORKTREE = worktree;
+  else delete env.LOOP_TEST_WORKTREE;
   const r = spawnSync(process.execPath, [GATE, ...args], { cwd, encoding: "utf8", env });
   return { code: r.status ?? -1, out: `${r.stderr}${r.stdout}` };
 }
@@ -280,7 +280,7 @@ I have not run it.`,
 /**
  * A worktree of its own — a `.worktrees/` scoped to a checkout nobody else on the machine can be
  * standing in, this ticket's own `.worktrees/agent-911` included. The two tests below need that:
- * unlike the `LOOP_WORKTREE`-pointed cases above, these exist to prove the scan itself still
+ * unlike the `LOOP_TEST_WORKTREE`-pointed cases above, these exist to prove the scan itself still
  * finds the right answer, so they cannot route around it.
  */
 
@@ -344,7 +344,7 @@ describe("the run is found by scanning .worktrees/, not from where the process s
 
 // The other, narrower seam: pointing straight at one worktree rather than asking the scan to
 // find it. Exercised from `root`, which is off any ticket itself — the override is what answers.
-test("LOOP_WORKTREE names the ticket directly, without a scan", () => {
+test("LOOP_TEST_WORKTREE names the ticket directly, without a scan", () => {
   const wt = worktree(probeBranch(15, "pointed"));
   commit(wt, "docs/probe.md");
   const { code, out } = gate(root, undefined, BASE, wt);

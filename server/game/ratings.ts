@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { userRatings, users } from "../../shared/schema.ts";
 import { lockUsers } from "../store/userLock.ts";
@@ -36,35 +36,54 @@ export interface LeaderboardEntry {
   rounds: number;
 }
 
-/** Either the pool or an open transaction — currentRow only ever reads. */
+/** Either the pool or an open transaction — currentRows only ever reads. */
 type Reader = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+type SeasonRow = { rating: number; rounds: number };
+
 /**
- * The row a player starts this season on: their own if they have one, otherwise
- * a soft reset from whatever they finished the most recent past season with.
+ * The row each player starts this season on: their own if they have one,
+ * otherwise a soft reset from whatever they finished the most recent past
+ * season with. One query for any number of players; every id asked about is
+ * answered.
  */
-async function currentRow(
-  tx: Reader,
-  userId: string,
+export async function currentRows(
+  tx: Pick<Reader, "selectDistinctOn">,
+  userIds: readonly string[],
   season: string
-): Promise<{ rating: number; rounds: number }> {
-  const [existing] = await tx
-    .select()
-    .from(userRatings)
-    .where(and(eq(userRatings.userId, userId), eq(userRatings.season, season)))
-    .limit(1);
-  if (existing) return { rating: existing.rating, rounds: existing.rounds };
-
+): Promise<Map<string, SeasonRow>> {
+  const ids = [...new Set(userIds)];
   // `season` sorts lexicographically because it is YYYY-MM, so "the latest
-  // season before this one" is a plain descending order with no date parsing.
-  const [previous] = await tx
-    .select()
-    .from(userRatings)
-    .where(and(eq(userRatings.userId, userId), sql`${userRatings.season} < ${season}`))
-    .orderBy(desc(userRatings.season))
-    .limit(1);
+  // season up to this one" is a plain descending order with no date parsing.
+  const latest =
+    ids.length === 0
+      ? []
+      : await tx
+          .selectDistinctOn([userRatings.userId], {
+            userId: userRatings.userId,
+            season: userRatings.season,
+            rating: userRatings.rating,
+            rounds: userRatings.rounds,
+          })
+          .from(userRatings)
+          .where(and(inArray(userRatings.userId, ids), lte(userRatings.season, season)))
+          .orderBy(userRatings.userId, desc(userRatings.season));
+  const byUser = new Map(latest.map((r) => [r.userId, r]));
+  return new Map(
+    ids.map((id): [string, SeasonRow] => {
+      const row = byUser.get(id);
+      return [
+        id,
+        row?.season === season
+          ? { rating: row.rating, rounds: row.rounds }
+          : { rating: seedRating(row ? row.rating : null), rounds: 0 },
+      ];
+    })
+  );
+}
 
-  return { rating: seedRating(previous ? previous.rating : null), rounds: 0 };
+async function currentRow(tx: Reader, userId: string, season: string): Promise<SeasonRow> {
+  return (await currentRows(tx, [userId], season)).get(userId)!;
 }
 
 /**
@@ -100,12 +119,8 @@ async function ratedSeatsOf(
   // contest.
   if (finishers.length < 2) return [];
 
-  const seats: RatedSeat[] = [];
-  for (const f of finishers) {
-    const row = await currentRow(reader, f.userId, season);
-    seats.push({ userId: f.userId, placement: f.placement, ...row });
-  }
-  return seats;
+  const rows = await currentRows(reader, finishers.map((f) => f.userId), season);
+  return finishers.map((f): RatedSeat => ({ userId: f.userId, placement: f.placement, ...rows.get(f.userId)! }));
 }
 
 /**
@@ -227,9 +242,8 @@ export async function getCircleLeaderboard(userIds: string[], now: Date): Promis
     .select({ userId: users.id, username: users.username })
     .from(users)
     .where(inArray(users.id, [...new Set(userIds)]));
-  const rows = await Promise.all(
-    members.map(async (m) => ({ ...m, ...(await currentRow(db, m.userId, season)) }))
-  );
+  const current = await currentRows(db, members.map((m) => m.userId), season);
+  const rows = members.map((m) => ({ ...m, ...current.get(m.userId)! }));
   // Code-unit order, not localeCompare: a tie must break the same way on every server.
   rows.sort((a, b) => b.rating - a.rating || (a.username < b.username ? -1 : 1));
   return rows.map((r, i) => ({ ...r, rank: i + 1 }));

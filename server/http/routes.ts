@@ -117,11 +117,16 @@ const renameLimiter = routeLimiter({
 const LOGIN_LIMIT_DECOY_HASH = bcrypt.hashSync("murlan-rate-limit-timing-decoy", 10);
 
 /**
- * Per-account login attempts (#41) — express-rate-limit's own `authLimiter`
- * above is a per-IP ceiling shared with register and sized for a whole
- * office; this is the thing that actually makes one account's password hard
- * to guess. Keyed on the same normalized username userStore.getUserByUsername
- * looks up by, so case doesn't fork one account into two budgets.
+ * Per-account login attempts (#41), on top of `authLimiter`'s per-IP ceiling
+ * shared with register. Keyed on the same normalized username
+ * userStore.getUserByUsername looks up by, so case doesn't fork one account
+ * into two budgets.
+ *
+ * The count lives in this process's memory: the real ceiling is the limit
+ * times the instances serving, and a deploy resets it. Accepted (#1651, D7):
+ * every guess still pays a bcrypt compare and the per-IP limiter, and a
+ * shared store would add a write per attempt plus a fail-open-or-closed
+ * choice during a database outage.
  *
  * skipSuccessfulRequests: a correct login must never spend down the budget a
  * wrong one does — otherwise a user who logs in from several devices a day
@@ -305,6 +310,15 @@ const errorReportLimiter = routeLimiter({
   // reports a minute: during the crash wave that makes reports worth having,
   // one device silences every other. The route is requireAuth, so there is
   // always a userId to key on. Compare #41, where login has no such option.
+  keyBy: "session",
+  message: payload("RATE_LIMITED"),
+});
+
+// Its own budget: a crash loop spending errorReportLimiter must not refuse the
+// report the player then sends about it.
+const bugReportLimiter = routeLimiter({
+  windowMs: 60 * 1000,
+  defaultMax: 5,
   keyBy: "session",
   message: payload("RATE_LIMITED"),
 });
@@ -979,7 +993,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     validate(ClientErrorSchema),
     (req, res) => {
       const report = req.body;
-      logger.error({ platform: report.platform }, "Client reported an unhandled error");
+      logger.warn({ platform: report.platform }, "Client reported an unhandled error");
       // Also kept as a row, so the owner can read it on /admin later rather
       // than only in the log stream. Fire-and-forget: a crash report failing
       // to store must not turn into a second failure for a client that is
@@ -1017,7 +1031,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post(
     "/api/bug-reports",
     requireAuth,
-    errorReportLimiter,
+    bugReportLimiter,
     validate(BugReportSchema),
     async (req, res) => {
       const report = req.body;

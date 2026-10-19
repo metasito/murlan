@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import pg from "pg";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { register } from "../helpers/client.ts";
-import { START_RATING, seasonKey } from "../../lib/game/rating.ts";
+import { START_RATING, seasonKey, seedRating } from "../../lib/game/rating.ts";
 
 type Account = Awaited<ReturnType<typeof register>>;
 type Row = { rank: number; userId: string; username: string; rating: number; rounds: number };
@@ -35,10 +35,10 @@ describe("the friends ladder ranks the viewer among accepted friends only", { sk
     assert.equal((await call(to, "POST", `/api/friends/accept/${row.id}`)).status, 200);
   }
 
-  const rate = (who: Account, rating: number, rounds: number) =>
+  const rate = (who: Account, rating: number, rounds: number, season = seasonKey(new Date())) =>
     dbPool.query("INSERT INTO user_ratings (user_id, season, rating, rounds) VALUES ($1, $2, $3, $4)", [
       who.user.id,
-      seasonKey(new Date()),
+      season,
       rating,
       rounds,
     ]);
@@ -88,6 +88,15 @@ describe("the friends ladder ranks the viewer among accepted friends only", { sk
       [[1, asked.user.id], [2, tied[0].user.id], [3, tied[1].user.id]],
     );
     assert.deepEqual(await friendsLadder(viewer), rows, "a tie resolved differently on a second read");
+  });
+
+  test("a friend unrated this season stands on their latest past season's soft reset", async () => {
+    await rate(asker, START_RATING + 300, 40, "2001-01");
+    await rate(asker, START_RATING + 100, 20, "2001-02");
+    await rate(asker, START_RATING + 900, 50, "9999-12");
+
+    const row = (await friendsLadder(viewer)).find((r) => r.userId === asker.user.id);
+    assert.deepEqual([row?.rating, row?.rounds], [seedRating(START_RATING + 100), 0]);
   });
 
   test("the global ladder still lists only non-provisional records", async () => {

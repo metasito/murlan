@@ -26,7 +26,7 @@ const LIMITERS: Record<string, string[]> = {
   "PATCH /api/users/me": ["renameLimiter"],
   "POST /api/friends/add": ["friendLimiter"],
   "POST /api/client-errors": ["errorReportLimiter"],
-  "POST /api/bug-reports": ["errorReportLimiter"],
+  "POST /api/bug-reports": ["bugReportLimiter"],
 };
 
 test("every auth route and every limited route names exactly its written limiters", () => {

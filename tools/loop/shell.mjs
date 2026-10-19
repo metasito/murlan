@@ -131,10 +131,12 @@ function shellBodyOf(cmd, rest) {
  * One segment as `{ cmd, env, dir, args, piped }`: leading assignments, wrappers and redirections
  * gone, a shell's `-c` body parsed in its place, and git's or gh's global options taken off so
  * `args[0]` is the verb. `env` holds the leading assignments; `dir` is git's last `-C`; `out` is
- * its stdout redirect targets; `piped` means its output feeds a `|`.
+ * its stdout redirect targets, `redirected` every file a redirect reads or writes; `wrapped` the wrappers
+ * (`env`, `exec`, …) taken off with their flags; `piped` means its output feeds a `|`.
  */
 function normalize(words, depth) {
   const env = {};
+  const wrapped = [];
   let i = 0;
   for (; i < words.length; i++) {
     const assign = /^([A-Za-z_]\w*)=([\s\S]*)$/.exec(words[i]);
@@ -146,7 +148,12 @@ function normalize(words, depth) {
       while (words[i + 1]?.startsWith("-")) i += /^(-[sk]|--signal|--kill-after)$/.test(words[i + 1]) ? 2 : 1;
       i += 1;
     } else if (WRAPPER.has(commandName(words[i]))) {
-      while (words[i + 1]?.startsWith("-")) i += WRAPPER_TAKES_A_VALUE.test(words[i + 1]) ? 2 : 1;
+      const wrapper = { name: commandName(words[i]), flags: [] };
+      wrapped.push(wrapper);
+      while (words[i + 1]?.startsWith("-")) {
+        wrapper.flags.push(words[i + 1]);
+        i += WRAPPER_TAKES_A_VALUE.test(words[i + 1]) ? 2 : 1;
+      }
     } else {
       break;
     }
@@ -159,12 +166,18 @@ function normalize(words, depth) {
     const body = shellBodyOf(cmd, rest);
     if (body) {
       const scope = { ...env, ...assignmentsIn(body) };
-      return commands(body, depth + 1).map((c) => ({ ...c, scope: { ...scope, ...c.scope }, piped: c.piped || words.piped === true }));
+      return commands(body, depth + 1).map((c) => ({
+        ...c,
+        scope: { ...scope, ...c.scope },
+        wrapped: [...wrapped, ...c.wrapped],
+        piped: c.piped || words.piped === true,
+      }));
     }
   }
 
   const args = [];
   const out = [];
+  const redirected = [];
   for (let j = 0; j < rest.length; j++) {
     const redirect = REDIRECT.exec(rest[j]);
     if (!redirect) {
@@ -173,6 +186,7 @@ function normalize(words, depth) {
     }
     const target = redirect[1] || rest[j + 1] || "";
     if (/^[1&]?>/.test(rest[j]) && target && !target.startsWith("&")) out.push(target);
+    if (target && !target.startsWith("&")) redirected.push(target);
     j += redirect[1] ? 0 : 1;
   }
   let dir = null;
@@ -182,7 +196,7 @@ function normalize(words, depth) {
     if (cmd === "git" && args[0] === "-C") dir = args[1] ?? dir;
     args.splice(0, takes ? 2 : 1);
   }
-  return [{ cmd, env, dir, args, out, piped: words.piped === true }];
+  return [{ cmd, env, dir, args, out, redirected, wrapped, piped: words.piped === true }];
 }
 
 export function commands(text, depth = 0) {
@@ -235,7 +249,10 @@ function assignmentsIn(text) {
  */
 export const literalAssignments = (text) => literal(assignmentsIn(text));
 
-const LOOP_KEYWORD = /^(for|foreach|foreach-object|while|until|%)$/i;
+/** Every bare `X=…` statement's variable, whatever its value. */
+export const assignedNames = (text) => Object.keys(assignmentsIn(text));
+
+const ITERATES = /^(for|foreach|foreach-object|while|until|%)$/i;
 const headOf = (w) => w.find((x) => !/^(do|then|else|!)$/.test(x)) ?? "";
 
 /**
@@ -268,7 +285,7 @@ function loopEnd(text, segs, k, braces) {
   if (j < segs.length && segs[j][0] === "do" && j > k) {
     let open = 1;
     for (; j < segs.length; j++) {
-      if (LOOP_KEYWORD.test(headOf(segs[j]))) open += 1;
+      if (ITERATES.test(headOf(segs[j]))) open += 1;
       if (segs[j][0] === "done" && --open === 0) return segs[j].span[1];
     }
     return text.length;
@@ -297,7 +314,7 @@ export function loopBodies(text, depth = 0) {
   const bodies = [];
   segs.forEach((w, k) => {
     const psDo = w.length === 1 && w[0] === "do" && braces[k].some(([ch]) => ch === "{");
-    if (LOOP_KEYWORD.test(headOf(w)) || psDo) bodies.push(text.slice(w.span[0], loopEnd(text, segs, k, braces)));
+    if (ITERATES.test(headOf(w)) || psDo) bodies.push(text.slice(w.span[0], loopEnd(text, segs, k, braces)));
     if (depth >= MAX_DEPTH) return;
     const inner = w.flatMap((x) => [...x.matchAll(/\$\(/g)].map((m) => x.slice(m.index + 2, closing(x, m.index + 1))));
     for (const body of [shellBodyIn(w), ...inner]) if (body) bodies.push(...loopBodies(body, depth + 1));

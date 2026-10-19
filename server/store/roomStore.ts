@@ -66,6 +66,8 @@ function generateRoomCode(): string {
   return randomCode(6);
 }
 
+const statusWrites = new Map<string, Promise<void>>();
+
 /**
  * An object rather than bare exported functions:
  * `tests/integration/reconnect.test.ts` replaces `getRoomPlayers` with a
@@ -122,8 +124,21 @@ export const roomStore = {
     return room;
   },
 
-  async updateRoomStatus(roomId: string, status: "waiting" | "in_progress" | "finished") {
-    await db.update(rooms).set({ status }).where(eq(rooms.id, roomId));
+  /**
+   * Applied in the order issued for one room: a deal's unawaited `in_progress`
+   * must not land after a later `finished`, which would leave the room neither
+   * joinable nor dealt.
+   */
+  updateRoomStatus(roomId: string, status: "waiting" | "in_progress" | "finished"): Promise<void> {
+    const write = (statusWrites.get(roomId) ?? Promise.resolve()).then(async () => {
+      await db.update(rooms).set({ status }).where(eq(rooms.id, roomId));
+    });
+    const tail = write.catch(() => {});
+    statusWrites.set(roomId, tail);
+    void tail.then(() => {
+      if (statusWrites.get(roomId) === tail) statusWrites.delete(roomId);
+    });
+    return write;
   },
 
   async updateRoomVisibility(roomId: string, visibility: RoomVisibility) {

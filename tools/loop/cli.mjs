@@ -5,6 +5,7 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { testSeams } from "./session-env.mjs";
 
 /** The repository every `gh` call in the loop names, so no two of them can name different ones. */
 export const REPO = "metasito/murlan";
@@ -16,7 +17,7 @@ export const REPO = "metasito/murlan";
 export const MAX_BUFFER = 64 * 1024 * 1024;
 
 /**
- * `LOOP_GH_SCRIPT` / `LOOP_GIT_SCRIPT` name a node script to run instead of the binary, so a test can
+ * `testSeams()`'s `ghScript` / `gitScript` name a node script to run instead of the binary, so a test can
  * drive a caller through its real process. It cannot be a shim on PATH: since the fix for
  * CVE-2024-27980, node will not resolve a `.cmd` from `execFileSync`, so on Windows a stub is unreachable.
  *
@@ -30,7 +31,7 @@ export const MAX_BUFFER = 64 * 1024 * 1024;
  * @returns {string}
  */
 function run(tool, args, { cwd, timeout, stderr = "pipe", maxBuffer = MAX_BUFFER, encoding = "utf8" } = {}) {
-  const script = process.env[`LOOP_${tool.toUpperCase()}_SCRIPT`];
+  const script = testSeams()[`${tool}Script`];
   return execFileSync(script ? process.execPath : tool, script ? [script, ...args] : args, {
     encoding,
     cwd,

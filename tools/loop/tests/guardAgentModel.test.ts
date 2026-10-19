@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { brief, KINDS, MODEL_BY_KIND } from "../brief.mjs";
@@ -44,6 +44,22 @@ describe("a loop dispatch names its model", () => {
 
   test("another tool is allowed", () => {
     assert.equal(run(dispatch("Bash", { command: "ls" })), "");
+  });
+});
+
+describe("a failure", () => {
+  const raw = (input: string) => spawnSync(process.execPath, [SCRIPT], { input, encoding: "utf8" });
+
+  test("to read the payload allows, and says so (ADR-0010)", () => {
+    const out = raw("not json");
+    assert.deepEqual([out.status, out.stdout], [0, ""]);
+    assert.match(out.stderr, /guard-agent-model: could not read the tool call on stdin/);
+  });
+
+  test("to judge the dispatch refuses it, and says why", () => {
+    const out = raw(JSON.stringify(dispatch("Agent", { description: { toString: 1 }, prompt: "y" })));
+    assert.equal(out.status, 2, out.stderr);
+    assert.match(out.stderr, /guard-agent-model: could not judge this call \(.+\); refusing it\./);
   });
 });
 
