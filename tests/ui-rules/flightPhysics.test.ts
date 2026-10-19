@@ -354,10 +354,10 @@ describe("passedSeats walks the direction the engine deals turns", () => {
   // moves to the *previous* seat index, and a marker on the wrong seat is
   // worse than no marker. Everything below comes out of the engine itself.
   const hands = (): Player[] => [
-    makePlayer("player_0", [c("5", "spades"), c("6", "spades")]),
-    makePlayer("player_1", [c("7", "hearts"), c("8", "hearts")]),
-    makePlayer("player_2", [c("9", "clubs"), c("10", "clubs")]),
-    makePlayer("player_3", [c("J", "diamonds"), c("Q", "diamonds")]),
+    makePlayer(0, [c("5", "spades"), c("6", "spades")]),
+    makePlayer(1, [c("7", "hearts"), c("8", "hearts")]),
+    makePlayer(2, [c("9", "clubs"), c("10", "clubs")]),
+    makePlayer(3, [c("J", "diamonds"), c("Q", "diamonds")]),
   ];
 
   const view = (s: GameState) => ({
@@ -368,7 +368,7 @@ describe("passedSeats walks the direction the engine deals turns", () => {
   });
 
   test("each pass marks the seat that made it, and the round close clears them", () => {
-    let s = makeState(hands(), {
+    let s = makeState({ players: hands(),
       currentTurnIndex: 3,
       lastPlayedBy: 3,
       firstPlayMade: true,
@@ -396,7 +396,7 @@ describe("passedSeats walks the direction the engine deals turns", () => {
     // A king, because the answer has to actually beat the jack led below.
     const players = hands();
     players[2].hand = [c("K", "clubs")];
-    let s = makeState(players, {
+    let s = makeState({ players,
       currentTurnIndex: 3,
       lastPlayedBy: 3,
       firstPlayMade: true,
@@ -427,7 +427,7 @@ describe("passedSeats walks the direction the engine deals turns", () => {
     players[1].hand = [];
     players[1].finishPosition = 2;
     players[3].hand = [c("J", "diamonds")];
-    let s = makeState(players, {
+    let s = makeState({ players,
       currentTurnIndex: 3,
       lastPlayedBy: 3,
       firstPlayMade: true,
@@ -1487,7 +1487,7 @@ describe("readExchangeLegs", () => {
 
 describe("seatsJustPassed", () => {
   const hands = (): Player[] =>
-    (["5", "7", "9", "J"] as const).map((rank, i) => makePlayer(`player_${i}`, [c(rank, "spades"), c("3", "hearts")]));
+    (["5", "7", "9", "J"] as const).map((rank, i) => makePlayer(i, [c(rank, "spades"), c("3", "hearts")]));
   const view = (s: GameState) => ({
     currentTurnIndex: s.currentTurnIndex,
     lastPlayedBy: s.lastPlayedBy,
@@ -1497,7 +1497,7 @@ describe("seatsJustPassed", () => {
   });
 
   test("each engine pass names the seat that made it, the one closing the round too; a play names nobody", () => {
-    let s = makeState(hands(), { currentTurnIndex: 3, lastPlayedBy: 3, firstPlayMade: true });
+    let s = makeState({ players: hands(), currentTurnIndex: 3, lastPlayedBy: 3, firstPlayMade: true });
     const step = (next: GameState) => {
       const passed = seatsJustPassed(view(s), view(next));
       s = next;

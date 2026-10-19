@@ -17,11 +17,10 @@ const combo = (cards: Card[]) => buildCombination(cards)!;
 describe("processPlay", () => {
   test("removes the played cards, records the play and resets the pass count", () => {
     const state = makeState(
-      [
-        makePlayer("p0", [...pair("7"), c("K", "spades")]),
-        makePlayer("p1", [c("9", "spades"), c("9", "hearts")]),
-      ],
-      { currentTurnIndex: 0, passCount: 1 }
+      { players: [
+        makePlayer(0, [...pair("7"), c("K", "spades")]),
+        makePlayer(1, [c("9", "spades"), c("9", "hearts")]),
+      ], currentTurnIndex: 0, passCount: 1 }
     );
     const played = combo(pair("7"));
     const next = processPlay(state, played);
@@ -40,11 +39,10 @@ describe("processPlay", () => {
 
   test("records the finishing order and ends the round when one player is left", () => {
     const state = makeState(
-      [
-        makePlayer("p0", pair("7")),
-        makePlayer("p1", [c("9", "spades"), c("9", "hearts")]),
-      ],
-      { currentTurnIndex: 0 }
+      { players: [
+        makePlayer(0, pair("7")),
+        makePlayer(1, [c("9", "spades"), c("9", "hearts")]),
+      ], currentTurnIndex: 0 }
     );
     const next = processPlay(state, combo(pair("7")));
     assert.equal(next.roundOver, true);
@@ -57,8 +55,7 @@ describe("processPlay", () => {
 describe("processPass — leader may not pass (defect 6)", () => {
   test("passing while leading a new round is refused and changes nothing", () => {
     const state = makeState(
-      [makePlayer("p0", pair("7")), makePlayer("p1", pair("9"))],
-      { currentTurnIndex: 0, lastPlayedCombination: null }
+      { players: [makePlayer(0, pair("7")), makePlayer(1, pair("9"))], currentTurnIndex: 0, lastPlayedCombination: null }
     );
     const next = processPass(state);
     assert.equal(next, state, "state is returned untouched");
@@ -68,12 +65,11 @@ describe("processPass — leader may not pass (defect 6)", () => {
 
   test("passing after somebody has played is allowed", () => {
     const state = makeState(
-      [
-        makePlayer("p0", pair("7")),
-        makePlayer("p1", pair("9")),
-        makePlayer("p2", pair("J")),
+      { players: [
+        makePlayer(0, pair("7")),
+        makePlayer(1, pair("9")),
+        makePlayer(2, pair("J")),
       ],
-      {
         currentTurnIndex: 1,
         lastPlayedBy: 0,
         lastPlayedCombination: combo(pair("5")),
@@ -88,13 +84,12 @@ describe("processPass — leader may not pass (defect 6)", () => {
 describe("processPass — round end threshold (defect 5)", () => {
   test("4 players, all still holding cards: the round closes on the third pass", () => {
     let state = makeState(
-      [
-        makePlayer("p0", pair("7")),
-        makePlayer("p1", pair("9")),
-        makePlayer("p2", pair("J")),
-        makePlayer("p3", pair("Q")),
+      { players: [
+        makePlayer(0, pair("7")),
+        makePlayer(1, pair("9")),
+        makePlayer(2, pair("J")),
+        makePlayer(3, pair("Q")),
       ],
-      {
         currentTurnIndex: 3,
         lastPlayedBy: 0,
         lastPlayedCombination: combo(pair("5")),
@@ -114,12 +109,11 @@ describe("processPass — round end threshold (defect 5)", () => {
 
   test("3 players still holding cards: the round closes on the second pass", () => {
     let state = makeState(
-      [
-        makePlayer("p0", pair("7")),
-        makePlayer("p1", pair("9")),
-        makePlayer("p2", pair("J")),
+      { players: [
+        makePlayer(0, pair("7")),
+        makePlayer(1, pair("9")),
+        makePlayer(2, pair("J")),
       ],
-      {
         currentTurnIndex: 2,
         lastPlayedBy: 0,
         lastPlayedCombination: combo(pair("5")),
@@ -134,8 +128,7 @@ describe("processPass — round end threshold (defect 5)", () => {
   test("2 players still holding cards: a single pass closes the round", () => {
     const state = processPass(
       makeState(
-        [makePlayer("p0", pair("7")), makePlayer("p1", pair("9"))],
-        {
+        { players: [makePlayer(0, pair("7")), makePlayer(1, pair("9"))],
           currentTurnIndex: 1,
           lastPlayedBy: 0,
           lastPlayedCombination: combo(pair("5")),
@@ -150,12 +143,11 @@ describe("processPass — round end threshold (defect 5)", () => {
     // p0 played their final cards. p1 and p2 still hold cards, so BOTH must
     // pass before the round can close — the old threshold closed it after one.
     let state = makeState(
-      [
-        makePlayer("p0", [], { finishPosition: 1 }),
-        makePlayer("p1", pair("9")),
-        makePlayer("p2", pair("K")),
+      { players: [
+        makePlayer(0, [], { finishPosition: 1 }),
+        makePlayer(1, pair("9")),
+        makePlayer(2, pair("K")),
       ],
-      {
         currentTurnIndex: 2,
         lastPlayedBy: 0,
         lastPlayedCombination: combo(pair("5")),
@@ -185,13 +177,12 @@ describe("processPass — round end threshold (defect 5)", () => {
 
   test("last-player-out with 4 seats: all three remaining opponents must pass", () => {
     let state = makeState(
-      [
-        makePlayer("p0", [], { finishPosition: 1 }),
-        makePlayer("p1", pair("9")),
-        makePlayer("p2", pair("K")),
-        makePlayer("p3", pair("Q")),
+      { players: [
+        makePlayer(0, [], { finishPosition: 1 }),
+        makePlayer(1, pair("9")),
+        makePlayer(2, pair("K")),
+        makePlayer(3, pair("Q")),
       ],
-      {
         currentTurnIndex: 3,
         lastPlayedBy: 0,
         lastPlayedCombination: combo(pair("5")),
@@ -209,12 +200,11 @@ describe("processPass — round end threshold (defect 5)", () => {
   test("a pass that does not close the round leaves the round winner unset", () => {
     const state = processPass(
       makeState(
-        [
-          makePlayer("p0", pair("7")),
-          makePlayer("p1", pair("9")),
-          makePlayer("p2", pair("J")),
+        { players: [
+          makePlayer(0, pair("7")),
+          makePlayer(1, pair("9")),
+          makePlayer(2, pair("J")),
         ],
-        {
           currentTurnIndex: 2,
           lastPlayedBy: 0,
           lastPlayedCombination: combo(pair("5")),
@@ -231,13 +221,12 @@ describe("turn rotation", () => {
 
   test("the turn moves to the previous seat index", () => {
     let state = makeState(
-      [
-        makePlayer("p0", [...single("4"), c("5", "clubs")]),
-        makePlayer("p1", [...single("6"), c("7", "clubs")]),
-        makePlayer("p2", [...single("8"), c("9", "clubs")]),
-        makePlayer("p3", [...single("10"), c("J", "clubs")]),
-      ],
-      { currentTurnIndex: 2, lastPlayedCombination: combo(single("3")), lastPlayedBy: 3 }
+      { players: [
+        makePlayer(0, [...single("4"), c("5", "clubs")]),
+        makePlayer(1, [...single("6"), c("7", "clubs")]),
+        makePlayer(2, [...single("8"), c("9", "clubs")]),
+        makePlayer(3, [...single("10"), c("J", "clubs")]),
+      ], currentTurnIndex: 2, lastPlayedCombination: combo(single("3")), lastPlayedBy: 3 }
     );
 
     for (const expected of [1, 0, 3]) {
@@ -249,13 +238,12 @@ describe("turn rotation", () => {
   test("it steps over a seat that has already gone out", () => {
     const state = processPass(
       makeState(
-        [
-          makePlayer("p0", single("4")),
-          makePlayer("p1", [], { finishPosition: 1 }),
-          makePlayer("p2", single("8")),
-          makePlayer("p3", single("10")),
+        { players: [
+          makePlayer(0, single("4")),
+          makePlayer(1, [], { finishPosition: 1 }),
+          makePlayer(2, single("8")),
+          makePlayer(3, single("10")),
         ],
-        {
           currentTurnIndex: 2,
           lastPlayedCombination: combo(single("3")),
           lastPlayedBy: 3,

@@ -96,7 +96,7 @@ describe("the game records what has been played", () => {
 
   test("the tally counts ranks, not identities — four 3s read as four", () => {
     const hand = [c("3", "hearts"), c("3", "spades"), c("4", "hearts")];
-    let state = makeState([makePlayer("p1", hand), makePlayer("p2", [c("5", "clubs")])], {
+    let state = makeState({ players: [makePlayer(1, hand), makePlayer(2, [c("5", "clubs")])],
       playedRanks: new Array<number>(RANK_SLOTS).fill(0),
       firstPlayMade: true,
     });
@@ -186,7 +186,7 @@ function leadWith(hand: Card[], played: Partial<Record<Rank, number>>, personali
   for (const [rank, n] of Object.entries(played)) {
     playedRanks[getRankStrength(rank as Rank)] = n as number;
   }
-  const me = makePlayer("me", hand, { type: "bot", personality: personality as never });
+  const me = makePlayer(0, hand, { type: "bot", personality: personality as never });
   return { me, playedRanks };
 }
 
@@ -285,7 +285,7 @@ describe("a game rehydrated from before the tally existed", () => {
   // as it did before it existed, and nothing may throw.
   test("chooses a legal play and does not throw", () => {
     const hand = [c("2", "hearts"), c("J", "spades"), c("4", "clubs")];
-    const me = makePlayer("me", hand, { type: "bot", personality: "gent" });
+    const me = makePlayer(0, hand, { type: "bot", personality: "gent" });
 
     for (const lead of [null, buildCombination([c("9", "clubs")])!]) {
       const choice = botChoosePlay(me, lead, lead === null, [5, 5, 5], undefined, () => 0.5, false, undefined);
@@ -297,7 +297,7 @@ describe("a game rehydrated from before the tally existed", () => {
 
   test("processPlay starts a tally on a state that has none", () => {
     const hand = [c("3", "hearts"), c("4", "clubs")];
-    const state = makeState([makePlayer("p1", hand), makePlayer("p2", [c("5", "clubs")])], {
+    const state = makeState({ players: [makePlayer(1, hand), makePlayer(2, [c("5", "clubs")])],
       firstPlayMade: true,
     });
     delete (state as { playedRanks?: number[] }).playedRanks;

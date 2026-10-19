@@ -22,8 +22,7 @@ export const cardTable = (gameState: GameState) =>
 
 export const dealtTable = (overrides: Partial<GameState> = {}): GameState =>
   state(
-    dealCards(4).hands.map((h, i) => seat(`p${i}`, h)),
-    { firstPlayMade: true, ...overrides }
+    { players: dealCards(4).hands.map((h, i) => seat(i, h)), firstPlayMade: true, ...overrides }
   );
 
 /** `air` and `rest` bracket one throw; `frame` is every frame of a deal or an exchange. */
@@ -39,12 +38,11 @@ export interface CardScenario {
 
 const exchangeState = (): GameState =>
   state(
-    [
-      seat('p0', [card('5', 'hearts'), card('K', 'diamonds'), card('2', 'spades')]),
-      seat('p1', [card('4', 'clubs')]),
-      seat('p2', [card('6', 'hearts')]),
+    { players: [
+      seat(0, [card('5', 'hearts'), card('K', 'diamonds'), card('2', 'spades')]),
+      seat(1, [card('4', 'clubs')]),
+      seat(2, [card('6', 'hearts')]),
     ],
-    {
       firstPlayMade: true,
       exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), twoJokerException: false },
     }

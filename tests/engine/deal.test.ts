@@ -163,7 +163,7 @@ describe("the deal at 2 players — 14 each, 26 undealt", () => {
       if (!excluded.some((c) => c.rank === "3" && c.suit === "spades")) continue;
       ran = true;
 
-      const players = hands.map((hand, idx) => makePlayer(`p${idx}`, hand));
+      const players = hands.map((hand, idx) => makePlayer(idx, hand));
       const { playerIdx, startCard } = findStartingPlayer(players);
 
       assert.notEqual(startCard.id, "3_spades", "the 3♠ was undealt — it cannot be the start card");
@@ -313,9 +313,9 @@ describe("freshHandFloor (#792) — the survey guard's floor, by actual seat cou
 describe("findStartingPlayer (defect 4)", () => {
   test("finds the holder of the 3 of spades", () => {
     const players = [
-      makePlayer("p0", [c("4", "spades"), c("K", "hearts")]),
-      makePlayer("p1", [c("3", "hearts"), c("3", "spades")]),
-      makePlayer("p2", [c("2", "spades")]),
+      makePlayer(0, [c("4", "spades"), c("K", "hearts")]),
+      makePlayer(1, [c("3", "hearts"), c("3", "spades")]),
+      makePlayer(2, [c("2", "spades")]),
     ];
     const { playerIdx, startCard } = findStartingPlayer(players);
     assert.equal(playerIdx, 1);
@@ -324,16 +324,16 @@ describe("findStartingPlayer (defect 4)", () => {
 
   test("does not fall back to a lower spade when the 3 of spades exists elsewhere", () => {
     const players = [
-      makePlayer("p0", [c("4", "spades")]),
-      makePlayer("p1", [c("3", "spades")]),
+      makePlayer(0, [c("4", "spades")]),
+      makePlayer(1, [c("3", "spades")]),
     ];
     assert.equal(findStartingPlayer(players).playerIdx, 1);
   });
 
   test("defensive fallback: no 3 of spades — lowest card held wins, no crash", () => {
     const players = [
-      makePlayer("p0", [c("K", "hearts"), c("9", "clubs")]),
-      makePlayer("p1", [c("5", "diamonds"), j("colored")]),
+      makePlayer(0, [c("K", "hearts"), c("9", "clubs")]),
+      makePlayer(1, [c("5", "diamonds"), j("colored")]),
     ];
     const { playerIdx, startCard } = findStartingPlayer(players);
     assert.equal(playerIdx, 1);
@@ -341,7 +341,7 @@ describe("findStartingPlayer (defect 4)", () => {
   });
 
   test("defensive fallback: every hand empty — returns a card instead of crashing", () => {
-    const players = [makePlayer("p0", []), makePlayer("p1", [])];
+    const players = [makePlayer(0, []), makePlayer(1, [])];
     const { playerIdx, startCard } = findStartingPlayer(players);
     assert.equal(playerIdx, 0);
     assert.ok(startCard, "must not be undefined");

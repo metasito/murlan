@@ -24,13 +24,13 @@ export const cardKey = (cards: Card[]): string =>
     .sort()
     .join(",");
 
-export function seat(id: string, hand: Card[], extra: Partial<Player> = {}): Player {
-  return { id, name: id, hand, type: "human", ...extra };
+export function seat(i: number, hand: Card[] = [], over: Partial<Player> = {}): Player {
+  return { id: `p${i}`, name: `p${i}`, hand, type: "human", ...over };
 }
 
-export function state(players: Player[], overrides: Partial<GameState> = {}): GameState {
+export function state(over: Partial<GameState> = {}): GameState {
   return {
-    players,
+    players: [seat(0), seat(1), seat(2), seat(3)],
     currentTurnIndex: 0,
     lastPlayedCombination: null,
     lastPlayedBy: 0,
@@ -40,7 +40,7 @@ export function state(players: Player[], overrides: Partial<GameState> = {}): Ga
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: false,
-    ...overrides,
+    ...over,
   };
 }
 

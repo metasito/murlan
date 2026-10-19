@@ -105,8 +105,8 @@ describe('a card on the table', () => {
     const hands = dealCards(4).hands;
     const peak: number[] = [];
     for (const emptied of [true, false]) {
-      const players = hands.map((h, i) => seat(`p${i}`, i === 3 && emptied ? [] : h));
-      const view = await render(cardTable(state(players, { firstPlayMade: true, lastPlayedCombination: PAIR, lastPlayedBy: 3 })));
+      const players = hands.map((h, i) => seat(i, i === 3 && emptied ? [] : h));
+      const view = await render(cardTable(state({ players, firstPlayMade: true, lastPlayedCombination: PAIR, lastPlayedBy: 3 })));
       let lit = 0;
       await frames(3000, () => {
         lit = Math.max(lit, ...scoped('pile').map((k) => registry()[k].glow));

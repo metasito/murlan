@@ -185,7 +185,7 @@ test("the hard tier leads a plain play rather than dump a royal straight", () =>
   const hand = [c("3", "spades"), c("4", "spades"), c("5", "spades"),
     c("6", "spades"), c("7", "spades"), c("9", "clubs"), c("J", "diamonds")];
   const choice = botChoosePlay(
-    makePlayer("bot", hand, { type: "bot", personality: "gent" }), null, true,
+    makePlayer(0, hand, { type: "bot", personality: "gent" }), null, true,
     [9, 9, 9], undefined, fixedRng([0.5])
   );
   assert.notEqual(choice?.type, "royal_straight", "the royal is defence, not a lead");
@@ -202,7 +202,7 @@ test("the hard tier's near-finish shortcut leads its longest play", () => {
     c("6", "spades"), c("7", "hearts"), c("8", "diamonds"),
     c("9", "clubs"), c("J", "diamonds")];
   const choice = botChoosePlay(
-    makePlayer("bot", hand, { type: "bot", personality: "gent" }), null, true,
+    makePlayer(0, hand, { type: "bot", personality: "gent" }), null, true,
     [9, 9, 9], undefined, fixedRng([0.5])
   );
   assert.equal(choice?.cards.length, 7, "the longest straight goes down");
@@ -214,7 +214,7 @@ test("the hard tier's near-finish shortcut leads its longest play", () => {
 test("the hard tier's near-finish shortcut sorts on length, not on dump value", () => {
   const hand = [c("K", "clubs"), c("K", "hearts"), c("3", "clubs"), c("3", "diamonds")];
   const choice = botChoosePlay(
-    makePlayer("bot", hand, { type: "bot", personality: "gent" }), null, true,
+    makePlayer(0, hand, { type: "bot", personality: "gent" }), null, true,
     [9, 9, 9], undefined, fixedRng([0.5])
   );
   assert.deepEqual(choice?.cards.map((x) => x.rank), ["K", "K"]);
@@ -229,7 +229,7 @@ test("the hard tier leads its longest plain play rather than open with a bomb", 
   for (const personality of ["gent"] as BotPersonalityId[]) {
     for (const roll of [0, 0.5, 0.99]) {
       const choice = botChoosePlay(
-        makePlayer("bot", hand, { type: "bot", personality }), null, true,
+        makePlayer(0, hand, { type: "bot", personality }), null, true,
         [9, 9, 9], undefined, fixedRng([roll])
       );
       assert.deepEqual(
@@ -250,7 +250,7 @@ test("the hard tier answers plainly rather than spend a joker, at every roll", (
   for (const personality of ["gent"] as BotPersonalityId[]) {
     for (const roll of [0, 0.5, 0.99]) {
       const choice = botChoosePlay(
-        makePlayer("bot", hand, { type: "bot", personality }), lastPlayed, false,
+        makePlayer(0, hand, { type: "bot", personality }), lastPlayed, false,
         [9, 9, 9], undefined, fixedRng([roll])
       );
       assert.ok(
@@ -282,7 +282,7 @@ test("easy tier leads its lowest-strength play when no knob fires", () => {
     c("K", "spades"), c("7", "hearts"), c("3", "clubs"), c("J", "diamonds"),
   ];
   const choice = botChoosePlay(
-    makePlayer("bot", hand, { type: "bot", personality: "luan" }),
+    makePlayer(0, hand, { type: "bot", personality: "luan" }),
     null,
     true,
     [8, 8, 8],
@@ -310,7 +310,7 @@ test("easy tier's unpredictability alt follows getAllValidPlays' own order", () 
   const expected = alts[Math.min(alts.length - 1, Math.floor(altRng * alts.length))];
 
   const choice = botChoosePlay(
-    makePlayer("bot", hand, { type: "bot", personality: "luan" }),
+    makePlayer(0, hand, { type: "bot", personality: "luan" }),
     null,
     true,
     [8, 8, 8],
@@ -341,7 +341,7 @@ test("leading a round always produces a play, for every personality and hand siz
       for (let offset = 0; offset + size <= deck.length; offset += 5) {
         const hand = deck.slice(offset, offset + size);
         const play = botChoosePlay(
-          makePlayer("bot", hand, { type: "bot", personality: id }),
+          makePlayer(0, hand, { type: "bot", personality: id }),
           null,
           true,
           [size, size, size],
@@ -383,7 +383,7 @@ test("a requireCard that is not the 3♠ is still honoured", () => {
   for (const required of [hand[0], hand[3], hand[7]]) {
     for (const p of BOT_PERSONALITIES) {
       const choice = botChoosePlay(
-        makePlayer("bot", hand, { type: "bot", personality: p.id }),
+        makePlayer(0, hand, { type: "bot", personality: p.id }),
         null,
         true,
         [8, 8, 8],
