@@ -1,18 +1,21 @@
 export const meta = {
   name: 'murlan-full-audit',
-  description: 'Specialist lenses audit Murlan read-only; findings merged, adversarially verified, gaps re-swept, synthesized',
+  description: 'Specialist lenses and tool investigators audit Murlan read-only; findings merged, refuted blind, reproduced, gaps re-swept, synthesized',
   phases: [
     { title: 'Map', detail: 'cartographer builds the shared system map' },
-    { title: 'Audit', detail: 'one agent per lens, in parallel' },
+    { title: 'Audit', detail: 'one agent per lens, and investigators over the tool layer, in parallel' },
     { title: 'Merge', detail: 'cross-lens dedup' },
-    { title: 'Verify', detail: 'skeptics per finding, judges per proposal, fact-check of the infra research' },
+    { title: 'Verify', detail: 'blind skeptics per finding, judges per proposal, fact-check of the infra research' },
+    { title: 'Prove', detail: 'a failing test per surviving finding, re-run by a checker that never saw why' },
     { title: 'Gaps', detail: 'completeness critic until a round finds nothing new' },
     { title: 'Synthesize', detail: 'scored report and ticket batches' },
   ],
 }
 
-const { repo: REPO, sha, openIssues, webUrl } = args
-if (!REPO || !sha) throw new Error('args.repo and args.sha are required: audit.md Step 1 resolves both.')
+const { repo: REPO, sha, openIssues, webUrl, scratch, staticLayer, lenses: onlyLenses } = args
+if (!REPO || !sha || !scratch || !staticLayer) {
+  throw new Error('args.repo, args.sha, args.scratch and args.staticLayer are required: audit.md Step 1 resolves them.')
+}
 const SEVERITIES = ['info', 'low', 'medium', 'high', 'critical']
 const SIZES = ['XS', 'S', 'M', 'L', 'XL']
 const MAX_GAP_ROUNDS = 3
@@ -287,7 +290,9 @@ Then assess the EAS build path the owner tests on (a build of the app, never a h
 Finish with one recommended stack and a phased migration.`,
   },
 ]
-const LENS_KEYS = LENSES.map(l => l.key)
+const ACTIVE = onlyLenses ? LENSES.filter(l => onlyLenses.includes(l.key)) : LENSES
+if (!ACTIVE.length) throw new Error(`args.lenses names no lens: ${JSON.stringify(onlyLenses)}`)
+const LENS_KEYS = ACTIVE.map(l => l.key)
 const kindOf = lens => lens.kind || 'findings'
 
 const COMMON = `You are one specialist in a READ-ONLY audit of Murlan (${REPO}) at commit ${sha}.
@@ -424,7 +429,7 @@ const GAPS = {
       maxItems: 6,
       items: {
         type: 'object',
-        properties: { lens: { enum: LENSES.filter(l => kindOf(l) === 'findings').map(l => l.key) }, task: { type: 'string' } },
+        properties: { lens: { enum: ACTIVE.filter(l => kindOf(l) === 'findings').map(l => l.key) }, task: { type: 'string' } },
         required: ['lens', 'task'],
       },
     },
@@ -432,19 +437,55 @@ const GAPS = {
   required: ['gaps'],
 }
 
+const PROOF = {
+  type: 'object',
+  properties: {
+    runnable: { type: 'boolean', description: 'false when no node --test file can exercise the claim (layout, pixels, docs, infra)' },
+    test_path: { type: 'string' },
+    reason: { type: 'string' },
+  },
+  required: ['runnable', 'test_path', 'reason'],
+}
+const CHECK = {
+  type: 'object',
+  properties: { outcome: { enum: ['fails-as-claimed', 'passes', 'broken-test'] }, reason: { type: 'string' } },
+  required: ['outcome', 'reason'],
+}
+const INVESTIGATION = {
+  type: 'object',
+  properties: {
+    findings: { type: 'array', items: FINDING },
+    dismissed: { type: 'array', items: { type: 'object', properties: { alert: { type: 'string' }, reason: { type: 'string' } }, required: ['alert', 'reason'] } },
+  },
+  required: ['findings', 'dismissed'],
+}
+
+// A skeptic sees the claim and nothing of how the finder argued for it: a
+// finder's narrative anchors whoever reads it, and an anchored skeptic agrees.
 const SKEPTICS = {
   code: 'Read every cited line and its callers. Refute if the code does not do what is claimed, or no real entry point reaches the failure.',
   intent: 'Refute if the behaviour is deliberate (ADR, docs/GAME-RULES.md § Decisions, CLAUDE.md, a pinning test) or a guard elsewhere already prevents it.',
   impact: 'Judge the severity: who hits this, how often, and what do they lose? Give the severity you would defend.',
 }
-const skepticsFor = severity =>
-  severity === 'critical' || severity === 'high' ? ['code', 'intent', 'impact']
-  : severity === 'medium' ? ['code']
-  : []
+const SKEPTICS_BY_SEVERITY = { info: [], low: ['code'], medium: ['code'], high: ['code', 'intent'], critical: ['code', 'intent', 'impact'] }
+const skepticsFor = severity => SKEPTICS_BY_SEVERITY[severity]
+const PROVE_FROM = SEVERITIES.indexOf('medium')
+const claimOf = f => ({ title: f.title, severity: f.severity, platform: f.platform, locations: f.locations, failure_scenario: f.failure_scenario })
 
 const findingKey = f => `${f.locations[0].path}:${Math.floor(f.locations[0].line / 10)}:${f.defect_class.toLowerCase()}`
 const uniqueByKey = list => [...new Map(list.map(f => [findingKey(f), f])).values()]
 const rank = severity => SEVERITIES.indexOf(severity)
+const foldDuplicates = (raw, groups) => {
+  const owner = new Map()
+  groups.forEach((g, n) => g.forEach(i => { if (raw[i] && !owner.has(i)) owner.set(i, n) }))
+  return raw.flatMap((f, i) => {
+    if (!owner.has(i)) return [f]
+    const members = raw.filter((_, j) => owner.get(j) === owner.get(i))
+    if (members[0] !== f) return []
+    const best = members.reduce((a, b) => (rank(b.severity) > rank(a.severity) ? b : a))
+    return [{ ...best, locations: members.flatMap(m => m.locations), lens: [...new Set(members.map(m => m.lens))].join('+') }]
+  })
+}
 const settledSeverity = (claimed, verdicts) => {
   const ranks = verdicts.map(v => rank(v.severity)).sort((a, b) => a - b)
   return SEVERITIES[Math.min(rank(claimed), ranks[Math.floor(ranks.length / 2)])]
@@ -466,24 +507,78 @@ ${map}`, {
   schema: REPORT_SCHEMA[kindOf(lens)],
 }).then(r => r && { ...r, lens: lens.key })
 
-const verify = async finding => {
-  const skeptics = skepticsFor(finding.severity)
-  if (!skeptics.length) return { ...finding, verdict: 'unverified' }
-  const votes = (await parallel(skeptics.map(s => () => agent(`${COMMON}
+const prove = async finding => {
+  const where = finding.locations[0]
+  const testPath = `${scratch}/proofs/${`${where.path}-${where.line}-${finding.defect_class}`.replace(/[^\w-]+/g, '_').slice(0, 120)}.test.ts`
+  const proof = await agent(`${COMMON}
 
-You are a skeptic. Try to REFUTE this finding. ${SKEPTICS[s]}
-If you cannot tell, set refuted=false and say why.
-${JSON.stringify(finding)}`, {
+Exception to "change nothing": you may write exactly one file, ${testPath}, and nothing else.
+Write a node:test file there that FAILS because of the defect below and would pass once it is fixed.
+Import the code under test from ${REPO} through file URLs (node:url's pathToFileURL): Node loads .ts directly, but a bare
+C:/ path is not a valid import specifier on Windows. Exercise the real entry point the claim names; a test that
+re-implements the logic proves nothing.
+Run it with \`node --test ${testPath}\`. If no node --test file can reach the claim (layout, pixels, docs, infrastructure,
+a native-only path), set runnable=false and say why; do not write a test that cannot fail for the right reason.
+${JSON.stringify(claimOf(finding))}`, {
+    label: `prove:${finding.title.slice(0, 40)}`,
+    phase: 'Prove',
+    model: 'opus',
+    schema: PROOF,
+  })
+  if (!proof || !proof.runnable) return { ...finding, verdict: 'upheld', proof: proof?.reason ?? 'no prover result' }
+  const check = await agent(`${COMMON}
+
+You did not write ${proof.test_path} and do not know why it was written. Run \`node --test ${proof.test_path}\`, read the
+test, and say what its run shows about this claim:
+- fails-as-claimed: it fails, the failing assertion checks the behaviour the claim describes, through the real code;
+- passes: it passes, so the claimed behaviour does not happen;
+- broken-test: it fails for any other reason (a syntax or import error, a wrong expectation, a re-implementation).
+${JSON.stringify(claimOf(finding))}`, {
+    label: `check:${finding.title.slice(0, 40)}`,
+    phase: 'Prove',
+    model: 'sonnet',
+    schema: CHECK,
+  })
+  if (check?.outcome === 'fails-as-claimed') return { ...finding, verdict: 'proven', proof: proof.test_path }
+  if (check?.outcome === 'passes') return { ...finding, verdict: 'refuted', votes: [{ refuted: true, reason: `reproduction passes: ${check.reason}` }] }
+  return { ...finding, verdict: 'upheld', proof: check?.reason ?? 'no checker result' }
+}
+
+const verify = async finding => {
+  const votes = (await parallel(skepticsFor(finding.severity).map(s => () => agent(`${COMMON}
+
+You are a skeptic. Try to REFUTE this claim. ${SKEPTICS[s]}
+Start from the code, not from the claim's wording. If the code does not let you confirm it, set refuted=true and say what was missing.
+${JSON.stringify(claimOf(finding))}`, {
     label: `verify:${s}:${finding.title.slice(0, 40)}`,
     phase: 'Verify',
     model: finding.severity === 'critical' ? 'opus' : 'sonnet',
     schema: VERDICT,
   })))).filter(Boolean)
-  const upheld = votes.filter(v => !v.refuted)
   if (!votes.length) return { ...finding, verdict: 'unverified' }
-  if (upheld.length * 2 <= votes.length) return { ...finding, votes, verdict: 'refuted' }
-  return { ...finding, votes, verdict: 'confirmed', severity: settledSeverity(finding.severity, upheld) }
+  const upheld = votes.filter(v => !v.refuted)
+  // A split vote survives to the reproduction, which settles it.
+  if (upheld.length * 2 < votes.length) return { ...finding, votes, verdict: 'refuted' }
+  const settled = { ...finding, votes, severity: settledSeverity(finding.severity, upheld) }
+  return rank(settled.severity) < PROVE_FROM ? { ...settled, verdict: 'upheld', proof: `${settled.severity}: not reproduced` } : prove(settled)
 }
+
+const investigate = (tool, alerts, map) => agent(`${COMMON}
+
+You are investigating the ${tool} output below. Each alert is a lead, not a finding: the tool cannot see Metro's
+platform files (*.web.ts, *.native.ts), files run by hand or by a workflow, or a decision recorded in an ADR.
+Open the code behind every alert and follow it across files until you can say whether it is a real defect.
+Report each real one as a finding with lens "tools:${tool}" and confidence "measured"; group alerts one fix would clear.
+Put every other alert in "dismissed" with the reason. Every alert lands in one of the two lists.
+Alerts: ${JSON.stringify(alerts)}
+
+System map:
+${map}`, { label: `tools:${tool}`, phase: 'Audit', model: 'sonnet', schema: INVESTIGATION })
+
+const ALERTS_PER_INVESTIGATOR = 40
+const toolBatches = Object.entries(staticLayer.alerts.reduce((by, a) => ({ ...by, [a.tool]: [...(by[a.tool] || []), a] }), {}))
+  .flatMap(([tool, alerts]) => Array.from({ length: Math.ceil(alerts.length / ALERTS_PER_INVESTIGATOR) }, (_, i) =>
+    ({ tool, alerts: alerts.slice(i * ALERTS_PER_INVESTIGATOR, (i + 1) * ALERTS_PER_INVESTIGATOR) })))
 
 const judgeOpportunity = o => agent(`${COMMON}
 
@@ -523,26 +618,32 @@ You are the cartographer. Write a system map in markdown, at most 400 lines, tha
 if (!map) throw new Error('Cartographer returned nothing; the lenses would run blind.')
 
 phase('Audit')
-const reports = (await parallel(LENSES.map(l => () => runLens(l, map)))).filter(Boolean)
+if (staticLayer.failed.length) log(`Tools that produced nothing to investigate: ${staticLayer.failed.map(f => f.tool).join(', ')}`)
+const [reports, investigations] = await Promise.all([
+  parallel(ACTIVE.map(l => () => runLens(l, map))).then(r => r.filter(Boolean)),
+  parallel(toolBatches.map(b => () => investigate(b.tool, b.alerts, map))),
+])
 const failedLenses = LENS_KEYS.filter(k => !reports.some(r => r.lens === k))
 if (failedLenses.length) log(`Lenses that returned nothing: ${failedLenses.join(', ')}`)
+const failedInvestigations = toolBatches.filter((_, i) => !investigations[i]).map(b => b.tool)
+const dismissedAlerts = investigations.filter(Boolean).flatMap(r => r.dismissed)
 
 phase('Merge')
-const rawFindings = uniqueByKey(reports.flatMap(r => (r.findings || []).map(f => ({ ...f, lens: r.lens }))))
-const merged = await agent(`Merge duplicates in these audit findings. Two findings are duplicates when fixing one fixes the other.
-For each group:
-- keep the best-evidenced version;
-- union the locations;
-- keep the highest severity;
-- join the contributing lenses in "lens" with "+".
-Every input must survive in some output.
-${JSON.stringify(rawFindings)}`, {
+// Deduplicated per source: a lens and a tool investigator at one place both reach the merge, which unions them.
+const rawFindings = [
+  ...uniqueByKey(reports.flatMap(r => (r.findings || []).map(f => ({ ...f, lens: r.lens })))),
+  ...uniqueByKey(investigations.filter(Boolean).flatMap(r => r.findings)),
+]
+// The agent only names duplicate groups; the script folds them, so no finding can be lost on the way.
+const dupes = await agent(`Group duplicates among these audit findings, by index. Two findings are duplicates when fixing one fixes the other.
+Return only groups of two or more; a finding with no duplicate is left out.
+${JSON.stringify(rawFindings.map((f, i) => ({ i, title: f.title, locations: f.locations, defect_class: f.defect_class })))}`, {
   label: 'merge',
   phase: 'Merge',
   model: 'sonnet',
-  schema: { type: 'object', properties: { findings: { type: 'array', items: FINDING } }, required: ['findings'] },
+  schema: { type: 'object', properties: { groups: { type: 'array', items: { type: 'array', items: { type: 'integer' } } } }, required: ['groups'] },
 })
-const findings = merged && merged.findings.length ? merged.findings : rawFindings
+const findings = foldDuplicates(rawFindings, dupes?.groups ?? [])
 log(`${rawFindings.length} raw findings -> ${findings.length} merged`)
 
 phase('Verify')
@@ -565,11 +666,11 @@ for (let round = 1; round <= MAX_GAP_ROUNDS; round++) {
 - a confirmed finding whose sibling instances were not searched.
 Return an empty list only if coverage is genuinely complete.
 Coverage: ${JSON.stringify(reports.map(r => ({ lens: r.lens, coverage: r.coverage })))}
-Confirmed: ${JSON.stringify(judged.filter(f => f.verdict === 'confirmed').map(f => `${f.lens}: ${f.title}`))}`,
+Kept: ${JSON.stringify(judged.filter(f => f.verdict !== 'refuted').map(f => `${f.lens}: ${f.title}`))}`,
     { label: `critic:${round}`, phase: 'Gaps', model: 'opus', schema: GAPS })
   if (!critique || !critique.gaps.length) break
   const extra = (await parallel(critique.gaps.map(g => () =>
-    runLens(LENSES.find(l => l.key === g.lens), map, g.task)))).filter(Boolean)
+    runLens(ACTIVE.find(l => l.key === g.lens), map, g.task)))).filter(Boolean)
   const fresh = extra.flatMap(r => r.findings).filter(f => !seen.has(findingKey(f)))
   fresh.forEach(f => seen.add(findingKey(f)))
   log(`Gap round ${round}: ${fresh.length} new findings`)
@@ -586,12 +687,15 @@ Sections:
 1. Executive summary: what the owner should act on first.
 2. Scorecard: every lens with its score and a one-line rationale.
 3. Top 15 findings by risk x reach, each with path:line.
-4. Findings by lens. Label each confirmed or unverified.
+4. Findings by lens. Label each by its verdict: proven (a failing test, re-run blind, shows it), upheld (survived the
+   skeptics but no test could reach it; say why from "proof"), or unverified. Never call an upheld finding proven.
 5. Cross-cutting defect classes, each with the one check that prevents a recurrence.
 6. Polish roadmap: opportunities grouped by moment, ranked by impact per size.
 7. Strengths to preserve.
 8. Refuted appendix: one line of reason each, so nobody raises them again.
-9. Coverage gaps: failed lenses (${failedLenses.join(', ') || 'none'}), unverified findings, and anything that needs an iOS or Android capture.
+9. Coverage gaps: failed lenses (${failedLenses.join(', ') || 'none'}), tools that produced nothing
+   (${JSON.stringify(staticLayer.failed)}), tool batches whose investigator died (${failedInvestigations.join(', ') || 'none'}),
+   unverified findings, and anything that needs an iOS or Android capture.
 10. Infrastructure: a comparison table, the Replit coupling, the EAS build assessment, the recommended stack, the migration phases, and the fact-check corrections.
 11. Proposed ticket batches: one per defect class, each with a title, size, covered findings and any tracked issue.
     Add a wayfinder map for the infrastructure migration.
@@ -602,6 +706,7 @@ Opportunities: ${JSON.stringify(kept)}
 Infrastructure: ${JSON.stringify(infra)}`,
   { label: 'synthesis', phase: 'Synthesize', model: 'opus' })
 
+const count = verdict => judged.filter(f => f.verdict === verdict).length
 return {
   report,
   confirmed,
@@ -610,4 +715,20 @@ return {
   refuted,
   failedLenses,
   coverage: reports.map(r => ({ lens: r.lens, coverage: r.coverage })),
+  dismissedAlerts,
+  judged: judged.map(f => ({ title: f.title, verdict: f.verdict, locations: f.locations })),
+  record: {
+    sha,
+    lenses: LENS_KEYS,
+    raw: rawFindings.length,
+    merged: findings.length,
+    proven: count('proven'),
+    upheld: count('upheld'),
+    unverified: count('unverified'),
+    refuted: count('refuted'),
+    alerts: staticLayer.alerts.length,
+    alertsDismissed: dismissedAlerts.length,
+    toolsFailed: staticLayer.failed.map(f => f.tool),
+    failedLenses,
+  },
 }

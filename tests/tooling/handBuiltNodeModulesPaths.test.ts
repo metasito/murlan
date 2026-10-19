@@ -38,8 +38,13 @@ const SKIP_DIRS = new Set([
  * (helmet, drizzle-orm, ...) and has no entry point to resolve at all for a
  * types-only package (`@types/express`, ...), both real dependencies here.
  * #938.
+ *
+ * tools/audit/plantDefects.mjs junctions the main checkout's whole
+ * node_modules into a calibration checkout outside the repo, where Node's
+ * upward search finds no install; it locates no package.
  */
 const IGNORE_LIST = new Set([
+  "tools/audit/plantDefects.mjs",
   "tools/loop/tests/lockDrift.test.ts",
   "tools/loop/workspace.mjs",
 ]);

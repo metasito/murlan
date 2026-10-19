@@ -124,6 +124,8 @@ jobs:
     name: Play offline matches headless
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      FC_RUNS: "3000"
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -159,6 +161,10 @@ jobs:
       - name: Play
         run: node --test tests/engine/matchTerminates.test.ts
 
+      - name: Search the engine's invariants from today's band
+        if: ${{ !cancelled() }}
+        run: FC_SEED="$MURLAN_MATCH_SOAK_START" node --test tests/engine/engineInvariants.property.test.ts
+
       - name: Report the failure to the tracker
         if: failure()
         env:
@@ -172,7 +178,9 @@ jobs:
             echo "Re-run locally with the same band:"
             echo '```'
             echo "MURLAN_MATCH_SOAK_START=$MURLAN_MATCH_SOAK_START MURLAN_MATCH_SOAK_SEEDS=$MURLAN_MATCH_SOAK_SEEDS MURLAN_MATCH_SOAK_SEEDS_3P=$MURLAN_MATCH_SOAK_SEEDS_3P MURLAN_MATCH_SOAK_SEEDS_4P=$MURLAN_MATCH_SOAK_SEEDS_4P node --test tests/engine/matchTerminates.test.ts"
+            echo "FC_SEED=$MURLAN_MATCH_SOAK_START FC_RUNS=$FC_RUNS node --test tests/engine/engineInvariants.property.test.ts"
             echo '```'
+            echo "The run's log names which step failed; an invariant failure also prints its shrunk counterexample."
           } > offline-soak-failure.md
           open=$(gh issue list --label soak --state open --limit 1 --json number --jq '.[0].number // empty')
           if [ -n "$open" ]; then
