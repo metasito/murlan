@@ -206,8 +206,13 @@ export async function claimRoom(roomId: string): Promise<boolean> {
   return true;
 }
 
-/** Hands a room back, so another instance may take it. */
+/** Hands a room back, so another instance may take it — unless `releaseRoomAfter` is holding it. */
 export async function releaseRoom(roomId: string): Promise<void> {
+  if (releasing.has(roomId)) return;
+  await unlock(roomId);
+}
+
+async function unlock(roomId: string): Promise<void> {
   if (!held.delete(roomId)) return;
   const c = client;
   if (!c) return;
@@ -224,7 +229,7 @@ export async function releaseRoom(roomId: string): Promise<void> {
 export function releaseRoomAfter(roomId: string, settled: Promise<unknown>): Promise<void> {
   const released: Promise<void> = settled
     .catch(() => {})
-    .then(() => releaseRoom(roomId))
+    .then(() => unlock(roomId))
     .finally(() => {
       if (releasing.get(roomId) === released) releasing.delete(roomId);
     });

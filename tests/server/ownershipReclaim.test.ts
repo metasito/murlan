@@ -8,6 +8,9 @@ import {
   claimRoom,
   closeOwnership,
   ownsRoom,
+  releaseRoom,
+  releaseRoomAfter,
+  reopenOwnership,
   setRoomLostHandler,
 } from "../../server/game/gameOwnership.ts";
 
@@ -44,4 +47,29 @@ test("a lock query that throws once does not give the room up", async (t) => {
   assert.deepEqual(lost, [], "a failed lock query was read as the room being held elsewhere");
   assert.equal(ownsRoom("reclaim-room"), true);
   assert.ok(lockQueries >= 3, "the reclaim never asked for the lock again after the failed query");
+});
+
+test("a release while the room's delete is pending does not unlock it early", async (t) => {
+  let unlocks = 0;
+  t.mock.method(Client.prototype, "connect", async () => {});
+  t.mock.method(Client.prototype, "end", async () => {});
+  t.mock.method(Client.prototype, "query", async (sql: string) => {
+    if (/pg_advisory_unlock/.test(sql)) unlocks++;
+    if (/pg_try_advisory_lock/.test(sql)) return { rows: [{ locked: true }] };
+    return { rows: [] };
+  });
+  reopenOwnership();
+  t.after(() => closeOwnership());
+
+  assert.equal(await claimRoom("dying-room"), true);
+  let deleteLands!: () => void;
+  const released = releaseRoomAfter("dying-room", new Promise<void>((r) => (deleteLands = r)));
+
+  await releaseRoom("dying-room");
+  assert.equal(unlocks, 0, "the room was unlocked before its row delete landed");
+
+  deleteLands();
+  await released;
+  assert.equal(unlocks, 1);
+  assert.equal(ownsRoom("dying-room"), false);
 });
