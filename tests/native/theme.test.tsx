@@ -1,4 +1,4 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, jest } from '@jest/globals';
 import { Platform } from 'react-native';
 import { makeLayeredShadow, makeShadow, Shadow } from '@/lib/theme';
 
@@ -7,15 +7,13 @@ import { makeLayeredShadow, makeShadow, Shadow } from '@/lib/theme';
 const LAYERED = ['card', 'cardLifted', 'cardBack'];
 
 function withAndroidVersion<T>(version: number, run: () => T): T {
-  const os = Platform.OS;
-  const prior = Platform.Version;
-  Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
-  Object.defineProperty(Platform, 'Version', { value: version, configurable: true });
+  const os = jest.replaceProperty(Platform, 'OS', 'android');
+  const replaced = jest.spyOn(Platform, 'Version', 'get').mockReturnValue(version);
   try {
     return run();
   } finally {
-    Object.defineProperty(Platform, 'OS', { value: os, configurable: true });
-    Object.defineProperty(Platform, 'Version', { value: prior, configurable: true });
+    replaced.mockRestore();
+    os.restore();
   }
 }
 
@@ -69,8 +67,7 @@ describe('a card casts a contact shadow and a cast shadow', () => {
   // on.
   const onAndroid = Platform.OS === 'android' ? it : it.skip;
   onAndroid('falls back to the cast shadow alone where boxShadow is ignored', () => {
-    const version = Platform.Version;
-    Object.defineProperty(Platform, 'Version', { value: 26, configurable: true });
+    const replaced = jest.spyOn(Platform, 'Version', 'get').mockReturnValue(26);
     try {
       const style = makeLayeredShadow(
         [
@@ -82,7 +79,7 @@ describe('a card casts a contact shadow and a cast shadow', () => {
       expect(style).not.toHaveProperty('boxShadow');
       expect(style).toMatchObject({ shadowRadius: 13, shadowOpacity: 0.3, elevation: 14 });
     } finally {
-      Object.defineProperty(Platform, 'Version', { value: version, configurable: true });
+      replaced.mockRestore();
     }
   });
 
