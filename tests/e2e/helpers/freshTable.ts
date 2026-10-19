@@ -19,8 +19,12 @@ export function assertFresh(seats: SeatCount[]): void {
   const seatsOnScreen = 1 + seats.length;
   const floor = freshHandFloor(seatsOnScreen);
   for (const seat of seats) {
-    const count = Number(seat.count);
-    if (Number.isFinite(count) && count < floor) {
+    const text = seat.count.trim();
+    if (!/^\d+$/.test(text)) {
+      throw new Error(`cannot read seat count ${JSON.stringify(seat.count)} on the ${seat.testId} seat`);
+    }
+    const count = Number(text);
+    if (count < floor) {
       throw new Error(
         `the ${seat.testId} seat already holds ${seat.count} card(s), fewer than the ` +
           `${floor} a fresh deal leaves any of this ${seatsOnScreen}-seat table's seats ` +

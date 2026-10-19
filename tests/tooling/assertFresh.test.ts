@@ -24,6 +24,12 @@ test("the floor follows the seats on screen, not a fixed count", () => {
   assert.throws(() => assertFresh(seats(fourSeatFloor)), /already been played into/);
 });
 
-test("a count the seat does not show is not read as a played hand", () => {
-  assert.doesNotThrow(() => assertFresh(seats("?")));
+test("a count that is not a whole number refuses the table rather than passing it", () => {
+  for (const unread of ["?", "", " ", "7 carte", "NaN", "13.5", "-1", "1e1"]) {
+    assert.throws(() => assertFresh(seats(unread)), /cannot read seat count/, JSON.stringify(unread));
+  }
+});
+
+test("a count with surrounding whitespace still reads", () => {
+  assert.doesNotThrow(() => assertFresh(seats(` ${freshHandFloor(2)}\n`)));
 });
