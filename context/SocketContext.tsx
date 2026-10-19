@@ -25,7 +25,7 @@ import { CLIENT_OUTDATED } from "@/shared/protocol";
 import { reportSocketClose } from "@/lib/errorReporting";
 import { useNotification } from "@/context/NotificationContext";
 import { SessionReplacedNotice } from "@/components/SessionReplacedNotice";
-import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
+import { t, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
 import { reconnectDelayMs } from "@/lib/reconnectDelay";
 import { sendInvite, undelivered } from "@/lib/sendIntent";
@@ -144,12 +144,12 @@ export function useInvites(): Invites {
 }
 
 export function SocketProvider({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, forgetSession } = useAuth();
   // The id, not the object: this is what the socket effect below keys on, and
   // `user` gets a new identity on every refetch of the same account.
   const userId = user?.id;
   const qc = useQueryClient();
-  const { showNotification } = useNotification();
+  const { showNotification, notifyError, notifyServerError } = useNotification();
   // `lib/socket`'s map is already the one socket per user, so a copy here would
   // be a second answer to the same question for the effect below to keep in step.
   const socket = useSyncExternalStore(
@@ -307,7 +307,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       retryAttemptRef.current = 0;
       socket.io.reconnection(false);
       socket.disconnect();
-      void logout().finally(() => router.replace("/auth"));
+      void forgetSession().finally(() => router.replace("/auth"));
     };
     const socket = connectSocket(userId, { onAuthFailure });
     socketRef.current = socket;
@@ -442,12 +442,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     // player's own language. `translateServerPayload` falls back to the
     // server's plain text if the code is unknown to this build.
     const onFriendError = (payload: ServerPayload) => {
-      showNotification({
-        type: "game_error",
-        title: t("common.error"),
-        message: translateServerPayload(payload),
-        duration: Reading.notice,
-      });
+      notifyServerError(payload);
     };
     const onSocketError = (payload: ServerPayload) => {
       if (payload.code === SESSION_REPLACED) {
@@ -461,12 +456,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         setSessionReplaced(payload);
         return;
       }
-      showNotification({
-        type: "game_error",
-        title: t("common.error"),
-        message: translateServerPayload(payload),
-        duration: Reading.notice,
-      });
+      notifyServerError(payload);
     };
 
     socket.on("connect", onConnect);
@@ -503,7 +493,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       socket.off("friend:error", onFriendError);
       socket.off("socket:error", onSocketError);
     };
-  }, [userId, logout, qc, showNotification, unhideGameInvite]);
+  }, [userId, forgetSession, qc, showNotification, notifyServerError, unhideGameInvite]);
 
   const refresh = useCallback(() => {
     if (socket) askWhoIsOnline(socket);
@@ -515,16 +505,11 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     async (friendUserId: string, roomCode: string) => {
       const outcome = await sendInvite(socket, { friendUserId, roomCode });
       if (undelivered(outcome)) {
-        showNotification({
-          type: "game_error",
-          title: t("common.error"),
-          message: t("room.requestNotDelivered"),
-          duration: Reading.notice,
-        });
+        notifyError(t("room.requestNotDelivered"), { duration: Reading.notice });
       }
       return outcome.ok;
     },
-    [socket, showNotification]
+    [socket, notifyError]
   );
 
   const invites = useMemo(

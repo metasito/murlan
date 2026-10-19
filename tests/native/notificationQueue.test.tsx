@@ -6,13 +6,14 @@ import { act, render } from '@testing-library/react-native';
 import {
   NOTIFICATION_QUEUE_MAX,
   NotificationProvider,
+  useBanner,
   useNotification,
   type NotificationData,
 } from '@/context/NotificationContext';
 
-const probe: { current?: ReturnType<typeof useNotification> } = {};
+const probe: { current?: ReturnType<typeof useNotification> & ReturnType<typeof useBanner> } = {};
 function Probe() {
-  const value = useNotification();
+  const value = { ...useNotification(), ...useBanner() };
   useEffect(() => {
     probe.current = value;
   });

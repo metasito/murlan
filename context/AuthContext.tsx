@@ -35,6 +35,9 @@ interface AuthContextValue {
    * standing rather than overwriting it with a guess.
    */
   refreshUser: () => Promise<void>;
+  /** Local only: for a session the server has already ended. */
+  forgetSession: () => Promise<void>;
+  /** POSTs first and throws if that fails, leaving the session standing (a web cookie would sign the player straight back in). */
   logout: () => Promise<void>;
 }
 
@@ -192,16 +195,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await cacheUser(data);
   }, []);
 
-  const logout = useCallback(async () => {
-    await apiRequest("POST", "/api/auth/logout");
+  const forgetSession = useCallback(async () => {
     forgetPushRegistration();
     setUser(null);
     await AsyncStorage.multiRemove(ACCOUNT_KEYS).catch(() => {});
   }, []);
 
+  const logout = useCallback(async () => {
+    await apiRequest("POST", "/api/auth/logout");
+    await forgetSession();
+  }, [forgetSession]);
+
   const contextValue = useMemo(
-    () => ({ user, loading, login, register, rename, changePassword, addEmail, refreshUser, logout }),
-    [user, loading, login, register, rename, changePassword, addEmail, refreshUser, logout]
+    () => ({ user, loading, login, register, rename, changePassword, addEmail, refreshUser, forgetSession, logout }),
+    [user, loading, login, register, rename, changePassword, addEmail, refreshUser, forgetSession, logout]
   );
 
   return (

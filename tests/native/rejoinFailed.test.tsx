@@ -12,7 +12,7 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { OnlineGameProvider } from '@/context/OnlineGameContext';
 import { useOnlineGame } from './onlineSurface';
-import { NotificationProvider, useNotification } from '@/context/NotificationContext';
+import { NotificationProvider, useBanner } from '@/context/NotificationContext';
 import { en as locale } from '@/locales/en';
 
 type Listener = (...args: unknown[]) => void;
@@ -62,7 +62,7 @@ const MAX_RETRIES = 3;
  */
 const useRejoin = () => ({
   game: useOnlineGame(),
-  notification: useNotification().notification,
+  notification: useBanner().notification,
 });
 
 function roomState(roomId: string) {

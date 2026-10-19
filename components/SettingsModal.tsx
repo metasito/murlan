@@ -13,7 +13,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useRouter, usePathname } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
 import { useSettings } from "@/context/SettingsContext";
-import { useNotification } from "@/context/NotificationContext";
+import { useBanner, useNotification } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import NotificationBanner from "@/components/NotificationBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
@@ -74,8 +74,9 @@ export function SettingsModal({ visible, onClose }: Props) {
     setScreenShake,
     setMotion,
   } = useSettings();
-  const { logout } = useAuth();
-  const { notification, showNotification, dismissNotification } = useNotification();
+  const { logout, forgetSession } = useAuth();
+  const { showNotification } = useNotification();
+  const { notification, dismissNotification } = useBanner();
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
@@ -154,9 +155,6 @@ export function SettingsModal({ visible, onClose }: Props) {
       // apiRequest throws on a non-ok response, so a failed deletion always
       // lands in the catch below instead of silently logging the user out.
       await apiRequest("DELETE", "/api/users/me");
-      onClose();
-      await logout();
-      router.replace("/auth");
     } catch {
       setDeleting(false);
       showNotification({
@@ -164,7 +162,11 @@ export function SettingsModal({ visible, onClose }: Props) {
         title: t("settings.deleteFailedTitle"),
         message: t("settings.deleteFailedBody"),
       });
+      return;
     }
+    onClose();
+    await forgetSession();
+    router.replace("/auth");
   }
 
   function confirmLogout() {

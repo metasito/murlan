@@ -20,7 +20,7 @@ let mockUser: Record<string, unknown> = { id: 'u1', username: 'Ana' };
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({
     user: mockUser,
-    logout: async () => {},
+    forgetSession: async () => {},
     changePassword: async () => {},
     rename: async () => {},
   }),

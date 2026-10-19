@@ -310,7 +310,7 @@ export default function RoomScreen() {
   const { room, leaveRoom, startGame, setRoomVisibility } = useOnlineRoom();
   const { clearError } = useOnlineConnection();
   const error = useServerError("room");
-  const { showNotification } = useNotification();
+  const { notifyError } = useNotification();
 
   const [fillWithBots, setFillWithBots] = useState(false);
   const [botsOffered, setBotsOffered] = useState(false);
@@ -342,10 +342,10 @@ export default function RoomScreen() {
 
   useEffect(() => {
     if (error) {
-      showNotification({ type: "game_error", title: t("common.error"), message: error.text });
+      notifyError(error.text);
       clearError(error.seq);
     }
-  }, [error, clearError, showNotification, t]);
+  }, [error, clearError, notifyError]);
 
   if (!room) return null;
 
@@ -378,7 +378,7 @@ export default function RoomScreen() {
   const copyFace = t(copied ? "common.copied" : "common.copy");
 
   const showShareError = (key: "room.shareFailed" | "room.copyFailed") =>
-    showNotification({ type: "game_error", title: t("common.error"), message: t(key) });
+    notifyError(t(key));
 
   function inviteMessage() {
     return t("room.shareMessage", { code: room!.code, link: joinUrl(getApiUrl(), room!.code) ?? "" });

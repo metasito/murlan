@@ -61,9 +61,7 @@ export default function FriendsScreen() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchDone, setSearchDone] = useState(false);
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
-  const { showNotification } = useNotification();
-  const showError = (message: string) =>
-    showNotification({ type: "game_error", title: t("common.error"), message });
+  const { showNotification, notifyError: showError } = useNotification();
 
   const {
     data: friends = [],

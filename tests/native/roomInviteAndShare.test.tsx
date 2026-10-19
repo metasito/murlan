@@ -36,7 +36,16 @@ jest.mock('@/context/SocketContext', () => ({
 }));
 
 jest.mock('@/context/NotificationContext', () => ({
-  useNotification: () => ({ showNotification: mockShowNotification }),
+  useNotification: () => {
+    const { t, translateServerPayload } = jest.requireActual('@/lib/i18n') as typeof import('@/lib/i18n');
+    const notifyError = (message: string, opts?: { title?: string; duration?: number }) =>
+      mockShowNotification({ type: 'game_error', title: opts?.title ?? t('common.error'), message, duration: opts?.duration });
+    return {
+      showNotification: mockShowNotification,
+      notifyError,
+      notifyServerError: (payload: import('@/lib/i18n').ServerPayload) => notifyError(translateServerPayload(payload)),
+    };
+  },
   useBannerBottom: () => 0,
 }));
 

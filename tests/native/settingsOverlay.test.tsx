@@ -28,6 +28,7 @@ jest.mock('@/context/AuthContext', () => ({ useAuth: () => ({ logout: mockLogout
 import { SettingsModal } from '@/components/SettingsModal';
 import {
   NotificationProvider,
+  useBanner,
   useNotification,
 } from '@/context/NotificationContext';
 import { SettingsProvider } from '@/context/SettingsContext';
@@ -42,10 +43,10 @@ const METRICS = {
 
 const apiRequest = (require('@/lib/query-client') as { apiRequest: jest.Mock }).apiRequest;
 
-let notify: ReturnType<typeof useNotification>;
+let notify: ReturnType<typeof useNotification> & ReturnType<typeof useBanner>;
 
 function Probe() {
-  notify = useNotification();
+  notify = { ...useNotification(), ...useBanner() };
   return <Text>{`shake:${useScreenShakeEnabled()}`}</Text>;
 }
 
