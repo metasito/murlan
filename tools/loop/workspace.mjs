@@ -10,8 +10,8 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import { runBin } from "../../scripts/lib/proc.mjs";
 import { CLI_TOOLS, firstLine, gh as ghCli, git as gitAt, MAX_BUFFER, REPO, viaCli } from "./cli.mjs";
 import { AGENT_DIR, derive, parityRed, WORKTREE_DIR } from "./loop-derive.mjs";
 import { ciLogPath, leftoverPath, writeNote } from "./loop-logs.mjs";
@@ -595,24 +595,10 @@ export function syncCheckout(
   return true;
 }
 
-// `npm` and `npx` are `.cmd` shims, and since the fix for CVE-2024-27980 node will not resolve one
-// from execFileSync. Both are reached only with argument lists this file writes itself, never with
-// anything a ticket or the tracker supplies.
-const SHIMMED = new Set(["npm", "npx"]);
-
-export const sh = (file, args, opts = {}) => {
-  if (CLI_TOOLS.has(file)) return viaCli(file, args, opts);
-  const shell = SHIMMED.has(file) && process.platform === "win32";
-  const base = { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: MAX_BUFFER, ...opts };
-  // A command line, not a file plus arguments: under `shell` node concatenates them anyway, and
-  // passing both is DEP0190. The quoting is this file's own, and one argument is a worktree path,
-  // which carries whatever spaces the checkout's location has.
-  if (shell) {
-    const line = [file, ...args.map((a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a))].join(" ");
-    return execFileSync(line, { ...base, shell: true });
-  }
-  return execFileSync(file, args, base);
-};
+export const sh = (file, args, opts = {}) =>
+  CLI_TOOLS.has(file)
+    ? viaCli(file, args, opts)
+    : runBin(file, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: MAX_BUFFER, ...opts });
 
 /**
  * In-process, against the shared checkout: the supervisor runs from ROOT, which `removeWorktree`'s own

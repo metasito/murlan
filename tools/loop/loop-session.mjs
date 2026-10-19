@@ -3,7 +3,7 @@
  * `reduceSession`, and the watchdog kills one that goes silent. What the state means is the
  * caller's, through `onState`.
  */
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createWriteStream, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
@@ -15,6 +15,7 @@ import { DIR, streamLog } from "./loop-logs.mjs";
 import { ticker } from "./loop-screen.mjs";
 import { ROOT } from "./paths.mjs";
 import { openTicket, roundOf, sessionView, ticketFacts } from "./loop-board.mjs";
+import { killTree } from "../../scripts/lib/proc.mjs";
 
 const { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, MODEL_BY_PHASE, TICKET_BUDGET_USD, TURNS_BY_SIZE, TURNS_DEFAULT } = SESSION_POLICY;
 const HERE = import.meta.dirname;
@@ -92,13 +93,8 @@ export function runSession(
       clearInterval(watchdog);
       // Windows' SIGTERM takes `claude.exe` alone, and a grandchild left holding its stdout keeps
       // `close` from ever firing. So the tree, then a deadline.
-      if (process.platform === "win32" && child.pid) {
-        try {
-          execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
-        } catch {
-          /* already gone */
-        }
-      } else child.kill("SIGTERM");
+      if (process.platform === "win32") killTree(child.pid);
+      else child.kill("SIGTERM");
       grace = setTimeout(() => {
         child.kill("SIGKILL");
         child.stdout.destroy();

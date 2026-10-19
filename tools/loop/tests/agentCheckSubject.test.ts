@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { BANNER } from "../check-steps.mjs";
+import { windowsWorld } from "../../../tests/helpers/windowsProcessWorld.ts";
 import { cacheEntry, checkSubject, cleanPassFor, judge, readSubject, replays, runAll, runStep } from "../agent-check.mjs";
 
 const REAP = { recursive: true, force: true, maxRetries: 3, retryDelay: 100 } as const;
@@ -240,9 +241,17 @@ describe("the cached verdict and what a failure prints", () => {
   });
 
   test("a timed-out step is a failure named as one", async () => {
-    const timedOut = fake({ status: null, stdout: "", stderr: "", error: { code: "ETIMEDOUT" } });
+    const timedOut = fake({ status: null, timedOut: true, stdout: "", stderr: "" });
     const run = await runStep({ name: "lint", args: [] }, timedOut, quiet);
     assert.equal(run.failed, "lint (timed out)");
+  });
+
+  test("a timed-out step on win32 leaves no descendant alive", async () => {
+    const world = windowsWorld();
+    const shortened: Spawn = (file, args, opts) => world.proc.spawnBin(file, args, { ...opts, timeoutMs: 10 });
+    const run = await runStep({ name: "test", args: ["run", "test"] }, shortened, quiet);
+    assert.equal(run.failed, "test (timed out)");
+    assert.deepEqual(world.alive(), []);
   });
 
   test("a local whole suite waits for the light steps, which start together", async () => {
