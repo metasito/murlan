@@ -652,6 +652,39 @@ describe("a loop session leaves the variables session-env.mjs owns alone", () =>
   }
 });
 
+describe("a loop session does not shed the variables session-env.mjs owns from inside a child either", () => {
+  const OWNED = /session-env\.mjs owns/;
+  for (const cmd of [
+    `node -e "process.env.LOOP_TURNS=''; require('child_process').execSync('node tools/loop/loop-gate.mjs')"`,
+    `node -e "delete process.env.LOOP_TURNS"`,
+    `node -e "process.env['LOOP_' + 'TURNS'] = ''"`,
+    `node -e "for (const k in process.env) delete process.env[k]"`,
+    `node -e "require('child_process').execSync('node x.mjs', { env: {} })"`,
+    `node <<'EOF'\ndelete process.env.LOOP_TURNS;\nEOF`,
+    `python3 -c "import os; os.environ['LOOP_TURNS'] = ''"`,
+    `python3 -c "import os; os.environ.pop('LOOP_TURNS')"`,
+    `python3 -c "import os; del os.environ['LOOP_TURNS']"`,
+    `python -c "import os; os.environ.clear()"`,
+    `perl -e 'delete $ENV{LOOP_TURNS}; exec "node", "x.mjs"'`,
+    "env -i node x.mjs",
+    "env - node x.mjs",
+    "env --ignore-environment PATH=/usr/bin node x.mjs",
+    "exec -c node x.mjs",
+  ]) {
+    test(`refuses in the loop: ${cmd}`, () => assert.match(String(check(cmd, repo, true)), OWNED));
+    test(`allows outside the loop: ${cmd}`, () => assert.equal(check(cmd, repo, false), null));
+  }
+  for (const cmd of [
+    `node -e "console.log(process.env.LOOP_TURNS)"`,
+    `node -e "process.env.FOO = '1'"`,
+    `python3 -c "import os; print(os.environ.get('LOOP_TURNS'))"`,
+    "node -e \"require('child_process').execSync('x', { env: { ...process.env, FOO: '1' } })\"",
+    "git commit -m 'refuse env -i in a loop session'",
+  ]) {
+    test(`allows in the loop: ${cmd}`, () => assert.equal(check(cmd, repo, true), null));
+  }
+});
+
 describe("a loop session leaves agent:check's cache to agent:check", () => {
   for (const cmd of [
     "echo '{}' > .git/agent-check-cache.json",

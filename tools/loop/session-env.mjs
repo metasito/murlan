@@ -12,6 +12,20 @@
  */
 export const isLoopVariable = (name) => /^LOOP_\w+$/i.test(name);
 
+const CODE_SETS = [
+  /(?:process\.env\s*(?:\.\s*|\[\s*['"`])|os\.environ\s*\[\s*['"]|\$ENV\{\s*['"]?)LOOP_\w*['"`]?\s*[\]}]?\s*(?:\+|\?\?|\|\|)?=(?!=)/i,
+  /os\.environ\.(?:pop|setdefault|update)\s*\([^)]*LOOP_/i,
+  /(?:putenv|unsetenv)\s*\(\s*['"]LOOP_/i,
+];
+
+/**
+ * Whether inline interpreter code (`node -e`, `python -c`, `perl -e`) sets or removes one of these
+ * for itself and what it spawns. String concatenation is read through: `'LOOP_' + 'TURNS'`.
+ *
+ * @param {string} code
+ */
+export const codeSetsLoopVariable = (code) => CODE_SETS.some((re) => re.test(code));
+
 const PHASES = /^[B-G]$/;
 const COUNT = /^\d+$/;
 

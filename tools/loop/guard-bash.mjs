@@ -20,7 +20,7 @@ import { apiMethod, readIssue, TRUSTED_SELECT, untrustedRead } from "./brief.mjs
 import { firstLine, git } from "./cli.mjs";
 import { locateRun } from "./loop-derive.mjs";
 import { readLine } from "./loop-stream.mjs";
-import { fromEnv, isLoopVariable } from "./session-env.mjs";
+import { codeSetsLoopVariable, fromEnv, isLoopVariable } from "./session-env.mjs";
 import { assignedNames, commands, has, literal, literalAssignments, loopBodies, MOVES, operands, toNative, withoutQuotedBodies } from "./shell.mjs";
 
 const HTTP_CLIENT = /^(gh|curl|wget|invoke-restmethod|invoke-webrequest|irm|iwr)$/;
@@ -292,6 +292,18 @@ const joinedStrings = (code) => code.replace(/['"`]\s*\+\s*['"`]/g, "").replace(
 /** The line's inline interpreter code, heredoc and piped bodies included, or null when it runs none. */
 const inlineCode = (parsed, raw) => (parsed.some(runsInlineCode) ? joinedStrings(raw) : null);
 
+/** A whole environment dropped or replaced, here or for a child: no variable of its survives. */
+const CODE_CLEARS_ENV =
+  /delete\s+process\.env\b|process\.env\s*=(?!=)|(?:Object\.assign|Reflect\.deleteProperty|Object\.defineProperty)\s*\(\s*process\.env|\benv\s*:\s*(?:\{(?![^}]*process\.env)|Object\.create)|os\.environ\.clear\s*\(|os\.environ\s*=(?!=)|\bdel\s+os\.environ\b|\benv\s*=\s*\{(?![^}]*os\.environ)|%ENV\s*=(?!=)|delete\s+\$ENV\{/;
+
+/** `env -i`, `env -`, `env --ignore-environment`, `exec -c`: the command runs with none of them. */
+const clearsEnvironment = (c) =>
+  c.wrapped.some(
+    (w) =>
+      (w.name === "env" && w.flags.some((f) => /^(-[A-Za-z]*i[A-Za-z]*|--ignore-environment|-)$/.test(f))) ||
+      (w.name === "exec" && w.flags.some((f) => /^-[a-z]*c/.test(f)))
+  );
+
 const CACHE_NAME = "agent-check-cache.json";
 
 /** `{a,b}` and `{1..3}` stand for any of their words; unexpanded, the parser splits on the brace. */
@@ -498,8 +510,13 @@ const RULES = [
   },
   {
     // The floor under session-env.mjs: unsetting the loop's own variable is what would re-open its test seams.
-    test: (c, { loop }) => loop && setsLoopVariable(c),
-    line: (_parsed, runnable, { loop }) => loop && setsLoopVariableIn(runnable),
+    test: (c, { loop }) => loop && (setsLoopVariable(c) || clearsEnvironment(c)),
+    line: (parsed, runnable, { loop, raw }) => {
+      if (!loop) return false;
+      if (setsLoopVariableIn(runnable)) return true;
+      const code = inlineCode(parsed, raw);
+      return code !== null && (codeSetsLoopVariable(code) || CODE_CLEARS_ENV.test(code));
+    },
     message:
       "A loop session does not assign, export or unset a variable tools/loop/session-env.mjs owns: the supervisor set " +
       "them when it spawned this session, and the guards and the gate read them as its facts.\n" +
