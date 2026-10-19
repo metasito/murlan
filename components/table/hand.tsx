@@ -177,7 +177,8 @@ interface CardItemProps {
    * aspect, and the row's arc is solved against whichever of the two CardView will draw.
    */
   size: HandCardSize;
-  entry: CardEntry;
+  /** How it comes into the row, read once at mount; null for a card that simply appears in place. */
+  entry: CardEntry | null;
   onActivate: (id: string) => void;
   /** The selection on the UI thread, which the lift, tilt and glow follow. */
   shown: DerivedValue<string[]>;
@@ -217,20 +218,19 @@ interface CardItemProps {
 
 interface DrawnCard { liftY: SharedValue<number>; tilt: SharedValue<number>; shift: SharedValue<number> }
 
-/** A card dealt from the pile on the deal's clock, `onDealt` given its landing point in design points. */
-interface CardDeal { clock: SharedValue<number>; leaveMs: number; onDealt: (x: number, y: number) => void }
+type Delta = { dx: number; dy: number };
 
 /**
- * How a card comes into the row. `dx`/`dy` lead back to where it comes from, and follow the row.
- * `deal` and `descends` are read once, at mount: the deal is disarmed one render after the hand
- * appears, while its cards are still flying in.
+ * `from` leads back to where the card comes from. A dealt card flies from the pile on the deal's
+ * clock, `onDealt` given its landing point in design points; a descending one is the exchange's
+ * arrival, over `Motion.exchange.descend`.
  */
-interface CardEntry {
-  dx: number;
-  dy: number;
-  deal?: CardDeal;
-  descends: boolean;
-}
+type CardEntry =
+  | { kind: "deal"; clock: SharedValue<number>; leaveMs: number; from: Delta; onDealt: (x: number, y: number) => void }
+  | { kind: "descend"; from: Delta };
+
+/** What a card's pose reads on the UI thread, each value handed in by the worklet that follows it. */
+interface PoseInputs { descent: number; arc: number; tilt: number; press: number; shift: number; lift: number; gone: boolean }
 
 /** The deal under way, on its own clock: `pile` is where it flies from, off the hand zone's centre. */
 export interface HandDeal { offsetMs: number; clock: SharedValue<number>; pile: { dx: number; dy: number }; onDealt: (x: number, y: number) => void }
@@ -265,7 +265,6 @@ function CardItemBase({
 }: CardItemProps) {
   const { left, bottom, rot: arcRot, shift: shiftX, hitW, restX, restY } = place;
   const { w: cardW, h: cardH } = size;
-  const { dx: dealFromX, dy: dealRise } = entry;
   const reduceMotion = usePrefersReducedMotion();
   const halo = useSharedValue(0);
   useEffect(() => {
@@ -285,13 +284,13 @@ function CardItemBase({
   const glow = useSharedValue(0);
   const exchangeState = useSharedValue(0);
   const [mounted] = useState(entry);
-  const dealing = useSharedValue(mounted.descends && !reduceMotion ? 1 : 0);
-  const mountedDeal = mounted.deal;
+  const dealing = useSharedValue(mounted?.kind === "descend" && !reduceMotion ? 1 : 0);
   // Reduced motion ends the deal's clock, so a card still waiting on it would never be shown.
-  const dealt = reduceMotion ? undefined : mountedDeal;
+  const dealt = mounted?.kind === "deal" && !reduceMotion ? mounted : undefined;
   const dealClock = dealt?.clock;
-  const dealAt = dealt ? dealt.leaveMs : -1;
   const onDealt = dealt?.onDealt;
+  // One object for the card's life: a worklet capturing a fresh one each render would be rebuilt each render.
+  const arrival = useMemo(() => ({ from: mounted?.from ?? NO_OFFSET, leaveMs: dealt ? dealt.leaveMs : -1 }), [mounted, dealt]);
   const shift = useSharedValue(shiftX);
 
   // The gap is not an effect laid over the fan; it is the fan, laid out around
@@ -391,34 +390,29 @@ function CardItemBase({
   }, [restX, restY, cardW, reduceMotion, resizeFrom, resizing]);
   useEffect(() => () => cancelAnimation(resizing), [resizing]);
   // Handed the values rather than reading them: a mapper follows only the shared values in its own closure.
-  const pose = (d: number, arc: number, tiltNow: number, pressNow: number, shiftNow: number, lift: number, gone: boolean, now: number) => {
+  const poseOf = (e: typeof arrival, s: PoseInputs, now: number) => {
     "worklet";
-    const restRot = arc + tiltNow + pressNow * PRESS_TILT;
-    if (dealAt >= 0) {
-      const e = dealEase(Math.min(1, Math.max(0, (now - dealAt) / DEAL_FLIGHT_MS)));
-      const a = handDealArc(e, restRot);
+    const restRot = s.arc + s.tilt + s.press * PRESS_TILT;
+    const ty = s.lift + s.press * PRESS_RISE;
+    if (e.leaveMs >= 0) {
+      const t = dealEase(Math.min(1, Math.max(0, (now - e.leaveMs) / DEAL_FLIGHT_MS)));
+      const a = handDealArc(t, restRot);
       return {
-        opacity: gone || now < dealAt ? 0 : 1,
-        tx: dealFromX * (1 - e) + shiftNow,
-        ty: lift + pressNow * PRESS_RISE + dealRise * (1 - e) - a.lift,
+        opacity: s.gone || now < e.leaveMs ? 0 : 1,
+        tx: e.from.dx * (1 - t) + s.shift,
+        ty: ty + e.from.dy * (1 - t) - a.lift,
         rot: a.rot,
         scale: a.scale,
       };
     }
-    return {
-      opacity: gone ? 0 : 1,
-      tx: dealFromX * d + shiftNow,
-      ty: lift + pressNow * PRESS_RISE + dealRise * d,
-      rot: restRot * (1 - d),
-      scale: 1,
-    };
+    return { opacity: s.gone ? 0 : 1, tx: e.from.dx * s.descent + s.shift, ty: ty + e.from.dy * s.descent, rot: restRot * (1 - s.descent), scale: 1 };
   };
-  const resized = (p: ReturnType<typeof pose>, from: { dx: number; dy: number; s: number }, k: number) => {
+  const resized = (p: ReturnType<typeof poseOf>, from: { dx: number; dy: number; s: number }, k: number) => {
     "worklet";
     return { ...p, tx: p.tx + from.dx * k, ty: p.ty + from.dy * k, scale: p.scale * (1 + (from.s - 1) * k) };
   };
   const aStyle = useAnimatedStyle(() => {
-    const posed = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, !!hidden?.value.includes(cardId), dealClock ? dealClock.value : 0);
+    const posed = poseOf(arrival, { descent: dealing.value, arc: arcTilt.value, tilt: tilt.value, press: press.value, shift: shift.value, lift: liftY.value, gone: !!hidden?.value.includes(cardId) }, dealClock ? dealClock.value : 0);
     const p = resized(posed, resizeFrom.value, resizing.value);
     return {
       opacity: p.opacity,
@@ -426,7 +420,7 @@ function CardItemBase({
     };
   });
   const registryPlace = rects?.place;
-  const rectOf = (p: ReturnType<typeof pose>, liftNow: number, glowNow: number, panNow: number, handLift: number, motionNow: TableMotion) => {
+  const rectOf = (p: ReturnType<typeof poseOf>, liftNow: number, glowNow: number, panNow: number, handLift: number, motionNow: TableMotion) => {
     "worklet";
     if (!registryPlace) return null;
     const card = { left, bottom, w: cardW, h: cardH, tx: p.tx, ty: p.ty, rot: p.rot, scale: p.scale, back: faceDown, lift: liftNow / selectLift, glow: glowNow };
@@ -438,7 +432,7 @@ function CardItemBase({
     true,
     () => {
       "worklet";
-      const posed = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, !!hidden?.value.includes(cardId), dealClock ? dealClock.value : 0);
+      const posed = poseOf(arrival, { descent: dealing.value, arc: arcTilt.value, tilt: tilt.value, press: press.value, shift: shift.value, lift: liftY.value, gone: !!hidden?.value.includes(cardId) }, dealClock ? dealClock.value : 0);
       const p = resized(posed, resizeFrom.value, resizing.value);
       if (!registryPlace || p.opacity <= 0) return null;
       return rectOf(p, liftY.value, glow.value, registryPlace.pan.value, registryPlace.lift.value, registryPlace.motion.value);
@@ -447,9 +441,9 @@ function CardItemBase({
   useAnimatedReaction(
     () => (dealClock ? dealClock.value : -1),
     (now, prev) => {
-      const landAt = dealAt + DEAL_FLIGHT_MS;
+      const landAt = arrival.leaveMs + DEAL_FLIGHT_MS;
       if (!onDealt || !registryPlace || prev === null || prev >= landAt || now < landAt) return;
-      const p = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, false, now);
+      const p = poseOf(arrival, { descent: dealing.value, arc: arcTilt.value, tilt: tilt.value, press: press.value, shift: shift.value, lift: liftY.value, gone: false }, now);
       const r = rectOf(p, liftY.value, glow.value, registryPlace.pan.value, registryPlace.lift.value, registryPlace.motion.value);
       if (r) scheduleOnRN(onDealt, r.x, r.y);
     }
@@ -536,7 +530,7 @@ export const cardItemPropsEqual = propsEqualExcept<CardItemProps>({
   card: byId,
   place: shallowEqual,
   size: shallowEqual,
-  entry: propsEqualExcept<CardEntry>({ deal: readAtMount, descends: readAtMount }),
+  entry: readAtMount,
 });
 
 const CardItem = React.memo(CardItemBase, cardItemPropsEqual);
@@ -1148,11 +1142,13 @@ export const StraightHand = React.memo(function StraightHand({
           // A descending card starts at the row's own centre, where the flight
           // carrying it stops (`flightOrigin`'s `bottom` is `dx: 0`), so crossing
           // and descent are one continuous move; a dealt one starts at the pile.
-          entry={{
-            ...entryOffset(row, place, descending ? NO_OFFSET : pile),
-            deal: dealArmed && deal && !descending ? { clock: deal.clock, leaveMs: deal.offsetMs + dealLeaveMs(i, null), onDealt: deal.onDealt } : undefined,
-            descends: descending,
-          }}
+          entry={
+            descending
+              ? { kind: "descend", from: entryOffset(row, place, NO_OFFSET) }
+              : dealArmed && deal
+                ? { kind: "deal", clock: deal.clock, leaveMs: deal.offsetMs + dealLeaveMs(i, null), from: entryOffset(row, place, pile), onDealt: deal.onDealt }
+                : null
+          }
           onActivate={onActivate}
           shown={selection.shown}
           pressed={pressed}

@@ -31,7 +31,7 @@ const CARD_B = { id: "4_hearts", rank: "4", suit: "hearts" };
 const noop = () => {};
 const PLACE = { left: 0, bottom: 0, rot: 0, shift: 0, hitW: 40, restX: 0, restY: 0 };
 const SIZE = { scale: 1, w: 64, h: 90, reach: 1, restH: 90 };
-const ENTRY = { dx: 0, dy: 0, deal: { leaveMs: 0 }, descends: false };
+const ENTRY = { kind: "descend", from: { dx: 0, dy: 0 } };
 
 const VALUES: Record<string, [unknown, unknown]> = {
   card: [CARD_A, CARD_B],
@@ -63,7 +63,7 @@ const VALUES: Record<string, [unknown, unknown]> = {
   giveable: [false, true],
   place: [PLACE, { ...PLACE, shift: 24 }],
   size: [SIZE, { ...SIZE, w: 92 }],
-  entry: [ENTRY, { ...ENTRY, dy: 120 }],
+  entry: [ENTRY, { kind: "descend", from: { dx: 0, dy: 120 } }],
   received: [false, true],
   hidden: [{ value: [] }, { value: [] }],
   rects: [{ place: { x: 0 } }, { place: { x: 0 } }],
@@ -75,7 +75,9 @@ const VALUES: Record<string, [unknown, unknown]> = {
  * absence of a line in the comparator.
  */
 const EXEMPT: Record<string, Record<string, string>> = {
-  cardItemPropsEqual: {},
+  cardItemPropsEqual: {
+    entry: "read once, at mount: the deal is disarmed one render after the hand appears, while its cards are still flying in",
+  },
   cardViewPropsEqual: {},
 };
 
@@ -119,9 +121,9 @@ describe.each(SUBJECTS)("$name compares every prop it is given", ({ name, equal,
     expect(stale).toEqual([]);
   });
 
-  it("compares the place, size and entry by value, not by the object a render rebuilt", () => {
+  it("compares the place and size by value, not by the object a render rebuilt", () => {
     const rebuilt = Object.fromEntries(
-      keys.map((k) => [k, ["place", "size", "entry"].includes(k) ? { ...(base[k] as object) } : base[k]])
+      keys.map((k) => [k, ["place", "size"].includes(k) ? { ...(base[k] as object) } : base[k]])
     );
     expect(equal(base, rebuilt)).toBe(true);
   });
@@ -134,31 +136,24 @@ describe.each(SUBJECTS)("$name compares every prop it is given", ({ name, equal,
   });
 });
 
-// A card reads how it enters once, at mount: the deal is disarmed one render after the hand
-// appears, while its cards are still flying in, and a card that noticed would restart mid-flight.
+// A card reads how it enters once, at mount: a card that noticed the deal disarm would restart mid-flight.
 describe("cardItemPropsEqual and a card's entry", () => {
-  const fields = propsOf("components/table/hand.tsx", "CardEntry");
-  const ENTRY_VALUES: Record<string, [unknown, unknown]> = {
-    dx: [0, 5],
-    dy: [0, 5],
-    deal: [{ leaveMs: 0 }, undefined],
-    descends: [false, true],
-  };
-  const MOUNT_ONLY = ["deal", "descends"];
-  const props = { card: CARD_A, place: PLACE, size: SIZE, entry: ENTRY };
-  const withEntry = (field: string, value: unknown) =>
-    cardItemPropsEqual(props as never, { ...props, entry: { ...ENTRY, [field]: value } } as never);
+  const DEAL = { kind: "deal", clock: { value: 0 }, leaveMs: 0, from: { dx: 0, dy: 0 }, onDealt: noop };
+  const props = { card: CARD_A, place: PLACE, size: SIZE, entry: DEAL };
+  const withEntry = (entry: unknown) => cardItemPropsEqual(props as never, { ...props, entry } as never);
 
-  it("has a value pair for every entry field, and read them out of the source", () => {
-    expect(fields.filter((f) => !ENTRY_VALUES[f])).toEqual([]);
-    expect(fields).toEqual(expect.arrayContaining(MOUNT_ONLY));
+  it.each([
+    ["the deal disarmed", null],
+    ["a descent instead", ENTRY],
+    ["another clock", { ...DEAL, clock: { value: 0 } }],
+    ["another leave", { ...DEAL, leaveMs: 120 }],
+    ["another origin", { ...DEAL, from: { dx: 5, dy: 5 } }],
+    ["another landing callback", { ...DEAL, onDealt: () => {} }],
+  ])("ignores %s", (_, entry) => {
+    expect(withEntry(entry)).toBe(true);
   });
 
-  it.each(fields)("ignores %s only if it is read once, at mount", (field) => {
-    expect(withEntry(field, ENTRY_VALUES[field][1])).toBe(MOUNT_ONLY.includes(field));
-  });
-
-  it("compares a field nobody exempted", () => {
-    expect(withEntry("added", 1)).toBe(false);
+  it("still notices every other prop beside it", () => {
+    expect(cardItemPropsEqual(props as never, { ...props, entry: null, place: { ...PLACE, shift: 24 } } as never)).toBe(false);
   });
 });
