@@ -8,6 +8,7 @@ import path from "node:path";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import { runSettle, settle } from "../settle.mjs";
 import {
   runOnce as realRunOnce,
@@ -2399,6 +2400,33 @@ describe("queue-loop.mjs --check", () => {
       assert.ok(asked.length > 0 && asked.every((l) => l.startsWith("api ") && !/\s-X\s/.test(l)), asked.join("\n"));
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // Run from one directory and rooted at another: only realPorts' rooted workspace reads the root.
+  test("reads its standing through realPorts' workspace, at the root it is given", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "loop-check-root-"));
+    const elsewhere = mkdtempSync(path.join(tmpdir(), "loop-check-cwd-"));
+    try {
+      spawnSync("git", ["init", "-q", "-b", "check-root"], { cwd: root });
+      spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "base"], { cwd: root });
+      const stub = path.join(elsewhere, "gh.mjs");
+      writeFileSync(stub, 'process.stdout.write(JSON.stringify([[]]));');
+      const loop = pathToFileURL(path.join(ROOT, "tools/loop/queue-loop.mjs")).href;
+      const r = spawnSync(process.execPath, ["--input-type=module", "-e", `const m = await import(${JSON.stringify(loop)}); m.check({ root: ${JSON.stringify(root)} });`], {
+        cwd: elsewhere,
+        encoding: "utf8",
+        env: { ...process.env, LOOP_TEST_GH_SCRIPT: stub },
+      });
+      assert.equal(r.status, 0, r.stderr);
+      const standing = JSON.parse(r.stdout.split("\n")[0].replace(/^standing\t/, ""));
+      const quiet = () => {};
+      const viaPorts = realPorts({ totals: {} } as never, {} as never, { log: quiet, step: quiet } as never, { root } as never).workspace.derive();
+      assert.equal(standing.branch, "check-root");
+      assert.deepEqual(standing, JSON.parse(JSON.stringify(viaPorts)));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(elsewhere, { recursive: true, force: true });
     }
   });
 });
