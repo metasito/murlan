@@ -33,6 +33,9 @@ test("lib/contrast reads hex pairs either way round, from 1:1 to 21:1", () => {
   assert.equal(contrastRatio("#000000", "#ffffff"), 21);
   assert.equal(contrastRatio("#FFFFFF", "#000000"), 21);
   assert.equal(contrastRatio("#777777", "#777777"), 1);
+  for (const bad of ["#fff", "#ffffff80", "ffffff", "#gggggg", "rgba(0,0,0,1)"]) {
+    assert.throws(() => contrastRatio(bad, "#000000"), new RegExp(bad.replace(/[()]/g, "\\$&")));
+  }
 });
 
 /** Flattens `rgba(r,g,b,a)` (as used by several Colors entries) onto an opaque

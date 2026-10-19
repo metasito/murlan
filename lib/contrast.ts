@@ -14,7 +14,8 @@ export function relativeLuminance([r, g, b]: Rgb): number {
 
 const rgbOf = (colour: string | Rgb): Rgb => {
   if (typeof colour !== "string") return colour;
-  const n = parseInt(colour.replace("#", ""), 16);
+  if (!/^#[0-9a-f]{6}$/i.test(colour)) throw new Error(`not a #rrggbb colour: ${colour}`);
+  const n = parseInt(colour.slice(1), 16);
   return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
 };
 
