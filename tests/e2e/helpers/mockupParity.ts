@@ -52,7 +52,7 @@ interface Moment {
   /** In the chapter's time, which both sides label their frames with. */
   checkpoints: number[];
   /** Brings the app to the instant before its onset; the onset is the first traced frame `appOnset` accepts. */
-  appTrigger: (page: Page, baseURL: string, feltDrawn: () => Promise<void>) => Promise<void>;
+  appTrigger: (page: Page, baseURL: string) => Promise<void>;
   appOnset: (frame: TraceFrame) => boolean;
   mode: "determinism" | "parity";
   /** Determinism mode: exactly the fields each side must move over the window; every other must hold still. */
@@ -140,10 +140,10 @@ const dealTable = (page: Page, baseURL: string) => {
 /** The mockup's `bomb`: luan's sevens on the pile, besnik across on move with four sixes. */
 const BOMB = ["6_spades", "6_hearts", "6_diamonds", "6_clubs", "3_clubs", "4_diamonds"];
 const SEVENS = ["7_hearts", "7_diamonds"];
-const bombTable = (page: Page, baseURL: string, feltDrawn: () => Promise<void>) => {
+const bombTable = (page: Page, baseURL: string) => {
   const rest = createDeck().map((c) => c.id).filter((id) => !BOMB.includes(id) && !SEVENS.includes(id));
   const [you, luan, gent] = [0, 1, 2].map((s) => rest.filter((_, i) => i % 3 === s).slice(0, 13));
-  return pileTable(page, baseURL, offlineSave({ seats: 4, turn: 2, scores: MOCKUP_SCORES, holding: [you, gent, BOMB, luan] }), SEVENS, 3, feltDrawn);
+  return pileTable(page, baseURL, offlineSave({ seats: 4, turn: 2, scores: MOCKUP_SCORES, holding: [you, gent, BOMB, luan] }), SEVENS, 3);
 };
 
 /** The app's seats by the mockup's names: luan right, besnik across, gent left. */
@@ -157,43 +157,42 @@ const outInOrder = (save: OfflineSave, ...seats: number[]) => {
 };
 
 /** The mockup's `pwin`: you and besnik out, luan on move with his last card, the 2c, over gent's 9h. */
-const pwinTable = (page: Page, baseURL: string, feltDrawn: () => Promise<void>) => {
+const pwinTable = (page: Page, baseURL: string) => {
   const save = offlineSave({ seats: 4, turn: SEAT.luan, scores: scoresBy({ you: 19, besnik: 17, luan: 14, gent: 13 }), holding: [
     [], ["2_clubs"], [], ["3_clubs", "4_diamonds", "5_spades", "6_hearts"],
   ] });
   outInOrder(save, SEAT.you, SEAT.besnik);
-  return pileTable(page, baseURL, save, ["9_hearts"], SEAT.gent, feltDrawn);
+  return pileTable(page, baseURL, save, ["9_hearts"], SEAT.gent);
 };
 
 /** The mockup's `plose`: besnik and luan out, your last card the Ks, over gent's Jh. */
-const ploseTable = (page: Page, baseURL: string, feltDrawn: () => Promise<void>) => {
+const ploseTable = (page: Page, baseURL: string) => {
   const save = offlineSave({ seats: 4, turn: SEAT.you, scores: scoresBy({ you: 19, besnik: 19, luan: 14, gent: 13 }), holding: [
     ["K_spades"], [], [], ["3_clubs", "4_diamonds", "5_spades"],
   ] });
   outInOrder(save, SEAT.besnik, SEAT.luan);
-  return pileTable(page, baseURL, save, ["J_hearts"], SEAT.gent, feltDrawn);
+  return pileTable(page, baseURL, save, ["J_hearts"], SEAT.gent);
 };
 
 /** The mockup's `mwin`: you and gent out, besnik on move with his last card, the Kd, over luan's 8c. */
-const mwinTable = (page: Page, baseURL: string, feltDrawn: () => Promise<void>) => {
+const mwinTable = (page: Page, baseURL: string) => {
   const save = offlineSave({ seats: 4, turn: SEAT.besnik, scores: scoresBy({ you: 15, besnik: 16, luan: 11, gent: 10 }), holding: [
     [], ["3_clubs", "4_diamonds", "5_spades", "6_hearts", "9_spades"], ["K_diamonds"], [],
   ] });
   outInOrder(save, SEAT.you, SEAT.gent);
-  return pileTable(page, baseURL, save, ["8_clubs"], SEAT.luan, feltDrawn);
+  return pileTable(page, baseURL, save, ["8_clubs"], SEAT.luan);
 };
 
 /** The mockup's `mlose`: luan and besnik out, gent on move with his last card, the Ac, over your 7c. */
-const mloseTable = (page: Page, baseURL: string, feltDrawn: () => Promise<void>) => {
+const mloseTable = (page: Page, baseURL: string) => {
   const save = offlineSave({ seats: 4, turn: SEAT.gent, scores: scoresBy({ you: 18, besnik: 17, luan: 11, gent: 12 }), holding: [
     ["4_diamonds", "8_diamonds", "10_hearts", "Q_diamonds"], [], [], ["A_clubs"],
   ] });
   outInOrder(save, SEAT.luan, SEAT.besnik);
-  return pileTable(page, baseURL, save, ["7_clubs"], SEAT.you, feltDrawn);
+  return pileTable(page, baseURL, save, ["7_clubs"], SEAT.you);
 };
 
-/** The chapter opens on the drawn felt: an action Skia's load would outlast cannot be taken in the app's pre-roll. */
-const pileTable = async (page: Page, baseURL: string, save: OfflineSave, pile: string[], by: number, feltDrawn: () => Promise<void>) => {
+const pileTable = async (page: Page, baseURL: string, save: OfflineSave, pile: string[], by: number) => {
   Object.assign(save.gameState, { lastPlayedCombination: buildCombination(cards(pile)), lastPlayedBy: by });
   await seatTable(page, baseURL, save);
   await stepUntil(
@@ -207,7 +206,13 @@ const pileTable = async (page: Page, baseURL: string, save: OfflineSave, pile: s
       ),
     "the restored pile at rest"
   );
-  await feltDrawn();
+  // The lamp's first frame steps it by 0, so a trace begun there holds its sway a frame behind the chapter's.
+  await stepUntil(
+    page,
+    () => page.evaluate(() => ((window as unknown as { murlanTrace: { frames: TraceFrame[] } }).murlanTrace.frames.at(-1)?.lamp?.clock ?? 0) > 0),
+    "the lamp's own frames",
+    { chunkMs: STEP_MS }
+  );
   await page.evaluate(() => (window as unknown as { murlanTrace: { start(): void } }).murlanTrace.start());
 };
 
@@ -267,14 +272,15 @@ const LANDS_AT_CONTACT = `const throwCards = play;
   let landing = null;
   play = (...a) => { throwCards(...a); landing = { g: document.querySelector("#pile .grp.cur"), land: EV.pop() }; };
   const frame = lampStep;
+  // Ahead of the frame's own lamp step, where \`runEvents\` would land it: \`step\` has posed the cards by now.
   lampStep = (dt) => {
+    const poses = landing ? [...landing.g.querySelectorAll(".card")].map((c) => c.style.transform.match(/-?[\\d.]+/g).map(Number)) : [];
+    if (poses.length && poses.every(([x, y, , s]) => Math.hypot(x, y) <= 1 && Math.abs(s - 1) <= .01)) {
+      const { land } = landing;
+      landing = null;
+      land.fn();
+    }
     frame(dt);
-    if (!landing) return;
-    const poses = [...landing.g.querySelectorAll(".card")].map((c) => c.style.transform.match(/-?[\\d.]+/g).map(Number));
-    if (!poses.every(([x, y, , s]) => Math.hypot(x, y) <= 1 && Math.abs(s - 1) <= .01)) return;
-    const { land } = landing;
-    landing = null;
-    land.fn();
   };`;
 
 const MOMENTS: Moment[] = [
@@ -660,13 +666,30 @@ async function jpegOf(cdp: CDPSession, clip: { x: number; y: number }): Promise<
   return Buffer.from(data, "base64");
 }
 
+type Action = NonNullable<Moment["actions"]>[number];
+
+/** One frame on from `at` in the chapter's time, taking each action due within it at its own `atMs`. */
+async function stepTaking(page: Page, at: number, due: Action[], act: (action: Action) => Promise<unknown> | undefined) {
+  let ran = 0;
+  while (due.length && due[0].atMs <= at + STEP_MS) {
+    const action = due.shift()!;
+    const lead = Math.max(0, action.atMs - at - ran);
+    if (lead > 0) await step(page, lead);
+    ran += lead;
+    await act(action);
+  }
+  await step(page, STEP_MS - ran);
+}
+
 async function strip(
   page: Page,
   clip: { x: number; y: number },
   decoder: Page,
   m: Moment,
   startMs: number,
-  act: (action: NonNullable<Moment["actions"]>[number]) => Promise<unknown> | undefined,
+  /** The actions the pre-roll did not take. */
+  due: Action[],
+  act: (action: Action) => Promise<unknown> | undefined,
   stepTo: (t: number, ms: number) => Promise<TraceFrame | null>,
   layout: () => Promise<SideLayout>,
   particles: () => Promise<Omit<LayerSample, "t"> | null>
@@ -681,8 +704,7 @@ async function strip(
     return m.regions ? Object.fromEntries(m.regions.map((r) => [r, all[r]])) : all;
   };
   const cdp = await page.context().newCDPSession(page);
-  const due = [...(m.actions ?? [])];
-  expect(due.filter((a) => a.atMs < startMs).map((a) => a.atMs), `the actions the ${startMs} ms pre-roll would delay`).toEqual([]);
+  expect(due.filter((a) => a.atMs < startMs).map((a) => a.atMs), `the actions the ${startMs} ms pre-roll left untaken`).toEqual([]);
   for (let k = 0; startMs + k * STEP_MS <= m.windowMs; k++) {
     const t = startMs + k * STEP_MS;
     // Each side is at t - STEP_MS here, so an action is taken at its own atMs, not up to a frame before it.
@@ -740,9 +762,11 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRoll
     requestAnimationFrame(() => { paused = false; });
     start(CH.findIndex((c) => c.key === ${JSON.stringify(m.chapter ?? m.key)}));
   })()`);
-  for (let rolled = 0; rolled < preRollMs; rolled += STEP_MS) await step(page);
+  const act = (a: Action) => (a.mockup ? page.evaluate(a.mockup) : undefined);
+  const due = [...(m.actions ?? [])];
+  for (let rolled = 0; rolled < preRollMs; rolled += STEP_MS) await stepTaking(page, rolled, due, act);
   const own = { ...m, windowMs: m.mockupWindowMs ?? m.windowMs };
-  const capture = await strip(page, box, decoder, own, preRollMs, (a) => (a.mockup ? page.evaluate(a.mockup) : undefined), async (_t, ms) => ({
+  const capture = await strip(page, box, decoder, own, preRollMs, due, act, async (_t, ms) => ({
     t: 0,
     ...(await stepThen<Omit<TraceFrame, "t">>(page, ms, MOCKUP_SAMPLE)),
   }), () => page.evaluate(MOCKUP_LAYOUT) as Promise<SideLayout>, async () => null);
@@ -791,7 +815,7 @@ function trackLoads(page: Page): () => Promise<string[]> {
 }
 
 /** Skia's felt. The virtual clock stands still while anything loads, so the pre-roll counts the table's own frames. */
-async function skiaOnset(page: Page, mounted: number, loading: () => Promise<string[]>): Promise<number> {
+async function skiaOnset(page: Page, mounted: number, loading: () => Promise<string[]>, due: Action[], act: (action: Action) => Promise<unknown>): Promise<number> {
   const deadline = Date.now() + 90_000;
   const isSkia = (f: TraceFrame) => f.t > mounted && f.felt === "skia";
   let seen = 0;
@@ -802,7 +826,7 @@ async function skiaOnset(page: Page, mounted: number, loading: () => Promise<str
     if ((onset = fresh.find(isSkia)?.t) !== undefined) break;
     const waiting = await loading();
     if (Date.now() > deadline) throw new Error(`Skia never drew; still loading: ${waiting.join(", ") || "nothing"}`);
-    if (waiting.length === 0) await step(page);
+    if (waiting.length === 0) await stepTaking(page, (await page.evaluate(() => performance.now())) - mounted, due, act);
     await new Promise((r) => setTimeout(r, 20));
   }
   expect(onset - mounted, "Skia's first frame, after the table's").toBeLessThanOrEqual(MAX_PRE_ROLL_MS);
@@ -821,20 +845,19 @@ async function openAppSide(browser: Browser, baseURL: string, m: Moment, variant
     headers: { "access-control-allow-origin": "*" },
   }));
   const started = Date.now();
-  const feltDrawn = async () => {
-    if (variant === "skia") await skiaOnset(page, await traced(page, m.appOnset, `the app's onset of ${m.key}`), loading);
-  };
-  await m.appTrigger(page, baseURL, feltDrawn);
+  await m.appTrigger(page, baseURL);
   const mounted = await traced(page, m.appOnset, `the app's onset of ${m.key}`);
-  const onset = variant === "skia" ? await skiaOnset(page, mounted, loading) : mounted;
+  const due = [...(m.actions ?? [])];
+  // The mockup is rolled the same pre-roll from its own start, so an action due before the felt draws is taken in it on both sides.
+  const onset = variant === "skia" ? await skiaOnset(page, mounted, loading, due, (a) => a.app?.(page) ?? Promise.resolve()) : mounted;
   const preRollMs = Math.ceil((onset - mounted) / STEP_MS) * STEP_MS;
   const prelude = m.fromApp ? m.fromApp(await page.evaluate<TraceFrame>(TRACED_AT(mounted))) : "";
-  return { page, onset, preRollMs, prelude, onsetMs: Date.now() - started };
+  return { page, onset, preRollMs, prelude, due, onsetMs: Date.now() - started };
 }
 
 async function stripAppSide(side: Awaited<ReturnType<typeof openAppSide>>, decoder: Page, m: Moment, variant: Variant) {
-  const { page, onset, preRollMs } = side;
-  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, (a) => a.app?.(page), (t, ms) =>
+  const { page, onset, preRollMs, due } = side;
+  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, due, (a) => a.app?.(page), (t, ms) =>
     stepThen<TraceFrame | null>(page, t > preRollMs ? ms : null, TRACED_AT(onset + t - preRollMs)), async () => ({
     pile: await seatAnchor(page, "pile"),
     light: await settledLight(page, "bottom"),
