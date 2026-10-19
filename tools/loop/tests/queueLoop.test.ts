@@ -9,21 +9,15 @@ import { pathToFileURL } from "node:url";
 import { act, clockAt, closing, header, LAND, note, PLAIN, recap, stepRow, tasksDetail, thought } from "../loop-render.mjs";
 import { closePhase, readLine, reduceSession, sessionStart } from "../loop-stream.mjs";
 import { ticker } from "../loop-screen.mjs";
-import {
-  pushedPr,
-  park,
-  repark,
-  holdFor,
-  settle,
-  runOnce,
-} from "../queue-loop.mjs";
+import { holdFor, runOnce } from "../queue-loop.mjs";
+import { fakeTracker, ghTracker, pushedPr, repark } from "../tracker.mjs";
+import { settle } from "../settle.mjs";
 import { contextFor, queueLoopArgs, runTicket } from "../loop-session.mjs";
 import { screenEvents, sessionView, ticketFacts } from "../loop-board.mjs";
-import { syncCheckout, reinstall, loopSha, workspacePort } from "../workspace.mjs";
+import { park, syncCheckout, reinstall, loopSha, workspacePort } from "../workspace.mjs";
 import { BASH_DEFAULT_TIMEOUT_MS, CHECK_BASH_TIMEOUT_MS, LIMITS, SESSION_POLICY, STALL_MS } from "../limits.mjs";
 import { decide } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
-import { fakeTracker, ghTracker } from "../tracker.mjs";
 import { fakePorts } from "./helpers/fakePorts.ts";
 
 const quiet = { bell: () => {}, log: () => {}, announce: () => {} };

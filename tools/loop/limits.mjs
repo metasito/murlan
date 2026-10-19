@@ -20,6 +20,9 @@ export const CHECK_BASH_TIMEOUT_MS = STALL_MS - 5 * 60_000;
  */
 export const BASH_DEFAULT_TIMEOUT_MS = 10 * 60_000;
 
+/** Bounds each `gh` call settling and a re-park make, so a wedged one cannot stall the supervisor. */
+export const CI_RED_TIMEOUT_MS = 30_000;
+
 /** Bounds a `git fetch` or merge of one branch from origin. */
 export const REFRESH_TIMEOUT_MS = 2 * 60_000;
 

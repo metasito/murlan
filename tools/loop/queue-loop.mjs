@@ -15,41 +15,36 @@
 import { git as gitAt, REPO } from "./cli.mjs";
 import { derive } from "./loop-derive.mjs";
 import { killedRun, runSession, runTicket } from "./loop-session.mjs";
-import { bell, clockAt, LAND, PLAIN, reportRow, runRecap, runTotal, stepRow } from "./loop-render.mjs";
+import { bell, clockAt, PLAIN, reportRow, runRecap, runTotal, stepRow } from "./loop-render.mjs";
 import { ticker } from "./loop-screen.mjs";
 import { ROOT } from "./paths.mjs";
 import { journaled, screenEvents, ticketFacts } from "./loop-board.mjs";
 import {
   appendSupervisor,
-  errorLine,
   errorOf,
   killedStarts,
   lastWrite,
   ledger as openLedger,
-  conflictNotePath,
-  parkNotePath,
   pendingReparks,
   prune as pruneLogs,
   logOf,
-  noted,
-  writeNote,
   readLedger,
   streamLog,
   ticketTally,
   typicalMs,
 } from "./loop-logs.mjs";
-import { loopSha, sh, tearDown, workspacePort } from "./workspace.mjs";
+import { loopSha, park, workspacePort } from "./workspace.mjs";
 import { buildReady } from "./loop-gate.mjs";
-import { ghTracker } from "./tracker.mjs";
+import { ghTracker, postConflict, publishForReview, pushedPr, repark } from "./tracker.mjs";
 import { turnHeadroom } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { HEARTBEAT_MS, LIMITS, REFRESH_TIMEOUT_MS, RESTART, sleepClock } from "./limits.mjs";
+import { HEARTBEAT_MS, LIMITS, RESTART, sleepClock } from "./limits.mjs";
 import { nextPick } from "./next-ticket.mjs";
 import { branchOf, claim, claimError } from "./claim.mjs";
 import { afterSession, decide } from "./decide.mjs";
-import { CI_RED_TIMEOUT_MS, runSettle } from "./settle.mjs";
+import { settle } from "./settle.mjs";
 
-const { SETTLE, TICKET_HOLDS, WAIT } = LIMITS;
+const { TICKET_HOLDS, WAIT } = LIMITS;
 
 
 /**
@@ -89,246 +84,12 @@ export async function holdFor(
   return wake ? "woken" : "waited";
 }
 
-/**
- * Hands a ticket back to the owner: the work committed, the claim released, the reason on the
- * issue, the worktree gone.
- *
- * Each step reports rather than throwing. This is the failure path — reached from the stop-file
- * drain as well as from a bad session — so a throw here would turn an orderly stop into an
- * unhandled rejection.
- *
- * @param {number} number
- * @param {{phase: string, why: string, log: string, cwd: string|null, branch: string|null,
- *   dirty: boolean, error?: object|null, run?: Function, tracker?: object, write?: Function, remove?: Function}} ctx
- * @returns {{ok: boolean, failed: string[]}}
- */
-export function park(
-  number,
-  {
-    phase,
-    why,
-    log,
-    cwd,
-    branch,
-    dirty,
-    error = null,
-    run = sh,
-    tracker = ghTracker((args, opts) => run("gh", args, opts)),
-    write = writeNote,
-    remove = tearDown,
-  },
-) {
-  const failed = [];
-  const step = (name, fn) => {
-    try {
-      fn();
-    } catch (err) {
-      failed.push(name);
-      console.error(`  ⚠️ park #${number}: ${name} failed — ${String(err.message).split("\n")[0]}`);
-    }
-  };
-
-  if (dirty && cwd) {
-    // `-A` is safe here and nowhere else: this is the ticket's own worktree, which has its own
-    // index, and rule 40 keeps every other session out of it. Losing an unstaged edit is the one
-    // thing parking must not do. Re-read rather than trusting `dirty`: it comes from a derive()
-    // up to twenty seconds old, and a session that committed in that window leaves nothing to
-    // stage, which makes `git commit` exit 1.
-    step("commit", () => {
-      run("git", ["-C", cwd, "add", "-A", "--", "."]);
-      if (run("git", ["-C", cwd, "status", "--porcelain"]).trim()) {
-        run("git", ["-C", cwd, "commit", "-m", `wip(#${number}): parked in phase ${phase}`]);
-      }
-    });
-  }
-
-  step("label", () => PARK_STEPS.label(number, tracker));
-
-  const body = [
-    `Parked by the queue loop in **phase ${phase}**.`,
-    "",
-    `- reason: ${why}`,
-    `- branch: \`${branch ?? "none"}\`${dirty ? " (uncommitted work was committed before teardown)" : ""}`,
-    `- log: \`${log}\``,
-    ...(error ? [`- error: ${errorLine(error)}`] : []),
-    ...(error?.stderr ? ["", "```", error.stderr, "```"] : []),
-    "",
-    "The branch keeps its commits. Nothing was discarded.",
-    "",
-    "**To send it back:** deal with the reason above, then swap `ready-for-human` for `ready-for-agent`." +
-      " The next run resumes from the branch as it stands.",
-  ].join("\n");
-  step("comment", () => {
-    write(parkNotePath(number), body);
-    PARK_STEPS.comment(number, tracker);
-  });
-
-  if (cwd) step("worktree", () => remove(cwd));
-
-  return { ok: failed.length === 0, failed };
-}
-
-/** The tracker's half of a park, each a step a later pass can apply again on its own. */
-const PARK_STEPS = {
-  label: (number, tracker) => tracker.park(number),
-  comment: (number, tracker) => tracker.comment(number, parkNotePath(number)),
-};
-
-/**
- * The park steps that failed, applied again from what the park left on disk — only while the park
- * still stands. `why` says why a debt closed without being applied; `failed` is what is still owed.
- *
- * @param {number} number @param {string[]} steps
- * @returns {{failed: string[], why: string|null}}
- */
-export function repark(number, steps, tracker = ghTracker(), exists = noted) {
-  let issue;
-  try {
-    issue = tracker.issue(number, { timeout: CI_RED_TIMEOUT_MS });
-  } catch (err) {
-    console.error(`  ⚠️ park #${number}: the issue could not be read — ${String(err.message).split("\n")[0]}`);
-    return { failed: steps, why: null };
-  }
-  // The label step owed leaves `in-progress` on; once it landed, `ready-for-human` is the park's own.
-  // Anything else is the owner's doing, which a retry must not undo.
-  const mark = steps.includes("label") ? "in-progress" : "ready-for-human";
-  if (issue.state !== "OPEN" || !issue.labels.includes(mark)) {
-    return { failed: [], why: "the owner already acted on the issue" };
-  }
-  const pruned = steps.includes("comment") && !exists(parkNotePath(number));
-  const failed = steps.filter((s) => {
-    if (s === "comment" && pruned) return false;
-    try {
-      PARK_STEPS[s](number, tracker);
-      return false;
-    } catch (err) {
-      console.error(`  ⚠️ park #${number}: ${s} failed again — ${String(err.message).split("\n")[0]}`);
-      return true;
-    }
-  });
-  return { failed, why: pruned ? "the park note was pruned, so its comment is not posted" : null };
-}
-
-/**
- * Pushes the head review is about to read, and opens its pull request when none is open,
- * so CI runs while the review does. Not a gate: phase D's land step pushes again if this failed.
- */
-export function publishForReview(number, branch, cwd, title, run = sh, tracker = ghTracker()) {
-  const opts = { timeout: REFRESH_TIMEOUT_MS };
-  run("git", ["-C", cwd, "push", "--quiet", "-u", "origin", branch], opts);
-  const open = tracker.openPrFor(branch, opts);
-  if (open) return prUrl(open.number);
-  const body = `Closes #${number}\n\nOpened when review started. Phase D writes this description on LAND.`;
-  return tracker.createPr({ head: branch, title, body }, opts);
-}
-
-const prUrl = (n) => `https://github.com/${REPO}/pull/${n}`;
-
 
 /**
  * One report file per run, named for when the run started — not per calendar day: two runs on one
  * day would share a file, and a run crossing midnight would split across two.
  */
 const RUN_ID = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
-
-/**
- * The pull request this ticket pushed, if it pushed one.
- *
- * Falls back to the ticket number when the branch is unknown.
- *
- * `--state all`, because a pull request merged between the session's exit and this read — a peer,
- * an auto-merge, the owner — is a landing, not a session that pushed nothing. The head ref comes
- * back too: `ciVerdict` is asked for a branch's run, not a pull request's.
- *
- * `declared` is the number the session stated on its way out, asked for directly when the listing
- * has not caught up or does not reach back far enough.
- *
- * `since` bounds what counts as merged. A ticket re-opened and re-queued still has its old
- * `agent/<n>-…` pull request on the tracker, and reading that as a landing releases the claim on a
- * session that pushed nothing.
- *
- * @param {string|null} branch
- * @param {number} ticket
- * @param {number|null} [declared]
- * @param {number} [since] epoch ms; a merge older than this is not this session's
- * @param {ReturnType<typeof ghTracker>} [tracker]
- * @returns {{number: number, state: string, head: string, sha: string|null, changedFiles: number|null}|null}
- */
-export function pushedPr(branch, ticket, declared = null, since = 0, tracker = ghTracker()) {
-  // Matched on the head ref rather than by search: `#42` in a body also matches PR #942. With a
-  // branch in hand the listing is exact; without one the newest 100 are scanned, which reaches back
-  // far enough for a branch pushed minutes ago.
-  // The head ref is the only thing that makes a pull request this ticket's, and it is checked on
-  // every path including the declared one. `declared` is a number a model wrote, and what it
-  // reaches is `gh pr merge`.
-  const mine = (pr) =>
-    branch ? pr?.headRefName === branch : new RegExp(`^agent/${ticket}-`).test(pr?.headRefName ?? "");
-  const stale = (pr) =>
-    pr.state === "MERGED" && since > 0 && Date.parse(pr.mergedAt ?? "") < since;
-  const take = (pr) =>
-    pr && mine(pr) && !stale(pr)
-      ? { number: pr.number, state: pr.state, head: pr.headRefName, sha: pr.headRefOid ?? null, changedFiles: pr.changedFiles ?? null }
-      : null;
-  // A listing carries no file count; only the pull request itself does, and an unread one is unknown, not none.
-  const counted = (pr) => {
-    try {
-      return { ...pr, changedFiles: tracker.pr(pr.number).changedFiles ?? null };
-    } catch {
-      return { ...pr, changedFiles: null };
-    }
-  };
-  try {
-    const rows = tracker.prsFor({ branch, ticket }).filter((pr) => mine(pr) && !stale(pr));
-    const row = rows.find((p) => p.state === "OPEN") ?? rows.find((p) => p.state === "MERGED") ?? rows[0];
-    const found = row && take(counted(row));
-    if (found) return found;
-  } catch {
-    /* falls through to the declared number */
-  }
-  if (!declared) return null;
-  try {
-    return take(tracker.pr(declared));
-  } catch {
-    return null;
-  }
-}
-
-/** GitHub re-points the pull request head asynchronously; asked at once, CI answers for the old one. */
-const SETTLE_PAUSE_MS = 15_000;
-
-/**
- * Waits for the pushed branch's CI and lands it. No judgement here — `readLandingState` says whether
- * the gate passed and `landing()` says what that plus the merge state means — which is why the session
- * that built the ticket has already exited by the time this runs.
- *
- * It owns a phase of its own because it is the longest stretch of a ticket and the session is gone:
- * without a row with a clock on it, a board that has just ticked `close` reads as finished, and a
- * twenty-minute CI wait reads as a hang.
- */
-export async function settle(pending, screen, opts = {}) {
-  const { pause = SETTLE_PAUSE_MS, deadline = SETTLE.DEADLINE_MS, watch = runSettle } = opts;
-  screen.start(LAND);
-  screen.set({ pr: prUrl(pending.pr) });
-  screen.said(`waiting for ci.yml on ${pending.branch}`);
-  try {
-    const out = await watch(
-      pending,
-      (m) => {
-        screen.said(m);
-        screen.keep(m);
-      },
-      pause,
-      deadline,
-    );
-    const landed = out.action === "already-merged";
-    screen.close(landed ? "done" : "failed", landed ? `#${pending.pr} merged` : out.reason);
-    return out;
-  } catch (err) {
-    // An open phase is a spinner with no end. Whatever else is wrong, the row has to settle.
-    screen.close("failed", String(err.message).split("\n")[0]);
-    throw err;
-  }
-}
 
 /**
  * The one way a ticket is handed to the owner, and its one `parked` row: the row closes the
@@ -681,8 +442,7 @@ export function realPorts(book, screen, events) {
     park,
     conflict: (number, head) => {
       try {
-        writeNote(conflictNotePath(number), `CONFLICT ${head}\nThe branch conflicts with main: the next process rebases it onto origin/main.`);
-        ghTracker().comment(number, conflictNotePath(number));
+        postConflict(number, head);
         return true;
       } catch (err) {
         events.log(`#${number}: could not post CONFLICT — ${String(err.message).split("\n")[0]}`, "conflict");

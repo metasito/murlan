@@ -8,19 +8,16 @@ import path from "node:path";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
-import { runSettle } from "../settle.mjs";
+import { runSettle, settle } from "../settle.mjs";
 import {
   runOnce as realRunOnce,
   main as realMain,
   realPorts,
-  settle,
-  park,
-  publishForReview,
 } from "../queue-loop.mjs";
+import { fakeTracker, publishForReview } from "../tracker.mjs";
 import { LIMITS, RESTART } from "../limits.mjs";
-import { loopMoved, refreshWorktree, removeLanded, tearDown as removeWorktree, workspacePort } from "../workspace.mjs";
+import { loopMoved, park, refreshWorktree, removeLanded, tearDown as removeWorktree, workspacePort } from "../workspace.mjs";
 import { fakePorts, rowOf, withMembers } from "./helpers/fakePorts.ts";
-import { fakeTracker } from "../tracker.mjs";
 import { afterSession } from "../decide.mjs";
 import { readLine } from "../loop-stream.mjs";
 import { ticketTally } from "../loop-logs.mjs";

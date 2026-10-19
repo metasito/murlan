@@ -15,19 +15,17 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { firstLine, gh as ghCli, git as gitAt, REPO } from "./cli.mjs";
 import { ciRedPosted } from "./loop-derive.mjs";
-import { ghTracker } from "./tracker.mjs";
+import { ghTracker, prUrl } from "./tracker.mjs";
 import { readLine } from "./loop-stream.mjs";
-import { ciLine } from "./loop-render.mjs";
+import { ciLine, LAND } from "./loop-render.mjs";
 import { DIR, ciLogPath, ciRedNotePath, streamLog } from "./loop-logs.mjs";
 import { landable, reviewerRan } from "./loop-gate.mjs";
-import { LIMITS, REFRESH_TIMEOUT_MS, sleepClock } from "./limits.mjs";
+import { CI_RED_TIMEOUT_MS, LIMITS, REFRESH_TIMEOUT_MS, sleepClock } from "./limits.mjs";
 import { decide } from "./decide.mjs";
 
 // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
 const ts = (file) => createRequire(import.meta.url)(file);
 
-/** Bounds each `gh` call settling makes, so a wedged one cannot stall the supervisor. */
-export const CI_RED_TIMEOUT_MS = 30_000;
 
 const { SETTLE, CI_RED_TRIES } = LIMITS;
 
@@ -539,5 +537,42 @@ export async function runSettle(pending, log, pause, deadline, io = {}) {
     }
     if (outcome) return outcome;
     state = rested(state, await ports.sleep());
+  }
+}
+
+/** GitHub re-points the pull request head asynchronously; asked at once, CI answers for the old one. */
+const SETTLE_PAUSE_MS = 15_000;
+
+/**
+ * Waits for the pushed branch's CI and lands it. No judgement here — `readLandingState` says whether
+ * the gate passed and `landing()` says what that plus the merge state means — which is why the session
+ * that built the ticket has already exited by the time this runs.
+ *
+ * It owns a phase of its own because it is the longest stretch of a ticket and the session is gone:
+ * without a row with a clock on it, a board that has just ticked `close` reads as finished, and a
+ * twenty-minute CI wait reads as a hang.
+ */
+export async function settle(pending, screen, opts = {}) {
+  const { pause = SETTLE_PAUSE_MS, deadline = SETTLE.DEADLINE_MS, watch = runSettle } = opts;
+  screen.start(LAND);
+  screen.set({ pr: prUrl(pending.pr) });
+  screen.said(`waiting for ci.yml on ${pending.branch}`);
+  try {
+    const out = await watch(
+      pending,
+      (m) => {
+        screen.said(m);
+        screen.keep(m);
+      },
+      pause,
+      deadline,
+    );
+    const landed = out.action === "already-merged";
+    screen.close(landed ? "done" : "failed", landed ? `#${pending.pr} merged` : out.reason);
+    return out;
+  } catch (err) {
+    // An open phase is a spinner with no end. Whatever else is wrong, the row has to settle.
+    screen.close("failed", String(err.message).split("\n")[0]);
+    throw err;
   }
 }
