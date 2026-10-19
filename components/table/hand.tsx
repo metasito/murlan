@@ -523,14 +523,12 @@ function CardItemBase({
   );
 }
 
-const readAtMount = () => true;
-
 /** The card by id, as CardView compares it: every `game:state` rebuilds every card object. */
 export const cardItemPropsEqual = propsEqualExcept<CardItemProps>({
   card: byId,
   place: shallowEqual,
   size: shallowEqual,
-  entry: readAtMount,
+  entry: "ignore",
 });
 
 const CardItem = React.memo(CardItemBase, cardItemPropsEqual);

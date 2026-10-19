@@ -15,19 +15,20 @@ export function shallowEqual<T extends object | null | undefined>(a: T, b: T): b
 }
 
 /**
- * A `React.memo` comparator that compares every prop either side carries by identity, except the
- * ones named, which are compared by their own test. A prop nobody names is compared, so adding one
- * cannot make the component ignore it.
+ * A `React.memo` comparator over the union of both sides' props, each compared by `Object.is` except
+ * the ones named, which take their own test or are `"ignore"`d. A prop nobody names is compared, so
+ * adding one cannot make the component ignore it.
  */
-export function propsEqualExcept<P extends object>(except: { [K in keyof P]?: Equal<P[K]> }): Equal<P> {
+export function propsEqualExcept<P extends object>(by: { [K in keyof P]?: Equal<P[K]> | "ignore" }): Equal<P> {
   return (a, b) => {
     const pa = a as Record<string, unknown>;
     const pb = b as Record<string, unknown>;
-    const tests = except as Record<string, Equal<unknown> | undefined>;
+    const tests = by as Record<string, Equal<unknown> | "ignore" | undefined>;
     const keys = new Set([...Object.keys(pa), ...Object.keys(pb)]);
     for (const k of keys) {
       const test = tests[k];
-      if (test ? !test(pa[k], pb[k]) : pa[k] !== pb[k]) return false;
+      if (test === "ignore") continue;
+      if (test ? !test(pa[k], pb[k]) : !Object.is(pa[k], pb[k])) return false;
     }
     return true;
   };
