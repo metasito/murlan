@@ -9,7 +9,7 @@
 // database has tables that grow with every match played, and a dashboard that
 // gets slower the more the game is used is a dashboard that stops being opened.
 import { sql } from "drizzle-orm";
-import { db } from "../store/db.ts";
+import { db, POOL_MAX } from "../store/db.ts";
 import { funnel, type FunnelStep } from "../socket/events.ts";
 import { recentClientErrorGroups, topFrame, type ClientErrorGroup } from "./clientErrors.ts";
 import { recentServerErrorGroups, serverErrorsDropped, serverErrorsThisWeek, type ServerErrorGroup } from "./serverErrors.ts";
@@ -212,39 +212,70 @@ async function forDisplay(groups: ClientErrorGroup[]): Promise<AdminSnapshot["cr
   );
 }
 
-/**
- * Every panel on the page, gathered at most four queries at a time: the app
- * pool holds ten clients, and one page load must not take all of them from the
- * tables.
- */
+/** At most two-fifths of the pool, at least one: the rest stays with the tables. */
+export function adminQueryLimit(poolMax: number): number {
+  return Math.max(1, Math.floor((poolMax * 2) / 5));
+}
+
+type Results<T extends readonly (() => Promise<unknown>)[]> = { -readonly [K in keyof T]: Awaited<ReturnType<T[K]>> };
+
+/** `Promise.all` over `tasks`, never more than `limit` of them running at once. */
+export async function allLimited<const T extends readonly (() => Promise<unknown>)[]>(
+  limit: number,
+  tasks: T
+): Promise<Results<T>> {
+  const results: unknown[] = new Array(tasks.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < tasks.length) {
+      const i = next++;
+      results[i] = await tasks[i]();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+  return results as Results<T>;
+}
+
+/** Every panel on the page, gathered concurrently up to `adminQueryLimit` of the app pool. */
 export async function adminSnapshot(provisionalRounds: number): Promise<AdminSnapshot> {
-  const [signupRows, users, today, week] = await Promise.all([
-    signups(),
-    totalUsers(),
-    activePlayers(1),
-    activePlayers(7),
-  ]);
-  const [retentionRows, idle, ratingRows, provisional] = await Promise.all([
-    retention(),
-    aroundNotPlaying(),
-    ratingSpread(),
-    provisionalPlayers(provisionalRounds),
-  ]);
-  const [balance, placementRows, unfinishedRows, stale] = await Promise.all([
-    matchBalance(),
-    placements(),
-    unfinished(),
-    staleGames(),
-  ]);
-  const [crashes, crashGroupRows, funnelRows, bugReportRows] = await Promise.all([
-    crashesThisWeek(),
-    recentClientErrorGroups(ROW_LIMIT),
-    funnel(WINDOW_DAYS),
-    recentBugReports(ROW_LIMIT),
-  ]);
-  const [serverWeek, serverGroupRows] = await Promise.all([
-    serverErrorsThisWeek(),
-    recentServerErrorGroups(ROW_LIMIT),
+  const [
+    signupRows,
+    users,
+    today,
+    week,
+    retentionRows,
+    idle,
+    ratingRows,
+    provisional,
+    balance,
+    placementRows,
+    unfinishedRows,
+    stale,
+    crashes,
+    crashGroupRows,
+    funnelRows,
+    bugReportRows,
+    serverWeek,
+    serverGroupRows,
+  ] = await allLimited(adminQueryLimit(POOL_MAX), [
+    () => signups(),
+    () => totalUsers(),
+    () => activePlayers(1),
+    () => activePlayers(7),
+    () => retention(),
+    () => aroundNotPlaying(),
+    () => ratingSpread(),
+    () => provisionalPlayers(provisionalRounds),
+    () => matchBalance(),
+    () => placements(),
+    () => unfinished(),
+    () => staleGames(),
+    () => crashesThisWeek(),
+    () => recentClientErrorGroups(ROW_LIMIT),
+    () => funnel(WINDOW_DAYS),
+    () => recentBugReports(ROW_LIMIT),
+    () => serverErrorsThisWeek(),
+    () => recentServerErrorGroups(ROW_LIMIT),
   ]);
 
   return {

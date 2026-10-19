@@ -42,7 +42,7 @@ export function resolvePoolMax(raw: string | undefined): number {
   return parsed;
 }
 
-const POOL_MAX = resolvePoolMax(process.env.MURLAN_PG_POOL_MAX);
+export const POOL_MAX = resolvePoolMax(process.env.MURLAN_PG_POOL_MAX);
 
 export const pool = createPool("app", {
   max: POOL_MAX,
