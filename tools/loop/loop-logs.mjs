@@ -43,7 +43,7 @@ export const leftoverPath = ARTEFACTS.leftover.path;
 export const ledgerPath = ARTEFACTS.ledger.path;
 export const supervisorLogPath = ARTEFACTS.supervisor.path;
 
-/** Throws on a failed write: `journaled` in `queue-loop.mjs` is what keeps that out of the loop. */
+/** Throws on a failed write: `journaled` in `loop-board.mjs` is what keeps that out of the loop. */
 export function appendSupervisor(line, dir = DIR) {
   fsNode.mkdirSync(dir, { recursive: true });
   fsNode.appendFileSync(supervisorLogPath(null, dir), line);

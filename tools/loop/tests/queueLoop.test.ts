@@ -15,17 +15,15 @@ import {
   syncCheckout,
   reinstall,
   runTicket,
-  screenEvents,
-  sessionView,
   park,
   repark,
   holdFor,
   settle,
   runOnce,
   loopSha,
-  ticketFacts,
   contextFor,
 } from "../queue-loop.mjs";
+import { screenEvents, sessionView, ticketFacts } from "../loop-board.mjs";
 import { BASH_DEFAULT_TIMEOUT_MS, CHECK_BASH_TIMEOUT_MS, LIMITS, SESSION_POLICY, STALL_MS } from "../limits.mjs";
 import { decide } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
