@@ -7,6 +7,8 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { deadlineMs, FILE_DEADLINE_MS } from "../helpers/fileDeadline.mjs";
 import { RUN_IDLE_MS, runIdleMs } from "../helpers/filesRunReporter.mjs";
+import { trackedFiles } from "../helpers/trackedFiles.ts";
+import { NO_BACKGROUND_JIT } from "../../scripts/nodeTest.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const script = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")).scripts.test as string;
@@ -52,10 +54,37 @@ describe("a test file that never finishes fails npm test by name", () => {
 });
 
 describe("a test file that passed always exits", () => {
-  // --test-force-exit ends each file with process.exit, which on Node 24 joins V8's compiler threads
-  // without the main thread collecting again: a background compile job waiting on a collection then
-  // hangs the exit forever, after it has already stopped the deadline's worker (#1590).
-  const NO_BACKGROUND_JIT = ["--no-concurrent-recompilation", "--no-concurrent-sparkplug"];
+  const FORCE_EXIT = ["--test", "force-exit"].join("-");
+  const COMMAND = new RegExp(`\\bnode\\b.*${FORCE_EXIT}`);
+  const ARGV = new RegExp(`["']${FORCE_EXIT}["']`);
+  const OWNER = /\bnode scripts\/nodeTest\.mjs\b/;
+  const COMMENT = /^\s*(#|\/\/|\/?\*)/;
+
+  /** Each line that force-exits a test run without going through `scripts/nodeTest.mjs`. */
+  const bypasses = (where: string, text: string) =>
+    text
+      .split("\n")
+      .filter((l) => !COMMENT.test(l) && ((COMMAND.test(l) && !OWNER.test(l)) || (ARGV.test(l) && !l.includes("NO_BACKGROUND_JIT"))))
+      .map((l) => `${where}: ${l.trim()}`);
+
+  test("every command that force-exits a test run goes through scripts/nodeTest.mjs", () => {
+    const files = trackedFiles(repoRoot, "package.json", ".github", "scripts", "tools", "tests").filter((f) =>
+      /\.(json|ya?ml|sh|[cm]?js|ts)$/.test(f)
+    );
+    const texts = files.map((f) => [f, readFileSync(path.join(repoRoot, f), "utf8")] as const);
+    const routed = texts.flatMap(([, t]) => t.split("\n").filter((l) => OWNER.test(l) && l.includes(FORCE_EXIT)));
+    assert.ok(routed.length >= 4, `the scan found ${routed.length} routed call sites; it has stopped seeing them`);
+    assert.deepEqual(texts.flatMap(([f, t]) => bypasses(f, t)), []);
+  });
+
+  test("the scan flags a planted bypass, in a command or in an argv", () => {
+    const run = (cmd: string) => `      run: ${cmd} --test --test-timeout=30000 ${FORCE_EXIT} x.test.ts`;
+    assert.equal(bypasses("plant.yml", run("node")).length, 1);
+    assert.equal(bypasses("plant.json", `"t": "${run("node --import ./x.mjs").trim()}"`).length, 1);
+    assert.equal(bypasses("plant.mjs", `spawn(process.execPath, ["--test", "${FORCE_EXIT}", file]);`).length, 1);
+    assert.equal(bypasses("plant.yml", run("node scripts/nodeTest.mjs")).length, 0);
+    assert.equal(bypasses("plant.yml", `      # ${run("node")}`).length, 0);
+  });
 
   test("npm test's own flags reach every file's process and keep the JIT off background threads", async () => {
     const [, ...args] = script.split(" ").slice(0, -1);
