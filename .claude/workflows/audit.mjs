@@ -467,8 +467,9 @@ const SKEPTICS = {
   intent: 'Refute if the behaviour is deliberate (ADR, docs/GAME-RULES.md § Decisions, CLAUDE.md, a pinning test) or a guard elsewhere already prevents it.',
   impact: 'Judge the severity: who hits this, how often, and what do they lose? Give the severity you would defend.',
 }
-const skepticsFor = severity =>
-  severity === 'critical' || severity === 'high' ? ['code', 'intent', 'impact'] : ['code']
+const SKEPTICS_BY_SEVERITY = { info: [], low: ['code'], medium: ['code'], high: ['code', 'intent'], critical: ['code', 'intent', 'impact'] }
+const skepticsFor = severity => SKEPTICS_BY_SEVERITY[severity]
+const PROVE_FROM = SEVERITIES.indexOf('medium')
 const claimOf = f => ({ title: f.title, severity: f.severity, platform: f.platform, locations: f.locations, failure_scenario: f.failure_scenario })
 
 const findingKey = f => `${f.locations[0].path}:${Math.floor(f.locations[0].line / 10)}:${f.defect_class.toLowerCase()}`
@@ -547,7 +548,7 @@ ${JSON.stringify(claimOf(finding))}`, {
   const upheld = votes.filter(v => !v.refuted)
   if (upheld.length * 2 <= votes.length) return { ...finding, votes, verdict: 'refuted' }
   const settled = { ...finding, votes, severity: settledSeverity(finding.severity, upheld) }
-  return settled.severity === 'info' ? { ...settled, verdict: 'upheld', proof: 'info: not reproduced' } : prove(settled)
+  return rank(settled.severity) < PROVE_FROM ? { ...settled, verdict: 'upheld', proof: `${settled.severity}: not reproduced` } : prove(settled)
 }
 
 const investigate = (tool, alerts, map) => agent(`${COMMON}
