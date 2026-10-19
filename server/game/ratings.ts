@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { userRatings, users } from "../../shared/schema.ts";
 import { lockUsers } from "../store/userLock.ts";
@@ -227,9 +227,23 @@ export async function getCircleLeaderboard(userIds: string[], now: Date): Promis
     .select({ userId: users.id, username: users.username })
     .from(users)
     .where(inArray(users.id, [...new Set(userIds)]));
-  const rows = await Promise.all(
-    members.map(async (m) => ({ ...m, ...(await currentRow(db, m.userId, season)) }))
-  );
+  const latest = members.length === 0 ? [] : await db
+    .selectDistinctOn([userRatings.userId], {
+      userId: userRatings.userId,
+      season: userRatings.season,
+      rating: userRatings.rating,
+      rounds: userRatings.rounds,
+    })
+    .from(userRatings)
+    .where(and(inArray(userRatings.userId, members.map((m) => m.userId)), lte(userRatings.season, season)))
+    .orderBy(userRatings.userId, desc(userRatings.season));
+  const byUser = new Map(latest.map((r) => [r.userId, r]));
+  const rows = members.map((m) => {
+    const row = byUser.get(m.userId);
+    return row?.season === season
+      ? { ...m, rating: row.rating, rounds: row.rounds }
+      : { ...m, rating: seedRating(row ? row.rating : null), rounds: 0 };
+  });
   // Code-unit order, not localeCompare: a tie must break the same way on every server.
   rows.sort((a, b) => b.rating - a.rating || (a.username < b.username ? -1 : 1));
   return rows.map((r, i) => ({ ...r, rank: i + 1 }));

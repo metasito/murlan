@@ -12,6 +12,7 @@ import type { Locale } from "../../shared/i18n.ts";
 import { logger } from "../http/logger.ts";
 import { buildPushRequest, deadTokens, type ExpoTicket, type PushDevice, type PushMessage } from "./pushShape.ts";
 import { testOnlyEnv } from "../http/testOnlyEnv.ts";
+import { OUTBOUND_TIMEOUT_MS } from "../http/mail.ts";
 
 export type { PushMessage };
 
@@ -110,6 +111,7 @@ export async function notifyUser(userId: string, message: PushMessage): Promise<
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify(buildPushRequest(devices, message)),
+      signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
     });
 
     if (!res.ok) {

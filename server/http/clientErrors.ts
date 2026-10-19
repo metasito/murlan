@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { clientErrors } from "../../shared/schema.ts";
+import { ERROR_GROUP_WINDOW_DAYS } from "./serverErrors.ts";
 
 /** Matched to bug reports, and to nothing else here keeping personal data. */
 export const CLIENT_ERROR_RETENTION_DAYS = 90;
@@ -95,6 +96,7 @@ export async function recentClientErrorGroups(limit = CLIENT_ERROR_PAGE): Promis
       max(occurred_at) AS "lastSeen",
       (array_agg(stack ORDER BY occurred_at DESC))[1] AS stack
     FROM client_errors
+    WHERE occurred_at >= now() - make_interval(days => ${ERROR_GROUP_WINDOW_DAYS})
     GROUP BY coalesce(fingerprint, id::text)
     ORDER BY "lastSeen" DESC
     LIMIT ${limit}

@@ -37,7 +37,9 @@ export async function dealRound(
   game.lastRoundOverPayload = undefined;
   rollMatchForward(game);
 
-  await roomStore
+  // Not awaited: a join already requires `waiting`, so nothing here depends on
+  // the row, and a stalled pool must not hold the deal's broadcast.
+  void roomStore
     .updateRoomStatus(game.roomId, "in_progress")
     .catch((err: unknown) =>
       logger.warn({ err, roomId: game.roomId }, "Failed to set rooms.status = in_progress at the deal")

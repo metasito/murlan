@@ -136,7 +136,15 @@ test("a fresh database is usable on the first boot", async (t) => {
       const { ensureSchema } = await import("../../server/store/schemaDdl.ts");
       const { pool } = await import("../../server/store/db.ts");
       await ensureSchema(pool);
-      await ensureSchema(pool);
+      const ran: string[] = [];
+      const watched = {
+        query: (text: string, ...rest: unknown[]) => {
+          ran.push(text);
+          return (pool.query as (...a: unknown[]) => unknown)(text, ...rest);
+        },
+      } as unknown as typeof pool;
+      await ensureSchema(watched);
+      assert.deepEqual(ran.filter((s) => /ADD COLUMN/.test(s)), [], "a booted database takes no ACCESS EXCLUSIVE per column");
 
       const me = await fetch(`${server.url}/api/auth/me`, { headers: { cookie } });
       assert.equal(me.status, 200, await me.text());
