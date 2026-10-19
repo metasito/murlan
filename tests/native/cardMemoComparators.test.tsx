@@ -137,16 +137,28 @@ describe.each(SUBJECTS)("$name compares every prop it is given", ({ name, equal,
 // A card reads how it enters once, at mount: the deal is disarmed one render after the hand
 // appears, while its cards are still flying in, and a card that noticed would restart mid-flight.
 describe("cardItemPropsEqual and a card's entry", () => {
+  const fields = propsOf("components/table/hand.tsx", "CardEntry");
+  const ENTRY_VALUES: Record<string, [unknown, unknown]> = {
+    dx: [0, 5],
+    dy: [0, 5],
+    deal: [{ leaveMs: 0 }, undefined],
+    descends: [false, true],
+  };
+  const MOUNT_ONLY = ["deal", "descends"];
   const props = { card: CARD_A, place: PLACE, size: SIZE, entry: ENTRY };
+  const withEntry = (field: string, value: unknown) =>
+    cardItemPropsEqual(props as never, { ...props, entry: { ...ENTRY, [field]: value } } as never);
 
-  it.each([
-    ["the deal disarming", { ...ENTRY, deal: undefined }],
-    ["the descent ending", { ...ENTRY, descends: true }],
-  ])("ignores %s", (_, entry) => {
-    expect(cardItemPropsEqual(props as never, { ...props, entry } as never)).toBe(true);
+  it("has a value pair for every entry field, and read them out of the source", () => {
+    expect(fields.filter((f) => !ENTRY_VALUES[f])).toEqual([]);
+    expect(fields).toEqual(expect.arrayContaining(MOUNT_ONLY));
   });
 
-  it("notices where it enters from moving", () => {
-    expect(cardItemPropsEqual(props as never, { ...props, entry: { ...ENTRY, dx: 5 } } as never)).toBe(false);
+  it.each(fields)("ignores %s only if it is read once, at mount", (field) => {
+    expect(withEntry(field, ENTRY_VALUES[field][1])).toBe(MOUNT_ONLY.includes(field));
+  });
+
+  it("compares a field nobody exempted", () => {
+    expect(withEntry("added", 1)).toBe(false);
   });
 });

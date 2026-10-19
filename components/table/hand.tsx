@@ -228,7 +228,12 @@ interface CardDeal { clock: SharedValue<number>; leaveMs: number; onDealt: (x: n
  * `deal` and `descends` are read once, at mount: the deal is disarmed one render after the hand
  * appears, while its cards are still flying in.
  */
-interface CardEntry { dx: number; dy: number; deal?: CardDeal; descends: boolean }
+interface CardEntry {
+  dx: number;
+  dy: number;
+  deal?: CardDeal;
+  descends: boolean;
+}
 
 /** The deal under way, on its own clock: `pile` is where it flies from, off the hand zone's centre. */
 export interface HandDeal { offsetMs: number; clock: SharedValue<number>; pile: { dx: number; dy: number }; onDealt: (x: number, y: number) => void }
@@ -527,12 +532,14 @@ function CardItemBase({
   );
 }
 
+const readAtMount = () => true;
+
 /** The card by id, as CardView compares it: every `game:state` rebuilds every card object. */
 export const cardItemPropsEqual = propsEqualExcept<CardItemProps>({
   card: byId,
   place: shallowEqual,
   size: shallowEqual,
-  entry: (a, b) => a.dx === b.dx && a.dy === b.dy,
+  entry: propsEqualExcept<CardEntry>({ deal: readAtMount, descends: readAtMount }),
 });
 
 const CardItem = React.memo(CardItemBase, cardItemPropsEqual);
