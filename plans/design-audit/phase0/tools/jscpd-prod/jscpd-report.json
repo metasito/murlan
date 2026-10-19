@@ -1,0 +1,597 @@
+{
+  "duplicates": [
+    {
+      "firstFile": {
+        "end": 306,
+        "endLoc": {
+          "column": 12,
+          "line": 306,
+          "position": 13239
+        },
+        "name": "(online)\\index.tsx",
+        "start": 298,
+        "startLoc": {
+          "column": 53,
+          "line": 298,
+          "position": 12853
+        }
+      },
+      "format": "tsx",
+      "fragment": "          <View style={styles.contentWrapperLandscape}>\n            <View style={styles.statusRow}>\n              <View style={[styles.dot, { backgroundColor: connected ? Colors.success : Colors.textMuted }]} />\n              <Text style={styles.statusText}>\n                {connected ? t(\"onlineLobby.connectedAs\", { username: user?.username ?? \"\" }) : t(\"onlineLobby.connecting\")}\n              </Text>\n            </View>\n\n            <View style={styles.landscapeRow}>",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 9,
+      "secondFile": {
+        "end": 328,
+        "endLoc": {
+          "column": 12,
+          "line": 328,
+          "position": 14144
+        },
+        "name": "(online)\\index.tsx",
+        "start": 320,
+        "startLoc": {
+          "column": 44,
+          "line": 320,
+          "position": 13758
+        }
+      },
+      "tokens": 87
+    },
+    {
+      "firstFile": {
+        "end": 374,
+        "endLoc": {
+          "column": 38,
+          "line": 374,
+          "position": 12155
+        },
+        "name": "index.tsx",
+        "start": 361,
+        "startLoc": {
+          "column": 16,
+          "line": 361,
+          "position": 11866
+        }
+      },
+      "format": "tsx",
+      "fragment": "  badge?: number;\n  testID?: string;\n  onPress: () => void;\n}) {\n  return (\n    <Pressable\n      testID={testID}\n      onPress={() => {\n        uiFeedback(\"light\");\n        onPress();\n      }}\n      accessibilityLabel={label}\n      {...a11yState({ role: \"button\" })}\n      style={({ pressed }) => [styles.accountBtn, pressed && { opacity: 0.8 }]}",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 14,
+      "secondFile": {
+        "end": 575,
+        "endLoc": {
+          "column": 38,
+          "line": 575,
+          "position": 18790
+        },
+        "name": "index.tsx",
+        "start": 562,
+        "startLoc": {
+          "column": 17,
+          "line": 562,
+          "position": 18501
+        }
+      },
+      "tokens": 71
+    },
+    {
+      "firstFile": {
+        "end": 268,
+        "endLoc": {
+          "column": 17,
+          "line": 268,
+          "position": 9014
+        },
+        "name": "profile.tsx",
+        "start": 252,
+        "startLoc": {
+          "column": 49,
+          "line": 252,
+          "position": 8465
+        }
+      },
+      "format": "tsx",
+      "fragment": "          label={t(\"profile.changePasswordAction\")}\n          variant=\"secondary\"\n          onPress={() => setOpen(true)}\n        />\n      </MenuCard>\n\n      <AppModal visible={open} onRequestClose={close}>\n        <View style={styles.modalBackdrop}>\n          <Pressable\n            style={StyleSheet.absoluteFill}\n            onPress={close}\n            disabled={saving}\n            {...a11yHidden()}\n          />\n          <View style={styles.modalCard} accessibilityViewIsModal accessibilityRole=\"none\">\n            <Text style={styles.modalTitle} accessibilityRole=\"header\">\n              {t(\"profile.changePasswordModalTitle\")}",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 17,
+      "secondFile": {
+        "end": 392,
+        "endLoc": {
+          "column": 17,
+          "line": 392,
+          "position": 13504
+        },
+        "name": "profile.tsx",
+        "start": 376,
+        "startLoc": {
+          "column": 43,
+          "line": 376,
+          "position": 12955
+        }
+      },
+      "tokens": 109
+    },
+    {
+      "firstFile": {
+        "end": 317,
+        "endLoc": {
+          "column": 36,
+          "line": 317,
+          "position": 11080
+        },
+        "name": "profile.tsx",
+        "start": 306,
+        "startLoc": {
+          "column": 109,
+          "line": 306,
+          "position": 10679
+        }
+      },
+      "format": "tsx",
+      "fragment": "              <Text style={styles.modalError} accessibilityLiveRegion=\"polite\" testID=\"change-password-error\">\n                {error}\n              </Text>\n            )}\n\n            <View style={styles.modalActions}>\n              <View style={styles.modalAction}>\n                <MenuButton label={t(\"common.cancel\")} variant=\"ghost\" onPress={close} disabled={saving} />\n              </View>\n              <View style={styles.modalAction}>\n                <MenuButton\n                  label={saving ? t(\"profile.changePasswordSaving\") : t(\"common.save\")}",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 12,
+      "secondFile": {
+        "end": 425,
+        "endLoc": {
+          "column": 36,
+          "line": 425,
+          "position": 14780
+        },
+        "name": "profile.tsx",
+        "start": 414,
+        "startLoc": {
+          "column": 103,
+          "line": 414,
+          "position": 14379
+        }
+      },
+      "tokens": 86
+    },
+    {
+      "firstFile": {
+        "end": 186,
+        "endLoc": {
+          "column": 3,
+          "line": 186,
+          "position": 6952
+        },
+        "name": "recover.tsx",
+        "start": 167,
+        "startLoc": {
+          "column": 16,
+          "line": 167,
+          "position": 6644
+        }
+      },
+      "format": "tsx",
+      "fragment": "              />\n            </View>\n          )}\n        </MenuCard>\n      </View>\n    </MenuLayout>\n  );\n}\n\nconst CONTENT_MAX_W = 480;\n\nconst styles = StyleSheet.create({\n  contentWrapper: {\n    width: \"100%\",\n    maxWidth: CONTENT_MAX_W,\n    alignSelf: \"center\",\n    gap: Spacing.md,\n  },\n  form: { gap: Spacing.md },\n});",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 20,
+      "secondFile": {
+        "end": 180,
+        "endLoc": {
+          "column": 3,
+          "line": 180,
+          "position": 6929
+        },
+        "name": "verify-email.tsx",
+        "start": 161,
+        "startLoc": {
+          "column": 16,
+          "line": 161,
+          "position": 6621
+        }
+      },
+      "tokens": 74
+    },
+    {
+      "firstFile": {
+        "end": 108,
+        "endLoc": {
+          "column": 7,
+          "line": 108,
+          "position": 4325
+        },
+        "name": "table\\actions.tsx",
+        "start": 97,
+        "startLoc": {
+          "column": 12,
+          "line": 97,
+          "position": 4027
+        }
+      },
+      "format": "tsx",
+      "fragment": "    if (!lit) return;\n    setPressed(down);\n    pressVal.value = reduceMotion\n      ? down ? 1 : 0\n      : withTiming(down ? 1 : 0, { duration: Motion.duration.tap });\n  };\n\n  useEffect(() => () => cancelAnimation(pressVal), [pressVal]);\n\n  const pressStyle = useAnimatedStyle(() => ({\n    transform: [\n      { translateX: rejectX.value },",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 12,
+      "secondFile": {
+        "end": 246,
+        "endLoc": {
+          "column": 17,
+          "line": 246,
+          "position": 8831
+        },
+        "name": "table\\actions.tsx",
+        "start": 236,
+        "startLoc": {
+          "column": 16,
+          "line": 236,
+          "position": 8540
+        }
+      },
+      "tokens": 73
+    },
+    {
+      "firstFile": {
+        "end": 114,
+        "endLoc": {
+          "column": 28,
+          "line": 114,
+          "position": 4396
+        },
+        "name": "table\\feltCanvas.tsx",
+        "start": 106,
+        "startLoc": {
+          "column": 11,
+          "line": 106,
+          "position": 3950
+        }
+      },
+      "format": "tsx",
+      "fragment": "      kinds.map((kind) => {\n        const { sigma, alpha } = shadowPaint(kind, felt.s);\n        const paint = Skia.Paint();\n        const blur = Skia.MaskFilter.MakeBlur(BlurStyle.Normal, sigma, true);\n        paint.setAntiAlias(true);\n        paint.setColor(Skia.Color(withAlpha(Colors.shadow, alpha)));\n        paint.setMaskFilter(blur);\n        // Skia's kernel stops at three sigma; the point more covers a pixel's rounding.\n        return { paint, blur, reach: 3 * sigma + 1 };",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 9,
+      "secondFile": {
+        "end": 33,
+        "endLoc": {
+          "column": 28,
+          "line": 33,
+          "position": 1856
+        },
+        "name": "table\\handShadeCanvas.tsx",
+        "start": 26,
+        "startLoc": {
+          "column": 12,
+          "line": 26,
+          "position": 1499
+        }
+      },
+      "tokens": 89
+    },
+    {
+      "firstFile": {
+        "end": 636,
+        "endLoc": {
+          "column": 7,
+          "line": 636,
+          "position": 22806
+        },
+        "name": "table\\seats.tsx",
+        "start": 615,
+        "startLoc": {
+          "column": 19,
+          "line": 615,
+          "position": 21874
+        }
+      },
+      "format": "tsx",
+      "fragment": "  isActive: boolean;\n  cardCount?: number;\n  /** This seat has passed in the round on the table. */\n  passed?: boolean;\n  /** The seat is a human's that left, played on by the engine. */\n  vacated?: boolean;\n  /** The seat's own disconnect countdown, for the whole grace. */\n  reconnecting?: { seconds: number; resetKey: string };\n  /** The table's own scale — the seat's fan draws its backs at `scale * BACK_SCALE`. */\n  scale?: number;\n  /** The turn window, so the seat on move can sweep its own rim. */\n  countdown?: SeatCountdown;\n  /** Cards only: the name, the badges and the card count fall away. */\n  focusMode?: boolean;\n  /** While a deal runs, when each of this seat's cards lands — see useArrivedCount. */\n  dealArrivals?: DealArrivals;\n}) {\n  const arrived = useArrivedCount(dealArrivals);\n  const held = cardCount ?? player.hand.length;\n  const displayed = Math.min(held, arrived);\n  const wentOut = wentOutAt(player, held);\n  const mark = markOf(marking);",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 22,
+      "secondFile": {
+        "end": 814,
+        "endLoc": {
+          "column": 7,
+          "line": 814,
+          "position": 28432
+        },
+        "name": "table\\seats.tsx",
+        "start": 793,
+        "startLoc": {
+          "column": 24,
+          "line": 793,
+          "position": 27500
+        }
+      },
+      "tokens": 94
+    },
+    {
+      "firstFile": {
+        "end": 20,
+        "endLoc": {
+          "column": 5,
+          "line": 20,
+          "position": 757
+        },
+        "name": "device\\audioEngine.ts",
+        "start": 6,
+        "startLoc": {
+          "column": 0,
+          "line": 6,
+          "position": 340
+        }
+      },
+      "format": "typescript",
+      "fragment": "import { SOUNDS, SOUND_FILES, type SoundFile, type SoundId } from \"./soundAssets\";\nimport { TRACKS, type TrackId } from \"./musicTracks\";\n\nexport type Bus = \"sfx\" | \"sting\" | \"music\";\nexport type AudioState = \"running\" | \"suspended\" | \"failed\";\nexport interface EngineStats {\n  audioMs: number;\n  plays: number;\n  dropped: number;\n  rebuilds: number;\n  resident: number;\n}\n\nexport const MUSIC_CROSSFADE_MS = 600;\nconst SAMPLE_RATE = 48000;",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 15,
+      "secondFile": {
+        "end": 15,
+        "endLoc": {
+          "column": 5,
+          "line": 15,
+          "position": 417
+        },
+        "name": "device\\audioEngine.web.ts",
+        "start": 1,
+        "startLoc": {
+          "column": 0,
+          "line": 1,
+          "position": 0
+        }
+      },
+      "tokens": 77
+    },
+    {
+      "firstFile": {
+        "end": 301,
+        "endLoc": {
+          "column": 13,
+          "line": 301,
+          "position": 10828
+        },
+        "name": "measureHeadsUpBalance.ts",
+        "start": 291,
+        "startLoc": {
+          "column": 39,
+          "line": 291,
+          "position": 10398
+        }
+      },
+      "format": "typescript",
+      "fragment": "    const dealSeed = seed * 2246822519 + i;\n    let state = withSeededDeals(dealSeed, () => initializeRematch(players, \"free_for_all\", []));\n    const rng = mulberry32(dealSeed + 1);\n\n    for (let turn = 0; turn < 300 && !state.roundOver; turn++) {\n      const seat = state.currentTurnIndex;\n      const isNewTrick = !state.exchangePhase?.active && state.lastPlayedCombination === null;\n\n      if (isNewTrick) {\n        const leader = state.players[seat];\n        const known = knownOpponentExchangeCard(state.exchangePhase, seat);",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 11,
+      "secondFile": {
+        "end": 430,
+        "endLoc": {
+          "column": 15,
+          "line": 430,
+          "position": 16134
+        },
+        "name": "measureHeadsUpBalance.ts",
+        "start": 420,
+        "startLoc": {
+          "column": 93,
+          "line": 420,
+          "position": 15688
+        }
+      },
+      "tokens": 93
+    },
+    {
+      "firstFile": {
+        "end": 214,
+        "endLoc": {
+          "column": 84,
+          "line": 214,
+          "position": 9334
+        },
+        "name": "game\\tableHandlers.ts",
+        "start": 202,
+        "startLoc": {
+          "column": 34,
+          "line": 202,
+          "position": 8763
+        }
+      },
+      "format": "typescript",
+      "fragment": "  const { roomId, userId, cardIds } = action;\n  if (game.gameState.roundOver) return { ok: false, code: \"NO_LIVE_GAME\" };\n  const { gameState, playerMap } = game;\n\n  // The round winner owes a card: nobody may play until it is given, otherwise\n  // they keep the card and freeze the table behind the exchange overlay.\n  if (gameState.exchangePhase?.active) {\n    gameError(io, userId, payload(\"EXCHANGE_PENDING\"));\n    return { ok: false, code: \"EXCHANGE_PENDING\" };\n  }\n\n  const currentIdx = gameState.currentTurnIndex;\n  if (playerMap[currentIdx] !== userId) return { ok: false, code: \"NOT_YOUR_TURN\" };",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 13,
+      "secondFile": {
+        "end": 269,
+        "endLoc": {
+          "column": 84,
+          "line": 269,
+          "position": 11276
+        },
+        "name": "game\\tableHandlers.ts",
+        "start": 260,
+        "startLoc": {
+          "column": 17,
+          "line": 260,
+          "position": 10860
+        }
+      },
+      "tokens": 92
+    },
+    {
+      "firstFile": {
+        "end": 103,
+        "endLoc": {
+          "column": 17,
+          "line": 103,
+          "position": 3811
+        },
+        "name": "ci\\edgePixels.mjs",
+        "start": 91,
+        "startLoc": {
+          "column": 71,
+          "line": 91,
+          "position": 3482
+        }
+      },
+      "format": "javascript",
+      "fragment": "  return { pass: lines >= MIN_LINES && score >= SOFT_MIN, lines, score };\n}\n\nif (isInvokedDirectly(process.argv[1], import.meta.url)) {\n  const files = process.argv.slice(2);\n  if (files.length === 0) {\n    console.error(\"::error::no screenshots to read\");\n    process.exit(1);\n  }\n  let failed = false;\n  for (const file of files) {\n    const image = decodePng(readFileSync(file));\n    const { pass, lines, score } = edgeVerdict(image);",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 13,
+      "secondFile": {
+        "end": 105,
+        "endLoc": {
+          "column": 17,
+          "line": 105,
+          "position": 4029
+        },
+        "name": "ci\\feltPixels.mjs",
+        "start": 93,
+        "startLoc": {
+          "column": 74,
+          "line": 93,
+          "position": 3700
+        }
+      },
+      "tokens": 86
+    }
+  ],
+  "statistics": {
+    "detectionDate": "2026-10-16T09:01:18.307Z",
+    "formats": {
+      "bash": {
+        "clones": 0,
+        "duplicatedLines": 0,
+        "duplicatedTokens": 0,
+        "lines": 71,
+        "newClones": 0,
+        "newDuplicatedLines": 0,
+        "percentage": 0.0,
+        "percentageTokens": 0.0,
+        "sources": 3,
+        "tokens": 446
+      },
+      "c-header": {
+        "clones": 0,
+        "duplicatedLines": 0,
+        "duplicatedTokens": 0,
+        "lines": 16,
+        "newClones": 0,
+        "newDuplicatedLines": 0,
+        "percentage": 0.0,
+        "percentageTokens": 0.0,
+        "sources": 1,
+        "tokens": 265
+      },
+      "javascript": {
+        "clones": 1,
+        "duplicatedLines": 13,
+        "duplicatedTokens": 86,
+        "lines": 15172,
+        "newClones": 0,
+        "newDuplicatedLines": 0,
+        "percentage": 0.0856841550224097,
+        "percentageTokens": 0.07792819732144475,
+        "sources": 81,
+        "tokens": 110358
+      },
+      "json": {
+        "clones": 0,
+        "duplicatedLines": 0,
+        "duplicatedTokens": 0,
+        "lines": 68,
+        "newClones": 0,
+        "newDuplicatedLines": 0,
+        "percentage": 0.0,
+        "percentageTokens": 0.0,
+        "sources": 2,
+        "tokens": 250
+      },
+      "kotlin": {
+        "clones": 0,
+        "duplicatedLines": 0,
+        "duplicatedTokens": 0,
+        "lines": 20,
+        "newClones": 0,
+        "newDuplicatedLines": 0,
+        "percentage": 0.0,
+        "percentageTokens": 0.0,
+        "sources": 1,
+        "tokens": 124
+      },
+      "markdown": {
+        "clones": 0,
+        "duplicatedLines": 0,
+        "duplicatedTokens": 0,
+        "lines": 129,
+        "newClones": 0,
+        "newDuplicatedLines": 0,
+        "percentage": 0.0,
+        "percentageTokens": 0.0,
+        "sources": 2,
+        "tokens": 2161
+      },
+      "objectivec": {
+        "clones": 0,
+        "duplicatedLines": 0,
+        "duplicatedTokens": 0,
+        "lines": 55,
+        "newClones": 0,
+        "newDuplicatedLines": 0,
+        "percentage": 0.0,
+        "percentageTokens": 0.0,
+        "sources": 2,
+        "tokens": 224
+      },
+      "swift": {
+        "clones": 0,
+        "duplicatedLines": 0,
+        "duplicatedTokens": 0,
+        "lines": 330,
+        "newClones": 0,
+        "newDuplicatedLines": 0,
+        "percentage": 0.0,
+        "percentageTokens": 0.0,
+        "sources": 4,
+        "tokens": 2742
+      },
+      "tsx": {
+        "clones": 8,
+        "duplicatedLines": 115,
+        "duplicatedTokens": 683,
+        "lines": 28112,
+        "newClones": 0,
+        "newDuplicatedLines": 0,
+        "percentage": 0.4090779738190097,
+        "percentageTokens": 0.3918486305378022,
+        "sources": 99,
+        "tokens": 174302
+      },
+      "typescript": {
+        "clones": 3,
+        "duplicatedLines": 39,
+        "duplicatedTokens": 262,
+        "lines": 30427,
+        "newClones": 0,
+        "newDuplicatedLines": 0,
+        "percentage": 0.12817563348341934,
+        "percentageTokens": 0.15152917225743767,
+        "sources": 215,
+        "tokens": 172904
+      }
+    },
+    "total": {
+      "clones": 12,
+      "duplicatedLines": 167,
+      "duplicatedTokens": 1031,
+      "lines": 74400,
+      "newClones": 0,
+      "newDuplicatedLines": 0,
+      "percentage": 0.22446236559139784,
+      "percentageTokens": 0.2223055958048713,
+      "sources": 410,
+      "tokens": 463776
+    }
+  }
+}

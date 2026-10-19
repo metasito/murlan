@@ -1,0 +1,870 @@
+[
+ {
+  "id": "L-088",
+  "theme": "Table UI & components",
+  "title": "GIOCA's refusal ladder re-implements the engine's rule outside `gameEngine.ts`",
+  "kind": "defect",
+  "priority": "P1",
+  "effort": "S",
+  "files": [
+   "components/turnTimerUi.ts:33-82",
+   "components/table/stagedPlay.ts:55-82",
+   "lib/game/gameEngine.ts:426-495",
+   "stagedPlay.ts:57-61",
+   "turnTimerUi.ts:40-42",
+   "selectionLeaves.tsx:117-140",
+   "gameEngine.ts",
+   "tests/ui-rules/playRefusalParity.test.ts",
+   "CLAUDE.md",
+   "stagedPlay.ts",
+   "turnTimerUi.ts"
+  ],
+  "problem": "`readStagedPlay` already calls `checkSelection`, which returns `{ok:false, code}` (stagedPlay.ts:57-61). It then throws `code` away and asks `playButtonLabel` again. `playButtonLabel` is a second copy of `beatRefusal`'s ladder (royal, bomb, type, length, tooLow), working on a lossy `ComboShape`.",
+  "proposed": "`PlayButtonLabel` becomes `\"play\" | SelectionRefusal`. Equivalent wherever the label is read: `selectionLeaves.tsx:117-140` reads `reason` only when `!staged.playable`.",
+  "effect": "Deletes about 50 lines (`playButtonLabel` and `ComboShape`). `turnTimerUi.ts` goes back to what its header says it is.",
+  "sources": [
+   "ui-F1"
+  ],
+  "tickets": [
+   1596
+  ],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "#1596 is closed, but 01-table and 02-components re-verified that stagedPlay still discards check.code and asks playButtonLabel (kept both functions plus a parity test), so it is not fixed.",
+  "depends_on": []
+ },
+ {
+  "id": "L-089",
+  "theme": "Table UI & components",
+  "title": "Hand-row geometry is buried in `StraightHand`, computed in three parallel loops; the tested hit-test is a decoy",
+  "kind": "structure",
+  "priority": "P1",
+  "effort": "M",
+  "files": [
+   "components/handLayout.ts:84-90",
+   "tests/ui-rules/handTurnScale.test.ts:48-66",
+   "handTurnScale.test.ts:48",
+   "hand.tsx:754-790",
+   "components/table/hand.tsx:1075-1097",
+   "components/GameTable.tsx:837-840",
+   "components/table/hand.tsx",
+   "tests/e2e/handClearance.spec.ts",
+   "handTapStrips.spec.ts",
+   "tests/ui-rules/handLayout.test.ts",
+   "hand.tsx",
+   "components/handLayout.ts"
+  ],
+  "problem": "All of this is pure arithmetic (card size per turn, crop, arc solve, tilt overhang, `topClearance`, `heldCeiling`, slot, home and shift per card, strips, rotated hit test). It is locked inside a 22-prop memo component, so only a renderer or Playwright can reach it. The same per-card values are derived three times: `restY` at 1330 equals `y0` at 1085 (`rowBase + crop + home.y - cardH/2`).",
+  "proposed": "A JSX-free `components/handLayout.ts` with `layoutHandRow(input): HandRowLayout` (card size, crop, arc, clearance, slots and per-card places) and a worklet `cardUnder(layout, x, y, shown, reduceMotion)`; `StraightHand` renders from it and `handTurnScale` imports it instead of re-implementing it.",
+  "effect": "`StraightHand` drops about 200 lines of arithmetic, and the three loops become one. `handTurnScale` imports the real function instead of copying it.",
+  "sources": [
+   "ui-F2",
+   "01-table-F9"
+  ],
+  "tickets": [
+   1604
+  ],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-090",
+  "theme": "Table UI & components",
+  "title": "The exchange's presentation is smeared across five modules, with GameTable holding its state machine",
+  "kind": "structure",
+  "priority": "P1",
+  "effort": "M",
+  "files": [
+   "components/table/hand.tsx:69-84",
+   "components/table/ExchangeLegs.tsx:159-305",
+   "components/table/ExchangeLegs.tsx:283-295",
+   "components/GameTable.tsx:1123-1139",
+   "components/GameTable.tsx",
+   "components/flightPhysics.ts",
+   "components/table/exchangeTable.ts",
+   "components/table/useExchangeTable.ts",
+   "exchangeOnTable.test.tsx",
+   "tests/ui-rules/flightHooks.test.ts",
+   "spokenLabels.ts"
+  ],
+  "problem": "No module owns \"the exchange as the table shows it\". GameTable keeps the stage-report state (`reported`, `exchangeSeq`, the render-time seq bump at 503) and derives `stages`, `choiceReady`, `exchangeIsMine`, `choiceOpen`, chip text, pile note, seat lit and shift, and giveable. ExchangeLegs reports stages back up through two callbacks, and the hand reads stages again via `useHandArrival`.",
+  "proposed": "Interface: export function exchangeNotes(i: { shown: ExchangeAnnounceData|null; stages: ExchangeStages; view: ExchangeView; giveable?: Card[]; viewerSeat: number; spectating: boolean; nameOf: (s:number)=>string; t: TFn })",
+  "effect": "About 90 lines leave GameTable, and the exchange's derivations sit in one file. `exchangeNotes` is a node test table (two-Jokers, receive at rest, give at rest, fallback giveback, watcher).",
+  "sources": [
+   "ui-F3",
+   "01-table-F1"
+  ],
+  "tickets": [
+   1603
+  ],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "01-table: ui-F3 has only line drift; the two sentences also differ in grammatical person and leg selection.",
+  "depends_on": []
+ },
+ {
+  "id": "L-091",
+  "theme": "Table UI & components",
+  "title": "Table geometry is a 12-field bag mixed with game state, fanned out field by field, and the layout is encoded twice",
+  "kind": "structure",
+  "priority": "P1",
+  "effort": "M",
+  "files": [
+   "components/table/deal.tsx:26-28",
+   "components/table/dealSlots.ts:25-29",
+   "components/table/ExchangeLegs.tsx:176",
+   "components/table/chrome.tsx:170-216",
+   "flightPhysics.ts:560-565",
+   "chrome.tsx:192-198",
+   "tableProportions.test.ts:111-114",
+   "components/flightPhysics.ts",
+   "components/GameTable.tsx",
+   "components/table/pile.tsx",
+   "flightOrigin.spec.ts",
+   "lampSeats.spec.ts"
+  ],
+  "problem": "`SeatGeometry` mixes frame geometry (scale, window, table edges, surplus, bottomPad, handCardH) with game state (players, opponents, viewerSeat). `ThrownPlayInput`'s own doc (flightPhysics.ts:560-565) says the fields are spread because naming a per-render object inside an effect trips `exhaustive-deps`. The interface shape is a workaround for missing memoisation.",
+  "proposed": "`usePileFlight({ ...state, layout, seating, ... })`: the dependency list goes from 25 to about 12. Optional second step (L, high risk): render the top, side and centre sections at `layout.boxes` (absolute) so flexbox and the model cannot disagree.",
+  "effect": "About 60 lines of field-forwarding go across GameTable, pile, deal, dealSlots and ExchangeLegs. One anchors computation per render.",
+  "sources": [
+   "ui-F4"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-092",
+  "theme": "Table UI & components",
+  "title": "Opponent seats: two near-identical slot components rendered three times with 13 identical props",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "components/table/seats.tsx:601-665",
+   "components/GameTable.tsx:1426-1442",
+   "GameTable.tsx:471",
+   "seats.tsx:198-200",
+   "components/table/seats.tsx:616",
+   "components/table/seats.tsx:794",
+   "components/GameTable.tsx:1430",
+   "seats.tsx"
+  ],
+  "problem": "The slots' 12-prop interface is as big as their bodies (shallow). GameTable repeats the same 11-13 prop expressions per seat (`onMove(seat)`, `seatCount(...)`, `deal.arrivalsFor(seat)`, `passed.includes(seat)`, `vacatedOf`, `disconnectedSeats[seat]`, `seatCountdown`, `focusMode`, `seatMark(seat)`). About 60 lines of JSX that must change in three places.",
+  "proposed": "Primitives stay primitive, so the memo still holds.",
+  "effect": "About 70 lines removed from seats.tsx and about 60 from GameTable. \"Fixed the top seat, forgot the sides\" becomes impossible.",
+  "sources": [
+   "ui-F6",
+   "01-table-F8"
+  ],
+  "tickets": [
+   1602
+  ],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-093",
+  "theme": "Table UI & components",
+  "title": "Hand-written memo comparators, with a source-parsing test to keep them complete",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "components/CardView.tsx:651-674",
+   "components/table/hand.tsx:568-600",
+   "tests/native/cardMemoComparators.test.tsx",
+   "lib/memo.ts",
+   "tests/ui-rules/reactCompiler.test.ts"
+  ],
+  "problem": "Both comparators are shallow equality except for `card` (compared by id) and two mount-only props. Adding a prop and forgetting a line is a silent stale-card bug. The guard is a regex over interface text that breaks if the interface is restyled (e.g.",
+  "proposed": "Interface: export function propsEqualExcept<P extends object>(by: { [K in keyof P]?: ((a: P[K], b: P[K]) => boolean) | 'ignore' }) : (a: P, b: P) => boolean; // iterates the union of both objects' keys; Object.is for the rest",
+  "effect": "About 55 comparator lines are deleted, and so is the source-parsing test, replaced by a 5-case unit test of `propsEqualExcept`. A new prop is compared by default, so the forgotten-line class is gone.",
+  "sources": [
+   "ui-F8"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-094",
+  "theme": "Table UI & components",
+  "title": "Turn presentation: two parallel 5-way ternaries and two `turnTimerActive` calls in GameTable's JSX",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "components/GameTable.tsx:1223-1242",
+   "components/tableA11y.ts:78-90",
+   "components/GameTable.tsx:755-756",
+   "components/turnTimerUi.ts"
+  ],
+  "problem": "This is pure presentation logic inline in render. A branch added to one ladder and not the other makes the screen-reader sentence diverge from the chip. The two timer questions differ only in three inputs.",
+  "proposed": "A pure `turnPresentation(input)` in `components/turnTimerUi.ts` returning `{ chip: { key, params, spokenKey }, clock: { active, resetKey, seconds }, seat? }`, so the chip text and the spoken sentence share one decision.",
+  "effect": "About 50 lines out of the JSX. A node test table replaces the native mounts that today pin the chip text (`matchTurnChip`, `dealTurn`).",
+  "sources": [
+   "ui-F10",
+   "02-components-F7"
+  ],
+  "tickets": [
+   1602
+  ],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-095",
+  "theme": "Table UI & components",
+  "title": "OS orientation lock lives in the table component",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "components/GameTable.tsx:20",
+   "components/GameTable.tsx:155",
+   "lib/device/orientation.tsx",
+   "orientationFirstRender.test.tsx",
+   "orientationRows.test.tsx"
+  ],
+  "problem": "A true-external dependency (UIKit/Android orientation plus a custom native module) is driven from inside the presentational table. The adapter's quirks (#1211, #1378) sit next to card logic. It is the only `ScreenOrientation` use in `components/`.",
+  "proposed": "`export function useLandscapeLock(navigation?: NavigationLike): void` in `lib/device/orientation.tsx`.",
+  "effect": "About 40 lines and 3 imports leave GameTable. `orientationFirstRender.test.tsx` and `orientationRows.test.tsx` can target the hook, and future orientation fixes do not touch GameTable.",
+  "sources": [
+   "ui-F12",
+   "client-F28"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-096",
+  "theme": "Table UI & components",
+  "title": "\"The play that ended the round has landed\" is decided four times, behind a call-order contract",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "components/table/useRoundEnding.ts:28-31",
+   "components/table/useRoundOutcome.ts:7-11",
+   "components/GameTable.tsx:868-889",
+   "tests/native/roundEndingStart.test.tsx"
+  ],
+  "problem": "Each hook re-derives \"ended, nothing in flight, nothing pending\" from `timeline.inFlight` and `timeline.pending()`. Each carries the same prose contract: it must be called after `usePileFlight`, because `pending()` is read at call time. That ordering is enforced by comment only.",
+  "proposed": "`usePileFlight` (the module that owns the throw) returns `endedLanding(ended: boolean): number | null`, the landing time of the ending play or null. Alternatively, `tableTimeline` gains `landedSince(at: number): number | null`. The two hooks take that landing time as input instead of `timeline`, which also removes the ordering contract.",
+  "effect": "Two copies of the gate and two ordering comments are deleted. A new ending consumer cannot read `pending()` before the throw is registered.",
+  "sources": [
+   "01-table-F2"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-097",
+  "theme": "Table UI & components",
+  "title": "The lamp level has three writers that guess ownership from the target value",
+  "kind": "defect",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "components/table/useLampRig.ts:88-89",
+   "components/table/useLampRig.ts:100-119",
+   "components/table/useLinkHold.ts:69",
+   "components/table/lampRig.ts:185",
+   "lampRig.test.ts"
+  ],
+  "problem": "Three effects write one `lvlT`. Two infer \"this level is mine\" by comparing the current target with their own constant, and the third does no inference at all. Example: a link that drops and recovers during a lost round's dim resets the level to 1 and ends the dim early.",
+  "proposed": "In `lampControls`: `hold(s, owner: \"lost\" | \"breath\" | \"link\", level: number | null, rate)`. `Lamp` carries `holds: Record<owner, number>`, and the effective target is `min(1, …holds)`. `setLevel` leaves the public `LampRig` and is replaced by `hold`.",
+  "effect": "The two sentinel comparisons go. Each writer releases only its own hold.",
+  "sources": [
+   "01-table-F3"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-098",
+  "theme": "Table UI & components",
+  "title": "CardView carries an interaction model that only the tutorial uses",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "components/CardView.tsx:349-350",
+   "app/tutorial.tsx:674-682",
+   "components/table/hand.tsx:305",
+   "components/table/pile.tsx:339",
+   "components/table/seats.tsx:118",
+   "components/table/deal.tsx:147",
+   "components/table/ExchangeLegs.tsx:145",
+   "components/LookPicker.tsx:115",
+   "components/seatLayout.ts:50-53",
+   "seatLayout.ts:50-53",
+   "hand.tsx:305"
+  ],
+  "problem": "CardView is two modules in one. One paints a face or back with its a11y label. The other is a press and selection interaction: a spring lift of `-14` when `selected`, plus a press rise and tilt.",
+  "proposed": "make CardView a pure painter (face/back + a11y). Move press and lift into a `TutorialCard` wrapper next to its only caller, or have the tutorial reuse the hand's lift via `handRowHeadroom`. Then `noLift` goes away.",
+  "effect": "the interface narrows (`noLift`, `onPress`, `selected` leave the painter). The table stops paying for per-card animation state it never uses.",
+  "sources": [
+   "02-components-F1"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-099",
+  "theme": "Table UI & components",
+  "title": "`flightPhysics.ts` is a grab bag whose name misleads, guarded by an import-ownership scan",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "components/flightPhysics.ts:588-597",
+   "lib/game/gameEngine.ts:220-221",
+   "flightPhysics.ts",
+   "components/flightPhysics.ts",
+   "tests/ui-rules/flightHooks.test.ts",
+   "flightHooks.test.ts",
+   "impact.ts",
+   "tableLayout.ts",
+   "passes.ts",
+   "exchangeView.ts",
+   "throws.ts",
+   "flightPhysics.test.ts"
+  ],
+  "problem": "Low cohesion; the name misleads on half its contents. `flightHooks.test.ts` pins \"each helper has one component owner\" by regex over import lines, which is a substitute for module boundaries. Real duplication: `readThrownPlay` 588-594 and `readExchangeLegs` 630-633 carry the identical \"own hand slot, else `HAND_SCALE/FIELD_SCALE` at the seat\" expression.",
+  "proposed": "`impact.ts`: tiers, trauma, flinch, shake, flare, `landWobble`. `tableLayout.ts`: anchors (F4). `passes.ts`: `comboKey`, `trickClosedWithWinner`, `passedSeats`, `seatsJustPassed`.",
+  "effect": "`flightHooks.test.ts` is deleted. Each test file in `flightPhysics.test.ts` maps to one module.",
+  "sources": [
+   "ui-F5",
+   "02-components-F13"
+  ],
+  "tickets": [
+   1603
+  ],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-100",
+  "theme": "Table UI & components",
+  "title": "Three hand-rolled countdowns; the seat ring and the turn chip show the same window from independent clocks",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "components/table/notices/hud.tsx:94-137",
+   "components/table/notices/seatMarks.tsx:32-53",
+   "components/table/seats.tsx:278-319"
+  ],
+  "problem": "The same concept (\"a server window of N seconds, restarted by a key, optionally held\") is implemented three ways. GameTable's comment (1086-1094) says the ring \"sweeps over the same window the viewer's chip counts down\". The two run on unrelated timers (interval ticks against an animation duration plus `Date.now` accumulation), and their hold semantics are implemented separately.",
+  "proposed": "The ring drives its `withTiming` from `seconds*1000 - elapsedMs()`; the chip and the mark render `left`. Pure core: `countdownStep(state, now)`.",
+  "effect": "About 60 lines are replaced by one tested hook. The chip and ring cannot drift by construction.",
+  "sources": [
+   "ui-F7"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-101",
+  "theme": "Table UI & components",
+  "title": "`CardItem` has 30 props, a boolean disguised as a number, and two \"deal\" mechanisms",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "components/table/hand.tsx"
+  ],
+  "problem": "`dealDelay` is documented as \"ms to wait, or -1\", but its only caller passes `descending ? 0 : -1` (1355). It is a boolean, and `dealDelayRef`/`withDelay` always wait 0.",
+  "proposed": "`pose` becomes `poseOf(entry, state, now)` with one call site feeding style, rect and the landing reaction.",
+  "effect": "The props become about 12 grouped values, and the comparator shrinks (pairs with F8). The descend duration moves to `Motion` (`Motion.exchange.*`) instead of a component literal.",
+  "sources": [
+   "ui-F9"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-102",
+  "theme": "Table UI & components",
+  "title": "Notice float, opening gate and veils are state machines written as render-time `setState`",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "tests/ui-rules/gameTableVeil.test.ts:85-127",
+   "components/GameTable.tsx",
+   "components/table/tableFloat.ts",
+   "components/table/tableVeils.ts",
+   "gameTableVeil.test.ts",
+   "components/CLAUDE.md"
+  ],
+  "problem": "The float reducer tracks four \"last seen\" values (`passSeen`, `errorSeen`, `autoSeen`, `withdrawnSeen`) inline. Its only tests are native mounts (`passMarker`, `onlineErrorFloat`, `offlineAutoPass`, `onlineAutoPass`). The veil decision is five booleans with long comments.",
+  "proposed": "Pure `nextFloat(prev, input)` in `components/table/tableFloat.ts` and `tableVeils(input): Record<VeilRole, boolean>` plus a `VeilRegion` component in `tableVeils.ts`; the veil test then keys on `<VeilRegion>` instead of indentation.",
+  "effect": "About 60 lines of render-phase logic become two tested pure functions. The whitespace-sensitive scan goes away.",
+  "sources": [
+   "ui-F11"
+  ],
+  "tickets": [
+   1602
+  ],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-103",
+  "theme": "Table UI & components",
+  "title": "GIOCA and PASSA each hand-roll the press scale, and the garnet gradient stops live twice",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "components/table/actions.tsx:82-106",
+   "components/table/actions.tsx:49",
+   "components/table/settingsSheet.tsx:169",
+   "components/MenuButton.tsx:48-61",
+   "components/table/actions.tsx:90-104",
+   "actions.tsx",
+   "lib/tokens.ts"
+  ],
+  "problem": "The inventory duplicate is real: the same `setPress`/`pressVal`/cancel/`pressStyle` block appears twice. The gradient's stops belong to the gradient, yet each consumer restates them.",
+  "proposed": "`usePressScale(enabled: boolean): { onPressIn; onPressOut; style }` in actions.tsx. `Gradient.garnet` becomes `{ colors, locations }` in `lib/tokens.ts`.",
+  "effect": "about 20 lines go, and a third garnet surface cannot get the stops wrong.",
+  "sources": [
+   "01-table-F6",
+   "02-components-F4"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-104",
+  "theme": "Table UI & components",
+  "title": "`useCardRect` takes its mapper inputs from a private worklets field",
+  "kind": "resilience",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "components/table/useCardRects.ts:102",
+   "CLAUDE.md"
+  ],
+  "problem": "`__closure` is an internal of the worklets Babel plugin. If it is renamed or reshaped, the `?? {}` turns it into \"no inputs\".",
+  "proposed": "`useCardRect(key, read, inputs: readonly SharedValue<unknown>[])`, with callers naming what `read` reads. Alternatively, a test that fails when `__closure` is absent on a worklet.",
+  "effect": "the dependence on a library internal becomes explicit or guarded.",
+  "sources": [
+   "01-table-F10"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-105",
+  "theme": "Table UI & components",
+  "title": "Notice timing puts a reading hold in `Motion` and ignores reduced motion for two shapes",
+  "kind": "defect",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "components/table/noticeModel.ts:207-215",
+   "lib/tokens.ts:581",
+   "components/CLAUDE.md"
+  ],
+  "problem": "`chip` and `float` take `Motion.mark.{enter, hold, exit}` whatever `reduceMotion` is. `pill` goes through `motionMs(\"notice\", reduceMotion)`. `hold: 1000` is a reading duration, which components/CLAUDE.md says belongs in `Reading`, not `Motion`.",
+  "proposed": "`hold: Reading.mark`, and enter/exit via `motionMs(\"mark\", reduceMotion)`.",
+  "effect": "one rule for notice timing, and the token audit stops seeing a reading time in `Motion`.",
+  "sources": [
+   "01-table-F11"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-106",
+  "theme": "Table UI & components",
+  "title": "Unused motion knob and component-literal durations",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "components/table/moments.tsx:363-368",
+   "GameTable.tsx:1183",
+   "components/table/chrome.tsx:219",
+   "components/table/hand.tsx:96"
+  ],
+  "problem": "A parameter with one value is a hypothetical seam. The two 500 ms literals are motion durations outside `Motion`, so they escape the reduced-motion and token checks.",
+  "proposed": "drop the `durationMs` prop and use `SWEEP_MS`. Move both literals to `Motion.duration.*`.",
+  "effect": "three fewer local knobs.",
+  "sources": [
+   "01-table-F12"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-107",
+  "theme": "Table UI & components",
+  "title": "Rank letter-spacing is defined twice, and the joker rank ignores scale",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "components/cardFaceModel.ts:139",
+   "components/CardView.tsx:707"
+  ],
+  "problem": "`LETTER_SPACING = -0.5` in cardFaceModel feeds `rankTextWidth`, which is the geometry that keeps index boxes from overlapping. CardView's stylesheet hardcodes `letterSpacing: -0.5` separately, so if one changes, the measured width no longer matches the painted width. `rankTextJoker` also pins `FontSize.xs` / `lineHeight: 12`, which overrides the scaled rank box.",
+  "proposed": "import the constant into the style. Derive the joker size from the same scale.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "02-components-F6"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-108",
+  "theme": "Table UI & components",
+  "title": "Render churn from fresh defaults and per-frame state",
+  "kind": "perf",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "components/GameTable.tsx:357",
+   "components/useTableFeedback.ts:213-217",
+   "components/flightPhysics.ts:425-440",
+   "components/MenuLayout.tsx:99",
+   "flightPhysics.ts:425-440"
+  ],
+  "problem": "The `placementPoints = {}` (357) and `disconnectedSeats = {}` (371) defaults are new objects on every render for replay, capture and bench callers. `placementPoints` is in the deps of the round-over effect in useTableFeedback (355), so that effect reruns on every render. `readExchange` returns a new object while an exchange is active (flightPhysics.ts:425-440), and that object is in the `tableA11yLabel` memo deps (GameTable 779).",
+  "proposed": "hoist the defaults to module-level constants, key the memo on exchange fields, keep `hasMore` as state that is set only when it changes, and compute `shakeOffset` once.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "02-components-F10"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-109",
+  "theme": "Table UI & components",
+  "title": "BenchScreen run latch has no finally",
+  "kind": "defect",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "components/BenchScreen.tsx:68-110"
+  ],
+  "problem": "`benchRunning` and the drain interval are reset only on the success path. A throw outside the per-scenario catch (`benchScenarios()`, diag, `recorder.postTo`) leaves the latch set forever and the interval running, and unmount does no cleanup. This is dev-only.",
+  "proposed": "run the body in a non-hook helper with try/finally, and add an unmount cleanup effect.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "02-components-F11"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-110",
+  "theme": "Table UI & components",
+  "title": "Platform branches scattered instead of behind one seam",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "GameTable.tsx:169-170",
+   "hand.tsx:1431",
+   "greyLayer.tsx:8-14",
+   "useLinkHold.ts:15-17",
+   "feltCanvas.tsx:50",
+   "feltCanvas.tsx:57",
+   "SettingsModal.tsx:266",
+   "settingsSheet.tsx:304",
+   "seats.tsx:489",
+   "seats.tsx:737",
+   "chrome.tsx:26",
+   "lib/platform.ts"
+  ],
+  "problem": "The web overflow-clip quirk (a focused child scrolls a `hidden` box) is written twice with two different casts: `GameTable.tsx:169-170` (`WEB_CLIP`, cast via `unknown as ViewStyle`) and `hand.tsx:1431` (`\"clip\" as \"hidden\"`). The \"iOS cannot grey a view with a filter\" quirk is split between `greyLayer.tsx:8-14` and `useLinkHold.ts:15-17, 76-80`, plus the `grey` prop doc at `feltCanvas.tsx:50`. `feltCanvas.tsx:57`'s `IOS` is a different quirk (opaque Skia).",
+  "proposed": "`lib/platform.ts`: `export const clipOverflow: ViewStyle | null;` and `export const viewFilterGrey: boolean;`. `hapticsAvailable` exported from `lib/device/feedback.ts`. A `harnessData(state)` usable on Text and View.",
+  "effect": "one place per quirk (about 8 sites); a new surface cannot get the cast wrong.",
+  "sources": [
+   "ui-F14"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-111",
+  "theme": "Table UI & components",
+  "title": "`useTableFeedback` recomputes the round and match outcome GameTable already has",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "components/GameTable.tsx:800-801",
+   "components/useTableFeedback.ts:324-358",
+   "lib/game/matchState.ts:115"
+  ],
+  "problem": "The 17-input interface exists to rebuild a value the caller holds. The sound and the visuals decide \"outcome known\" by different rules in two files. This is not shown to be a bug, but it is a locality problem.",
+  "proposed": "`useTableFeedback({ ..., outcome: RoundOutcome, matchOutcome: RoundOutcome, scored: boolean })`, with `scored` decided once next to `roundOutcomeFor`.",
+  "effect": "7 inputs drop to 3; one rule for \"decided\".",
+  "sources": [
+   "ui-F15"
+  ],
+  "tickets": [
+   1602
+  ],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-112",
+  "theme": "Table UI & components",
+  "title": "Score pill and match-board derivation in GameTable",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "GameTable.tsx:637-643",
+   "components/table/scorePillModel.ts",
+   "lib/game/scorePill.ts"
+  ],
+  "problem": "pure geometry and labels sit in the component, beside the existing `components/table/scorePillModel.ts` and `lib/game/scorePill.ts`.",
+  "proposed": "`pillAnchorFor(layout: TableLayout): PillAnchor` and `voteTop(anchor, open, scale)` in scorePillModel. `matchBoardFor(standings, players, winners, score, t)` in `lib/game/scorePill.ts`.",
+  "effect": "about 45 lines become node-testable (`scorePillGeometry` and `scorePillStandings` already exist to extend).",
+  "sources": [
+   "ui-F16"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-113",
+  "theme": "Table UI & components",
+  "title": "`getComboLabel` is a pure label function living in a component, with a lossy key type",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "components/table/pile.tsx:349-356",
+   "GameTable.tsx:132",
+   "components/ReplayControls.tsx:31-38",
+   "components/table/spokenLabels.ts",
+   "spokenLabels.ts"
+  ],
+  "problem": "`Record<string, TranslationKey>` loses exhaustiveness; an unknown type falls back to the raw `combo.type` string on screen.",
+  "proposed": "move it to `components/table/spokenLabels.ts` (beside `lastPlayLabel`) as `Record<Combination[\"type\"], TranslationKey>`.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "ui-F17",
+   "02-components-F3"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": [
+   "L-064"
+  ]
+ },
+ {
+  "id": "L-114",
+  "theme": "Table UI & components",
+  "title": "Animation-lifetime boilerplate",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "hand.tsx:388-399",
+   "useTableFeedback.ts",
+   "hand.tsx",
+   "seats.tsx",
+   "moments.tsx",
+   "pile.tsx",
+   "tests/ui-rules/infiniteAnimations.test.ts"
+  ],
+  "problem": "55 `cancelAnimation(` calls across components (`useTableFeedback.ts` 10, `hand.tsx` 9, `seats.tsx` 7, `moments.tsx` 7, `pile.tsx` 6, …). 11 of them are the exact `useEffect(() => () => cancelAnimation(x), [x])` shape. `hand.tsx:388-399` cancels 7 values by hand.",
+  "proposed": "`useOwnedValue<T>(init: T): SharedValue<T>`, a shared value cancelled on unmount.",
+  "effect": "About 25 cleanup effects removed, and \"forgot to cancel\" becomes structural. `tests/ui-rules/infiniteAnimations.test.ts` can accept the owned hook as the cancellation.",
+  "sources": [
+   "ui-F18"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-115",
+  "theme": "Table UI & components",
+  "title": "Both particle adapters re-state the per-frame scene step, and the web one never idles",
+  "kind": "perf",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "components/table/particleLayer.tsx:86-108",
+   "components/table/particleLayer.web.tsx:101-131",
+   "tests/native/landingDust.test.tsx:5",
+   "hiddenThrows.test.tsx:5",
+   "particleSprites.ts"
+  ],
+  "problem": "The seam between the two is real (Skia Atlas vs 2D canvas). But the step order sits in both adapters and must stay in lockstep by hand: `emberFrame` `coneRainFrame` `step` `stepAir`, with its moth trace `layout` `layoutMotes` `mothPose` The native adapter skips idle frames (`:92-94`). The web adapter clears and redraws every rAF tick forever, including at rest with no lit motes.",
+  "proposed": "One worklet in `particleSprites.ts`: `stepScene(scene: {s: Particles; air: Air; ember: EmberRun; rain: RainRun}, l: AirLight, dt: number, reduced: boolean, rng: Rng, out: Float32Array): {lit: number; moth: MothPose | null; mothSet: boolean; idle: boolean}`. Each adapter keeps only its draw. The web loop returns early on `idle` the way native does.",
+  "effect": "About 10 duplicated lines become one call. Web stops redrawing an idle table.",
+  "sources": [
+   "01-table-F5"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-116",
+  "theme": "Table UI & components",
+  "title": "\"Where the chips end\" is computed in two places; computeScreenPads is a pass-through",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "components/tableFrame.ts:69-76",
+   "components/GameTable.tsx:1386",
+   "components/NotificationBanner.tsx:96-103",
+   "/game.tsx:168",
+   "tests/native/bannerPlacement.test.tsx:32",
+   "tableFrame.ts:201-216",
+   "GameTable.tsx:1386",
+   "tableFrame.ts:153",
+   "tableFrame.ts:69-76",
+   "tableFrame.ts"
+  ],
+  "problem": "`notificationTopOffset` (tableFrame.ts:201-216) rebuilds the chip bottom from raw inputs: `max(PAD_TOP*s, topPad) + surplus + CHIP_H + PAD_INNER*s`. That is the same value as GameTable's banner band top, `frame.tableTop + CHIP_H(scale) + frame.pad` (GameTable.tsx:1386; tableTop at tableFrame.ts:153, pad at 165). NotificationBanner (96-103) works out `surplusHeight/2` again instead of reading the frame.",
+  "proposed": "export one `chipsBottom(frame, scale)` from tableFrame.ts. Make `notificationTopOffset` take a `TableFrame`. Delete `computeScreenPads`.",
+  "effect": "one source of truth for the band under the chips. A change to chip padding can no longer move the table and leave the banner behind.",
+  "sources": [
+   "02-components-F2"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-117",
+  "theme": "Table UI & components",
+  "title": "Settings rows are spelled out six times",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "components/SettingsModal.tsx:234-336",
+   "components/table/settingsSheet.tsx:304",
+   "settingsSheet.tsx:304"
+  ],
+  "problem": "every row repeats `row`/`stackRow > rowLeft > RowIcon + label/sublabel + control`. The inventory duplicates (267-281=284-309, 236-248=252-264, 237-246=270-279, 267-276=317-326) are real. The haptics capability check is restated in settingsSheet.tsx:304 (ui-F14).",
+  "proposed": "`SettingRow({ icon, label, sublabel, stacked, children })`.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "02-components-F9"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ }
+]

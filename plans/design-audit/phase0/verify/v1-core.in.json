@@ -1,0 +1,1497 @@
+[
+ {
+  "id": "L-001",
+  "theme": "Engine purity & domain model",
+  "title": "The verdict on restore is derived differently from the live verdict (a latent bug)",
+  "kind": "defect",
+  "priority": "P1",
+  "effort": "S",
+  "files": [
+   "tableState.ts:189-197",
+   "onlineGameLogic.ts:277-296",
+   "gameEngine.ts:1464-1484",
+   "gameEngine.ts:1325",
+   "onlineGameLogic.ts:255-268",
+   "gameEngine.ts:1421-1430",
+   "tests/server/onlineGameLogic.test.ts:136-215",
+   "lib/game/gameEngine.ts:1324-1327",
+   "lib/game/gameEngine.ts:1470-1485",
+   "server/game/onlineGameLogic.ts:277-296",
+   "server/game/tableState.ts:189-195",
+   "tableState.ts:189"
+  ],
+  "problem": "two implementations answer \"is this match decided?\" (the comment at `gameEngine.ts:1325` claims one). A free-for-all table whose vacated seat's `bot:<seat>` total reached the target persists live as running. After a restart the same row restores as `matchOver: true`, winner `bot:<seat>`.",
+  "proposed": "split the fold. Restore calls `judgeMatch` with the same `SeatScoring` the live path builds. Alternatively, persist the verdict.",
+  "effect": "One verdict path, so \"restore disagrees with live\" becomes impossible. `teamKeyMap` and `restoredMatchOver` are deleted.",
+  "sources": [
+   "domain-F4",
+   "04-lib-shared-F1"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": [
+   "L-004"
+  ]
+ },
+ {
+  "id": "L-002",
+  "theme": "Engine purity & domain model",
+  "title": "A server rule mutates engine state outside the engine",
+  "kind": "structure",
+  "priority": "P1",
+  "effort": "S",
+  "files": [
+   "gameTurn.ts:339-356",
+   "gameEngine.ts:668-673",
+   "gameTurn.ts:287-304",
+   "lib/game/gameEngine.ts:671-672",
+   "CLAUDE.md",
+   "lib/game/gameEngine.ts"
+  ],
+  "problem": "`gameTurn.ts:339-356` (`concedeRound`) writes `finishPosition`, `finishingOrder` and `roundOver` in place on `game.gameState`. It is a sibling of the engine's private `placeLastSeat` (`gameEngine.ts:668-673`). Proposed interface: `concedeRound(state, winnerSeat?: number): GameState` in the engine, returning a clone.",
+  "proposed": "`concedeRound(state, winnerSeat?: number): GameState` in the engine, returning a clone.",
+  "effect": "The placement rule (fewest cards first, seat as tiebreak) lives with the other placement rules. It becomes testable with no io.",
+  "sources": [
+   "domain-F10",
+   "server-F5"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-003",
+  "theme": "Engine purity & domain model",
+  "title": "The offline bot's exchange choice bypasses `autoMove.ts`, and the guard tests cannot see it",
+  "kind": "defect",
+  "priority": "P1",
+  "effort": "M",
+  "files": [
+   "app/game.tsx:132-157",
+   "context/GameContext.tsx:230-245",
+   "lib/game/gameEngine.ts:981-985",
+   "lib/game/autoMove.ts:84-90",
+   "tests/engine/matchState.test.ts:203-216",
+   "autoMove.ts",
+   "CLAUDE.md",
+   "gameEngine.ts",
+   "bot.ts",
+   "app/game.tsx"
+  ],
+  "problem": "CLAUDE.md's invariant says one module chooses a bot's move. Offline, that holds for plays only. The bot's exchange decision is made in a screen.",
+  "proposed": "Move `pickGivebackCard` into `bot.ts`. The offline exchange-ready callback calls `runBotTurn()`. That goes through `offlineBotMove(state)`, which already reaches the exchange branch of `autoMoveForSeat`, because `initializeRematch` sets `currentTurnIndex` to the winner.",
+  "effect": "Delete `givebackCardId`, `botGivebackCardId` and `exchangeIsStuck` from `app/game.tsx` (about 25 lines). Delete `GameContext.releaseStuckExchange` and the `useLocalExchange.releaseStuckExchange` field.",
+  "sources": [
+   "domain-F1"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "GAME-RULES § Decisions \"What the winner may hand back\" names pickGivebackCard as in autoMove, which supports this finding.",
+  "depends_on": []
+ },
+ {
+  "id": "L-004",
+  "theme": "Engine purity & domain model",
+  "title": "The match lifecycle (start, fold a round, roll forward, deal next) has no module and exists three times",
+  "kind": "structure",
+  "priority": "P1",
+  "effort": "M",
+  "files": [
+   "tableHandlers.ts:361-397",
+   "tableState.ts:68-138",
+   "roundOver.ts:323-331",
+   "onlineGameLogic.ts:348-399",
+   "OnlineGameContext.tsx:59-70",
+   "tests/helpers/offlineMatch.ts:31-85",
+   "tests/native/teamsSingleRound.test.tsx:2-6",
+   "gameEngine.ts:876-880",
+   "lib/offlineSave.ts:29-31",
+   "context/GameContext.tsx",
+   "GameContext.tsx",
+   "lib/game/matchFlow.ts"
+  ],
+  "problem": "The domain logic sits behind a React provider (the wrong seam), so it cannot be tested through an interface and gets copied instead. `initializeRematch(setup, mode, prevFinishingOrder, firstSeat)` leaks: It reads only `[0]` and `[last]` of the order. It silently falls back to seat 0 or the last seat when an id misses (`gameEngine.ts:876-880`).",
+  "proposed": "The server keeps its own key mapping (F5) but calls `dealNextRound` and the same match start and roll-forward.",
+  "effect": "About 70 mirrored lines leave `offlineMatch.ts`. The two state slots in `GameContext` and two `OfflineSave` fields (with their decode checks) go away.",
+  "sources": [
+   "domain-F2"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": [
+   "L-005"
+  ]
+ },
+ {
+  "id": "L-005",
+  "theme": "Engine purity & domain model",
+  "title": "`GameState` has no record of what just happened, so consumers diff fields and invent keys",
+  "kind": "structure",
+  "priority": "P1",
+  "effort": "L",
+  "files": [
+   "components/flightPhysics.ts:337-352",
+   "useTableFeedback.ts:281-322",
+   "components/table/pile.tsx:827-842",
+   "OnlineGameContext.tsx:571-597",
+   "app/game.tsx:113-123",
+   "GameTable.tsx:1054-1058",
+   "gameEngine.ts:1043-1066",
+   "tests/helpers/offlineMatch.ts"
+  ],
+  "problem": "The UI depends on the engine's internal ordering of field writes, which is a leaky interface. Event identity is reconstructed heuristically, and the harness has to search for key collisions. Online and offline derive \"an exchange was given\" in two different ways (a state diff versus the callback site), which is part of why F1 exists.",
+  "proposed": "Interface: interface LastMove { seq: number; seat: number; kind: \"deal\" | \"play\" | \"pass\" | \"giveback\" | \"stuckRelease\"; closedTrick: boolean }",
+  "effect": "Turn and bot keys become `lastMove.seq`, so collisions are impossible and the collision harness can be deleted. `trickClosedWithWinner`, `prevPassCountRef`, `prevTrickClosedRef` and the three online refs collapse to reading `lastMove`.",
+  "sources": [
+   "domain-F3"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-006",
+  "theme": "Engine purity & domain model",
+  "title": "The stuck-exchange safety valve is kept at three sites for a state the rules make unreachable in a dealt round",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "XS",
+  "files": [
+   "gameEngine.ts:987-998",
+   "autoMove.ts:89",
+   "app/game.tsx:147-155",
+   "GameContext.tsx:270-273",
+   "lib/diagnostics/benchTable.ts:30",
+   "lib/diagnostics/scenarios/landingSync.ts:10",
+   "lib/diagnostics/scenarios/threadLoad.ts:38",
+   "lib/game/autoMove.ts:43-52",
+   "tests/server/stuckExchange.test.ts"
+  ],
+  "problem": "Why it is unreachable: `getValidGivebackCards` (`gameEngine.ts:987-998`) falls back to the lowest card for any non-empty eligible hand. A just-dealt winner holds at least 13 cards plus the one received. The valve is kept at: `autoMove.ts:89` (`resolveStuckExchange`) `app/game.tsx:147-155` `GameContext.tsx:270-273` plus `tests/server/stuckExchange.test.ts` Proposal: keep one valve inside the engine's giveback transition, if any is wanted for corrupted restores, and delete the UI and context paths.",
+  "proposed": "keep one valve inside the engine's giveback transition, if any is wanted for corrupted restores, and delete the UI and context paths. This folds into F1.",
+  "effect": "the bench stops being a silent sibling that keeps old semantics after the fix.",
+  "sources": [
+   "domain-F16",
+   "04-lib-shared-F5"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "GAME-RULES § Decisions \"What the winner may hand back\" makes the stuck state unreachable by rule, consistent with removing the extra valves.",
+  "depends_on": []
+ },
+ {
+  "id": "L-007",
+  "theme": "Engine purity & domain model",
+  "title": "`FoldRoundInput` is a wide, closure-based interface with dead flexibility",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "gameEngine.ts:1342-1378",
+   "onlineGameLogic.ts:378-398",
+   "GameContext.tsx:100",
+   "tests/engine/scoring.test.ts:428"
+  ],
+  "problem": "the interface is shallow relative to its implementation. The caller has to understand how the closures interact, including the default chaining and that frozen keys are never nameable.",
+  "proposed": "Replace the closures with data: `foldRoundIntoMatch(round, ledger, seats: SeatScoring[])`, where `SeatScoring` is `{ engineId, key, team?, frozenKey?, crownable }`.",
+  "effect": "`accumulates` is deleted. The server's policy becomes data and can be tested by value.",
+  "sources": [
+   "domain-F5"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-008",
+  "theme": "Engine purity & domain model",
+  "title": "The team has two sources of truth",
+  "kind": "defect",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "app/lobby.tsx:152",
+   "tableState.ts:107",
+   "tableHandlers.ts:371",
+   "bot.ts:148-156",
+   "GameContext.tsx:88-91",
+   "onlineGameLogic.ts:359-362",
+   "scorePill.ts"
+  ],
+  "problem": "`Player.team` is optional and supplied by callers. Every caller must remember `teamForSeat`: `app/lobby.tsx:152` and `:180` (on count change and on mode change) `tableState.ts:107` `dealVotedRound` strips team outside teams mode (`tableHandlers.ts:371`) `bot.ts:148-156` ignores `Player.team` and recomputes from `teamForSeat`. Scoring reads `p.team` (`GameContext.tsx:88-91`, `onlineGameLogic.ts:359-362`, `scorePill.ts`, `matchState.isDrawnRound`).",
+  "proposed": "`initializeGame` and `dealNextRound` derive `team = teamForSeat(seat, n, gameMode)`, and `SeatSetup` drops `team`.",
+  "effect": "four caller sites lose team plumbing, and a player whose team disagrees with the mode becomes impossible.",
+  "sources": [
+   "domain-F9"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "GAME-RULES § Decisions on teams (draw) is unaffected; this only moves where team is derived.",
+  "depends_on": []
+ },
+ {
+  "id": "L-009",
+  "theme": "Engine purity & domain model",
+  "title": "\"What the table demands of the seat on move\" is derived in five places, and `startCard`/`firstPlayMade` encode one obligation in two fields",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "gameEngine.ts:490",
+   "autoMove.ts:97-103",
+   "components/table/stagedPlay.ts:40-45",
+   "components/GameTable.tsx:1620",
+   "tests/helpers/offlineMatch.ts"
+  ],
+  "problem": "\"What the table demands of the seat on move\" is derived in five places (checkSelection at gameEngine.ts:490, autoMove.ts:97-103, stagedPlay.ts:40-45, GameTable.tsx:1620, offlineMatch's weakestBeatingPlay). `getAllValidPlays` takes a redundant `isNewTrick`/`lastPlayed` pair, and `startCard`/`firstPlayMade` encode one opening obligation in two fields, which forces the `playedRanks` inference in `openingIsPending` and `roundUnplayed`.",
+  "proposed": "`GameState.openingCard: Card | null` replaces `startCard` and `firstPlayMade`; add `tableDemand(state): { toBeat; mustInclude }` and `legalPlays(state, seat)`, and give `getAllValidPlays` a `toBeat` plus optional `mustInclude`.",
+  "effect": "Five derivations become one. The `isNewTrick` parameter is gone.",
+  "sources": [
+   "domain-F6"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-010",
+  "theme": "Engine purity & domain model",
+  "title": "Three transitions use three error modes, and every caller pre-checks",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "GameContext.tsx:234",
+   "tableHandlers.ts:294-298",
+   "tableHandlers.ts:208-211"
+  ],
+  "problem": "`processPlay` throws (`assertPlayable`, `:690-710`). `processPass` returns its input when refused (`:788`). `processExchangeChoice` returns its input with no reason code (`:949-978`).",
+  "proposed": "`processPlay` keeps its throwing floor internally.",
+  "effect": "`tableHandlers` `playAction`, `passAction` and `exchangeAction` (`:198-301`, about 100 lines) shrink to about 40. `GameContext`'s three callbacks become one `act(move)`.",
+  "sources": [
+   "domain-F7"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-011",
+  "theme": "Engine purity & domain model",
+  "title": "`autoMoveForSeat` reports its result through a callback and an in-place mutation; achievement flags are recorded at three sites",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "autoMove.ts:54-69",
+   "gameTurn.ts:118-131",
+   "autoMove.ts:124",
+   "tableHandlers.ts:234",
+   "gameTurn.ts:104-106",
+   "autoMove.ts:22-26"
+  ],
+  "problem": "`autoMove.ts:54-69` and `105-143`: `ctx.onMove` and `ctx.roundFlags` are mutated. The server wraps it just to recover the move (`gameTurn.ts:118-131`) and computes `wasExchange` beforehand (`:293`). `recordPlayFlags` runs at `autoMove.ts:124` and `:138`, and in `tableHandlers.ts:234` through a pass-through wrapper (`gameTurn.ts:104-106`).",
+  "proposed": "Pure. `commitMove(io, game, next, move)` records the flags and the replay from `move` at one site.",
+  "effect": "`AutoMoveContext`, the server wrapper and the `recordPlayFlags` wrapper are deleted. A forgotten-flags path becomes impossible.",
+  "sources": [
+   "domain-F8"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-012",
+  "theme": "Engine purity & domain model",
+  "title": "Type weaknesses that make callers carry invariants",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "gameEngine.ts:103-112",
+   "bot.ts:46-51",
+   "persistedEnvelope.ts:226",
+   "offlineSave.ts:80",
+   "autoMove.ts:88",
+   "app/game.tsx:140",
+   "GameTable.tsx:624",
+   "tutorial.tsx:439",
+   "gameEngine.ts:961",
+   "gamePersistence.ts:86-89",
+   "OnlineGameContext.tsx:280",
+   "shared/protocol.ts:180-182"
+  ],
+  "problem": "`playedRanks?` stays optional \"for a round persisted before the tally existed\" (`gameEngine.ts:103-112`). Both stores are version-gated: `GAME_SCHEMA_VERSION=3` and `OFFLINE_SAVE_VERSION=3`. Every reader still handles `undefined`: `bot.ts:46-51`, `openingIsPending`, `roundUnplayed`, `processPlay:745`.",
+  "proposed": "one shared `parseGameState(unknown): { ok: true; state: GameState } | { ok: false; reason }` at the restore seam, with required fields. `ExchangePhase` is a set of flags with optional cards (`:58-77`). The phase is never cleared, so its `.active` is checked at 70 sites in 15 files.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "domain-F12"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-013",
+  "theme": "Engine purity & domain model",
+  "title": "Pass-throughs (each fails the deletion test)",
+  "kind": "dead-code",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "server/game/replayShape.ts:30",
+   "gameTurn.ts:104-106",
+   "onlineGameLogic.ts:324",
+   "lib/exchangeCeremony.ts:1-15",
+   "server/game/gameTurn.ts:38,166",
+   "server/game/onlineGameLogic.ts:11,82",
+   "lib/exchangeCeremony.ts",
+   "exchangeCeremony.ts"
+  ],
+  "problem": "`lib/exchangeCeremony.ts` (`exchangeAnnounceMs` equals `exchangeAnnounceFrom`) `server/game/replayShape.ts:30` (`startReplayLog` returns `[]`) `gameTurn.ts:104-106` (the `recordPlayFlags` wrapper) `onlineGameLogic.ts:324` (`ScoreboardRow = ScoreLine`)",
+  "proposed": "inline it into the server callers, or move it to server/game.",
+  "effect": "one less file, and one less false comment.",
+  "sources": [
+   "domain-F15",
+   "04-lib-shared-F6"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-014",
+  "theme": "Engine purity & domain model",
+  "title": "Bot seat-key format is defined twice",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "lib/game/rating.ts:80",
+   "server/game/onlineGameLogic.ts:203",
+   "server/game/botSeat.ts",
+   "botSeat.ts",
+   "rating.ts"
+  ],
+  "problem": "three spellings of one key format. A change to one leaves rating unable to recognise bots.",
+  "proposed": "move botSeat.ts into lib/game (it has no server dependencies). rating.ts and onlineGameLogic then import `botSeatKey`/`isBotSeatKey`.",
+  "effect": "one home; delete the constant and the inline template.",
+  "sources": [
+   "04-lib-shared-F7"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-015",
+  "theme": "Engine purity & domain model",
+  "title": "Non-domain modules sit inside `lib/game`",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "shared/protocol.ts:6",
+   "sharedGameFlow.ts",
+   "roundEnding.ts",
+   "matchEnding.ts",
+   "exchangeTimeline.ts",
+   "dealTimeline.ts",
+   "placement.ts",
+   "matchState.ts",
+   "shared/protocol.ts"
+  ],
+  "problem": "`sharedGameFlow.ts` imports `react` (`useExchangeAnnouncement`) in a folder that otherwise loads under `node --test`. `roundEnding.ts`, `matchEnding.ts`, `exchangeTimeline.ts` and `dealTimeline.ts` are animation worklets. The server imports `exchangeTimeline.ts` for `exchangeGiveDelayMs` and pulls the pose geometry in with it.",
+  "proposed": "Keep only rules in `lib/game`. Move the wire types to `shared/protocol.ts`. Split the exchange and deal timing into a timing-only module the server imports.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "domain-F14"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "CLAUDE.md invariant naming gameEngine.ts as the rules home constrains what may move out.",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-016",
+  "theme": "Engine purity & domain model",
+  "title": "The placement-points rule is duplicated",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "server/game/stats.ts:33-35"
+  ],
+  "problem": "`server/game/stats.ts:33-35` (`pointsForPlacement`, \"mirroring … `scoreRound` exactly\"). Proposal: export `placementPoints(placement, n)` from the engine and use it in both places.",
+  "proposed": "Export `placementPoints(placement, n)` from the engine and use it in both `scoreRound` and `server/game/stats.ts`.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "domain-F17"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-017",
+  "theme": "Engine purity & domain model",
+  "title": "`botChoosePlay` takes nine positional parameters, five of them optional",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "bot.ts:221-231",
+   "autoMove.ts:110-122"
+  ],
+  "problem": "`bot.ts:221-231`. The only production caller assembles them from `GameState` (`autoMove.ts:110-122`). 31 test calls read like `botChoosePlay(me, null, true, [8,8,8], undefined, () => 0.5, false, playedRanks)`.",
+  "proposed": "Add `botView(state, seat): BotView` and make it `botChoosePlay(view: BotView, rng)`.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "domain-F18"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-018",
+  "theme": "Engine purity & domain model",
+  "title": "`gameEngine.ts` is a 1525-line module with about ten responsibilities",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "M",
+  "files": [
+   "gameEngine.ts",
+   "lib/cardNames.ts",
+   "CLAUDE.md",
+   "lib/game/gameEngine.ts"
+  ],
+  "problem": "`gameEngine.ts` is 1525 lines with about ten responsibilities (cards and deck, combinations and beat rules, legal plays, trick state machine, display helpers, exchange, opening predicates, teams and deal rotation, round construction, match scoring, plus a transport timeout). 16 exports have no production caller and exist only for tests, which therefore reach past the interface.",
+  "proposed": "Split into `cards`, `combinations`, `legalPlays`, `round`, `exchange` and `match` files under `lib/game/`, move display helpers to `lib/cardNames.ts`, un-export the internals and re-point their tests at `checkSelection`/`legalPlays`/`foldRoundIntoMatch`. Reword the CLAUDE.md rules-home invariant first.",
+  "effect": "Locality: each rule area is one file, and the test-only export surface (tests-T15's 17 exports) disappears.",
+  "sources": [
+   "domain-F13",
+   "tests-T15"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "CLAUDE.md invariant \"Before changing a game rule — it lives in lib/game/gameEngine.ts\": splitting the module needs that invariant reworded to name lib/game.",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": [
+   "L-010"
+  ]
+ },
+ {
+  "id": "L-019",
+  "theme": "Time & randomness seams",
+  "title": "Time and dealing randomness are only partly injected (several clocks)",
+  "kind": "test",
+  "priority": "P1",
+  "effort": "M",
+  "files": [
+   "gameTimers.ts:12-29",
+   "onlineGameLogic.ts:95",
+   "gamePersistence.ts:86-89",
+   "roomStore.ts:260",
+   "socketTable.ts:65",
+   "seatHold.test.ts:161-162",
+   "tableRouter.ts:87",
+   "socketSafety.ts:120",
+   "roundOver.ts:101",
+   "gameEngine.ts:1115-1123",
+   "tableState.ts:111-113",
+   "tableHandlers.ts:380-383"
+  ],
+  "problem": "`gameTimers.ts:12-29` has an injectable `Clock` (`setClock`), used for AFK, grace and `secondsUntil`. These still read wall time: `onlineGameLogic.ts:95, 124` default `now = Date.now()` for `markExchangeSettled`/`visibleExchangePhase`, and `gamePersistence.ts:86-89, 219` never pass `now`. Under `fakeClock`, `turnSecondsRemaining` uses fake time while exchange-card visibility uses real time.",
+  "proposed": "Add `clock: Clock` and `deal?: (playerCount: number, firstSeat: number) => Card[][]` to `TableDeps` (F1). Pass `deps.clock.now()` into `visibleExchangePhase`/`markExchangeSettled` and into `roomStore.claimRoomSeat`/`getRoomSeatHolds` as a `now` argument. `seatForClaim` already takes `now`.",
+  "effect": "Exchange-ceremony timing and seat-hold expiry become testable with `fakeClock` instead of real sleeps. Exchange-path tests can deal a fixed hand instead of looping.",
+  "sources": [
+   "server-F9",
+   "09-tests-server-engine-F2",
+   "tests-T8"
+  ],
+  "tickets": [
+   1600
+  ],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "09-tests-server-engine refines server-F9 and tests-T8: a Clock already exists for five timer kinds (server/game/gameTimers.ts:9-32, tests/helpers/fakeClock.ts; landed by closed #1600). What is missing is integration-harness wiring plus the state-ack and seat-hold timers. tests-T8's configuration half is covered by the env-at-import entry.",
+  "depends_on": []
+ },
+ {
+  "id": "L-020",
+  "theme": "Time & randomness seams",
+  "title": "The db module captures DATABASE_URL at import, which shapes the whole integration tree",
+  "kind": "test",
+  "priority": "P1",
+  "effort": "M",
+  "files": [
+   "server/db/db.ts:45-58",
+   "pool.ts:5",
+   "tests/helpers/testServer.ts:175",
+   "soak/replay.ts:81-85",
+   "stats.test.ts:398-402",
+   "testServer.ts:20-88",
+   "socketGameplay.ts:39-43",
+   "gameTimers.ts:88-97",
+   "soak/replay.ts",
+   "timerEnvIsLive.test.ts"
+  ],
+  "problem": "The test server's interface hides the real seam, which is which database the modules talk to. A test cannot import a store statically. Each file re-derives a connection to the schema.",
+  "proposed": "Have `startTestServer()` return its `db` and `pool` handles, for example `server.db` and `server.query(sql)`. Make server/db build lazily from a `createDb(url)` that the server boot owns, not from module scope. Dynamic imports then become static, ad-hoc pools are deleted, and one process can boot N servers.",
+  "effect": "About 25 pool constructions and 33 dynamic-import blocks are deleted. Several files can merge (the harness trio).",
+  "sources": [
+   "09-tests-server-engine-F1",
+   "09-tests-server-engine-F17",
+   "server-F20"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-021",
+  "theme": "Time & randomness seams",
+  "title": "Deal randomness cannot be injected",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "gameEngine.ts:229-263",
+   "bot.ts:228",
+   "soak/soak.ts:56-65",
+   "soak.ts:216-221",
+   "helpers/liveGame.ts:44",
+   "soak/replay.ts:130",
+   "tests/helpers/offlineMatch.ts",
+   "tests/native/setup.ts",
+   "tests/e2e/helpers/seededRandomness.ts",
+   "scripts/measureHeadsUpBalance.ts",
+   "lib/e2eOpener.ts",
+   "domain.md"
+  ],
+  "problem": "`shuffleDeck` and `dealCards` read `globalThis.crypto` (`gameEngine.ts:229-263`). Tests and scripts monkeypatch the global instead: `tests/helpers/offlineMatch.ts` (`withSeededDeals`, including the \"non-configurable getter in some Node builds\" workaround) `tests/native/setup.ts` `tests/e2e/helpers/seededRandomness.ts` `scripts/measureHeadsUpBalance.ts` Workarounds grew into the interface: `initializeGame(..., dealt?)` with validation at `:1124-1137`, and `initializeRematch(..., dealtHands?)`. …",
+  "proposed": "`type RandomSource = { getRandomValues(a: Uint32Array): Uint32Array }`, with: `dealCards(n, firstSeat, random = cryptoRandom)` `initializeGame(setup, mode, { firstSeat, random, dealt })`",
+  "effect": "the global patching in four places is deleted, and seeded reproduction becomes an argument.",
+  "sources": [
+   "domain-F11",
+   "tests-T9",
+   "09-tests-server-engine-F9"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-050",
+  "theme": "Wire & transport contracts",
+  "title": "A refusal is emitted and returned separately; 8 lobby refusals ack `{ok:true}` and skip the refusal log",
+  "kind": "defect",
+  "priority": "P1",
+  "effort": "M",
+  "files": [
+   "socketSafety.ts:226-229",
+   "lobbyIntents.ts:58",
+   "lobbyIntents.ts:72-74",
+   "socketRooms.ts:111-114",
+   "socketRooms.ts:188",
+   "tableHandlers.ts:209-210",
+   "socketRooms.ts:163-174",
+   "routes.ts:262-268",
+   "socketPresence.ts:36-40",
+   "shared/protocol.ts:95-98",
+   "socketGameplay.ts:51-58",
+   "socketSafety.ts:150-157"
+  ],
+  "problem": "The interface has two channels, the ack and the `*:error` emit, and nothing forces them to agree. The bug class the `socketSafety.ts:150-157` comment warns about is live: `room:join` → ROOM_FULL answers the ack `ok:true`, and nothing reaches the \"Socket event refused\" log line. Refusal codes are typed only by an AST source scan.",
+  "proposed": "On the owner side, `tableHandlers` returns a `Refusal`. The dispatcher sends it with `out.toUser(userId, \\`${channel}:error\\`, …)` (F1).",
+  "effect": "The 8 silent-success refusals become impossible to write. About 20 emit/return pairs become one `return refuse(...)` each.",
+  "sources": [
+   "server-F3"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-051",
+  "theme": "Wire & transport contracts",
+  "title": "The auth guarantee rests on an AST scan of one file",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "app.ts:268",
+   "app.ts:167",
+   "tests/helpers/routeMountings.ts",
+   "server/http/routes.ts",
+   "tests/server/routesAuthenticated.test.ts",
+   "CLAUDE.md",
+   "routeMountings.ts",
+   "routes.ts"
+  ],
+  "problem": "This is a safeguard that exempts what it does not look at. The F6 split, or any router-based mounting, would move routes outside the scanned file and pass silently. CLAUDE.md lists exactly this as a \"self-defeating safeguard\".",
+  "proposed": "the `access` field in F6's `RouteSpec`. `mount()` installs `requireAuth`/`requireAdmin` from `access`, so the guard is a type rather than a scan. The test then iterates the exported route tables.",
+  "effect": "the guard survives any file split, and route lists come from data instead of parsing.",
+  "sources": [
+   "server-F7",
+   "tests-T5"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": [
+   "L-034"
+  ]
+ },
+ {
+  "id": "L-052",
+  "theme": "Wire & transport contracts",
+  "title": "The inventory's import cycle is all type-only, and is caused by two misplaced type homes",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "lib/game/botPersonalities.ts:7",
+   "shared/protocol.ts:5-6",
+   "shared/i18n.ts:12",
+   "lib/game/placement.ts:4",
+   "lib/game/rating.ts:3",
+   "lib/achievements.ts:20",
+   "lib/cosmetics.ts:13",
+   "lib/cardNames.ts:9",
+   "shared/schema.ts:3,5",
+   "lib/game/gameEngine.ts",
+   "lib/i18n.ts",
+   "lib/wire.ts"
+  ],
+  "problem": "The cycle is gameEngine →type botPersonalities →type lib/i18n →type shared/protocol →type lib/wire →type gameEngine. Every edge is `import type`, so the cycle is erased at runtime and has no runtime defect. It is real for tooling only: tsc project references, madge, and any future bundler that preserves type imports.",
+  "proposed": "Retarget the six imports to `shared/i18n` (a mechanical change). Move the friend/lobby DTOs from lib/wire.ts, and the three round-over payload types from matchState.ts, into `shared/protocol.ts` (or `shared/wire.ts`). Leave lib/wire re-exporting them only if callers are many; otherwise update the imports.",
+  "effect": "the cycle and every shared→lib/wire edge disappear; the domain no longer reaches the client i18n module. No behaviour change.",
+  "sources": [
+   "04-lib-shared-F2"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "04-lib-shared notes the inventory rule \"shared must not import lib\" is wrong for lib/game domain types.",
+  "depends_on": []
+ },
+ {
+  "id": "L-053",
+  "theme": "Wire & transport contracts",
+  "title": "The HTTP contract is unshared; client and server types can drift silently",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "ratings.ts:19-37",
+   "stats.ts:180-183",
+   "routes.ts:314-322",
+   "lib/wire.ts:5-38",
+   "protocol.ts:46-47",
+   "friendRows.ts",
+   "friendships.ts",
+   "replays.ts",
+   "server/http/schemas.ts",
+   "shared/http.ts"
+  ],
+  "problem": "The socket protocol is typed end-to-end through `ClientToServerEvents`/`ServerToClientEvents` and `IntentSchemas`. HTTP has no equivalent seam. A renamed field in `getRating` compiles on both sides and breaks the profile screen at runtime.",
+  "proposed": "The server route specs (F6) are typed `RouteSpec<HttpContract[K]>`. `lib/wire` DTOs move into `shared/http.ts`, and request schemas move into `shared/`. The dead `ServerPayload.error` field is deleted.",
+  "effect": "the server-view/client-DTO pairs collapse to one declaration each, and drift becomes a compile error.",
+  "sources": [
+   "server-F8"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-054",
+  "theme": "Wire & transport contracts",
+  "title": "Auth error paths: raw store errors reach the client, and the logout destroy error is ignored",
+  "kind": "defect",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "server/socket/socket.ts:116-118",
+   "server/http/routes.ts:531-534",
+   "context/SocketContext.tsx:314-325"
+  ],
+  "problem": "An express-session store failure at the handshake is passed through as `next(err)`, so a raw pg message reaches the client's `connect_error`. `AUTH_UNAVAILABLE` has no client consumer. The client retries everything except `CLIENT_OUTDATED`.",
+  "proposed": "Map store errors to `payload(\"AUTH_UNAVAILABLE\")`, and log the destroy error.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "05-server-F18"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-055",
+  "theme": "Wire & transport contracts",
+  "title": "`RoundOverPayload` is declared \"with no optional field\", but the schema and the client do not match it",
+  "kind": "defect",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "shared/protocol.ts:160-169",
+   "OnlineGameContext.tsx:666-700"
+  ],
+  "problem": "`roundOverSchema` validates 6 of 13 fields (`shared/protocol.ts:160-169`). The client casts `as unknown as RoundOverPayload`, then reads with `?? prev` fallbacks (`OnlineGameContext.tsx:666-700`).",
+  "proposed": "A full `roundOverSchema` covering all 13 fields, with `z.infer` as the `RoundOverPayload` type, so the client cast and `?? prev` fallbacks go.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "domain-F19"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-056",
+  "theme": "Wire & transport contracts",
+  "title": "`payload.ts` claims to be \"the one place\" a payload is built",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "payload.ts:1-6",
+   "gameTurn.ts:263-270",
+   "gameTurn.ts:346",
+   "payload.ts"
+  ],
+  "problem": "`payload.ts:1-6` claims to be the one place a payload is built, but `gameTurn.ts:263-270` hand-builds `{code,message,params}` with English template literals and `gameTurn.ts:346, 376, 415` call `translate(DEFAULT_LOCALE, …)` by hand.",
+  "proposed": "Use `payload(\"PLAYER_AFK_AUTO_PASS\", {username})` and similar at each site.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "server-F19"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-217",
+  "theme": "Dependencies, dead code & hygiene",
+  "title": "dependency hygiene: phantom and unused packages from the phase-0 knip run",
+  "kind": "dead-code",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "jest.config.js:69",
+   "scripts/assertNotE2EFast.js:4",
+   "tools/loop/related-tests.mjs:20",
+   "package.js"
+  ],
+  "problem": "These are used but not declared, resolving only through hoisting: `@jest/globals` (243 files) `canvaskit-wasm` (tests import it directly) `jest-util` `@expo/env` `babel-jest` `playwright` `@types/bcryptjs` is declared but unused, because bcryptjs 3 ships its own types. The same class outside this slice: `express-serve-static-core`, `expo-keep-awake`, `eslint-plugin-react-hooks`, `@typescript-eslint/parser`. Memory records the failure mode: npm install hoists, npm ci obeys the lockfile.",
+  "proposed": "Declare the phantoms as devDependencies at the hoisted versions, except `babel-preset-expo` (see Inventory), and drop `@types/bcryptjs`.",
+  "effect": "A version bump can no longer silently drop a tool.",
+  "sources": [
+   "06-tooling-F25"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "CLAUDE.md: the babel-preset-expo React Compiler phantom must not be declared as a second copy (tests/ui-rules/reactCompiler.test.ts).",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-218",
+  "theme": "Dependencies, dead code & hygiene",
+  "title": "export lists wider than their callers",
+  "kind": "dead-code",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "tools/loop/loop-stream.mjs",
+   "loop-render.mjs",
+   "loop-logs.mjs",
+   "tools/loop/mainHealth.ts",
+   "loop-gate.mjs",
+   "loop-derive.mjs",
+   "settle.mjs",
+   "decide.mjs",
+   "tools/ci/e2ePort.mjs",
+   "tools/ci/analyze-maestro-run.mjs",
+   "scripts/iconSubsetChars.mjs",
+   "scripts/contextSurface.mjs"
+  ],
+  "problem": "These exports are used only inside their own file, or only by tests. The interface is wider than the module's real seam.",
+  "proposed": "Trim them in passing, during the next edit to each file.",
+  "effect": "Small, narrower interfaces.",
+  "sources": [
+   "06-tooling-F26",
+   "10-tests-e2e-loop-F11"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "10-tests-e2e-loop: the knip flag on tools/loop/tests/helpers/probeFixtureRace.mjs is a false positive (spawned by path at loopGate.test.ts:31, :116).",
+  "depends_on": []
+ },
+ {
+  "id": "L-219",
+  "theme": "Dependencies, dead code & hygiene",
+  "title": "Dead or duplicate items",
+  "kind": "dead-code",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "brief.mjs:15",
+   "guardAgentModel.test.ts:136",
+   "scripts/post-merge.sh:1-7",
+   "scripts/post-merge.sh",
+   "tests/tooling/noReplitCoupling.test.ts",
+   "replit.md",
+   "cardArt.test.ts",
+   "package-lock.js"
+  ],
+  "problem": "`scripts/post-merge.sh` has zero references anywhere (a Replit-era post-merge hook; `tests/tooling/noReplitCoupling.test.ts` exists, and replit.md was folded away in commit c8d04d5e). Delete it. npm scripts with no references in repo docs or code: `lint:fix`, `expo:dev:clean`, `bake:card-art` (the script itself is used by cardArt.test.ts directly), `loop:cost` (referenced only in an audit doc).",
+  "proposed": "delete.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "tooling-F17",
+   "11-gaps-F8"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-220",
+  "theme": "Dependencies, dead code & hygiene",
+  "title": "`LampRig.flare()` and `kick()` are interface with no caller",
+  "kind": "dead-code",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "components/table/useLampRig.ts:25-26",
+   "components/table/useLampRig.ts:153-168",
+   "GameTable.tsx:955",
+   "useLinkHold.ts:34",
+   "useLinkHold.ts:69"
+  ],
+  "problem": "Nothing outside the hook calls `rig.flare` or `rig.kick`; a grep of SRC finds no caller. The landing and bomb reactions inside the hook call `lampControls.flare`/`kick` directly, at 130 and 138-139. Only `freeze` (`GameTable.tsx:955`, `useLinkHold.ts:34`) and `setLevel` (`useLinkHold.ts:69`) are used.",
+  "proposed": "`LampRig` becomes `{ lamp; glossLight; sx; sy; freeze; setLevel }`, or `hold` after F3.",
+  "effect": "10 lines go and the interface shrinks to what is used.",
+  "sources": [
+   "01-table-F4"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-221",
+  "theme": "Dependencies, dead code & hygiene",
+  "title": "ErrorBoundary `FallbackComponent` / `onError` are a hypothetical seam",
+  "kind": "dead-code",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "app/_layout.tsx:152",
+   "components/ErrorBoundary.tsx"
+  ],
+  "problem": "the only caller passes neither prop, and no test uses them. They are one adapter's worth of seam with no adapter.",
+  "proposed": "delete both props.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "02-components-F12"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-222",
+  "theme": "Dependencies, dead code & hygiene",
+  "title": "Dead code in the offline lobby and the room's invite panel",
+  "kind": "dead-code",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "app/lobby.tsx:67-79",
+   "/room.tsx:193"
+  ],
+  "problem": "app/lobby.tsx:67-79 (`PlayerRow` renders a name `TextInput` only when `lobbyMode === \"local\" && !isHuman`, but local mode makes every seat human at :149 and nothing changes a seat's type, so the branch is unreachable, along with its hint, a11y label and `nameInput` style); app/(online)/room.tsx:193, 198, 622, 666 (`InviteFriendsPanel`'s `myUserId` prop is passed and never read). proposed: delete both, or decide that pass-and-play seats get names and make the condition `lobbyMode === \"local\" && index > 0`. …",
+  "proposed": "delete both, or decide that pass-and-play seats get names and make the condition `lobbyMode === \"local\" && index > 0`.",
+  "effect": "dead UI and an a11y string out of the bundle.",
+  "sources": [
+   "03-app-context-F9"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-223",
+  "theme": "Dependencies, dead code & hygiene",
+  "title": "mocks/audioApi.ts exports four types it alone uses",
+  "kind": "dead-code",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "mocks/audioApi.ts:1",
+   "setup.ts:165-166",
+   "mocks/audioApi.ts",
+   "knip.md"
+  ],
+  "problem": "knip lists 6 unused exports. 4 are real: they are used only inside the file. 2 are false positives: `audioApiModule` and `audioSessionModule` are reached through `require` inside the `jest.mock` factories at setup.ts:165-166.",
+  "proposed": "drop `export` from the four.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "07-tests-native-F19"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-224",
+  "theme": "Dependencies, dead code & hygiene",
+  "title": "Small hygiene items",
+  "kind": "dead-code",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "lib/diagnostics/FrameProbe.tsx:45-49",
+   "lib/i18n.ts:166",
+   "lib/game/exchangeTimeline.ts",
+   "lib/game/roundEnding.ts",
+   "shared/socketSchemas.ts"
+  ],
+  "problem": "lib/diagnostics/FrameProbe.tsx:45-49: `armFrames` never clears its 1 s reject timer after it resolves. The timer is harmless but leaks one timer per arm. lib/i18n.ts:166 vs :182-189: `translateServerPayload` exists twice, once free and once bound.",
+  "proposed": "Keep the bound one. Derive the types with `z.infer`, or build the schema from the const tuple.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "04-lib-shared-F12"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-225",
+  "theme": "Dependencies, dead code & hygiene",
+  "title": "captureStates seats bots that the lobby never seats",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "lib/captureStates.ts:28-29",
+   "app/lobby.tsx:139,151",
+   "lib/game/botPersonalities.ts",
+   "app/lobby.tsx"
+  ],
+  "problem": "`BOTS = [\"Luan\",\"Drita\",\"Besnik\"]` claims to match \"as app/lobby.tsx fills empty seats\". The lobby uses BOT_PERSONALITIES (Luan, Besnik, Gent), and \"Drita\" exists nowhere else. Capture screenshots therefore show a table the app cannot produce.",
+  "proposed": "derive the names from `botSeatNames` (or `BOT_PERSONALITIES`) and delete the literal.",
+  "effect": "one home for the bot roster; the false comment goes.",
+  "sources": [
+   "04-lib-shared-F9"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-226",
+  "theme": "Dependencies, dead code & hygiene",
+  "title": "Comments that are false in SRC",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "components/table/hand.tsx:311-313",
+   "hand.tsx:1355",
+   "components/table/hand.tsx:378-379",
+   "components/table/hand.tsx:109",
+   "components/table/hand.tsx:119-129",
+   "components/table/moments.tsx:284-286",
+   "components/table/actions.tsx:310-312",
+   "Layer.sh",
+   "cardShadows.ts",
+   "CLAUDE.md"
+  ],
+  "problem": "files and problems: `components/table/hand.tsx:311-313`: \"the stagger is disarmed one render after the hand appears, so `dealDelay` becomes -1 while this card is still flying in\". The only caller passes `descending ? 0 : -1` (`hand.tsx:1355`), so nothing disarms a stagger.",
+  "proposed": "delete or correct each one. Delete `dealDelayRef` with ui-F9's boolean.",
+  "effect": "no stale guidance at the z-order and deal sites that CLAUDE.md invariants already watch.",
+  "sources": [
+   "01-table-F7"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-227",
+  "theme": "Dependencies, dead code & hygiene",
+  "title": "Comments that say something false",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "components/GameTable.tsx:157-160",
+   "components/useTableFeedback.ts:290",
+   "components/HistoryRow.tsx:19-23",
+   "GameTable.tsx:157-160",
+   "actions.tsx:28",
+   "useTableFeedback.ts:290",
+   "components/table/actions.tsx:28",
+   "HistoryRow.tsx:19-23",
+   "GameTable.tsx:721-727",
+   "GameTable.tsx",
+   "CLAUDE.md"
+  ],
+  "problem": "GameTable.tsx:157-160 describes \"whole-pixel travel, mirroring MenuButton … 2px down\". No code follows it, and the table buttons use `BTN_PRESS_SCALE` 0.94 (actions.tsx:28), a scale rather than a translate. useTableFeedback.ts:290 says `BTN_PRESS_SCALE` is in GameTable.tsx.",
+  "proposed": "delete or correct each of them (CLAUDE.md § Comments).",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "02-components-F5"
+  ],
+  "tickets": [
+   1604
+  ],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-228",
+  "theme": "Dependencies, dead code & hygiene",
+  "title": "Comments that are false against SRC",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "lib/game/autoMove.ts:132",
+   "lib/game/gameEngine.ts:506-507",
+   "lib/game/gameEngine.ts:973-985",
+   "lib/game/replay.ts:194-196",
+   "lib/achievements.ts:36",
+   "lib/game/gameEngine.ts:687-690",
+   "lib/game/matchState.ts:11",
+   "lib/achievements.ts:32",
+   "server/game/gameTurn.ts",
+   "lib/game/autoMove.ts",
+   "CLAUDE.md"
+  ],
+  "problem": "files and problems: lib/game/autoMove.ts:132: \"instead of assuming 3♣\". The opening card is 3♠. lib/game/gameEngine.ts:506-507: says a bitmask \"fails for 2-player hands of 26 cards\".",
+  "proposed": "correct each comment, or delete it. Prefer deleting line-number citations, per CLAUDE.md, which says to point at the authority and not at a line.",
+  "effect": "removes six misleading pointers.",
+  "sources": [
+   "04-lib-shared-F10"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-229",
+  "theme": "Dependencies, dead code & hygiene",
+  "title": "Comments that lie",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "server/game/onlineGameLogic.ts:1",
+   "server/socket/socketGameplay.ts:33",
+   "server/game/tableHandlers.ts:491-493",
+   "server/http/admin.ts:8",
+   "server/http/mail.ts:101-104",
+   "socketGameplay.ts:33",
+   "onlineGameLogic.ts",
+   "server/socket/socket.ts",
+   "tableHandlers.ts",
+   "roundOver.ts",
+   "routes.ts"
+  ],
+  "problem": "`onlineGameLogic.ts` names `server/socket/socket.ts` as its caller and as the home of `handleRoundOver`. They are really `tableHandlers.ts` and `roundOver.ts`. `socketGameplay.ts:33` cites `authMaxFromEnv in routes.ts`, which no longer exists.",
+  "proposed": "Correct or delete them.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "05-server-F17"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-230",
+  "theme": "Dependencies, dead code & hygiene",
+  "title": "Comments that are false or attached to nothing",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [],
+  "problem": "lampFlareReducedMotion:7-8 says \"the preference is mocked at module scope, so the two cannot share one file\". That is false: `setMotionPreference` exists, and landWobble:26-29 switches it inside a single file. offlineResume:23-24 has a doubled `/ */` docblock (\"Reports the bits…\") attached to nothing.",
+  "proposed": "Merge lampFlareReducedMotion into lampFlareEndToEnd using the setter (this also removes one F4 copy). Delete the stray docblock. Correct or delete the profileHistoryCard claim.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "07-tests-native-F15"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-231",
+  "theme": "Dependencies, dead code & hygiene",
+  "title": "Stale, orphaned and changelog comments",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "table.ts:14-16",
+   "table.ts:113",
+   "offlineMatch.ts:237-239",
+   "client.ts:74-81",
+   "gameplay.test.ts:188-201",
+   "liveGame.ts:44",
+   "testServer.ts",
+   "CLAUDE.md"
+  ],
+  "problem": "comments make claims that the code contradicts.",
+  "proposed": "delete or correct them.",
+  "effect": "readers stop being misled.",
+  "sources": [
+   "09-tests-server-engine-F14"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-232",
+  "theme": "Native modules, device flows",
+  "title": "Pass-loops assume `btn-passa` disappears when the round ends, but exchange-phase.yaml says it stays drawn",
+  "kind": "defect",
+  "priority": "P2",
+  "effort": "XS",
+  "files": [
+   ".maestro/offline-game.yaml:213-227",
+   ".maestro/new-match.yaml:88-98",
+   ".maestro/exchange-phase.yaml:100-110",
+   "components/table/actions.tsx:259-267",
+   "offline-game.yaml:213-217",
+   "exchange-phase.yaml:100",
+   "actions.tsx:259-267",
+   "exchange-phase.yaml",
+   "new-match.yaml",
+   "offline-game.yaml"
+  ],
+  "problem": "offline-game.yaml:213-217 says the loop stops the moment `btn-passa` is gone. exchange-phase.yaml:100 says the opposite for the same screen, and actions.tsx:259-267 renders the button with `disabled={!canPass}`. If the button persists after the round, both flows always burn the full 30 iterations, each a 500 ms settle plus a hierarchy read on a table that never settles.",
+  "proposed": "loop `while: notVisible: id: \"btn-new-match\"` in new-match.yaml and `notVisible: id: \"btn-home\"` in offline-game.yaml. The end state is then the exit condition, and the comment is true.",
+  "effect": "up to ~30 x (500 ms + read) per flow on both device jobs. #823 is open on wall-clock.",
+  "sources": [
+   "11-gaps-F3"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-233",
+  "theme": "Native modules, device flows",
+  "title": "Production-critical iOS patches ship inside the \"diagnostics\" bench module",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "plugins/withSwiftUIFilters.js:12",
+   "withSwiftUIFilters.js:12",
+   "modules/murlan-diagnostics/ios/MurlanRecycledLayout.mm:11-21",
+   "modules/murlan-diagnostics/ios/MurlanReactNativeFlags.mm:20-26",
+   "tests/tooling/diagnosticsGate.test.ts:12-13",
+   "modules/murlan-diagnostics/index.ts",
+   "modules/murlan-diagnostics/app.plugin.js",
+   "app.js",
+   "MurlanRecycledLayout.mm",
+   "expo-module.config.js",
+   "recycledLayoutPatch.test.ts",
+   "swiftUIFiltersPlugin.test.ts"
+  ],
+  "problem": "The module named and documented as the bench/probe module also carries two fixes the store build depends on: the SwiftUI-filters flag behind iOS grayscale, and the recycled-layout swizzle from #1485. `withSwiftUIFilters.js:12` unconditionally inserts `internal import MurlanDiagnostics` into every AppDelegate, so the bench module is linked into release builds. A \"strip diagnostics from release\" or dead-code sweep would silently drop production fixes.",
+  "proposed": "split the module. `modules/murlan-rn-patches`: the flags plus the swizzle, imported by the config plugin. `modules/murlan-diagnostics`: probe and latency only, and allowed to be excluded from release.",
+  "effect": "the module name tells the truth; diagnostics can be gated out of store builds without risk.",
+  "sources": [
+   "04-lib-shared-F3",
+   "11-gaps-F1"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-234",
+  "theme": "Native modules, device flows",
+  "title": "Platform twins have no compile-time contract",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   ".web.ts",
+   "tests/tooling/repoLayout.test.ts",
+   "lib/device/twins.check.ts",
+   ".types.ts",
+   "lib/device/audioEngine.ts",
+   "lib/device/audioEngine.web.ts",
+   "lib/device/hapticsEngine.ts",
+   "lib/device/hapticsEngine.web.ts",
+   "lib/device/audioEngine.types.ts",
+   "hapticsEngine.types.ts"
+  ],
+  "problem": "`lib/device/{audioEngine,hapticsEngine,musicTracks,fonts,inviteTaps}.ts` and their `.web.ts` twins, plus `lib/flushSync{,.web}.ts`. Callers type-check against the native file only. The `export` lists match today (checked by diff), but only by hand; no test or type pins it (`tests/tooling/repoLayout.test.ts` only lists file names).",
+  "proposed": "a type-only check per pair, e.g. `lib/device/twins.check.ts`: `import * as n from \"./audioEngine\"; import * as w from \"./audioEngine.web\"; const _: typeof n = w;` Or `satisfies AudioEngine` from a shared `*.types.ts`.",
+  "effect": "web/native signature drift becomes a `tsc` error. Category / effort / risk: in-process / S / none.",
+  "sources": [
+   "client-F19",
+   "04-lib-shared-F4"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-235",
+  "theme": "Native modules, device flows",
+  "title": "Seven Maestro flows copy the launch / tutorial-skip / lobby block, and the stated reason is false",
+  "kind": "tooling",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   ".maestro/smoke.yaml:10-61",
+   "offline-game.yaml:34-94",
+   "new-match.yaml:26-50",
+   "exchange-phase.yaml:37-61",
+   "felt-opaque.yaml:8-29",
+   "rotate-after-cover.yaml:9-30",
+   "_warmup.yaml:5-18",
+   "exchange-phase.yaml:7-9",
+   "new-match.yaml:12-14",
+   "felt-opaque.yaml:43",
+   "captures.yaml",
+   "gameTableTapSettle.test.ts"
+  ],
+  "problem": "exchange-phase.yaml:7-9 and new-match.yaml:12-14 say \"Maestro has no import mechanism, so the boilerplate is duplicated on purpose\". Maestro's `runFlow: <file>` is that mechanism, and `felt-opaque.yaml:43` already uses it (`runFlow: captures.yaml`). The block carries timeouts (180000, 30000), the tutorial race fix (#353) and the `it-IT` launch arguments.",
+  "proposed": "add `.maestro/_launch.yaml` (underscore, so it is not a flow, as `_warmup.yaml` is) holding `launchApp clearState + arguments` and the tutorial skip. Add `.maestro/_lobby.yaml` taking `${FORMAT}` via `runFlow: {file, env:{FORMAT: \"Manche secca.*\"}}`. Each flow becomes launch + lobby + its own assertions (about 60% fewer lines in 5 files).",
+  "effect": "one home for the cold-start timeouts and Italian-locale arguments. The false \"no import mechanism\" comments go.",
+  "sources": [
+   "11-gaps-F4"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-236",
+  "theme": "Native modules, device flows",
+  "title": "`captures.yaml` and `felt-opaque.yaml` use fixed sleeps and a hard-coded point",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   ".maestro/captures.yaml:24-25,28-29,32-33,36-37,45-46",
+   ".maestro/felt-opaque.yaml:40-41",
+   ".maestro/captures.yaml:16-19",
+   "offline-game.yaml:19-28",
+   "_warmup.yaml:14",
+   "captures.yaml",
+   "felt-opaque.yaml"
+  ],
+  "problem": "offline-game.yaml:19-28 says the table's glow and pulse never let the hierarchy settle. `waitForAnimationToEnd` against that screen therefore always runs to its timeout, so each is a ~3 s sleep (about 17 s of the iOS shard) that proves nothing about the state. The Open-button tap uses absolute landscape points taken from one run (`38061909920`), so a different simulator size mis-taps silently.",
+  "proposed": "give each capture state a testID or accessibility label the way `lamp-bottom` has one, and use `extendedWaitUntil visible:` per state. Replace the point tap with the labelled Open button where iOS exposes it, or derive the point as a percentage like `_warmup.yaml:14` does.",
+  "effect": "less fixed time on the iOS device job and no run depends on device geometry.",
+  "sources": [
+   "11-gaps-F5"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-237",
+  "theme": "Native modules, device flows",
+  "title": "Native modules duplicate the latency readings",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "modules/murlan-audio-session/ios/MurlanAudioSessionModule.swift:8-9",
+   "modules/murlan-diagnostics/ios/MurlanDiagnosticsModule.swift:31-32",
+   "lib/device/audioEngine.ts:252-253",
+   "lib/diagnostics/probe.ts:7-8",
+   "modules/murlan-diagnostics/android/src/main/java/expo/modules/murlandiagnostics/MurlanDiagnosticsModule.kt:15-18",
+   "MurlanDiagnosticsModule.swift:20-29",
+   "lib/diagnostics/probe.ts:7-9",
+   "eslint.config.js:32-33",
+   "audioEngine.ts"
+  ],
+  "problem": "`modules/murlan-audio-session/ios/MurlanAudioSessionModule.swift:8-9` and `modules/murlan-diagnostics/ios/MurlanDiagnosticsModule.swift:31-32` define identical `outputLatencyMs` / `ioBufferMs`. The game uses the first (`lib/device/audioEngine.ts:252-253`); the bench measures through the second (`lib/diagnostics/probe.ts:7-8`), so a change to how the game reads latency would not be what the bench measures. Proposed interface: `probe.outputLatencyMs` and `ioBufferMs` read `@/modules/murlan-audio-session`; …",
+  "proposed": "`probe.outputLatencyMs` and `ioBufferMs` read `@/modules/murlan-audio-session`; drop the two optional members from `MurlanDiagnostics`. Category / effort / risk: true-external (native) / S / low.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "client-F20",
+   "11-gaps-F12"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-238",
+  "theme": "Native modules, device flows",
+  "title": "Native diagnostics module: unbounded buffer, state not reset between captures, error swallowed on stop",
+  "kind": "resilience",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "modules/murlan-diagnostics/ios/MurlanDiagnosticsModule.swift:9",
+   "modules/murlan-diagnostics/ios/Detectors.swift:9-12"
+  ],
+  "problem": "if the bench stops draining (JS paused, bench screen left), `rows` grows without bound at audio rate (a `level` row every 50 ms). A second `startCapture` begins with the previous run's `average`, `levelStart` and `lastOnset`, so its first onset and level window use stale times. `stopCapture` reports `true` whatever ReplayKit returned.",
+  "proposed": "reset detectors in `startCapture`, cap `rows` (drop-oldest), reject `stopCapture` on error.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "11-gaps-F13"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ }
+]

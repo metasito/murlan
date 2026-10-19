@@ -1,0 +1,1587 @@
+[
+ {
+  "id": "L-118",
+  "theme": "Test support & test architecture",
+  "title": "Accessibility is mocked 46 times even though it has a public setter",
+  "kind": "test",
+  "priority": "P1",
+  "effort": "S",
+  "files": [
+   "lib/accessibility.ts:18",
+   "setup.ts"
+  ],
+  "problem": "`setMotionPreference` (lib/accessibility.ts:18) is honoured by `usePrefersReducedMotion` (127). 18 files already use the setter. The other 46 mock the module, inconsistently: bannerBand:19, captureScreen:31 and homeReturnToTable:42 return `true` with preference `'off'`; matchOutcomeOnTheFelt:8 returns `false` with `'system'`.",
+  "proposed": "delete the mocks; add `afterEach(() => setMotionPreference('system'))` in setup.ts; optionally a ui-rule banning `jest.mock('@/lib/accessibility')`.",
+  "effect": "about 180 lines removed; the contradictory mock states disappear.",
+  "sources": [
+   "tests-T2",
+   "07-tests-native-F1"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "Count differs: tests-T2 says 18 files use the setter, 07-tests-native finds 16; the 46 mocks are confirmed exactly.",
+  "depends_on": []
+ },
+ {
+  "id": "L-119",
+  "theme": "Test support & test architecture",
+  "title": "The socket seam is untyped on both sides, and the integration helper's wire types have drifted",
+  "kind": "test",
+  "priority": "P1",
+  "effort": "M",
+  "files": [
+   "client.ts:207",
+   "table.ts:20-57",
+   "gameDriver.ts:13-43",
+   "gameEngine.ts:63",
+   "table.ts:127",
+   "gameDriver.ts:57",
+   "rejoinFailed.test.tsx:24-47",
+   "table.ts",
+   "gameDriver.ts",
+   "tests/native/harness/fakeSocket.ts",
+   "tests/native/helpers/fakeSocket.ts",
+   "tests/native/helpers/staticOnlineGame.tsx"
+  ],
+  "problem": "Client: 17 hand-rolled fakes. 9 carry an identical lib/socket mock: acceptInviteClearsPending:30, friendLastSeen:28, friendRequestReconcile:38, friendRowArrivesWithTheBanner:38, sessionReplaced:33, signOutClearsQueryCache:21, socketAccountSwitch:25, socketContextFreshness:28, socketReconnect. 8 mock SocketContext instead (protocolMismatch:14, onlineAutoPass:11, rejoinFailed:24, …).",
+  "proposed": "A typed `FakeSocket<S2C, C2S>` with `deliver(event, payload)`, `emitted(event)`, a real `off`, and an ack queue. `FakeIo` for the server, plus a `TableIo` port so handlers take the narrow emitter they use. `waitFor<E extends keyof ServerToClientEvents>(socket, event): Promise<Parameters<…>[0]>`.",
+  "effect": "about 26 fakes become 1; 20 casts and about 90 lines go; 241 calls become type-checked, so wire drift fails `tsc`.",
+  "sources": [
+   "tests-T3",
+   "07-tests-native-F2",
+   "client-F11"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "CONTEXT.md records \"no listener leak to fix\"; the proposal is a typed fake, not a leak fix.",
+  "depends_on": []
+ },
+ {
+  "id": "L-120",
+  "theme": "Test support & test architecture",
+  "title": "Reduced motion is guarded by four overlapping text scans; a motion seam would replace them",
+  "kind": "test",
+  "priority": "P1",
+  "effort": "M",
+  "files": [
+   "tests/ui-rules/infiniteAnimations.test.ts:66",
+   "eslint.config.js:153-156",
+   "lib/tokens.ts:658",
+   "tests/ui-rules/reducedMotion.test.ts",
+   "tests/ui-rules/withDelayReduceMotion.test.ts",
+   "tests/ui-rules/answeredMotionOptsOut.test.ts",
+   "lib/motion.ts"
+  ],
+  "problem": "Calls to Reanimated's `withTiming`, `withRepeat` and `withDelay` are scattered through components. Four tests then search the text for evidence that each call site consulted the reduce-motion preference or cancels on unmount. Two of the four pass on proximity alone.",
+  "proposed": "A deep motion module (e.g. `lib/motion.ts`) that owns the vendor calls. Candidate interface: `timing(to, step, reduce: boolean)` `delayed(ms, anim)`, which always passes `ReduceMotion.System` `useLoop(sv, anim)`, which owns `cancelAnimation` on unmount Add `no-restricted-imports` of `withTiming`, `withRepeat` and `withDelay` from `react-native-reanimated` everywhere except that module, reusing the `paletteLayers` style at eslint.config.js:153-156.",
+  "effect": "infiniteAnimations and withDelayReduceMotion are deleted. Most of reducedMotion is deleted.",
+  "sources": [
+   "08-tests-rules-tooling-F1"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": [
+   "L-114"
+  ]
+ },
+ {
+  "id": "L-121",
+  "theme": "Test support & test architecture",
+  "title": "The app contexts have no seam, so tests replace them with partial hand-typed mocks",
+  "kind": "test",
+  "priority": "P1",
+  "effort": "L",
+  "files": [
+   "AuthContext.tsx:41",
+   "app/_layout.tsx:149-162",
+   "tests/native/harness/renderApp.tsx",
+   "onlineContextMock.ts",
+   "tests/native/harness/fakes.ts",
+   "tests.md"
+  ],
+  "problem": "each mock is a partial, hand-typed value. A context gaining a field, or changing what a field means, passes every test that mocks it. Tests exercise the screen against an imagined provider, not the real one.",
+  "proposed": "Export `AppProviders` from the layout, taking the HTTP transport (`apiRequest`) and a socket factory as props. `tests/native/harness/renderApp.tsx({route, user, socket: FakeSocket, http: FakeHttp, window})` mounts the real providers over fakes at the I/O edge. `<AuthProvider initialUser>` for signed-in starts.",
+  "effect": "about 97 context mocks plus 28 I/O mocks deleted. Provider wiring becomes tested by every screen test.",
+  "sources": [
+   "tests-T1",
+   "07-tests-native-F3"
+  ],
+  "tickets": [],
+  "status": "contested",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "07-tests-native-F3 contradicts the tests.md \"Keep: slice hooks plus onlineContextMock\" line: onlineContextMock still serves the legacy flat value to onlineRoundSelection, rejoinFailedExit and handMemo, so keeping it keeps two seams. tests.md lists it as keep.",
+  "depends_on": [
+   "L-119",
+   "L-019"
+  ]
+ },
+ {
+  "id": "L-122",
+  "theme": "Test support & test architecture",
+  "title": "Checks that exempt themselves or carry a spare exemption",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "XS",
+  "files": [
+   "tests/tooling/rulesAreSingleSourced.test.ts:149-163",
+   "tests/tooling/noFocusedTests.test.ts:33",
+   "tests/tooling/wallClockBudgets.test.ts:31",
+   "tests/tooling/docReferences.test.ts:100",
+   "CLAUDE.md",
+   "components/CLAUDE.md",
+   "server/CLAUDE.md",
+   "loops.md",
+   "TESTING.md"
+  ],
+  "problem": "noFocusedTests:33 filters out its own file, so it does not check itself (a self-exempting safeguard). Use `blankCommentsAndStrings`, or move it to eslint (`jest/no-focused-tests`).",
+  "proposed": "`blankCommentsAndStrings`, or move it to eslint (`jest/no-focused-tests`).",
+  "effect": "Four exemptions go. The single-sourcing rule covers the CLAUDE.md files again.",
+  "sources": [
+   "tests-T14",
+   "08-tests-rules-tooling-F5"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-123",
+  "theme": "Test support & test architecture",
+  "title": "Tests that write into the repo root or leak env changes",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "XS",
+  "files": [
+   "tests/tooling/checkStrictIndexed.test.ts:16-20",
+   "tests/tooling/diagnosticsPlugin.test.ts:9-15",
+   "tests/server/sourceMaps.test.ts:13-33",
+   "server/http/sourceMaps.ts:14"
+  ],
+  "problem": "A concurrent `git add`, or the root scan, picks up the fixture. rootScanRace exists because of this class. A failing assertion leaves the env changed for later tests in the same worker.",
+  "proposed": "Use `mkdtempSync(os.tmpdir())` and pass a root, and wrap the env change in `try/finally`.",
+  "effect": "Removes a flake class.",
+  "sources": [
+   "08-tests-rules-tooling-F15",
+   "09-tests-server-engine-F10"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-124",
+  "theme": "Test support & test architecture",
+  "title": "Assertions that cannot fail, or cannot tell the claim from its absence",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "XS",
+  "files": [],
+  "problem": "handTapStrip:34 `expect(strip / 2).toBeLessThan(strip)` is arithmetic on a positive number and is true whatever the component does. errorReporting:217-222 (\"stops reporting once removed\") asserts `listeners.size === 0` straight after the test itself called `listeners.clear()`. It cannot fail.",
+  "proposed": "handTapStrip: assert the measured strip against the card height. errorReporting: unmount, or call the returned remover, then emit and assert nothing is reported. cardHitBox: assert the exact strip width.",
+  "effect": "six false greens gone.",
+  "sources": [
+   "07-tests-native-F6"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-125",
+  "theme": "Test support & test architecture",
+  "title": "Timing constants copied into tests as prose",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "XS",
+  "files": [
+   "context/OnlineGameContext.tsx:250-251",
+   "components/table/pile.tsx:582",
+   "lib/reconnectDelay.ts:8"
+  ],
+  "problem": "each is a premise held in a comment. When production changes the value, these tests either keep passing at the wrong time window or fail without explaining why.",
+  "proposed": "Export the constants: `REJOIN_RETRY_DELAY_MS`, `MAX_REJOIN_RETRIES`, `TRICK_WINNER_MS`, and the mark-enter duration. Import them in the tests. socketReconnect uses `reconnectDelayMs(0, () => 0.123)`.",
+  "effect": "five drift sources go, and the exports gain test-only users (tolerable: they are timing contracts).",
+  "sources": [
+   "07-tests-native-F8"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-126",
+  "theme": "Test support & test architecture",
+  "title": "A live-network test and a machine-state test",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "XS",
+  "files": [
+   "tools/loop/tests/deleteBranchOnMerge.test.ts:11-15",
+   "tools/loop/tests/reap.test.ts:487-494",
+   "workspace.test.ts:488-503"
+  ],
+  "problem": "the result depends on network, auth or what is running on the machine, so the test is red offline or on a fork without a token and says nothing about the code.",
+  "proposed": "move deleteBranchOnMerge to a scheduled repo-settings check, or skip it without GH_TOKEN and say so in the output. Point the reap test at the injected readTable, which workspace.test.ts:488-503 already uses.",
+  "effect": "two environment-dependent tests become deterministic.",
+  "sources": [
+   "10-tests-e2e-loop-F16"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-127",
+  "theme": "Test support & test architecture",
+  "title": "Store seam: one adapter, substituted by monkeypatching",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "roomStore.ts:50-55",
+   "friendships.ts:13-31"
+  ],
+  "problem": "`userStore`, `roomStore` and `friendStore` are objects so tests can `t.mock.method` them (`roomStore.ts:50-55` says so). 19 non-store modules import `db` directly: `gamePersistence`, `ratings`, `replays`, `retention`, `stats`, `tableHandlers`, `userNames`, `admin` (13 queries), `authTokens`, `bugReports`, `clientErrors`, `deleteAccount`, `roundHistoryView`, `serverErrors`, `session`, `shutdown`, `events`, `push`, `ticket`. No PGlite or any second adapter exists.",
+  "proposed": "Extend the deps-object pattern that already works here: roomLifecycleRaces:317 patches the deliberate `persistence` seam, and lobbyIntents and friendships take `deps` fakes. Apply it to friendStore, userStore and roomStore reads, and to rated-delta preview, in the modules that call them.",
+  "effect": "turns about 12 monkeypatches into explicit adapters. Two adapters (prod plus test) make each one a real seam.",
+  "sources": [
+   "server-F15",
+   "09-tests-server-engine-F5"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": [
+   "L-024"
+  ]
+ },
+ {
+  "id": "L-128",
+  "theme": "Test support & test architecture",
+  "title": "The nightly list is a regex copied into four places, plus 23 stub specs",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "playwright.config.ts:50",
+   "playwright.parity.config.ts:8",
+   "tests/e2e/playwright.config.ts:50",
+   "tests/e2e/playwright.parity.config.ts:8",
+   "tools/ci/e2e-shard.mjs:48",
+   "tests/tooling/e2eShardSplit.test.ts:35",
+   "tests/e2e/helpers/mockupParity.ts:2-3",
+   "tests/e2e/helpers/feltParityGrid.ts:224",
+   ".parity.spec.ts",
+   ".spec.ts",
+   "e2e-shard.mjs"
+  ],
+  "problem": "The parity spec regex is duplicated at playwright.config.ts:50 and playwright.parity.config.ts:8. Use a `*.parity.spec.ts` suffix instead.",
+  "proposed": "a `*.parity.spec.ts` suffix instead.",
+  "effect": "two regex parsers and their test are deleted, the 23 stub files go, and so does the class of bugs where a rename changes the tier.",
+  "sources": [
+   "tests-T13",
+   "10-tests-e2e-loop-F4"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-129",
+  "theme": "Test support & test architecture",
+  "title": "Import-graph rules are kept in three text scans, one of which duplicates eslint, and none catches the violations the tools found",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "tests/tooling/audioOwners.test.ts:13-22",
+   "eslint.config.js:25-35",
+   "tests/ui-rules/layering.test.ts:24-41",
+   "tests/tooling/diagnosticsGate.test.ts:9-20",
+   "orientation.test.ts:65-87",
+   "flightHooks.test.ts:18-22",
+   "e2eRunnableImports.test.ts:37-41",
+   "assetBarrels.test.ts:36-38",
+   "eslint.config.js:154",
+   "eslint.config.js:25-41",
+   "shared/protocol.ts",
+   "shared/schema.ts"
+  ],
+  "problem": "The audio-owner rule has two homes. eslint enforces it for app/components/context/lib (:154). audioOwners re-derives it with moduleEdges and adds `modules/`, the one directory eslint's glob misses.",
+  "proposed": "Put every layer and ownership rule in one place: the eslint config, using `no-restricted-imports` patterns per glob. Add `modules/` to the client glob at eslint.config.js:154. Add a `shared/` block that bans `@/lib/`, `../lib/` and the client trees.",
+  "effect": "audioOwners (the second test) and layering's upward half are deleted. diagnosticsGate shrinks to its non-import assertions.",
+  "sources": [
+   "08-tests-rules-tooling-F3"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": [
+   "L-052"
+  ]
+ },
+ {
+  "id": "L-130",
+  "theme": "Test support & test architecture",
+  "title": "submitEditingGuards hand-parses JSX to check a two-part contract that should be a component",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "tests/ui-rules/submitEditingGuards.test.ts"
+  ],
+  "problem": "The contract is that every `onSubmitEditing` field has `editable={!busy}` and the handler returns early when busy. It is restated at every site and checked by parsing them. The pinned counts go red on any honest addition, and adding to them is the reflex fix (\"ratchet that loosens itself\").",
+  "proposed": "A `<SubmitField busy onSubmit …TextInputProps>` component, or a `useGuardedSubmit(busy, fn)` hook, that applies both halves. Then add `no-restricted-syntax` on the `onSubmitEditing` attribute outside it.",
+  "effect": "The parser and the count pins are deleted. The double-submit bug class becomes unrepresentable.",
+  "sources": [
+   "08-tests-rules-tooling-F4"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-131",
+  "theme": "Test support & test architecture",
+  "title": "About 40 scans re-implement the file walk, ignore .gitignore, or depend on cwd",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "validate.test.ts:27-30",
+   "server/store/stats.ts:140",
+   "integration/stats.test.ts:472-489",
+   "GAME-RULES.md",
+   "app/game.tsx",
+   "helpers/sourceScan.ts",
+   "sourceScan.ts",
+   "moduleEdges.ts"
+  ],
+  "problem": "Each walker makes its own decision about which files count. A raw `readdirSync` reads untracked scratch, build output and `.claude/worktrees` checkouts. The cwd-relative paths pass only when jest runs from the repo root.",
+  "proposed": "Use one walk, `trackedFiles(repoRoot, …pathspec)` or `sourcesUnder`, and one stripper, `blankComments(AndStrings)`. Resolve every path from `import.meta.url`. intentsGoThroughSend:15 (git ls-files), layering (trackedFiles) and withDelayReduceMotion (sourcesUnder plus the AST) already do this.",
+  "effect": "About 40 private walkers and 3 strippers are deleted. Every scan agrees on the file set.",
+  "sources": [
+   "08-tests-rules-tooling-F6",
+   "09-tests-server-engine-F7"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-132",
+  "theme": "Test support & test architecture",
+  "title": "Scans a decoy satisfies today",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "keyboardAvoidance.test.ts:73-85",
+   "infiniteAnimations.test.ts:66",
+   "reducedMotion.test.ts:119",
+   "intentsGoThroughSend.test.ts:12-33",
+   "renameCopy.test.ts:84-91",
+   "motion.test.ts:71-98",
+   "seatLayout.test.ts:167-186",
+   "lampRig.test.ts:273-278"
+  ],
+  "problem": "These go green when the guarded thing is not true, the \"a source scan falls to a decoy\" class.",
+  "proposed": "F1/F2 retire most of them. Until then, run each through `blankCommentsAndStrings`/`jsxTags`, and add a planted decoy sample (a comment that names the token) that must stay red.",
+  "effect": "Each check fails when it should.",
+  "sources": [
+   "08-tests-rules-tooling-F17"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-133",
+  "theme": "Test support & test architecture",
+  "title": "tableCardRects and tableCardShadows run the same four 120-second scenarios twice",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "tests/native/helpers/cardScenarios.ts"
+  ],
+  "problem": "each frame walk (`frames(2000/1600/3000)`) is driven twice, once to read the registry and once to read host shadows. These are the slowest tests in the tier; shadowClusterBuilds runs the same `throwPair` again.",
+  "proposed": "One scenario driver, `tests/native/helpers/cardScenarios.ts`, that runs each scenario once and passes a per-frame callback. A single file asserting `expectExactlyDrawn()` and `expectNoCardShadow()` on the same frames. Alternatively, keep the two files but import the driver and fixtures.",
+  "effect": "about 4 slow scenarios and about 60 duplicated lines removed, roughly halving the wall time of this pair.",
+  "sources": [
+   "07-tests-native-F5"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-134",
+  "theme": "Test support & test architecture",
+  "title": "Source scans in the native tier",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "app/_layout.tsx"
+  ],
+  "problem": "text presence is not reachability. A `queryClient.clear ()`, a `removeQueries()`, or a `.clear()` inside a comment slips past or trips the signOutClearsQueryCache scan. Its claim, \"the only place the app clears anything\", is about behaviour the scan cannot see.",
+  "proposed": "errorBoundary becomes a render test once `AppProviders` is exported (T1). cardMemoComparators becomes a `satisfies` table (ui-F8). Delete the signOutClearsQueryCache scan.",
+  "effect": "three scans that fall to decoys go.",
+  "sources": [
+   "07-tests-native-F16"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-135",
+  "theme": "Test support & test architecture",
+  "title": "Fixed sleeps standing in for events the protocol already has",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "server/socket/socketPresence.ts:52-57",
+   "socketSafety.ts:184-197",
+   "friendships.ts:162",
+   "soak/soak.ts:587",
+   "client.ts"
+  ],
+  "problem": "A positive sleep is either too long (slow) or too short (flaky on CI). A negative sleep only proves nothing happened within a guessed window.",
+  "proposed": "For positive waits, await the ack or event (`emitWithAck`, or `waitFor` from client.ts). For negative waits, emit a sentinel request on the same socket and assert that nothing arrived before its reply. Ordering per socket is guaranteed.",
+  "effect": "removes several seconds per file and the CI-scale guesswork.",
+  "sources": [
+   "09-tests-server-engine-F3"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": [
+   "L-019"
+  ]
+ },
+ {
+  "id": "L-136",
+  "theme": "Test support & test architecture",
+  "title": "Slow integration files that become unit tests once a seam lands",
+  "kind": "perf",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "server/openingGrace.test.ts"
+  ],
+  "problem": "integration cost is paid for logic that has no socket or DB question.",
+  "proposed": "move these as each seam lands; keep one thin integration smoke per feature.",
+  "effect": "the largest single cut in integration wall clock (ladderAndReplay).",
+  "sources": [
+   "09-tests-server-engine-F11"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": [
+   "L-026",
+   "L-024"
+  ]
+ },
+ {
+  "id": "L-137",
+  "theme": "Test support & test architecture",
+  "title": "Whole-match drives used only to reach the result board",
+  "kind": "perf",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "tests/e2e/tapTargets.spec.ts:388-402",
+   "tests/e2e/onlineTableSurvey.spec.ts:530-549",
+   "tests/e2e/tableMoments.spec.ts:169-175",
+   "tests/e2e/resultActions.spec.ts",
+   "tests/e2e/resultCutout.spec.ts",
+   "tests/e2e/menuHeight.spec.ts",
+   "tests/e2e/oneAccessibleNode.spec.ts"
+  ],
+  "problem": "these specs check the result screen, but they play a whole match to get there. A match-point seed already exists (tests/e2e/tableMoments.spec.ts:169-175 matchPointSave; tableUnmount's `offlineGameSave(2,1,0)`). The guard test checks a pure function through a browser.",
+  "proposed": "seed the match-point state and play the last trick. Move matchPointSave into offlineSeed (as part of F1). Move the onlineTableSurvey guard to a jest test of the pure function.",
+  "effect": "each spec drops from minutes to seconds. This is the largest runtime cut in the slice.",
+  "sources": [
+   "10-tests-e2e-loop-F3"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-138",
+  "theme": "Test support & test architecture",
+  "title": "Layout guards demoted to the nightly parity run",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "tests/e2e/playwright.config.ts:50",
+   "tests/e2e/handParity.spec.ts",
+   "tests/e2e/lampSeats.spec.ts",
+   "tests/e2e/mockupPolish.spec.ts",
+   "CLAUDE.md"
+  ],
+  "problem": "CLAUDE.md says only tests/e2e catches layout bugs. These three specs assert geometry, not pixel parity, but they share the nightly list with the pixel specs. A layout regression therefore lands green and surfaces the next morning; the parity nightly is red as of today (#1645).",
+  "proposed": "split the geometric assertions out into PR-tier specs and leave the pixel comparisons nightly.",
+  "effect": "layout regressions in the hand and lamp seats are caught before merge.",
+  "sources": [
+   "10-tests-e2e-loop-F5"
+  ],
+  "tickets": [
+   1645
+  ],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-139",
+  "theme": "Test support & test architecture",
+  "title": "`font-subset.json` check reads its own record, not the shipped fonts",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "tests/tooling/fontSubset.test.ts:19-32",
+   "tests/tooling/iconSubset.test.ts:125-176",
+   "font-subset.js",
+   "scripts/font-subset.js",
+   "build-fonts.mjs",
+   "CLAUDE.md",
+   "iconSubset.test.ts",
+   "tests/helpers/cmap.ts"
+  ],
+  "problem": "test 1 compares the characters the app needs against `manifest.characters`, a committed text file. It never opens `public/fonts/*.woff2`. Adding a glyph to the manifest by hand, without running `build-fonts.mjs`, turns the check green while the font still renders tofu.",
+  "proposed": "read the cmap from the woff2 files. Node has `zlib.brotliDecompressSync`, and cmap is untransformed in WOFF2. Share the cmap reader with iconSubset.test.ts as `tests/helpers/cmap.ts`.",
+  "effect": "the check can fail on a stale font file. One helper replaces two ways of checking the same thing.",
+  "sources": [
+   "11-gaps-F2"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-140",
+  "theme": "Test support & test architecture",
+  "title": "Socket test infrastructure is re-implemented per file (wire types, connect, boot, polling)",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "soak/soak.ts:34-50",
+   "helpers/table.ts:20-57",
+   "helpers/gameDriver.ts:13-43",
+   "soak/replay.ts:53-69",
+   "gameDriver.ts:103-118",
+   "table.ts:180-196",
+   "helpers/friends.ts:13",
+   "tests/server/roundOver.test.ts:115-141",
+   "client.ts",
+   "helpers/instance.ts",
+   "helpers/onlineTable.ts",
+   "table.ts"
+  ],
+  "problem": "Shallow helpers with leaky interfaces: table.ts and gameDriver.ts overlap, client.ts copies itself, and files still roll their own. When the wire shape changes, about 15 declarations drift silently.",
+  "proposed": "Import wire types from the server's own exported types; T3 already proposes a typed socket seam. One `connect(server, {cookie?})` in client.ts. One `eventually(fn, {ms})` poll.",
+  "effect": "deletes roughly 600-900 duplicated lines, and the helpers deepen.",
+  "sources": [
+   "09-tests-server-engine-F4"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": [
+   "L-026"
+  ]
+ },
+ {
+  "id": "L-141",
+  "theme": "Test support & test architecture",
+  "title": "The source-scan suite",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "eslint.config.js:25-41",
+   "orientation.test.ts:65-87,131-156",
+   "workletScheduling.test.ts:27-38",
+   "fontScaling.test.ts:37-50,74-83",
+   "flightHooks.test.ts:18-22",
+   "intentsGoThroughSend.test.ts:12-33",
+   "motion.test.ts:71-98",
+   "seatLayout.test.ts:167-186",
+   "layoutChildren.test.ts:33-50",
+   "tableTextFloor.test.ts:10-24",
+   "layering.test.ts:15-22,46-52",
+   "a11yProps.test.ts:28-29,174-185,246-258"
+  ],
+  "problem": "`sourceScan.ts` is a 463-line hand-written lexer, with its own 276-line test, while 16 files already use the `typescript` package. 13 private import regexes (layering:23, orientation, flightHooks, e2eRunnableImports, ciScope, assetBarrels, …) duplicate `moduleEdges.ts`. Categories and destinations: | Category | Examples | Destination | |---|---|---| | Import ownership | audioOwners (duplicates eslint.config.js:25-41), layering, engine/matchState:262, orientation 118-155, rateLimiterFactory | eslint …",
+  "proposed": "the `typescript` package. 13 private import regexes (layering:23, orientation, flightHooks, e2eRunnableImports, ciScope, assetBarrels, …) duplicate `moduleEdges.ts`. Categories and destinations: | Category | Examples | Destination | |---|---|---| | Import ownership | audioOwners (duplicates eslint.config.js:25-41), layering, engine/matchState:262, orientation 118-155, rateLimiterFactory | eslint `no-restricted-imports` / `import/no-restricted-paths` | | Forbidden APIs | workletScheduling, noFocusedTests, …",
+  "effect": "15–20 tests become lint rules (with editor feedback); about 740 lexer lines go; the decoy class (memory: \"a source scan falls to a decoy\") shrinks to the docs/layout scans.",
+  "sources": [
+   "tests-T6",
+   "08-tests-rules-tooling-F2"
+  ],
+  "tickets": [],
+  "status": "contested",
+  "conflicts": "ADR-0005: the hooksLint and reactCompiler scans stay as they are.",
+  "confidence": "high",
+  "notes": "08-tests-rules-tooling contradicts tests-T6 on two files: frameCallbackIdentity reads compiled Babel/React Compiler output, which no wrapper or lint rule can see (keep it); fontScaling's bare-Text half is an import ban, only its scale-floor half is a layout constant. CONTEXT.md contextSlices pin also stays.",
+  "depends_on": []
+ },
+ {
+  "id": "L-142",
+  "theme": "Test support & test architecture",
+  "title": "Fixtures are duplicated across tiers",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "helpers/dealTurnTable.tsx:9-25",
+   "tests/engine/helpers.ts",
+   "tests/support/game.ts",
+   "helpers/closeMatch.tsx",
+   "helpers/frames.ts",
+   "setup.ts",
+   "helpers/landing.tsx",
+   "tests/native/harness/table.tsx"
+  ],
+  "problem": "`tests/engine/helpers.ts` (`c`, `j`, `makePlayer`, `makeState`, `mulberry32`) is used by 24 files, none of them native. 45 files define their own card builder and 61 their own player builder; 94 write `GameState` literals (60 native, 14 server, 10 e2e). `mulberry32` is copied in bombFx:7, coneRain:8, particles:18, roundMotes:6, trick:20, plus 2 e2e scripts.",
+  "proposed": "`tests/support/game.ts`: `card`, `seat`, `state`, `onlineTable`, `rng`, shared by every tier. `renderTable(state, {viewer, window, motion})` for the native tier. `stubGameTable` typed with `ComponentProps<typeof GameTable>`.",
+  "effect": "a `GameState` field change is one fixture edit instead of about 94; the stubs fail `tsc` when props change.",
+  "sources": [
+   "tests-T7",
+   "07-tests-native-F4"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-143",
+  "theme": "Test support & test architecture",
+  "title": "Render-count tests use spy-through mocks",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "setup.ts:122"
+  ],
+  "problem": "82 `requireActual` calls; oneTapOneCommit has 9 mocks; legalPlaysPerHand:16; botMoveCost.compiled:21; particles spied 5 times; `traumaFor` 5 times. Proposed: a Profiler-based `countRenders()` helper, and a pure memoised `legalPlaysFor()` so its cost can be measured without spying.",
+  "proposed": "a Profiler-based `countRenders()` helper, and a pure memoised `legalPlaysFor()` so its cost can be measured without spying.",
+  "effect": "about 25 mocks go.",
+  "sources": [
+   "tests-T10",
+   "07-tests-native-F11"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-144",
+  "theme": "Test support & test architecture",
+  "title": "Pure logic is stranded in the native tier",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "context/GameContext.tsx:87",
+   "CONTEXT.md"
+  ],
+  "problem": "`applyRoundToMatch` (GameContext:87) is tested via teamsSingleRound:2-4, which needs jest-expo. renameFailureCopy:10 needs the native tier because i18n pulls in expo-localization. OnlineGameContext is 1137 lines with about 20 handlers, covered by 8 mounting tests (onlineAutoPass, protocolMismatch, rejoinFailed, rematchVoteKeptBetweenRounds, roundEndRefreshesRatings, sliceRenderCounts, spectateFailed, tableNotices).",
+  "proposed": "move `applyRoundToMatch` to lib/game; split i18n so string tables load without expo-localization; extract an `onlineReducer`. Note: CONTEXT.md rejects a reducer for OnlineGameContext, so the third item conflicts with a recorded decision and needs an ADR before ticketing. ---",
+  "effect": "fewer double runs, and the stranded logic becomes importable without jest-expo.",
+  "sources": [
+   "tests-T11",
+   "07-tests-native-F17"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "CONTEXT.md 2026-09-10 rejected the OnlineGameContext reduce(state, event) extraction that tests-T11 part 3 (onlineReducer) proposes.",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-145",
+  "theme": "Test support & test architecture",
+  "title": "Source-scan tests that pin implementation details or have decayed",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "tests/ui-rules/tableProportions.test.ts:111-114",
+   "tests/ui-rules/handTurnScale.test.ts:48-66",
+   "tests/ui-rules/handLayout.test.ts:185-221",
+   "touchTargets.test.ts:331-391",
+   "tableFrame.test.ts:88-97",
+   "tableProportions.test.ts:111-114",
+   "layoutChildren.test.ts:62-75",
+   "renameCopy.test.ts:84-91",
+   "orientation.test.ts:169-176",
+   "gameTableVeil.test.ts:100-128,152-198",
+   "flightPhysics.test.ts:515-520,747-751,798-816,825-834",
+   "homeCardField.test.ts:101"
+  ],
+  "problem": "Each maps to the refactor that replaces it. `tests/ui-rules/gameTableVeil.test.ts`: an indentation-based JSX parser. Replaced by F11.",
+  "proposed": "For geometry pins (touchTargets, tableFrame, tableProportions): assert on the computed layout (the pure frame/geometry functions these tests already import elsewhere) or on rendered props in a native test. For layoutChildren and orientation: render the route tree. For flightPhysics: delete the four literal pins that pileFlinch covers.",
+  "effect": "about 6 brittle tests deleted or rewritten against real modules.",
+  "sources": [
+   "ui-F13",
+   "08-tests-rules-tooling-F10"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": [
+   "L-102",
+   "L-091"
+  ]
+ },
+ {
+  "id": "L-146",
+  "theme": "Test support & test architecture",
+  "title": "Bot and round-loop tests bypass the one bot module, and matchTerminates soaks a mirror",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "helpers/offlineMatch.ts",
+   "context/GameContext.tsx",
+   "CLAUDE.md",
+   "lib/game/autoMove.ts",
+   "tests/engine/helpers.ts"
+  ],
+  "problem": "The deep module (autoMove) is bypassed by tests that re-assemble its inputs. A wide positional interface leaks into five call sites. The mirror is a second implementation of match accounting, which fails the deletion test: removing it from production changes nothing it checks.",
+  "proposed": "Add one `playRoundOut(state, chooser = autoMoveForSeat)` in tests/engine/helpers.ts. Give botChoosePlay an options object. Point matchTerminates at the extracted production match reducer once domain-F2/F3 lands, and delete the offlineMatch mirrors.",
+  "effect": "deletes four loops and the mirror. Bot tests exercise what ships.",
+  "sources": [
+   "09-tests-server-engine-F8"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": [
+   "L-004"
+  ]
+ },
+ {
+  "id": "L-147",
+  "theme": "Test support & test architecture",
+  "title": "Hand-written saves and seating outside the offlineSeed module",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "tests/e2e/a11yOverlays.spec.ts:38",
+   "tests/e2e/exchangeAnnounceNodes.spec.ts:35",
+   "tests/e2e/handClearance.spec.ts:40",
+   "tests/e2e/bombShakeBounds.spec.ts:100-134",
+   "tests/e2e/cardRects.spec.ts:129-146",
+   "tests/e2e/startAnnouncement.spec.ts:26-75",
+   "tests/e2e/mockupPolish.spec.ts:311-341",
+   "mockupPolish.spec.ts:137-160",
+   "tests/e2e/playedRound.spec.ts:88-156",
+   "bombShakeBounds.spec.ts:266",
+   "cardRects.spec.ts:153",
+   "pileBeaten.spec.ts:49"
+  ],
+  "problem": "the save shape (the SavedGame JSON plus its storage key) has about 12 homes. When the save schema changes, every copy must change too, and a copy that drifts still seeds a table, but the wrong one. jscpd finds 28–53-line shared setup blocks across exchangeAnnounceNodes, exchangeNoOverlap, exchangePickChange, a11yOverlays and startAnnouncement.",
+  "proposed": "add the four recurring shapes to offlineSeed: `exchangeSave(opts)`, `bombSave(opts)`, `openingSave(opts)` and `card(rank, suit)`, all built on offlineGameSave. Route every inline suspend key through holdSeededTurn. Delete seatTable and exchangeAttribution.open in favour of resumeSaved.",
+  "effect": "about 400 lines removed from specs. The save schema gets one test-side home, and the duplicate-setup class goes away (jscpd blocks drop out).",
+  "sources": [
+   "10-tests-e2e-loop-F1"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-148",
+  "theme": "Test support & test architecture",
+  "title": "Fixed sleeps and networkidle where a settle signal exists",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "tests/e2e/a11yOverlays.spec.ts:241",
+   "tests/e2e/controlRail.spec.ts:69-79",
+   "tests/e2e/exchangeFit.spec.ts:130",
+   "tests/e2e/feltIdle.spec.ts:40",
+   "tests/e2e/feltNap.spec.ts:89",
+   "tests/e2e/helpers/feltParityGrid.ts:239",
+   "tests/e2e/handClearance.spec.ts:173",
+   "tests/e2e/seatFans.spec.ts:118",
+   "tests/e2e/profileSignedOut.spec.ts:76",
+   "tests/e2e/offlineResume.spec.ts:41",
+   "tests/e2e/resultCutout.spec.ts:49-64",
+   "tests/e2e/tutorialSkip.spec.ts:38"
+  ],
+  "problem": "a fixed sleep is either too long, which wastes shard time, or too short, which flakes on a 7x-slower CI runner. tests/e2e/helpers/settle.ts (`settled`/`atRest`), the virtual clock and data-dealing attributes already give event-based waits. The tests/tooling/e2eFixedSleeps.test.ts ratchet keeps 58 legacy sleeps alive.",
+  "proposed": "replace each sleep with `atRest(locator)`, an `expect.poll` on the measured quantity, or a wait on the dealt attribute. Lower the LEGACY counts in the same change so the ratchet tightens.",
+  "effect": "tens of seconds of fixed wait per full run, a shrinking LEGACY table, and fewer CI-only flakes.",
+  "sources": [
+   "10-tests-e2e-loop-F2"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-149",
+  "theme": "Test support & test architecture",
+  "title": "HOLD_MS lives in two places and a test keeps them equal",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "tests/tooling/e2eRealPresses.test.ts:185-199",
+   "tests/e2e/handClearance.spec.ts:33-35",
+   "tests/e2e/handScroll.spec.ts:25",
+   "tests/e2e/playedRound.spec.ts:221-229",
+   "reorderHand.spec.ts:67-77",
+   "tests/tooling/e2eRealPresses.test.ts:188-192",
+   "components/table/hand.tsx",
+   "tests/e2e/helpers/press.ts",
+   "lib/tokens.ts",
+   "hand.tsx",
+   "press.ts"
+  ],
+  "problem": "One fact has two homes, and a text scan is the bridge.",
+  "proposed": "Export it once (e.g. from lib/tokens.ts, or hand.tsx's model module) and have press.ts import it. Playwright helpers can import TS consts.",
+  "effect": "The test is deleted.",
+  "sources": [
+   "08-tests-rules-tooling-F9",
+   "10-tests-e2e-loop-F7"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-150",
+  "theme": "Test support & test architecture",
+  "title": "Duplicate fixtures inside the slice",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "tests/engine/helpers.ts:73",
+   "tests/e2e/helpers/parityRegions.ts:63",
+   "lampSeats.spec.ts:136",
+   "seatNameContrast.spec.ts:30-36",
+   "helpers/seededRandomness.ts:10-15",
+   "helpers/virtualClock.ts:19-25",
+   "tableFit.spec.ts:49-72",
+   "tableProportions.spec.ts:19-24",
+   "helpers/online.ts:64-73",
+   "resultCutout.spec.ts:49-64",
+   "helpers/mockupParity.ts:874-892",
+   "helpers/reconnectParity.ts:137-157"
+  ],
+  "problem": "Copies drift. The 0.03928 vs 0.04045 split already means two contrast tests disagree at the boundary.",
+  "proposed": "Import mulberry32 from tests/engine/helpers.ts. Move a single `relativeLuminance` to tests/helpers, or to lib if the app needs it. Merge the three Postgres checks into one test.",
+  "effect": "About 80 lines go. One WCAG formula remains.",
+  "sources": [
+   "08-tests-rules-tooling-F11",
+   "10-tests-e2e-loop-F8"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-151",
+  "theme": "Test support & test architecture",
+  "title": "Test files export helpers that other tests import",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [],
+  "problem": "Importing a test file registers its tests in the importer as well, or runs them twice. The helper's real home is unclear. These are among the 498 test-only exports in the inventory.",
+  "proposed": "Move the shared helpers to tests/helpers/. Many go entirely under F1/F2.",
+  "effect": "No double-registered tests. Test files have no exports.",
+  "sources": [
+   "08-tests-rules-tooling-F16"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-152",
+  "theme": "Test support & test architecture",
+  "title": "Dead or misleading leftovers",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "tests/ui-rules/motionEscapes.test.ts:1-2",
+   "tests/ui-rules/lampShape.test.ts:93",
+   "tests/tooling/gameRuleDecisions.test.ts"
+  ],
+  "problem": "tests/tooling/gameRuleDecisions.test.ts is a one-off migration guard. Delete it once the decisions file format has settled (medium). tests/ui-rules/motionEscapes.test.ts:1-2 makes a false claim that eslint cannot see the rule (F2).",
+  "proposed": "Delete or correct each. overlap: new. confidence: medium.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "08-tests-rules-tooling-F19"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-153",
+  "theme": "Test support & test architecture",
+  "title": "Tests that duplicate another test's coverage",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [],
+  "problem": "friendRequestReconcile:98-107: `'/api/friends'` is invalidated on connect. That key is already one of `PENDING_KEYS` (:54), which the test at :85-96 asserts. It is a strict subset.",
+  "proposed": "delete friendRequestReconcile:98-107. Keep a single bomb-burst animation check, the direct one. Keep both clock tests only if `ownLink` → `frozen` wiring is not pinned elsewhere.",
+  "effect": "about 30 lines and one GameTable mount go.",
+  "sources": [
+   "07-tests-native-F7"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-154",
+  "theme": "Test support & test architecture",
+  "title": "netinfo is re-mocked in 11 files over setup's vendor mock",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "setup.ts:79",
+   "@react-native-community/netinfo/jest/netinfo-mock.js"
+  ],
+  "problem": "the nine plain re-mocks are noise the vendor mock already covers. The two capturing variants each build their own driver.",
+  "proposed": "delete the nine. Add `setConnectivity(isConnected)` to setup, on top of the vendor mock or a single local one, for the two that drive it.",
+  "effect": "about 50 lines go.",
+  "sources": [
+   "07-tests-native-F10"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-155",
+  "theme": "Test support & test architecture",
+  "title": "Two scenario tests share a copied subprocess gate, and each spawns node per test",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "helpers/scenarioGate.ts"
+  ],
+  "problem": "the same harness is written twice, and every `it` pays a node start-up.",
+  "proposed": "`helpers/scenarioGate.ts` exporting `runGate(name, rows)`, called once per file in `beforeAll`, with its result shared across the file's tests.",
+  "effect": "about 10 lines and N−1 subprocesses per file go.",
+  "sources": [
+   "07-tests-native-F13"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-156",
+  "theme": "Test support & test architecture",
+  "title": "Hard-coded English copy and a duplicated `t` helper",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "locales/en.ts"
+  ],
+  "problem": "a copy edit in locales/en.ts turns these red. Two ways of obtaining `t` also exist side by side.",
+  "proposed": "build the expected text with `t(key, vars)` (tableStatus:141 `filled()` shows the pattern), and import one `t`.",
+  "effect": "copy changes stop breaking unrelated tests.",
+  "sources": [
+   "07-tests-native-F14"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-157",
+  "theme": "Test support & test architecture",
+  "title": "spectateFailed calls provider actions through `waitFor`",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [],
+  "problem": "`waitFor` retries its callback until it stops throwing. A side-effecting action can therefore run more than once, for example emitting `room:spectate` twice, and the test would hide it.",
+  "proposed": "`await act(async () => result.current.spectateRoom('ZZZZZZ'))`.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "07-tests-native-F18"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-158",
+  "theme": "Test support & test architecture",
+  "title": "Dead and unused helper surface (knip, confirmed)",
+  "kind": "dead-code",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "helpers/instance.ts:24",
+   "server/logger.ts:74",
+   "instance.ts:41",
+   "offlineMatch.ts",
+   "sourceScan.ts",
+   "gameDriver.ts",
+   "table.ts",
+   "moduleEdges.ts",
+   "instance.ts"
+  ],
+  "problem": "Dead knobs read as working configuration. A child left running on timeout holds its port and its memory.",
+  "proposed": "Delete the exports and the knob. instance.ts waits on its health endpoint and kills the child in `finally`. Take port 0, or allocate ports in one place.",
+  "effect": "a small cleanup that removes a leaked-process path.",
+  "sources": [
+   "09-tests-server-engine-F13"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-159",
+  "theme": "Test support & test architecture",
+  "title": "client.ts leaks sockets and listeners on failure paths",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "tests/helpers/client.ts:150",
+   "client.ts"
+  ],
+  "problem": "a failing test leaks handles, which can keep `--test-force-exit` as the only exit and mask the first failure.",
+  "proposed": "close the socket and `off` the listener in the reject paths.",
+  "effect": "cleaner failure output.",
+  "sources": [
+   "09-tests-server-engine-F15"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-160",
+  "theme": "Test support & test architecture",
+  "title": "A fixture sets a field the type does not carry",
+  "kind": "defect",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "tests/server/shutdownSeatLost.test.ts:35",
+   "onlineTable.ts"
+  ],
+  "problem": "the fixture does not set what the test believes it sets.",
+  "proposed": "use the onlineTable.ts builder (F4), which is typed.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "09-tests-server-engine-F16"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-161",
+  "theme": "Test support & test architecture",
+  "title": "Patched-RN override has no tripwire for the day upstream fixes it",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "modules/murlan-diagnostics/ios/MurlanRecycledLayout.mm:7-10",
+   "tests/tooling/recycledLayoutPatch.test.ts:33-41",
+   "reanimatedSyncPropsPatch.test.ts:20-21,40-45",
+   "MurlanRecycledLayout.mm:15-16",
+   "package.js",
+   "MurlanRecycledLayout.mm",
+   "RCTViewComponentView.mm"
+  ],
+  "problem": "the Reanimated patch test has `DROP` guidance and fails when the installed library contains the upstream fix (reanimatedSyncPropsPatch.test.ts:20-21,40-45). The RN override has none. At 0.88 the override stays and still swaps `_layoutMetrics` after upstream already does, so it is harmless but permanent.",
+  "proposed": "in the test, assert that `COVERED` still contains the stale `_layoutMetrics = {}` reset (`staleResets(read(COVERED)).length > 0`). When it stops, fail with \"react-native contains #57590, delete MurlanRecycledLayout.mm and this test\". In the .mm, `if (!method) return;` is not enough on its own: add an `NSAssert` / log so a rename is loud.",
+  "effect": "removes a permanent orphan on the next RN upgrade, with the same shape as the Reanimated patch.",
+  "sources": [
+   "11-gaps-F6"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-162",
+  "theme": "Test support & test architecture",
+  "title": "`deploy/runtime.json` `postgres: 16` is never checked, while `node` is",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "tests/server/deployRuntime.test.ts:14-26",
+   ".github/workflows/ci.yml:304,931",
+   "soak.yml:41",
+   "cors.test.ts:81",
+   "scripts/backup-db.mjs:41",
+   "deploy/runtime.js",
+   "deployRuntime.test.ts"
+  ],
+  "problem": "four of the five fields have a test (node, sigtermGraceMs, pgConnectionsPerInstance, and proxyHops in cors.test.ts:81). `postgres` is only read in a message at scripts/backup-db.mjs:41. A premise that lives in prose decays: bumping the CI service image to 17 leaves the manifest, which is \"the contract any host must meet\", claiming 16.",
+  "proposed": "add a test to deployRuntime.test.ts that every `image: ...postgres:<N>` in `.github/workflows/*.yml` equals `manifest.postgres`.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "11-gaps-F7"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-163",
+  "theme": "Test support & test architecture",
+  "title": "`useWindowDimensions` is mocked through RN's private module path in 11 files",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "setup.ts"
+  ],
+  "problem": "`useWindowDimensions` is mocked via an RN private module path 11 times (bannerBand:14, bannerMakesRoom:20, bannerPlacement:20, captureScreen:26, …). Add a `setWindow(w, h)` helper in setup.",
+  "proposed": "`setWindow({width, height, fontScale})` in setup, wrapping `Dimensions.set` and resetting after each test. Keep the private mock only in orientationFirstRender and tableRelocksAfterEntry, which deliberately simulate a stale bridge value.",
+  "effect": "nine private-path mocks go.",
+  "sources": [
+   "tests-T12",
+   "07-tests-native-F9"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-164",
+  "theme": "Test support & test architecture",
+  "title": "jest.config.js:19-27 keeps the iOS-only test list by hand",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "jest.config.js:19-27"
+  ],
+  "problem": "jest.config.js:19-27 keeps the iOS-only test list by hand, while about 11 production files branch on platform (CardView:682, feltCanvas:57, greyLayer:8, useLinkHold:17, settingsSheet:52, keyboard:19, orientation:23, pushRegistration, theme:67, GameContext:54, errorReporting:94).",
+  "proposed": "Measure what the double (iOS) run catches before changing the hand-kept list.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "tests-T16"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-165",
+  "theme": "Test support & test architecture",
+  "title": "109 files opt into fake timers one by one",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "S",
+  "files": [],
+  "problem": "109 test files opt into fake timers one by one.",
+  "proposed": "Low value; leave unless a suite-wide default is wanted.",
+  "effect": "None proposed by the source beyond a possible default.",
+  "sources": [
+   "tests-T17"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-166",
+  "theme": "Test support & test architecture",
+  "title": "Workflow YAML is parsed with regexes on the false premise that there is no YAML parser",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "package.js",
+   "tests/helpers/workflow.ts",
+   "ci.yml"
+  ],
+  "problem": "Indentation-sensitive regexes break on harmless reformatting, and the false comments stop anyone from fixing them (\"a premise in prose decays\").",
+  "proposed": "One `tests/helpers/workflow.ts`: `loadWorkflow(name) → { jobs: Record<string, {steps, timeout-minutes, …}> }` built on `yaml`. Then delete the three false comments.",
+  "effect": "About 13 private parsers go. Step lookup becomes structural.",
+  "sources": [
+   "08-tests-rules-tooling-F7"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-167",
+  "theme": "Test support & test architecture",
+  "title": "i18n: two halves re-check facts the types already carry",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "tests/ui-rules/i18n.test.ts:584-601"
+  ],
+  "problem": "The regex halves duplicate the type check, and anything that spells the code differently decoys them.",
+  "proposed": "Make `payload(code: ServerCode)`, with `ServerCode = keyof typeof en.server`, the only constructor. Then delete :584-601 and :636-680. Turn the rejoin count into a behaviour assertion.",
+  "effect": "About 120 lines go.",
+  "sources": [
+   "08-tests-rules-tooling-F13"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-168",
+  "theme": "Test support & test architecture",
+  "title": "Slow tests that could be cheaper",
+  "kind": "perf",
+  "priority": "P3",
+  "effort": "S",
+  "files": [],
+  "problem": "These dominate the ui-rules/tooling wall time. Only soundAssets has a free fix.",
+  "proposed": "Memoise `readMp3`. Share one `ts.Program` between oneClock and seatLayoutTakesNoCount through a cached helper.",
+  "effect": "Measure before claiming a delta (per memory, \"loop cut estimates run high\").",
+  "sources": [
+   "08-tests-rules-tooling-F14"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-169",
+  "theme": "Test support & test architecture",
+  "title": "Environment, globals and fake timers are left changed when a test fails or ends",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "S",
+  "files": [],
+  "problem": "Jest gives each file its own `process.env` (jest-util createProcessObject), so the leak stays within the file. Even so, one failing test cascades into its later siblings and hides the first cause.",
+  "proposed": "`withEnv(vars, fn)` and `withFakeTimers(fn)` helpers in setup, or `afterEach(jest.useRealTimers)` globally (T17). `jest.replaceProperty` + `restoreAllMocks` for `fetch` and `Platform`.",
+  "effect": "later tests in a file can no longer be affected by an earlier one's leftover env, fetch or timers.",
+  "sources": [
+   "07-tests-native-F12"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-170",
+  "theme": "Test support & test architecture",
+  "title": "Tests, scripts and e2e are tangled",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "engine/royalStraightBlindSpotHelpers.test.ts:5-8",
+   "tests/engine/helpers.ts:14",
+   "scripts/measureHeadsUpBalance.ts:343",
+   "lib/game/bot.ts:267-270",
+   "scripts/measureHeadsUpBalance.ts",
+   "tests/helpers/offlineMatch.ts",
+   "tests/engine/helpers.ts",
+   "components/seatLayout.ts",
+   "tests/e2e/helpers/bot.ts",
+   "server/game/onlineGameLogic.ts",
+   "tests/e2e/helpers/mailSink.ts",
+   "tests/engine/royalStraightBlindSpotHelpers.test.ts"
+  ],
+  "problem": "production tooling depends on test helpers, and test directories do not say what they test.",
+  "proposed": "Move the balance-measurement core into lib/ or scripts/, imported by both. Move the bot-search tests next to tests/e2e/helpers. Move botFill to tests/server.",
+  "effect": "removes the cycle; placement tells the reader what a file tests.",
+  "sources": [
+   "09-tests-server-engine-F12",
+   "06-tooling-F18"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-171",
+  "theme": "Test support & test architecture",
+  "title": "Four copies of the \"find a legal play\" search",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "tests/e2e/tableFit.spec.ts:303-318",
+   "tests/e2e/helpers/bot.ts",
+   "tests/e2e/helpers/motionPath.ts",
+   "tests/e2e/handBudget.spec.ts",
+   "bot.ts",
+   "labels.ts",
+   "selectors.ts"
+  ],
+  "problem": "each copy taps cards until the GIOCA button enables. The tap-and-probe loop and the button selector are repeated, and bot.ts also hard-codes Italian regexes (:49, :201, :208-211).",
+  "proposed": "export `playAnyLegal(page): Promise<boolean>` from bot.ts and have the other three call it. Use the labels.ts and selectors.ts constants instead of the Italian literals.",
+  "effect": "three copies deleted; a copy change touches one place.",
+  "sources": [
+   "10-tests-e2e-loop-F6"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": [
+   "L-009"
+  ]
+ },
+ {
+  "id": "L-172",
+  "theme": "Test support & test architecture",
+  "title": "Small defects in e2e helpers and specs",
+  "kind": "defect",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "tests/e2e/helpers/navigation.ts:86-90",
+   "tests/e2e/fixtures.ts:126-133",
+   "tests/e2e/helpers/bot.ts:160-167",
+   "tests/e2e/tableMoments.spec.ts:1-3",
+   "tests/e2e/reducedMotionWobbleReset.spec.ts:27-62",
+   "tests/e2e/exchangeFit.spec.ts:133",
+   "tests/e2e/howToPlay.spec.ts:34"
+  ],
+  "problem": "the race and the swallowed error are flake sources. The false comment is a guard that looks present but is not.",
+  "proposed": "replace dismissStartAnnouncement's body with `await locator.click({ timeout }).catch(isDetached)`, or a wait for the hidden state. Write the flight-shadow test or delete the promise. Have reducedMotionWobbleReset use virtualClock.",
+  "effect": "one flake source and one false claim removed.",
+  "sources": [
+   "10-tests-e2e-loop-F9"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-173",
+  "theme": "Test support & test architecture",
+  "title": "Specs that repeat cheaper-tier coverage",
+  "kind": "perf",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "tests/e2e/homeArena.spec.ts",
+   "tests/e2e/gameSettingsSheet.spec.ts",
+   "tests/e2e/seatFans.spec.ts"
+  ],
+  "problem": "these assert presence, text or toggle state, which RNTL tests already cover. They do not assert geometry, so the browser adds cost but no extra coverage.",
+  "proposed": "delete them after confirming the matching native test exists. Keep the geometric assertions.",
+  "effect": "fewer e2e registrations.",
+  "sources": [
+   "10-tests-e2e-loop-F10"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-174",
+  "theme": "Test support & test architecture",
+  "title": "Registry and harness facts checked by scans where a typed table would carry them",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "M",
+  "files": [
+   "soakInvariants.test.ts:25-26",
+   "soakGateBudget.test.ts:53-60",
+   "soakRefusalReport.test.ts:95-110",
+   "timerEnvIsLive.test.ts:28,103",
+   "cardRects.test.ts:106-110",
+   "relatedTests.test.ts:26-28",
+   "harnessChannels.test.ts",
+   "integrationPorts.test.ts",
+   "e2eSentinels.test.ts",
+   "soakRejoinOracle.test.ts",
+   "contextSlices.test.ts"
+  ],
+  "problem": "Each of these is a completeness question (\"every channel, port, sentinel, invariant or env timer has an entry\"). It is answered by scanning text, where a `satisfies Record<Key, …>` table would answer it at compile time.",
+  "proposed": "A per-registry `as const satisfies Record<UnionOfKeys, Spec>`. For soakRejoinOracle, expose a narrow accessor rather than reading a private field.",
+  "effect": "About 10 scans become `tsc` errors.",
+  "sources": [
+   "08-tests-rules-tooling-F12"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ }
+]

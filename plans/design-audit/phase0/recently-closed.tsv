@@ -1,0 +1,18 @@
+1626	Offline exchange: announce only what the engine accepted, guard plays, hold the pass-and-play seat
+1625	Table: animation state that sticks after a background, a toggle or a rejoin
+1623	e2e: run the motion path the app ships, through three rounds
+1608	Loop: narrow runOnce's io to ports and split runTicket into reducer + runner
+1607	Loop: CI-settle state machine out of queue-loop.mjs into a pure stepper
+1606	Loop: ticket label transitions behind tracker.mjs with an in-memory fake
+1605	Loop: one git/gh adapter for tools/loop, and fold its pass-through modules
+1601	Server: friendship actions behind one module that sends its own notifications
+1600	Server: gameTimers owns its maps — arm/clear/deadline on an injectable clock
+1599	Server: seat ledger — vacate, reclaim and clear-at-deal behind one pure module
+1598	Server: one module builds, packs and unpacks a table (OnlineGameState round trip)
+1597	Server: one move-commit path, a typed validate(), one copy of the seat helpers
+1596	Play legality lives in three callers and they disagree: give the engine refusal codes
+1578	A browser error fails 8 of 99 Playwright specs: make the console check cover the suite (from #1551)
+1577	A room invite carries an https join link, and the server serves the app-link files (split from #1089)
+1576	Two loopGate suites on one clone delete each other's fixtures (from #1521)
+1485	iOS: a side seat's play rests beside the seat on the iPhone, not on the simulator (split from #1401)
+1414	A card flight re-records every card's shadow on every frame (split from #1389)

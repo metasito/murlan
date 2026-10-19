@@ -1,0 +1,878 @@
+[
+ {
+  "id": "L-057",
+  "theme": "Client state & providers",
+  "title": "Home's \"Resume\" restores a stale snapshot from boot over the match being played",
+  "kind": "defect",
+  "priority": "P1",
+  "effort": "S",
+  "files": [
+   "context/GameContext.tsx:157-158",
+   "app/index.tsx:655",
+   "components/homeMenuModel.ts:46-56",
+   "app/lobby.tsx:193-197",
+   "components/table/settingsSheet.tsx:50-59",
+   "tests/native/offlineResume.test.tsx:132-210",
+   "app/game.tsx"
+  ],
+  "problem": "three facts each have their own home, and nothing keeps them in step: `hasSavedGame` is set once, by the read on mount (`:320`). Only `clearSavedGame` (reset) and the match-over render branch (`:337-340`) clear it. `savedRef` is also set once on mount (`:319`).",
+  "proposed": "one owner for \"is there a table to go back to\", read from the live state first: The persist effect sets `savedRef.current` to what it writes, so the ref and storage cannot diverge. `hasSavedGame` becomes `resumable`, a derived value rather than state with its own setters.",
+  "effect": "the flag state, its render-phase sync (`:336-340`) and the two set sites are removed. The bug class \"Home offers a different table than the one in storage\" is gone.",
+  "sources": [
+   "03-app-context-F1"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-058",
+  "theme": "Client state & providers",
+  "title": "Online table teardown is written out by hand in three places, and the three lists disagree",
+  "kind": "defect",
+  "priority": "P1",
+  "effort": "S",
+  "files": [
+   "context/OnlineGameContext.tsx:444-477",
+   "lib/reactions.ts:52-55",
+   "rejoinFailed.test.tsx",
+   "spectateFailed.test.tsx"
+  ],
+  "problem": "about 20 `useState`s and 10 refs make up \"the table\", but there is no single reset. Both `abandonRejoin` and `leaveRoom` clear: game state, room, seat, votes, disconnected seats, cumulative scores, `placementPointsCurrent`, the two exchange edge refs and the reconnect notice. Only `leaveRoom` also clears: `error`, `rejoiningRoomCodeRef`, `isSpectator`.",
+  "proposed": "Better still, group the table fields into one `useState<TableRecord>` (or `useRef` plus setter), so a reset is `setTable(INITIAL_TABLE)` and a new field cannot be missed.",
+  "effect": "about 45 hand-written reset lines become one call each. Bugs where one table's stale state shows on the next become structurally impossible.",
+  "sources": [
+   "client-F1"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-059",
+  "theme": "Client state & providers",
+  "title": "Routing that follows table state is spread over five screens and three lobby-choice copies",
+  "kind": "structure",
+  "priority": "P1",
+  "effort": "M",
+  "files": [
+   "/index.tsx:51-57",
+   "/quickmatch.tsx:98-105",
+   "/friends.tsx:200-207",
+   "/room.tsx:348-354",
+   "/index.tsx:59-66",
+   "room.tsx:356-364",
+   "room.tsx:443-451",
+   "/game.tsx:102-105",
+   "game.tsx:131-135",
+   "app/game.tsx:161-163",
+   "OnlineGameContext.tsx:141-147",
+   "context/onlineRouting.ts"
+  ],
+  "problem": "the interface is leaky. Each screen must know which transitions are \"its own\", whether to push or replace, and that it must key on `room?.roomId` rather than `room` (the comment is copied three times). Only the game screen consumes `rejoinFailed`, so a refusal that lands while another screen is up depends on the latch rule documented at `OnlineGameContext.tsx:141-147`.",
+  "proposed": "A pure `placeFor({ room, hasGame, isSpectator, entrySource, rejoinFailed }): OnlinePlace` plus one `useOnlineRouting()` mounted in `app/(online)/_layout.tsx` that pushes or replaces on place change and consumes `rejoinFailed`.",
+  "effect": "about 9 effects across 5 screens become one effect plus a pure function. Double navigation and missed transitions stop being per-screen concerns.",
+  "sources": [
+   "client-F2"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-060",
+  "theme": "Client state & providers",
+  "title": "GameContext commands are render-scoped closures, so callers must manage freshness",
+  "kind": "defect",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "context/GameContext.tsx:219-273",
+   "app/game.tsx:54-68",
+   "app/game.tsx"
+  ],
+  "problem": "an unwritten rule of the interface: \"a command is valid only for the render that produced it\". Every timer-driven caller must know it. Two calls in one tick both compute from the same snapshot, which is a lost update instead of a refusal.",
+  "proposed": "the same signatures, but stable identity, reading the latest state: or `useReducer` over engine transitions, with announcements emitted through F6's pure function.",
+  "effect": "about 20 lines of ref plumbing in `app/game.tsx` go away. Stale-closure double application becomes impossible.",
+  "sources": [
+   "client-F4"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-061",
+  "theme": "Client state & providers",
+  "title": "The slice hooks are pass-throughs; every field is declared six times and tests have two mock seams",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "context/onlineGameHooks.ts:31-190",
+   "context/gameHooks.ts:16-71",
+   "OnlineGameContext.tsx:78-152",
+   "tests/ui-rules/contextSlices.test.ts:84-127",
+   "contextSlices.test.ts:111",
+   "app/index.tsx:655",
+   "/index.tsx:40",
+   "tests/native/onlineContextMock.ts",
+   "contextSlices.test.ts",
+   "scripts/contextSurface.mjs",
+   "onlineGameHooks.ts",
+   "sliceRenderCounts.test.tsx"
+  ],
+  "problem": "Deletion test: `export const useOnlineConnection = useConnectionSlice` behaves identically. The provider memo's deps are exactly the hook's deps, so the hook's object changes exactly when the slice's does. The local slices are a hypothetical seam: one context, so no render isolation (the file admits this, `contextSlices.test.ts:111`).",
+  "proposed": "Make `onlineGameHooks.ts` a re-export of the provider's slice hooks (keeping the mocked import path), split `GameContext` into a rarely-changing `useLocalSession` context and a `useLocalTable` context, and add selector-sized reads such as `useIsWatching()`.",
+  "effect": "about 170 lines out of `onlineGameHooks.ts`; `useOnlineGame` deleted, or moved to tests; `contextSlices.test.ts` partition checks become a type-level exclusivity assertion over the `Pick`s; Home and the online lobby stop re-rendering per move; one mock seam, or none with F11.",
+  "sources": [
+   "client-F5"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "CONTEXT.md: the six context slices are the seam, pinned by contextSlices.test.",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-062",
+  "theme": "Client state & providers",
+  "title": "The persisted table handles have no owner module; Home reads the storage key directly",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "OnlineGameContext.tsx:363-379",
+   "app/index.tsx:661-679",
+   "tests/native/homeReturnToTable.test.tsx:19-26",
+   "context/OnlineGameContext.tsx:363-379",
+   "lib/tableHandles.ts",
+   "index.tsx"
+  ],
+  "problem": "a missing seam. \"Is there a table I can return to?\" has no interface, and storage format and key ownership leak to a screen outside the provider's subtree.",
+  "proposed": "Interface: export const tableHandles = { read(): Promise<{ activeRoomId: string|null; waitingCode: string|null }>;",
+  "effect": "about 25 lines out of Home and about 20 out of the provider. The test stops mocking AsyncStorage.",
+  "sources": [
+   "client-F9",
+   "03-app-context-F5"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-063",
+  "theme": "Client state & providers",
+  "title": "Two different \"accept an invite\" paths",
+  "kind": "defect",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "app/index.tsx:625-626",
+   "app/join/[code].tsx:16-18",
+   "/index.tsx:102-107",
+   "friends.tsx:223-227",
+   "/friends.tsx:223-227",
+   "context/OnlineGameContext.tsx:530-547",
+   "/_layout.tsx:20-31",
+   "app/index.tsx:623-626",
+   "acceptInviteClearsPending.test.tsx",
+   "friends.tsx"
+  ],
+  "problem": "one operation, two implementations with different preconditions.",
+  "proposed": "`useInvites().accept(code)` (F8) as the only entry point. The friends screen calls it and navigates like Home does.",
+  "effect": "one path, and `acceptInviteClearsPending.test.tsx` covers both callers.",
+  "sources": [
+   "client-F10",
+   "03-app-context-F2"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-064",
+  "theme": "Client state & providers",
+  "title": "Locale keys duplicate domain terms per screen, and the translations have already drifted",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "CONTEXT.md"
+  ],
+  "problem": "CONTEXT.md says each domain term has one word that \"each locale translates\". The catalogue structure (namespaced by screen) means every new screen makes a new copy of a term, and nothing makes them agree.",
+  "proposed": "a `term.*` namespace for glossary words (`term.mode.freeForAll`, `term.mode.teams`, `term.rank.queen`, `term.combo.straight`, …) plus tiny helpers `modeLabel(mode, t)` and `comboLabel(type, t)`. A test fails when a non-`term.*` key's English value equals a `term.*` value.",
+  "effect": "about 20 keys times 3 locales removed and the drift fixed. Screens stop picking the per-screen key.",
+  "sources": [
+   "client-F12"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-065",
+  "theme": "Client state & providers",
+  "title": "The server-error latch leaves \"who clears it\" to each screen",
+  "kind": "defect",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "OnlineGameContext.tsx:546",
+   "/index.tsx:241-258",
+   "quickmatch.tsx:264-266",
+   "room.tsx:366-371",
+   "game.tsx:276",
+   "context/OnlineGameContext.tsx:913-925",
+   "/quickmatch.tsx:154",
+   "/index.tsx:115-118",
+   "quickmatch.tsx"
+  ],
+  "problem": "`error` is set at `OnlineGameContext.tsx:546` and `621`. It is rendered four different ways: an inline banner (`(online)/index.tsx:241-258`), inline text (`quickmatch.tsx:264-266`), converted to a toast then cleared (`room.tsx:366-371`), and floated on the table (`game.tsx:276`). The provider clears it defensively on join, spectate and leave (`:934`, `942`, `975`, with comments about a standing error \"greeting the player\").",
+  "proposed": "`error: { text; seq; surface: \"lobby\"|\"table\" } | null` with consumption tied to `seq` (`useServerError(surface)` acknowledges on read). Alternatively, fold it into F2's routing so the active place owns it. Category / effort / risk: in-process / S / low.",
+  "effect": "about 12 lines removed across the four intents. The two `clearError()` calls in quickmatch.tsx are removed.",
+  "sources": [
+   "client-F15",
+   "03-app-context-F3"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-066",
+  "theme": "Client state & providers",
+  "title": "e2e configuration leaks into production interfaces",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "GameContext.tsx:120-121",
+   "app/game.tsx:233",
+   "GameContext.tsx:48-67",
+   "app/game.tsx:70-82",
+   "e2eOpenerWiring.test.ts:13-28",
+   "exchangeE2EHold.test.ts:84-102",
+   "e2eBuildMark.test.ts:11-23",
+   "reducedMotion.test.ts:249-278",
+   "lib/e2eBotSuspend.ts",
+   "lib/e2eRealExchange.ts",
+   "lib/e2eConfig.ts",
+   "e2eBotSuspend.test.ts"
+  ],
+  "problem": "`exchangeHoldMsOverride` is part of `GameContextValue` (`GameContext.tsx:120-121`, `161`), threaded through `useLocalExchange` and into `GameTable` (`app/game.tsx:233`). e2e knobs at module scope in `GameContext.tsx:48-67`. `process.env.EXPO_PUBLIC_E2E_FAST === \"1\"` is evaluated at 14 sites across app, context, lib and components.",
+  "proposed": "`GameTable`, or the exchange component, reads `e2e.exchangeHold` directly, and the field leaves the context interface. Category / effort / risk: in-process / S / low. The literal `process.env.EXPO_PUBLIC_…` must stay greppable for inlining; one module does that.",
+  "effect": "The two duplicate tests merge into one table test. Three literal-pin tests are deleted.",
+  "sources": [
+   "client-F18",
+   "08-tests-rules-tooling-F8"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-067",
+  "theme": "Client state & providers",
+  "title": "Small leaks in the auth and socket error modes",
+  "kind": "defect",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "lib/socket.ts:39-42",
+   "SocketContext.tsx:288",
+   "SocketContext.tsx:286",
+   "server/http/routes.ts:525-534",
+   "context/SocketContext.tsx:147-151",
+   "context/AuthContext.tsx:195-200",
+   "SocketContext.tsx:278-287",
+   "lib/storageKeys.ts:17",
+   "OnlineGameContext.tsx:480-496"
+  ],
+  "problem": "`setSocketAuthFailureHandler`: a single global callback slot in `lib/socket.ts:39-42`, installed by a React provider (`SocketContext.tsx:288`, `474`). `AuthContext.logout` (`:195-200`) clears local state only after the POST succeeds. The auth-failure path (`SocketContext.tsx:286`) relies on it and navigates to `/auth` regardless, so a failed POST leaves the local session cached.",
+  "proposed": "`connectSocket(userId, { onAuthFailure })`, held per socket; plus `AuthContext.forgetSession()` (local only), with `logout = server POST then forgetSession`, called with `finally`. Category / effort / risk: remote-owned / S / low.",
+  "effect": "the cache and handles are partitioned by account rather than by the sign-out edge.",
+  "sources": [
+   "client-F26",
+   "03-app-context-F4"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-068",
+  "theme": "Client state & providers",
+  "title": "The HTTP API has no client module: keys, types and invalidation are spread out, with three fetch clients",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "app/profile.tsx:545-554",
+   "/friends.tsx:74-87",
+   "/room.tsx:210",
+   "app/index.tsx:391-396",
+   "context/SocketContext.tsx:102-107",
+   "app/index.tsx:391",
+   "friends.tsx:79",
+   "OnlineGameContext.tsx:714-718",
+   "SocketContext.tsx:300",
+   "friends.tsx:108-146",
+   "lib/query-client.ts:1",
+   "context/AuthContext.tsx:51-61"
+  ],
+  "problem": "each caller must know the URL, the response type, which other keys go stale when, and which fetch to use. The query key is the URL (`query-client.ts:52`).",
+  "proposed": "`lib/api.ts` with one `request<T>(method, route, body): Promise<Outcome<T>>` over `expo/fetch`, and `lib/queries.ts` with one typed entry per resource (`Q.friends`, `Q.statsMe`, …), `useApi(key)` and named invalidation sets (`stale.afterRound`, `onReconnect`, `afterFriendAccept`).",
+  "effect": "30 key literals and about 8 per-site type assertions removed; `fetchMe` and `fetchSocketTicket` shrink to about 3 lines each over `request`; one fetch implementation, so cookie and credential behaviour cannot diverge between login and every other call; invalidation sets named once, so a missed refresh after a round or friend event becomes a review of one table.",
+  "sources": [
+   "client-F7"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": [
+   "L-053"
+  ]
+ },
+ {
+  "id": "L-069",
+  "theme": "Client state & providers",
+  "title": "The offline \"driver\" lives in the screen, not in the offline adapter",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "app/game.tsx:106-130",
+   "context/offlineDriver.ts",
+   "app/game.tsx"
+  ],
+  "problem": "locality. Online, the counterpart of this code is the server. Offline, it is split between `GameContext` (engine transitions and persistence) and a route file.",
+  "proposed": "The UI signals (`onExchangeReady`, `onRoundLanded`) still come from the table, so this is a hook rather than provider internals.",
+  "effect": "`app/game.tsx` drops from 238 to about 90 lines and becomes a pure props mapping like the online screen. The driver gets a `renderHook` test surface with fake timers, so the six screen tests above can assert driver behaviour without `GameTable`.",
+  "sources": [
+   "client-F3"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-070",
+  "theme": "Client state & providers",
+  "title": "Exchange-announcement detection is implemented twice, differently",
+  "kind": "defect",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "GameContext.tsx:210-212",
+   "OnlineGameContext.tsx:311-313",
+   "lib/game/sharedGameFlow.ts:70-91",
+   "lib/game/gameEngine.ts:968",
+   "lib/game/sharedGameFlow.ts"
+  ],
+  "problem": "one concept (\"an exchange just resolved, or the two-Joker exception was dealt\") has two derivations. The engine already provides everything the online path reads: `processExchangeChoice` sets `cardToLoser` (`lib/game/gameEngine.ts:968`).",
+  "proposed": "Both adapters call it from their single commit path: `commitState` offline, `onGameState` online.",
+  "effect": "two refs and four reset lines deleted online; offline announce code moves out of the commands. One pure test table covers both transports, replacing parts of `exchangeAnnounceBothWays`, `exchangeAnnounceFrame` and `ceremonyHoldsTheCard`.",
+  "sources": [
+   "client-F6"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "03-app-context: partially addressed by commit 4475dd2e (offline announces only after the engine accepts the give, GameContext.tsx:233-234); the two derivations (command time offline, state diff online) remain.",
+  "depends_on": [
+   "L-005"
+  ]
+ },
+ {
+  "id": "L-071",
+  "theme": "Client state & providers",
+  "title": "SocketContext mixes four responsibilities and hands screens the raw socket",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "context/SocketContext.tsx:176-184",
+   "friends.tsx:55",
+   "/index.tsx:42",
+   "room.tsx:202",
+   "index.tsx:613",
+   "join/[code].tsx:12",
+   "OnlineGameContext.tsx:340",
+   "room.tsx:224-236",
+   "friends.tsx:209-213",
+   "room.tsx:206-208",
+   "lib/friends.ts"
+  ],
+  "problem": "a god context with a shallow, leaky surface. Every `useSocket()` consumer (Home, the online lobby, friends, room, and `OnlineGameProvider` itself) re-renders on every `friend:status` presence change.",
+  "proposed": "Split into `useConnection()` (lifecycle only), `usePresence()`, and `useInvites()` with named `accept`/`dismiss`/`send` commands; friends cache sync becomes a listener hook in lib/friends.ts and `qc.clear()` on sign-out moves to AuthContext.",
+  "effect": "no screen holds `socket`, so the 3 raw emits move behind named commands with error feedback; presence churn wakes only presence readers; the 20 tests mocking `@/context/SocketContext` each mock one small surface; dead `connected` deleted.",
+  "sources": [
+   "client-F8"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-072",
+  "theme": "Client state & providers",
+  "title": "OnlineGameContext as a whole is a god provider (map of where F1, F6, F7, F9 and F14 apply)",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "L",
+  "files": [
+   "context/OnlineGameContext.tsx",
+   "CONTEXT.md",
+   "rejoinFailed.test.tsx"
+  ],
+  "problem": "`context/OnlineGameContext.tsx` (about 1140 lines) holds surface types and slices, persisted handles, a rejoin state machine, connection status, the protocol-version gate, room and game state, banners, match results and query invalidation, votes, reactions, disconnect notices, intents and teardown.",
+  "proposed": "Extract by responsibility while keeping effects in place: `useRejoin(socket, handles, onRefused)` plus client-F1 `endTable`, F6 `exchangeAnnounceFor`, F7 `stale.afterRound` and F9 `tableHandles`. No `reduce(state, event)`.",
+  "effect": "the provider drops from about 1140 to about 700 lines. The rejoin rules (the stale-reply guard, the retry cap of 3 at 2000 ms) get a `renderHook` plus fake-socket test surface of their own instead of being exercised through the full provider (`rejoinFailed.test.tsx`).",
+  "sources": [
+   "client-F13"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "Respects the CONTEXT.md 2026-09-10 rejection of a reduce(state, event) extraction; this is a map of F1/F6/F7/F9.",
+  "depends_on": [
+   "L-058",
+   "L-062",
+   "L-068"
+  ]
+ },
+ {
+  "id": "L-073",
+  "theme": "Client state & providers",
+  "title": "Account deletion is reported as failed after it succeeded",
+  "kind": "defect",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "components/SettingsModal.tsx:151-168",
+   "context/AuthContext.tsx:195-200",
+   "server/routes.ts:796-800",
+   "routes.ts:796-800",
+   "AuthContext.tsx:195-200"
+  ],
+  "problem": "the DELETE succeeds and the server destroys the session (routes.ts:796-800). The modal then calls `onClose()` and `await logout()`. `logout` POSTs `/api/auth/logout` before it clears local state (AuthContext.tsx:195-200).",
+  "proposed": "keep only the DELETE inside the try. On success, clear the session locally and skip the server logout.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "02-components-F8"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-074",
+  "theme": "Client state & providers",
+  "title": "The room's bots-countdown re-renders the whole screen every second for every viewer",
+  "kind": "perf",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "/room.tsx:336-347"
+  ],
+  "problem": "non-hosts, and rooms that are not waiting, re-render `RoomScreen` (seat list, invite panel, `FlatList`) 30 times for a hint they never see.",
+  "proposed": "move the countdown into a `BotsComingHint` child, mounted only when `hostIsWaiting`, which owns its interval. `botsOffered` comes up through `onDue`.",
+  "effect": "30 whole-screen renders per room visit become 30 renders of one `Text`.",
+  "sources": [
+   "03-app-context-F10"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-075",
+  "theme": "Client state & providers",
+  "title": "useOwnLink resets the shared link edges on every subscribe",
+  "kind": "defect",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "lib/useOwnLink.ts:32",
+   "context/OnlineGameContext.tsx:341"
+  ],
+  "problem": "`edgesOf.set(socket, NO_LINK)` runs on each subscribe against a WeakMap shared per socket. A second subscriber, or a resubscribe during an outage, erases `downAt`, so the outage duration restarts. There is only one caller today, so the defect is latent.",
+  "proposed": "initialise only when the entry is missing (`if (!edgesOf.has(socket))`).",
+  "effect": "correct outage timing under any number of subscribers.",
+  "sources": [
+   "04-lib-shared-F11"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-076",
+  "theme": "Client state & providers",
+  "title": "Connection status is three subscriptions plus a composition in the screen",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "OnlineGameContext.tsx:346-361",
+   "lib/useOwnLink.ts:23-56",
+   "/game.tsx:90-91",
+   "lib/ownLink.ts"
+  ],
+  "problem": "Connection status is three subscriptions plus a composition in the screen: `connected` via `useSyncExternalStore` (OnlineGameContext.tsx:346-361), `useOwnLink(socket)` subscribing to the same events again (lib/useOwnLink.ts:23-56), a dead `connected` state in SocketContext, and `app/(online)/game.tsx` composing `linkPill(...)` into a `ConnectionNote`.",
+  "proposed": "`useOnlineConnection()` returns `connectionNote: ConnectionNote | null` (built once, from the pure `lib/ownLink.ts`), plus `ownLink`.",
+  "effect": "about 20 lines out of the screen. The pill mapping becomes a unit test instead of a screen test (`onlineStatusRow`, `tableNotices` connection cases).",
+  "sources": [
+   "client-F14"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-077",
+  "theme": "Client state & providers",
+  "title": "Error-toast boilerplate repeated",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "friends.tsx:67",
+   "room.tsx:368",
+   "room.tsx:404",
+   "OnlineGameContext.tsx:902-907",
+   "SocketContext.tsx:424-429"
+  ],
+  "problem": "`showNotification({ type: \"game_error\", title: t(\"common.error\"), message })` at `friends.tsx:67`, `room.tsx:368`, `room.tsx:404`, `OnlineGameContext.tsx:902-907`, `SocketContext.tsx:424-429` and `443-448`. The last two are identical bodies. Proposed interface: `notifyError(message: string)` on `NotificationContext`, and `notifyServerError(payload)`.",
+  "proposed": "`notifyError(message: string)` on `NotificationContext`, and `notifyServerError(payload)`.",
+  "effect": "6 sites become 1 line each. Category / effort / risk: in-process / S / none.",
+  "sources": [
+   "client-F16"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-078",
+  "theme": "Client state & providers",
+  "title": "NotificationContext mixes a stable command with fast-changing state",
+  "kind": "perf",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "context/NotificationContext.tsx:96-105"
+  ],
+  "problem": "`context/NotificationContext.tsx:96-105`. A single value holds `showNotification` (stable) together with `notification` and `bannerBottom`, so every component that only calls `showNotification` (both online providers, `GameProvider`, room, friends, SettingsModal) re-renders on every banner change and every measured `bannerBottom`. Proposed interface: split into a `NotifyContext` (`showNotification`, `notifyError`) and a `BannerContext` (`notification`, `dismiss`, `bannerBottom`, `report`).",
+  "proposed": "split into a `NotifyContext` (`showNotification`, `notifyError`) and a `BannerContext` (`notification`, `dismiss`, `bannerBottom`, `report`). `useBannerBottom` already reads separately. Category / effort / risk: in-process / S / low.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "client-F17"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-079",
+  "theme": "Client state & providers",
+  "title": "Stored settings JSON is parsed twice",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "lib/device/feedback.ts:36-41",
+   "context/SettingsContext.tsx:94-110",
+   "CONTEXT.md",
+   "lib/settingsStore.ts"
+  ],
+  "problem": "the format has two readers, and only one validates. Not proposed: CONTEXT.md's \"Feedback master state\" note rejects a single `applyFeedbackSettings`; this keeps the separate setters.",
+  "proposed": "`lib/settingsStore.ts`: `export function readStoredSettings(): Promise<Partial<Settings>>` (moving `parseStored` there), used by both. Category / effort / risk: local-substitutable / S / low.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "client-F21"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "Respects the CONTEXT.md feedback-master-state decision (no applyFeedbackSettings).",
+  "depends_on": []
+ },
+ {
+  "id": "L-080",
+  "theme": "Client state & providers",
+  "title": "The query loading / error / data block is repeated about 10 times",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "app/profile.tsx:587-596",
+   "room.tsx:249-255",
+   "leaderboard.tsx",
+   "history.tsx",
+   "friends.tsx",
+   "replay.tsx"
+  ],
+  "problem": "`app/profile.tsx:587-596`, `630-634`, `747-753`, `797-800`; `leaderboard.tsx` (7 `LoadingBlock`/`ErrorBlock`/retry sites); `history.tsx` (4); `friends.tsx` (5); `room.tsx:249-255`; `replay.tsx`. Proposed interface: Category / effort / risk: in-process / S / low. The `stale` and empty variants differ per site, so they must remain props.",
+  "proposed": "Category / effort / risk: in-process / S / low. The `stale` and empty variants differ per site, so they must remain props.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "client-F22"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-081",
+  "theme": "Client state & providers",
+  "title": "Room-code normalisation is scattered and the two join commands disagree",
+  "kind": "defect",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "OnlineGameContext.tsx:943",
+   "/index.tsx:128",
+   "lib/deepLink.ts:4-8"
+  ],
+  "problem": "`OnlineGameContext.tsx:943` (`spectateRoom` uppercases), `:927-936` (`joinRoom` does not), `(online)/index.tsx:128`, `135`, `369`, `lib/deepLink.ts:4-8` (`joinCode`). Proposed interface: `joinRoom` and `spectateRoom` both normalise through `joinCode()`; callers pass raw input. Category / effort / risk: in-process / S / none.",
+  "proposed": "`joinRoom` and `spectateRoom` both normalise through `joinCode()`; callers pass raw input. Category / effort / risk: in-process / S / none.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "client-F23"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-082",
+  "theme": "Client state & providers",
+  "title": "The tutorial route file holds pure content and engine validation",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "app/tutorial.tsx:40-454",
+   "app/tutorial.tsx:375-377",
+   "components/table/stagedPlay.ts:40-45",
+   "lib/tutorial/beats.ts",
+   "lib/tutorialSeen.ts",
+   "tutorialTableBeats.test.tsx",
+   "lib/game/gameEngine.ts"
+  ],
+  "problem": "`app/tutorial.tsx:40-454` (card literals, `buildExchangeState`, `buildBeats` at about 180 lines, `stageBeat`, `evaluatePlay`, `evaluateExchange`). Progress persistence is inline AsyncStorage at `:477-506`. Proposed interface: `lib/tutorial/beats.ts`: `buildBeats(t): Beat[]`, `evaluatePlay(sel, beat, t)`, `evaluateExchange(card, beat, t)`; plus `tutorialProgress.{read,write,clear}` beside `lib/tutorialSeen.ts`.",
+  "proposed": "`lib/tutorial/beats.ts`: `buildBeats(t): Beat[]`, `evaluatePlay(sel, beat, t)`, `evaluateExchange(card, beat, t)`; plus `tutorialProgress.{read,write,clear}` beside `lib/tutorialSeen.ts`.",
+  "effect": "the screen drops from about 900 to about 450 lines. The validation becomes unit-testable under `node --test`; today `tutorialTableBeats.test.tsx` renders the screen.",
+  "sources": [
+   "client-F24",
+   "03-app-context-F6"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": [
+   "L-009"
+  ]
+ },
+ {
+  "id": "L-083",
+  "theme": "Client state & providers",
+  "title": "Contexts store translated strings, not payloads",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "OnlineGameContext.tsx:76",
+   "SocketContext.tsx:364-398",
+   "lib/i18n.ts:185-192"
+  ],
+  "problem": "the providers depend on i18n (presentation), and a language switch in SettingsModal does not re-render a standing error or notice. `useTranslation().translateServerPayload` exists (`lib/i18n.ts:185-192`) but the contexts cannot use it.",
+  "proposed": "store `{ payload: ServerPayload; seq }` and translate at render. Category / effort / risk: in-process / S / low. A cosmetic edge, not a priority bug.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "client-F25"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-084",
+  "theme": "Client state & providers",
+  "title": "`tn()` takes an untyped base string",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "lib/i18n.ts:136-141",
+   "tests/ui-rules/i18n.test.ts:776-782"
+  ],
+  "problem": "`lib/i18n.ts:136-141` (`base: string`, then `as TranslationKey`). A misspelled base compiles; `tests/ui-rules/i18n.test.ts:776-782` only checks for unused keys. Proposed interface: ``type PluralBase = { [K in TranslationKey]: K extends `${infer B}_one` ?",
+  "proposed": "``type PluralBase = { [K in TranslationKey]: K extends `${infer B}_one` ? B : never }[TranslationKey]; tn(base: PluralBase, …)``",
+  "effect": "about 14 call sites become compile-checked. Category / effort / risk: in-process / S / none.",
+  "sources": [
+   "client-F27"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-085",
+  "theme": "Client state & providers",
+  "title": "The rating summary is written twice, and provisionality is derived on both sides of the wire",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "app/profile.tsx:599-614",
+   "/leaderboard.tsx:37-42",
+   "/game.tsx:208-218",
+   "server/game/ratings.ts:197",
+   "lib/game/rating.ts",
+   "components/RatingSummary.tsx"
+  ],
+  "problem": "app/profile.tsx:599-614 and app/(online)/leaderboard.tsx:37-42, 57-68 (the same season/rounds strings and the same a11y group); app/(online)/game.tsx:208-218 (`provisionalLeft` recomputed from `rounds < PROVISIONAL_ROUNDS`); server/game/ratings.ts:197 (the server's own `provisional: rounds < PROVISIONAL_ROUNDS`, sent on `RatingDto` but not on `RatingAfter`). proposed: `lib/game/rating.ts: provisionalLeft(r: { rounds: number }): number | undefined` used by the server's flag and by all three screens, plus …",
+  "proposed": "`lib/game/rating.ts: provisionalLeft(r: { rounds: number }): number | undefined` used by the server's flag and by all three screens, plus `components/RatingSummary.tsx({ rating: RatingDto })` used by profile and leaderboard.",
+  "effect": "about 30 duplicated lines removed. The provisional threshold is read through one function.",
+  "sources": [
+   "03-app-context-F7"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-086",
+  "theme": "Client state & providers",
+  "title": "Lobby pickers are copied across three screens, and two restate the teams rule with a literal 4",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "/room.tsx:142-177",
+   "app/lobby.tsx:131-134",
+   "/index.tsx:169-182",
+   "app/lobby.tsx:212-224",
+   "/index.tsx:184",
+   "app/lobby.tsx:170",
+   "/room.tsx:383-384",
+   "server/socket/socketTable.ts:133"
+  ],
+  "problem": "app/(online)/room.tsx:142-177 (`MatchLengthControls`, \"Mirrors the offline lobby's picker\") = app/lobby.tsx:131-134, 246-262; player-count chips app/(online)/index.tsx:169-182 = app/lobby.tsx:212-224; teams-needs-four as a literal at app/(online)/index.tsx:184, 195-196 and app/lobby.tsx:170, 226, while app/(online)/room.tsx:383-384 and server/socket/socketTable.ts:133 use `TEAMS_PLAYER_COUNT`. proposed: `components/MatchLengthPicker({ value, onChange, seats })` and `SeatCountPicker`, plus `modeFits(mode, …",
+  "proposed": "`components/MatchLengthPicker({ value, onChange, seats })` and `SeatCountPicker`, plus `modeFits(mode, seats): boolean` exported next to `TEAMS_PLAYER_COUNT` in the engine, used by all three screens and the server.",
+  "effect": "3 inventory duplicate blocks removed. A change to the teams seat count reaches every screen.",
+  "sources": [
+   "03-app-context-F8"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-087",
+  "theme": "Client state & providers",
+  "title": "Reduce-motion opens one native subscription per subscriber",
+  "kind": "perf",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "lib/accessibility.ts:80-103",
+   "components/CardView.tsx:448"
+  ],
+  "problem": "on native, `subscribeSystemReduceMotion` adds an `AccessibilityInfo` listener and fires an `isReduceMotionEnabled()` bridge call for every subscriber. Every CardView subscribes, so one table mount opens about 54 native listeners and bridge calls for one boolean.",
+  "proposed": "a module store with one native listener, ref-counted, and a cached value. `useSyncExternalStore` readers share it, following the pattern already used for the in-app setting in the same file.",
+  "effect": "one listener per app; no bridge burst on deal.",
+  "sources": [
+   "04-lib-shared-F8"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ }
+]

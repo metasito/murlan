@@ -1,0 +1,5234 @@
+{
+ "unusedExports": [
+  {
+   "file": "components/Avatar.tsx",
+   "name": "AvatarSize",
+   "testOnly": false
+  },
+  {
+   "file": "components/cardFaceModel.ts",
+   "name": "isWideRank",
+   "testOnly": true
+  },
+  {
+   "file": "components/cardFaceModel.ts",
+   "name": "rankTextWidth",
+   "testOnly": true
+  },
+  {
+   "file": "components/cardFaceModel.ts",
+   "name": "Box",
+   "testOnly": false
+  },
+  {
+   "file": "components/cardFaceModel.ts",
+   "name": "indexBox",
+   "testOnly": true
+  },
+  {
+   "file": "components/cardFaceModel.ts",
+   "name": "PIP_COL",
+   "testOnly": false
+  },
+  {
+   "file": "components/cardFaceModel.ts",
+   "name": "PIP_TOP",
+   "testOnly": false
+  },
+  {
+   "file": "components/cardFaceModel.ts",
+   "name": "PIP_BOTTOM",
+   "testOnly": false
+  },
+  {
+   "file": "components/cardFaceModel.ts",
+   "name": "PIP_SIZE",
+   "testOnly": false
+  },
+  {
+   "file": "components/cardFaceModel.ts",
+   "name": "ACE_PIP_SIZE",
+   "testOnly": false
+  },
+  {
+   "file": "components/cardFaceModel.ts",
+   "name": "CROWDED_PIP_SCALE",
+   "testOnly": false
+  },
+  {
+   "file": "components/cardFaceModel.ts",
+   "name": "PipColumn",
+   "testOnly": false
+  },
+  {
+   "file": "components/cardFaceModel.ts",
+   "name": "PipSpot",
+   "testOnly": false
+  },
+  {
+   "file": "components/cardFaceModel.ts",
+   "name": "PIP_LAYOUTS",
+   "testOnly": true
+  },
+  {
+   "file": "components/cardFaceModel.ts",
+   "name": "COURT_ART_BOX",
+   "testOnly": false
+  },
+  {
+   "file": "components/cardFaceModel.ts",
+   "name": "PIP_RANKS",
+   "testOnly": true
+  },
+  {
+   "file": "components/cardFaceModel.ts",
+   "name": "PlacedPip",
+   "testOnly": false
+  },
+  {
+   "file": "components/cardFaceModel.ts",
+   "name": "placedPips",
+   "testOnly": true
+  },
+  {
+   "file": "components/cardFaceModel.ts",
+   "name": "pipBox",
+   "testOnly": true
+  },
+  {
+   "file": "components/cardFaceModel.ts",
+   "name": "boxesOverlap",
+   "testOnly": true
+  },
+  {
+   "file": "components/CardView.tsx",
+   "name": "cardViewPropsEqual",
+   "testOnly": true
+  },
+  {
+   "file": "components/ChoiceChips.tsx",
+   "name": "Choice",
+   "testOnly": false
+  },
+  {
+   "file": "components/ErrorBoundary.tsx",
+   "name": "ErrorBoundaryProps",
+   "testOnly": false
+  },
+  {
+   "file": "components/flightPhysics.ts",
+   "name": "arrivingCard",
+   "testOnly": true
+  },
+  {
+   "file": "components/flightPhysics.ts",
+   "name": "comboImpactTier",
+   "testOnly": true
+  },
+  {
+   "file": "components/flightPhysics.ts",
+   "name": "shakeMagnitude",
+   "testOnly": true
+  },
+  {
+   "file": "components/flightPhysics.ts",
+   "name": "TableGeometry",
+   "testOnly": true
+  },
+  {
+   "file": "components/flightPhysics.ts",
+   "name": "SeatPlace",
+   "testOnly": true
+  },
+  {
+   "file": "components/flightPhysics.ts",
+   "name": "flightOrigin",
+   "testOnly": true
+  },
+  {
+   "file": "components/flightPhysics.ts",
+   "name": "INACTIVE_EXCHANGE",
+   "testOnly": true
+  },
+  {
+   "file": "components/flightPose.ts",
+   "name": "Pose",
+   "testOnly": true
+  },
+  {
+   "file": "components/GameTable.tsx",
+   "name": "TurnTimerConfig",
+   "testOnly": true
+  },
+  {
+   "file": "components/GameTable.tsx",
+   "name": "ExchangeAnnouncementSlot",
+   "testOnly": true
+  },
+  {
+   "file": "components/GameTable.tsx",
+   "name": "GameTableProps",
+   "testOnly": true
+  },
+  {
+   "file": "components/handLayout.ts",
+   "name": "MIN_READABLE_STEP",
+   "testOnly": true
+  },
+  {
+   "file": "components/handLayout.ts",
+   "name": "MAX_STEP_RATIO",
+   "testOnly": true
+  },
+  {
+   "file": "components/handLayout.ts",
+   "name": "HandLayout",
+   "testOnly": false
+  },
+  {
+   "file": "components/handLayout.ts",
+   "name": "cardAtX",
+   "testOnly": true
+  },
+  {
+   "file": "components/homeCardField.ts",
+   "name": "Depth",
+   "testOnly": true
+  },
+  {
+   "file": "components/homeCardField.ts",
+   "name": "DepthBand",
+   "testOnly": false
+  },
+  {
+   "file": "components/homeMenuModel.ts",
+   "name": "HomeMenu",
+   "testOnly": false
+  },
+  {
+   "file": "components/ReactionLayer.tsx",
+   "name": "EMOJIS",
+   "testOnly": false
+  },
+  {
+   "file": "components/ReactionLayer.tsx",
+   "name": "REACTION_ANCHOR",
+   "testOnly": true
+  },
+  {
+   "file": "components/ReplayControls.tsx",
+   "name": "moveActionText",
+   "testOnly": false
+  },
+  {
+   "file": "components/RoomSeatList.tsx",
+   "name": "SeatHoldView",
+   "testOnly": false
+  },
+  {
+   "file": "components/RoomSeatList.tsx",
+   "name": "RoomSeatListProps",
+   "testOnly": false
+  },
+  {
+   "file": "components/seatLayout.ts",
+   "name": "ACTION_BTN_FLOOR",
+   "testOnly": true
+  },
+  {
+   "file": "components/seatLayout.ts",
+   "name": "getOpponentPosition",
+   "testOnly": true
+  },
+  {
+   "file": "components/seatLayout.ts",
+   "name": "SeatedPlayer",
+   "testOnly": false
+  },
+  {
+   "file": "components/table/air.ts",
+   "name": "moteAt",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/cardGloss.ts",
+   "name": "Gloss",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/cardGloss.ts",
+   "name": "GLOSS_FRAME_S",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/cardGloss.ts",
+   "name": "FoilGlint",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/cardRects.ts",
+   "name": "CARD_SCOPES",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/cardRects.ts",
+   "name": "TABLE_AT_REST",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/cardShadows.ts",
+   "name": "ShadowKind",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/cardShadows.ts",
+   "name": "shadowKind",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/cardShadows.ts",
+   "name": "inPath",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/cardShadows.ts",
+   "name": "castOffset",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/cardShadows.ts",
+   "name": "ShadowTransform",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/cardShadows.ts",
+   "name": "PathSink",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/cardShadows.ts",
+   "name": "PilePlay",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/cardShadows.ts",
+   "name": "ShadeCards",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/cardShadows.ts",
+   "name": "SHADE_STEP",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/dealPose.ts",
+   "name": "backDealArc",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/ember.ts",
+   "name": "RIM",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/ember.ts",
+   "name": "emberSweep",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/feltCanvas.tsx",
+   "name": "default",
+   "testOnly": false
+  },
+  {
+   "file": "components/table/feltReady.ts",
+   "name": "CardCast",
+   "testOnly": false
+  },
+  {
+   "file": "components/table/feltShader.ts",
+   "name": "TWILL",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/feltShader.ts",
+   "name": "LAMP_HEIGHT",
+   "testOnly": false
+  },
+  {
+   "file": "components/table/feltShader.ts",
+   "name": "CLOTH_BODY",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/feltShader.ts",
+   "name": "ClothUniforms",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/hand.tsx",
+   "name": "cardItemPropsEqual",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/lampRig.ts",
+   "name": "LampTarget",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/lampRig.ts",
+   "name": "TABLE_CENTRE",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/lampRig.ts",
+   "name": "poolOver",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/lampRig.ts",
+   "name": "LAMP_LIGHT",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/lampRig.ts",
+   "name": "GLIDE",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/legibilityRing.ts",
+   "name": "ANNULUS_OUTER",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/noticeModel.ts",
+   "name": "NoticeTone",
+   "testOnly": false
+  },
+  {
+   "file": "components/table/noticeModel.ts",
+   "name": "ToneOf",
+   "testOnly": false
+  },
+  {
+   "file": "components/table/noticeModel.ts",
+   "name": "NoticeSelector",
+   "testOnly": false
+  },
+  {
+   "file": "components/table/noticeModel.ts",
+   "name": "NoticeSpec",
+   "testOnly": false
+  },
+  {
+   "file": "components/table/noticeModel.ts",
+   "name": "selectorBox",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/noticeModel.ts",
+   "name": "selectorGlow",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/notices/floats.tsx",
+   "name": "BesideGioca",
+   "testOnly": false
+  },
+  {
+   "file": "components/table/particleSprites.ts",
+   "name": "GLOWS",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/particleSprites.ts",
+   "name": "Cell",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/pile.tsx",
+   "name": "Flight",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/pile.tsx",
+   "name": "BombClock",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/pile.tsx",
+   "name": "PileNote",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/pile.tsx",
+   "name": "PileLayerProps",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/pile.tsx",
+   "name": "PileFlightInput",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/rail.ts",
+   "name": "RAIL",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/rail.ts",
+   "name": "SHADE_MAX",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/rail.ts",
+   "name": "rng",
+   "testOnly": false
+  },
+  {
+   "file": "components/table/scorePillModel.ts",
+   "name": "PillBox",
+   "testOnly": false
+  },
+  {
+   "file": "components/table/seats.tsx",
+   "name": "SeatMark",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/seats.tsx",
+   "name": "SeatCountdown",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/settingsSheet.tsx",
+   "name": "GameSettingsSheetProps",
+   "testOnly": false
+  },
+  {
+   "file": "components/table/tableTimeline.ts",
+   "name": "Anchor",
+   "testOnly": false
+  },
+  {
+   "file": "components/table/trick.ts",
+   "name": "beatenPlay",
+   "testOnly": true
+  },
+  {
+   "file": "components/table/useRoundEnding.ts",
+   "name": "RoundEndingClock",
+   "testOnly": false
+  },
+  {
+   "file": "components/tableA11y.ts",
+   "name": "TableA11yInput",
+   "testOnly": false
+  },
+  {
+   "file": "components/tableArc.ts",
+   "name": "ArcBox",
+   "testOnly": false
+  },
+  {
+   "file": "components/tableArc.ts",
+   "name": "ArcSpec",
+   "testOnly": false
+  },
+  {
+   "file": "components/tableArc.ts",
+   "name": "fitSpread",
+   "testOnly": true
+  },
+  {
+   "file": "components/tableArc.ts",
+   "name": "arcCards",
+   "testOnly": true
+  },
+  {
+   "file": "components/tableArc.ts",
+   "name": "ArcBounds",
+   "testOnly": false
+  },
+  {
+   "file": "components/tableArc.ts",
+   "name": "ArcBudget",
+   "testOnly": false
+  },
+  {
+   "file": "components/tableArc.ts",
+   "name": "FIELD_ARC",
+   "testOnly": false
+  },
+  {
+   "file": "components/tableFrame.ts",
+   "name": "EdgeInsets",
+   "testOnly": true
+  },
+  {
+   "file": "components/tableFrame.ts",
+   "name": "ScreenPads",
+   "testOnly": false
+  },
+  {
+   "file": "components/tableFrame.ts",
+   "name": "TableFrame",
+   "testOnly": false
+  },
+  {
+   "file": "components/turnTimerUi.ts",
+   "name": "TurnFacts",
+   "testOnly": false
+  },
+  {
+   "file": "components/turnTimerUi.ts",
+   "name": "ComboShape",
+   "testOnly": true
+  },
+  {
+   "file": "components/useHandOrder.ts",
+   "name": "HandOrder",
+   "testOnly": false
+  },
+  {
+   "file": "components/useTableFeedback.ts",
+   "name": "KICK_JOLTS",
+   "testOnly": true
+  },
+  {
+   "file": "context/GameContext.tsx",
+   "name": "applyRoundToMatch",
+   "testOnly": true
+  },
+  {
+   "file": "context/NotificationContext.tsx",
+   "name": "NOTIFICATION_QUEUE_MAX",
+   "testOnly": true
+  },
+  {
+   "file": "context/OnlineGameContext.tsx",
+   "name": "RoomState",
+   "testOnly": true
+  },
+  {
+   "file": "context/OnlineGameContext.tsx",
+   "name": "RematchVoteState",
+   "testOnly": true
+  },
+  {
+   "file": "context/OnlineGameContext.tsx",
+   "name": "OnlineMatchState",
+   "testOnly": true
+  },
+  {
+   "file": "context/OnlineGameContext.tsx",
+   "name": "ReconnectNotice",
+   "testOnly": true
+  },
+  {
+   "file": "context/OnlineGameContext.tsx",
+   "name": "TurnDeadline",
+   "testOnly": true
+  },
+  {
+   "file": "context/OnlineGameContext.tsx",
+   "name": "GameStateBroadcast",
+   "testOnly": true
+  },
+  {
+   "file": "context/OnlineGameContext.tsx",
+   "name": "useOnlineGame",
+   "testOnly": true
+  },
+  {
+   "file": "drizzle.config.ts",
+   "name": "default",
+   "testOnly": false
+  },
+  {
+   "file": "lib/achievements.ts",
+   "name": "AchievementDef",
+   "testOnly": false
+  },
+  {
+   "file": "lib/audioLevel.ts",
+   "name": "migrateLevel",
+   "testOnly": true
+  },
+  {
+   "file": "lib/audioLevel.ts",
+   "name": "StoredAudio",
+   "testOnly": false
+  },
+  {
+   "file": "lib/canvaskit.ts",
+   "name": "CANVASKIT_VERSION",
+   "testOnly": true
+  },
+  {
+   "file": "lib/captureStates.ts",
+   "name": "CaptureState",
+   "testOnly": true
+  },
+  {
+   "file": "lib/captureStates.ts",
+   "name": "LINK_STATES",
+   "testOnly": true
+  },
+  {
+   "file": "lib/captureStates.ts",
+   "name": "MOMENT_STATES",
+   "testOnly": true
+  },
+  {
+   "file": "lib/cosmetics.ts",
+   "name": "cardBackField",
+   "testOnly": true
+  },
+  {
+   "file": "lib/device/audioEngine.ts",
+   "name": "AudioState",
+   "testOnly": true
+  },
+  {
+   "file": "lib/device/audioEngine.ts",
+   "name": "EngineStats",
+   "testOnly": true
+  },
+  {
+   "file": "lib/device/audioEngine.ts",
+   "name": "MUSIC_CROSSFADE_MS",
+   "testOnly": true
+  },
+  {
+   "file": "lib/device/audioEngine.web.ts",
+   "name": "AudioState",
+   "testOnly": true
+  },
+  {
+   "file": "lib/device/audioEngine.web.ts",
+   "name": "EngineStats",
+   "testOnly": true
+  },
+  {
+   "file": "lib/device/audioEngine.web.ts",
+   "name": "MUSIC_CROSSFADE_MS",
+   "testOnly": true
+  },
+  {
+   "file": "lib/device/moments.ts",
+   "name": "Haptic",
+   "testOnly": false
+  },
+  {
+   "file": "lib/device/moments.ts",
+   "name": "Cue",
+   "testOnly": false
+  },
+  {
+   "file": "lib/device/moments.ts",
+   "name": "MomentSpec",
+   "testOnly": false
+  },
+  {
+   "file": "lib/device/moments.ts",
+   "name": "PILE_UP_WINDOW_MS",
+   "testOnly": true
+  },
+  {
+   "file": "lib/device/moments.ts",
+   "name": "isCombo",
+   "testOnly": true
+  },
+  {
+   "file": "lib/device/moments.ts",
+   "name": "landingKind",
+   "testOnly": false
+  },
+  {
+   "file": "lib/device/moments.ts",
+   "name": "MOMENTS",
+   "testOnly": true
+  },
+  {
+   "file": "lib/device/musicTracks.ts",
+   "name": "CONTAINER",
+   "testOnly": true
+  },
+  {
+   "file": "lib/device/musicTracks.web.ts",
+   "name": "CONTAINER",
+   "testOnly": true
+  },
+  {
+   "file": "lib/device/soundAssets.ts",
+   "name": "SoundSpec",
+   "testOnly": false
+  },
+  {
+   "file": "lib/diagnostics/FrameProbe.tsx",
+   "name": "sampleFrame",
+   "testOnly": true
+  },
+  {
+   "file": "lib/diagnostics/index.ts",
+   "name": "TableAnchors",
+   "testOnly": true
+  },
+  {
+   "file": "lib/diagnostics/index.ts",
+   "name": "ORIENTATION_ROW_MS",
+   "testOnly": true
+  },
+  {
+   "file": "lib/diagnostics/index.ts",
+   "name": "RING_PROBE_MS",
+   "testOnly": true
+  },
+  {
+   "file": "lib/diagnostics/lampLegibility.ts",
+   "name": "RING_ON_IMAGE",
+   "testOnly": true
+  },
+  {
+   "file": "lib/diagnostics/lampLegibility.ts",
+   "name": "FELT_SHARE",
+   "testOnly": true
+  },
+  {
+   "file": "lib/e2eTrace.ts",
+   "name": "TraceFrame",
+   "testOnly": true
+  },
+  {
+   "file": "lib/e2eTrace.ts",
+   "name": "TraceRecorder",
+   "testOnly": true
+  },
+  {
+   "file": "lib/e2eTrace.ts",
+   "name": "FrameHost",
+   "testOnly": true
+  },
+  {
+   "file": "lib/e2eTrace.ts",
+   "name": "recordFrames",
+   "testOnly": true
+  },
+  {
+   "file": "lib/e2eTrace.ts",
+   "name": "traceRecorder",
+   "testOnly": true
+  },
+  {
+   "file": "lib/errorReporting.ts",
+   "name": "PENDING_CRASH_REPORTS_MAX",
+   "testOnly": true
+  },
+  {
+   "file": "lib/errorReporting.ts",
+   "name": "resetErrorReportingForTests",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/autoMove.ts",
+   "name": "AutoMoveContext",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/bot.ts",
+   "name": "applyPersonality",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/botPersonalities.ts",
+   "name": "BotPersonality",
+   "testOnly": false
+  },
+  {
+   "file": "lib/game/botPersonalities.ts",
+   "name": "isBotPersonalityId",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/exchangeTimeline.ts",
+   "name": "ExchangePose",
+   "testOnly": false
+  },
+  {
+   "file": "lib/game/exchangeTimeline.ts",
+   "name": "LegTimes",
+   "testOnly": false
+  },
+  {
+   "file": "lib/game/exchangeTimeline.ts",
+   "name": "LEG",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/exchangeTimeline.ts",
+   "name": "REDUCED_LEG",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/exchangeTimeline.ts",
+   "name": "RECEIVE_MS",
+   "testOnly": false
+  },
+  {
+   "file": "lib/game/exchangeTimeline.ts",
+   "name": "GIVE_MS",
+   "testOnly": false
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "STRAIGHT_MAX_LEN",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "shuffleDeck",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "HEADS_UP_HAND",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "freshHandFloor",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "findStartingPlayer",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "getCombinationType",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "getCombinationStrength",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "BeatRefusal",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "PassRefusal",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "canPlay",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "PlayCheck",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "canPlayerPlay",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "loserHasBothJokers",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "getBestCardFromHand",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "nextDealFirstSeat",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "targetsFor",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "MatchResolution",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "scoreRound",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "addPlacementPoints",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "nextMatchTarget",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "resolveMatch",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "resolveTeamMatch",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "FoldRoundInput",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "FoldRoundResult",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/matchEnding.ts",
+   "name": "MatchOnsets",
+   "testOnly": false
+  },
+  {
+   "file": "lib/game/matchState.ts",
+   "name": "celebratesViewer",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/matchState.ts",
+   "name": "isDrawnRound",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/rating.ts",
+   "name": "kFactor",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/rating.ts",
+   "name": "SEASON_CARRY",
+   "testOnly": false
+  },
+  {
+   "file": "lib/game/rating.ts",
+   "name": "expectedScore",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/replay.ts",
+   "name": "bombsPlayedBy",
+   "testOnly": true
+  },
+  {
+   "file": "lib/game/roundEnding.ts",
+   "name": "RoundOnsets",
+   "testOnly": false
+  },
+  {
+   "file": "lib/game/sharedGameFlow.ts",
+   "name": "ExchangeAnnouncement",
+   "testOnly": false
+  },
+  {
+   "file": "lib/game/standings.ts",
+   "name": "StandingRow",
+   "testOnly": false
+  },
+  {
+   "file": "lib/i18n.ts",
+   "name": "LOCALE_LABELS",
+   "testOnly": true
+  },
+  {
+   "file": "lib/i18n.ts",
+   "name": "detectDeviceLocale",
+   "testOnly": true
+  },
+  {
+   "file": "lib/i18n.ts",
+   "name": "setLocale",
+   "testOnly": true
+  },
+  {
+   "file": "lib/i18n.ts",
+   "name": "tn",
+   "testOnly": true
+  },
+  {
+   "file": "lib/offlineSave.ts",
+   "name": "OFFLINE_SAVE_VERSION",
+   "testOnly": true
+  },
+  {
+   "file": "lib/offlineSave.ts",
+   "name": "OfflineDecode",
+   "testOnly": false
+  },
+  {
+   "file": "lib/ownLink.ts",
+   "name": "LinkPill",
+   "testOnly": false
+  },
+  {
+   "file": "lib/ownLink.ts",
+   "name": "CatchUp",
+   "testOnly": false
+  },
+  {
+   "file": "lib/profileStats.ts",
+   "name": "MatchRecord",
+   "testOnly": true
+  },
+  {
+   "file": "lib/profileStats.ts",
+   "name": "PlacementSlice",
+   "testOnly": false
+  },
+  {
+   "file": "lib/profileStats.ts",
+   "name": "PlayerCountSlice",
+   "testOnly": false
+  },
+  {
+   "file": "lib/query-client.ts",
+   "name": "getQueryFn",
+   "testOnly": true
+  },
+  {
+   "file": "lib/reactions.ts",
+   "name": "REACTION_TTL_MS",
+   "testOnly": true
+  },
+  {
+   "file": "lib/reactions.ts",
+   "name": "subscribeToReactions",
+   "testOnly": true
+  },
+  {
+   "file": "lib/reactions.ts",
+   "name": "readReactions",
+   "testOnly": true
+  },
+  {
+   "file": "lib/sendIntent.ts",
+   "name": "INTENT_ATTEMPTS",
+   "testOnly": false
+  },
+  {
+   "file": "lib/sendIntent.ts",
+   "name": "RETRYABLE_CODES",
+   "testOnly": false
+  },
+  {
+   "file": "lib/sendIntent.ts",
+   "name": "IntentOutcome",
+   "testOnly": false
+  },
+  {
+   "file": "lib/sendIntent.ts",
+   "name": "sendIntent",
+   "testOnly": true
+  },
+  {
+   "file": "lib/storageKeys.ts",
+   "name": "DEVICE_KEYS",
+   "testOnly": true
+  },
+  {
+   "file": "lib/streak.ts",
+   "name": "UtcDay",
+   "testOnly": false
+  },
+  {
+   "file": "lib/theme.ts",
+   "name": "ShadowLayer",
+   "testOnly": false
+  },
+  {
+   "file": "lib/theme.ts",
+   "name": "makeLayeredShadow",
+   "testOnly": true
+  },
+  {
+   "file": "lib/wire.ts",
+   "name": "HistoryParticipantDto",
+   "testOnly": false
+  },
+  {
+   "file": "modules/murlan-audio-session/index.ts",
+   "name": "MurlanAudioSession",
+   "testOnly": true
+  },
+  {
+   "file": "modules/murlan-diagnostics/index.ts",
+   "name": "MurlanDiagnostics",
+   "testOnly": false
+  },
+  {
+   "file": "modules/murlan-orientation/index.ts",
+   "name": "MurlanOrientation",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/await-run.mjs",
+   "name": "BUDGET_MS",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/await-run.mjs",
+   "name": "EVERY_MS",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/await-run.mjs",
+   "name": "runArgs",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/await-run.mjs",
+   "name": "awaitRuns",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/backupNaming.mjs",
+   "name": "dumpStamp",
+   "testOnly": false
+  },
+  {
+   "file": "scripts/bundle-budget.mjs",
+   "name": "BUDGET_BYTES",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/bundle-budget.mjs",
+   "name": "DEFERRED_BUDGET_BYTES",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/bundle-budget.mjs",
+   "name": "DIST_DIR",
+   "testOnly": false
+  },
+  {
+   "file": "scripts/bundle-budget.mjs",
+   "name": "BUNDLE_DIR",
+   "testOnly": false
+  },
+  {
+   "file": "scripts/bundle-budget.mjs",
+   "name": "CANVASKIT_MARK",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/bundle-budget.mjs",
+   "name": "gzippedJsSize",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/bundle-budget.mjs",
+   "name": "firstLoadFiles",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/bundle-budget.mjs",
+   "name": "canvasKitCheck",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/bundle-budget.mjs",
+   "name": "report",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/bundleRoutes.mjs",
+   "name": "expectedRouteKeys",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/bundleRoutes.mjs",
+   "name": "missingRoutes",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/checkStrictIndexed.mjs",
+   "name": "REPO_ROOT",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/checkStrictIndexed.mjs",
+   "name": "DEFAULT_CONFIG",
+   "testOnly": false
+  },
+  {
+   "file": "scripts/checkStrictIndexed.mjs",
+   "name": "areasOf",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/checkStrictIndexed.mjs",
+   "name": "runStrictIndexedCheck",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/contextSurface.mjs",
+   "name": "walk",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/contextSurface.mjs",
+   "name": "fieldsOf",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/contextSurface.mjs",
+   "name": "destructuredNames",
+   "testOnly": false
+  },
+  {
+   "file": "scripts/contextSurface.mjs",
+   "name": "readersOf",
+   "testOnly": false
+  },
+  {
+   "file": "scripts/devStackPort.mjs",
+   "name": "PORT_SPAN",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/devStackPort.mjs",
+   "name": "isAddressInUse",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/diagnostics-collector.mjs",
+   "name": "createCollector",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/diagnostics-verdict.mjs",
+   "name": "flingerUnderruns",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/diagnostics-verdict.mjs",
+   "name": "flingerVerdict",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/diagnostics-verdict.mjs",
+   "name": "medianHz",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/diagnostics-verdict.mjs",
+   "name": "burstStalls",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/e2eBuildMark.mjs",
+   "name": "E2E_BUILD_MARK",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/e2eBuildMark.mjs",
+   "name": "DIAGNOSTICS_MARK",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/e2eBuildMark.mjs",
+   "name": "filesCarryingMark",
+   "testOnly": false
+  },
+  {
+   "file": "scripts/iconSubsetChars.mjs",
+   "name": "analyzeIcons",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/iconSubsetChars.mjs",
+   "name": "analyzeSnippet",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/iconSubsetChars.mjs",
+   "name": "iconNames",
+   "testOnly": false
+  },
+  {
+   "file": "scripts/ios-device.mjs",
+   "name": "needsInstall",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/ios-device.mjs",
+   "name": "lanAddress",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/ios-device.mjs",
+   "name": "parseDevices",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/ios-device.mjs",
+   "name": "pickRun",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/ios-device.mjs",
+   "name": "readHidden",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/ios-device.mjs",
+   "name": "artifactFor",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/ios-device.mjs",
+   "name": "withBenchHost",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/ios-device.mjs",
+   "name": "patchBenchHost",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/ios-device.mjs",
+   "name": "benchUrl",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/ios-device.mjs",
+   "name": "errorLine",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/ios-device.mjs",
+   "name": "metroEnv",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/lib/commentShape.ts",
+   "name": "Line",
+   "testOnly": false
+  },
+  {
+   "file": "scripts/lib/commentShape.ts",
+   "name": "classify",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/measureHeadsUpBalance.ts",
+   "name": "isCertainLead",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/measureHeadsUpBalance.ts",
+   "name": "handHasLegalRoyalStraight",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/mockupParityPage.mjs",
+   "name": "findMoments",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/mockupParityPage.mjs",
+   "name": "buildPage",
+   "testOnly": true
+  },
+  {
+   "file": "scripts/reactCompilerOptions.mjs",
+   "name": "presetRequire",
+   "testOnly": true
+  },
+  {
+   "file": "server/app.ts",
+   "name": "__testables",
+   "testOnly": true
+  },
+  {
+   "file": "server/app.ts",
+   "name": "CreatedApp",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/gameOwnership.ts",
+   "name": "ownershipKey",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/gamePersistence.ts",
+   "name": "ABANDONED_GAME_MAX_AGE_MS",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/gamePersistence.ts",
+   "name": "STALE_ROOM_MAX_AGE_MS",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/gamePersistence.ts",
+   "name": "sanitizeStateForPlayer",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/gamePersistence.ts",
+   "name": "persistence",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/gamePersistence.ts",
+   "name": "pruneAbandonedGames",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/gamePersistence.ts",
+   "name": "pruneStaleRooms",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/gameTimers.ts",
+   "name": "TIMER_KINDS",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/gameTimers.ts",
+   "name": "TimerKind",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/gameTimers.ts",
+   "name": "Clock",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/gameTimers.ts",
+   "name": "setClock",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/gameTimers.ts",
+   "name": "clear",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/gameTimers.ts",
+   "name": "pendingKeys",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/gameTurn.ts",
+   "name": "AutoMovable",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/gameTurn.ts",
+   "name": "CommittedMove",
+   "testOnly": false
+  },
+  {
+   "file": "server/game/gameTurn.ts",
+   "name": "autoMoveForSeat",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/gameTurn.ts",
+   "name": "armAfterMove",
+   "testOnly": false
+  },
+  {
+   "file": "server/game/onlineGameLogic.ts",
+   "name": "VisibleExchangePhaseInput",
+   "testOnly": false
+  },
+  {
+   "file": "server/game/onlineGameLogic.ts",
+   "name": "isContestedTable",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/onlineGameLogic.ts",
+   "name": "ResolveRoundEndInput",
+   "testOnly": false
+  },
+  {
+   "file": "server/game/onlineGameLogic.ts",
+   "name": "ScoreboardRow",
+   "testOnly": false
+  },
+  {
+   "file": "server/game/onlineGameLogic.ts",
+   "name": "ResolveRoundEndResult",
+   "testOnly": false
+  },
+  {
+   "file": "server/game/ratings.ts",
+   "name": "LEADERBOARD_SIZE",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/ratings.ts",
+   "name": "RatingView",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/ratings.ts",
+   "name": "LeaderboardEntry",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/replays.ts",
+   "name": "MAX_REPLAYS_LISTED",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/seatAllocation.ts",
+   "name": "SeatingInput",
+   "testOnly": false
+  },
+  {
+   "file": "server/game/stats.ts",
+   "name": "MAX_HISTORY_ROWS_PER_USER",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/stats.ts",
+   "name": "UserStatsView",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/stats.ts",
+   "name": "AchievementStatus",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/tableActions.ts",
+   "name": "TableActionBase",
+   "testOnly": false
+  },
+  {
+   "file": "server/game/tableActions.ts",
+   "name": "TableActionKind",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/tableHandlers.ts",
+   "name": "rehydrateGame",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/tableRouter.ts",
+   "name": "TABLE_ACTION_EVENT",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/tableRouter.ts",
+   "name": "inFlight",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/tableState.ts",
+   "name": "MEMORY_ONLY",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/tableState.ts",
+   "name": "freshMemory",
+   "testOnly": true
+  },
+  {
+   "file": "server/game/tableState.ts",
+   "name": "TableRoom",
+   "testOnly": false
+  },
+  {
+   "file": "server/game/tableState.ts",
+   "name": "TableRestore",
+   "testOnly": false
+  },
+  {
+   "file": "server/http/admin.ts",
+   "name": "ROW_LIMIT",
+   "testOnly": false
+  },
+  {
+   "file": "server/http/admin.ts",
+   "name": "DayCount",
+   "testOnly": false
+  },
+  {
+   "file": "server/http/authTokens.ts",
+   "name": "MAX_CODE_ATTEMPTS",
+   "testOnly": true
+  },
+  {
+   "file": "server/http/bugReports.ts",
+   "name": "BUG_REPORT_PAGE",
+   "testOnly": true
+  },
+  {
+   "file": "server/http/bugReports.ts",
+   "name": "BugReportInput",
+   "testOnly": true
+  },
+  {
+   "file": "server/http/bugReports.ts",
+   "name": "BugReportRow",
+   "testOnly": true
+  },
+  {
+   "file": "server/http/clientErrors.ts",
+   "name": "CLIENT_ERROR_PAGE",
+   "testOnly": true
+  },
+  {
+   "file": "server/http/clientErrors.ts",
+   "name": "ClientErrorInput",
+   "testOnly": true
+  },
+  {
+   "file": "server/http/logger.ts",
+   "name": "REDACT_PATHS",
+   "testOnly": true
+  },
+  {
+   "file": "server/http/logger.ts",
+   "name": "createLogger",
+   "testOnly": true
+  },
+  {
+   "file": "server/http/rateLimit.ts",
+   "name": "LimiterKey",
+   "testOnly": false
+  },
+  {
+   "file": "server/http/rateLimit.ts",
+   "name": "LimiterOptions",
+   "testOnly": false
+  },
+  {
+   "file": "server/http/rateLimit.ts",
+   "name": "maxFrom",
+   "testOnly": true
+  },
+  {
+   "file": "server/http/roundHistoryView.ts",
+   "name": "HistoryParticipant",
+   "testOnly": true
+  },
+  {
+   "file": "server/http/roundHistoryView.ts",
+   "name": "RoundHistoryRow",
+   "testOnly": true
+  },
+  {
+   "file": "server/http/routes.ts",
+   "name": "verificationEmailBody",
+   "testOnly": true
+  },
+  {
+   "file": "server/http/routes.ts",
+   "name": "passwordResetEmailBody",
+   "testOnly": true
+  },
+  {
+   "file": "server/http/routes.ts",
+   "name": "mailLocale",
+   "testOnly": true
+  },
+  {
+   "file": "server/http/schemas.ts",
+   "name": "PASSWORD_MIN",
+   "testOnly": false
+  },
+  {
+   "file": "server/http/session.ts",
+   "name": "SESSION_MAX_AGE_MS",
+   "testOnly": false
+  },
+  {
+   "file": "server/http/shutdown.ts",
+   "name": "PLATFORM_GRACE_MS",
+   "testOnly": true
+  },
+  {
+   "file": "server/http/shutdown.ts",
+   "name": "DRAIN_TIMEOUT_MS",
+   "testOnly": true
+  },
+  {
+   "file": "server/http/shutdown.ts",
+   "name": "DISCONNECT_SETTLE_MS",
+   "testOnly": true
+  },
+  {
+   "file": "server/http/shutdown.ts",
+   "name": "FORCED_EXIT_MS",
+   "testOnly": true
+  },
+  {
+   "file": "server/http/shutdown.ts",
+   "name": "ShutdownDeps",
+   "testOnly": true
+  },
+  {
+   "file": "server/socket/events.ts",
+   "name": "FUNNEL_WINDOW_DAYS",
+   "testOnly": true
+  },
+  {
+   "file": "server/socket/friendships.ts",
+   "name": "FriendshipDeps",
+   "testOnly": true
+  },
+  {
+   "file": "server/socket/friendships.ts",
+   "name": "createFriendships",
+   "testOnly": true
+  },
+  {
+   "file": "server/socket/push.ts",
+   "name": "MAX_DEVICES_PER_USER",
+   "testOnly": true
+  },
+  {
+   "file": "server/socket/push.ts",
+   "name": "tokensFor",
+   "testOnly": true
+  },
+  {
+   "file": "server/socket/pushShape.ts",
+   "name": "renderBody",
+   "testOnly": true
+  },
+  {
+   "file": "server/socket/pushShape.ts",
+   "name": "ExpoPushRequest",
+   "testOnly": false
+  },
+  {
+   "file": "server/socket/pushShape.ts",
+   "name": "DEVICE_NOT_REGISTERED",
+   "testOnly": true
+  },
+  {
+   "file": "server/socket/seating.ts",
+   "name": "STOP_SPECTATING_EVENT",
+   "testOnly": false
+  },
+  {
+   "file": "server/socket/socketAdapter.ts",
+   "name": "DEFAULT_POOL_MAX",
+   "testOnly": true
+  },
+  {
+   "file": "server/socket/socketAdapter.ts",
+   "name": "channelPrefix",
+   "testOnly": true
+  },
+  {
+   "file": "server/socket/socketAdapter.ts",
+   "name": "listenPattern",
+   "testOnly": true
+  },
+  {
+   "file": "server/socket/socketAdapter.ts",
+   "name": "PoolStats",
+   "testOnly": true
+  },
+  {
+   "file": "server/socket/socketAdapter.ts",
+   "name": "meterPool",
+   "testOnly": true
+  },
+  {
+   "file": "server/socket/socketGameplay.ts",
+   "name": "GameplayHandlerContext",
+   "testOnly": false
+  },
+  {
+   "file": "server/socket/socketPresence.ts",
+   "name": "PresenceContext",
+   "testOnly": false
+  },
+  {
+   "file": "server/socket/socketPresence.ts",
+   "name": "SESSION_EVICTION_EVENT",
+   "testOnly": false
+  },
+  {
+   "file": "server/socket/socketPresence.ts",
+   "name": "evictOlderSessions",
+   "testOnly": true
+  },
+  {
+   "file": "server/socket/socketRooms.ts",
+   "name": "RoomHandlerContext",
+   "testOnly": false
+  },
+  {
+   "file": "server/socket/socketSafety.ts",
+   "name": "EventOptions",
+   "testOnly": false
+  },
+  {
+   "file": "server/socket/socketSafety.ts",
+   "name": "__resetRateLimits",
+   "testOnly": true
+  },
+  {
+   "file": "server/socket/socketSafety.ts",
+   "name": "errorEventFor",
+   "testOnly": true
+  },
+  {
+   "file": "server/socket/socketSafety.ts",
+   "name": "EventContext",
+   "testOnly": false
+  },
+  {
+   "file": "server/socket/socketTable.ts",
+   "name": "seatedHumansOf",
+   "testOnly": false
+  },
+  {
+   "file": "server/socket/socketTable.ts",
+   "name": "roomOf",
+   "testOnly": false
+  },
+  {
+   "file": "server/socket/socketTable.ts",
+   "name": "emitRoomStateTo",
+   "testOnly": false
+  },
+  {
+   "file": "server/socket/socketTable.ts",
+   "name": "announceRoomJoinable",
+   "testOnly": false
+  },
+  {
+   "file": "server/socket/ticket.ts",
+   "name": "SocketTicket",
+   "testOnly": false
+  },
+  {
+   "file": "server/store/db.ts",
+   "name": "resolvePoolMax",
+   "testOnly": true
+  },
+  {
+   "file": "server/store/drainPool.ts",
+   "name": "PoolActivity",
+   "testOnly": false
+  },
+  {
+   "file": "server/store/drainPool.ts",
+   "name": "DrainOptions",
+   "testOnly": false
+  },
+  {
+   "file": "server/store/friendStore.ts",
+   "name": "AddFriendResult",
+   "testOnly": true
+  },
+  {
+   "file": "server/store/roomStore.ts",
+   "name": "SeatClaim",
+   "testOnly": true
+  },
+  {
+   "file": "server/store/roomStore.ts",
+   "name": "StartClose",
+   "testOnly": true
+  },
+  {
+   "file": "server/store/roomStore.ts",
+   "name": "JoinableRoom",
+   "testOnly": true
+  },
+  {
+   "file": "server/store/schemaDdl.ts",
+   "name": "schemaStatements",
+   "testOnly": true
+  },
+  {
+   "file": "server/store/schemaDdl.ts",
+   "name": "assertRenamesApplied",
+   "testOnly": true
+  },
+  {
+   "file": "server/store/userStore.ts",
+   "name": "EmailTakenError",
+   "testOnly": true
+  },
+  {
+   "file": "shared/events.ts",
+   "name": "EVENT_NAMES",
+   "testOnly": true
+  },
+  {
+   "file": "shared/events.ts",
+   "name": "SOCKET_CLOSE_REASONS",
+   "testOnly": false
+  },
+  {
+   "file": "shared/events.ts",
+   "name": "SocketCloseReason",
+   "testOnly": false
+  },
+  {
+   "file": "shared/persistedEnvelope.ts",
+   "name": "readPersistedPlayerMap",
+   "testOnly": true
+  },
+  {
+   "file": "shared/persistedEnvelope.ts",
+   "name": "PersistedSeats",
+   "testOnly": true
+  },
+  {
+   "file": "shared/persistedEnvelope.ts",
+   "name": "readPersistedSeats",
+   "testOnly": false
+  },
+  {
+   "file": "shared/persistedEnvelope.ts",
+   "name": "GAME_SCHEMA_VERSION",
+   "testOnly": true
+  },
+  {
+   "file": "shared/persistedEnvelope.ts",
+   "name": "persistedMatchSchema",
+   "testOnly": true
+  },
+  {
+   "file": "shared/persistedEnvelope.ts",
+   "name": "PersistedMatch",
+   "testOnly": true
+  },
+  {
+   "file": "shared/persistedEnvelope.ts",
+   "name": "PersistedRestore",
+   "testOnly": false
+  },
+  {
+   "file": "shared/persistedEnvelope.ts",
+   "name": "persistedEnvelopeSchema",
+   "testOnly": true
+  },
+  {
+   "file": "shared/protocol.ts",
+   "name": "WirePlayer",
+   "testOnly": false
+  },
+  {
+   "file": "shared/protocol.ts",
+   "name": "IntentSchemas",
+   "testOnly": false
+  },
+  {
+   "file": "shared/username.ts",
+   "name": "UsernameProblem",
+   "testOnly": false
+  },
+  {
+   "file": "tools/ci/analyze-maestro-run.mjs",
+   "name": "parseCommandWindows",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/analyze-maestro-run.mjs",
+   "name": "parseHierarchyFetches",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/analyze-maestro-run.mjs",
+   "name": "parseJankFrames",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/analyze-maestro-run.mjs",
+   "name": "appPidAt",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/analyze-maestro-run.mjs",
+   "name": "summarize",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/analyze-maestro-run.mjs",
+   "name": "headline",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/analyze-maestro-run.mjs",
+   "name": "toMarkdownTable",
+   "testOnly": false
+  },
+  {
+   "file": "tools/ci/await-artifact.mjs",
+   "name": "POLL_MS",
+   "testOnly": false
+  },
+  {
+   "file": "tools/ci/await-artifact.mjs",
+   "name": "awaitArtifact",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/budget-gate.mjs",
+   "name": "budgetFinding",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/budget-gate.mjs",
+   "name": "budgetReport",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/budget-gate.mjs",
+   "name": "budgetListArgs",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/budget-gate.mjs",
+   "name": "overBudget",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/budget-gate.mjs",
+   "name": "run",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/clamp-timings.mjs",
+   "name": "clampTimings",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/e2e-budget.mjs",
+   "name": "SLACK_S",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/e2e-budget.mjs",
+   "name": "HARD_FACTOR",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/e2e-budget.mjs",
+   "name": "overBudget",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/e2e-budget.mjs",
+   "name": "default",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/e2e-shard.mjs",
+   "name": "UNMEASURED_SECONDS",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/e2e-shard.mjs",
+   "name": "TARGET_RUN_SECONDS",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/e2e-shard.mjs",
+   "name": "AROUND_SHARDS_SECONDS",
+   "testOnly": false
+  },
+  {
+   "file": "tools/ci/e2e-shard.mjs",
+   "name": "SHARD_OVERHEAD_SECONDS",
+   "testOnly": false
+  },
+  {
+   "file": "tools/ci/e2e-shard.mjs",
+   "name": "SHARD_NOISE",
+   "testOnly": false
+  },
+  {
+   "file": "tools/ci/e2e-shard.mjs",
+   "name": "MAX_CONCURRENT_JOBS",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/e2e-shard.mjs",
+   "name": "MAX_SHARDS",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/e2e-shard.mjs",
+   "name": "readTimings",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/e2e-shard.mjs",
+   "name": "assignShards",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/e2e-shard.mjs",
+   "name": "filesForShard",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/e2e-shard.mjs",
+   "name": "resolveTimings",
+   "testOnly": false
+  },
+  {
+   "file": "tools/ci/e2e-shard.mjs",
+   "name": "medianTimings",
+   "testOnly": false
+  },
+  {
+   "file": "tools/ci/e2e-shard.mjs",
+   "name": "shardsNeeded",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/e2e-shard.mjs",
+   "name": "plan",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/e2e-timings.mjs",
+   "name": "timingsFromReport",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/e2e-timings.mjs",
+   "name": "coverageGap",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/e2eGlobalTimeout.mjs",
+   "name": "localGlobalTimeoutMs",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/e2ePort.mjs",
+   "name": "BASE_PORT",
+   "testOnly": false
+  },
+  {
+   "file": "tools/ci/e2ePort.mjs",
+   "name": "PORT_SPAN",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/e2ePort.mjs",
+   "name": "chooseE2ePort",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/e2ePort.mjs",
+   "name": "CLAIM_TTL_MS",
+   "testOnly": false
+  },
+  {
+   "file": "tools/ci/e2ePort.mjs",
+   "name": "claimedBy",
+   "testOnly": false
+  },
+  {
+   "file": "tools/ci/e2ePort.mjs",
+   "name": "claimPort",
+   "testOnly": false
+  },
+  {
+   "file": "tools/ci/e2ePort.mjs",
+   "name": "takeE2ePort",
+   "testOnly": false
+  },
+  {
+   "file": "tools/ci/edgePixels.mjs",
+   "name": "SOFT_MIN",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/edgePixels.mjs",
+   "name": "edgeVerdict",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/feltPixels.mjs",
+   "name": "BLACK_MAX",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/feltPixels.mjs",
+   "name": "feltVerdict",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/find-native-crash.mjs",
+   "name": "androidCrash",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/find-native-crash.mjs",
+   "name": "androidAnr",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/find-native-crash.mjs",
+   "name": "iosCrash",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/gate.mjs",
+   "name": "gateVerdict",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/gate.mjs",
+   "name": "run",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/ios-wall.mjs",
+   "name": "BUDGET_S",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/ios-wall.mjs",
+   "name": "HARD_FACTOR",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/ios-wall.mjs",
+   "name": "overBudget",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/ios-wall.mjs",
+   "name": "overCeiling",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/ios-wall.mjs",
+   "name": "wallSeconds",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/ios-wall.mjs",
+   "name": "run",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/native-budget.mjs",
+   "name": "BUDGET_S",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/native-budget.mjs",
+   "name": "OUTSIDE_S",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/native-budget.mjs",
+   "name": "CI_SLOWER",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/native-budget.mjs",
+   "name": "HARD_FACTOR",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/native-budget.mjs",
+   "name": "MAX_EXCEPTION_S",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/native-budget.mjs",
+   "name": "EXCEPTIONS",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/native-budget.mjs",
+   "name": "overBudget",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/native-budget.mjs",
+   "name": "default",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/nativeScope.mjs",
+   "name": "patchReader",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/nativeScope.mjs",
+   "name": "needsNative",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/pick-simulator.mjs",
+   "name": "pickSimulator",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/preflightMemory.mjs",
+   "name": "memoryFloor",
+   "testOnly": true
+  },
+  {
+   "file": "tools/ci/preflightMemory.mjs",
+   "name": "memoryVerdict",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/agent-check.mjs",
+   "name": "checkSubject",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/agent-check.mjs",
+   "name": "readSubject",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/agent-check.mjs",
+   "name": "cacheEntry",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/agent-check.mjs",
+   "name": "replays",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/agent-check.mjs",
+   "name": "clip",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/agent-check.mjs",
+   "name": "stepEnv",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/agent-check.mjs",
+   "name": "runStep",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/agent-check.mjs",
+   "name": "runAll",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/agent-check.mjs",
+   "name": "judge",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/brief.mjs",
+   "name": "MODEL_BY_KIND",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/brief.mjs",
+   "name": "readsComments",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/brief.mjs",
+   "name": "commentReads",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/check-steps.mjs",
+   "name": "byName",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/ciVerdict.ts",
+   "name": "CiProgress",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/ciVerdict.ts",
+   "name": "ciProgress",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/ciVerdict.ts",
+   "name": "Verdict",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/ciVerdict.ts",
+   "name": "ghExecOptions",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/ciVerdict.ts",
+   "name": "GhExec",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/ciVerdict.ts",
+   "name": "LandingState",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/ciVerdict.ts",
+   "name": "readLandingState",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/claim.mjs",
+   "name": "slugOf",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/claim.mjs",
+   "name": "claimSteps",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/claim.mjs",
+   "name": "baseOf",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/claim.mjs",
+   "name": "claim",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/claim.mjs",
+   "name": "failedClaim",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/decide.mjs",
+   "name": "handoffOf",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/decide.mjs",
+   "name": "exhausted",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/decide.mjs",
+   "name": "RESUMABLE",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/decide.mjs",
+   "name": "resumePhase",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/decide.mjs",
+   "name": "apiFailure",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/decide.mjs",
+   "name": "waitFor",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/decide.mjs",
+   "name": "afterRefusal",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/decide.mjs",
+   "name": "outcomeOf",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/decide.mjs",
+   "name": "reasonFor",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/guard-bash.mjs",
+   "name": "gitAt",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/guard-bash.mjs",
+   "name": "implementRoute",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/guard-bash.mjs",
+   "name": "check",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/guard-write.mjs",
+   "name": "verdict",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/land.ts",
+   "name": "CiVerdict",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/land.ts",
+   "name": "Landing",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/land.ts",
+   "name": "landing",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/land.ts",
+   "name": "armArgs",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/land.ts",
+   "name": "disarmArgs",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-cost.mjs",
+   "name": "RATES",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/loop-cost.mjs",
+   "name": "summary",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-cost.mjs",
+   "name": "report",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-cost.mjs",
+   "name": "select",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-cost.mjs",
+   "name": "killedLine",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-cost.mjs",
+   "name": "shaTable",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-derive.mjs",
+   "name": "currentBranch",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/loop-derive.mjs",
+   "name": "handoffFor",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-derive.mjs",
+   "name": "fixHolds",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-derive.mjs",
+   "name": "CI_BUDGET_MS",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-gate.mjs",
+   "name": "buildPassed",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-gate.mjs",
+   "name": "lineResolver",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/loop-gate.mjs",
+   "name": "dodVerdict",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-gate.mjs",
+   "name": "MAX_FIX_HOLDS",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-gate.mjs",
+   "name": "roundVerdict",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-logs.mjs",
+   "name": "ARTEFACTS",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-logs.mjs",
+   "name": "reportPath",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/loop-logs.mjs",
+   "name": "supervisorLogPath",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-logs.mjs",
+   "name": "prunable",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-logs.mjs",
+   "name": "SCHEMA",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/loop-logs.mjs",
+   "name": "STDERR_CAP",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-logs.mjs",
+   "name": "sessionRow",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-logs.mjs",
+   "name": "startRow",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/loop-logs.mjs",
+   "name": "totalsOf",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/loop-logs.mjs",
+   "name": "handoffIn",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-logs.mjs",
+   "name": "parkReasonOf",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-logs.mjs",
+   "name": "windowCost",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-logs.mjs",
+   "name": "holdRound",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-render.mjs",
+   "name": "WIDTH",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-render.mjs",
+   "name": "MIN_WIDTH",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-render.mjs",
+   "name": "cols",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-render.mjs",
+   "name": "cut",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/loop-render.mjs",
+   "name": "clamp",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/loop-render.mjs",
+   "name": "row",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/loop-render.mjs",
+   "name": "PHASES",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-render.mjs",
+   "name": "SPIN",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-render.mjs",
+   "name": "KEYS",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-render.mjs",
+   "name": "wrap",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-status.mjs",
+   "name": "report",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-status.mjs",
+   "name": "silentAt",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-status.mjs",
+   "name": "inform",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/loop-status.mjs",
+   "name": "statusFor",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-stream.mjs",
+   "name": "PHASE",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/loop-stream.mjs",
+   "name": "echoedPhase",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/loop-stream.mjs",
+   "name": "scopeEnds",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-stream.mjs",
+   "name": "HANDOFF",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/loop-stream.mjs",
+   "name": "usageOf",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/loop-stream.mjs",
+   "name": "readEvent",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/loop-stream.mjs",
+   "name": "ACCOUNT_ERRORS",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/loop-stream.mjs",
+   "name": "closesTask",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "MainRun",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "FiledIssue",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "MainHealth",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "MAIN_RED_LABEL",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "titleFor",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "WINDOW",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "alreadyFiled",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "staleIssues",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "decideMainHealth",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "mainRunArgs",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "filedIssueArgs",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "closeArgs",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "jobArgs",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "issueArgs",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "bodyFor",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "Gh",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "readMain",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "checkMain",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "MainFailures",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/mainHealth.ts",
+   "name": "mainFailures",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/next-ticket.mjs",
+   "name": "LAUNCH_MILESTONE",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/next-ticket.mjs",
+   "name": "openIssues",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/next-ticket.mjs",
+   "name": "sizeOf",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/next-ticket.mjs",
+   "name": "routeOf",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/next-ticket.mjs",
+   "name": "stranded",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/next-ticket.mjs",
+   "name": "launchOpen",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/next-ticket.mjs",
+   "name": "classify",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/next-ticket.mjs",
+   "name": "claimedElsewhere",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/next-ticket.mjs",
+   "name": "takeable",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/next-ticket.mjs",
+   "name": "rank",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/next-ticket.mjs",
+   "name": "waitingOn",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/next-ticket.mjs",
+   "name": "pickRoute",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/next-ticket.mjs",
+   "name": "takeableReasons",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "liveRoute",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "nextRoute",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "turnsFor",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "contextFor",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "allowedTools",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "queueLoopArgs",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "reinstall",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "syncCheckout",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "CI_ROUNDS",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "MAX_HANDOFFS",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "BREAKER",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "HEARTBEAT_MS",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "holdFor",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "park",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "repark",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "removeWorktree",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "removeLanded",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "publishForReview",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "refreshWorktree",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "ticketFacts",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "sessionEnv",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "roundOf",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "openTicket",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "sessionView",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "ticketRun",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "runTicket",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "loopMoved",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "loopSha",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "pushedPr",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "settle",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "TICKET_HOLDS",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "parkAndRecord",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "runOnce",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "journaled",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "screenEvents",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "main",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/reap.mjs",
+   "name": "checkoutRoot",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/reap.mjs",
+   "name": "toolingRoots",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/reap.mjs",
+   "name": "ownedByTooling",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/reap.mjs",
+   "name": "orphans",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/reap.mjs",
+   "name": "staleByAge",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/reap.mjs",
+   "name": "parseWindowsProcessJson",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/reap.mjs",
+   "name": "readProcessTable",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/reap.mjs",
+   "name": "wouldTakeSelf",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/reap.mjs",
+   "name": "isSessionHost",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/reap.mjs",
+   "name": "netstatListeners",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/reap.mjs",
+   "name": "stalePortHolders",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/related-tests.mjs",
+   "name": "NATIVE_TEST",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/related-tests.mjs",
+   "name": "CODE",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/related-tests.mjs",
+   "name": "LOCAL_PROJECTS",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/related-tests.mjs",
+   "name": "onLocalProjects",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/related-tests.mjs",
+   "name": "localProjectOf",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/related-tests.mjs",
+   "name": "nearTests",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/related-tests.mjs",
+   "name": "NEAR_CAP",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/related-tests.mjs",
+   "name": "capNear",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/related-tests.mjs",
+   "name": "listedTests",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/run-loop.mjs",
+   "name": "supervise",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/settle.mjs",
+   "name": "startSettle",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/settle.mjs",
+   "name": "rested",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/settle.mjs",
+   "name": "overdueAt",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/settle.mjs",
+   "name": "endSettle",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/settle.mjs",
+   "name": "stepSettle",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/settle.mjs",
+   "name": "failingFiles",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/settle.mjs",
+   "name": "ciRedBody",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/settle.mjs",
+   "name": "onMainLine",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/tracker.mjs",
+   "name": "fakeTracker",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/workspace.mjs",
+   "name": "reparsePointNames",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/workspace.mjs",
+   "name": "detachLinks",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/workspace.mjs",
+   "name": "findOrphanedWorktreeDirs",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/workspace.mjs",
+   "name": "misnamedWorktrees",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/workspace.mjs",
+   "name": "removeWorktree",
+   "testOnly": false
+  },
+  {
+   "file": "tools/loop/workspace.mjs",
+   "name": "sweep",
+   "testOnly": true
+  },
+  {
+   "file": "tools/loop/workspace.mjs",
+   "name": "lockDrift",
+   "testOnly": true
+  }
+ ],
+ "orphans": [
+  {
+   "file": "modules/murlan-diagnostics/app.plugin.js",
+   "testImporters": 0
+  }
+ ],
+ "cycles": [
+  [
+   "lib/wire.ts",
+   "lib/game/matchState.ts",
+   "lib/game/botPersonalities.ts",
+   "lib/game/gameEngine.ts",
+   "shared/protocol.ts",
+   "lib/i18n.ts"
+  ],
+  [
+   "components/table/particles.ts",
+   "components/table/air.ts"
+  ]
+ ],
+ "layerEdges": {
+  "app -> lib": 131,
+  "app -> components": 112,
+  "app -> context": 35,
+  "app -> lib/game": 15,
+  "app -> shared": 2,
+  "components -> lib": 242,
+  "components -> lib/game": 50,
+  "components -> shared": 4,
+  "components -> context": 8,
+  "components -> modules": 1,
+  "context -> lib": 34,
+  "context -> lib/game": 8,
+  "context -> shared": 2,
+  "context -> components": 1,
+  "eslint.config -> eslint.selectors": 1,
+  "lib -> lib/game": 10,
+  "lib -> modules": 3,
+  "lib/game -> lib": 8,
+  "lib -> shared": 4,
+  "scripts -> tools": 2,
+  "scripts -> lib": 2,
+  "scripts -> components": 2,
+  "scripts -> lib/game": 4,
+  "server -> lib": 10,
+  "server -> lib/game": 29,
+  "server -> shared": 50,
+  "shared -> locales": 3,
+  "shared -> lib/game": 4,
+  "shared -> lib": 1,
+  "tools -> scripts": 29,
+  "tools -> jest.config": 1
+ },
+ "violations": [
+  "shared/protocol.ts -> lib/game/gameEngine.ts",
+  "shared/protocol.ts -> lib/game/matchState.ts",
+  "shared/protocol.ts -> lib/wire.ts",
+  "shared/schema.ts -> lib/game/gameEngine.ts",
+  "shared/schema.ts -> lib/game/replay.ts"
+ ],
+ "prodImportsTest": [
+  "scripts/measureHeadsUpBalance.ts -> tests/helpers/offlineMatch.ts",
+  "scripts/measureHeadsUpBalance.ts -> tests/engine/helpers.ts"
+ ],
+ "unresolved": [],
+ "dupes": [
+  {
+   "a": [
+    "locales/en.ts",
+    13,
+    35
+   ],
+   "b": [
+    "locales/it.ts",
+    6,
+    1041
+   ],
+   "lines": 1036
+  },
+  {
+   "a": [
+    "locales/en.ts",
+    13,
+    35
+   ],
+   "b": [
+    "locales/sq.ts",
+    22,
+    1047
+   ],
+   "lines": 1026
+  },
+  {
+   "a": [
+    "locales/en.ts",
+    15,
+    35
+   ],
+   "b": [
+    "locales/en.ts",
+    20,
+    1044
+   ],
+   "lines": 1025
+  },
+  {
+   "a": [
+    "components/table/scorePill.tsx",
+    81,
+    111
+   ],
+   "b": [
+    "lib/tokens.ts",
+    6,
+    131
+   ],
+   "lines": 126
+  },
+  {
+   "a": [
+    "context/onlineGameHooks.ts",
+    34,
+    84
+   ],
+   "b": [
+    "context/onlineGameHooks.ts",
+    76,
+    119
+   ],
+   "lines": 44
+  },
+  {
+   "a": [
+    "components/table/scorePill.tsx",
+    81,
+    111
+   ],
+   "b": [
+    "lib/tokens.ts",
+    425,
+    467
+   ],
+   "lines": 43
+  },
+  {
+   "a": [
+    "lib/tokens.ts",
+    4,
+    31
+   ],
+   "b": [
+    "lib/tokens.ts",
+    415,
+    455
+   ],
+   "lines": 41
+  },
+  {
+   "a": [
+    "lib/tokens.ts",
+    96,
+    131
+   ],
+   "b": [
+    "lib/tokens.ts",
+    429,
+    467
+   ],
+   "lines": 39
+  },
+  {
+   "a": [
+    "server/http/routes.ts",
+    200,
+    245
+   ],
+   "b": [
+    "server/http/routes.ts",
+    216,
+    253
+   ],
+   "lines": 38
+  },
+  {
+   "a": [
+    "components/table/matchBoard.tsx",
+    32,
+    50
+   ],
+   "b": [
+    "lib/tokens.ts",
+    431,
+    467
+   ],
+   "lines": 37
+  },
+  {
+   "a": [
+    "lib/tokens.ts",
+    386,
+    414
+   ],
+   "b": [
+    "lib/tokens.ts",
+    436,
+    470
+   ],
+   "lines": 35
+  },
+  {
+   "a": [
+    "app/recover.tsx",
+    112,
+    140
+   ],
+   "b": [
+    "app/verify-email.tsx",
+    101,
+    132
+   ],
+   "lines": 32
+  },
+  {
+   "a": [
+    "lib/captureStates.ts",
+    65,
+    93
+   ],
+   "b": [
+    "lib/captureStates.ts",
+    73,
+    103
+   ],
+   "lines": 31
+  },
+  {
+   "a": [
+    "components/table/matchBoard.tsx",
+    32,
+    50
+   ],
+   "b": [
+    "lib/tokens.ts",
+    103,
+    133
+   ],
+   "lines": 31
+  },
+  {
+   "a": [
+    "server/http/routes.ts",
+    271,
+    298
+   ],
+   "b": [
+    "server/http/routes.ts",
+    280,
+    310
+   ],
+   "lines": 31
+  },
+  {
+   "a": [
+    "components/SettingsModal.tsx",
+    267,
+    281
+   ],
+   "b": [
+    "components/SettingsModal.tsx",
+    284,
+    309
+   ],
+   "lines": 26
+  },
+  {
+   "a": [
+    "lib/device/audioEngine.ts",
+    6,
+    36
+   ],
+   "b": [
+    "lib/device/audioEngine.web.ts",
+    1,
+    26
+   ],
+   "lines": 26
+  },
+  {
+   "a": [
+    "server/socket/socketGameplay.ts",
+    113,
+    132
+   ],
+   "b": [
+    "server/socket/socketGameplay.ts",
+    156,
+    181
+   ],
+   "lines": 26
+  },
+  {
+   "a": [
+    "app/(online)/quickmatch.tsx",
+    47,
+    70
+   ],
+   "b": [
+    "app/(online)/quickmatch.tsx",
+    55,
+    78
+   ],
+   "lines": 24
+  },
+  {
+   "a": [
+    "app/recover.tsx",
+    86,
+    108
+   ],
+   "b": [
+    "app/recover.tsx",
+    141,
+    163
+   ],
+   "lines": 23
+  },
+  {
+   "a": [
+    "locales/it.ts",
+    4,
+    26
+   ],
+   "b": [
+    "locales/sq.ts",
+    20,
+    42
+   ],
+   "lines": 23
+  },
+  {
+   "a": [
+    "components/table/actions.tsx",
+    82,
+    106
+   ],
+   "b": [
+    "components/table/actions.tsx",
+    224,
+    245
+   ],
+   "lines": 22
+  },
+  {
+   "a": [
+    "components/table/scorePill.tsx",
+    82,
+    100
+   ],
+   "b": [
+    "components/table/scorePill.tsx",
+    87,
+    108
+   ],
+   "lines": 22
+  },
+  {
+   "a": [
+    "lib/tokens.ts",
+    590,
+    617
+   ],
+   "b": [
+    "lib/tokens.ts",
+    613,
+    634
+   ],
+   "lines": 22
+  },
+  {
+   "a": [
+    "app/(online)/room.tsx",
+    76,
+    96
+   ],
+   "b": [
+    "app/(online)/room.tsx",
+    117,
+    137
+   ],
+   "lines": 21
+  },
+  {
+   "a": [
+    "locales/en.ts",
+    1025,
+    1045
+   ],
+   "b": [
+    "locales/it.ts",
+    1022,
+    1042
+   ],
+   "lines": 21
+  },
+  {
+   "a": [
+    "locales/en.ts",
+    1025,
+    1045
+   ],
+   "b": [
+    "locales/sq.ts",
+    1028,
+    1048
+   ],
+   "lines": 21
+  },
+  {
+   "a": [
+    "components/homeCardField.ts",
+    43,
+    62
+   ],
+   "b": [
+    "components/homeCardField.ts",
+    53,
+    72
+   ],
+   "lines": 20
+  },
+  {
+   "a": [
+    "server/store/friendStore.ts",
+    24,
+    34
+   ],
+   "b": [
+    "server/store/friendStore.ts",
+    34,
+    52
+   ],
+   "lines": 19
+  },
+  {
+   "a": [
+    "app/(online)/room.tsx",
+    779,
+    797
+   ],
+   "b": [
+    "app/(online)/room.tsx",
+    790,
+    807
+   ],
+   "lines": 18
+  },
+  {
+   "a": [
+    "lib/e2eBotSuspend.ts",
+    5,
+    22
+   ],
+   "b": [
+    "lib/e2eRealExchange.ts",
+    5,
+    22
+   ],
+   "lines": 18
+  },
+  {
+   "a": [
+    "components/table/moments.tsx",
+    162,
+    179
+   ],
+   "b": [
+    "components/table/moments.tsx",
+    243,
+    259
+   ],
+   "lines": 17
+  },
+  {
+   "a": [
+    "app/(online)/room.tsx",
+    611,
+    626
+   ],
+   "b": [
+    "app/(online)/room.tsx",
+    655,
+    670
+   ],
+   "lines": 16
+  },
+  {
+   "a": [
+    "app/(online)/room.tsx",
+    804,
+    821
+   ],
+   "b": [
+    "app/(online)/room.tsx",
+    810,
+    824
+   ],
+   "lines": 15
+  },
+  {
+   "a": [
+    "lib/device/soundAssets.ts",
+    2,
+    8
+   ],
+   "b": [
+    "lib/device/soundAssets.ts",
+    7,
+    21
+   ],
+   "lines": 15
+  },
+  {
+   "a": [
+    "server/http/routes.ts",
+    486,
+    502
+   ],
+   "b": [
+    "server/http/routes.ts",
+    564,
+    578
+   ],
+   "lines": 15
+  },
+  {
+   "a": [
+    "server/socket/socketGameplay.ts",
+    87,
+    101
+   ],
+   "b": [
+    "server/socket/socketGameplay.ts",
+    99,
+    113
+   ],
+   "lines": 15
+  },
+  {
+   "a": [
+    "app/(online)/room.tsx",
+    766,
+    782
+   ],
+   "b": [
+    "app/(online)/room.tsx",
+    838,
+    851
+   ],
+   "lines": 14
+  },
+  {
+   "a": [
+    "app/(online)/room.tsx",
+    162,
+    175
+   ],
+   "b": [
+    "app/lobby.tsx",
+    249,
+    262
+   ],
+   "lines": 14
+  },
+  {
+   "a": [
+    "app/recover.tsx",
+    60,
+    73
+   ],
+   "b": [
+    "app/verify-email.tsx",
+    81,
+    94
+   ],
+   "lines": 14
+  },
+  {
+   "a": [
+    "app/auth.tsx",
+    165,
+    177
+   ],
+   "b": [
+    "app/recover.tsx",
+    77,
+    89
+   ],
+   "lines": 13
+  },
+  {
+   "a": [
+    "app/recover.tsx",
+    73,
+    85
+   ],
+   "b": [
+    "app/recover.tsx",
+    114,
+    126
+   ],
+   "lines": 13
+  },
+  {
+   "a": [
+    "components/SettingsModal.tsx",
+    236,
+    248
+   ],
+   "b": [
+    "components/SettingsModal.tsx",
+    252,
+    264
+   ],
+   "lines": 13
+  },
+  {
+   "a": [
+    "lib/device/soundAssets.ts",
+    49,
+    55
+   ],
+   "b": [
+    "lib/tokens.ts",
+    556,
+    568
+   ],
+   "lines": 13
+  },
+  {
+   "a": [
+    "server/http/routes.ts",
+    871,
+    883
+   ],
+   "b": [
+    "server/http/routes.ts",
+    877,
+    889
+   ],
+   "lines": 13
+  },
+  {
+   "a": [
+    "app/(online)/leaderboard.tsx",
+    6,
+    15
+   ],
+   "b": [
+    "server/socket/socket.ts",
+    13,
+    25
+   ],
+   "lines": 13
+  },
+  {
+   "a": [
+    "app/(online)/index.tsx",
+    387,
+    398
+   ],
+   "b": [
+    "app/(online)/index.tsx",
+    402,
+    413
+   ],
+   "lines": 12
+  },
+  {
+   "a": [
+    "app/auth.tsx",
+    188,
+    199
+   ],
+   "b": [
+    "app/recover.tsx",
+    79,
+    90
+   ],
+   "lines": 12
+  },
+  {
+   "a": [
+    "components/MenuButton.tsx",
+    54,
+    64
+   ],
+   "b": [
+    "components/table/actions.tsx",
+    97,
+    108
+   ],
+   "lines": 12
+  },
+  {
+   "a": [
+    "lib/device/soundAssets.ts",
+    41,
+    46
+   ],
+   "b": [
+    "lib/tokens.ts",
+    556,
+    567
+   ],
+   "lines": 12
+  },
+  {
+   "a": [
+    "app/(online)/index.tsx",
+    169,
+    179
+   ],
+   "b": [
+    "app/lobby.tsx",
+    212,
+    222
+   ],
+   "lines": 11
+  },
+  {
+   "a": [
+    "app/auth.tsx",
+    165,
+    175
+   ],
+   "b": [
+    "app/recover.tsx",
+    118,
+    128
+   ],
+   "lines": 11
+  },
+  {
+   "a": [
+    "app/auth.tsx",
+    165,
+    175
+   ],
+   "b": [
+    "app/verify-email.tsx",
+    107,
+    117
+   ],
+   "lines": 11
+  },
+  {
+   "a": [
+    "app/auth.tsx",
+    165,
+    175
+   ],
+   "b": [
+    "app/verify-email.tsx",
+    122,
+    132
+   ],
+   "lines": 11
+  },
+  {
+   "a": [
+    "components/MenuButton.tsx",
+    54,
+    64
+   ],
+   "b": [
+    "components/table/actions.tsx",
+    236,
+    246
+   ],
+   "lines": 11
+  },
+  {
+   "a": [
+    "lib/tokens.ts",
+    285,
+    300
+   ],
+   "b": [
+    "lib/tokens.ts",
+    294,
+    304
+   ],
+   "lines": 11
+  },
+  {
+   "a": [
+    "app/(online)/replay.tsx",
+    7,
+    19
+   ],
+   "b": [
+    "server/app.ts",
+    7,
+    17
+   ],
+   "lines": 11
+  },
+  {
+   "a": [
+    "app/verify-email.tsx",
+    4,
+    14
+   ],
+   "b": [
+    "server/app.ts",
+    10,
+    20
+   ],
+   "lines": 11
+  },
+  {
+   "a": [
+    "shared/protocol.ts",
+    102,
+    112
+   ],
+   "b": [
+    "shared/protocol.ts",
+    107,
+    117
+   ],
+   "lines": 11
+  },
+  {
+   "a": [
+    "app/(online)/room.tsx",
+    524,
+    533
+   ],
+   "b": [
+    "app/(online)/room.tsx",
+    535,
+    544
+   ],
+   "lines": 10
+  },
+  {
+   "a": [
+    "components/SettingsModal.tsx",
+    237,
+    246
+   ],
+   "b": [
+    "components/SettingsModal.tsx",
+    270,
+    279
+   ],
+   "lines": 10
+  },
+  {
+   "a": [
+    "components/SettingsModal.tsx",
+    267,
+    276
+   ],
+   "b": [
+    "components/SettingsModal.tsx",
+    317,
+    326
+   ],
+   "lines": 10
+  },
+  {
+   "a": [
+    "components/table/noticeModel.ts",
+    53,
+    58
+   ],
+   "b": [
+    "components/table/noticeModel.ts",
+    58,
+    67
+   ],
+   "lines": 10
+  },
+  {
+   "a": [
+    "lib/device/soundAssets.ts",
+    40,
+    47
+   ],
+   "b": [
+    "lib/device/soundAssets.ts",
+    45,
+    54
+   ],
+   "lines": 10
+  },
+  {
+   "a": [
+    "server/game/tableHandlers.ts",
+    202,
+    214
+   ],
+   "b": [
+    "server/game/tableHandlers.ts",
+    260,
+    269
+   ],
+   "lines": 10
+  },
+  {
+   "a": [
+    "components/homeCardField.ts",
+    87,
+    98
+   ],
+   "b": [
+    "components/homeCardField.ts",
+    98,
+    106
+   ],
+   "lines": 9
+  },
+  {
+   "a": [
+    "components/table/notices/tableLines.tsx",
+    4,
+    12
+   ],
+   "b": [
+    "components/table/notices/tableLines.tsx",
+    14,
+    22
+   ],
+   "lines": 9
+  },
+  {
+   "a": [
+    "app/(online)/index.tsx",
+    22,
+    30
+   ],
+   "b": [
+    "server/game/retention.ts",
+    10,
+    18
+   ],
+   "lines": 9
+  },
+  {
+   "a": [
+    "server/socket/friendships.ts",
+    111,
+    120
+   ],
+   "b": [
+    "server/socket/friendships.ts",
+    117,
+    125
+   ],
+   "lines": 9
+  },
+  {
+   "a": [
+    "app/(online)/index.tsx",
+    297,
+    304
+   ],
+   "b": [
+    "app/(online)/index.tsx",
+    319,
+    326
+   ],
+   "lines": 8
+  },
+  {
+   "a": [
+    "components/table/particleLayer.tsx",
+    27,
+    34
+   ],
+   "b": [
+    "components/table/particleLayer.web.tsx",
+    9,
+    16
+   ],
+   "lines": 8
+  }
+ ],
+ "bigFns": [
+  {
+   "file": "components/GameTable.tsx",
+   "name": "GameTable",
+   "line": 353,
+   "len": 1310
+  },
+  {
+   "file": "context/OnlineGameContext.tsx",
+   "name": "OnlineGameProvider",
+   "line": 276,
+   "len": 845
+  },
+  {
+   "file": "components/table/hand.tsx",
+   "name": "StraightHand",
+   "line": 640,
+   "len": 803
+  },
+  {
+   "file": "server/http/routes.ts",
+   "name": "registerRoutes",
+   "line": 410,
+   "len": 632
+  },
+  {
+   "file": "app/(online)/friends.tsx",
+   "name": "FriendsScreen",
+   "line": 52,
+   "len": 453
+  },
+  {
+   "file": "context/SocketContext.tsx",
+   "name": "SocketProvider",
+   "line": 119,
+   "len": 409
+  },
+  {
+   "file": "app/(online)/index.tsx",
+   "name": "OnlineLobbyScreen",
+   "line": 34,
+   "len": 391
+  },
+  {
+   "file": "tools/loop/loop-screen.mjs",
+   "name": "ticker",
+   "line": 74,
+   "len": 386
+  },
+  {
+   "file": "context/OnlineGameContext.tsx",
+   "name": "(anon)",
+   "line": 498,
+   "len": 384
+  },
+  {
+   "file": "components/SettingsModal.tsx",
+   "name": "SettingsModal",
+   "line": 64,
+   "len": 378
+  },
+  {
+   "file": "app/(online)/room.tsx",
+   "name": "RoomScreen",
+   "line": 311,
+   "len": 367
+  },
+  {
+   "file": "app/tutorial.tsx",
+   "name": "TutorialScreen",
+   "line": 456,
+   "len": 362
+  },
+  {
+   "file": "app/(online)/game.tsx",
+   "name": "OnlineGameScreen",
+   "line": 49,
+   "len": 317
+  },
+  {
+   "file": "app/profile.tsx",
+   "name": "ProfileScreen",
+   "line": 531,
+   "len": 317
+  },
+  {
+   "file": "components/table/hand.tsx",
+   "name": "CardItemBase",
+   "line": 259,
+   "len": 302
+  },
+  {
+   "file": "components/table/pile.tsx",
+   "name": "usePileFlight",
+   "line": 619,
+   "len": 278
+  },
+  {
+   "file": "context/GameContext.tsx",
+   "name": "GameProvider",
+   "line": 143,
+   "len": 262
+  },
+  {
+   "file": "components/table/scorePill.tsx",
+   "name": "ScorePill",
+   "line": 111,
+   "len": 260
+  },
+  {
+   "file": "app/index.tsx",
+   "name": "HomeScreen",
+   "line": 651,
+   "len": 254
+  },
+  {
+   "file": "app/auth.tsx",
+   "name": "AuthScreen",
+   "line": 32,
+   "len": 240
+  },
+  {
+   "file": "context/SocketContext.tsx",
+   "name": "(anon)",
+   "line": 255,
+   "len": 234
+  },
+  {
+   "file": "components/CardView.tsx",
+   "name": "CardViewBase",
+   "line": 422,
+   "len": 222
+  },
+  {
+   "file": "app/(online)/quickmatch.tsx",
+   "name": "QuickmatchScreen",
+   "line": 82,
+   "len": 209
+  },
+  {
+   "file": "server/socket/socketRooms.ts",
+   "name": "registerRoomHandlers",
+   "line": 47,
+   "len": 209
+  },
+  {
+   "file": "app/game.tsx",
+   "name": "GameScreen",
+   "line": 38,
+   "len": 201
+  },
+  {
+   "file": "app/lobby.tsx",
+   "name": "LobbyScreen",
+   "line": 112,
+   "len": 201
+  },
+  {
+   "file": "components/table/settingsSheet.tsx",
+   "name": "GameSettingsSheet",
+   "line": 189,
+   "len": 195
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "runOnce",
+   "line": 1098,
+   "len": 194
+  },
+  {
+   "file": "app/(online)/replay.tsx",
+   "name": "ReplayScreen",
+   "line": 40,
+   "len": 192
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "main",
+   "line": 1505,
+   "len": 191
+  },
+  {
+   "file": "components/table/seats.tsx",
+   "name": "SeatRing",
+   "line": 387,
+   "len": 185
+  },
+  {
+   "file": "app/tutorial.tsx",
+   "name": "renderBody",
+   "line": 608,
+   "len": 181
+  },
+  {
+   "file": "server/game/roundOver.ts",
+   "name": "handleRoundOver",
+   "line": 59,
+   "len": 181
+  },
+  {
+   "file": "app/tutorial.tsx",
+   "name": "buildBeats",
+   "line": 196,
+   "len": 178
+  },
+  {
+   "file": "components/table/ExchangeLegs.tsx",
+   "name": "ExchangeLegs",
+   "line": 159,
+   "len": 161
+  },
+  {
+   "file": "components/table/actions.tsx",
+   "name": "GiocaButton",
+   "line": 51,
+   "len": 158
+  },
+  {
+   "file": "components/table/pile.tsx",
+   "name": "PileLayer",
+   "line": 407,
+   "len": 158
+  },
+  {
+   "file": "app/recover.tsx",
+   "name": "RecoverScreen",
+   "line": 22,
+   "len": 153
+  },
+  {
+   "file": "server/game/onlineGameLogic.ts",
+   "name": "resolveRoundEnd",
+   "line": 348,
+   "len": 147
+  },
+  {
+   "file": "app/verify-email.tsx",
+   "name": "VerifyEmailScreen",
+   "line": 24,
+   "len": 145
+  },
+  {
+   "file": "components/table/notices/hud.tsx",
+   "name": "TurnChip",
+   "line": 59,
+   "len": 144
+  },
+  {
+   "file": "lib/game/bot.ts",
+   "name": "botChoosePlay",
+   "line": 222,
+   "len": 144
+  },
+  {
+   "file": "components/table/useLampRig.ts",
+   "name": "useLampRig",
+   "line": 42,
+   "len": 142
+  },
+  {
+   "file": "components/NotificationBanner.tsx",
+   "name": "NotificationBanner",
+   "line": 80,
+   "len": 140
+  },
+  {
+   "file": "components/useTableFeedback.ts",
+   "name": "useTableFeedback",
+   "line": 256,
+   "len": 137
+  },
+  {
+   "file": "context/AuthContext.tsx",
+   "name": "AuthProvider",
+   "line": 76,
+   "len": 137
+  },
+  {
+   "file": "server/game/tableHandlers.ts",
+   "name": "startMatchAction",
+   "line": 509,
+   "len": 136
+  },
+  {
+   "file": "components/table/particleLayer.tsx",
+   "name": "ParticleLayer",
+   "line": 121,
+   "len": 135
+  },
+  {
+   "file": "server/socket/friendships.ts",
+   "name": "createFriendships",
+   "line": 56,
+   "len": 135
+  },
+  {
+   "file": "server/socket/socket.ts",
+   "name": "setupSocket",
+   "line": 76,
+   "len": 131
+  },
+  {
+   "file": "components/ErrorFallback.tsx",
+   "name": "ErrorFallback",
+   "line": 28,
+   "len": 130
+  },
+  {
+   "file": "tools/loop/queue-loop.mjs",
+   "name": "realPorts",
+   "line": 1355,
+   "len": 129
+  },
+  {
+   "file": "components/table/pile.tsx",
+   "name": "PlayGroup",
+   "line": 136,
+   "len": 128
+  },
+  {
+   "file": "components/Slider.tsx",
+   "name": "Slider",
+   "line": 42,
+   "len": 127
+  },
+  {
+   "file": "components/table/seats.tsx",
+   "name": "CountdownRing",
+   "line": 256,
+   "len": 126
+  },
+  {
+   "file": "app/profile.tsx",
+   "name": "UserCard",
+   "line": 80,
+   "len": 123
+  },
+  {
+   "file": "app/(online)/leaderboard.tsx",
+   "name": "LeaderboardScreen",
+   "line": 28,
+   "len": 122
+  },
+  {
+   "file": "server/http/adminPage.ts",
+   "name": "renderAdminPage",
+   "line": 53,
+   "len": 122
+  },
+  {
+   "file": "tools/loop/loop-derive.mjs",
+   "name": "derive",
+   "line": 426,
+   "len": 122
+  },
+  {
+   "file": "app/(online)/room.tsx",
+   "name": "InviteFriendsPanel",
+   "line": 190,
+   "len": 120
+  },
+  {
+   "file": "app/profile.tsx",
+   "name": "ChangePasswordCard",
+   "line": 210,
+   "len": 119
+  },
+  {
+   "file": "server/game/stats.ts",
+   "name": "recordGameResult",
+   "line": 45,
+   "len": 119
+  },
+  {
+   "file": "server/socket/socketGameplay.ts",
+   "name": "registerGameplayHandlers",
+   "line": 66,
+   "len": 117
+  },
+  {
+   "file": "components/table/handShadeCanvas.tsx",
+   "name": "HandShadeCanvas",
+   "line": 18,
+   "len": 116
+  },
+  {
+   "file": "components/table/TableNotice.tsx",
+   "name": "TableNotice",
+   "line": 86,
+   "len": 114
+  },
+  {
+   "file": "components/RoomSeatList.tsx",
+   "name": "RoomSeatList",
+   "line": 53,
+   "len": 113
+  },
+  {
+   "file": "components/useTableFeedback.ts",
+   "name": "useImpactFeedback",
+   "line": 144,
+   "len": 111
+  },
+  {
+   "file": "server/game/gameTurn.ts",
+   "name": "vacateSeat",
+   "line": 313,
+   "len": 110
+  },
+  {
+   "file": "app/rules.tsx",
+   "name": "RulesScreen",
+   "line": 100,
+   "len": 109
+  },
+  {
+   "file": "components/MenuLayout.tsx",
+   "name": "MenuLayout",
+   "line": 81,
+   "len": 107
+  },
+  {
+   "file": "context/SettingsContext.tsx",
+   "name": "SettingsProvider",
+   "line": 109,
+   "len": 106
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "foldRoundIntoMatch",
+   "line": 1402,
+   "len": 106
+  },
+  {
+   "file": "server/store/schemaDdl.ts",
+   "name": "schemaStatements",
+   "line": 325,
+   "len": 104
+  },
+  {
+   "file": "tools/loop/loop-session.mjs",
+   "name": "runSession",
+   "line": 19,
+   "len": 104
+  },
+  {
+   "file": "components/table/scorePill.tsx",
+   "name": "StandingRowView",
+   "line": 372,
+   "len": 102
+  },
+  {
+   "file": "components/table/selectionLeaves.tsx",
+   "name": "GiocaControl",
+   "line": 61,
+   "len": 102
+  },
+  {
+   "file": "app/profile.tsx",
+   "name": "AddEmailCard",
+   "line": 338,
+   "len": 99
+  },
+  {
+   "file": "tools/loop/loop-stream.mjs",
+   "name": "readEvent",
+   "line": 135,
+   "len": 99
+  },
+  {
+   "file": "components/table/seats.tsx",
+   "name": "SeatWho",
+   "line": 676,
+   "len": 98
+  },
+  {
+   "file": "components/table/feltCanvas.tsx",
+   "name": "FeltCanvas",
+   "line": 296,
+   "len": 95
+  },
+  {
+   "file": "components/table/actions.tsx",
+   "name": "PassaButton",
+   "line": 210,
+   "len": 94
+  },
+  {
+   "file": "scripts/measureHeadsUpBalance.ts",
+   "name": "main",
+   "line": 460,
+   "len": 94
+  },
+  {
+   "file": "components/BenchScreen.tsx",
+   "name": "BenchScreen",
+   "line": 55,
+   "len": 93
+  },
+  {
+   "file": "components/table/pile.tsx",
+   "name": "(anon)",
+   "line": 707,
+   "len": 93
+  },
+  {
+   "file": "components/table/useRoundEnding.ts",
+   "name": "useRoundEnding",
+   "line": 32,
+   "len": 89
+  },
+  {
+   "file": "lib/game/gameEngine.ts",
+   "name": "initializeRematch",
+   "line": 860,
+   "len": 88
+  },
+  {
+   "file": "tools/loop/loop-logs.mjs",
+   "name": "ledger",
+   "line": 269,
+   "len": 88
+  },
+  {
+   "file": "tools/loop/settle.mjs",
+   "name": "perform",
+   "line": 428,
+   "len": 87
+  },
+  {
+   "file": "server/game/stats.ts",
+   "name": "(anon)",
+   "line": 72,
+   "len": 84
+  },
+  {
+   "file": "server/socket/socketPresence.ts",
+   "name": "registerDisconnect",
+   "line": 140,
+   "len": 84
+  },
+  {
+   "file": "components/table/feltCanvas.tsx",
+   "name": "useShadowPicture",
+   "line": 101,
+   "len": 82
+  },
+  {
+   "file": "app/index.tsx",
+   "name": "HomePlayerUnit",
+   "line": 464,
+   "len": 81
+  },
+  {
+   "file": "components/table/pile.tsx",
+   "name": "PlayCard",
+   "line": 265,
+   "len": 81
+  },
+  {
+   "file": "server/socket/socketPresence.ts",
+   "name": "(anon)",
+   "line": 142,
+   "len": 81
+  }
+ ],
+ "mocks": [
+  [
+   "expo-router",
+   47
+  ],
+  [
+   "lib/accessibility.ts",
+   46
+  ],
+  [
+   "context/AuthContext.tsx",
+   36
+  ],
+  [
+   "context/SocketContext.tsx",
+   20
+  ],
+  [
+   "lib/query-client.ts",
+   19
+  ],
+  [
+   "context/NotificationContext.tsx",
+   15
+  ],
+  [
+   "context/onlineGameHooks.ts",
+   14
+  ],
+  [
+   "@react-native-community/netinfo",
+   12
+  ],
+  [
+   "@tanstack/react-query",
+   12
+  ],
+  [
+   "react-native/Libraries/Utilities/useWindowDimensions",
+   11
+  ],
+  [
+   "lib/diagnostics/recorder.ts",
+   10
+  ],
+  [
+   "lib/socket.ts",
+   9
+  ],
+  [
+   "context/GameContext.tsx",
+   9
+  ],
+  [
+   "components/GameTable.tsx",
+   8
+  ],
+  [
+   "react-native-reanimated",
+   7
+  ],
+  [
+   "lib/e2eTrace.ts",
+   6
+  ],
+  [
+   "lib/device/pushRegistration.ts",
+   5
+  ],
+  [
+   "lib/cosmetics.ts",
+   5
+  ],
+  [
+   "components/table/particles.ts",
+   5
+  ],
+  [
+   "react-native-worklets",
+   5
+  ],
+  [
+   "@shopify/react-native-skia",
+   4
+  ],
+  [
+   "@react-native-async-storage/async-storage",
+   4
+  ],
+  [
+   "components/SettingsModal.tsx",
+   4
+  ],
+  [
+   "context/OnlineGameContext.tsx",
+   3
+  ],
+  [
+   "react-native-gesture-handler",
+   3
+  ],
+  [
+   "components/table/cardShadows.ts",
+   3
+  ],
+  [
+   "lib/errorReporting.ts",
+   2
+  ],
+  [
+   "components/table/seats.tsx",
+   2
+  ],
+  [
+   "components/table/pile.tsx",
+   2
+  ],
+  [
+   "components/table/hand.tsx",
+   2
+  ],
+  [
+   "expo-asset",
+   2
+  ],
+  [
+   "components/table/dealSlots.ts",
+   2
+  ],
+  [
+   "expo-notifications",
+   2
+  ],
+  [
+   "components/useTableFeedback.ts",
+   2
+  ],
+  [
+   "lib/game/gameEngine.ts",
+   2
+  ],
+  [
+   "modules/murlan-orientation/index.ts",
+   2
+  ],
+  [
+   "components/CardView.tsx",
+   2
+  ],
+  [
+   "components/table/useFlightClock.ts",
+   2
+  ],
+  [
+   "expo-screen-orientation",
+   2
+  ],
+  [
+   "lib/device/musicTracks.ts",
+   1
+  ],
+  [
+   "expo-keep-awake",
+   1
+  ],
+  [
+   "components/flightPhysics.ts",
+   1
+  ],
+  [
+   "react-native-svg",
+   1
+  ],
+  [
+   "components/table/cardGloss.ts",
+   1
+  ],
+  [
+   "components/table/lampRig.ts",
+   1
+  ],
+  [
+   "components/table/dealPose.ts",
+   1
+  ],
+  [
+   "react-native",
+   1
+  ],
+  [
+   "expo-constants",
+   1
+  ],
+  [
+   "components/table/ExchangeLegs.tsx",
+   1
+  ],
+  [
+   "components/table/feltFallback.tsx",
+   1
+  ],
+  [
+   "components/table/feltSkiaBoundary.tsx",
+   1
+  ],
+  [
+   "components/table/ember.ts",
+   1
+  ],
+  [
+   "components/table/handShadeCanvas.tsx",
+   1
+  ],
+  [
+   "components/MenuLayout.tsx",
+   1
+  ],
+  [
+   "lib/device/orientation.tsx",
+   1
+  ],
+  [
+   "lib/diagnostics/index.ts",
+   1
+  ],
+  [
+   "components/table/selection.ts",
+   1
+  ],
+  [
+   "components/table/particleSprites.ts",
+   1
+  ],
+  [
+   "components/table/air.ts",
+   1
+  ],
+  [
+   "expo-clipboard",
+   1
+  ],
+  [
+   "react-native-gesture-handler/lib/module/handlers/gestures/installUIRuntimeBindings",
+   1
+  ],
+  [
+   "react-native-gesture-handler/lib/module/GestureHandlerRootViewContext",
+   1
+  ],
+  [
+   "components/AppModal.tsx",
+   1
+  ],
+  [
+   "expo/fetch",
+   1
+  ],
+  [
+   "react-native-audio-api",
+   1
+  ],
+  [
+   "modules/murlan-audio-session/index.ts",
+   1
+  ],
+  [
+   "lib/device/assetFiles.ts",
+   1
+  ],
+  [
+   "react-native-turbo-haptics",
+   1
+  ]
+ ]
+}

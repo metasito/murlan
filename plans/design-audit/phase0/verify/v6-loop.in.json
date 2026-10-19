@@ -1,0 +1,1231 @@
+[
+ {
+  "id": "L-175",
+  "theme": "Loop & CI tooling",
+  "title": "Phase and route resolution is computed in four places, bridged by an env var",
+  "kind": "tooling",
+  "priority": "P1",
+  "effort": "M",
+  "files": [
+   "loop-derive.mjs:426-547",
+   "queue-loop.mjs:98-118",
+   "queue-loop.mjs:133-183",
+   "queue-loop.mjs:686-694",
+   "loop-derive.mjs:432",
+   "queue-loop.mjs:1085",
+   "loop-derive.mjs:18",
+   "loop-derive.mjs:488-517",
+   "loopGate.test.ts:463-484",
+   "decide.mjs",
+   "loopDerive.test.ts",
+   "loopGate.test.ts"
+  ],
+  "problem": "queue-loop.mjs:1085 says \"Every routing choice is `decide()`'s\". That is false: `nextRoute` holds routing rules, such as \"a LAND on this head ends the review\" and \"a pinned ticket the owner relabelled is released\", and `derive()` holds the phase table. `derive()` takes an injectable `exec` for gh, but git goes through a module-level `run` (loop-derive.mjs:18), so it is not injectable.",
+  "proposed": "`readRun({cwd, base, worktree, ci, gh, git}) -> RunFacts`: I/O only. It returns `{ticket, branch, cwd, head, headSubject, commits, changed, dirty, comments|null, ci|null}`. `phaseOf(facts, handed?) -> {phase, why}`: pure, owning the table now at loop-derive.mjs:488-517.",
+  "effect": "One home for the phase table. About 12 `derive(` calls and 17 env swaps in loopDerive.test.ts become table tests of `phaseOf`.",
+  "sources": [
+   "tooling-F2",
+   "10-tests-e2e-loop-F13"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-176",
+  "theme": "Loop & CI tooling",
+  "title": "GitHub access is scattered, with about 7 argv-level gh fakes in tests and an unenforced `--repo` rule",
+  "kind": "tooling",
+  "priority": "P1",
+  "effort": "M",
+  "files": [
+   "loop-derive.mjs:349-351",
+   "settle.mjs:321-329",
+   "queue-loop.mjs:654-675",
+   "tracker.mjs:35-38",
+   "queue-loop.mjs:624-635",
+   "queue-loop.mjs:908-944",
+   "loop-derive.mjs:388-409",
+   "workspace.mjs:239",
+   "next-ticket.mjs:176-180",
+   "settle.mjs:394-425",
+   "mainHealth.ts:107-128",
+   "settle.mjs:356"
+  ],
+  "problem": "`tracker.mjs` is a real seam with two adapters (`ghTracker`, `fakeTracker`), but it covers only the 5 label and comment operations. Every other GitHub read is a hypothetical seam reached by argv, so each test re-creates gh's CLI semantics. The `--repo` rule is a premise held only in prose.",
+  "proposed": "widen `tracker.mjs` into `github.mjs` with two adapters, `ghGitHub(gh = cli.gh)` and `fakeGitHub(state)`. Every adapter call appends `--repo REPO`, so the rule becomes structural. `fakeGitHub` grows from `fakeTracker` plus settleReplay's `rollupFake` state.",
+  "effect": "About 15 call sites collapse to method calls. Tests deleted or replaced: 7 bespoke fakes become 1.",
+  "sources": [
+   "tooling-F3",
+   "06-tooling-F11",
+   "10-tests-e2e-loop-F12"
+  ],
+  "tickets": [
+   1605,
+   1606
+  ],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "Closed #1605/#1606 touched the loop adapter; 10-tests-e2e-loop confirms the argv-level fakes remain.",
+  "depends_on": []
+ },
+ {
+  "id": "L-177",
+  "theme": "Loop & CI tooling",
+  "title": "`queue-loop.mjs` is a god module: adapters, board glue, orchestration and config in one file",
+  "kind": "tooling",
+  "priority": "P1",
+  "effort": "L",
+  "files": [
+   "queue-loop.mjs:498-533",
+   "queueLoopMain.test.ts:47-67",
+   "queueLoop.test.ts:36-60",
+   "queueLoopMain.test.ts:70-127",
+   "queue-loop.mjs",
+   "tools/loop/queue-loop.mjs",
+   "loop-board.mjs",
+   "limits.mjs",
+   "github.mjs",
+   "workspace.mjs",
+   "queueLoop.test.ts",
+   "queueLoopMain.test.ts"
+  ],
+  "problem": "the module's interface is everything it exports, about 40 names, and tests import about 30 of them. The real seam, `runOnce(ports, …)`, is buried among adapters that are themselves exported and tested one by one. The ports are not grouped by dependency.",
+  "proposed": "`queue-loop.mjs` keeps only `runOnce(ports, events, pinned, at, loop)` and `main(deps)`. Ports regrouped by dependency category: `github`: `{ pick, facts, issueState, prFor(branch|ticket, {since, declared}), publish(n, branch, cwd), label(n, 'claim'|'release'|'park'), comment(n, file), settle(pending) }` — remote-owned/true-external. `workspace`: `{ stopFile, parkAsked(n), clearParkAsk(), sync(pinned), moved(), housekeeping(pinned), standing(), refresh(cwd, branch), buildPassed(cwd, n), sharedDirty(), …",
+  "effect": "queue-loop.mjs drops from 1706 to about 500 lines; about 555 adapter lines go to `github.mjs`/`workspace.mjs`, about 190 board lines to `loop-board.mjs`, about 45 constant lines to `limits.mjs`, and about 90 routing lines go into `decide` (F2). Tests to delete: the duplicate `stubPorts` builder and the `place`/`OPTIONAL` machinery (one fake per port suffices).",
+  "sources": [
+   "tooling-F1"
+  ],
+  "tickets": [
+   1605,
+   1606,
+   1607,
+   1608
+  ],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "Closed #1605-#1608 (git/gh adapter, tracker port, settle stepper, runOnce ports) are possible partial progress; 10-tests-e2e-loop re-verified the stubPorts/io placeholders still real at queueLoop.test.ts:38-60 and queueLoopMain.test.ts:47-136. ADR-0004 (loop serialises) stands.",
+  "depends_on": [
+   "L-176",
+   "L-175",
+   "L-184"
+  ]
+ },
+ {
+  "id": "L-178",
+  "theme": "Loop & CI tooling",
+  "title": "Policy and limits are spread over 8 modules; light scripts import the god module for one constant",
+  "kind": "tooling",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "queue-loop.mjs:379,384,392,415,421,864,984",
+   "decide.mjs:73",
+   "settle.mjs:34,37,40",
+   "loop-cost.mjs:20-71",
+   "loop-gate.mjs:95,98",
+   "loop-derive.mjs:365",
+   "queue-loop.mjs:1043",
+   "decide.test.ts:9",
+   "decide.test.ts:7",
+   "scripts/await-run.mjs:8",
+   "queue-loop.mjs:209",
+   "run-loop.mjs:4"
+  ],
+  "problem": "no single place answers \"what are the run's caps\". `decide()`'s input `limits` is built by its caller from four modules.",
+  "proposed": "`limits.mjs` (already designated \"plain constants, importable\", limits.mjs:1) exports `LIMITS` and `SESSION_POLICY = {model, effort, context, turns, usd}`. `decide` defaults to `LIMITS`.",
+  "effect": "decide.test.ts stops importing queue-loop.mjs; await-run and run-loop import a 30-line constants file; the stale comment goes.",
+  "sources": [
+   "tooling-F6",
+   "10-tests-e2e-loop-F18",
+   "06-tooling-F24"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-179",
+  "theme": "Loop & CI tooling",
+  "title": "`runOnce` and `main` bypass their ports for disk I/O, so tests `chdir`",
+  "kind": "tooling",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "queue-loop.mjs:1136",
+   "queue-loop.mjs:827-830",
+   "tools/loop/tests/ticker.test.ts:435",
+   "queueLoop.test.ts:1339",
+   "queueLoopMain.test.ts:1948",
+   "loopRender.test.ts:498",
+   "lockDrift.test.ts:131",
+   "queueLoop.test.ts:761-771",
+   "queueLoopMain.test.ts:2000-2004",
+   "queueLoopMain.test.ts"
+  ],
+  "problem": "the composition's interface includes the process cwd and the real `.loop-logs`, while the ports suggest otherwise. `process.chdir` is process-global inside a concurrent test runner.",
+  "proposed": "add `workspace.parkAsked(n)`, `workspace.clearParkAsk()`, `workspace.ciLog(n) -> path|null`, `ledger.logOf(n)` and `ledger.prune()` (see F1).",
+  "effect": "6 `chdir`s are deleted, and the class \"a test touches the live loop record or cwd\" goes away.",
+  "sources": [
+   "tooling-F7",
+   "10-tests-e2e-loop-F15"
+  ],
+  "tickets": [
+   1608
+  ],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-180",
+  "theme": "Loop & CI tooling",
+  "title": "ci.yml's `scope` decision is inline bash, and its test regex-parses bash out of YAML",
+  "kind": "tooling",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   ".github/workflows/ci.yml:52-206",
+   "tests/tooling/ciScope.test.ts:23-47",
+   "ci.yml:131",
+   "ci.yml",
+   "tools/ci/nativeScope.mjs",
+   "tools/ci/scope.mjs",
+   "ciScope.test.ts"
+  ],
+  "problem": "the interface is YAML and bash, so the test reaches past it by parsing the implementation. The two path allowlists (ci.yml:131, 136) are the decision itself.",
+  "proposed": "`tools/ci/scope.mjs` exporting `scopeOf(changed: string[]) -> {app, harness, scans}` and a CLI that prints `GITHUB_OUTPUT` lines. ci.yml keeps only the \"identical tree already green\" short-circuit and the `git diff`.",
+  "effect": "about 75 lines of bash become about 40 lines of JS; ciScope.test.ts loses its YAML/regex extractor (lines 23-47) and calls `scopeOf` directly; scope becomes runnable locally.",
+  "sources": [
+   "tooling-F8"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-181",
+  "theme": "Loop & CI tooling",
+  "title": "`decide.mjs` exports its internals, and about 290 test lines test past `decide()`",
+  "kind": "tooling",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "decide.mjs:18-33",
+   "queue-loop.mjs:1187",
+   "decide.test.ts:12-33",
+   "tools/loop/tests/decide.test.ts:439-455",
+   "tools/loop/tests/queueLoop.test.ts:1127-1192",
+   "decide.mjs",
+   "tools/ci/preflightMemory.mjs",
+   "tests/tooling/androidFlowMarker.test.ts",
+   "loopDerive.test.ts",
+   "queueLoop.test.ts",
+   "decide.test.ts"
+  ],
+  "problem": "the interface is `decide(input)`, but the tests also pin the helper decomposition, so refactoring a helper breaks tests while behaviour is unchanged.",
+  "proposed": "export only `decide`, `afterSession`, `WAIT` and `exhausted` (the last has a non-test caller in tools/ci/preflightMemory.mjs). Move the unique cases into decide.test.ts as `decide()` inputs.",
+  "effect": "about 290 lines of queueLoop.test.ts deleted or converted; decide's interface shrinks from 13 exports to 4.",
+  "sources": [
+   "tooling-F10",
+   "10-tests-e2e-loop-F14"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": [
+   "L-175"
+  ]
+ },
+ {
+  "id": "L-182",
+  "theme": "Loop & CI tooling",
+  "title": "settle turns one transient gh error into an owner verdict",
+  "kind": "defect",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "tools/loop/decide.mjs:285-288",
+   "tools/loop/settle.mjs:144-148"
+  ],
+  "problem": "Two cases become `verdict(\"owner\",\"could not read CI\")`: any single non-offline `gh` read error, and an offline error that no wake follows. So one transient 5xx parks the ticket for the owner, even though the settle machine already has a `stuck` bound that would let a retry happen.",
+  "proposed": "Make the read error a retryable state inside `settle`'s pure machine, retried until the existing `stuck` bound and only then escalated to the owner. One branch, in the module that already owns the bound.",
+  "effect": "Locality: the retry policy lives in one state table. Fewer owner escalations for noise.",
+  "sources": [
+   "06-tooling-F1"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-183",
+  "theme": "Loop & CI tooling",
+  "title": "The session environment is a hidden interface written in one place and parsed in five",
+  "kind": "tooling",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "queue-loop.mjs:686-716",
+   "guard-bash.mjs:109",
+   "loop-derive.mjs:428-432",
+   "loop-gate.mjs:226",
+   "loop-status.mjs:19,81,103,107,113",
+   "tools/ci/e2eGlobalTimeout.mjs:7",
+   "cli.mjs:33",
+   "loop-derive.mjs:411-418",
+   "loop-derive.mjs:421-422",
+   "CLAUDE.md",
+   "queue.md",
+   "tools/loop/tests/helpers/clearLoopEnv.mjs"
+  ],
+  "problem": "\"am I a loop session?\" is answered three different ways (`LOOP_TURNS` truthy, `LOOP_PHASE` matching a regex, `LOOP_TICKET` numeric). Production contract variables and test seams (`LOOP_BASE`, `LOOP_WORKTREE`, `LOOP_*_SCRIPT`) share one namespace. \"Nothing in the loop may ever set\" `LOOP_WORKTREE`/`LOOP_BASE` (loop-derive.mjs:411-418) is enforced only by prose; guard-bash has no rule about them.",
+  "proposed": "`tools/loop/session-env.mjs`, the only module that names these variables: The test seams leave env: `derive`/`buildReady` take `{base, worktree}` parameters, which the gate's CLI could take as hidden flags, and `cli.mjs` exposes `withRunner(fn)` for tests instead of `LOOP_*_SCRIPT`.",
+  "effect": "Six readers become `fromEnv()` calls. `clearLoopEnv.mjs` and `loopTestEnv.test.ts` become deletable once no production default reads env.",
+  "sources": [
+   "tooling-F4"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-184",
+  "theme": "Loop & CI tooling",
+  "title": "Process spawning is duplicated: the npm/npx shim, tree-kill, and the \"run a bin\" pattern, with a real orphan bug class on Windows",
+  "kind": "tooling",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "queue-loop.mjs:397-412",
+   "agent-check.mjs:104-110",
+   "scripts/e2e-server.mjs:40-52",
+   "scripts/ios-device.mjs:395-398",
+   "scripts/optimize-images.mjs:37",
+   "loop-session.mjs:78-88",
+   "reap.mjs:218-223",
+   "scripts/ios-device.mjs:324-325",
+   "related-tests.mjs:70,81",
+   "checkStrictIndexed.mjs:96",
+   "agent-check.mjs:52",
+   "e2e-server.mjs:38"
+  ],
+  "problem": "five shallow copies of the same adapter. Each Windows `shell: true` site leaves orphaned trees on timeout or exit, which is the class `reap.mjs` and the memory notes exist to clean up.",
+  "proposed": "`scripts/lib/proc.mjs` `cli.mjs`'s `run` and `queue-loop`'s `sh` delegate to it.",
+  "effect": "About 9 call sites become calls into one module. Bug class removed: orphaned jest workers or servers after a timeout or exit on Windows.",
+  "sources": [
+   "tooling-F5",
+   "06-tooling-F6"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-185",
+  "theme": "Loop & CI tooling",
+  "title": "Workflow duplication: installs, Node versions, and a byte-identical device gate",
+  "kind": "tooling",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "audio-soak.yml:26-30",
+   "ci.yml:429-433",
+   "eas-build.yml:40-46",
+   "ios-app-cache.yml:26-32",
+   "ios-bench.yml:21-26",
+   "ios-device.yml:32-38",
+   "maestro.yml:109-115",
+   "soak.yml:60-64",
+   "ci.yml:325",
+   "ios.yml:61",
+   "parity-nightly.yml:28",
+   "ci.yml:958"
+  ],
+  "problem": "shallow copies. A Node bump or an install change is about 20 edits. The soak job's production-Node pin carries no check.",
+  "proposed": "`.github/actions/install` gains `node-version` defaulting to the repo version and an `npm-ci: always|cached` input for jobs that must not restore node_modules. `.github/actions/device-gate` (or `tools/ci/device-gate.sh`) replaces both gate jobs. Read production Node with `node-version-file`/`deploy/runtime.json` in soak.yml.",
+  "effect": "About 13 install blocks become 1-line uses, and 9 literal Node versions become 0. deviceWorkflowsGate tests one script instead of two YAML extractions.",
+  "sources": [
+   "tooling-F9",
+   "06-tooling-F13",
+   "08-tests-rules-tooling-F18"
+  ],
+  "tickets": [],
+  "status": "contested",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "06-tooling: tooling-F9 is partly wrong: .github/actions/install already takes a required node-version input, so the proposal should be \"default it from runtime.json\", not \"add an input\". The rest holds (inline installs ci.yml:429-433, 519-523, 585-589, 956-975; literal Node 24 in five workflows; Node 22 in soak.yml; byte-identical gate jobs). 08-tests-rules-tooling-F18 confirms tooling-F6, F8 and F9.",
+  "depends_on": []
+ },
+ {
+  "id": "L-186",
+  "theme": "Loop & CI tooling",
+  "title": "Stale premises in prose and config",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "reset-db.mjs:15-40",
+   "cli.mjs:9",
+   "loop-cost.mjs:15-18",
+   ".github/workflows/ci.yml:539",
+   ".claude/workflows/audit.mjs:394-402",
+   "ci.yml:539",
+   "loop-settings.js",
+   "package.js",
+   "scripts/reset-db.mjs",
+   "eas.js",
+   ".github/workflows/eas-build.yml",
+   "audit.mjs"
+  ],
+  "problem": "loop-settings.json `soft_deny` says \"package.json db:reset already bundles --yes\". It does not: `db:reset` is `node scripts/reset-db.mjs && drizzle-kit push`, and reset-db refuses without `ALLOW_DESTRUCTIVE=1` and `--yes` (reset-db.mjs:15-40). So `npm run db:reset` can never succeed; it only prints `HOW_TO`.",
+  "proposed": "correct the text; drop or rename `db:reset` to something like `db:reset:help`.",
+  "effect": "Removes misleading premises.",
+  "sources": [
+   "tooling-F16",
+   "06-tooling-F20"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-187",
+  "theme": "Loop & CI tooling",
+  "title": "Four scripts hand-roll the entry-point check",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "scripts/e2eBuildMark.mjs:33",
+   "scripts/mockupParityPage.mjs:162",
+   "scripts/ios-device.mjs:436",
+   "scripts/measureHeadsUpBalance.ts:556-557",
+   "scripts/lib/entry.mjs"
+  ],
+  "problem": "`scripts/e2eBuildMark.mjs:33`, `scripts/mockupParityPage.mjs:162`, `scripts/ios-device.mjs:436` and `scripts/measureHeadsUpBalance.ts:556-557` compare unresolved paths. `scripts/lib/entry.mjs` (37 adopters) exists because that comparison breaks under junctions and subst drives.",
+  "proposed": "use `isInvokedDirectly`.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "tooling-F19"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-188",
+  "theme": "Loop & CI tooling",
+  "title": "loop-gate `landable` throws when a parent is not on main",
+  "kind": "defect",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "tools/loop/loop-gate.mjs:152"
+  ],
+  "problem": "`git merge-base --is-ancestor` exits 1 for \"not an ancestor\". `landable` lets that throw, so the CLI exits 2 (crash) instead of reporting \"not landable\".",
+  "proposed": "Treat exit 1 as false and rethrow only other codes.",
+  "effect": "The gate gives an answer instead of a crash.",
+  "sources": [
+   "06-tooling-F3"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-189",
+  "theme": "Loop & CI tooling",
+  "title": "loop-screen `openExternally` has no spawn error listener",
+  "kind": "defect",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "tools/loop/loop-screen.mjs:469-482"
+  ],
+  "problem": "The detached `spawn` has no `'error'` handler, so a missing opener binary raises an unhandled error and takes the supervisor's screen down with it.",
+  "proposed": "Attach `.on('error', …)` and log.",
+  "effect": "An optional convenience can no longer kill the loop.",
+  "sources": [
+   "06-tooling-F4"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-190",
+  "theme": "Loop & CI tooling",
+  "title": "claim.mjs leaks its mkdtemp directory",
+  "kind": "defect",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "tools/loop/claim.mjs:95",
+   "claim.mjs"
+  ],
+  "problem": "The `mkdtempSync` directory is never removed, so one directory accumulates per claim.",
+  "proposed": "Remove it in a `finally` block.",
+  "effect": "Hygiene only.",
+  "sources": [
+   "06-tooling-F5"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-191",
+  "theme": "Loop & CI tooling",
+  "title": "e2ePort kills every listener on the chosen port, not the verified pids",
+  "kind": "defect",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "tools/ci/e2ePort.mjs:131"
+  ],
+  "problem": "`clearPort(chosen.port)` lists the port again and kills whatever is listening by then, rather than the pids the claim verified. If a peer grabs the port in between, its server is killed.",
+  "proposed": "Pass the verified pids through.",
+  "effect": "Removes a cross-worktree race.",
+  "sources": [
+   "06-tooling-F7"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-192",
+  "theme": "Loop & CI tooling",
+  "title": "loop-logs ledger.record re-reads the whole ledger, which is never pruned",
+  "kind": "perf",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "tools/loop/loop-logs.mjs:304"
+  ],
+  "problem": "Every `record` call parses the full append-only ledger, so the cost grows without bound.",
+  "proposed": "Append without reading, or prune by age.",
+  "effect": "Small; latent.",
+  "sources": [
+   "06-tooling-F8"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "low",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-193",
+  "theme": "Loop & CI tooling",
+  "title": "two definitions of a spec's duration",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "tools/ci/e2e-timings.mjs:56",
+   "tools/ci/e2e-budget.mjs:65-69",
+   "playwright.config.ts:59"
+  ],
+  "problem": "One tool sums all attempts; the other takes the slowest attempt. They agree only because `playwright.config.ts:59` has `retries: 0`. The parity config has `retries: CI?1:0`.",
+  "proposed": "Make one exported `specSeconds()` and import it in both tools.",
+  "effect": "Locality. Latent until retries are turned on.",
+  "sources": [
+   "06-tooling-F9"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-194",
+  "theme": "Loop & CI tooling",
+  "title": "next-ticket prints the wrong claim command, and its comment read is capped",
+  "kind": "defect",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "tools/loop/next-ticket.mjs:275-283",
+   "queue.md"
+  ],
+  "problem": "`printDetail` always prints `gh issue edit --add-label in-progress`. For the implement route, queue.md prescribes `npm run queue:claim`. Separately, the comment fetch stops at `per_page=100` with no pagination.",
+  "proposed": "Print the route's own claim command, and paginate (`--paginate`).",
+  "effect": "Removes a doc/tool contradiction.",
+  "sources": [
+   "06-tooling-F10"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-195",
+  "theme": "Loop & CI tooling",
+  "title": "ios-device.yml's push path filter misses native inputs",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   ".github/workflows/ios-device.yml:300-307",
+   "ios-device.yml",
+   "scripts/ios-device.mjs",
+   "package.js",
+   "app.js",
+   "withSwiftUIFilters.js",
+   "ios-device.mjs"
+  ],
+  "problem": "The filter lists package.json, the lock, app.json, assets/images and the workflow itself. It misses `modules/` (murlan-diagnostics, murlan-audio-session, murlan-orientation), `plugins/` (withSwiftUIFilters.js) and `patches/`. So a native change on main never rebuilds the dev-client IPA, and ios-device.mjs installs the newest successful build, which carries a stale fingerprint.",
+  "proposed": "Add the three globs.",
+  "effect": "Device runs test the code that is on main.",
+  "sources": [
+   "06-tooling-F14"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-196",
+  "theme": "Loop & CI tooling",
+  "title": "`HARD_FACTOR = 3` is defined three times",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "tools/ci/e2e-budget.mjs:22",
+   "tools/ci/ios-wall.mjs:8",
+   "tools/ci/native-budget.mjs:21",
+   "e2eBudget.test.ts:86",
+   "iosWall.test.ts:49",
+   "RULES.md",
+   "e2e-budget.mjs"
+  ],
+  "problem": "RULES.md rule 46 states it as one owner ruling, but each copy has its own `<= 3` pin, so the copies can drift apart. `RATIO` already shows the right shape: one export, imported by budget-gate.",
+  "proposed": "Export it once from e2e-budget.mjs, import it in the other two, and keep a single pin.",
+  "effect": "Locality.",
+  "sources": [
+   "06-tooling-F16"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-197",
+  "theme": "Loop & CI tooling",
+  "title": "build-court-art `CROP` duplicates `COURT_ART_BOX`",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "scripts/build-court-art.mjs:31",
+   "components/cardFaceModel.ts:263",
+   "bake-card-art.mjs",
+   "cardFaceModel.ts"
+  ],
+  "problem": "The two are kept equal only by a \"keep in step\" comment. bake-card-art.mjs already imports from cardFaceModel.ts, so the import path exists.",
+  "proposed": "Import `COURT_ART_BOX`.",
+  "effect": "One owner.",
+  "sources": [
+   "06-tooling-F17"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-198",
+  "theme": "Loop & CI tooling",
+  "title": "diagnostics collector port 5099 is a literal in three places",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "lib/diagnostics/recorder.ts:24",
+   "scripts/diagnostics-collector.mjs:34",
+   "scripts/ios-device.mjs:338",
+   "e2eBuildMark.test.ts:22"
+  ],
+  "problem": "The three literals are not tied to each other. The E2E mark, by contrast, is pinned by e2eBuildMark.test.ts:22.",
+  "proposed": "Export it once from lib and have both scripts import it, or add a pin.",
+  "effect": "Locality.",
+  "sources": [
+   "06-tooling-F19"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-199",
+  "theme": "Loop & CI tooling",
+  "title": "`server:dev` and `server:prod` use POSIX env prefixes",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "README.md:18",
+   "package.js"
+  ],
+  "problem": "`NODE_ENV=x cmd` fails under npm's default cmd shell on Windows, which is the owner's machine. README.md:18 tells developers to run `server:dev`, and there is no .npmrc setting `script-shell`. Production on Linux is unaffected.",
+  "proposed": "Set NODE_ENV inside the entry point, or use `node --env-file`.",
+  "effect": "The documented dev command works on the dev machine.",
+  "sources": [
+   "06-tooling-F21"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-200",
+  "theme": "Loop & CI tooling",
+  "title": "checks.md:96-97 describes the dispatch gate backwards",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "checks.md:96-97",
+   "docs/agents/checks.md:96-97",
+   ".github/workflows/ios.yml:47",
+   "maestro.yml:53"
+  ],
+  "problem": "The doc says the gate refuses a dispatch off an `agent/<n>-` or `claude/<n>-` branch. The gate actually allows only those branches.",
+  "proposed": "Reword it.",
+  "effect": "Correct doc.",
+  "sources": [
+   "06-tooling-F22"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-201",
+  "theme": "Loop & CI tooling",
+  "title": "Small loop-test defects",
+  "kind": "test",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "tools/loop/tests/loopGate.test.ts:643",
+   "loopHoldSurvives.test.ts:36",
+   "worktreeRemoveCommand.test.ts:257",
+   "workspace.test.ts:344"
+  ],
+  "problem": "a duplicate name hides which test failed, cleanup leaks on failure, the fixed sleep is flake-prone, and the global mock is a missing seam.",
+  "proposed": "as listed in each item.",
+  "effect": "four small fixes.",
+  "sources": [
+   "10-tests-e2e-loop-F19"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-202",
+  "theme": "Loop & CI tooling",
+  "title": "`result-schema.json` lets extra fields through; a test does that check by hand",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "tools/loop/queue-loop.mjs:209,241-242",
+   "tools/loop/tests/loopDocsAreExecutable.test.ts:140-146",
+   "result-schema.js",
+   "tools/loop/result-schema.js",
+   "queue.md"
+  ],
+  "problem": "the schema has `required` but no `additionalProperties: false`. The test re-implements that rule over queue.md's printed examples only, so a model emitting a stray field in a real session is accepted.",
+  "proposed": "add `\"additionalProperties\": false` and drop the manual loop (keep the required check).",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "11-gaps-F10"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-203",
+  "theme": "Loop & CI tooling",
+  "title": "Small shell hardening",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "tools/ci/rebundle-android-app.sh:12",
+   "tools/ci/report-device-run.sh:16-17",
+   ".github/scripts/gitleaks-scan.sh:6,13",
+   "ios.yml",
+   "maestro.yml",
+   "gitleaks-scan.sh",
+   "ci.yml"
+  ],
+  "problem": "(a) `sort | tail -1` is lexicographic, so `build-tools/9.0.0` would beat `34.0.0` and `100.x` loses to `35.x`; use `sort -V`. (b) `$title` goes into a double-quoted jq string from `$workflow`; only `ios.yml` and `maestro.yml` pass today, but `--arg t \"$title\"` and `select(.title == $t)` removes the quoting hazard. (c) gitleaks-scan.sh has no `-e`/`-u`, and it relies on its callers noticing the exit status.",
+  "proposed": "`sort -V`. (b) `$title` goes into a double-quoted jq string from `$workflow`; only `ios.yml` and `maestro.yml` pass today, but `--arg t \"$title\"` and `select(.title == $t)` removes the quoting hazard. (c) gitleaks-scan.sh has no `-e`/`-u`, and it relies on its callers noticing the exit status.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "11-gaps-F11"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-204",
+  "theme": "Loop & CI tooling",
+  "title": "`skills-lock.json` lists seven skills, only one is installed, and nothing reads it",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   ".claude/workflows/audit.mjs:255",
+   "skills-lock.js",
+   "Next.js"
+  ],
+  "problem": "six entries (`find-skills`, `frontend-design`, `next-best-practices`, `radon-mcp`, `rnrepo`, `typegpu`) have no directory in `.claude/skills`. `next-best-practices` is a Next.js skill in an Expo app. The only reference to the file in SRC is the audit workflow's scope list (`.claude/workflows/audit.mjs:255`).",
+  "proposed": "either regenerate it from the installed skills or delete it.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "11-gaps-F9"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-205",
+  "theme": "Loop & CI tooling",
+  "title": "In-process modules are called through subprocesses and stdout protocols",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "queue-loop.mjs:1436-1440",
+   "claim.mjs:87-117",
+   "queue-loop.mjs:580-582",
+   "workspace.mjs:154-202",
+   "queue-loop.mjs:580",
+   "workspace.mjs:154",
+   "loopDocsAreExecutable.test.ts:279-283",
+   "workspace.mjs:159-161",
+   "tools/loop/tests/reap.test.ts:408-418",
+   "workspace.test.ts:488-503",
+   "loopDocsAreExecutable.test.ts:281",
+   "cli.test.ts:101"
+  ],
+  "problem": "`queue-loop.mjs:1436-1440` runs `node claim.mjs` and parses `claimed.split(\"\\t\")[2]` and `err.stdout.split(\"\\t\").at(-1)`, even though `claim(number, title, run, tracker)` (claim.mjs:87-117) is importable and already returns `{branch, cwd, won, why}`. `queue-loop.mjs:580-582, 617` remove worktrees with `npm run worktrees:remove`, going through the `sh` shell path on Windows, even though `workspace.removeWorktree(target, {force, git})` (workspace.mjs:154-202) is importable. The two exports are both named …",
+  "proposed": "call `claim()` and `removeWorktree()` in-process from the workspace port. Delete the source-text pin and the tab-protocol parsing; the subprocess CLIs stay for by-hand use.",
+  "effect": "four brittle scans fewer.",
+  "sources": [
+   "tooling-F11",
+   "10-tests-e2e-loop-F17"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-206",
+  "theme": "Loop & CI tooling",
+  "title": "Issue-read trust policy lives in `brief.mjs` and comes in three shapes",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "brief.mjs:45-70",
+   "guard-bash.mjs:19",
+   "next-ticket.mjs:3",
+   "loop-derive.mjs:328-333",
+   "next-ticket.mjs:9-11",
+   "brief.mjs",
+   "github.mjs"
+  ],
+  "problem": "`brief.mjs:45-70` (`TRUSTED_SELECT` jq, `readIssue`, `untrustedRead`, `apiMethod`) is imported by guard-bash.mjs:19 and next-ticket.mjs:3. That is the subagent-prompt module serving as the tracker's policy. `trustedComments` (loop-derive.mjs:328-333, `authorAssociation`) and `trusted()` (next-ticket.mjs:9-11, `author_association`) re-express the same rule.",
+  "proposed": "move these into `github.mjs` (F3); brief imports from there.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "tooling-F12"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "Not re-verified by a slice reviewer.",
+  "depends_on": [
+   "L-176"
+  ]
+ },
+ {
+  "id": "L-207",
+  "theme": "Loop & CI tooling",
+  "title": "The agent-check cache is an implicit file interface and self-reported gate evidence",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "agent-check.mjs:178-180",
+   "loop-gate.mjs:47",
+   "loopGate.test.ts:435",
+   "loop-gate.mjs:36-52",
+   "agent-check-cache.js",
+   "CLAUDE.md",
+   "agent-check.mjs"
+  ],
+  "problem": "The writer is `agent-check.mjs:178-180, 237`; the reader is `loop-gate.mjs:47`, which rebuilds the path `join(gitDir, \"agent-check-cache.json\")` itself and shares the `{pass, head, clean, deferred}` schema only by convention. loopGate.test.ts:435 writes the file directly. `buildPassed` (loop-gate.mjs:36-52) trusts a file the gated session can write with Bash.",
+  "proposed": "`agent-check.mjs` exports `passFor(cwd, head)` so the path and schema have one owner, and document `--build` as advisory.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "tooling-F13"
+  ],
+  "tickets": [],
+  "status": "contested",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "06-tooling: partly wrong. The schema is shared (loop-gate imports cleanPassFor from agent-check); only the cache path is duplicated (loop-gate.mjs:47, agent-check.mjs:179), an XS fix rather than a schema split.",
+  "depends_on": []
+ },
+ {
+  "id": "L-208",
+  "theme": "Loop & CI tooling",
+  "title": "Guard hooks fail open silently, which makes `onFailure: \"block\"` dead config",
+  "kind": "defect",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "guard-write.mjs:41-43",
+   "guard-agent-model.mjs:66-68",
+   "cli.mjs:70-71",
+   "guard-bash.mjs:427-431",
+   "loop-settings.js"
+  ],
+  "problem": "`guard-write.mjs:41-43` and `guard-agent-model.mjs:66-68` wrap everything in `catch { process.exit(0) }`, which includes `checkoutRoot(cwd)` throwing (cli.mjs:70-71). They print nothing. guard-bash.mjs:427-431 also allows on an unreadable payload, but at least prints to stderr.",
+  "proposed": "let a parse failure exit non-zero (or deny) and keep `exit 0` only for \"no file_path\"; at least write to stderr as guard-bash does.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "tooling-F14"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "ADR-0010 sets guards to onFailure: \"block\"; failing open makes that config dead, so the fix enforces the ADR.",
+  "depends_on": []
+ },
+ {
+  "id": "L-209",
+  "theme": "Loop & CI tooling",
+  "title": "\"The change\" is computed five different ways",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "agent-check.mjs:33-51",
+   "related-tests.mjs:60-66",
+   "loop-derive.mjs:473",
+   "nativeScope.mjs:57",
+   "ci.yml:118",
+   "cli.mjs",
+   "change.mjs"
+  ],
+  "problem": "`agent-check.mjs:33-51`: `origin/main...HEAD` + tracked status, excluding untracked. `related-tests.mjs:60-66`: `origin/main...HEAD` + `HEAD` + untracked included. This runs inside agent-check's `native:related` step, so a scratch file can pick tests while the subject says untracked files are not a change.",
+  "proposed": "`changeSet(cwd, {base, untracked})` in one module (cli.mjs or a new `change.mjs`).",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "tooling-F15"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-210",
+  "theme": "Loop & CI tooling",
+  "title": "gh/git wrappers outside tools/loop",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "scripts/await-run.mjs:15-21",
+   "tools/ci/await-artifact.mjs:52",
+   "tools/ci/ios-wall.mjs:57",
+   "tools/ci/budget-gate.mjs:131-132",
+   "tools/ci/nativeScope.mjs:54",
+   "tools/ci/e2e-budget.mjs:17",
+   "scripts/ios-device.mjs:99-103",
+   "cli.test.ts:116",
+   "cli.mjs:1-3",
+   "cli.test.ts",
+   "cli.mjs"
+  ],
+  "problem": "`scripts/await-run.mjs:15-21`, `tools/ci/await-artifact.mjs:52`, `tools/ci/ios-wall.mjs:57`, `tools/ci/budget-gate.mjs:131-132` (re-states the 64 MB `MAX_BUFFER`), `tools/ci/nativeScope.mjs:54`, `tools/ci/e2e-budget.mjs:17`, `scripts/ios-device.mjs:99-103`. cli.test.ts's \"no git or gh outside cli.mjs\" scan covers only `tools/loop/*` (cli.test.ts:116). Each of these already takes an injected function, so leverage is low.",
+  "proposed": "import `cli.mjs`'s `gh`/`git` (it is deliberately dependency-light, cli.mjs:1-3) and widen the scan.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "tooling-F18"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": [
+   "L-176"
+  ]
+ },
+ {
+  "id": "L-211",
+  "theme": "Loop & CI tooling",
+  "title": "The e2e port literal is in four places, and the process-table module sits in the loop",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "tools/ci/e2ePort.mjs:17",
+   "scripts/e2e-server.mjs:32",
+   "tools/loop/reap.mjs:14",
+   "tests/e2e/playwright.config.ts:25",
+   "e2ePort.mjs:18",
+   "tools/ci/e2ePort.mjs:15",
+   "ci.yml:145-149",
+   "tools/loop/reap.mjs",
+   "scripts/lib/processes.mjs"
+  ],
+  "problem": "`5199` appears at tools/ci/e2ePort.mjs:17 (`BASE_PORT`), scripts/e2e-server.mjs:32, tools/loop/reap.mjs:14 and tests/e2e/playwright.config.ts:25. reap clears only `E2E_PORT ?? 5199`, while `chooseE2ePort` may hand out 5199-5218 (e2ePort.mjs:18, 32-49).",
+  "proposed": "export `BASE_PORT` once and import it everywhere. Move the process-table and port functions to `scripts/lib/processes.mjs`, shared by reap and e2ePort.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "tooling-F20"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-212",
+  "theme": "Loop & CI tooling",
+  "title": "Minor shallow items",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "loop-derive.mjs:18",
+   "loop-gate.mjs:31-33",
+   "brief.mjs:25-31",
+   "agent-check.mjs:174-176",
+   "scripts/dev-stack.mjs:95",
+   "next-ticket.mjs:176-180",
+   "cli.mjs"
+  ],
+  "problem": "Minor shallow items: three trimmed-git micro-wrappers (loop-derive.mjs:18, loop-gate.mjs:31-33, brief.mjs:25-31, plus agent-check.mjs:174-176), `scripts/dev-stack.mjs:95` spawning a node process to sleep, and a module-level mutable `openPrs` cache in next-ticket.mjs:176-180.",
+  "proposed": "Offer `git(cwd).lines(args)`/`.text(args)` from cli.mjs, use in-process `Atomics.wait` for the sleep, and let the `openPrs` cache disappear into tooling-F3's `github.prs()`.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "tooling-F21"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-213",
+  "theme": "Loop & CI tooling",
+  "title": "queue-loop resolves paths against the cwd despite its HERE/ROOT contract",
+  "kind": "defect",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "tools/loop/queue-loop.mjs:89-92",
+   ".claude/commands/queue.md"
+  ],
+  "problem": "The HERE/ROOT comment at :89-92 says paths resolve from the script. They do not: `queueLoopArgs` reads `.claude/commands/queue.md` relative to the cwd (:240). `defaultStamp` reads relative paths (:269-276).",
+  "proposed": "Route all three through `ROOT`.",
+  "effect": "The interface matches its stated contract.",
+  "sources": [
+   "06-tooling-F2"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-214",
+  "theme": "Loop & CI tooling",
+  "title": "checks.md documents an `await-run --pr` mode that does not exist",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "docs/agents/checks.md:103-108",
+   "scripts/await-run.mjs:34-36",
+   "tests/tooling/awaitRun.test.ts:69",
+   "checks.md"
+  ],
+  "problem": "The doc says that with `--pr <n>`, a passed run that is over budget also exits 1. In fact `runArgs` rejects every non-numeric argument, and the test asserts `runArgs([\"--pr\",\"7\",\"1\"]) === null`, so the command prints usage and exits 2.",
+  "proposed": "Delete the paragraph. The budget gate already covers over-budget runs.",
+  "effect": "The doc stops promising a check that runs nowhere.",
+  "sources": [
+   "06-tooling-F12"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-215",
+  "theme": "Loop & CI tooling",
+  "title": "diagnostics gates restate each scenario's sample count",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "tapBurst.ts:17",
+   "scheduledOnset.ts:7",
+   "pulseCost.ts:23",
+   "hapticOnset.ts:21",
+   "musicSwitch.ts:10",
+   "landingSync.ts:8",
+   "scripts/diagnostics-verdict.mjs"
+  ],
+  "problem": "Each count is written twice, so changing a scenario's iterations reds the gate for a reason unrelated to performance.",
+  "proposed": "Export a `samples` constant from each scenario and import it in the verdict. `lampVariants` already does this with `LAMP_SWAY.samples`.",
+  "effect": "One owner per count.",
+  "sources": [
+   "06-tooling-F15"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-216",
+  "theme": "Loop & CI tooling",
+  "title": "failure reporting to the tracker is copied about four times, and two soak jobs share one issue",
+  "kind": "tooling",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   ".github/workflows/soak.yml:89-114",
+   "parity-nightly.yml:256-293",
+   "tools/ci/report-device-run.sh",
+   "audio-soak.yml",
+   "soak.yml",
+   "report-device-run.sh"
+  ],
+  "problem": "The same \"find the open labelled issue, else create it, then comment\" logic is copied about four times. The two soak.yml jobs share the `soak` label and its one-open-issue lookup, so offline-match failures and socket-soak failures comment on each other's issue. audio-soak.yml does not report at all.",
+  "proposed": "Use report-device-run.sh, or one composite action, as the single implementation, with a per-job label or title key.",
+  "effect": "Locality. Failures land on the right issue.",
+  "sources": [
+   "06-tooling-F23"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ }
+]

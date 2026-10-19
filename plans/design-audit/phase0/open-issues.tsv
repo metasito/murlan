@@ -1,0 +1,36 @@
+1641	Loop: agent:check reaps its own worktree orphans, and a killed session still gets a ledger row	bug,ready-for-agent,size:M,loop
+1640	Server: tableState field list is complete by type	bug,ready-for-agent,size:S,in-progress
+1639	Table: no bot play over round 1 deal, and two stale-callback races from #1625	bug,ready-for-agent,size:M
+1628	Online: a 30 s next-round vote deadline, and a drawn teams match is not a win	bug,ready-for-agent,size:M
+1627	Android: compensate scheduled cues for output latency	enhancement,ready-for-human,size:S
+1624	Table: every deal and exchange gate has an exit, and the first round waits for the deal	bug,ready-for-agent,size:L
+1604	Table: build TableFacts once and give the hand row its own HandRow	enhancement,ready-for-agent,size:M
+1603	Table: the exchange's view and announcement behind pure functions	enhancement,ready-for-agent,size:L
+1602	Table: five pure extractions out of GameTable (OpponentSeat, outcome, float, turnKey, slice memo)	enhancement,ready-for-agent,size:M
+1594	A scheduled ios.yml run went red	device-run
+1590	CI flake: Typecheck and tests (no test named)	ready-for-human
+1521	Noticed: small table defects seen in passing	noticed
+1393	Owner device pass: the #1259 bench gates, audio gates and the lamp floor on the iPhone	ready-for-human,size:S
+1303	Re-enable health.yml at launch	ready-for-human,size:S,deferred
+1273	Bring Reanimated to 4.7 and worklets to 0.13 once Expo supports worklets 0.13 (split from #1254)	ready-for-agent,size:S,blocked
+1269	Owner: regenerate the 12 ElevenLabs sounds on a paid plan and pick by ear	ready-for-human,size:S,deferred
+1246	Music for Murlan: pick a route, then brief it	ready-for-human,deferred
+1108	Which Postgres, and which connection URL?	ready-for-human,wayfinder:grilling,deferred
+1107	Which host runs the server?	ready-for-human,wayfinder:grilling,deferred
+1105	Move off Replit	wayfinder:map
+1089	Invite someone who is not a friend by a universal link	ready-for-agent,size:S
+875	Account recovery is inert in production until mail is configured, and the verify-email flow needs a decision	ready-for-human
+870	Name and fix the real disconnect cause from #844's socket-close-reason counts	enhancement,ready-for-human,size:M
+694	A shop of cosmetics: animation packs, card backs, table designs, and what else the genre sells	enhancement,ready-for-human,deferred
+396	Push game events into the Dynamic Island	enhancement,ready-for-human,deferred
+65	Real-money play, social feeds, cross-promotion	ready-for-human,deferred
+63	A generic achievements framework	rejected
+60	Ads	ready-for-human,deferred
+59	Free-text in-game chat	ready-for-human,deferred
+58	Tournaments: bracketed multi-table events	ready-for-human,size:XL,deferred
+44	Store readiness, beyond O1's submit credentials	ready-for-human,deferred
+33	Whether the app monetizes at all	ready-for-human
+32	Push credentials for Q23	ready-for-human,blocked
+31	icon.png / splash-icon.png are large, and the fix needs a device pass	ready-for-human,deferred
+28	android-icon-monochrome.png is undersized	ready-for-human,size:XS,deferred
+27	eas.json submit credentials are placeholders	ready-for-human,deferred

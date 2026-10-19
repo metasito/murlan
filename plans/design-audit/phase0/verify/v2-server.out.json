@@ -1,0 +1,254 @@
+[
+  {
+    "id": "L-022",
+    "verdict": "CONFIRMED",
+    "evidence": "server/http/shutdown.ts:74-86 runs beginShutdown, socketAdapterReady, io.close, settleDisconnects, then closeOwnership (drops every lock) while activeGames still holds the games. server/game/gameTimers.ts arm() (line ~58) and gameTurn.ts runBotTurn/startAfkTimer never read isShuttingDown (it is read only at tableHandlers.ts:661,813,819, tableRouter.ts:294, socketTable.ts:248, socketPresence.ts:196). A bot timer firing after closeOwnership runs commitMove -> persistGameState (gamePersistence.ts:106-125 area, writeActiveGame has no ownsRoom check; ownsRoom is read only at tableRouter.ts:133) and, on a round end, handleRoundOver's stats/rating/replay writes.",
+    "correction": "Reachable in production but narrow. Before closeOwnership the instance is still the legitimate lock holder, so bot moves there are harmless. The hazard window is closeOwnership to exit(0). In the healthy path drainPool (store/drainPool.ts:31-49) returns after 50 ms of quiet, so that window is usually well under the 1.2 s bot delay; it widens only when writes are in flight. The harm needs another instance to claim the freed lock and rehydrate in that window, then the old process to write a stale row (or double-write a round result if the round ends in the window). Cloud Run runs two revisions during every deploy (ADR-0003), and sockets dropped by io.close reconnect to the other revision within roughly 0.5-1.5 s, so it is possible but a few-ms-to-1-s race. The title's 'keep playing' is accurate; 'AFK' timers are slower (TURN_TIMEOUT) and are the less likely to land in the window.",
+    "priority_ok": "P2: narrow race window, requires a rehydrate by another instance plus a timer inside the tail; not a routine data-loss path",
+    "conflict": "",
+    "fix_ok": "Partly. Option A (clearRoomTimers for every activeGames key inside beginShutdown) is insufficient: it clears only afk/bot/autoStart (gameTimers.ts clearRoomTimers), not the per-user 'disconnect' timers, and an in-flight move handled after beginShutdown re-arms via armAfterMove. Option B (arm() refuses while shutting down) is the sound one, but isShuttingDown lives in gameRoom.ts and the flag has no reset (gameRoom.ts:148-162, tests/server/shutdownSeatLost.test.ts:1 notes it cannot be undone), so any test that arms timers after beginShutdown in the same process is poisoned; keep the guard on the timer-fire side (runBotTurn/afk callbacks return early) or inject it. Also the test should cover the closeOwnership-to-exit window, not just 'after beginShutdown'."
+  },
+  {
+    "id": "L-023",
+    "verdict": "CONFIRMED",
+    "evidence": "server/socket/socketTable.ts:249-267: armLobbyGrace arms a per-process 'lobbyGrace' timer; on expiry it reads only the local userSocketMap/socketRoomMap (liveSocket && socketRoomMap.get(liveSocket) === roomId), then handleSeatRelease. A lobby (no game, so no owner) disconnect arms the grace on whichever instance saw the drop (socketPresence.ts:196-215). A reconnect on another instance goes through room:rejoin (socketRooms.ts:108-131) whose clearLobbyGrace(room.id, userId) at :129 is a local no-op there, so instance A's expiry releases a seat the player holds live on B. isUserAtTable (socketRegistry.ts:58-67) is cluster-wide and exists.",
+    "correction": "Scope is the pure waiting-lobby case. For a between-rounds table the grace is armed on the owner by seatLostAction and the reconnect's routed game:rejoin reaches the owner and clears it (tableHandlers.ts:491-495 comment), and the in-game 'disconnect' grace already asks the cluster (tableHandlers.ts:726 isUserOnline). The false comment is the one at tableHandlers.ts:491-493 only in the sense that it is true for the owner path and not for lobby graces.",
+    "priority_ok": "P2: lobby-only, recoverable by rejoining the room, needs a non-sticky reconnect to a different instance within 20 s. Real under ADR-0003, but not P1 data loss",
+    "conflict": "",
+    "fix_ok": true
+  },
+  {
+    "id": "L-024",
+    "verdict": "PARTIAL",
+    "evidence": "The raw-drizzle and mock claims hold: tableHandlers.ts:140-142 reads db.query.activeGames.findFirst in rehydrateGame, :814-816 selects all rows, deleteAccount.ts:38-44 and gamePersistence.ts:128-170,269-279 each hand-order room_players -> active_games -> rooms deletes, and tests mock db.query.activeGames.findFirst 6x in tests/server/tableStalls.test.ts (94,113,279,291,303,321) plus endMatchVote.test.ts:269 and persistedEnvelope.test.ts:147, and db.delete at persistedEnvelope.test.ts:148.",
+    "correction": "Counts: 9 mocks reach into drizzle (8 findFirst + 1 db.delete), not about 15; the other mocks are persistence.writeActiveGame (commitMove.test.ts, weakSeatTakeover.test.ts, exchangeRearm.test.ts, endMatchVote.test.ts:266), which is already the owned seam (gamePersistence.ts persistence object). So the writes have an owner; what is missing is the READ (loadActiveGame for rehydrate/resumeOrphanedTables) and a shared delete. The proposed roomStore.purgeRooms(tx, ids) only dedups the delete order (deleteAccount.ts and pruneStaleRooms) and would delete none of the 8 findFirst mocks; those need a persistence.loadActiveGame(roomId)/listActiveGames() read seam. 'Three modules' = tableHandlers (read), gamePersistence (write/delete/prune), deleteAccount (delete).",
+    "priority_ok": "P2: a testability/structure cleanup with no user-facing defect",
+    "conflict": "",
+    "fix_ok": "Incomplete: purgeRooms fixes the duplicated delete order but not the mocked reads; add the read seam to match the stated effect (rehydrateGame/resumeOrphanedTables dropping db and schema imports at tableHandlers.ts:43,49)."
+  },
+  {
+    "id": "L-025",
+    "verdict": "PARTIAL",
+    "evidence": "server/game/tableHandlers.ts is 839 lines and does hold rehydrate (:135), play/pass/exchange (:197-308), vote gate and next-round dealing (:309-460), rejoin (:464), startMatch (:509), seatLost/armSeatGrace (:653-740), the dispatcher applyTableAction (:741) and resumeOrphanedTables (:812). So the god-module size and responsibility mix is real.",
+    "correction": "The 'duplicate next-round construction' claim is overstated: dealVotedRound (:331-396) deals the NEXT ROUND of a running match by copying the existing engine seats (roles/ids carry, team: p.team), while tableState.newTable (tableState.ts:~125-160) builds a NEW MATCH table from a SeatEntry roster with teamForSeat and carriedFinishingOrder. They differ by design (the comment at :359 explains playerMap must not be renumbered). The ready-gate difference is real but small: votesUnanimous (:309) is votes.size >= voterCount(game) (gameRoom.ts:202) while startMatchAction (:540-546) uses seatedIds.every(votes.has). #1597 (one move-commit path) already landed commitMove (gameTurn.ts:86-99), so 'move validation' extraction is partly done; playAction/passAction/exchangeAction are the remaining ~110 lines.",
+    "priority_ok": "P2: structure/maintainability, no user-facing defect; the real bug-class candidate is just the two vote-gate arithmetics",
+    "conflict": "",
+    "fix_ok": "Heavy and partly circular: TableDeps does not exist anywhere in the repo (grep over server and tests finds none), so five new modules plus a deps object is a design-first change (CLAUDE.md 'Design first for anything touching ... many files'). The small, high-value subset is unifying the two ready-gate computations; tableMoves/tableLifecycle are optional."
+  },
+  {
+    "id": "L-026",
+    "verdict": "CONFIRMED",
+    "evidence": "grep of `io: SocketServer` in server/game finds 44 params (matches the claim). The game layer actually uses io.to(room).emit, io.to(room).timeout(ms).emit with ack (gamePersistence.ts sendGameStateTo ~:197-211), io.fetchSockets (gamePersistence.ts:331), and in the router io.serverSideEmit/io.on (tableRouter.ts:157, 275-290). Tests hand-roll stubs cast `as unknown as SocketServer`: 20 casts in 13 test files (e.g. tableStalls.test.ts:42-54).",
+    "correction": "'Small interface' is slightly understated: serverSideEmit/on in the router and io.sockets.adapter in seating.ts:49 are transport and belong to the socket layer (the proposal already keeps io there). Stub count is 13 files / 20 casts, not 12.",
+    "priority_ok": "P2: testability/structure; no runtime defect",
+    "conflict": "",
+    "fix_ok": "Sound in principle (two real adapters: Socket.IO and a recording outbox), but it depends on the nonexistent TableDeps/F1 and overlaps L-025, L-035 and L-037; do them as one change, not three. Mind the structural scans that read `io.to(...).emit` literal call sites (tests/server/socketEvents.test.ts EMIT_PATTERNS) so an outbox.send(event, ...) indirection must not hide events from the unlistened-emit check."
+  },
+  {
+    "id": "L-027",
+    "verdict": "CONFIRMED",
+    "evidence": "server/game/gameOwnership.ts:140-153: takeLock returns null when connect() fails but `return false` in the catch (:149-151) when the query throws. reclaim (:158-176) treats only null as 'unreachable, retry'; false does held.delete(roomId) and onRoomLost(roomId), which installTableHandlers wires to disposeGame(roomId, false) (tableHandlers.ts:836). The one-line change (return null in the catch) routes it through the existing OWNERSHIP_RECLAIM_RETRY_MS path (:171-176).",
+    "correction": "'Drops live tables' is right; 'data loss' is overstated. disposeGame(roomId, false) keeps the active_games row, and the row is written on every move, so the next restore-mode action re-claims and rehydrates. What is lost is memory-only state (moveLog replay, spectators, armed timers, un-persisted in-flight vote state) and the table is disrupted until someone acts. claimRoom (:195-199) also treats the thrown-query false as 'owned elsewhere', which is the same misread on the claim path (fix applies there too).",
+    "priority_ok": true,
+    "conflict": "",
+    "fix_ok": "Sound. Note a persistently failing (non-connection) query would retry every second until it succeeds; that is bounded and acceptable. Add the throws-once test the entry proposes."
+  },
+  {
+    "id": "L-028",
+    "verdict": "CONFIRMED",
+    "evidence": "server/game/gamePersistence.ts:106-125 disposeGame: activeGames.delete, then `void releaseRoom(roomId)` immediately (:116), then the active_games delete queued on inRoomOrder (:117-124) behind any pending snapshot. A restore-mode action in between (tableRouter askClaimAndApply -> claimRoom -> rehydrateGame, tableHandlers.ts:140-142) finds the row still present and puts the game back in activeGames.",
+    "correction": "It is reachable on a single instance too, not just cross-instance: after activeGames.delete the router sees no game, and held still has the room until releaseRoom's microtask runs, so claimRoom (gameOwnership.ts:195) returns true and rehydrates from the not-yet-deleted row. Window is milliseconds (longer under DB stress), triggered by a rejoin or rematch vote arriving right after a dispose.",
+    "priority_ok": "P3: narrow ms window, outcome is a zombie table that the 24 h sweeper or next dispose clears",
+    "conflict": "",
+    "fix_ok": "No. Releasing inside the same inRoomOrder chain after the delete keeps the room in `held` during the window, so the same-instance race stays open; worse, if a resurrection happens in that window, the deferred releaseRoom then runs `held.delete` / pg_advisory_unlock for a room whose resurrected game is live in activeGames, producing an unowned live table (unclaimedRooms() at gameOwnership.ts:246-248 is exactly that state). A sound fix is a tombstone (a `disposing` set consulted by rehydrateGame / claim) or deleting the row before removing the game from memory."
+  },
+  {
+    "id": "L-029",
+    "verdict": "CONFIRMED",
+    "evidence": "server/game/retention.ts:25-52 issues one unbatched `DELETE ... WHERE ts < cutoff` per table through db (pool with statement_timeout 5 s, store/db.ts:13,54); a timeout aborts the statement so a backlog larger than 5 s of deleting never shrinks. server/socket/ticket.ts:89 does an extra unbatched `DELETE FROM socket_ticket_nonces WHERE expires_at < now` on every handshake, a second home for the retention policy (retention.ts header says it is the single home).",
+    "correction": "Hypothetical today: it needs a multi-hundred-thousand-row backlog (the DB holds no real accounts yet, server/CLAUDE.md). pruneStaleRooms is already batched (STALE_ROOM_BATCH=500, gamePersistence.ts:60,266). The ticket.ts delete is per-connection rather than per-sweep, so it competes with the handshake under a reconnect storm.",
+    "priority_ok": "P3: not live, convergence only matters after a large backlog",
+    "conflict": "",
+    "fix_ok": "Sound. Moving the nonce prune into the sweep is the part with immediate value (it removes a write from every handshake); the ctid batching can wait."
+  },
+  {
+    "id": "L-030",
+    "verdict": "CONFIRMED",
+    "evidence": "server/http/rateLimit.ts:61-69 calls express-rate-limit without a `store`, so counts live in process memory; loginUsernameLimiter (routes.ts:~139-150, limit 10 per 15 min keyed by username) is per instance. ADR-0003 and deploy/runtime.json (pgConnectionsPerInstance) make multi-instance the running shape, so the effective ceiling is about 10 x instances and every deploy resets it.",
+    "correction": "The practical weakening is bounded by instance count (small single digits on this app) and each guess still pays a bcrypt compare, so it is a 'ceiling is N x' gap, not an open door. The comment at routes.ts:139-149 does overstate it as 'what makes a password hard to guess'.",
+    "priority_ok": "P3: multiplies a small ceiling by a small N; the second proposed option (record N x as accepted in server/CLAUDE.md) is a legitimate resolution",
+    "conflict": "",
+    "fix_ok": "Sound but costly for the benefit: a Postgres Store adds a write to every login attempt and fails open or closed during a DB outage, which must be chosen deliberately. The cheaper option (document the N x ceiling) covers the stated risk."
+  },
+  {
+    "id": "L-031",
+    "verdict": "PARTIAL",
+    "evidence": "server/socket/lobbyIntents.ts ports exactly three intents behind LobbyPort: createRoomIntent (:50), joinRoomIntent (:64), spectateRoomIntent (:88), driven at socketRooms.ts:66,71,91. room:rejoin (:108-131), room:setVisibility (:156-182), room:quickmatch (:185-225), room:leave (:139) and room:start (:236) stay inline against roomStore directly; tests/server/lobbyIntents.test.ts covers the ported ones with node --test, tests/integration/quickmatchAutoStart.test.ts and lobbyGrace.test.ts need Postgres.",
+    "correction": "'All 6 lobby intents' undercounts: there are 3 ported and at least 5 inline handlers (rejoin, setVisibility, quickmatch, leave, start, plus unspectate). The '~60 lines of duplication' is also overstated: quickmatch's candidate loop (:195-215) is its own logic; only its claim/seat/announce tail and the create-fallback (:221-229) mirror joinRoomIntent/createRoomIntent (about 15-20 lines).",
+    "priority_ok": "P3: consistency/testability, no defect",
+    "conflict": "",
+    "fix_ok": "Reasonable for rejoin/setVisibility/quickmatch; leave and start already delegate to handleSeatRelease/applyOrForward so they need no port. Widen LobbyPort.store with the minimum needed rather than all roomStore."
+  },
+  {
+    "id": "L-032",
+    "verdict": "CONFIRMED",
+    "evidence": "tests/server/tableOwnership.test.ts:50-60 scans only ['socket/socketGameplay.ts','socket/socketRooms.ts'] for `activeGames`. server/socket/socketPresence.ts:89 (inside announcePresence) iterates `activeGames.entries()` directly, so the third handler family violates the rule the test states and is not scanned.",
+    "correction": "It is an incomplete (hand-listed) scan rather than a file exempting itself, and the code it misses is functionally correct: the branch only runs when clearDisconnectGrace(userId) (local timer, gameTimers.ts clearDisconnectGrace) was armed here, i.e. when this instance is the owner, so there is no cross-instance NO_LIVE_GAME misread. It does duplicate the routed game:rejoin (socketGameplay.ts rejoin -> rejoinAction, tableHandlers.ts:464-507, which clears the same grace at :494), which the client sends on connect.",
+    "priority_ok": "P3: test-coverage gap on correct code",
+    "conflict": "",
+    "fix_ok": "Making the scan cover every server/socket/* file (with socketPresence on an explicit allowlist or the block removed) is the safer option. Deleting the local block is plausible but changes behaviour on a reconnect: the routed rejoin only fires once the client emits game:rejoin, so verify the connect-time ordering before removing it. Exporting getGame/hasGame instead of the raw Map is a separate, larger change (F13)."
+  },
+  {
+    "id": "L-033",
+    "verdict": "CONFIRMED",
+    "evidence": "server/socket/socketRegistry.ts onlineUserIds (~:99-111) and tablePresence (~:79-96) call `_io.fetchSockets()` over the whole cluster; socketPresence.ts:111 (connect path) and the friend:get_online_list handler (:66-77) call onlineUserIds(); gamePersistence.ts:331 (sweepFinishedTables) and tableHandlers.ts:812-826 (resumeOrphanedTables) call the same. Through the postgres adapter every call is a broadcast request whose replies carry every socket, so a reconnect storm costs O(connections x sockets).",
+    "correction": "isUserOnline and isUserAtTable already scope to `io.in(userRoom(userId))` (socketRegistry.ts:48-67). The cost only matters at scale; the app is not live yet.",
+    "priority_ok": "P3: scale-only, not live",
+    "conflict": "",
+    "fix_ok": "Mostly. onlineUserIds(ids) -> io.in(ids.map(userRoom)).fetchSockets() is sound. The tablePresence rewrite as io.in(roomId).fetchSockets() is not: rehydrateGame uses presence.online (tableHandlers.ts:~187) for players who are online but not yet in the room (mid-round case), which io.in(roomId) cannot see; it needs io.in([roomId, ...seatUserRooms]) instead."
+  },
+  {
+    "id": "L-034",
+    "verdict": "CONFIRMED",
+    "evidence": "server/http/routes.ts is 1041 lines with the server created at :1039; `req.session.userId!` appears 26 times (grep count), 13 routeLimiter/limiter definitions, and the regenerate/revokeAccountSockets/save sequence is duplicated in register (:453-463) and login (:503-513). /me answers 401 USER_NOT_FOUND at :553 while another route answers 404 at :849.",
+    "correction": "server/http/routeTable.ts and accountSession.ts, named in the file list, do not exist; they are the proposed new files. Limiter count is 13 in grep, not exactly 12. getUser-then-reply checks are at :375,551,566,598,663,721,790.",
+    "priority_ok": "P3: structural hygiene; no defect beyond the /me/status-code inconsistency",
+    "conflict": "None: ADR-0007 and CONTEXT.md reject consolidating the account-recovery blocks, and the proposal explicitly leaves them alone.",
+    "fix_ok": "Per-area files plus a requireUser/accountSession.signIn helper is the sound part and removes the 26 assertions. A full RouteSpec table with access/limiters/body/handle is a bigger abstraction than the problem needs (and the register/login reply-timing logic must not be merged, as the entry itself says)."
+  },
+  {
+    "id": "L-035",
+    "verdict": "PARTIAL",
+    "evidence": "RoundOverWriters is injected only into handleRoundOver, vacateSeat and endMatchByAgreement (roundOver.ts:21-60, 252, 300, 316; gameTurn.ts:97,317-320; tableHandlers.ts:445,729,798). The other sequences call the concrete functions: commitMove calls persistGameState directly (gameTurn.ts:94-97), dealRound calls roomStore.updateRoomStatus and persistGameState directly (dealRound.ts:40-52), and safeTimer/runBotTurn close a table with open-coded updateRoomStatus + disposeGame (gamePersistence.ts safeTimer; gameTurn.ts:~205-222). So a test with fake writers still reaches Postgres through dealRound and the close-table paths.",
+    "correction": "The 'ordering is documented as load-bearing' citation is partly off: gamePersistence.ts:217-219 is the markExchangeSettled-before-serving comment in broadcastGameState (a different ordering from persist-before-dispose). The true persist-before-dispose ordering is roundOver.ts:170-174. The count 'about 6 open-coded sequences / 3 close-table copies' is plausible but not checked line by line; commitMove and dealRound are the clear ones.",
+    "priority_ok": "P3: test-seam consistency, no defect",
+    "conflict": "",
+    "fix_ok": "Folding writers into TableDeps depends on the nonexistent TableDeps (see L-025/L-026/L-037); the smaller equivalent is to pass the existing RoundOverWriters (plus updateRoomStatus, which it already has) into dealRound and the close-table helper. Treat these four ledger entries as one design decision."
+  },
+  {
+    "id": "L-036",
+    "verdict": "PARTIAL",
+    "evidence": "server/game/seatLedger.ts:1-10 documents itself as the only writer of playerMap, vacatedSeats, releasedSeats, abandonedSeats, weakSeats and endMatchVotes, enforced by tests/server/seatLedger.test.ts. rematchVotes and cumulativeScores are still written elsewhere: gameTurn.ts:325 (rematchVotes.delete), tableHandlers.ts:360,413,540,561 (clear/add), roundOver.ts:90,326 (cumulativeScores), plus gameRoom.ts (clearForDeal/rollMatchForward) and seatLedger.ts:58-65 for the bot-key score carry.",
+    "correction": "The claim that 'only seat fields have a ledger' is slightly off: endMatchVotes (a vote set) is already ledger-owned. What is unowned is rematchVotes and the score/rounds fields (cumulativeScores, roundsPlayed, matchOver). Writers span gameTurn, tableHandlers, roundOver, gameRoom and seatLedger (5 files, not 4). matchLedger.ts does not exist.",
+    "priority_ok": "P3: invariant-hardening, no observed defect; overlaps open #1640 and closed #1598/#1599",
+    "conflict": "",
+    "fix_ok": "Sound and consistent with the existing seatLedger pattern and its scan test; re-measure scope against #1640's field list before cutting, as the entry notes."
+  },
+  {
+    "id": "L-037",
+    "verdict": "CONFIRMED",
+    "evidence": "server/game imports from ../socket/ in 18 import lines (tableHandlers.ts:41-53 pulls socketRegistry, seating, emit, payload, events, socketSafety types; gamePersistence.ts:1,16; gameTurn.ts:1,3,9; dealRound.ts:1,5; retention.ts:13; tableRouter.ts:14,18). The module-level wiring setters are setTableHandlers (tableRouter.ts:78), setRoomLostHandler (gameOwnership.ts:65), setSocketServer (socketRegistry.ts:15-18) and setClock (gameTimers.ts:27). server/store/roomStore.ts:5-7 imports ../game/seatAllocation and gameTimers (store -> game).",
+    "correction": "Most of the game -> socket imports are `import type SocketServer`; the value imports are payload/emit/events/seating/socketRegistry. setClock is a legitimate test seam, so the removable setters are 3 of 4 as stated. The 'socket -> game -> store' one-way graph is not achieved by this change alone because roomStore itself imports game/ (seatHoldMs, seat allocation).",
+    "priority_ok": "P3: design hygiene",
+    "conflict": "",
+    "fix_ok": "Same dependency on the nonexistent TableDeps/createTableRuntime as L-025/L-026/L-035; moving payload/logger to server/shared/ is independent and cheap. Do not size it separately from F1."
+  },
+  {
+    "id": "L-038",
+    "verdict": "CONFIRMED",
+    "evidence": "server/http/mail.ts:75 `await fetch(\"https://api.resend.com/emails\", {...})` and server/socket/push.ts:109 `await fetch(EXPO_PUSH_URL, {...})` pass no `signal`; grep for AbortSignal/`signal:` in server finds nothing. The CLAUDE.md-Run-button comment near mail.ts:100-104 refers to a launch path that ADR-0006 retired.",
+    "correction": "Not 'forever': Node's fetch (undici) applies its default headers/body timeouts of about 300 s, so a hung remote holds the request for up to five minutes rather than indefinitely. Whether the request is held depends on whether the route awaits sendMail; push is the un-awaited invite path.",
+    "priority_ok": true,
+    "conflict": "",
+    "fix_ok": true
+  },
+  {
+    "id": "L-039",
+    "verdict": "CONFIRMED",
+    "evidence": "server/http/shutdown.ts:34 `FORCED_EXIT_MS = DISCONNECT_SETTLE_MS + DRAIN_TIMEOUT_MS + 2_000` = 1500 + 6000 + 2000 = 9500 ms. The sequence at :74-102 also spends up to 1000 ms in socketAdapterReady(1_000), plus io.close(), closeOwnership() and adapterPool.end(), none of which has a named budget. tests/server/shutdownBudget.test.ts checks only DRAIN_TIMEOUT_MS > QUERY_TIMEOUT_MS, FORCED_EXIT_MS > DRAIN_TIMEOUT_MS and FORCED_EXIT_MS < sigtermGraceMs (10000).",
+    "correction": "'About 1 s of the 2 s slack is free' is an estimate: the worst case (adapterReady 1 s + settle 1.5 s + drain 6 s = 8.5 s) leaves ~1 s for io.close/closeOwnership/adapter end. Every step is bounded only on its failure path; in the healthy path the whole sequence finishes in well under a second, so the watchdog (exit 1 instead of 0) only fires in a degraded shutdown.",
+    "priority_ok": true,
+    "conflict": "",
+    "fix_ok": true
+  },
+  {
+    "id": "L-040",
+    "verdict": "CONFIRMED",
+    "evidence": "server/game/dealRound.ts:40-44 `await roomStore.updateRoomStatus(game.roomId, \"in_progress\").catch(warn)` precedes broadcastGameState (:46). On the startMatch path closeForStart already set status in_progress in a transaction (roomStore.ts:150-155), so the write there is redundant; on the rematch path (tableHandlers.ts:394) it flips the status from the previous round's 'finished' back.",
+    "correction": "Under DB stress the delay is up to connectionTimeoutMillis (5 s, db.ts:50) plus the 5 s query timeout. Making it fire-and-forget is safe for the in-match window because joins require status 'waiting' (lobbyIntents.ts:75, roomStore claim), so a briefly stale 'finished' only refuses joins.",
+    "priority_ok": true,
+    "conflict": "",
+    "fix_ok": true
+  },
+  {
+    "id": "L-041",
+    "verdict": "CONFIRMED",
+    "evidence": "server/http/serverErrors.ts:12-20 inserts one server_errors row per error-level log line through the shared app pool (db), and logger.ts tapErrors (:~58-70) calls the recorder for every line at level >= 50; a failed insert writes to stderr only, so it does not recurse but does take a pool checkout per failing line. routes.ts:~975-985 logs `logger.error(...\"Client reported an unhandled error\")`, so each client crash also becomes a server_errors row. errorReportLimiter (routes.ts:300-310) is keyed per session and is the limiter on the client-errors route.",
+    "correction": "Amplification is bounded by the 5 s query timeout and by the pool's existing waiters; it is a mild contributor, not a runaway. Bug reports sharing errorReportLimiter is plausible but not verified here.",
+    "priority_ok": true,
+    "conflict": "",
+    "fix_ok": "Logging client crashes at warn removes the inflation cleanly. Dropping inserts while the pool has waiters is sound (pool.waitingCount is available, as drainPool already reads it)."
+  },
+  {
+    "id": "L-042",
+    "verdict": "CONFIRMED",
+    "evidence": "server/http/admin.ts:235-254 starts 18 queries in one Promise.all against a pool whose default max is 10 (store/db.ts DEFAULT_POOL_MAX=10, :23); recentClientErrorGroups (clientErrors.ts:83-101) and recentServerErrorGroups (serverErrors.ts:29-37) GROUP BY the whole table with no date window, contradicting the header claim at admin.ts:8 only if 'bounded by an aggregate' is read narrowly (the comment's own definition allows aggregates). ratings.ts:224-236 getCircleLeaderboard runs currentRow once per member. sourceMaps.ts:69-89 symbolicate parses the map with SourceMapConsumer per crash group (up to ROW_LIMIT=30) on the event loop.",
+    "correction": "Admin-only and rare; the pool queues rather than fails (connectionTimeoutMillis 5 s). The per-member currentRow is bounded by circle size.",
+    "priority_ok": "P3 is right; arguably P4 given admin-only use",
+    "conflict": "",
+    "fix_ok": true
+  },
+  {
+    "id": "L-043",
+    "verdict": "CONFIRMED",
+    "evidence": "server/store/schemaDdl.ts:364-369 emits `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` for every column of every table on every boot, and ensureSchema (:489-496) runs them sequentially through the app pool with no lock_timeout or advisory lock (grep for advisory/lock_timeout finds none). Postgres takes ACCESS EXCLUSIVE on the table before noticing the column exists.",
+    "correction": "The count is larger than 'about 100': it is one statement per column across all tables (a few hundred). Because the app pool has a 5 s statement_timeout (db.ts:54), a boot that queues behind a long reader fails with a statement timeout and the server refuses to start (rethrown, :489 doc), while it also stalls queries queued behind it on that table. An advisory lock would only serialise concurrent boots, not remove this lock; skipping ALTERs for existing columns (information_schema or a single catalog read) is the change that removes the hazard.",
+    "priority_ok": true,
+    "conflict": "",
+    "fix_ok": "Use the second option (skip existing columns); the pg_advisory_xact_lock option does not address the ACCESS EXCLUSIVE cost. Stays additive and idempotent per server/CLAUDE.md, and tests/server/schemaDdl.test.ts would need to cover the skip."
+  },
+  {
+    "id": "L-044",
+    "verdict": "CONFIRMED",
+    "evidence": "server/game/gamePersistence.ts:266 `candidates.map(r => r.id).filter((id) => !activeGames.has(id))` is the only liveness guard; the doc at :251-257 says 'A room still in the in-memory map is never a candidate, whatever its age', true only for this process. Candidates are chosen by rooms.createdAt < 24 h (:258-263) and then room_players, active_games and rooms rows are deleted (:268-279).",
+    "correction": "Reachability is rare: it needs a room created more than 24 h ago that is still live on a different instance, i.e. a standing table running across a day (CONTEXT/GAME-RULES describe a table lasting until it breaks up), or a finished table held by connected players for a day. pruneAbandonedGames (:225-237) already uses updated_at and is cluster-safe.",
+    "priority_ok": true,
+    "conflict": "",
+    "fix_ok": "Sound: excluding rows with a recent active_games.updated_at (written on every move) makes the guard cluster-wide; waiting lobbies have no active_games row and are covered by the age check."
+  },
+  {
+    "id": "L-045",
+    "verdict": "CONFIRMED",
+    "evidence": "server/socket/socketSafety.ts:265-280: the uncaughtException handler logs fatal, flushes the logger and calls process.exit(1) immediately; nothing waits for roomWriteTails (gamePersistence.ts inRoomOrder) or releases locks (the ownership connection dies with the process). The comment (:274-277) argues for unconditional exit, not for skipping the drain.",
+    "correction": "The loss is small: persistGameState writes on every move, so only the writes queued in the last few milliseconds (and fire-and-forget stats/rating rows of a round that just ended) are dropped; locks are released by the TCP close within moments.",
+    "priority_ok": "P3 is generous: low value relative to risk",
+    "conflict": "socketSafety.ts:275-277: \"Exiting is unconditional either way — a guard that could be skipped by a transport that never flushed would be no guard.\" and CLAUDE.md 'No self-defeating safeguards'. A drain-then-exit path that can hang on a bad process is the shape this rule warns about.",
+    "fix_ok": "Questionable. shutdown() runs io.close/pool drain on a process in an unknown state, ends with exit(0) on success (shutdown.ts:101) rather than 1 unless the exit hook is injected, and (see L-022) leaves game timers running while it drains, so it can write more state from the broken process. If done, it must keep a short unconditional watchdog and pass exit: () => process.exit(1)."
+  },
+  {
+    "id": "L-046",
+    "verdict": "CONFIRMED",
+    "evidence": "server/socket/lobbyIntents.ts:59-60 and socketRooms.ts:222-224 call roomStore.createRoom and then roomStore.addRoomPlayer(room.id, userId, 0) as two statements (not in a transaction), so a failure between them leaves a seatless waiting room (requireOccupied/playerCount===0 guards at socketRooms.ts:195-199 and the claim option exist for this). removeRoomPlayer (roomStore.ts:335) has one caller, tests/integration/roomVisibility.test.ts:163, and none in production. roomStore.ts:5-7 imports ../game/seatAllocation and gameTimers (seatHoldMs).",
+    "correction": "A host-less room is also pruned by pruneStaleRooms after 24 h and hidden from quickmatch, so the user-visible effect is a stray row, not a stuck player.",
+    "priority_ok": true,
+    "conflict": "",
+    "fix_ok": "Sound; note tests/server/lobbyIntents.test.ts:31,78 stubs addRoomPlayer on the LobbyPort store and would change with the signature."
+  },
+  {
+    "id": "L-047",
+    "verdict": "CONFIRMED",
+    "evidence": "server/socket/socketGameplay.ts:80-181 has six handlers (game:play, pass, rematch_vote, end_match_vote, reaction, exchange_give_card) each doing `atTable()` -> NOT_AT_A_TABLE -> applyOrForward(io, {kind, roomId, userId, ..., intentId})`. game:rejoin (:128-165) differs and is correctly excluded.",
+    "correction": "Rate limits differ per event (GAME_ACTION_RATE_LIMIT, 20, 8/10 s, 30), so the table needs a limits column, as proposed.",
+    "priority_ok": true,
+    "conflict": "",
+    "fix_ok": "Only if the event name stays a string literal at each call site. tests/server/protocolEvents.test.ts (serverListens regex `\\bonEvent\\(\\s*\\w+,\\s*\"([^\"]+)\"`) and socketEvents.test.ts scan for literal onEvent names, so a helper that takes the name from a table would silently drop those events from the protocol-drift checks unless those scans are adapted. A helper `tableEvent(socket, \"game:play\", schema, toDraft, limits)` that keeps the literal at the call site is compatible."
+  },
+  {
+    "id": "L-048",
+    "verdict": "PARTIAL",
+    "evidence": "server/game/tableActions.ts:85-95 takeoverMode is `if (kind === \"startMatch\") return \"create\"; return kind === play || pass || exchange || rematchVote || endMatchVote || rejoin || resume ? \"restore\" : \"forward\"`, so an unlisted new kind compiles and defaults to forward. tests/server/tableOwnership.test.ts:184-218 enumerates kinds but only asserts the result is one of the three modes, so it does not catch a kind that should be 'restore'.",
+    "correction": "Calling it a 'defect' is too strong: 'forward' is the deliberate safe default (the docstring says forward means do nothing, since reviving a stranded round would set the table playing itself), so a missed new kind fails closed rather than corrupting a table. It is an exhaustiveness-hygiene improvement.",
+    "priority_ok": true,
+    "conflict": "",
+    "fix_ok": "Sound: a Record<TableActionKind, Mode> forces a decision and makes the enumeration test's hand-written lists redundant. Keep the dispatcher's `default: return UNKNOWN_ACTION` (tableHandlers.ts:801-803) for forwards from newer revisions."
+  },
+  {
+    "id": "L-049",
+    "verdict": "CONFIRMED",
+    "evidence": "server/socket/socket.ts:41-46 re-exports evictUser, revokeAccountSockets, onlineUserIds and __testables from socketRegistry; routes.ts:30 and tests/integration/timerContainment.test.ts:51 import through it. gameTurn.ts:52-54 recordPlayFlags only forwards to recordFlags (its sole other caller is tableHandlers.ts:234). GameplayHandlerContext, RoomHandlerContext (socketRooms.ts:~41) and PresenceContext (socketPresence.ts:~42) are three identical { io, socket, userId } interfaces. socketSafety.ts:145 `export type EventOutcome = IntentReply` is imported by tableHandlers, tableRouter, lobbyIntents, socketGameplay and socketTable.",
+    "correction": "The barrel's comment (socket.ts:36-40) says it exists so the presence family avoids an import cycle; the re-export itself is still only for routes.ts and one test, and routes.ts can import socketRegistry.ts directly (the latter already imports little of the graph). Low-risk, mechanical.",
+    "priority_ok": true,
+    "conflict": "",
+    "fix_ok": true
+  }
+]

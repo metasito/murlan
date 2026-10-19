@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Architecture review for Murlan</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose", flowchart: { htmlLabels: true, curve: "basis" } });
+</script>
+<style>
+  .seam { stroke-dasharray: 4 4; }
+  .leak { stroke: #dc2626; }
+  .deep { background: linear-gradient(135deg, #0f172a, #1e293b); color: #f8fafc; }
+  .schem { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+  .diagram { min-height: 300px; }
+  pre.mermaid { background: transparent; }
+</style>
+</head>
+<body class="bg-stone-50 text-slate-900 font-sans">
+<main class="max-w-5xl mx-auto px-6 py-12 space-y-12">
+
+<header class="space-y-4">
+  <p class="schem text-slate-500">metasito/murlan &middot; 2026-10-16 &middot; base: main a1d0ebb5 + the 73-ticket design-audit programme (INTEGRATED.md)</p>
+  <h1 class="font-serif text-4xl">Architecture review: what stays shallow after the plan lands</h1>
+  <p class="text-sm text-slate-600 max-w-3xl">Each <b>before</b> is the planned after-state, not today's main. Each <b>after</b> is that state plus one deepening. Candidates already covered by a planned ticket are excluded.</p>
+  <div class="flex flex-wrap gap-6 text-xs text-slate-600 pt-2">
+    <span class="flex items-center gap-2"><span class="inline-block w-6 h-4 border border-slate-500 bg-white"></span>module</span>
+    <span class="flex items-center gap-2"><svg width="34" height="8"><line x1="0" y1="4" x2="34" y2="4" stroke="#475569" stroke-width="2" class="seam"/></svg>seam</span>
+    <span class="flex items-center gap-2"><svg width="34" height="8"><line x1="0" y1="4" x2="34" y2="4" stroke-width="2" class="leak"/></svg>leakage</span>
+    <span class="flex items-center gap-2"><span class="inline-block w-6 h-4 deep border-2 border-slate-900"></span>deep module</span>
+  </div>
+  <nav class="text-sm flex flex-wrap gap-x-5 gap-y-1 pt-2">
+    <a class="underline" href="#c1">1 Turn schedule</a>
+    <a class="underline" href="#c2">2 Stored-shape codec</a>
+    <a class="underline" href="#c3">3 Ledgers, not fields</a>
+    <a class="underline" href="#c4">4 One move intent</a>
+    <a class="underline" href="#c5">5 Situations through the engine</a>
+    <a class="underline" href="#c6">6 Refusal worded once</a>
+    <a class="underline" href="#top">Top recommendation</a>
+  </nav>
+</header>
+
+<section id="candidates" class="space-y-10">
+
+<!-- ============ 1 ============ -->
+<article id="c1" class="rounded-xl border border-slate-200 bg-white p-6 space-y-5 shadow-sm">
+  <h2 class="font-serif text-2xl">1. One turn schedule for both tables</h2>
+  <div class="flex flex-wrap gap-2 text-xs">
+    <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">Strong</span>
+    <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700">in-process (pure) &middot; two adapters: server timers, offline driver</span>
+    <span class="px-2 py-0.5 rounded bg-indigo-50 text-indigo-800">builds on CLI-6, ENG-6, ENG-7, WIRE-1, WIRE-2, TIME-1, ENG-3, UI-4, UI-6</span>
+  </div>
+  <ul class="font-mono text-sm text-slate-700 grid md:grid-cols-2 gap-x-6">
+    <li>server/game/gameTurn.ts (armTurn, armAfterMove)</li>
+    <li>server/game/gameTimers.ts (afkTimeoutMs)</li>
+    <li>context/offlineDriver.ts (CLI-6: bot loop, auto-pass)</li>
+    <li>lib/timeline/exchangeTimeline.ts (ENG-3)</li>
+    <li>lib/tokens.ts (Reading.notice, read by the server)</li>
+    <li>components/turnTimerUi.ts (TurnTimerConfig, turnPresentation)</li>
+    <li>app/game.tsx, app/(online)/game.tsx (timer props)</li>
+    <li>lib/game/offlineBotDelay.ts, TURN_TIMEOUT_MS</li>
+  </ul>
+
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg border border-slate-200 p-4 diagram">
+      <p class="schem text-slate-500 mb-2">Before: planned after-state</p>
+      <pre class="mermaid">
+flowchart TB
+  M["applyMove + lastMove"] --> S["server armTurn<br/>bot delay, AFK, opening grace"]
+  M --> O["offlineDriver<br/>botTurnKey, bot delay, auto-pass"]
+  S -.-> T1["lib/timeline<br/>exchange holds"]
+  S -.-> T2["lib/tokens Reading.notice"]
+  O -.-> T1
+  O --> P1["GameTable props<br/>includeNewTrick false, pausable"]
+  S --> P2["GameTable props<br/>includeNewTrick true, deadline"]
+  classDef leak stroke:#dc2626,stroke-width:2px;
+  class T2,P1,P2 leak
+      </pre>
+    </div>
+    <div class="rounded-lg border border-slate-200 p-4 diagram">
+      <p class="schem text-slate-500 mb-2">After</p>
+      <pre class="mermaid">
+flowchart TB
+  M["applyMove + lastMove"] --> K["turn schedule<br/>who acts, hold, deadline<br/>per lastMove kind and mode"]
+  K -. adapter .-> S["server: gameTimers.arm"]
+  K -. adapter .-> O["offline: driver setTimeout<br/>also waits on table gates"]
+  K --> U["countdown UI-6<br/>reads the deadline only"]
+  classDef deep fill:#0f172a,color:#f8fafc,stroke:#0f172a,stroke-width:3px;
+  class K deep
+      </pre>
+    </div>
+  </div>
+
+  <p><b>Problem.</b> "Who acts next, after how long a hold, against what deadline" is decided twice: <code>armTurn</code> on the server and the bot loop CLI-6 moves <em>unchanged</em> into <code>offlineDriver</code>. The two already differ. Offline gives no deadline on a lead and pauses the clock during the opening; online arms a deadline on every turn and adds <code>Reading.notice</code> on the server, a UI token the server imports. GAME-RULES&nbsp;&sect;&nbsp;Decisions "The offline turn clock" records that this drifted once (20&nbsp;s against 30&nbsp;s). CLAUDE.md's <code>autoMove</code> invariant covers <em>which</em> move a bot makes. Nothing covers <em>when</em> it makes it.</p>
+  <p><b>Solution.</b> A pure turn-schedule module beside <code>autoMove</code>. It takes a state and its <code>lastMove</code> and returns the acting seat's kind, the hold before it may act, and its deadline policy. The server's timers and the offline driver become its two adapters. Screens stop passing <code>includeNewTrick</code> and <code>pausable</code>, and the hold durations the server reads from <code>lib/timeline</code> and <code>lib/tokens</code> move behind the module's interface.</p>
+  <ul class="list-disc pl-5 text-sm space-y-0.5">
+    <li>Locality: every turn-timing bug in one module</li>
+    <li>Leverage: one interface, server and offline</li>
+    <li>Tests: a node table per lastMove kind</li>
+    <li>The server stops importing UI tokens</li>
+    <li>Mode differences become named, not accidental</li>
+  </ul>
+  <div class="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-sm">Whether a lead is timed offline is a rule. Keep today's per-mode answers as explicit policy rows, and change one only through a GAME-RULES &sect; Decisions entry.</div>
+</article>
+
+<!-- ============ 2 ============ -->
+<article id="c2" class="rounded-xl border border-slate-200 bg-white p-6 space-y-5 shadow-sm">
+  <h2 class="font-serif text-2xl">2. One codec and one shape version for a stored GameState</h2>
+  <div class="flex flex-wrap gap-2 text-xs">
+    <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">Strong</span>
+    <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700">in-process</span>
+    <span class="px-2 py-0.5 rounded bg-indigo-50 text-indigo-800">builds on WIRE-1, WIRE-3, WIRE-4, WIRE-5, ENG-1, ENG-5, TEST-8, R1</span>
+  </div>
+  <ul class="font-mono text-sm text-slate-700 grid md:grid-cols-2 gap-x-6">
+    <li>shared/gameStateSchema.ts (WIRE-3)</li>
+    <li>shared/persistedEnvelope.ts (GAME_SCHEMA_VERSION)</li>
+    <li>lib/offlineSave.ts (OFFLINE_SAVE_VERSION)</li>
+    <li>shared/protocol.ts (PROTOCOL_VERSION, hash)</li>
+    <li>tests/server/protocolVersion.test.ts</li>
+    <li>tests/fixtures/offlineSave.v&lt;N&gt;.json</li>
+  </ul>
+
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg border border-slate-200 p-4 diagram space-y-2">
+      <p class="schem text-slate-500 mb-2">Before: one GameState change, three hand bumps</p>
+      <div class="h-12 border-l-4 border-emerald-600 bg-emerald-50 px-3 flex items-center text-sm">PROTOCOL_VERSION: hash-guarded (WIRE-1)</div>
+      <div class="h-12 border-l-4 border-red-600 bg-red-50 px-3 flex items-center text-sm">GAME_SCHEMA_VERSION: bumped by hand</div>
+      <div class="h-12 border-l-4 border-red-600 bg-red-50 px-3 flex items-center text-sm">OFFLINE_SAVE_VERSION: bumped by hand</div>
+      <div class="h-12 border-l-4 border-slate-400 bg-slate-50 px-3 flex items-center text-sm">offlineSave.v&lt;N&gt;.json: new fixture each time</div>
+      <p class="text-xs text-red-700">Five WIRE tickets each say "schema +1, offline +1". R1 notes WIRE-5's design left out the offline bump.</p>
+    </div>
+    <div class="rounded-lg border border-slate-200 p-4 diagram space-y-2">
+      <p class="schem text-slate-500 mb-2">After</p>
+      <div class="deep rounded p-3 border-2 border-slate-900">
+        <p class="schem text-slate-300">GameState codec</p>
+        <p class="text-sm">parse, encode, shape fingerprint pinned like the protocol hash</p>
+      </div>
+      <div class="grid grid-cols-3 gap-2 text-xs text-center">
+        <div class="border border-slate-400 rounded p-2">wire<br/>embeds it</div>
+        <div class="border border-slate-400 rounded p-2">server envelope<br/>own fields + shape</div>
+        <div class="border border-slate-400 rounded p-2">offline save<br/>own fields + shape</div>
+      </div>
+      <svg width="100%" height="20"><line x1="0" y1="10" x2="100%" y2="10" stroke="#475569" stroke-width="2" class="seam"/></svg>
+      <p class="text-xs text-slate-600">An envelope's own version moves only when the envelope's own fields change.</p>
+    </div>
+  </div>
+
+  <p><b>Problem.</b> WIRE-3 gives a stored <code>GameState</code> one parser. Whether a stored blob is still safe is held by two hand-bumped integers that every shape ticket must remember. Engine design &sect;9 settles it as "whoever lands second bumps again". A missed bump is the failure both version comments warn about: a silently corrupt restore.</p>
+  <p><b>Solution.</b> The <code>gameStateSchema</code> module also owns the stored shape's identity: a fingerprint pinned by the same kind of test as the protocol hash. The server envelope and the offline save each record that fingerprint beside their own version, and refuse a mismatch the way they refuse a version mismatch today.</p>
+  <ul class="list-disc pl-5 text-sm space-y-0.5">
+    <li>Interface shrinks: no lockstep constants</li>
+    <li>Locality: shape change, one module</li>
+    <li>Leverage: five WIRE tickets, zero manual bumps</li>
+    <li>Tests: one pin replaces vigilance</li>
+    <li>R1's bump count unchanged</li>
+  </ul>
+</article>
+
+<!-- ============ 3 ============ -->
+<article id="c3" class="rounded-xl border border-slate-200 bg-white p-6 space-y-5 shadow-sm">
+  <h2 class="font-serif text-2xl">3. The live table holds ledgers, not twenty writable fields</h2>
+  <div class="flex flex-wrap gap-2 text-xs">
+    <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">Worth exploring</span>
+    <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700">in-process</span>
+    <span class="px-2 py-0.5 rounded bg-indigo-50 text-indigo-800">builds on SRV-6, SRV-3, SRV-4, ENG-1, ENG-4</span>
+  </div>
+  <ul class="font-mono text-sm text-slate-700 grid md:grid-cols-2 gap-x-6">
+    <li>server/game/gameRoom.ts (OnlineGameState)</li>
+    <li>server/game/seatLedger.ts</li>
+    <li>server/game/matchLedger.ts (SRV-6)</li>
+    <li>server/game/tableState.ts (pack/unpack)</li>
+    <li>tests/helpers/fieldWrites.ts (SRV-6)</li>
+    <li>tests/server/seatLedger.test.ts (scan)</li>
+  </ul>
+
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg border border-slate-200 p-4 diagram">
+      <p class="schem text-slate-500 mb-3">Before: mass of OnlineGameState</p>
+      <div class="flex items-end gap-6 h-56">
+        <div class="flex flex-col items-center gap-1">
+          <div class="w-24 bg-red-200 border border-red-500" style="height:190px"></div>
+          <span class="schem text-slate-500">interface</span>
+          <span class="text-[10px] text-slate-500">~20 mutable fields</span>
+        </div>
+        <div class="flex flex-col items-center gap-1">
+          <div class="w-24 bg-slate-300 border border-slate-500" style="height:120px"></div>
+          <span class="schem text-slate-500">ledgers</span>
+          <span class="text-[10px] text-slate-500">seat + match</span>
+        </div>
+        <div class="text-xs text-red-700 max-w-[9rem]">Single writer held by two source scans with self-tests (SRV-6), not by the type</div>
+      </div>
+    </div>
+    <div class="rounded-lg border border-slate-200 p-4 diagram">
+      <p class="schem text-slate-500 mb-3">After</p>
+      <div class="flex items-end gap-6 h-56">
+        <div class="flex flex-col items-center gap-1">
+          <div class="w-24 bg-emerald-200 border border-emerald-600" style="height:50px"></div>
+          <span class="schem text-slate-500">interface</span>
+          <span class="text-[10px] text-slate-500">round, seats, match</span>
+        </div>
+        <div class="flex flex-col items-center gap-1">
+          <div class="w-24 deep border-2 border-slate-900" style="height:190px"></div>
+          <span class="schem text-slate-500">ledgers</span>
+          <span class="text-[10px] text-slate-500">own their fields, pack themselves</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p><b>Problem.</b> After SRV-6, <code>matchLedger</code> and <code>seatLedger</code> are the only writers, but <code>OnlineGameState</code> still exposes every field as writable. Two scans enforce ownership. Memory "a source scan falls to a decoy" applies: an alias or destructure has already needed a scan fix (<code>c8fb9e5e</code>).</p>
+  <p><b>Solution.</b> The live table holds a seat ledger, a match ledger and the round. Each owns its fields behind a read-only view, and each packs and unpacks its own block of the envelope, which already has <code>match</code> and <code>seats</code> blocks. The scans become a type error and are deleted.</p>
+  <ul class="list-disc pl-5 text-sm space-y-0.5">
+    <li>Single writer by construction</li>
+    <li>Delete fieldWrites scans</li>
+    <li>Envelope blocks map one-to-one</li>
+    <li>Tests hit ledger interfaces</li>
+  </ul>
+  <div class="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-sm">Do not stretch this into one match record shared with offline <code>matchFlow</code>. Engine design &sect;3.3 rejected that, for server keying. It is a plan decision, not an ADR, and the friction here does not need it.</div>
+</article>
+
+<!-- ============ 4 ============ -->
+<article id="c4" class="rounded-xl border border-slate-200 bg-white p-6 space-y-5 shadow-sm">
+  <h2 class="font-serif text-2xl">4. A move is one intent from the hand to the engine</h2>
+  <div class="flex flex-wrap gap-2 text-xs">
+    <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">Worth exploring</span>
+    <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700">ports &amp; adapters (socket wire)</span>
+    <span class="px-2 py-0.5 rounded bg-indigo-50 text-indigo-800">builds on ENG-6, SRV-2, SRV-5, WIRE-1 (D3 "Move"), CLI-2, CLI-6, TEST-4, TEST-7</span>
+  </div>
+  <ul class="font-mono text-sm text-slate-700 grid md:grid-cols-2 gap-x-6">
+    <li>shared/protocol.ts, shared/socketSchemas.ts</li>
+    <li>server/socket/socketGameplay.ts</li>
+    <li>server/game/tableMoves.ts (SRV-5)</li>
+    <li>context/OnlineGameContext.tsx (deliver x3)</li>
+    <li>context/GameContext.tsx (act, wrappers)</li>
+    <li>components/GameTable.tsx (onPlay/onPass/onExchangeGive)</li>
+  </ul>
+
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg border border-slate-200 p-4 diagram">
+      <p class="schem text-slate-500 mb-2">Before: planned after-state</p>
+      <pre class="mermaid">
+flowchart LR
+  G["GameTable<br/>3 callbacks"] --> P["provider<br/>3 commands"]
+  P --> W1["game:play"]
+  P --> W2["game:pass"]
+  P --> W3["game:exchange_give_card"]
+  W1 --> R["3 registrations<br/>3 schemas"]
+  W2 --> R
+  W3 --> R
+  R --> A["moveAction(Move)"]
+  classDef leak stroke:#dc2626,stroke-width:2px;
+  class W1,W2,W3,R leak
+      </pre>
+    </div>
+    <div class="rounded-lg border border-slate-200 p-4 diagram">
+      <p class="schem text-slate-500 mb-2">After</p>
+      <pre class="mermaid">
+flowchart LR
+  G["GameTable<br/>onMove(Move)"] --> P["provider act(Move)"]
+  P --> W["game:move<br/>Move schema"]
+  W --> A["moveAction(Move)"]
+  P -. offline adapter .-> E["applyMove"]
+  A --> E
+  classDef deep fill:#0f172a,color:#f8fafc,stroke:#0f172a,stroke-width:3px;
+  class E deep
+      </pre>
+    </div>
+  </div>
+
+  <p><b>Problem.</b> ENG-6 makes <code>Move</code> the engine's input, and the server takes it through one <code>moveAction</code>. The wire, both providers and GameTable's props still say play / pass / give as three separate paths. A new move kind, a rate rule or a refusal therefore touches the protocol, three registrations and both providers.</p>
+  <p><b>Solution.</b> The <code>Move</code> union crosses the socket as one intent, and GameTable and both providers expose one <code>act(move)</code>. Ride an R1 bump that is already planned (for example WIRE-1), so the bump count does not grow.</p>
+  <ul class="list-disc pl-5 text-sm space-y-0.5">
+    <li>Leverage: Move type, end to end</li>
+    <li>Recorded moves replay on either table</li>
+    <li>FakeSocket asserts one event</li>
+    <li>GameTable interface narrows</li>
+  </ul>
+</article>
+
+<!-- ============ 5 ============ -->
+<article id="c5" class="rounded-xl border border-slate-200 bg-white p-6 space-y-5 shadow-sm">
+  <h2 class="font-serif text-2xl">5. Named table situations reached through the engine</h2>
+  <div class="flex flex-wrap gap-2 text-xs">
+    <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">Worth exploring</span>
+    <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700">in-process</span>
+    <span class="px-2 py-0.5 rounded bg-indigo-50 text-indigo-800">builds on ENG-5 (startRound dealt), ENG-6, ENG-7 (playRoundOut), WIRE-1, WIRE-3, TEST-1, TEST-8, HYG-2</span>
+  </div>
+  <ul class="font-mono text-sm text-slate-700 grid md:grid-cols-2 gap-x-6">
+    <li>lib/captureStates.ts (hand-built, ships in app/capture)</li>
+    <li>lib/e2eOpener.ts (re-deal loop, left by the plan)</li>
+    <li>lib/diagnostics/benchTable.ts</li>
+    <li>tests/support/game.ts state(over) (TEST-1)</li>
+    <li>tests/e2e/helpers/offlineSeed.ts presets (TEST-8)</li>
+    <li>tests/helpers/liveGame.ts redealExactly</li>
+  </ul>
+
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg border border-slate-200 p-4 diagram">
+      <p class="schem text-slate-500 mb-2">Before: six ways to make a table</p>
+      <pre class="mermaid">
+flowchart TB
+  C["captureStates<br/>literal GameState"] --> GS(("GameState"))
+  O["e2eOpener<br/>deal until seat opens"] --> GS
+  B["benchTable"] --> GS
+  S["state(over)<br/>literal + overrides"] --> GS
+  T["TEST-8 presets"] --> GS
+  R["redealExactly"] --> GS
+  classDef leak stroke:#dc2626,stroke-width:2px;
+  class C,S leak
+      </pre>
+    </div>
+    <div class="rounded-lg border border-slate-200 p-4 diagram">
+      <p class="schem text-slate-500 mb-2">After</p>
+      <pre class="mermaid">
+flowchart TB
+  N["situations<br/>startRound dealt, then Moves"] --> E["applyMove"]
+  C["captures"] --> N
+  O["e2e opener"] --> N
+  T["test presets, e2e saves"] --> N
+  classDef deep fill:#0f172a,color:#f8fafc,stroke:#0f172a,stroke-width:3px;
+  class N deep
+      </pre>
+    </div>
+  </div>
+
+  <p><b>Problem.</b> <code>lib/captureStates.ts</code> is production code, so it cannot use TEST-1's <code>state()</code>. It builds <code>GameState</code> literals by hand, which is why WIRE-1 and WIRE-4 both list it. <code>state(over)</code> still lets a test build a state no deal reaches, with a <code>lastMove</code> that disagrees with the table. That is the state WIRE-3's parser refuses and ENG-7 says cannot arise.</p>
+  <p><b>Solution.</b> A pure, production-safe situations module. Each named situation is a fixed deal plus a script of moves, reached through <code>startRound</code> and <code>applyMove</code>. Captures, the e2e opener, bench scenarios, TEST-8 presets and node fixtures all name a situation. Each test fixture then carries a valid <code>lastMove</code> and demand.</p>
+  <ul class="list-disc pl-5 text-sm space-y-0.5">
+    <li>Shape tickets edit no fixtures</li>
+    <li>Fixtures pass parseGameState by construction</li>
+    <li>Capture and web runs share states</li>
+    <li>Delete the re-deal loop</li>
+  </ul>
+</article>
+
+<!-- ============ 6 ============ -->
+<article id="c6" class="rounded-xl border border-slate-200 bg-white p-6 space-y-5 shadow-sm">
+  <h2 class="font-serif text-2xl">6. A refusal is worded once, from the engine's code</h2>
+  <div class="flex flex-wrap gap-2 text-xs">
+    <span class="px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-semibold">Speculative</span>
+    <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700">in-process</span>
+    <span class="px-2 py-0.5 rounded bg-indigo-50 text-indigo-800">builds on ENG-2, ENG-6, SRV-2, LINT-2, CLI-8</span>
+  </div>
+  <ul class="font-mono text-sm text-slate-700 grid md:grid-cols-2 gap-x-6">
+    <li>server/game/tableMoves.ts (MOVE_REFUSAL_CODES)</li>
+    <li>components/table/spokenLabels.ts (playRefusalLabel)</li>
+    <li>components/tutorialRefusal.ts / lib/tutorial</li>
+    <li>locales/{en,it,sq}.ts (server.*)</li>
+  </ul>
+
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg border border-slate-200 p-4 diagram">
+      <p class="schem text-slate-500 mb-2">Before: planned after-state</p>
+      <pre class="mermaid">
+flowchart LR
+  E["MoveRefusal<br/>tooLow, wrongType ..."] --> S["server map<br/>5 codes to INVALID_MOVE"]
+  S --> I["server.* keys"]
+  E --> L["playRefusalLabel<br/>GIOCA keys"]
+  E --> T["tutorial keys"]
+  classDef leak stroke:#dc2626,stroke-width:2px;
+  class S leak
+      </pre>
+    </div>
+    <div class="rounded-lg border border-slate-200 p-4 diagram">
+      <p class="schem text-slate-500 mb-2">After</p>
+      <pre class="mermaid">
+flowchart LR
+  E["MoveRefusal"] --> W["refusal wording<br/>one table, params"]
+  W --> G["GIOCA label"]
+  W --> F["server refusal float"]
+  W --> T["tutorial override"]
+  classDef deep fill:#0f172a,color:#f8fafc,stroke:#0f172a,stroke-width:3px;
+  class W deep
+      </pre>
+    </div>
+  </div>
+
+  <p><b>Problem.</b> ENG-2 makes the GIOCA label read the engine's code. The server still maps five distinct codes onto <code>INVALID_MOVE</code>, so the same refusal reads "too low" on the button and "Invalid move" in the float. The tutorial keeps a third map.</p>
+  <p><b>Solution.</b> The wire carries the engine's refusal code with its params. One client wording table keyed by <code>MoveRefusal</code> serves GIOCA, the server float and the tutorial's overrides.</p>
+  <ul class="list-disc pl-5 text-sm space-y-0.5">
+    <li>One wording per refusal</li>
+    <li>Delete the lossy server map</li>
+    <li>i18n ratchet keys on engine codes</li>
+  </ul>
+  <p class="text-xs text-slate-500">Speculative because GIOCA already blocks most illegal plays, so the server float is rarely seen.</p>
+</article>
+
+</section>
+
+<section id="top" class="rounded-xl deep p-8 space-y-3">
+  <p class="schem text-slate-300">Top recommendation</p>
+  <h2 class="font-serif text-3xl"><a href="#c1" class="underline decoration-emerald-400">1. One turn schedule for both tables</a></h2>
+  <p class="text-slate-200 max-w-3xl">"When may this seat act" is the same kind of bug as CLAUDE.md's <code>autoMove</code> invariant. It has drifted once already (the GAME-RULES offline clock), still differs between online and offline, and caused the latest hot spots (#1624, #1638, #1639). CLI-6 moves it unchanged, so the plan would leave two copies. Schedule it after CLI-6, ENG-7, WIRE-2 and TIME-1, so that it keys on <code>lastMove</code> and arms through the one server clock.</p>
+</section>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,83 @@
+
+  warn no-orphans: lib/flushSync.web.ts
+    -
+
+  warn no-orphans: lib/device/inviteTaps.web.ts
+    -
+
+  warn no-orphans: lib/device/hapticsEngine.web.ts
+    -
+
+  warn no-orphans: lib/device/fonts.web.ts
+    -
+
+  error shared-is-a-leaf: shared/schema.ts → lib/game/replay.ts
+    -
+
+  error shared-is-a-leaf: shared/schema.ts → lib/game/gameEngine.ts
+    -
+
+  error shared-is-a-leaf: shared/protocol.ts → lib/wire.ts
+    -
+
+  error shared-is-a-leaf: shared/protocol.ts → lib/game/matchState.ts
+    -
+
+  error shared-is-a-leaf: shared/protocol.ts → lib/game/gameEngine.ts
+    -
+
+  error prod-not-to-tests: scripts/measureHeadsUpBalance.ts → tests/helpers/offlineMatch.ts
+    -
+
+  error prod-not-to-tests: scripts/measureHeadsUpBalance.ts → tests/engine/helpers.ts
+    -
+
+  error not-to-unresolvable: server/http/validate.ts → express-serve-static-core
+    -
+
+  error no-non-package-json: server/http/validate.ts → express-serve-static-core
+    -
+
+  error no-circular: lib/wire.ts → 
+      lib/game/gameEngine.ts →
+      lib/game/botPersonalities.ts →
+      lib/i18n.ts →
+      shared/protocol.ts →
+      lib/wire.ts
+    -
+
+  error no-circular: lib/game/matchState.ts → 
+      lib/game/gameEngine.ts →
+      lib/game/botPersonalities.ts →
+      lib/i18n.ts →
+      shared/protocol.ts →
+      lib/game/matchState.ts
+    -
+
+  error no-circular: lib/game/matchState.ts → 
+      lib/game/botPersonalities.ts →
+      lib/i18n.ts →
+      shared/protocol.ts →
+      lib/game/matchState.ts
+    -
+
+  error no-circular: lib/game/botPersonalities.ts → 
+      lib/i18n.ts →
+      shared/protocol.ts →
+      lib/game/gameEngine.ts →
+      lib/game/botPersonalities.ts
+    -
+
+  error no-circular: lib/game/botPersonalities.ts → 
+      lib/game/gameEngine.ts →
+      lib/game/botPersonalities.ts
+    -
+
+  error no-circular: components/table/air.ts → 
+      components/table/particles.ts →
+      components/table/air.ts
+    -
+
+
+x 19 dependency violations (15 errors, 4 warnings). 553 modules, 2282 dependencies cruised.
+

@@ -1,0 +1,793 @@
+[
+ {
+  "id": "L-022",
+  "theme": "Server table runtime",
+  "title": "Shutdown hands rooms back while bot and AFK timers keep playing and persisting",
+  "kind": "defect",
+  "priority": "P1",
+  "effort": "S",
+  "files": [
+   "server/http/shutdown.ts:74-102",
+   "server/game/gameRoom.ts:157-163",
+   "server/game/gameTurn.ts:191-247",
+   "server/game/gamePersistence.ts:106-125",
+   "shutdown.ts:74",
+   "tableHandlers.ts:661,813,819",
+   "tableRouter.ts:294",
+   "socketTable.ts:248",
+   "socketPresence.ts:196",
+   "shutdown.ts:86",
+   "shutdown.ts:83-85",
+   "gameTimers.ts"
+  ],
+  "problem": "`beginShutdown()` (`shutdown.ts:74`) only sets a flag. The flag is read by the rejoin, the orphan sweep, the router and the lobby grace (`tableHandlers.ts:661,813,819`, `tableRouter.ts:294`, `socketTable.ts:248`, `socketPresence.ts:196`). It is never read by the turn timers.",
+  "proposed": "Stop all turn timers in the shutdown path before `closeOwnership()`. One option is to call `clearRoomTimers(roomId)` for every `activeGames` key inside `beginShutdown()`. Alternatively, make `arm()` in `gameTimers.ts` refuse while `isShuttingDown()`.",
+  "effect": "One owner per row holds through a deploy. Add a test that fires a bot timer after `beginShutdown` and asserts no write.",
+  "sources": [
+   "05-server-F2"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-023",
+  "theme": "Server table runtime",
+  "title": "Lobby grace lives in one process, so a player who reconnects to another instance loses the seat",
+  "kind": "defect",
+  "priority": "P1",
+  "effort": "M",
+  "files": [
+   "server/socket/socketPresence.ts:215",
+   "server/game/tableHandlers.ts:698",
+   "server/socket/socketTable.ts:240-266",
+   "server/socket/socketRooms.ts:129",
+   "server/game/tableHandlers.ts:494-495",
+   "server/game/tableHandlers.ts:557",
+   "tableHandlers.ts:491-493",
+   "socketPresence.ts:215",
+   "socketRegistry.ts:61",
+   "tableHandlers.ts:174-175",
+   "server/game/gameTimers.ts",
+   "tests/integration/lobbyGrace.test.ts"
+  ],
+  "problem": "ADR-0003 makes multi-instance real, but lobby grace is a per-process timer. Suppose a player drops on instance A and reconnects within the grace window through instance B. A's expiry asks A's own `userSocketMap`, which does not hold the player.",
+  "proposed": "Make the expiry ask the cluster instead of its own maps. `isUserAtTable(userId, roomId)` already exists in `socketRegistry.ts:61` and uses `io.in(userRoom).fetchSockets()`. Then `if (await isUserAtTable(userId, roomId)) return;` replaces the local check.",
+  "effect": "Removes a cross-instance seat-loss class. Deletes the false comment.",
+  "sources": [
+   "05-server-F1"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "ADR-0003 makes multi-instance load-bearing, so a per-process grace is a real cross-instance defect.",
+  "depends_on": []
+ },
+ {
+  "id": "L-024",
+  "theme": "Server table runtime",
+  "title": "`active_games` persistence has no owning module, so tests mock drizzle internals",
+  "kind": "structure",
+  "priority": "P1",
+  "effort": "M",
+  "files": [
+   "tableHandlers.ts:140-142",
+   "tableHandlers.ts:814-816",
+   "gamePersistence.ts:128-170",
+   "gamePersistence.ts:116-123",
+   "gamePersistence.ts:269-279",
+   "deleteAccount.ts:38-44",
+   "endMatchVote.test.ts:269",
+   "persistedEnvelope.test.ts:147",
+   "persistedEnvelope.test.ts:148",
+   "tableHandlers.ts:42-43,49",
+   "gameRoom.ts:146",
+   "roomStore.ts:57"
+  ],
+  "problem": "One table's lifecycle (write order, delete order, \"room_players has no cascade so it goes first\") is spread over three modules and raw drizzle. Tests reach past every interface to substitute it: `t.mock.method(db.query.activeGames, \"findFirst\", …)` appears 6× in `tableStalls.test.ts` (94, 113, 279, 291, 303, 321), plus `endMatchVote.test.ts:269` and `persistedEnvelope.test.ts:147`. `t.mock.method(db, \"delete\", …)` appears at `persistedEnvelope.test.ts:148`.",
+  "proposed": "`pruneStaleRooms` and `deleteUser`'s room purge should share one `roomStore.purgeRooms(tx, ids)` that encodes the delete order once.",
+  "effect": "Deletes about 15 `mock.method(db…|persistence…)` calls. `rehydrateGame` and `resumeOrphanedTables` stop importing `db` and `shared/schema` (`tableHandlers.ts:42-43,49`).",
+  "sources": [
+   "server-F2",
+   "tests-T4"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-025",
+  "theme": "Server table runtime",
+  "title": "`tableHandlers.ts` (839 lines) is a god module",
+  "kind": "structure",
+  "priority": "P1",
+  "effort": "M",
+  "files": [
+   "tableHandlers.ts:366-384",
+   "tableState.ts:68-91",
+   "tableHandlers.ts:381",
+   "tableState.ts:74",
+   "tableHandlers.ts",
+   "server/game/tableMoves.ts",
+   "server/game/tableVotes.ts",
+   "server/game/tableState.ts",
+   "server/game/tableLifecycle.ts",
+   "server/game/seatPresence.ts"
+  ],
+  "problem": "`tableHandlers.ts` (839 lines) holds refusal helpers, rehydrate, move validation, voting and next-round dealing, rejoin, startMatch, seat loss, the dispatcher and a sweeper. Next-round construction exists twice (`dealVotedRound` vs `tableState.newTable`, with different team rules) and the ready gate has two arithmetics (`votesUnanimous` vs `startMatchAction`).",
+  "proposed": "Pure deciders `tableMoves.decideMove`, `tableVotes.castRematch`/`readyGate`, `tableState.nextRound`, plus `tableLifecycle` and `seatPresence` modules; `tableHandlers.ts` keeps only an ~80-line dispatcher applying decisions through `TableDeps`.",
+  "effect": "Move legality, vote gates and round construction become unit-testable as pure functions, with no stub io and no db mock. The two-arithmetic bug class for vote gates disappears.",
+  "sources": [
+   "server-F4"
+  ],
+  "tickets": [
+   1597
+  ],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "Closed #1597 (one move-commit path, typed validate()) may be partial progress; re-measure before cutting.",
+  "depends_on": [
+   "L-026"
+  ]
+ },
+ {
+  "id": "L-026",
+  "theme": "Server table runtime",
+  "title": "The game layer's output port is the raw Socket.IO server",
+  "kind": "structure",
+  "priority": "P1",
+  "effort": "L",
+  "files": [
+   "gamePersistence.ts:197-211",
+   "gamePersistence.ts:331",
+   "tableRouter.ts:157",
+   "seating.ts:49",
+   "tableStalls.test.ts:42-54",
+   "rematch.test.ts:202",
+   "rematch.test.ts:235",
+   "gameplay.test.ts:169",
+   "tableHandlers.ts:111-116",
+   "tableHandlers.ts",
+   "gameTurn.ts",
+   "tableRouter.ts"
+  ],
+  "problem": "The interface the game logic needs is small: \"send to room\", \"send to user\", \"send state with one retry on a missing ack\", and \"who is online\". The interface it actually takes is all of Socket.IO. Tests have to recreate it by hand.",
+  "proposed": "There would be one Socket.IO adapter built in `setupSocket`, plus a recording adapter in `tests/helpers`. The router (`tableRouter.ts`) keeps `io` for `serverSideEmit`, because it really is transport.",
+  "effect": "About 44 `io` params collapse into one `deps`. 12 hand-rolled stubs become one recording outbox.",
+  "sources": [
+   "server-F1"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-027",
+  "theme": "Server table runtime",
+  "title": "An ownership query error during reclaim is read as \"claimed elsewhere\" and drops live tables",
+  "kind": "defect",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "server/game/gameOwnership.ts:140-153",
+   "server/game/tableHandlers.ts:835"
+  ],
+  "problem": "`takeLock` returns `null` when it cannot connect, but `false` when the query throws (`:149-151`). `reclaim` treats `false` as lost (`:170-173`). It deletes the room from `held` and disposes the game.",
+  "proposed": "Return `null` from the `catch` so the existing `OWNERSHIP_RECLAIM_RETRY_MS` path covers it. This is a one-line change.",
+  "effect": "Removes a data-loss path on DB failure. Add a unit test with a query that throws once.",
+  "sources": [
+   "05-server-F3"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-028",
+  "theme": "Server table runtime",
+  "title": "`disposeGame` releases the lock before the row delete lands",
+  "kind": "defect",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "server/game/gamePersistence.ts:106-125",
+   "server/game/tableRouter.ts"
+  ],
+  "problem": "`void releaseRoom(roomId)` (`:116`) runs right away, while the `active_games` delete is queued behind pending writes on `inRoomOrder` (`:117-124`). In that window, a restore-mode action such as rejoin or a rematch vote can find no owner, claim the lock and rehydrate the row it reads. That resurrects a table that was just disposed.",
+  "proposed": "When `deleteRow` is set, release inside the same `inRoomOrder` chain after the delete settles: `void inRoomOrder(roomId, () => del().finally(() => releaseRoom(roomId)))`.",
+  "effect": "Closes a resurrection race. `activeGames` is already empty, so nothing else waits on it.",
+  "sources": [
+   "05-server-F4"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-029",
+  "theme": "Server table runtime",
+  "title": "Retention and prune deletes are unbounded under a 5 s statement timeout, and one policy has two homes",
+  "kind": "resilience",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "server/game/retention.ts:25-52",
+   "server/game/gamePersistence.ts:269-279",
+   "server/socket/ticket.ts:89",
+   "retention.ts:58",
+   "ticket.ts:89",
+   "retention.ts:1-9",
+   "server/store/db.ts",
+   "retention.ts"
+  ],
+  "problem": "Each sweep is one unbatched `DELETE ... WHERE ts < cutoff`. Once a backlog makes it exceed the 5 s `statement_timeout`, it times out on every run and never catches up.",
+  "proposed": "Use one batched helper, `pruneOlderThan(table, where, batch=5000)`, as a `DELETE ... WHERE ctid IN (SELECT ctid ... LIMIT n)` loop.",
+  "effect": "The sweep converges after an outage, and the handshake loses a write. `retention.ts` becomes the only home again.",
+  "sources": [
+   "05-server-F5"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-030",
+  "theme": "Server table runtime",
+  "title": "HTTP rate limiters use the per-instance memory store",
+  "kind": "defect",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "server/http/rateLimit.ts:61-69",
+   "server/http/routes.ts:139-149",
+   "server/socket/socketSafety.ts:60",
+   "routes.ts:139-149",
+   "socketSafety.ts:60",
+   "server/CLAUDE.md"
+  ],
+  "problem": "No `store` is passed, so express-rate-limit keeps counts in process memory. Under ADR-0003 with N instances: the per-username login limit becomes about 10 × N attempts per window, and every deploy resets it. That matters because the comment at `routes.ts:139-149` calls this limiter what actually makes a password hard to guess.",
+  "proposed": "Use a Postgres-backed store for the auth limiters only. A small `Store` over one `rate_limits(key, window_start, hits)` table using upsert is enough; the other limiters can stay in memory. Otherwise, record the N× ceiling as accepted in `server/CLAUDE.md`.",
+  "effect": "The brute-force bound becomes cluster-wide and survives restarts.",
+  "sources": [
+   "05-server-F6"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "ADR-0003 (multi-instance) makes a per-instance memory store a real gap.",
+  "depends_on": []
+ },
+ {
+  "id": "L-031",
+  "theme": "Server table runtime",
+  "title": "The lobby port is half adopted",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "lobbyIntents.ts:18-37",
+   "lobbyIntents.ts:80-94",
+   "socketRooms.ts",
+   "quickmatchAutoStart.test.ts",
+   "lobbyGrace.test.ts"
+  ],
+  "problem": "inconsistent seam placement. Half the lobby can be tested with `node --test` and no Postgres; the other half needs integration tests (`quickmatchAutoStart.test.ts`, `lobbyGrace.test.ts`).",
+  "proposed": "`rejoinRoomIntent(port, {code})`, `setVisibilityIntent(port, {visibility})` and `quickmatchIntent(port, {maxPlayers, gameMode})`. Quickmatch reuses `joinRoomIntent`'s claim-and-announce and `createRoomIntent({visibility:\"public\", autoStart:true})`. Widen `LobbyPort.store` accordingly.",
+  "effect": "about 60 lines of duplication removed, with all 6 lobby intents behind one port.",
+  "sources": [
+   "server-F11"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-032",
+  "theme": "Server table runtime",
+  "title": "A safeguard exempts a file that breaks its rule",
+  "kind": "test",
+  "priority": "P2",
+  "effort": "S",
+  "files": [
+   "tests/server/tableOwnership.test.ts:50-60",
+   "socketPresence.ts:88-103",
+   "tableHandlers.ts:713",
+   "socketGameplay.ts",
+   "socketRooms.ts",
+   "server/CLAUDE.md"
+  ],
+  "problem": "The scan's list is hand-maintained, so it silently exempts the third handler family. The local path only fires when the connecting instance is also the owner, because the grace timer was armed on the owner (`tableHandlers.ts:713`) and `clearDisconnectGrace` is local. The routed `game:rejoin`, whose `rejoinAction` clears the grace (494), already covers the general case.",
+  "proposed": "delete the local block in `announcePresence` and rely on the routed rejoin. Alternatively, make the scan cover every `server/socket/*` file. Encapsulate `activeGames`: export `getGame`/`hasGame` from the table runtime (F13) rather than the raw `Map`.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "server-F14"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "A self-exempting safeguard in the CLAUDE.md \"No self-defeating safeguards\" sense.",
+  "depends_on": []
+ },
+ {
+  "id": "L-033",
+  "theme": "Server table runtime",
+  "title": "The connect path and the sweeper fetch every socket in the cluster",
+  "kind": "perf",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "server/socket/socketRegistry.ts:72-111",
+   "server/socket/socketPresence.ts:111",
+   "server/game/tableHandlers.ts:812-826",
+   "server/game/gamePersistence.ts:331"
+  ],
+  "problem": "Every connection, every `friend:get_online_list`, and every orphan or sweeper pass calls `io.fetchSockets()` over the whole cluster. Through the postgres adapter, that is a broadcast request whose reply holds every socket. A reconnect storm after a deploy is therefore O(N²) in sockets.",
+  "proposed": "`onlineUserIds(ids)` → `io.in(ids.map(userRoom)).fetchSockets()`, and `tablePresence(roomId)` → `io.in(roomId).fetchSockets()`.",
+  "effect": "The cost becomes proportional to friends or seats, not to the cluster.",
+  "sources": [
+   "05-server-F7"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "ADR-0003 multi-instance.",
+  "depends_on": []
+ },
+ {
+  "id": "L-034",
+  "theme": "Server table runtime",
+  "title": "`routes.ts` (1041 lines) is a god module, with repeated auth and session plumbing",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "routes.ts",
+   "app.ts",
+   "CONTEXT.md",
+   "server/http/routeTable.ts",
+   "server/http/accountSession.ts"
+  ],
+  "problem": "`routes.ts` (1041 lines) mixes 12 limiter definitions, session and mail helpers, auth and recovery, account, friends, stats, admin, ladders, replays, reports and creating the `http.Server`. `req.session.userId!` appears 26 times, the getUser-then-401 check 5 times with inconsistent codes (`/me` answers USER_NOT_FOUND), and the regenerate/revoke/save session sequence is duplicated in register and login.",
+  "proposed": "A `routeTable.ts` with `RouteSpec { method, path, access: public|signedIn|admin, limiters, body, handle }` and `mount(app, routes)`, an `accountSession.signIn`/`hashPassword`, and per-area files `routes/{auth,account,friends,ladder,replays,reports,admin}.ts`; keep each route's reply timing and do not merge the recovery state machine.",
+  "effect": "Removes 26 non-null assertions and the `/me` inconsistency, shrinks register and login by about 25 lines each, and keeps each area file under about 250 lines.",
+  "sources": [
+   "server-F6"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "Respects the CONTEXT.md rejection of consolidating the account-recovery blocks (ADR-0007); the split must not re-propose it.",
+  "depends_on": []
+ },
+ {
+  "id": "L-035",
+  "theme": "Server table runtime",
+  "title": "Mutate→broadcast→persist→arm is repeated, and the `RoundOverWriters` seam is bypassed",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "gameTurn.ts:86-99",
+   "dealRound.ts:21-52",
+   "tableHandlers.ts:483-488",
+   "gameTurn.ts:419-421",
+   "roundOver.ts:138-174",
+   "gamePersistence.ts:248-260",
+   "gameTurn.ts:210-222",
+   "gameTurn.ts:351-359",
+   "gameTurn.ts:351-358",
+   "gamePersistence.ts:116-123",
+   "gameTurn.ts:97",
+   "gamePersistence.ts:217-219"
+  ],
+  "problem": "Ordering is documented as load-bearing: settle before serving (`gamePersistence.ts:217-219`), persist before dispose (`roundOver.ts:170-174`). Yet the sequence is open-coded at each site. The one injected seam leaks, so a test with fake writers still hits Postgres.",
+  "proposed": "`RoundOverWriters` folds into `TableDeps`, so one injection point covers every path.",
+  "effect": "about 6 open-coded sequences become 1, the 3 close-table copies become 1, and the writers leak disappears.",
+  "sources": [
+   "server-F10",
+   "09-tests-server-engine-F6"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": [
+   "L-026"
+  ]
+ },
+ {
+  "id": "L-036",
+  "theme": "Server table runtime",
+  "title": "`OnlineGameState` is mutated by many modules; only seat fields have a ledger",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "seatLedger.ts:1-10",
+   "seatLedger.ts:58-62",
+   "gameRoom.ts:8-144",
+   "roundOver.ts",
+   "tableHandlers.ts",
+   "gameTurn.ts",
+   "dealRound.ts",
+   "matchLedger.ts",
+   "seatLedger.test.ts"
+  ],
+  "problem": "the vote and score invariants (\"cleared whenever the roster changes or a round deals\") are spread across 4 modules. `seatLedger` shows the fix works.",
+  "proposed": "extend the ledger pattern to a `matchLedger.ts` covering `castRematchVote`, `clearVotes`, `foldRound(result)`, `rollForward()` and `markEndedByVote()`. Pin \"only the ledgers write these fields\" with the same scan `seatLedger.test.ts` uses.",
+  "effect": "vote and score lifecycle rules move into one file and can be tested on a bare object.",
+  "sources": [
+   "server-F12"
+  ],
+  "tickets": [
+   1640
+  ],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "Open #1640 (tableState field list complete by type) and closed #1598/#1599 (table pack/unpack, seat ledger) touch the same state; re-check scope.",
+  "depends_on": []
+ },
+ {
+  "id": "L-037",
+  "theme": "Server table runtime",
+  "title": "Layering: `game/` imports `socket/`, and cycles are dodged with mutable module setters",
+  "kind": "structure",
+  "priority": "P2",
+  "effort": "M",
+  "files": [
+   "tableRouter.ts:75-81",
+   "tableHandlers.ts:15",
+   "gameOwnership.ts:63-67",
+   "socketRegistry.ts:15-20",
+   "gameTimers.ts:27",
+   "roomStore.ts:5-7",
+   "tableHandlers.ts",
+   "socket/socketTable.ts",
+   "socketRegistry.ts",
+   "seating.ts",
+   "emit.ts",
+   "payload.ts"
+  ],
+  "problem": "the directories don't reflect dependency direction, and the mutable setters are ambient global wiring that tests must reset (`reopenOwnership`, `installTableHandlers` in every table test's `before`).",
+  "proposed": "with F1, `createTableRuntime(deps: TableDeps): { apply(action): Promise<IntentReply>; rehydrate(...) }` is constructed once in `setupSocket` and passed to the router. The setter globals go away. Move the shared utilities (`logger`, `payload`) to `server/shared/`.",
+  "effect": "removes 3 of the 4 setters, and the import graph points one way (socket → game → store).",
+  "sources": [
+   "server-F13"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-038",
+  "theme": "Server table runtime",
+  "title": "Outbound HTTP has no timeout",
+  "kind": "resilience",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "server/http/mail.ts:75",
+   "server/socket/push.ts:109",
+   "mail.ts:101-104"
+  ],
+  "problem": "`fetch` to the mail provider and to Expo push has no `signal`, so a hung remote holds the request, or the un-awaited invite push, forever. `mail.ts:101-104` cites the Replit \"Run button\", which has been stale since ADR-0006.",
+  "proposed": "Add `signal: AbortSignal.timeout(10_000)` to both, and delete the stale sentence.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "05-server-F8"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-039",
+  "theme": "Server table runtime",
+  "title": "The shutdown budget leaves out steps it spends time on",
+  "kind": "resilience",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "server/http/shutdown.ts:34",
+   "tests/server/shutdownBudget.test.ts"
+  ],
+  "problem": "`FORCED_EXIT_MS = 1500 + 6000 + 2000` counts the settle, the drain and slack. It omits `socketAdapterReady(1_000)`, `io.close()`, `closeOwnership()` and `adapterPool.end()`. Only about 1 s of the 2 s slack is really free, and the test checks just the drain against the watchdog.",
+  "proposed": "Derive `FORCED_EXIT_MS` from a named list of step budgets, and have the test sum that list.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "05-server-F12"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-040",
+  "theme": "Server table runtime",
+  "title": "The deal waits on a best-effort status write",
+  "kind": "perf",
+  "priority": "P3",
+  "effort": "XS",
+  "files": [
+   "server/game/dealRound.ts:40-44"
+  ],
+  "problem": "`await roomStore.updateRoomStatus(...).catch(warn)` sits before `broadcastGameState`. The write is explicitly optional, yet under DB stress it delays the deal by up to the connection wait plus the query timeout.",
+  "proposed": "Make it `void` (fire-and-forget), or move it after the emits.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "05-server-F13"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-041",
+  "theme": "Server table runtime",
+  "title": "The error recorder amplifies DB outages, and client crashes inflate server errors",
+  "kind": "resilience",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "server/http/serverErrors.ts:12-20",
+   "server/http/routes.ts:300-310",
+   "routes.ts:982",
+   "server/http/logger.ts",
+   "server/http/clientErrors.ts",
+   "server/http/bugReports.ts"
+  ],
+  "problem": "Each error-level log line runs one `INSERT server_errors`. During a DB outage, every failed query logs an error, and each log asks for another pool checkout. That deepens the pool starvation it is reporting.",
+  "proposed": "Have the recorder drop inserts while the pool has waiters, or keep a small in-memory ring and flush it from the sweeper. Log client crashes at warn level. Give bug reports their own limiter instance.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "05-server-F9"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-042",
+  "theme": "Server table runtime",
+  "title": "`/admin` and the circle leaderboard saturate the 10-connection pool",
+  "kind": "perf",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "server/http/admin.ts:8",
+   "server/http/sourceMaps.ts:69-89",
+   "server/game/ratings.ts:224-236",
+   "server/store/friendStore.ts:24-32",
+   "admin.ts:8"
+  ],
+  "problem": "`adminSnapshot` runs 18 queries in parallel against a pool of 10. The error-group queries are GROUP BYs over the whole table, despite the claim at `admin.ts:8` that \"Every query is bounded\". `symbolicate` parses a source map per crash group on the game process's event loop.",
+  "proposed": "Bound the error groups with a date window. Run the admin queries in chunks of at most 4. Replace the per-member `currentRow` with one `inArray` query.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "05-server-F10"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-043",
+  "theme": "Server table runtime",
+  "title": "Boot DDL runs without a lock while another revision serves",
+  "kind": "resilience",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "server/store/schemaDdl.ts:489-496"
+  ],
+  "problem": "`ensureSchema` runs about 100 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` statements on every boot. Postgres takes ACCESS EXCLUSIVE on the table even when the column exists.",
+  "proposed": "Wrap the DDL in `pg_advisory_xact_lock(<const>)` with `SET LOCAL lock_timeout` and a retry, or skip `ALTER`s whose column is already in `information_schema`.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "05-server-F11"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-044",
+  "theme": "Server table runtime",
+  "title": "`pruneStaleRooms` only knows about this process's games",
+  "kind": "defect",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "server/game/gamePersistence.ts:290"
+  ],
+  "problem": "Candidates are filtered with the local `activeGames.has(id)` only. A room older than `STALE_ROOM_MAX_AGE_MS` that is live on another instance loses its `room_players` and `active_games` rows underneath that instance. The comment at `:290` claims a safety it only has on a single instance.",
+  "proposed": "Exclude rooms with `status = 'in_progress'` or an `active_games.updated_at` within the window in SQL. That makes the guard cluster-wide.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "05-server-F14"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "ADR-0003 multi-instance.",
+  "depends_on": []
+ },
+ {
+  "id": "L-045",
+  "theme": "Server table runtime",
+  "title": "An uncaught exception exits without draining queued persists",
+  "kind": "resilience",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "server/socket/socketSafety.ts:265-280",
+   "server/index.ts"
+  ],
+  "problem": "`process.exit(1)` runs immediately, which drops every write queued on `inRoomOrder` and leaves the ownership locks to time out with the connection. The comment at `:275-277` defends exiting, not exiting without the drain.",
+  "proposed": "Call the existing `shutdown(\"uncaughtException\", ...)` with a short watchdog, then exit with code 1.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "05-server-F15"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "low",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-046",
+  "theme": "Server table runtime",
+  "title": "Room creation is not atomic, and the room store reaches up into `game/`",
+  "kind": "defect",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "server/store/roomStore.ts:5-7",
+   "server/socket/lobbyIntents.ts:60",
+   "server/socket/socketRooms.ts:224",
+   "tests/integration/roomVisibility.test.ts",
+   "game/gameTimers.ts"
+  ],
+  "problem": "`createRoom`, then a separate `addRoomPlayer(room.id, host, 0)`: a failure between the two leaves a host-less `waiting` room. A public one would be offered by `findWaitingPublicRooms`; `requireOccupied` covers that case, but it is a patch for the gap. `removeRoomPlayer` is now called only by `tests/integration/roomVisibility.test.ts`, so it is dead in production.",
+  "proposed": "Use `createRoom(host, …)` that inserts the host's seat in the same transaction, and delete `addRoomPlayer` and `removeRoomPlayer`. Pass `holdMs` in as a parameter.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "05-server-F16"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "high",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-047",
+  "theme": "Server table runtime",
+  "title": "Six identical gameplay handlers",
+  "kind": "structure",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "socketGameplay.ts:80-181"
+  ],
+  "problem": "`socketGameplay.ts:80-181`: six `onEvent`s each repeat `atTable() → NOT_AT_A_TABLE → applyOrForward(kind…)`.",
+  "proposed": "A table-driven `tableIntent(event, schema, toDraft, limits)` reduces them to six one-line entries, with `game:rejoin` kept apart.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "server-F16"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-048",
+  "theme": "Server table runtime",
+  "title": "Non-exhaustive action-kind routing",
+  "kind": "defect",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "tableActions.ts:85-95",
+   "tableHandlers.ts:801-803"
+  ],
+  "problem": "`takeoverMode` (`tableActions.ts:85-95`) is an `if` chain, so a new `TableAction` kind silently defaults to \"forward\".",
+  "proposed": "Make it `const TAKEOVER: Record<TableActionKind, Mode>`, and add a `satisfies never` exhaustiveness check beside the dispatcher `default` (which must stay for cross-revision forwards).",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "server-F17"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ },
+ {
+  "id": "L-049",
+  "theme": "Server table runtime",
+  "title": "Pass-throughs that fail the deletion test",
+  "kind": "dead-code",
+  "priority": "P3",
+  "effort": "S",
+  "files": [
+   "socket.ts:41-46",
+   "gameTurn.ts:52-54",
+   "socketGameplay.ts:60-64",
+   "socketRooms.ts:41-45",
+   "socketPresence.ts:42-46",
+   "socketSafety.ts:145",
+   "routes.ts"
+  ],
+  "problem": "Four pass-throughs fail the deletion test: the `socket.ts:41-46` re-export barrel (which makes `routes.ts` import the whole socket graph), the `gameTurn.ts:52-54` `recordPlayFlags` wrapper, three identical context interfaces in socketGameplay/socketRooms/socketPresence, and the `EventOutcome` alias of `IntentReply` imported by the game layer.",
+  "proposed": "Delete each and point callers at the real module or type.",
+  "effect": "Not stated separately by the source.",
+  "sources": [
+   "server-F18"
+  ],
+  "tickets": [],
+  "status": "open",
+  "conflicts": "",
+  "confidence": "medium",
+  "notes": "",
+  "depends_on": []
+ }
+]
