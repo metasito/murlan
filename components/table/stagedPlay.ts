@@ -60,6 +60,6 @@ export function readStagedPlay(input: TableFacts & { selectedIds: string[] }): S
   return {
     cards,
     playable: check.ok && myMove,
-    refusal: myMove && cards.length > 0 && !check.ok ? check.code : "play",
+    refusal: !myMove || input.selectedIds.length === 0 || check.ok ? "play" : check.code,
   };
 }

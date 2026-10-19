@@ -49,6 +49,13 @@ describe("what the selected cards amount to", () => {
     assert.equal(s.refusal, "play");
   });
 
+  test("a selection of cards no longer in the hand is refused with the engine's code, not waved through", () => {
+    const s = staged({ selectedIds: ["Q_hearts"] });
+    assert.deepEqual(s.cards, []);
+    assert.equal(s.playable, false);
+    assert.equal(s.refusal, "notACombination");
+  });
+
   test("cards that are not a combination are refused as such", () => {
     const s = staged({ selectedIds: ["3_spades", "9_diamonds"] });
     assert.equal(s.playable, false);
