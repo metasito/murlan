@@ -1,6 +1,7 @@
 import { gh, MAX_BUFFER } from "./cli.mjs";
 import { UNREAD_STEP } from "../ci/budget-gate.mjs";
 import type { PrState } from "./land.ts";
+import { ghTracker } from "./tracker.mjs";
 
 const CI_GATE = "CI gate";
 
@@ -31,7 +32,7 @@ export function markTimedOut(jobs: JobRow[], gh: (args: string[]) => string, rep
   for (const job of jobs) {
     if (job.conclusion !== "cancelled" || job.steps === 0 || job.id === undefined) continue;
     try {
-      const messages = JSON.parse(gh(["api", `repos/${repo}/check-runs/${job.id}/annotations`, "--jq", "[.[].message]"]));
+      const messages = ghTracker((args: string[]) => gh(args), repo).annotations(job.id);
       job.timedOut = messages.some((m: string) => /exceeded the maximum execution time/.test(m));
     } catch {
       job.timedOut = false;
@@ -238,14 +239,6 @@ export type GhExec = (args: string[], until: number) => string;
 
 const realGh: GhExec = (args, until) => gh(args, ghExecOptions(until));
 
-function ghJson<T>(gh: GhExec, args: string[], fallback: T, until: number): T {
-  try {
-    return JSON.parse(gh(args, until)) as T;
-  } catch {
-    return fallback;
-  }
-}
-
 function jobsAndLog(
   repo: string,
   run: RunRow | undefined,
@@ -255,22 +248,21 @@ function jobsAndLog(
   if (!run || run.conclusion === "success") {
     return { verdict: decideVerdict(run, []), testIds: [] };
   }
-  const jobs = ghJson<JobRow[]>(
-    gh,
-    [
-      "run",
-      "view",
-      String(run.databaseId),
-      "--repo",
-      repo,
-      "--json",
-      "jobs",
-      "--jq",
-      '[.jobs[] | {name, conclusion, status, steps: (.steps | length), id: .databaseId, failedSteps: [.steps[] | select(.conclusion == "failure") | .name]}]',
-    ],
-    [],
-    until
-  );
+  let jobs: JobRow[] = [];
+  try {
+    jobs = ghTracker((args: string[]) => gh(args, until), repo)
+      .runJobs(run.databaseId)
+      .map((j) => ({
+        name: j.name,
+        conclusion: j.conclusion,
+        status: j.status,
+        steps: j.steps.length,
+        id: j.databaseId,
+        failedSteps: j.steps.filter((st) => st.conclusion === "failure").map((st) => st.name),
+      }));
+  } catch {
+    // An unread job list is no jobs: the verdict below says the run, not a step, failed.
+  }
   if (run.status !== "completed") {
     return { verdict: { ...decideVerdict(run, []), progress: ciProgress(jobs) }, testIds: [] };
   }
@@ -341,12 +333,12 @@ function gateVerdict(repo: string, entries: RollupEntry[], gh: GhExec, until: nu
   if (!runId) {
     return { pass: false, infrastructure: true, reason: `${CI_GATE} concluded ${gate.conclusion} on a run its link does not name` };
   }
-  const run = ghJson<RunRow | undefined>(
-    gh,
-    ["run", "view", String(runId), "--repo", repo, "--json", "databaseId,status,conclusion,headSha,attempt"],
-    undefined,
-    until
-  );
+  let run: (RunRow & { attempt?: number }) | undefined;
+  try {
+    run = ghTracker((args: string[]) => gh(args, until), repo).run(runId);
+  } catch {
+    run = undefined;
+  }
   const { verdict, testIds } = jobsAndLog(repo, run, gh, until);
   return { ...verdict, testIds, attempt: run?.attempt };
 }

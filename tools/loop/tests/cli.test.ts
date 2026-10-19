@@ -153,33 +153,35 @@ describe("no git or gh outside cli.mjs", () => {
 });
 
 /**
- * A gh argv — an array opening on one of gh's own commands — is built in these files and no other
- * loop module: the tracker for issues, pull requests and runs, and the two CI readers, whose fakes
- * are the rollup and run shapes they read.
+ * A gh argv — an array opening on one of gh's own commands, on one line or across several — is built
+ * in these files and no other loop module: the tracker for issues, pull requests and runs, and
+ * ciVerdict.ts for the two reads REST has no form of: the pull request's check rollup and a run's
+ * failed-step log.
  */
-describe("no gh argv outside the tracker and the CI modules", () => {
-  const ALLOWED = new Set(["cli.mjs", "tracker.mjs", "ciVerdict.ts", "mainHealth.ts"]);
+describe("no gh argv outside the tracker and ciVerdict", () => {
+  const ALLOWED = new Set(["cli.mjs", "tracker.mjs", "ciVerdict.ts"]);
   const GH_ARGV = /\[\s*["'`](?:issue|pr|api|repo|release|workflow|search|secret|gist)["'`]\s*,|\[\s*["'`]run["'`]\s*,\s*["'`](?:view|list|rerun|watch|download|cancel|delete)["'`]/;
-  const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
+  const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, (c) => c.replace(/[^\n]/g, " "));
   const files = readdirSync(LOOP).filter((f) => /\.(mjs|ts)$/.test(f) && !ALLOWED.has(f));
 
   test("the scan reads the loop's modules and every allowed one exists", () => {
-    assert.ok(files.includes("queue-loop.mjs") && files.includes("next-ticket.mjs") && files.includes("loop-derive.mjs"), files.join(" "));
+    assert.ok(files.includes("queue-loop.mjs") && files.includes("settle.mjs") && files.includes("mainHealth.ts"), files.join(" "));
     for (const f of ALLOWED) assert.ok(readdirSync(LOOP).includes(f), f);
   });
 
   for (const file of files) {
     test(file, () => {
-      const lines = code(readFileSync(path.join(LOOP, file), "utf8")).split("\n");
-      const at = lines.findIndex((l) => GH_ARGV.test(l));
-      assert.equal(at, -1, `${file}:${at + 1} builds a gh argv; ask tools/loop/tracker.mjs`);
+      const text = code(readFileSync(path.join(LOOP, file), "utf8"));
+      const at = GH_ARGV.exec(text)?.index;
+      assert.equal(at, undefined, `${file}:${text.slice(0, at).split("\n").length} builds a gh argv; ask tools/loop/tracker.mjs`);
     });
   }
 
-  test("a planted argv is caught, and an npm one is not", () => {
+  test("a planted argv is caught, across lines too, and an npm one is not", () => {
     assert.ok(GH_ARGV.test(`run("gh", ["pr", "list", "--head", b])`));
     assert.ok(GH_ARGV.test(`gh(['api', path])`));
     assert.ok(GH_ARGV.test(`gh(["run", "view", id])`));
+    assert.ok(GH_ARGV.test(code(`gh([\n  "pr",\n  "view",\n])`)));
     assert.ok(!GH_ARGV.test(`run("npm", ["run", "worktrees:remove", "--", cwd])`));
     assert.ok(!GH_ARGV.test(`{ name: "lint", args: ["run", "lint"] }`));
   });

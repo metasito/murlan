@@ -74,15 +74,20 @@ const openIssueOf = (i) => ({
   blocked: (i.issue_dependencies_summary?.blocked_by ?? 0) > 0,
 });
 
+/** @typedef {{databaseId: number, status: string, conclusion: string|null, headSha: string, attempt: number, url: string}} CiRun */
+/** @returns {CiRun} */
+const runOf = (r) => ({ databaseId: r.id, status: r.status, conclusion: r.conclusion ?? null, headSha: r.head_sha, attempt: r.run_attempt, url: r.html_url });
+
 /** @typedef {(args: string[], opts?: import("./cli.mjs").RunOptions) => string} Gh */
 /** @param {Gh} [gh] */
-export function ghTracker(gh = ghCli) {
-  const issues = `repos/${REPO}/issues`;
-  const pulls = `repos/${REPO}/pulls`;
+export function ghTracker(gh = ghCli, repo = REPO) {
+  const issues = `repos/${repo}/issues`;
+  const pulls = `repos/${repo}/pulls`;
+  const actions = `repos/${repo}/actions`;
   const get = (path, opts) => JSON.parse(gh(["api", path], opts));
   // `--slurp` wraps each page, so a listing past one page is read whole rather than cut at its first.
   const all = (path, opts) => JSON.parse(gh(["api", "--paginate", "--slurp", path], opts)).flat();
-  const headOf = (branch) => encodeURIComponent(`${REPO.split("/")[0]}:${branch}`);
+  const headOf = (branch) => encodeURIComponent(`${repo.split("/")[0]}:${branch}`);
 
   const move = (name) => (n) => {
     const [remove, add] = TRANSITIONS[name];
@@ -155,18 +160,51 @@ export function ghTracker(gh = ghCli) {
         .map((i) => ({ number: i.number, title: i.title, createdAt: i.created_at })),
     /** @returns {OpenIssue[]} */
     openIssues: (opts) => all(`${issues}?state=open&per_page=100`, opts).filter((i) => !i.pull_request).map(openIssueOf),
-    /** @type {(o: {title: string, bodyFile: string, labels?: string[]}, opts?: import("./cli.mjs").RunOptions) => string} the new issue's URL */
-    createIssue: ({ title, bodyFile, labels = [] }, opts) =>
-      JSON.parse(gh(["api", "-X", "POST", issues, "-f", `title=${title}`, "-F", `body=@${bodyFile}`, ...labels.flatMap((l) => ["-f", `labels[]=${l}`])], opts)).html_url,
+    /** @type {(o: {title: string, bodyFile?: string, body?: string, labels?: string[]}, opts?: import("./cli.mjs").RunOptions) => string} the new issue's URL */
+    createIssue: ({ title, bodyFile, body, labels = [] }, opts) =>
+      JSON.parse(
+        gh(["api", "-X", "POST", issues, "-f", `title=${title}`, ...(body === undefined ? ["-F", `body=@${bodyFile}`] : ["-f", `body=${body}`]), ...labels.flatMap((l) => ["-f", `labels[]=${l}`])], opts),
+      ).html_url,
+    /** Issues and pull requests alike carry labels; only issues are kept. Newest first, `limit` of them. */
+    /** @type {(label: string, o?: {state?: string, limit?: number}, opts?: import("./cli.mjs").RunOptions) => {number: number, title: string, url: string, state: string}[]} */
+    labelled: (label, { state = "open", limit = 100 } = {}, opts) =>
+      get(`${issues}?labels=${encodeURIComponent(label)}&state=${state}&per_page=${limit}`, opts)
+        .filter((i) => !i.pull_request)
+        .map((i) => ({ number: i.number, title: i.title, url: i.html_url, state: upper(i.state) })),
+    /** ci.yml's runs only — `main` carries other workflows on their own schedule — newest first. */
+    /** @type {(q: {branch?: string, commit?: string, status?: string, limit?: number}, opts?: import("./cli.mjs").RunOptions) => CiRun[]} */
+    ciRuns: ({ branch, commit, status, limit = 1 }, opts) => {
+      const query = [branch && `branch=${encodeURIComponent(branch)}`, commit && `head_sha=${commit}`, status && `status=${status}`, `per_page=${limit}`];
+      return get(`${actions}/workflows/ci.yml/runs?${query.filter(Boolean).join("&")}`, opts).workflow_runs.map(runOf);
+    },
+    /** @type {(id: number, o?: {attempt?: number}, opts?: import("./cli.mjs").RunOptions) => CiRun} */
+    run: (id, { attempt } = {}, opts) => runOf(get(`${actions}/runs/${id}${attempt ? `/attempts/${attempt}` : ""}`, opts)),
+    /** Every job of the run, or of one attempt, in the shape `gh run view --json jobs` gave them. */
+    /** @type {(id: number, o?: {attempt?: number}, opts?: import("./cli.mjs").RunOptions) => {name: string, status: string, conclusion: string|null, databaseId: number, steps: {name: string, conclusion: string|null}[]}[]} */
+    runJobs: (id, { attempt } = {}, opts) =>
+      JSON.parse(gh(["api", "--paginate", "--slurp", `${actions}/runs/${id}${attempt ? `/attempts/${attempt}` : ""}/jobs?per_page=100`], opts))
+        .flatMap((page) => page.jobs ?? [])
+        .map((j) => ({
+          name: j.name,
+          status: j.status,
+          conclusion: j.conclusion,
+          databaseId: j.id,
+          steps: (j.steps ?? []).map((s) => ({ name: s.name, conclusion: s.conclusion })),
+        })),
+    /** @returns {string[]} */
+    annotations: (checkRunId, opts) => get(`repos/${repo}/check-runs/${checkRunId}/annotations`, opts).map((a) => a.message),
+    treeOf: (sha, opts) => get(`repos/${repo}/commits/${sha}`, opts).commit.tree.sha,
+    /** The head of the pull request `sha` was merged from, or null. */
+    prHeadOf: (sha, opts) => get(`repos/${repo}/commits/${sha}/pulls`, opts)[0]?.head?.sha ?? null,
     /** Closed as completed, with `why` as its last comment. */
     closeIssue: (n, why, opts) => {
       gh(["api", "-X", "POST", `${issues}/${n}/comments`, "-f", `body=${why}`], opts);
       gh(["api", "-X", "PATCH", `${issues}/${n}`, "-f", "state=closed", "-f", "state_reason=completed"], opts);
     },
-    rerunFailed: (runId, opts) => void gh(["api", "-X", "POST", `repos/${REPO}/actions/runs/${runId}/rerun-failed-jobs`], opts),
+    rerunFailed: (runId, opts) => void gh(["api", "-X", "POST", `repos/${repo}/actions/runs/${runId}/rerun-failed-jobs`], opts),
     updateBranch: (n, opts) => void gh(["api", "-X", "PUT", `${pulls}/${n}/update-branch`], opts),
-    arm: (n, sha, bodyFile, opts) => void gh(armArgs(REPO, n, sha, bodyFile), opts),
-    disarm: (n, opts) => void gh(disarmArgs(REPO, n), opts),
+    arm: (n, sha, bodyFile, opts) => void gh(armArgs(repo, n, sha, bodyFile), opts),
+    disarm: (n, opts) => void gh(disarmArgs(repo, n), opts),
     /** Merges now, refused (409) when the head is no longer `sha`: what `--match-head-commit` binds. */
     merge: (n, sha, bodyFile, opts) =>
       void gh(["api", "-X", "PUT", `${pulls}/${n}/merge`, "-f", "merge_method=merge", "-f", `sha=${sha}`, ...(bodyFile ? ["-F", `commit_message=@${bodyFile}`] : [])], opts),
@@ -235,6 +273,10 @@ export function fakeTracker(issues = {}, { fail = [], prs = [] } = {}) {
   const list = (name, fn) => (...args) => {
     refuse(name);
     return fn(...args);
+  };
+  /** CI runs are ciVerdict's and mainHealth's, whose tests fake them at `gh`. @returns {(...args: any[]) => any} */
+  const noCi = (name) => () => {
+    throw new Error(`fakeTracker holds no CI runs (${name})`);
   };
   return {
     claim: move("claim"),
@@ -312,6 +354,19 @@ export function fakeTracker(issues = {}, { fail = [], prs = [] } = {}) {
     arm: list("arm", (n, sha) => void writes.push(["arm", n, sha])),
     disarm: list("disarm", (n) => void writes.push(["disarm", n])),
     merge: list("merge", (n, sha) => void writes.push(["merge", n, sha])),
+    labelled: list("labelled", (label) =>
+      Object.keys(issues)
+        .map(Number)
+        .map((n) => [n, at(n)])
+        .filter(([, i]) => i.labels.has(label))
+        .map(([number, i]) => ({ number, title: i.title ?? `issue ${number}`, url: `https://github.com/${REPO}/issues/${number}`, state: i.state })),
+    ),
+    ciRuns: noCi("ciRuns"),
+    run: noCi("run"),
+    runJobs: noCi("runJobs"),
+    annotations: noCi("annotations"),
+    treeOf: noCi("treeOf"),
+    prHeadOf: noCi("prHeadOf"),
     /** The writes with no issue to hold them, in order. */
     writes: () => [...writes],
     held: (n) => {

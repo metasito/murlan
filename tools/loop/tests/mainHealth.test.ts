@@ -6,17 +6,15 @@ import {
   bodyFor,
   checkMain,
   decideMainHealth,
-  filedIssueArgs,
-  jobArgs,
   MAIN_RED_LABEL,
   mainFailures,
-  mainRunArgs,
   titleFor,
   WINDOW,
   type FiledIssue,
   type MainRun,
 } from "../mainHealth.ts";
 import type { JobRow } from "../ciVerdict.ts";
+import { ciCall, fieldOf, restJobs, restRun, restRuns } from "./helpers/restCi.ts";
 import { UNREAD_STEP } from "../../ci/budget-gate.mjs";
 
 const RED: MainRun = {
@@ -44,30 +42,32 @@ function fakeGh(runs: MainRun[], seed: FiledIssue[] = []) {
   let next = 900;
   const gh = (args: string[]) => {
     calls.push(args);
-    const [verb, noun] = args;
-    if (verb === "run" && noun === "list") return JSON.stringify(runs);
-    if (verb === "run" && noun === "view") return JSON.stringify({ jobs: JOBS.map((j) => ({ ...j, steps: Array(j.steps).fill(0) })) });
-    if (verb === "issue" && noun === "list") {
-      // Newest first, and only the window asked for, as `gh` itself answers.
-      const limit = Number(args[args.indexOf("--limit") + 1]);
-      return JSON.stringify([...issues].reverse().slice(0, limit));
+    const ci = ciCall(args);
+    if (ci?.kind === "runs") return JSON.stringify(restRuns(runs));
+    if (ci?.kind === "jobs") return JSON.stringify(restJobs(JOBS));
+    if (ci?.kind === "issues") {
+      // Newest first, and only the page asked for, as GitHub itself answers.
+      const limit = Number(ci.query.get("per_page"));
+      const rows = [...issues].reverse().slice(0, limit);
+      return JSON.stringify(rows.map((i) => ({ number: i.number, title: i.title, html_url: i.url, state: (i.state ?? "open").toLowerCase() })));
     }
-    if (verb === "issue" && noun === "create") {
+    if (ci?.kind === "create") {
       const number = (next += 1);
       const url = `https://github.com/metasito/murlan/issues/${number}`;
-      issues.push({ number, title: args[args.indexOf("--title") + 1], url, state: "OPEN" });
-      return `${url}\n`;
+      issues.push({ number, title: String(fieldOf(args, "title")), url, state: "OPEN" });
+      return JSON.stringify({ html_url: url });
     }
-    if (verb === "issue" && noun === "close") {
-      const issue = issues.find((i) => i.number === Number(args[2]));
-      if (!issue) throw new Error(`no issue ${args[2]}`);
-      issue.state = "CLOSED";
-      return "";
+    if (ci?.kind === "comment") return "{}";
+    if (ci?.kind === "edit-issue") {
+      const issue = issues.find((i) => i.number === ci.id);
+      if (!issue) throw new Error(`no issue ${ci.id}`);
+      if (fieldOf(args, "state") === "closed") issue.state = "CLOSED";
+      return "{}";
     }
     throw new Error(`unexpected gh call: ${args.join(" ")}`);
   };
-  const created = () => calls.filter((c) => c[0] === "issue" && c[1] === "create");
-  const closed = () => calls.filter((c) => c[0] === "issue" && c[1] === "close");
+  const created = () => calls.filter((c) => ciCall(c)?.kind === "create");
+  const closed = () => calls.filter((c) => ciCall(c)?.kind === "edit-issue");
   return { gh, calls, created, closed, issues };
 }
 
@@ -79,8 +79,8 @@ describe("the DoD path, off a fixture gh payload", () => {
     assert.equal(health.state, "filed");
     assert.equal(hub.created().length, 1);
     const [args] = hub.created();
-    assert.equal(args[args.indexOf("--title") + 1], titleFor(RED.databaseId));
-    const body = args[args.indexOf("--body") + 1];
+    assert.equal(fieldOf(args, "title"), titleFor(RED.databaseId));
+    const body = String(fieldOf(args, "body"));
     assert.match(body, /Typecheck and tests/, "the failing job belongs in the body");
     assert.match(body, new RegExp(String(RED.databaseId)), "so does the run");
     assert.match(body, /2646def6abc/, "and the commit it ran against");
@@ -90,7 +90,7 @@ describe("the DoD path, off a fixture gh payload", () => {
     const hub = fakeGh([GREEN]);
     assert.equal(checkMain({ repo: "metasito/murlan", gh: hub.gh }).state, "green");
     assert.equal(hub.created().length, 0);
-    assert.equal(hub.calls.some((c) => c[1] === "view"), false);
+    assert.equal(hub.calls.some((c) => ciCall(c)?.kind === "jobs"), false);
   });
 
   test("the same red main twice files once", () => {
@@ -112,7 +112,7 @@ describe("the DoD path, off a fixture gh payload", () => {
     const hub = fakeGh([RED]);
     checkMain({ repo: "metasito/murlan", gh: hub.gh });
     const runs = [later];
-    const gh = (args: string[]) => (args[0] === "run" && args[1] === "list" ? JSON.stringify(runs) : hub.gh(args));
+    const gh = (args: string[]) => (ciCall(args)?.kind === "runs" ? JSON.stringify(restRuns(runs)) : hub.gh(args));
     checkMain({ repo: "metasito/murlan", gh });
     assert.equal(hub.created().length, 2, "a new red run is news, whatever was filed before it");
   });
@@ -124,7 +124,7 @@ describe("the DoD path, off a fixture gh payload", () => {
       { name: UNREAD_STEP, conclusion: "failure" },
     ];
     const gh = (args: string[]) =>
-      args[0] === "run" && args[1] === "view" ? JSON.stringify({ jobs: [{ name: "Timing budget", conclusion: "failure", steps }] }) : hub.gh(args);
+      ciCall(args)?.kind === "jobs" ? JSON.stringify(restJobs([{ name: "Timing budget", conclusion: "failure", steps }])) : hub.gh(args);
     assert.equal(checkMain({ repo: "metasito/murlan", gh }).state, "unknown");
     assert.equal(hub.created().length, 0);
   });
@@ -145,26 +145,27 @@ describe("the DoD path, off a fixture gh payload", () => {
     const hub = fakeGh([RED]);
     checkMain({ repo: "metasito/murlan", gh: hub.gh });
     const [args] = hub.created();
-    const labels = args.flatMap((a, i) => (a === "--label" ? [args[i + 1]] : []));
+    const labels = args.filter((a) => a.startsWith("labels[]=")).map((a) => a.slice("labels[]=".length));
     assert.ok(labels.includes(MAIN_RED_LABEL), `create must carry ${MAIN_RED_LABEL}`);
     assert.ok(labels.includes("ready-for-agent"), "and reach the queue");
-    const list = hub.calls.find((c) => c[0] === "issue" && c[1] === "list") ?? [];
-    assert.equal(list[list.indexOf("--label") + 1], MAIN_RED_LABEL, "the same label, or the dedupe reads the wrong set");
+    const list = hub.calls.find((c) => ciCall(c)?.kind === "issues") ?? [];
+    assert.equal(ciCall(list)?.query.get("labels"), MAIN_RED_LABEL, "the same label, or the dedupe reads the wrong set");
   });
 });
 
 describe("a green main closes the main-red issues it filed", () => {
   const REPO = "metasito/murlan";
   const filed = (number: number, runId: number, state = "OPEN"): FiledIssue => ({ number, title: titleFor(runId), state });
-  const closedNumbers = (hub: ReturnType<typeof fakeGh>) => hub.closed().map((c) => Number(c[2]));
+  const closedNumbers = (hub: ReturnType<typeof fakeGh>) => hub.closed().map((c) => ciCall(c)?.id);
 
   test("green closes an open older main-red issue, with a comment naming the green run", () => {
     const hub = fakeGh([GREEN], [filed(5, GREEN.databaseId - 3)]);
     assert.equal(checkMain({ repo: REPO, gh: hub.gh }).state, "green");
     const [args] = hub.closed();
-    assert.equal(args?.[2], "5");
-    assert.equal(args[args.indexOf("--repo") + 1], REPO);
-    assert.equal(args[args.indexOf("--comment") + 1], `main is green again: ci.yml run ${GREEN.databaseId}.`);
+    assert.equal(ciCall(args)?.id, 5);
+    assert.ok(args.includes(`repos/${REPO}/issues/5`));
+    const comment = hub.calls.find((c) => ciCall(c)?.kind === "comment" && ciCall(c)?.id === 5) ?? [];
+    assert.equal(fieldOf(comment, "body"), `main is green again: ci.yml run ${GREEN.databaseId}.`);
     assert.equal(hub.issues[0].state, "CLOSED");
   });
 
@@ -202,7 +203,7 @@ describe("a green main closes the main-red issues it filed", () => {
   test("a gh issue close that throws still returns green, and the next close is still tried", () => {
     const hub = fakeGh([GREEN], [filed(5, GREEN.databaseId - 3), filed(6, GREEN.databaseId - 2)]);
     const gh = (args: string[]) => {
-      if (args[1] === "close" && args[2] === "6") throw new Error("HTTP 403");
+      if (ciCall(args)?.kind === "edit-issue" && ciCall(args)?.id === 6) throw new Error("HTTP 403");
       return hub.gh(args);
     };
     assert.equal(checkMain({ repo: REPO, gh }).state, "green");
@@ -289,23 +290,25 @@ describe("alreadyFiled", () => {
   });
 });
 
-describe("the gh arguments", () => {
-  test("the run list is pinned to ci.yml on main", () => {
-    const args = mainRunArgs("metasito/murlan");
-    assert.equal(args[args.indexOf("--workflow") + 1], "ci.yml", "another workflow's green would read as main's");
-    assert.equal(args[args.indexOf("--branch") + 1], "main");
-    const fields = args[args.indexOf("--json") + 1].split(",");
-    assert.ok(fields.includes("url"), "the issue is worth little without a link to the run");
-    assert.ok(fields.includes("status"), "a run still going must be distinguishable from a red one");
-    assert.ok(fields.includes("databaseId"), "the run id is the dedupe key");
+describe("what is asked of GitHub", () => {
+  test("the run read is pinned to ci.yml on main, and its newest run alone", () => {
+    const hub = fakeGh([RED]);
+    checkMain({ repo: "metasito/murlan", gh: hub.gh });
+    const runs = hub.calls.find((c) => ciCall(c)?.kind === "runs") ?? [];
+    assert.match(String(runs.at(-1)), /actions\/workflows\/ci\.yml\/runs\?/, "another workflow's green would read as main's");
+    assert.equal(ciCall(runs)?.query.get("branch"), "main");
+    assert.equal(ciCall(runs)?.query.get("per_page"), "1");
+    const run = restRun(RED);
+    assert.ok(run.html_url && run.status && run.id, "the url, status and id the module reads all come from the REST run");
   });
 
   test("the dedupe window is a list, never a search", () => {
-    const args = filedIssueArgs("metasito/murlan");
-    assert.equal(args.includes("--search"), false, "search trails its own writes by minutes");
-    assert.equal(Number(args[args.indexOf("--limit") + 1]), WINDOW);
-    assert.equal(args[args.indexOf("--state") + 1], "all", "a closed issue still means this run was reported");
-    assert.ok(args[args.indexOf("--json") + 1].split(",").includes("state"), "an issue already closed must not be closed again");
+    const hub = fakeGh([RED]);
+    checkMain({ repo: "metasito/murlan", gh: hub.gh });
+    assert.ok(!hub.calls.some((c) => c.some((a) => a.includes("search/"))), "search trails its own writes by minutes");
+    const list = hub.calls.find((c) => ciCall(c)?.kind === "issues") ?? [];
+    assert.equal(Number(ciCall(list)?.query.get("per_page")), WINDOW);
+    assert.equal(ciCall(list)?.query.get("state"), "all", "a closed issue still means this run was reported");
   });
 });
 
@@ -321,10 +324,9 @@ describe("mainFailures", () => {
   const REPO = "metasito/murlan";
   const keyed = (run: MainRun, jobs: JobRow[]) => (args: string[]) => {
     const key = args.join(" ");
-    if (key === mainRunArgs(REPO).join(" ")) return JSON.stringify([run]);
-    if (key === jobArgs(REPO, run.databaseId).join(" ")) {
-      return JSON.stringify({ jobs: jobs.map((j) => ({ ...j, steps: Array(j.steps).fill(0) })) });
-    }
+    const ci = ciCall(args);
+    if (ci?.kind === "runs") return JSON.stringify(restRuns([run]));
+    if (ci?.kind === "jobs" && ci.id === run.databaseId && !ci.attempt) return JSON.stringify(restJobs(jobs));
     if (key === ["run", "view", String(run.databaseId), "--repo", REPO, "--log-failed"].join(" ")) {
       return "Typecheck and tests\tRun jest\t2026-09-21T10:00:00.0000000Z FAIL android tests/native/a.test.tsx\n";
     }
@@ -354,7 +356,7 @@ describe("mainFailures", () => {
     const base = keyed(cancelled, jobs as never);
     const gh = (args: string[]) => {
       if (args[1] === `repos/${REPO}/check-runs/112945168721/annotations`) {
-        return JSON.stringify(["The job has exceeded the maximum execution time of 20m0s"]);
+        return JSON.stringify([{ message: "The job has exceeded the maximum execution time of 20m0s" }]);
       }
       if (args.join(" ") === `run view --job 112945168721 --repo ${REPO} --log`) {
         return "Typecheck and tests\tRun jest\t2026-10-07T18:39:00.0000000Z FAIL node tests/native/slow.test.tsx\n";
@@ -379,20 +381,28 @@ describe("mainFailures", () => {
     const WOBBLE =
       "tests/e2e/reducedMotionWobbleReset.spec.ts › the landing wobble's reset survives a live reduced-motion toggle (#786)" +
       " › a toggle mid-wobble brings the cards to rest instead of freezing them scaled";
+    const firstAttempt = (id: number, args: string[]) => {
+      const ci = ciCall(args);
+      if (ci?.id !== id || ci.attempt !== 1) return null;
+      if (ci.kind === "run") return JSON.stringify(restRun({ databaseId: id, status: "completed", conclusion: "failure", attempt: 1 }));
+      if (ci.kind === "jobs") return JSON.stringify(restJobs([{ name: "Browser tests 12/17", conclusion: "failure", steps: Array(16).fill({}), databaseId: 7 }]));
+      return null;
+    };
+    /** Any read of a run's attempt, by REST path or gh flag. */
+    const ATTEMPT = /--attempt|\/attempts\//;
     const inherited = (attempt: number, asked: string[] = [], mainTree = "f00d") => (args: string[]) => {
       const key = args.join(" ");
       asked.push(key);
-      if (key === mainRunArgs(REPO).join(" ")) return JSON.stringify([GREEN]);
-      if (key === `api repos/${REPO}/commits/${GREEN.headSha}/pulls --jq .[0].head.sha // empty`) return `${HEAD}\n`;
-      if (key === `api repos/${REPO}/commits/${GREEN.headSha} --jq .commit.tree.sha`) return `${mainTree}\n`;
-      if (key === `api repos/${REPO}/commits/${HEAD} --jq .commit.tree.sha`) return "f00d\n";
-      if (key === `run list --repo ${REPO} --workflow ci.yml --commit ${HEAD} --status success --limit 1 --json databaseId,attempt,url`) {
-        return JSON.stringify([{ databaseId: PR_RUN, attempt, url: PR_URL }]);
+      const ci = ciCall(args);
+      if (ci?.kind === "runs" && ci.query.get("branch") === "main") return JSON.stringify(restRuns([GREEN]));
+      if (key === `api repos/${REPO}/commits/${GREEN.headSha}/pulls`) return JSON.stringify([{ head: { sha: HEAD } }]);
+      if (key === `api repos/${REPO}/commits/${GREEN.headSha}`) return JSON.stringify({ commit: { tree: { sha: mainTree } } });
+      if (key === `api repos/${REPO}/commits/${HEAD}`) return JSON.stringify({ commit: { tree: { sha: "f00d" } } });
+      if (ci?.kind === "runs" && ci.query.get("head_sha") === HEAD && ci.query.get("status") === "success") {
+        return JSON.stringify(restRuns([{ databaseId: PR_RUN, attempt, url: PR_URL }]));
       }
-      if (key === `run view ${PR_RUN} --repo ${REPO} --attempt 1 --json status,conclusion,jobs`) {
-        const jobs = [{ name: "Browser tests 12/17", conclusion: "failure", steps: Array(16).fill({}), databaseId: 7 }];
-        return JSON.stringify({ status: "completed", conclusion: "failure", jobs });
-      }
+      const first = firstAttempt(PR_RUN, args);
+      if (first) return first;
       if (key === `run view ${PR_RUN} --repo ${REPO} --log-failed --attempt 1`) {
         return `Browser tests 12/17\tUNKNOWN STEP\t2026-10-12T00:33:53.4326052Z   1) [chromium] › ${WOBBLE.replace(" › ", ":28:7 › ")} \n`;
       }
@@ -413,7 +423,7 @@ describe("mainFailures", () => {
     test("an inherited run green at attempt 1 has nothing to give, and its log is never read", () => {
       const asked: string[] = [];
       assert.equal(mainFailures(inherited(1, asked), REPO), null);
-      assert.ok(!asked.some((k) => k.includes("--attempt")), asked.join("\n"));
+      assert.ok(!asked.some((k) => ATTEMPT.test(k)), asked.join("\n"));
     });
 
     test("main's own green won at attempt 2 gives attempt 1's failures as flaky, before any inherited run", () => {
@@ -422,11 +432,9 @@ describe("mainFailures", () => {
       const gh = (args: string[]) => {
         const key = args.join(" ");
         asked.push(key);
-        if (key === mainRunArgs(REPO).join(" ")) return JSON.stringify([own]);
-        if (key === `run view ${own.databaseId} --repo ${REPO} --attempt 1 --json status,conclusion,jobs`) {
-          const jobs = [{ name: "Browser tests 12/17", conclusion: "failure", steps: Array(16).fill({}), databaseId: 7 }];
-          return JSON.stringify({ status: "completed", conclusion: "failure", jobs });
-        }
+        if (ciCall(args)?.kind === "runs") return JSON.stringify(restRuns([own]));
+        const first = firstAttempt(own.databaseId, args);
+        if (first) return first;
         if (key === `run view ${own.databaseId} --repo ${REPO} --log-failed --attempt 1`) {
           return `Browser tests 12/17\tUNKNOWN STEP\t2026-10-12T00:33:53.4326052Z   1) [chromium] › ${WOBBLE.replace(" › ", ":28:7 › ")} \n`;
         }
@@ -439,7 +447,7 @@ describe("mainFailures", () => {
     test("a main whose tree differs from the pull request's ran its own suite, and its green is its own", () => {
       const asked: string[] = [];
       assert.equal(mainFailures(inherited(2, asked, "beef"), REPO), null);
-      assert.ok(!asked.some((k) => k.includes("--attempt")), asked.join("\n"));
+      assert.ok(!asked.some((k) => ATTEMPT.test(k)), asked.join("\n"));
     });
   });
 });

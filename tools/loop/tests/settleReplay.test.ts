@@ -14,6 +14,7 @@ import { appendSupervisor, supervisorLogPath } from "../loop-logs.mjs";
 import { readLandingState } from "../ciVerdict.ts";
 import { armArgs, disarmArgs } from "../tracker.mjs";
 import { readLine } from "../loop-stream.mjs";
+import { ciCall, restJobs, restRun, restRuns } from "./helpers/restCi.ts";
 
 const REPO = "metasito/murlan";
 const PENDING = { ticket: 1028, pr: 1053, branch: "agent/1028-the-turn-chip" };
@@ -115,9 +116,10 @@ function rollupFake({
       if (log === null) throw new Error("gh: could not read the log");
       return log;
     }
-    if (cmd === "run" && sub === "view" && args.includes("jobs")) return JSON.stringify(RED.jobs);
-    if (cmd === "run" && sub === "view") return JSON.stringify({ ...RED.run, headSha: pr.head, attempt: pr.attempt });
-    if (cmd === "run" && sub === "list") return "[]";
+    const ci = ciCall(args);
+    if (ci?.kind === "jobs") return JSON.stringify(restJobs(RED.jobs as never));
+    if (ci?.kind === "run") return JSON.stringify(restRun({ ...(RED.run as { databaseId: number }), headSha: pr.head, attempt: pr.attempt }));
+    if (ci?.kind === "runs") return JSON.stringify(restRuns([]));
     throw new Error(`the gh fake has no answer for: gh ${args.join(" ")}`);
   };
   return { gh, asked, pr };
@@ -865,7 +867,7 @@ describe("runSettle posts CI-RED once per red head", () => {
       return gh(args, file);
     };
     await runSettle(PENDING, () => {}, 0, DEADLINE, { ...io(gh), run, mainFailures: undefined });
-    assert.deepEqual(calls.map((c) => kindOf(c.args) ?? c.args.slice(0, 2).join(" ")), ["rerun", "run list", "read", "comment"]);
+    assert.deepEqual(calls.map((c) => kindOf(c.args) ?? ciCall(c.args)?.kind ?? c.args.slice(0, 2).join(" ")), ["rerun", "runs", "read", "comment"]);
     for (const c of calls) assert.equal(c.opts?.timeout, 30_000);
   });
 });

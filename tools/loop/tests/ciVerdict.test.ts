@@ -14,6 +14,7 @@ import * as budgetGate from "../../ci/budget-gate.mjs";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { ciCall, restJobs, restRun } from "./helpers/restCi.ts";
 
 const jestProjects: string[] = createRequire(import.meta.url)("../../../jest.config.js").projects.map(
   (p: { displayName: string }) => p.displayName,
@@ -257,9 +258,9 @@ describe("the CI gate job", () => {
     const rollup = [{ name: "CI gate", status: "COMPLETED", conclusion: "FAILURE", detailsUrl: "https://github.com/o/r/actions/runs/5/job/2" }];
     const gh = (args: string[]) => {
       if (args[0] === "pr") return JSON.stringify({ headRefOid: "h", state: "OPEN", statusCheckRollup: rollup });
-      if (args[args.indexOf("--json") + 1]?.startsWith("databaseId")) return JSON.stringify({ databaseId: 5, status: "completed", conclusion: "failure", headSha: "h" });
+      if (ciCall(args)?.kind === "run") return JSON.stringify(restRun({ databaseId: 5, status: "completed", conclusion: "failure", headSha: "h" }));
       if (args.includes("--log-failed")) return gateLog;
-      return JSON.stringify([{ name: "Lint", conclusion: "success", status: "completed", steps: 5, id: 1 }, { ...gate, status: "completed", id: 2 }]);
+      return JSON.stringify(restJobs([{ name: "Lint", conclusion: "success", status: "completed", steps: 5, id: 1 }, { ...gate, status: "completed", id: 2 }]));
     };
     const v = readLandingState("o/r", 1, gh, Date.now() + 60_000).ci;
     assert.equal(v.pass, false);
@@ -306,16 +307,18 @@ describe("a job stopped by its own timeout-minutes", () => {
     const gh = (args: string[]) => {
       asked.push(args);
       if (args[0] === "pr") return JSON.stringify({ headRefOid: "h", state: "OPEN", statusCheckRollup: [gate] });
-      if (args[0] === "run" && args[args.indexOf("--json") + 1]?.startsWith("databaseId")) return JSON.stringify(cancelledRun(runId));
+      if (ciCall(args)?.kind === "run") return JSON.stringify(restRun(cancelledRun(runId)));
       if (args[0] === "api" && args[1] === `repos/o/r/check-runs/${jobId}/annotations`) {
-        return JSON.stringify([annotation, "The operation was canceled."]);
+        return JSON.stringify([annotation, "The operation was canceled."].map((message) => ({ message })));
       }
       if (args.includes("--log")) return "Install postgresql-client\n##[error]The operation was canceled.";
       if (args.includes("--log-failed")) return "";
-      return JSON.stringify([
-        { name: "Lint", conclusion: "success", status: "completed", steps: 9, id: jobId - 1 },
-        { name: "Typecheck and tests", conclusion: "cancelled", status: "completed", steps: 13, id: jobId },
-      ]);
+      return JSON.stringify(
+        restJobs([
+          { name: "Lint", conclusion: "success", status: "completed", steps: 9, id: jobId - 1 },
+          { name: "Typecheck and tests", conclusion: "cancelled", status: "completed", steps: 13, id: jobId },
+        ]),
+      );
     };
     return { gh, asked };
   };
@@ -455,8 +458,8 @@ describe("readLandingState, from rollups recorded off live pull requests", () =>
       asked.push(args);
       if (args[0] === "pr" && args[1] === "view") return JSON.stringify({ ...f.view, ...over });
       if (args[0] === "run" && args[1] === "view" && args.includes("--log-failed")) return LOG;
-      if (args[0] === "run" && args[1] === "view" && args.includes("jobs")) return JSON.stringify(f.jobs);
-      if (args[0] === "run" && args[1] === "view") return JSON.stringify(f.run);
+      if (ciCall(args)?.kind === "jobs") return JSON.stringify(restJobs(f.jobs as never));
+      if (ciCall(args)?.kind === "run") return JSON.stringify(restRun(f.run as never));
       throw new Error(`unexpected gh ${args.join(" ")}`);
     };
     return { state: readLandingState("metasito/murlan", 7, gh, Date.now() + 60_000), asked };
@@ -508,15 +511,14 @@ describe("readLandingState, from rollups recorded off live pull requests", () =>
     assert.equal(state.ci.runId, 38295085768);
     assert.equal(state.ci.failedStep, "Typecheck and tests");
     assert.deepEqual(state.ci.testIds, ["tools/loop/tests/x.test.ts › breaks"]);
-    assert.ok(asked.every((a) => a[0] === "pr" || a.includes("38295085768")), JSON.stringify(asked));
+    assert.ok(asked.every((a) => a[0] === "pr" || a.some((x) => x.includes("38295085768"))), JSON.stringify(asked));
   });
 
   test("a red gate carries its run's attempt, which is what a rerun is counted by", () => {
     const red = fixture("red");
     const { state, asked } = read({ ...red, run: { ...red.run, attempt: 2 } });
     assert.equal(state.ci.attempt, 2);
-    const runView = asked.find((a) => a[0] === "run" && a.includes("--json") && !a.includes("jobs"))!;
-    assert.match(runView[runView.indexOf("--json") + 1], /\battempt\b/);
+    assert.ok(asked.some((a) => ciCall(a)?.kind === "run"), "the run itself is read, for its run_attempt");
   });
 
   // A workflow_dispatch run of ci.yml on the same head reports a second `CI gate` beside the first.
