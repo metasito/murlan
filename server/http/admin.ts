@@ -11,6 +11,8 @@
 import { now } from "./clock.ts";
 import { sql } from "drizzle-orm";
 import { db, POOL_MAX } from "../store/db.ts";
+import { activeGameStore } from "../store/activeGameStore.ts";
+import { ABANDONED_GAME_MAX_AGE_MS } from "../game/retention.ts";
 import { funnel, type FunnelStep } from "../socket/events.ts";
 import { recentClientErrorGroups, topFrame, type ClientErrorGroup } from "./clientErrors.ts";
 import { recentServerErrorGroups, serverErrorsDropped, serverErrorsThisWeek, type ServerErrorGroup } from "./serverErrors.ts";
@@ -184,14 +186,6 @@ async function unfinished(): Promise<{ status: string; n: number }[]> {
   return rows.rows;
 }
 
-async function staleGames(): Promise<number> {
-  const rows = await db.execute<{ n: number }>(sql`
-    SELECT count(*)::int AS n
-    FROM active_games
-    WHERE updated_at < ${serverNow()} - make_interval(days => 1)
-  `);
-  return rows.rows[0]?.n ?? 0;
-}
 
 async function totalUsers(): Promise<number> {
   const rows = await db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM users`);
@@ -278,7 +272,7 @@ export async function adminSnapshot(provisionalRounds: number): Promise<AdminSna
     () => matchBalance(),
     () => placements(),
     () => unfinished(),
-    () => staleGames(),
+    () => activeGameStore.countUntouchedSince(new Date(now() - ABANDONED_GAME_MAX_AGE_MS)),
     () => crashesThisWeek(),
     () => recentClientErrorGroups(ROW_LIMIT),
     () => funnel(WINDOW_DAYS),

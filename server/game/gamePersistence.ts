@@ -7,7 +7,7 @@ import { activeGameStore } from "../store/activeGameStore.ts";
 import { recordGameResult } from "./stats.ts";
 import { previewRatedDeltas, recordRatedResult } from "./ratings.ts";
 import { saveReplay } from "./replays.ts";
-import { sweepRetention } from "./retention.ts";
+import { pruneAbandonedGames, sweepRetention } from "./retention.ts";
 import { rooms as roomsTable } from "../../shared/schema.ts";
 import { activeGames, userRoom } from "./gameRoom.ts";
 import { payload } from "../shared/payload.ts";
@@ -32,20 +32,6 @@ import {
 import { toEnvelope } from "./tableState.ts";
 import type { GameState, Card } from "../../lib/game/gameEngine.ts";
 import type { WireGameState } from "../../shared/protocol.ts";
-
-/**
- * How long an `active_games` row may sit untouched before it is abandoned.
- *
- * Every path that deletes a row walks the in-memory `activeGames`, which a
- * restart empties — so a game live when the process went down, and never
- * rejoined, is invisible to all of them. On a host that sleeps, that is every
- * sleep with a game open.
- *
- * A day is far past any live game: `persistGameState` refreshes `updated_at`
- * on every move. The margin is so a rejoinable row is never taken from under
- * a player.
- */
-export const ABANDONED_GAME_MAX_AGE_MS = 24 * 60 * 60_000;
 
 /**
  * How long a `rooms` row may live before the sweeper takes it.
@@ -265,17 +251,6 @@ export function safeTimer(
       );
     disposeGame(roomId);
   }
-}
-
-/**
- * Deletes `active_games` rows untouched for longer than
- * `ABANDONED_GAME_MAX_AGE_MS`. Returns how many went, so a caller can tell
- * "nothing to do" from "did not run".
- */
-export async function pruneAbandonedGames(): Promise<number> {
-  const gone = await activeGameStore.removeUntouchedSince(new Date(now() - ABANDONED_GAME_MAX_AGE_MS));
-  if (gone > 0) logger.info({ count: gone }, "Pruned abandoned games orphaned by a restart");
-  return gone;
 }
 
 /**

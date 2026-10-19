@@ -9,7 +9,8 @@ import { db } from "../../server/store/db.ts";
 import { installClock } from "../../server/http/clock.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { adminSnapshot } from "../../server/http/admin.ts";
-import { sweepRetention } from "../../server/game/retention.ts";
+import { ABANDONED_GAME_MAX_AGE_MS, sweepRetention } from "../../server/game/retention.ts";
+import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { roundReplays, rooms } from "../../shared/schema.ts";
 import { seasonKey } from "../../lib/game/rating.ts";
 import { REPLAY_RETENTION_DAYS } from "../../lib/game/replay.ts";
@@ -81,7 +82,14 @@ describe("a cutoff reads the clock its column was written on", () => {
       return { rows: [] };
     });
     t.mock.method(db, "select", () => emptyChain());
+    const staleCutoffs: Date[] = [];
+    t.mock.method(activeGameStore, "countUntouchedSince", async (cutoff: Date) => {
+      staleCutoffs.push(cutoff);
+      return 0;
+    });
     await adminSnapshot(10);
+    assert.equal(staleCutoffs.length, 1);
+    assert.ok(near(staleCutoffs[0], clock.now() - ABANDONED_GAME_MAX_AGE_MS, 1_000), "active_games.updated_at is server-written");
 
     const SERVER_WRITTEN = /\b(finished_at|last_seen|season|updated_at)\b/;
     const judged = seen.filter((q) => SERVER_WRITTEN.test(q) && /WHERE/i.test(q));

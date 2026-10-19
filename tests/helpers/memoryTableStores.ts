@@ -3,6 +3,7 @@
 import type { TestContext } from "node:test";
 import { activeGameStore, type TableRoomPort } from "../../server/store/activeGameStore.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
+import { renumbering, settleRelease, startRefusal } from "../../server/game/seatAllocation.ts";
 import type { Room } from "../../shared/schema.ts";
 
 type Seat = Awaited<ReturnType<TableRoomPort["getRoomPlayers"]>>[number];
@@ -55,31 +56,23 @@ export function useMemoryTableStores(t: TestContext, seed: MemoryTableSeed = {})
       if (!room) return null;
       const remaining = seated(roomId).filter((s) => s.userId !== userId);
       seats.set(roomId, remaining);
-      const emptied = remaining.length === 0 && room.status === "waiting";
-      const wasHost = room.hostUserId === userId;
-      const [next] = remaining;
-      const updated: Room = emptied
-        ? { ...room, status: "finished" }
-        : next && !remaining.some((p) => p.userId === room.hostUserId)
-          ? { ...room, hostUserId: next.userId }
-          : room;
+      const { emptied, wasHost, set } = settleRelease(room, userId, remaining);
+      const updated: Room = { ...room, ...set };
       rooms.set(roomId, updated);
       return { room: updated, remaining, emptied, wasHost };
     },
     closeForStart: async (roomId, userId, opts) => {
       const room = rooms.get(roomId);
       if (!room) return { ok: false, reason: "no_room" };
-      if (room.hostUserId !== userId) return { ok: false, reason: "not_host" };
-      if (!opts.liveMatch && room.status !== "waiting" && room.status !== "finished") {
-        return { ok: false, reason: "not_waiting" };
-      }
-      const roster = seated(roomId);
+      const refused = startRefusal(room, userId, opts.liveMatch);
+      if (refused) return { ok: false, reason: refused };
+      const roster = seated(roomId).map((s) => ({ ...s }));
       if (!opts.admits(roster)) return { ok: false, reason: "refused", roster };
-      const dealt = opts.renumber ? roster.map((s, seatIndex) => ({ ...s, seatIndex })) : roster;
-      seats.set(roomId, dealt);
+      for (const [p, position] of opts.renumber ? renumbering(roster) : []) p.seatIndex = position;
+      seats.set(roomId, roster);
       const closed: Room = { ...room, status: "in_progress" };
       rooms.set(roomId, closed);
-      return { ok: true, room: closed, roster: dealt };
+      return { ok: true, room: closed, roster };
     },
   };
   for (const name of Object.keys(port) as (keyof TableRoomPort)[]) {

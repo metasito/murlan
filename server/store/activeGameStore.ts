@@ -1,4 +1,4 @@
-import { eq, lt } from "drizzle-orm";
+import { count, eq, lt } from "drizzle-orm";
 import { db } from "./db.ts";
 import { activeGames } from "../../shared/schema.ts";
 import { now } from "../http/clock.ts";
@@ -13,7 +13,7 @@ export interface ActiveGameRow {
 
 const row = { roomId: activeGames.roomId, gameState: activeGames.gameState };
 
-/** The only reader and writer of `active_games` (`tests/server/activeGameStoreScan.test.ts`). */
+/** Outside the stores, only `retention.ts` reaches `active_games` past this (`tests/server/activeGameStoreScan.test.ts`). */
 export const activeGameStore = {
   async load(roomId: string): Promise<ActiveGameRow | undefined> {
     const [found] = await db.select(row).from(activeGames).where(eq(activeGames.roomId, roomId));
@@ -36,13 +36,9 @@ export const activeGameStore = {
     await db.delete(activeGames).where(eq(activeGames.roomId, roomId));
   },
 
-  /** Returns how many went, so a caller can tell "nothing to do" from "did not run". */
-  async removeUntouchedSince(cutoff: Date): Promise<number> {
-    const gone = await db
-      .delete(activeGames)
-      .where(lt(activeGames.updatedAt, cutoff))
-      .returning({ roomId: activeGames.roomId });
-    return gone.length;
+  async countUntouchedSince(cutoff: Date): Promise<number> {
+    const [found] = await db.select({ n: count() }).from(activeGames).where(lt(activeGames.updatedAt, cutoff));
+    return found?.n ?? 0;
   },
 };
 
