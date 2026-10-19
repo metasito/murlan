@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { decide, WAIT } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
-import { BREAKER, CI_ROUNDS, MAX_HANDOFFS, SETTLE, TICKET_HOLDS, UPDATES } from "../queue-loop.mjs";
+import { BREAKER, CI_ROUNDS, MAX_HANDOFFS, nextRoute, SETTLE, TICKET_HOLDS, UPDATES } from "../queue-loop.mjs";
+import { ledgerFixture } from "./helpers/ledgerFixture.ts";
 import { USD_BY_SIZE, USD_DEFAULT } from "../loop-cost.mjs";
 import { READ_RETRIES } from "../settle.mjs";
 
@@ -18,8 +19,52 @@ const own = { cwd: "/w/agent-42", branch: "agent/42-x", dirty: false, phase: "C"
 const base = { route, tally: empty, loop: fresh, limits: LIMITS, now: NOW, asked: false, own };
 
 const pre = (over: object, top: object = {}) => ({ ...base, step: "pre", pre: { stop: false, unusable: false, moved: null, housekeeping: { verdict: "ok", why: null }, ...over }, ...top });
-const pick = (over: object, top: object = {}) => ({ ...base, step: "pick", route: { ...route, ...over }, repicked: false, ...top });
-const fixRoute = (top: object = {}) => pick({ fix: true, head: "h3" }, top);
+/** What a pick reads, by the fact it asks for: the standing run, its issue, the ledger, a pinned issue, the picker. */
+type World = { standing: object; known: object; rows: object[]; pinnedFacts: object; picked: object };
+const OFF = { onTicket: false, phase: "A", why: "not on an agent branch", ambiguous: false };
+const issue = (over: object = {}) => ({ title: "the ticket", url: "", size: "size:S", labels: ["in-progress"], reviewRounds: 1, ciRounds: 0, state: "OPEN", ...over });
+const live = (over: object = {}) => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "C", fix: false, head: "h1", dirty: false, reviewRounds: 1, ci: null, ...over });
+const PICKED = { skill: "implement", number: 42, title: "the ticket", size: "size:S", queue: null };
+const { route: _route, tally: _tally, ...unpicked } = base;
+const pick = (world: Partial<World> = {}, top: object = {}) => ({
+  ...unpicked,
+  step: "pick",
+  pinned: null,
+  at: null,
+  repicked: false,
+  world: { standing: OFF, known: issue(), rows: [], pinnedFacts: issue(), picked: PICKED, ...world },
+  ...top,
+});
+const picked = (over: object, top: object = {}) => pick({ picked: { ...PICKED, ...over } }, top);
+const redRow = (head: string) => ({ n: 42, outcome: "retry", cost: 1, park_reason: null, head });
+const fixRoute = (rows: object[] = [], known: object = {}) =>
+  pick({ standing: live({ fix: true, ci: { pushed: true, state: "red", sha: "h3" } }), rows, known: issue(known) });
+
+/**
+ * The pick step driven as `runOnce` drives it: each fact it asks for is read from `world` and it is
+ * asked again. `asked` is every read that costs a `gh` or `git` call, in order.
+ */
+const choose = ({ world, ...input }: { world: World; pinned: number | null; at: string | null; repicked: boolean }) => {
+  const asked: string[] = [];
+  let knownRead = false;
+  const standing = world.standing as { onTicket?: boolean; ticket?: number };
+  const route = nextRoute(input.pinned, input.at as never, {
+    read: () => (asked.push("standing"), world.standing),
+    facts: (n: number) => {
+      if (!knownRead && standing.onTicket && n === standing.ticket) {
+        knownRead = true;
+        asked.push("known");
+        return world.known;
+      }
+      asked.push("pinnedFacts");
+      return world.pinnedFacts;
+    },
+    ledger: () => world.rows,
+    picker: () => (asked.push("picked"), world.picked),
+  } as never) as Record<string, any>;
+  const tally = { ...ticketTally(route.number, world.rows as never), ciRounds: route.ciRounds ?? 0 };
+  return { ...decide({ ...input, route: { ...route, n: route.number }, tally }), route, asked };
+};
 
 const said = (over: object = {}) => ({ ticket: 42, branch: "agent/42-x", pr: null, phase: "C", handoff: null, stoodDown: false, why: null, ...over });
 const ok = { subtype: "success", isError: false, apiStatus: null, cost: 2, turns: 30 };
@@ -61,23 +106,67 @@ const ROWS: Row[] = [
   ["runOnce: a clear pre-flight goes on to the pick", pre({}), { kind: "go" }],
 
   // runOnce, the pick
-  ["a handoff route stops", pick({ skill: "handoff", title: "queue empty" }), { kind: "stop", why: "queue empty" }],
-  ["an ambiguous pick stops rather than taking a third ticket", pick({ skill: "ambiguous", title: "two live worktrees" }), { kind: "stop", why: "two live worktrees" }],
-  ["a closed ticket whose worktree still stands is torn down and the queue picked again, with no spawn on it", pick({ skill: "closed" }, { loop: { ...fresh, pinned: 42 } }),
-    { kind: "repick", n: 42, loop: fresh }],
-  ["a closed ticket unrelated to the pinned one keeps the pin, and its phase, on re-pick", pick({ skill: "closed", n: 9 }, { loop: { ...fresh, pinned: 42 } }),
+  ["a handoff route stops", picked({ skill: "handoff", number: 0, title: "queue empty" }), { kind: "stop", why: "queue empty", asked: ["standing", "picked"] }],
+  ["an ambiguous pick stops rather than taking a third ticket", pick({ standing: { onTicket: false, phase: "A", ambiguous: true, why: "two live worktrees" } }),
+    { kind: "stop", why: "two live worktrees", asked: ["standing"] }],
+  ["a closed ticket whose worktree still stands is torn down and the queue picked again, with no spawn on it", pick({ standing: live({ cwd: "w7" }), known: issue({ state: "CLOSED" }) }, { pinned: 42, loop: { ...fresh, pinned: 42 } }),
+    { kind: "repick", n: 42, loop: fresh, asked: ["standing", "known"] }],
+  ["a closed ticket with no labels left is closed all the same", pick({ standing: live(), known: issue({ state: "CLOSED", labels: [] }) }), { kind: "repick", n: 42 }],
+  ["an open live ticket is not closed", pick({ standing: live() }), { kind: "go", route: { skill: "implement", number: 42 } }],
+  ["a closed ticket unrelated to the pinned one keeps the pin, and its phase, on re-pick", pick({ standing: live({ ticket: 9, branch: "agent/9-x" }), known: issue({ state: "CLOSED" }) }, { pinned: 42, loop: { ...fresh, pinned: 42 } }),
     { kind: "repick", n: 9, loop: { ...fresh, pinned: 42 } }],
-  ["runOnce: a closed ticket on the re-pick too stops", pick({ skill: "closed" }, { repicked: true }), { kind: "stop", why: "#42 is closed and its worktree still stands" }],
-  ["runOnce: an implement route goes on to the spawn", pick({}), { kind: "go", redWhileDown: false }],
-  ["stops on handoff", pick({ skill: "handoff", title: "nothing to do" }), { kind: "stop" }],
-  ...["implement", "triage", "wayfinder"].map((skill): Row => [`keeps going on ${skill}`, pick({ skill }), { kind: "go" }]),
-  ["a red round nobody recorded is written down before the fix round; a recorded one is not", fixRoute(), { kind: "go", redWhileDown: true }],
-  ["runOnce: a fix route whose red head is already recorded writes nothing", fixRoute({ tally: { ...empty, retries: 1, lastRedHead: "h3" } }), { kind: "go", redWhileDown: false }],
-  ["a red round nobody recorded counts toward the cap, and the last one parks before the refresh", fixRoute({ tally: { ...empty, retries: CI_ROUNDS - 1, lastRedHead: "h2" } }),
+  ["runOnce: a closed ticket on the re-pick too stops", pick({ standing: live(), known: issue({ state: "CLOSED" }) }, { repicked: true }), { kind: "stop", why: "#42 is closed and its worktree still stands" }],
+  ["runOnce: an implement route goes on to the spawn", pick(), { kind: "go", redWhileDown: false, route: { number: 42, resuming: false }, asked: ["standing", "picked"] }],
+  ["stops on handoff", picked({ skill: "handoff", number: 0, title: "nothing to do" }), { kind: "stop" }],
+  ...["implement", "triage", "wayfinder"].map((skill): Row => [`keeps going on ${skill}`, picked({ skill }), { kind: "go", route: { skill } }]),
+  ["a red round nobody recorded is written down before the fix round; a recorded one is not", fixRoute(), { kind: "go", redWhileDown: true, route: { phase: "C", fix: true, head: "h3" } }],
+  ["runOnce: a fix route whose red head is already recorded writes nothing", fixRoute([redRow("h3")]), { kind: "go", redWhileDown: false }],
+  ["a red round nobody recorded counts toward the cap, and the last one parks before the refresh", fixRoute([...Array.from({ length: CI_ROUNDS - 2 }, () => redRow("h1")), redRow("h2")]),
     { kind: "park", phase: "C", why: `${CI_ROUNDS} CI rounds on the same branch did not go green — the last one while the loop was down` }],
-  ["a CI-RED already posted for the unrecorded head counts that round once, not twice", fixRoute({ tally: { ...empty, retries: 1, lastRedHead: "h2", ciRounds: 2 } }),
-    { kind: "go", redWhileDown: true }],
-  ["runOnce: a tracker's CI-RED count past the ledger's reaches the cap", fixRoute({ tally: { ...empty, ciRounds: CI_ROUNDS } }), { kind: "park", phase: "C" }],
+  ["a CI-RED already posted for the unrecorded head counts that round once, not twice", fixRoute([redRow("h2")], { ciRounds: 2 }), { kind: "go", redWhileDown: true }],
+  ["runOnce: a tracker's CI-RED count past the ledger's reaches the cap", fixRoute([], { ciRounds: CI_ROUNDS }), { kind: "park", phase: "C" }],
+
+  // the live run: liveRoute's rules
+  ["no route when no ticket is live — the picker should run", pick({ standing: { onTicket: false } }), { kind: "go", route: { number: 42, resuming: false }, asked: ["standing", "picked"] }],
+  ["a clean derive off a ticket is still no route", pick(), { kind: "go", route: { resuming: false }, asked: ["standing", "picked"] }],
+  ["an ambiguous derive is a route, not an absence", pick({ standing: { onTicket: false, ambiguous: true, why: "2 live agent/* worktrees" } }), { kind: "stop", why: /2 live/ }],
+  ["resumes the live ticket instead of asking the picker for a new one", pick({ standing: live({ ticket: 911, branch: "agent/911-x", phase: "D" }), known: issue({ title: "Ticket 911" }) }),
+    { kind: "go", route: { skill: "implement", number: 911, title: "Ticket 911", phase: "D", resuming: true }, asked: ["standing", "known"] }],
+  ["skips a ticket not labelled in-progress", pick({ standing: live({ ticket: 911, phase: "D" }), known: issue({ labels: ["ready-for-human"] }) }),
+    { kind: "go", route: { number: 42, resuming: false }, asked: ["standing", "known", "picked"] }],
+  ["a live ticket whose labels cannot be read is still live", pick({ standing: live({ ticket: 911, phase: "D" }), known: issue({ labels: null }) }), { kind: "go", route: { number: 911, resuming: true } }],
+  ["falls back to a bare ticket label when derive() found no branch (the stuck/'?' case)", pick({ standing: live({ ticket: 911, branch: null, phase: "?" }), known: issue({ title: undefined }) }),
+    { kind: "go", route: { number: 911, title: "ticket #911", phase: "C", resuming: true } }],
+
+  // the live run's phase and the pin: nextRoute's rules
+  ["a resumed ticket carries its issue's title and review rounds, not its branch name", pick({ standing: live({ branch: "agent/42-fix-the-card-fan", phase: "D", reviewRounds: 3 }), known: issue({ title: "Fix the card fan!" }) }),
+    { kind: "go", route: { title: "Fix the card fan!", reviewRounds: 3 } }],
+  ["a pinned ticket with no worktree rebuilds at A", pick({ pinnedFacts: issue({ title: "Fix the card fan!", size: null }), rows: [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "E" }, head: null }] }, { pinned: 42 }),
+    { kind: "go", route: { number: 42, phase: "A", resuming: true, branch: "agent/42-fix-the-card-fan" }, asked: ["standing", "pinnedFacts"] }],
+  ...[["in-progress", "ready-for-human"], ["size:S"], ["in-progress", "deferred"]].map((labels): Row => [
+    `a pinned ticket the tracker no longer shows as ours goes back to the picker: ${labels.join(",")}`,
+    pick({ pinnedFacts: issue({ labels }), picked: { ...PICKED, number: 77, title: "other" } }, { pinned: 42 }),
+    { kind: "go", route: { skill: "implement", number: 77, resuming: false }, asked: ["standing", "pinnedFacts", "picked"] },
+  ]),
+  ["a pinned ticket whose labels cannot be read keeps resuming", pick({ pinnedFacts: issue({ labels: null }) }, { pinned: 42 }), { kind: "go", route: { number: 42, resuming: true, phase: "A" }, asked: ["standing", "pinnedFacts"] }],
+  ["a pinned ticket held before its claim keeps resuming", pick({ pinnedFacts: issue({ labels: ["ready-for-agent", "size:S"] }) }, { pinned: 42 }), { kind: "go", route: { number: 42, resuming: true, phase: "A" } }],
+  ...([["E", null, "E"], ["E", "D", "E"], ["D", null, "D"], ["C", null, "D"]] as const).map(([phase, at, want]): Row => [
+    `a LAND on the head outranks a handoff to review, and nothing else does: ${phase} at ${at}`,
+    pick({ standing: live({ phase }), rows: [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "D" }, head: null }] }, { pinned: 42, at }),
+    { kind: "go", route: { phase: want } },
+  ]),
+  ["an unreadable CI read on a head not known pushed is not a no-spawn G", pick({ standing: live({ phase: "G", ci: { state: "unreadable", pushed: false, pr: 5 } }) }), { kind: "go", route: { phase: "E" } }],
+  ["a handed phase wins over a derived fix", pick({ standing: live({ fix: true, ci: { pushed: true, state: "red" } }) }, { pinned: 42, at: "D" }), { kind: "go", route: { phase: "D", fix: true } }],
+  ["only a pushed G outranks a handed phase", pick({ standing: live({ phase: "G", ci: { pushed: true } }) }, { pinned: 42, at: "D" }), { kind: "go", route: { phase: "G", fix: false } }],
+  ["a pushed head settles ahead of a handoff the ledger holds from before the push", pick({ standing: live({ phase: "G", ci: { pushed: true } }), rows: [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "C", why: "a declared one" }, head: "a" }] }, { pinned: 42, at: "C" }),
+    { kind: "go", route: { phase: "G" } }],
+  ...([["held", [{ n: 42, outcome: "hold", head: "abc", cost: 0 }]], ["unrecorded", []], ["after an earlier red", [{ n: 42, outcome: "retry", head: "old", cost: 0 }]]] as const).map(([how, rows]): Row => [
+    `a red no CI-RED names is G, so poll posts its CI-RED: ${how}`,
+    pick({ standing: live({ phase: "G", ci: { pushed: true, state: "settling", sha: "abc" } }), rows: [...rows] }),
+    { kind: "go", route: { phase: "G", fix: false } },
+  ]),
+  ["a fix route carries the pushed head, the worktree and the issue's size and CI rounds", pick({ standing: live({ fix: true, dirty: true, ci: { pushed: true, state: "red", sha: "h3" } }), known: issue({ size: "size:M", ciRounds: 1 }) }),
+    { kind: "go", route: { head: "h3", cwd: "w", branch: "agent/42-x", dirty: true, size: "size:M", ciRounds: 1, queue: null } }],
   ["an ff failure before a fix parks", { ...base, step: "refresh", error: "fatal: Not possible to fast-forward" },
     { kind: "park", phase: "C", why: "could not fast-forward the worktree before the fix round — fatal: Not possible to fast-forward" }],
   ["runOnce: a fast-forwarded worktree goes on to the fix round", { ...base, step: "refresh", error: null }, { kind: "go" }],
@@ -363,7 +452,25 @@ const matches = (got: Record<string, unknown>, want: Record<string, unknown>, at
   }
 };
 
-for (const [name, input, want] of ROWS) test(name, () => matches(decide(input), want));
+for (const [name, input, want] of ROWS) test(name, () => matches("world" in input ? choose(input as never) : decide(input), want));
+
+test("replays 2026-09-21/22: every session starts where the ledger before it pointed", () => {
+  const rows = ledgerFixture("ledger-2026-09-21.jsonl");
+  const settle = { phase: "G", ci: { pushed: true } };
+  const status = { handoff: { phase: "C" }, pushed: settle, retry: { phase: "C", fix: true } };
+  let replayed = 0;
+  rows.forEach((row, i) => {
+    const next = rows.slice(i + 1).find((r) => r.n === row.n);
+    if (!next || !(row.outcome in status)) return;
+    // A next row with no phases is a settle: derive() read a pushed head, which outranks a handoff.
+    const derived = Object.keys(next.phases).length ? status[row.outcome as keyof typeof status] : settle;
+    const standing = { onTicket: true, ticket: row.n, branch: "b", cwd: "w", fix: false, ...derived };
+    const got = choose(pick({ standing, rows: rows.slice(0, i + 1) }) as never);
+    assert.equal(got.route.phase, Object.keys(next.phases)[0] ?? "G", `#${row.n} after its ${row.outcome} row at ${row.started}`);
+    replayed += 1;
+  });
+  assert.equal(replayed, 86);
+});
 
 test("every row's name is its own", () => {
   const names = ROWS.map(([name]) => name);
