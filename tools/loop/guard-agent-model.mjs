@@ -3,10 +3,11 @@
  * inherits the session's, which is what rule 29 of docs/agents/RULES.md exists to prevent. A review, scope or
  * completeness check runs only as its `loop-<kind>` agent, whose file sets both.
  *
- * Exit 0 always. stdout carries the deny, or nothing.
+ * stdout carries the deny, or nothing. An unreadable payload exits 0 (ADR-0010); a call it cannot judge exits 2.
  */
 import { readFileSync } from "node:fs";
 import { brief, KINDS, parseHeader } from "./brief.mjs";
+import { firstLine } from "./cli.mjs";
 
 const NAMED = /\b(completeness check|standards review|spec review|refut\w* (?:review )?findings|fix review)\b|^\W*(scope issue|review #\d+ round \d+)\b/i;
 const KIND = /\b(completeness|standards|spec|refut\w*|scope)\b/i;
@@ -55,15 +56,23 @@ function denial(payload) {
   return null;
 }
 
+let payload;
 try {
-  const payload = JSON.parse(readFileSync(0, "utf8") || "{}");
-  const dispatch = payload?.tool_name === "Agent" || payload?.tool_name === "Task";
-  const reason = dispatch && !payload.agent_id ? denial(payload) : null;
-  if (reason) {
-    process.stdout.write(
-      JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } })
-    );
-  }
-} catch {
+  payload = JSON.parse(readFileSync(0, "utf8") || "{}");
+} catch (err) {
+  process.stderr.write(`guard-agent-model: could not read the tool call on stdin (${firstLine(err)}); allowing it.\n`);
   process.exit(0);
+}
+if ((payload?.tool_name === "Agent" || payload?.tool_name === "Task") && !payload.agent_id) {
+  try {
+    const reason = denial(payload);
+    if (reason) {
+      process.stdout.write(
+        JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } })
+      );
+    }
+  } catch (err) {
+    process.stderr.write(`guard-agent-model: could not judge this call (${firstLine(err)}); refusing it.\n`);
+    process.exit(2);
+  }
 }

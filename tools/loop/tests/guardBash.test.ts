@@ -367,7 +367,7 @@ describe("a loop session pushes only its own ticket's branch", () => {
   test("with no ticket to name, a loop session pushes nothing", () => {
     for (const ticket of [undefined, "", "abc"]) {
       const said = String(asTicket(ticket, "git push origin HEAD:agent/1529-x"));
-      assert.match(said, /LOOP_TICKET/, String(ticket));
+      assert.match(said, /spawned without the ticket number/, String(ticket));
       assert.doesNotMatch(said, /agent\/undefined-/);
     }
   });
@@ -620,6 +620,60 @@ describe("gitAt.unmerged, against a real conflict", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("a loop session leaves the variables session-env.mjs owns alone", () => {
+  const OWNED = /session-env\.mjs owns/;
+  for (const cmd of [
+    "LOOP_TURNS= npm run loop:test",
+    "env LOOP_TEST_BASE=HEAD~1 node tools/loop/loop-gate.mjs --build",
+    "LOOP_TEST_WORKTREE=.worktrees/agent-9; node tools/loop/loop-gate.mjs --build",
+    "LOOP_TURNS=$(echo) node x.mjs",
+    "export LOOP_TURNS=",
+    "export -n LOOP_TURNS",
+    "unset LOOP_TURNS",
+    "unset -v LOOP_PHASE",
+    "env -u LOOP_TURNS node x.mjs",
+    "env --unset=LOOP_TURNS node x.mjs",
+    "bash -c 'LOOP_TURNS= node x.mjs'",
+    '$env:LOOP_TURNS = ""',
+    '$env:loop_turns=""',
+    "${env:LOOP_TEST_GH_SCRIPT} = 'x.mjs'",
+    "Remove-Item env:LOOP_TURNS",
+    "Remove-Item -Path Env:\\LOOP_TURNS",
+    "[Environment]::SetEnvironmentVariable('LOOP_TURNS', $null)",
+  ]) {
+    test(`refuses in the loop: ${cmd}`, () => assert.match(String(check(cmd, repo, true)), OWNED));
+    test(`allows outside the loop: ${cmd}`, () => assert.equal(check(cmd, repo, false), null));
+  }
+  for (const cmd of ["echo $LOOP_TURNS", "env FOO=1 node x.mjs", "node --import ./tools/loop/tests/helpers/clearLoopEnv.mjs --test x.test.ts"]) {
+    test(`allows in the loop: ${cmd}`, () => assert.equal(check(cmd, repo, true), null));
+  }
+});
+
+describe("a loop session leaves agent:check's cache to agent:check", () => {
+  for (const cmd of [
+    "echo '{}' > .git/agent-check-cache.json",
+    "rm .git/worktrees/agent-9/agent-check-cache.json",
+    "cp /tmp/x .git/agent-check-cache.json",
+    `node -e "require('fs').writeFileSync('.git/agent-check-cache.json', '{}')"`,
+    "Set-Content .git\\Agent-Check-Cache.json '{}'",
+  ]) {
+    test(`refuses in the loop: ${cmd}`, () => assert.match(String(check(cmd, repo, true)), /only `npm run agent:check` writes it/));
+    test(`allows outside the loop: ${cmd}`, () => assert.equal(check(cmd, repo, false), null));
+  }
+  test("agent:check itself is allowed", () => {
+    for (const cmd of ["npm run agent:check", "npm run agent:check -- --force"]) assert.equal(check(cmd, repo, true), null, cmd);
+  });
+});
+
+describe("the entrypoint fails closed on a call it cannot judge", () => {
+  test("an evaluation that throws exits 2 and says why", () => {
+    const input = JSON.stringify({ tool_input: { command: { toString: 1 } } });
+    const result = spawnSync(process.execPath, [SCRIPT], { input, encoding: "utf8" });
+    assert.equal(result.status, 2, result.stderr);
+    assert.match(result.stderr, /guard-bash: could not judge this call \(.+\); refusing it\./);
   });
 });
 

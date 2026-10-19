@@ -235,7 +235,10 @@ function assignmentsIn(text) {
  */
 export const literalAssignments = (text) => literal(assignmentsIn(text));
 
-const LOOP_KEYWORD = /^(for|foreach|foreach-object|while|until|%)$/i;
+/** Every bare `X=…` statement's variable, whatever its value. */
+export const assignedNames = (text) => Object.keys(assignmentsIn(text));
+
+const ITERATES = /^(for|foreach|foreach-object|while|until|%)$/i;
 const headOf = (w) => w.find((x) => !/^(do|then|else|!)$/.test(x)) ?? "";
 
 /**
@@ -268,7 +271,7 @@ function loopEnd(text, segs, k, braces) {
   if (j < segs.length && segs[j][0] === "do" && j > k) {
     let open = 1;
     for (; j < segs.length; j++) {
-      if (LOOP_KEYWORD.test(headOf(segs[j]))) open += 1;
+      if (ITERATES.test(headOf(segs[j]))) open += 1;
       if (segs[j][0] === "done" && --open === 0) return segs[j].span[1];
     }
     return text.length;
@@ -297,7 +300,7 @@ export function loopBodies(text, depth = 0) {
   const bodies = [];
   segs.forEach((w, k) => {
     const psDo = w.length === 1 && w[0] === "do" && braces[k].some(([ch]) => ch === "{");
-    if (LOOP_KEYWORD.test(headOf(w)) || psDo) bodies.push(text.slice(w.span[0], loopEnd(text, segs, k, braces)));
+    if (ITERATES.test(headOf(w)) || psDo) bodies.push(text.slice(w.span[0], loopEnd(text, segs, k, braces)));
     if (depth >= MAX_DEPTH) return;
     const inner = w.flatMap((x) => [...x.matchAll(/\$\(/g)].map((m) => x.slice(m.index + 2, closing(x, m.index + 1))));
     for (const body of [shellBodyIn(w), ...inner]) if (body) bodies.push(...loopBodies(body, depth + 1));

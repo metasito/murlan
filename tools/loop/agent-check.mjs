@@ -176,8 +176,9 @@ function git(...args) {
   return gitAt()(args);
 }
 
-function cachePath() {
-  return path.join(git("rev-parse", "--absolute-git-dir").trim(), "agent-check-cache.json");
+/** Where agent:check keeps its verdicts for the checkout `cwd` is in. guard-bash refuses a loop session any other writer. */
+export function cachePath(cwd = process.cwd()) {
+  return path.join(gitAt(cwd)(["rev-parse", "--absolute-git-dir"]).trim(), "agent-check-cache.json");
 }
 
 function readCache() {

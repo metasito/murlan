@@ -20,7 +20,8 @@ import { apiMethod, readIssue, TRUSTED_SELECT, untrustedRead } from "./brief.mjs
 import { firstLine, git } from "./cli.mjs";
 import { locateRun } from "./loop-derive.mjs";
 import { readLine } from "./loop-stream.mjs";
-import { commands, has, literal, literalAssignments, loopBodies, MOVES, operands, toNative, withoutQuotedBodies } from "./shell.mjs";
+import { fromEnv, isLoopVariable } from "./session-env.mjs";
+import { assignedNames, commands, has, literal, literalAssignments, loopBodies, MOVES, operands, toNative, withoutQuotedBodies } from "./shell.mjs";
 
 const HTTP_CLIENT = /^(gh|curl|wget|invoke-restmethod|invoke-webrequest|irm|iwr)$/;
 
@@ -101,12 +102,12 @@ function filesAgentWork(c) {
 }
 
 /**
- * Whether this loop session is on the implement route, judged by its own phase: `LOOP_PHASE` when
- * the supervisor resumed it past A, else the markers in its transcript, since triage and wayfinder
+ * Whether this loop session is on the implement route, judged by its own phase: the one it was
+ * handed when the supervisor resumed it past A, else the markers in its transcript, since triage and wayfinder
  * never report past A. Only with no transcript to read does a standing ticket worktree decide.
  */
 export function implementRoute(env, transcriptPath, standing = () => false, read = (p) => readFileSync(p, "utf8")) {
-  if (/^[B-G]$/.test(env.LOOP_PHASE ?? "")) return true;
+  if (fromEnv(env).phase) return true;
   let text;
   try {
     text = read(transcriptPath);
@@ -209,7 +210,7 @@ function discards(c, repo) {
 
 const PUSH_TAKES_A_VALUE = /^(-o|--push-option|--repo|--receive-pack|--exec)$/;
 
-const loopTicket = () => (/^\d+$/.test(process.env.LOOP_TICKET ?? "") ? process.env.LOOP_TICKET : null);
+const loopTicket = () => fromEnv().ticket;
 
 /**
  * A push, or a ref write through the API, landing anywhere but `agent/<ticket>-…`, named by an
@@ -259,6 +260,27 @@ function runsPlaywright(c) {
   }
   return false;
 }
+
+const DECLARES = /^(export|unset|declare|typeset|readonly|local|set-variable|sv|setx)$/;
+const WRITES_ITEM = /^(remove-item|ri|del|erase|rm|rd|rmdir|set-item|si|new-item|ni|clear-item|cli|rename-item|rni|move-item|mi|mv|copy-item|cp|cpi|set-content|sc|add-content|ac|clear-content|clc)$/;
+const ENV_DRIVE = /^\$?\{?env:[\\/]*/i;
+const namesLoopVariable = (word) => isLoopVariable(word.replace(/^-+/, "").replace(ENV_DRIVE, "").split(/\+?=/)[0].replace(/\}$/, ""));
+
+/** In this one command: `X=… cmd`, `env X=… cmd`, `export`/`unset`, `$env:X = …`, `Remove-Item env:X`. */
+function setsLoopVariable(c) {
+  if ([...Object.keys(c.env), ...Object.keys(c.scope ?? {})].some(namesLoopVariable)) return true;
+  if (DECLARES.test(c.cmd)) return c.args.some(namesLoopVariable);
+  if (WRITES_ITEM.test(c.cmd)) return c.args.some((a) => ENV_DRIVE.test(a) && namesLoopVariable(a));
+  return ENV_DRIVE.test(c.cmd) && namesLoopVariable(c.cmd) && (c.cmd.includes("=") || /^\+?=/.test(c.args[0] ?? ""));
+}
+
+/** Across the line: a bare `X=…` statement, `env -u X`, `[Environment]::SetEnvironmentVariable('X', …)`. */
+const setsLoopVariableIn = (runnable) =>
+  assignedNames(runnable).some(namesLoopVariable) ||
+  (/\benv\b/.test(runnable) && [...runnable.matchAll(/\s(?:-u\s*|--unset[=\s]\s*)['"]?(\w+)/g)].some((m) => namesLoopVariable(m[1]))) ||
+  [...runnable.matchAll(/SetEnvironmentVariable\s*\(\s*['"]?(\w+)/gi)].some((m) => namesLoopVariable(m[1]));
+
+const NAMES_CHECK_CACHE = /agent-check-cache\.json/i;
 
 const RULES = [
   {
@@ -313,7 +335,7 @@ const RULES = [
     test: (c, { loop }) => loop && pushesElsewhere(c, loopTicket()),
     message: () =>
       loopTicket() === null
-        ? "A loop session pushes only its own ticket's branch, and this session's LOOP_TICKET, which names it, is not set. " +
+        ? "A loop session pushes only its own ticket's branch, and this session was spawned without the ticket number that names it. " +
           "Nothing can be pushed: say so on the issue and park it for the owner."
         : "A loop session pushes only its own ticket's branch, named explicitly:\n" +
           `  git push -u origin HEAD:agent/${loopTicket()}-<slug>\n` +
@@ -402,12 +424,29 @@ const RULES = [
       "Waiting on a run inside one call — gh run watch, gh pr checks --watch, or a sleep loop over gh run view/list, gh pr checks|view|status or gh api …actions/runs|check-runs — outlasts the Bash timeout on a device run: the call is killed and returns nothing.\n" +
       "Wait with `node scripts/await-run.mjs <run-id> [<run-id>…]`. It returns before the default Bash timeout; exit 3 means run the same command again.",
   },
+  {
+    // The floor under session-env.mjs: unsetting the loop's own variable is what would re-open its test seams.
+    test: (c, { loop }) => loop && setsLoopVariable(c),
+    line: (_parsed, runnable, { loop }) => loop && setsLoopVariableIn(runnable),
+    message:
+      "A loop session does not assign, export or unset a variable tools/loop/session-env.mjs owns: the supervisor set " +
+      "them when it spawned this session, and the guards and the gate read them as its facts.\n" +
+      "To test a loop tool, run it the way its tests do: `npm run loop:test`, or " +
+      "`node --import ./tools/loop/tests/helpers/clearLoopEnv.mjs --test <file>`.",
+  },
+  {
+    test: () => false,
+    line: (_parsed, runnable, { loop }) => loop && NAMES_CHECK_CACHE.test(runnable),
+    message:
+      "agent-check-cache.json is agent:check's verdict, and only `npm run agent:check` writes it; the gate reads it as a check that ran.\n" +
+      "Run `npm run agent:check`, or `npm run agent:check -- --force` to ignore the cache.",
+  },
 ];
 
 export function check(
   command,
   repo = gitAt(process.cwd()),
-  loop = Boolean(process.env.LOOP_TURNS),
+  loop = fromEnv().loop,
   session = { implementing: () => implementRoute(process.env, null, () => repo.onTicket()) },
 ) {
   const runnable = withoutQuotedBodies(command);
@@ -437,9 +476,15 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
     process.stderr.write(`guard-bash: could not read the tool call on stdin (${firstLine(err)}); allowing it.\n`);
     process.exit(0);
   }
-  const repo = gitAt(cwd);
-  const session = { implementing: () => implementRoute(process.env, transcript, () => repo.onTicket()) };
-  const message = check(command, repo, Boolean(process.env.LOOP_TURNS), session);
+  let message;
+  try {
+    const repo = gitAt(cwd);
+    const session = { implementing: () => implementRoute(process.env, transcript, () => repo.onTicket()) };
+    message = check(command, repo, fromEnv().loop, session);
+  } catch (err) {
+    process.stderr.write(`guard-bash: could not judge this call (${firstLine(err)}); refusing it.\n`);
+    process.exit(2);
+  }
   if (message) {
     process.stderr.write(message + "\n");
     process.exit(2);

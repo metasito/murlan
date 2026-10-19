@@ -25,30 +25,37 @@ function withEnv<T>(name: string, value: string, run: () => T): T {
 }
 
 describe("the test override", () => {
-  test("LOOP_GH_SCRIPT runs a node script in place of gh, with gh's arguments", () => {
-    const out = withEnv("LOOP_GH_SCRIPT", stub("gh", "console.log(JSON.stringify(process.argv.slice(2)));"), () =>
+  test("LOOP_TEST_GH_SCRIPT runs a node script in place of gh, with gh's arguments", () => {
+    const out = withEnv("LOOP_TEST_GH_SCRIPT", stub("gh", "console.log(JSON.stringify(process.argv.slice(2)));"), () =>
       gh(["issue", "view", "7"]),
     );
     assert.deepEqual(JSON.parse(out), ["issue", "view", "7"]);
   });
 
-  test("LOOP_GIT_SCRIPT does the same for git, in the cwd it was handed", () => {
-    const out = withEnv("LOOP_GIT_SCRIPT", stub("git", "console.log(process.cwd() + '|' + process.argv.slice(2).join(' '));"), () =>
+  test("LOOP_TEST_GIT_SCRIPT does the same for git, in the cwd it was handed", () => {
+    const out = withEnv("LOOP_TEST_GIT_SCRIPT", stub("git", "console.log(process.cwd() + '|' + process.argv.slice(2).join(' '));"), () =>
       git(scratch)(["rev-parse", "HEAD"]),
     );
     assert.equal(out.trim(), `${scratch}|rev-parse HEAD`);
+  });
+
+  test("inside a loop session the override is ignored, and the real binary runs", () => {
+    const out = withEnv("LOOP_TURNS", "40", () =>
+      withEnv("LOOP_TEST_GIT_SCRIPT", stub("git", "console.log('stubbed');"), () => git(scratch)(["--version"])),
+    );
+    assert.match(out, /^git version /);
   });
 });
 
 describe("one policy", () => {
   test("a payload past node's 1MB default is read whole, not an ENOBUFS throw", () => {
-    const out = withEnv("LOOP_GH_SCRIPT", stub("big", "process.stdout.write('x'.repeat(3 * 1024 * 1024));"), () => gh(["run", "view"]));
+    const out = withEnv("LOOP_TEST_GH_SCRIPT", stub("big", "process.stdout.write('x'.repeat(3 * 1024 * 1024));"), () => gh(["run", "view"]));
     assert.equal(out.length, 3 * 1024 * 1024);
   });
 
   test("stderr is captured on the error, never printed", () => {
     const script = stub("loud", "process.stderr.write('HTTP 502: bad gateway\\nmore\\n'); process.exit(4);");
-    const err = withEnv("LOOP_GH_SCRIPT", script, () => {
+    const err = withEnv("LOOP_TEST_GH_SCRIPT", script, () => {
       try {
         gh(["pr", "view"]);
       } catch (e) {
@@ -64,7 +71,7 @@ describe("one policy", () => {
   test("a spent budget still times out, rather than reading as no timeout", () => {
     const slow = stub("slow", "setTimeout(() => {}, 5_000);");
     for (const timeout of [0, -5_000]) {
-      const code = withEnv("LOOP_GH_SCRIPT", slow, () => {
+      const code = withEnv("LOOP_TEST_GH_SCRIPT", slow, () => {
         try {
           gh(["run", "watch"], { timeout });
         } catch (e) {
@@ -77,8 +84,8 @@ describe("one policy", () => {
   });
 
   test("statusOf reads the exit code a call threw with", () => {
-    assert.equal(withEnv("LOOP_GIT_SCRIPT", stub("one", "process.exit(1);"), () => statusOf(() => git(scratch)(["merge-base"]))), 1);
-    assert.equal(withEnv("LOOP_GIT_SCRIPT", stub("zero", ""), () => statusOf(() => git(scratch)(["merge-base"]))), 0);
+    assert.equal(withEnv("LOOP_TEST_GIT_SCRIPT", stub("one", "process.exit(1);"), () => statusOf(() => git(scratch)(["merge-base"]))), 1);
+    assert.equal(withEnv("LOOP_TEST_GIT_SCRIPT", stub("zero", ""), () => statusOf(() => git(scratch)(["merge-base"]))), 0);
   });
 
   test("firstLine falls back to the message when the tool said nothing", () => {

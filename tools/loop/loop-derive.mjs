@@ -7,6 +7,7 @@
  */
 import { basename, dirname } from "node:path";
 import { gh as ghCli, git as gitAt, REPO, statusOf } from "./cli.mjs";
+import { fromEnv, testSeams } from "./session-env.mjs";
 
 export const BRANCH = /^agent\/(\d+)-/;
 
@@ -414,28 +415,28 @@ function readCi(cwd, branch, head, comments, exec) {
 }
 
 /**
- * `LOOP_BASE` overrides what the diff is measured against, and is a test seam only: the tests run
- * against scratch worktrees that have no `origin/main`. It is deliberately not a command-line
- * flag: a documented flag is a mistake the loop can make by reading its own usage text.
+ * The `base` seam overrides what the diff is measured against, for the tests' scratch worktrees
+ * that have no `origin/main`. It is deliberately not a command-line flag: a documented flag is a
+ * mistake the loop can make by reading its own usage text.
  *
- * `LOOP_WORKTREE` is the same kind of seam, and the same kind of hazard if it ever became a real
- * flag: pointed at a worktree other than the one about to be pushed, it clears a review that never
- * looked at this branch's head. Like `LOOP_BASE`, nothing in the loop itself may ever set it.
+ * The `worktree` seam is the same kind, and the same hazard if it ever became a real flag: pointed
+ * at a worktree other than the one about to be pushed, it clears a review that never looked at this
+ * branch's head. `testSeams()` returns neither inside a loop session.
  *
  * `ci` is opt-in because it costs `gh` calls on every read; the gate never needs it.
  *
- * `handed` is the phase `queue-loop.mjs` spawned this session at, through `LOOP_PHASE`; a test
- * passes it, because a test run inside a loop session inherits that session's.
+ * `handed` is the phase `queue-loop.mjs` spawned this session at; a test passes it, because a test
+ * run inside a loop session inherits that session's.
  *
  * @param {{ cwd?: string, base?: string, worktree?: string, ci?: boolean, exec?: typeof gh, handed?: string }} [options]
  */
 export function derive({
   cwd = undefined,
-  base = process.env.LOOP_BASE || "origin/main",
-  worktree = process.env.LOOP_WORKTREE,
+  base = testSeams().base ?? "origin/main",
+  worktree = testSeams().worktree,
   ci = false,
   exec = gh,
-  handed = process.env.LOOP_PHASE ?? "",
+  handed = fromEnv().phase ?? "",
 } = {}) {
   const at = locateRun(cwd, worktree);
   if (at.detached && at.ticket) {

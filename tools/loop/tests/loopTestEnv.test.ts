@@ -6,6 +6,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { fromEnv, testSeams } from "../session-env.mjs";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
@@ -13,7 +14,7 @@ function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const p = path.join(dir, name);
     if (statSync(p).isDirectory()) return name === "tests" ? [] : sources(p);
-    return /\.(mjs|ts)$/.test(name) ? [p] : [];
+    return /\.(mjs|cjs|js|ts|json|sh)$/.test(name) ? [p] : [];
   });
 }
 
@@ -56,9 +57,40 @@ function probeSees(args: string[], env: NodeJS.ProcessEnv) {
   }
 }
 
+test("only session-env.mjs names a LOOP_ variable under tools/loop and tools/ci", () => {
+  const files = ["tools/loop", "tools/ci"].flatMap((d) => sources(path.join(ROOT, d)));
+  assert.ok(files.some((f) => f.endsWith(path.join("tools", "ci", "e2eGlobalTimeout.mjs"))), "the scan has drifted");
+  const naming = files.filter((f) => /\bLOOP_/.test(readFileSync(f, "utf8"))).map((f) => path.relative(ROOT, f).replaceAll("\\", "/"));
+  assert.deepEqual(naming, ["tools/loop/session-env.mjs"]);
+});
+
+test("a test seam is honoured outside a loop session and ignored inside one", () => {
+  const seams = { LOOP_TEST_BASE: "HEAD~1", LOOP_TEST_WORKTREE: "/w", LOOP_TEST_GH_SCRIPT: "gh.mjs", LOOP_TEST_GIT_SCRIPT: "git.mjs" };
+  assert.deepEqual(testSeams(seams), { base: "HEAD~1", worktree: "/w", ghScript: "gh.mjs", gitScript: "git.mjs" });
+  assert.deepEqual(testSeams({ ...seams, LOOP_TURNS: "40" }), {});
+});
+
+test("a malformed session fact reads as null, never as a guess", () => {
+  assert.deepEqual(fromEnv({ LOOP_TURNS: "40", LOOP_TICKET: "1668", LOOP_PHASE: "D", LOOP_REASON: "red" }), {
+    loop: true,
+    ticket: 1668,
+    phase: "D",
+    reason: "red",
+    turns: 40,
+  });
+  assert.deepEqual(fromEnv({ LOOP_TURNS: "lots", LOOP_TICKET: "abc", LOOP_PHASE: "A", LOOP_REASON: "" }), {
+    loop: true,
+    ticket: null,
+    phase: null,
+    reason: null,
+    turns: null,
+  });
+  assert.equal(fromEnv({}).loop, false);
+});
+
 test("no tools/loop/tests file inherits the LOOP_* a loop process set", () => {
   const names = loopVariables();
-  for (const known of ["LOOP_TURNS", "LOOP_PHASE", "LOOP_REASON", "LOOP_BASE", "LOOP_WORKTREE"]) {
+  for (const known of ["LOOP_TURNS", "LOOP_PHASE", "LOOP_REASON", "LOOP_TEST_BASE", "LOOP_TEST_WORKTREE"]) {
     assert.ok(names.includes(known), `${known} not found under tools/loop/: the scan has drifted`);
   }
   const env = { ...process.env, ...Object.fromEntries(names.map((n) => [n, "set-by-the-loop"])) };

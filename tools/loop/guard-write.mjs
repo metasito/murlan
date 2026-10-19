@@ -1,12 +1,13 @@
 /**
  * PreToolUse for Write|Edit|NotebookEdit, registered by loop-settings.json alone: the shared checkout is another
  * session's (RULES.md rules 8 and 31), and nothing outside the repo is scratch (rule 32). Only
- * `.worktrees/` and `.loop-logs/` are writable. Exit 0 always; stdout carries the deny, or nothing.
+ * `.worktrees/` and `.loop-logs/` are writable. stdout carries the deny, or nothing. An unreadable payload exits 0
+ * (ADR-0010); a call it cannot judge exits 2.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { checkoutRoot } from "./cli.mjs";
+import { checkoutRoot, firstLine } from "./cli.mjs";
 
 const inside = (child, parent) => {
   const rel = path.relative(parent, child);
@@ -26,10 +27,16 @@ export function verdict(filePath, root, cwd = root) {
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
+  let payload;
   try {
-    const payload = JSON.parse(readFileSync(0, "utf8") || "{}");
-    const file = payload?.tool_input?.file_path ?? payload?.tool_input?.notebook_path;
-    if (file) {
+    payload = JSON.parse(readFileSync(0, "utf8") || "{}");
+  } catch (err) {
+    process.stderr.write(`guard-write: could not read the tool call on stdin (${firstLine(err)}); allowing it.\n`);
+    process.exit(0);
+  }
+  const file = payload?.tool_input?.file_path ?? payload?.tool_input?.notebook_path;
+  if (file) {
+    try {
       const cwd = payload.cwd ?? process.cwd();
       const reason = verdict(file, checkoutRoot(cwd), cwd);
       if (reason) {
@@ -37,8 +44,9 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
           JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } }),
         );
       }
+    } catch (err) {
+      process.stderr.write(`guard-write: could not judge this call (${firstLine(err)}); refusing it.\n`);
+      process.exit(2);
     }
-  } catch {
-    process.exit(0);
   }
 }

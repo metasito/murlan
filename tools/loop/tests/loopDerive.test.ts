@@ -326,7 +326,7 @@ describe("counting review rounds", () => {
 
 describe("held work", () => {
   let dir: string;
-  const priorScript = process.env.LOOP_GH_SCRIPT;
+  const priorScript = process.env.LOOP_TEST_GH_SCRIPT;
   const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, encoding: "utf8" });
 
   before(() => {
@@ -342,25 +342,25 @@ describe("held work", () => {
 
   after(() => {
     rmSync(dir, { recursive: true, force: true });
-    if (priorScript === undefined) delete process.env.LOOP_GH_SCRIPT;
-    else process.env.LOOP_GH_SCRIPT = priorScript;
+    if (priorScript === undefined) delete process.env.LOOP_TEST_GH_SCRIPT;
+    else process.env.LOOP_TEST_GH_SCRIPT = priorScript;
   });
 
   test("a wip head with no verdict resumes the build, not the review", () => {
     writeFileSync(join(dir, "a.txt"), "edited\n");
     git("add", "-A");
     git("commit", "-qm", "wip(#9): parked in phase C");
-    process.env.LOOP_GH_SCRIPT = fakeGh(dir, { issue: { comments: [] } });
+    process.env.LOOP_TEST_GH_SCRIPT = fakeGh(dir, { issue: { comments: [] } });
     assert.equal(derive({ cwd: dir, base: "main" }).phase, "C");
   });
 
   test("a wip head whose DOD-CHECK covers it was handed to review", () => {
     const head = git("rev-parse", "HEAD").trim();
-    process.env.LOOP_GH_SCRIPT = fakeGh(dir, { issue: { comments: [{ body: `DOD-CHECK ${head.slice(0, 7)}\n- [ ] a` }] } });
+    process.env.LOOP_TEST_GH_SCRIPT = fakeGh(dir, { issue: { comments: [{ body: `DOD-CHECK ${head.slice(0, 7)}\n- [ ] a` }] } });
     const s = derive({ cwd: dir, base: "main" });
     assert.match(git("log", "-1", "--format=%s"), /^wip\(#9\):/);
     assert.equal(s.phase, "D");
-    process.env.LOOP_GH_SCRIPT = fakeGh(dir, { issue: { comments: [{ body: "DOD-CHECK 0000000\n- [ ] a" }] } });
+    process.env.LOOP_TEST_GH_SCRIPT = fakeGh(dir, { issue: { comments: [{ body: "DOD-CHECK 0000000\n- [ ] a" }] } });
     assert.equal(derive({ cwd: dir, base: "main" }).phase, "C", "a DOD-CHECK of another head does not cover this one");
   });
 });
@@ -489,7 +489,7 @@ function fakeGh(dir: string, answers: GhAnswers): string {
  */
 describe("derive()'s review-round count", () => {
   let dir: string;
-  const priorScript = process.env.LOOP_GH_SCRIPT;
+  const priorScript = process.env.LOOP_TEST_GH_SCRIPT;
 
   before(() => {
     dir = mkdtempSync(join(tmpdir(), "loop-derive-"));
@@ -508,8 +508,8 @@ describe("derive()'s review-round count", () => {
 
   after(() => {
     rmSync(dir, { recursive: true, force: true });
-    if (priorScript === undefined) delete process.env.LOOP_GH_SCRIPT;
-    else process.env.LOOP_GH_SCRIPT = priorScript;
+    if (priorScript === undefined) delete process.env.LOOP_TEST_GH_SCRIPT;
+    else process.env.LOOP_TEST_GH_SCRIPT = priorScript;
   });
 
   const stubGh = (comments: { body: string; authorAssociation?: string }[]) => fakeGh(dir, { issue: { comments } });
@@ -518,7 +518,7 @@ describe("derive()'s review-round count", () => {
     const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
     const markers = [{ body: `VERDICT: LAND ${head}` }, { body: `HANDOFF ${head.slice(0, 7)}\n- [ ] run this` }];
     const by = (authorAssociation: string) => {
-      process.env.LOOP_GH_SCRIPT = stubGh(markers.map((c) => ({ ...c, authorAssociation })));
+      process.env.LOOP_TEST_GH_SCRIPT = stubGh(markers.map((c) => ({ ...c, authorAssociation })));
       return derive({ cwd: dir, base: "main" });
     };
     for (const outsider of ["NONE", "CONTRIBUTOR"]) {
@@ -535,7 +535,7 @@ describe("derive()'s review-round count", () => {
 
   test("counts one round per VERDICT comment on a normal read", () => {
     const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
-    process.env.LOOP_GH_SCRIPT = stubGh([
+    process.env.LOOP_TEST_GH_SCRIPT = stubGh([
       { body: "looks ok" },
       { body: `VERDICT: HOLD ${head} — one more pass` },
       { body: `VERDICT: LAND ${head}` },
@@ -547,12 +547,12 @@ describe("derive()'s review-round count", () => {
 
   test("a HANDOFF naming the head is carried on the state", () => {
     const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
-    process.env.LOOP_GH_SCRIPT = stubGh([{ body: `HANDOFF ${head.slice(0, 7)}\n- [ ] wire it` }]);
+    process.env.LOOP_TEST_GH_SCRIPT = stubGh([{ body: `HANDOFF ${head.slice(0, 7)}\n- [ ] wire it` }]);
     assert.deepEqual(derive({ cwd: dir, base: "main" }).handoff, { line: `HANDOFF ${head.slice(0, 7)}`, notes: ["- [ ] wire it"] });
   });
 
   test("null, not zero, when the tracker cannot be read", () => {
-    process.env.LOOP_GH_SCRIPT = join(dir, "does-not-exist.mjs");
+    process.env.LOOP_TEST_GH_SCRIPT = join(dir, "does-not-exist.mjs");
     const result = derive({ cwd: dir, base: "main" });
     assert.equal(result.trackerReadable, false);
     assert.equal(result.reviewRounds, null);
@@ -567,7 +567,7 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
   let head = "";
   let mainSha = "";
   let merged = "";
-  const priorScript = process.env.LOOP_GH_SCRIPT;
+  const priorScript = process.env.LOOP_TEST_GH_SCRIPT;
   const git = (cwd: string, ...args: string[]) =>
     execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args], {
       cwd,
@@ -597,15 +597,15 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
 
   after(() => {
     rmSync(root, { recursive: true, force: true });
-    if (priorScript === undefined) delete process.env.LOOP_GH_SCRIPT;
-    else process.env.LOOP_GH_SCRIPT = priorScript;
+    if (priorScript === undefined) delete process.env.LOOP_TEST_GH_SCRIPT;
+    else process.env.LOOP_TEST_GH_SCRIPT = priorScript;
   });
 
   const land = () =>
     [{ body: "Claimed by `agent/1234-x`." }, { body: `VERDICT: LAND ${head}` }].map((c) => ({ ...c, authorAssociation: "OWNER" }));
   const red = (sha = head) => ({ body: `CI-RED ${sha}\nrun: https://github.com/o/r/actions/runs/7 · step: npm test\nfailing: x` });
   const at = (answers: GhAnswers, opts: { base?: string; ci?: boolean; phase?: string } = {}) => {
-    process.env.LOOP_GH_SCRIPT = fakeGh(root, answers);
+    process.env.LOOP_TEST_GH_SCRIPT = fakeGh(root, answers);
     return derive({ cwd: dir, base: opts.base ?? "main", ci: opts.ci ?? true, handed: opts.phase }) as any;
   };
   const pushed = (extra: GhAnswers) => ({ issue: { comments: land() }, prs: [{ number: 5, headRefOid: head }], ...extra });

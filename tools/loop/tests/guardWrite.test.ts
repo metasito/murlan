@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { verdict } from "../guard-write.mjs";
 
@@ -33,4 +33,18 @@ test("the hook denies with or without LOOP_TURNS: only the loop's own settings l
   assert.equal(JSON.parse(run({ LOOP_TURNS: "40" })).hookSpecificOutput.permissionDecision, "deny");
   assert.equal(JSON.parse(run({})).hookSpecificOutput.permissionDecision, "deny");
   fs.rmSync(repo, { recursive: true, force: true });
+});
+test("an unreadable payload is allowed, and says so (ADR-0010)", () => {
+  const script = fileURLToPath(new URL("../guard-write.mjs", import.meta.url));
+  const run = spawnSync(process.execPath, [script], { input: "not json", encoding: "utf8" });
+  assert.deepEqual([run.status, run.stdout], [0, ""]);
+  assert.match(run.stderr, /guard-write: could not read the tool call on stdin/);
+});
+test("a call it cannot judge is refused: no checkout root answers from a cwd that does not exist", () => {
+  const script = fileURLToPath(new URL("../guard-write.mjs", import.meta.url));
+  const cwd = path.join(os.tmpdir(), "guard-write-missing", String(process.pid));
+  const input = JSON.stringify({ tool_name: "Edit", tool_input: { file_path: path.join(cwd, "a.ts") }, cwd });
+  const run = spawnSync(process.execPath, [script], { input, encoding: "utf8" });
+  assert.equal(run.status, 2, run.stderr);
+  assert.match(run.stderr, /guard-write: could not judge this call \(.+\); refusing it\./);
 });

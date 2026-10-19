@@ -150,7 +150,7 @@ describe("the brief CLI refuses a worktree or base the delta cannot be read from
   };
   const cli = (...args: string[]) => cliReading([], ...args);
   const cliReading = (comments: { body: string }[], ...args: string[]) =>
-    spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8", env: { ...process.env, LOOP_GH_SCRIPT: tracker(comments) } });
+    spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8", env: { ...process.env, LOOP_TEST_GH_SCRIPT: tracker(comments) } });
   let reviewed = "";
   let rebased = "";
 

@@ -25,6 +25,7 @@ import {
   WORKTREE_DIR,
 } from "./loop-derive.mjs";
 import { runSession } from "./loop-session.mjs";
+import { spawnEnv } from "./session-env.mjs";
 import { readLine, reduceSession, sessionStart } from "./loop-stream.mjs";
 import {
   act,
@@ -207,7 +208,7 @@ export function allowedTools(text) {
     .filter(Boolean);
 }
 
-const LOOP_SETTINGS = path.join(HERE, "loop-settings.json");
+const SETTINGS_FILE = path.join(HERE, "loop-settings.json");
 const RESULT_SCHEMA = JSON.stringify(JSON.parse(fs.readFileSync(path.join(HERE, "result-schema.json"), "utf8")));
 
 /**
@@ -235,7 +236,7 @@ export function queueLoopArgs(number, size = null, phase = null) {
     // Plugins no protocol file names: 83 skills become 66, and the prefix every turn re-reads
     // loses 2.3k. The prompt itself cannot move later — the ticket number is what stops a second pick.
     "--settings",
-    LOOP_SETTINGS,
+    SETTINGS_FILE,
     "--setting-sources",
     "project",
     "--tools",
@@ -683,18 +684,13 @@ export function ticketFacts(number, run = sh) {
  * night then rebuilds its cached prefix at full price, with nothing to see. Whether to update is a
  * decision for a person between runs.
  *
- * `LOOP_TURNS` is the bound that actually stops a session, passed so the session can see it.
+ * The turn bound is what actually stops a session, passed so the session can see it.
  */
 export function sessionEnv(number, size = null, at = null, reason = null, base = process.env) {
   return {
-    ...base,
+    ...spawnEnv({ number, at, reason, turns: turnsFor(size) }, base),
     DISABLE_AUTOUPDATER: "1",
-    LOOP_TURNS: String(turnsFor(size)),
-    LOOP_TICKET: String(number),
     CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(contextFor(size)),
-    // A is where derive() starts anyway; handing it would pin a rebuilt worktree to A.
-    LOOP_PHASE: at && at !== "A" ? at : undefined,
-    LOOP_REASON: reason ?? undefined,
     // `-p` leaves fork mode off, so subagents default to background and the session spends a turn
     // each time it asks one whether it is done. Foreground makes the Agent call an await.
     CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",

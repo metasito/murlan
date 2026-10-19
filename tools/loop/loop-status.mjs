@@ -13,10 +13,11 @@
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { derive, parityRed } from "./loop-derive.mjs";
 import { parityLine } from "./loop-render.mjs";
+import { fromEnv } from "./session-env.mjs";
 
 const unknown = (why) => `loop-status could not determine the run: ${why}; do not pick a ticket until resolved`;
 
-export function report(s, reason = process.env.LOOP_REASON) {
+export function report(s, reason = fromEnv().reason) {
   if (!s.onTicket && s.phase === "?") return unknown(s.why);
   if (!s.onTicket) {
     if (!s.ambiguous) return "";
@@ -80,7 +81,7 @@ export function report(s, reason = process.env.LOOP_REASON) {
  * prompt, so a report that differs by phase re-bills ~26k cached tokens per process; queue.md has
  * the session run this itself instead, which puts the report at the end.
  */
-export const silentAt = (argv, env) => argv.includes("--startup") && Boolean(env.LOOP_TURNS);
+export const silentAt = (argv, env) => argv.includes("--startup") && fromEnv(env).loop;
 
 /**
  * An owner's session shares the checkout with a run it does not own: it is told, never ordered.
@@ -102,16 +103,17 @@ export function inform(s, at = new Date(), parity = null) {
 
 /** @param {{number: number, since: string}|null} [parity] */
 export const statusFor = (s, env, at = new Date(), parity = null) =>
-  env.LOOP_TURNS ? report(s, env.LOOP_REASON) : inform(s, at, parity);
+  fromEnv(env).loop ? report(s, fromEnv(env).reason) : inform(s, at, parity);
 
 if (isInvokedDirectly(process.argv[1], import.meta.url) && !silentAt(process.argv, process.env)) {
   const at = new Date();
-  const parity = process.env.LOOP_TURNS ? null : parityRed();
+  const { loop } = fromEnv();
+  const parity = loop ? null : parityRed();
   try {
     const out = statusFor(derive({ ci: true }), process.env, at, parity);
     if (out) console.log(out);
   } catch (err) {
     const why = String(err?.message ?? err).split("\n")[0];
-    console.log(process.env.LOOP_TURNS ? unknown(why) : inform({ onTicket: false, phase: "?", why }, at, parity));
+    console.log(loop ? unknown(why) : inform({ onTicket: false, phase: "?", why }, at, parity));
   }
 }
