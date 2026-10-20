@@ -90,20 +90,23 @@ describe('the frame loop runs only while armed or recording', () => {
     const run = bench.benchScenarios().find(([name]) => name === 'firstFrameAtOnce')![1];
     const view = await render(<probe.FrameProbe />);
     await settle();
-    await act(() =>
-      run({
-        params: {},
-        showTable: async () => {},
-        sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
-        frames: (on, until) => probe.recordFrames(on, until),
-        armFrames: probe.armFrames,
-        feltSample: async () => {
-          throw new Error('unused');
-        },
-        gallery: {},
-        showNotice: () => {},
-      })
-    );
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
+    let done = false;
+    const finished = run({
+      params: {},
+      showTable: async () => {},
+      sleep: (ms) => jest.advanceTimersByTimeAsync(ms),
+      frames: (on, until) => probe.recordFrames(on, until),
+      armFrames: probe.armFrames,
+      feltSample: async () => {
+        throw new Error('unused');
+      },
+      gallery: {},
+      showNotice: () => {},
+    }).then(() => void (done = true));
+    while (!done) await jest.advanceTimersByTimeAsync(16);
+    await finished;
+    jest.useRealTimers();
     const dts = mockRows.flatMap((r) => (r.k === 'frame' ? [r.dt] : []));
     expect(dts.length).toBeGreaterThan(1);
     expect(Number.isFinite(dts[0])).toBe(true);
