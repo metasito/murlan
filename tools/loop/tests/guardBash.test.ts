@@ -53,6 +53,9 @@ const repo = {
   top: (dir?: string | null): string | null => resolve("/r", dir?.startsWith(".worktrees") ? dir : "."),
   cwd: (dir?: string | null): string => resolve("/r", dir ?? "."),
   onTicket: () => false,
+  read: (): string => {
+    throw Object.assign(new Error("no such file"), { code: "ENOENT" });
+  },
 };
 const guard = (cmd: string) => check(cmd, repo);
 

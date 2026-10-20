@@ -57,6 +57,7 @@ export function gitAt(base) {
     },
     top: (dir) => answer(["rev-parse", "--show-toplevel"], dir),
     cwd: (dir) => resolve(base, dir ?? "."),
+    read: (file, dir) => readFileSync(resolve(base, dir ?? ".", file), "utf8"),
     onTicket: () => {
       const run = locateRun(base);
       return Boolean(run.ticket || run.ambiguous);
@@ -366,43 +367,64 @@ function namesCheckCache(runnable, raw, vars) {
 const POWERSHELL = /^(pwsh|powershell)$/;
 const MERGE_TEXT = [/\bgh\s+pr\s+merge\b/, /\bpulls\/[^\s"'/]+\/merge\b/, /\bmergePullRequest\s*\(/, /\benablePullRequestAutoMerge\s*\(/];
 
-/** `-EncodedCommand` in any spelling PowerShell accepts: a prefix of the name, or `-ec`. Its body is base64 no rule reads. */
-const runsEncodedCommand = (c) =>
-  POWERSHELL.test(c.cmd) && c.args.some((a) => /^-ec$/i.test(a) || (a.length >= 2 && "-encodedcommand".startsWith(a.toLowerCase())));
+/** `-EncodedCommand` as PowerShell takes it: after `-`, `--` or `/`, `ec` or a prefix of the name. Its body is base64 no rule reads. */
+const isEncodedFlag = (a) => {
+  const m = /^(?:--?|\/)([a-z]+)$/i.exec(a);
+  return m !== null && (m[1].toLowerCase() === "ec" || "encodedcommand".startsWith(m[1].toLowerCase()));
+};
+const runsEncodedCommand = (c) => POWERSHELL.test(c.cmd) && c.args.some(isEncodedFlag);
 
-/** The script file a shell, `node` or PowerShell is handed: `-File`, else the first operand. */
-function scriptOf(c) {
-  if (!/^(bash|sh|zsh|dash|node|nodejs)$/.test(c.cmd) && !POWERSHELL.test(c.cmd)) return null;
-  if (POWERSHELL.test(c.cmd)) {
-    const at = c.args.findIndex((a) => a.length >= 2 && "-file".startsWith(a.toLowerCase()));
-    if (at >= 0) return c.args[at + 1] ?? null;
-  }
-  return c.args.find((a) => !a.startsWith("-")) ?? null;
+const SCRIPT_RUNNER = /^(bash|sh|zsh|dash|ksh|node|nodejs|source|\.)$/;
+const NOT_A_FILE = new Set(["ENOENT", "ENOTDIR", "EISDIR", "ENAMETOOLONG", "EINVAL"]);
+
+/** Every word a runner might take as a script: any operand (an option's value too), a `-File` value, a redirected input. */
+function scriptsOf(c) {
+  if (!SCRIPT_RUNNER.test(c.cmd) && !POWERSHELL.test(c.cmd)) return [];
+  const file = POWERSHELL.test(c.cmd) ? c.args.flatMap((a, i) => (/^(?:--?|\/)f[a-z]*$/i.test(a) && "file".startsWith(a.replace(/^(?:--?|\/)/, "").toLowerCase()) ? [c.args[i + 1] ?? ""] : [])) : [];
+  return [...file, ...c.args.filter((a) => !/^[-+]/.test(a)), ...c.redirected].filter(Boolean);
 }
 
-/** One level: whether the script this command runs spells a merge. A file that exists and cannot be read is refused. */
-function runsMergingScript(c, repo) {
-  const script = scriptOf(c);
-  if (!script) return false;
-  let text;
-  try {
-    text = readFileSync(resolve(repo.cwd(c.dir), toNative(script)), "utf8");
-  } catch (err) {
-    return err?.code !== "ENOENT" && err?.code !== "ENOTDIR" && err?.code !== "EISDIR";
-  }
-  return MERGE_TEXT.some((re) => re.test(text));
+/** A shell that reads its program from standard input: nothing to run, `-s`, or `-`. */
+const readsProgram = (c) => (/^(bash|sh|zsh|dash|ksh|node|nodejs)$/.test(c.cmd) || POWERSHELL.test(c.cmd)) && (!c.args.some((a) => !/^-/.test(a)) || c.args.includes("-s") || c.args.includes("-"));
+
+/**
+ * One level: whether a script the line runs spells a merge. A script that exists and cannot be read, one
+ * the same line writes, and a program piped into a shell that spells a merge are all refused.
+ */
+function runsMergingScript(parsed, raw, repo) {
+  const spells = (text) => MERGE_TEXT.some((re) => re.test(text));
+  const piped = parsed.some(readsProgram);
+  if (piped && spells(raw)) return true;
+  return parsed.some((c) =>
+    [...scriptsOf(c), ...(piped ? c.args.filter((a) => !a.startsWith("-")) : [])].some((script) => {
+      let text;
+      try {
+        text = (repo.read ?? ((file, dir) => readFileSync(resolve(repo.cwd(dir), file), "utf8")))(toNative(script), c.dir);
+      } catch (err) {
+        if (!NOT_A_FILE.has(err?.code)) return true;
+        const bare = (w) => w.replace(/^\.[\\/]/, "");
+        return parsed.some((o) => o !== c && (o.redirected.some((w) => bare(w) === bare(script)) || o.args.some((w) => bare(w) === bare(script))));
+      }
+      return spells(text);
+    }),
+  );
 }
 
-const EVIDENCE_WRITERS = /^(tee|mv|rm|truncate|shred|dd|set-content|sc|add-content|ac|out-file|clear-content|clc|remove-item|ri|del|erase|move-item|mi|rename-item|rni|new-item|ni)$/;
-const COPIERS = /^(cp|install|ln|copy-item|cpi|copy)$/;
+const READERS = /^(cat|head|tail|grep|egrep|fgrep|rg|less|more|wc|jq|ls|stat|file|diff|cmp|nl|tac|get-content|gc|type|select-string|sls|test-path)$/;
+const COPIERS = /^(cp|mv|install|ln|copy-item|cpi|copy|move-item|mi)$/;
+const dirLike = (w) => /(^|[\\/])\.loop-logs[\\/]*$|^\.{1,2}[\\/]*$/.test(w);
 
-/** A path word that is, or may expand to, an evidence artefact's name: a bare name, or one in a `.loop-logs` directory. */
-function mayBeEvidence(word, vars) {
-  const resolved = word.replace(/^of=/, "").replace(/\$\{(\w+)\}|\$(\w+)/g, (m, a, b) => vars[a ?? b] ?? "*");
+/** The shell's substitutions, which expand to something this cannot know, read as a wildcard. */
+const unknown = (word) => word.replace(/\$\([^)]*\)|`[^`]*`/g, "*");
+
+function pathParts(word, vars) {
+  const resolved = unknown(word.replace(/^(of|if)=/, "")).replace(/\$\{(\w+)\}|\$(\w+)/g, (m, a, b) => vars[a ?? b] ?? "*");
   const cut = Math.max(resolved.lastIndexOf("/"), resolved.lastIndexOf("\\"));
-  const dir = resolved.slice(0, Math.max(cut, 0)).replace(/[\\/]+$/, "");
-  const base = resolved.slice(cut + 1);
-  if (!(dir === "" || /^(\.{1,2}[\\/]?)+$/.test(dir) || /\.loop-logs$|[*?[`$]/.test(dir))) return false;
+  return { resolved, dir: resolved.slice(0, Math.max(cut, 0)).replace(/[\\/]+$/, ""), base: resolved.slice(cut + 1) };
+}
+
+/** Whether a file name is, or may expand to, an evidence artefact's. */
+function evidenceName(base, dir = ".loop-logs") {
   if (isEvidence(base)) return true;
   if (!/[*?[]/.test(base)) return false;
   if (!/\.loop-logs$/.test(dir) && !/[^*?[\]]/.test(base)) return false;
@@ -411,22 +433,45 @@ function mayBeEvidence(word, vars) {
   return EVIDENCE_SAMPLES.some((n) => glob.test(n));
 }
 
-/** In one command: a redirect, or a writing command's operand, that names an evidence artefact. */
+/** A path word that is, or may expand to, an evidence artefact: a bare name, or one in a `.loop-logs` directory. */
+function mayBeEvidence(word, vars) {
+  const { dir, base } = pathParts(word, vars);
+  if (!(dir === "" || /^(\.{1,2}[\\/]?)+$/.test(dir) || /\.loop-logs$|[*?[`$]/.test(dir))) return false;
+  return evidenceName(base, dir);
+}
+
+/**
+ * In one command: a redirect to an evidence artefact; a copy or move into the directory that holds
+ * them, or onto one; or any command but a plain reader that names one.
+ */
 function writesEvidenceIn(c, vars) {
   if (c.redirected.some((w) => mayBeEvidence(w, vars))) return true;
   const operands = c.args.filter((a) => a !== "--");
   if (COPIERS.test(c.cmd)) {
-    return mayBeEvidence(operands.at(-1) ?? "", vars) || operands.some((a, i) => /^(-t|--target-directory)$/.test(operands[i - 1] ?? "") && mayBeEvidence(a, vars));
+    const plain = operands.filter((a) => !a.startsWith("-"));
+    const at = operands.findIndex((a) => /^(-t|--target-directory)$/.test(a));
+    const joined = operands.map((a) => /^--target-directory=(.*)$/.exec(a)?.[1] ?? /^-t(.+)$/.exec(a)?.[1]).find((v) => v !== undefined);
+    const target = joined ?? (at >= 0 ? (operands[at + 1] ?? "") : (plain.at(-1) ?? ""));
+    const sources = plain.filter((a) => a !== target);
+    if (mayBeEvidence(target, vars)) return true;
+    const into = dirLike(pathParts(target, vars).resolved);
+    if (into && sources.some((w) => { const { base, resolved } = pathParts(w, vars); return evidenceName(base) || /[*?[]/.test(resolved); })) return true;
+    return /^(mv|move-item|mi)$/.test(c.cmd) && sources.some((w) => mayBeEvidence(w, vars));
   }
-  if (c.cmd === "sed" || c.cmd === "perl") return has(c.args, /^(-[A-Za-z]*i|--in-place)/) && operands.some((a) => mayBeEvidence(a, vars));
-  return EVIDENCE_WRITERS.test(c.cmd) && operands.some((a) => mayBeEvidence(a, vars));
+  return !READERS.test(c.cmd) && operands.some((a) => mayBeEvidence(a, vars));
 }
 
 /** Inline interpreter code that writes and spells an evidence file's name, or most of it. */
 const codeWritesEvidence = (code) =>
   CODE_WRITES.test(code) && (/\.jsonl\b|jsonl['"`]|\brun-/i.test(code) || (/\.loop-logs/.test(code) && /ticket|stream/i.test(code)));
 
-function writesEvidence(parsed, raw, vars) {
+const OUTPUT_TARGET = /(?:^|[^<>\d])\d*>>?\|?\s*((?:[^\s;&|<>()`$]|\$\([^)]*\)|`[^`]*`|\$\{[^}]*\}|\$\w+)+)/g;
+
+/** Redirect targets read off the text itself, for the redirects a command that parses to nothing (`exec 3>>`) drops. */
+const redirectsToEvidence = (runnable, vars) => [...runnable.matchAll(OUTPUT_TARGET)].some((m) => mayBeEvidence(m[1], vars));
+
+function writesEvidence(parsed, raw, vars, runnable) {
+  if (redirectsToEvidence(runnable, vars)) return true;
   if (parsed.some((c) => writesEvidenceIn(c, c.scope ? literal(c.scope) : vars))) return true;
   const code = inlineCode(parsed, raw);
   return code !== null && codeWritesEvidence(code);
@@ -530,8 +575,9 @@ const RULES = [
     // PreToolUse hook sees the whole line and fires inside subagents too; it does not reach the
     // supervisor, which merges from a child process no hook intercepts. The REST endpoint and
     // both GraphQL mutations are matched on the whole text for the same reason.
-    test: (c, { repo }) =>
-      (c.cmd === "gh" && c.args[0] === "pr" && c.args[1] === "merge") || runsEncodedCommand(c) || runsMergingScript(c, repo),
+    test: (c) =>
+      (c.cmd === "gh" && c.args[0] === "pr" && c.args[1] === "merge") || runsEncodedCommand(c),
+    line: (parsed, _runnable, { raw, repo }) => runsMergingScript(parsed, raw, repo),
     text: (t) =>
       /\bpulls\/[^\s"'/]+\/merge\b/.test(t) || /\bmergePullRequest\s*\(/.test(t) || /\benablePullRequestAutoMerge\s*\(/.test(t),
     message:
@@ -594,10 +640,15 @@ const RULES = [
   },
   {
     test: () => false,
-    line: (parsed, _runnable, { loop, raw, vars }) => loop && writesEvidence(parsed, raw, vars),
+    line: (parsed, runnable, { loop, raw, vars }) => loop && writesEvidence(parsed, raw, vars, runnable),
     message:
       "The stream log, the ledger and the run reports in .loop-logs/ are the loop's record of what ran, and the gate reads them as proof: only the supervisor writes them (`evidence` in tools/loop/loop-logs.mjs).\n" +
       "A scratch file goes under .loop-logs/ by another name; reading one is fine.",
+  },
+  {
+    test: () => false,
+    line: (_parsed, runnable, { loop }) => loop && /evidence\.key|murlan-loop/i.test(runnable),
+    message: "The evidence key is the supervisor's: no command of a session names it.",
   },
   {
     test: () => false,
@@ -620,7 +671,7 @@ export function check(
   // The payload's cwd is where the line starts, not where a `cd` in it leaves git.
   const moved = parsed.some((c) => MOVES.test(c.cmd));
   for (const rule of RULES) {
-    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop, raw: command, vars }) || parsed.some((c) => rule.test(c, { repo, moved, vars: c.scope ? literal(c.scope) : vars, loop, session }))) {
+    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop, raw: command, vars, repo }) || parsed.some((c) => rule.test(c, { repo, moved, vars: c.scope ? literal(c.scope) : vars, loop, session }))) {
       return typeof rule.message === "function" ? rule.message() : rule.message;
     }
   }

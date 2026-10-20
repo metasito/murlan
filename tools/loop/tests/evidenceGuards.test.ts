@@ -5,7 +5,7 @@
 // lexical guards skipped. Every block here ships with the bypass that motivated it.
 import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { check } from "../guard-bash.mjs";
@@ -23,6 +23,7 @@ const repo = {
   top: () => scratch,
   cwd: () => scratch,
   onTicket: () => false,
+  read: (file: string): string => readFileSync(path.join(scratch, file), "utf8"),
 };
 const loop = (cmd: string) => check(cmd, repo, true);
 
@@ -36,7 +37,7 @@ describe("every artefact decides whether it is evidence", () => {
 
   const evidence = Object.entries(ARTEFACTS).filter(([, a]) => (a as { evidence: boolean }).evidence);
   test("the stream, the ledger and the reports are the evidence", () => {
-    assert.deepEqual(evidence.map(([k]) => k).sort(), ["ledger", "report", "stream"]);
+    assert.deepEqual(evidence.map(([k]) => k).sort(), ["ledger", "report", "reportMac", "stream", "streamMac"]);
   });
 
   for (const [kind, artefact] of evidence) {
@@ -149,5 +150,110 @@ describe("the thread-read block sees past gh issue view --comments", () => {
     ]) {
       assert.equal(loop(cmd), null, cmd);
     }
+  });
+});
+
+describe("the cheap bypasses of the same guards", () => {
+  for (const cmd of [
+    "echo x > .loop-logs/TICKETS.JSONL",
+    "echo x > .loop-logs/Run-1.MD",
+    "cp /tmp/1.jsonl .loop-logs/",
+    "cp -t .loop-logs /tmp/12.jsonl",
+    "cp --target-directory=.loop-logs /tmp/12.jsonl",
+    "mv /tmp/x/*.jsonl .loop-logs",
+    "cd .loop-logs && cp /tmp/12.jsonl .",
+    "exec 3>> .loop-logs/12.jsonl",
+    "echo x > .loop-logs/$(echo 12).jsonl",
+    "echo x > .loop-logs/`echo 12`.jsonl",
+    "python3 plant.py .loop-logs/12.jsonl",
+    "perl -e 'open(F, \">>\", $ARGV[0])' .loop-logs/12.jsonl",
+    "awk '{print > FILENAME}' .loop-logs/12.jsonl",
+    "sed -e 's/a/b/;w .loop-logs/12.jsonl' /tmp/x",
+    "echo x > .loop-logs/12.jsonl.mac",
+    "echo x > .loop-logs/run-night.md.mac",
+  ]) {
+    test(`refuses in the loop: ${cmd}`, () => assert.match(String(loop(cmd)), EVIDENCE));
+  }
+
+  test("Write and Edit follow a link to the record, existing or not, and say any case", () => {
+    const base = mkdtempSync(path.join(tmpdir(), "evidence-links-"));
+    try {
+      mkdirSync(path.join(base, ".loop-logs"));
+      mkdirSync(path.join(base, ".worktrees"));
+      symlinkSync(path.join(base, ".loop-logs", "tickets.jsonl"), path.join(base, ".loop-logs", "notes.txt"));
+      symlinkSync(path.join(base, ".loop-logs"), path.join(base, ".worktrees", "logs"));
+      symlinkSync(path.join(base, ".loop-logs", "3.jsonl"), path.join(base, ".worktrees", "dangling"));
+      writeFileSync(path.join(base, ".loop-logs", "7.jsonl"), "");
+      symlinkSync(path.join(base, ".loop-logs", "7.jsonl"), path.join(base, ".worktrees", "alias"));
+      for (const p of [".loop-logs/notes.txt", ".worktrees/logs/9.jsonl", ".worktrees/dangling", ".worktrees/alias", ".loop-logs/TICKETS.JSONL", ".LOOP-LOGS/1.jsonl"]) {
+        assert.match(String(verdict(path.join(base, p), base)), EVIDENCE, p);
+      }
+      assert.equal(verdict(path.join(base, ".loop-logs", "scratch.txt"), base), null);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  test("the evidence key is named by no write", () => {
+    assert.match(String(verdict(path.join(root, ".loop-logs", "evidence.key"), root)), /evidence key/);
+    assert.match(String(loop("cat ~/.local/state/murlan-loop/evidence.key")), /evidence key/);
+  });
+});
+
+describe("the merge block, beyond a script file", () => {
+  const file = (name: string, body: string) => {
+    writeFileSync(path.join(scratch, name), body);
+    return name;
+  };
+  const target = file("target.sh", "gh pr merge 5 --auto\n");
+
+  for (const cmd of ["pwsh --EncodedCommand ZwBo", "pwsh /EncodedCommand ZwBo", "pwsh /enc ZwBo", "pwsh -En ZwBo", "powershell --ec ZwBo"]) {
+    test(`refuses ${cmd}`, () => assert.match(String(check(cmd, repo)), /not yours to merge/));
+  }
+  for (const cmd of [
+    `bash -o pipefail ${target}`,
+    `bash -x ./${target}`,
+    `node --require ./x.js ${target}`,
+    `source ${target}`,
+    `. ./${target}`,
+    `cat ${target} | bash`,
+    `bash < ${target}`,
+    `bash -s < ${target}`,
+    "echo 'gh pr merge 5 --auto' | sh",
+    "printf 'gh pr merge 5' | bash -s",
+    "echo 'gh pr merge 5' > made.sh && bash made.sh",
+    "printf 'gh pr merge 5' > made2.sh; sh ./made2.sh",
+    "tee made3.sh < src.txt && source made3.sh",
+  ]) {
+    test(`refuses ${cmd}`, () => assert.match(String(check(cmd, repo)), /not yours to merge/));
+  }
+
+  test("a script it cannot read is refused, and one that is not a file is left alone", () => {
+    const denied = () => {
+      throw Object.assign(new Error("denied"), { code: "EACCES" });
+    };
+    assert.match(String(check("bash locked.sh", { ...repo, read: denied })), /not yours to merge/);
+    assert.equal(check("bash missing.sh", repo), null);
+    assert.equal(check("node -e 'console.log(1)'", repo), null);
+  });
+});
+
+describe("the trusted select is one canonical stage", () => {
+  const read = (jq: string) => `gh api repos/o/r/issues/5/comments --jq '${jq}'`;
+  for (const jq of [
+    `.[]|${TRUSTED_SELECT} , .`,
+    `.[]|${TRUSTED_SELECT} // .`,
+    `if false then ${TRUSTED_SELECT} else . end`,
+    `.[] | (${TRUSTED_SELECT}), .[]`,
+    `.[]|select(.x)|${TRUSTED_SELECT}`,
+    `.[]|${TRUSTED_SELECT.replace("COLLABORATOR", "NONE")}`,
+    `.[]|${TRUSTED_SELECT}|map(.)|.[]`,
+    `.[]|"${TRUSTED_SELECT}"`,
+    `[.[]|${TRUSTED_SELECT}`,
+  ]) {
+    test(`refuses ${jq}`, () => assert.match(String(loop(read(jq))), /trusted-author filter/));
+  }
+  test("the canonical stage with plain paths around it is allowed", () => {
+    for (const jq of [`.[]|${TRUSTED_SELECT}`, `.[]|${TRUSTED_SELECT}|.body`, `.comments[]|${TRUSTED_SELECT}|.user.login`]) assert.equal(loop(read(jq)), null, jq);
   });
 });

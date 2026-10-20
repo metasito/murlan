@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { estimateCost, familyOf, killedLine, report, select, shaTable, summary, turnHeadroom } from "../loop-cost.mjs";
-import { handoffIn } from "../loop-logs.mjs";
+import { handoffIn, ledgerLine } from "../loop-logs.mjs";
 import { ledgerFixture } from "./helpers/ledgerFixture.ts";
 
 const golden = {
@@ -65,7 +65,7 @@ describe("the CLI reads the ledger's rows alone", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "loop-cost-"));
     try {
       mkdirSync(path.join(dir, ".loop-logs"));
-      writeFileSync(path.join(dir, ".loop-logs", "tickets.jsonl"), rows.map((r) => `${JSON.stringify(r)}\n`).join(""));
+      writeFileSync(path.join(dir, ".loop-logs", "tickets.jsonl"), rows.map((r) => ledgerLine(r)).join(""));
       for (const [n, at] of Object.entries(written)) {
         const log = path.join(dir, ".loop-logs", `${n}.jsonl`);
         writeFileSync(log, "");

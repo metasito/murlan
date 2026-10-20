@@ -23,7 +23,7 @@ import { fakePorts, rowOf, withMembers } from "./helpers/fakePorts.ts";
 import { portReads, unknownReads } from "./helpers/portReads.ts";
 import { afterSession } from "../decide.mjs";
 import { readLine } from "../loop-stream.mjs";
-import { ticketTally } from "../loop-logs.mjs";
+import { ledgerLine, ticketTally } from "../loop-logs.mjs";
 import { PLAIN } from "../loop-render.mjs";
 import { parkAsked } from "../paths.mjs";
 
@@ -2289,7 +2289,7 @@ describe("realPorts' root", () => {
     try {
       assert.notEqual(path.resolve(process.cwd()), root);
       mkdirSync(logs);
-      writeFileSync(path.join(logs, "tickets.jsonl"), `${JSON.stringify({ schema: 9, n: 7, outcome: "landed", started: "2026-10-01T00:00:00.000Z" })}\n`);
+      writeFileSync(path.join(logs, "tickets.jsonl"), ledgerLine({ schema: 9, n: 7, outcome: "landed", started: "2026-10-01T00:00:00.000Z" }));
       const issues = fakeTracker({ 9: { labels: ["in-progress"] } });
       const quiet = () => {};
       const { tracker, ledger, session } = realPorts({ totals: {}, start: quiet } as never, {} as never, { log: quiet, step: quiet, header: quiet } as never, {

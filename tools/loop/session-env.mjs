@@ -60,7 +60,20 @@ export function spawnEnv({ number, at = null, reason = null, turns }, base = pro
     LOOP_TICKET: String(number),
     LOOP_PHASE: at && at !== "A" ? at : undefined,
     LOOP_REASON: reason ?? undefined,
+    LOOP_EVIDENCE_KEY_FILE: undefined,
   };
+}
+
+/**
+ * What only the supervisor is configured with. Never handed to a session (`spawnEnv` removes it), and
+ * empty inside one: a loop session has no key to read evidence with or to forge it with.
+ *
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {{ evidenceKeyFile?: string }}
+ */
+export function supervisorConfig(env = process.env) {
+  if (env.LOOP_TURNS) return {};
+  return env.LOOP_EVIDENCE_KEY_FILE ? { evidenceKeyFile: env.LOOP_EVIDENCE_KEY_FILE } : {};
 }
 
 /**

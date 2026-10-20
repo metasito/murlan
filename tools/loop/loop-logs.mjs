@@ -9,9 +9,9 @@
  * builder. `tools/loop/tests/loopLogs.test.ts` holds the pair together: every builder's output must
  * match its own `name` and no other artefact's.
  */
-import { createHash } from "node:crypto";
 import fsNode from "node:fs";
 import path from "node:path";
+import { evidenceKey, mac, macEquals } from "./evidence.mjs";
 import { PLAIN, reportRow } from "./loop-render.mjs";
 
 export const DIR = ".loop-logs";
@@ -34,10 +34,12 @@ export const ARTEFACTS = {
   // call all of them.
   ledger: { path: (_, dir = DIR) => path.join(dir, "tickets.jsonl"), name: /^tickets\.jsonl$/, ephemeral: false, evidence: true },
   supervisor: { path: (_, dir = DIR) => path.join(dir, "supervisor.log"), name: /^supervisor\.log$/, ephemeral: false, evidence: false },
+  streamMac: { path: (t, dir = DIR) => path.join(dir, `${t}.jsonl.mac`), name: /^\d+\.jsonl\.mac$/, ephemeral: true, evidence: true },
+  reportMac: { path: (runId, dir = DIR) => path.join(dir, `run-${runId}.md.mac`), name: /^run-.+\.md\.mac$/, ephemeral: false, evidence: true },
 };
 
-/** Whether a file name is an evidence artefact's, wherever it sits. */
-export const isEvidence = (file) => Object.values(ARTEFACTS).some((a) => a.evidence && a.name.test(path.basename(file)));
+/** Whether a file name is an evidence artefact's, wherever it sits. Any case: Windows and macOS read `TICKETS.JSONL` as the ledger. */
+export const isEvidence = (file) => Object.values(ARTEFACTS).some((a) => a.evidence && new RegExp(a.name.source, "i").test(path.basename(file)));
 
 /** One real name per evidence artefact, for a guard to match a glob against. */
 export const EVIDENCE_SAMPLES = Object.values(ARTEFACTS)
@@ -60,37 +62,104 @@ export function appendSupervisor(line, dir = DIR) {
   fsNode.appendFileSync(supervisorLogPath(null, dir), line);
 }
 
-const seals = new Map();
+/** The chain of a stream's MACs, one per line, kept beside it: `12.jsonl.mac`. */
+export const streamMacPath = (t, dir = DIR) => ARTEFACTS.streamMac.path(t, dir);
+
+const genesis = (key, file) => mac(key, "stream", path.basename(file));
 
 /**
- * The supervisor's memory of a stream log: how many bytes it has written to the file and their
- * hash. A file first seen here is taken as it stands; later calls for the same file continue the
- * seal, so a line a session planted between two of the supervisor's writes breaks it.
+ * The only writer of a stream log. Each line the supervisor records is chained to the one before
+ * (`mac(prev, line)`) in the sidecar, written first, then to the stream. A restart continues the
+ * chain from the sidecar's last entry; it never has to trust the stream's bytes to do so.
+ *
+ * @param {string} file the stream log
  */
-export function sealStream(file) {
-  const key = path.resolve(file);
-  if (!seals.has(key)) {
-    const prior = fsNode.existsSync(file) ? fsNode.readFileSync(file) : Buffer.alloc(0);
-    seals.set(key, { length: prior.length, hash: createHash("sha256").update(prior) });
-  }
-  const seal = seals.get(key);
+export function streamRecorder(file) {
+  const key = evidenceKey();
+  const macFile = `${file}.mac`;
+  fsNode.mkdirSync(path.dirname(file), { recursive: true });
+  const kept = fsNode.existsSync(macFile) ? fsNode.readFileSync(macFile, "utf8").split("\n").filter(Boolean) : [];
+  let prev = kept.at(-1) ?? genesis(key, file);
+  const sink = fsNode.createWriteStream(file, { flags: "a" });
+  const macSink = fsNode.createWriteStream(macFile, { flags: "a" });
   return {
-    add(text) {
-      const bytes = Buffer.from(text);
-      seal.length += bytes.length;
-      seal.hash.update(bytes);
+    /** @param {string} text one line, without its newline */
+    line(text) {
+      prev = mac(key, "line", prev, text);
+      macSink.write(`${prev}\n`);
+      sink.write(`${text}\n`);
+    },
+    /** Resolves once both files are whole on disk. @param {() => void} done */
+    end(done) {
+      macSink.end(() => sink.end(done));
     },
   };
 }
 
-/** Whether a stream log is still exactly what the supervisor wrote. A file it never wrote to is not. */
-export function streamIntact(file) {
-  const seal = seals.get(path.resolve(file));
-  if (!fsNode.existsSync(file)) return seal && seal.length > 0 ? { ok: false, why: `${file} is gone` } : { ok: true };
-  if (!seal) return { ok: false, why: `${file} was not written by this supervisor` };
-  const now = fsNode.readFileSync(file);
-  if (now.length === seal.length && createHash("sha256").update(now).digest("hex") === seal.hash.copy().digest("hex")) return { ok: true };
-  return { ok: false, why: `${file} holds lines the supervisor did not write` };
+/**
+ * Whether every byte of a stream log is one the supervisor recorded: complete lines only, each
+ * matching its place in the chain. A planted, edited, dropped or reordered line, or a log the
+ * supervisor never wrote, is not evidence. No file is an empty stream.
+ *
+ * @param {string} file
+ * @returns {{ ok: true, text: string } | { ok: false, why: string }}
+ */
+export function streamVerified(file) {
+  const key = evidenceKey();
+  const macFile = `${file}.mac`;
+  if (!fsNode.existsSync(file)) return { ok: true, text: "" };
+  const text = fsNode.readFileSync(file, "utf8");
+  if (text === "") return { ok: true, text };
+  if (!text.endsWith("\n")) return { ok: false, why: "it ends mid-line" };
+  if (!fsNode.existsSync(macFile)) return { ok: false, why: "the supervisor recorded no MACs for it" };
+  const chain = fsNode.readFileSync(macFile, "utf8").split("\n");
+  const lines = text.slice(0, -1).split("\n");
+  let prev = genesis(key, file);
+  for (let i = 0; i < lines.length; i++) {
+    prev = mac(key, "line", prev, lines[i]);
+    if (!macEquals(prev, chain[i])) return { ok: false, why: `line ${i + 1} is not the one the supervisor recorded` };
+  }
+  return { ok: true, text };
+}
+
+/** A ledger or report entry, signed. */
+const ledgerMac = (key, row) => mac(key, "ledger", JSON.stringify(row));
+
+/** One ledger line: the row and its MAC. @param {object} row */
+export function ledgerLine(row) {
+  return `${JSON.stringify({ ...row, mac: ledgerMac(evidenceKey(), row) })}\n`;
+}
+
+const rowAuthentic = (row) => {
+  if (!row || typeof row !== "object") return false;
+  const { mac: given, ...rest } = row;
+  return macEquals(given, ledgerMac(evidenceKey(), rest));
+};
+
+/** A report's entries beside it, each the text and its MAC: `run-<id>.md.mac`. */
+export const reportMacPath = (runId, dir = DIR) => ARTEFACTS.reportMac.path(runId, dir);
+
+/** One report entry's sidecar line. @param {string} text */
+export function reportEntryLine(text) {
+  return `${JSON.stringify({ text, mac: mac(evidenceKey(), "report", text) })}\n`;
+}
+
+/** The entries of a report that the supervisor wrote, in order. @param {string} runId */
+export function reportEntries(runId, dir = DIR) {
+  const file = reportMacPath(runId, dir);
+  if (!fsNode.existsSync(file)) return [];
+  const key = evidenceKey();
+  return fsNode
+    .readFileSync(file, "utf8")
+    .split("\n")
+    .flatMap((line) => {
+      try {
+        const { text, mac: given } = JSON.parse(line);
+        return macEquals(given, mac(key, "report", text)) ? [text] : [];
+      } catch {
+        return [];
+      }
+    });
 }
 
 /** One of the files above, written whole, its directory made first. */
@@ -343,7 +412,9 @@ export function ledger(io = {}) {
     const file = reportPath(runId);
     const loop = sha ? ` · loop ${sha.slice(0, 7)}` : "";
     if (!exists(file)) write(file, `# queue-loop ${runId.replace(/-(\d\d)-(\d\d)$/, " $1:$2")}${loop}\n\n`);
-    append(file, `${reportRow(report, PLAIN())}\n`);
+    const entry = `${reportRow(report, PLAIN())}\n`;
+    append(file, entry);
+    append(reportMacPath(runId), reportEntryLine(entry));
   };
 
   return {
@@ -356,7 +427,7 @@ export function ledger(io = {}) {
     /** @param {number} number @param {string|null} phase @param {string} runId */
     start(number, phase, runId) {
       mkdir();
-      append(ledgerPath(), `${JSON.stringify(startRow({ number, phase, runId, loopSha }))}\n`);
+      append(ledgerPath(), ledgerLine(startRow({ number, phase, runId, loopSha })));
     },
     /**
      * @param {{number: number, outcome: string, why?: string|null, run: object, title?: string|null,
@@ -394,7 +465,7 @@ export function ledger(io = {}) {
         flake,
       });
       mkdir();
-      append(ledgerPath(), `${JSON.stringify(entry)}\n`);
+      append(ledgerPath(), ledgerLine(entry));
 
       const bill = billOf(entry, prior);
       const report = { number, title: title ?? `ticket #${number}`, outcome, pr, ms: bill.ms, cost: bill.cost, why: why ?? undefined };
@@ -431,7 +502,7 @@ export function ledger(io = {}) {
         loopSha: k.loop_sha,
       });
       mkdir();
-      append(ledgerPath(), `${JSON.stringify(entry)}\n`);
+      append(ledgerPath(), ledgerLine(entry));
       if (k.run_id) toReport(k.run_id, k.loop_sha, { number: k.n, title: `ticket #${k.n}`, outcome: "killed", pr: null, ms: k.ms, cost: entry.cost });
       return entry;
     },
@@ -441,6 +512,7 @@ export function ledger(io = {}) {
       const file = reportPath(runId);
       const titled = exists(file);
       append(file, `\n${line}\n`);
+      append(reportMacPath(runId), reportEntryLine(`\n${line}\n`));
       if (!recap || !titled) return;
       const [title, ...rest] = read(file).split("\n");
       write(file, [title, "", recap, ...rest].join("\n"));
@@ -453,7 +525,9 @@ const parsed = (text, starts = false) =>
   text.split("\n").flatMap((line) => {
     try {
       const row = JSON.parse(line);
-      return starts || row.outcome !== "started" ? [row] : [];
+      if (!rowAuthentic(row)) return [];
+      const { mac: _signed, ...bare } = row;
+      return starts || bare.outcome !== "started" ? [bare] : [];
     } catch {
       return [];
     }

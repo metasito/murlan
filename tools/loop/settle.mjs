@@ -10,7 +10,7 @@
  * the gate passes, so every exit but the merge disarms first, and a red is disarmed before its
  * CI-RED is posted — that comment is what starts a fix round, here or after a restart.
  */
-import fs, { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { firstLine, REPO, viaCli } from "./cli.mjs";
@@ -18,7 +18,7 @@ import { ciRedPosted } from "./loop-derive.mjs";
 import { ghTracker, prUrl } from "./tracker.mjs";
 import { readLine } from "./loop-stream.mjs";
 import { ciLine, LAND } from "./loop-render.mjs";
-import { DIR, ciLogPath, ciRedNotePath, streamIntact, streamLog } from "./loop-logs.mjs";
+import { DIR, ciLogPath, ciRedNotePath, streamLog, streamVerified } from "./loop-logs.mjs";
 import { landable, reviewerRan } from "./loop-gate.mjs";
 import { CI_RED_TIMEOUT_MS, LIMITS, REFRESH_TIMEOUT_MS, sleepClock } from "./limits.mjs";
 import { decide } from "./decide.mjs";
@@ -273,7 +273,7 @@ const listed = (names) =>
 function settlePorts(pending, log, pause, io) {
   const run = io.run ?? viaCli;
   const dir = io.dir ?? DIR;
-  const facts = io.facts ?? (() => streamFacts(pending.ticket, dir));
+  const facts = io.facts ? () => ({ ok: true, facts: io.facts() }) : () => streamFacts(pending.ticket, dir);
   const ports = {
     dir,
     run,
@@ -305,19 +305,17 @@ function settlePorts(pending, log, pause, io) {
       }
       const v = landable(comments, sha, (args) => run("git", args).trim());
       if (!v.ok) return v;
-      if (!io.facts) {
-        const sealed = streamIntact(streamLog(pending.ticket, dir));
-        if (!sealed.ok) return { ok: false, why: `#${pending.ticket}'s stream is not the supervisor's record: ${sealed.why}` };
-      }
-      if (reviewerRan(facts(), pending.ticket)) return v;
+      const stream = facts();
+      if (!stream.ok) return { ok: false, why: `#${pending.ticket}'s stream is not the supervisor's record: ${stream.why}` };
+      if (reviewerRan(stream.facts, pending.ticket)) return v;
       return { ok: false, why: `no loop-review or loop-fix completed for #${pending.ticket} since its last build` };
     });
   return ports;
 }
 
 function streamFacts(ticket, dir) {
-  const file = streamLog(ticket, dir);
-  return fs.existsSync(file) ? fs.readFileSync(file, "utf8").split("\n").map(readLine).filter(Boolean) : [];
+  const read = streamVerified(streamLog(ticket, dir));
+  return read.ok ? { ok: true, facts: read.text.split("\n").map(readLine).filter(Boolean) } : read;
 }
 
 /** Null when the tracker cannot be read, which is a reason to skip posting, never to post blind. */

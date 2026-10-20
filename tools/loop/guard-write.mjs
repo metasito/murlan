@@ -4,7 +4,7 @@
  * `.worktrees/` and `.loop-logs/` are writable, bar the evidence artefacts `loop-logs.mjs` marks. stdout carries
  * the deny, or nothing. An unreadable payload exits 0 (ADR-0010); a call it cannot judge exits 2.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readlinkSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { checkoutRoot, firstLine } from "./cli.mjs";
@@ -15,9 +15,35 @@ const inside = (child, parent) => {
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 };
 
+/** The path with every link on it followed, as far as it exists: a symlink named anything can stand for the record. */
+function followed(p) {
+  for (let hops = 0; hops < 16; hops++) {
+    let target;
+    try {
+      target = readlinkSync(p);
+    } catch {
+      break;
+    }
+    p = path.resolve(path.dirname(p), target);
+  }
+  try {
+    return realpathSync(p);
+  } catch {
+    try {
+      return path.join(realpathSync(path.dirname(p)), path.basename(p));
+    } catch {
+      return p;
+    }
+  }
+}
+
+const KEY = /(^|[\\/])murlan-loop([\\/]|$)|evidence\.key$/i;
+const names = (p) => [p, followed(p)];
+
 export function verdict(filePath, root, cwd = root) {
   const p = path.resolve(cwd, filePath);
-  if (path.basename(path.dirname(p)) === DIR && isEvidence(p)) {
+  if (names(p).some((n) => KEY.test(n))) return "That is the supervisor's evidence key. A session never writes it.";
+  if (names(p).some((n) => path.basename(path.dirname(n)).toLowerCase() === DIR && isEvidence(n))) {
     return `${path.basename(p)} is the loop's record of what ran, and the gate reads it as proof: only the supervisor writes it. A scratch file goes under ${DIR}/ by another name.`;
   }
   if (inside(p, path.join(root, ".worktrees")) || inside(p, path.join(root, ".loop-logs"))) return null;

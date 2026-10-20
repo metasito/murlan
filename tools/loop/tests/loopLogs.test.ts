@@ -6,6 +6,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, 
 import { tmpdir } from "node:os";
 import {
   ARTEFACTS,
+  ledgerLine,
   errorOf,
   handoffIn,
   holdRound,
@@ -358,7 +359,7 @@ describe("ledger", () => {
     book.record(rec({ title: "second" }), "2026-09-13-04-12");
     assert.equal(written.length, 1);
     assert.match(written[0][1], /# queue-loop 2026-09-13 04:12/);
-    const rows = appended.filter(([f]) => f.startsWith("run-")).map(([, t]) => t);
+    const rows = appended.filter(([f]) => f.startsWith("run-") && !f.endsWith(".mac")).map(([, t]) => t);
     assert.equal(rows.length, 2);
     assert.match(rows[0], /#953 first/);
     assert.match(rows[1], /#953 second/);
@@ -443,7 +444,7 @@ describe("the run report's recap", () => {
       read: (f: string) => files.get(f) ?? "",
     });
     book.close("r", "0 tickets", "run   21:40 → 21:41");
-    assert.deepEqual([...files.values()], ["\n0 tickets\n"]);
+    assert.deepEqual([...files].filter(([f]) => !f.endsWith(".mac")).map(([, t]) => t), ["\n0 tickets\n"]);
   });
 });
 
@@ -762,8 +763,15 @@ describe("readLedger", () => {
 
   test("skips a line it cannot parse", () => {
     const file = path.join(dir, "tickets.jsonl");
-    writeFileSync(file, '{"n":1}\nnot json\n\n{"n":2}\n', "utf8");
+    writeFileSync(file, `${ledgerLine({ n: 1 })}not json\n\n${ledgerLine({ n: 2 })}`, "utf8");
     assert.deepEqual(readLedger(file), [{ n: 1 }, { n: 2 }]);
+  });
+
+  test("a row the supervisor did not sign is not evidence, whether forged, edited or unsigned", () => {
+    const file = path.join(dir, "forged.jsonl");
+    const genuine = JSON.parse(ledgerLine({ n: 1, outcome: "landed" }));
+    writeFileSync(file, [JSON.stringify({ n: 2, outcome: "landed" }), JSON.stringify({ ...genuine, outcome: "parked" }), JSON.stringify({ ...genuine, mac: "0".repeat(64) }), JSON.stringify(genuine)].join("\n") + "\n", "utf8");
+    assert.deepEqual(readLedger(file), [{ n: 1, outcome: "landed" }]);
   });
 
   test("an empty file is no rows", () => {
@@ -833,7 +841,7 @@ describe("start rows", () => {
   test("readLedger leaves them out unless asked", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "starts-"));
     const file = path.join(dir, "tickets.jsonl");
-    writeFileSync(file, '{"n":1,"outcome":"started"}\n{"n":1,"outcome":"landed"}\n', "utf8");
+    writeFileSync(file, ledgerLine({ n: 1, outcome: "started" }) + ledgerLine({ n: 1, outcome: "landed" }), "utf8");
     assert.deepEqual(readLedger(file).map((r) => r.outcome), ["landed"]);
     assert.equal(readLedger(file, { starts: true }).length, 2);
     rmSync(dir, { recursive: true, force: true });
