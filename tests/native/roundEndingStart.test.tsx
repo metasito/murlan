@@ -128,7 +128,7 @@ describe('the start of a round ending', () => {
     await view.unmount();
   });
 
-  it('on the table, starts a round that ends with nothing thrown, as an online forfeit does', async () => {
+  it('on the table, starts a round that ends with nothing thrown, as an online abandonment does', async () => {
     const landed = jest.fn<(at: number) => void>();
     const view = await render(table(landed, false));
     await advance(2000);
