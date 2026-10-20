@@ -28,7 +28,7 @@ describe("a match's outcome on the felt, at its edges", () => {
     expect(motes.mock.calls.map(([o]) => o)).toEqual(['draw']);
     expect(rain).not.toHaveBeenCalled();
     expect(trauma.mock.calls.map(([tier]) => tier)).not.toContain('matchWon');
-    expect(level.mock.calls.some(([, to]) => to === RoundMoment.lostLevel)).toBe(false);
+    expect(level.mock.calls.some(([, owner, to]) => owner === 'lost' && to === RoundMoment.lostLevel)).toBe(false);
     expect(stingOutcomes).toEqual(['draw']);
     expect(taps).toEqual(['impactMedium']);
     await r.unmount();

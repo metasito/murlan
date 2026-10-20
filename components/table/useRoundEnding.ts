@@ -12,7 +12,6 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { ROUND_IDLE, roundEndingOnsets } from "@/lib/timeline/roundEnding";
 import { matchEndingOnsets } from "@/lib/timeline/matchEnding";
 import { RoundEnding } from "@/lib/theme";
-import type { TableTimeline } from "./tableTimeline";
 
 const { close, settled: roundSettled, glowEnd, pileFade: pileFadeAt } = roundEndingOnsets(0);
 const { settled: matchSettled } = matchEndingOnsets(0);
@@ -25,24 +24,21 @@ export interface RoundEndingClock {
   skip: () => void;
 }
 
-/**
- * Starts the ending once the play that ended the round has landed — `pending()` is read at call
- * time, so this hook must be called after `usePileFlight`, whose effect takes that throw.
- */
 export function useRoundEnding({
   ended,
+  landed,
   hold = false,
   match = false,
-  timeline,
   pileEmpty,
   onLanded,
 }: {
   ended: boolean;
+  /** `usePileFlight`'s `ending.landedAt`: the ending starts there, once it is known. */
+  landed: number | null;
   /** Parks the ending on the open pill, re-ranked, until `ended` goes false. */
   hold?: boolean;
   /** Runs `lib/timeline/matchEnding.ts` instead: it settles on the board, which stays until `ended` goes false. */
   match?: boolean;
-  timeline: Pick<TableTimeline, "inFlight" | "landsAt" | "pending">;
   pileEmpty: boolean;
   onLanded?: (landsAt: number) => void;
 }): RoundEndingClock {
@@ -69,7 +65,6 @@ export function useRoundEnding({
     [clock]
   );
 
-  const { inFlight, landsAt, pending } = timeline;
   useEffect(() => {
     if (!ended) {
       if (endedAt.current === null) return;
@@ -89,10 +84,9 @@ export function useRoundEnding({
       cancelAnimation(clock);
       clock.set(0);
     }
-    if (started.current || inFlight || pending()) return;
+    if (started.current || landed === null) return;
     started.current = true;
-    // A landing older than the ending is an earlier play's: nothing flew for this one.
-    const t0 = Math.max(landsAt ?? 0, endedAt.current);
+    const t0 = Math.max(landed, endedAt.current);
     const now = performance.now();
     runFrom(reduceMotion ? Math.max(now - t0, Math.min(settled, end)) : now - t0, end);
     if (!match) pileOpacity.set(
@@ -103,7 +97,7 @@ export function useRoundEnding({
       )
     );
     onLandedRef.current?.(t0);
-  }, [ended, end, settled, match, inFlight, landsAt, pending, reduceMotion, clock, pileOpacity, runFrom]);
+  }, [ended, end, settled, match, landed, reduceMotion, clock, pileOpacity, runFrom]);
 
   useEffect(() => {
     if (ended || !pileEmpty) return;

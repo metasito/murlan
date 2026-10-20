@@ -90,7 +90,7 @@ describe('the lamp level on the cards', () => {
     await act(async () => void jest.advanceTimersByTime(100));
     expect(shadeOf('hand')).toEqual([levelShade(1)]);
     await act(async () => {
-      held.rig!.setLevel(Reconnect.lamp, 1000);
+      held.rig!.hold('link', Reconnect.lamp, 1000);
       jest.advanceTimersByTime(2000);
     });
     expect(shadeOf('hand')[0]).toBeCloseTo(levelShade(Reconnect.lamp), 2);
