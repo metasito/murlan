@@ -35,8 +35,9 @@ function serverFiles(dir = ""): string[] {
 }
 
 const GAME_ROOM_IMPORT = /import\s*\{([^}]*)\}\s*from\s*["'][^"']*\bgameRoom\.ts["']/g;
+const GAME_ROOM_NAMESPACE = /import\s*\*\s*as\s+(\w+)\s+from\s*["'][^"']*\bgameRoom\.ts["']/g;
 
-/** The names a source binds to gameRoom's `activeGames`: imported, renamed, or held in a local. */
+/** Patterns for what a source binds to gameRoom's `activeGames`: imported, renamed, namespaced, or held in a local. */
 function tableMapNames(source: string): string[] {
   const names: string[] = [];
   for (const [, body] of source.matchAll(GAME_ROOM_IMPORT)) {
@@ -44,6 +45,9 @@ function tableMapNames(source: string): string[] {
       const bound = /^\s*activeGames(?:\s+as\s+(\w+))?\s*$/.exec(part);
       if (bound) names.push(bound[1] ?? "activeGames");
     }
+  }
+  for (const [, namespace] of source.matchAll(GAME_ROOM_NAMESPACE)) {
+    if (new RegExp(`\\b${namespace}\\s*\\.\\s*activeGames\\b`).test(source)) names.push(`${namespace}\\s*\\.\\s*activeGames`);
   }
   for (const name of [...names]) {
     for (const [, local] of source.matchAll(new RegExp(`(?:const|let|var)\\s+(\\w+)\\s*=\\s*${name}\\s*;`, "g"))) {
@@ -82,6 +86,7 @@ describe("a game enters memory in one place, under a claim", () => {
       [`${fromRoom}activeGames["clear"]();`, "clear"],
       ['import {\n  isShuttingDown,\n  activeGames as live,\n} from "../game/gameRoom.ts";\nlive.set(id, game);', "set"],
       [`${fromRoom}const tables = activeGames;\ntables.delete(id);`, "delete"],
+      ['import * as room from "./gameRoom.ts";\nroom.activeGames.set(id, game);', "set"],
     ];
     for (const [sample, kind] of writes) assert.deepEqual(tableMapWrites(sample), [kind], sample);
     const notWrites = [
