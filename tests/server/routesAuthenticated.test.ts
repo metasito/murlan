@@ -69,10 +69,17 @@ test("the walker reads routes from the live router, and refuses a nested one (po
   app.use(noop);
   app.get("/a", requireAuth, noop);
   app.post("/b/:id", noop);
-  assert.deepEqual(mountedRoutes(app), [
+  assert.deepEqual(mountedRoutes(app, new Set(["noop"])), [
     { route: "GET /a", handles: [requireAuth, noop] },
     { route: "POST /b/:id", handles: [noop] },
   ]);
+  assert.throws(() => mountedRoutes(app), /"noop" is not a known pass-through/);
+
+  const answering = express();
+  answering.use("/api/x", (_req, res) => {
+    res.send();
+  });
+  assert.throws(() => mountedRoutes(answering, new Set(["noop"])), /"<anonymous>" is not a known pass-through/);
 
   const nested = express();
   nested.use("/x", express.Router().get("/y", noop));

@@ -1048,7 +1048,7 @@ describe("every player-facing server response carries a code", () => {
       const bindings = statement.importClause?.namedBindings;
       if (!specifier.startsWith(".") || !bindings || !ts.isNamedImports(bindings)) continue;
       const full = path.resolve(REPO_ROOT, path.dirname(sourceFile.fileName), specifier);
-      if (!existsSync(full)) continue;
+      if (!existsSync(full)) throw new Error(`${sourceFile.fileName}: cannot resolve the import "${specifier}"`);
       const imported = localFunctions(
         ts.createSourceFile(full, readFileSync(full, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
       );
@@ -1119,6 +1119,13 @@ describe("every player-facing server response carries a code", () => {
       objects.map((o) => [...o.names].sort()),
       [["code"]],
       "an argument handed to a helper was mistaken for the response"
+    );
+  });
+
+  test("an import the scan cannot resolve fails it rather than going unread", () => {
+    assert.throws(
+      () => scan(`import { sessionUser } from "./nowhere/accountSession.ts";\napp.get("/x", (req, res) => res.json(sessionUser(u)));`),
+      /cannot resolve/
     );
   });
 

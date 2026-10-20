@@ -82,7 +82,7 @@ const cspDirectives = () => ({
 });
 
 function setupCors(app: express.Application) {
-  app.use((req, res, next) => {
+  app.use(function corsHeaders(req, res, next) {
     const origin = req.header("origin");
     res.header("Vary", "Origin");
     if (origin && isAllowedOrigin(origin)) {
@@ -133,7 +133,7 @@ function configureWebBuild(app: express.Application) {
   // does not depend only on that script having run. A .map carries
   // sourcesContent, the original unminified source; server/http/sourceMaps.ts is
   // the only reader, from sourcemaps/, never over HTTP.
-  app.use((req: Request, res: Response, next: NextFunction) => {
+  app.use(function refuseSourceMaps(req: Request, res: Response, next: NextFunction) {
     if (req.path.endsWith(".map")) return res.status(404).end();
     next();
   });

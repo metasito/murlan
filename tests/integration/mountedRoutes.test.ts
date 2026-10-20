@@ -19,6 +19,21 @@ const NON_API = new Set([
   "GET /",
 ]);
 
+/** Every `app.use` middleware createApp mounts, by function name; each passes a request on or answers only its own concern. */
+const PASS_THROUGH = new Set([
+  "helmetMiddleware",
+  // pino-http's request logger.
+  "result",
+  "corsHeaders",
+  "jsonParser",
+  "urlencodedParser",
+  "compression",
+  "session",
+  "refuseSourceMaps",
+  "serveStatic",
+  "errorHandler",
+]);
+
 let server: TestServer;
 before(async () => { if (hasDatabase()) server = await startTestServer(); });
 after(async () => { if (server) await server.stop(); });
@@ -26,7 +41,7 @@ after(async () => { if (server) await server.stop(); });
 describe("the live app's routes", { skip: hasDatabase() ? false : skipMessage() }, () => {
   test("every route is the contract's or in the explicit non-API list, and /health was seen", () => {
     const app = server.httpServer.listeners("request")[0] as Express;
-    const routes = mountedRoutes(app).map((m) => m.route);
+    const routes = mountedRoutes(app, PASS_THROUGH).map((m) => m.route);
     const contract = new Set(Object.keys(HTTP));
 
     assert.ok(routes.includes("GET /health"), "the walk never saw /health — it is not reading the live app");

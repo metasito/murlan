@@ -8,22 +8,28 @@ export interface MountedRoute {
 }
 
 interface Layer {
+  name: string;
   handle: { stack?: unknown };
   route?: { path: unknown; methods: Record<string, boolean>; stack: { handle: unknown }[] };
 }
 
 /**
  * Every route the live app answers, read from its router rather than from any
- * source file, so a route mounted anywhere is seen. A nested Router is refused:
- * its mount path is not recoverable from Express 5's layers, and skipping it
- * would hide every route under it.
+ * source file, so a route mounted anywhere is seen. Every other layer is
+ * accounted for too: an `app.use` middleware must be named in `passThrough`, or
+ * the walk throws — Express 5 keeps no mount path on a layer, so a middleware
+ * that answers under /api is indistinguishable from one that passes through
+ * except by being known. A nested Router is refused for the same reason.
  */
-export function mountedRoutes(app: Express): MountedRoute[] {
+export function mountedRoutes(app: Express, passThrough: ReadonlySet<string> = new Set()): MountedRoute[] {
   const stack = (app.router as unknown as { stack: Layer[] }).stack;
   const found: MountedRoute[] = [];
   for (const layer of stack) {
     if (!layer.route) {
       if (Array.isArray(layer.handle.stack)) throw new Error("a nested Router is mounted, and its routes cannot be walked");
+      if (!passThrough.has(layer.name)) {
+        throw new Error(`middleware "${layer.name}" is not a known pass-through, so it may answer outside the route table`);
+      }
       continue;
     }
     const { path, methods, stack: layers } = layer.route;
