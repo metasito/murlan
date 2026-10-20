@@ -305,14 +305,14 @@ describe("the turn chip and its clocks", () => {
         isNewTrick: r.isNewTrick,
         holdingForStart: r.holdingForStart,
       });
-      assert.equal(`${shown.clock.active ? "c" : "-"}${shown.seat ? "s" : "-"}`, r.answer, JSON.stringify(r));
+      assert.equal(`${shown.clock.active ? "c" : "-"}${shown.seatClock ? "s" : "-"}`, r.answer, JSON.stringify(r));
     }
   });
 
   test("with no timer, neither clock runs", () => {
     const shown = turnPresentation({ ...base, shownTurnIsMine: true, isMyTurn: true });
     assert.equal(shown.clock.active, false);
-    assert.equal(shown.seat, undefined);
+    assert.equal(shown.seatClock, false);
   });
 
   test("the chip's clock and the ring restart on the same key, and hold together", () => {
@@ -323,7 +323,7 @@ describe("the turn chip and its clocks", () => {
       held: true,
       timer: { seconds: 20, resetKey: "re", includeNewTrick: true },
     });
-    assert.deepEqual(shown.seat, { seconds: 20, resetKey: "tok|re", held: true });
+    assert.equal(shown.seatClock, true);
     assert.deepEqual([shown.window.resetKey, shown.window.running, shown.window.held], ["tok|re", true, true]);
     assert.equal(shown.clock.revealed, true);
   });

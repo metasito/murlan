@@ -132,8 +132,8 @@ export interface TurnClock {
 export interface TurnPresentation {
   chip: { text: string; spoken: string; lit: boolean };
   clock: TurnClock;
-  /** The ring's window on the seat on move; absent while no seat's clock runs. */
-  seat?: { seconds: number; resetKey: string; held: boolean };
+  /** Whether the seat on move draws its ring. */
+  seatClock: boolean;
   /** The one window the chip and the ring both read. */
   window: { seconds: number; resetKey: string; running: boolean; held: boolean; onExpire?: () => void };
 }
@@ -174,10 +174,7 @@ export function turnPresentation(i: {
   const active = runs({ isMyTurn: i.isMyTurn, isFinished: i.isFinished, includeNewTrick: timer?.includeNewTrick ?? false });
   // The seat runs whenever the chip does and on more: offline, a lead runs the window though the
   // chip has no deadline there, so only an active chip's turn expires.
-  const seat =
-    timer && runs({ isMyTurn: true, isFinished: false, includeNewTrick: true })
-      ? { seconds: timer.seconds, resetKey: turnResetKey, held: i.held }
-      : undefined;
+  const seatClock = !!timer && runs({ isMyTurn: true, isFinished: false, includeNewTrick: true });
   return {
     chip: {
       text: exchange.chip ?? say(CHIP_KEYS[state]),
@@ -185,13 +182,13 @@ export function turnPresentation(i: {
       lit: exchange.chip === null ? state === "yourTurn" : exchange.choiceOpen && exchange.viewerIsWinner,
     },
     clock: vote ? { active: true, revealed: true } : { active, revealed: clockShown },
-    seat,
+    seatClock,
     window: vote
       ? { seconds: vote.seconds, resetKey: `vote|${vote.resetKey}`, running: true, held: false }
       : {
           seconds: timer?.seconds ?? 0,
           resetKey: turnResetKey,
-          running: seat !== undefined,
+          running: seatClock,
           held: i.held,
           onExpire: active ? timer?.onExpire : undefined,
         },

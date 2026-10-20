@@ -924,7 +924,7 @@ export function GameTable({
           {...seatView(opponent.seat, opponent.player, seatTable)}
           dealArrivals={deal.arrivalsFor(opponent.seat)}
           scale={scale}
-          countdown={turn.seat && countdown}
+          countdown={turn.seatClock ? countdown : undefined}
           focusMode={focusMode}
           flash={ringFlash}
         />
