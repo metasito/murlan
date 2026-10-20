@@ -94,3 +94,22 @@ export const firstLine = (err) => String(err?.stderr?.trim() || err?.message || 
  */
 export const checkoutRoot = (from = path.dirname(fileURLToPath(import.meta.url))) =>
   path.dirname(git(from).text(["rev-parse", "--path-format=absolute", "--git-common-dir"]));
+
+/**
+ * The paths a change touches, as each caller names it: the commits from `base` to HEAD (`...` from
+ * their merge base, `..` from `base` itself), plus uncommitted tracked edits when `worktree`, plus
+ * files neither tracked nor ignored when `untracked`. A git failure throws.
+ *
+ * @param {Git} at
+ * @param {{base: string, range: "..."|"..", worktree: boolean, untracked: boolean}} which
+ * @returns {string[]}
+ */
+export function changedFiles(at, { base, range, worktree, untracked }) {
+  return [
+    ...new Set([
+      ...at.lines(["diff", "--name-only", `${base}${range}HEAD`]),
+      ...(worktree ? at.lines(["diff", "--name-only", "HEAD"]) : []),
+      ...(untracked ? at.lines(["ls-files", "--others", "--exclude-standard"]) : []),
+    ]),
+  ];
+}

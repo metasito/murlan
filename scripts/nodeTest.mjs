@@ -14,5 +14,6 @@ export const NO_BACKGROUND_JIT = ["--no-concurrent-recompilation", "--no-concurr
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   hermeticEvidenceKey(process.env, tmpdir());
-  relay(process.execPath, [...NO_BACKGROUND_JIT, ...process.argv.slice(2)]);
+  const blockingStdout = new URL("./lib/blockingStdout.mjs", import.meta.url).href;
+  relay(process.execPath, [...NO_BACKGROUND_JIT, "--import", blockingStdout, ...process.argv.slice(2)]);
 }
