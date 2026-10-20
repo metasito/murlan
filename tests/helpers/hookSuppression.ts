@@ -74,12 +74,25 @@ function comments(source: string, file: string): Comment[] {
 /**
  * The syntax errors in `source` — what a parse losing comments looks like.
  *
- * `transpileModule` rather than the `SourceFile`'s own `parseDiagnostics`,
- * which is not on the public type. It takes its `ScriptKind` from the file name
- * as `parseFile` does, so it is the same parse.
+ * A one-file program over `parseFile`'s own parse rather than the
+ * `SourceFile`'s `parseDiagnostics`, which is not on the public type; and not
+ * `transpileModule`, which reports the same errors after an emit that costs
+ * three times the parse.
  */
 export function syntaxErrors(source: string, file: string): readonly ts.Diagnostic[] {
-  return ts.transpileModule(source, { fileName: file, reportDiagnostics: true }).diagnostics ?? [];
+  const parsed = parseFile(source, file);
+  const host: ts.CompilerHost = {
+    getSourceFile: (name) => (name === file ? parsed : undefined),
+    fileExists: (name) => name === file,
+    readFile: () => undefined,
+    writeFile: () => {},
+    getDefaultLibFileName: () => "lib.d.ts",
+    getCurrentDirectory: () => "",
+    getCanonicalFileName: (name) => name,
+    useCaseSensitiveFileNames: () => true,
+    getNewLine: () => "\n",
+  };
+  return ts.createProgram([file], { noLib: true, noResolve: true }, host).getSyntacticDiagnostics(parsed);
 }
 
 /**
@@ -122,6 +135,8 @@ function directive(comment: string): Directive | null {
  * is watched failing without planting one in a real file.
  */
 export function directives(source: string, file: string): (Directive & { line: number })[] {
+  // Both openers `directive` accepts spell this, so a file without it holds none and needs no parse.
+  if (!source.includes("eslint")) return [];
   return comments(source, file).flatMap(({ line, text }) => {
     const found = directive(text);
     return found ? [{ ...found, line }] : [];

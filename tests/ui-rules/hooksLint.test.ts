@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { ADOPTED } from "../helpers/adoptedHookRules.ts";
 import { directives, syntaxErrors, type Directive } from "../helpers/hookSuppression.ts";
+import { cacheFor } from "../helpers/cacheDir.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const require = createRequire(import.meta.url);
@@ -132,7 +133,15 @@ describe("the react-hooks 7 rules #891 adopted stay adopted", () => {
     // asked about. ESLint reads an empty path list as the whole repository,
     // which is why the empty case is caught here rather than there.
     if (OFF_ONLY_FOR.length === 0) return;
-    const lint = new ESLint({ overrideConfig: { rules: { [OFF_FOR_TESTS]: "error" } } });
+    const lint = new ESLint({
+      overrideConfig: { rules: { [OFF_FOR_TESTS]: "error" } },
+      ruleFilter: ({ ruleId }) => ruleId === OFF_FOR_TESTS,
+      // A location of its own, keyed by cacheFor: ESLint's key leaves out `ruleFilter`, and trusts a
+      // plugin's meta version, which react-hooks 7.1.1 leaves at 7.0.0.
+      cache: true,
+      cacheStrategy: "content",
+      cacheLocation: `${cacheFor("murlan-hooks-globals", [fileURLToPath(import.meta.url)])}/`,
+    });
     const scanned = [...new Set(OFF_ONLY_FOR.map((file) => path.dirname(file)))];
     const reporting = (await lint.lintFiles(scanned))
       .filter((r) => r.messages.some((m) => m.ruleId === OFF_FOR_TESTS))

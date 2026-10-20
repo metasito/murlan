@@ -32,6 +32,9 @@ const globsOf = (guard: Guard) => (guard.ignores ?? []).map((i) => i.glob);
 const targets = (guard: Guard) => tracked.filter((f) => matches(f, guard.files) && !matches(f, globsOf(guard)));
 const ruleOf = (guard: Guard) => `murlan/${guard.id}`;
 const real = new ESLint({ cwd: ROOT });
+// The real config running only the guards, for counting a guard's reports: the rest of the config
+// is most of what a lint costs and none of what is counted.
+const guarded = new ESLint({ cwd: ROOT, ruleFilter: ({ ruleId }) => ruleId.startsWith("murlan/") });
 
 async function reports(lint: ESLint, source: string, file: string, rule: string): Promise<number> {
   const [result] = await lint.lintText(source, { filePath: path.join(ROOT, file) });
@@ -59,9 +62,9 @@ describe("the guard registry's floor", () => {
           `${guard.id}: ${sample.file} is outside what it reads, so its sample tests nothing`
         );
       }
-      assert.equal(await reports(real, code, file, ruleOf(guard)), hits, `${guard.id}'s plant at ${file}:\n${code}`);
+      assert.equal(await reports(guarded, code, file, ruleOf(guard)), hits, `${guard.id}'s plant at ${file}:\n${code}`);
       for (const spare of guard.spare) {
-        assert.equal(await reports(real, spare.code, spare.file, ruleOf(guard)), 0, `${guard.id} reports its spare at ${spare.file}:\n${spare.code}`);
+        assert.equal(await reports(guarded, spare.code, spare.file, ruleOf(guard)), 0, `${guard.id} reports its spare at ${spare.file}:\n${spare.code}`);
       }
     }
   });
@@ -181,8 +184,8 @@ describe("the guard registry's floor", () => {
     const shell = readFileSync(path.join(ROOT, SHELL), "utf8");
     const portrait = shell.replace(/supportedOrientations=\{[^}]*\}/g, "");
     assert.notEqual(portrait, shell, `${SHELL} no longer declares supportedOrientations`);
-    assert.equal(await reports(real, shell, SHELL, rule), 0);
-    assert.ok((await reports(real, portrait, SHELL, rule)) > 0, `eslint.config.js does not hold ${SHELL}'s <Modal> to landscape`);
+    assert.equal(await reports(guarded, shell, SHELL, rule), 0);
+    assert.ok((await reports(guarded, portrait, SHELL, rule)) > 0, `eslint.config.js does not hold ${SHELL}'s <Modal> to landscape`);
   });
 
   test("6. the registry's ids are unique, each guard is a selector entry, and its why names a path that exists", () => {

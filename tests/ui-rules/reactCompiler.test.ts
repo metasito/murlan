@@ -11,8 +11,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { ADOPTED, SHIPPED } from "../helpers/adoptedHookRules.ts";
@@ -20,16 +20,12 @@ import { directives } from "../helpers/hookSuppression.ts";
 import { runBin } from "../../scripts/lib/proc.mjs";
 import { presetRequire, reactCompiler, reactCompilerOptions } from "../../scripts/reactCompilerOptions.mjs";
 import { scanSources, sourcesUnder } from "../helpers/sourceScan.ts";
+import { cacheFor, sharedCheckout } from "../helpers/cacheDir.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-// The shared checkout, via `--git-common-dir` rather than `--show-toplevel` (RULES.md rule 10:
-// the latter returns the worktree's own path from inside one). `npm ls`, unlike `require()`,
-// needs a real `node_modules` in its own cwd — only the shared checkout is guaranteed to have one.
-const sharedCheckout = path.dirname(
-  execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
-    encoding: "utf8",
-  }).trim()
-);
+// `npm ls`, unlike `require()`, needs a real `node_modules` in its own cwd — only the shared
+// checkout is guaranteed to have one.
+const sharedInstall = sharedCheckout();
 const require = createRequire(path.join(repoRoot, "package.json"));
 const { transformSync } = require("@babel/core");
 
@@ -45,7 +41,7 @@ const { transformSync } = require("@babel/core");
  */
 function occurrencesInTree(name: string): number {
   const tree = JSON.parse(
-    runBin("npm", ["ls", name, "--all", "--json"], { cwd: sharedCheckout, encoding: "utf8" }) as string
+    runBin("npm", ["ls", name, "--all", "--json"], { cwd: sharedInstall, encoding: "utf8" }) as string
   ) as { dependencies?: Record<string, { dependencies?: unknown }> };
   let count = 0;
   const walk = (deps: Record<string, { dependencies?: unknown }> | undefined) => {
@@ -153,10 +149,30 @@ type CompilerEvent = {
   detail?: { reason?: string; description?: string };
 };
 
+const compiledCache = cacheFor("murlan-react-compiler", [fileURLToPath(import.meta.url)]);
+
+/** One file's bailouts, from the cache when these exact bytes compiled under today's key before. */
 function compile(rel: string, source?: string): CompilerEvent[] {
+  const text = source ?? readFileSync(path.join(repoRoot, rel), "utf8");
+  const entry = path.join(compiledCache, `${createHash("sha256").update(`${rel}\0${text}`).digest("hex")}.json`);
+  try {
+    return JSON.parse(readFileSync(entry, "utf8")) as CompilerEvent[];
+  } catch {
+    const events = compileUncached(rel, text);
+    // Another key's run prunes this directory, so a write that loses that race is just not kept.
+    const partial = `${entry}.${process.pid}`;
+    try {
+      writeFileSync(partial, JSON.stringify(events));
+      renameSync(partial, entry);
+    } catch {}
+    return events;
+  }
+}
+
+function compileUncached(rel: string, source: string): CompilerEvent[] {
   const events: CompilerEvent[] = [];
   const filename = path.join(repoRoot, rel);
-  transformSync(source ?? readFileSync(filename, "utf8"), {
+  transformSync(source, {
     filename,
     babelrc: false,
     configFile: false,
@@ -168,7 +184,15 @@ function compile(rel: string, source?: string): CompilerEvent[] {
       ],
     ],
   });
-  return events.filter((e) => e.kind === "CompileError");
+  // Read off here rather than stored whole: `detail` is a class whose `reason` may be a getter,
+  // which JSON would drop on the way into the cache.
+  return events
+    .filter((e) => e.kind === "CompileError")
+    .map((e) => ({
+      kind: e.kind,
+      fnLoc: { start: { line: e.fnLoc?.start?.line } },
+      detail: { reason: e.detail?.reason, description: e.detail?.description },
+    }));
 }
 
 test("every screen and component compiles with no bailouts", () => {
