@@ -6,6 +6,7 @@ import { PROTOCOL_AUTH, reconnectAs, register, waitFor, waitForWhere } from "../
 import { eq } from "drizzle-orm";
 import { logger } from "../../server/shared/logger.ts";
 import { createDeck, getAllValidPlays } from "../../lib/game/gameEngine.ts";
+import type { ServerPayload } from "../../shared/protocol.ts";
 import {
   startTestServer,
   hasDatabase,
@@ -769,9 +770,11 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     );
     assert.ok(other, "the seat on turn holds more than the start card");
 
-    const rejected = waitFor<{ code: string }>(onTurn.socket, "game:error");
+    const rejected = waitFor<ServerPayload>(onTurn.socket, "game:error");
     onTurn.socket.emit("game:play", { cardIds: [other.id] });
-    assert.equal((await rejected).code, "MUST_PLAY_START_CARD");
+    const told = await rejected;
+    assert.equal(told.code, "INVALID_MOVE");
+    assert.equal(told.params?.refusal, "needsStartCard");
 
     const after = await authoritativeState(onTurn, room.roomId);
     assert.equal(after.firstPlayMade, false);
@@ -818,8 +821,10 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     assert.ok(offRank, "a fourteen-card hand holds a second rank");
 
     assert.equal((await refusal(lead, "game:pass")).code, "CANNOT_PASS");
+    const mixedTold = waitFor<ServerPayload>(lead.socket, "game:error");
     const mixed = await refusal(lead, "game:play", { cardIds: [start.id, offRank.id] });
-    assert.equal(mixed.code, "INVALID_COMBINATION");
+    assert.equal(mixed.code, "INVALID_MOVE");
+    assert.equal((await mixedTold).params?.refusal, "notACombination");
     const unowed = await refusal(lead, "game:exchange_give_card", { cardId: hand[0].id });
     assert.equal(unowed.code, "NO_EXCHANGE");
     assert.equal((await refusal(lead, "room:spectate", { code: room.code })).code, "ALREADY_IN_ROOM");
@@ -835,8 +840,10 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
       (p) => p.cards.length > 1 && p.type !== "bomb" && p.type !== "royal_straight"
     );
     assert.ok(wrongShape, "a fourteen-card hand holds a pair or a run");
+    const unbeatenTold = waitFor<ServerPayload>(other.socket, "game:error");
     const unbeaten = await refusal(other, "game:play", { cardIds: wrongShape.cards.map((c) => c.id) });
     assert.equal(unbeaten.code, "INVALID_MOVE");
+    assert.equal((await unbeatenTold).params?.refusal, "wrongType");
 
     const after = await authoritativeState(other, room.roomId);
     assert.equal(after.currentTurnIndex, otherBefore.viewerSeatIndex);

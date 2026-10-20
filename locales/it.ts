@@ -66,8 +66,6 @@ export const it: Record<keyof typeof en, string> = {
   "server.MATCH_IN_PROGRESS": "C'è già una partita in corso",
   "server.NEW_MATCH_NOT_READY": "Tutti i giocatori devono essere pronti prima di iniziare una nuova partita",
   "server.EXCHANGE_PENDING": "Devi prima completare lo scambio",
-  "server.INVALID_COMBINATION": "Combinazione non valida",
-  "server.MUST_PLAY_START_CARD": "Devi giocare il {{rank}}♠ come prima carta",
   "server.INVALID_MOVE": "Mossa non valida",
   "server.CANNOT_PASS": "Non puoi passare",
   "server.REMATCH_DECLINED": "Questa partita è stata chiusa con un voto e non si può rigiocare",
