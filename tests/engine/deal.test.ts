@@ -1,9 +1,10 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { card as c, joker as j, seat as makePlayer } from "../support/game.ts";
+import { blankCommentsAndStrings, sourcesUnder } from "../helpers/sourceScan.ts";
 import {
   cardStrength,
   createDeck,
@@ -245,15 +246,14 @@ describe("dealFirstSeatFor: one function decides a new match from a continuing o
     }
   });
 
-  const repoDirs = ["app", "components", "context", "lib", "server"];
-  const nextDealFirstSeatCallers = repoDirs
-    .flatMap((dir) => walk(path.join(repoRoot, dir)))
-    .filter((rel) => rel !== "lib/game/gameEngine.ts")
-    .filter((rel) =>
-      /\bnextDealFirstSeat\s*\(/.test(readFileSync(path.join(repoRoot, rel), "utf8"))
-    );
+  const ENGINE = "lib/game/gameEngine.ts";
+  const callingFiles = sourcesUnder(repoRoot, ["app", "components", "context", "lib", "server"])
+    .filter(([, text]) => /\bnextDealFirstSeat\s*\(/.test(blankCommentsAndStrings(text)))
+    .map(([rel]) => rel);
+  const nextDealFirstSeatCallers = callingFiles.filter((rel) => rel !== ENGINE);
 
   test("nextDealFirstSeat is called from nowhere but dealFirstSeatFor's own body", () => {
+    assert.ok(callingFiles.includes(ENGINE), `the scan did not see ${ENGINE}'s own call: it is not reading the sources`);
     assert.deepEqual(
       nextDealFirstSeatCallers,
       [],
@@ -287,15 +287,6 @@ describe("dealFirstSeatFor: one function decides a new match from a continuing o
   });
 });
 
-function walk(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      return entry.name === "node_modules" ? [] : walk(full);
-    }
-    return /\.tsx?$/.test(entry.name) ? [path.relative(repoRoot, full).split(path.sep).join("/")] : [];
-  });
-}
 
 describe("the fewest cards a fresh deal leaves a seat (#792) — the survey guard's floor, by actual seat count", () => {
   test("matches dealCards's own per-seat minimum at 2, 3 and 4 seats", () => {

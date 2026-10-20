@@ -1,8 +1,6 @@
 // The frame the table is drawn inside: the rail, the cutout, and the pads they leave.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
 import { TOUCH_TARGET_MIN } from "../../lib/tokens.ts";
 import {
   actionBtnSize,
@@ -14,11 +12,8 @@ import {
 import { BASE_SHORT_EDGE } from "../../components/cardFaceModel.ts";
 import { bannerTop, computeTableFrame, railWidth } from "../../components/tableFrame.ts";
 import { tableLayout } from "../../components/tableLayout.ts";
-import { clientSources, scanSources } from "../helpers/sourceScan.ts";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-const scan = (pattern: RegExp) => scanSources(pattern, clientSources(repoRoot));
 
 describe("bannerTop", () => {
   // The HUD chips sit at the head of the felt and carry whose turn it is, the
@@ -78,24 +73,6 @@ describe("railWidth", () => {
 
   test("grows with the table's scale, so it is never a fixed column on a tablet", () => {
     assert.ok(railWidth(0, 2) > railWidth(0, 1));
-  });
-});
-
-describe("the rail's vertical pad", () => {
-  // railWidth already floors the horizontal axis against a raw inset; the
-  // knobs at the rail's own top and bottom need the same floor every other
-  // element pinned to an edge gets (tableTop/tableBottom), or a device with
-  // insets.top === 0 (an iPhone in landscape) flushes a knob against the
-  // screen edge.
-  test("the control rail and its settings sheet take the floored pad, not the raw inset", () => {
-    assert.deepEqual(scan(/(?:top|bottom)Pad=\{frame\.(?:topPad|bottomPad)\}/g), []);
-  });
-
-  // Banning the raw spelling is half the pin: it also passes when the props are
-  // gone entirely, or spelled some third way. Both ends of both must be found.
-  test("both ends of both are pinned to the floored pad", () => {
-    assert.equal(scan(/topPad=\{frame\.tableTop\}/g).length, 2);
-    assert.equal(scan(/bottomPad=\{frame\.tableBottom\}/g).length, 2);
   });
 });
 

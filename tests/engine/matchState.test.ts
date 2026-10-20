@@ -1,12 +1,13 @@
 // tests/engine/matchState.test.ts — the seat a finished round or match celebrates.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { celebratesViewer, isDrawnRound, roundOutcomeFor, matchOutcomeFor, scoredOutcome } from "../../lib/game/matchState.ts";
 import { autoMoveForSeat, offlineBotMove } from "../../lib/game/autoMove.ts";
 import { emptyRankTally, type Card, type GameState, type PlayerType } from "../../lib/game/gameEngine.ts";
+import { blankComments, blankCommentsAndStrings, sourcesUnder } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -222,12 +223,12 @@ test("one module chooses a bot's move", () => {
   const PINS_THE_BOT = ["tests/bots/", "tests/engine/"];
   const sources = [
     ...appSources(),
-    ...walk(path.join(repoRoot, "tests")).filter((rel) => !PINS_THE_BOT.some((dir) => rel.startsWith(dir))),
-  ];
+    ...sourcesUnder(repoRoot, ["tests"]).filter(([rel]) => !PINS_THE_BOT.some((dir) => rel.startsWith(dir))),
+  ].map(([rel, text]): [string, string] => [rel, blankCommentsAndStrings(text)]);
   for (const chooser of ["botChoosePlay", "pickGivebackCard"]) {
-    const callers = sources.filter((rel) =>
-      new RegExp(String.raw`(?<!function )\b${chooser}\s*\(`).test(readFileSync(path.join(repoRoot, rel), "utf8"))
-    );
+    const callers = sources
+      .filter(([, code]) => new RegExp(String.raw`(?<!function )\b${chooser}\s*\(`).test(code))
+      .map(([rel]) => rel);
 
     assert.deepEqual(
       callers,
@@ -240,7 +241,7 @@ test("one module chooses a bot's move", () => {
 
 test("the offline table and its harness both take a bot's turn from offlineBotMove", () => {
   const calls = (rel: string, fn: string) =>
-    new RegExp(String.raw`\b${fn}\s*\(`).test(readFileSync(path.join(repoRoot, rel), "utf8"));
+    new RegExp(String.raw`\b${fn}\s*\(`).test(blankCommentsAndStrings(readFileSync(path.join(repoRoot, rel), "utf8")));
   const callers = ["context/GameContext.tsx", "tests/helpers/offlineMatch.ts"];
 
   assert.deepEqual(callers.filter((rel) => !calls(rel, "offlineBotMove")), [], "must call offlineBotMove");
@@ -290,11 +291,9 @@ describe("offlineBotMove", () => {
 });
 
 test("only lib/game/autoMove.ts reaches the bot heuristics in lib/game/bot.ts", () => {
-  const importers = appSources().filter((rel) =>
-    /from\s+["'](?:\.\/|@\/lib\/game\/|[./]+\/lib\/game\/)bot(?:\.ts)?["']/.test(
-      readFileSync(path.join(repoRoot, rel), "utf8")
-    )
-  );
+  const importers = appSources()
+    .filter(([, text]) => /from\s+["'](?:\.\/|@\/lib\/game\/|[./]+\/lib\/game\/)bot(?:\.ts)?["']/.test(blankComments(text)))
+    .map(([rel]) => rel);
 
   assert.deepEqual(importers, ["lib/game/autoMove.ts"]);
 });
@@ -309,21 +308,6 @@ test("gameEngine.ts exports no bot heuristic", async () => {
   assert.doesNotMatch(engineSource, /^import\s+\{[^}]*\bgetBotPersonality\b/m);
 });
 
-function appSources(): string[] {
-  return ["app", "components", "context", "lib", "server"].flatMap((dir) =>
-    walk(path.join(repoRoot, dir))
-  );
-}
-
-function walk(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (entry.name !== "node_modules") out.push(...walk(full));
-    } else if (/\.tsx?$/.test(entry.name)) {
-      out.push(path.relative(repoRoot, full).split(path.sep).join("/"));
-    }
-  }
-  return out;
+function appSources(): [string, string][] {
+  return sourcesUnder(repoRoot, ["app", "components", "context", "lib", "server"]);
 }

@@ -202,6 +202,75 @@ const GUARDS = [
     ].map((code) => ({ file: "components/table/Plant.tsx", code })),
   },
   {
+    id: "table-text-floor",
+    why: "A table text size scaled by hand drops under 10px on an SE: size it with tableFontSize(base, scale) from components/cardFaceModel.ts, which holds the floor.",
+    selector:
+      'BinaryExpression[operator="*"]:matches([left.name=/_FS$/i], [left.property.name=/_FS$/i], [left.object.name="FontSize"]):matches([right.name=/scale$/i], [right.property.name=/scale$/i])',
+    files: ["components/table/**/*.{ts,tsx}"],
+    plant: { file: "components/table/Plant.tsx", code: [
+      "const a = { fontSize: SEAT_BADGE_FS * scale };",
+      "const b = { fontSize: FontSize.xxs * scale };",
+      "const c = { fontSize: NAME_FS * cardScale };",
+      "const d = { fontSize: T.LABEL_FS * layout.scale };",
+    ].join("\n"), hits: 4 },
+    spare: [
+      "const a = { fontSize: tableFontSize(SEAT_BADGE_FS, scale) };",
+      "const b = { width: CARD_W * scale };",
+      '// SEAT_BADGE_FS * scale\nconst s = "FontSize.xxs * scale";',
+    ].map((code) => ({ file: "components/table/Plant.tsx", code })),
+  },
+  {
+    id: "web-drops-a11y-prop",
+    why: "react-native-web drops this prop, so the web build reaches it as nothing: use a11yState / a11yHint / a11yHidden from lib/a11y.tsx.",
+    selector: "JSXAttribute[name.name=/^(accessibilityState|accessibilityHint|accessibilityElementsHidden|importantForAccessibility)$/]",
+    files: DRAWN,
+    plant: { file: "components/Plant.tsx", code: [
+      'const a = <View accessibilityState={{ selected: true }} accessibilityLabel="x" />;',
+      'const b = <Pressable accessibilityHint="opens" />;',
+      "const c = <View accessibilityElementsHidden importantForAccessibility=\"no\" />;",
+    ].join("\n"), hits: 4 },
+    spare: [
+      "const a = <View {...a11yState({ selected: true })} accessibilityLabel={x} />;",
+      '// accessibilityState={{ selected: true }}\nconst s = "accessibilityHint=";',
+      "const o = { accessibilityState: s };",
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "animate-compositor-props",
+    why: "On web reanimated writes this every frame from the JS thread and the browser repaints for it: put the glow on a childless pointerEvents=\"none\" sibling with a static Shadow token and animate its opacity (components/table/hand.tsx's cardGlow).",
+    selector:
+      'CallExpression[callee.name="useAnimatedStyle"] Property:matches([key.name=/^(boxShadow|shadowRadius|shadowOpacity|shadowColor|elevation|border[A-Za-z]*Color)$/], [key.value=/^(boxShadow|shadowRadius|shadowOpacity|shadowColor|elevation|border[A-Za-z]*Color)$/])',
+    files: ["{app,components}/**/*.{ts,tsx}"],
+    plant: { file: "components/Plant.tsx", code: [
+      "const s = useAnimatedStyle(() => {",
+      "  const v = glow.value;",
+      '  if (Platform.OS === "web") {',
+      "    return { boxShadow: `0 0 ${v}px gold` } as any;",
+      "  }",
+      "  return { shadowRadius: 18 * v };",
+      "});",
+      'const t = useAnimatedStyle(() => ({ borderTopColor: c.value, "elevation": 2 }));',
+    ].join("\n"), hits: 4 },
+    spare: [
+      "const a = useAnimatedStyle(() => ({ opacity: v.value }));\nconst b = useAnimatedStyle(() => ({ transform: [{ scale: s.value }] }));",
+      "const glow = { shadowRadius: 18, boxShadow: Shadow.glow };",
+      "const a = useAnimatedStyle(() => ({ opacity: v.value })); // not boxShadow\nconst s = \"shadowRadius\";",
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "read-a-slice",
+    why: "A wide game hook wakes its reader on every field of the context: call the slice for this concern from context/gameHooks.ts or context/onlineGameHooks.ts.",
+    selector: "CallExpression[callee.name=/^use(Online)?Game(Session|Table)?$/]",
+    files: SCREENS,
+    ignores: [{ glob: "context/gameHooks.ts", reason: "the local slices are built on the wide hooks" }],
+    plant: { file: "components/Plant.tsx", code: ["const t = useGameTable();", "const { gameState } = useGameSession();", "const g = useOnlineGame();", "useGame();"].join("\n"), hits: 4 },
+    spare: [
+      "const s = useGameSlice();\nconst h = useHandSlice();",
+      '// useGameTable()\nconst s = "useOnlineGame()";',
+      "export function useGameTable() { return ctx; }",
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
     id: "query-cache-owner",
     why: "The cached lists belong to one account and their keys do not say whose, so emptying them is the sign-out's alone (context/SocketContext.tsx): a second clear, remove or reset is a second owner of when the cache is valid.",
     selector: [

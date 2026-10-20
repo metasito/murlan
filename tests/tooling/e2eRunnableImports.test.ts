@@ -11,13 +11,12 @@
 // why the specs already import from them and not from the components beside them.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { blankComments } from "../helpers/sourceScan.ts";
+import { blankComments, sourcesUnder } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const E2E = path.join(repoRoot, "tests", "e2e");
 
 /**
  * Packages whose published source Playwright's transform cannot parse — matched on the
@@ -106,16 +105,7 @@ function unrunnableChain(entry: string): string[] | null {
 }
 
 function e2eFiles(): string[] {
-  const out: string[] = [];
-  const walk = (dir: string) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (/\.tsx?$/.test(entry.name)) out.push(full);
-    }
-  };
-  walk(E2E);
-  return out;
+  return sourcesUnder(repoRoot, ["tests/e2e"]).map(([rel]) => path.join(repoRoot, rel));
 }
 
 test("the walk follows imports through app modules to reach an unparsable package", () => {
@@ -141,8 +131,10 @@ test("a local specifier that resolves to nothing is an error, not a package", ()
 });
 
 test("every browser spec imports only what Playwright's runner can load", () => {
+  const files = e2eFiles();
+  assert.ok(files.filter((f) => f.endsWith(".spec.ts")).length > 20, `the walk read ${files.length} file(s): it is not reaching tests/e2e/`);
   const offenders: string[] = [];
-  for (const file of e2eFiles()) {
+  for (const file of files) {
     const chain = unrunnableChain(file);
     if (chain) offenders.push(chain.join(" → "));
   }

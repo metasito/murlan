@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { ESLint } from "eslint";
+import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const NOTICES = "components/table/notices";
@@ -78,9 +78,9 @@ test("the notices directory keeps the base token rules", async () => {
 });
 
 test("the notices directory is non-empty and its real files are clean", async () => {
-  const files = readdirSync(path.join(ROOT, NOTICES)).filter((f) => /\.tsx?$/.test(f));
+  const files = trackedFiles(ROOT, NOTICES).filter((f) => /\.tsx?$/.test(f));
   assert.ok(files.length > 0, `${NOTICES} holds no file for the rule to guard`);
-  const results = await eslint.lintFiles(files.map((f) => path.join(ROOT, NOTICES, f)));
+  const results = await eslint.lintFiles(files.map((f) => path.join(ROOT, f)));
   const refused = results.flatMap((r) =>
     r.messages.filter((m) => m.ruleId === SYNTAX || m.ruleId === IMPORTS).map((m) => `${path.basename(r.filePath)}:${m.line} ${m.message}`),
   );

@@ -1,25 +1,18 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { blankComments } from "../helpers/sourceScan.ts";
+import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const read = (file: string) => readFileSync(path.join(repoRoot, file), "utf8");
-function walk(dir: string, keep: (file: string) => boolean): string[] {
-  return readdirSync(path.join(repoRoot, dir), { withFileTypes: true }).flatMap((entry) => {
-    const file = `${dir}/${entry.name}`;
-    if (entry.isDirectory()) return entry.name === "tests" ? [] : walk(file, keep);
-    return keep(file) ? [file] : [];
-  });
-}
-
 function scannedFiles(): string[] {
-  return [
-    ...walk(".github", (f) => /\.(ya?ml|sh|mjs|js|ts)$/.test(f)),
-    ...walk("scripts", (f) => /\.(mjs|sh|ts)$/.test(f)),
-    ...walk("tools", (f) => /\.(mjs|sh|ts)$/.test(f)),
-  ];
+  const keep: Record<string, RegExp> = { ".github": /\.(ya?ml|sh|mjs|js|ts)$/, scripts: /\.(mjs|sh|ts)$/, tools: /\.(mjs|sh|ts)$/ };
+  return Object.entries(keep).flatMap(([dir, ext]) =>
+    trackedFiles(repoRoot, dir).filter((f) => ext.test(f) && !f.split("/").includes("tests"))
+  );
 }
 
 const NAMED = /^[a-z][\w.-]*(?:\/[\w.-]+)*(?::[\w][\w.-]*)?(?:@sha256:[0-9a-f]+)?$/;
@@ -58,7 +51,7 @@ const VALUE_FLAGS = new Map([
   ["pull", new Set(["--platform"])],
 ]);
 
-const stripComments = (source: string) => source.replace(/^\s*(?:#|\/\/|\*|\/\*).*$/gm, "");
+const withoutHashComments = (source: string) => source.replace(/^\s*#.*$/gm, "");
 
 function takesValue(values: Set<string>, flag: string): boolean {
   if (flag.startsWith("--")) return !flag.includes("=") && values.has(flag);
@@ -203,7 +196,7 @@ function withoutMessageStrings(code: string): string {
 
 export function imageRefs(file: string, source: string): string[] {
   const isScript = /\.m?[jt]s$/.test(file);
-  const code = isScript ? withoutMessageStrings(stripComments(source)) : stripComments(source);
+  const code = isScript ? withoutMessageStrings(blankComments(source)) : withoutHashComments(source);
   const refs: string[] = [];
   if (/\.ya?ml$/.test(file)) {
     for (const line of code.split(/\r?\n/)) {
@@ -239,7 +232,7 @@ export function isDockerHub(ref: string): boolean {
 export function hubPulls(found: { file: string; ref: string }[], yamlSources: string[]): string[] {
   const safe = new Set(
     yamlSources.flatMap((s) =>
-      [...stripComments(s).matchAll(IMAGE_VARIABLE)]
+      [...withoutHashComments(s).matchAll(IMAGE_VARIABLE)]
         .filter(([, , value]) => NAMED.test(value) && !isDockerHub(value))
         .map(([, name]) => name),
     ),
@@ -349,6 +342,7 @@ describe("no CI job pulls an image from Docker Hub", () => {
     assert.deepEqual(imageRefs("s.mjs", 'docker(["ps"]);\nconst u = "localhost:5432";\n'), []);
     assert.deepEqual(imageRefs("s.mjs", 'throw new Error(`docker run failed on port ${port}`);\n'), []);
     assert.deepEqual(imageRefs("s.mjs", 'import "node:fs";\n// docker run "postgres:16"\n'), []);
+    assert.deepEqual(imageRefs("s.mjs", '/*\n docker run "postgres:16"\n*/\nrun("docker", ["pull", "a:1"]); // docker pull b:2\n'), ["a:1"]);
     assert.deepEqual(imageRefs("w.yml", "  # image: postgres:16\n"), []);
   });
 

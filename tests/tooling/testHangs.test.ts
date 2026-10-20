@@ -11,6 +11,7 @@ import { EXIT_TICK_MS, exitGuard } from "../helpers/exitGuard.mjs";
 import { TABLE_TIMEOUT_MS } from "../../scripts/lib/proc.mjs";
 import { posixWorld, windowsWorld } from "../helpers/processWorlds.ts";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
+import { blankCommentsAndStrings, sourcesUnder } from "../helpers/sourceScan.ts";
 import { NO_BACKGROUND_JIT } from "../../scripts/nodeTest.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -588,10 +589,9 @@ describe("a run that stops hearing from its files fails by name", () => {
 describe("no file blocks the event loop its in-process server needs", () => {
   // register replies before its mint commits, holding the user row; a synchronous child that
   // waits on that row stops the very loop that would commit it.
-  const hosts = (readdirSync(path.join(repoRoot, "tests"), { recursive: true }) as string[])
-    .map((f) => f.split(path.sep).join("/"))
-    .filter((f) => f.endsWith(".test.ts") && !f.startsWith("tooling/"))
-    .map((f) => ({ f, src: readFileSync(path.join(repoRoot, "tests", f), "utf8") }))
+  const hosts = sourcesUnder(repoRoot, ["tests"], /\.test\.ts$/)
+    .filter(([f]) => !f.startsWith("tests/tooling/"))
+    .map(([f, text]) => ({ f, src: blankCommentsAndStrings(text) }))
     .filter(({ src }) => /\bstartTestServer\(/.test(src));
 
   test("the scan finds the files that host a server", () => {

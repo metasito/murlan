@@ -3,61 +3,21 @@
 // list has no `accessibilityState`, no `accessibilityHint` and no
 // `accessibilityElementsHidden`, so a control declaring its state through them
 // reaches the shipped platform with none of it. lib/a11y.tsx emits the `aria-*`
-// twin alongside; this pins that every call site goes through it.
+// twin alongside; the `web-drops-a11y-prop` guard in eslint.guards.cjs refuses the bare prop, and
+// this pins that every call through the helpers delivers what it claims.
 //
 // Structural, like tests/ui-rules/reducedMotion.test.ts: the property is about how the
 // source is written, so it is checked by reading it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { sourcesUnder } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-function sourcesUnder(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
-    const rel = `${dir}/${entry.name}`;
-    if (entry.isDirectory()) out.push(...sourcesUnder(rel));
-    else if (entry.name.endsWith(".tsx")) out.push(rel);
-  }
-  return out;
-}
-
-const DROPPED_PROPS =
-  /\b(accessibilityState|accessibilityHint|accessibilityElementsHidden|importantForAccessibility)=/;
-
-function offendingLines(source: string): string[] {
-  return source
-    .split("\n")
-    .map((line, i) => [i + 1, line] as const)
-    .filter(([, line]) => DROPPED_PROPS.test(line))
-    .map(([n, line]) => `${n}: ${line.trim()}`);
-}
-
-test("no screen sets a prop react-native-web drops", () => {
-  const offenders: string[] = [];
-  for (const rel of [...sourcesUnder("app"), ...sourcesUnder("components")]) {
-    for (const line of offendingLines(readFileSync(path.join(repoRoot, rel), "utf8"))) {
-      offenders.push(`${rel}:${line}`);
-    }
-  }
-
-  assert.deepEqual(
-    offenders,
-    [],
-    `these reach the web build as nothing: ${offenders.join(" | ")}. ` +
-      `Use a11yState / a11yHint / a11yHidden from lib/a11y instead.`
-  );
-});
-
-test("the scanner matches a real use", () => {
-  assert.deepEqual(
-    offendingLines('        accessibilityState={{ selected: true }}\n        accessibilityLabel="x"\n'),
-    ["1: accessibilityState={{ selected: true }}"]
-  );
-});
+const screens = (): [string, string][] => sourcesUnder(repoRoot, ["app", "components"], /\.tsx$/);
 
 // Whether a twin *arrives* is a question only a browser answers, and
 // tests/e2e/ariaTwins.spec.ts reads each one off a rendered control. What is
@@ -121,8 +81,7 @@ function foldedLines(source: string): string[] {
 test("a control claiming disabled state also carries the prop that delivers it", () => {
   const offenders: string[] = [];
   const unseen: string[] = [];
-  for (const rel of [...sourcesUnder("app"), ...sourcesUnder("components")]) {
-    const source = readFileSync(path.join(repoRoot, rel), "utf8");
+  for (const [rel, source] of screens()) {
     const lines = source.split("\n");
     let found = 0;
     foldedLines(source).forEach((line, i) => {
@@ -228,8 +187,7 @@ test("a called helper, and a local variable named a11y, stay green", () => {
 
 test("no screen spreads an a11y helper without calling it", () => {
   const offenders: string[] = [];
-  for (const rel of [...sourcesUnder("app"), ...sourcesUnder("components")]) {
-    const source = readFileSync(path.join(repoRoot, rel), "utf8");
+  for (const [rel, source] of screens()) {
     for (const line of uncalledSpreads(source, A11Y_HELPERS)) offenders.push(`${rel}:${line}`);
   }
 
@@ -245,8 +203,7 @@ test("no screen spreads an a11y helper without calling it", () => {
 // it. Nothing aliases one today; this is what says so when that stops holding.
 test("no screen imports an a11y helper under another name", () => {
   const aliased: string[] = [];
-  for (const rel of [...sourcesUnder("app"), ...sourcesUnder("components")]) {
-    const source = readFileSync(path.join(repoRoot, rel), "utf8");
+  for (const [rel, source] of screens()) {
     for (const [match] of source.matchAll(/\ba11y\w+\s+as\s+\w+/g)) aliased.push(`${rel}: ${match}`);
   }
 

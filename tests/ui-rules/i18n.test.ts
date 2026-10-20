@@ -8,7 +8,7 @@
 // that no longer matches across locales — hence these tests.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import ts from "typescript";
@@ -19,6 +19,7 @@ import { translate, interpolate, DEFAULT_LOCALE } from "../../lib/i18n.ts";
 import { CARD_BACK_IDS, TABLE_FELT_IDS } from "../../lib/cosmetics.ts";
 import { BOT_PERSONALITIES } from "../../lib/game/botPersonalities.ts";
 import { dealCards } from "../../lib/game/gameEngine.ts";
+import { sourcesUnder } from "../helpers/sourceScan.ts";
 
 const LOCALES = { it, en, sq } as const;
 type LocaleName = keyof typeof LOCALES;
@@ -32,13 +33,11 @@ const SERVER_DIR = path.join(REPO_ROOT, "server");
 /** The server's sources, plus the shared module whose schema is the restore path's refusal text. */
 function serverSources(): { file: string; source: string }[] {
   return [
-    ...readdirSync(SERVER_DIR, { recursive: true, encoding: "utf8" })
-      .filter((f) => f.endsWith(".ts"))
-      .map((f) => path.join(SERVER_DIR, f)),
-    path.join(REPO_ROOT, "shared", "persistedEnvelope.ts"),
-    path.join(REPO_ROOT, "shared", "socketSchemas.ts"),
-    path.join(REPO_ROOT, "shared", "httpSchemas.ts"),
-  ].map((full) => ({ file: path.relative(REPO_ROOT, full), source: readFileSync(full, "utf8") }));
+    ...sourcesUnder(REPO_ROOT, ["server"], /\.ts$/).map(([file]) => file),
+    "shared/persistedEnvelope.ts",
+    "shared/socketSchemas.ts",
+    "shared/httpSchemas.ts",
+  ].map((file) => ({ file, source: readFileSync(path.join(REPO_ROOT, file), "utf8") }));
 }
 
 /**
@@ -683,12 +682,7 @@ describe("no key outlives its last reader", () => {
   ];
 
   function readerSources(): { file: string; source: string }[] {
-    return READER_DIRS.flatMap((dir) => {
-      const base = path.join(REPO_ROOT, dir);
-      return readdirSync(base, { recursive: true, encoding: "utf8" })
-        .filter((f) => /\.tsx?$/.test(f))
-        .map((f) => ({ file: `${dir}/${f}`, source: readFileSync(path.join(base, f), "utf8") }));
-    });
+    return sourcesUnder(REPO_ROOT, READER_DIRS).map(([file, source]) => ({ file, source }));
   }
 
   /**

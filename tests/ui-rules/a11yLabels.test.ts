@@ -11,21 +11,11 @@
 // `<A11yStatus>` instead. That is the escape this pins.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { sourcesUnder } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-
-function sourcesUnder(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
-    const rel = `${dir}/${entry.name}`;
-    if (entry.isDirectory()) out.push(...sourcesUnder(rel));
-    else if (entry.name.endsWith(".tsx")) out.push(rel);
-  }
-  return out;
-}
 
 /** Containers with no accessibility semantics of their own. */
 const CONTAINERS = /^(Animated\.)?(View|ScrollView)$/;
@@ -70,8 +60,8 @@ export function unreachableLabels(source: string): string[] {
 
 test("no container label reaches nobody", () => {
   const offenders: string[] = [];
-  for (const rel of [...sourcesUnder("app"), ...sourcesUnder("components")]) {
-    for (const hit of unreachableLabels(readFileSync(path.join(repoRoot, rel), "utf8"))) {
+  for (const [rel, source] of sourcesUnder(repoRoot, ["app", "components"], /\.tsx$/)) {
+    for (const hit of unreachableLabels(source)) {
       offenders.push(`${rel}:${hit}`);
     }
   }

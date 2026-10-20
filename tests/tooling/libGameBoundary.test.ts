@@ -1,8 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import ts from "typescript";
+import { sourcesUnder } from "../helpers/sourceScan.ts";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
 const GAME = path.join(root, "lib", "game");
@@ -68,13 +69,9 @@ const describeImport = (i: Import) => `${path.relative(root, i.file)} -> ${i.spe
 const offenders = (imports: Import[]): string[] =>
   imports.filter((i) => !i.typeOnly && !inside(GAME)(i)).map(describeImport);
 
-const tsFiles = (dir: string) =>
-  readdirSync(dir, { recursive: true, encoding: "utf8" })
-    .filter((f) => /\.tsx?$/.test(f))
-    .map((f) => path.join(dir, f));
-
-const gameFiles = tsFiles(GAME);
-const gameScans = gameFiles.map((f) => scan(f, readFileSync(f, "utf8")));
+const gameSources = sourcesUnder(root, [path.relative(root, GAME).split(path.sep).join("/")]);
+const gameFiles = gameSources.map(([rel]) => path.join(root, rel));
+const gameScans = gameSources.map(([rel, text]) => scan(path.join(root, rel), text));
 const imports = gameScans.flatMap((s) => s.imports);
 const runtimeCount = imports.filter((i) => !i.typeOnly).length;
 const FLOOR_NOTE = "design 01-engine §4.6's floor of 15 files and 20 imports was counted before the timelines left lib/game, and cannot hold after it";
@@ -153,7 +150,7 @@ const serverSafeOffenders = (scans: Scan[]): string[] =>
     .filter((i) => !i.typeOnly && !(i.spec !== null && i.spec.startsWith(".") && i.spec.endsWith(".ts")))
     .map(describeImport);
 
-const serverFiles = tsFiles(path.join(root, "server"));
+const serverFiles = sourcesUnder(root, ["server"]).map(([rel]) => path.join(root, rel));
 const serverLoadedTimelines = [
   ...new Set(
     serverFiles

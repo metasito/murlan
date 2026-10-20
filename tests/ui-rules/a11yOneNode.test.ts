@@ -12,10 +12,10 @@
 // `tests/e2e/oneAccessibleNode.spec.ts` reads what the browser built from them.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { blankComments, jsxTags } from "../helpers/sourceScan.ts";
+import { blankComments, jsxTags, sourcesUnder } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -57,16 +57,6 @@ function faceAliases(read: (rel: string) => string, files: string[]): Set<string
 // and not others, and the renders it does not cover are the defect.
 const HIDDEN = /\.\.\.a11yHidden\(\s*(true\s*)?\)|accessibilityElementsHidden|aria-hidden/;
 const LABELLED = /accessibilityLabel=/;
-
-function sourcesUnder(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
-    const rel = `${dir}/${entry.name}`;
-    if (entry.isDirectory()) out.push(...sourcesUnder(rel));
-    else if (entry.name.endsWith(".tsx")) out.push(rel);
-  }
-  return out;
-}
 
 /**
  * `line: <Tag> -> Text@line, Ionicons@line` for every labelled control or
@@ -425,7 +415,7 @@ test("a control that is not an element needs no name", () => {
 });
 
 const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
-const scanned = () => [...sourcesUnder("app"), ...sourcesUnder("components")];
+const scanned = () => sourcesUnder(repoRoot, ["app", "components"], /\.tsx$/).map(([rel]) => rel);
 
 test("no grouped container seals a control", () => {
   const offenders: string[] = [];

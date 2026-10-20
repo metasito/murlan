@@ -178,7 +178,7 @@ function Flare({ landing, scale }: { landing: SharedValue<LandingSignal>; scale:
 
   const size = FLARE_SIZE * scale;
   // Static — a shadow outside `useAnimatedStyle` never touches the per-frame
-  // animated path tests/ui-rules/animatedStyle.test.ts checks.
+  // animated path the `animate-compositor-props` guard in eslint.guards.cjs checks.
   const glow = makeShadow(FLARE_GLOW, 0, 0, 1, size * 0.55, 10);
   return (
     <Animated.View

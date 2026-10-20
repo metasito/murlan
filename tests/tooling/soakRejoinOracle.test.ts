@@ -12,13 +12,14 @@
 // than assumed: `leave()` is the only way to emit `room:leave`, and it records that it did.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { blankComments, sourcesUnder } from "../helpers/sourceScan.ts";
 import { AWAY_WINDOW_MS, REJOIN_BUDGET_MS, heldSeatGraceMs, rejoinFailure } from "../soak/soak.ts";
 
 const TESTS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SOAK_DIR = path.join(TESTS_DIR, "soak");
+const REPO_ROOT = path.resolve(TESTS_DIR, "..");
 
 /**
  * Every file that holds a `Seat`, found rather than listed: a seat's socket is reached only
@@ -27,37 +28,27 @@ const SOAK_DIR = path.join(TESTS_DIR, "soak");
  * failure this whole ticket is about.
  */
 function filesHoldingASeat(): string[] {
-  const found = readdirSync(SOAK_DIR)
-    .filter((f) => f.endsWith(".ts"))
-    .map((f) => path.join(SOAK_DIR, f));
-  const walk = (dir: string) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (/\.tsx?$/.test(entry.name) && full !== fileURLToPath(import.meta.url)) {
-        if (/from "\.{1,2}\/(soak\/)?soak\.ts"/.test(readFileSync(full, "utf8"))) found.push(full);
-      }
-    }
-  };
-  walk(TESTS_DIR);
-  return [...new Set(found)];
+  const self = path.relative(REPO_ROOT, fileURLToPath(import.meta.url)).split(path.sep).join("/");
+  return sourcesUnder(REPO_ROOT, ["tests"])
+    .filter(([rel, text]) =>
+      /^tests\/soak\/[^/]+\.ts$/.test(rel) || (rel !== self && /from "\.{1,2}\/(soak\/)?soak\.ts"/.test(text))
+    )
+    .map(([rel]) => path.join(REPO_ROOT, rel));
+}
+
+type Exempt = (line: string, source: string[], i: number) => boolean;
+
+/** 1-based lines of `text`'s code matching `pattern`, minus any the exemption forgives. */
+function offendingLines(text: string, pattern: RegExp, exempt: Exempt = () => false): number[] {
+  const source = blankComments(text).split("\n");
+  return [...source.entries()].filter(([i, line]) => pattern.test(line) && !exempt(line, source, i)).map(([i]) => i + 1);
 }
 
 /** Lines matching `pattern` in those files, minus any the exemption forgives. */
-function scan(
-  pattern: RegExp,
-  exempt: (line: string, source: string[], i: number) => boolean = () => false
-): string[] {
-  const offenders: string[] = [];
-  for (const file of filesHoldingASeat()) {
-    const source = readFileSync(file, "utf8").split("\n");
-    for (const [i, line] of source.entries()) {
-      if (pattern.test(line) && !exempt(line, source, i)) {
-        offenders.push(`${path.relative(TESTS_DIR, file)}:${i + 1}`);
-      }
-    }
-  }
-  return offenders;
+function scan(pattern: RegExp, exempt?: Exempt): string[] {
+  return filesHoldingASeat().flatMap((file) =>
+    offendingLines(readFileSync(file, "utf8"), pattern, exempt).map((line) => `${path.relative(TESTS_DIR, file)}:${line}`)
+  );
 }
 
 function seat(over: Partial<Parameters<typeof rejoinFailure>[0]> = {}) {
@@ -145,14 +136,23 @@ describe("reading the refusal a rejoin came back with", () => {
 });
 
 describe("the premise the reading rests on", () => {
+  const recordsTheLeave: Exempt = (line, source, i) => /gaveUpItsOwnSeat/.test(source.slice(Math.max(0, i - 3), i + 2).join("\n"));
+
+  test("the scan reads the seat's own leave, and a comment beside a bare one does not forgive it", () => {
+    const harness = filesHoldingASeat().find((f) => f.endsWith(path.join("soak", "soak.ts")));
+    assert.ok(harness, "the walk never reached the soak harness");
+    assert.ok(offendingLines(readFileSync(harness, "utf8"), /room:leave/).length > 0, "the scan does not see the leave Seat.leave() emits");
+    assert.deepEqual(offendingLines('// gaveUpItsOwnSeat\nsocket.emit("room:leave", { roomId });', /room:leave/, recordsTheLeave), [2]);
+    assert.deepEqual(offendingLines('this.#gaveUpItsOwnSeat = true;\nthis.#socket.emit("room:leave", { roomId });', /room:leave/, recordsTheLeave), []);
+    assert.deepEqual(offendingLines("// the old room:leave path\nconst x = 1;", /room:leave/, recordsTheLeave), []);
+  });
+
   test("no file holding a Seat leaves a room except through the call that records it", () => {
     // The load-bearing fact, checked rather than written down: a `room:leave` the seat
     // does not know about turns every later SEAT_RELEASED into a false diagnosis, and
     // the run would still be green. Unquoted, so a hoisted `const LEAVE = "room:leave"`
     // is caught too, on the raw client socket `seatSocket()`'s type cannot see.
-    const offenders = scan(/room:leave/, (line, source, i) =>
-      /gaveUpItsOwnSeat/.test(source.slice(Math.max(0, i - 3), i + 2).join("\n"))
-    );
+    const offenders = scan(/room:leave/, recordsTheLeave);
 
     assert.deepEqual(
       offenders,

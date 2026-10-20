@@ -15,6 +15,7 @@ import { TAKEOVER } from "../../server/game/tableActions.ts";
 import type { TableActionKind } from "../../server/game/tableActions.ts";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
+import { blankComments } from "../helpers/sourceScan.ts";
 
 const SERVER_DIR = path.resolve(import.meta.dirname, "..", "..", "server");
 
@@ -24,7 +25,7 @@ function serverSource(file: string): string {
 
 /** Comments name these deliberately; only code puts a game in memory. */
 function stripComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  return blankComments(source);
 }
 
 /** Every `.ts` file under `server/<dir>`, listed from the directory rather than by hand. */

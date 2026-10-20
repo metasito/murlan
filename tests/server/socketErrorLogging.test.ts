@@ -16,6 +16,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { blankComments } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 /**
@@ -34,7 +35,7 @@ const SOCKET_SOURCES = [
 const readSocketFamily = () => SOCKET_SOURCES.map((p) => readFileSync(p, "utf8")).join("\n");
 
 function stripComments(s: string): string {
-  return s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  return blankComments(s);
 }
 
 function skipWs(src: string, i: number): number {

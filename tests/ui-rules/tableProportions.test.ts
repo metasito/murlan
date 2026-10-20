@@ -15,11 +15,9 @@
 // browser is the most expensive possible way to check.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { HAND_ZONE_H } from "../../components/seatLayout.ts";
 import { computeTableFrame, surplusHeight, topBandHeight } from "../../components/tableFrame.ts";
 import { cardScale, CARD_H, HAND_SCALE } from "../../components/cardFaceModel.ts";
-import { tableLayout } from "../../components/tableLayout.ts";
 
 /** The ticket's own list: two phones, a large phone, and two tablets. */
 const VIEWPORTS = [
@@ -102,21 +100,6 @@ describe("the table keeps its proportions from phone to tablet", () => {
       frame.tableTop > over / 2 && frame.tableBottom > over / 2,
       `the surplus (${over}px) must sit in the pads: top ${frame.tableTop}, bottom ${frame.tableBottom}`
     );
-  });
-
-  // Everything above measures the model. The model is only right about the
-  // screen if the screen reads it, and the one place that can go wrong
-  // silently is the table's bottom edge: it was `bottom: 0` — the device's own
-  // — which is why the ticket's symptom survived a green model. No unit test
-  // can see a layout, so this reads the source, the way the CARD_W scan does.
-  test("GameTable draws the table's bottom edge at the surplus, not at zero", () => {
-    const src = readFileSync(new URL("../../components/GameTable.tsx", import.meta.url), "utf8");
-    assert.match(src, /testID="game-table"[^>]*?style=\{\[[^\]]*?\blayout\.tableBox,/);
-    for (const vp of VIEWPORTS) {
-      const scale = cardScale(Math.min(vp.width, vp.height));
-      const layout = tableLayout({ width: vp.width, height: vp.height, insets: NO_INSETS, scale });
-      assert.equal(layout.tableBox.bottom, layout.frame.surplus, vp.name);
-    }
   });
 
   test("no phone has any surplus — the cap only bites on a large tablet", () => {

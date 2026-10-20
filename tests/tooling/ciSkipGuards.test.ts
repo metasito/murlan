@@ -1,11 +1,12 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { unloaded } from "../helpers/filesRunReporter.mjs";
+import { sourcesUnder } from "../helpers/sourceScan.ts";
 
 /**
  * A suite that skips still exits 0, so ci.yml reads the test log for the
@@ -34,14 +35,6 @@ function grepPhrases(workflow: string): string[] {
     .filter(Boolean);
 }
 
-function sourceFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const full = path.join(dir, name);
-    if (statSync(full).isDirectory()) return name === "e2e" ? [] : sourceFiles(full);
-    return /\.tsx?$/.test(name) ? [full] : [];
-  });
-}
-
 describe("what CI greps for is what the suites actually print", () => {
   const phrases = grepPhrases(readRepoFile(".github", "workflows", "ci.yml"));
 
@@ -59,14 +52,12 @@ describe("what CI greps for is what the suites actually print", () => {
   test("no other file can put one in the log and trip the grep by accident", () => {
     // A test *title* containing a phrase lands in the same output the workflow
     // greps, which fails the job on a suite that ran perfectly.
-    const owners = OWNERS.map((f) => path.join(repoRoot, ...f.split("/")));
-    const strays = sourceFiles(path.join(repoRoot, "tests"))
-      .filter((file) => !owners.includes(file))
-      .filter((file) => {
-        const src = readFileSync(file, "utf8");
-        return phrases.some((phrase) => src.includes(phrase));
-      })
-      .map((file) => path.relative(repoRoot, file));
+    const read = sourcesUnder(repoRoot, ["tests"]).filter(([rel]) => !rel.split("/").includes("e2e"));
+    assert.deepEqual(OWNERS.filter((o) => !read.some(([rel]) => rel === o)), [], "the walk misses the owners: it is not reading tests/");
+    const strays = read
+      .filter(([rel]) => !OWNERS.includes(rel))
+      .filter(([, src]) => phrases.some((phrase) => src.includes(phrase)))
+      .map(([rel]) => rel);
 
     assert.deepEqual(strays, [], "these name a phrase ci.yml greps for");
   });
@@ -175,7 +166,7 @@ describe("loop:test fails when a test file never loaded", () => {
 describe("the loop tests that skip off win32 run on Windows", () => {
   const job = /\n {2}harness-windows:\n[\s\S]*?(?=\n {2}[\w-]+:\n)/.exec(readRepoFile(".github", "workflows", "ci.yml"))?.[0] ?? "";
   const dir = path.join(repoRoot, "tools", "loop", "tests");
-  const loopTests = readdirSync(dir).filter((f) => f.endsWith(".test.ts"));
+  const loopTests = sourcesUnder(repoRoot, ["tools/loop/tests"], /^[^/\\]+\.test\.ts$/).map(([rel]) => path.posix.basename(rel));
   const lines = (f: string) => readFileSync(path.join(dir, f), "utf8").split("\n");
 
   test("the Windows leg selects every one of them", () => {
