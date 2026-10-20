@@ -29,6 +29,8 @@ jest.mock('@/context/SocketContext', () => ({
 
 jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineRoom: () => ({ joinRoom: jest.fn(), room: null }),
+  useOnlineConnection: () => ({ error: null }),
+  useServerError: () => null,
 }));
 
 jest.mock('@/context/NotificationContext', () =>

@@ -10,7 +10,7 @@ import { en as locale } from '@/locales/en';
 const mockSetupGame = jest.fn();
 let mockHasSavedGame = false;
 jest.mock('@/context/gameHooks', () => ({
-  useLocalSession: () => ({ setupGame: mockSetupGame, hasSavedGame: mockHasSavedGame }),
+  useLocalSession: () => ({ setupGame: mockSetupGame, hasSavedGame: mockHasSavedGame, bootSettled: true }),
 }));
 
 jest.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: null }) }));

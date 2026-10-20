@@ -100,7 +100,7 @@ export default function LobbyScreen() {
   const bottomInset = Math.max(insets.bottom, Spacing.roomy);
   const isLandscape = useIsLandscape();
   const { mode } = useLocalSearchParams<{ mode: LobbyMode }>();
-  const { setupGame, hasSavedGame } = useLocalSession();
+  const { setupGame, hasSavedGame, bootSettled } = useLocalSession();
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
   const { user } = useAuth();
   const myName = user?.username ?? t("lobby.defaultPlayerName1");
@@ -198,6 +198,7 @@ export default function LobbyScreen() {
     <MenuButton
       label={t("lobby.start")}
       onPress={handleStart}
+      disabled={!bootSettled}
       variant="primary"
       size="lg"
       icon={<Ionicons name="play" size={20} color={Colors.bg} />}

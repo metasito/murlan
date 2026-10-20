@@ -124,6 +124,21 @@ describe('the invite panel waits for the server', () => {
     await view.unmount();
   });
 
+  it('keeps the friends it has when a refresh fails, and only says it could not refresh', async () => {
+    const refetch = jest.fn();
+    mockFriendsQuery = {
+      data: [{ id: 'f1', username: 'Besi', lastSeen: null }],
+      isLoading: false,
+      isError: true,
+      refetch,
+    };
+    const view = await renderRoom();
+    expect(view.getByLabelText(INVITE)).toBeTruthy();
+    expect(view.getByText(locale['common.refreshFailed'])).toBeTruthy();
+    expect(view.queryByText(locale['friends.loadErrorTitle'])).toBeNull();
+    await view.unmount();
+  });
+
   it('says the friends list is loading rather than empty', async () => {
     mockFriendsQuery = { data: undefined, isLoading: true, isError: false };
     const view = await renderRoom();

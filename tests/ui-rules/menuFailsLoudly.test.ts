@@ -7,65 +7,72 @@
 // above data that is still on screen.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { blankComments, sourcesUnder } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-
-function sourcesUnder(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
-    const rel = path.join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...sourcesUnder(rel));
-    else if (/\.tsx?$/.test(entry.name)) out.push(rel);
-  }
-  return out;
-}
-
-const screens = [...sourcesUnder("app"), ...sourcesUnder("components")];
-const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
 const lineOf = (source: string, index: number) => source.slice(0, index).split("\n").length;
 
+/** Where an animated `maxHeight` is a shared value times a number, either way round. */
+export function cappedMaxHeights(source: string): number[] {
+  const code = blankComments(source);
+  const pattern = /\bmaxHeight\s*:[^,\n}]*(\.value\s*\*\s*\d|\d[\d.]*\s*\*\s*[\w.]*\.value)/g;
+  return [...code.matchAll(pattern)].map((m) => lineOf(code, m.index));
+}
+
+/** Each `<ErrorBlock` tag up to the `/>` that closes it, with the expression `stale` was given. */
+export function errorBlocks(source: string): { line: number; stale: string | undefined }[] {
+  const code = blankComments(source);
+  return [...code.matchAll(/<ErrorBlock\b/g)].map((m) => {
+    let depth = 0;
+    let end = m.index;
+    for (; end < code.length; end++) {
+      const c = code[end];
+      if (c === "{") depth++;
+      else if (c === "}") depth--;
+      else if (c === ">" && depth === 0 && code[end - 1] === "/") break;
+    }
+    const tag = code.slice(m.index, end + 1);
+    return { line: lineOf(code, m.index), stale: /\bstale=\{([^}]*)\}/.exec(tag)?.[1].trim() };
+  });
+}
+
+const isLiteral = (stale: string | undefined) => stale === undefined || stale === "true" || stale === "false";
+
+const sources = sourcesUnder(repoRoot, ["app", "components"]);
+const appSources = sources.filter(([rel]) => rel.startsWith("app/"));
+
+test("the scans see the shapes they exist to refuse", () => {
+  assert.deepEqual(cappedMaxHeights("const s = { maxHeight: height.value * 400 };"), [1]);
+  assert.deepEqual(cappedMaxHeights("const s = { maxHeight: 400 * height.value };"), [1]);
+  assert.deepEqual(cappedMaxHeights("// maxHeight: height.value * 400\nconst s = { maxHeight: measured.value };"), []);
+
+  const bare = errorBlocks("<ErrorBlock title={x} retry={{ a: 1 }} />");
+  assert.equal(bare.length, 1);
+  assert.ok(isLiteral(bare[0].stale), "a bare ErrorBlock has no stale");
+  assert.ok(isLiteral(errorBlocks("<ErrorBlock stale={true} title={x} />")[0].stale), "a literal stale");
+  assert.ok(isLiteral(errorBlocks("<ErrorBlock stale={false} title={x} />")[0].stale), "a literal stale");
+  assert.ok(!isLiteral(errorBlocks("<ErrorBlock stale={q.data !== undefined} title={x} />")[0].stale));
+  assert.deepEqual(errorBlocks("// <ErrorBlock title={x} />\n"), [], "a commented-out block is not a block");
+});
+
+test("the scans read a real tree, not nothing", () => {
+  assert.ok(sources.length > 50, `only ${sources.length} sources under app and components`);
+  const blocks = appSources.flatMap(([, source]) => errorBlocks(source));
+  assert.ok(blocks.length >= 8, `only ${blocks.length} ErrorBlock under app; the scan is looking at the wrong thing`);
+});
+
 test("no animated style multiplies a shared value by a number for maxHeight", () => {
-  const offenders: string[] = [];
-  const maxHeightByLiteral = /\bmaxHeight\s*:[^,\n}]*(\.value\s*\*\s*\d|\d[\d.]*\s*\*\s*[\w.]*\.value)/g;
-  for (const rel of screens) {
-    const source = read(rel);
-    for (const m of source.matchAll(maxHeightByLiteral)) offenders.push(`${rel}:${lineOf(source, m.index)}`);
-  }
+  const offenders = sources.flatMap(([rel, source]) => cappedMaxHeights(source).map((l) => `${rel}:${l}`));
   assert.deepEqual(offenders, [], "animate the height from a measured size, not a number that guesses it");
 });
 
-/** Each `<ErrorBlock` opening tag, up to the `/>` that closes it. */
-function errorBlockTags(source: string): { tag: string; line: number }[] {
-  const found: { tag: string; line: number }[] = [];
-  for (const m of source.matchAll(/<ErrorBlock\b/g)) {
-    let depth = 0;
-    let end = m.index;
-    for (; end < source.length; end++) {
-      const c = source[end];
-      if (c === "{") depth++;
-      else if (c === "}") depth--;
-      else if (c === ">" && depth === 0 && source[end - 1] === "/") break;
-    }
-    found.push({ tag: source.slice(m.index, end + 1), line: lineOf(source, m.index) });
-  }
-  return found;
-}
-
 test("every ErrorBlock under app says from the query whether older data is on screen", () => {
-  const offenders: string[] = [];
-  let seen = 0;
-  for (const rel of sourcesUnder("app")) {
-    const source = read(rel);
-    for (const { tag, line } of errorBlockTags(source)) {
-      seen++;
-      const stale = /\bstale=\{([^}]*)\}/.exec(tag)?.[1].trim();
-      const literal = stale === undefined || stale === "true" || stale === "false";
-      if (literal) offenders.push(`${rel}:${line}`);
-    }
-  }
-  assert.ok(seen > 0, "found no ErrorBlock to check; the scan is looking at nothing");
+  const offenders = appSources.flatMap(([rel, source]) =>
+    errorBlocks(source)
+      .filter((b) => isLiteral(b.stale))
+      .map((b) => `${rel}:${b.line}`)
+  );
   assert.deepEqual(offenders, [], "pass stale={<query>.data !== undefined}");
 });

@@ -248,15 +248,16 @@ function InviteFriendsPanel({
       <Text style={[styles.slotsSectionTitle, { color: Colors.gold, marginBottom: isLandscape ? Spacing.xs : Spacing.slim }]}>
         {t("room.inviteFriendsTitle")}
       </Text>
-      {isLoading ? (
-        <LoadingBlock label={t("common.loading")} />
-      ) : isError ? (
+      {!isLoading && isError && (
         <ErrorBlock
           stale={friendsData !== undefined}
           title={t("friends.loadErrorTitle")}
           retry={{ label: t("common.retry"), a11yLabel: t("friends.loadRetryA11yLabel"), onPress: () => refetch() }}
         />
-      ) : onlineFriendsNotInRoom.length === 0 ? (
+      )}
+      {isLoading ? (
+        <LoadingBlock label={t("common.loading")} />
+      ) : isError && friendsData === undefined ? null : onlineFriendsNotInRoom.length === 0 ? (
         <View style={[inviteStyles.emptyContainer, { backgroundColor: Colors.bgCard, borderRadius: Radius.sm }]}>
           <Text style={inviteStyles.emptyText}>{t("room.noFriendsOnline")}</Text>
         </View>

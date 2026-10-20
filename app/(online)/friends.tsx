@@ -101,6 +101,7 @@ export default function FriendsScreen() {
   const sentRequests = sentQuery.data ?? [];
   const pendingLoading = requestsQuery.isLoading || sentQuery.isLoading;
   const pendingErrored = requestsQuery.isError || sentQuery.isError;
+  const pendingStale = [requestsQuery, sentQuery].filter((q) => q.isError).every((q) => q.data !== undefined);
 
   const pendingCount = requests.length + sentRequests.length;
 
@@ -433,7 +434,7 @@ export default function FriendsScreen() {
         )}
         {!pendingLoading && pendingErrored && (
           <ErrorBlock
-            stale={requestsQuery.data !== undefined || sentQuery.data !== undefined}
+            stale={pendingStale}
             title={t("friends.pendingLoadErrorTitle")}
             retry={{
               label: t("common.retry"),
