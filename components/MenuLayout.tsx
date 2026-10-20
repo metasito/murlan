@@ -91,14 +91,17 @@ export function MenuLayout({
   const insets = useSafeAreaInsets();
   const bannerBottom = useBannerBottom();
 
-  const scrolled = React.useRef({ viewportH: 0, contentH: 0, offsetY: 0 });
+  const scrolled = React.useRef({ viewportH: 0, contentH: 0, offsetY: 0, more: false });
   const [hasMore, setHasMore] = React.useState(false);
   const measure = (next: Partial<typeof scrolled.current>) => {
     const m = Object.assign(scrolled.current, next);
     // Half the fade's own height: less than that left to travel and the hint is
     // covering the end of the content rather than pointing past it.
     const more = m.contentH - m.offsetY - m.viewportH > MORE_BELOW_H / 2;
-    if (more !== hasMore) setHasMore(more);
+    // Against the last value set, not the render's: two measurements can land in one batch.
+    if (more === m.more) return;
+    m.more = more;
+    setHasMore(more);
   };
 
   const paddingTop    = Math.max(insets.top, contentPad);

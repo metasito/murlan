@@ -3,7 +3,7 @@
 import { describe, it, expect, jest } from '@jest/globals';
 import React, { Profiler } from 'react';
 import { Text } from 'react-native';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
@@ -46,6 +46,25 @@ describe('MenuLayout', () => {
     await scrollTo(1200);
     expect(more()).toBe(false);
     expect(commits).toBe(before + 1);
+    await view.unmount();
+  });
+
+  it('two measurements in one batch leave the fade where the second puts it', async () => {
+    const view = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <MenuLayout>
+          <Text>content</Text>
+        </MenuLayout>
+      </SafeAreaProvider>
+    );
+    const scroll = screen.getByTestId('menu-content');
+    const more = () => screen.queryByTestId('menu-more-below', { includeHiddenElements: true }) !== null;
+    await fireEvent(scroll, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 800 } } });
+    await act(() => {
+      fireEvent(scroll, 'contentSizeChange', 390, 2000);
+      fireEvent(scroll, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 2100 } } });
+    });
+    expect(more()).toBe(false);
     await view.unmount();
   });
 });
