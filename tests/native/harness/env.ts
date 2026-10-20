@@ -22,11 +22,14 @@ function accessibility(): typeof import('@/lib/accessibility') {
 
 // Storage is touched only after setStoredMotion wrote it: files that mock AsyncStorage whole count its reads, or have no setItem.
 let storedMotion = false;
+// A fresh registry is a launch: pushing a motion there would beat lib/accessibility's stored-settings preload.
+let launched = false;
 
 /** Run by setup.ts before every test, while nothing is mounted. */
 export async function resetEnv(): Promise<void> {
   dimensions().set({ window: LANDSCAPE_PHONE, screen: LANDSCAPE_PHONE });
-  accessibility().setMotionPreference('system');
+  if (launched) accessibility().setMotionPreference('system');
+  launched = true;
   netInfoListeners().clear();
   if (!storedMotion) return;
   storedMotion = false;
