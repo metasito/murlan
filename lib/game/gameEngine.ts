@@ -118,7 +118,10 @@ export interface GameState {
    * exactly as it did before the tally existed.
    */
   playedRanks?: number[];
-  /** Written by `startRound` and `applyMove` alone; `seq` counts the round's moves from the deal's 0. */
+  /**
+   * `seq` counts the round's moves from the deal's 0. Play writes it through `startRound` and
+   * `applyMove` alone; `replayStateAt` and `lib/captureStates.ts` write it for states nobody played.
+   */
   lastMove: LastMove;
 }
 

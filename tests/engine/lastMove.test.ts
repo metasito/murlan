@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { card as c, rng, seat, state as makeState } from "../support/game.ts";
-import { givenBack, passed, played, refusalOf } from "../support/moves.ts";
+import { card as c, mulberry32, rng, seat, state as makeState } from "../support/game.ts";
+import { givenBack, passed, played, playRoundOut, refusalOf } from "../support/moves.ts";
+import { appendReplayMove } from "../../server/game/replayShape.ts";
 import {
   applyMove,
   buildCombination,
@@ -11,7 +12,7 @@ import {
   type LastMove,
   type SeatSetup,
 } from "../../lib/game/gameEngine.ts";
-import { replayStateAt, type ReplayDto } from "../../lib/game/replay.ts";
+import { replayStateAt, type ReplayDto, type ReplayMove } from "../../lib/game/replay.ts";
 
 const SEATS: SeatSetup[] = [0, 1, 2, 3].map((i) => ({ name: `p${i}`, type: "human" }));
 const combo = (...cards: Card[]) => buildCombination(cards)!;
@@ -123,6 +124,36 @@ test("a replay records the move it stands on", () => {
     { seq: 3, kind: "pass", seat: 1, closedTrick: true },
   ]);
 });
+
+for (const [name, start] of [
+  ["an exchange round", exchangeDeal],
+  ["a start-card round", () => startRound(SEATS, "free_for_all", { random: rng(3).source })],
+] as const) {
+  test(`${name} replays the record live play wrote, step by step`, () => {
+    const live = playRoundOut(start(), mulberry32(7));
+    const log: { moveLog: ReplayMove[] | null } = { moveLog: [] };
+    live.slice(1).forEach((next, i) => {
+      const move = next.lastMove;
+      if (move.kind === "play" || move.kind === "pass") {
+        appendReplayMove(log, move.seat, move.kind === "play" ? next.lastPlayedCombination : null, live[i], next);
+      }
+    });
+    const replay: ReplayDto = {
+      id: "r",
+      finishedAt: "",
+      gameMode: "free_for_all",
+      seats: SEATS.map((s, i) => ({ seatIndex: i, userId: null, name: s.name })),
+      moves: log.moveLog!,
+      finishingOrder: [],
+    };
+    const shown = live.slice(live.findIndex((s) => s.lastMove.kind === "play") - 1);
+    assert.equal(shown.length, replay.moves.length + 1);
+    assert.deepEqual(
+      shown.map((_, i) => replayStateAt(replay, i - 1).lastMove),
+      shown.map((s) => s.lastMove)
+    );
+  });
+}
 
 type HoldsCard<T> = T extends Card ? true : T extends object ? { [K in keyof T]-?: HoldsCard<T[K]> }[keyof T] : false;
 const cardFree: HoldsCard<LastMove> extends false ? true : never = true;

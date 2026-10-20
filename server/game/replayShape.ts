@@ -2,7 +2,7 @@
 // the plain `node --test` runner can load it without db/session/storage coming
 // with it — the same reason server/game/onlineGameLogic.ts exists.
 import { MAX_REPLAY_MOVES } from "../../lib/game/replay.ts";
-import type { Combination } from "../../lib/game/gameEngine.ts";
+import type { Combination, LastMove } from "../../lib/game/gameEngine.ts";
 import type { ReplayMove, ReplaySeat } from "../../lib/game/replay.ts";
 
 /** Seat list for a replay row: every seat, with its user id or null for a bot. */
@@ -36,6 +36,7 @@ export function appendReplayMove(
   game: { moveLog: ReplayMove[] | null },
   seat: number,
   combo: Combination | null,
+  prev: { lastMove: LastMove },
   // Only the hand sizes are read, never the cards — see lib/game/replay.ts.
   next: { players: { hand: unknown[] }[] }
 ): void {
@@ -48,5 +49,6 @@ export function appendReplayMove(
     seat,
     combo,
     handCounts: next.players.map((p) => p.hand.length),
+    ...(game.moveLog.length === 0 && { opening: prev.lastMove }),
   });
 }

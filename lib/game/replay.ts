@@ -25,6 +25,11 @@ export interface ReplayMove {
   combo: Combination | null;
   /** Cards left in every seat's hand immediately after this move. */
   handCounts: number[];
+  /**
+   * On the log's first move only: the record it was made against, the deal or the giveback after
+   * it. Absent from rows written before it existed, which read as the deal.
+   */
+  opening?: LastMove;
 }
 
 export interface ReplayDto {
@@ -113,14 +118,15 @@ export function replayStateAt(replay: ReplayDto, index: number): GameState {
   let pile: GameState["lastPlayedCombination"] = null;
   let pileSeat = -1;
   let passes = 0;
-  let lastMove: LastMove = { seq: 0, kind: "deal" };
+  const opening: LastMove = replay.moves[0]?.opening ?? { seq: 0, kind: "deal" };
+  let lastMove = opening;
   for (let i = 0; i <= at; i++) {
     const move = replay.moves[i];
     if (move.combo) {
       pile = move.combo;
       pileSeat = move.seat;
       passes = 0;
-      lastMove = { seq: i + 1, kind: "play", seat: move.seat };
+      lastMove = { seq: opening.seq + i + 1, kind: "play", seat: move.seat };
       continue;
     }
     passes += 1;
@@ -132,7 +138,7 @@ export function replayStateAt(replay: ReplayDto, index: number): GameState {
       pileSeat = -1;
       passes = 0;
     }
-    lastMove = { seq: i + 1, kind: "pass", seat: move.seat, closedTrick };
+    lastMove = { seq: opening.seq + i + 1, kind: "pass", seat: move.seat, closedTrick };
   }
 
   const finished = at === last && last >= 0;

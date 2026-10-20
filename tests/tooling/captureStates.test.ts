@@ -16,7 +16,7 @@ import {
   capturePile,
   captureStateById,
   LINK_STATES,
-  nextTurn,
+  swing,
   rethrow,
   SEAT_COUNT_STATES,
   seatedSituation,
@@ -191,6 +191,7 @@ describe("the state a capture renders", () => {
         assert.notEqual(next.lastPlayedBy, state.turn, `${state.id} plays against itself`);
         assert.equal(next.currentTurnIndex, state.turn, state.id);
         assert.deepEqual(next.lastPlayedCombination, game.lastPlayedCombination, state.id);
+        assert.deepEqual(next.lastMove, { seq: game.lastMove.seq + i + 1, kind: "play", seat: next.lastPlayedBy }, state.id);
         seen = key;
       }
     }
@@ -241,12 +242,14 @@ describe("the state a capture renders", () => {
   test("the swing walks every seat and comes back", () => {
     const game = captureGameState(CAPTURE_STATES[0]);
     const seats = new Set<number>();
-    let turn = game.currentTurnIndex;
+    let swung = game;
     for (let i = 0; i < game.players.length; i++) {
-      seats.add(turn);
-      turn = nextTurn({ ...game, currentTurnIndex: turn });
+      seats.add(swung.currentTurnIndex);
+      const from = swung.currentTurnIndex;
+      swung = swing(swung);
+      assert.deepEqual(swung.lastMove, { seq: game.lastMove.seq + i + 1, kind: "pass", seat: from, closedTrick: false }, "the swing reads as a new move");
     }
     assert.equal(seats.size, game.players.length, "the swing skips a seat");
-    assert.equal(turn, game.currentTurnIndex, "the swing does not return to where it started");
+    assert.equal(swung.currentTurnIndex, game.currentTurnIndex, "the swing does not return to where it started");
   });
 });
