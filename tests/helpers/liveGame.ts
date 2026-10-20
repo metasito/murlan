@@ -6,7 +6,6 @@ import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { publishState } from "../../server/game/gamePersistence.ts";
 import { armTurn } from "../../server/game/gameTurn.ts";
-import { startReplayLog } from "../../server/game/replayShape.ts";
 import { createDeck, seatsOf, startRound, type Opening } from "../../lib/game/gameEngine.ts";
 
 /**
@@ -64,7 +63,7 @@ export function redealExactly(
   // flags would credit its bombs and jokers to this one, and its `moveLog`
   // would be written to `round_replays` as this round's replay.
   game.roundFlags = {};
-  game.moveLog = startReplayLog();
+  game.moveLog = [];
   game.abandonedSeats.clear();
 
   // The persist matters: Postgres still holds the round this replaces until it

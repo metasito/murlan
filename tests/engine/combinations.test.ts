@@ -1,13 +1,11 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { card as c, joker as j } from "../support/game.ts";
-import {
-  buildCombination,
-  cardStrength,
-  canPlay,
-  getCombinationType,
-  getRankStrength,
-} from "../../lib/game/gameEngine.ts";
+import { beats } from "../support/moves.ts";
+import { buildCombination, cardStrength, getRankStrength, type Card } from "../../lib/game/gameEngine.ts";
+
+/** The shape `cards` form, or null: what a play of them would be taken as. */
+const typeOf = (cards: Card[]) => buildCombination(cards)?.type ?? null;
 
 describe("card strength order", () => {
   test("3 < ... < A < 2 < black joker < red joker", () => {
@@ -30,36 +28,36 @@ describe("card strength order", () => {
 
 describe("combination typing", () => {
   test("single", () => {
-    assert.equal(getCombinationType([c("7", "hearts")]), "single");
-    assert.equal(getCombinationType([j("colored")]), "single");
+    assert.equal(typeOf([c("7", "hearts")]), "single");
+    assert.equal(typeOf([j("colored")]), "single");
   });
 
   test("pair requires matching ranks", () => {
-    assert.equal(getCombinationType([c("7", "hearts"), c("7", "clubs")]), "pair");
-    assert.equal(getCombinationType([c("7", "hearts"), c("8", "clubs")]), null);
+    assert.equal(typeOf([c("7", "hearts"), c("7", "clubs")]), "pair");
+    assert.equal(typeOf([c("7", "hearts"), c("8", "clubs")]), null);
   });
 
   test("triple requires three matching ranks", () => {
     assert.equal(
-      getCombinationType([c("9", "hearts"), c("9", "clubs"), c("9", "spades")]),
+      typeOf([c("9", "hearts"), c("9", "clubs"), c("9", "spades")]),
       "triple"
     );
     assert.equal(
-      getCombinationType([c("9", "hearts"), c("9", "clubs"), c("8", "spades")]),
+      typeOf([c("9", "hearts"), c("9", "clubs"), c("8", "spades")]),
       null
     );
   });
 
   test("bomb is exactly four of a kind", () => {
     assert.equal(
-      getCombinationType([
+      typeOf([
         c("5", "hearts"), c("5", "clubs"), c("5", "spades"), c("5", "diamonds"),
       ]),
       "bomb"
     );
     // Four cards that are not four of a kind are not a valid play at all
     assert.equal(
-      getCombinationType([
+      typeOf([
         c("5", "hearts"), c("6", "clubs"), c("7", "spades"), c("8", "diamonds"),
       ]),
       null
@@ -67,20 +65,20 @@ describe("combination typing", () => {
   });
 
   test("jokers are singles only — never in pairs, triples, bombs or straights", () => {
-    assert.equal(getCombinationType([j("bw"), j("colored")]), null);
-    assert.equal(getCombinationType([j("bw"), c("2", "hearts")]), null);
+    assert.equal(typeOf([j("bw"), j("colored")]), null);
+    assert.equal(typeOf([j("bw"), c("2", "hearts")]), null);
     assert.equal(
-      getCombinationType([c("2", "hearts"), c("2", "clubs"), j("bw")]),
+      typeOf([c("2", "hearts"), c("2", "clubs"), j("bw")]),
       null
     );
     assert.equal(
-      getCombinationType([
+      typeOf([
         c("3", "hearts"), c("4", "clubs"), c("5", "spades"), c("6", "diamonds"), j("bw"),
       ]),
       null
     );
     assert.equal(
-      getCombinationType([
+      typeOf([
         c("2", "hearts"), c("2", "clubs"), c("2", "spades"), j("bw"),
       ]),
       null
@@ -89,14 +87,14 @@ describe("combination typing", () => {
 
   test("royal straight is a same-suit straight", () => {
     assert.equal(
-      getCombinationType([
+      typeOf([
         c("3", "spades"), c("4", "spades"), c("5", "spades"),
         c("6", "spades"), c("7", "spades"),
       ]),
       "royal_straight"
     );
     assert.equal(
-      getCombinationType([
+      typeOf([
         c("3", "spades"), c("4", "spades"), c("5", "spades"),
         c("6", "spades"), c("7", "hearts"),
       ]),
@@ -132,7 +130,7 @@ describe("combination strength", () => {
   });
 });
 
-describe("beat hierarchy (canPlay)", () => {
+describe("beat hierarchy", () => {
   const pair7 = buildCombination([c("7", "hearts"), c("7", "clubs")])!;
   const pair8 = buildCombination([c("8", "hearts"), c("8", "clubs")])!;
   const pair7b = buildCombination([c("7", "spades"), c("7", "diamonds")])!;
@@ -160,37 +158,37 @@ describe("beat hierarchy (canPlay)", () => {
   ])!;
 
   test("anything can open a round", () => {
-    assert.equal(canPlay(pair7, null), true);
+    assert.equal(beats(pair7, null), true);
   });
 
   test("higher same-type same-length wins; equal strength does not", () => {
-    assert.equal(canPlay(pair8, pair7), true);
-    assert.equal(canPlay(pair7, pair8), false);
-    assert.equal(canPlay(pair7b, pair7), false, "same rank is not strictly higher");
+    assert.equal(beats(pair8, pair7), true);
+    assert.equal(beats(pair7, pair8), false);
+    assert.equal(beats(pair7b, pair7), false, "same rank is not strictly higher");
   });
 
   test("straights must match card count", () => {
-    assert.equal(canPlay(straight6, straight5), false);
-    assert.equal(canPlay(straight5, straight6), false);
+    assert.equal(beats(straight6, straight5), false);
+    assert.equal(beats(straight5, straight6), false);
   });
 
   test("bombs beat everything except royal straights and higher bombs", () => {
-    assert.equal(canPlay(bomb5, pair7), true);
-    assert.equal(canPlay(bomb5, straight6), true);
-    assert.equal(canPlay(bomb9, bomb5), true);
-    assert.equal(canPlay(bomb5, bomb9), false);
-    assert.equal(canPlay(bomb9, royalLow), false, "a bomb cannot beat a royal straight");
+    assert.equal(beats(bomb5, pair7), true);
+    assert.equal(beats(bomb5, straight6), true);
+    assert.equal(beats(bomb9, bomb5), true);
+    assert.equal(beats(bomb5, bomb9), false);
+    assert.equal(beats(bomb9, royalLow), false, "a bomb cannot beat a royal straight");
   });
 
   test("a bomb beats a Joker played as a single", () => {
-    assert.equal(canPlay(bomb5, buildCombination([j("colored")])!), true);
+    assert.equal(beats(bomb5, buildCombination([j("colored")])!), true);
   });
 
   test("royal straight beats anything; only a higher royal of the same card count beats it", () => {
-    assert.equal(canPlay(royalLow, bomb9), true);
-    assert.equal(canPlay(royalLow, straight5), true);
-    assert.equal(canPlay(royalHigh, royalLow), true);
-    assert.equal(canPlay(royalLow, royalHigh), false);
+    assert.equal(beats(royalLow, bomb9), true);
+    assert.equal(beats(royalLow, straight5), true);
+    assert.equal(beats(royalHigh, royalLow), true);
+    assert.equal(beats(royalLow, royalHigh), false);
 
     const royalLongLow = buildCombination([
       c("3", "clubs"), c("4", "clubs"), c("5", "clubs"),
@@ -202,12 +200,12 @@ describe("beat hierarchy (canPlay)", () => {
     ])!;
     assert.equal(royalLongHigh.type, "royal_straight");
     assert.ok(royalLongHigh.strength > royalLow.strength && royalHigh.strength > royalLongLow.strength);
-    assert.equal(canPlay(royalLongHigh, royalLow), false, "a longer royal does not beat a shorter one");
-    assert.equal(canPlay(royalHigh, royalLongLow), false, "a shorter royal does not beat a longer one");
+    assert.equal(beats(royalLongHigh, royalLow), false, "a longer royal does not beat a shorter one");
+    assert.equal(beats(royalHigh, royalLongLow), false, "a shorter royal does not beat a longer one");
   });
 
   test("normal plays cannot answer a bomb or a royal straight", () => {
-    assert.equal(canPlay(pair8, bomb5), false);
-    assert.equal(canPlay(straight5, royalLow), false);
+    assert.equal(beats(pair8, bomb5), false);
+    assert.equal(beats(straight5, royalLow), false);
   });
 });

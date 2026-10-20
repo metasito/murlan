@@ -193,7 +193,7 @@ describe("TAKEOVER", () => {
 
   test("every action says what an instance may do with an ownerless room", () => {
     const kinds = everyKind();
-    assert.ok(kinds.length >= 12, `expected the whole union, got ${kinds.length}`);
+    assert.ok(kinds.length >= 11, `expected the whole union, got ${kinds.length}`);
     assert.deepEqual(Object.keys(TAKEOVER).sort(), [...kinds].sort());
     for (const [kind, mode] of Object.entries(TAKEOVER)) {
       assert.ok(["create", "restore", "forward"].includes(mode), `${kind} has no takeover mode`);
@@ -209,7 +209,7 @@ describe("TAKEOVER", () => {
     // A move that answered "no live game" because the instance holding the round
     // had gone is the whole of #570's second half. Reviving a table to hand one
     // seat to a bot is not: that sets the round playing itself with nobody there.
-    for (const kind of ["play", "pass", "exchange", "rejoin"] as const) {
+    for (const kind of ["move", "rejoin"] as const) {
       assert.equal(TAKEOVER[kind], "restore", `${kind} must be able to take a table over`);
     }
     for (const kind of ["seatLost", "vacate", "reaction", "spectate"] as const) {

@@ -6,33 +6,21 @@
 // It lives here rather than in server/ because a bot plays offline too, and
 // one rule played two ways is two rules.
 import {
-  processPlay,
-  processPass,
-  processExchangeChoice,
-  buildCombination,
+  actingSeat,
+  applyMove,
   sortHand,
   pickGivebackCard,
   getStartingPlayerAfterExchange,
   getNextActivePlayer,
 } from "./gameEngine.ts";
 import { botChoosePlay, knownOpponentExchangeCard, opponentsOf } from "./bot.ts";
-import type { GameState, Combination } from "./gameEngine.ts";
+import type { AppliedMove, GameState, Move } from "./gameEngine.ts";
 
 /**
- * Achievement bookkeeping: the engine has no notion of "did this seat play a
- * bomb/joker this round", so every path that actually plays a combination has
- * to update it here, or a forced move (most commonly an AFK-forced lone joker)
- * silently under-counts the purist / iron_will / wild_card achievements.
+ * `bot` is the real engine bot, for a seat with nobody behind it; `floor` the
+ * minimum legal move, as an AFK human should not be played *well* on their behalf.
  */
-export function recordPlayFlags(
-  roundFlags: Record<number, { bomb: boolean; joker: boolean }>,
-  seat: number,
-  combo: Combination
-) {
-  const flags = (roundFlags[seat] ??= { bomb: false, joker: false });
-  if (combo.type === "bomb") flags.bomb = true;
-  if (combo.cards.some((c) => c.isJoker)) flags.joker = true;
-}
+export type Strength = "bot" | "floor";
 
 /**
  * Safety valve: the exchange winner holds no card they are allowed to give
@@ -51,43 +39,16 @@ export function resolveStuckExchange(state: GameState): GameState {
   return next;
 }
 
-export interface AutoMoveContext {
-  /**
-   * Mutated in place, as the achievement counters are read off it after the
-   * round. Absent offline, which awards none.
-   */
-  roundFlags?: Record<number, { bomb: boolean; joker: boolean }>;
-  /** Records the move for a replay log. Absent offline, which keeps none. */
-  onMove?: (seat: number, combo: Combination | null, next: GameState) => void;
-  /**
-   * Forwarded to `botChoosePlay`'s own `rng` parameter. Absent means that
-   * function's own default (`Math.random`) — a simulation that needs a match
-   * reproducible end to end from one seed passes a seeded generator here
-   * instead of only faking the deal's `crypto` source.
-   */
-  rng?: () => number;
-}
-
 /**
- * One automated action for a seat, or null when the seat cannot act at all.
- *
- * `useBot` picks the real engine bot (a seat with nobody behind it), otherwise
- * the minimum legal move — an AFK human should not be played *well* on their
- * behalf.
+ * The move `seat` makes now, or null when it has none to make. `rng` is
+ * `botChoosePlay`'s own, so a simulation can reproduce a match from one seed.
  */
-export function autoMoveForSeat(
-  state: GameState,
-  seat: number,
-  useBot: boolean,
-  ctx: AutoMoveContext
-): GameState | null {
+export function chooseMove(state: GameState, seat: number, strength: Strength, rng?: () => number): Move | null {
+  if (state.roundOver) return null;
   if (state.exchangePhase?.active) {
     if (state.exchangePhase.winnerIdx !== seat) return null;
-    const player = state.players[seat];
-    if (!player) return null;
-    const chosen = pickGivebackCard(player.hand, state.exchangePhase.cardFromLoser?.id);
-    if (!chosen) return resolveStuckExchange(state);
-    return processExchangeChoice(state, chosen.id);
+    const chosen = pickGivebackCard(state.players[seat]?.hand ?? [], state.exchangePhase.cardFromLoser?.id);
+    return chosen ? { kind: "giveback", cardId: chosen.id } : null;
   }
 
   if (state.currentTurnIndex !== seat) return null;
@@ -102,12 +63,7 @@ export function autoMoveForSeat(
     ? player.hand.find((c) => c.id === startCard.id)
     : undefined;
 
-  const logged = (combo: Combination | null, next: GameState): GameState => {
-    ctx.onMove?.(seat, combo, next);
-    return next;
-  };
-
-  if (useBot) {
+  if (strength === "bot") {
     const opponents = opponentsOf(state, seat);
     const combo = botChoosePlay(
       player,
@@ -115,16 +71,13 @@ export function autoMoveForSeat(
       isNewTrick,
       opponents.handCounts,
       requireCard,
-      ctx.rng,
+      rng,
       opponents.partnerHoldsTop,
       state.playedRanks,
       knownOpponentExchangeCard(state.exchangePhase, seat)
     );
-    if (combo) {
-      if (ctx.roundFlags) recordPlayFlags(ctx.roundFlags, seat, combo);
-      return logged(combo, processPlay(state, combo));
-    }
-    if (!isNewTrick) return logged(null, processPass(state));
+    if (combo) return { kind: "play", cardIds: combo.cards.map((c) => c.id) };
+    if (!isNewTrick) return { kind: "pass" };
     // A new trick cannot be passed — fall through to the forced minimum play.
   }
 
@@ -132,20 +85,35 @@ export function autoMoveForSeat(
     // Read the mandatory opening card from the state instead of assuming 3♠:
     // with the full deal it is always present, but a short deal may lack it.
     const card = requireCard ?? sortHand([...player.hand])[0];
-    if (!card) return null;
-    const combo = buildCombination([card]);
-    if (!combo) return null;
-    if (ctx.roundFlags) recordPlayFlags(ctx.roundFlags, seat, combo);
-    return logged(combo, processPlay(state, combo));
+    return { kind: "play", cardIds: [card.id] };
   }
 
-  return logged(null, processPass(state));
+  return { kind: "pass" };
 }
 
-/** The offline table's bot turn: null unless a bot holds the turn, which it plays at full strength. */
-export function offlineBotMove(state: GameState, ctx: AutoMoveContext = {}): GameState | null {
-  const seat = state.currentTurnIndex;
+/** `move` null: the stuck exchange was closed, and nobody moved. */
+export type AutoMove = { state: GameState; move: AppliedMove | null };
+
+/** One automated action for a seat, or null when the engine has nothing legal for it. Never throws. */
+export function autoMoveForSeat(
+  state: GameState,
+  seat: number,
+  strength: Strength,
+  rng?: () => number
+): AutoMove | null {
+  const move = chooseMove(state, seat, strength, rng);
+  if (!move) {
+    const stuck =
+      !state.roundOver && state.exchangePhase?.active && state.exchangePhase.winnerIdx === seat && state.players[seat];
+    return stuck ? { state: resolveStuckExchange(state), move: null } : null;
+  }
+  const result = applyMove(state, seat, move);
+  return result.ok ? { state: result.state, move: result.move } : null;
+}
+
+/** The offline table's bot turn: null unless a bot is to act, which it does at full strength. */
+export function offlineBotMove(state: GameState, rng?: () => number): AutoMove | null {
+  const seat = actingSeat(state);
   if (state.players[seat]?.type !== "bot") return null;
-  return autoMoveForSeat(state, seat, true, ctx);
+  return autoMoveForSeat(state, seat, "bot", rng);
 }
-

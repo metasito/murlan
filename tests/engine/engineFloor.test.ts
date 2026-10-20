@@ -1,24 +1,19 @@
 // tests/engine/engineFloor.test.ts — the engine refuses a move that cannot happen.
 //
-// `processPlay` used to strip exactly the ids it was handed. Every caller gates
-// first — the server by seat, the offline context before it commits, and a bot
-// play is legal by construction — so the hole never opened. A caller that
-// forgot would have corrupted the state silently rather than been refused, and
-// two call sites re-implement a legality check the engine already owns.
+// Every move reaches the engine as data through `applyMove`, which reads the
+// cards from the hand and derives their shape itself: a move that cannot happen
+// is refused as a value, and the state is left as it was.
 //
 // A floor is only a floor if it also lets the legal case through, so the null
 // case is here too: leading a fresh round, where there is nothing to beat.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
-import {
-  buildCombination,
-  processPass,
-  processPlay,
-  type Card,
-} from "../../lib/game/gameEngine.ts";
+import { played, refusalOf } from "../support/moves.ts";
+import { buildCombination, type Card, type GameState, type Move } from "../../lib/game/gameEngine.ts";
 
 const combo = (cards: Card[]) => buildCombination(cards)!;
+const play = (...cardIds: string[]): Move => ({ kind: "play", cardIds });
 
 const table = (over: Parameters<typeof makeState>[0] = {}) =>
   makeState(
@@ -28,34 +23,36 @@ const table = (over: Parameters<typeof makeState>[0] = {}) =>
     ], currentTurnIndex: 0, ...over }
   );
 
+/** The refusal, with the state checked untouched by it. */
+function refused(state: GameState, move: Move) {
+  const before = structuredClone(state);
+  const code = refusalOf(state, move);
+  assert.deepEqual(state, before, "a refused move changed the state");
+  return code;
+}
+
 describe("the engine's floor under a play", () => {
   test("refuses cards the acting hand does not hold", () => {
-    assert.throws(
-      () => processPlay(table(), combo([c("A", "diamonds")])),
-      /does not hold A_diamonds/
-    );
+    assert.equal(refused(table(), play("A_diamonds")), "notHeld");
   });
 
   test("refuses a hand that holds only some of what it played", () => {
-    assert.throws(
-      () => processPlay(table(), combo([c("5", "spades"), c("5", "hearts")])),
-      /does not hold 5_hearts/
-    );
+    assert.equal(refused(table(), play("5_spades", "5_hearts")), "notHeld");
   });
 
   test("refuses a combination that cannot beat the table", () => {
     const state = table({ lastPlayedCombination: combo([c("Q", "diamonds")]), lastPlayedBy: 1 });
-    assert.throws(() => processPlay(state, combo([c("5", "spades")])), /does not beat the table/);
+    assert.equal(refused(state, play("5_spades")), "tooLow");
   });
 
   test("refuses a play of nothing", () => {
-    assert.throws(() => processPlay(table(), { type: "single", cards: [], strength: 0 }), /played nothing/);
+    assert.equal(refused(table(), play()), "notACombination");
   });
 
   // The null case. Without it every assertion above would also hold on an
   // engine that refused every play there is.
   test("lets a fresh round be led, where there is nothing to beat", () => {
-    const next = processPlay(table(), combo([c("5", "spades")]));
+    const next = played(table(), combo([c("5", "spades")]));
     assert.deepEqual(
       next.players[0].hand.map((card) => card.id),
       ["6_spades", "K_hearts"]
@@ -65,17 +62,14 @@ describe("the engine's floor under a play", () => {
 
   test("lets a play through that does beat the table", () => {
     const state = table({ lastPlayedCombination: combo([c("4", "diamonds")]), lastPlayedBy: 1 });
-    const next = processPlay(state, combo([c("K", "hearts")]));
+    const next = played(state, combo([c("K", "hearts")]));
     assert.equal(next.lastPlayedBy, 0);
     assert.equal(next.lastPlayedCombination?.cards[0].id, "K_hearts");
   });
 
-  // A caller can hold every card claimed and still lie about what shape they
-  // form — three unrelated singles claimed as a bomb, holding the table's
-  // real bomb comparison hostage to a made-up strength. `canPlay` compares
-  // only what it is told; nothing upstream of it re-derives the shape from
-  // the cards unless this does.
-  test("refuses a combination whose claimed shape its own cards do not form", () => {
+  // A move names cards, never a shape: three unrelated singles cannot be
+  // passed off as the bomb that would beat this table.
+  test("derives the shape from the cards played, not from the caller", () => {
     const state = table({
       lastPlayedCombination: {
         type: "bomb",
@@ -84,12 +78,7 @@ describe("the engine's floor under a play", () => {
       },
       lastPlayedBy: 1,
     });
-    const fabricated = {
-      type: "bomb" as const,
-      cards: [c("5", "spades"), c("6", "spades"), c("K", "hearts")],
-      strength: 999,
-    };
-    assert.throws(() => processPlay(state, fabricated), /is not a bomb/);
+    assert.equal(refused(state, play("5_spades", "6_spades", "K_hearts")), "notACombination");
   });
 
   test("refuses an opening play that skips the mandatory 3♠", () => {
@@ -101,10 +90,7 @@ describe("the engine's floor under a play", () => {
         makePlayer(1, [c("9", "clubs"), c("10", "clubs")]),
       ],
     });
-    assert.throws(
-      () => processPlay(opening, combo([c("5", "spades")])),
-      /must open with 3_spades/
-    );
+    assert.equal(refused(opening, play("5_spades")), "needsStartCard");
   });
 
   test("lets the opening play through once it includes the start card", () => {
@@ -116,7 +102,7 @@ describe("the engine's floor under a play", () => {
         makePlayer(1, [c("9", "clubs"), c("10", "clubs")]),
       ],
     });
-    const next = processPlay(opening, combo([c("3", "spades")]));
+    const next = played(opening, combo([c("3", "spades")]));
     assert.equal(next.firstPlayMade, true);
     assert.equal(next.lastPlayedCombination?.cards[0].id, "3_spades");
   });
@@ -131,22 +117,18 @@ describe("a play that cannot happen", () => {
     twoJokerException: false,
   };
 
-  test("refuses a combination that names the same card twice", () => {
-    const held = c("5", "spades");
-    const bomb = {
-      type: "bomb" as const,
-      cards: [held, held, held, held],
+  test("a card named four times is the one card, never a bomb", () => {
+    const next = played(table(), {
+      type: "bomb",
+      cards: [c("5", "spades"), c("5", "spades"), c("5", "spades"), c("5", "spades")],
       strength: 5,
-    };
-    assert.throws(() => processPlay(table(), bomb), /repeats a card/);
+    });
+    assert.equal(next.lastPlayedCombination?.type, "single");
+    assert.deepEqual(next.players[0].hand.map((card) => card.id), ["6_spades", "K_hearts"]);
   });
 
   test("refuses any play while the exchange is open", () => {
-    const state = table({ exchangePhase: openExchange });
-    assert.throws(
-      () => processPlay(state, combo([c("5", "spades")])),
-      /cannot play while the exchange is open/
-    );
+    assert.equal(refused(table({ exchangePhase: openExchange }), play("5_spades")), "exchangeOpen");
   });
 
   test("a pass while the exchange is open changes nothing", () => {
@@ -156,6 +138,6 @@ describe("a play that cannot happen", () => {
       lastPlayedBy: 1,
       passCount: 0,
     });
-    assert.equal(processPass(state), state);
+    assert.equal(refused(state, { kind: "pass" }), "exchangeOpen");
   });
 });

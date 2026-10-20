@@ -27,7 +27,7 @@ export async function driveBots(
 ): Promise<GameState> {
   await ctx.showTable(state);
   while (!state.roundOver && !stop()) {
-    const next = offlineBotMove(state) ?? (state.exchangePhase?.active ? resolveStuckExchange(state) : null);
+    const next = offlineBotMove(state)?.state ?? (state.exchangePhase?.active ? resolveStuckExchange(state) : null);
     if (!next) break;
     state = next;
     onStep?.(state);

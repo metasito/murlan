@@ -1,9 +1,9 @@
 // A stuck exchange on the server closes through lib/game/autoMove.ts's
-// `resolveStuckExchange`, reached via gameTurn.ts's `autoMoveForSeat`; the
+// `resolveStuckExchange`, reached via its `autoMoveForSeat`; the
 // lead it hands over must land on a seat that can play (docs/GAME-RULES.md §9).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { autoMoveForSeat } from "../../server/game/gameTurn.ts";
+import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
 import type { Card, GameState, Player } from "../../lib/game/gameEngine.ts";
 
 const card = (id: string, rank: Card["rank"]): Card => ({ id, rank, suit: "clubs", isJoker: false });
@@ -38,9 +38,11 @@ test("a stuck exchange with an empty-handed loser hands the turn to a seat holdi
     },
   };
 
-  const next = autoMoveForSeat({ gameState, roundFlags: {}, moveLog: null }, 0, true)?.next;
+  const auto = autoMoveForSeat(gameState, 0, "bot");
 
-  assert.ok(next, "the exchange winner's seat must resolve the stuck phase");
+  assert.ok(auto, "the exchange winner's seat must resolve the stuck phase");
+  assert.equal(auto.move, null, "closing a stuck exchange moves nobody");
+  const next = auto.state;
   assert.equal(next.exchangePhase?.active, false);
   assert.ok(next.players[next.currentTurnIndex].hand.length > 0, `seat ${next.currentTurnIndex} holds no cards`);
   assert.equal(next.currentTurnIndex, 3);

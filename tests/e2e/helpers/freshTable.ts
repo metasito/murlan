@@ -1,4 +1,4 @@
-import { freshHandFloor } from "../../../lib/game/gameEngine.ts";
+import { dealCards } from "../../../lib/game/gameEngine.ts";
 
 export interface SeatCount {
   testId: string;
@@ -20,7 +20,7 @@ export function assertFresh(seats: SeatCount[], seatCount: number): void {
   if (seats.length !== seatCount - 1) {
     throw new Error(`read ${seats.length} opponent seat(s) on a ${seatCount}-seat table`);
   }
-  const floor = freshHandFloor(seatCount);
+  const floor = Math.min(...dealCards(seatCount).hands.map((hand) => hand.length));
   for (const seat of seats) {
     const text = seat.count.trim();
     if (!/^\d+$/.test(text)) {

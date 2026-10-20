@@ -9,7 +9,7 @@
 // `socketRoomMap`, none of which mean anything on another instance, and a shim
 // that pretends they do fails silently. Naming the actions makes what crosses
 // an instance boundary something a reader can enumerate.
-import type { MatchLength } from "../../lib/game/gameEngine.ts";
+import type { MatchLength, Move } from "../../lib/game/gameEngine.ts";
 
 /** Every action names the room it is about; that is how the owner is found. */
 interface TableActionBase {
@@ -24,9 +24,8 @@ interface TableActionBase {
 }
 
 export type TableAction =
-  | (TableActionBase & { kind: "play"; cardIds: string[] })
-  | (TableActionBase & { kind: "pass" })
-  | (TableActionBase & { kind: "exchange"; cardId: string })
+  /** The only kind that carries a game move; the socket's three move events each build one. */
+  | (TableActionBase & { kind: "move"; move: Move })
   | (TableActionBase & { kind: "reaction"; emoji: string })
   | (TableActionBase & { kind: "rematchVote" })
   /** A vote to end the match outright, once a seat has been vacated — or its withdrawal. */
@@ -59,7 +58,7 @@ export type TableActionKind = TableAction["kind"];
  * `intentId` when the client sent one.
  *
  * Distributed over the union rather than a plain `Omit`, which collapses a
- * union to the properties every member shares — dropping `cardIds`, `emoji`
+ * union to the properties every member shares — dropping `move`, `emoji`
  * and the rest without a word.
  */
 export type TableActionDraft = TableAction extends infer T
@@ -86,9 +85,7 @@ export type TakeoverMode = "create" | "restore" | "forward";
 
 export const TAKEOVER = {
   startMatch: "create",
-  play: "restore",
-  pass: "restore",
-  exchange: "restore",
+  move: "restore",
   rematchVote: "restore",
   endMatchVote: "restore",
   rejoin: "restore",

@@ -13,11 +13,9 @@ import {
   GameMode,
   MatchLength,
   pickGivebackCard,
-  processExchangeChoice,
-  processPlay,
-  processPass,
-  checkPass,
-  checkPlay,
+  actingSeat,
+  applyMove,
+  type Move,
 } from "@/lib/game/gameEngine";
 import { offlineBotMove, resolveStuckExchange } from "@/lib/game/autoMove";
 import * as flow from "@/lib/game/matchFlow";
@@ -127,7 +125,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [announce, write]
   );
 
-  const commitMove = useCallback(
+  const commitState = useCallback(
     (next: GameState) => {
       const live = stateRef.current;
       if (live) commit(flow.advance(live, next));
@@ -160,13 +158,20 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const startNextRound = useCallback(() => dealNext(flow.dealNext), [dealNext]);
   const startNewMatch = startNextRound;
 
-  const chooseExchangeCard = useCallback(
-    (cardId: string) => {
+  const act = useCallback(
+    (move: Move): boolean => {
       const state = stateRef.current?.state;
-      if (!state?.exchangePhase?.active) return;
-      commitMove(processExchangeChoice(state, cardId));
+      if (!state) return false;
+      const result = applyMove(state, actingSeat(state), move);
+      if (result.ok) commitState(result.state);
+      return result.ok;
     },
-    [commitMove]
+    [commitState]
+  );
+
+  const chooseExchangeCard = useCallback(
+    (cardId: string) => void act({ kind: "giveback", cardId }),
+    [act]
   );
 
   const settleExchange = useCallback(() => {
@@ -176,41 +181,29 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const winner = state.players[phase.winnerIdx];
     if (winner?.type === "bot") {
       const next = offlineBotMove(state);
-      if (next) commitMove(next);
+      if (next) commitState(next.state);
     } else if (!winner || !pickGivebackCard(winner.hand, phase.cardFromLoser?.id)) {
-      commitMove(resolveStuckExchange(state));
+      commitState(resolveStuckExchange(state));
     }
-  }, [commitMove]);
+  }, [commitState]);
 
-  const playCards = useCallback(
-    (cardIds: string[]): boolean => {
-      const state = stateRef.current?.state;
-      if (!state) return false;
-      const check = checkPlay(state, state.currentTurnIndex, cardIds);
-      if (!check.ok) return false;
-      commitMove(processPlay(state, check.combo));
-      return true;
-    },
-    [commitMove]
-  );
+  const playCards = useCallback((cardIds: string[]) => act({ kind: "play", cardIds }), [act]);
 
   const passTurn = useCallback(
     (expectedTurn?: string): boolean => {
       const state = stateRef.current?.state;
-      if (!state || !checkPass(state).ok) return false;
-      if (expectedTurn !== undefined && expectedTurn !== turnKey(state)) return false;
-      commitMove(processPass(state));
-      return true;
+      if (expectedTurn !== undefined && (!state || expectedTurn !== turnKey(state))) return false;
+      return act({ kind: "pass" });
     },
-    [commitMove]
+    [act]
   );
 
   const runBotTurn = useCallback(() => {
     const state = stateRef.current?.state;
     if (!state) return;
     const next = offlineBotMove(state);
-    if (next) commitMove(next);
-  }, [commitMove]);
+    if (next) commitState(next.state);
+  }, [commitState]);
 
   const resetGame = useCallback(() => {
     write(null);

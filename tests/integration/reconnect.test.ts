@@ -8,7 +8,7 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { MATCH_TARGETS, targetsFor } from "../../lib/game/gameEngine.ts";
+import { MATCH_TARGETS, firstTargetFor } from "../../lib/game/gameEngine.ts";
 import { lobbyGraceMs, usersInLobbyGrace } from "../../server/game/gameTimers.ts";
 import { Reading } from "../../lib/tokens.ts";
 import { connectAs, reconnectAs, waitFor } from "../helpers/client.ts";
@@ -572,7 +572,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
 
       const snapshot = matchSnapshot(room.roomId);
       assert.ok(snapshot, "the table must still be live");
-      assert.equal(snapshot.matchTarget, targetsFor(2)[0]);
+      assert.equal(snapshot.matchTarget, firstTargetFor(2));
       assert.notEqual(
         snapshot.matchTarget,
         MATCH_TARGETS[0],

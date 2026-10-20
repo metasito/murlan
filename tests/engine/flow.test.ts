@@ -5,10 +5,9 @@ import {
   buildCombination,
   getAllValidPlays,
   startRound,
-  processPass,
-  processPlay,
   type Card,
 } from "../../lib/game/gameEngine.ts";
+import { passed, played, refusalOf } from "../support/moves.ts";
 import { seatDirection } from "../../components/seatLayout.ts";
 
 const pair = (rank: Parameters<typeof c>[0]): Card[] => [c(rank, "hearts"), c(rank, "clubs")];
@@ -22,8 +21,7 @@ describe("processPlay", () => {
         makePlayer(1, [c("9", "spades"), c("9", "hearts")]),
       ], currentTurnIndex: 0, passCount: 1 }
     );
-    const played = combo(pair("7"));
-    const next = processPlay(state, played);
+    const next = played(state, combo(pair("7")));
 
     assert.deepEqual(next.players[0].hand.map((card) => card.id), ["K_spades"]);
     assert.equal(next.passCount, 0);
@@ -44,7 +42,7 @@ describe("processPlay", () => {
         makePlayer(1, [c("9", "spades"), c("9", "hearts")]),
       ], currentTurnIndex: 0 }
     );
-    const next = processPlay(state, combo(pair("7")));
+    const next = played(state, combo(pair("7")));
     assert.equal(next.roundOver, true);
     assert.deepEqual(next.finishingOrder, ["p0", "p1"]);
     assert.equal(next.players[0].finishPosition, 1);
@@ -57,10 +55,9 @@ describe("processPass — leader may not pass (defect 6)", () => {
     const state = makeState(
       { players: [makePlayer(0, pair("7")), makePlayer(1, pair("9"))], currentTurnIndex: 0, lastPlayedCombination: null }
     );
-    const next = processPass(state);
-    assert.equal(next, state, "state is returned untouched");
-    assert.equal(next.passCount, 0);
-    assert.equal(next.currentTurnIndex, 0, "the turn does not move on");
+    const before = structuredClone(state);
+    assert.equal(refusalOf(state, { kind: "pass" }), "mustLead");
+    assert.deepEqual(state, before, "the state is left untouched");
   });
 
   test("passing after somebody has played is allowed", () => {
@@ -75,7 +72,7 @@ describe("processPass — leader may not pass (defect 6)", () => {
         lastPlayedCombination: combo(pair("5")),
       }
     );
-    const next = processPass(state);
+    const next = passed(state);
     assert.notEqual(next, state);
     assert.equal(next.passCount, 1);
   });
@@ -96,11 +93,11 @@ describe("processPass — round end threshold (defect 5)", () => {
       }
     );
 
-    state = processPass(state);
+    state = passed(state);
     assert.equal(state.trickWinner, null, "one pass does not end the round");
-    state = processPass(state);
+    state = passed(state);
     assert.equal(state.trickWinner, null, "two passes do not end the round");
-    state = processPass(state);
+    state = passed(state);
     assert.equal(state.trickWinner, 0, "the third pass hands the round to p0");
     assert.equal(state.lastPlayedCombination, null);
     assert.equal(state.passCount, 0);
@@ -119,14 +116,14 @@ describe("processPass — round end threshold (defect 5)", () => {
         lastPlayedCombination: combo(pair("5")),
       }
     );
-    state = processPass(state);
+    state = passed(state);
     assert.equal(state.trickWinner, null);
-    state = processPass(state);
+    state = passed(state);
     assert.equal(state.trickWinner, 0);
   });
 
   test("2 players still holding cards: a single pass closes the round", () => {
-    const state = processPass(
+    const state = passed(
       makeState(
         { players: [makePlayer(0, pair("7")), makePlayer(1, pair("9"))],
           currentTurnIndex: 1,
@@ -155,7 +152,7 @@ describe("processPass — round end threshold (defect 5)", () => {
       }
     );
 
-    state = processPass(state);
+    state = passed(state);
     assert.equal(
       state.trickWinner,
       null,
@@ -164,7 +161,7 @@ describe("processPass — round end threshold (defect 5)", () => {
     assert.equal(state.passCount, 1);
     assert.notEqual(state.currentTurnIndex, 0, "the finished player never gets the turn");
 
-    state = processPass(state);
+    state = passed(state);
     assert.equal(state.trickWinner, 0, "the second pass closes the round");
     assert.equal(state.lastPlayedCombination, null);
     assert.notEqual(
@@ -189,16 +186,16 @@ describe("processPass — round end threshold (defect 5)", () => {
         finishingOrder: ["p0"],
       }
     );
-    state = processPass(state);
+    state = passed(state);
     assert.equal(state.trickWinner, null);
-    state = processPass(state);
+    state = passed(state);
     assert.equal(state.trickWinner, null);
-    state = processPass(state);
+    state = passed(state);
     assert.equal(state.trickWinner, 0);
   });
 
   test("a pass that does not close the round leaves the round winner unset", () => {
-    const state = processPass(
+    const state = passed(
       makeState(
         { players: [
           makePlayer(0, pair("7")),
@@ -230,13 +227,13 @@ describe("turn rotation", () => {
     );
 
     for (const expected of [1, 0, 3]) {
-      state = processPass(state);
+      state = passed(state);
       assert.equal(state.currentTurnIndex, expected);
     }
   });
 
   test("it steps over a seat that has already gone out", () => {
-    const state = processPass(
+    const state = passed(
       makeState(
         { players: [
           makePlayer(0, single("4")),
@@ -319,10 +316,10 @@ describe("a 3-player game", () => {
 
       if (plays.length === 0) {
         assert.ok(!isNewTrick, `seat ${seat} had no legal lead on turn ${turns}`);
-        state = processPass(state);
+        state = passed(state);
         continue;
       }
-      state = processPlay(state, plays[0]);
+      state = played(state, plays[0]);
 
       const live = state.players.flatMap((p) => p.hand.map((x) => x.id));
       assert.equal(new Set(live).size, live.length, "a card was duplicated mid-game");

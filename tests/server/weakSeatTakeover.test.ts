@@ -2,7 +2,7 @@
 // strength — a raw boolean, not the engine's bot — and the engine only plays the
 // seat properly from the next round. Two things are pinned here: `vacateSeat`
 // marking the seat weak only for a mid-round departure (server/game/gameTurn.ts's
-// own `!game.gameState.roundOver` guard), and `autoMoveForSeat`'s `useBot=false`
+// own `!game.gameState.roundOver` guard), and `autoMoveForSeat`'s `"floor"`
 // path — what `runBotTurn` calls once it reads `weakSeats` — always resolving
 // the seat's turn, since a seat that cannot act stalls the whole table.
 //
@@ -11,8 +11,8 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
-import { vacateSeat, autoMoveForSeat, armTurn } from "../../server/game/gameTurn.ts";
-import { autoMoveForSeat as chooseMove } from "../../lib/game/autoMove.ts";
+import { vacateSeat, armTurn } from "../../server/game/gameTurn.ts";
+import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
@@ -150,7 +150,7 @@ describe("runBotTurn plays a weak seat at the floor and a bot seat with the bot"
   test("a weak seat plays exactly the minimum legal move", async (t) => {
     t.mock.method(activeGameStore, "write", async () => {});
     const { state, played } = await botPlays(true);
-    const floor = chooseMove(state, 0, false, {})!.lastPlayedCombination!.cards.map((c) => c.id);
+    const floor = autoMoveForSeat(state, 0, "floor")!.state.lastPlayedCombination!.cards.map((c) => c.id);
     assert.equal(floor.length, 1);
     assert.deepEqual(played, floor, "runBotTurn must read weakSeats and play the seat at the floor");
   });
@@ -158,7 +158,7 @@ describe("runBotTurn plays a weak seat at the floor and a bot seat with the bot"
   test("a seat that is not weak plays the bot's own choice, which differs from the floor", async (t) => {
     t.mock.method(activeGameStore, "write", async () => {});
     const { state, played } = await botPlays(false);
-    const ai = chooseMove(state, 0, true, {})!.lastPlayedCombination!.cards.map((c) => c.id);
+    const ai = autoMoveForSeat(state, 0, "bot")!.state.lastPlayedCombination!.cards.map((c) => c.id);
     assert.equal(ai.length, 2);
     assert.deepEqual(played, ai);
   });
@@ -305,11 +305,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
   });
 });
 
-describe("autoMoveForSeat(useBot=false) — what a weak seat's turn resolves to (#850 clause 3)", () => {
-  // gameTurn.ts's autoMoveForSeat — the one runBotTurn calls once it reads
-  // weakSeats — takes the table's shape, not a bare GameState.
-  const mkGame = (gameState: GameState) => ({ gameState, roundFlags: {}, moveLog: null });
-
+describe("autoMoveForSeat at the floor — what a weak seat's turn resolves to (#850 clause 3)", () => {
   test("opening a fresh round plays the single lowest card, never the bot's own choice of combination", () => {
     const state: GameState = {
       players: [
@@ -330,13 +326,14 @@ describe("autoMoveForSeat(useBot=false) — what a weak seat's turn resolves to 
       firstPlayMade: true,
     };
 
-    const next = autoMoveForSeat(mkGame(state), 0, false)?.next;
-    assert.ok(next, "a weak seat must always resolve its turn — the table cannot stall on it");
+    const auto = autoMoveForSeat(state, 0, "floor");
+    assert.ok(auto, "a weak seat must always resolve its turn — the table cannot stall on it");
     const lowest = sortHand([...state.players[0]!.hand])[0]!;
-    assert.deepEqual(next!.lastPlayedCombination?.cards.map((c) => c.id ?? c.rank), [
-      lowest.id ?? lowest.rank,
-    ]);
-    assert.equal(next!.lastPlayedCombination?.cards.length, 1, "minimum legal, not a bigger combination the bot could see");
+    assert.equal(auto.move?.kind, "play");
+    const played = auto.move.kind === "play" ? auto.move.combo.cards : [];
+    assert.deepEqual(played.map((c) => c.id ?? c.rank), [lowest.id ?? lowest.rank]);
+    assert.equal(played.length, 1, "minimum legal, not a bigger combination the bot could see");
+    assert.deepEqual(auto.state.lastPlayedCombination?.cards, played);
   });
 
   test("mid-round with nothing worth playing, it passes rather than reaching for the bot's judgement", () => {
@@ -360,9 +357,10 @@ describe("autoMoveForSeat(useBot=false) — what a weak seat's turn resolves to 
       firstPlayMade: true,
     };
 
-    const next = autoMoveForSeat(mkGame(state), 0, false)?.next;
-    assert.ok(next, "a weak seat must always resolve its turn even when it only ever passes");
-    assert.equal(next!.lastPlayedBy, 1, "a pass leaves the last play credited to whoever made it");
+    const auto = autoMoveForSeat(state, 0, "floor");
+    assert.ok(auto, "a weak seat must always resolve its turn even when it only ever passes");
+    assert.deepEqual(auto.move, { kind: "pass", seat: 0 });
+    assert.equal(auto.state.lastPlayedBy, 1, "a pass leaves the last play credited to whoever made it");
   });
 
   test("the seat still resolves its turn with a single card left, the case a stalled table would show", () => {
@@ -383,7 +381,8 @@ describe("autoMoveForSeat(useBot=false) — what a weak seat's turn resolves to 
       startCard: { rank: "3", suit: "clubs", id: "start" } as never,
     };
 
-    const next = autoMoveForSeat(mkGame(state), 0, false)?.next;
-    assert.ok(next, "the mandatory opening card is always playable, so this must never be null");
+    const auto = autoMoveForSeat(state, 0, "floor");
+    assert.ok(auto, "the mandatory opening card is always playable, so this must never be null");
+    assert.deepEqual(auto.move?.kind === "play" && auto.move.combo.cards.map((c) => c.id), ["start"]);
   });
 });

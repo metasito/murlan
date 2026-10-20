@@ -6,9 +6,8 @@ import { botChoosePlay, opponentsOf } from "../../lib/game/bot.ts";
 import {
   buildCombination,
   startRound,
-  processPass,
-  processPlay,
 } from "../../lib/game/gameEngine.ts";
+import { passed, played } from "../support/moves.ts";
 import { card as c, joker as j, seat as makePlayer, state as makeState, mulberry32 } from "../support/game.ts";
 import type { Card, GameState } from "../../lib/game/gameEngine.ts";
 
@@ -231,7 +230,7 @@ test("a full teams round played through opponentsOf still reaches game over", ()
       play !== null || !isNewTrick,
       `turn ${turns}: seat ${seat} declined to lead, which no caller can recover from`
     );
-    state = play ? processPlay(state, play) : processPass(state);
+    state = play ? played(state, play) : passed(state);
   }
 
   assert.ok(state.roundOver, `the round did not finish in ${turns} turns`);

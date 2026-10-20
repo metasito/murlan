@@ -9,7 +9,7 @@
 // §9.1, §9.3, §9.4, §9.5 and both §9.6 tests overlap tests/engine/flow.test.ts's
 // coverage of the same code paths (its "leader may not pass", "round end
 // threshold" and turn-rotation describes); §7.3/§7.4 overlap
-// tests/engine/combinations.test.ts's canPlay() coverage. Kept anyway: this file's
+// tests/engine/combinations.test.ts's beat-hierarchy coverage. Kept anyway: this file's
 // only value over those is that a failure names the clause it violates, which
 // is what #773 asked for. §9.2 was rewritten (not just kept) because its
 // original assertions never exercised the "last player has gone out" branch
@@ -19,13 +19,8 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
-import {
-  buildCombination,
-  canPlay,
-  processPass,
-  processPlay,
-  type Card,
-} from "../../lib/game/gameEngine.ts";
+import { buildCombination, type Card } from "../../lib/game/gameEngine.ts";
+import { beats, passed, played, refusalOf } from "../support/moves.ts";
 
 const pair = (rank: Parameters<typeof c>[0]): Card[] => [c(rank, "hearts"), c(rank, "clubs")];
 const combo = (cards: Card[]) => buildCombination(cards)!;
@@ -49,7 +44,7 @@ describe("§9.1 — \"A player who cannot or does not wish to beat the current p
         lastPlayedCombination: combo(pair("5")),
       }
     );
-    const next = processPass(state);
+    const next = passed(state);
     assert.notEqual(next, state, "a pass while a play stands on the table must be accepted");
     assert.equal(next.passCount, 1);
     assert.equal(next.currentTurnIndex, 0, "the turn moves on past the passer");
@@ -76,13 +71,13 @@ describe("§9.2 — \"Passing does not lock a player out of the round … three 
         finishingOrder: ["p0"],
       }
     );
-    state = processPass(state);
+    state = passed(state);
     assert.equal(
       state.trickWinner,
       null,
       "one pass must not close the round while another active player can still answer"
     );
-    state = processPass(state);
+    state = passed(state);
     assert.equal(
       state.trickWinner,
       0,
@@ -100,7 +95,7 @@ describe("§9.3 — \"The player who made the last (unbeaten) play leads the nex
         lastPlayedCombination: combo(pair("5")),
       }
     );
-    const next = processPass(state);
+    const next = passed(state);
     assert.equal(next.trickWinner, 0);
     assert.equal(next.currentTurnIndex, 0, "the unbeaten play's owner leads the next trick");
     assert.equal(next.lastPlayedCombination, null, "the table is cleared for the new lead");
@@ -121,8 +116,8 @@ describe("§9.4 — \"If that player has just gone out (played their last card),
         finishingOrder: ["p0"],
       }
     );
-    let next = processPass(state);
-    next = processPass(next);
+    let next = passed(state);
+    next = passed(next);
     assert.equal(next.trickWinner, 0, "p0's play is still the one nobody beat");
     assert.notEqual(next.currentTurnIndex, 0, "p0 has gone out and cannot lead");
     assert.ok(
@@ -137,10 +132,9 @@ describe("§9.5 — \"A player who leads may not pass — leading requires playi
     const state = makeState(
       { players: [makePlayer(0, pair("7")), makePlayer(1, pair("9"))], currentTurnIndex: 0, lastPlayedCombination: null }
     );
-    const next = processPass(state);
-    assert.equal(next, state, "the state is returned untouched — there is nothing to pass on");
-    assert.equal(next.passCount, 0);
-    assert.equal(next.currentTurnIndex, 0);
+    const before = structuredClone(state);
+    assert.equal(refusalOf(state, { kind: "pass" }), "mustLead");
+    assert.deepEqual(state, before, "the state is left untouched");
   });
 });
 
@@ -149,7 +143,7 @@ describe("§9.6 — \"Going out … Play continues among the rest. The hand ends
     const state = makeState(
       { players: [makePlayer(0, pair("7")), makePlayer(1, [c("9", "spades"), c("9", "hearts")])], currentTurnIndex: 0 }
     );
-    const next = processPlay(state, combo(pair("7")));
+    const next = played(state, combo(pair("7")));
     assert.equal(next.players[0].finishPosition, 1);
     assert.deepEqual(next.finishingOrder, ["p0", "p1"], "the last player left is recorded too");
     assert.equal(next.roundOver, true, "only one player still held cards — the round ends");
@@ -163,7 +157,7 @@ describe("§9.6 — \"Going out … Play continues among the rest. The hand ends
         makePlayer(2, [c("K", "spades"), c("K", "hearts")]),
       ], currentTurnIndex: 0 }
     );
-    const next = processPlay(state, combo(pair("7")));
+    const next = played(state, combo(pair("7")));
     assert.equal(next.roundOver, false, "two players still hold cards — the hand is not over");
     assert.equal(next.players[0].finishPosition, 1);
     assert.deepEqual(next.finishingOrder, ["p0"]);
@@ -176,9 +170,9 @@ describe("§7.3 — \"A bomb is beaten only by a higher bomb — with one except
   const pair8 = combo([c("8", "hearts"), c("8", "clubs")]);
 
   test("nothing but a strictly higher bomb beats a bomb — not a pair, and not an equal bomb", () => {
-    assert.equal(canPlay(pair8, bomb5), false, "§7.3: a pair cannot beat a bomb");
+    assert.equal(beats(pair8, bomb5), false, "§7.3: a pair cannot beat a bomb");
     assert.equal(
-      canPlay(bomb5Again, bomb5),
+      beats(bomb5Again, bomb5),
       false,
       "§7.3: an equal-strength bomb does not beat a bomb — strictly higher only"
     );
@@ -201,11 +195,11 @@ describe("§7.4 — royal straight: ranked above bombs, beaten only by a higher 
   ]);
 
   test("a royal straight beats any bomb unconditionally; a bomb never beats a royal straight; only a higher same-length royal straight beats a royal straight", () => {
-    assert.equal(canPlay(royalLow, bombK), true, "§7.4: a royal straight beats a bomb of any strength");
-    assert.equal(canPlay(royalLow, bomb5), true, "§7.4: a royal straight beats a bomb of any strength");
-    assert.equal(canPlay(bombK, royalLow), false, "§7.4: a bomb never beats a royal straight");
-    assert.equal(canPlay(royalHigh, royalLow), true, "§7.4: only a higher royal straight beats a royal straight");
-    assert.equal(canPlay(royalLow, royalHigh), false, "§7.4: only a higher royal straight beats a royal straight");
+    assert.equal(beats(royalLow, bombK), true, "§7.4: a royal straight beats a bomb of any strength");
+    assert.equal(beats(royalLow, bomb5), true, "§7.4: a royal straight beats a bomb of any strength");
+    assert.equal(beats(bombK, royalLow), false, "§7.4: a bomb never beats a royal straight");
+    assert.equal(beats(royalHigh, royalLow), true, "§7.4: only a higher royal straight beats a royal straight");
+    assert.equal(beats(royalLow, royalHigh), false, "§7.4: only a higher royal straight beats a royal straight");
   });
 
   test("a royal straight of a different length never beats another, even with the strictly higher top card the same-length rule alone would reward", () => {
@@ -225,12 +219,12 @@ describe("§7.4 — royal straight: ranked above bombs, beaten only by a higher 
       c("9", "hearts"), c("10", "hearts"), c("J", "hearts"), c("Q", "hearts"), c("K", "hearts"), c("A", "hearts"),
     ]);
     assert.equal(
-      canPlay(royalSixAceTop, royalFiveAceTop),
+      beats(royalSixAceTop, royalFiveAceTop),
       false,
       "§7.4: a 6-card royal straight never beats a 5-card royal straight, whatever its top card"
     );
     assert.equal(
-      canPlay(royalFiveAceTop, royalSixLowTop),
+      beats(royalFiveAceTop, royalSixLowTop),
       false,
       "§7.4: a 5-card royal straight never beats a 6-card royal straight, whatever its top card"
     );
@@ -248,12 +242,12 @@ describe("§7.4 — royal straight: ranked above bombs, beaten only by a higher 
       c("7", "spades"), c("8", "spades"), c("9", "spades"), c("10", "spades"),
     ]);
     assert.equal(
-      canPlay(royalEightAceTop, royalSixLowTop),
+      beats(royalEightAceTop, royalSixLowTop),
       false,
       "§7.4: an 8-card royal straight never beats a 6-card royal straight, whatever its top card"
     );
     assert.equal(
-      canPlay(royalSixAceTop, royalEightLowTop),
+      beats(royalSixAceTop, royalEightLowTop),
       false,
       "§7.4: a 6-card royal straight never beats an 8-card royal straight, whatever its top card"
     );
@@ -278,12 +272,12 @@ describe("§7.4 — royal straight: ranked above bombs, beaten only by a higher 
       c("7", "spades"), c("8", "spades"), c("9", "spades"), c("10", "spades"),
     ]);
     assert.equal(
-      canPlay(royalEightAceTop, royalFiveKingTop),
+      beats(royalEightAceTop, royalFiveKingTop),
       false,
       "§7.4: an 8-card royal straight never beats a 5-card royal straight, whatever its top card"
     );
     assert.equal(
-      canPlay(royalFiveAceTop, royalEightLowTop),
+      beats(royalFiveAceTop, royalEightLowTop),
       false,
       "§7.4: a 5-card royal straight never beats an 8-card royal straight, whatever its top card"
     );
@@ -299,7 +293,7 @@ describe("§7.4 — royal straight: ranked above bombs, beaten only by a higher 
       c("7", "clubs"), c("8", "clubs"), c("9", "clubs"),
     ]);
     assert.equal(
-      canPlay(royalSevenB, royalSevenA),
+      beats(royalSevenB, royalSevenA),
       false,
       "§7.5: an equal-strength same-length royal straight does not beat another — strictly higher only"
     );
