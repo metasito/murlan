@@ -80,6 +80,7 @@ const inPlay = (combo: Combination): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: "deal" },
 });
 
 /** The hand-emptying play that closed it, exactly as `game:state` reports it. */
@@ -94,6 +95,7 @@ const ROUND_CLOSED: GameState = {
   roundOver: true,
   finishingOrder: ["player_1", "player_0"],
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: "deal" },
 };
 
 /** The one landing `state` writes, read on the frame it is written. */

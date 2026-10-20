@@ -25,6 +25,7 @@ function stateWithHand(hand: Card[], onTable: Card["rank"] | null): GameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
+    lastMove: { seq: 0, kind: "deal" },
   };
 }
 

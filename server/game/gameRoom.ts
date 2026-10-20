@@ -1,7 +1,7 @@
 // The process's live in-memory tables. Owned here rather than by
 // server/socket/socket.ts so that reading one does not mean importing the socket
 // server, and everything it drags in behind it.
-import type { GameState, MatchLength } from "../../lib/game/gameEngine.ts";
+import type { GameState, LastMove, MatchLength } from "../../lib/game/gameEngine.ts";
 import type { ReplayMove } from "../../lib/game/replay.ts";
 import type { RoundOverPayload } from "../../lib/game/matchState.ts";
 import { deadline, secondsUntil } from "./gameTimers.ts";
@@ -133,6 +133,8 @@ export interface OnlineGameState {
    * restart, or past MAX_REPLAY_MOVES — and none will be written.
    */
   moveLog: ReplayMove[] | null;
+  /** What the log's first move followed, the deal or the giveback: stored beside the log, not in it. */
+  replayOpening?: LastMove;
   /**
    * The `game:round_over` this round's `handleRoundOver` broadcast to the room, kept
    * so a client that was away for it can be sent the same payload on rejoin

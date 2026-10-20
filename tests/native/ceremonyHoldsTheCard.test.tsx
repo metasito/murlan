@@ -66,6 +66,7 @@ const settled = (winnerHand: Card[] = [...KEPT_BY_WINNER, FROM_LOSER]): GameStat
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: 'deal' },
   exchangePhase: {
     active: false,
     winnerIdx: WINNER_SEAT,

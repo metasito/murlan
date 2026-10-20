@@ -79,6 +79,7 @@ test("a hanging status write still deals the round", async (t) => {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: false,
+    lastMove: { seq: 0, kind: "deal" },
   };
   t.after(() => clearRoomTimers("deal-hangs"));
 

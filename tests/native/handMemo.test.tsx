@@ -125,6 +125,7 @@ const state = (cards: Card[]): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: false,
+  lastMove: { seq: 0, kind: 'deal' },
 });
 
 // The context value's own callbacks keep their identity across a state, as the

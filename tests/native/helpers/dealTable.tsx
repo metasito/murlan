@@ -28,6 +28,7 @@ export const freshDeal: GameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: false,
+  lastMove: { seq: 0, kind: 'deal' },
 };
 
 const noop = () => {};

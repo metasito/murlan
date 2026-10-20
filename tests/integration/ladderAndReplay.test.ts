@@ -71,7 +71,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
       try {
         const row = await waitForRow(async () => {
           const res = await server.query(
-            "SELECT player_ids, seats, moves, finishing_order, game_mode FROM round_replays WHERE player_ids @> $1::jsonb",
+            "SELECT player_ids, seats, moves, opening, finishing_order, game_mode FROM round_replays WHERE player_ids @> $1::jsonb",
             [JSON.stringify([alice.user.id])]
           );
           return res[0] ?? null;
@@ -84,6 +84,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
         assert.equal(row.game_mode, "free_for_all");
         assert.equal(seats.length, 3, "every seat is recorded, bot included");
         assert.ok(moves.length > 0, "a played round produces moves");
+        assert.deepEqual(row.opening, { seq: 0, kind: "deal" }, "the round, not a move, records what its first move followed");
 
         // The whole privacy premise of the feature: a replay records what was
         // played, never what was held. If a `hand` key ever appears here, the

@@ -24,6 +24,7 @@ const MEMORY_ONLY_START = {
   turnDeadlineMs: () => undefined,
   spectators: () => new Set<string>(),
   moveLog: () => null,
+  replayOpening: () => undefined,
   lastRoundOverPayload: () => undefined,
 } satisfies { [K in keyof OnlineGameState]?: () => OnlineGameState[K] };
 

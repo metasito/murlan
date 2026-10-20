@@ -62,6 +62,7 @@ export const table = (c: Case, over: boolean, decided = over) => {
     roundOver: over,
     finishingOrder: over ? FINISHING_ORDER : [],
     firstPlayMade: true,
+    lastMove: { seq: 0, kind: "deal" },
   };
   const placementPoints = decided ? Object.fromEntries(FINISHING_ORDER.map((id, i) => [id, 3 - i])) : {};
   return (

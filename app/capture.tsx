@@ -28,7 +28,7 @@ import {
   CAPTURE_VIEWER_SEAT,
   captureGameState,
   captureStateById,
-  nextTurn,
+  swing,
   rethrow,
 } from "@/lib/captureStates";
 import { captureEnabled } from "@/lib/captureRoute";
@@ -101,7 +101,7 @@ function CaptureHarness() {
             accessibilityRole="button"
             accessibilityLabel={COPY.swing}
             testID={`capture-${picked.id}`}
-            onPress={() => move((s) => ({ ...s, currentTurnIndex: nextTurn(s) }))}
+            onPress={() => move(swing)}
             style={styles.swing}
           >
             <Ionicons name="arrow-forward" size={SWING_GLYPH} color={Colors.textMuted} {...a11yHidden()} />

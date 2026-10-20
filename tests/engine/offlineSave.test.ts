@@ -33,6 +33,7 @@ const save = (over = false) => ({
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: false,
+    lastMove: { seq: 0, kind: "deal" },
   },
   match: { length: "match", target: 21, scores: { player_0: 3 }, rounds: [], over, winners: [], isDraw: false },
   dealFirstSeat: 1,
@@ -89,6 +90,7 @@ test("the golden save of this version still decodes and plays a legal move", () 
   assert.ok(combo);
   const after = played(gameState, combo);
   assert.equal(after.firstPlayMade, true);
+  assert.deepEqual(after.lastMove, { seq: 1, kind: "play", seat: gameState.currentTurnIndex });
   assert.notEqual(after.currentTurnIndex, gameState.currentTurnIndex);
 });
 
@@ -103,6 +105,8 @@ test("a blob missing anything the restore path needs is refused", () => {
     ["match without scores", (s) => { (s.match as Record<string, unknown>).scores = undefined; }],
     ["match without rounds", (s) => { (s.match as Record<string, unknown>).rounds = "nope"; }],
     ["an unknown game mode", (s) => { (s.gameState as Record<string, unknown>).gameMode = "battle_royale"; }],
+    ["gameState without its last move", (s) => { delete (s.gameState as Record<string, unknown>).lastMove; }],
+    ["a last move without a count", (s) => { (s.gameState as Record<string, unknown>).lastMove = { kind: "deal" }; }],
   ];
   for (const [what, mutate] of mutations) {
     const blob = JSON.parse(encodeOfflineSave(save()));
