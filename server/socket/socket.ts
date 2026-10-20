@@ -27,13 +27,16 @@ import {
   registerFriendHandlers,
   registerSessionEviction,
 } from "./socketPresence.ts";
-import { setSocketServer } from "./socketRegistry.ts";
+import { bindSocketRuntime } from "./socketRegistry.ts";
 import { allowSocketAction, answerUnknownEvents } from "./socketSafety.ts";
 import { userRoom, userSocketMap } from "../game/gameRoom.ts";
-import { startSweeper } from "../game/gamePersistence.ts";
-import { installTableHandlers, resumeOrphanedTables } from "../game/tableHandlers.ts";
-import { reopenOwnership } from "../game/gameOwnership.ts";
+import { startSweeper, tableWriters } from "../game/gamePersistence.ts";
+import { resumeOrphanedTables } from "../game/tableHandlers.ts";
+import { createTableRuntime } from "../game/tableRuntime.ts";
+import { activeGameStore } from "../store/activeGameStore.ts";
+import { roomStore } from "../store/roomStore.ts";
 import { registerStopSpectating } from "./seating.ts";
+import { socketOutbox, socketPresence } from "./socketOutbox.ts";
 
 /**
  * Handshakes one account may complete per minute. Socket.io answers
@@ -91,14 +94,19 @@ export function setupSocket(httpServer: HttpServer) {
     maxHttpBufferSize: 1e5,
   });
   io.adapter(createSocketAdapter());
-  setSocketServer(io);
   // Before the first connection: a table action forwarded from another
-  // instance arrives on `io`, not on a socket, and one that lands before this
-  // listener exists is answered by nobody.
-  reopenOwnership();
-  installTableHandlers(io);
+  // instance arrives on `io`, not on a socket, and one that lands before the
+  // runtime's listener exists is answered by nobody.
+  const rt = createTableRuntime({
+    out: socketOutbox(io),
+    presence: socketPresence(io),
+    writers: tableWriters,
+    transport: io,
+    store: { games: activeGameStore, rooms: roomStore },
+  });
+  bindSocketRuntime(rt);
   registerSessionEviction(io);
-  registerStopSpectating(io);
+  registerStopSpectating(rt);
 
   // Inject session into socket requests. `next` is cast because express and
   // socket.io disagree about it, not about the session: express overloads it
@@ -169,7 +177,7 @@ export function setupSocket(httpServer: HttpServer) {
     // server's only sight of "got past the menu".
     trackEvent("lobby.entered", userId);
     if (replacedSocketId && replacedSocketId !== socket.id) {
-      evictReplacedSession(io, userId, replacedSocketId, socket);
+      evictReplacedSession(io, rt, userId, replacedSocketId, socket);
     }
     evictRemoteSessions(io, userId, socket);
     logger.debug({ userId, socketId: socket.id }, "Socket connected");
@@ -180,7 +188,7 @@ export function setupSocket(httpServer: HttpServer) {
     // game:rejoin there — beats an `await` placed ahead of them. A packet with
     // no listener is dropped silently. The work that needs the database runs
     // after instead.
-    const ctx = { io, socket, userId };
+    const ctx = { io, rt, socket, userId };
     answerUnknownEvents(socket);
     registerRoomHandlers(ctx);
     registerGameplayHandlers(ctx);
@@ -190,9 +198,9 @@ export function setupSocket(httpServer: HttpServer) {
     await announcePresence(ctx);
   });
 
-  startSweeper(io, resumeOrphanedTables);
+  startSweeper(rt, resumeOrphanedTables);
 
-  return io;
+  return { io, rt };
 }
 
 

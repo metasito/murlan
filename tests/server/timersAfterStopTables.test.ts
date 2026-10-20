@@ -1,15 +1,13 @@
 // A file of its own: stopping the tables cannot be undone inside a process.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { Server as SocketServer } from "socket.io";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { armTurn } from "../../server/game/gameTurn.ts";
 import { arm, clearRoomTimers, pending, TIMER_KINDS } from "../../server/game/gameTimers.ts";
-import { stopTables } from "../../server/game/gamePersistence.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
 import { createDeck, emptyRankTally, type GameState } from "../../lib/game/gameEngine.ts";
 
 const ROOM = "timers-after-stop-tables-room";
-const io = { to: () => ({ emit: () => {} }) } as unknown as SocketServer;
 
 test("once the tables are stopped, no timer of any kind is armed", async (t) => {
   const deck = createDeck();
@@ -33,9 +31,10 @@ test("once the tables are stopped, no timer of any kind is armed", async (t) => 
     activeGames.delete(ROOM);
   });
 
-  await stopTables();
+  const { rt } = recordingRuntime();
+  await rt.stopTables();
 
-  armTurn(io, ROOM);
+  armTurn(rt, ROOM);
   assert.equal(pending("bot", ROOM), false, "a late armTurn put a bot back on a stopped table");
   for (const kind of TIMER_KINDS) {
     arm(kind, ROOM, 60_000, () => {});

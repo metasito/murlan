@@ -1,9 +1,12 @@
 // Tables that stopped answering: a deal, a vote or a grace that never came.
-import { test, describe, before, afterEach, type TestContext } from "node:test";
+import { test, describe, afterEach, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import type { Server as SocketServer } from "socket.io";
-import { installTableHandlers, applyOrForward, rehydrateGame } from "../../server/game/tableHandlers.ts";
-import { handleRoundOver, type RoundOverWriters } from "../../server/game/roundOver.ts";
+import { rehydrateGame } from "../../server/game/tableHandlers.ts";
+import { applyOrForward } from "../../server/game/tableRouter.ts";
+import { handleRoundOver } from "../../server/game/roundOver.ts";
+import type { Presence, TableRuntime, TableWriters } from "../../server/game/tableRuntime.ts";
+import { recordingRuntime, stubTransport } from "../helpers/recordingRuntime.ts";
+import { socketPresence } from "../../server/socket/socketOutbox.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import {
   clearAllTimersForUser,
@@ -14,7 +17,6 @@ import {
 } from "../../server/game/gameTimers.ts";
 import { installClock } from "../../server/http/clock.ts";
 import { fakeClock } from "../helpers/fakeClock.ts";
-import { setSocketServer } from "../../server/socket/socketRegistry.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { packPersistedState } from "../../shared/persistedEnvelope.ts";
@@ -47,33 +49,28 @@ function baseGame(overrides: Partial<OnlineGameState>): OnlineGameState {
   return onlineTable({ roomId: ROOM, maxPlayers: 2, roundsPlayed: 1, ...overrides });
 }
 
-function stubIo() {
-  const emitted: { event: string; payload: unknown }[] = [];
-  const target = {
-    emit: (event: string, payload: unknown) => emitted.push({ event, payload }),
-    timeout: () => ({ emit: (event: string, payload: unknown) => emitted.push({ event, payload }) }),
-  };
-  const io = {
-    to: () => target,
-    on: () => {},
-    serverSideEmit: (_event: string, _userId: string, reply: () => void) => reply(),
-    sockets: { adapter: { rooms: new Map() }, sockets: new Map() },
-  } as unknown as SocketServer;
-  return { io, emitted };
+/** The cluster presence asks: whatever `useCluster` last set, and nobody connected otherwise. */
+let cluster: Record<string, unknown> = {};
+const clusterPresence: Presence = {
+  isOnline: (userId) => socketPresence(stubTransport(cluster)).isOnline(userId),
+  isAtTable: (userId, roomId) => socketPresence(stubTransport(cluster)).isAtTable(userId, roomId),
+  tablePresence: (roomId) => socketPresence(stubTransport(cluster)).tablePresence(roomId),
+  connectedUserIds: () => socketPresence(stubTransport(cluster)).connectedUserIds(),
+};
+
+function stubIo(writers: Partial<TableWriters> = {}) {
+  const { rt, sent } = recordingRuntime({ presence: clusterPresence, writers });
+  return { rt, emitted: sent };
 }
 
 const twoHumans = () => [player("player_0", "Ana"), player("player_1", "Besi")];
 
 const room = { id: ROOM, code: "AAAAAA", gameMode: "free_for_all" as const, maxPlayers: 2 };
 
-const vote = (io: SocketServer, userId: string) =>
-  applyOrForward(io, { kind: "rematchVote", roomId: ROOM, userId });
+const vote = (rt: TableRuntime, userId: string) =>
+  applyOrForward(rt, { kind: "rematchVote", roomId: ROOM, userId });
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-before(() => {
-  installTableHandlers({ on: () => {} } as unknown as SocketServer);
-});
 
 afterEach(() => {
   for (const userId of ["ana", "besi"]) clearAllTimersForUser(userId, ROOM);
@@ -99,13 +96,13 @@ const finishedRow = () =>
 
 describe("a table restored after a restart", () => {
   test("a rejoin at the results screen is told the tally, which the restart emptied", async (t) => {
-    const { io, emitted } = stubIo();
+    const { rt, emitted } = stubIo();
     const row = finishedRow();
     useMemoryTableStores(t, { rooms: [[ROOM, room]], rows: [[ROOM, row]] });
 
-    assert.equal(await rehydrateGame(ROOM, "ana", io), "restored");
+    assert.equal(await rehydrateGame(rt, ROOM, "ana"), "restored");
     assert.equal(activeGames.get(ROOM)!.lastRoundOverPayload, undefined, "nothing persisted the game:over");
-    await applyOrForward(io, { kind: "rejoin", roomId: ROOM, userId: "ana" });
+    await applyOrForward(rt, { kind: "rejoin", roomId: ROOM, userId: "ana" });
 
     const tally = emitted.filter((e) => e.event === "game:vote_state").pop();
     assert.ok(tally, "a client still showing its pre-restart vote is never corrected");
@@ -117,18 +114,18 @@ describe("a table restored after a restart", () => {
   test("a between-hands seat nobody came back to is released, so the vote it held up deals", async (t) => {
     process.env.MURLAN_LOBBY_GRACE_MS = "30";
     t.after(() => delete process.env.MURLAN_LOBBY_GRACE_MS);
-    const { io, emitted } = stubIo();
+    const { rt, emitted } = stubIo();
     const row = finishedRow();
     useMemoryTableStores(t, { rows: [[ROOM, row]] });
     t.mock.method(roomStore, "getRoomById", async () => room);
     t.mock.method(roomStore, "updateRoomStatus", async () => {});
     t.mock.method(roomStore, "releaseSeat", async () => null);
 
-    assert.equal(await rehydrateGame(ROOM, "ana", io), "restored");
+    assert.equal(await rehydrateGame(rt, ROOM, "ana"), "restored");
     const game = activeGames.get(ROOM)!;
     assert.equal(game.gameState.roundOver, true);
 
-    await vote(io, "ana");
+    await vote(rt, "ana");
     assert.ok(!emitted.some((e) => e.event === "game:started"), "one vote of two deals nothing");
 
     await sleep(150);
@@ -140,11 +137,12 @@ describe("a table restored after a restart", () => {
 
 describe("dealing the next round", () => {
   test("a rooms.status write that fails still reaches every client", async (t) => {
-    const { io, emitted } = stubIo();
-    t.mock.method(roomStore, "getRoomById", async () => room);
-    t.mock.method(roomStore, "updateRoomStatus", async () => {
-      throw new Error("connection terminated");
+    const { rt, emitted } = stubIo({
+      updateRoomStatus: async () => {
+        throw new Error("connection terminated");
+      },
     });
+    t.mock.method(roomStore, "getRoomById", async () => room);
     const game = baseGame({
       gameState: finishedHand(twoHumans(), ["player_0", "player_1"]),
       playerMap: { 0: "ana", 1: "besi" },
@@ -152,7 +150,7 @@ describe("dealing the next round", () => {
     });
     activeGames.set(ROOM, game);
 
-    const outcome = await vote(io, "besi").catch((err: unknown) => err);
+    const outcome = await vote(rt, "besi").catch((err: unknown) => err);
 
     assert.deepEqual(outcome, { ok: true });
     assert.equal(game.gameState.roundOver, false, "the next round was dealt in memory");
@@ -161,7 +159,7 @@ describe("dealing the next round", () => {
   });
 
   test("two votes closing the gate together deal once, with the exchange", async (t) => {
-    const { io, emitted } = stubIo();
+    const { rt, emitted } = stubIo();
     let release!: () => void;
     const held = new Promise<void>((r) => (release = r));
     t.mock.method(roomStore, "getRoomById", async () => {
@@ -176,8 +174,8 @@ describe("dealing the next round", () => {
     });
     activeGames.set(ROOM, game);
 
-    const first = vote(io, "besi");
-    const second = vote(io, "ana");
+    const first = vote(rt, "besi");
+    const second = vote(rt, "ana");
     await sleep(10);
     assert.ok(!emitted.some((e) => e.event === "game:started"), "both are still waiting on the room read");
     release();
@@ -192,7 +190,7 @@ describe("dealing the next round", () => {
 
 describe("a new match at a standing bot-filled table", () => {
   test("opens with the exchange on the last match's finishingOrder, a bot's place among them", async (t) => {
-    const { io, emitted } = stubIo();
+    const { rt, emitted } = stubIo();
     const host = "ana";
     const lobby = {
       id: ROOM,
@@ -227,7 +225,7 @@ describe("a new match at a standing bot-filled table", () => {
       })
     );
 
-    const outcome = await applyOrForward(io, {
+    const outcome = await applyOrForward(rt, {
       kind: "startMatch",
       roomId: ROOM,
       userId: host,
@@ -250,11 +248,11 @@ function useCluster(t: { after: (fn: () => void) => void }, sockets: { userId: s
     data: { userId: s.userId },
     rooms: new Set([`user:${s.userId}`, ...s.rooms]),
   }));
-  setSocketServer({
+  cluster = {
     fetchSockets: async () => remote,
     in: (room: string) => ({ fetchSockets: async () => remote.filter((s) => s.rooms.has(room)) }),
-  } as unknown as SocketServer);
-  t.after(() => setSocketServer(null as unknown as SocketServer));
+  };
+  t.after(() => (cluster = {}));
 }
 
 function betweenHands() {
@@ -269,17 +267,17 @@ function betweenHands() {
 
 describe("between hands, online elsewhere is not back at this table", () => {
   test("a seatLost arms the lobby grace for an account whose socket is in another room", async (t) => {
-    const { io } = stubIo();
+    const { rt } = stubIo();
     useCluster(t, [{ userId: "besi", rooms: ["another-lobby"] }]);
     betweenHands();
 
-    await applyOrForward(io, { kind: "seatLost", roomId: ROOM, userId: "besi" });
+    await applyOrForward(rt, { kind: "seatLost", roomId: ROOM, userId: "besi" });
 
     assert.deepEqual(usersInLobbyGrace(ROOM), ["besi"], "besi now holds the rematch gate for good");
   });
 
   test("a restore arms it too", async (t) => {
-    const { io } = stubIo();
+    const { rt } = stubIo();
     useCluster(t, [
       { userId: "ana", rooms: [ROOM] },
       { userId: "besi", rooms: ["another-lobby"] },
@@ -287,31 +285,31 @@ describe("between hands, online elsewhere is not back at this table", () => {
     const row = finishedRow();
     useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
-    assert.equal(await rehydrateGame(ROOM, "ana", io), "restored");
+    assert.equal(await rehydrateGame(rt, ROOM, "ana"), "restored");
     assert.deepEqual(usersInLobbyGrace(ROOM), ["besi"]);
   });
 });
 
 describe("a restore with one player present and one away", () => {
   test("between hands only the away seat gets the lobby grace", async (t) => {
-    const { io } = stubIo();
+    const { rt } = stubIo();
     useCluster(t, [{ userId: "ana", rooms: [ROOM] }]);
     const row = finishedRow();
     useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
-    assert.equal(await rehydrateGame(ROOM, null, io), "restored");
+    assert.equal(await rehydrateGame(rt, ROOM, null), "restored");
     assert.deepEqual(usersInLobbyGrace(ROOM), ["besi"]);
   });
 
   test("mid-hand only the away seat gets the disconnect grace", async (t) => {
-    const { io } = stubIo();
+    const { rt } = stubIo();
     useCluster(t, [{ userId: "ana", rooms: [] }]);
     const state = finishedHand(twoHumans(), []);
     state.roundOver = false;
     const row = packPersistedState(state, {}, 0, "AAAAAA", unpackedMatch(), noSeats);
     useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
-    assert.equal(await rehydrateGame(ROOM, null, io), "restored");
+    assert.equal(await rehydrateGame(rt, ROOM, null), "restored");
     assert.ok(pending("disconnect", "besi"));
     assert.ok(!pending("disconnect", "ana"), "ana is online and was given 60 s to come back anyway");
   });
@@ -319,17 +317,17 @@ describe("a restore with one player present and one away", () => {
 
 describe("a restore whose presence sweep fails", () => {
   test("arms no grace, since the cluster never said who is away", async (t) => {
-    const { io } = stubIo();
-    setSocketServer({
+    const { rt } = stubIo();
+    cluster = {
       fetchSockets: async () => {
         throw new Error("timeout reached: only 0 responses received out of 1");
       },
-    } as unknown as SocketServer);
-    t.after(() => setSocketServer(null as unknown as SocketServer));
+    };
+    t.after(() => (cluster = {}));
     const row = finishedRow();
     useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
-    assert.equal(await rehydrateGame(ROOM, "ana", io), "restored");
+    assert.equal(await rehydrateGame(rt, ROOM, "ana"), "restored");
     assert.deepEqual(usersInLobbyGrace(ROOM), [], "a grace whose expiry releases a player seated elsewhere");
   });
 });
@@ -337,13 +335,13 @@ describe("a restore whose presence sweep fails", () => {
 describe("a seatLost that arrives after its player is back", () => {
   for (const roundOver of [false, true]) {
     test(`arms nothing ${roundOver ? "between hands" : "mid-hand"}`, async (t) => {
-      const { io, emitted } = stubIo();
+      const { rt, emitted } = stubIo();
       useCluster(t, [{ userId: "besi", rooms: [ROOM] }]);
       const state = finishedHand(twoHumans(), roundOver ? ["player_0", "player_1"] : []);
       state.roundOver = roundOver;
       activeGames.set(ROOM, baseGame({ gameState: state, playerMap: { 0: "ana", 1: "besi" } }));
 
-      await applyOrForward(io, { kind: "seatLost", roomId: ROOM, userId: "besi" });
+      await applyOrForward(rt, { kind: "seatLost", roomId: ROOM, userId: "besi" });
 
       assert.ok(!emitted.some((e) => e.event === "game:player_disconnected"));
       assert.ok(!pending("disconnect", "besi"), "a disconnect grace no reconnect will clear");
@@ -352,20 +350,11 @@ describe("a seatLost that arrives after its player is back", () => {
   }
 });
 
-const quietWriters: RoundOverWriters = {
-  updateRoomStatus: async () => {},
-  persistGameState: async () => {},
-  recordGameResult: async () => {},
-  previewRatedDeltas: async () => new Map(),
-  recordRatedResult: async () => new Map(),
-  saveReplay: async () => {},
-};
-
 /** Two humans at a round that has just ended, short of the match target. */
 async function roundJustEnded(t: TestContext) {
   const clock = fakeClock();
   t.after(installClock(clock));
-  const { io, emitted } = stubIo();
+  const { rt, emitted } = stubIo();
   t.mock.method(roomStore, "getRoomById", async () => room);
   t.mock.method(roomStore, "updateRoomStatus", async () => {});
   t.mock.method(roomStore, "releaseSeat", async () => null);
@@ -375,8 +364,8 @@ async function roundJustEnded(t: TestContext) {
     playerMap: { 0: "ana", 1: "besi" },
   });
   activeGames.set(ROOM, game);
-  await handleRoundOver(io, ROOM, game, quietWriters);
-  return { io, emitted, game, clock };
+  await handleRoundOver(rt, ROOM, game);
+  return { rt, emitted, game, clock };
 }
 
 const lastVoteState = (emitted: { event: string; payload: unknown }[]) =>
@@ -386,12 +375,12 @@ const lastVoteState = (emitted: { event: string; payload: unknown }[]) =>
 
 describe("the next-round vote deadline", () => {
   test("a seated human who never votes is handed to a bot, the round deals, and the seat can be reclaimed", async (t) => {
-    const { io, emitted, game, clock } = await roundJustEnded(t);
+    const { rt, emitted, game, clock } = await roundJustEnded(t);
     assert.equal(game.matchOver, false);
     assert.ok(pending("voteDeadline", ROOM), "a round of a continuing match ended with no deadline");
     assert.equal(lastVoteState(emitted)?.secondsRemaining, 30, "the clients were never told the deadline");
 
-    await vote(io, "ana");
+    await vote(rt, "ana");
     assert.ok(pending("voteDeadline", ROOM), "a vote cleared the deadline the other seat is held to");
     assert.equal(game.gameState.roundOver, true);
 
@@ -408,15 +397,15 @@ describe("the next-round vote deadline", () => {
     assert.ok(emitted.some((e) => e.event === "game:started"));
     assert.ok(!pending("voteDeadline", ROOM), "the deal left the deadline armed into the round");
 
-    assert.deepEqual(await applyOrForward(io, { kind: "rejoin", roomId: ROOM, userId: "besi" }), { ok: true });
+    assert.deepEqual(await applyOrForward(rt, { kind: "rejoin", roomId: ROOM, userId: "besi" }), { ok: true });
     assert.equal(game.playerMap[1], "besi", "besi could not reclaim the seat");
   });
 
   test("a vote landing while the deadline expires never abandons the match", async (t) => {
-    const { io, emitted, game, clock } = await roundJustEnded(t);
-    await vote(io, "ana");
+    const { rt, emitted, game, clock } = await roundJustEnded(t);
+    await vote(rt, "ana");
     t.mock.method(roomStore, "releaseSeat", async (_roomId: string, userId: string) => {
-      if (userId === "besi") await vote(io, "besi");
+      if (userId === "besi") await vote(rt, "besi");
       return null;
     });
 
@@ -432,12 +421,12 @@ describe("the next-round vote deadline", () => {
     const clock = fakeClock();
     t.after(installClock(clock));
     t.after(() => clearAllTimersForUser("cleo", ROOM));
-    const { io } = stubIo();
+    const { rt } = stubIo();
     t.mock.method(roomStore, "getRoomById", async () => ({ ...room, maxPlayers: 3 }));
     t.mock.method(roomStore, "updateRoomStatus", async () => {});
     t.mock.method(roomStore, "upsertRoomPlayer", async () => {});
     t.mock.method(roomStore, "releaseSeat", async (_roomId: string, userId: string) => {
-      if (userId === "besi") await vote(io, "cleo");
+      if (userId === "besi") await vote(rt, "cleo");
       return null;
     });
     const game = baseGame({
@@ -449,8 +438,8 @@ describe("the next-round vote deadline", () => {
       playerMap: { 0: "ana", 1: "besi", 2: "cleo" },
     });
     activeGames.set(ROOM, game);
-    await handleRoundOver(io, ROOM, game, quietWriters);
-    await vote(io, "ana");
+    await handleRoundOver(rt, ROOM, game);
+    await vote(rt, "ana");
 
     clock.advance(30_000);
     await sleep(20);
@@ -461,7 +450,7 @@ describe("the next-round vote deadline", () => {
   });
 
   test("a seat reclaimed while its row is being released keeps its row and the room", async (t) => {
-    const { io, game, clock } = await roundJustEnded(t);
+    const { rt, game, clock } = await roundJustEnded(t);
     const rows = new Set(["ana", "besi"]);
     let host = "besi";
     const upsert = async (_roomId: string, userId: string) => {
@@ -473,13 +462,13 @@ describe("the next-round vote deadline", () => {
       if (asHost) host = userId;
     });
     t.mock.method(roomStore, "releaseSeat", async (_roomId: string, userId: string) => {
-      if (userId === "besi") await applyOrForward(io, { kind: "rejoin", roomId: ROOM, userId: "besi" });
+      if (userId === "besi") await applyOrForward(rt, { kind: "rejoin", roomId: ROOM, userId: "besi" });
       rows.delete(userId);
       const wasHost = host === userId;
       if (wasHost) host = [...rows][0]!;
       return { room: { ...room, hostUserId: host }, remaining: [], emptied: false, wasHost };
     });
-    await vote(io, "ana");
+    await vote(rt, "ana");
 
     clock.advance(30_000);
     await sleep(20);
@@ -490,12 +479,12 @@ describe("the next-round vote deadline", () => {
   });
 
   test("a rejoin at the results screen neither clears nor restarts it", async (t) => {
-    const { io, emitted, clock } = await roundJustEnded(t);
+    const { rt, emitted, clock } = await roundJustEnded(t);
     const armedAt = deadline("voteDeadline", ROOM);
     assert.ok(armedAt !== undefined);
 
     clock.advance(20_000);
-    await applyOrForward(io, { kind: "rejoin", roomId: ROOM, userId: "besi" });
+    await applyOrForward(rt, { kind: "rejoin", roomId: ROOM, userId: "besi" });
 
     assert.equal(deadline("voteDeadline", ROOM), armedAt, "a rejoin loop would hold the table forever");
     assert.equal(lastVoteState(emitted)?.secondsRemaining, 10, "the rejoining client sees a full clock");
@@ -514,7 +503,7 @@ describe("the next-round vote deadline", () => {
   test("the round that ends the match arms none: the new-match vote is optional", async (t) => {
     const clock = fakeClock();
     t.after(installClock(clock));
-    const { io } = stubIo();
+    const { rt } = stubIo();
     t.mock.method(roomStore, "updateRoomStatus", async () => {});
     const game = baseGame({
       gameState: finishedHand(twoHumans(), ["player_0", "player_1"]),
@@ -524,7 +513,7 @@ describe("the next-round vote deadline", () => {
     });
     activeGames.set(ROOM, game);
 
-    await handleRoundOver(io, ROOM, game, quietWriters);
+    await handleRoundOver(rt, ROOM, game);
 
     assert.equal(game.matchOver, true);
     assert.ok(!pending("voteDeadline", ROOM));
@@ -533,23 +522,23 @@ describe("the next-round vote deadline", () => {
   test("a restore between rounds re-arms a full one, even when the cluster never said who is away", async (t) => {
     const clock = fakeClock();
     t.after(installClock(clock));
-    const { io } = stubIo();
-    setSocketServer({
+    const { rt } = stubIo();
+    cluster = {
       fetchSockets: async () => {
         throw new Error("timeout reached: only 0 responses received out of 1");
       },
-    } as unknown as SocketServer);
-    t.after(() => setSocketServer(null as unknown as SocketServer));
+    };
+    t.after(() => (cluster = {}));
     const row = finishedRow();
     useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
-    assert.equal(await rehydrateGame(ROOM, "ana", io), "restored");
+    assert.equal(await rehydrateGame(rt, ROOM, "ana"), "restored");
 
     assert.equal(deadline("voteDeadline", ROOM), clock.now() + 30_000);
   });
 
   test("a restore mid-hand arms none", async (t) => {
-    const { io } = stubIo();
+    const { rt } = stubIo();
     useCluster(t, [
       { userId: "ana", rooms: [ROOM] },
       { userId: "besi", rooms: [ROOM] },
@@ -559,7 +548,7 @@ describe("the next-round vote deadline", () => {
     const row = packPersistedState(state, {}, 0, "AAAAAA", unpackedMatch(), noSeats);
     useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
-    assert.equal(await rehydrateGame(ROOM, null, io), "restored");
+    assert.equal(await rehydrateGame(rt, ROOM, null), "restored");
     assert.ok(!pending("voteDeadline", ROOM));
   });
 });

@@ -151,7 +151,7 @@ process holding it.
    becomes the owner.
 
 The forwarding instance does **not** re-broadcast. Broadcasts happen inside the owner's own
-handler (`broadcastGameState`, `io.to(roomId).emit(…)`) and reach every socket at that table
+handler (`publishState`, `rt.out.room(roomId).emit(…)`) and reach every socket at that table
 whichever instance holds each one, because the Socket.io Postgres adapter carries `io.to()`
 across instances the same way it carries the forwarded action.
 

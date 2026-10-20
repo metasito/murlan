@@ -100,7 +100,7 @@ describe("a disposed table", { skip: hasDatabase() ? false : skipMessage() }, ()
     try {
       const held = persistGameState(roomId, game);
       await writing;
-      disposeGame(roomId);
+      disposeGame(server.rt, roomId);
       await sleep(200);
 
       assert.equal(await claimRoom(roomId), false, "the room was claimed again while its row was still being deleted");

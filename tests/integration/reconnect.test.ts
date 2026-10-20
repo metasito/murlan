@@ -802,8 +802,8 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    * scheduler luck.
    */
   test("a rejoin inside handleRoundOver's own write is not handed the previous round's game:over", async () => {
-    const { roundOverWriters } = await import("../../server/game/gamePersistence.ts");
-    const realPreview = roundOverWriters.previewRatedDeltas;
+    const { tableWriters } = await import("../../server/game/gamePersistence.ts");
+    const realPreview = tableWriters.previewRatedDeltas;
     const alice = await connectAs(server, "race_alice");
     const bob = await connectAs(server, "race_bob");
     const room = await setUpRoom([alice, bob], 2);
@@ -826,7 +826,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       const gate = new Promise<void>((resolve) => {
         releaseGate = resolve;
       });
-      roundOverWriters.previewRatedDeltas = async (seatResults, gameMode, finishedAt) => {
+      tableWriters.previewRatedDeltas = async (seatResults, gameMode, finishedAt) => {
         gateReached = true;
         await gate;
         return realPreview(seatResults, gameMode, finishedAt);
@@ -869,7 +869,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
         "the gate must not have swallowed round 2's own game:over"
       );
     } finally {
-      roundOverWriters.previewRatedDeltas = realPreview;
+      tableWriters.previewRatedDeltas = realPreview;
       await closeTable(table);
     }
   });

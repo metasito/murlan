@@ -307,10 +307,10 @@ describe("markExchangeSettled", () => {
       new URL("../../server/game/gamePersistence.ts", import.meta.url),
       "utf8"
     );
-    const body = source.slice(source.indexOf("export function broadcastGameState"));
+    const body = source.slice(source.indexOf("export function publishState"));
     const stamp = body.indexOf("markExchangeSettled(");
     const firstSend = body.indexOf("sendGameStateTo(");
-    assert.ok(stamp >= 0, "broadcastGameState no longer stamps the settle time");
+    assert.ok(stamp >= 0, "publishState no longer stamps the settle time");
     assert.ok(
       firstSend >= 0 && stamp < firstSend,
       "a seat is served before the settle is stamped, so it is told nothing"

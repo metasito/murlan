@@ -1,5 +1,4 @@
-import type { SocketServer } from "../socket/socketTypes.ts";
-import { roomStore } from "../store/roomStore.ts";
+import type { TableRuntime } from "./tableRuntime.ts";
 import { emitVoteState } from "../socket/emit.ts";
 import { logger } from "../http/logger.ts";
 import { activeGames, seatName } from "./gameRoom.ts";
@@ -18,14 +17,8 @@ import {
   clearRoomTimers,
   secondsUntil,
 } from "./gameTimers.ts";
-import {
-  broadcastGameState,
-  disposeGame,
-  roundOverWriters,
-  persistGameState,
-  safeTimer,
-} from "./gamePersistence.ts";
-import { handleRoundOver, voidAbandonedMatch, type RoundOverWriters } from "./roundOver.ts";
+import { closeTable, disposeGame, publishState, safeTimer } from "./gamePersistence.ts";
+import { handleRoundOver, voidAbandonedMatch } from "./roundOver.ts";
 import { appendReplayMove } from "./replayShape.ts";
 import {
   autoMoveForSeat as sharedAutoMove,
@@ -83,7 +76,7 @@ export function autoMoveForSeat(
  * round-over handoff, whose promise is returned.
  */
 export function commitMove(
-  io: SocketServer,
+  rt: TableRuntime,
   game: OnlineGameState,
   next: GameState,
   move: CommittedMove | null
@@ -91,10 +84,9 @@ export function commitMove(
   if (move) appendReplayMove(game, move.seat, move.combo, next);
   const prev = game.gameState;
   game.gameState = next;
-  broadcastGameState(io, game);
-  persistGameState(game.roomId, game);
-  if (next.roundOver) return handleRoundOver(io, game.roomId, game, roundOverWriters);
-  armAfterMove(io, game.roomId, prev);
+  void publishState(rt, game);
+  if (next.roundOver) return handleRoundOver(rt, game.roomId, game);
+  armAfterMove(rt, game.roomId, prev);
 }
 
 /**
@@ -103,8 +95,8 @@ export function commitMove(
  * no state at all — every rejoin and every disconnect — and a clock that ran
  * to zero while the server still held a full window reads as a frozen table.
  */
-function emitTurnDeadline(io: SocketServer, roomId: string, game: OnlineGameState) {
-  io.to(roomId).emit("game:turn_deadline", {
+function emitTurnDeadline(rt: TableRuntime, roomId: string, game: OnlineGameState) {
+  rt.out.room(roomId).emit("game:turn_deadline", {
     turnDeadlineMs: game.turnDeadlineMs,
     turnSecondsRemaining: secondsUntil(game.turnDeadlineMs),
   });
@@ -120,7 +112,7 @@ function emitTurnDeadline(io: SocketServer, roomId: string, game: OnlineGameStat
  * for has to lengthen it, or the bot plays over the ceremony announcing the
  * move before it.
  */
-export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDelayMs()) {
+export function armTurn(rt: TableRuntime, roomId: string, botDelayMs = botMoveDelayMs()) {
   const game = activeGames.get(roomId);
   if (!game) return;
 
@@ -145,8 +137,8 @@ export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDe
       : roundUnplayed(game.gameState)
         ? Math.max(botDelayMs, dealEndMs(counts, Motion.duration.reveal))
         : botDelayMs;
-    arm("bot", roomId, delayMs, () => safeTimer(io, "botTurn", roomId, () => runBotTurn(io, roomId)));
-    emitTurnDeadline(io, roomId, game);
+    arm("bot", roomId, delayMs, () => safeTimer(rt, "botTurn", roomId, () => runBotTurn(rt, roomId)));
+    emitTurnDeadline(rt, roomId, game);
     return;
   }
 
@@ -160,14 +152,14 @@ export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDe
   const openingGraceMs = openingIsPending(game.gameState) ? Reading.notice : 0;
   const timeoutMs = afkTimeoutMs() + openingGraceMs;
   game.turnDeadlineMs = now() + timeoutMs;
-  startAfkTimer(io, roomId, userId, username, timeoutMs);
-  emitTurnDeadline(io, roomId, game);
+  startAfkTimer(rt, roomId, userId, username, timeoutMs);
+  emitTurnDeadline(rt, roomId, game);
 }
 
 /** Every move re-arms here, so an exchange's ceremony holds the next seat on each path that closes it. */
-function armAfterMove(io: SocketServer, roomId: string, prev: GameState) {
+function armAfterMove(rt: TableRuntime, roomId: string, prev: GameState) {
   const phase = prev.exchangePhase;
-  armTurn(io, roomId, phase?.active ? exchangeAnnounceMs(phase.twoJokerException === true) : botMoveDelayMs());
+  armTurn(rt, roomId, phase?.active ? exchangeAnnounceMs(phase.twoJokerException === true) : botMoveDelayMs());
 }
 
 /**
@@ -179,27 +171,27 @@ function armAfterMove(io: SocketServer, roomId: string, prev: GameState) {
  * A table with no pending timer is armed unconditionally: that is what a game
  * rehydrated after a restart needs, since nothing else would ever arm one.
  */
-export function armTurnIfIdle(io: SocketServer, roomId: string) {
+export function armTurnIfIdle(rt: TableRuntime, roomId: string) {
   const game = activeGames.get(roomId);
   if (!game) return;
 
-  if (pending("bot", roomId)) return emitTurnDeadline(io, roomId, game);
+  if (pending("bot", roomId)) return emitTurnDeadline(rt, roomId, game);
   const seatUserId = game.playerMap[actingSeat(game.gameState)];
   if (seatUserId !== undefined && pending("afk", seatKey(roomId, seatUserId))) {
-    return emitTurnDeadline(io, roomId, game);
+    return emitTurnDeadline(rt, roomId, game);
   }
 
-  armTurn(io, roomId);
+  armTurn(rt, roomId);
 }
 
-function runBotTurn(io: SocketServer, roomId: string) {
+function runBotTurn(rt: TableRuntime, roomId: string) {
   const game = activeGames.get(roomId);
   if (!game || game.gameState.roundOver) return;
 
   const seat = actingSeat(game.gameState);
   if (game.playerMap[seat] !== undefined) {
     // The seat was reclaimed while the timer was pending.
-    armTurn(io, roomId);
+    armTurn(rt, roomId);
     return;
   }
 
@@ -211,28 +203,16 @@ function runBotTurn(io: SocketServer, roomId: string) {
   const auto = autoMoveForSeat(game, seat, useBot);
   if (!auto) {
     logger.error({ roomId, seat }, "Vacant seat could not act — closing table");
-    io.to(roomId).emit("game:notification", {
-      type: "abandoned",
-      ...payload("GAME_INTERRUPTED_EMPTY_SEAT"),
-    });
-    void roomStore
-      .updateRoomStatus(roomId, "finished")
-      .catch((err) =>
-        logger.warn(
-          { err, roomId, seat },
-          "Failed to set rooms.status = finished after closing a table with an unplayable empty seat"
-        )
-      );
-    disposeGame(roomId);
+    void closeTable(rt, roomId, "GAME_INTERRUPTED_EMPTY_SEAT");
     return;
   }
 
-  void commitMove(io, game, auto.next, auto.move);
+  void commitMove(rt, game, auto.next, auto.move);
 }
 
 /** What the seat was made to do, or null when nothing was played. */
 function handleAutoPass(
-  io: SocketServer,
+  rt: TableRuntime,
   roomId: string,
   userId: string
 ): "exchange" | "move" | null {
@@ -246,25 +226,25 @@ function handleAutoPass(
   const auto = autoMoveForSeat(game, seat, false);
   if (!auto) return null;
 
-  void commitMove(io, game, auto.next, auto.move);
+  void commitMove(rt, game, auto.next, auto.move);
   return wasExchange ? "exchange" : "move";
 }
 
 function startAfkTimer(
-  io: SocketServer,
+  rt: TableRuntime,
   roomId: string,
   userId: string,
   username: string,
   timeoutMs: number
 ) {
   arm("afk", seatKey(roomId, userId), timeoutMs, () => {
-    safeTimer(io, "afkAutoPass", roomId, () => {
-      const acted = handleAutoPass(io, roomId, userId);
+    safeTimer(rt, "afkAutoPass", roomId, () => {
+      const acted = handleAutoPass(rt, roomId, userId);
       // Only announce when something actually happened, not on an early
       // return that did nothing.
       if (acted) {
         const exchanged = acted === "exchange";
-        io.to(roomId).emit("game:notification", {
+        rt.out.room(roomId).emit("game:notification", {
           type: "afk",
           ...payload(exchanged ? "PLAYER_AFK_AUTO_EXCHANGE" : "PLAYER_AFK_AUTO_PASS", { username }),
         });
@@ -282,15 +262,7 @@ function startAfkTimer(
  * be removed from `playerMap` *and* marked bot-controlled together, or the table
  * deadlocks as soon as the turn comes round to it.
  */
-export async function vacateSeat(
-  io: SocketServer,
-  roomId: string,
-  userId: string,
-  // Required rather than defaulting to `roundOverWriters`: the production
-  // persist swallows its own failure, so a caller handed it by default writes
-  // nothing a test can see.
-  writers: RoundOverWriters
-) {
+export async function vacateSeat(rt: TableRuntime, roomId: string, userId: string) {
   const game = activeGames.get(roomId);
   if (!game) return;
 
@@ -310,37 +282,27 @@ export async function vacateSeat(
     // This must NOT be `game:player_left`: that event drives the client's
     // "Match interrupted" teardown, which would eject everyone still sitting
     // at a table the server is about to restart.
-    io.to(roomId).emit("game:seat_bot_takeover", {
+    rt.out.room(roomId).emit("game:seat_bot_takeover", {
       userId,
       username,
       seatIndex: seat,
       ...payload("PLAYER_LEFT_BOT_TAKEOVER", { username }),
     });
-    emitVoteState(io, roomId, game);
-    if (remaining === 0) {
-      await roomStore
-        .updateRoomStatus(roomId, "finished")
-        .catch((err) =>
-          logger.warn(
-            { err, roomId, userId, seat },
-            "Failed to set rooms.status = finished after the last player left between rounds"
-          )
-        );
-      disposeGame(roomId);
-      return;
-    }
+    emitVoteState(rt.out.room(roomId), game);
+    // `seat_bot_takeover` above already told the table.
+    if (remaining === 0) return closeTable(rt, roomId, null);
     // The same write the mid-round tail makes. Nothing above this branch records an abandonment
     // a round there is none of, but `releasedSeats` and `vacatedSeats` were both
     // written, and a seat vacated between rounds is as reclaimable as one vacated
     // during one (docs/GAME-RULES.md § Decisions).
-    writers.persistGameState(roomId, game);
+    void rt.writers.persistGameState(roomId, game);
     return;
   }
 
   if (remaining <= 1) {
     // Genuinely unplayable: no live player left to continue against.
-    io.to(roomId).emit("game:player_left", { userId, username, seatIndex: seat });
-    io.to(roomId).emit("game:notification", {
+    rt.out.room(roomId).emit("game:player_left", { userId, username, seatIndex: seat });
+    rt.out.room(roomId).emit("game:notification", {
       type: "abandoned",
       ...payload("PLAYER_LEFT_ABANDONED", { username }),
     });
@@ -351,8 +313,8 @@ export async function vacateSeat(
       // included (docs/GAME-RULES.md § Decisions). A conceded round's forced placements
       // are not a genuine finish, so scoring them as the match's own first
       // round would defeat the point of the rule.
-      await voidAbandonedMatch(io, roomId, game, writers);
-      disposeGame(roomId);
+      await voidAbandonedMatch(rt, roomId, game);
+      disposeGame(rt, roomId);
       return;
     }
 
@@ -366,8 +328,8 @@ export async function vacateSeat(
     game.gameState = concedeRound(game.gameState, survivorSeat);
     // Sets rooms.status = "finished" and writes the row itself; the write is
     // awaited so the disposal below deletes a row that already exists.
-    await handleRoundOver(io, roomId, game, writers);
-    disposeGame(roomId);
+    await handleRoundOver(rt, roomId, game);
+    disposeGame(rt, roomId);
     return;
   }
 
@@ -375,14 +337,13 @@ export async function vacateSeat(
   // playing. This must NOT be `game:player_left`: that event drives the
   // client's "Match interrupted" teardown, which would eject every
   // remaining human from a game the server is still keeping alive.
-  io.to(roomId).emit("game:seat_bot_takeover", {
+  rt.out.room(roomId).emit("game:seat_bot_takeover", {
     userId,
     username,
     seatIndex: seat,
     ...payload("PLAYER_LEFT_BOT_TAKEOVER", { username }),
   });
 
-  broadcastGameState(io, game);
-  writers.persistGameState(roomId, game);
-  armTurn(io, roomId);
+  void publishState(rt, game);
+  armTurn(rt, roomId);
 }

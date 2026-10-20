@@ -1,10 +1,10 @@
-import type { SocketServer } from "./socketTypes.ts";
+import type { Emitter } from "../game/tableRuntime.ts";
 import { voterCount, voteStateOf, type OnlineGameState } from "../game/gameRoom.ts";
 import { scoresByEngineId } from "../game/roundOver.ts";
 
 /** The framing of the round now running: what it is worth and where it stands. */
-export function emitMatchState(io: SocketServer, room: string, game: OnlineGameState) {
-  io.to(room).emit("game:match_state", {
+export function emitMatchState(to: Emitter, game: OnlineGameState) {
+  to.emit("game:match_state", {
     target: game.matchTarget,
     length: game.matchLength,
     roundsPlayed: game.roundsPlayed,
@@ -18,8 +18,8 @@ export function emitMatchState(io: SocketServer, room: string, game: OnlineGameS
  * `total` is the seated-seat count, which is what every gate on this vote
  * compares against: a bot, and a seat whose player left, hold no vote.
  */
-export function emitVoteState(io: SocketServer, room: string, game: OnlineGameState) {
-  io.to(room).emit("game:vote_state", voteStateOf(game));
+export function emitVoteState(to: Emitter, game: OnlineGameState) {
+  to.emit("game:vote_state", voteStateOf(game));
 }
 
 /**
@@ -27,8 +27,8 @@ export function emitVoteState(io: SocketServer, room: string, game: OnlineGameSt
  * same unanimity-among-seated-humans shape as `emitVoteState`, kept apart
  * because it answers a different question (docs/GAME-RULES.md § Decisions).
  */
-export function emitEndMatchVoteState(io: SocketServer, room: string, game: OnlineGameState) {
-  io.to(room).emit("game:end_match_vote_state", {
+export function emitEndMatchVoteState(to: Emitter, game: OnlineGameState) {
+  to.emit("game:end_match_vote_state", {
     votes: Array.from(game.endMatchVotes),
     total: voterCount(game),
   });

@@ -11,7 +11,6 @@ import {
   releaseRoom,
   releaseRoomAfter,
   reopenOwnership,
-  setRoomLostHandler,
 } from "../../server/game/gameOwnership.ts";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -34,7 +33,7 @@ test("a lock query that throws once does not give the room up", async (t) => {
     return { rows: [{ locked: true }] };
   });
   const lost: string[] = [];
-  setRoomLostHandler((roomId) => lost.push(roomId));
+  reopenOwnership({ onRoomLost: (roomId) => lost.push(roomId) });
   t.after(() => closeOwnership());
 
   assert.equal(await claimRoom("reclaim-room"), true);
@@ -58,7 +57,7 @@ test("a release while the room's delete is pending does not unlock it early", as
     if (/pg_try_advisory_lock/.test(sql)) return { rows: [{ locked: true }] };
     return { rows: [] };
   });
-  reopenOwnership();
+  reopenOwnership({ onRoomLost: () => {} });
   t.after(() => closeOwnership());
 
   assert.equal(await claimRoom("dying-room"), true);
@@ -83,7 +82,7 @@ test("an earlier pending release does not unlock under a later one", async (t) =
     if (/pg_try_advisory_lock/.test(sql)) return { rows: [{ locked: true }] };
     return { rows: [] };
   });
-  reopenOwnership();
+  reopenOwnership({ onRoomLost: () => {} });
   t.after(() => closeOwnership());
 
   assert.equal(await claimRoom("twice-dying-room"), true);

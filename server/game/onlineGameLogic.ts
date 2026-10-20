@@ -85,7 +85,7 @@ function ceremonyRunning(phase: VisibleExchangePhaseInput, now: number): boolean
 /**
  * Stamps `settledAt`, on the state itself so it rides the persisted phase.
  *
- * `broadcastGameState` is the caller rather than each of the three places a
+ * `publishState` is the caller rather than each of the three places a
  * phase closes: a settle nobody broadcasts is not one any seat can be shown,
  * and one funnel cannot be half-updated the way three call sites can. That
  * wiring is pinned by `tests/server/exchangeVisibility.test.ts`.

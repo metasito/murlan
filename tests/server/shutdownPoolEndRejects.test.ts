@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { Client } from "pg";
 import type { Server as HttpServer } from "node:http";
 import type { Pool } from "pg";
-import type { SocketServer } from "../../server/socket/socketTypes.ts";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { shutdown } from "../../server/http/shutdown.ts";
 import { claimRoom, ownsRoom } from "../../server/game/gameOwnership.ts";
 
@@ -21,7 +21,8 @@ test("a pool close that rejects at once still hands the rooms back and exits 0",
   } as unknown as Pool;
   const exits: number[] = [];
   await shutdown("SIGTERM", {
-    io: { close: async () => {} } as unknown as SocketServer,
+    io: { close: async () => {} },
+    tables: recordingRuntime().rt,
     server: { listening: false } as unknown as HttpServer,
     pool,
     exit: (code) => exits.push(code),

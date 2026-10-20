@@ -169,7 +169,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     );
     const { redealExactly } = await import("../helpers/liveGame.ts");
     assert.ok(
-      redealExactly(server.io, room.roomId, [deck.slice(0, 14), deck.slice(14, 28)], {
+      redealExactly(server.rt, room.roomId, [deck.slice(0, 14), deck.slice(14, 28)], {
         opening: { kind: "exchange", winnerSeat: 0, loserSeat: 1 },
       })
     );
@@ -846,7 +846,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     const { disposeGame } = await import("../../server/game/gamePersistence.ts");
     const { db } = await import("../../server/store/db.ts");
     const { activeGames: activeGamesTable } = await import("../../shared/schema.ts");
-    disposeGame(room.roomId);
+    disposeGame(server.rt, room.roomId);
     for (let tries = 0; ; tries++) {
       const rows = await db.select().from(activeGamesTable).where(eq(activeGamesTable.roomId, room.roomId));
       if (rows.length === 0) break;

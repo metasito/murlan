@@ -2,8 +2,8 @@
 // router, and the asking socket's `onEvent` is the one place it is told.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import type { SocketServer, GameSocket } from "../../server/socket/socketTypes.ts";
-import { installTableHandlers } from "../../server/game/tableHandlers.ts";
+import type { GameSocket } from "../../server/socket/socketTypes.ts";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { activeGames, socketRoomMap } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { registerGameplayHandlers } from "../../server/socket/socketGameplay.ts";
@@ -12,13 +12,6 @@ import { payload } from "../../server/shared/payload.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 
 const ROOM = "routed-refusal-room";
-
-function stubIo() {
-  const emitted: string[] = [];
-  const target = { emit: (event: string) => emitted.push(event) };
-  const io = { to: () => target, on: () => {} } as unknown as SocketServer;
-  return { io, emitted };
-}
 
 function fakeSocket() {
   const handlers = new Map<string, (...args: unknown[]) => void>();
@@ -35,7 +28,6 @@ function fakeSocket() {
 }
 
 before(() => {
-  installTableHandlers({ on: () => {} } as unknown as SocketServer);
   __resetRateLimits();
 });
 
@@ -46,7 +38,7 @@ after(() => {
 });
 
 test("a pass the owner refuses during the exchange reaches the asking socket once, from onEvent", async () => {
-  const { io, emitted: ownerEmits } = stubIo();
+  const { rt, sent: ownerEmits } = recordingRuntime();
   activeGames.set(
     ROOM,
     onlineTable({
@@ -72,9 +64,9 @@ test("a pass the owner refuses during the exchange reaches the asking socket onc
   );
   const { socket, emitted, send } = fakeSocket();
   socketRoomMap.set("s1", ROOM);
-  registerGameplayHandlers({ io, socket, userId: "u1" });
+  registerGameplayHandlers({ io: rt.transport, rt, socket, userId: "u1" });
 
   assert.deepEqual(await send("game:pass"), { ok: false, code: "EXCHANGE_PENDING" });
   assert.deepEqual(emitted, [{ event: "game:error", payload: payload("EXCHANGE_PENDING") }]);
-  assert.deepEqual(ownerEmits.filter((e) => e.endsWith(":error")), [], "the owner says nothing itself");
+  assert.deepEqual(ownerEmits.filter((e) => e.event.endsWith(":error")), [], "the owner says nothing itself");
 });

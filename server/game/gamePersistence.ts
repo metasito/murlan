@@ -1,4 +1,3 @@
-import type { SocketServer } from "../socket/socketTypes.ts";
 import { lt } from "drizzle-orm";
 import { roomStore } from "../store/roomStore.ts";
 import { logger } from "../http/logger.ts";
@@ -9,14 +8,13 @@ import { previewRatedDeltas, recordRatedResult } from "./ratings.ts";
 import { saveReplay } from "./replays.ts";
 import { pruneAbandonedGames, sweepRetention } from "./retention.ts";
 import { rooms as roomsTable } from "../../shared/schema.ts";
-import { activeGames, userRoom } from "./gameRoom.ts";
+import { activeGames } from "./gameRoom.ts";
 import { payload } from "../shared/payload.ts";
 import { now } from "../http/clock.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
-import type { RoundOverWriters } from "./roundOver.ts";
+import type { TableRuntime, TableWriters } from "./tableRuntime.ts";
 import { releaseRoom, releaseRoomAfter, unclaimedRooms } from "./gameOwnership.ts";
 import {
-  stateAckTimeoutMs,
   sweepIntervalMs,
   clearRoomTimers,
   clearRoomDisconnectTimers,
@@ -88,7 +86,7 @@ export function sanitizeStateForPlayer(
 }
 
 /** Drops every in-memory trace of a room. */
-export function disposeGame(roomId: string, deleteRow = true) {
+export function disposeGame(rt: TableRuntime, roomId: string, deleteRow = true) {
   const game = activeGames.get(roomId);
   if (game) clearRoomDisconnectTimers(game);
   clearRoomTimers(roomId);
@@ -96,14 +94,14 @@ export function disposeGame(roomId: string, deleteRow = true) {
   activeGames.delete(roomId);
   // Handed back only once the row is gone: a claim landing between the two
   // restores the table this has just ended.
-  if (deleteRow) void releaseRoomAfter(roomId, discardPersistedGame(roomId));
+  if (deleteRow) void releaseRoomAfter(roomId, discardPersistedGame(rt, roomId));
   else void releaseRoom(roomId);
 }
 
 /** Deletes the room's `active_games` row after every earlier write to it. Never rejects. */
-export function discardPersistedGame(roomId: string): Promise<unknown> {
+export function discardPersistedGame(rt: TableRuntime, roomId: string): Promise<unknown> {
   return inRoomOrder(roomId, () =>
-    activeGameStore
+    rt.store.games
       .remove(roomId)
       .catch((err: unknown) => logger.error({ err, roomId }, "Failed to delete persisted game"))
   );
@@ -179,41 +177,56 @@ export function persistGameState(roomId: string, game: OnlineGameState): Promise
  * the round may have moved on, and re-sending the older state would rewind the
  * player's table rather than repair it.
  */
-export function sendGameStateTo(io: SocketServer, uid: string, game: OnlineGameState) {
-  const send = (retrying: boolean) => {
+export function sendGameStateTo(rt: TableRuntime, uid: string, game: OnlineGameState) {
+  rt.out.state(uid, (retrying) => {
     // A retry for a table that has since ended has nothing to say. `game` is
     // still in scope, but it holds the state as it was, which is exactly what
     // must not go out.
     const live = retrying ? activeGames.get(game.roomId) : game;
-    if (!live) return;
-    io.to(userRoom(uid))
-      .timeout(stateAckTimeoutMs())
-      .emit(
-        "game:state",
-        sanitizeStateForPlayer(
-          live.gameState,
-          uid,
-          live.playerMap,
-          live.turnDeadlineMs,
-          live.vacatedSeats
-        ),
-        (err: unknown) => {
-          if (err && !retrying) send(true);
-        }
-      );
-  };
-  send(false);
+    if (!live) return null;
+    return sanitizeStateForPlayer(
+      live.gameState,
+      uid,
+      live.playerMap,
+      live.turnDeadlineMs,
+      live.vacatedSeats
+    );
+  });
 }
 
-export function broadcastGameState(io: SocketServer, game: OnlineGameState) {
+/**
+ * Serves every viewer, then persists. The one way a changed table is published;
+ * the persist promise is returned so a disposer can order itself after it.
+ */
+export function publishState(rt: TableRuntime, game: OnlineGameState): Promise<unknown> {
   // Before the first seat is served, so the broadcast that closes an exchange
   // is inside its own ceremony window rather than one tick outside it.
   markExchangeSettled(game.gameState.exchangePhase, now());
-  Object.values(game.playerMap).forEach((uid) => sendGameStateTo(io, uid, game));
+  Object.values(game.playerMap).forEach((uid) => sendGameStateTo(rt, uid, game));
   // Spectators go through the same sanitiser. seatOfUser returns null for
   // a userId that holds no seat, and every hand is blanked on that basis, so a
   // spectator cannot be sent a card without the seated path breaking first.
-  game.spectators.forEach((uid) => sendGameStateTo(io, uid, game));
+  game.spectators.forEach((uid) => sendGameStateTo(rt, uid, game));
+  return rt.writers.persistGameState(game.roomId, game);
+}
+
+export type CloseNotice = "GAME_INTERRUPTED_SERVER_ERROR" | "GAME_INTERRUPTED_EMPTY_SEAT";
+
+/**
+ * The one "close the table": marked finished, announced, disposed. Marked
+ * first because a room with no game in memory is judged by its row, and one
+ * still `in_progress` there cannot be dealt again. Announced in the same tick
+ * as the disposal, so no client hears "abandoned" from a table still in memory.
+ */
+export async function closeTable(rt: TableRuntime, roomId: string, notice: CloseNotice | null): Promise<void> {
+  const closing = activeGames.get(roomId);
+  await rt.writers
+    .updateRoomStatus(roomId, "finished")
+    .catch((err: unknown) => logger.warn({ err, roomId, notice }, "Failed to set rooms.status = finished closing a table"));
+  // A table dealt into the room during the write is not the one being closed.
+  if (activeGames.get(roomId) !== closing) return;
+  if (notice) rt.out.room(roomId).emit("game:notification", { type: "abandoned", ...payload(notice) });
+  disposeGame(rt, roomId);
 }
 
 /**
@@ -227,29 +240,12 @@ export function broadcastGameState(io: SocketServer, game: OnlineGameState) {
  * stops on a turn that cannot be taken, and the client's clock has no `onExpire`
  * to notice. Closing the table loudly is the recoverable outcome.
  */
-export function safeTimer(
-  io: SocketServer | null,
-  label: string,
-  roomId: string,
-  fn: () => void
-): void {
+export function safeTimer(rt: TableRuntime, label: string, roomId: string, fn: () => void): void {
   try {
     fn();
   } catch (err) {
     logger.error({ err, roomId, label }, "Timer callback threw — closing table");
-    io?.to(roomId).emit("game:notification", {
-      type: "abandoned",
-      ...payload("GAME_INTERRUPTED_SERVER_ERROR"),
-    });
-    void roomStore
-      .updateRoomStatus(roomId, "finished")
-      .catch((statusErr) =>
-        logger.warn(
-          { err: statusErr, roomId, label },
-          "Failed to set rooms.status = finished after a timer callback threw"
-        )
-      );
-    disposeGame(roomId);
+    void closeTable(rt, roomId, "GAME_INTERRUPTED_SERVER_ERROR");
   }
 }
 
@@ -285,22 +281,17 @@ let sweeper: ReturnType<typeof setInterval> | null = null;
  * "Nobody" is asked of the cluster, not of `userSocketMap`: the instance that
  * owns a table need not be the one holding its players' sockets, so a local
  * read sees a table full of people as empty and deletes the game out from under
- * their results screen. `fetchSockets()` answers from the local rooms when
- * there is only one instance, so this costs a round trip only when there is
- * someone to ask.
+ * their results screen. A cluster that did not answer disposes nothing.
  */
-async function sweepFinishedTables(io: SocketServer): Promise<void> {
+export async function sweepFinishedTables(rt: TableRuntime): Promise<void> {
   const finished = [...activeGames.entries()].filter(([, game]) => game.gameState.roundOver);
   if (finished.length === 0) return;
-  const connected = new Set(
-    (await io.fetchSockets())
-      .map((s) => s.data?.userId)
-      .filter((id): id is string => typeof id === "string")
-  );
+  const connected = await rt.presence.connectedUserIds();
+  if (!connected) return;
   for (const [roomId, game] of finished) {
-    safeTimer(io, "sweepFinishedTable", roomId, () => {
+    safeTimer(rt, "sweepFinishedTable", roomId, () => {
       if (!Object.values(game.playerMap).some((uid) => connected.has(uid))) {
-        disposeGame(roomId);
+        disposeGame(rt, roomId);
       }
     });
   }
@@ -310,15 +301,15 @@ async function sweepFinishedTables(io: SocketServer): Promise<void> {
  * Long-running server hygiene: drop finished tables nobody is connected to and
  * forget public rooms that are no longer joinable.
  */
-export function startSweeper(io: SocketServer, resumeOrphans: (io: SocketServer) => Promise<void>) {
+export function startSweeper(rt: TableRuntime, resumeOrphans: (rt: TableRuntime) => Promise<void>) {
   if (sweeper) return;
   sweeper = setInterval(() => {
     try {
-      void resumeOrphans(io).catch((err: unknown) =>
+      void resumeOrphans(rt).catch((err: unknown) =>
         logger.error({ err }, "Resuming ownerless tables failed")
       );
 
-      void sweepFinishedTables(io).catch((err: unknown) =>
+      void sweepFinishedTables(rt).catch((err: unknown) =>
         logger.error({ err }, "Sweeping finished tables failed")
       );
 
@@ -351,7 +342,7 @@ export function startSweeper(io: SocketServer, resumeOrphans: (io: SocketServer)
   (sweeper as unknown as { unref?: () => void }).unref?.();
 }
 
-export const roundOverWriters: RoundOverWriters = {
+export const tableWriters: TableWriters = {
   updateRoomStatus: (roomId, status) => roomStore.updateRoomStatus(roomId, status),
   persistGameState,
   recordGameResult,

@@ -60,14 +60,10 @@ let closed = false;
 
 /**
  * What to do with a room this process was holding and can no longer prove it
- * owns. Registered by the module that can dispose of a game — this one must not
- * import it, or the lock would depend on the table it is protecting.
+ * owns. Handed in by the table runtime — this module must not import disposal,
+ * or the lock would depend on the table it is protecting.
  */
 let onRoomLost: (roomId: string) => void = () => {};
-
-export function setRoomLostHandler(fn: (roomId: string) => void): void {
-  onRoomLost = fn;
-}
 
 function drop(dead: Client): void {
   if (client !== dead) return;
@@ -267,9 +263,10 @@ export async function closeOwnership(): Promise<void> {
   await c?.end().catch((err: unknown) => logger.warn({ err }, "Ownership client close failed"));
 }
 
-/** Test seam: undoes `closeOwnership` so one process can boot a second app. */
-export function reopenOwnership(): void {
+/** Opens ownership for a table runtime; also what lets one process boot a second app after `closeOwnership`. */
+export function reopenOwnership(handlers: { onRoomLost: (roomId: string) => void }): void {
   closed = false;
+  onRoomLost = handlers.onRoomLost;
 }
 
 /**

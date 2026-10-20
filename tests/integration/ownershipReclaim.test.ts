@@ -10,7 +10,7 @@ import {
   closeOwnership,
   ownershipKey,
   ownsRoom,
-  setRoomLostHandler,
+  reopenOwnership,
 } from "../../server/game/gameOwnership.ts";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -60,7 +60,7 @@ test("rooms outlast a stretch of refused connections and are locked again", {
     return rowCount === 1;
   };
   const lost: string[] = [];
-  setRoomLostHandler((roomId) => lost.push(roomId));
+  reopenOwnership({ onRoomLost: (roomId) => lost.push(roomId) });
 
   assert.equal(await claimRoom(room), true);
   assert.equal(await lockHeld(), true, "the lock query does not see the claim, so it proves nothing below");

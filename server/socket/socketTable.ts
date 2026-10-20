@@ -5,19 +5,13 @@
 // disconnect path alike, so they live apart from all three: leaving them in
 // socket.ts while socket.ts imports the room family would be a cycle.
 import { now } from "../http/clock.ts";
-import type { SocketServer } from "./socketTypes.ts";
+import type { TableRuntime } from "../game/tableRuntime.ts";
 import { friendStore } from "../store/friendStore.ts";
 import { roomStore } from "../store/roomStore.ts";
 import { logger } from "../http/logger.ts";
-import {
-  isShuttingDown,
-  seatName,
-  userRoom,
-} from "../game/gameRoom.ts";
-import { isUserAtTable } from "./socketRegistry.ts";
+import { isShuttingDown, seatName } from "../game/gameRoom.ts";
 import { seatOfUser } from "../game/onlineGameLogic.ts";
 import type { OnlineGameState } from "../game/gameRoom.ts";
-import { applyOrForward } from "../game/tableRouter.ts";
 import {
   lobbyGraceMs,
   arm,
@@ -131,7 +125,7 @@ export function teamsSizeRefusal(gameMode: GameMode, playerCount: number): Refus
  * not the reply.
  */
 export async function emitRoomStateTo(
-  io: SocketServer,
+  rt: TableRuntime,
   userId: string,
   roomId: string,
   game: OnlineGameState
@@ -152,7 +146,7 @@ export async function emitRoomStateTo(
     room ?? roomOf(game),
     players.length > 0 ? players : seatedHumansOf(game)
   );
-  io.to(userRoom(userId)).emit("room:state", payload);
+  rt.out.user(userId).emit("room:state", payload);
 }
 
 /**
@@ -166,7 +160,7 @@ export async function emitRoomStateTo(
  * still holds one, the rejoin path may not.
  */
 export async function announceRejoin(
-  io: SocketServer,
+  rt: TableRuntime,
   userId: string,
   roomId: string,
   game: OnlineGameState
@@ -175,46 +169,46 @@ export async function announceRejoin(
   const username = seatName(game, seatIndex);
   // Caught, not propagated: the handler's blanket catch would turn a failed
   // roster refresh into a SERVER_ERROR that costs a live game.
-  await emitRoomStateTo(io, userId, roomId, game).catch((err: unknown) =>
+  await emitRoomStateTo(rt, userId, roomId, game).catch((err: unknown) =>
     logger.warn({ err, roomId, userId }, "emitRoomStateTo failed")
   );
-  sendGameStateTo(io, userId, game);
+  sendGameStateTo(rt, userId, game);
   // The client reads this as the framing of a round that has just begun and
   // zeroes the match verdict along with it, so it is only right while one is
   // running — at the results screen `game:round_over` owns that.
   if (!game.gameState.roundOver) {
-    emitMatchState(io, userRoom(userId), game);
+    emitMatchState(rt.out.user(userId), game);
   } else {
     // A rejoin at the results screen: everyone still in the room got
     // `game:round_over` when the round ended, but this socket was not one of them.
     // Re-sent to this account only, so a client that never left is not told
     // its own round twice.
-    if (game.lastRoundOverPayload) io.to(userRoom(userId)).emit("game:round_over", game.lastRoundOverPayload);
+    if (game.lastRoundOverPayload) rt.out.user(userId).emit("game:round_over", game.lastRoundOverPayload);
     // Even without one: a restart restores no votes, and the client keeps its
     // tally across a finished table re-sent.
-    emitVoteState(io, userRoom(userId), game);
+    emitVoteState(rt.out.user(userId), game);
   }
-  emitEndMatchVoteState(io, userRoom(userId), game);
+  emitEndMatchVoteState(rt.out.user(userId), game);
   for (const other of Object.values(game.playerMap)) {
     const deadline = timerDeadline("disconnect", other);
     if (other === userId || deadline === undefined) continue;
     const otherSeat = seatOfUser(game.playerMap, other);
     const otherName = seatName(game, otherSeat);
     const seconds = Math.max(1, Math.ceil((deadline - now()) / 1000));
-    io.to(userRoom(userId)).emit("game:player_disconnected", {
+    rt.out.user(userId).emit("game:player_disconnected", {
       userId: other,
       username: otherName,
       seatIndex: otherSeat,
       ...payload("PLAYER_DISCONNECTED_GRACE", { username: otherName, seconds }),
     });
   }
-  io.to(roomId).emit("game:player_reconnected", {
+  rt.out.room(roomId).emit("game:player_reconnected", {
     userId,
     username,
     seatIndex,
     ...payload("PLAYER_RECONNECTED", { username }),
   });
-  armTurnIfIdle(io, roomId);
+  armTurnIfIdle(rt, roomId);
 }
 
 /**
@@ -225,7 +219,7 @@ export async function announceRejoin(
  * put is what makes `room:rejoin` work without a memory of who dropped.
  */
 export function armLobbyGrace(
-  io: SocketServer,
+  rt: TableRuntime,
   roomId: string,
   userId: string
 ): Promise<void> | void {
@@ -233,7 +227,7 @@ export function armLobbyGrace(
   // full of players who are already gone, and the next process has no memory
   // of the timer that was going to clear it.
   if (isShuttingDown()) {
-    return handleSeatRelease(io, roomId, userId, { source: "disconnect" });
+    return handleSeatRelease(rt, roomId, userId, { source: "disconnect" });
   }
   arm("lobbyGrace", seatKey(roomId, userId), lobbyGraceMs(), () => {
     void (async () => {
@@ -241,8 +235,8 @@ export function armLobbyGrace(
         // Back in *this* room, not merely back online: a player who reconnects
         // straight into a different lobby is no longer holding this seat, and
         // asking only whether they have a socket would leave it held.
-        if (await isUserAtTable(userId, roomId)) return;
-        await handleSeatRelease(io, roomId, userId, { source: "disconnect" });
+        if (await rt.presence.isAtTable(userId, roomId)) return;
+        await handleSeatRelease(rt, roomId, userId, { source: "disconnect" });
         logger.info({ userId, roomId }, "Lobby grace expired — seat released");
       } catch (err) {
         logger.error({ err, userId, roomId }, "Lobby grace handler failed");
@@ -252,18 +246,18 @@ export function armLobbyGrace(
 }
 
 /**
- * An invitee is not in the room, so `io.to(roomId)` never reaches them; the
+ * An invitee is not in the room, so `rt.out.room(roomId)` never reaches them; the
  * account's own room is the only channel that does. The room's code rides along
  * because a client may be holding a second invite it must not act on.
  */
 function tellInvitees<E extends "friend:invite_retired" | "friend:room_joinable">(
-  io: SocketServer,
+  rt: TableRuntime,
   inviteeIds: string[],
   event: E,
   ...payload: Parameters<ServerToClientEvents[E]>
 ): void {
   for (const inviteeId of inviteeIds) {
-    io.to(userRoom(inviteeId)).emit(event, ...payload);
+    rt.out.user(inviteeId).emit(event, ...payload);
   }
 }
 
@@ -274,7 +268,7 @@ function tellInvitees<E extends "friend:invite_retired" | "friend:room_joinable"
  * room, must change on the same event that changed it, not on whatever
  * broadcast happens to come along next.
  */
-export async function announceRoomChanged(io: SocketServer, roomId: string): Promise<void> {
+export async function announceRoomChanged(rt: TableRuntime, roomId: string): Promise<void> {
   const [room, players] = await Promise.all([
     roomStore.getRoomById(roomId).catch((err: unknown) => {
       logger.warn({ err, roomId }, "Failed to read the room while announcing a room change");
@@ -286,12 +280,12 @@ export async function announceRoomChanged(io: SocketServer, roomId: string): Pro
     }),
   ]);
   if (!room || !players) return;
-  io.to(roomId).emit("room:state", await roomStatePayload(room, players));
+  rt.out.room(roomId).emit("room:state", await roomStatePayload(room, players));
 }
 
 /** Retires every invite pointing at a room that can no longer be joined. */
 export async function retireRoomInvites(
-  io: SocketServer,
+  rt: TableRuntime,
   roomId: string,
   roomCode: string
 ): Promise<void> {
@@ -299,8 +293,8 @@ export async function retireRoomInvites(
     logger.warn({ err, roomId }, "Failed to clear the invites of a room that closed");
     return [] as string[];
   });
-  tellInvitees(io, invitees, "friend:invite_retired", { roomCode });
-  if (invitees.length > 0) await announceRoomChanged(io, roomId);
+  tellInvitees(rt, invitees, "friend:invite_retired", { roomCode });
+  if (invitees.length > 0) await announceRoomChanged(rt, roomId);
 }
 
 /**
@@ -309,7 +303,7 @@ export async function retireRoomInvites(
  * not return when they left.
  */
 async function announceRoomJoinable(
-  io: SocketServer,
+  rt: TableRuntime,
   roomId: string,
   roomCode: string,
   joinable: boolean
@@ -318,7 +312,7 @@ async function announceRoomJoinable(
     logger.warn({ err, roomId, joinable }, "Failed to read who holds an invite to a room");
     return [] as string[];
   });
-  tellInvitees(io, invitees, "friend:room_joinable", { roomCode, joinable });
+  tellInvitees(rt, invitees, "friend:room_joinable", { roomCode, joinable });
 }
 
 /**
@@ -327,7 +321,7 @@ async function announceRoomJoinable(
  * by code — the same public lobby a host can still invite friends into.
  */
 export async function announceIfFilled(
-  io: SocketServer,
+  rt: TableRuntime,
   room: {
     id: string;
     code: string;
@@ -338,8 +332,8 @@ export async function announceIfFilled(
   seated: number
 ): Promise<void> {
   if (seated < room.maxPlayers) return;
-  await announceRoomJoinable(io, room.id, room.code, false);
-  scheduleAutoStart(io, room);
+  await announceRoomJoinable(rt, room.id, room.code, false);
+  scheduleAutoStart(rt, room);
 }
 
 /**
@@ -355,7 +349,7 @@ export async function announceIfFilled(
  * start a match the table no longer has.
  */
 function scheduleAutoStart(
-  io: SocketServer,
+  rt: TableRuntime,
   room: { id: string; hostUserId: string | null; autoStart: boolean }
 ): void {
   if (!room.autoStart || pending("autoStart", room.id)) return;
@@ -367,7 +361,7 @@ function scheduleAutoStart(
         if (!current || current.status !== "waiting" || !current.hostUserId) return;
         const players = await roomStore.getRoomPlayers(room.id);
         if (players.length < current.maxPlayers) return;
-        const outcome = await applyOrForward(io, {
+        const outcome = await rt.route({
           kind: "startMatch",
           roomId: room.id,
           userId: current.hostUserId,
@@ -393,7 +387,7 @@ function scheduleAutoStart(
  * call is `.catch`-guarded: an unguarded throw there strands the room.
  */
 export async function handleSeatRelease(
-  io: SocketServer,
+  rt: TableRuntime,
   roomId: string,
   userId: string,
   opts: {
@@ -417,24 +411,24 @@ export async function handleSeatRelease(
   // held seat must still go to a bot; a room with no game answers the vacate
   // with a refusal and nothing else.
   if (!released) {
-    await applyOrForward(io, { kind: "vacate", roomId, userId });
+    await rt.route({ kind: "vacate", roomId, userId });
     return;
   }
   const { room, remaining, emptied } = released;
 
   if (emptied) {
-    await retireRoomInvites(io, roomId, room.code);
+    await retireRoomInvites(rt, roomId, room.code);
   } else if (room.status === "waiting") {
-    io.to(roomId).emit("room:state", await roomStatePayload(room, remaining));
+    rt.out.room(roomId).emit("room:state", await roomStatePayload(room, remaining));
     // Only the edge, matching the filling side: a 4-seat lobby going 2 → 1 was
     // joinable before and after, and its invitees have nothing to re-ask.
     if (remaining.length === room.maxPlayers - 1) {
-      await announceRoomJoinable(io, roomId, room.code, true);
+      await announceRoomJoinable(rt, roomId, room.code, true);
     }
   } else {
     // Routed rather than read out of this process's own map: the seat is live
     // in whichever instance holds the game, and reading `activeGames` here
     // found nothing whenever the player's socket had landed anywhere else.
-    await applyOrForward(io, { kind: "vacate", roomId, userId });
+    await rt.route({ kind: "vacate", roomId, userId });
   }
 }

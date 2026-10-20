@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { blankCommentsAndStrings, sourcesUnder } from "../helpers/sourceScan.ts";
 import { stopSpectatingEverywhere } from "../../server/socket/seating.ts";
-import type { SocketServer } from "../../server/socket/socketTypes.ts";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -17,14 +17,15 @@ test("a socket takes a seat only through seatSocket", () => {
 
 test("stopping a player spectating everywhere waits for every other instance", async () => {
   let ack: (() => void) | undefined;
-  const io = {
-    serverSideEmit: (_event: string, _userId: string, reply: () => void) => {
-      ack = reply;
+  const { rt } = recordingRuntime({
+    transport: {
+      serverSideEmit: (_event: string, _userId: string, reply: () => void) => {
+        ack = reply;
+      },
     },
-    sockets: { adapter: { rooms: new Map() }, sockets: new Map() },
-  } as unknown as SocketServer;
+  });
   let settled = false;
-  const stopped = stopSpectatingEverywhere(io, "u1").then(() => (settled = true));
+  const stopped = stopSpectatingEverywhere(rt, "u1").then(() => (settled = true));
   await new Promise((r) => setImmediate(r));
   assert.equal(settled, false);
   ack?.();

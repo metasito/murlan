@@ -12,16 +12,21 @@
 // observation of it — a socket round trip would put timing between the test and
 // the thing being asserted, and a race that reproduces on a timer is a race
 // that stops reproducing on a fast day.
-import { test, before, after, describe } from "node:test";
+import { test, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
-import type { Server as SocketServer } from "socket.io";
-import { applyOrForward, setTableHandlers } from "../../server/game/tableRouter.ts";
+import { applyOrForward } from "../../server/game/tableRouter.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
+import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { closeOwnership, ownershipKey, releaseRoom } from "../../server/game/gameOwnership.ts";
-import type { OnlineGameState } from "../../server/game/gameRoom.ts";
-import type { TableAction, TableActionDraft } from "../../server/game/tableActions.ts";
+import { toEnvelope } from "../../server/game/tableState.ts";
+import { activeGameStore } from "../../server/store/activeGameStore.ts";
+import { roomStore } from "../../server/store/roomStore.ts";
+import type { TableActionDraft } from "../../server/game/tableActions.ts";
+import { startRound } from "../../lib/game/gameEngine.ts";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
+import { onlineTable } from "../helpers/onlineTable.ts";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -29,23 +34,43 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const RESTORE_MS = 40;
 
 let restores = 0;
-let applies = 0;
+
+const table = (roomId: string) =>
+  onlineTable({
+    roomId,
+    maxPlayers: 2,
+    playerMap: { 0: "u1", 1: "u2" },
+    gameState: startRound(
+      ["u1", "u2"].map((name, i) => ({ name, type: "human" as const, id: `player_${i}` })),
+      "free_for_all"
+    ),
+  });
 
 /**
  * Every instance answers "not mine", which is the state the ticket is about: a
- * fresh process that owns nothing, with a persisted room to pick up.
+ * fresh process that owns nothing, with a persisted room to pick up. Both
+ * players are online, so a restore arms no grace and sends nothing of its own:
+ * each applied `resume` is then exactly one `game:turn_deadline`.
  */
-const io = {
-  serverSideEmit: (_event: string, _action: TableAction, cb: (e: unknown, r: unknown[]) => void) =>
-    cb(null, []),
-} as unknown as SocketServer;
-
-const play = (roomId: string, userId: string): TableActionDraft => ({
-  kind: "play",
-  roomId,
-  userId,
-  cardIds: [],
+const { rt: takeover, sent, cluster } = recordingRuntime({
+  store: {
+    games: {
+      ...activeGameStore,
+      load: async (roomId) => {
+        restores += 1;
+        // A restore is a database read; returning in the same tick would close
+        // the window this test exists to enter.
+        await sleep(RESTORE_MS);
+        return { roomId, gameState: JSON.parse(JSON.stringify(toEnvelope(table(roomId)))) };
+      },
+    },
+    rooms: { ...roomStore, getRoomById: async () => undefined as never },
+  },
 });
+cluster.online = new Set(["u1", "u2"]);
+const applies = (roomId: string) => sent.filter((e) => e.event === "game:turn_deadline" && "room" in e.to && e.to.room === roomId).length;
+
+const resume = (roomId: string, userId: string): TableActionDraft => ({ kind: "resume", roomId, userId });
 
 const start = (roomId: string, userId: string): TableActionDraft => ({
   kind: "startMatch",
@@ -54,23 +79,6 @@ const start = (roomId: string, userId: string): TableActionDraft => ({
 });
 
 describe("two actions for one room in the same tick", () => {
-  before(() => {
-    setTableHandlers(
-      async () => {
-        applies += 1;
-        return { ok: true };
-      },
-      async (roomId) => {
-        restores += 1;
-        // A restore is a database read; returning in the same tick would close
-        // the window this test exists to enter.
-        await sleep(RESTORE_MS);
-        activeGames.set(roomId, {} as OnlineGameState);
-        return "restored";
-      }
-    );
-  });
-
   after(async () => {
     await closeOwnership();
   });
@@ -81,11 +89,10 @@ describe("two actions for one room in the same tick", () => {
     async () => {
       const roomId = `takeover-${Date.now()}`;
       restores = 0;
-      applies = 0;
 
       const [a, b] = await Promise.all([
-        applyOrForward(io, play(roomId, "u1")),
-        applyOrForward(io, play(roomId, "u2")),
+        applyOrForward(takeover, resume(roomId, "u1")),
+        applyOrForward(takeover, resume(roomId, "u2")),
       ]);
 
       assert.equal(restores, 1, "the room was restored more than once");
@@ -93,8 +100,9 @@ describe("two actions for one room in the same tick", () => {
       // then finds the game in memory, rather than being refused.
       assert.equal(a.ok, true, "the first action was refused");
       assert.equal(b.ok, true, "the second action was refused");
-      assert.equal(applies, 2, "an action was dropped rather than applied");
+      assert.equal(applies(roomId), 2, "an action was dropped rather than applied");
 
+      clearRoomTimers(roomId);
       activeGames.delete(roomId);
       await releaseRoom(roomId);
     }
@@ -111,8 +119,8 @@ describe("two actions for one room in the same tick", () => {
       restores = 0;
 
       await Promise.all([
-        applyOrForward(io, start(roomId, "u1")),
-        applyOrForward(io, start(roomId, "u2")),
+        applyOrForward(takeover, start(roomId, "u1")),
+        applyOrForward(takeover, start(roomId, "u2")),
       ]);
 
       assert.equal(restores, 1, "the table was dealt more than once");
@@ -127,16 +135,17 @@ describe("two actions for one room in the same tick", () => {
     { skip: hasDatabase() ? false : skipMessage() },
     async () => {
       const roomId = `resident-${Date.now()}`;
-      activeGames.set(roomId, {} as OnlineGameState);
+      activeGames.set(roomId, table(roomId));
       restores = 0;
 
       await Promise.all([
-        applyOrForward(io, play(roomId, "u1")),
-        applyOrForward(io, play(roomId, "u2")),
+        applyOrForward(takeover, resume(roomId, "u1")),
+        applyOrForward(takeover, resume(roomId, "u2")),
       ]);
 
       assert.equal(restores, 0, "a resident room was restored over");
 
+      clearRoomTimers(roomId);
       activeGames.delete(roomId);
     }
   );
@@ -151,7 +160,7 @@ describe("two actions for one room in the same tick", () => {
       try {
         await holder.query("SELECT pg_advisory_lock($1::bigint)", [ownershipKey(roomId)]);
         restores = 0;
-        const outcome = await applyOrForward(io, play(roomId, "u1"));
+        const outcome = await applyOrForward(takeover, resume(roomId, "u1"));
         assert.equal(outcome.code, "TABLE_UNREACHABLE");
         assert.equal(restores, 0, "a room another session holds was restored here");
       } finally {
