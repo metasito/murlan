@@ -349,12 +349,19 @@ export function rethrow(state: GameState): GameState {
   const n = state.players.length;
   for (let step = 1; step < n; step++) {
     const seat = (state.lastPlayedBy + step) % n;
-    if (seat !== state.currentTurnIndex) return { ...state, lastPlayedBy: seat };
+    if (seat !== state.currentTurnIndex) {
+      return { ...state, lastPlayedBy: seat, lastMove: { seq: state.lastMove.seq + 1, kind: "play", seat } };
+    }
   }
   return state;
 }
 
-/** The seat the lamp moves to when a capture asks for the swing. */
-export function nextTurn(state: GameState): number {
-  return (state.currentTurnIndex + 1) % state.players.length;
+/** The lamp moved on to the next seat, as though the seat on move had passed. */
+export function swing(state: GameState): GameState {
+  const seat = state.currentTurnIndex;
+  return {
+    ...state,
+    currentTurnIndex: (seat + 1) % state.players.length,
+    lastMove: { seq: state.lastMove.seq + 1, kind: "pass", seat, closedTrick: false },
+  };
 }

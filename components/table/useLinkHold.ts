@@ -1,20 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Platform } from "react-native";
 import { useAnimatedStyle, useFrameCallback, useSharedValue, type FrameInfo } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { event } from "@/lib/device/feedback";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { holdGrey, linkHeld, type OwnLink } from "@/lib/ownLink";
+import { viewFilterGrey } from "@/lib/platform";
 import { Reconnect } from "@/lib/theme";
 import { greyFilter, iosGrey } from "./linkGrey";
 import type { LampRig } from "./useLampRig";
 
 /** The mockup's `#turn` class for each state, which the parity trace names its onsets by. */
 const PILL_CLASS: Record<OwnLink, string> = { up: "", dropped: "", reconnecting: "net", back: "ok", lost: "bad" };
-// iOS draws `grayscale()` only through the SwiftUI filters `plugins/withSwiftUIFilters.js` turns on,
-// and `brightness()` as a blend that cannot see the Skia felt: the felt greys in Skia, a scrim darkens.
-const IOS = Platform.OS === "ios";
 
 /** The table holding its breath while the viewer's own link is down: the grey, the freeze, the dimmed lamp and the chime back. */
 export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "hold">, missedInFlight = false) {
@@ -70,9 +67,9 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "hold">
     "grey",
     useCallback(() => grey.value, [grey])
   );
-  const greyStyle = useAnimatedStyle(() => ({ filter: IOS ? iosGrey(grey.value).filter : greyFilter(grey.value) }));
+  const greyStyle = useAnimatedStyle(() => ({ filter: viewFilterGrey ? greyFilter(grey.value) : iosGrey(grey.value).filter }));
   // RN hosts an iOS filter in SwiftUI, which insets its content by the safe area: the rail would leave the cutout's column.
-  const edgeGreyStyle = useAnimatedStyle(() => (IOS ? {} : { filter: greyFilter(grey.value) }));
+  const edgeGreyStyle = useAnimatedStyle(() => (viewFilterGrey ? { filter: greyFilter(grey.value) } : {}));
   const darkenStyle = useAnimatedStyle(() => ({ opacity: iosGrey(grey.value).darken }));
-  return { grey, greyStyle, edgeGreyStyle, darkenStyle: IOS ? darkenStyle : null, held, greyed, frozen: held || missedInFlight };
+  return { grey, greyStyle, edgeGreyStyle, darkenStyle: viewFilterGrey ? null : darkenStyle, held, greyed, frozen: held || missedInFlight };
 }

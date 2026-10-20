@@ -56,6 +56,7 @@ const table = ({ teams, finishingOrder }: (typeof CASES)[number], over: boolean,
     roundOver: over,
     finishingOrder: over ? finishingOrder : [],
     firstPlayMade: true,
+    lastMove: { seq: 0, kind: "deal" },
   };
   const placementPoints = scored ? Object.fromEntries(finishingOrder.map((id, i) => [id, 3 - i])) : {};
   return (

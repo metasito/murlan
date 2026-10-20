@@ -53,6 +53,7 @@ describe("a mid-round takeover is weak only for the round it happened on (#850 c
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: true,
+      lastMove: { seq: 0, kind: "deal" },
       playedRanks: emptyRankTally(),
     };
     const game = baseGame({
@@ -86,6 +87,7 @@ describe("a mid-round takeover is weak only for the round it happened on (#850 c
       roundOver: true, // between rounds
       finishingOrder: ["p0", "p1"],
       firstPlayMade: true,
+      lastMove: { seq: 0, kind: "deal" },
     };
     const game = baseGame({
       gameState,
@@ -124,6 +126,7 @@ describe("runBotTurn plays a weak seat at the floor and a bot seat with the bot"
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: true,
+      lastMove: { seq: 0, kind: "deal" },
       // A tally of zero reads as a fresh deal, whose bot waits out the deal animation.
       playedRanks: [1, ...emptyRankTally().slice(1)],
     };
@@ -225,6 +228,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: true,
+      lastMove: { seq: 0, kind: "deal" },
       playedRanks: emptyRankTally(),
     };
     activeGames.set(
@@ -258,6 +262,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
       roundOver: true,
       finishingOrder: ["p0", "p1"],
       firstPlayMade: true,
+      lastMove: { seq: 0, kind: "deal" },
     };
     activeGames.set(ROOM, baseGame({ gameState, playerMap: { 0: "alice", 1: "drita" } }));
     const spy = persistSpy();
@@ -287,6 +292,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
       roundOver: true,
       finishingOrder: ["p0"],
       firstPlayMade: true,
+      lastMove: { seq: 0, kind: "deal" },
     };
     activeGames.set(ROOM, baseGame({ gameState, playerMap: { 0: "drita" } }));
     const spy = persistSpy();
@@ -324,6 +330,7 @@ describe("autoMoveForSeat at the floor — what a weak seat's turn resolves to (
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: true,
+      lastMove: { seq: 0, kind: "deal" },
     };
 
     const auto = autoMoveForSeat(state, 0, "floor");
@@ -355,6 +362,7 @@ describe("autoMoveForSeat at the floor — what a weak seat's turn resolves to (
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: true,
+      lastMove: { seq: 0, kind: "deal" },
     };
 
     const auto = autoMoveForSeat(state, 0, "floor");
@@ -378,6 +386,7 @@ describe("autoMoveForSeat at the floor — what a weak seat's turn resolves to (
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: false,
+      lastMove: { seq: 0, kind: "deal" },
       startCard: { rank: "3", suit: "clubs", id: "start" } as never,
     };
 

@@ -40,6 +40,7 @@ const base = (currentTurnIndex: number, hands = HANDS): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: 'deal' },
   playedRanks: emptyRankTally(),
 });
 const ended = (finishingOrder: string[]): GameState => ({ ...base(0), roundOver: true, finishingOrder });

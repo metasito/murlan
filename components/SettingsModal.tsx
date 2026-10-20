@@ -22,6 +22,7 @@ import { Toggle } from "@/components/Toggle";
 import { ChoiceChips } from "@/components/ChoiceChips";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { apiRequest } from "@/lib/query-client";
+import { hapticsAvailable } from "@/lib/platform";
 import { uiFeedback } from "@/lib/device/feedback";
 import { Colors, Spacing, Radius, FontSize, Type, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { keyboardBehavior } from "@/lib/device/keyboard";
@@ -40,16 +41,31 @@ interface Props {
 /** Room for a couple of sentences without the send button leaving the screen. */
 const BUG_INPUT_MIN_H = 96;
 
-/** The row's label says what the setting is; the glyph repeats it in pictures. */
-function RowIcon({ name }: { name: React.ComponentProps<typeof Feather>["name"] }) {
+/** A setting: its glyph, label and sublabel, then its control beside them or, `stacked`, below them. */
+function SettingRow({
+  icon,
+  label,
+  sublabel,
+  stacked = false,
+  children,
+}: {
+  icon: React.ComponentProps<typeof Feather>["name"];
+  label: string;
+  sublabel: string;
+  stacked?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <Feather
-      name={name}
-      size={FontSize.lg}
-      color={Colors.textSecondary}
-      style={styles.icon}
-      {...a11yHidden()}
-    />
+    <View style={stacked ? styles.stackRow : styles.row}>
+      <View style={styles.rowLeft}>
+        <Feather name={icon} size={FontSize.lg} color={Colors.textSecondary} style={styles.icon} {...a11yHidden()} />
+        <View style={stacked ? styles.rowLabels : undefined}>
+          <Text style={styles.label}>{label}</Text>
+          <Text style={styles.sublabel}>{sublabel}</Text>
+        </View>
+      </View>
+      {children}
+    </View>
   );
 }
 
@@ -221,80 +237,50 @@ export function SettingsModal({ visible, onClose }: Props) {
           </View>
 
           <ScrollView testID="settings-scroll" style={styles.body} showsVerticalScrollIndicator>
-            <View style={styles.stackRow}>
-              <View style={styles.rowLeft}>
-                <RowIcon name={soundVolume === 0 ? "volume-x" : "volume-2"} />
-                <View style={styles.rowLabels}>
-                  <Text style={styles.label}>{t("settings.sounds")}</Text>
-                  <Text style={styles.sublabel}>{t("settings.soundsSubtitle")}</Text>
-                </View>
-              </View>
+            <SettingRow
+              icon={soundVolume === 0 ? "volume-x" : "volume-2"}
+              label={t("settings.sounds")}
+              sublabel={t("settings.soundsSubtitle")}
+              stacked
+            >
               <Slider
                 value={soundVolume}
                 onValueChange={setSoundVolume}
                 a11yLabel={t("settings.volumeA11yLabel")}
                 valueText={volumeText(soundVolume)}
               />
-            </View>
+            </SettingRow>
 
-            <View style={styles.stackRow}>
-              <View style={styles.rowLeft}>
-                <RowIcon name="music" />
-                <View style={styles.rowLabels}>
-                  <Text style={styles.label}>{t("settings.music")}</Text>
-                  <Text style={styles.sublabel}>{t("settings.musicSubtitle")}</Text>
-                </View>
-              </View>
+            <SettingRow icon="music" label={t("settings.music")} sublabel={t("settings.musicSubtitle")} stacked>
               <Slider
                 value={musicVolume}
                 onValueChange={setMusicVolume}
                 a11yLabel={t("settings.musicVolumeA11yLabel")}
                 valueText={volumeText(musicVolume)}
               />
-            </View>
+            </SettingRow>
 
-            {Platform.OS !== "web" && (
-              <View style={styles.row}>
-                <View style={styles.rowLeft}>
-                  <RowIcon name="smartphone" />
-                  <View>
-                    <Text style={styles.label}>{t("settings.haptics")}</Text>
-                    <Text style={styles.sublabel}>{t("settings.hapticsSubtitle")}</Text>
-                  </View>
-                </View>
+            {hapticsAvailable && (
+              <SettingRow icon="smartphone" label={t("settings.haptics")} sublabel={t("settings.hapticsSubtitle")}>
                 <Toggle
                   value={hapticsEnabled}
                   onValueChange={toggleHaptics}
                   a11yLabel={t("settings.hapticsA11yLabel")}
                   a11yHint={t("settings.hapticsA11yHint")}
                 />
-              </View>
+              </SettingRow>
             )}
 
-            <View style={styles.row}>
-              <View style={styles.rowLeft}>
-                <RowIcon name="activity" />
-                <View>
-                  <Text style={styles.label}>{t("settings.screenShake")}</Text>
-                  <Text style={styles.sublabel}>{t("settings.screenShakeSubtitle")}</Text>
-                </View>
-              </View>
+            <SettingRow icon="activity" label={t("settings.screenShake")} sublabel={t("settings.screenShakeSubtitle")}>
               <Toggle
                 value={screenShake}
                 onValueChange={setScreenShake}
                 a11yLabel={t("settings.screenShakeA11yLabel")}
                 a11yHint={t("settings.screenShakeA11yHint")}
               />
-            </View>
+            </SettingRow>
 
-            <View style={styles.stackRow}>
-              <View style={styles.rowLeft}>
-                <RowIcon name="film" />
-                <View style={styles.rowLabels}>
-                  <Text style={styles.label}>{t("settings.motion")}</Text>
-                  <Text style={styles.sublabel}>{t("settings.motionSubtitle")}</Text>
-                </View>
-              </View>
+            <SettingRow icon="film" label={t("settings.motion")} sublabel={t("settings.motionSubtitle")} stacked>
               <ChoiceChips
                 choices={MOTION_CHOICES.map((v) => ({ value: v, label: t(MOTION_LABELS[v]) }))}
                 value={motion}
@@ -302,16 +288,9 @@ export function SettingsModal({ visible, onClose }: Props) {
                 weight="caption"
                 a11yLabel={t("settings.motionA11yLabel")}
               />
-            </View>
+            </SettingRow>
 
-            <View style={styles.row}>
-              <View style={styles.rowLeft}>
-                <RowIcon name="globe" />
-                <View>
-                  <Text style={styles.label}>{t("settings.language")}</Text>
-                  <Text style={styles.sublabel}>{t("settings.languageSubtitle")}</Text>
-                </View>
-              </View>
+            <SettingRow icon="globe" label={t("settings.language")} sublabel={t("settings.languageSubtitle")}>
               <ChoiceChips
                 choices={locales.map((code) => ({
                   value: code,
@@ -323,7 +302,7 @@ export function SettingsModal({ visible, onClose }: Props) {
                 weight="caption"
                 fill={false}
               />
-            </View>
+            </SettingRow>
 
             <View style={styles.divider} />
 

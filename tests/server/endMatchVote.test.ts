@@ -47,6 +47,7 @@ function midRoundOneVacated(): GameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
+    lastMove: { seq: 0, kind: "deal" },
   };
 }
 
@@ -79,6 +80,7 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
         roundOver: false,
         finishingOrder: [],
         firstPlayMade: true,
+        lastMove: { seq: 0, kind: "deal" },
       },
       playerMap: { 0: "alice", 1: "bob" },
     });

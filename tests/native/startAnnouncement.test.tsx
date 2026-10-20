@@ -66,6 +66,7 @@ function state(currentTurnIndex: number, cardsPlayed = 0): GameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
+    lastMove: { seq: 0, kind: 'deal' },
     startReason: { type: 'lost_round', playerIdx: OPENER },
     playedRanks,
   };

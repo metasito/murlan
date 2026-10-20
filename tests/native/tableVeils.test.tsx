@@ -40,6 +40,7 @@ const STATE: GameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: 'deal' },
   startReason: { type: 'lost_round', playerIdx: 1 },
   playedRanks: Array.from({ length: RANK_SLOTS }, () => 0),
 };

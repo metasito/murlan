@@ -21,15 +21,15 @@ function liveGame(roomId: string): OnlineGameState {
       lastPlayedBy: -1,
       passCount: 0,
       gameMode: "free_for_all",
-      roundWinner: null,
+      trickWinner: null,
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: true,
+      lastMove: { seq: 0, kind: "deal" },
     },
     playerMap: { 0: "ana", 1: "besi" },
     rematchVotes: new Set(),
     cumulativeScores: {},
-    gameMode: "free_for_all",
     maxPlayers: 2,
     matchTarget: 21,
     matchLength: "match",
@@ -45,7 +45,7 @@ function liveGame(roomId: string): OnlineGameState {
     dealFirstSeat: 0,
     spectators: new Set(),
     moveLog: null,
-  } as unknown as OnlineGameState;
+  };
 }
 
 describe("a disposed table", { skip: hasDatabase() ? false : skipMessage() }, () => {
