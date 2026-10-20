@@ -2,7 +2,8 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { card as c, joker as j, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
-  getStartingPlayerAfterExchange,
+  actingSeat,
+  exchangeIsSatisfiable,
   getValidGivebackCards,
   givebackIsFallback,
   openingAfter,
@@ -10,7 +11,7 @@ import {
   type Card,
 } from "../../lib/game/gameEngine.ts";
 import { givenBack, refusalOf } from "../support/moves.ts";
-import { autoMoveForSeat, resolveStuckExchange } from "../../lib/game/autoMove.ts";
+import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
 
 const ids = (cards: Card[]) => cards.map((card) => card.id).sort();
 const FIRST_BEAT_LAST = { kind: "exchange", winnerSeat: 0, loserSeat: 3 } as const;
@@ -166,56 +167,14 @@ describe("processExchangeChoice", () => {
   });
 });
 
-describe("resolveStuckExchange", () => {
-  const stuck = (loserHand: Card[]) =>
-    makeState(
-      { players: [
-        makePlayer(0, []),
-        makePlayer(1, loserHand),
-        makePlayer(2, [c("5", "clubs")]),
-        makePlayer(3, [c("6", "clubs")]),
-      ],
-        currentTurnIndex: 0,
-        exchangePhase: {
-          active: true,
-          winnerIdx: 0,
-          loserIdx: 1,
-          cardFromLoser: c("A", "spades"),
-          twoJokerException: false,
-        },
-      }
-    );
-
-  test("hands the lead to the loser when they hold cards", () => {
-    const next = resolveStuckExchange(stuck([c("4", "hearts")]));
-    assert.equal(next.exchangePhase?.active, false);
-    assert.equal(next.currentTurnIndex, 1);
-    assert.equal(next.lastPlayedBy, 1);
-  });
-
-  test("an empty-handed loser passes the lead to the next seat holding cards in turn order", () => {
-    const state = stuck([]);
-    assert.equal(getStartingPlayerAfterExchange(state), 1);
-    const next = resolveStuckExchange(state);
-    assert.equal(next.exchangePhase?.active, false);
-    assert.equal(next.currentTurnIndex, 3);
-    assert.equal(next.lastPlayedBy, 3);
-  });
-});
-
 // #784 — `autoMoveForSeat` re-asks whichever seat `exchangePhase.winnerIdx`
 // still names for as long as `exchangePhase.active` stays true. A correct
 // `processExchangeChoice` clears it on the winner's first giveback
 // (docs/GAME-RULES.md §10 allows exactly one), so this drives the same seat
 // through `autoMoveForSeat` — never `processExchangeChoice` directly — until
-// the phase closes, counting every card it hands over along the way. Left
-// unclosed, the loop keeps drawing from a two-card hand: a second giveback,
-// then a third call finds nothing left to offer and `resolveStuckExchange`
-// closes the phase with no card moved at all — the rescue this ticket says
-// must never be needed. Counting givebacks as they happen catches the second
-// ask on its own; it does not wait to see whether the rescue fires.
+// the phase closes, counting every card it hands over along the way.
 describe("REGRESSION (#784): exchangePhase.active clears after exactly one giveback", () => {
-  test("the winner is not re-asked, and resolveStuckExchange is never needed", () => {
+  test("the winner is not re-asked", () => {
     const winnerHand = [c("3", "hearts"), c("4", "clubs")];
     let state = makeState(
       { players: [makePlayer(0, winnerHand), makePlayer(1, [c("9", "clubs")])],
@@ -232,18 +191,11 @@ describe("REGRESSION (#784): exchangePhase.active clears after exactly one giveb
     );
 
     let givebacks = 0;
-    let rescued = false;
     for (let i = 0; i < winnerHand.length + 2 && state.exchangePhase?.active; i++) {
-      const before = { winner: state.players[0].hand.length, loser: state.players[1].hand.length };
-      const next = autoMoveForSeat(state, 0, "floor")?.state;
-      assert.ok(next, "seat 0 is exchangePhase.winnerIdx and must always be able to act");
-      const after = { winner: next!.players[0].hand.length, loser: next!.players[1].hand.length };
-      if (after.winner === before.winner - 1 && after.loser === before.loser + 1) {
-        givebacks++;
-      } else if (!next!.exchangePhase?.active) {
-        rescued = true;
-      }
-      state = next!;
+      const auto = autoMoveForSeat(state, 0, "floor");
+      assert.ok(auto, "seat 0 is exchangePhase.winnerIdx and must always be able to act");
+      if (auto.move.kind === "giveback") givebacks++;
+      state = auto.state;
     }
 
     assert.equal(
@@ -252,12 +204,26 @@ describe("REGRESSION (#784): exchangePhase.active clears after exactly one giveb
       `seat 0 gave back a card ${givebacks} time(s) in one exchange, not 1 ` +
         `(hand drained to ${state.players[0].hand.length} card(s))`
     );
-    assert.equal(
-      rescued,
-      false,
-      "resolveStuckExchange closed the phase with no card moved — the exchange ran long enough to need it"
-    );
     assert.equal(state.exchangePhase?.active, false, "the exchange must be closed after the winner's one giveback");
+  });
+});
+
+describe("exchangeIsSatisfiable", () => {
+  const open = (winnerHand: Card[]) =>
+    makeState({
+      players: [makePlayer(0, winnerHand), makePlayer(1, [c("9", "clubs")])],
+      exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: c("A", "spades"), twoJokerException: false },
+    });
+
+  test("an open exchange is satisfiable while the winner holds a card other than the one received", () => {
+    assert.equal(exchangeIsSatisfiable(open([c("K", "hearts")])), true);
+    assert.equal(exchangeIsSatisfiable(open([])), false);
+    assert.equal(exchangeIsSatisfiable(open([c("A", "spades")])), false);
+  });
+
+  test("a closed exchange, or none, has nothing to satisfy", () => {
+    assert.equal(exchangeIsSatisfiable(makeState()), true);
+    assert.equal(exchangeIsSatisfiable({ ...open([]), exchangePhase: { ...open([]).exchangePhase!, active: false } }), true);
   });
 });
 
@@ -270,7 +236,7 @@ describe("round-to-round exchange setup", () => {
       const phase = state.exchangePhase!;
       if (phase.twoJokerException) {
         assert.equal(phase.active, false, "no exchange happens on the two-joker exception");
-        assert.equal(getStartingPlayerAfterExchange(state), phase.winnerIdx);
+        assert.equal(actingSeat(state), phase.winnerIdx);
         continue;
       }
       assert.equal(phase.active, true);
@@ -286,7 +252,8 @@ describe("round-to-round exchange setup", () => {
         !state.players[3].hand.some((card) => card.id === given.id),
         "the loser gave it up"
       );
-      assert.equal(getStartingPlayerAfterExchange(state), phase.loserIdx);
+      const settled = givenBack(state, getValidGivebackCards(state.players[0].hand, given.id)[0].id);
+      assert.equal(actingSeat(settled), phase.loserIdx, "the loser leads once the winner gives back");
       assert.equal(
         state.players.reduce((n, p) => n + p.hand.length, 0),
         54,
@@ -334,7 +301,7 @@ describe("the two-joker exception, on a fixed deal", () => {
     assert.equal(phase.active, false);
     assert.equal("cardFromLoser" in phase, false, "no card moved, so none is recorded as given");
     assert.equal(state.currentTurnIndex, phase.winnerIdx);
-    assert.equal(getStartingPlayerAfterExchange(state), phase.winnerIdx);
+    assert.equal(actingSeat(state), phase.winnerIdx);
     assert.equal(state.startReason?.type, "won_no_exchange");
     assert.deepEqual(
       state.players.map((p) => ids(p.hand)),

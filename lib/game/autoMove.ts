@@ -5,15 +5,8 @@
 //
 // It lives here rather than in server/ because a bot plays offline too, and
 // one rule played two ways is two rules.
-import {
-  actingSeat,
-  applyMove,
-  sortHand,
-  pickGivebackCard,
-  getStartingPlayerAfterExchange,
-  getNextActivePlayer,
-} from "./gameEngine.ts";
-import { botChoosePlay, knownOpponentExchangeCard, opponentsOf } from "./bot.ts";
+import { actingSeat, applyMove, sortHand } from "./gameEngine.ts";
+import { botChoosePlay, botView, pickGivebackCard } from "./bot.ts";
 import type { AppliedMove, GameState, Move } from "./gameEngine.ts";
 
 /**
@@ -21,23 +14,6 @@ import type { AppliedMove, GameState, Move } from "./gameEngine.ts";
  * minimum legal move, as an AFK human should not be played *well* on their behalf.
  */
 export type Strength = "bot" | "floor";
-
-/**
- * Safety valve: the exchange winner holds no card they are allowed to give
- * back. Nobody — human or bot — can satisfy the phase, so it is closed and the
- * round continues. Without this the whole table sits behind the exchange
- * overlay forever.
- */
-export function resolveStuckExchange(state: GameState): GameState {
-  const next = structuredClone(state);
-  if (next.exchangePhase) next.exchangePhase.active = false;
-  next.currentTurnIndex = getStartingPlayerAfterExchange(state);
-  if (next.players[next.currentTurnIndex].hand.length === 0) {
-    next.currentTurnIndex = getNextActivePlayer(next);
-  }
-  next.lastPlayedBy = next.currentTurnIndex;
-  return next;
-}
 
 /**
  * The move `seat` makes now, or null when it has none to make. `rng` is
@@ -55,27 +31,11 @@ export function chooseMove(state: GameState, seat: number, strength: Strength, r
   const player = state.players[seat];
   if (!player || player.hand.length === 0) return null;
 
-  const isNewTrick = state.lastPlayedCombination === null;
-  // The opening is only mandatory for the very first play of the round, and
-  // only for the seat actually holding it.
-  const startCard = !state.firstPlayMade ? state.startCard : undefined;
-  const requireCard = startCard
-    ? player.hand.find((c) => c.id === startCard.id)
-    : undefined;
+  const view = botView(state, seat);
+  const isNewTrick = view.toBeat === null;
 
   if (strength === "bot") {
-    const opponents = opponentsOf(state, seat);
-    const combo = botChoosePlay(
-      player,
-      isNewTrick ? null : state.lastPlayedCombination,
-      isNewTrick,
-      opponents.handCounts,
-      requireCard,
-      rng,
-      opponents.partnerHoldsTop,
-      state.playedRanks,
-      knownOpponentExchangeCard(state.exchangePhase, seat)
-    );
+    const combo = botChoosePlay(view, rng);
     if (combo) return { kind: "play", cardIds: combo.cards.map((c) => c.id) };
     if (!isNewTrick) return { kind: "pass" };
     // A new trick cannot be passed — fall through to the forced minimum play.
@@ -84,15 +44,14 @@ export function chooseMove(state: GameState, seat: number, strength: Strength, r
   if (isNewTrick) {
     // Read the mandatory opening card from the state instead of assuming 3♠:
     // with the full deal it is always present, but a short deal may lack it.
-    const card = requireCard ?? sortHand([...player.hand])[0];
+    const card = view.mustInclude ?? sortHand([...player.hand])[0];
     return { kind: "play", cardIds: [card.id] };
   }
 
   return { kind: "pass" };
 }
 
-/** `move` null: the stuck exchange was closed, and nobody moved. */
-export type AutoMove = { state: GameState; move: AppliedMove | null };
+export type AutoMove = { state: GameState; move: AppliedMove };
 
 /** One automated action for a seat, or null when the engine has nothing legal for it. Never throws. */
 export function autoMoveForSeat(
@@ -102,11 +61,7 @@ export function autoMoveForSeat(
   rng?: () => number
 ): AutoMove | null {
   const move = chooseMove(state, seat, strength, rng);
-  if (!move) {
-    const stuck =
-      !state.roundOver && state.exchangePhase?.active && state.exchangePhase.winnerIdx === seat && state.players[seat];
-    return stuck ? { state: resolveStuckExchange(state), move: null } : null;
-  }
+  if (!move) return null;
   const result = applyMove(state, seat, move);
   return result.ok ? { state: result.state, move: result.move } : null;
 }

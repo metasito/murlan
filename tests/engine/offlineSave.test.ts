@@ -125,3 +125,22 @@ test("a finished round inside a running match is still resumable", () => {
   blob.gameState.roundOver = true;
   assert.equal(isResumable(decodeOfflineSave(JSON.stringify(blob))), true);
 });
+
+test("an open exchange the winner cannot give back from is refused; one they can is kept", () => {
+  const withExchange = (winnerHand: unknown[]) => {
+    const blob = JSON.parse(encodeOfflineSave(save()));
+    blob.gameState.players[0].hand = winnerHand;
+    blob.gameState.exchangePhase = {
+      active: true,
+      winnerIdx: 0,
+      loserIdx: 1,
+      cardFromLoser: { id: "A_spades", rank: "A", suit: "spades", isJoker: false },
+      twoJokerException: false,
+    };
+    return JSON.stringify(blob);
+  };
+  assert.equal(kindOf(withExchange([])), "incompatible");
+  assert.equal(kindOf(withExchange([{ id: "5_clubs", rank: "5", suit: "clubs", isJoker: false }])), "ok");
+  assert.equal(kindOf(withExchange([null])), "incompatible");
+  assert.equal(kindOf(withExchange([{ id: "5_clubs" }])), "incompatible");
+});
