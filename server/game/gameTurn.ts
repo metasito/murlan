@@ -20,68 +20,37 @@ import {
 import { closeTable, disposeGame, publishState, safeTimer } from "./gamePersistence.ts";
 import { handleRoundOver, voidAbandonedMatch } from "./roundOver.ts";
 import { appendReplayMove } from "./replayShape.ts";
-import {
-  autoMoveForSeat as sharedAutoMove,
-  recordPlayFlags as recordFlags,
-} from "../../lib/game/autoMove.ts";
-import { concedeRound, roundUnplayed, openingIsPending } from "../../lib/game/gameEngine.ts";
+import { autoMoveForSeat, type AutoMove } from "../../lib/game/autoMove.ts";
+import { actingSeat, concedeRound, roundUnplayed, openingIsPending } from "../../lib/game/gameEngine.ts";
 import type { GameState, Combination } from "../../lib/game/gameEngine.ts";
 import { Motion, Reading } from "../../lib/tokens.ts";
 import { dealEndMs } from "../../lib/timeline/dealTimeline.ts";
 import { exchangeAnnounceMs, exchangeGiveDelayMs } from "../../lib/timeline/exchangeTimeline.ts";
 import { handCountOf } from "../../shared/protocol.ts";
 
-/** The seat that must act right now: the exchange winner, or the turn holder. */
-function actingSeat(state: GameState): number {
-  return state.exchangePhase?.active
-    ? state.exchangePhase.winnerIdx
-    : state.currentTurnIndex;
-}
-
-export type AutoMovable = Pick<OnlineGameState, "gameState" | "roundFlags" | "moveLog">;
-
-/** See lib/game/autoMove.ts. Kept here so the human `game:play` path has one import. */
-export function recordPlayFlags(game: AutoMovable, seat: number, combo: Combination) {
-  recordFlags(game.roundFlags, seat, combo);
-}
-
-/** A move for the replay log: `combo` null is a pass. */
-export interface CommittedMove {
-  seat: number;
-  combo: Combination | null;
+/**
+ * Achievement bookkeeping: the engine has no notion of "did this seat play a
+ * bomb/joker this round", and the counters are read off these flags after the
+ * round, so a forced move (most commonly an AFK-forced lone joker) that skipped
+ * them would silently under-count the purist / iron_will / wild_card achievements.
+ */
+function recordPlayFlags(game: OnlineGameState, seat: number, combo: Combination) {
+  const flags = (game.roundFlags[seat] ??= { bomb: false, joker: false });
+  if (combo.type === "bomb") flags.bomb = true;
+  if (combo.cards.some((c) => c.isJoker)) flags.joker = true;
 }
 
 /**
- * One automated action for a seat — the shared rule, given this table's flags.
- * `move` is null when the action was an exchange, which the replay does not log.
+ * The one way a move lands on a live table, whoever chose it: flagged and logged
+ * for the replay, sent, persisted, then the next seat armed — or, when it ended
+ * the round, the round-over handoff, whose promise is returned.
  */
-export function autoMoveForSeat(
-  game: AutoMovable,
-  seat: number,
-  useBot: boolean
-): { next: GameState; move: CommittedMove | null } | null {
-  let move: CommittedMove | null = null;
-  const next = sharedAutoMove(game.gameState, seat, useBot, {
-    roundFlags: game.roundFlags,
-    onMove: (movedSeat, combo) => {
-      move = { seat: movedSeat, combo };
-    },
-  });
-  return next && { next, move };
-}
-
-/**
- * The one way a move lands on a live table: logged for the replay, sent,
- * persisted, then the next seat armed — or, when it ended the round, the
- * round-over handoff, whose promise is returned.
- */
-export function commitMove(
-  rt: TableRuntime,
-  game: OnlineGameState,
-  next: GameState,
-  move: CommittedMove | null
-): Promise<void> | undefined {
-  if (move) appendReplayMove(game, move.seat, move.combo, next);
+export function commitMove(rt: TableRuntime, game: OnlineGameState, applied: AutoMove): Promise<void> | undefined {
+  const { state: next, move } = applied;
+  if (move?.kind === "play") recordPlayFlags(game, move.seat, move.combo);
+  if (move?.kind === "play" || move?.kind === "pass") {
+    appendReplayMove(game, move.seat, move.kind === "play" ? move.combo : null, next);
+  }
   const prev = game.gameState;
   game.gameState = next;
   void publishState(rt, game);
@@ -199,15 +168,14 @@ function runBotTurn(rt: TableRuntime, roomId: string) {
   // (docs/GAME-RULES.md § Decisions) — the same "an AFK human should not be played well"
   // rule the turn timer already applies, kept until `dealRound` clears
   // `weakSeats` at the next deal, by which point the seat is honestly a bot's.
-  const useBot = !game.weakSeats.has(seat);
-  const auto = autoMoveForSeat(game, seat, useBot);
+  const auto = autoMoveForSeat(game.gameState, seat, game.weakSeats.has(seat) ? "floor" : "bot");
   if (!auto) {
     logger.error({ roomId, seat }, "Vacant seat could not act — closing table");
     closeTable(rt, roomId, "GAME_INTERRUPTED_EMPTY_SEAT");
     return;
   }
 
-  void commitMove(rt, game, auto.next, auto.move);
+  void commitMove(rt, game, auto);
 }
 
 /** What the seat was made to do, or null when nothing was played. */
@@ -222,12 +190,11 @@ function handleAutoPass(
   const seat = actingSeat(game.gameState);
   if (game.playerMap[seat] !== userId) return null;
 
-  const wasExchange = !!game.gameState.exchangePhase?.active;
-  const auto = autoMoveForSeat(game, seat, false);
+  const auto = autoMoveForSeat(game.gameState, seat, "floor");
   if (!auto) return null;
 
-  void commitMove(rt, game, auto.next, auto.move);
-  return wasExchange ? "exchange" : "move";
+  void commitMove(rt, game, auto);
+  return auto.move?.kind === "play" || auto.move?.kind === "pass" ? "move" : "exchange";
 }
 
 function startAfkTimer(

@@ -11,16 +11,37 @@
 // `no-portrait-lock`.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 describe("orientation is never narrowed behind the player's back", () => {
-  test("the game table forces landscape", () => {
-    const src = readFileSync(path.join(repoRoot, "components", "GameTable.tsx"), "utf8");
-    assert.match(src, /lockAsync\(\s*ScreenOrientation\.OrientationLock\.LANDSCAPE\s*\)/);
+  test("the game table forces landscape, and is the only caller of the lock", () => {
+    const lock = readFileSync(path.join(repoRoot, "lib", "device", "orientation.tsx"), "utf8");
+    assert.match(lock, /export function useLandscapeLock\(/);
+    assert.match(lock, /lockAsync\(\s*ScreenOrientation\.OrientationLock\.LANDSCAPE\s*\)/);
+    const target = path.join(repoRoot, "lib", "device", "orientation");
+    const resolve = (from: string, spec: string) =>
+      (spec.startsWith("@/") ? path.join(repoRoot, spec.slice(2)) : spec.startsWith(".") ? path.join(path.dirname(from), spec) : spec)
+        .replace(/\.(tsx?|jsx?)$/, "")
+        .replace(/[\\/]index$/, "");
+    // Every way to reach a module's bindings; a clause of `null` takes all of them.
+    const reaches = (src: string): { spec: string; clause: string | null }[] => [
+      ...[...src.matchAll(/\b(?:import|export)\s+(?:type\s+)?([^;'"]*?)\s*from\s*["']([^"']+)["']/g)].map((m) => ({ spec: m[2], clause: m[1] })),
+      ...[...src.matchAll(/\b(?:require|import)\s*\(\s*["']([^"']+)["']\s*\)/g)].map((m) => ({ spec: m[1], clause: null })),
+    ];
+    const importers = ["app", "components", "context", "lib", "modules"]
+      .flatMap((dir) => readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" }).map((f) => path.join(repoRoot, dir, f)))
+      .filter((f) => /\.tsx?$/.test(f) && resolve(f, f) !== target)
+      .filter((f) =>
+        reaches(readFileSync(f, "utf8")).some(
+          ({ spec, clause }) => resolve(f, spec) === target && (clause === null || /\*|\buseLandscapeLock\b/.test(clause))
+        )
+      )
+      .map((f) => path.relative(repoRoot, f).split(path.sep).join("/"));
+    assert.deepEqual(importers, ["components/GameTable.tsx"]);
   });
 
   test("app.json leaves the app free to rotate", () => {

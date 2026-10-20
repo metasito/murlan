@@ -1,0 +1,46 @@
+import { useCallback, useState } from "react";
+import type { GameState } from "@/lib/game/gameEngine";
+import { handCountOf } from "@/shared/protocol";
+import type { ServerError } from "@/context/OnlineGameContext";
+import { useTranslation } from "@/lib/i18n";
+import { seatsJustPassed } from "@/components/passes";
+import { nextFloat, raised, type Float } from "./floatModel";
+
+const passView = (s: GameState) => ({ ...s, outOfCards: s.players.map((p) => handCountOf(p) === 0) });
+
+/** The float over the pile: what each new state, refusal and auto-pass raises, and a refusal raised by hand. */
+export function useTableFloat(i: {
+  gameState: GameState;
+  error: ServerError | null;
+  autoPassed: number;
+  withdrawn: boolean;
+  viewerSeat: number;
+  spectating: boolean;
+}): { float: Float | null; raise: (kind: "reject", text: string) => void } {
+  const { gameState, error, autoPassed, withdrawn, viewerSeat, spectating } = i;
+  const { t } = useTranslation();
+  const inputs = { gameState, error, autoPassed, withdrawn };
+  const [seen, setSeen] = useState<typeof inputs>({ ...inputs, error: null });
+  const [float, setFloat] = useState<Float | null>(null);
+  const moved = seen.gameState !== gameState;
+  const erred = seen.error?.seq !== error?.seq;
+  if (moved || erred || seen.autoPassed !== autoPassed || seen.withdrawn !== withdrawn) {
+    setSeen(inputs);
+    const shown = nextFloat(
+      float,
+      {
+        viewerPassed: moved
+          ? !spectating && seatsJustPassed(passView(seen.gameState), passView(gameState)).includes(viewerSeat)
+          : undefined,
+        error: erred ? error : undefined,
+        autoPassed: seen.autoPassed !== autoPassed,
+        withdrawn,
+        withdrew: withdrawn && !seen.withdrawn,
+      },
+      { passed: t("gameShared.passedLabel"), autoPass: t("game.autoPassTitle") }
+    );
+    if (shown !== float) setFloat(shown);
+  }
+  const raise = useCallback((kind: "reject", text: string) => setFloat((standing) => raised(standing, kind, text)), []);
+  return { float, raise };
+}

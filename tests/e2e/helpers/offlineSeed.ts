@@ -17,7 +17,7 @@ import {
   buildCombination,
   createDeck,
   dealCards,
-  targetsFor,
+  firstTargetFor,
   type Card,
   type GameState,
   type MatchLength,
@@ -167,7 +167,7 @@ export function exchangeSave(o: SaveOptions & { winner: number; loser: number; c
 export function oneCardFromFinishing(o: { seats: 2 | 3 | 4; length: MatchLength; last: Card; pile?: Card[] }): OfflineSave {
   const used = new Set([o.last.id, ...(o.pile ?? []).map((c) => c.id)]);
   const rest = createDeck().filter((c) => !used.has(c.id));
-  const target = targetsFor(o.seats)[0];
+  const target = firstTargetFor(o.seats);
   return offlineSave({
     seats: o.seats,
     length: o.length,

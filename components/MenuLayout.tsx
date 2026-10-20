@@ -91,12 +91,18 @@ export function MenuLayout({
   const insets = useSafeAreaInsets();
   const bannerBottom = useBannerBottom();
 
-  const [viewportH, setViewportH] = React.useState(0);
-  const [contentH,  setContentH]  = React.useState(0);
-  const [offsetY,   setOffsetY]   = React.useState(0);
-  // Half the fade's own height: less than that left to travel and the hint is
-  // covering the end of the content rather than pointing past it.
-  const hasMore = contentH - offsetY - viewportH > MORE_BELOW_H / 2;
+  const scrolled = React.useRef({ viewportH: 0, contentH: 0, offsetY: 0, more: false });
+  const [hasMore, setHasMore] = React.useState(false);
+  const measure = (next: Partial<typeof scrolled.current>) => {
+    const m = Object.assign(scrolled.current, next);
+    // Half the fade's own height: less than that left to travel and the hint is
+    // covering the end of the content rather than pointing past it.
+    const more = m.contentH - m.offsetY - m.viewportH > MORE_BELOW_H / 2;
+    // Against the last value set, not the render's: two measurements can land in one batch.
+    if (more === m.more) return;
+    m.more = more;
+    setHasMore(more);
+  };
 
   const paddingTop    = Math.max(insets.top, contentPad);
   const paddingBottom = Math.max(insets.bottom, contentPad);
@@ -155,9 +161,9 @@ export function MenuLayout({
               automaticallyAdjustKeyboardInsets
               showsVerticalScrollIndicator={false}
               scrollEventThrottle={SCROLL_THROTTLE_MS}
-              onLayout={(e) => setViewportH(e.nativeEvent.layout.height)}
-              onContentSizeChange={(_w, h) => setContentH(h)}
-              onScroll={(e) => setOffsetY(e.nativeEvent.contentOffset.y)}
+              onLayout={(e) => measure({ viewportH: e.nativeEvent.layout.height })}
+              onContentSizeChange={(_w, h) => measure({ contentH: h })}
+              onScroll={(e) => measure({ offsetY: e.nativeEvent.contentOffset.y })}
             >
               <Animated.View testID="menu-content" style={contentStyle}>{children}</Animated.View>
             </ScrollView>

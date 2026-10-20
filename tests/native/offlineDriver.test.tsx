@@ -8,7 +8,8 @@ import { GameProvider, useGameSession, useGameTable } from "@/context/GameContex
 import { NotificationProvider } from "@/context/NotificationContext";
 import { useOfflineDriver } from "@/context/offlineDriver";
 import { encodeOfflineSave, OFFLINE_SAVE_KEY } from "@/lib/offlineSave";
-import { buildCombination, processPass, type Card, type GameState } from "@/lib/game/gameEngine";
+import { buildCombination, type Card, type GameState } from "@/lib/game/gameEngine";
+import { passed } from "../support/moves.ts";
 
 /** Both halves of the provider, for a probe that reads across them. */
 const useGame = () => ({ ...useGameSession(), ...useGameTable() });
@@ -83,7 +84,7 @@ test("two passes in one event compose, the second answering the first", async ()
     fireEvent.press(view.getByTestId("passTwice"));
   });
 
-  const twice = processPass(processPass(trick()));
+  const twice = passed(passed(trick()));
   expect(view.getByTestId("turn").props.children).toBe(String(twice.currentTurnIndex));
   expect(view.getByTestId("passes").props.children).toBe(String(twice.passCount));
   await act(async () => {

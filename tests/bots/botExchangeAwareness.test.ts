@@ -123,7 +123,7 @@ describe("autoMoveForSeat wires the exchange into the loser that leads next", ()
       }
     );
 
-    const next = autoMoveForSeat(state, 1, true, { rng: () => 0.5 });
+    const next = autoMoveForSeat(state, 1, "bot", () => 0.5)?.state;
 
     assert.ok(next, "the loser must lead something");
     const played = state.players[1].hand.filter(

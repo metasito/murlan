@@ -24,7 +24,7 @@ jest.mock('@/lib/accessibility', () => ({
 }));
 
 import { GameTable } from '@/components/GameTable';
-import type { TurnTimerConfig } from '@/components/GameTable';
+import type { TurnTimerConfig } from '@/components/turnTimerUi';
 import { urgentThresholdSeconds } from '@/components/turnTimerUi';
 import { Reading } from '@/lib/theme';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';

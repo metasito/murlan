@@ -2,7 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   MATCH_TARGETS,
-  targetsFor,
+  firstTargetFor,
   foldRound,
   placementPoints,
   type GameMode,
@@ -32,6 +32,18 @@ const standing = (
     { cumulative, target },
     opts.seats ?? seatsFor(Object.keys(cumulative))
   );
+
+/** The targets a match of `playerCount` seats climbs through, two seats tying at each. */
+function ladderOf(playerCount: number): number[] {
+  const ladder = [firstTargetFor(playerCount)];
+  for (let rung = 0; rung < 10; rung++) {
+    const target = ladder[ladder.length - 1];
+    const result = standing({ a: target, b: target }, target, { playerCount });
+    if (result.over) return ladder;
+    ladder.push(result.target);
+  }
+  throw new Error(`the ${playerCount}-seat ladder never ends`);
+}
 
 const paid = (finishingOrder: string[], playerCount: number) =>
   foldRound(
@@ -97,18 +109,18 @@ describe("MATCH_TARGETS / escalation", () => {
   });
 
   test("the ladder scales with the seat count", () => {
-    assert.deepEqual(targetsFor(2), [7, 10, 14, 17]);
-    assert.deepEqual(targetsFor(3), [14, 21, 27, 34]);
-    assert.deepEqual(targetsFor(4), [21, 31, 41, 51]);
+    assert.deepEqual(ladderOf(2), [7, 10, 14, 17]);
+    assert.deepEqual(ladderOf(3), [14, 21, 27, 34]);
+    assert.deepEqual(ladderOf(4), [21, 31, 41, 51]);
   });
 
   test("the four-player ladder is byte-identical to the constant", () => {
-    assert.deepEqual(targetsFor(4), [...MATCH_TARGETS]);
+    assert.deepEqual(ladderOf(4), [...MATCH_TARGETS]);
   });
 
   test("escalation still chains for every seat count", () => {
     for (const playerCount of [2, 3, 4]) {
-      const ladder = targetsFor(playerCount);
+      const ladder = ladderOf(playerCount);
       for (let i = 0; i < ladder.length - 1; i++) {
         const result = standing({ a: ladder[i], b: ladder[i] }, ladder[i], { playerCount });
         assert.equal(result.target, ladder[i + 1], `${playerCount}p: ${ladder[i]} → ${ladder[i + 1]}`);
@@ -184,7 +196,7 @@ describe("resolving the match", () => {
     for (const playerCount of [2, 3, 4]) {
       const players = ["a", "b", "c", "d"].slice(0, playerCount);
       let cumulative: Record<string, number> = {};
-      let target = targetsFor(playerCount)[0];
+      let target = firstTargetFor(playerCount);
       let rounds = 0;
       let finished = false;
 

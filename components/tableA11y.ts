@@ -2,6 +2,8 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
+import { turnState, type TurnState } from "./turnTimerUi.ts";
+
 // ─── Screen-reader description ─────────────────────────────────────────────────
 //
 // The whole table in words. Every phrase arrives already translated from
@@ -74,20 +76,25 @@ export interface TableA11yInput {
  */
 export function describeTableForA11y(input: TableA11yInput, strings: TableA11yStrings): string {
   const parts: string[] = [];
-
-  if (input.roundOver) {
-    parts.push(input.matchOver ? strings.matchOver : strings.roundOver);
-  } else if (input.dealing) {
-    parts.push(strings.dealing);
-  } else if (input.exchange?.active && (input.exchange.viewerIsWinner || input.exchange.viewerIsLoser)) {
-    parts.push(
-      input.exchange.viewerIsWinner
-        ? strings.exchangeGiveCard(input.exchange.loserName)
-        : strings.exchangeWaitForCard(input.exchange.winnerName)
-    );
-  } else {
-    parts.push(input.isMyTurn ? strings.yourTurn : strings.turnOf(input.currentTurnName));
-  }
+  const state = turnState({
+    roundOver: input.roundOver ?? false,
+    matchOver: input.matchOver ?? false,
+    dealing: input.dealing ?? false,
+    viewerOnMove: input.isMyTurn,
+  });
+  const exchange = input.exchange;
+  const asked = exchange?.active && (exchange.viewerIsWinner || exchange.viewerIsLoser) ? exchange : undefined;
+  const onMove = asked
+    ? () => (asked.viewerIsWinner ? strings.exchangeGiveCard(asked.loserName) : strings.exchangeWaitForCard(asked.winnerName))
+    : undefined;
+  const said: Record<TurnState, () => string> = {
+    matchOver: () => strings.matchOver,
+    roundOver: () => strings.roundOver,
+    dealing: () => strings.dealing,
+    yourTurn: onMove ?? (() => strings.yourTurn),
+    turnOf: onMove ?? (() => strings.turnOf(input.currentTurnName)),
+  };
+  parts.push(said[state]());
 
   parts.push(
     input.lastPlay

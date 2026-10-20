@@ -20,9 +20,8 @@ import {
   createDeck,
   getAllValidPlays,
   startRound,
-  processPass,
-  processPlay,
 } from "../../lib/game/gameEngine.ts";
+import { passed, played } from "../support/moves.ts";
 import { card as c, joker as j, seat as makePlayer } from "../support/game.ts";
 import type { GameState } from "../../lib/game/gameEngine.ts";
 import type { BotPersonalityId } from "../../lib/game/botPersonalities.ts";
@@ -92,12 +91,12 @@ function playOutRound(
         legal.some((p) => key(p) === key(choice)),
         `${personality} returned a play getAllValidPlays did not offer`
       );
-      state = processPlay(state, choice);
+      state = played(state, choice);
       continue;
     }
 
     assert.ok(!isNewTrick, `${personality} passed while leading a round`);
-    state = processPass(state);
+    state = passed(state);
   }
 
   assert.ok(state.roundOver, `${personality} did not finish a round in ${limit} turns`);

@@ -2,16 +2,14 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { card as c, joker as j, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
-  getBestCardFromHand,
   getStartingPlayerAfterExchange,
   getValidGivebackCards,
   givebackIsFallback,
-  loserHasBothJokers,
   openingAfter,
-  processExchangeChoice,
   startRound,
   type Card,
 } from "../../lib/game/gameEngine.ts";
+import { givenBack, refusalOf } from "../support/moves.ts";
 import { autoMoveForSeat, resolveStuckExchange } from "../../lib/game/autoMove.ts";
 
 const ids = (cards: Card[]) => cards.map((card) => card.id).sort();
@@ -70,7 +68,7 @@ describe("processExchangeChoice", () => {
 
   test("moves the chosen card and hands the lead to the loser", () => {
     const state = buildState([c("4", "hearts"), c("K", "spades")], [c("9", "clubs")]);
-    const next = processExchangeChoice(state, "4_hearts");
+    const next = givenBack(state, "4_hearts");
     assert.deepEqual(next.players[0].hand.map((card) => card.id), ["K_spades"]);
     assert.ok(next.players[1].hand.some((card) => card.id === "4_hearts"));
     assert.equal(next.exchangePhase?.active, false);
@@ -82,7 +80,7 @@ describe("processExchangeChoice", () => {
   // itself is the only place the return leg is written down.
   test("records the card it handed back", () => {
     const state = buildState([c("4", "hearts"), c("K", "spades")], [c("9", "clubs")]);
-    const next = processExchangeChoice(state, "4_hearts");
+    const next = givenBack(state, "4_hearts");
     assert.equal(next.exchangePhase?.cardToLoser?.id, "4_hearts");
   });
 
@@ -96,18 +94,20 @@ describe("processExchangeChoice", () => {
   // naming nothing.
   test("records nothing when the choice is rejected", () => {
     const state = buildState([c("4", "hearts"), c("K", "spades")], [c("9", "clubs")]);
-    const next = processExchangeChoice(state, "K_spades");
-    assert.equal(next.exchangePhase?.cardToLoser, undefined);
+    const before = structuredClone(state);
+    assert.equal(refusalOf(state, { kind: "giveback", cardId: "K_spades" }), "notGiveable");
+    assert.deepEqual(state, before);
+    assert.equal(state.exchangePhase?.cardToLoser, undefined);
   });
 
   test("rejects a card outside 3-10 while a legal one exists", () => {
     const state = buildState([c("4", "hearts"), c("K", "spades")], [c("9", "clubs")]);
-    assert.equal(processExchangeChoice(state, "K_spades"), state);
+    assert.equal(refusalOf(state, { kind: "giveback", cardId: "K_spades" }), "notGiveable");
   });
 
   test("rejects a card the winner does not hold", () => {
     const state = buildState([c("4", "hearts")], [c("9", "clubs")]);
-    assert.equal(processExchangeChoice(state, "7_clubs"), state);
+    assert.equal(refusalOf(state, { kind: "giveback", cardId: "7_clubs" }), "notHeld");
   });
 
   test("REGRESSION: the fallback card is accepted, so the exchange cannot deadlock", () => {
@@ -116,7 +116,7 @@ describe("processExchangeChoice", () => {
     const offered = getValidGivebackCards(winnerHand);
     assert.equal(offered.length, 1);
 
-    const next = processExchangeChoice(state, offered[0].id);
+    const next = givenBack(state, offered[0].id);
     assert.notEqual(next, state, "the only offered choice must be accepted");
     assert.equal(next.exchangePhase?.active, false);
     assert.ok(next.players[1].hand.some((card) => card.id === offered[0].id));
@@ -146,7 +146,7 @@ describe("processExchangeChoice", () => {
       "only the winner's own 3-10 card is on offer"
     );
     const state = withReceived(winnerHand, received);
-    assert.equal(processExchangeChoice(state, received.id), state);
+    assert.equal(refusalOf(state, { kind: "giveback", cardId: received.id }), "notGiveable");
   });
 
   test("excluding the received card still leaves exactly one fallback choice", () => {
@@ -156,13 +156,13 @@ describe("processExchangeChoice", () => {
     assert.equal(offered.length, 1, "the exchange must never be left with zero choices");
     assert.equal(offered[0].id, "K_clubs");
 
-    const next = processExchangeChoice(withReceived(winnerHand, received), offered[0].id);
+    const next = givenBack(withReceived(winnerHand, received), offered[0].id);
     assert.equal(next.exchangePhase?.active, false);
   });
 
   test("does nothing when the exchange phase is not active", () => {
     const state = makeState({ players: [makePlayer(0, [c("4", "hearts")]), makePlayer(1, [])] });
-    assert.equal(processExchangeChoice(state, "4_hearts"), state);
+    assert.equal(refusalOf(state, { kind: "giveback", cardId: "4_hearts" }), "noExchange");
   });
 });
 
@@ -235,7 +235,7 @@ describe("REGRESSION (#784): exchangePhase.active clears after exactly one giveb
     let rescued = false;
     for (let i = 0; i < winnerHand.length + 2 && state.exchangePhase?.active; i++) {
       const before = { winner: state.players[0].hand.length, loser: state.players[1].hand.length };
-      const next = autoMoveForSeat(state, 0, false, {});
+      const next = autoMoveForSeat(state, 0, "floor")?.state;
       assert.ok(next, "seat 0 is exchangePhase.winnerIdx and must always be able to act");
       const after = { winner: next!.players[0].hand.length, loser: next!.players[1].hand.length };
       if (after.winner === before.winner - 1 && after.loser === before.loser + 1) {
@@ -295,11 +295,26 @@ describe("round-to-round exchange setup", () => {
     }
   });
 
-  test("loserHasBothJokers and getBestCardFromHand", () => {
-    assert.equal(loserHasBothJokers([j("bw"), j("colored"), c("3", "hearts")]), true);
-    assert.equal(loserHasBothJokers([j("bw"), c("3", "hearts")]), false);
-    assert.equal(getBestCardFromHand([c("3", "hearts"), j("bw"), c("2", "spades")])?.id, "joker_bw");
-    assert.equal(getBestCardFromHand([]), undefined);
+  const fixedDeal = (loserHand: Card[]) =>
+    startRound(
+      [0, 1, 2, 3].map((i) => ({ name: `p${i}`, type: "human" as const })),
+      "free_for_all",
+      {
+        opening: FIRST_BEAT_LAST,
+        dealt: [[c("3", "spades"), c("4", "hearts")], [c("5", "clubs")], [c("7", "hearts")], loserHand],
+      }
+    ).exchangePhase!;
+
+  test("a loser holding one joker is no exception, and hands over its best card", () => {
+    const phase = fixedDeal([c("3", "hearts"), j("bw"), c("2", "spades")]);
+    assert.equal(phase.twoJokerException, false);
+    assert.equal(phase.cardFromLoser?.id, "joker_bw");
+  });
+
+  test("a loser holding both jokers among other cards is the exception", () => {
+    const phase = fixedDeal([j("bw"), j("colored"), c("3", "hearts")]);
+    assert.equal(phase.twoJokerException, true);
+    assert.equal(phase.cardFromLoser, undefined);
   });
 });
 

@@ -1,13 +1,11 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { cardKey, mulberry32, sample } from "../support/game.ts";
+import { card as c, cardKey, mulberry32, sample } from "../support/game.ts";
+import { beats } from "../support/moves.ts";
 import {
   buildCombination,
-  canPlay,
-  canPlayerPlay,
   createDeck,
   getAllValidPlays,
-  STRAIGHT_MAX_LEN,
   type Card,
   type Combination,
 } from "../../lib/game/gameEngine.ts";
@@ -24,7 +22,7 @@ const REAL_SIZES = [13, 14, 18];
 
 /**
  * The largest play the bounded oracle enumerates for hands too big for 2^n.
- * Short of STRAIGHT_MAX_LEN, so that oracle answers for singles, pairs,
+ * Short of the longest straight, so that oracle answers for singles, pairs,
  * triples, bombs and the shortest straights but not for long ones.
  */
 const BOUNDED_LEN = 6;
@@ -48,7 +46,7 @@ function bruteForceLegalPlays(
       if (mask & (1 << i)) selected.push(hand[i]);
     }
     const combo = buildCombination(selected);
-    if (combo && canPlay(combo, lastPlayed)) found.push(combo);
+    if (combo && beats(combo, lastPlayed)) found.push(combo);
   }
   return found;
 }
@@ -64,7 +62,7 @@ function boundedLegalPlays(
   const walk = (start: number) => {
     if (selected.length > 0) {
       const combo = buildCombination([...selected]);
-      if (combo && canPlay(combo, lastPlayed)) found.push(combo);
+      if (combo && beats(combo, lastPlayed)) found.push(combo);
     }
     if (selected.length === maxLen) return;
     for (let i = start; i < hand.length; i++) {
@@ -125,7 +123,12 @@ describe("enumerator property tests", () => {
    * reach, and stay covered by the exhaustive sizes above.
    */
   test("finds every short play in a genuine 18-card hand", () => {
-    assert.ok(BOUNDED_LEN < STRAIGHT_MAX_LEN, "the bound must be a real bound");
+    const longer = (["3", "4", "5", "6", "7", "8", "9"] as const).slice(0, BOUNDED_LEN + 1);
+    assert.equal(
+      buildCombination(longer.map((rank, i) => c(rank, i % 2 ? "clubs" : "hearts")))?.type,
+      "straight",
+      "the bound must be a real bound"
+    );
     const deck = createDeck();
     const rand = mulberry32(0xfa11);
 
@@ -172,7 +175,7 @@ describe("enumerator property tests", () => {
           assert.equal(rebuilt!.type, play.type);
           assert.equal(rebuilt!.strength, play.strength);
           assert.ok(
-            canPlay(play, isNewTrick ? null : lastPlayed),
+            beats(play, isNewTrick ? null : lastPlayed),
             `${size} cards, run ${run}: ${cardKey(play.cards)} cannot legally be played`
           );
           assert.equal(
@@ -188,7 +191,7 @@ describe("enumerator property tests", () => {
     }
   });
 
-  test("canPlayerPlay agrees with brute force on every hand", () => {
+  test("whether any play exists agrees with brute force on every hand", () => {
     const deck = createDeck();
     const rand = mulberry32(0xbeef);
 
@@ -198,7 +201,7 @@ describe("enumerator property tests", () => {
         const lastPlayed = randomLastPlayed(rand, deck);
         const expected = bruteForceLegalPlays(hand, lastPlayed).length > 0;
         assert.equal(
-          canPlayerPlay(hand, lastPlayed, false),
+          getAllValidPlays(hand, lastPlayed, false).length > 0,
           expected,
           `${size} cards, run ${run}: hand ${cardKey(hand)} vs ${lastPlayed ? cardKey(lastPlayed.cards) : "null"}`
         );
@@ -237,7 +240,7 @@ describe("enumerator property tests", () => {
     }
   });
 
-  /** `shapeOf` is the equivalence class `canPlay` discriminates on. */
+  /** `shapeOf` is the equivalence class `beats` discriminates on. */
   test("returns at most one entry per shape", () => {
     const deck = createDeck();
     const rand = mulberry32(0xd00d);

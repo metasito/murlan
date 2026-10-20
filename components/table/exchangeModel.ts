@@ -36,7 +36,7 @@ export const INACTIVE_EXCHANGE: ExchangeView = {
 };
 
 export function readExchange(
-  state: GameState,
+  state: Pick<GameState, "exchangePhase" | "players">,
   viewerSeat: number,
   spectating: boolean
 ): ExchangeView {

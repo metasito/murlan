@@ -8,9 +8,8 @@
 // round->match accounting are `lib/game/matchFlow.ts`, which GameContext.tsx
 // drives too.
 import {
+  applyMove,
   getAllValidPlays,
-  processPlay,
-  processPass,
   type Combination,
   type GameMode,
   type GameState,
@@ -18,7 +17,7 @@ import {
   type SeatSetup,
 } from "../../lib/game/gameEngine.ts";
 import { advance, dealNext, startTable } from "../../lib/game/matchFlow.ts";
-import { autoMoveForSeat, offlineBotMove, type AutoMoveContext } from "../../lib/game/autoMove.ts";
+import { autoMoveForSeat, offlineBotMove, type AutoMove } from "../../lib/game/autoMove.ts";
 import { comboKey } from "../../components/passes.ts";
 import { rng } from "../support/game.ts";
 
@@ -60,7 +59,7 @@ export interface SimulateMatchOptions {
   collectBotTurnKeyCollisions?: BotTurnKeyCollision[];
   /**
    * Forwarded to every bot seat's `botChoosePlay` call (`lib/game/autoMove.ts`'s
-   * `AutoMoveContext.rng`). Absent means that function's own default —
+   * `rng` parameter). Absent means that function's own default —
    * `Math.random`, unseeded. A caller measuring outcomes across many seeds
    * (rather than only checking that a match terminates) wants this seeded
    * too, so the whole match — deal and personality knobs both — replays from
@@ -333,28 +332,22 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
       const isExchangeTurn = !!state.exchangePhase?.active;
       const seat = isExchangeTurn ? state.exchangePhase!.winnerIdx : state.currentTurnIndex;
       actedSeats.add(seat);
-      let playedCombo: Combination | null = null;
-      let comboSeen = false;
-      let next: GameState | null;
+      let auto: AutoMove | null;
       if (!isExchangeTurn && opts.contest?.[seat]) {
         const combo = weakestBeatingPlay(state, seat);
-        comboSeen = true;
-        playedCombo = combo;
-        next = combo ? processPlay(state, combo) : processPass(state);
+        const result = applyMove(
+          state,
+          seat,
+          combo ? { kind: "play", cardIds: combo.cards.map((c) => c.id) } : { kind: "pass" }
+        );
+        auto = result.ok ? result : null;
       } else {
-        const ctx: AutoMoveContext = {
-          onMove: (_s, combo) => {
-            comboSeen = true;
-            playedCombo = combo;
-          },
-          rng: botRng,
-        };
-        next =
+        auto =
           !isExchangeTurn && state.players[seat]?.type === "bot"
-            ? offlineBotMove(state, ctx)
-            : autoMoveForSeat(state, seat, opts.useBot?.[seat] ?? true, ctx);
+            ? offlineBotMove(state, botRng)
+            : autoMoveForSeat(state, seat, (opts.useBot?.[seat] ?? true) ? "bot" : "floor", botRng);
       }
-      if (!next) {
+      if (!auto) {
         throw new MatchStallError(
           `round ${rounds.length} stuck: seat ${seat} could not act at move ${moves} ` +
             `(exchange active: ${isExchangeTurn})`,
@@ -364,14 +357,16 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
       }
 
       // Exchange choices and the stuck-exchange release neither play nor
-      // pass in `processPlay`/`processPass`'s sense (`onMove` never fires
-      // for them) and never touch `getNextActivePlayer` — out of scope for
-      // both checks below.
+      // pass, and never touch `getNextActivePlayer` — out of scope for both
+      // checks below.
+      const next: GameState = auto.state;
+      const comboSeen = auto.move?.kind === "play" || auto.move?.kind === "pass";
+      const playedCombo: Combination | null = auto.move?.kind === "play" ? auto.move.combo : null;
       if (!isExchangeTurn && comboSeen) {
         if (playedCombo !== null) {
           const before = state.players[seat]?.hand.length ?? 0;
           const after = next.players[seat]?.hand.length ?? 0;
-          const shed = (playedCombo as Combination).cards.length;
+          const shed = playedCombo.cards.length;
           if (after !== before - shed) {
             throw new HandNotShrunkError(
               `round ${rounds.length} move ${moves}: seat ${seat} played ` +

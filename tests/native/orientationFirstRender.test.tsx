@@ -5,7 +5,7 @@
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { Text } from 'react-native';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 // iOS's own dimension bridge, cold: this is the shape #819 reported — a
 // portrait phone whose first `Dimensions.get('window')` reads as landscape,
@@ -22,10 +22,27 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   default: () => WRONG_COLD_START,
 }));
 
-import { OrientationProvider, useIsLandscape } from '@/lib/device/orientation';
+jest.mock('expo-screen-orientation', () => ({
+  ...jest.requireActual<object>('expo-screen-orientation'),
+  lockAsync: jest.fn(async () => {}),
+  unlockAsync: jest.fn(async () => {}),
+}));
+const mockNative = { holdLandscape: jest.fn(async () => {}), release: jest.fn(async () => {}) };
+jest.mock('@/modules/murlan-orientation', () => ({
+  __esModule: true,
+  default: { holdLandscape: () => mockNative.holdLandscape(), release: () => mockNative.release() },
+}));
+
+import * as ScreenOrientation from 'expo-screen-orientation';
+import { OrientationProvider, useIsLandscape, useLandscapeLock } from '@/lib/device/orientation';
 
 function Probe() {
   return <Text testID="orientation-value">{String(useIsLandscape())}</Text>;
+}
+
+function Locked() {
+  useLandscapeLock();
+  return null;
 }
 
 describe('useIsLandscape on the very first render', () => {
@@ -56,5 +73,37 @@ describe('useIsLandscape on the very first render', () => {
     const view = await render(<Probe />);
     expect(screen.getByTestId('orientation-value').props.children).toBe('true');
     await view.unmount();
+  });
+});
+
+describe('useLandscapeLock', () => {
+  it('locks on the first render, keeps asking while the measured window is upright (#1378), and lets go on unmount', async () => {
+    jest.useFakeTimers();
+    const locks = jest.mocked(ScreenOrientation.lockAsync);
+    locks.mockClear();
+    const view = await render(
+      <OrientationProvider>
+        <Locked />
+      </OrientationProvider>
+    );
+    expect(locks).toHaveBeenCalledTimes(1);
+    expect(locks).toHaveBeenLastCalledWith(ScreenOrientation.OrientationLock.LANDSCAPE);
+    expect(mockNative.holdLandscape).toHaveBeenCalledTimes(1);
+
+    await act(() => jest.advanceTimersByTime(3000));
+    expect(locks).toHaveBeenCalledTimes(1);
+
+    await fireEvent(screen.getByTestId('orientation-root'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, ...TRUE_PORTRAIT } },
+    });
+    const upright = locks.mock.calls.length;
+    await act(() => jest.advanceTimersByTime(3000));
+    expect(locks.mock.calls.length).toBe(upright + 3);
+
+    expect(mockNative.release).not.toHaveBeenCalled();
+    await view.unmount();
+    expect(ScreenOrientation.unlockAsync).toHaveBeenCalledTimes(1);
+    expect(mockNative.release).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
   });
 });

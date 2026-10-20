@@ -2,22 +2,19 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as fc from "fast-check";
 import {
-  checkPass,
-  checkPlay,
   getAllValidPlays,
   getRankStrength,
   getValidGivebackCards,
   openingAfter,
-  processExchangeChoice,
-  processPass,
-  processPlay,
   seatsOf,
   startRound,
   type Card,
   type Combination,
   type GameMode,
   type GameState,
+  type Move,
 } from "../../lib/game/gameEngine.ts";
+import { givenBack, passed, played, refusalOf } from "../support/moves.ts";
 import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
 import { mulberry32, rng as seeded } from "../support/game.ts";
 
@@ -61,7 +58,7 @@ function stepsFor(state: GameState): Step[] {
   return [
     { kind: "bot" },
     ...plays.map((combo) => ({ kind: "play" as const, combo })),
-    ...(checkPass(state).ok ? [{ kind: "pass" as const }] : []),
+    ...(refusalOf(state, { kind: "pass" }) === null ? [{ kind: "pass" as const }] : []),
   ];
 }
 
@@ -70,21 +67,26 @@ function apply(state: GameState, step: Step, rng: () => number): { next: GameSta
   const acting = state.exchangePhase?.active ? state.exchangePhase.winnerIdx : state.currentTurnIndex;
   switch (step.kind) {
     case "giveback":
-      return { next: processExchangeChoice(state, step.card.id), played: [] };
+      return { next: givenBack(state, step.card.id), played: [] };
     case "pass":
-      return { next: processPass(state), played: [] };
+      return { next: passed(state), played: [] };
     case "play": {
-      const check = checkPlay(state, acting, ids(step.combo.cards));
-      assert.ok(check.ok, `an offered play is refused: ${JSON.stringify(check)}`);
-      return { next: processPlay(state, step.combo), played: step.combo.cards };
+      const refusal = refusalOf(state, { kind: "play", cardIds: ids(step.combo.cards) });
+      assert.equal(refusal, null, `an offered play is refused: ${refusal}`);
+      return { next: played(state, step.combo), played: step.combo.cards };
     }
     case "bot": {
-      let chosen: Combination | null | undefined;
-      const next = autoMoveForSeat(state, acting, true, { rng, onMove: (_, combo) => { chosen = combo; } });
-      assert.ok(next, `seat ${acting} is on move and the bot has nothing to do`);
-      if (chosen) assert.ok(checkPlay(state, acting, ids(chosen.cards)).ok, "the bot played an illegal combination");
-      if (chosen === null) assert.ok(checkPass(state).ok, "the bot passed where a pass is refused");
-      return { next, played: chosen?.cards ?? [] };
+      const auto = autoMoveForSeat(state, acting, "bot", rng);
+      assert.ok(auto?.move, `seat ${acting} is on move and the bot has nothing to do`);
+      const chosen = auto.move.kind === "play" ? auto.move.combo : null;
+      const asked: Move =
+        auto.move.kind === "play"
+          ? { kind: "play", cardIds: ids(auto.move.combo.cards) }
+          : auto.move.kind === "pass"
+            ? { kind: "pass" }
+            : { kind: "giveback", cardId: auto.move.card.id };
+      assert.equal(refusalOf(state, asked), null, `the bot made a ${asked.kind} the engine refuses`);
+      return { next: auto.state, played: chosen?.cards ?? [] };
     }
   }
 }
