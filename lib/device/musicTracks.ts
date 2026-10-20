@@ -7,7 +7,7 @@
  * resolving the right container per platform (#178). A dead-code sweep that
  * doesn't check the test first will delete the one assertion covering it.
  */
-export const CONTAINER = "flac" as const;
+export const CONTAINER: "flac" | "webm" = "flac";
 
 export const TRACKS = {
   menu: () => require("../../assets/music/native/menu.flac") as number,
