@@ -92,21 +92,25 @@ describe('the frame loop runs only while armed or recording', () => {
     await settle();
     jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
     let done = false;
-    const finished = run({
-      params: {},
-      showTable: async () => {},
-      sleep: (ms) => jest.advanceTimersByTimeAsync(ms),
-      frames: (on, until) => probe.recordFrames(on, until),
-      armFrames: probe.armFrames,
-      feltSample: async () => {
-        throw new Error('unused');
-      },
-      gallery: {},
-      showNotice: () => {},
-    }).then(() => void (done = true));
-    while (!done) await jest.advanceTimersByTimeAsync(16);
-    await finished;
-    jest.useRealTimers();
+    try {
+      const finished = run({
+        params: {},
+        showTable: async () => {},
+        sleep: (ms) => jest.advanceTimersByTimeAsync(ms),
+        frames: (on, until) => probe.recordFrames(on, until),
+        armFrames: probe.armFrames,
+        feltSample: async () => {
+          throw new Error('unused');
+        },
+        gallery: {},
+        showNotice: () => {},
+      }).then(() => void (done = true));
+      for (let i = 0; !done && i < 625; i++) await jest.advanceTimersByTimeAsync(16);
+      expect(done).toBe(true);
+      await finished;
+    } finally {
+      jest.useRealTimers();
+    }
     const dts = mockRows.flatMap((r) => (r.k === 'frame' ? [r.dt] : []));
     expect(dts.length).toBeGreaterThan(1);
     expect(Number.isFinite(dts[0])).toBe(true);
