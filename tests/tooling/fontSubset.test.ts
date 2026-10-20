@@ -8,19 +8,62 @@
 // only thing that says otherwise.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import subsetFont from "subset-font";
 import { subsetCharacters, WEB_FONTS } from "../../scripts/fontSubsetChars.mjs";
+import { cmapCodepoints } from "../helpers/cmap.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const fontsDir = path.join(repoRoot, "public", "fonts");
+
+const require = createRequire(import.meta.url);
+const fonts = WEB_FONTS as { pkg: string; weight: string; family: string }[];
 
 const manifest: { characters: string; files: string[] } = JSON.parse(
   readFileSync(path.join(repoRoot, "scripts", "font-subset.json"), "utf8")
 );
 
-test("the subsets carry every character the app can render", () => {
+/**
+ * What a needed character the source face draws but `woff2` does not: those render as tofu, or in
+ * the fallback face. A character the source face lacks falls back whatever the subset holds.
+ */
+async function tofu(font: (typeof fonts)[number], woff2: Buffer, needed: string): Promise<string[]> {
+  const [source, shipped] = await Promise.all([
+    cmapCodepoints(readFileSync(require.resolve(`${font.pkg}/${font.weight}/${font.family}.ttf`))),
+    cmapCodepoints(woff2),
+  ]);
+  return [...needed].filter((ch) => source.has(ch.codePointAt(0)!) && !shipped.has(ch.codePointAt(0)!));
+}
+
+test("each shipped face draws every character the app can render that its source face draws", async () => {
+  const needed = subsetCharacters(repoRoot) as string;
+  for (const font of fonts) {
+    const missing = await tofu(font, readFileSync(path.join(fontsDir, `${font.family}.woff2`)), needed);
+    assert.deepEqual(missing, [], `run \`node scripts/build-fonts.mjs\` — ${font.family}.woff2 has no glyph for ${JSON.stringify(missing.join(""))}`);
+  }
+});
+
+test("a face subset without one needed glyph is caught", async () => {
+  const needed = subsetCharacters(repoRoot) as string;
+  const [font] = fonts;
+  const dropped = "ë";
+  assert.ok(needed.includes(dropped), `the app no longer renders ${dropped}; plant another character`);
+  const dir = mkdtempSync(path.join(tmpdir(), "font-subset-"));
+  try {
+    const ttf = readFileSync(require.resolve(`${font.pkg}/${font.weight}/${font.family}.ttf`));
+    const planted = path.join(dir, `${font.family}.woff2`);
+    writeFileSync(planted, await subsetFont(ttf, needed.replace(dropped, ""), { targetFormat: "woff2" }));
+    assert.deepEqual(await tofu(font, readFileSync(planted), needed), [dropped]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the manifest lists every character the app can render", () => {
   const needed = subsetCharacters(repoRoot) as string;
   const have = new Set(manifest.characters);
   const missing = [...needed].filter((ch) => !have.has(ch));

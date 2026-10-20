@@ -1,11 +1,12 @@
-// The mockup-parity specs playwright.config.ts ignores, run by .github/workflows/parity-nightly.yml.
+// The specs playwright.config.ts ignores as nightly, run by .github/workflows/parity-nightly.yml.
 import { defineConfig } from "@playwright/test";
 import base from "./playwright.config.ts";
+import { NIGHTLY, PERF } from "./tiers.mjs";
 
 export default defineConfig({
   ...base,
-  testIgnore: /(^|\/)webPerf\.spec\.ts$/,
-  testMatch: /(^|\/)(mockupParity\w*|feltParityGrid(Phone|Tablet)[234]|cardShadowParity|cardGlowParity|handParity|lampLegibility|lampSeats|mockupPolish)\.spec\.ts$/,
+  testIgnore: PERF,
+  testMatch: NIGHTLY,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]],
 });

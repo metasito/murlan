@@ -1,4 +1,4 @@
-// tests/e2e/lampLegibility.spec.ts — in the Skia felt's own pixels, the seat on move out-lights the
+// tests/e2e/lampLegibility.nightly.spec.ts — in the Skia felt's own pixels, the seat on move out-lights the
 // brightest other seat by the floor at every phone, and every seat does so about equally (plan 3
 // Task 8; the bounds are lib/diagnostics/lampLegibility.ts's, the rings where the table laid them).
 import type { Page } from "@playwright/test";

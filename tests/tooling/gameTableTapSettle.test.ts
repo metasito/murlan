@@ -10,43 +10,37 @@
 // table rotates the device for it, and says so. That means a flow reordered around
 // that line moves this check with it instead of leaving it pointing at a tap that is
 // no longer the one crossing over.
-//
-// Read as text rather than parsed: no YAML parser is a dependency of this project, and
-// the claim is about which command comes before which, which is the level the file is
-// edited at.
+
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { parseAllDocuments } from "yaml";
 
 const FLOW_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", ".maestro");
 
-/** A flow's text with each `runFlow` of a `_*.yaml` sibling replaced by that file's commands. */
-function withIncludes(text: string): string {
-  return text.replace(/^- runFlow: (_\w+\.yaml)$|^- runFlow:(?:\n {4}\S.*|\n {6}.*)*/gm, (block, bare) => {
-    const file = bare ?? block.match(/file: (_\w+\.yaml)/)?.[1];
-    if (!file) return block;
-    return readFileSync(path.join(FLOW_DIR, file), "utf8").split(/^---$/m).slice(1).join("---");
-  });
+type Command = { name: string; value: unknown };
+
+/** A flow file's commands: the document after its config header. */
+function commandsOf(file: string): unknown[] {
+  const docs = parseAllDocuments(readFileSync(path.join(FLOW_DIR, file), "utf8")).map((d) => d.toJS());
+  return (docs.at(-1) as unknown[]) ?? [];
 }
 
-/** The line each `tapOn` starts on, and every line of the block it owns. */
-function tapsIn(lines: string[]): { line: number; block: string[] }[] {
-  const taps: { line: number; block: string[] }[] = [];
-  for (const [i, line] of lines.entries()) {
-    const at = line.indexOf("tapOn:");
-    if (at === -1 || line.trimStart().replace(/^-\s*/, "").indexOf("tapOn:") !== 0) continue;
-    const block = [line];
-    for (let j = i + 1; j < lines.length; j += 1) {
-      const next = lines[j];
-      if (next.trim() === "") continue;
-      if (next.search(/\S/) <= at) break;
-      block.push(next);
+/** Every command a flow runs, in order: nested blocks opened, and each `_*.yaml` sibling it runs in place. */
+function flatten(commands: unknown[]): Command[] {
+  return commands.flatMap((command): Command[] => {
+    if (typeof command === "string") return [{ name: command, value: null }];
+    const [name, value] = Object.entries(command as Record<string, unknown>)[0];
+    const body = value as { file?: string; commands?: unknown[] } | string | null;
+    if (name === "runFlow") {
+      const file = typeof body === "string" ? body : body?.file;
+      if (file && /^_\w+\.yaml$/.test(file)) return flatten(commandsOf(file));
     }
-    taps.push({ line: i + 1, block });
-  }
-  return taps;
+    if (body && typeof body === "object" && Array.isArray(body.commands)) return flatten(body.commands);
+    return [{ name, value }];
+  });
 }
 
 /**
@@ -54,12 +48,12 @@ function tapsIn(lines: string[]): { line: number; block: string[] }[] {
  * so a flow turning the device that way is on its way there, and one turning it to
  * portrait (`smoke.yaml`, for the menus below the fold) is not.
  */
-function flowsReachingTheTable(): { name: string; lines: string[]; rotation: number }[] {
+function flowsReachingTheTable(): { name: string; commands: Command[]; rotation: number }[] {
   const found = [];
   for (const name of readdirSync(FLOW_DIR).filter((f) => /\.ya?ml$/.test(f))) {
-    const lines = withIncludes(readFileSync(path.join(FLOW_DIR, name), "utf8")).split("\n");
-    const rotation = lines.findIndex((l) => /^\s*-?\s*setOrientation:\s*LANDSCAPE/.test(l));
-    if (rotation !== -1) found.push({ name, lines, rotation });
+    const commands = flatten(commandsOf(name));
+    const rotation = commands.findIndex((c) => c.name === "setOrientation" && JSON.stringify(c.value).includes("LANDSCAPE"));
+    if (rotation !== -1) found.push({ name, commands, rotation });
   }
   return found;
 }
@@ -76,16 +70,16 @@ describe("taps that land on the game table", () => {
     );
   });
 
-  for (const { name, lines, rotation } of flowsReachingTheTable()) {
+  for (const { name, commands, rotation } of flowsReachingTheTable()) {
     test(`${name} caps the settle wait from the tap that opens the table onward`, () => {
-      const taps = tapsIn(lines);
-      const opening = taps.filter((t) => t.line <= rotation + 1).pop();
+      const taps = commands.flatMap((c, at) => (c.name === "tapOn" ? [{ at, value: c.value }] : []));
+      const opening = taps.filter((t) => t.at < rotation).pop();
       assert.ok(opening, `${name} rotates for the table without a tap ever opening it`);
 
       const uncapped = taps
-        .filter((t) => t.line >= opening.line)
-        .filter((t) => !t.block.some((l) => l.includes("waitToSettleTimeoutMs")))
-        .map((t) => `${name}:${t.line}`);
+        .filter((t) => t.at >= opening.at)
+        .filter((t) => (t.value as { waitToSettleTimeoutMs?: number } | null)?.waitToSettleTimeoutMs === undefined)
+        .map((t) => `${name}, command ${t.at + 1}: tapOn ${JSON.stringify(t.value)}`);
 
       assert.deepEqual(
         uncapped,
