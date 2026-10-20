@@ -220,6 +220,42 @@ const GUARDS = [
     spare: ['url.searchParams.clear("x");', "reportedSignatures.clear();", "queryClient.invalidateQueries();", '// qc.clear()\nconst s = "qc.clear()";'].map((code) => ({ file: "lib/errorReporting.ts", code })),
   },
   {
+    id: "submit-through-hook",
+    why: "A return key that submits needs both halves of the in-flight guard, and react-native-web fires it on a held Enter even while readOnly: spread `field` from useGuardedSubmit, or useReturnFocuses() for a field that only moves focus (lib/useGuardedSubmit.ts).",
+    selector: 'JSXAttribute[name.name="onSubmitEditing"], Property:matches([key.name="onSubmitEditing"], [key.value="onSubmitEditing"])',
+    files: SCREENS,
+    ignores: [{ glob: "lib/useGuardedSubmit.ts", reason: "the hook that owns both halves of the guard" }],
+    plant: { file: "app/Plant.tsx", code: [
+      "const a = <TextInput onSubmitEditing={save} editable={!saving} />;",
+      "const b = <TextInput {...{ onSubmitEditing: () => ref.current?.focus() }} />;",
+      'const c = { "onSubmitEditing": submit };',
+    ].join("\n"), hits: 3 },
+    spare: [
+      "const a = <TextInput {...submitField} />;",
+      "const b = <TextInput {...emailReturn} />;",
+      '// onSubmitEditing={save}\nconst s = "onSubmitEditing";',
+    ].map((code) => ({ file: "app/Plant.tsx", code })),
+  },
+  {
+    id: "codes-through-payload",
+    why: "A code beside a hand-written sentence reaches a player with no locale entry checked and an English text that drifts from locales/en.ts: build it with payload() or refuse() from server/shared/payload.ts, whose ServerCode type is the catalogue.",
+    selector:
+      'ObjectExpression:has(> Property:matches([key.name=/^(message|error)$/], [key.value=/^(message|error)$/])) > Property:matches([key.name="code"], [key.value="code"])',
+    files: ["server/**/*.ts", "shared/persistedEnvelope.ts", "shared/socketSchemas.ts", "shared/httpSchemas.ts"],
+    ignores: [{ glob: "server/shared/payload.ts", reason: "payload() is the one builder the rest call" }],
+    plant: { file: "server/game/stats.ts", code: [
+      'socket.emit("game:error", { code: "ROOM_NOT_FOUND", message: "Room not found" });',
+      "res.json({ message: err.message, code });",
+      'const p = { "code": c, "error": `bad ${x}` };',
+    ].join("\n"), hits: 3 },
+    spare: [
+      'return { ok: false, code: "ROOM_NOT_FOUND" };',
+      'socket.emit("game:error", payload("ROOM_NOT_FOUND"));',
+      'logger.error({ err, event }, "message");',
+      '// { code: "X", message: "y" }\nconst s = "code, message";',
+    ].map((code) => ({ file: "server/game/stats.ts", code })),
+  },
+  {
     id: "no-cwd-root",
     why: "The cwd is wherever the run was started, so a root read from it points somewhere else under another runner: take the root from the file's own path, as tests/tooling/lintGuards.test.ts does.",
     selector: 'CallExpression[callee.object.name="process"][callee.property.name="cwd"]',

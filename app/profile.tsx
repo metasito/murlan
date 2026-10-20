@@ -41,6 +41,7 @@ import { serverErrorMessage } from "@/lib/apiError";
 import { apiRequest } from "@/lib/query-client";
 import { USERNAME_MAX, USERNAME_MIN, usernameProblem } from "@/shared/username";
 import { placementColor, positionLabelKey } from "@/lib/placement";
+import { useGuardedSubmit } from "@/lib/useGuardedSubmit";
 import type { UserStatsDto, RatingDto, AchievementStatusDto, RoundHistoryDto } from "@/shared/http";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
@@ -83,7 +84,6 @@ function UserCard({ user }: { user: { username: string } }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(user.username);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const open = () => {
@@ -98,8 +98,7 @@ function UserCard({ user }: { user: { username: string } }) {
     invalidChars: "profile.renameInvalidChars",
   };
 
-  async function save() {
-    if (saving) return;
+  const { busy: saving, submit: save, field: saveField } = useGuardedSubmit(async () => {
     const name = draft.trim();
     if (name === user.username) {
       setEditing(false);
@@ -110,7 +109,6 @@ function UserCard({ user }: { user: { username: string } }) {
       setError(t(problemKey[problem], { min: USERNAME_MIN, max: USERNAME_MAX }));
       return;
     }
-    setSaving(true);
     setError(null);
     try {
       await rename(name);
@@ -122,8 +120,7 @@ function UserCard({ user }: { user: { username: string } }) {
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("profile.renameFailed")));
     }
-    setSaving(false);
-  }
+  });
 
   if (!editing) {
     return (
@@ -165,8 +162,7 @@ function UserCard({ user }: { user: { username: string } }) {
           autoFocus
           maxLength={USERNAME_MAX}
           returnKeyType="done"
-          onSubmitEditing={save}
-          editable={!saving}
+          {...saveField}
           accessibilityLabel={t("profile.renameA11yLabel")}
           testID="input-rename"
         />
@@ -214,20 +210,9 @@ function ChangePasswordCard() {
   const [open, setOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function close() {
-    if (saving) return;
-    setOpen(false);
-    setCurrentPassword("");
-    setNewPassword("");
-    setError(null);
-  }
-
-  async function submit() {
-    if (saving) return;
-    setSaving(true);
+  const { busy: saving, submit, field: submitField } = useGuardedSubmit(async () => {
     setError(null);
     try {
       await changePassword(currentPassword, newPassword);
@@ -242,7 +227,14 @@ function ChangePasswordCard() {
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("profile.changePasswordFailed")));
     }
-    setSaving(false);
+  });
+
+  function close() {
+    if (saving) return;
+    setOpen(false);
+    setCurrentPassword("");
+    setNewPassword("");
+    setError(null);
   }
 
   return (
@@ -295,9 +287,8 @@ function ChangePasswordCard() {
               autoComplete="new-password"
               textContentType="newPassword"
               returnKeyType="done"
-              onSubmitEditing={submit}
               accessibilityLabel={t("profile.changePasswordNewA11yLabel")}
-              editable={!saving}
+              {...submitField}
               testID="input-new-password"
             />
             <Text style={styles.modalHint}>{t("profile.changePasswordHint")}</Text>
@@ -340,19 +331,9 @@ function AddEmailCard() {
   const { addEmail } = useAuth();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function close() {
-    if (saving) return;
-    setOpen(false);
-    setEmail("");
-    setError(null);
-  }
-
-  async function submit() {
-    if (saving) return;
-    setSaving(true);
+  const { busy: saving, submit, field: submitField } = useGuardedSubmit(async () => {
     setError(null);
     try {
       await addEmail(email.trim());
@@ -365,7 +346,13 @@ function AddEmailCard() {
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("profile.addEmailFailed")));
     }
-    setSaving(false);
+  });
+
+  function close() {
+    if (saving) return;
+    setOpen(false);
+    setEmail("");
+    setError(null);
   }
 
   return (
@@ -404,9 +391,8 @@ function AddEmailCard() {
               autoComplete="email"
               textContentType="emailAddress"
               returnKeyType="done"
-              onSubmitEditing={submit}
               accessibilityLabel={t("profile.addEmailA11yLabel")}
-              editable={!saving}
+              {...submitField}
               testID="input-add-email"
             />
 

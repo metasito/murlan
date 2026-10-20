@@ -357,9 +357,8 @@ describe('app/recover', () => {
     });
     // The prop, not the event: RNTL's fireEvent refuses any event on a
     // non-editable input, which would assert the harness. Dispatching anyway is
-    // what the web build does (tests/ui-rules/submitEditingGuards.test.ts says why).
-    // Re-read each time — the browser re-attaches the handler every render, and
-    // the guard only sees `loading` through the closure it was made in.
+    // what the web build does (lib/useGuardedSubmit.ts says why).
+    // Re-read each time — the browser re-attaches the handler every render.
     const submit = () => screen.getByLabelText(locale['recover.emailA11yLabel']).props.onSubmitEditing;
     await act(async () => {
       submit()();

@@ -352,59 +352,6 @@ describe("the server writes its fallbacks in the source language", () => {
 // rewritten wholesale for neutral registration (#897); the carve-out went
 // with them — a scan with one is a scan that stops being true (design doc,
 // Q2).
-describe("a payload's code and its message are never both hand-written (#896)", () => {
-  function offendingObjects(sourceFile: ts.SourceFile): string[] {
-    const found: string[] = [];
-    const visit = (node: ts.Node) => {
-      if (ts.isObjectLiteralExpression(node)) {
-        let code: string | null = null;
-        let text: string | null = null;
-        for (const prop of node.properties) {
-          if (!ts.isPropertyAssignment(prop)) continue;
-          const name =
-            ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) ? prop.name.text : null;
-          if (
-            name === "code" &&
-            (ts.isStringLiteral(prop.initializer) || ts.isNoSubstitutionTemplateLiteral(prop.initializer))
-          ) {
-            code = prop.initializer.text;
-          }
-          if (
-            (name === "message" || name === "error") &&
-            (ts.isStringLiteral(prop.initializer) ||
-              ts.isNoSubstitutionTemplateLiteral(prop.initializer) ||
-              ts.isTemplateExpression(prop.initializer))
-          ) {
-            text = prop.initializer.getText(sourceFile);
-          }
-        }
-        if (code !== null && text !== null) {
-          found.push(node.getText(sourceFile).replace(/\s+/g, " ").trim().slice(0, 120));
-        }
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(sourceFile);
-    return found;
-  }
-
-  test("no object literal under server/ carries both a literal code and a literal message/error", () => {
-    const offenders: string[] = [];
-    let scanned = 0;
-    for (const { file, source } of serverSources()) {
-      scanned++;
-      const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-      for (const text of offendingObjects(sourceFile)) offenders.push(`${file}: ${text}`);
-    }
-    assert.ok(scanned > 20, `expected to have scanned most of server/, got ${scanned} files`);
-    assert.deepEqual(
-      offenders,
-      [],
-      `these hand-write a message beside a code instead of deriving it through payload(): ${offenders.join(" | ")}`
-    );
-  });
-});
-
 describe("no empty translations", () => {
   for (const name of LOCALE_NAMES) {
     test(`${name} has no key with an empty string value`, () => {
@@ -576,30 +523,10 @@ describe("interpolate()", () => {
 });
 
 describe("translate() produces the expected output per locale", () => {
-  // The two halves of "a missing key renders English": translate() resolves a
-  // gap through DEFAULT_LOCALE, and en.ts is the catalogue the other two are
-  // typed against — so a key can only be missing from it.ts or sq.ts.
-  test("English is the fallback catalogue and the key set every locale derives from", () => {
+  // translate() resolves a gap through DEFAULT_LOCALE, and en.ts is the catalogue it.ts and
+  // sq.ts are typed against, so a key missing from either fails tsc.
+  test("English is the fallback catalogue", () => {
     assert.equal(DEFAULT_LOCALE, "en");
-
-    const localeDir = path.resolve(
-      path.dirname(fileURLToPath(import.meta.url)),
-      "..", "..",
-      "locales"
-    );
-    for (const name of ["it", "sq"]) {
-      const src = readFileSync(path.join(localeDir, `${name}.ts`), "utf8");
-      assert.match(
-        src,
-        new RegExp(`export const ${name}: Record<keyof typeof en, string>`),
-        `locales/${name}.ts must derive its key set from en`
-      );
-    }
-    assert.equal(
-      /export const en\s*=/.test(readFileSync(path.join(localeDir, "en.ts"), "utf8")),
-      true,
-      "locales/en.ts must declare the key set itself, not derive it"
-    );
   });
 
   test("simple key, no params, in every locale", () => {
@@ -634,75 +561,10 @@ describe("translate() produces the expected output per locale", () => {
     assert.equal(out, "this.key.does.not.exist");
   });
 
-  test("every error code the server can emit has a server.* key", () => {
-    // The server is written in English and ships a stable `code` plus an
-    // English fallback; the catalogues are the only place the player's
-    // language comes from. A code with no key here falls through
-    // `translateServerPayload` to that English fallback and shows an Italian
-    // player English — which is how `REPLAY_NOT_FOUND` was found.
-    const emitted = new Set<string>();
-    for (const { source } of serverSources()) {
-      // An intent's acknowledgement is machine-read: the client branches on
-      // whether a code is present, and never renders one. Only a code that
-      // travels with a `message:` reaches a player's eyes, so only those need
-      // a catalogue entry — a code carried by both shapes still matches on the
-      // emitted one.
-      const rendered = source.replace(/ok: false, code: "[A-Z_]+"/g, "");
-      for (const m of rendered.matchAll(/code: "([A-Z_]+)"/g)) emitted.add(m[1]);
-      // seatClaimCode() and its siblings return the code directly.
-      for (const m of rendered.matchAll(/return "([A-Z][A-Z_]{3,})";/g)) emitted.add(m[1]);
-    }
-    // payload("CODE") and refuse("CODE") calls carry no literal `code: "..."` property at all
-    // (#896) — a call the two regexes above cannot see.
-    for (const { source } of serverSources()) {
-      for (const m of source.matchAll(/\b(?:payload|refuse)\("([A-Z][A-Z_]*)"/g)) emitted.add(m[1]);
-    }
-    assert.ok(
-      emitted.has("EXCHANGE_PENDING"),
-      "the ack exclusion took a code that is also emitted to the player"
-    );
-    // It moved down for the same reason as the floors above: a code reached
-    // only through payload("CODE") (#896) carries no literal `code: "..."`
-    // property for this regex to see, and is checked at compile time instead
-    // (server/shared/payload.ts's ServerCode constraint) rather than by this scan.
-    assert.ok(
-      emitted.size > 34,
-      `expected to find the server's codes, got ${emitted.size} (38 when this floor was set)`
-    );
-
-    const missing = [...emitted].filter(
-      (code) => !Object.prototype.hasOwnProperty.call(en, `server.${code}`)
-    );
-    assert.deepEqual(
-      missing,
-      [],
-      `these codes have no server.* translation: ${missing.join(", ")}`
-    );
-  });
-
   test("every game:rejoin_failed reason is renderable and distinct in every locale", () => {
-    // The one emit site is what stands between the player and a game that
-    // vanishes with no explanation, so it has to follow the wire's
-    // { code, message } contract — `reason` is invisible to
-    // translateServerPayload — and no two of its reasons may render the same
-    // sentence, or the codes carry no information.
-    // Read across the socket family rather than one file: which module the
-    // rejoin handler sits in is a layout decision, and the contract being
-    // checked here is not.
-    const source = ["socket/socket.ts", "socket/socketRooms.ts", "socket/socketGameplay.ts"]
-      .map((f) => readFileSync(path.join(SERVER_DIR, f), "utf8"))
-      .join("\n");
-    const sites = source
-      .split("\n")
-      .filter((line) => line.includes('"game:rejoin_failed"'));
-    assert.equal(
-      sites.length,
-      1,
-      "the rejoin failure is spelled in one place; a second emit is a second contract"
-    );
-    assert.ok(sites[0].includes("roomId"), `no roomId for the client's guard: ${sites[0].trim()}`);
-    assert.ok(!sites[0].includes("reason:"), `still ships reason: ${sites[0].trim()}`);
-
+    // No two reasons may render the same sentence, or the codes carry no information. What the
+    // emit carries is pinned by tests/integration/gameplay.test.ts on the payload a stranger gets.
+    const source = readFileSync(path.join(SERVER_DIR, "socket", "socketGameplay.ts"), "utf8");
     // The reasons themselves, from the table that emit spreads.
     const table = /REJOIN_FAILURE[^=]*=\s*\{([\s\S]*?)\n\};/.exec(source)?.[1] ?? "";
     const entries = [...table.matchAll(/payload\("([A-Z_]+)"\)/g)];

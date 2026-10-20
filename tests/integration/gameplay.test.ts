@@ -5,6 +5,7 @@ import { io as ioClient, type Socket } from "socket.io-client";
 import { PROTOCOL_AUTH, reconnectAs, register, waitFor, waitForWhere } from "../helpers/client.ts";
 import { eq } from "drizzle-orm";
 import { logger } from "../../server/shared/logger.ts";
+import { payload } from "../../server/shared/payload.ts";
 import { createDeck, getAllValidPlays } from "../../lib/game/gameEngine.ts";
 import type { ServerPayload } from "../../shared/protocol.ts";
 import {
@@ -634,12 +635,12 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     assert.equal((await reclaimed).userId, nina.user.id);
 
     // Quinn registered but never joined: the same live table, still refused.
-    const stranger = waitFor<{ code?: string }>(quinn.socket, "game:rejoin_failed", 5_000);
+    const stranger = waitFor<Record<string, unknown>>(quinn.socket, "game:rejoin_failed", 5_000);
     quinn.socket.emit("game:rejoin", { roomId: room.roomId });
-    assert.equal(
-      (await stranger).code,
-      "UNAUTHORIZED",
-      "an account that never sat here is still refused, not explained to"
+    assert.deepEqual(
+      await stranger,
+      { ...payload("UNAUTHORIZED"), roomId: room.roomId },
+      "an account that never sat here is still refused, not explained to, in the { code, message } a client renders and with the roomId its stale-reply guard matches"
     );
 
     back.close();
