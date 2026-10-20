@@ -52,11 +52,39 @@ test('a stored reduced-motion choice holds from launch, before any read lands an
   await view.unmount();
 });
 
-test('a fresh install, with nothing stored, gets the system default once the read completes', async () => {
-  jest.mocked(AsyncStorage.getItem).mockImplementation(async () => null);
-  let fresh!: typeof import('@/lib/accessibility');
-  jest.isolateModules(() => { fresh = require('@/lib/accessibility'); });
-  expect(fresh.getMotionPreference()).toBe('on');
+/** lib/accessibility loaded fresh, its stored read answered by `read` on the AsyncStorage instance it requires. */
+function coldAccessibility(read: () => Promise<string | null>) {
+  let accessibility!: typeof import('@/lib/accessibility');
+  let getItem!: jest.Mock;
+  jest.isolateModules(() => {
+    const loaded = require('@react-native-async-storage/async-storage') as typeof AsyncStorage & { default?: typeof AsyncStorage };
+    const storage = loaded.default ?? loaded;
+    getItem = jest.mocked(storage.getItem).mockImplementation(read) as unknown as jest.Mock;
+    getItem.mockClear();
+    accessibility = require('@/lib/accessibility');
+  });
+  return { accessibility, getItem };
+}
+
+test('a stored full-motion choice is held reduced until the read lands, then settles on it', async () => {
+  let release!: (raw: string | null) => void;
+  const { accessibility, getItem } = coldAccessibility(() => new Promise((resolve) => { release = resolve; }));
+  expect(getItem).toHaveBeenCalledWith(SETTINGS_KEY);
+  expect(accessibility.getMotionPreference()).toBe('on');
+
+  await act(async () => { release(JSON.stringify({ motion: 'off' })); });
+  expect(accessibility.getMotionPreference()).toBe('off');
+});
+
+test.each([
+  ['nothing is stored (a fresh install)', () => Promise.resolve(null)],
+  ['the read fails', () => Promise.reject(new Error('storage unavailable'))],
+  ['the stored value is not JSON', () => Promise.resolve('{not json')],
+])('motion settles on the system default when %s', async (_, read) => {
+  const { accessibility, getItem } = coldAccessibility(read);
+  expect(getItem).toHaveBeenCalledWith(SETTINGS_KEY);
+  expect(accessibility.getMotionPreference()).toBe('on');
+
   await act(async () => {});
-  expect(fresh.getMotionPreference()).toBe('system');
+  expect(accessibility.getMotionPreference()).toBe('system');
 });
