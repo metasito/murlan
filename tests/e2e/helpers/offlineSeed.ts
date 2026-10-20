@@ -18,6 +18,8 @@ import {
   createDeck,
   dealCards,
   firstTargetFor,
+  seatsOf,
+  startRound,
   type Card,
   type GameState,
   type MatchLength,
@@ -140,23 +142,25 @@ export function offlineSave(o: SaveOptions): OfflineSave {
 }
 
 /**
- * A round mid-exchange, `winner` choosing a giveback for `loser`, on move.
- * `cardFromLoser` defaults to the loser's first card, taken out of their hand so
- * it is not in two places.
+ * A round mid-exchange, `winner` choosing a giveback for `loser`, as `startRound`'s exchange opening
+ * deals it. `holding` is the hands once the loser's card has gone over, so `cardFromLoser` is dealt
+ * to the loser and must be the card the engine takes from them.
  */
-export function exchangeSave(o: SaveOptions & { winner: number; loser: number; cardFromLoser?: string }): OfflineSave {
-  const save = offlineSave({ ...o, turn: o.turn ?? o.winner });
-  const [cardFromLoser] = o.cardFromLoser
-    ? cards([o.cardFromLoser])
-    : save.gameState.players[o.loser].hand.splice(0, 1);
-  save.gameState.exchangePhase = {
-    active: true,
-    winnerIdx: o.winner,
-    loserIdx: o.loser,
-    cardFromLoser,
-    twoJokerException: false,
-  };
-  return save;
+export function exchangeSave(
+  o: Omit<SaveOptions, "turn" | "pile" | "state"> & { winner: number; loser: number; cardFromLoser?: string }
+): OfflineSave {
+  const save = offlineSave(o);
+  const dealt = save.gameState.players.map((p) => p.hand.filter((c) => c.id !== o.cardFromLoser));
+  if (o.cardFromLoser) dealt[o.loser].push(...cards([o.cardFromLoser]));
+  const gameState = startRound(seatsOf(save.gameState), save.gameState.gameMode, {
+    opening: { kind: "exchange", winnerSeat: o.winner, loserSeat: o.loser },
+    dealt,
+  });
+  const taken = gameState.exchangePhase?.cardFromLoser?.id;
+  if (o.cardFromLoser && taken !== o.cardFromLoser) {
+    throw new Error(`the engine takes ${taken ?? "nothing"} from seat ${o.loser}, not ${o.cardFromLoser}`);
+  }
+  return { ...save, gameState };
 }
 
 /**

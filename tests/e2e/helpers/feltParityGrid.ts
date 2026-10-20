@@ -12,6 +12,7 @@ import { settledLight, skiaOnSoftware, tracedLamp, UNLIT_AIR, untilSkiaFelt } fr
 import {
   CAPTURE_STATES,
   CAPTURE_VIEWER_SEAT,
+  seatedSituation,
   type CaptureState,
 } from "../../../lib/captureStates";
 import { seatDirection } from "../../../components/seatLayout";
@@ -205,6 +206,7 @@ function grid(playerCount: PlayerCount): CaptureState[] {
       turn,
       side: seatDirection(turn, CAPTURE_VIEWER_SEAT, playerCount),
       pile: false,
+      situation: seatedSituation(`p${playerCount}-turn${turn}`, playerCount, turn),
     });
   }
   const pileTurn = Math.min(pileState.turn, playerCount - 1);
@@ -215,11 +217,14 @@ function grid(playerCount: PlayerCount): CaptureState[] {
     playerCount,
     turn: pileTurn,
     side: seatDirection(pileTurn, CAPTURE_VIEWER_SEAT, playerCount),
+    situation: seatedSituation(`p${playerCount}-pile`, playerCount, pileTurn, PILE),
   });
   return cells;
 }
 
 type PlayerCount = 2 | 3 | 4;
+
+const PILE = "K_hearts K_diamonds";
 
 /** One viewport and one player count per spec file, so no file outgrows a shard. */
 export function gridTest(name: keyof typeof VIEWPORTS, playerCount: PlayerCount) {

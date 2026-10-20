@@ -5,7 +5,7 @@
 // while both are of the same named state. What this pins is the part of that
 // contract a renderer cannot check — that each state's stated side is where its
 // seat actually renders, that the four lamp positions are all covered, and that
-// a card still appears exactly once once the pile has taken its cards out of the deck.
+// every card dealt is still in a hand or in the tally of cards played.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -18,11 +18,13 @@ import {
   nextTurn,
   rethrow,
   SEAT_COUNT_STATES,
+  seatedSituation,
 } from "../../lib/captureStates.ts";
+import { reach } from "../../lib/situation.ts";
 import { holdGrey, linkHeld } from "../../lib/ownLink.ts";
 import { seatDirection } from "../../components/seatLayout.ts";
 import { comboKey, passedSeats } from "../../components/passes.ts";
-import { createDeck, dealCards } from "../../lib/game/gameEngine.ts";
+import { dealCards } from "../../lib/game/gameEngine.ts";
 import { BOT_PERSONALITIES } from "../../lib/game/botPersonalities.ts";
 
 type Named = Partial<Record<"right" | "top" | "left", number | "out">>;
@@ -136,20 +138,8 @@ describe("the state a capture renders", () => {
     assert.deepEqual(sides, ["right", "top"]);
   });
 
-  test("deals the whole deck, once", () => {
-    for (const state of CAPTURE_STATES) {
-      const game = captureGameState(state);
-      const ids = [
-        ...game.players.flatMap((p) => p.hand.map((c) => c.id)),
-        ...(game.lastPlayedCombination?.cards.map((c) => c.id) ?? []),
-      ];
-      assert.equal(new Set(ids).size, ids.length, `${state.id} deals a card twice`);
-      assert.equal(ids.length, createDeck().length, `${state.id} loses a card`);
-    }
-  });
-
   test("puts the turn where the state asked", () => {
-    for (const state of CAPTURE_STATES) {
+    for (const state of ALL_CAPTURE_STATES) {
       assert.equal(captureGameState(state).currentTurnIndex, state.turn, state.id);
     }
   });
@@ -159,7 +149,6 @@ describe("the state a capture renders", () => {
       const game = captureGameState(state);
       if (!state.pile) {
         assert.equal(game.lastPlayedCombination, null, `${state.id} put a pile on the felt`);
-        assert.equal(game.lastPlayedBy, -1, state.id);
         continue;
       }
       assert.ok(game.lastPlayedCombination, `${state.id} asked for a pile and got none`);
@@ -203,6 +192,39 @@ describe("the state a capture renders", () => {
       assert.equal(game.firstPlayMade, true, state.id);
       assert.equal(game.roundOver, false, state.id);
       assert.equal(game.startCard, undefined, state.id);
+    }
+  });
+
+  test("a pile state counts the passes the table draws beside it", () => {
+    for (const state of ALL_CAPTURE_STATES.filter((s) => s.pile)) {
+      const game = captureGameState(state);
+      const passed = passedSeats({ ...game, outOfCards: game.players.map((p) => p.hand.length === 0) });
+      assert.equal(game.passCount, passed.length, state.id);
+    }
+  });
+
+  test("every card dealt is in a hand or in the tally of cards played", () => {
+    for (const state of ALL_CAPTURE_STATES) {
+      const game = captureGameState(state);
+      const dealt = dealCards(state.playerCount).hands.reduce((n, hand) => n + hand.length, 0);
+      const held = game.players.reduce((n, p) => n + p.hand.length, 0);
+      const played = (game.playedRanks ?? []).reduce((n, k) => n + k, 0);
+      assert.equal(held + played, dealt, state.id);
+      const ids = game.players.flatMap((p) => p.hand.map((c) => c.id));
+      assert.equal(new Set(ids).size, ids.length, `${state.id} deals a card twice`);
+    }
+  });
+
+  test("any seating reaches any seat on move, with the felt clear or a pile thrown at it", () => {
+    for (const seats of [2, 3, 4] as const) {
+      for (let turn = 0; turn < seats; turn++) {
+        for (const cards of [undefined, "K_hearts K_diamonds"]) {
+          const game = reach(seatedSituation(`${seats}/${turn}`, seats, turn, cards));
+          assert.equal(game.currentTurnIndex, turn, `${seats} seats, ${turn} on move`);
+          assert.equal(game.lastPlayedCombination?.type ?? null, cards ? "pair" : null, `${seats} seats, ${turn} on move`);
+          assert.equal(game.roundOver, false);
+        }
+      }
     }
   });
 
