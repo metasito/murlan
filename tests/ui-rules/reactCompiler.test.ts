@@ -11,7 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -96,10 +96,9 @@ const CALLS_A_HOOK = /\buse[A-Z]\w*\s*[(=]/;
  * this gate.
  */
 function compiledUnder(dir: string): string[] {
-  return readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
-    .filter((f) => f.endsWith(".tsx") || f.endsWith(".ts"))
-    .map((f) => `${dir}/${f.split(path.sep).join("/")}`)
-    .filter((rel) => rel.endsWith(".tsx") || CALLS_A_HOOK.test(readFileSync(path.join(repoRoot, rel), "utf8")));
+  return sourcesUnder(repoRoot, [dir])
+    .filter(([rel, text]) => rel.endsWith(".tsx") || CALLS_A_HOOK.test(text))
+    .map(([rel]) => rel);
 }
 
 /**
@@ -406,13 +405,7 @@ test("each form the gate refuses is found, and a quoted one is not", () => {
 });
 
 test("no react-hooks rule is switched off under app/, components/ or context/", () => {
-  const found = ["app", "components", "context"]
-    .flatMap((dir) =>
-      readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
-        .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
-        .map((f) => `${dir}/${f.split(path.sep).join("/")}`)
-    )
-    .flatMap((rel) => suppressions(readFileSync(path.join(repoRoot, rel), "utf8"), rel));
+  const found = sourcesUnder(repoRoot, ["app", "components", "context"]).flatMap(([rel, text]) => suppressions(text, rel));
   assert.deepEqual(
     found,
     [],

@@ -1,10 +1,10 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { STEPS } from "../../tools/loop/check-steps.mjs";
+import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 /**
  * The `scope` step decides which suites a change runs, so a path it wrongly
@@ -13,9 +13,7 @@ import { STEPS } from "../../tools/loop/check-steps.mjs";
  */
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const read = (file: string) => readFileSync(path.join(repoRoot, file), "utf8");
-const tracked = execFileSync("git", ["ls-files"], { cwd: repoRoot, encoding: "utf8" })
-  .split("\n")
-  .filter(Boolean);
+const tracked = trackedFiles(repoRoot);
 const SOURCE = /\.(m?[jt]sx?|cjs)$/;
 
 type Branch = { re: RegExp; value: boolean };

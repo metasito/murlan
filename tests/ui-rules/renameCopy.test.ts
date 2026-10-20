@@ -12,8 +12,44 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import ts from "typescript";
 import { SUPPORTED_LOCALES, catalogs, type Locale } from "../../shared/i18n.ts";
 import { usernameProblem } from "../../shared/username.ts";
+
+const calls = (node: ts.Node, name: string): ts.CallExpression[] => {
+  const out: ts.CallExpression[] = [];
+  const visit = (n: ts.Node) => {
+    if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === name) out.push(n);
+    ts.forEachChild(n, visit);
+  };
+  visit(node);
+  return out;
+};
+
+/** The catch clauses of every `try` whose block calls `rename(...)`. */
+function renameCatchClauses(source: string): ts.CatchClause[] {
+  const sf = ts.createSourceFile("profile.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const out: ts.CatchClause[] = [];
+  const visit = (n: ts.Node) => {
+    if (ts.isTryStatement(n) && n.catchClause && calls(n.tryBlock, "rename").length > 0) out.push(n.catchClause);
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return out;
+}
+
+function catchRendersServer(source: string): boolean {
+  const clauses = renameCatchClauses(source);
+  return (
+    clauses.length > 0 &&
+    clauses.every((c) =>
+      calls(c.block, "setError").some((call) => {
+        const arg = call.arguments[0];
+        return !!arg && ts.isCallExpression(arg) && ts.isIdentifier(arg.expression) && arg.expression.text === "serverErrorMessage";
+      })
+    )
+  );
+}
 
 /** Every distinct thing a player can be told about a refused rename. */
 const FAILURE_KEYS = [
@@ -83,10 +119,20 @@ describe("a refused rename says which refusal it was", () => {
   // test still green.
   test("the rename's catch renders what the server said", () => {
     const source = readFileSync(new URL("../../app/profile.tsx", import.meta.url), "utf8");
-    assert.match(
-      source,
-      /catch[\s\S]{0,120}setError\(serverErrorMessage\(/,
-      "profile.tsx no longer routes a refused rename through serverErrorMessage"
-    );
+    assert.equal(renameCatchClauses(source).length, 1, "profile.tsx has no single try around rename(...)");
+    assert.ok(catchRendersServer(source), "profile.tsx no longer routes a refused rename through serverErrorMessage");
+  });
+
+  test("a catch that only mentions serverErrorMessage in a comment or a string is a fallback", () => {
+    const handler = (handled: string) => `async function save() {\n  try {\n    await rename(name);\n  } catch (e) {\n    ${handled}\n  }\n}`;
+    assert.ok(catchRendersServer(handler('setError(serverErrorMessage(e, t("profile.renameFailed")));')));
+    for (const decoy of [
+      '// setError(serverErrorMessage(e))\n    setError(t("profile.renameFailed"));',
+      'setError(t("profile.renameFailed")); /* setError(serverErrorMessage( */',
+      'setError("setError(serverErrorMessage(e))");',
+      "setError(fallback(serverErrorMessage));",
+    ])
+      assert.ok(!catchRendersServer(handler(decoy)), decoy);
+    assert.ok(!catchRendersServer(`try { await other(); } catch (e) { setError(serverErrorMessage(e, "x")); }`), "a catch around another call");
   });
 });

@@ -20,7 +20,7 @@ import { WORKTREE_DIR } from "../tools/loop/loop-derive.mjs";
 const ROOT = path.resolve(import.meta.dirname, "..");
 const SKIP = new Set(["node_modules", ".git", "dist", ".expo", WORKTREE_DIR]);
 
-export function walk(dir, out = []) {
+function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
     if (SKIP.has(entry)) continue;
     const full = path.join(dir, entry);

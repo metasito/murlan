@@ -4,22 +4,12 @@
 // the JS thread, so no other check sees it: only the device does.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import ts from "typescript";
+import { sourcesUnder } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-
-function sourcesUnder(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
-    const rel = `${dir}/${entry.name}`;
-    if (entry.isDirectory()) out.push(...sourcesUnder(rel));
-    else if (/\.tsx?$/.test(entry.name)) out.push(rel);
-  }
-  return out;
-}
 
 type Fn = ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression;
 
@@ -56,8 +46,8 @@ test("no worklet calls a plain function of its own file", () => {
   let worklets = 0;
   const offenders: string[] = [];
   const native = (rel: string) => !/\.web\.tsx?$/.test(rel);
-  for (const rel of [...sourcesUnder("app"), ...sourcesUnder("components"), ...sourcesUnder("lib")].filter(native)) {
-    const r = plainCallees(rel, readFileSync(path.join(repoRoot, rel), "utf8"));
+  for (const [rel, source] of sourcesUnder(repoRoot, ["app", "components", "lib"]).filter(([rel]) => native(rel))) {
+    const r = plainCallees(rel, source);
     worklets += r.worklets;
     offenders.push(...r.offenders);
   }

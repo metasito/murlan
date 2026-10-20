@@ -2,8 +2,8 @@
 // `lampStep` does, frame for frame, and nothing else in the app places a lamp.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   LIGHT_ABOVE,
   designScale,
@@ -20,6 +20,9 @@ import { seatDirection, type FlyDirection } from "../../components/seatLayout.ts
 import { PHONES } from "../e2e/helpers/phones.ts";
 import { INSETS, NO_INSETS, phoneTable } from "../helpers/phoneTable.ts";
 import { fixtureBlock, fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
+import { blankCommentsAndStrings, sourcesUnder } from "../helpers/sourceScan.ts";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const DT = 1 / 60;
 const SEAT: Record<string, FlyDirection> = { you: "bottom", luan: "right", besnik: "top", gent: "left" };
@@ -289,17 +292,21 @@ describe("the lamp rig", () => {
 });
 
 describe("one lamp", () => {
-  const ROOTS = ["app", "components", "context", "lib"];
-  const files = (dir: string): string[] =>
-    fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
-      const p = path.join(dir, e.name);
-      return e.isDirectory() ? files(p) : /\.tsx?$/.test(e.name) ? [p] : [];
-    });
+  const RIG = "components/table/lampRig.ts";
+  const placesALamp = (source: string) =>
+    /\blightPosition\b|\bLAMP_CENTRE\b|\b(457|712|202)\s*,\s*(292|196|116)\b/.test(blankCommentsAndStrings(source));
 
   test("no module but the rig computes where the lamp stands", () => {
-    const offenders = ROOTS.flatMap((r) => files(r))
-      .filter((f) => !f.endsWith(path.join("table", "lampRig.ts")))
-      .filter((f) => /\blightPosition\b|\bLAMP_CENTRE\b|\b(457|712|202)\s*,\s*(292|196|116)\b/.test(fs.readFileSync(f, "utf8")));
+    const sources = sourcesUnder(repoRoot, ["app", "components", "context", "lib"]);
+    assert.ok(sources.some(([f]) => f === RIG), `the walk never read ${RIG}: it is not reading the client`);
+    const offenders = sources.filter(([f, text]) => f !== RIG && placesALamp(text)).map(([f]) => f);
     assert.deepEqual(offenders, []);
+  });
+
+  test("the scan sees a lamp placed in code beside a comment, and not a comment alone", () => {
+    for (const code of ["const at = lightPosition(seat);", "/* lightPosition */ const c = LAMP_CENTRE;", "const pool = [457, 292];", "// LAMP_CENTRE\nconst p = [712,196];"])
+      assert.ok(placesALamp(code), code);
+    for (const code of ["// lightPosition moved to the rig\nconst p = lampPools(a, w, h);", 'const s = "LAMP_CENTRE at 457, 292";'])
+      assert.ok(!placesALamp(code), code);
   });
 });

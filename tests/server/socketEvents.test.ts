@@ -20,6 +20,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { blankComments } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -56,7 +57,7 @@ const WRAPPER_FILE = "server/socket/socketSafety.ts";
 
 /** Blanks out line and block comments, preserving line numbers and string contents. */
 function stripComments(source: string): string {
-  return source.replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, (m) => m.replace(/[^\n]/g, " "));
+  return blankComments(source);
 }
 
 /** Every literal event name passed to a bare `socket.on(…)` or `socket?.on(…)` call, double or single quoted or backtick-without-interpolation. */

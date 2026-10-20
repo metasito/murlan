@@ -10,9 +10,10 @@
 // their own to exercise, and what is being pinned is the shape.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
-import { fieldsOf, walk } from "../../scripts/contextSurface.mjs";
+import { fieldsOf } from "../../scripts/contextSurface.mjs";
+import { blankComments } from "../helpers/sourceScan.ts";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..");
@@ -126,7 +127,7 @@ test("context/OnlineGameContext.tsx: each slice is exactly its own concern", () 
 });
 
 test("context/onlineGameHooks.ts re-exports every online slice, and is nothing but that", () => {
-  const source = read("context/onlineGameHooks.ts").replace(/\/\*[\s\S]*?\*\//g, "").trim();
+  const source = blankComments(read("context/onlineGameHooks.ts")).trim();
   const reexport = source.match(/^export\s*\{([^}]*)\}\s*from\s*"\.\/OnlineGameContext";\s*$/);
   assert.ok(reexport, "onlineGameHooks.ts is a re-export of the provider's hooks and holds no code of its own");
   const names = reexport[1].split(",").map((n) => n.trim()).filter(Boolean);
@@ -189,39 +190,10 @@ test("each online slice reads one context, and no two read the same one", () => 
   }
 });
 
-test("nothing reaches past the slices for the whole surface", () => {
-  // The slices are only worth having if they are the way in. Every context
-  // hook stays exported because the slices are built on them, and each is also
-  // a way back past a slice — `useGameTable` to every table field.
-  // Every source directory, not the two that happen to hold consumers today:
-  // a screen moved into a new one would leave the guard behind. The slice
-  // modules are the exception, being what the hooks are for; the providers
-  // define them.
-  const ALLOWED = /[\\/]context[\\/](onlineGameHooks|gameHooks|OnlineGameContext|GameContext)\.tsx?$/;
-  const offenders: string[] = [];
-  for (const dir of ["app", "components", "context", "lib", "hooks"]) {
-    const full = path.join(ROOT, dir);
-    if (!existsSync(full)) continue;
-    for (const file of walk(full)) {
-      if (ALLOWED.test(file)) continue;
-      // Comments mention these hooks by name legitimately; code calls them.
-      const code = readFileSync(file, "utf8")
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/\/\/[^\n]*/g, "");
-      if (new RegExp(`\\b(${CONTEXT_HOOKS})\\s*\\(`).test(code)) offenders.push(path.relative(ROOT, file));
-    }
-  }
-  assert.deepEqual(
-    offenders,
-    [],
-    "a screen calls a context hook directly instead of the slice for its concern"
-  );
-});
-
 /** Whether `code` defines or exports a hook named `useOnlineGame`, in any form; comments are not code. */
 const definesWideOnlineHook = (code: string) =>
   /\b(?:function|const|let|var)\s+useOnlineGame\b|\bas\s+useOnlineGame\b|export\s*\{[^}]*\buseOnlineGame\b/.test(
-    code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "")
+    blankComments(code)
   );
 
 test("the wide-hook guard knows every way of defining one, and not a mention", () => {

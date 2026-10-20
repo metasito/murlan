@@ -11,10 +11,10 @@
 // (#523).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { sourcesUnder } from "../helpers/sourceScan.ts";
 
-const NATIVE = path.resolve(import.meta.dirname, "../native");
+const ROOT = path.resolve(import.meta.dirname, "..", "..");
 
 /**
  * Each line's stretch inside an `act(…)` call's parentheses, as [from, to]
@@ -114,15 +114,9 @@ function staleAssertLines(source: string): number[] {
     .map(([i]) => i + 1);
 }
 
-const nativeSources: { name: string; source: string }[] = readdirSync(NATIVE, {
-  recursive: true,
-  encoding: "utf8",
-})
-  .filter((f) => /\.test\.tsx?$/.test(f))
-  .map((f) => ({
-    name: `tests/native/${f}`.replaceAll(path.sep, "/"),
-    source: readFileSync(path.join(NATIVE, f), "utf8"),
-  }));
+const nativeSources: { name: string; source: string }[] = sourcesUnder(ROOT, ["tests/native"], /\.test\.tsx?$/).map(
+  ([name, source]) => ({ name, source })
+);
 
 describe("no native test pairs a bare fireEvent with an act flush", () => {
   // The floor. Without it a regex that matches nothing reports the same empty

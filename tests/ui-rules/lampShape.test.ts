@@ -88,8 +88,6 @@ describe("the light round the seats, in the shipped SkSL", () => {
           return { at: `${name} at ${insets}`, ratios, even: evenness(ratios) };
         })
       );
-      const line = (r: (typeof rows)[number]) => `${r.at}: ${SEATS.map((s, i) => `${s} ${r.ratios[i].toFixed(2)}`).join(", ")}; evenness ${r.even.toFixed(2)}`;
-      console.log(`${felt}\n  ${rows.map(line).join("\n  ")}`);
       for (const { at, ratios, even } of rows) {
         SEATS.forEach((s, i) => assert.ok(ratios[i] >= LAMP_FLOOR, `${at}: ${s} on move reads ${ratios[i].toFixed(2)}× the brightest other seat, under ${LAMP_FLOOR}`));
         assert.ok(even >= LAMP_SYMMETRY, `${at}: the worst seat ÷ the best is ${even.toFixed(2)}, under ${LAMP_SYMMETRY}`);

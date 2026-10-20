@@ -28,13 +28,14 @@ import { createLogger, REDACT_PATHS, setErrorRecorder } from "../../server/share
 import { createRequestLogger } from "../../server/http/logger.ts";
 import { errorHandler } from "../../server/http/errorHandler.ts";
 import { ANSWERED_BY_SHELL, unmatchedKind } from "../../server/http/staticPaths.ts";
+import { blankComments } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const schemas = readFileSync(path.join(repoRoot, "shared", "socketSchemas.ts"), "utf8");
 
 /** Every object key declared in the socket schemas, comments stripped. */
 function schemaFields(): string[] {
-  const source = schemas.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  const source = blankComments(schemas);
   const fields = new Set<string>();
   for (const m of source.matchAll(/^\s{2,}([A-Za-z_][A-Za-z0-9_]*)\s*:/gm)) fields.add(m[1]);
   return [...fields];

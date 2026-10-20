@@ -4,18 +4,16 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { assertMark, DIAGNOSTICS_MARK, E2E_BUILD_MARK } from "../../scripts/e2eBuildMark.mjs";
+import { blankCommentsAndStrings, sourcesUnder } from "../helpers/sourceScan.ts";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
 const markSource = readFileSync(path.join(root, "lib", "e2eConfig.ts"), "utf8");
 
 test("the mark is set when any flag the app reads is on", () => {
   const read = new Set<string>();
-  for (const dir of ["app", "components", "context", "lib"]) {
-    for (const f of readdirSync(path.join(root, dir), { recursive: true, encoding: "utf8" })) {
-      if (!/\.tsx?$/.test(f) || f.endsWith("e2eConfig.ts")) continue;
-      const src = readFileSync(path.join(root, dir, f), "utf8");
-      for (const m of src.matchAll(/process\.env\.(EXPO_PUBLIC_E2E_\w+)/g)) read.add(m[1]);
-    }
+  for (const [rel, src] of sourcesUnder(root, ["app", "components", "context", "lib"])) {
+    if (rel.endsWith("e2eConfig.ts")) continue;
+    for (const m of blankCommentsAndStrings(src).matchAll(/process\.env\.(EXPO_PUBLIC_E2E_\w+)/g)) read.add(m[1]);
   }
   assert.ok(read.size > 0, "no EXPO_PUBLIC_E2E_* read found — the scan is looking in the wrong place");
   for (const flag of read) assert.match(markSource, new RegExp(`process\\.env\\.${flag} === '1'`), flag);

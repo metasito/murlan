@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { blankComments } from "../helpers/sourceScan.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SERVER_DIR = path.join(REPO_ROOT, "server");
@@ -38,7 +39,7 @@ const AGE_COMPARISONS = [
 ];
 const REMOVES = /\bdelete\w*\s*\(|DELETE\s+FROM|\bpurge\w*\s*\(|\bprune\w*\s*\(/i;
 
-const code = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+const code = (src: string) => blankComments(src);
 
 /** A top-level function, an exported arrow, or an object method at two spaces. */
 const FUNCTION_START =

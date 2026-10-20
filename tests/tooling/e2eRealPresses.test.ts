@@ -6,10 +6,10 @@
 // and a card in the hand answers both.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { blankComments } from "../helpers/sourceScan.ts";
+import { blankComments, sourcesUnder } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const E2E = path.join(repoRoot, "tests", "e2e");
@@ -44,15 +44,10 @@ const INSTANT_ON_PURPOSE: [string, string][] = [
  * is.
  */
 function pressingFiles(): string[] {
-  const helpers = path.join(E2E, "helpers");
   return [
-    ...readdirSync(E2E)
-      .filter((f) => f.endsWith(".spec.ts"))
-      .map((f) => path.join(E2E, f)),
-    ...readdirSync(helpers)
-      .filter((f) => f.endsWith(".ts") && f !== "press.ts")
-      .map((f) => path.join(helpers, f)),
-  ];
+    ...sourcesUnder(repoRoot, ["tests/e2e"], /^[^/\\]+\.spec\.ts$/),
+    ...sourcesUnder(repoRoot, ["tests/e2e/helpers"], /^[^/\\]+\.ts$/).filter(([rel]) => !rel.endsWith("/press.ts")),
+  ].map(([rel]) => path.join(repoRoot, rel));
 }
 
 /**
@@ -158,19 +153,15 @@ test("the scan recognises a synthetic press and leaves an honest one alone", () 
 // its presses out of the guard, and every assertion above still passes.
 test("every gesture selector is still a name the suite uses", () => {
   const tree = pressingFiles()
-    .map((f) => readFileSync(f, "utf8"))
+    .map((f) => blankComments(readFileSync(f, "utf8")))
     .join("\n");
   const gone = GESTURE_SELECTORS.filter((n) => !new RegExp(String.raw`\b${n}\b`).test(tree));
   assert.deepEqual(gone, [], `named here but nowhere in tests/e2e/: ${gone.join(", ")}`);
 });
 
 test("every gesture testID is one the app actually sets", () => {
-  const source = ["app", "components"]
-    .flatMap((dir) =>
-      readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
-        .filter((f) => /\.tsx?$/.test(f))
-        .map((f) => readFileSync(path.join(repoRoot, dir, f), "utf8"))
-    )
+  const source = sourcesUnder(repoRoot, ["app", "components"])
+    .map(([, text]) => blankComments(text))
     .join("\n");
   const invented = GESTURE_TESTIDS.filter((id) => !source.includes(id));
   assert.deepEqual(invented, [], `no component sets these testIDs: ${invented.join(", ")}`);
