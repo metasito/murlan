@@ -138,17 +138,14 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     feedback.setMusicVolume(settings.musicVolume);
   }, [settings.musicVolume]);
 
-  // lib/device/feedback.ts preloads this same key at module init, before this provider
-  // mounts — pushing the unread default here would stomp a correctly-preloaded
-  // `false` until the read above resolves.
+  // Their owners can already hold the stored value before this provider mounts
+  // (lib/device/feedback.ts preloads haptics at module init) — pushing an unread
+  // default here would stomp it until the read above resolves.
   useEffect(() => {
     if (!readFinished) return;
     feedback.setHapticsEnabled(settings.hapticsEnabled);
-  }, [settings.hapticsEnabled, readFinished]);
-
-  useEffect(() => {
     setMotionPreference(settings.motion);
-  }, [settings.motion]);
+  }, [settings.hapticsEnabled, settings.motion, readFinished]);
 
   useEffect(() => {
     setScreenShakeEnabled(settings.screenShake);
