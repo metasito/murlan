@@ -64,7 +64,7 @@ const fliers = (view: RenderResult) => view.queryAllByTestId('flying-cards', { i
 /** The pile-mounting scenario under one motion preference; the calling file mocks the three modules above with the factories here. */
 export function fourTricks(name: string, preference: 'on' | 'off') {
   const { GameTable } = require('@/components/GameTable') as typeof import('@/components/GameTable');
-  const { comboKey } = require('@/components/flightPhysics') as typeof import('@/components/flightPhysics');
+  const { comboKey } = require('@/components/passes') as typeof import('@/components/passes');
   const { startRound } = require('@/lib/game/gameEngine') as typeof import('@/lib/game/gameEngine');
   const { offlineBotMove } = require('@/lib/game/autoMove') as typeof import('@/lib/game/autoMove');
   const { setMotionPreference } = require('@/lib/accessibility') as typeof import('@/lib/accessibility');

@@ -9,7 +9,7 @@ import type { Combination, GameState, Player } from '@/lib/game/gameEngine';
 import * as feedback from '@/lib/device/feedback';
 import * as particles from '@/components/table/particles';
 import * as coneRain from '@/components/table/coneRain';
-import * as flightPhysics from '@/components/flightPhysics';
+import * as impact from '@/components/impact';
 import { lampControls, type Pool } from '@/components/table/lampRig';
 import { bootFeedback, haptics, settle } from './feedback';
 import { card, PAIR } from './landing';
@@ -88,7 +88,7 @@ export async function closeMatch(c: Case) {
   await bootFeedback();
   const motes = jest.spyOn(particles, 'roundMotes');
   const rain = jest.spyOn(coneRain, 'startRain');
-  const trauma = jest.spyOn(flightPhysics, 'traumaFor');
+  const trauma = jest.spyOn(impact, 'traumaFor');
   const level = jest.spyOn(lampControls, 'setLevel');
   const sent = jest.spyOn(feedback, 'event');
   const aimBefore = target.mock.calls.at(-1)?.[1] as Pool | undefined;

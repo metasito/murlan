@@ -25,7 +25,7 @@ import { GameTable } from "@/components/GameTable";
 import type { MatchRating } from "@/components/table/matchBoard";
 import { PROVISIONAL_ROUNDS } from "@/lib/game/rating";
 import { vacatedOf } from "@/shared/protocol";
-import { computeScreenPads, railWidth } from "@/components/tableFrame";
+import { railWidth } from "@/components/tableFrame";
 import { cardScale } from "@/components/cardFaceModel";
 import {
   FloatingReactions,
@@ -157,10 +157,9 @@ export default function OnlineGameScreen() {
   const myUserId = user?.id ?? "";
   const hasVotedToEndMatch = endMatchVoteState?.votes.includes(myUserId) ?? false;
 
-  const pads = computeScreenPads({ insets });
   // The tray opens beside the rail's own lower knob, which is where the
   // trigger it belongs to lives.
-  const rail = railWidth(pads.leftPad, cardScale(Math.min(width, height)));
+  const rail = railWidth(insets.left, cardScale(Math.min(width, height)));
 
   const toggleReactionPanel = () => {
     setShowReactions((v) => !v);
@@ -345,7 +344,7 @@ export default function OnlineGameScreen() {
             {showReactions && (
               <ReactionPanel
                 left={rail + Spacing.sm}
-                bottom={pads.bottomPad + Spacing.sm}
+                bottom={insets.bottom + Spacing.sm}
                 onSelect={(emoji) => {
                   uiFeedback("light");
                   sendReaction(emoji);

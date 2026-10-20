@@ -7,7 +7,9 @@ import { StyleSheet, type ViewStyle } from 'react-native';
 import { act, render } from '@testing-library/react-native';
 import { LEG } from '@/lib/timeline/exchangeTimeline';
 import { Motion } from '@/lib/tokens';
-import { GEOMETRY, Legs, card, frames, announced } from './helpers/exchangeLegs';
+import { tableLayout } from '@/components/tableLayout';
+import { cardScale } from '@/components/cardFaceModel';
+import { Legs, NO_INSETS, card, frames, announced } from './helpers/exchangeLegs';
 
 const X = Motion.exchange;
 const spans = (style: ViewStyle, size: 'width' | 'height', from: 'left' | 'top', to: 'right' | 'bottom') =>
@@ -21,7 +23,7 @@ describe('ExchangeLegs with no geometry measured', () => {
     const view = await render(
       <Legs
         announced={announced({ cardGiven: card('6_clubs', '6') })}
-        geometry={{ ...GEOMETRY, windowWidth: 0, windowHeight: 0, handCardH: 0 }}
+        layout={tableLayout({ width: 0, height: 0, insets: NO_INSETS, scale: cardScale(0) })}
         onStage={onStage}
         onDismiss={onDismiss}
       />

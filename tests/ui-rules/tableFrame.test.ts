@@ -11,47 +11,49 @@ import {
   SIDE_SECTION_W,
   HAND_WIDTH_SHARE,
 } from "../../components/seatLayout.ts";
-import {
-  notificationTopOffset,
-  computeTableFrame,
-  railWidth,
-} from "../../components/tableFrame.ts";
+import { BASE_SHORT_EDGE } from "../../components/cardFaceModel.ts";
+import { bannerTop, computeTableFrame, railWidth } from "../../components/tableFrame.ts";
+import { tableLayout } from "../../components/tableLayout.ts";
 import { clientSources, scanSources } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const scan = (pattern: RegExp) => scanSources(pattern, clientSources(repoRoot));
 
-describe("notificationTopOffset", () => {
+describe("bannerTop", () => {
   // The HUD chips sit at the head of the felt and carry whose turn it is, the
   // countdown and the hand count — the very things an AFK or seat-takeover
   // notice is explaining, so the banner starts below them.
   const topPad = 47;
+  const insets = { top: topPad, bottom: 0, left: 0, right: 0 };
+  const landscape = (scale: number, surplus = 0, top = topPad) =>
+    bannerTop(
+      tableLayout({ width: 2 * BASE_SHORT_EDGE * scale, height: BASE_SHORT_EDGE * scale + 2 * surplus, insets: { ...insets, top }, scale }),
+      top
+    );
 
   test("in landscape the banner starts below the HUD chips", () => {
-    const top = notificationTopOffset({ topPad, landscape: true, scale: 1, surplus: 0 });
+    const top = landscape(1);
     assert.ok(top >= topPad + CHIP_H(1), `${top} still overlaps the chips`);
   });
 
   test("portrait — every menu screen — is left exactly where it was", () => {
-    assert.equal(notificationTopOffset({ topPad, landscape: false, scale: 1, surplus: 0 }), topPad);
+    assert.equal(bannerTop(null, topPad), topPad);
   });
 
   test("a zero inset still clears the chips in landscape", () => {
-    assert.ok(notificationTopOffset({ topPad: 0, landscape: true, scale: 1, surplus: 0 }) >= CHIP_H(1));
+    assert.ok(landscape(1, 0, 0) >= CHIP_H(1));
   });
 
   // The chips this clears are inside the table's frame, and on a window past
   // the scale cap that frame starts `surplus` lower than the safe pad does.
   test("a surplus moves the chips down, and the banner with them", () => {
-    const flush = notificationTopOffset({ topPad, landscape: true, scale: 1, surplus: 0 });
-    const inset = notificationTopOffset({ topPad, landscape: true, scale: 1, surplus: 62 });
-    assert.equal(inset - flush, 62);
+    assert.equal(landscape(1, 62) - landscape(1), 62);
   });
 
   test("scales with the table, so a tablet's banner clears a tablet's chips", () => {
-    const one = notificationTopOffset({ topPad, landscape: true, scale: 1, surplus: 0 });
-    const two = notificationTopOffset({ topPad, landscape: true, scale: 2, surplus: 0 });
+    const one = landscape(1);
+    const two = landscape(2);
     assert.ok(two > one, `${two} is no lower than ${one}`);
     assert.ok(two >= topPad + CHIP_H(2), `${two} still overlaps a tablet's chips`);
   });

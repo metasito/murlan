@@ -7,7 +7,7 @@ const root = path.resolve(import.meta.dirname, "..", "..");
 const SCOPE = ["app", "components", "context", "lib"].map((d) => path.join(root, d) + path.sep);
 const PROBE = path.join(root, "components", "__oneClockProbe.ts");
 const MOTION_FILES = ["components/flightPose.ts", "lib/timeline/dealTimeline.ts", "lib/timeline/exchangeTimeline.ts"].map((p) => path.join(root, p));
-const PHYSICS = path.join(root, "components", "flightPhysics.ts");
+const IMPACT = path.join(root, "components", "impact.ts");
 const TOKENS = path.join(root, "lib", "tokens.ts");
 
 const PROBE_LINES = [
@@ -83,7 +83,7 @@ function scan(): { file: string; line: number; text: string }[] {
     if (!decl) return null;
     const file = path.resolve(decl.getSourceFile().fileName);
     if (MOTION_FILES.includes(file)) return "flight";
-    if (file === PHYSICS && /(Ms|_MS)$/.test(s.name) && ts.getCombinedModifierFlags(decl) & ts.ModifierFlags.Export) return "flight";
+    if (file === IMPACT && /(Ms|_MS)$/.test(s.name) && ts.getCombinedModifierFlags(decl) & ts.ModifierFlags.Export) return "flight";
     if (file === TOKENS && s.name === "motionMs") return "duration";
     if (file === TOKENS && s.name === "Motion") {
       const p = id.parent;

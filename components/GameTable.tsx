@@ -32,8 +32,6 @@ import {
 } from "@/lib/game/gameEngine";
 import type { ExchangeAnnounceData, ExchangeHold } from "@/lib/game/sharedGameFlow";
 import {
-  CHIP_H,
-  HAND_ZONE_H,
   handVisibleH,
   actionBtnSize,
   HAND_ZONE_GAP,
@@ -45,13 +43,8 @@ import {
 import { handCountOf } from "@/shared/protocol";
 import type { CardFrom } from "@/components/flightPose";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
-import {
-  anchorPoints,
-  floatTop,
-  seatsJustPassed,
-  tableGeometry,
-  turnKey,
-} from "@/components/flightPhysics";
+import { seatsJustPassed, turnKey } from "@/components/passes";
+import { tableLayout, type Seating } from "@/components/tableLayout";
 import { useTableExchange } from "@/components/table/useTableExchange";
 import { FloatSlot } from "@/components/table/notices/floats";
 import { nextFloat, raised, type Float } from "@/components/table/floatModel";
@@ -64,23 +57,16 @@ import {
   type LeftTableNote,
   type RoundVoteNote,
 } from "@/components/table/notices/netNotes";
-import { mockupPx } from "@/components/table/noticeModel";
 import { WaitingLine } from "@/components/table/notices/tableLines";
 import { ExchangeLegs, type RingFlash } from "@/components/table/ExchangeLegs";
 import { canPassNow as canPassNowOf, turnTimerActive } from "@/components/turnTimerUi";
-import { computeTableFrame, sideSlotHeight, topBandHeight } from "@/components/tableFrame";
+import { sideSlotHeight, topBandHeight } from "@/components/tableFrame";
 import { describeTableForA11y, type TableA11yExchange, type TableA11yLastPlay, type TableA11yOpponent } from "@/components/tableA11y";
-import {
-  BASE_SHORT_EDGE,
-  CARD_H,
-  cardScale,
-  HAND_SCALE,
-  physicalTouchTarget,
-} from "@/components/cardFaceModel";
+import { cardScale, physicalTouchTarget } from "@/components/cardFaceModel";
 import { ScorePill } from "@/components/table/scorePill";
 import type { MatchBoardActions, MatchRating } from "@/components/table/matchBoard";
 import { matchDim } from "@/lib/timeline/matchEnding";
-import { MOCKUP_SHORT_EDGE, scorePillBox, scorePillHitBox } from "@/components/table/scorePillModel";
+import { scorePillHitBox, voteTop } from "@/components/table/scorePillModel";
 import { scorePillStandings } from "@/lib/game/scorePill";
 import { useTranslation } from "@/lib/i18n";
 import { HudComboPill, TurnChip, type ConnectionNote } from "@/components/table/notices/hud";
@@ -171,8 +157,6 @@ const WEB_CLIP =
 
 /** The banner band sits over the felt. */
 const BANNER_BAND_Z = Layer.band;
-/** G2: the end-match vote's top, under the score pill at rest. */
-const VOTE_BELOW_PILL = 7;
 /**
  * The felt is decoration and everything else is the game, so the game is
  * always on top. Stated rather than left to sibling order: the pool paints
@@ -392,7 +376,6 @@ export function GameTable({
   // carries the home indicator — and taking it off here instead shrinks the cards on device
   // only, which is the divergence from the web design, not a fit for it.
   const scale = cardScale(Math.min(W, H));
-  const handCardH = CARD_H(scale * HAND_SCALE);
   // What the player sees of a hand card, and how tall PASSA and GIOCA are —
   // the row reads as one band even though only the cards are cropped.
   const actionBtn = actionBtnSize(scale);
@@ -586,15 +569,18 @@ export function GameTable({
     [players, viewerSeat]
   );
 
-  const frame = computeTableFrame({ width: W, height: H, insets, scale });
-
-  const pillAnchor = {
-    right: W - frame.tableRight - frame.pad,
-    top: frame.tableTop,
-    restH: CHIP_H(scale),
-    centreX: (frame.tableLeft + W - frame.tableRight) / 2,
-    unit: (scale * BASE_SHORT_EDGE) / MOCKUP_SHORT_EDGE,
-  };
+  const layout = React.useMemo(
+    () =>
+      tableLayout({
+        width: W,
+        height: H,
+        insets: { top: insets.top, bottom: insets.bottom, left: insets.left, right: insets.right },
+        scale,
+      }),
+    [W, H, insets.top, insets.bottom, insets.left, insets.right, scale]
+  );
+  const seating = React.useMemo<Seating>(() => ({ viewerSeat, players, opponents }), [viewerSeat, players, opponents]);
+  const { frame, handCardH, pill: pillAnchor } = layout;
   const pillStandings =
     matchScore &&
     scorePillStandings({
@@ -637,25 +623,11 @@ export function GameTable({
     return false;
   };
 
-  const seatGeometry = {
-    viewerSeat,
-    players,
-    opponents,
-    scale,
-    windowWidth: W,
-    windowHeight: H,
-    tableLeft: frame.tableLeft,
-    tableRight: frame.tableRight,
-    tableTop: frame.tableTop,
-    surplus: frame.surplus,
-    bottomPad: frame.bottomPad,
-    handCardH,
-  };
-
   const [entryMs] = useState(() => motionMs("reveal", reduceMotion));
   const dealFresh = roundUnplayed(gameState);
   const deal = useDeal({
-    geometry: seatGeometry,
+    layout,
+    seating,
     fresh: dealFresh,
     entryMs,
     reduceMotion,
@@ -796,7 +768,8 @@ export function GameTable({
     roundOver: gameState.roundOver,
     matchOver,
     viewerWon: (matchOver ? matchOutcome : outcome) === "won",
-    ...seatGeometry,
+    layout,
+    seating,
     timeline,
     celebrateGoingOut,
     playTrickStart: trickStart,
@@ -839,14 +812,13 @@ export function GameTable({
       if (live !== prev) scheduleOnRN(setLeftTableLive, live);
     }
   );
-  const openPill = scorePillBox(1, 0, pillAnchor);
   const shownTurnIndex = useShownTurn(gameState.currentTurnIndex, timeline);
   const shownTurnIsMine = viewerOwnsSeat(shownTurnIndex, viewerSeat, spectating);
 
   // The owner's own remedy for an announcement nobody noticed: swing the lamp
   // off the seat and onto the middle, where the words are. The table's existing
   // attention mechanism, pointed somewhere else — not a second device.
-  const anchors = anchorPoints(tableGeometry(seatGeometry));
+  const { anchors } = layout;
   const lampAim = lampPools(anchors, W, H)[
     lampToWinner ? winnerDir : holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length)
   ];
@@ -1207,7 +1179,7 @@ export function GameTable({
             pointerEvents="box-none"
             style={[
               styles.voteSpot,
-              { right: W - pillAnchor.right, top: pillAnchor.top + pillAnchor.restH + mockupPx(VOTE_BELOW_PILL, scale) },
+              { right: W - pillAnchor.right, top: voteTop(pillAnchor, false, scale) },
             ]}
           >
             <A11yVeil veil={behindVeil}>
@@ -1223,7 +1195,7 @@ export function GameTable({
             pointerEvents="box-none"
             style={[
               styles.voteSpot,
-              { right: W - pillAnchor.right, top: openPill.y + openPill.h + mockupPx(VOTE_BELOW_PILL, scale) },
+              { right: W - pillAnchor.right, top: voteTop(pillAnchor, true, scale) },
               roundVoteStyle,
             ]}
           >
@@ -1239,7 +1211,7 @@ export function GameTable({
 
         <FloatSlot
           float={float}
-          at={{ x: anchors.pile.x, y: floatTop(seatGeometry) }}
+          at={{ x: anchors.pile.x, y: layout.floatTop }}
           beside={{
             giocaTop: frame.surplus + frame.bottomPad + actionBtn,
             left: frame.tableLeft,
@@ -1319,7 +1291,7 @@ export function GameTable({
           style={[
             styles.bannerBand,
             {
-              top: frame.tableTop + CHIP_H(scale) + frame.pad,
+              top: layout.chipsBottom,
               left: frame.tableLeft + frame.pad,
               right: frame.tableRight + frame.pad,
             },
@@ -1342,17 +1314,7 @@ export function GameTable({
           style={[
             sharedTableStyles.tableOverlay,
             TABLE_Z,
-            {
-              left: frame.tableLeft,
-              top: frame.tableTop,
-              right: frame.tableRight,
-              // The table's own bottom edge, not the felt's: the hand runs to
-              // it and past it, which is what buys the table the height above.
-              // Zero on every phone — `surplus` is only the height a window
-              // taller than the scale cap has, and it is taken off both ends so
-              // the drawn table stays centred rather than growing one gap.
-              bottom: frame.surplus,
-            },
+            layout.tableBox,
             greyStyle,
           ]}
         >
@@ -1405,7 +1367,8 @@ export function GameTable({
                     key={stages.key}
                     announced={shownExchange}
                     stages={stages}
-                    geometry={seatGeometry}
+                    layout={layout}
+                    seating={seating}
                     handOrigins={handOrigins}
                     go={!deal.dealing}
                     viewerSeat={spectating ? null : viewerSeat}
@@ -1447,7 +1410,7 @@ export function GameTable({
               style={[
                 sharedTableStyles.handSection,
                 {
-                  height: HAND_ZONE_H(handCardH, frame.bottomPad),
+                  height: layout.handZoneH,
                   paddingBottom: frame.bottomPad,
                   gap: HAND_ZONE_GAP * scale,
                 },

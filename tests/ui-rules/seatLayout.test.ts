@@ -154,7 +154,7 @@ describe("viewerOwnsSeat", () => {
 
 describe("exchangeArrivalRise", () => {
   test("is the hand zone's own centre, restated against the row's baseline", () => {
-    // flightOrigin's "bottom" case lands the flying card at handZoneH / 2
+    // seatPoint("bottom") lands the flying card at handZoneH / 2
     // above the table floor; the row's own baseline sits bottomPad above that
     // floor plus the lift handCenter gives it. Restated here from the pieces
     // rather than imported whole, so a change to either formula shows up as

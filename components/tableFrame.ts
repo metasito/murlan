@@ -4,7 +4,6 @@
 
 import { BASE_SHORT_EDGE } from "./cardFaceModel.ts";
 import {
-  CHIP_H,
   FIELD_WIDTH_SHARE,
   HAND_WIDTH_SHARE,
   HAND_ZONE_GAP,
@@ -59,21 +58,6 @@ export interface ScreenPads {
   bottomPad: number;
   leftPad: number;
   rightPad: number;
-}
-
-/**
- * Usable screen edges, straight from `useSafeAreaInsets()`. On web that reads
- * the real `env(safe-area-inset-*)` values (react-native-safe-area-context's
- * web polyfill), which requires `viewport-fit=cover` on the viewport meta —
- * see public/index.html — or every side reads 0 regardless of device.
- */
-export function computeScreenPads(opts: { insets: EdgeInsets }): ScreenPads {
-  return {
-    topPad: opts.insets.top,
-    bottomPad: opts.insets.bottom,
-    leftPad: opts.insets.left,
-    rightPad: opts.insets.right,
-  };
 }
 
 // ─── Control rail ─────────────────────────────────────────────────────────────
@@ -135,11 +119,16 @@ export function computeTableFrame(opts: {
   width: number;
   /** The window's own height — what the scale cap is measured against. */
   height: number;
+  /**
+   * Straight from `useSafeAreaInsets()`. On web that reads the real `env(safe-area-inset-*)`
+   * values (react-native-safe-area-context's web polyfill), which requires `viewport-fit=cover` on
+   * the viewport meta — see public/index.html — or every side reads 0 regardless of device.
+   */
   insets: EdgeInsets;
   /** The table's own scale — the rail widens with it. */
   scale: number;
 }): TableFrame {
-  const { topPad, bottomPad, leftPad, rightPad } = computeScreenPads(opts);
+  const { top: topPad, bottom: bottomPad, left: leftPad, right: rightPad } = opts.insets;
   // Past `MAX_SHORT_EDGE` the scale stops growing but the window does not, so
   // there is height the contents were never sized for. It becomes pad at both
   // ends rather than being left to the band between the seats and the hand —
@@ -182,8 +171,8 @@ export function computeTableFrame(opts: {
  * in, and on a menu screen in landscape the band the banner steps over is empty, so it costs
  * nothing there.
  */
-export function bannerTop(layout: Pick<TableLayout, "chipsBottom"> | null, topInset: number): number {
-  return layout ? layout.chipsBottom : topInset;
+export function bannerTop(layout: Pick<TableLayout, "chipsBottom"> | null, topPad: number): number {
+  return layout ? layout.chipsBottom : topPad;
 }
 
 // ─── Seat bands ───────────────────────────────────────────────────────────────
@@ -199,30 +188,4 @@ export function topBandHeight(scale: number): number {
 /** A side seat's slot: its ring, or its turned fan when that is taller; the ring centres in it. */
 export function sideSlotHeight(scale: number): number {
   return Math.max(SEAT_DISC * scale, drawnFanBounds(scale).sideH);
-}
-
-/**
- * Top edge the notification banner may start at without covering the table's
- * own chips — which carry the combination on the felt and whose turn it is,
- * exactly the things an AFK or takeover notice is explaining.
- *
- * Landscape is the proxy for "the table is up": it is the only orientation the
- * table runs in, and on a menu screen in landscape the band the banner steps
- * over is empty, so it costs nothing there.
- */
-export function notificationTopOffset(opts: {
-  topPad: number;
-  landscape: boolean;
-  /** The table's own scale — the chips are sized from it. */
-  scale: number;
-  /**
-   * `TableFrame.surplus`, which the chips this clears are pushed down by.
-   * Required rather than defaulted: it is zero on every phone, so a caller
-   * that forgot it would be correct everywhere anyone looked.
-   */
-  surplus: number;
-}): number {
-  if (!opts.landscape) return opts.topPad;
-  const chipTop = Math.max(PAD_TOP * opts.scale, opts.topPad) + opts.surplus;
-  return chipTop + CHIP_H(opts.scale) + PAD_INNER * opts.scale;
 }

@@ -1,7 +1,7 @@
 import { DEAL_FLIGHT_MS, dealLeaveMs } from "../../lib/timeline/dealTimeline.ts";
 import { FAN_TURN } from "../fanGeometry.ts";
-import { seatPoint, type SeatGeometry } from "../flightPhysics.ts";
 import { seatDirection } from "../seatLayout.ts";
+import type { Seating, TableLayout } from "../tableLayout.ts";
 
 /** One card's flight from the pile to an opponent's seat, on the deal's clock. */
 export interface DealLeg {
@@ -9,7 +9,7 @@ export interface DealLeg {
   /** When it leaves the pile, in ms after the deal started. */
   leaveMs: number;
   flightMs: number;
-  /** Its seat, from the pile — `flightOrigin` for that seat — and its fan's turn. */
+  /** Its seat, from the pile — `seatPoint` for that seat — and its fan's turn. */
   to: { dx: number; dy: number; rot: number };
 }
 
@@ -22,11 +22,11 @@ export function dealSlotOf(seat: number, viewerSeat: number, players: number): n
 }
 
 /** Every opponent card's leg, round-robin: `counts` by seat index. */
-export function dealLegs(geometry: SeatGeometry, deal: { key: number; offsetMs: number; counts: readonly number[] }): DealLeg[] {
+export function dealLegs(layout: TableLayout, seating: Seating, deal: { key: number; offsetMs: number; counts: readonly number[] }): DealLeg[] {
   return SLOTS.flatMap((side, slot) => {
-    const o = geometry.opponents[side];
+    const o = seating.opponents[side];
     if (!o) return [];
-    const to = { ...seatPoint(geometry, side), rot: FAN_TURN[side] };
+    const to = { ...layout.seatPoint(side), rot: FAN_TURN[side] };
     return Array.from({ length: deal.counts[o.seat] }, (_, round) => ({
       key: `${deal.key}-${o.seat}-${round}`,
       leaveMs: deal.offsetMs + dealLeaveMs(round, slot),

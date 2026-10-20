@@ -1,16 +1,14 @@
 // tests/ui-rules/tableLayoutPin.test.ts — tableLayout on every viewport and safe area must land on
-// the places pinned in tests/fixtures/tableLayout.json, which today's functions computed.
+// the places pinned in tests/fixtures/tableLayout.json, which the per-caller copies it replaced
+// computed (#1684's first commit).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { BASE_SHORT_EDGE, cardScale, CARD_H, HAND_SCALE } from "../../components/cardFaceModel.ts";
-import { anchorPoints, floatTop, seatPoint, tableGeometry } from "../../components/flightPhysics.ts";
-import { CHIP_H } from "../../components/seatLayout.ts";
-import { mockupPx } from "../../components/table/noticeModel.ts";
-import { MOCKUP_SHORT_EDGE, scorePillBox, voteTop } from "../../components/table/scorePillModel.ts";
-import { bannerTop, computeTableFrame, notificationTopOffset, surplusHeight, type EdgeInsets } from "../../components/tableFrame.ts";
+import { cardScale } from "../../components/cardFaceModel.ts";
+import { voteTop } from "../../components/table/scorePillModel.ts";
+import { bannerTop, type EdgeInsets } from "../../components/tableFrame.ts";
 import { tableLayout } from "../../components/tableLayout.ts";
 
 const VIEWPORTS = [
@@ -54,39 +52,6 @@ function current(c: { viewport: string; insets: string }) {
   };
 }
 
-function today(c: { viewport: string; insets: string }) {
-  const { width, height, insets, scale } = place(c);
-  const frame = computeTableFrame({ width, height, insets, scale });
-  const seats = {
-    scale,
-    windowWidth: width,
-    windowHeight: height,
-    tableLeft: frame.tableLeft,
-    tableRight: frame.tableRight,
-    tableTop: frame.tableTop,
-    surplus: frame.surplus,
-    bottomPad: frame.bottomPad,
-    handCardH: CARD_H(scale * HAND_SCALE),
-  };
-  const pill = {
-    right: width - frame.tableRight - frame.pad,
-    top: frame.tableTop,
-    restH: CHIP_H(scale),
-    centreX: (frame.tableLeft + width - frame.tableRight) / 2,
-    unit: (scale * BASE_SHORT_EDGE) / MOCKUP_SHORT_EDGE,
-  };
-  const openPill = scorePillBox(1, 0, pill);
-  return {
-    anchors: anchorPoints(tableGeometry(seats)),
-    seatPoints: Object.fromEntries(DIRS.map((d) => [d, seatPoint(seats, d)])),
-    floatTop: floatTop(seats),
-    chipsBottom: notificationTopOffset({ topPad: insets.top, landscape: width > height, scale, surplus: surplusHeight(width, height, scale) / 2 }),
-    tableBox: { left: frame.tableLeft, top: frame.tableTop, right: frame.tableRight, bottom: frame.surplus },
-    pill,
-    voteTop: { rest: pill.top + pill.restH + mockupPx(7, scale), open: openPill.y + openPill.h + mockupPx(7, scale) },
-  };
-}
-
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const PIN = JSON.parse(readFileSync(path.join(repoRoot, "tests/fixtures/tableLayout.json"), "utf8")) as {
   case: { viewport: string; insets: string };
@@ -102,7 +67,6 @@ describe("the table lays out where it was pinned", () => {
   });
 
   for (const { case: c, layout } of PIN) {
-    test(`${c.viewport}, ${c.insets}: today's functions`, () => assert.deepEqual(today(c), layout));
-    test(`${c.viewport}, ${c.insets}: tableLayout`, () => assert.deepEqual(current(c), layout));
+    test(`${c.viewport}, ${c.insets}`, () => assert.deepEqual(current(c), layout));
   }
 });

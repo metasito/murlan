@@ -3,31 +3,20 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { dealCards, type Player } from "../../lib/game/gameEngine.ts";
 import { arrangeOpponents } from "../../components/seatLayout.ts";
-import type { SeatGeometry } from "../../components/flightPhysics.ts";
+import { tableLayout, type Seating } from "../../components/tableLayout.ts";
 import { dealLegs, dealSlots, legAt, type DealLeg } from "../../components/table/dealSlots.ts";
 
-const geometryOf = (seats: number): SeatGeometry => {
+const LAYOUT = tableLayout({ width: 844, height: 390, insets: { top: 0, bottom: 0, left: 0, right: 0 }, scale: 1 });
+
+const seatingOf = (seats: number): Seating => {
   const players: Player[] = dealCards(seats).hands.map((hand, i) => ({ id: `p${i}`, name: `P${i}`, hand, type: "human" }));
-  return {
-    viewerSeat: 0,
-    players,
-    opponents: arrangeOpponents(players, 0),
-    scale: 1,
-    windowWidth: 844,
-    windowHeight: 390,
-    tableLeft: 20,
-    tableRight: 20,
-    tableTop: 12,
-    surplus: 0,
-    bottomPad: 8,
-    handCardH: 90,
-  };
+  return { viewerSeat: 0, players, opponents: arrangeOpponents(players, 0) };
 };
 
 const legsAt = (seats: number) => {
-  const geometry = geometryOf(seats);
-  const counts = geometry.players.map((p) => ("hand" in p ? p.hand.length : 0));
-  return dealLegs(geometry, { key: 1, offsetMs: 300, counts });
+  const seating = seatingOf(seats);
+  const counts = seating.players.map((p) => ("hand" in p ? p.hand.length : 0));
+  return dealLegs(LAYOUT, seating, { key: 1, offsetMs: 300, counts });
 };
 
 const inAir = (leg: DealLeg, t: number) => leg.leaveMs < t && t < leg.leaveMs + leg.flightMs;

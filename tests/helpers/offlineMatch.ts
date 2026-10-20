@@ -19,7 +19,7 @@ import {
 } from "../../lib/game/gameEngine.ts";
 import { advance, dealNext, startTable } from "../../lib/game/matchFlow.ts";
 import { autoMoveForSeat, offlineBotMove, type AutoMoveContext } from "../../lib/game/autoMove.ts";
-import { comboKey } from "../../components/flightPhysics.ts";
+import { comboKey } from "../../components/passes.ts";
 import { rng } from "../support/game.ts";
 
 export type OfflinePlayerSetup = SeatSetup;

@@ -3,7 +3,7 @@ import { useAnimatedReaction, useFrameCallback, useSharedValue, type FrameInfo, 
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { RoundMoment, Motion } from "@/lib/theme";
 import { useTraceSource } from "@/lib/e2eTrace";
-import { flareKindFor } from "@/components/flightPhysics";
+import { flareKindFor } from "@/components/impact";
 import { designScale, lampControls, lampMoved, restingLamp, stepLamp, type Lamp, type Pool } from "./lampRig";
 import { glossLightOf, nextGlossLight, type GlossLight } from "./cardGloss";
 import { useLandingReaction } from "./useLandingReaction";

@@ -9,7 +9,7 @@ import { Spacing } from "../lib/tokens.ts";
 // Both game screens are laid out around these, and changing one without the
 // other silently breaks a screen — `tests/ui-rules/layoutConstantsPinned.test.ts` is what
 // pins their values, except `SEAT_DISC` and `FAN_DRAWN_CARDS`, which
-// `tests/ui-rules/flightPhysics.test.ts` pins against the throw origin they also decide.
+// `tests/ui-rules/tableLayout.test.ts` pins against the throw origin they also decide.
 // The card dimensions belong to cardFaceModel.ts, which draws the
 // card; the rest are defined here rather than in the components/table/ files
 // that read them, so one module owns the number and the frame maths in
@@ -88,7 +88,7 @@ export function HAND_ZONE_H(cardH: number, bottomPad: number): number {
 
 /**
  * How far above the hand row's own baseline (`bottom: 0`, `hand.tsx`) the
- * exchange's flying card retires — `flightOrigin`'s "bottom" case lands it at
+ * exchange's flying card retires — `seatPoint("bottom")` lands it at
  * the hand zone's own vertical centre, `handZoneH / 2` above the table floor.
  *
  * The row's baseline is not that floor. The zone reserves `bottomPad` under

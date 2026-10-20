@@ -14,7 +14,7 @@ import { BACK_SCALE, CARD_BACK_H, CARD_BACK_W } from "@/components/cardFaceModel
 import { Layer, Motion } from "@/lib/theme";
 import { withdraw } from "@/lib/device/feedback";
 import { handCountOf } from "@/shared/protocol";
-import { seatPoint, type SeatGeometry } from "@/components/flightPhysics";
+import type { Seating, TableLayout } from "@/components/tableLayout";
 import type { HandDeal } from "@/components/table/hand";
 import { dealArrivalsMs, dealEndMs } from "@/lib/timeline/dealTimeline";
 import { armGateWatchdog, gateForced } from "@/components/table/gateForced";
@@ -24,8 +24,8 @@ import { useTraceSource } from "@/lib/e2eTrace";
 import { dealBack, designRect } from "@/components/table/cardRects";
 import { useCardRect, useCardTable } from "@/components/table/useCardRects";
 
-function pileFromHand(geometry: SeatGeometry) {
-  const hand = seatPoint(geometry, "bottom");
+function pileFromHand(layout: TableLayout) {
+  const hand = layout.seatPoint("bottom");
   return { dx: -hand.dx, dy: -hand.dy };
 }
 
@@ -48,12 +48,14 @@ interface Deal {
  * standing, starts at once.
  */
 export function useDeal({
-  geometry,
+  layout,
+  seating,
   fresh,
   entryMs,
   reduceMotion,
 }: {
-  geometry: SeatGeometry;
+  layout: TableLayout;
+  seating: Seating;
   fresh: boolean;
   entryMs: number;
   reduceMotion: boolean;
@@ -70,10 +72,10 @@ export function useDeal({
   endMs: number;
   onLanded: () => void;
 } {
-  const { players, viewerSeat } = geometry;
+  const { players, viewerSeat } = seating;
   const newDeal = (key: number, offsetMs: number): Deal => {
     const timing = { key, offsetMs, counts: players.map(handCountOf) };
-    return { ...timing, legs: dealLegs(geometry, timing), clock: makeMutable(-1), landed: false };
+    return { ...timing, legs: dealLegs(layout, seating, timing), clock: makeMutable(-1), landed: false };
   };
   const [last, setLast] = useState<Deal | null>(() => (fresh ? newDeal(1, entryMs) : null));
   const [idleClock] = useState(() => makeMutable(-1));
@@ -109,7 +111,7 @@ export function useDeal({
   return {
     cards,
     arrivalsFor: (seat) => arrivals?.[seat],
-    hand: deal && arrivals ? { offsetMs: deal.offsetMs, clock: deal.clock, pile: pileFromHand(geometry) } : undefined,
+    hand: deal && arrivals ? { offsetMs: deal.offsetMs, clock: deal.clock, pile: pileFromHand(layout) } : undefined,
     dealing: deal !== null,
     key: last?.key ?? 0,
     clock,

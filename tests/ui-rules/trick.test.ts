@@ -2,7 +2,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { createDeck, type Combination } from "../../lib/game/gameEngine.ts";
-import { comboKey } from "../../components/flightPhysics.ts";
+import { comboKey } from "../../components/passes.ts";
 import { beatenPlay, clearTrick, NO_TRICK, playOnto, roleOf, sweepEnded, sweepTrick, topPlay, type Trick, type TrickPlay } from "../../components/table/trick.ts";
 import { mulberry32 } from "../support/game.ts";
 

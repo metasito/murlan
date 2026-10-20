@@ -14,7 +14,7 @@ import {
 import { FAN_TURN, fanCounts, fanPoint, seatFanArc } from "@/components/fanGeometry";
 import { fanBacks } from "./cardRects";
 import { useCardTable, useStaticCardRects, type OwnedRects } from "./useCardRects";
-import { passedSeats } from "@/components/flightPhysics";
+import { passedSeats } from "@/components/passes";
 import { handCountOf } from "@/shared/protocol";
 import Animated, {
   useAnimatedStyle,

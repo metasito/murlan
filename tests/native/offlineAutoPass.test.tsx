@@ -73,7 +73,7 @@ jest.mock('@/components/GameTable', () => {
 });
 
 import { bootFeedback, haptics, sounds } from './helpers/feedback';
-import { turnKey } from '@/components/flightPhysics';
+import { turnKey } from '@/components/passes';
 import GameScreen from '@/app/game';
 
 describe('the offline turn clock expiring', () => {

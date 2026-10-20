@@ -1,6 +1,6 @@
 // A straight's top card as a rank character, for the spoken label. Its own `.ts`
 // beside `spokenLabels.ts`, which resolves `@/` at runtime — see
-// `components/flightPhysics.ts`'s header.
+// `components/tableLayout.ts`'s header.
 
 const FACE_VALUE_RANK: Record<number, string> = {
   1: "A", 2: "2", 3: "3", 4: "4", 5: "5", 6: "6", 7: "7", 8: "8", 9: "9", 10: "10",

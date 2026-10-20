@@ -19,6 +19,7 @@ import { readFileSync } from "node:fs";
 import { HAND_ZONE_H } from "../../components/seatLayout.ts";
 import { computeTableFrame, surplusHeight, topBandHeight } from "../../components/tableFrame.ts";
 import { cardScale, CARD_H, HAND_SCALE } from "../../components/cardFaceModel.ts";
+import { tableLayout } from "../../components/tableLayout.ts";
 
 /** The ticket's own list: two phones, a large phone, and two tablets. */
 const VIEWPORTS = [
@@ -32,7 +33,7 @@ const VIEWPORTS = [
 const NO_INSETS = { top: 0, bottom: 0, left: 0, right: 0 };
 
 /**
- * The band, from the same pieces `anchorPoints` derives it from: what is left of
+ * The band, from the same pieces `tableLayout` derives it from: what is left of
  * the content height once the top band (sized for the drawn cap, never a count)
  * and the hand zone have taken theirs.
  */
@@ -110,7 +111,12 @@ describe("the table keeps its proportions from phone to tablet", () => {
   // can see a layout, so this reads the source, the way the CARD_W scan does.
   test("GameTable draws the table's bottom edge at the surplus, not at zero", () => {
     const src = readFileSync(new URL("../../components/GameTable.tsx", import.meta.url), "utf8");
-    assert.match(src, /bottom: frame\.surplus,/);
+    assert.match(src, /testID="game-table"[^>]*?style=\{\[[^\]]*?\blayout\.tableBox,/);
+    for (const vp of VIEWPORTS) {
+      const scale = cardScale(Math.min(vp.width, vp.height));
+      const layout = tableLayout({ width: vp.width, height: vp.height, insets: NO_INSETS, scale });
+      assert.equal(layout.tableBox.bottom, layout.frame.surplus, vp.name);
+    }
   });
 
   test("no phone has any surplus — the cap only bites on a large tablet", () => {

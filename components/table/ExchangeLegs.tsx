@@ -11,7 +11,8 @@ import Animated, {
 import { scheduleOnRN, scheduleOnUI } from "react-native-worklets";
 import { CardView } from "@/components/CardView";
 import { BACK_SCALE, CARD_BACK_H, CARD_BACK_W, CARD_H, CARD_W, FIELD_SCALE } from "@/components/cardFaceModel";
-import { FAN_CARD_SCALE, type SeatGeometry } from "@/components/flightPhysics";
+import { FAN_CARD_SCALE } from "@/components/impact";
+import type { Seating, TableLayout } from "@/components/tableLayout";
 import { JOKERS, readExchangeLegs, type ExchangeStages } from "@/components/table/exchangeModel";
 import type { CardFrom } from "@/components/flightPose";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -170,7 +171,8 @@ function LegCard({ card, leg, show, points, clock, shows, reduced, drawn, scale,
 export function ExchangeLegs({
   announced,
   stages,
-  geometry,
+  layout,
+  seating,
   handOrigins,
   go,
   viewerSeat,
@@ -184,7 +186,8 @@ export function ExchangeLegs({
 }: {
   announced: ExchangeAnnounceData;
   stages: ExchangeStages;
-  geometry: SeatGeometry;
+  layout: TableLayout;
+  seating: Seating;
   handOrigins: { readonly current: ReadonlyMap<string, CardFrom> };
   go: boolean;
   viewerSeat: number | null;
@@ -218,7 +221,7 @@ export function ExchangeLegs({
     jokers ? [own(announced.loserIdx), -1, -1, -1] : [own(announced.loserIdx), own(announced.winnerIdx), own(announced.winnerIdx), own(announced.loserIdx)]
   );
   const [initial] = useState(() => {
-    const legs = readExchangeLegs({ ...geometry, announced });
+    const legs = readExchangeLegs(announced, layout, seating);
     return [legs.receive, legs.give, ...legs.jokers];
   });
   const pointsValue = useSharedValue<Points>(initial);
@@ -283,7 +286,7 @@ export function ExchangeLegs({
   }, [chosen, choiceAt]);
   // Read after commit: the hand publishes where it drew each card then. A leg keeps the points it left with.
   useEffect(() => {
-    const next = readExchangeLegs({ ...geometry, announced }, handOrigins.current);
+    const next = readExchangeLegs(announced, layout, seating, handOrigins.current);
     const cur = pointsValue.get();
     const fresh = (stage: LegStage) => stage === "waiting";
     pointsValue.set([

@@ -1,5 +1,5 @@
 // The portrait cover's rotate glyph, as numbers. Its own `.ts` beside the `.tsx`
-// that draws it, for the reason `components/flightPhysics.ts`'s header states.
+// that draws it, for the reason `components/tableLayout.ts`'s header states.
 
 /** A landscape phone glyph stood on its end, which is how the player holds it. */
 export const ROTATE_UPRIGHT = 0;

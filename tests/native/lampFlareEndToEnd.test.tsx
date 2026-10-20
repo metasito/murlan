@@ -15,7 +15,7 @@
 //
 // The last test below closes a third critique's second gap: "every tier
 // flares" was only caught at the pure-function layer
-// (tests/ui-rules/flightPhysics.test.ts) — a `flareKindFor` that always answered
+// (tests/ui-rules/impact.test.ts) — a `flareKindFor` that always answered
 // "brief" reds that, but nothing rendered, since the wiring tests only
 // assert the tier string handed to `burst()`, never that a non-flaring tier
 // actually stays dark on screen.
@@ -129,7 +129,7 @@ describe("the lamp's flare, read back off GameTable's own real render (#765)", (
   });
 
   it("a straight or royal straight landing leaves the flare dark through GameTable's own wiring, not a mock of it", async () => {
-    // `tests/ui-rules/flightPhysics.test.ts` already pins `flareKindFor("straight")
+    // `tests/ui-rules/impact.test.ts` already pins `flareKindFor("straight")
     // === "none"` at the pure-function layer, and `lampFlareWiring.test.tsx`
     // pins that `burst` is called with "straight", never "bomb" — but
     // neither renders anything, so a `flareKindFor` that always answered

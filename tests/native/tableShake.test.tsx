@@ -1,7 +1,7 @@
 // tests/native/tableShake.test.tsx — the escalation's own shake (#763).
 //
 // The tier→trauma mapping and the decay math are asserted directly against
-// the pure functions in `tests/ui-rules/flightPhysics.test.ts` — a `useAnimatedStyle`
+// the pure functions in `tests/ui-rules/impact.test.ts` — a `useAnimatedStyle`
 // read off a rendered node freezes at mount and cannot pin a later reactive change. This only pins
 // the shape `shakeStyle` starts at rest.
 import { describe, it, expect } from "@jest/globals";

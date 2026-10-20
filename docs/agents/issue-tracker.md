@@ -151,7 +151,7 @@ Eight sections, in this order. Drop any that would be empty — an empty heading
   ```markdown
   ## Checks
 
-  While iterating: `node --test tests/ui-rules/flightPhysics.test.ts`
+  While iterating: `node --test tests/ui-rules/tableLayout.test.ts`
   Once before pushing: `npm run agent:check`
   Not `npm run test:native`: react-test-renderer never runs flexbox, so it cannot see this.
   ```

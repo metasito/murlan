@@ -26,7 +26,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform, Settings } from "react-native";
 import { initializeOpeningAt, E2E_OPENER_KEY } from "@/lib/e2eOpener";
 import { opener } from "@/lib/e2eConfig";
-import { turnKey } from "@/components/flightPhysics";
+import { turnKey } from "@/components/passes";
 import {
   OFFLINE_SAVE_KEY,
   decodeOfflineSave,

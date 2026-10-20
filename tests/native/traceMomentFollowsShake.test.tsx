@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, jest } from "@jest/globals
 import { renderHook, act } from "@testing-library/react-native";
 import { setScreenShakeEnabled } from "@/lib/screenShake";
 import { makeMutable } from "react-native-reanimated";
-import type { ImpactTier } from "@/components/flightPhysics";
+import type { ImpactTier } from "@/components/impact";
 import { NO_LANDING } from "@/components/table/useFlightClock";
 import { fireLanding, useFeedbackOnTimeline } from "./helpers/landing";
 

@@ -17,12 +17,8 @@ import type { Combination } from "@/lib/game/gameEngine";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useScreenShakeEnabled } from "@/lib/screenShake";
 import { scheduleOnRN } from "react-native-worklets";
-import {
-  trickClosedWithWinner,
-  traumaFor,
-  shakeOffset,
-  shakeAmplitudeFor,
-} from "@/components/flightPhysics";
+import { traumaFor, shakeOffset, shakeAmplitudeFor } from "@/components/impact";
+import { trickClosedWithWinner } from "@/components/passes";
 import { cancelLandingPulses, runLandingPulses } from "@/lib/device/feedback";
 import type { RoundOutcome } from "@/lib/game/matchState";
 import { Hold, Motion, motionMs } from "@/lib/theme";

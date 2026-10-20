@@ -1,4 +1,4 @@
-// flightPhysics.ts's helpers are reached through one hook per concern (#1218).
+// The table's flight helpers are reached through one hook per concern (#1218).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -6,11 +6,18 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const MODULES = ["components/flightPhysics.ts", "components/table/exchangeModel.ts"];
+const MODULES = [
+  "components/impact.ts",
+  "components/passes.ts",
+  "components/tableLayout.ts",
+  "components/table/throws.ts",
+  "components/table/exchangeModel.ts",
+];
 
 const OWNERS: Record<string, string> = {
   readHandArrival: "components/table/hand.tsx",
   readExchangeLegs: "components/table/ExchangeLegs.tsx",
+  readThrownPlay: "components/table/pile.tsx",
   readExchangeSeats: "components/table/useTableExchange.ts",
   passedSeats: "components/table/seats.tsx",
 };

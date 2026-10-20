@@ -3,7 +3,7 @@ import React, { useRef, useState } from 'react';
 import { act } from '@testing-library/react-native';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { ExchangeLegs, type RingFlash } from '@/components/table/ExchangeLegs';
-import type { SeatGeometry } from '@/components/flightPhysics';
+import { tableLayout, type Seating, type TableLayout } from '@/components/tableLayout';
 import { NO_STAGES, exchangeKey, type ExchangeStages } from '@/components/table/exchangeModel';
 import { arrangeOpponents } from '@/components/seatLayout';
 import type { CardFrom } from '@/components/flightPose';
@@ -14,20 +14,9 @@ export const card = (id: string, rank: Card['rank']): Card => ({ id, suit: 'club
 
 const players = ['Ana', 'Bea', 'Cai', 'Dua'].map((name, i) => ({ id: `p${i}`, name, type: 'bot', hand: [card(`h${i}`, '9')] }) as Player);
 
-export const GEOMETRY: SeatGeometry = {
-  viewerSeat: 0,
-  players,
-  opponents: arrangeOpponents(players, 0),
-  scale: 1,
-  windowWidth: 844,
-  windowHeight: 390,
-  tableLeft: 20,
-  tableRight: 20,
-  tableTop: 12,
-  surplus: 0,
-  bottomPad: 8,
-  handCardH: 90,
-};
+export const NO_INSETS = { top: 0, bottom: 0, left: 0, right: 0 };
+export const LAYOUT: TableLayout = tableLayout({ width: 844, height: 390, insets: NO_INSETS, scale: 1 });
+export const SEATING: Seating = { viewerSeat: 0, players, opponents: arrangeOpponents(players, 0) };
 
 export const announced = (over: Partial<ExchangeAnnounceData> = {}): ExchangeAnnounceData => ({
   winnerName: 'Ana',
@@ -48,7 +37,7 @@ export function Legs(props: {
   onReady?: () => void;
   onDismiss?: () => void;
   holdMsOverride?: number;
-  geometry?: SeatGeometry;
+  layout?: TableLayout;
   lifted?: SharedValue<string[]>;
   /** False: the hand never draws a landed card, so its stage is not fed back. */
   handCommits?: boolean;
@@ -61,7 +50,8 @@ export function Legs(props: {
     <ExchangeLegs
       announced={props.announced}
       stages={stages}
-      geometry={props.geometry ?? GEOMETRY}
+      layout={props.layout ?? LAYOUT}
+      seating={SEATING}
       handOrigins={handOrigins}
       go={props.go ?? true}
       viewerSeat={props.viewerSeat === undefined ? 0 : props.viewerSeat}

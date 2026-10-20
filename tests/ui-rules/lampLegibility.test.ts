@@ -11,14 +11,14 @@ import {
   type Ring,
   type Pixels,
 } from "../../lib/diagnostics/lampLegibility.ts";
-import { HAND_ZONE_H, SEAT_DISC } from "../../components/seatLayout.ts";
+import { SEAT_DISC } from "../../components/seatLayout.ts";
 import { cardScale } from "../../components/cardFaceModel.ts";
-import { anchorPoints } from "../../components/flightPhysics.ts";
 import type { FlyDirection } from "../../components/seatLayout.ts";
 import { designScale } from "../../components/table/lampRig.ts";
 import { ANNULUS_OUTER, feltOnly, legibilityRing } from "../../components/table/legibilityRing.ts";
 import { RAIL_BAND, ringRect } from "../../components/table/rail.ts";
 import { PHONES } from "../e2e/helpers/phones.ts";
+import { phoneTable } from "../helpers/phoneTable.ts";
 
 type Rgba = readonly [number, number, number, number];
 type Point = { x: number; y: number };
@@ -37,16 +37,7 @@ const CARD = cardScale(Math.min(PHONE.width, PHONE.height));
 const RING = legibilityRing(PHONE.width, PHONE.height);
 const DISC = RING.inner;
 const PER_PT = 2;
-const anchors = anchorPoints({
-  scale: CARD,
-  windowWidth: PHONE.width,
-  windowHeight: PHONE.height,
-  tableLeft: 40,
-  tableRight: 40,
-  tableTop: 8,
-  surplus: 0,
-  handZoneH: HAND_ZONE_H(90 * CARD, 8),
-});
+const anchors = phoneTable(PHONE.width, PHONE.height, { top: 8, bottom: 8, left: 40, right: 40 }).anchors;
 const SEATS = (["bottom", "right", "top", "left"] as FlyDirection[]).map((dir) => ({ dir, at: anchors[dir] }));
 const RIGHT = anchors.right;
 

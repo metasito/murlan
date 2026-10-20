@@ -3,7 +3,6 @@
 import { test, describe, before } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { anchorPoints } from "../../components/flightPhysics.ts";
 import type { FlyDirection } from "../../components/seatLayout.ts";
 import { CLOTH_SKSL, clothUniforms, type ClothUniforms } from "../../components/table/feltShader.ts";
 import { LIGHT_ABOVE, designScale, lampPools, lightUniforms } from "../../components/table/lampRig.ts";
@@ -84,7 +83,7 @@ describe("the light round the seats, in the shipped SkSL", () => {
     test(`on ${felt}: the seat on move out-lights the rest, the same at every seat`, () => {
       const rows = [TIGHTEST].flatMap(({ name, width, height }) =>
         Object.entries(INSETS).map(([insets, edges]) => {
-          const anchors = anchorPoints(phoneTable(width, height, edges));
+          const anchors = phoneTable(width, height, edges).anchors;
           const ratios = SEATS.map((s) => legibility(seatMeans(width, height, anchors, stops, s), s));
           return { at: `${name} at ${insets}`, ratios, even: evenness(ratios) };
         })

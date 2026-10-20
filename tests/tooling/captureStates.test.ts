@@ -21,7 +21,7 @@ import {
 } from "../../lib/captureStates.ts";
 import { holdGrey, linkHeld } from "../../lib/ownLink.ts";
 import { seatDirection } from "../../components/seatLayout.ts";
-import { comboKey, passedSeats } from "../../components/flightPhysics.ts";
+import { comboKey, passedSeats } from "../../components/passes.ts";
 import { createDeck, dealCards } from "../../lib/game/gameEngine.ts";
 import { BOT_PERSONALITIES } from "../../lib/game/botPersonalities.ts";
 

@@ -56,7 +56,8 @@ lib/game/gameEngine.ts (offline: called directly)   server/socket/socket.ts (onl
   both the first deal and a rematch). See §3 for how `applyOrForward` reaches the process that
   owns the room.
 - **`components/GameTable.tsx`** + the table's pure model (`seatLayout.ts`,
-  `flightPhysics.ts`, `turnTimerUi.ts`, `tableFrame.ts`, `tableA11y.ts` — all JSX-free) +
+  `tableLayout.ts`, `impact.ts`, `passes.ts`, `turnTimerUi.ts`, `tableFrame.ts`, `tableA11y.ts` — all
+  JSX-free) +
   **`components/table/`** are the single presentational table. `GameTable.tsx` assembles it
   and owns the interaction; `components/table/` holds the pieces it draws, one file per
   concern — `seats.tsx` (the opponent slots), `pile.tsx` (the played pile and the card
@@ -255,19 +256,21 @@ it does not touch socket or game state.
 implement nearly-identical table rendering, layout and animation. That has been
 collapsed:
 
-- **`components/seatLayout.ts`**, **`flightPhysics.ts`**, **`turnTimerUi.ts`**,
-  **`tableFrame.ts`**, **`tableA11y.ts`** — the table's pure model, one file per concern
+- **`components/seatLayout.ts`**, **`tableLayout.ts`**, **`impact.ts`**, **`passes.ts`**,
+  **`turnTimerUi.ts`**, **`tableFrame.ts`**, **`tableA11y.ts`** — the table's pure model, one file per concern
   (#956). Each is JSX-free with relative runtime imports, so `node --test` can load it
   (`docs/agents/checks.md`, "Node's TypeScript loader"). A module under `components/table/`
   that keeps to the same shape is node-loadable whatever its neighbours are, which is how a
   number reached only from a `.tsx` — or from a `.ts` that imports through `@/` at runtime —
   is tested.
   `seatLayout` holds the layout constants and the seating/opponent-position math;
-  `flightPhysics` the card flight, pile advancement and impact feedback;
-  `table/exchangeModel` the exchange-state reads, its legs and its chip and pile note;
+  `tableLayout` every place on the table, built once per window by GameTable; `impact` what a
+  landing earns; `passes` the turn key and the seats that passed; `table/throws` where a throw
+  starts; `table/exchangeModel` the exchange-state reads, its legs, the hand's arrival and its chip
+  and pile note;
   `turnTimerUi` whether passing is open and the turn clock; `table/stagedPlay` the play-button
   label, which is the engine's `SelectionRefusal` or `"play"`; `tableFrame` the
-  safe-area/rail arithmetic; `tableA11y` the screen-reader description. `flightPhysics`
+  safe-area/rail arithmetic; `tableA11y` the screen-reader description. `table/throws`
   takes `seatDirection` from `seatLayout`; the reverse must never happen.
 - **`components/GameTable.tsx`** — the one presentational table. It takes a `GameState`, a
   `viewerSeat`, and a small set of slots (`turnTimer`, `exchangeAnnouncement`,

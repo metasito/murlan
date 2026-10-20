@@ -16,7 +16,6 @@ import {
   type Pool,
 } from "../../components/table/lampRig.ts";
 import { seatDirection, type FlyDirection } from "../../components/seatLayout.ts";
-import { anchorPoints } from "../../components/flightPhysics.ts";
 import { PHONES } from "../e2e/helpers/phones.ts";
 import { INSETS, NO_INSETS, phoneTable } from "../helpers/phoneTable.ts";
 import { fixtureBlock, fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
@@ -104,7 +103,7 @@ describe("the lamp rig", () => {
   });
 
   test("his page reproduces: your light 7 points inside the hand, at [443, 380] and reach 1", () => {
-    const pools = lampPools(anchorPoints(phoneTable(874, 402, INSETS["62/21/62"])), 874, 402);
+    const pools = lampPools(phoneTable(874, 402, INSETS["62/21/62"]).anchors, 874, 402);
     const [x, y, reach] = pools.bottom;
     assert.deepEqual([Math.round(x), Math.round(y)], [443, 380], `the hand's pool at ${x}, ${y}`);
     assert.ok(Math.abs(reach - 1) < 1e-3, `the hand's reach ${reach}`);
@@ -115,7 +114,7 @@ describe("the lamp rig", () => {
       for (const [insets, edges] of Object.entries(INSETS)) {
         const at = `${phone} at ${insets}`;
         const { sx, sy } = designScale(width, height);
-        const anchors = anchorPoints(phoneTable(width, height, edges));
+        const anchors = phoneTable(width, height, edges).anchors;
         const pools = lampPools(anchors, width, height);
         const design = (dir: FlyDirection | "pile") => ({ x: anchors[dir].x / sx, y: anchors[dir].y / sy });
         const apart = (a: FlyDirection, b: FlyDirection) => Math.hypot(design(a).x - design(b).x, design(a).y - design(b).y);
@@ -147,9 +146,9 @@ describe("the lamp rig", () => {
     for (const { name: phone, width, height } of PHONES) {
       for (const [insets, edges] of Object.entries(INSETS)) {
         const table = phoneTable(width, height, edges);
-        const [x, y] = lampPools(anchorPoints(table), width, height).centre;
+        const [x, y] = lampPools(table.anchors, width, height).centre;
         const { sx, sy } = designScale(width, height);
-        const middle = (table.tableLeft + width - table.tableRight) / 2;
+        const middle = (table.frame.tableLeft + width - table.frame.tableRight) / 2;
         assert.ok(Math.abs(x * sx - middle) < 1e-9, `${phone} at ${insets}: the light's x ${x * sx}, the table's middle ${middle}`);
         assert.ok(Math.abs(y * sy - height / 2) < 1e-9, `${phone} at ${insets}: the light's y ${y * sy}, the window's middle ${height / 2}`);
       }
@@ -159,7 +158,7 @@ describe("the lamp rig", () => {
   test("a two- or three-player table aims at the seats it has: every table has a top seat and a hand", () => {
     assert.equal(seatDirection(1, 0, 2), "top", "two players face each other");
     assert.deepEqual([1, 2].map((s) => seatDirection(s, 0, 3)).sort(), ["right", "top"], "three players sit right and top");
-    const anchors = anchorPoints(phoneTable(874, 402));
+    const anchors = phoneTable(874, 402).anchors;
     const pools = lampPools(anchors, 874, 402);
     for (const players of [2, 3]) {
       for (let seat = 0; seat < players; seat++) {
@@ -173,7 +172,7 @@ describe("the lamp rig", () => {
 
   test("the mockup's seats are within 1.2 points of where the app lays them out at its size", () => {
     const disc = runFixture([fixtureLine("const DISC=")]).DISC as Record<string, [number, number]>;
-    const anchors = anchorPoints(phoneTable(874, 402, NO_INSETS));
+    const anchors = phoneTable(874, 402, NO_INSETS).anchors;
     for (const [seat, dir] of Object.entries(SEAT).filter(([, d]) => d !== "bottom")) {
       for (const [k, axis] of (["x", "y"] as const).entries()) {
         const off = Math.abs(anchors[dir][axis] - disc[seat][k]);

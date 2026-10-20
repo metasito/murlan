@@ -19,10 +19,10 @@
 import { describe, it, expect, jest, afterEach } from '@jest/globals';
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
-import * as flightPhysics from '@/components/flightPhysics';
+import * as impact from '@/components/impact';
 import { setMotionPreference } from '@/lib/accessibility';
 import { setScreenShakeEnabled } from '@/lib/screenShake';
-import type { ImpactTier } from '@/components/flightPhysics';
+import type { ImpactTier } from '@/components/impact';
 
 /** Every shared value any component under test creates, in creation order. */
 const mockCapturedSharedValues: { value: unknown }[] = [];
@@ -113,9 +113,9 @@ describe('the shake reads reduced motion at the point trauma is set (#794)', () 
   it("shake()'s write carries traumaFor's own answer, not a value read and then discarded", async () => {
     setMotionPreference('on');
     // Every real call in this tree still reaches the pure `traumaFor` — its
-    // reduced-motion branch is pinned directly in tests/ui-rules/flightPhysics.test.ts
+    // reduced-motion branch is pinned directly in tests/ui-rules/impact.test.ts
     // — this only swaps its *answer* for one that is identifiable later.
-    const traumaSpy = jest.spyOn(flightPhysics, 'traumaFor').mockReturnValue(SENTINEL);
+    const traumaSpy = jest.spyOn(impact, 'traumaFor').mockReturnValue(SENTINEL);
     const { r, land } = await mount();
 
     // Nothing on mount holds the sentinel — only the landing's own write can
@@ -136,7 +136,7 @@ describe('the shake reads reduced motion at the point trauma is set (#794)', () 
   it.each([true, false])('screen shake %s: the shake and the kick both follow the toggle', async (enabled) => {
     setMotionPreference('off');
     setScreenShakeEnabled(enabled);
-    const traumaSpy = jest.spyOn(flightPhysics, 'traumaFor');
+    const traumaSpy = jest.spyOn(impact, 'traumaFor');
     const { r, land } = await mount();
     mockSequences.count = 0;
 

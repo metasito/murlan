@@ -27,7 +27,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { flareKindFor, type FlareKind } from "@/components/flightPhysics";
+import { flareKindFor, type FlareKind } from "@/components/impact";
 import { BombFx, Layer, makeShadow, withAlpha, Motion, Scrim } from "@/lib/theme";
 import { useLandingReaction } from "@/components/table/useLandingReaction";
 import { useBombBeat } from "@/components/table/useBombBeat";
@@ -121,7 +121,7 @@ const FLARE_SIZE = 150;
 const FLARE_BRIEF_MS = 1500;
 /**
  * The match's own window — long enough to carry the closing beat rather
- * than read as a second bomb: `flareKindFor` (flightPhysics.ts) is what
+ * than read as a second bomb: `flareKindFor` (impact.ts) is what
  * decides which of the two a landing plays, never a branch in here.
  */
 const FLARE_SETTLE_MS = FLARE_BRIEF_MS * 2;

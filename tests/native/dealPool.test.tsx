@@ -29,7 +29,7 @@ import { DealFlights, useDeal } from '@/components/table/deal';
 import { dealPose } from '@/components/table/dealPose';
 import { dealLegs, dealSlots, legAt } from '@/components/table/dealSlots';
 import { dealCards, type GameState, type Player } from '@/lib/game/gameEngine';
-import { GEOMETRY, frames } from './helpers/exchangeLegs';
+import { LAYOUT, SEATING, frames } from './helpers/exchangeLegs';
 import { busiest, inAir } from './helpers/dealSweep';
 import { bootFeedback } from './helpers/feedback';
 
@@ -95,7 +95,7 @@ describe('the deal flies on a pool of backs', () => {
   });
 
   it('gives the next round’s deal a clock of its own, never the landed one', async () => {
-    const hook = await renderHook(({ fresh }: { fresh: boolean }) => useDeal({ geometry: GEOMETRY, fresh, entryMs: 600, reduceMotion: false }), {
+    const hook = await renderHook(({ fresh }: { fresh: boolean }) => useDeal({ layout: LAYOUT, seating: SEATING, fresh, entryMs: 600, reduceMotion: false }), {
       initialProps: { fresh: true },
     });
     const first = hook.result.current.clock;
@@ -113,7 +113,7 @@ describe('the deal flies on a pool of backs', () => {
 
   it('poses every leg in the air, each back one leg at a time, and stops its clock at the end', async () => {
     const counts = [14, 14, 13, 13];
-    const legs = dealLegs(GEOMETRY, { key: 1, offsetMs: 100, counts });
+    const legs = dealLegs(LAYOUT, SEATING, { key: 1, offsetMs: 100, counts });
     const slots = dealSlots(legs);
     const endMs = Math.max(...legs.map((l) => l.leaveMs + l.flightMs));
     const clock = makeMutable(-1);

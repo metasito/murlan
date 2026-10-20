@@ -256,7 +256,7 @@ gets the dev build from `npm run ios:device` (README, #1316):
 
 1. Landscape lock holds on game screens; menus rotate freely.
 2. Card lift and the exchange animation land smooth (the exactly-once invariant is unit-tested,
-   `tests/ui-rules/flightPhysics.test.ts` — smoothness itself is not).
+   `tests/ui-rules/exchangeModel.test.ts` — smoothness itself is not).
 3. Sound plays with the ringer off, and the settings toggle silences it.
 4. Haptics fire on select, play and win, and stop when switched off.
 5. The notification banner slides in and out clear of the notch and gesture bar.

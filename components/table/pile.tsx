@@ -25,7 +25,10 @@ import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/game/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
 import { seatDirection } from "@/components/seatLayout";
-import { comboKey, flinchFor, landingTier, LAND_WOBBLE_MS, landWobble, readThrownPlay, trickClosedWithWinner, seatPoint, type ThrownPlayInput } from "@/components/flightPhysics";
+import { flinchFor, landingTier, LAND_WOBBLE_MS, landWobble } from "@/components/impact";
+import { comboKey, trickClosedWithWinner } from "@/components/passes";
+import { readThrownPlay } from "@/components/table/throws";
+import type { Seating, TableLayout } from "@/components/tableLayout";
 import { clearTrick, NO_TRICK, playOnto, roleOf, sweepEnded, sweepTrick, topPlay, type PlayRole, type Trick, type TrickPlay } from "./trick";
 import { flightPose, pileSlots, type CardFrom } from "@/components/flightPose";
 import { ComboMark, PileLabelMark, TrickWinnerMark } from "./notices/pileNotices";
@@ -581,7 +584,9 @@ export function getComboLabel(
 // generic UI transition, so it is not a Motion token.
 const TRICK_WINNER_MS = 1800;
 
-export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "playedBy"> {
+export interface PileFlightInput {
+  layout: TableLayout;
+  seating: Seating;
   lastPlayedCombination: Combination | null;
   lastPlayedBy: number;
   trickWinner: number | null;
@@ -623,18 +628,8 @@ export function usePileFlight({
   roundOver,
   matchOver,
   viewerWon,
-  viewerSeat,
-  players,
-  opponents,
-  scale,
-  windowWidth,
-  windowHeight,
-  tableLeft,
-  tableRight,
-  tableTop,
-  surplus,
-  bottomPad,
-  handCardH,
+  layout,
+  seating,
   timeline,
   celebrateGoingOut,
   onClock,
@@ -712,20 +707,6 @@ export function usePileFlight({
       setTrick(clearTrick);
     };
 
-    const geometry = {
-      viewerSeat,
-      players,
-      opponents,
-      scale,
-      windowWidth,
-      windowHeight,
-      tableLeft,
-      tableRight,
-      tableTop,
-      surplus,
-      bottomPad,
-      handCardH,
-    };
     const combo = lastPlayedCombination;
     const atRest = atRestRef.current;
     atRestRef.current = false;
@@ -739,7 +720,7 @@ export function usePileFlight({
       }
       prevComboKeyRef.current = "";
       if (trickClosedWithWinner({ lastPlayedCombination: combo, trickWinner })) {
-        const origin = seatPoint(geometry, seatDirection(trickWinner!, viewerSeat, players.length));
+        const origin = layout.seatPoint(seatDirection(trickWinner!, seating.viewerSeat, seating.players.length));
         const collect = () => {
           trickHoldRef.current = null;
           setTrick((t) => sweepTrick(t, origin));
@@ -761,8 +742,8 @@ export function usePileFlight({
     }
     prevComboKeyRef.current = key;
 
-    const thrown = readThrownPlay({ ...geometry, combo, playedBy: lastPlayedBy }, handOrigins.current);
-    const to = pileSlots(thrown.cards.length, CARD_W(scale * FIELD_SCALE), roomW);
+    const thrown = readThrownPlay({ combo, playedBy: lastPlayedBy }, layout, seating, handOrigins.current);
+    const to = pileSlots(thrown.cards.length, CARD_W(layout.scale * FIELD_SCALE), roomW);
     const play: TrickPlay = { key, combo, playedBy: lastPlayedBy, spec: flightSpec(key, thrown.from, to, catchUp, reduceMotion) };
     if (atRest) {
       setTrick((t) => playOnto(t, play));
@@ -801,21 +782,10 @@ export function usePileFlight({
     lastPlayedBy,
     trickWinner,
     roundOver,
-    viewerSeat,
-    players.length,
     reduceMotion,
     playTrickStart,
-    players,
-    opponents,
-    scale,
-    windowWidth,
-    windowHeight,
-    tableLeft,
-    tableRight,
-    tableTop,
-    surplus,
-    bottomPad,
-    handCardH,
+    layout,
+    seating,
     handOrigins,
     roomW,
     catchUp,

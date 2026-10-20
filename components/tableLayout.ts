@@ -30,7 +30,12 @@ export interface TableLayout {
   floatTop: number;
   /** Bottom edge of the chip row: the banner band's top, and the notification banner's in landscape. */
   chipsBottom: number;
-  /** The table overlay's box, as distances from each window edge. */
+  /**
+   * The table overlay's box, as distances from each window edge. Its bottom is the table's own
+   * edge, not the felt's: the hand runs to it and past it, which is what buys the table the height
+   * above. `surplus` is zero on every phone, and taken off both ends of a window taller than the
+   * scale cap so the drawn table stays centred rather than growing one gap.
+   */
   tableBox: { left: number; top: number; right: number; bottom: number };
   pill: PillAnchor;
 }
