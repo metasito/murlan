@@ -26,6 +26,8 @@ const VIA_TRANSPORT = /\b(?:io|transport)\s*\./;
 const ARGS = String.raw`\((?:[^()]|\([^()]*\))*\)`;
 const ADDRESSED_SEND = new RegExp(String.raw`\.to${ARGS}\s*(?:\.timeout${ARGS}\s*)?\.emit\(`);
 const STORE_IMPORT = /from "\.\.\/store\/(?:roomStore|activeGameStore)\.ts"/;
+/** retention.ts reaches the stores for `roomStore.purgeRooms` alone. */
+const PAST_PURGE = /from "\.\.\/store\/activeGameStore\.ts"|\broomStore\s*(?:\.\s*(?!purgeRooms\b|ts")\w+|\[)|=\s*roomStore\b/;
 /** A handler family reading Socket.IO off its context. */
 const HANDLER_IO = /\{[^}]*\bio\b[^}]*\}\s*:\s*HandlerContext|\bctx\.io\b/;
 
@@ -48,7 +50,10 @@ const rules = {
   gameNamesSocketServer: (s: Sources) => hits(s, NAMES_SOCKET_SERVER, [game("tableRuntime.ts"), game("tableRouter.ts")]),
   gameUsesTransport: (s: Sources) => hits(s, VIA_TRANSPORT, [game("tableRouter.ts")]),
   gameAddressesSends: (s: Sources) => hits(s, ADDRESSED_SEND),
-  gameImportsStores: (s: Sources) => hits(s, STORE_IMPORT, [game("gamePersistence.ts"), game("tableRuntime.ts")]),
+  gameImportsStores: (s: Sources) =>
+    hits(s, STORE_IMPORT, [game("tableRuntime.ts"), game("retention.ts")]).concat(
+      hits(s.filter(([file]) => file === game("retention.ts")), PAST_PURGE)
+    ),
   socketAddressesSends: (s: Sources) => hits(s, ADDRESSED_SEND, [socket("socketOutbox.ts")]),
   socketUsesTransport: (s: Sources) =>
     hits(s, VIA_TRANSPORT, [
@@ -80,7 +85,8 @@ describe("each pattern still sees what it is about", () => {
     [VIA_TRANSPORT, game("tableRouter.ts")],
     [VIA_TRANSPORT, socket("socketPresence.ts")],
     [ADDRESSED_SEND, socket("socketOutbox.ts")],
-    [STORE_IMPORT, game("gamePersistence.ts")],
+    [STORE_IMPORT, game("tableRuntime.ts")],
+    [STORE_IMPORT, game("retention.ts")],
   ];
   for (const [pattern, file] of floors) {
     test(`${pattern.source.slice(0, 24)}… matches ${file}`, () => {
@@ -101,6 +107,9 @@ describe("a planted breach is caught", () => {
     ["gameUsesTransport", game("plant.ts"), "rt.transport.serverSideEmit(EVENT, action);"],
     ["gameAddressesSends", game("plant.ts"), 'out.to(userRoom(uid)).timeout(5).emit("game:state", s, ack);'],
     ["gameImportsStores", game("plant.ts"), 'import { roomStore } from "../store/roomStore.ts";'],
+    ["gameImportsStores", game("retention.ts"), "await roomStore.getRoomById(id);"],
+    ["gameImportsStores", game("retention.ts"), "const { getRoomById } = roomStore;"],
+    ["gameImportsStores", game("retention.ts"), 'import { activeGameStore } from "../store/activeGameStore.ts";'],
     ["socketAddressesSends", socket("plant.ts"), 'io.to(roomId).emit("game:reaction", r);'],
     ["socketUsesTransport", socket("socketRooms.ts"), "rt.transport.in(roomId).fetchSockets();"],
     ["socketUsesTransport", socket("socketPresence.ts"), "export function announce() {\n  io.to(r);\n}"],

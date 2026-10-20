@@ -159,8 +159,11 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     const opener = await player("orphan_opener");
     const opened = await quickmatch(opener);
 
-    const { roomStore } = await import("../../server/store/roomStore.ts");
-    await roomStore.removeRoomPlayer(opened.roomId, opener.user.id);
+    const { db } = await import("../../server/store/db.ts");
+    const { sql } = await import("drizzle-orm");
+    await db.execute(
+      sql`DELETE FROM room_players WHERE room_id = ${opened.roomId} AND user_id = ${opener.user.id}`
+    );
 
     const arrival = await player("orphan_arrival");
     const landed = await quickmatch(arrival);

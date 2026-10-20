@@ -9,7 +9,7 @@ import { roomStore } from "../store/roomStore.ts";
 import { trackEvent } from "./events.ts";
 import { onEvent } from "./socketSafety.ts";
 import { socketRoomMap, spectatorRoomMap } from "../game/gameRoom.ts";
-import { clearLobbyGrace } from "../game/gameTimers.ts";
+import { clearLobbyGrace, seatHoldMs } from "../game/gameTimers.ts";
 import { OK } from "../shared/refusal.ts";
 import {
   handleSeatRelease,
@@ -55,6 +55,7 @@ export function registerRoomHandlers({ rt, socket, userId }: HandlerContext) {
       announceFilled: (room, seated) => announceIfFilled(rt, room, seated),
       announceChanged: (roomId) => announceRoomChanged(rt, roomId),
       clearLobbyGrace,
+      seatHoldMs,
       track: trackEvent,
     };
 

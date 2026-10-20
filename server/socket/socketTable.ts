@@ -21,6 +21,7 @@ import {
   clearAllTimersForUser,
   autoStartDelayMs,
   clearAutoStart,
+  seatHoldMs,
 } from "../game/gameTimers.ts";
 import { sendGameStateTo } from "../game/gamePersistence.ts";
 import { emitEndMatchVoteState, emitMatchState, emitVoteState } from "./emit.ts";
@@ -50,7 +51,7 @@ export async function roomStatePayload(
 ): Promise<WireRoomState> {
   const holds =
     room.status === "waiting"
-      ? await roomStore.getRoomSeatHolds(room, players).catch((err: unknown) => {
+      ? await roomStore.getRoomSeatHolds(room, players, seatHoldMs()).catch((err: unknown) => {
           logger.warn({ err, roomId: room.id }, "seat holds read failed; the lobby shows none");
           return [];
         })
