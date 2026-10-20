@@ -31,13 +31,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  # Node 22+ is required: tests run via `node --test` against .ts files directly
-  # (docs/agents/checks.md, "Node's TypeScript loader"), stable since Node 22.6,
-  # so no ts-node/tsx/vitest is needed. Node 24 is the current LTS-track
-  # release and what the project is developed against, so pin to it to keep
-  # local and CI runs identical. The `build` job is deliberately not on this —
-  # it runs production's Node, for the reason given there.
-  NODE_VERSION: "24"
+  # Node's version is `.node-version`; why tests run on `.ts` directly is docs/agents/checks.md, "Node's TypeScript loader".
   # Single source of truth for the secret-scan image: the scan step and the
   # self-test must run the exact same binary, or a version bump to one and not
   # the other leaves the self-test attesting to a scanner that isn't the one
@@ -120,7 +114,7 @@ jobs:
       # none of these is a red run's.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: .node-version
       - id: plan
         shell: bash
         env:
@@ -279,8 +273,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/install
-        with:
-          node-version: ${{ env.NODE_VERSION }}
 
       # tests/server/backupDb.test.ts restores a real dump — needs the same client
       # tools scripts/backup-db.mjs itself depends on, matched to the service
@@ -342,8 +334,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/install
-        with:
-          node-version: ${{ env.NODE_VERSION }}
       # babel-jest keys a transform by the file and the babel config, never by the presets' and plugins'
       # own code (the React Compiler, worklets), so this key must cover everything that changes that code,
       # and no restore-keys: a cache built under another dependency set would serve its old compiler output.
@@ -382,11 +372,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/install
       - name: Identify the runner to git
         run: |
           git config --global user.email "ci@example.com"
@@ -423,7 +409,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: .node-version
       - name: Identify the runner to git
         run: |
           git config --global user.email "ci@example.com"
@@ -450,8 +436,6 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/install
-        with:
-          node-version: ${{ env.NODE_VERSION }}
       # Here, not beside the tests: that job is the run's slowest without them.
       - name: Typecheck
         run: npm run typecheck
@@ -482,11 +466,7 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/install
       # --no-install: `npm ci` above already installed, and letting prebuild run
       # its own install would resolve outside the lockfile.
       - name: Generate the native project, on the NDK React Native pins
@@ -548,11 +528,7 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/install
       - name: Each Skia Metal layer follows its own opaque
         run: |
           lib=node_modules/@shopify/react-native-skia/apple
@@ -655,8 +631,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/install
-        with:
-          node-version: ${{ env.NODE_VERSION }}
       - name: The split the scope job settled
         env:
           TIMINGS: ${{ needs.scope.outputs.timings }}
@@ -758,7 +732,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: .node-version
       # This job's own scripts import only `node:` modules; the one package it runs is Playwright's
       # CLI, pinned to the lockfile's version because a blob report is read by the version that wrote it.
       - name: Playwright's CLI
@@ -919,10 +893,9 @@ jobs:
       # `esbuild --target=node22` lowers syntax and knows nothing about APIs, so
       # a Node-24-only builtin compiles at exit 0, passes a Node 24 job, and
       # throws in production. Running the deploy runtime is what catches that.
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: ./.github/actions/install
         with:
           node-version: "22"
-          cache: npm
 
       # 22 above is production's (deploy/runtime.json), not a preference. If
       # production's runtime moves and this does not, the job stops exercising
@@ -937,8 +910,6 @@ jobs:
             exit 1
           fi
           echo "Both on Node $actual."
-
-      - run: npm ci
 
       - name: Build the web and server bundles
         run: npm run expo:web:build && npm run server:build
@@ -1002,7 +973,7 @@ jobs:
             scripts/lib
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: .node-version
       # Which step fails is the verdict's: this one is infrastructure (exit 2), the next a finding.
       # The name is budget-gate.mjs's UNREAD_STEP (tests/tooling/ciGate.test.ts).
       - name: The run's over-budget lists were read
