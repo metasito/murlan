@@ -1273,7 +1273,7 @@ function scoreRound(
 }
 
 function addPlacementPoints(
-  cumulative: Record<string, number>,
+  cumulative: Readonly<Record<string, number>>,
   points: Record<string, number>
 ): Record<string, number> {
   const merged: Record<string, number> = { ...cumulative };
@@ -1387,7 +1387,7 @@ export interface FoldRoundResult {
  */
 export function foldRound(
   round: { finishingOrder: string[]; playerCount: number; gameMode: GameMode; length: MatchLength },
-  ledger: { cumulative: Record<string, number>; target: number },
+  ledger: { cumulative: Readonly<Record<string, number>>; target: number },
   seats: readonly SeatScoring[]
 ): FoldRoundResult {
   const { finishingOrder, playerCount, gameMode, length } = round;

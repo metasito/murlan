@@ -39,7 +39,7 @@ export function scoreKeyForSeat(
  * another way there.
  */
 export function seatTotal(
-  cumulativeScores: Record<string, number>,
+  cumulativeScores: Readonly<Record<string, number>>,
   playerMap: Readonly<Record<number, string>>,
   vacatedSeats: ReadonlyMap<number, { userId: string; username: string }>,
   seat: number
@@ -247,7 +247,7 @@ export function botSeatsFromPersonality(players: readonly { personality?: BotPer
 export interface ResolveRoundEndInput {
   state: GameState;
   playerMap: Readonly<Record<number, string>>;
-  cumulativeScores: Record<string, number>;
+  cumulativeScores: Readonly<Record<string, number>>;
   matchTarget: number;
   matchLength: MatchLength;
   gameMode: GameMode;
