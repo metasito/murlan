@@ -57,11 +57,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/install
 
       - name: Play
         # Through `env`, never spliced into the script: `${{ }}` is substituted
@@ -105,13 +101,7 @@ jobs:
             cat found.txt
             echo '```'
           } > soak-failure.md
-          open=$(gh issue list --label soak --state open --limit 1 --json number --jq '.[0].number // empty')
-          if [ -n "$open" ]; then
-            gh issue comment "$open" --body-file soak-failure.md
-          else
-            gh issue create --title "The soak found something" \
-              --label soak --label bug --label needs-triage --body-file soak-failure.md
-          fi
+          bash tools/ci/report-to-tracker.sh "The soak found something" soak-failure.md soak bug needs-triage
 
   # tests/engine/matchTerminates.test.ts (#770) — headless, no Postgres, no sockets.
   # CI runs it on a fixed seed band (1..200) every push, which is deliberately
@@ -129,11 +119,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/install
 
       - name: Choose today's band
         env:
@@ -182,10 +168,4 @@ jobs:
             echo '```'
             echo "The run's log names which step failed; an invariant failure also prints its shrunk counterexample."
           } > offline-soak-failure.md
-          open=$(gh issue list --label soak --state open --limit 1 --json number --jq '.[0].number // empty')
-          if [ -n "$open" ]; then
-            gh issue comment "$open" --body-file offline-soak-failure.md
-          else
-            gh issue create --title "The offline-match soak found something" \
-              --label soak --label bug --label needs-triage --body-file offline-soak-failure.md
-          fi
+          bash tools/ci/report-to-tracker.sh "The offline-match soak found something" offline-soak-failure.md soak bug needs-triage
