@@ -18,6 +18,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ErrorFallback } from '@/components/ErrorFallback';
 import { routeErrorBoundary } from '@/components/RouteErrorBoundary';
 import type { CrashScope } from '@/lib/crashedTable';
+import { blankCommentsAndStrings, jsxTags } from '../helpers/sourceScan';
 import { ACTIVE_ROOM_KEY, WAITING_ROOM_KEY } from '@/lib/storageKeys';
 import { SettingsProvider } from '@/context/SettingsContext';
 import { t } from '@/lib/i18n';
@@ -65,19 +66,31 @@ afterAll(() => {
 // property of how app/_layout.tsx is written, so it is checked by reading it —
 // the same approach as tests/server/socketEvents.test.ts.
 describe('app/_layout.tsx keeps the boundary inside SafeAreaProvider', () => {
-  const layout = readFileSync(join(__dirname, '..', '..', 'app', '_layout.tsx'), 'utf8');
-  const occurrences = (tag: string) => layout.split(tag).length - 1;
+  const tagsOf = (source: string) => jsxTags(blankCommentsAndStrings(source));
+  const tags = tagsOf(readFileSync(join(__dirname, '..', '..', 'app', '_layout.tsx'), 'utf8'));
+  const opens = (name: string, of = tags) => of.filter((t) => t.name === name && !t.isClose);
+  const at = (name: string, isClose: boolean) => tags.findIndex((t) => t.name === name && t.isClose === isClose);
 
   it('mounts one of each', () => {
-    expect(occurrences('<SafeAreaProvider')).toBe(1);
-    expect(occurrences('<ErrorBoundary')).toBe(1);
+    expect(opens('SafeAreaProvider')).toHaveLength(1);
+    expect(opens('ErrorBoundary')).toHaveLength(1);
   });
 
   it('opens SafeAreaProvider first and closes it last', () => {
-    expect(layout.indexOf('<SafeAreaProvider')).toBeLessThan(layout.indexOf('<ErrorBoundary'));
-    expect(layout.indexOf('</ErrorBoundary>')).toBeLessThan(
-      layout.indexOf('</SafeAreaProvider>')
+    expect(at('SafeAreaProvider', false)).toBeLessThan(at('ErrorBoundary', false));
+    expect(at('ErrorBoundary', true)).toBeLessThan(at('SafeAreaProvider', true));
+  });
+
+  it('counts no boundary that is commented out or quoted', () => {
+    const decoys = tagsOf(
+      [
+        '{/* <ErrorBoundary> */}',
+        '// <ErrorBoundary>',
+        'const s = "<ErrorBoundary>";',
+        '<ErrorBoundary>{children}</ErrorBoundary>',
+      ].join('\n')
     );
+    expect(opens('ErrorBoundary', decoys)).toHaveLength(1);
   });
 });
 

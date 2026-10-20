@@ -17,16 +17,14 @@ export function useGuardedSubmit(run: () => Promise<void>): {
   const inFlight = useRef(false);
   const [busy, setBusy] = useState(false);
 
-  const submit = async () => {
-    if (inFlight.current) return;
+  const submit = () => {
+    if (inFlight.current) return Promise.resolve();
     inFlight.current = true;
     setBusy(true);
-    try {
-      await run();
-    } finally {
+    return run().finally(() => {
       inFlight.current = false;
       setBusy(false);
-    }
+    });
   };
 
   return { busy, submit, field: { editable: !busy, onSubmitEditing: () => void submit() } };

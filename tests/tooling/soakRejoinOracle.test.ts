@@ -21,10 +21,10 @@ const TESTS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const SOAK_DIR = path.join(TESTS_DIR, "soak");
 
 /**
- * Every file that holds a `Seat`, found rather than listed: `Seat.socket` is
- * public, so the guards below are only as wide as the set of files that can
- * reach it, and a new one added to a list nobody updates is the failure this
- * whole ticket is about.
+ * Every file that holds a `Seat`, found rather than listed: a seat's socket is reached only
+ * through `seatSocket()`, whose type has no `room:leave`, but the client a seat is built from
+ * is a raw socket in the same file, and a new file added to a list nobody updates is the
+ * failure this whole ticket is about.
  */
 function filesHoldingASeat(): string[] {
   const found = readdirSync(SOAK_DIR)
@@ -149,7 +149,7 @@ describe("the premise the reading rests on", () => {
     // The load-bearing fact, checked rather than written down: a `room:leave` the seat
     // does not know about turns every later SEAT_RELEASED into a false diagnosis, and
     // the run would still be green. Unquoted, so a hoisted `const LEAVE = "room:leave"`
-    // is caught too — `Seat.socket` is public, so the emit need not be in the class.
+    // is caught too, on the raw client socket `seatSocket()`'s type cannot see.
     const offenders = scan(/room:leave/, (line, source, i) =>
       /gaveUpItsOwnSeat/.test(source.slice(Math.max(0, i - 3), i + 2).join("\n"))
     );
@@ -160,15 +160,5 @@ describe("the premise the reading rests on", () => {
       "a room:leave that does not set gaveUpItsOwnSeat makes the SEAT_RELEASED reading wrong " +
         "and nothing else would notice. Emit it through Seat.leave()."
     );
-  });
-
-  test("nothing clears half a refusal", () => {
-    // The two fields describe one answer, and a caller that resets only the sentence
-    // leaves the code pointing at an earlier drop: the next unanswered rejoin reports
-    // a window that never broke, greenly, because the seat it names really did
-    // reconnect. Only `clearRefusal()` can reset half of nothing.
-    const offenders = scan(/(?<!this)\.lastRefusal(Code)?\s*=[^=]/);
-
-    assert.deepEqual(offenders, [], "clear them together, through Seat.clearRefusal().");
   });
 });

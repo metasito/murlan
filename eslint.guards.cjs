@@ -18,6 +18,7 @@ const DRAWN = ["{app,components}/**/*.tsx"];
 const TEST_RUNNERS = "/^(it|test|describe|suite)$/";
 const SEAT_IDENTITY = "/^(viewerSeat|mySeatIndex)$/";
 const AUDIO_LAYERED = ["{app,components,context,lib,modules}/**/*.{ts,tsx}"];
+const CHANNEL_KEYS = `/^(${Object.keys(require("./lib/harnessChannels.ts").CHANNELS).join("|")})$/`;
 // esquery's regex literal ends at its first slash, so a path separator is written \x2F.
 // With `values`, a declaration whose every specifier is `type` is spared: it never reaches the bundle.
 const importsOf = (source, { values = false } = {}) =>
@@ -254,6 +255,31 @@ const GUARDS = [
       'logger.error({ err, event }, "message");',
       '// { code: "X", message: "y" }\nconst s = "code, message";',
     ].map((code) => ({ file: "server/game/stats.ts", code })),
+  },
+  {
+    id: "known-channel",
+    why: "The browser suite reads a `data-*` channel by the name lib/harnessChannels.ts registers, so a key written anywhere else is one it will never find: register it in CHANNELS and read it through tests/e2e/helpers/selectors.ts.",
+    selector: [
+      'JSXAttribute[name.name="dataSet"] > JSXExpressionContainer > ObjectExpression',
+      'Property:matches([key.name="dataSet"], [key.value="dataSet"]) > ObjectExpression',
+      'CallExpression[callee.name="harnessState"] > ObjectExpression',
+    ]
+      .flatMap((writer) => [`${writer} > Property:not([key.name=${CHANNEL_KEYS}]):not([key.value=${CHANNEL_KEYS}])`, `${writer} > SpreadElement`])
+      .join(", "),
+    files: SCREENS,
+    plant: { file: "components/Plant.tsx", code: [
+      "const a = <View dataSet={{ tableState: s, rogue: x }} />;",
+      "const b = <View {...harnessState({ handStat: s })} />;",
+      'const c = <Text {...({ dataSet: { "seat-lit": v } } as TextProps)} />;',
+      "const d = <View dataSet={{ ...extra }} />;",
+    ].join("\n"), hits: 4 },
+    spare: [
+      "const a = <View dataSet={{ tableState: s, dealing: d }} />;",
+      "const b = <View {...harnessState({ handState: s })} />;",
+      'const c = <Text {...({ dataSet: { "seatLit": v } } as TextProps)} />;',
+      "const d = { rogue: 1 };",
+      "// dataSet={{ rogue: x }}\nconst s = \"dataSet\";",
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
   },
   {
     id: "no-cwd-root",

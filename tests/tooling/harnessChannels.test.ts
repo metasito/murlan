@@ -1,22 +1,16 @@
-// tests/tooling/harnessChannels.test.ts — the browser suite's `data-*` hooks, both ends.
-//
-// A channel is written by a screen and read in tests/e2e/helpers/selectors.ts, and
-// nothing in between is typed. Renaming one end costs a browser run that reports "the
-// hand never rendered" — a missing selector reading as a missing feature, which is the
-// whole reason these moved off aria-label.
+// tests/tooling/harnessChannels.test.ts — every channel lib/harnessChannels.ts registers has a
+// screen writing it. The known-channel guard refuses a key the registry lacks and
+// tests/e2e/helpers/selectors.ts reads the registry, so what is left is reachability: a channel
+// no screen writes any more makes every selector built on it match nothing.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { blankComments } from "../helpers/sourceScan.ts";
+import { blankCommentsAndStrings, jsxTags, scannedFiles } from "../helpers/sourceScan.ts";
+import { CHANNELS, type Channel } from "../../lib/harnessChannels.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
-
-const READER = "tests/e2e/helpers/selectors.ts";
-/** Anything the suite can look at, so a second screen publishing a channel is seen. */
-const WRITTEN_IN = ["components", "app"];
 
 /**
  * `dataSet` reaches the DOM through react-native-web's `hyphenateString`, which is
@@ -25,50 +19,39 @@ const WRITTEN_IN = ["components", "app"];
  */
 const attributeFor = (key: string) => `data-${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
 
-function screens(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
-    const rel = `${dir}/${entry.name}`;
-    if (entry.isDirectory()) out.push(...screens(rel));
-    else if (entry.name.endsWith(".tsx")) out.push(rel);
-  }
-  return out;
-}
+const WRITER = /(?:harnessState\(|dataSet=\{|dataSet:)\s*\{([^}]*)\}/g;
 
-/** Every `data-*` a screen publishes, and the file it comes from. */
+/** Every channel key written inside a JSX tag of a screen, and the file it comes from. */
 function written(): Map<string, string> {
   const out = new Map<string, string>();
-  for (const rel of WRITTEN_IN.flatMap(screens)) {
-    const source = blankComments(read(rel));
-    // The whole object, then every key in it — a call setting two channels at once
-    // would otherwise contribute only its first.
-    for (const call of source.matchAll(/(?:harnessState|dataSet=)\(?\{\s*([^}]*)\}/g)) {
-      for (const key of call[1].matchAll(/(\w+)\s*:/g)) out.set(attributeFor(key[1]), rel);
+  for (const rel of scannedFiles(repoRoot)) {
+    const source = blankCommentsAndStrings(readFileSync(path.join(repoRoot, rel), "utf8"));
+    for (const tag of jsxTags(source)) {
+      if (tag.isClose) continue;
+      for (const object of tag.text.matchAll(WRITER)) {
+        for (const key of object[1].matchAll(/(?:^|,)\s*(\w+)\s*:/g)) out.set(key[1], rel);
+      }
     }
   }
   return out;
 }
 
-/** Bare (`"data-table-state"`) or inside a selector (`"[data-hand-state]"`) alike. */
-const readBack = () =>
-  [...blankComments(read(READER)).matchAll(/data-[a-z]+(?:-[a-z]+)*/g)].map((m) => m[0]);
-
-test("every channel a screen publishes is the one the suite reads", () => {
-  const publishes = written();
-  assert.ok(publishes.size > 0, "no screen publishes a harness channel at all");
-  const reads = readBack();
-  assert.deepEqual(
-    [...publishes].filter(([attr]) => !reads.includes(attr)).map(([a, f]) => `${a} (${f})`),
-    [],
-    `${READER} does not name these, so the suite will look for an attribute nothing sets`
-  );
+test("each channel is the attribute react-native-web renders its key as", () => {
+  for (const [key, attribute] of Object.entries(CHANNELS)) assert.equal(attribute, attributeFor(key), key);
 });
 
-test("the suite reads no channel a screen has stopped publishing", () => {
-  const publishes = written();
-  assert.deepEqual(
-    readBack().filter((attr) => attr !== "data-testid" && !publishes.has(attr)),
-    [],
-    "nothing sets these any more, so every selector built on them matches nothing"
-  );
+test("every registered channel has a screen writing it", () => {
+  const writes = written();
+  assert.ok(writes.size > 0, "no screen writes a harness channel at all, so the scan reads nothing");
+  const unwritten = (Object.keys(CHANNELS) as Channel[]).filter((key) => !writes.has(key));
+  assert.deepEqual(unwritten, [], "nothing writes these any more, so every selector built on them matches nothing");
+});
+
+test("the scan sees a channel written as a dataSet prop, a dataSet property and a harnessState call", () => {
+  const tag = (code: string) => jsxTags(blankCommentsAndStrings(code)).find((t) => !t.isClose)!.text;
+  const keys = (code: string) => [...tag(code).matchAll(WRITER)].flatMap((m) => [...m[1].matchAll(/(?:^|,)\s*(\w+)\s*:/g)].map((k) => k[1]));
+  assert.deepEqual(keys("<View dataSet={{ tableState: a, dealing: String(b) }} />"), ["tableState", "dealing"]);
+  assert.deepEqual(keys("<View {...({ dataSet: { seatLit: String(lit) } } as ViewProps)} />"), ["seatLit"]);
+  assert.deepEqual(keys("<View {...harnessState({ handState: label })}>"), ["handState"]);
+  assert.deepEqual(keys('// <View dataSet={{ lit: "x" }} />\n<View />'), []);
 });
