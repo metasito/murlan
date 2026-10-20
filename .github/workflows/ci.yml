@@ -135,8 +135,8 @@ jobs:
           else
             echo "harness=false" >> "$GITHUB_OUTPUT"
           fi
-          if grep -qE '^(docs/agents/|docs/(PRIVACY|GAME-RULES|WEB-PERF|ARCHITECTURE|BRIEF)\.md$|\.claude/commands/|CLAUDE\.md$)' <<< "$changed"; then
-            echo "Documentation the suite asserts on — running everything."
+          if grep -qE '^(docs/agents/|docs/(PRIVACY|GAME-RULES|WEB-PERF|ARCHITECTURE|BRIEF)\.md$|docs/.*\.tsx?$|\.claude/commands/|CLAUDE\.md$)' <<< "$changed"; then
+            echo "Documentation the suite asserts on, or TypeScript tsconfig.json includes — running everything."
             echo "app=true" >> "$GITHUB_OUTPUT"
           elif [ -n "$changed" ] && ! grep -qvE '^(docs/|\.claude/)|\.md$' <<< "$changed"; then
             echo "Documentation only — skipping the app checks."
