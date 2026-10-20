@@ -1,7 +1,7 @@
 // tests/e2e/rulesFaqAnswer.spec.ts — an opened FAQ answer shows all of its text.
 //
-// The answer used to animate `maxHeight` to a fixed 400 px under `overflow:
-// hidden`, so the longest answer was cut off on a phone. Only a browser can say
+// The answer used to animate maxHeight to a fixed 400 px under overflow:
+// hidden, so the longest answer was cut off on a phone. Only a browser can say
 // how tall the text ended up: react-test-renderer never runs flexbox.
 import { test, expect } from "./fixtures";
 import { openApp } from "./helpers/navigation";
