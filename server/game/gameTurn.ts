@@ -4,6 +4,7 @@ import { logger } from "../shared/logger.ts";
 import { activeGames, seatName } from "./gameRoom.ts";
 import { seatOfUser } from "./onlineGameLogic.ts";
 import { vacate } from "./seatLedger.ts";
+import { withdrawRematchVote } from "./matchLedger.ts";
 import { payload } from "../shared/payload.ts";
 import { now } from "../http/clock.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
@@ -211,7 +212,7 @@ export async function vacateSeat(rt: TableRuntime, roomId: string, userId: strin
   const game = activeGames.get(roomId);
   if (!game) return;
 
-  game.rematchVotes.delete(userId);
+  withdrawRematchVote(game, userId);
   const seat = seatOfUser(game.playerMap, userId);
   if (seat === null) return;
   const username = seatName(game, seat);

@@ -120,7 +120,6 @@ export function forceMatchNearTarget(
 ): boolean {
   const game = activeGames.get(roomId);
   if (!game) return false;
-  game.matchTarget = target;
-  game.cumulativeScores = { ...cumulativeScores };
+  Object.assign(game, { matchTarget: target, cumulativeScores: { ...cumulativeScores } });
   return true;
 }

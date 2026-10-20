@@ -12,6 +12,7 @@ import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { resolveRoundEnd } from "../../server/game/onlineGameLogic.ts";
 import { scoresByEngineId } from "../../server/game/roundOver.ts";
+import { foldRound } from "../../server/game/matchLedger.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
@@ -219,8 +220,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
         abandonedSeats: new Map(),
         vacatedSeats: game.vacatedSeats,
       });
-      game.cumulativeScores = result.cumulativeScores;
-      game.roundsPlayed += 1;
+      foldRound(game, result);
 
       assert.ok(
         (game.cumulativeScores["bot:1"] ?? 0) > 0,
@@ -290,8 +290,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
         abandonedSeats: new Map(),
         vacatedSeats: game.vacatedSeats,
       });
-      game.cumulativeScores = first.cumulativeScores;
-      game.roundsPlayed += 1;
+      foldRound(game, first);
       assert.equal(first.matchOver, false, "8 and 3 apart do not yet reach 12 either way");
 
       await applyOrForward(rt, { kind: "rejoin", roomId: ROOM, userId: "drita" });
@@ -344,7 +343,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
       abandonedSeats: new Map(),
       vacatedSeats: game.vacatedSeats,
     });
-    game.cumulativeScores = result.cumulativeScores;
+    foldRound(game, result);
 
     assert.equal(
       scoresByEngineId(game)["p1"],

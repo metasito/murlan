@@ -16,21 +16,21 @@ export interface OnlineGameState {
   /** The room's six-character join code, as `rooms.code` holds it. */
   joinCode: string;
   /** Ready gate for the next round of the running match, by userId. */
-  rematchVotes: Set<string>;
+  readonly rematchVotes: ReadonlySet<string>;
   /** userId (or `bot:<seat>`) -> cumulative match points. */
-  cumulativeScores: Record<string, number>;
+  readonly cumulativeScores: Readonly<Record<string, number>>;
   maxPlayers: number;
-  matchTarget: number;
+  readonly matchTarget: number;
   matchLength: MatchLength;
   /** Rounds decided on this match so far. Zero on the one being dealt. */
-  roundsPlayed: number;
-  matchOver: boolean;
+  readonly roundsPlayed: number;
+  readonly matchOver: boolean;
   /**
    * The match was ended by the unanimous vote, not played out. There is no
    * rematch from one (docs/GAME-RULES.md § Decisions) — the table goes back to the lobby,
    * and its finishingOrder are partial anyway.
    */
-  endedByVote?: boolean;
+  readonly endedByVote?: boolean;
   /**
    * seat -> combination flags for the *current round* only, reset whenever one
    * deals. The engine does not track this, and GameResult has no other honest

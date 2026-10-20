@@ -1,5 +1,6 @@
 import { seatName, type OnlineGameState } from "./gameRoom.ts";
 import { scoreKeyForSeat } from "./onlineGameLogic.ts";
+import { carrySeatScore } from "./matchLedger.ts";
 
 /**
  * The only writer of a table's seat fields — `playerMap`, `vacatedSeats`,
@@ -69,11 +70,7 @@ export function reclaim(game: OnlineGameState, userId: string): number | null {
   const botKey = scoreKeyForSeat(game.playerMap, seat);
   const ledger = seats(game);
   ledger.playerMap[seat] = userId;
-  const carried = game.cumulativeScores[botKey] ?? 0;
-  if (carried !== 0) {
-    game.cumulativeScores[userId] = (game.cumulativeScores[userId] ?? 0) + carried;
-  }
-  delete game.cumulativeScores[botKey];
+  carrySeatScore(game, botKey, userId);
   ledger.vacatedSeats.delete(seat);
   ledger.releasedSeats.delete(userId);
   ledger.endMatchVotes.clear();
