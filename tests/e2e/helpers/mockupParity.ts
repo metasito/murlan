@@ -81,8 +81,8 @@ interface Moment {
   /** Gates the app's pill box against the mockup's `renderScore` at each progress the app traced. */
   pillAtProgress?: boolean;
   variants?: Variant[];
-  /** With the fallback felt, both sides' light rests unswayed: the fallback bakes a still light (plan 3 § Decisions). */
-  fallbackStill?: boolean;
+  /** The app under reduced motion: no sway on either side, and the air held still (`diffStillAir`). */
+  reducedMotion?: boolean;
   /** Onsets held to a window of the app's time, not to the mockup's onset. */
   onsetWindows?: Record<string, readonly [number, number]>;
   /** The only times the strip keeps a frame, where every other step's would cost more than the page needs. */
@@ -98,6 +98,13 @@ const NO_CAST_ON_CARDS = `document.head.insertAdjacentHTML("beforeend", "<style>
 
 const STILL_LIGHT = `const swaying = lampStep;
   lampStep = (dt) => { swaying(dt); lamp.lx = lamp.x; };`;
+
+/**
+ * A felt that bakes its light (the web fallback, `feltFallback.tsx`) is held to the mockup's felt and rail lit at rest,
+ * on every fallback run: the lamp itself still sways on both sides, and the Skia variant keeps the swaying felt.
+ */
+const BAKED_LIGHT = `const lit = drawScene;
+  drawScene = (lx, ly, f) => lit(lamp.x, ly, f);`;
 
 /** The mockup's `BASE`, by the seat each name sits at: luan right, besnik across, gent left. */
 const MOCKUP_SCORES = { player_0: 15, player_1: 11, player_2: 16, player_3: 10 };
@@ -325,7 +332,20 @@ const MOMENTS: Moment[] = [
     mode: "parity",
     fields: ["live", "lamp", "level", "flare", "brightness", "scorePill"],
     regions: ["pool", "rim", "rightBand", "scorePill", "hand"],
-    fallbackStill: true,
+  },
+  {
+    key: "rest-reduced",
+    chapter: "rest",
+    windowMs: 2400,
+    fromMs: MAX_PRE_ROLL_MS,
+    checkpoints: [MAX_PRE_ROLL_MS, 1440, 1920, 2400],
+    appTrigger: heldTurnTable,
+    appOnset: (f) => f.lamp !== null,
+    mode: "parity",
+    fields: ["live", "lamp", "level", "flare", "brightness", "scorePill"],
+    regions: ["pool", "rim", "rightBand", "scorePill", "hand"],
+    reducedMotion: true,
+    variants: ["fallback"],
   },
   {
     // The motes and the moth over a whole crossing, and #1231's frames 15 s apart.
@@ -745,7 +765,7 @@ async function strip(
   return { trace: { frames: traced, regions }, frames, layer };
 }
 
-async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRollMs: number, still: boolean, prelude: string): Promise<Capture> {
+async function captureMockup(browser: Browser, decoder: Page, m: Moment, variant: Variant, preRollMs: number, prelude: string): Promise<Capture> {
   const page = await newSidePage(browser);
   await page.goto(FIXTURE);
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
@@ -760,7 +780,8 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRoll
     window.sfx = (k) => { window.__parityOnsets.push("sound:" + k); sound(k); };
     paused = true;
     ${DEPART_SCRIPT}
-    ${still ? STILL_LIGHT : ""}
+    ${m.reducedMotion ? STILL_LIGHT : ""}
+    ${variant === "fallback" ? BAKED_LIGHT : ""}
     ${prelude}
     ${m.mockupScript ?? ""}
     requestAnimationFrame(() => { paused = false; });
@@ -841,7 +862,7 @@ async function openAppSide(browser: Browser, baseURL: string, m: Moment, variant
   const page = await newSidePage(browser, baseURL);
   const loading = trackLoads(page);
   // The app's only unswayed light is reduced motion's; at rest it snaps nothing the light was not already at.
-  if (variant === "fallback" && m.fallbackStill) await page.emulateMedia({ reducedMotion: "reduce" });
+  if (m.reducedMotion) await page.emulateMedia({ reducedMotion: "reduce" });
   if (variant === "fallback") await page.route(CANVASKIT_ROUTE, () => undefined);
   // The CDN's own bytes (feltWeave.test.ts pins the version), without a download inside the measured run.
   else await page.route(CANVASKIT_ROUTE, (route) => route.fulfill({
@@ -905,7 +926,7 @@ function bundle(m: Moment, variant: Variant, runs: Record<SideName, Capture>, pi
       }),
     };
   }
-  const failures = [...diffParity(m, variant === "fallback", runs.mockup.trace, runs.app.trace, runs.app.layer), ...pillFailures];
+  const failures = [...diffParity({ ...m, fallbackStill: m.reducedMotion }, variant === "fallback", runs.mockup.trace, runs.app.trace, runs.app.layer), ...pillFailures];
   const moment = `${m.key}-${variant}`;
   const parity = { murlanParity: 1, moment, mode: m.mode, stepMs: STEP_MS, checkpoints: m.checkpoints, sides, failures };
   fs.writeFileSync(path.join(dir, "parity.json"), JSON.stringify(parity));
@@ -931,7 +952,7 @@ export function parityTests(key: string, only?: Variant) {
       const opened = await openAppSide(browser, baseURL!, m, variant);
       const capture = async (side: SideName) =>
         side === "mockup"
-          ? captureMockup(browser, decoder, m, opened.preRollMs, variant === "fallback" && !!m.fallbackStill, opened.prelude)
+          ? captureMockup(browser, decoder, m, variant, opened.preRollMs, opened.prelude)
           : stripAppSide(await openAppSide(browser, baseURL!, m, variant), decoder, m, variant);
       // Side by side once the app's onset fixes the pre-roll: each side steps its own virtual clock.
       const [[app, appMs], [mockup, mockupMs]] = await Promise.all([
