@@ -16,34 +16,6 @@ const read = (file: string) => readFileSync(path.join(repoRoot, file), "utf8");
 const tracked = trackedFiles(repoRoot);
 const SOURCE = /\.(m?[jt]sx?|cjs)$/;
 
-type Branch = { re: RegExp; value: boolean };
-
-/** Each output's if/elif chain as the step writes it, for a change of one file. */
-function scopeChains(workflow: string) {
-  const step = /- id: scope\n[\s\S]*?(?=\n\n {2}\S)/.exec(workflow);
-  assert.ok(step, "ci.yml has no `scope` step");
-  const branch =
-    /(?:if|elif) (?:\[ -n "\$changed" \] && )?(!? ?)grep -q(v?)E '([^']+)' <<< "\$changed"; then\n(?:(?!\s*(?:if|elif|else|fi)\b).*\n)*?\s*echo "(app|harness|scans)=(true|false)"/g;
-  const chains: Record<string, { branches: Branch[]; otherwise?: boolean }> = {
-    app: { branches: [] },
-    harness: { branches: [] },
-    scans: { branches: [] },
-  };
-  for (const [, not, invert, source, key, value] of step[0].matchAll(branch)) {
-    assert.equal(Boolean(not.trim()), invert === "v", `unhandled grep form: ${source}`);
-    chains[key].branches.push({ re: new RegExp(source), value: value === "true" });
-  }
-  for (const [, key, value] of step[0].matchAll(/\n\s*else\n\s*echo "(app|harness|scans)=(true|false)"/g)) {
-    chains[key].otherwise = value === "true";
-  }
-  return chains;
-}
-
-function extracted(file: string, chain: { branches: Branch[]; otherwise?: boolean }) {
-  assert.notEqual(chain.otherwise, undefined, "a chain with no else branch");
-  return chain.branches.find((b) => b.re.test(file))?.value ?? chain.otherwise;
-}
-
 /** Every tracked `docs/**` file a test names in a string literal, or sits under a named directory. */
 function docsTestsRead(): string[] {
   const named = new Set<string>();
@@ -188,13 +160,9 @@ describe("scopeOf, change by change", () => {
   }
 });
 
-describe("scopeOf agrees with ci.yml's inline step", () => {
-  const chains = scopeChains(read(".github/workflows/ci.yml"));
-  const samples = [...tracked, PLANTED_DOC, PLANTED_IMPORT, "newdir/thing.xyz", "tools/loop/tests/x.test.ts"];
-  for (const key of ["app", "harness", "scans"] as const) {
-    test(key, () => {
-      const differ = samples.filter((f) => scopeOf([f])[key] !== extracted(f, chains[key]));
-      assert.deepEqual(differ, []);
-    });
-  }
+test("ci.yml's scope step asks scope.mjs", () => {
+  const step = /- id: scope\n[\s\S]*?(?=\n\n {2}\S|\n {6}- )/.exec(read(".github/workflows/ci.yml"));
+  assert.ok(step, "ci.yml has no `scope` step");
+  assert.match(step[0], /node tools\/ci\/scope\.mjs "\$base" \| tee -a "\$GITHUB_OUTPUT"/);
+  assert.doesNotMatch(step[0], /grep/, "a second copy of the decision in bash");
 });

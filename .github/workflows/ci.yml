@@ -71,9 +71,8 @@ jobs:
         with:
           # The check diffs against the base commit.
           fetch-depth: 0
-      # Deliberately an allowlist: anything not recognised as prose runs the
-      # full suite, so a new directory fails safe. `.github/workflows/` is NOT
-      # prose — a change to this file must exercise this file.
+      # The decision is `tools/ci/scope.mjs`'s; this step only skips a tree CI already passed and
+      # runs everything without a base.
       - id: scope
         shell: bash
         env:
@@ -114,51 +113,7 @@ jobs:
             echo "scans=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          changed=$(git diff --name-only "$base" HEAD)
-          echo "Changed files:"; echo "$changed"
-          echo "native=$(node tools/ci/nativeScope.mjs "$base")" >> "$GITHUB_OUTPUT"
-          # Prose the suite asserts *on* is not prose to this filter.
-          # `tests/tooling/rulesAreSingleSourced.test.ts` reads RULES.md, CLAUDE.md, the
-          # command files and docs/agents/ — so a change to exactly those paths
-          # is the one change that must run it, and the allowlist below would
-          # skip it. The failure would surface later, on whichever unrelated
-          # code change ran the suite next.
-          # The loop is a second product in this repository (docs/agents/checks.md). A change confined
-          # to `tools/loop/` runs its suite *instead of* the game's, which is the whole point of the
-          # split; the two are not exclusive, and a queue.md edit is read by both and runs both.
-          # The rest of the list is what its suite asserts on beyond its own code: the protocol
-          # files, `.claude/settings.json`'s hook paths, package.json's script names, and this
-          # workflow, whose job names `check-steps.mjs` pins each delegated step to. Both lists are
-          # derived by `tests/tooling/ciScope.test.ts`, which reds on a path they miss.
-          if grep -qE '^(tools/loop/|scripts/lib/(entry|proc)\.mjs$|scripts/nodeTest\.mjs$|tools/ci/(preflightMemory|native-budget|e2e-budget|e2e-shard|budget-gate)\.mjs$|tests/helpers/(importShellGuard\.ts|processWorlds\.ts|filesRunReporter\.mjs|fileDeadline\.mjs|runWatch\.mjs|exitGuard\.mjs|exitWatch\.mjs)$|docs/agents/|\.claude/|CLAUDE\.md$|package\.json$|jest\.config\.js$|\.github/workflows/ci\.yml$)' <<< "$changed"; then
-            echo "harness=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "harness=false" >> "$GITHUB_OUTPUT"
-          fi
-          if grep -qE '^(docs/agents/|docs/(PRIVACY|GAME-RULES|WEB-PERF|ARCHITECTURE|BRIEF|BETA-PLAYTEST|DISCONNECT-POLICY)\.md$|docs/.*\.tsx?$|\.claude/commands/|CLAUDE\.md$)' <<< "$changed"; then
-            echo "Documentation the suite asserts on, or TypeScript tsconfig.json includes — running everything."
-            echo "app=true" >> "$GITHUB_OUTPUT"
-          elif [ -n "$changed" ] && ! grep -qvE '^(docs/|\.claude/)|\.md$' <<< "$changed"; then
-            echo "Documentation only — skipping the app checks."
-            echo "app=false" >> "$GITHUB_OUTPUT"
-          # Deliberately the loop's *tests* and not the loop: `tools/ci/e2ePort.mjs` imports
-          # `tools/loop/reap.mjs` and `scripts/contextSurface.mjs` imports `tools/loop/loop-derive.mjs`,
-          # so a change to the loop's source can stop the browser suite booting. A directory can
-          # answer "can this reach the game?" only where the answer is no by construction, and a
-          # test file is the one place it is: nothing imports one.
-          elif [ -n "$changed" ] && ! grep -qvE '^tools/loop/tests/' <<< "$changed"; then
-            echo "The loop's own tests only — nothing imports a test, so the game cannot see this."
-            echo "app=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "app=true" >> "$GITHUB_OUTPUT"
-          fi
-          # `docReferences.test.ts` and the other scans that list the repository from its root reach
-          # every tracked path, prose included, so no change is too small to run the job holding them.
-          if grep -qE '.' <<< "$changed"; then
-            echo "scans=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "scans=false" >> "$GITHUB_OUTPUT"
-          fi
+          node tools/ci/scope.mjs "$base" | tee -a "$GITHUB_OUTPUT"
 
       # Every shard must split the suite from the same numbers, so they are settled once, here.
       # Only a run whose every browser shard passed uploads `e2e-timings` (browser-report), so
