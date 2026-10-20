@@ -13,7 +13,9 @@ import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GameProvider, useGameSession, useGameTable } from "@/context/GameContext";
 import { NotificationProvider } from "@/context/NotificationContext";
+import { useOfflineDriver } from "@/context/offlineDriver";
 import { encodeOfflineSave, OFFLINE_SAVE_KEY } from "@/lib/offlineSave";
+import { OFFLINE_BOT_DELAY_MS } from "@/lib/timeline/offlineBotDelay";
 import type { GameState } from "@/lib/game/gameEngine";
 
 /** Both halves of the provider, for a probe that reads across them. */
@@ -229,6 +231,81 @@ test("a fresh match clears the announcement outright, not on the old ceremony's 
   // the phase-driven path, not merely fast enough to have expired the timer.
   expect(shown(view, "phasePresent")).toBe("false");
   expect(shown(view, "announcing")).toBe("false");
+
+  await view.unmount();
+});
+
+function BotWinnerProbe() {
+  const { gameState, hasSavedGame, resumeGame } = useGame();
+  const { onExchangeReady } = useOfflineDriver();
+  return (
+    <>
+      <Pressable testID="resume" onPress={() => resumeGame()}>
+        <Text>resume</Text>
+      </Pressable>
+      <Pressable testID="ready" onPress={onExchangeReady}>
+        <Text>ready</Text>
+      </Pressable>
+      <Text testID="saved">{String(hasSavedGame)}</Text>
+      <Text testID="active">{String(gameState?.exchangePhase?.active ?? "none")}</Text>
+      <Text testID="winnerHand">{gameState ? gameState.players[1].hand.map((c) => c.id).join(",") : "-"}</Text>
+      <Text testID="loserHand">{gameState ? gameState.players[0].hand.map((c) => c.id).join(",") : "-"}</Text>
+    </>
+  );
+}
+
+test("an offline bot winner gives its weakest legal card once, and only when the table is ready", async () => {
+  const ace = { id: "A_spades", suit: "spades", rank: "A", isJoker: false } as const;
+  const state: GameState = {
+    ...exchangeState(),
+    players: [
+      { ...exchangeState().players[0], hand: [{ id: "3_clubs", suit: "clubs", rank: "3", isJoker: false }] },
+      {
+        id: "player_1",
+        name: "Gent",
+        type: "bot",
+        hand: [
+          ace,
+          { id: "9_hearts", suit: "hearts", rank: "9", isJoker: false },
+          { id: "5_hearts", suit: "hearts", rank: "5", isJoker: false },
+        ],
+      },
+    ],
+    currentTurnIndex: 1,
+    exchangePhase: { active: true, winnerIdx: 1, loserIdx: 0, cardFromLoser: ace, twoJokerException: false },
+  };
+  await AsyncStorage.setItem(
+    OFFLINE_SAVE_KEY,
+    encodeOfflineSave({
+      gameState: state,
+      match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
+      dealFirstSeat: 0,
+    })
+  );
+  const view = await render(
+    <NotificationProvider>
+      <GameProvider>
+        <BotWinnerProbe />
+      </GameProvider>
+    </NotificationProvider>
+  );
+  await waitFor(() => expect(shown(view, "saved")).toBe("true"));
+  await press(view, "resume");
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, OFFLINE_BOT_DELAY_MS + 100));
+  });
+
+  expect(shown(view, "active")).toBe("true");
+  expect(shown(view, "winnerHand")).toBe("A_spades,9_hearts,5_hearts");
+
+  await press(view, "ready");
+  expect(shown(view, "active")).toBe("false");
+  expect(shown(view, "winnerHand")).toBe("A_spades,9_hearts");
+  expect(shown(view, "loserHand")).toBe("3_clubs,5_hearts");
+
+  await press(view, "ready");
+  expect(shown(view, "winnerHand")).toBe("A_spades,9_hearts");
+  expect(shown(view, "loserHand")).toBe("3_clubs,5_hearts");
 
   await view.unmount();
 });
