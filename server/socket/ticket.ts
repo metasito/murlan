@@ -1,6 +1,6 @@
 import { now } from "../http/clock.ts";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { lt, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { socketTicketNonces } from "../../shared/schema.ts";
 
@@ -17,7 +17,7 @@ import { socketTicketNonces } from "../../shared/schema.ts";
  * It names the session that minted it, and dies with that session.
  */
 
-const TICKET_TTL_MS = 60_000;
+export const TICKET_TTL_MS = 60_000;
 const MAX_TICKET_LENGTH = 768;
 
 export interface SocketTicket {
@@ -87,7 +87,6 @@ export function verifySocketTicket(raw: unknown): SocketTicket | null {
  * session, and a ticket minted before it must not open a socket after it.
  */
 export async function redeemSocketTicket(ticket: SocketTicket): Promise<boolean> {
-  await db.delete(socketTicketNonces).where(lt(socketTicketNonces.expiresAt, new Date(now())));
   const burned = await db
     .insert(socketTicketNonces)
     .values({ nonce: ticket.nonce, expiresAt: new Date(ticket.expiresAt) })

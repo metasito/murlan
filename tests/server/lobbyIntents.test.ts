@@ -45,12 +45,12 @@ function fakePort(opts: {
     socketId: "s1",
     watching: new Map<string, string>(opts.watching ?? []),
     store: {
-      createRoom: async (_u: string, mode: string, max: number, visibility = "private", autoStart = false) => {
-        calls.push(`createRoom ${mode} ${max} ${visibility} ${autoStart}`);
+      createRoom: async (
+        host: string,
+        { gameMode, maxPlayers, visibility = "private", autoStart = false }: Record<string, unknown>
+      ) => {
+        calls.push(`createRoom ${host} ${gameMode} ${maxPlayers} ${visibility} ${autoStart}`);
         return ROOM;
-      },
-      addRoomPlayer: async (id: string, u: string, seat: number) => {
-        calls.push(`addRoomPlayer ${id} ${u} ${seat}`);
       },
       getRoomPlayers: async () => (opts.seated ?? ["u0", "u1"]).map((userId) => ({ userId })),
       getRoomByCode: async (code: string) => {
@@ -91,6 +91,7 @@ function fakePort(opts: {
       calls.push(`announceChanged ${id}`);
     },
     clearLobbyGrace: (id: string, u: string) => calls.push(`clearLobbyGrace ${id} ${u}`),
+    seatHoldMs: () => 120_000,
     track: (name: string) => calls.push(`track ${name}`),
   };
   return { port: port as unknown as LobbyPort, calls, seats, watching: port.watching };
@@ -109,8 +110,7 @@ describe("room:create", () => {
     const { port, calls, seats } = fakePort({});
     assert.deepEqual(await createRoomIntent(port, { gameMode: "free_for_all", maxPlayers: 4 }), { ok: true });
     assert.deepEqual(calls, [
-      "createRoom free_for_all 4 private false",
-      "addRoomPlayer room-1 u1 0",
+      "createRoom u1 free_for_all 4 private false",
       "seat room-1",
       "sendState room-1",
     ]);
@@ -297,8 +297,7 @@ describe("room:quickmatch", () => {
     const { port, calls } = fakePort({});
     assert.deepEqual(await quickmatchIntent(port, { gameMode: "free_for_all", maxPlayers: 4 }), { ok: true });
     assert.deepEqual(calls, [
-      "createRoom free_for_all 4 public true",
-      "addRoomPlayer room-1 u1 0",
+      "createRoom u1 free_for_all 4 public true",
       "seat room-1",
       "sendState room-1",
     ]);

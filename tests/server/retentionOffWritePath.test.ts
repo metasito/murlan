@@ -1,24 +1,14 @@
-// tests/server/retentionOffWritePath.test.ts — #895: retention is server/game/retention.ts's
-// scheduled job, not a DELETE riding the same write that just grew the table.
+// tests/server/retentionOffWritePath.test.ts — #895, #1688: every age-based delete under server/
+// is server/game/retention.ts's scheduled sweep, never a DELETE riding a request.
 //
-// events.ts, clientErrors.ts, replays.ts, authTokens.ts and bugReports.ts each
-// used to prune their own table on the write path — a seq scan for events and
-// auth_tokens, a pointless one for the others (already indexed) — and each
-// one's comment cited a sibling as precedent for the shape. This pins the
-// class shut across every module under server/, not just the five that were
-// caught: an age-based prune, builder (`make_interval`) or raw SQL
-// (`DELETE FROM … WHERE … < now()`), may not share a file with an insert.
+// An age-based delete is any function that compares a timestamp column (derived from
+// shared/schema.ts) and, in the same function, deletes, purges or prunes — whatever shape
+// the comparison takes (`lt`/`lte`/`gt`/`gte`, raw `${col} < …`, raw `expires_at < now()`)
+// and whether the delete is a builder call, raw SQL or a store method fed the selected ids.
 //
-// The auth_tokens instance was raw SQL — `db.execute(sql\`DELETE FROM
-// auth_tokens WHERE expires_at < now()\`)` — with no `.delete(` builder call,
-// which is why the age-based signature also matches a bare "DELETE FROM …
-// WHERE … < now()" and does not require `.delete(` to be present.
-//
-// Scoped to the age-based signature deliberately, not to "insert and delete
-// anywhere in one file": server/socket/push.ts and server/game/stats.ts also combine the
-// two, to cap rows kept per user (`notInArray` against a `keep` set), and
-// server/http/deleteAccount.ts deletes `session` rows by userId on account deletion —
-// neither is age-based, so neither trips this.
+// Scoped to the function rather than the file: server/store/activeGameStore.ts counts
+// untouched rows in one method and deletes a row by key in another, and neither is an
+// age-based delete.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -27,6 +17,7 @@ import path from "node:path";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SERVER_DIR = path.join(REPO_ROOT, "server");
+const RETENTION = path.join("game", "retention.ts");
 
 function serverSources(): { file: string; source: string }[] {
   return readdirSync(SERVER_DIR, { recursive: true, encoding: "utf8" })
@@ -34,14 +25,37 @@ function serverSources(): { file: string; source: string }[] {
     .map((file) => ({ file, source: readFileSync(path.join(SERVER_DIR, file), "utf8") }));
 }
 
-const AGE_BASED_BUILDER_DELETE = /\.delete\(/;
-const AGE_BASED_INTERVAL = /make_interval\(\s*days\s*=>/;
-const AGE_BASED_RAW_DELETE = /DELETE\s+FROM\s+\S+\s+WHERE\s+\S+\s*<\s*now\(\)/i;
+const TIMESTAMP_COLUMNS = [
+  ...readFileSync(path.join(REPO_ROOT, "shared", "schema.ts"), "utf8").matchAll(/(\w+):\s*timestamp\(\s*"(\w+)"/g),
+];
+const CAMEL = [...new Set(TIMESTAMP_COLUMNS.map((m) => m[1]))].join("|");
+const SNAKE = [...new Set(TIMESTAMP_COLUMNS.map((m) => m[2]))].join("|");
 
-function hasAgeBasedPrune(source: string): boolean {
-  return (AGE_BASED_BUILDER_DELETE.test(source) && AGE_BASED_INTERVAL.test(source))
-    || AGE_BASED_RAW_DELETE.test(source);
+const AGE_COMPARISONS = [
+  new RegExp(String.raw`\b(?:lt|lte|gt|gte)\(\s*[\w.]*\.(?:${CAMEL})\b`),
+  new RegExp(String.raw`\$\{\s*[\w.]*\.(?:${CAMEL})\s*\}\s*[<>]=?`),
+  new RegExp(String.raw`\b(?:${SNAKE})"?\s*[<>]=?`),
+];
+const REMOVES = /\bdelete\w*\s*\(|DELETE\s+FROM|\bpurge\w*\s*\(|\bprune\w*\s*\(/i;
+
+const code = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+
+/** A top-level function, an exported arrow, or an object method at two spaces. */
+const FUNCTION_START =
+  /^(?=(?:export )?(?:async )?function\b|export const \w+ = (?:async )?\(|  async \w+\s*\(|  \w+\([^\n]*\)\s*(?::[^\n]*)?\{\s*$)/m;
+
+function ageBasedDeletes(source: string): string[] {
+  return code(source)
+    .split(FUNCTION_START)
+    .filter((fn) => REMOVES.test(fn) && AGE_COMPARISONS.some((age) => age.test(fn)));
 }
+
+const hasAgeBasedPrune = (source: string) => ageBasedDeletes(source).length > 0;
+
+test("the timestamp columns are read from the schema", () => {
+  assert.match(CAMEL, /\bexpiresAt\b/);
+  assert.match(SNAKE, /\bcreated_at\b/);
+});
 
 test("no server module prunes an aged row inside the write that just grew the table", () => {
   const offenders = serverSources()
@@ -58,4 +72,87 @@ test("no server module prunes an aged row inside the write that just grew the ta
       "module(s): " +
       offenders.join(", ")
   );
+});
+
+test("the signature sees each shape an age-based prune has taken", () => {
+  const shapes: [string, string][] = [
+    [
+      "a builder delete on the server clock",
+      `export async function redeem() {
+  await db.delete(socketTicketNonces).where(lt(socketTicketNonces.expiresAt, new Date(now())));
+}`,
+    ],
+    [
+      "a builder delete on a Postgres interval",
+      `export async function record() {
+  await db.delete(events).where(lt(events.occurredAt, sql\`now() - make_interval(days => \${n})\`));
+}`,
+    ],
+    [
+      "raw SQL on Postgres' clock",
+      "export async function mint() {\n  await db.execute(sql`DELETE FROM auth_tokens WHERE expires_at < now()`);\n}",
+    ],
+    [
+      "a cutoff held in a variable, with lte",
+      `export async function sweep() {
+  const cutoff = new Date(now() - DAY);
+  await db.delete(bugReports).where(lte(bugReports.createdAt, cutoff));
+}`,
+    ],
+    [
+      "raw SQL comparing an interpolated column",
+      "export async function sweep() {\n  await db.execute(sql`DELETE FROM ${events} WHERE ${events.occurredAt} < ${cutoff}`);\n}",
+    ],
+    [
+      "aged ids selected, then handed to a store's purge",
+      `export async function pruneStaleRooms(): Promise<number> {
+  const cutoff = new Date(now() - STALE_ROOM_MAX_AGE_MS);
+  const candidates = await db
+    .select({ id: roomsTable.id })
+    .from(roomsTable)
+    .where(lt(roomsTable.createdAt, cutoff))
+    .limit(STALE_ROOM_BATCH);
+
+  const ids = candidates.map((r) => r.id).filter((id) => !activeGames.has(id));
+  const gone = await roomStore.purgeRooms(db, ids);
+  if (gone > 0) logger.info({ count: gone }, "Pruned rooms nobody can still be playing in");
+  return gone;
+}`,
+    ],
+    [
+      "a store method keeping only fresh rows",
+      `export const store = {
+  async sweep(cutoff: Date) {
+    await db.delete(sessions).where(gt(sessions.lastSeen, cutoff));
+  },
+};`,
+    ],
+  ];
+  for (const [what, shape] of shapes) {
+    assert.ok(hasAgeBasedPrune(shape), what);
+  }
+});
+
+test("a key delete beside an age count, in separate functions, is not an age-based delete", () => {
+  const source = `export const store = {
+  async drop(roomId: string) {
+    await db.delete(activeGames).where(eq(activeGames.roomId, roomId));
+  },
+
+  async countUntouchedSince(cutoff: Date) {
+    return db.select({ n: count() }).from(activeGames).where(lt(activeGames.updatedAt, cutoff));
+  },
+};`;
+  assert.equal(hasAgeBasedPrune(source), false);
+});
+
+test("every age-based delete under server/ lives in server/game/retention.ts", () => {
+  const sources = serverSources();
+  const home = sources.find(({ file }) => file === RETENTION);
+  assert.ok(home && hasAgeBasedPrune(home.source), "retention.ts no longer reads as the home of the sweep");
+
+  const offenders = sources
+    .filter(({ file, source }) => file !== RETENTION && hasAgeBasedPrune(source))
+    .map(({ file }) => file);
+  assert.deepEqual(offenders, [], "move the age-based delete into retention.ts's sweep: " + offenders.join(", "));
 });

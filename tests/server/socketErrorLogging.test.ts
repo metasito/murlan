@@ -1,8 +1,8 @@
 // tests/server/socketErrorLogging.test.ts — a bookkeeping write in server/socket/socket.ts is
 // fire-and-forget on purpose: it must never block or fail a round. That shape is
-// one character away from invisible, though. `.catch(() => {})` on
-// `removeRoomPlayer` leaves the room_players row alive while the in-memory seat
-// is vacated, and claimRoomSeat counts rows: the room reports itself full to the
+// one character away from invisible, though. `.catch(() => {})` on a seat
+// release leaves the room_players row alive while the in-memory seat is
+// vacated, and claimRoomSeat counts rows: the room reports itself full to the
 // next joiner until the 24h sweeper reaches it, with nothing in the log to say
 // why.
 //
