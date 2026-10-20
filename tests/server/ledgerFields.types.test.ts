@@ -100,8 +100,71 @@ export function seatFieldWrites(game: OnlineGameState) {
   }
 }
 
-const SEAT_FIELDS = ["playerMap", "vacatedSeats", "releasedSeats", "abandonedSeats", "weakSeats", "endMatchVotes"];
-const KINDS = ["direct", "collection method", "destructured", "aliased"];
+export function matchFieldWrites(game: OnlineGameState) {
+  // @ts-expect-error direct
+  game.rematchVotes = new Set();
+  // @ts-expect-error collection method
+  game.rematchVotes.add("u");
+  {
+    const { rematchVotes } = game;
+    // @ts-expect-error destructured
+    rematchVotes.delete("u");
+    const alias = game.rematchVotes;
+    // @ts-expect-error aliased
+    alias.clear();
+    // @ts-expect-error passed to a mutating parameter
+    takesSet(game.rematchVotes);
+  }
+
+  // @ts-expect-error direct
+  game.cumulativeScores = {};
+  // @ts-expect-error collection method
+  game.cumulativeScores.u = 1;
+  // @ts-expect-error collection method
+  delete game.cumulativeScores.u;
+  {
+    const { cumulativeScores } = game;
+    // @ts-expect-error destructured
+    cumulativeScores.u += 1;
+    const alias = game.cumulativeScores;
+    // @ts-expect-error aliased
+    delete alias.u;
+  }
+
+  // @ts-expect-error direct
+  game.matchTarget = 31;
+  // @ts-expect-error compound
+  game.matchTarget += 10;
+
+  // @ts-expect-error direct
+  game.roundsPlayed = 0;
+  // @ts-expect-error compound
+  game.roundsPlayed++;
+
+  // @ts-expect-error direct
+  game.matchOver = true;
+
+  // @ts-expect-error direct
+  game.endedByVote = true;
+  // @ts-expect-error delete
+  delete game.endedByVote;
+}
+
+const COLLECTION = ["direct", "collection method", "destructured", "aliased"];
+const PINS: Record<string, string[]> = {
+  playerMap: COLLECTION,
+  vacatedSeats: COLLECTION,
+  releasedSeats: COLLECTION,
+  abandonedSeats: COLLECTION,
+  weakSeats: COLLECTION,
+  endMatchVotes: COLLECTION,
+  rematchVotes: COLLECTION,
+  cumulativeScores: COLLECTION,
+  matchTarget: ["direct", "compound"],
+  roundsPlayed: ["direct", "compound"],
+  matchOver: ["direct"],
+  endedByVote: ["direct", "delete"],
+};
 
 function pinsByField(): Map<string, Set<string>> {
   const source = readFileSync(new URL(import.meta.url), "utf8");
@@ -116,7 +179,8 @@ function pinsByField(): Map<string, Set<string>> {
 
 test("every ledger field is pinned for every kind of write", () => {
   const pins = pinsByField();
-  for (const field of SEAT_FIELDS) {
-    for (const kind of KINDS) assert.ok(pins.get(field)?.has(kind), `${field} has no ${kind} pin`);
+  assert.equal(Object.keys(PINS).length, 12);
+  for (const [field, kinds] of Object.entries(PINS)) {
+    for (const kind of kinds) assert.ok(pins.get(field)?.has(kind), `${field} has no ${kind} pin`);
   }
 });
