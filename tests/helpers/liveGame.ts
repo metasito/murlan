@@ -6,6 +6,7 @@ import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { publishState } from "../../server/game/gamePersistence.ts";
 import { armTurn } from "../../server/game/gameTurn.ts";
+import { clearForDeal } from "../../server/game/seatLedger.ts";
 import { createDeck, seatsOf, startRound, type Opening } from "../../lib/game/gameEngine.ts";
 
 /**
@@ -64,7 +65,7 @@ export function redealExactly(
   // would be written to `round_replays` as this round's replay.
   game.roundFlags = {};
   game.moveLog = [];
-  game.abandonedSeats.clear();
+  clearForDeal(game);
 
   // The persist matters: Postgres still holds the round this replaces until it
   // lands, and a rejoin that rehydrates from it would be dealt the shuffle
@@ -119,7 +120,6 @@ export function forceMatchNearTarget(
 ): boolean {
   const game = activeGames.get(roomId);
   if (!game) return false;
-  game.matchTarget = target;
-  game.cumulativeScores = { ...cumulativeScores };
+  Object.assign(game, { matchTarget: target, cumulativeScores: { ...cumulativeScores } });
   return true;
 }

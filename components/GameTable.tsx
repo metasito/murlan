@@ -10,10 +10,8 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   StyleSheet,
-  Platform,
   type AccessibilityProps,
   type GestureResponderEvent,
-  type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { useAnimatedReaction, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
@@ -67,7 +65,8 @@ import { matchDim } from "@/lib/timeline/matchEnding";
 import { scorePillHitBox, voteTop } from "@/components/table/scorePillModel";
 import { matchBoardFor, scorePillStandings } from "@/lib/game/scorePill";
 import { useTranslation } from "@/lib/i18n";
-import { HudComboPill, TurnChip, type ConnectionNote } from "@/components/table/notices/hud";
+import { HudComboPill, WindowTurnChip, type ConnectionNote } from "@/components/table/notices/hud";
+import { useCountdown } from "@/components/table/countdown";
 import { useDeviceOffline, useTableClaim } from "@/components/OfflineBanner";
 import {
   ControlRail,
@@ -110,6 +109,7 @@ import { ParticleLayer } from "@/components/table/particleLayer";
 import { HandRow } from "@/components/table/handRow";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
 import { GameSettingsSheet } from "@/components/table/settingsSheet";
+import { clipOverflow } from "@/lib/platform";
 import { useShownTurn, useTableFeedback } from "@/components/useTableFeedback";
 import { useHandOrder } from "@/components/useHandOrder";
 import { useSameCards } from "@/components/useSameCards";
@@ -142,16 +142,6 @@ import { useBenchHandle } from "@/lib/diagnostics";
 // text labels, and React Native rasterises text before transforming it, so a
 // fractional offset resamples the glyphs. 2px down is the smallest offset
 // that still reads as a press.
-
-/**
- * The hand runs past the bottom edge on purpose, and the side fans lean out
- * past their columns. `overflow: hidden` hides all of that but still leaves a
- * scrollable box, and the browser scrolls a tapped card into view — sliding
- * the whole table off the screen. `overflow: clip` clips without creating one.
- * Native has no such box to begin with, and does not know the value.
- */
-const WEB_CLIP =
-  Platform.OS === "web" ? ({ overflow: "clip" } as unknown as ViewStyle) : null;
 
 /** The banner band sits over the felt. */
 const BANNER_BAND_Z = Layer.band;
@@ -895,6 +885,7 @@ export function GameTable({
     turnToken: turnKey(gameState),
     t,
   });
+  const countdown = useCountdown(turn.window);
 
   const startCardDue = !gameState.firstPlayMade && !!gameState.startCard;
   const whoStarts: StartReason | undefined =
@@ -922,7 +913,7 @@ export function GameTable({
           {...seatView(opponent.seat, opponent.player, seatTable)}
           dealArrivals={deal.arrivalsFor(opponent.seat)}
           scale={scale}
-          countdown={turn.seat}
+          countdown={turn.seatClock ? countdown : undefined}
           focusMode={focusMode}
           flash={ringFlash}
         />
@@ -936,7 +927,7 @@ export function GameTable({
   return (
     <CardTableProvider value={cardTable}>
     <CardCastContext.Provider value={cardCast}>
-    <View testID="game-root" style={[styles.root, WEB_CLIP]} onStartShouldSetResponderCapture={closeScoreElsewhere}>
+    <View testID="game-root" style={[styles.root, clipOverflow]} onStartShouldSetResponderCapture={closeScoreElsewhere}>
       {/* Felt — decoration only: one canvas that never carries game
           information (#1244), lit by the one lamp rig. */}
       <Animated.View
@@ -952,7 +943,7 @@ export function GameTable({
       {/* The game, and everything a landing displaces. It clips at its own
           moving edge, so the strip the kick uncovers is the cloth behind it
           rather than whatever the window is drawn on. */}
-      <Animated.View testID="game-layer" style={[styles.kick, WEB_CLIP, TABLE_Z, kickStyle]}>
+      <Animated.View testID="game-layer" style={[styles.kick, clipOverflow, TABLE_Z, kickStyle]}>
         <Sweep trigger={goingOutTrigger} width={W} height={H} />
         <View testID="card-shade" style={[StyleSheet.absoluteFill, CARD_SHADE_Z]} pointerEvents="none" {...a11yHidden()}>
           <HandShade lamp={rig.lamp} cards={cardTable} ready={cardCast === "felt"} />
@@ -990,17 +981,14 @@ export function GameTable({
         >
           <A11yVeil veil={clockVeil}>
             <View testID={choiceOpen ? "exchange-prompt" : undefined}>
-              <TurnChip
+              <WindowTurnChip
                 scale={scale}
                 lit={turn.chip.lit}
                 chipText={turn.chip.text}
                 spokenSeat={turn.chip.spoken}
-                seconds={turn.clock.seconds}
+                countdown={countdown}
                 active={turn.clock.active}
                 revealed={turn.clock.revealed}
-                resetKey={turn.clock.resetKey}
-                onExpire={turn.clock.onExpire}
-                frozen={turn.clock.frozen}
                 connection={choiceOpen && connectionNote?.state === "reconnected" ? null : connectionNote}
               />
             </View>

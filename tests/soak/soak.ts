@@ -274,9 +274,35 @@ function parseArgs(argv: string[]): Options {
   };
 }
 
+/** The events a seat's socket may be asked to send from outside it: leaving a room is `Seat.leave()`'s alone. */
+type SeatIntent =
+  | "room:create"
+  | "room:join"
+  | "room:start"
+  | "game:rematch_vote"
+  | "game:play"
+  | "game:pass"
+  | "game:exchange_give_card";
+
+/** What the runner may do with a seat's socket. */
+export interface SeatSocket {
+  readonly connected: boolean;
+  emit(event: SeatIntent, ...args: unknown[]): unknown;
+  on(event: string, listener: (...args: never[]) => void): unknown;
+  once(event: string, listener: (...args: never[]) => void): unknown;
+  off(event: string, listener?: (...args: never[]) => void): unknown;
+  close(): unknown;
+}
+
+let socketOf: (seat: Seat) => Socket;
+
+export function seatSocket(seat: Seat): SeatSocket {
+  return socketOf(seat);
+}
+
 /** One virtual player: a real socket, its own view, and legal moves only. */
 export class Seat {
-  socket: Socket;
+  #socket: Socket;
   readonly username: string;
   readonly userId: string;
   readonly cookie: string;
@@ -288,20 +314,29 @@ export class Seat {
    * it, a rejoin that goes unanswered cannot say whether the server turned it
    * down — and which code it used — or never replied at all.
    */
-  lastRefusal: string | null = null;
+  get lastRefusal(): string | null {
+    return this.#lastRefusal;
+  }
+  #lastRefusal: string | null = null;
   /**
    * The code of that refusal on its own. Read rather than parsed back out of
    * `lastRefusal`: what the oracle branches on is the code, and recovering it
    * from a sentence assembled for a human is a second definition of it.
    */
-  lastRefusalCode: string | null = null;
+  get lastRefusalCode(): string | null {
+    return this.#lastRefusalCode;
+  }
+  #lastRefusalCode: string | null = null;
   /**
    * Whether this client gave its own seat up. `SEAT_RELEASED` says the table
    * took the seat back, not why: a grace expiring and a deliberate leave reach
    * it through the same `vacateSeat`. Only the harness knows which, so it
    * carries the answer rather than the oracle assuming it.
    */
-  gaveUpItsOwnSeat = false;
+  get gaveUpItsOwnSeat(): boolean {
+    return this.#gaveUpItsOwnSeat;
+  }
+  #gaveUpItsOwnSeat = false;
   /**
    * Every refusal this seat collected all run, keyed `event code`. A throttled
    * or rejected client is not playing the game it thinks it is, and its view
@@ -314,8 +349,12 @@ export class Seat {
    */
   readonly refusals = new Map<string, number>();
 
+  static {
+    socketOf = (seat) => seat.#socket;
+  }
+
   constructor(socket: Socket, username: string, userId: string, cookie: string) {
-    this.socket = socket;
+    this.#socket = socket;
     this.username = username;
     this.userId = userId;
     this.cookie = cookie;
@@ -323,7 +362,7 @@ export class Seat {
   }
 
   private listen() {
-    this.socket.on("game:state", (state: TableState, ack?: () => void) => {
+    this.#socket.on("game:state", (state: TableState, ack?: () => void) => {
       ack?.();
       this.state = state;
       this.version += 1;
@@ -333,14 +372,14 @@ export class Seat {
       // leave arrives on the rejoin that follows it, so clearing this when the
       // socket is adopted would clear it just before the answer it explains.
       if (typeof state?.viewerSeatIndex === "number" && state.viewerSeatIndex >= 0) {
-        this.gaveUpItsOwnSeat = false;
+        this.#gaveUpItsOwnSeat = false;
       }
     });
     for (const event of REFUSAL_EVENTS) {
-      this.socket.on(event, (payload: { code?: string; message?: string } | undefined) => {
+      this.#socket.on(event, (payload: { code?: string; message?: string } | undefined) => {
         const code = payload?.code ?? "?";
-        this.lastRefusal = `${event} ${code}: ${payload?.message ?? ""}`.trim();
-        this.lastRefusalCode = payload?.code ?? null;
+        this.#lastRefusal = `${event} ${code}: ${payload?.message ?? ""}`.trim();
+        this.#lastRefusalCode = payload?.code ?? null;
         const key = `${event} ${code}`;
         this.refusals.set(key, (this.refusals.get(key) ?? 0) + 1);
       });
@@ -354,8 +393,8 @@ export class Seat {
    * outrunning the grace, and the run stays green while saying it.
    */
   leave(roomId: string) {
-    this.gaveUpItsOwnSeat = true;
-    this.socket.emit("room:leave", { roomId });
+    this.#gaveUpItsOwnSeat = true;
+    this.#socket.emit("room:leave", { roomId });
   }
 
   /**
@@ -365,13 +404,13 @@ export class Seat {
    * survives into a later one and reports a window that never broke.
    */
   clearRefusal() {
-    this.lastRefusal = null;
-    this.lastRefusalCode = null;
+    this.#lastRefusal = null;
+    this.#lastRefusalCode = null;
   }
 
   /** Re-attached after a reconnect, because the socket object is new. */
   adopt(socket: Socket) {
-    this.socket = socket;
+    this.#socket = socket;
     this.clearRefusal();
     this.listen();
   }
@@ -384,7 +423,7 @@ export class Seat {
     // stops being told anything. `null < 0` is false, so this cannot be a
     // numeric comparison.
     const seat = s?.viewerSeatIndex;
-    if (!s || typeof seat !== "number" || seat < 0 || !this.socket.connected) return null;
+    if (!s || typeof seat !== "number" || seat < 0 || !this.#socket.connected) return null;
     return {
       seat,
       currentTurnIndex: s.currentTurnIndex,
@@ -419,7 +458,7 @@ export class Seat {
       const giveable = getValidGivebackCards(hand, phase.cardFromLoser?.id);
       const card = giveable[Math.floor(rng() * giveable.length)];
       if (!card) return null;
-      this.socket.emit("game:exchange_give_card", { cardId: card.id });
+      this.#socket.emit("game:exchange_give_card", { cardId: card.id });
       return { kind: "exchange", seat, cardId: card.id };
     }
 
@@ -432,12 +471,12 @@ export class Seat {
     const plays = getAllValidPlays(hand, s.lastPlayedCombination, isNewTrick, mustPlay);
 
     if (plays.length === 0) {
-      this.socket.emit("game:pass");
+      this.#socket.emit("game:pass");
       return { kind: "pass", seat };
     }
     const combo = plays[Math.floor(rng() * plays.length)];
     const cardIds = combo.cards.map((c) => c.id);
-    this.socket.emit("game:play", { cardIds });
+    this.#socket.emit("game:play", { cardIds });
     return { kind: "play", seat, cardIds };
   }
 
@@ -466,16 +505,16 @@ export async function openTable(
   }
   const host = seats[0];
   const room = await new Promise<RoomState>((resolve) => {
-    host.socket.once("room:state", resolve);
-    host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: count });
+    seatSocket(host).once("room:state", resolve);
+    seatSocket(host).emit("room:create", { gameMode: "free_for_all", maxPlayers: count });
   });
   for (const seat of seats.slice(1)) {
     await new Promise<void>((resolve) => {
-      seat.socket.once("room:state", () => resolve());
-      seat.socket.emit("room:join", { code: room.code });
+      seatSocket(seat).once("room:state", () => resolve());
+      seatSocket(seat).emit("room:join", { code: room.code });
     });
   }
-  host.socket.emit("room:start");
+  seatSocket(host).emit("room:start");
   return room;
 }
 
@@ -579,7 +618,7 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
       }
       wasOver = over;
       if (over) {
-        for (const seat of seats) seat.socket.emit("game:rematch_vote");
+        for (const seat of seats) seatSocket(seat).emit("game:rematch_vote");
         // A fresh deal refills every hand, so the ceiling the oracle measures
         // against belongs to the round that is starting, not the one that
         // just emptied.
@@ -613,7 +652,7 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
         // below is precisely the run where the two differ, so quoting the plan
         // would print the one number known to be wrong.
         const leftAt = Date.now();
-        victim.socket.close();
+        seatSocket(victim).close();
         await sleep(AWAY_WINDOW_MS.floor + Math.floor(rng() * AWAY_WINDOW_MS.spread));
         const back = await reconnectWith(server, victim.cookie);
         const before = victim.version;
@@ -655,9 +694,9 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
       moveLog,
     };
   } finally {
-    for (const seat of seats) if (roomId && seat.socket.connected) seat.leave(roomId);
+    for (const seat of seats) if (roomId && seatSocket(seat).connected) seat.leave(roomId);
     await sleep(SETTLE_QUIET_MS);
-    for (const seat of seats) if (seat.socket.connected) seat.socket.close();
+    for (const seat of seats) if (seatSocket(seat).connected) seatSocket(seat).close();
     leaks = await drainedMaps();
     await server.stop();
   }
@@ -687,7 +726,7 @@ async function playTable(
   let unanswered = 0;
   while (Date.now() < until) {
     if (seats.every((s) => s.state?.roundOver)) {
-      for (const seat of seats) seat.socket.emit("game:rematch_vote");
+      for (const seat of seats) seatSocket(seat).emit("game:rematch_vote");
       await sleep(700);
       continue;
     }
@@ -696,11 +735,11 @@ async function playTable(
       let heard = () => {};
       const answered = new Promise<boolean>((resolve) => {
         heard = () => resolve(true);
-        seat.socket.once("game:state", heard);
+        seatSocket(seat).once("game:state", heard);
       });
       const sentAt = performance.now();
       if (!seat.act(rng)) {
-        seat.socket.off("game:state", heard);
+        seatSocket(seat).off("game:state", heard);
         continue;
       }
       acted = true;
@@ -708,7 +747,7 @@ async function playTable(
       const timer = sleep(REJOIN_BUDGET_MS, false, { ref: false });
       if (await Promise.race([answered, timer])) latencies.push(performance.now() - sentAt);
       else {
-        seat.socket.off("game:state", heard);
+        seatSocket(seat).off("game:state", heard);
         unanswered += 1;
       }
     }
@@ -758,10 +797,10 @@ export async function runThroughput(
     };
   } finally {
     for (const { seats, roomId } of tables) {
-      for (const seat of seats) if (roomId && seat.socket.connected) seat.leave(roomId);
+      for (const seat of seats) if (roomId && seatSocket(seat).connected) seat.leave(roomId);
     }
     await sleep(SETTLE_QUIET_MS);
-    for (const seat of tables.flatMap((t) => t.seats)) if (seat.socket.connected) seat.socket.close();
+    for (const seat of tables.flatMap((t) => t.seats)) if (seatSocket(seat).connected) seatSocket(seat).close();
     await server.stop();
   }
 }

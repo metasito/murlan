@@ -6,12 +6,13 @@ import {
   buildPushRequest,
   deadTokens,
   renderBody,
+  type PushMessage,
 } from "../../server/socket/pushShape.ts";
 import { translate } from "../../shared/i18n.ts";
 
 const TOKENS = ["ExponentPushToken[a]", "ExponentPushToken[b]"];
 const DEVICES = TOKENS.map((token) => ({ token, locale: "en" }));
-const INVITE = { title: "Murlan", code: "FRIEND_INVITE", params: { username: "Ana" } };
+const INVITE: PushMessage = { title: "Murlan", code: "FRIEND_INVITE", params: { username: "Ana" } };
 
 test("one message per device, in the order the tokens were given", () => {
   const reqs = buildPushRequest(DEVICES, { ...INVITE, data: { roomCode: "ABC123" } });

@@ -14,7 +14,7 @@ import type { RoundFlags } from "../../shared/persistedEnvelope.ts";
 
 /** The seat a given user occupies, or null if they are not seated at all. */
 export function seatOfUser(
-  playerMap: Record<number, string>,
+  playerMap: Readonly<Record<number, string>>,
   userId: string
 ): number | null {
   const entry = Object.entries(playerMap).find(([, uid]) => uid === userId);
@@ -26,7 +26,7 @@ export function seatOfUser(
  * `bot:<seat>` sentinel for a seat vacated to a bot.
  */
 export function scoreKeyForSeat(
-  playerMap: Record<number, string>,
+  playerMap: Readonly<Record<number, string>>,
   seat: number
 ): string {
   return playerMap[seat] ?? botSeatKey(seat);
@@ -39,8 +39,8 @@ export function scoreKeyForSeat(
  * another way there.
  */
 export function seatTotal(
-  cumulativeScores: Record<string, number>,
-  playerMap: Record<number, string>,
+  cumulativeScores: Readonly<Record<string, number>>,
+  playerMap: Readonly<Record<number, string>>,
   vacatedSeats: ReadonlyMap<number, { userId: string; username: string }>,
   seat: number
 ): number {
@@ -246,14 +246,14 @@ export function botSeatsFromPersonality(players: readonly { personality?: BotPer
 
 export interface ResolveRoundEndInput {
   state: GameState;
-  playerMap: Record<number, string>;
-  cumulativeScores: Record<string, number>;
+  playerMap: Readonly<Record<number, string>>;
+  cumulativeScores: Readonly<Record<string, number>>;
   matchTarget: number;
   matchLength: MatchLength;
   gameMode: GameMode;
   roundFlags: RoundFlags;
   /** seat -> the userId who walked out on the round still holding cards. */
-  abandonedSeats: Map<number, string>;
+  abandonedSeats: ReadonlyMap<number, string>;
   /**
    * Seats dealt to a bot when this match's roster was built — never a human's
    * seat this match, unlike one `playerMap` merely no longer names. Defaults
@@ -267,7 +267,7 @@ export interface ResolveRoundEndInput {
    * found across rounds even once `playerMap` has forgotten them. Defaults to
    * none.
    */
-  vacatedSeats?: Map<number, { userId: string; username: string }>;
+  vacatedSeats?: ReadonlyMap<number, { userId: string; username: string }>;
 }
 
 export interface ResolveRoundEndResult {

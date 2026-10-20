@@ -29,7 +29,7 @@ import type { WireGameState } from "../../shared/protocol.ts";
 export function sanitizeStateForPlayer(
   state: GameState,
   viewerUserId: string,
-  playerMap: Record<number, string>,
+  playerMap: Readonly<Record<number, string>>,
   turnDeadlineMs?: number,
   vacatedSeats?: ReadonlyMap<number, { userId: string; username: string }>
 ): WireGameState {

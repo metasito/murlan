@@ -43,6 +43,7 @@ import { byId, propsEqualExcept, shallowEqual } from "@/lib/memo";
 import type { HandSelection } from "./useSelection";
 import type { SettledSelection } from "./selectionLeaves";
 import { DEAL_FLIGHT_MS, dealLeaveMs } from "@/lib/timeline/dealTimeline";
+import { clipOverflow } from "@/lib/platform";
 import { dealEase, handDealArc } from "@/components/table/dealPose";
 import { handRowHeadroom } from "@/components/seatLayout";
 import { CARD_W, cardRadius, FIELD_SCALE, handCardSize, type HandCardSize } from "@/components/cardFaceModel";
@@ -1228,15 +1229,17 @@ export const StraightHand = React.memo(function StraightHand({
         <View
           style={
             scrollable
-              ? {
-                  width: availW,
-                  marginTop: -topClearance,
-                  marginBottom: -(crop + tiltOverhang),
-                  height: topClearance + visibleH + crop + tiltOverhang,
-                  paddingTop: topClearance,
-                  // `clip` on web: a focused card would otherwise scroll a `hidden` box, sliding the row off the pan it is drawn and hit-tested by.
-                  overflow: Platform.OS === "web" ? ("clip" as "hidden") : "hidden",
-                }
+              ? [
+                  {
+                    width: availW,
+                    marginTop: -topClearance,
+                    marginBottom: -(crop + tiltOverhang),
+                    height: topClearance + visibleH + crop + tiltOverhang,
+                    paddingTop: topClearance,
+                    overflow: "hidden",
+                  },
+                  clipOverflow,
+                ]
               : undefined
           }
           onFocus={scrollable && Platform.OS === "web" ? panToFocused : undefined}

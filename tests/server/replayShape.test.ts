@@ -8,9 +8,11 @@ import {
 } from "../../server/game/replayShape.ts";
 import { MAX_REPLAY_MOVES, type ReplayMove } from "../../lib/game/replay.ts";
 import { card as c } from "../support/game.ts";
-import { buildCombination } from "../../lib/game/gameEngine.ts";
+import { buildCombination, type LastMove } from "../../lib/game/gameEngine.ts";
 
 /** Only `players[].hand.length` is read, so a stub of that shape is enough. */
+const DEALT = { lastMove: { seq: 0, kind: "deal" } } as const;
+
 const after = (counts: number[]) => ({
   players: counts.map((n) => ({ hand: new Array(n).fill(c("3", "spades")) })),
 });
@@ -49,27 +51,35 @@ test("a seat somebody left still says who left it, without granting them the rep
 
 test("a play records its combination and the counts that followed", () => {
   const game: { moveLog: ReplayMove[] | null } = { moveLog: [] };
-  appendReplayMove(game, 0, buildCombination([c("3", "spades")])!, after([12, 13]));
+  appendReplayMove(game, 0, buildCombination([c("3", "spades")])!, DEALT, after([12, 13]));
   assert.equal(game.moveLog!.length, 1);
   assert.equal(game.moveLog![0].seat, 0);
   assert.deepEqual(game.moveLog![0].handCounts, [12, 13]);
   assert.deepEqual(game.moveLog![0].combo?.cards.map((x) => x.id), ["3_spades"]);
 });
 
+test("the log records what its first move followed beside the moves, not in them", () => {
+  const game: { moveLog: ReplayMove[] | null; replayOpening?: LastMove } = { moveLog: [] };
+  appendReplayMove(game, 3, null, { lastMove: { seq: 1, kind: "giveback", seat: 0 } }, after([12, 13]));
+  appendReplayMove(game, 2, null, DEALT, after([12, 13]));
+  assert.deepEqual(game.replayOpening, { seq: 1, kind: "giveback", seat: 0 });
+  assert.deepEqual(game.moveLog!.map((m) => Object.keys(m).sort()), [["combo", "handCounts", "seat"], ["combo", "handCounts", "seat"]]);
+});
+
 test("a pass records a null combination", () => {
   const game: { moveLog: ReplayMove[] | null } = { moveLog: [] };
-  appendReplayMove(game, 1, null, after([12, 13]));
+  appendReplayMove(game, 1, null, DEALT, after([12, 13]));
   assert.equal(game.moveLog![0].combo, null);
 });
 
 test("a log past the cap is dropped, not silently truncated", () => {
   const game: { moveLog: ReplayMove[] | null } = { moveLog: [] };
-  for (let i = 0; i <= MAX_REPLAY_MOVES; i++) appendReplayMove(game, 0, null, after([1, 1]));
+  for (let i = 0; i <= MAX_REPLAY_MOVES; i++) appendReplayMove(game, 0, null, DEALT, after([1, 1]));
   assert.equal(game.moveLog, null);
 });
 
 test("appending to an abandoned log is a no-op", () => {
   const game: { moveLog: null } = { moveLog: null };
-  appendReplayMove(game, 0, null, after([1, 1]));
+  appendReplayMove(game, 0, null, DEALT, after([1, 1]));
   assert.equal(game.moveLog, null);
 });

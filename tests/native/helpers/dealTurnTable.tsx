@@ -17,6 +17,7 @@ export const freshDeal = (): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: false,
+  lastMove: { seq: 0, kind: 'deal' },
 });
 
 export const table = (gameState: GameState, { width, height } = { width: 844, height: 390 }) => (

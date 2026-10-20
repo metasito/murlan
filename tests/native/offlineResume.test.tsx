@@ -55,6 +55,7 @@ const midExchangeSave = () => {
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: true,
+      lastMove: { seq: 0, kind: "deal" },
       exchangePhase: {
         active: true,
         winnerIdx: 1,
@@ -246,6 +247,7 @@ const freeLeadSave = () => {
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: true,
+      lastMove: { seq: 0, kind: "deal" },
     },
   });
 };

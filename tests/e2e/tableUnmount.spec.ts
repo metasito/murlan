@@ -6,6 +6,7 @@ import { offlineSave, resumeSaved } from "./helpers/offlineSeed";
 import { skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
 import { GIOCA_VALID_LABEL } from "./helpers/labels";
 import { tap } from "./helpers/press";
+import { HAND_CARD_BOXES } from "./helpers/selectors.ts";
 
 function pageErrors(page: Page): string[] {
   const errors: string[] = [];
@@ -14,7 +15,7 @@ function pageErrors(page: Page): string[] {
 }
 
 async function playTopCard(page: Page): Promise<void> {
-  await tap(page, page.locator('[data-hand-state] [data-testid="card-box"]').last());
+  await tap(page, page.locator(HAND_CARD_BOXES).last());
   await tap(page, page.getByRole("button", { name: GIOCA_VALID_LABEL }));
 }
 

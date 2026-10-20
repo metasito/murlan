@@ -1,3 +1,5 @@
+import { CHANNELS } from "../../../lib/harnessChannels.ts";
+
 /**
  * How this suite finds the game table and the viewer's hand.
  *
@@ -11,10 +13,15 @@ export const TABLE = '[data-testid="game-table"]';
 export const TABLE_SCREEN = ':has(> [data-testid="table-felt"])';
 
 /** The table's own screen-reader sentence (`describeTableForA11y`). */
-export const TABLE_STATE = "data-table-state";
+export const TABLE_STATE = CHANNELS.tableState;
 /** "true" from the table's entry until the last dealt card lands. */
-export const TABLE_DEALING = "data-dealing";
-export const HAND_ZONE = "[data-hand-state]";
+export const TABLE_DEALING = CHANNELS.dealing;
+export const HAND_ZONE = `[${CHANNELS.handState}]`;
+/** The drawn card inside each hand slot, not its pressable strip. */
+export const HAND_CARD_BOXES = `${HAND_ZONE} [data-testid="card-box"]`;
+export const HAND_SELECTED = `${HAND_ZONE} [aria-pressed="true"]`;
+/** "true" on a seat ring while its seat holds the turn. */
+export const SEAT_LIT = CHANNELS.seatLit;
 
 /**
  * Scoped to the hand wrapper, not anywhere under the table: the played pile renders

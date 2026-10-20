@@ -266,6 +266,7 @@ describe("offlineBotMove", () => {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
+    lastMove: { seq: 0, kind: "deal" },
     playedRanks: emptyRankTally(),
   });
 

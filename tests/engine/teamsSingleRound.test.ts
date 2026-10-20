@@ -24,6 +24,7 @@ const finished = (gameMode: GameState["gameMode"], finishingOrder: string[]): Ga
   roundOver: true,
   finishingOrder,
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: "deal" },
 });
 
 const single = { length: "single" as const, target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false };

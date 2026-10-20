@@ -4,10 +4,11 @@ import { logger } from "../shared/logger.ts";
 import { arm, clearRoomTimers, clearRoomDisconnectTimers, voteDeadlineMs } from "./gameTimers.ts";
 import { voteStateOf, type OnlineGameState } from "./gameRoom.ts";
 import { resolveRoundEnd, seatTotal } from "./onlineGameLogic.ts";
+import { closeMatch, applyRoundFold, rollForward } from "./matchLedger.ts";
 import { replaySeatsOf } from "./replayShape.ts";
 import { firstTargetFor } from "../../lib/game/gameEngine.ts";
 import type { RoundOverPayload } from "../../lib/game/matchState.ts";
-import type { GameMode } from "../../lib/game/gameEngine.ts";
+import type { GameMode, LastMove } from "../../lib/game/gameEngine.ts";
 import type { GameResult } from "../../lib/achievements.ts";
 import type { ReplayMove, ReplaySeat } from "../../lib/game/replay.ts";
 import type { RatedPreview } from "./ratings.ts";
@@ -54,6 +55,7 @@ export interface RoundOverWriters {
     gameMode: GameMode;
     seats: ReplaySeat[];
     moves: ReplayMove[];
+    opening: LastMove | null;
     finishingOrder: string[];
   }) => Promise<void>;
 }
@@ -90,12 +92,7 @@ export async function handleRoundOver(rt: TableRuntime, roomId: string, game: On
     vacatedSeats: game.vacatedSeats,
   });
   const { roundByKey, matchWinners, isDraw, detailed, winnerEngineIds } = result;
-  game.cumulativeScores = result.cumulativeScores;
-  game.matchTarget = result.matchTarget;
-  game.matchOver = result.matchOver;
-  game.roundsPlayed += 1;
-
-  game.rematchVotes = new Set();
+  applyRoundFold(game, result);
   // Before the awaits below, so no rejoin can read the vote without its deadline.
   if (!game.matchOver) armVoteDeadline(rt, roomId);
 
@@ -233,6 +230,7 @@ export async function handleRoundOver(rt: TableRuntime, roomId: string, game: On
         gameMode: game.gameState.gameMode,
         seats: replaySeatsOf(state.players, game.playerMap, game.vacatedSeats),
         moves: game.moveLog,
+        opening: game.replayOpening ?? null,
         finishingOrder: state.finishingOrder,
       }).catch((err) => logger.error({ err, roomId }, "Failed to save replay"));
     }
@@ -262,7 +260,7 @@ async function closeMatchWithoutScoring(
   clearRoomTimers(roomId);
   clearRoomDisconnectTimers(game);
   game.gameState.roundOver = true;
-  game.matchOver = true;
+  closeMatch(game, { endedByVote: !voided });
 
   const over: RoundOverPayload = {
     finishingOrder: [],
@@ -311,19 +309,12 @@ export async function voidAbandonedMatch(rt: TableRuntime, roomId: string, game:
  * rather than disposed: the players who agreed to stop are still here.
  */
 export async function endMatchByAgreement(rt: TableRuntime, roomId: string, game: OnlineGameState): Promise<void> {
-  game.endedByVote = true;
   await closeMatchWithoutScoring(rt, roomId, game, false);
 }
 
 /** Between rounds: a finished match starts over, an unfinished one carries on. */
 export function rollMatchForward(game: OnlineGameState) {
-  if (game.matchOver) {
-    const target = firstTargetFor(game.gameState.players.length);
-    game.cumulativeScores = {};
-    game.matchTarget = target;
-    game.roundsPlayed = 0;
-    game.matchOver = false;
-  }
+  if (game.matchOver) rollForward(game, firstTargetFor(game.gameState.players.length));
 }
 
 /**

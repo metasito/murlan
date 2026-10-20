@@ -15,6 +15,7 @@ import { dealRound } from "./dealRound.ts";
 import type { TableAction } from "./tableActions.ts";
 import type { RehydrateOutcome } from "./tableRouter.ts";
 import { everySeatedVoted } from "./tableVotes.ts";
+import { castRematchVote, clearRematchVotes } from "./matchLedger.ts";
 import { armSeatGrace } from "./tableHandlers.ts";
 
 /**
@@ -115,7 +116,7 @@ export async function startMatchAction(
     // Same ready set as game:rematch_vote, and the same abstention — a seat
     // with no playerMap entry (a bot, or a human who left) has nobody who can
     // answer and is not counted.
-    if (seatOfUser(previous.playerMap, userId) !== null) previous.rematchVotes.add(userId);
+    if (seatOfUser(previous.playerMap, userId) !== null) castRematchVote(previous, userId);
     emitVoteState(rt.out.room(roomId), previous);
     if (!everySeatedVoted(previous.rematchVotes, previous)) return refuse("NEW_MATCH_NOT_READY");
   } else if (room.status !== "waiting" && room.status !== "finished") {
@@ -132,7 +133,7 @@ export async function startMatchAction(
   // The finished match's tally, discarded before any seat leaves: releasing one
   // lowers the rematch gate, and a stale full count would deal that match one
   // more round underneath the new one being dealt here.
-  previous?.rematchVotes.clear();
+  if (previous) clearRematchVotes(previous);
   if (absent.size > 0) {
     const seated = await rt.store.rooms.getRoomPlayers(room.id);
     for (const p of seated.filter((p) => absent.has(p.userId))) {

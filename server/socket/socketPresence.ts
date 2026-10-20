@@ -19,14 +19,13 @@ import { friendships, type InviteRefusal } from "./friendships.ts";
 import { trackEvent } from "../shared/events.ts";
 import { onEvent } from "./socketSafety.ts";
 import {
-  activeGames,
   isShuttingDown,
   socketRoomMap,
   userRoom,
   userSocketMap,
 } from "../game/gameRoom.ts";
-import { seatOfUser } from "../game/onlineGameLogic.ts";
 import { clearDisconnectGrace } from "../game/gameTimers.ts";
+import { heldRoundFor } from "../game/gameTurn.ts";
 import { announceRejoin, armLobbyGrace } from "./socketTable.ts";
 import { seatSocket, stopSpectating } from "./seating.ts";
 import { NoPayloadSchema, FriendInviteSchema } from "../../shared/socketSchemas.ts";
@@ -80,20 +79,18 @@ export function registerFriendHandlers({ socket, userId }: HandlerContext) {
  */
 export async function announcePresence({ rt, socket, userId }: HandlerContext) {
 
-    if (clearDisconnectGrace(userId)) {
-      for (const [roomId, game] of activeGames.entries()) {
-        if (seatOfUser(game.playerMap, userId) === null || game.gameState.roundOver) continue;
-        await seatSocket(rt, socket, userId, roomId);
-        try {
-          await announceRejoin(rt, userId, roomId, game);
-          logger.info(
-            { userId, roomId },
-            "Player reconnected within grace period"
-          );
-        } catch (err) {
-          logger.error({ err, userId, roomId }, "grace rejoin failed");
-        }
-        break;
+    const held = clearDisconnectGrace(userId) ? heldRoundFor(userId) : null;
+    if (held) {
+      const { roomId, game } = held;
+      await seatSocket(rt, socket, userId, roomId);
+      try {
+        await announceRejoin(rt, userId, roomId, game);
+        logger.info(
+          { userId, roomId },
+          "Player reconnected within grace period"
+        );
+      } catch (err) {
+        logger.error({ err, userId, roomId }, "grace rejoin failed");
       }
     }
 

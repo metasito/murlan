@@ -6,7 +6,6 @@ export const errorHandler = (err: unknown, req: Request, res: Response, next: Ne
   const error = err as {
     status?: number;
     statusCode?: number;
-    message?: string;
   };
   const status = error.status || error.statusCode || 500;
   (req.log ?? logger).error({ err }, "Internal Server Error");
@@ -15,14 +14,8 @@ export const errorHandler = (err: unknown, req: Request, res: Response, next: Ne
   // there would drop a connection the client is still pooling.
   if (res.writableEnded) return;
   if (res.headersSent) return next(err);
-  // A 4xx message was chosen for the caller (a body-parse failure, say);
-  // a 5xx message is whatever internal thing threw, and has leaked
-  // Postgres errors naming tables and columns straight into the UI.
-  if (status >= 500) {
-    res.status(status).json({ ...payload("INTERNAL_SERVER_ERROR") });
-    return;
-  }
-  res
-    .status(status)
-    .json({ message: error.message || "Bad request", code: "INVALID_PAYLOAD" });
+  // The thrown message never reaches the body: a 5xx's is whatever internal
+  // thing threw, and has leaked Postgres errors naming tables and columns
+  // straight into the UI.
+  res.status(status).json(payload(status >= 500 ? "INTERNAL_SERVER_ERROR" : "INVALID_PAYLOAD"));
 };

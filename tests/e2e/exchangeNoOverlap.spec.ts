@@ -29,7 +29,7 @@ const midExchangeSave = () =>
     winner: 0,
     loser: 1,
     cardFromLoser: "2_spades",
-    holding: [["5_hearts", "K_spades"], ["J_hearts", "Q_diamonds"]],
+    holding: [["5_hearts", "K_spades", "2_spades"], ["J_hearts", "Q_diamonds"]],
   });
 
 test("the give shows only once the receive has landed: never two cards in the air", async ({ page, baseURL }) => {

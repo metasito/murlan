@@ -69,6 +69,9 @@ Declining to beat the play on the table; it does not lock the seat out of the tr
 **Going out**:
 Playing one's last card, which fixes the seat's placement and takes it out of the round.
 
+**Move**:
+One seat's act on the round: a play, a pass or a giveback. The engine applies one through `applyMove` and records the last as `GameState.lastMove`, counted from the deal's 0. The socket carries a move as three intents (`game:play`, `game:pass`, `game:exchange_give_card`), mapped one-to-one at `server/socket/socketGameplay.ts`; collapsing them into one event needs a `MIN_PROTOCOL_VERSION` raise (D34).
+
 ### Between rounds
 
 **Exchange**:
@@ -106,6 +109,9 @@ _Avoid_: dropped seat
 **Abandonment**:
 The last-place finish recorded against a player who left a round before it ended.
 _Avoid_: forfeit, rage-quit
+
+**Ledger**:
+The one module that writes a group of a live table's fields, read-only everywhere else: `server/game/seatLedger.ts` for who holds each seat, `server/game/matchLedger.ts` for the match's totals, target, round count and votes.
 
 ## Design pointers
 

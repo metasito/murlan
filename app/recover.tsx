@@ -10,6 +10,7 @@ import { getLocale, useTranslation } from "@/lib/i18n";
 import { apiRequest } from "@/lib/query-client";
 import { serverErrorMessage } from "@/lib/apiError";
 import { Colors, Spacing } from "@/lib/theme";
+import { useGuardedSubmit } from "@/lib/useGuardedSubmit";
 
 type Step = "request" | "reset";
 
@@ -25,34 +26,28 @@ export default function RecoverScreen() {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function submitRequest() {
-    if (loading) return;
+  const request = useGuardedSubmit(async () => {
     if (!email.trim()) {
       setError(t("recover.missingEmail"));
       return;
     }
     setError(null);
-    setLoading(true);
     try {
       await apiRequest("POST", "/api/auth/request-password-reset", { email: email.trim(), locale: getLocale() });
       setStep("reset");
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("recover.requestFailed")));
     }
-    setLoading(false);
-  }
+  });
 
-  async function submitReset() {
-    if (loading) return;
+  const reset = useGuardedSubmit(async () => {
     if (!code.trim() || !newPassword.trim()) {
       setError(t("recover.missingFields"));
       return;
     }
     setError(null);
-    setLoading(true);
     try {
       await apiRequest("POST", "/api/auth/reset-password", { token: code.trim(), newPassword });
       // reset-password mints no session: the password just chosen is the
@@ -61,8 +56,7 @@ export default function RecoverScreen() {
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("recover.resetFailed")));
     }
-    setLoading(false);
-  }
+  });
 
   return (
     <MenuLayout scrollable centered={false}>
@@ -87,8 +81,7 @@ export default function RecoverScreen() {
                   autoComplete="email"
                   textContentType="emailAddress"
                   returnKeyType="done"
-                  onSubmitEditing={submitRequest}
-                  editable={!loading}
+                  {...request.field}
                   accessibilityLabel={t("recover.emailA11yLabel")}
                   testID="input-recover-email"
                 />
@@ -97,10 +90,10 @@ export default function RecoverScreen() {
               {error && <FormNotice tone="error" text={error} />}
 
               <MenuButton
-                label={loading ? t("recover.requestSaving") : t("recover.requestSubmit")}
-                onPress={submitRequest}
+                label={request.busy ? t("recover.requestSaving") : t("recover.requestSubmit")}
+                onPress={request.submit}
                 variant="primary"
-                loading={loading}
+                loading={request.busy}
                 accessibilityLabel={t("recover.requestSubmit")}
               />
               <MenuButton
@@ -142,8 +135,7 @@ export default function RecoverScreen() {
                   autoComplete="new-password"
                   textContentType="newPassword"
                   returnKeyType="done"
-                  onSubmitEditing={submitReset}
-                  editable={!loading}
+                  {...reset.field}
                   accessibilityLabel={t("recover.newPasswordA11yLabel")}
                   testID="input-recover-new-password"
                 />
@@ -152,10 +144,10 @@ export default function RecoverScreen() {
               {error && <FormNotice tone="error" text={error} />}
 
               <MenuButton
-                label={loading ? t("recover.resetSaving") : t("recover.resetSubmit")}
-                onPress={submitReset}
+                label={reset.busy ? t("recover.resetSaving") : t("recover.resetSubmit")}
+                onPress={reset.submit}
                 variant="primary"
-                loading={loading}
+                loading={reset.busy}
                 accessibilityLabel={t("recover.resetSubmit")}
               />
               <MenuButton

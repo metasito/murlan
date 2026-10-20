@@ -26,6 +26,7 @@ const MOCK_ENDED: GameState = {
   roundOver: true,
   finishingOrder: ['player_1', 'player_0', 'player_2', 'player_3'],
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: 'deal' },
 };
 const MOCK_SCORES = { player_0: 12, player_1: 22, player_2: 6, player_3: 3 };
 const MOCK_ROUND = { player_0: 1, player_1: 3, player_2: 0, player_3: 0 };

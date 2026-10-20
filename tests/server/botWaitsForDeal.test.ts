@@ -37,6 +37,7 @@ function dealtRound(seats: number): GameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: false,
+    lastMove: { seq: 0, kind: "deal" },
     startReason: { type: "start_card", playerIdx: 0 },
     playedRanks: emptyRankTally(),
   };

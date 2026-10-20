@@ -17,7 +17,7 @@ import { socketRoomMap } from "../game/gameRoom.ts";
 import type { TableActionDraft } from "../game/tableActions.ts";
 import type { Outcome } from "../shared/refusal.ts";
 import { seatSocket } from "./seating.ts";
-import { payload } from "../shared/payload.ts";
+import { rejoinFailure } from "./rejoinFailure.ts";
 import {
   NoPayloadSchema,
   GamePlaySchema,
@@ -29,32 +29,6 @@ import {
 
 const GAME_ACTION_RATE_LIMIT = 60;
 
-type RejoinCode =
-  | "UNAUTHORIZED"
-  | "SEAT_RELEASED"
-  | "NO_LIVE_GAME"
-  | "GAME_NO_LONGER_VALID"
-  | "INVALID_PAYLOAD"
-  | "SERVER_ERROR";
-
-/**
- * What the client is told when a rejoin fails, keyed by the refusal the owning
- * instance gave. `game:rejoin_failed` is the only failure the client's rejoin
- * handling listens for, and `roomId` stays top-level because its stale-reply
- * guard matches on it.
- */
-const REJOIN_FAILURE: Record<RejoinCode, ReturnType<typeof payload>> = {
-  UNAUTHORIZED: payload("UNAUTHORIZED"),
-  SEAT_RELEASED: payload("SEAT_RELEASED"),
-  NO_LIVE_GAME: payload("GAME_NOT_FOUND"),
-  GAME_NO_LONGER_VALID: payload("GAME_NO_LONGER_VALID"),
-  INVALID_PAYLOAD: payload("INVALID_PAYLOAD"),
-  SERVER_ERROR: payload("SERVER_ERROR"),
-};
-
-// Own keys only: `in` would also accept "constructor" and every other prototype name.
-const isRejoinCode = (code: string): code is RejoinCode => Object.hasOwn(REJOIN_FAILURE, code);
-
 type DraftBody = TableActionDraft extends infer T
   ? T extends TableActionDraft
     ? Omit<T, "roomId" | "userId" | "intentId">
@@ -64,8 +38,7 @@ type DraftBody = TableActionDraft extends infer T
 export function registerGameplayHandlers({ rt, socket, userId }: HandlerContext) {
 
     const rejoinFailed = (code: string, roomId: unknown) => {
-      const failure = isRejoinCode(code) ? REJOIN_FAILURE[code] : REJOIN_FAILURE.SERVER_ERROR;
-      socket.emit("game:rejoin_failed", { ...failure, roomId: typeof roomId === "string" ? roomId : undefined });
+      socket.emit("game:rejoin_failed", rejoinFailure(code, roomId));
     };
 
     /** Routes the intent to this socket's table, or refuses it when the socket is at none. */
