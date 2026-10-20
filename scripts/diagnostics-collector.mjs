@@ -5,6 +5,7 @@ import { appendFileSync, existsSync, mkdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { isInvokedDirectly } from "./lib/entry.mjs";
 
+export const COLLECTOR_PORT = 5099;
 export const MAX_BODY = 1024 * 1024;
 export const MAX_FILE = 256 * 1024 * 1024;
 
@@ -62,5 +63,5 @@ export function createCollector(file, { maxFile = MAX_FILE } = {}) {
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const file = process.argv[2] ?? path.join("diagnostics", `${new Date().toISOString().replace(/[:.]/g, "-")}.ndjson`);
-  createCollector(file).listen(5099, "0.0.0.0", () => console.log(`• Diagnostics collector on every interface, :5099 (the phone must reach it) → ${file}`));
+  createCollector(file).listen(COLLECTOR_PORT, "0.0.0.0", () => console.log(`• Diagnostics collector on every interface, :${COLLECTOR_PORT} (the phone must reach it) → ${file}`));
 }

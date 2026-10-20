@@ -15,7 +15,6 @@ import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { clearPort, portListeners, staleAmong } from "../loop/reap.mjs";
 import { BASE_PORT, PORT_SPAN } from "./e2ePortRange.mjs";
 
-
 /**
  * The first port from `base` that this run may take, and the pids to kill to take it.
  *

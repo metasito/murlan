@@ -19,6 +19,7 @@ import { createRequire } from "node:module";
 import readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { PLAY_PORT } from "../tools/ci/e2ePortRange.mjs";
+import { COLLECTOR_PORT } from "./diagnostics-collector.mjs";
 import { gateTable, readRows, waitForRunEnd } from "./bench-gates.mjs";
 import { rewriteZipText } from "./lib/zipEntry.mjs";
 import { killTree, runBin, startBin } from "./lib/proc.mjs";
@@ -337,7 +338,6 @@ export function metroEnv(env, ip, diagnostics) {
 }
 
 const RUN_TIMEOUT_MS = 2 * 60 * 60 * 1000;
-const COLLECTOR_PORT = 5099;
 
 async function benchServe(ip, gates) {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");

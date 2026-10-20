@@ -318,13 +318,12 @@ export async function reap({ dryRun = false, stale: takeStale = false, say = con
   // The command line is printed because "held by pid 33196" tells whoever lost a run nothing
   // about whose it was.
   const byPid = new Map(table.map((p) => [p.pid, p]));
-  const base = Number(process.env.E2E_PORT ?? BASE_PORT);
   const staleHolders = [];
   let anyHeld = false;
-  for (let port = base; port < base + PORT_SPAN; port++) {
+  for (let port = BASE_PORT; port < BASE_PORT + PORT_SPAN; port++) {
     const holders = listeners(port).filter((pid) => pid !== process.pid);
     if (holders.length) anyHeld = true;
-    const stale = stalePortHolders(holders, table);
+    const stale = stalePortHolders(holders, table).filter((pid) => ours.includes(byPid.get(pid)));
     for (const pid of stale) {
       say(`reap: ${verb} the e2e port ${port}, held by ${labelOf(byPid.get(pid))}`);
       kill(pid);
@@ -338,7 +337,7 @@ export async function reap({ dryRun = false, stale: takeStale = false, say = con
       );
     }
   }
-  if (!anyHeld) say(`reap: e2e ports ${base}..${base + PORT_SPAN - 1} are free`);
+  if (!anyHeld) say(`reap: e2e ports ${BASE_PORT}..${BASE_PORT + PORT_SPAN - 1} are free`);
 
   const parentless = orphans(ours, {
     livePids: new Set(table.map((p) => p.pid)),

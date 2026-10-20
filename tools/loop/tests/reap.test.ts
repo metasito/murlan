@@ -562,27 +562,46 @@ describe("the sweep, called in-process as housekeeping calls it", () => {
     assert.equal(took, said.filter((l) => /would (kill|clear)/.test(l)).length, said.join("\n"));
   });
 
-  test("sweeps every port of the e2e span, not only the base", async () => {
+  async function sweepSpan(commandLine: string, heldPort: number, chosen?: string) {
     const said: string[] = [];
-    const far = BASE_PORT + PORT_SPAN - 1;
-    const orphan = { pid: 777, ppid: 999999, name: "node", commandLine: "node server", startedAt: Date.now() };
+    const orphan = { pid: 777, ppid: 999999, name: "node", commandLine, startedAt: Date.now() };
     const swept: number[] = [];
     const pinned = process.env.E2E_PORT;
-    delete process.env.E2E_PORT;
-    let took: number;
+    if (chosen === undefined) delete process.env.E2E_PORT;
+    else process.env.E2E_PORT = chosen;
     try {
-      ({ took } = await reap({
+      const { took } = await reap({
         dryRun: true,
         say: (l: string) => said.push(l),
         readTable: () => ({ rows: [orphan], blind: null }),
-        listeners: (port: number) => (swept.push(port), port === far ? [777] : []),
-      }));
+        listeners: (port: number) => (swept.push(port), port === heldPort ? [777] : []),
+      });
+      return { said: said.join("\n"), swept, took };
     } finally {
-      if (pinned !== undefined) process.env.E2E_PORT = pinned;
+      if (pinned === undefined) delete process.env.E2E_PORT;
+      else process.env.E2E_PORT = pinned;
     }
-    assert.deepEqual(swept, Array.from({ length: PORT_SPAN }, (_, i) => BASE_PORT + i));
-    assert.match(said.join("\n"), new RegExp(`would clear the e2e port ${far}, held by node pid 777`));
+  }
+  const OURS = () => `node ${checkoutRoot()}/serve.js`;
+  const WHOLE_SPAN = Array.from({ length: PORT_SPAN }, (_, i) => BASE_PORT + i);
+
+  test("sweeps every port of the e2e span, not only the base", async () => {
+    const far = BASE_PORT + PORT_SPAN - 1;
+    const { said, swept, took } = await sweepSpan(OURS(), far);
+    assert.deepEqual(swept, WHOLE_SPAN);
+    assert.match(said, new RegExp(`would clear the e2e port ${far}, held by node pid 777`));
     assert.equal(took, 1);
+  });
+
+  test("sweeps the same span when E2E_PORT names the port a run chose mid-span", async () => {
+    const { swept } = await sweepSpan(OURS(), BASE_PORT, String(BASE_PORT + 6));
+    assert.deepEqual(swept, WHOLE_SPAN);
+  });
+
+  test("an orphan on a span port that is not ours is left alone", async () => {
+    const { said, took } = await sweepSpan("node some-other-dev-server.js", BASE_PORT + 5);
+    assert.equal(took, 0, said);
+    assert.doesNotMatch(said, /would clear/);
   });
 
   test("a blind table comes back blind and is said, never read as a clean machine", async () => {

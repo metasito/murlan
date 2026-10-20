@@ -10,5 +10,5 @@ const ROOT = path.resolve(import.meta.dirname, "..");
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   process.env.NODE_ENV = "production";
-  relay(process.execPath, [path.join(ROOT, "server_dist", "index.mjs")]);
+  relay(process.execPath, [path.join(ROOT, "server_dist", "index.mjs"), ...process.argv.slice(2)]);
 }
