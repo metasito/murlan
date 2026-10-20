@@ -138,6 +138,71 @@ describe('the turn chip', () => {
     expect(clockVoices()[0].stoppedAt).toBeDefined();
   });
 
+  const keyed = (resetKey: string, seconds = CLOCK_SECONDS) => (
+    <TurnChip seconds={seconds} active resetKey={resetKey} scale={1} lit chipText={DRAWN_SEAT} spokenSeat={SPOKEN_SEAT} />
+  );
+  const runFor = async (ms: number) => {
+    for (let at = 0; at < ms; at += 1000) {
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+    }
+  };
+
+  it('sounds again for a window that comes back after another, A then B then A', async () => {
+    const intoRunningOut = (CLOCK_SECONDS - CLOCK_RUNNING_OUT_SECONDS) * 1000;
+    const r = await render(keyed('A'));
+    await runFor(intoRunningOut);
+    expect(clockVoices()).toHaveLength(1);
+    await r.rerender(keyed('B'));
+    await runFor(1000);
+    await r.rerender(keyed('A'));
+    await runFor(intoRunningOut);
+    expect(clockVoices()).toHaveLength(2);
+    await r.unmount();
+  });
+
+  it('mounting inside the last seconds is silent, and the first tick down sounds', async () => {
+    const r = await render(keyed('short', CLOCK_RUNNING_OUT_SECONDS - 1));
+    expect(clockVoices()).toHaveLength(0);
+    await runFor(1000);
+    expect(clockVoices()).toHaveLength(1);
+    await r.unmount();
+  });
+
+  it('sounds once across a hold, and expires once, never while held', async () => {
+    const onExpire = jest.fn();
+    const held = (frozen: boolean) => (
+      <TurnChip
+        seconds={CLOCK_SECONDS}
+        active
+        frozen={frozen}
+        resetKey="turn-1"
+        onExpire={onExpire}
+        scale={1}
+        lit
+        chipText={DRAWN_SEAT}
+        spokenSeat={SPOKEN_SEAT}
+      />
+    );
+    const advance = async (ms: number) => {
+      await act(async () => {
+        jest.advanceTimersByTime(ms);
+      });
+    };
+    const r = await render(held(false));
+    await advance((CLOCK_SECONDS - CLOCK_RUNNING_OUT_SECONDS + 1) * 1000);
+    expect(clockVoices()).toHaveLength(1);
+    await r.rerender(held(true));
+    await advance(CLOCK_SECONDS * 2000);
+    expect(onExpire).not.toHaveBeenCalled();
+    await r.rerender(held(false));
+    await advance(CLOCK_SECONDS * 1000);
+    expect(onExpire).toHaveBeenCalledTimes(1);
+    expect(clockVoices()).toHaveLength(1);
+    await r.unmount();
+  });
+
   it('names the seat alone when no clock is running', async () => {
     const r = await render(chip(false));
     expect(screen.getAllByLabelText(SPOKEN_SEAT)).toHaveLength(1);
