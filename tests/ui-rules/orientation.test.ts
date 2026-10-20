@@ -22,17 +22,25 @@ describe("orientation is never narrowed behind the player's back", () => {
     const lock = readFileSync(path.join(repoRoot, "lib", "device", "orientation.tsx"), "utf8");
     assert.match(lock, /export function useLandscapeLock\(/);
     assert.match(lock, /lockAsync\(\s*ScreenOrientation\.OrientationLock\.LANDSCAPE\s*\)/);
-    // An import of the hook by name, however it is renamed, or of the whole module.
-    const named = /import\s*\{[^}]*\buseLandscapeLock\b[^}]*\}\s*from\s*["'][^"']*device\/orientation(\.tsx)?["']/;
-    const whole = /import\s*\*\s*as\s+\w+\s+from\s*["'][^"']*device\/orientation(\.tsx)?["']/;
+    const target = path.join(repoRoot, "lib", "device", "orientation");
+    const resolve = (from: string, spec: string) =>
+      (spec.startsWith("@/") ? path.join(repoRoot, spec.slice(2)) : spec.startsWith(".") ? path.join(path.dirname(from), spec) : spec)
+        .replace(/\.(tsx?|jsx?)$/, "")
+        .replace(/[\\/]index$/, "");
+    // Every way to reach a module's bindings; a clause of `null` takes all of them.
+    const reaches = (src: string): { spec: string; clause: string | null }[] => [
+      ...[...src.matchAll(/\b(?:import|export)\s+(?:type\s+)?([^;'"]*?)\s*from\s*["']([^"']+)["']/g)].map((m) => ({ spec: m[2], clause: m[1] })),
+      ...[...src.matchAll(/\b(?:require|import)\s*\(\s*["']([^"']+)["']\s*\)/g)].map((m) => ({ spec: m[1], clause: null })),
+    ];
     const importers = ["app", "components", "context", "lib", "modules"]
-      .flatMap((dir) => readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" }).map((f) => path.join(dir, f)))
-      .filter((f) => /\.tsx?$/.test(f))
-      .filter((f) => {
-        const src = readFileSync(path.join(repoRoot, f), "utf8");
-        return named.test(src) || whole.test(src);
-      })
-      .map((f) => f.split(path.sep).join("/"));
+      .flatMap((dir) => readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" }).map((f) => path.join(repoRoot, dir, f)))
+      .filter((f) => /\.tsx?$/.test(f) && resolve(f, f) !== target)
+      .filter((f) =>
+        reaches(readFileSync(f, "utf8")).some(
+          ({ spec, clause }) => resolve(f, spec) === target && (clause === null || /\*|\buseLandscapeLock\b/.test(clause))
+        )
+      )
+      .map((f) => path.relative(repoRoot, f).split(path.sep).join("/"));
     assert.deepEqual(importers, ["components/GameTable.tsx"]);
   });
 
