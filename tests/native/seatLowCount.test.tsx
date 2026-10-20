@@ -1,18 +1,13 @@
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import { act, render, screen } from '@testing-library/react-native';
 import { makeMutable } from 'react-native-reanimated';
 
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 import { OpponentSeat } from '@/components/table/seats';
 import { LastCard } from '@/lib/theme';
 import type { Player } from '@/lib/game/gameEngine';
+import { setMotion } from './harness/env';
 
 const PLAYER: Player = { id: 'player_1', name: 'Besi', hand: [], type: 'human' };
 
@@ -25,6 +20,8 @@ async function badgeAt(cardCount: number) {
 }
 
 const glowOf = (style: { boxShadow?: unknown; shadowColor?: unknown }) => String(style.boxShadow ?? style.shadowColor ?? 'none');
+
+beforeEach(() => setMotion('on'));
 
 describe('a seat down to its last card', () => {
   it("grows its badge by a quarter and paints it the mockup's .badge.last: red, a pale edge, white ink, a red glow", async () => {

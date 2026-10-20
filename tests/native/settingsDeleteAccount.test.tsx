@@ -22,10 +22,6 @@ jest.mock('@/lib/device/pushRegistration', () => ({
   registerForPush: async () => {},
   forgetPushRegistration: () => {},
 }));
-jest.mock('@react-native-community/netinfo', () => ({
-  __esModule: true,
-  default: { addEventListener: jest.fn(() => () => {}) },
-}));
 jest.mock('expo-router', () => ({
   useRouter: () => ({ replace: mockReplace }),
   usePathname: () => '/lobby',

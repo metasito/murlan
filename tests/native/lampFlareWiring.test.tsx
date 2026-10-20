@@ -6,12 +6,6 @@ import React from "react";
 import { act, render } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-jest.mock("@/lib/accessibility", () => ({
-  usePrefersReducedMotion: () => false,
-  setMotionPreference: () => {},
-  getMotionPreference: () => "off",
-}));
-
 const mockLanding: { current: { value: { seq: number; tier: string } } | null } = { current: null };
 jest.mock("@/components/useTableFeedback", () => {
   const actual: any = jest.requireActual("@/components/useTableFeedback");

@@ -10,7 +10,7 @@
 // anything the capture is actually for — `react-test-renderer` runs no flexbox
 // and paints nothing, so which seat is covered by what is not a question any
 // test here can answer.
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
 import { Platform } from 'react-native';
@@ -18,6 +18,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getAnimatedStyle } from 'react-native-reanimated';
 import { greyFilter, iosGrey } from '@/components/table/linkGrey';
 import { holdGrey } from '@/lib/ownLink';
+import { setMotion, setWindow } from './harness/env';
 
 jest.mock('@/lib/e2eConfig', () =>
   (require('./helpers/e2eBuildMock') as typeof import('./helpers/e2eBuildMock')).e2eConfigAsBuilt()
@@ -27,17 +28,6 @@ jest.mock('@/lib/e2eConfig', () =>
 // one, which is a different card scale. Everything else here is the same shape
 // the other <GameTable> tests use.
 const WINDOW = { width: 874, height: 402, scale: 3, fontScale: 1 };
-jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
-  __esModule: true,
-  default: () => WINDOW,
-}));
-
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 const METRICS = {
   frame: { x: 0, y: 0, width: WINDOW.width, height: WINDOW.height },
   insets: { top: 0, left: 59, right: 59, bottom: 21 },
@@ -63,6 +53,10 @@ const mount = () =>
       <CaptureScreen />
     </SafeAreaProvider>
   );
+
+beforeEach(() => setMotion('on'));
+
+beforeEach(() => setWindow(WINDOW));
 
 describe('the capture screen', () => {
   it('lists every named state when none is picked', async () => {

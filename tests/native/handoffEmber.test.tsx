@@ -2,12 +2,6 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import { act, render, type RenderResult } from '@testing-library/react-native';
 
-const mockReduceMotion = { on: false };
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => mockReduceMotion.on,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
 jest.mock('@/components/table/ember', () => {
   const actual = jest.requireActual<typeof import('@/components/table/ember')>('@/components/table/ember');
   return { ...actual, emberFrame: jest.fn(actual.emberFrame) };
@@ -17,6 +11,7 @@ import { emberFrame, RIM } from '@/components/table/ember';
 import { Handoff } from '@/lib/tokens';
 import { bootFeedback } from './helpers/feedback';
 import { PAIR, tableAfter } from './helpers/landing';
+import { setMotion } from './harness/env';
 
 type Spawns = ReturnType<typeof emberFrame>;
 const heads = () =>
@@ -42,7 +37,6 @@ describe('the hand-off ember', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
-    mockReduceMotion.on = false;
     await bootFeedback();
   });
   afterEach(() => {
@@ -68,7 +62,7 @@ describe('the hand-off ember', () => {
   });
 
   it('throws none under reduced motion', async () => {
-    mockReduceMotion.on = true;
+    await setMotion('on');
     const view = await settledOn(3);
     await act(async () => view.rerender(tableAfter({ by: 0, combo: PAIR, passCount: 1, turn: 2 })));
     await frames(600);

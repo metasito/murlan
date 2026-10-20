@@ -16,12 +16,6 @@ jest.mock('react-native-reanimated', () => {
         : target[key],
   });
 });
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => false,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 const { CountdownRing } = require('@/components/table/seats') as typeof import('@/components/table/seats');
 const { useCountdown } = require('@/components/table/countdown') as typeof import('@/components/table/countdown');
 

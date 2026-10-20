@@ -2,19 +2,14 @@
 // trophy in its count bubble (components/table/seats.tsx `SeatRing`) instead
 // of its card count. The swap is the whole of what says "finished" — nothing
 // asserted it existed before now.
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
-
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
 
 import { t } from '@/lib/i18n';
 import { OpponentSeat } from '@/components/table/seats';
 import type { Player } from '@/lib/game/gameEngine';
+import { setMotion } from './harness/env';
 
 const player = (finishPosition?: number): Player => ({
   id: 'player_1',
@@ -23,6 +18,8 @@ const player = (finishPosition?: number): Player => ({
   type: 'human',
   finishPosition,
 });
+
+beforeEach(() => setMotion('on'));
 
 describe('the finished-seat trophy', () => {
   it('shows a trophy in the count bubble once the seat has gone out', async () => {

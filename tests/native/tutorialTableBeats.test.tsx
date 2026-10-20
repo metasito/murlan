@@ -13,15 +13,10 @@ jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: null, loading: false }),
 }));
 
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 import TutorialScreen from '@/app/tutorial';
 import { t } from '@/lib/i18n';
 import { TUTORIAL_PROGRESS_KEY } from '@/lib/storageKeys';
+import { setMotion } from './harness/env';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -46,6 +41,8 @@ async function press(el: Parameters<typeof fireEvent.press>[0]) {
 }
 
 const HIDDEN = { includeHiddenElements: true };
+
+beforeEach(() => setMotion('on'));
 
 describe('tutorial beats on the table the player will meet', () => {
   beforeEach(async () => {

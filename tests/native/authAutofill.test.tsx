@@ -19,11 +19,6 @@ jest.mock('@/lib/query-client', () => ({
   apiRequest: jest.fn(),
 }));
 
-jest.mock('@react-native-community/netinfo', () => ({
-  __esModule: true,
-  default: { addEventListener: jest.fn(() => () => {}) },
-}));
-
 import AuthScreen from '@/app/auth';
 import { AuthProvider } from '@/context/AuthContext';
 import { en as locale } from '@/locales/en';

@@ -578,6 +578,41 @@ const GUARDS = [
       '// process.env.EXPO_PUBLIC_E2E_FAST\nconst s = "EXPO_PUBLIC_E2E_FAST";',
     ].map((code) => ({ file: "components/Plant.tsx", code })),
   },
+  {
+    id: "motion-and-connectivity-are-knobs",
+    why: "Motion and connectivity are knobs in tests/native/harness/env.ts, reset before every test: call setMotion or setConnectivity there; a module mock can answer what the real hook never would.",
+    selector: 'CallExpression[callee.object.name="jest"][callee.property.name=/^(mock|doMock)$/][arguments.0.value=/^(@\\x2Flib\\x2Faccessibility|@react-native-community\\x2Fnetinfo)$/]',
+    files: ["tests/native/**/*.{ts,tsx}"],
+    ignores: [{ glob: "tests/native/setup.ts", reason: "installs the one netinfo mock whose listeners setConnectivity drives" }],
+    plant: { file: "tests/native/plant.test.tsx", code: [
+      "jest.mock('@/lib/accessibility', () => ({ usePrefersReducedMotion: () => true }));",
+      "jest.mock(\"@react-native-community/netinfo\", () => ({}));",
+      "jest.doMock('@/lib/accessibility', () => ({}));",
+    ].join("\n"), hits: 3 },
+    spare: [
+      "await setMotion('on');",
+      "jest.mock('@/lib/accessibilityLabels', () => ({}));",
+      "jest.requireActual('@/lib/accessibility');",
+    ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
+  },
+  {
+    id: "window-is-a-knob",
+    why: "The window is a knob in tests/native/harness/env.ts, reset before every test: call setWindow there, which moves Dimensions and every reader of it together.",
+    selector: 'CallExpression[callee.object.name="jest"][callee.property.name=/^(mock|doMock)$/][arguments.0.value=/^react-native\\x2FLibraries\\x2FUtilities\\x2FuseWindowDimensions$/]',
+    files: ["tests/native/**/*.{ts,tsx}"],
+    ignores: [
+      { glob: "tests/native/orientationFirstRender.test.tsx", reason: "a cold bridge whose first window is wrong and never fires a change, which Dimensions.set cannot hold" },
+      { glob: "tests/native/tableRelocksAfterEntry.test.tsx", reason: "a bridge frozen in portrait while Dimensions moves, which Dimensions.set cannot split" },
+    ],
+    plant: { file: "tests/native/plant.test.tsx", code: [
+      "jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({ default: () => W }));",
+      'jest.doMock("react-native/Libraries/Utilities/useWindowDimensions", () => ({}));',
+    ].join("\n"), hits: 2 },
+    spare: [
+      "await setWindow({ width: 390, height: 844 });",
+      "jest.mock('react-native/Libraries/Utilities/Dimensions', () => ({}));",
+    ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
+  },
 ];
 
 // eslint's --cache keys a plugin's results on its meta.version, so an unversioned guard edit would

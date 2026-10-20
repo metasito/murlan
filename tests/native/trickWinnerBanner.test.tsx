@@ -16,15 +16,10 @@ import { getAnimatedStyle } from 'react-native-reanimated';
 
 // Reduced motion collapses a played card's flight to a single timer, so the
 // pile reaches its settled state on a tick rather than on a spring callback.
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 import { bootFeedback, startsOf } from './helpers/feedback';
 import { GameTable } from '@/components/GameTable';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
+import { setMotion } from './harness/env';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -93,6 +88,8 @@ const tagShown = async () => {
 /** Not present, hidden or otherwise — the tag unmounts on dismissal rather
  *  than fading in place, so a plain absence check is the real claim here. */
 const tagGone = () => pileArea().queryByText(WINNER, { includeHiddenElements: true }) === null;
+
+beforeEach(() => setMotion('on'));
 
 describe('the trick-winner tag', () => {
   beforeEach(async () => {

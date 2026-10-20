@@ -10,10 +10,6 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 jest.mock('@/lib/query-client', () => ({
   apiRequest: jest.fn(),
 }));
-jest.mock('@react-native-community/netinfo', () => ({
-  __esModule: true,
-  default: { addEventListener: jest.fn(() => () => {}) },
-}));
 // Hoisted above the factories below, which is why they carry the `mock` prefix
 // jest requires for an out-of-scope reference.
 const mockLogout = jest.fn<() => Promise<void>>();

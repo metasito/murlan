@@ -45,12 +45,6 @@ jest.mock('@/lib/query-client', () => ({
 
 // Both screens stagger themselves in on mount; under reduced motion the values
 // are set outright, so nothing here waits on an animation it does not assert.
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 import { router } from 'expo-router';
 import { apiRequest } from '@/lib/query-client';
 import TutorialScreen from '@/app/tutorial';
@@ -58,6 +52,7 @@ import HomeScreen from '@/app/index';
 import { t } from '@/lib/i18n';
 
 import { TUTORIAL_SEEN_KEY as SEEN_KEY, TUTORIAL_PROGRESS_KEY as PROGRESS_KEY } from '@/lib/storageKeys';
+import { setMotion } from './harness/env';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -96,6 +91,8 @@ function watchGetItem() {
   if (!getItemSpy) getItemSpy = jest.spyOn(AsyncStorage, 'getItem');
   return getItemSpy;
 }
+
+beforeEach(() => setMotion('on'));
 
 describe('opening the tutorial is what marks it seen', () => {
   beforeEach(async () => {

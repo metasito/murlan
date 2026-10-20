@@ -6,18 +6,13 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getAnimatedStyle } from 'react-native-reanimated';
 
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'on',
-}));
-
 import { GameTable } from '@/components/GameTable';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t, tn } from '@/lib/i18n';
 import { motionMs } from '@/lib/tokens';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { activate } from './tapHelpers';
+import { setMotion } from './harness/env';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -80,6 +75,8 @@ const shownStandings = (label: string) => {
   expect(getAnimatedStyle(panels[0]).display).toBe('flex');
   return panels[0];
 };
+
+beforeEach(() => setMotion('on'));
 
 describe('the score pill', () => {
   beforeEach(() => {

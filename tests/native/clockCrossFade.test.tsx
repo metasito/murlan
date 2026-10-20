@@ -5,13 +5,6 @@ import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals
 import { act, render, within, type RenderResult } from '@testing-library/react-native';
 import Animated, { getAnimatedStyle, useAnimatedStyle } from 'react-native-reanimated';
 
-const mockReduceMotion = { on: false };
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => mockReduceMotion.on,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 // While held, every UI-to-JS report waits in `queue` until the test lets the hop land.
 const mockHop: { held: boolean; queue: (() => void)[] } = { held: false, queue: [] };
 jest.mock('react-native-worklets', () => {
@@ -26,6 +19,7 @@ jest.mock('react-native-worklets', () => {
 import { useClockFade } from '@/components/table/useClockFade';
 import { bootFeedback } from './helpers/feedback';
 import { PAIR, tableAfter } from './helpers/landing';
+import { setMotion } from './harness/env';
 
 const SEATS = { 1: 'side-seat-right', 2: 'top-seat', 3: 'side-seat-left' } as Record<number, string>;
 const all = { includeHiddenElements: true };
@@ -63,7 +57,6 @@ describe('the turn clocks across a hand-off', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
-    mockReduceMotion.on = false;
     await bootFeedback();
   });
   afterEach(() => {
@@ -89,7 +82,7 @@ describe('the turn clocks across a hand-off', () => {
   }
 
   it('swaps at once under reduced motion', async () => {
-    mockReduceMotion.on = true;
+    await setMotion('on');
     const { view, seen, end } = await handOff(3, 2);
     for (const frame of seen) expect(frame.map(([, o]) => o)).toEqual([1]);
     expect(end).toEqual([[2, 1]]);
@@ -107,7 +100,7 @@ describe('the turn clocks across a hand-off', () => {
       jest.advanceTimersByTime(48);
     });
     expect(clocks(view).filter(([seat, o]) => seat === 3 && o > 0 && o < 1)).toHaveLength(1);
-    mockReduceMotion.on = true;
+    await setMotion('on');
     await act(async () => view.rerender(tableAfter({ by: 0, combo: PAIR, passCount: 1, turn: 2, turnSeconds: 30 })));
     await act(async () => {
       jest.advanceTimersByTime(1000);

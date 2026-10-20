@@ -25,11 +25,6 @@ jest.mock('@/lib/device/pushRegistration', () => ({
   forgetPushRegistration: () => mockForgetPushRegistration(),
 }));
 
-jest.mock('@react-native-community/netinfo', () => ({
-  __esModule: true,
-  default: { addEventListener: jest.fn(() => () => {}) },
-}));
-
 import {
   ACCOUNT_KEYS,
   ACTIVE_ROOM_KEY,

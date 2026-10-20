@@ -3,7 +3,7 @@
 // veil answers to the settings sheet, which hangs off the rail and so is
 // outside the slot; a cover inside the slot cannot share that veil, and a
 // source scan cannot tell the two apart.
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import React from 'react';
 import { View } from 'react-native';
 import {
@@ -17,21 +17,11 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { liveRegions } from '../helpers/liveRegions';
 
 const WINDOW = { width: 568, height: 320, scale: 2, fontScale: 1 };
-jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
-  __esModule: true,
-  default: () => WINDOW,
-}));
-
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 import { GameTable } from '@/components/GameTable';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { A11yStatus } from '@/lib/a11y';
 import { tn } from '@/lib/i18n';
+import { setMotion, setWindow } from './harness/env';
 
 /** A caller's own live region, in the slot the table veils along with itself. */
 const BANNER = 'P1 has left the table.';
@@ -100,6 +90,10 @@ const tree = (tableCovered: boolean, turnTimer?: { seconds: number; resetKey: st
 async function mount(tableCovered: boolean) {
   return render(tree(tableCovered));
 }
+
+beforeEach(() => setMotion('on'));
+
+beforeEach(() => setWindow(WINDOW));
 
 describe('a cover in the overlays slot', () => {
   it('withdraws the table beneath it from the accessibility tree', async () => {

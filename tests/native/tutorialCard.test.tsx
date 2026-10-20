@@ -5,12 +5,6 @@ import React from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { getAnimatedStyle } from "react-native-reanimated";
 
-let mockReduceMotion = true;
-jest.mock("@/lib/accessibility", () => ({
-  ...(jest.requireActual("@/lib/accessibility") as object),
-  usePrefersReducedMotion: () => mockReduceMotion,
-}));
-
 const mockRenders = { card: 0, animatedHooks: 0 };
 jest.mock("@/lib/cosmetics", () => {
   const actual = jest.requireActual("@/lib/cosmetics") as typeof import("@/lib/cosmetics");
@@ -40,6 +34,7 @@ jest.mock("react-native-reanimated", () => {
 import { CardView, PRESS_RISE, PRESS_TILT } from "@/components/CardView";
 import { TutorialCard } from "@/components/TutorialCard";
 import type { Card } from "@/lib/game/gameEngine";
+import { setMotion } from "./harness/env";
 
 const CARD = { id: "3_spades", rank: "3", suit: "spades", isJoker: false } as Card;
 
@@ -54,9 +49,10 @@ const card = (selected: boolean, onPress = () => {}) => (
   <TutorialCard testID="tc" card={CARD} selected={selected} onPress={onPress} />
 );
 
+beforeEach(() => setMotion("on"));
+
 describe("TutorialCard", () => {
   beforeEach(() => {
-    mockReduceMotion = true;
     jest.useFakeTimers();
   });
 
@@ -64,7 +60,7 @@ describe("TutorialCard", () => {
     ["under reduced motion", true],
     ["with motion", false],
   ])("lifts to -14 when selected and settles back when not, %s", async (_, reduced) => {
-    mockReduceMotion = reduced;
+    await setMotion(reduced ? "on" : "off");
     const view = await render(card(false));
     await settle();
     expect(translateY()).toBe(0);
@@ -80,7 +76,7 @@ describe("TutorialCard", () => {
   });
 
   it("springs rather than jumping when motion is allowed", async () => {
-    mockReduceMotion = false;
+    await setMotion("off");
     const view = await render(card(false));
     await settle();
     await view.rerender(card(true));

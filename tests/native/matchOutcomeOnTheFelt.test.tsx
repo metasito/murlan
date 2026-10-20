@@ -5,12 +5,6 @@ import { RoundMoment } from '@/lib/tokens';
 import { bootFeedback } from './helpers/feedback';
 import { CASES, METRICS, closeMatch } from './helpers/closeMatch';
 
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => false,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'system',
-}));
-
 describe("a match's outcome on the felt", () => {
   beforeEach(async () => {
     jest.useFakeTimers();

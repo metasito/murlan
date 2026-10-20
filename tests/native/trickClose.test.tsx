@@ -12,13 +12,6 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 // Reduced motion collapses the card's flight to a single timer, so the pile
 // reaches its settled state on a tick rather than on a spring callback.
-let mockReduceMotion = true;
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => mockReduceMotion,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 import { bootFeedback, startsOf } from './helpers/feedback';
 import { newEpoch } from './mocks/audioApi';
 import { GameTable } from '@/components/GameTable';
@@ -26,6 +19,7 @@ import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';
 import { Motion } from '@/lib/theme';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
+import { setMotion } from './harness/env';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -85,6 +79,8 @@ const onFelt = (card: Card) =>
 /** Seat 1 leads the King; seat 0's pass closes the trick in seat 1's favour. */
 const LED = state({ lastPlayedCombination: single(KING), lastPlayedBy: 1, currentTurnIndex: 0 });
 const CLOSED = state({ lastPlayedCombination: null, lastPlayedBy: 1, trickWinner: 1 });
+
+beforeEach(() => setMotion('on'));
 
 describe('the pass that closes a trick', () => {
   beforeEach(async () => {
@@ -165,12 +161,7 @@ describe('the pass that closes a trick', () => {
   });
 
   describe('with motion on', () => {
-    beforeEach(() => {
-      mockReduceMotion = false;
-    });
-    afterEach(() => {
-      mockReduceMotion = true;
-    });
+    beforeEach(() => setMotion('off'));
 
     const swept = (card: Card) =>
       within(screen.getByTestId('sweep-cards', { includeHiddenElements: true })).queryByLabelText(cardSpokenName(card, t), { includeHiddenElements: true });

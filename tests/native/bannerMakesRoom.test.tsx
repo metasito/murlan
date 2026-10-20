@@ -17,11 +17,6 @@ import { render, screen, act } from '@testing-library/react-native';
 import { getAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
-  __esModule: true,
-  default: () => ({ width: 390, height: 844, scale: 2, fontScale: 1 }),
-}));
-
 import { MenuLayout } from '@/components/MenuLayout';
 import {
   NotificationProvider,
@@ -30,6 +25,7 @@ import {
   type NotificationData,
 } from '@/context/NotificationContext';
 import { SLIDE_DURATION, TOP_GAP } from '@/components/NotificationBanner';
+import { setWindow } from './harness/env';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -95,6 +91,8 @@ beforeEach(() => {
 afterEach(() => {
   jest.useRealTimers();
 });
+
+beforeEach(() => setWindow({ width: 390, height: 844, scale: 2, fontScale: 1 }));
 
 describe('a menu screen and a banner over it', () => {
   it('reserves nothing while there is nothing to announce', async () => {
