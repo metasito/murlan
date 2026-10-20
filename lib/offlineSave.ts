@@ -8,7 +8,7 @@
 // Pure: encoding, decoding and the decision to trust a stored blob live here so
 // they can be tested without AsyncStorage or a renderer. The context does the
 // I/O and nothing else.
-import type { GameState } from "./game/gameEngine.ts";
+import { exchangeIsSatisfiable, type GameState } from "./game/gameEngine.ts";
 import type { MatchState } from "./game/matchState.ts";
 
 /**
@@ -37,6 +37,8 @@ export function encodeOfflineSave(save: Omit<OfflineSave, "version">): string {
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
+
+const isCard = (v: unknown): boolean => isObject(v) && typeof v.id === "string" && typeof v.rank === "string";
 
 export type OfflineDecode =
   | { kind: "none" }
@@ -75,6 +77,8 @@ export function decodeOfflineSave(raw: string | null): OfflineDecode {
   if (!isObject(match) || !isObject(match.scores) || !Array.isArray(match.rounds)) return INCOMPATIBLE;
   if (gameState.gameMode !== "free_for_all" && gameState.gameMode !== "teams") return INCOMPATIBLE;
   if (!Number.isInteger(dealFirstSeat)) return INCOMPATIBLE;
+  if (!gameState.players.every((p) => isObject(p) && Array.isArray(p.hand) && p.hand.every(isCard))) return INCOMPATIBLE;
+  if (!exchangeIsSatisfiable(gameState as unknown as GameState)) return INCOMPATIBLE;
 
   return { kind: "ok", save: parsed as unknown as OfflineSave };
 }

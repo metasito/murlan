@@ -1,6 +1,5 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import pg from "pg";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 
 /**
@@ -42,10 +41,9 @@ describe(
     test("leaves the connection open for the next request", async () => {
       assert.equal(await register("keepalive_warm"), 202);
 
-      const admin = new pg.Pool({ connectionString: process.env.DATABASE_URL! });
       const before = closed;
       try {
-        await admin.query(
+        await server.query(
           `ALTER TABLE "${server.schema}".session ADD CONSTRAINT keepalive_fail CHECK (false) NOT VALID`
         );
         assert.notEqual(
@@ -54,10 +52,7 @@ describe(
           "registration has to fail while the session cannot be written"
         );
       } finally {
-        await admin.query(
-          `ALTER TABLE "${server.schema}".session DROP CONSTRAINT keepalive_fail`
-        );
-        await admin.end();
+        await server.query(`ALTER TABLE "${server.schema}".session DROP CONSTRAINT keepalive_fail`);
       }
 
       assert.equal(

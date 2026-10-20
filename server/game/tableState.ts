@@ -13,7 +13,7 @@ import {
   unpackPersistedState,
   type PersistedEnvelope,
 } from "../../shared/persistedEnvelope.ts";
-import { dealFirstSeatFor, firstTargetFor, startRound } from "../../lib/game/gameEngine.ts";
+import { dealFirstSeatFor, exchangeIsSatisfiable, firstTargetFor, startRound } from "../../lib/game/gameEngine.ts";
 import type { GameMode, GameState, MatchLength, Opening } from "../../lib/game/gameEngine.ts";
 
 /** The fields no envelope carries, each with the value a table starts it on. */
@@ -178,6 +178,7 @@ export type TableRestore =
 export function fromEnvelope(row: { roomId: string; gameState: unknown }): TableRestore {
   const restored = unpackPersistedState<GameState>(row.gameState);
   if (!restored.ok) return restored;
+  if (!exchangeIsSatisfiable(restored.gameState)) return { ok: false, reason: "an open exchange nobody can give back from" };
 
   const { playerMap, scores, matchLength, matchTarget, maxPlayers, roundsPlayed, endedByVote, matchOver } =
     restored.match;

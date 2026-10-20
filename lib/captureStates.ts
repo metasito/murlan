@@ -15,16 +15,10 @@
 // Pure on purpose: the state a capture is of is a value, testable without a
 // renderer, and `app/capture.tsx` is then a thin adapter over <GameTable> in
 // the same way the three game screens are.
-import {
-  buildCombination,
-  createDeck,
-  type Card,
-  type Combination,
-  type GameState,
-  type Player,
-} from "./game/gameEngine.ts";
+import type { GameState } from "./game/gameEngine.ts";
 import { BOT_PERSONALITIES, botSeatNames } from "./game/botPersonalities.ts";
 import type { OwnLink } from "./ownLink.ts";
+import { passingTo, reach, type Situation, type Step } from "./situation.ts";
 
 /** The bots `app/lobby.tsx` fills the seats past the viewer's with, named as it names them. */
 const lobbyBots = (playerCount: number): string[] =>
@@ -49,13 +43,82 @@ export interface CaptureState {
    * `tests/tooling/captureStates.test.ts` pins each against `seatDirection`.
    */
   side: "bottom" | "top" | "left" | "right";
-  /** A combination already on the felt, so the pile draws under the lamp; `"bomb"` lands four of a kind. */
-  pile: boolean | "bomb";
-  /** What each opponent holds; "out" has finished the round. Absent, every seat holds the whole deal. */
+  /** What each opponent holds; "out" has finished the round. Absent, each holds what its situation left it. */
   counts?: Readonly<Record<"right" | "top" | "left", number | "out">>;
   /** The viewer's own connection, as the online table reads it. Absent, it is up. */
   link?: OwnLink;
+  /** The deal and the moves that reach this state, played through the engine. */
+  situation: Situation;
 }
+
+const play = (seat: number, cards: string): Step => ({ seat, play: cards });
+const pass = (...seats: number[]): Step[] => seats.map((seat) => ({ seat, pass: true }));
+const giveback = (seat: number, card: string): Step => ({ seat, giveback: card });
+
+/**
+ * Every capture opens on an exchange: it leaves no 3♠ for the table to wait on, so once a play has
+ * landed the round reads as one in progress.
+ */
+const exchange = (winnerSeat: number, loserSeat: number) => ({ kind: "exchange", winnerSeat, loserSeat }) as const;
+
+/** One round whose tricks are won by the viewer, then the left, top and right seats in turn. */
+const LAMP_TRICKS: readonly (readonly Step[])[] = [
+  [giveback(2, "4_clubs"), play(1, "5_hearts"), play(0, "6_hearts"), ...pass(3, 2, 1)],
+  [play(0, "7_hearts"), play(3, "8_hearts"), ...pass(2, 1, 0)],
+  [play(3, "9_hearts"), play(2, "10_hearts"), ...pass(1, 0, 3)],
+  [play(2, "J_hearts"), play(1, "Q_hearts"), ...pass(0, 3, 2)],
+];
+
+const lampRound = (name: string, tricks: number): Situation => ({
+  name,
+  seats: 4,
+  mode: "free_for_all",
+  opening: exchange(2, 1),
+  holding: {
+    0: "6_hearts 7_hearts joker_bw",
+    1: "joker_colored 5_hearts Q_hearts",
+    2: "4_clubs 10_hearts J_hearts",
+    3: "8_hearts 9_hearts",
+  },
+  moves: LAMP_TRICKS.slice(0, tricks).flat(),
+});
+
+/**
+ * Seat `turn` on move at any seating: on its own lead with the felt clear, having led a single that
+ * every other seat passed, or under `pile.cards` led by `pile.by` and passed round to it.
+ */
+export function seatedSituation(
+  name: string,
+  seats: 2 | 3 | 4,
+  turn: number,
+  pile?: { by: number; cards: string }
+): Situation {
+  const by = pile?.by ?? turn;
+  const winner = (by + 1) % seats;
+  const led = pile?.cards ?? "4_hearts";
+  return passingTo(
+    {
+      name,
+      seats,
+      mode: "free_for_all",
+      opening: exchange(winner, by),
+      holding: { [by]: `joker_colored ${led}`, [winner]: "3_clubs joker_bw" },
+      moves: [giveback(winner, "3_clubs"), play(by, led)],
+    },
+    turn
+  );
+}
+
+const thrown = (name: string, by: number, turn: number, cards: string): Situation =>
+  seatedSituation(name, 4, turn, { by, cards });
+
+/** What lies on the felt in a capture's reached state; `"bomb"` lands four of a kind. */
+export function capturePile(state: CaptureState): boolean | "bomb" {
+  const combo = reach(state.situation).lastPlayedCombination;
+  return combo === null ? false : combo.type === "bomb" ? "bomb" : true;
+}
+
+const PAIR = "K_hearts K_diamonds";
 
 /**
  * Four lamp positions and two piles, one flown from the viewer and one from a
@@ -67,89 +130,178 @@ export interface CaptureState {
 export const CAPTURE_STATES: readonly CaptureState[] = [
   {
     id: "lamp-bottom",
-    label: "Your turn — the lamp over your own hand",
+    label: `${RIGHT} leads, you beat it and the rest pass — your lead, the lamp over your own hand`,
     playerCount: 4,
     turn: 0,
     side: "bottom",
-    pile: false,
+    situation: lampRound("lamp-bottom", 1),
   },
   {
     id: "lamp-right",
-    label: `${RIGHT}'s turn — the lamp over the right seat`,
+    label: `${TOP} leads, ${RIGHT} beats it and the rest pass — the lamp over the right seat`,
     playerCount: 4,
     turn: 1,
     side: "right",
-    pile: false,
+    situation: lampRound("lamp-right", 4),
   },
   {
     id: "lamp-top",
-    label: `${TOP}'s turn — the lamp over the top seat`,
+    label: `${LEFT} leads, ${TOP} beats it and the rest pass — the lamp over the top seat`,
     playerCount: 4,
     turn: 2,
     side: "top",
-    pile: false,
+    situation: lampRound("lamp-top", 3),
   },
   {
     id: "lamp-left",
-    label: `${LEFT}'s turn — the lamp over the left seat`,
+    label: `You lead, ${LEFT} beats it and the rest pass — the lamp over the left seat`,
     playerCount: 4,
     turn: 3,
     side: "left",
-    pile: false,
+    situation: lampRound("lamp-left", 2),
   },
   {
     id: "pile-right",
-    label: `${RIGHT}'s turn with a combination on the felt — the pile under a lamp that is not yours`,
+    label: `You lead a pair, ${LEFT} and ${TOP} pass — the pile under ${RIGHT}'s lamp, not yours`,
     playerCount: 4,
     turn: 1,
     side: "right",
-    pile: true,
+    situation: thrown("pile-right", 0, 1, PAIR),
   },
   {
     id: "play-right-landed",
-    label: `${TOP}'s turn after ${RIGHT}'s combination — the right seat's play landed on the pile`,
+    label: `${RIGHT} leads a pair, you and ${LEFT} pass — ${TOP} on move, the right seat's play landed on the pile`,
     playerCount: 4,
     turn: 2,
     side: "top",
-    pile: true,
+    situation: thrown("play-right-landed", 1, 2, PAIR),
   },
   {
     id: "passed",
-    label: "Your turn after two passes — PASSO beside the top seat's disc and under the right one's",
+    label: `${LEFT} leads a pair, ${TOP} and ${RIGHT} pass — your move, PASSO beside the top seat's disc and under the right one's`,
     playerCount: 4,
     turn: 0,
     side: "bottom",
-    pile: true,
+    situation: thrown("passed", 3, 0, PAIR),
   },
 ];
 
-const countState = (id: string, label: string, counts: CaptureState["counts"]): CaptureState => ({
+/** Dealt from the left seat, so the left seat and the viewer hold 14 and the other two 13. */
+const COUNT_DEAL = { seats: 4, mode: "free_for_all", firstSeat: 3 } as const;
+
+const STRAIGHT_TO_Q = "2_hearts 3_hearts 4_hearts 5_hearts 6_hearts 7_hearts 8_hearts 9_hearts 10_hearts J_hearts Q_diamonds";
+const STRAIGHT_TO_K = "3_diamonds 4_diamonds 5_diamonds 6_diamonds 7_diamonds 8_diamonds 9_diamonds 10_diamonds J_diamonds Q_spades K_diamonds";
+const STRAIGHT_TO_A = "4_clubs 5_clubs 6_clubs 7_clubs 8_clubs 9_clubs 10_clubs J_clubs Q_clubs K_clubs A_spades";
+const TOP_RUN = "3_hearts 4_hearts 5_hearts 6_hearts 7_hearts 8_hearts 9_hearts 10_hearts J_hearts Q_hearts K_hearts A_diamonds";
+
+/** The side seats each hold a straight of 11, the top seat one that beats both. */
+const STRAIGHTS: Pick<Situation, "opening" | "holding"> = {
+  opening: exchange(2, 1),
+  holding: {
+    0: "joker_bw 6_spades",
+    1: `joker_colored ${STRAIGHT_TO_Q}`,
+    2: `${STRAIGHT_TO_A} 3_clubs 4_spades`,
+    3: `${STRAIGHT_TO_K} 5_spades`,
+  },
+};
+
+const countState = (
+  id: string,
+  label: string,
+  counts: CaptureState["counts"],
+  situation: Omit<Situation, "name">
+): CaptureState => ({
   id,
   label,
   playerCount: 4,
   turn: CAPTURE_VIEWER_SEAT,
   side: "bottom",
-  pile: false,
   counts,
+  situation: { name: id, ...situation },
 });
 
 /** Hands shrinking and a seat going out, the deal first: no seat ring and not the pile may move between them. */
 export const SEAT_COUNT_STATES: readonly CaptureState[] = [
-  countState("counts-13-13-13", "The deal — every opponent holds 13", { right: 13, top: 13, left: 13 }),
-  countState("counts-2-13-2", "Both side seats down to 2", { right: 2, top: 13, left: 2 }),
-  countState("counts-2-1-2", "The top seat down to 1, the sides to 2", { right: 2, top: 1, left: 2 }),
-  countState("counts-top-out", "The top seat out, its trophy on the ring", { right: 13, top: "out", left: 13 }),
+  countState("counts-13-13-13", `${LEFT} leads a single and you beat it — every opponent holds 13`, { right: 13, top: 13, left: 13 }, {
+    ...COUNT_DEAL,
+    opening: exchange(1, 3),
+    holding: { 0: "joker_bw 5_hearts", 1: "3_hearts", 3: "joker_colored 4_hearts" },
+    moves: [giveback(1, "3_hearts"), play(3, "4_hearts"), ...pass(2, 1), play(0, "5_hearts"), ...pass(3, 2, 1)],
+  }),
+  countState(
+    "counts-2-13-2",
+    `${RIGHT} and ${LEFT} each run a straight of 11, then ${LEFT} leads a single you beat — both side seats down to 2`,
+    { right: 2, top: 13, left: 2 },
+    {
+      ...COUNT_DEAL,
+      ...STRAIGHTS,
+      moves: [
+        giveback(2, "3_clubs"),
+        play(1, STRAIGHT_TO_Q),
+        ...pass(0),
+        play(3, STRAIGHT_TO_K),
+        ...pass(2, 1, 0),
+        play(3, "5_spades"),
+        ...pass(2, 1),
+        play(0, "6_spades"),
+        ...pass(3, 2, 1),
+      ],
+    }
+  ),
+  countState(
+    "counts-2-1-2",
+    `${RIGHT}, ${LEFT} and ${TOP} each run a straight of 11, then singles from ${TOP}, ${LEFT} and you — the top seat down to 1, the sides to 2`,
+    { right: 2, top: 1, left: 2 },
+    {
+      ...COUNT_DEAL,
+      ...STRAIGHTS,
+      moves: [
+        giveback(2, "3_clubs"),
+        play(1, STRAIGHT_TO_Q),
+        ...pass(0),
+        play(3, STRAIGHT_TO_K),
+        play(2, STRAIGHT_TO_A),
+        ...pass(1, 0, 3),
+        play(2, "4_spades"),
+        ...pass(1, 0),
+        play(3, "5_spades"),
+        ...pass(2, 1),
+        play(0, "6_spades"),
+        ...pass(3, 2, 1),
+      ],
+    }
+  ),
+  countState(
+    "counts-top-out",
+    `${TOP} runs a straight of 12 and goes out on a single ${RIGHT} and you beat — its trophy on the ring`,
+    { right: 13, top: "out", left: 13 },
+    {
+      seats: 4,
+      mode: "free_for_all",
+      opening: exchange(3, 2),
+      holding: { 0: "joker_bw 5_clubs", 1: "4_clubs", 2: `joker_colored ${TOP_RUN}`, 3: "3_clubs" },
+      moves: [
+        giveback(3, "3_clubs"),
+        play(2, TOP_RUN),
+        ...pass(1, 0, 3),
+        play(2, "3_clubs"),
+        play(1, "4_clubs"),
+        play(0, "5_clubs"),
+        ...pass(3, 1),
+      ],
+    }
+  ),
 ];
 
 export const LINK_STATES: readonly CaptureState[] = [
   {
     id: "held",
-    label: "Your link down mid-round — the whole table held in grey",
+    label: `You lead a pair, ${LEFT} and ${TOP} pass, and your link drops — the whole table held in grey`,
     playerCount: 4,
     turn: 1,
     side: "right",
-    pile: true,
     link: "reconnecting",
+    situation: thrown("held", 0, 1, PAIR),
   },
 ];
 
@@ -157,11 +309,11 @@ export const LINK_STATES: readonly CaptureState[] = [
 const MOMENT_STATES: readonly CaptureState[] = [
   {
     id: "bomb-landed",
-    label: `${TOP}'s turn after ${RIGHT}'s bomb — the flare screening onto the felt`,
+    label: `${RIGHT} leads a bomb, you and ${LEFT} pass — ${TOP} on move, the flare screening onto the felt`,
     playerCount: 4,
     turn: 2,
     side: "top",
-    pile: "bomb",
+    situation: thrown("bomb-landed", 1, 2, "7_hearts 7_diamonds 7_clubs 7_spades"),
   },
 ];
 
@@ -177,92 +329,18 @@ export function captureStateById(id: string | undefined): CaptureState | null {
 }
 
 /**
- * The whole deck, round-robin, from the engine's own unshuffled copy — so no
- * two seats share a card, every card appears exactly once, and the two seats
- * that hold one more than the others hold it here too.
+ * The table as a capture wants it, with the lobby's names seated.
  *
- * A full hand is the point. The side fans are deliberately wider than their
- * column, and it is that overflow a capture is being taken of; a short hand is
- * not the layout the table was solved for.
- */
-function hands(deck: Card[], playerCount: number): Card[][] {
-  return Array.from({ length: playerCount }, (_, seat) =>
-    deck.filter((_c, i) => i % playerCount === seat)
-  );
-}
-
-/** Where `seatDirection` seats a four-seat table from the viewer's chair; `lib/` may not import it. */
-const COUNT_SEAT = { right: 1, top: 2, left: 3 } as const;
-
-function heldAt(state: CaptureState, seat: number): number | "out" | undefined {
-  const side = (Object.keys(COUNT_SEAT) as (keyof typeof COUNT_SEAT)[]).find((s) => COUNT_SEAT[s] === seat);
-  return side && state.counts ? state.counts[side] : undefined;
-}
-
-/**
- * `size` cards of one rank lifted out of `deck`, as the combination they make.
- *
- * Taken before the deal, not out of a dealt hand. `createDeck` runs rank-major
- * within each suit and 13 does not divide by four, so a round-robin deal hands
- * each seat a different rank residue in every suit — no seat ends up holding a
- * pair at all, and lifting one out of a hand silently left the felt empty.
- */
-function takeOfARank(deck: Card[], size: number): Combination | null {
-  for (let i = 0; i < deck.length; i++) {
-    if (deck[i].isJoker) continue;
-    const at = deck.flatMap((c, k) => (k >= i && !c.isJoker && c.rank === deck[i].rank ? [k] : [])).slice(0, size);
-    if (at.length < size) continue;
-    // High index first, so removing one does not shift the rest.
-    const cards = [...at].reverse().map((k) => deck.splice(k, 1)[0]).reverse();
-    return buildCombination(cards);
-  }
-  return null;
-}
-
-/**
- * The table as a capture wants it: mid-round, only the pile in flight, no deal
- * running, and the turn pinned where the state says.
- *
- * Pinned is the point. `app/game.tsx` runs the bot turn loop, so a seeded save
- * with the turn on a bot is a bot's turn for about a second — long enough to
- * navigate to and not to photograph. Nothing here advances the turn on its own.
+ * Nothing here advances the turn: `app/game.tsx` runs the bot turn loop, so a
+ * seeded save with the turn on a bot is a bot's turn for about a second — long
+ * enough to navigate to and not to photograph.
  */
 export function captureGameState(state: CaptureState): GameState {
-  const deck = createDeck();
-  // The pile's cards leave the deck before it is dealt, so the invariant that a
-  // card appears exactly once holds across the hands and the felt together.
-  const pile = state.pile ? takeOfARank(deck, state.pile === "bomb" ? 4 : 2) : null;
-  const pileFrom = pile ? (state.turn + state.playerCount - 1) % state.playerCount : -1;
-  const dealt = hands(deck, state.playerCount);
-  const finishingOrder: string[] = [];
+  const game = reach(state.situation);
   const bots = lobbyBots(state.playerCount);
-
-  const players: Player[] = Array.from({ length: state.playerCount }, (_, seat) => {
-    const id = `capture_${seat}`;
-    const held = heldAt(state, seat);
-    if (held === "out") finishingOrder.push(id);
-    return {
-      id,
-      name: seat === CAPTURE_VIEWER_SEAT ? VIEWER : bots[seat - 1],
-      hand: held === "out" ? [] : dealt[seat].slice(0, held),
-      type: seat === CAPTURE_VIEWER_SEAT ? "human" : "bot",
-      ...(held === "out" && { finishPosition: finishingOrder.length }),
-    };
-  });
-
   return {
-    players,
-    currentTurnIndex: state.turn,
-    lastPlayedCombination: pile,
-    lastPlayedBy: pile ? pileFrom : -1,
-    passCount: 0,
-    gameMode: "free_for_all",
-    trickWinner: null,
-    roundOver: false,
-    finishingOrder,
-    // Past the opening, so nothing waits on the 3 of spades and the table draws
-    // as a round in progress rather than a first move.
-    firstPlayMade: true,
+    ...game,
+    players: game.players.map((p, seat) => ({ ...p, name: seat === CAPTURE_VIEWER_SEAT ? VIEWER : bots[seat - 1] })),
   };
 }
 

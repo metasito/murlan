@@ -74,8 +74,8 @@ function CaptureHarness() {
 
   if (!picked || !seeded) return <CaptureList />;
 
-  // Built once per state, not per render: `captureGameState` deals a fresh
-  // deck, and a new card object on every render restarts the deal animation
+  // Built once per state, not per render: `captureGameState` replays its round
+  // on a fresh deck, and a new card object on every render restarts the deal animation
   // the capture is waiting to finish.
   const gameState = live?.id === picked.id ? live.game : seeded;
   const move = (to: (s: GameState) => GameState) => setLive({ id: picked.id, game: to(gameState) });

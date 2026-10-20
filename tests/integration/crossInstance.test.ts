@@ -62,6 +62,7 @@ describe("broadcasts cross server instances", {
   let bName = "";
 
   before(async () => {
+    // Creates the schema the child-process servers are then pointed at.
     const admin = new pg.Pool({ connectionString: baseUrl });
     await admin.query(`CREATE SCHEMA "${schema}"`);
     await admin.end();
@@ -377,7 +378,7 @@ describe("broadcasts cross server instances", {
 
     // What survives the kill is the `active_games` row, and it is written
     // fire-and-forget after the deal. Killing before it lands would test
-    // nothing but the race.
+    // nothing but the race. Its own pool: both servers are child processes.
     const admin = new pg.Pool({ connectionString: scoped });
     try {
       const deadline = Date.now() + 15_000;

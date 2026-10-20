@@ -24,6 +24,7 @@ describe("a table outlives losing its owner", { skip: hasDatabase() ? false : sk
 
   before(async () => {
     local = await startTestServer();
+    // Its own pool: the shutdown test ends the app's, and reads the seat after.
     observer = new pg.Pool({ connectionString: process.env.DATABASE_URL });
   });
 

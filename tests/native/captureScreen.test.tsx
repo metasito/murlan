@@ -54,7 +54,7 @@ jest.mock('expo-router', () => ({
 
 // Required after the mocks, so the screen picks them up.
 const CaptureScreen = require('@/app/capture').default as React.ComponentType;
-const { ALL_CAPTURE_STATES, captureStateById } = require('@/lib/captureStates') as typeof import('@/lib/captureStates');
+const { ALL_CAPTURE_STATES, capturePile, captureStateById } = require('@/lib/captureStates') as typeof import('@/lib/captureStates');
 const { redirectSystemPath } = require('@/app/+native-intent') as typeof import('@/app/+native-intent');
 
 const mount = () =>
@@ -81,7 +81,7 @@ describe('the capture screen', () => {
     // The swing is the one state that needs an input rather than a route, so a
     // capture cannot be taken of the handover without it.
     expect(screen.getByLabelText('Move the lamp to the next seat')).toBeTruthy();
-    expect(screen.queryByLabelText('Throw the pile again') !== null).toBe(Boolean(captureStateById(id)?.pile));
+    expect(screen.queryByLabelText('Throw the pile again') !== null).toBe(Boolean(capturePile(captureStateById(id)!)));
     const link = captureStateById(id)?.link ?? 'up';
     expect((getAnimatedStyle(screen.getByTestId('game-table')) as { filter?: string }).filter).toBe(Platform.OS === 'ios' ? iosGrey(holdGrey(link)).filter : greyFilter(holdGrey(link)));
     await view.unmount();

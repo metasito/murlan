@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getAnimatedStyle } from 'react-native-reanimated';
+import { getAnimatedStyle, makeMutable } from 'react-native-reanimated';
 
 const mockReduceMotion = { on: true };
 jest.mock('@/lib/accessibility', () => ({
@@ -24,6 +24,9 @@ jest.mock('@/lib/accessibility', () => ({
 }));
 
 import { GameTable } from '@/components/GameTable';
+import { useCountdown } from '@/components/table/countdown';
+import { WindowTurnChip } from '@/components/table/notices/hud';
+import { CountdownRing } from '@/components/table/seats';
 import type { TurnTimerConfig } from '@/components/turnTimerUi';
 import { urgentThresholdSeconds } from '@/components/turnTimerUi';
 import { Reading } from '@/lib/theme';
@@ -183,6 +186,25 @@ describe("a seat's turn clock", () => {
     await view.unmount();
   });
 
+  it("counts on from a hold to the millisecond the ring holds, not from a whole second", async () => {
+    const ui = (ownLink: OwnLink) => table(state({ currentTurnIndex: 0, lastPlayedCombination: single(KING), lastPlayedBy: 3 }), OFFLINE_TIMER, ownLink);
+    const count = () => screen.getByTestId('turn-chip-count', { includeHiddenElements: true }).props.children;
+    const advance = async (ms: number) => {
+      await act(async () => {
+        jest.advanceTimersByTime(ms);
+      });
+    };
+    const view = await render(ui('up'));
+    await advance(5500);
+    await view.rerender(ui('reconnecting'));
+    await advance(10000);
+    await view.rerender(ui('up'));
+    await advance(600);
+    const ringRemaining = OFFLINE_TIMER.seconds * 1000 - 5500 - 600;
+    expect(count()).toBe(Math.ceil(ringRemaining / 1000));
+    await view.unmount();
+  });
+
   it('holds its sweep while a caught-up throw is in the air, and never for an ordinary one', async () => {
     mockReduceMotion.on = false;
     const right = () => parseFloat((getAnimatedStyle(screen.getByTestId('seat-turn-clock-right')) as { transform: { rotate: string }[] }).transform[0].rotate);
@@ -292,5 +314,51 @@ describe("a seat's turn clock", () => {
       )
     );
     expect(clocks()).toBe(0);
+  });
+});
+
+describe('the chip and the ring on one window', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    mockReduceMotion.on = false;
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    mockReduceMotion.on = true;
+  });
+
+  function Both({ held }: { held: boolean }) {
+    const clock = useCountdown({ seconds: OFFLINE_TIMER.seconds, resetKey: 'turn', running: true, held });
+    return (
+      <>
+        <WindowTurnChip countdown={clock} active scale={1} lit chipText="" spokenSeat="" />
+        <CountdownRing size={40} clock={clock} leaving={false} scale={1} fade={makeMutable(1)} />
+      </>
+    );
+  }
+
+  it("shows the ring's own remainder as the chip's count, across a hold and a resume", async () => {
+    const count = () => screen.getByTestId('turn-chip-count', { includeHiddenElements: true }).props.children;
+    const ringLeftMs = () => {
+      const turned = (testID: string) =>
+        parseFloat((getAnimatedStyle(screen.getByTestId(testID)) as { transform: { rotate: string }[] }).transform[0].rotate);
+      const swept = (turned('seat-turn-clock-right') + turned('seat-turn-clock-left')) / 360;
+      return OFFLINE_TIMER.seconds * 1000 * (1 - swept);
+    };
+    const advance = async (ms: number) => {
+      await act(async () => {
+        jest.advanceTimersByTime(ms);
+      });
+    };
+    const view = await render(<Both held={false} />);
+    await advance(5500);
+    await view.rerender(<Both held />);
+    await advance(10000);
+    await view.rerender(<Both held={false} />);
+    await advance(600);
+    expect(count()).toBe(Math.ceil(ringLeftMs() / 1000));
+    await advance(17700);
+    expect(count()).toBe(Math.ceil(ringLeftMs() / 1000));
+    await view.unmount();
   });
 });
