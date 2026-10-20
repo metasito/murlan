@@ -23,7 +23,7 @@ import { locateRun } from "./loop-derive.mjs";
 import { EVIDENCE_SAMPLES, isEvidence } from "./loop-logs.mjs";
 import { readLine } from "./loop-stream.mjs";
 import { codeSetsLoopVariable, fromEnv, isLoopVariable } from "./session-env.mjs";
-import { assignedNames, commands, has, literal, literalAssignments, loopBodies, MOVES, operands, toNative, withoutQuotedBodies } from "./shell.mjs";
+import { assignedNames, assignmentsIn, commands, has, literal, literalAssignments, loopBodies, MOVES, operands, toNative, withoutQuotedBodies } from "./shell.mjs";
 
 const HTTP_CLIENT = /^(gh|curl|wget|invoke-restmethod|invoke-webrequest|irm|iwr)$/;
 
@@ -377,11 +377,74 @@ const runsEncodedCommand = (c) => POWERSHELL.test(c.cmd) && c.args.some(isEncode
 const SCRIPT_RUNNER = /^(bash|sh|zsh|dash|ksh|node|nodejs|source|\.)$/;
 const NOT_A_FILE = new Set(["ENOENT", "ENOTDIR", "EISDIR", "ENAMETOOLONG", "EINVAL"]);
 
-/** Every word a runner might take as a script: any operand (an option's value too), a `-File` value, a redirected input. */
-function scriptsOf(c) {
+const NODE = /^(node|nodejs)$/;
+const NODE_LOADS = /^(-r|--require|--import|--loader|--experimental-loader|--test-reporter)$/;
+const NODE_CODE = /^(-r|--require|--import|--loader|--experimental-loader|--test-reporter|-e|--eval|-p|--print)$/;
+const NODE_TAKES_A_VALUE = /^(-r|--require|--import|--loader|--experimental-loader|--test-reporter|-e|--eval|-p|--print|--test-reporter-destination|--test-name-pattern|--test-skip-pattern|--test-concurrency|--test-shard|-C|--conditions|--env-file|--input-type|--title)$/;
+
+/** Each value node takes for a flag `flags` matches, spelled `-r x`, `--import=x` or `-rx`. */
+const valuesOf = (args, flags) =>
+  args.flatMap((a, i) => {
+    if (flags.test(a)) return [args[i + 1] ?? ""];
+    const joined = /^(--[\w-]+)=(.*)$/s.exec(a) ?? /^(-[a-z])(.+)$/is.exec(a);
+    return joined && flags.test(joined[1]) ? [joined[2].replace(/^=/, "")] : [];
+  });
+
+/** NODE_OPTIONS from anywhere on the line, as words: a prefix, a statement, an `export`. */
+function nodeOptionsOf(parsed, raw) {
+  const values = [assignmentsIn(raw).NODE_OPTIONS];
+  for (const c of parsed) {
+    values.push(c.env.NODE_OPTIONS, c.scope?.NODE_OPTIONS);
+    for (const a of c.args) if (/^NODE_OPTIONS=/.test(a)) values.push(a.slice("NODE_OPTIONS=".length));
+  }
+  return values.filter(Boolean).flatMap((v) => v.replace(/["']/g, "").split(/\s+/)).filter(Boolean);
+}
+
+/** A `data:` URL's body, or the text itself: what node runs from a value that is not a file. */
+function codeIn(value) {
+  const base64 = /^data:[^,]*;base64,(.*)$/s.exec(value);
+  if (base64) return Buffer.from(base64[1], "base64").toString("utf8");
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+/** `npx node …` and `npx --yes node …` run node: the package npx names is the command. */
+function throughNpx(c) {
+  if (c.cmd !== "npx") return c;
+  let i = 0;
+  while (c.args[i]?.startsWith("-")) i += /^(-p|--package|-c|--call)$/.test(c.args[i]) ? 2 : 1;
+  return c.args[i] === undefined ? c : { ...c, cmd: c.args[i].replace(/^.*[\\/]/, "").toLowerCase(), args: c.args.slice(i + 1) };
+}
+
+/**
+ * Whether node runs its operands as test files: `--test` before any operand, so no script took it as
+ * its own argument. A word after an option node is not known to give a value counts as that operand.
+ */
+function nodeTests(c) {
+  if (!NODE.test(c.cmd)) return false;
+  for (let i = 0; i < c.args.length; i++) {
+    if (c.args[i] === "--test") return true;
+    if (!c.args[i].startsWith("-")) return false;
+    if (NODE_TAKES_A_VALUE.test(c.args[i])) i += 1;
+  }
+  return false;
+}
+
+/**
+ * Every word a runner might take as a script: any operand (an option's value too), a `-File` value, a
+ * redirected input. Under `node --test` the operands are test files, which quote commands as data; the
+ * modules it loads are still read.
+ */
+function scriptsOf(c, nodeOptions) {
   if (!SCRIPT_RUNNER.test(c.cmd) && !POWERSHELL.test(c.cmd)) return [];
+  const input = c.input ?? [];
+  const loads = NODE.test(c.cmd) ? valuesOf([...nodeOptions, ...c.args], NODE_LOADS) : [];
+  if (nodeTests(c)) return [...loads, ...input].filter(Boolean);
   const file = POWERSHELL.test(c.cmd) ? c.args.flatMap((a, i) => (/^(?:--?|\/)f[a-z]*$/i.test(a) && "file".startsWith(a.replace(/^(?:--?|\/)/, "").toLowerCase()) ? [c.args[i + 1] ?? ""] : [])) : [];
-  return [...file, ...c.args.filter((a) => !/^[-+]/.test(a)), ...c.redirected].filter(Boolean);
+  return [...file, ...loads, ...c.args.filter((a) => !/^[-+]/.test(a)), ...input].filter(Boolean);
 }
 
 /** A shell that reads its program from standard input: nothing to run, `-s`, or `-`. */
@@ -391,10 +454,14 @@ const readsProgram = (c) => (/^(bash|sh|zsh|dash|ksh|node|nodejs)$/.test(c.cmd) 
  * One level: whether a script the line runs spells a merge. A script that exists and cannot be read, one
  * the same line writes, and a program piped into a shell that spells a merge are all refused.
  */
-function runsMergingScript(parsed, raw, repo) {
+function runsMergingScript(lexed, raw, repo) {
   const spells = (text) => MERGE_TEXT.some((re) => re.test(text));
+  const parsed = lexed.map(throughNpx);
   const piped = parsed.some(readsProgram);
   if (piped && spells(raw)) return true;
+  const nodeOptions = nodeOptionsOf(parsed, raw);
+  const code = parsed.filter((c) => NODE.test(c.cmd)).flatMap((c) => valuesOf([...nodeOptions, ...c.args], NODE_CODE));
+  if (code.some((v) => spells(v) || spells(codeIn(v)))) return true;
   // A `cd` earlier on the line moves where a relative script is found.
   let moved = "";
   return parsed.some((c) => {
@@ -403,7 +470,7 @@ function runsMergingScript(parsed, raw, repo) {
       if (to) moved = isAbsolute(toNative(to)) ? toNative(to) : join(moved, toNative(to));
       return false;
     }
-    return [...scriptsOf(c), ...(piped ? c.args.filter((a) => !a.startsWith("-")) : [])].some((script) => {
+    return [...scriptsOf(c, nodeOptions), ...(piped ? c.args.filter((a) => !a.startsWith("-")) : [])].some((script) => {
       let text;
       try {
         const file = isAbsolute(toNative(script)) ? toNative(script) : join(moved, toNative(script));
