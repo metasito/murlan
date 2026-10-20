@@ -217,18 +217,25 @@ describe("matchOutcomeFor", () => {
 // fact that distinguishes one implementation from two — a second one has to
 // call it, whatever else it does.
 test("one module chooses a bot's move", () => {
-  const CHOOSER = "botChoosePlay";
   const HOME = "lib/game/autoMove.ts";
-  const callers = appSources().filter((rel) =>
-    new RegExp(String.raw`(?<!function )\b${CHOOSER}\s*\(`).test(readFileSync(path.join(repoRoot, rel), "utf8"))
-  );
+  // The suites that pin the bot's own choices; test support drives a seat through HOME like any table.
+  const PINS_THE_BOT = ["tests/bots/", "tests/engine/"];
+  const sources = [
+    ...appSources(),
+    ...walk(path.join(repoRoot, "tests")).filter((rel) => !PINS_THE_BOT.some((dir) => rel.startsWith(dir))),
+  ];
+  for (const chooser of ["botChoosePlay", "pickGivebackCard"]) {
+    const callers = sources.filter((rel) =>
+      new RegExp(String.raw`(?<!function )\b${chooser}\s*\(`).test(readFileSync(path.join(repoRoot, rel), "utf8"))
+    );
 
-  assert.deepEqual(
-    callers,
-    [HOME],
-    `${CHOOSER} is how a seat's move is chosen, so a second caller is a second ` +
-      `bot. Route it through ${HOME} instead: ${callers.join(", ")}`
-  );
+    assert.deepEqual(
+      callers,
+      [HOME],
+      `${chooser} is how a seat's move is chosen, so a second caller is a second ` +
+        `bot. Route it through ${HOME} instead: ${callers.join(", ")}`
+    );
+  }
 });
 
 test("the offline table and its harness both take a bot's turn from offlineBotMove", () => {

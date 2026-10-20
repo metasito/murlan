@@ -59,6 +59,7 @@ async function pgDumpMajor(): Promise<number | null> {
 }
 
 async function serverMajor(databaseUrl: string): Promise<number> {
+  // Before any server is up: this decides whether one is booted at all.
   const pool = new pg.Pool({ connectionString: databaseUrl });
   try {
     const { rows } = await pool.query<{ server_version: string }>("SHOW server_version");
@@ -69,6 +70,7 @@ async function serverMajor(databaseUrl: string): Promise<number> {
 }
 
 async function onMaintenance(databaseUrl: string, sql: string): Promise<void> {
+  // The maintenance database: CREATE and DROP DATABASE cannot run inside the one they name.
   const pool = new pg.Pool({ connectionString: urlFor(databaseUrl, "postgres") });
   try {
     await pool.query(sql);
@@ -231,7 +233,6 @@ test("a dump restores into an empty database with matching account and rating ro
   // a boot that throws still gives both back.
   try {
     const server: TestServer = await startTestServer();
-    const admin = new pg.Pool({ connectionString: baseUrl });
     const dumpDir = mkdtempSync(path.join(tmpdir(), "murlan-dump-"));
     let restoreDb: string | null = null;
 
@@ -248,7 +249,7 @@ test("a dump restores into an empty database with matching account and rating ro
         // to exist, which it checks below with its own count query.
         assert.equal(res.status, 202, await res.text());
       }
-      await admin.query(
+      await server.query(
         `INSERT INTO "${server.schema}".user_ratings (user_id, season, rating)
          SELECT id, 'test-season', 1200 FROM "${server.schema}".users`
       );
@@ -259,20 +260,17 @@ test("a dump restores into an empty database with matching account and rating ro
       // seeded it via express-session's own writes; this row is on top of
       // those, so the count asserted below is whatever that total is, not a
       // literal this test invents.
-      await admin.query(
+      await server.query(
         `INSERT INTO "${server.schema}".session (sid, sess, expire)
          VALUES ('backup-test-sid', '{}', now() + interval '1 day')`
       );
 
+      const count = async (table: string) =>
+        (await server.query<{ n: number }>(`SELECT count(*)::int AS n FROM "${server.schema}".${table}`))[0]!.n;
       const before = {
-        users: (await admin.query(`SELECT count(*)::int AS n FROM "${server.schema}".users`)).rows[0]
-          .n,
-        ratings: (
-          await admin.query(`SELECT count(*)::int AS n FROM "${server.schema}".user_ratings`)
-        ).rows[0].n,
-        sessions: (
-          await admin.query(`SELECT count(*)::int AS n FROM "${server.schema}".session`)
-        ).rows[0].n,
+        users: await count("users"),
+        ratings: await count("user_ratings"),
+        sessions: await count("session"),
       };
       assert.equal(before.users, 2);
       assert.equal(before.ratings, 2);
@@ -311,6 +309,7 @@ test("a dump restores into an empty database with matching account and rating ro
       }
       assert.equal(restore.status, 0, restore.stderr);
 
+      // Another database, which the app was never pointed at.
       const restored = new pg.Pool({ connectionString: restoreUrl });
       try {
         const after = {
@@ -330,7 +329,6 @@ test("a dump restores into an empty database with matching account and rating ro
       }
     } finally {
       rmSync(dumpDir, { recursive: true, force: true });
-      await admin.end();
       await server.stop();
       if (restoreDb) {
         await onMaintenance(

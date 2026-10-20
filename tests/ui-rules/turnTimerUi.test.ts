@@ -305,14 +305,14 @@ describe("the turn chip and its clocks", () => {
         isNewTrick: r.isNewTrick,
         holdingForStart: r.holdingForStart,
       });
-      assert.equal(`${shown.clock.active ? "c" : "-"}${shown.seat ? "s" : "-"}`, r.answer, JSON.stringify(r));
+      assert.equal(`${shown.clock.active ? "c" : "-"}${shown.seatClock ? "s" : "-"}`, r.answer, JSON.stringify(r));
     }
   });
 
   test("with no timer, neither clock runs", () => {
     const shown = turnPresentation({ ...base, shownTurnIsMine: true, isMyTurn: true });
     assert.equal(shown.clock.active, false);
-    assert.equal(shown.seat, undefined);
+    assert.equal(shown.seatClock, false);
   });
 
   test("the chip's clock and the ring restart on the same key, and hold together", () => {
@@ -323,10 +323,17 @@ describe("the turn chip and its clocks", () => {
       held: true,
       timer: { seconds: 20, resetKey: "re", includeNewTrick: true },
     });
-    assert.deepEqual(shown.seat, { seconds: 20, resetKey: "tok|re", held: true });
-    assert.equal(shown.clock.resetKey, "tok|re");
-    assert.equal(shown.clock.frozen, true);
+    assert.equal(shown.seatClock, true);
+    assert.deepEqual([shown.window.resetKey, shown.window.running, shown.window.held], ["tok|re", true, true]);
     assert.equal(shown.clock.revealed, true);
+  });
+
+  test("a lead offline runs the window, which only an active chip's turn lets expire", () => {
+    const onExpire = () => {};
+    const lead = turnPresentation({ ...base, isMyTurn: true, isNewTrick: true, timer: { seconds: 20, onExpire } });
+    assert.deepEqual([lead.clock.active, lead.window.running, lead.window.onExpire], [false, true, undefined]);
+    const answer = turnPresentation({ ...base, isMyTurn: true, timer: { seconds: 20, onExpire } });
+    assert.deepEqual([answer.clock.active, answer.window.running, answer.window.onExpire], [true, true, onExpire]);
   });
 
   test("the next-round vote takes the chip's countdown, which nothing holds and nothing expires", () => {
@@ -338,8 +345,7 @@ describe("the turn chip and its clocks", () => {
       timer: { seconds: 20, onExpire },
       vote: { seconds: 30, resetKey: "v1" },
     });
-    assert.deepEqual(shown.clock, { active: true, revealed: true, seconds: 30, resetKey: "vote|v1", frozen: false });
-    const turn = turnPresentation({ ...base, roundOver: true, timer: { seconds: 20, onExpire } });
-    assert.equal(turn.clock.onExpire, onExpire);
+    assert.deepEqual(shown.clock, { active: true, revealed: true });
+    assert.deepEqual(shown.window, { seconds: 30, resetKey: "vote|v1", running: true, held: false });
   });
 });

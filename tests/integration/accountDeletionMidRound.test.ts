@@ -1,6 +1,5 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import pg from "pg";
 import {
   startTestServer,
   hasDatabase,
@@ -35,15 +34,12 @@ describe(
   { skip: hasDatabase() ? false : skipMessage() },
   () => {
     let server: TestServer;
-    let dbPool: pg.Pool;
 
     before(async () => {
       server = await startTestServer();
-      dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
     });
 
     after(async () => {
-      await dbPool.end();
       await server.stop();
     });
 
@@ -102,11 +98,11 @@ describe(
 
         for (const { user } of [alice, bob]) {
           const stats = await waitForRow(async () => {
-            const res = await dbPool.query(
+            const res = await server.query(
               "SELECT rounds_played FROM user_stats WHERE user_id = $1",
               [user.id]
             );
-            return res.rows[0] ?? null;
+            return res[0] ?? null;
           }, 10_000);
           assert.equal(
             Number(stats.rounds_played),
@@ -115,11 +111,11 @@ describe(
           );
 
           const history = await waitForRow(async () => {
-            const res = await dbPool.query(
+            const res = await server.query(
               "SELECT placement FROM round_history WHERE user_id = $1",
               [user.id]
             );
-            return res.rows[0] ?? null;
+            return res[0] ?? null;
           }, 10_000);
           assert.ok(
             Number(history.placement) >= 1,
@@ -129,22 +125,22 @@ describe(
           // The ladder is one transaction for the whole table by design, so
           // the seat that cannot be rated has to be dropped before it opens.
           const rating = await waitForRow(async () => {
-            const res = await dbPool.query(
+            const res = await server.query(
               "SELECT rounds FROM user_ratings WHERE user_id = $1",
               [user.id]
             );
-            return res.rows[0] ?? null;
+            return res[0] ?? null;
           }, 10_000);
           assert.equal(Number(rating.rounds), 1, `${user.username} must move on the ladder`);
         }
 
-        const ghost = await dbPool.query(
+        const ghost = await server.query(
           `SELECT 1 FROM user_stats WHERE user_id = $1
            UNION ALL SELECT 1 FROM round_history WHERE user_id = $1
            UNION ALL SELECT 1 FROM user_ratings WHERE user_id = $1`,
           [leaver.user.id]
         );
-        assert.equal(ghost.rows.length, 0, "a deleted account is written nowhere");
+        assert.equal(ghost.length, 0, "a deleted account is written nowhere");
       } finally {
         for (const client of [leaver, alice, bob]) client.socket.close();
       }

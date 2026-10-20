@@ -1,6 +1,5 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import pg from "pg";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { register, connect as connectRaw, waitForPendingCode } from "../helpers/client.ts";
 import { CLIENT_OUTDATED, MIN_PROTOCOL_VERSION } from "../../shared/protocol.ts";
@@ -148,9 +147,8 @@ describe("session regeneration on login and registration", { skip: hasDatabase()
     // pins this app to makes the store's INSERT fail while leaving deletes
     // alone. Deletes have to keep working — rollbackRegistration reaches
     // deleteAccount.ts's deleteUser, which clears the user's own session rows.
-    const admin = new pg.Pool({ connectionString: process.env.DATABASE_URL! });
     try {
-      await admin.query(
+      await server.query(
         `ALTER TABLE "${server.schema}".session ADD CONSTRAINT session_writes_fail CHECK (false) NOT VALID`
       );
 
@@ -162,10 +160,7 @@ describe("session regeneration on login and registration", { skip: hasDatabase()
       const text = await res.text();
       assert.notEqual(res.status, 202, `registration must fail when the session cannot be saved: ${text}`);
     } finally {
-      await admin.query(
-        `ALTER TABLE "${server.schema}".session DROP CONSTRAINT session_writes_fail`
-      );
-      await admin.end();
+      await server.query(`ALTER TABLE "${server.schema}".session DROP CONSTRAINT session_writes_fail`);
     }
 
     // The username being free again is the user-visible proof the rollback
@@ -478,29 +473,24 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
     const { replaceEmailVerifyCode } = await import("../../server/http/authTokens.ts");
     await replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: -60_000 });
 
-    const admin = new pg.Pool({ connectionString: process.env.DATABASE_URL! });
-    try {
-      const res = await fetch(`${server.url}/api/auth/verify-email`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: user.email, code: "000000" }),
-      });
-      assert.equal(res.status, 400, await res.text());
+    const res = await fetch(`${server.url}/api/auth/verify-email`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: user.email, code: "000000" }),
+    });
+    assert.equal(res.status, 400, await res.text());
 
-      const rows = await admin.query(
-        `SELECT 1 FROM "${server.schema}".auth_tokens t
-           JOIN "${server.schema}".users u ON u.id = t.user_id
-          WHERE u.username = $1 AND t.purpose = 'email_verify'`,
-        ["verify_no_sweep"]
-      );
-      assert.equal(
-        rows.rowCount,
-        1,
-        "an expired row must still be there — the sweep is on a schedule (server/game/retention.ts), not this route"
-      );
-    } finally {
-      await admin.end();
-    }
+    const rows = await server.query(
+      `SELECT 1 FROM "${server.schema}".auth_tokens t
+         JOIN "${server.schema}".users u ON u.id = t.user_id
+        WHERE u.username = $1 AND t.purpose = 'email_verify'`,
+      ["verify_no_sweep"]
+    );
+    assert.equal(
+      rows.length,
+      1,
+      "an expired row must still be there — the sweep is on a schedule (server/game/retention.ts), not this route"
+    );
   });
 
   test("registration still succeeds when the mail provider is not configured", async () => {
@@ -518,42 +508,37 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
   // reads. Asserting the row, not the log line — a log assertion would pass
   // on the very defect this exists to catch.
   test("a misconfigured mailer writes a mail.sendFailed event row, not just a log line", async () => {
-    const admin = new pg.Pool({ connectionString: process.env.DATABASE_URL! });
-    try {
-      // Counted before/after rather than filtered by occurred_at: the test
-      // process and the database run as separate clocks (a container's own
-      // clock, in the dev stack), so "since this Date()" is not a safe bound.
-      const countFailures = async () =>
-        Number(
-          (
-            await admin.query<{ n: string }>(
-              `SELECT count(*) AS n FROM "${server.schema}".events WHERE name = 'mail.sendFailed'`
-            )
-          ).rows[0]!.n
-        );
-      const before = await countFailures();
-
-      const res = await registerRaw({
-        username: "email_loud_failure",
-        password: "password123",
-        email: "email_loud_failure@example.test",
-      });
-      assert.equal(res.status, 202, await res.text());
-
-      let after = before;
-      for (let attempt = 0; attempt < 20 && after <= before; attempt++) {
-        after = await countFailures();
-        if (after <= before) await new Promise((r) => setTimeout(r, 50));
-      }
-      assert.ok(after > before, "sendMail's failure never became an events row");
-
-      const latest = await admin.query<{ context: { mailFailureReason?: string } }>(
-        `SELECT context FROM "${server.schema}".events
-          WHERE name = 'mail.sendFailed' ORDER BY occurred_at DESC LIMIT 1`
+    // Counted before/after rather than filtered by occurred_at: the test
+    // process and the database run as separate clocks (a container's own
+    // clock, in the dev stack), so "since this Date()" is not a safe bound.
+    const countFailures = async () =>
+      Number(
+        (
+          await server.query<{ n: string }>(
+            `SELECT count(*) AS n FROM "${server.schema}".events WHERE name = 'mail.sendFailed'`
+          )
+        )[0]!.n
       );
-      assert.equal(latest.rows[0]!.context.mailFailureReason, "unconfigured");
-    } finally {
-      await admin.end();
+    const before = await countFailures();
+
+    const res = await registerRaw({
+      username: "email_loud_failure",
+      password: "password123",
+      email: "email_loud_failure@example.test",
+    });
+    assert.equal(res.status, 202, await res.text());
+
+    let after = before;
+    for (let attempt = 0; attempt < 20 && after <= before; attempt++) {
+      after = await countFailures();
+      if (after <= before) await new Promise((r) => setTimeout(r, 50));
     }
+    assert.ok(after > before, "sendMail's failure never became an events row");
+
+    const latest = await server.query<{ context: { mailFailureReason?: string } }>(
+      `SELECT context FROM "${server.schema}".events
+        WHERE name = 'mail.sendFailed' ORDER BY occurred_at DESC LIMIT 1`
+    );
+    assert.equal(latest[0]!.context.mailFailureReason, "unconfigured");
   });
 });

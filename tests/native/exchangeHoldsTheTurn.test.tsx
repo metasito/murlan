@@ -17,7 +17,6 @@ jest.mock('expo-router', () => ({
 }));
 
 const mockRunBotTurn = jest.fn();
-const mockSettle = jest.fn();
 const mockTable: { props: { onExchangeReady?: () => void } } = { props: {} };
 
 /** The bot is on move and the exchange has just resolved. */
@@ -53,7 +52,6 @@ const mockCeremony = { announcing: false, state: STATE };
 jest.mock('@/context/GameContext', () =>
   (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(() => ({
     gameState: mockCeremony.state,
-    settleExchange: mockSettle,
     runBotTurn: mockRunBotTurn,
     exchangeAnnouncing: mockCeremony.announcing,
     exchangeAnnounceData: null,
@@ -99,9 +97,9 @@ describe('a bot on move while the exchange is being announced', () => {
     await act(async () => {
       jest.advanceTimersByTime(PAST_THE_THINK * 4);
     });
-    expect(mockSettle).not.toHaveBeenCalled();
+    expect(mockRunBotTurn).not.toHaveBeenCalled();
     await act(async () => mockTable.props.onExchangeReady?.());
-    expect(mockSettle).toHaveBeenCalledTimes(1);
+    expect(mockRunBotTurn).toHaveBeenCalledTimes(1);
     await view.unmount();
     mockCeremony.state = STATE;
   });

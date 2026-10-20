@@ -1,6 +1,7 @@
 // Loaded by `node --test`, jest and Playwright alike: type-only imports, and the `.ts` specifier
 // Node's loader needs (docs/agents/checks.md).
 import type { Card, GameState, Player, Rank, Suit } from "../../lib/game/gameEngine.ts";
+import type { BotView } from "../../lib/game/bot.ts";
 
 /** Id is rank_suit, matching createDeck(). */
 export const card = (rank: Rank, suit: Suit): Card => ({
@@ -40,6 +41,19 @@ export function state(over: Partial<GameState> = {}): GameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: false,
+    ...over,
+  };
+}
+
+/** `player` leading a new trick, reading nothing of the table beyond what `over` sets. */
+export function viewOf(player: Player, over: Partial<BotView> = {}): BotView {
+  return {
+    hand: player.hand,
+    personality: player.personality,
+    toBeat: null,
+    opponentHandCounts: [13],
+    partnerHoldsTop: false,
+    playedRanks: undefined,
     ...over,
   };
 }

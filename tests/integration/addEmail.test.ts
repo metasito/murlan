@@ -5,19 +5,15 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
-import pg from "pg";
 import { register, waitForPendingCode } from "../helpers/client.ts";
 import { whileUserLocked } from "../helpers/userLock.ts";
 
 describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  let pool: pg.Pool;
   before(async () => {
     server = await startTestServer();
-    pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
   });
   after(async () => {
-    await pool?.end();
     if (server) await server.stop();
   });
 
@@ -225,11 +221,11 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
       addEmail(cookie, "nudge_concurrent_a@example.test"),
       addEmail(cookie, "nudge_concurrent_b@example.test"),
     ]);
-    const live = await pool.query(
+    const live = await server.query(
       "SELECT 1 FROM auth_tokens WHERE user_id = $1 AND purpose = 'email_verify' AND used_at IS NULL",
       [user.id]
     );
-    assert.ok((live.rowCount ?? 0) <= 1, `${live.rowCount} live codes`);
+    assert.ok(live.length <= 1, `${live.length} live codes`);
   });
 
   test("two mints for one user wait on its row lock, and one code survives", async () => {
@@ -237,11 +233,11 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
     await waitForPendingCode(user.id);
     const { replaceEmailVerifyCode } = await import("../../server/http/authTokens.ts");
     const mint = () => replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: 60_000 });
-    await whileUserLocked(pool, [user.id], () => [mint(), mint()]);
-    const rows = await pool.query("SELECT 1 FROM auth_tokens WHERE user_id = $1 AND purpose = 'email_verify'", [
+    await whileUserLocked([user.id], () => [mint(), mint()]);
+    const rows = await server.query("SELECT 1 FROM auth_tokens WHERE user_id = $1 AND purpose = 'email_verify'", [
       user.id,
     ]);
-    assert.equal(rows.rowCount, 1);
+    assert.equal(rows.length, 1);
   });
 
   test("a code minted for one address does not verify the address the account holds now", async () => {
@@ -249,7 +245,7 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
     const minted = "nudge_moved_a@example.test";
     const { replaceEmailVerifyCode } = await import("../../server/http/authTokens.ts");
     const code = await replaceEmailVerifyCode({ userId: user.id, email: minted, ttlMs: 60_000 });
-    await pool.query("UPDATE users SET email = 'nudge_moved_b@example.test' WHERE id = $1", [user.id]);
+    await server.query("UPDATE users SET email = 'nudge_moved_b@example.test' WHERE id = $1", [user.id]);
 
     const res = await fetch(`${server.url}/api/auth/verify-email`, {
       method: "POST",

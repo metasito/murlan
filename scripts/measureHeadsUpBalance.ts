@@ -17,11 +17,11 @@
 import { pathToFileURL } from "node:url";
 import {
   botChoosePlay,
+  botView,
   bombPossible,
   isExchangeCardStillOut,
   knownOpponentExchangeCard,
   losesLeadToExchangeCard,
-  opponentsOf,
   outstandingAbove,
 } from "../lib/game/bot.ts";
 import {
@@ -306,13 +306,9 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
             forcedLeads++;
           } else {
             avoidableLeadsChecked++;
-            const opponents = opponentsOf(state, seat);
-            const before = botChoosePlay(
-              leader, null, true, opponents.handCounts, undefined, mulberry32(dealSeed + turn), false, state.playedRanks, undefined
-            );
-            const after = botChoosePlay(
-              leader, null, true, opponents.handCounts, undefined, mulberry32(dealSeed + turn), false, state.playedRanks, known
-            );
+            const view = botView(state, seat);
+            const before = botChoosePlay({ ...view, knownOpponentCard: undefined }, mulberry32(dealSeed + turn));
+            const after = botChoosePlay(view, mulberry32(dealSeed + turn));
             if (isKnownCardBlunder(before, known)) wouldHaveBlundered++;
             if (isKnownCardBlunder(after, known)) stillBlunders++;
           }
