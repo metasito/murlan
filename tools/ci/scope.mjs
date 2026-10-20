@@ -25,7 +25,7 @@ export const PROSE = /^(docs\/|\.claude\/)|\.md$/;
  * `scripts/contextSurface.mjs` imports `loop-derive.mjs`, so the loop's source can stop the browser
  * suite booting. Nothing imports a test.
  */
-export const LOOP_TESTS = /^tools\/loop\/tests\//;
+export const QUEUE_LOOP_TESTS = /^tools\/loop\/tests\//;
 
 /**
  * What the loop's suite (docs/agents/checks.md) asserts on beyond its own code: the protocol
@@ -45,7 +45,7 @@ export const HARNESS =
 export function scopeOf(changed) {
   const only = (re) => changed.length > 0 && changed.every((f) => re.test(f));
   return {
-    app: changed.some((f) => ASSERTED_PROSE.test(f)) || !(only(PROSE) || only(LOOP_TESTS)),
+    app: changed.some((f) => ASSERTED_PROSE.test(f)) || !(only(PROSE) || only(QUEUE_LOOP_TESTS)),
     harness: changed.some((f) => HARNESS.test(f)),
     scans: changed.length > 0,
   };
