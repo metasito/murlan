@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
@@ -13,23 +14,27 @@ const OWNERS: Record<string, string> = {
   COLLECTOR_PORT: "scripts/diagnostics-collector.mjs",
 };
 
-/** The dev Postgres container's port search is a different decision that happens to share two names. */
-const OTHER_DECISION = new Set(["scripts/dev-stack.mjs", "scripts/devStackPort.mjs"]);
+/** The dev Postgres container's port search is a different decision that happens to share these two names. */
+const OTHER_DECISION: Record<string, string[]> = {
+  "scripts/dev-stack.mjs": ["BASE_PORT"],
+  "scripts/devStackPort.mjs": ["PORT_SPAN"],
+};
 
-function sources(dir: string): string[] {
-  return readdirSync(path.join(repoRoot, dir), { withFileTypes: true }).flatMap((e) => {
+function sources(root: string, dir: string): string[] {
+  return readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((e) => {
     const rel = `${dir}/${e.name}`;
-    if (e.isDirectory()) return e.name === "node_modules" ? [] : sources(rel);
+    if (e.isDirectory()) return e.name === "node_modules" ? [] : sources(root, rel);
     return /\.(mjs|js|ts)$/.test(e.name) ? [rel] : [];
   });
 }
 
-function definers(name: string) {
+function definers(name: string, root = repoRoot) {
   const defines = new RegExp(`^\\s*(export\\s+)?(const|let|var)\\s+${name}\\b`, "m");
   return ["scripts", "tools", "tests"]
-    .flatMap(sources)
-    .filter((f) => !OTHER_DECISION.has(f))
-    .filter((f) => defines.test(readFileSync(path.join(repoRoot, f), "utf8")))
+    .filter((d) => existsSync(path.join(root, d)))
+    .flatMap((d) => sources(root, d))
+    .filter((f) => !OTHER_DECISION[f]?.includes(name))
+    .filter((f) => defines.test(readFileSync(path.join(root, f), "utf8")))
     .sort();
 }
 
@@ -38,12 +43,14 @@ test("each shared script constant is defined in one file only", () => {
 });
 
 test("the scan sees a restated constant, exported or not", () => {
-  const planted = path.join(repoRoot, "scripts", "plantedRestatement.mjs");
-  writeFileSync(planted, "const HARD_FACTOR = 3;\n");
+  const root = mkdtempSync(path.join(tmpdir(), "owner-scan-"));
   try {
-    assert.deepEqual(definers("HARD_FACTOR"), ["scripts/plantedRestatement.mjs", "tools/ci/e2e-budget.mjs"]);
+    mkdirSync(path.join(root, "scripts"));
+    writeFileSync(path.join(root, "scripts", "a.mjs"), "const HARD_FACTOR = 3;\n");
+    writeFileSync(path.join(root, "scripts", "b.mjs"), "export const HARD_FACTOR = 3;\n");
+    assert.deepEqual(definers("HARD_FACTOR", root), ["scripts/a.mjs", "scripts/b.mjs"]);
   } finally {
-    rmSync(planted, { force: true });
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
