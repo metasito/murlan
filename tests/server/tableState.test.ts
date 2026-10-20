@@ -55,6 +55,7 @@ function midMatch(): OnlineGameState {
     endMatchVotes: new Set(["carl"]),
     spectators: new Set(["zed"]),
     moveLog: [],
+    replayOpening: { seq: 1, kind: "giveback", seat: 0 },
     turnDeadlineMs: 123,
     lastRoundOverPayload: {} as RoundOverPayload,
     resultWrites: Promise.resolve(),

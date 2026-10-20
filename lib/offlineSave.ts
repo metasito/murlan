@@ -76,6 +76,7 @@ export function decodeOfflineSave(raw: string | null): OfflineDecode {
   if (gameState.players.length === 0) return INCOMPATIBLE;
   if (!isObject(match) || !isObject(match.scores) || !Array.isArray(match.rounds)) return INCOMPATIBLE;
   if (gameState.gameMode !== "free_for_all" && gameState.gameMode !== "teams") return INCOMPATIBLE;
+  if (!isObject(gameState.lastMove) || !Number.isInteger(gameState.lastMove.seq)) return INCOMPATIBLE;
   if (!Number.isInteger(dealFirstSeat)) return INCOMPATIBLE;
   if (!gameState.players.every((p) => isObject(p) && Array.isArray(p.hand) && p.hand.every(isCard))) return INCOMPATIBLE;
   if (!exchangeIsSatisfiable(gameState as unknown as GameState)) return INCOMPATIBLE;

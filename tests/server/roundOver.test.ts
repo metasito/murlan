@@ -107,6 +107,7 @@ function makeGame(overrides: Partial<OnlineGameState> = {}): OnlineGameState {
     endMatchVotes: new Set<string>(),
     spectators: new Set(),
     moveLog: [A_MOVE],
+    replayOpening: { seq: 1, kind: "giveback", seat: 1 },
     dealFirstSeat: 0,
     ...overrides,
   };
@@ -298,6 +299,7 @@ describe("handleRoundOver — the writes", () => {
         { seatIndex: 1, userId: "u_bob", vacatedBy: null, name: "Bob" },
       ],
       moves: [A_MOVE],
+      opening: { seq: 1, kind: "giveback", seat: 1 },
       finishingOrder: ["player_0", "player_1"],
     });
   });

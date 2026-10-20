@@ -105,6 +105,8 @@ test("a blob missing anything the restore path needs is refused", () => {
     ["match without scores", (s) => { (s.match as Record<string, unknown>).scores = undefined; }],
     ["match without rounds", (s) => { (s.match as Record<string, unknown>).rounds = "nope"; }],
     ["an unknown game mode", (s) => { (s.gameState as Record<string, unknown>).gameMode = "battle_royale"; }],
+    ["gameState without its last move", (s) => { delete (s.gameState as Record<string, unknown>).lastMove; }],
+    ["a last move without a count", (s) => { (s.gameState as Record<string, unknown>).lastMove = { kind: "deal" }; }],
   ];
   for (const [what, mutate] of mutations) {
     const blob = JSON.parse(encodeOfflineSave(save()));

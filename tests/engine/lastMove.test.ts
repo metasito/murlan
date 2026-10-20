@@ -114,6 +114,7 @@ test("a replay records the move it stands on", () => {
       { seat: 2, combo: null, handCounts: [1, 2, 2] },
       { seat: 1, combo: null, handCounts: [1, 2, 2] },
     ],
+    opening: null,
     finishingOrder: [],
   };
   const records: LastMove[] = [-1, 0, 1, 2].map((at) => replayStateAt(replay, at).lastMove);
@@ -131,7 +132,7 @@ for (const [name, start] of [
 ] as const) {
   test(`${name} replays the record live play wrote, step by step`, () => {
     const live = playRoundOut(start(), mulberry32(7));
-    const log: { moveLog: ReplayMove[] | null } = { moveLog: [] };
+    const log: { moveLog: ReplayMove[] | null; replayOpening?: LastMove } = { moveLog: [] };
     live.slice(1).forEach((next, i) => {
       const move = next.lastMove;
       if (move.kind === "play" || move.kind === "pass") {
@@ -144,6 +145,7 @@ for (const [name, start] of [
       gameMode: "free_for_all",
       seats: SEATS.map((s, i) => ({ seatIndex: i, userId: null, name: s.name })),
       moves: log.moveLog!,
+      opening: log.replayOpening ?? null,
       finishingOrder: [],
     };
     const shown = live.slice(live.findIndex((s) => s.lastMove.kind === "play") - 1);

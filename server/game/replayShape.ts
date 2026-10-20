@@ -33,7 +33,7 @@ export function replayPlayerIdsOf(seats: ReplaySeat[]): string[] {
  * written for that round.
  */
 export function appendReplayMove(
-  game: { moveLog: ReplayMove[] | null },
+  game: { moveLog: ReplayMove[] | null; replayOpening?: LastMove },
   seat: number,
   combo: Combination | null,
   prev: { lastMove: LastMove },
@@ -45,10 +45,10 @@ export function appendReplayMove(
     game.moveLog = null;
     return;
   }
+  if (game.moveLog.length === 0) game.replayOpening = prev.lastMove;
   game.moveLog.push({
     seat,
     combo,
     handCounts: next.players.map((p) => p.hand.length),
-    ...(game.moveLog.length === 0 && { opening: prev.lastMove }),
   });
 }

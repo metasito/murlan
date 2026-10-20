@@ -8,7 +8,7 @@ import { closeMatch, applyRoundFold, rollForward } from "./matchLedger.ts";
 import { replaySeatsOf } from "./replayShape.ts";
 import { firstTargetFor } from "../../lib/game/gameEngine.ts";
 import type { RoundOverPayload } from "../../lib/game/matchState.ts";
-import type { GameMode } from "../../lib/game/gameEngine.ts";
+import type { GameMode, LastMove } from "../../lib/game/gameEngine.ts";
 import type { GameResult } from "../../lib/achievements.ts";
 import type { ReplayMove, ReplaySeat } from "../../lib/game/replay.ts";
 import type { RatedPreview } from "./ratings.ts";
@@ -55,6 +55,7 @@ export interface RoundOverWriters {
     gameMode: GameMode;
     seats: ReplaySeat[];
     moves: ReplayMove[];
+    opening: LastMove | null;
     finishingOrder: string[];
   }) => Promise<void>;
 }
@@ -229,6 +230,7 @@ export async function handleRoundOver(rt: TableRuntime, roomId: string, game: On
         gameMode: game.gameState.gameMode,
         seats: replaySeatsOf(state.players, game.playerMap, game.vacatedSeats),
         moves: game.moveLog,
+        opening: game.replayOpening ?? null,
         finishingOrder: state.finishingOrder,
       }).catch((err) => logger.error({ err, roomId }, "Failed to save replay"));
     }

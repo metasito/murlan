@@ -22,7 +22,7 @@ function player(i: number): Player {
 }
 
 function justClosedExchange(): OnlineGameState {
-  const gameState = {
+  const gameState: GameState = {
     players: USERS.map((_, i) => player(i)),
     currentTurnIndex: 0,
     lastPlayedCombination: null,
@@ -33,8 +33,9 @@ function justClosedExchange(): OnlineGameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: false,
+    lastMove: { seq: 1, kind: "giveback", seat: WINNER },
     exchangePhase: { active: false, winnerIdx: WINNER, loserIdx: LOSER, twoJokerException: false, cardToLoser: RETURNED },
-  } as unknown as GameState;
+  };
   return {
     roomId: "exchange-clock-room",
     gameState,

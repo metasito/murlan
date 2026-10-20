@@ -25,11 +25,6 @@ export interface ReplayMove {
   combo: Combination | null;
   /** Cards left in every seat's hand immediately after this move. */
   handCounts: number[];
-  /**
-   * On the log's first move only: the record it was made against, the deal or the giveback after
-   * it. Absent from rows written before it existed, which read as the deal.
-   */
-  opening?: LastMove;
 }
 
 export interface ReplayDto {
@@ -38,6 +33,11 @@ export interface ReplayDto {
   gameMode: GameMode;
   seats: ReplaySeat[];
   moves: ReplayMove[];
+  /**
+   * The record the first move followed: the deal, or the giveback after it, which the log does not
+   * hold. Null on a row written before it was stored, which reads as the deal.
+   */
+  opening: LastMove | null;
   /** Engine player ids in finishing order, as the round ended. */
   finishingOrder: string[];
 }
@@ -118,7 +118,7 @@ export function replayStateAt(replay: ReplayDto, index: number): GameState {
   let pile: GameState["lastPlayedCombination"] = null;
   let pileSeat = -1;
   let passes = 0;
-  const opening: LastMove = replay.moves[0]?.opening ?? { seq: 0, kind: "deal" };
+  const opening: LastMove = replay.opening ?? { seq: 0, kind: "deal" };
   let lastMove = opening;
   for (let i = 0; i <= at; i++) {
     const move = replay.moves[i];
