@@ -18,6 +18,7 @@ const DRAWN = ["{app,components}/**/*.tsx"];
 const TEST_RUNNERS = "/^(it|test|describe|suite)$/";
 const SEAT_IDENTITY = "/^(viewerSeat|mySeatIndex)$/";
 const AUDIO_LAYERED = ["{app,components,context,lib,modules}/**/*.{ts,tsx}"];
+const CHANNEL_KEYS = `/^(${Object.keys(require("./lib/harnessChannels.ts").CHANNELS).join("|")})$/`;
 // esquery's regex literal ends at its first slash, so a path separator is written \x2F.
 // With `values`, a declaration whose every specifier is `type` is spared: it never reaches the bundle.
 const importsOf = (source, { values = false } = {}) =>
@@ -218,6 +219,74 @@ const GUARDS = [
       "queryClient.resetQueries();",
     ].join("\n"), hits: 4 },
     spare: ['url.searchParams.clear("x");', "reportedSignatures.clear();", "queryClient.invalidateQueries();", '// qc.clear()\nconst s = "qc.clear()";'].map((code) => ({ file: "lib/errorReporting.ts", code })),
+  },
+  {
+    id: "submit-through-hook",
+    why: "A return key that submits needs both halves of the in-flight guard, and react-native-web fires it on a held Enter even while readOnly: spread `field` from useGuardedSubmit, or useReturnFocuses() for a field that only moves focus (lib/useGuardedSubmit.ts).",
+    selector: 'JSXAttribute[name.name="onSubmitEditing"], Property:matches([key.name="onSubmitEditing"], [key.value="onSubmitEditing"])',
+    files: SCREENS,
+    ignores: [{ glob: "lib/useGuardedSubmit.ts", reason: "the hook that owns both halves of the guard" }],
+    plant: { file: "app/Plant.tsx", code: [
+      "const a = <TextInput onSubmitEditing={save} editable={!saving} />;",
+      "const b = <TextInput {...{ onSubmitEditing: () => ref.current?.focus() }} />;",
+      'const c = { "onSubmitEditing": submit };',
+    ].join("\n"), hits: 3 },
+    spare: [
+      "const a = <TextInput {...submitField} />;",
+      "const b = <TextInput {...emailReturn} />;",
+      '// onSubmitEditing={save}\nconst s = "onSubmitEditing";',
+    ].map((code) => ({ file: "app/Plant.tsx", code })),
+  },
+  {
+    id: "codes-through-payload",
+    why: "A code beside a hand-written sentence reaches a player with no locale entry checked and an English text that drifts from locales/en.ts: build it with payload() or refuse() from server/shared/payload.ts, whose ServerCode type is the catalogue.",
+    selector:
+      'ObjectExpression:has(> Property:matches([key.name=/^(message|error)$/], [key.value=/^(message|error)$/])) > Property:matches([key.name="code"], [key.value="code"])',
+    files: ["server/**/*.ts", "shared/persistedEnvelope.ts", "shared/socketSchemas.ts", "shared/httpSchemas.ts"],
+    ignores: [{ glob: "server/shared/payload.ts", reason: "payload() is the one builder the rest call" }],
+    plant: { file: "server/game/stats.ts", code: [
+      'socket.emit("game:error", { code: "ROOM_NOT_FOUND", message: "Room not found" });',
+      "res.json({ message: err.message, code });",
+      'const p = { "code": c, "error": `bad ${x}` };',
+    ].join("\n"), hits: 3 },
+    spare: [
+      'return { ok: false, code: "ROOM_NOT_FOUND" };',
+      'socket.emit("game:error", payload("ROOM_NOT_FOUND"));',
+      'logger.error({ err, event }, "message");',
+      '// { code: "X", message: "y" }\nconst s = "code, message";',
+    ].map((code) => ({ file: "server/game/stats.ts", code })),
+  },
+  {
+    id: "known-channel",
+    why: "The browser suite reads a `data-*` channel by the name lib/harnessChannels.ts registers, so a key written anywhere else is one it will never find: register it in CHANNELS and read it through tests/e2e/helpers/selectors.ts.",
+    selector: [
+      'JSXAttribute[name.name="dataSet"] > JSXExpressionContainer > ObjectExpression',
+      'Property:matches([key.name="dataSet"], [key.value="dataSet"]) > ObjectExpression',
+      'CallExpression[callee.name="harnessState"] > ObjectExpression',
+    ]
+      .flatMap((writer) => [`${writer} > Property:not([key.name=${CHANNEL_KEYS}]):not([key.value=${CHANNEL_KEYS}])`, `${writer} > SpreadElement`])
+      .concat([
+        'JSXAttribute[name.name="dataSet"] > JSXExpressionContainer[expression.type!="ObjectExpression"]',
+        'Property:matches([key.name="dataSet"], [key.value="dataSet"])[value.type!="ObjectExpression"]',
+      ])
+      .join(", "),
+    files: SCREENS,
+    ignores: [{ glob: "components/table/chrome.tsx", reason: "harnessState passes on an object its parameter type already holds to the registered keys" }],
+    plant: { file: "components/Plant.tsx", code: [
+      "const a = <View dataSet={{ tableState: s, rogue: x }} />;",
+      "const b = <View {...harnessState({ handStat: s })} />;",
+      'const c = <Text {...({ dataSet: { "seat-lit": v } } as TextProps)} />;',
+      "const d = <View dataSet={{ ...extra }} />;",
+      "const e = <View dataSet={ds} />;",
+      "const f = <Text {...({ dataSet: pick(x) } as TextProps)} />;",
+    ].join("\n"), hits: 6 },
+    spare: [
+      "const a = <View dataSet={{ tableState: s, dealing: d }} />;",
+      "const b = <View {...harnessState({ handState: s })} />;",
+      'const c = <Text {...({ dataSet: { "seatLit": v } } as TextProps)} />;',
+      "const d = { rogue: 1 };",
+      "// dataSet={{ rogue: x }}\nconst s = \"dataSet\";",
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
   },
   {
     id: "no-cwd-root",

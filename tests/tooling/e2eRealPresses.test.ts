@@ -67,7 +67,7 @@ function pressingFiles(): string[] {
  * `click` itself, because `bot.ts` wraps its presses in a local function of
  * that name — after which every `.click(` in the suite reads as a card.
  */
-const GESTURE_SELECTORS = ["HAND_ZONE", "HAND_CARDS", "GIOCA_BTN", "giveCandidates", "cardByLabel"];
+const GESTURE_SELECTORS = ["HAND_ZONE", "HAND_CARDS", "HAND_CARD_BOXES", "GIOCA_BTN", "giveCandidates", "cardByLabel"];
 
 const idPattern = GESTURE_TESTIDS.map((id) => id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
 

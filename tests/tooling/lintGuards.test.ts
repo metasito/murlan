@@ -2,7 +2,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -209,9 +209,11 @@ describe("the guard registry's floor", () => {
       const dir = mkdtempSync(path.join(tmpdir(), "murlan-guards-"));
       try {
         const file = path.join(dir, "guards.cjs");
+        symlinkSync(path.join(ROOT, "lib"), path.join(dir, "lib"), "junction");
         writeFileSync(file, edit(source));
         return (require(file) as { plugin: { meta: { version?: string } } }).plugin.meta.version;
       } finally {
+        rmSync(path.join(dir, "lib"), { force: true });
         rmSync(dir, { recursive: true, force: true });
       }
     };

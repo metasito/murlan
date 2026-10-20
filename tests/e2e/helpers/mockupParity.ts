@@ -30,6 +30,7 @@ import {
 } from "./traceDiff";
 import { regionBrightness, regionsFor, TABLE, type Region, type SideLayout } from "./parityRegions";
 import type { OfflineSave } from "../../../lib/offlineSave";
+import { HAND_CARD_BOXES } from "./selectors.ts";
 
 export const FIXTURE = pathToFileURL(path.resolve(__dirname, "..", "fixtures", "lantern-table", "index.html")).href;
 const DPR = 2;
@@ -233,7 +234,7 @@ export const pass = (page: Page) => page.evaluate(() => (globalThis as unknown a
 export const botMove = (page: Page) => page.evaluate(() => (globalThis as unknown as { murlanBotMove: () => void }).murlanBotMove());
 
 export const playLowest = (cards: number) => async (page: Page) => {
-  const hand = page.locator('[data-hand-state] [data-testid="card-box"]');
+  const hand = page.locator(HAND_CARD_BOXES);
   for (let i = 0; i < cards; i++) await hand.nth(i).click({ force: true, position: { x: 8, y: 30 } });
   await page.getByRole("button", { name: GIOCA_VALID_LABEL }).click({ force: true, timeout: 10_000 });
 };
@@ -497,7 +498,7 @@ const MOMENTS: Moment[] = [
     onsets: ["sound:matchLost"],
     // The chapter's `at(200)` and `at(500)` run on the frames at 208 and 512.
     actions: [
-      { atMs: 208, app: (page) => page.locator('[data-hand-state] [data-testid="card-box"]').first().click({ force: true, position: { x: 8, y: 30 } }) },
+      { atMs: 208, app: (page) => page.locator(HAND_CARD_BOXES).first().click({ force: true, position: { x: 8, y: 30 } }) },
       { atMs: 512, app: (page) => page.getByRole("button", { name: GIOCA_VALID_LABEL }).click({ force: true, timeout: 10_000 }) },
     ],
     variants: ["skia"],
@@ -866,8 +867,9 @@ async function stripAppSide(side: Awaited<ReturnType<typeof openAppSide>>, decod
     stepThen<TraceFrame | null>(page, t > 0 ? ms : null, TRACED_AT(mounted + t)), async () => ({
     pile: await seatAnchor(page, "pile"),
     light: await settledLight(page, "bottom"),
-    handTop: await page.evaluate(() =>
-      Math.min(...[...document.querySelectorAll('[data-hand-state] [data-testid="card-box"]')].map((c) => c.getBoundingClientRect().top))
+    handTop: await page.evaluate((boxes) =>
+      Math.min(...[...document.querySelectorAll(boxes)].map((c) => c.getBoundingClientRect().top)),
+      HAND_CARD_BOXES
     ),
     fans: await page.evaluate(() => {
       const centre = (seat: string) => {

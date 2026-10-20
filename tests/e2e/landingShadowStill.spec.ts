@@ -6,6 +6,7 @@ import { heldTurnTable, newSidePage, playLowest } from "./helpers/mockupParity";
 import { stepThen, stepUntil } from "./helpers/virtualClock";
 import { STEP_MS } from "./helpers/traceDiff";
 import { LAND_WOBBLE_MS } from "../../components/impact";
+import { HAND_CARD_BOXES } from "./helpers/selectors.ts";
 
 type ThrowFrame = {
   t: number;
@@ -45,7 +46,7 @@ test("a thrown card's shadow holds still through its landing wobble, while the c
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await heldTurnTable(page, baseURL!);
   await stepUntil(page, () => page.evaluate(() => ((globalThis as { murlanShadowBuilds?: number }).murlanShadowBuilds ?? 0) > 0), "the Skia felt's shadows");
-  await stepUntil(page, () => page.locator('[data-hand-state] [data-testid="card-box"]').first().isVisible(), "the viewer's hand");
+  await stepUntil(page, () => page.locator(HAND_CARD_BOXES).first().isVisible(), "the viewer's hand");
   await playLowest(1)(page);
 
   const frames: ThrowFrame[] = [];

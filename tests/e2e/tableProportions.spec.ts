@@ -10,7 +10,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
-import { TABLE_SCREEN } from "./helpers/selectors";
+import { HAND_ZONE, TABLE_SCREEN } from "./helpers/selectors";
 import { atRest } from "./helpers/settle";
 import { CHIP_H, SEAT_DISC, actionBtnSize } from "../../components/seatLayout";
 import { cardScale } from "../../components/cardFaceModel";
@@ -29,7 +29,7 @@ const SUB_PIXEL = 0;
 interface Box { x: number; y: number; w: number; h: number }
 
 async function boxes(page: Page) {
-  return page.evaluate(() => {
+  return page.evaluate((handZone) => {
     const one = (sel: string): Box | null => {
       const el = document.querySelector(sel);
       if (!el) return null;
@@ -53,7 +53,7 @@ async function boxes(page: Page) {
       })(),
       rings: many('[data-testid="seat-ring"]'),
       pile: one('[data-testid="pile-area"]'),
-      hand: one("[data-hand-state]"),
+      hand: one(handZone),
       sideSeats: [
         one('[data-testid="side-seat-left"]'),
         one('[data-testid="side-seat-right"]'),
@@ -69,7 +69,7 @@ async function boxes(page: Page) {
         ...many('[data-testid="btn-passa"]').map((r) => ({ what: "PASSA", r })),
       ],
     };
-  });
+  }, HAND_ZONE);
 }
 
 for (const phone of PHONES) {

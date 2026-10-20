@@ -12,6 +12,7 @@ import { getLocale, useTranslation } from "@/lib/i18n";
 import { apiRequest } from "@/lib/query-client";
 import { serverErrorMessage } from "@/lib/apiError";
 import { Colors, Spacing } from "@/lib/theme";
+import { useGuardedSubmit } from "@/lib/useGuardedSubmit";
 
 /**
  * Reachable signed-in or signed-out: the redeem route is public — the code
@@ -38,13 +39,11 @@ export default function VerifyEmailScreen() {
     if (signedInEmail) setEmail((current) => current || signedInEmail);
   }
   const [verified, setVerified] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [resending, setResending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  async function submit() {
-    if (loading || resending) return;
+  const verify = useGuardedSubmit(async () => {
+    if (resending) return;
     const trimmedEmail = email.trim();
     const trimmedCode = code.trim();
     if (!trimmedEmail) {
@@ -57,7 +56,6 @@ export default function VerifyEmailScreen() {
     }
     setError(null);
     setNotice(null);
-    setLoading(true);
     try {
       await apiRequest("POST", "/api/auth/verify-email", { email: trimmedEmail, code: trimmedCode });
       await refreshUser();
@@ -65,25 +63,22 @@ export default function VerifyEmailScreen() {
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("verifyEmail.failed")));
     }
-    setLoading(false);
-  }
+  });
 
   // Resends to the signed-in account's own address (server/http/routes/auth.ts), never
   // to whatever is currently typed in the email field above, so the notice
   // names the actual destination rather than implying the field controls it.
-  async function resend() {
+  const { busy: resending, submit: resend } = useGuardedSubmit(async () => {
     const destination = user?.email ?? "";
     setError(null);
     setNotice(null);
-    setResending(true);
     try {
       await apiRequest("POST", "/api/auth/resend-verification", { locale: getLocale() });
       setNotice(t("verifyEmail.resendSent", { email: destination }));
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("verifyEmail.resendFailed")));
     }
-    setResending(false);
-  }
+  });
 
   return (
     <MenuLayout scrollable centered={false}>
@@ -131,8 +126,8 @@ export default function VerifyEmailScreen() {
                   keyboardType="number-pad"
                   maxLength={6}
                   returnKeyType="done"
-                  onSubmitEditing={submit}
-                  editable={!loading && !resending}
+                  {...verify.field}
+                  editable={!verify.busy && !resending}
                   accessibilityLabel={t("verifyEmail.codeA11yLabel")}
                   testID="input-verify-email-code"
                 />
@@ -142,10 +137,10 @@ export default function VerifyEmailScreen() {
               {notice && <FormNotice tone="success" text={notice} />}
 
               <MenuButton
-                label={loading ? t("verifyEmail.saving") : t("verifyEmail.submit")}
-                onPress={submit}
+                label={verify.busy ? t("verifyEmail.saving") : t("verifyEmail.submit")}
+                onPress={verify.submit}
                 variant="primary"
-                loading={loading}
+                loading={verify.busy}
                 accessibilityLabel={t("verifyEmail.submit")}
               />
 
