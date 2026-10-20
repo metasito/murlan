@@ -8,7 +8,7 @@ import type { ReplayMove, ReplaySeat } from "../../lib/game/replay.ts";
 /** Seat list for a replay row: every seat, with its user id or null for a bot. */
 export function replaySeatsOf(
   players: { name: string }[],
-  playerMap: Record<number, string>,
+  playerMap: Readonly<Record<number, string>>,
   vacatedSeats: ReadonlyMap<number, { userId: string }> = new Map()
 ): ReplaySeat[] {
   return players.map((p, seatIndex) => ({

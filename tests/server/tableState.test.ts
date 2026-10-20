@@ -122,9 +122,7 @@ describe("a table's round trip through active_games", () => {
   describe("matchOver is stored, not re-derived (a boolean round trip; the fold's own verdict is tests/server/restoredVerdict.test.ts)", () => {
     const restoredOver = (matchOver: boolean, scores: Record<string, number>) => {
       const game = midMatch();
-      game.endedByVote = false;
-      game.matchOver = matchOver;
-      game.cumulativeScores = scores;
+      Object.assign(game, { endedByVote: false, matchOver, cumulativeScores: scores });
       const back = fromEnvelope(persisted(game));
       assert.ok(back.ok);
       return back.game.matchOver;

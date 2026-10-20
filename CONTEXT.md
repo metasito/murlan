@@ -107,6 +107,9 @@ _Avoid_: dropped seat
 The last-place finish recorded against a player who left a round before it ended.
 _Avoid_: forfeit, rage-quit
 
+**Ledger**:
+The one module that writes a group of a live table's fields, read-only everywhere else: `server/game/seatLedger.ts` for who holds each seat, `server/game/matchLedger.ts` for the match's totals, target, round count and votes.
+
 ## Design pointers
 
 - **Account recovery** — the register / verify-email / add-email / resend-verification /

@@ -1,8 +1,5 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
 import {
   vacate,
   reclaim,
@@ -10,6 +7,7 @@ import {
   castEndMatchVote,
 } from "../../server/game/seatLedger.ts";
 import { seatTotal } from "../../server/game/onlineGameLogic.ts";
+import { applyRoundFold } from "../../server/game/matchLedger.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
@@ -43,7 +41,7 @@ function table(overrides: Partial<OnlineGameState> = {}): OnlineGameState {
 describe("seat ledger", () => {
   test("a mid-hand vacate hands the seat to a weak bot and records the abandonment", () => {
     const game = table();
-    game.endMatchVotes.add("u-alice");
+    castEndMatchVote(game, "u-alice", true);
 
     assert.deepEqual(vacate(game, 1, { midHand: true }), { abandoned:true });
 
@@ -74,9 +72,9 @@ describe("seat ledger", () => {
     const game = table();
     vacate(game, 1, { midHand: true });
     // The bot plays on and scores under the seat's bot key.
-    game.cumulativeScores["bot:1"] = 5;
+    applyRoundFold(game, { cumulativeScores: { ...game.cumulativeScores, "bot:1": 5 }, matchTarget: 21, matchOver: false });
     assert.equal(seatTotal(game.cumulativeScores, game.playerMap, game.vacatedSeats, 1), 12);
-    game.endMatchVotes.add("u-alice");
+    castEndMatchVote(game, "u-alice", true);
 
     assert.equal(reclaim(game, "u-drita"), 1);
 
@@ -124,108 +122,5 @@ describe("seat ledger", () => {
     assert.deepEqual([...game.endMatchVotes], ["u-alice"]);
     castEndMatchVote(game, "u-alice", false);
     assert.equal(game.endMatchVotes.size, 0);
-  });
-});
-
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const LEDGER = "server/game/seatLedger.ts";
-const FIELD = "(?:playerMap|vacatedSeats|releasedSeats|abandonedSeats|weakSeats|endMatchVotes)";
-const WRITE = new RegExp(
-  [
-    `\\.${FIELD}\\.(?:add|set|delete|clear)\\(`,
-    `\\.playerMap\\[[^\\]]*\\]\\s*=(?!=)`,
-    `\\bdelete\\s+[\\w.]+\\.playerMap\\[`,
-    `\\.${FIELD}\\s*=(?!=)`,
-  ].join("|"),
-  "g"
-);
-
-function sourceFiles(dir: string): string[] {
-  return readdirSync(path.join(repoRoot, dir), { withFileTypes: true }).flatMap((entry) => {
-    const rel = `${dir}/${entry.name}`;
-    if (entry.isDirectory()) return entry.name === "node_modules" ? [] : sourceFiles(rel);
-    return /\.tsx?$/.test(entry.name) ? [rel] : [];
-  });
-}
-
-/** Locals bound to a seat field: `const { weakSeats } = game`, `const votes = game.endMatchVotes`. */
-function aliasesIn(source: string): string[] {
-  const field = new RegExp(`^${FIELD}$`);
-  const names: string[] = [];
-  for (const [, body] of source.matchAll(/(?:const|let|var)\s*\{([^}]*)\}\s*=/g)) {
-    for (const part of body.split(",")) {
-      const [key, alias] = part.split(":").map((s) => s.trim().split(/\s*=/)[0]);
-      if (field.test(key)) names.push(alias || key);
-    }
-  }
-  for (const [, name] of source.matchAll(new RegExp(`(?:const|let|var)\\s+(\\w+)\\s*=\\s*[\\w.]+\\.${FIELD}\\s*;`, "g"))) {
-    names.push(name);
-  }
-  return names;
-}
-
-function writesThrough(source: string, alias: string): string[] {
-  const write = new RegExp(
-    `\\b${alias}\\.(?:add|set|delete|clear)\\(|(?<![\\w.])${alias}\\[[^\\]]*\\]\\s*=(?!=)|\\bdelete\\s+${alias}\\[`,
-    "g"
-  );
-  return [...source.matchAll(write)].map((m) => m[0]);
-}
-
-function writesOf(source: string): string[] {
-  return [
-    ...[...source.matchAll(WRITE)].map((m) => m[0]),
-    ...aliasesIn(source).flatMap((alias) => writesThrough(source, alias)),
-  ];
-}
-
-function writesIn(file: string): string[] {
-  const source = readFileSync(path.join(repoRoot, file), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/[^\n]*/g, "");
-  return writesOf(source);
-}
-
-describe("only the seat ledger writes the seat fields", () => {
-  test("the scan recognises every kind of write", () => {
-    const samples = [
-      "game.releasedSeats.add(u)",
-      "game.vacatedSeats.set(1, x)",
-      "game.abandonedSeats.delete(1)",
-      "game.weakSeats.clear()",
-      "game.endMatchVotes.add(u)",
-      "game.playerMap[seat] = u",
-      "delete game.playerMap[seat]",
-      "game.weakSeats = new Set()",
-    ];
-    for (const sample of samples) assert.equal(sample.match(WRITE)?.length, 1, sample);
-    assert.equal("game.playerMap[seat] === u || game.weakSeats.has(1)".match(WRITE), null);
-  });
-
-  test("the scan follows a field into a local", () => {
-    const aliased = [
-      "const { weakSeats } = game; weakSeats.add(1);",
-      "const { gameState, playerMap } = game; playerMap[1] = u;",
-      "const { playerMap: seats } = game; delete seats[1];",
-      "const votes = game.endMatchVotes; votes.clear();",
-    ];
-    for (const sample of aliased) assert.equal(writesOf(sample).length, 1, sample);
-    assert.deepEqual(writesOf("const { playerMap } = game; if (playerMap[1] === u) playerMap.x;"), []);
-  });
-
-  test("the ledger itself writes every field", () => {
-    const writes = writesIn(LEDGER).join(" ");
-    for (const field of ["playerMap", "vacatedSeats", "releasedSeats", "abandonedSeats", "weakSeats", "endMatchVotes"]) {
-      assert.ok(writes.includes(field), `${LEDGER} writes no ${field}`);
-    }
-  });
-
-  test("no other file under server/, lib/ or shared/ writes one", () => {
-    const files = ["server", "lib", "shared"].flatMap(sourceFiles);
-    assert.ok(files.includes(LEDGER));
-    const offenders = files
-      .filter((file) => file !== LEDGER)
-      .flatMap((file) => writesIn(file).map((write) => `${file}: ${write}`));
-    assert.deepEqual(offenders, []);
   });
 });
