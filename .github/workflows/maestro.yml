@@ -472,9 +472,5 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          {
-            echo "The scheduled \`maestro.yml\` run on \`main\` failed: [run]($RUN_URL), [artifacts]($RUN_URL#artifacts)."
-            echo
-            echo "Diagnose it from its artifacts; a device run is never rerun (\`docs/agents/checks.md\`). Close this by hand once diagnosed."
-          } > "$RUNNER_TEMP/report.md"
+          sed -e "s|@WORKFLOW@|maestro.yml|g" -e "s|@RUN_URL@|$RUN_URL|g" tools/ci/device-run-report.md > "$RUNNER_TEMP/report.md"
           bash tools/ci/report-to-tracker.sh "A scheduled maestro.yml run went red" "$RUNNER_TEMP/report.md" device-run

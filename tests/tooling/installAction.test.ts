@@ -21,17 +21,24 @@ test("no workflow runs npm ci itself: the install action owns it", () => {
 });
 
 test("a Node version is spelled only where it must be production's", () => {
+  let spelled = 0;
   for (const [name, source] of sources) {
-    for (const spelled of source.matchAll(/node-version:\s*["']?(\d+)/g)) {
-      assert.equal(spelled[1], production, `${name} pins Node ${spelled[1]} but is not production's ${production}`);
+    for (const pin of source.matchAll(/node-version:\s*["']?(\d+)/g)) {
+      spelled += 1;
+      assert.equal(pin[1], production, `${name} pins Node ${pin[1]} but is not production's ${production}`);
     }
   }
+  assert.ok(spelled > 0, "the production job's override is no longer seen");
 });
 
 test("a direct setup-node reads .node-version", () => {
+  let seen = 0;
   for (const [name, source] of sources) {
-    for (const use of source.matchAll(/setup-node@[^\n]*\n\s*with:\n((?:\s+[\w-]+:[^\n]*\n)+)/g)) {
-      assert.match(use[1]!, /node-version-file: \.node-version/, name);
+    for (const use of source.matchAll(/setup-node@[^\n]*\n(\s*with:\n(?:\s+[\w-]+:[^\n]*\n)+)?/g)) {
+      seen += 1;
+      assert.ok(use[1], `${name}: a setup-node step has no with: block`);
+      assert.match(use[1], /node-version-file: \.node-version/, name);
     }
   }
+  assert.ok(seen > 0, "no direct setup-node step is seen");
 });

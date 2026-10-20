@@ -31,12 +31,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  # Node 22+ is required: tests run via `node --test` against .ts files directly
-  # (docs/agents/checks.md, "Node's TypeScript loader"), stable since Node 22.6,
-  # so no ts-node/tsx/vitest is needed. Node 24 is the current LTS-track
-  # release and what the project is developed against, so pin to it to keep
-  # local and CI runs identical. The `build` job is deliberately not on this —
-  # it runs production's Node, for the reason given there.
   # Single source of truth for the secret-scan image: the scan step and the
   # self-test must run the exact same binary, or a version bump to one and not
   # the other leaves the self-test attesting to a scanner that isn't the one

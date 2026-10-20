@@ -8,23 +8,23 @@ import path from "node:path";
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 const script = path.join(repoRoot, "tools", "ci", "report-to-tracker.sh");
 
-function report(title: string, open: { number: number; title: string }[]): string[] {
+function report(title: string, open: { number: number; title: string }[], fail = false): { status: number | null; calls: string[] } {
   const dir = mkdtempSync(path.join(tmpdir(), "tracker-"));
   const log = path.join(dir, "calls.log");
   writeFileSync(path.join(dir, "list.json"), JSON.stringify(open));
   const gh = path.join(dir, "gh");
-  writeFileSync(gh, `#!/usr/bin/env bash\nif [ "$2" = list ]; then cat "${dir}/list.json"; else echo "$*" >> "${log}"; fi\n`);
+  writeFileSync(gh, `#!/usr/bin/env bash\nif [ "$2" = list ]; then cat "${dir}/list.json"; elif [ -n "$STUB_FAIL" ]; then exit 1; else echo "$*" >> "${log}"; fi\n`);
   chmodSync(gh, 0o755);
   const run = spawnSync("bash", [script, title, "body.md", "soak", "bug"], {
-    env: { ...process.env, PATH: `${dir}:${process.env.PATH}` },
+    env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, STUB_FAIL: fail ? "1" : "" },
     encoding: "utf8",
   });
-  assert.equal(run.status, 0, run.stderr);
-  return readFileSync(log, "utf8").trim().split("\n");
+  const calls = fail ? [] : readFileSync(log, "utf8").trim().split("\n");
+  return { status: run.status, calls };
 }
 
 test("a red comments on the open issue of its own title", () => {
-  const calls = report("The soak found something", [
+  const { calls } = report("The soak found something", [
     { number: 4, title: "The offline-match soak found something" },
     { number: 9, title: "The soak found something" },
   ]);
@@ -32,6 +32,21 @@ test("a red comments on the open issue of its own title", () => {
 });
 
 test("a red whose title has no open issue files one, with every label", () => {
-  const calls = report("The offline-match soak found something", [{ number: 9, title: "The soak found something" }]);
+  const { calls } = report("The offline-match soak found something", [{ number: 9, title: "The soak found something" }]);
   assert.deepEqual(calls, ["issue create --title The offline-match soak found something --label soak --label bug --body-file body.md"]);
+});
+
+test("a title with quotes, a dollar sign and backticks is matched exactly", () => {
+  const title = 'It said "$HOME" and `id`';
+  const { calls } = report(title, [{ number: 3, title: "It said" }, { number: 5, title }]);
+  assert.deepEqual(calls, ["issue comment 5 --body-file body.md"]);
+});
+
+test("an empty tracker files a new issue", () => {
+  const { calls } = report("A red", []);
+  assert.deepEqual(calls, ["issue create --title A red --label soak --label bug --body-file body.md"]);
+});
+
+test("a gh failure fails the report", () => {
+  assert.notEqual(report("A red", [{ number: 1, title: "A red" }], true).status, 0);
 });
