@@ -291,7 +291,8 @@ jobs:
     name: Typecheck and tests
     needs: scope
     if: needs.scope.outputs.app == 'true' || needs.scope.outputs.scans == 'true'
-    runs-on: ubuntu-latest
+    # Pinned: the restore test installs postgresql-client-16 from the distro, and ubuntu-latest moved to 26.04, which does not package it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     # Without a database the integration suites skip themselves (by design, so
