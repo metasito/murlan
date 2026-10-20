@@ -167,8 +167,8 @@ describe('the pass that closes a trick', () => {
     const swept = (card: Card) =>
       within(screen.getByTestId('sweep-cards', { includeHiddenElements: true })).queryByLabelText(cardSpokenName(card, t), { includeHiddenElements: true });
     const travelled = () => {
-      const { transform } = getAnimatedStyle(screen.getByTestId('sweep-cards', { includeHiddenElements: true })) as { transform: Record<string, number>[] };
-      return Math.hypot(transform[0].translateX, transform[1].translateY);
+      const { transform } = getAnimatedStyle(screen.getByTestId('sweep-cards', { includeHiddenElements: true })) as { transform: readonly { translateX?: number; translateY?: number }[] };
+      return Math.hypot(transform[0].translateX ?? 0, transform[1].translateY ?? 0);
     };
 
     it('sweeps the winning cards off the felt once the hold ends', async () => {
