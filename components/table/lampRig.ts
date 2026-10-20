@@ -63,6 +63,10 @@ const FLARE_DECAY = 2.4;
 const DEFAULT_LEVEL_RATE = 3;
 const MAX_DT = 0.05;
 
+/** Who may hold the lamp's level down: the lost round, the deal's breath, the viewer's lost link. */
+export type LevelOwner = "lost" | "breath" | "link";
+const RELEASED = 1;
+
 export interface Lamp {
   /** The pool's centre, gliding toward `tx`, `ty`. */
   x: number;
@@ -78,6 +82,8 @@ export interface Lamp {
   lvl: number;
   lvlT: number;
   lvlRate: number;
+  /** The level each owner holds the lamp at, `RELEASED` when it holds nothing; `lvlT` is the lowest. */
+  holds: Record<LevelOwner, number>;
   freeze: number;
   /** Seconds the rig has run: the sway's period drifts with it. */
   t: number;
@@ -90,6 +96,7 @@ export interface Lamp {
   drawn: { lx: number; ly: number; level: number; f: number; r: number };
 }
 
+/** A `level` under 1 is the deal's breath, held from the first frame. */
 export function restingLamp([x, y, r]: Pool, level = 1): Lamp {
   return {
     x,
@@ -104,6 +111,7 @@ export function restingLamp([x, y, r]: Pool, level = 1): Lamp {
     lvl: level,
     lvlT: level,
     lvlRate: DEFAULT_LEVEL_RATE,
+    holds: { lost: RELEASED, breath: level, link: RELEASED },
     freeze: 0,
     t: 0,
     lx: x,
@@ -182,9 +190,13 @@ export const lampControls = {
       s.r = s.tr;
     }
   },
-  setLevel(s: Lamp, to: number, rate: number): void {
+  /** `level` null releases `owner`'s hold; `rate` is the glide's only when this write moves the lamp's target. */
+  hold(s: Lamp, owner: LevelOwner, level: number | null, rate: number): void {
     "worklet";
-    s.lvlT = clamp01(to);
+    s.holds[owner] = level === null ? RELEASED : clamp01(level);
+    const to = Math.min(RELEASED, s.holds.lost, s.holds.breath, s.holds.link);
+    if (to === s.lvlT) return;
+    s.lvlT = to;
     s.lvlRate = rate;
   },
   flare(s: Lamp, reduced: boolean): void {

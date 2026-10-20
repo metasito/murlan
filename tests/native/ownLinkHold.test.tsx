@@ -5,6 +5,7 @@ import { useOwnLink } from '@/lib/useOwnLink';
 import { useLinkHold } from '@/components/table/useLinkHold';
 import type { OwnLink } from '@/lib/ownLink';
 import { Reconnect } from '@/lib/theme';
+import type { LampRig } from '@/components/table/useLampRig';
 import { FRAME_MS } from './helpers/frames';
 
 const mockSteps: ((frame: FrameInfo) => void)[] = [];
@@ -123,7 +124,7 @@ describe("the viewer's own link", () => {
 
 describe('the table holding its breath', () => {
   it('freezes on the drop, dims on give-up, and lets go on the way back', async () => {
-    const rig = { freeze: jest.fn<(amount: number) => void>(), setLevel: jest.fn<(to: number, rate: number) => void>() };
+    const rig = { freeze: jest.fn<(amount: number) => void>(), hold: jest.fn<LampRig['hold']>() };
     const { result, rerender, unmount } = await renderHook(({ link }: { link: OwnLink }) => useLinkHold(link, rig), {
       initialProps: { link: 'up' },
     });
@@ -132,35 +133,35 @@ describe('the table holding its breath', () => {
     expect(rig.freeze).toHaveBeenLastCalledWith(1);
     expect(result.current.frozen).toBe(true);
     await rerender({ link: 'lost' });
-    expect(rig.setLevel).toHaveBeenLastCalledWith(Reconnect.lamp, Reconnect.lampRate);
+    expect(rig.hold).toHaveBeenLastCalledWith('link', Reconnect.lamp, Reconnect.lampRate);
     await rerender({ link: 'back' });
     expect(rig.freeze).toHaveBeenLastCalledWith(0);
-    expect(rig.setLevel).toHaveBeenLastCalledWith(1, Reconnect.lampRate);
+    expect(rig.hold).toHaveBeenLastCalledWith('link', null, Reconnect.lampRate);
     expect(result.current.frozen).toBe(false);
     await unmount();
   });
 
   it('dims a table that mounts already given up, and lets it go on the way back', async () => {
-    const rig = { freeze: jest.fn<(amount: number) => void>(), setLevel: jest.fn<(to: number, rate: number) => void>() };
+    const rig = { freeze: jest.fn<(amount: number) => void>(), hold: jest.fn<LampRig['hold']>() };
     const { rerender, unmount } = await renderHook(({ link }: { link: OwnLink }) => useLinkHold(link, rig), {
       initialProps: { link: 'lost' },
     });
-    expect(rig.setLevel).toHaveBeenLastCalledWith(Reconnect.lamp, Reconnect.lampRate);
+    expect(rig.hold).toHaveBeenLastCalledWith('link', Reconnect.lamp, Reconnect.lampRate);
     await rerender({ link: 'back' });
-    expect(rig.setLevel).toHaveBeenLastCalledWith(1, Reconnect.lampRate);
-    expect(rig.setLevel).toHaveBeenCalledTimes(2);
+    expect(rig.hold).toHaveBeenLastCalledWith('link', null, Reconnect.lampRate);
+    expect(rig.hold).toHaveBeenCalledTimes(2);
     await unmount();
   });
 
-  it('never touches the lamp level of a table that mounts with its link up', async () => {
-    const rig = { freeze: jest.fn<(amount: number) => void>(), setLevel: jest.fn<(to: number, rate: number) => void>() };
+  it('never holds the lamp level down on a table that mounts with its link up', async () => {
+    const rig = { freeze: jest.fn<(amount: number) => void>(), hold: jest.fn<LampRig['hold']>() };
     const { unmount } = await renderHook(() => useLinkHold('up', rig));
-    expect(rig.setLevel).not.toHaveBeenCalled();
+    expect(rig.hold.mock.calls.every(([, level]) => level === null)).toBe(true);
     await unmount();
   });
 
   it('holds the clock on the way back until the missed cards have landed, however late they come', async () => {
-    const rig = { freeze: jest.fn<(amount: number) => void>(), setLevel: jest.fn<(to: number, rate: number) => void>() };
+    const rig = { freeze: jest.fn<(amount: number) => void>(), hold: jest.fn<LampRig['hold']>() };
     const { result, rerender, unmount } = await renderHook(
       ({ link, missed }: { link: OwnLink; missed: boolean }) => useLinkHold(link, rig, missed),
       { initialProps: { link: 'reconnecting', missed: false } }
@@ -177,7 +178,7 @@ describe('the table holding its breath', () => {
 
   const holdGrey = async (reduced: boolean) => {
     mockReduceMotion = reduced;
-    const rig = { freeze: jest.fn<(amount: number) => void>(), setLevel: jest.fn<(to: number, rate: number) => void>() };
+    const rig = { freeze: jest.fn<(amount: number) => void>(), hold: jest.fn<LampRig['hold']>() };
     const view = await renderHook(({ link }: { link: OwnLink }) => useLinkHold(link, rig), { initialProps: { link: 'up' } });
     const seen: number[] = [];
     await view.rerender({ link: 'dropped' });
@@ -194,7 +195,7 @@ describe('the table holding its breath', () => {
   });
 
   it('ramps the grey in over 300 ms and out over 400 ms', async () => {
-    const rig = { freeze: jest.fn<(amount: number) => void>(), setLevel: jest.fn<(to: number, rate: number) => void>() };
+    const rig = { freeze: jest.fn<(amount: number) => void>(), hold: jest.fn<LampRig['hold']>() };
     const view = await renderHook(({ link }: { link: OwnLink }) => useLinkHold(link, rig), { initialProps: { link: 'up' } });
     const greyAfter = async (ms: number) => (await wait(ms), mockReaders.grey());
     await view.rerender({ link: 'dropped' });
@@ -215,7 +216,7 @@ describe('the table holding its breath', () => {
   });
 
   it('starts the ramp on the first frame after the change, never on time from before it', async () => {
-    const rig = { freeze: jest.fn<(amount: number) => void>(), setLevel: jest.fn<(to: number, rate: number) => void>() };
+    const rig = { freeze: jest.fn<(amount: number) => void>(), hold: jest.fn<LampRig['hold']>() };
     const view = await renderHook(({ link }: { link: OwnLink }) => useLinkHold(link, rig), { initialProps: { link: 'up' } });
     const frame = (ms: number) => mockSteps.at(-1)!({ timeSincePreviousFrame: ms, timestamp: 0, timeSinceFirstFrame: 0 });
     await view.rerender({ link: 'dropped' });
@@ -232,7 +233,7 @@ describe('the table holding its breath', () => {
 
   it.each([false, true])('stays greyed until the grey has faded out, not only while the link is held (reduced motion %s)', async (reduced) => {
     mockReduceMotion = reduced;
-    const rig = { freeze: jest.fn<(amount: number) => void>(), setLevel: jest.fn<(to: number, rate: number) => void>() };
+    const rig = { freeze: jest.fn<(amount: number) => void>(), hold: jest.fn<LampRig['hold']>() };
     const view = await renderHook(({ link }: { link: OwnLink }) => useLinkHold(link, rig), { initialProps: { link: 'up' } });
     const seen = [view.result.current.greyed];
     await view.rerender({ link: 'lost' });
@@ -250,7 +251,7 @@ describe('the table holding its breath', () => {
   });
 
   it('stops being greyed after a hold that ended before the grey ever moved', async () => {
-    const rig = { freeze: jest.fn<(amount: number) => void>(), setLevel: jest.fn<(to: number, rate: number) => void>() };
+    const rig = { freeze: jest.fn<(amount: number) => void>(), hold: jest.fn<LampRig['hold']>() };
     const view = await renderHook(({ link }: { link: OwnLink }) => useLinkHold(link, rig), { initialProps: { link: 'up' } });
     const frame = (ms: number) => mockSteps.at(-1)!({ timeSincePreviousFrame: ms, timestamp: 0, timeSinceFirstFrame: 0 });
     await view.rerender({ link: 'dropped' });

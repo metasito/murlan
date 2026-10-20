@@ -14,7 +14,7 @@ jest.mock('@/components/table/lampRig', () => {
     ...actual,
     __esModule: true,
     restingLamp: jest.fn(actual.restingLamp),
-    lampControls: { ...actual.lampControls, setLevel: jest.fn(actual.lampControls.setLevel) },
+    lampControls: { ...actual.lampControls, hold: jest.fn(actual.lampControls.hold) },
   };
 });
 
@@ -33,6 +33,8 @@ import { lampControls, restingLamp } from '@/components/table/lampRig';
 import { dealSpecks } from '@/components/table/particles';
 import { along, breath, frame, handPoses, table } from './helpers/dealTable';
 import { bootFeedback } from './helpers/feedback';
+
+const breathHolds = () => jest.mocked(lampControls.hold).mock.calls.filter((c) => c[1] === 'breath');
 
 describe("the viewer's hand is dealt with the felt's breath, the lamp's rise and specks", () => {
   beforeEach(async () => {
@@ -53,7 +55,7 @@ describe("the viewer's hand is dealt with the felt's breath, the lamp's rise and
     const scales = new Set<number>();
     for (let t = 16; t <= 1700; t += 16) {
       await frame();
-      if (jest.mocked(lampControls.setLevel).mock.calls.some((c) => c[1] === 1)) rises.push(t);
+      if (breathHolds().some((c) => c[2] === null)) rises.push(t);
       breaths.push(breath());
       for (const p of handPoses()) if (p.opacity === 1) scales.add(along(p, 'scale'));
     }
@@ -97,14 +99,14 @@ describe("the viewer's hand is dealt with the felt's breath, the lamp's rise and
     const r = await render(table());
     for (let t = 0; t < 400; t += 16) await frame();
     expect(handPoses().some((p) => p.opacity !== 1)).toBe(true);
-    const levels = () => jest.mocked(lampControls.setLevel).mock.calls.map((c) => c[1]);
+    const levels = () => breathHolds().map((c) => c[2]);
     expect(levels()).toEqual([0.75]);
     mockReduce = true;
     await r.rerender(table());
     for (let t = 0; t < 400; t += 16) await frame();
     expect(handPoses().map((p) => [p.opacity, along(p, 'scale')])).toEqual(Array(13).fill([1, 1]));
-    const [lamp, to] = jest.mocked(lampControls.setLevel).mock.calls.at(-1)!;
-    expect([to, lamp.lvl]).toEqual([1, 1]);
+    const [lamp, , to] = breathHolds().at(-1)!;
+    expect([to, lamp.lvl]).toEqual([null, 1]);
     await r.unmount();
   }, 20_000);
 
@@ -117,7 +119,7 @@ describe("the viewer's hand is dealt with the felt's breath, the lamp's rise and
       expect(handPoses().map((p) => [p.opacity, along(p, 'scale')])).toEqual(Array(13).fill([1, 1]));
       expect(breath()).toBe(1);
     }
-    expect(lampControls.setLevel).not.toHaveBeenCalled();
+    expect(breathHolds()).toEqual([]);
     expect(dealSpecks).not.toHaveBeenCalled();
     await r.unmount();
   });
