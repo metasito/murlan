@@ -9,16 +9,9 @@ import { Colors, Motion } from '@/lib/theme';
 import { en } from '@/locales/en';
 import { advance, dealing, freshDeal, table } from './helpers/dealTurnTable';
 import { bootFeedback, haptics } from './helpers/feedback';
+import { setMotion, setWindow } from './harness/env';
 
-let mockReduce = false;
-jest.mock('@/lib/accessibility', () => ({
-  ...jest.requireActual<typeof import('@/lib/accessibility')>('@/lib/accessibility'),
-  usePrefersReducedMotion: () => mockReduce,
-}));
-
-const mockWindow = { width: 844, height: 390, scale: 2, fontScale: 1 };
-jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({ __esModule: true, default: () => mockWindow }));
-
+const WINDOW = { width: 844, height: 390, scale: 2, fontScale: 1 };
 const HIDDEN_TOO = { includeHiddenElements: true };
 
 const chipReadsYourTurn = () =>
@@ -41,6 +34,8 @@ const handCardScale = () => {
 const chipReads = (key: keyof typeof en) => within(screen.getByTestId('game-hud-stack')).queryByText(en[key], HIDDEN_TOO) !== null;
 const tableSays = (key: keyof typeof en) => JSON.stringify(screen.toJSON()).includes(en[key]);
 
+beforeEach(() => setWindow(WINDOW));
+
 describe("the viewer's turn waits for the deal to land", () => {
   beforeEach(async () => {
     jest.useFakeTimers();
@@ -48,7 +43,6 @@ describe("the viewer's turn waits for the deal to land", () => {
   });
   afterEach(() => {
     jest.useRealTimers();
-    mockReduce = false;
   });
 
   it('shows no turn while the cards fly, and gives it once they land', async () => {
@@ -80,7 +74,7 @@ describe("the viewer's turn waits for the deal to land", () => {
   }, 20_000);
 
   it('with reduce motion on, the fan takes its turn size without travelling', async () => {
-    mockReduce = true;
+    await setMotion('on');
     const state = { ...freshDeal(), currentTurnIndex: 1 };
     const view = await render(table(state));
     for (let ms = 0; dealing() && ms < 3000; ms += 160) await advance(160);

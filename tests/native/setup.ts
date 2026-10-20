@@ -26,16 +26,9 @@ jest.mock('expo-notifications', () => ({
   addNotificationResponseReceivedListener: () => ({ remove: () => {} }),
 }));
 
-// The table is landscape-only, so the default window is the e2e phone's, on its side; a test
-// that needs portrait asks for it.
-const LANDSCAPE_PHONE = { width: 844, height: 390, scale: 2, fontScale: 2 };
-beforeEach(() => {
-  // By path: a file that mocks 'react-native' whole still gets the real Dimensions.
-  (require('react-native/Libraries/Utilities/Dimensions').default as typeof import('react-native').Dimensions).set({
-    window: LANDSCAPE_PHONE,
-    screen: LANDSCAPE_PHONE,
-  });
-});
+// Window, motion and connectivity are knobs (./harness/env), never module mocks; each starts every
+// test from its default, set while nothing is mounted.
+beforeEach(() => require('./harness/env').resetEnv());
 
 // Each UI job here is its own setTimeout, so a test that swaps back to real timers drops a
 // frame callback's queued registration and then runs its unregistration against nothing.
@@ -76,7 +69,7 @@ beforeEach(() => {
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
-jest.mock('@react-native-community/netinfo', () => require('@react-native-community/netinfo/jest/netinfo-mock.js'));
+jest.mock('@react-native-community/netinfo', () => require('./mocks/netInfo').netInfoModule());
 
 // Same story for gesture-handler: GestureHandlerRootView calls into the native
 // module on its first render, so mounting the app's real provider stack needs

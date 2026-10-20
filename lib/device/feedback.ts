@@ -1,7 +1,6 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { makeMutable } from "react-native-reanimated";
 import { scheduleOnUI } from "react-native-worklets";
-import { SETTINGS_KEY } from "@/lib/storageKeys";
+import { readStoredSettings } from "@/lib/storedSettings";
 import { LATE_SOUND_MS } from "@/lib/tokens";
 import { E2E_FAST } from "@/lib/e2eConfig";
 import { traceOnset } from "@/lib/e2eTrace";
@@ -34,12 +33,9 @@ const generation = makeMutable(0);
 setBusTrim("music", musicVolume);
 
 // Read before SettingsProvider mounts, so a stored "off" holds from the first tap (CONTEXT.md, Feedback master state).
-AsyncStorage.getItem(SETTINGS_KEY)
-  .then((raw) => {
-    const parsed = raw ? JSON.parse(raw) : null;
-    if (typeof parsed?.hapticsEnabled === "boolean") setHapticsEnabled(parsed.hapticsEnabled);
-  })
-  .catch(() => {});
+void readStoredSettings().then((stored) => {
+  if (typeof stored?.hapticsEnabled === "boolean") setHapticsEnabled(stored.hapticsEnabled);
+});
 
 export function startFeedback(): Promise<void> {
   return startAudio();

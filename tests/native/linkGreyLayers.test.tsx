@@ -8,12 +8,6 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import type { TestInstance } from 'test-renderer';
 
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'on',
-}));
-
 // tests/native/setup.ts's no-op Skia, except that a group draws its layer and a colour matrix shows its values.
 jest.mock('@shopify/react-native-skia', () => {
   const React = require('react') as typeof import('react');
@@ -39,6 +33,7 @@ import { greyFilter, greyMatrix, iosGrey } from '@/components/table/linkGrey';
 import { Colors, Layer, Reconnect } from '@/lib/tokens';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import type { OwnLink } from '@/lib/ownLink';
+import { setMotion } from './harness/env';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -87,6 +82,8 @@ const LAYERS = ['table-felt', 'table-particles', 'game-top-bar', 'score-pill-lay
 const EDGE = ['table-felt', 'table-particles', 'control-rail-layer'];
 const filters = () =>
   LAYERS.map((id) => (getAnimatedStyle(screen.getByTestId(id, { includeHiddenElements: true })) as { filter?: string }).filter);
+
+beforeEach(() => setMotion('on'));
 
 describe("the table while the viewer's own link is down", () => {
   beforeEach(() => {

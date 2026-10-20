@@ -40,14 +40,9 @@ jest.mock('@/lib/device/orientation', () => ({
   ...jest.requireActual<object>('@/lib/device/orientation'),
   useIsLandscape: () => mockLandscape,
 }));
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 import HomeScreen from '@/app/index';
 import { t } from '@/lib/i18n';
+import { setMotion } from './harness/env';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -60,6 +55,8 @@ const mount = () => render(<SafeAreaProvider initialMetrics={METRICS}><HomeScree
 // default — without this every query below is answered by the veil rather than
 // by the pill, and reads the same whether the word is there or not.
 const HIDDEN = { includeHiddenElements: true } as const;
+
+beforeEach(() => setMotion('on'));
 
 describe('the landscape Settings pill', () => {
   beforeEach(() => {

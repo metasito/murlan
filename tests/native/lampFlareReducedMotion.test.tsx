@@ -9,15 +9,10 @@ import React from "react";
 import { act, render, screen, within } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-jest.mock("@/lib/accessibility", () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => "on",
-}));
-
 import { getAnimatedStyle } from "react-native-reanimated";
 import { GameTable } from "@/components/GameTable";
 import type { Card, Combination, GameState, Player } from "@/lib/game/gameEngine";
+import { setMotion } from "./harness/env";
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -71,6 +66,8 @@ const inPlay = (combo: Combination): GameState => ({
   firstPlayMade: true,
   lastMove: { seq: 0, kind: "deal" },
 });
+
+beforeEach(() => setMotion("on"));
 
 describe("reduced motion holds the lamp's flare at exactly zero (#765)", () => {
   beforeEach(() => {

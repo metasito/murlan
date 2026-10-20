@@ -1,20 +1,14 @@
 // tests/native/roomSeatFill.test.tsx — a seat filling in the room is heard and
 // seen: one clack per update that fills a seat, a sting when the last one does, and each
 // row entering rather than appearing.
-import { describe, it, expect, beforeEach, jest } from "@jest/globals";
+import { describe, it, expect, beforeEach } from "@jest/globals";
 import React from "react";
 import { render, screen } from "@testing-library/react-native";
 import { getAnimatedStyle } from "react-native-reanimated";
 
-let mockReduceMotion = false;
-jest.mock("@/lib/accessibility", () => ({
-  usePrefersReducedMotion: () => mockReduceMotion,
-  setMotionPreference: () => {},
-  getMotionPreference: () => "system",
-}));
-
 import { RoomSeatList } from "@/components/RoomSeatList";
 import { bootFeedback, sounds } from "./helpers/feedback";
+import { setMotion } from "./harness/env";
 
 const fills = () => sounds().filter((s) => s === "seat_fill").length;
 const fulls = () => sounds().filter((s) => s === "room_full").length;
@@ -49,7 +43,6 @@ function translateY(testID: string): number | undefined {
 
 describe("a seat filling in the room", () => {
   beforeEach(async () => {
-    mockReduceMotion = false;
     await bootFeedback();
   });
 
@@ -94,7 +87,7 @@ describe("a seat filling in the room", () => {
     expect(translateY("room-seat-0")).toBeGreaterThan(0);
     await moving.unmount();
 
-    mockReduceMotion = true;
+    await setMotion("on");
     const still = await render(seatList([ANA]));
     expect(screen.getByText("Ana", { exact: false })).toBeTruthy();
     expect(translateY("room-seat-0")).toBe(0);

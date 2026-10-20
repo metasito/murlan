@@ -16,13 +16,6 @@ import { act, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getAnimatedStyle, makeMutable } from 'react-native-reanimated';
 
-const mockReduceMotion = { on: true };
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => mockReduceMotion.on,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 import { GameTable } from '@/components/GameTable';
 import { useCountdown } from '@/components/table/countdown';
 import { WindowTurnChip } from '@/components/table/notices/hud';
@@ -32,6 +25,7 @@ import { urgentThresholdSeconds } from '@/components/turnTimerUi';
 import { Reading } from '@/lib/theme';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
 import type { OwnLink } from '@/lib/ownLink';
+import { setMotion } from './harness/env';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -112,6 +106,8 @@ async function renderSettled(ui: React.ReactElement) {
   });
 }
 
+beforeEach(() => setMotion('on'));
+
 describe("a seat's turn clock", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -119,7 +115,6 @@ describe("a seat's turn clock", () => {
   });
   afterEach(() => {
     jest.useRealTimers();
-    mockReduceMotion.on = true;
   });
 
   // The two states that must still sweep. Without them every assertion below
@@ -130,7 +125,7 @@ describe("a seat's turn clock", () => {
   });
 
   it('sweeps by turning its two halves, three quarters through the window', async () => {
-    mockReduceMotion.on = false;
+    await setMotion('off');
     await renderSettled(table(state({ lastPlayedCombination: single(KING), lastPlayedBy: 0 }), OFFLINE_TIMER));
     await act(async () => {
       jest.advanceTimersByTime((OFFLINE_TIMER.seconds * 1000 * 3) / 4);
@@ -146,7 +141,7 @@ describe("a seat's turn clock", () => {
   });
 
   it("holds its sweep while the viewer's own link is down, and runs on from where it stood", async () => {
-    mockReduceMotion.on = false;
+    await setMotion('off');
     const ui = (ownLink: OwnLink) => table(state({ lastPlayedCombination: single(KING), lastPlayedBy: 0 }), OFFLINE_TIMER, ownLink);
     const view = await render(ui('up'));
     const right = () => parseFloat((getAnimatedStyle(screen.getByTestId('seat-turn-clock-right')) as { transform: { rotate: string }[] }).transform[0].rotate);
@@ -207,7 +202,7 @@ describe("a seat's turn clock", () => {
   });
 
   it('holds its sweep while a caught-up throw is in the air, and never for an ordinary one', async () => {
-    mockReduceMotion.on = false;
+    await setMotion('off');
     const right = () => parseFloat((getAnimatedStyle(screen.getByTestId('seat-turn-clock-right')) as { transform: { rotate: string }[] }).transform[0].rotate);
     const sweptBy = async (catchUp: boolean, ...steps: number[]) => {
       const view = await render(table(state({ lastPlayedCombination: single(KING), lastPlayedBy: 0 }), OFFLINE_TIMER, 'up', catchUp));
@@ -236,7 +231,7 @@ describe("a seat's turn clock", () => {
   const urgentAt = (OFFLINE_TIMER.seconds - urgentThresholdSeconds(OFFLINE_TIMER.seconds)) * 1000;
 
   it('turns red and pulses from the urgent threshold, not before', async () => {
-    mockReduceMotion.on = false;
+    await setMotion('off');
     await renderSettled(table(state({ lastPlayedCombination: single(KING), lastPlayedBy: 0 }), OFFLINE_TIMER));
     await act(async () => {
       jest.advanceTimersByTime(urgentAt - 1000);
@@ -319,13 +314,12 @@ describe("a seat's turn clock", () => {
 });
 
 describe('the chip and the ring on one window', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.useFakeTimers();
-    mockReduceMotion.on = false;
+    await setMotion('off');
   });
   afterEach(() => {
     jest.useRealTimers();
-    mockReduceMotion.on = true;
   });
 
   function Both({ held }: { held: boolean }) {

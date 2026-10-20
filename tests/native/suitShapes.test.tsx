@@ -4,15 +4,9 @@
 // nothing asserted that sentence until now. Collapsing every suit to the same
 // SVG shape — separated only by fill colour — passed the whole suite with 0
 // failures before this.
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect } from '@jest/globals';
 import React from 'react';
 import { render } from '@testing-library/react-native';
-
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => false,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'on',
-}));
 
 import { CardView } from '@/components/CardView';
 import { SUIT_GLYPHS } from '@/components/cardFaceModel';

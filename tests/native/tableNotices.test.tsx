@@ -9,23 +9,6 @@ import { activate } from './tapHelpers';
 import { t } from '@/lib/i18n';
 import { cardSpokenName } from '@/lib/cardNames';
 
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
-const mockNetListeners = new Set<(state: { isConnected: boolean | null }) => void>();
-jest.mock('@react-native-community/netinfo', () => ({
-  __esModule: true,
-  default: {
-    addEventListener: (l: (state: { isConnected: boolean | null }) => void) => {
-      mockNetListeners.add(l);
-      return () => mockNetListeners.delete(l);
-    },
-  },
-}));
-
 const mockSocketListeners = new Map<string, Set<(payload: unknown) => void>>();
 jest.mock('@/context/SocketContext', () => {
   const socket = {
@@ -57,11 +40,14 @@ import { CHIP_H } from '@/components/seatLayout';
 import { CLOCK_RUNNING_OUT_SECONDS, urgentThresholdSeconds } from '@/components/turnTimerUi';
 import { Colors, makeShadow, NoticePalette, TABLE_FONT_SCALE_MAX } from '@/lib/theme';
 import { buildCombination, type Card, type GameState, type Player } from '@/lib/game/gameEngine';
+import { setConnectivity, setStoredMotion } from './harness/env';
 
 const KINDS = Object.keys(NOTICES) as NoticeKind[];
 const fixtures = (kind: NoticeKind) => NOTICE_GALLERY[kind] as NoticeFixture[];
 const edgeOf = (kind: NoticeKind, tone: string) =>
   (NoticePalette[NOTICES[kind].shape] as Record<string, { edge: string }>)[tone].edge;
+
+beforeEach(() => setStoredMotion('on'));
 
 describe('every notice kind paints one plate, in its tone', () => {
   it('the gallery holds a kind', () => {
@@ -265,9 +251,9 @@ describe('the turn pill', () => {
     const edge = () => StyleSheet.flatten(screen.getAllByTestId('notice-turn', { includeHiddenElements: true })[0].props.style).borderColor;
     const r = await render(table({ state: 'reconnected', text: 'Besi is back' }));
     expect(edge()).toBe(Colors.onlineEdge);
-    await act(async () => mockNetListeners.forEach((l) => l({ isConnected: false })));
+    await setConnectivity(false);
     expect(edge()).toBe(Colors.offlineEdge);
-    await act(async () => mockNetListeners.forEach((l) => l({ isConnected: null })));
+    await setConnectivity(null);
     expect(edge()).toBe(Colors.onlineEdge);
     await r.unmount();
   });
@@ -341,7 +327,7 @@ describe('the turn pill', () => {
     );
     const edge = () => StyleSheet.flatten(screen.getAllByTestId('notice-turn', { includeHiddenElements: true })[0].props.style).borderColor;
     const before = edge();
-    await act(async () => mockNetListeners.forEach((l) => l({ isConnected: false })));
+    await setConnectivity(false);
     expect(edge()).toBe(before);
     await r.unmount();
   });
@@ -357,7 +343,7 @@ describe('the turn pill', () => {
       </SettingsProvider>,
     );
     const live = () => screen.getAllByTestId('offline-banner', hidden).at(-1)!.props.accessibilityLiveRegion;
-    await act(async () => mockNetListeners.forEach((l) => l({ isConnected: false })));
+    await setConnectivity(false);
     expect(live()).toBe('none');
     const knob = screen.getByLabelText(en['gameTable.settingsA11yLabel'], hidden);
     await act(async () => fireEvent.press(knob));
@@ -380,7 +366,7 @@ describe('the turn pill', () => {
     );
     const r = await render(table('up'));
     const live = () => screen.getAllByTestId('offline-banner', hidden).at(-1)!.props.accessibilityLiveRegion;
-    await act(async () => mockNetListeners.forEach((l) => l({ isConnected: false })));
+    await setConnectivity(false);
     const knob = screen.getByLabelText(en['gameTable.settingsA11yLabel'], hidden);
     await act(async () => fireEvent.press(knob));
     await act(async () => fireEvent.press(screen.getByTestId(`settings-row-${en['gameSettingsSheet.focusMode']}`, hidden)));

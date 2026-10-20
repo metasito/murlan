@@ -11,10 +11,10 @@ import { t } from '@/lib/i18n';
 import { Motion } from '@/lib/theme';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { handRowHeadroom } from '@/components/seatLayout';
-import { setMotionPreference } from '@/lib/accessibility';
 import { bootFeedback, sounds } from './helpers/feedback';
 import { choiceOpensAt } from '@/lib/timeline/exchangeTimeline';
 import { activate, gesturesOf, storeOf, type Captured } from './tapHelpers';
+import { setMotion } from './harness/env';
 
 const mockHeld: { on: boolean; queue: (() => void)[] } = { on: false, queue: [] };
 jest.mock('react-native-worklets', () => {
@@ -38,12 +38,6 @@ jest.mock('react-native-gesture-handler', () => {
       return children;
     },
   };
-});
-
-const mockReduce = { on: false };
-jest.mock('@/lib/accessibility', () => {
-  const actual = jest.requireActual('@/lib/accessibility') as typeof import('@/lib/accessibility');
-  return { ...actual, usePrefersReducedMotion: () => actual.usePrefersReducedMotion() || mockReduce.on };
 });
 
 const { GameTable } = require('@/components/GameTable') as typeof import('@/components/GameTable');
@@ -119,12 +113,10 @@ describe('a tap on the hand', () => {
     jest.useFakeTimers();
     mockHeld.on = false;
     mockHeld.queue.length = 0;
-    mockReduce.on = false;
   });
   afterEach(() => {
     jest.useRealTimers();
     (globalThis as { _setGestureStateSync?: unknown })._setGestureStateSync = priorSync;
-    setMotionPreference('system');
   });
 
   it('is the row tap, simultaneous with the reorder, which travel fails and no length of press does', async () => {
@@ -157,7 +149,7 @@ describe('a tap on the hand', () => {
   });
 
   it('rises by timing under reduced motion, without the tilt', async () => {
-    mockReduce.on = true;
+    await setMotion('on');
     const view = await mountTable();
     const rest = lift(SEVEN);
     const headroom = handRowHeadroom(StyleSheet.flatten(wrapper(SEVEN).props.style).height as number);
@@ -219,7 +211,7 @@ describe('a tap on the hand', () => {
     expect(box(SEVEN).height).toBeGreaterThan(before);
     expect(lift(SEVEN).y).toBeCloseTo(-handRowHeadroom(box(SEVEN).height), 1);
 
-    await act(async () => setMotionPreference('on'));
+    await setMotion('on');
     await step(Motion.duration.tap + 32);
     expect(lift(SEVEN).rot).toBeCloseTo(rest.rot, 5);
     await view.unmount();

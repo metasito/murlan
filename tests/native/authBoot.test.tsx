@@ -27,11 +27,6 @@ const reportingAccount = (require('@/lib/errorReporting') as { setReportingAccou
 /** The pending crash reports are posted only for a signed-in account. */
 const flushes = () => reportingAccount.mock.calls.filter(([id]) => id !== null);
 
-jest.mock('@react-native-community/netinfo', () => ({
-  __esModule: true,
-  default: { addEventListener: jest.fn(() => () => {}) },
-}));
-
 import { ACCOUNT_KEYS, ACTIVE_ROOM_KEY, AUTH_USER_KEY as STORAGE_KEY, WAITING_ROOM_KEY } from '@/lib/storageKeys';
 const CACHED = { id: 'u1', username: 'Ana' };
 
