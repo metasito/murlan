@@ -30,6 +30,8 @@ Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and records the disag
 3 < 4 < 5 < 6 < 7 < 8 < 9 < 10 < J < Q < K < A < 2 < Black/BW Joker < Red/Coloured Joker
 ```
 
+Suits carry no strength in play. They order only the 2-player opening fallback of §4: ♣ < ♦ < ♥ < ♠.
+
 - The **2 is the strongest ordinary rank** (stronger than the Ace).
 - visixplay (AL): *"3, 4, 5, 6, 7, 8, 9, 10, Fanti, Zonja, Mbreti, Asi, 2, Xholi i Zi dhe Xholi i Kuq."*
 - **Suit does NOT break ties.** catsatcards states this explicitly; no source anywhere assigns a suit ranking. Two cards of the same rank are of equal strength, and since a play must be **strictly higher** than the play it beats, a same-rank single simply cannot be played on top of another. **There is no suit order in Murlan.**
@@ -56,7 +58,7 @@ Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and records the disag
 - visixplay (EN): *"The game starts (first hand) by who has the 3 of spades (forced to throw the 3 of spades also combined)."*
 - catsatcards: *"the player who has the three of spades in hand plays first, and must include this card in the play."*
 - At **3 and 4 players** the full deck is dealt, so **the 3♠ is always in somebody's hand** — no fallback is needed there.
-- At **2 players** the 3♠ can end up in the 26 undealt cards (§3). When that happens, **the holder of the lowest dealt card opens instead** — the same fix Big Two and Tien Len use for their own stripped two-player deals. (MWM's app adds *"If that does not exist then a random player starts"*, a weaker version of the same idea.)
+- At **2 players** the 3♠ can end up in the 26 undealt cards (§3). When that happens, **the holder of the lowest dealt card opens instead**; if several lowest cards share a rank, **the lowest suit opens (♣ < ♦ < ♥ < ♠)**, and that player must play that card — the same fix Big Two and Tien Len use for their own stripped two-player deals. (MWM's app adds *"If that does not exist then a random player starts"*, a weaker version of the same idea.)
 - **This rule applies only to the first round at a table.** Later rounds are opened per §10.
 - **A table outlives its match.** It lasts until its seats break up, so every match dealt at a standing table — a rematch or a freshly started one — opens with the exchange of §10 on the last complete finishing order, and the 3♠ opens only a table with no previous round to exchange from. A match ended by the unanimous end-of-match vote leaves its finishing order incomplete and is never exchanged from. Recorded in § Decisions below.
 
@@ -71,7 +73,7 @@ Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and records the disag
 | **Triple** | 3 cards of the **same rank** | a strictly higher triple |
 | **Straight** | **5 or more** cards in consecutive rank order; **suits are irrelevant** | a straight of the **same number of cards** whose top card is higher |
 | **Bomb** | **4 cards of the same rank** | only a higher bomb (Tier 1) — see §7 |
-| **Royal straight** *(Tier 2 only)* | a straight of 5+ cards **all of one suit** | a higher royal straight |
+| **Royal straight** *(Tier 2 only)* | a straight of 5+ cards **all of one suit** | a higher royal straight **of the same number of cards** — it beats any other play (§7.3) |
 
 - **Minimum straight length is 5.** Unanimous across all sources: visixplay *"La scala deve essere di almeno 5 carte"* / *"Shkalla duhet të ketë të paktën 5 letra"*; catsatcards *"Five or more cards which are in direct sequential order."*
 - **No source states a maximum straight length.** The practical maximum with ace-low and ace-high both permitted is 13 (A-2-3-…-K or 2-3-…-K-A style sequences, see §6).
@@ -97,10 +99,10 @@ Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and records the disag
 
 *Engine: `canPlay`, `getCombinationStrength` (`lib/game/gameEngine.ts`).*
 
-1. A play may only be answered by **the same combination type with the same number of cards and strictly higher strength** — or by a **pass**.
+1. A play may only be answered by **the same combination type with the same number of cards and strictly higher strength** — or by a **pass** — except for the two beat-anything plays of rules 2 and 3.
 2. **A bomb (4 of a kind) beats any single, pair, triple or straight, of any size, at any time.** visixplay: *"4 carte uguali (qualsiasi livello) battono qualsiasi mano in tavola e possono essere battute solo da altre quadruple di valore superiore."* This includes beating a Joker played as a single.
-3. **A bomb is beaten only by a higher bomb — with one exception, a royal straight, which beats a bomb of any strength and can never be beaten by one** (Tier 1 bomb-vs-bomb rule: catsatcards, visixplay IT/EN/AL, Murlan Pro; the royal-straight exception is a resolved house rule — see §7.4).
-4. **Royal straight:** Tier 2 implementations (murlanarena, murlan.app) add 5+ consecutive cards of one suit, under their own name, and rank it **above bombs**: *"Quadruplets beat regular combinations but only lose to higher Quadruplets or Flushes… Flush is the strongest combination type as it can beat anything."* **The Albanian/Italian Tier-1 rules do not contain this combination at all.** This app follows Tier 2 here as a **resolved house rule for this implementation** (not an open Ambiguity), per the decision recorded in § Decisions below: a royal straight beats a bomb of any strength, and a bomb can never beat a royal straight — see §7.3.
+3. **A bomb is beaten only by a higher bomb or by a royal straight. A royal straight (5 or more consecutive cards of one suit) beats any play, bomb included, and only a higher royal straight with the same number of cards beats it** (Tier 1 bomb-vs-bomb rule: catsatcards, visixplay IT/EN/AL, Murlan Pro; the royal-straight exception is a resolved house rule — see §7.4).
+4. **Royal straight:** Tier 2 implementations (murlanarena, murlan.app) add 5+ consecutive cards of one suit, under their own name, and rank it **above bombs**: *"Quadruplets beat regular combinations but only lose to higher Quadruplets or Flushes… Flush is the strongest combination type as it can beat anything."* **The Albanian/Italian Tier-1 rules do not contain this combination at all.** This app follows Tier 2 here as a **resolved house rule for this implementation** (not an open Ambiguity), per the decision recorded in § Decisions below: a royal straight beats any play, and a bomb can never beat a royal straight — see §7.3. Every royal straight therefore outranks every bomb.
 5. **Equal strength never beats.** The answering play must be *strictly* higher.
 
 ## 8. Turn direction
@@ -155,7 +157,7 @@ The 3♠ opening requirement (§4) is **not** re-applied — it belongs to the f
 
 - **Per round (4 players):** 1st = **3** points, 2nd = **2**, 3rd = **1**, last = **0**. Unanimous across catsatcards, visixplay IT/EN/AL, Murlan Pro, murlanarena, murlan.app.
 - **Match target: first to 21 points wins.**
-- **Tie escalation:** if two or more players reach 21 in the same round, the target is raised in 10-point steps — **21 → 31 → 41 → 51**. 51 is the maximum; if players are still tied at 51+, the match is a draw. visixplay: *"La vittoria si raggiunge a 21 punti, con possibili estensioni a 31, 41 e 51."*
+- **Tie escalation:** if two or more players reach 21 in the same round, the target is raised in 10-point steps — **21 → 31 → 41 → 51**. 51 is the maximum; at the final target the **highest score wins**, and the match is a draw only when the top scores are exactly equal. visixplay: *"La vittoria si raggiunge a 21 punti, con possibili estensioni a 31, 41 e 51."*
 - **2- and 3-player scoring is not documented anywhere.** The natural generalisation (N players ⇒ N−1 … 0) is an implementation choice, not a sourced rule — and so is the target it races to. This app scales the sourced 4-player ladder by (N−1)/3, giving **7 → 10 → 14 → 17** at two seats and **14 → 21 → 27 → 34** at three; the 4-player values above are untouched. See § Decisions below.
 
 ## Decisions
@@ -201,3 +203,6 @@ existing Murlan apps.
 The nine implementation tickets are filed from `docs/DISCONNECT-POLICY.md` §9, in the
 order that document gives; the design doc keeps the reasoning and the sources, this table keeps
 the decision.
+| **Royal straight beats any play** | **A royal straight (5+ consecutive cards of one suit) beats any play; only a higher royal straight of the same card count beats it. Every royal outranks every bomb.** Engine unchanged; the bot spends a plain bomb before a royal. | Documents what `canPlay` and `tests/engine/combinations.test.ts` already do; §5, §7.1 and §7.3 said otherwise. Decided by the owner 2026-10-19 on #1759. |
+| **Tie at the final target** (§12) | **The highest score wins; only exactly equal top scores draw.** Engine unchanged. | Documents `resolveMatch`. Decided by the owner 2026-10-19 on #1759. |
+| **2-player opening tie** (§4) | **Equal lowest ranks open with the lowest suit (♣ < ♦ < ♥ < ♠), not the lower seat; that card must be played.** This is the one place suit orders cards; the Suit tiebreaks row still holds for play. | A seat-order tie-break let the deal decide the opener. `findStartingPlayer` now breaks equal strength by suit. Decided by the owner 2026-10-19 on #1759. |

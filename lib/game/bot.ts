@@ -71,6 +71,11 @@ function scorePlayForDump(play: Combination): number {
   return cardCount * 3 - avgStrength * 0.3 - (hasHighCards ? 5 : 0);
 }
 
+/** Plain bombs by rank, then royal straights by strength: a royal outranks every bomb. */
+function byBombRank(a: Combination, b: Combination): number {
+  return Number(a.type === "royal_straight") - Number(b.type === "royal_straight") || a.strength - b.strength;
+}
+
 /** Spends a card worth hoarding: a 2, a joker, or a whole bomb. */
 function isPremiumPlay(play: Combination): boolean {
   return (
@@ -330,7 +335,7 @@ export function botChoosePlay(
   // Emergency: opponent about to finish — use lowest bomb immediately. The one
   // decision no personality softens, or a cautious bot hoards a bomb into a loss.
   if (minOpponent <= 1 && !isNewTrick && bombs.length > 0) {
-    return bombs.sort((a, b) => a.strength - b.strength)[0];
+    return bombs.sort(byBombRank)[0];
   }
 
   if (isNewTrick) {
@@ -358,7 +363,7 @@ export function botChoosePlay(
   }
 
   if (minOpponent <= 3 && bombs.length > 0) {
-    return withPersonality(bombs.sort((a, b) => a.strength - b.strength)[0]);
+    return withPersonality(bombs.sort(byBombRank)[0]);
   }
 
   return withPersonality(null);
