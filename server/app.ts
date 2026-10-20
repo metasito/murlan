@@ -2,7 +2,7 @@ import express from "express";
 import type { Request, Response, NextFunction } from "express";
 import compression from "compression";
 import helmet from "helmet";
-import type { Server as HttpServer } from "node:http";
+import { createServer, type Server as HttpServer } from "node:http";
 import type { SocketServer as SocketIOServer } from "./socket/socketTypes.ts";
 import type { TableRuntime } from "./game/tableRuntime.ts";
 import { createRequestLogger, logger } from "./http/logger.ts";
@@ -11,7 +11,7 @@ import { pool } from "./store/db.ts";
 import { socketAdapterPoolStats } from "./socket/socketAdapter.ts";
 import { errorHandler } from "./http/errorHandler.ts";
 import { installServerErrorRecorder } from "./http/serverErrors.ts";
-import { registerRoutes } from "./http/routes.ts";
+import { mountApi } from "./http/routes/index.ts";
 import { ensureSchema } from "./store/schemaDdl.ts";
 import { allowedOrigins, isAllowedOrigin, trustProxySetting } from "./http/cors.ts";
 import { checkMailConfigOnBoot } from "./http/mail.ts";
@@ -149,7 +149,7 @@ function configureWebBuild(app: express.Application) {
     app.use(express.static(distPath, { setHeaders: setDistCacheControl }));
     // Catch-all: any non-API path not matched by static files gets index.html (SPA routing)
     app.get("*path", (req: Request, res: Response, next: NextFunction) => {
-      // /admin is server-rendered and owner-only, and registerRoutes runs
+      // /admin is server-rendered and owner-only, and mountApi runs
       // after this mount — without the exclusion the SPA shell answers it, so
       // every visitor gets a 200 and the owner never sees the dashboard.
       if (req.path.startsWith("/api") || req.path === "/admin") return next();
@@ -216,7 +216,7 @@ export async function createApp(): Promise<CreatedApp> {
   setupBodyParsing(app);
 
   // Before every response-generating handler — the static asset mounts and
-  // registerRoutes' API responses both need to pass through this to be
+  // mountApi's API responses both need to pass through this to be
   // compressed. Socket.io is unaffected regardless of position here: it
   // attaches to the raw http.Server, not the Express middleware chain.
   app.use(compression());
@@ -247,7 +247,8 @@ export async function createApp(): Promise<CreatedApp> {
 
   configureWebBuild(app);
 
-  const server = await registerRoutes(app);
+  mountApi(app);
+  const server = createServer(app);
 
   const { setupSocket } = await import("./socket/socket.ts");
   const { io, rt } = setupSocket(server);

@@ -84,7 +84,7 @@ function updatePending(change: (reports: PendingReport[]) => PendingReport[]): P
 }
 
 /**
- * The endpoint requires a session (`server/http/routes.ts`) and files the report under
+ * The endpoint requires a session (`server/http/routes/reports.ts`) and files the report under
  * its user, so a crash while signed out or offline is refused; it waits on the device
  * for the next sign-in of the account it was queued under.
  */

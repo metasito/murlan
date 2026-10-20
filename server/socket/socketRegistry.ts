@@ -2,7 +2,7 @@
 // layer, and the questions the rest of the app asks about an account rather
 // than about a socket.
 //
-// `registerRoutes` runs before `setupSocket` builds the runtime, so this binding
+// `mountApi` runs before `setupSocket` builds the runtime, so this binding
 // is the one setter that stays.
 import type { ServerToClientEvents } from "../../shared/protocol.ts";
 import type { TableRuntime } from "../game/tableRuntime.ts";

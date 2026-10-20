@@ -7,7 +7,7 @@
 // (server/store/userStore.ts's markEmailVerified).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mailLocale, passwordResetEmailBody, verificationEmailBody } from "../../server/http/routes.ts";
+import { mailLocale, passwordResetEmailBody, verificationEmailBody } from "../../server/http/accountMail.ts";
 
 const TOKEN_LINE = /:\n\n(\S+)\n\n/;
 

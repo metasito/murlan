@@ -8,7 +8,7 @@
 // that no longer matches across locales — hence these tests.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import ts from "typescript";
@@ -37,6 +37,7 @@ function serverSources(): { file: string; source: string }[] {
       .map((f) => path.join(SERVER_DIR, f)),
     path.join(REPO_ROOT, "shared", "persistedEnvelope.ts"),
     path.join(REPO_ROOT, "shared", "socketSchemas.ts"),
+    path.join(REPO_ROOT, "shared", "httpSchemas.ts"),
   ].map((full) => ({ file: path.relative(REPO_ROOT, full), source: readFileSync(full, "utf8") }));
 }
 
@@ -347,7 +348,7 @@ describe("the server writes its fallbacks in the source language", () => {
 // A hand-written `message`/`error` beside a hand-written `code` is exactly
 // what drifted out of sync with locales/en.ts before (#896) — payload()
 // derives the fallback from the code so the two cannot disagree. The four
-// sites this once carved server/http/routes.ts's register route out for were
+// sites this once carved the register route out for were
 // rewritten wholesale for neutral registration (#897); the carve-out went
 // with them — a scan with one is a scan that stops being true (design doc,
 // Q2).
@@ -1034,15 +1035,40 @@ describe("every player-facing server response carries a code", () => {
     return found;
   }
 
+  /**
+   * The functions `sourceFile` imports by name from a relative module, under the name it uses.
+   * A helper one file over is as much the response's payload as one in the same file:
+   * `res.json(sessionUser(user))` reads sessionUser from server/http/accountSession.ts.
+   */
+  function importedFunctions(sourceFile: ts.SourceFile): Map<string, ts.Node> {
+    const functions = new Map<string, ts.Node>();
+    for (const statement of sourceFile.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+      const specifier = statement.moduleSpecifier.text;
+      const bindings = statement.importClause?.namedBindings;
+      if (!specifier.startsWith(".") || !bindings || !ts.isNamedImports(bindings)) continue;
+      const full = path.resolve(REPO_ROOT, path.dirname(sourceFile.fileName), specifier);
+      if (!existsSync(full)) continue;
+      const imported = localFunctions(
+        ts.createSourceFile(full, readFileSync(full, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+      );
+      for (const element of bindings.elements) {
+        const body = imported.get((element.propertyName ?? element.name).text);
+        if (body) functions.set(element.name.text, body);
+      }
+    }
+    return functions;
+  }
+
   /** Every object literal reachable from a delivering call's arguments, at any position and depth. */
   function payloadObjects(sourceFile: ts.SourceFile): { text: string; names: Set<string> }[] {
     const objects: { text: string; names: Set<string> }[] = [];
-    const functions = localFunctions(sourceFile);
+    const functions = new Map([...importedFunctions(sourceFile), ...localFunctions(sourceFile)]);
     for (const call of responseCalls(sourceFile)) {
       for (const arg of call.arguments) {
         for (const obj of objectLiteralsIn(arg, functions)) {
           objects.push({
-            text: obj.getText(sourceFile),
+            text: obj.getText(),
             names: propertyNames(obj),
           });
         }
@@ -1093,6 +1119,21 @@ describe("every player-facing server response carries a code", () => {
       objects.map((o) => [...o.names].sort()),
       [["code"]],
       "an argument handed to a helper was mistaken for the response"
+    );
+  });
+
+  test("a payload an imported helper returns is reached too", () => {
+    const file = path.join("server", "http", "routes", "auth.ts");
+    const sourceFile = ts.createSourceFile(
+      file,
+      readFileSync(path.join(REPO_ROOT, file), "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS
+    );
+    assert.ok(
+      payloadObjects(sourceFile).some((o) => o.names.has("emailVerified")),
+      "sessionUser's payload, imported from accountSession.ts, was never reached"
     );
   });
 

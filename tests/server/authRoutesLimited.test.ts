@@ -6,7 +6,7 @@
 // limiter, names exactly the limiters written below.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { routeMountings } from "../helpers/routeMountings.ts";
+import { allRouteCalls } from "../helpers/routeSources.ts";
 
 const LIMITERS: Record<string, string[]> = {
   "POST /api/auth/register": ["authLimiter", "registerEmailLimiter"],
@@ -32,7 +32,7 @@ const LIMITERS: Record<string, string[]> = {
 test("every auth route and every limited route names exactly its written limiters", () => {
   const isLimiter = (name: string) => /Limiter$/.test(name);
   const found = Object.fromEntries(
-    routeMountings()
+    allRouteCalls()
       .filter((m) => m.route.includes(" /api/auth/") || m.middleware.some(isLimiter))
       .map((m) => [m.route, m.middleware.filter(isLimiter)])
   );

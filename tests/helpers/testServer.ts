@@ -33,7 +33,7 @@ process.env.MURLAN_SOCKET_ADAPTER_POOL_MAX ??= "2";
  * only about thirty-five tables — a suite reaches it and every later
  * registration comes back 429 with nothing tying it to the cap. Set here for
  * the same reason as the pool size: before anything imports
- * server/http/routes.ts, which reads it once.
+ * server/http/routes/auth.ts, which reads it once.
  */
 process.env.MURLAN_AUTH_RATE_LIMIT ??= "200";
 
@@ -61,7 +61,7 @@ process.env.MURLAN_CHANGE_PASSWORD_RATE_LIMIT ??= "5";
 
 /**
  * register's per-email limiter (#892) already defaults to 5 in production —
- * set here anyway, before server/http/routes.ts is imported, so a test never
+ * set here anyway, before server/http/routes/auth.ts is imported, so a test never
  * depends on that default staying where it is.
  */
 process.env.MURLAN_REGISTER_EMAIL_RATE_LIMIT ??= "5";

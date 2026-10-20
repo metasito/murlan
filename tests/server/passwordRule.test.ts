@@ -2,7 +2,7 @@
 // reuse `RegisterSchema.shape.password`.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { ChangePasswordSchema, RegisterSchema, ResetPasswordSchema } from "../../server/http/schemas.ts";
+import { ChangePasswordSchema, RegisterSchema, ResetPasswordSchema } from "../../shared/httpSchemas.ts";
 
 const ok = { username: "player", email: "player@example.com" };
 
