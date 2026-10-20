@@ -9,7 +9,7 @@ jest.mock('@/lib/query-client', () => ({ getApiUrl: () => 'http://localhost/' })
 import { connectSocket, disconnectSocket } from '@/lib/socket';
 
 function deferredTickets() {
-  const resolvers: Array<(ticket: string) => void> = [];
+  const resolvers: ((ticket: string) => void)[] = [];
   (global as unknown as { fetch: unknown }).fetch = jest.fn(
     () =>
       new Promise((resolve) => {
@@ -31,7 +31,7 @@ describe('socket auth ticket attempts', () => {
     const tickets = deferredTickets();
     connectSocket('u1', { onAuthFailure: () => {} });
     const auth = (mockIo.mock.calls[0][1] as { auth: AuthFn }).auth;
-    const delivered: Array<Record<string, unknown>> = [];
+    const delivered: Record<string, unknown>[] = [];
 
     auth((d) => delivered.push(d));
     auth((d) => delivered.push(d));
@@ -49,7 +49,7 @@ describe('socket auth ticket attempts', () => {
     const tickets = deferredTickets();
     connectSocket('u2', { onAuthFailure: () => {} });
     const auth = (mockIo.mock.calls[0][1] as { auth: AuthFn }).auth;
-    const delivered: Array<Record<string, unknown>> = [];
+    const delivered: Record<string, unknown>[] = [];
 
     auth((d) => delivered.push(d));
     await flush();
