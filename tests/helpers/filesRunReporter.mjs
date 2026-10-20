@@ -69,11 +69,19 @@ export default async function* filesRun(source) {
   const markers = exitMarkers(process.pid);
   mkdirSync(markers, { recursive: true });
   // This runner's own start: a marker older than that is a previous run's that had this pid.
-  const exits = { markers, graceMs: exitGraceMs(), since: Math.floor(performance.timeOrigin) };
-  if (exits.graceMs === undefined) writeSync(2, `\nnpm test: the run's idle limit leaves no room for an exit grace; hangs in a file's exit go to the idle limit\n`);
+  const graceMs = exitGraceMs();
+  if (graceMs === undefined) writeSync(2, `\nnpm test: the run's idle limit leaves no room for an exit grace; hangs in a file's exit go to the idle limit\n`);
   // No inherited execArgv: the runner's own `--test …` or `-e` would make the worker something else.
-  const watch = new Worker(new URL("./runWatch.mjs", import.meta.url), { execArgv: [], workerData: { heartbeat, idleMs: runIdleMs(), exits } });
+  const watch = new Worker(new URL("./runWatch.mjs", import.meta.url), { execArgv: [], workerData: { heartbeat, idleMs: runIdleMs(), markers } });
   watch.unref();
+  // Set before the directory goes, so the exit guard's last tick does not report it missing.
+  const stop = new Int32Array(new SharedArrayBuffer(4));
+  const since = Math.floor(performance.timeOrigin);
+  const exitWatch =
+    graceMs === undefined
+      ? undefined
+      : new Worker(new URL("./exitWatch.mjs", import.meta.url), { execArgv: [], workerData: { markers, graceMs, since, stop } });
+  exitWatch?.unref();
   const tell = () => watch.postMessage([...inFlight].map((f) => path.relative(process.cwd(), f)));
   try {
     for await (const { type, data } of source) {
@@ -90,7 +98,9 @@ export default async function* filesRun(source) {
       if (type === "test:pass" && !data.skip && !data.todo && !standIn) ran.add(data.file);
     }
   } finally {
+    Atomics.store(stop, 0, 1);
     void watch.terminate();
+    void exitWatch?.terminate();
     rmSync(markers, { recursive: true, force: true });
   }
   const perDir = new Map();

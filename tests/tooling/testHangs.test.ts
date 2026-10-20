@@ -143,18 +143,28 @@ describe("a test file that hangs on its way out fails npm test by name", () => {
 
 describe("the exit guard, over modelled process tables", () => {
   const GRACE = 1000;
+  // Every marker here is an exit that began at T; each guard's clock starts there too.
+  const T = 1_000_000;
   type World = ReturnType<typeof posixWorld> | ReturnType<typeof windowsWorld>;
   const guarded = (w: World, { platform = "linux", since = 0, proc = w.proc as Parameters<typeof exitGuard>[0]["proc"] } = {}) => {
     const markers = mkdtempSync(path.join(tmpdir(), "exit-markers-"));
     const lines: string[] = [];
-    let clock = Date.now() + 10_000;
+    let clock = T;
     const tick = exitGuard({ markers, graceMs: GRACE, since, platform, proc, write: (l) => lines.push(l), now: () => clock });
     const mark = (pid: number, body: object | string) =>
       writeFileSync(path.join(markers, String(pid)), typeof body === "string" ? body : JSON.stringify(body));
     const later = (ms: number) => (clock += ms);
-    return { markers, lines, tick, mark, later, done: () => rmSync(markers, { recursive: true, force: true }) };
+    /** One tick inside the grace, which must do nothing, then one just past it. */
+    const throughGrace = () => {
+      later(GRACE);
+      tick();
+      assert.deepEqual(lines, [], "acted inside the grace");
+      later(1);
+      tick();
+    };
+    return { markers, lines, tick, mark, later, throughGrace, done: () => rmSync(markers, { recursive: true, force: true }) };
   };
-  const exiting = (identity: unknown) => ({ file: "f.test.ts", identity, at: Date.now() - GRACE - 1 });
+  const exiting = (identity: unknown) => ({ file: "f.test.ts", identity, at: T });
   const started = (w: World) => {
     const pid = w.proc.startBin("node", ["f.test.ts"], {}).pid!;
     return { pid, identity: w.proc.identityOf(pid) };
@@ -166,9 +176,9 @@ describe("the exit guard, over modelled process tables", () => {
     const g = guarded(w);
     try {
       g.mark(pid, exiting(identity));
-      g.tick();
+      g.throughGrace();
       assert.deepEqual(w.alive(), []);
-      assert.deepEqual(g.lines, ["f.test.ts: hung after its tests finished, killed 1s into its exit by tests/helpers/runWatch.mjs"]);
+      assert.deepEqual(g.lines, ["f.test.ts: hung after its tests finished, killed 1s into its exit by tests/helpers/exitWatch.mjs"]);
     } finally {
       g.done();
     }
@@ -181,7 +191,7 @@ describe("the exit guard, over modelled process tables", () => {
     try {
       g.mark(pid, exiting(identity));
       w.reuse(pid);
-      g.tick();
+      g.throughGrace();
       assert.deepEqual(w.alive(), [pid]);
       assert.deepEqual(g.lines, []);
     } finally {
@@ -196,7 +206,7 @@ describe("the exit guard, over modelled process tables", () => {
     const g = guarded(w, { proc });
     try {
       g.mark(77, exiting("1"));
-      g.tick();
+      g.throughGrace();
       assert.deepEqual(ended, []);
       assert.deepEqual(g.lines, []);
     } finally {
@@ -211,7 +221,7 @@ describe("the exit guard, over modelled process tables", () => {
     try {
       g.mark(pid, exiting(identity));
       w.zombie(pid);
-      g.tick();
+      g.throughGrace();
       assert.deepEqual(g.lines, []);
       assert.deepEqual(w.signals.filter(([, s]) => s !== 0), []);
     } finally {
@@ -222,10 +232,10 @@ describe("the exit guard, over modelled process tables", () => {
   test("a previous run's marker is dropped unread", () => {
     const w = posixWorld({ depth: 0 });
     const { pid, identity } = started(w);
-    const g = guarded(w, { since: Date.now() });
+    const g = guarded(w, { since: T + 1 });
     try {
       g.mark(pid, exiting(identity));
-      g.tick();
+      g.throughGrace();
       assert.deepEqual(w.alive(), [pid]);
       assert.deepEqual(readdirSync(g.markers), []);
     } finally {
@@ -236,15 +246,14 @@ describe("the exit guard, over modelled process tables", () => {
   for (const [what, body] of [
     ["an identity it cannot read", (identity: unknown) => ({ ...exiting(identity), identity: "NaN" })],
     ["no identity at all", (identity: unknown) => ({ ...exiting(identity), identity: undefined })],
-    ["an exit time it cannot read", (identity: unknown) => ({ ...exiting(identity), at: "soon" })],
   ] as const) {
-    test(`a marker with ${what} is named past the grace, and nothing is ended`, () => {
+    test(`a marker with ${what} is named once past the grace, and nothing is ended`, () => {
       const w = posixWorld({ depth: 0 });
       const { pid, identity } = started(w);
       const g = guarded(w);
       try {
         g.mark(pid, body(identity));
-        g.tick();
+        g.throughGrace();
         assert.deepEqual(w.alive(), [pid]);
         assert.deepEqual(g.lines, ["f.test.ts: still alive 1s after its tests finished; not killed, identity unverifiable on linux"]);
       } finally {
@@ -260,7 +269,7 @@ describe("the exit guard, over modelled process tables", () => {
     const g = guarded(w, { platform: "win32" });
     try {
       g.mark(pid, exiting(identity));
-      g.tick();
+      g.throughGrace();
       assert.ok(w.alive().includes(pid));
       assert.deepEqual(g.lines, ["f.test.ts: still alive 1s after its tests finished; not killed, identity unverifiable on win32"]);
     } finally {
@@ -275,6 +284,7 @@ describe("the exit guard, over modelled process tables", () => {
     try {
       g.mark(pid, exiting(identity));
       w.failPs();
+      g.later(GRACE + 1);
       g.tick();
       g.tick();
       assert.equal(g.lines.length, 1);
@@ -291,21 +301,38 @@ describe("the exit guard, over modelled process tables", () => {
     }
   });
 
-  test("a marker that never parses is dropped after three polls, with a notice", () => {
+  for (const [what, body] of [
+    ["will not parse", "{"],
+    ["has no time its exit began", JSON.stringify({ file: "f.test.ts", identity: "1", at: "soon" })],
+  ] as const) {
+    test(`a marker that ${what} is dropped after three polls, with a notice, and ends nothing`, () => {
+      const w = posixWorld({ depth: 0 });
+      const { pid } = started(w);
+      const g = guarded(w);
+      try {
+        g.mark(pid, body);
+        g.later(GRACE + 1);
+        g.tick();
+        g.tick();
+        assert.deepEqual(g.lines, []);
+        g.tick();
+        assert.equal(g.lines.length, 1);
+        assert.match(g.lines[0], new RegExp(`dropped the unreadable marker of pid ${pid}`));
+        assert.deepEqual(readdirSync(g.markers), []);
+        assert.deepEqual(w.alive(), [pid]);
+      } finally {
+        g.done();
+      }
+    });
+  }
+
+  test("a marker directory it cannot read is reported, not passed over", () => {
     const w = posixWorld({ depth: 0 });
     const g = guarded(w);
-    try {
-      g.mark(4242, "{");
-      g.tick();
-      g.tick();
-      assert.deepEqual(g.lines, []);
-      g.tick();
-      assert.equal(g.lines.length, 1);
-      assert.match(g.lines[0], /dropped the unreadable marker of pid 4242/);
-      assert.deepEqual(readdirSync(g.markers), []);
-    } finally {
-      g.done();
-    }
+    g.done();
+    g.tick();
+    assert.equal(g.lines.length, 1);
+    assert.match(g.lines[0], /^exit guard unavailable: ENOENT/);
   });
 });
 
@@ -463,10 +490,12 @@ describe("a run that stops hearing from its files fails by name", () => {
   const reporter = pathToFileURL(path.join(repoRoot, "tests", "helpers", "filesRunReporter.mjs")).href;
   const file = JSON.stringify(path.join(tmpdir(), "fake.test.ts"));
   const dequeued = `{ type: "test:dequeue", data: { nesting: 0, name: ${file}, file: ${file} } }`;
-  const drive = (source: string, after: string, idleMs: string) => {
+  const drive = (source: string, after: string, idleMs: string, extra: Record<string, string> = {}) => {
     const script = `import filesRun from ${JSON.stringify(reporter)};\nasync function* source() {\n${source}\n}\n` +
       `for await (const line of filesRun(source())) process.stdout.write(line);\n${after}`;
     const env = { ...process.env };
+    delete env.MURLAN_TEST_EXIT_GRACE_MS;
+    Object.assign(env, extra);
     env.MURLAN_TEST_RUN_IDLE_MS = idleMs;
     delete env.NODE_TEST_CONTEXT;
     return new Promise<{ signal: unknown; out: string }>((resolve) =>
@@ -503,6 +532,35 @@ describe("a run that stops hearing from its files fails by name", () => {
     };
     for (let i = 0; i < 100 && alive(); i++) await new Promise((r) => setTimeout(r, 50));
     assert.equal(alive(), false, "the runner's child outlived it");
+  });
+
+  test("a ps that stalls the exit guard never holds up the idle watchdog", { skip: process.platform !== "linux" && "the exit guard kills only on Linux" }, async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "stalled-ps-"));
+    try {
+      const log = path.join(dir, "ps.log");
+      // Each call logs its start, and its end only when the guard's own timeout stops it.
+      const fakePs =
+        `#!${process.execPath}\nconst { appendFileSync } = require("node:fs");\nappendFileSync(${JSON.stringify(log)}, "start\\n");\n` +
+        `process.on("SIGTERM", () => { appendFileSync(${JSON.stringify(log)}, "timed out\\n"); process.exit(1); });\nsetInterval(() => {}, 1000);\n`;
+      writeFileSync(path.join(dir, "ps"), fakePs, { mode: 0o755 });
+      const proc = pathToFileURL(path.join(repoRoot, "scripts", "lib", "proc.mjs")).href;
+      const hung =
+        `const { spawn } = await import("node:child_process");\nconst fs = await import("node:fs");\nconst { identityOf } = await import(${JSON.stringify(proc)});\n` +
+        `const pid = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" }).pid;\n` +
+        `const markers = process.env.${EXIT_MARKERS_ENV};\nfs.mkdirSync(markers, { recursive: true });\n` +
+        `fs.writeFileSync(markers + "/" + pid, JSON.stringify({ file: "hung.test.ts", identity: identityOf(pid), at: Date.now() }));\n` +
+        `yield ${dequeued};\nawait new Promise(() => {});`;
+      // A 1 s grace, then a read stalled for the whole ps timeout: the idle limit falls seconds after
+      // that read gives up and seconds before the next one would.
+      const idle = String(EXIT_GRACE_MARGIN_MS + 4_000);
+      const env = { PATH: `${dir}${path.delimiter}${process.env.PATH}`, MURLAN_TEST_EXIT_GRACE_MS: String(MIN_EXIT_GRACE_MS) };
+      const run = await drive(hung, "", idle, env);
+      assert.match(run.out, /nothing reported for/, run.out);
+      const calls = readFileSync(log, "utf8").split("\n").filter(Boolean);
+      assert.deepEqual(calls, ["start", "timed out", "start"], run.out);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("a run that keeps reporting, and then ends, is never killed", async () => {

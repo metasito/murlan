@@ -1,9 +1,9 @@
-// A run's deadline for each file whose exit has begun, ticked by tests/helpers/runWatch.mjs: the
+// A run's deadline for each file whose exit has begun, ticked by tests/helpers/exitWatch.mjs: the
 // exit's teardown stops the file's own deadline worker, so only something outside it can end it.
 import { readdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 
-/** How often runWatch.mjs ticks the guard. */
+/** How often exitWatch.mjs ticks the guard. */
 export const EXIT_TICK_MS = 250;
 
 /** Polls of a marker that will not parse before it is dropped. */
@@ -41,17 +41,13 @@ export function exitGuard({ markers, graceMs, since, platform, proc, write, now 
   };
 
   function collect() {
-    let names;
-    try {
-      names = readdirSync(markers);
-    } catch {
-      return;
-    }
+    const names = readdirSync(markers);
     for (const name of names.filter((n) => /^\d+$/.test(n))) {
       const marker = path.join(markers, name);
       let seen;
       try {
         seen = JSON.parse(readFileSync(marker, "utf8"));
+        if (!Number.isFinite(seen?.at)) throw new Error(`no time its exit began: ${JSON.stringify(seen?.at)}`);
       } catch (err) {
         const tries = (unreadable.get(name) ?? 0) + 1;
         unreadable.set(name, tries);
@@ -67,8 +63,7 @@ export function exitGuard({ markers, graceMs, since, platform, proc, write, now 
   }
 
   function check(pid, { file, identity, at }) {
-    const readable = Number.isFinite(at) && typeof identity === "string" && /^\d+$/.test(identity);
-    const exact = readable ? proc.identityOf(pid) : null;
+    const exact = typeof identity === "string" && /^\d+$/.test(identity) ? proc.identityOf(pid) : null;
     if (exact === undefined || (exact !== null && exact !== identity)) return exiting.delete(pid);
     if (now() - at <= graceMs) return;
     if (exact === null) {
@@ -78,7 +73,7 @@ export function exitGuard({ markers, graceMs, since, platform, proc, write, now 
     }
     if (proc.endTreeIf(pid, identity)) {
       exiting.delete(pid);
-      write(`${file}: hung after its tests finished, killed ${graceMs / 1000}s into its exit by tests/helpers/runWatch.mjs`);
+      write(`${file}: hung after its tests finished, killed ${graceMs / 1000}s into its exit by tests/helpers/exitWatch.mjs`);
     }
   }
 

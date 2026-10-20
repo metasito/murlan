@@ -215,5 +215,9 @@ export function adoptingWorld() {
     if (!child || dead.has(pid)) throw esrch();
     if (sig !== 0) child.kill(String(sig));
   };
-  return { proc: procFor({ platform: "linux", execFileSync, kill, selfPid: SELF } as never), adopt };
+  const readProcStat = (pid: number) => {
+    if (!children.has(pid) || dead.has(pid)) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    return `${pid} (child) S ${"0 ".repeat(18)}${pid} 0 0\n`;
+  };
+  return { proc: procFor({ platform: "linux", execFileSync, kill, selfPid: SELF, readProcStat } as never), adopt };
 }

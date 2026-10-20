@@ -96,8 +96,19 @@ export function procFor({
    * Stop first, then kill: a running tree forks between one read of the table and the kills, and a
    * stopped one cannot. A pid whose start time changed was reused by a stranger and is let go.
    */
-  function freezeAndKill(roots) {
+  function freezeAndKill(roots, identities = new Map()) {
     const stopped = new Map();
+    // On Linux each pid is held to its exact identity from just before its stop to its kill: a
+    // stopped process cannot exit, so a stranger can only have taken the pid before the stop.
+    const stop = (pid) => {
+      if (platform !== "linux") return signal(pid, "SIGSTOP");
+      const id = identityOf(pid);
+      if (id === undefined || (identities.has(pid) && identities.get(pid) !== id)) return false;
+      if (!signal(pid, "SIGSTOP")) return false;
+      if (identityOf(pid) === id) return identities.set(pid, id), true;
+      signal(pid, "SIGCONT");
+      return false;
+    };
     for (;;) {
       const rows = readTable();
       for (const [pid, started] of stopped) {
@@ -110,9 +121,9 @@ export function procFor({
       if (tree.has(selfPid)) throw new Error(`refusing to end pid ${[...roots.keys()][0]}: this process is inside its tree`);
       const fresh = [...tree].filter(([pid]) => !stopped.has(pid));
       if (!fresh.length) break;
-      for (const [pid, started] of fresh) if (signal(pid, "SIGSTOP")) stopped.set(pid, started);
+      for (const [pid, started] of fresh) if (stop(pid)) stopped.set(pid, started);
     }
-    for (const pid of stopped.keys()) signal(pid, "SIGKILL");
+    for (const pid of stopped.keys()) if (platform !== "linux" || identityOf(pid) === identities.get(pid)) signal(pid, "SIGKILL");
   }
 
   function taskkill(pid, force) {
@@ -126,11 +137,12 @@ export function procFor({
   }
 
   /** "Already gone" is success; anything that leaves the tree in doubt throws. */
-  function killTree(pid) {
+  /** With `identity`, the root is ended only while it is still the process identityOf named so. */
+  function killTree(pid, { identity } = {}) {
     if (!pid) return;
     if (win) return taskkill(pid, true);
     const started = readTable().get(pid)?.started;
-    if (started !== undefined) freezeAndKill(new Map([[pid, started]]));
+    if (started !== undefined) freezeAndKill(new Map([[pid, started]]), identity === undefined ? new Map() : new Map([[pid, identity]]));
   }
 
   const alive = (pid) => {
@@ -164,7 +176,7 @@ export function procFor({
   /** Ends the tree of `pid` only while it is still the process `identity` names. True when it did. */
   function endTreeIf(pid, identity) {
     if (identity == null || identityOf(pid) !== identity) return false;
-    killTree(pid);
+    killTree(pid, { identity });
     return true;
   }
 
