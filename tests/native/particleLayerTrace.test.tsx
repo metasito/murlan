@@ -12,12 +12,6 @@ jest.mock('@/lib/e2eTrace', () => ({
 }));
 const mockOnsets: string[] = [];
 
-let mockReduced = false;
-jest.mock('@/lib/accessibility', () => ({
-  ...jest.requireActual<object>('@/lib/accessibility'),
-  usePrefersReducedMotion: () => mockReduced,
-}));
-
 const mockShapes = { built: 0 };
 jest.mock('@shopify/react-native-skia', () => {
   const React = require('react') as typeof import('react');
@@ -45,6 +39,7 @@ import { makeMutable } from 'react-native-reanimated';
 import { ParticleLayer } from '@/components/table/particleLayer';
 import { restingLamp, TABLE_CENTRE } from '@/components/table/lampRig';
 import { NO_LANDING } from '@/components/table/useFlightClock';
+import { setMotion } from './harness/env';
 
 const atRest = async (ms: number, freeze = 0) => {
   const rig = { lamp: makeMutable({ ...restingLamp(TABLE_CENTRE), freeze }), sx: 1, sy: 1 };
@@ -98,7 +93,6 @@ describe('ParticleLayer', () => {
     afterEach(() => {
       globalThis.requestAnimationFrame = display;
       jest.useRealTimers();
-      mockReduced = false;
     });
 
     it('lights the motes, twinkling, and sends a moth across within 10 s, its onset traced', async () => {
@@ -160,7 +154,7 @@ describe('ParticleLayer', () => {
 
     for (const reduced of [false, true]) {
       it(`rains ${reduced ? 'nothing under reduced motion' : "a won match's 60 motes through the cone over 1.2 s"}`, async () => {
-        mockReduced = reduced;
+        await setMotion(reduced ? 'on' : 'off');
         const ref = React.createRef<ParticleEmitter>();
         const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
         const view = await render(<ParticleLayer ref={ref} rig={rig} landing={makeMutable(NO_LANDING)} />);
@@ -180,7 +174,7 @@ describe('ParticleLayer', () => {
     }
 
     it('under reduced motion lays the motes out again only when the light moves', async () => {
-      mockReduced = true;
+      await setMotion('on');
       const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
       const view = await render(<ParticleLayer rig={rig} landing={makeMutable(NO_LANDING)} />);
       const frames = async (n: number) => {
@@ -202,7 +196,7 @@ describe('ParticleLayer', () => {
     });
 
     it('back under reduced motion lays the motes out again for a light that moved while it was off', async () => {
-      mockReduced = true;
+      await setMotion('on');
       const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
       const landing = makeMutable(NO_LANDING);
       const view = await render(<ParticleLayer rig={rig} landing={landing} />);
@@ -221,13 +215,13 @@ describe('ParticleLayer', () => {
       await frames(2);
       expect(await frames(30)).toBe(0);
 
-      mockReduced = false;
+      await setMotion('off');
       await view.rerender(<ParticleLayer rig={rig} landing={landing} />);
       shift(40);
       expect(await frames(30)).toBeGreaterThan(20);
 
       shift(0);
-      mockReduced = true;
+      await setMotion('on');
       const relaid = mockLaid;
       await view.rerender(<ParticleLayer rig={rig} landing={landing} />);
       expect(mockLaid - relaid + (await frames(2))).toBeGreaterThan(0);
@@ -236,7 +230,7 @@ describe('ParticleLayer', () => {
     });
 
     it('under reduced motion holds the motes still and lit, and sends no moth', async () => {
-      mockReduced = true;
+      await setMotion('on');
       mockOnsets.length = 0;
       const { lit, moths } = await atRest(10_500);
 

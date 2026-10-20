@@ -37,11 +37,6 @@ jest.mock('@/lib/query-client', () => ({
   getApiUrl: () => 'http://localhost',
   apiRequest: jest.fn(async () => ({ json: async () => ({}) })),
 }));
-jest.mock('@/lib/accessibility', () => ({
-  ...jest.requireActual<object>('@/lib/accessibility'),
-  usePrefersReducedMotion: () => false,
-}));
-
 import HomeScreen from '@/app/index';
 
 const METRICS = {

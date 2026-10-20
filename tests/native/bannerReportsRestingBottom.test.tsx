@@ -9,7 +9,7 @@
 // that moves under a box that keeps its height — a menu learning it is in
 // landscape after first paint — left the reported bottom behind, and the
 // screen reserved for a banner that had since slid down past its own header.
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import { render, screen, fireEvent } from '@testing-library/react-native';
@@ -19,12 +19,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 // which a stale `y` and the true top differ at all.
 const LANDSCAPE = { width: 844, height: 390, scale: 2, fontScale: 1 };
 
-jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
-  __esModule: true,
-  default: () => LANDSCAPE,
-}));
-
 import NotificationBanner from '@/components/NotificationBanner';
+import { setWindow } from './harness/env';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -38,6 +34,8 @@ const STALE_Y = 8;
 
 const HIDDEN = { includeHiddenElements: true };
 const noop = () => {};
+
+beforeEach(() => setWindow(LANDSCAPE));
 
 describe('the banner it reports to', () => {
   it('is told the bottom of the box on screen, not the one the layout event remembers', async () => {

@@ -5,15 +5,9 @@
 // not take its children out of the accessibility tree. A label repeated by a
 // visible child is announced twice, and no source scan can see it — the props
 // are all individually correct.
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn() } }));
-
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
 
 import React from 'react';
 import { fireEvent, isHiddenFromAccessibility, render } from '@testing-library/react-native';
@@ -22,6 +16,7 @@ import { router } from 'expo-router';
 
 import RulesScreen from '@/app/rules';
 import { en } from '@/locales/en';
+import { setMotion } from './harness/env';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -34,6 +29,8 @@ const mount = () =>
       <RulesScreen />
     </SafeAreaProvider>
   );
+
+beforeEach(() => setMotion('on'));
 
 describe('the How to play screen', () => {
   it('offers the tutorial as one accessible node, not a label plus its echo', async () => {

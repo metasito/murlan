@@ -7,6 +7,7 @@ import type { OwnLink } from '@/lib/ownLink';
 import { Reconnect } from '@/lib/theme';
 import type { LampRig } from '@/components/table/useLampRig';
 import { FRAME_MS } from './helpers/frames';
+import { setMotion } from './harness/env';
 
 const mockSteps: ((frame: FrameInfo) => void)[] = [];
 jest.mock('react-native-reanimated', () => {
@@ -17,8 +18,6 @@ jest.mock('react-native-reanimated', () => {
     useFrameCallback: (cb: (frame: FrameInfo) => void, auto?: boolean) => (mockSteps.push(cb), actual.useFrameCallback(cb, auto)),
   };
 });
-let mockReduceMotion = false;
-jest.mock('@/lib/accessibility', () => ({ usePrefersReducedMotion: () => mockReduceMotion }));
 const mockReaders: Record<string, () => number> = {};
 jest.mock('@/lib/e2eTrace', () => ({
   ...jest.requireActual<object>('@/lib/e2eTrace'),
@@ -178,7 +177,7 @@ describe('the table holding its breath', () => {
   });
 
   const holdGrey = async (reduced: boolean) => {
-    mockReduceMotion = reduced;
+    await setMotion(reduced ? 'on' : 'off');
     const rig = { freeze: jest.fn<(amount: number) => void>(), hold: jest.fn<LampRig['hold']>() };
     const view = await renderHook(({ link }: { link: OwnLink }) => useLinkHold(link, rig), { initialProps: { link: 'up' } });
     const seen: number[] = [];
@@ -186,7 +185,6 @@ describe('the table holding its breath', () => {
     seen.push(mockReaders.grey());
     await view.rerender({ link: 'back' });
     seen.push(mockReaders.grey());
-    mockReduceMotion = false;
     await view.unmount();
     return seen;
   };
@@ -233,7 +231,7 @@ describe('the table holding its breath', () => {
   });
 
   it.each([false, true])('stays greyed until the grey has faded out, not only while the link is held (reduced motion %s)', async (reduced) => {
-    mockReduceMotion = reduced;
+    await setMotion(reduced ? 'on' : 'off');
     const rig = { freeze: jest.fn<(amount: number) => void>(), hold: jest.fn<LampRig['hold']>() };
     const view = await renderHook(({ link }: { link: OwnLink }) => useLinkHold(link, rig), { initialProps: { link: 'up' } });
     const seen = [view.result.current.greyed];
@@ -246,7 +244,6 @@ describe('the table holding its breath', () => {
     seen.push(view.result.current.greyed);
     await wait(Reconnect.greyOut);
     seen.push(view.result.current.greyed);
-    mockReduceMotion = false;
     await view.unmount();
     expect(seen).toEqual(reduced ? [false, true, false, false, false] : [false, true, true, true, false]);
   });

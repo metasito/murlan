@@ -1,6 +1,6 @@
 // tests/native/tableVeils.test.tsx — which of the game layer's children a screen reader can
 // still reach under each reason the table is taken away (#408, #1690).
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { fireEvent, isHiddenFromAccessibility, render, screen, type RenderResult } from '@testing-library/react-native';
@@ -8,21 +8,11 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 const LANDSCAPE = { width: 844, height: 390, scale: 2, fontScale: 1 };
 const PORTRAIT = { width: 390, height: 844, scale: 2, fontScale: 1 };
-const mockWindow = { current: LANDSCAPE };
-jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
-  __esModule: true,
-  default: () => mockWindow.current,
-}));
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 import { GameTable } from '@/components/GameTable';
 import { t } from '@/lib/i18n';
 import { SettingsProvider } from '@/context/SettingsContext';
 import { RANK_SLOTS, type Card, type GameState, type Player } from '@/lib/game/gameEngine';
+import { setStoredMotion, setWindow } from './harness/env';
 
 const METRICS = { frame: { x: 0, y: 0, width: LANDSCAPE.width, height: LANDSCAPE.height }, insets: { top: 0, left: 47, right: 0, bottom: 21 } };
 const card = (id: string): Card => ({ id, rank: '3', suit: 'spades', isJoker: false });
@@ -66,35 +56,40 @@ function stateFor(fixture: Fixture): GameState {
 }
 
 async function mount(fixture: Fixture, reason: Reason): Promise<RenderResult> {
-  mockWindow.current = reason === 'portrait' ? PORTRAIT : LANDSCAPE;
-  const view = await render(
+  await setWindow(reason === 'portrait' ? PORTRAIT : LANDSCAPE);
+  const settled = (table: React.ReactNode) => (
     <SafeAreaProvider initialMetrics={METRICS}>
-      <SettingsProvider>
-        <GameTable
-          gameState={stateFor(fixture)}
-          viewerSeat={0}
-          onPlay={noop}
-          onPass={noop}
-          onQuit={noop}
-          onExchangeGive={noop}
-          matchScore={{ scores: { player_0: 21 }, target: 21 }}
-          matchOver={fixture === 'matchEnd'}
-          matchWinners={fixture === 'matchEnd' ? ['player_0'] : undefined}
-          matchActions={fixture === 'matchEnd' ? ACTIONS : undefined}
-          endMatchVote={VOTE}
-          roundVote={fixture === 'refusal' ? null : VOTE}
-          leftTable={fixture === 'refusal' ? { reclaiming: false, onReclaim: noop, onLeave: noop } : null}
-          error={fixture === 'refusal' ? { text: 'Refused', seq: 1 } : null}
-          banners={<Text>Banner</Text>}
-          tableCovered={reason === 'covered'}
-          overlays={(veiled) => (
-            <View testID="the-cover" {...veiled}>
-              <Text>Cover</Text>
-            </View>
-          )}
-        />
-      </SettingsProvider>
+      <SettingsProvider>{table}</SettingsProvider>
     </SafeAreaProvider>
+  );
+  // The app's SettingsProvider has read the stored motion long before a table mounts under it.
+  const view = await render(settled(null));
+  await view.rerender(
+    settled(
+      <GameTable
+        gameState={stateFor(fixture)}
+        viewerSeat={0}
+        onPlay={noop}
+        onPass={noop}
+        onQuit={noop}
+        onExchangeGive={noop}
+        matchScore={{ scores: { player_0: 21 }, target: 21 }}
+        matchOver={fixture === 'matchEnd'}
+        matchWinners={fixture === 'matchEnd' ? ['player_0'] : undefined}
+        matchActions={fixture === 'matchEnd' ? ACTIONS : undefined}
+        endMatchVote={VOTE}
+        roundVote={fixture === 'refusal' ? null : VOTE}
+        leftTable={fixture === 'refusal' ? { reclaiming: false, onReclaim: noop, onLeave: noop } : null}
+        error={fixture === 'refusal' ? { text: 'Refused', seq: 1 } : null}
+        banners={<Text>Banner</Text>}
+        tableCovered={reason === 'covered'}
+        overlays={(veiled) => (
+          <View testID="the-cover" {...veiled}>
+            <Text>Cover</Text>
+          </View>
+        )}
+      />
+    )
   );
   const gate = screen.queryByTestId('start-reason-gate', { includeHiddenElements: true });
   if (reason === 'holdingForStart') expect(gate).not.toBeNull();
@@ -175,6 +170,8 @@ const DRAWS: Record<Fixture, string[]> = {
   matchEnd: ['score-pill-layer', 'round-vote'],
   startCard: ['who-starts-status', 'notice-whoStarts'],
 };
+
+beforeEach(() => setStoredMotion('on'));
 
 describe('every child of the game layer answers to the veil its role names', () => {
   for (const fixture of FIXTURES) {

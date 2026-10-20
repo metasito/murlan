@@ -9,13 +9,7 @@ import * as feedback from '@/lib/device/feedback';
 import { LATE_SOUND_MS } from '@/lib/tokens';
 import { bootFeedback, settle, sounds } from './helpers/feedback';
 import { card, PAIR } from './helpers/landing';
-
-let mockReduceMotion = false;
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => mockReduceMotion,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'system',
-}));
+import { setMotion } from './harness/env';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -80,7 +74,6 @@ async function stingAfterLanding(c: (typeof CASES)[number]) {
 
 describe('the round sting', () => {
   beforeEach(async () => {
-    mockReduceMotion = false;
     jest.useFakeTimers();
     await bootFeedback();
   });
@@ -95,7 +88,7 @@ describe('the round sting', () => {
   });
 
   it.each(CASES)('$outcome under reduced motion: $sting still sounds 300 ms after the landing', async (c) => {
-    mockReduceMotion = true;
+    await setMotion('on');
     const { heard, landed, stings } = await stingAfterLanding(c);
     expect(heard).toEqual(['combo', c.sting]);
     expect(stings).toHaveLength(1);

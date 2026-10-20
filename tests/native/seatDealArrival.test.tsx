@@ -4,13 +4,6 @@ import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals
 import { render, screen, within } from '@testing-library/react-native';
 import { getAnimatedStyle } from 'react-native-reanimated';
 
-let mockReduce = false;
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => mockReduce,
-  setMotionPreference: () => {},
-  getMotionPreference: () => (mockReduce ? 'on' : 'off'),
-}));
-
 jest.mock('@/components/table/dealSlots', () => {
   const actual = jest.requireActual<typeof import('@/components/table/dealSlots')>('@/components/table/dealSlots');
   return { ...actual, __esModule: true, dealSlots: jest.fn(actual.dealSlots) };
@@ -20,6 +13,7 @@ import { dealSlots } from '@/components/table/dealSlots';
 import { busiest } from './helpers/dealSweep';
 import { along, freshDeal, frame, handPoses, table, type Pose } from './helpers/dealTable';
 import { bootFeedback, startsOf } from './helpers/feedback';
+import { setMotion } from './harness/env';
 
 const SEATS = ['top-seat', 'side-seat-left', 'side-seat-right'];
 const counted = (testID: string) => {
@@ -35,7 +29,6 @@ const landedSince = (before: Pose[], after: Pose[]) =>
 
 describe("an opponent's hand arrives with the deal", () => {
   beforeEach(async () => {
-    mockReduce = false;
     jest.clearAllMocks();
     jest.useFakeTimers();
     await bootFeedback();
@@ -98,7 +91,7 @@ describe("an opponent's hand arrives with the deal", () => {
   });
 
   it('seats every hand at once under reduced motion, and still sounds the deal', async () => {
-    mockReduce = true;
+    await setMotion('on');
     const r = await render(table());
     await frame();
 

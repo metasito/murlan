@@ -2,23 +2,18 @@
 // spoken state of the table: whose turn it is, what is on the pile, how many
 // cards each seat holds. It has to reach an accessibility element, which a
 // layout container with no `accessible` and no role is on no platform.
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import React from 'react';
 import { render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { isLiveRegion } from '../helpers/liveRegions';
 
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 import { GameTable } from '@/components/GameTable';
 import { buildCombination, type Card, type GameState, type Player } from '@/lib/game/gameEngine';
 import { en as locale } from '@/locales/en';
 import { Colors } from '@/lib/theme';
+import { setMotion } from './harness/env';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -92,6 +87,8 @@ const describedTable = (pattern: RegExp) => spokenNodes(pattern).filter(isLiveRe
 const chipNames = (pattern: RegExp) => spokenNodes(pattern).filter((n) => !isLiveRegion(n));
 
 const HIDDEN_TOO = { includeHiddenElements: true };
+
+beforeEach(() => setMotion('on'));
 
 describe('the table description reaches a screen reader', () => {
   it('is an accessibility element carrying the spoken state', async () => {

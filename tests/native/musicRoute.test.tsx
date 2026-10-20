@@ -25,18 +25,9 @@ jest.mock('expo-router', () => {
     router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() },
   };
 });
-jest.mock('@react-native-community/netinfo', () => ({
-  __esModule: true,
-  default: { addEventListener: jest.fn(() => () => {}) },
-}));
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 import { NotificationProvider } from '@/context/NotificationContext';
 import { RootLayoutNav } from '@/app/_layout';
+import { setMotion } from './harness/env';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -58,6 +49,8 @@ async function go(r: Awaited<ReturnType<typeof render>>, pathname: string): Prom
   await act(async () => r.rerender(<Harness />));
   await settle(1000);
 }
+
+beforeEach(() => setMotion('on'));
 
 describe('music follows the route', () => {
   beforeEach(async () => {

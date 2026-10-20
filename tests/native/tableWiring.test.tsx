@@ -1,22 +1,11 @@
 // tests/native/tableWiring.test.tsx — the table hands each edge and each control the number its
 // model computes. Rendered props only: no flexbox runs here, so where the boxes land is
 // tests/e2e/'s; that GameTable passes the model's numbers on is this file's.
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import React from 'react';
 import { StyleSheet, type TextStyle } from 'react-native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-
-const mockWindow = { current: { width: 844, height: 390, scale: 2, fontScale: 1 } };
-jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
-  __esModule: true,
-  default: () => mockWindow.current,
-}));
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
 
 import { GameTable } from '@/components/GameTable';
 import { tableLayout } from '@/components/tableLayout';
@@ -26,6 +15,7 @@ import { TOUCH_TARGET_MIN } from '@/lib/tokens';
 import { t } from '@/lib/i18n';
 import { SettingsProvider } from '@/context/SettingsContext';
 import { RANK_SLOTS, type Card, type GameState, type Player } from '@/lib/game/gameEngine';
+import { setStoredMotion, setWindow } from './harness/env';
 
 type Insets = { top: number; left: number; right: number; bottom: number };
 const SCREENS: { name: string; width: number; height: number; insets: Insets }[] = [
@@ -57,7 +47,7 @@ const STATE: GameState = {
 const noop = () => {};
 
 async function mount({ width, height, insets }: (typeof SCREENS)[number]) {
-  mockWindow.current = { width, height, scale: 2, fontScale: 1 };
+  await setWindow({ width, height, scale: 2, fontScale: 1 });
   await render(
     <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width, height }, insets }}>
       <SettingsProvider>
@@ -80,6 +70,8 @@ const styleOf = (node: Node): TextStyle => {
 const byTestId = (id: string) => screen.getByTestId(id, { includeHiddenElements: true });
 const kids = (node: Node): Node[] => node.children.filter((c): c is Node => typeof c !== 'string');
 const subtree = (node: Node): Node[] => [node, ...kids(node).flatMap(subtree)];
+
+beforeEach(() => setStoredMotion('on'));
 
 it('the screens tell each floored pad, and a surplus, from the raw numbers', () => {
   const frames = SCREENS.map(({ width, height, insets }) => ({

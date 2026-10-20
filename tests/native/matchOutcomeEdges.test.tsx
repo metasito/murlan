@@ -4,17 +4,10 @@ import { act, render } from '@testing-library/react-native';
 import { RoundMoment } from '@/lib/tokens';
 import { bootFeedback, haptics, settle } from './helpers/feedback';
 import { CASES, DRAWS, closeMatch, table } from './helpers/closeMatch';
-
-let mockReduceMotion = false;
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => mockReduceMotion,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'system',
-}));
+import { setMotion } from './harness/env';
 
 describe("a match's outcome on the felt, at its edges", () => {
   beforeEach(async () => {
-    mockReduceMotion = false;
     jest.useFakeTimers();
     await bootFeedback();
   });
@@ -52,7 +45,7 @@ describe("a match's outcome on the felt, at its edges", () => {
   });
 
   it.each([CASES[0], CASES[3]])('$name under reduced motion: no motes, no rain and no shake, while the sting still plays 300 ms after the landing', async (c) => {
-    mockReduceMotion = true;
+    await setMotion('on');
     const { r, motes, rain, trauma, landed, stings } = await closeMatch(c);
     expect(motes.mock.results.every(({ value }) => (value as unknown[]).length === 0)).toBe(true);
     expect(rain).not.toHaveBeenCalled();

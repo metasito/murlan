@@ -1,16 +1,11 @@
 // The vacated player's two buttons (#1731): pressable only once the panel is up, and the reclaim
 // only once per attempt, since each press spends one of the server's 20-per-60s rejoins.
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { LeftTable } from '@/components/table/notices/netNotes';
 import { en as locale } from '@/locales/en';
-
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
+import { setMotion } from './harness/env';
 
 const RECLAIM = locale['onlineGame.leftTableReclaim'];
 const LEAVE = locale['onlineGame.leftTableLeave'];
@@ -21,6 +16,8 @@ const note = async (live: boolean, reclaiming: boolean) => {
   await render(<LeftTable scale={1} live={live} reclaiming={reclaiming} onReclaim={onReclaim} onLeave={onLeave} />);
   return { onReclaim, onLeave };
 };
+
+beforeEach(() => setMotion('on'));
 
 describe('LeftTable', () => {
   it('takes no press before the panel is up', async () => {

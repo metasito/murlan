@@ -4,18 +4,12 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import { act, render, renderHook } from '@testing-library/react-native';
 
-let mockReduce = false;
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => mockReduce,
-  setMotionPreference: () => {},
-  getMotionPreference: () => (mockReduce ? 'on' : 'off'),
-}));
-
 import * as feedback from '@/lib/device/feedback';
 import { useTableTimeline } from '@/components/table/tableTimeline';
 import { LATE_SOUND_MS } from '@/lib/tokens';
 import { bootFeedback, startsOf } from './helpers/feedback';
 import { frame, table } from './helpers/dealTable';
+import { setMotion } from './harness/env';
 
 const STALL_MS = 20;
 
@@ -32,7 +26,6 @@ function stallAfterEveryEvent(): void {
 
 describe('a cue meant for now, its commit stalling before the flush', () => {
   beforeEach(async () => {
-    mockReduce = false;
     jest.clearAllMocks();
     jest.useFakeTimers();
     await bootFeedback();
@@ -67,7 +60,7 @@ describe('a cue meant for now, its commit stalling before the flush', () => {
   });
 
   it('still sounds the deal under reduced motion', async () => {
-    mockReduce = true;
+    await setMotion('on');
     const r = await render(table());
     await frame();
     expect(startsOf('deal')).toHaveLength(1);

@@ -4,24 +4,21 @@
 // Mounted directly, the same way tests/native/seatDimming.test.tsx does —
 // OpponentSeat is where both chips actually render, and skipping the full
 // <GameTable> keeps this a tree question, not a layout one.
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
 
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 import { OpponentSeat } from '@/components/table/seats';
 import type { Player } from '@/lib/game/gameEngine';
+import { setMotion } from './harness/env';
 
 const player: Player = { id: 'player_1', name: 'Besi', hand: [], type: 'human' };
 
 /** The chip's own text, read by testID rather than by content — cardCount
  *  renders digits of its own, and a bare number regex can match either. */
 const chipText = () => screen.getByTestId('seat-reconnect-chip').props.children;
+
+beforeEach(() => setMotion('on'));
 
 describe("a seat's disconnect countdown (#850 clause 1)", () => {
   it('starts from the server-supplied seconds, not from zero or a guess', async () => {

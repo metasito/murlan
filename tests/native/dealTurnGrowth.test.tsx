@@ -8,18 +8,11 @@ import { type CardRects } from '@/components/table/cardRects';
 import { Motion } from '@/lib/theme';
 import { bootFeedback } from './helpers/feedback';
 import { advance, dealing, freshDeal, table } from './helpers/dealTurnTable';
+import { setWindow } from './harness/env';
 
 jest.mock('@/lib/e2eConfig', () =>
   (require('./helpers/e2eBuildMock') as typeof import('./helpers/e2eBuildMock')).e2eConfigAsBuilt()
 );
-
-jest.mock('@/lib/accessibility', () => ({
-  ...jest.requireActual<typeof import('@/lib/accessibility')>('@/lib/accessibility'),
-  usePrefersReducedMotion: () => false,
-}));
-
-const mockWindow = { width: 844, height: 390, scale: 2, fontScale: 1 };
-jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({ __esModule: true, default: () => mockWindow }));
 
 describe('the landed cards grow into the turn size', () => {
   beforeEach(async () => {
@@ -35,7 +28,7 @@ describe('the landed cards grow into the turn size', () => {
     ['a 4:3 tablet, where the grown fan starts to scroll', 1024, 768, true],
   ])('on %s the landed cards grow from where they were drawn', async (_, width, height, scrolls) => {
     process.env.EXPO_PUBLIC_E2E_FAST = '1';
-    Object.assign(mockWindow, { width, height });
+    await setWindow({ width, height, scale: 2, fontScale: 1 });
     const view = await render(table(freshDeal(), { width, height }));
     const registry = () => (globalThis as { murlanCardRects?: () => CardRects }).murlanCardRects?.() ?? {};
     const pan = () => screen.queryByTestId('hand-pan');

@@ -10,18 +10,13 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react-n
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 // The flight collapses to a single timer, so nothing here waits on a spring.
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 import { bootFeedback, settle, sounds } from './helpers/feedback';
 import { GameTable } from '@/components/GameTable';
 import { PILE_UP_WINDOW_MS } from '@/lib/device/moments';
 import { OpponentSeat } from '@/components/table/seats';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
 import { en as locale } from '@/locales/en';
+import { setMotion } from './harness/env';
 
 const PASSED = locale['gameShared.passedLabel'];
 
@@ -98,6 +93,8 @@ const table = (gameState: GameState, onPass: () => void = noop) => (
     />
   </SafeAreaProvider>
 );
+
+beforeEach(() => setMotion('on'));
 
 describe('the per-seat pass marker', () => {
   beforeEach(() => {

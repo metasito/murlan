@@ -12,13 +12,7 @@ import { lampControls, type Pool } from '@/components/table/lampRig';
 import { RoundMoment } from '@/lib/tokens';
 import { bootFeedback, settle } from './helpers/feedback';
 import { card, PAIR } from './helpers/landing';
-
-let mockReduceMotion = false;
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => mockReduceMotion,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'system',
-}));
+import { setMotion } from './harness/env';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -96,7 +90,6 @@ async function closeRound(c: (typeof CASES)[number]) {
 
 describe("a round's outcome on the felt", () => {
   beforeEach(async () => {
-    mockReduceMotion = false;
     jest.useFakeTimers();
     await bootFeedback();
   });
@@ -186,7 +179,7 @@ describe("a round's outcome on the felt", () => {
   });
 
   it.each(CASES)('$outcome under reduced motion: no motes and no shake, and the sting still plays', async (c) => {
-    mockReduceMotion = true;
+    await setMotion('on');
     const { r, motes, trauma, sent } = await closeRound(c);
     expect(motes.mock.results.every(({ value }) => (value as unknown[]).length === 0)).toBe(true);
     expect(trauma.mock.results.every(({ value }) => value === 0)).toBe(true);

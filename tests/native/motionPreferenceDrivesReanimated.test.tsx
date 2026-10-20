@@ -22,11 +22,6 @@ jest.mock('expo-router', () => {
   };
   return { Stack, usePathname: () => '/', router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() } };
 });
-jest.mock('@react-native-community/netinfo', () => ({
-  __esModule: true,
-  default: { addEventListener: jest.fn(() => () => {}) },
-}));
-
 import { NotificationProvider } from '@/context/NotificationContext';
 import { RootLayoutNav } from '@/app/_layout';
 
