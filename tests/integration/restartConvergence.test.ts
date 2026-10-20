@@ -124,6 +124,7 @@ async function storedSeats(
   ready: (seats: Record<string, unknown>) => boolean,
   what: string
 ): Promise<Record<string, unknown>> {
+  // The servers here are child processes, so this process holds no app pool to ask.
   const admin = new pg.Pool({ connectionString: databaseUrl });
   try {
     const deadline = Date.now() + SETTLE_CEILING_MS;
@@ -225,6 +226,7 @@ describe(
     let lobby = { roomId: "", code: "" };
 
     before(async () => {
+      // Creates the schema the child-process servers are then pointed at.
       const admin = new pg.Pool({ connectionString: baseUrl });
       await admin.query(`CREATE SCHEMA "${schema}"`);
       await admin.end();
@@ -366,6 +368,7 @@ describe(
     let table = { roomId: "", code: "" };
 
     before(async () => {
+      // Creates the schema the child-process servers are then pointed at.
       const admin = new pg.Pool({ connectionString: baseUrl });
       await admin.query(`CREATE SCHEMA "${schema}"`);
       await admin.end();

@@ -8,7 +8,6 @@
 // now goes somewhere instead of returning early.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import pg from "pg";
 import {
   startTestServer,
   hasDatabase,
@@ -51,13 +50,11 @@ const TOKEN_B = "ExponentPushToken[bbbbbbbbbbbbbbbbbbbbbb]";
 
 describe("push token registry", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  let dbPool: pg.Pool;
   let maxDevices: number;
 
   before(async () => {
     await startExpoStub();
     server = await startTestServer();
-    dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
     // Imported here, not at the top: server/socket/push.ts pulls in server/store/db.ts,
     // which builds its pool the moment it loads. Loading it before
     // startTestServer has pointed connections at its throwaway schema binds
@@ -66,7 +63,6 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
   });
 
   after(async () => {
-    await dbPool.end();
     await server.stop();
     await new Promise<void>((resolve) => expoStub.close(() => resolve()));
   });
@@ -103,8 +99,7 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
     fetch(`${server.url}/api/auth/logout`, { method: "POST", headers: { cookie } });
 
   const rowsFor = async (userId: string) =>
-    (await dbPool.query("SELECT token, platform FROM push_tokens WHERE user_id = $1", [userId]))
-      .rows;
+    server.query("SELECT token, platform FROM push_tokens WHERE user_id = $1", [userId]);
 
   test("a device registers, and registering again does not duplicate it", async () => {
     const ana = await connectAs(server, "push_ana");
@@ -197,8 +192,8 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
       // The ones kept are the most recent, so the phone in the player's hand
       // is never the one dropped.
       const kept = (
-        await dbPool.query("SELECT token FROM push_tokens WHERE user_id = $1", [ana.user.id])
-      ).rows.map((r) => r.token as string);
+        await server.query<{ token: string }>("SELECT token FROM push_tokens WHERE user_id = $1", [ana.user.id])
+      ).map((r) => r.token);
       assert.deepEqual(kept.sort(), tokens.slice(-maxDevices).sort());
     } finally {
       ana.socket.close();
@@ -403,7 +398,7 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
       }
       const { savePushToken } = await import("../../server/socket/push.ts");
       const fresh = ["ExponentPushToken[race000000000000000001]", "ExponentPushToken[race000000000000000002]"];
-      await whileUserLocked(dbPool, [ana.user.id], () => fresh.map((t) => savePushToken(ana.user.id, t, "ios", "en")));
+      await whileUserLocked([ana.user.id], () => fresh.map((t) => savePushToken(ana.user.id, t, "ios", "en")));
 
       const kept = (await rowsFor(ana.user.id)).map((r) => r.token as string);
       assert.equal(kept.length, maxDevices);

@@ -16,6 +16,7 @@ async function schemaExists(
   connectionString: string,
   schemaName: string
 ): Promise<boolean> {
+  // Asked after stop() or a failed boot, when there is no app pool to ask.
   const admin = new pg.Pool({ connectionString });
   try {
     const { rows } = await admin.query<{ exists: boolean }>(

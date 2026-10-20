@@ -111,28 +111,22 @@ test("a limiter from the factory sends standard headers and no legacy ones", asy
   }
 });
 
-test("defaultMax gives way to a valid env var, and survives a junk one", async () => {
-  let two: ReturnType<typeof routeLimiter>;
-  let fallback: ReturnType<typeof routeLimiter>;
-  try {
-    process.env.MURLAN_TEST_RATE_LIMIT = "2";
-    two = routeLimiter({ windowMs: 60_000, defaultMax: 9, envVar: "MURLAN_TEST_RATE_LIMIT", message: {} });
-    process.env.MURLAN_TEST_RATE_LIMIT = "nonsense";
-    fallback = routeLimiter({ windowMs: 60_000, defaultMax: 1, envVar: "MURLAN_TEST_RATE_LIMIT", message: {} });
-  } finally {
-    delete process.env.MURLAN_TEST_RATE_LIMIT;
-  }
-
+test("the env var is read per request: set after the limiter is built, it applies", async () => {
+  const two = routeLimiter({ windowMs: 60_000, defaultMax: 9, envVar: "MURLAN_TEST_RATE_LIMIT", message: {} });
+  const fallback = routeLimiter({ windowMs: 60_000, defaultMax: 1, envVar: "MURLAN_TEST_RATE_LIMIT", message: {} });
   const a = await serve(limited(two));
   const b = await serve(limited(fallback));
   try {
+    process.env.MURLAN_TEST_RATE_LIMIT = "2";
     assert.equal((await fetch(a.url)).status, 200);
     assert.equal((await fetch(a.url)).status, 200);
-    assert.equal((await fetch(a.url)).status, 429, "env var did not raise the max");
+    assert.equal((await fetch(a.url)).status, 429, "an env var set after the build did not set the max");
 
+    process.env.MURLAN_TEST_RATE_LIMIT = "nonsense";
     assert.equal((await fetch(b.url)).status, 200);
     assert.equal((await fetch(b.url)).status, 429, "a junk env var did not fall back to defaultMax");
   } finally {
+    delete process.env.MURLAN_TEST_RATE_LIMIT;
     await a.close();
     await b.close();
   }

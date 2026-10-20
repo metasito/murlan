@@ -8,7 +8,6 @@
 // does not have (see lib/game/rating.ts).
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import pg from "pg";
 import {
   startTestServer,
   hasDatabase,
@@ -34,15 +33,12 @@ interface TeamedState extends SanitizedState {
 
 describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  let dbPool: pg.Pool;
 
   before(async () => {
     server = await startTestServer();
-    dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
   });
 
   after(async () => {
-    await dbPool.end();
     await server.stop();
   });
 
@@ -84,11 +80,11 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
 
       for (const { user } of clients) {
         const row = await waitForRow(async () => {
-          const res = await dbPool.query(
+          const res = await server.query(
             "SELECT game_mode, player_count FROM round_history WHERE user_id = $1",
             [user.id]
           );
-          return res.rows[0] ?? null;
+          return res[0] ?? null;
         });
         assert.equal(row.game_mode, "teams");
         assert.equal(Number(row.player_count), 4);
@@ -99,11 +95,11 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
       // under a second, and tearing the server down while game-over's
       // fire-and-forget writes are still in flight would cut them off mid-query.
       const replay = await waitForRow(async () => {
-        const res = await dbPool.query(
+        const res = await server.query(
           "SELECT game_mode, seats FROM round_replays WHERE player_ids @> $1::jsonb",
           [JSON.stringify([clients[0].user.id])]
         );
-        return res.rows[0] ?? null;
+        return res[0] ?? null;
       });
       assert.equal(replay.game_mode, "teams");
       assert.equal((replay.seats as unknown[]).length, 4);
@@ -111,11 +107,11 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
       // The ladder is free-for-all only, by decision rather than by omission.
       // Every other write from the same game-over block has landed by now, so
       // the rating write has had its chance and declined.
-      const rated = await dbPool.query(
+      const rated = await server.query(
         "SELECT 1 FROM user_ratings WHERE user_id = ANY($1)",
         [clients.map((c) => c.user.id)]
       );
-      assert.equal(rated.rows.length, 0, "a teams result must not move anyone's rating");
+      assert.equal(rated.length, 0, "a teams result must not move anyone's rating");
     } finally {
       for (const c of clients) c.socket.close();
     }

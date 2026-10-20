@@ -11,7 +11,6 @@
 // row outliving the process that made it.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import pg from "pg";
 import {
   startTestServer,
   hasDatabase,
@@ -21,7 +20,6 @@ import {
 
 describe("abandoned game rows", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  let dbPool: pg.Pool;
   let prune: () => Promise<number>;
   let maxAgeMs: number;
   let pruneRooms: () => Promise<number>;
@@ -29,7 +27,6 @@ describe("abandoned game rows", { skip: hasDatabase() ? false : skipMessage() },
 
   before(async () => {
     server = await startTestServer();
-    dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
     const retention = await import("../../server/game/retention.ts");
     prune = retention.pruneAbandonedGames;
     maxAgeMs = retention.ABANDONED_GAME_MAX_AGE_MS;
@@ -38,13 +35,12 @@ describe("abandoned game rows", { skip: hasDatabase() ? false : skipMessage() },
   });
 
   after(async () => {
-    await dbPool.end();
     await server.stop();
   });
 
   /** A row as `persistGameState` writes one, stamped at a chosen age. */
   async function seedGame(roomId: string, ageMs: number) {
-    await dbPool.query(
+    await server.query(
       `INSERT INTO active_games (room_id, game_state, updated_at)
        VALUES ($1, '{}'::jsonb, now() - make_interval(secs => $2))`,
       [roomId, ageMs / 1000]
@@ -52,8 +48,7 @@ describe("abandoned game rows", { skip: hasDatabase() ? false : skipMessage() },
   }
 
   const exists = async (roomId: string) =>
-    (await dbPool.query("SELECT 1 FROM active_games WHERE room_id = $1", [roomId]))
-      .rows.length > 0;
+    (await server.query("SELECT 1 FROM active_games WHERE room_id = $1", [roomId])).length > 0;
 
   test("a row older than the cutoff goes, and a fresh one stays", async () => {
     // Comfortably either side of the threshold, so this does not turn on the
@@ -79,7 +74,7 @@ describe("abandoned game rows", { skip: hasDatabase() ? false : skipMessage() },
   });
 
   test("pruning an empty table is not an error and reports nothing", async () => {
-    await dbPool.query("DELETE FROM active_games");
+    await server.query("DELETE FROM active_games");
     assert.equal(await prune(), 0);
   });
 
@@ -90,18 +85,18 @@ describe("abandoned game rows", { skip: hasDatabase() ? false : skipMessage() },
   describe("rooms nobody can still be playing in", () => {
     /** A room and one seat in it, stamped at a chosen age. */
     async function seedRoom(user: string, ageMs: number): Promise<string> {
-      const { rows } = await dbPool.query(
+      const rows = await server.query(
         `INSERT INTO rooms (code, status, game_mode, max_players, created_at)
          VALUES ($1, 'finished', 'free_for_all', 4, now() - make_interval(secs => $2))
          RETURNING id`,
         [user, ageMs / 1000]
       );
       const roomId = rows[0].id as string;
-      const { rows: userRows } = await dbPool.query(
+      const userRows = await server.query(
         `INSERT INTO users (username, password, friend_code) VALUES ($1, 'x', $2) RETURNING id`,
         [`seat_${user}`, user]
       );
-      await dbPool.query(
+      await server.query(
         `INSERT INTO room_players (room_id, user_id, seat_index) VALUES ($1, $2, 0)`,
         [roomId, userRows[0].id]
       );
@@ -109,9 +104,9 @@ describe("abandoned game rows", { skip: hasDatabase() ? false : skipMessage() },
     }
 
     const roomExists = async (id: string) =>
-      (await dbPool.query("SELECT 1 FROM rooms WHERE id = $1", [id])).rows.length > 0;
+      (await server.query("SELECT 1 FROM rooms WHERE id = $1", [id])).length > 0;
     const seatsFor = async (id: string) =>
-      (await dbPool.query("SELECT 1 FROM room_players WHERE room_id = $1", [id])).rows.length;
+      (await server.query("SELECT 1 FROM room_players WHERE room_id = $1", [id])).length;
 
     test("an old room goes, with its seats, and a recent one stays", async () => {
       const old = await seedRoom("OLDRM1", roomMaxAgeMs * 2);

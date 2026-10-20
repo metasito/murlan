@@ -4,7 +4,6 @@
 // and served.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import pg from "pg";
 import type { GameMode } from "../../lib/game/gameEngine.ts";
 import type { GameResult } from "../../lib/achievements.ts";
 import {
@@ -17,15 +16,12 @@ import { register } from "../helpers/client.ts";
 
 describe("the abandonment record", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  let dbPool: pg.Pool;
 
   before(async () => {
     server = await startTestServer();
-    dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
   });
 
   after(async () => {
-    await dbPool.end();
     await server.stop();
   });
 
@@ -51,23 +47,23 @@ describe("the abandonment record", { skip: hasDatabase() ? false : skipMessage()
     const { user } = await register(server, "abandonrecord_flag_user");
     await recordRound(user.id, true, new Date());
 
-    const res = await dbPool.query<{ abandoned: boolean }>(
+    const res = await server.query<{ abandoned: boolean }>(
       "SELECT abandoned FROM round_history WHERE user_id = $1",
       [user.id]
     );
-    assert.equal(res.rows.length, 1);
-    assert.equal(res.rows[0]!.abandoned, true);
+    assert.equal(res.length, 1);
+    assert.equal(res[0]!.abandoned, true);
   });
 
   test("a played-out round is recorded as not abandoned", async () => {
     const { user } = await register(server, "abandonrecord_played_user");
     await recordRound(user.id, false, new Date());
 
-    const res = await dbPool.query<{ abandoned: boolean }>(
+    const res = await server.query<{ abandoned: boolean }>(
       "SELECT abandoned FROM round_history WHERE user_id = $1",
       [user.id]
     );
-    assert.equal(res.rows[0]!.abandoned, false);
+    assert.equal(res[0]!.abandoned, false);
   });
 
   test("the abandoned flag reaches GET /api/stats/history", async () => {
