@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { loadWorkflow } from "../helpers/workflow.ts";
 import BudgetReporter, { committedTimings, HARD_FACTOR, overBudget, RATIO, SLACK_S } from "../../tools/ci/e2e-budget.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
@@ -73,9 +74,11 @@ test("each browser shard uploads the list from the runner's temp directory, and 
     if (prior === undefined) delete process.env.RUNNER_TEMP;
     else process.env.RUNNER_TEMP = prior;
   }
-  const ci = readFileSync(path.join(repoRoot, ".github/workflows/ci.yml"), "utf8");
-  const browser = /^ {2}browser:\n([\s\S]*?)(?=^ {2}\S)/m.exec(ci.replace(/^\s*#.*\n/gm, ""))?.[1] ?? "";
-  assert.match(browser, /upload-artifact@\S+.*\n\s+with:\n\s+name: over-budget-browser-\$\{\{ matrix\.shard \}\}\n\s+path: \$\{\{ runner\.temp \}\}\/over-budget\.json\n\s+if-no-files-found: error\n/);
+  const uploads = (loadWorkflow("ci.yml").jobs.browser.steps ?? []).filter((s) => s.uses?.startsWith("actions/upload-artifact@"));
+  assert.deepEqual(
+    uploads.map(({ with: w }) => ({ name: w?.name, path: w?.path, "if-no-files-found": w?.["if-no-files-found"] })).find((w) => w.name === "over-budget-browser-${{ matrix.shard }}"),
+    { name: "over-budget-browser-${{ matrix.shard }}", path: "${{ runner.temp }}/over-budget.json", "if-no-files-found": "error" },
+  );
 });
 
 test("the reporter fails a green shard whose spec took over HARD_FACTOR times its budget, and names it", () => {

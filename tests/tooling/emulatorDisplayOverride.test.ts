@@ -13,13 +13,10 @@
 // nothing below can be satisfied by a command that is commented out.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
 import { actionConfigLines, actionScriptLines, markerIndex } from "../helpers/androidAction.ts";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const script = actionScriptLines(repoRoot);
-const config = actionConfigLines(repoRoot);
+const script = actionScriptLines();
+const config = actionConfigLines();
 
 /**
  * Each AVD profile's stock display, which lives in the Android SDK rather than in

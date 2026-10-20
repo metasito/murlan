@@ -12,6 +12,7 @@ import { appendFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import { prSpec } from "../../tests/e2e/tiers.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const E2E_DIR = path.join(here, "..", "..", "tests", "e2e");
@@ -37,19 +38,15 @@ export const MAX_CONCURRENT_JOBS = 25;
 /** What that leaves beside every job ci.yml starts with the shards; `e2eShardSplit.test.ts` counts them. */
 export const MAX_SHARDS = 17;
 
-const CONFIG = path.join(E2E_DIR, "playwright.config.ts");
-
 /**
- * What Playwright runs from `dir`: a recursive walk under its default testMatch, minus the
- * config's `testIgnore`, as paths relative to `dir` — the form timings.json keys take.
+ * What Playwright runs from `dir` on a pull request: a recursive walk kept to `prSpec`, as paths
+ * relative to `dir` — the form timings.json keys take.
  * @returns {string[]}
  */
 export function specFilesIn(dir = E2E_DIR) {
-  const ignore = /testIgnore: \/(.+)\/,$/m.exec(readFileSync(CONFIG, "utf8"));
-  if (!ignore) throw new Error(`${CONFIG} declares no testIgnore regex`);
   return readdirSync(dir, { recursive: true })
     .map((name) => String(name).split(path.sep).join("/"))
-    .filter((name) => /\.(spec|test)\.[cm]?[jt]sx?$/.test(name) && !new RegExp(ignore[1]).test(name))
+    .filter(prSpec)
     .sort();
 }
 

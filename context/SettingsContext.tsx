@@ -2,7 +2,8 @@ import React, { createContext, useCallback, useContext, useEffect, useState, use
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as feedback from "@/lib/device/feedback";
 import { SETTINGS_KEY as STORAGE_KEY } from "@/lib/storageKeys";
-import { setMotionPreference, type MotionPreference } from "@/lib/accessibility";
+import { isMotionPreference, setMotionPreference, type MotionPreference } from "@/lib/accessibility";
+import { readStoredSettings } from "@/lib/storedSettings";
 import { setScreenShakeEnabled } from "@/lib/screenShake";
 import { migrateAudio, withEnabled, withVolume, type AudioLevel } from "@/lib/audioLevel";
 import {
@@ -91,16 +92,11 @@ const withMusic = (s: Settings, l: AudioLevel): Settings => ({
  * one here is silent: a string volume mutes the game, an unknown motion value
  * freezes every animation. Each field is validated rather than spread in.
  */
-function parseStored(raw: string): Partial<Settings> {
-  const parsed: unknown = JSON.parse(raw);
-  if (typeof parsed !== "object" || parsed === null) return {};
-  const v = parsed as Record<string, unknown>;
+function parseStored(v: Record<string, unknown>): Partial<Settings> {
   const out: Partial<Settings> = migrateAudio(v, DEFAULT_SOUND_VOLUME, DEFAULT_MUSIC_VOLUME);
   if (typeof v.hapticsEnabled === "boolean") out.hapticsEnabled = v.hapticsEnabled;
   if (typeof v.screenShake === "boolean") out.screenShake = v.screenShake;
-  if (v.motion === "system" || v.motion === "on" || v.motion === "off") {
-    out.motion = v.motion;
-  }
+  if (isMotionPreference(v.motion)) out.motion = v.motion;
   if (isCardBackId(v.cardBack)) out.cardBack = v.cardBack;
   if (isTableFeltId(v.tableFelt)) out.tableFelt = v.tableFelt;
   return out;
@@ -111,15 +107,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [readFinished, setReadFinished] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY)
-      .then((raw) => {
-        if (!raw) return;
-        try {
-          setSettings({ ...defaults, ...parseStored(raw) });
-        } catch {}
+    readStoredSettings()
+      .then((stored) => {
+        if (stored) setSettings({ ...defaults, ...parseStored(stored) });
       })
-      // Not in `then`: a rejected read must release the write below too, or one
-      // failed read stops settings persisting for the session.
+      // Not in `then`: a throw there must release the write below too, or one
+      // bad value stops settings persisting for the session.
       .finally(() => setReadFinished(true))
       .catch(() => {});
   }, []);
@@ -138,17 +131,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     feedback.setMusicVolume(settings.musicVolume);
   }, [settings.musicVolume]);
 
-  // lib/device/feedback.ts preloads this same key at module init, before this provider
-  // mounts — pushing the unread default here would stomp a correctly-preloaded
-  // `false` until the read above resolves.
+  // Their owners preload the stored value at module init, before this provider mounts —
+  // pushing an unread default here would stomp it until the read above resolves.
   useEffect(() => {
     if (!readFinished) return;
     feedback.setHapticsEnabled(settings.hapticsEnabled);
-  }, [settings.hapticsEnabled, readFinished]);
-
-  useEffect(() => {
     setMotionPreference(settings.motion);
-  }, [settings.motion]);
+  }, [settings.hapticsEnabled, settings.motion, readFinished]);
 
   useEffect(() => {
     setScreenShakeEnabled(settings.screenShake);

@@ -6,21 +6,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { loadWorkflow, stepIn } from "../helpers/workflow.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const workflow = (name: string) =>
-  readFileSync(path.join(repoRoot, ".github/workflows", name), "utf8")
-    .split("\n")
-    .filter((line) => !/^\s*#/.test(line))
-    .join("\n");
-
-const triggers = (source: string) => source.match(/^on:\n((?:[ \t]+.*\n|\n)*)/m)?.[1] ?? "";
 
 for (const name of ["ios.yml", "maestro.yml"]) {
   test(`${name} runs when dispatched, and on a schedule inside the cache's 7-day eviction`, () => {
-    const on = triggers(workflow(name));
-    assert.deepEqual(on.match(/^ {2}[\w-]+:/gm), ["  workflow_dispatch:", "  schedule:"]);
-    const crons = [...on.matchAll(/- cron: "(.+)"/g)].map((m) => m[1].split(" "));
+    const on = loadWorkflow(name).on as Record<string, unknown>;
+    assert.deepEqual(Object.keys(on), ["workflow_dispatch", "schedule"]);
+    const crons = (on.schedule as { cron: string }[]).map((c) => c.cron.split(" "));
     assert.equal(crons.length, 1);
     const [, , dayOfMonth, month, dayOfWeek] = crons[0];
     assert.deepEqual([dayOfMonth, month], ["*", "*"]);
@@ -30,50 +24,46 @@ for (const name of ["ios.yml", "maestro.yml"]) {
   });
 }
 
-const step = (source: string, name: string) => {
-  const start = source.indexOf(`- name: ${name}`);
-  assert.notEqual(start, -1, `no step named "${name}"`);
-  const end = source.indexOf("\n      - ", start);
-  return source.slice(start, end === -1 ? undefined : end);
-};
-
 for (const [name, platform] of [
   ["ios.yml", "ios"],
   ["maestro.yml", "android"],
 ]) {
   test(`${name}: a native crash of the app fails the run (#1293)`, () => {
-    const crash = step(workflow(name), "Fail if the app died of a native crash");
-    assert.match(crash, /if: always\(\)/, "gating this on failure() hides a crash that did not manage to fail the run");
-    const lastCommand = crash.trimEnd().split("\n").reverse().find((line) => !line.trim().startsWith('"$'));
-    assert.match(lastCommand ?? "", new RegExp(`^ +node tools/ci/find-native-crash\\.mjs ${platform} "\\$APP_ID"`));
-    for (const escape of ["::warning::", "|| true", "continue-on-error"]) {
-      assert.ok(!crash.includes(escape), `${escape} lets a crash pass`);
+    const crash = stepIn(loadWorkflow(name), "Fail if the app died of a native crash").step;
+    assert.equal(crash.if, "always()", "gating this on failure() hides a crash that did not manage to fail the run");
+    const lastCommand = (crash.run ?? "").trimEnd().split("\n").reverse().find((line) => !line.trim().startsWith('"$'));
+    assert.match(lastCommand ?? "", new RegExp(`^\\s*node tools/ci/find-native-crash\\.mjs ${platform} "\\$APP_ID"`));
+    for (const escape of ["::warning::", "|| true"]) {
+      assert.ok(!crash.run?.includes(escape), `${escape} lets a crash pass`);
     }
+    assert.equal(crash["continue-on-error"], undefined, "continue-on-error lets a crash pass");
   });
 
   test(`${name}: a red scheduled run, and only a scheduled one, files in the tracker (#1293)`, () => {
-    const source = workflow(name);
-    const report = step(source, "Report a red scheduled run to the tracker");
-    assert.match(report, /if: \(failure\(\) \|\| cancelled\(\)\) && github\.event_name == 'schedule'\n/);
-    assert.match(report, new RegExp(`run: bash tools/ci/report-device-run\\.sh ${name.replace(".", "\\.")}\n?$`));
-    const grant = [...source.matchAll(/^( {4})?permissions:\n((?:\1 {2}.*\n)*)/gm)].at(-1);
-    assert.match(grant?.[2] ?? "", /issues: write/);
-    if (grant?.[1]) assert.doesNotMatch(source.slice(grant.index, source.indexOf(report)), /\n {2}[\w-]+:\n/, "the grant is on another job");
-    assert.equal(source.trimEnd().endsWith(report.trimEnd()), true, "a step after the report can fail without being reported");
+    const workflow = loadWorkflow(name);
+    const { id, job, step: report } = stepIn(workflow, "Report a red scheduled run to the tracker");
+    assert.equal(report.if, "(failure() || cancelled()) && github.event_name == 'schedule'");
+    assert.equal(report.run?.trim(), `bash tools/ci/report-device-run.sh ${name}`);
+    assert.equal((job.permissions ?? workflow.permissions)?.issues, "write", "the report's job may not write issues");
+    assert.equal(job.steps?.at(-1), report, "a step after the report can fail without being reported");
+    assert.equal(Object.keys(workflow.jobs).at(-1), id, "a job after the report's can fail without being reported");
   });
 }
 
 test("ios.yml uploads the crash reports it failed on", () => {
-  const source = workflow("ios.yml");
-  const copyTo = /--copy-to "\$RUNNER_TEMP\/([\w-]+)"/.exec(step(source, "Fail if the app died of a native crash"))?.[1];
+  const workflow = loadWorkflow("ios.yml");
+  const copyTo = /--copy-to "\$RUNNER_TEMP\/([\w-]+)"/.exec(stepIn(workflow, "Fail if the app died of a native crash").step.run ?? "")?.[1];
   assert.ok(copyTo, "the crash step no longer copies the reports out");
-  const upload = step(source, "Upload crash reports");
-  assert.match(upload, /if: always\(\)/);
-  assert.match(upload, new RegExp(`path: \\$\\{\\{ runner\\.temp \\}\\}/${copyTo}/`));
+  const upload = stepIn(workflow, "Upload crash reports").step;
+  assert.equal(upload.if, "always()");
+  assert.ok(String(upload.with?.path).startsWith(`\${{ runner.temp }}/${copyTo}/`), String(upload.with?.path));
 });
 
 test("eas-build.yml waits for the build it starts", () => {
-  const source = workflow("eas-build.yml");
+  const source = readFileSync(path.join(repoRoot, ".github/workflows/eas-build.yml"), "utf8")
+    .split("\n")
+    .filter((line) => !/^\s*#/.test(line))
+    .join("\n");
   assert.match(source, /eas build /);
   assert.doesNotMatch(source, /--no-wait/);
 });

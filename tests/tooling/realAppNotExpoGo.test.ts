@@ -18,7 +18,10 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { parseAllDocuments } from "yaml";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
+import { allSteps, loadWorkflow } from "../helpers/workflow.ts";
+import { emulatorStep } from "../helpers/androidAction.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
@@ -42,15 +45,16 @@ const FLOWS = [
 
 /**
  * The names of the flow's top-level commands, which are the ones that run
- * unconditionally. Read as text rather than parsed: js-yaml is here only as
- * somebody else's transitive dependency, and a check that disappears when the
- * tree is deduped is not a check.
- *
- * A top-level command is a `- ` at column 0 after the `---` that ends the
- * config header; anything indented belongs to a block above it.
+ * unconditionally; a `runFlow` of a `_*.yaml` sibling by `file:` runs its commands in place.
  */
 function topLevelCommands(rel: string): string[] {
-  return [...flowBody(rel).matchAll(/^- (\w+)/gm)].map((m) => m[1]);
+  const commands = parseAllDocuments(read(rel)).at(-1)?.toJS() as (string | Record<string, { file?: string }>)[];
+  return commands.flatMap((command) => {
+    if (typeof command === "string") return [command];
+    const [name, value] = Object.entries(command)[0];
+    const file = name === "runFlow" ? value?.file : undefined;
+    return file && /^_\w+\.yaml$/.test(file) ? topLevelCommands(`.maestro/${file}`) : [name];
+  });
 }
 
 /** Everything after the `---` that ends the config header. */
@@ -70,7 +74,7 @@ function landscapeBlock(rel: string): string {
   return found[0];
 }
 
-const DEVICE_JOBS = [".github/workflows/ios.yml", ".github/workflows/maestro.yml"];
+const DEVICE_JOBS = ["ios.yml", "maestro.yml"];
 
 /**
  * The one workflow step whose `run:` reaches the Maestro installer.
@@ -80,10 +84,10 @@ const DEVICE_JOBS = [".github/workflows/ios.yml", ".github/workflows/maestro.yml
  * next reads as "the pin comes first" against the whole file, and installs
  * latest on the runner.
  */
-function installStep(rel: string): string {
-  const steps = code(rel).split(/^ {6}- /m);
-  const found = steps.filter((s) => s.includes("get.maestro.mobile.dev"));
-  assert.equal(found.length, 1, `${rel} should install Maestro from exactly one step`);
+function installStep(file: string): string {
+  const runs = allSteps(loadWorkflow(file)).map((s) => (s.run ?? "").replace(/^[ \t]*#.*$/gm, ""));
+  const found = runs.filter((run) => run.includes("get.maestro.mobile.dev"));
+  assert.equal(found.length, 1, `${file} should install Maestro from exactly one step`);
   return found[0];
 }
 
@@ -148,7 +152,7 @@ describe("the iOS job drives this app, not Expo Go", () => {
   const BUILD = ".github/actions/ios-app/action.yml";
 
   test("it builds and installs a build of this app", () => {
-    assert.match(workflow, /uses: \.\/\.github\/actions\/ios-app\n/);
+    assert.ok(allSteps(loadWorkflow("ios.yml")).some((s) => s.uses === "./.github/actions/ios-app"));
     assert.match(code(BUILD), /expo prebuild --platform ios/);
     assert.match(code(BUILD), /xcodebuild/);
     assert.match(workflow, /simctl install .*APP_BUNDLE/);
@@ -213,7 +217,7 @@ describe("the Android job drives this app, not Expo Go", () => {
     // different files, and a build that compiles an architecture the device
     // cannot execute installs nothing while costing 230s of the 862s of Gradle
     // task time measured on run 33654901506 (#823).
-    const arch = action.match(/^\s*arch:\s*(\S+)\s*$/m)?.[1];
+    const arch = emulatorStep().with?.arch as string | undefined;
     assert.ok(arch, "the emulator action names no arch");
     const built = workflow.match(/-PreactNativeArchitectures=(\S+)/)?.[1];
     assert.ok(built, "the build asks for no particular architecture");
