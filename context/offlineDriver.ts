@@ -107,10 +107,16 @@ export function useOfflineDriver(): OfflineDriver {
     setAutoPassed((n) => n + 1);
   }, [clockTurn, passTurn]);
 
+  // Only the giveback is the table's to release: once it lands, a bot loser is on move under the ceremony.
+  const exchangeOpen = gameState?.exchangePhase?.active === true;
+  const onExchangeReady = useCallback(() => {
+    if (exchangeOpen) runBotTurn();
+  }, [exchangeOpen, runBotTurn]);
+
   return {
     viewerSeat,
     autoPassed,
-    onExchangeReady: runBotTurn,
+    onExchangeReady,
     onDealing: setDealing,
     onRoundLanded: roundEnding ? setRoundLandedAt : undefined,
     // Leading a trick has no deadline offline; nothing else is keeping this clock, so it can be stopped

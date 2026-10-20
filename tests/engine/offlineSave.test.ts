@@ -141,4 +141,6 @@ test("an open exchange the winner cannot give back from is refused; one they can
   };
   assert.equal(kindOf(withExchange([])), "incompatible");
   assert.equal(kindOf(withExchange([{ id: "5_clubs", rank: "5", suit: "clubs", isJoker: false }])), "ok");
+  assert.equal(kindOf(withExchange([null])), "incompatible");
+  assert.equal(kindOf(withExchange([{ id: "5_clubs" }])), "incompatible");
 });

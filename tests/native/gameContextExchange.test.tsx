@@ -254,12 +254,13 @@ function BotWinnerProbe() {
   );
 }
 
-test("an offline bot winner gives its weakest legal card once, and only when the table is ready", async () => {
+// A bot loser is on move the moment the giveback lands, so a second ready would have it play over the ceremony.
+for (const loser of ["human", "bot"] as const) test(`an offline bot winner gives its weakest legal card once, and only when the table is ready (${loser} loser)`, async () => {
   const ace = { id: "A_spades", suit: "spades", rank: "A", isJoker: false } as const;
   const state: GameState = {
     ...exchangeState(),
     players: [
-      { ...exchangeState().players[0], hand: [{ id: "3_clubs", suit: "clubs", rank: "3", isJoker: false }] },
+      { ...exchangeState().players[0], type: loser, hand: [{ id: "3_clubs", suit: "clubs", rank: "3", isJoker: false }] },
       {
         id: "player_1",
         name: "Gent",

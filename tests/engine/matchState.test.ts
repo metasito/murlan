@@ -218,8 +218,14 @@ describe("matchOutcomeFor", () => {
 // call it, whatever else it does.
 test("one module chooses a bot's move", () => {
   const HOME = "lib/game/autoMove.ts";
+  // The suites that pin the bot's own choices; test support drives a seat through HOME like any table.
+  const PINS_THE_BOT = ["tests/bots/", "tests/engine/"];
+  const sources = [
+    ...appSources(),
+    ...walk(path.join(repoRoot, "tests")).filter((rel) => !PINS_THE_BOT.some((dir) => rel.startsWith(dir))),
+  ];
   for (const chooser of ["botChoosePlay", "pickGivebackCard"]) {
-    const callers = appSources().filter((rel) =>
+    const callers = sources.filter((rel) =>
       new RegExp(String.raw`(?<!function )\b${chooser}\s*\(`).test(readFileSync(path.join(repoRoot, rel), "utf8"))
     );
 

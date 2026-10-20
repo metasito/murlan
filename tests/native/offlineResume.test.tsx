@@ -38,7 +38,13 @@ const midExchangeSave = () => {
     gameState: {
       players: [
         { id: "player_0", name: "Ana", hand: [card], type: "human" },
-        { id: "player_1", name: "Luan", hand: [card], type: "bot", personality: "luan" },
+        {
+          id: "player_1",
+          name: "Luan",
+          hand: [card, { id: "4_clubs", rank: "4", suit: "clubs", isJoker: false }],
+          type: "bot",
+          personality: "luan",
+        },
       ],
       currentTurnIndex: 0,
       lastPlayedCombination: null,

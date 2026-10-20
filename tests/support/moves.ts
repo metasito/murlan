@@ -9,7 +9,7 @@ import {
   type Move,
   type MoveRefusal,
 } from "../../lib/game/gameEngine.ts";
-import { botChoosePlay, botView, pickGivebackCard } from "../../lib/game/bot.ts";
+import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
 
 function settled(state: GameState, move: Move): GameState {
   const result = applyMove(state, actingSeat(state), move);
@@ -33,25 +33,19 @@ export function refusalOf(state: GameState, move: Move): MoveRefusal | null {
 }
 
 /**
- * The round played to its end by the bot at every seat: every state along the way, `start` first.
- * Throws when the engine refuses a bot's move, when a bot declines to lead, or past `limit` moves.
+ * The round played to its end by the bot at every seat, through lib/game/autoMove.ts as any table
+ * plays it: every state along the way, `start` first. Throws when a seat on move has nothing it can
+ * do, or past `limit` moves.
  */
 export function playRoundOut(start: GameState, rng: () => number = Math.random, limit = 2000): GameState[] {
   const states = [start];
   let state = start;
   while (!state.roundOver) {
     if (states.length > limit) throw new Error(`the round did not end in ${limit} moves`);
-    const phase = state.exchangePhase?.active ? state.exchangePhase : null;
-    if (phase) {
-      const card = pickGivebackCard(state.players[phase.winnerIdx].hand, phase.cardFromLoser?.id);
-      if (!card) throw new Error(`seat ${phase.winnerIdx} holds nothing to give back`);
-      state = givenBack(state, card.id);
-    } else {
-      const view = botView(state, state.currentTurnIndex);
-      const combo = botChoosePlay(view, rng);
-      if (!combo && view.toBeat === null) throw new Error(`seat ${state.currentTurnIndex} declined to lead`);
-      state = combo ? played(state, combo) : passed(state);
-    }
+    const seat = actingSeat(state);
+    const auto = autoMoveForSeat(state, seat, "bot", rng);
+    if (!auto) throw new Error(`seat ${seat} is on move and the bot has nothing to do`);
+    state = auto.state;
     states.push(state);
   }
   return states;
