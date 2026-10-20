@@ -206,7 +206,7 @@ export function ReplayTransport({
         />
         <TransportKey name="chevron-forward" label={t("replay.nextA11yLabel")} onPress={() => onStep(1)} />
         <TextButton
-          label={t("replay.speedA11yLabel")}
+          label={t("replay.speedA11yLabel", { value: t("replay.speedValue", { n: speed }) })}
           text={t("replay.speedValue", { n: speed })}
           onPress={onCycleSpeed}
         />
@@ -270,7 +270,7 @@ export function ReplayMoveList({
               onPress={() => onJumpTo(row.i)}
               style={[styles.moveRow, row.i === index && styles.moveRowCurrent]}
               accessibilityRole="button"
-              accessibilityLabel={t("replay.moveRowA11yLabel", {
+              accessibilityLabel={t(row.i === index ? "replay.moveRowCurrentA11yLabel" : "replay.moveRowA11yLabel", {
                 n: row.i + 1,
                 name: row.name,
                 action: row.action,

@@ -502,7 +502,7 @@ export const sq: Record<keyof typeof en, string> = {
   "replay.deletedPlayer": "Lojtar i fshirë",
   "replay.back": "Mbyll",
   "replay.scrubA11yLabel": "Pozicioni në dorë",
-  "replay.speedA11yLabel": "Shpejtësia e riprodhimit",
+  "replay.speedA11yLabel": "Shpejtësia e riprodhimit: {{value}}",
   "replay.speedValue": "{{n}}×",
   "replay.jumpA11yLabel": "Shko te Bomba tjetër ose te fundi",
   "replay.movesToggleA11yLabel": "Shfaq listën e lëvizjeve",
@@ -512,6 +512,7 @@ export const sq: Record<keyof typeof en, string> = {
   "replay.movePassed": "pasoi",
   "replay.movePlayed": "{{combo}} · {{cards}}",
   "replay.moveRowA11yLabel": "Lëvizja {{n}}: {{name}}, {{action}}",
+  "replay.moveRowCurrentA11yLabel": "Lëvizja {{n}}: {{name}}, {{action}}, lëvizja aktuale",
 
   // ------------------------------------------------------------- cosmetics.*
   "cosmetics.back.smeraldo": "Smerald",
@@ -580,6 +581,7 @@ export const sq: Record<keyof typeof en, string> = {
   "ladder.emptyTitle": "Askush i klasifikuar",
   "ladder.emptyBody": "Duhen {{n}} duar të klasifikuara për të dalë këtu.",
   "ladder.rowA11yLabel": "{{rank}}: {{name}}, {{rating}} pikë",
+  "ladder.rowSelfA11yLabel": "{{rank}}: {{name}} (ti), {{rating}} pikë",
   "ladder.rankedOnlyNote": "Vetëm online të gjithë kundër të gjithëve, pa botë.",
   "ladder.scopeGlobal": "Global",
   "ladder.scopeFriends": "Miqtë",
@@ -914,6 +916,8 @@ export const sq: Record<keyof typeof en, string> = {
   "friends.searchByUsername": "Kërko sipas emrit të përdoruesit",
   "friends.usernamePlaceholder": "@perdoruesi",
   "friends.searchA11yLabel": "Kërkim emri përdoruesi",
+  "friends.searchButtonA11yLabel": "Kërko",
+  "friends.foundA11yLabel": "U gjet {{username}}",
   "friends.searchA11yHint": "Shkruaj emrin e përdoruesit të një lojtari për ta kërkuar dhe shtuar si mik",
   "friends.sendRequestA11yLabel": "Dërgo kërkesë miqësie te {{username}}",
 

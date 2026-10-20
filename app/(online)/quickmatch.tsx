@@ -170,7 +170,7 @@ export default function QuickmatchScreen() {
       <MenuLayout scrollable={true} centered={false} style={{ justifyContent: "space-between" }}>
         {!isLandscape && (
           <View style={styles.header}>
-            <Ionicons name="earth-outline" size={28} color={Colors.gold} />
+            <Ionicons name="earth-outline" size={28} color={Colors.gold} {...a11yHidden()} />
             <Text style={styles.headerTitle}>{t("quickmatch.title")}</Text>
             <Text style={styles.headerSub}>{t("quickmatch.subtitle")}</Text>
           </View>
@@ -178,7 +178,7 @@ export default function QuickmatchScreen() {
 
         {isLandscape && (
           <View style={styles.landscapeHeader}>
-            <Ionicons name="earth-outline" size={20} color={Colors.gold} />
+            <Ionicons name="earth-outline" size={20} color={Colors.gold} {...a11yHidden()} />
             <Text style={styles.landscapeHeaderText}>{t("quickmatch.subtitleShort")}</Text>
           </View>
         )}
@@ -206,7 +206,7 @@ export default function QuickmatchScreen() {
             >
               <View style={styles.modeIconRow} {...a11yHidden()}>
                 <View style={[styles.modeIconBg, isLandscape && styles.modeIconBgSmall]}>
-                  <Ionicons name={mode.icon} size={isLandscape ? 20 : 26} color={Colors.gold} />
+                  <Ionicons name={mode.icon} size={isLandscape ? 20 : 26} color={Colors.gold} {...a11yHidden()} />
                 </View>
                 <View style={styles.playerBadge}>
                   <Text style={styles.playerBadgeText}>{mode.playerLabel}</Text>
@@ -238,14 +238,14 @@ export default function QuickmatchScreen() {
           isLandscape && { marginBottom: 0 },
         ]}>
           <View style={[styles.globeCircle, isLandscape && styles.globeCircleSmall]}>
-            <Ionicons name="earth-outline" size={isLandscape ? 36 : 64} color={Colors.gold} />
+            <Ionicons name="earth-outline" size={isLandscape ? 36 : 64} color={Colors.gold} {...a11yHidden()} />
           </View>
         </Animated.View>
 
         <MenuCard style={styles.searchCard}>
           {selectedMode && (
             <View style={styles.selectedModeTag}>
-              <Ionicons name={selectedMode.icon} size={14} color={Colors.gold} />
+              <Ionicons name={selectedMode.icon} size={14} color={Colors.gold} {...a11yHidden()} />
               <Text style={styles.selectedModeText}>{selectedMode.label}</Text>
             </View>
           )}

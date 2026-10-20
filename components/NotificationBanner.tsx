@@ -200,7 +200,7 @@ export default function NotificationBanner({ notification, onDismiss, onMeasure 
         >
           {dismissHint.node}
           <View style={[styles.iconCircle, { backgroundColor: color + "22" }]} {...a11yHidden()}>
-            <Ionicons name={icon} size={GLYPH} color={color} />
+            <Ionicons name={icon} size={GLYPH} color={color} {...a11yHidden()} />
           </View>
           <View style={styles.textGroup} {...a11yHidden()}>
             <Text style={styles.title} numberOfLines={1}>{notification?.title ?? ""}</Text>

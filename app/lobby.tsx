@@ -57,6 +57,7 @@ function PlayerRow({ config, team, onChange, isHuman }: PlayerRowProps) {
               name={isHuman ? "person" : "hardware-chip"}
               size={18}
               color={isHuman ? Colors.bgCard : Colors.textSecondary}
+              {...a11yHidden()}
             />
           </LinearGradient>
         </View>

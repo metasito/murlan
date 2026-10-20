@@ -20,7 +20,7 @@ async function openFriends(page: Page): Promise<void> {
 /** Searches for `username` and sends them a request, from the friends screen. */
 async function sendRequestTo(page: Page, username: string): Promise<void> {
   await page.getByRole("textbox", { name: copy["friends.searchA11yLabel"] }).fill(username);
-  await page.getByRole("button", { name: copy["friends.searchA11yLabel"] }).click();
+  await page.getByRole("button", { name: copy["friends.searchButtonA11yLabel"] }).click();
   const send = page.getByRole("button", {
     name: copy["friends.sendRequestA11yLabel"].replace("{{username}}", username),
   });

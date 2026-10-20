@@ -13,6 +13,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg from "react-native-svg";
+import { a11yHidden } from "@/lib/a11y";
 import { Colors, Layer, makeShadow, NoticePalette, Scrim, withAlpha } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { DIAGNOSTICS, diag, type DiagRows } from "@/lib/diagnostics";
@@ -407,13 +408,13 @@ export function NoticeKey({ testID, children }: { testID?: string; children: Rea
 /** A glyph set as a letter of the plate's run: its size and ink, then the run's tracking. */
 export function NoticeIcon({ name }: { name: ComponentProps<typeof Ionicons>["name"] }) {
   const { paint, box } = useInk("NoticeIcon");
-  return <Ionicons name={name} size={box.fontSize} color={paint.ink} style={{ marginRight: box.tracking }} />;
+  return <Ionicons name={name} size={box.fontSize} color={paint.ink} style={{ marginRight: box.tracking }} {...a11yHidden()} />;
 }
 
 /** A glyph beside the plate's words, `px` mockup px square. */
 export function NoticeGlyph({ name, px }: { name: ComponentProps<typeof Ionicons>["name"]; px: number }) {
   const { paint, scale } = useInk("NoticeGlyph");
-  return <Ionicons name={name} size={mockupPx(px, scale)} color={paint.strong} />;
+  return <Ionicons name={name} size={mockupPx(px, scale)} color={paint.strong} {...a11yHidden()} />;
 }
 
 /** A count on gold at the plate's end, as `#turn u`. */

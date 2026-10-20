@@ -226,12 +226,12 @@ function HomeHero({
           style={styles.heroFill}
           {...a11yHidden()}
         >
-          <Ionicons name={icon} size={HERO_ICON} color={Colors.bgCard} />
+          <Ionicons name={icon} size={HERO_ICON} color={Colors.bgCard} {...a11yHidden()} />
           <View>
             <Text style={styles.heroLabel}>{label}</Text>
             {sublabel ? <Text style={styles.heroSublabel}>{sublabel}</Text> : null}
           </View>
-          <Ionicons name="chevron-forward" size={HERO_CHEVRON} color={Colors.bgCard} />
+          <Ionicons name="chevron-forward" size={HERO_CHEVRON} color={Colors.bgCard} {...a11yHidden()} />
         </LinearGradient>
       </Pressable>
     </Animated.View>

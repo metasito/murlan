@@ -41,6 +41,7 @@ import { CardView } from "@/components/CardView";
 import type { ArcCard } from "@/components/tableArc";
 import type { OpponentSide } from "@/components/seatLayout";
 import { BACK_SCALE, tableFontSize } from "@/components/cardFaceModel";
+import { a11yHidden } from "@/lib/a11y";
 import { Colors, LastCard, makeShadow, Motion, motionMs, Spacing, withAlpha } from "@/lib/theme";
 import { pulseRepeats, RING_PULSE_MS, urgentThresholdSeconds } from "@/components/turnTimerUi";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -550,7 +551,7 @@ function SeatRing({
           ]}
         >
           {finishPos !== undefined ? (
-            <Ionicons testID="seat-finish-trophy" name="trophy" size={badge * 0.5} color={Colors.gold} />
+            <Ionicons testID="seat-finish-trophy" name="trophy" size={badge * 0.5} color={Colors.gold} {...a11yHidden()} />
           ) : (
             <TableText
               style={[

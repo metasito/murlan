@@ -45,6 +45,8 @@ async function press(el: Parameters<typeof fireEvent.press>[0]) {
   });
 }
 
+const HIDDEN = { includeHiddenElements: true };
+
 describe('tutorial beats on the table the player will meet', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
@@ -69,20 +71,36 @@ describe('tutorial beats on the table the player will meet', () => {
 
   it('says whether a staged selection would go before it is played', async () => {
     const r = await openAt('stage', t('tutorial.beat.stage.title'));
-    expect(screen.queryByTestId('tutorial-staged')).toBeNull();
+    expect(screen.queryByTestId('tutorial-staged', HIDDEN)).toBeNull();
 
     await press(screen.getByTestId('tutorial-card-6_hearts'));
     await press(screen.getByTestId('tutorial-card-6_clubs'));
-    expect(screen.getByTestId('tutorial-staged')).toHaveTextContent(/^Not yet: /);
+    expect(screen.getByTestId('tutorial-staged', HIDDEN)).toHaveTextContent(/^Not yet: /);
+    expect(await screen.findByLabelText(/^Not yet: /)).toBeTruthy();
+    expect(screen.queryByTestId('tutorial-staged')).toBeNull();
 
     await press(screen.getByTestId('tutorial-card-6_hearts'));
     await press(screen.getByTestId('tutorial-card-6_clubs'));
     await press(screen.getByTestId('tutorial-card-9_diamonds'));
     await press(screen.getByTestId('tutorial-card-9_spades'));
-    expect(screen.getByTestId('tutorial-staged')).toHaveTextContent(t('tutorial.stagedReady'));
+    expect(screen.getByTestId('tutorial-staged', HIDDEN)).toHaveTextContent(t('tutorial.stagedReady'));
+    expect(await screen.findByLabelText(t('tutorial.stagedReady'))).toBeTruthy();
 
     await press(screen.getByLabelText(t('tutorial.playCombination')));
-    expect(screen.getByText(t('tutorial.beat.stage.successNarrative'))).toBeTruthy();
+    expect(screen.getAllByText(t('tutorial.beat.stage.successNarrative'), HIDDEN)).toBeTruthy();
+    expect(await screen.findByLabelText(t('tutorial.beat.stage.successNarrative'))).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    await r.unmount();
+  });
+
+  it('announces a wrong play as an alert', async () => {
+    const r = await openAt('pass', t('tutorial.beat.pass.title'));
+
+    await press(screen.getByTestId('tutorial-card-4_diamonds'));
+    await press(screen.getByLabelText(t('tutorial.playCombination')));
+
+    const alert = await screen.findByRole('alert');
+    expect(String(alert.props.accessibilityLabel)).not.toBe('');
     await r.unmount();
   });
 });

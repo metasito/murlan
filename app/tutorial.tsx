@@ -30,7 +30,7 @@ import {
 } from "@/lib/game/gameEngine";
 import { useTranslation, type TFn, type TranslationKey } from "@/lib/i18n";
 import { IconButton } from "@/components/IconButton";
-import { a11yHidden } from "@/lib/a11y";
+import { A11yStatus, a11yHidden } from "@/lib/a11y";
 import { TurnChip } from "@/components/table/notices/hud";
 import { readStagedPlay, type StagedPlay } from "@/components/table/stagedPlay";
 import { playRefusalLabel } from "@/components/table/spokenLabels";
@@ -453,6 +453,30 @@ function evaluateExchange(selected: Card, beat: ExchangeBeat, t: TFn): { ok: boo
 
 // ─── Screen ─────────────────────────────────────────────────────────────────
 
+function FeedbackBox({ feedback }: { feedback: { ok: boolean; text: string } | null }) {
+  return (
+    <>
+      <A11yStatus label={feedback?.text ?? ""} role={feedback && !feedback.ok ? "alert" : "text"} />
+      {feedback && (
+        <View
+          style={[styles.feedbackBox, feedback.ok ? styles.feedbackOk : styles.feedbackError]}
+          {...a11yHidden()}
+        >
+          <Ionicons
+            name={feedback.ok ? "checkmark-circle" : "close-circle"}
+            size={18}
+            color={feedback.ok ? Colors.accent : Colors.dangerDim}
+            {...a11yHidden()}
+          />
+          <Text style={[styles.feedbackText, { color: feedback.ok ? Colors.text : Colors.dangerDim }]}>
+            {feedback.text}
+          </Text>
+        </View>
+      )}
+    </>
+  );
+}
+
 export default function TutorialScreen() {
   const { t } = useTranslation();
   const { user, loading: authLoading } = useAuth();
@@ -609,7 +633,9 @@ export default function TutorialScreen() {
     if (beat.kind === "info" || beat.kind === "complete") {
       return (
         <MenuCard title={beat.kind === "complete" ? t("tutorial.cardTitleComplete") : t("tutorial.cardTitleQuickGuide")}>
-          <Text style={styles.beatTitle}>{beat.title}</Text>
+          <Text style={styles.beatTitle} accessibilityRole="header">
+            {beat.title}
+          </Text>
           {beat.body.map((p, i) => (
             <Text key={i} style={styles.paragraph}>
               {p}
@@ -652,7 +678,7 @@ export default function TutorialScreen() {
             <Text style={styles.instruction}>{beat.instruction}</Text>
             {beat.tip && (
               <View style={styles.tipBox}>
-                <Ionicons name="information-circle-outline" size={16} color={Colors.gold} />
+                <Ionicons name="information-circle-outline" size={16} color={Colors.gold} {...a11yHidden()} />
                 <Text style={styles.tipText}>{beat.tip}</Text>
               </View>
             )}
@@ -682,25 +708,19 @@ export default function TutorialScreen() {
                 />
               ))}
             </View>
+            <A11yStatus label={stagedLine ?? ""} />
             {stagedLine !== null && (
-              <Text testID="tutorial-staged" style={[styles.stagedText, staged.playable && styles.stagedReady]}>
+              <Text
+                testID="tutorial-staged"
+                style={[styles.stagedText, staged.playable && styles.stagedReady]}
+                {...a11yHidden()}
+              >
                 {stagedLine}
               </Text>
             )}
           </MenuCard>
 
-          {feedback && (
-            <View style={[styles.feedbackBox, feedback.ok ? styles.feedbackOk : styles.feedbackError]}>
-              <Ionicons
-                name={feedback.ok ? "checkmark-circle" : "close-circle"}
-                size={18}
-                color={feedback.ok ? Colors.accent : Colors.dangerDim}
-              />
-              <Text style={[styles.feedbackText, { color: feedback.ok ? Colors.text : Colors.dangerDim }]}>
-                {feedback.text}
-              </Text>
-            </View>
-          )}
+          <FeedbackBox feedback={feedback} />
 
           {!beatDone && beat.passes && (
             <MenuButton
@@ -736,7 +756,7 @@ export default function TutorialScreen() {
         <MenuCard title={beat.title}>
           <Text style={styles.instruction}>{beat.instruction}</Text>
           <View style={styles.tipBox}>
-            <Ionicons name="information-circle-outline" size={16} color={Colors.gold} />
+            <Ionicons name="information-circle-outline" size={16} color={Colors.gold} {...a11yHidden()} />
             <Text style={styles.tipText}>{beat.tip}</Text>
           </View>
         </MenuCard>
@@ -760,18 +780,7 @@ export default function TutorialScreen() {
           </View>
         </MenuCard>
 
-        {feedback && (
-          <View style={[styles.feedbackBox, feedback.ok ? styles.feedbackOk : styles.feedbackError]}>
-            <Ionicons
-              name={feedback.ok ? "checkmark-circle" : "close-circle"}
-              size={18}
-              color={feedback.ok ? Colors.accent : Colors.dangerDim}
-            />
-            <Text style={[styles.feedbackText, { color: feedback.ok ? Colors.text : Colors.dangerDim }]}>
-              {feedback.text}
-            </Text>
-          </View>
-        )}
+        <FeedbackBox feedback={feedback} />
 
         {!beatDone ? (
           <MenuButton

@@ -103,7 +103,7 @@ export default function LeaderboardScreen() {
                 key={entry.userId}
                 style={[styles.row, entry.userId === user?.id && styles.rowSelf]}
                 {...a11yGroup(
-                  t("ladder.rowA11yLabel", {
+                  t(entry.userId === user?.id ? "ladder.rowSelfA11yLabel" : "ladder.rowA11yLabel", {
                     rank: entry.rank,
                     name: entry.username,
                     rating: entry.rating,

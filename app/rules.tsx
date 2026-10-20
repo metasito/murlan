@@ -197,6 +197,7 @@ export default function RulesScreen() {
                   name={c.icon as React.ComponentProps<typeof Ionicons>["name"]}
                   size={NAV_ICON}
                   color={Colors.gold}
+                  {...a11yHidden()}
                 />
                 <Text style={styles.comboName}>{c.name}</Text>
                 <Text style={styles.comboDesc}>{c.desc}</Text>

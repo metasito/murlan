@@ -1283,7 +1283,7 @@ export function GameTable({
                 size={knobSize}
                 expanded={settingsOpen}
               >
-                <Ionicons name={settingsOpen ? "close" : "menu"} size={knobSize * 0.4} color={Colors.textMuted} />
+                <Ionicons name={settingsOpen ? "close" : "menu"} size={knobSize * 0.4} color={Colors.textMuted} {...a11yHidden()} />
               </RailKnob>
             }
             bottom={
