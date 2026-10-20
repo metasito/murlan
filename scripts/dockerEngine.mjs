@@ -1,8 +1,9 @@
+/** @param {NodeJS.ProcessEnv} [env] @returns {string[]} */
 export function dockerDesktopPaths(env = process.env) {
   return [
     env.LOCALAPPDATA && `${env.LOCALAPPDATA}\\Programs\\DockerDesktop\\Docker Desktop.exe`,
     env.ProgramFiles && `${env.ProgramFiles}\\Docker\\Docker\\Docker Desktop.exe`,
-  ].filter(Boolean);
+  ].filter(/** @returns {p is string} */ (p) => Boolean(p));
 }
 
 /** A `docker info` that timed out or was killed came from an engine too starved to answer, not a stopped one. */
