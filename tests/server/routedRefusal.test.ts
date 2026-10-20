@@ -64,7 +64,7 @@ test("a pass the owner refuses during the exchange reaches the asking socket onc
   );
   const { socket, emitted, send } = fakeSocket();
   socketRoomMap.set("s1", ROOM);
-  registerGameplayHandlers({ io: rt.transport, rt, socket, userId: "u1" });
+  registerGameplayHandlers({ rt, socket, userId: "u1" });
 
   assert.deepEqual(await send("game:pass"), { ok: false, code: "EXCHANGE_PENDING" });
   assert.deepEqual(emitted, [{ event: "game:error", payload: payload("EXCHANGE_PENDING") }]);

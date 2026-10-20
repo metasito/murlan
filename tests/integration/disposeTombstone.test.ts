@@ -65,7 +65,8 @@ describe("a disposed table", { skip: hasDatabase() ? false : skipMessage() }, ()
 
   test("stays disposed: its row is deleted before the lock goes, and never written again", async () => {
     const { activeGames } = await import("../../server/game/gameRoom.ts");
-    const { disposeGame, persistGameState } = await import("../../server/game/gamePersistence.ts");
+    const { disposeGame } = await import("../../server/game/gamePersistence.ts");
+    const { persistGameState } = server.rt.writers;
     const { activeGameStore } = await import("../../server/store/activeGameStore.ts");
     const { claimRoom, ownershipKey } = await import("../../server/game/gameOwnership.ts");
     const roomId = `tombstone-${Date.now()}`;

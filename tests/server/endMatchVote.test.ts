@@ -10,7 +10,6 @@ import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import type { TableRuntime } from "../../server/game/tableRuntime.ts";
 import { rehydrateGame } from "../../server/game/tableHandlers.ts";
 import { applyOrForward } from "../../server/game/tableRouter.ts";
-import { persistGameState } from "../../server/game/gamePersistence.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
@@ -255,7 +254,7 @@ describe("a match ended by the vote is never rematched (docs/GAME-RULES.md § De
   });
 
   test("a restart does not reopen the rematch", async (t) => {
-    const { rt } = recordingRuntime({ writers: { persistGameState } });
+    const { rt } = recordingRuntime({ persist: "real" });
     useMemoryTableStores(t);
     const game = baseGame({
       gameState: partlyRanked(),

@@ -203,7 +203,7 @@ function runBotTurn(rt: TableRuntime, roomId: string) {
   const auto = autoMoveForSeat(game, seat, useBot);
   if (!auto) {
     logger.error({ roomId, seat }, "Vacant seat could not act — closing table");
-    void closeTable(rt, roomId, "GAME_INTERRUPTED_EMPTY_SEAT");
+    closeTable(rt, roomId, "GAME_INTERRUPTED_EMPTY_SEAT");
     return;
   }
 

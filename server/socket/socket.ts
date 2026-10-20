@@ -97,12 +97,13 @@ export function setupSocket(httpServer: HttpServer) {
   // Before the first connection: a table action forwarded from another
   // instance arrives on `io`, not on a socket, and one that lands before the
   // runtime's listener exists is answered by nobody.
+  const store = { games: activeGameStore, rooms: roomStore };
   const rt = createTableRuntime({
     out: socketOutbox(io),
     presence: socketPresence(io),
-    writers: tableWriters,
+    writers: tableWriters(store),
     transport: io,
-    store: { games: activeGameStore, rooms: roomStore },
+    store,
   });
   bindSocketRuntime(rt);
   registerSessionEviction(io);
@@ -188,7 +189,7 @@ export function setupSocket(httpServer: HttpServer) {
     // game:rejoin there — beats an `await` placed ahead of them. A packet with
     // no listener is dropped silently. The work that needs the database runs
     // after instead.
-    const ctx = { io, rt, socket, userId };
+    const ctx = { rt, socket, userId };
     answerUnknownEvents(socket);
     registerRoomHandlers(ctx);
     registerGameplayHandlers(ctx);

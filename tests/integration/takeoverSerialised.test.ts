@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import pg from "pg";
 import { applyOrForward } from "../../server/game/tableRouter.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
-import { clearRoomTimers } from "../../server/game/gameTimers.ts";
+import { clearRoomTimers, pending, usersInLobbyGrace } from "../../server/game/gameTimers.ts";
 import { closeOwnership, ownershipKey, releaseRoom } from "../../server/game/gameOwnership.ts";
 import { toEnvelope } from "../../server/game/tableState.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
@@ -101,6 +101,14 @@ describe("two actions for one room in the same tick", () => {
       assert.equal(a.ok, true, "the first action was refused");
       assert.equal(b.ok, true, "the second action was refused");
       assert.equal(applies(roomId), 2, "an action was dropped rather than applied");
+      // What makes `applies` a count of actions: the restore itself sent the
+      // room nothing, because with both players online it armed no grace.
+      assert.equal(pending("disconnect", "u1") || pending("disconnect", "u2"), false, "the restore armed a grace");
+      assert.deepEqual(usersInLobbyGrace(roomId), []);
+      assert.deepEqual(
+        sent.filter((e) => "room" in e.to && e.to.room === roomId).map((e) => e.event),
+        ["game:turn_deadline", "game:turn_deadline"]
+      );
 
       clearRoomTimers(roomId);
       activeGames.delete(roomId);
@@ -118,12 +126,17 @@ describe("two actions for one room in the same tick", () => {
       const roomId = `start-${Date.now()}`;
       restores = 0;
 
-      await Promise.all([
+      const outcomes = await Promise.all([
         applyOrForward(takeover, start(roomId, "u1")),
         applyOrForward(takeover, start(roomId, "u2")),
       ]);
 
       assert.equal(restores, 1, "the table was dealt more than once");
+      // Both reach the owner's start handler, which finds no room row here.
+      assert.deepEqual(outcomes, [
+        { ok: false, code: "NOT_THE_HOST" },
+        { ok: false, code: "NOT_THE_HOST" },
+      ]);
 
       activeGames.delete(roomId);
       await releaseRoom(roomId);
@@ -144,6 +157,7 @@ describe("two actions for one room in the same tick", () => {
       ]);
 
       assert.equal(restores, 0, "a resident room was restored over");
+      assert.equal(applies(roomId), 2, "an action on a resident room was dropped");
 
       clearRoomTimers(roomId);
       activeGames.delete(roomId);

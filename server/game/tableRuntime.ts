@@ -42,12 +42,22 @@ export interface Presence {
   connectedUserIds(): Promise<Set<string> | null>;
 }
 
-/** The only path a table's database writes take. */
-export type TableWriters = RoundOverWriters;
+/** The only path a table's row and room-status writes take (`gamePersistence.ts` `tableWriters`). */
+export interface TableWriters extends RoundOverWriters {
+  /** Deletes the room's `active_games` row after every earlier write to it. Never rejects. */
+  discardGame(roomId: string): Promise<unknown>;
+}
 
+/** The stores whole, as the writers are built over them. */
 export interface TableStore {
   games: typeof activeGameStore;
   rooms: TableRoomPort;
+}
+
+/** What a table reads, and the seat rows it keeps; every other write is `writers`'. */
+export interface TableReads {
+  games: Pick<typeof activeGameStore, "load" | "list">;
+  rooms: Omit<TableRoomPort, "updateRoomStatus">;
 }
 
 export interface TablePorts {
@@ -59,7 +69,8 @@ export interface TablePorts {
   store: TableStore;
 }
 
-export interface TableRuntime extends TablePorts {
+export interface TableRuntime extends Omit<TablePorts, "store"> {
+  store: TableReads;
   /** Runs a table action wherever the table is. */
   route(draft: TableActionDraft): Promise<Outcome>;
   /** See `gamePersistence.ts` `stopTables`; the shutdown's one table step. */

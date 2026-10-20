@@ -39,7 +39,6 @@
 // writes it through `rt.writers`, which `gamePersistence.ts` implements.
 import type { TranslationParams } from "../../shared/i18n.ts";
 import type { TableRuntime } from "./tableRuntime.ts";
-import { roomStore } from "../store/roomStore.ts";
 import { emitVoteState, emitEndMatchVoteState } from "../socket/emit.ts";
 import { payload } from "../shared/payload.ts";
 import { OK, refuse, type Outcome, type Refusal } from "../shared/refusal.ts";
@@ -48,7 +47,7 @@ import { trackEvent } from "../socket/events.ts";
 import { activeGames, isShuttingDown, seatName, voterCount } from "./gameRoom.ts";
 import { stopSpectatingEverywhere } from "../socket/seating.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
-import { discardPersistedGame, publishState, sendGameStateTo } from "./gamePersistence.ts";
+import { publishState, sendGameStateTo } from "./gamePersistence.ts";
 import { armVoteDeadline, endMatchByAgreement } from "./roundOver.ts";
 import { armTurnIfIdle, commitMove, recordPlayFlags, vacateSeat } from "./gameTurn.ts";
 import {
@@ -124,7 +123,7 @@ export async function rehydrateGame(
     // corrupt round rather than crashing, which is worse than refusing outright.
     logger.warn({ roomId, reason: restored.reason }, "Discarding unrestorable persisted game");
     // The claim stays: a deal may follow on this very room.
-    await discardPersistedGame(rt, roomId);
+    await rt.writers.discardGame(roomId);
     return "unrestorable";
   }
 
@@ -427,7 +426,7 @@ export async function expireVoteDeadline(rt: TableRuntime, roomId: string): Prom
       // A rejoin inside the release reclaims the seat and upserts before the delete commits.
       const reclaimed = seatOfUser(game.playerMap, userId);
       if (reclaimed !== null) {
-        await roomStore
+        await rt.store.rooms
           .restoreSeat(roomId, userId, reclaimed, released?.wasHost ?? false)
           .catch((err: unknown) =>
             logger.warn({ err, roomId, userId }, "Failed to restore a seat reclaimed during the vote deadline's release")

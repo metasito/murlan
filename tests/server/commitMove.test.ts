@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { recordingRuntime } from "../helpers/recordingRuntime.ts";
+import { recordingRuntime, type JournalEntry } from "../helpers/recordingRuntime.ts";
+import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { commitMove } from "../../server/game/gameTurn.ts";
 import { startReplayLog } from "../../server/game/replayShape.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
@@ -54,6 +55,9 @@ function opened(): GameState {
   return processPlay(state, check.combo);
 }
 
+/** Rows that landed in the store, not writes asked for. */
+const rowsWritten = (journal: JournalEntry[]) => journal.filter((e) => e.kind === "store" && e.name === "write").length;
+
 const writesSettle = () => new Promise((resolve) => setImmediate(resolve));
 
 /** Persists, logs `logged` replay moves, and leaves the next seat waiting exactly `delayMs`. */
@@ -80,8 +84,9 @@ async function assertCommitted(
 
 for (const kind of ["play", "pass"] as const) {
   test(`a ${kind} is logged once, persisted and re-armed at the ordinary bot delay`, async (t) => {
-    const { rt, writes } = recordingRuntime();
-    const persists = () => writes("persistGameState").length;
+    useMemoryTableStores(t);
+    const { rt, journal } = recordingRuntime({ persist: "real" });
+    const persists = () => rowsWritten(journal);
     t.mock.timers.enable({ apis: ["setTimeout"] });
     try {
       if (kind === "play") {
@@ -107,7 +112,8 @@ for (const kind of ["play", "pass"] as const) {
 }
 
 test("a play that ends the round is logged, persisted, and handed to round over instead of arming a seat", async (t) => {
-  const { rt, writes } = recordingRuntime();
+  useMemoryTableStores(t);
+  const { rt, journal } = recordingRuntime({ persist: "real" });
   try {
     const dealt = startRound(SEATS.slice(0, 2), "free_for_all");
     const seat = dealt.currentTurnIndex;
@@ -123,7 +129,7 @@ test("a play that ends the round is logged, persisted, and handed to round over 
     assert.equal(pending("bot", ROOM), false, "a seat was armed on a finished round");
     await over;
     await writesSettle();
-    assert.ok(writes("persistGameState").length >= 1, "the final move was never persisted");
+    assert.ok(rowsWritten(journal) >= 1, "the final move was never persisted");
     assert.equal(game.moveLog?.length, 1, "the final move was not logged once");
   } finally {
     clearRoomTimers(ROOM);
@@ -132,8 +138,9 @@ test("a play that ends the round is logged, persisted, and handed to round over 
 });
 
 test("an exchange logs no replay move, persists, and holds the next seat for the ceremony", async (t) => {
-  const { rt, writes } = recordingRuntime();
-  const persists = () => writes("persistGameState").length;
+  useMemoryTableStores(t);
+  const { rt, journal } = recordingRuntime({ persist: "real" });
+  const persists = () => rowsWritten(journal);
   t.mock.timers.enable({ apis: ["setTimeout"] });
   try {
     const deck = createDeck();
