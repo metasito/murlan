@@ -197,10 +197,10 @@ export function userRoom(userId: string): string {
 }
 
 
-/** The one denominator every vote gate and every `*_vote_state` payload divides by:
- * a bot, and a seat whose player left, can answer nothing and hold no vote. */
-export function voterCount(game: OnlineGameState): number {
-  return Object.keys(game.playerMap).length;
+/** Who may vote: the users every vote gate waits on and every `*_vote_state` total counts.
+ * A bot, and a seat whose player left, can answer nothing and hold no vote. */
+export function seatedVoters(game: OnlineGameState): string[] {
+  return Object.values(game.playerMap);
 }
 
 /** The next-round tally, with its deadline while one is armed. */
@@ -208,7 +208,7 @@ export function voteStateOf(game: OnlineGameState) {
   const deadlineMs = deadline("voteDeadline", game.roomId);
   return {
     votes: Array.from(game.rematchVotes),
-    total: voterCount(game),
+    total: seatedVoters(game).length,
     ...(deadlineMs === undefined ? {} : { deadlineMs, secondsRemaining: secondsUntil(deadlineMs) }),
   };
 }

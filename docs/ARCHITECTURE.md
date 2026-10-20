@@ -185,7 +185,7 @@ single round.
 
 **AFK (distinct from disconnect):** a connected-but-idle player gets a 30s-default
 (`afkTimeoutMs()`) auto-pass/auto-play timer, re-armed on every turn transition: every move,
-human or automated, lands through `gameTurn.ts` `commitMove`, which ends in `armTurn`, so it
+human or automated, lands through `tableMoves.ts` `commitMove`, which ends in `armTurn`, so it
 can't be armed once and then silently stop covering later turns.
 
 ## 4. Persistence

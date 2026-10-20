@@ -1,5 +1,5 @@
 import type { Emitter } from "./tableRuntime.ts";
-import { voterCount, voteStateOf, type OnlineGameState } from "./gameRoom.ts";
+import { seatedVoters, voteStateOf, type OnlineGameState } from "./gameRoom.ts";
 import { scoresByEngineId } from "./roundOver.ts";
 
 /** The framing of the round now running: what it is worth and where it stands. */
@@ -30,6 +30,6 @@ export function emitVoteState(to: Emitter, game: OnlineGameState) {
 export function emitEndMatchVoteState(to: Emitter, game: OnlineGameState) {
   to.emit("game:end_match_vote_state", {
     votes: Array.from(game.endMatchVotes),
-    total: voterCount(game),
+    total: seatedVoters(game).length,
   });
 }

@@ -3,7 +3,7 @@ import { emitVoteState, emitEndMatchVoteState } from "./tableBroadcasts.ts";
 import { payload } from "../shared/payload.ts";
 import { OK, refuse, type Outcome } from "../shared/refusal.ts";
 import { logger } from "../shared/logger.ts";
-import { activeGames, type OnlineGameState } from "./gameRoom.ts";
+import { activeGames, seatedVoters, type OnlineGameState } from "./gameRoom.ts";
 import { endMatchByAgreement } from "./roundOver.ts";
 import { vacateSeat } from "./gameTurn.ts";
 import { seatOfUser } from "./onlineGameLogic.ts";
@@ -19,7 +19,7 @@ import type { TableAction } from "./tableActions.ts";
  * rather than its own arithmetic.
  */
 export function everySeatedVoted(votes: ReadonlySet<string>, game: OnlineGameState): boolean {
-  return Object.values(game.playerMap).every((userId) => votes.has(userId));
+  return seatedVoters(game).every((userId) => votes.has(userId));
 }
 
 function rematchAnswered(game: OnlineGameState): boolean {
@@ -126,8 +126,6 @@ export async function endMatchVoteAction(
 
   castEndMatchVote(game, userId, wants);
   emitEndMatchVoteState(rt.out.room(roomId), game);
-  // A withdrawal can never end a match, and everySeatedVoted on a shrinking set
-  // must not be asked.
   if (!wants || !everySeatedVoted(game.endMatchVotes, game)) return OK;
 
   rt.out.room(roomId).emit("game:notification", {
