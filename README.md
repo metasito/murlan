@@ -23,6 +23,9 @@ Needs `DATABASE_URL` and `SESSION_SECRET` in the environment — the server fail
 without them. `server/CLAUDE.md`'s Production section has the full env contract (what's needed
 only in production, `PORT`'s default).
 
+The diagnostics bench posts only to a dotted IPv4 address (the PC's LAN address, or
+`EXPO_PUBLIC_DOMAIN`'s host when it is one); a tunnel hostname is refused, with a notice on screen.
+
 ### On a real iPhone, from Windows
 
 `npm run ios:device` fetches the dev build CI made (`.github/workflows/ios-device.yml`), signs

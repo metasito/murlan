@@ -7,10 +7,10 @@ import { fileURLToPath } from "node:url";
 
 const scriptsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "scripts");
 
-/** Each entry states why the script may listen beyond loopback. */
+/** Each entry is one exact offender and states why it may listen beyond loopback. */
 const ALLOWED: Record<string, string> = {
-  "diagnostics-collector.mjs": "the phone posts bench rows to the PC over the LAN; the body and file are capped instead",
-  "dev-stack.mjs": "canBind is a probe that opens and closes at once; it must see a port held on any interface",
+  "diagnostics-collector.mjs: .listen(5099, \"0.0.0.0\", ()": "the phone posts bench rows to the PC over the LAN; the body and file are capped instead",
+  "dev-stack.mjs: .listen(${port},'0.0.0.0',()": "canBind is a probe that opens and closes at once; it must see a port held on any interface",
 };
 
 const LOOPBACK = /^(["'`])(127\.0\.0\.1|localhost|::1)\1$/;
@@ -28,14 +28,16 @@ function offenders(name: string, src: string): string[] {
   return found;
 }
 
-test("every listen and docker publish in scripts/ is loopback, or named with its reason", () => {
-  const bad: string[] = [];
+function scanned(): string[] {
+  const found: string[] = [];
   for (const name of readdirSync(scriptsDir, { recursive: true, encoding: "utf8" })) {
-    if (!/\.(mjs|js|ts)$/.test(name)) continue;
-    if (path.basename(name) in ALLOWED) continue;
-    bad.push(...offenders(name, readFileSync(path.join(scriptsDir, name), "utf8")));
+    if (/\.(mjs|js|ts)$/.test(name)) found.push(...offenders(name, readFileSync(path.join(scriptsDir, name), "utf8")));
   }
-  assert.deepEqual(bad, []);
+  return found;
+}
+
+test("every listen and docker publish in scripts/ is loopback, or named with its reason", () => {
+  assert.deepEqual(scanned().filter((o) => !(o in ALLOWED)), []);
 });
 
 test("the scan sees a wildcard listen and an unprefixed publish", () => {
@@ -46,9 +48,7 @@ test("the scan sees a wildcard listen and an unprefixed publish", () => {
   assert.deepEqual(offenders("x", `"-p", \`127.0.0.1:\${p}:5432\``), []);
 });
 
-test("every allowlist entry exists and still needs it", () => {
-  for (const name of Object.keys(ALLOWED)) {
-    const src = readFileSync(path.join(scriptsDir, name), "utf8");
-    assert.ok(offenders(name, src).length > 0, `${name} no longer binds wide; drop its entry`);
-  }
+test("every allowlist entry still matches an offender", () => {
+  const found = new Set(scanned());
+  assert.deepEqual(Object.keys(ALLOWED).filter((o) => !found.has(o)), []);
 });

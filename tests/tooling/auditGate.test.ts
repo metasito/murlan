@@ -9,6 +9,7 @@ test("a critical or high advisory with a non-major fix fails; a major fix does n
   const lines: string[] = [];
   const log = (l: string) => lines.push(l);
   assert.equal(run(() => report({ a: vuln("critical", { name: "a", isSemVerMajor: false }) }), log), 1);
+  assert.equal(run(() => report({ b: vuln("high", true) }), log), 1);
   assert.equal(run(() => report({ c: vuln("high", { name: "c", isSemVerMajor: true }) }), log), 0);
   assert.equal(run(() => report({ d: vuln("moderate", { name: "d", isSemVerMajor: false }) }), log), 0);
   assert.equal(run(() => report({ e: vuln("high", false) }), log), 0);

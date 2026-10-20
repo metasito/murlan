@@ -20,7 +20,7 @@ import { startJsLag } from "@/lib/diagnostics/jsLag";
 import { probe } from "@/lib/diagnostics/probe";
 import "@/lib/diagnostics/scenarios";
 
-const COPY = { runAll: "Run all" } as const;
+const COPY = { runAll: "Run all", refused: (host: string) => `Bench refused host "${host}": use the PC's dotted IPv4 address.` } as const;
 
 async function feltSample(): Promise<Record<LampSide, number>> {
   const table = benchHandles.tableAnchors?.();
@@ -68,6 +68,7 @@ export function BenchScreen() {
   useKeepAwake();
   const params = useLocalSearchParams<Record<string, string>>();
   const [table, setTable] = useState<{ state: GameState | null }>({ state: null });
+  const [refused, setRefused] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, string>>({});
   const shown = useRef<() => void>(() => {});
   const autoRan = useRef(false);
@@ -88,7 +89,13 @@ export function BenchScreen() {
     (only?: string[]) =>
       latched(stopDrain, async () => {
         const host = benchTargetHost(params.host, process.env.EXPO_PUBLIC_DOMAIN);
-        if (host === null) return;
+        if (host === null) {
+          const shown = String(params.host ?? process.env.EXPO_PUBLIC_DOMAIN);
+          diag({ k: "refused", t: performance.now(), host: shown });
+          setRefused(shown);
+          return;
+        }
+        setRefused(null);
         recorder.postTo(host);
         const capturing = params.capture !== "0" && probe.canCapture() && (await probe.startCapture(true).catch(() => false));
         drain.current = setInterval(() => probe.drain(), 1000);
@@ -155,6 +162,11 @@ export function BenchScreen() {
           <Pressable accessibilityRole="button" onPress={() => void run()} style={styles.button}>
             <Text style={styles.text}>{COPY.runAll}</Text>
           </Pressable>
+          {refused !== null ? (
+            <Text accessibilityRole="alert" style={styles.text}>
+              {COPY.refused(refused)}
+            </Text>
+          ) : null}
           <Text selectable style={styles.text}>
             {JSON.stringify(results, null, 2)}
           </Text>

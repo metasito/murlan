@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
+import http from "node:http";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
 import { createCollector } from "../../scripts/diagnostics-collector.mjs";
@@ -45,6 +46,26 @@ async function post(maxFile: number | undefined, body: string) {
 test("the collector refuses a body over 1 MiB with 413 and writes nothing", async () => {
   const rows = [{ k: "x", pad: "a".repeat(1024 * 1024) }];
   const { status, file } = await post(undefined, JSON.stringify({ session: "s", seq: 0, rows }));
+  assert.equal(status, 413);
+  assert.equal(existsSync(file), false);
+});
+
+test("the collector counts streamed bytes too, with no Content-Length to go by", async () => {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), "murlan-collector-")), "run.ndjson");
+  const server = createCollector(file).listen(0);
+  await new Promise((r) => server.once("listening", r));
+  const { port } = server.address() as AddressInfo;
+  const status = await new Promise<number>((resolve) => {
+    const req = http.request({ port, method: "POST", path: "/log", headers: { "content-type": "application/json" } }, (res) => {
+      resolve(res.statusCode ?? 0);
+      res.resume();
+    });
+    req.on("error", () => {});
+    req.write('{"rows":[{"p":"' + "é".repeat(600 * 1024));
+    req.write("é".repeat(600 * 1024) + '"}]}');
+    req.end();
+  });
+  server.close();
   assert.equal(status, 413);
   assert.equal(existsSync(file), false);
 });

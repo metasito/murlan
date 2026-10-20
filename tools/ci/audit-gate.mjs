@@ -9,7 +9,7 @@ import { runBin } from "../../scripts/lib/proc.mjs";
 export function fixableSevere(report) {
   if (!report || typeof report.vulnerabilities !== "object" || report.vulnerabilities === null) return null;
   return Object.entries(report.vulnerabilities)
-    .filter(([, v]) => (v.severity === "critical" || v.severity === "high") && v.fixAvailable?.isSemVerMajor === false)
+    .filter(([, v]) => (v.severity === "critical" || v.severity === "high") && (v.fixAvailable === true || v.fixAvailable?.isSemVerMajor === false))
     .map(([name, v]) => `${name} (${v.severity})`);
 }
 

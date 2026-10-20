@@ -69,19 +69,29 @@ describe("db reset guard", () => {
   });
 
   test("refuses a DATABASE_URL host that is not local, unless ALLOW_REMOTE_RESET=1", () => {
-    const armed = { ALLOW_DESTRUCTIVE: "1", DATABASE_URL: "postgres://u:p@db.example.com:5432/x" };
+    const armed = { ALLOW_DESTRUCTIVE: "1", DATABASE_URL: "postgres://u:p@db.invalid:5432/x" };
     const refused = run(armed, ["--yes"]);
     assert.equal(refused.code, 1);
     assert.match(refused.stderr, /ALLOW_REMOTE_RESET/);
     const allowed = run({ ...armed, ALLOW_REMOTE_RESET: "1" }, ["--yes"]);
-    assert.doesNotMatch(allowed.stderr, /Refusing to run: DATABASE_URL host/);
+    assert.match(allowed.stderr, /Reset failed/, "got past the guard to the connect step");
   });
 
-  test("local hosts pass the host check", () => {
+  test("a ?host= parameter is the host pg connects to, so it is the one judged", () => {
+    for (const url of ["postgres://localhost/db?host=prod.invalid", "postgres://u:p@127.0.0.1/db?host=/var/run/postgresql", "postgres:///db"]) {
+      const { code, stderr } = run({ ALLOW_DESTRUCTIVE: "1", DATABASE_URL: url }, ["--yes"]);
+      assert.equal(code, 1, url);
+      assert.match(stderr, /ALLOW_REMOTE_RESET/, url);
+    }
+  });
+
+  test("local hosts pass the host check and reach the connect step", () => {
     for (const host of ["localhost", "127.0.0.1", "[::1]"]) {
       const { stderr } = run({ ALLOW_DESTRUCTIVE: "1", DATABASE_URL: `postgres://u:p@${host}:1/x` }, ["--yes"]);
-      assert.doesNotMatch(stderr, /Refusing to run: DATABASE_URL host/, host);
+      assert.match(stderr, /Reset failed/, host);
     }
+    const viaParam = run({ ALLOW_DESTRUCTIVE: "1", DATABASE_URL: "postgres://u:p@h:1/x?host=127.0.0.1" }, ["--yes"]);
+    assert.match(viaParam.stderr, /Reset failed/);
   });
 
   test("the npm script does not supply the opt-in", () => {

@@ -12,6 +12,7 @@
  * Then:   npm run db:push
  */
 import pg from "pg";
+import { parse } from "pg-connection-string";
 
 const HOW_TO =
   "To really do it, type this yourself (the npm script cannot):\n" +
@@ -50,7 +51,7 @@ if (!process.env.DATABASE_URL) {
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 const dbHost = (() => {
   try {
-    return new URL(process.env.DATABASE_URL).hostname.replace(/^\[|\]$/g, "");
+    return (parse(process.env.DATABASE_URL).host ?? "").replace(/^\[|\]$/g, "");
   } catch {
     return "";
   }

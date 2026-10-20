@@ -19,16 +19,22 @@ export function createCollector(file, { maxFile = MAX_FILE } = {}) {
       return res.end();
     }
     let body = "";
+    let size = 0;
     let tooBig = false;
+    const refuse = () => {
+      if (tooBig) return;
+      tooBig = true;
+      body = "";
+      res.statusCode = 413;
+      res.setHeader("connection", "close");
+      res.end(() => req.destroy());
+    };
+    if (Number(req.headers["content-length"]) > MAX_BODY) return refuse();
     req.on("data", (chunk) => {
       if (tooBig) return;
+      size += Buffer.byteLength(chunk);
+      if (size > MAX_BODY) return refuse();
       body += chunk;
-      if (body.length > MAX_BODY) {
-        tooBig = true;
-        body = "";
-        res.statusCode = 413;
-        res.end();
-      }
     });
     req.on("end", () => {
       if (tooBig) return;
