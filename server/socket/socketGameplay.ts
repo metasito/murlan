@@ -77,9 +77,9 @@ export function registerGameplayHandlers({ rt, socket, userId }: HandlerContext)
         return rt.route({ ...toDraft(p), roomId, userId, intentId });
       };
 
-    onEvent(socket, "game:play", GamePlaySchema, atTable(({ cardIds }) => ({ kind: "play", cardIds })), { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 });
+    onEvent(socket, "game:play", GamePlaySchema, atTable(({ cardIds }) => ({ kind: "move", move: { kind: "play", cardIds } })), { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 });
 
-    onEvent(socket, "game:pass", NoPayloadSchema, atTable(() => ({ kind: "pass" })), { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 });
+    onEvent(socket, "game:pass", NoPayloadSchema, atTable(() => ({ kind: "move", move: { kind: "pass" } })), { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 });
 
     onEvent(socket, "game:rematch_vote", NoPayloadSchema, atTable(() => ({ kind: "rematchVote" })), { limit: 20, windowMs: 60_000 });
 
@@ -108,5 +108,5 @@ export function registerGameplayHandlers({ rt, socket, userId }: HandlerContext)
 
     onEvent(socket, "game:reaction", GameReactionSchema, atTable(({ emoji }) => ({ kind: "reaction", emoji })), { limit: 8, windowMs: 10_000 });
 
-    onEvent(socket, "game:exchange_give_card", GameExchangeGiveCardSchema, atTable(({ cardId }) => ({ kind: "exchange", cardId })), { limit: 30, windowMs: 60_000 });
+    onEvent(socket, "game:exchange_give_card", GameExchangeGiveCardSchema, atTable(({ cardId }) => ({ kind: "move", move: { kind: "giveback", cardId } })), { limit: 30, windowMs: 60_000 });
 }

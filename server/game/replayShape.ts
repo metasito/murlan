@@ -26,11 +26,6 @@ export function replayPlayerIdsOf(seats: ReplaySeat[]): string[] {
   return seats.map((s) => s.userId).filter((id): id is string => id !== null);
 }
 
-/** A fresh log for a round about to be dealt. */
-export function startReplayLog(): ReplayMove[] {
-  return [];
-}
-
 /**
  * Records one move, if the round still has a usable log. `null` means the log
  * was abandoned — a round rehydrated after a restart never had one, and one

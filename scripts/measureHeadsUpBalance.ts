@@ -28,12 +28,9 @@ import {
   cardStrength,
   dealCards,
   getAllValidPlays,
-  getStraightFaceValue,
   startRound,
-  STRAIGHT_MIN_LEN,
   type Card,
   type Combination,
-  type Suit,
 } from "../lib/game/gameEngine.ts";
 import { autoMoveForSeat } from "../lib/game/autoMove.ts";
 import {
@@ -322,7 +319,7 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
         }
       }
 
-      const next = autoMoveForSeat(state, seat, true, { rng });
+      const next = autoMoveForSeat(state, seat, "bot", rng)?.state;
       if (!next) break;
       state = next;
     }
@@ -355,45 +352,12 @@ export function isCertainLead(
 }
 
 /**
- * Whether `hand` holds a legal royal straight in any suit, under either
- * straight-value convention (ace-low, ace-high — `getStraightFaceValue`'s own
- * two conventions, reused rather than re-derived so this can never drift from
- * what `isStraight`/`isRoyalStraight` actually accept). Per `canPlay`, any
- * royal straight beats any single unconditionally (the
- * `candidate.type === "royal_straight"` branch returns true before comparing
- * strength, unless `lastPlayed` is itself a royal straight) — so this
- * function answering `true` is the whole question a "certain" single lead
- * needs answered; no strength comparison is required.
+ * Whether `hand` holds a legal royal straight, asked of the engine's own enumerator. Any
+ * royal straight beats any single, so this answering `true` is the whole question a
+ * "certain" single lead needs answered.
  */
 export function handHasLegalRoyalStraight(hand: Card[]): boolean {
-  const bySuit = new Map<Suit, Card[]>();
-  for (const card of hand) {
-    if (card.isJoker || !card.suit) continue;
-    const arr = bySuit.get(card.suit) ?? [];
-    arr.push(card);
-    bySuit.set(card.suit, arr);
-  }
-
-  for (const cards of bySuit.values()) {
-    if (cards.length < STRAIGHT_MIN_LEN) continue;
-
-    for (const aceAsHigh of [true, false]) {
-      const values = cards
-        .map((card) => getStraightFaceValue(card.rank, aceAsHigh))
-        .filter((v): v is number => v !== null)
-        .sort((a, b) => a - b);
-
-      let runStart = 0;
-      for (let i = 1; i <= values.length; i++) {
-        const brokeRun = i === values.length || values[i] !== values[i - 1] + 1;
-        if (brokeRun) {
-          if (i - runStart >= STRAIGHT_MIN_LEN) return true;
-          runStart = i;
-        }
-      }
-    }
-  }
-  return false;
+  return getAllValidPlays(hand, null, true).some((play) => play.type === "royal_straight");
 }
 
 interface RoyalStraightBlindSpot {
@@ -443,7 +407,7 @@ function measureRoyalStraightBlindSpot(n: number, seed: number): RoyalStraightBl
           }
         }
 
-        const next = autoMoveForSeat(state, seat, true, { rng });
+        const next = autoMoveForSeat(state, seat, "bot", rng)?.state;
         if (!next) break;
         state = next;
       }

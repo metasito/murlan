@@ -103,7 +103,7 @@ export function fourTricks(name: string, preference: 'on' | 'off') {
       let unseen = 0;
       let inAir = 0;
       while (closed < 4 || closedAt !== null || (preference === 'off' && inAir < 3)) {
-        const next = offlineBotMove(state);
+        const next = offlineBotMove(state)?.state;
         if (!next) break;
         const lead = state.lastPlayedCombination === null && next.lastPlayedCombination !== null;
         if (lead && closedAt !== null) {

@@ -9,7 +9,8 @@ import {
   encodeOfflineSave,
   isResumable,
 } from "../../lib/offlineSave.ts";
-import { buildCombination, processPlay } from "../../lib/game/gameEngine.ts";
+import { buildCombination } from "../../lib/game/gameEngine.ts";
+import { played } from "../support/moves.ts";
 
 const decodeOfflineSave = (raw: string | null) => {
   const result = decode(raw);
@@ -86,7 +87,7 @@ test("the golden save of this version still decodes and plays a legal move", () 
   assert.ok(start, "the seat on move does not hold the start card");
   const combo = buildCombination([start]);
   assert.ok(combo);
-  const after = processPlay(gameState, combo);
+  const after = played(gameState, combo);
   assert.equal(after.firstPlayMade, true);
   assert.notEqual(after.currentTurnIndex, gameState.currentTurnIndex);
 });

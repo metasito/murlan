@@ -16,11 +16,11 @@ import {
   aggregateTeamScores,
   buildCombination,
   foldRound,
-  processPlay,
   type GameMode,
   type MatchLength,
   type SeatScoring,
 } from "../../lib/game/gameEngine.ts";
+import { played } from "../support/moves.ts";
 import { offlineSeats } from "../../lib/game/matchFlow.ts";
 
 /**
@@ -51,7 +51,7 @@ describe("teams: every seat gets a placement", () => {
       lastPlayedCombination: null,
     });
     state.players[0].finishPosition = 1;
-    return processPlay(state, buildCombination(state.players[2].hand)!);
+    return played(state, buildCombination(state.players[2].hand)!);
   };
 
   test("the losing pair plays on after both partners of the other pair are out", () => {
@@ -69,7 +69,7 @@ describe("teams: every seat gets a placement", () => {
     next.players[3].hand = next.players[3].hand.slice(0, 1);
     next.currentTurnIndex = 3;
     next.lastPlayedCombination = null;
-    const done = processPlay(next, buildCombination(next.players[3].hand)!);
+    const done = played(next, buildCombination(next.players[3].hand)!);
 
     assert.equal(done.roundOver, true);
     assert.deepEqual(done.finishingOrder, ["p0", "p2", "p3", "p1"]);
@@ -102,7 +102,7 @@ describe("teams: every seat gets a placement", () => {
     });
     state.players[0].finishPosition = 1;
     state.players[1].finishPosition = 2;
-    const next = processPlay(state, buildCombination(state.players[2].hand)!);
+    const next = played(state, buildCombination(state.players[2].hand)!);
 
     assert.equal(next.roundOver, true);
     assert.deepEqual(next.finishingOrder, ["p0", "p1", "p2", "p3"]);

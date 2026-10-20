@@ -135,7 +135,7 @@ export function cardStrength(card: Card): number {
   return getRankStrength(card.rank);
 }
 
-export function getStraightFaceValue(rank: Rank, aceAsHigh: boolean): number | null {
+function getStraightFaceValue(rank: Rank, aceAsHigh: boolean): number | null {
   if (rank === "joker_bw" || rank === "joker_colored") return null;
   if (rank === "A") return aceAsHigh ? 14 : 1;
   const map: Partial<Record<Rank, number>> = {
@@ -147,8 +147,8 @@ export function getStraightFaceValue(rank: Rank, aceAsHigh: boolean): number | n
 
 // A straight is 5..13 cards. The rules impose no maximum beyond the 13
 // distinct straight positions available (the Ace picks one end, never both).
-export const STRAIGHT_MIN_LEN = 5;
-export const STRAIGHT_MAX_LEN = 13;
+const STRAIGHT_MIN_LEN = 5;
+const STRAIGHT_MAX_LEN = 13;
 
 // Jokers are never part of a straight, so there is no joker substitution here:
 // the face values must be exactly `totalLen` strictly consecutive integers.
@@ -228,7 +228,7 @@ export function createDeck(): Card[] {
 // React Native / Hermes; Math.random is only ever the last-resort fallback.
 export type RandomSource = { getRandomValues(array: Uint32Array): Uint32Array };
 
-export const cryptoRandom: RandomSource = {
+const cryptoRandom: RandomSource = {
   getRandomValues(array) {
     const c = (globalThis as { crypto?: Partial<RandomSource> }).crypto;
     if (c && typeof c.getRandomValues === "function") return c.getRandomValues(array);
@@ -255,7 +255,7 @@ function randomBelow(maxExclusive: number, source: RandomSource): number {
   return value % maxExclusive;
 }
 
-export function shuffleDeck(deck: Card[], random: RandomSource = cryptoRandom): Card[] {
+function shuffleDeck(deck: Card[], random: RandomSource = cryptoRandom): Card[] {
   const shuffled = [...deck];
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = randomBelow(i + 1, random);
@@ -264,7 +264,7 @@ export function shuffleDeck(deck: Card[], random: RandomSource = cryptoRandom): 
   return shuffled;
 }
 
-export const HEADS_UP_HAND = 14;
+const HEADS_UP_HAND = 14;
 
 /**
  * Deals cards one at a time, round-robin from `firstSeat`. 4 players =
@@ -299,18 +299,6 @@ export function dealCards(
   return { hands, excluded: deck.slice(dealt) };
 }
 
-/**
- * The fewest cards `dealCards` ever leaves any seat at `playerCount`, before
- * a card is played. Two seats get the fixed heads-up hand size in full — that
- * branch never round-robins the whole deck — so the minimum is the deal size
- * itself; every other seat count deals the whole deck round-robin, so the
- * minimum is what an even split loses to its own remainder.
- */
-export function freshHandFloor(playerCount: number, deckLength = createDeck().length): number {
-  if (playerCount < 1) return 0;
-  return playerCount === 2 ? HEADS_UP_HAND : Math.floor(deckLength / playerCount);
-}
-
 export function sortHand(hand: Card[]): Card[] {
   return [...hand].sort((a, b) => {
     const diff = cardStrength(a) - cardStrength(b);
@@ -332,7 +320,7 @@ export function sortHand(hand: Card[]): Card[] {
  */
 const OPENING_SUIT_ORDER: Card["suit"][] = ["clubs", "diamonds", "hearts", "spades"];
 
-export function findStartingPlayer(
+function findStartingPlayer(
   players: Player[]
 ): { playerIdx: number; startCard: Card } {
   for (let i = 0; i < players.length; i++) {
@@ -367,7 +355,7 @@ export function findStartingPlayer(
   };
 }
 
-export function getCombinationType(cards: Card[]): CombinationType | null {
+function getCombinationType(cards: Card[]): CombinationType | null {
   if (cards.length === 0) return null;
 
   if (isBomb(cards)) return "bomb";
@@ -399,7 +387,7 @@ export function getCombinationType(cards: Card[]): CombinationType | null {
   return null;
 }
 
-export function getCombinationStrength(combination: Combination): number {
+function getCombinationStrength(combination: Combination): number {
   const cards = combination.cards;
   switch (combination.type) {
     case "single":
@@ -462,7 +450,7 @@ function beatRefusal(candidate: Combination, lastPlayed: Combination | null): Be
   return higher;
 }
 
-export function canPlay(
+function canPlay(
   candidate: Combination,
   lastPlayed: Combination | null
 ): boolean {
@@ -471,10 +459,10 @@ export function canPlay(
 
 /**
  * Whether `seat` may play `cardIds` now, and the combination its own cards form
- * if so. Turn ownership is the transport's: `seat` names whose hand to read,
+ * if so. Turn ownership is `applyMove`'s: here `seat` names whose hand to read,
  * not a claim that it is on move. A repeated id is the one card it names.
  */
-export function checkPlay(
+function checkPlay(
   state: GameState,
   seat: number,
   cardIds: string[]
@@ -508,11 +496,77 @@ export function checkSelection(
   return refusal ? { ok: false, code: refusal } : { ok: true, combo };
 }
 
-/** Whether the seat on move may pass now. Turn ownership is the transport's, as in `checkPlay`. */
-export function checkPass(state: GameState): { ok: true } | { ok: false; code: PassRefusal } {
+/** Whether the seat on move may pass now. Turn ownership is `applyMove`'s, as in `checkPlay`. */
+function checkPass(state: GameState): { ok: true } | { ok: false; code: PassRefusal } {
   if (state.exchangePhase?.active) return { ok: false, code: "exchangeOpen" };
   if (state.lastPlayedCombination === null) return { ok: false, code: "mustLead" };
   return { ok: true };
+}
+
+export type Move =
+  | { kind: "play"; cardIds: string[] }
+  | { kind: "pass" }
+  | { kind: "giveback"; cardId: string };
+
+export type AppliedMove =
+  | { kind: "play"; seat: number; combo: Combination }
+  | { kind: "pass"; seat: number }
+  | { kind: "giveback"; seat: number; card: Card };
+
+/** Why a move is refused, in the order `applyMove` asks. */
+export type MoveRefusal =
+  | "roundOver"
+  | "exchangeOpen"
+  | "noExchange"
+  | "notExchangeWinner"
+  | "notYourTurn"
+  | "notHeld"
+  | SelectionRefusal
+  | "mustLead"
+  | "notGiveable";
+
+/** A refusal leaves the state untouched. */
+export type MoveResult =
+  | { ok: true; state: GameState; move: AppliedMove }
+  | { ok: false; code: MoveRefusal };
+
+/** Who must act now: the exchange winner while an exchange is open, else the turn holder. */
+export function actingSeat(state: GameState): number {
+  return state.exchangePhase?.active ? state.exchangePhase.winnerIdx : state.currentTurnIndex;
+}
+
+/** `seat` is the transport's claim of who is acting; it is checked here, never trusted. */
+export function applyMove(state: GameState, seat: number, move: Move): MoveResult {
+  if (state.roundOver) return { ok: false, code: "roundOver" };
+  const exchange = state.exchangePhase?.active ? state.exchangePhase : null;
+  if (move.kind === "giveback") {
+    if (!exchange) return { ok: false, code: "noExchange" };
+    if (seat !== exchange.winnerIdx) return { ok: false, code: "notExchangeWinner" };
+  } else if (exchange) {
+    return { ok: false, code: "exchangeOpen" };
+  }
+  if (seat !== actingSeat(state)) return { ok: false, code: "notYourTurn" };
+
+  switch (move.kind) {
+    case "play": {
+      const check = checkPlay(state, seat, move.cardIds);
+      if (!check.ok) return check;
+      return { ok: true, state: processPlay(state, check.combo), move: { kind: "play", seat, combo: check.combo } };
+    }
+    case "pass": {
+      const check = checkPass(state);
+      if (!check.ok) return check;
+      return { ok: true, state: processPass(state), move: { kind: "pass", seat } };
+    }
+    case "giveback": {
+      const hand = state.players[seat]?.hand ?? [];
+      const card = hand.find((held) => held.id === move.cardId);
+      if (!card) return { ok: false, code: "notHeld" };
+      const offered = getValidGivebackCards(hand, state.exchangePhase?.cardFromLoser?.id);
+      if (!offered.some((c) => c.id === card.id)) return { ok: false, code: "notGiveable" };
+      return { ok: true, state: processExchangeChoice(state, card.id), move: { kind: "giveback", seat, card } };
+    }
+  }
 }
 
 // ─── Complete, correct valid-play enumeration ─────────────────────────────────
@@ -691,10 +745,10 @@ function placeLastSeat(state: GameState): void {
  * construction — but a caller that forgot would otherwise strip cards a hand
  * never held and leave the state quietly wrong rather than loudly refused.
  *
- * Turn ownership is not here on purpose: which seat is acting is resolved by
- * the transport, so the engine has nothing independent to check a claim of it
- * against. What it can check is what `checkPlay` checks for the seat on move,
- * and that the shape it claims is the shape its own cards actually form.
+ * Turn ownership is `applyMove`'s, which checks the transport's claim of the
+ * acting seat against `actingSeat`. What this checks is what `checkPlay` checks
+ * for the seat on move, and that the shape it claims is the shape its own cards
+ * actually form.
  *
  * `combination.type`/`.strength` are re-derived from `.cards` rather than
  * trusted as given: a caller could otherwise claim any shape for any cards,
@@ -745,7 +799,7 @@ function refusalMessage(
   }
 }
 
-export function processPlay(state: GameState, combination: Combination): GameState {
+function processPlay(state: GameState, combination: Combination): GameState {
   assertPlayable(state, combination);
 
   const newState = structuredClone(state);
@@ -794,7 +848,7 @@ export function passesToCloseTrick(activeCount: number, lastPlayerStillActive: b
   return Math.max(1, lastPlayerStillActive ? activeCount - 1 : activeCount);
 }
 
-export function processPass(state: GameState): GameState {
+function processPass(state: GameState): GameState {
   // A player leading a new trick must play something — passing is not a legal
   // move for them. The engine is the server-authoritative path, so it refuses
   // here rather than relying on the UI. State is returned untouched.
@@ -843,14 +897,6 @@ export function getNextActivePlayer(state: GameState): number {
   return next;
 }
 
-export function canPlayerPlay(
-  hand: Card[],
-  lastPlayed: Combination | null,
-  isNewTrick: boolean
-): boolean {
-  return getAllValidPlays(hand, lastPlayed, isNewTrick).length > 0;
-}
-
 export function getCardDisplayRank(rank: Rank): string {
   if (rank === "joker_colored") return "JKR";
   if (rank === "joker_bw") return "JKR";
@@ -870,7 +916,7 @@ export function getSuitSymbol(suit: Suit | null): string {
 
 const EXCHANGE_VALID_RANKS: Rank[] = ["3","4","5","6","7","8","9","10"];
 
-export function processExchangeChoice(state: GameState, cardId: string): GameState {
+function processExchangeChoice(state: GameState, cardId: string): GameState {
   if (!state.exchangePhase?.active) return state;
   const { winnerIdx, loserIdx } = state.exchangePhase;
   const newState = structuredClone(state);
@@ -925,14 +971,14 @@ export function givebackIsFallback(giveback: Card[]): boolean {
   return giveback.length > 0 && !giveback.some((c) => EXCHANGE_VALID_RANKS.includes(c.rank));
 }
 
-export function loserHasBothJokers(hand: Card[]): boolean {
+function loserHasBothJokers(hand: Card[]): boolean {
   return (
     hand.some((c) => c.rank === "joker_colored") &&
     hand.some((c) => c.rank === "joker_bw")
   );
 }
 
-export function getBestCardFromHand(hand: Card[]): Card | undefined {
+function getBestCardFromHand(hand: Card[]): Card | undefined {
   if (hand.length === 0) return undefined;
   return [...hand].sort((a, b) => cardStrength(b) - cardStrength(a))[0];
 }
@@ -1011,7 +1057,7 @@ export function teamForSeat(
 }
 
 /** The seat the next round deals from — one further round the table. */
-export function nextDealFirstSeat(firstSeat: number, playerCount: number): number {
+function nextDealFirstSeat(firstSeat: number, playerCount: number): number {
   if (playerCount < 1) return 0;
   return (firstSeat + 1) % playerCount;
 }
@@ -1193,7 +1239,7 @@ export const TURN_TIMEOUT_MS = 30_000;
  * the 8-12 round band a match should land in, and leaves the four-player
  * values docs/GAME-RULES.md §12 documents untouched.
  */
-export function targetsFor(playerCount: number): number[] {
+function targetsFor(playerCount: number): number[] {
   return MATCH_TARGETS.map((t) => Math.round((t * (playerCount - 1)) / 3));
 }
 

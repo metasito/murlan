@@ -1,13 +1,10 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { card as c, cardKey, joker as j } from "../support/game.ts";
-import {
-  buildCombination,
-  canPlayerPlay,
-  getAllValidPlays,
-  getCombinationType,
-  type Card,
-} from "../../lib/game/gameEngine.ts";
+import { buildCombination, getAllValidPlays, type Card } from "../../lib/game/gameEngine.ts";
+
+/** The shape `cards` form, or null: what a play of them would be taken as. */
+const typeOf = (cards: Card[]) => buildCombination(cards)?.type ?? null;
 
 const straightsOf = (hand: Card[], length?: number) =>
   getAllValidPlays(hand, null, true).filter(
@@ -19,7 +16,7 @@ const straightsOf = (hand: Card[], length?: number) =>
 describe("straight legality", () => {
   test("minimum length is 5", () => {
     assert.equal(
-      getCombinationType([
+      typeOf([
         c("3", "hearts"), c("4", "clubs"), c("5", "spades"), c("6", "diamonds"),
       ]),
       null
@@ -28,7 +25,7 @@ describe("straight legality", () => {
 
   test("2 is low inside a straight and never high", () => {
     assert.equal(
-      getCombinationType([
+      typeOf([
         c("2", "hearts"), c("3", "clubs"), c("4", "spades"),
         c("5", "diamonds"), c("6", "hearts"),
       ]),
@@ -36,7 +33,7 @@ describe("straight legality", () => {
     );
     // K-A-2 wrap-around is illegal
     assert.equal(
-      getCombinationType([
+      typeOf([
         c("10", "hearts"), c("J", "clubs"), c("Q", "spades"),
         c("K", "diamonds"), c("A", "hearts"), c("2", "clubs"),
       ]),
@@ -46,14 +43,14 @@ describe("straight legality", () => {
 
   test("ace is both low and high but never both at once", () => {
     assert.equal(
-      getCombinationType([
+      typeOf([
         c("A", "hearts"), c("2", "clubs"), c("3", "spades"),
         c("4", "diamonds"), c("5", "hearts"),
       ]),
       "straight"
     );
     assert.equal(
-      getCombinationType([
+      typeOf([
         c("10", "hearts"), c("J", "clubs"), c("Q", "spades"),
         c("K", "diamonds"), c("A", "hearts"),
       ]),
@@ -77,7 +74,7 @@ describe("straight legality", () => {
     const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"] as const;
     const cards = ranks.map((r) => c(r, "hearts"));
     cards.push(c("A", "spades"));
-    assert.equal(getCombinationType(cards), null);
+    assert.equal(typeOf(cards), null);
   });
 });
 
@@ -89,7 +86,7 @@ describe("enumeration completeness", () => {
     ];
     const found = straightsOf(hand, 5);
     assert.ok(found.length > 0, "3-4-5-6-7 must be enumerated");
-    assert.equal(canPlayerPlay(hand, null, true), true);
+    assert.ok(getAllValidPlays(hand, null, true).length > 0);
   });
 
   test("finds straights through several duplicated ranks", () => {

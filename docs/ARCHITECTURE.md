@@ -50,7 +50,7 @@ lib/game/gameEngine.ts (offline: called directly)   server/socket/socket.ts (onl
   state. Every intent lands in a `server/socket/socketGameplay.ts` listener, which resolves the room
   and calls `applyOrForward` (`server/game/tableRouter.ts`) and does nothing else. **The single
   mutator is `applyTableAction` in `server/game/tableHandlers.ts`**, which dispatches to
-  `playAction` / `passAction` / `exchangeAction` / `rejoinAction` / `startMatchAction` /
+  `moveAction` (every play, pass and giveback, through the engine's `applyMove`) / `rejoinAction` / `startMatchAction` /
   `seatLostAction`; those in turn use `gameTurn.ts` (`commitMove`, `armTurn`, the AFK timer and bot turns),
   `roundOver.ts` (`handleRoundOver`) and `dealRound.ts` (the shared fresh-round reset used by
   both the first deal and a rematch). See §3 for how `applyOrForward` reaches the process that

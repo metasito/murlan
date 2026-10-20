@@ -11,7 +11,7 @@ export function botRound(): GameState[] {
   let state = startRound(['A', 'B', 'C', 'D'].map((name) => ({ name, type: 'bot' as const })), 'free_for_all');
   const states = [state];
   while (!state.roundOver && states.length < 300) {
-    const next = offlineBotMove(state) ?? (state.exchangePhase?.active ? resolveStuckExchange(state) : null);
+    const next = offlineBotMove(state)?.state ?? (state.exchangePhase?.active ? resolveStuckExchange(state) : null);
     if (!next) break;
     state = next;
     states.push(state);

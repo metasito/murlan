@@ -8,7 +8,6 @@ import {
   type SeatEntry,
 } from "./onlineGameLogic.ts";
 import { botSeatKey } from "../../lib/game/botSeat.ts";
-import { startReplayLog } from "./replayShape.ts";
 import {
   packPersistedState,
   unpackPersistedState,
@@ -145,7 +144,7 @@ export function newTable(
     // Reached only when a match is genuinely starting fresh (no `previous`,
     // or `previous.matchOver`), so `matchOver` is unconditionally `true`.
     dealFirstSeat: dealFirstSeatFor(true, 0, roster.length),
-    ...freshMemory(startReplayLog()),
+    ...freshMemory([]),
   };
 }
 

@@ -20,9 +20,9 @@ import {
   createDeck,
   getRankStrength,
   startRound,
-  processPlay,
   RANK_SLOTS,
 } from "../../lib/game/gameEngine.ts";
+import { played } from "../support/moves.ts";
 import { card as c, joker as j, seat as makePlayer, state as makeState } from "../support/game.ts";
 import type { Card, GameState, Rank } from "../../lib/game/gameEngine.ts";
 
@@ -78,7 +78,7 @@ describe("the game records what has been played", () => {
           state.playedRanks
         );
         if (!choice) break;
-        state = processPlay(state, choice);
+        state = played(state, choice);
       }
 
       // Whatever is no longer in a hand is what was played. Nothing else can
@@ -100,7 +100,7 @@ describe("the game records what has been played", () => {
       playedRanks: new Array<number>(RANK_SLOTS).fill(0),
       firstPlayMade: true,
     });
-    state = processPlay(state, buildCombination([hand[0], hand[1]])!);
+    state = played(state, buildCombination([hand[0], hand[1]])!);
 
     assert.equal(state.playedRanks![getRankStrength("3")], 2);
     assert.equal(state.playedRanks![getRankStrength("4")], 0);
@@ -302,7 +302,7 @@ describe("a game rehydrated from before the tally existed", () => {
     });
     delete (state as { playedRanks?: number[] }).playedRanks;
 
-    const after = processPlay(state, buildCombination([hand[0]])!);
+    const after = played(state, buildCombination([hand[0]])!);
 
     assert.equal(after.playedRanks?.[getRankStrength("3")], 1);
   });

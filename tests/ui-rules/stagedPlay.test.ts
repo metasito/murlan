@@ -4,8 +4,8 @@ import { canBeatPileOf, readStagedPlay } from "../../components/table/stagedPlay
 import { TUTORIAL_REFUSAL_KEYS } from "../../components/tutorialRefusal.ts";
 import { card, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
+  applyMove,
   buildCombination,
-  checkPlay,
   type Card,
   type Combination,
   type Rank,
@@ -210,13 +210,13 @@ describe("one reason for a refused play", () => {
       };
       const ids = row.selection.map((card) => card.id);
 
-      const engine = checkPlay(
+      const engine = applyMove(
         makeState({ players: [makePlayer(0, hand), makePlayer(1, [card("2", "clubs")])],
           ...table,
           lastPlayedBy: 1,
         }),
         0,
-        ids
+        { kind: "play", cardIds: ids }
       );
       assert.deepEqual(engine, { ok: false, code: row.refusal }, "the engine");
 

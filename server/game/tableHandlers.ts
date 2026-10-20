@@ -10,13 +10,14 @@
 // The socket's own work — joining a room, `socketRoomMap` — stays with the
 // socket, in the handler families.
 //
-// A play or pass reaches five files before it settles: `socketGameplay.ts`
+// A play or pass reaches six files before it settles: `socketGameplay.ts`
 // `registerGameplayHandlers` → `rt.route`, which is `tableRouter.ts`
-// `applyOrForward` → `applyTableAction` → `playAction`/`passAction` here (`gameTurn.ts`
-// `recordPlayFlags` runs first, play only) → `gameTurn.ts` `commitMove`, which
-// publishes through `gamePersistence.ts` `publishState` and arms the next seat. The
-// play that ends the round — `lib/game/gameEngine.ts` decides which one — takes
-// a sixth file instead of the arming: `roundOver.ts` `handleRoundOver`.
+// `applyOrForward` → `applyTableAction` → `moveAction` here, which asks
+// `lib/game/gameEngine.ts` `applyMove` → `gameTurn.ts` `commitMove`, which records
+// the play's flags and replay entry, publishes through `gamePersistence.ts`
+// `publishState` and arms the next seat. The play that ends the round — the
+// engine decides which one — takes a seventh file instead of the arming:
+// `roundOver.ts` `handleRoundOver`.
 //
 // A disconnect runs a different chain: `socketPresence.ts`
 // `registerDisconnect` → `tableRouter.ts` `applyOrForward` with a `seatLost`
@@ -37,7 +38,6 @@
 // `vacateSeat`'s abandonment branch reach it too. Inside, it resolves the round
 // through `onlineGameLogic.ts` `resolveRoundEnd`, emits `game:round_over`, then
 // writes it through `rt.writers`, which `gamePersistence.ts` implements.
-import type { TranslationParams } from "../../shared/i18n.ts";
 import type { TableRuntime } from "./tableRuntime.ts";
 import { emitVoteState, emitEndMatchVoteState } from "../socket/emit.ts";
 import { payload } from "../shared/payload.ts";
@@ -49,7 +49,7 @@ import { stopSpectatingEverywhere } from "../socket/seating.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import { publishState, sendGameStateTo } from "./gamePersistence.ts";
 import { armVoteDeadline, endMatchByAgreement } from "./roundOver.ts";
-import { armTurnIfIdle, commitMove, recordPlayFlags, vacateSeat } from "./gameTurn.ts";
+import { armTurnIfIdle, commitMove, vacateSeat } from "./gameTurn.ts";
 import {
   disconnectGraceMs,
   clearRoomTimers,
@@ -70,18 +70,8 @@ import {
   roomStatePayload,
   teamsSizeRefusal,
 } from "../socket/socketTable.ts";
-import {
-  checkPass,
-  checkPlay,
-  dealFirstSeatFor,
-  openingAfter,
-  seatsOf,
-  startRound,
-  processExchangeChoice,
-  processPass,
-  processPlay,
-} from "../../lib/game/gameEngine.ts";
-import type { GameState, PlayRefusal } from "../../lib/game/gameEngine.ts";
+import { applyMove, dealFirstSeatFor, openingAfter, seatsOf, startRound } from "../../lib/game/gameEngine.ts";
+import type { GameState, MoveRefusal } from "../../lib/game/gameEngine.ts";
 import { dealRound } from "./dealRound.ts";
 import type { TableAction } from "./tableActions.ts";
 import { UNKNOWN_ACTION, type RehydrateOutcome } from "./tableRouter.ts";
@@ -154,110 +144,54 @@ export async function rehydrateGame(
   return "restored";
 }
 
-const PLAY_REFUSAL_CODES = {
-  exchangeOpen: "EXCHANGE_PENDING",
-  notHeld: "INVALID_CARD",
-  notACombination: "INVALID_COMBINATION",
-  needsStartCard: "MUST_PLAY_START_CARD",
-  royalUnbeatable: "INVALID_MOVE",
-  bombOnly: "INVALID_MOVE",
-  wrongType: "INVALID_MOVE",
-  wrongLength: "INVALID_MOVE",
-  tooLow: "INVALID_MOVE",
-} as const satisfies Record<PlayRefusal, string>;
+/** A refusal with no notice is silent: the ack alone answers it. */
+const MOVE_REFUSAL_CODES = {
+  roundOver: () => ({ ok: false, code: "NO_LIVE_GAME" }),
+  exchangeOpen: () => refuse("EXCHANGE_PENDING"),
+  noExchange: () => ({ ok: false, code: "NO_EXCHANGE" }),
+  notExchangeWinner: () => ({ ok: false, code: "NOT_YOUR_EXCHANGE" }),
+  notYourTurn: () => ({ ok: false, code: "NOT_YOUR_TURN" }),
+  notHeld: () => refuse("INVALID_CARD"),
+  notACombination: () => refuse("INVALID_COMBINATION"),
+  needsStartCard: (state) => refuse("MUST_PLAY_START_CARD", { rank: state.startCard!.rank }),
+  royalUnbeatable: () => refuse("INVALID_MOVE"),
+  bombOnly: () => refuse("INVALID_MOVE"),
+  wrongType: () => refuse("INVALID_MOVE"),
+  wrongLength: () => refuse("INVALID_MOVE"),
+  tooLow: () => refuse("INVALID_MOVE"),
+  mustLead: () => refuse("CANNOT_PASS"),
+  notGiveable: () => refuse("INVALID_CARD"),
+} satisfies Record<MoveRefusal, (state: GameState) => Refusal>;
 
-function playAction(
+function moveAction(
   rt: TableRuntime,
   game: OnlineGameState,
-  action: Extract<TableAction, { kind: "play" }>
+  action: Extract<TableAction, { kind: "move" }>
 ): Promise<Outcome> | Outcome {
-  const { roomId, userId, cardIds } = action;
-  if (game.gameState.roundOver) return { ok: false, code: "NO_LIVE_GAME" };
-  const { gameState, playerMap } = game;
-
-  // The round winner owes a card: nobody may play until it is given, otherwise
-  // they keep the card and freeze the table behind the exchange overlay.
-  if (gameState.exchangePhase?.active) return refuse("EXCHANGE_PENDING");
-
-  const currentIdx = gameState.currentTurnIndex;
-  if (playerMap[currentIdx] !== userId) return { ok: false, code: "NOT_YOUR_TURN" };
-
-  if (!gameState.players[currentIdx]) return { ok: false, code: "NO_LIVE_GAME" };
-
-  const check = checkPlay(gameState, currentIdx, cardIds);
-  if (!check.ok) {
-    const code = PLAY_REFUSAL_CODES[check.code];
-    const params: TranslationParams =
-      code === "MUST_PLAY_START_CARD" ? { rank: gameState.startCard!.rank } : {};
-    return refuse(code, params);
+  const { roomId, userId, move } = action;
+  const prev = game.gameState;
+  const seat = seatOfUser(game.playerMap, userId) ?? -1;
+  const result = applyMove(prev, seat, move);
+  if (!result.ok) {
+    // A seat on move with no player behind it in the state is a table that is not live, not a card refused.
+    if (result.code === "notHeld" && !prev.players[seat]) return { ok: false, code: "NO_LIVE_GAME" };
+    return MOVE_REFUSAL_CODES[result.code](prev);
   }
-  const combo = check.combo;
 
-  // Read before the engine sets it, so the transition is observable once
-  // rather than on every play after it.
-  const wasFirstPlay = !gameState.firstPlayMade;
-
-  // Achievement bookkeeping — see recordPlayFlags; this is the human-initiated
-  // path, autoMoveForSeat covers bot/AFK-forced plays.
-  recordPlayFlags(game, currentIdx, combo);
-
-  const newState = processPlay(gameState, combo);
-
-  // A count and a type, never card identities: enabling debug in production
-  // must not be able to expose a hand.
-  logger.debug(
-    { roomId, seat: currentIdx, comboType: combo.type, cardCount: combo.cards.length },
-    "Play accepted"
-  );
-
-  if (wasFirstPlay && newState.firstPlayMade) {
+  if (result.move.kind === "play") {
+    // A count and a type, never card identities: enabling debug in production
+    // must not be able to expose a hand.
+    const { seat, combo } = result.move;
+    logger.debug({ roomId, seat, comboType: combo.type, cardCount: combo.cards.length }, "Play accepted");
+  }
+  if (!prev.firstPlayMade && result.state.firstPlayMade) {
     trackEvent("game.firstMoveMade", userId, {
-      playerCount: newState.players.length,
-      gameMode: newState.gameMode,
+      playerCount: result.state.players.length,
+      gameMode: result.state.gameMode,
     });
   }
 
-  return commitMove(rt, game, newState, { seat: currentIdx, combo })?.then(() => OK) ?? OK;
-}
-
-function passAction(
-  rt: TableRuntime,
-  game: OnlineGameState,
-  action: Extract<TableAction, { kind: "pass" }>
-): Outcome {
-  const { userId } = action;
-  if (game.gameState.roundOver) return { ok: false, code: "NO_LIVE_GAME" };
-  const { gameState, playerMap } = game;
-  if (gameState.exchangePhase?.active) return refuse("EXCHANGE_PENDING");
-
-  const currentIdx = gameState.currentTurnIndex;
-  if (playerMap[currentIdx] !== userId) return { ok: false, code: "NOT_YOUR_TURN" };
-  const check = checkPass(gameState);
-  if (!check.ok) {
-    return refuse(check.code === "exchangeOpen" ? "EXCHANGE_PENDING" : "CANNOT_PASS");
-  }
-
-  commitMove(rt, game, processPass(gameState), { seat: currentIdx, combo: null });
-  return OK;
-}
-
-function exchangeAction(
-  rt: TableRuntime,
-  game: OnlineGameState,
-  action: Extract<TableAction, { kind: "exchange" }>
-): Outcome {
-  const { userId, cardId } = action;
-  if (!game.gameState.exchangePhase?.active) return { ok: false, code: "NO_EXCHANGE" };
-
-  const seat = seatOfUser(game.playerMap, userId);
-  if (seat === null || seat !== game.gameState.exchangePhase.winnerIdx) {
-    return { ok: false, code: "NOT_YOUR_EXCHANGE" };
-  }
-
-  const next = processExchangeChoice(game.gameState, cardId);
-  if (next === game.gameState) return refuse("INVALID_CARD");
-  commitMove(rt, game, next, null);
-  return OK;
+  return commitMove(rt, game, result)?.then(() => OK) ?? OK;
 }
 
 /**
@@ -710,12 +644,8 @@ export async function applyTableAction(rt: TableRuntime, action: TableAction): P
   if (!game) return { ok: false, code: "NO_LIVE_GAME" };
 
   switch (action.kind) {
-    case "play":
-      return playAction(rt, game, action);
-    case "pass":
-      return passAction(rt, game, action);
-    case "exchange":
-      return exchangeAction(rt, game, action);
+    case "move":
+      return moveAction(rt, game, action);
     case "reaction": {
       const seat = seatOfUser(game.playerMap, action.userId);
       if (seat === null) return { ok: false, code: "NOT_SEATED" };
