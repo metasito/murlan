@@ -1,8 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
@@ -78,13 +79,9 @@ test("an opaque canvas is found in every spelling", () => {
 });
 
 test("only the felt's canvas asks for an opaque layer", () => {
-  const walk = (dir: string): string[] =>
-    readdirSync(path.join(repoRoot, dir), { withFileTypes: true }).flatMap((e) => {
-      const rel = dir ? `${dir}/${e.name}` : e.name;
-      if (e.isDirectory()) return /^(node_modules|tests|dist|ios|android)$|^\./.test(e.name) ? [] : walk(rel);
-      return /\.[jt]sx$/.test(e.name) ? [rel] : [];
-    });
-  const files = walk("");
+  const files = trackedFiles(repoRoot).filter(
+    (f) => /\.[jt]sx$/.test(f) && !f.split("/").slice(0, -1).some((d) => /^(node_modules|tests|dist|ios|android)$|^\./.test(d))
+  );
   assert.ok(files.includes("components/table/particleLayer.tsx"), "the scan no longer reaches components/");
   assert.deepEqual(
     files.filter((f) => asksOpaque(read(f))),

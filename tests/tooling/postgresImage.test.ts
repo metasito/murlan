@@ -1,18 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const read = (file: string) => readFileSync(path.join(repoRoot, file), "utf8");
-function walk(dir: string): string[] {
-  return readdirSync(path.join(repoRoot, dir), { withFileTypes: true }).flatMap((entry) => {
-    const file = `${dir}/${entry.name}`;
-    if (entry.isDirectory()) return walk(file);
-    return /\.(ya?ml|sh|mjs|js|ts)$/.test(file) ? [file] : [];
-  });
-}
 
 const POSTGRES_REF = /(?:[\w.-]+\/)*postgres:\d[\w.-]*(?:@sha256:[0-9a-f]{64})?/g;
 
@@ -21,7 +15,7 @@ const POSTGRES_REF = /(?:[\w.-]+\/)*postgres:\d[\w.-]*(?:@sha256:[0-9a-f]{64})?/
 test("every Postgres image is dev-stack.mjs's IMAGE, and it is not ECR Public", () => {
   const image = /^const IMAGE = "([^"]+)";$/m.exec(read("scripts/dev-stack.mjs"))?.[1];
   assert.ok(image, "scripts/dev-stack.mjs names no IMAGE");
-  const refs = [...walk(".github"), ...walk("scripts")].flatMap((file) =>
+  const refs = trackedFiles(repoRoot, ".github", "scripts").filter((f) => /\.(ya?ml|sh|mjs|js|ts)$/.test(f)).flatMap((file) =>
     [...read(file).matchAll(POSTGRES_REF)].map(([ref]) => ({ file, ref })),
   );
   const count = (file: string) => refs.filter((r) => r.file === file).length;

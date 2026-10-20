@@ -14,7 +14,7 @@
 // a single source file changing. Either reopens the class with CI green.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { ESLint } from "eslint";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,7 @@ import path from "node:path";
 import { ADOPTED } from "../helpers/adoptedHookRules.ts";
 import { directives, syntaxErrors, type Directive } from "../helpers/hookSuppression.ts";
 import { cacheFor } from "../helpers/cacheDir.ts";
+import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const require = createRequire(import.meta.url);
@@ -48,13 +49,7 @@ function blocksTurningOff(rule: string): Block[] {
 
 const SOURCE_DIRS = ["app", "components", "context", "lib"];
 
-function sourceFiles(dir: string): string[] {
-  return readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap((entry) => {
-    const child = `${dir}/${entry.name}`;
-    if (entry.isDirectory()) return sourceFiles(child);
-    return /\.tsx?$/.test(entry.name) ? [child] : [];
-  });
-}
+const sourceFiles = (dir: string): string[] => trackedFiles(ROOT, dir).filter((f) => /\.tsx?$/.test(f));
 
 /** The offender text, once, so the cases below can assert against it rather than restate it. */
 const ADOPTED_FAULT = "switches an adopted rule off, which is eslint.config.js's call";

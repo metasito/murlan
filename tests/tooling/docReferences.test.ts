@@ -123,3 +123,24 @@ test("every docs/ path a comment in tracked source, or a workflow prompt, names 
   }
   assert.deepEqual(broken, []);
 });
+
+/** The bold row labels of GAME-RULES.md § Decisions: the one home of each decided rule. */
+function decisionRows(rules: string): string[] {
+  const section = /^## Decisions$([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(rules)?.[1] ?? "";
+  return [...section.matchAll(/^\| \*\*([^*|]+)\*\* \|/gm)].map((m) => m[1].trim());
+}
+
+test("a decided rule is stated in GAME-RULES.md § Decisions alone, and nothing cites BRIEF.md's old §3.1 table", () => {
+  assert.deepEqual(decisionRows("## Decisions\n\n| Rule | Decision |\n| **A row** | x |\n\n## Next\n| **Not one** | y |\n"), ["A row"]);
+  const rows = decisionRows(readFileSync(at("docs/GAME-RULES.md"), "utf8"));
+  assert.ok(rows.length >= 10 && rows.includes("The offline turn clock"), `read ${rows.length} decision rows: the table is not being parsed`);
+  const brief = readFileSync(at("docs/BRIEF.md"), "utf8");
+  assert.deepEqual(rows.filter((row) => brief.includes(row)), [], "BRIEF.md restates these decision rows");
+
+  const staleCitation = /BRIEF\.md`?\s*[§#]?\s*3\.1\b/;
+  const citing = execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" })
+    .trim().split("\n")
+    .filter((f) => !/^docs\/(adr|plans|research|specs|design)\//.test(f) && existsSync(at(f)))
+    .filter((f) => staleCitation.test(readFileSync(at(f), "utf8")));
+  assert.deepEqual(citing, [], "these still cite the moved §3.1 table by its old address");
+});

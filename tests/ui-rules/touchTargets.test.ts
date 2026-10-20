@@ -326,23 +326,6 @@ test("a second control in a classified file is not absorbed by its entry", () =>
   assert.equal(after, before + 1, "the scan counts nodes, so an extra one cannot hide behind an entry");
 });
 
-// The three whose box is real but unreadable from a style sheet. Each is in SIZED_AT_RUNTIME,
-// and a classification only says someone looked — these say what they looked at.
-test("the settings sheet's exit floors rather than scales", () => {
-  const source = read("components/table/settingsSheet.tsx");
-  assert.match(source, /minHeight: physicalTouchTarget\(scale\)/);
-  const num = (name: string) => {
-    const m = new RegExp(String.raw`const ${name} = ([\d.]+);`).exec(source);
-    assert.ok(m, `${name} is gone, so the arithmetic below proves nothing`);
-    return Number(m[1]);
-  };
-  // Padding around a scaled label, which is what it had, shrinks straight through the floor.
-  const unfloored = (s: number) => num("EXIT_PAD_V") * 2 * s + num("EXIT_FS") * s;
-  assert.ok(unfloored(1) < TOUCH_TARGET_MIN, "the floor is doing nothing at scale 1");
-  assert.ok(unfloored(0.82) < unfloored(1), "the box shrinks with the table");
-  assert.equal(physicalTouchTarget(0.82), TOUCH_TARGET_MIN);
-});
-
 // Measured on web by tests/e2e/tapTargetsVotes.spec.ts; this pins that each vote takes the growth.
 test("the votes grow their own box to the floor rather than borrow hitSlop", () => {
   const source = read("components/table/notices/netNotes.tsx");
@@ -359,10 +342,9 @@ test("an invite row is a touch target in both orientations", () => {
   assert.match(source, /scrollEnabled=\{false\}/);
 });
 
-test("the rail's knobs are sized by physicalTouchTarget, at the HIG floor", () => {
-  const source = read("components/GameTable.tsx");
-  assert.match(source, /const knobSize = physicalTouchTarget\(scale\)/);
-  assert.match(source, /size=\{knobSize\}/);
+// The settings sheet's exit, the rail's knobs and PASSA and GIOCA are rendered at their model's
+// size in tests/native/tableWiring.test.tsx; what is left here is the model's own arithmetic.
+test("physicalTouchTarget holds the HIG floor and grows past it", () => {
   // A touch target's floor is physical size, never `TOUCH_TARGET_MIN * s`: on
   // an iPhone SE the table's scale is 0.82, which would put a scaled knob at
   // 36pt.
@@ -375,16 +357,7 @@ test("the rail's knobs are sized by physicalTouchTarget, at the HIG floor", () =
 // ones whose box is a square that scales: `56 * s`, floored at 48pt physical.
 // The floor is the part that matters — on an iPhone SE the table's scale is
 // 0.82, which would put a scaled key at 46pt.
-test("the action buttons are square, scale up, and never fall below a thumb", () => {
-  // The number is the table's; the square is the buttons' own. Read from the
-  // two files that hold them, so neither half can move without saying so.
-  const table = read("components/GameTable.tsx");
-  assert.match(table, /const actionBtn = actionBtnSize\(scale\)/);
-  // Both buttons take the same box.
-  assert.equal((table.match(/size=\{actionBtn\}/g) ?? []).length, 2);
-  const buttons = read("components/table/actions.tsx");
-  assert.equal((buttons.match(/width: size, height: size/g) ?? []).length, 2);
-
+test("actionBtnSize scales up and never falls below a thumb", () => {
   assert.equal(actionBtnSize(0.82), ACTION_BTN_FLOOR);
   assert.equal(actionBtnSize(1), 56);
   assert.ok(actionBtnSize(2) > actionBtnSize(1), "the key does not grow with the table");

@@ -16,7 +16,8 @@ const CLIENT = ["{app,components,context,lib,locales,modules,shared}/**/*.{ts,ts
 const SCREENS = ["{app,components,context,lib}/**/*.{ts,tsx}"];
 const DRAWN = ["{app,components}/**/*.tsx"];
 const TEST_RUNNERS = "/^(it|test|describe|suite)$/";
-const SEAT_IDENTITY = "/^(viewerSeat|mySeatIndex)$/";
+const TABLE_TEXT_SIZE = ":matches(Identifier[name=/_FS$/i], MemberExpression[object.name=/^FontSize$/i], MemberExpression[object.property.name=/^FontSize$/i])";
+const SEAT_IDENTITY ="/^(viewerSeat|mySeatIndex)$/";
 const AUDIO_LAYERED = ["{app,components,context,lib,modules}/**/*.{ts,tsx}"];
 const CHANNEL_KEYS = `/^(${Object.keys(require("./lib/harnessChannels.ts").CHANNELS).join("|")})$/`;
 // esquery's regex literal ends at its first slash, so a path separator is written \x2F.
@@ -200,6 +201,83 @@ const GUARDS = [
       "const b = <TextInput value={v} />;",
       '// a bare <Text> grows\nconst s = "<Text>";',
     ].map((code) => ({ file: "components/table/Plant.tsx", code })),
+  },
+  {
+    id: "table-text-floor",
+    why: "A table text size scaled by hand drops under 10px on an SE: size it with tableFontSize(base, scale) from components/cardFaceModel.ts, which holds the floor.",
+    // The size is reported, not the product, so it is found at any depth of the left operand:
+    // `1.2 * LABEL_FS * scale` parses as `(1.2 * LABEL_FS) * scale`.
+    selector: ["> .left", "> .left "]
+      .map((left) => `BinaryExpression[operator="*"]:matches([right.name=/scale$/i], [right.property.name=/scale$/i]) ${left}${TABLE_TEXT_SIZE}`)
+      .join(", "),
+    files: ["components/table/**/*.{ts,tsx}"],
+    plant: { file: "components/table/Plant.tsx", code: [
+      "const a = { fontSize: SEAT_BADGE_FS * scale };",
+      "const b = { fontSize: FontSize.xxs * scale };",
+      "const c = { fontSize: NAME_FS * cardScale };",
+      "const d = { fontSize: T.LABEL_FS * layout.scale };",
+      "const e = { fontSize: 1.2 * LABEL_FS * scale };",
+      "const f = { fontSize: T.FontSize.xxs * scale };",
+      "const g = { fontSize: fontsize.sm*Scale };",
+      "const h = { fontSize: 2 * 0.5 * BADGE_FS * scale };",
+    ].join("\n"), hits: 8 },
+    spare: [
+      "const a = { fontSize: tableFontSize(SEAT_BADGE_FS, scale) };",
+      "const b = { width: CARD_W * scale };",
+      '// SEAT_BADGE_FS * scale\nconst s = "FontSize.xxs * scale";',
+    ].map((code) => ({ file: "components/table/Plant.tsx", code })),
+  },
+  {
+    id: "web-drops-a11y-prop",
+    why: "react-native-web drops this prop, so the web build reaches it as nothing: use a11yState / a11yHint / a11yHidden from lib/a11y.tsx.",
+    selector: "JSXAttribute[name.name=/^(accessibilityState|accessibilityHint|accessibilityElementsHidden|importantForAccessibility)$/]",
+    files: DRAWN,
+    plant: { file: "components/Plant.tsx", code: [
+      'const a = <View accessibilityState={{ selected: true }} accessibilityLabel="x" />;',
+      'const b = <Pressable accessibilityHint="opens" />;',
+      "const c = <View accessibilityElementsHidden importantForAccessibility=\"no\" />;",
+    ].join("\n"), hits: 4 },
+    spare: [
+      "const a = <View {...a11yState({ selected: true })} accessibilityLabel={x} />;",
+      '// accessibilityState={{ selected: true }}\nconst s = "accessibilityHint=";',
+      "const o = { accessibilityState: s };",
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "animate-compositor-props",
+    why: "On web reanimated writes this every frame from the JS thread and the browser repaints for it: put the glow on a childless pointerEvents=\"none\" sibling with a static Shadow token and animate its opacity (components/table/hand.tsx's cardGlow).",
+    selector:
+      'CallExpression:matches([callee.name="useAnimatedStyle"], [callee.property.name="useAnimatedStyle"]) Property:matches([key.name=/^(boxShadow|shadowRadius|shadowOpacity|shadowColor|elevation|border[A-Za-z]*Color)$/], [key.value=/^(boxShadow|shadowRadius|shadowOpacity|shadowColor|elevation|border[A-Za-z]*Color)$/])',
+    files: ["{app,components}/**/*.{ts,tsx}"],
+    plant: { file: "components/Plant.tsx", code: [
+      "const s = useAnimatedStyle(() => {",
+      "  const v = glow.value;",
+      '  if (Platform.OS === "web") {',
+      "    return { boxShadow: `0 0 ${v}px gold` } as any;",
+      "  }",
+      "  return { shadowRadius: 18 * v };",
+      "});",
+      'const t = useAnimatedStyle(() => ({ borderTopColor: c.value, "elevation": 2 }));',
+      "const u = Reanimated.useAnimatedStyle(() => ({ shadowRadius: r.value }));",
+    ].join("\n"), hits: 5 },
+    spare: [
+      "const a = useAnimatedStyle(() => ({ opacity: v.value }));\nconst b = useAnimatedStyle(() => ({ transform: [{ scale: s.value }] }));",
+      "const glow = { shadowRadius: 18, boxShadow: Shadow.glow };",
+      "const a = useAnimatedStyle(() => ({ opacity: v.value })); // not boxShadow\nconst s = \"shadowRadius\";",
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "read-a-slice",
+    why: "A wide game hook wakes its reader on every field of the context: call the slice for this concern from context/gameHooks.ts or context/onlineGameHooks.ts.",
+    selector: "CallExpression:matches([callee.name=/^use(Online)?Game(Session|Table)?$/], [callee.property.name=/^use(Online)?Game(Session|Table)?$/])",
+    files: SCREENS,
+    ignores: [{ glob: "context/gameHooks.ts", reason: "the local slices are built on the wide hooks" }],
+    plant: { file: "components/Plant.tsx", code: ["const t = useGameTable();", "const { gameState } = useGameSession();", "const g = useOnlineGame();", "useGame();", "const c = ctx.useGameTable();"].join("\n"), hits: 5 },
+    spare: [
+      "const s = useGameSlice();\nconst h = ctx.useHandSlice();",
+      '// useGameTable()\nconst s = "useOnlineGame()";',
+      "export function useGameTable() { return ctx; }",
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
   },
   {
     id: "query-cache-owner",

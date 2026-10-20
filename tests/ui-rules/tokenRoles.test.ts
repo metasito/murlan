@@ -12,10 +12,11 @@
 // token therefore defaults to the safe side instead of silently escaping.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import ts from "typescript";
+import { sourcesUnder } from "../helpers/sourceScan.ts";
 import { Colors, Scrim, Highlight, Layer, Type } from "../../lib/tokens.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -53,14 +54,7 @@ function fillOnlyTokens(): Set<string> {
 }
 
 function sourceFiles(): [string, string][] {
-  return ["app", "components"].flatMap((dir) =>
-    readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
-      .filter((f) => f.endsWith(".tsx") || f.endsWith(".ts"))
-      .map((f): [string, string] => [
-        path.posix.join(dir, f.split(path.sep).join("/")),
-        readFileSync(path.join(repoRoot, dir, f), "utf8"),
-      ])
-  );
+  return sourcesUnder(repoRoot, ["app", "components"]);
 }
 
 // A style property named exactly `color`, or a JSX `color=`/`tintColor=`/

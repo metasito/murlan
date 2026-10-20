@@ -8,7 +8,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { sourcesUnder } from "../helpers/sourceScan.ts";
+import { blankComments, sourcesUnder } from "../helpers/sourceScan.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..");
 const game = (f: string) => path.posix.join("server", "game", f);
@@ -17,7 +17,7 @@ const socket = (f: string) => path.posix.join("server", "socket", f);
 type Sources = [string, string][];
 
 /** Comments name these on purpose; only code sends. */
-const code = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+const code = (src: string) => blankComments(src);
 
 const NAMES_SOCKET_SERVER = /\bSocketServer\b|from "socket\.io"/;
 /** A call on Socket.IO itself: `io.…` or `….transport.…`. */

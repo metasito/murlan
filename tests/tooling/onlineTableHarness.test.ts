@@ -15,24 +15,16 @@
 // root navigation that has not.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { blankComments } from "../helpers/sourceScan.ts";
+import { blankComments, sourcesUnder } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const E2E = path.join(repoRoot, "tests", "e2e");
 const HARNESS = path.join(E2E, "helpers", "onlineTable.ts");
 
-function walk(dir: string, keep: (name: string) => boolean): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...walk(full, keep));
-    else if (keep(entry.name)) out.push(full);
-  }
-  return out;
-}
+const under = (dirs: string[], keep: RegExp) => sourcesUnder(repoRoot, dirs, keep).map(([file]) => path.join(repoRoot, file));
 
 const rel = (file: string) => path.relative(repoRoot, file).replace(/\\/g, "/");
 
@@ -60,10 +52,8 @@ test("the online-table harness is reachable only from the browser suite", () => 
   // …and nothing shipped reaches back. The bundle is what a player downloads
   // and the server is what answers them; neither may name this file.
   const shipped = [
-    ...walk(path.join(repoRoot, "app"), (n) => n.endsWith(".ts") || n.endsWith(".tsx")),
-    ...walk(path.join(repoRoot, "server"), (n) => n.endsWith(".ts")),
-    ...walk(path.join(repoRoot, "components"), (n) => n.endsWith(".ts") || n.endsWith(".tsx")),
-    ...walk(path.join(repoRoot, "lib"), (n) => n.endsWith(".ts") || n.endsWith(".tsx")),
+    ...under(["app", "components", "lib"], /\.tsx?$/),
+    ...under(["server"], /\.ts$/),
   ];
   const referring = shipped.filter((file) => readFileSync(file, "utf8").includes("onlineTable"));
   assert.deepEqual(
@@ -88,7 +78,7 @@ test("nothing in the browser suite opens the app's root without seeding the tuto
   // that already do this correctly. What it catches is the shape that matters —
   // a harness that opens the app and never seeds at all.
   const ROOT_GOTO = /\.goto\(\s*(?:baseURL!?\s*\)|`\$\{baseURL!?\}\/?`)/;
-  const files = walk(E2E, (n) => n.endsWith(".ts"));
+  const files = under(["tests/e2e"], /\.ts$/);
   const offenders: string[] = [];
 
   for (const file of files) {

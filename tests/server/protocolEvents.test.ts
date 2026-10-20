@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+import { blankComments, sourcesUnder } from "../helpers/sourceScan.ts";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
 const protocolFile = path.join(root, "shared", "protocol.ts");
@@ -28,15 +28,8 @@ function eventMaps() {
 
 const RESERVED = new Set(["connect", "disconnect", "connect_error", "disconnecting", "error"]);
 
-function sourcesUnder(dirs: string[]): [string, string][] {
-  return dirs.flatMap((dir) =>
-    readdirSync(path.join(root, dir), { recursive: true, encoding: "utf8" })
-      .filter((f) => /\.tsx?$/.test(f))
-      .map((f): [string, string] => [
-        `${dir}/${f.split(path.sep).join("/")}`,
-        readFileSync(path.join(root, dir, f), "utf8").replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, ""),
-      ])
-  );
+function codeUnder(dirs: string[]): [string, string][] {
+  return sourcesUnder(root, dirs).map(([file, text]): [string, string] => [file, blankComments(text)]);
 }
 
 /** `event (file)` for every literal event name one of `patterns` captures. */
@@ -50,8 +43,8 @@ function literalEvents(sources: [string, string][], patterns: RegExp[]): Map<str
   return found;
 }
 
-const server = sourcesUnder(["server"]);
-const client = sourcesUnder(["app", "components", "context", "lib"]);
+const server = codeUnder(["server"]);
+const client = codeUnder(["app", "components", "context", "lib"]);
 
 /** `onEvent`'s default refusal channel: every event `errorEventFor`'s return type names, at the file emitting through it. */
 function errorEventEmits(sources: [string, string][]): Map<string, string[]> {

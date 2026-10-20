@@ -45,16 +45,7 @@ export function scanSources(pattern: RegExp, sources: [string, string][]): strin
 
 /** Every `.tsx` under the scanned trees, as a repo-relative path with `/` separators. */
 export function scannedFiles(repoRoot: string): string[] {
-  const out: string[] = [];
-  const walk = (dir: string) => {
-    for (const entry of readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
-      const rel = `${dir}/${entry.name}`;
-      if (entry.isDirectory()) walk(rel);
-      else if (entry.name.endsWith(".tsx")) out.push(rel);
-    }
-  };
-  SCANNED_DIRS.forEach(walk);
-  return out;
+  return sourcesUnder(repoRoot, SCANNED_DIRS, /\.tsx$/).map(([rel]) => rel);
 }
 
 /**

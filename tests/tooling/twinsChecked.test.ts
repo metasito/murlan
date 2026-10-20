@@ -2,25 +2,17 @@
 // which tsc compiles. The list in each check file is kept by hand; this test is what keeps it whole.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { sourcesUnder } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const ROOTS = ["lib", "components"];
 const CHECK_FILES = [path.join("lib", "device", "twins.check.ts"), path.join("components", "table", "twins.check.ts")];
 const MIN_TWINS = 10;
 
-function walk(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    const p = path.join(dir, entry);
-    if (statSync(p).isDirectory()) walk(p, out);
-    else out.push(p);
-  }
-  return out;
-}
-
-const files = ROOTS.flatMap((r) => walk(path.join(repoRoot, r)));
+const files = sourcesUnder(repoRoot, ROOTS, /\.web\.tsx?$/).map(([rel]) => path.join(repoRoot, rel));
 const nativeOf = (web: string) => {
   const stem = web.replace(/\.web\.tsx?$/, "");
   return [`${stem}.ts`, `${stem}.tsx`].find((f) => existsSync(f));

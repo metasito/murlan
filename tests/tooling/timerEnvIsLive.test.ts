@@ -5,9 +5,10 @@
 // `server/game/gameTimers.ts`.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { blankComments, sourcesUnder } from "../helpers/sourceScan.ts";
 
 // The hoisted import an integration test has, standing in for all of them. It
 // reaches `gameTimers` through `onlineGameLogic`, which is the edge that made
@@ -95,13 +96,11 @@ describe("a timeout set after the server is loaded", () => {
         .join("|")})\\(\\)`
     );
     const captured: string[] = [];
-    for (const entry of readdirSync(path.join(repoRoot, "server"), { recursive: true, encoding: "utf8" })) {
-      const file = entry.split(path.sep).join("/");
-      if (!file.endsWith(".ts") || file === "game/gameTimers.ts") continue;
-      const source = readFileSync(path.join(repoRoot, "server", file), "utf8");
-      for (const [i, line] of source.split("\n").entries()) {
+    for (const [file, source] of sourcesUnder(repoRoot, ["server"], /\.ts$/)) {
+      if (file === path.posix.join("server", "game", "gameTimers.ts")) continue;
+      for (const [i, line] of blankComments(source).split("\n").entries()) {
         if (/^(export )?const \w+(: *[\w<>[\]| ]+)? *=/.test(line) && readers.test(line)) {
-          captured.push(`server/${file}:${i + 1}`);
+          captured.push(`${file}:${i + 1}`);
         }
       }
     }

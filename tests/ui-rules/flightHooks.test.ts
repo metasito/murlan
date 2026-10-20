@@ -1,9 +1,10 @@
 // The table's flight helpers are reached through one hook per concern (#1218).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { blankComments, sourcesUnder } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const MODULES = [
@@ -22,14 +23,7 @@ const OWNERS: Record<string, string> = {
   passedSeats: "components/table/seats.tsx",
 };
 
-function walk(dir: string): string[] {
-  return readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
-    .map((f) => `${dir}/${f.split(path.sep).join("/")}`)
-    .filter((f) => /\.tsx?$/.test(f) && !f.includes("node_modules"));
-}
-
-function namesImportedFromModule(rel: string, module: string): string[] {
-  const src = readFileSync(path.join(repoRoot, rel), "utf8");
+function namesImportedFromModule(src: string, module: string): string[] {
   const name = path.basename(module, ".ts");
   return [...src.matchAll(new RegExp(`import\\s+(?:type\\s+)?\\{([^}]*)\\}\\s+from\\s+["'][^"']*/${name}(?:\\.ts)?["']`, "g"))]
     .flatMap((m) => m[1].split(","))
@@ -37,9 +31,9 @@ function namesImportedFromModule(rel: string, module: string): string[] {
     .filter(Boolean);
 }
 
-const files = [...["app", "components", "lib"].flatMap(walk), ...walk("tests")];
+const files = sourcesUnder(repoRoot, ["app", "components", "lib", "tests"]).map(([rel, text]): [string, string] => [rel, blankComments(text)]);
 const importersOf = (module: string) =>
-  files.filter((rel) => rel !== module).map((rel) => ({ rel, names: namesImportedFromModule(rel, module) }));
+  files.filter(([rel]) => rel !== module).map(([rel, text]) => ({ rel, names: namesImportedFromModule(text, module) }));
 const importers = MODULES.flatMap(importersOf);
 
 test("each hand-arrival, exchange-leg and passed-seat helper has one component owner", () => {
