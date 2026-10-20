@@ -336,6 +336,22 @@ describe("a file that names a merge is not a script that runs one", () => {
     "bash m.sh > out.txt",
     "bash < m.sh",
     "node --test a.test.ts && bash m.sh",
+    "node --import='data:text/javascript,import cp from \"node:child_process\"; cp.execSync(\"gh pr merge 5\")' --test a.test.ts",
+    `node --import='data:text/javascript;base64,${Buffer.from("import cp from 'node:child_process'; cp.execSync('gh pr merge 5')").toString("base64")}' x.js`,
+    "node --import 'data:text/javascript,import%20cp%20from%20%22node:child_process%22;cp.execSync(%22gh%20pr%20merge%205%22)' --test a.test.ts",
+    "node -r 'data:text/javascript,require(\"child_process\").execSync(\"gh pr merge 5\")' --test a.test.ts",
+    "node -e \"require('child_process').execSync('gh pr merge 5')\"",
+    "node -r./m.js --test a.test.ts",
+    "node --test -r./m.js a.test.ts",
+    "NODE_OPTIONS='--require ./m.js' node --test a.test.ts",
+    "NODE_OPTIONS=--import=./m.js node x.js",
+    "env NODE_OPTIONS='-r./m.js' node --test a.test.ts",
+    "export NODE_OPTIONS='--require ./m.js'; node --test a.test.ts",
+    "npx node --test --require ./m.js a.test.ts",
+    "npx --yes node --test --require ./m.js a.test.ts",
+    "npx -y node m.js",
+    "bash {fd}< m.sh",
+    "bash 0< m.sh",
   ]) {
     test(`refuses: ${JSON.stringify(cmd)}`, () => assert.match(String(at(cmd)), MERGE));
   }

@@ -10,7 +10,7 @@ const WRAPPER = new Set(["env", "xargs", "time", "do", "then", "else", "elif", "
 const WRAPPER_TAKES_A_VALUE = /^-(?:[IinPdLEsau]|-(?:max-args|max-procs|delimiter|replace|arg-file|unset))$/;
 const GIT_TAKES_A_VALUE = /^(-C|-c|--git-dir|--work-tree|--namespace|--config-env|--super-prefix)$/;
 const GH_TAKES_A_VALUE = /^(-R|--repo|--hostname)$/;
-const REDIRECT = /^\d*(?:[<>]+|&>>?)(\S*)$/;
+const REDIRECT = /^(?:\d*|\{[A-Za-z_]\w*\})(?:[<>]+|&>>?)(\S*)$/;
 const MAX_DEPTH = 5;
 
 const commandName = (word) => (word ?? "").replace(/\\/g, "/").split("/").pop().replace(/\.(exe|cmd)$/i, "").toLowerCase();
@@ -105,6 +105,9 @@ function segments(text, depth) {
       i += 1;
     } else if (ch === "&" && (/[<>]/.test(text[i - 1] ?? "") || text[i + 1] === ">")) {
       word = (word ?? "") + ch;
+    } else if (ch === "{" && word === null && /^\{[A-Za-z_]\w*\}[<>]/.test(text.slice(i))) {
+      word = text.slice(i, text.indexOf("}", i) + 1);
+      i = text.indexOf("}", i);
     } else if (/[;&|\n(){}`]/.test(ch)) {
       if (ch === "|" && text[i - 1] !== "|" && text[i + 1] !== "|") words.piped = true;
       endSegment();
@@ -188,7 +191,7 @@ function normalize(words, depth) {
     const target = redirect[1] || rest[j + 1] || "";
     if (/^[1&]?>/.test(rest[j]) && target && !target.startsWith("&")) out.push(target);
     if (target && !target.startsWith("&")) redirected.push(target);
-    if (/^\d*<(?!<)/.test(rest[j]) && target && !target.startsWith("&")) input.push(target);
+    if (/^(?:\d*|\{[A-Za-z_]\w*\})<(?!<)/.test(rest[j]) && target && !target.startsWith("&")) input.push(target);
     j += redirect[1] ? 0 : 1;
   }
   let dir = null;
@@ -235,7 +238,7 @@ export function withoutQuotedBodies(command) {
 const ASSIGN = /^([A-Za-z_]\w*)=([\s\S]*)$/;
 export const literal = (vars) => Object.fromEntries(Object.entries(vars).filter(([, v]) => /^[^\s$`]+$/.test(v ?? "")));
 
-function assignmentsIn(text) {
+export function assignmentsIn(text) {
   const vars = {};
   for (const w of segments(text, MAX_DEPTH)) {
     let i = 0;
