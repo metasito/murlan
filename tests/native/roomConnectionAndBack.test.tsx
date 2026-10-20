@@ -23,7 +23,6 @@ const mockGuard: { prevent: boolean | null; onPrevented: ((e: Prevented) => void
   onPrevented: null,
 };
 const POP: Prevented = { data: { action: { type: 'POP' } } };
-const BROWSER_BACK: Prevented = { data: { action: { type: 'RESET' } } };
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
@@ -33,6 +32,14 @@ jest.mock('expo-router/react-navigation', () => ({
   usePreventRemove: (prevent: boolean, onPrevented: (e: Prevented) => void) => {
     mockGuard.prevent = prevent;
     mockGuard.onPrevented = onPrevented;
+  },
+}));
+
+const mockBrowserBack: { active: boolean | null; onBack: (() => void) | null } = { active: null, onBack: null };
+jest.mock('@/lib/browserBack', () => ({
+  useBrowserBackGuard: (active: boolean, onBack: () => void) => {
+    mockBrowserBack.active = active;
+    mockBrowserBack.onBack = onBack;
   },
 }));
 
@@ -105,6 +112,8 @@ beforeEach(() => {
   mockConnected = true;
   mockGuard.prevent = null;
   mockGuard.onPrevented = null;
+  mockBrowserBack.active = null;
+  mockBrowserBack.onBack = null;
   mockLeaveRoom.mockClear();
   mockStartGame.mockClear();
 });
@@ -147,29 +156,18 @@ describe('back on the waiting room', () => {
     await view.unmount();
   });
 
-  it("puts the browser's URL back on the room before asking, and only for the browser's back", async () => {
-    const forward = jest.fn();
-    const hadHistory = 'history' in globalThis;
-    const original = (globalThis as { history?: unknown }).history;
-    (globalThis as { history?: unknown }).history = { forward };
-    const os = jest.replaceProperty(Platform, 'OS', 'web');
-    try {
-      const view = await render(tree());
+  it("answers the browser's back with the same question, under the same guard", async () => {
+    const view = await render(tree());
+    expect(mockBrowserBack.active).toBe(true);
 
-      await act(async () => mockGuard.onPrevented!(BROWSER_BACK));
-      expect(forward).toHaveBeenCalledTimes(1);
-      expect(screen.getByLabelText(locale['room.leaveConfirmConfirm'])).toBeTruthy();
-      await fireEvent.press(screen.getByLabelText(locale['common.cancel']));
-      expect(mockLeaveRoom).not.toHaveBeenCalled();
+    await act(async () => mockBrowserBack.onBack!());
+    await fireEvent.press(screen.getByLabelText(locale['common.cancel']));
+    expect(mockLeaveRoom).not.toHaveBeenCalled();
 
-      await act(async () => mockGuard.onPrevented!(POP));
-      expect(forward).toHaveBeenCalledTimes(1);
-      await view.unmount();
-    } finally {
-      os.restore();
-      if (hadHistory) (globalThis as { history?: unknown }).history = original;
-      else delete (globalThis as { history?: unknown }).history;
-    }
+    await act(async () => mockBrowserBack.onBack!());
+    await fireEvent.press(screen.getByLabelText(locale['room.leaveConfirmConfirm']));
+    expect(mockLeaveRoom).toHaveBeenCalledTimes(1);
+    await view.unmount();
   });
 
   it('lets the router replace the room once a game exists or the room is gone', async () => {
@@ -177,11 +175,13 @@ describe('back on the waiting room', () => {
     mockHasGame = true;
     await view.rerender(tree());
     expect(mockGuard.prevent).toBe(false);
+    expect(mockBrowserBack.active).toBe(false);
 
     mockHasGame = false;
     mockRoom = null;
     await view.rerender(tree());
     expect(mockGuard.prevent).toBe(false);
+    expect(mockBrowserBack.active).toBe(false);
     await view.unmount();
   });
 

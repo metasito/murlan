@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { guardsRoomBack } from "@/context/onlineRouting";
+import { useBrowserBackGuard } from "@/lib/browserBack";
 import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { useIsLandscape } from "@/lib/device/orientation";
 import Animated, { FadeIn } from "react-native-reanimated";
@@ -371,17 +372,8 @@ export default function RoomScreen() {
   }, [t, leaveRoom]);
 
   const guardsBack = guardsRoomBack({ roomId: room?.roomId ?? null, hasGame, isSpectator, rejoinFailed });
-  // The browser's back reaches React Navigation as a RESET only after the URL has already
-  // moved; blocking it alone leaves this room under the previous screen's URL, with the
-  // next back popping it. Going forward again puts the URL back on the room's entry.
-  const onBackPrevented = useCallback(
-    ({ data }: { data: { action: { type: string } } }) => {
-      if (Platform.OS === "web" && data.action.type === "RESET") globalThis.history?.forward();
-      handleLeave();
-    },
-    [handleLeave]
-  );
-  usePreventRemove(guardsBack, onBackPrevented);
+  usePreventRemove(guardsBack, handleLeave);
+  useBrowserBackGuard(guardsBack, handleLeave);
   useEffect(() => {
     if (Platform.OS !== "android" || !guardsBack) return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {

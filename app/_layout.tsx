@@ -28,6 +28,8 @@ import { DIAGNOSTICS } from "@/lib/diagnostics";
 import { captureEnabled } from "@/lib/captureRoute";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import "@/lib/e2eConfig";
+// Loaded with the root layout, ahead of the navigation container's own popstate listener.
+import "@/lib/browserBack";
 
 SplashScreen.preventAutoHideAsync();
 
