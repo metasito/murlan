@@ -545,7 +545,7 @@ export const Motion = {
     /** Hold at rest; do not loop. */
     dwell: null,
     /** A mark's fade is already in place: `noticeRise` drops the travel. */
-    mark: null,
+    mark: null as { enter: number; exit: number } | null,
   },
   /**
    * A spring when the player caused it and is still touching it — picked up,
@@ -657,7 +657,7 @@ export const MatchEnding = {
  * the answer `Motion.reduced` already wrote down, which is the point: a call site
  * that decides for itself is how "reduced" came to mean a 200ms fade in one
  * screen and an instant jump in the next. `beaten` and `handResize`, the steps off the ladder,
- * have their reduced form (0) written here, since `Motion.reduced` holds ladder steps only.
+ * have their reduced form (0) written here; `Motion.reduced` holds the ladder steps and `mark`.
  */
 export function motionMs(step: keyof typeof Motion.duration | "beaten" | "handResize", reduceMotion: boolean): number {
   if (step === "beaten" || step === "handResize") return reduceMotion ? 0 : Motion[step];
@@ -676,8 +676,6 @@ export const Reading = {
   notice: 4000,
   /** An invitation, which is acted on rather than read, so it outlasts its own sentence. */
   invite: 6000,
-  /** A notice's mark or float, between its fade in and out: the lantern mockup's `passSeat` and `passYou`. */
-  mark: 1000,
 } as const;
 
 /**
@@ -696,6 +694,8 @@ export const Hold = {
   sting: 300,
   /** A face shown to be read before it moves on: the exchange's rest on the pile (the fixture's PLAN.rest). */
   reveal: 1500,
+  /** A notice's mark or float, between its fade in and out: the lantern mockup's `passSeat` and `passYou`. */
+  mark: 1000,
 } as const;
 
 /** How late a sound may still start and be heard as on time; later, it is dropped. */

@@ -4,7 +4,7 @@ import { act, render, screen } from '@testing-library/react-native';
 import { getAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { setMotionPreference } from '@/lib/accessibility';
-import { Motion, Reading } from '@/lib/theme';
+import { Hold, Motion } from '@/lib/theme';
 import { en } from '@/locales/en';
 import { FloatSlot, type Float } from '@/components/table/notices/floats';
 import { NoticeText, TableNotice } from '@/components/table/TableNotice';
@@ -16,7 +16,7 @@ const PLATE = 'notice-passFloat';
 const hidden = { includeHiddenElements: true };
 const AT = { x: 200, y: 100 };
 const { enter, exit } = Motion.mark;
-const hold = Reading.mark;
+const hold = Hold.mark;
 
 const BESIDE = { giocaTop: 60, left: 0, right: 0, mirrored: false };
 const slot = (float: Float | null) => <FloatSlot float={float} at={AT} beside={BESIDE} scale={1} veiled={false} />;

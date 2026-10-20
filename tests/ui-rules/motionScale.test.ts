@@ -23,7 +23,8 @@ test("every step states what it becomes under reduced motion", () => {
       `per call site: ${missing.join(", ")}`
   );
 
-  const spare = Object.keys(reduced).filter((name) => !(name in Motion.duration) && !(name in Motion));
+  assert.ok("mark" in Motion, "Motion.reduced.mark is the reduced form of Motion.mark");
+  const spare = Object.keys(reduced).filter((name) => !(name in Motion.duration) && name !== "mark");
   assert.deepEqual(
     spare,
     [],
@@ -119,18 +120,15 @@ test("the hand grows into its turn over the mockup's .12s, and at once under red
 
 // Reading time is set by how many words there are, not by how the table moves,
 // and the whole point of the separate group is that a later sweep cannot quietly
-// fold a read back onto a step. A mark is one word, so its budget is short; what
-// it can never be is a step's own number, which is how a fold goes unnoticed.
+// fold a 4-second read back onto a step. Every budget sits clear of the longest
+// one, so the two can never be mistaken for neighbours on one scale.
 test("a reading budget is not a motion step", () => {
-  const stepMs = new Set(steps.map(([, ms]) => ms));
+  const longest = Math.max(...steps.map(([, ms]) => ms));
   for (const [name, ms] of Object.entries(Reading)) {
     assert.ok(
-      !stepMs.has(ms),
-      `Reading.${name} (${ms}ms) is a Motion step's own length, which is the category error the group exists to prevent`
+      ms > longest * 2,
+      `Reading.${name} (${ms}ms) is close enough to the Motion scale (longest step ${longest}ms) ` +
+        "to read as a step, which is the category error the group exists to prevent"
     );
-  }
-  for (const [name, ms] of Object.entries(Reading).filter(([n]) => n !== "mark")) {
-    const longest = Math.max(...steps.map(([, step]) => step));
-    assert.ok(ms > longest * 2, `Reading.${name} (${ms}ms) is a sentence's budget, yet sits near the Motion scale (longest step ${longest}ms)`);
   }
 });

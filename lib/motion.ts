@@ -29,10 +29,10 @@ export interface Loop {
 /**
  * Runs `value` on an endless loop while `loop` is given and the player has not asked for less
  * motion, and cancels it the moment either stops holding, or on unmount. The loop is built when it
- * starts; a new `loop` while one runs does not restart it. Where the value rests when no loop runs
- * is the caller's to set.
+ * starts; a new `loop` while one runs restarts it only when `key` changes. Where the value rests
+ * when no loop runs is the caller's to set.
  */
-export function useLoop(value: SharedValue<number>, loop: (() => Loop) | null): void {
+export function useLoop(value: SharedValue<number>, loop: (() => Loop) | null, key?: string | number): void {
   const reduceMotion = usePrefersReducedMotion();
   const running = loop !== null && !reduceMotion;
   const latest = useRef(loop);
@@ -46,7 +46,7 @@ export function useLoop(value: SharedValue<number>, loop: (() => Loop) | null): 
     const repeated = withRepeat(cycle, -1, reverse, undefined, mode);
     value.set(lead === undefined ? repeated : withSequence(lead, repeated));
     return () => cancelAnimation(value);
-  }, [running, value]);
+  }, [running, value, key]);
 }
 
 /** `cycle` run `times` times, or null under once: `withRepeat` reads a count of 0 as forever. */

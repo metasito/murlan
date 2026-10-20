@@ -472,7 +472,9 @@ const GUARDS = [
     selector: [
       'CallExpression[callee.name="withRepeat"]',
       'MemberExpression[property.name="withRepeat"]',
+      'MemberExpression[computed=true][property.value="withRepeat"]',
       'ImportSpecifier[imported.name="withRepeat"]',
+      'ExportSpecifier[local.name="withRepeat"]',
     ].join(", "),
     files: SCREENS,
     ignores: [{ glob: "lib/motion.ts", reason: "useLoop and repeatTimes, the two owners of a repeat" }],
@@ -481,9 +483,12 @@ const GUARDS = [
       'import { withRepeat as again } from "react-native-reanimated";',
       "a.value = withRepeat(b, -1);",
       "a.value = Reanimated.withRepeat(b, 2);",
-    ].join("\n"), hits: 4 },
+      'export { withRepeat } from "react-native-reanimated";',
+      'a.value = R["withRepeat"](b, 2);',
+    ].join("\n"), hits: 6 },
     spare: [
       "useLoop(a, () => ({ cycle: b }));",
+      'a.value = R["withRepeatCount"];',
       "a.value = repeatTimes(b, beats);",
       '// withRepeat(b, -1)\nconst s = "withRepeat(b, -1)";',
     ].map((code) => ({ file: "components/Plant.tsx", code })),

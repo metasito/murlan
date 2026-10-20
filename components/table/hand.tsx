@@ -987,7 +987,6 @@ export const StraightHand = React.memo(function StraightHand({
     );
   };
 
-
   const drag = usePanGesture({
     // One finger owns the drag. A second one anywhere would otherwise rewrite
     // where the held card is going, and the first is left holding a card the

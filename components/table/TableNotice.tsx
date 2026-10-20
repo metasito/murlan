@@ -223,11 +223,9 @@ export function NoticeDot({ testID, blink = false }: { testID?: string; blink?: 
   const { kind, paint, box, dotGlow } = useInk("NoticeDot");
   const reduceMotion = usePrefersReducedMotion();
   const timing = blink ? noticeBlink(reduceMotion) : null;
-  const half = timing?.half;
-  const dim = timing?.dim;
   const opacity = useOwnedValue(1);
-  const blinking = half !== undefined && dim !== undefined;
-  useLoop(opacity, half !== undefined && dim !== undefined ? () => {
+  const blinking = timing !== null;
+  useLoop(opacity, blinking ? () => {
     let first: number | null = null;
     const halfEnded = (ms: number) => {
       if (first === null) {
@@ -237,10 +235,10 @@ export function NoticeDot({ testID, blink = false }: { testID?: string; blink?: 
       diag({ k: "blink", t: performance.now(), kind, period: first + ms });
       first = null;
     };
-    const fade = withTiming(dim, { duration: half, easing: Easing.inOut(Easing.ease) });
+    const fade = withTiming(timing.dim, { duration: timing.half, easing: Easing.inOut(Easing.ease) });
     // `noticeBlink` already answers the app's preference; Reanimated's own reads the system's once, at load.
     return { cycle: DIAGNOSTICS ? clocked(fade, halfEnded) : fade, reverse: true, reduceMotion: ReduceMotion.Never };
-  } : null);
+  } : null, kind);
   useEffect(() => {
     if (blinking) return undefined;
     opacity.set(1);
