@@ -27,39 +27,95 @@ function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
 }
 
+/** Every `.ts` file under `server/<dir>`, listed from the directory rather than by hand. */
+function serverFiles(dir = ""): string[] {
+  return readdirSync(path.join(SERVER_DIR, dir), { recursive: true, encoding: "utf8" })
+    .filter((f) => f.endsWith(".ts"))
+    .map((f) => path.posix.join(dir, f.split(path.sep).join("/")));
+}
+
+const GAME_ROOM_IMPORT = /import\s*\{([^}]*)\}\s*from\s*["'][^"']*\bgameRoom\.ts["']/g;
+
+/** The names a source binds to gameRoom's `activeGames`: imported, renamed, or held in a local. */
+function tableMapNames(source: string): string[] {
+  const names: string[] = [];
+  for (const [, body] of source.matchAll(GAME_ROOM_IMPORT)) {
+    for (const part of body.split(",")) {
+      const bound = /^\s*activeGames(?:\s+as\s+(\w+))?\s*$/.exec(part);
+      if (bound) names.push(bound[1] ?? "activeGames");
+    }
+  }
+  for (const name of [...names]) {
+    for (const [, local] of source.matchAll(new RegExp(`(?:const|let|var)\\s+(\\w+)\\s*=\\s*${name}\\s*;`, "g"))) {
+      names.push(local);
+    }
+  }
+  return names;
+}
+
+function tableMapWrites(source: string): string[] {
+  const code = stripComments(source);
+  return tableMapNames(code).flatMap((name) =>
+    [
+      ...code.matchAll(
+        new RegExp(`(?<![\\w.])${name}\\s*(?:\\.\\s*(set|delete|clear)|\\[\\s*["'](set|delete|clear)["']\\s*\\])\\s*\\(`, "g")
+      ),
+    ].map((m) => m[1] ?? m[2])
+  );
+}
+
+function writersOf(kinds: string[]): Record<string, number> {
+  const writers: Record<string, number> = {};
+  for (const file of serverFiles()) {
+    const count = tableMapWrites(serverSource(file)).filter((kind) => kinds.includes(kind)).length;
+    if (count > 0) writers[file] = count;
+  }
+  return writers;
+}
+
 describe("a game enters memory in one place, under a claim", () => {
-  test("nothing but tableLifecycle writes activeGames", () => {
-    const writers = readdirSync(SERVER_DIR, { recursive: true, encoding: "utf8" })
-      .filter((f) => f.endsWith(".ts"))
-      .map((f) => f.split(path.sep).join("/"))
-      .filter((f) => /\bactiveGames\.set\s*\(/.test(stripComments(serverSource(f))));
+  test("the scan recognises every kind of write", () => {
+    const fromRoom = 'import { activeGames } from "./gameRoom.ts";\n';
+    const writes: [string, string][] = [
+      [`${fromRoom}activeGames.set(id, game);`, "set"],
+      [`${fromRoom}activeGames\n    .delete(id);`, "delete"],
+      [`${fromRoom}activeGames["clear"]();`, "clear"],
+      ['import {\n  isShuttingDown,\n  activeGames as live,\n} from "../game/gameRoom.ts";\nlive.set(id, game);', "set"],
+      [`${fromRoom}const tables = activeGames;\ntables.delete(id);`, "delete"],
+    ];
+    for (const [sample, kind] of writes) assert.deepEqual(tableMapWrites(sample), [kind], sample);
+    const notWrites = [
+      `${fromRoom}activeGames.get(id); activeGames.has(id);`,
+      `${fromRoom}// activeGames.set(id, game)`,
+      'import { activeGames } from "../../shared/schema.ts";\ndb.delete(activeGames); activeGames.delete(x);',
+    ];
+    for (const sample of notWrites) assert.deepEqual(tableMapWrites(sample), [], sample);
+  });
+
+  test("nothing but tableLifecycle puts a game in memory: the deal and the takeover", () => {
     assert.deepEqual(
-      writers,
-      ["game/tableLifecycle.ts"],
-      "a game put in memory outside the claimed paths is a second owner waiting to happen"
+      writersOf(["set"]),
+      { "game/tableLifecycle.ts": 2 },
+      "startMatch and rehydrateGame are the two; any other has no claim behind it"
     );
   });
 
-  test("the two writers are the deal and the takeover, and nothing else", () => {
-    const source = stripComments(serverSource("game/tableLifecycle.ts"));
-    assert.equal(
-      [...source.matchAll(/\bactiveGames\.set\s*\(/g)].length,
-      2,
-      "startMatch and rehydrateGame are the two; a third has no claim behind it"
-    );
+  test("nothing but gamePersistence takes a game out of memory", () => {
+    assert.deepEqual(Object.keys(writersOf(["delete", "clear"])), ["game/gamePersistence.ts"]);
   });
 
-  test("the handler families do not resolve a game from this process's map", () => {
+  test("no socket or HTTP handler resolves a game from this process's map", () => {
     // `socketRoomMap` says which room a socket is at, which is local and true.
     // `activeGames` says what the game *is*, which lives in one process — and
     // reading it here is how a player on the other instance was told
     // NO_LIVE_GAME about a table they could see.
-    for (const file of ["socket/socketGameplay.ts", "socket/socketRooms.ts"]) {
-      assert.ok(
-        !/\bactiveGames\b/.test(stripComments(serverSource(file))),
-        `${file} reads activeGames directly instead of routing to the owner`
-      );
-    }
+    const handlers = [...serverFiles("socket"), ...serverFiles("http")];
+    assert.ok(handlers.includes("socket/socketGameplay.ts") && handlers.includes("http/routes/index.ts"));
+    const readers = handlers.filter((file) => {
+      const source = stripComments(serverSource(file));
+      return tableMapNames(source).length > 0 || /\bactiveGames\b/.test(source);
+    });
+    assert.deepEqual(readers, [], "these read activeGames directly instead of asking the game layer");
   });
 
   test("the claim is released wherever a game leaves memory", () => {
