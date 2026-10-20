@@ -74,12 +74,12 @@ export function moveAction(
  */
 export function commitMove(rt: TableRuntime, game: OnlineGameState, applied: AutoMove): Promise<void> | undefined {
   const { state: next, move } = applied;
-  if (move?.kind === "play") {
+  if (move.kind === "play") {
     const flags = (game.roundFlags[move.seat] ??= { bomb: false, joker: false });
     if (move.combo.type === "bomb") flags.bomb = true;
     if (move.combo.cards.some((c) => c.isJoker)) flags.joker = true;
   }
-  if (move?.kind === "play" || move?.kind === "pass") {
+  if (move.kind === "play" || move.kind === "pass") {
     appendReplayMove(game, move.seat, move.kind === "play" ? move.combo : null, next);
   }
   const prev = game.gameState;

@@ -1,5 +1,5 @@
 import { startRound, type GameState } from "@/lib/game/gameEngine";
-import { offlineBotMove, resolveStuckExchange } from "@/lib/game/autoMove";
+import { offlineBotMove } from "@/lib/game/autoMove";
 import type { BenchContext } from "./bench";
 
 export function benchTable(): GameState {
@@ -27,7 +27,7 @@ export async function driveBots(
 ): Promise<GameState> {
   await ctx.showTable(state);
   while (!state.roundOver && !stop()) {
-    const next = offlineBotMove(state)?.state ?? (state.exchangePhase?.active ? resolveStuckExchange(state) : null);
+    const next = offlineBotMove(state)?.state;
     if (!next) break;
     state = next;
     onStep?.(state);

@@ -164,7 +164,7 @@ function handleAutoPass(
   if (!auto) return null;
 
   void commitMove(rt, game, auto);
-  return auto.move?.kind === "play" || auto.move?.kind === "pass" ? "move" : "exchange";
+  return auto.move.kind === "play" || auto.move.kind === "pass" ? "move" : "exchange";
 }
 
 function startAfkTimer(
