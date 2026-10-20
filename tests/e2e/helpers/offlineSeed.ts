@@ -149,6 +149,9 @@ export function offlineSave(o: SaveOptions): OfflineSave {
 export function exchangeSave(
   o: Omit<SaveOptions, "turn" | "pile" | "state"> & { winner: number; loser: number; cardFromLoser?: string }
 ): OfflineSave {
+  if (o.cardFromLoser && o.holding && !o.holding[o.winner]?.includes(o.cardFromLoser)) {
+    throw new Error(`seat ${o.winner} has won ${o.cardFromLoser}, so its holding lists it`);
+  }
   const save = offlineSave(o);
   const dealt = save.gameState.players.map((p) => p.hand.filter((c) => c.id !== o.cardFromLoser));
   if (o.cardFromLoser) dealt[o.loser].push(...cards([o.cardFromLoser]));

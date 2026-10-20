@@ -13,6 +13,7 @@ import {
   CAPTURE_STATES,
   CAPTURE_VIEWER_SEAT,
   captureGameState,
+  capturePile,
   captureStateById,
   LINK_STATES,
   nextTurn,
@@ -58,7 +59,7 @@ describe("seat count states", () => {
           assert.ok(p.hand.length > 0, `${state.id}: the ${dir} seat, not named, holds nothing`);
         }
       });
-      const ids = game.players.flatMap((p) => p.hand.map((c) => c.id));
+      const ids = [...game.players.flatMap((p) => p.hand), ...(game.lastPlayedCombination?.cards ?? [])].map((c) => c.id);
       assert.equal(new Set(ids).size, ids.length, `${state.id} deals a card twice`);
     }
   });
@@ -138,6 +139,15 @@ describe("the state a capture renders", () => {
     assert.deepEqual(sides, ["right", "top"]);
   });
 
+  test("a label names the pile its state reaches, and no other", () => {
+    for (const state of ALL_CAPTURE_STATES) {
+      const pile = capturePile(state);
+      assert.equal(/\ba pair\b/.test(state.label), pile === true, `${state.id}: "${state.label}"`);
+      assert.equal(/\ba bomb\b/.test(state.label), pile === "bomb", `${state.id}: "${state.label}"`);
+      assert.equal(captureGameState(state).players.length, state.playerCount, state.id);
+    }
+  });
+
   test("puts the turn where the state asked", () => {
     for (const state of ALL_CAPTURE_STATES) {
       assert.equal(captureGameState(state).currentTurnIndex, state.turn, state.id);
@@ -147,7 +157,7 @@ describe("the state a capture renders", () => {
   test("a pile state draws a combination, played by somebody other than the seat on move", () => {
     for (const state of CAPTURE_STATES) {
       const game = captureGameState(state);
-      if (!state.pile) {
+      if (!capturePile(state)) {
         assert.equal(game.lastPlayedCombination, null, `${state.id} put a pile on the felt`);
         continue;
       }
@@ -158,7 +168,7 @@ describe("the state a capture renders", () => {
   });
 
   test("a bomb pile lands four of a kind, so the table fires its burst", () => {
-    const bombs = ALL_CAPTURE_STATES.filter((s) => s.pile === "bomb");
+    const bombs = ALL_CAPTURE_STATES.filter((s) => capturePile(s) === "bomb");
     assert.ok(bombs.length > 0, "no capture state lands a bomb");
     for (const state of bombs) {
       const game = captureGameState(state);
@@ -170,7 +180,7 @@ describe("the state a capture renders", () => {
   });
 
   test("throwing the pile again flies it from a seat not on move, as a landing the pile has not seen", () => {
-    for (const state of ALL_CAPTURE_STATES.filter((s) => s.pile)) {
+    for (const state of ALL_CAPTURE_STATES.filter((s) => capturePile(s))) {
       const game = captureGameState(state);
       let seen = comboKey(game.lastPlayedCombination!, game.lastPlayedBy);
       let next = game;
@@ -196,7 +206,7 @@ describe("the state a capture renders", () => {
   });
 
   test("a pile state counts the passes the table draws beside it", () => {
-    for (const state of ALL_CAPTURE_STATES.filter((s) => s.pile)) {
+    for (const state of ALL_CAPTURE_STATES.filter((s) => capturePile(s))) {
       const game = captureGameState(state);
       const passed = passedSeats({ ...game, outOfCards: game.players.map((p) => p.hand.length === 0) });
       assert.equal(game.passCount, passed.length, state.id);
@@ -210,7 +220,7 @@ describe("the state a capture renders", () => {
       const held = game.players.reduce((n, p) => n + p.hand.length, 0);
       const played = (game.playedRanks ?? []).reduce((n, k) => n + k, 0);
       assert.equal(held + played, dealt, state.id);
-      const ids = game.players.flatMap((p) => p.hand.map((c) => c.id));
+      const ids = [...game.players.flatMap((p) => p.hand), ...(game.lastPlayedCombination?.cards ?? [])].map((c) => c.id);
       assert.equal(new Set(ids).size, ids.length, `${state.id} deals a card twice`);
     }
   });
@@ -218,10 +228,10 @@ describe("the state a capture renders", () => {
   test("any seating reaches any seat on move, with the felt clear or a pile thrown at it", () => {
     for (const seats of [2, 3, 4] as const) {
       for (let turn = 0; turn < seats; turn++) {
-        for (const cards of [undefined, "K_hearts K_diamonds"]) {
-          const game = reach(seatedSituation(`${seats}/${turn}`, seats, turn, cards));
+        for (const pile of [undefined, { by: (turn + 1) % seats, cards: "K_hearts K_diamonds" }]) {
+          const game = reach(seatedSituation(`${seats}/${turn}`, seats, turn, pile));
           assert.equal(game.currentTurnIndex, turn, `${seats} seats, ${turn} on move`);
-          assert.equal(game.lastPlayedCombination?.type ?? null, cards ? "pair" : null, `${seats} seats, ${turn} on move`);
+          assert.equal(game.lastPlayedCombination?.type ?? null, pile ? "pair" : null, `${seats} seats, ${turn} on move`);
           assert.equal(game.roundOver, false);
         }
       }

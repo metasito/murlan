@@ -2,6 +2,7 @@
 // one the engine wrote. Pure and relatively imported: the capture screen, node, jest and Playwright
 // all load it.
 import {
+  actingSeat,
   applyMove,
   createDeck,
   dealCards,
@@ -109,4 +110,19 @@ export function reachSteps(s: Situation, deal: Card[][] = dealOf(s)): GameState[
 
 export function reach(s: Situation): GameState {
   return reachSteps(s).at(-1)!;
+}
+
+/** `s` with passes added until `seat` is the one to act, each passer the engine's own. */
+export function passingTo(s: Situation, seat: number): Situation {
+  const moves = [...s.moves];
+  let state = reach(s);
+  while (actingSeat(state) !== seat) {
+    if (moves.length - s.moves.length >= s.seats) throw new Error(`${s.name}: passing never reaches seat ${seat}`);
+    const passer = actingSeat(state);
+    const result = applyMove(state, passer, { kind: "pass" });
+    if (!result.ok) throw new Error(`${s.name}: seat ${passer}'s pass is refused: ${result.code}`);
+    moves.push({ seat: passer, pass: true });
+    state = result.state;
+  }
+  return { ...s, moves };
 }
