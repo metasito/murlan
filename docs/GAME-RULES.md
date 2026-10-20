@@ -51,7 +51,7 @@ Suits carry no strength in play. They order only the 2-player opening fallback o
 
 ## 4. Who opens the first round
 
-*Engine: `findStartingPlayer`, `getStartingPlayerAfterExchange`, `openingIsPending`
+*Engine: `findStartingPlayer`, `openingIsPending`
 (`lib/game/gameEngine.ts`).*
 
 - **The holder of the 3♠ (three of spades) leads the very first round at a table**, and **the opening must contain the 3♠**. It may be the 3♠ alone or any legal combination that includes it (pair of 3s including 3♠, a straight starting 3♠-4-5-6-7, etc.).
@@ -125,7 +125,7 @@ Suits carry no strength in play. They order only the 2-player opening fallback o
 ## 10. Exchange between rounds
 
 *Engine: `processExchangeChoice`, `getValidGivebackCards`, `exchangeIsSatisfiable`,
-`loserHasBothJokers`, `getStartingPlayerAfterExchange` (`lib/game/gameEngine.ts`); the bot's
+`loserHasBothJokers` (`lib/game/gameEngine.ts`); the bot's
 choice, `pickGivebackCard` (`lib/game/bot.ts`).*
 
 Performed **after every round**, on the **newly dealt hands** of the next round (not on the cards just played):

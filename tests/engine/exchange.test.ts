@@ -2,8 +2,8 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { card as c, joker as j, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
+  actingSeat,
   exchangeIsSatisfiable,
-  getStartingPlayerAfterExchange,
   getValidGivebackCards,
   givebackIsFallback,
   openingAfter,
@@ -236,7 +236,7 @@ describe("round-to-round exchange setup", () => {
       const phase = state.exchangePhase!;
       if (phase.twoJokerException) {
         assert.equal(phase.active, false, "no exchange happens on the two-joker exception");
-        assert.equal(getStartingPlayerAfterExchange(state), phase.winnerIdx);
+        assert.equal(actingSeat(state), phase.winnerIdx);
         continue;
       }
       assert.equal(phase.active, true);
@@ -252,7 +252,8 @@ describe("round-to-round exchange setup", () => {
         !state.players[3].hand.some((card) => card.id === given.id),
         "the loser gave it up"
       );
-      assert.equal(getStartingPlayerAfterExchange(state), phase.loserIdx);
+      const settled = givenBack(state, getValidGivebackCards(state.players[0].hand, given.id)[0].id);
+      assert.equal(actingSeat(settled), phase.loserIdx, "the loser leads once the winner gives back");
       assert.equal(
         state.players.reduce((n, p) => n + p.hand.length, 0),
         54,
@@ -300,7 +301,7 @@ describe("the two-joker exception, on a fixed deal", () => {
     assert.equal(phase.active, false);
     assert.equal("cardFromLoser" in phase, false, "no card moved, so none is recorded as given");
     assert.equal(state.currentTurnIndex, phase.winnerIdx);
-    assert.equal(getStartingPlayerAfterExchange(state), phase.winnerIdx);
+    assert.equal(actingSeat(state), phase.winnerIdx);
     assert.equal(state.startReason?.type, "won_no_exchange");
     assert.deepEqual(
       state.players.map((p) => ids(p.hand)),

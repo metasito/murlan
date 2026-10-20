@@ -886,7 +886,7 @@ function processPass(state: GameState): GameState {
   return newState;
 }
 
-export function getNextActivePlayer(state: GameState): number {
+function getNextActivePlayer(state: GameState): number {
   const total = state.players.length;
   let next = (state.currentTurnIndex - 1 + total) % total;
   let attempts = 0;
@@ -987,13 +987,6 @@ function loserHasBothJokers(hand: Card[]): boolean {
 function getBestCardFromHand(hand: Card[]): Card | undefined {
   if (hand.length === 0) return undefined;
   return [...hand].sort((a, b) => cardStrength(b) - cardStrength(a))[0];
-}
-
-export function getStartingPlayerAfterExchange(state: GameState): number {
-  if (!state.exchangePhase) return state.currentTurnIndex;
-  return state.exchangePhase.twoJokerException
-    ? state.exchangePhase.winnerIdx
-    : state.exchangePhase.loserIdx;
 }
 
 /**
