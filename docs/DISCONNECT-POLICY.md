@@ -49,7 +49,7 @@ One further row is adjacent and load-bearing:
 last-place finish that costs rating and streak; their seat can never be announced as the
 winner of a single round; and their vacated seat abstains from the rematch gate.
 
-**It decided none of these**, though they were often attributed to it (the adopted §6 clauses were later recorded in that table, so it now decides the grace, the takeover, scoring, reclaim and the vote):
+**It decided none of these**, though they were often attributed to it (the adopted §6 clauses were later recorded in that table, so it decides the grace, the takeover, scoring, reclaim and the vote):
 
 - how long the grace is, or what the table shows during it;
 - whether the bot takes the seat over at all, or under what name;
@@ -70,16 +70,16 @@ table from the first round.
 
 ## 2. What the code did on 2026-09-02
 
-The snapshot below is the pre-#850 code, kept as the baseline the options were argued against; the Vacate, After-takeover and Rejoin rows are updated to what the code does now, with the original in italics. The behaviour was an escalation ladder assembled from four independently-made choices.
+The snapshot below is the pre-#850 code, kept as the baseline the options were argued against; the Vacate, After-takeover and Rejoin rows are updated to the code as it stands, with the original in italics. The behaviour was an escalation ladder assembled from four independently-made choices.
 
 | Stage | Trigger | What happens | Where |
 |---|---|---|---|
 | Turn timer | 30 s on the acting seat (`MURLAN_AFK_TIMEOUT_MS`) | The seat is made to play the **minimum legal move** — a pass, or the lowest single when a trick cannot be passed. Never the bot: *"an AFK human should not be played well on their behalf."* | `afkTimeoutMs` (`server/game/gameTimers.ts`), `handleAutoPass` (`server/game/gameTurn.ts`), `autoMoveForSeat` (`lib/game/autoMove.ts`) |
 | Disconnect grace | socket lost mid-round, 60 s (`MURLAN_DISCONNECT_GRACE_MS`) | `game:player_disconnected` broadcasts one sentence naming the seconds; the round **continues**, the seat is still the player's, and the 30 s turn timer keeps auto-passing it. So roughly two forced minimum moves fit inside the grace. | `seatLostAction` (`server/game/tableHandlers.ts`) |
 | Between rounds | socket lost while `roundOver` | The shorter 20 s lobby grace, because the seat is counted in the rematch gate. | `lobbyGraceMs` (`server/game/gameTimers.ts`), `armLobbyGrace`/`handleSeatRelease` (`server/socket/socketTable.ts`) |
-| Vacate | grace expired **and** the cluster says the user is offline, or an explicit `room:leave` (no grace at all) | `playerMap[seat]` deleted, `players[seat].type = "bot"`, `releasedSeats.add(userId)`, the seat recorded in `abandonedSeats` if it still held cards. The **name on the seat never changes**. Announced as `game:seat_bot_takeover`. | `vacateSeat` (`server/game/gameTurn.ts`) |
+| Vacate | grace expired **and** the cluster says the user is offline, or an explicit `room:leave` (no grace at all) | `playerMap[seat]` deleted, `players[seat].type = "bot"`, `releasedSeats.add(userId)`, `vacatedSeats.set(seat, …)` (reclaimable for the match), and, if it still held cards, the seat recorded in `abandonedSeats` and added to `weakSeats`; a reclaim flips the type back to human. The **name on the seat never changes**. Announced as `game:seat_bot_takeover`. *On 2026-09-02 neither `vacatedSeats` nor `weakSeats` existed.* | `vacateSeat` (`server/game/gameTurn.ts`), `server/game/seatLedger.ts` |
 | After takeover | every turn | The takeover plays the rest of that round at minimum legal strength (`weakSeats`, cleared at the next deal), then as the real engine bot; paced at 1.2 s a move. *On 2026-09-02: the engine bot played properly at once.* | `runBotTurn` (`server/game/gameTurn.ts`) |
-| Rejoin | any later attempt | The same account may reclaim the seat for the life of the match; `SEAT_RELEASED` answers only for a finished or gone table (§6 clause 8). *On 2026-09-02: refused with `SEAT_RELEASED`, permanently.* | `REJOIN_FAILURE` (`server/socket/socketGameplay.ts`), `rejoinAction` (`server/game/tableHandlers.ts`) |
+| Rejoin | any later attempt | The same account may reclaim the seat for the life of the match; `SEAT_RELEASED` survives only for a restored row that kept `releasedSeats` but lost its `vacatedSeats` entry; a finished or gone table answers `GAME_NOT_FOUND` or `GAME_NO_LONGER_VALID` (§6 clause 8). *On 2026-09-02: refused with `SEAT_RELEASED`, permanently.* | `REJOIN_FAILURE` (`server/socket/socketGameplay.ts`), `rejoinAction` (`server/game/tableHandlers.ts`) |
 
 And at the round's end (`resolveRoundEnd`, `server/game/onlineGameLogic.ts`):
 
@@ -96,20 +96,20 @@ And at the round's end (`resolveRoundEnd`, `server/game/onlineGameLogic.ts`):
 Three consequences of that arrangement, as of 2026-09-02, were worth stating plainly, because two of them are
 almost certainly not what anyone chose:
 
-1. **The departed player's earlier points vanish from the screen.** They are still in
+1. **The departed player's earlier points vanished from the screen.** They were still in
    `game.cumulativeScores` under the userId key — `vacateSeat` never deletes them — but the
-   scoreboard row for that seat is built from `scoreKeyForSeat(playerMap, seat)`, which now
-   returns `bot:<seat>`, whose total is `0`. So a player who won three rounds and then
-   dropped shows **0** to everyone still at the table. This is the visible half of what #815
-   reported, and #815's fix did not address it.
+   scoreboard row for that seat was built from `scoreKeyForSeat(playerMap, seat)`, which
+   returned `bot:<seat>`, whose total was `0`. So a player who won three rounds and then
+   dropped showed **0** to everyone still at the table. This was the visible half of what #815
+   reported, and #815's fix did not address it. §6 clause 6 fixes it (§7 row E).
 2. **The score keys supported reclaiming a seat.** `seatLedger.ts` `reclaim` merges the `bot:<seat>`
    bucket's carried points into the returning player's own key before deleting it, so
    restoring `playerMap[seat]` restores the row, the name and the total together (#894). The
    only thing preventing a return, on 2026-09-02, was `releasedSeats`.
-3. **The client is told about a disconnect for ten seconds and never again.** One banner via
+3. **The client was told about a disconnect for ten seconds and never again.** One banner via
    `setReconnectNotice`, cleared on a timer (`context/OnlineGameContext.tsx`). No
-   seat carries any mark, so a player who looks up fifteen seconds later sees a table that
-   appears entirely normal, with a name playing badly in it.
+   seat carried any mark, so a player who looked up fifteen seconds later saw a table that
+   appeared entirely normal, with a name playing badly in it. §6 clauses 2 and 3 fix it (§7 rows A, B).
 
 ---
 
@@ -269,7 +269,7 @@ move only. Chess.com's scaling (10% of base time, floor 30 s, ceiling 3 min) is 
 idea in principle, but this game has no per-match clock to scale from, so a flat 60 s
 between a 30 s turn timer and a 20 s lobby grace is already the right order of magnitude.
 
-The change is what the table is told. Today: one 10-second banner. Recommended: **the seat
+The change is what the table is told. On 2026-09-02: one 10-second banner. Recommended: **the seat
 itself carries the state for as long as it lasts** — the avatar dimmed, a countdown, and the
 seat marked as reconnecting. The server already emits `seconds` in `params` and already has
 the `game:turn_deadline` precedent for a live countdown, so this is client work over an
@@ -304,9 +304,9 @@ untouched. So the buildable form of the label is:
 That is one server flag, one locale key in three files, and two render sites. Nothing has to
 reverse a `bot:<seat>` key back to a human.
 
-**On how well the bot plays it.** This is the one place the recommendation contradicts current
-behaviour on purpose. Today `handleAutoPass` uses `useBot: false` for a seat still held and
-`runBotTurn` uses `useBot: true` once it is vacated — so crossing the grace boundary *upgrades*
+**On how well the bot plays it.** This is the one place the recommendation contradicted the
+2026-09-02 behaviour on purpose. Then `handleAutoPass` used `useBot: false` for a seat still held and
+`runBotTurn` used `useBot: true` once it was vacated — so crossing the grace boundary *upgrades*
 the seat from a minimum-legal-move player to the full engine bot. Every well-regarded
 implementation in §3 does the opposite or refuses the seat entirely. **Recommend the takeover
 Bot stays weak** — the same minimum legal move — until the round in progress ends, and only
@@ -359,8 +359,8 @@ again.
 | Reclaimable by anyone | Fills seats | Identity theft of a scoreboard row. Never. |
 
 **Recommend: reclaimable, by the same account, into the same seat, for as long as the match
-is live.** `SEAT_RELEASED` stops being permanent and becomes the answer for a *finished or
-disposed* table only. This is the cheapest of the recommendations to build and the largest in
+is live.** `SEAT_RELEASED` stops being permanent; a *finished or
+disposed* table is answered by the no-live-game refusals instead (as built, `SEAT_RELEASED` survives only for a restored row that lost its `vacatedSeats` entry). This is the cheapest of the recommendations to build and the largest in
 player-facing effect: `seatLedger.ts` `reclaim` merges the `bot:<seat>` bucket into the userId key before
 restoring `playerMap[seat]`, so the row, the name and the total are restored together
 (§2, note 2; #894).
@@ -445,17 +445,19 @@ match with a departed seat — because a scoreboard that silently fails to add u
 7. **The standings always sum to the rounds played.** No explanatory footnote is needed, because
    there is no longer an anomaly to explain.
 8. **The seat is reclaimable by the same account for the life of the match.** `SEAT_RELEASED`
-   answers only for a table that is finished or gone.
+   survives only for a restored row that kept `releasedSeats` but lost its `vacatedSeats` entry; a finished or gone table answers `GAME_NOT_FOUND` or `GAME_NO_LONGER_VALID`.
 9. **The abandonment already recorded stands** — last place, rating, streak (Decisions table unchanged) —
    and returning does not undo it.
 10. **Once a seat has been vacated mid-match, any remaining player may call a unanimous vote to
     end the match**, penalty-free for everyone still present.
 11. **A match abandoned before a single point is scored is voided and rated for nobody.**
-    **If the last human leaves a running match,** the table cannot continue: with at least one
-    round already scored, the round in progress is conceded to the last seat still held by a
-    person (every seat still holding cards is placed behind it, the walkout last), scored and
-    rated as a normal round end, and the table is disposed. With no human left at all, the
-    remaining bots place among themselves and nothing is written. (`vacateSeat`,
+    **If a vacated seat leaves at most one human at the table,** the table cannot continue.
+    With no round yet scored it is voided as above. Otherwise the round in progress is
+    conceded (`concedeRound`) to the one remaining human, who takes first place; the other
+    seats still holding cards are placed behind them, fewest cards first, and the round end
+    then moves every abandoned seat to the very back, so the walkout finishes last. The round
+    is scored and rated as a normal round end and the table is disposed. If no human is left
+    at all, the bots place among themselves and nothing is written. (`vacateSeat`,
     `server/game/gameTurn.ts`; wording for the owner to confirm in review.)
 12. ~~Repetition escalates, on the record, as a matchmaking cooldown — never as a larger
     rating loss, and never on the first offence.~~ **Rejected, 2026-09-03 (#898): no cooldown.**
@@ -515,8 +517,7 @@ worked.
    `seatScoringOf`), and re-pin `tests/engine/scoring.test.ts` on the new rule. (D)
 5. **Show the points a departed player had already won** — the seat's row sums their frozen
    total and the bot's points since takeover. (E)
-6. **Let a player reclaim their seat for the life of the match** — `SEAT_RELEASED` answers only
-   for a finished or disposed table; announce the return as loudly as the departure. (F)
+6. **Let a player reclaim their seat for the life of the match** — `SEAT_RELEASED` survives only for a restored row that lost its `vacatedSeats` entry; announce the return as loudly as the departure. (F)
 7. **A unanimous vote to end a match a seat has been vacated from** — reusing the rematch gate's
    unanimity and abstention rules, penalty-free for everyone present. (G)
 8. **Void a match abandoned before its first point** — nothing earned, nothing taken, rated for
