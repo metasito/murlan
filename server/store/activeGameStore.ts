@@ -45,5 +45,11 @@ export const activeGameStore = {
 /** The table runtime's narrow room port; the type server-output's deps object will take. */
 export type TableRoomPort = Pick<
   typeof roomStore,
-  "getRoomById" | "getRoomPlayers" | "updateRoomStatus" | "releaseSeat" | "upsertRoomPlayer" | "closeForStart"
+  | "getRoomById"
+  | "getRoomPlayers"
+  | "updateRoomStatus"
+  | "releaseSeat"
+  | "restoreSeat"
+  | "upsertRoomPlayer"
+  | "closeForStart"
 >;

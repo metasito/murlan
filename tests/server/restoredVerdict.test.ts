@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Server as SocketServer } from "socket.io";
-import { handleRoundOver, type RoundOverWriters } from "../../server/game/roundOver.ts";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
+import { handleRoundOver } from "../../server/game/roundOver.ts";
 import { fromEnvelope, toEnvelope } from "../../server/game/tableState.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
@@ -9,15 +9,7 @@ import type { GameMode, GameState, MatchLength, Player } from "../../lib/game/ga
 
 const ROOM = "room_verdict";
 
-const io = { to: () => ({ emit: () => {} }) } as unknown as SocketServer;
-const writers = {
-  updateRoomStatus: async () => {},
-  persistGameState: async () => {},
-  recordGameResult: async () => {},
-  recordRatedResult: async () => new Map<string, number>(),
-  saveReplay: async () => {},
-  previewRatedDeltas: async () => new Map<string, number>(),
-} as unknown as RoundOverWriters;
+const { rt } = recordingRuntime();
 
 function seat(id: string, team: "A" | "B" | undefined, handSize: number): Player {
   return {
@@ -64,7 +56,7 @@ async function foldAndRestore(spec: {
     vacatedSeats: spec.vacatedSeats ?? new Map(),
     botSeatsAtStart: spec.botSeatsAtStart ?? new Set(),
   });
-  await handleRoundOver(io, ROOM, game, writers);
+  await handleRoundOver(rt, ROOM, game);
   clearRoomTimers(ROOM);
   const back = fromEnvelope({ roomId: ROOM, gameState: JSON.parse(JSON.stringify(toEnvelope(game))) });
   assert.ok(back.ok, back.ok ? "" : back.reason);

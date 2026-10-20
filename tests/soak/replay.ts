@@ -127,7 +127,7 @@ export async function replaySoakLog(
     if (!(await waitForFirstState(seats))) {
       throw new Error("the table never dealt, so there was nothing to replay onto");
     }
-    if (!redealExactly(server.io, roomId, deal.hands)) {
+    if (!redealExactly(server.rt, roomId, deal.hands)) {
       throw new Error(`no live game for room ${roomId} to deal into`);
     }
     await settle(seats);

@@ -1,5 +1,5 @@
 import { now } from "../http/clock.ts";
-import type { SocketServer } from "../socket/socketTypes.ts";
+import type { TableRuntime } from "./tableRuntime.ts";
 import { logger } from "../http/logger.ts";
 import { arm, clearRoomTimers, clearRoomDisconnectTimers, voteDeadlineMs } from "./gameTimers.ts";
 import { voteStateOf, type OnlineGameState } from "./gameRoom.ts";
@@ -16,8 +16,9 @@ import type { RatedPreview } from "./ratings.ts";
  * The database writes a finished round performs, taken as an argument rather
  * than imported: importing them would put storage, stats, ratings and replays
  * behind this module, and the point of splitting it out is that the function
- * deciding who won a match can be run against a hand-built game and a stub io.
- * server/game/gamePersistence.ts holds the production set.
+ * deciding who won a match can be run against a hand-built game and a
+ * recording runtime. server/game/gamePersistence.ts holds the production set;
+ * a table reaches it only as `rt.writers`.
  */
 export interface RoundOverWriters {
   updateRoomStatus: (
@@ -57,27 +58,13 @@ export interface RoundOverWriters {
   }) => Promise<void>;
 }
 
-type VoteDeadlineExpiry = (io: SocketServer, roomId: string) => Promise<void>;
-
-// Installed by `tableHandlers.ts`, whose vacate-and-deal sequence this module
-// cannot import without a cycle through `gameTurn.ts`.
-let expireVoteDeadline: VoteDeadlineExpiry = async () => {};
-
-export function setVoteDeadlineExpiry(fn: VoteDeadlineExpiry) {
-  expireVoteDeadline = fn;
-}
-
 /** docs/GAME-RULES.md § Decisions, "The next-round vote deadline". The next deal clears it. */
-export function armVoteDeadline(io: SocketServer, roomId: string) {
-  arm("voteDeadline", roomId, voteDeadlineMs(), () => void expireVoteDeadline(io, roomId));
+export function armVoteDeadline(rt: TableRuntime, roomId: string) {
+  arm("voteDeadline", roomId, voteDeadlineMs(), () => void rt.expireVoteDeadline(roomId));
 }
 
-export async function handleRoundOver(
-  io: SocketServer,
-  roomId: string,
-  game: OnlineGameState,
-  writers: RoundOverWriters
-) {
+export async function handleRoundOver(rt: TableRuntime, roomId: string, game: OnlineGameState) {
+  const { writers } = rt;
   // Cleared here, synchronously, before anything below can await: the caller
   // already flipped `state.roundOver` true in this same tick, so a rejoin
   // reading `game.lastRoundOverPayload` must never be able to observe that
@@ -110,7 +97,7 @@ export async function handleRoundOver(
 
   game.rematchVotes = new Set();
   // Before the awaits below, so no rejoin can read the vote without its deadline.
-  if (!game.matchOver) armVoteDeadline(io, roomId);
+  if (!game.matchOver) armVoteDeadline(rt, roomId);
 
   // One clock for the preview, the emit and the rated write below: two reads
   // of the clock can straddle a month boundary, and the season key is
@@ -153,8 +140,8 @@ export async function handleRoundOver(
     recorded: result.recordable,
     voided: false,
   };
-  io.to(roomId).emit("game:round_over", over);
-  if (!game.matchOver) io.to(roomId).emit("game:vote_state", voteStateOf(game));
+  rt.out.room(roomId).emit("game:round_over", over);
+  if (!game.matchOver) rt.out.room(roomId).emit("game:vote_state", voteStateOf(game));
   // Kept so `announceRejoin` can hand this round's scores to a client that
   // rejoins after everyone still in the room has already been sent them.
   game.lastRoundOverPayload = over;
@@ -265,12 +252,12 @@ export async function handleRoundOver(
  * the game screen the one way they know how, rather than being torn down.
  */
 async function closeMatchWithoutScoring(
-  io: SocketServer,
+  rt: TableRuntime,
   roomId: string,
   game: OnlineGameState,
-  writers: RoundOverWriters,
   voided: boolean
 ): Promise<void> {
+  const { writers } = rt;
   game.lastRoundOverPayload = undefined;
   clearRoomTimers(roomId);
   clearRoomDisconnectTimers(game);
@@ -292,7 +279,7 @@ async function closeMatchWithoutScoring(
     recorded: false,
     voided,
   };
-  io.to(roomId).emit("game:round_over", over);
+  rt.out.room(roomId).emit("game:round_over", over);
   game.lastRoundOverPayload = over;
 
   await writers
@@ -312,13 +299,8 @@ async function closeMatchWithoutScoring(
  * out. The caller disposes the table; there is nobody left to show a
  * results screen to.
  */
-export async function voidAbandonedMatch(
-  io: SocketServer,
-  roomId: string,
-  game: OnlineGameState,
-  writers: RoundOverWriters
-): Promise<void> {
-  await closeMatchWithoutScoring(io, roomId, game, writers, true);
+export async function voidAbandonedMatch(rt: TableRuntime, roomId: string, game: OnlineGameState): Promise<void> {
+  await closeMatchWithoutScoring(rt, roomId, game, true);
 }
 
 /**
@@ -328,14 +310,9 @@ export async function voidAbandonedMatch(
  * if any, goes unscored. The table is left in place, at the results screen,
  * rather than disposed: the players who agreed to stop are still here.
  */
-export async function endMatchByAgreement(
-  io: SocketServer,
-  roomId: string,
-  game: OnlineGameState,
-  writers: RoundOverWriters
-): Promise<void> {
+export async function endMatchByAgreement(rt: TableRuntime, roomId: string, game: OnlineGameState): Promise<void> {
   game.endedByVote = true;
-  await closeMatchWithoutScoring(io, roomId, game, writers, false);
+  await closeMatchWithoutScoring(rt, roomId, game, false);
 }
 
 /** Between rounds: a finished match starts over, an unfinished one carries on. */

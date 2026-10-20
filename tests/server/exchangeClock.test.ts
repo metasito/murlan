@@ -3,9 +3,9 @@
 // reads it, from the same `now()` the turn clock runs on.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { broadcastGameState, sanitizeStateForPlayer } from "../../server/game/gamePersistence.ts";
+import { publishState, sanitizeStateForPlayer } from "../../server/game/gamePersistence.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
-import type { SocketServer } from "../../server/socket/socketTypes.ts";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { exchangeAnnounceMs } from "../../lib/timeline/exchangeTimeline.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 import { installClock } from "../../server/http/clock.ts";
@@ -44,25 +44,15 @@ function justClosedExchange(): OnlineGameState {
   } as unknown as OnlineGameState;
 }
 
-function recordingIo(sent: Map<string, unknown>): SocketServer {
-  return {
-    to: (room: string) => ({
-      timeout: () => ({
-        emit: (_event: string, state: unknown) => sent.set(room, state),
-      }),
-    }),
-  } as unknown as SocketServer;
-}
-
 describe("the exchange ceremony runs on the server clock", () => {
   test("advancing the clock past the ceremony ends it for the table, and the loser keeps the card", (t) => {
     const clock = fakeClock();
     t.after(installClock(clock));
     const game = justClosedExchange();
-    const sent = new Map<string, unknown>();
+    const { rt, events } = recordingRuntime();
 
-    broadcastGameState(recordingIo(sent), game);
-    const during = [...sent.values()][BYSTANDER] as { exchangePhase?: { cardToLoser?: unknown } };
+    void publishState(rt, game);
+    const during = events("game:state")[BYSTANDER] as { exchangePhase?: { cardToLoser?: unknown } };
     assert.deepEqual(during.exchangePhase?.cardToLoser, RETURNED, "inside the window the table is shown the card");
 
     clock.advance(exchangeAnnounceMs(false) + 1);

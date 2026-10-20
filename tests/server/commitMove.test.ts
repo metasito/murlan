@@ -1,9 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { SocketServer } from "../../server/socket/socketTypes.ts";
+import { recordingRuntime, type JournalEntry } from "../helpers/recordingRuntime.ts";
+import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { commitMove } from "../../server/game/gameTurn.ts";
-import { roundOverWriters } from "../../server/game/gamePersistence.ts";
-import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { startReplayLog } from "../../server/game/replayShape.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
 import { botMoveDelayMs, clearRoomTimers, pending } from "../../server/game/gameTimers.ts";
@@ -19,7 +18,6 @@ import {
 import { exchangeAnnounceMs } from "../../lib/timeline/exchangeTimeline.ts";
 
 const ROOM = "commit-move-room";
-const io = { to: () => ({ emit: () => {} }) } as unknown as SocketServer;
 const SEATS = [0, 1, 2, 3].map((i) => ({ name: `B${i}`, type: "bot" as const, id: `player_${i}` }));
 
 function table(gameState: GameState): OnlineGameState {
@@ -57,18 +55,21 @@ function opened(): GameState {
   return processPlay(state, check.combo);
 }
 
+/** Rows that landed in the store, not writes asked for. */
+const rowsWritten = (journal: JournalEntry[]) => journal.filter((e) => e.kind === "store" && e.name === "write").length;
+
 const writesSettle = () => new Promise((resolve) => setImmediate(resolve));
 
 /** Persists, logs `logged` replay moves, and leaves the next seat waiting exactly `delayMs`. */
 async function assertCommitted(
   t: { mock: { timers: { tick(ms: number): void } } },
   game: OnlineGameState,
-  writes: { mock: { callCount(): number } },
+  persists: () => number,
   logged: number,
   delayMs: number
 ) {
   await writesSettle();
-  assert.equal(writes.mock.callCount(), 1, "the move was not persisted once");
+  assert.equal(persists(), 1, "the move was not persisted once");
   assert.equal(game.moveLog?.length, logged, "the replay log holds the wrong number of moves");
   assert.ok(pending("bot", ROOM), "the next seat was not armed");
   const after = structuredClone(game.gameState);
@@ -77,13 +78,15 @@ async function assertCommitted(
   t.mock.timers.tick(1);
   assert.notDeepEqual(game.gameState, after, "the armed bot never moved");
   await writesSettle();
-  assert.equal(writes.mock.callCount(), 2, "the bot's move was not persisted once");
+  assert.equal(persists(), 2, "the bot's move was not persisted once");
   assert.equal(game.moveLog?.length, logged + 1, "the bot's move was not logged exactly once");
 }
 
 for (const kind of ["play", "pass"] as const) {
   test(`a ${kind} is logged once, persisted and re-armed at the ordinary bot delay`, async (t) => {
-    const writes = t.mock.method(activeGameStore, "write", async () => {});
+    useMemoryTableStores(t);
+    const { rt, journal } = recordingRuntime({ persist: "real" });
+    const persists = () => rowsWritten(journal);
     t.mock.timers.enable({ apis: ["setTimeout"] });
     try {
       if (kind === "play") {
@@ -92,14 +95,14 @@ for (const kind of ["play", "pass"] as const) {
         const check = checkPlay(fresh, seat, [fresh.startCard!.id]);
         assert.ok(check.ok);
         const game = table(fresh);
-        const over = commitMove(io, game, processPlay(fresh, check.combo), { seat, combo: check.combo });
+        const over = commitMove(rt, game, processPlay(fresh, check.combo), { seat, combo: check.combo });
         assert.equal(over, undefined, "a play that leaves the round open hands nothing to round over");
-        await assertCommitted(t, game, writes, 1, botMoveDelayMs());
+        await assertCommitted(t, game, persists, 1, botMoveDelayMs());
       } else {
         const state = opened();
         const game = table(state);
-        commitMove(io, game, processPass(state), { seat: state.currentTurnIndex, combo: null });
-        await assertCommitted(t, game, writes, 1, botMoveDelayMs());
+        commitMove(rt, game, processPass(state), { seat: state.currentTurnIndex, combo: null });
+        await assertCommitted(t, game, persists, 1, botMoveDelayMs());
       }
     } finally {
       clearRoomTimers(ROOM);
@@ -109,11 +112,8 @@ for (const kind of ["play", "pass"] as const) {
 }
 
 test("a play that ends the round is logged, persisted, and handed to round over instead of arming a seat", async (t) => {
-  const writes = t.mock.method(activeGameStore, "write", async () => {});
-  for (const key of ["updateRoomStatus", "recordGameResult", "recordRatedResult", "saveReplay"] as const) {
-    t.mock.method(roundOverWriters, key, async () => {});
-  }
-  t.mock.method(roundOverWriters, "previewRatedDeltas", async () => null);
+  useMemoryTableStores(t);
+  const { rt, journal } = recordingRuntime({ persist: "real" });
   try {
     const dealt = startRound(SEATS.slice(0, 2), "free_for_all");
     const seat = dealt.currentTurnIndex;
@@ -124,12 +124,12 @@ test("a play that ends the round is logged, persisted, and handed to round over 
     const next = processPlay(state, check.combo);
     assert.equal(next.roundOver, true, "emptying the last hand of two ends the round");
     const game = table(state);
-    const over = commitMove(io, game, next, { seat, combo: check.combo });
+    const over = commitMove(rt, game, next, { seat, combo: check.combo });
     assert.ok(over instanceof Promise, "the round-over handoff was not returned");
     assert.equal(pending("bot", ROOM), false, "a seat was armed on a finished round");
     await over;
     await writesSettle();
-    assert.ok(writes.mock.callCount() >= 1, "the final move was never persisted");
+    assert.ok(rowsWritten(journal) >= 1, "the final move was never persisted");
     assert.equal(game.moveLog?.length, 1, "the final move was not logged once");
   } finally {
     clearRoomTimers(ROOM);
@@ -138,7 +138,9 @@ test("a play that ends the round is logged, persisted, and handed to round over 
 });
 
 test("an exchange logs no replay move, persists, and holds the next seat for the ceremony", async (t) => {
-  const writes = t.mock.method(activeGameStore, "write", async () => {});
+  useMemoryTableStores(t);
+  const { rt, journal } = recordingRuntime({ persist: "real" });
+  const persists = () => rowsWritten(journal);
   t.mock.timers.enable({ apis: ["setTimeout"] });
   try {
     const deck = createDeck();
@@ -151,8 +153,8 @@ test("an exchange logs no replay move, persists, and holds the next seat for the
     assert.equal(phase.active, true);
     const game = table(state);
     const give = state.players[phase.winnerIdx].hand.find((c) => c.id !== phase.cardFromLoser?.id)!;
-    commitMove(io, game, processExchangeChoice(state, give.id), null);
-    await assertCommitted(t, game, writes, 0, Math.max(botMoveDelayMs(), exchangeAnnounceMs(phase.twoJokerException === true)));
+    commitMove(rt, game, processExchangeChoice(state, give.id), null);
+    await assertCommitted(t, game, persists, 0, Math.max(botMoveDelayMs(), exchangeAnnounceMs(phase.twoJokerException === true)));
   } finally {
     clearRoomTimers(ROOM);
     activeGames.delete(ROOM);

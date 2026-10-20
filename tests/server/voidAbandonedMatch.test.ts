@@ -5,9 +5,8 @@
 // normally rather than wiped.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Server as SocketServer } from "socket.io";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { vacateSeat } from "../../server/game/gameTurn.ts";
-import { roundOverWriters } from "../../server/game/gamePersistence.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
@@ -23,17 +22,6 @@ function player(id: string, name: string, hand: Player["hand"] = []): Player {
 
 function baseGame(overrides: Partial<OnlineGameState>): OnlineGameState {
   return onlineTable({ roomId: ROOM, ...overrides });
-}
-
-function stubIo() {
-  const emitted: { event: string; payload: unknown }[] = [];
-  const io = {
-    to: () => ({
-      emit: (event: string, payload: unknown) => emitted.push({ event, payload }),
-      timeout: () => ({ emit: (event: string, payload: unknown) => emitted.push({ event, payload }) }),
-    }),
-  } as unknown as SocketServer;
-  return { io, emitted };
 }
 
 function midRoundTwoSeats(): GameState {
@@ -53,7 +41,7 @@ function midRoundTwoSeats(): GameState {
 
 describe("a match abandoned with no round yet decided is voided, not scored (#850 clause 6)", () => {
   test("the sole remaining seat leaving a still-0-round match voids it: no finishingOrder, no winners", async () => {
-    const { io, emitted } = stubIo();
+    const { rt, events } = recordingRuntime();
     const game = baseGame({
       gameState: midRoundTwoSeats(),
       playerMap: { 0: "alice", 1: "bob" },
@@ -62,9 +50,9 @@ describe("a match abandoned with no round yet decided is voided, not scored (#85
     activeGames.set(ROOM, game);
 
     try {
-      await vacateSeat(io, ROOM, "bob", roundOverWriters);
+      await vacateSeat(rt, ROOM, "bob");
 
-      const over = emitted.find((e) => e.event === "game:round_over")?.payload as
+      const over = events("game:round_over")[0] as
         | RoundOverPayload
         | undefined;
       assert.ok(over, "a voided match still tells the table it is over");
@@ -81,7 +69,7 @@ describe("a match abandoned with no round yet decided is voided, not scored (#85
   });
 
   test("the same walkout after a round has been decided is scored normally, not voided", async () => {
-    const { io, emitted } = stubIo();
+    const { rt, events } = recordingRuntime();
     const game = baseGame({
       gameState: midRoundTwoSeats(),
       playerMap: { 0: "alice", 1: "bob" },
@@ -91,9 +79,9 @@ describe("a match abandoned with no round yet decided is voided, not scored (#85
     activeGames.set(ROOM, game);
 
     try {
-      await vacateSeat(io, ROOM, "bob", roundOverWriters);
+      await vacateSeat(rt, ROOM, "bob");
 
-      const over = emitted.find((e) => e.event === "game:round_over")?.payload as
+      const over = events("game:round_over")[0] as
         | RoundOverPayload
         | undefined;
       assert.ok(over, "the concede-and-score path still ends the match");

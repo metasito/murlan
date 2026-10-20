@@ -13,6 +13,8 @@ import path from "node:path";
 import { ownershipKey } from "../../server/game/gameOwnership.ts";
 import { TAKEOVER } from "../../server/game/tableActions.ts";
 import type { TableActionKind } from "../../server/game/tableActions.ts";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
+import { onlineTable } from "../helpers/onlineTable.ts";
 
 const SERVER_DIR = path.resolve(import.meta.dirname, "..", "..", "server");
 
@@ -74,26 +76,23 @@ describe("a forwarded action is applied once, however often it is sent", () => {
   // adapter's acknowledgement window, and `CLAUDE.md` is explicit that a card
   // appears exactly once — a replayed `game:pass` takes a turn twice. #544 asks
   // for the de-duplication in the same change as the retry, not after it.
+  // A reaction is the action whose every application is visible: one send each.
   async function responder() {
-    const { TABLE_ACTION_EVENT, registerTableRouting, setTableHandlers } = await import(
-      "../../server/game/tableRouter.ts"
-    );
-    const counter = { applied: 0 };
-    setTableHandlers(
-      async () => {
-        counter.applied += 1;
-        return { ok: true };
-      },
-      async () => "missing"
-    );
-
+    const { TABLE_ACTION_EVENT } = await import("../../server/game/tableRouter.ts");
     let receive: ((action: unknown, reply: (r: unknown) => void) => void) | undefined;
-    registerTableRouting({
-      on: (event: string, fn: typeof receive) => {
-        if (event === TABLE_ACTION_EVENT) receive = fn;
+    const { sent } = recordingRuntime({
+      transport: {
+        on: (event: string, fn: typeof receive) => {
+          if (event === TABLE_ACTION_EVENT) receive = fn;
+        },
       },
-    } as never);
+    });
     assert.ok(receive, "the router registered no listener for forwarded actions");
+    const counter = {
+      get applied() {
+        return sent.filter((e) => e.event === "game:reaction").length;
+      },
+    };
     return { receive, counter };
   }
 
@@ -102,12 +101,14 @@ describe("a forwarded action is applied once, however often it is sent", () => {
     const { receive, counter } = await responder();
 
     const roomId = `dedupe-${ids.join("-")}`;
-    // The responder only asks whether this process holds the room.
-    activeGames.set(roomId, {} as never);
+    activeGames.set(
+      roomId,
+      onlineTable({ roomId, playerMap: { 0: "u" }, gameState: { players: [{ name: "U" }] } as never })
+    );
     try {
       for (const id of ids) {
         await new Promise((resolve) =>
-          receive({ id, kind: "pass", roomId, userId: "u", username: "u" }, resolve)
+          receive({ id, kind: "reaction", emoji: "👍", roomId, userId: "u" }, resolve)
         );
       }
     } finally {
@@ -119,7 +120,7 @@ describe("a forwarded action is applied once, however often it is sent", () => {
   test("an instance that does not hold the room disowns it and applies nothing", async () => {
     const { receive, counter } = await responder();
     const reply = await new Promise((resolve) =>
-      receive({ id: "stray", kind: "pass", roomId: "held-elsewhere", userId: "u", username: "u" }, resolve)
+      receive({ id: "stray", kind: "reaction", emoji: "👍", roomId: "held-elsewhere", userId: "u" }, resolve)
     );
     assert.deepEqual(reply, { ok: false, code: "NOT_THIS_INSTANCE" });
     assert.equal(counter.applied, 0);
@@ -138,12 +139,11 @@ describe("an action kind the owner does not know", () => {
   const future = (roomId: string) => ({ kind: "future", roomId, userId: "u", username: "u" }) as never;
 
   test("is refused with a code by an owner that holds the room", async () => {
-    const { installTableHandlers, applyOrForward } = await import("../../server/game/tableHandlers.ts");
+    const { applyOrForward } = await import("../../server/game/tableRouter.ts");
     const { activeGames } = await import("../../server/game/gameRoom.ts");
-    installTableHandlers({ on: () => {} } as never);
     activeGames.set("future-owned", {} as never);
     try {
-      assert.deepEqual(await applyOrForward({} as never, future("future-owned")), {
+      assert.deepEqual(await applyOrForward(recordingRuntime().rt, future("future-owned")), {
         ok: false,
         code: "UNKNOWN_ACTION",
       });
@@ -154,11 +154,13 @@ describe("an action kind the owner does not know", () => {
 
   test("is a refusal, not a missing owner, when an older owner answers with nothing", async () => {
     const { applyOrForward } = await import("../../server/game/tableRouter.ts");
-    const io = {
-      serverSideEmit: (_e: string, _a: unknown, ack: (err: unknown, replies: unknown[]) => void) =>
-        ack(null, [{ ok: false, code: "NOT_THIS_INSTANCE" }, undefined]),
-    };
-    assert.deepEqual(await applyOrForward(io as never, future("future-elsewhere")), {
+    const { rt } = recordingRuntime({
+      transport: {
+        serverSideEmit: (_e: string, _a: unknown, ack: (err: unknown, replies: unknown[]) => void) =>
+          ack(null, [{ ok: false, code: "NOT_THIS_INSTANCE" }, undefined]),
+      },
+    });
+    assert.deepEqual(await applyOrForward(rt, future("future-elsewhere")), {
       ok: false,
       code: "UNKNOWN_ACTION",
     });

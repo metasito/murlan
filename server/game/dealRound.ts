@@ -1,9 +1,8 @@
-import type { SocketServer } from "../socket/socketTypes.ts";
-import { roomStore } from "../store/roomStore.ts";
+import type { TableRuntime } from "./tableRuntime.ts";
 import { logger } from "../http/logger.ts";
 import { rollMatchForward } from "./roundOver.ts";
 import { emitMatchState } from "../socket/emit.ts";
-import { broadcastGameState, persistGameState } from "./gamePersistence.ts";
+import { publishState } from "./gamePersistence.ts";
 import { armTurn } from "./gameTurn.ts";
 import { startReplayLog } from "./replayShape.ts";
 import { clearForDeal } from "./seatLedger.ts";
@@ -18,11 +17,7 @@ import type { GameState } from "../../lib/game/gameEngine.ts";
  * `game` must already be in `activeGames`: armTurn and the persistence writers
  * look it up by room id.
  */
-export async function dealRound(
-  io: SocketServer,
-  game: OnlineGameState,
-  nextState: GameState
-) {
+export async function dealRound(rt: TableRuntime, game: OnlineGameState, nextState: GameState) {
   game.gameState = nextState;
   // A new round: last round's flags would record the same bombs, jokers and
   // departures again in every remaining round.
@@ -39,16 +34,14 @@ export async function dealRound(
 
   // Not awaited: a join already requires `waiting`, so nothing here depends on
   // the row, and a stalled pool must not hold the deal's broadcast.
-  void roomStore
+  void rt.writers
     .updateRoomStatus(game.roomId, "in_progress")
     .catch((err: unknown) =>
       logger.warn({ err, roomId: game.roomId }, "Failed to set rooms.status = in_progress at the deal")
     );
 
-  broadcastGameState(io, game);
-  io.to(game.roomId).emit("game:started");
-  emitMatchState(io, game.roomId, game);
-
-  persistGameState(game.roomId, game);
-  armTurn(io, game.roomId);
+  void publishState(rt, game);
+  rt.out.room(game.roomId).emit("game:started");
+  emitMatchState(rt.out.room(game.roomId), game);
+  armTurn(rt, game.roomId);
 }

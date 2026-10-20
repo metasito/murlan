@@ -96,7 +96,7 @@ describe("a table outlives losing its owner", { skip: hasDatabase() ? false : sk
     after(() => { userStore.updateLastSeen = updateLastSeen; });
 
     const told = waitFor<{ userId: string }>(host.socket, "game:player_disconnected", 15_000);
-    await shutdown("SIGTERM", { io: local.io, server: local.httpServer, exit: () => {} });
+    await shutdown("SIGTERM", { io: local.io, server: local.httpServer, tables: local.rt, exit: () => {} });
     assert.equal((await told).userId, guest.user.id);
     const seat = await observer.query(
       "SELECT 1 FROM room_players WHERE room_id = $1 AND user_id = $2",

@@ -7,7 +7,7 @@
 // granted once, on the opener's own first turn, and nowhere else.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Server as SocketServer } from "socket.io";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 
 import { armTurn, armTurnIfIdle } from "../../server/game/gameTurn.ts";
 import {
@@ -31,8 +31,7 @@ const ROOM = "opening-grace-room";
 const OPENER = "opening-grace-opener";
 const OTHER = "opening-grace-other";
 
-/** A stub io that records nothing — armTurn's emits are not under test here. */
-const io = { to: () => ({ emit: () => {} }) } as unknown as SocketServer;
+const { rt } = recordingRuntime();
 
 function player(id: string, name: string): Player {
   return { id, name, hand: [], type: "human" };
@@ -76,7 +75,7 @@ describe("the opener's first-turn AFK grace (#830)", () => {
     restoreClock = installClock(clock);
     const game = seat(freshRound(), { 0: OPENER, 1: OTHER });
     try {
-      armTurn(io, ROOM);
+      armTurn(rt, ROOM);
       assert.equal(
         game.turnDeadlineMs! - clock.now(),
         afkTimeoutMs() + Reading.notice,
@@ -89,7 +88,7 @@ describe("the opener's first-turn AFK grace (#830)", () => {
       game.gameState.playedRanks![0] = 1;
 
       clock.advance(1_000);
-      armTurn(io, ROOM);
+      armTurn(rt, ROOM);
       assert.equal(
         game.turnDeadlineMs! - clock.now(),
         afkTimeoutMs(),
@@ -104,7 +103,7 @@ describe("the opener's first-turn AFK grace (#830)", () => {
     // No entry for seat 0: the opener's seat is vacant.
     const game = seat(freshRound(), { 1: OTHER });
     try {
-      armTurn(io, ROOM);
+      armTurn(rt, ROOM);
       assert.equal(
         game.turnDeadlineMs,
         undefined,
@@ -121,7 +120,7 @@ describe("the opener's first-turn AFK grace (#830)", () => {
     restoreClock = installClock(clock);
     const game = seat(freshRound(), { 0: OPENER, 1: OTHER });
     try {
-      armTurn(io, ROOM);
+      armTurn(rt, ROOM);
       const granted = game.turnDeadlineMs;
       assert.equal(typeof granted, "number");
 
@@ -131,7 +130,7 @@ describe("the opener's first-turn AFK grace (#830)", () => {
 
       // Simulates the opener's own client reconnecting while its AFK timer is
       // still pending — the path `game:rejoin` takes.
-      armTurnIfIdle(io, ROOM);
+      armTurnIfIdle(rt, ROOM);
       assert.equal(
         game.turnDeadlineMs,
         granted,
@@ -153,7 +152,7 @@ describe("the opener's first-turn AFK grace (#830)", () => {
     restoreClock = installClock(clock);
     const game = seat(freshRound(), { 0: OPENER, 1: OTHER });
     try {
-      armTurn(io, ROOM);
+      armTurn(rt, ROOM);
       // The expiry auto-passes against this stub table, which has nothing to pass.
       game.gameState.roundOver = true;
 

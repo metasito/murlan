@@ -3,6 +3,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import {
   GAME_SCHEMA_VERSION,
   packPersistedState,
@@ -152,9 +153,9 @@ describe("rows the restore path refuses", () => {
       ],
     });
 
-    assert.equal(await rehydrateGame(newer, null, {} as never), "newer");
+    assert.equal(await rehydrateGame(recordingRuntime().rt, newer, null), "newer");
     assert.ok(rows.has(newer), "a newer revision's live row was deleted");
-    assert.equal(await rehydrateGame(older, null, {} as never), "unrestorable");
+    assert.equal(await rehydrateGame(recordingRuntime().rt, older, null), "unrestorable");
     assert.ok(!rows.has(older), "the older row was not deleted, so the check above proves nothing");
   });
 

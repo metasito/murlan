@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { Client } from "pg";
 import type { Server as HttpServer } from "node:http";
 import type { Pool } from "pg";
-import type { SocketServer } from "../../server/socket/socketTypes.ts";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { shutdown } from "../../server/http/shutdown.ts";
 
 test("a pool that drained but never finishes closing still lets the shutdown exit 0", { timeout: 5_000 }, async (t) => {
@@ -19,7 +19,8 @@ test("a pool that drained but never finishes closing still lets the shutdown exi
   } as unknown as Pool;
   const exits: number[] = [];
   await shutdown("SIGTERM", {
-    io: { close: async () => {} } as unknown as SocketServer,
+    io: { close: async () => {} },
+    tables: recordingRuntime().rt,
     server: { listening: false } as unknown as HttpServer,
     pool,
     exit: (code) => exits.push(code),

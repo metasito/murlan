@@ -279,8 +279,8 @@ describe(
       }
 
       await settled(clients);
-      // Quiet sockets are not a persisted table. `persistGameState` is
-      // fire-and-forget beside `broadcastGameState`, so a client can be holding
+      // Quiet sockets are not a persisted table. `publishState` persists
+      // fire-and-forget after it serves, so a client can be holding
       // a round the `active_games` row does not carry yet — and the replacement
       // rehydrates from that row alone. Killing before it lands fails this test
       // for a race in the test rather than anything about a restart.

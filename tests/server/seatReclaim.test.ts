@@ -1,13 +1,12 @@
 // #850 clause 7: the seat is reclaimable by the same account for the life of
 // the match. Routed through the real `applyOrForward` -> `applyTableAction`
-// -> `rejoinAction` path (installTableHandlers wires the router to the real
-// handler), rather than calling a private function directly, so the DoD's own
+// -> `rejoinAction` path, rather than calling a private function directly, so the DoD's own
 // four things — the rejoin path, both announcements, and the AFK-rearm guard
 // — are each proved against the actual wiring, not a stand-in for it.
-import { test, describe, before } from "node:test";
+import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Server as SocketServer } from "socket.io";
-import { installTableHandlers, applyOrForward } from "../../server/game/tableHandlers.ts";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
+import { applyOrForward } from "../../server/game/tableRouter.ts";
 import { armTurn } from "../../server/game/gameTurn.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
@@ -48,24 +47,13 @@ function midRound(): GameState {
 }
 
 function stubIo() {
-  const emitted: { event: string; payload: unknown }[] = [];
-  const target = {
-    emit: (event: string, payload: unknown) => emitted.push({ event, payload }),
-    timeout: () => ({ emit: (event: string, payload: unknown) => emitted.push({ event, payload }) }),
-  };
-  const io = { to: () => target, on: () => {} } as unknown as SocketServer;
-  return { io, emitted };
+  const { rt, sent } = recordingRuntime();
+  return { rt, emitted: sent };
 }
-
-// The router only routes to the real handler once wired — exactly what a
-// live server does once, at boot, via setupSocket.
-before(() => {
-  installTableHandlers({ on: () => {} } as unknown as SocketServer);
-});
 
 describe("a vacated seat is reclaimable by the account that left it (#850 clause 7)", () => {
   test("reclaim restores the seat, and both the departure and the return are announced", async () => {
-    const { io, emitted } = stubIo();
+    const { rt, emitted } = stubIo();
     const game = baseGame({
       gameState: midRound(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" }, // seat 1 already vacated
@@ -75,7 +63,7 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
     activeGames.set(ROOM, game);
 
     try {
-      const outcome = await applyOrForward(io, {
+      const outcome = await applyOrForward(rt, {
         kind: "rejoin",
         roomId: ROOM,
         userId: "drita",
@@ -97,7 +85,7 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
   });
 
   test("SEAT_RELEASED still answers once the seat itself is not reclaimable", async () => {
-    const { io } = stubIo();
+    const { rt } = stubIo();
     const game = baseGame({
       gameState: midRound(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
@@ -107,7 +95,7 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
     activeGames.set(ROOM, game);
 
     try {
-      const outcome = await applyOrForward(io, {
+      const outcome = await applyOrForward(rt, {
         kind: "rejoin",
         roomId: ROOM,
         userId: "drita",
@@ -119,7 +107,7 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
   });
 
   test("a stranger who never sat here is unauthorized, not seat-released", async () => {
-    const { io } = stubIo();
+    const { rt } = stubIo();
     const game = baseGame({
       gameState: midRound(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
@@ -127,7 +115,7 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
     activeGames.set(ROOM, game);
 
     try {
-      const outcome = await applyOrForward(io, {
+      const outcome = await applyOrForward(rt, {
         kind: "rejoin",
         roomId: ROOM,
         userId: "ghost",
@@ -139,7 +127,7 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
   });
 
   test("a reclaim ahead of a pending bot timer re-arms instead of playing the reclaimed seat's turn", async () => {
-    const { io } = stubIo();
+    const { rt } = stubIo();
     const state = midRound();
     state.currentTurnIndex = 1; // the vacated seat's own turn is up next
     const game = baseGame({
@@ -153,11 +141,11 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
     try {
       // A short, explicit delay stands in for botMoveDelayMs() so the test
       // does not wait out the real 1.2 s default.
-      armTurn(io, ROOM, 5);
+      armTurn(rt, ROOM, 5);
       assert.ok(!game.turnDeadlineMs, "a vacant acting seat carries no human AFK clock yet");
 
       // The reclaim lands while that timer is still pending.
-      await applyOrForward(io, {
+      await applyOrForward(rt, {
         kind: "rejoin",
         roomId: ROOM,
         userId: "drita",
@@ -205,7 +193,7 @@ function finishedRound(finishingOrder: string[]): GameState {
 
 describe("a reclaim merges the vacated seat's carried points into the returning player's own key (#894)", () => {
   test("cumulativeScores, both readers, and endMatchVotes all agree after the reclaim", async () => {
-    const { io, emitted } = stubIo();
+    const { rt, emitted } = stubIo();
     const game = baseGame({
       gameState: midRound(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" }, // seat 1 vacated
@@ -240,7 +228,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
       );
       assert.equal(game.cumulativeScores["bot:1"], 3);
 
-      const outcome = await applyOrForward(io, {
+      const outcome = await applyOrForward(rt, {
         kind: "rejoin",
         roomId: ROOM,
         userId: "drita",
@@ -275,7 +263,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
   });
 
   test("the carried points can be the difference in crossing the match target (finding 2: foldRound)", async () => {
-    const { io } = stubIo();
+    const { rt } = stubIo();
     const game = baseGame({
       gameState: midRound(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" }, // seat 1 vacated
@@ -306,7 +294,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
       game.roundsPlayed += 1;
       assert.equal(first.matchOver, false, "8 and 3 apart do not yet reach 12 either way");
 
-      await applyOrForward(io, { kind: "rejoin", roomId: ROOM, userId: "drita" });
+      await applyOrForward(rt, { kind: "rejoin", roomId: ROOM, userId: "drita" });
       assert.equal(game.cumulativeScores.drita, 11, "the reclaim already merged the carried 3 points");
 
       // Round 2, seat 1 now drita's own again: she finishes first a second

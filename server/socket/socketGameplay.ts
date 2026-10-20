@@ -14,7 +14,6 @@
 import type { HandlerContext } from "./socketTypes.ts";
 import { onEvent, type EventContext } from "./socketSafety.ts";
 import { socketRoomMap } from "../game/gameRoom.ts";
-import { applyOrForward } from "../game/tableRouter.ts";
 import type { TableActionDraft } from "../game/tableActions.ts";
 import type { Outcome } from "../shared/refusal.ts";
 import { seatSocket } from "./seating.ts";
@@ -62,7 +61,7 @@ type DraftBody = TableActionDraft extends infer T
     : never
   : never;
 
-export function registerGameplayHandlers({ io, socket, userId }: HandlerContext) {
+export function registerGameplayHandlers({ rt, socket, userId }: HandlerContext) {
 
     const rejoinFailed = (code: string, roomId: unknown) => {
       const failure = isRejoinCode(code) ? REJOIN_FAILURE[code] : REJOIN_FAILURE.SERVER_ERROR;
@@ -75,7 +74,7 @@ export function registerGameplayHandlers({ io, socket, userId }: HandlerContext)
       async (p: P, { intentId }: EventContext): Promise<Outcome> => {
         const roomId = socketRoomMap.get(socket.id);
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { ...toDraft(p), roomId, userId, intentId });
+        return rt.route({ ...toDraft(p), roomId, userId, intentId });
       };
 
     onEvent(socket, "game:play", GamePlaySchema, atTable(({ cardIds }) => ({ kind: "play", cardIds })), { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 });
@@ -91,11 +90,11 @@ export function registerGameplayHandlers({ io, socket, userId }: HandlerContext)
       "game:rejoin",
       GameRejoinSchema,
       async ({ roomId }) => {
-        const outcome = await applyOrForward(io, { kind: "rejoin", roomId, userId });
+        const outcome = await rt.route({ kind: "rejoin", roomId, userId });
         if (!outcome.ok) return outcome;
         // Only once the table has accepted them: a socket joined to a room it
         // holds no seat at would receive every broadcast for that table.
-        await seatSocket(io, socket, userId, roomId);
+        await seatSocket(rt, socket, userId, roomId);
         return outcome;
       },
       {

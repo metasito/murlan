@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { Client } from "pg";
 import type { Server as HttpServer } from "node:http";
 import type { Pool } from "pg";
-import type { SocketServer } from "../../server/socket/socketTypes.ts";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { shutdown } from "../../server/http/shutdown.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
 import { arm, pending } from "../../server/game/gameTimers.ts";
@@ -36,7 +36,8 @@ test("a shutdown stops every table before the drain, and drops the locks only af
   } as unknown as Pool;
   const exits: number[] = [];
   await shutdown("SIGTERM", {
-    io: { close: async () => {} } as unknown as SocketServer,
+    io: { close: async () => {} },
+    tables: recordingRuntime().rt,
     server: { listening: false } as unknown as HttpServer,
     pool,
     exit: (code) => exits.push(code),

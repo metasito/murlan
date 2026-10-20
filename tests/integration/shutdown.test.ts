@@ -74,6 +74,7 @@ describe("graceful shutdown", { skip: hasDatabase() ? false : skipMessage() }, (
     await shutdown("SIGTERM", {
       io: server.io,
       server: server.httpServer,
+      tables: server.rt,
       exit: (code) => exitCodes.push(code),
     });
     await disconnected;
@@ -106,6 +107,7 @@ describe("graceful shutdown", { skip: hasDatabase() ? false : skipMessage() }, (
     await shutdown("SIGINT", {
       io: server.io,
       server: server.httpServer,
+      tables: server.rt,
       exit: (code) => exitCodes.push(code),
     });
     assert.deepEqual(exitCodes, [0], "re-entering shutdown must do nothing");

@@ -10,6 +10,7 @@
 import { now } from "../http/clock.ts";
 import type { DisconnectReason } from "socket.io";
 import type { HandlerContext, SocketServer, GameSocket as Socket } from "./socketTypes.ts";
+import type { TableRuntime } from "../game/tableRuntime.ts";
 import { friendStore } from "../store/friendStore.ts";
 import { roomStore } from "../store/roomStore.ts";
 import { userStore } from "../store/userStore.ts";
@@ -28,7 +29,6 @@ import { seatOfUser } from "../game/onlineGameLogic.ts";
 import { clearDisconnectGrace } from "../game/gameTimers.ts";
 import { announceRejoin, armLobbyGrace } from "./socketTable.ts";
 import { seatSocket, stopSpectating } from "./seating.ts";
-import { applyOrForward } from "../game/tableRouter.ts";
 import { NoPayloadSchema, FriendInviteSchema } from "../../shared/socketSchemas.ts";
 import { isUserOnline, onlineUserIds } from "./socketRegistry.ts";
 import { payload } from "../shared/payload.ts";
@@ -78,14 +78,14 @@ export function registerFriendHandlers({ socket, userId }: HandlerContext) {
  * Deliberately after every listener is registered — these awaits are exactly
  * the window in which a packet arriving with no listener would be dropped.
  */
-export async function announcePresence({ io, socket, userId }: HandlerContext) {
+export async function announcePresence({ rt, socket, userId }: HandlerContext) {
 
     if (clearDisconnectGrace(userId)) {
       for (const [roomId, game] of activeGames.entries()) {
         if (seatOfUser(game.playerMap, userId) === null || game.gameState.roundOver) continue;
-        await seatSocket(io, socket, userId, roomId);
+        await seatSocket(rt, socket, userId, roomId);
         try {
-          await announceRejoin(io, userId, roomId, game);
+          await announceRejoin(rt, userId, roomId, game);
           logger.info(
             { userId, roomId },
             "Player reconnected within grace period"
@@ -132,7 +132,7 @@ export async function settleDisconnects(timeoutMs: number): Promise<void> {
   clearTimeout(timer);
 }
 
-export function registerDisconnect({ io, socket, userId }: HandlerContext) {
+export function registerDisconnect({ rt, socket, userId }: HandlerContext) {
 
     socket.on("disconnect", (reason: DisconnectReason) => {
       trackEvent("socket.closed", userId, { reason });
@@ -140,7 +140,7 @@ export function registerDisconnect({ io, socket, userId }: HandlerContext) {
         try {
           // A spectator holds no seat, so none of the grace/AFK machinery below
           // applies to them; they are simply dropped.
-          await stopSpectating(io, socket, userId);
+          await stopSpectating(rt, socket, userId);
           // Only blank the mapping if it still points at THIS socket: a second
           // tab or a fast reconnect would otherwise black out the live one.
           if (userSocketMap.get(userId) === socket.id) {
@@ -192,7 +192,7 @@ export function registerDisconnect({ io, socket, userId }: HandlerContext) {
             (await roomStore.getRoomById(currentRoomId))?.status === "waiting";
           const seat = lobby
             ? { ok: false, code: "NO_LIVE_GAME" }
-            : await applyOrForward(io, {
+            : await rt.route({
                 kind: "seatLost",
                 roomId: currentRoomId,
                 userId,
@@ -207,7 +207,7 @@ export function registerDisconnect({ io, socket, userId }: HandlerContext) {
           // seat is still theirs: releasing it on the disconnect itself made a
           // two-second hiccup cost a player their place in a room they were
           // waiting in.
-          await armLobbyGrace(io, currentRoomId, userId);
+          await armLobbyGrace(rt, currentRoomId, userId);
         } catch (err) {
           logger.error({ err, userId }, "disconnect handler failed");
         }
@@ -282,6 +282,7 @@ export function registerSessionEviction(io: SocketServer) {
  */
 export function evictReplacedSession(
   io: SocketServer,
+  rt: TableRuntime,
   userId: string,
   replacedSocketId: string,
   replacement: Socket
@@ -292,7 +293,7 @@ export function evictReplacedSession(
   const roomId = socketRoomMap.get(replacedSocketId);
   if (roomId) {
     socketRoomMap.delete(replacedSocketId);
-    void seatSocket(io, replacement, userId, roomId);
+    void seatSocket(rt, replacement, userId, roomId);
   }
 
   replaced.emit("socket:error", payload("SESSION_REPLACED"));

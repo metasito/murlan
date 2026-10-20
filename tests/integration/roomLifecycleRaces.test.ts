@@ -308,7 +308,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     await Promise.all(dealt);
 
     const { activeGames } = await import("../../server/game/gameRoom.ts");
-    const { persistGameState } = await import("../../server/game/gamePersistence.ts");
+    const { persistGameState } = server.rt.writers;
     const { activeGameStore } = await import("../../server/store/activeGameStore.ts");
     const game = activeGames.get(room.roomId)!;
     const real = activeGameStore.write;

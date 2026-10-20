@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { arm, pending, seatKey, TIMER_KINDS, type TimerKind } from "../../server/game/gameTimers.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { disposeGame } from "../../server/game/gamePersistence.ts";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 
 const ROOM = "dispose-timers-room";
@@ -48,7 +49,7 @@ describe("disposing a room", () => {
     );
 
     // `false`: the row is a database write, and what is under test is memory.
-    disposeGame(ROOM, false);
+    disposeGame(recordingRuntime().rt, ROOM, false);
 
     assert.deepEqual(
       TIMER_KINDS.filter((kind) => pending(kind, KEY_OF[kind])),
