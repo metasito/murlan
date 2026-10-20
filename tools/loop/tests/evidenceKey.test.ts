@@ -44,4 +44,10 @@ test("the default key sits in per-user state, never in the checkout", () => {
   assert.equal(defaultKeyFile({ XDG_STATE_HOME: "/s" }, "linux", "/home/u"), path.join("/s", "murlan-loop", "evidence.key"));
 });
 
+test("a test run that resolves the real key path fails instead of creating a key there", () => {
+  assert.ok(process.env.NODE_TEST_CONTEXT, "this runs under node --test");
+  assert.throws(() => evidenceKey({}), /resolved the real evidence key path/);
+  assert.ok(process.env.LOOP_EVIDENCE_KEY_FILE?.includes("murlan-test-evidence"), "the harness points the key at a temp directory");
+});
+
 test("cleanup", () => rmSync(dir, { recursive: true, force: true }));

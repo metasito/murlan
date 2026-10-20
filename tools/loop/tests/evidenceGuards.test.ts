@@ -23,7 +23,7 @@ const repo = {
   top: () => scratch,
   cwd: () => scratch,
   onTicket: () => false,
-  read: (file: string): string => readFileSync(path.join(scratch, file), "utf8"),
+  read: (file: string): string => readFileSync(path.resolve(scratch, file), "utf8"),
 };
 const loop = (cmd: string) => check(cmd, repo, true);
 
@@ -219,6 +219,8 @@ describe("the merge block, beyond a script file", () => {
     `cat ${target} | bash`,
     `bash < ${target}`,
     `bash -s < ${target}`,
+    `cd sub && bash ../${target}`,
+    `cd ${scratch} && bash ${target}`,
     "echo 'gh pr merge 5 --auto' | sh",
     "printf 'gh pr merge 5' | bash -s",
     "echo 'gh pr merge 5' > made.sh && bash made.sh",

@@ -1,5 +1,7 @@
 // Every `node --test … --test-force-exit` in the repo runs as `node scripts/nodeTest.mjs …`, so these
 // flags have one owner (tests/tooling/testHangs.test.ts fails a call site that skips it).
+import { tmpdir } from "node:os";
+import { hermeticEvidenceKey } from "../tools/loop/session-env.mjs";
 import { isInvokedDirectly } from "./lib/entry.mjs";
 import { relay } from "./lib/proc.mjs";
 
@@ -10,4 +12,7 @@ import { relay } from "./lib/proc.mjs";
  */
 export const NO_BACKGROUND_JIT = ["--no-concurrent-recompilation", "--no-concurrent-sparkplug"];
 
-if (isInvokedDirectly(process.argv[1], import.meta.url)) relay(process.execPath, [...NO_BACKGROUND_JIT, ...process.argv.slice(2)]);
+if (isInvokedDirectly(process.argv[1], import.meta.url)) {
+  hermeticEvidenceKey(process.env, tmpdir());
+  relay(process.execPath, [...NO_BACKGROUND_JIT, ...process.argv.slice(2)]);
+}

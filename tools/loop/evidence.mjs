@@ -29,7 +29,9 @@ const keys = new Map();
 /** @param {Record<string, string | undefined>} [env] @returns {Buffer} */
 export function evidenceKey(env = process.env) {
   if (fromEnv(env).loop) throw new Error("a loop session has no evidence key");
-  const file = supervisorConfig(env).evidenceKeyFile ?? defaultKeyFile(env);
+  const configured = supervisorConfig(env).evidenceKeyFile;
+  const file = configured ?? defaultKeyFile(env);
+  if (!configured && process.env.NODE_TEST_CONTEXT) throw new Error(`a test run resolved the real evidence key path (${file}); run it through scripts/nodeTest.mjs`);
   const known = keys.get(file);
   if (known) return known;
   const read = () => {

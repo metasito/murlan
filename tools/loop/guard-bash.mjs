@@ -14,7 +14,7 @@
  * Exit 0 allows. Exit 2 blocks and returns the message on stderr to the agent.
  */
 import { readFileSync } from "node:fs";
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { apiMethod, fetchesThread, untrustedRead } from "./brief.mjs";
 import { firstLine, git } from "./cli.mjs";
@@ -395,19 +395,27 @@ function runsMergingScript(parsed, raw, repo) {
   const spells = (text) => MERGE_TEXT.some((re) => re.test(text));
   const piped = parsed.some(readsProgram);
   if (piped && spells(raw)) return true;
-  return parsed.some((c) =>
-    [...scriptsOf(c), ...(piped ? c.args.filter((a) => !a.startsWith("-")) : [])].some((script) => {
+  // A `cd` earlier on the line moves where a relative script is found.
+  let moved = "";
+  return parsed.some((c) => {
+    if (MOVES.test(c.cmd)) {
+      const to = c.args.find((a) => !a.startsWith("-"));
+      if (to) moved = isAbsolute(toNative(to)) ? toNative(to) : join(moved, toNative(to));
+      return false;
+    }
+    return [...scriptsOf(c), ...(piped ? c.args.filter((a) => !a.startsWith("-")) : [])].some((script) => {
       let text;
       try {
-        text = (repo.read ?? ((file, dir) => readFileSync(resolve(repo.cwd(dir), file), "utf8")))(toNative(script), c.dir);
+        const file = isAbsolute(toNative(script)) ? toNative(script) : join(moved, toNative(script));
+        text = (repo.read ?? ((f, dir) => readFileSync(resolve(repo.cwd(dir), f), "utf8")))(file, c.dir);
       } catch (err) {
         if (!NOT_A_FILE.has(err?.code)) return true;
         const bare = (w) => w.replace(/^\.[\\/]/, "");
         return parsed.some((o) => o !== c && (o.redirected.some((w) => bare(w) === bare(script)) || o.args.some((w) => bare(w) === bare(script))));
       }
       return spells(text);
-    }),
-  );
+    });
+  });
 }
 
 const READERS = /^(cat|head|tail|grep|egrep|fgrep|rg|less|more|wc|jq|ls|stat|file|diff|cmp|nl|tac|get-content|gc|type|select-string|sls|test-path)$/;

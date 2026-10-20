@@ -549,3 +549,17 @@ Verified intended, not stale:
   them on `push` or wiring them into `ci.yml`.
 - `MURLAN_PREFLIGHT_WAIT_MS` defaults to waiting rather than failing fast, on purpose; `--no-wait`/
   `=0` is the opt-out, not the default.
+
+## The loop's evidence key
+
+The supervisor signs the loop's evidence (ledger rows, stream lines, report entries) with a key kept
+outside the repo: `LOOP_EVIDENCE_KEY_FILE` for the supervisor, else `%LOCALAPPDATA%\murlan-loop\evidence.key`
+on Windows or `$XDG_STATE_HOME`/`~/.local/state/murlan-loop/evidence.key`. A session is never handed it,
+and `guard-write.mjs` and `guard-bash.mjs` refuse a loop session's Read, Grep, Glob and shell commands
+that name it. Tests run it from a temp path (`scripts/nodeTest.mjs`, `clearLoopEnv.mjs`) and fail if one
+resolves the real path.
+
+Known limits, none of which the guards can close: a process running as the same OS user can read the
+file, so stronger isolation means running the supervisor as a separate OS user (or an ACL-protected
+`LOOP_EVIDENCE_KEY_FILE`); and a guard reads one command line, so a script built by a program, or
+reached through a `cd` the line does not spell, is not seen.
