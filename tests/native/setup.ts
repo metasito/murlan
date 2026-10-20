@@ -122,6 +122,18 @@ jest.mock('expo/fetch', () => ({
     (globalThis.fetch as (...a: unknown[]) => unknown)(...args),
 }));
 
+// The network's two edges, faked where the app meets them so every module above runs for real.
+jest.mock('socket.io-client', () => require('./mocks/socketIo').socketIoModule());
+Object.defineProperty(globalThis, 'fetch', {
+  configurable: true,
+  writable: true,
+  value: (...args: Parameters<typeof import('./mocks/http').fakeFetch>) => require('./mocks/http').fakeFetch(...args),
+});
+beforeEach(() => {
+  require('./mocks/http').resetHttp();
+  (globalThis as { __fakeSockets?: import('./mocks/socketIo').FakeSocket[] }).__fakeSockets?.forEach((s) => s.reset());
+});
+
 /**
  * Whatever a test left on screen is checked against Fabric's integer props
  * (tests/native/fabricIntProps.ts), so a fraction that would throw while the

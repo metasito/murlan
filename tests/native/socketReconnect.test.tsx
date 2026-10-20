@@ -13,28 +13,7 @@ import { Text } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, act } from '@testing-library/react-native';
 
-type Listener = (...args: unknown[]) => void;
-
-const mockSocket = {
-  connected: false,
-  active: true,
-  listeners: new Map<string, Listener>(),
-  on(event: string, fn: Listener) {
-    this.listeners.set(event, fn);
-  },
-  off() {},
-  emit() {},
-  connect: jest.fn(),
-  disconnect: jest.fn(),
-  io: { reconnection: jest.fn() },
-};
-
-jest.mock('@/lib/socket', () => ({
-  connectSocket: () => mockSocket,
-  disconnectSocket: () => {},
-  peekSocket: (userId?: string | null) => (userId ? mockSocket : null),
-  subscribeToSockets: () => () => {},
-}));
+import { lastSocket } from './mocks/socketIo';
 
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
@@ -56,7 +35,7 @@ const mount = () =>
 
 const fireConnectError = async () => {
   await act(async () => {
-    mockSocket.listeners.get('connect_error')?.(new Error('rejected'));
+    lastSocket().serverEmit('connect_error', new Error('rejected'));
   });
 };
 
@@ -71,10 +50,6 @@ describe('connect_error', () => {
     jest.useFakeTimers();
     setTimeoutSpy = jest.spyOn(globalThis, 'setTimeout');
     jest.spyOn(Math, 'random').mockReturnValue(0.123);
-    mockSocket.connected = false;
-    mockSocket.active = true;
-    mockSocket.listeners.clear();
-    mockSocket.connect.mockClear();
   });
 
   afterEach(() => {
@@ -87,7 +62,7 @@ describe('connect_error', () => {
 
   it('schedules no retry while socket.io is still reconnecting', async () => {
     const view = await mount();
-    mockSocket.active = true;
+    lastSocket().active = true;
 
     await fireConnectError();
     expect(scheduledRetries()).toBe(0);
@@ -95,7 +70,7 @@ describe('connect_error', () => {
     await act(async () => {
       jest.advanceTimersByTime(60_000);
     });
-    expect(mockSocket.connect).not.toHaveBeenCalled();
+    expect(lastSocket().connect).not.toHaveBeenCalled();
 
     await act(async () => {
       view.unmount();
@@ -104,7 +79,7 @@ describe('connect_error', () => {
 
   it('retries itself once socket.io has given up', async () => {
     const view = await mount();
-    mockSocket.active = false;
+    lastSocket().active = false;
 
     await fireConnectError();
     expect(scheduledRetries()).toBe(1);
@@ -112,7 +87,7 @@ describe('connect_error', () => {
     await act(async () => {
       jest.advanceTimersByTime(60_000);
     });
-    expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+    expect(lastSocket().connect).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       view.unmount();
