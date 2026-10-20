@@ -74,14 +74,17 @@ export function connectSocket(userId: string, { onAuthFailure }: { onAuthFailure
     return existing.socket;
   }
   const handlers = { onAuthFailure };
+  let latestAttempt = 0;
   const baseUrl = getApiUrl().replace(/\/$/, "");
   const socket = io(baseUrl, {
     // Called before every connection attempt, including each reconnect, so a
     // fresh ticket is minted every time (tickets are single-use).
     auth: (cb: (data: Record<string, unknown>) => void) => {
-      void fetchSocketTicket(() => handlers.onAuthFailure()).then((ticket) =>
-        cb(ticket ? { ticket, protocolVersion: PROTOCOL_VERSION } : { protocolVersion: PROTOCOL_VERSION })
-      );
+      const attempt = ++latestAttempt;
+      void fetchSocketTicket(() => handlers.onAuthFailure()).then((ticket) => {
+        if (attempt !== latestAttempt) return;
+        cb(ticket ? { ticket, protocolVersion: PROTOCOL_VERSION } : { protocolVersion: PROTOCOL_VERSION });
+      });
     },
     withCredentials: true,
     // Websocket only, matching the server. An HTTP long-polling handshake is
