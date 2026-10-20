@@ -4,6 +4,7 @@ import { Inter_600SemiBold } from "@expo-google-fonts/inter/600SemiBold";
 import { Rajdhani_500Medium } from "@expo-google-fonts/rajdhani/500Medium";
 import { Rajdhani_600SemiBold } from "@expo-google-fonts/rajdhani/600SemiBold";
 import { Rajdhani_700Bold } from "@expo-google-fonts/rajdhani/700Bold";
+import type { FontSource } from "expo-font";
 
 /**
  * The faces `useFonts` loads, on the platforms that load fonts through it.
@@ -15,7 +16,7 @@ import { Rajdhani_700Bold } from "@expo-google-fonts/rajdhani/700Bold";
  * Web resolves lib/device/fonts.web.ts instead, which imports none of these — the
  * TTFs are 2.1 MB and the browser gets WOFF2 subsets through @font-face.
  */
-export const APP_FONTS = {
+export const APP_FONTS: Record<string, FontSource> = {
   Rajdhani_500Medium,
   Rajdhani_600SemiBold,
   Rajdhani_700Bold,

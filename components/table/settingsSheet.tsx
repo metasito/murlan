@@ -17,6 +17,7 @@ import { SwitchVisual } from "@/components/SwitchVisual";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { useSettings } from "@/context/SettingsContext";
+import { hapticsAvailable } from "@/lib/platform";
 import { a11yDialog, a11yHidden, a11yState, useA11yHint, useFocusTrap } from "@/lib/a11y";
 
 const SHEET_TESTID = "settings-sheet";
@@ -302,7 +303,7 @@ export function GameSettingsSheet({
                 onToggle={() => setMusicEnabled(!musicEnabled)}
                 scale={scale}
               />
-              {Platform.OS !== "web" && (
+              {hapticsAvailable && (
                 <SheetRow
                   label={t("settings.haptics")}
                   icon="smartphone"
