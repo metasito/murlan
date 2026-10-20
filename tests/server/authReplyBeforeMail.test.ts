@@ -8,38 +8,21 @@
 // #897 checklist item 5).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
 import ts from "typescript";
+import { routeCalls, routeSources } from "../helpers/routeSources.ts";
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const ROUTES_FILE = path.join(REPO_ROOT, "server", "http", "routes.ts");
-const source = readFileSync(ROUTES_FILE, "utf8");
-const sourceFile = ts.createSourceFile(ROUTES_FILE, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+const areaFiles = routeSources().map((s) => s.sourceFile);
 
-/** The handler function passed to `app.<verb>(routeLiteral, ...)` in server/http/routes.ts. */
-function routeHandler(routeLiteral: string, file: ts.SourceFile): ts.Node {
-  let handler: ts.Node | undefined;
-  const visit = (node: ts.Node) => {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      ts.isIdentifier(node.expression.expression) &&
-      node.expression.expression.text === "app"
-    ) {
-      const [routePath] = node.arguments;
-      if (routePath && ts.isStringLiteral(routePath) && routePath.text === routeLiteral) {
-        const last = node.arguments[node.arguments.length - 1];
-        if (last && (ts.isArrowFunction(last) || ts.isFunctionExpression(last))) handler = last;
-      }
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(file);
-  if (!handler) throw new Error(`no app.<verb>("${routeLiteral}", ...) mounting found`);
+/** The handler function mounted under `route` in any of `files`. */
+function routeHandler(route: string, files: ts.SourceFile[]): ts.Node {
+  const handler = files.flatMap(routeCalls).find((c) => c.route === route)?.handler;
+  if (!handler) throw new Error(`no on(app, "${route}", ...) mounting found`);
   return handler;
 }
+
+const synthetic = (source: string) => [
+  ts.createSourceFile("synthetic.ts", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS),
+];
 
 /** Every call `callee(...)` reachable inside `node`, by the callee's own shape. */
 function callsMatching(node: ts.Node, isTarget: (callee: ts.Expression) => boolean): ts.CallExpression[] {
@@ -132,7 +115,7 @@ function replyPrecedes(mail: ts.CallExpression, root: ts.Node): boolean {
       for (let i = 0; i <= ownIndex; i++) {
         if (
           callsMatchingSamePath(statements[i], isResJson).some(
-            (c) => c.getStart(sourceFile) < mail.getStart(sourceFile)
+            (c) => c.getStart() < mail.getStart()
           )
         ) {
           return true;
@@ -145,7 +128,7 @@ function replyPrecedes(mail: ts.CallExpression, root: ts.Node): boolean {
 }
 
 function assertReplyBeforeMail(routeLiteral: string, mailCallNames: Set<string>) {
-  const handler = routeHandler(routeLiteral, sourceFile);
+  const handler = routeHandler(routeLiteral, areaFiles);
   const replies = callsMatching(handler, isResJson);
   const mailCalls = callsMatching(handler, isCallNamed(mailCallNames));
 
@@ -158,7 +141,7 @@ function assertReplyBeforeMail(routeLiteral: string, mailCallNames: Set<string>)
   for (const mail of mailCalls) {
     assert.ok(
       replyPrecedes(mail, handler),
-      `${routeLiteral}: a mail-reaching call at offset ${mail.getStart(sourceFile)} has no reply before it ` +
+      `${routeLiteral}: a mail-reaching call at offset ${mail.getStart()} has no reply before it ` +
         `on its own path — the response must go out before any token mint or send`
     );
   }
@@ -167,27 +150,26 @@ function assertReplyBeforeMail(routeLiteral: string, mailCallNames: Set<string>)
 describe("a reply goes out before any token mint or mail send on its own path (#897)", () => {
   test("request-password-reset", () => {
     assertReplyBeforeMail(
-      "/api/auth/request-password-reset",
+      "POST /api/auth/request-password-reset",
       new Set(["mintAuthToken", "sendPasswordResetEmail"])
     );
   });
 
   test("register", () => {
     assertReplyBeforeMail(
-      "/api/auth/register",
+      "POST /api/auth/register",
       new Set(["replaceEmailVerifyCode", "sendVerificationEmail"])
     );
   });
 
   test("proved red by swapping the lines back", () => {
     const reversed = `
-      app.post("/api/x", async (req, res) => {
+      on(app, "POST /api/x", async (req, res) => {
         const token = await mintAuthToken(user.id, "email_verify", TTL);
         res.json({ ok: true });
       });
     `;
-    const synthetic = ts.createSourceFile("synthetic.ts", reversed, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-    const handler = routeHandler("/api/x", synthetic);
+    const handler = routeHandler("POST /api/x", synthetic(reversed));
     const [mail] = callsMatching(handler, isCallNamed(new Set(["mintAuthToken"])));
     assert.ok(mail, "fixture setup: expected a mintAuthToken call");
     assert.equal(
@@ -203,7 +185,7 @@ describe("a reply goes out before any token mint or mail send on its own path (#
     // refusal's reply sits earlier in the file than the success path's, but
     // that must not let the success path skip having its own.
     const broken = `
-      app.post("/api/x", async (req, res) => {
+      on(app, "POST /api/x", async (req, res) => {
         if (taken) {
           res.json({ ok: true });
           return;
@@ -212,8 +194,7 @@ describe("a reply goes out before any token mint or mail send on its own path (#
         res.json({ ok: true });
       });
     `;
-    const synthetic = ts.createSourceFile("synthetic.ts", broken, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-    const handler = routeHandler("/api/x", synthetic);
+    const handler = routeHandler("POST /api/x", synthetic(broken));
     const [mail] = callsMatching(handler, isCallNamed(new Set(["mintAuthToken"])));
     assert.ok(mail);
     assert.equal(replyPrecedes(mail, handler), false, "the success branch's own reply must still be required");
@@ -224,13 +205,12 @@ describe("a reply goes out before any token mint or mail send on its own path (#
     // reply that only fires on `taken` must not be read as covering the
     // mail call below it, which runs unconditionally.
     const broken = `
-      app.post("/api/x", async (req, res) => {
+      on(app, "POST /api/x", async (req, res) => {
         if (taken) res.json({ ok: true });
         const token = await mintAuthToken(user.id, "email_verify", TTL);
       });
     `;
-    const synthetic = ts.createSourceFile("synthetic.ts", broken, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-    const handler = routeHandler("/api/x", synthetic);
+    const handler = routeHandler("POST /api/x", synthetic(broken));
     const [mail] = callsMatching(handler, isCallNamed(new Set(["mintAuthToken"])));
     assert.ok(mail);
     assert.equal(replyPrecedes(mail, handler), false, "a conditional reply must not excuse an unconditional mail call");
