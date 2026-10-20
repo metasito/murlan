@@ -5,7 +5,7 @@ import {
   castRematchVote,
   clearRematchVotes,
   closeMatch,
-  foldRound,
+  applyRoundFold,
   rollForward,
   withdrawRematchVote,
 } from "../../server/game/matchLedger.ts";
@@ -20,7 +20,7 @@ describe("match ledger", () => {
     castRematchVote(game, "u-alice");
     const votes = game.rematchVotes;
 
-    foldRound(game, { cumulativeScores: { "u-alice": 9, "bot:1": 3 }, matchTarget: 31, matchOver: true });
+    applyRoundFold(game, { cumulativeScores: { "u-alice": 9, "bot:1": 3 }, matchTarget: 31, matchOver: true });
 
     assert.deepEqual(game.cumulativeScores, { "u-alice": 9, "bot:1": 3 });
     assert.equal(game.matchTarget, 31);

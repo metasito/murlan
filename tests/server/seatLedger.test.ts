@@ -7,7 +7,7 @@ import {
   castEndMatchVote,
 } from "../../server/game/seatLedger.ts";
 import { seatTotal } from "../../server/game/onlineGameLogic.ts";
-import { foldRound } from "../../server/game/matchLedger.ts";
+import { applyRoundFold } from "../../server/game/matchLedger.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
@@ -72,7 +72,7 @@ describe("seat ledger", () => {
     const game = table();
     vacate(game, 1, { midHand: true });
     // The bot plays on and scores under the seat's bot key.
-    foldRound(game, { cumulativeScores: { ...game.cumulativeScores, "bot:1": 5 }, matchTarget: 21, matchOver: false });
+    applyRoundFold(game, { cumulativeScores: { ...game.cumulativeScores, "bot:1": 5 }, matchTarget: 21, matchOver: false });
     assert.equal(seatTotal(game.cumulativeScores, game.playerMap, game.vacatedSeats, 1), 12);
     castEndMatchVote(game, "u-alice", true);
 

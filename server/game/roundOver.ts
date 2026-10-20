@@ -4,7 +4,7 @@ import { logger } from "../shared/logger.ts";
 import { arm, clearRoomTimers, clearRoomDisconnectTimers, voteDeadlineMs } from "./gameTimers.ts";
 import { voteStateOf, type OnlineGameState } from "./gameRoom.ts";
 import { resolveRoundEnd, seatTotal } from "./onlineGameLogic.ts";
-import { closeMatch, foldRound, rollForward } from "./matchLedger.ts";
+import { closeMatch, applyRoundFold, rollForward } from "./matchLedger.ts";
 import { replaySeatsOf } from "./replayShape.ts";
 import { firstTargetFor } from "../../lib/game/gameEngine.ts";
 import type { RoundOverPayload } from "../../lib/game/matchState.ts";
@@ -91,7 +91,7 @@ export async function handleRoundOver(rt: TableRuntime, roomId: string, game: On
     vacatedSeats: game.vacatedSeats,
   });
   const { roundByKey, matchWinners, isDraw, detailed, winnerEngineIds } = result;
-  foldRound(game, result);
+  applyRoundFold(game, result);
   // Before the awaits below, so no rejoin can read the vote without its deadline.
   if (!game.matchOver) armVoteDeadline(rt, roomId);
 

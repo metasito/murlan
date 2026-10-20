@@ -32,8 +32,7 @@ export function clearRematchVotes(game: OnlineGameState): void {
   match(game).rematchVotes.clear();
 }
 
-/** A decided round's totals and verdict become the match's, and its ready gate opens empty. */
-export function foldRound(
+export function applyRoundFold(
   game: OnlineGameState,
   result: Pick<ResolveRoundEndResult, "cumulativeScores" | "matchTarget" | "matchOver">
 ): void {
@@ -51,7 +50,6 @@ export function closeMatch(game: OnlineGameState, { endedByVote }: { endedByVote
   fields.matchOver = true;
 }
 
-/** A finished match starts over from nothing, at the table size's first target. */
 export function rollForward(game: OnlineGameState, firstTarget: number): void {
   const fields = match(game);
   fields.cumulativeScores = {};
@@ -60,7 +58,6 @@ export function rollForward(game: OnlineGameState, firstTarget: number): void {
   fields.matchOver = false;
 }
 
-/** Moves the points scored under `fromKey` onto `toUserId`'s own total. */
 export function carrySeatScore(game: OnlineGameState, fromKey: string, toUserId: string): void {
   const scores = match(game).cumulativeScores;
   const carried = scores[fromKey] ?? 0;

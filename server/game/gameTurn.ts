@@ -124,7 +124,7 @@ export function armTurnIfIdle(rt: TableRuntime, roomId: string) {
   armTurn(rt, roomId);
 }
 
-/** The round this process holds that `userId` is seated in and still playing, if any. */
+/** This process's tables only: a round another instance holds is not found. */
 export function heldRoundFor(userId: string): { roomId: string; game: OnlineGameState } | null {
   for (const [roomId, game] of activeGames) {
     if (seatOfUser(game.playerMap, userId) !== null && !game.gameState.roundOver) return { roomId, game };
