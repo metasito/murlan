@@ -98,7 +98,7 @@ export function WhoStartsPanel({
 
   return (
     <>
-      <A11yStatus label={whoStartsWords(t, who).spoken} role="alert" live="assertive" veiled={veiled && !gated} />
+      <A11yStatus testID="who-starts-status" label={whoStartsWords(t, who).spoken} role="alert" live="assertive" veiled={veiled && !gated} />
       {gated && (
         <Pressable
           testID="start-reason-gate"

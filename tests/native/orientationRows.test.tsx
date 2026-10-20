@@ -5,7 +5,14 @@ import type { DiagRow } from '@/lib/diagnostics';
 const mockRows: DiagRow[] = [];
 jest.mock('@/lib/diagnostics/recorder', () => ({ recorder: { push: (row: DiagRow) => mockRows.push(row) } }));
 const mockSnapshot = jest.fn(async (): Promise<Record<string, unknown>> => ({ keyWindow: false }));
-jest.mock('@/modules/murlan-orientation', () => ({ __esModule: true, default: { snapshot: () => mockSnapshot() } }));
+jest.mock('@/modules/murlan-orientation', () => ({
+  __esModule: true,
+  default: { snapshot: () => mockSnapshot(), holdLandscape: async () => {}, release: async () => {} },
+}));
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => ({ width: 844, height: 390, scale: 2, fontScale: 1 }),
+}));
 
 let diagnostics: typeof import('@/lib/diagnostics');
 beforeAll(() => {
@@ -43,4 +50,14 @@ it('a snapshot the native side refuses is still a row, carrying the refusal', as
   await seconds(1);
   await hook.unmount();
   expect(rows()).toEqual([{ rn: { w: 844, h: 390 }, native: null, error: 'Error: no scene' }]);
+});
+
+it("the game table's landscape lock writes them, from the window it is laid out in", async () => {
+  const { useLandscapeLock } = require('@/lib/device/orientation') as typeof import('@/lib/device/orientation');
+  const hook = await renderHook(() => useLandscapeLock());
+  await seconds(2);
+  await hook.unmount();
+  await seconds(2);
+  const landscape = { rn: { w: 844, h: 390 }, native: { keyWindow: false }, error: undefined };
+  expect(rows()).toEqual([landscape, landscape]);
 });

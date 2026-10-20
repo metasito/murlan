@@ -6,7 +6,7 @@
 // source onto `GameTableProps` and passes its own extras through the slots.
 // Nothing below knows or cares which mode it is running in.
 
-import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   StyleSheet,
@@ -18,9 +18,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { useAnimatedReaction, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import * as ScreenOrientation from "expo-screen-orientation";
-import type { NativeStackNavigationProp } from "expo-router";
-import { NavigationContext, type ParamListBase } from "expo-router/react-navigation";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
   roundUnplayed,
@@ -43,11 +40,12 @@ import {
 import { handCountOf } from "@/shared/protocol";
 import type { CardFrom } from "@/components/flightPose";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
-import { seatsJustPassed, turnKey } from "@/components/passes";
+import { turnKey } from "@/components/passes";
 import { tableLayout, type Seating } from "@/components/tableLayout";
 import { useTableExchange } from "@/components/table/useTableExchange";
 import { FloatSlot } from "@/components/table/notices/floats";
-import { nextFloat, raised, type Float } from "@/components/table/floatModel";
+import { useTableFloat } from "@/components/table/useTableFloat";
+import { tableVeils } from "@/components/table/tableVeils";
 import type { ServerError } from "@/context/OnlineGameContext";
 import {
   EndMatchVote,
@@ -59,7 +57,7 @@ import {
 } from "@/components/table/notices/netNotes";
 import { WaitingLine } from "@/components/table/notices/tableLines";
 import { ExchangeLegs, type RingFlash } from "@/components/table/ExchangeLegs";
-import { canPassNow as canPassNowOf, turnTimerActive } from "@/components/turnTimerUi";
+import { canPassNow as canPassNowOf, turnPresentation, type TurnTimerConfig } from "@/components/turnTimerUi";
 import { sideSlotHeight, topBandHeight } from "@/components/tableFrame";
 import { describeTableForA11y, type TableA11yExchange, type TableA11yLastPlay, type TableA11yOpponent } from "@/components/tableA11y";
 import { cardScale, physicalTouchTarget } from "@/components/cardFaceModel";
@@ -67,7 +65,7 @@ import { ScorePill } from "@/components/table/scorePill";
 import type { MatchBoardActions, MatchRating } from "@/components/table/matchBoard";
 import { matchDim } from "@/lib/timeline/matchEnding";
 import { scorePillHitBox, voteTop } from "@/components/table/scorePillModel";
-import { scorePillStandings } from "@/lib/game/scorePill";
+import { matchBoardFor, scorePillStandings } from "@/lib/game/scorePill";
 import { useTranslation } from "@/lib/i18n";
 import { HudComboPill, TurnChip, type ConnectionNote } from "@/components/table/notices/hud";
 import { useDeviceOffline, useTableClaim } from "@/components/OfflineBanner";
@@ -81,6 +79,7 @@ import {
 } from "@/components/table/chrome";
 import { WhoStartsPanel } from "@/components/table/notices/panels";
 import {
+  comboLabel as comboText,
   lastPlayLabel,
   tableStrings,
   topBarLabel,
@@ -114,7 +113,7 @@ import { GameSettingsSheet } from "@/components/table/settingsSheet";
 import { useShownTurn, useTableFeedback } from "@/components/useTableFeedback";
 import { useHandOrder } from "@/components/useHandOrder";
 import { useSameCards } from "@/components/useSameCards";
-import { PileLayer, getComboLabel, usePileFlight } from "@/components/table/pile";
+import { PileLayer, usePileFlight } from "@/components/table/pile";
 import { topPlay } from "@/components/table/trick";
 import { warmCardArt } from "@/components/CardView";
 import { BombBurst, BombFlash, FeltScrim, Sweep } from "@/components/table/moments";
@@ -127,7 +126,7 @@ import { dealSpecks, roundMotes, type ParticleEmitter } from "@/components/table
 import { useRoundOutcome, type ShownOutcome } from "@/components/table/useRoundOutcome";
 import { traceOnset } from "@/lib/e2eTrace";
 import { event, uiFeedback } from "@/lib/device/feedback";
-import { useOrientedWindow, usePortraitInterface } from "@/lib/device/orientation";
+import { useLandscapeLock, useOrientedWindow, usePortraitInterface } from "@/lib/device/orientation";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import {
   Colors,
@@ -137,8 +136,7 @@ import {
 } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { A11yStatus, A11yVeil, a11yGroup, a11yHidden, a11yVeiled } from "@/lib/a11y";
-import { useBenchHandle, useOrientationRows } from "@/lib/diagnostics";
-import nativeOrientation from "@/modules/murlan-orientation";
+import { useBenchHandle } from "@/lib/diagnostics";
 
 // Whole-pixel travel, mirroring components/MenuButton.tsx: PASSA/GIOCA hold
 // text labels, and React Native rasterises text before transforming it, so a
@@ -179,44 +177,10 @@ const RAIL_Z = { zIndex: Layer.rail } as const;
  */
 const HELD_CLOCK_Z = { zIndex: Layer.clock } as const;
 
-const passView = (s: GameState) => ({ ...s, outOfCards: s.players.map((p) => handCountOf(p) === 0) });
-
 const NO_DISMISS = () => {};
+const NO_POINTS: Record<string, number> = {};
+const NO_DISCONNECTS: Record<number, { seconds: number; resetKey: string }> = {};
 const trickStart = () => event([{ kind: "trickStart" }]);
-
-const lockLandscape = () => {
-  ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
-  nativeOrientation?.holdLandscape().catch(() => {});
-};
-
-export interface TurnTimerConfig {
-  /** Length of the countdown, in seconds. */
-  seconds: number;
-  /**
-   * Restarts the countdown when it changes, on top of the turn itself. Online
-   * the server re-arms its window on paths that change no state — a rejoin,
-   * a disconnect — and the clock has to follow.
-   */
-  resetKey?: string;
-  /**
-   * The viewer's own chip counts down while leading a new trick too (seat rings
-   * always do). False offline, no deadline; true online, armed every turn.
-   */
-  includeNewTrick?: boolean;
-  /**
-   * Called when the countdown reaches zero. Offline this auto-passes locally;
-   * online it is omitted, because the server owns the timeout and the client
-   * countdown is only a display of it.
-   */
-  onExpire?: () => void;
-  /**
-   * Whether this client owns the deadline, and may therefore stop the clock
-   * while an announcement is holding the table. True offline. False online:
-   * the server's AFK window keeps running whatever the client draws, so a
-   * pause here would show a seat more time than it has.
-   */
-  pausable?: boolean;
-}
 
 export interface ExchangeAnnouncementSlot {
   visible: boolean;
@@ -336,7 +300,7 @@ export function GameTable({
   gameState,
   matchOver = false,
   matchWinners,
-  placementPoints = {},
+  placementPoints = NO_POINTS,
   matchScore,
   matchActions,
   matchRating,
@@ -351,7 +315,7 @@ export function GameTable({
   onRoundLanded,
   turnTimer,
   exchangeAnnouncement,
-  disconnectedSeats = {},
+  disconnectedSeats = NO_DISCONNECTS,
   railExtra,
   banners,
   error = null,
@@ -368,7 +332,6 @@ export function GameTable({
 }: GameTableProps) {
   const { t, tn } = useTranslation();
   const insets = useSafeAreaInsets();
-  const navigation = useContext(NavigationContext) as NativeStackNavigationProp<ParamListBase> | undefined;
   const { width: W, height: H } = useOrientedWindow();
   const portrait = usePortraitInterface();
   // The window's own short edge, so a phone and a browser at the same size draw the same
@@ -415,25 +378,11 @@ export function GameTable({
   }
   const holdingForStart = openingPending && !openingSpent;
 
-  // A reader must not be left able to play through a gate a finger cannot get
-  // past, so the hold sits beside the other two reasons the table is unusable.
-  const covered = tableCovered || portrait;
-  const tableWithdrawn = settingsOpen || covered || holdingForStart;
-  const behindVeil = a11yVeiled(tableWithdrawn);
-  // The sheet hangs off the rail, outside the overlays slot, so the slot goes
-  // behind its veil. A cover inside the slot does not: `app/(online)/game.tsx`
-  // spreads this onto the one wrapper holding the cover, which would withdraw
-  // the cover's own message along with the table it is explaining.
-  const behindSheetOnly = a11yVeiled(settingsOpen || portrait);
-  // The rail is the one child that answers to a cover but not to the sheet: the sheet is
-  // closed by the knob the rail carries, so veiling it there shuts the reader inside.
-  // The opening gate covers the rail too, and the sheet its menu knob opens
-  // would come up above the gate carrying an exit.
-  const behindCoverOnly = a11yVeiled((covered || holdingForStart) && !settingsOpen);
-  // The turn chip answers to everything that takes the table away except the
-  // opening gate: it names no control, and the countdown it carries is the one
-  // thing a hold may not hide from a reader either.
-  const clockVeil = a11yVeiled(settingsOpen || covered);
+  const { withdrawn: tableWithdrawn, veil } = tableVeils({ settingsOpen, tableCovered, portrait, holdingForStart });
+  const behindVeil = a11yVeiled(veil.table);
+  const behindSheetOnly = a11yVeiled(veil.sheetOnly);
+  const behindCoverOnly = a11yVeiled(veil.coverOnly);
+  const clockVeil = a11yVeiled(veil.clock);
   const [focusMode, setFocusMode] = useState(false);
   const [playOnLeft, setPlayOnLeft] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), [setSettingsOpen]);
@@ -540,29 +489,14 @@ export function GameTable({
     gameState.lastPlayedCombination,
     players
   );
-  const floatInputs = { gameState, error, autoPassed, tableWithdrawn };
-  const [floatSeen, setFloatSeen] = useState<typeof floatInputs>({ ...floatInputs, error: null });
-  const [float, setFloat] = useState<Float | null>(null);
-  const moved = floatSeen.gameState !== gameState;
-  const erred = floatSeen.error?.seq !== error?.seq;
-  if (moved || erred || floatSeen.autoPassed !== autoPassed || floatSeen.tableWithdrawn !== tableWithdrawn) {
-    setFloatSeen(floatInputs);
-    const floatNow = nextFloat(
-      float,
-      {
-        viewerPassed: moved
-          ? !spectating && seatsJustPassed(passView(floatSeen.gameState), passView(gameState)).includes(viewerSeat)
-          : undefined,
-        error: erred ? error : undefined,
-        autoPassed: floatSeen.autoPassed !== autoPassed,
-        withdrawn: tableWithdrawn,
-        withdrew: tableWithdrawn && !floatSeen.tableWithdrawn,
-      },
-      { passed: t("gameShared.passedLabel"), autoPass: t("game.autoPassTitle") }
-    );
-    if (floatNow !== float) setFloat(floatNow);
-  }
-
+  const { float, raise: raiseFloat } = useTableFloat({
+    gameState,
+    error,
+    autoPassed,
+    withdrawn: tableWithdrawn,
+    viewerSeat,
+    spectating,
+  });
 
   const opponents = React.useMemo(
     () => arrangeOpponents(players, viewerSeat),
@@ -591,24 +525,18 @@ export function GameTable({
       finishingOrder: gameState.finishingOrder,
       viewerId: spectating ? undefined : viewer?.id,
     });
-  const matchBoard = (() => {
-    if (!pillStandings || !matchScore || !matchActions) return null;
-    const teamOf: Record<string, string | undefined> = Object.fromEntries(players.map((p) => [p.id, p.team]));
-    const winnerKeys = (matchWinners ?? []).map((id) => (pillStandings.teams ? (teamOf[id] ?? id) : id));
-    const won = pillStandings.rows.filter((row) => winnerKeys.includes(row.key));
-    const race = matchScore.single ? t("result.singleRoundFormat") : t("scorePill.race", { target: matchScore.target });
-    return {
-      winnerKeys,
-      actions: matchActions,
-      winner: {
-        name: won.map((row) => (pillStandings.teams ? t("lobby.team", { team: row.name }) : row.name)).join(" · "),
-        mine: won.length === 1 && won[0].mine,
-        draw: won.length > 1,
-        line: won.length === 1 ? `${race} · ${won[0].total}` : race,
-        rating: matchRating,
-      },
-    };
-  })();
+  const matchBoard =
+    pillStandings && matchScore && matchActions
+      ? matchBoardFor({
+          standings: pillStandings,
+          players,
+          winners: matchWinners ?? [],
+          score: matchScore,
+          actions: matchActions,
+          rating: matchRating,
+          t,
+        })
+      : null;
   // Capture, returning false: every touch on the table closes the pill on its way to
   // whatever it was for, so the pill never costs a play. The pill's own box is left to
   // the pill, whose press toggles it.
@@ -877,40 +805,14 @@ export function GameTable({
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    // Fast game -> menu -> game navigation makes these cancel each other, and an
-    // unhandled rejection here is fatal on device.
     warmCardArt();
-    return () => {
-      ScreenOrientation.unlockAsync().catch(() => {});
-      nativeOrientation?.release().catch(() => {});
-    };
   }, []);
-  useOrientationRows(W, H);
-  // A portrait-only lock from UIKit can land after ours with no rotation to report
-  // it, so an upright window keeps re-asking until it turns (#1378).
-  const upright = W < H;
-  useEffect(() => {
-    lockLandscape();
-    if (!upright) return;
-    const relock = setInterval(lockLandscape, 1000);
-    return () => clearInterval(relock);
-  }, [upright]);
+  useLandscapeLock();
   const dealCue = useCallback((at: number) => event([{ kind: "deal" }], Math.max(performance.now(), at)), []);
   // Under reduced motion no deal flies to start the cue, and sound is not motion.
   useEffect(() => {
     if (dealFresh && reduceMotion) dealCue(performance.now());
   }, [dealFresh, reduceMotion, dealCue]);
-
-  // UIKit pins the scene to its current orientation for an animated screen
-  // transition, overriding a lock that lands inside it (#1211).
-  useEffect(
-    () =>
-      navigation?.addListener("transitionEnd", (e) => {
-        if (!e.data.closing) lockLandscape();
-      }),
-    [navigation]
-  );
-
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -937,10 +839,7 @@ export function GameTable({
   );
   const uiSelection = useSelection(selection, heldIds, selectionMode, tapsReach, announceTap);
   useBenchHandle("cardPress", uiSelection.tapFromJs);
-  const showRefusal = useCallback(
-    (text: string) => setFloat((standing) => raised(standing, "reject", text)),
-    [setFloat]
-  );
+  const showRefusal = useCallback((text: string) => raiseFloat("reject", text), [raiseFloat]);
   // Asked again rather than closing over `canPass`: with `canPass` as the
   // dependency, `react-hooks/preserve-manual-memoization` refuses this memo and
   // React Compiler skips the whole component.
@@ -955,31 +854,12 @@ export function GameTable({
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
-  const announcementHolds = holdingForStart && (turnTimer?.pausable ?? false);
-  const timerActive =
-    !!turnTimer &&
-    turnTimerActive({
-      isMyTurn,
-      isFinished,
-      isNewTrick,
-      roundOver: gameState.roundOver,
-      exchangeActive: exchange.active,
-      includeNewTrick: turnTimer.includeNewTrick ?? false,
-      announcementHolds,
-    });
-
-  // The next-round vote's deadline takes the turn clock's chip: `turnTimerActive`
-  // stays false at a round's end, since no turn is running.
-  const voteClock = roundVote?.deadline ?? null;
-
-  const turnToken = turnKey(gameState);
-
   const top = topPlay(trick.plays);
   const onTop = top?.combo ?? null;
   const closer = top ? players[top.playedBy] : undefined;
   const closedByWinners =
     roundShown === "won" && closer !== undefined && (isTeamMode ? closer.team === viewer?.team : closer.id === viewer?.id);
-  const comboLabel = getComboLabel(onTop, t);
+  const comboLabel = comboText(onTop, t);
 
   // Named off the trick, not `gameState.lastPlayedBy` — the pile lags the
   // game state by the flight animation, and reading the seat straight off the
@@ -996,36 +876,23 @@ export function GameTable({
 
   const topBarA11yLabel = topBarLabel(onTop, playedByViewer, lastPlayName, t);
 
-  const viewerClockShown = shownTurnIsMine && !isFinished && !gameState.roundOver;
-  const viewerOnMove = viewerClockShown && !deal.dealing;
-  const onMoveName = players[shownTurnIndex]?.name ?? "";
-
-  // The seat on move sweeps its own rim over the same window the viewer's chip
-  // counts down, and the turn changing is what arms it. There is no per-seat
-  // deadline to read, so a lead sweeps offline too: the ring marks the seat on
-  // move (the mockup's `.seat.on .ring`), not a deadline, which offline a lead
-  // does not have.
-  //
-  // Asked about the seat the ring is drawn on, never about the viewer: a seat
-  // that is not the viewer's still has a server deadline online once the viewer
-  // is out.
-  const seatCountdown =
-    turnTimer &&
-    turnTimerActive({
-      // SeatRing draws this only on the seat that is on move, so the subject of
-      // the question is always a seat whose turn it is — and never one that has
-      // gone out, because `getNextActivePlayer` (lib/game/gameEngine.ts) steps over
-      // an empty hand rather than landing on it.
-      isMyTurn: true,
-      isFinished: false,
-      isNewTrick,
-      roundOver: gameState.roundOver,
-      exchangeActive: exchange.active,
-      includeNewTrick: true,
-      announcementHolds,
-    })
-      ? { seconds: turnTimer.seconds, resetKey: `${turnToken}|${turnTimer.resetKey ?? ""}`, held: clockHeld }
-      : undefined;
+  const turn = turnPresentation({
+    roundOver: gameState.roundOver,
+    matchOver,
+    dealing: deal.dealing,
+    shownTurnIsMine,
+    onMoveName: players[shownTurnIndex]?.name ?? "",
+    exchange: { chip: exchangeChip, choiceOpen, viewerIsWinner: exchange.viewerIsWinner, active: exchange.active },
+    timer: turnTimer,
+    vote: roundVote?.deadline ?? null,
+    isMyTurn,
+    isFinished,
+    isNewTrick,
+    holdingForStart,
+    held: clockHeld,
+    turnToken: turnKey(gameState),
+    t,
+  });
 
   const startCardDue = !gameState.firstPlayMade && !!gameState.startCard;
   const whoStarts: StartReason | undefined =
@@ -1053,7 +920,7 @@ export function GameTable({
           {...seatView(opponent.seat, opponent.player, seatTable)}
           dealArrivals={deal.arrivalsFor(opponent.seat)}
           scale={scale}
-          countdown={seatCountdown}
+          countdown={turn.seat}
           focusMode={focusMode}
           flash={ringFlash}
         />
@@ -1067,7 +934,7 @@ export function GameTable({
   return (
     <CardTableProvider value={cardTable}>
     <CardCastContext.Provider value={cardCast}>
-    <View style={[styles.root, WEB_CLIP]} onStartShouldSetResponderCapture={closeScoreElsewhere}>
+    <View testID="game-root" style={[styles.root, WEB_CLIP]} onStartShouldSetResponderCapture={closeScoreElsewhere}>
       {/* Felt — decoration only: one canvas that never carries game
           information (#1244), lit by the one lamp rig. */}
       <Animated.View
@@ -1083,15 +950,15 @@ export function GameTable({
       {/* The game, and everything a landing displaces. It clips at its own
           moving edge, so the strip the kick uncovers is the cloth behind it
           rather than whatever the window is drawn on. */}
-      <Animated.View style={[styles.kick, WEB_CLIP, TABLE_Z, kickStyle]}>
+      <Animated.View testID="game-layer" style={[styles.kick, WEB_CLIP, TABLE_Z, kickStyle]}>
         <Sweep trigger={goingOutTrigger} width={W} height={H} />
-        <View style={[StyleSheet.absoluteFill, CARD_SHADE_Z]} pointerEvents="none" {...a11yHidden()}>
+        <View testID="card-shade" style={[StyleSheet.absoluteFill, CARD_SHADE_Z]} pointerEvents="none" {...a11yHidden()}>
           <HandShade lamp={rig.lamp} cards={cardTable} ready={cardCast === "felt"} />
         </View>
         <Animated.View testID="table-particles" style={[StyleSheet.absoluteFill, PARTICLES_Z, edgeGreyStyle]} pointerEvents="none" {...a11yHidden()}>
           <ParticleLayer ref={particles} rig={rig} landing={landingSignal} grey={grey} />
         </Animated.View>
-        <A11yStatus label={tableA11yLabel} veiled={tableWithdrawn} />
+        <A11yStatus testID="table-status" label={tableA11yLabel} veiled={tableWithdrawn} />
         {/* Chips over the felt where the cards never reach — the combination in
             play at the head of the field, whose turn it is at the top centre, the
             score at the far corner. Anything wider would be chrome drawn where a card lands. */}
@@ -1123,33 +990,15 @@ export function GameTable({
             <View testID={choiceOpen ? "exchange-prompt" : undefined}>
               <TurnChip
                 scale={scale}
-                lit={exchangeChip === null ? viewerOnMove : choiceOpen && exchange.viewerIsWinner}
-                chipText={
-                  exchangeChip ??
-                  (gameState.roundOver
-                    ? t(matchOver ? "gameShared.matchOver" : "gameShared.roundOver")
-                    : deal.dealing
-                      ? t("gameShared.dealing")
-                      : viewerOnMove
-                        ? t("gameShared.yourTurn")
-                        : t("gameShared.turnOf", { name: onMoveName }))
-                }
-                spokenSeat={
-                  exchangeChip ??
-                  (gameState.roundOver
-                    ? t(matchOver ? "gameTable.a11yMatchOver" : "gameTable.a11yRoundOver")
-                    : deal.dealing
-                      ? t("gameTable.a11yDealing")
-                      : viewerOnMove
-                        ? t("gameTable.a11yYourTurn")
-                        : t("gameTable.a11yTurnOf", { name: onMoveName }))
-                }
-                seconds={voteClock?.seconds ?? turnTimer?.seconds ?? 0}
-                active={voteClock !== null || timerActive}
-                revealed={voteClock !== null || viewerClockShown}
-                resetKey={voteClock ? `vote|${voteClock.resetKey}` : `${turnToken}|${turnTimer?.resetKey ?? ""}`}
-                onExpire={voteClock ? undefined : turnTimer?.onExpire}
-                frozen={voteClock ? false : clockHeld}
+                lit={turn.chip.lit}
+                chipText={turn.chip.text}
+                spokenSeat={turn.chip.spoken}
+                seconds={turn.clock.seconds}
+                active={turn.clock.active}
+                revealed={turn.clock.revealed}
+                resetKey={turn.clock.resetKey}
+                onExpire={turn.clock.onExpire}
+                frozen={turn.clock.frozen}
                 connection={choiceOpen && connectionNote?.state === "reconnected" ? null : connectionNote}
               />
             </View>
@@ -1175,6 +1024,7 @@ export function GameTable({
 
         {endMatchVote && !scoreOpen && (
           <View
+            testID="end-match-vote"
             {...behindVeil}
             pointerEvents="box-none"
             style={[
@@ -1231,7 +1081,7 @@ export function GameTable({
             starterName={players[whoStarts.playerIdx]?.name ?? ""}
             starterIsViewer={viewerOwnsSeat(whoStarts.playerIdx, viewerSeat, spectating)}
             gated={startGated}
-            veiled={settingsOpen}
+            veiled={veil.sheet}
             onDone={() => setOpeningSpent(true)}
             scale={scale}
             tableLeft={frame.tableLeft}
@@ -1287,6 +1137,7 @@ export function GameTable({
         )}
 
         <View
+          testID="banner-band"
           {...behindVeil}
           style={[
             styles.bannerBand,
