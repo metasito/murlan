@@ -6,10 +6,16 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    # Every class `tools/ci/nativeScope.mjs` counts as native, pinned by `tests/tooling/nativeScope.test.ts`.
     paths:
       - package.json
       - package-lock.json
       - app.json
+      - app.config.*
+      - eas.json
+      - modules/**
+      - plugins/**
+      - patches/**
       - assets/images/**
       - .github/workflows/ios-device.yml
 

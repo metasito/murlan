@@ -495,7 +495,7 @@ holder (`reapWorktree` in `tools/loop/reap.mjs`).
 
 `tools/loop/` — supervisor, gate, picker, workspace tools — has its own suite
 (`tools/loop/tests/`, which `ci.yml`'s `harness` job runs) that shares nothing with the game's `npm
-test` but the repository. `ci.yml`'s `scope` job sets `app`/`harness` outputs: a diff confined to
+test` but the repository. `ci.yml`'s `scope` job sets `app`/`harness` outputs from `tools/ci/scope.mjs`'s `scopeOf`: a diff confined to
 `tools/loop/` (plus a short list of shared scripts) sets `harness=true, app=false`; anything else
 sets `app=true`; the protocol files (`docs/agents/`, `.claude/`, `CLAUDE.md`) set **both**, since
 both `tests/tooling/rulesAreSingleSourced.test.ts` and
