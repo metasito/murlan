@@ -4,8 +4,11 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { git } from "./cli.mjs";
+import { changedFiles, git } from "./cli.mjs";
 import { budgetLines } from "../ci/native-budget.mjs";
+
+/** Untracked files are included: a test file not yet added is one the change adds (RULES.md 3). */
+export const RELATED_CHANGES = Object.freeze({ base: "origin/main", range: "...", worktree: true, untracked: true });
 
 export const NATIVE_TEST = /^tests\/native\/.+\.test\.tsx$/;
 export const CODE = /\.(tsx?|m?js)$/;
@@ -56,14 +59,7 @@ export function listedTests(out, cwd) {
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
-  const lines = (...a) => git()(a).split("\n").filter(Boolean);
-  const changed = [
-    ...new Set([
-      ...lines("diff", "--name-only", "origin/main...HEAD"),
-      ...lines("diff", "--name-only", "HEAD"),
-      ...lines("ls-files", "--others", "--exclude-standard"),
-    ]),
-  ].filter((f) => existsSync(f));
+  const changed = changedFiles(git(), RELATED_CHANGES).filter((f) => existsSync(f));
   const jest = path.join(path.dirname(createRequire(import.meta.url).resolve("jest/package.json")), "bin", "jest.js");
   const code = changed.filter((f) => CODE.test(f));
   const listed = code.length

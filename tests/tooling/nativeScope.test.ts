@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { needsNative, patchReader } from "../../tools/ci/nativeScope.mjs";
+import { CONFIG, needsNative, patchReader } from "../../tools/ci/nativeScope.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -82,4 +82,45 @@ test("the CLI reads a patch at HEAD, else at the base, else not at all", () => {
 test("a local native module's sources need the native builds; other sources do not", () => {
   assert.equal(needsNative(["modules/murlan-diagnostics/ios/MurlanDiagnosticsModule.swift"], "", ""), true);
   assert.equal(needsNative(["lib/diagnostics/probe.ts"], "", ""), false);
+});
+
+/** CONFIG's top-level alternatives, each a class of path that needs the native builds. */
+const configClasses = (): string[] => {
+  const body = /^\^\((.*)\)\$$/.exec(CONFIG.source)?.[1];
+  assert.ok(body, `CONFIG is not ^(…)$: ${CONFIG.source}`);
+  const parts = [""];
+  let depth = 0;
+  for (const ch of body) {
+    if (ch === "|" && depth === 0) parts.push("");
+    else parts[parts.length - 1] += ch;
+    if (ch === "(") depth++;
+    if (ch === ")") depth--;
+  }
+  return parts;
+};
+
+const NATIVE_SAMPLES = [
+  "app.json",
+  "app.config.js",
+  "app.config.ts",
+  "eas.json",
+  "modules/murlan-diagnostics/ios/MurlanDiagnosticsModule.swift",
+  "plugins/withReactNativeFromSource.js",
+  "patches/react-native-audio-api+0.13.6.patch",
+  "package.json",
+];
+
+test("every native class has a sample here", () => {
+  const unsampled = configClasses().filter((alt) => !NATIVE_SAMPLES.some((f) => new RegExp(`^(?:${alt})$`).test(f)));
+  assert.deepEqual(unsampled, []);
+  for (const f of NATIVE_SAMPLES) assert.equal(needsNative([f], "", "", () => null), true, f);
+});
+
+test("ios-device.yml builds on a push touching any native class", () => {
+  const workflow = readFileSync(path.join(repoRoot, ".github/workflows/ios-device.yml"), "utf8");
+  const block = /\n {4}paths:\n((?: {6}- .+\n)+)/.exec(workflow);
+  assert.ok(block, "ios-device.yml has no push paths");
+  const globs = [...block[1].matchAll(/- (.+)/g)].map((m) => m[1].trim());
+  const missed = NATIVE_SAMPLES.filter((f) => !globs.some((g) => path.posix.matchesGlob(f, g)));
+  assert.deepEqual(missed, [], "a change to only these never rebuilds the sideload .ipa");
 });

@@ -7,7 +7,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { git as gitAt } from "./cli.mjs";
+import { changedFiles, git as gitAt } from "./cli.mjs";
 import { checkLockDrift, parseWorktreeList } from "./workspace.mjs";
 import { STEPS, LOCAL, DELEGATED, cmd, BANNER } from "./check-steps.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
@@ -30,23 +30,22 @@ export function checkSubject({ toplevel, baseSha, changed }) {
   return { root: toplevel, base: baseSha.slice(0, 7) };
 }
 
+/** Untracked files are excluded: a scratch file is not a change any verdict could be about. */
+export const SUBJECT_CHANGES = Object.freeze({ base: "origin/main", range: "...", worktree: true, untracked: false });
+
 /** Takes `cwd` rather than the process's own, so two worktrees can be tested as judged apart. */
 export function readSubject(cwd) {
-  const read = (...args) => {
+  const read = (fn) => {
     try {
-      return gitAt(cwd)(args).trim();
+      return fn(gitAt(cwd));
     } catch {
       return null;
     }
   };
   return checkSubject({
-    toplevel: read("rev-parse", "--show-toplevel"),
-    baseSha: read("rev-parse", "--verify", "origin/main"),
-    // Untracked files are excluded: a scratch file is not a change any verdict could be about.
-    changed: [
-      read("diff", "--name-only", "origin/main...HEAD"),
-      read("status", "--porcelain", "--untracked-files=no"),
-    ].join("\n"),
+    toplevel: read((at) => at.text(["rev-parse", "--show-toplevel"])),
+    baseSha: read((at) => at.text(["rev-parse", "--verify", "origin/main"])),
+    changed: read((at) => changedFiles(at, SUBJECT_CHANGES).join("\n")) ?? "",
   });
 }
 
