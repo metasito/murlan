@@ -22,11 +22,18 @@ describe("orientation is never narrowed behind the player's back", () => {
     const lock = readFileSync(path.join(repoRoot, "lib", "device", "orientation.tsx"), "utf8");
     assert.match(lock, /export function useLandscapeLock\(/);
     assert.match(lock, /lockAsync\(\s*ScreenOrientation\.OrientationLock\.LANDSCAPE\s*\)/);
-    const callers = ["app", "components", "context", "lib"]
+    // An import of the hook by name, however it is renamed, or of the whole module.
+    const named = /import\s*\{[^}]*\buseLandscapeLock\b[^}]*\}\s*from\s*["'][^"']*device\/orientation(\.tsx)?["']/;
+    const whole = /import\s*\*\s*as\s+\w+\s+from\s*["'][^"']*device\/orientation(\.tsx)?["']/;
+    const importers = ["app", "components", "context", "lib", "modules"]
       .flatMap((dir) => readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" }).map((f) => path.join(dir, f)))
-      .filter((f) => /\.tsx?$/.test(f) && /(?<!function )\buseLandscapeLock\(\)/.test(readFileSync(path.join(repoRoot, f), "utf8")))
+      .filter((f) => /\.tsx?$/.test(f))
+      .filter((f) => {
+        const src = readFileSync(path.join(repoRoot, f), "utf8");
+        return named.test(src) || whole.test(src);
+      })
       .map((f) => f.split(path.sep).join("/"));
-    assert.deepEqual(callers, ["components/GameTable.tsx"]);
+    assert.deepEqual(importers, ["components/GameTable.tsx"]);
   });
 
   test("app.json leaves the app free to rotate", () => {
