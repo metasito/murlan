@@ -27,25 +27,25 @@ describe('a hand card carries the drag as two discrete actions', () => {
   // can be — an opponent's fan and a spectated hand pass no actions, and a
   // node that carried them regardless would satisfy everything below.
   it('offers nothing when the hand is not the viewer\'s to arrange', async () => {
-    await render(<CardView card={CARD} onPress={() => {}} />);
-    const node = screen.getByRole('button');
+    await render(<CardView card={CARD} testID="card" />);
+    const node = screen.getByTestId('card');
     expect(node.props.accessibilityActions).toBeUndefined();
     expect(node.props.onAccessibilityAction).toBeUndefined();
   });
 
   it('offers both directions, each with a name of its own', async () => {
     await render(
-      <CardView card={CARD} onPress={() => {}} a11yActions={ACTIONS} onA11yAction={() => {}} />
+      <CardView card={CARD} testID="card" a11yActions={ACTIONS} onA11yAction={() => {}} />
     );
-    expect(screen.getByRole('button').props.accessibilityActions).toEqual(ACTIONS);
+    expect(screen.getByTestId('card').props.accessibilityActions).toEqual(ACTIONS);
   });
 
   it('reports which one was taken', async () => {
     const taken = jest.fn();
     await render(
-      <CardView card={CARD} onPress={() => {}} a11yActions={ACTIONS} onA11yAction={taken} />
+      <CardView card={CARD} testID="card" onActivate={() => {}} a11yActions={ACTIONS} onA11yAction={taken} />
     );
-    await fireEvent(screen.getByRole('button'), 'accessibilityAction', {
+    await fireEvent(screen.getByTestId('card'), 'accessibilityAction', {
       nativeEvent: { actionName: 'moveCardRight' },
     });
     expect(taken).toHaveBeenCalledWith('moveCardRight');

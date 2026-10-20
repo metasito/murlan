@@ -71,6 +71,7 @@ const WIDTH_FROM_LAYOUT: [string, number, string, string][] = [
  */
 const NOT_A_TARGET: [string, number, string][] = [
   ["components/CardView.tsx", 1, "a playing card, sized CARD_W x CARD_H — the hand's geometry, not a control's"],
+  ["components/TutorialCard.tsx", 1, "a playing card, sized by the CardView inside it"],
   ["components/table/settingsSheet.tsx", 1, "the veil, which covers the table beside the rail"],
   ["app/(online)/quickmatch.tsx", 1, "a mode card, laid out at card size rather than control size"],
 ];

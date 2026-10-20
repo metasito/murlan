@@ -425,7 +425,7 @@ test("no react-hooks rule is switched off under app/, components/ or context/", 
 // The failure mode this exists to make impossible: proving the counterfactual,
 // so the assertions above cannot be satisfied by weakening the compiler options.
 test("a suppressed react-hooks rule is what the compiler refuses to compile", () => {
-  const rel = "components/CardView.tsx";
+  const rel = "components/TutorialCard.tsx";
   // The suppression, not the effect it precedes: a rule the compiler charges for
   // being off anywhere inside a component is what costs it its compilation, so
   // nothing here reads a dependency array — the construct an exhaustive-deps
@@ -477,7 +477,7 @@ test("an ordinary edit leaves every counterfactual anchored", () => {
   for (const [rel, construct] of [
     ["context/GameContext.tsx", STATE_DECLARATION],
     ["components/useHandOrder.ts", STATE_DECLARATION],
-    ["components/CardView.tsx", FIRST_EFFECT],
+    ["components/TutorialCard.tsx", FIRST_EFFECT],
   ] as const) {
     const source = readFileSync(path.join(repoRoot, rel), "utf8");
     for (const edit of ORDINARY_EDITS) {

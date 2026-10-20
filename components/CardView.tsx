@@ -1,13 +1,7 @@
-import React, { useContext, useEffect } from "react";
+import React, { useContext } from "react";
 import { View, StyleSheet, Pressable, Image, Platform } from "react-native";
 import { TableText } from "@/components/table/TableText";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-  cancelAnimation,
-} from "react-native-reanimated";
+import Animated from "react-native-reanimated";
 import { Asset } from "expo-asset";
 import Svg, { Path, Circle, G, Rect } from "react-native-svg";
 import { Card, Suit, getCardDisplayRank } from "@/lib/game/gameEngine";
@@ -16,14 +10,12 @@ import {
   Colors,
   FontSize,
   Layer,
-  Motion,
   withAlpha,
 } from "@/lib/theme";
 import { CardCastContext } from "@/components/table/feltReady";
 import { FOIL_ART, FoilGlint, GLOSS_SPOT_ART, LampGloss, LevelShade } from "@/components/table/LampGloss";
 import type { OwnedRects } from "@/components/table/useCardRects";
 import { cardBackId, getCardBack, useCardBackId, type CardBackId } from "@/lib/cosmetics";
-import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
 import {
@@ -39,6 +31,7 @@ import {
   INDEX_SUIT_Y,
   INDEX_TEXT_W,
   INDEX_X,
+  LETTER_SPACING,
   rankFontSize,
   rankInset,
   stockLipHeight,
@@ -47,6 +40,7 @@ import {
   ART_FILL,
 } from "@/components/cardFaceModel";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
+import { byId, propsEqualExcept } from "@/lib/memo";
 
 // Suit → colour. `Suit` is plural ("spades") while the theme tokens are singular
 // ("spade"), so the mapping has to be explicit. Typed as Record<Suit, string> so
@@ -354,7 +348,6 @@ const ACTIVATE_KEYS = new Set(["Enter", " "]);
 interface CardViewProps {
   card: Card;
   selected?: boolean;
-  onPress?: () => void;
   /**
    * A screen reader's activate, and Enter and Space, with no touch of its own: a hand card's
    * finger belongs to the row's tap (`components/table/hand.tsx`).
@@ -373,7 +366,6 @@ interface CardViewProps {
   backId?: CardBackId;
   disabled?: boolean;
   style?: object;
-  noLift?: boolean;
   /**
    * The width this card can be tapped on, when a neighbour is drawn over the
    * rest of it. A hand overlaps its cards, so all but the last expose a strip
@@ -422,7 +414,6 @@ interface CardViewProps {
 function CardViewBase({
   card,
   selected = false,
-  onPress,
   onActivate,
   scale = 1,
   compact = false,
@@ -430,7 +421,6 @@ function CardViewBase({
   backId,
   disabled = false,
   style,
-  noLift = false,
   decorative = false,
   rectKey,
   rects,
@@ -445,59 +435,14 @@ function CardViewBase({
   const selectedHint = useA11yHint(
     decorative ? undefined : (hint ?? (selected ? t("cardView.selectedA11yHint") : undefined))
   );
-  const reduceMotion = usePrefersReducedMotion();
   const chosenBack = useCardBackId();
   const backKey = backId ? cardBackId(backId) : chosenBack;
   const back = getCardBack(backKey);
-  const translateY = useSharedValue(0);
-  // Finger-down acknowledgement. Separate from the selection lift so a press
-  // reads instantly even when the resulting selection is rejected.
-  const press = useSharedValue(0);
 
-  const interactive = (!!onPress || !!onActivate) && !disabled;
-
-  useEffect(() => {
-    if (noLift) {
-      translateY.value = 0;
-      return;
-    }
-    const target = selected ? -14 : 0;
-    translateY.value = reduceMotion
-      ? withTiming(target, { duration: Motion.duration.tap })
-      : withSpring(target, Motion.spring.pickup);
-  }, [selected, noLift, reduceMotion, translateY]);
-
-  // Must precede the effect that reads `press` — the React Compiler skips any component that mutates a value an effect captured.
-  const handlePressIn = () => {
-    if (!interactive) return;
-    press.value = reduceMotion ? 1 : withSpring(1, Motion.spring.pickup);
-  };
-  const handlePressOut = () => {
-    if (!interactive) return;
-    press.value = reduceMotion ? 0 : withSpring(0, Motion.spring.land);
-  };
-  const handlePress = () => {
-    if (!interactive) return;
-    onPress!();
-  };
+  const interactive = !!onActivate && !disabled;
   const handleActivate = () => {
     if (interactive) onActivate?.();
   };
-
-  useEffect(
-    () => () => {
-      cancelAnimation(translateY);
-      cancelAnimation(press);
-    },
-    [translateY, press]
-  );
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: translateY.value + press.value * PRESS_RISE },
-      { rotate: `${press.value * PRESS_TILT}deg` },
-    ],
-  }));
 
   const w = faceDown ? CARD_BACK_W(scale) : CARD_W(scale);
   const h = faceDown ? CARD_BACK_H(scale) : CARD_H(scale);
@@ -511,7 +456,7 @@ function CardViewBase({
       ...shadow,
     };
     return (
-      <Animated.View style={[animStyle, style]}>
+      <View style={style}>
         <View
           testID="card-box-back"
           style={[styles.card, { width: w, height: h }, styles.cardBack, backStyle]}
@@ -521,7 +466,7 @@ function CardViewBase({
           <FoilGlint backKey={backKey} rectKey={rectKey} rects={rects} width={w} height={h} />
         </View>
         <LevelShade rectKey={rectKey} rects={rects} width={w} height={h} />
-      </Animated.View>
+      </View>
     );
   }
 
@@ -564,23 +509,21 @@ function CardViewBase({
     if (onActivate && name === ACTIVATE) handleActivate();
     else onA11yAction?.(name);
   };
-  const touch = onPress ? { onPress: handlePress, onPressIn: handlePressIn, onPressOut: handlePressOut } : {};
 
   return (
-    <Animated.View style={[animStyle, style]}>
+    <View style={style}>
       <Pressable
         testID={testID}
-        {...touch}
         disabled={!interactive}
         {...a11yHidden(decorative)}
         accessibilityLabel={decorative ? undefined : cardSpokenName(card, t)}
-        // No onPress at all is information, not a control — it keeps its name
+        // No onActivate at all is information, not a control — it keeps its name
         // but claiming `button` would announce an action that does not exist.
         //
-        // An onPress that is momentarily disabled stays a button reporting
+        // An onActivate that is momentarily disabled stays a button reporting
         // itself unavailable: dropping the role would make the hand vanish and
         // reappear in the button rotation every turn.
-        {...a11yState({ role: onPress || onActivate ? "button" : undefined, selected, disabled: !interactive })}
+        {...a11yState({ role: onActivate ? "button" : undefined, selected, disabled: !interactive })}
         {...selectedHint.props}
         accessibilityActions={actions}
         onAccessibilityAction={
@@ -638,7 +581,7 @@ function CardViewBase({
         </View>
         <LevelShade rectKey={rectKey} rects={rects} width={w} height={h + stockLipHeight(h)} />
       </Pressable>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -648,30 +591,7 @@ function CardViewBase({
  * arrives as fresh JSON, so the card objects are new on every server message
  * even when nothing about the hand changed.
  */
-export function cardViewPropsEqual(a: CardViewProps, b: CardViewProps): boolean {
-  return (
-    a.card.id === b.card.id &&
-    a.selected === b.selected &&
-    a.onPress === b.onPress &&
-    a.onActivate === b.onActivate &&
-    a.scale === b.scale &&
-    a.compact === b.compact &&
-    a.faceDown === b.faceDown &&
-    a.backId === b.backId &&
-    a.disabled === b.disabled &&
-    a.noLift === b.noLift &&
-    a.decorative === b.decorative &&
-    a.rectKey === b.rectKey &&
-    a.rects === b.rects &&
-    a.style === b.style &&
-    a.hitWidth === b.hitWidth &&
-    a.testID === b.testID &&
-    a.hint === b.hint &&
-    a.a11yActions === b.a11yActions &&
-    a.onA11yAction === b.onA11yAction &&
-    a.a11yActionKeys === b.a11yActionKeys
-  );
-}
+export const cardViewPropsEqual = propsEqualExcept<CardViewProps>({ card: byId });
 
 export const CardView = React.memo(CardViewBase, cardViewPropsEqual);
 CardView.displayName = "CardView";
@@ -704,7 +624,7 @@ const styles = StyleSheet.create({
   rankText: {
     position: "absolute",
     fontFamily: "Rajdhani_700Bold",
-    letterSpacing: -0.5,
+    letterSpacing: LETTER_SPACING,
     textAlign: "center",
     left: 0,
   },

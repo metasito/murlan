@@ -56,7 +56,7 @@ describe('CardView renders every card natively', () => {
           card={card('A', 'spades')}
           selected={selected}
           faceDown={faceDown}
-          onPress={() => {}}
+          onActivate={() => {}}
         />
       )
     );
