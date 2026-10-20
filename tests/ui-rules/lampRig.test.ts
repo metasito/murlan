@@ -13,6 +13,7 @@ import {
   restingLamp,
   stepLamp,
   type Lamp,
+  type LevelOwner,
   type Pool,
 } from "../../components/table/lampRig.ts";
 import { seatDirection, type FlyDirection } from "../../components/seatLayout.ts";
@@ -70,7 +71,7 @@ type Event = [frame: number, mock: (m: MockupLamp, to: (s: string) => void) => v
 const SCRIPT: Event[] = [
   [30, (_, to) => to("luan"), (s) => lampControls.setTarget(s, mockupPool("right"), false)],
   [90, (m) => ((m.flare = 1), (m.kick = 1)), (s) => (lampControls.flare(s, false), lampControls.kick(s, false))],
-  [150, (m) => ((m.lvlT = 0.8), (m.lvlRate = 5)), (s) => lampControls.setLevel(s, 0.8, 5)],
+  [150, (m) => ((m.lvlT = 0.8), (m.lvlRate = 5)), (s) => lampControls.hold(s, "lost", 0.8, 5)],
   [200, (_, to) => to("besnik"), (s) => lampControls.setTarget(s, mockupPool("top"), false)],
   [260, (m) => (m.freeze = 1), (s) => lampControls.freeze(s, 1)],
   [320, (m) => (m.freeze = 0), (s) => lampControls.freeze(s, 0)],
@@ -193,9 +194,35 @@ describe("the lamp rig", () => {
     }
   });
 
+  test("the level is the lowest hold through every overlap of the lost round, the breath and the link", () => {
+    const LEVEL: Record<LevelOwner, number> = { lost: 0.8, breath: 0.75, link: 0.55 };
+    const RATE: Record<LevelOwner, number> = { lost: 5, breath: 2.2, link: 1 };
+    const OWNERS = Object.keys(LEVEL) as LevelOwner[];
+    const orders = (xs: LevelOwner[]): LevelOwner[][] =>
+      xs.length === 0 ? [[]] : xs.flatMap((x) => orders(xs.filter((y) => y !== x)).map((rest) => [x, ...rest]));
+    type Write = [owner: LevelOwner, held: boolean];
+    const scripts = orders(OWNERS).flatMap((on) => orders(OWNERS).map((off): Write[] => [...on.map((o): Write => [o, true]), ...off.map((o): Write => [o, false])]));
+    const interleaved = orders(OWNERS).map((o): Write[] => [[o[0], true], [o[1], true], [o[0], false], [o[2], true], [o[1], false], [o[2], false]]);
+    for (const script of [...scripts, ...interleaved]) {
+      const s = restingLamp(mockupPool("bottom"));
+      const held = new Set<LevelOwner>();
+      for (const [owner, on] of script) {
+        const before = s.lvlT;
+        const rateBefore = s.lvlRate;
+        lampControls.hold(s, owner, on ? LEVEL[owner] : null, RATE[owner]);
+        if (on) held.add(owner);
+        else held.delete(owner);
+        const want = Math.min(1, ...[...held].map((o) => LEVEL[o]));
+        const at = script.map(([o, h]) => `${h ? "+" : "-"}${o}`).join(" ");
+        assert.equal(s.lvlT, want, `${at}: level ${s.lvlT} after ${on ? "holding" : "releasing"} ${owner}`);
+        assert.equal(s.lvlRate, want === before ? rateBefore : RATE[owner], `${at}: the rate of a write that ${want === before ? "left" : "moved"} the level`);
+      }
+    }
+  });
+
   test("the level eases toward its target and never leaves 0..1", () => {
     const s = restingLamp(mockupPool("bottom"), 0.75);
-    lampControls.setLevel(s, 1.6, 2.2);
+    lampControls.hold(s, "breath", 1.6, 2.2);
     for (let i = 0; i < 600; i++) stepLamp(s, DT, false);
     assert.ok(s.level > 0.99 && s.level <= 1, `level ${s.level}`);
   });
@@ -203,7 +230,7 @@ describe("the lamp rig", () => {
   test("a lamp that has come to rest asks for no frame, and a swaying one asks for every frame", () => {
     const still = restingLamp(mockupPool("bottom"), 0.75);
     lampControls.setTarget(still, mockupPool("right"), true);
-    lampControls.setLevel(still, 1, 2.2);
+    lampControls.hold(still, "breath", null, 2.2);
     const asked: boolean[] = [];
     for (let i = 0; i < 600; i++) {
       stepLamp(still, DT, true);

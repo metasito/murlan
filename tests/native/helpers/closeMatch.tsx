@@ -89,7 +89,7 @@ export async function closeMatch(c: Case) {
   const motes = jest.spyOn(particles, 'roundMotes');
   const rain = jest.spyOn(coneRain, 'startRain');
   const trauma = jest.spyOn(impact, 'traumaFor');
-  const level = jest.spyOn(lampControls, 'setLevel');
+  const level = jest.spyOn(lampControls, 'hold');
   const sent = jest.spyOn(feedback, 'event');
   const aimBefore = target.mock.calls.at(-1)?.[1] as Pool | undefined;
   target.mockClear();

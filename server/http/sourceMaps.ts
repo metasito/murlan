@@ -33,7 +33,7 @@ function parseFrame(raw: string): ParsedFrame | null {
 }
 
 /**
- * `raw` is client-supplied text (server/http/schemas.ts's ClientErrorSchema), so
+ * `raw` is client-supplied text (shared/httpSchemas.ts's ClientErrorSchema), so
  * the resolved path must never leave `root` — checked explicitly rather
  * than trusted from the URL parse alone.
  */

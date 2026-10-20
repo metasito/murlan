@@ -4,7 +4,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { RoundMoment, Motion } from "@/lib/theme";
 import { useTraceSource } from "@/lib/e2eTrace";
 import { flareKindFor } from "@/components/impact";
-import { designScale, lampControls, lampMoved, restingLamp, stepLamp, type Lamp, type Pool } from "./lampRig";
+import { designScale, lampControls, lampMoved, restingLamp, stepLamp, type Lamp, type LevelOwner, type Pool } from "./lampRig";
 import { glossLightOf, nextGlossLight, type GlossLight } from "./cardGloss";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
@@ -22,9 +22,8 @@ export interface LampRig {
   /** Design points to the felt box's own. */
   sx: number;
   sy: number;
-  flare(): void;
-  kick(): void;
-  setLevel(to: number, rate: number): void;
+  /** `owner`'s hold on the level, `null` to release it; the lamp sits at the lowest hold. */
+  hold(owner: LevelOwner, level: number | null, rate: number): void;
   freeze(amount: number): void;
 }
 
@@ -81,12 +80,11 @@ export function useLampRig({
     }, true);
   }, [px, py, reach, lamp, reduced]);
 
-  // Before the deal's breath, which takes the level over when both start in one commit.
   useEffect(() => {
     lamp.modify((s) => {
       "worklet";
-      if (dim) lampControls.setLevel(s, RoundMoment.lostLevel, RoundMoment.lostLevelRate);
-      else if (s.lvlT === RoundMoment.lostLevel) lampControls.setLevel(s, 1, RoundMoment.releaseRate);
+      if (dim) lampControls.hold(s, "lost", RoundMoment.lostLevel, RoundMoment.lostLevelRate);
+      else lampControls.hold(s, "lost", null, RoundMoment.releaseRate);
       return s;
     }, true);
   }, [dim, lamp]);
@@ -97,16 +95,17 @@ export function useLampRig({
     if (!dealClock) return;
     lamp.modify((s) => {
       "worklet";
-      s.lvl = BREATH_FROM;
-      lampControls.setLevel(s, BREATH_FROM, BREATH_RATE);
+      lampControls.hold(s, "breath", BREATH_FROM, BREATH_RATE);
+      s.lvl = s.lvlT;
       return s;
     }, true);
+    // A deal gone before its rise leaves the lamp where it would have risen to, at once.
     return () =>
       lamp.modify((s) => {
         "worklet";
-        if (s.lvlT !== BREATH_FROM) return s;
-        s.lvl = 1;
-        lampControls.setLevel(s, 1, BREATH_RATE);
+        if (s.holds.breath === 1) return s;
+        lampControls.hold(s, "breath", null, BREATH_RATE);
+        s.lvl = s.lvlT;
         return s;
       }, true);
   }, [dealClock, lamp]);
@@ -116,7 +115,7 @@ export function useLampRig({
       if (now < riseAt || (prev !== null && prev >= riseAt)) return;
       lamp.modify((s) => {
         "worklet";
-        lampControls.setLevel(s, 1, BREATH_RATE);
+        lampControls.hold(s, "breath", null, BREATH_RATE);
         return s;
       }, true);
     }
@@ -150,34 +149,26 @@ export function useLampRig({
     }, [lamp, sx, sy])
   );
 
-  const controls = useMemo((): Pick<LampRig, "flare" | "kick" | "setLevel" | "freeze"> => {
-    const control = (apply: (s: Lamp, r: boolean) => void) => () =>
+  const controls = useMemo((): Pick<LampRig, "hold" | "freeze"> => {
+    const control = (apply: (s: Lamp) => void) =>
       lamp.modify((s) => {
         "worklet";
-        apply(s, reduced.value);
+        apply(s);
         return s;
       }, true);
     return {
-      flare: control((s, r) => {
-        "worklet";
-        lampControls.flare(s, r);
-      }),
-      kick: control((s, r) => {
-        "worklet";
-        lampControls.kick(s, r);
-      }),
-      setLevel: (to, rate) =>
+      hold: (owner, level, rate) =>
         control((s) => {
           "worklet";
-          lampControls.setLevel(s, to, rate);
-        })(),
+          lampControls.hold(s, owner, level, rate);
+        }),
       freeze: (amount) =>
         control((s) => {
           "worklet";
           lampControls.freeze(s, amount);
-        })(),
+        }),
     };
-  }, [lamp, reduced]);
+  }, [lamp]);
 
   return useMemo(() => ({ lamp, glossLight, sx, sy, ...controls }), [lamp, glossLight, sx, sy, controls]);
 }

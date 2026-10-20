@@ -3,6 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
+import { routeSources } from "../helpers/routeSources.ts";
 
 const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
 
@@ -23,25 +24,35 @@ function sessionDeleters(): Set<string> {
 }
 
 function routeBlocks(source: string): { route: string; body: string }[] {
-  const starts = [...source.matchAll(/app\.(?:get|post|put|patch|delete)\(\s*"([^"]+)"/g)];
+  const starts = [...source.matchAll(/(?:\bon(?:SignedIn)?\(\s*app,|app\.(?:get|post|put|patch|delete)\()\s*"([^"]+)"/g)];
   return starts.map((m, i) => ({
     route: m[1]!,
     body: source.slice(m.index, starts[i + 1]?.index ?? source.length),
   }));
 }
 
-function unrevokedRoutes(routesSource: string, deleters: Set<string>) {
+/** The body of `export function name(` in `source`, up to its closing brace at column 0. */
+function functionBody(source: string, name: string): string {
+  const body = source.slice(source.indexOf(`export function ${name}(`));
+  return body.slice(0, body.indexOf("\n}\n"));
+}
+
+// accountSession's signIn regenerates the session, and is proved below to revoke the prior
+// session's sockets, so a route calling it both ends a session and revokes.
+const SESSION_ENDING = /\.session\.(?:destroy|regenerate)\(|\bsignIn\(/;
+const REVOKING = /\b(?:revokeAccountSockets|evictUser|signIn)\(/;
+
+function unrevokedRoutes(routeFiles: string[], deleters: Set<string>, revoking: RegExp = REVOKING) {
   const endsSession = (body: string) =>
-    /\.session\.(?:destroy|regenerate)\(/.test(body) ||
-    [...deleters].some((name) => new RegExp(`\\b${name}\\(`).test(body));
-  const sessionRoutes = routeBlocks(routesSource).filter((b) => endsSession(b.body));
+    SESSION_ENDING.test(body) || [...deleters].some((name) => new RegExp(`\\b${name}\\(`).test(body));
+  const sessionRoutes = routeFiles.flatMap(routeBlocks).filter((b) => endsSession(b.body));
   return {
     sessionRoutes: sessionRoutes.map((b) => b.route),
-    unrevoked: sessionRoutes
-      .filter((b) => !/\b(?:revokeAccountSockets|evictUser)\(/.test(b.body))
-      .map((b) => b.route),
+    unrevoked: sessionRoutes.filter((b) => !new RegExp(revoking.source).test(b.body)).map((b) => b.route),
   };
 }
+
+const routes = () => routeSources().map((s) => s.text);
 
 test("the scan finds the functions that delete sessions", () => {
   const deleters = sessionDeleters();
@@ -57,12 +68,25 @@ test("evictUser revokes the account's sockets", () => {
   assert.match(body.slice(0, end), /\brevokeAccountSockets\(/);
 });
 
+test("signIn regenerates the session and revokes the prior session's sockets", () => {
+  const signIn = functionBody(read("server/http/accountSession.ts"), "signIn");
+  assert.match(signIn, /\.session\.regenerate\(/);
+  assert.match(signIn, /\brevokeAccountSockets\(/);
+});
+
 test("every route that ends a session also revokes its sockets", () => {
-  const routes = read("server/http/routes.ts");
-  const { sessionRoutes, unrevoked } = unrevokedRoutes(routes, sessionDeleters());
+  const source = routes();
+  const { sessionRoutes, unrevoked } = unrevokedRoutes(source, sessionDeleters());
   assert.ok(sessionRoutes.length >= 6, `only found ${sessionRoutes.join(", ")}`);
+  for (const route of ["POST /api/auth/register", "POST /api/auth/login"]) {
+    assert.ok(sessionRoutes.includes(route), `${route} signs in, so it ends the prior session`);
+  }
   assert.deepEqual(unrevoked, []);
 
-  const stripped = routes.replace(/\b(?:revokeAccountSockets|evictUser)\(/g, "noop(");
-  assert.deepEqual(unrevokedRoutes(stripped, sessionDeleters()).unrevoked, sessionRoutes);
+  const direct = /\b(?:revokeAccountSockets|evictUser)\(/g;
+  assert.deepEqual(
+    unrevokedRoutes(source.map((text) => text.replace(direct, "noop(")), sessionDeleters(), direct).unrevoked,
+    sessionRoutes,
+    "with signIn not counted as revoking and every direct revoke stripped, every session route must read as unrevoked"
+  );
 });

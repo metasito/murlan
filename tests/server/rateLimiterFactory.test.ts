@@ -9,15 +9,13 @@ import express from "express";
 import type { AddressInfo } from "node:net";
 import { routeLimiter } from "../../server/http/rateLimit.ts";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
+import { routeSources } from "../helpers/routeSources.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SERVER_DIR = path.join(REPO_ROOT, "server");
-const ROUTES_FILE = path.join(SERVER_DIR, "http", "routes.ts");
 
-/** Every `const <name>Limiter = <callee>(...)` in server/http/routes.ts. */
+/** Every `const <name>Limiter = <callee>(...)` in the route area files, where every limiter lives. */
 function limiterDeclarations(): { name: string; callee: string }[] {
-  const source = readFileSync(ROUTES_FILE, "utf8");
-  const sourceFile = ts.createSourceFile(ROUTES_FILE, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const found: { name: string; callee: string }[] = [];
 
   const visit = (node: ts.Node) => {
@@ -33,11 +31,11 @@ function limiterDeclarations(): { name: string; callee: string }[] {
     }
     ts.forEachChild(node, visit);
   };
-  visit(sourceFile);
+  for (const { sourceFile } of routeSources()) visit(sourceFile);
   return found;
 }
 
-test("every limiter in server/http/routes.ts is built by the factory", () => {
+test("every limiter in the route area files is built by the factory", () => {
   const declared = limiterDeclarations();
 
   // RULES §6: a scan that finds nothing passes. A floor, not an equality — a
@@ -66,7 +64,9 @@ test("server/http/rateLimit.ts is the only file under server/ that calls rateLim
     .filter((f) => /\.ts$/.test(f) && f !== "http/rateLimit.ts");
   const missed = mustRead.filter((f) => !scanned.has(f));
   assert.deepEqual(missed, [], `the walk never read: ${missed.join(", ")}`);
-  assert.ok(scanned.has("http/routes.ts"), "routes.ts, where every limiter lives, was not read");
+  for (const area of ["auth", "account", "friends", "reports"]) {
+    assert.ok(scanned.has(`http/routes/${area}.ts`), `routes/${area}.ts, where its limiters live, was not read`);
+  }
 
   // Positive control: a scan of 57 files proves nothing unless the pattern
   // can be seen to match the one file that legitimately calls rateLimit().

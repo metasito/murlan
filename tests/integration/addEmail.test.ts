@@ -48,7 +48,7 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
     // register() already minted its own email_verify token; a real legacy
     // account predates that flow entirely, so drop it rather than count it
     // alongside the one add-email mints. Registration replies *before* that
-    // mint (server/http/routes.ts, so a provider outage cannot delay the reply),
+    // mint (server/http/routes/auth.ts, so a provider outage cannot delay the reply),
     // so the row is not there yet when register() resolves — deleting without
     // waiting for it leaves it to land afterwards and be counted.
     const deadline = Date.now() + 5_000;

@@ -17,20 +17,6 @@ export const BUG_REPORT_RETENTION_DAYS = 90;
 /** No page of this table is unbounded; it grows with every report. */
 export const BUG_REPORT_PAGE = 50;
 
-/**
- * Caps, in characters. Enforced by zod on the way in
- * (`BugReportSchema`, server/http/schemas.ts) rather than by the field's
- * `maxLength` — a client is not the thing to trust with the size of what it
- * sends.
- */
-export const BUG_REPORT_LIMITS = {
-  description: 2000,
-  screen: 200,
-  appVersion: 50,
-  platform: 50,
-  locale: 20,
-} as const;
-
 export interface BugReportInput {
   userId: string;
   description: string;

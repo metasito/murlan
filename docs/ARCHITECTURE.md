@@ -118,7 +118,7 @@ excluded cards, which would put cards nobody has seen into a broadcast field.
 **Connection:** `lib/socket.ts` owns a singleton `Map<userId, Socket>` — `SocketContext` is
 the only place that creates or tears down a socket. Nothing else is allowed to call `io()`.
 
-**Auth handshake — ticket model (`server/socket/ticket.ts`, `server/http/routes.ts`,
+**Auth handshake — ticket model (`server/socket/ticket.ts`, `server/http/routes/auth.ts`,
 `server/socket/socket.ts`):**
 1. The client calls `POST /api/auth/socket-ticket` (behind `requireAuth`, so it needs a
    live session cookie) and receives a short-lived, single-use HMAC-signed ticket —

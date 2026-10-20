@@ -51,7 +51,7 @@ describe("a match's outcome on the felt", () => {
     expect(aimBefore).toBeDefined();
     const moved = target.mock.calls.some(([, pool]) => pool[0] !== aimBefore![0] || pool[1] !== aimBefore![1]);
     expect(moved).toBe(c.outcome === 'lost');
-    const dims = level.mock.calls.filter(([, to, rate]) => to === RoundMoment.lostLevel && rate === RoundMoment.lostLevelRate);
+    const dims = level.mock.calls.filter(([, owner, to, rate]) => owner === 'lost' && to === RoundMoment.lostLevel && rate === RoundMoment.lostLevelRate);
     expect(dims.length > 0).toBe(c.outcome === 'lost');
     await r.unmount();
   });
