@@ -1,10 +1,10 @@
 // Reads of the server's live in-memory table (server/game/gameRoom.ts) that an
 // integration test cannot make through the wire. Test-only, so it lives here
 // rather than as an escape hatch inside the server.
-import type { Server as SocketServer } from "socket.io";
+import type { TableRuntime } from "../../server/game/tableRuntime.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
-import { broadcastGameState, persistGameState } from "../../server/game/gamePersistence.ts";
+import { publishState } from "../../server/game/gamePersistence.ts";
 import { armTurn } from "../../server/game/gameTurn.ts";
 import { startReplayLog } from "../../server/game/replayShape.ts";
 import { createDeck, seatsOf, startRound, type Opening } from "../../lib/game/gameEngine.ts";
@@ -43,7 +43,7 @@ export function forgetActiveGame(roomId: string): boolean {
  * the timer running belongs to the round this one replaces.
  */
 export function redealExactly(
-  io: SocketServer,
+  rt: TableRuntime,
   roomId: string,
   hands: string[][],
   { opening }: { opening?: Opening } = {}
@@ -67,11 +67,11 @@ export function redealExactly(
   game.moveLog = startReplayLog();
   game.abandonedSeats.clear();
 
-  broadcastGameState(io, game);
-  // Postgres still holds the round this replaces until this lands, and a rejoin
-  // that rehydrates from it would be dealt the shuffle nobody is playing.
-  persistGameState(roomId, game);
-  armTurn(io, roomId);
+  // The persist matters: Postgres still holds the round this replaces until it
+  // lands, and a rejoin that rehydrates from it would be dealt the shuffle
+  // nobody is playing.
+  void publishState(rt, game);
+  armTurn(rt, roomId);
   return true;
 }
 

@@ -98,8 +98,8 @@ describe(
         .join("\n");
 
       const timerBodies = [
-        { label: "botTurn", call: "runBotTurn(io, roomId)" },
-        { label: "afkAutoPass", call: "handleAutoPass(io, roomId, userId)" },
+        { label: "botTurn", call: "runBotTurn(rt, roomId)" },
+        { label: "afkAutoPass", call: "handleAutoPass(rt, roomId, userId)" },
       ];
 
       for (const { label, call } of timerBodies) {

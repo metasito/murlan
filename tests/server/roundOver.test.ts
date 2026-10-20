@@ -7,7 +7,7 @@
 // all proved against resolveRoundEnd there, and are deliberately not repeated.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Server as SocketServer } from "socket.io";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { handleRoundOver } from "../../server/game/roundOver.ts";
 import { logger } from "../../server/http/logger.ts";
 import type { RoundOverWriters } from "../../server/game/roundOver.ts";
@@ -18,64 +18,36 @@ import type { ReplayMove } from "../../lib/game/replay.ts";
 const ROOM = "room_1";
 
 type Emitted = { room: string; event: string; payload: unknown };
-type Call = { name: string; args: unknown[] };
 
 /**
- * A stub socket server and a stub writer set sharing one `order` log, so a
+ * A recording runtime whose sends and writer calls share one journal, so a
  * test can assert what ran before what: the table has to hear the result
  * before any write is attempted, because two of the four call sites invoke
  * handleRoundOver as a bare `void` and a slow database would otherwise hold
  * the result back.
  *
- * A writer given an Error rejects with it instead of resolving.
+ * A writer given an Error rejects with it instead of resolving; `writers`
+ * replaces a writer outright.
  */
-function stubServer(overrides: Partial<Record<keyof RoundOverWriters, Error>> = {}) {
-  const order: string[] = [];
-  const emitted: Emitted[] = [];
-  const calls: Call[] = [];
-
-  const io = {
-    to: (room: string) => ({
-      emit: (event: string, payload: unknown) => {
-        order.push(event);
-        emitted.push({ room, event, payload });
-      },
-    }),
-  };
-
-  const record =
-    (name: keyof RoundOverWriters) =>
-    (...args: unknown[]) => {
-      order.push(name);
-      calls.push({ name, args });
-      const failure = overrides[name];
-      if (failure) return Promise.reject(failure);
-      return Promise.resolve(name === "recordRatedResult" ? new Map<string, number>() : undefined);
-    };
-
-  const writers = {
-    updateRoomStatus: record("updateRoomStatus"),
-    persistGameState: record("persistGameState"),
-    recordGameResult: record("recordGameResult"),
-    recordRatedResult: record("recordRatedResult"),
-    saveReplay: record("saveReplay"),
-    // A read, not a write, and the one thing that must happen *before* the
-    // broadcast: the rating delta stops existing once the rated write lands.
-    previewRatedDeltas: (...args: unknown[]) => {
-      order.push("previewRatedDeltas");
-      calls.push({ name: "previewRatedDeltas" as keyof RoundOverWriters, args });
-      const failure = overrides.previewRatedDeltas;
-      return failure ? Promise.reject(failure) : Promise.resolve(new Map<string, number>());
-    },
-  } as unknown as RoundOverWriters;
-
+function stubServer(
+  overrides: Partial<Record<keyof RoundOverWriters, Error>> = {},
+  writers: Partial<RoundOverWriters> = {}
+) {
+  const failing = Object.fromEntries(
+    Object.entries(overrides).map(([name, failure]) => [name, () => Promise.reject(failure)])
+  ) as Partial<RoundOverWriters>;
+  const { rt, journal, sent } = recordingRuntime({ writers: { ...failing, ...writers } });
+  const calls = () => journal.filter((e) => e.kind === "write");
   return {
-    io: io as unknown as SocketServer,
-    writers,
-    order,
-    emitted,
-    names: () => calls.map((c) => c.name),
-    of: (name: keyof RoundOverWriters) => calls.filter((c) => c.name === name),
+    rt,
+    get order(): string[] {
+      return journal.map((e) => (e.kind === "send" ? e.event : e.name));
+    },
+    get emitted(): Emitted[] {
+      return sent.map((e) => ({ room: "room" in e.to ? e.to.room : "", event: e.event, payload: e.args[0] }));
+    },
+    names: () => calls().map((c) => c.name),
+    of: (name: keyof RoundOverWriters) => calls().filter((c) => c.name === name),
   };
 }
 
@@ -143,7 +115,7 @@ describe("handleRoundOver — the broadcast", () => {
   test("the table is told once, before any write is attempted", async () => {
     const s = stubServer();
 
-    await handleRoundOver(s.io, ROOM, makeGame(), s.writers);
+    await handleRoundOver(s.rt, ROOM, makeGame());
 
     // By name rather than by position: `previewRatedDeltas` runs first and is
     // a read. What the guarantee is about is that no *write* is attempted
@@ -174,7 +146,7 @@ describe("handleRoundOver — the broadcast", () => {
     const s = stubServer();
     const game = makeGame();
 
-    await handleRoundOver(s.io, ROOM, game, s.writers);
+    await handleRoundOver(s.rt, ROOM, game);
 
     const payload = s.emitted[0].payload as Record<string, unknown>;
     assert.deepEqual(payload.finishingOrder, ["player_0", "player_1"]);
@@ -211,17 +183,15 @@ describe("handleRoundOver — the broadcast", () => {
   });
 
   test("game:over carries each rated seat's rating after the round beside its delta", async () => {
-    const s = stubServer();
-    const writers = {
-      ...s.writers,
+    const s = stubServer({}, {
       previewRatedDeltas: async () =>
         new Map([
           ["u_alice", { delta: 14, rating: 1014, rounds: 3 }],
           ["u_bob", { delta: -14, rating: 986, rounds: 7 }],
         ]),
-    };
+    });
 
-    await handleRoundOver(s.io, ROOM, makeGame(), writers);
+    await handleRoundOver(s.rt, ROOM, makeGame());
 
     const payload = s.emitted[0].payload as Record<string, unknown>;
     assert.deepEqual(payload.ratingDeltas, { u_alice: 14, u_bob: -14 });
@@ -235,7 +205,7 @@ describe("handleRoundOver — the broadcast", () => {
     const s = stubServer();
     const game = makeGame({ matchLength: "single" });
 
-    await handleRoundOver(s.io, ROOM, game, s.writers);
+    await handleRoundOver(s.rt, ROOM, game);
 
     const payload = s.emitted[0].payload as Record<string, unknown>;
     assert.equal(payload.matchOver, true, "one round is the whole match");
@@ -249,7 +219,7 @@ describe("handleRoundOver — the broadcast", () => {
     const s = stubServer();
     const game = makeGame();
 
-    await handleRoundOver(s.io, ROOM, game, s.writers);
+    await handleRoundOver(s.rt, ROOM, game);
 
     assert.equal(game.rematchVotes.size, 0);
   });
@@ -260,7 +230,7 @@ describe("handleRoundOver — the writes", () => {
     const s = stubServer();
     const game = makeGame();
 
-    await handleRoundOver(s.io, ROOM, game, s.writers);
+    await handleRoundOver(s.rt, ROOM, game);
     await game.resultWrites;
 
     assert.deepEqual(s.names(), [
@@ -348,18 +318,18 @@ describe("handleRoundOver — the writes", () => {
       maxPlayers: 4,
     });
 
-    await handleRoundOver(s.io, ROOM, game, s.writers);
+    await handleRoundOver(s.rt, ROOM, game);
 
     assert.deepEqual(s.names(), ["updateRoomStatus", "persistGameState"]);
   });
 
   test("a round with no move log writes no replay", async () => {
     const noLog = stubServer();
-    await handleRoundOver(noLog.io, ROOM, makeGame({ moveLog: null }), noLog.writers);
+    await handleRoundOver(noLog.rt, ROOM, makeGame({ moveLog: null }));
     assert.deepEqual(noLog.of("saveReplay"), []);
 
     const empty = stubServer();
-    await handleRoundOver(empty.io, ROOM, makeGame({ moveLog: [] }), empty.writers);
+    await handleRoundOver(empty.rt, ROOM, makeGame({ moveLog: [] }));
     assert.deepEqual(empty.of("saveReplay"), []);
   });
 });
@@ -369,7 +339,7 @@ describe("handleRoundOver — a failing write is not the table's problem", () =>
     const s = stubServer({ updateRoomStatus: new Error("no rooms row") });
     const game = makeGame();
 
-    await handleRoundOver(s.io, ROOM, game, s.writers);
+    await handleRoundOver(s.rt, ROOM, game);
     await game.resultWrites;
 
     assert.equal(s.of("persistGameState").length, 1);
@@ -386,7 +356,7 @@ describe("handleRoundOver — a failing write is not the table's problem", () =>
     // Two of the four call sites invoke this as a bare `void`, so a
     // rejection has nothing to catch it: it surfaces as an unhandled
     // rejection and takes the process out through the boot guards.
-    await handleRoundOver(s.io, ROOM, makeGame(), s.writers);
+    await handleRoundOver(s.rt, ROOM, makeGame());
 
     assert.deepEqual(
       s.emitted.map((e) => e.event),
@@ -399,18 +369,16 @@ describe("handleRoundOver — a failing write is not the table's problem", () =>
 describe("handleRoundOver — the ladder and history chain", () => {
   test("a declined rated write leaves history's delta null and says so", async (t) => {
     const warn = t.mock.method(logger, "warn", () => undefined);
-    const s = stubServer();
-    const writers = {
-      ...s.writers,
+    const s = stubServer({}, {
       previewRatedDeltas: async () =>
         new Map([
           ["u_alice", { delta: 8, rating: 1008, rounds: 1 }],
           ["u_bob", { delta: -8, rating: 992, rounds: 1 }],
         ]),
-    };
+    });
     const game = makeGame();
 
-    await handleRoundOver(s.io, ROOM, game, writers);
+    await handleRoundOver(s.rt, ROOM, game);
     await game.resultWrites;
 
     const deltas = s.of("recordGameResult")[0].args[3] as Map<string, number>;
@@ -422,15 +390,12 @@ describe("handleRoundOver — the ladder and history chain", () => {
   });
 
   test("a round's writes wait for the previous round's to settle", async () => {
-    const s = stubServer();
     const finished: string[] = [];
     let releaseFirst!: () => void;
     let calls = 0;
-    const writers = {
-      ...s.writers,
-      recordGameResult: (...args: unknown[]) => {
+    const s = stubServer({}, {
+      recordGameResult: () => {
         const nth = ++calls;
-        void s.writers.recordGameResult(...(args as Parameters<RoundOverWriters["recordGameResult"]>));
         if (nth > 1) {
           finished.push("round 2");
           return Promise.resolve();
@@ -442,11 +407,11 @@ describe("handleRoundOver — the ladder and history chain", () => {
           };
         });
       },
-    };
+    });
     const game = makeGame();
 
-    await handleRoundOver(s.io, ROOM, game, writers);
-    await handleRoundOver(s.io, ROOM, game, writers);
+    await handleRoundOver(s.rt, ROOM, game);
+    await handleRoundOver(s.rt, ROOM, game);
     await new Promise((r) => setImmediate(r));
 
     assert.equal(s.of("recordGameResult").length, 1, "round 2 has not started while round 1 is pending");

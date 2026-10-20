@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { SocketServer } from "../../server/socket/socketTypes.ts";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { armTurn } from "../../server/game/gameTurn.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
@@ -11,7 +11,7 @@ import { dealEndMs } from "../../lib/timeline/dealTimeline.ts";
 import { Motion } from "../../lib/tokens.ts";
 
 const ROOM = "exchange-rearm-room";
-const io = { to: () => ({ emit: () => {} }) } as unknown as SocketServer;
+const { rt } = recordingRuntime();
 
 function exchangeTable(loserHoldsBothJokers = false): OnlineGameState {
   const seats = [0, 1, 2, 3].map((i) => ({ name: `B${i}`, type: "bot" as const, id: `player_${i}` }));
@@ -58,7 +58,7 @@ test("a bot winner gives no earlier than the receive has landed and been read, a
   const game = exchangeTable();
   try {
     const phase = game.gameState.exchangePhase!;
-    armTurn(io, ROOM);
+    armTurn(rt, ROOM);
     const counts = game.gameState.players.map((p) => p.hand.length);
     const floor = exchangeGiveDelayMs(counts);
     const pile = restPoint();
@@ -85,7 +85,7 @@ test("a bot opening a both-Jokers round waits out the deal and the ceremony it o
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const game = exchangeTable(true);
   try {
-    armTurn(io, ROOM);
+    armTurn(rt, ROOM);
     const counts = game.gameState.players.map((p) => p.hand.length);
     const shut = dealEndMs(counts, Motion.duration.reveal) + exchangeAnnounceMs(true);
     const dealt = structuredClone(game.gameState);

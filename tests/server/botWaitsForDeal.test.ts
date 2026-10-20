@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Server as SocketServer } from "socket.io";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 
 import { armTurn } from "../../server/game/gameTurn.ts";
 import { botMoveDelayMs, clearRoomTimers, deadline } from "../../server/game/gameTimers.ts";
@@ -16,7 +16,7 @@ import { Motion } from "../../lib/tokens.ts";
 let restoreClock = () => {};
 
 const ROOM = "bot-waits-for-deal-room";
-const io = { to: () => ({ emit: () => {} }) } as unknown as SocketServer;
+const { rt } = recordingRuntime();
 
 function dealtRound(seats: number): GameState {
   const deck = createDeck();
@@ -56,7 +56,7 @@ describe("a vacant opener waits out the deal (#1726)", () => {
       const gameState = dealtRound(seats);
       activeGames.set(ROOM, { roomId: ROOM, gameState, playerMap: {} } as unknown as OnlineGameState);
       try {
-        armTurn(io, ROOM);
+        armTurn(rt, ROOM);
         const floor = dealEndMs(
           gameState.players.map((p) => p.hand.length),
           Motion.duration.reveal
@@ -77,7 +77,7 @@ describe("a vacant opener waits out the deal (#1726)", () => {
     gameState.playedRanks![0] = 1;
     activeGames.set(ROOM, { roomId: ROOM, gameState, playerMap: {} } as unknown as OnlineGameState);
     try {
-      armTurn(io, ROOM);
+      armTurn(rt, ROOM);
       assert.equal(deadline("bot", ROOM)! - clock.now(), botMoveDelayMs());
     } finally {
       teardown();

@@ -8,7 +8,7 @@ import { drainPool } from "../store/drainPool.ts";
 import { beginShutdown } from "../game/gameRoom.ts";
 import { socketAdapterPool, socketAdapterReady } from "../socket/socketAdapter.ts";
 import { closeOwnership } from "../game/gameOwnership.ts";
-import { stopTables } from "../game/gamePersistence.ts";
+import type { TableRuntime } from "../game/tableRuntime.ts";
 import { settleDisconnects } from "../socket/socketPresence.ts";
 
 /**
@@ -65,8 +65,9 @@ export async function within<T>(ms: number, work: Promise<T>): Promise<T | undef
 }
 
 export interface ShutdownDeps {
-  io: SocketIOServer;
-  server: HttpServer;
+  io: Pick<SocketIOServer, "close">;
+  server: Pick<HttpServer, "listening" | "close">;
+  tables: Pick<TableRuntime, "stopTables">;
   /** Defaults to the app's module-singleton pool. */
   pool?: Pool;
   /** Defaults to `process.exit`. Injected so a test can observe the code. */
@@ -87,7 +88,7 @@ let shuttingDown = false;
  */
 export async function shutdown(
   signal: string,
-  { io, server, pool = appPool, exit = (code) => process.exit(code) }: ShutdownDeps
+  { io, server, tables, pool = appPool, exit = (code) => process.exit(code) }: ShutdownDeps
 ): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
@@ -120,7 +121,7 @@ export async function shutdown(
       })()
     );
     await settleDisconnects(SHUTDOWN_BUDGET.settleDisconnects);
-    await within(SHUTDOWN_BUDGET.stopTables, stopTables());
+    await within(SHUTDOWN_BUDGET.stopTables, tables.stopTables());
     const adapterPool = socketAdapterPool();
     if (adapterPool) {
       await within(

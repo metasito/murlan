@@ -4,6 +4,7 @@ import compression from "compression";
 import helmet from "helmet";
 import type { Server as HttpServer } from "node:http";
 import type { SocketServer as SocketIOServer } from "./socket/socketTypes.ts";
+import type { TableRuntime } from "./game/tableRuntime.ts";
 import { createRequestLogger, logger } from "./http/logger.ts";
 import { sessionMiddleware } from "./http/session.ts";
 import { pool } from "./store/db.ts";
@@ -178,6 +179,7 @@ export interface CreatedApp {
   app: express.Express;
   server: HttpServer;
   io: SocketIOServer;
+  rt: TableRuntime;
 }
 
 /**
@@ -248,9 +250,9 @@ export async function createApp(): Promise<CreatedApp> {
   const server = await registerRoutes(app);
 
   const { setupSocket } = await import("./socket/socket.ts");
-  const io = setupSocket(server);
+  const { io, rt } = setupSocket(server);
 
   app.use(errorHandler);
 
-  return { app, server, io };
+  return { app, server, io, rt };
 }

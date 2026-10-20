@@ -10,10 +10,9 @@
 // which of `vacateSeat`'s exits write the room's row (#1008).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Server as SocketServer } from "socket.io";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { vacateSeat, autoMoveForSeat, armTurn } from "../../server/game/gameTurn.ts";
 import { autoMoveForSeat as chooseMove } from "../../lib/game/autoMove.ts";
-import { roundOverWriters } from "../../server/game/gamePersistence.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
@@ -26,13 +25,7 @@ import type { RatedPreview } from "../../server/game/ratings.ts";
 
 const ROOM = "weak-seat-room";
 
-/** Answers both call shapes gameTurn.ts's own emits and sendGameStateTo need. */
-const io = {
-  to: () => ({
-    emit: () => {},
-    timeout: () => ({ emit: () => {} }),
-  }),
-} as unknown as SocketServer;
+const { rt } = recordingRuntime();
 
 function player(id: string, name: string, hand: Player["hand"] = []): Player {
   return { id, name, hand, type: "human" };
@@ -69,7 +62,7 @@ describe("a mid-round takeover is weak only for the round it happened on (#850 c
     activeGames.set(ROOM, game);
 
     try {
-      await vacateSeat(io, ROOM, "drita",roundOverWriters);
+      await vacateSeat(rt, ROOM, "drita");
 
       assert.ok(game.weakSeats.has(3), "the seat just vacated mid-round must be weak");
       assert.equal(game.vacatedSeats.get(3)?.userId, "drita");
@@ -101,7 +94,7 @@ describe("a mid-round takeover is weak only for the round it happened on (#850 c
     activeGames.set(ROOM, game);
 
     try {
-      await vacateSeat(io, ROOM, "drita",roundOverWriters);
+      await vacateSeat(rt, ROOM, "drita");
       assert.ok(!game.weakSeats.has(1));
     } finally {
       clearRoomTimers(ROOM);
@@ -145,7 +138,7 @@ describe("runBotTurn plays a weak seat at the floor and a bot seat with the bot"
     });
     activeGames.set(ROOM, game);
     try {
-      armTurn(io, ROOM, 0);
+      armTurn(rt, ROOM, 0);
       await new Promise((r) => setTimeout(r, 30));
       return { state, played: game.gameState.lastPlayedCombination?.cards.map((c) => c.id) };
     } finally {
@@ -241,7 +234,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
     const spy = persistSpy();
 
     try {
-      await vacateSeat(io, ROOM, "drita",spy.writers);
+      await vacateSeat(recordingRuntime({ writers: spy.writers }).rt, ROOM, "drita");
       assert.deepEqual(
         spy.wrote,
         [{ roomId: ROOM, seats: ["0", "1", "2"], vacated: [3] }],
@@ -270,7 +263,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
     const spy = persistSpy();
 
     try {
-      await vacateSeat(io, ROOM, "drita",spy.writers);
+      await vacateSeat(recordingRuntime({ writers: spy.writers }).rt, ROOM, "drita");
       assert.deepEqual(
         spy.wrote,
         [{ roomId: ROOM, seats: ["0"], vacated: [1] }],
@@ -299,14 +292,12 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
     const spy = persistSpy();
 
     try {
-      await vacateSeat(io, ROOM, "drita",spy.writers);
+      await vacateSeat(recordingRuntime({ writers: spy.writers }).rt, ROOM, "drita");
       assert.deepEqual(spy.wrote, [], "persisting a table being disposed of races its own delete");
       assert.equal(activeGames.has(ROOM), false, "the table is gone, not merely unwritten");
-      // This branch does write — roomStore.updateRoomStatus, and disposeGame's
-      // own delete of the row — but both sit outside the seam, so all this can
-      // say is that no RoundOverWriters member ran. That is what rules out
-      // handleRoundOver and voidAbandonedMatch, each of which persists.
-      assert.deepEqual(spy.reached, [], "no RoundOverWriters member on the path that deletes the row");
+      // The room's status is the one write: no persist, which rules out
+      // handleRoundOver and voidAbandonedMatch, each of which makes one.
+      assert.deepEqual(spy.reached, ["updateRoomStatus"], "a writer beyond the status on the path that deletes the row");
     } finally {
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);

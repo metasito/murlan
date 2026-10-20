@@ -282,10 +282,11 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     }
 
     const { roomStore } = await import("../../server/store/roomStore.ts");
+    const { seatHoldMs } = await import("../../server/game/gameTimers.ts");
     const lock = await lockRoom(room.roomId);
     let settled: Promise<PromiseSettledResult<Awaited<ReturnType<typeof roomStore.claimRoomSeat>>>[]>;
     try {
-      settled = Promise.allSettled(claimants.map((id) => roomStore.claimRoomSeat(room.roomId, id)));
+      settled = Promise.allSettled(claimants.map((id) => roomStore.claimRoomSeat(room.roomId, id, seatHoldMs())));
       await lock.waitForBlocked(claimants.length);
     } finally {
       await lock.release();
@@ -308,7 +309,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     await Promise.all(dealt);
 
     const { activeGames } = await import("../../server/game/gameRoom.ts");
-    const { persistGameState } = await import("../../server/game/gamePersistence.ts");
+    const { persistGameState } = server.rt.writers;
     const { activeGameStore } = await import("../../server/store/activeGameStore.ts");
     const game = activeGames.get(room.roomId)!;
     const real = activeGameStore.write;

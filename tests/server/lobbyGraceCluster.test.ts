@@ -2,9 +2,9 @@
 // table through another instance, which only the cluster can say.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { SocketServer } from "../../server/socket/socketTypes.ts";
+import { recordingRuntime, stubTransport } from "../helpers/recordingRuntime.ts";
+import { socketPresence } from "../../server/socket/socketOutbox.ts";
 import { armLobbyGrace } from "../../server/socket/socketTable.ts";
-import { setSocketServer } from "../../server/socket/socketRegistry.ts";
 import { clearLobbyGrace } from "../../server/game/gameTimers.ts";
 import { installClock } from "../../server/http/clock.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
@@ -21,16 +21,12 @@ test("a seat is kept for a player back at the table on another instance", async 
     clearLobbyGrace(ROOM, USER);
   });
   const released = t.mock.method(roomStore, "releaseSeat", async () => null);
-  const target = { emit: () => true };
-  const io = {
-    to: () => target,
+  const cluster = stubTransport({
     in: () => ({ fetchSockets: async () => [{ rooms: new Set([ROOM]), data: { userId: USER } }] }),
-    serverSideEmit: (_e: string, _a: unknown, ack: (err: unknown, replies: unknown[]) => void) =>
-      ack(null, []),
-  } as unknown as SocketServer;
-  setSocketServer(io);
+  });
+  const { rt } = recordingRuntime({ presence: socketPresence(cluster) });
 
-  armLobbyGrace(io, ROOM, USER);
+  armLobbyGrace(rt, ROOM, USER);
   assert.equal(expiries.length, 1);
   expiries[0]();
   await new Promise((r) => setTimeout(r, 50));
@@ -50,15 +46,12 @@ test("a seat is kept for a player at the table here when the cluster does not an
     socketRoomMap.delete("local-socket");
   });
   const released = t.mock.method(roomStore, "releaseSeat", async () => null);
-  const io = {
-    to: () => ({ emit: () => true }),
+  const cluster = stubTransport({
     in: () => ({ fetchSockets: () => Promise.reject(new Error("timeout reached")) }),
-    serverSideEmit: (_e: string, _a: unknown, ack: (err: unknown, replies: unknown[]) => void) =>
-      ack(null, []),
-  } as unknown as SocketServer;
-  setSocketServer(io);
+  });
+  const { rt } = recordingRuntime({ presence: socketPresence(cluster) });
 
-  armLobbyGrace(io, ROOM, USER);
+  armLobbyGrace(rt, ROOM, USER);
   expiries[0]();
   await new Promise((r) => setTimeout(r, 50));
 

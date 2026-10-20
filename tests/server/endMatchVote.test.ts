@@ -4,10 +4,12 @@
 // `rematchAnswered` uses) rather than a second vote mechanism — the seats a
 // vote counts against is `Object.keys(playerMap).length`, so a bot or a
 // vacated seat (neither ever in playerMap) abstains by construction.
-import { test, describe, before } from "node:test";
+import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Server as SocketServer } from "socket.io";
-import { installTableHandlers, applyOrForward, rehydrateGame } from "../../server/game/tableHandlers.ts";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
+import type { TableRuntime } from "../../server/game/tableRuntime.ts";
+import { rehydrateGame } from "../../server/game/tableHandlers.ts";
+import { applyOrForward } from "../../server/game/tableRouter.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
@@ -49,21 +51,12 @@ function midRoundOneVacated(): GameState {
 }
 
 function stubIo() {
-  const emitted: { event: string; payload: unknown }[] = [];
-  const target = {
-    emit: (event: string, payload: unknown) => emitted.push({ event, payload }),
-    timeout: () => ({ emit: (event: string, payload: unknown) => emitted.push({ event, payload }) }),
-  };
-  const io = { to: () => target, on: () => {} } as unknown as SocketServer;
-  return { io, emitted };
+  const { rt, sent } = recordingRuntime();
+  return { rt, emitted: sent };
 }
 
-before(() => {
-  installTableHandlers({ on: () => {} } as unknown as SocketServer);
-});
-
-function vote(io: SocketServer, userId: string, wants = true) {
-  return applyOrForward(io, {
+function vote(rt: TableRuntime, userId: string, wants = true) {
+  return applyOrForward(rt, {
     kind: "endMatchVote",
     roomId: ROOM,
     userId,
@@ -73,7 +66,7 @@ function vote(io: SocketServer, userId: string, wants = true) {
 
 describe("the end-match vote, offered only after a vacancy, decided by unanimity (#850 clause 8)", () => {
   test("no vacancy yet: the vote is refused outright", async () => {
-    const { io } = stubIo();
+    const { rt } = stubIo();
     const game = baseGame({
       gameState: {
         players: [player("p0", "Alice"), player("p1", "Bob")],
@@ -92,7 +85,7 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
     activeGames.set(ROOM, game);
 
     try {
-      const outcome = await vote(io, "alice");
+      const outcome = await vote(rt, "alice");
       assert.deepEqual(outcome, { ok: false, code: "NO_VACANCY_TO_END" });
     } finally {
       activeGames.delete(ROOM);
@@ -100,7 +93,7 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
   });
 
   test("a seatless caller cannot vote", async () => {
-    const { io } = stubIo();
+    const { rt } = stubIo();
     const game = baseGame({
       gameState: midRoundOneVacated(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
@@ -109,7 +102,7 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
     activeGames.set(ROOM, game);
 
     try {
-      const outcome = await vote(io, "ghost");
+      const outcome = await vote(rt, "ghost");
       assert.deepEqual(outcome, { ok: false, code: "NOT_SEATED" });
     } finally {
       activeGames.delete(ROOM);
@@ -117,7 +110,7 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
   });
 
   test("counts against the three seated humans, not the four seats at the table", async () => {
-    const { io, emitted } = stubIo();
+    const { rt, emitted } = stubIo();
     const game = baseGame({
       gameState: midRoundOneVacated(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
@@ -126,14 +119,14 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
     activeGames.set(ROOM, game);
 
     try {
-      await vote(io, "alice");
-      await vote(io, "carl");
+      await vote(rt, "alice");
+      await vote(rt, "carl");
       // Two of three: not unanimous yet, and the vacated seat contributes
       // nothing to either side of the count.
       assert.equal(game.matchOver, false);
       assert.ok(!emitted.some((e) => e.event === "game:round_over"));
 
-      await vote(io, "dee");
+      await vote(rt, "dee");
       // The third and last seated human closes it — 3 of 3, not 3 of 4.
       assert.equal(game.matchOver, true);
 
@@ -160,7 +153,7 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
   });
 
   test("a repeat vote from the same seat does not double-count toward unanimity", async () => {
-    const { io, emitted } = stubIo();
+    const { rt, emitted } = stubIo();
     const game = baseGame({
       gameState: midRoundOneVacated(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
@@ -169,9 +162,9 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
     activeGames.set(ROOM, game);
 
     try {
-      await vote(io, "alice");
-      await vote(io, "alice");
-      await vote(io, "alice");
+      await vote(rt, "alice");
+      await vote(rt, "alice");
+      await vote(rt, "alice");
       assert.equal(game.matchOver, false);
       assert.ok(!emitted.some((e) => e.event === "game:round_over"));
     } finally {
@@ -180,7 +173,7 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
   });
 
   test("withdrawing a vote leaves the tally empty and cannot end the match", async () => {
-    const { io, emitted } = stubIo();
+    const { rt, emitted } = stubIo();
     const game = baseGame({
       gameState: midRoundOneVacated(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
@@ -189,8 +182,8 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
     activeGames.set(ROOM, game);
 
     try {
-      await vote(io, "alice");
-      await vote(io, "alice", false);
+      await vote(rt, "alice");
+      await vote(rt, "alice", false);
       assert.equal(game.endMatchVotes.size, 0);
       assert.equal(game.matchOver, false);
       assert.ok(!emitted.some((e) => e.event === "game:round_over"));
@@ -200,7 +193,7 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
   });
 
   test("withdrawing a vote from a seat that never voted is a no-op", async () => {
-    const { io } = stubIo();
+    const { rt } = stubIo();
     const game = baseGame({
       gameState: midRoundOneVacated(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
@@ -209,7 +202,7 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
     activeGames.set(ROOM, game);
 
     try {
-      const outcome = await vote(io, "alice", false);
+      const outcome = await vote(rt, "alice", false);
       assert.equal(outcome.ok, true);
       assert.equal(game.endMatchVotes.size, 0);
     } finally {
@@ -225,17 +218,17 @@ describe("a match ended by the vote is never rematched (docs/GAME-RULES.md § De
     return { ...state, finishingOrder: ["p0", "p2"] };
   }
 
-  async function endByVote(game: OnlineGameState, io: SocketServer) {
+  async function endByVote(game: OnlineGameState, rt: TableRuntime) {
     activeGames.set(ROOM, game);
-    await vote(io, "alice");
-    await vote(io, "carl");
-    await vote(io, "dee");
+    await vote(rt, "alice");
+    await vote(rt, "carl");
+    await vote(rt, "dee");
   }
 
   const vacated = new Map([[1, { userId: "drita", username: "Drita" }]]);
 
   test("the rematch vote is refused, so no deal reads the partial finishingOrder", async () => {
-    const { io } = stubIo();
+    const { rt } = stubIo();
     const game = baseGame({
       gameState: partlyRanked(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
@@ -243,10 +236,10 @@ describe("a match ended by the vote is never rematched (docs/GAME-RULES.md § De
     });
 
     try {
-      await endByVote(game, io);
+      await endByVote(game, rt);
       assert.equal(game.endedByVote, true);
 
-      const outcome = await applyOrForward(io, {
+      const outcome = await applyOrForward(rt, {
         kind: "rematchVote",
         roomId: ROOM,
         userId: "alice",
@@ -261,7 +254,7 @@ describe("a match ended by the vote is never rematched (docs/GAME-RULES.md § De
   });
 
   test("a restart does not reopen the rematch", async (t) => {
-    const { io } = stubIo();
+    const { rt } = recordingRuntime({ persist: "real" });
     useMemoryTableStores(t);
     const game = baseGame({
       gameState: partlyRanked(),
@@ -270,12 +263,12 @@ describe("a match ended by the vote is never rematched (docs/GAME-RULES.md § De
     });
 
     try {
-      await endByVote(game, io);
+      await endByVote(game, rt);
       await new Promise((r) => setTimeout(r, 20));
       activeGames.delete(ROOM);
 
-      assert.equal(await rehydrateGame(ROOM, "alice", io), "restored");
-      const outcome = await applyOrForward(io, {
+      assert.equal(await rehydrateGame(rt, ROOM, "alice"), "restored");
+      const outcome = await applyOrForward(rt, {
         kind: "rematchVote",
         roomId: ROOM,
         userId: "alice",

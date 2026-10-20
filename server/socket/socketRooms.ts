@@ -9,7 +9,7 @@ import { roomStore } from "../store/roomStore.ts";
 import { trackEvent } from "./events.ts";
 import { onEvent } from "./socketSafety.ts";
 import { socketRoomMap, spectatorRoomMap } from "../game/gameRoom.ts";
-import { clearLobbyGrace } from "../game/gameTimers.ts";
+import { clearLobbyGrace, seatHoldMs } from "../game/gameTimers.ts";
 import { OK } from "../shared/refusal.ts";
 import {
   handleSeatRelease,
@@ -17,7 +17,6 @@ import {
   announceIfFilled,
   announceRoomChanged,
 } from "./socketTable.ts";
-import { applyOrForward } from "../game/tableRouter.ts";
 import { seatSocket, stopSpectating } from "./seating.ts";
 import {
   type LobbyPort,
@@ -39,23 +38,24 @@ import {
   RoomStartSchema,
 } from "../../shared/socketSchemas.ts";
 
-export function registerRoomHandlers({ io, socket, userId }: HandlerContext) {
+export function registerRoomHandlers({ rt, socket, userId }: HandlerContext) {
 
     const lobby: LobbyPort = {
       userId,
       socketId: socket.id,
       store: roomStore,
       watching: spectatorRoomMap,
-      seat: (roomId) => seatSocket(io, socket, userId, roomId),
+      seat: (roomId) => seatSocket(rt, socket, userId, roomId),
       sendState: (state) => socket.emit("room:state", state),
-      broadcastState: (roomId, state) => io.to(roomId).emit("room:state", state),
+      broadcastState: (roomId, state) => rt.out.room(roomId).emit("room:state", state),
       join: (roomId) => socket.join(roomId),
       leave: (roomId) => socket.leave(roomId),
       roomState: roomStatePayload,
-      table: (draft) => applyOrForward(io, draft),
-      announceFilled: (room, seated) => announceIfFilled(io, room, seated),
-      announceChanged: (roomId) => announceRoomChanged(io, roomId),
+      table: (draft) => rt.route(draft),
+      announceFilled: (room, seated) => announceIfFilled(rt, room, seated),
+      announceChanged: (roomId) => announceRoomChanged(rt, roomId),
       clearLobbyGrace,
+      seatHoldMs,
       track: trackEvent,
     };
 
@@ -78,7 +78,7 @@ export function registerRoomHandlers({ io, socket, userId }: HandlerContext) {
       "room:unspectate",
       NoPayloadSchema,
       async () => {
-        await stopSpectating(io, socket, userId);
+        await stopSpectating(rt, socket, userId);
         return OK;
       },
       // Matches room:spectate: leaving cannot be cheaper to spam than joining.
@@ -106,7 +106,7 @@ export function registerRoomHandlers({ io, socket, userId }: HandlerContext) {
         if (!leavingRoomId) return OK;
         socketRoomMap.delete(socket.id);
 
-        await handleSeatRelease(io, leavingRoomId, userId, { socket, source: "leave" });
+        await handleSeatRelease(rt, leavingRoomId, userId, { socket, source: "leave" });
         return OK;
       },
       { limit: 20, windowMs: 60_000 }
@@ -135,7 +135,7 @@ export function registerRoomHandlers({ io, socket, userId }: HandlerContext) {
         // Routed like every other table action: between the rounds of a match
         // the game already exists, and it exists on whichever instance dealt
         // the last one rather than on whichever one is holding the host.
-        return applyOrForward(io, {
+        return rt.route({
           kind: "startMatch",
           roomId,
           userId,

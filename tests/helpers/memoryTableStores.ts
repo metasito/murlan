@@ -46,6 +46,13 @@ export function useMemoryTableStores(t: TestContext, seed: MemoryTableSeed = {})
       const room = rooms.get(roomId);
       if (room) rooms.set(roomId, { ...room, status });
     },
+    restoreSeat: async (roomId, userId, seatIndex, host) => {
+      const room = rooms.get(roomId);
+      if (!room) return;
+      const others = seated(roomId).filter((s) => s.userId !== userId);
+      seats.set(roomId, [...others, { roomId, userId, seatIndex, user: { id: userId } } as Seat]);
+      if (host) rooms.set(roomId, { ...room, hostUserId: userId });
+    },
     upsertRoomPlayer: async (roomId, userId, seatIndex) => {
       const others = seated(roomId).filter((s) => s.userId !== userId);
       const seat = { roomId, userId, seatIndex, user: { id: userId } } as Seat;

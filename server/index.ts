@@ -16,7 +16,7 @@ checkBootEnv();
 // port against a throwaway database schema, without going through this
 // file's listen()/SIGTERM/SIGINT wiring at all.
 (async () => {
-  const { server, io } = await createApp();
+  const { server, io, rt } = await createApp();
 
   const port = parseInt(process.env.PORT || "5000", 10);
   // reusePort is Linux-only; Windows and macOS reject it with ENOTSUP.
@@ -25,8 +25,8 @@ checkBootEnv();
     logger.info(`express server serving on port ${port}`);
   });
 
-  process.on("SIGTERM", () => void shutdown("SIGTERM", { io, server }));
-  process.on("SIGINT", () => void shutdown("SIGINT", { io, server }));
+  process.on("SIGTERM", () => void shutdown("SIGTERM", { io, server, tables: rt }));
+  process.on("SIGINT", () => void shutdown("SIGINT", { io, server, tables: rt }));
 
   // After the app is up, so a failure during construction — `ensureSchema`
   // above all, which refuses to start on a schema it knows is wrong — reaches

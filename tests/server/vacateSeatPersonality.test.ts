@@ -6,9 +6,8 @@
 // start accumulating points under the name they left behind.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { Server as SocketServer } from "socket.io";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { vacateSeat } from "../../server/game/gameTurn.ts";
-import { roundOverWriters } from "../../server/game/gamePersistence.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
@@ -19,8 +18,7 @@ function player(id: string, name: string): Player {
   return { id, name, hand: [], type: "human" };
 }
 
-/** A stub io that records nothing — vacateSeat's emits are not under test here. */
-const io = { to: () => ({ emit: () => {} }) } as unknown as SocketServer;
+const { rt } = recordingRuntime();
 
 test("vacateSeat never sets personality on the seat it hands to the bot", async () => {
   const gameState: GameState = {
@@ -50,7 +48,7 @@ test("vacateSeat never sets personality on the seat it hands to the bot", async 
   } as unknown as OnlineGameState;
   activeGames.set(ROOM, game);
 
-  await vacateSeat(io, ROOM, "u_drita", roundOverWriters);
+  await vacateSeat(rt, ROOM, "u_drita");
 
   const vacated = game.gameState.players[1];
   assert.equal(vacated?.type, "bot");

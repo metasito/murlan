@@ -1,7 +1,7 @@
 // server/game/tableRouter.ts — sends a table action to the instance that owns the
 // table.
 //
-// `io.to(roomId)` crosses instances; `activeGames.get(roomId)` does not. So a
+// `rt.out.room(roomId)` crosses instances; `activeGames.get(roomId)` does not. So a
 // player whose socket landed on an instance that did not deal the round saw the
 // table perfectly and was refused every move. This is the other half: the
 // action travels to the game rather than the game being read where the action
@@ -12,13 +12,14 @@
 // the adapter's delivery rather than inventing one.
 import { now } from "../http/clock.ts";
 import { randomUUID } from "node:crypto";
-import type { SocketServer } from "../socket/socketTypes.ts";
+import type { TableRuntime } from "./tableRuntime.ts";
 import { logger } from "../http/logger.ts";
 import { activeGames, isShuttingDown } from "./gameRoom.ts";
 import { claimRoom, ownsRoom, releaseRoom } from "./gameOwnership.ts";
 import type { Outcome } from "../shared/refusal.ts";
 import type { TableAction, TableActionDraft, TakeoverMode } from "./tableActions.ts";
 import { TAKEOVER } from "./tableActions.ts";
+import { applyTableAction, rehydrateGame } from "./tableHandlers.ts";
 
 export const TABLE_ACTION_EVENT = "murlan:table";
 
@@ -56,7 +57,6 @@ const RETRY_BASE_MS = 120;
 const APPLIED_TTL_MS = 60_000;
 const APPLIED_MAX = 2_000;
 
-type Applier = (io: SocketServer, action: TableAction) => Promise<Outcome>;
 /**
  * Puts a persisted game back in memory, for the caller named by `forUserId`.
  *
@@ -67,19 +67,6 @@ type Applier = (io: SocketServer, action: TableAction) => Promise<Outcome>;
  * into this instance's memory at all.
  */
 export type RehydrateOutcome = "restored" | "missing" | "unrestorable" | "newer" | "not_seated";
-type Rehydrator = (
-  roomId: string,
-  forUserId: string | null,
-  io: SocketServer
-) => Promise<RehydrateOutcome>;
-
-let apply: Applier = async () => UNOWNED;
-let rehydrate: Rehydrator = async () => "missing";
-
-export function setTableHandlers(applier: Applier, rehydrator: Rehydrator): void {
-  apply = applier;
-  rehydrate = rehydrator;
-}
 
 /** Every action this process has already applied, by id. */
 const applied = new Map<string, { outcome: Promise<Outcome>; at: number }>();
@@ -105,10 +92,10 @@ function remember(id: string, outcome: Promise<Outcome>): Promise<Outcome> {
  * Remembered before it settles: a client retry can arrive on another socket
  * while the first attempt is still being applied.
  */
-function applyOnce(io: SocketServer, action: TableAction): Promise<Outcome> {
+function applyOnce(rt: TableRuntime, action: TableAction): Promise<Outcome> {
   const seen = applied.get(action.id);
   if (seen && now() - seen.at <= APPLIED_TTL_MS) return seen.outcome;
-  const outcome = apply(io, action);
+  const outcome = applyTableAction(rt, action);
   outcome.catch(() => applied.delete(action.id));
   return remember(action.id, outcome);
 }
@@ -126,8 +113,8 @@ function applyOnce(io: SocketServer, action: TableAction): Promise<Outcome> {
  * there would refuse every other player at the table for the width of one
  * restore — which is exactly the moment they are all acting at once.
  */
-export function registerTableRouting(io: SocketServer): void {
-  io.on(TABLE_ACTION_EVENT, (action: TableAction, reply?: (r: Outcome) => void) => {
+export function registerTableRouting(rt: TableRuntime): void {
+  rt.transport.on(TABLE_ACTION_EVENT, (action: TableAction, reply?: (r: Outcome) => void) => {
     if (typeof reply !== "function") return;
     void (async () => {
       if (!activeGames.has(action.roomId)) {
@@ -135,7 +122,7 @@ export function registerTableRouting(io: SocketServer): void {
         await inFlight.get(action.roomId)?.catch(() => {});
         if (!activeGames.has(action.roomId)) return reply({ ok: false, code: NOT_MINE });
       }
-      reply(await applyOnce(io, action));
+      reply(await applyOnce(rt, action));
     })().catch((err: unknown) => {
       logger.error(
         { err, action: action.kind, roomId: action.roomId },
@@ -151,11 +138,11 @@ export function registerTableRouting(io: SocketServer): void {
  * `undefined` when at least one did not answer at all.
  */
 function askOtherInstances(
-  io: SocketServer,
+  rt: TableRuntime,
   action: TableAction
 ): Promise<Outcome | null | undefined> {
   return new Promise((resolve) => {
-    io.serverSideEmit(
+    rt.transport.serverSideEmit(
       TABLE_ACTION_EVENT,
       action,
       (err: unknown, replies: Outcome[] = []) => {
@@ -201,12 +188,12 @@ const RETRY = Symbol("retry");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function takeOverAndApply(
-  io: SocketServer,
+  rt: TableRuntime,
   action: TableAction,
   mayCreate: boolean
 ): Promise<Outcome> {
   const { roomId } = action;
-  const restored = await rehydrate(roomId, mayCreate ? null : action.userId, io);
+  const restored = await rehydrateGame(rt, roomId, mayCreate ? null : action.userId);
   if (restored === "newer") {
     await releaseRoom(roomId);
     return UNREACHABLE;
@@ -220,7 +207,7 @@ async function takeOverAndApply(
     return UNOWNED;
   }
   try {
-    return await applyOnce(io, action);
+    return await applyOnce(rt, action);
   } finally {
     // `startMatch` claims before it knows whether it will deal, and refuses for
     // half a dozen reasons after that.
@@ -237,12 +224,12 @@ async function takeOverAndApply(
  * `inFlight` before any of it runs.
  */
 async function askClaimAndApply(
-  io: SocketServer,
+  rt: TableRuntime,
   action: TableAction,
   mode: TakeoverMode
 ): Promise<Outcome | typeof RETRY> {
   const { roomId } = action;
-  const answer = await askOtherInstances(io, action);
+  const answer = await askOtherInstances(rt, action);
   if (answer) return answer;
 
   // Every instance answered and none of them holds the room. Nothing to take
@@ -260,7 +247,7 @@ async function askClaimAndApply(
     await releaseRoom(roomId);
     return UNOWNED;
   }
-  return takeOverAndApply(io, action, mode === "create");
+  return takeOverAndApply(rt, action, mode === "create");
 }
 
 /**
@@ -272,7 +259,7 @@ async function askClaimAndApply(
  * up — and the claim is what stops two instances doing it at once.
  */
 export async function applyOrForward(
-  io: SocketServer,
+  rt: TableRuntime,
   draft: TableActionDraft
 ): Promise<Outcome> {
   // Stamped once and kept across every retry below: a forward whose answer was
@@ -288,7 +275,7 @@ export async function applyOrForward(
   // closing and the next process restores every table from `active_games`. It
   // still asks, because a table held elsewhere must hear that its player left.
   if (!activeGames.has(roomId) && isShuttingDown()) {
-    const answer = await askOtherInstances(io, action);
+    const answer = await askOtherInstances(rt, action);
     if (answer) return answer;
     return answer === null ? UNOWNED : UNREACHABLE;
   }
@@ -298,14 +285,14 @@ export async function applyOrForward(
     // racing it. Bounded by the attempt count like everything else here, so a
     // takeover that never settles costs a refusal rather than a hung handler.
     await inFlight.get(roomId)?.catch(() => {});
-    if (activeGames.has(roomId)) return applyOnce(io, action);
+    if (activeGames.has(roomId)) return applyOnce(rt, action);
     if (inFlight.has(roomId)) continue;
 
     // Registered before the first `await` of the attempt and not one statement
     // later: the ask and the claim are both awaits, and a second action
     // entering across either of them would find nothing in flight, be handed
     // the room by the re-entrant lock, and restore over the first.
-    const attemptSpan = askClaimAndApply(io, action, mode);
+    const attemptSpan = askClaimAndApply(rt, action, mode);
     inFlight.set(roomId, attemptSpan);
     let settled: Outcome | typeof RETRY;
     try {

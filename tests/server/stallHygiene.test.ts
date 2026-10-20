@@ -1,7 +1,7 @@
 // Outbound calls and writes that must not hold a request, a deal or the pool hostage.
 import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import type { Server as SocketServer } from "socket.io";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { sendMail } from "../../server/http/mail.ts";
 import { OUTBOUND_TIMEOUT_MS } from "../../server/http/outbound.ts";
 import { notifyUser } from "../../server/socket/push.ts";
@@ -65,10 +65,7 @@ test("a push service that never answers lets notifyUser return", async (t) => {
 });
 
 test("a hanging status write still deals the round", async (t) => {
-  t.mock.method(roomStore, "updateRoomStatus", () => new Promise(() => {}));
-  const emitted: string[] = [];
-  const target = { emit: (event: string) => emitted.push(event) };
-  const io = { to: () => target, sockets: { sockets: new Map() } } as unknown as SocketServer;
+  const { rt, sent } = recordingRuntime({ writers: { updateRoomStatus: () => new Promise(() => {}) } });
   const game = onlineTable({ roomId: "deal-hangs", maxPlayers: 2 });
   const players = ["player_0", "player_1"].map((id) => ({ id, name: id, hand: [], type: "human" as const }));
   const state: GameState = {
@@ -86,10 +83,11 @@ test("a hanging status write still deals the round", async (t) => {
   t.after(() => clearRoomTimers("deal-hangs"));
 
   const settled = await Promise.race([
-    dealRound(io, game, state).then(() => "dealt"),
+    dealRound(rt, game, state).then(() => "dealt"),
     new Promise((r) => setTimeout(() => r("stalled"), 200)),
   ]);
   assert.equal(settled, "dealt");
+  const emitted = sent.map((e) => e.event);
   assert.ok(emitted.includes("game:started"), `emitted: ${emitted.join(", ")}`);
 });
 
