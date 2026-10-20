@@ -15,6 +15,10 @@ import { frames } from './helpers/exchangeLegs';
 import { runScenario } from './helpers/cardScenarios';
 import { bootFeedback } from './helpers/feedback';
 
+jest.mock('@/lib/e2eConfig', () =>
+  (require('./helpers/e2eBuildMock') as typeof import('./helpers/e2eBuildMock')).e2eConfigAsBuilt()
+);
+
 jest.mock('@/components/table/cardShadows', () => jest.requireActual('@/components/table/cardShadows'));
 
 const e2e = globalThis as { murlanCardRects?: () => CardRects; murlanShadowClusterBuilds?: Record<string, number> };

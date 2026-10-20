@@ -9,6 +9,10 @@ import { Motion } from '@/lib/theme';
 import { bootFeedback } from './helpers/feedback';
 import { advance, dealing, freshDeal, table } from './helpers/dealTurnTable';
 
+jest.mock('@/lib/e2eConfig', () =>
+  (require('./helpers/e2eBuildMock') as typeof import('./helpers/e2eBuildMock')).e2eConfigAsBuilt()
+);
+
 jest.mock('@/lib/accessibility', () => ({
   ...jest.requireActual<typeof import('@/lib/accessibility')>('@/lib/accessibility'),
   usePrefersReducedMotion: () => false,

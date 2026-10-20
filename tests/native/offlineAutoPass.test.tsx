@@ -18,7 +18,7 @@ jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
-const mockPassTurn = jest.fn();
+const mockPassTurn = jest.fn((_expectedTurn?: string) => true);
 const mockShowNotification = jest.fn();
 
 const STATE: GameState = {
@@ -37,20 +37,15 @@ const STATE: GameState = {
   firstPlayMade: true,
 };
 
-jest.mock('@/context/GameContext', () => ({
-  useGame: () => ({
+jest.mock('@/context/GameContext', () =>
+  (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(() => ({
     gameState: STATE,
-    playCards: () => {},
     passTurn: mockPassTurn,
-    resetGame: () => {},
-    runBotTurn: () => {},
-    chooseExchangeCard: () => {},
     exchangeAnnouncing: false,
     exchangeAnnounceData: null,
-    acknowledgeExchange: () => {},
     match: { length: 'single', target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
-  }),
-}));
+  }))
+);
 
 jest.mock('@/context/NotificationContext', () =>
   (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock(() => mockShowNotification)
@@ -78,6 +73,7 @@ jest.mock('@/components/GameTable', () => {
 });
 
 import { bootFeedback, haptics, sounds } from './helpers/feedback';
+import { turnKey } from '@/components/flightPhysics';
 import GameScreen from '@/app/game';
 
 describe('the offline turn clock expiring', () => {
@@ -99,6 +95,22 @@ describe('the offline turn clock expiring', () => {
     expect(mockShowNotification).not.toHaveBeenCalled();
     expect(mockSeenTimer.autoPassed).toBe((before ?? 0) + 1);
     expect(mockPassTurn).toHaveBeenCalledTimes(1);
+    expect(mockPassTurn).toHaveBeenCalledWith(turnKey(STATE));
+
+    await r.unmount();
+  });
+
+  it('says nothing when the turn it was kept for has already moved on', async () => {
+    mockPassTurn.mockReturnValueOnce(false);
+    const r = await render(<GameScreen />);
+    const before = mockSeenTimer.autoPassed;
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('expire'));
+    });
+
+    expect(haptics()).not.toContain('notificationWarning');
+    expect(mockSeenTimer.autoPassed).toBe(before);
 
     await r.unmount();
   });

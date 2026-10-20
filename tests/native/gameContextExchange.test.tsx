@@ -3,7 +3,7 @@
 //
 // GameContext used to read the live game state through a ref written during
 // render (issue #36); this drives `chooseExchangeCard` the way a player does —
-// through `useGame()` — so a regression that reverts to a stale read would
+// through the provider's own hooks — so a regression that reverts to a stale read would
 // show up as a wrong hand or a missing announcement here, not just as a
 // compiler bailout.
 import { test, expect } from "@jest/globals";
@@ -11,10 +11,13 @@ import React from "react";
 import { Text, Pressable } from "react-native";
 import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { GameProvider, useGame } from "@/context/GameContext";
+import { GameProvider, useGameSession, useGameTable } from "@/context/GameContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 import { encodeOfflineSave, OFFLINE_SAVE_KEY } from "@/lib/offlineSave";
 import type { GameState } from "@/lib/game/gameEngine";
+
+/** Both halves of the provider, for a probe that reads across them. */
+const useGame = () => ({ ...useGameSession(), ...useGameTable() });
 
 /**
  * A round parked mid-exchange: the human (seat 0) won the round and owes seat

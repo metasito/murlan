@@ -291,7 +291,8 @@ jobs:
     name: Typecheck and tests
     needs: scope
     if: needs.scope.outputs.app == 'true' || needs.scope.outputs.scans == 'true'
-    runs-on: ubuntu-latest
+    # Pinned: the restore test installs postgresql-client-16 from the distro, and ubuntu-latest moved to 26.04, which does not package it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     # Without a database the integration suites skip themselves (by design, so
@@ -992,7 +993,7 @@ jobs:
       - name: The web bundle is within its size budget
         run: npm run bundle:budget
 
-      # lib/e2eBuildMark.ts survives only in a bundle built with a test-only flag.
+      # lib/e2eConfig.ts's build mark survives only in a bundle built with a test-only flag.
       - name: The production web bundle carries no test-only flag
         run: node scripts/e2eBuildMark.mjs --absent dist
 

@@ -46,23 +46,17 @@ jest.mock('@/context/NotificationContext', () =>
   (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
 );
 jest.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: { id: 'alice', username: 'Alice' } }) }));
-jest.mock('@/context/GameContext', () => ({
-  useGame: () => ({
+jest.mock('@/context/GameContext', () =>
+  (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(() => ({
     gameState: MOCK_ENDED,
-    chooseExchangeCard: () => {},
-    releaseStuckExchange: () => {},
-    playCards: () => {},
-    passTurn: () => {},
-    resetGame: mockResetGame,
-    runBotTurn: () => {},
     exchangeAnnouncing: false,
     exchangeAnnounceData: null,
-    acknowledgeExchange: () => {},
-    startNextRound: () => {},
     startNewMatch: mockStartNewMatch,
     match: { ...MOCK_MATCH, length: 'match', scores: MOCK_SCORES, hands: [{ pointsAwarded: MOCK_ROUND, finishingOrder: MOCK_ENDED.finishingOrder }] },
-  }),
-}));
+  }), () => ({
+    resetGame: mockResetGame,
+  }))
+);
 jest.mock('@/context/onlineGameHooks', () => ({
   useServerError: (surface: string) => (surface === 'table' ? mockError : null),
   useOnlineTable: () => ({

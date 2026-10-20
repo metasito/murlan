@@ -19,6 +19,10 @@ import { getAnimatedStyle } from 'react-native-reanimated';
 import { greyFilter, iosGrey } from '@/components/table/linkGrey';
 import { holdGrey } from '@/lib/ownLink';
 
+jest.mock('@/lib/e2eConfig', () =>
+  (require('./helpers/e2eBuildMock') as typeof import('./helpers/e2eBuildMock')).e2eConfigAsBuilt()
+);
+
 // The table is landscape-locked and jest-expo's own window is a fixed portrait
 // one, which is a different card scale. Everything else here is the same shape
 // the other <GameTable> tests use.

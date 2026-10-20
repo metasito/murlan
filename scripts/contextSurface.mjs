@@ -126,7 +126,8 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
       ["useOnlineConnection", "useOnlineRoom", "useOnlineTable", "useOnlineTurnClock", "useOnlineMatch", "useOnlineExchange"],
       { useServerError: ["error"] },
     ],
-    ["context/GameContext.tsx", "GameContextValue", ["useGame"]],
+    ["context/GameContext.tsx", "LocalSession", ["useGameSession"]],
+    ["context/GameContext.tsx", "LocalTable", ["useGameTable"]],
   ]) {
     const fields = fieldsOf(readFileSync(path.join(ROOT, file), "utf8"), iface);
     const readers = readersOf(fields, files, hooks, readsFor);

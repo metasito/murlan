@@ -24,9 +24,12 @@ let mockLandscape = true;
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: mockAuthUser, loading: false }),
 }));
-jest.mock('@/context/GameContext', () => ({
-  useGame: () => ({ hasSavedGame: false, resumeGame: () => false }),
-}));
+jest.mock('@/context/GameContext', () =>
+  (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(undefined, () => ({
+    hasSavedGame: false,
+    resumeGame: () => false,
+  }))
+);
 jest.mock('@/context/SocketContext', () => ({ useInvites: () => ({ invites: [], accept: () => {} }) }));
 jest.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: [] }) }));
 jest.mock('@/lib/query-client', () => ({

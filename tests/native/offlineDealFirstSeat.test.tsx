@@ -11,9 +11,12 @@ import React from "react";
 import { Text, Pressable } from "react-native";
 import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { GameProvider, useGame } from "@/context/GameContext";
+import { GameProvider, useGameSession, useGameTable } from "@/context/GameContext";
 import { OFFLINE_SAVE_KEY, OFFLINE_SAVE_VERSION, decodeOfflineSave } from "@/lib/offlineSave";
 import { NotificationProvider } from "@/context/NotificationContext";
+
+/** Both halves of the provider, for a probe that reads across them. */
+const useGame = () => ({ ...useGameSession(), ...useGameTable() });
 
 const FOUR_PLAYERS = [
   { name: "Ana", type: "human" as const },
@@ -68,6 +71,15 @@ function Probe() {
       </Pressable>
       <Pressable testID="next" onPress={() => startNextRound()}>
         <Text>next</Text>
+      </Pressable>
+      <Pressable
+        testID="nextTwice"
+        onPress={() => {
+          startNextRound();
+          startNextRound();
+        }}
+      >
+        <Text>next twice</Text>
       </Pressable>
       <Pressable testID="newMatch" onPress={() => startNewMatch()}>
         <Text>newMatch</Text>
@@ -131,6 +143,20 @@ test("a rematch after the match ends resets the deal to seat 0, not a further ro
 
   await waitFor(async () => {
     expect(await savedDealFirstSeat()).toBe(0);
+  });
+  await unmount(r);
+});
+
+test("a second deal in the same tick is refused: the round it would deal from has not ended", async () => {
+  await AsyncStorage.setItem(OFFLINE_SAVE_KEY, roundJustEndedSave());
+  const r = await mount();
+  await waitFor(() => expect(textOf(r, "saved")).toBe("true"));
+
+  await press(r, "resume");
+  await press(r, "nextTwice");
+
+  await waitFor(async () => {
+    expect(await savedDealFirstSeat()).toBe(2);
   });
   await unmount(r);
 });

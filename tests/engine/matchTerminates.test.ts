@@ -33,7 +33,7 @@
 //     ceiling; collected rather than thrown so a soak run reports every
 //     stalling seed, not just the first.
 //   - `BotTurnKeyCollision` — two different engine states hashing to the same
-//     `app/game.tsx` `botTurnKey`, so a real render would never reschedule
+//     `context/offlineDriver.ts` `botTurnKey`, so a real render would never reschedule
 //     the second bot decision; collected the same way as stalls.
 //   - a round past `ROUND_MOVES_CEILING` — not a stall (it still reaches
 //     `roundOver`), but a round that takes an order of magnitude more moves

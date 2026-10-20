@@ -387,6 +387,24 @@ const GUARDS = [
       '// Date.now() is the wall clock\nconst s = "new Date()";',
     ].map((code) => ({ file: "server/game/stats.ts", code })),
   },
+  {
+    id: "e2e-flag-owner",
+    why: "lib/e2eConfig.ts is the one reader of the e2e build flag, so a player's build has one gate to prove: call e2eFast(), or read e2e.* or storedFlag() there.",
+    selector:
+      'MemberExpression[object.property.name="env"]:matches([property.name="EXPO_PUBLIC_E2E_FAST"], [property.value="EXPO_PUBLIC_E2E_FAST"])',
+    files: CLIENT,
+    ignores: [{ glob: "lib/e2eConfig.ts", reason: "the one reader the rest call" }],
+    plant: { file: "components/Plant.tsx", code: [
+      'const fast = process.env.EXPO_PUBLIC_E2E_FAST === "1";',
+      'if (process.env["EXPO_PUBLIC_E2E_FAST"] !== "1") stop();',
+      "const raw = globalThis.process.env.EXPO_PUBLIC_E2E_FAST;",
+    ].join("\n"), hits: 3 },
+    spare: [
+      "const fast = e2eFast();",
+      'const reduced = process.env.EXPO_PUBLIC_E2E_REDUCE_MOTION === "1";',
+      '// process.env.EXPO_PUBLIC_E2E_FAST\nconst s = "EXPO_PUBLIC_E2E_FAST";',
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
 ];
 
 // eslint's --cache keys a plugin's results on its meta.version, so an unversioned guard edit would

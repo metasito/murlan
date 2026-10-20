@@ -31,22 +31,15 @@ const OVER: GameState = {
   firstPlayMade: true,
 };
 
-jest.mock('@/context/GameContext', () => ({
-  useGame: () => ({
+jest.mock('@/context/GameContext', () =>
+  (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(() => ({
     gameState: OVER,
-    chooseExchangeCard: () => {},
-    releaseStuckExchange: () => {},
-    playCards: () => {},
-    passTurn: () => {},
-    resetGame: () => {},
-    runBotTurn: () => {},
     exchangeAnnouncing: false,
     exchangeAnnounceData: null,
-    acknowledgeExchange: () => {},
     startNextRound: mockStartNextRound,
     match: { length: 'match', target: 21, over: mockMatch.over, scores: {}, rounds: [] },
-  }),
-}));
+  }))
+);
 
 jest.mock('@/context/NotificationContext', () =>
   (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()

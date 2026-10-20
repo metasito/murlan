@@ -189,7 +189,7 @@ export interface SeedOptions {
   /**
    * Holds whichever seat the save is on, before the bundle evaluates.
    * `EXPO_PUBLIC_E2E_FAST` takes the offline bot's own delay to zero, so a
-   * seeded bot turn is over before a spec can measure it (`lib/e2eBotSuspend.ts`).
+   * seeded bot turn is over before a spec can measure it (`lib/e2eConfig.ts`).
    */
   holdTurn?: boolean;
 }
@@ -233,7 +233,7 @@ export async function openSeededGame(
  * comparable: a state that carries a pile carries it on both, instead of the
  * web run quietly checking an empty felt under the same name.
  *
- * It also holds the seeded turn still (`lib/e2eBotSuspend.ts`).
+ * It also holds the seeded turn still (`lib/e2eConfig.ts`).
  */
 export async function openCaptureState(
   page: Page,

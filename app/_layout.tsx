@@ -27,7 +27,7 @@ import { UpdateRequired } from "@/components/UpdateRequired";
 import { DIAGNOSTICS } from "@/lib/diagnostics";
 import { captureEnabled } from "@/lib/captureRoute";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import "@/lib/e2eBuildMark";
+import "@/lib/e2eConfig";
 
 SplashScreen.preventAutoHideAsync();
 

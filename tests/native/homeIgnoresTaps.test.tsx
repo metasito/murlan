@@ -92,3 +92,52 @@ it('selecting a card renders no useLocalSession consumer', async () => {
 
   await r.unmount();
 });
+
+function Mover() {
+  const { gameState, playCards, passTurn } = useLocalTable();
+  return (
+    <Pressable
+      testID="move"
+      onPress={() => {
+        if (!gameState) return;
+        const seat = gameState.players[gameState.currentTurnIndex];
+        if (!playCards([gameState.startCard?.id ?? seat.hand[0].id])) passTurn();
+      }}
+    >
+      <Text>move</Text>
+    </Pressable>
+  );
+}
+
+it('a move renders no useLocalSession consumer', async () => {
+  const homeRenders = jest.fn();
+  const shown: { state: GameState | null } = { state: null };
+  const onState = (s: GameState | null) => {
+    shown.state = s;
+  };
+  const r = await render(
+    <SafeAreaProvider initialMetrics={METRICS}>
+      <NotificationProvider>
+        <GameProvider>
+          <Home onRender={homeRenders} />
+          <Table onState={onState} />
+          <Mover />
+        </GameProvider>
+      </NotificationProvider>
+    </SafeAreaProvider>
+  );
+  await act(async () => {
+    fireEvent.press(screen.getByTestId('setup'));
+  });
+  const dealt = shown.state;
+  const before = homeRenders.mock.calls.length;
+
+  await act(async () => {
+    fireEvent.press(screen.getByTestId('move'));
+  });
+
+  expect(shown.state).not.toBe(dealt);
+  expect(homeRenders.mock.calls.length).toBe(before);
+
+  await r.unmount();
+});

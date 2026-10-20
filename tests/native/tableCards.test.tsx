@@ -18,6 +18,10 @@ import { FLYING, THROW, cardTable, dealtTable, pairThrownBy3, runScenario, type 
 import { frames } from './helpers/exchangeLegs';
 import { bootFeedback } from './helpers/feedback';
 
+jest.mock('@/lib/e2eConfig', () =>
+  (require('./helpers/e2eBuildMock') as typeof import('./helpers/e2eBuildMock')).e2eConfigAsBuilt()
+);
+
 const HIDDEN = { includeHiddenElements: true };
 const SHADOW_PROPS = ['boxShadow', 'shadowOpacity', 'shadowRadius', 'elevation'];
 const SCOPE_ID = /^card-(hand|fan|pile|deal|leg):/;

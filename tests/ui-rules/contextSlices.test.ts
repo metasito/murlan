@@ -19,7 +19,7 @@ const ROOT = path.resolve(import.meta.dirname, "..", "..");
 const read = (...p: string[]) => readFileSync(path.join(ROOT, ...p), "utf8");
 
 /** The wide hooks: whatever reads one wakes on every field of its context. */
-const CONTEXT_HOOKS = /use(?:Online)?Game/.source;
+const CONTEXT_HOOKS = /use(?:Online)?Game(?:Session|Table)?/.source;
 
 /**
  * The context hook a slice reads, and the names it destructures off it, both
@@ -96,10 +96,10 @@ const ONLINE: Record<string, string[]> = {
 
 /** The context each local slice reads: one small one, with no turn clock to keep off the rest. */
 const VIA: Record<string, string> = {
-  useLocalTable: "useGame",
-  useLocalSession: "useGame",
-  useLocalMatch: "useGame",
-  useLocalExchange: "useGame",
+  useLocalTable: "useGameTable",
+  useLocalSession: "useGameSession",
+  useLocalMatch: "useGameTable",
+  useLocalExchange: "useGameTable",
 };
 
 const LOCAL: Record<string, string[]> = {
@@ -107,8 +107,7 @@ const LOCAL: Record<string, string[]> = {
   useLocalSession: ["setupGame", "resetGame", "hasSavedGame", "resumeGame", "restored"],
   useLocalMatch: ["match", "startNextRound", "startNewMatch"],
   useLocalExchange: [
-    "exchangeAnnouncing", "exchangeAnnounceData", "exchangeHoldMsOverride", "chooseExchangeCard",
-    "acknowledgeExchange", "releaseStuckExchange",
+    "exchangeAnnouncing", "exchangeAnnounceData", "chooseExchangeCard", "acknowledgeExchange", "settleExchange",
   ],
 };
 
@@ -153,11 +152,12 @@ test("context/gameHooks.ts: each slice reads exactly its own concern", () => {
 });
 
 test("the slices partition the context, leaving nothing unreachable", () => {
-  for (const [contextFile, iface, slices] of [
-    ["context/OnlineGameContext.tsx", "OnlineGameContextValue", ONLINE],
-    ["context/GameContext.tsx", "GameContextValue", LOCAL],
+  for (const [contextFile, ifaces, slices] of [
+    ["context/OnlineGameContext.tsx", ["OnlineGameContextValue"], ONLINE],
+    ["context/GameContext.tsx", ["LocalSession", "LocalTable"], LOCAL],
   ] as const) {
-    const all = fieldsOf(read(contextFile), iface) as string[];
+    const iface = ifaces.join(" + ");
+    const all = ifaces.flatMap((name) => fieldsOf(read(contextFile), name) as string[]);
     const covered = new Set(Object.values(slices).flat());
     // A field no slice offers is reachable only through the wide hook, which
     // no screen may call. A field in two slices is a concern boundary drawn in
@@ -192,7 +192,7 @@ test("each online slice reads one context, and no two read the same one", () => 
 test("nothing reaches past the slices for the whole surface", () => {
   // The slices are only worth having if they are the way in. Every context
   // hook stays exported because the slices are built on them, and each is also
-  // a way back past a slice — `useGame` to the whole local context.
+  // a way back past a slice — `useGameTable` to every table field.
   // Every source directory, not the two that happen to hold consumers today:
   // a screen moved into a new one would leave the guard behind. The slice
   // modules are the exception, being what the hooks are for; the providers

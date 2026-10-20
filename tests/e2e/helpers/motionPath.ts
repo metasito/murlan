@@ -1,6 +1,6 @@
 // Plays an offline table on the motion path a player's build ships: the deal animates, and the
 // exchange closes when its ceremony does rather than on the e2e hold's timer
-// (`lib/e2eRealExchange.ts`). Every other spec that plays a round reduces motion.
+// (`lib/e2eConfig.ts`). Every other spec that plays a round reduces motion.
 import type { Locator, Page } from "@playwright/test";
 import { E2E_REAL_EXCHANGE_KEY } from "../../../lib/storageKeys.ts";
 import { EXCHANGE_GIVE_PREFIX, giveExchangeCard } from "./bot.ts";
