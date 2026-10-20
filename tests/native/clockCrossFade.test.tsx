@@ -122,7 +122,7 @@ describe('the turn clocks across a hand-off', () => {
     return shown === null ? null : <Animated.View testID="clock" style={style} />;
   }
 
-  for (const [firstFadeMs, onMs, what] of [[48, 0, 'cut short'], [150, 150, 'run out']] as const) {
+  for (const [firstFadeMs, onMs, what, reports] of [[48, 0, 'cut short', 0], [150, 150, 'run out', 1]] as const) {
     it(`a fade ${what} inside one UI-to-JS hop cannot end the fade after it: off, on, off`, async () => {
       const view = await render(<Clock clock="a" />);
       await act(async () => {
@@ -138,7 +138,7 @@ describe('the turn clocks across a hand-off', () => {
         jest.advanceTimersByTime(onMs);
       });
       await act(async () => view.rerender(<Clock clock={null} />));
-      expect(mockHop.queue.length).toBeGreaterThan(0);
+      expect(mockHop.queue).toHaveLength(reports);
       mockHop.held = false;
       await act(async () => mockHop.queue.splice(0).forEach((land) => land()));
       await act(async () => {
