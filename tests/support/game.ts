@@ -41,6 +41,7 @@ export function state(over: Partial<GameState> = {}): GameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: false,
+    lastMove: { seq: 0, kind: "deal" },
     ...over,
   };
 }

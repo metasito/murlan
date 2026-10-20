@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { CANVASKIT_ROUTE, heldTurnTable, newSidePage, parityTests, recorded, traced } from "./helpers/mockupParity";
 import { step, stepUntil } from "./helpers/virtualClock";
+import { HAND_CARD_BOXES, HAND_SELECTED } from "./helpers/selectors.ts";
 
 test.describe("mockup parity", () => {
   parityTests("rest");
@@ -37,8 +38,8 @@ test.describe("mockup parity", () => {
     });
     await heldTurnTable(page, baseURL!);
     await traced(page, (f) => f.felt === "fallback", "the fallback felt");
-    await page.locator('[data-hand-state] [data-testid="card-box"]').first().click({ force: true });
-    await stepUntil(page, async () => (await page.locator('[data-hand-state] [aria-pressed="true"]').count()) === 1, "a card selected");
+    await page.locator(HAND_CARD_BOXES).first().click({ force: true });
+    await stepUntil(page, async () => (await page.locator(HAND_SELECTED).count()) === 1, "a card selected");
     expect(await lastFelt(page), "the felt when the card was taken").toBe("fallback");
     release();
     await stepUntil(page, async () => (await lastFelt(page)) === "skia", "the Skia felt");
@@ -55,7 +56,7 @@ test.describe("mockup parity", () => {
     await failed;
     for (let i = 0; i < 30; i++) await step(page);
     expect(await lastFelt(page)).toBe("fallback");
-    await expect(page.locator('[data-hand-state] [data-testid="card-box"]').first()).toBeVisible();
+    await expect(page.locator(HAND_CARD_BOXES).first()).toBeVisible();
     await page.context().close();
   });
 });

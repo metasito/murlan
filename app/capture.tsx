@@ -28,7 +28,7 @@ import {
   CAPTURE_VIEWER_SEAT,
   captureGameState,
   captureStateById,
-  nextTurn,
+  swing,
   rethrow,
 } from "@/lib/captureStates";
 import { captureEnabled } from "@/lib/captureRoute";
@@ -74,8 +74,8 @@ function CaptureHarness() {
 
   if (!picked || !seeded) return <CaptureList />;
 
-  // Built once per state, not per render: `captureGameState` deals a fresh
-  // deck, and a new card object on every render restarts the deal animation
+  // Built once per state, not per render: `captureGameState` replays its round
+  // on a fresh deck, and a new card object on every render restarts the deal animation
   // the capture is waiting to finish.
   const gameState = live?.id === picked.id ? live.game : seeded;
   const move = (to: (s: GameState) => GameState) => setLive({ id: picked.id, game: to(gameState) });
@@ -101,7 +101,7 @@ function CaptureHarness() {
             accessibilityRole="button"
             accessibilityLabel={COPY.swing}
             testID={`capture-${picked.id}`}
-            onPress={() => move((s) => ({ ...s, currentTurnIndex: nextTurn(s) }))}
+            onPress={() => move(swing)}
             style={styles.swing}
           >
             <Ionicons name="arrow-forward" size={SWING_GLYPH} color={Colors.textMuted} {...a11yHidden()} />

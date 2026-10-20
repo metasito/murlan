@@ -21,6 +21,7 @@ import { serverErrorMessage } from "@/lib/apiError";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 import { EmptyBlock } from "@/components/StateBlock";
 import { destinationAfterAuth } from "@/lib/authRedirect";
+import { useGuardedSubmit, useReturnFocuses } from "@/lib/useGuardedSubmit";
 
 type Tab = "login" | "register";
 
@@ -42,7 +43,6 @@ export default function AuthScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Seeded from the query param app/recover.tsx returns through, once — a
   // later re-render (a field edit, a tab switch) must not resurrect it after
@@ -53,9 +53,10 @@ export default function AuthScreen() {
   const [checkEmail, setCheckEmail] = useState<CheckEmailState | null>(null);
   const emailRef = useRef<TextInput>(null);
   const pwdRef = useRef<TextInput>(null);
+  const usernameReturn = useReturnFocuses(tab === "register" ? emailRef : pwdRef);
+  const emailReturn = useReturnFocuses(pwdRef);
 
-  async function handleSubmit() {
-    if (loading) return;
+  const { busy: loading, submit: handleSubmit, field: submitField } = useGuardedSubmit(async () => {
     setError(null);
     setNotice(null);
     if (!username.trim() || !password.trim() || (tab === "register" && !email.trim())) {
@@ -63,7 +64,6 @@ export default function AuthScreen() {
       return;
     }
     uiFeedback("light");
-    setLoading(true);
     try {
       if (tab === "login") {
         await login(username.trim(), password);
@@ -79,7 +79,6 @@ export default function AuthScreen() {
         const signedIn = await register(username.trim(), password, email.trim());
         if (signedIn === undefined) {
           setError(t("auth.unknownError"));
-          setLoading(false);
           return;
         }
         // The interstitial still renders underneath, unnavigated away from,
@@ -90,8 +89,7 @@ export default function AuthScreen() {
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("auth.unknownError")));
     }
-    setLoading(false);
-  }
+  });
 
   function continueFromCheckEmail() {
     if (checkEmail?.signedIn) {
@@ -173,8 +171,7 @@ export default function AuthScreen() {
                   autoCorrect={false}
                   autoComplete="username"
                   textContentType="username"
-                  returnKeyType="next"
-                  onSubmitEditing={() => (tab === "register" ? emailRef : pwdRef).current?.focus()}
+                  {...usernameReturn}
                   accessibilityLabel={t("auth.usernameA11yLabel")}
                   {...usernameHint.props}
                 />
@@ -195,8 +192,7 @@ export default function AuthScreen() {
                     keyboardType="email-address"
                     autoComplete="email"
                     textContentType="emailAddress"
-                    returnKeyType="next"
-                    onSubmitEditing={() => pwdRef.current?.focus()}
+                    {...emailReturn}
                     accessibilityLabel={t("auth.emailA11yLabel")}
                     {...emailHint.props}
                   />
@@ -217,10 +213,9 @@ export default function AuthScreen() {
                   autoComplete={tab === "login" ? "current-password" : "new-password"}
                   textContentType={tab === "login" ? "password" : "newPassword"}
                   returnKeyType="done"
-                  onSubmitEditing={handleSubmit}
                   accessibilityLabel={t("auth.passwordA11yLabel")}
                   {...passwordHint.props}
-                  editable={!loading}
+                  {...submitField}
                 />
                 {passwordHint.node}
                 <Pressable

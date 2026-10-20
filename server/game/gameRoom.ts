@@ -1,7 +1,7 @@
 // The process's live in-memory tables. Owned here rather than by
 // server/socket/socket.ts so that reading one does not mean importing the socket
 // server, and everything it drags in behind it.
-import type { GameState, MatchLength } from "../../lib/game/gameEngine.ts";
+import type { GameState, LastMove, MatchLength } from "../../lib/game/gameEngine.ts";
 import type { ReplayMove } from "../../lib/game/replay.ts";
 import type { RoundOverPayload } from "../../lib/game/matchState.ts";
 import { deadline, secondsUntil } from "./gameTimers.ts";
@@ -11,26 +11,26 @@ export interface OnlineGameState {
   /** The last finished round's stats and ladder writes; never rejects. */
   resultWrites?: Promise<void>;
   /** engine seat index -> userId. A missing seat is a vacated (bot) seat. */
-  playerMap: Record<number, string>;
+  readonly playerMap: Readonly<Record<number, string>>;
   roomId: string;
   /** The room's six-character join code, as `rooms.code` holds it. */
   joinCode: string;
   /** Ready gate for the next round of the running match, by userId. */
-  rematchVotes: Set<string>;
+  readonly rematchVotes: ReadonlySet<string>;
   /** userId (or `bot:<seat>`) -> cumulative match points. */
-  cumulativeScores: Record<string, number>;
+  readonly cumulativeScores: Readonly<Record<string, number>>;
   maxPlayers: number;
-  matchTarget: number;
+  readonly matchTarget: number;
   matchLength: MatchLength;
   /** Rounds decided on this match so far. Zero on the one being dealt. */
-  roundsPlayed: number;
-  matchOver: boolean;
+  readonly roundsPlayed: number;
+  readonly matchOver: boolean;
   /**
    * The match was ended by the unanimous vote, not played out. There is no
    * rematch from one (docs/GAME-RULES.md § Decisions) — the table goes back to the lobby,
    * and its finishingOrder are partial anyway.
    */
-  endedByVote?: boolean;
+  readonly endedByVote?: boolean;
   /**
    * seat -> combination flags for the *current round* only, reset whenever one
    * deals. The engine does not track this, and GameResult has no other honest
@@ -49,7 +49,7 @@ export interface OnlineGameState {
    * the table moves at any moment (ADR-0003), and the one taking it over reads
    * the row and nothing else.
    */
-  abandonedSeats: Map<number, string>;
+  readonly abandonedSeats: ReadonlyMap<number, string>;
   /**
    * Seats dealt to a bot when this match's roster was built — a straight duel
    * or a bot-filled table from the start, never a human's seat this match.
@@ -73,7 +73,7 @@ export interface OnlineGameState {
    * still recognise them rounds later. Persisted in the `seats` block, like
    * `abandonedSeats` — losing it falls back to UNAUTHORIZED on a rejoin.
    */
-  releasedSeats: Set<string>;
+  readonly releasedSeats: ReadonlySet<string>;
   /**
    * Seat -> the account that used to hold it, for a seat a human has left
    * while the table is still live. This is the seat's half of
@@ -86,7 +86,7 @@ export interface OnlineGameState {
    * It is what makes the seat reclaimable for the life of the match and what
    * lets the table vote to end it, so a restart losing it is not a courtesy.
    */
-  vacatedSeats: Map<number, { userId: string; username: string }>;
+  readonly vacatedSeats: ReadonlyMap<number, { userId: string; username: string }>;
   /**
    * Seats currently held to the minimum legal move because their human left
    * mid-round — the takeover plays weakly only for the round it happened on
@@ -98,7 +98,7 @@ export interface OnlineGameState {
    * `vacatedSeats`: a takeover mid-round must hold the seat weak for the rest of
    * that round, not from the next deal.
    */
-  weakSeats: Set<number>;
+  readonly weakSeats: ReadonlySet<number>;
   /**
    * Votes to end the match outright once a seat has been vacated
    * (docs/GAME-RULES.md § Decisions) — the same unanimity-among-seated-humans shape as
@@ -107,7 +107,7 @@ export interface OnlineGameState {
    * changes (a vacate or a reclaim) or a new round deals, so a stale unanimous
    * vote from a different table can never end one it was never taken on.
    */
-  endMatchVotes: Set<string>;
+  readonly endMatchVotes: ReadonlySet<string>;
   /**
    * When the acting seat's AFK window runs out, in server time. Undefined when
    * nothing is on the clock. Memory only — re-armed on the next move.
@@ -133,6 +133,8 @@ export interface OnlineGameState {
    * restart, or past MAX_REPLAY_MOVES — and none will be written.
    */
   moveLog: ReplayMove[] | null;
+  /** What the log's first move followed, the deal or the giveback: stored beside the log, not in it. */
+  replayOpening?: LastMove;
   /**
    * The `game:round_over` this round's `handleRoundOver` broadcast to the room, kept
    * so a client that was away for it can be sent the same payload on rejoin

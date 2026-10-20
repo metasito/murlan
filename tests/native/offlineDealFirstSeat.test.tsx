@@ -46,6 +46,7 @@ const roundJustEndedSave = () =>
       roundOver: true,
       finishingOrder: ["player_2", "player_0", "player_3", "player_1"],
       firstPlayMade: true,
+      lastMove: { seq: 0, kind: "deal" },
     },
     match: {
       length: "match",

@@ -21,7 +21,7 @@ const midExchangeSave = () =>
     winner: 0,
     loser: 1,
     cardFromLoser: "2_spades",
-    holding: [["5_hearts", "K_spades"], ["J_hearts", "Q_diamonds"]],
+    holding: [["5_hearts", "K_spades", "2_spades"], ["J_hearts", "Q_diamonds"]],
   });
 
 test("the exchanged cards fly through the pile, never jumping, face up from the lift to the tuck", async ({ page, baseURL }) => {

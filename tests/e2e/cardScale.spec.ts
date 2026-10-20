@@ -6,6 +6,7 @@
 // built from it — only a browser can measure that end to end.
 import { test, expect } from "./fixtures";
 import { DEAL_SIZE, openSeededGame } from "./helpers/offlineSeed";
+import { HAND_ZONE } from "./helpers/selectors.ts";
 
 // Landscape-locked, so the short edge is the viewport height. 375 is a small
 // phone; 834 is a tablet — the same spread tableFit.spec.ts exercises.
@@ -18,12 +19,12 @@ const LARGE = { width: 1112, height: 834 };
  * is set by how many cards are held, not by the scale this measures.
  */
 async function firstHandCardWidth(page: import("@playwright/test").Page): Promise<number> {
-  const width = await page.evaluate(() => {
-    const hand = document.querySelector("[data-hand-state]");
+  const width = await page.evaluate((zone) => {
+    const hand = document.querySelector(zone);
     if (!hand) throw new Error("the hand never rendered");
     const box = hand.querySelector('[data-testid="card-box"]');
     return box ? box.getBoundingClientRect().width : null;
-  });
+  }, HAND_ZONE);
   if (width === null) throw new Error("no hand card rendered");
   return width;
 }

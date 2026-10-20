@@ -3,7 +3,8 @@
 // Split out for the same reason server/game/replayShape.ts is — this half has no
 // database and no network, so `node --test` can load it directly and the
 // request shape is checked without a live Postgres.
-import { DEFAULT_LOCALE, isLocale, translate, type TranslationKey, type TranslationParams } from "../../shared/i18n.ts";
+import { DEFAULT_LOCALE, isLocale, translate, type TranslationParams } from "../../shared/i18n.ts";
+import type { ServerCode } from "../shared/payload.ts";
 
 /** A device to deliver to, and the language it reads. */
 export interface PushDevice {
@@ -18,7 +19,7 @@ export interface PushMessage {
    * up as `server.<code>`. Rendered here rather than sent as a code, because
    * the OS draws a notification with no client in the loop to translate it.
    */
-  code: string;
+  code: ServerCode;
   params?: TranslationParams;
   /** Delivered to the app as `notification.request.content.data`. */
   data?: Record<string, string>;
@@ -26,8 +27,7 @@ export interface PushMessage {
 
 /** A message's body in one device's language, falling back to English. */
 export function renderBody(message: PushMessage, locale: string): string {
-  const key = `server.${message.code}` as TranslationKey;
-  return translate(isLocale(locale) ? locale : DEFAULT_LOCALE, key, message.params);
+  return translate(isLocale(locale) ? locale : DEFAULT_LOCALE, `server.${message.code}`, message.params);
 }
 
 /** One entry of Expo's `/push/send` request array. */

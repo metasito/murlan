@@ -46,6 +46,7 @@ const DEALT: WireGameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: 'deal' },
   viewerSeatIndex: 0,
   turnSecondsRemaining: 30,
 };

@@ -3,7 +3,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { installVirtualClock, step, stepUntil } from "./helpers/virtualClock";
-import { HAND_CARDS } from "./helpers/selectors";
+import { HAND_CARDS, SEAT_LIT } from "./helpers/selectors";
 import { exchangeSave, offlineSave, resumeOnVirtualClock } from "./helpers/offlineSeed";
 import type { OfflineSave } from "../../lib/offlineSave";
 import { LEG } from "../../lib/timeline/exchangeTimeline";
@@ -50,7 +50,7 @@ async function frame(page: Page): Promise<Frame> {
     c.port1.onmessage = () => r();
     c.port2.postMessage(0);
   }));
-  return page.evaluate(({ fliers, hand }) => {
+  return page.evaluate(({ fliers, hand, seatLit }) => {
     const seen = (el: Element | null) => {
       let k = el ? 1 : 0;
       for (let n = el; n; n = n.parentElement) k *= Number(getComputedStyle(n).opacity);
@@ -69,7 +69,7 @@ async function frame(page: Page): Promise<Frame> {
     const label = document.querySelector('[data-testid="exchange-pile-label"], [data-testid="exchange-none"]');
     const seats = [...document.querySelectorAll('[data-testid="top-seat"], [data-testid^="side-seat-"]')].map((s) => ({
       name: s.querySelector('[data-testid="seat-name"]')?.textContent ?? "",
-      lit: s.querySelector('[data-testid="seat-ring"]')?.getAttribute("data-seat-lit") === "true",
+      lit: s.querySelector('[data-testid="seat-ring"]')?.getAttribute(seatLit) === "true",
       ping: seen(s.querySelector('[data-testid="seat-ring-ping"]')) > 0.05,
     }));
     return {
@@ -83,7 +83,7 @@ async function frame(page: Page): Promise<Frame> {
       hand: [...document.querySelectorAll(hand)].map((el) => el.getAttribute("aria-label") ?? ""),
       dealt: document.querySelectorAll('[data-testid="dealt-back"]').length,
     };
-  }, { fliers: FLIERS, hand: HAND_CARDS });
+  }, { fliers: FLIERS, hand: HAND_CARDS, seatLit: SEAT_LIT });
 }
 
 async function run(page: Page, ms: number, frames: Frame[]) {

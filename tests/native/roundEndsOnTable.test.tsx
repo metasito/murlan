@@ -29,6 +29,7 @@ const OVER: GameState = {
   roundOver: true,
   finishingOrder: ['player_0', 'player_1'],
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: 'deal' },
 };
 
 jest.mock('@/context/GameContext', () =>

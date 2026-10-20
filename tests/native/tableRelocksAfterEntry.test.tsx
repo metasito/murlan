@@ -52,6 +52,7 @@ const STATE: GameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: false,
+  lastMove: { seq: 0, kind: 'deal' },
 };
 
 type Listener = (e: { data: { closing: boolean } }) => void;

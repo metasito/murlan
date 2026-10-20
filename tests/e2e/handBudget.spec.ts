@@ -20,8 +20,8 @@ const VIEWPORT = { width: 844, height: 390 };
 
 /** Every hand card's rect, left to right. */
 async function handCards(page: Page) {
-  return page.evaluate(() => {
-    const hand = document.querySelector("[data-hand-state]");
+  return page.evaluate((zone) => {
+    const hand = document.querySelector(zone);
     if (!hand) throw new Error("the hand never rendered");
     // `card-box`, not the pressable: in a hand the pressable is only the strip
     // the card exposes, and what is drawn is what this measures.
@@ -29,7 +29,7 @@ async function handCards(page: Page) {
       .map((el) => el.getBoundingClientRect())
       .map((r) => ({ left: r.left, right: r.right, top: r.top, bottom: r.bottom }))
       .sort((a, b) => a.left - b.left);
-  });
+  }, HAND_ZONE);
 }
 
 test.describe("the hand's own budget", () => {

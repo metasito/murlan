@@ -34,6 +34,7 @@ const human = (turn: number, exchange = false): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: 'deal' },
   ...(exchange ? { exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: TWO_S, twoJokerException: false } } : {}),
 });
 

@@ -17,6 +17,7 @@ import { useNotification } from "@/context/NotificationContext";
 import { useOnlineConnection, useServerError } from "@/context/onlineGameHooks";
 import { ApiError, serverErrorMessage } from "@/lib/apiError";
 import { apiRequest } from "@/lib/query-client";
+import { useGuardedSubmit } from "@/lib/useGuardedSubmit";
 import { Colors, Spacing, FontSize, Radius, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { MenuLayout, takesSlack } from "@/components/MenuLayout";
 import { Avatar } from "@/components/Avatar";
@@ -64,7 +65,6 @@ export default function FriendsScreen() {
   const qc = useQueryClient();
   const [addLoading, setAddLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchLoading, setSearchLoading] = useState(false);
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchDone, setSearchDone] = useState(false);
@@ -172,10 +172,8 @@ export default function FriendsScreen() {
     });
   }
 
-  async function handleSearchUsername() {
-    if (searchLoading) return;
+  const { busy: searchLoading, submit: handleSearchUsername, field: searchField } = useGuardedSubmit(async () => {
     if (!searchQuery.trim()) return;
-    setSearchLoading(true);
     setSearchResult(null);
     setSearchError(null);
     setSearchDone(false);
@@ -190,8 +188,7 @@ export default function FriendsScreen() {
       setSearchDone(true);
       setSearchNonce((n) => n + 1);
     }
-    setSearchLoading(false);
-  }
+  });
 
   async function handleSendRequestToFound() {
     if (!searchResult) return;
@@ -270,11 +267,10 @@ export default function FriendsScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               maxLength={30}
-              onSubmitEditing={handleSearchUsername}
               returnKeyType="search"
               accessibilityLabel={t("friends.searchA11yLabel")}
               {...searchHint.props}
-              editable={!searchLoading}
+              {...searchField}
             />
             {searchHint.node}
             <Pressable

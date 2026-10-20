@@ -34,6 +34,7 @@ test("vacateSeat never sets personality on the seat it hands to the bot", async 
     roundOver: true,
     finishingOrder: ["p0", "p1"],
     firstPlayMade: true,
+    lastMove: { seq: 0, kind: "deal" },
   };
   const game = {
     roomId: ROOM,

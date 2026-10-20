@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { installVirtualClock, step, takeOver } from "./helpers/virtualClock";
 import { belowCapsTable, botMove, pairsTable } from "./helpers/mockupParity";
 import { GIOCA_VALID_LABEL } from "./helpers/labels";
+import { HAND_CARD_BOXES } from "./helpers/selectors.ts";
 
 const centre = (b: { x: number; y: number; width: number; height: number }) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
 
@@ -9,7 +10,7 @@ test("a thrown card's first frame is where the viewer last saw it", async ({ pag
   await installVirtualClock(page, 1259);
   await pairsTable(page, baseURL!);
   await takeOver(page);
-  const hand = page.locator('[data-hand-state] [data-testid="card-box"]');
+  const hand = page.locator(HAND_CARD_BOXES);
   await hand.nth(0).click({ force: true, position: { x: 8, y: 30 } });
   await hand.nth(1).click({ force: true, position: { x: 8, y: 30 } });
   await step(page);

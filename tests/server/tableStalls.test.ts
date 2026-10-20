@@ -42,6 +42,7 @@ function finishedHand(players: Player[], finishingOrder: string[]): GameState {
     roundOver: true,
     finishingOrder,
     firstPlayMade: true,
+    lastMove: { seq: 0, kind: "deal" },
   };
 }
 

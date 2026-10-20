@@ -66,6 +66,8 @@ export interface SimulateMatchOptions {
    * `seed` alone.
    */
   botRng?: (seed: number) => () => number;
+  /** Every committed state, with the one before it: a deal, then each move. `prev` is null before the first deal. */
+  onTransition?: (prev: GameState | null, next: GameState) => void;
 }
 
 export interface SimulatedRound {
@@ -258,6 +260,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
   const rounds: SimulatedRound[] = [];
   let botTurnKeyChecks = 0;
   const botRng = opts.botRng?.(opts.seed);
+  let endOfLastRound: GameState | null = null;
   const topCardCount = (hand: { rank: string }[]) =>
     hand.filter((c) => c.rank === "2" || c.rank === "joker_bw" || c.rank === "joker_colored").length;
 
@@ -273,6 +276,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
 
     if (rounds.length > 0) table = dealNext(table, random);
     let state = table.state;
+    opts.onTransition?.(endOfLastRound, state);
 
     const topCardCounts = state.players.map((p) => topCardCount(p.hand));
 
@@ -401,6 +405,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
         }
       }
 
+      opts.onTransition?.(state, next);
       state = next;
     }
 
@@ -416,6 +421,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
       }
     }
 
+    endOfLastRound = state;
     table = advance(table, state);
     rounds.push({
       finishingOrder: state.finishingOrder,

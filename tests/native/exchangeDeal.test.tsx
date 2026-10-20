@@ -33,6 +33,7 @@ const base: GameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: 'deal' },
 };
 const ended: GameState = { ...base, roundOver: true, finishingOrder: ['player_0', 'player_2', 'player_1'] };
 const exchange: GameState = {

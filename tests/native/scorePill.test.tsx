@@ -43,6 +43,7 @@ const state = (teams: boolean): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: "deal" },
 });
 
 const SCORES = { player_0: 7, player_1: 12, player_2: 9, player_3: 3 };

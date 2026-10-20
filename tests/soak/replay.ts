@@ -18,7 +18,7 @@ import { reconnectWith, DEADLINE_SCALE } from "../helpers/client.ts";
 import { redealExactly, forgetActiveGame } from "../helpers/liveGame.ts";
 import { createDeck } from "../../lib/game/gameEngine.ts";
 import { checkAll, type SeatView, type Violation } from "./invariants.ts";
-import { Seat, openTable, settle, type SoakLogEntry } from "./soak.ts";
+import { Seat, openTable, seatSocket, settle, type SoakLogEntry } from "./soak.ts";
 
 /** How long one replayed move may take to come back as a broadcast. */
 const MOVE_BUDGET_MS = 3_000 * DEADLINE_SCALE;
@@ -136,7 +136,7 @@ export async function replaySoakLog(
       if (entry.kind === "deal") continue;
       const seat = seats[entry.seat];
       if (entry.kind === "drop") {
-        seat.socket.close();
+        seatSocket(seat).close();
         await sleep(200);
         continue;
       }
@@ -158,9 +158,9 @@ export async function replaySoakLog(
       await settle(seats);
       const before = seat.version;
       seat.clearRefusal();
-      if (entry.kind === "play") seat.socket.emit("game:play", { cardIds: entry.cardIds });
-      else if (entry.kind === "pass") seat.socket.emit("game:pass");
-      else seat.socket.emit("game:exchange_give_card", { cardId: entry.cardId });
+      if (entry.kind === "play") seatSocket(seat).emit("game:play", { cardIds: entry.cardIds });
+      else if (entry.kind === "pass") seatSocket(seat).emit("game:pass");
+      else seatSocket(seat).emit("game:exchange_give_card", { cardId: entry.cardId });
 
       if (await waitForOwnBroadcast(seat, before)) {
         applied += 1;
@@ -201,7 +201,7 @@ export async function replaySoakLog(
       abandonedAt,
     };
   } finally {
-    for (const seat of seats) if (seat.socket.connected) seat.socket.close();
+    for (const seat of seats) if (seatSocket(seat).connected) seatSocket(seat).close();
     // The room's turn timer outlives the sockets, and on a shared server it
     // would fire during the next replay — or after the schema is dropped, where
     // its auto-pass writes to a database that is gone.

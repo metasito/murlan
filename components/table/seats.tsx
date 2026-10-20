@@ -33,6 +33,7 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import type { DealArrivals } from "./deal";
 import { useClockFade } from "./useClockFade";
+import type { CountdownClock } from "./countdown";
 import type { RingFlash } from "./ExchangeLegs";
 import Svg, { Path } from "react-native-svg";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -243,9 +244,9 @@ const RING_STROKE = 2;
 const RING_PING_SCALE = 1.45;
 const RING_PULSE_LOW = 0.6;
 
-/** `held` stops the sweep where it stands, and it runs on from there once released. */
-export type SeatCountdown = { seconds: number; resetKey: string; held?: boolean };
-const clockKey = (c: SeatCountdown) => `${c.resetKey}|${c.seconds}|${c.held}`;
+/** A hold stops the sweep where it stands, and it runs on from there once released. */
+export type SeatCountdown = CountdownClock;
+const clockKey = (c: SeatCountdown) => `${c.key}|${c.counting}`;
 
 /**
  * The turn clock, drawn as an arc around the seat on move. It is a display of
@@ -255,16 +256,15 @@ const clockKey = (c: SeatCountdown) => `${c.resetKey}|${c.seconds}|${c.held}`;
  */
 export function CountdownRing({
   size,
-  seconds,
-  resetKey,
-  held = false,
+  clock,
+  leaving,
   scale,
   fade,
 }: {
   size: number;
-  seconds: number;
-  resetKey: string;
-  held?: boolean;
+  clock: CountdownClock;
+  /** The seat has handed the turn on and the ring is fading where it stands. */
+  leaving: boolean;
   scale: number;
   fade: SharedValue<number>;
 }) {
@@ -275,21 +275,22 @@ export function CountdownRing({
   const urgent = useSharedValue(0);
   const pulse = useSharedValue(1);
   const reduceMotion = usePrefersReducedMotion();
-  const ran = useRef({ clock: "", ms: 0 });
+  const { seconds, key, elapsedMs } = clock;
+  const held = leaving || !clock.counting;
+  const armed = useRef("");
 
   useEffect(() => {
-    const clock = `${resetKey}|${seconds}`;
-    if (ran.current.clock !== clock) {
-      ran.current = { clock, ms: 0 };
+    const ranMs = elapsedMs();
+    if (armed.current !== key) {
+      armed.current = key;
       swept.value = 0;
       urgent.value = 0;
       pulse.value = 1;
     }
     if (held) return;
-    const since = Date.now();
-    const leftMs = Math.max(seconds * 1000 - ran.current.ms, 0);
+    const leftMs = Math.max(seconds * 1000 - ranMs, 0);
     const urgentFor = urgentThresholdSeconds(seconds);
-    const calmMs = Math.max(Math.max(seconds - urgentFor, 0) * 1000 - ran.current.ms, 0);
+    const calmMs = Math.max(Math.max(seconds - urgentFor, 0) * 1000 - ranMs, 0);
     // The delay is the clock itself, not motion: under the system's reduced
     // motion Reanimated would skip it and turn the ring red at once.
     urgent.value = withDelay(
@@ -310,13 +311,12 @@ export function CountdownRing({
       }
     }
     return () => {
-      ran.current.ms += Date.now() - since;
       cancelAnimation(swept);
       cancelAnimation(urgent);
       cancelAnimation(pulse);
       pulse.value = 1;
     };
-  }, [resetKey, seconds, held, reduceMotion, swept, urgent, pulse]);
+  }, [key, seconds, held, reduceMotion, swept, urgent, pulse, elapsedMs]);
 
   // Each half of the ring turns out of its own clip, clockwise from twelve
   // o'clock: a transform the compositor runs, where an animated stroke prop
@@ -528,9 +528,8 @@ function SeatRing({
       {clock.shown && (
         <CountdownRing
           size={size}
-          seconds={clock.shown.seconds}
-          resetKey={clock.shown.resetKey}
-          held={clock.shown.held || !isActive}
+          clock={clock.shown}
+          leaving={!isActive}
           scale={scale}
           fade={clock.opacity}
         />

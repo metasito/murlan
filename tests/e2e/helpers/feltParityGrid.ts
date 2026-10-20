@@ -10,8 +10,8 @@ import { test, expect } from "../fixtures";
 import { openCaptureState } from "./offlineSeed";
 import { settledLight, skiaOnSoftware, tracedLamp, UNLIT_AIR, untilSkiaFelt } from "./tableTrace";
 import {
-  CAPTURE_STATES,
   CAPTURE_VIEWER_SEAT,
+  seatedSituation,
   type CaptureState,
 } from "../../../lib/captureStates";
 import { seatDirection } from "../../../components/seatLayout";
@@ -188,14 +188,8 @@ function line(id: string, side: string, row: Row, patches: Patch[]): string {
   ].join("  ");
 }
 
-/**
- * The grid the app can actually seat: what varies with the count is which turns there are, and
- * `pile` is carried across from the state that has one.
- */
+/** The grid the app can actually seat: what varies with the count is which turns there are. */
 function grid(playerCount: PlayerCount): CaptureState[] {
-  const pileState = CAPTURE_STATES.find((s) => s.pile);
-  if (!pileState) throw new Error("no capture state carries a pile");
-
   const cells: CaptureState[] = [];
   for (let turn = 0; turn < playerCount; turn++) {
     cells.push({
@@ -204,22 +198,26 @@ function grid(playerCount: PlayerCount): CaptureState[] {
       playerCount,
       turn,
       side: seatDirection(turn, CAPTURE_VIEWER_SEAT, playerCount),
-      pile: false,
+      situation: seatedSituation(`p${playerCount}-turn${turn}`, playerCount, turn),
     });
   }
-  const pileTurn = Math.min(pileState.turn, playerCount - 1);
+  const pileTurn = Math.min(PILE_TURN, playerCount - 1);
   cells.push({
-    ...pileState,
     id: `p${playerCount}-pile`,
     label: `${playerCount} players, a combination on the felt`,
     playerCount,
     turn: pileTurn,
     side: seatDirection(pileTurn, CAPTURE_VIEWER_SEAT, playerCount),
+    situation: seatedSituation(`p${playerCount}-pile`, playerCount, pileTurn, { by: (pileTurn + 1) % playerCount, cards: PILE }),
   });
   return cells;
 }
 
 type PlayerCount = 2 | 3 | 4;
+
+const PILE = "K_hearts K_diamonds";
+/** The seat `pile-right` puts on move, where the grid has one. */
+const PILE_TURN = 1;
 
 /** One viewport and one player count per spec file, so no file outgrows a shard. */
 export function gridTest(name: keyof typeof VIEWPORTS, playerCount: PlayerCount) {
