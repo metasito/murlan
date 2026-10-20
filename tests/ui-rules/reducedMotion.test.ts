@@ -256,7 +256,7 @@ test("going out — the sweep (moments.tsx) and the pile's own catch (pile.tsx) 
 // build is configured: the workflows, and the tracked config files at the
 // root. Tracked, because an untracked one configures nobody else's build.
 
-const AUTOMATION_FLAG = /EXPO_PUBLIC_E2E_REDUCE_MOTION\s*[:=]/;
+const AUTOMATION_FLAG = /EXPO_PUBLIC_E2E_REDUCE_MOTION\s*(?::|=(?!=))/;
 
 function buildConfigFiles(): string[] {
   const workflows = readdirSync(path.join(repoRoot, ".github/workflows"))
