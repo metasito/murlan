@@ -77,7 +77,7 @@ test("no browser spec spells a channel's attribute outside selectors.ts", () => 
 });
 
 test("the spelling check sees a hand-written channel, and nothing in selectors.ts", () => {
-  const spec = "tests/e2e/plant.spec.ts";
+  const spec = path.posix.join("tests", "e2e", "plant.spec.ts");
   assert.deepEqual(handWritten([[spec, 'const ok = 1;\nel.getAttribute("data-seat-lit");']]), [`${spec}:2`]);
   assert.deepEqual(handWritten([[SELECTORS, 'const z = "[data-hand-state]";']]), []);
   assert.deepEqual(handWritten([[spec, 'const s = "[data-testid=x] [data-side=top]";']]), []);
