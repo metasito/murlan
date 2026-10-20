@@ -31,7 +31,7 @@ jest.mock('@/lib/query-client', () => ({
 jest.mock('expo-router', () => ({ router: { replace: jest.fn() } }));
 const replace = (require('expo-router') as { router: { replace: jest.Mock } }).router.replace;
 
-jest.mock('expo', () => ({ reloadAppAsync: jest.fn() }));
+jest.mock('expo', () => ({ ...jest.requireActual<object>('expo'), reloadAppAsync: jest.fn() }));
 const reloadAppAsync = (require('expo') as { reloadAppAsync: jest.Mock }).reloadAppAsync;
 
 const apiRequest = (require('@/lib/query-client') as { apiRequest: jest.Mock })
