@@ -11,6 +11,7 @@ import { useInvites, useSocketConnection } from '@/context/SocketContext';
 import { useSettings } from '@/context/SettingsContext';
 import { useGameSession } from '@/context/GameContext';
 import { INTENT_ACK_TIMEOUT_MS, send, type IntentOutcome } from '@/lib/sendIntent';
+import { useOwnLink } from '@/lib/useOwnLink';
 import { renderApp } from './harness/renderApp';
 import { route } from './mocks/http';
 
@@ -121,5 +122,30 @@ describe('an intent the server never acknowledges', () => {
     expect(view.socket().acks[0].settled).toBe(true);
     expect(delivered).toBe(false);
     expect(text(view, 'banner')).toBe(locale['room.requestNotDelivered']);
+  });
+});
+
+function LinkProbe() {
+  const { connected } = useOwnLink(useSocketConnection());
+  return <Text testID="link">{connected ? 'up' : 'down'}</Text>;
+}
+
+describe("a socket's subscribers outlive the test that made them", () => {
+  it('follows the link in the first test', async () => {
+    const view = await renderApp(<LinkProbe />, { user: ANA });
+
+    await act(async () => view.socket().open());
+
+    expect(text(view, 'link')).toBe('up');
+  });
+
+  it('still follows it in the next, on the same account’s socket', async () => {
+    const view = await renderApp(<LinkProbe />, { user: ANA });
+
+    await act(async () => view.socket().drop('transport close'));
+    expect(text(view, 'link')).toBe('down');
+
+    await act(async () => view.socket().open());
+    expect(text(view, 'link')).toBe('up');
   });
 });

@@ -34,7 +34,7 @@ const tree = () => (
 );
 
 beforeEach(() => {
-  route('POST', '/api/auth/socket-ticket', { status: 401 });
+  route('POST', '/api/auth/socket-ticket', { body: { ticket: 't' } });
   mockLogout.mockClear();
   mockReplace.mockClear();
 });
@@ -48,6 +48,8 @@ describe('a 401 after the account changed', () => {
     mockUser = { id: 'u2', username: 'Ben' };
     await view.rerender(tree());
     const [, ben] = fakeSockets();
+    await act(async () => void (await Promise.all([ana.credentials, ben.credentials])));
+    route('POST', '/api/auth/socket-ticket', { status: 401 });
     await act(async () => void (await ana.handshake()));
 
     expect(mockLogout).not.toHaveBeenCalled();

@@ -6,9 +6,10 @@ import { Dimensions } from 'react-native';
 import { AppProviders } from '@/context/AppProviders';
 import { useAuth, type AuthUser } from '@/context/AuthContext';
 import { queryClient } from '@/lib/query-client';
+import { peekSocket } from '@/lib/socket';
 import { AUTH_USER_KEY } from '@/lib/storageKeys';
 import { route } from '../mocks/http';
-import { fakeSockets, type FakeSocket } from '../mocks/socketIo';
+import type { FakeSocket } from '../mocks/socketIo';
 
 const auth = { settled: false };
 
@@ -32,7 +33,6 @@ export async function renderApp(ui: React.ReactElement, { user = null }: { user?
   route('GET', '/api/auth/me', user ? { body: user } : { status: 401 });
   if (user) await AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
   else await AsyncStorage.removeItem(AUTH_USER_KEY);
-  const sockets = fakeSockets().length;
   const view = await render(
     <AppProviders>
       <AuthSettled />
@@ -47,11 +47,11 @@ export async function renderApp(ui: React.ReactElement, { user = null }: { user?
   await waitFor(() => expect(auth.settled).toBe(true));
   return {
     ...view,
-    /** The socket the account opened in this render; a file's later render of the same account reuses it. */
+    /** The signed-in account's socket, which a later render in the same file reuses. */
     socket: (): FakeSocket => {
-      const socket = fakeSockets()[sockets] ?? fakeSockets().at(-1);
-      if (!socket) throw new Error('the app opened no socket');
-      return socket;
+      const socket = peekSocket(user?.id);
+      if (!socket) throw new Error('the account has no socket');
+      return socket as unknown as FakeSocket;
     },
   };
 }

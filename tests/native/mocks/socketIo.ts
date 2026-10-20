@@ -29,25 +29,38 @@ type AuthCallback = (cb: (data: Record<string, unknown>) => void) => void;
  */
 export class FakeSocket {
   connected = false;
-  active = true;
+  active = false;
   readonly sent: { event: keyof Outgoing; args: unknown[] }[] = [];
   readonly acks: PendingAck[] = [];
-  readonly connect = jest.fn(() => this);
+  /** The latest credentials lib/socket.ts handed over, as each connection attempt asks for them. */
+  credentials: Promise<Record<string, unknown>> | null = null;
+  readonly connect = jest.fn(() => {
+    this.attempt();
+    return this;
+  });
   readonly disconnect = jest.fn(() => {
-    this.connected = false;
+    this.active = false;
+    if (this.connected) this.drop('io client disconnect');
     return this;
   });
   readonly io = { reconnection: jest.fn() };
-  private readonly listeners = new Map<string, Set<Listener>>();
+  private readonly listeners = new Map<string, Listener[]>();
 
   constructor(
     readonly uri: string,
-    readonly options: { auth?: AuthCallback } & Record<string, unknown>
-  ) {}
+    readonly options: { auth?: AuthCallback; autoConnect?: boolean } & Record<string, unknown>
+  ) {
+    if (options.autoConnect !== false) this.attempt();
+  }
+
+  private attempt(): void {
+    if (this.connected) return;
+    this.active = true;
+    this.credentials = this.handshake();
+  }
 
   on(event: string, fn: Listener): this {
-    if (!this.listeners.has(event)) this.listeners.set(event, new Set());
-    this.listeners.get(event)!.add(fn);
+    this.listeners.set(event, [...(this.listeners.get(event) ?? []), fn]);
     return this;
   }
 
@@ -56,10 +69,9 @@ export class FakeSocket {
       this.listeners.delete(event);
       return this;
     }
-    const set = this.listeners.get(event);
-    set?.forEach((l) => {
-      if (l === fn || (l as { inner?: Listener }).inner === fn) set.delete(l);
-    });
+    const list = this.listeners.get(event) ?? [];
+    const at = list.findIndex((l) => l === fn || (l as { inner?: Listener }).inner === fn);
+    if (at >= 0) this.listeners.set(event, [...list.slice(0, at), ...list.slice(at + 1)]);
     return this;
   }
 
@@ -77,7 +89,7 @@ export class FakeSocket {
   }
 
   listening(event: keyof Incoming): number {
-    return this.listeners.get(event)?.size ?? 0;
+    return this.listeners.get(event)?.length ?? 0;
   }
 
   emit(event: keyof Outgoing, ...args: unknown[]): this {
@@ -125,18 +137,30 @@ export class FakeSocket {
     this.serverEmit('connect');
   }
 
-  /** One handshake attempt asking lib/socket.ts for its credentials, as socket.io does before each. */
+  /** The connection lost from the server's side; socket.io keeps reconnecting. */
+  drop(reason: string): void {
+    this.connected = false;
+    this.serverEmit('disconnect', reason);
+  }
+
+  /** The server's middleware refusing the handshake: socket.io gives up on this socket. */
+  refuse(err: Error): void {
+    this.active = false;
+    this.serverEmit('connect_error', err);
+  }
+
+  /** One attempt asking lib/socket.ts for its credentials, as socket.io does before each connection. */
   handshake(): Promise<Record<string, unknown>> {
     return new Promise((resolve) => this.options.auth?.(resolve));
   }
 
-  /** Back to a fresh socket's state, keeping its identity: lib/socket.ts holds one per account for the whole file. */
+  /**
+   * Clears what a test reads back and nothing the app holds: lib/socket.ts keeps one socket per
+   * account for the whole file, and what subscribed to it stays subscribed, as on a device.
+   */
   reset(): void {
-    this.connected = false;
-    this.active = true;
     this.sent.length = 0;
     this.acks.length = 0;
-    this.listeners.clear();
     this.connect.mockClear();
     this.disconnect.mockClear();
     this.io.reconnection.mockClear();
