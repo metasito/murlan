@@ -8,7 +8,6 @@ import {
   pulseRepeats,
   CLOCK_RUNNING_OUT_SECONDS,
   turnPresentation,
-  turnState,
 } from "../../components/turnTimerUi.ts";
 import { describeTableForA11y, type TableA11yStrings } from "../../components/tableA11y.ts";
 import type { TFn } from "../../lib/i18n.ts";
@@ -126,10 +125,9 @@ describe("pulseRepeats", () => {
 });
 
 /**
- * Generated from GameTable's own branches at the commit that moved them into
- * `turnState`/`turnPresentation` (#1690), and kept as the record of what they did.
- * A row whose viewer is on move while the round is over or dealing is left out:
- * `viewerOnMove` is false in both.
+ * The turn chip over every input it reads. `viewerOnMove` is the shown turn being the
+ * viewer's, still holding cards; a row with it set while the round is over or dealing is
+ * left out, since the chip and the screen reader then read it as false.
  *
  * [roundOver, matchOver, dealing, viewerOnMove, exchangeChip, chip, spoken, lit, a11y]
  */
@@ -158,8 +156,8 @@ const TURN_TABLE: [Bit, Bit, Bit, Bit, Bit, string, string, Bit, string][] = [
 ];
 
 /**
- * Both timer questions over every input they read, generated the same way:
- * `c` the viewer's chip counts down, `s` the ring on the seat on move sweeps.
+ * Both timer questions over every input they read: `c` the viewer's chip counts down,
+ * `s` the ring on the seat on move sweeps.
  *
  * Bits: isMyTurn, isFinished, isNewTrick, roundOver, exchangeActive, includeNewTrick, pausable, holdingForStart.
  */
@@ -221,7 +219,7 @@ const a11yFirst: TableA11yStrings = {
   dealing: "a11y.dealing",
 };
 
-describe("the turn, as GameTable's branches decided it", () => {
+describe("the turn chip and its clocks", () => {
   test("the tables cover every input", () => {
     assert.equal(TURN_TABLE.length, 20);
     assert.equal(new Set(TURN_TABLE.map((r) => r.slice(0, 5).join(""))).size, 20);
@@ -253,7 +251,10 @@ describe("the turn, as GameTable's branches decided it", () => {
 
   const base = {
     onMoveName: "Ana",
-    clockShown: false,
+    roundOver: false,
+    matchOver: false,
+    dealing: false,
+    shownTurnIsMine: false,
     exchange: { chip: null, choiceOpen: false, viewerIsWinner: false, active: false },
     isMyTurn: false,
     isFinished: false,
@@ -266,19 +267,28 @@ describe("the turn, as GameTable's branches decided it", () => {
 
   for (const [roundOver, matchOver, dealing, viewerOnMove, exchange, chip, spoken, lit] of TURN_TABLE) {
     test(`chip for ${[roundOver, matchOver, dealing, viewerOnMove, exchange].join("")}`, () => {
-      const state = turnState({ roundOver: roundOver === 1, matchOver: matchOver === 1, dealing: dealing === 1, viewerOnMove: viewerOnMove === 1 });
       const shown = turnPresentation({
         ...base,
-        state,
+        roundOver: roundOver === 1,
+        matchOver: matchOver === 1,
+        dealing: dealing === 1,
+        shownTurnIsMine: viewerOnMove === 1,
         exchange: exchange ? { chip: "CHIP", choiceOpen: true, viewerIsWinner: true, active: true } : base.exchange,
       }).chip;
       assert.deepEqual(shown, { text: chip, spoken, lit: lit === 1 });
     });
   }
 
+  test("a viewer gone out is not on move, and the count is drawn while the deal flies", () => {
+    const out = turnPresentation({ ...base, shownTurnIsMine: true, isFinished: true });
+    assert.deepEqual([out.chip.text, out.chip.lit, out.clock.revealed], ["gameShared.turnOf(Ana)", false, false]);
+    const dealing = turnPresentation({ ...base, shownTurnIsMine: true, dealing: true });
+    assert.deepEqual([dealing.chip.text, dealing.chip.lit, dealing.clock.revealed], ["gameShared.dealing", false, true]);
+  });
+
   test("an exchange chip lights only for the winner whose choice is open", () => {
     for (const [choiceOpen, viewerIsWinner] of [[false, true], [true, false], [false, false]]) {
-      const shown = turnPresentation({ ...base, state: "yourTurn", exchange: { chip: "CHIP", choiceOpen, viewerIsWinner, active: true } });
+      const shown = turnPresentation({ ...base, shownTurnIsMine: true, exchange: { chip: "CHIP", choiceOpen, viewerIsWinner, active: true } });
       assert.equal(shown.chip.lit, false);
     }
   });
@@ -287,7 +297,7 @@ describe("the turn, as GameTable's branches decided it", () => {
     for (const r of clockRows) {
       const shown = turnPresentation({
         ...base,
-        state: r.roundOver ? "roundOver" : "turnOf",
+        roundOver: r.roundOver,
         exchange: { ...base.exchange, active: r.exchangeActive },
         timer: { seconds: 20, includeNewTrick: r.includeNewTrick, pausable: r.pausable },
         isMyTurn: r.isMyTurn,
@@ -300,7 +310,7 @@ describe("the turn, as GameTable's branches decided it", () => {
   });
 
   test("with no timer, neither clock runs", () => {
-    const shown = turnPresentation({ ...base, state: "yourTurn", isMyTurn: true });
+    const shown = turnPresentation({ ...base, shownTurnIsMine: true, isMyTurn: true });
     assert.equal(shown.clock.active, false);
     assert.equal(shown.seat, undefined);
   });
@@ -308,8 +318,7 @@ describe("the turn, as GameTable's branches decided it", () => {
   test("the chip's clock and the ring restart on the same key, and hold together", () => {
     const shown = turnPresentation({
       ...base,
-      state: "yourTurn",
-      clockShown: true,
+      shownTurnIsMine: true,
       isMyTurn: true,
       held: true,
       timer: { seconds: 20, resetKey: "re", includeNewTrick: true },
@@ -324,13 +333,13 @@ describe("the turn, as GameTable's branches decided it", () => {
     const onExpire = () => {};
     const shown = turnPresentation({
       ...base,
-      state: "roundOver",
+      roundOver: true,
       held: true,
       timer: { seconds: 20, onExpire },
       vote: { seconds: 30, resetKey: "v1" },
     });
     assert.deepEqual(shown.clock, { active: true, revealed: true, seconds: 30, resetKey: "vote|v1", frozen: false });
-    const turn = turnPresentation({ ...base, state: "roundOver", timer: { seconds: 20, onExpire } });
+    const turn = turnPresentation({ ...base, roundOver: true, timer: { seconds: 20, onExpire } });
     assert.equal(turn.clock.onExpire, onExpire);
   });
 });

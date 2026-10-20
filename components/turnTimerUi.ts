@@ -142,10 +142,13 @@ export interface TurnPresentation {
 
 /** The turn chip, its countdown and the seat ring's, from one reading of the turn. */
 export function turnPresentation(i: {
-  state: TurnState;
+  roundOver: boolean;
+  /** Read only with `roundOver`. */
+  matchOver: boolean;
+  dealing: boolean;
+  /** The seat the table shows on move is the viewer's; `isMyTurn` is the true turn. */
+  shownTurnIsMine: boolean;
   onMoveName: string;
-  /** The viewer's own seat is on move and still holds cards, dealt or not. */
-  clockShown: boolean;
   /** `chip` outranks the state. */
   exchange: { chip: string | null; choiceOpen: boolean; viewerIsWinner: boolean; active: boolean };
   timer?: TurnTimerConfig;
@@ -159,9 +162,10 @@ export function turnPresentation(i: {
   turnToken: string;
   t: TFn;
 }): TurnPresentation {
-  const { state, exchange, timer, vote } = i;
+  const { exchange, timer, vote, roundOver } = i;
+  const clockShown = i.shownTurnIsMine && !i.isFinished && !roundOver;
+  const state = turnState({ roundOver, matchOver: i.matchOver, dealing: i.dealing, viewerOnMove: clockShown && !i.dealing });
   const say = (key: TranslationKey) => (state === "turnOf" ? i.t(key, { name: i.onMoveName }) : i.t(key));
-  const roundOver = state === "matchOver" || state === "roundOver";
   const announcementHolds = i.holdingForStart && (timer?.pausable ?? false);
   // The ring only ever sits on a seat whose turn it is, and never on one that has gone out:
   // `getNextActivePlayer` (lib/game/gameEngine.ts) steps over an empty hand.
@@ -179,7 +183,7 @@ export function turnPresentation(i: {
       ? { active: true, revealed: true, seconds: vote.seconds, resetKey: `vote|${vote.resetKey}`, frozen: false }
       : {
           active: runs({ isMyTurn: i.isMyTurn, isFinished: i.isFinished, includeNewTrick: timer?.includeNewTrick ?? false }),
-          revealed: i.clockShown,
+          revealed: clockShown,
           seconds: timer?.seconds ?? 0,
           resetKey: turnResetKey,
           frozen: i.held,

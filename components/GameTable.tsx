@@ -57,7 +57,7 @@ import {
 } from "@/components/table/notices/netNotes";
 import { WaitingLine } from "@/components/table/notices/tableLines";
 import { ExchangeLegs, type RingFlash } from "@/components/table/ExchangeLegs";
-import { canPassNow as canPassNowOf, turnPresentation, turnState, type TurnTimerConfig } from "@/components/turnTimerUi";
+import { canPassNow as canPassNowOf, turnPresentation, type TurnTimerConfig } from "@/components/turnTimerUi";
 import { sideSlotHeight, topBandHeight } from "@/components/tableFrame";
 import { describeTableForA11y, type TableA11yExchange, type TableA11yLastPlay, type TableA11yOpponent } from "@/components/tableA11y";
 import { cardScale, physicalTouchTarget } from "@/components/cardFaceModel";
@@ -876,16 +876,12 @@ export function GameTable({
 
   const topBarA11yLabel = topBarLabel(onTop, playedByViewer, lastPlayName, t);
 
-  const viewerClockShown = shownTurnIsMine && !isFinished && !gameState.roundOver;
   const turn = turnPresentation({
-    state: turnState({
-      roundOver: gameState.roundOver,
-      matchOver,
-      dealing: deal.dealing,
-      viewerOnMove: viewerClockShown && !deal.dealing,
-    }),
+    roundOver: gameState.roundOver,
+    matchOver,
+    dealing: deal.dealing,
+    shownTurnIsMine,
     onMoveName: players[shownTurnIndex]?.name ?? "",
-    clockShown: viewerClockShown,
     exchange: { chip: exchangeChip, choiceOpen, viewerIsWinner: exchange.viewerIsWinner, active: exchange.active },
     timer: turnTimer,
     vote: roundVote?.deadline ?? null,
