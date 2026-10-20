@@ -17,6 +17,8 @@ function sessionMisuse(source: string): string[] {
   const found: string[] = [];
   const locals = new Set<string>();
   for (const stmt of file.statements) {
+    if (ts.isExportDeclaration(stmt) && stmt.moduleSpecifier && ts.isStringLiteral(stmt.moduleSpecifier) && SESSION.test(stmt.moduleSpecifier.text)) found.push(`re-exports the module: ${stmt.getText()}`);
+    if (ts.isImportEqualsDeclaration(stmt) && ts.isExternalModuleReference(stmt.moduleReference) && ts.isStringLiteral(stmt.moduleReference.expression) && SESSION.test(stmt.moduleReference.expression.text)) found.push(`imports the module by require: ${stmt.getText()}`);
     if (!ts.isImportDeclaration(stmt) || !ts.isStringLiteral(stmt.moduleSpecifier) || !SESSION.test(stmt.moduleSpecifier.text)) continue;
     const clause = stmt.importClause;
     if (!clause?.name || clause.namedBindings) found.push(`import other than the default: ${stmt.getText()}`);
@@ -43,7 +45,7 @@ test("the probe only reads latency from the audio-session module", () => {
   assert.deepEqual(sessionMisuse(source), []);
 });
 
-test("a call that configures the session, an alias, a named import and a run-time load are each caught", () => {
+test("a configuring call, an alias, a named or namespace import, a re-export and a run-time load are each caught", () => {
   const head = 'import session from "@/modules/murlan-audio-session";\n';
   assert.deepEqual(sessionMisuse(head + "const a = session?.outputLatencyMs();\nconst b = session?.ioBufferMs();"), []);
   for (const code of [
@@ -53,6 +55,10 @@ test("a call that configures the session, an alias, a named import and a run-tim
     'import session, { x } from "../../modules/murlan-audio-session";',
     'const m = require("@/modules/murlan-audio-session");',
     'const m = import("@/modules/murlan-audio-session/index.ts");',
+    'import * as m from "@/modules/murlan-audio-session";',
+    'export { default } from "@/modules/murlan-audio-session";',
+    'export * from "../../modules/murlan-audio-session";',
+    'import m = require("@/modules/murlan-audio-session");',
   ]) {
     assert.equal(sessionMisuse(code).length, 1, code);
   }
