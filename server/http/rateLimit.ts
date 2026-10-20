@@ -29,7 +29,7 @@ type LimiterSpec = {
   windowMs: number;
   /** Used when `envVar` is unset, or holds anything but a positive integer. */
   defaultMax: number;
-  /** Read when the limiter is built, not per request. */
+  /** Read per request, so a test can set it after the routes are imported. */
   envVar?: string;
   keyBy?: LimiterKey;
   skipSuccessfulRequests?: boolean;
@@ -60,7 +60,7 @@ export function routeLimiter({
 }: LimiterOptions): RequestHandler {
   return rateLimit({
     windowMs,
-    limit: maxFrom(envVar, defaultMax),
+    limit: () => maxFrom(envVar, defaultMax),
     standardHeaders: true,
     legacyHeaders: false,
     ...(keyBy === "ip" ? {} : { keyGenerator: KEY_GENERATORS[keyBy] }),

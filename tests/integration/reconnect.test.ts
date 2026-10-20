@@ -1,6 +1,5 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import pg from "pg";
 import type { Socket } from "socket.io-client";
 import {
   startTestServer,
@@ -52,15 +51,12 @@ interface ReconnectNotice {
 
 describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  let dbPool: pg.Pool;
   before(async () => {
     server = await startTestServer();
-    dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
   });
   // Checked once the suite is done, so an unanswered leave in a test's `finally` never replaces that test's own failure.
   const unansweredLeaves: string[] = [];
   after(async () => {
-    await dbPool.end();
     await server.stop();
     assert.deepEqual(unansweredLeaves, [], "closeTable sent a room:leave the server never acknowledged");
   });
@@ -1075,8 +1071,8 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     await startGame([alice, bob]);
 
     try {
-      await dbPool.query("DELETE FROM room_players WHERE room_id = $1", [room.roomId]);
-      await dbPool.query("DELETE FROM rooms WHERE id = $1", [room.roomId]);
+      await server.query("DELETE FROM room_players WHERE room_id = $1", [room.roomId]);
+      await server.query("DELETE FROM rooms WHERE id = $1", [room.roomId]);
 
       const answered = waitFor<RoomState>(alice.socket, "room:state", 5_000);
       alice.socket.emit("game:rejoin", { roomId: room.roomId });

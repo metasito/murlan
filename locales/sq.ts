@@ -82,8 +82,6 @@ export const sq: Record<keyof typeof en, string> = {
   "server.MATCH_IN_PROGRESS": "Një ndeshje është tashmë në vazhdim",
   "server.NEW_MATCH_NOT_READY": "Të gjithë lojtarët duhet të jenë gati përpara se të fillojë një ndeshje e re",
   "server.EXCHANGE_PENDING": "Duhet të përfundosh shkëmbimin më parë",
-  "server.INVALID_COMBINATION": "Kombinim i pavlefshëm",
-  "server.MUST_PLAY_START_CARD": "Duhet të luash {{rank}}♠ si letrën e parë",
   "server.INVALID_MOVE": "Lëvizje e pavlefshme",
   "server.CANNOT_PASS": "Nuk mund të kalosh",
   "server.REMATCH_DECLINED": "Kjo ndeshje u mbyll me votim dhe nuk mund të luhet përsëri",

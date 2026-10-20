@@ -120,6 +120,7 @@ describe("the server survives its Postgres backends being terminated", {
   }
 
   before(async () => {
+    // The servers here are child processes; this pool creates their schema and outlives their restarts.
     admin = new pg.Pool({ connectionString: baseUrl });
     await admin.query(`CREATE SCHEMA "${schema}"`);
     for (const port of PORTS) {

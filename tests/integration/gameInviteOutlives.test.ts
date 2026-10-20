@@ -61,7 +61,15 @@ describe("a game invite outlives the socket that would have carried it", {
     return JSON.parse(text) as InviteRow[];
   }
 
-  /**
+  /** The invite's answer: the row is written before the server acks, so nothing after this races it. */
+  async function invite(from: Socket, friendUserId: string, roomCode: string): Promise<string> {
+    const reply = (await from.timeout(5_000 * DEADLINE_SCALE).emitWithAck("friend:invite", { friendUserId, roomCode })) as {
+      ok: boolean;
+      code?: string;
+    };
+    return reply.ok ? "ok" : (reply.code ?? "refused");
+  }
+
   /** A host with a waiting room, and a friend who is not connected to hear about it. */
   async function hostAndAbsentFriend(tag: string) {
     const host = await player(`${tag}_host`);
@@ -81,11 +89,7 @@ describe("a game invite outlives the socket that would have carried it", {
   test("an invite sent while the friend has no socket is waiting for them", async () => {
     const { host, friend, room } = await hostAndAbsentFriend("offline");
 
-    host.socket.emit("friend:invite", {
-      friendUserId: friend.user.id,
-      roomCode: room.code,
-    });
-    await new Promise((r) => setTimeout(r, 400));
+    assert.equal(await invite(host.socket, friend.user.id, room.code), "ok");
 
     const rows = await invitesFor(friend.cookie);
     assert.equal(
@@ -132,11 +136,7 @@ describe("a game invite outlives the socket that would have carried it", {
   test("an invite stops being offered once the room has started", async () => {
     const { host, friend, room } = await hostAndAbsentFriend("started");
 
-    host.socket.emit("friend:invite", {
-      friendUserId: friend.user.id,
-      roomCode: room.code,
-    });
-    await new Promise((r) => setTimeout(r, 400));
+    assert.equal(await invite(host.socket, friend.user.id, room.code), "ok");
     assert.equal((await invitesFor(friend.cookie)).length, 1, "waiting room, invite stands");
 
     host.socket.emit("room:start", { fillWithBots: true, botDifficulty: "easy" });
@@ -164,8 +164,7 @@ describe("a game invite outlives the socket that would have carried it", {
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const room = await made;
 
-    host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
-    await new Promise((r) => setTimeout(r, 400));
+    assert.equal(await invite(host.socket, friend.user.id, room.code), "ok");
     assert.equal((await invitesFor(friend.cookie)).length, 1, "one seat free, invite stands");
 
     // Someone else takes the last seat. Nobody has pressed start, so the room
@@ -199,11 +198,7 @@ describe("a game invite outlives the socket that would have carried it", {
     const room = await made;
 
     // The outsider knows the code but has never sat down in it.
-    outsider.socket.emit("friend:invite", {
-      friendUserId: friend.user.id,
-      roomCode: room.code,
-    });
-    await new Promise((r) => setTimeout(r, 400));
+    assert.equal(await invite(outsider.socket, friend.user.id, room.code), "NOT_IN_ROOM");
 
     assert.deepEqual(await invitesFor(friend.cookie), []);
   });
@@ -223,11 +218,7 @@ describe("a game invite outlives the socket that would have carried it", {
   test("an invite does not outlive the room it points at", async () => {
     const { host, friend, room } = await hostAndAbsentFriend("closed");
 
-    host.socket.emit("friend:invite", {
-      friendUserId: friend.user.id,
-      roomCode: room.code,
-    });
-    await new Promise((r) => setTimeout(r, 400));
+    assert.equal(await invite(host.socket, friend.user.id, room.code), "ok");
     assert.equal(
       (await invitesFor(friend.cookie)).length,
       1,
@@ -268,11 +259,7 @@ describe("a game invite outlives the socket that would have carried it", {
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
     const room = await made;
 
-    host.socket.emit("friend:invite", {
-      friendUserId: stranger.user.id,
-      roomCode: room.code,
-    });
-    await new Promise((r) => setTimeout(r, 400));
+    assert.equal(await invite(host.socket, stranger.user.id, room.code), "NOT_FRIENDS");
 
     assert.deepEqual(await invitesFor(stranger.cookie), []);
   });

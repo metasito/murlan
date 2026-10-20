@@ -7,7 +7,6 @@
 // inferred from the schema.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import pg from "pg";
 import {
   startTestServer,
   hasDatabase,
@@ -19,15 +18,12 @@ import { register } from "../helpers/client.ts";
 describe("client crash reports", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
   let cookie: string;
-  let dbPool: pg.Pool;
 
   before(async () => {
     server = await startTestServer();
     ({ cookie } = await register(server, "crash_reporter"));
-    dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
   });
   after(async () => {
-    await dbPool.end();
     await server.stop();
   });
 
@@ -105,7 +101,7 @@ describe("client crash reports", { skip: hasDatabase() ? false : skipMessage() }
     // Fire-and-forget, so the row may land just after the 204.
     let rows: { screen: string | null; app_version: string | null; context: unknown }[] = [];
     for (let attempt = 0; attempt < 20 && rows.length === 0; attempt++) {
-      const result = await dbPool.query<{
+      const result = await server.query<{
         screen: string | null;
         app_version: string | null;
         context: unknown;
@@ -113,7 +109,7 @@ describe("client crash reports", { skip: hasDatabase() ? false : skipMessage() }
         `SELECT screen, app_version, context FROM "${server.schema}".client_errors WHERE message = $1`,
         [message]
       );
-      rows = result.rows;
+      rows = result;
       if (rows.length === 0) await new Promise((r) => setTimeout(r, 50));
     }
 
@@ -132,11 +128,11 @@ describe("client crash reports", { skip: hasDatabase() ? false : skipMessage() }
 
     let rows: { screen: string | null; app_version: string | null }[] = [];
     for (let attempt = 0; attempt < 20 && rows.length === 0; attempt++) {
-      const result = await dbPool.query<{ screen: string | null; app_version: string | null }>(
+      const result = await server.query<{ screen: string | null; app_version: string | null }>(
         `SELECT screen, app_version FROM "${server.schema}".client_errors WHERE message = $1`,
         [message]
       );
-      rows = result.rows;
+      rows = result;
       if (rows.length === 0) await new Promise((r) => setTimeout(r, 50));
     }
 
@@ -158,11 +154,11 @@ describe("client crash reports", { skip: hasDatabase() ? false : skipMessage() }
 
     let rows: { fingerprint: string | null }[] = [];
     for (let attempt = 0; attempt < 20 && rows.length < 2; attempt++) {
-      const result = await dbPool.query<{ fingerprint: string | null }>(
+      const result = await server.query<{ fingerprint: string | null }>(
         `SELECT fingerprint FROM "${server.schema}".client_errors WHERE message = $1`,
         [message]
       );
-      rows = result.rows;
+      rows = result;
       if (rows.length < 2) await new Promise((r) => setTimeout(r, 50));
     }
 
@@ -180,11 +176,11 @@ describe("client crash reports", { skip: hasDatabase() ? false : skipMessage() }
 
     let rows: { fingerprint: string | null }[] = [];
     for (let attempt = 0; attempt < 20 && rows.length < 2; attempt++) {
-      const result = await dbPool.query<{ fingerprint: string | null }>(
+      const result = await server.query<{ fingerprint: string | null }>(
         `SELECT fingerprint FROM "${server.schema}".client_errors WHERE message = $1`,
         [message]
       );
-      rows = result.rows;
+      rows = result;
       if (rows.length < 2) await new Promise((r) => setTimeout(r, 50));
     }
 
@@ -201,11 +197,11 @@ describe("client crash reports", { skip: hasDatabase() ? false : skipMessage() }
 
     let rows: { message: string; fingerprint: string | null }[] = [];
     for (let attempt = 0; attempt < 20 && rows.length < 2; attempt++) {
-      const result = await dbPool.query<{ message: string; fingerprint: string | null }>(
+      const result = await server.query<{ message: string; fingerprint: string | null }>(
         `SELECT message, fingerprint FROM "${server.schema}".client_errors WHERE message IN ($1, $2)`,
         ["first distinct crash", "second distinct crash"]
       );
-      rows = result.rows;
+      rows = result;
       if (rows.length < 2) await new Promise((r) => setTimeout(r, 50));
     }
 

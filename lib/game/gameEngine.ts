@@ -886,7 +886,7 @@ function processPass(state: GameState): GameState {
   return newState;
 }
 
-export function getNextActivePlayer(state: GameState): number {
+function getNextActivePlayer(state: GameState): number {
   const total = state.players.length;
   let next = (state.currentTurnIndex - 1 + total) % total;
   let attempts = 0;
@@ -948,18 +948,24 @@ function processExchangeChoice(state: GameState, cardId: string): GameState {
  * no card in 3-10 at all, and an empty result deadlocks the exchange behind an
  * undismissable overlay, so there the single lowest card is the giveback.
  */
-/** The card a bot gives back: the weakest legal choice, or the lowest card in
- *  hand when nothing is in the 3-10 range. Never undefined for a non-empty hand. */
-export function pickGivebackCard(hand: Card[], excludeCardId?: string): Card | undefined {
-  return sortHand(getValidGivebackCards(hand, excludeCardId))[0];
-}
-
 export function getValidGivebackCards(hand: Card[], excludeCardId?: string): Card[] {
   const eligible = excludeCardId ? hand.filter((c) => c.id !== excludeCardId) : hand;
   const inRange = eligible.filter((c) => EXCHANGE_VALID_RANKS.includes(c.rank));
   if (inRange.length > 0) return inRange;
   if (eligible.length === 0) return [];
   return [sortHand(eligible)[0]];
+}
+
+/**
+ * False for an open exchange whose winner holds nothing to give back. No deal produces one, so it
+ * can only arrive by restore, and both restore seams refuse it rather than seat a table nobody can
+ * move.
+ */
+export function exchangeIsSatisfiable(state: GameState): boolean {
+  const phase = state.exchangePhase;
+  if (!phase?.active || state.roundOver) return true;
+  const winner = state.players[phase.winnerIdx];
+  return winner !== undefined && getValidGivebackCards(winner.hand, phase.cardFromLoser?.id).length > 0;
 }
 
 /**
@@ -981,13 +987,6 @@ function loserHasBothJokers(hand: Card[]): boolean {
 function getBestCardFromHand(hand: Card[]): Card | undefined {
   if (hand.length === 0) return undefined;
   return [...hand].sort((a, b) => cardStrength(b) - cardStrength(a))[0];
-}
-
-export function getStartingPlayerAfterExchange(state: GameState): number {
-  if (!state.exchangePhase) return state.currentTurnIndex;
-  return state.exchangePhase.twoJokerException
-    ? state.exchangePhase.winnerIdx
-    : state.exchangePhase.loserIdx;
 }
 
 /**

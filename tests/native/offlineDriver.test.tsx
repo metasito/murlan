@@ -105,14 +105,15 @@ const exchange = (winner: "human" | "bot", winnerHand: Card[]): GameState => ({
 } as GameState);
 
 function SettleProbe() {
-  const { gameState, hasSavedGame, resumeGame, settleExchange } = useGame();
+  const { gameState, hasSavedGame, resumeGame } = useGame();
+  const { onExchangeReady } = useOfflineDriver();
   return (
     <>
       <Text testID="saved">{String(hasSavedGame)}</Text>
       <Text testID="active">{String(gameState?.exchangePhase?.active ?? "-")}</Text>
       <Text testID="loserHand">{gameState ? gameState.players[0].hand.map((c) => c.id).join(",") : "-"}</Text>
       <Pressable testID="resume" onPress={() => resumeGame()}><Text>resume</Text></Pressable>
-      <Pressable testID="settle" onPress={() => settleExchange()}><Text>settle</Text></Pressable>
+      <Pressable testID="settle" onPress={onExchangeReady}><Text>settle</Text></Pressable>
     </>
   );
 }
@@ -156,10 +157,6 @@ test("a bot winner gives back its weakest legal card once the table has shown th
 
 test("a human winner is left to choose", async () => {
   expect(await settled(exchange("human", [card("6", "clubs")]))).toEqual({ active: "true", loser: "4_clubs" });
-});
-
-test("a winner holding no card it may give back releases the phase rather than holding the table forever", async () => {
-  expect((await settled(exchange("human", []))).active).toBe("false");
 });
 
 function ExpiryProbe() {

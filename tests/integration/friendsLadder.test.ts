@@ -1,6 +1,5 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import pg from "pg";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { register } from "../helpers/client.ts";
 import { START_RATING, seasonKey, seedRating } from "../../lib/game/rating.ts";
@@ -10,7 +9,6 @@ type Row = { rank: number; userId: string; username: string; rating: number; rou
 
 describe("the friends ladder ranks the viewer among accepted friends only", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  let dbPool: pg.Pool;
   let viewer: Account;
   let asked: Account;
   let asker: Account;
@@ -36,7 +34,7 @@ describe("the friends ladder ranks the viewer among accepted friends only", { sk
   }
 
   const rate = (who: Account, rating: number, rounds: number, season = seasonKey(new Date())) =>
-    dbPool.query("INSERT INTO user_ratings (user_id, season, rating, rounds) VALUES ($1, $2, $3, $4)", [
+    server.query("INSERT INTO user_ratings (user_id, season, rating, rounds) VALUES ($1, $2, $3, $4)", [
       who.user.id,
       season,
       rating,
@@ -51,7 +49,6 @@ describe("the friends ladder ranks the viewer among accepted friends only", { sk
 
   before(async () => {
     server = await startTestServer();
-    dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
     viewer = await register(server, "fl_viewer");
     asked = await register(server, "fl_asked");
     asker = await register(server, "fl_asker");
@@ -60,7 +57,6 @@ describe("the friends ladder ranks the viewer among accepted friends only", { sk
     stranger = await register(server, "fl_stranger");
   });
   after(async () => {
-    await dbPool?.end();
     await server?.stop();
   });
 

@@ -42,21 +42,9 @@ export function useLocalMatch() {
 
 /** The card that changes hands between rounds, and the banner about it. */
 export function useLocalExchange() {
-  const {
-    exchangeAnnouncing,
-    exchangeAnnounceData,
-    chooseExchangeCard,
-    acknowledgeExchange,
-    settleExchange,
-  } = useGameTable();
+  const { exchangeAnnouncing, exchangeAnnounceData, chooseExchangeCard, acknowledgeExchange } = useGameTable();
   return useMemo(
-    () => ({
-      exchangeAnnouncing,
-      exchangeAnnounceData,
-      chooseExchangeCard,
-      acknowledgeExchange,
-      settleExchange,
-    }),
-    [exchangeAnnouncing, exchangeAnnounceData, chooseExchangeCard, acknowledgeExchange, settleExchange]
+    () => ({ exchangeAnnouncing, exchangeAnnounceData, chooseExchangeCard, acknowledgeExchange }),
+    [exchangeAnnouncing, exchangeAnnounceData, chooseExchangeCard, acknowledgeExchange]
   );
 }

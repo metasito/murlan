@@ -4,20 +4,19 @@ import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 
-/**
- * Its own file so this can be lowered just for this process — the shared
- * budget everywhere else (tests/helpers/testServer.ts) is sized for a whole
- * suite's worth of registrations and would need hundreds of requests to trip
- * here. Set after the imports above (none of which reaches server/http/routes/auth.ts
- * — see testServer.ts's own note on why) but before startTestServer() below
- * dynamically imports it.
- */
-process.env.MURLAN_AUTH_RATE_LIMIT = "5";
-
 describe("verify-email is rate limited", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  before(async () => { server = await startTestServer(); });
-  after(async () => { if (server) await server.stop(); });
+  const suiteBudget = process.env.MURLAN_AUTH_RATE_LIMIT;
+  before(async () => {
+    server = await startTestServer();
+    // After the routes are imported and their limiters built: a limit is read when a request is limited.
+    process.env.MURLAN_AUTH_RATE_LIMIT = "5";
+  });
+  after(async () => {
+    if (suiteBudget === undefined) delete process.env.MURLAN_AUTH_RATE_LIMIT;
+    else process.env.MURLAN_AUTH_RATE_LIMIT = suiteBudget;
+    if (server) await server.stop();
+  });
 
   test("repeated requests trip authLimiter", async () => {
     const statuses: number[] = [];

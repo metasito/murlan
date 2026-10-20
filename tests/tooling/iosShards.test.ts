@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { CAPTURE_VIEWER_SEAT, captureGameState, captureStateById } from "../../lib/captureStates.ts";
+import { CAPTURE_VIEWER_SEAT, captureGameState, capturePile, captureStateById } from "../../lib/captureStates.ts";
 import { seatDirection } from "../../components/seatLayout.ts";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
@@ -65,7 +65,7 @@ test("a play flown in from a side seat is photographed", () => {
   const sides = photographed().flatMap((id) => {
     const state = captureStateById(id)!;
     const game = captureGameState(state);
-    return state.pile ? [seatDirection(game.lastPlayedBy, CAPTURE_VIEWER_SEAT, state.playerCount)] : [];
+    return capturePile(state) ? [seatDirection(game.lastPlayedBy, CAPTURE_VIEWER_SEAT, state.playerCount)] : [];
   });
   assert.ok(sides.some((side) => side === "left" || side === "right"), `piles photographed fly from: ${sides}`);
 });

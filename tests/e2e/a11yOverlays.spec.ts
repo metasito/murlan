@@ -21,13 +21,14 @@ import { HAND_CARDS, TABLE } from "./helpers/selectors.ts";
 // in Italian, so the rank a save file spells `K` answers to `Re` — a filter
 // written in the save's own alphabet matches nothing and passes on everything.
 const GIVEABLE_SPOKEN = ["4 di Cuori", "9 di Fiori"];
-const UNGIVEABLE_SPOKEN = "Re di Picche";
+/** The King, and the 2 the loser has just handed over. */
+const UNGIVEABLE_SPOKEN = ["Re di Picche", "2 di Picche"];
 
 /**
  * A round mid-exchange, with the viewer as the winner who owes a card back.
  *
- * Two cards in the 3-10 range and a King that is not, so "every card" and "the
- * ones the rules allow" are different answers.
+ * Two cards in the 3-10 range, a King that is not and the loser's 2, so "every
+ * card" and "the ones the rules allow" are different answers.
  *
  * Seeded rather than played: driving an offline round to its end takes minutes
  * and repeatedly did not finish at all, and none of that is what this test is
@@ -41,7 +42,7 @@ const midExchangeSave = () =>
     winner: 0,
     loser: 1,
     cardFromLoser: "2_spades",
-    holding: [["4_hearts", "9_clubs", "K_spades"], ["5_diamonds", "J_hearts"]],
+    holding: [["4_hearts", "9_clubs", "K_spades", "2_spades"], ["5_diamonds", "J_hearts"]],
   });
 
 /** Every name focus lands on across `presses` tabs, in order. */
@@ -72,7 +73,7 @@ test("the exchange leaves reachable exactly the cards the rules allow", async ({
   ).toBeVisible({ timeout: 15_000 });
 
   // The whole hand is on screen, which is the point of the rebuild.
-  expect(await page.locator(HAND_CARDS).count(), "the whole hand is drawn").toBe(3);
+  expect(await page.locator(HAND_CARDS).count(), "the whole hand is drawn").toBe(4);
 
   // More presses than the table has controls, so the tour wraps and every stop
   // is seen. A keyboard has no way to know a card is unpickable except by being
@@ -80,7 +81,7 @@ test("the exchange leaves reachable exactly the cards the rules allow", async ({
   // defect this looks for.
   const tour = await tabTour(page, 24);
   expect(
-    tour.filter((stop) => stop === UNGIVEABLE_SPOKEN),
+    tour.filter((stop) => UNGIVEABLE_SPOKEN.includes(stop)),
     `an ungiveable card must not be a tab stop while the exchange is open — the tour was [${tour.join(", ")}]`
   ).toEqual([]);
   expect(
