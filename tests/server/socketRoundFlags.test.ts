@@ -1,7 +1,7 @@
 // tests/server/socketRoundFlags.test.ts — pure turn logic, exercised against the
 // module that owns it with no socket server and no database.
 //
-// recordPlayFlags: a human's AFK-forced move is chosen by autoMoveForSeat
+// Round flags: a human's AFK-forced move is chosen by autoMoveForSeat
 // rather than sent through game:play, and must still record bomb/joker
 // tracking — otherwise the purist / iron_will / wild_card achievements
 // silently under-count whenever a player's forced-minimum card happens to
@@ -10,7 +10,7 @@ import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import type { GameState, Card } from "../../lib/game/gameEngine.ts";
 import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
-import { commitMove } from "../../server/game/gameTurn.ts";
+import { commitMove } from "../../server/game/tableMoves.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";

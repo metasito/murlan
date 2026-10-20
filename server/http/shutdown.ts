@@ -2,7 +2,7 @@ import type { Server as HttpServer } from "node:http";
 import type { Pool } from "pg";
 import type { SocketServer as SocketIOServer } from "../socket/socketTypes.ts";
 import runtime from "../../deploy/runtime.json" with { type: "json" };
-import { logger } from "./logger.ts";
+import { logger } from "../shared/logger.ts";
 import { pool as appPool, QUERY_TIMEOUT_MS } from "../store/db.ts";
 import { drainPool } from "../store/drainPool.ts";
 import { beginShutdown } from "../game/gameRoom.ts";

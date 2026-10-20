@@ -10,7 +10,7 @@ import type { RoundOverWriters } from "./roundOver.ts";
 import { applyOrForward, registerTableRouting } from "./tableRouter.ts";
 import { reopenOwnership } from "./gameOwnership.ts";
 import { disposeGame, stopTables } from "./gamePersistence.ts";
-import { expireVoteDeadline } from "./tableHandlers.ts";
+import { expireVoteDeadline } from "./tableVotes.ts";
 
 type OutEvent = Exclude<keyof ServerToClientEvents, "game:state">;
 

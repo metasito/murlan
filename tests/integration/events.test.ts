@@ -20,7 +20,7 @@ describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () =>
   let server: TestServer;
   let cookie: string;
   let ownerCookie: string;
-  let trackEvent: typeof import("../../server/socket/events.ts").trackEvent;
+  let trackEvent: typeof import("../../server/shared/events.ts").trackEvent;
   let retentionDays: number;
   let sweepRetention: typeof import("../../server/game/retention.ts").sweepRetention;
 
@@ -30,7 +30,7 @@ describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () =>
     // DATABASE_URL when first loaded, and the harness is what points that at
     // this run's own schema.
     ({ trackEvent, EVENT_RETENTION_DAYS: retentionDays } = await import(
-      "../../server/socket/events.ts"
+      "../../server/shared/events.ts"
     ));
     ({ sweepRetention } = await import("../../server/game/retention.ts"));
 

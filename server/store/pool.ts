@@ -1,5 +1,5 @@
 import { Client, Pool, type ClientConfig, type PoolConfig } from "pg";
-import { logger } from "../http/logger.ts";
+import { logger } from "../shared/logger.ts";
 
 export function createPool(name: string, config: Omit<PoolConfig, "connectionString">): Pool {
   const pool = new Pool({ ...config, connectionString: process.env.DATABASE_URL });

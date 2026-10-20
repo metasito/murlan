@@ -11,7 +11,7 @@
 import { desc, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { events } from "../../shared/schema.ts";
-import { logger } from "../http/logger.ts";
+import { logger } from "./logger.ts";
 import type { EventContext, EventName } from "../../shared/events.ts";
 
 /** Matched to client_errors, so the two age out together. */

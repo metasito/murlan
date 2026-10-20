@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import { GameRejoinSchema as Payload, NoPayloadSchema, RoomJoinSchema } from "../../shared/socketSchemas.ts";
 import { payload } from "../../server/shared/payload.ts";
 import { onEvent, __resetRateLimits } from "../../server/socket/socketSafety.ts";
-import { logger } from "../../server/http/logger.ts";
+import { logger } from "../../server/shared/logger.ts";
 import { OK, refuse } from "../../server/shared/refusal.ts";
 
 interface Recorded {

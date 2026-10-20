@@ -6,7 +6,7 @@
 // with no listener attached, and the client emits on its own `connect`.
 import type { HandlerContext } from "./socketTypes.ts";
 import { roomStore } from "../store/roomStore.ts";
-import { trackEvent } from "./events.ts";
+import { trackEvent } from "../shared/events.ts";
 import { onEvent } from "./socketSafety.ts";
 import { socketRoomMap, spectatorRoomMap } from "../game/gameRoom.ts";
 import { clearLobbyGrace, seatHoldMs } from "../game/gameTimers.ts";

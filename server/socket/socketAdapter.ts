@@ -1,7 +1,7 @@
 import type { Pool } from "pg";
 import { createPool } from "../store/pool.ts";
 import { createAdapter } from "@socket.io/postgres-adapter";
-import { logger } from "../http/logger.ts";
+import { logger } from "../shared/logger.ts";
 
 /**
  * Clients the adapter may hold. One is parked on `LISTEN` for the life of the

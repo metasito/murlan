@@ -15,7 +15,7 @@ import type { Pool } from "pg";
 import { Column, is, SQL, StringChunk } from "drizzle-orm";
 import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 import * as schema from "../../shared/schema.ts";
-import { logger } from "../http/logger.ts";
+import { logger } from "../shared/logger.ts";
 
 function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;

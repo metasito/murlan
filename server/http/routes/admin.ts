@@ -3,7 +3,7 @@ import { requireAdmin } from "../access.ts";
 import { adminSnapshot } from "../admin.ts";
 import { renderAdminPage } from "../adminPage.ts";
 import { runningCommitSha } from "../buildInfo.ts";
-import { logger } from "../logger.ts";
+import { logger } from "../../shared/logger.ts";
 import { PROVISIONAL_ROUNDS } from "../../game/ratings.ts";
 
 // Server-rendered on purpose. This is never part of the app bundle, so no

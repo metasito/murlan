@@ -15,7 +15,7 @@ describe("retention sweep batches", { skip: hasDatabase() ? false : skipMessage(
   before(async () => {
     server = await startTestServer();
     ({ sweepRetention, deleteInBatches } = await import("../../server/game/retention.ts"));
-    ({ EVENT_RETENTION_DAYS: retentionDays } = await import("../../server/socket/events.ts"));
+    ({ EVENT_RETENTION_DAYS: retentionDays } = await import("../../server/shared/events.ts"));
   });
 
   after(async () => {

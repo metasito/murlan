@@ -269,7 +269,7 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
   });
 
   test("a server error becomes a row, is shown on the page and ages out", async () => {
-    const { logger } = await import("../../server/http/logger.ts");
+    const { logger } = await import("../../server/shared/logger.ts");
     const { SERVER_ERROR_RETENTION_DAYS } = await import("../../server/http/serverErrors.ts");
     const rows = (message: string) =>
       server.query<{ context: { roomId?: string } }>(`SELECT context FROM "${server.schema}".server_errors WHERE message = $1`, [message]);
@@ -298,7 +298,7 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
   });
 
   test("a server error line naming a user stores no user id", async () => {
-    const { logger } = await import("../../server/http/logger.ts");
+    const { logger } = await import("../../server/shared/logger.ts");
     const message = "a failure that names a user";
     logger.error({ userId: "u-planted", roomId: "r-keep" }, message);
     let found: { context: Record<string, unknown> }[] = [];
@@ -312,7 +312,7 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
   });
 
   test("deleting an account leaves no server error row naming its id", async () => {
-    const { logger } = await import("../../server/http/logger.ts");
+    const { logger } = await import("../../server/shared/logger.ts");
     const { user, cookie } = await register(server, "erased_logged");
     const message = "a failure logged for a soon-deleted account";
     logger.error({ accountId: user.id, err: "boom" }, message);

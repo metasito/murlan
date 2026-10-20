@@ -28,20 +28,20 @@ function stripComments(source: string): string {
 }
 
 describe("a game enters memory in one place, under a claim", () => {
-  test("nothing but tableHandlers writes activeGames", () => {
+  test("nothing but tableLifecycle writes activeGames", () => {
     const writers = readdirSync(SERVER_DIR, { recursive: true, encoding: "utf8" })
       .filter((f) => f.endsWith(".ts"))
       .map((f) => f.split(path.sep).join("/"))
       .filter((f) => /\bactiveGames\.set\s*\(/.test(stripComments(serverSource(f))));
     assert.deepEqual(
       writers,
-      ["game/tableHandlers.ts"],
+      ["game/tableLifecycle.ts"],
       "a game put in memory outside the claimed paths is a second owner waiting to happen"
     );
   });
 
   test("the two writers are the deal and the takeover, and nothing else", () => {
-    const source = stripComments(serverSource("game/tableHandlers.ts"));
+    const source = stripComments(serverSource("game/tableLifecycle.ts"));
     assert.equal(
       [...source.matchAll(/\bactiveGames\.set\s*\(/g)].length,
       2,

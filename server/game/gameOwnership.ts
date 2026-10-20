@@ -13,7 +13,7 @@
 import type { Client } from "pg";
 import { createClient } from "../store/pool.ts";
 import { createHash } from "node:crypto";
-import { logger } from "../http/logger.ts";
+import { logger } from "../shared/logger.ts";
 import { activeGames } from "./gameRoom.ts";
 
 /**
