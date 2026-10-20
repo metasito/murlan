@@ -64,7 +64,7 @@ describe('CardView decorative', () => {
     expect(view.queryAllByLabelText('Ace of Spades', { includeHiddenElements: false })).toHaveLength(1);
   });
 
-  // A card with no onPress is information — the pile, or the card handed over
+  // A card with no onActivate is information — the pile, or the card handed over
   // between rounds. Naming it is right; calling it a button offers an action
   // that does not exist, and puts it in the button rotation of every screen
   // reader that has one.
@@ -74,7 +74,7 @@ describe('CardView decorative', () => {
   });
 
   it('is a button when it can be pressed', async () => {
-    const view = await render(<CardView card={ACE} onPress={() => {}} />);
+    const view = await render(<CardView card={ACE} onActivate={() => {}} />);
     expect(view.queryAllByRole('button')).toHaveLength(1);
   });
 
@@ -82,7 +82,7 @@ describe('CardView decorative', () => {
   // role would make the whole hand leave and rejoin a screen reader's button
   // rotation on every turn, and it is what the E2E harness locates cards by.
   it('stays a button while disabled, and reports itself unavailable', async () => {
-    const view = await render(<CardView card={ACE} onPress={() => {}} disabled />);
+    const view = await render(<CardView card={ACE} onActivate={() => {}} disabled />);
     const buttons = view.queryAllByRole('button');
     expect(buttons).toHaveLength(1);
     expect(buttons[0].props.accessibilityState?.disabled).toBe(true);
@@ -92,10 +92,10 @@ describe('CardView decorative', () => {
   // `selected` state reads as "not selectable", which is a different claim
   // from "selectable, not currently selected".
   it('reports whether it is selected', async () => {
-    const on = await render(<CardView card={ACE} onPress={() => {}} selected />);
+    const on = await render(<CardView card={ACE} onActivate={() => {}} selected />);
     expect(on.queryAllByRole('button')[0].props.accessibilityState?.selected).toBe(true);
 
-    const off = await render(<CardView card={ACE} onPress={() => {}} />);
+    const off = await render(<CardView card={ACE} onActivate={() => {}} />);
     expect(off.queryAllByRole('button')[0].props.accessibilityState?.selected).toBe(false);
   });
 

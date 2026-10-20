@@ -28,7 +28,7 @@ function pressableWidth(): number | undefined {
 describe('a hand card is pressable exactly where it is visible', () => {
   it('presses on the strip it exposes, not on the whole card', async () => {
     const strip = 24;
-    const r = await render(<CardView card={CARD} onPress={() => {}} hitWidth={strip} scale={1} />);
+    const r = await render(<CardView card={CARD} onActivate={() => {}} hitWidth={strip} scale={1} />);
     expect(pressableWidth()).toBe(strip);
     expect(pressableWidth()).toBeLessThan(CARD_W(1));
     await r.unmount();
@@ -38,7 +38,7 @@ describe('a hand card is pressable exactly where it is visible', () => {
   // narrowed case would pass just as well against a component that ignored the
   // prop and always sized itself to the card.
   it('is the whole card when nothing covers it', async () => {
-    const r = await render(<CardView card={CARD} onPress={() => {}} scale={1} />);
+    const r = await render(<CardView card={CARD} onActivate={() => {}} scale={1} />);
     expect(pressableWidth()).toBe(CARD_W(1));
     await r.unmount();
   });

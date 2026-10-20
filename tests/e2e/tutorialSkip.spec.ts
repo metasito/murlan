@@ -38,3 +38,22 @@ test("skipping the first-run tutorial lands on the home screen", async ({ page, 
   await page.waitForTimeout(1_000);
   await expect(skip).toHaveCount(0);
 });
+
+// A tutorial card is one button, reached by its role and name, and a tap on it selects it: the
+// play button, disabled until something is selected, comes alive.
+test("a tutorial card is tapped by role and name and selects", async ({ page, baseURL }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize(VIEWPORT);
+  await page.goto(baseURL!);
+
+  await page.getByRole("button", { name: "Inizia", exact: true }).click({ timeout: 30_000 });
+
+  const play = page.getByRole("button", { name: "Gioca la combinazione" });
+  await expect(play).toBeDisabled();
+
+  const card = page.getByRole("button", { name: "3 di Picche" });
+  await expect(card).toHaveCount(1);
+  await card.click();
+
+  await expect(play).toBeEnabled();
+});

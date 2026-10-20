@@ -15,6 +15,7 @@ import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { CardView } from "@/components/CardView";
+import { TutorialCard } from "@/components/TutorialCard";
 import {
   Card,
   Suit,
@@ -688,7 +689,7 @@ export default function TutorialScreen() {
             <MenuCard title={beat.opponentLabel ?? t("tutorial.onTable")}>
               <View style={styles.cardRow}>
                 {beat.lastPlayed.cards.map((c) => (
-                  <CardView key={c.id} card={c} scale={0.625} compact noLift />
+                  <CardView key={c.id} card={c} scale={0.625} compact />
                 ))}
               </View>
             </MenuCard>
@@ -697,7 +698,7 @@ export default function TutorialScreen() {
           <MenuCard title={t("tutorial.yourHand")}>
             <View style={styles.cardRow}>
               {beat.handCards.map((c) => (
-                <CardView
+                <TutorialCard
                   key={c.id}
                   testID={`tutorial-card-${c.id}`}
                   card={c}
@@ -767,7 +768,7 @@ export default function TutorialScreen() {
               const isReceived = c.id === receivedId;
               return (
                 <View key={c.id} style={styles.exchangeCardWrap}>
-                  <CardView
+                  <TutorialCard
                     card={c}
                     selected={selectedIds.has(c.id)}
                     disabled={beatDone || isReceived}

@@ -510,7 +510,6 @@ function CardItemBase({
         a11yActions={a11yActions}
         onA11yAction={onMove ? handleMove : undefined}
         a11yActionKeys={MOVE_KEYS}
-        noLift
         style={handStyles.cardLayer}
       />
       {giveable === false && (
@@ -1196,7 +1195,6 @@ export const StraightHand = React.memo(function StraightHand({
             rectKey={`hand:${heldCard.id}`}
             rects={heldRects}
             decorative
-            noLift
           />
         </Animated.View>
       )}

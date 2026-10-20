@@ -112,7 +112,7 @@ export function LookPicker() {
               selected={id === cardBack}
               onPress={() => setCardBack(id)}
             >
-              <CardView card={STAND_IN} faceDown backId={id} scale={PREVIEW_SCALE} decorative noLift />
+              <CardView card={STAND_IN} faceDown backId={id} scale={PREVIEW_SCALE} decorative />
             </Option>
           ))}
         </OptionRow>

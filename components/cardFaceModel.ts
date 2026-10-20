@@ -160,7 +160,7 @@ const RANK_FONT_WIDE_RATIO = 12 / FACE_H;
 // "no rank glyph clips"). A fraction of card height keeps the two in step.
 const RANK_INSET_RATIO = 4.5 / FACE_H;
 const GLYPH_ADVANCE_EM = 0.55;
-const LETTER_SPACING = -0.5;
+export const LETTER_SPACING = -0.5;
 
 export function isWideRank(rank: string): boolean {
   return rank.length > 1 && rank !== "JK";
