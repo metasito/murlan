@@ -148,7 +148,7 @@ export function getStraightFaceValue(rank: Rank, aceAsHigh: boolean): number | n
 // A straight is 5..13 cards. The rules impose no maximum beyond the 13
 // distinct straight positions available (the Ace picks one end, never both).
 export const STRAIGHT_MIN_LEN = 5;
-export const STRAIGHT_MAX_LEN = 13;
+const STRAIGHT_MAX_LEN = 13;
 
 // Jokers are never part of a straight, so there is no joker substitution here:
 // the face values must be exactly `totalLen` strictly consecutive integers.
@@ -228,7 +228,7 @@ export function createDeck(): Card[] {
 // React Native / Hermes; Math.random is only ever the last-resort fallback.
 export type RandomSource = { getRandomValues(array: Uint32Array): Uint32Array };
 
-export const cryptoRandom: RandomSource = {
+const cryptoRandom: RandomSource = {
   getRandomValues(array) {
     const c = (globalThis as { crypto?: Partial<RandomSource> }).crypto;
     if (c && typeof c.getRandomValues === "function") return c.getRandomValues(array);
@@ -255,7 +255,7 @@ function randomBelow(maxExclusive: number, source: RandomSource): number {
   return value % maxExclusive;
 }
 
-export function shuffleDeck(deck: Card[], random: RandomSource = cryptoRandom): Card[] {
+function shuffleDeck(deck: Card[], random: RandomSource = cryptoRandom): Card[] {
   const shuffled = [...deck];
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = randomBelow(i + 1, random);
@@ -264,7 +264,7 @@ export function shuffleDeck(deck: Card[], random: RandomSource = cryptoRandom): 
   return shuffled;
 }
 
-export const HEADS_UP_HAND = 14;
+const HEADS_UP_HAND = 14;
 
 /**
  * Deals cards one at a time, round-robin from `firstSeat`. 4 players =
@@ -299,18 +299,6 @@ export function dealCards(
   return { hands, excluded: deck.slice(dealt) };
 }
 
-/**
- * The fewest cards `dealCards` ever leaves any seat at `playerCount`, before
- * a card is played. Two seats get the fixed heads-up hand size in full — that
- * branch never round-robins the whole deck — so the minimum is the deal size
- * itself; every other seat count deals the whole deck round-robin, so the
- * minimum is what an even split loses to its own remainder.
- */
-export function freshHandFloor(playerCount: number, deckLength = createDeck().length): number {
-  if (playerCount < 1) return 0;
-  return playerCount === 2 ? HEADS_UP_HAND : Math.floor(deckLength / playerCount);
-}
-
 export function sortHand(hand: Card[]): Card[] {
   return [...hand].sort((a, b) => {
     const diff = cardStrength(a) - cardStrength(b);
@@ -332,7 +320,7 @@ export function sortHand(hand: Card[]): Card[] {
  */
 const OPENING_SUIT_ORDER: Card["suit"][] = ["clubs", "diamonds", "hearts", "spades"];
 
-export function findStartingPlayer(
+function findStartingPlayer(
   players: Player[]
 ): { playerIdx: number; startCard: Card } {
   for (let i = 0; i < players.length; i++) {
@@ -367,7 +355,7 @@ export function findStartingPlayer(
   };
 }
 
-export function getCombinationType(cards: Card[]): CombinationType | null {
+function getCombinationType(cards: Card[]): CombinationType | null {
   if (cards.length === 0) return null;
 
   if (isBomb(cards)) return "bomb";
@@ -399,7 +387,7 @@ export function getCombinationType(cards: Card[]): CombinationType | null {
   return null;
 }
 
-export function getCombinationStrength(combination: Combination): number {
+function getCombinationStrength(combination: Combination): number {
   const cards = combination.cards;
   switch (combination.type) {
     case "single":
@@ -462,7 +450,7 @@ function beatRefusal(candidate: Combination, lastPlayed: Combination | null): Be
   return higher;
 }
 
-export function canPlay(
+function canPlay(
   candidate: Combination,
   lastPlayed: Combination | null
 ): boolean {
@@ -474,7 +462,7 @@ export function canPlay(
  * if so. Turn ownership is `applyMove`'s: here `seat` names whose hand to read,
  * not a claim that it is on move. A repeated id is the one card it names.
  */
-export function checkPlay(
+function checkPlay(
   state: GameState,
   seat: number,
   cardIds: string[]
@@ -509,7 +497,7 @@ export function checkSelection(
 }
 
 /** Whether the seat on move may pass now. Turn ownership is `applyMove`'s, as in `checkPlay`. */
-export function checkPass(state: GameState): { ok: true } | { ok: false; code: PassRefusal } {
+function checkPass(state: GameState): { ok: true } | { ok: false; code: PassRefusal } {
   if (state.exchangePhase?.active) return { ok: false, code: "exchangeOpen" };
   if (state.lastPlayedCombination === null) return { ok: false, code: "mustLead" };
   return { ok: true };
@@ -811,7 +799,7 @@ function refusalMessage(
   }
 }
 
-export function processPlay(state: GameState, combination: Combination): GameState {
+function processPlay(state: GameState, combination: Combination): GameState {
   assertPlayable(state, combination);
 
   const newState = structuredClone(state);
@@ -860,7 +848,7 @@ export function passesToCloseTrick(activeCount: number, lastPlayerStillActive: b
   return Math.max(1, lastPlayerStillActive ? activeCount - 1 : activeCount);
 }
 
-export function processPass(state: GameState): GameState {
+function processPass(state: GameState): GameState {
   // A player leading a new trick must play something — passing is not a legal
   // move for them. The engine is the server-authoritative path, so it refuses
   // here rather than relying on the UI. State is returned untouched.
@@ -909,14 +897,6 @@ export function getNextActivePlayer(state: GameState): number {
   return next;
 }
 
-export function canPlayerPlay(
-  hand: Card[],
-  lastPlayed: Combination | null,
-  isNewTrick: boolean
-): boolean {
-  return getAllValidPlays(hand, lastPlayed, isNewTrick).length > 0;
-}
-
 export function getCardDisplayRank(rank: Rank): string {
   if (rank === "joker_colored") return "JKR";
   if (rank === "joker_bw") return "JKR";
@@ -936,7 +916,7 @@ export function getSuitSymbol(suit: Suit | null): string {
 
 const EXCHANGE_VALID_RANKS: Rank[] = ["3","4","5","6","7","8","9","10"];
 
-export function processExchangeChoice(state: GameState, cardId: string): GameState {
+function processExchangeChoice(state: GameState, cardId: string): GameState {
   if (!state.exchangePhase?.active) return state;
   const { winnerIdx, loserIdx } = state.exchangePhase;
   const newState = structuredClone(state);
@@ -991,14 +971,14 @@ export function givebackIsFallback(giveback: Card[]): boolean {
   return giveback.length > 0 && !giveback.some((c) => EXCHANGE_VALID_RANKS.includes(c.rank));
 }
 
-export function loserHasBothJokers(hand: Card[]): boolean {
+function loserHasBothJokers(hand: Card[]): boolean {
   return (
     hand.some((c) => c.rank === "joker_colored") &&
     hand.some((c) => c.rank === "joker_bw")
   );
 }
 
-export function getBestCardFromHand(hand: Card[]): Card | undefined {
+function getBestCardFromHand(hand: Card[]): Card | undefined {
   if (hand.length === 0) return undefined;
   return [...hand].sort((a, b) => cardStrength(b) - cardStrength(a))[0];
 }
@@ -1077,7 +1057,7 @@ export function teamForSeat(
 }
 
 /** The seat the next round deals from — one further round the table. */
-export function nextDealFirstSeat(firstSeat: number, playerCount: number): number {
+function nextDealFirstSeat(firstSeat: number, playerCount: number): number {
   if (playerCount < 1) return 0;
   return (firstSeat + 1) % playerCount;
 }
@@ -1259,7 +1239,7 @@ export const TURN_TIMEOUT_MS = 30_000;
  * the 8-12 round band a match should land in, and leaves the four-player
  * values docs/GAME-RULES.md §12 documents untouched.
  */
-export function targetsFor(playerCount: number): number[] {
+function targetsFor(playerCount: number): number[] {
   return MATCH_TARGETS.map((t) => Math.round((t * (playerCount - 1)) / 3));
 }
 

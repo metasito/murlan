@@ -6,9 +6,8 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
+  applyMove,
   buildCombination,
-  checkPass,
-  checkPlay,
   type Card,
   type GameState,
   type Rank,
@@ -52,7 +51,10 @@ const openExchange = {
   twoJokerException: false,
 };
 
-describe("checkPlay names the refusal", () => {
+const play = (state: GameState, cards: string[]) => applyMove(state, 0, { kind: "play", cardIds: cards });
+const pass = (state: GameState) => applyMove(state, 0, { kind: "pass" });
+
+describe("a play names its refusal", () => {
   const rows: [string, GameState, Card[], string][] = [
     ["exchange open", table(null, { exchangePhase: openExchange }), [c("5", "spades")], "exchangeOpen"],
     ["a card the seat does not hold", table(null), [c("A", "diamonds")], "notHeld"],
@@ -75,45 +77,45 @@ describe("checkPlay names the refusal", () => {
 
   for (const [name, state, cards, code] of rows) {
     test(name, () => {
-      assert.deepEqual(checkPlay(state, 0, ids(cards)), { ok: false, code });
+      assert.deepEqual(play(state, ids(cards)), { ok: false, code });
     });
   }
 
   test("the start card is asked for before the table is beaten", () => {
     const state = table([c("A", "diamonds")], { firstPlayMade: false, startCard: c("3", "spades") });
-    assert.deepEqual(checkPlay(state, 0, [c("K", "hearts").id]), { ok: false, code: "needsStartCard" });
+    assert.deepEqual(play(state, [c("K", "hearts").id]), { ok: false, code: "needsStartCard" });
   });
 
   test("a legal play comes back as the combination the seat's own cards form", () => {
-    const result = checkPlay(table([c("4", "diamonds")]), 0, [c("K", "hearts").id]);
+    const result = play(table([c("4", "diamonds")]), [c("K", "hearts").id]);
     assert.equal(result.ok, true);
-    assert.deepEqual(result.ok && ids(result.combo.cards), ["K_hearts"]);
+    assert.deepEqual(result.ok && result.move.kind === "play" && ids(result.move.combo.cards), ["K_hearts"]);
   });
 
   test("a repeated id is the one card it names", () => {
-    const result = checkPlay(table(null), 0, ["K_hearts", "K_hearts"]);
-    assert.equal(result.ok && result.combo.type, "single");
+    const result = play(table(null), ["K_hearts", "K_hearts"]);
+    assert.equal(result.ok && result.move.kind === "play" && result.move.combo.type, "single");
   });
 
   test("a royal straight answers a lower one of its own length", () => {
     const state = table(straight("spades", ["7", "8", "9", "10", "J"]), {
       players: [makePlayer(0, highRoyal5), makePlayer(1, [c("4", "clubs")])],
     });
-    assert.equal(checkPlay(state, 0, ids(highRoyal5)).ok, true);
+    assert.equal(play(state, ids(highRoyal5)).ok, true);
   });
 });
 
-describe("checkPass names the refusal", () => {
+describe("a pass names its refusal", () => {
   test("exchange open", () => {
     const state = table([c("4", "diamonds")], { exchangePhase: openExchange });
-    assert.deepEqual(checkPass(state), { ok: false, code: "exchangeOpen" });
+    assert.deepEqual(pass(state), { ok: false, code: "exchangeOpen" });
   });
 
   test("leading a fresh trick", () => {
-    assert.deepEqual(checkPass(table(null)), { ok: false, code: "mustLead" });
+    assert.deepEqual(pass(table(null)), { ok: false, code: "mustLead" });
   });
 
   test("answering a combination", () => {
-    assert.deepEqual(checkPass(table([c("4", "diamonds")])), { ok: true });
+    assert.equal(pass(table([c("4", "diamonds")])).ok, true);
   });
 });

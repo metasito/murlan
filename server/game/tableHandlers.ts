@@ -40,7 +40,7 @@
 // writes it through `rt.writers`, which `gamePersistence.ts` implements.
 import type { TableRuntime } from "./tableRuntime.ts";
 import { emitVoteState, emitEndMatchVoteState } from "../socket/emit.ts";
-import { payload, type ServerCode } from "../shared/payload.ts";
+import { payload } from "../shared/payload.ts";
 import { OK, refuse, type Outcome, type Refusal } from "../shared/refusal.ts";
 import { logger } from "../http/logger.ts";
 import { trackEvent } from "../socket/events.ts";
@@ -144,23 +144,24 @@ export async function rehydrateGame(
   return "restored";
 }
 
+/** A refusal with no notice is silent: the ack alone answers it. */
 const MOVE_REFUSAL_CODES = {
-  roundOver: { code: "NO_LIVE_GAME", toast: false },
-  exchangeOpen: { code: "EXCHANGE_PENDING", toast: true },
-  noExchange: { code: "NO_EXCHANGE", toast: false },
-  notExchangeWinner: { code: "NOT_YOUR_EXCHANGE", toast: false },
-  notYourTurn: { code: "NOT_YOUR_TURN", toast: false },
-  notHeld: { code: "INVALID_CARD", toast: true },
-  notACombination: { code: "INVALID_COMBINATION", toast: true },
-  needsStartCard: { code: "MUST_PLAY_START_CARD", toast: true },
-  royalUnbeatable: { code: "INVALID_MOVE", toast: true },
-  bombOnly: { code: "INVALID_MOVE", toast: true },
-  wrongType: { code: "INVALID_MOVE", toast: true },
-  wrongLength: { code: "INVALID_MOVE", toast: true },
-  tooLow: { code: "INVALID_MOVE", toast: true },
-  mustLead: { code: "CANNOT_PASS", toast: true },
-  notGiveable: { code: "INVALID_CARD", toast: true },
-} as const satisfies Record<MoveRefusal, { code: ServerCode; toast: true } | { code: string; toast: false }>;
+  roundOver: () => ({ ok: false, code: "NO_LIVE_GAME" }),
+  exchangeOpen: () => refuse("EXCHANGE_PENDING"),
+  noExchange: () => ({ ok: false, code: "NO_EXCHANGE" }),
+  notExchangeWinner: () => ({ ok: false, code: "NOT_YOUR_EXCHANGE" }),
+  notYourTurn: () => ({ ok: false, code: "NOT_YOUR_TURN" }),
+  notHeld: () => refuse("INVALID_CARD"),
+  notACombination: () => refuse("INVALID_COMBINATION"),
+  needsStartCard: (state) => refuse("MUST_PLAY_START_CARD", { rank: state.startCard!.rank }),
+  royalUnbeatable: () => refuse("INVALID_MOVE"),
+  bombOnly: () => refuse("INVALID_MOVE"),
+  wrongType: () => refuse("INVALID_MOVE"),
+  wrongLength: () => refuse("INVALID_MOVE"),
+  tooLow: () => refuse("INVALID_MOVE"),
+  mustLead: () => refuse("CANNOT_PASS"),
+  notGiveable: () => refuse("INVALID_CARD"),
+} satisfies Record<MoveRefusal, (state: GameState) => Refusal>;
 
 function moveAction(
   rt: TableRuntime,
@@ -170,11 +171,7 @@ function moveAction(
   const { roomId, userId, move } = action;
   const prev = game.gameState;
   const result = applyMove(prev, seatOfUser(game.playerMap, userId) ?? -1, move);
-  if (!result.ok) {
-    const refusal = MOVE_REFUSAL_CODES[result.code];
-    if (!refusal.toast) return { ok: false, code: refusal.code };
-    return refuse(refusal.code, refusal.code === "MUST_PLAY_START_CARD" ? { rank: prev.startCard!.rank } : {});
-  }
+  if (!result.ok) return MOVE_REFUSAL_CODES[result.code](prev);
 
   if (result.move.kind === "play") {
     // A count and a type, never card identities: enabling debug in production

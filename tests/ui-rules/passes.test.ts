@@ -5,11 +5,10 @@ import { comboKey, passedSeats, seatsJustPassed, trickClosedWithWinner, turnKey 
 import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
   buildCombination,
-  processPass,
-  processPlay,
   type GameState,
   type Player,
 } from "../../lib/game/gameEngine.ts";
+import { passed, played } from "../support/moves.ts";
 
 const combo = (ids: string[]): any => ({
   type: "single",
@@ -236,19 +235,19 @@ describe("passedSeats walks the direction the engine deals turns", () => {
       firstPlayMade: true,
     });
 
-    s = processPlay(s, buildCombination([c("J", "diamonds")])!);
+    s = played(s, buildCombination([c("J", "diamonds")])!);
     assert.equal(s.currentTurnIndex, 2, "the engine deals the next turn downward");
     assert.deepEqual(passedSeats(view(s)), []);
 
-    s = processPass(s);
+    s = passed(s);
     assert.equal(s.currentTurnIndex, 1);
     assert.deepEqual(passedSeats(view(s)), [2]);
 
-    s = processPass(s);
+    s = passed(s);
     assert.equal(s.currentTurnIndex, 0);
     assert.deepEqual(passedSeats(view(s)), [2, 1]);
 
-    s = processPass(s);
+    s = passed(s);
     assert.equal(s.lastPlayedCombination, null, "the third pass closes the round");
     assert.deepEqual(passedSeats(view(s)), []);
   });
@@ -264,15 +263,15 @@ describe("passedSeats walks the direction the engine deals turns", () => {
       firstPlayMade: true,
     });
 
-    s = processPlay(s, buildCombination([c("J", "diamonds")])!);
-    s = processPlay(s, buildCombination([c("K", "clubs")])!);
+    s = played(s, buildCombination([c("J", "diamonds")])!);
+    s = played(s, buildCombination([c("K", "clubs")])!);
     assert.equal(s.players[2].hand.length, 0);
     assert.equal(s.lastPlayedBy, 2);
 
-    s = processPass(s);
+    s = passed(s);
     assert.deepEqual(passedSeats(view(s)), [1]);
 
-    s = processPass(s);
+    s = passed(s);
     const marked = passedSeats(view(s));
     assert.ok(!marked.includes(2), "seat 2 played, it did not pass");
     assert.deepEqual(marked, [1, 0]);
@@ -296,7 +295,7 @@ describe("passedSeats walks the direction the engine deals turns", () => {
       finishingOrder: ["player_0", "player_1"],
     });
 
-    s = processPlay(s, buildCombination([c("J", "diamonds")])!);
+    s = played(s, buildCombination([c("J", "diamonds")])!);
     assert.equal(s.roundOver, true);
     assert.equal(s.currentTurnIndex, s.lastPlayedBy);
     assert.notEqual(s.lastPlayedCombination, null);
@@ -323,8 +322,8 @@ describe("seatsJustPassed", () => {
       s = next;
       return passed;
     };
-    assert.deepEqual(step(processPlay(s, buildCombination([c("J", "spades")])!)), []);
-    for (const seat of [2, 1, 0]) assert.deepEqual(step(processPass(s)), [seat], `seat ${seat}'s pass`);
+    assert.deepEqual(step(played(s, buildCombination([c("J", "spades")])!)), []);
+    for (const seat of [2, 1, 0]) assert.deepEqual(step(passed(s)), [seat], `seat ${seat}'s pass`);
     assert.equal(s.lastPlayedCombination, null, "the third pass closed the round");
     assert.deepEqual(seatsJustPassed(view(s), view(s)), [], "an unchanged state names nobody");
   });
