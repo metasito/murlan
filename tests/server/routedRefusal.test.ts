@@ -58,6 +58,7 @@ test("a pass the owner refuses during the exchange reaches the asking socket onc
         roundOver: false,
         finishingOrder: [],
         firstPlayMade: false,
+        lastMove: { seq: 0, kind: "deal" },
         exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, twoJokerException: false },
       },
     })

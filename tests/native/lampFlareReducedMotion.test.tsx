@@ -69,6 +69,7 @@ const inPlay = (combo: Combination): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: "deal" },
 });
 
 describe("reduced motion holds the lamp's flare at exactly zero (#765)", () => {

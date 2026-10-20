@@ -33,6 +33,7 @@ const mockTable: { state: GameState; announcing: boolean } = {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
+    lastMove: { seq: 0, kind: 'deal' },
   },
 };
 
@@ -135,6 +136,7 @@ describe('pass and play', () => {
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: true,
+      lastMove: { seq: 0, kind: 'deal' },
       exchangePhase: {
         active: false,
         winnerIdx: 0,

@@ -144,6 +144,7 @@ const gameState: Omit<WireGameState, 'viewerSeatIndex' | 'turnSecondsRemaining'>
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: 'deal' },
 };
 
 const roomState: RoomState = {

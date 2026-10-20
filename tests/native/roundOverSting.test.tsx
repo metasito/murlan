@@ -40,6 +40,7 @@ const finished = (finishingOrder: string[]): GameState => ({
   roundOver: true,
   finishingOrder,
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: 'deal' },
 });
 
 const noop = () => {};
@@ -102,6 +103,7 @@ const drawnTeamsTable = (viewerSeat: number) => (
         roundOver: true,
         finishingOrder: DRAWN_TEAMS_FINISHING_ORDER,
         firstPlayMade: true,
+        lastMove: { seq: 0, kind: 'deal' },
       }}
       placementPoints={DRAWN_TEAMS_SCORES}
       viewerSeat={viewerSeat}
@@ -137,6 +139,7 @@ const wonTeamsTable = (viewerSeat: number) => (
         roundOver: true,
         finishingOrder: WON_TEAMS_FINISHING_ORDER,
         firstPlayMade: true,
+        lastMove: { seq: 0, kind: 'deal' },
       }}
       placementPoints={WON_TEAMS_SCORES}
       viewerSeat={viewerSeat}
@@ -290,6 +293,7 @@ describe('the end-of-round sting', () => {
             roundOver: false,
             finishingOrder: [],
             firstPlayMade: true,
+            lastMove: { seq: 0, kind: 'deal' },
           }}
           viewerSeat={3}
           onPlay={noop}
@@ -318,6 +322,7 @@ describe('the end-of-round sting', () => {
             roundOver: true,
             finishingOrder: WON_TEAMS_FINISHING_ORDER,
             firstPlayMade: true,
+            lastMove: { seq: 0, kind: 'deal' },
           }}
           placementPoints={placementPoints}
           viewerSeat={3}

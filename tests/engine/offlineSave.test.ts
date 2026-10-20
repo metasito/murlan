@@ -33,6 +33,7 @@ const save = (over = false) => ({
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: false,
+    lastMove: { seq: 0, kind: "deal" },
   },
   match: { length: "match", target: 21, scores: { player_0: 3 }, rounds: [], over, winners: [], isDraw: false },
   dealFirstSeat: 1,
@@ -89,6 +90,7 @@ test("the golden save of this version still decodes and plays a legal move", () 
   assert.ok(combo);
   const after = played(gameState, combo);
   assert.equal(after.firstPlayMade, true);
+  assert.deepEqual(after.lastMove, { seq: 1, kind: "play", seat: gameState.currentTurnIndex });
   assert.notEqual(after.currentTurnIndex, gameState.currentTurnIndex);
 });
 

@@ -1,6 +1,7 @@
 // The wire contract between the server and every client bundle in the field.
-// Bump PROTOCOL_VERSION with any change to this file; tests/server/protocolVersion.test.ts
-// holds that. Raise MIN_PROTOCOL_VERSION to turn away the bundles a change breaks.
+// Bump PROTOCOL_VERSION with any change to this file or to a type it sends:
+// tests/server/protocolVersion.test.ts holds the file, tests/server/storedShapeVersions.test.ts
+// the types. Raise MIN_PROTOCOL_VERSION to turn away the bundles a change breaks.
 import { z } from "zod";
 import type { GameState, MatchLength, Player } from "../lib/game/gameEngine.ts";
 import type { RoundOverPayload } from "../lib/game/matchState.ts";
@@ -8,7 +9,7 @@ import type { FriendRequestAccepted, FriendRequestIncoming } from "./http.ts";
 import type * as Inbound from "./socketSchemas.ts";
 import type { TranslationParams } from "./i18n.ts";
 
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 export const MIN_PROTOCOL_VERSION = 6;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */

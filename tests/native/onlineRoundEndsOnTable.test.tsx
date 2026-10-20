@@ -24,6 +24,7 @@ const ENDED: GameState = {
   roundOver: true,
   finishingOrder: ['player_0', 'player_1', 'player_2', 'player_3'],
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: 'deal' },
 };
 const DEALT: GameState = { ...ENDED, roundOver: false, finishingOrder: [], firstPlayMade: false };
 let mockGameState: GameState = ENDED;

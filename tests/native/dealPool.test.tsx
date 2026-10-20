@@ -47,6 +47,7 @@ const freshDeal = (seats: number): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: false,
+  lastMove: { seq: 0, kind: 'deal' },
 });
 
 const table = (gameState: GameState) => (

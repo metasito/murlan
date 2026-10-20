@@ -22,6 +22,7 @@ test("once the tables are stopped, no timer of any kind is armed", async (t) => 
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: false,
+    lastMove: { seq: 0, kind: "deal" },
     startReason: { type: "start_card", playerIdx: 0 },
     playedRanks: emptyRankTally(),
   } as GameState;

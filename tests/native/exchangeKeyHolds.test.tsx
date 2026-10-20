@@ -46,6 +46,7 @@ const state = (open: boolean): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: 'deal' },
   exchangePhase: {
     active: open,
     winnerIdx: 0,

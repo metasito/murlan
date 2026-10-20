@@ -34,6 +34,7 @@ const STATE: GameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: 'deal' },
 };
 
 /** A bot won the last round and owes the human a card back. */

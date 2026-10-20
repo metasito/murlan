@@ -30,6 +30,7 @@ function table(overrides: Partial<OnlineGameState> = {}): OnlineGameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
+    lastMove: { seq: 0, kind: "deal" },
   };
   return onlineTable({
     roomId: "seat-ledger-room",

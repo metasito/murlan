@@ -82,6 +82,13 @@ export interface StartReason {
   playerIdx: number;
 }
 
+/** Card-free: `sanitizeStateForPlayer` sends it to every viewer as it is. */
+export type LastMove =
+  | { seq: 0; kind: "deal" }
+  | { seq: number; kind: "play"; seat: number }
+  | { seq: number; kind: "pass"; seat: number; closedTrick: boolean }
+  | { seq: number; kind: "giveback"; seat: number };
+
 export interface GameState {
   players: Player[];
   currentTurnIndex: number;
@@ -111,6 +118,8 @@ export interface GameState {
    * exactly as it did before the tally existed.
    */
   playedRanks?: number[];
+  /** Written by `startRound` and `applyMove` alone; `seq` counts the round's moves from the deal's 0. */
+  lastMove: LastMove;
 }
 
 const RANK_ORDER: Rank[] = [
@@ -547,16 +556,21 @@ export function applyMove(state: GameState, seat: number, move: Move): MoveResul
   }
   if (seat !== actingSeat(state)) return { ok: false, code: "notYourTurn" };
 
+  const seq = state.lastMove.seq + 1;
   switch (move.kind) {
     case "play": {
       const check = checkPlay(state, seat, move.cardIds);
       if (!check.ok) return check;
-      return { ok: true, state: processPlay(state, check.combo), move: { kind: "play", seat, combo: check.combo } };
+      const next = processPlay(state, check.combo);
+      next.lastMove = { seq, kind: "play", seat };
+      return { ok: true, state: next, move: { kind: "play", seat, combo: check.combo } };
     }
     case "pass": {
       const check = checkPass(state);
       if (!check.ok) return check;
-      return { ok: true, state: processPass(state), move: { kind: "pass", seat } };
+      const next = processPass(state);
+      next.lastMove = { seq, kind: "pass", seat, closedTrick: next.lastPlayedCombination === null };
+      return { ok: true, state: next, move: { kind: "pass", seat } };
     }
     case "giveback": {
       const hand = state.players[seat]?.hand ?? [];
@@ -564,7 +578,9 @@ export function applyMove(state: GameState, seat: number, move: Move): MoveResul
       if (!card) return { ok: false, code: "notHeld" };
       const offered = getValidGivebackCards(hand, state.exchangePhase?.cardFromLoser?.id);
       if (!offered.some((c) => c.id === card.id)) return { ok: false, code: "notGiveable" };
-      return { ok: true, state: processExchangeChoice(state, card.id), move: { kind: "giveback", seat, card } };
+      const next = processExchangeChoice(state, card.id);
+      next.lastMove = { seq, kind: "giveback", seat };
+      return { ok: true, state: next, move: { kind: "giveback", seat, card } };
     }
   }
 }
@@ -1125,6 +1141,7 @@ function dealtRound(
     trickWinner: null,
     roundOver: false,
     finishingOrder: [],
+    lastMove: { seq: 0, kind: "deal" },
   };
 }
 

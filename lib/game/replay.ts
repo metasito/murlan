@@ -8,7 +8,7 @@
 // Loads under `node --test`, and under the server — docs/agents/checks.md,
 // "Node's TypeScript loader".
 import { passesToCloseTrick } from "./gameEngine.ts";
-import type { Combination, GameMode, GameState, Player } from "./gameEngine.ts";
+import type { Combination, GameMode, GameState, LastMove, Player } from "./gameEngine.ts";
 
 export interface ReplaySeat {
   seatIndex: number;
@@ -113,22 +113,26 @@ export function replayStateAt(replay: ReplayDto, index: number): GameState {
   let pile: GameState["lastPlayedCombination"] = null;
   let pileSeat = -1;
   let passes = 0;
+  let lastMove: LastMove = { seq: 0, kind: "deal" };
   for (let i = 0; i <= at; i++) {
     const move = replay.moves[i];
     if (move.combo) {
       pile = move.combo;
       pileSeat = move.seat;
       passes = 0;
+      lastMove = { seq: i + 1, kind: "play", seat: move.seat };
       continue;
     }
     passes += 1;
     const active = move.handCounts.filter((n) => n > 0).length;
     const lastPlayerStillActive = pileSeat >= 0 && (move.handCounts[pileSeat] ?? 0) > 0;
-    if (pile && passes >= passesToCloseTrick(active, lastPlayerStillActive)) {
+    const closedTrick = !!pile && passes >= passesToCloseTrick(active, lastPlayerStillActive);
+    if (closedTrick) {
       pile = null;
       pileSeat = -1;
       passes = 0;
     }
+    lastMove = { seq: i + 1, kind: "pass", seat: move.seat, closedTrick };
   }
 
   const finished = at === last && last >= 0;
@@ -152,6 +156,7 @@ export function replayStateAt(replay: ReplayDto, index: number): GameState {
     roundOver: finished,
     finishingOrder: finished ? replay.finishingOrder : [],
     firstPlayMade: at >= 0,
+    lastMove,
   };
 }
 

@@ -60,6 +60,7 @@ const state = (play: Combination, by: number): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: 'deal' },
 });
 const noop = () => {};
 const table = (s: GameState) => (
