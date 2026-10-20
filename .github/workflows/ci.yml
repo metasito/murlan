@@ -31,6 +31,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
+  # Node's version is `.node-version`; why tests run on `.ts` directly is docs/agents/checks.md, "Node's TypeScript loader".
   # Single source of truth for the secret-scan image: the scan step and the
   # self-test must run the exact same binary, or a version bump to one and not
   # the other leaves the self-test attesting to a scanner that isn't the one
