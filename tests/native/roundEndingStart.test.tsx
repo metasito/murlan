@@ -46,6 +46,7 @@ function table(onRoundLanded: (at: number) => void, over: boolean, last: Combina
     roundOver: over,
     finishingOrder: over ? ORDER : [],
     firstPlayMade: true,
+    lastMove: { seq: 0, kind: 'deal' },
   };
   const placementPoints = over ? Object.fromEntries(ORDER.map((id, i) => [id, 3 - i])) : {};
   return (

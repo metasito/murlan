@@ -45,6 +45,7 @@ const table = (roundOver: boolean): WireGameState => ({
   roundOver,
   finishingOrder: roundOver ? ['player_0', 'player_1'] : [],
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: 'deal' },
   viewerSeatIndex: 0,
   turnSecondsRemaining: 30,
 });

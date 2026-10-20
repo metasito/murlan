@@ -24,6 +24,7 @@ export function drawnTeamsMatch() {
     roundOver: true,
     finishingOrder: ["p0", "p1", "p2", "p3"],
     firstPlayMade: true,
+    lastMove: { seq: 0, kind: "deal" },
   };
   return resolveRoundEnd({
     state,

@@ -66,6 +66,7 @@ export function tableAfter({ by, combo, passCount = 0, turn = 0, catchUp = false
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
+    lastMove: { seq: 0, kind: 'deal' },
   };
   return (
     <SafeAreaProvider initialMetrics={METRICS}>

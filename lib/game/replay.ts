@@ -8,7 +8,7 @@
 // Loads under `node --test`, and under the server — docs/agents/checks.md,
 // "Node's TypeScript loader".
 import { passesToCloseTrick } from "./gameEngine.ts";
-import type { Combination, GameMode, GameState, Player } from "./gameEngine.ts";
+import type { Combination, GameMode, GameState, LastMove, Player } from "./gameEngine.ts";
 
 export interface ReplaySeat {
   seatIndex: number;
@@ -33,6 +33,11 @@ export interface ReplayDto {
   gameMode: GameMode;
   seats: ReplaySeat[];
   moves: ReplayMove[];
+  /**
+   * The record the first move followed: the deal, or the giveback after it, which the log does not
+   * hold. Null on a row written before it was stored, which reads as the deal.
+   */
+  opening: LastMove | null;
   /** Engine player ids in finishing order, as the round ended. */
   finishingOrder: string[];
 }
@@ -113,22 +118,27 @@ export function replayStateAt(replay: ReplayDto, index: number): GameState {
   let pile: GameState["lastPlayedCombination"] = null;
   let pileSeat = -1;
   let passes = 0;
+  const opening: LastMove = replay.opening ?? { seq: 0, kind: "deal" };
+  let lastMove = opening;
   for (let i = 0; i <= at; i++) {
     const move = replay.moves[i];
     if (move.combo) {
       pile = move.combo;
       pileSeat = move.seat;
       passes = 0;
+      lastMove = { seq: opening.seq + i + 1, kind: "play", seat: move.seat };
       continue;
     }
     passes += 1;
     const active = move.handCounts.filter((n) => n > 0).length;
     const lastPlayerStillActive = pileSeat >= 0 && (move.handCounts[pileSeat] ?? 0) > 0;
-    if (pile && passes >= passesToCloseTrick(active, lastPlayerStillActive)) {
+    const closedTrick = !!pile && passes >= passesToCloseTrick(active, lastPlayerStillActive);
+    if (closedTrick) {
       pile = null;
       pileSeat = -1;
       passes = 0;
     }
+    lastMove = { seq: opening.seq + i + 1, kind: "pass", seat: move.seat, closedTrick };
   }
 
   const finished = at === last && last >= 0;
@@ -152,6 +162,7 @@ export function replayStateAt(replay: ReplayDto, index: number): GameState {
     roundOver: finished,
     finishingOrder: finished ? replay.finishingOrder : [],
     firstPlayMade: at >= 0,
+    lastMove,
   };
 }
 

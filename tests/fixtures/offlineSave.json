@@ -396,6 +396,10 @@
         "isJoker": false
       },
       "playerIdx": 1
+    },
+    "lastMove": {
+      "seq": 0,
+      "kind": "deal"
     }
   },
   "match": {
@@ -408,5 +412,5 @@
     "isDraw": false
   },
   "dealFirstSeat": 0,
-  "version": 4
+  "version": 5
 }

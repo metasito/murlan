@@ -31,6 +31,7 @@ const opening = (players: GameState['players']): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: false,
+  lastMove: { seq: 0, kind: 'deal' },
   startCard: hand('spades')[0],
 });
 

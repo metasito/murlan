@@ -56,6 +56,7 @@ const state = (currentTurnIndex: number, over: Partial<GameState> = {}): GameSta
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  lastMove: { seq: 0, kind: 'deal' },
   ...over,
 });
 

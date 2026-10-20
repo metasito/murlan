@@ -28,6 +28,7 @@ const REPLAY: ReplayDto = {
     { seatIndex: 1, userId: null, name: "Gent" },
   ],
   finishingOrder: ["player_0", "player_1"],
+  opening: null,
   moves: [
     { seat: 0, combo: single("3", "spades"), handCounts: [2, 3] },
     { seat: 1, combo: single("5", "hearts"), handCounts: [2, 2] },

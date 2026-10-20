@@ -4,7 +4,7 @@ import { roundReplays } from "../../shared/schema.ts";
 import { replayPlayerIdsOf } from "./replayShape.ts";
 import { namesOf } from "./userNames.ts";
 import type { ReplayDto, ReplayMove, ReplaySeat, ReplaySummary } from "../../lib/game/replay.ts";
-import type { GameMode } from "../../lib/game/gameEngine.ts";
+import type { GameMode, LastMove } from "../../lib/game/gameEngine.ts";
 
 /** The read is bounded too, so the list never grows with a busy fortnight. */
 const MAX_REPLAYS_LISTED = 20;
@@ -37,6 +37,7 @@ export async function saveReplay(input: {
   gameMode: GameMode;
   seats: ReplaySeat[];
   moves: ReplayMove[];
+  opening: LastMove | null;
   finishingOrder: string[];
 }): Promise<void> {
   const playerIds = replayPlayerIdsOf(input.seats);
@@ -50,6 +51,7 @@ export async function saveReplay(input: {
     playerIds,
     seats: input.seats,
     moves: input.moves,
+    opening: input.opening,
     finishingOrder: input.finishingOrder,
   });
 }
@@ -100,6 +102,7 @@ export async function getReplayForUser(
     gameMode: row.gameMode as GameMode,
     seats: row.seats,
     moves: row.moves,
+    opening: row.opening,
     finishingOrder: row.finishingOrder,
   };
 }

@@ -8,6 +8,7 @@ import { endMatchByAgreement } from "./roundOver.ts";
 import { vacateSeat } from "./gameTurn.ts";
 import { seatOfUser } from "./onlineGameLogic.ts";
 import { castEndMatchVote } from "./seatLedger.ts";
+import { castRematchVote, clearRematchVotes } from "./matchLedger.ts";
 import { dealFirstSeatFor, openingAfter, seatsOf, startRound } from "../../lib/game/gameEngine.ts";
 import { dealRound } from "./dealRound.ts";
 import type { TableAction } from "./tableActions.ts";
@@ -69,7 +70,7 @@ async function dealVotedRound(
   // Cleared only once the next round is certain to be dealt. A vote discarded
   // on the way out of a bail-out can never be retried: the overlay would sit
   // below its own threshold with nothing left to press.
-  game.rematchVotes.clear();
+  clearRematchVotes(game);
 
   // `game.matchOver` still holds the just-ended round's own verdict here —
   // `dealRound` below is what flips it back via `rollMatchForward`.
@@ -102,7 +103,7 @@ export async function rematchVoteAction(
   // Nobody gets to restart it from the results screen after that.
   if (rematchRefused(game)) return refuse("REMATCH_DECLINED");
 
-  game.rematchVotes.add(userId);
+  castRematchVote(game, userId);
   emitVoteState(rt.out.room(roomId), game);
   if (!rematchAnswered(game)) return OK;
   return dealVotedRound(rt, game, roomId, userId);
