@@ -17,7 +17,7 @@ import { socketTicketNonces } from "../../shared/schema.ts";
  * It names the session that minted it, and dies with that session.
  */
 
-const TICKET_TTL_MS = 60_000;
+export const TICKET_TTL_MS = 60_000;
 const MAX_TICKET_LENGTH = 768;
 
 export interface SocketTicket {

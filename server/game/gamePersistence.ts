@@ -263,20 +263,9 @@ export async function sweepFinishedTables(rt: TableRuntime): Promise<void> {
  */
 export function startSweeper(rt: TableRuntime, resumeOrphans: (rt: TableRuntime) => Promise<void>) {
   if (sweeper) return;
+  let sweeping = false;
   sweeper = setInterval(() => {
     try {
-      void resumeOrphans(rt).catch((err: unknown) =>
-        logger.error({ err }, "Resuming ownerless tables failed")
-      );
-
-      void sweepFinishedTables(rt).catch((err: unknown) =>
-        logger.error({ err }, "Sweeping finished tables failed")
-      );
-
-      // sweepRetention gives each table's DELETE its own try/catch and never
-      // rejects, so there is no outer failure to log here.
-      void sweepRetention();
-
       // Only reachable through a bug — every path that puts a game in memory
       // claims the room first — but what it would be reporting is two
       // instances broadcasting one table over each other, which is worth a
@@ -285,7 +274,18 @@ export function startSweeper(rt: TableRuntime, resumeOrphans: (rt: TableRuntime)
       if (unclaimed.length > 0) {
         logger.error({ rooms: unclaimed }, "Holding games for rooms this instance does not own");
       }
+
+      if (sweeping) return;
+      sweeping = true;
+      void Promise.allSettled([
+        resumeOrphans(rt).catch((err: unknown) => logger.error({ err }, "Resuming ownerless tables failed")),
+        sweepFinishedTables(rt).catch((err: unknown) => logger.error({ err }, "Sweeping finished tables failed")),
+        sweepRetention(),
+      ]).finally(() => {
+        sweeping = false;
+      });
     } catch (err) {
+      sweeping = false;
       logger.error({ err }, "Sweeper failed");
     }
   }, sweepIntervalMs());

@@ -9,7 +9,8 @@ import { db } from "../../server/store/db.ts";
 import { installClock } from "../../server/http/clock.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { adminSnapshot } from "../../server/http/admin.ts";
-import { ABANDONED_GAME_MAX_AGE_MS, sweepRetention } from "../../server/game/retention.ts";
+import { ABANDONED_GAME_MAX_AGE_MS, STALE_ROOM_MAX_AGE_MS, sweepRetention } from "../../server/game/retention.ts";
+import { TICKET_TTL_MS } from "../../server/socket/ticket.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { roundReplays, rooms } from "../../shared/schema.ts";
 import { seasonKey } from "../../lib/game/rating.ts";
@@ -73,6 +74,40 @@ describe("a cutoff reads the clock its column was written on", () => {
     const { sql: text, params } = prune;
     assert.doesNotMatch(text, /now\(\)/i);
     assert.ok(params.some((p) => near(p, clock.now() - REPLAY_RETENTION_DAYS * DAY_MS, 1_000)));
+  });
+
+  // node-postgres serializes a Date in the process's local zone with an offset, and a
+  // `timestamp` column drops the offset: east of UTC every cutoff lands hours early.
+  test("every cutoff the sweep binds is the column's UTC string, never a Date", async (t) => {
+    const clock = ahead(t);
+    const statements: { sql: string; params: unknown[] }[] = [];
+    t.mock.method(db, "execute", async (q: SQL) => {
+      statements.push(dialect.sqlToQuery(q));
+      return { rows: [], rowCount: 0 };
+    });
+    await sweepRetention();
+    assert.ok(statements.length > 0);
+    for (const q of statements) {
+      assert.ok(!q.params.some((p) => p instanceof Date), `a Date reaches the driver:\n${q.sql}`);
+    }
+    const staleRooms = statements.find((q) => /^SELECT\b.*\bFROM "rooms"/s.test(q.sql));
+    assert.ok(staleRooms, "the sweep no longer selects stale rooms");
+    const cutoffs = staleRooms.params.filter((p) => near(p, clock.now() - STALE_ROOM_MAX_AGE_MS, 1_000));
+    assert.equal(cutoffs.length, 2, "created_at and active_games.updated_at are both judged at the cutoff");
+    for (const p of cutoffs) assert.match(String(p), /^\d{4}-\d\d-\d\dT[\d:.]+Z$/);
+  });
+
+  test("a nonce outlives its expiry by a ticket's lifetime, so a skewed clock opens no replay", async (t) => {
+    const clock = ahead(t);
+    const statements: { sql: string; params: unknown[] }[] = [];
+    t.mock.method(db, "execute", async (q: SQL) => {
+      statements.push(dialect.sqlToQuery(q));
+      return { rows: [], rowCount: 0 };
+    });
+    await sweepRetention();
+    const prune = statements.find((q) => q.sql.startsWith('DELETE FROM "socket_ticket_nonces"'));
+    assert.ok(prune, "the sweep no longer prunes socket_ticket_nonces");
+    assert.ok(prune.params.some((p) => near(p, clock.now() - TICKET_TTL_MS, 1_000)));
   });
 
   test("the admin page judges server-written columns on the installed clock, Postgres-stamped ones on Postgres'", async (t) => {

@@ -1,6 +1,6 @@
 // The only home of every age-based delete (tests/server/retentionOffWritePath.test.ts), run by
 // server/game/gamePersistence.ts's startSweeper.
-import { lt, sql, type SQL } from "drizzle-orm";
+import { gte, lt, sql, type SQL } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 import { db } from "../store/db.ts";
 import { roomStore } from "../store/roomStore.ts";
@@ -22,6 +22,7 @@ import { CLIENT_ERROR_RETENTION_DAYS } from "../http/clientErrors.ts";
 import { SERVER_ERROR_RETENTION_DAYS } from "../http/serverErrors.ts";
 import { REPLAY_RETENTION_DAYS } from "../../lib/game/replay.ts";
 import { BUG_REPORT_RETENTION_DAYS } from "../http/bugReports.ts";
+import { TICKET_TTL_MS } from "../socket/ticket.ts";
 import { logger } from "../http/logger.ts";
 
 const DAY_MS = 24 * 60 * 60_000;
@@ -37,6 +38,10 @@ const DAY_MS = 24 * 60 * 60_000;
  * A day is far past any live game: `persistGameState` refreshes `updated_at`
  * on every move. The margin is so a rejoinable row is never taken from under
  * a player.
+ *
+ * Age is the only cluster signal read: whichever instance holds the game writes
+ * `updated_at`, so no other check is made, and a game left untouched for a day on
+ * a live instance is taken with the rest.
  */
 export const ABANDONED_GAME_MAX_AGE_MS = 24 * 60 * 60_000;
 
@@ -61,7 +66,7 @@ const STALE_ROOM_BATCH = 500;
  * unbatched DELETE over a backlog outruns the pool's `statement_timeout` and
  * then never shrinks it.
  */
-async function deleteInBatches(
+export async function deleteInBatches(
   table: PgTable,
   where: SQL,
   batch = BATCH,
@@ -99,6 +104,10 @@ export async function pruneAbandonedGames(): Promise<number> {
  * A room whose `active_games` row was touched within the window is held by a
  * live game on some instance, so the cluster's answer comes from that row; the
  * in-memory map answers only for this instance.
+ *
+ * A room still waiting has no such row, and nothing written while it waits
+ * (`users.last_seen` is stamped on disconnect) says it is live, so a lobby open
+ * for longer than the window on another instance is purged.
  */
 export async function pruneStaleRooms(): Promise<number> {
   const cutoff = new Date(now() - STALE_ROOM_MAX_AGE_MS);
@@ -106,15 +115,16 @@ export async function pruneStaleRooms(): Promise<number> {
   for (let i = 0; i < MAX_BATCHES; i++) {
     const { rows } = await db.execute<{ id: string }>(
       sql`SELECT ${rooms.id} AS id FROM ${rooms}
-          WHERE ${rooms.createdAt} < ${cutoff}
+          WHERE ${lt(rooms.createdAt, cutoff)}
             AND NOT EXISTS (
               SELECT 1 FROM ${activeGames}
-              WHERE ${activeGames.roomId} = ${rooms.id} AND ${activeGames.updatedAt} >= ${cutoff}
+              WHERE ${activeGames.roomId} = ${rooms.id} AND ${gte(activeGames.updatedAt, cutoff)}
             )
           LIMIT ${STALE_ROOM_BATCH}`
     );
     const ids = rows.map((r) => r.id).filter((id) => !liveGames.has(id));
-    const gone = await roomStore.purgeRooms(db, ids);
+    if (ids.length === 0) break;
+    const gone = await db.transaction((tx) => roomStore.purgeRooms(tx, ids));
     total += gone;
     if (rows.length < STALE_ROOM_BATCH || gone === 0) break;
   }
@@ -148,7 +158,7 @@ export async function sweepRetention(): Promise<void> {
     deleteInBatches(bugReports, lt(bugReports.createdAt, daysAgo(BUG_REPORT_RETENTION_DAYS)))
   );
   await pruneOlderThan("socket_ticket_nonces", () =>
-    deleteInBatches(socketTicketNonces, lt(socketTicketNonces.expiresAt, new Date(now())))
+    deleteInBatches(socketTicketNonces, lt(socketTicketNonces.expiresAt, new Date(now() - TICKET_TTL_MS)))
   );
   await pruneOlderThan("active_games", pruneAbandonedGames);
   await pruneOlderThan("rooms", pruneStaleRooms);

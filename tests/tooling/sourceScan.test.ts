@@ -123,7 +123,6 @@ const NEITHER_FLOOR_READS = [
   "tests/integration/friendRowTravelsWithTheEvent.test.ts",
   "tests/native/friendsPresenceRow.test.tsx",
   "tests/native/replayControls.test.tsx",
-  "tests/server/retentionOffWritePath.test.ts",
   "tests/tooling/pickSimulator.test.ts",
   "tests/ui-rules/resultActionLabels.test.ts",
   "tools/ci/pick-simulator.mjs",
