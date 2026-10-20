@@ -123,7 +123,7 @@ export function applyPersonality(
       const inKind = plays.filter((p) => p.type !== "bomb" && p.type !== "royal_straight");
       const pool = inKind.length > 0 ? inKind : plays;
       const plain = pool.filter((p) => !isPremiumPlay(p));
-      result = [...(plain.length > 0 ? plain : pool)].sort((a, b) => a.strength - b.strength)[0] ?? null;
+      result = [...(plain.length > 0 ? plain : pool)].sort(byBombRank)[0] ?? null;
     }
   } else if (isPremiumPlay(result) && rng() >= traits.aggression) {
     result = cheapestPlain(plays, isNewTrick) ?? result;
@@ -290,7 +290,7 @@ export function botChoosePlay(
     applyPersonality(choice, leadPlays, isNewTrick, personality, rng);
 
   if (diff === "easy") {
-    return withPersonality([...leadPlays].sort((a, b) => a.strength - b.strength)[0]);
+    return withPersonality([...leadPlays].sort(byBombRank)[0]);
   }
 
   // A lead nothing left can answer takes the trick for free, so holding it back
@@ -301,7 +301,7 @@ export function botChoosePlay(
   if (isNewTrick) {
     const certain = leadPlays.filter(takesTheTrick);
     if (certain.length > 0) {
-      return certain.sort((a, b) => a.strength - b.strength)[0];
+      return certain.sort(byBombRank)[0];
     }
   }
 
@@ -321,7 +321,7 @@ export function botChoosePlay(
           multi.sort((a, b) => b.cards.length - a.cards.length || a.strength - b.strength)[0]
         );
     }
-    return withPersonality(pool.sort((a, b) => a.strength - b.strength)[0]);
+    return withPersonality(pool.sort(byBombRank)[0]);
   }
 
   // ── Hard bot ──────────────────────────────────────────────────────────────
