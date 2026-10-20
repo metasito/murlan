@@ -13,7 +13,8 @@ describe("verify-email is rate limited", { skip: hasDatabase() ? false : skipMes
     process.env.MURLAN_AUTH_RATE_LIMIT = "5";
   });
   after(async () => {
-    process.env.MURLAN_AUTH_RATE_LIMIT = suiteBudget;
+    if (suiteBudget === undefined) delete process.env.MURLAN_AUTH_RATE_LIMIT;
+    else process.env.MURLAN_AUTH_RATE_LIMIT = suiteBudget;
     if (server) await server.stop();
   });
 
