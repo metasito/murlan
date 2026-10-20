@@ -14,7 +14,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useInvites, usePresence } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
-import { useOnlineConnection, useOnlineRoom, useServerError } from "@/context/onlineGameHooks";
+import { useOnlineConnection, useServerError } from "@/context/onlineGameHooks";
 import { serverErrorMessage } from "@/lib/apiError";
 import { apiRequest } from "@/lib/query-client";
 import { Colors, Spacing, FontSize, Radius, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
@@ -59,7 +59,6 @@ export default function FriendsScreen() {
     accept: acceptInvite,
     accepted: acceptedInvite,
   } = useInvites();
-  const { room } = useOnlineRoom();
   const { clearError } = useOnlineConnection();
   const joinError = useServerError("lobby");
   const qc = useQueryClient();
@@ -71,19 +70,6 @@ export default function FriendsScreen() {
   const [searchDone, setSearchDone] = useState(false);
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
   const { showNotification, notifyError } = useNotification();
-
-  // Joining from the room a join started in: an accept while a room is held must wait for a
-  // different one, not read the held one as already arrived.
-  const roomId = room?.roomId ?? null;
-  const [joiningFrom, setJoiningFrom] = useState<{ roomId: string | null } | null>(null);
-  const [answeredInvite, setAnsweredInvite] = useState<typeof acceptedInvite>(null);
-  if (acceptedInvite !== answeredInvite) {
-    setAnsweredInvite(acceptedInvite);
-    if (acceptedInvite) setJoiningFrom({ roomId });
-  }
-  if (joiningFrom && (joinError || (roomId !== null && roomId !== joiningFrom.roomId))) {
-    setJoiningFrom(null);
-  }
 
   useEffect(() => {
     if (joinError) {
@@ -247,7 +233,7 @@ export default function FriendsScreen() {
     <MenuLayout scrollable centered={false}>
       <ScreenHeader title={t("friends.title")} />
 
-      {joiningFrom && (
+      {acceptedInvite !== null && (
         <View style={styles.joiningBanner}>
           <A11yStatus label={t("onlineLobby.joiningInvite")} role="alert" live="polite" />
           <ActivityIndicator size="small" color={Colors.gold} {...a11yHidden()} />

@@ -368,7 +368,17 @@ export default function RoomScreen() {
   }, [t, leaveRoom]);
 
   const guardsBack = guardsRoomBack({ roomId: room?.roomId ?? null, hasGame, isSpectator, rejoinFailed });
-  usePreventRemove(guardsBack, handleLeave);
+  // The browser's back reaches React Navigation as a RESET only after the URL has already
+  // moved; blocking it alone leaves this room under the previous screen's URL, with the
+  // next back popping it. Going forward again puts the URL back on the room's entry.
+  const onBackPrevented = useCallback(
+    ({ data }: { data: { action: { type: string } } }) => {
+      if (Platform.OS === "web" && data.action.type === "RESET") globalThis.history?.forward();
+      handleLeave();
+    },
+    [handleLeave]
+  );
+  usePreventRemove(guardsBack, onBackPrevented);
   useEffect(() => {
     if (Platform.OS !== "android" || !guardsBack) return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {

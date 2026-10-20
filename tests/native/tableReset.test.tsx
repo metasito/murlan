@@ -195,7 +195,9 @@ describe('the listener effect', () => {
     await playARound();
     await act(async () => result.current.spectateRoom('ABCD'));
     await act(async () => result.current.leaveRoom());
-    await act(async () => result.current.joinRoom('ABCD'));
+    await act(async () => {
+      void result.current.joinRoom('ABCD');
+    });
     await deliver('game:rejoin_failed', { code: 'GAME_NOT_FOUND', message: 'Game not found' });
 
     for (const event of ['game:state', 'room:state', 'game:rejoin_failed', 'room:error']) {
@@ -242,7 +244,9 @@ describe('a room:error while a lobby rejoin is outstanding', () => {
   it('answers a join sent since, which cancelled the rejoin, and resets nothing', async () => {
     const { result, unmount } = await mount();
     await inALobbyRejoining(result);
-    await act(async () => result.current.joinRoom('WXYZ'));
+    await act(async () => {
+      void result.current.joinRoom('WXYZ');
+    });
     const { error: _before, ...before } = dataOf(result.current);
 
     await deliver('room:error', { code: 'ROOM_FULL', message: 'Room is full' });

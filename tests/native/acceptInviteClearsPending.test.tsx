@@ -11,6 +11,7 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, act, render, fireEvent, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { en as locale } from '@/locales/en';
 
 type Listener = (...args: unknown[]) => void;
 
@@ -61,7 +62,7 @@ jest.mock('@/lib/device/pushRegistration', () => ({
   forgetPushRegistration: () => {},
 }));
 
-const mockJoinRoom = jest.fn();
+const mockJoinRoom = jest.fn(async (_code: string): Promise<{ ok: boolean; code?: string } | null> => ({ ok: true }));
 const mockOnline = { connected: false };
 jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineRoom: () => ({
@@ -362,4 +363,29 @@ describe('accepting from the friends screen', () => {
 
     await view.unmount();
   });
+
+  for (const answer of [{ ok: true }, { ok: false, code: 'ROOM_FULL' }]) {
+    it(`says it is joining until the join is answered (${answer.code ?? 'ok'}), though no room fact moves`, async () => {
+      const JOINING = locale['onlineLobby.joiningInvite'];
+      let reply: (outcome: typeof answer) => void = () => {};
+      mockJoinRoom.mockImplementationOnce(() => new Promise((resolve) => (reply = resolve)));
+      mockOnline.connected = true;
+      const { view, seen, rerender } = await mountFriends();
+      await invite();
+
+      await fireEvent.press(screen.getByLabelText(/join ana/i));
+      await rerender();
+
+      expect(mockJoinRoom).toHaveBeenCalledTimes(1);
+      expect(seen.current?.accepted).toBe('ABC123');
+      expect(screen.queryAllByText(JOINING).length).toBeGreaterThan(0);
+
+      await act(async () => reply(answer));
+
+      expect(seen.current?.accepted).toBeNull();
+      expect(screen.queryAllByText(JOINING)).toHaveLength(0);
+      expect(mockJoinRoom).toHaveBeenCalledTimes(1);
+      await view.unmount();
+    });
+  }
 });

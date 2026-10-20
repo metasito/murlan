@@ -204,3 +204,48 @@ test("online — the join sheet is a modal dialog with a name, and Escape closes
   await page.getByRole("button", { name: "Inserisci codice stanza" }).click();
   await expect(page.getByRole("textbox", { name: "Codice stanza" })).toHaveValue("");
 });
+
+// React Navigation hears the browser's back only after the URL has moved, so a
+// guard that merely blocks the removal leaves the room on screen under the
+// lobby's URL, and the next back pops the room with the seat still held. No
+// unit test runs useLinking's popstate path.
+test("browser back on the waiting room asks, and Cancel keeps the room, its URL and the seat", async ({
+  browser,
+  baseURL,
+}) => {
+  test.setTimeout(120_000);
+  const LEAVE_TITLE = "Lascia la stanza";
+  const SEATED_TWO = "GIOCATORI (2/2)";
+  const hostContext = await browser.newContext({ locale: "it-IT" });
+  const guestContext = await browser.newContext({ locale: "it-IT" });
+  const host = await hostContext.newPage();
+  const guest = await guestContext.newPage();
+  try {
+    await openApp(host, baseURL!);
+    await registerNewAccount(host, uniqueUsername("e2ebackh"));
+    await goToOnlineLobby(host);
+    const code = await createRoom(host, { playerCount: 2, gameMode: "free_for_all" });
+
+    await openApp(guest, baseURL!);
+    await registerNewAccount(guest, uniqueUsername("e2ebackg"));
+    await goToOnlineLobby(guest);
+    await joinRoom(guest, code);
+    await expect(guest.getByText(SEATED_TWO, { exact: true })).toBeVisible();
+
+    const roomUrl = host.url();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await host.goBack();
+      await expect(host.getByText(LEAVE_TITLE, { exact: true })).toBeVisible();
+      await host.getByRole("button", { name: "Annulla", exact: true }).click();
+      await expect(host.getByText(LEAVE_TITLE, { exact: true })).toHaveCount(0);
+
+      await expect(host).toHaveURL(roomUrl);
+      await expect(host.getByText(code, { exact: true })).toBeVisible();
+      await expect(host.getByText(SEATED_TWO, { exact: true })).toBeVisible();
+      await expect(guest.getByText(SEATED_TWO, { exact: true })).toBeVisible();
+    }
+  } finally {
+    await hostContext.close();
+    await guestContext.close();
+  }
+});

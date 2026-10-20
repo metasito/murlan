@@ -9,12 +9,12 @@
 // code the player has already chosen (#398).
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 // `mock`-prefixed because jest hoists these factories above every other
 // statement in the file, and only that prefix is allowed out of scope.
-const mockJoinRoom = jest.fn();
+const mockJoinRoom = jest.fn(async (_code: string) => ({ ok: true }));
 const mockClearAccepted = jest.fn();
 const mockState = {
   invites: {} as Record<string, unknown>,
@@ -105,11 +105,14 @@ describe('an invite the player has already accepted', () => {
     await r.unmount();
   });
 
-  it('consumes it, so a re-render cannot join twice', async () => {
+  it('consumes it once the join is answered, so a re-render cannot join twice', async () => {
     mockState.invites = { ...base, accepted: 'ABC123' };
     const r = await mount();
+    await act(async () => {});
 
+    expect(mockJoinRoom).toHaveBeenCalledTimes(1);
     expect(mockClearAccepted).toHaveBeenCalledTimes(1);
+    expect(mockClearAccepted).toHaveBeenCalledWith('ABC123');
 
     await r.unmount();
   });

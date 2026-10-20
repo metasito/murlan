@@ -17,17 +17,20 @@ const mockStartGame = jest.fn();
 let mockRoom: Record<string, unknown> | null;
 let mockHasGame = false;
 let mockConnected = true;
-const mockGuard: { prevent: boolean | null; onPrevented: (() => void) | null } = {
+type Prevented = { data: { action: { type: string } } };
+const mockGuard: { prevent: boolean | null; onPrevented: ((e: Prevented) => void) | null } = {
   prevent: null,
   onPrevented: null,
 };
+const POP: Prevented = { data: { action: { type: 'POP' } } };
+const BROWSER_BACK: Prevented = { data: { action: { type: 'RESET' } } };
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
 jest.mock('expo-router/react-navigation', () => ({
-  usePreventRemove: (prevent: boolean, onPrevented: () => void) => {
+  usePreventRemove: (prevent: boolean, onPrevented: (e: Prevented) => void) => {
     mockGuard.prevent = prevent;
     mockGuard.onPrevented = onPrevented;
   },
@@ -134,14 +137,39 @@ describe('back on the waiting room', () => {
     const view = await render(tree());
     expect(mockGuard.prevent).toBe(true);
 
-    await act(async () => mockGuard.onPrevented!());
+    await act(async () => mockGuard.onPrevented!(POP));
     await fireEvent.press(screen.getByLabelText(locale['common.cancel']));
     expect(mockLeaveRoom).not.toHaveBeenCalled();
 
-    await act(async () => mockGuard.onPrevented!());
+    await act(async () => mockGuard.onPrevented!(POP));
     await fireEvent.press(screen.getByLabelText(locale['room.leaveConfirmConfirm']));
     expect(mockLeaveRoom).toHaveBeenCalledTimes(1);
     await view.unmount();
+  });
+
+  it("puts the browser's URL back on the room before asking, and only for the browser's back", async () => {
+    const forward = jest.fn();
+    const hadHistory = 'history' in globalThis;
+    const original = (globalThis as { history?: unknown }).history;
+    (globalThis as { history?: unknown }).history = { forward };
+    const os = jest.replaceProperty(Platform, 'OS', 'web');
+    try {
+      const view = await render(tree());
+
+      await act(async () => mockGuard.onPrevented!(BROWSER_BACK));
+      expect(forward).toHaveBeenCalledTimes(1);
+      expect(screen.getByLabelText(locale['room.leaveConfirmConfirm'])).toBeTruthy();
+      await fireEvent.press(screen.getByLabelText(locale['common.cancel']));
+      expect(mockLeaveRoom).not.toHaveBeenCalled();
+
+      await act(async () => mockGuard.onPrevented!(POP));
+      expect(forward).toHaveBeenCalledTimes(1);
+      await view.unmount();
+    } finally {
+      os.restore();
+      if (hadHistory) (globalThis as { history?: unknown }).history = original;
+      else delete (globalThis as { history?: unknown }).history;
+    }
   });
 
   it('lets the router replace the room once a game exists or the room is gone', async () => {

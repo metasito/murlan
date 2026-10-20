@@ -108,7 +108,9 @@ describe('a refused spectate', () => {
     await act(async () => result.current.spectateRoom('ZZZZZZ'));
     await waitFor(() => expect(result.current.isSpectator).toBe(true));
 
-    await act(async () => result.current.joinRoom('ABCDEF'));
+    await act(async () => {
+      void result.current.joinRoom('ABCDEF');
+    });
     await waitFor(() => expect(result.current.isSpectator).toBe(false));
 
     emitted.length = 0;

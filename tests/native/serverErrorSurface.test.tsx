@@ -88,7 +88,7 @@ function Attempts() {
   const room = useOnlineRoom();
   const tries: Record<Attempt, () => void> = {
     createRoom: () => room.createRoom('free_for_all', 4),
-    joinRoom: () => room.joinRoom('ABCDEF'),
+    joinRoom: () => void room.joinRoom('ABCDEF'),
     spectateRoom: () => room.spectateRoom('ABCDEF'),
     quickmatch: () => room.quickmatch(4, 'free_for_all'),
   };

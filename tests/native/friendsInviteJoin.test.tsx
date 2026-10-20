@@ -35,11 +35,9 @@ jest.mock('@/context/SocketContext', () => ({
   }),
 }));
 
-let mockRoom: { roomId: string } | null = null;
 let mockLobbyError: { text: string; seq: number } | null = null;
 const mockClearError = jest.fn();
 jest.mock('@/context/onlineGameHooks', () => ({
-  useOnlineRoom: () => ({ room: mockRoom }),
   useOnlineConnection: () => ({ clearError: mockClearError }),
   useServerError: (surface: string) => (surface === 'lobby' ? mockLobbyError : null),
 }));
@@ -76,7 +74,6 @@ function tree(client: QueryClient) {
 describe('joining from a friends-screen invite', () => {
   beforeEach(() => {
     mockAccepted = null;
-    mockRoom = null;
     mockLobbyError = null;
     mockShown.length = 0;
     mockClearError.mockClear();
@@ -100,32 +97,15 @@ describe('joining from a friends-screen invite', () => {
 
     mockAccepted = 'ABC123';
     await view.rerender(tree(client));
-    mockAccepted = null;
-    await view.rerender(tree(client));
     expect(screen.queryAllByText(JOINING).length).toBeGreaterThan(0);
 
     mockLobbyError = { text: 'That room is full.', seq: 4 };
+    mockAccepted = null;
     await view.rerender(tree(client));
 
     expect(mockShown.map((n) => n.message)).toContain('That room is full.');
     expect(mockClearError).toHaveBeenCalledWith(4);
     expect(screen.queryAllByText(JOINING)).toHaveLength(0);
-    await view.unmount();
-  });
-
-  it('stops saying it is joining once the room arrives', async () => {
-    const client = qc();
-    const view = await render(tree(client));
-
-    mockAccepted = 'ABC123';
-    await view.rerender(tree(client));
-    expect(screen.queryAllByText(JOINING).length).toBeGreaterThan(0);
-
-    mockRoom = { roomId: 'r1' };
-    await view.rerender(tree(client));
-
-    expect(screen.queryAllByText(JOINING)).toHaveLength(0);
-    expect(mockShown).toHaveLength(0);
     await view.unmount();
   });
 });
