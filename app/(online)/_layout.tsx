@@ -1,9 +1,13 @@
-import { Stack, Redirect } from "expo-router";
+import { Stack, Redirect, useGlobalSearchParams, useSegments } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
+import { returnPathFor } from "@/lib/authRedirect";
 import { OnlineGameProvider } from "@/context/OnlineGameContext";
 import { useOnlineRouting } from "@/context/useOnlineRouting";
 import { View, ActivityIndicator } from "react-native";
 import { Colors } from '@/lib/theme';
+import { routeErrorBoundary } from "@/components/RouteErrorBoundary";
+
+export const ErrorBoundary = routeErrorBoundary("online");
 
 function FollowTable() {
   useOnlineRouting();
@@ -12,6 +16,7 @@ function FollowTable() {
 
 export default function OnlineLayout() {
   const { user, loading } = useAuth();
+  const here = returnPathFor(useSegments(), useGlobalSearchParams());
 
   if (loading) {
     return (
@@ -21,7 +26,7 @@ export default function OnlineLayout() {
     );
   }
 
-  if (!user) return <Redirect href="/auth" />;
+  if (!user) return <Redirect href={{ pathname: "/auth", params: { next: here } }} />;
 
   return (
     <OnlineGameProvider userId={user.id}>

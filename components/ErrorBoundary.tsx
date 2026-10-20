@@ -1,8 +1,13 @@
 import React, { Component, PropsWithChildren } from "react";
 import { ErrorFallback } from "@/components/ErrorFallback";
 import { reportError } from "@/lib/errorReporting";
+import { leaveCrashedTable } from "@/lib/crashedTable";
 
 type ErrorBoundaryState = { error: Error | null };
+
+// Above SocketProvider, which this crash unmounted: there is no socket to release
+// a seat with, and the disconnect hands it to a bot. Only the handles remain.
+const leaveAnyTable = () => leaveCrashedTable("online", null);
 
 /**
  * This is a special case for for using the class components. Error boundaries must be class components because React only provides error boundary functionality through lifecycle methods (componentDidCatch and getDerivedStateFromError) which are not available in functional components.
@@ -37,7 +42,7 @@ export class ErrorBoundary extends Component<PropsWithChildren, ErrorBoundarySta
 
   render() {
     return this.state.error ? (
-      <ErrorFallback error={this.state.error} resetError={this.resetError} />
+      <ErrorFallback error={this.state.error} resetError={this.resetError} leaveTable={leaveAnyTable} />
     ) : (
       this.props.children
     );

@@ -29,6 +29,7 @@ import { ChoiceChips } from "@/components/ChoiceChips";
 import { useTranslation } from "@/lib/i18n";
 import { A11yStatus, a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 import { AppModal } from "@/components/AppModal";
+import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { joinCode as roomCodeOf } from "@/lib/deepLink";
 
 export default function OnlineLobbyScreen() {
@@ -275,12 +276,7 @@ export default function OnlineLobbyScreen() {
               screen, and the shortest phone in landscape is exactly that case. */}
           <View style={styles.slack} />
           <View style={styles.contentWrapperLandscape}>
-            <View style={styles.statusRow}>
-              <View style={[styles.dot, { backgroundColor: connected ? Colors.success : Colors.textMuted }]} />
-              <Text style={styles.statusText}>
-                {connected ? t("onlineLobby.connectedAs", { username: user?.username ?? "" }) : t("onlineLobby.connecting")}
-              </Text>
-            </View>
+            <ConnectionStatus connected={connected} username={user?.username ?? ""} style={styles.status} />
 
             <View style={styles.landscapeRow}>
               {CreateSection}
@@ -297,12 +293,7 @@ export default function OnlineLobbyScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.contentWrapper}>
-            <View style={styles.statusRow}>
-              <View style={[styles.dot, { backgroundColor: connected ? Colors.success : Colors.textMuted }]} />
-              <Text style={styles.statusText}>
-                {connected ? t("onlineLobby.connectedAs", { username: user?.username ?? "" }) : t("onlineLobby.connecting")}
-              </Text>
-            </View>
+            <ConnectionStatus connected={connected} username={user?.username ?? ""} style={styles.status} />
 
             {CreateSection}
             <View style={styles.divider}>
@@ -471,9 +462,7 @@ const styles = StyleSheet.create({
   slack: { flexGrow: 1, flexShrink: 1, flexBasis: 0 },
   landscapeRow: { flexDirection: "row", gap: Spacing.roomy, alignItems: "flex-start" },
   dividerV: { width: 1, backgroundColor: Colors.border, alignSelf: "stretch", marginHorizontal: Spacing.snug },
-  statusRow: { flexDirection: "row", alignItems: "center", gap: Spacing.sm, marginBottom: Spacing.xs },
-  dot: { width: 8, height: 8, borderRadius: Radius.full },
-  statusText: { fontFamily: "Inter_400Regular", fontSize: FontSize.sm, color: Colors.textMuted },
+  status: { marginBottom: Spacing.xs },
   compactCard: { marginBottom: Spacing.xs, paddingHorizontal: Spacing.sm, paddingVertical: Spacing.sm },
   optSection: { gap: Spacing.snug, marginBottom: Spacing.md },
   optSectionLandscape: { gap: Spacing.xs, marginBottom: Spacing.sm },

@@ -21,6 +21,7 @@ const SESSION: LocalSession = {
   hasSavedGame: false,
   resumeGame: () => false,
   restored: false,
+  bootSettled: true,
 };
 
 /**

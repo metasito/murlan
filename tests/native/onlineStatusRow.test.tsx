@@ -1,6 +1,6 @@
 // tests/native/onlineStatusRow.test.tsx — the online lobby's connection dot
 // carries its state by colour alone (Colors.success vs Colors.textMuted);
-// the text beside it (app/(online)/index.tsx `statusRow`) is the non-colour
+// the text beside it (components/ConnectionStatus.tsx) is the non-colour
 // channel a colour-blind player reads instead. #130's promise is that the
 // pairing survives, not just that the text node exists somewhere in the
 // tree — see tests/native/visibilityHelpers.ts.

@@ -40,11 +40,17 @@ export function useOnlineRouting(): void {
   }, [roomId, hasGame, isSpectator, rejoinFailed, here, entrySource, clearRejoinFailed]);
 
   // Held until the socket is up: `joinRoom` emits, and an emit on a socket that has not
-  // connected is dropped without a word.
+  // connected is dropped without a word. Accepted stays set until the join's answer, which
+  // is what a screen reads as "joining": a room it already holds changes no room fact.
+  const joining = useRef<string | null>(null);
   useEffect(() => {
-    if (!acceptedInvite || !connected) return;
-    clearAcceptedInvite();
-    joinRoom(acceptedInvite);
+    if (!acceptedInvite || !connected || joining.current === acceptedInvite) return;
+    const code = acceptedInvite;
+    joining.current = code;
+    void joinRoom(code).then(() => {
+      if (joining.current === code) joining.current = null;
+      clearAcceptedInvite(code);
+    });
   }, [acceptedInvite, connected, clearAcceptedInvite, joinRoom]);
 }
 

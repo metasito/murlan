@@ -297,6 +297,33 @@ const GUARDS = [
     spare: ['import type { Probe } from "@/modules/murlan-diagnostics";', 'import { probe } from "@/lib/diagnostics/probe";'].map((code) => ({ file: "app/Plant.tsx", code })),
   },
   {
+    id: "animation-callback-takes-finished",
+    why: "A completion callback that ignores `finished` runs its follow-up on an animation that was cancelled, and a `withRepeat` count of 0 repeats forever: take `(finished)` and act only when it is true, as the sweep in components/table/pile.tsx does, and give `withRepeat` a literal count or `pulseRepeats(...)` from components/turnTimerUi.ts, which is guarded by a check for at least 1.",
+    selector: [
+      'CallExpression[callee.name=/^(withTiming|withSpring|withDecay|withRepeat)$/] > :matches(ArrowFunctionExpression, FunctionExpression):matches([params.length=0], [params.0.name=/^_/])',
+      'CallExpression[callee.name="withRepeat"][arguments.length>=2]:not([arguments.1.type="Literal"]):not([arguments.1.operator="-"][arguments.1.argument.type="Literal"]):not([arguments.1.callee.name="pulseRepeats"])',
+      'CallExpression[callee.name="withRepeat"][arguments.1.value=0]',
+    ].join(", "),
+    files: SCREENS,
+    plant: { file: "components/Plant.tsx", code: [
+      "a.value = withTiming(1, { duration: 1 }, () => go());",
+      "a.value = withSpring(1, {}, function () { go(); });",
+      "a.value = withDecay({ velocity: 1 }, (_finished) => go());",
+      "a.value = withRepeat(b, 2, false, () => go());",
+      "a.value = withRepeat(b, 0);",
+      "a.value = withRepeat(b, Math.ceil(left / 1000));",
+      "a.value = withRepeat(b, beats);",
+    ].join("\n"), hits: 7 },
+    spare: [
+      "a.value = withTiming(1, { duration: 1 }, (finished) => { if (finished) go(); });",
+      "a.value = withRepeat(b, 2, false, (finished) => { if (finished) go(); });",
+      "a.value = withRepeat(b, -1);",
+      "a.value = withRepeat(b, pulseRepeats(urgentMs, leftMs));",
+      "setTimeout(() => go(), 10);",
+      "const leg = (to) => withTiming(to, { duration: 1 });",
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
     id: "feedback-owner",
     why: "ADR-0009 (docs/adr/0009-audio-and-haptics-libraries.md) puts both engines behind one owner, lib/device/feedback.ts: play and buzz through it.",
     selector: importsOf("/(^|\\x2F)(audioEngine|hapticsEngine)(\\.ts)?$/", { values: true }),

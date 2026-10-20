@@ -280,6 +280,32 @@ test("resuming the live table mounts it at rest", async () => {
   await unmount(r);
 });
 
+// Replaced means replaced: resuming after a new deal goes back to the new table, never the stored one.
+test("starting a new match leaves nothing of the saved one to resume", async () => {
+  await AsyncStorage.setItem(OFFLINE_SAVE_KEY, midExchangeSave());
+  const r = await mount();
+  await waitFor(() => expect(textOf(r, "saved")).toBe("true"));
+  await press(r, "setup");
+  const dealt = textOf(r, "hand");
+  await press(r, "resume");
+  expect(textOf(r, "exchange")).toBe("none");
+  expect(textOf(r, "hand")).toBe(dealt);
+  await waitFor(async () => {
+    const stored = await AsyncStorage.getItem(OFFLINE_SAVE_KEY);
+    expect(stored).not.toBe(midExchangeSave());
+  });
+  await unmount(r);
+});
+
+test("a saved match nobody replaced stays resumable", async () => {
+  await AsyncStorage.setItem(OFFLINE_SAVE_KEY, midExchangeSave());
+  const r = await mount();
+  await waitFor(() => expect(textOf(r, "saved")).toBe("true"));
+  await press(r, "resume");
+  expect(textOf(r, "exchange")).toBe("1>0 jokers");
+  await unmount(r);
+});
+
 test("a boot read that lands after the table was set up and left offers nothing back", async () => {
   await AsyncStorage.setItem(OFFLINE_SAVE_KEY, freeLeadSave());
   let land: (raw: string | null) => void = () => {};

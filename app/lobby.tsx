@@ -13,6 +13,7 @@ import { uiFeedback } from "@/lib/device/feedback";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { PlayerSetupConfig } from "@/context/GameContext";
+import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useLocalSession } from "@/context/gameHooks";
 import { useAuth } from "@/context/AuthContext";
 import { GameMode, MatchLength, firstTargetFor, teamForSeat } from "@/lib/game/gameEngine";
@@ -99,7 +100,8 @@ export default function LobbyScreen() {
   const bottomInset = Math.max(insets.bottom, Spacing.roomy);
   const isLandscape = useIsLandscape();
   const { mode } = useLocalSearchParams<{ mode: LobbyMode }>();
-  const { setupGame } = useLocalSession();
+  const { setupGame, hasSavedGame, bootSettled } = useLocalSession();
+  const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
   const { user } = useAuth();
   const myName = user?.username ?? t("lobby.defaultPlayerName1");
 
@@ -171,16 +173,32 @@ export default function LobbyScreen() {
     });
   };
 
-  const handleStart = () => {
+  const startGame = () => {
     uiFeedback("success");
     setupGame(players, gameMode, matchLength);
     router.replace("/game");
+  };
+
+  const handleStart = () => {
+    if (!hasSavedGame) {
+      startGame();
+      return;
+    }
+    setConfirming({
+      title: t("lobby.replaceSavedTitle"),
+      body: t("lobby.replaceSavedBody"),
+      cancelLabel: t("common.cancel"),
+      confirmLabel: t("lobby.replaceSavedConfirm"),
+      destructive: true,
+      onConfirm: startGame,
+    });
   };
 
   const startButton = (
     <MenuButton
       label={t("lobby.start")}
       onPress={handleStart}
+      disabled={!bootSettled}
       variant="primary"
       size="lg"
       icon={<Ionicons name="play" size={20} color={Colors.bg} />}
@@ -288,6 +306,7 @@ export default function LobbyScreen() {
           </View>
         </>
       )}
+      <ConfirmDialog request={confirming} onClose={() => setConfirming(null)} />
     </MenuLayout>
   );
 }

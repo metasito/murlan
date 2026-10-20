@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
+  type LayoutChangeEvent,
 } from "react-native";
 import { router } from "expo-router";
 import Animated, {
@@ -21,7 +22,7 @@ import { MenuLayout } from "@/components/MenuLayout";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import { dealCards } from "@/lib/game/gameEngine";
-import { a11yHidden, a11yState } from "@/lib/a11y";
+import { a11yHidden, a11yState, a11yVeiled } from "@/lib/a11y";
 
 interface FAQ {
   question: string;
@@ -53,11 +54,12 @@ function useFaqs(): FAQ[] {
   );
 }
 
-function FAQItem({ item, isLast }: { item: FAQ; isLast: boolean }) {
+function FAQItem({ item, isLast, index }: { item: FAQ; isLast: boolean; index: number }) {
   const reduceMotion = usePrefersReducedMotion();
   const [open, setOpen] = useState(false);
   const height = useSharedValue(0);
   const opacity = useSharedValue(0);
+  const contentHeight = useSharedValue(0);
 
   const toggleOpen = () => {
     const nextOpen = !open;
@@ -67,8 +69,12 @@ function FAQItem({ item, isLast }: { item: FAQ; isLast: boolean }) {
     opacity.value = withTiming(to, { duration: motionMs("shift", reduceMotion), reduceMotion: ReduceMotion.Never });
   };
 
+  const measureAnswer = (e: LayoutChangeEvent) => {
+    contentHeight.value = e.nativeEvent.layout.height;
+  };
+
   const answerStyle = useAnimatedStyle(() => ({
-    maxHeight: height.value * 400,
+    height: height.value * contentHeight.value,
     opacity: opacity.value,
     overflow: "hidden",
   }));
@@ -90,8 +96,13 @@ function FAQItem({ item, isLast }: { item: FAQ; isLast: boolean }) {
           {...a11yHidden()}
         />
       </Pressable>
-      <Animated.View style={answerStyle}>
-        <Text style={styles.faqAnswer}>{item.answer}</Text>
+      <Animated.View testID={`faq-answer-${index}`} style={answerStyle} {...a11yVeiled(!open)}>
+        <View
+          style={styles.faqAnswerMeasure}
+          onLayout={measureAnswer}
+        >
+          <Text style={styles.faqAnswer}>{item.answer}</Text>
+        </View>
       </Animated.View>
     </View>
   );
@@ -198,7 +209,7 @@ export default function RulesScreen() {
           <Text style={styles.sectionLabel}>{t("rules.faqSectionLabel")}</Text>
           <View style={styles.faqList}>
             {faqs.map((item, i) => (
-              <FAQItem key={i} item={item} isLast={i === faqs.length - 1} />
+              <FAQItem key={i} item={item} isLast={i === faqs.length - 1} index={i} />
             ))}
           </View>
         </View>
@@ -379,6 +390,12 @@ const styles = StyleSheet.create({
     fontSize: FontSize.md,
     color: Colors.text,
     lineHeight: 20,
+  },
+  faqAnswerMeasure: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
   },
   faqAnswer: {
     fontFamily: "Inter_400Regular",

@@ -76,6 +76,8 @@ export async function deleteUser(userId: string): Promise<string[]> {
       sql`DELETE FROM session WHERE sess->>'userId' = ${userId}`
     );
 
+    await tx.execute(sql`DELETE FROM server_errors WHERE context::text LIKE ${"%" + userId + "%"}`);
+
     await tx.delete(users).where(eq(users.id, userId));
     return seated.map((r) => r.roomId);
   });

@@ -13,7 +13,7 @@ import { useSocketConnection } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
 import { t, translateServerPayload, useTranslation, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
-import { send, undelivered, type IntentEvent } from "@/lib/sendIntent";
+import { send, undelivered, type IntentEvent, type IntentOutcome } from "@/lib/sendIntent";
 import { MATCH_TARGETS } from "@/lib/game/gameEngine";
 import {
   roundOverSchema,
@@ -127,7 +127,8 @@ interface OnlineGameContextValue {
   exchangeAnnouncing: boolean;
   exchangeAnnounceData: ExchangeAnnounceData | null;
   createRoom: (gameMode: "free_for_all" | "teams", maxPlayers: number) => void;
-  joinRoom: (code: string) => void;
+  /** Settles on the server's answer, or on giving up waiting for one; `null` when the code is not one. */
+  joinRoom: (code: string) => Promise<IntentOutcome | null>;
   /** Watch a table without taking a seat. */
   spectateRoom: (code: string) => void;
   /** True while watching. No seat, no actions, every hand hidden. */
@@ -739,11 +740,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
    */
   const deliver = useCallback(
     <E extends IntentEvent>(event: E, payload?: IntentPayload<E>, options?: { retry?: boolean }) => {
-      void send(socket, event, payload, options).then((outcome) => {
-        if (!undelivered(outcome)) return;
-        notifyError(t(event.startsWith("game:") ? "game.moveNotDelivered" : "room.requestNotDelivered"), {
-          duration: Reading.notice,
-        });
+      return send(socket, event, payload, options).then((outcome) => {
+        if (undelivered(outcome)) {
+          notifyError(t(event.startsWith("game:") ? "game.moveNotDelivered" : "room.requestNotDelivered"), {
+            duration: Reading.notice,
+          });
+        }
+        return outcome;
       });
     },
     [socket, notifyError]
@@ -767,7 +770,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
   const joinRoom = useCallback((input: string) => {
     const code = joinCode(input);
-    if (!code) return;
+    if (!code) return Promise.resolve(null);
     setEntrySource("friends");
     setRejoinFailed(false);
     setIsSpectator(false);
@@ -776,7 +779,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     // table it was about and hides this join's own answer behind it.
     setError(null);
     rejoin.cancelLobby();
-    deliver("room:join", { code }, { retry: false });
+    return deliver("room:join", { code }, { retry: false });
   }, [deliver, rejoin]);
 
   const spectateRoom = useCallback(

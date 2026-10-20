@@ -328,6 +328,8 @@ export function sortHand(hand: Card[]): Card[] {
  * The synthesised-3♠ fallback below it exists only so a fully empty deal can
  * never crash.
  */
+const OPENING_SUIT_ORDER: Card["suit"][] = ["clubs", "diamonds", "hearts", "spades"];
+
 export function findStartingPlayer(
   players: Player[]
 ): { playerIdx: number; startCard: Card } {
@@ -343,7 +345,12 @@ export function findStartingPlayer(
   let bestCard: Card | undefined;
   for (let i = 0; i < players.length; i++) {
     for (const card of players[i].hand) {
-      if (!bestCard || cardStrength(card) < cardStrength(bestCard)) {
+      if (
+        !bestCard ||
+        cardStrength(card) < cardStrength(bestCard) ||
+        (cardStrength(card) === cardStrength(bestCard) &&
+          OPENING_SUIT_ORDER.indexOf(card.suit) < OPENING_SUIT_ORDER.indexOf(bestCard.suit))
+      ) {
         bestCard = card;
         bestIdx = i;
       }

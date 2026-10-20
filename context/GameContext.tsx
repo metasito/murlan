@@ -54,6 +54,8 @@ export interface LocalSession {
   resumeGame: () => boolean;
   /** `gameState` is still the one `resumeGame` restored, so its last play was already thrown. */
   restored: boolean;
+  /** The storage read for a match from before this launch has finished, whatever it found. */
+  bootSettled: boolean;
 }
 
 /** Every command has a stable identity and reads the state the last one committed. */
@@ -97,6 +99,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setBootSave(null);
   }, []);
 
+  const [bootSettled, setBootSettled] = useState(false);
   const [resumedFrom, setResumedFrom] = useState<GameState | null>(null);
   const restored = gameState !== null && gameState === resumedFrom;
   const hasSavedGame = gameState ? !match.over : isResumable(bootSave);
@@ -243,6 +246,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     AsyncStorage.getItem(OFFLINE_SAVE_KEY)
       .then((raw) => {
+        setBootSettled(true);
         if (bootPassed.current) return;
         const stored = decodeOfflineSave(raw);
         if (stored.kind === "incompatible") {
@@ -256,7 +260,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         bootRef.current = stored.kind === "ok" ? stored.save : null;
         setBootSave(bootRef.current);
       })
-      .catch(() => {});
+      .catch(() => setBootSettled(true));
   }, [showNotification]);
 
   /**
@@ -281,8 +285,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [gameState, match]);
 
   const session = useMemo<LocalSession>(
-    () => ({ setupGame, resetGame, hasSavedGame, resumeGame, restored }),
-    [setupGame, resetGame, hasSavedGame, resumeGame, restored]
+    () => ({ setupGame, resetGame, hasSavedGame, resumeGame, restored, bootSettled }),
+    [setupGame, resetGame, hasSavedGame, resumeGame, restored, bootSettled]
   );
 
   const tableValue = useMemo<LocalTable>(

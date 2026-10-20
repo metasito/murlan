@@ -17,8 +17,10 @@ import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { GameTable } from "@/components/GameTable";
 import { uiFeedback } from "@/lib/device/feedback";
 import { useTranslation } from "@/lib/i18n";
+import { routeErrorBoundary } from "@/components/RouteErrorBoundary";
 
 export { HUMAN_TURN_SECONDS } from "@/context/offlineDriver";
+export const ErrorBoundary = routeErrorBoundary("offline");
 
 export default function GameScreen() {
   const { t } = useTranslation();

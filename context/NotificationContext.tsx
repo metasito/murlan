@@ -96,8 +96,21 @@ export function useBannerBottom(): number {
   return useContext(BannerContext)?.bannerBottom ?? 0;
 }
 
-export function NotificationProvider({ children }: { children: ReactNode }) {
+export function NotificationProvider({
+  accountId,
+  children,
+}: {
+  /** The signed-in account: a queued banner and its `onPress` belong to it alone. */
+  accountId?: string;
+  children: ReactNode;
+}) {
   const [queue, setQueue] = useState<NotificationData[]>([]);
+
+  const [shownAccountId, setShownAccountId] = useState(accountId);
+  if (accountId !== shownAccountId) {
+    setShownAccountId(accountId);
+    setQueue([]);
+  }
 
   const showNotification = useCallback((n: NotificationData) => {
     setQueue((prev) => {

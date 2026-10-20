@@ -168,10 +168,13 @@ describe("the deal at 2 players — 14 each, 26 undealt", () => {
 
       assert.notEqual(startCard.id, "3_spades", "the 3♠ was undealt — it cannot be the start card");
       const allDealt = hands.flat();
-      const lowestDealt = allDealt.reduce((lowest, card) =>
-        cardStrength(card) < cardStrength(lowest) ? card : lowest
+      const lowestStrength = Math.min(...allDealt.map(cardStrength));
+      assert.equal(cardStrength(startCard), lowestStrength);
+      const suits = ["clubs", "diamonds", "hearts", "spades"];
+      const lowestSuit = Math.min(
+        ...allDealt.filter((card) => cardStrength(card) === lowestStrength).map((card) => suits.indexOf(card.suit!))
       );
-      assert.equal(startCard.id, lowestDealt.id);
+      assert.equal(suits.indexOf(startCard.suit!), lowestSuit);
       assert.ok(players[playerIdx].hand.some((c) => c.id === startCard.id));
     }
     assert.ok(ran, "200 deals never gave a case where the 3♠ was undealt");
@@ -338,6 +341,17 @@ describe("findStartingPlayer (defect 4)", () => {
     const { playerIdx, startCard } = findStartingPlayer(players);
     assert.equal(playerIdx, 1);
     assert.equal(startCard.id, "5_diamonds");
+  });
+
+  test("defensive fallback: equal lowest ranks open with the lower suit, whatever the seat order", () => {
+    const players = [
+      makePlayer(0, [c("4", "spades"), c("K", "hearts")]),
+      makePlayer(1, [c("4", "hearts"), c("9", "clubs")]),
+      makePlayer(2, [c("4", "diamonds"), c("Q", "clubs")]),
+    ];
+    const { playerIdx, startCard } = findStartingPlayer(players);
+    assert.equal(playerIdx, 2);
+    assert.equal(startCard.id, "4_diamonds");
   });
 
   test("defensive fallback: every hand empty — returns a card instead of crashing", () => {

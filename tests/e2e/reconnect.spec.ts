@@ -10,7 +10,7 @@
 // this spec's own context too, and matches what going offline raises exactly
 // (`isExpectedNoise`); the collector below skips the whole offline window.
 
-import type { Page } from "@playwright/test";
+import type { Page, Route } from "@playwright/test";
 import { test, expect, isExpectedNoise } from "./fixtures";
 import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigation";
 import { createRoom, fillWithBotsAndStart, goToOnlineLobby } from "./helpers/online";
@@ -125,12 +125,26 @@ test("online — a dropped connection says so, and the table comes back", async 
     await expect(page.getByTestId("notice-turn").getByText(OFFLINE), "the device offline outranks the reconnect").toBeVisible();
     const offTable = await app.plate('[data-testid="notice-offline"]');
     expect(offTable?.opacity, "the pill off the table yields to the table").toBe(0);
+    // socket.io keeps its own retry going under the give-up, one every 5 s at
+    // most, and once the network is back the next one can bring the table back
+    // before Riprova is pressed, taking the button with it. Each attempt asks
+    // for a ticket once its socket is open and starts no other until answered,
+    // so the press waits for the library's attempt to be held: what asks after
+    // the press is Riprova's own. The held one stays unanswered, as its answer
+    // would reach Riprova's socket too.
+    const tickets: Route[] = [];
+    let pressed = false;
+    await context.route("**/api/auth/socket-ticket", (route) => (pressed ? route.continue() : tickets.push(route)));
     await setDeviceOffline(context, page, false);
     networkDown = false;
 
     // Back inside the server's grace window, so the seat was never vacated: the
     // table says so, lets go of the grey and is the same table.
+    await expect.poll(() => tickets.length, { message: "the library's own attempt, held", timeout: 10_000 }).toBe(1);
     await retry.click();
+    await expect.poll(() => tickets.length, "Riprova asks for a ticket of its own").toBe(2);
+    pressed = true;
+    await tickets[1].continue();
     await expect(page.getByTestId("notice-turn").getByText(BACK)).toBeVisible({ timeout: 30_000 });
     const back = await plateAndDot(app, page, TURN);
     const backMockup = await mockupAt(browser, "reconnect", 3600);

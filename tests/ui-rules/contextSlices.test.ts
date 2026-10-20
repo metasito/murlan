@@ -104,7 +104,7 @@ const VIA: Record<string, string> = {
 
 const LOCAL: Record<string, string[]> = {
   useLocalTable: ["gameState", "playCards", "passTurn", "runBotTurn"],
-  useLocalSession: ["setupGame", "resetGame", "hasSavedGame", "resumeGame", "restored"],
+  useLocalSession: ["setupGame", "resetGame", "hasSavedGame", "resumeGame", "restored", "bootSettled"],
   useLocalMatch: ["match", "startNextRound", "startNewMatch"],
   useLocalExchange: [
     "exchangeAnnouncing", "exchangeAnnounceData", "chooseExchangeCard", "acknowledgeExchange", "settleExchange",

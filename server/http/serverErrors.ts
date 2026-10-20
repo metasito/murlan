@@ -35,7 +35,7 @@ export function serverErrorsDropped(at = now()): number {
 }
 
 export function installServerErrorRecorder(): void {
-  setErrorRecorder(({ level, msg, time: _time, pid: _pid, hostname: _host, ...context }) => {
+  setErrorRecorder(({ level, msg, time: _time, pid: _pid, hostname: _host, userId: _userId, ...context }) => {
     // An error burst is usually the pool starving; an insert per line would
     // queue behind the very requests that are failing.
     if (pool.waitingCount > 0) {

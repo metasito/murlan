@@ -52,4 +52,23 @@ describe('the notification queue', () => {
     expect(await drain()).toEqual([sent[0], ...sent.slice(sent.length - NOTIFICATION_QUEUE_MAX + 1)]);
     await view.unmount();
   });
+
+  // A queued banner's onPress acts for the account that was signed in when it came.
+  it.each([
+    ['signing out', undefined],
+    ['switching account', 'u2'],
+  ])('is emptied by %s', async (_, next) => {
+    const tree = (accountId: string | undefined) => (
+      <NotificationProvider accountId={accountId}><Probe /></NotificationProvider>
+    );
+    const view = await render(tree('u1'));
+    await act(async () => ['a', 'b', 'c'].forEach((m) => ctx().showNotification(note(m))));
+    expect(ctx().notification?.message).toBe('a');
+
+    await view.rerender(tree(next));
+
+    expect(ctx().notification).toBeNull();
+    expect(await drain()).toEqual([]);
+    await view.unmount();
+  });
 });

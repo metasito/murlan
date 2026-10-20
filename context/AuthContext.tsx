@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { flushPendingCrashReports } from "@/lib/errorReporting";
+import { setReportingAccount } from "@/lib/errorReporting";
 import NetInfo from "@react-native-community/netinfo";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { forgetPushRegistration } from "@/lib/device/pushRegistration";
@@ -80,6 +80,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // The one way a session ends here: whatever proved it gone, the account's
+  // table handles go with the user, or the next account rejoins its table.
+  const forgetSession = useCallback(async () => {
+    forgetPushRegistration();
+    setUser(null);
+    await AsyncStorage.multiRemove(ACCOUNT_KEYS).catch(() => {});
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     let unsubscribe: (() => void) | null = null;
@@ -89,6 +97,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result = await fetchMe();
       if (cancelled) return true;
       if (result === undefined) return false;
+      if (result === null) {
+        await forgetSession();
+        return true;
+      }
       setUser(result);
       await cacheUser(result);
       return true;
@@ -126,11 +138,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       unsubscribe?.();
     };
-  }, []);
+  }, [forgetSession]);
 
   const userId = user?.id;
   useEffect(() => {
-    if (userId) void flushPendingCrashReports();
+    void setReportingAccount(userId ?? null);
   }, [userId]);
 
   const login = useCallback(async (username: string, password: string) => {
@@ -152,10 +164,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await apiRequest("POST", "/api/auth/register", { username, password, email, locale: getLocale() });
     const data = await fetchMe();
     if (data === undefined) return undefined;
+    if (data === null) {
+      await forgetSession();
+      return null;
+    }
     setUser(data);
     await cacheUser(data);
     return data;
-  }, []);
+  }, [forgetSession]);
 
   // Here rather than in the screen: the signed-in player lives in state *and*
   // in storage, and the boot check keeps what was stored whenever the server
@@ -191,15 +207,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshUser = useCallback(async () => {
     const data = await fetchMe();
     if (data === undefined) return;
+    if (data === null) return forgetSession();
     setUser(data);
     await cacheUser(data);
-  }, []);
-
-  const forgetSession = useCallback(async () => {
-    forgetPushRegistration();
-    setUser(null);
-    await AsyncStorage.multiRemove(ACCOUNT_KEYS).catch(() => {});
-  }, []);
+  }, [forgetSession]);
 
   const logout = useCallback(async () => {
     await apiRequest("POST", "/api/auth/logout");

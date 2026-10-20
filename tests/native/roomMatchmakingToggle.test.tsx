@@ -19,6 +19,8 @@ jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
+jest.mock('expo-router/react-navigation', () => ({ usePreventRemove: () => {} }));
+
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'host', username: 'Ana' } }),
 }));
@@ -47,7 +49,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
     setRoomVisibility: mockSetRoomVisibility,
   }),
   useOnlineTable: () => ({ gameState: null }),
-  useOnlineConnection: () => ({ clearError: jest.fn() }),
+  useOnlineConnection: () => ({ connected: true, clearError: jest.fn() }),
   useServerError: () => null,
 }));
 

@@ -300,4 +300,45 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
     assert.equal((await rows("an ancient server failure")).rowCount, 0);
     assert.equal((await rows("a planted server failure")).rowCount, 1);
   });
+
+  test("a server error line naming a user stores no user id", async () => {
+    const { logger } = await import("../../server/http/logger.ts");
+    const message = "a failure that names a user";
+    logger.error({ userId: "u-planted", roomId: "r-keep" }, message);
+    let found: { context: Record<string, unknown> }[] = [];
+    for (let attempt = 0; attempt < 40 && found.length === 0; attempt++) {
+      found = (await dbPool.query(`SELECT context FROM "${server.schema}".server_errors WHERE message = $1`, [message])).rows;
+      if (found.length === 0) await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.equal(found.length, 1, "the error line was never stored");
+    assert.equal("userId" in found[0].context, false);
+    assert.equal(found[0].context.roomId, "r-keep");
+  });
+
+  test("deleting an account leaves no server error row naming its id", async () => {
+    const { logger } = await import("../../server/http/logger.ts");
+    const { user, cookie } = await register(server, "erased_logged");
+    const message = "a failure logged for a soon-deleted account";
+    logger.error({ accountId: user.id, err: "boom" }, message);
+    let stored = 0;
+    for (let attempt = 0; attempt < 40 && stored === 0; attempt++) {
+      stored = (await dbPool.query(`SELECT 1 FROM "${server.schema}".server_errors WHERE message = $1`, [message])).rowCount ?? 0;
+      if (stored === 0) await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.equal(stored, 1, "the error line was never stored");
+    const before = await dbPool.query(
+      `SELECT 1 FROM "${server.schema}".server_errors WHERE context::text LIKE $1`,
+      [`%${user.id}%`]
+    );
+    assert.equal(before.rowCount, 1, "the seeded row must name the account before it is deleted");
+
+    const res = await fetch(`${server.url}/api/users/me`, { method: "DELETE", headers: { cookie } });
+    assert.equal(res.status, 200, await res.text());
+
+    const named = await dbPool.query(
+      `SELECT message FROM "${server.schema}".server_errors WHERE context::text LIKE $1`,
+      [`%${user.id}%`]
+    );
+    assert.equal(named.rowCount, 0, "a server_errors row still names the deleted account");
+  });
 });

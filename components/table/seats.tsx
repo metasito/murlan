@@ -42,7 +42,7 @@ import type { ArcCard } from "@/components/tableArc";
 import type { OpponentSide } from "@/components/seatLayout";
 import { BACK_SCALE, tableFontSize } from "@/components/cardFaceModel";
 import { Colors, LastCard, makeShadow, Motion, motionMs, Spacing, withAlpha } from "@/lib/theme";
-import { urgentThresholdSeconds } from "@/components/turnTimerUi";
+import { pulseRepeats, RING_PULSE_MS, urgentThresholdSeconds } from "@/components/turnTimerUi";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { Combination, Player } from "@/lib/game/gameEngine";
 import { useRingProbe } from "@/lib/diagnostics";
@@ -239,8 +239,6 @@ const RING_STROKE = 2;
  * unswept leftover of the port.
  */
 const RING_PING_SCALE = 1.45;
-/** The urgent ring's 1Hz dim-and-back: a repeating beat, not a one-shot transition, so not a Motion step. */
-const RING_PULSE_MS = 1000;
 const RING_PULSE_LOW = 0.6;
 
 /** `held` stops the sweep where it stands, and it runs on from there once released. */
@@ -253,7 +251,7 @@ const clockKey = (c: SeatCountdown) => `${c.resetKey}|${c.seconds}|${c.held}`;
  * turn changing rather than by a deadline of its own — there is no per-seat
  * deadline to read, online or off.
  */
-function CountdownRing({
+export function CountdownRing({
   size,
   seconds,
   resetKey,
@@ -300,14 +298,14 @@ function CountdownRing({
     if (!reduceMotion) {
       swept.value = withTiming(1, { duration: leftMs, easing: Easing.linear });
       const dim = { duration: RING_PULSE_MS / 2, easing: Easing.inOut(Easing.sin) };
-      pulse.value = withDelay(
-        calmMs,
-        withRepeat(
-          withSequence(withTiming(RING_PULSE_LOW, dim), withTiming(1, dim)),
-          Math.ceil(Math.min(urgentFor * 1000, leftMs) / RING_PULSE_MS)
-        ),
-        ReduceMotion.Never
-      );
+      const urgentMs = urgentFor * 1000;
+      if (pulseRepeats(urgentMs, leftMs) >= 1) {
+        pulse.value = withDelay(
+          calmMs,
+          withRepeat(withSequence(withTiming(RING_PULSE_LOW, dim), withTiming(1, dim)), pulseRepeats(urgentMs, leftMs)),
+          ReduceMotion.Never
+        );
+      }
     }
     return () => {
       ran.current.ms += Date.now() - since;

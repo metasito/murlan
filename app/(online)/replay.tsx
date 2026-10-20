@@ -145,14 +145,20 @@ export default function ReplayScreen() {
     );
   }
 
-  if (isError && !gone) {
+  const refreshFailure =
+    isError && !gone ? (
+      <ErrorBlock
+        stale={replay !== null}
+        title={t("replay.loadFailedTitle")}
+        retry={{ label: t("common.retry"), a11yLabel: t("replay.retryA11yLabel"), onPress: () => refetch() }}
+      />
+    ) : null;
+
+  if (refreshFailure && !replay) {
     return (
       <MenuLayout>
         <MenuCard title={t("replay.title")}>
-          <ErrorBlock
-            title={t("replay.loadFailedTitle")}
-            retry={{ label: t("common.retry"), a11yLabel: t("replay.retryA11yLabel"), onPress: () => refetch() }}
-          />
+          {refreshFailure}
           {back}
         </MenuCard>
       </MenuLayout>
@@ -160,7 +166,7 @@ export default function ReplayScreen() {
   }
 
   // A replay that arrived unreadable is a replay that is unavailable.
-  if (isError || !state || !named) {
+  if (gone || !state || !named) {
     return (
       <MenuLayout>
         <MenuCard title={t("replay.title")}>
@@ -181,6 +187,8 @@ export default function ReplayScreen() {
       onQuit={leaveScreen}
       onExchangeGive={NOOP}
       banners={
+        <>
+        {refreshFailure}
         <ReplayTransport
           index={index}
           total={total}
@@ -213,6 +221,7 @@ export default function ReplayScreen() {
           }}
           t={t}
         />
+        </>
       }
       overlays={(veiled) =>
         movesOpen ? (

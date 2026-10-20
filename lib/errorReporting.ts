@@ -48,15 +48,35 @@ function alreadyReported(error: unknown, signature: string, now: number): boolea
 }
 
 type CrashReport = Record<string, unknown>;
+/** `account` is who was signed in when it was queued, null for nobody. It is never posted. */
+type PendingReport = CrashReport & { account: string | null };
+
+let account: string | null = null;
+
+/**
+ * Drops an entry with no `account` key: an earlier build queued without one, and
+ * a report whose owner is unknown must not be posted under whoever signs in.
+ */
+function parsePending(raw: string | null): PendingReport[] {
+  try {
+    const stored: unknown = JSON.parse(raw ?? "[]");
+    if (!Array.isArray(stored)) return [];
+    return stored.filter(
+      (r): r is PendingReport => typeof r === "object" && r !== null && "account" in r
+    );
+  } catch {
+    return [];
+  }
+}
 
 let pendingWrite: Promise<void> = Promise.resolve();
 
 /** Serialised: two crashes failing at once must not both read the same list. */
-function updatePending(change: (reports: CrashReport[]) => CrashReport[]): Promise<void> {
+function updatePending(change: (reports: PendingReport[]) => PendingReport[]): Promise<void> {
   pendingWrite = pendingWrite
     .then(async () => {
-      const stored: unknown = JSON.parse((await AsyncStorage.getItem(PENDING_CRASH_REPORTS_KEY)) ?? "[]");
-      const next = change(Array.isArray(stored) ? stored : []).slice(-PENDING_CRASH_REPORTS_MAX);
+      const stored = parsePending(await AsyncStorage.getItem(PENDING_CRASH_REPORTS_KEY));
+      const next = change(stored).slice(-PENDING_CRASH_REPORTS_MAX);
       await AsyncStorage.setItem(PENDING_CRASH_REPORTS_KEY, JSON.stringify(next));
     })
     .catch(() => {});
@@ -64,10 +84,11 @@ function updatePending(change: (reports: CrashReport[]) => CrashReport[]): Promi
 }
 
 /**
- * The endpoint requires a session (`server/http/routes.ts`), so a crash while signed
- * out or offline is refused; it waits on the device for the next sign-in.
+ * The endpoint requires a session (`server/http/routes.ts`) and files the report under
+ * its user, so a crash while signed out or offline is refused; it waits on the device
+ * for the next sign-in of the account it was queued under.
  */
-function send(report: CrashReport): Promise<void> {
+function send(report: CrashReport, owner: string | null = account): Promise<void> {
   let posted: Promise<unknown>;
   try {
     posted = apiRequest("POST", "/api/client-errors", report);
@@ -76,17 +97,24 @@ function send(report: CrashReport): Promise<void> {
   }
   return posted.then(
     () => {},
-    () => updatePending((reports) => [...reports, report])
+    () => updatePending((reports) => [...reports, { ...report, account: owner }])
   );
 }
 
-export async function flushPendingCrashReports(): Promise<void> {
-  let taken: CrashReport[] = [];
+/**
+ * Who is signed in, pushed by AuthProvider. A sign-in posts what waited for this
+ * account or for nobody; another account's reports stay queued for that account.
+ */
+export async function setReportingAccount(userId: string | null): Promise<void> {
+  account = userId;
+  if (!userId) return;
+  const ours = (r: PendingReport) => r.account === null || r.account === userId;
+  let taken: PendingReport[] = [];
   await updatePending((reports) => {
-    taken = reports;
-    return [];
+    taken = reports.filter(ours);
+    return reports.filter((r) => !ours(r));
   });
-  await Promise.all(taken.map(send));
+  await Promise.all(taken.map(({ account: owner, ...report }) => send(report, owner)));
 }
 
 /** The schema accepts these three and rejects anything else. */
@@ -199,6 +227,7 @@ export function installGlobalErrorHandlers(): () => void {
 /** Test seam: the module holds dedup state across a whole app run. */
 export function resetErrorReportingForTests(): void {
   currentScreen = undefined;
+  account = null;
   reporting = false;
   reportedSignatures.clear();
 }

@@ -27,6 +27,8 @@ jest.mock('@/context/SocketContext', () => ({
 
 jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineRoom: () => ({ joinRoom: jest.fn(), room: null }),
+  useOnlineConnection: () => ({ clearError: jest.fn() }),
+  useServerError: () => null,
 }));
 
 const mockShowNotification = jest.fn();
@@ -52,7 +54,7 @@ const SEED: Record<string, unknown[]> = {
   '/api/friends/sent': [{ id: 's1', username: 'Gent', createdAt: '2026-09-01T10:00:00.000Z' }],
 };
 
-async function mount(failing: string[] = []) {
+async function mount(failing: string[] = [], seed: Record<string, unknown[]> = SEED) {
   const qc: QueryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -60,12 +62,12 @@ async function mount(failing: string[] = []) {
         queryFn: async ({ queryKey }): Promise<unknown> => {
           const key = String(queryKey[0]);
           if (failing.includes(key)) throw new Error('offline');
-          return qc.getQueryData(queryKey) ?? SEED[key];
+          return qc.getQueryData(queryKey) ?? seed[key];
         },
       },
     },
   });
-  for (const key of Object.keys(SEED)) if (!failing.includes(key)) qc.setQueryData([key], SEED[key]);
+  for (const key of Object.keys(seed)) if (!failing.includes(key)) qc.setQueryData([key], seed[key]);
   return render(
     <QueryClientProvider client={qc}>
       <SafeAreaProvider initialMetrics={METRICS}>
@@ -110,6 +112,13 @@ describe('the pending section tells a failed load from an empty one', () => {
     const view = await mount(['/api/friends/requests']);
     expect(await screen.findByLabelText(/try loading your pending requests again/i)).toBeTruthy();
     expect(screen.queryByText(/nothing pending/i)).toBeNull();
+    await view.unmount();
+  });
+
+  it("is not stale when the failing list never loaded, whatever the other list holds", async () => {
+    const view = await mount(['/api/friends/requests'], { ...SEED, '/api/friends/sent': [] });
+    expect(await screen.findByLabelText(/try loading your pending requests again/i)).toBeTruthy();
+    expect(screen.queryByText("Couldn't refresh")).toBeNull();
     await view.unmount();
   });
 });

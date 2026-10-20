@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { blankComments, blankCommentsAndStrings, scanSources, sourcesUnder } from "../helpers/sourceScan.ts";
 import {
   NO_TABLE,
+  guardsRoomBack,
   leaveNavigation,
   lobbyFor,
   navigationFor,
@@ -181,4 +182,118 @@ test("no online screen routes from an effect", () => {
   assert.ok(effectBodies(planted).some((body) => ROUTES.test(body)), "a planted effect is caught");
   const behindAParen = 'useEffect(() => {\n  log("closed)");\n  router.push("/(online)/room");\n}, []);';
   assert.ok(effectBodies(behindAParen).some((body) => ROUTES.test(body)), "a ')' in a string ends no effect");
+});
+
+test("back on the room asks only while the room screen is the player's to leave", () => {
+  assert.equal(guardsRoomBack(room()), true);
+  for (const facts of [NO_TABLE, seated(), watching, refused, { ...room(), rejoinFailed: true }]) {
+    assert.equal(guardsRoomBack(facts), false, JSON.stringify(facts));
+  }
+});
+
+test("no navigation away from the room is ever met by the back guard", () => {
+  const all: OnlineFacts[] = [];
+  for (const roomId of [null, "r1", "r2"])
+    for (const hasGame of [false, true])
+      for (const isSpectator of [false, true])
+        for (const rejoinFailed of [false, true]) all.push({ roomId, hasGame, isSpectator, rejoinFailed });
+  let moves = 0;
+  for (const prev of all)
+    for (const next of all)
+      for (const entrySource of ["quickmatch", "friends", null] as const) {
+        if (!navigationFor(prev, next, "room", entrySource)) continue;
+        moves++;
+        assert.equal(guardsRoomBack(next), false, `${JSON.stringify(prev)} -> ${JSON.stringify(next)}`);
+      }
+  assert.ok(moves > 0, "the room's own navigations are enumerated");
+});
+
+const AUTH_ROUTE = String.raw`["'\x60]\/auth(?:[?/#][^"'\x60]*)?["'\x60]`;
+const HAS_NEXT = /\bnext\b/;
+
+/** Each `<Redirect …>` element, its `{…}` balanced so a `>` inside an expression does not end it. */
+function redirectElements(code: string): string[] {
+  const elements: string[] = [];
+  for (const m of code.matchAll(/<Redirect\b/g)) {
+    let depth = 0;
+    let i = m.index + m[0].length;
+    for (; i < code.length; i++) {
+      if (code[i] === "{") depth++;
+      else if (code[i] === "}") depth--;
+      else if (code[i] === ">" && depth === 0) break;
+    }
+    elements.push(code.slice(m.index, i + 1));
+  }
+  return elements;
+}
+
+/** Names bound, anywhere in `sources`, to the sign-in route without a `next`: constants and their import aliases. */
+function authRouteNames(sources: [string, string][]): Set<string> {
+  const names = new Set<string>();
+  const declared = new RegExp(String.raw`\bconst\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(${AUTH_ROUTE})`, "g");
+  for (const [, src] of sources) {
+    for (const m of src.matchAll(declared)) if (!HAS_NEXT.test(m[2])) names.add(m[1]);
+  }
+  for (const [, src] of sources) {
+    for (const m of src.matchAll(/\bimport\s*(?:type\s+)?\{([^}]*)\}/g)) {
+      for (const spec of m[1].split(",")) {
+        const [from, as] = spec.trim().split(/\s+as\s+/);
+        if (as && names.has(from)) names.add(as.trim());
+      }
+    }
+  }
+  return names;
+}
+
+/** Every `<Redirect>` that names the sign-in route and carries no `next`, as `path: element`. */
+function bareSignInRedirects(sources: [string, string][]): string[] {
+  const names = authRouteNames(sources);
+  const literal = new RegExp(AUTH_ROUTE);
+  const named = (el: string) => [...names].some((n) => new RegExp(String.raw`(?<![\w$.])${n.replace(/\$/g, "\\$")}(?![\w$])`).test(el));
+  return sources.flatMap(([file, src]) =>
+    redirectElements(src)
+      .filter((el) => (literal.test(el) || named(el)) && !HAS_NEXT.test(el))
+      .map((el) => `${file}: ${el}`)
+  );
+}
+
+test("no redirect to sign-in forgets where the player was going", () => {
+  const code = sourcesUnder(repoRoot, ["app", "lib", "context", "components"]).map(
+    ([f, src]): [string, string] => [f, blankComments(src)]
+  );
+  const signIn = code.flatMap(([, src]) => redirectElements(src)).filter((el) => new RegExp(AUTH_ROUTE).test(el));
+  assert.ok(signIn.length >= 2, "the sign-in redirects are read");
+  assert.deepEqual(bareSignInRedirects(code), []);
+
+  const plants: [string, [string, string][]][] = [
+    ["literal", [["p.tsx", '<Redirect href="/auth" />']]],
+    ["with a query", [["p.tsx", '<Redirect href="/auth?notice=x" />']]],
+    ["template", [["p.tsx", "<Redirect href={`/auth`} />"]]],
+    ["template with a query", [["p.tsx", "<Redirect href={`/auth?from=${here}`} />"]]],
+    ["object, across lines", [["p.tsx", "<Redirect\n  href={{ pathname: '/auth' }}\n/>"]]],
+    ["local constant", [["p.tsx", 'const SIGN_IN = "/auth";\n<Redirect href={SIGN_IN} />']]],
+    [
+      "constant imported from the route module",
+      [
+        ["app/auth.tsx", 'export const AUTH_ROUTE: Href = "/auth";'],
+        ["p.tsx", 'import { AUTH_ROUTE } from "@/app/auth";\n<Redirect href={{ pathname: AUTH_ROUTE }} />'],
+      ],
+    ],
+    [
+      "imported under another name",
+      [
+        ["routes.ts", 'export const AUTH = "/auth";'],
+        ["p.tsx", 'import { AUTH as SIGN_IN } from "./routes";\n<Redirect href={SIGN_IN} />'],
+      ],
+    ],
+  ];
+  for (const [name, sources] of plants) assert.equal(bareSignInRedirects(sources).length, 1, name);
+
+  const clean: [string, [string, string][]][] = [
+    ["carries next", [["p.tsx", '<Redirect href={{ pathname: "/auth", params: { next: here } }} />']]],
+    ["another route", [["p.tsx", '<Redirect href="/authority" />']]],
+    ["a constant for elsewhere", [["p.tsx", 'const HOME = "/";\n<Redirect href={HOME} />']]],
+    ["a constant that carries next", [["p.tsx", 'const BACK = "/auth?next=/x";\n<Redirect href={BACK} />']]],
+  ];
+  for (const [name, sources] of clean) assert.deepEqual(bareSignInRedirects(sources), [], name);
 });

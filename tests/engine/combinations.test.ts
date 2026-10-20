@@ -182,6 +182,10 @@ describe("beat hierarchy (canPlay)", () => {
     assert.equal(canPlay(bomb9, royalLow), false, "a bomb cannot beat a royal straight");
   });
 
+  test("a bomb beats a Joker played as a single", () => {
+    assert.equal(canPlay(bomb5, buildCombination([j("colored")])!), true);
+  });
+
   test("royal straight beats anything; only a higher royal of the same card count beats it", () => {
     assert.equal(canPlay(royalLow, bomb9), true);
     assert.equal(canPlay(royalLow, straight5), true);

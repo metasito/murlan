@@ -18,6 +18,8 @@ jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
+jest.mock('expo-router/react-navigation', () => ({ usePreventRemove: () => {} }));
+
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' } }),
 }));
@@ -86,7 +88,7 @@ function Attempts() {
   const room = useOnlineRoom();
   const tries: Record<Attempt, () => void> = {
     createRoom: () => room.createRoom('free_for_all', 4),
-    joinRoom: () => room.joinRoom('ABCDEF'),
+    joinRoom: () => void room.joinRoom('ABCDEF'),
     spectateRoom: () => room.spectateRoom('ABCDEF'),
     quickmatch: () => room.quickmatch(4, 'free_for_all'),
   };

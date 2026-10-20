@@ -14,7 +14,8 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useInvites, usePresence } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
-import { serverErrorMessage } from "@/lib/apiError";
+import { useOnlineConnection, useServerError } from "@/context/onlineGameHooks";
+import { ApiError, serverErrorMessage } from "@/lib/apiError";
 import { apiRequest } from "@/lib/query-client";
 import { Colors, Spacing, FontSize, Radius, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { MenuLayout, takesSlack } from "@/components/MenuLayout";
@@ -24,7 +25,7 @@ import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
 import { registerForPush } from "@/lib/device/pushRegistration";
-import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
+import { A11yStatus, a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 import type { FriendInfo, FriendRequestInfo } from "@/shared/http";
 
 
@@ -52,7 +53,14 @@ export default function FriendsScreen() {
   const { t, tn } = useTranslation();
   const searchHint = useA11yHint(t("friends.searchA11yHint"));
   const { onlineIds, refresh } = usePresence();
-  const { invites: gameInvites, dismiss: dismissGameInvite, accept: acceptInvite } = useInvites();
+  const {
+    invites: gameInvites,
+    dismiss: dismissGameInvite,
+    accept: acceptInvite,
+    accepted: acceptedInvite,
+  } = useInvites();
+  const { clearError } = useOnlineConnection();
+  const joinError = useServerError("lobby");
   const qc = useQueryClient();
   const [addLoading, setAddLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -63,8 +71,15 @@ export default function FriendsScreen() {
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
   const { showNotification, notifyError } = useNotification();
 
+  useEffect(() => {
+    if (joinError) {
+      notifyError(joinError.text);
+      clearError(joinError.seq);
+    }
+  }, [joinError, clearError, notifyError]);
+
   const {
-    data: friends = [],
+    data: friendsData,
     isLoading: friendsLoading,
     isError: friendsErrored,
     refetch: refetchFriends,
@@ -72,6 +87,7 @@ export default function FriendsScreen() {
     queryKey: ["/api/friends"],
     refetchOnWindowFocus: true,
   });
+  const friends = friendsData ?? [];
 
   const requestsQuery = useQuery<FriendRequestInfo[]>({
     queryKey: ["/api/friends/requests"],
@@ -85,6 +101,7 @@ export default function FriendsScreen() {
   const sentRequests = sentQuery.data ?? [];
   const pendingLoading = requestsQuery.isLoading || sentQuery.isLoading;
   const pendingErrored = requestsQuery.isError || sentQuery.isError;
+  const pendingStale = [requestsQuery, sentQuery].filter((q) => q.isError).every((q) => q.data !== undefined);
 
   const pendingCount = requests.length + sentRequests.length;
 
@@ -167,7 +184,7 @@ export default function FriendsScreen() {
       setSearchResult(data);
       setSearchDone(true);
     } catch (e: unknown) {
-      setSearchError(serverErrorMessage(e, t("friends.userNotFound")));
+      setSearchError(e instanceof ApiError && e.status === 404 ? t("friends.userNotFound") : t("friends.searchFailed"));
       setSearchDone(true);
     }
     setSearchLoading(false);
@@ -217,6 +234,16 @@ export default function FriendsScreen() {
   return (
     <MenuLayout scrollable centered={false}>
       <ScreenHeader title={t("friends.title")} />
+
+      {acceptedInvite !== null && (
+        <View style={styles.joiningBanner}>
+          <A11yStatus label={t("onlineLobby.joiningInvite")} role="alert" live="polite" />
+          <ActivityIndicator size="small" color={Colors.gold} {...a11yHidden()} />
+          <Text style={styles.joiningBannerText} numberOfLines={1} {...a11yHidden()}>
+            {t("onlineLobby.joiningInvite")}
+          </Text>
+        </View>
+      )}
 
       <View style={styles.contentWrapper}>
         {/* ── SECTION 1: Aggiungi Amico ── */}
@@ -306,6 +333,7 @@ export default function FriendsScreen() {
         )}
         {!friendsLoading && friendsErrored && (
           <ErrorBlock
+            stale={friendsData !== undefined}
             title={t("friends.loadErrorTitle")}
             retry={{ label: t("common.retry"), a11yLabel: t("friends.loadRetryA11yLabel"), onPress: () => refetchFriends() }}
           />
@@ -406,6 +434,7 @@ export default function FriendsScreen() {
         )}
         {!pendingLoading && pendingErrored && (
           <ErrorBlock
+            stale={pendingStale}
             title={t("friends.pendingLoadErrorTitle")}
             retry={{
               label: t("common.retry"),
@@ -492,6 +521,21 @@ export default function FriendsScreen() {
 }
 
 const styles = StyleSheet.create({
+  joiningBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    backgroundColor: Colors.goldGhost,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  joiningBannerText: {
+    ...Type.body,
+    color: Colors.gold,
+    flex: 1,
+  },
   contentWrapper: {
     ...takesSlack,
     gap: Spacing.sm,

@@ -109,7 +109,9 @@ You can delete your account at any time from Settings. It is permanent and immed
 recovery period: your account, friends list, invites, seat in any room, any room you host along
 with the round being played in it, match history, stats, ratings, achievements, crash and bug
 reports, usage events, push tokens, outstanding email codes, and sessions are all deleted. Server
-logs are the exception, to the limited extent described above.
+logs are the exception, to the limited extent described above. So are our daily database
+backups: a deleted account stays in the backups taken before it was deleted until each is
+deleted, 14 days after it was made; the newest backup is always kept, however old.
 
 One thing is anonymised rather than deleted. A replay belongs to everyone who played that hand,
 so deleting yours would take the other players' copy with it. Instead your account id and your
@@ -131,6 +133,7 @@ a copy of your data.
 | Replays | 14 days after the round |
 | Crash reports, server error records, bug reports, usage events | 90 days |
 | Email confirmation and password-reset codes | Until they expire, minutes after being sent |
+| Database backups | 14 days after each is made, except that the newest is always kept; deleted accounts included until then |
 | Push token | Until you sign out, register a sixth device (we keep your five most recent), give the device to someone who signs in on it, delete your account, or a later notification finds the device gone |
 | Session cookie | 30 days, or until you sign out or delete your account. Changing your password ends your other sessions; resetting it ends all of them |
 | Server logs — the line written for each request | Nothing in it identifies you: no IP address, no headers, no query string, and no id from the address, which is written only when it matches one of our own routes and then only in that route's general form; when it matches none, one of four fixed words of ours saying which part of the service was asked for |

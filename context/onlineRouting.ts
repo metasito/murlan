@@ -33,6 +33,15 @@ export function leaveNavigation(
   return holdsTable(held) ? null : { kind: "replace", to: lobbyFor(entrySource) };
 }
 
+/**
+ * Whether back on the room screen asks before leaving. Off wherever `navigationFor` replaces
+ * away from the room: `router.replace` fires `beforeRemove` too, and a guard left on then
+ * holds the player on a room that is gone.
+ */
+export function guardsRoomBack(facts: OnlineFacts): boolean {
+  return facts.roomId !== null && !facts.hasGame && !facts.rejoinFailed;
+}
+
 export function lobbyFor(entrySource: EntrySource): LobbyPath {
   return entrySource === "quickmatch" ? "/(online)/quickmatch" : "/(online)";
 }

@@ -94,7 +94,8 @@ interface Invites {
   dismiss: (roomCode: string) => void;
   hide: (roomCode: string) => void;
   clearPrompt: () => void;
-  clearAccepted: () => void;
+  /** Retires `roomCode`'s acceptance only: one accepted since then is still waiting for its join. */
+  clearAccepted: (roomCode: string) => void;
   /** `friend:invite` with its ack; false on a timeout or a refusal, and the player has been told either way. */
   send: (friendUserId: string, roomCode: string) => Promise<boolean>;
 }
@@ -249,7 +250,10 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     },
     [hideGameInvite]
   );
-  const clearAcceptedInvite = useCallback(() => setAcceptedInvite(null), []);
+  const clearAcceptedInvite = useCallback(
+    (roomCode: string) => setAcceptedInvite((accepted) => (accepted === roomCode ? null : accepted)),
+    []
+  );
 
   /**
    * Claims the account back on this device. The only way out of the replaced

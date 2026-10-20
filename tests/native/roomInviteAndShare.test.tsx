@@ -20,6 +20,8 @@ jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
+jest.mock('expo-router/react-navigation', () => ({ usePreventRemove: () => {} }));
+
 jest.mock('expo-clipboard', () => ({
   setStringAsync: (s: string) => mockSetString(s),
 }));
@@ -63,7 +65,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
     setRoomVisibility: jest.fn(),
   }),
   useOnlineTable: () => ({ gameState: null }),
-  useOnlineConnection: () => ({ clearError: jest.fn() }),
+  useOnlineConnection: () => ({ connected: true, clearError: jest.fn() }),
   useServerError: () => null,
 }));
 
@@ -119,6 +121,21 @@ describe('the invite panel waits for the server', () => {
     await fireEvent.press(view.getByLabelText(locale['friends.loadRetryA11yLabel']));
     expect(refetch).toHaveBeenCalled();
     expect(view.queryByText(locale['room.noFriendsOnline'])).toBeNull();
+    await view.unmount();
+  });
+
+  it('keeps the friends it has when a refresh fails, and only says it could not refresh', async () => {
+    const refetch = jest.fn();
+    mockFriendsQuery = {
+      data: [{ id: 'f1', username: 'Besi', lastSeen: null }],
+      isLoading: false,
+      isError: true,
+      refetch,
+    };
+    const view = await renderRoom();
+    expect(view.getByLabelText(INVITE)).toBeTruthy();
+    expect(view.getByText(locale['common.refreshFailed'])).toBeTruthy();
+    expect(view.queryByText(locale['friends.loadErrorTitle'])).toBeNull();
     await view.unmount();
   });
 
