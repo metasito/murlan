@@ -320,9 +320,9 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
       return real.call(this, roomId, state);
     };
     try {
-      game.roundsPlayed = 101;
+      Object.assign(game, { roundsPlayed: 101 });
       const first = persistGameState(room.roomId, game);
-      game.roundsPlayed = 102;
+      Object.assign(game, { roundsPlayed: 102 });
       const second = persistGameState(room.roomId, game);
       await new Promise((r) => setTimeout(r, 200));
       open();

@@ -11,12 +11,19 @@ import {
   type Card,
   type Combination,
   type GameState,
-} from "@/lib/game/gameEngine";
-import { rankSpokenName, cardSpokenName, suitSpokenName } from "@/lib/cardNames";
-import type { TFn, TnFn, TranslationKey } from "@/lib/i18n";
-import { straightTopRankChar } from "@/components/table/straightTopRank";
-import { type PlayButtonLabel } from "@/components/table/stagedPlay";
-import { type TableA11yStrings } from "@/components/tableA11y";
+  type SelectionRefusal,
+} from "../../lib/game/gameEngine.ts";
+import { rankSpokenName, cardSpokenName, suitSpokenName } from "../../lib/cardNames.ts";
+import {
+  translateServerPayload,
+  type ServerPayload,
+  type TFn,
+  type TnFn,
+  type TranslationKey,
+} from "../../lib/i18n.ts";
+import { straightTopRankChar } from "./straightTopRank.ts";
+import type { PlayButtonLabel } from "@/components/table/stagedPlay";
+import type { TableA11yStrings } from "@/components/tableA11y";
 
 /**
  * The translation boundary for why a play is refused. Total, so a new reason
@@ -160,4 +167,18 @@ export function playRefusalLabel(
     suit: card ? getSuitSymbol(card.suit) : "",
     card: card ? cardSpokenName(card, t) : "",
   });
+}
+
+/** The float's text for a `game:error`: a refused selection in GIOCA's words, anything else as the server coded it. */
+export function gameErrorText(payload: ServerPayload, startCard: GameState["startCard"], t: TFn): string {
+  const refusal = payload.params?.refusal;
+  if (
+    payload.code !== "INVALID_MOVE" ||
+    typeof refusal !== "string" ||
+    refusal === "play" ||
+    !Object.hasOwn(PLAY_SPOKEN_KEYS, refusal)
+  ) {
+    return translateServerPayload(payload);
+  }
+  return playRefusalLabel({ refusal: refusal as SelectionRefusal, isMyTurn: true, isFinished: false, startCard }, t);
 }

@@ -12,6 +12,7 @@ import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { resolveRoundEnd } from "../../server/game/onlineGameLogic.ts";
 import { scoresByEngineId } from "../../server/game/roundOver.ts";
+import { applyRoundFold } from "../../server/game/matchLedger.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
@@ -221,8 +222,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
         abandonedSeats: new Map(),
         vacatedSeats: game.vacatedSeats,
       });
-      game.cumulativeScores = result.cumulativeScores;
-      game.roundsPlayed += 1;
+      applyRoundFold(game, result);
 
       assert.ok(
         (game.cumulativeScores["bot:1"] ?? 0) > 0,
@@ -264,7 +264,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
     }
   });
 
-  test("the carried points can be the difference in crossing the match target (finding 2: foldRound)", async () => {
+  test("the carried points can be the difference in crossing the match target (finding 2: applyRoundFold)", async () => {
     const { rt } = stubIo();
     const game = baseGame({
       gameState: midRound(),
@@ -292,8 +292,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
         abandonedSeats: new Map(),
         vacatedSeats: game.vacatedSeats,
       });
-      game.cumulativeScores = first.cumulativeScores;
-      game.roundsPlayed += 1;
+      applyRoundFold(game, first);
       assert.equal(first.matchOver, false, "8 and 3 apart do not yet reach 12 either way");
 
       await applyOrForward(rt, { kind: "rejoin", roomId: ROOM, userId: "drita" });
@@ -346,7 +345,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
       abandonedSeats: new Map(),
       vacatedSeats: game.vacatedSeats,
     });
-    game.cumulativeScores = result.cumulativeScores;
+    Object.assign(game, { cumulativeScores: result.cumulativeScores });
 
     assert.equal(
       scoresByEngineId(game)["p1"],

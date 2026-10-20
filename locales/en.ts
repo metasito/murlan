@@ -73,8 +73,6 @@ export const en = {
   "server.MATCH_IN_PROGRESS": "A match is already in progress",
   "server.NEW_MATCH_NOT_READY": "Every player must be ready before a new match starts",
   "server.EXCHANGE_PENDING": "You must complete the exchange first",
-  "server.INVALID_COMBINATION": "Invalid combination",
-  "server.MUST_PLAY_START_CARD": "You must play the {{rank}}♠ as your first card",
   "server.INVALID_MOVE": "Invalid move",
   "server.CANNOT_PASS": "You can't pass",
   "server.REMATCH_DECLINED": "This match was ended by vote and cannot be replayed",

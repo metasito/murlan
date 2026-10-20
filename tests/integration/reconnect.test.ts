@@ -346,13 +346,14 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       bob.socket.disconnect();
       await gone;
       const game = activeGames.get(room.roomId)!;
-      const votes = game.endMatchVotes;
-      game.endMatchVotes = { [Symbol.iterator]: () => { throw new Error("planted rejoin fault"); } } as unknown as Set<string>;
+      const planted = game as unknown as { endMatchVotes: Iterable<string> };
+      const votes = planted.endMatchVotes;
+      planted.endMatchVotes = { [Symbol.iterator]: () => { throw new Error("planted rejoin fault"); } };
       try {
         bob.socket = await reconnectAs(server, bob);
         await waitFor(bob.socket, "friend:online_list", 5_000);
       } finally {
-        game.endMatchVotes = votes;
+        planted.endMatchVotes = votes;
       }
     } finally {
       await closeTable(table);

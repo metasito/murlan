@@ -9,9 +9,12 @@ import { armAfterMove } from "./gameTurn.ts";
 import { appendReplayMove } from "./replayShape.ts";
 import { seatOfUser } from "./onlineGameLogic.ts";
 import { applyMove } from "../../lib/game/gameEngine.ts";
-import type { GameState, MoveRefusal } from "../../lib/game/gameEngine.ts";
+import type { MoveRefusal, SelectionRefusal } from "../../lib/game/gameEngine.ts";
 import type { AutoMove } from "../../lib/game/autoMove.ts";
 import type { TableAction } from "./tableActions.ts";
+
+/** The client words a refused selection from the engine's code (`gameErrorText`); the server never does. */
+const refusedSelection = (refusal: SelectionRefusal) => refuse("INVALID_MOVE", { refusal });
 
 /** A refusal with no notice is silent: the ack alone answers it. */
 const MOVE_REFUSAL_CODES = {
@@ -21,16 +24,16 @@ const MOVE_REFUSAL_CODES = {
   notExchangeWinner: () => ({ ok: false, code: "NOT_YOUR_EXCHANGE" }),
   notYourTurn: () => ({ ok: false, code: "NOT_YOUR_TURN" }),
   notHeld: () => refuse("INVALID_CARD"),
-  notACombination: () => refuse("INVALID_COMBINATION"),
-  needsStartCard: (state) => refuse("MUST_PLAY_START_CARD", { rank: state.startCard!.rank }),
-  royalUnbeatable: () => refuse("INVALID_MOVE"),
-  bombOnly: () => refuse("INVALID_MOVE"),
-  wrongType: () => refuse("INVALID_MOVE"),
-  wrongLength: () => refuse("INVALID_MOVE"),
-  tooLow: () => refuse("INVALID_MOVE"),
+  notACombination: () => refusedSelection("notACombination"),
+  needsStartCard: () => refusedSelection("needsStartCard"),
+  royalUnbeatable: () => refusedSelection("royalUnbeatable"),
+  bombOnly: () => refusedSelection("bombOnly"),
+  wrongType: () => refusedSelection("wrongType"),
+  wrongLength: () => refusedSelection("wrongLength"),
+  tooLow: () => refusedSelection("tooLow"),
   mustLead: () => refuse("CANNOT_PASS"),
   notGiveable: () => refuse("INVALID_CARD"),
-} satisfies Record<MoveRefusal, (state: GameState) => Refusal>;
+} satisfies Record<MoveRefusal, () => Refusal>;
 
 export function moveAction(
   rt: TableRuntime,
@@ -44,7 +47,7 @@ export function moveAction(
   if (!result.ok) {
     // A seat on move with no player behind it in the state is a table that is not live, not a card refused.
     if (result.code === "notHeld" && !prev.players[seat]) return { ok: false, code: "NO_LIVE_GAME" };
-    return MOVE_REFUSAL_CODES[result.code](prev);
+    return MOVE_REFUSAL_CODES[result.code]();
   }
 
   if (result.move.kind === "play") {

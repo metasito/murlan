@@ -40,6 +40,7 @@ import { useExchangeAnnouncement } from "@/context/useExchangeAnnouncement";
 import type { BotPersonalityId } from "@/lib/game/botPersonalities";
 import { LADDER_KEY } from "@/lib/ladderQuery";
 import { useOwnLink } from "@/lib/useOwnLink";
+import { gameErrorText } from "@/components/table/spokenLabels";
 import { linkPill, type LinkPill, type OwnLink } from "@/lib/ownLink";
 
 export type RoomState = WireRoomState;
@@ -79,7 +80,12 @@ export type ReconnectNotice = { payload: ServerPayload; back: boolean };
  * A server refusal, and the surface it answered: the table once dealt, else the room once held, else
  * the lobby. `seq` is new per event, so the same words arriving twice are two changes.
  */
-export type ServerNotice = { payload: ServerPayload; seq: number; surface: "lobby" | "room" | "table" };
+export type ServerNotice = {
+  payload: ServerPayload;
+  seq: number;
+  surface: "lobby" | "room" | "table";
+  startCard: WireGameState["startCard"] | undefined;
+};
 
 /** A refusal as one surface shows it, in the language on screen. */
 export type ServerError = { text: string; seq: number };
@@ -272,10 +278,11 @@ export {
 /** The standing refusal if it answered `surface`, worded at render so a language switch reaches it. */
 export function useServerError(surface: ServerNotice["surface"]): ServerError | null {
   const { error } = useOnlineConnection();
-  const { translateServerPayload: translate } = useTranslation();
+  const { t } = useTranslation();
   return useMemo(
-    () => (error?.surface === surface ? { text: translate(error.payload), seq: error.seq } : null),
-    [error, surface, translate]
+    () =>
+      error?.surface === surface ? { text: gameErrorText(error.payload, error.startCard, t), seq: error.seq } : null,
+    [error, surface, t]
   );
 }
 
@@ -342,7 +349,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
   const refuse = useCallback((payload: ServerPayload) => {
     const surface = gameStateRef.current ? "table" : roomRef.current ? "room" : "lobby";
-    setError({ payload, seq: ++errorSeqRef.current, surface });
+    setError({ payload, seq: ++errorSeqRef.current, surface, startCard: gameStateRef.current?.startCard });
   }, []);
 
   /** The one teardown: whatever ends a table, nothing of it survives into the next. */
