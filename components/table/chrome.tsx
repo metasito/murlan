@@ -3,7 +3,6 @@ import { View, StyleSheet, Pressable, type AccessibilityProps, type ViewProps } 
 import {
   Easing,
   useAnimatedStyle,
-  useSharedValue,
   withTiming,
   cancelAnimation,
 } from "react-native-reanimated";
@@ -16,6 +15,7 @@ import {
   Layer,
 } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useOwnedValue } from "@/lib/motion";
 import { a11yState } from "@/lib/a11y";
 import { SIDE_SECTION_W } from "@/components/seatLayout";
 import type { Channel } from "@/lib/harnessChannels";
@@ -219,7 +219,6 @@ export const sharedTableStyles = StyleSheet.create({
 
 /** How far the hand rises when the turn comes to the viewer, at scale 1. */
 const HAND_LIFT = 4;
-const HAND_LIFT_MS = 500;
 
 /**
  * The hand rises off the bottom edge on the viewer's own turn — one of the
@@ -231,7 +230,7 @@ const HAND_LIFT_MS = 500;
  * as the hand coming up. `translateY` alone, so the browser composites it.
  */
 export function useHandLift(active: boolean, scale: number) {
-  const lift = useSharedValue(0);
+  const lift = useOwnedValue(0);
   // A CSS transition does not fire on the value an element mounts with, and
   // neither does this: a table rejoined mid-turn should open with the hand
   // already up, not raise it over half a second nobody asked for.
@@ -247,14 +246,10 @@ export function useHandLift(active: boolean, scale: number) {
     if (!mounted.current || reduceMotion) {
       mounted.current = true;
       cancelAnimation(lift);
-      lift.value = resting;
+      lift.set(resting);
       return;
     }
-    lift.value = withTiming(resting, {
-      duration: HAND_LIFT_MS,
-      easing: Easing.bezier(0.2, 0.8, 0.3, 1),
-    });
-    return () => cancelAnimation(lift);
+    lift.set(withTiming(resting, { duration: Motion.handLift, easing: Easing.bezier(0.2, 0.8, 0.3, 1) }));
   }, [active, scale, reduceMotion, lift]);
 
   const style = useAnimatedStyle(() => ({ transform: [{ translateY: lift.value }] }));
@@ -268,18 +263,17 @@ export function useHandLift(active: boolean, scale: number) {
  * by a toggle that is about decluttering the felt, not about the turn itself.
  */
 export function useFocusFade(focusMode: boolean) {
-  const fade = useSharedValue(1);
+  const fade = useOwnedValue(1);
   const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
     const target = focusMode ? 0 : 1;
     if (reduceMotion) {
       cancelAnimation(fade);
-      fade.value = target;
+      fade.set(target);
       return;
     }
-    fade.value = withTiming(target, { duration: Motion.duration.travel });
-    return () => cancelAnimation(fade);
+    fade.set(withTiming(target, { duration: Motion.duration.travel }));
   }, [focusMode, reduceMotion, fade]);
 
   return useAnimatedStyle(() => ({ opacity: fade.value }));

@@ -18,6 +18,7 @@ import { scheduleOnRN } from "react-native-worklets";
 import { CardView, FallbackGlow } from "@/components/CardView";
 import { Beaten, BombFx, CardGlow, Colors, RoundMoment, Motion, motionMs, Shadow, Spacing, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useOwnedValue } from "@/lib/motion";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { DIAGNOSTICS, diag } from "@/lib/diagnostics";
 import { readFlightFromDom } from "./flightTrace";
@@ -175,7 +176,7 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, lit, flinchY, 
     clock.begin(armed.spec);
   }, [clock, armed, report]);
   const goingOut = armed?.landing.goingOut ?? false;
-  const catching = useSharedValue(0);
+  const catching = useOwnedValue(0);
   const settled = useRef<Flight | null>(null);
   useEffect(() => {
     if (flying || !armed || settled.current === armed) return;
@@ -187,7 +188,6 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, lit, flinchY, 
     }
     clock.halt();
   }, [flying, armed, clock, goingOut, still, catching]);
-  useEffect(() => () => cancelAnimation(catching), [catching]);
 
   const heavy = armed?.landing.heavy ?? false;
   // The scrim is this bomb's only until it touches: after that another may be falling.
@@ -212,7 +212,7 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, lit, flinchY, 
 
   const beaten = role === "beaten";
   const buried = role === "buried";
-  const turned = useSharedValue(beaten ? 1 : 0);
+  const turned = useOwnedValue(beaten ? 1 : 0);
   useEffect(() => {
     // Buried in the air, it is still drawn until it lands: a turn under way finishes rather than turning back.
     if (buried) return;
@@ -226,7 +226,6 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, lit, flinchY, 
     turned.set(from + (to - from) * Math.min(1, TURN_LEAD_MS / ms));
     turned.set(withTiming(to, { duration: Math.max(0, ms - TURN_LEAD_MS), easing: Easing.linear, reduceMotion: ReduceMotion.Never }));
   }, [beaten, buried, reduced, turned]);
-  useEffect(() => () => cancelAnimation(turned), [turned]);
   const key = play.key;
   const group = useMemo(() => ({ sweep, flinchY, asideX, flinchBy, beaten, key }), [sweep, flinchY, asideX, flinchBy, beaten, key]);
   // The beaten pose rides this one worklet with the flinch (#764) and the sweep: React Native
@@ -294,6 +293,7 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned
     table,
     `pile:${card.id}`,
     !out,
+    [motion, turned, catching, elapsed, group],
     () => {
       "worklet";
       if (!pile || !felt || !motion || out) return null;
@@ -428,7 +428,7 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
   // new one, then spring-settled back to its resting offset. No `|| reduceMotion`:
   // `flinchFor` already reads it and answers 0. `* scale` because a knock is a
   // fraction of the table, not a fixed pixel count.
-  const flinchY = useSharedValue(0);
+  const flinchY = useOwnedValue(0);
   const flinchBy = useSharedValue("");
   useLandingReaction(signal, (l) => {
     "worklet";
@@ -437,14 +437,12 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
     if (distance === 0) return;
     flinchY.set(withSequence(withTiming(distance, { duration: Motion.duration.flash }), withSpring(0, Motion.spring.land)));
   });
-  useEffect(() => () => cancelAnimation(flinchY), [flinchY]);
-  const asideX = useSharedValue(0);
+  const asideX = useOwnedValue(0);
   useBombBeat(signal, reduceMotion, () => {
     "worklet";
     asideX.set(-BombFx.asidePt * scale);
     asideX.set(withTiming(0, { duration: BombFx.asideMs, easing: Easing.linear }));
   });
-  useEffect(() => () => cancelAnimation(asideX), [asideX]);
 
   const swept = trick.swept;
   const travel = useSharedValue(0);

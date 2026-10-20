@@ -5,12 +5,11 @@
 // pixel or two, which at 56pt square would read as a jitter. They differ in
 // their metal and in what a press means, so the shared parts are the styles
 // below rather than a component with a variant prop.
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { View, StyleSheet, Pressable, type ViewStyle } from "react-native";
 import Animated, {
-  cancelAnimation,
   useAnimatedStyle,
-  useSharedValue,
+  useDerivedValue,
   withTiming,
   type AnimatedStyle,
   type SharedValue,
@@ -20,12 +19,27 @@ import { TableText } from "./TableText";
 import { a11yHidden, a11yState } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useOwnedValue } from "@/lib/motion";
 import { cardSpokenName } from "@/lib/cardNames";
 import { Colors, Garnet, Gradient, Highlight, Layer, makeShadow, Motion, Scrim, Shadow, Spacing, TopEdgeLight } from "@/lib/theme";
 import type { Card } from "@/lib/game/gameEngine";
 import { tableFontSize } from "@/components/cardFaceModel";
 
 const BTN_PRESS_SCALE = 0.94;
+
+/** A key's press: down while a finger is on it and `enabled`, and the scale it shrinks to. */
+function usePressScale(enabled: boolean) {
+  const reduceMotion = usePrefersReducedMotion();
+  const [pressed, setPressed] = useState(false);
+  const press = useOwnedValue(0);
+  const setPress = (down: boolean) => {
+    if (!enabled) return;
+    setPressed(down);
+    press.set(reduceMotion ? (down ? 1 : 0) : withTiming(down ? 1 : 0, { duration: Motion.duration.tap }));
+  };
+  const scale = useDerivedValue(() => 1 - press.value * (1 - BTN_PRESS_SCALE));
+  return { pressed, setPress, scale };
+}
 const BTN_RADIUS = 14;
 const BTN_LABEL_FS = 12;
 const BTN_SUB_FS = 10;
@@ -85,29 +99,13 @@ export function GiocaButton({
   scale: number;
 }) {
   const { t } = useTranslation();
-  const reduceMotion = usePrefersReducedMotion();
-  const [pressed, setPressed] = useState(false);
-  const pressVal = useSharedValue(0);
-
-  // Must precede the effect that reads `pressVal` — the React Compiler skips any component that mutates a value an effect captured.
-  const setPress = (down: boolean) => {
-    // Gated on the turn, not on the staged play: a press with nothing legal
-    // selected is answered by the reject shake and the hint, so it has to feel
-    // like a press first.
-    if (!lit) return;
-    setPressed(down);
-    pressVal.value = reduceMotion
-      ? down ? 1 : 0
-      : withTiming(down ? 1 : 0, { duration: Motion.duration.tap });
-  };
-
-  useEffect(() => () => cancelAnimation(pressVal), [pressVal]);
+  // Gated on the turn, not on the staged play: a press with nothing legal
+  // selected is answered by the reject shake and the hint, so it has to feel
+  // like a press first.
+  const { pressed, setPress, scale: pressScale } = usePressScale(lit);
 
   const pressStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: rejectX.value },
-      { scale: 1 - pressVal.value * (1 - BTN_PRESS_SCALE) },
-    ],
+    transform: [{ translateX: rejectX.value }, { scale: pressScale.value }],
   }));
 
   return (
@@ -227,23 +225,10 @@ export function PassaButton({
   scale: number;
 }) {
   const { t } = useTranslation();
-  const reduceMotion = usePrefersReducedMotion();
-  const [pressed, setPressed] = useState(false);
-  const pressVal = useSharedValue(0);
-
-  // Must precede the effect that reads `pressVal` — the React Compiler skips any component that mutates a value an effect captured.
-  const setPress = (down: boolean) => {
-    if (!canPass) return;
-    setPressed(down);
-    pressVal.value = reduceMotion
-      ? down ? 1 : 0
-      : withTiming(down ? 1 : 0, { duration: Motion.duration.tap });
-  };
-
-  useEffect(() => () => cancelAnimation(pressVal), [pressVal]);
+  const { pressed, setPress, scale: pressScale } = usePressScale(canPass);
 
   const pressStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: 1 - pressVal.value * (1 - BTN_PRESS_SCALE) }],
+    transform: [{ scale: pressScale.value }],
   }));
 
   return (

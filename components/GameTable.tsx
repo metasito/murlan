@@ -138,11 +138,6 @@ import { useTableFelt } from "@/lib/cosmetics";
 import { A11yStatus, A11yVeil, a11yGroup, a11yHidden, a11yVeiled } from "@/lib/a11y";
 import { useBenchHandle } from "@/lib/diagnostics";
 
-// Whole-pixel travel, mirroring components/MenuButton.tsx: PASSA/GIOCA hold
-// text labels, and React Native rasterises text before transforming it, so a
-// fractional offset resamples the glyphs. 2px down is the smallest offset
-// that still reads as a press.
-
 /** The banner band sits over the felt. */
 const BANNER_BAND_Z = Layer.band;
 /**

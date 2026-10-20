@@ -544,6 +544,8 @@ export const Motion = {
     reveal: 200,
     /** Hold at rest; do not loop. */
     dwell: null,
+    /** A mark's fade is already in place: `noticeRise` drops the travel. */
+    mark: null,
   },
   /**
    * A spring when the player caused it and is still touching it — picked up,
@@ -577,12 +579,14 @@ export const Motion = {
   throw: { card: 380, stagger: 45, catchUpCard: 200, catchUpStagger: 20 },
   /** The exchange's legs, giver → pile → receiver, and the holds between them: the owner's "Through the pile" (tests/e2e/fixtures/exchange-legs, PLAN). */
   exchange: { beat: 344, lift: 500, fly: 1000, tuck: 1000, highlight: 1500, giveWait: 420, read: 900, descend: 500 },
-  /** A notice's mark or float, and the connection dot's blink: the lantern mockup's `passSeat`, `passYou` and `blink` (#1259 Q1). */
-  mark: { enter: 100, hold: 1000, exit: 100, blink: 900 },
+  /** A notice's mark or float fading in and out, and the connection dot's blink: the lantern mockup's `passSeat`, `passYou` and `blink` (#1259 Q1). */
+  mark: { enter: 100, exit: 100, blink: 900 },
   /** The beaten play's turn: the lantern mockup's `.grp` transition, ease-out. Off the ladder, a hair past travel; at once under reduced motion. */
   beaten: 280,
   /** The hand growing into its turn: the mockup's `.12s`. Off the ladder, a tap's length that travels; at once under reduced motion. */
   handResize: 120,
+  /** The hand rising off the bottom edge on the viewer's turn. Off the ladder, between travel and reveal; at once under reduced motion. */
+  handLift: 500,
 } as const;
 
 /** The viewer's own drop: the lantern mockup's `reconnect` chapter, `grayTo` and `net()` (#1268). */
@@ -672,6 +676,8 @@ export const Reading = {
   notice: 4000,
   /** An invitation, which is acted on rather than read, so it outlasts its own sentence. */
   invite: 6000,
+  /** A notice's mark or float, between its fade in and out: the lantern mockup's `passSeat` and `passYou`. */
+  mark: 1000,
 } as const;
 
 /**

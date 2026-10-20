@@ -27,6 +27,7 @@ import Animated, {
 import { CardView, FallbackGlow, PRESS_RISE, PRESS_TILT } from "@/components/CardView";
 import { CardGlow, Colors, Layer, Motion, motionMs, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useOwnedValue } from "@/lib/motion";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/game/gameEngine";
 import {
@@ -280,33 +281,33 @@ function CardItemBase({
   }, [received, halo]);
   const haloStyle = useAnimatedStyle(() => ({ opacity: halo.value }));
   const selectLift = -handRowHeadroom(cardH);
-  const liftY = useSharedValue(0);
-  const tilt = useSharedValue(0);
-  const glow = useSharedValue(0);
-  const exchangeState = useSharedValue(0);
+  const liftY = useOwnedValue(0);
+  const tilt = useOwnedValue(0);
+  const glow = useOwnedValue(0);
+  const exchangeState = useOwnedValue(0);
   const [mounted] = useState(entry);
-  const dealing = useSharedValue(mounted?.kind === "descend" && !reduceMotion ? 1 : 0);
+  const dealing = useOwnedValue(mounted?.kind === "descend" && !reduceMotion ? 1 : 0);
   // Reduced motion ends the deal's clock, so a card still waiting on it would never be shown.
   const dealt = mounted?.kind === "deal" && !reduceMotion ? mounted : undefined;
   const dealClock = dealt?.clock;
   const onDealt = dealt?.onDealt;
   // One object for the card's life: a worklet capturing a fresh one each render would be rebuilt each render.
   const arrival = useMemo(() => ({ from: mounted?.from ?? NO_OFFSET, leaveMs: dealt ? dealt.leaveMs : -1 }), [mounted, dealt]);
-  const shift = useSharedValue(shiftX);
+  const shift = useOwnedValue(shiftX);
 
   // The gap is not an effect laid over the fan; it is the fan, laid out around
   // a slot. It has to open and close continuously, though, or the cards jump
   // between two arrangements while the finger is still between them.
   useEffect(() => {
-    shift.value = withTiming(shiftX, { duration: motionMs("shift", reduceMotion), reduceMotion: ReduceMotion.Never });
+    shift.set(withTiming(shiftX, { duration: motionMs("shift", reduceMotion), reduceMotion: ReduceMotion.Never }));
   }, [shiftX, reduceMotion, shift]);
 
   useEffect(() => {
     if (dealing.value === 0) return;
-    dealing.value = withTiming(0, { duration: Motion.exchange.descend, easing: DESCEND_EASING, reduceMotion: ReduceMotion.System });
+    dealing.set(withTiming(0, { duration: Motion.exchange.descend, easing: DESCEND_EASING, reduceMotion: ReduceMotion.System }));
   }, [dealing]);
 
-  const press = useSharedValue(0);
+  const press = useOwnedValue(0);
   const posed = useSharedValue("");
   const pressPosed = useSharedValue("");
   const cardId = card.id;
@@ -321,14 +322,14 @@ function CardItemBase({
       const first = posed.value === "";
       posed.value = key;
       if (first && !on) return;
-      glow.value = withTiming(on ? 1 : 0, { duration: Motion.duration.tap });
+      glow.set(withTiming(on ? 1 : 0, { duration: Motion.duration.tap }));
       if (reduceMotion) {
-        liftY.value = withTiming(on ? selectLift : 0, { duration: Motion.duration.tap });
-        tilt.value = 0;
+        liftY.set(withTiming(on ? selectLift : 0, { duration: Motion.duration.tap }));
+        tilt.set(0);
         return;
       }
-      liftY.value = withSpring(on ? selectLift : 0, Motion.spring.pickup);
-      tilt.value = withSpring(on ? selectTilt(false) : 0, Motion.spring.pickup);
+      liftY.set(withSpring(on ? selectLift : 0, Motion.spring.pickup));
+      tilt.set(withSpring(on ? selectTilt(false) : 0, Motion.spring.pickup));
     },
     [reduceMotion, selectLift]
   );
@@ -340,8 +341,8 @@ function CardItemBase({
       const first = pressPosed.value === "";
       pressPosed.value = key;
       if (first && !on) return;
-      if (reduceMotion) press.value = on ? 1 : 0;
-      else press.value = withSpring(on ? 1 : 0, on ? Motion.spring.pickup : Motion.spring.land);
+      if (reduceMotion) press.set(on ? 1 : 0);
+      else press.set(withSpring(on ? 1 : 0, on ? Motion.spring.pickup : Motion.spring.land));
     },
     [reduceMotion]
   );
@@ -350,23 +351,11 @@ function CardItemBase({
   // two so a card cannot briefly be in both states as the phase turns on.
   const exchangeTarget = giveable === undefined ? 0 : giveable ? 1 : -1;
   useEffect(() => {
-    exchangeState.value = reduceMotion
-      ? withTiming(exchangeTarget, { duration: Motion.duration.tap })
-      : withSpring(exchangeTarget, Motion.spring.land);
+    exchangeState.set(
+      reduceMotion ? withTiming(exchangeTarget, { duration: Motion.duration.tap }) : withSpring(exchangeTarget, Motion.spring.land)
+    );
   }, [exchangeTarget, reduceMotion, exchangeState]);
 
-  useEffect(
-    () => () => {
-      cancelAnimation(liftY);
-      cancelAnimation(tilt);
-      cancelAnimation(glow);
-      cancelAnimation(dealing);
-      cancelAnimation(exchangeState);
-      cancelAnimation(shift);
-      cancelAnimation(press);
-    },
-    [liftY, tilt, glow, dealing, exchangeState, shift, press]
-  );
   useEffect(() => {
     onDrawn?.(card.id, { liftY, tilt, shift });
   }, [onDrawn, card.id, liftY, tilt, shift]);
@@ -378,7 +367,7 @@ function CardItemBase({
     arcTilt.set(arcRot);
   }, [arcTilt, arcRot]);
   const resizeFrom = useSharedValue({ dx: 0, dy: 0, s: 1 });
-  const resizing = useSharedValue(0);
+  const resizing = useOwnedValue(0);
   const restRef = useRef({ x: restX, y: restY, w: cardW });
   useLayoutEffect(() => {
     const was = restRef.current;
@@ -389,8 +378,7 @@ function CardItemBase({
     resizing.set(1);
     resizing.set(withTiming(0, { duration: motionMs("handResize", reduceMotion), reduceMotion: ReduceMotion.Never }));
   }, [restX, restY, cardW, reduceMotion, resizeFrom, resizing]);
-  useEffect(() => () => cancelAnimation(resizing), [resizing]);
-  // Handed the values rather than reading them: a mapper follows only the shared values in its own closure.
+  // Handed the values rather than reading them: a worklet follows only the shared values it reads itself, never those a helper it calls reads.
   const poseOf = (e: typeof arrival, s: PoseInputs, now: number) => {
     "worklet";
     const restRot = s.arc + s.tilt + s.press * PRESS_TILT;
@@ -431,6 +419,7 @@ function CardItemBase({
     rects?.table ?? null,
     `hand:${cardId}`,
     true,
+    [dealing, arcTilt, tilt, press, shift, liftY, hidden, dealClock, resizeFrom, resizing, glow, registryPlace],
     () => {
       "worklet";
       const posed = poseOf(arrival, { descent: dealing.value, arc: arcTilt.value, tilt: tilt.value, press: press.value, shift: shift.value, lift: liftY.value, gone: !!hidden?.value.includes(cardId) }, dealClock ? dealClock.value : 0);
@@ -779,7 +768,7 @@ export const StraightHand = React.memo(function StraightHand({
   // *only* thing waiting on it: the reorder itself lands on a timer of the same
   // length, so a spring that never reaches rest — which `Motion.spring.pickup`
   // does not, from 0 to 1 — cannot take the card out of the hand.
-  const settle = useSharedValue(0);
+  const settle = useOwnedValue(0);
   const settleX = useSharedValue(0);
   const settleY = useSharedValue(0);
   const settleRot = useSharedValue(0);
@@ -882,6 +871,7 @@ export const StraightHand = React.memo(function StraightHand({
     cardTable,
     `hand:${heldId ?? ""}`,
     heldId !== null,
+    [heldAt, heldPlace],
     () => {
       "worklet";
       if (!heldPlace || heldId === null) return null;
@@ -916,7 +906,7 @@ export const StraightHand = React.memo(function StraightHand({
     landing.value = false;
     holding.value = false;
     picking.value = false;
-    settle.value = 0;
+    settle.set(0);
     held.value = null;
     gap.value = null;
     setHeldId(null);
@@ -990,12 +980,13 @@ export const StraightHand = React.memo(function StraightHand({
     settleRot.value = target.rot;
     // The same step the gap closes on, so the card arrives as the fan closes
     // around it rather than into a hand still moving.
-    settle.value = withTiming(1, { duration: ms, reduceMotion: ReduceMotion.Never }, (finished) => {
-      if (finished) scheduleOnRN(commit);
-    });
+    settle.set(
+      withTiming(1, { duration: ms, reduceMotion: ReduceMotion.Never }, (finished) => {
+        if (finished) scheduleOnRN(commit);
+      })
+    );
   };
 
-  useEffect(() => () => cancelAnimation(settle), [settle]);
 
   const drag = usePanGesture({
     // One finger owns the drag. A second one anywhere would otherwise rewrite

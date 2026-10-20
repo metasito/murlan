@@ -449,29 +449,43 @@ const GUARDS = [
   },
   {
     id: "animation-callback-takes-finished",
-    why: "A completion callback that ignores `finished` runs its follow-up on an animation that was cancelled, and a `withRepeat` count of 0 repeats forever: take `(finished)` and act only when it is true, as the sweep in components/table/pile.tsx does, and give `withRepeat` a literal count or `pulseRepeats(...)` from components/turnTimerUi.ts, which is guarded by a check for at least 1.",
-    selector: [
+    why: "A completion callback that ignores `finished` runs its follow-up on an animation that was cancelled: take `(finished)` and act only when it is true, as the sweep in components/table/pile.tsx does.",
+    selector:
       'CallExpression[callee.name=/^(withTiming|withSpring|withDecay|withRepeat)$/] > :matches(ArrowFunctionExpression, FunctionExpression):matches([params.length=0], [params.0.name=/^_/])',
-      'CallExpression[callee.name="withRepeat"][arguments.length>=2]:not([arguments.1.type="Literal"]):not([arguments.1.operator="-"][arguments.1.argument.type="Literal"]):not([arguments.1.callee.name="pulseRepeats"])',
-      'CallExpression[callee.name="withRepeat"][arguments.1.value=0]',
-    ].join(", "),
     files: SCREENS,
     plant: { file: "components/Plant.tsx", code: [
       "a.value = withTiming(1, { duration: 1 }, () => go());",
       "a.value = withSpring(1, {}, function () { go(); });",
       "a.value = withDecay({ velocity: 1 }, (_finished) => go());",
       "a.value = withRepeat(b, 2, false, () => go());",
-      "a.value = withRepeat(b, 0);",
-      "a.value = withRepeat(b, Math.ceil(left / 1000));",
-      "a.value = withRepeat(b, beats);",
-    ].join("\n"), hits: 7 },
+    ].join("\n"), hits: 4 },
     spare: [
       "a.value = withTiming(1, { duration: 1 }, (finished) => { if (finished) go(); });",
       "a.value = withRepeat(b, 2, false, (finished) => { if (finished) go(); });",
-      "a.value = withRepeat(b, -1);",
-      "a.value = withRepeat(b, pulseRepeats(urgentMs, leftMs));",
       "setTimeout(() => go(), 10);",
       "const leg = (to) => withTiming(to, { duration: 1 });",
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "repeat-through-motion",
+    why: "A repeat is lib/motion.ts's: run an endless one with `useLoop`, which never starts under reduced motion and is cancelled when it stops or its owner unmounts, and a counted one with `repeatTimes`, which never reads a count of 0 as forever.",
+    selector: [
+      'CallExpression[callee.name="withRepeat"]',
+      'MemberExpression[property.name="withRepeat"]',
+      'ImportSpecifier[imported.name="withRepeat"]',
+    ].join(", "),
+    files: SCREENS,
+    ignores: [{ glob: "lib/motion.ts", reason: "useLoop and repeatTimes, the two owners of a repeat" }],
+    plant: { file: "components/Plant.tsx", code: [
+      'import { withRepeat } from "react-native-reanimated";',
+      'import { withRepeat as again } from "react-native-reanimated";',
+      "a.value = withRepeat(b, -1);",
+      "a.value = Reanimated.withRepeat(b, 2);",
+    ].join("\n"), hits: 4 },
+    spare: [
+      "useLoop(a, () => ({ cycle: b }));",
+      "a.value = repeatTimes(b, beats);",
+      '// withRepeat(b, -1)\nconst s = "withRepeat(b, -1)";',
     ].map((code) => ({ file: "components/Plant.tsx", code })),
   },
   {

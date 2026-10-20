@@ -8,11 +8,9 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import Animated, {
   Easing,
   ReduceMotion,
-  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
-  withRepeat,
   withSequence,
   withTiming,
 } from "react-native-reanimated";
@@ -21,6 +19,7 @@ import { portraitOverlayStyles } from "./chrome";
 import { ROTATE_SETTLED, ROTATE_UPRIGHT, rotateGlyphAngle } from "./rotateGlyph";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useLoop } from "@/lib/motion";
 import { useTranslation } from "@/lib/i18n";
 import { Colors, Motion } from "@/lib/theme";
 
@@ -38,24 +37,18 @@ export function RotateOverlay() {
   // the first frame parks on it rather than snapping to it.
   const turn = useSharedValue(ROTATE_SETTLED);
 
-  useEffect(() => {
-    if (reduceMotion) {
-      turn.value = ROTATE_SETTLED;
-      return;
-    }
+  useLoop(turn, () => {
     const leg = (to: number) => withTiming(to, { duration: TURN_MS, easing: EASE });
-    turn.value = withSequence(
-      leg(ROTATE_UPRIGHT),
-      withRepeat(
-        withSequence(
-          withDelay(HOLD_UPRIGHT, leg(ROTATE_SETTLED), ReduceMotion.System),
-          withDelay(HOLD_SETTLED, leg(ROTATE_UPRIGHT), ReduceMotion.System)
-        ),
-        -1,
-        false
-      )
-    );
-    return () => cancelAnimation(turn);
+    return {
+      lead: leg(ROTATE_UPRIGHT),
+      cycle: withSequence(
+        withDelay(HOLD_UPRIGHT, leg(ROTATE_SETTLED), ReduceMotion.System),
+        withDelay(HOLD_SETTLED, leg(ROTATE_UPRIGHT), ReduceMotion.System)
+      ),
+    };
+  });
+  useEffect(() => {
+    if (reduceMotion) turn.set(ROTATE_SETTLED);
   }, [reduceMotion, turn]);
 
   const glyphStyle = useAnimatedStyle(() => ({

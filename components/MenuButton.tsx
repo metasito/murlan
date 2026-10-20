@@ -1,17 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Pressable, Text, StyleSheet, View,
   ViewStyle, ActivityIndicator, GestureResponderEvent,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
-  cancelAnimation,
   useAnimatedStyle,
-  useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
 import { Colors, Spacing, Radius, FontSize, Gradient, Motion, Shadow, TopEdgeLight, TOUCH_TARGET_MIN } from '@/lib/theme';
 import { usePrefersReducedMotion } from '@/lib/accessibility';
+import { useOwnedValue } from '@/lib/motion';
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
@@ -47,18 +46,13 @@ export function MenuButton({
   const reduceMotion = usePrefersReducedMotion();
   const [pressed, setPressed] = useState(false);
   const hintProps = useA11yHint(hint);
-  const press = useSharedValue(0);
+  const press = useOwnedValue(0);
 
-  // Must precede the effect that reads `press` — the React Compiler skips any component that mutates a value an effect captured.
   const setPress = (down: boolean) => {
     if (isDisabled) return;
     setPressed(down);
-    press.value = reduceMotion
-      ? down ? 1 : 0
-      : withTiming(down ? 1 : 0, { duration: Motion.duration.tap });
+    press.set(reduceMotion ? (down ? 1 : 0) : withTiming(down ? 1 : 0, { duration: Motion.duration.tap }));
   };
-
-  useEffect(() => () => cancelAnimation(press), [press]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: press.value * PRESS_TRAVEL }],
