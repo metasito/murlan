@@ -28,7 +28,7 @@ const midExchangeSave = () =>
     winner: 0,
     loser: 1,
     cardFromLoser: "2_spades",
-    holding: [["5_hearts", "9_clubs", "K_spades"], ["J_hearts", "Q_diamonds"]],
+    holding: [["5_hearts", "9_clubs", "K_spades", "2_spades"], ["J_hearts", "Q_diamonds"]],
   });
 
 /**

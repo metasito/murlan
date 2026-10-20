@@ -117,7 +117,7 @@ const midExchangeSave = () =>
     winner: 0,
     loser: 1,
     cardFromLoser: "2_spades",
-    holding: [ids(VIEWER_HAND), ids(BOT_HAND.slice(0, 2))],
+    holding: [[...ids(VIEWER_HAND), "2_spades"], ids(BOT_HAND.slice(0, 2))],
   });
 
 /** Every hand card, left to right as drawn, by accessible name. */

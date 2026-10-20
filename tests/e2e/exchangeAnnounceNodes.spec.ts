@@ -38,7 +38,7 @@ const midExchangeSave = () =>
     winner: 0,
     loser: 1,
     cardFromLoser: "2_spades",
-    holding: [["5_hearts", "K_spades"], ["J_hearts", "Q_diamonds"]],
+    holding: [["5_hearts", "K_spades", "2_spades"], ["J_hearts", "Q_diamonds"]],
   });
 
 test("the exchange announcement speaks without becoming a control", async ({

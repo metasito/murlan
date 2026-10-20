@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { appAt, appResumed, mockupAt, type PlatePaint, type Rect, type Stage } from "./helpers/mockupStage";
 import { exchangeSave, offlineSave, resumeSaved } from "./helpers/offlineSeed";
 import { tap } from "./helpers/press";
-import { captureStateById, type CaptureState } from "../../lib/captureStates";
+import { captureStateById, seatedSituation, type CaptureState } from "../../lib/captureStates";
 import { CARD_H, cardScale, HAND_SCALE } from "../../components/cardFaceModel";
 import { handVisibleH } from "../../components/seatLayout";
 import { RANK_SLOTS, type Card } from "../../lib/game/gameEngine";
@@ -21,7 +21,11 @@ const STAGES = [
 ];
 
 /** Your turn over a pile, so the clock runs and the pill carries its count as `#turn.lit` does. */
-const LIT_WITH_COUNT: CaptureState = { ...captureStateById("lamp-bottom")!, id: "lamp-bottom-pile", pile: true };
+const LIT_WITH_COUNT: CaptureState = {
+  ...captureStateById("lamp-bottom")!,
+  id: "lamp-bottom-pile",
+  situation: seatedSituation("lamp-bottom-pile", 4, 0, { by: 3, cards: "K_hearts K_diamonds" }),
+};
 
 const shown = async (stage: Stage, selector: string, run?: string): Promise<PlatePaint> => {
   await expect.poll(async () => (await stage.plate(selector))?.opacity, { message: `${selector} fully shown`, timeout: 30_000 }).toBe(1);
