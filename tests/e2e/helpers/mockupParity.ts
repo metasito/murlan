@@ -272,7 +272,8 @@ const LANDS_AT_CONTACT = `const throwCards = play;
   let landing = null;
   play = (...a) => { throwCards(...a); landing = { g: document.querySelector("#pile .grp.cur"), land: EV.pop() }; };
   const frame = lampStep;
-  // Ahead of the frame's own lamp step, where \`runEvents\` would land it: \`step\` has posed the cards by now.
+  // Ahead of the frame's lamp step, as the fixture's own landing: \`play\` lands by \`later\` at the tweens' end, and \`step\`
+  // runs \`runEvents\` before \`lampStep\` (lantern-table/index.html, \`play\` and \`step\`). The cards are posed by now.
   lampStep = (dt) => {
     const poses = landing ? [...landing.g.querySelectorAll(".card")].map((c) => c.style.transform.match(/-?[\\d.]+/g).map(Number)) : [];
     if (poses.length && poses.every(([x, y, , s]) => Math.hypot(x, y) <= 1 && Math.abs(s - 1) <= .01)) {
@@ -410,11 +411,11 @@ const MOMENTS: Moment[] = [
       play = (...a) => { throwCards(...a); flying = document.querySelector("#pile .grp.cur"); };
       const frame = lampStep;
       lampStep = (dt) => {
-        frame(dt);
         const poses = flying ? [...flying.querySelectorAll(".card")].map((c) => c.style.transform.match(/-?[\\d.]+/g).map(Number)) : [];
-        if (!poses.length || !poses.every(([x, y, , s]) => Math.hypot(x, y) <= 1 && Math.abs(s - 1) <= .01)) return;
+        if (!poses.length || !poses.every(([x, y, , s]) => Math.hypot(x, y) <= 1 && Math.abs(s - 1) <= .01)) return frame(dt);
         flying = null;
         later(${BombFx.delayMs}, beat);
+        frame(dt);
       };`,
     fromApp: lampFromApp("besnik"),
     appTrigger: bombTable,
@@ -703,41 +704,44 @@ async function strip(
     const all = regionsFor(await layout());
     return m.regions ? Object.fromEntries(m.regions.map((r) => [r, all[r]])) : all;
   };
+  expect(due.filter((a) => startMs > 0 && a.atMs <= startMs).map((a) => a.atMs), `the actions the ${startMs} ms pre-roll left untaken`).toEqual([]);
   const cdp = await page.context().newCDPSession(page);
-  expect(due.filter((a) => a.atMs < startMs).map((a) => a.atMs), `the actions the ${startMs} ms pre-roll left untaken`).toEqual([]);
-  for (let k = 0; startMs + k * STEP_MS <= m.windowMs; k++) {
-    const t = startMs + k * STEP_MS;
-    // Each side is at t - STEP_MS here, so an action is taken at its own atMs, not up to a frame before it.
-    let ran = 0;
-    while (due.length && due[0].atMs <= t) {
-      const action = due.shift()!;
-      const lead = k > 0 ? action.atMs - (t - STEP_MS) - ran : 0;
-      if (lead > 0) await step(page, lead);
-      ran += Math.max(0, lead);
-      await act(action);
+  try {
+    for (let k = 0; startMs + k * STEP_MS <= m.windowMs; k++) {
+      const t = startMs + k * STEP_MS;
+      // Each side is at t - STEP_MS here, so an action is taken at its own atMs, not up to a frame before it.
+      let ran = 0;
+      while (due.length && due[0].atMs <= t) {
+        const action = due.shift()!;
+        const lead = k > 0 ? action.atMs - (t - STEP_MS) - ran : 0;
+        if (lead > 0) await step(page, lead);
+        ran += Math.max(0, lead);
+        await act(action);
+      }
+      const frame = await stepTo(t, STEP_MS - ran);
+      if (t < (m.fromMs ?? 0)) continue;
+      if (frame) traced.push({ ...frame, t });
+      if (m.apart?.includes(t)) {
+        const sample = await particles();
+        if (sample) layer.push({ t, ...sample });
+      }
+      const stripped = m.stripAt ? m.stripAt.includes(t) : k % STRIP_STEPS === 0;
+      const sampled = m.regionsAt ? m.regionsAt.includes(t) : stripped;
+      if (!stripped && !sampled) continue;
+      const jpeg = await jpegOf(cdp, { x: clip.x, y: clip.y });
+      if (stripped) frames.push({ t, jpeg });
+      if (!sampled) continue;
+      // Once the hand has settled: before `fromMs` it is still being dealt.
+      shape ??= await regionsNow();
+      const now = Object.fromEntries(Object.entries(shape).filter(([name]) => m.regionAt?.[name]?.includes(t) ?? true));
+      regions.push({ t, regions: Object.keys(now).length ? await regionBrightness(decoder, jpeg, DPR, now) : {} });
     }
-    const frame = await stepTo(t, STEP_MS - ran);
-    if (t < (m.fromMs ?? 0)) continue;
-    if (frame) traced.push({ ...frame, t });
-    if (m.apart?.includes(t)) {
-      const sample = await particles();
-      if (sample) layer.push({ t, ...sample });
-    }
-    const stripped = m.stripAt ? m.stripAt.includes(t) : k % STRIP_STEPS === 0;
-    const sampled = m.regionsAt ? m.regionsAt.includes(t) : stripped;
-    if (!stripped && !sampled) continue;
-    const jpeg = await jpegOf(cdp, { x: clip.x, y: clip.y });
-    if (stripped) frames.push({ t, jpeg });
-    if (!sampled) continue;
-    // Once the hand has settled: before `fromMs` it is still being dealt.
-    shape ??= await regionsNow();
-    const now = Object.fromEntries(Object.entries(shape).filter(([name]) => m.regionAt?.[name]?.includes(t) ?? true));
-    regions.push({ t, regions: Object.keys(now).length ? await regionBrightness(decoder, jpeg, DPR, now) : {} });
+  } finally {
+    await cdp.detach();
   }
   if (m.regionsAt) {
     expect(regions.map((r) => r.t), "a region sample at every time asked for").toEqual(m.regionsAt.filter((t) => t >= (m.fromMs ?? 0)));
   }
-  await cdp.detach();
   return { trace: { frames: traced, regions }, frames, layer };
 }
 
@@ -848,17 +852,19 @@ async function openAppSide(browser: Browser, baseURL: string, m: Moment, variant
   await m.appTrigger(page, baseURL);
   const mounted = await traced(page, m.appOnset, `the app's onset of ${m.key}`);
   const due = [...(m.actions ?? [])];
-  // The mockup is rolled the same pre-roll from its own start, so an action due before the felt draws is taken in it on both sides.
-  const onset = variant === "skia" ? await skiaOnset(page, mounted, loading, due, (a) => a.app?.(page) ?? Promise.resolve()) : mounted;
+  const act = (a: Action) => a.app?.(page) ?? Promise.resolve();
+  // The mockup is rolled the same pre-roll from its own start, taking every action due up to its end: so is the app.
+  const onset = variant === "skia" ? await skiaOnset(page, mounted, loading, due, act) : mounted;
   const preRollMs = Math.ceil((onset - mounted) / STEP_MS) * STEP_MS;
+  for (let at = (await page.evaluate(() => performance.now())) - mounted; at < preRollMs; at += STEP_MS) await stepTaking(page, at, due, act);
   const prelude = m.fromApp ? m.fromApp(await page.evaluate<TraceFrame>(TRACED_AT(mounted))) : "";
-  return { page, onset, preRollMs, prelude, due, onsetMs: Date.now() - started };
+  return { page, mounted, preRollMs, prelude, due, onsetMs: Date.now() - started };
 }
 
 async function stripAppSide(side: Awaited<ReturnType<typeof openAppSide>>, decoder: Page, m: Moment, variant: Variant) {
-  const { page, onset, preRollMs, due } = side;
+  const { page, mounted, preRollMs, due } = side;
   const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, due, (a) => a.app?.(page), (t, ms) =>
-    stepThen<TraceFrame | null>(page, t > preRollMs ? ms : null, TRACED_AT(onset + t - preRollMs)), async () => ({
+    stepThen<TraceFrame | null>(page, t > preRollMs ? ms : null, TRACED_AT(mounted + t)), async () => ({
     pile: await seatAnchor(page, "pile"),
     light: await settledLight(page, "bottom"),
     handTop: await page.evaluate(() =>
