@@ -5,7 +5,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { PgDialect } from "drizzle-orm/pg-core";
-import type { SQL } from "drizzle-orm";
+import { getTableName, type SQL } from "drizzle-orm";
 import { db } from "../../server/store/db.ts";
 import { installClock } from "../../server/http/clock.ts";
 import { redeemAuthCode, redeemAuthToken } from "../../server/http/authTokens.ts";
@@ -60,15 +60,16 @@ describe("auth token expiry is judged on the server clock", () => {
 
   test("the retention sweep drops tokens expired on the installed clock", async (t) => {
     const clock = onSkewedClock(t);
-    const conditions = new Map<unknown, SQL>();
-    t.mock.method(db, "delete", (table: unknown) => ({
-      where: async (cond: SQL) => {
-        conditions.set(table, cond);
-      },
-    }));
+    const statements: SQL[] = [];
+    t.mock.method(db, "execute", async (q: SQL) => {
+      statements.push(q);
+      return { rows: [], rowCount: 0 };
+    });
     await sweepRetention();
     const { authTokens } = await import("../../shared/schema.ts");
-    const cond = conditions.get(authTokens);
+    const cond = statements.find((q) =>
+      dialect.sqlToQuery(q).sql.startsWith(`DELETE FROM "${getTableName(authTokens)}"`)
+    );
     assert.ok(cond, "the sweep no longer prunes auth_tokens");
     judgesOnTheClock(cond, clock.now(), "the auth_tokens sweep");
   });

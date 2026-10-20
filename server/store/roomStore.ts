@@ -5,7 +5,6 @@ import { users, rooms, roomPlayers, gameInvites, activeGames } from "../../share
 import type { User, Room, RoomPlayer, RoomVisibility } from "../../shared/schema.ts";
 import { heldSeats, renumbering, seatForClaim, settleRelease, startRefusal } from "../game/seatAllocation.ts";
 import type { SeatHold, SeatInvite, SeatedPlayer, SeatingRoom } from "../game/seatAllocation.ts";
-import { seatHoldMs } from "../game/gameTimers.ts";
 import { randomCode } from "./codes.ts";
 
 export type SeatClaim =
@@ -78,35 +77,38 @@ const statusWrites = new Map<string, Promise<void>>();
 export const roomStore = {
   /**
    * Lets the unique constraint decide the code, the same way `createUser` does
-   * for friend codes.
+   * for friend codes: between a check and an insert another caller can take
+   * the code, so the insert asks the constraint and retries on the answer.
    *
-   * Checking first and then inserting cannot be right: between the check and
-   * the insert another caller can take the code, and the previous loop also
-   * generated a replacement after its last failed check and inserted that one
-   * unverified. The constraint is the only thing that can settle it, so the
-   * insert asks it and retries on the answer.
+   * The host takes seat 0 in the same transaction, so a room never exists
+   * without the player who opened it.
    */
   async createRoom(
     hostUserId: string,
-    gameMode: "free_for_all" | "teams",
-    maxPlayers: number,
-    visibility: RoomVisibility = "private",
-    autoStart = false
+    opts: {
+      gameMode: "free_for_all" | "teams";
+      maxPlayers: number;
+      visibility?: RoomVisibility;
+      autoStart?: boolean;
+    }
   ): Promise<Room> {
     for (let attempt = 0; attempt < 10; attempt++) {
       try {
-        const [room] = await db.insert(rooms).values({
-          code: generateRoomCode(),
-          hostUserId,
-          status: "waiting",
-          gameMode,
-          maxPlayers,
-          visibility,
-          autoStart,
-          createdAt: new Date(now()),
-        }).returning();
-        if (!room) throw new Error("createRoom: insert returned no row");
-        return room;
+        return await db.transaction(async (tx) => {
+          const [room] = await tx.insert(rooms).values({
+            code: generateRoomCode(),
+            hostUserId,
+            status: "waiting",
+            gameMode: opts.gameMode,
+            maxPlayers: opts.maxPlayers,
+            visibility: opts.visibility ?? "private",
+            autoStart: opts.autoStart ?? false,
+            createdAt: new Date(now()),
+          }).returning();
+          if (!room) throw new Error("createRoom: insert returned no row");
+          await tx.insert(roomPlayers).values({ roomId: room.id, userId: hostUserId, seatIndex: 0 });
+          return room;
+        });
       } catch (err) {
         const constraint = (err as { constraint?: string })?.constraint;
         if (constraint?.includes("code") && attempt < 9) continue;
@@ -224,10 +226,6 @@ export const roomStore = {
     });
   },
 
-  async addRoomPlayer(roomId: string, userId: string, seatIndex: number) {
-    await db.insert(roomPlayers).values({ roomId, userId, seatIndex });
-  },
-
   /**
    * Idempotent seat write — inserting unconditionally on every reconnect
    * would grow room_players without bound and corrupt the seat -> hand
@@ -246,6 +244,7 @@ export const roomStore = {
   async claimRoomSeat(
     roomId: string,
     userId: string,
+    holdMs: number,
     opts: { requirePublic?: boolean; requireOccupied?: boolean } = {}
   ): Promise<SeatClaim> {
     return db.transaction(async (tx): Promise<SeatClaim> => {
@@ -279,7 +278,7 @@ export const roomStore = {
         seated,
         invites,
         now: now(),
-        holdMs: seatHoldMs(),
+        holdMs,
         userId,
       });
       if (seatIndex === null) return { ok: false, reason: "held" };
@@ -296,7 +295,8 @@ export const roomStore = {
    */
   async getRoomSeatHolds(
     room: SeatingRoom & { id: string },
-    seated: readonly SeatedPlayer[]
+    seated: readonly SeatedPlayer[],
+    holdMs: number
   ): Promise<(SeatHold & { username: string })[]> {
     const invites: (SeatInvite & { username: string })[] = await db
       .select({
@@ -316,7 +316,7 @@ export const roomStore = {
       seated,
       invites,
       now: now(),
-      holdMs: seatHoldMs(),
+      holdMs,
     }).map((hold) => ({ ...hold, username: nameOf.get(hold.inviteeId) ?? "" }));
   },
 
@@ -360,11 +360,5 @@ export const roomStore = {
     await tx.delete(activeGames).where(inArray(activeGames.roomId, ids));
     const gone = await tx.delete(rooms).where(inArray(rooms.id, ids)).returning({ id: rooms.id });
     return gone.length;
-  },
-
-  async removeRoomPlayer(roomId: string, userId: string) {
-    await db.delete(roomPlayers).where(
-      and(eq(roomPlayers.roomId, roomId), eq(roomPlayers.userId, userId))
-    );
   },
 };

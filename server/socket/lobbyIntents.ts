@@ -26,7 +26,6 @@ export interface LobbyPort {
   store: Pick<
     typeof roomStore,
     | "createRoom"
-    | "addRoomPlayer"
     | "getRoomPlayers"
     | "getRoomByCode"
     | "getRoomById"
@@ -46,6 +45,8 @@ export interface LobbyPort {
   announceFilled(room: Parameters<typeof announceIfFilled>[1], seated: number): Promise<void>;
   announceChanged(roomId: string): Promise<void>;
   clearLobbyGrace(roomId: string, userId: string): void;
+  /** `server/game/gameTimers.ts` `seatHoldMs`. */
+  seatHoldMs(): number;
   track: typeof trackEvent;
 }
 
@@ -99,14 +100,7 @@ async function openRoom(
   { gameMode, maxPlayers }: z.infer<typeof RoomCreateSchema>,
   opts?: { visibility: "public"; autoStart: true }
 ): Promise<Outcome> {
-  const room = await port.store.createRoom(
-    port.userId,
-    gameMode,
-    maxPlayers,
-    opts?.visibility ?? "private",
-    opts?.autoStart ?? false
-  );
-  await port.store.addRoomPlayer(room.id, port.userId, 0);
+  const room = await port.store.createRoom(port.userId, { gameMode, maxPlayers, ...opts });
 
   await port.seat(room.id);
 
@@ -121,7 +115,7 @@ export async function joinRoomIntent(port: LobbyPort, { code }: z.infer<typeof R
   if (!room) return refuse("ROOM_NOT_FOUND");
   if (room.status !== "waiting") return refuse("GAME_ALREADY_STARTED");
 
-  const claim = await port.store.claimRoomSeat(room.id, port.userId);
+  const claim = await port.store.claimRoomSeat(room.id, port.userId, port.seatHoldMs());
   if (!claim.ok) return refuse(SEAT_CLAIM_REFUSAL[claim.reason]);
 
   await takeClaimedSeat(port, claim.room, (playerCount) =>
@@ -169,7 +163,7 @@ export async function rejoinRoomIntent(port: LobbyPort, { code }: z.infer<typeof
   const seated = await port.store.getRoomPlayers(room.id);
   if (!seated.some((p) => p.userId === port.userId)) return refuse("NOT_IN_ROOM");
 
-  const claim = await port.store.claimRoomSeat(room.id, port.userId);
+  const claim = await port.store.claimRoomSeat(room.id, port.userId, port.seatHoldMs());
   if (!claim.ok && claim.reason !== "already_joined") return refuse(SEAT_CLAIM_REFUSAL[claim.reason]);
 
   await port.seat(room.id);
@@ -220,7 +214,7 @@ export async function quickmatchIntent(
     )
       continue;
 
-    const claim = await port.store.claimRoomSeat(candidate.room.id, port.userId, {
+    const claim = await port.store.claimRoomSeat(candidate.room.id, port.userId, port.seatHoldMs(), {
       requirePublic: true,
       requireOccupied: true,
     });
