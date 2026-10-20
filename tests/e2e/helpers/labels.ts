@@ -1,3 +1,8 @@
+import { cardSpokenName, rankSpokenName, suitSpokenName } from "../../../lib/cardNames.ts";
+import { createDeck, EXCHANGE_VALID_RANKS, RANK_ORDER, START_CARD, type Rank } from "../../../lib/game/gameEngine.ts";
+import type { TFn } from "../../../lib/i18n";
+import { it } from "../../../locales/it.ts";
+
 /**
  * UI copy this suite compares for equality, rather than uses to name a control. The sentence
  * carries a boolean, so it is a protocol and belongs in one place — `tests/tooling/e2eSentinels.test.ts`
@@ -18,7 +23,12 @@ export const YOUR_TURN_PREFIX = "È il tuo turno.";
 export const EXCHANGE_GIVE_PREFIX = "Fase di scambio: devi dare una carta a";
 
 /** One hand's size in the state sentence; group 1 is the count. */
-export const HAND_COUNT = /(\d+) cart[ae] in mano/g;
+export const HAND_COUNT = /(\d+) cart[ae] in mano/;
+
+/** Every hand size the state sentence names, in order. */
+export function handCounts(desc: string): number[] {
+  return [...desc.matchAll(new RegExp(HAND_COUNT.source, "g"))].map((m) => Number(m[1]));
+}
 
 /** Another player's play in the state sentence; group 1 is its label. The viewer's own reads "Hai giocato", which this misses. */
 export const OTHERS_PLAY = /ha giocato (.+?)\./;
@@ -34,11 +44,21 @@ export const REPLY_SIZE: [RegExp, number][] = [
 /** A card's spoken name is `<rank><CARD_NAME_JOIN><suit>`. */
 export const CARD_NAME_JOIN = " di ";
 
-export const SUIT_WORDS = ["Fiori", "Cuori", "Quadri", "Picche"];
+/** The locale this suite runs the app in, read through the app's own card names. */
+const t = ((key: keyof typeof it, vars: Record<string, string> = {}) =>
+  it[key].replace(/\{\{(\w+)\}\}/g, (_, name: string) => vars[name] ?? "")) as unknown as TFn;
 
-/** Every rank's spoken word, weakest first; a joker's word is its whole name. */
-export const RANK_WORDS = [
-  "3", "4", "5", "6", "7", "8", "9", "10",
-  "Fante", "Donna", "Re", "Asso", "2",
-  "Jolly nero", "Jolly rosso",
-];
+/** A rank's spoken word; a joker's word is its whole name. */
+const rankWord = (rank: Rank) =>
+  rank.startsWith("joker") ? cardSpokenName({ id: rank, rank, suit: null, isJoker: true }, t) : rankSpokenName(rank, t);
+
+/** Every rank's spoken word, weakest first. */
+export const RANK_WORDS = RANK_ORDER.map(rankWord);
+
+/** The words of the ranks a winner may give back (docs/GAME-RULES.md §10). */
+export const GIVEBACK_RANK_WORDS = EXCHANGE_VALID_RANKS.map(rankWord);
+
+export const SUIT_WORDS = [...new Set(createDeck().flatMap((c) => (c.suit ? [suitSpokenName(c.suit, t)] : [])))];
+
+/** The card that opens a match whenever it is dealt, as the hand names it. */
+export const START_CARD_LABEL = cardSpokenName(START_CARD, t);

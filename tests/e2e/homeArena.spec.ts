@@ -2,11 +2,12 @@
 // half of #394 no unit test can decide.
 //
 // `tests/ui-rules/homeMenuModel.test.ts` settles *which* ways to play are offered and
-// which are promoted; that is a set, and a set is decidable from source. Where
-// they land is not: `@testing-library/react-native` runs on
-// `react-test-renderer`, which never runs flexbox, so "one hero", "the quiet
-// row is against the bottom edge" and "the account block is never one line"
-// are true or false only in a browser.
+// which are promoted; that is a set, and a set is decidable from source.
+// `tests/native/homeHeroSignedOut.test.tsx` holds the signed-out hero's name to
+// it. Where they land is not decidable there: `@testing-library/react-native`
+// runs on `react-test-renderer`, which never runs flexbox, so "the quiet row is
+// against the bottom edge" and "the account block is never one line" are true
+// or false only in a browser.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigation";

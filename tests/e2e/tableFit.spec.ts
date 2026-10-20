@@ -275,7 +275,6 @@ test.describe("the table's bands", () => {
 
 /** locales/it.ts `game.autoPassTitle` — the offline clock expiring. */
 const AUTO_PASS_TITLE = "Passaggio automatico";
-/** locales/it.ts `gameTable.a11yPlayerPlayed`. */
 /** context/offlineDriver.ts HUMAN_TURN_SECONDS, which EXPO_PUBLIC_E2E_FAST does not shorten. */
 const OFFLINE_CLOCK_MS = 30_000;
 

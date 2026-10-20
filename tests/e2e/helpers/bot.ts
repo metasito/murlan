@@ -20,10 +20,12 @@ import {
   CARD_NAME_JOIN,
   EXCHANGE_GIVE_PREFIX,
   GIOCA_VALID_LABEL,
-  HAND_COUNT,
+  GIVEBACK_RANK_WORDS,
+  handCounts,
   OTHERS_PLAY,
   RANK_WORDS,
   REPLY_SIZE,
+  START_CARD_LABEL,
   SUIT_WORDS,
   YOUR_TURN_PREFIX,
 } from "./labels.ts";
@@ -85,7 +87,9 @@ export async function playAnyLegal(page: Page): Promise<string | null> {
   const labelsOf = (selector: string) =>
     page.locator(`${selector}[aria-label]`).evaluateAll((els) => els.map((el) => el.getAttribute("aria-label") ?? ""));
   const card = (label: string) => page.locator(`${HAND_CARDS}${labelSelector(label)}`);
-  for (const label of await labelsOf(HAND_CARDS)) {
+  const hand = await labelsOf(HAND_CARDS);
+  const order = hand.includes(START_CARD_LABEL) ? [START_CARD_LABEL, ...hand.filter((l) => l !== START_CARD_LABEL)] : hand;
+  for (const label of order) {
     for (const held of await labelsOf(`${TABLE} ${HAND_SELECTED}`)) {
       if (!(await toggle(page, card(held)))) return null;
     }
@@ -116,8 +120,8 @@ async function tableDescription(page: Page): Promise<string | null> {
  * names none.
  */
 export function cardsInHands(desc: string): number | null {
-  const counts = [...desc.matchAll(HAND_COUNT)];
-  return counts.length === 0 ? null : counts.reduce((sum, m) => sum + Number(m[1]), 0);
+  const counts = handCounts(desc);
+  return counts.length === 0 ? null : counts.reduce((sum, n) => sum + n, 0);
 }
 
 /** An `isFinished` for a round that ends on the table: its only sign is the next deal growing the hands. */
@@ -457,7 +461,7 @@ async function playOrPass(
 // on this — rather than excluding known UI chrome by label — means the
 // selector can't accidentally land on an unrelated button such as the
 // top-bar quit control, whatever its label happens to be.
-const GIVEBACK_CARD_LABEL = new RegExp(`^(${RANK_WORDS.slice(0, 8).join("|")})${CARD_NAME_JOIN}(${SUIT_WORDS.join("|")})$`);
+const GIVEBACK_CARD_LABEL = new RegExp(`^(${GIVEBACK_RANK_WORDS.join("|")})${CARD_NAME_JOIN}(${SUIT_WORDS.join("|")})$`);
 
 /** The prompt on the felt. Its presence is what says an exchange is open. */
 const EXCHANGE_PROMPT = '[data-testid="exchange-prompt"]';
@@ -504,16 +508,14 @@ export async function giveExchangeCard(page: Page): Promise<boolean> {
   if ((await prompt.count()) === 0) return false;
 
   const labels = await giveCandidateLabels(page);
-  const picks = labels
-    .map((l, i) => ({ l, i }))
-    .filter(({ l }) => GIVEBACK_CARD_LABEL.test(l));
+  const picks = labels.filter((l) => GIVEBACK_CARD_LABEL.test(l));
   // The fallback case: nothing in 3-10, so the engine offers the lowest card
   // and it is the only enabled one in the fan.
-  const order = picks.length > 0 ? picks.map((p) => p.i) : labels.map((_, i) => i);
+  const order = picks.length > 0 ? picks : labels;
 
-  for (const i of order.reverse()) {
+  for (const label of order.reverse()) {
+    const card = page.locator(`${HAND_CARDS}${labelSelector(label)}`);
     for (let attempt = 0; attempt < 3; attempt++) {
-      const card = giveCandidates(page).nth(i);
       if ((await card.getAttribute("aria-pressed", { timeout: CARD_CLICK_TIMEOUT_MS }).catch(() => null)) !== "true") await toggle(page, card);
       await tap(page, page.locator(GIOCA_BTN)).catch(() => {});
       if (await expect(prompt).toHaveCount(0, { timeout: 1_000 }).then(() => true, () => false)) return true;
@@ -521,6 +523,13 @@ export async function giveExchangeCard(page: Page): Promise<boolean> {
   }
   return false;
 }
+
+/** How long one idle pass waits for the table to move before the watchdogs look again. */
+const IDLE_WAIT_MS = 1_000;
+/** Shorter: an abandoned turn is usually a table one tick from moving on. */
+const ABANDON_WAIT_MS = 250;
+
+const onViewer = (desc: string) => desc.startsWith(YOUR_TURN_PREFIX) || desc.startsWith(EXCHANGE_GIVE_PREFIX);
 
 export interface DriveOptions {
   /** Resolves true once the game has reached a terminal, checkable screen. */
@@ -601,7 +610,7 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
 
     const desc = await tableDescription(page);
     if (desc === null) {
-      await page.locator(TABLE).waitFor({ timeout: 1_000 }).catch(() => {});
+      await page.locator(`${TABLE}[${TABLE_STATE}]`).waitFor({ timeout: 1_000 }).catch(() => {});
       continue;
     }
 
@@ -618,8 +627,10 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
       }
     }
 
+    let acted = false;
     if (desc.startsWith(EXCHANGE_GIVE_PREFIX)) {
       const gaveCard = await giveExchangeCard(page);
+      acted = gaveCard;
       if (gaveCard) {
         log(`exchange: gave back a card (${desc})`);
         const changed = await stateLeaves(page, desc, stallMs);
@@ -653,10 +664,11 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
               `keeps moving. Last table state: "${desc}".`
           );
         }
-        await stateLeaves(page, desc, 1_000);
+        await stateLeaves(page, desc, ABANDON_WAIT_MS);
         continue;
       }
       consecutiveAbandons = 0;
+      acted = true;
       const changed = await stateLeaves(page, desc, stallMs);
       if (!changed) {
         throw new StuckError(
@@ -673,6 +685,7 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
       );
     }
 
-    await stateLeaves(page, lastDesc, 1_000);
+    // A move that lands on the viewer's next move has nothing left to wait for.
+    if (!(acted && onViewer(lastDesc))) await stateLeaves(page, lastDesc, IDLE_WAIT_MS);
   }
 }

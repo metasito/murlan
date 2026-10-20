@@ -20,12 +20,15 @@ import { blankComments } from "../helpers/sourceScan.ts";
 import {
   CARD_NAME_JOIN,
   EXCHANGE_GIVE_PREFIX,
-  HAND_COUNT,
+  handCounts,
   OTHERS_PLAY,
   RANK_WORDS,
   REPLY_SIZE,
   SUIT_WORDS,
 } from "../e2e/helpers/labels.ts";
+import { cardSpokenName } from "../../lib/cardNames.ts";
+import { createDeck, getRankStrength } from "../../lib/game/gameEngine.ts";
+import type { TFn } from "../../lib/i18n";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const E2E = path.join(repoRoot, "tests", "e2e");
@@ -268,7 +271,7 @@ test("the state sentence still parses the way the browser suite reads it", () =>
     ["gameTable.a11yOpponentCards_one", 1],
     ["gameTable.a11yOpponentCards_other", 7],
   ] as const) {
-    assert.deepEqual([...said(key, { name: "Ana", count }).matchAll(HAND_COUNT)].map((m) => m[1]), [String(count)], `HAND_COUNT misreads ${key}`);
+    assert.deepEqual(handCounts(said(key, { name: "Ana", count })), [count], `HAND_COUNT misreads ${key}`);
   }
 
   const card = said("cards.nameFormat", { rank: "8", suit: localeValue("cards.suitHearts") });
@@ -290,16 +293,12 @@ test("the state sentence still parses the way the browser suite reads it", () =>
   }
 });
 
-test("the suite's rank and suit words are the locale's", () => {
-  assert.deepEqual(RANK_WORDS, [
-    "3", "4", "5", "6", "7", "8", "9", "10",
-    ...["cards.rankJack", "cards.rankQueen", "cards.rankKing", "cards.rankAce"].map(localeValue),
-    "2",
-    localeValue("cardView.jokerBlack"),
-    localeValue("cardView.jokerColored"),
-  ]);
-  assert.deepEqual(
-    [...SUIT_WORDS].sort(),
-    ["cards.suitClubs", "cards.suitDiamonds", "cards.suitHearts", "cards.suitSpades"].map(localeValue).sort()
-  );
+test("every card's label splits into the rank word of its strength and a suit word", () => {
+  const t = ((key: string, vars: Record<string, string> = {}) => said(key, vars)) as unknown as TFn;
+  for (const card of createDeck()) {
+    const label = cardSpokenName(card, t);
+    const [rank, suit] = card.isJoker ? [label, null] : label.split(CARD_NAME_JOIN);
+    assert.equal(rank, RANK_WORDS[getRankStrength(card.rank)], `${label}: its rank word is not RANK_WORDS at its strength`);
+    if (suit !== null) assert.ok(SUIT_WORDS.includes(suit), `${label}: ${suit} is not in SUIT_WORDS`);
+  }
 });
