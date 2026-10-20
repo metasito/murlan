@@ -383,3 +383,50 @@ describe("readExchangeLegs", () => {
     assert.notDeepEqual(at(1), at(13));
   });
 });
+
+describe("a spectator (null seat) owns no seat in the exchange", () => {
+  const STAGES: LegStage[] = ["waiting", "flying", "rest", "tuck", "landed"];
+  const hand = [TWO, ACE, SEVEN, ...JOKERS];
+  const shapes = [0, 1, 2].flatMap((winnerIdx) =>
+    [0, 1, 2]
+      .filter((loserIdx) => loserIdx !== winnerIdx)
+      .flatMap((loserIdx) =>
+        [false, true].map((twoJokerException) => ({
+          winnerName: "",
+          loserName: "",
+          winnerIdx,
+          loserIdx,
+          twoJokerException,
+          cardReceived: ACE,
+          cardGiven: SEVEN,
+        }))
+      )
+  );
+
+  test("arrivingCard hands a spectator nothing", () => {
+    for (const announce of shapes) assert.equal(arrivingCard(announce, null), undefined, JSON.stringify(announce));
+  });
+
+  test("readHandArrival holds back nothing for a spectator, at every stage", () => {
+    for (const announced of shapes) {
+      for (const receive of STAGES) {
+        for (const give of STAGES) {
+          assert.deepEqual(
+            readHandArrival({ hand, announced, stages: { key: "k", receive, give, ready: false }, viewerSeat: null }),
+            { withheldIds: [] },
+            `${JSON.stringify(announced)} ${receive}/${give}`
+          );
+        }
+      }
+    }
+  });
+
+  test("the same seats, seated, do own them, so the sweep above can tell", () => {
+    const seated = shapes.filter((a) => !a.twoJokerException);
+    assert.ok(seated.every((a) => arrivingCard(a, a.winnerIdx) === ACE && arrivingCard(a, a.loserIdx) === SEVEN));
+    const lent = seated.map((a) =>
+      readHandArrival({ hand, announced: a, stages: { key: "k", receive: "flying", give: "flying", ready: false }, viewerSeat: a.winnerIdx })
+    );
+    assert.ok(lent.every((r) => r.withheldIds.length > 0));
+  });
+});

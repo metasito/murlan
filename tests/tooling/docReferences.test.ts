@@ -8,15 +8,19 @@ import { fileURLToPath } from "node:url";
 import { classify } from "../../scripts/lib/commentShape.ts";
 
 // .claude/skills is vendored upstream (the plan's Global Constraints forbid touching it), so a
-// code snippet inside it is not a claim this repo's own docs make. Excluded here, not silently:
-// this comment is the exclusion's record.
+// code snippet inside it is not a claim this repo's own docs make. A dated plan in docs/plans/ is
+// a record of the tree it was written against: a later move leaves its paths stale by design, and
+// rewriting them would falsify the record. Excluded here, not silently: this comment is the
+// exclusions' record.
 const EXCLUDED_DIRS = [".claude/skills/"];
+const DATED_PLAN = /^docs\/plans\/\d{4}-\d{2}-\d{2}-[^/]+\.md$/;
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const at = (file: string) => join(ROOT, file);
 
 const docs = execFileSync("git", ["ls-files", "*.md"], { cwd: ROOT, encoding: "utf8" })
   .trim().split("\n").filter((f) => !f.startsWith("node_modules/"))
-  .filter((f) => !EXCLUDED_DIRS.some((dir) => f.startsWith(dir)));
+  .filter((f) => !EXCLUDED_DIRS.some((dir) => f.startsWith(dir)))
+  .filter((f) => !DATED_PLAN.test(f));
 const scripts = new Set(Object.keys(JSON.parse(readFileSync(at("package.json"), "utf8")).scripts));
 const RULES = "docs/agents/RULES.md";
 const ruleNumbers = new Set(
@@ -99,7 +103,8 @@ test("every docs/ path a comment in tracked source, or a workflow prompt, names 
   const broken: string[] = [];
   const sourceFiles = execFileSync("git", ["ls-files", "*.ts", "*.tsx", "*.mjs"], { cwd: ROOT, encoding: "utf8" })
     .trim().split("\n").filter(Boolean)
-    .filter((f) => !EXCLUDED_DIRS.some((dir) => f.startsWith(dir)));
+    .filter((f) => !EXCLUDED_DIRS.some((dir) => f.startsWith(dir)))
+  .filter((f) => !DATED_PLAN.test(f));
   for (const file of sourceFiles) {
     const lines = classify(readFileSync(at(file), "utf8"), file);
     for (const line of lines) {

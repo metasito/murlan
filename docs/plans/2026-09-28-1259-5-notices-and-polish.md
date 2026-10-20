@@ -299,7 +299,7 @@ from `Motion`). Run
 ### Task 6: The float slot, and the viewer's own pass (#1264)
 
 **Scope:** *components/table/notices/floats.tsx*, `components/GameTable.tsx`,
-`flightPhysics.ts`, *components/table/noticeModel.ts*,
+`components/flightPhysics.ts`, *components/table/noticeModel.ts*,
 *components/table/notices/gallery.tsx*, *tests/native/floatSlot.test.tsx*,
 *tests/e2e/mockupPolish.spec.ts*.
 
@@ -320,7 +320,7 @@ from `Motion`). Run
 **Tests:** new *tests/native/floatSlot.test.tsx* (a second float replaces the first; the live
 region is the same node before and after); new "float" case in
 *tests/e2e/mockupPolish.spec.ts*. Run `tests/ui-rules/oneClock.test.ts`,
-`flightPhysics.test.ts`, *tests/native/tableNotices.test.tsx*,
+`tests/ui-rules/flightPhysics.test.ts`, *tests/native/tableNotices.test.tsx*,
 `tests/native/passAndPlayHandoff.test.tsx`.
 
 ### Task 7: Refusals and table lines: reject hint, error toast, "waiting for the others", empty hand

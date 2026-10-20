@@ -242,11 +242,12 @@ export function seatLabelH(scale: number): number {
  * for them. Questions of *geometry* — which side a seat draws on — still use
  * `viewerSeat` raw, because a watcher's table is laid out from a seat all the
  * same. The `seat-identity` guard in eslint.guards.cjs pins that identity never asks directly.
+ * A null `viewerSeat` is a watcher too, for callers handed a seat already nulled for one.
  */
 export function viewerOwnsSeat(
   seat: number | null,
-  viewerSeat: number,
-  spectating: boolean
+  viewerSeat: number | null,
+  spectating = false
 ): boolean {
-  return !spectating && seat === viewerSeat;
+  return !spectating && viewerSeat !== null && seat === viewerSeat;
 }

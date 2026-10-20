@@ -68,9 +68,9 @@ export function arrivingCard(
   announce: ExchangeAnnounceData | null | undefined,
   viewerSeat: number | null
 ): Card | undefined {
-  if (!announce || announce.twoJokerException || viewerSeat === null) return undefined;
-  if (viewerOwnsSeat(announce.winnerIdx, viewerSeat, false)) return announce.cardReceived;
-  if (viewerOwnsSeat(announce.loserIdx, viewerSeat, false)) return announce.cardGiven;
+  if (!announce || announce.twoJokerException) return undefined;
+  if (viewerOwnsSeat(announce.winnerIdx, viewerSeat)) return announce.cardReceived;
+  if (viewerOwnsSeat(announce.loserIdx, viewerSeat)) return announce.cardGiven;
   return undefined;
 }
 
@@ -100,14 +100,14 @@ export function readHandArrival(input: {
   viewerSeat: number | null;
 }): HandArrival {
   const { hand, announced, stages, viewerSeat } = input;
-  if (!announced || viewerSeat === null) return { withheldIds: [] };
+  if (!announced) return { withheldIds: [] };
   const holds = (card: Card | undefined) => !!card && hand.some((c) => c.id === card.id);
   if (announced.twoJokerException) {
-    const shown = viewerOwnsSeat(announced.loserIdx, viewerSeat, false) && airborne(stages.receive);
+    const shown = viewerOwnsSeat(announced.loserIdx, viewerSeat) && airborne(stages.receive);
     return { withheldIds: shown ? hand.filter((c) => c.isJoker).map((c) => c.id) : [] };
   }
-  const winner = viewerOwnsSeat(announced.winnerIdx, viewerSeat, false);
-  if (!winner && viewerSeat !== announced.loserIdx) return { withheldIds: [] };
+  const winner = viewerOwnsSeat(announced.winnerIdx, viewerSeat);
+  if (!winner && !viewerOwnsSeat(announced.loserIdx, viewerSeat)) return { withheldIds: [] };
   const incoming = arrivingCard(announced, viewerSeat);
   const outgoing = winner ? announced.cardGiven : announced.cardReceived;
   const inStage = winner ? stages.receive : stages.give;
