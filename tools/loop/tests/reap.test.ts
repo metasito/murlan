@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
+import { BASE_PORT, PORT_SPAN } from "../../ci/e2ePortRange.mjs";
 import {
   orphans,
   staleByAge,
@@ -559,6 +560,29 @@ describe("the sweep, called in-process as housekeeping calls it", () => {
     });
     assert.ok(said.some((l) => /e2e port/.test(l)), said.join("\n"));
     assert.equal(took, said.filter((l) => /would (kill|clear)/.test(l)).length, said.join("\n"));
+  });
+
+  test("sweeps every port of the e2e span, not only the base", async () => {
+    const said: string[] = [];
+    const far = BASE_PORT + PORT_SPAN - 1;
+    const orphan = { pid: 777, ppid: 999999, name: "node", commandLine: "node server", startedAt: Date.now() };
+    const swept: number[] = [];
+    const pinned = process.env.E2E_PORT;
+    delete process.env.E2E_PORT;
+    let took: number;
+    try {
+      ({ took } = await reap({
+        dryRun: true,
+        say: (l: string) => said.push(l),
+        readTable: () => ({ rows: [orphan], blind: null }),
+        listeners: (port: number) => (swept.push(port), port === far ? [777] : []),
+      }));
+    } finally {
+      if (pinned !== undefined) process.env.E2E_PORT = pinned;
+    }
+    assert.deepEqual(swept, Array.from({ length: PORT_SPAN }, (_, i) => BASE_PORT + i));
+    assert.match(said.join("\n"), new RegExp(`would clear the e2e port ${far}, held by node pid 777`));
+    assert.equal(took, 1);
   });
 
   test("a blind table comes back blind and is said, never read as a clean machine", async () => {

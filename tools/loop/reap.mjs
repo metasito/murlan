@@ -9,11 +9,11 @@ import os from "node:os";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { killTree } from "../../scripts/lib/proc.mjs";
+import { BASE_PORT, PORT_SPAN } from "../ci/e2ePortRange.mjs";
 import { checkoutRoot } from "./cli.mjs";
 
 const ORPHAN_AGE_MS = 2 * 60 * 60 * 1000;
 const STALE_AGE_MS = 24 * 60 * 60 * 1000;
-const E2E_PORT = process.env.E2E_PORT ?? "5199";
 
 /** What `ownedByTooling` matches a command line against, so an answer one directory out silently classifies nothing as ours. */
 export { checkoutRoot } from "./cli.mjs";
@@ -299,7 +299,7 @@ export function clearPort(port, { dryRun = false } = {}) {
  * to a live run is somebody else working, not a leftover, so it is not counted. `blind` is why it
  * could not see the processes, or null.
  */
-export async function reap({ dryRun = false, stale: takeStale = false, say = console.log, readTable = processTable } = {}) {
+export async function reap({ dryRun = false, stale: takeStale = false, say = console.log, readTable = processTable, listeners = portListeners } = {}) {
   const verb = dryRun ? "would clear" : "cleared";
   const now = Date.now();
   const { rows: table, blind } = readTable();
@@ -317,21 +317,28 @@ export async function reap({ dryRun = false, stale: takeStale = false, say = con
 
   // The command line is printed because "held by pid 33196" tells whoever lost a run nothing
   // about whose it was.
-  const holders = portListeners(E2E_PORT).filter((pid) => pid !== process.pid);
   const byPid = new Map(table.map((p) => [p.pid, p]));
-  const staleHolders = stalePortHolders(holders, table);
-  for (const pid of staleHolders) {
-    say(`reap: ${verb} the e2e port ${E2E_PORT}, held by ${labelOf(byPid.get(pid))}`);
-    kill(pid);
+  const base = Number(process.env.E2E_PORT ?? BASE_PORT);
+  const staleHolders = [];
+  let anyHeld = false;
+  for (let port = base; port < base + PORT_SPAN; port++) {
+    const holders = listeners(port).filter((pid) => pid !== process.pid);
+    if (holders.length) anyHeld = true;
+    const stale = stalePortHolders(holders, table);
+    for (const pid of stale) {
+      say(`reap: ${verb} the e2e port ${port}, held by ${labelOf(byPid.get(pid))}`);
+      kill(pid);
+    }
+    staleHolders.push(...stale);
+    for (const pid of holders.filter((p) => !stale.includes(p))) {
+      const held = byPid.get(pid);
+      say(
+        `reap: left the e2e port ${port} to a live run — ${labelOf(held ?? { pid })}, ` +
+          `launched by ${held?.ppid ?? "?"}: ${(held?.commandLine || "command line unreadable").slice(0, 120)}`
+      );
+    }
   }
-  for (const pid of holders.filter((p) => !staleHolders.includes(p))) {
-    const held = byPid.get(pid);
-    say(
-      `reap: left the e2e port ${E2E_PORT} to a live run — ${labelOf(held ?? { pid })}, ` +
-        `launched by ${held?.ppid ?? "?"}: ${(held?.commandLine || "command line unreadable").slice(0, 120)}`
-    );
-  }
-  if (!holders.length) say(`reap: e2e port ${E2E_PORT} is free`);
+  if (!anyHeld) say(`reap: e2e ports ${base}..${base + PORT_SPAN - 1} are free`);
 
   const parentless = orphans(ours, {
     livePids: new Set(table.map((p) => p.pid)),

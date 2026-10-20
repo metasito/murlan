@@ -18,6 +18,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { PLAY_PORT } from "../tools/ci/e2ePortRange.mjs";
 import { gateTable, readRows, waitForRunEnd } from "./bench-gates.mjs";
 import { rewriteZipText } from "./lib/zipEntry.mjs";
 import { killTree, runBin, startBin } from "./lib/proc.mjs";
@@ -29,7 +30,7 @@ const PLUMESIGN = {
   sha256: "2311ed3090253bcc63ebb96a92ebca5f373f5344e8462ed089cf3bec6a75186b",
 };
 const RESIGN_AFTER_MS = 6 * 24 * 60 * 60 * 1000;
-const SERVER_PORT = 5000;
+const SERVER_PORT = PLAY_PORT;
 const USBMUXD_PORT = 27015;
 
 export function needsInstall(state, { fingerprint, now }) {

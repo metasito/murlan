@@ -13,10 +13,8 @@ import os from "node:os";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { clearPort, portListeners, staleAmong } from "../loop/reap.mjs";
+import { BASE_PORT, PORT_SPAN } from "./e2ePortRange.mjs";
 
-export const BASE_PORT = 5199;
-/** Enough for every run a machine can host at once; a wall this wide is a leak, not a queue. */
-export const PORT_SPAN = 20;
 
 /**
  * The first port from `base` that this run may take, and the pids to kill to take it.

@@ -94,19 +94,11 @@ describe("db reset guard", () => {
     assert.match(viaParam.stderr, /Reset failed/);
   });
 
-  test("the npm script does not supply the opt-in", () => {
+  test("no npm script wraps the reset, so the opt-in is always typed", () => {
     const pkg = JSON.parse(
       readFileSync(path.join(repoRoot, "package.json"), "utf8")
     ) as { scripts: Record<string, string> };
-    const dbReset = pkg.scripts["db:reset"];
-    assert.ok(dbReset, "db:reset script is missing");
-    assert.ok(
-      !dbReset.includes("ALLOW_DESTRUCTIVE"),
-      "db:reset must not set ALLOW_DESTRUCTIVE — the guard would be pointless"
-    );
-    assert.ok(
-      !dbReset.includes("--yes"),
-      "db:reset must not pass --yes — the guard would be pointless"
-    );
+    const wrapping = Object.entries(pkg.scripts).filter(([, cmd]) => cmd.includes("reset-db"));
+    assert.deepEqual(wrapping, []);
   });
 });

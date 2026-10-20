@@ -50,7 +50,7 @@ npm run db:push
 Answering "create" where the intent was a rename discards the old column's data and leaves a
 dead column behind; answering "rename" where the intent was a genuinely new object carries
 old data onto it. If a push conflicts with existing rows (for example a new unique index over
-data that already contains duplicates), the intended recovery is `npm run db:reset`, not a
+data that already contains duplicates), the intended recovery is `scripts/reset-db.mjs` (see README, Database), not a
 hand-written migration.
 
 4 — Verify the change landed and that a second push is a no-op:

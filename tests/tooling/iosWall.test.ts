@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { overBudget, overCeiling, run, wallSeconds, BUDGET_S, HARD_FACTOR } from "../../tools/ci/ios-wall.mjs";
+import { HARD_FACTOR } from "../../tools/ci/e2e-budget.mjs";
+import { overBudget, overCeiling, run, wallSeconds, BUDGET_S } from "../../tools/ci/ios-wall.mjs";
 
 const GATE = "Drive the app on a real iOS simulator";
 const at = (minute: number, second = 0) => `2026-10-08T04:${String(minute).padStart(2, "0")}:${String(second).padStart(2, "0")}Z`;
