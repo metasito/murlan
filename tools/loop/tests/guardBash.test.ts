@@ -280,6 +280,67 @@ describe("the bash guard allows correct usage", () => {
   }
 });
 
+describe("a file that names a merge is not a script that runs one", () => {
+  const QUOTES = 'assert.match(check("gh pr merge 5"), /not yours to merge/);\n';
+  const FILES: Record<string, string> = {
+    "a.test.ts": QUOTES,
+    "b.test.ts": QUOTES,
+    "out.txt": "ok 1 - blocks gh pr merge 5\n",
+    "helper.mjs": "export const ok = 1;\n",
+    "m.js": "require('child_process').execSync('gh pr merge 5 --auto');\n",
+    "m.sh": "gh pr merge 5 --auto\n",
+  };
+  const files = {
+    ...repo,
+    read: (file: string): string => {
+      const text = FILES[file.replace(/^\.[\\/]/, "")];
+      if (text === undefined) throw Object.assign(new Error("no such file"), { code: "ENOENT" });
+      return text;
+    },
+  };
+  const at = (cmd: string) => check(cmd, files);
+
+  for (const cmd of [
+    "node --test a.test.ts",
+    "node --test a.test.ts b.test.ts",
+    "node --test a.test.ts b.test.ts > out.txt",
+    "node --test a.test.ts b.test.ts > out.txt 2>&1",
+    "node --test a.test.ts 2>&1 | tail -5",
+    "node --test --test-reporter=spec a.test.ts b.test.ts",
+    "node --import ./helper.mjs --test a.test.ts",
+    "node --test a.test.ts b.test.ts && git commit -F - <<'EOF'\nsay why gh pr merge is the loop's job\nEOF",
+    "node --test a.test.ts; git commit -m 'gh pr merge is the loop'\"'\"'s job'",
+    "git commit -m 'gh pr merge is the loop'\"'\"'s job' && node --test a.test.ts",
+    "bash ./helper.mjs > out.txt",
+  ]) {
+    test(`allows: ${JSON.stringify(cmd)}`, () => assert.equal(at(cmd), null));
+  }
+
+  for (const cmd of [
+    "gh pr merge 5",
+    "gh -R o/r pr merge 5",
+    "X=1 gh pr merge 5",
+    "bash -c 'gh pr merge 5'",
+    "gh api -X PUT repos/o/r/pulls/5/merge",
+    "gh api graphql -f query='mutation { mergePullRequest(input: {}) { clientMutationId } }'",
+    "gh api graphql -f query='mutation { enablePullRequestAutoMerge(input: {}) { clientMutationId } }'",
+    "pwsh -EncodedCommand ZwBoAA==",
+    "bash -s <<'EOF'\ngh pr merge 5\nEOF",
+    "node - <<'EOF'\nrequire('child_process').execSync('gh pr merge 5');\nEOF",
+    "node m.js",
+    "node m.js --test a.test.ts",
+    "node --test --require ./m.js a.test.ts",
+    "node --test --import=./m.js a.test.ts",
+    "node --title x m.js --test",
+    "node --unknown-flag m.js --test a.test.ts",
+    "bash m.sh > out.txt",
+    "bash < m.sh",
+    "node --test a.test.ts && bash m.sh",
+  ]) {
+    test(`refuses: ${JSON.stringify(cmd)}`, () => assert.match(String(at(cmd)), MERGE));
+  }
+});
+
 describe("a device run's dispatch is the workflow's own to refuse", () => {
   // ios.yml and maestro.yml run a job only on attempt 1 of a schedule or a ticket branch
   // (tests/tooling/deviceWorkflowsGate.test.ts): no gh outage opens that, as it opened this guard.

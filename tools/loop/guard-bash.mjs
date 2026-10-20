@@ -377,11 +377,42 @@ const runsEncodedCommand = (c) => POWERSHELL.test(c.cmd) && c.args.some(isEncode
 const SCRIPT_RUNNER = /^(bash|sh|zsh|dash|ksh|node|nodejs|source|\.)$/;
 const NOT_A_FILE = new Set(["ENOENT", "ENOTDIR", "EISDIR", "ENAMETOOLONG", "EINVAL"]);
 
-/** Every word a runner might take as a script: any operand (an option's value too), a `-File` value, a redirected input. */
+const NODE_LOADS = /^(-r|--require|--import|--loader|--experimental-loader|--test-reporter)$/;
+const NODE_TAKES_A_VALUE = /^(-r|--require|--import|--loader|--experimental-loader|--test-reporter|--test-reporter-destination|--test-name-pattern|--test-skip-pattern|--test-concurrency|--test-shard|-C|--conditions|--env-file|--input-type|--title)$/;
+
+const nodeLoads = (args) =>
+  args.flatMap((a, i) => {
+    const [flag, value] = a.split(/=(.*)/s);
+    if (!NODE_LOADS.test(flag)) return [];
+    return [value ?? args[i + 1] ?? ""];
+  });
+
+/**
+ * Whether node runs its operands as test files: `--test` before any operand, so no script took it as
+ * its own argument. A word after an option node is not known to give a value counts as that operand.
+ */
+function nodeTests(c) {
+  if (!/^(node|nodejs)$/.test(c.cmd)) return false;
+  for (let i = 0; i < c.args.length; i++) {
+    if (c.args[i] === "--test") return true;
+    if (!c.args[i].startsWith("-")) return false;
+    if (NODE_TAKES_A_VALUE.test(c.args[i])) i += 1;
+  }
+  return false;
+}
+
+/**
+ * Every word a runner might take as a script: any operand (an option's value too), a `-File` value, a
+ * redirected input. Under `node --test` the operands are test files, which quote commands as data; the
+ * modules it loads are still read.
+ */
 function scriptsOf(c) {
   if (!SCRIPT_RUNNER.test(c.cmd) && !POWERSHELL.test(c.cmd)) return [];
+  const input = c.input ?? [];
+  if (nodeTests(c)) return [...nodeLoads(c.args), ...input].filter(Boolean);
   const file = POWERSHELL.test(c.cmd) ? c.args.flatMap((a, i) => (/^(?:--?|\/)f[a-z]*$/i.test(a) && "file".startsWith(a.replace(/^(?:--?|\/)/, "").toLowerCase()) ? [c.args[i + 1] ?? ""] : [])) : [];
-  return [...file, ...c.args.filter((a) => !/^[-+]/.test(a)), ...c.redirected].filter(Boolean);
+  const loads = /^(node|nodejs)$/.test(c.cmd) ? nodeLoads(c.args) : [];
+  return [...file, ...loads, ...c.args.filter((a) => !/^[-+]/.test(a)), ...input].filter(Boolean);
 }
 
 /** A shell that reads its program from standard input: nothing to run, `-s`, or `-`. */
