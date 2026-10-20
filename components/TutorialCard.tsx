@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, StyleSheet } from "react-native";
 import Animated, {
   cancelAnimation,
   useAnimatedStyle,
@@ -9,7 +9,10 @@ import Animated, {
 } from "react-native-reanimated";
 import { CardView, PRESS_RISE, PRESS_TILT } from "@/components/CardView";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Motion } from "@/lib/theme";
+import { Motion, TOUCH_TARGET_MIN } from "@/lib/theme";
+import { a11yState, useA11yHint } from "@/lib/a11y";
+import { useTranslation } from "@/lib/i18n";
+import { cardSpokenName } from "@/lib/cardNames";
 import type { Card } from "@/lib/game/gameEngine";
 
 const LIFT = -14;
@@ -26,7 +29,9 @@ interface TutorialCardProps {
 
 /** A card the tutorial offers to tap: it lifts when selected and rises under the finger. */
 export function TutorialCard({ card, selected, disabled = false, onPress, testID, style }: TutorialCardProps) {
+  const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
+  const selectedHint = useA11yHint(selected ? t("cardView.selectedA11yHint") : undefined);
   const translateY = useSharedValue(0);
   const press = useSharedValue(0);
   const interactive = !!onPress && !disabled;
@@ -65,17 +70,22 @@ export function TutorialCard({ card, selected, disabled = false, onPress, testID
     <Animated.View style={[animStyle, style]}>
       <Pressable
         testID={testID}
-        accessible={false}
-        focusable={false}
+        style={styles.target}
         disabled={!interactive}
         onPress={onPress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
+        accessibilityLabel={cardSpokenName(card, t)}
+        {...a11yState({ role: onPress ? "button" : undefined, selected, disabled: !interactive })}
+        {...selectedHint.props}
       >
-        <View pointerEvents="none">
-          <CardView card={card} selected={selected} disabled={disabled} onActivate={onPress} />
-        </View>
+        {selectedHint.node}
+        <CardView card={card} selected={selected} decorative />
       </Pressable>
     </Animated.View>
   );
 }
+
+const styles = StyleSheet.create({
+  target: { minWidth: TOUCH_TARGET_MIN, minHeight: TOUCH_TARGET_MIN },
+});
