@@ -1,5 +1,6 @@
 import pg from "pg";
 import type { Server as HttpServer } from "node:http";
+import type { Express } from "express";
 import type { Server as SocketIOServer } from "socket.io";
 import type { TableRuntime } from "../../server/game/tableRuntime.ts";
 // Pure by design: importing anything that reaches server/store/db.ts from module
@@ -33,7 +34,7 @@ process.env.MURLAN_SOCKET_ADAPTER_POOL_MAX ??= "2";
  * only about thirty-five tables — a suite reaches it and every later
  * registration comes back 429 with nothing tying it to the cap. Set here for
  * the same reason as the pool size: before anything imports
- * server/http/routes.ts, which reads it once.
+ * server/http/routes/auth.ts, which reads it once.
  */
 process.env.MURLAN_AUTH_RATE_LIMIT ??= "200";
 
@@ -61,7 +62,7 @@ process.env.MURLAN_CHANGE_PASSWORD_RATE_LIMIT ??= "5";
 
 /**
  * register's per-email limiter (#892) already defaults to 5 in production —
- * set here anyway, before server/http/routes.ts is imported, so a test never
+ * set here anyway, before server/http/routes/auth.ts is imported, so a test never
  * depends on that default staying where it is.
  */
 process.env.MURLAN_REGISTER_EMAIL_RATE_LIMIT ??= "5";
@@ -116,6 +117,8 @@ export interface TestServer {
   url: string;
   port: number;
   schema: string;
+  /** The Express app createApp() built, for a suite that walks its router. */
+  app: Express;
   /** The live handles, for a suite that drives shutdown itself. */
   io: SocketIOServer;
   rt: TableRuntime;
@@ -199,7 +202,7 @@ export async function startTestServer(
     // this is the one live `pg.Pool` the running app holds open, not a new
     // one.
     const { pool: appPool } = await import("../../server/store/db.ts");
-    const { server, io, rt } = await createApp();
+    const { app, server, io, rt } = await createApp();
     server.keepAliveTimeout = KEEP_ALIVE_MS;
     // Node refuses to read headers for longer than it will hold the socket.
     server.headersTimeout = HEADERS_TIMEOUT_MS;
@@ -215,6 +218,7 @@ export async function startTestServer(
       url: `http://127.0.0.1:${port}`,
       port,
       schema,
+      app,
       io,
       rt,
       httpServer: server,

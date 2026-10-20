@@ -8,7 +8,7 @@ import {
   type ServerToClientEvents,
 } from "../../shared/protocol.ts";
 import type { IncomingMessage, Server as HttpServer } from "node:http";
-import type { NextFunction, Request, Response } from "express";
+import type { NextFunction, Request, RequestHandler, Response } from "express";
 import type { Session, SessionData } from "express-session";
 import { userStore } from "../store/userStore.ts";
 import { logger } from "../http/logger.ts";
@@ -42,7 +42,7 @@ import { socketOutbox, socketPresence } from "./socketOutbox.ts";
  * Handshakes one account may complete per minute. Socket.io answers
  * `/socket.io/*` before Express sees it, so no express-rate-limit instance
  * reaches the handshake. Matched to the ticket limiter's 60/min
- * (`server/http/routes.ts`), which mints one ticket per attempt — a smaller budget
+ * (`server/http/routes/auth.ts`), which mints one ticket per attempt — a smaller budget
  * locks a phone out of its own game while its connection flaps.
  */
 const HANDSHAKES_PER_MINUTE = 60;
@@ -65,6 +65,21 @@ type HandshakeRequest = IncomingMessage & {
   session?: Session & Partial<SessionData>;
   sessionID?: string;
 };
+
+/**
+ * Injects the session into a socket's request. A store that cannot answer is
+ * transient, so it is refused the way the auth guard below refuses one — the
+ * client retries — and never with the driver's own message.
+ */
+export function handshakeSession(middleware: RequestHandler) {
+  return (socket: { request: IncomingMessage }, next: (err?: Error) => void) => {
+    middleware(socket.request as Request, {} as Response, ((err?: unknown) => {
+      if (!err) return next();
+      logger.error({ err }, "Socket handshake could not load the session");
+      next(new Error(AUTH_UNAVAILABLE));
+    }) as NextFunction);
+  };
+}
 
 export function setupSocket(httpServer: HttpServer) {
   const io: SocketServer = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
@@ -109,12 +124,7 @@ export function setupSocket(httpServer: HttpServer) {
   registerSessionEviction(io);
   registerStopSpectating(rt);
 
-  // Inject session into socket requests. `next` is cast because express and
-  // socket.io disagree about it, not about the session: express overloads it
-  // with `"route"`/`"router"`, which socket.io's error-only signature rejects.
-  io.use((socket, next) => {
-    sessionMiddleware(socket.request as Request, {} as Response, next as NextFunction);
-  });
+  io.use(handshakeSession(sessionMiddleware));
 
   /**
    * Handshake auth: a valid session, or a valid unconsumed ticket. Nothing

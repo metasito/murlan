@@ -68,7 +68,7 @@ export default function VerifyEmailScreen() {
     setLoading(false);
   }
 
-  // Resends to the signed-in account's own address (server/http/routes.ts), never
+  // Resends to the signed-in account's own address (server/http/routes/auth.ts), never
   // to whatever is currently typed in the email field above, so the notice
   // names the actual destination rather than implying the field controls it.
   async function resend() {
