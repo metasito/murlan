@@ -430,6 +430,7 @@ export const it: Record<keyof typeof en, string> = {
   "scorePill.standings": "Classifica",
   "scorePill.race": "Partita a {{target}}",
   "scorePill.a11yLabel_one": "Il tuo punteggio: {{count}} punto su {{target}}, {{place}}° posto.",
+  "seat.finishedA11yLabel": "Ha finito al {{place}}° posto",
   "scorePill.a11yLabel_other": "Il tuo punteggio: {{count}} punti su {{target}}, {{place}}° posto.",
   "scorePill.a11yRow_one": "{{place}}° {{name}}, {{count}} punto.",
   "scorePill.a11yRow_other": "{{place}}° {{name}}, {{count}} punti.",

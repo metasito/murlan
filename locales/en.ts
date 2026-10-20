@@ -434,6 +434,7 @@ export const en = {
   "scorePill.standings": "Standings",
   "scorePill.race": "Race to {{target}}",
   "scorePill.a11yLabel_one": "Your score: {{count}} point of {{target}}, place {{place}}.",
+  "seat.finishedA11yLabel": "Finished in place {{place}}",
   "scorePill.a11yLabel_other": "Your score: {{count}} points of {{target}}, place {{place}}.",
   "scorePill.a11yRow_one": "{{place}}. {{name}}, {{count}} point.",
   "scorePill.a11yRow_other": "{{place}}. {{name}}, {{count}} points.",

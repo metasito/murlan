@@ -1,6 +1,7 @@
 import React from "react";
 import { StyleSheet, View, Text } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
+import { a11yHidden } from "@/lib/a11y";
 import { Colors, Spacing, Radius, FontSize, Type, Layer } from "@/lib/theme";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation, type ServerPayload } from "@/lib/i18n";
@@ -38,7 +39,7 @@ export function SessionReplacedNotice({
       <View style={styles.overlay} accessibilityViewIsModal accessibilityRole="alert">
         <View style={styles.content}>
           <View style={styles.iconBadge}>
-            <Feather name="wifi-off" size={ICON_SIZE} color={Colors.gold} />
+            <Feather name="wifi-off" size={ICON_SIZE} color={Colors.gold} {...a11yHidden()} />
           </View>
           <Text style={styles.title}>{t("sessionReplaced.title")}</Text>
           <Text style={styles.message}>{translateServerPayload(payload)}</Text>

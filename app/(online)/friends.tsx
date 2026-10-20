@@ -68,6 +68,7 @@ export default function FriendsScreen() {
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchDone, setSearchDone] = useState(false);
+  const [searchNonce, setSearchNonce] = useState(0);
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
   const { showNotification, notifyError } = useNotification();
 
@@ -183,9 +184,11 @@ export default function FriendsScreen() {
       const data = await res.json();
       setSearchResult(data);
       setSearchDone(true);
+      setSearchNonce((n) => n + 1);
     } catch (e: unknown) {
       setSearchError(e instanceof ApiError && e.status === 404 ? t("friends.userNotFound") : t("friends.searchFailed"));
       setSearchDone(true);
+      setSearchNonce((n) => n + 1);
     }
     setSearchLoading(false);
   }
@@ -290,6 +293,7 @@ export default function FriendsScreen() {
           </View>
 
           <A11yStatus
+            nonce={searchNonce}
             label={
               !searchDone
                 ? ""

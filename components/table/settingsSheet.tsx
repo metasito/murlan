@@ -114,6 +114,7 @@ function SheetRow({
             size={tableFontSize(ROW_ICON_FS, scale)}
             color={Colors.textSecondary}
             style={{ width: ROW_ICON_GUTTER * scale, textAlign: "center" }}
+            {...a11yHidden()}
           />
           <View style={sheetStyles.rowLabels}>
             <TableText

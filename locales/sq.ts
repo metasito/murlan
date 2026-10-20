@@ -437,6 +437,7 @@ export const sq: Record<keyof typeof en, string> = {
   "scorePill.standings": "Renditja",
   "scorePill.race": "Loja deri në {{target}}",
   "scorePill.a11yLabel_one": "Pikët e tua: {{count}} pikë nga {{target}}, vendi {{place}}.",
+  "seat.finishedA11yLabel": "Përfundoi në vendin {{place}}",
   "scorePill.a11yLabel_other": "Pikët e tua: {{count}} pikë nga {{target}}, vendi {{place}}.",
   "scorePill.a11yRow_one": "{{place}}. {{name}}, {{count}} pikë.",
   "scorePill.a11yRow_other": "{{place}}. {{name}}, {{count}} pikë.",

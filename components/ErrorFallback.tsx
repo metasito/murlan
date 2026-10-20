@@ -86,7 +86,7 @@ export function ErrorFallback({ error, resetError, leaveTable }: ErrorFallbackPr
 
       <View style={styles.content}>
         <View style={styles.iconBadge}>
-          <Feather name="alert-triangle" size={40} color={Colors.gold} />
+          <Feather name="alert-triangle" size={40} color={Colors.gold} {...a11yHidden()} />
         </View>
 
         <Text style={styles.title}>{t("errorFallback.title")}</Text>

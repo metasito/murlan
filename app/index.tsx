@@ -372,7 +372,7 @@ function HomeAccountButton({
       {...a11yState({ role: "button" })}
       style={({ pressed }) => [styles.accountBtn, pressed && { opacity: 0.8 }]}
     >
-      {icon}
+      <View {...a11yHidden()}>{icon}</View>
       {badge ? (
         <View style={styles.badge} {...a11yHidden()}>
           <Text style={styles.badgeText}>{badge > BADGE_MAX ? `${BADGE_MAX}+` : String(badge)}</Text>
@@ -573,7 +573,7 @@ function HomePill({
       {...a11yState({ role: "button" })}
       style={({ pressed }) => [styles.pill, quiet && styles.pillQuiet, pressed && { opacity: 0.8 }]}
     >
-      {icon}
+      <View {...a11yHidden()}>{icon}</View>
       {text ? (
         <Text {...a11yHidden()} style={[styles.pillText, quiet && { color: Colors.textMuted }]}>
           {text}
