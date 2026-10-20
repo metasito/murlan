@@ -15,6 +15,7 @@ import {
   seatLabelH,
 } from "./seatLayout.ts";
 import { drawnFanBounds } from "./fanGeometry.ts";
+import type { TableLayout } from "./tableLayout.ts";
 
 // ─── The table's own pads ─────────────────────────────────────────────────────
 //
@@ -172,6 +173,17 @@ export function computeTableFrame(opts: {
     handRoomW: Math.min(handAvailW, opts.width * HAND_WIDTH_SHARE),
     fieldRoomW: Math.min(tableW - SIDE_SECTION_W * 2, opts.width * FIELD_WIDTH_SHARE),
   };
+}
+
+/**
+ * Top edge the notification banner may start at without covering the table's own chips — which
+ * carry the combination on the felt and whose turn it is, exactly the things an AFK or takeover
+ * notice is explaining. `layout` is null when not landscape: the only orientation the table runs
+ * in, and on a menu screen in landscape the band the banner steps over is empty, so it costs
+ * nothing there.
+ */
+export function bannerTop(layout: Pick<TableLayout, "chipsBottom"> | null, topInset: number): number {
+  return layout ? layout.chipsBottom : topInset;
 }
 
 // ─── Seat bands ───────────────────────────────────────────────────────────────

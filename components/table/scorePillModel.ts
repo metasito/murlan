@@ -1,7 +1,12 @@
 // The score pill's geometry (#1265): the Lantern Table mockup's `renderScore`, in its own px at
 // its 874 × 402 frame. `unit` is how many of the app's points one of those px is.
 //
-// Plain worklets with no imports, so `node --test` loads them and Reanimated runs them.
+// JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
+
+import { BASE_SHORT_EDGE } from "../cardFaceModel.ts";
+import { CHIP_H } from "../seatLayout.ts";
+import type { TableFrame } from "../tableFrame.ts";
+import { mockupPx } from "./noticeModel.ts";
 
 /** The mockup's frame's short edge: its px are the app's points at this window height. */
 export const MOCKUP_SHORT_EDGE = 402;
@@ -28,6 +33,27 @@ export interface PillAnchor {
   /** The felt's centre line, which the turn chip and the board are both centred on. */
   centreX: number;
   unit: number;
+}
+
+/** The pill at rest in the chip row's right end, on the felt's centre line. */
+export function pillAnchorFor(frame: TableFrame, windowWidth: number, scale: number): PillAnchor {
+  return {
+    right: windowWidth - frame.tableRight - frame.pad,
+    top: frame.tableTop,
+    restH: CHIP_H(scale),
+    centreX: (frame.tableLeft + windowWidth - frame.tableRight) / 2,
+    unit: (scale * BASE_SHORT_EDGE) / MOCKUP_SHORT_EDGE,
+  };
+}
+
+/** G2: a vote's top edge, under the pill at rest or under its open panel. */
+const VOTE_BELOW_PILL = 7;
+
+export function voteTop(anchor: PillAnchor, open: boolean, scale: number): number {
+  const gap = mockupPx(VOTE_BELOW_PILL, scale);
+  if (!open) return anchor.top + anchor.restH + gap;
+  const panel = scorePillBox(1, 0, anchor);
+  return panel.y + panel.h + gap;
 }
 
 export interface PillBox {
