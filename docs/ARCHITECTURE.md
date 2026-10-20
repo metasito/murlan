@@ -299,8 +299,10 @@ The presentational table unified what the two modes *draw*. The modules below un
 they *decide*, so a rule cannot hold in one mode and not the other:
 
 - **`lib/game/autoMove.ts`** — called by `server/` and by `context/GameContext.tsx`
-  (CLAUDE.md's bot-move invariant: one chooser, both callers). It also owns
-  `resolveStuckExchange`, the valve for an exchange no seat can satisfy.
+  (CLAUDE.md's bot-move invariant: one chooser, both callers), over `lib/game/bot.ts`, which owns
+  every bot decision: the play (`botChoosePlay` over a `botView`) and the giveback. An exchange no
+  seat can satisfy has no valve; no deal makes one, and both restores refuse it
+  (`exchangeIsSatisfiable`).
 - **`lib/game/matchState.ts`** — the `game:round_over` wire shape (`RoundOverPayload`, `ScoreLine`,
   `MatchVerdict`) and `celebratesViewer()`, which decides whether a win cue is the viewer's. A
   winner travels as an **engine player id** (`player_N`), never a username or a seat index

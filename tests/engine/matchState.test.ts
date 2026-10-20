@@ -217,18 +217,19 @@ describe("matchOutcomeFor", () => {
 // fact that distinguishes one implementation from two — a second one has to
 // call it, whatever else it does.
 test("one module chooses a bot's move", () => {
-  const CHOOSER = "botChoosePlay";
   const HOME = "lib/game/autoMove.ts";
-  const callers = appSources().filter((rel) =>
-    new RegExp(String.raw`(?<!function )\b${CHOOSER}\s*\(`).test(readFileSync(path.join(repoRoot, rel), "utf8"))
-  );
+  for (const chooser of ["botChoosePlay", "pickGivebackCard"]) {
+    const callers = appSources().filter((rel) =>
+      new RegExp(String.raw`(?<!function )\b${chooser}\s*\(`).test(readFileSync(path.join(repoRoot, rel), "utf8"))
+    );
 
-  assert.deepEqual(
-    callers,
-    [HOME],
-    `${CHOOSER} is how a seat's move is chosen, so a second caller is a second ` +
-      `bot. Route it through ${HOME} instead: ${callers.join(", ")}`
-  );
+    assert.deepEqual(
+      callers,
+      [HOME],
+      `${chooser} is how a seat's move is chosen, so a second caller is a second ` +
+        `bot. Route it through ${HOME} instead: ${callers.join(", ")}`
+    );
+  }
 });
 
 test("the offline table and its harness both take a bot's turn from offlineBotMove", () => {

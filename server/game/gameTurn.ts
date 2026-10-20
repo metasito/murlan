@@ -47,8 +47,8 @@ function recordPlayFlags(game: OnlineGameState, seat: number, combo: Combination
  */
 export function commitMove(rt: TableRuntime, game: OnlineGameState, applied: AutoMove): Promise<void> | undefined {
   const { state: next, move } = applied;
-  if (move?.kind === "play") recordPlayFlags(game, move.seat, move.combo);
-  if (move?.kind === "play" || move?.kind === "pass") {
+  if (move.kind === "play") recordPlayFlags(game, move.seat, move.combo);
+  if (move.kind === "play" || move.kind === "pass") {
     appendReplayMove(game, move.seat, move.kind === "play" ? move.combo : null, next);
   }
   const prev = game.gameState;
@@ -194,7 +194,7 @@ function handleAutoPass(
   if (!auto) return null;
 
   void commitMove(rt, game, auto);
-  return auto.move?.kind === "play" || auto.move?.kind === "pass" ? "move" : "exchange";
+  return auto.move.kind === "play" || auto.move.kind === "pass" ? "move" : "exchange";
 }
 
 function startAfkTimer(

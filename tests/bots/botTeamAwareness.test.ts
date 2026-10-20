@@ -7,8 +7,8 @@ import {
   buildCombination,
   startRound,
 } from "../../lib/game/gameEngine.ts";
-import { passed, played } from "../support/moves.ts";
-import { card as c, joker as j, seat as makePlayer, state as makeState, mulberry32 } from "../support/game.ts";
+import { playRoundOut } from "../support/moves.ts";
+import { card as c, joker as j, seat as makePlayer, state as makeState, mulberry32, viewOf } from "../support/game.ts";
 import type { Card, GameState } from "../../lib/game/gameEngine.ts";
 
 const TOP_PLAY = buildCombination([c("2", "spades")])!;
@@ -78,14 +78,9 @@ test("leading a new round is never declining to beat the partner", () => {
   assert.equal(view.partnerHoldsTop, false, "there is no top play to hold");
 
   const choice = botChoosePlay(
-    state.players[0],
-    null,
-    true,
-    view.handCounts,
-    undefined,
-    () => 0,
     // Even handed the flag directly, a lead is not a contest.
-    true
+    viewOf(state.players[0], { opponentHandCounts: view.handCounts, partnerHoldsTop: true }),
+    () => 0
   );
   assert.ok(choice, "a bot on lead must always play something");
 });
@@ -100,15 +95,7 @@ test("a partner who has already gone out no longer holds the round", () => {
   const view = opponentsOf(state, 0);
   assert.equal(view.partnerHoldsTop, false);
 
-  const choice = botChoosePlay(
-    state.players[0],
-    TOP_PLAY,
-    false,
-    view.handCounts,
-    undefined,
-    () => 0,
-    view.partnerHoldsTop
-  );
+  const choice = botChoosePlay(viewOf(state.players[0], { toBeat: TOP_PLAY, opponentHandCounts: view.handCounts, partnerHoldsTop: view.partnerHoldsTop }), () => 0);
   assert.equal(choice?.type, "bomb", "an opponent is one card from going out");
 });
 
@@ -120,14 +107,9 @@ test("a bot passes rather than bomb its own partner's play", () => {
   const view = opponentsOf(state, 0);
 
   const choice = botChoosePlay(
-    state.players[0],
-    TOP_PLAY,
-    false,
-    view.handCounts,
-    undefined,
+    viewOf(state.players[0], { toBeat: TOP_PLAY, opponentHandCounts: view.handCounts, partnerHoldsTop: view.partnerHoldsTop }),
     // A roll of 0 fires both knobs.
-    () => 0,
-    view.partnerHoldsTop
+    () => 0
   );
 
   assert.equal(choice, null, "the partner already holds the round");
@@ -142,15 +124,7 @@ test("the same bot still bombs an opponent about to go out", () => {
   const view = opponentsOf(state, 0);
   assert.equal(Math.min(...view.handCounts), 1, "the fixture must be an emergency");
 
-  const choice = botChoosePlay(
-    state.players[0],
-    TOP_PLAY,
-    false,
-    view.handCounts,
-    undefined,
-    () => 0,
-    view.partnerHoldsTop
-  );
+  const choice = botChoosePlay(viewOf(state.players[0], { toBeat: TOP_PLAY, opponentHandCounts: view.handCounts, partnerHoldsTop: view.partnerHoldsTop }), () => 0);
 
   assert.equal(choice?.type, "bomb", "the emergency branch must stay armed");
 });
@@ -165,15 +139,7 @@ test("a bot that can go out still goes out on its partner's play", () => {
   const view = opponentsOf(state, 0);
   assert.equal(view.partnerHoldsTop, true, "the fixture must be a partner-held round");
 
-  const choice = botChoosePlay(
-    state.players[0],
-    buildCombination([c("2", "clubs")])!,
-    false,
-    view.handCounts,
-    undefined,
-    () => 0,
-    view.partnerHoldsTop
-  );
+  const choice = botChoosePlay(viewOf(state.players[0], { toBeat: buildCombination([c("2", "clubs")])!, opponentHandCounts: view.handCounts, partnerHoldsTop: view.partnerHoldsTop }), () => 0);
   assert.equal(choice?.cards.length, 1, "the last card goes down");
 });
 
@@ -199,40 +165,14 @@ test("the seat opponentsOf protects is the one Player.team calls a teammate", ()
 });
 
 // Every assertion above is one call. This is the only one that walks a whole
-// teams round through `opponentsOf`, so it is what would catch a pass rule that
+// teams round through `botView`, so it is what would catch a pass rule that
 // stalls a table rather than one that misjudges a single turn.
-test("a full teams round played through opponentsOf still reaches game over", () => {
-  let state = startRound(
+test("a full teams round played through botView still reaches game over", () => {
+  const start = startRound(
     Array.from({ length: 4 }, (_, i) => ({ name: `bot${i}`, type: "bot" as const, personality: "gent" as const })),
     "teams"
   );
 
-  const rng = mulberry32(0x7ea3);
-  let turns = 0;
-  while (!state.roundOver && turns < 2000) {
-    turns++;
-    const seat = state.currentTurnIndex;
-    const isNewTrick = state.lastPlayedCombination === null;
-    const view = opponentsOf(state, seat);
-    const requireCard = !state.firstPlayMade ? state.startCard : undefined;
-
-    const play = botChoosePlay(
-      state.players[seat],
-      isNewTrick ? null : state.lastPlayedCombination,
-      isNewTrick,
-      view.handCounts,
-      requireCard,
-      rng,
-      view.partnerHoldsTop
-    );
-
-    assert.ok(
-      play !== null || !isNewTrick,
-      `turn ${turns}: seat ${seat} declined to lead, which no caller can recover from`
-    );
-    state = play ? played(state, play) : passed(state);
-  }
-
-  assert.ok(state.roundOver, `the round did not finish in ${turns} turns`);
+  const state = playRoundOut(start, mulberry32(0x7ea3)).at(-1)!;
   assert.equal(state.finishingOrder.length, 4, "every seat is placed");
 });

@@ -12,12 +12,11 @@ import {
   GameState,
   GameMode,
   MatchLength,
-  pickGivebackCard,
   actingSeat,
   applyMove,
   type Move,
 } from "@/lib/game/gameEngine";
-import { offlineBotMove, resolveStuckExchange } from "@/lib/game/autoMove";
+import { offlineBotMove } from "@/lib/game/autoMove";
 import * as flow from "@/lib/game/matchFlow";
 import type { OfflineTable } from "@/lib/game/matchFlow";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -66,8 +65,6 @@ export interface LocalTable {
   runBotTurn: () => void;
   chooseExchangeCard: (cardId: string) => void;
   acknowledgeExchange: () => void;
-  /** The table has shown the received card: a bot winner gives back its weakest legal card; a winner with no legal card releases the phase; a human winner waits. */
-  settleExchange: () => void;
   startNextRound: () => void;
   startNewMatch: () => void;
 }
@@ -174,19 +171,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [act]
   );
 
-  const settleExchange = useCallback(() => {
-    const state = stateRef.current?.state;
-    const phase = state?.exchangePhase;
-    if (!state || !phase?.active) return;
-    const winner = state.players[phase.winnerIdx];
-    if (winner?.type === "bot") {
-      const next = offlineBotMove(state);
-      if (next) commitState(next.state);
-    } else if (!winner || !pickGivebackCard(winner.hand, phase.cardFromLoser?.id)) {
-      commitState(resolveStuckExchange(state));
-    }
-  }, [commitState]);
-
   const playCards = useCallback((cardIds: string[]) => act({ kind: "play", cardIds }), [act]);
 
   const passTurn = useCallback(
@@ -281,7 +265,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       runBotTurn,
       chooseExchangeCard,
       acknowledgeExchange,
-      settleExchange,
       startNextRound,
       startNewMatch,
     }),
@@ -295,7 +278,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       runBotTurn,
       chooseExchangeCard,
       acknowledgeExchange,
-      settleExchange,
       startNextRound,
       startNewMatch,
     ]

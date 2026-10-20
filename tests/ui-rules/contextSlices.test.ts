@@ -107,7 +107,7 @@ const LOCAL: Record<string, string[]> = {
   useLocalSession: ["setupGame", "resetGame", "hasSavedGame", "resumeGame", "restored", "bootSettled"],
   useLocalMatch: ["match", "startNextRound", "startNewMatch"],
   useLocalExchange: [
-    "exchangeAnnouncing", "exchangeAnnounceData", "chooseExchangeCard", "acknowledgeExchange", "settleExchange",
+    "exchangeAnnouncing", "exchangeAnnounceData", "chooseExchangeCard", "acknowledgeExchange",
   ],
 };
 
