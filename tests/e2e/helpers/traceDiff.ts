@@ -7,7 +7,7 @@ export type { TraceFrame };
 
 export const STEP_MS = 16;
 
-interface RegionSample {
+export interface RegionSample {
   t: number;
   regions: Record<string, number>;
 }
@@ -15,6 +15,15 @@ interface RegionSample {
 export interface Trace {
   frames: TraceFrame[];
   regions: RegionSample[];
+}
+
+/**
+ * Per sample, the mockup lit as the felt that drew the app's frame lights it: Skia sways with the lamp, the web
+ * fallback bakes its light (`feltFallback.tsx`), so a fallback frame is held to the mockup's felt at rest — inside a
+ * Skia run too, until Skia's first frame.
+ */
+export function underAppFelt<S extends { t: number }>(app: TraceFrame[], swaying: S[], atRest: S[]): S[] {
+  return swaying.map((s, i) => (app.find((f) => f.t === s.t)?.felt === "skia" ? s : atRest[i]));
 }
 
 export type Field =

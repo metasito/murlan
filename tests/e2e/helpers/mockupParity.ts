@@ -20,6 +20,7 @@ import {
   diffPillAtProgress,
   movingFields,
   STEP_MS,
+  underAppFelt,
   type Failure,
   type Field,
   type LayerSample,
@@ -99,12 +100,9 @@ const NO_CAST_ON_CARDS = `document.head.insertAdjacentHTML("beforeend", "<style>
 const STILL_LIGHT = `const swaying = lampStep;
   lampStep = (dt) => { swaying(dt); lamp.lx = lamp.x; };`;
 
-/**
- * A felt that bakes its light (the web fallback, `feltFallback.tsx`) is held to the mockup's felt and rail lit at rest,
- * on every fallback run: the lamp itself still sways on both sides, and the Skia variant keeps the swaying felt.
- */
-const BAKED_LIGHT = `const lit = drawScene;
-  drawScene = (lx, ly, f) => lit(lamp.x, ly, f);`;
+/** The mockup's felt and rail repainted lit at rest, the lamp's own state untouched; `underAppFelt` picks which is held. */
+const LIT_AT_REST = "drawScene(lamp.x, lamp.ly, lamp.f)";
+const LIT_SWAYING = "drawScene(lamp.lx, lamp.ly, lamp.f)";
 
 /** The mockup's `BASE`, by the seat each name sits at: luan right, besnik across, gent left. */
 const MOCKUP_SCORES = { player_0: 15, player_1: 11, player_2: 16, player_3: 10 };
@@ -580,6 +578,8 @@ interface Capture {
   trace: Trace;
   frames: { t: number; jpeg: Buffer }[];
   layer: LayerSample[];
+  /** The mockup's samples again with its felt lit at rest, frame for frame. */
+  atRest?: { frames: Capture["frames"]; regions: Trace["regions"] };
 }
 
 /** The app's particle canvas alone: what it drew, and whether it drew anything. */
@@ -689,33 +689,20 @@ async function jpegOf(cdp: CDPSession, clip: { x: number; y: number }): Promise<
 
 type Action = NonNullable<Moment["actions"]>[number];
 
-/** One frame on from `at` in the chapter's time, taking each action due within it at its own `atMs`. */
-async function stepTaking(page: Page, at: number, due: Action[], act: (action: Action) => Promise<unknown> | undefined) {
-  let ran = 0;
-  while (due.length && due[0].atMs <= at + STEP_MS) {
-    const action = due.shift()!;
-    const lead = Math.max(0, action.atMs - at - ran);
-    if (lead > 0) await step(page, lead);
-    ran += lead;
-    await act(action);
-  }
-  await step(page, STEP_MS - ran);
-}
-
 async function strip(
   page: Page,
   clip: { x: number; y: number },
   decoder: Page,
   m: Moment,
-  startMs: number,
-  /** The actions the pre-roll did not take. */
-  due: Action[],
   act: (action: Action) => Promise<unknown> | undefined,
   stepTo: (t: number, ms: number) => Promise<TraceFrame | null>,
   layout: () => Promise<SideLayout>,
-  particles: () => Promise<Omit<LayerSample, "t"> | null>
+  particles: () => Promise<Omit<LayerSample, "t"> | null>,
+  { hold, litAtRest }: { hold?: () => Promise<void>; litAtRest?: () => Promise<Buffer> } = {}
 ): Promise<Capture> {
+  const due = [...(m.actions ?? [])];
   const frames: Capture["frames"] = [];
+  const atRest: NonNullable<Capture["atRest"]> = { frames: [], regions: [] };
   const layer: LayerSample[] = [];
   const traced: TraceFrame[] = [];
   const regions: Trace["regions"] = [];
@@ -724,11 +711,11 @@ async function strip(
     const all = regionsFor(await layout());
     return m.regions ? Object.fromEntries(m.regions.map((r) => [r, all[r]])) : all;
   };
-  expect(due.filter((a) => startMs > 0 && a.atMs <= startMs).map((a) => a.atMs), `the actions the ${startMs} ms pre-roll left untaken`).toEqual([]);
   const cdp = await page.context().newCDPSession(page);
   try {
-    for (let k = 0; startMs + k * STEP_MS <= m.windowMs; k++) {
-      const t = startMs + k * STEP_MS;
+    for (let k = 0; k * STEP_MS <= m.windowMs; k++) {
+      const t = k * STEP_MS;
+      await hold?.();
       // Each side is at t - STEP_MS here, so an action is taken at its own atMs, not up to a frame before it.
       let ran = 0;
       while (due.length && due[0].atMs <= t) {
@@ -749,12 +736,16 @@ async function strip(
       const sampled = m.regionsAt ? m.regionsAt.includes(t) : stripped;
       if (!stripped && !sampled) continue;
       const jpeg = await jpegOf(cdp, { x: clip.x, y: clip.y });
+      const still = litAtRest ? await litAtRest() : undefined;
       if (stripped) frames.push({ t, jpeg });
+      if (stripped && still) atRest.frames.push({ t, jpeg: still });
       if (!sampled) continue;
       // Once the hand has settled: before `fromMs` it is still being dealt.
       shape ??= await regionsNow();
       const now = Object.fromEntries(Object.entries(shape).filter(([name]) => m.regionAt?.[name]?.includes(t) ?? true));
-      regions.push({ t, regions: Object.keys(now).length ? await regionBrightness(decoder, jpeg, DPR, now) : {} });
+      const brightness = async (shot: Buffer) => (Object.keys(now).length ? await regionBrightness(decoder, shot, DPR, now) : {});
+      regions.push({ t, regions: await brightness(jpeg) });
+      if (still) atRest.regions.push({ t, regions: await brightness(still) });
     }
   } finally {
     await cdp.detach();
@@ -762,10 +753,10 @@ async function strip(
   if (m.regionsAt) {
     expect(regions.map((r) => r.t), "a region sample at every time asked for").toEqual(m.regionsAt.filter((t) => t >= (m.fromMs ?? 0)));
   }
-  return { trace: { frames: traced, regions }, frames, layer };
+  return { trace: { frames: traced, regions }, frames, layer, ...(litAtRest ? { atRest } : {}) };
 }
 
-async function captureMockup(browser: Browser, decoder: Page, m: Moment, variant: Variant, preRollMs: number, prelude: string): Promise<Capture> {
+async function captureMockup(browser: Browser, decoder: Page, m: Moment, prelude: string): Promise<Capture> {
   const page = await newSidePage(browser);
   await page.goto(FIXTURE);
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
@@ -781,20 +772,23 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, variant
     paused = true;
     ${DEPART_SCRIPT}
     ${m.reducedMotion ? STILL_LIGHT : ""}
-    ${variant === "fallback" ? BAKED_LIGHT : ""}
     ${prelude}
     ${m.mockupScript ?? ""}
     requestAnimationFrame(() => { paused = false; });
     start(CH.findIndex((c) => c.key === ${JSON.stringify(m.chapter ?? m.key)}));
   })()`);
-  const act = (a: Action) => (a.mockup ? page.evaluate(a.mockup) : undefined);
-  const due = [...(m.actions ?? [])];
-  for (let rolled = 0; rolled < preRollMs; rolled += STEP_MS) await stepTaking(page, rolled, due, act);
   const own = { ...m, windowMs: m.mockupWindowMs ?? m.windowMs };
-  const capture = await strip(page, box, decoder, own, preRollMs, due, act, async (_t, ms) => ({
+  const cdp = await page.context().newCDPSession(page);
+  const litAtRest = async () => {
+    await page.evaluate(LIT_AT_REST);
+    const shot = await jpegOf(cdp, { x: box.x, y: box.y });
+    await page.evaluate(LIT_SWAYING);
+    return shot;
+  };
+  const capture = await strip(page, box, decoder, own, (a) => (a.mockup ? page.evaluate(a.mockup) : undefined), async (_t, ms) => ({
     t: 0,
     ...(await stepThen<Omit<TraceFrame, "t">>(page, ms, MOCKUP_SAMPLE)),
-  }), () => page.evaluate(MOCKUP_LAYOUT) as Promise<SideLayout>, async () => null);
+  }), () => page.evaluate(MOCKUP_LAYOUT) as Promise<SideLayout>, async () => null, { litAtRest }).finally(() => cdp.detach());
   await expectDeparted(page);
   await page.context().close();
   return capture;
@@ -839,25 +833,6 @@ function trackLoads(page: Page): () => Promise<string[]> {
   };
 }
 
-/** Skia's felt. The virtual clock stands still while anything loads, so the pre-roll counts the table's own frames. */
-async function skiaOnset(page: Page, mounted: number, loading: () => Promise<string[]>, due: Action[], act: (action: Action) => Promise<unknown>): Promise<number> {
-  const deadline = Date.now() + 90_000;
-  const isSkia = (f: TraceFrame) => f.t > mounted && f.felt === "skia";
-  let seen = 0;
-  let onset: number | undefined;
-  for (;;) {
-    const fresh = await recorded(page, seen);
-    seen += fresh.length;
-    if ((onset = fresh.find(isSkia)?.t) !== undefined) break;
-    const waiting = await loading();
-    if (Date.now() > deadline) throw new Error(`Skia never drew; still loading: ${waiting.join(", ") || "nothing"}`);
-    if (waiting.length === 0) await stepTaking(page, (await page.evaluate(() => performance.now())) - mounted, due, act);
-    await new Promise((r) => setTimeout(r, 20));
-  }
-  expect(onset - mounted, "Skia's first frame, after the table's").toBeLessThanOrEqual(MAX_PRE_ROLL_MS);
-  return onset;
-}
-
 async function openAppSide(browser: Browser, baseURL: string, m: Moment, variant: Variant) {
   const page = await newSidePage(browser, baseURL);
   const loading = trackLoads(page);
@@ -872,20 +847,23 @@ async function openAppSide(browser: Browser, baseURL: string, m: Moment, variant
   const started = Date.now();
   await m.appTrigger(page, baseURL);
   const mounted = await traced(page, m.appOnset, `the app's onset of ${m.key}`);
-  const due = [...(m.actions ?? [])];
-  const act = (a: Action) => a.app?.(page) ?? Promise.resolve();
-  // The mockup is rolled the same pre-roll from its own start, taking every action due up to its end: so is the app.
-  const onset = variant === "skia" ? await skiaOnset(page, mounted, loading, due, act) : mounted;
-  const preRollMs = Math.ceil((onset - mounted) / STEP_MS) * STEP_MS;
-  for (let at = (await page.evaluate(() => performance.now())) - mounted; at < preRollMs; at += STEP_MS) await stepTaking(page, at, due, act);
   const prelude = m.fromApp ? m.fromApp(await page.evaluate<TraceFrame>(TRACED_AT(mounted))) : "";
-  return { page, mounted, preRollMs, prelude, due, onsetMs: Date.now() - started };
+  return { page, mounted, prelude, loading, onsetMs: Date.now() - started };
 }
 
 async function stripAppSide(side: Awaited<ReturnType<typeof openAppSide>>, decoder: Page, m: Moment, variant: Variant) {
-  const { page, mounted, preRollMs, due } = side;
-  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, due, (a) => a.app?.(page), (t, ms) =>
-    stepThen<TraceFrame | null>(page, t > preRollMs ? ms : null, TRACED_AT(mounted + t)), async () => ({
+  const { page, mounted, loading } = side;
+  // Skia's run holds the virtual clock while CanvasKit loads, so each side counts the table's own frames from the mount;
+  // the fallback's holds CanvasKit for good.
+  const hold = async () => {
+    const deadline = Date.now() + 90_000;
+    for (let waiting = await loading(); waiting.length; waiting = await loading()) {
+      if (Date.now() > deadline) throw new Error(`still loading: ${waiting.join(", ")}`);
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  };
+  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, (a) => a.app?.(page), (t, ms) =>
+    stepThen<TraceFrame | null>(page, t > 0 ? ms : null, TRACED_AT(mounted + t)), async () => ({
     pile: await seatAnchor(page, "pile"),
     light: await settledLight(page, "bottom"),
     handTop: await page.evaluate(() =>
@@ -901,9 +879,12 @@ async function stripAppSide(side: Awaited<ReturnType<typeof openAppSide>>, decod
       };
       return { top: centre("top-seat"), left: centre("side-seat-left"), right: centre("side-seat-right") };
     }),
-  }), () => appLayer(page));
-  const felts = new Set(capture.trace.frames.map((f) => f.felt));
-  expect([...felts], `the felt on screen through ${m.key}`).toEqual([variant]);
+  }), () => appLayer(page), variant === "skia" ? { hold } : {});
+  const felts = capture.trace.frames.map((f) => f.felt);
+  const skiaFrom = felts.indexOf("skia");
+  expect([...new Set(felts)], `the felts on screen through ${m.key}, in order`).toEqual(variant === "skia" && skiaFrom > 0 ? ["fallback", "skia"] : [variant]);
+  expect(felts.slice(Math.max(0, skiaFrom)).every((f) => f === variant), "the felt held once Skia has drawn").toBe(true);
+  if (variant === "skia") expect(capture.trace.frames[skiaFrom]?.t ?? Infinity, "Skia's first frame, after the table's").toBeLessThanOrEqual(MAX_PRE_ROLL_MS);
   await page.context().close();
   return capture;
 }
@@ -913,8 +894,18 @@ const timed = async <T,>(work: Promise<T>): Promise<[T, number]> => {
   return [await work, Date.now() - started];
 };
 
-function bundle(m: Moment, variant: Variant, runs: Record<SideName, Capture>, pillFailures: Failure[], dir: string) {
+function bundle(m: Moment, variant: Variant, captured: Record<SideName, Capture>, pillFailures: Failure[], dir: string) {
   fs.mkdirSync(path.join(dir, "frames"), { recursive: true });
+  const lit = captured.mockup.atRest!;
+  const appFrames = captured.app.trace.frames;
+  const runs: Record<SideName, Capture> = {
+    app: captured.app,
+    mockup: {
+      ...captured.mockup,
+      trace: { ...captured.mockup.trace, regions: underAppFelt(appFrames, captured.mockup.trace.regions, lit.regions) },
+      frames: underAppFelt(appFrames, captured.mockup.frames, lit.frames),
+    },
+  };
   const sides = {} as Record<SideName, { trace: Trace; frames: { t: number; file: string; sha1: string }[] }>;
   for (const side of ["mockup", "app"] as const) {
     sides[side] = {
@@ -952,9 +943,9 @@ export function parityTests(key: string, only?: Variant) {
       const opened = await openAppSide(browser, baseURL!, m, variant);
       const capture = async (side: SideName) =>
         side === "mockup"
-          ? captureMockup(browser, decoder, m, variant, opened.preRollMs, opened.prelude)
+          ? captureMockup(browser, decoder, m, opened.prelude)
           : stripAppSide(await openAppSide(browser, baseURL!, m, variant), decoder, m, variant);
-      // Side by side once the app's onset fixes the pre-roll: each side steps its own virtual clock.
+      // Side by side from the app's onset: each side steps its own virtual clock.
       const [[app, appMs], [mockup, mockupMs]] = await Promise.all([
         timed(stripAppSide(opened, decoder, m, variant)),
         timed(capture("mockup")),
