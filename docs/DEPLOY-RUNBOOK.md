@@ -164,6 +164,9 @@ independent of any deploy, so nobody has to remember it:
 read from the timestamp already in each dump's filename. It never deletes the most recent
 dump regardless of age — a lapsed schedule must not leave zero backups behind.
 
+A restore brings back every account deleted since that dump was taken: re-run those deletions
+before the restored database serves anyone.
+
 Where the schedule itself runs is host-specific; § Host-specific steps.
 
 ## Store build numbers

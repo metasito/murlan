@@ -20,6 +20,7 @@ import { execFile } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import pg from "pg";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { dropped, reconnectWith, register } from "../helpers/client.ts";
 
@@ -58,6 +59,33 @@ describe("owner password reset", { skip: hasDatabase() ? false : skipMessage() }
 
     const withOld = await login("LockedOut", "password123");
     assert.equal(withOld.status, 401);
+  });
+
+  test("it ends the account's sessions, push tokens and unredeemed reset tokens", async () => {
+    const { user, cookie } = await register(server, "SweptClean");
+    const pushed = await fetch(`${server.url}/api/push/token`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ token: "ExponentPushToken[sweptcleansweptclean00]", platform: "ios" }),
+    });
+    assert.equal(pushed.status, 200, await pushed.text());
+    const { mintAuthToken, redeemAuthToken } = await import("../../server/http/authTokens.ts");
+    const resetToken = await mintAuthToken(user.id, "password_reset", 60_000);
+    const before = await fetch(`${server.url}/api/auth/me`, { headers: { cookie } });
+    assert.equal(before.status, 200, "the seeded session must be live before the script runs");
+
+    await resetPassword("SweptClean", { ...process.env, ALLOW_RESET: "1" });
+
+    const after = await fetch(`${server.url}/api/auth/me`, { headers: { cookie } });
+    assert.equal(after.status, 401, "a session from before the reset must be dead");
+    const db = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+    try {
+      const tokens = await db.query("SELECT 1 FROM push_tokens WHERE user_id = $1", [user.id]);
+      assert.equal(tokens.rowCount, 0, "a push token from before the reset must be gone");
+    } finally {
+      await db.end();
+    }
+    assert.equal(await redeemAuthToken(resetToken, "password_reset"), null, "an unredeemed reset token must be dead");
   });
 
   test("the username is matched case-insensitively, like login", async () => {

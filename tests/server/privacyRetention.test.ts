@@ -76,6 +76,17 @@ describe("docs/PRIVACY.md states the retention the code enforces", () => {
     });
   }
 
+  test("database backups", () => {
+    const source = readFileSync("scripts/prune-backups.mjs", "utf8");
+    const match = source.match(/BACKUP_RETENTION_DAYS \?\? "(\d+)"/);
+    assert.ok(match, "scripts/prune-backups.mjs no longer reads BACKUP_RETENTION_DAYS with a literal default");
+    const stated = `${match[1]} days after each is made`;
+    assert.ok(
+      POLICY.includes(`| Database backups | ${stated}`) && POLICY.includes(`deleted, ${match[1]} days after it was made`),
+      `docs/PRIVACY.md no longer says "${stated}" for database backups, in both the table and the deletion paragraph.`
+    );
+  });
+
   test("the device cap is spelled out", () => {
     const cap = constantFrom("server/socket/push.ts", "MAX_DEVICES_PER_USER");
     const spelled = ["zero", "one", "two", "three", "four", "five", "six"][cap];

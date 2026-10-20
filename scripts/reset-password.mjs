@@ -41,19 +41,35 @@ const temporary = randomBytes(9).toString("base64url");
 const hash = await bcrypt.hash(temporary, 10);
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const client = await pool.connect();
 try {
-  const { rows } = await pool.query(
+  await client.query("BEGIN");
+  const { rows } = await client.query(
     `UPDATE users SET password = $1
       WHERE lower(username) = lower($2)
-      RETURNING username`,
+      RETURNING id, username`,
     [hash, username]
   );
   if (rows.length === 0) {
+    await client.query("ROLLBACK");
     console.error(`There is no account named "${username}".`);
     process.exit(1);
   }
+  const { id } = rows[0];
+  await client.query("DELETE FROM session WHERE sess->>'userId' = $1", [id]);
+  await client.query("DELETE FROM push_tokens WHERE user_id = $1", [id]);
+  await client.query(
+    "UPDATE auth_tokens SET used_at = now() WHERE user_id = $1 AND purpose = 'password_reset' AND used_at IS NULL",
+    [id]
+  );
+  await client.query("COMMIT");
   console.log(`${rows[0].username} — temporary password: ${temporary}`);
   console.log("Shown once. Send it to them — they can set their own password from the profile screen once signed in.");
+  console.log("Sessions, push tokens and unredeemed reset links are gone; a connection already open ends when it next reconnects.");
+} catch (err) {
+  await client.query("ROLLBACK").catch(() => {});
+  throw err;
 } finally {
+  client.release();
   await pool.end();
 }
