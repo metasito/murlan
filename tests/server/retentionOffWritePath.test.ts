@@ -34,14 +34,18 @@ function serverSources(): { file: string; source: string }[] {
     .map((file) => ({ file, source: readFileSync(path.join(SERVER_DIR, file), "utf8") }));
 }
 
-const AGE_BASED_BUILDER_DELETE = /\.delete\(/;
+const AGE_BASED_BUILDER_DELETE = /\.delete\(|DELETE\s+FROM/;
 const AGE_BASED_INTERVAL = /make_interval\(\s*days\s*=>/;
+const AGE_BASED_CLOCK_CUTOFF = /\blt\(\s*[\w.]+\s*,\s*new Date\(/;
 const AGE_BASED_RAW_DELETE = /DELETE\s+FROM\s+\S+\s+WHERE\s+\S+\s*<\s*now\(\)/i;
 
 function hasAgeBasedPrune(source: string): boolean {
-  return (AGE_BASED_BUILDER_DELETE.test(source) && AGE_BASED_INTERVAL.test(source))
+  return (AGE_BASED_BUILDER_DELETE.test(source)
+      && (AGE_BASED_INTERVAL.test(source) || AGE_BASED_CLOCK_CUTOFF.test(source)))
     || AGE_BASED_RAW_DELETE.test(source);
 }
+
+const RETENTION = path.join("game", "retention.ts");
 
 test("no server module prunes an aged row inside the write that just grew the table", () => {
   const offenders = serverSources()
@@ -58,4 +62,25 @@ test("no server module prunes an aged row inside the write that just grew the ta
       "module(s): " +
       offenders.join(", ")
   );
+});
+
+test("the signature sees each shape an age-based prune has taken", () => {
+  for (const shape of [
+    "await db.delete(socketTicketNonces).where(lt(socketTicketNonces.expiresAt, new Date(now())));",
+    "db.delete(events).where(lt(events.occurredAt, sql`now() - make_interval(days => ${n})`))",
+    "db.execute(sql`DELETE FROM auth_tokens WHERE expires_at < now()`)",
+  ]) {
+    assert.ok(hasAgeBasedPrune(shape), shape);
+  }
+});
+
+test("every age-based delete under server/ lives in server/game/retention.ts", () => {
+  const sources = serverSources();
+  const home = sources.find(({ file }) => file === RETENTION);
+  assert.ok(home && hasAgeBasedPrune(home.source), "retention.ts no longer reads as the home of the sweep");
+
+  const offenders = sources
+    .filter(({ file, source }) => file !== RETENTION && hasAgeBasedPrune(source))
+    .map(({ file }) => file);
+  assert.deepEqual(offenders, [], "move the age-based delete into retention.ts's sweep: " + offenders.join(", "));
 });

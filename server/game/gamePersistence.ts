@@ -1,12 +1,8 @@
-import { lt } from "drizzle-orm";
-import { roomStore } from "../store/roomStore.ts";
 import { logger } from "../http/logger.ts";
-import { db } from "../store/db.ts";
 import { recordGameResult } from "./stats.ts";
 import { previewRatedDeltas, recordRatedResult } from "./ratings.ts";
 import { saveReplay } from "./replays.ts";
-import { pruneAbandonedGames, sweepRetention } from "./retention.ts";
-import { rooms as roomsTable } from "../../shared/schema.ts";
+import { sweepRetention } from "./retention.ts";
 import { activeGames } from "./gameRoom.ts";
 import { payload } from "../shared/payload.ts";
 import { now } from "../http/clock.ts";
@@ -29,21 +25,6 @@ import {
 import { toEnvelope } from "./tableState.ts";
 import type { GameState, Card } from "../../lib/game/gameEngine.ts";
 import type { WireGameState } from "../../shared/protocol.ts";
-
-/**
- * How long a `rooms` row may live before the sweeper takes it.
- *
- * Derived from `created_at` rather than a "finished at" column, because a
- * timestamp on `rooms` would be a new column on a table written every time
- * anyone opens a table — the write that breaks until `db:push` runs. No game
- * lasts a day, so age alone separates a live room from a dead one, and it
- * covers the rooms a restart stranded in `waiting` as well as the finished
- * ones.
- */
-export const STALE_ROOM_MAX_AGE_MS = 24 * 60 * 60_000;
-
-/** Rooms deleted per sweep. Bounds the size of one statement, not the total. */
-const STALE_ROOM_BATCH = 500;
 
 export function sanitizeStateForPlayer(
   state: GameState,
@@ -252,30 +233,6 @@ export function safeTimer(rt: TableRuntime, label: string, roomId: string, fn: (
   }
 }
 
-/**
- * Deletes rooms nobody can still be playing in, and the seats that name them.
- *
- * `disposeGame` clears the `active_games` row when a table ends;
- * `updateRoomStatus(…, "finished")` is all that ever happened to the `rooms`
- * row, so every online game ever played left one behind, plus a
- * `room_players` row per seat.
- *
- * A room still in the in-memory map is never a candidate, whatever its age.
- */
-export async function pruneStaleRooms(): Promise<number> {
-  const cutoff = new Date(now() - STALE_ROOM_MAX_AGE_MS);
-  const candidates = await db
-    .select({ id: roomsTable.id })
-    .from(roomsTable)
-    .where(lt(roomsTable.createdAt, cutoff))
-    .limit(STALE_ROOM_BATCH);
-
-  const ids = candidates.map((r) => r.id).filter((id) => !activeGames.has(id));
-  const gone = await roomStore.purgeRooms(db, ids);
-  if (gone > 0) logger.info({ count: gone }, "Pruned rooms nobody can still be playing in");
-  return gone;
-}
-
 let sweeper: ReturnType<typeof setInterval> | null = null;
 
 /**
@@ -314,16 +271,6 @@ export function startSweeper(rt: TableRuntime, resumeOrphans: (rt: TableRuntime)
 
       void sweepFinishedTables(rt).catch((err: unknown) =>
         logger.error({ err }, "Sweeping finished tables failed")
-      );
-
-      // Rows orphaned by a restart, which the loop above structurally cannot
-      // reach: it walks memory, and a restart is what emptied memory.
-      void pruneAbandonedGames().catch((err: unknown) =>
-        logger.error({ err }, "Pruning abandoned games failed")
-      );
-
-      void pruneStaleRooms().catch((err: unknown) =>
-        logger.error({ err }, "Pruning stale rooms failed")
       );
 
       // sweepRetention gives each table's DELETE its own try/catch and never

@@ -48,7 +48,7 @@ const rules = {
   gameNamesSocketServer: (s: Sources) => hits(s, NAMES_SOCKET_SERVER, [game("tableRuntime.ts"), game("tableRouter.ts")]),
   gameUsesTransport: (s: Sources) => hits(s, VIA_TRANSPORT, [game("tableRouter.ts")]),
   gameAddressesSends: (s: Sources) => hits(s, ADDRESSED_SEND),
-  gameImportsStores: (s: Sources) => hits(s, STORE_IMPORT, [game("gamePersistence.ts"), game("tableRuntime.ts")]),
+  gameImportsStores: (s: Sources) => hits(s, STORE_IMPORT, [game("tableRuntime.ts"), game("retention.ts")]),
   socketAddressesSends: (s: Sources) => hits(s, ADDRESSED_SEND, [socket("socketOutbox.ts")]),
   socketUsesTransport: (s: Sources) =>
     hits(s, VIA_TRANSPORT, [
@@ -80,7 +80,8 @@ describe("each pattern still sees what it is about", () => {
     [VIA_TRANSPORT, game("tableRouter.ts")],
     [VIA_TRANSPORT, socket("socketPresence.ts")],
     [ADDRESSED_SEND, socket("socketOutbox.ts")],
-    [STORE_IMPORT, game("gamePersistence.ts")],
+    [STORE_IMPORT, game("tableRuntime.ts")],
+    [STORE_IMPORT, game("retention.ts")],
   ];
   for (const [pattern, file] of floors) {
     test(`${pattern.source.slice(0, 24)}… matches ${file}`, () => {

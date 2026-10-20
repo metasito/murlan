@@ -1,14 +1,9 @@
-// Retention as a property of each table, not of each write.
-//
-// events.ts, clientErrors.ts, replays.ts, authTokens.ts and bugReports.ts
-// each used to prune their own table inside the write that just grew it,
-// each citing the others as precedent. That idiom put a DELETE on every
-// request's critical path (write cost) and, for events/auth_tokens, made it
-// a full-table seq scan (shared/schema.ts had no index on either predicate).
-// One scheduled sweep, called from server/game/gamePersistence.ts's existing
-// startSweeper interval, replaces all five.
-import { lt, sql } from "drizzle-orm";
+// The only home of every age-based delete (tests/server/retentionOffWritePath.test.ts), run by
+// server/game/gamePersistence.ts's startSweeper.
+import { lt, sql, type SQL } from "drizzle-orm";
+import type { PgTable } from "drizzle-orm/pg-core";
 import { db } from "../store/db.ts";
+import { roomStore } from "../store/roomStore.ts";
 import { now } from "../http/clock.ts";
 import {
   activeGames,
@@ -18,7 +13,10 @@ import {
   authTokens,
   bugReports,
   serverErrors,
+  socketTicketNonces,
+  rooms,
 } from "../../shared/schema.ts";
+import { activeGames as liveGames } from "./gameRoom.ts";
 import { EVENT_RETENTION_DAYS } from "../socket/events.ts";
 import { CLIENT_ERROR_RETENTION_DAYS } from "../http/clientErrors.ts";
 import { SERVER_ERROR_RETENTION_DAYS } from "../http/serverErrors.ts";
@@ -43,51 +41,117 @@ const DAY_MS = 24 * 60 * 60_000;
 export const ABANDONED_GAME_MAX_AGE_MS = 24 * 60 * 60_000;
 
 /**
+ * How long a `rooms` row may live before the sweeper takes it.
+ *
+ * Derived from `created_at` rather than a "finished at" column, because a
+ * timestamp on `rooms` would be a new column on a table written every time
+ * anyone opens a table — the write that breaks until `db:push` runs. No game
+ * lasts a day, so age alone separates a live room from a dead one, and it
+ * covers the rooms a restart stranded in `waiting` as well as the finished
+ * ones.
+ */
+export const STALE_ROOM_MAX_AGE_MS = 24 * 60 * 60_000;
+
+const BATCH = 5_000;
+const MAX_BATCHES = 20;
+const STALE_ROOM_BATCH = 500;
+
+/**
+ * At most `batch × maxBatches` rows per call, `batch` per statement: one
+ * unbatched DELETE over a backlog outruns the pool's `statement_timeout` and
+ * then never shrinks it.
+ */
+async function deleteInBatches(
+  table: PgTable,
+  where: SQL,
+  batch = BATCH,
+  maxBatches = MAX_BATCHES
+): Promise<number> {
+  let total = 0;
+  for (let i = 0; i < maxBatches; i++) {
+    const result = await db.execute(
+      sql`DELETE FROM ${table} WHERE ctid IN (SELECT ctid FROM ${table} WHERE ${where} LIMIT ${batch})`
+    );
+    const gone = result.rowCount ?? 0;
+    total += gone;
+    if (gone < batch) break;
+  }
+  return total;
+}
+
+/**
  * Deletes `active_games` rows untouched for longer than
  * `ABANDONED_GAME_MAX_AGE_MS`. Returns how many went, so a caller can tell
  * "nothing to do" from "did not run".
  */
 export async function pruneAbandonedGames(): Promise<number> {
-  const gone = await db
-    .delete(activeGames)
-    .where(lt(activeGames.updatedAt, new Date(now() - ABANDONED_GAME_MAX_AGE_MS)))
-    .returning({ roomId: activeGames.roomId });
-  if (gone.length > 0) logger.info({ count: gone.length }, "Pruned abandoned games orphaned by a restart");
-  return gone.length;
+  const gone = await deleteInBatches(
+    activeGames,
+    lt(activeGames.updatedAt, new Date(now() - ABANDONED_GAME_MAX_AGE_MS))
+  );
+  if (gone > 0) logger.info({ count: gone }, "Pruned abandoned games orphaned by a restart");
+  return gone;
+}
+
+/**
+ * Deletes rooms nobody can still be playing in, and the seats that name them.
+ *
+ * A room whose `active_games` row was touched within the window is held by a
+ * live game on some instance, so the cluster's answer comes from that row; the
+ * in-memory map answers only for this instance.
+ */
+export async function pruneStaleRooms(): Promise<number> {
+  const cutoff = new Date(now() - STALE_ROOM_MAX_AGE_MS);
+  let total = 0;
+  for (let i = 0; i < MAX_BATCHES; i++) {
+    const { rows } = await db.execute<{ id: string }>(
+      sql`SELECT ${rooms.id} AS id FROM ${rooms}
+          WHERE ${rooms.createdAt} < ${cutoff}
+            AND NOT EXISTS (
+              SELECT 1 FROM ${activeGames}
+              WHERE ${activeGames.roomId} = ${rooms.id} AND ${activeGames.updatedAt} >= ${cutoff}
+            )
+          LIMIT ${STALE_ROOM_BATCH}`
+    );
+    const ids = rows.map((r) => r.id).filter((id) => !liveGames.has(id));
+    const gone = await roomStore.purgeRooms(db, ids);
+    total += gone;
+    if (rows.length < STALE_ROOM_BATCH || gone === 0) break;
+  }
+  if (total > 0) logger.info({ count: total }, "Pruned rooms nobody can still be playing in");
+  return total;
 }
 
 /**
  * Never thrown: this is diagnostic hygiene, not gameplay, and one rule
  * failing (e.g. a transient connection error) must not stop the others —
- * each DELETE is independent and gets its own try/catch.
+ * each rule is independent and gets its own try/catch.
  */
 export async function sweepRetention(): Promise<void> {
+  const daysAgo = (days: number) => sql`now() - make_interval(days => ${days})`;
   await pruneOlderThan("events", () =>
-    db.delete(events).where(lt(events.occurredAt, sql`now() - make_interval(days => ${EVENT_RETENTION_DAYS})`))
+    deleteInBatches(events, lt(events.occurredAt, daysAgo(EVENT_RETENTION_DAYS)))
   );
   await pruneOlderThan("client_errors", () =>
-    db
-      .delete(clientErrors)
-      .where(lt(clientErrors.occurredAt, sql`now() - make_interval(days => ${CLIENT_ERROR_RETENTION_DAYS})`))
+    deleteInBatches(clientErrors, lt(clientErrors.occurredAt, daysAgo(CLIENT_ERROR_RETENTION_DAYS)))
   );
   await pruneOlderThan("server_errors", () =>
-    db
-      .delete(serverErrors)
-      .where(lt(serverErrors.occurredAt, sql`now() - make_interval(days => ${SERVER_ERROR_RETENTION_DAYS})`))
+    deleteInBatches(serverErrors, lt(serverErrors.occurredAt, daysAgo(SERVER_ERROR_RETENTION_DAYS)))
   );
   await pruneOlderThan("round_replays", () =>
-    db
-      .delete(roundReplays)
-      .where(lt(roundReplays.finishedAt, new Date(now() - REPLAY_RETENTION_DAYS * DAY_MS)))
+    deleteInBatches(roundReplays, lt(roundReplays.finishedAt, new Date(now() - REPLAY_RETENTION_DAYS * DAY_MS)))
   );
   await pruneOlderThan("auth_tokens", () =>
-    db.delete(authTokens).where(lt(authTokens.expiresAt, new Date(now())))
+    deleteInBatches(authTokens, lt(authTokens.expiresAt, new Date(now())))
   );
   await pruneOlderThan("bug_reports", () =>
-    db
-      .delete(bugReports)
-      .where(lt(bugReports.createdAt, sql`now() - make_interval(days => ${BUG_REPORT_RETENTION_DAYS})`))
+    deleteInBatches(bugReports, lt(bugReports.createdAt, daysAgo(BUG_REPORT_RETENTION_DAYS)))
   );
+  await pruneOlderThan("socket_ticket_nonces", () =>
+    deleteInBatches(socketTicketNonces, lt(socketTicketNonces.expiresAt, new Date(now())))
+  );
+  await pruneOlderThan("active_games", pruneAbandonedGames);
+  await pruneOlderThan("rooms", pruneStaleRooms);
 }
 
 async function pruneOlderThan(table: string, run: () => Promise<unknown>): Promise<void> {

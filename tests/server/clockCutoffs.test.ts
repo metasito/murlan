@@ -4,7 +4,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { PgDialect } from "drizzle-orm/pg-core";
-import type { SQL } from "drizzle-orm";
+import { getTableName, type SQL } from "drizzle-orm";
 import { db } from "../../server/store/db.ts";
 import { installClock } from "../../server/http/clock.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
@@ -43,30 +43,34 @@ describe("a cutoff reads the clock its column was written on", () => {
   test("a room is stamped from the installed clock, the clock its stale-room sweep reads", async (t) => {
     const clock = ahead(t);
     let values: Record<string, unknown> | undefined;
-    t.mock.method(db, "insert", (table: unknown) => {
-      assert.equal(table, rooms);
-      return {
+    const tx = {
+      insert: (table: unknown) => ({
         values: (v: Record<string, unknown>) => {
-          values = v;
+          if (table === rooms) values = v;
           return { returning: async () => [{ id: "r", ...v }] };
         },
-      };
-    });
-    await roomStore.createRoom("host", "teams", 4);
+      }),
+    };
+    t.mock.method(db, "transaction", (run: (t: typeof tx) => unknown) => run(tx));
+    await roomStore.createRoom("host", { gameMode: "teams", maxPlayers: 4 });
     assert.ok(values?.createdAt instanceof Date, "created_at is left to Postgres' defaultNow()");
     assert.ok(near(values.createdAt, clock.now(), 1_000));
   });
 
   test("the replay sweep judges server-written finished_at on the installed clock", async (t) => {
     const clock = ahead(t);
-    const conditions = new Map<unknown, SQL>();
-    t.mock.method(db, "delete", (table: unknown) => ({
-      where: async (cond: SQL) => {
-        conditions.set(table, cond);
-      },
-    }));
+    const statements: SQL[] = [];
+    t.mock.method(db, "execute", async (q: SQL) => {
+      statements.push(q);
+      return { rows: [], rowCount: 0 };
+    });
     await sweepRetention();
-    const { sql: text, params } = dialect.sqlToQuery(conditions.get(roundReplays)!);
+    const replayTable = `"${getTableName(roundReplays)}"`;
+    const prune = statements
+      .map((q) => dialect.sqlToQuery(q))
+      .find((q) => q.sql.startsWith(`DELETE FROM ${replayTable}`));
+    assert.ok(prune, "the sweep no longer prunes round_replays");
+    const { sql: text, params } = prune;
     assert.doesNotMatch(text, /now\(\)/i);
     assert.ok(params.some((p) => near(p, clock.now() - REPLAY_RETENTION_DAYS * DAY_MS, 1_000)));
   });

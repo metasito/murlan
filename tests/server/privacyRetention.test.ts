@@ -54,7 +54,7 @@ describe("docs/PRIVACY.md states the retention the code enforces", () => {
     ["usage events", () => `${constantFrom("server/socket/events.ts", "EVENT_RETENTION_DAYS")} days`],
     [
       "stale rooms",
-      () => `${hours(constantFrom("server/game/gamePersistence.ts", "STALE_ROOM_MAX_AGE_MS"))} hours`,
+      () => `${hours(constantFrom("server/game/retention.ts", "STALE_ROOM_MAX_AGE_MS"))} hours`,
     ],
     [
       "abandoned games",
