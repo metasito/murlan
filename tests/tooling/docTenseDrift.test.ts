@@ -10,6 +10,7 @@ const DRIFT = /\b(currently|today|not built)\b/i;
 /** Lines holding quoted source text, where the word belongs to the source and not to the doc. */
 const QUOTED_SOURCE_ALLOWLIST: Record<string, string[]> = {
   "docs/BETA-PLAYTEST.md": [],
+  "docs/GAME-RULES.md": [],
 };
 
 test("a playtest sheet asks what the app does, never what it does 'today'", () => {
@@ -17,8 +18,16 @@ test("a playtest sheet asks what the app does, never what it does 'today'", () =
     const hits = readFileSync(join(ROOT, file), "utf8")
       .split("\n")
       .flatMap((line, i) =>
-        DRIFT.test(line) && !allowed.some((a) => line.includes(a)) ? [`${file}:${i + 1}: ${line.trim()}`] : [],
+        (file !== "docs/GAME-RULES.md" || line.startsWith("| **")) &&
+        DRIFT.test(line) &&
+        !allowed.some((a) => line.includes(a))
+          ? [`${file}:${i + 1}: ${line.trim()}`]
+          : [],
       );
-    assert.deepEqual(hits, [], "present-tense drift words go stale when the app changes");
+    assert.deepEqual(
+      hits,
+      [],
+      "present-tense drift words go stale when the app changes",
+    );
   }
 });
