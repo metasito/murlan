@@ -137,11 +137,6 @@ const saveExchange = () =>
     encodeOfflineSave({
       gameState: exchangeState(),
       match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
-      players: [
-        { name: "Ana", type: "human" },
-        { name: "Gent", type: "bot" },
-      ],
-      gameMode: "free_for_all",
       dealFirstSeat: 0,
     })
   );

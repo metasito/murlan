@@ -96,5 +96,6 @@ test("no tools/loop/tests file inherits the LOOP_* a loop process set", () => {
   const env = { ...process.env, ...Object.fromEntries(names.map((n) => [n, "set-by-the-loop"])) };
 
   assert.deepEqual(probeSees(["--test", "<probe>"], env).sort(), names, "a bare node --test passes the caller's env through");
-  assert.deepEqual(probeSees(loopTestArgs("<probe>"), env), [], "npm run loop:test hands a test file the caller's LOOP_*");
+  // The only one a test file sees is the temp evidence key the preload itself sets, never the caller's.
+  assert.deepEqual(probeSees(loopTestArgs("<probe>"), env), ["LOOP_EVIDENCE_KEY_FILE"], "npm run loop:test hands a test file the caller's LOOP_*");
 });

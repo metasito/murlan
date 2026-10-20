@@ -66,7 +66,7 @@ export function RotateOverlay() {
     <View style={portraitOverlayStyles.overlay} accessibilityViewIsModal>
       <View style={portraitOverlayStyles.card} {...a11yGroup(t("gameTable.rotateA11yLabel"))}>
         <Animated.View style={glyphStyle} {...a11yHidden()}>
-          <Ionicons name="phone-landscape-outline" size={GLYPH_SIZE} color={Colors.gold} />
+          <Ionicons name="phone-landscape-outline" size={GLYPH_SIZE} color={Colors.gold} {...a11yHidden()} />
         </Animated.View>
         <TableText style={portraitOverlayStyles.title} {...a11yHidden()}>
           {t("gameTable.rotateTitle")}

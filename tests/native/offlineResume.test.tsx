@@ -38,7 +38,7 @@ const midExchangeSave = () => {
     gameState: {
       players: [
         { id: "player_0", name: "Ana", hand: [card], type: "human" },
-        { id: "player_1", name: "Luan", hand: [card], type: "bot" },
+        { id: "player_1", name: "Luan", hand: [card], type: "bot", personality: "luan" },
       ],
       currentTurnIndex: 0,
       lastPlayedCombination: null,
@@ -58,11 +58,6 @@ const midExchangeSave = () => {
       },
     },
     match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
-    players: [
-      { name: "Ana", type: "human" },
-      { name: "Luan", type: "bot", personality: "luan" },
-    ],
-    gameMode: "free_for_all",
     dealFirstSeat: 1,
   });
 };

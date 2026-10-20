@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { act, render } from '@testing-library/react-native';
-import { initializeGame, type GameState } from '@/lib/game/gameEngine';
+import { startRound, type GameState } from '@/lib/game/gameEngine';
 import { offlineBotMove, resolveStuckExchange } from '@/lib/game/autoMove';
 import { OFFLINE_BOT_DELAY_MS } from '@/lib/timeline/offlineBotDelay';
 import { settle } from './feedback';
@@ -8,7 +8,7 @@ import { settle } from './feedback';
 export const STEP_MS = 1500;
 
 export function botRound(): GameState[] {
-  let state = initializeGame(['A', 'B', 'C', 'D'].map((name) => ({ name, type: 'bot' as const })), 'free_for_all');
+  let state = startRound(['A', 'B', 'C', 'D'].map((name) => ({ name, type: 'bot' as const })), 'free_for_all');
   const states = [state];
   while (!state.roundOver && states.length < 300) {
     const next = offlineBotMove(state) ?? (state.exchangePhase?.active ? resolveStuckExchange(state) : null);

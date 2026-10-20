@@ -10,8 +10,7 @@ import { botMoveDelayMs, clearRoomTimers, pending } from "../../server/game/game
 import {
   checkPlay,
   createDeck,
-  initializeGame,
-  initializeRematch,
+  startRound,
   processExchangeChoice,
   processPass,
   processPlay,
@@ -30,7 +29,6 @@ function table(gameState: GameState): OnlineGameState {
     playerMap: {},
     rematchVotes: new Set(),
     cumulativeScores: {},
-    gameMode: "free_for_all",
     maxPlayers: 4,
     matchTarget: 21,
     matchLength: "match",
@@ -53,7 +51,7 @@ function table(gameState: GameState): OnlineGameState {
 }
 
 function opened(): GameState {
-  const state = initializeGame(SEATS, "free_for_all");
+  const state = startRound(SEATS, "free_for_all");
   const check = checkPlay(state, state.currentTurnIndex, [state.startCard!.id]);
   assert.ok(check.ok, "the opener can lead the start card alone");
   return processPlay(state, check.combo);
@@ -89,7 +87,7 @@ for (const kind of ["play", "pass"] as const) {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     try {
       if (kind === "play") {
-        const fresh = initializeGame(SEATS, "free_for_all");
+        const fresh = startRound(SEATS, "free_for_all");
         const seat = fresh.currentTurnIndex;
         const check = checkPlay(fresh, seat, [fresh.startCard!.id]);
         assert.ok(check.ok);
@@ -117,7 +115,7 @@ test("a play that ends the round is logged, persisted, and handed to round over 
   }
   t.mock.method(roundOverWriters, "previewRatedDeltas", async () => null);
   try {
-    const dealt = initializeGame(SEATS.slice(0, 2), "free_for_all");
+    const dealt = startRound(SEATS.slice(0, 2), "free_for_all");
     const seat = dealt.currentTurnIndex;
     const state = structuredClone(dealt);
     state.players[seat].hand = [state.startCard!];
@@ -145,7 +143,10 @@ test("an exchange logs no replay move, persists, and holds the next seat for the
   try {
     const deck = createDeck();
     const hands = SEATS.map((_, s) => deck.filter((_, i) => i % SEATS.length === s));
-    const state = initializeRematch(SEATS, "free_for_all", SEATS.map((s) => s.id), 0, hands);
+    const state = startRound(SEATS, "free_for_all", {
+      opening: { kind: "exchange", winnerSeat: 0, loserSeat: SEATS.length - 1 },
+      dealt: hands,
+    });
     const phase = state.exchangePhase!;
     assert.equal(phase.active, true);
     const game = table(state);

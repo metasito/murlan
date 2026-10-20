@@ -6,7 +6,7 @@
 // transform. A blind critique defeated the scan twice over — a decoy function
 // holding the same matched text while the beaten style itself was decoupled
 // from `flinchY.value`, and separately, the static `-7deg` resting tilt
-// dropped outright — and every test in `tests/ui-rules/flightPhysics.test.ts` stayed
+// dropped outright — and every test in `tests/ui-rules/impact.test.ts` stayed
 // green through both. Only mounting `PileLayer` and reading what it actually
 // renders can catch either.
 import { describe, it, expect, jest } from "@jest/globals";

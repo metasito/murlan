@@ -60,7 +60,32 @@ export function spawnEnv({ number, at = null, reason = null, turns }, base = pro
     LOOP_TICKET: String(number),
     LOOP_PHASE: at && at !== "A" ? at : undefined,
     LOOP_REASON: reason ?? undefined,
+    LOOP_EVIDENCE_KEY_FILE: undefined,
   };
+}
+
+/**
+ * Points a test run's evidence key at a temp directory, unless it already names one. The one setup
+ * shared by `scripts/nodeTest.mjs` and the loop's preload, so no test touches the real per-user key.
+ *
+ * @param {Record<string, string | undefined>} env
+ * @param {string} tmp
+ */
+export function hermeticEvidenceKey(env, tmp) {
+  if (!env.LOOP_EVIDENCE_KEY_FILE) env.LOOP_EVIDENCE_KEY_FILE = `${tmp}/murlan-test-evidence/evidence.key`;
+  return env;
+}
+
+/**
+ * What only the supervisor is configured with. Never handed to a session (`spawnEnv` removes it), and
+ * empty inside one: a loop session has no key to read evidence with or to forge it with.
+ *
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {{ evidenceKeyFile?: string }}
+ */
+export function supervisorConfig(env = process.env) {
+  if (env.LOOP_TURNS) return {};
+  return env.LOOP_EVIDENCE_KEY_FILE ? { evidenceKeyFile: env.LOOP_EVIDENCE_KEY_FILE } : {};
 }
 
 /**

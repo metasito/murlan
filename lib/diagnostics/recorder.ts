@@ -1,3 +1,4 @@
+import { isBenchHost } from "./benchLaunch.ts";
 import type { DiagRow } from "./types";
 
 const MARK = "murlan-diagnostics-recorder";
@@ -17,6 +18,7 @@ export const recorder = {
     outbox.push(row);
   },
   postTo(host: string): void {
+    if (!isBenchHost(host)) return;
     if (target === null) {
       outbox = [];
       dropped = 0;

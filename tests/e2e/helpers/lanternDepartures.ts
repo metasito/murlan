@@ -1,7 +1,6 @@
 // Where the Lantern mockup (tests/e2e/fixtures/lantern-table/index.html) is made to do what the app
 // does instead of what it drew, so a parity run compares like with like (plan 3 L5).
 import { expect, type Page } from "@playwright/test";
-import { anchorPoints } from "../../../components/flightPhysics";
 import { DESIGN, GLIDE, LAMP_LIGHT, LIGHT_ABOVE, lampPools, type LampTarget, type Pool } from "../../../components/table/lampRig";
 import { CLOTH_DEPARTURES } from "../../helpers/clothDepartures";
 import { phoneTable } from "../../helpers/phoneTable";
@@ -14,7 +13,7 @@ export const MOCKUP_SEAT = { bottom: "you", right: "luan", top: "besnik", left: 
  * discs within 1.2 pt of these anchors; its hand has no disc, and runs off the bottom edge.
  */
 const MOCKUP_POOLS: Record<LampTarget, Pool> = lampPools(
-  anchorPoints(phoneTable(DESIGN.width, DESIGN.height)),
+  phoneTable(DESIGN.width, DESIGN.height).anchors,
   DESIGN.width,
   DESIGN.height
 );

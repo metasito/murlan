@@ -4,8 +4,8 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { MEMORY_ONLY, PERSISTED, fromEnvelope, newTable, toEnvelope } from "../../server/game/tableState.ts";
 import { GAME_SCHEMA_VERSION } from "../../shared/persistedEnvelope.ts";
-import { firstTargetFor, initializeGame } from "../../lib/game/gameEngine.ts";
-import type { GameState } from "../../lib/game/gameEngine.ts";
+import { firstTargetFor, startRound } from "../../lib/game/gameEngine.ts";
+import type { GameMode, GameState } from "../../lib/game/gameEngine.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { RoundOverPayload } from "../../lib/game/matchState.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
@@ -15,16 +15,16 @@ const ROOM = "table-state-room";
 /** What jsonb hands back: `undefined` properties gone, everything plain. */
 const viaJson = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
-function dealt(): GameState {
+function dealt(mode: GameMode = "free_for_all"): GameState {
   return viaJson(
-    initializeGame(
+    startRound(
       [
         { name: "Alice", type: "human" },
         { name: "Bob", type: "human" },
         { name: "Carl", type: "human" },
         { name: "Bot", type: "bot", personality: "besnik" },
       ],
-      "free_for_all"
+      mode
     )
   );
 }
@@ -35,10 +35,9 @@ function midMatch(): OnlineGameState {
   const table: Required<OnlineGameState> = {
     roomId: ROOM,
     joinCode: "QW3RTY",
-    gameState: dealt(),
+    gameState: dealt("teams"),
     playerMap: { 0: "alice", 2: "carl" },
     cumulativeScores: { alice: 7, bob: 3, carl: 12, "bot:3": 4 },
-    gameMode: "teams",
     maxPlayers: 4,
     matchTarget: 31,
     matchLength: "single",
@@ -191,5 +190,41 @@ describe("a new table", () => {
     assert.equal(carried.roundsPlayed, 5);
     assert.equal(carried.matchOver, true);
     assert.equal(newTable(room, roster, previous, "match").matchLength, "match");
+  });
+});
+
+describe("a new match at a standing table", () => {
+  const room = { id: ROOM, code: "QW3RTY", gameMode: "free_for_all" as const, maxPlayers: 3 };
+  const seated = [
+    { seatIndex: 0, userId: "alice", username: "Alice", isBot: false },
+    { seatIndex: 1, userId: "bob", username: "Bob", isBot: false },
+    { seatIndex: 2, userId: "carl", username: "Carl", isBot: false },
+  ];
+  const finished = (): OnlineGameState => {
+    const gameState = viaJson(
+      startRound(seated.map((r) => ({ name: r.username, type: "human" as const })), "free_for_all")
+    );
+    gameState.roundOver = true;
+    gameState.finishingOrder = ["player_1", "player_2", "player_0"];
+    return onlineTable({
+      roomId: ROOM,
+      gameState,
+      playerMap: { 0: "alice", 1: "bob", 2: "carl" },
+      matchOver: true,
+    });
+  };
+  const reseated = (rows: typeof seated) => rows.map((r, seatIndex) => ({ ...r, seatIndex }));
+
+  test("opens with the exchange between the last match's winner and loser, at their new seats", () => {
+    const { exchangePhase } = newTable(room, reseated([seated[1], seated[0], seated[2]]), finished()).gameState;
+    assert.equal(exchangePhase?.winnerIdx, 0);
+    assert.equal(exchangePhase?.loserIdx, 1);
+  });
+
+  test("deals the 3♠ opening when the winner left the table", () => {
+    const dan = { seatIndex: 2, userId: "dan", username: "Dan", isBot: false };
+    const { gameState } = newTable(room, reseated([seated[0], seated[2], dan]), finished());
+    assert.equal(gameState.exchangePhase, undefined);
+    assert.equal(gameState.startReason?.type, "start_card");
   });
 });

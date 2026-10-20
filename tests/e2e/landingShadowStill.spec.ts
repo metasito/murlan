@@ -5,7 +5,7 @@ import { test, expect } from "./fixtures";
 import { heldTurnTable, newSidePage, playLowest } from "./helpers/mockupParity";
 import { stepThen, stepUntil } from "./helpers/virtualClock";
 import { STEP_MS } from "./helpers/traceDiff";
-import { LAND_WOBBLE_MS } from "../../components/flightPhysics";
+import { LAND_WOBBLE_MS } from "../../components/impact";
 
 type ThrowFrame = {
   t: number;

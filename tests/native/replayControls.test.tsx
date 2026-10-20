@@ -100,10 +100,29 @@ describe('the replay scrubber', () => {
   });
 });
 
+describe('the replay speed key', () => {
+  it('is named with its visible value', async () => {
+    const view = await transport({ speed: 2 });
+    const key = view.getByLabelText(t('replay.speedA11yLabel', { value: t('replay.speedValue', { n: 2 }) }));
+    expect(key.props.accessibilityLabel).toContain(t('replay.speedValue', { n: 2 }));
+  });
+});
+
 describe('the replay move list', () => {
+  it('marks only the current move as current', async () => {
+    const view = await render(
+      <ReplayMoveList replay={REPLAY} index={1} onJumpTo={NOOP} onClose={NOOP} t={t} />
+    );
+    const passed = { name: 'Deleted player', action: t('replay.movePassed') };
+
+    expect(view.getByLabelText(t('replay.moveRowCurrentA11yLabel', { n: 2, ...passed }))).toBeTruthy();
+    expect(view.queryByLabelText(t('replay.moveRowA11yLabel', { n: 2, ...passed }))).toBeNull();
+    expect(view.queryByLabelText(t('replay.moveRowCurrentA11yLabel', { n: 1, name: 'Ana', action: 'Single · 3' }))).toBeNull();
+  });
+
   it('reads one row per move, naming the seat and what it did', async () => {
     const view = await render(
-      <ReplayMoveList replay={REPLAY} index={0} onJumpTo={NOOP} onClose={NOOP} t={t} />
+      <ReplayMoveList replay={REPLAY} index={-1} onJumpTo={NOOP} onClose={NOOP} t={t} />
     );
 
     expect(view.getByLabelText(t('replay.moveRowA11yLabel', { n: 1, name: 'Ana', action: 'Single · 3' }))).toBeTruthy();

@@ -12,7 +12,7 @@ import React from "react";
 import { Platform, StyleSheet } from "react-native";
 import { act, render, screen } from "@testing-library/react-native";
 import { getAnimatedStyle, makeMutable, type SharedValue } from "react-native-reanimated";
-import type { ImpactTier } from "@/components/flightPhysics";
+import type { ImpactTier } from "@/components/impact";
 import { Motion } from "@/lib/theme";
 import { BombBurst, Sweep } from "@/components/table/moments";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";

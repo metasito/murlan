@@ -430,6 +430,7 @@ export const it: Record<keyof typeof en, string> = {
   "scorePill.standings": "Classifica",
   "scorePill.race": "Partita a {{target}}",
   "scorePill.a11yLabel_one": "Il tuo punteggio: {{count}} punto su {{target}}, {{place}}° posto.",
+  "seat.finishedA11yLabel": "Ha finito al {{place}}° posto",
   "scorePill.a11yLabel_other": "Il tuo punteggio: {{count}} punti su {{target}}, {{place}}° posto.",
   "scorePill.a11yRow_one": "{{place}}° {{name}}, {{count}} punto.",
   "scorePill.a11yRow_other": "{{place}}° {{name}}, {{count}} punti.",
@@ -495,7 +496,7 @@ export const it: Record<keyof typeof en, string> = {
   "replay.deletedPlayer": "Giocatore eliminato",
   "replay.back": "Chiudi",
   "replay.scrubA11yLabel": "Posizione nella manche",
-  "replay.speedA11yLabel": "Velocità di riproduzione",
+  "replay.speedA11yLabel": "Velocità di riproduzione: {{value}}",
   "replay.speedValue": "{{n}}×",
   "replay.jumpA11yLabel": "Vai alla prossima Bomba o alla fine",
   "replay.movesToggleA11yLabel": "Mostra l'elenco delle mosse",
@@ -505,6 +506,7 @@ export const it: Record<keyof typeof en, string> = {
   "replay.movePassed": "passa",
   "replay.movePlayed": "{{combo}} · {{cards}}",
   "replay.moveRowA11yLabel": "Mossa {{n}}: {{name}}, {{action}}",
+  "replay.moveRowCurrentA11yLabel": "Mossa {{n}}: {{name}}, {{action}}, mossa corrente",
 
   // ------------------------------------------------------------- cosmetics.*
   "cosmetics.back.smeraldo": "Smeraldo",
@@ -573,6 +575,7 @@ export const it: Record<keyof typeof en, string> = {
   "ladder.emptyTitle": "Classifica vuota",
   "ladder.emptyBody": "Servono {{n}} mani classificate per comparire qui.",
   "ladder.rowA11yLabel": "{{rank}}º: {{name}}, {{rating}} punti",
+  "ladder.rowSelfA11yLabel": "{{rank}}º: {{name}} (tu), {{rating}} punti",
   "ladder.rankedOnlyNote": "Solo partite online tutti contro tutti, senza bot.",
   "ladder.scopeGlobal": "Globale",
   "ladder.scopeFriends": "Amici",
@@ -907,6 +910,8 @@ export const it: Record<keyof typeof en, string> = {
   "friends.searchByUsername": "Cerca per username",
   "friends.usernamePlaceholder": "@username",
   "friends.searchA11yLabel": "Ricerca username",
+  "friends.searchButtonA11yLabel": "Cerca",
+  "friends.foundA11yLabel": "Trovato {{username}}",
   "friends.searchA11yHint": "Digita lo username di un giocatore per cercarla e aggiungere come amico",
   "friends.sendRequestA11yLabel": "Invia richiesta di amicizia a {{username}}",
 

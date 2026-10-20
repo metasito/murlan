@@ -194,7 +194,7 @@ try {
           "-e", "POSTGRES_USER=postgres",
           "-e", "POSTGRES_PASSWORD=postgres",
           "-e", "POSTGRES_DB=murlan_dev",
-          "-p", `${p}:5432`,
+          "-p", `127.0.0.1:${p}:5432`,
           IMAGE,
         ]);
         // A run that got far enough to claim the name and then failed leaves

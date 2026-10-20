@@ -38,7 +38,11 @@ export function ScreenHeader({
         label={backLabel ?? t("common.back")}
         onPress={onBack ?? leaveScreen}
       />
-      {title === undefined ? <View style={styles.fill} /> : <Text style={styles.title}>{title}</Text>}
+      {title === undefined ? <View style={styles.fill} /> : (
+        <Text style={styles.title} accessibilityRole="header">
+          {title}
+        </Text>
+      )}
       {right ?? <View style={styles.balance} />}
     </View>
   );

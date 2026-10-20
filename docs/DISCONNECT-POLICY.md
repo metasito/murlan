@@ -45,11 +45,11 @@ One further row is adjacent and load-bearing:
 > ready among the connected seated humans,** not the host alone. Vacated and bot seats abstain
 > rather than voting no.
 
-**So the Decisions table decides exactly three things about a player who leaves:** the round they left is a
+**So, as of 2026-09-02, the Decisions table decided exactly three things about a player who leaves:** the round they left is a
 last-place finish that costs rating and streak; their seat can never be announced as the
 winner of a single round; and their vacated seat abstains from the rematch gate.
 
-**The Decisions table decides none of these**, though they are often attributed to it:
+**It decided none of these**, though they were often attributed to it (the adopted §6 clauses were later recorded in that table, so it decides the grace, the takeover, scoring, reclaim and the vote):
 
 - how long the grace is, or what the table shows during it;
 - whether the bot takes the seat over at all, or under what name;
@@ -68,18 +68,18 @@ table from the first round.
 
 ---
 
-## 2. What the code actually does today
+## 2. What the code did on 2026-09-02
 
-The behaviour is an escalation ladder assembled from four independently-made choices.
+The snapshot below is the pre-#850 code, kept as the baseline the options were argued against; the Vacate, After-takeover and Rejoin rows are updated to the code as it stands, with the original in italics. The behaviour was an escalation ladder assembled from four independently-made choices.
 
 | Stage | Trigger | What happens | Where |
 |---|---|---|---|
 | Turn timer | 30 s on the acting seat (`MURLAN_AFK_TIMEOUT_MS`) | The seat is made to play the **minimum legal move** — a pass, or the lowest single when a trick cannot be passed. Never the bot: *"an AFK human should not be played well on their behalf."* | `afkTimeoutMs` (`server/game/gameTimers.ts`), `handleAutoPass` (`server/game/gameTurn.ts`), `autoMoveForSeat` (`lib/game/autoMove.ts`) |
 | Disconnect grace | socket lost mid-round, 60 s (`MURLAN_DISCONNECT_GRACE_MS`) | `game:player_disconnected` broadcasts one sentence naming the seconds; the round **continues**, the seat is still the player's, and the 30 s turn timer keeps auto-passing it. So roughly two forced minimum moves fit inside the grace. | `seatLostAction` (`server/game/tableHandlers.ts`) |
 | Between rounds | socket lost while `roundOver` | The shorter 20 s lobby grace, because the seat is counted in the rematch gate. | `lobbyGraceMs` (`server/game/gameTimers.ts`), `armLobbyGrace`/`handleSeatRelease` (`server/socket/socketTable.ts`) |
-| Vacate | grace expired **and** the cluster says the user is offline, or an explicit `room:leave` (no grace at all) | `playerMap[seat]` deleted, `players[seat].type = "bot"`, `releasedSeats.add(userId)`, the seat recorded in `abandonedSeats` if it still held cards. The **name on the seat never changes**. Announced as `game:seat_bot_takeover`. | `vacateSeat` (`server/game/gameTurn.ts`) |
-| After takeover | every turn | The real engine bot plays the seat, paced at 1.2 s a move. | `runBotTurn` (`server/game/gameTurn.ts`) |
-| Rejoin | any later attempt | Refused with `SEAT_RELEASED`, permanently, for the life of that table. | `REJOIN_FAILURE` (`server/socket/socketGameplay.ts`), `rejoinAction` (`server/game/tableHandlers.ts`) |
+| Vacate | grace expired **and** the cluster says the user is offline, or an explicit `room:leave` (no grace at all) | `playerMap[seat]` deleted, `players[seat].type = "bot"`, `releasedSeats.add(userId)`, `vacatedSeats.set(seat, …)` (reclaimable for the match), and, if it still held cards, the seat recorded in `abandonedSeats` and added to `weakSeats`; a reclaim flips the type back to human. The **name on the seat never changes**. Announced as `game:seat_bot_takeover`. *On 2026-09-02 neither `vacatedSeats` nor `weakSeats` existed.* | `vacateSeat` (`server/game/gameTurn.ts`), `server/game/seatLedger.ts` |
+| After takeover | every turn | The takeover plays the rest of that round at minimum legal strength (`weakSeats`, cleared at the next deal), then as the real engine bot; paced at 1.2 s a move. *On 2026-09-02: the engine bot played properly at once.* | `runBotTurn` (`server/game/gameTurn.ts`) |
+| Rejoin | any later attempt | The same account may reclaim the seat for the life of the match; `SEAT_RELEASED` survives only for a restored row that kept `releasedSeats` but lost its `vacatedSeats` entry; a finished or gone table answers `GAME_NOT_FOUND` or `GAME_NO_LONGER_VALID` (§6 clause 8). *On 2026-09-02: refused with `SEAT_RELEASED`, permanently.* | `REJOIN_FAILURE` (`server/socket/socketGameplay.ts`), `rejoinAction` (`server/game/tableHandlers.ts`) |
 
 And at the round's end (`resolveRoundEnd`, `server/game/onlineGameLogic.ts`):
 
@@ -93,23 +93,23 @@ And at the round's end (`resolveRoundEnd`, `server/game/onlineGameLogic.ts`):
 - `gameResults` for that one round is keyed by the **departed userId**, not by `bot:<seat>` —
   which is how the last-place finish reaches their rating and history at all.
 
-Three consequences of that arrangement are worth stating plainly, because two of them are
+Three consequences of that arrangement, as of 2026-09-02, were worth stating plainly, because two of them are
 almost certainly not what anyone chose:
 
-1. **The departed player's earlier points vanish from the screen.** They are still in
+1. **The departed player's earlier points vanished from the screen.** They were still in
    `game.cumulativeScores` under the userId key — `vacateSeat` never deletes them — but the
-   scoreboard row for that seat is built from `scoreKeyForSeat(playerMap, seat)`, which now
-   returns `bot:<seat>`, whose total is `0`. So a player who won three rounds and then
-   dropped shows **0** to everyone still at the table. This is the visible half of what #815
-   reported, and #815's fix did not address it.
-2. **The score keys support reclaiming a seat.** `seatLedger.ts` `reclaim` merges the `bot:<seat>`
+   scoreboard row for that seat was built from `scoreKeyForSeat(playerMap, seat)`, which
+   returned `bot:<seat>`, whose total was `0`. So a player who won three rounds and then
+   dropped showed **0** to everyone still at the table. This was the visible half of what #815
+   reported, and #815's fix did not address it. §6 clause 6 fixes it (§7 row E).
+2. **The score keys supported reclaiming a seat.** `seatLedger.ts` `reclaim` merges the `bot:<seat>`
    bucket's carried points into the returning player's own key before deleting it, so
    restoring `playerMap[seat]` restores the row, the name and the total together (#894). The
-   only thing preventing a return is `releasedSeats`.
-3. **The client is told about a disconnect for ten seconds and never again.** One banner via
+   only thing preventing a return, on 2026-09-02, was `releasedSeats`.
+3. **The client was told about a disconnect for ten seconds and never again.** One banner via
    `setReconnectNotice`, cleared on a timer (`context/OnlineGameContext.tsx`). No
-   seat carries any mark, so a player who looks up fifteen seconds later sees a table that
-   appears entirely normal, with a name playing badly in it.
+   seat carried any mark, so a player who looked up fifteen seconds later saw a table that
+   appeared entirely normal, with a name playing badly in it. §6 clauses 2 and 3 fix it (§7 rows A, B).
 
 ---
 
@@ -260,7 +260,7 @@ this order.
 | Option | Consequence | Exploit it opens |
 |---|---|---|
 | **Pause the round** for the grace | Fairest to the dropped player | **The hostage exploit.** Anyone losing a round pulls their network and freezes three other people for a minute. Every source rejects pausing for this reason. |
-| **Continue, auto-pass** (today, 30 s a turn inside a 60 s grace) | Table never stalls; the absent seat plays badly, which is correct | Very small: the absent seat can still be *forced* to open a trick with its lowest card, which leaks information. Same leak an AFK human already has. |
+| **Continue, auto-pass** (as of 2026-09-02: 30 s a turn inside a 60 s grace) | Table never stalls; the absent seat plays badly, which is correct | Very small: the absent seat can still be *forced* to open a trick with its lowest card, which leaks information. Same leak an AFK human already has. |
 | Continue, **Bot plays immediately** | Strongest play continuity | **The upgrade exploit.** If the bot plays better than you, dropping is a move. Catan Universe's failure mode. |
 | Longer grace (3-5 min) | Kinder to mobile networks | The other three wait; and the longer the window, the more the frozen seat's forced minimum moves distort the round anyway. |
 
@@ -269,7 +269,7 @@ move only. Chess.com's scaling (10% of base time, floor 30 s, ceiling 3 min) is 
 idea in principle, but this game has no per-match clock to scale from, so a flat 60 s
 between a 30 s turn timer and a 20 s lobby grace is already the right order of magnitude.
 
-The change is what the table is told. Today: one 10-second banner. Recommended: **the seat
+The change is what the table is told. On 2026-09-02: one 10-second banner. Recommended: **the seat
 itself carries the state for as long as it lasts** — the avatar dimmed, a countdown, and the
 seat marked as reconnecting. The server already emits `seconds` in `params` and already has
 the `game:turn_deadline` precedent for a live countdown, so this is client work over an
@@ -281,12 +281,12 @@ existing payload.
 |---|---|---|
 | **Never** — round ends, seat is abandoned | Simplest ledger | In a 3-4 seat match, one person's phone ends everyone's match. Violates P3. |
 | **Immediately on disconnect** | No dead turns at all | The upgrade exploit again, and it punishes a 5-second mobile hiccup as hard as a walkout. |
-| **After the grace** (today) | Table survives, absence is cheap for everyone else | None, *provided the seat is not an upgrade* — see below. |
-| Seat keeps the player's name (today) | No work | **Reputational forgery, and it is live today.** The name of someone who left plays badly, or brilliantly, in front of people who think it is them. the Decisions table already had to write a special rule to stop the announcement crediting a walkout by name; the seat itself was never fixed. |
+| **After the grace** (as of 2026-09-02) | Table survives, absence is cheap for everyone else | None, *provided the seat is not an upgrade* — see below. |
+| Seat keeps the player's name (as of 2026-09-02) | No work | **Reputational forgery, and it was live on 2026-09-02.** The name of someone who left plays badly, or brilliantly, in front of people who think it is them. the Decisions table already had to write a special rule to stop the announcement crediting a walkout by name; the seat itself was never fixed. |
 | Seat renamed to a bot name | Honest | The departed player's contribution to the match becomes unattributable, and the Decisions table's abandonment record loses its on-screen anchor. |
 | **Seat reads as "Drita — left"** | Honest and attributable | None found. |
 
-**Recommend: takeover after the grace, as today; announcement as today; and the seat is
+**Recommend: takeover after the grace, as on 2026-09-02; announcement as then; and the seat is
 labelled as vacated.**
 
 **On the display constraint.** `CLAUDE.md` is right that a winner must be an engine player id
@@ -304,9 +304,9 @@ untouched. So the buildable form of the label is:
 That is one server flag, one locale key in three files, and two render sites. Nothing has to
 reverse a `bot:<seat>` key back to a human.
 
-**On how well the bot plays it.** This is the one place the recommendation contradicts current
-behaviour on purpose. Today `handleAutoPass` uses `useBot: false` for a seat still held and
-`runBotTurn` uses `useBot: true` once it is vacated — so crossing the grace boundary *upgrades*
+**On how well the bot plays it.** This is the one place the recommendation contradicted the
+2026-09-02 behaviour on purpose. Then `handleAutoPass` used `useBot: false` for a seat still held and
+`runBotTurn` used `useBot: true` once it was vacated — so crossing the grace boundary *upgrades*
 the seat from a minimum-legal-move player to the full engine bot. Every well-regarded
 implementation in §3 does the opposite or refuses the seat entirely. **Recommend the takeover
 Bot stays weak** — the same minimum legal move — until the round in progress ends, and only
@@ -318,7 +318,7 @@ entire class of "my opponent left and then started playing better" complaint.
 
 | Option | Consequence | Exploit it opens |
 |---|---|---|
-| **Discard them** (today) | The leaver gains nothing | **The spoiler exploit, and an arithmetic hole.** Every round the bot wins is a round whose points leave the game: the survivors' race to the target lengthens, and the standings stop summing to the rounds played — with nothing on screen to say why. That is exactly the shape of #815, which was one instance of it. It also *rewards quitting when behind*: your seat becomes a permanent spoiler that can take points away from the leader without giving them to anyone. |
+| **Discard them** (as of 2026-09-02) | The leaver gains nothing | **The spoiler exploit, and an arithmetic hole.** Every round the bot wins is a round whose points leave the game: the survivors' race to the target lengthens, and the standings stop summing to the rounds played — with nothing on screen to say why. That is exactly the shape of #815, which was one instance of it. It also *rewards quitting when behind*: your seat becomes a permanent spoiler that can take points away from the leader without giving them to anyone. |
 | **Credit the absent player** | Standings sum | **Rewards quitting while ahead**, and lets a decent bot farm rating and match wins for someone who is asleep. Squarely against P2. Poker's withdrawn disconnect protection is this option's history. |
 | **Credit a visibly non-human seat** | Standings sum, leaver gains nothing, the row explains itself | None found. It is also *already* what the code does for a bot that was dealt in from the start, since #815. |
 | **Void the match** | Nobody is cheated | **The escape hatch.** Losing a match becomes a reason to disconnect. Dota 2 refuses exactly this, for exactly this reason. |
@@ -340,7 +340,7 @@ is no escape hatch because there is nothing to escape from yet.
 
 | Option | Consequence | Exploit |
 |---|---|---|
-| **Lost with the seat** (today, on screen) | Punishes leaving | Punishes it *retroactively and invisibly*, which reads as a bug — it is what the owner reported in #815. It also punishes a dropped connection by deleting an hour of play. |
+| **Lost with the seat** (as of 2026-09-02, on screen) | Punishes leaving | Punishes it *retroactively and invisibly*, which reads as a bug — it is what the owner reported in #815. It also punishes a dropped connection by deleting an hour of play. |
 | **Kept and shown** | Honest ledger, P1 | None: they are frozen, and the seat can never cross the target, so they buy nothing. |
 
 **Recommend: kept, shown, and frozen.** They already survive in `cumulativeScores` under the
@@ -353,14 +353,14 @@ again.
 
 | Option | Consequence | Exploit |
 |---|---|---|
-| **Never** (today) | Simple; the seat is settled once | Punishes a tunnel or a lift. A 61-second outage ends a 40-minute match for a paying-attention player, and there is no recourse. |
+| **Never** (as of 2026-09-02) | Simple; the seat is settled once | Punishes a tunnel or a lift. A 61-second outage ends a 40-minute match for a paying-attention player, and there is no recourse. |
 | **Longer grace only** | Cheap | Moves the cliff without removing it. |
 | **Seat reclaimable for the rest of the match** | The kind thing, and nearly free here | **The rough-hand exploit** — leave when your cards are bad, let the bot eat the last place, come back for the next round. Neutralised by the rules above: the abandonment is already recorded against the round you left (Decisions table), and the points the bot earned in the meantime belong to the bot, not to you. There is nothing to farm. |
 | Reclaimable by anyone | Fills seats | Identity theft of a scoreboard row. Never. |
 
 **Recommend: reclaimable, by the same account, into the same seat, for as long as the match
-is live.** `SEAT_RELEASED` stops being permanent and becomes the answer for a *finished or
-disposed* table only. This is the cheapest of the recommendations to build and the largest in
+is live.** `SEAT_RELEASED` stops being permanent; a *finished or
+disposed* table is answered by the no-live-game refusals instead (as built, `SEAT_RELEASED` survives only for a restored row that lost its `vacatedSeats` entry). This is the cheapest of the recommendations to build and the largest in
 player-facing effect: `seatLedger.ts` `reclaim` merges the `bot:<seat>` bucket into the userId key before
 restoring `playerMap[seat]`, so the row, the name and the total are restored together
 (§2, note 2; #894).
@@ -373,7 +373,7 @@ the return is announced as clearly as the departure was.
 
 | Option | Consequence | Exploit |
 |---|---|---|
-| Told once, briefly (today) | No work | Fifteen seconds later the table looks normal and a stranger is playing under a familiar name. |
+| Told once, briefly (as of 2026-09-02) | No work | Fifteen seconds later the table looks normal and a stranger is playing under a familiar name. |
 | **Told persistently, on the seat** | Everyone can see what they are playing against | None. |
 | Let them vote to **kick** a slow player | Fast tables | Three players can eject the one who is winning. Never, in a rated game. |
 | **Let them leave without penalty** once a seat is vacated | Nobody is trapped | **The collusion exploit.** Two accounts: one abandons deliberately so the other escapes a losing match for free. This is precisely why Dota 2 keeps the loss on the survivors. |
@@ -391,9 +391,9 @@ one more caller of machinery that exists rather than a new mechanism.
 
 | Option | Consequence | Exploit |
 |---|---|---|
-| Abandoned round rates as last place (today, Decisions table) | Quitting costs what losing costs | It costs *exactly* what losing costs, so quitting a round you were losing anyway is free. BGA's answer to this is the extra −10. |
+| Abandoned round rates as last place (as of 2026-09-02, Decisions table) | Quitting costs what losing costs | It costs *exactly* what losing costs, so quitting a round you were losing anyway is free. BGA's answer to this is the extra −10. |
 | Nothing counts for anyone | Nobody is cheated by someone else's router | Every rated loss becomes escapable. The single worst option, and the one every source rejects. |
-| Survivors keep their rating for the rounds they played (today) | Correct by P3 | None. |
+| Survivors keep their rating for the rounds they played (as of 2026-09-02) | Correct by P3 | None. |
 | ~~Add an escalating penalty on the record~~ **Rejected on #898** | Repeat quitters are handled where the problem actually is | Needs storage, and a false positive punishes someone's commute. Keep it a matchmaking cooldown, never a bigger rating hit. |
 
 ~~**Recommend: keep the Decisions table's rule unchanged, add nothing to the single incident, and put the
@@ -423,7 +423,7 @@ the bot's points since takeover.** The winner is still stated as an engine playe
 as `CLAUDE.md` requires, and no client ever has to name `bot:<seat>` — the row it renders
 carries `seatIndex`, `engineId` and `username` already.
 
-If the owner instead keeps today's discard rule (Q3), then the standings **must** carry a
+If the owner had instead kept the 2026-09-02 discard rule (Q3), then the standings **must** carry a
 persistent, translated explanation — a line under the board saying how many points left the
 match with a departed seat — because a scoreboard that silently fails to add up is the defect
 #815 was filed as, not a display preference.
@@ -445,12 +445,20 @@ match with a departed seat — because a scoreboard that silently fails to add u
 7. **The standings always sum to the rounds played.** No explanatory footnote is needed, because
    there is no longer an anomaly to explain.
 8. **The seat is reclaimable by the same account for the life of the match.** `SEAT_RELEASED`
-   answers only for a table that is finished or gone.
+   survives only for a restored row that kept `releasedSeats` but lost its `vacatedSeats` entry; a finished or gone table answers `GAME_NOT_FOUND` or `GAME_NO_LONGER_VALID`.
 9. **The abandonment already recorded stands** — last place, rating, streak (Decisions table unchanged) —
    and returning does not undo it.
 10. **Once a seat has been vacated mid-match, any remaining player may call a unanimous vote to
     end the match**, penalty-free for everyone still present.
 11. **A match abandoned before a single point is scored is voided and rated for nobody.**
+    **If a vacated seat leaves at most one human at the table,** the table cannot continue.
+    With no round yet scored it is voided as above. Otherwise the round in progress is
+    conceded (`concedeRound`) to the one remaining human, who takes first place; the other
+    seats still holding cards are placed behind them, fewest cards first, and the round end
+    then moves every abandoned seat to the very back, so the walkout finishes last. The round
+    is scored and rated as a normal round end and the table is disposed. If no human is left
+    at all, the bots place among themselves and nothing is written. (`vacateSeat`,
+    `server/game/gameTurn.ts`; wording for the owner to confirm in review.)
 12. ~~Repetition escalates, on the record, as a matchmaking cooldown — never as a larger
     rating loss, and never on the first offence.~~ **Rejected, 2026-09-03 (#898): no cooldown.**
     The record stands (9); nothing further is enforced on it.
@@ -486,7 +494,7 @@ vacated seat cannot cross the target or be announced as a winner; the rematch ab
 ## 8. If the owner disagrees with the core of it
 
 The one decision everything else hangs on is **Q3** — whether a vacated seat keeps scoring. If
-that is rejected and today's discard rule is kept, then D, E and most of Q8's simplicity go,
+that is rejected and the 2026-09-02 discard rule is kept, then D, E and most of Q8's simplicity go,
 and in their place the standings need a persistent, translated explanation of why the numbers
 do not add up (an **M** of its own, and a permanent piece of UI explaining an internal rule to
 players). A, B, C, F and G are independent of Q3 and stand either way.
@@ -509,8 +517,7 @@ worked.
    `seatScoringOf`), and re-pin `tests/engine/scoring.test.ts` on the new rule. (D)
 5. **Show the points a departed player had already won** — the seat's row sums their frozen
    total and the bot's points since takeover. (E)
-6. **Let a player reclaim their seat for the life of the match** — `SEAT_RELEASED` answers only
-   for a finished or disposed table; announce the return as loudly as the departure. (F)
+6. **Let a player reclaim their seat for the life of the match** — `SEAT_RELEASED` survives only for a restored row that lost its `vacatedSeats` entry; announce the return as loudly as the departure. (F)
 7. **A unanimous vote to end a match a seat has been vacated from** — reusing the rematch gate's
    unanimity and abstention rules, penalty-free for everyone present. (G)
 8. **Void a match abandoned before its first point** — nothing earned, nothing taken, rated for

@@ -20,7 +20,7 @@ const book = () => {
   const lines: string[] = [];
   const reports: [string, string][] = [];
   const b = ledger({
-    append: (f: string, t: string) => (f.endsWith("tickets.jsonl") ? lines.push(t) : reports.push([f, t])),
+    append: (f: string, t: string) => (f.endsWith("tickets.jsonl") ? lines.push(t) : f.endsWith(".mac") ? 0 : reports.push([f, t])),
     mkdir: () => {},
     exists: () => false,
     write: (f: string, t: string) => reports.push([f, t]),

@@ -23,7 +23,7 @@ instead of sitting unguarded in prose.
 | A component's props or tree | `jest`, once per `Platform.OS` | render, memo, hook order, native-only branches | nothing | ~8s |
 | Anything with **layout** (flex, absolute, transform) | Playwright | which side of the screen it is on | Docker + a built web bundle | ~35s |
 | Anything **visual** (colour, gradient, shadow, size) | pixel-sample two PNGs on the same grid | pixels vs the prototype | Docker + a built web bundle | ~40s |
-| An effect under #1252 (a moment, a sound, a haptic, the lamp, the shake) | the `mockupParity*.spec.ts` file running its moment alone (rule 3), the moment registered in `MOMENTS` in `tests/e2e/helpers/mockupParity.ts`. Each test records in real time on one worker, so iterate on one variant's file and never run the whole set for a single tweak. The parity specs (every one `tests/e2e/playwright.config.ts` ignores but `webPerf`) are out of pull-request CI: `.github/workflows/parity-nightly.yml` runs them nightly, report-only, files a red run under `parity` and publishes the side-by-side page as its `mockup-parity` artifact; locally, `npx playwright test --config tests/e2e/playwright.parity.config.ts` runs them all, or one file named after it (the default config ignores them, so rule 3's command finds no test), and `node scripts/mockupParityPage.mjs <report> <out>` builds the page | the app's trace against the picked mockup's on one virtual clock: onsets, particle counts, lamp, shake, region brightness, the moth's path, an onset held to a window, the particle layer's frames apart (`tests/e2e/helpers/traceDiff.ts`) | Docker + a built web bundle | ~2.5 min |
+| An effect under #1252 (a moment, a sound, a haptic, the lamp, the shake) | the `mockupParity*.spec.ts` file running its moment alone (rule 3), the moment registered in `MOMENTS` in `tests/e2e/helpers/mockupParity.ts`. Each test records in real time on one worker, so iterate on one variant's file and never run the whole set for a single tweak. The parity specs (every one `tests/e2e/playwright.config.ts` ignores but `webPerf`) are out of pull-request CI: `.github/workflows/parity-nightly.yml` runs them nightly, report-only, files a red run under `parity` and publishes the side-by-side page as its `mockup-parity` artifact; locally, `npx playwright test --config tests/e2e/playwright.parity.config.ts` runs them all, or one file named after it (the default config ignores them, so rule 3's command finds no test), and `node scripts/mockupParityPage.mjs <report> <out>` builds the page | the app's trace against the picked mockup's on one virtual clock: onsets, particle counts, lamp, shake, region brightness, the moth's path, an onset held to a window, the particle layer's frames apart (`tests/e2e/helpers/traceDiff.ts`). Each sampled frame is held to the mockup lit as the felt that drew the app's frame lights it (`underAppFelt`, from the trace's `felt`): a web-fallback frame, which bakes its light, against the mockup's felt and rail at rest, a Skia one against the swaying mockup, so a Skia run's frames before Skia's first are fallback frames; the lamp's trace sways on both sides, and both sides count from the mount | Docker + a built web bundle | ~2.5 min |
 | The viewer's own connection: the drop, the hold, give-up, the way back | `tests/ui-rules/{ownLink,reconnectDiff}.test.ts` and `tests/native/{ownLinkHold,onlineCatchUp}.test.tsx`, then `tests/e2e/reconnect.spec.ts` and `tests/e2e/mockupParityReconnect.spec.ts` alone, the latter under `tests/e2e/playwright.parity.config.ts`. The parity spec runs the app on **real time** (the socket's timers stall under the virtual clock, #1250) beside the mockup on the virtual one, drops the socket through `page.routeWebSocket` and refuses retries by going offline: a retry must fail with an error, since socket.io ignores a close while opening and waits its 20 s `timeout` | the pill's states and Riprova, and (native only) the turn pill's lost state and Riprova handed to the table over a finished match; the grey, the lamp's freeze, the pill's onsets, the recovery sound and the give-up's dimmed lamp against the mockup's `reconnect` chapter, each side on its own drops, return and give-up (`tests/e2e/helpers/reconnectDiff.ts`); the app's give-up waits out `Reconnect.giveUp`, so the parity spec takes ~1.5 min | Docker + a built web bundle for the specs | ~1s / ~3s / ~1 min, ~1.5 min |
 | A table card's shadow | `tests/ui-rules/cardShadows.test.ts`, `tests/native/{tableCards,handShadeWiring,handShadeRebuild}.test.tsx`, `tests/e2e/landingShadowStill.spec.ts` (blocking: no shadow rebuilt through a landing wobble), then `tests/e2e/cardShadowParity.spec.ts` and `mockupParity.spec.ts`'s `rest` alone, and `mockupParityBomb{Skia,Fallback}.spec.ts`, under `tests/e2e/playwright.parity.config.ts` | the mockup's numbers; any card view carrying its own shadow; the card shade's canvas, the hand's and pile's paint order and rebuild on a resize; the felt's shadow against the mockup's `.card` under the same light, a hand card's on the card beneath (the `hand` region) and a pile card's (the bomb's `pile` region) | Docker + a built web bundle for the spec | ~1s / ~70s / ~1 min |
 | Tokens, contrast, roles | `node --test tests/ui-rules/{contrast,tokenRoles,cosmetics}.test.ts` | AA floors | nothing | ~1s |
@@ -256,7 +256,7 @@ gets the dev build from `npm run ios:device` (README, #1316):
 
 1. Landscape lock holds on game screens; menus rotate freely.
 2. Card lift and the exchange animation land smooth (the exactly-once invariant is unit-tested,
-   `tests/ui-rules/flightPhysics.test.ts` — smoothness itself is not).
+   `tests/ui-rules/exchangeModel.test.ts` — smoothness itself is not).
 3. Sound plays with the ringer off, and the settings toggle silences it.
 4. Haptics fire on select, play and win, and stop when switched off.
 5. The notification banner slides in and out clear of the notch and gesture bar.
@@ -549,3 +549,17 @@ Verified intended, not stale:
   them on `push` or wiring them into `ci.yml`.
 - `MURLAN_PREFLIGHT_WAIT_MS` defaults to waiting rather than failing fast, on purpose; `--no-wait`/
   `=0` is the opt-out, not the default.
+
+## The loop's evidence key
+
+The supervisor signs the loop's evidence (ledger rows, stream lines, report entries) with a key kept
+outside the repo: `LOOP_EVIDENCE_KEY_FILE` for the supervisor, else `%LOCALAPPDATA%\murlan-loop\evidence.key`
+on Windows or `$XDG_STATE_HOME`/`~/.local/state/murlan-loop/evidence.key`. A session is never handed it,
+and `guard-write.mjs` and `guard-bash.mjs` refuse a loop session's Read, Grep, Glob and shell commands
+that name it. Tests run it from a temp path (`scripts/nodeTest.mjs`, `clearLoopEnv.mjs`) and fail if one
+resolves the real path.
+
+Known limits, none of which the guards can close: a process running as the same OS user can read the
+file, so stronger isolation means running the supervisor as a separate OS user (or an ACL-protected
+`LOOP_EVIDENCE_KEY_FILE`); and a guard reads one command line, so a script built by a program, or
+reached through a `cd` the line does not spell, is not seen.

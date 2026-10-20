@@ -85,8 +85,9 @@ import {
   checkPass,
   checkPlay,
   dealFirstSeatFor,
-  initializeGame,
-  initializeRematch,
+  openingAfter,
+  seatsOf,
+  startRound,
   processExchangeChoice,
   processPass,
   processPlay,
@@ -336,36 +337,19 @@ async function dealVotedRound(
   // below its own threshold with nothing left to press.
   game.rematchVotes.clear();
 
-  const prevFinishingOrder = game.gameState.finishingOrder;
-  // Engine ids ride across the round, so prevFinishingOrder resolves to the same
-  // seats it named — initializeRematch never has to fall back to a guessed
-  // winner, and the exchange runs between the right two players.
-  const playerSetup = seats.map((p) => ({
-    id: p.id,
-    name: p.name,
-    type: p.type,
-    personality: p.personality,
-    team: room.gameMode === "teams" ? p.team : undefined,
-  }));
-
   // `game.matchOver` still holds the just-ended round's own verdict here —
   // `dealRound` below is what flips it back via `rollMatchForward`.
-  const nextFirstSeat = dealFirstSeatFor(game.matchOver, game.dealFirstSeat, playerSetup.length);
-  // Only a round every seat finished names a real winner and loser; a match
-  // ended by the vote leaves 2 of 4 ranked, and the 2nd finisher would be read
-  // as the loser (docs/GAME-RULES.md § Decisions).
-  const newGameState =
-    prevFinishingOrder.length === playerSetup.length
-      ? initializeRematch(playerSetup, room.gameMode, prevFinishingOrder, nextFirstSeat)
-      : initializeGame(playerSetup, room.gameMode, nextFirstSeat);
+  const nextFirstSeat = dealFirstSeatFor(game.matchOver, game.dealFirstSeat, seats.length);
+  const newGameState = startRound(seatsOf(game.gameState), room.gameMode, {
+    firstSeat: nextFirstSeat,
+    opening: openingAfter(game.gameState),
+  });
   game.dealFirstSeat = nextFirstSeat;
 
   // `game.playerMap` is deliberately left alone: seat i of the new state is
-  // seat i of the old one, because playerSetup was built from that same array
-  // in order. playerMap is what sanitizeStateForPlayer reads to decide whose
-  // hand each viewer is sent, so renumbering it here is how a player ends up
-  // holding someone else's cards.
-  game.gameMode = room.gameMode;
+  // seat i of the old one, because `seatsOf` keeps the seat order. playerMap is
+  // what sanitizeStateForPlayer reads to decide whose hand each viewer is sent,
+  // so renumbering it here is how a player ends up holding someone else's cards.
   game.maxPlayers = room.maxPlayers;
 
   await dealRound(io, game, newGameState);

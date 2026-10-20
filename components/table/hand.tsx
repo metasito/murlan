@@ -47,7 +47,7 @@ import { dealEase, handDealArc } from "@/components/table/dealPose";
 import { handRowHeadroom } from "@/components/seatLayout";
 import { CARD_W, cardRadius, FIELD_SCALE, handCardSize, type HandCardSize } from "@/components/cardFaceModel";
 import type { CardFrom } from "@/components/flightPose";
-import { readHandArrival } from "@/components/flightPhysics";
+import { readHandArrival } from "@/components/table/exchangeModel";
 import type { ExchangeStages } from "@/components/table/exchangeModel";
 import { useSameCards } from "@/components/useSameCards";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
@@ -1142,7 +1142,7 @@ export const StraightHand = React.memo(function StraightHand({
           place={place}
           size={size}
           // A descending card starts at the row's own centre, where the flight
-          // carrying it stops (`flightOrigin`'s `bottom` is `dx: 0`), so crossing
+          // carrying it stops (`seatPoint("bottom")` is `dx: 0`), so crossing
           // and descent are one continuous move; a dealt one starts at the pile.
           entry={
             descending

@@ -8,8 +8,8 @@
 // Pure: encoding, decoding and the decision to trust a stored blob live here so
 // they can be tested without AsyncStorage or a renderer. The context does the
 // I/O and nothing else.
-import type { GameMode, GameState } from "./game/gameEngine.ts";
-import type { MatchState, PlayerSetupConfig } from "./game/matchState.ts";
+import type { GameState } from "./game/gameEngine.ts";
+import type { MatchState } from "./game/matchState.ts";
 
 /**
  * Bumped whenever the stored shape changes. A blob written by an older build is
@@ -19,7 +19,7 @@ import type { MatchState, PlayerSetupConfig } from "./game/matchState.ts";
  * abandoned match costs nothing.
  * Held to the stored shape by tests/server/storedShapeVersions.test.ts.
  */
-export const OFFLINE_SAVE_VERSION = 3;
+export const OFFLINE_SAVE_VERSION = 4;
 
 export { OFFLINE_SAVE_KEY } from "./storageKeys.ts";
 
@@ -27,9 +27,6 @@ export interface OfflineSave {
   version: number;
   gameState: GameState;
   match: MatchState;
-  /** Needed to deal the next round — `initializeRematch` takes the setup, not the state. */
-  players: PlayerSetupConfig[];
-  gameMode: GameMode;
   /** Where the next round deals from, so the rotation survives a restart. */
   dealFirstSeat: number;
 }
@@ -72,12 +69,11 @@ export function decodeOfflineSave(raw: string | null): OfflineDecode {
   if (!isObject(parsed)) return NONE;
   if (parsed.version !== OFFLINE_SAVE_VERSION) return INCOMPATIBLE;
 
-  const { gameState, match, players, gameMode, dealFirstSeat } = parsed;
+  const { gameState, match, dealFirstSeat } = parsed;
   if (!isObject(gameState) || !Array.isArray(gameState.players)) return INCOMPATIBLE;
   if (gameState.players.length === 0) return INCOMPATIBLE;
   if (!isObject(match) || !isObject(match.scores) || !Array.isArray(match.rounds)) return INCOMPATIBLE;
-  if (!Array.isArray(players) || players.length !== gameState.players.length) return INCOMPATIBLE;
-  if (gameMode !== "free_for_all" && gameMode !== "teams") return INCOMPATIBLE;
+  if (gameState.gameMode !== "free_for_all" && gameState.gameMode !== "teams") return INCOMPATIBLE;
   if (!Number.isInteger(dealFirstSeat)) return INCOMPATIBLE;
 
   return { kind: "ok", save: parsed as unknown as OfflineSave };

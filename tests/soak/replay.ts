@@ -98,9 +98,9 @@ export async function replaySoakLog(
     throw new Error(`the log names seat ${entry.seat} at move ${entry.at}, of ${deal.hands.length}`);
   }
   // A second deal is a rematch, and a rematch does not start where this can put
-  // a table: `initializeRematch` opens in the exchange, with the loser's best
-  // card already moved and the winner to act, and `redealExactly` can only
-  // build the shape `initializeGame` produces. Replaying past one would rebuild
+  // a table: it opens in the exchange, with the loser's best card already
+  // moved and the winner to act, and the log does not say which opening
+  // `redealExactly` should deal. Replaying past one would rebuild
   // the wrong kind of table and report the log's own `exchange` entry as its
   // divergence, which is a confident lie about where the defect is.
   if (log.slice(1).some((entry) => entry.kind === "deal")) {

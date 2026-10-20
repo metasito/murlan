@@ -3,7 +3,7 @@ import { AppState } from "react-native";
 import { useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { contactMs, flightEndMs, type CardFrom, type CardSlot } from "@/components/flightPose";
-import { LAND_WOBBLE_MS, type ImpactTier } from "@/components/flightPhysics";
+import { LAND_WOBBLE_MS, type ImpactTier } from "@/components/impact";
 import type { PulseStep } from "@/lib/device/feedback";
 
 export interface FlightSpec {

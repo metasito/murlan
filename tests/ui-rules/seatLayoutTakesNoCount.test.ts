@@ -11,14 +11,14 @@ const at = (...p: string[]) => path.resolve(root, ...p);
 const key = (file: string, name: string) => `${path.relative(root, file).split(path.sep).join("/")}:${name}`;
 const SEATS = at("components", "seatLayout.ts");
 const FRAME = at("components", "tableFrame.ts");
-const FLIGHT = at("components", "flightPhysics.ts");
+const LAYOUT = at("components", "tableLayout.ts");
 const FAN = at("components", "fanGeometry.ts");
 const PROBE = at("tests", "ui-rules", "seatLayoutProbe.ts");
 const TWIN = at("tests", "ui-rules", "seatLayoutTwin.ts");
-const POSITIONS = ["anchorPoints", "flightOrigin", "seatPoint", "tableGeometry"];
+const POSITIONS = ["tableLayout"];
 const GEOMETRY = new Set([
   "scale", "backScale", "width", "height", "cardH", "rowRise", "leftInset", "topPad", "bottomPad", "surplus",
-  "handCardH", "handZoneH", "windowWidth", "windowHeight", "tableLeft", "tableRight", "tableTop",
+  "handCardH", "handZoneH", "windowWidth", "windowHeight", "tableLeft", "tableRight", "tableTop", "chipsBottom",
 ]);
 const EDGES = new Set(["top", "bottom", "left", "right"]);
 const SEATED: Record<string, string[]> = {
@@ -76,7 +76,7 @@ host.getSourceFile = (file, ...rest) => {
   const probe = PROBES.get(path.resolve(file));
   return probe === undefined ? read(file, ...rest) : ts.createSourceFile(file, probe, ts.ScriptTarget.Latest);
 };
-const program = ts.createProgram([SEATS, FRAME, FLIGHT, ...PROBES.keys()], options, host);
+const program = ts.createProgram([SEATS, FRAME, LAYOUT, ...PROBES.keys()], options, host);
 const checker = program.getTypeChecker();
 
 const inLib = (s: ts.Symbol | undefined) =>
@@ -244,14 +244,14 @@ test("a planted count is flagged wherever it hides, and a count-free place is no
 });
 
 test("no seat, band or pile place takes a card count, or reaches the fan's shape through one", () => {
-  const found = scan([SEATS, FRAME, FLIGHT], (file, name) => file !== FLIGHT || POSITIONS.includes(name));
+  const found = scan([SEATS, FRAME, LAYOUT], (file, name) => file !== LAYOUT || POSITIONS.includes(name));
   const seen = [
-    ...POSITIONS.map((name) => key(FLIGHT, name)),
+    ...POSITIONS.map((name) => key(LAYOUT, name)),
     ...["topBandHeight", "sideSlotHeight", "computeTableFrame"].map((name) => key(FRAME, name)),
     ...["seatGap", "seatDirection", "FAN_DRAWN_CARDS"].map((name) => key(SEATS, name)),
   ];
   for (const name of seen) assert.ok(found.has(name), `${name} is no longer seen, so this scan checks less than it did`);
-  assert.ok(found.get(key(FLIGHT, "anchorPoints"))!.fans.includes("drawnFanBounds"), "the scan no longer follows a place into the fan");
+  assert.ok(found.get(key(LAYOUT, "tableLayout"))!.fans.includes("drawnFanBounds"), "the scan no longer follows a place into the fan");
   assert.deepEqual(Object.fromEntries([...found].filter(([, f]) => f.where.length > 0).map(([n, f]) => [n, f.where])), {});
 });
 

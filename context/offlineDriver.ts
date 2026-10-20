@@ -9,7 +9,7 @@ import type { ExchangeHold } from "@/lib/game/sharedGameFlow";
 import { e2e, exchangeHold } from "@/lib/e2eConfig";
 import { flushSync } from "@/lib/flushSync";
 import { OFFLINE_BOT_DELAY_MS } from "@/lib/timeline/offlineBotDelay";
-import { turnKey } from "@/components/flightPhysics";
+import { turnKey } from "@/components/passes";
 import { uiFeedback } from "@/lib/device/feedback";
 import { RoundEnding } from "@/lib/theme";
 

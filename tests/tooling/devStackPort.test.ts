@@ -219,3 +219,10 @@ test("the SSLRequest probe is the packet Postgres answers, and only its reply co
   assert.equal(isPostgresReply(Buffer.from([0x53, 0x53])), false);
   assert.equal(isPostgresReply(Buffer.alloc(0)), false);
 });
+
+test("the database container is published on loopback only", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../../scripts/dev-stack.mjs", import.meta.url), "utf8");
+  const publish = [...src.matchAll(/"-p",\s*`([^`]+)`/g)].map((m) => m[1]);
+  assert.deepEqual(publish, ["127.0.0.1:${p}:5432"]);
+});

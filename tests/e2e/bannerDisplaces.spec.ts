@@ -73,7 +73,7 @@ async function controls(page: Page): Promise<{ label: string; box: Box }[]> {
 /** Raises a real banner on the friends screen by sending a friend request. */
 async function raiseBanner(page: Page, target: string): Promise<void> {
   await page.getByRole("textbox", { name: copy["friends.searchA11yLabel"] }).fill(target);
-  await page.getByRole("button", { name: copy["friends.searchA11yLabel"] }).click();
+  await page.getByRole("button", { name: copy["friends.searchButtonA11yLabel"] }).click();
   const send = page.getByRole("button", {
     name: copy["friends.sendRequestA11yLabel"].replace("{{username}}", target),
   });

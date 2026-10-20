@@ -20,7 +20,7 @@ async function openFriends(page: Page): Promise<void> {
 /** Searches for `username` and sends them a request, from the friends screen. */
 async function sendRequestTo(page: Page, username: string): Promise<void> {
   await page.getByRole("textbox", { name: copy["friends.searchA11yLabel"] }).fill(username);
-  await page.getByRole("button", { name: copy["friends.searchA11yLabel"] }).click();
+  await page.getByRole("button", { name: copy["friends.searchButtonA11yLabel"] }).click();
   const send = page.getByRole("button", {
     name: copy["friends.sendRequestA11yLabel"].replace("{{username}}", username),
   });
@@ -144,10 +144,11 @@ test("friends screen — Add Friend is the first section, above the lists", asyn
   await registerNewAccount(page, uniqueUsername("e2eorder"));
   await openFriends(page);
 
-  // A fresh account has no friends and nothing pending, so the only headings
-  // on the screen are the sections themselves — group labels appear with rows.
+  // The screen title heads the page; a fresh account has no friends and nothing
+  // pending, so the only other headings are the sections — group labels appear with rows.
   const headings = await page.getByRole("heading").allInnerTexts();
   expect(headings.map((h) => h.trim())).toEqual([
+    copy["friends.title"],
     copy["friends.sectionAddFriend"],
     copy["friends.sectionFriends"],
     copy["friends.sectionPending"],

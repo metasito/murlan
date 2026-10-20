@@ -434,6 +434,7 @@ export const en = {
   "scorePill.standings": "Standings",
   "scorePill.race": "Race to {{target}}",
   "scorePill.a11yLabel_one": "Your score: {{count}} point of {{target}}, place {{place}}.",
+  "seat.finishedA11yLabel": "Finished in place {{place}}",
   "scorePill.a11yLabel_other": "Your score: {{count}} points of {{target}}, place {{place}}.",
   "scorePill.a11yRow_one": "{{place}}. {{name}}, {{count}} point.",
   "scorePill.a11yRow_other": "{{place}}. {{name}}, {{count}} points.",
@@ -499,7 +500,7 @@ export const en = {
   "replay.deletedPlayer": "Deleted player",
   "replay.back": "Close",
   "replay.scrubA11yLabel": "Move position",
-  "replay.speedA11yLabel": "Playback speed",
+  "replay.speedA11yLabel": "Playback speed: {{value}}",
   "replay.speedValue": "{{n}}×",
   "replay.jumpA11yLabel": "Jump to the next bomb or the end",
   "replay.movesToggleA11yLabel": "Show the move list",
@@ -509,6 +510,7 @@ export const en = {
   "replay.movePassed": "passed",
   "replay.movePlayed": "{{combo}} · {{cards}}",
   "replay.moveRowA11yLabel": "Move {{n}}: {{name}}, {{action}}",
+  "replay.moveRowCurrentA11yLabel": "Move {{n}}: {{name}}, {{action}}, current move",
 
   // ------------------------------------------------------------- cosmetics.*
   "cosmetics.back.smeraldo": "Emerald",
@@ -577,6 +579,7 @@ export const en = {
   "ladder.emptyTitle": "Nobody ranked yet",
   "ladder.emptyBody": "It takes {{n}} ranked hands to appear here.",
   "ladder.rowA11yLabel": "{{rank}}: {{name}}, {{rating}} points",
+  "ladder.rowSelfA11yLabel": "{{rank}}: {{name}} (you), {{rating}} points",
   "ladder.rankedOnlyNote": "Online free-for-all only, no bots.",
   "ladder.scopeGlobal": "Global",
   "ladder.scopeFriends": "Friends",
@@ -911,6 +914,8 @@ export const en = {
   "friends.searchByUsername": "Search by username",
   "friends.usernamePlaceholder": "@username",
   "friends.searchA11yLabel": "Username search",
+  "friends.searchButtonA11yLabel": "Search",
+  "friends.foundA11yLabel": "Found {{username}}",
   "friends.searchA11yHint": "Type a player's username to search and add them as a friend",
   "friends.sendRequestA11yLabel": "Send a friend request to {{username}}",
 

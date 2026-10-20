@@ -63,12 +63,12 @@ Record the result next to each line: ✅, or what happened.
 - [ ] Quickmatch with only one person waiting. What happens?
 - [ ] All four hit quickmatch within a few seconds of each other. Do they land at the same
       table, each in their own seat, with nobody left waiting?
-- [ ] In that quickmatched room, can the host start the match, and is it clear to the other
-      three who the host is while they wait?
+- [ ] In that quickmatched room, does the match deal itself a few seconds after the last seat
+      is taken, with nobody needing to press start?
 - [ ] Have one player fully close the app — a push is sent only to a friend with no live
       socket, so backgrounding alone still delivers the in-app banner — then invite them.
       Does a notification arrive naming the friend who invited them? (It does not show the
-      room name, and tapping it only reopens the app — routing to the room is not built.)
+      room name.) Does tapping it open the join screen for that room (`/join/<CODE>`)?
 - [ ] Start a room with bot-fill and one human. Does it play a full match?
 
 ## The awkward ones

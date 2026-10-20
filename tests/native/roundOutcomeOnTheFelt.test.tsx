@@ -7,7 +7,7 @@ import { GameTable } from '@/components/GameTable';
 import type { Combination, GameState, Player } from '@/lib/game/gameEngine';
 import * as feedback from '@/lib/device/feedback';
 import * as particles from '@/components/table/particles';
-import * as flightPhysics from '@/components/flightPhysics';
+import * as impact from '@/components/impact';
 import { lampControls, type Pool } from '@/components/table/lampRig';
 import { RoundMoment } from '@/lib/tokens';
 import { bootFeedback, settle } from './helpers/feedback';
@@ -77,7 +77,7 @@ async function closeRound(c: (typeof CASES)[number]) {
   await settle(2000);
   await bootFeedback();
   const motes = jest.spyOn(particles, 'roundMotes');
-  const trauma = jest.spyOn(flightPhysics, 'traumaFor');
+  const trauma = jest.spyOn(impact, 'traumaFor');
   const level = jest.spyOn(lampControls, 'setLevel');
   const sent = jest.spyOn(feedback, 'event');
   const aimBefore = target.mock.calls.at(-1)?.[1] as Pool | undefined;
@@ -154,7 +154,7 @@ describe("a round's outcome on the felt", () => {
       await settle(2000);
       await bootFeedback();
       const motes = jest.spyOn(particles, 'roundMotes');
-      const trauma = jest.spyOn(flightPhysics, 'traumaFor');
+      const trauma = jest.spyOn(impact, 'traumaFor');
       await act(async () => r.rerender(table(TEAMS_WON, true, false)));
       await act(async () => {
         jest.advanceTimersByTime(ms);

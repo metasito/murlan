@@ -14,7 +14,7 @@ import {
 import { FAN_TURN, fanCounts, fanPoint, seatFanArc } from "@/components/fanGeometry";
 import { fanBacks } from "./cardRects";
 import { useCardTable, useStaticCardRects, type OwnedRects } from "./useCardRects";
-import { passedSeats } from "@/components/flightPhysics";
+import { passedSeats } from "@/components/passes";
 import { handCountOf } from "@/shared/protocol";
 import Animated, {
   useAnimatedStyle,
@@ -41,6 +41,8 @@ import { CardView } from "@/components/CardView";
 import type { ArcCard } from "@/components/tableArc";
 import type { OpponentSide } from "@/components/seatLayout";
 import { BACK_SCALE, tableFontSize } from "@/components/cardFaceModel";
+import { a11yGroup, a11yHidden } from "@/lib/a11y";
+import { useTranslation } from "@/lib/i18n";
 import { Colors, LastCard, makeShadow, Motion, motionMs, Spacing, withAlpha } from "@/lib/theme";
 import { pulseRepeats, RING_PULSE_MS, urgentThresholdSeconds } from "@/components/turnTimerUi";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -472,6 +474,7 @@ function SeatRing({
     opacity: isActive && focusMode ? interpolate(breathe.value, [0, 1], [0.35, 1]) : 0,
   }));
 
+  const { t } = useTranslation();
   const initials = name
     .split(" ")
     .map((w) => w[0])
@@ -550,7 +553,9 @@ function SeatRing({
           ]}
         >
           {finishPos !== undefined ? (
-            <Ionicons testID="seat-finish-trophy" name="trophy" size={badge * 0.5} color={Colors.gold} />
+            <View {...a11yGroup(t("seat.finishedA11yLabel", { place: finishPos }))}>
+              <Ionicons testID="seat-finish-trophy" name="trophy" size={badge * 0.5} color={Colors.gold} {...a11yHidden()} />
+            </View>
           ) : (
             <TableText
               style={[

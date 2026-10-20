@@ -13,11 +13,12 @@ jest.mock('@/context/AuthContext', () => ({
 
 const mockRefetchMe = jest.fn();
 let mockMe: Record<string, unknown>;
+let mockBoard: unknown[] = [];
 jest.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }: { queryKey: string[] }) =>
     queryKey[0] === '/api/ratings/me'
       ? { refetch: mockRefetchMe, ...mockMe }
-      : { data: [], isLoading: false, isError: false, isSuccess: true, refetch: jest.fn() },
+      : { data: mockBoard, isLoading: false, isError: false, isSuccess: true, refetch: jest.fn() },
 }));
 
 const LeaderboardScreen = require('@/app/(online)/leaderboard').default as React.ComponentType;
@@ -36,6 +37,7 @@ const show = () =>
 
 beforeEach(() => {
   mockRefetchMe.mockClear();
+  mockBoard = [];
 });
 
 describe("the viewer's own rating", () => {
@@ -59,6 +61,20 @@ describe("the viewer's own rating", () => {
     const view = await show();
     expect(view.getByLabelText(/1234/)).toBeTruthy();
     expect(view.getByText(locale['common.refreshFailed'])).toBeTruthy();
+    await view.unmount();
+  });
+});
+
+describe('the ladder rows', () => {
+  it("says which row is the viewer's own, in words", async () => {
+    mockMe = { data: undefined, isLoading: false, isError: false };
+    mockBoard = [
+      { userId: 'u2', username: 'Bora', rank: 1, rating: 1500 },
+      { userId: 'u1', username: 'Ana', rank: 2, rating: 1400 },
+    ];
+    const view = await show();
+    expect(view.getByLabelText('2: Ana (you), 1400 points')).toBeTruthy();
+    expect(view.getByLabelText('1: Bora, 1500 points')).toBeTruthy();
     await view.unmount();
   });
 });

@@ -226,23 +226,24 @@ export function createDeck(): Card[] {
 // so it must not `import` node:crypto at module scope — Metro would try to
 // bundle it. `globalThis.crypto.getRandomValues` exists in Node 18+ and in
 // React Native / Hermes; Math.random is only ever the last-resort fallback.
-type RandomSource = { getRandomValues(array: Uint32Array): Uint32Array };
+export type RandomSource = { getRandomValues(array: Uint32Array): Uint32Array };
 
-function getRandomSource(): RandomSource | null {
-  const c = (globalThis as { crypto?: Partial<RandomSource> }).crypto;
-  if (c && typeof c.getRandomValues === "function") return c as RandomSource;
-  return null;
-}
+export const cryptoRandom: RandomSource = {
+  getRandomValues(array) {
+    const c = (globalThis as { crypto?: Partial<RandomSource> }).crypto;
+    if (c && typeof c.getRandomValues === "function") return c.getRandomValues(array);
+    for (let i = 0; i < array.length; i++) array[i] = Math.floor(Math.random() * 0x100000000);
+    return array;
+  },
+};
 
 /**
  * Unbiased random integer in [0, maxExclusive).
  * Rejection sampling over a uint32: a plain `% maxExclusive` is biased whenever
  * maxExclusive does not divide 2^32 evenly.
  */
-function randomBelow(maxExclusive: number): number {
+function randomBelow(maxExclusive: number, source: RandomSource): number {
   if (maxExclusive <= 1) return 0;
-  const source = getRandomSource();
-  if (!source) return Math.floor(Math.random() * maxExclusive);
   const range = 0x100000000;
   const limit = range - (range % maxExclusive); // largest unbiased multiple
   const buf = new Uint32Array(1);
@@ -254,10 +255,10 @@ function randomBelow(maxExclusive: number): number {
   return value % maxExclusive;
 }
 
-export function shuffleDeck(deck: Card[]): Card[] {
+export function shuffleDeck(deck: Card[], random: RandomSource = cryptoRandom): Card[] {
   const shuffled = [...deck];
   for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = randomBelow(i + 1);
+    const j = randomBelow(i + 1, random);
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
   return shuffled;
@@ -282,10 +283,11 @@ export const HEADS_UP_HAND = 14;
  */
 export function dealCards(
   playerCount: number,
-  firstSeat = 0
+  firstSeat = 0,
+  random: RandomSource = cryptoRandom
 ): { hands: Card[][]; excluded: Card[] } {
   if (playerCount < 1) return { hands: [], excluded: [] };
-  const deck = shuffleDeck(createDeck());
+  const deck = shuffleDeck(createDeck(), random);
   const hands: Card[][] = Array.from({ length: playerCount }, () => []);
   const start = ((firstSeat % playerCount) + playerCount) % playerCount;
 
@@ -868,95 +870,6 @@ export function getSuitSymbol(suit: Suit | null): string {
 
 const EXCHANGE_VALID_RANKS: Rank[] = ["3","4","5","6","7","8","9","10"];
 
-export function initializeRematch(
-  playerSetup: {
-    name: string;
-    type: PlayerType;
-    personality?: BotPersonalityId;
-    team?: "A" | "B";
-    id?: string;
-  }[],
-  gameMode: GameMode,
-  prevFinishingOrder: string[],
-  firstSeat = 0,
-  dealtHands?: Card[][]
-): GameState {
-  const hands = dealtHands ?? dealCards(playerSetup.length, firstSeat).hands;
-
-  const players: Player[] = playerSetup.map((setup, i) => ({
-    id: setup.id ?? `player_${i}`,
-    name: setup.name,
-    hand: sortHand(hands[i]),
-    type: setup.type,
-    personality: setup.personality,
-    team: setup.team,
-    finishPosition: undefined,
-  }));
-
-  const winnerId = prevFinishingOrder[0];
-  const loserId = prevFinishingOrder[prevFinishingOrder.length - 1];
-  const winnerIdx = players.findIndex((p) => p.id === winnerId);
-  const loserIdx = players.findIndex((p) => p.id === loserId);
-
-  const safeWinnerIdx = winnerIdx >= 0 ? winnerIdx : 0;
-  const safeLoserIdx = loserIdx >= 0 ? loserIdx : players.length - 1;
-
-  const loserHand = players[safeLoserIdx].hand;
-  const twoJokerException = loserHasBothJokers(loserHand);
-
-  if (twoJokerException) {
-    return {
-      players,
-      currentTurnIndex: safeWinnerIdx,
-      lastPlayedCombination: null,
-      lastPlayedBy: safeWinnerIdx,
-      playedRanks: emptyRankTally(),
-      passCount: 0,
-      gameMode,
-      trickWinner: null,
-      roundOver: false,
-      finishingOrder: [],
-      firstPlayMade: true,
-      startReason: { type: "won_no_exchange", playerIdx: safeWinnerIdx },
-      exchangePhase: {
-        active: false,
-        winnerIdx: safeWinnerIdx,
-        loserIdx: safeLoserIdx,
-        twoJokerException: true,
-      },
-    };
-  }
-
-  // The hand was just dealt, so it is never empty — the only case the helper
-  // has no card to return.
-  const cardFromLoser = getBestCardFromHand(loserHand)!;
-
-  players[safeLoserIdx].hand = players[safeLoserIdx].hand.filter((c) => c.id !== cardFromLoser.id);
-  players[safeWinnerIdx].hand = sortHand([...players[safeWinnerIdx].hand, cardFromLoser]);
-
-  return {
-    players,
-    currentTurnIndex: safeWinnerIdx,
-    lastPlayedCombination: null,
-    lastPlayedBy: safeWinnerIdx,
-    playedRanks: emptyRankTally(),
-    passCount: 0,
-    gameMode,
-    trickWinner: null,
-    roundOver: false,
-    finishingOrder: [],
-    firstPlayMade: true,
-    startReason: { type: "lost_round", playerIdx: safeLoserIdx },
-    exchangePhase: {
-      active: true,
-      winnerIdx: safeWinnerIdx,
-      loserIdx: safeLoserIdx,
-      cardFromLoser,
-      twoJokerException: false,
-    },
-  };
-}
-
 export function processExchangeChoice(state: GameState, cardId: string): GameState {
   if (!state.exchangePhase?.active) return state;
   const { winnerIdx, loserIdx } = state.exchangePhase;
@@ -1078,6 +991,10 @@ export function roundUnplayed(state: {
 /** Teams is 2-v-2 and only 2-v-2 (docs/GAME-RULES.md §11). */
 export const TEAMS_PLAYER_COUNT = 4;
 
+export function modeFits(gameMode: GameMode, playerCount: number): boolean {
+  return gameMode !== "teams" || playerCount === TEAMS_PLAYER_COUNT;
+}
+
 /**
  * The team a seat plays for. Partners sit opposite each other, so the teams
  * alternate around the table. Undefined for every match that is not a teams
@@ -1089,7 +1006,7 @@ export function teamForSeat(
   playerCount: number,
   gameMode: GameMode
 ): "A" | "B" | undefined {
-  if (gameMode !== "teams" || playerCount !== TEAMS_PLAYER_COUNT) return undefined;
+  if (gameMode !== "teams" || !modeFits(gameMode, playerCount)) return undefined;
   return seat % 2 === 0 ? "A" : "B";
 }
 
@@ -1114,67 +1031,141 @@ export function dealFirstSeatFor(
   return matchOver ? 0 : nextDealFirstSeat(currentSeat, playerCount);
 }
 
-export function initializeGame(
-  playerSetup: {
-    name: string;
-    type: PlayerType;
-    personality?: BotPersonalityId;
-    team?: "A" | "B";
-  }[],
-  gameMode: GameMode,
-  firstSeat = 0,
+export interface SeatSetup {
+  name: string;
+  type: PlayerType;
+  personality?: BotPersonalityId;
+}
+
+/** How a round opens: the 3♠ holder leads, or last round's winner and loser exchange (docs/GAME-RULES.md §10). */
+export type Opening = { kind: "startCard" } | { kind: "exchange"; winnerSeat: number; loserSeat: number };
+
+const START_CARD_OPENING: Opening = { kind: "startCard" };
+
+export interface RoundOptions {
+  firstSeat?: number;
+  opening?: Opening;
   /**
-   * The deal, when the caller already has one. `shuffleDeck` draws from
-   * `crypto`, so a round that has already been played can only be rebuilt by
-   * handing the cards back in — which is what replaying a soak log is
-   * (`tests/integration/soakLogReplays.test.ts`). Everything downstream of the
-   * deal, the opening seat included, is derived here either way.
+   * The deal, when the caller already has one: a played round can only be rebuilt by handing its
+   * cards back in (`tests/integration/soakLogReplays.test.ts`). `random` is ignored when it is given.
    */
-  dealt?: Card[][]
-): GameState {
-  const hands = dealt ?? dealCards(playerSetup.length, firstSeat).hands;
-  if (dealt) {
-    // This is the one way cards enter a game from outside the deck, so it is
-    // the one place "a card appears exactly once" can be broken by a caller.
-    if (dealt.length !== playerSetup.length) {
-      throw new Error(`a deal for ${playerSetup.length} seats has ${dealt.length} hands`);
-    }
-    const seen = new Set<string>();
-    for (const hand of dealt) {
-      for (const card of hand) {
-        if (seen.has(card.id)) throw new Error(`card ${card.id} is dealt twice`);
-        seen.add(card.id);
-      }
+  dealt?: Card[][];
+  random?: RandomSource;
+}
+
+function checkedDeal(dealt: Card[][], seatCount: number): Card[][] {
+  if (dealt.length !== seatCount) {
+    throw new Error(`a deal for ${seatCount} seats has ${dealt.length} hands`);
+  }
+  const seen = new Set<string>();
+  for (const hand of dealt) {
+    for (const card of hand) {
+      if (seen.has(card.id)) throw new Error(`card ${card.id} is dealt twice`);
+      seen.add(card.id);
     }
   }
+  return dealt;
+}
 
-  const players: Player[] = playerSetup.map((setup, i) => ({
-    id: `player_${i}`,
-    name: setup.name,
-    hand: sortHand(hands[i]),
-    type: setup.type,
-    personality: setup.personality,
-    team: setup.team,
-    finishPosition: undefined,
-  }));
-
-  const { playerIdx: startIdx, startCard } = findStartingPlayer(players);
-
+function dealtRound(
+  players: Player[],
+  gameMode: GameMode
+): Omit<GameState, "currentTurnIndex" | "lastPlayedBy" | "firstPlayMade"> {
   return {
     players,
-    currentTurnIndex: startIdx,
     lastPlayedCombination: null,
-    lastPlayedBy: startIdx,
     playedRanks: emptyRankTally(),
     passCount: 0,
     gameMode,
     trickWinner: null,
     roundOver: false,
     finishingOrder: [],
+  };
+}
+
+function exchangeOpening(players: Player[], gameMode: GameMode, winnerIdx: number, loserIdx: number): GameState {
+  const loser = players[loserIdx];
+  if (loserHasBothJokers(loser.hand)) {
+    return {
+      ...dealtRound(players, gameMode),
+      currentTurnIndex: winnerIdx,
+      lastPlayedBy: winnerIdx,
+      firstPlayMade: true,
+      startReason: { type: "won_no_exchange", playerIdx: winnerIdx },
+      exchangePhase: { active: false, winnerIdx, loserIdx, twoJokerException: true },
+    };
+  }
+
+  // The hand was just dealt, so it is never empty — the only case the helper has no card to return.
+  const cardFromLoser = getBestCardFromHand(loser.hand)!;
+  loser.hand = loser.hand.filter((c) => c.id !== cardFromLoser.id);
+  players[winnerIdx].hand = sortHand([...players[winnerIdx].hand, cardFromLoser]);
+
+  return {
+    ...dealtRound(players, gameMode),
+    currentTurnIndex: winnerIdx,
+    lastPlayedBy: winnerIdx,
+    firstPlayMade: true,
+    startReason: { type: "lost_round", playerIdx: loserIdx },
+    exchangePhase: { active: true, winnerIdx, loserIdx, cardFromLoser, twoJokerException: false },
+  };
+}
+
+/** The one deal, for every caller: seat `i` is `player_<i>`, on the team `teamForSeat` gives it. */
+export function startRound(seats: readonly SeatSetup[], gameMode: GameMode, opts: RoundOptions = {}): GameState {
+  const { firstSeat = 0, opening = START_CARD_OPENING, dealt, random } = opts;
+  if (opening.kind === "exchange") {
+    const { winnerSeat, loserSeat } = opening;
+    const inRange = (seat: number) => Number.isInteger(seat) && seat >= 0 && seat < seats.length;
+    if (!inRange(winnerSeat) || !inRange(loserSeat) || winnerSeat === loserSeat) {
+      throw new Error(`no exchange between seats ${winnerSeat} and ${loserSeat} at ${seats.length} seats`);
+    }
+  }
+  const hands = dealt ? checkedDeal(dealt, seats.length) : dealCards(seats.length, firstSeat, random).hands;
+
+  const players: Player[] = seats.map((seat, i) => ({
+    id: `player_${i}`,
+    name: seat.name,
+    hand: sortHand(hands[i]),
+    type: seat.type,
+    personality: seat.personality,
+    team: teamForSeat(i, seats.length, gameMode),
+    finishPosition: undefined,
+  }));
+
+  if (opening.kind === "exchange") {
+    return exchangeOpening(players, gameMode, opening.winnerSeat, opening.loserSeat);
+  }
+
+  const { playerIdx: startIdx, startCard } = findStartingPlayer(players);
+  return {
+    ...dealtRound(players, gameMode),
+    currentTurnIndex: startIdx,
+    lastPlayedBy: startIdx,
     firstPlayMade: false,
     startCard,
     startReason: { type: "start_card", card: startCard, playerIdx: startIdx },
   };
+}
+
+/**
+ * How the round after `finished` opens. Only a round every seat finished names a real loser: a match
+ * ended by the vote leaves 2 of 4 ranked, and the 2nd finisher would be read as the loser
+ * (docs/GAME-RULES.md § Decisions).
+ */
+export function openingAfter(finished: GameState): Opening {
+  const order = finished.finishingOrder;
+  if (order.length !== finished.players.length) return START_CARD_OPENING;
+  const seatOf = (id: string) => finished.players.findIndex((p) => p.id === id);
+  const winnerSeat = seatOf(order[0]);
+  const loserSeat = seatOf(order[order.length - 1]);
+  if (winnerSeat === loserSeat) return START_CARD_OPENING;
+  return { kind: "exchange", winnerSeat, loserSeat };
+}
+
+/** The seats `state` was dealt to, to deal them again. */
+export function seatsOf(state: GameState): SeatSetup[] {
+  return state.players.map(({ name, type, personality }) => ({ name, type, personality }));
 }
 
 // ─── Match scoring ────────────────────────────────────────────────────────────

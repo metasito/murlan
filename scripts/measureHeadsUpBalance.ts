@@ -29,7 +29,7 @@ import {
   dealCards,
   getAllValidPlays,
   getStraightFaceValue,
-  initializeRematch,
+  startRound,
   STRAIGHT_MIN_LEN,
   type Card,
   type Combination,
@@ -43,11 +43,10 @@ import {
 } from "../lib/game/botPersonalities.ts";
 import {
   simulateOfflineMatch,
-  withSeededDeals,
   type OfflinePlayerSetup,
   type SimulateMatchResult,
 } from "../tests/helpers/offlineMatch.ts";
-import { mulberry32 } from "../tests/support/game.ts";
+import { mulberry32, rng as seeded } from "../tests/support/game.ts";
 
 interface Options {
   seed: number;
@@ -119,7 +118,7 @@ function measureDealConcentration(playerCount: number, n: number, seed: number) 
   let maxAtLeastFour = 0;
 
   for (let i = 0; i < n; i++) {
-    const { hands } = withSeededDeals(seed * 7919 + i, () => dealCards(playerCount));
+    const { hands } = dealCards(playerCount, 0, seeded(seed * 7919 + i).source);
     const counts = hands.map((h) => h.filter(isTopCard).length);
     for (const c of counts) perSeat.push(c);
     const max = Math.max(...counts);
@@ -289,7 +288,10 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
     // tier the ticket named ("easy should mean easy, not total stupid").
     const players = tableOf(2, ["luan", "luan"]);
     const dealSeed = seed * 2246822519 + i;
-    let state = withSeededDeals(dealSeed, () => initializeRematch(players, "free_for_all", []));
+    let state = startRound(players, "free_for_all", {
+      opening: { kind: "exchange", winnerSeat: 0, loserSeat: 1 },
+      random: seeded(dealSeed).source,
+    });
     const rng = mulberry32(dealSeed + 1);
 
     for (let turn = 0; turn < 300 && !state.roundOver; turn++) {
@@ -418,7 +420,10 @@ function measureRoyalStraightBlindSpot(n: number, seed: number): RoyalStraightBl
     for (let i = 0; i < n; i++) {
       const players = tableOf(2, [personalityId, personalityId]);
       const dealSeed = seed * 3454817917 + personalities.indexOf(personalityId) * 10_000_000 + i;
-      let state = withSeededDeals(dealSeed, () => initializeRematch(players, "free_for_all", []));
+      let state = startRound(players, "free_for_all", {
+      opening: { kind: "exchange", winnerSeat: 0, loserSeat: 1 },
+      random: seeded(dealSeed).source,
+    });
       const rng = mulberry32(dealSeed + 1);
 
       for (let turn = 0; turn < 300 && !state.roundOver; turn++) {

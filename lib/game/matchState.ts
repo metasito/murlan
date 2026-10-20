@@ -3,8 +3,7 @@
 // Relative imports and no `react-native`: the server bundles this unresolved, and
 // `node --test` loads it the same way — docs/agents/checks.md, "Node's TypeScript loader".
 import { aggregateTeamScores } from "./gameEngine.ts";
-import type { MatchLength, PlayerType } from "./gameEngine.ts";
-import type { BotPersonalityId } from "./botPersonalities.ts";
+import type { MatchLength, SeatSetup } from "./gameEngine.ts";
 
 export interface MatchVerdict {
   length: MatchLength;
@@ -16,12 +15,7 @@ export interface MatchVerdict {
   isDraw: boolean;
 }
 
-export interface PlayerSetupConfig {
-  name: string;
-  type: PlayerType;
-  personality?: BotPersonalityId;
-  team?: "A" | "B";
-}
+export type PlayerSetupConfig = SeatSetup;
 
 /** One played-out round, keyed by engine player id (`player_0`). */
 export interface RoundResult {

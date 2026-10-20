@@ -14,14 +14,8 @@ import {
   unpackPersistedState,
   type PersistedEnvelope,
 } from "../../shared/persistedEnvelope.ts";
-import {
-  dealFirstSeatFor,
-  firstTargetFor,
-  initializeGame,
-  initializeRematch,
-  teamForSeat,
-} from "../../lib/game/gameEngine.ts";
-import type { GameMode, GameState, MatchLength } from "../../lib/game/gameEngine.ts";
+import { dealFirstSeatFor, firstTargetFor, startRound } from "../../lib/game/gameEngine.ts";
+import type { GameMode, GameState, MatchLength, Opening } from "../../lib/game/gameEngine.ts";
 
 /** The fields no envelope carries, each with the value a table starts it on. */
 const MEMORY_ONLY_START = {
@@ -49,7 +43,6 @@ const PERSISTED_FIELDS: { [K in Exclude<keyof OnlineGameState, MemoryOnlyField>]
   roomId: true,
   joinCode: true,
   cumulativeScores: true,
-  gameMode: true,
   maxPlayers: true,
   matchTarget: true,
   matchLength: true,
@@ -84,20 +77,18 @@ export interface TableRoom {
 }
 
 /**
- * The previous match's winner and loser, as engine ids of the roster about to
- * be dealt. A table lasts until it breaks up (docs/GAME-RULES.md § Decisions), so
+ * The previous match's winner and loser, as seats of the roster about to be
+ * dealt. A table lasts until it breaks up (docs/GAME-RULES.md § Decisions), so
  * a new match at a standing table opens with the exchange rather than the 3♠.
  * Empty when there is nothing to carry: no previous match, a round nobody
  * played out, a match ended by the vote, or either seat no longer at the table
  * — every one of which deals the 3♠ opening instead.
  */
-function carriedFinishingOrder(
-  previous: OnlineGameState | undefined,
-  roster: { userId: string }[]
-): string[] {
-  if (!previous || previous.endedByVote) return [];
+function carriedOpening(previous: OnlineGameState | undefined, roster: { userId: string }[]): Opening {
+  const none: Opening = { kind: "startCard" };
+  if (!previous || previous.endedByVote) return none;
   const { players, finishingOrder } = previous.gameState;
-  if (finishingOrder.length !== players.length) return [];
+  if (finishingOrder.length !== players.length) return none;
 
   const seatOfEngineId = new Map(players.map((p, seat) => [p.id, seat]));
   const newSeatOf = (engineId: string | undefined): number => {
@@ -110,10 +101,10 @@ function carriedFinishingOrder(
     return userId === undefined ? -1 : roster.findIndex((r) => r.userId === userId);
   };
 
-  const winner = newSeatOf(finishingOrder[0]);
-  const loser = newSeatOf(finishingOrder[finishingOrder.length - 1]);
-  if (winner < 0 || loser < 0 || winner === loser) return [];
-  return [`player_${winner}`, `player_${loser}`];
+  const winnerSeat = newSeatOf(finishingOrder[0]);
+  const loserSeat = newSeatOf(finishingOrder[finishingOrder.length - 1]);
+  if (winnerSeat < 0 || loserSeat < 0 || winnerSeat === loserSeat) return none;
+  return { kind: "exchange", winnerSeat, loserSeat };
 }
 
 /**
@@ -126,17 +117,12 @@ export function newTable(
   previous?: OnlineGameState,
   matchLength?: MatchLength
 ): OnlineGameState {
-  const playerSetup = roster.map((r, idx) => ({
+  const seats = roster.map((r) => ({
     name: r.username,
     type: (r.isBot ? "bot" : "human") as "human" | "bot",
     personality: r.isBot ? r.personality : undefined,
-    team: teamForSeat(idx, roster.length, room.gameMode),
   }));
-  const carried = carriedFinishingOrder(previous, roster);
-  const gameState =
-    carried.length > 0
-      ? initializeRematch(playerSetup, room.gameMode, carried)
-      : initializeGame(playerSetup, room.gameMode);
+  const gameState = startRound(seats, room.gameMode, { opening: carriedOpening(previous, roster) });
   const { playerMap, botSeatsAtStart } = seatAssignmentsFromRoster(roster);
 
   return {
@@ -145,7 +131,6 @@ export function newTable(
     roomId: room.id,
     joinCode: room.code,
     cumulativeScores: previous?.cumulativeScores ?? {},
-    gameMode: room.gameMode,
     maxPlayers: room.maxPlayers,
     matchTarget: previous?.matchTarget ?? firstTargetFor(roster.length),
     matchLength: matchLength ?? previous?.matchLength ?? "match",
@@ -168,7 +153,7 @@ export function toEnvelope(game: OnlineGameState): PersistedEnvelope<GameState> 
   return packPersistedState(game.gameState, game.roundFlags, game.dealFirstSeat, game.joinCode, {
     playerMap: game.playerMap,
     scores: game.cumulativeScores,
-    gameMode: game.gameMode,
+    gameMode: game.gameState.gameMode,
     matchLength: game.matchLength,
     matchTarget: game.matchTarget,
     maxPlayers: game.maxPlayers,
@@ -195,7 +180,7 @@ export function fromEnvelope(row: { roomId: string; gameState: unknown }): Table
   const restored = unpackPersistedState<GameState>(row.gameState);
   if (!restored.ok) return restored;
 
-  const { playerMap, scores, gameMode, matchLength, matchTarget, maxPlayers, roundsPlayed, endedByVote, matchOver } =
+  const { playerMap, scores, matchLength, matchTarget, maxPlayers, roundsPlayed, endedByVote, matchOver } =
     restored.match;
   const gameState = restored.gameState;
   const vacatedSeats = new Map(restored.seats.vacatedSeats);
@@ -207,7 +192,6 @@ export function fromEnvelope(row: { roomId: string; gameState: unknown }): Table
       gameState,
       playerMap,
       cumulativeScores: scores,
-      gameMode,
       maxPlayers,
       matchTarget,
       matchLength,

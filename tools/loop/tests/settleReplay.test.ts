@@ -3,15 +3,15 @@
 // The supervisor's dealings with GitHub, end to end. `readLandingState` and `landing` are each
 // unit-tested against hand-built inputs; here the real `readLandingState` reads rollups recorded off
 // live pull requests. `stepSettle` is fed those reads directly; `runSettle` gets them through a fake gh.
-import { test, describe } from "node:test";
+import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { journaled } from "../loop-board.mjs";
 import { settle, ciRedBody, endSettle, onMainLine, overdueAt, rested, runSettle, startSettle, stepSettle } from "../settle.mjs";
 import { LIMITS } from "../limits.mjs";
-import { appendSupervisor, supervisorLogPath } from "../loop-logs.mjs";
+import { appendSupervisor, reportEntries, reportEntryLine, streamLog, streamRecorder, supervisorLogPath } from "../loop-logs.mjs";
 import { readLandingState } from "../ciVerdict.ts";
 import { armArgs, disarmArgs } from "../tracker.mjs";
 import { readLine } from "../loop-stream.mjs";
@@ -758,6 +758,103 @@ describe("arming waits for the reviewer", () => {
     const { asked, io: withFacts } = real([say("PHASE C"), say("PHASE D"), ...reviewer(PENDING.ticket)]);
     assert.equal((await runSettle(PENDING, () => {}, 0, DEADLINE, withFacts)).action, "already-merged");
     assert.equal(merges(asked).length, 1);
+  });
+
+  describe("on the stream the supervisor wrote", () => {
+    const logs = mkdtempSync(path.join(tmpdir(), "settle-seal-"));
+    const phase = JSON.stringify({ type: "assistant", message: { id: "a", content: [{ type: "text", text: "PHASE D" }] } });
+    const lines = [
+      JSON.stringify({ type: "system", subtype: "task_started", task_id: "t1", tool_use_id: "u1", subagent_type: "loop-review", description: "Review", prompt: `BRIEF review #${PENDING.ticket} .worktrees/agent-${PENDING.ticket} origin/main\n` }),
+      JSON.stringify({ type: "system", subtype: "task_updated", task_id: "t1", patch: { status: "completed", end_time: 1 } }),
+    ];
+    const fresh = (name: string) => {
+      const dir = path.join(logs, name);
+      mkdirSync(dir);
+      return { dir, file: streamLog(PENDING.ticket, dir) };
+    };
+    const settled = async (dir: string) => {
+      const { gh, asked } = rollupFake({ views: [GREEN], issueComments: comments });
+      const run = (file: string, args: string[]) => (file === "git" ? git(args) : gh(args, file));
+      const out = await runSettle(PENDING, () => {}, 0, DEADLINE, { ...io(gh), cleared: undefined, run, dir });
+      return { out, asked };
+    };
+    /** Each call is a supervisor process: a new recorder over whatever the files hold. */
+    const record = (file: string, texts: string[]) =>
+      new Promise<void>((done) => {
+        const rec = streamRecorder(file);
+        for (const text of texts) rec.line(text);
+        rec.end(done);
+      });
+    const refused = (out: { action: string; reason?: unknown }, asked: string[][]) => {
+      assert.equal(out.action, "owner");
+      assert.match(String(out.reason), /stream is not the supervisor's record/);
+      assert.equal(merges(asked).length, 0);
+    };
+    after(() => rmSync(logs, { recursive: true, force: true }));
+
+    test("a reviewer the supervisor recorded arms the LAND", async () => {
+      const { dir, file } = fresh("recorded");
+      await record(file, [phase, ...lines]);
+      const { out, asked } = await settled(dir);
+      assert.equal(out.action, "already-merged");
+      assert.equal(merges(asked).length, 1);
+    });
+
+    test("after a restart genuine evidence still verifies, and the ticket is not sent to the owner", async () => {
+      const { dir, file } = fresh("restarted");
+      await record(file, [phase]);
+      await record(file, lines);
+      const { out, asked } = await settled(dir);
+      assert.equal(out.action, "already-merged");
+      assert.equal(merges(asked).length, 1);
+    });
+
+    test("a completed reviewer task appended to the stream by a plain write reds", async () => {
+      const { dir, file } = fresh("appended");
+      await record(file, [phase]);
+      appendFileSync(file, `${lines.join("\n")}\n`);
+      const { out, asked } = await settled(dir);
+      refused(out, asked);
+    });
+
+    test("one planted before genuine lines, or after a restart, reds: the chain does not heal", async () => {
+      const { dir, file } = fresh("between");
+      await record(file, [phase]);
+      appendFileSync(file, `${lines.join("\n")}\n`);
+      await record(file, [phase]);
+      const { out, asked } = await settled(dir);
+      refused(out, asked);
+    });
+
+    test("an edited or dropped genuine line reds", async () => {
+      const { dir, file } = fresh("edited");
+      await record(file, [phase, ...lines]);
+      writeFileSync(file, readFileSync(file, "utf8").replace("loop-review", "loop-fixed"));
+      const edited = await settled(dir);
+      refused(edited.out, edited.asked);
+      const dropped = fresh("dropped");
+      await record(dropped.file, [phase, ...lines]);
+      writeFileSync(dropped.file, `${readFileSync(dropped.file, "utf8").split("\n").slice(1).join("\n")}`);
+      const again = await settled(dropped.dir);
+      refused(again.out, again.asked);
+    });
+
+    test("a stream the supervisor never recorded, or a forged chain beside it, reds", async () => {
+      const { dir, file } = fresh("unwritten");
+      writeFileSync(file, `${lines.join("\n")}\n`);
+      const bare = await settled(dir);
+      refused(bare.out, bare.asked);
+      writeFileSync(`${file}.mac`, `${lines.map(() => "0".repeat(64)).join("\n")}\n`);
+      const forged = await settled(dir);
+      refused(forged.out, forged.asked);
+    });
+
+    test("a report entry planted beside its sidecar is not an entry", () => {
+      const dir = path.join(logs, "reports");
+      mkdirSync(dir);
+      appendFileSync(path.join(dir, "run-r.md.mac"), `${JSON.stringify({ text: "forged\n", mac: "0".repeat(64) })}\n${reportEntryLine("genuine\n")}`);
+      assert.deepEqual(reportEntries("r", dir), ["genuine\n"]);
+    });
   });
 
   test("a LAND with no reviewer completed since the last build is the owner's, never armed", async () => {

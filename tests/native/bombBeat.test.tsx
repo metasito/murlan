@@ -14,8 +14,8 @@ jest.mock('@/lib/e2eTrace', () => ({
   traceOnset: (kind: string, name: string) => mockOnsets.push(`${kind}:${name}`),
   useTraceSource: (field: string, read: () => unknown) => void mockSources.set(field, read),
 }));
-jest.mock('@/components/flightPhysics', () => {
-  const actual = jest.requireActual<typeof import('@/components/flightPhysics')>('@/components/flightPhysics');
+jest.mock('@/components/impact', () => {
+  const actual = jest.requireActual<typeof import('@/components/impact')>('@/components/impact');
   return {
     ...actual,
     traumaFor: (...args: Parameters<typeof actual.traumaFor>) => {

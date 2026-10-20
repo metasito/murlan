@@ -124,7 +124,7 @@ export function MatchWinnerBox({ winner, unit: u, height }: { winner: MatchWinne
           },
         ]}
       >
-        <Ionicons name="trophy" size={PX.trophy * u} color={Colors.gold} />
+        <Ionicons name="trophy" size={PX.trophy * u} color={Colors.gold} {...a11yHidden()} />
       </View>
       <TableText style={[styles.label, { fontSize: label, letterSpacing: PX.labelTracking * u }]}>
         {winnerLabel(winner, t)}

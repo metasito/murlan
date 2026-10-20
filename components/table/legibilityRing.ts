@@ -10,7 +10,7 @@ import { RAIL_BAND, ringRect } from "./rail.ts";
 /** The research model's outer edge, `zoneMean(…, 17, 45)` in murlan-plans/2026-09-28-1259-lantern-review/scripts/lamp3.mjs. */
 export const ANNULUS_OUTER = 45;
 
-/** Starts at the drawn disc's edge (`SEAT_DISC * cardScale`, as `anchorPoints` draws it); reaches 45 design pt of the stretched table. */
+/** Starts at the drawn disc's edge (`SEAT_DISC * cardScale`, as `tableLayout` draws it); reaches 45 design pt of the stretched table. */
 export function legibilityRing(width: number, height: number): Ring {
   const { sx, sy } = designScale(width, height);
   return {

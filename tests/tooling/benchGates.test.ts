@@ -7,7 +7,7 @@ import { crc32, inflateRawSync } from "node:zlib";
 import { gateTable, waitForRunEnd } from "../../scripts/bench-gates.mjs";
 import { GATES } from "../../scripts/diagnostics-verdict.mjs";
 import { patchBenchHost, withBenchHost } from "../../scripts/ios-device.mjs";
-import { benchLaunchHref } from "../../lib/diagnostics/benchLaunch.ts";
+import { benchLaunchHref, benchTargetHost } from "../../lib/diagnostics/benchLaunch.ts";
 
 const RELEASE = { k: "build", t: 0, dev: false, scriptURL: "file:///var/x/murlan.app/main.jsbundle" };
 const ran = (name: string) => [
@@ -59,6 +59,33 @@ test("a bench build starts the run at launch only when the install carried the P
   assert.equal(benchLaunchHref({ benchHost: "evil.example/x?" }), null);
   const config = JSON.parse(withBenchHost(JSON.stringify({ name: "Murlan", extra: { router: {} } }), "10.0.0.7"));
   assert.deepEqual(config, { name: "Murlan", extra: { router: {}, benchHost: "10.0.0.7" } });
+});
+
+test("a deep link's host goes through the same check as the launch config", () => {
+  assert.equal(benchTargetHost("192.168.1.23", undefined), "192.168.1.23");
+  assert.equal(benchTargetHost(undefined, undefined), "127.0.0.1");
+  assert.equal(benchTargetHost(undefined, "http://10.0.0.7:5000"), "10.0.0.7");
+  for (const bad of ["evil.example/x?", "evil.example", "1.2.3.4/x", "a@1.2.3.4", "1.2.3.4?x=1", ""]) {
+    assert.equal(benchTargetHost(bad, undefined), null, bad);
+  }
+});
+
+test("the recorder posts nowhere for a host the check refuses", async () => {
+  const urls: string[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string) => {
+    urls.push(url);
+    return new Response("ok");
+  }) as unknown as typeof fetch;
+  try {
+    const { recorder } = await import("../../lib/diagnostics/recorder.ts");
+    recorder.postTo("evil.example/x?");
+    recorder.push({ k: "run", t: 0, phase: "end", names: [] });
+    await new Promise((r) => setTimeout(r, 1200));
+    assert.deepEqual(urls.filter((u) => u.includes("evil")), []);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
 
 test("the table judges every gate the PC knows, whatever subset the phone ran", () => {

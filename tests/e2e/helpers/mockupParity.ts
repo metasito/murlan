@@ -20,6 +20,7 @@ import {
   diffPillAtProgress,
   movingFields,
   STEP_MS,
+  underAppFelt,
   type Failure,
   type Field,
   type LayerSample,
@@ -81,8 +82,8 @@ interface Moment {
   /** Gates the app's pill box against the mockup's `renderScore` at each progress the app traced. */
   pillAtProgress?: boolean;
   variants?: Variant[];
-  /** With the fallback felt, both sides' light rests unswayed: the fallback bakes a still light (plan 3 § Decisions). */
-  fallbackStill?: boolean;
+  /** The app under reduced motion: no sway on either side, and the air held still (`diffStillAir`). */
+  reducedMotion?: boolean;
   /** Onsets held to a window of the app's time, not to the mockup's onset. */
   onsetWindows?: Record<string, readonly [number, number]>;
   /** The only times the strip keeps a frame, where every other step's would cost more than the page needs. */
@@ -98,6 +99,10 @@ const NO_CAST_ON_CARDS = `document.head.insertAdjacentHTML("beforeend", "<style>
 
 const STILL_LIGHT = `const swaying = lampStep;
   lampStep = (dt) => { swaying(dt); lamp.lx = lamp.x; };`;
+
+/** The mockup's felt and rail repainted lit at rest, the lamp's own state untouched; `underAppFelt` picks which is held. */
+const LIT_AT_REST = "drawScene(lamp.x, lamp.ly, lamp.f)";
+const LIT_SWAYING = "drawScene(lamp.lx, lamp.ly, lamp.f)";
 
 /** The mockup's `BASE`, by the seat each name sits at: luan right, besnik across, gent left. */
 const MOCKUP_SCORES = { player_0: 15, player_1: 11, player_2: 16, player_3: 10 };
@@ -206,6 +211,13 @@ const pileTable = async (page: Page, baseURL: string, save: OfflineSave, pile: s
       ),
     "the restored pile at rest"
   );
+  // The lamp's first frame steps it by 0, so a trace begun there holds its sway a frame behind the chapter's.
+  await stepUntil(
+    page,
+    () => page.evaluate(() => ((window as unknown as { murlanTrace: { frames: TraceFrame[] } }).murlanTrace.frames.at(-1)?.lamp?.clock ?? 0) > 0),
+    "the lamp's own frames",
+    { chunkMs: STEP_MS }
+  );
   await page.evaluate(() => (window as unknown as { murlanTrace: { start(): void } }).murlanTrace.start());
 };
 
@@ -265,14 +277,16 @@ const LANDS_AT_CONTACT = `const throwCards = play;
   let landing = null;
   play = (...a) => { throwCards(...a); landing = { g: document.querySelector("#pile .grp.cur"), land: EV.pop() }; };
   const frame = lampStep;
+  // Ahead of the frame's lamp step, as the fixture's own landing: \`play\` lands by \`later\` at the tweens' end, and \`step\`
+  // runs \`runEvents\` before \`lampStep\` (lantern-table/index.html, \`play\` and \`step\`). The cards are posed by now.
   lampStep = (dt) => {
+    const poses = landing ? [...landing.g.querySelectorAll(".card")].map((c) => c.style.transform.match(/-?[\\d.]+/g).map(Number)) : [];
+    if (poses.length && poses.every(([x, y, , s]) => Math.hypot(x, y) <= 1 && Math.abs(s - 1) <= .01)) {
+      const { land } = landing;
+      landing = null;
+      land.fn();
+    }
     frame(dt);
-    if (!landing) return;
-    const poses = [...landing.g.querySelectorAll(".card")].map((c) => c.style.transform.match(/-?[\\d.]+/g).map(Number));
-    if (!poses.every(([x, y, , s]) => Math.hypot(x, y) <= 1 && Math.abs(s - 1) <= .01)) return;
-    const { land } = landing;
-    landing = null;
-    land.fn();
   };`;
 
 const MOMENTS: Moment[] = [
@@ -316,7 +330,20 @@ const MOMENTS: Moment[] = [
     mode: "parity",
     fields: ["live", "lamp", "level", "flare", "brightness", "scorePill"],
     regions: ["pool", "rim", "rightBand", "scorePill", "hand"],
-    fallbackStill: true,
+  },
+  {
+    key: "rest-reduced",
+    chapter: "rest",
+    windowMs: 2400,
+    fromMs: MAX_PRE_ROLL_MS,
+    checkpoints: [MAX_PRE_ROLL_MS, 1440, 1920, 2400],
+    appTrigger: heldTurnTable,
+    appOnset: (f) => f.lamp !== null,
+    mode: "parity",
+    fields: ["live", "lamp", "level", "flare", "brightness", "scorePill"],
+    regions: ["pool", "rim", "rightBand", "scorePill", "hand"],
+    reducedMotion: true,
+    variants: ["fallback"],
   },
   {
     // The motes and the moth over a whole crossing, and #1231's frames 15 s apart.
@@ -402,11 +429,11 @@ const MOMENTS: Moment[] = [
       play = (...a) => { throwCards(...a); flying = document.querySelector("#pile .grp.cur"); };
       const frame = lampStep;
       lampStep = (dt) => {
-        frame(dt);
         const poses = flying ? [...flying.querySelectorAll(".card")].map((c) => c.style.transform.match(/-?[\\d.]+/g).map(Number)) : [];
-        if (!poses.length || !poses.every(([x, y, , s]) => Math.hypot(x, y) <= 1 && Math.abs(s - 1) <= .01)) return;
+        if (!poses.length || !poses.every(([x, y, , s]) => Math.hypot(x, y) <= 1 && Math.abs(s - 1) <= .01)) return frame(dt);
         flying = null;
         later(${BombFx.delayMs}, beat);
+        frame(dt);
       };`,
     fromApp: lampFromApp("besnik"),
     appTrigger: bombTable,
@@ -551,6 +578,8 @@ interface Capture {
   trace: Trace;
   frames: { t: number; jpeg: Buffer }[];
   layer: LayerSample[];
+  /** The mockup's samples again with its felt lit at rest, frame for frame. */
+  atRest?: { frames: Capture["frames"]; regions: Trace["regions"] };
 }
 
 /** The app's particle canvas alone: what it drew, and whether it drew anything. */
@@ -658,18 +687,22 @@ async function jpegOf(cdp: CDPSession, clip: { x: number; y: number }): Promise<
   return Buffer.from(data, "base64");
 }
 
+type Action = NonNullable<Moment["actions"]>[number];
+
 async function strip(
   page: Page,
   clip: { x: number; y: number },
   decoder: Page,
   m: Moment,
-  startMs: number,
-  act: (action: NonNullable<Moment["actions"]>[number]) => Promise<unknown> | undefined,
+  act: (action: Action) => Promise<unknown> | undefined,
   stepTo: (t: number, ms: number) => Promise<TraceFrame | null>,
   layout: () => Promise<SideLayout>,
-  particles: () => Promise<Omit<LayerSample, "t"> | null>
+  particles: () => Promise<Omit<LayerSample, "t"> | null>,
+  { hold, litAtRest }: { hold?: () => Promise<void>; litAtRest?: () => Promise<Buffer> } = {}
 ): Promise<Capture> {
+  const due = [...(m.actions ?? [])];
   const frames: Capture["frames"] = [];
+  const atRest: NonNullable<Capture["atRest"]> = { frames: [], regions: [] };
   const layer: LayerSample[] = [];
   const traced: TraceFrame[] = [];
   const regions: Trace["regions"] = [];
@@ -679,44 +712,51 @@ async function strip(
     return m.regions ? Object.fromEntries(m.regions.map((r) => [r, all[r]])) : all;
   };
   const cdp = await page.context().newCDPSession(page);
-  const due = [...(m.actions ?? [])];
-  for (let k = 0; startMs + k * STEP_MS <= m.windowMs; k++) {
-    const t = startMs + k * STEP_MS;
-    // Each side is at t - STEP_MS here, so an action is taken at its own atMs, not up to a frame before it.
-    let ran = 0;
-    while (due.length && due[0].atMs <= t) {
-      const action = due.shift()!;
-      const lead = k > 0 ? action.atMs - (t - STEP_MS) - ran : 0;
-      if (lead > 0) await step(page, lead);
-      ran += Math.max(0, lead);
-      await act(action);
+  try {
+    for (let k = 0; k * STEP_MS <= m.windowMs; k++) {
+      const t = k * STEP_MS;
+      await hold?.();
+      // Each side is at t - STEP_MS here, so an action is taken at its own atMs, not up to a frame before it.
+      let ran = 0;
+      while (due.length && due[0].atMs <= t) {
+        const action = due.shift()!;
+        const lead = k > 0 ? action.atMs - (t - STEP_MS) - ran : 0;
+        if (lead > 0) await step(page, lead);
+        ran += Math.max(0, lead);
+        await act(action);
+      }
+      const frame = await stepTo(t, STEP_MS - ran);
+      if (t < (m.fromMs ?? 0)) continue;
+      if (frame) traced.push({ ...frame, t });
+      if (m.apart?.includes(t)) {
+        const sample = await particles();
+        if (sample) layer.push({ t, ...sample });
+      }
+      const stripped = m.stripAt ? m.stripAt.includes(t) : k % STRIP_STEPS === 0;
+      const sampled = m.regionsAt ? m.regionsAt.includes(t) : stripped;
+      if (!stripped && !sampled) continue;
+      const jpeg = await jpegOf(cdp, { x: clip.x, y: clip.y });
+      const still = litAtRest ? await litAtRest() : undefined;
+      if (stripped) frames.push({ t, jpeg });
+      if (stripped && still) atRest.frames.push({ t, jpeg: still });
+      if (!sampled) continue;
+      // Once the hand has settled: before `fromMs` it is still being dealt.
+      shape ??= await regionsNow();
+      const now = Object.fromEntries(Object.entries(shape).filter(([name]) => m.regionAt?.[name]?.includes(t) ?? true));
+      const brightness = async (shot: Buffer) => (Object.keys(now).length ? await regionBrightness(decoder, shot, DPR, now) : {});
+      regions.push({ t, regions: await brightness(jpeg) });
+      if (still) atRest.regions.push({ t, regions: await brightness(still) });
     }
-    const frame = await stepTo(t, STEP_MS - ran);
-    if (t < (m.fromMs ?? 0)) continue;
-    if (frame) traced.push({ ...frame, t });
-    if (m.apart?.includes(t)) {
-      const sample = await particles();
-      if (sample) layer.push({ t, ...sample });
-    }
-    const stripped = m.stripAt ? m.stripAt.includes(t) : k % STRIP_STEPS === 0;
-    const sampled = m.regionsAt ? m.regionsAt.includes(t) : stripped;
-    if (!stripped && !sampled) continue;
-    const jpeg = await jpegOf(cdp, { x: clip.x, y: clip.y });
-    if (stripped) frames.push({ t, jpeg });
-    if (!sampled) continue;
-    // Once the hand has settled: before `fromMs` it is still being dealt.
-    shape ??= await regionsNow();
-    const now = Object.fromEntries(Object.entries(shape).filter(([name]) => m.regionAt?.[name]?.includes(t) ?? true));
-    regions.push({ t, regions: Object.keys(now).length ? await regionBrightness(decoder, jpeg, DPR, now) : {} });
+  } finally {
+    await cdp.detach();
   }
   if (m.regionsAt) {
     expect(regions.map((r) => r.t), "a region sample at every time asked for").toEqual(m.regionsAt.filter((t) => t >= (m.fromMs ?? 0)));
   }
-  await cdp.detach();
-  return { trace: { frames: traced, regions }, frames, layer };
+  return { trace: { frames: traced, regions }, frames, layer, ...(litAtRest ? { atRest } : {}) };
 }
 
-async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRollMs: number, still: boolean, prelude: string): Promise<Capture> {
+async function captureMockup(browser: Browser, decoder: Page, m: Moment, prelude: string): Promise<Capture> {
   const page = await newSidePage(browser);
   await page.goto(FIXTURE);
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
@@ -731,18 +771,24 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRoll
     window.sfx = (k) => { window.__parityOnsets.push("sound:" + k); sound(k); };
     paused = true;
     ${DEPART_SCRIPT}
-    ${still ? STILL_LIGHT : ""}
+    ${m.reducedMotion ? STILL_LIGHT : ""}
     ${prelude}
     ${m.mockupScript ?? ""}
     requestAnimationFrame(() => { paused = false; });
     start(CH.findIndex((c) => c.key === ${JSON.stringify(m.chapter ?? m.key)}));
   })()`);
-  for (let rolled = 0; rolled < preRollMs; rolled += STEP_MS) await step(page);
   const own = { ...m, windowMs: m.mockupWindowMs ?? m.windowMs };
-  const capture = await strip(page, box, decoder, own, preRollMs, (a) => (a.mockup ? page.evaluate(a.mockup) : undefined), async (_t, ms) => ({
+  const cdp = await page.context().newCDPSession(page);
+  const litAtRest = async () => {
+    await page.evaluate(LIT_AT_REST);
+    const shot = await jpegOf(cdp, { x: box.x, y: box.y });
+    await page.evaluate(LIT_SWAYING);
+    return shot;
+  };
+  const capture = await strip(page, box, decoder, own, (a) => (a.mockup ? page.evaluate(a.mockup) : undefined), async (_t, ms) => ({
     t: 0,
     ...(await stepThen<Omit<TraceFrame, "t">>(page, ms, MOCKUP_SAMPLE)),
-  }), () => page.evaluate(MOCKUP_LAYOUT) as Promise<SideLayout>, async () => null);
+  }), () => page.evaluate(MOCKUP_LAYOUT) as Promise<SideLayout>, async () => null, { litAtRest }).finally(() => cdp.detach());
   await expectDeparted(page);
   await page.context().close();
   return capture;
@@ -787,30 +833,11 @@ function trackLoads(page: Page): () => Promise<string[]> {
   };
 }
 
-/** Skia's felt. The virtual clock stands still while anything loads, so the pre-roll counts the table's own frames. */
-async function skiaOnset(page: Page, mounted: number, loading: () => Promise<string[]>): Promise<number> {
-  const deadline = Date.now() + 90_000;
-  const isSkia = (f: TraceFrame) => f.t > mounted && f.felt === "skia";
-  let seen = 0;
-  let onset: number | undefined;
-  for (;;) {
-    const fresh = await recorded(page, seen);
-    seen += fresh.length;
-    if ((onset = fresh.find(isSkia)?.t) !== undefined) break;
-    const waiting = await loading();
-    if (Date.now() > deadline) throw new Error(`Skia never drew; still loading: ${waiting.join(", ") || "nothing"}`);
-    if (waiting.length === 0) await step(page);
-    await new Promise((r) => setTimeout(r, 20));
-  }
-  expect(onset - mounted, "Skia's first frame, after the table's").toBeLessThanOrEqual(MAX_PRE_ROLL_MS);
-  return onset;
-}
-
 async function openAppSide(browser: Browser, baseURL: string, m: Moment, variant: Variant) {
   const page = await newSidePage(browser, baseURL);
   const loading = trackLoads(page);
   // The app's only unswayed light is reduced motion's; at rest it snaps nothing the light was not already at.
-  if (variant === "fallback" && m.fallbackStill) await page.emulateMedia({ reducedMotion: "reduce" });
+  if (m.reducedMotion) await page.emulateMedia({ reducedMotion: "reduce" });
   if (variant === "fallback") await page.route(CANVASKIT_ROUTE, () => undefined);
   // The CDN's own bytes (feltWeave.test.ts pins the version), without a download inside the measured run.
   else await page.route(CANVASKIT_ROUTE, (route) => route.fulfill({
@@ -820,16 +847,23 @@ async function openAppSide(browser: Browser, baseURL: string, m: Moment, variant
   const started = Date.now();
   await m.appTrigger(page, baseURL);
   const mounted = await traced(page, m.appOnset, `the app's onset of ${m.key}`);
-  const onset = variant === "skia" ? await skiaOnset(page, mounted, loading) : mounted;
-  const preRollMs = Math.ceil((onset - mounted) / STEP_MS) * STEP_MS;
   const prelude = m.fromApp ? m.fromApp(await page.evaluate<TraceFrame>(TRACED_AT(mounted))) : "";
-  return { page, onset, preRollMs, prelude, onsetMs: Date.now() - started };
+  return { page, mounted, prelude, loading, onsetMs: Date.now() - started };
 }
 
 async function stripAppSide(side: Awaited<ReturnType<typeof openAppSide>>, decoder: Page, m: Moment, variant: Variant) {
-  const { page, onset, preRollMs } = side;
-  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, (a) => a.app?.(page), (t, ms) =>
-    stepThen<TraceFrame | null>(page, t > preRollMs ? ms : null, TRACED_AT(onset + t - preRollMs)), async () => ({
+  const { page, mounted, loading } = side;
+  // Skia's run holds the virtual clock while CanvasKit loads, so each side counts the table's own frames from the mount;
+  // the fallback's holds CanvasKit for good.
+  const hold = async () => {
+    const deadline = Date.now() + 90_000;
+    for (let waiting = await loading(); waiting.length; waiting = await loading()) {
+      if (Date.now() > deadline) throw new Error(`still loading: ${waiting.join(", ")}`);
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  };
+  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, (a) => a.app?.(page), (t, ms) =>
+    stepThen<TraceFrame | null>(page, t > 0 ? ms : null, TRACED_AT(mounted + t)), async () => ({
     pile: await seatAnchor(page, "pile"),
     light: await settledLight(page, "bottom"),
     handTop: await page.evaluate(() =>
@@ -845,9 +879,12 @@ async function stripAppSide(side: Awaited<ReturnType<typeof openAppSide>>, decod
       };
       return { top: centre("top-seat"), left: centre("side-seat-left"), right: centre("side-seat-right") };
     }),
-  }), () => appLayer(page));
-  const felts = new Set(capture.trace.frames.map((f) => f.felt));
-  expect([...felts], `the felt on screen through ${m.key}`).toEqual([variant]);
+  }), () => appLayer(page), variant === "skia" ? { hold } : {});
+  const felts = capture.trace.frames.map((f) => f.felt);
+  const skiaFrom = felts.indexOf("skia");
+  expect([...new Set(felts)], `the felts on screen through ${m.key}, in order`).toEqual(variant === "skia" && skiaFrom > 0 ? ["fallback", "skia"] : [variant]);
+  expect(felts.slice(Math.max(0, skiaFrom)).every((f) => f === variant), "the felt held once Skia has drawn").toBe(true);
+  if (variant === "skia") expect(capture.trace.frames[skiaFrom]?.t ?? Infinity, "Skia's first frame, after the table's").toBeLessThanOrEqual(MAX_PRE_ROLL_MS);
   await page.context().close();
   return capture;
 }
@@ -857,8 +894,18 @@ const timed = async <T,>(work: Promise<T>): Promise<[T, number]> => {
   return [await work, Date.now() - started];
 };
 
-function bundle(m: Moment, variant: Variant, runs: Record<SideName, Capture>, pillFailures: Failure[], dir: string) {
+function bundle(m: Moment, variant: Variant, captured: Record<SideName, Capture>, pillFailures: Failure[], dir: string) {
   fs.mkdirSync(path.join(dir, "frames"), { recursive: true });
+  const lit = captured.mockup.atRest!;
+  const appFrames = captured.app.trace.frames;
+  const runs: Record<SideName, Capture> = {
+    app: captured.app,
+    mockup: {
+      ...captured.mockup,
+      trace: { ...captured.mockup.trace, regions: underAppFelt(appFrames, captured.mockup.trace.regions, lit.regions) },
+      frames: underAppFelt(appFrames, captured.mockup.frames, lit.frames),
+    },
+  };
   const sides = {} as Record<SideName, { trace: Trace; frames: { t: number; file: string; sha1: string }[] }>;
   for (const side of ["mockup", "app"] as const) {
     sides[side] = {
@@ -870,7 +917,7 @@ function bundle(m: Moment, variant: Variant, runs: Record<SideName, Capture>, pi
       }),
     };
   }
-  const failures = [...diffParity(m, variant === "fallback", runs.mockup.trace, runs.app.trace, runs.app.layer), ...pillFailures];
+  const failures = [...diffParity({ ...m, fallbackStill: m.reducedMotion }, variant === "fallback", runs.mockup.trace, runs.app.trace, runs.app.layer), ...pillFailures];
   const moment = `${m.key}-${variant}`;
   const parity = { murlanParity: 1, moment, mode: m.mode, stepMs: STEP_MS, checkpoints: m.checkpoints, sides, failures };
   fs.writeFileSync(path.join(dir, "parity.json"), JSON.stringify(parity));
@@ -896,9 +943,9 @@ export function parityTests(key: string, only?: Variant) {
       const opened = await openAppSide(browser, baseURL!, m, variant);
       const capture = async (side: SideName) =>
         side === "mockup"
-          ? captureMockup(browser, decoder, m, opened.preRollMs, variant === "fallback" && !!m.fallbackStill, opened.prelude)
+          ? captureMockup(browser, decoder, m, opened.prelude)
           : stripAppSide(await openAppSide(browser, baseURL!, m, variant), decoder, m, variant);
-      // Side by side once the app's onset fixes the pre-roll: each side steps its own virtual clock.
+      // Side by side from the app's onset: each side steps its own virtual clock.
       const [[app, appMs], [mockup, mockupMs]] = await Promise.all([
         timed(stripAppSide(opened, decoder, m, variant)),
         timed(capture("mockup")),

@@ -1575,7 +1575,7 @@ describe("ticketFacts", () => {
     const outside = ticketFacts(7, read("NONE"));
     assert.equal(outside.title, "t");
     assert.deepEqual([outside.reviewRounds, outside.ciRounds], [0, 0]);
-    const own = ticketFacts(7, read("MEMBER"));
+    const own = ticketFacts(7, read("COLLABORATOR"));
     assert.deepEqual([own.reviewRounds, own.ciRounds], [1, 1]);
   });
 });

@@ -120,7 +120,6 @@ function makeGame(overrides: Partial<OnlineGameState> = {}): OnlineGameState {
     joinCode: "ABC123",
     rematchVotes: new Set(["u_alice"]),
     cumulativeScores: {},
-    gameMode: "free_for_all",
     maxPlayers: 2,
     matchTarget: 21,
     matchLength: "match",

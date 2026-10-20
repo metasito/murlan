@@ -26,28 +26,13 @@ import {
 
 /**
  * Shortened well below the 60s disconnect grace and 30s AFK production
- * defaults, and the per-user game-action rate limit raised past anything this
- * file can spend, so the tests below don't stall on real-world timer lengths or
- * get throttled replaying several hands down one socket. The bot's own pace
- * comes from the harness. `node --test` gives this file its own process, so
- * the override never leaks into another test file.
- *
- * The rate limit is derived rather than raised until the flake stopped. The
- * exchange test below drives at most 21 hands down one socket (its opening
- * hand plus the loop's own 20 attempts), a heads-up hand deals 14 cards a
- * side, and a client emits at most one game action a turn — so 882 is the
- * most this file can reach inside one 60s window, against a measured 12–15 a
- * hand. The alternatives lose: resetting the bucket between hands means a
- * test-only export from server/socket/socket.ts, which is a bypass shipped next to
- * the guard it bypasses; replaying fewer hands trades this for the spurious
- * failure the loop's bound exists to make negligible. Nothing here asserts
- * the limiter — tests/server/socketRateLimit.test.ts does, per account, in its own
- * process.
+ * defaults, so the tests below don't stall on real-world timer lengths. The
+ * bot's own pace comes from the harness. `node --test` gives this file its own
+ * process, so the override never leaks into another test file.
  */
 process.env.MURLAN_AFK_TIMEOUT_MS = "300";
 process.env.MURLAN_DISCONNECT_GRACE_MS = "500";
 process.env.MURLAN_LOBBY_GRACE_MS = "700";
-process.env.MURLAN_GAME_ACTION_RATE_LIMIT = "1200";
 
 /**
  * Asked of the server rather than restated, so a grace this file cannot
@@ -169,36 +154,26 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
   test("play and pass are rejected during an active exchange phase", async () => {
     const [alice, bob] = await makeClients(["exchange_alice", "exchange_bob"]);
     const room = await setUpRoom([alice, bob], 2);
+    await startGame([alice, bob]);
 
-    // The very first round never carries an exchange phase — only a rematch,
-    // seeded from the previous round's winner/loser, does. Play it out with
-    // forced-minimum moves to reach game:over.
-    const opening = await driveRoundToExchangeOrOver([alice, bob], () => {
-      alice.socket.emit("room:start");
-    });
-    assert.equal(opening.stoppedOn, "roundOver");
-
-    // Reaching an exchange is probabilistic: when the loser holds both jokers
-    // (docs/GAME-RULES.md §10) no card is owed back and the round runs straight to
-    // game:over. Heads-up that is (14/54)·(13/53) = 6.4% per round, so the cap
-    // below only bites in the tail: the odds of twenty straight hands all
-    // skipping the exchange are 6.4%^20, which is not a number this suite will
-    // meet.
-    //
-    // The alternative — dealing the loser a stacked hand — is not taken here:
-    // `redealExactly` (tests/helpers/liveGame.ts) is the seam for that, and
-    // this test deliberately plays the natural deal.
-    let exchange: Map<Client, SanitizedState> | null = null;
-    for (let attempt = 0; attempt < 20 && !exchange; attempt++) {
-      const result = await driveRoundToExchangeOrOver([alice, bob], () => {
-        alice.socket.emit("game:rematch_vote");
-        bob.socket.emit("game:rematch_vote");
-      });
-      if (result.stoppedOn === "exchange") {
-        exchange = result.states;
-      }
-    }
-    assert.ok(exchange, "never reached an active exchange phase after several rematches");
+    // No Joker in either hand, so the loser cannot hold both and skip the exchange (docs/GAME-RULES.md §10).
+    const deck = createDeck()
+      .filter((card) => !card.isJoker)
+      .map((card) => card.id);
+    const exchange = new Map<Client, SanitizedState>();
+    const dealt = Promise.all(
+      [alice, bob].map(async (client) => {
+        const state = await waitForWhere<SanitizedState>(client.socket, "game:state", (s) => !!s.exchangePhase?.active);
+        exchange.set(client, state);
+      })
+    );
+    const { redealExactly } = await import("../helpers/liveGame.ts");
+    assert.ok(
+      redealExactly(server.io, room.roomId, [deck.slice(0, 14), deck.slice(14, 28)], {
+        opening: { kind: "exchange", winnerSeat: 0, loserSeat: 1 },
+      })
+    );
+    await dealt;
 
     const anyState = [...exchange.values()][0];
     const phase = anyState.exchangePhase!;

@@ -825,6 +825,7 @@ export default function ProfileScreen() {
                             name={a.unlocked ? "trophy" : "lock-closed"}
                             size={GLYPH}
                             color={a.unlocked ? Colors.bgCard : Colors.textMuted}
+                            {...a11yHidden()}
                           />
                         </View>
                         <View style={styles.rowInfo} {...a11yHidden()}>

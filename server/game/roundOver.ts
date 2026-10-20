@@ -96,7 +96,7 @@ export async function handleRoundOver(
     cumulativeScores: game.cumulativeScores,
     matchTarget: game.matchTarget,
     matchLength: game.matchLength,
-    gameMode: game.gameMode,
+    gameMode: game.gameState.gameMode,
     roundFlags: game.roundFlags,
     abandonedSeats: game.abandonedSeats,
     botSeatsAtStart: game.botSeatsAtStart,
@@ -124,7 +124,7 @@ export async function handleRoundOver(
   // round — hence the empty map rather than a throw.
   const ratedPreview = result.recordable
     ? await writers
-        .previewRatedDeltas(result.gameResults, game.gameMode, finishedAt)
+        .previewRatedDeltas(result.gameResults, game.gameState.gameMode, finishedAt)
         .catch((err) => {
           logger.warn({ err, roomId }, "Could not read the round's rating deltas");
           return new Map<string, RatedPreview>();
@@ -165,7 +165,7 @@ export async function handleRoundOver(
   logger.info(
     {
       roomId,
-      gameMode: game.gameMode,
+      gameMode: game.gameState.gameMode,
       matchLength: game.matchLength,
       finishingOrder: state.finishingOrder,
       roundByKey,
@@ -219,7 +219,7 @@ export async function handleRoundOver(
       // recordRatedResult declines a teams result on its own (placement
       // belongs to the team, not to either partner). History records what the
       // ladder committed, not the preview, so a declined write leaves null.
-      const mode = game.gameMode;
+      const mode = game.gameState.gameMode;
       game.resultWrites = (game.resultWrites ?? Promise.resolve()).then(async () => {
         const committed = await writers.recordRatedResult(gameResults, mode, finishedAt).catch((err) => {
           logger.error({ err, roomId }, "Failed to record rated result");
@@ -243,7 +243,7 @@ export async function handleRoundOver(
       writers.saveReplay({
         roomId,
         finishedAt,
-        gameMode: game.gameMode,
+        gameMode: game.gameState.gameMode,
         seats: replaySeatsOf(state.players, game.playerMap, game.vacatedSeats),
         moves: game.moveLog,
         finishingOrder: state.finishingOrder,

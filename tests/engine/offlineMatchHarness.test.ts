@@ -33,8 +33,7 @@ test("botRng makes a whole match — deal and bot knobs both — reproducible fr
 
 test("a seat's personality reaches botChoosePlay through the offline harness", () => {
   // luan is the "easy" tier (lib/game/botPersonalities.ts) and gent is "hard" —
-  // if OfflinePlayerSetup.personality stopped reaching initializeGame /
-  // initializeRematch, both seats would fall back to DEFAULT_BOT_PERSONALITY
+  // if OfflinePlayerSetup.personality stopped reaching `startRound`, both seats would fall back to DEFAULT_BOT_PERSONALITY
   // and this would flatten toward 50%.
   const players: OfflinePlayerSetup[] = [
     { name: "Luan", type: "bot", personality: "luan" },

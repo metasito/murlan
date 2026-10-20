@@ -7,20 +7,19 @@ import {
   getAllValidPlays,
   getRankStrength,
   getValidGivebackCards,
-  initializeGame,
-  initializeRematch,
+  openingAfter,
   processExchangeChoice,
   processPass,
   processPlay,
-  teamForSeat,
+  seatsOf,
+  startRound,
   type Card,
   type Combination,
   type GameMode,
   type GameState,
 } from "../../lib/game/gameEngine.ts";
 import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
-import { withSeededDeals } from "../helpers/offlineMatch.ts";
-import { mulberry32 } from "../support/game.ts";
+import { mulberry32, rng as seeded } from "../support/game.ts";
 
 // Every step of two rounds, under any sequence of legal choices, keeps the
 // engine's own promises. fast-check shrinks a failure to the shortest choice
@@ -128,14 +127,17 @@ function playRound(start: GameState, choices: number[], rng: () => number): Game
 
 for (const table of TABLES) {
   test(`${table.players} seats, ${table.mode}: two rounds of any legal choices keep the engine's invariants`, () => {
-    const setup = Array.from({ length: table.players }, (_, i) => ({ name: `P${i}`, type: "bot" as const, team: teamForSeat(i, table.players, table.mode) }));
+    const setup = Array.from({ length: table.players }, (_, i) => ({ name: `P${i}`, type: "bot" as const }));
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 2 ** 31 - 1 }), fc.array(fc.nat()), fc.array(fc.nat()), (seed, firstChoices, secondChoices) => {
         const rng = mulberry32(seed);
-        const first = withSeededDeals(seed, () => initializeGame(setup, table.mode, 0));
+        const first = startRound(setup, table.mode, { random: seeded(seed).source });
         const over = playRound(first, firstChoices, rng);
-        const withIds = setup.map((p, i) => ({ ...p, id: `player_${i}` }));
-        const second = withSeededDeals(seed + 1, () => initializeRematch(withIds, table.mode, over.finishingOrder, 1 % table.players));
+        const second = startRound(seatsOf(over), table.mode, {
+          firstSeat: 1 % table.players,
+          opening: openingAfter(over),
+          random: seeded(seed + 1).source,
+        });
         playRound(second, secondChoices, rng);
       }),
       { seed: SEED, numRuns: NUM_RUNS },

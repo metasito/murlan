@@ -1,6 +1,6 @@
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { BRANCH, ticketOf, worktrees } from "./loop-derive.mjs";
-import { ghTracker, isTrusted as trusted, OWNER_LABELS, readIssue } from "./tracker.mjs";
+import { ghTracker, isTrusted as trusted, OUTSIDER_BODY, OWNER_LABELS, readIssue } from "./tracker.mjs";
 
 const SIZE_ORDER = ["size:XS", "size:S", "size:M", "size:L", "size:XL"];
 export const LAUNCH_MILESTONE = "Launch";
@@ -221,7 +221,7 @@ export function takeableReasons(issue) {
 /** The loop's own claim, since taking the worktree is what wins the ticket. A title only names the branch, so what the shell would expand is dropped. */
 export const claimCommand = (n, title) => `npm run queue:claim -- ${n} "${String(title).replace(/["`$\\]/g, " ")}"`;
 
-function printDetail(issue, comments, listing) {
+export function printDetail(issue, comments, listing) {
   const ls = labelNames(issue);
   console.log(`\n===== TICKET #${issue.number} - ${issue.title} =====`);
   console.log(`Labels: ${ls.join(", ")}`);
@@ -234,7 +234,7 @@ function printDetail(issue, comments, listing) {
   const reasons = takeableReasons(issue);
   console.log(reasons.length === 0 ? `Takeable: yes` : `Takeable: no - ${reasons.join("; ")}`);
   console.log("----- BODY -----");
-  console.log(issue.body ?? "(empty)");
+  console.log(trusted(issue) ? (issue.body ?? "(empty)") : OUTSIDER_BODY);
   const shown = comments.filter(trusted);
   console.log(`----- COMMENTS (${shown.length}) -----`);
   if (shown.length < comments.length) console.log(`(${comments.length - shown.length} from outside the repo not shown)`);

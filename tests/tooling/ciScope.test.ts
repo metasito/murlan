@@ -153,6 +153,8 @@ describe("ci.yml's scope runs the suite that reads a change", () => {
   test("a doc-only change skips the app suites and still runs the scans", () => {
     assert.equal(scopeOf("docs/research/a-note.md", chains.app), false);
     assert.equal(scopeOf("docs/research/a-note.md", chains.scans), true);
+    assert.equal(scopeOf("docs/research/a-note.ts", chains.app), true);
+    assert.equal(scopeOf("docs/research/a-note.tsx", chains.app), true);
     assert.equal(scopeOf("app/index.tsx", chains.app), true);
     assert.equal(scopeOf("app/index.tsx", chains.harness), false);
   });

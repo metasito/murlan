@@ -11,7 +11,7 @@ import { gh as ghCli, REPO, viaCli } from "./cli.mjs";
 import { conflictNotePath, DIR, noted, parkNotePath, writeNote } from "./loop-logs.mjs";
 import { CI_RED_TIMEOUT_MS, REFRESH_TIMEOUT_MS } from "./limits.mjs";
 
-export const TRUSTED_AUTHORS = ["OWNER", "MEMBER", "COLLABORATOR"];
+export const TRUSTED_AUTHORS = ["OWNER", "COLLABORATOR"];
 
 /** The repo is public: every marker parser reads only what this keeps. Either API's spelling. */
 export const isTrusted = (/** @type {{authorAssociation?: string, author_association?: string}} */ x) =>
@@ -25,10 +25,12 @@ export const TRUSTED_SELECT = `select((.authorAssociation//.author_association)|
 /** Rule 25's read, keeping only trusted authors' comments: a later comment overrides the body. */
 export const readIssue = (n) => `node tools/loop/tracker.mjs read ${n}`;
 
-/** What rule 25's read prints: the title, the body, then each trusted comment as `--- login: body`. */
+export const OUTSIDER_BODY = "(opened from outside the repo, body not shown)";
+
+/** What rule 25's read prints: the title, the body (an outsider's is withheld), then each trusted comment as `--- login: body`. */
 export function issueText(n, tracker = ghTracker()) {
-  const { title, body } = tracker.read(n);
-  return [title, body ?? "", ...tracker.comments(n).map((c) => `--- ${c.author.login}: ${c.body}`)].join("\n");
+  const issue = tracker.read(n);
+  return [issue.title, isTrusted(issue) ? (issue.body ?? "") : OUTSIDER_BODY, ...tracker.comments(n).map((c) => `--- ${c.author.login}: ${c.body}`)].join("\n");
 }
 
 export const OWNER_LABELS = new Set(["ready-for-human", "needs-info", "rejected", "deferred"]);

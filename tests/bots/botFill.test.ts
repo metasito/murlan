@@ -112,7 +112,7 @@ test("seatAssignmentsFromRoster keys both maps by roster position, not the DB's 
     { fillWithBots: false }
   );
   const { playerMap, botSeatsAtStart } = seatAssignmentsFromRoster(roster);
-  // initializeGame seats this roster at positions 0 and 1, not 0 and 3.
+  // startRound seats this roster at positions 0 and 1, not 0 and 3.
   assert.deepEqual(playerMap, { 0: "u_ana", 1: "u_ben" });
   assert.deepEqual(botSeatsAtStart, new Set());
 });

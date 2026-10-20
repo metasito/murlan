@@ -86,7 +86,6 @@ const GUARDS = [
     files: ["components/**/*.{ts,tsx}", "app/**/*.{ts,tsx}"],
     ignores: [
       { glob: "components/seatLayout.ts", reason: "viewerOwnsSeat is the one comparison the rest ask" },
-      { glob: "components/flightPhysics.ts", reason: "handed a seat GameTable already nulled for a watcher, so a raw comparison answers no for one" },
       { glob: "components/table/ExchangeLegs.tsx", reason: "handed a seat GameTable already nulled for a watcher, so a raw comparison answers no for one" },
     ],
     plant: { file: "components/table/Plant.tsx", code: ["const mine = seat === viewerSeat;", "if (mySeatIndex === p.seat) go();", "const me = state.viewerSeat === seat;"].join("\n"), hits: 3 },

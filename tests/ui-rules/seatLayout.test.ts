@@ -150,11 +150,18 @@ describe("viewerOwnsSeat", () => {
       assert.equal(viewerOwnsSeat(seat, seat, true), false, `seat ${seat} was owned`);
     }
   });
+
+  test("a watcher handed a null seat owns none of them, and neither does an empty seat", () => {
+    for (const seat of [0, 1, 2, 3, null]) {
+      assert.equal(viewerOwnsSeat(seat, null), false, `seat ${seat} was owned`);
+    }
+    assert.equal(viewerOwnsSeat(null, 0), false);
+  });
 });
 
 describe("exchangeArrivalRise", () => {
   test("is the hand zone's own centre, restated against the row's baseline", () => {
-    // flightOrigin's "bottom" case lands the flying card at handZoneH / 2
+    // seatPoint("bottom") lands the flying card at handZoneH / 2
     // above the table floor; the row's own baseline sits bottomPad above that
     // floor plus the lift handCenter gives it. Restated here from the pieces
     // rather than imported whole, so a change to either formula shows up as

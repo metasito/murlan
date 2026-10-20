@@ -3,6 +3,7 @@ import { router, Stack } from "expo-router";
 import { Text, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useTranslation } from "@/lib/i18n";
+import { a11yHidden } from "@/lib/a11y";
 import { Colors, Spacing, Type } from "@/lib/theme";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
@@ -14,7 +15,7 @@ export default function NotFoundScreen() {
       <Stack.Screen options={{ title: t("notFound.screenTitle") }} />
       <MenuLayout scrollable={false} centered contentPad={Spacing.lg}>
         <View style={{ alignItems: "center", gap: Spacing.md, maxWidth: 320 }}>
-          <Ionicons name="alert-circle-outline" size={40} color={Colors.textMuted} />
+          <Ionicons name="alert-circle-outline" size={40} color={Colors.textMuted} {...a11yHidden()} />
           <Text style={[Type.heading, { textAlign: "center" }]} accessibilityRole="header">
             {t("notFound.title")}
           </Text>

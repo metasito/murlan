@@ -12,7 +12,8 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { computeScreenPads, notificationTopOffset, surplusHeight } from "@/components/tableFrame";
+import { bannerTop } from "@/components/tableFrame";
+import { tableLayout } from "@/components/tableLayout";
 import { cardScale } from "@/components/cardFaceModel";
 import { Colors, Reading, Spacing, Radius, Type, Shadow, TOUCH_TARGET_MIN, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -93,14 +94,8 @@ export default function NotificationBanner({ notification, onDismiss, onMeasure 
   const opacity = useSharedValue(0);
   const reduceMotion = usePrefersReducedMotion();
 
-  const { topPad } = computeScreenPads({ insets });
   const scale = cardScale(Math.min(width, height));
-  const topOffset = notificationTopOffset({
-    topPad,
-    landscape: isLandscape,
-    scale,
-    surplus: surplusHeight(width, height, scale) / 2,
-  });
+  const topOffset = bannerTop(isLandscape ? tableLayout({ width, height, insets, scale }) : null, insets.top);
   // Reduced motion: keep the exact same callback chain (still a single,
   // sequential path to onDismiss) but collapse every leg to ~0ms so nothing
   // visibly slides.
@@ -200,7 +195,7 @@ export default function NotificationBanner({ notification, onDismiss, onMeasure 
         >
           {dismissHint.node}
           <View style={[styles.iconCircle, { backgroundColor: color + "22" }]} {...a11yHidden()}>
-            <Ionicons name={icon} size={GLYPH} color={color} />
+            <Ionicons name={icon} size={GLYPH} color={color} {...a11yHidden()} />
           </View>
           <View style={styles.textGroup} {...a11yHidden()}>
             <Text style={styles.title} numberOfLines={1}>{notification?.title ?? ""}</Text>

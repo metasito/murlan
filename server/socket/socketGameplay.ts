@@ -27,20 +27,8 @@ import {
   GameExchangeGiveCardSchema,
   GameEndMatchVoteSchema,
 } from "../../shared/socketSchemas.ts";
-import { testOnlyEnv } from "../http/testOnlyEnv.ts";
 
-/**
- * Read once at module scope — same shape as the rate-limit env reads in server/http/routes.ts — so
- * a test process must set MURLAN_GAME_ACTION_RATE_LIMIT before this module
- * is first imported. Shared by game:play and game:pass: a suite replaying
- * several rounds down one socket to reach a probabilistic phase needs
- * headroom a live session never does.
- */
-function gameActionLimitFromEnv(): number {
-  const parsed = Number(testOnlyEnv("MURLAN_GAME_ACTION_RATE_LIMIT"));
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 60;
-}
-const GAME_ACTION_RATE_LIMIT = gameActionLimitFromEnv();
+const GAME_ACTION_RATE_LIMIT = 60;
 
 type RejoinCode =
   | "UNAUTHORIZED"

@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { procFor } from "../../scripts/lib/proc.mjs";
 
-type Row = { ppid: number; started: string; alive: boolean; stopped: boolean; ignoresTerm: boolean; forks: number; child?: FakeChild };
+type Row = { ppid: number; started: string; zombie?: boolean; alive: boolean; stopped: boolean; ignoresTerm: boolean; forks: number; child?: FakeChild };
 
 export class FakeChild extends EventEmitter {
   stdout = new PassThrough();
@@ -33,9 +33,11 @@ function table(init: number) {
   const rows = new Map<number, Row>();
   let next = 1000;
   let clock = 0;
+  // A start as `ps -o lstart` prints it, a second apart: what proc.mjs both compares and parses.
+  const stamp = () => new Date(Date.UTC(2026, 0, 1) + clock++ * 1000).toString();
   const add = (ppid: number, extra: Partial<Row> = {}) => {
     const pid = next++;
-    rows.set(pid, { ppid, started: `t${clock++}`, alive: true, stopped: false, ignoresTerm: false, forks: 0, ...extra });
+    rows.set(pid, { ppid, started: stamp(), alive: true, stopped: false, ignoresTerm: false, forks: 0, ...extra });
     return pid;
   };
   const die = (pid: number, reparentTo: number | null) => {
@@ -58,7 +60,7 @@ function table(init: number) {
     return out;
   };
   const alive = () => [...rows].filter(([, r]) => r.alive).map(([p]) => p).filter((p) => p !== init);
-  return { rows, add, die, below, alive };
+  return { rows, add, die, below, alive, stamp };
 }
 
 /**
@@ -104,6 +106,11 @@ export function windowsWorld({ depth = 3 } = {}) {
     alive: t.alive,
     end: (pid: number) => t.die(pid, null),
     below: t.below,
+    /** The pid dies and a stranger, started later, takes its number. */
+    reuse(pid: number) {
+      t.die(pid, null);
+      t.rows.set(pid, { ppid: 0, started: t.stamp(), alive: true, stopped: false, ignoresTerm: true, forks: 0 });
+    },
     calls,
     spawn,
   };
@@ -116,7 +123,7 @@ export function windowsWorld({ depth = 3 } = {}) {
 export function posixWorld({ depth = 2, forks = 0, ignoresTerm = false } = {}) {
   const INIT = 1;
   const t = table(INIT);
-  t.rows.set(INIT, { ppid: 0, started: "t-init", alive: true, stopped: false, ignoresTerm: true, forks: 0 });
+  t.rows.set(INIT, { ppid: 0, started: t.stamp(), alive: true, stopped: false, ignoresTerm: true, forks: 0 });
   const self = t.add(INIT);
   const signals: [number, string | number][] = [];
   let psFails = false;
@@ -155,8 +162,16 @@ export function posixWorld({ depth = 2, forks = 0, ignoresTerm = false } = {}) {
     return listing;
   };
 
+  // Linux's /proc/<pid>/stat: a command name that holds spaces and parentheses, the state third, the
+  // start in clock ticks twenty-second.
+  const readProcStat = (pid: number) => {
+    const row = t.rows.get(pid);
+    if (!row?.alive) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    return `${pid} (node (a) b) ${row.zombie ? "Z" : "S"} ${"0 ".repeat(18)}${Date.parse(row.started) / 10} 0 0\n`;
+  };
+
   return {
-    proc: procFor({ platform: "linux", spawn, execFileSync, kill, selfPid: self } as never),
+    proc: procFor({ platform: "linux", spawn, execFileSync, kill, selfPid: self, readProcStat } as never),
     alive: () => t.alive().filter((p) => p !== self),
     below: t.below,
     signals,
@@ -165,10 +180,12 @@ export function posixWorld({ depth = 2, forks = 0, ignoresTerm = false } = {}) {
     /** The pid dies and a stranger, started later, takes its number. */
     reuse(pid: number) {
       t.die(pid, INIT);
-      t.rows.set(pid, { ppid: INIT, started: "t-stranger", alive: true, stopped: false, ignoresTerm: true, forks: 0 });
+      t.rows.set(pid, { ppid: INIT, started: t.stamp(), alive: true, stopped: false, ignoresTerm: true, forks: 0 });
     },
+    /** It has exited and nobody has reaped it yet. */
+    zombie: (pid: number) => (t.rows.get(pid)!.zombie = true),
     stopped: () => [...t.rows].filter(([, r]) => r.alive && r.stopped).map(([p]) => p),
-    failPs: () => (psFails = true),
+    failPs: (fails = true) => (psFails = fails),
     /** Each step runs right after one read of the table, in order. */
     afterRead: (...steps: (() => void)[]) => afterRead.push(...steps),
   };
@@ -198,5 +215,9 @@ export function adoptingWorld() {
     if (!child || dead.has(pid)) throw esrch();
     if (sig !== 0) child.kill(String(sig));
   };
-  return { proc: procFor({ platform: "linux", execFileSync, kill, selfPid: SELF } as never), adopt };
+  const readProcStat = (pid: number) => {
+    if (!children.has(pid) || dead.has(pid)) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    return `${pid} (child) S ${"0 ".repeat(18)}${pid} 0 0\n`;
+  };
+  return { proc: procFor({ platform: "linux", execFileSync, kill, selfPid: SELF, readProcStat } as never), adopt };
 }

@@ -6,7 +6,7 @@ import { act, render, type RenderResult } from '@testing-library/react-native';
 import { getAnimatedStyle, makeMutable, type SharedValue } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GameTable } from '@/components/GameTable';
-import type { ImpactTier } from '@/components/flightPhysics';
+import type { ImpactTier } from '@/components/impact';
 import { pileSlots, type CardFrom } from '@/components/flightPose';
 import { PileLayer, type Flight, type PileLayerProps } from '@/components/table/pile';
 import type { TrickPlay } from '@/components/table/trick';

@@ -63,14 +63,17 @@ number.
 The remaining backs re-solve their arc into the gap rather than snapping — `solveArc` already
 produces both geometries, so this is a transition between two of its results.
 
-### 4. Timing comes from `impactDelayMs()`, which is not re-derived
+### 4. Timing comes from the flight's own contact, which is not re-derived
 
-`components/flightPhysics.ts` already owns `FLIGHT_MS`, `LANDING_FRACTION` and
-`impactDelayMs()`, precisely so the animation and the impact feedback cannot drift apart.
-The lift, the fade and the arc re-solve all read that same derivation. Under
-`prefers-reduced-motion` `impactDelayMs()` is already `0` and `FlyingCards` already skips the
-flight, so the count steps down immediately and nothing lifts — no separate reduced-motion
-branch is added.
+`components/flightPose.ts` owns a throw's timing (`flightEndMs`, `contactMs`, from
+`Motion.throw`), and `components/table/useFlightClock.ts` builds each flight's `FlightSpec` from
+it, so the animation and the impact feedback cannot drift apart: the landing's consequences read
+the `LandingSignal` on the contact frame, and sounds and state read `landsAt`
+(`components/table/tableTimeline.ts`). What a landing earns is `components/impact.ts`'s; where the
+throw starts is `components/table/throws.ts`'s, from `components/tableLayout.ts`. The lift, the
+fade and the arc re-solve all read that same contact. Under `prefers-reduced-motion`
+`flightSpec` already answers a contact and an end of `0`, so the count steps down immediately and
+nothing lifts — no separate reduced-motion branch is added.
 
 ## Scope
 

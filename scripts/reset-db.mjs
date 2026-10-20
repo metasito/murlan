@@ -12,6 +12,7 @@
  * Then:   npm run db:push
  */
 import pg from "pg";
+import { parse } from "pg-connection-string";
 
 const HOW_TO =
   "To really do it, type this yourself (the npm script cannot):\n" +
@@ -44,6 +45,22 @@ if (!process.argv.includes("--yes")) {
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL is not set. Run this in a shell that has it.");
+  process.exit(1);
+}
+
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+const dbHost = (() => {
+  try {
+    return (parse(process.env.DATABASE_URL).host ?? "").replace(/^\[|\]$/g, "");
+  } catch {
+    return "";
+  }
+})();
+if (!LOCAL_HOSTS.has(dbHost) && process.env.ALLOW_REMOTE_RESET !== "1") {
+  console.error(
+    `Refusing to run: DATABASE_URL host "${dbHost}" is not localhost, 127.0.0.1 or ::1.\n` +
+      "This DELETES ALL DATA on that database. If that is truly the target, also set ALLOW_REMOTE_RESET=1."
+  );
   process.exit(1);
 }
 

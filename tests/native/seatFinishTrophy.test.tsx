@@ -12,6 +12,7 @@ jest.mock('@/lib/accessibility', () => ({
   getMotionPreference: () => 'off',
 }));
 
+import { t } from '@/lib/i18n';
 import { OpponentSeat } from '@/components/table/seats';
 import type { Player } from '@/lib/game/gameEngine';
 
@@ -26,7 +27,8 @@ const player = (finishPosition?: number): Player => ({
 describe('the finished-seat trophy', () => {
   it('shows a trophy in the count bubble once the seat has gone out', async () => {
     const r = await render(<OpponentSeat place="top" player={player(1)} isActive={false} cardCount={0} />);
-    expect(screen.getByTestId('seat-finish-trophy')).toBeVisible();
+    expect(screen.getByTestId('seat-finish-trophy', { includeHiddenElements: true })).toBeTruthy();
+    expect(screen.getByLabelText(t('seat.finishedA11yLabel', { place: 1 }))).toBeTruthy();
     await r.unmount();
   });
 

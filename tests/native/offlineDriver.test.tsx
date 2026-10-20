@@ -64,12 +64,6 @@ test("two passes in one event compose, the second answering the first", async ()
     encodeOfflineSave({
       gameState: trick(),
       match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
-      players: [
-        { name: "Ana", type: "human" },
-        { name: "Gent", type: "bot" },
-        { name: "Luan", type: "bot" },
-      ],
-      gameMode: "free_for_all",
       dealFirstSeat: 0,
     })
   );
@@ -128,11 +122,6 @@ const settled = async (state: GameState) => {
     encodeOfflineSave({
       gameState: state,
       match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
-      players: [
-        { name: "Ana", type: "human" },
-        { name: "Luan", type: state.players[1].type },
-      ],
-      gameMode: "free_for_all",
       dealFirstSeat: 0,
     })
   );
@@ -206,12 +195,6 @@ test("a clock that runs out in the tick the turn moved on passes nobody", async 
         lastPlayedBy: -1,
       },
       match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
-      players: [
-        { name: "Ana", type: "human" },
-        { name: "Gent", type: "human" },
-        { name: "Luan", type: "human" },
-      ],
-      gameMode: "free_for_all",
       dealFirstSeat: 0,
     })
   );

@@ -327,7 +327,7 @@ for (const size of SIZES) {
       await sweepSizes(page, "friends");
 
       await page.getByRole("textbox", { name: copy["friends.searchA11yLabel"] }).fill(target);
-      await page.getByRole("button", { name: copy["friends.searchA11yLabel"] }).click();
+      await page.getByRole("button", { name: copy["friends.searchButtonA11yLabel"] }).click();
       await page
         .getByRole("button", { name: copy["friends.sendRequestA11yLabel"].replace("{{username}}", target) })
         .click();

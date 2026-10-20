@@ -502,7 +502,7 @@ export default function RoomScreen() {
     />
   ) : (
     <View style={styles.waitingHost}>
-      <Ionicons name="time-outline" size={18} color={Colors.textMuted} />
+      <Ionicons name="time-outline" size={18} color={Colors.textMuted} {...a11yHidden()} />
       <Text style={styles.waitingText}>{t("room.waitingForHost")}</Text>
     </View>
   );

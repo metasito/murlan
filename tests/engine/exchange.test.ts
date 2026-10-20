@@ -6,14 +6,16 @@ import {
   getStartingPlayerAfterExchange,
   getValidGivebackCards,
   givebackIsFallback,
-  initializeRematch,
   loserHasBothJokers,
+  openingAfter,
   processExchangeChoice,
+  startRound,
   type Card,
 } from "../../lib/game/gameEngine.ts";
 import { autoMoveForSeat, resolveStuckExchange } from "../../lib/game/autoMove.ts";
 
 const ids = (cards: Card[]) => cards.map((card) => card.id).sort();
+const FIRST_BEAT_LAST = { kind: "exchange", winnerSeat: 0, loserSeat: 3 } as const;
 
 describe("getValidGivebackCards (defect 7)", () => {
   test("primary rule: any card ranked 3 to 10", () => {
@@ -260,17 +262,11 @@ describe("REGRESSION (#784): exchangePhase.active clears after exactly one giveb
 });
 
 describe("round-to-round exchange setup", () => {
-  const setup = [0, 1, 2, 3].map((i) => ({
-    name: `p${i}`,
-    type: "human" as const,
-    id: `player_${i}`,
-  }));
+  const setup = [0, 1, 2, 3].map((i) => ({ name: `p${i}`, type: "human" as const }));
 
   test("the loser's highest card moves to the winner and the loser leads", () => {
     for (let i = 0; i < 50; i++) {
-      const state = initializeRematch(setup, "free_for_all", [
-        "player_0", "player_1", "player_2", "player_3",
-      ]);
+      const state = startRound(setup, "free_for_all", { opening: FIRST_BEAT_LAST });
       const phase = state.exchangePhase!;
       if (phase.twoJokerException) {
         assert.equal(phase.active, false, "no exchange happens on the two-joker exception");
@@ -308,11 +304,7 @@ describe("round-to-round exchange setup", () => {
 });
 
 describe("the two-joker exception, on a fixed deal", () => {
-  const setup = [0, 1, 2, 3].map((i) => ({
-    name: `p${i}`,
-    type: "human" as const,
-    id: `player_${i}`,
-  }));
+  const setup = [0, 1, 2, 3].map((i) => ({ name: `p${i}`, type: "human" as const }));
   const hands: Card[][] = [
     [c("3", "spades"), c("4", "hearts")],
     [c("5", "clubs"), c("6", "diamonds")],
@@ -321,13 +313,7 @@ describe("the two-joker exception, on a fixed deal", () => {
   ];
 
   test("no card moves, the winner leads, and the phase is closed", () => {
-    const state = initializeRematch(
-      setup,
-      "free_for_all",
-      ["player_0", "player_1", "player_2", "player_3"],
-      0,
-      hands
-    );
+    const state = startRound(setup, "free_for_all", { opening: FIRST_BEAT_LAST, dealt: hands });
     const phase = state.exchangePhase!;
     assert.equal(phase.twoJokerException, true);
     assert.equal(phase.active, false);
@@ -340,5 +326,54 @@ describe("the two-joker exception, on a fixed deal", () => {
       hands.map(ids),
       "no hand changed"
     );
+  });
+});
+
+describe("a dealt rematch is checked like a dealt first round", () => {
+  const setup = [0, 1].map((i) => ({ name: `p${i}`, type: "human" as const }));
+  const opening = { kind: "exchange", winnerSeat: 0, loserSeat: 1 } as const;
+
+  test("a card dealt twice is refused", () => {
+    assert.throws(
+      () => startRound(setup, "free_for_all", { opening, dealt: [[c("4", "hearts")], [c("4", "hearts")]] }),
+      /card 4_hearts is dealt twice/
+    );
+  });
+
+  test("a deal for the wrong number of seats is refused", () => {
+    assert.throws(
+      () => startRound(setup, "free_for_all", { opening, dealt: [[c("4", "hearts")]] }),
+      /a deal for 2 seats has 1 hands/
+    );
+  });
+});
+
+describe("an exchange opening names two seats at the table", () => {
+  const setup = [0, 1, 2].map((i) => ({ name: `p${i}`, type: "human" as const }));
+
+  for (const [winnerSeat, loserSeat] of [[0, 3], [-1, 2], [1, 1], [0.5, 2]]) {
+    test(`winner ${winnerSeat}, loser ${loserSeat} is refused rather than guessed at`, () => {
+      assert.throws(
+        () => startRound(setup, "free_for_all", { opening: { kind: "exchange", winnerSeat, loserSeat } }),
+        /no exchange between seats/
+      );
+    });
+  }
+});
+
+describe("the opening after a round", () => {
+  const finished = (finishingOrder: string[]) =>
+    makeState({ players: [0, 1, 2].map((i) => makePlayer(i, [], { id: `player_${i}` })), roundOver: true, finishingOrder });
+
+  test("a round every seat finished opens the next with its winner and loser exchanging", () => {
+    assert.deepEqual(openingAfter(finished(["player_2", "player_0", "player_1"])), {
+      kind: "exchange",
+      winnerSeat: 2,
+      loserSeat: 1,
+    });
+  });
+
+  test("a round left part-ranked opens with the 3♠", () => {
+    assert.deepEqual(openingAfter(finished(["player_2"])), { kind: "startCard" });
   });
 });

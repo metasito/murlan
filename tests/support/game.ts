@@ -59,7 +59,7 @@ export function mulberry32(seed: number): () => number {
   };
 }
 
-/** `lib/game/gameEngine.ts`'s shape for `globalThis.crypto`, which the deal draws from. */
+/** `lib/game/gameEngine.ts`'s `RandomSource`, which the deal draws from. */
 interface RandomSource {
   getRandomValues(array: Uint32Array): Uint32Array;
 }

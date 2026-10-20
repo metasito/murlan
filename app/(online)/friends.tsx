@@ -68,6 +68,7 @@ export default function FriendsScreen() {
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchDone, setSearchDone] = useState(false);
+  const [searchNonce, setSearchNonce] = useState(0);
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
   const { showNotification, notifyError } = useNotification();
 
@@ -183,9 +184,11 @@ export default function FriendsScreen() {
       const data = await res.json();
       setSearchResult(data);
       setSearchDone(true);
+      setSearchNonce((n) => n + 1);
     } catch (e: unknown) {
       setSearchError(e instanceof ApiError && e.status === 404 ? t("friends.userNotFound") : t("friends.searchFailed"));
       setSearchDone(true);
+      setSearchNonce((n) => n + 1);
     }
     setSearchLoading(false);
   }
@@ -278,7 +281,7 @@ export default function FriendsScreen() {
               onPress={handleSearchUsername}
               disabled={searchLoading || !searchQuery.trim()}
               style={({ pressed }) => [styles.addBtn, pressed && { opacity: 0.85 }, (!searchQuery.trim()) && styles.addBtnDim]}
-              accessibilityLabel={t("friends.searchA11yLabel")}
+              accessibilityLabel={t("friends.searchButtonA11yLabel")}
               {...a11yState({ role: "button", disabled: searchLoading || !searchQuery.trim() })}
             >
               {searchLoading ? (
@@ -289,6 +292,16 @@ export default function FriendsScreen() {
             </Pressable>
           </View>
 
+          <A11yStatus
+            nonce={searchNonce}
+            label={
+              !searchDone
+                ? ""
+                : searchResult
+                  ? t("friends.foundA11yLabel", { username: searchResult.username })
+                  : (searchError ?? "")
+            }
+          />
           {searchDone && searchResult && (
             <View style={styles.searchResultCard}>
               <Avatar name={searchResult.username} />
@@ -312,8 +325,8 @@ export default function FriendsScreen() {
           )}
 
           {searchDone && searchError && (
-            <View style={styles.searchErrorRow}>
-              <Ionicons name="alert-circle-outline" size={14} color={Colors.textMuted} />
+            <View style={styles.searchErrorRow} {...a11yHidden()}>
+              <Ionicons name="alert-circle-outline" size={14} color={Colors.textMuted} {...a11yHidden()} />
               <Text style={styles.searchErrorText}>{searchError}</Text>
             </View>
           )}

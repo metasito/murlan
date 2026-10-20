@@ -16,7 +16,7 @@ import type { PlayerSetupConfig } from "@/context/GameContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useLocalSession } from "@/context/gameHooks";
 import { useAuth } from "@/context/AuthContext";
-import { GameMode, MatchLength, firstTargetFor, teamForSeat } from "@/lib/game/gameEngine";
+import { GameMode, MatchLength, firstTargetFor, modeFits, teamForSeat } from "@/lib/game/gameEngine";
 import { BOT_PERSONALITIES, botSeatNames, getBotPersonality } from "@/lib/game/botPersonalities";
 import { DifficultyLadder } from "@/components/DifficultyLadder";
 import { Colors, Spacing, Radius, FontSize } from '@/lib/theme';
@@ -30,15 +30,16 @@ type LobbyMode = "bot" | "local";
 
 interface PlayerRowProps {
   config: PlayerSetupConfig;
+  team: "A" | "B" | undefined;
   onChange: (config: PlayerSetupConfig) => void;
   isHuman?: boolean;
 }
 
-function PlayerRow({ config, onChange, isHuman }: PlayerRowProps) {
+function PlayerRow({ config, team, onChange, isHuman }: PlayerRowProps) {
   const { t } = useTranslation();
   const isBot = config.type === "bot";
 
-  const teamLabel = config.team ? t("lobby.team", { team: config.team }) : null;
+  const teamLabel = team ? t("lobby.team", { team }) : null;
 
   return (
     <View style={styles.playerRow}>
@@ -56,6 +57,7 @@ function PlayerRow({ config, onChange, isHuman }: PlayerRowProps) {
               name={isHuman ? "person" : "hardware-chip"}
               size={18}
               color={isHuman ? Colors.bgCard : Colors.textSecondary}
+              {...a11yHidden()}
             />
           </LinearGradient>
         </View>
@@ -66,7 +68,7 @@ function PlayerRow({ config, onChange, isHuman }: PlayerRowProps) {
             <Text
               style={[
                 styles.teamBadge,
-                { color: config.team === "A" ? Colors.accent : Colors.gold },
+                { color: team === "A" ? Colors.accent : Colors.gold },
               ]}
             >
               {teamLabel}
@@ -125,19 +127,18 @@ export default function LobbyScreen() {
     return updated;
   };
 
-  const buildDefaultPlayers = (count: number, gm: GameMode): PlayerSetupConfig[] =>
+  const buildDefaultPlayers = (count: number): PlayerSetupConfig[] =>
     withBotNames(
       Array.from({ length: count }, (_, i) => ({
         name: i === 0 ? myName : t("lobby.playerName", { n: i + 1 }),
         type: i === 0 || !isBot ? "human" : "bot",
         // Distinct opponents by default: a full table faces four different personalities.
         personality: i > 0 && isBot ? BOT_PERSONALITIES[(i - 1) % BOT_PERSONALITIES.length].id : undefined,
-        team: teamForSeat(i, count, gm),
       }))
     );
 
   const [players, setPlayers] = useState<PlayerSetupConfig[]>(
-    buildDefaultPlayers(2, "free_for_all")
+    buildDefaultPlayers(2)
   );
 
   // Seat one is the account's, and AuthContext resolves the name after first
@@ -150,19 +151,8 @@ export default function LobbyScreen() {
 
   const handleCountChange = (count: number) => {
     setPlayerCount(count);
-    const newMode = count === 4 && gameMode === "teams" ? "teams" : "free_for_all";
-    setGameMode(newMode);
-    setPlayers(buildDefaultPlayers(count, newMode));
-  };
-
-  const handleModeChange = (gm: GameMode) => {
-    setGameMode(gm);
-    setPlayers((prev) =>
-      prev.map((p, i) => ({
-        ...p,
-        team: teamForSeat(i, playerCount, gm),
-      }))
-    );
+    setGameMode(modeFits(gameMode, count) ? gameMode : "free_for_all");
+    setPlayers(buildDefaultPlayers(count));
   };
 
   const handlePlayerChange = (index: number, config: PlayerSetupConfig) => {
@@ -222,7 +212,7 @@ export default function LobbyScreen() {
         />
       </View>
 
-      {playerCount === 4 && (
+      {modeFits("teams", playerCount) && (
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>{t("lobby.modeLabel")}</Text>
           <ChoiceChips
@@ -237,7 +227,7 @@ export default function LobbyScreen() {
                 ),
             }))}
             value={gameMode}
-            onChange={handleModeChange}
+            onChange={setGameMode}
           />
         </View>
       )}
@@ -267,7 +257,11 @@ export default function LobbyScreen() {
       <Text style={styles.sectionLabel}>{t("lobby.playersLabel")}</Text>
       <View style={styles.playerList}>
         {players.map((p, i) => (
-          <PlayerRow key={i} config={p} isHuman={p.type === "human"} onChange={(c) => handlePlayerChange(i, c)} />
+          <PlayerRow
+            key={i}
+            config={p}
+            team={teamForSeat(i, players.length, gameMode)}
+            isHuman={p.type === "human"} onChange={(c) => handlePlayerChange(i, c)} />
         ))}
       </View>
     </View>

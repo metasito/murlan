@@ -37,6 +37,14 @@ describe("on win32", () => {
     assert.deepEqual(world.alive(), []);
   });
 
+  test("no exact identity is to be had, so nothing is ended by one", () => {
+    const world = windowsWorld();
+    const child = world.proc.startBin("node", ["a.js"], {});
+    assert.equal(world.proc.identityOf(child.pid!), null);
+    assert.equal(world.proc.endTreeIf(child.pid!, "1"), false);
+    assert.equal(world.alive().length, 4);
+  });
+
   test("killTree takes the tree and no other, and a tree already gone is not an error", () => {
     const world = windowsWorld();
     const child = world.proc.startBin("npx", ["tsx", "index.ts"], {});
@@ -168,6 +176,64 @@ describe("on POSIX, modelled", () => {
     await stopping;
     assert.deepEqual(world.alive(), [grandchild]);
     assert.deepEqual(world.stopped(), []);
+  });
+
+  test("a process whose identity still matches is ended with its tree", () => {
+    const world = posixWorld();
+    const child = world.proc.startBin("node", ["a.js"], {});
+    const identity = world.proc.identityOf(child.pid!);
+    assert.match(String(identity), /^\d+$/);
+    assert.equal(world.proc.endTreeIf(child.pid!, identity!), true);
+    assert.deepEqual(world.alive(), []);
+  });
+
+  test("a pid reused by a stranger has another identity, and is never ended", () => {
+    const world = posixWorld({ depth: 0 });
+    const child = world.proc.startBin("node", ["a.js"], {});
+    const identity = world.proc.identityOf(child.pid!);
+    world.reuse(child.pid!);
+    assert.notEqual(world.proc.identityOf(child.pid!), identity);
+    assert.equal(world.proc.endTreeIf(child.pid!, identity!), false);
+    assert.deepEqual(world.alive(), [child.pid]);
+    assert.deepEqual(world.signals.filter(([, s]) => s !== 0), []);
+  });
+
+  test("a root recycled between the identity check and the kill is never signalled", () => {
+    const world = posixWorld({ depth: 0 });
+    const child = world.proc.startBin("node", ["a.js"], {});
+    const identity = world.proc.identityOf(child.pid!);
+    // After the second read: the table the tree is frozen from still lists the old process.
+    world.afterRead(
+      () => undefined,
+      () => world.reuse(child.pid!),
+    );
+    assert.equal(world.proc.endTreeIf(child.pid!, identity!), true);
+    assert.deepEqual(world.alive(), [child.pid]);
+    assert.deepEqual(world.signals.filter(([p, s]) => p === child.pid && s !== 0), []);
+  });
+
+  test("a descendant recycled between the table read and its stop is let go, never killed", () => {
+    const world = posixWorld({ depth: 1 });
+    const child = world.proc.startBin("node", ["a.js"], {});
+    const grandchild = world.below(child.pid!)[1]!;
+    world.afterRead(
+      () => undefined,
+      () => world.reuse(grandchild),
+    );
+    world.proc.killTree(child.pid);
+    assert.deepEqual(world.alive(), [grandchild]);
+    assert.deepEqual(world.stopped(), []);
+    assert.deepEqual(world.signals.filter(([p, s]) => p === grandchild && s === "SIGKILL"), []);
+  });
+
+  test("a zombie and a pid that is gone have no identity", () => {
+    const world = posixWorld({ depth: 0 });
+    const zombie = world.proc.startBin("node", ["a.js"], {});
+    const gone = world.proc.startBin("node", ["b.js"], {});
+    world.zombie(zombie.pid!);
+    world.end(gone.pid!);
+    assert.equal(world.proc.identityOf(zombie.pid!), undefined);
+    assert.equal(world.proc.identityOf(gone.pid!), undefined);
   });
 });
 

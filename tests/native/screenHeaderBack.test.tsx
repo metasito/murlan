@@ -13,6 +13,13 @@ jest.mock('expo-router', () => ({
 
 import { ScreenHeader } from '@/components/ScreenHeader';
 
+describe('the header title', () => {
+  it('is a heading', async () => {
+    await render(<ScreenHeader title="Lobby" backLabel="Back" />);
+    expect(screen.getByRole('header')).toHaveTextContent('Lobby');
+  });
+});
+
 describe('the header back control', () => {
   beforeEach(() => {
     jest.clearAllMocks();

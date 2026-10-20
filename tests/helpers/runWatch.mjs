@@ -1,9 +1,9 @@
 // The run-level half of tests/helpers/filesRunReporter.mjs's stall guard, on its own thread: the
 // reporter stamps a heartbeat on every event, and a runner whose loop is blocked stamps nothing.
-import { readdirSync, readFileSync, writeSync } from "node:fs";
+import { readdirSync, readFileSync, rmSync, writeSync } from "node:fs";
 import { parentPort, workerData } from "node:worker_threads";
 
-const { heartbeat, idleMs } = workerData;
+const { heartbeat, idleMs, markers } = workerData;
 let inFlight = [];
 parentPort.on("message", (files) => (inFlight = files));
 
@@ -24,5 +24,6 @@ setInterval(() => {
   if (Date.now() - Number(Atomics.load(heartbeat, 0)) <= idleMs) return;
   writeSync(2, `\nnpm test: nothing reported for ${idleMs / 1000}s; still running: ${inFlight.join(", ") || "no file; the runner itself"}\n`);
   killChildren();
+  rmSync(markers, { recursive: true, force: true });
   process.kill(process.pid, "SIGKILL");
 }, Math.min(1000, idleMs / 4));

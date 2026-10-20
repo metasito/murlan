@@ -53,9 +53,9 @@ const diff = (wt, base) =>
       : laterDelta(wt, base);
 const issue = (n) => `\`${readIssue(n)}\``;
 
-const ASKS_COMMENTS = /(^|\s)(--comments|-c)(\s|$)|--json[\s=]\S*\bcomments\b/;
+const ASKS_COMMENTS = /(^|\s)(--comments|-c)(\s|$)|--json[\s=]\S*\b(comments|reviews|latestReviews|timeline)\b/;
 const API_BODY = /^(-f|-F|--field|--raw-field|--input)$|^--(raw-)?field=/;
-const API_THREAD = /(?:^|\/)(?:issues|pulls)\/(?:\d+\/)?(?:comments|reviews)(?:[/?]|$)/;
+const API_THREAD = /(?:^|\/)(?:issues|pulls)\/(?:\d+\/)?(?:comments|reviews|timeline)(?:[/?]|$)/;
 
 /** The method a `gh api` call sends: its `-X`/`--method`, else POST once it carries a field or input, as gh does. */
 export function apiMethod(args) {
@@ -71,9 +71,54 @@ const rule25Read = (args) => args[0] === "tracker.mjs" && args[1] === "read";
 export const readsComments = (args) =>
   rule25Read(args) ||
   (/^(issue|pr)$/.test(args[0] ?? "") && args[1] === "view" && ASKS_COMMENTS.test(args.slice(2).join(" "))) ||
-  (args[0] === "api" && apiMethod(args) === "GET" && args.some((a) => API_THREAD.test(a)));
-/** A thread read without rule 25's filter, where an outsider's `DOD-CHECK` or `REVIEW` reads as the loop's own. */
-export const untrustedRead = (args) => readsComments(args) && !rule25Read(args) && !args.some((a) => a.includes(TRUSTED_SELECT));
+  (args[0] === "api" && (args.includes("graphql") || (apiMethod(args) === "GET" && args.some((a) => API_THREAD.test(a)))));
+/** The jq programs a `gh` call runs: the value of `--jq`/`-q`, and nothing else it merely carries. */
+const jqPrograms = (args) =>
+  args.flatMap((a, i) => (/^(--jq|-q)$/.test(a) ? [args[i + 1] ?? ""] : [/^--jq=([\s\S]*)$/.exec(a)?.[1] ?? /^-q([\s\S]+)$/.exec(a)?.[1]].filter((v) => v !== undefined)));
+/** The top-level `|` stages of a jq program, or null when a bracket or string does not close. */
+function stagesOf(program) {
+  const stages = [];
+  let depth = 0;
+  let quoted = false;
+  let from = 0;
+  for (let i = 0; i < program.length; i++) {
+    const ch = program[i];
+    if (quoted) {
+      if (ch === "\\") i++;
+      else if (ch === '"') quoted = false;
+    } else if (ch === '"') quoted = true;
+    else if ("([{".includes(ch)) depth++;
+    else if (")]}".includes(ch)) depth--;
+    else if (ch === "|" && depth === 0) {
+      stages.push(program.slice(from, i).trim());
+      from = i + 1;
+    }
+    if (depth < 0) return null;
+  }
+  if (depth !== 0 || quoted) return null;
+  return [...stages, program.slice(from).trim()];
+}
+
+const PATH_STAGE = /^\.[\w.\[\]?]*$/;
+
+/**
+ * Whether a jq program passes through only trusted authors: exactly one stage is the canonical select, every
+ * stage before it only walks to an array (`.comments[]`), and none produces a second output.
+ */
+export const keepsTrusted = (program) => {
+  // A document's `gh` line is split on spaces, not by a shell, so its program still wears its quotes.
+  const stages = stagesOf(program.replace(/^'([\s\S]*)'$/, (_, inner) => inner));
+  if (!stages) return false;
+  const at = stages.indexOf(TRUSTED_SELECT);
+  return at >= 0 && stages.indexOf(TRUSTED_SELECT, at + 1) < 0 && stages.slice(0, at).every((s) => PATH_STAGE.test(s)) && stages.slice(at + 1).every((s) => PATH_STAGE.test(s));
+};
+
+/** A thread read without rule 25's filter, where an outsider's `DOD-CHECK` or `REVIEW` reads as the loop's own. GraphQL's shape has no filter that keeps it. */
+export const untrustedRead = (args) =>
+  readsComments(args) && !rule25Read(args) && (args.includes("graphql") || !(jqPrograms(args).length > 0 && jqPrograms(args).every(keepsTrusted)));
+/** A thread fetched by an HTTP client, which no jq filter of `gh` reaches. */
+export const fetchesThread = (cmd, args) =>
+  /^(curl|wget|invoke-restmethod|invoke-webrequest|irm|iwr)$/.test(cmd) && args.some((a) => API_THREAD.test(a));
 /**
  * Each thread read a document gives: `gh`'s arguments, or `tracker.mjs read <n>` for rule 25's. A
  * `\` continuation joins its lines.

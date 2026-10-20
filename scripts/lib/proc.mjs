@@ -4,6 +4,7 @@
  * `tools/loop/cli.mjs` stays independent of it.
  */
 import * as childProcess from "node:child_process";
+import { readFileSync } from "node:fs";
 import os from "node:os";
 
 // `npm` and `npx` are `.cmd` shims on Windows, and since the fix for CVE-2024-27980 node will not run
@@ -25,6 +26,9 @@ export function cmdArg(arg) {
 
 const gone = (err) => err?.code === "ESRCH";
 
+/** A stalled `ps` would otherwise stall whatever waits on it, a watchdog included. */
+export const TABLE_TIMEOUT_MS = 10_000;
+
 /** The helpers over injected platform and process primitives; the module's exports are its defaults. */
 export function procFor({
   platform = process.platform,
@@ -32,6 +36,7 @@ export function procFor({
   execFileSync = childProcess.execFileSync,
   kill = (pid, signal) => process.kill(pid, signal),
   selfPid = process.pid,
+  readProcStat = (pid) => readFileSync(`/proc/${pid}/stat`, "utf8"),
 } = {}) {
   const win = platform === "win32";
 
@@ -65,7 +70,7 @@ export function procFor({
   function readTable() {
     let out;
     try {
-      out = execFileSync("ps", ["-A", "-o", "pid=,ppid=,lstart="], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      out = execFileSync("ps", ["-A", "-o", "pid=,ppid=,lstart="], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: TABLE_TIMEOUT_MS });
     } catch (err) {
       throw new Error(`cannot read the process table, so no tree can be ended: ${err.message}`);
     }
@@ -91,8 +96,19 @@ export function procFor({
    * Stop first, then kill: a running tree forks between one read of the table and the kills, and a
    * stopped one cannot. A pid whose start time changed was reused by a stranger and is let go.
    */
-  function freezeAndKill(roots) {
+  function freezeAndKill(roots, identities = new Map()) {
     const stopped = new Map();
+    // On Linux each pid is held to its exact identity from just before its stop to its kill: a
+    // stopped process cannot exit, so a stranger can only have taken the pid before the stop.
+    const stop = (pid) => {
+      if (platform !== "linux") return signal(pid, "SIGSTOP");
+      const id = identityOf(pid);
+      if (id === undefined || (identities.has(pid) && identities.get(pid) !== id)) return false;
+      if (!signal(pid, "SIGSTOP")) return false;
+      if (identityOf(pid) === id) return identities.set(pid, id), true;
+      signal(pid, "SIGCONT");
+      return false;
+    };
     for (;;) {
       const rows = readTable();
       for (const [pid, started] of stopped) {
@@ -105,9 +121,9 @@ export function procFor({
       if (tree.has(selfPid)) throw new Error(`refusing to end pid ${[...roots.keys()][0]}: this process is inside its tree`);
       const fresh = [...tree].filter(([pid]) => !stopped.has(pid));
       if (!fresh.length) break;
-      for (const [pid, started] of fresh) if (signal(pid, "SIGSTOP")) stopped.set(pid, started);
+      for (const [pid, started] of fresh) if (stop(pid)) stopped.set(pid, started);
     }
-    for (const pid of stopped.keys()) signal(pid, "SIGKILL");
+    for (const pid of stopped.keys()) if (platform !== "linux" || identityOf(pid) === identities.get(pid)) signal(pid, "SIGKILL");
   }
 
   function taskkill(pid, force) {
@@ -121,11 +137,12 @@ export function procFor({
   }
 
   /** "Already gone" is success; anything that leaves the tree in doubt throws. */
-  function killTree(pid) {
+  /** With `identity`, the root is ended only while it is still the process identityOf named so. */
+  function killTree(pid, { identity } = {}) {
     if (!pid) return;
     if (win) return taskkill(pid, true);
     const started = readTable().get(pid)?.started;
-    if (started !== undefined) freezeAndKill(new Map([[pid, started]]));
+    if (started !== undefined) freezeAndKill(new Map([[pid, started]]), identity === undefined ? new Map() : new Map([[pid, identity]]));
   }
 
   const alive = (pid) => {
@@ -136,6 +153,32 @@ export function procFor({
       return !gone(err);
     }
   };
+
+  /**
+   * A process's exact identity: Linux's start time in clock ticks since boot, which no later process
+   * with the same pid can share. Undefined when it is gone or a zombie; null where no exact identity
+   * is to be had without a spawn, which is everywhere else.
+   * @returns {string | undefined | null}
+   */
+  function identityOf(pid) {
+    if (platform !== "linux") return null;
+    let stat;
+    try {
+      stat = readProcStat(pid);
+    } catch {
+      return undefined;
+    }
+    // The command name before ")" may itself hold spaces and parentheses.
+    const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+    return fields[0] === "Z" || !/^\d+$/.test(fields[19] ?? "") ? undefined : fields[19];
+  }
+
+  /** Ends the tree of `pid` only while it is still the process `identity` names. True when it did. */
+  function endTreeIf(pid, identity) {
+    if (identity == null || identityOf(pid) !== identity) return false;
+    killTree(pid, { identity });
+    return true;
+  }
 
   /**
    * Asks the root to end (SIGTERM; on Windows a close to the whole tree, which keeps the root alive
@@ -261,10 +304,10 @@ export function procFor({
     return child;
   }
 
-  return { runBin, startBin, spawnBin, killTree, stopTree, relay };
+  return { runBin, startBin, spawnBin, killTree, identityOf, endTreeIf, alive, stopTree, relay };
 }
 
-export const { runBin, startBin, spawnBin, killTree, stopTree, relay } = procFor();
+export const { runBin, startBin, spawnBin, killTree, identityOf, endTreeIf, alive, stopTree, relay } = procFor();
 
 export function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);

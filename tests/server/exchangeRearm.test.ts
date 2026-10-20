@@ -5,7 +5,7 @@ import { armTurn } from "../../server/game/gameTurn.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
 import { botMoveDelayMs, clearRoomTimers } from "../../server/game/gameTimers.ts";
-import { createDeck, initializeRematch, type GameState } from "../../lib/game/gameEngine.ts";
+import { createDeck, startRound, type GameState } from "../../lib/game/gameEngine.ts";
 import { LEG, exchangeAnnounceMs, exchangeGiveDelayMs, legPose, legShows, restPoint } from "../../lib/timeline/exchangeTimeline.ts";
 import { dealEndMs } from "../../lib/timeline/dealTimeline.ts";
 import { Motion } from "../../lib/tokens.ts";
@@ -20,7 +20,10 @@ function exchangeTable(loserHoldsBothJokers = false): OnlineGameState {
   const rest = loserHoldsBothJokers ? deck.filter((c) => !c.isJoker) : deck;
   const hands = seats.map((_, s) => rest.filter((_, i) => i % seats.length === s));
   if (loserHoldsBothJokers) hands[3].push(...jokers);
-  const gameState: GameState = initializeRematch(seats, "free_for_all", ["player_0", "player_1", "player_2", "player_3"], 0, hands);
+  const gameState: GameState = startRound(seats, "free_for_all", {
+    opening: { kind: "exchange", winnerSeat: 0, loserSeat: 3 },
+    dealt: hands,
+  });
   assert.equal(gameState.exchangePhase?.active, !loserHoldsBothJokers, "the rematch opens an exchange unless the loser holds both Jokers");
   const game: OnlineGameState = {
     roomId: ROOM,
@@ -28,7 +31,6 @@ function exchangeTable(loserHoldsBothJokers = false): OnlineGameState {
     playerMap: {},
     rematchVotes: new Set(),
     cumulativeScores: {},
-    gameMode: "free_for_all",
     maxPlayers: 4,
     matchTarget: 21,
     matchLength: "match",

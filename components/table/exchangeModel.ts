@@ -8,11 +8,11 @@ import type { TFn } from "@/lib/i18n";
 import { getCardDisplayRank, getSuitSymbol, givebackIsFallback } from "../../lib/game/gameEngine.ts";
 import { restPoint, type LegPoints, type LegStage } from "../../lib/timeline/exchangeTimeline.ts";
 import { handCountOf } from "../../shared/protocol.ts";
-import { FIELD_SCALE, HAND_SCALE } from "../cardFaceModel.ts";
 import { fanPoint } from "../fanGeometry.ts";
-import { airborne, FAN_CARD_SCALE, seatPoint, type SeatGeometry } from "../flightPhysics.ts";
 import type { CardFrom } from "../flightPose.ts";
+import { FAN_CARD_SCALE } from "../impact.ts";
 import { seatDirection, viewerOwnsSeat } from "../seatLayout.ts";
+import { ownSlotFrom, type Seating, type TableLayout } from "../tableLayout.ts";
 
 export interface ExchangeView {
   active: boolean;
@@ -49,6 +49,81 @@ export function readExchange(
     winner: state.players[phase.winnerIdx] ?? null,
     loser: state.players[phase.loserIdx] ?? null,
     cardFromLoser: phase.cardFromLoser ?? null,
+  };
+}
+
+const airborne = (s: LegStage) => s === "flying" || s === "rest" || s === "tuck";
+
+/**
+ * The card on its way *into* this seat's hand.
+ *
+ * The exchange ends its phase, hands the card over and raises its ceremony in
+ * one tick, so the hand holds the card before the flight carrying it has left
+ * (#672). The two ends are not symmetric: each seat is receiving what the other
+ * gave, never what it gave away, which really has left the hand.
+ *
+ * Nothing flies when both Jokers cancelled the exchange, so nothing arrives.
+ */
+export function arrivingCard(
+  announce: ExchangeAnnounceData | null | undefined,
+  viewerSeat: number | null
+): Card | undefined {
+  if (!announce || announce.twoJokerException) return undefined;
+  if (viewerOwnsSeat(announce.winnerIdx, viewerSeat)) return announce.cardReceived;
+  if (viewerOwnsSeat(announce.loserIdx, viewerSeat)) return announce.cardGiven;
+  return undefined;
+}
+
+interface HandArrival {
+  /** Drawn although the state has already moved it: the viewer's exchanged card, until its leg leaves the hand. */
+  lent?: Card;
+  /** Kept out of the fan, because a flier is drawing them. */
+  withheldIds: string[];
+  /** The slot the row parts at: set only while the card flies in. */
+  arrivingIndex?: number;
+  /** What the parted slot is waiting for, so the row can travel it in. */
+  descendingId?: string;
+  /** The card just received, which glows once it is in the hand. */
+  receivedId?: string;
+}
+
+/**
+ * The viewer's exchanged cards, each drawn in exactly one place: in the hand until its leg's first
+ * visible frame, as its flier until it lands, and in the hand again from then on (#650).
+ */
+export function readHandArrival(input: {
+  /** The hand as arranged, which is where the card takes its place. */
+  hand: Card[];
+  announced: ExchangeAnnounceData | null;
+  stages: ExchangeStages;
+  /** Null for a spectator: a synthetic hand has nothing to hold back. */
+  viewerSeat: number | null;
+}): HandArrival {
+  const { hand, announced, stages, viewerSeat } = input;
+  if (!announced) return { withheldIds: [] };
+  const holds = (card: Card | undefined) => !!card && hand.some((c) => c.id === card.id);
+  if (announced.twoJokerException) {
+    const shown = viewerOwnsSeat(announced.loserIdx, viewerSeat) && airborne(stages.receive);
+    return { withheldIds: shown ? hand.filter((c) => c.isJoker).map((c) => c.id) : [] };
+  }
+  const winner = viewerOwnsSeat(announced.winnerIdx, viewerSeat);
+  if (!winner && !viewerOwnsSeat(announced.loserIdx, viewerSeat)) return { withheldIds: [] };
+  const incoming = arrivingCard(announced, viewerSeat);
+  const outgoing = winner ? announced.cardGiven : announced.cardReceived;
+  const inStage = winner ? stages.receive : stages.give;
+  const outStage = winner ? stages.give : stages.receive;
+  const withheldIds: string[] = [];
+  if (incoming && inStage !== "landed" && holds(incoming)) withheldIds.push(incoming.id);
+  if (outgoing && outStage !== "waiting" && holds(outgoing)) withheldIds.push(outgoing.id);
+  const slot = incoming && inStage === "tuck" ? hand.findIndex((c) => c.id === incoming.id) : -1;
+  return {
+    lent: outgoing && outStage === "waiting" && !holds(outgoing) ? outgoing : undefined,
+    withheldIds,
+    // A card the ceremony names but the hand does not hold parts nothing: a gap
+    // with nothing ever descending into it would stay open all game.
+    arrivingIndex: slot < 0 ? undefined : slot,
+    descendingId: incoming?.id,
+    receivedId: incoming && inStage === "landed" ? incoming.id : undefined,
   };
 }
 
@@ -100,20 +175,17 @@ const JOKER_SPREAD = 18;
 
 /** The exchange's legs, in the pile-relative points a throw flies in: from a fan or the card's own hand slot, through the pile. */
 export function readExchangeLegs(
-  input: SeatGeometry & { announced: ExchangeAnnounceData },
+  announced: ExchangeAnnounceData,
+  layout: TableLayout,
+  seating: Seating,
   handOrigins?: ReadonlyMap<string, CardFrom>
 ): { receive: LegPoints; give: LegPoints; jokers: LegPoints[] } {
-  const { announced } = input;
   const end = (seat: number, card?: Card) => {
-    const dir = seatDirection(seat, input.viewerSeat, input.players.length);
-    const origin = seatPoint(input, dir);
-    if (dir === "bottom") {
-      const own = card && handOrigins?.get(card.id);
-      const at = own ? { ...own, x: own.x + origin.dx, y: own.y + origin.dy } : { x: origin.dx, y: origin.dy, rot: 0, scale: HAND_SCALE / FIELD_SCALE };
-      return { at, face: true };
-    }
-    const player = input.players[seat];
-    return { at: { ...fanPoint(origin, dir, input.scale, player ? handCountOf(player) : 0), scale: FAN_CARD_SCALE }, face: false };
+    const dir = seatDirection(seat, seating.viewerSeat, seating.players.length);
+    const origin = layout.seatPoint(dir);
+    if (dir === "bottom") return { at: ownSlotFrom(origin, card && handOrigins?.get(card.id)), face: true };
+    const player = seating.players[seat];
+    return { at: { ...fanPoint(origin, dir, layout.scale, player ? handCountOf(player) : 0), scale: FAN_CARD_SCALE }, face: false };
   };
   // The receiving hand draws no slot for the card until it lands, so it arrives at the row's centre and descends from there.
   const leg = (giver: number, receiver: number, card: Card | undefined, rest = restPoint()): LegPoints => {

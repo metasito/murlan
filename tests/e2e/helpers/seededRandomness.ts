@@ -3,8 +3,8 @@ import { mulberry32 } from "../../support/game.ts";
 
 /**
  * Every deal and every bot choice in the page from one `mulberry32(seed)` stream, so a spec that
- * plays a round plays the same round on every run. `withSeededDeals` (tests/helpers/offlineMatch.ts)
- * is the same swap for a match simulated in Node. Must run before the first navigation.
+ * plays a round plays the same round on every run. A match simulated in Node passes `rng(seed).source`
+ * to the deal instead (tests/helpers/offlineMatch.ts). Must run before the first navigation.
  */
 export async function seedRandomness(page: Page, seed: number): Promise<void> {
   const install = (generator: typeof mulberry32, seed: number) => {

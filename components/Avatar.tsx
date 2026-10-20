@@ -56,6 +56,7 @@ export function Avatar({
           name="person-add-outline"
           size={Math.round(diameter * GLYPH_RATIO)}
           color={Colors.textMuted}
+          {...a11yHidden()}
         />
       ) : (
         <Text style={[styles.initial, { fontSize: INITIAL[size] }]}>

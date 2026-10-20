@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { botChoosePlay, opponentsOf } from "../../lib/game/bot.ts";
 import {
   buildCombination,
-  initializeGame,
+  startRound,
   processPass,
   processPlay,
 } from "../../lib/game/gameEngine.ts";
@@ -184,13 +184,8 @@ test("a bot that can go out still goes out on its partner's play", () => {
 // and a bot protecting one seat while the score credits another would be
 // silent.
 test("the seat opponentsOf protects is the one Player.team calls a teammate", () => {
-  const state = initializeGame(
-    Array.from({ length: 4 }, (_, i) => ({
-      name: `bot${i}`,
-      type: "bot" as const,
-      personality: "gent" as const,
-      team: (i % 2 === 0 ? "A" : "B") as "A" | "B",
-    })),
+  const state = startRound(
+    Array.from({ length: 4 }, (_, i) => ({ name: `bot${i}`, type: "bot" as const, personality: "gent" as const })),
     "teams"
   );
 
@@ -208,13 +203,8 @@ test("the seat opponentsOf protects is the one Player.team calls a teammate", ()
 // teams round through `opponentsOf`, so it is what would catch a pass rule that
 // stalls a table rather than one that misjudges a single turn.
 test("a full teams round played through opponentsOf still reaches game over", () => {
-  let state = initializeGame(
-    Array.from({ length: 4 }, (_, i) => ({
-      name: `bot${i}`,
-      type: "bot" as const,
-      personality: "gent" as const,
-      team: (i % 2 === 0 ? "A" : "B") as "A" | "B",
-    })),
+  let state = startRound(
+    Array.from({ length: 4 }, (_, i) => ({ name: `bot${i}`, type: "bot" as const, personality: "gent" as const })),
     "teams"
   );
 

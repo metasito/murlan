@@ -4,14 +4,14 @@
  * caller's, through `onState`.
  */
 import { spawn } from "node:child_process";
-import { createWriteStream, mkdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { BASH_DEFAULT_TIMEOUT_MS, CHECK_BASH_TIMEOUT_MS, SESSION_POLICY, STALL_MS, sleepClock } from "./limits.mjs";
 import { closePhase, readLine, reduceSession, sessionStart } from "./loop-stream.mjs";
 import { spawnEnv } from "./session-env.mjs";
 import { estimateCost } from "./loop-cost.mjs";
-import { DIR, streamLog } from "./loop-logs.mjs";
+import { DIR, streamLog, streamRecorder } from "./loop-logs.mjs";
 import { ticker } from "./loop-screen.mjs";
 import { ROOT } from "./paths.mjs";
 import { openTicket, roundOf, sessionView, ticketFacts } from "./loop-board.mjs";
@@ -42,8 +42,7 @@ export function runSession(
     proc = realProc,
   },
 ) {
-  mkdirSync(path.dirname(log), { recursive: true });
-  const sink = createWriteStream(log, { flags: "a" });
+  const sink = streamRecorder(log);
   const startedAt = Date.now();
   let state = sessionStart(at, startedAt);
   let heardAt = startedAt;
@@ -72,7 +71,7 @@ export function runSession(
     proc.stopTree(child.pid, { graceMs: killGraceMs }).catch((err) => onStderr(`${err.message}\n`));
 
   createInterface({ input: child.stdout }).on("line", (line) => {
-    sink.write(`${line}\n`);
+    sink.line(line);
     heardAt = Date.now();
     const next = reduceSession(state, line, { now: heardAt, at, planned });
     state = next.state;
