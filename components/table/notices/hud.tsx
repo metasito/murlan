@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { A11yStatus, a11yGroup, a11yHidden } from "@/lib/a11y";
@@ -9,6 +9,7 @@ import { urgentThresholdSeconds, CLOCK_RUNNING_OUT_SECONDS } from "@/components/
 import { NoticeDot, NoticeKey, NoticeText, TableNotice } from "../TableNotice";
 import { noticeBox } from "../noticeModel";
 import { useClockFade } from "../useClockFade";
+import { useCountdown } from "../countdown";
 
 /**
  * The name run, capped so a long username ellipsizes rather than pushing the
@@ -89,52 +90,16 @@ export function TurnChip({
 }) {
   const { tn } = useTranslation();
   const connection = carried?.state === "reconnected" && active ? null : carried;
-  const [timeLeft, setTimeLeft] = useState(seconds);
-  // Written after commit, never during render: the only reader is the interval
-  // below, which fires a second later at the earliest.
-  const onExpireRef = useRef(onExpire);
-  const timeLeftRef = useRef(timeLeft);
+  const { left: timeLeft } = useCountdown({ seconds, resetKey: `${resetKey}|${active}`, running: active, held: frozen, onExpire });
+  const window = `${resetKey}|${seconds}|${active}`;
+  const runningOut = active && !frozen && timeLeft > 0 && timeLeft <= CLOCK_RUNNING_OUT_SECONDS;
+  const sounded = useRef("");
   useEffect(() => {
-    onExpireRef.current = onExpire;
-    timeLeftRef.current = timeLeft;
-  });
-
-  // Which clock is on the table. Anything that names a different one puts the
-  // countdown back to full in the same render, so the first frame of a turn
-  // never shows the last one's remainder.
-  const clock = `${resetKey}|${seconds}|${active}`;
-  const [shownClock, setShownClock] = useState(clock);
-  if (clock !== shownClock) {
-    setShownClock(clock);
-    setTimeLeft(seconds);
-  }
-
-  useEffect(() => {
-    if (!active || frozen || timeLeftRef.current <= 0) return;
-    let remaining = timeLeftRef.current;
-    let sounding = false;
-    const stop = () => {
-      if (sounding) silence("clockRunningOut");
-      sounding = false;
-    };
-    const id = setInterval(() => {
-      remaining -= 1;
-      setTimeLeft(remaining);
-      if (!sounding && remaining > 0 && remaining <= CLOCK_RUNNING_OUT_SECONDS) {
-        sounding = true;
-        event([{ kind: "clockRunningOut" }]);
-      }
-      if (remaining <= 0) {
-        clearInterval(id);
-        stop();
-        onExpireRef.current?.();
-      }
-    }, 1000);
-    return () => {
-      clearInterval(id);
-      stop();
-    };
-  }, [active, frozen, resetKey, seconds]);
+    if (!runningOut || sounded.current === window) return;
+    sounded.current = window;
+    event([{ kind: "clockRunningOut" }]);
+    return () => silence("clockRunningOut");
+  }, [runningOut, window]);
 
   const count = useClockFade(active && revealed && !connection ? timeLeft : null, String);
   const countFade = useAnimatedStyle(() => ({ opacity: count.opacity.value }));

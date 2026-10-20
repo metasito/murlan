@@ -183,6 +183,25 @@ describe("a seat's turn clock", () => {
     await view.unmount();
   });
 
+  it("counts on from a hold to the millisecond the ring holds, not from a whole second", async () => {
+    const ui = (ownLink: OwnLink) => table(state({ currentTurnIndex: 0, lastPlayedCombination: single(KING), lastPlayedBy: 3 }), OFFLINE_TIMER, ownLink);
+    const count = () => screen.getByTestId('turn-chip-count', { includeHiddenElements: true }).props.children;
+    const advance = async (ms: number) => {
+      await act(async () => {
+        jest.advanceTimersByTime(ms);
+      });
+    };
+    const view = await render(ui('up'));
+    await advance(5500);
+    await view.rerender(ui('reconnecting'));
+    await advance(10000);
+    await view.rerender(ui('up'));
+    await advance(600);
+    const ringRemaining = OFFLINE_TIMER.seconds * 1000 - 5500 - 600;
+    expect(count()).toBe(Math.ceil(ringRemaining / 1000));
+    await view.unmount();
+  });
+
   it('holds its sweep while a caught-up throw is in the air, and never for an ordinary one', async () => {
     mockReduceMotion.on = false;
     const right = () => parseFloat((getAnimatedStyle(screen.getByTestId('seat-turn-clock-right')) as { transform: { rotate: string }[] }).transform[0].rotate);

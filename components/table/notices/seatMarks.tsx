@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useTranslation } from "@/lib/i18n";
 import { NoticeText, TableNotice } from "../TableNotice";
 import { markAt, mockupPx } from "../noticeModel";
+import { useCountdown } from "../countdown";
 
 /** Any width past the widest mark: the slot only centres it. */
 const MARK_SLOT = 120;
@@ -27,30 +27,11 @@ export function PassedMark({ side, disc, scale }: { side: "top" | "side"; disc: 
 
 /**
  * A seat's own disconnect countdown, for the whole grace (docs/GAME-RULES.md § Decisions). Ticks
- * locally off the server's own `seconds`, restarted by `resetKey` the same way `TurnChip` is.
+ * locally off the server's own `seconds`, restarted by `resetKey`.
  */
 export function ReconnectingMark({ seconds, resetKey, scale }: { seconds: number; resetKey: string; scale: number }) {
   const { t } = useTranslation();
-  const [left, setLeft] = useState(seconds);
-
-  // A new grace window puts the countdown back to full in the same render, so
-  // its first frame is never the previous one's remainder.
-  const graceWindow = `${resetKey}|${seconds}`;
-  const [shownWindow, setShownWindow] = useState(graceWindow);
-  if (graceWindow !== shownWindow) {
-    setShownWindow(graceWindow);
-    setLeft(seconds);
-  }
-
-  useEffect(() => {
-    let remaining = seconds;
-    const id = setInterval(() => {
-      remaining -= 1;
-      setLeft(Math.max(0, remaining));
-      if (remaining <= 0) clearInterval(id);
-    }, 1000);
-    return () => clearInterval(id);
-  }, [resetKey, seconds]);
+  const { left } = useCountdown({ seconds, resetKey, running: true });
 
   return (
     <TableNotice kind="reconnecting" tone="neutral" scale={scale}>

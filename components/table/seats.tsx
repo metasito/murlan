@@ -33,6 +33,7 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import type { DealArrivals } from "./deal";
 import { useClockFade } from "./useClockFade";
+import { useCountdown } from "./countdown";
 import type { RingFlash } from "./ExchangeLegs";
 import Svg, { Path } from "react-native-svg";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -275,21 +276,22 @@ export function CountdownRing({
   const urgent = useSharedValue(0);
   const pulse = useSharedValue(1);
   const reduceMotion = usePrefersReducedMotion();
-  const ran = useRef({ clock: "", ms: 0 });
+  const { elapsedMs } = useCountdown({ seconds, resetKey, running: true, held, quiet: true });
+  const armed = useRef("");
 
   useEffect(() => {
+    const ranMs = elapsedMs();
     const clock = `${resetKey}|${seconds}`;
-    if (ran.current.clock !== clock) {
-      ran.current = { clock, ms: 0 };
+    if (armed.current !== clock) {
+      armed.current = clock;
       swept.value = 0;
       urgent.value = 0;
       pulse.value = 1;
     }
     if (held) return;
-    const since = Date.now();
-    const leftMs = Math.max(seconds * 1000 - ran.current.ms, 0);
+    const leftMs = Math.max(seconds * 1000 - ranMs, 0);
     const urgentFor = urgentThresholdSeconds(seconds);
-    const calmMs = Math.max(Math.max(seconds - urgentFor, 0) * 1000 - ran.current.ms, 0);
+    const calmMs = Math.max(Math.max(seconds - urgentFor, 0) * 1000 - ranMs, 0);
     // The delay is the clock itself, not motion: under the system's reduced
     // motion Reanimated would skip it and turn the ring red at once.
     urgent.value = withDelay(
@@ -310,13 +312,12 @@ export function CountdownRing({
       }
     }
     return () => {
-      ran.current.ms += Date.now() - since;
       cancelAnimation(swept);
       cancelAnimation(urgent);
       cancelAnimation(pulse);
       pulse.value = 1;
     };
-  }, [resetKey, seconds, held, reduceMotion, swept, urgent, pulse]);
+  }, [resetKey, seconds, held, reduceMotion, swept, urgent, pulse, elapsedMs]);
 
   // Each half of the ring turns out of its own clip, clockwise from twelve
   // o'clock: a transform the compositor runs, where an animated stroke prop
