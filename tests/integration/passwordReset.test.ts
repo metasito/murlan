@@ -20,7 +20,6 @@ import { execFile } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import pg from "pg";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { dropped, reconnectWith, register } from "../helpers/client.ts";
 
@@ -78,13 +77,8 @@ describe("owner password reset", { skip: hasDatabase() ? false : skipMessage() }
 
     const after = await fetch(`${server.url}/api/auth/me`, { headers: { cookie } });
     assert.equal(after.status, 401, "a session from before the reset must be dead");
-    const db = new pg.Pool({ connectionString: process.env.DATABASE_URL });
-    try {
-      const tokens = await db.query("SELECT 1 FROM push_tokens WHERE user_id = $1", [user.id]);
-      assert.equal(tokens.rowCount, 0, "a push token from before the reset must be gone");
-    } finally {
-      await db.end();
-    }
+    const tokens = await server.query("SELECT 1 FROM push_tokens WHERE user_id = $1", [user.id]);
+    assert.equal(tokens.length, 0, "a push token from before the reset must be gone");
     assert.equal(await redeemAuthToken(resetToken, "password_reset"), null, "an unredeemed reset token must be dead");
   });
 

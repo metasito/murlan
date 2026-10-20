@@ -2,7 +2,6 @@
 // recorded with the reason Socket.IO itself gave for it.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import pg from "pg";
 import {
   startTestServer,
   hasDatabase,
@@ -13,25 +12,20 @@ import { connectAs } from "../helpers/client.ts";
 
 describe("socket close reason", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  let dbPool: pg.Pool;
 
   before(async () => {
     server = await startTestServer();
-    dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
   });
 
   after(async () => {
-    await dbPool.end();
     await server.stop();
   });
 
   const closesFor = async (userId: string) =>
-    (
-      await dbPool.query<{ context: { reason?: string } }>(
-        `SELECT context FROM "${server.schema}".events WHERE name = 'socket.closed' AND user_id = $1`,
-        [userId]
-      )
-    ).rows;
+    server.query<{ context: { reason?: string } }>(
+      `SELECT context FROM "${server.schema}".events WHERE name = 'socket.closed' AND user_id = $1`,
+      [userId]
+    );
 
   /** The write is fire-and-forget, so it lands just after the disconnect. */
   async function settle(userId: string, want: number) {

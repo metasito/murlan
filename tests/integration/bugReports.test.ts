@@ -8,7 +8,6 @@
 // proves only that the happy path works.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import pg from "pg";
 import {
   startTestServer,
   hasDatabase,
@@ -44,7 +43,6 @@ describe("bug reports", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let cookie: string;
   let capCookie: string;
   let capCookie2: string;
-  let dbPool: pg.Pool;
   let sweepRetention: typeof import("../../server/game/retention.ts").sweepRetention;
   let retentionDays: number;
   // Unique per run: the suite must be runnable twice against the same
@@ -56,14 +54,12 @@ describe("bug reports", { skip: hasDatabase() ? false : skipMessage() }, () => {
     ({ cookie } = await register(server, `bug_reporter_${suffix}`));
     ({ cookie: capCookie } = await register(server, `bug_caps_${suffix}`));
     ({ cookie: capCookie2 } = await register(server, `bug_caps2_${suffix}`));
-    dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
     // After startTestServer, never at file scope — see the CAP comment above
     // for why a module reaching server/store/db.ts cannot be imported any earlier.
     ({ sweepRetention } = await import("../../server/game/retention.ts"));
     ({ BUG_REPORT_RETENTION_DAYS: retentionDays } = await import("../../server/http/bugReports.ts"));
   });
   after(async () => {
-    await dbPool.end();
     await server.stop();
   });
 
@@ -89,7 +85,7 @@ describe("bug reports", { skip: hasDatabase() ? false : skipMessage() }, () => {
     });
     assert.equal(res.status, 201);
 
-    const { rows } = await dbPool.query(
+    const rows = await server.query(
       `SELECT description, screen, app_version, platform, locale, resolved
          FROM "${server.schema}".bug_reports WHERE description = $1`,
       [description]
@@ -140,15 +136,13 @@ describe("bug reports", { skip: hasDatabase() ? false : skipMessage() }, () => {
   });
 
   test("retention is off the write path, and the scheduled sweep still works", async () => {
-    await dbPool.query(
+    await server.query(
       `INSERT INTO "${server.schema}".bug_reports (user_id, description, created_at)
        VALUES ($1, $2, now() - make_interval(days => $3))`,
       [(await register(server, `bug_aged_${suffix}`)).user.id, "aged out", retentionDays + 1]
     );
     const aged = async () =>
-      (
-        await dbPool.query(`SELECT 1 FROM "${server.schema}".bug_reports WHERE description = 'aged out'`)
-      ).rowCount;
+      (await server.query(`SELECT 1 FROM "${server.schema}".bug_reports WHERE description = 'aged out'`)).length;
 
     assert.equal(await aged(), 1);
 

@@ -3,6 +3,7 @@ import type { Server as HttpServer } from "node:http";
 import type { Express } from "express";
 import type { Server as SocketIOServer } from "socket.io";
 import type { TableRuntime } from "../../server/game/tableRuntime.ts";
+import type { db as appDb } from "../../server/store/db.ts";
 // Pure by design: importing anything that reaches server/store/db.ts from module
 // scope here would build the app's Pool before startTestServer() has pointed
 // DATABASE_URL at the throwaway schema.
@@ -32,9 +33,7 @@ process.env.MURLAN_SOCKET_ADAPTER_POOL_MAX ??= "2";
 /**
  * `/api/auth/register` allows 100 per process in production, which is still
  * only about thirty-five tables — a suite reaches it and every later
- * registration comes back 429 with nothing tying it to the cap. Set here for
- * the same reason as the pool size: before anything imports
- * server/http/routes/auth.ts, which reads it once.
+ * registration comes back 429 with nothing tying it to the cap.
  */
 process.env.MURLAN_AUTH_RATE_LIMIT ??= "200";
 
@@ -62,8 +61,7 @@ process.env.MURLAN_CHANGE_PASSWORD_RATE_LIMIT ??= "5";
 
 /**
  * register's per-email limiter (#892) already defaults to 5 in production —
- * set here anyway, before server/http/routes/auth.ts is imported, so a test never
- * depends on that default staying where it is.
+ * set here anyway, so a test never depends on that default staying where it is.
  */
 process.env.MURLAN_REGISTER_EMAIL_RATE_LIMIT ??= "5";
 
@@ -123,6 +121,10 @@ export interface TestServer {
   io: SocketIOServer;
   rt: TableRuntime;
   httpServer: HttpServer;
+  /** The app's own database handle, on its own pool; unusable after `stop()`. */
+  db: typeof appDb;
+  /** Raw SQL on the app's pool, for fixtures and assertions; unusable after `stop()`. */
+  query<R = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<R[]>;
   stop(): Promise<void>;
 }
 
@@ -132,6 +134,7 @@ export function scopedDatabaseUrl(baseUrl: string, schema: string): string {
 }
 
 export async function dropSchema(baseUrl: string, schema: string): Promise<void> {
+  // Unscoped, and after the app's pool has ended: the schema it drops is that pool's whole search_path.
   const cleanup = new pg.Pool({ connectionString: baseUrl });
   try {
     // A SIGKILLed server's backend runs on until its query ends, holding locks the DROP needs:
@@ -171,6 +174,7 @@ export async function startTestServer(
 ): Promise<TestServer> {
   const schema = `test_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
   const baseUrl = process.env.DATABASE_URL!;
+  // Before the app exists: the schema this creates is the one the app is then pointed at.
   const admin = new pg.Pool({ connectionString: baseUrl });
   await admin.query(`CREATE SCHEMA "${schema}"`);
   await admin.end();
@@ -201,7 +205,7 @@ export async function startTestServer(
     // store, storage) resolved — Node's ESM cache is keyed by specifier, so
     // this is the one live `pg.Pool` the running app holds open, not a new
     // one.
-    const { pool: appPool } = await import("../../server/store/db.ts");
+    const { pool: appPool, db } = await import("../../server/store/db.ts");
     const { app, server, io, rt } = await createApp();
     server.keepAliveTimeout = KEEP_ALIVE_MS;
     // Node refuses to read headers for longer than it will hold the socket.
@@ -222,6 +226,10 @@ export async function startTestServer(
       io,
       rt,
       httpServer: server,
+      db,
+      async query<R>(sql: string, params?: unknown[]) {
+        return (await appPool.query(sql, params)).rows as R[];
+      },
       async stop() {
         try {
           // Held, not fired and forgotten: `close()` is async and awaits the

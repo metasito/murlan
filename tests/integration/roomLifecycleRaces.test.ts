@@ -2,7 +2,6 @@
 // before it writes waits on the rooms row, so no two of them interleave.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import pg from "pg";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { connectAs, register, waitFor } from "../helpers/client.ts";
 import { holdRowLock } from "../helpers/userLock.ts";
@@ -10,17 +9,14 @@ import type { Client, RoomState, SanitizedState } from "../helpers/table.ts";
 
 describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  let pool: pg.Pool;
   const clients: Client[] = [];
   let n = 0;
 
   before(async () => {
     server = await startTestServer();
-    pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
   });
   after(async () => {
     for (const c of clients) if (c.socket.connected) c.socket.close();
-    await pool?.end();
     if (server) await server.stop();
   });
 
@@ -48,10 +44,10 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
   }
 
   const lockRoom = (roomId: string) =>
-    holdRowLock(pool, "SELECT id FROM rooms WHERE id = $1 FOR UPDATE", [roomId]);
+    holdRowLock("SELECT id FROM rooms WHERE id = $1 FOR UPDATE", [roomId]);
 
   async function roomRow(roomId: string) {
-    const { rows } = await pool.query<{ status: string; host_user_id: string }>(
+    const rows = await server.query<{ status: string; host_user_id: string }>(
       "SELECT status, host_user_id FROM rooms WHERE id = $1",
       [roomId]
     );
@@ -59,7 +55,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
   }
 
   async function seats(roomId: string) {
-    const { rows } = await pool.query<{ user_id: string; seat_index: number }>(
+    const rows = await server.query<{ user_id: string; seat_index: number }>(
       "SELECT user_id, seat_index FROM room_players WHERE room_id = $1 ORDER BY seat_index",
       [roomId]
     );
@@ -204,12 +200,12 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
 
   test("176: quick-match does not seat a stranger in a room that just went private", () =>
     quickmatchAfter(3, async (roomId) => {
-      await pool.query("UPDATE rooms SET visibility = 'private' WHERE id = $1", [roomId]);
+      await server.query("UPDATE rooms SET visibility = 'private' WHERE id = $1", [roomId]);
     }));
 
   test("122: quick-match does not seat a stranger in a room that just emptied", () =>
     quickmatchAfter(4, async (roomId, hostId) => {
-      await pool.query("DELETE FROM room_players WHERE room_id = $1 AND user_id = $2", [roomId, hostId]);
+      await server.query("DELETE FROM room_players WHERE room_id = $1 AND user_id = $2", [roomId, hostId]);
     }));
 
   test("177: a join broadcasts the host the room has now, not the one it read", async () => {
@@ -269,7 +265,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     const room = await lobby(hold ? [host!] : [host!, guest!], 4, gameMode);
     if (hold) {
       const { user: invitee } = await register(server, `race_inv_${n++}_${Date.now().toString(36)}`);
-      await pool.query(
+      await server.query(
         "INSERT INTO game_invites (room_id, inviter_id, invitee_id) VALUES ($1, $2, $3)",
         [room.roomId, host!.user.id, invitee.id]
       );
@@ -335,7 +331,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
       activeGameStore.write = real;
     }
     assert.equal(held, 1);
-    const { rows } = await pool.query<{ game_state: { match: { roundsPlayed: number } } }>(
+    const rows = await server.query<{ game_state: { match: { roundsPlayed: number } } }>(
       "SELECT game_state FROM active_games WHERE room_id = $1",
       [room.roomId]
     );
