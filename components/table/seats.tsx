@@ -251,7 +251,7 @@ const clockKey = (c: SeatCountdown) => `${c.resetKey}|${c.seconds}|${c.held}`;
  * turn changing rather than by a deadline of its own — there is no per-seat
  * deadline to read, online or off.
  */
-function CountdownRing({
+export function CountdownRing({
   size,
   seconds,
   resetKey,
@@ -298,11 +298,11 @@ function CountdownRing({
     if (!reduceMotion) {
       swept.value = withTiming(1, { duration: leftMs, easing: Easing.linear });
       const dim = { duration: RING_PULSE_MS / 2, easing: Easing.inOut(Easing.sin) };
-      const beats = pulseRepeats(urgentFor * 1000, leftMs);
-      if (beats >= 1) {
+      const urgentMs = urgentFor * 1000;
+      if (pulseRepeats(urgentMs, leftMs) >= 1) {
         pulse.value = withDelay(
           calmMs,
-          withRepeat(withSequence(withTiming(RING_PULSE_LOW, dim), withTiming(1, dim)), beats),
+          withRepeat(withSequence(withTiming(RING_PULSE_LOW, dim), withTiming(1, dim)), pulseRepeats(urgentMs, leftMs)),
           ReduceMotion.Never
         );
       }
