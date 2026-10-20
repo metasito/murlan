@@ -11,6 +11,8 @@ public final class MurlanDiagnosticsModule: Module {
   private var appOnsets = OnsetDetector(source: "app", levels: true)
   private var micOnsets = OnsetDetector(source: "mic", levels: false)
   private var shakes = ShakeDetector()
+  private var capture = 0
+  private var motionRun = 0
   private let motion = CMMotionManager()
 
   public func definition() -> ModuleDefinition {
@@ -32,18 +34,21 @@ public final class MurlanDiagnosticsModule: Module {
     Function("inputLatencyMs") { () -> Double in AVAudioSession.sharedInstance().inputLatency * 1000 }
 
     AsyncFunction("startCapture") { (mic: Bool, promise: Promise) in
-      self.queue.sync {
+      // Buffers the last capture still has queued would feed the fresh detectors.
+      let run = self.queue.sync { () -> Int in
+        self.capture += 1
         self.appOnsets = OnsetDetector(source: "app", levels: true)
         self.micOnsets = OnsetDetector(source: "mic", levels: false)
+        return self.capture
       }
       let recorder = RPScreenRecorder.shared()
       recorder.isMicrophoneEnabled = mic
       recorder.startCapture(handler: { [weak self] buffer, type, error in
         guard let self, error == nil else { return }
-        switch type {
-        case .audioApp: self.queue.async { self.keep(self.appOnsets.feed(buffer)) }
-        case .audioMic: self.queue.async { self.keep(self.micOnsets.feed(buffer)) }
-        default: return
+        guard type == .audioApp || type == .audioMic else { return }
+        self.queue.async {
+          guard self.capture == run else { return }
+          self.keep(type == .audioApp ? self.appOnsets.feed(buffer) : self.micOnsets.feed(buffer))
         }
       }, completionHandler: { error in
         if let error { promise.reject("E_CAPTURE", error.localizedDescription) } else { promise.resolve(true) }
@@ -58,12 +63,16 @@ public final class MurlanDiagnosticsModule: Module {
 
     Function("startMotion") { () -> Bool in
       guard self.motion.isAccelerometerAvailable else { return false }
-      self.queue.sync { self.shakes = ShakeDetector() }
+      let run = self.queue.sync { () -> Int in
+        self.motionRun += 1
+        self.shakes = ShakeDetector()
+        return self.motionRun
+      }
       self.motion.accelerometerUpdateInterval = 0.01
       let operations = OperationQueue()
       operations.underlyingQueue = self.queue
       self.motion.startAccelerometerUpdates(to: operations) { [weak self] data, _ in
-        guard let self, let data else { return }
+        guard let self, let data, self.motionRun == run else { return }
         let a = data.acceleration
         self.keep(self.shakes.feed(t: data.timestamp * 1000, x: a.x, y: a.y, z: a.z))
       }
@@ -81,9 +90,9 @@ public final class MurlanDiagnosticsModule: Module {
     }
   }
 
-  /// On `queue`. Drops the oldest rows past the cap, so a bench nobody drains cannot grow without bound.
+  /// On `queue`.
   private func keep(_ new: [[String: Any]]) {
     rows.append(contentsOf: new)
-    if rows.count > Self.maxRows { rows.removeFirst(rows.count - Self.maxRows) }
+    if rows.count > Self.maxRows { rows.removeFirst(rows.count - Self.maxRows * 9 / 10) }
   }
 }

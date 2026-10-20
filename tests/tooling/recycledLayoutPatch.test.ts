@@ -38,7 +38,7 @@ test("the override resets a recycled view to EmptyLayoutMetrics after React Nati
   assert.match(source, /_layoutMetrics = EmptyLayoutMetrics;/);
 });
 
-test("the pod that compiles the override is one the app imports, so its +load runs in every release", () => {
+test("the pod that compiles the override is a dependency of the AppDelegate, so every release links it", () => {
   const pod = podOf(path.join(repoRoot, OVERRIDE));
   assert.match(pod.sourceFiles, /^\*\.\{[^}]*\bmm\b[^}]*\}$/);
   assert.ok(patchedAppDelegate().includes(`\ninternal import ${pod.name}\n`), `the AppDelegate no longer imports ${pod.name}`);
