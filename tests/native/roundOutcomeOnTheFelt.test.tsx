@@ -78,7 +78,7 @@ async function closeRound(c: (typeof CASES)[number]) {
   await bootFeedback();
   const motes = jest.spyOn(particles, 'roundMotes');
   const trauma = jest.spyOn(impact, 'traumaFor');
-  const level = jest.spyOn(lampControls, 'setLevel');
+  const level = jest.spyOn(lampControls, 'hold');
   const sent = jest.spyOn(feedback, 'event');
   const aimBefore = target.mock.calls.at(-1)?.[1] as Pool | undefined;
   target.mockClear();
@@ -131,14 +131,14 @@ describe("a round's outcome on the felt", () => {
       expect(aimBefore).toBeDefined();
       expect(aimAfter?.slice(0, 2)).not.toEqual(turns ? aimBefore!.slice(0, 2) : undefined);
       if (!turns) expect(target.mock.calls.every(([, pool]) => pool[0] === aimBefore![0] && pool[1] === aimBefore![1])).toBe(true);
-      const dims = level.mock.calls.filter(([, to, rate]) => to === RoundMoment.lostLevel && rate === RoundMoment.lostLevelRate);
+      const dims = level.mock.calls.filter(([, owner, to, rate]) => owner === 'lost' && to === RoundMoment.lostLevel && rate === RoundMoment.lostLevelRate);
       expect(dims.length > 0).toBe(c.outcome === 'lost');
 
       level.mockClear();
       await act(async () => r.rerender(table(c, false)));
       await settle(100);
       expect(lit(r)).toBe(0);
-      const released = level.mock.calls.some(([, to, rate]) => to === 1 && rate === RoundMoment.releaseRate);
+      const released = level.mock.calls.some(([, owner, to, rate]) => owner === 'lost' && to === null && rate === RoundMoment.releaseRate);
       expect(released).toBe(c.outcome === 'lost');
       expect((target.mock.calls.at(-1)?.[1] ?? aimBefore!).slice(0, 2)).toEqual(aimBefore!.slice(0, 2));
       await r.unmount();

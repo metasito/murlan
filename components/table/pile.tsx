@@ -581,7 +581,7 @@ export interface PileFlightInput {
   matchOver: boolean;
   viewerWon: boolean;
   /** The table's one timeline: a throw's landing sound waits there for the flight's reported contact. */
-  timeline: Pick<TableTimeline, "awaitFlight" | "moment" | "flightStarted" | "drop">;
+  timeline: Pick<TableTimeline, "awaitFlight" | "moment" | "flightStarted" | "drop" | "inFlight" | "landsAt">;
   celebrateGoingOut: () => void;
   /** Each flight's clock, once, as it starts — the same clock the bomb's scrim is drawn from. */
   onClock?: (key: string, clock: FlightClock) => void;
@@ -600,6 +600,9 @@ export interface PileFlightInput {
  * The flying card, the pile under it and the trick-winner tag over it, derived
  * straight from the game state so a card can never be shown twice or dropped.
  * CLAUDE.md marks this load-bearing.
+ *
+ * `ending.landedAt` is the landing of the play that ended the round, or when `roundOver` was first
+ * seen if nothing flew for it; `ending` is null while the round runs or that play flies.
  */
 export function usePileFlight({
   lastPlayedCombination,
@@ -620,7 +623,7 @@ export function usePileFlight({
   restored,
 }: PileFlightInput) {
   const reduceMotion = usePrefersReducedMotion();
-  const { awaitFlight, moment, flightStarted, drop } = timeline;
+  const { awaitFlight, moment, flightStarted, drop, inFlight, landsAt } = timeline;
   useTraceSource("flight", readFlightFromDom);
 
   // The seat that took the last trick and a counter of how many tricks have
@@ -632,6 +635,7 @@ export function usePileFlight({
   );
   const [trick, setTrick] = useState<Trick>(NO_TRICK);
   const [flights, setFlights] = useState<Flight[]>([]);
+  const [endedAt, setEndedAt] = useState<number | null>(null);
   const flightsRef = useRef(flights);
   useEffect(() => {
     flightsRef.current = flights;
@@ -675,6 +679,15 @@ export function usePileFlight({
     },
     []
   );
+
+  // An effect, never render: the commit that ends the round has not yet taken its throw, so a
+  // render would see the ending before the flight it waits for.
+  const endedSeen = useRef(false);
+  useEffect(() => {
+    if (endedSeen.current === roundOver) return;
+    endedSeen.current = roundOver;
+    setEndedAt(roundOver ? performance.now() : null);
+  }, [roundOver]);
 
   // The dedupe on `prevComboKeyRef` comes before anything with an effect, so a
   // re-run for one of the other dependencies leaves the pile, the flying card
@@ -830,8 +843,11 @@ export function usePileFlight({
   );
 
   const endSweep = useCallback(() => setTrick(sweepEnded), []);
+  const landedAt = endedAt === null || inFlight ? null : Math.max(landsAt ?? 0, endedAt);
+  const ending = useMemo(() => (landedAt === null ? null : { landedAt }), [landedAt]);
 
   return {
+    ending,
     trick,
     endSweep,
     flights,
