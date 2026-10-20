@@ -44,6 +44,7 @@ export function resolveStuckExchange(state: GameState): GameState {
  * `botChoosePlay`'s own, so a simulation can reproduce a match from one seed.
  */
 export function chooseMove(state: GameState, seat: number, strength: Strength, rng?: () => number): Move | null {
+  if (state.roundOver) return null;
   if (state.exchangePhase?.active) {
     if (state.exchangePhase.winnerIdx !== seat) return null;
     const chosen = pickGivebackCard(state.players[seat]?.hand ?? [], state.exchangePhase.cardFromLoser?.id);
@@ -93,7 +94,7 @@ export function chooseMove(state: GameState, seat: number, strength: Strength, r
 /** `move` null: the stuck exchange was closed, and nobody moved. */
 export type AutoMove = { state: GameState; move: AppliedMove | null };
 
-/** One automated action for a seat, or null when the seat cannot act at all. */
+/** One automated action for a seat, or null when the engine has nothing legal for it. Never throws. */
 export function autoMoveForSeat(
   state: GameState,
   seat: number,
@@ -102,12 +103,12 @@ export function autoMoveForSeat(
 ): AutoMove | null {
   const move = chooseMove(state, seat, strength, rng);
   if (!move) {
-    const stuck = state.exchangePhase?.active && state.exchangePhase.winnerIdx === seat && state.players[seat];
+    const stuck =
+      !state.roundOver && state.exchangePhase?.active && state.exchangePhase.winnerIdx === seat && state.players[seat];
     return stuck ? { state: resolveStuckExchange(state), move: null } : null;
   }
   const result = applyMove(state, seat, move);
-  if (!result.ok) throw new Error(`seat ${seat} chose a ${move.kind} the engine refuses: ${result.code}`);
-  return { state: result.state, move: result.move };
+  return result.ok ? { state: result.state, move: result.move } : null;
 }
 
 /** The offline table's bot turn: null unless a bot is to act, which it does at full strength. */

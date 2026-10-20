@@ -135,7 +135,7 @@ export function cardStrength(card: Card): number {
   return getRankStrength(card.rank);
 }
 
-export function getStraightFaceValue(rank: Rank, aceAsHigh: boolean): number | null {
+function getStraightFaceValue(rank: Rank, aceAsHigh: boolean): number | null {
   if (rank === "joker_bw" || rank === "joker_colored") return null;
   if (rank === "A") return aceAsHigh ? 14 : 1;
   const map: Partial<Record<Rank, number>> = {
@@ -147,7 +147,7 @@ export function getStraightFaceValue(rank: Rank, aceAsHigh: boolean): number | n
 
 // A straight is 5..13 cards. The rules impose no maximum beyond the 13
 // distinct straight positions available (the Ace picks one end, never both).
-export const STRAIGHT_MIN_LEN = 5;
+const STRAIGHT_MIN_LEN = 5;
 const STRAIGHT_MAX_LEN = 13;
 
 // Jokers are never part of a straight, so there is no joker substitution here:

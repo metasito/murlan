@@ -170,8 +170,13 @@ function moveAction(
 ): Promise<Outcome> | Outcome {
   const { roomId, userId, move } = action;
   const prev = game.gameState;
-  const result = applyMove(prev, seatOfUser(game.playerMap, userId) ?? -1, move);
-  if (!result.ok) return MOVE_REFUSAL_CODES[result.code](prev);
+  const seat = seatOfUser(game.playerMap, userId) ?? -1;
+  const result = applyMove(prev, seat, move);
+  if (!result.ok) {
+    // A seat on move with no player behind it in the state is a table that is not live, not a card refused.
+    if (result.code === "notHeld" && !prev.players[seat]) return { ok: false, code: "NO_LIVE_GAME" };
+    return MOVE_REFUSAL_CODES[result.code](prev);
+  }
 
   if (result.move.kind === "play") {
     // A count and a type, never card identities: enabling debug in production

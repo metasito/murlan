@@ -89,6 +89,8 @@ const CASES: Case[] = [
   { name: "a pass off turn", state: midTrick({ currentTurnIndex: 1 }), send: pass, code: "NOT_YOUR_TURN" },
   { name: "a pass by an unseated user", state: midTrick(), user: "u9", send: pass, code: "NOT_YOUR_TURN" },
   { name: "a pass on a new trick", state: midTrick({ lastPlayedCombination: null }), send: pass, code: "CANNOT_PASS", told: {} },
+  { name: "a giveback after the round is over", state: exchangeOpen({ roundOver: true }), send: giveback("5_spades"), code: "NO_LIVE_GAME" },
+  { name: "a play on turn at a seat with no player", state: midTrick({ players: midTrick().players.slice(0, 1), currentTurnIndex: 1 }), user: "u2", send: play("4_clubs"), code: "NO_LIVE_GAME" },
   { name: "a giveback with no exchange open", state: midTrick(), send: giveback("5_spades"), code: "NO_EXCHANGE" },
   { name: "a giveback by the loser", state: exchangeOpen(), user: "u2", send: giveback("4_clubs"), code: "NOT_YOUR_EXCHANGE" },
   { name: "a giveback by an unseated user", state: exchangeOpen(), user: "u9", send: giveback("5_spades"), code: "NOT_YOUR_EXCHANGE" },

@@ -273,6 +273,12 @@ describe("offlineBotMove", () => {
   test("leaves a human's turn alone", () => {
     assert.equal(offlineBotMove(leading("human")), null);
   });
+
+  // The e2e hook `murlanBotMove` calls this whenever a spec asks, round over or not.
+  test("answers null, never a throw, when the round is over", () => {
+    assert.equal(offlineBotMove({ ...leading("bot"), roundOver: true }), null);
+    assert.equal(autoMoveForSeat({ ...leading("bot"), roundOver: true }, 0, "bot"), null);
+  });
 });
 
 test("only lib/game/autoMove.ts reaches the bot heuristics in lib/game/bot.ts", () => {

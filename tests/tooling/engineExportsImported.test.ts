@@ -9,7 +9,8 @@ import ts from "typescript";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
 const ENGINE = path.join("lib", "game", "gameEngine.ts");
-const PRODUCTION = ["app", "components", "context", "lib", "server", "shared", "scripts"];
+/** Code that ships; a dev script alone keeps no engine export alive. */
+const RUNTIME = ["app", "components", "context", "lib", "server", "shared"];
 const ENGINE_SPEC = /(^|\/)gameEngine(\.ts)?$/;
 
 interface Source {
@@ -66,7 +67,7 @@ function engineImports(source: Source): { names: string[]; namespaces: string[] 
 }
 
 function productionSources(): Source[] {
-  return PRODUCTION.flatMap((dir) =>
+  return RUNTIME.flatMap((dir) =>
     readdirSync(path.join(root, dir), { recursive: true, encoding: "utf8" })
       .filter((f) => /\.(ts|tsx|mjs|js)$/.test(f) && !f.split(path.sep).includes("node_modules"))
       .map((f) => path.join(dir, f))
@@ -81,6 +82,7 @@ function audit(engineText: string, sources: Source[]) {
   const importers = new Set<string>();
   const namespaces: string[] = [];
   for (const source of sources) {
+    if (!RUNTIME.includes(source.rel.split(path.sep)[0])) continue;
     const found = engineImports(source);
     found.names.forEach((n) => imported.add(n));
     if (found.names.length > 0) importers.add(source.rel);
@@ -112,6 +114,15 @@ test("a planted export nobody imports is caught, and one production imports is n
     text: 'import { plantedUsed, type plantedTyped } from "./game/gameEngine.ts";\n',
   };
   assert.deepEqual(audit(planted, [...sources, importer]).unimported, ["plantedProbe", "plantedTyped"]);
+});
+
+test("an export only a dev script imports is caught: scripts are not runtime code", () => {
+  const planted = `${engineText}\nexport function plantedScriptOnly() {}\n`;
+  const script: Source = {
+    rel: path.join("scripts", "probeScript.ts"),
+    text: 'import { plantedScriptOnly } from "../lib/game/gameEngine.ts";\n',
+  };
+  assert.deepEqual(audit(planted, [...productionSources(), script]).unimported, ["plantedScriptOnly"]);
 });
 
 test("an export form the scan cannot name, or a namespace import, is reported rather than passed", () => {

@@ -1,10 +1,8 @@
 // tests/engine/engineFloor.test.ts — the engine refuses a move that cannot happen.
 //
-// `processPlay` used to strip exactly the ids it was handed. A caller that
-// forgot to gate would have corrupted the state silently rather than been
-// refused. Every move now reaches the engine as data through `applyMove`, which
-// reads the cards from the hand and derives their shape itself, so a refusal is
-// a value and the state is left as it was.
+// Every move reaches the engine as data through `applyMove`, which reads the
+// cards from the hand and derives their shape itself: a move that cannot happen
+// is refused as a value, and the state is left as it was.
 //
 // A floor is only a floor if it also lets the legal case through, so the null
 // case is here too: leading a fresh round, where there is nothing to beat.
