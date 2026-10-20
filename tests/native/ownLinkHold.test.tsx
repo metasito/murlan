@@ -156,6 +156,7 @@ describe('the table holding its breath', () => {
   it('never holds the lamp level down on a table that mounts with its link up', async () => {
     const rig = { freeze: jest.fn<(amount: number) => void>(), hold: jest.fn<LampRig['hold']>() };
     const { unmount } = await renderHook(() => useLinkHold('up', rig));
+    expect(rig.hold).toHaveBeenCalled();
     expect(rig.hold.mock.calls.every(([, level]) => level === null)).toBe(true);
     await unmount();
   });

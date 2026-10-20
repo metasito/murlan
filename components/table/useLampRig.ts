@@ -95,8 +95,8 @@ export function useLampRig({
     if (!dealClock) return;
     lamp.modify((s) => {
       "worklet";
-      s.lvl = BREATH_FROM;
       lampControls.hold(s, "breath", BREATH_FROM, BREATH_RATE);
+      s.lvl = s.lvlT;
       return s;
     }, true);
     // A deal gone before its rise leaves the lamp where it would have risen to, at once.
