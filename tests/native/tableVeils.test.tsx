@@ -46,41 +46,60 @@ const STATE: GameState = {
 
 const noop = () => {};
 const VOTE = { voted: false, votes: 1, total: 4, onPress: noop };
+const ACTIONS = { onHome: noop, again: null };
 
 type Reason = 'none' | 'settingsOpen' | 'covered' | 'portrait' | 'holdingForStart';
+const REASONS: Reason[] = ['none', 'settingsOpen', 'covered', 'portrait', 'holdingForStart'];
 
-async function mount(reason: Reason): Promise<RenderResult> {
+/**
+ * Each fixture draws children the others do not: between them, every conditional child of the
+ * game layer is on screen under every reason.
+ */
+type Fixture = 'table' | 'scoreOpen' | 'refusal' | 'matchEnd' | 'startCard';
+const FIXTURES: Fixture[] = ['table', 'scoreOpen', 'refusal', 'matchEnd', 'startCard'];
+
+function stateFor(fixture: Fixture): GameState {
+  if (fixture === 'matchEnd') return { ...STATE, roundOver: true, finishingOrder: ['player_0', 'player_1', 'player_2', 'player_3'] };
+  if (fixture === 'startCard') return { ...STATE, firstPlayMade: false, startCard: card('3_1'), startReason: undefined };
+  return STATE;
+}
+
+async function mount(fixture: Fixture, reason: Reason): Promise<RenderResult> {
   mockWindow.current = reason === 'portrait' ? PORTRAIT : LANDSCAPE;
   const view = await render(
     <SafeAreaProvider initialMetrics={METRICS}>
       <SettingsProvider>
-      <GameTable
-        gameState={STATE}
-        viewerSeat={0}
-        onPlay={noop}
-        onPass={noop}
-        onQuit={noop}
-        onExchangeGive={noop}
-        matchScore={{ scores: { player_0: 3 }, target: 21 }}
-        endMatchVote={VOTE}
-        roundVote={VOTE}
-        banners={<Text>Banner</Text>}
-        tableCovered={reason === 'covered'}
-        overlays={(veiled) => (
-          <View testID="the-cover" {...veiled}>
-            <Text>Cover</Text>
-          </View>
-        )}
-      />
+        <GameTable
+          gameState={stateFor(fixture)}
+          viewerSeat={0}
+          onPlay={noop}
+          onPass={noop}
+          onQuit={noop}
+          onExchangeGive={noop}
+          matchScore={{ scores: { player_0: 21 }, target: 21 }}
+          matchOver={fixture === 'matchEnd'}
+          matchWinners={fixture === 'matchEnd' ? ['player_0'] : undefined}
+          matchActions={fixture === 'matchEnd' ? ACTIONS : undefined}
+          endMatchVote={VOTE}
+          roundVote={fixture === 'refusal' ? null : VOTE}
+          leftTable={fixture === 'refusal' ? { reclaiming: false, onReclaim: noop, onLeave: noop } : null}
+          error={fixture === 'refusal' ? { text: 'Refused', seq: 1 } : null}
+          banners={<Text>Banner</Text>}
+          tableCovered={reason === 'covered'}
+          overlays={(veiled) => (
+            <View testID="the-cover" {...veiled}>
+              <Text>Cover</Text>
+            </View>
+          )}
+        />
       </SettingsProvider>
     </SafeAreaProvider>
   );
-  if (reason !== 'holdingForStart') {
-    await fireEvent.press(screen.getByTestId('start-reason-gate', { includeHiddenElements: true }));
-  }
-  if (reason === 'settingsOpen') {
-    await fireEvent.press(screen.getByLabelText(t('gameTable.settingsA11yLabel')));
-  }
+  const gate = screen.queryByTestId('start-reason-gate', { includeHiddenElements: true });
+  if (reason === 'holdingForStart') expect(gate).not.toBeNull();
+  else if (gate) await fireEvent.press(gate);
+  if (fixture === 'scoreOpen') await fireEvent.press(screen.getByTestId('score-pill', { includeHiddenElements: true }));
+  if (reason === 'settingsOpen') await fireEvent.press(screen.getByLabelText(t('gameTable.settingsA11yLabel')));
   return view;
 }
 
@@ -100,61 +119,94 @@ const nameOf = (node: Node): string =>
 /** Where a screen reader stops: an accessible element, or text. */
 const stop = (n: Node) => typeof n.type === 'string' && (n.props.accessible === true || n.type === 'Text');
 
-/** Each of the game layer's children, and whether a screen reader can still stop on anything in it. */
-function reachable(): Record<string, boolean> {
-  const out: Record<string, boolean> = {};
-  for (const child of hostChildren(screen.getByTestId('game-layer', { includeHiddenElements: true }))) {
-    const name = nameOf(child);
-    expect(out).not.toHaveProperty(name);
-    out[name] = subtree(child).some((n) => stop(n) && !isHiddenFromAccessibility(n));
-  }
-  return out;
-}
-
 const withdrawn = (props: Record<string, unknown>) =>
   props.accessibilityElementsHidden === true && props.importantForAccessibility === 'no-hide-descendants';
 
-/**
- * Nothing to stop on whatever the table is doing. The round's vote is drawn only by the round's
- * ending, and the reconnect scrim only where the platform darkens rather than greys.
- */
-const SILENT = { sweep: false, 'card-shade': false, 'table-particles': false, 'round-vote': false };
-const TABLE = ['table-status', 'game-top-bar', 'score-pill-layer', 'end-match-vote', 'float-status', 'banner-band', 'game-table'];
-const OPEN = Object.fromEntries([...TABLE, 'game-hud-stack', 'control-rail-layer', 'the-cover'].map((n) => [n, true]));
-const off = (...names: string[]) => Object.fromEntries(names.map((n) => [n, false]));
+/** Which reasons withdraw each role: the decision `components/table/tableVeils.ts` documents, restated as the expectation. */
+const VEILED_UNDER: Record<string, Record<Reason, boolean>> = {
+  table: { none: false, settingsOpen: true, covered: true, portrait: true, holdingForStart: true },
+  clock: { none: false, settingsOpen: true, covered: true, portrait: true, holdingForStart: false },
+  coverOnly: { none: false, settingsOpen: false, covered: true, portrait: true, holdingForStart: true },
+  sheetOnly: { none: false, settingsOpen: true, covered: false, portrait: true, holdingForStart: false },
+  sheet: { none: false, settingsOpen: true, covered: false, portrait: false, holdingForStart: false },
+  /** The layer that is itself the reason: reachable whenever it is drawn. */
+  cover: { none: false, settingsOpen: false, covered: false, portrait: false, holdingForStart: false },
+};
 
-const EXPECTED: Record<Reason, Record<string, boolean>> = {
-  none: { ...SILENT, ...OPEN },
-  settingsOpen: {
-    ...SILENT,
-    ...OPEN,
-    ...off(...TABLE, 'game-hud-stack', 'the-cover', 'settings-veil'),
-    'settings-sheet': true,
-  },
-  covered: { ...SILENT, ...OPEN, ...off(...TABLE, 'game-hud-stack', 'control-rail-layer') },
-  portrait: { ...SILENT, ...OPEN, ...off(...TABLE, 'game-hud-stack', 'control-rail-layer', 'the-cover'), 'rotate-overlay': true },
-  holdingForStart: {
-    ...SILENT,
-    ...OPEN,
-    ...off(...TABLE, 'control-rail-layer', 'notice-whoStarts', 'start-reason-gate'),
-    'who-starts-status': true,
-  },
+/** Every child the game layer can hold, and the role that veils it; `silent` holds nothing to stop on. */
+const ROLE: Record<string, keyof typeof VEILED_UNDER | 'silent'> = {
+  sweep: 'silent',
+  'card-shade': 'silent',
+  'table-particles': 'silent',
+  'grey-scrim': 'silent',
+  'notice-whoStarts': 'silent',
+  'start-reason-gate': 'silent',
+  'notice-errorToast': 'silent',
+  'table-status': 'table',
+  'game-top-bar': 'table',
+  'score-pill-layer': 'table',
+  'end-match-vote': 'table',
+  'round-vote': 'table',
+  'left-table': 'table',
+  'float-status': 'table',
+  'banner-band': 'table',
+  'game-table': 'table',
+  'game-hud-stack': 'clock',
+  'control-rail-layer': 'coverOnly',
+  'the-cover': 'sheetOnly',
+  'who-starts-status': 'sheet',
+  'settings-veil': 'silent',
+  'settings-sheet': 'cover',
+  'rotate-overlay': 'cover',
+};
+
+/** The fixtures whose opening has a gate to hold the table with. */
+const GATED: Fixture[] = ['table', 'scoreOpen', 'refusal'];
+
+/** Drawn only once the round's ending shows them, so what they would say is read off their own veil. */
+const DRAWN_BY_ENDING = new Set(['round-vote', 'left-table']);
+
+/** Children a fixture must draw, so a fixture that stops drawing them cannot pass by not looking. */
+const DRAWS: Record<Fixture, string[]> = {
+  table: ['score-pill-layer', 'end-match-vote', 'round-vote', 'float-status', 'the-cover'],
+  scoreOpen: ['score-pill-layer', 'round-vote'],
+  refusal: ['left-table', 'float-status'],
+  matchEnd: ['score-pill-layer', 'round-vote'],
+  startCard: ['who-starts-status', 'notice-whoStarts'],
 };
 
 describe('every child of the game layer answers to the veil its role names', () => {
-  for (const reason of Object.keys(EXPECTED) as Reason[]) {
-    it(reason, async () => {
-      const view = await mount(reason);
-      const { 'grey-scrim': scrim = false, ...found } = reachable();
-      expect(scrim).toBe(false);
-      expect(found).toEqual(EXPECTED[reason]);
-      expect(withdrawn(screen.getByTestId('round-vote', { includeHiddenElements: true }).props)).toBe(reason !== 'none');
-      await view.unmount();
-    });
+  for (const fixture of FIXTURES) {
+    for (const reason of REASONS.filter((r) => r !== 'holdingForStart' || GATED.includes(fixture))) {
+      it(`${fixture}, ${reason}`, async () => {
+        const view = await mount(fixture, reason);
+        const seen = new Set<string>();
+        for (const child of hostChildren(screen.getByTestId('game-layer', { includeHiddenElements: true }))) {
+          const name = nameOf(child);
+          expect(seen.has(name)).toBe(false);
+          seen.add(name);
+          const role = ROLE[name];
+          expect([name, role]).toEqual([name, expect.any(String)]);
+          // The rotate overlay is modal: in portrait it hides its siblings whatever their own veil.
+          const veiled =
+            role === 'silent' || (reason === 'portrait' && role !== 'cover') || VEILED_UNDER[role][reason];
+          if (DRAWN_BY_ENDING.has(name)) {
+            expect([name, withdrawn(child.props)]).toEqual([name, veiled]);
+            continue;
+          }
+          const reachable = subtree(child).some((n) => stop(n) && !isHiddenFromAccessibility(n));
+          expect([name, reachable]).toEqual([name, !veiled]);
+        }
+        for (const name of DRAWS[fixture]) expect([...seen]).toContain(name);
+        if (reason === 'settingsOpen') expect([...seen]).toContain('settings-sheet');
+        if (reason === 'portrait') expect([...seen]).toContain('rotate-overlay');
+        await view.unmount();
+      });
+    }
   }
 
   it('the root holds exactly the felt and the layer the kick moves, beside the bomb flash', async () => {
-    const view = await mount('none');
+    const view = await mount('table', 'none');
     const root = screen.getByTestId('game-root', { includeHiddenElements: true });
     expect(hostChildren(root).map(nameOf)).toEqual(['table-felt', 'game-layer', 'bomb-flash']);
     for (const id of ['table-felt', 'bomb-flash']) {
