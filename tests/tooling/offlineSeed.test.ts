@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { offlineSave } from "../e2e/helpers/offlineSeed.ts";
 
-const personalities = (save: ReturnType<typeof offlineSave>) => save.players.map((p) => p.personality);
+const personalities = (save: ReturnType<typeof offlineSave>) => save.gameState.players.map((p) => p.personality);
 
 test("the lobby's own bots keep the lobby's personalities", () => {
   assert.deepEqual(personalities(offlineSave({ seats: 4 })), [undefined, "luan", "besnik", "gent"]);

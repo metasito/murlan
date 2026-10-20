@@ -211,7 +211,7 @@ export function buildSeatRoster(
  * The two engine-seat-indexed maps a match starts from: which seat a human
  * holds, and which seats were dealt to a bot before anyone could vacate one.
  * Keyed by position in `roster`, not `r.seatIndex` — that position is the
- * engine seat index (`initializeGame` assigns seats the same way), so a gap
+ * engine seat index (`startRound` assigns seats the same way), so a gap
  * in the DB's own seat numbering cannot shift either map onto the wrong
  * player. `tableState.ts` `newTable` calls this rather than walking the roster
  * inline, so a test can drive the same function it does.

@@ -73,8 +73,6 @@ describe('an offline match resumed with a play on the pile', () => {
       encodeOfflineSave({
         gameState: saved(),
         match: { length: 'match', target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
-        players: NAMES.map((name, i) => ({ name, type: i === 0 ? 'human' : 'bot' })),
-        gameMode: 'free_for_all',
         dealFirstSeat: 0,
       })
     );

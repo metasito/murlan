@@ -19,7 +19,7 @@ import {
   buildCombination,
   createDeck,
   getRankStrength,
-  initializeGame,
+  startRound,
   processPlay,
   RANK_SLOTS,
 } from "../../lib/game/gameEngine.ts";
@@ -45,7 +45,7 @@ const tallyOf = (cards: Card[]): number[] => {
 describe("the game records what has been played", () => {
   test("a fresh round starts with an empty tally", () => {
     for (const n of [2, 3, 4]) {
-      const state = initializeGame(seats(n), "free_for_all");
+      const state = startRound(seats(n), "free_for_all");
       assert.deepEqual(
         state.playedRanks,
         new Array<number>(RANK_SLOTS).fill(0),
@@ -56,7 +56,7 @@ describe("the game records what has been played", () => {
 
   test("every card that leaves a hand is counted, at 2, 3 and 4 seats", () => {
     for (const n of [2, 3, 4]) {
-      let state = initializeGame(seats(n), "free_for_all");
+      let state = startRound(seats(n), "free_for_all");
       const dealt = tallyOf(allHands(state));
 
       // Drive the table with the engine's own chooser until the round ends, so

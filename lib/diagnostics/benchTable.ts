@@ -1,9 +1,9 @@
-import { initializeGame, type GameState } from "@/lib/game/gameEngine";
+import { startRound, type GameState } from "@/lib/game/gameEngine";
 import { offlineBotMove, resolveStuckExchange } from "@/lib/game/autoMove";
 import type { BenchContext } from "./bench";
 
 export function benchTable(): GameState {
-  return initializeGame(
+  return startRound(
     [
       { name: "You", type: "human" },
       { name: "A", type: "bot" },
@@ -15,7 +15,7 @@ export function benchTable(): GameState {
 }
 
 export function botTable(): GameState {
-  return initializeGame(["A", "B", "C", "D"].map((name) => ({ name, type: "bot" as const })), "free_for_all");
+  return startRound(["A", "B", "C", "D"].map((name) => ({ name, type: "bot" as const })), "free_for_all");
 }
 
 export async function driveBots(

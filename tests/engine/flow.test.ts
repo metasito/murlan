@@ -4,7 +4,7 @@ import { card as c, seat as makePlayer, state as makeState } from "../support/ga
 import {
   buildCombination,
   getAllValidPlays,
-  initializeGame,
+  startRound,
   processPass,
   processPlay,
   type Card,
@@ -287,10 +287,7 @@ describe("a 3-player game", () => {
   });
 
   function playOneOut() {
-    const state0 = initializeGame(
-      ["a", "b", "c"].map((name) => ({ name, type: "human" as const })),
-      "free_for_all"
-    );
+    const state0 = startRound(["a", "b", "c"].map((name) => ({ name, type: "human" as const })), "free_for_all");
 
     assert.deepEqual(state0.players.map((p) => p.hand.length), [18, 18, 18]);
     assert.ok(state0.startCard, "the opening deal names a start card");

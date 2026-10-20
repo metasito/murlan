@@ -21,7 +21,7 @@ const save = (over = false) => ({
   gameState: {
     players: [
       { id: "player_0", name: "Ana", hand: [], type: "human" },
-      { id: "player_1", name: "Luan", hand: [], type: "bot" },
+      { id: "player_1", name: "Luan", hand: [], type: "bot", personality: "luan" },
     ],
     currentTurnIndex: 0,
     lastPlayedCombination: null,
@@ -34,11 +34,6 @@ const save = (over = false) => ({
     firstPlayMade: false,
   },
   match: { length: "match", target: 21, scores: { player_0: 3 }, rounds: [], over, winners: [], isDraw: false },
-  players: [
-    { name: "Ana", type: "human" },
-    { name: "Luan", type: "bot", personality: "luan" },
-  ],
-  gameMode: "free_for_all",
   dealFirstSeat: 1,
 }) as never;
 
@@ -48,7 +43,7 @@ test("a save round-trips", () => {
   assert.equal(decoded.version, OFFLINE_SAVE_VERSION);
   assert.equal(decoded.gameState.players.length, 2);
   assert.equal(decoded.match.scores.player_0, 3);
-  assert.equal(decoded.players[1].personality, "luan");
+  assert.equal(decoded.gameState.players[1].personality, "luan");
   assert.equal(decoded.dealFirstSeat, 1, "the deal rotation survives a restart");
 });
 
@@ -106,9 +101,7 @@ test("a blob missing anything the restore path needs is refused", () => {
     ["no match", (s) => delete s.match],
     ["match without scores", (s) => { (s.match as Record<string, unknown>).scores = undefined; }],
     ["match without rounds", (s) => { (s.match as Record<string, unknown>).rounds = "nope"; }],
-    ["no player setup", (s) => delete s.players],
-    ["setup that disagrees with the seats", (s) => { s.players = [{ name: "Ana", type: "human" }]; }],
-    ["an unknown game mode", (s) => { s.gameMode = "battle_royale"; }],
+    ["an unknown game mode", (s) => { (s.gameState as Record<string, unknown>).gameMode = "battle_royale"; }],
   ];
   for (const [what, mutate] of mutations) {
     const blob = JSON.parse(encodeOfflineSave(save()));

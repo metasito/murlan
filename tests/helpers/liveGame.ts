@@ -7,7 +7,7 @@ import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { broadcastGameState, persistGameState } from "../../server/game/gamePersistence.ts";
 import { armTurn } from "../../server/game/gameTurn.ts";
 import { startReplayLog } from "../../server/game/replayShape.ts";
-import { createDeck, initializeGame } from "../../lib/game/gameEngine.ts";
+import { createDeck, seatsOf, startRound, type Opening } from "../../lib/game/gameEngine.ts";
 
 /**
  * Whether a room still holds a live in-memory game. The only observable
@@ -29,19 +29,25 @@ export function forgetActiveGame(roomId: string): boolean {
 }
 
 /**
- * Deals a room's live table a round somebody has already played.
+ * Deals a room's live table a round somebody has already played, or one that
+ * opens on `opening` — an exchange, with no round played out to reach it.
  *
- * The server shuffles from `crypto` (`lib/game/gameEngine.ts`'s `shuffleDeck`), so
- * no seed reaches the deal and a round can only be recovered by handing its
- * cards back in. That is what makes a soak log replayable at all, and it is why
- * this is a write where the rest of this file only reads.
+ * The server shuffles from `crypto` and takes no seed, so a
+ * round can only be recovered by handing its cards back in. That is what makes
+ * a soak log replayable at all, and it is why this is a write where the rest of
+ * this file only reads.
  *
  * Everything downstream of the deal — who opens, on which card — is derived by
- * `initializeGame` rather than restated here, so a replay cannot start from a
+ * `startRound` rather than restated here, so a replay cannot start from a
  * table the real deal path would never produce. The turn is re-armed because
  * the timer running belongs to the round this one replaces.
  */
-export function redealExactly(io: SocketServer, roomId: string, hands: string[][]): boolean {
+export function redealExactly(
+  io: SocketServer,
+  roomId: string,
+  hands: string[][],
+  { opening }: { opening?: Opening } = {}
+): boolean {
   const game = activeGames.get(roomId);
   if (!game) return false;
 
@@ -53,17 +59,7 @@ export function redealExactly(io: SocketServer, roomId: string, hands: string[][
       return card;
     })
   );
-  game.gameState = initializeGame(
-    game.gameState.players.map((p) => ({
-      name: p.name,
-      type: p.type,
-      personality: p.personality,
-      team: p.team,
-    })),
-    game.gameState.gameMode,
-    0,
-    dealt
-  );
+  game.gameState = startRound(seatsOf(game.gameState), game.gameState.gameMode, { dealt, opening });
   // Everything `dealRound` resets, because the round this replaces is gone: its
   // flags would credit its bombs and jokers to this one, and its `moveLog`
   // would be written to `round_replays` as this round's replay.

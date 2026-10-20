@@ -1,7 +1,7 @@
 // The process's live in-memory tables. Owned here rather than by
 // server/socket/socket.ts so that reading one does not mean importing the socket
 // server, and everything it drags in behind it.
-import type { GameState, GameMode, MatchLength } from "../../lib/game/gameEngine.ts";
+import type { GameState, MatchLength } from "../../lib/game/gameEngine.ts";
 import type { ReplayMove } from "../../lib/game/replay.ts";
 import type { RoundOverPayload } from "../../lib/game/matchState.ts";
 import { deadline, secondsUntil } from "./gameTimers.ts";
@@ -19,7 +19,6 @@ export interface OnlineGameState {
   rematchVotes: Set<string>;
   /** userId (or `bot:<seat>`) -> cumulative match points. */
   cumulativeScores: Record<string, number>;
-  gameMode: GameMode;
   maxPlayers: number;
   matchTarget: number;
   matchLength: MatchLength;

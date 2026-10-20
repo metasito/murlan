@@ -19,7 +19,7 @@ import {
   buildCombination,
   createDeck,
   getAllValidPlays,
-  initializeGame,
+  startRound,
   processPass,
   processPlay,
 } from "../../lib/game/gameEngine.ts";
@@ -42,13 +42,8 @@ function botTable(
   personality: BotPersonalityId,
   { seats = 4, gameMode = "free_for_all" }: TableShape = {}
 ): GameState {
-  return initializeGame(
-    Array.from({ length: seats }, (_, i) => ({
-      name: `bot${i}`,
-      type: "bot" as const,
-      personality,
-      team: gameMode === "teams" ? ((i % 2 === 0 ? "A" : "B") as "A" | "B") : undefined,
-    })),
+  return startRound(
+    Array.from({ length: seats }, (_, i) => ({ name: `bot${i}`, type: "bot" as const, personality })),
     gameMode
   );
 }

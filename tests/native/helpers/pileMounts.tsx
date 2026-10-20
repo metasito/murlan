@@ -65,7 +65,7 @@ const fliers = (view: RenderResult) => view.queryAllByTestId('flying-cards', { i
 export function fourTricks(name: string, preference: 'on' | 'off') {
   const { GameTable } = require('@/components/GameTable') as typeof import('@/components/GameTable');
   const { comboKey } = require('@/components/flightPhysics') as typeof import('@/components/flightPhysics');
-  const { initializeGame } = require('@/lib/game/gameEngine') as typeof import('@/lib/game/gameEngine');
+  const { startRound } = require('@/lib/game/gameEngine') as typeof import('@/lib/game/gameEngine');
   const { offlineBotMove } = require('@/lib/game/autoMove') as typeof import('@/lib/game/autoMove');
   const { setMotionPreference } = require('@/lib/accessibility') as typeof import('@/lib/accessibility');
   const { bootFeedback, settle } = require('./feedback') as typeof import('./feedback');
@@ -92,7 +92,7 @@ export function fourTricks(name: string, preference: 'on' | 'off') {
     });
 
     it('draws each played card with one view from its throw until its trick is swept', async () => {
-      let state = initializeGame(['A', 'B', 'C', 'D'].map((n) => ({ name: n, type: 'bot' as const })), 'free_for_all');
+      let state = startRound(['A', 'B', 'C', 'D'].map((n) => ({ name: n, type: 'bot' as const })), 'free_for_all');
       const view = await render(table(state));
       await settle(1100);
       const plays: string[] = [];

@@ -1,9 +1,9 @@
-// The offline match's accounting, shared by context/GameContext.tsx and tests/helpers/offlineMatch.ts.
+// The offline match, deal to deal and round to round, shared by context/GameContext.tsx and tests/helpers/offlineMatch.ts.
 //
 // Relative imports and no `react-native`: `node --test` loads it — docs/agents/checks.md, "Node's
 // TypeScript loader".
-import { firstTargetFor, foldRound } from "./gameEngine.ts";
-import type { GameState, MatchLength, SeatScoring } from "./gameEngine.ts";
+import { dealFirstSeatFor, firstTargetFor, foldRound, openingAfter, seatsOf, startRound } from "./gameEngine.ts";
+import type { GameMode, GameState, MatchLength, RandomSource, SeatScoring, SeatSetup } from "./gameEngine.ts";
 import type { MatchState } from "./matchState.ts";
 
 export function freshMatch(length: MatchLength, playerCount: number): MatchState {
@@ -44,4 +44,55 @@ export function applyRoundToMatch(match: MatchState, finished: GameState): Match
     winners: folded.winners,
     isDraw: folded.isDraw,
   };
+}
+
+export interface OfflineTable {
+  state: GameState;
+  match: MatchState;
+  /** Where this round was dealt from; the next deal rotates from it. */
+  dealFirstSeat: number;
+}
+
+/** `first` is a round already dealt for these seats, in place of a fresh one. */
+export function startTable(
+  seats: readonly SeatSetup[],
+  mode: GameMode,
+  length: MatchLength,
+  first?: GameState,
+  random?: RandomSource
+): OfflineTable {
+  const dealFirstSeat = dealFirstSeatFor(true, 0, seats.length);
+  return {
+    state: first ?? startRound(seats, mode, { firstSeat: dealFirstSeat, random }),
+    match: freshMatch(length, seats.length),
+    dealFirstSeat,
+  };
+}
+
+/** `next` on the table; the round it ends is scored into the match, once. Otherwise `match` keeps its identity. */
+export function advance(table: OfflineTable, next: GameState): OfflineTable {
+  const ends = next.roundOver && !table.state.roundOver;
+  return { ...table, state: next, match: ends ? applyRoundToMatch(table.match, next) : table.match };
+}
+
+function deal(table: OfflineTable, freshMatchNext: boolean, random?: RandomSource): OfflineTable {
+  const { state, match } = table;
+  if (!state.roundOver) return table;
+  const seatCount = state.players.length;
+  const dealFirstSeat = dealFirstSeatFor(freshMatchNext, table.dealFirstSeat, seatCount);
+  return {
+    state: startRound(seatsOf(state), state.gameMode, { firstSeat: dealFirstSeat, opening: openingAfter(state), random }),
+    match: freshMatchNext ? freshMatch(match.length, seatCount) : match,
+    dealFirstSeat,
+  };
+}
+
+/** The round after a finished one: the match's next, or a fresh match's first once it is over. The same table while a round is live. */
+export function dealNext(table: OfflineTable, random?: RandomSource): OfflineTable {
+  return deal(table, table.match.over, random);
+}
+
+/** A fresh match at the same table, dealt from a finished round, whatever the score stood at. */
+export function dealNewMatch(table: OfflineTable, random?: RandomSource): OfflineTable {
+  return deal(table, true, random);
 }

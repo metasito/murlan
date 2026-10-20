@@ -12,7 +12,6 @@ export function onlineTable(
     joinCode: "AAAAAA",
     playerMap: {},
     cumulativeScores: {},
-    gameMode: "free_for_all",
     maxPlayers: 4,
     matchTarget: 21,
     matchLength: "match",

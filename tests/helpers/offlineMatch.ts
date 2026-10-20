@@ -4,14 +4,10 @@
 // round it deals resolves.
 //
 // A bot seat's turn is `offlineBotMove`, the function GameContext.tsx calls
-// (tests/engine/matchState.test.ts pins both callers), and the round->match
-// accounting is `lib/game/matchFlow.ts`, which GameContext.tsx imports too.
-// The next deal (`dealNext`) is still a hand-carried copy of GameContext.tsx's:
-// that file pulls in `react` and AsyncStorage, which `node --test` cannot load.
+// (tests/engine/matchState.test.ts pins both callers), and the deal and the
+// round->match accounting are `lib/game/matchFlow.ts`, which GameContext.tsx
+// drives too.
 import {
-  initializeGame,
-  initializeRematch,
-  nextDealFirstSeat,
   getAllValidPlays,
   processPlay,
   processPass,
@@ -19,45 +15,14 @@ import {
   type GameMode,
   type GameState,
   type MatchLength,
-  type PlayerType,
+  type SeatSetup,
 } from "../../lib/game/gameEngine.ts";
-import { applyRoundToMatch, freshMatch } from "../../lib/game/matchFlow.ts";
+import { advance, dealNext, startTable } from "../../lib/game/matchFlow.ts";
 import { autoMoveForSeat, offlineBotMove, type AutoMoveContext } from "../../lib/game/autoMove.ts";
 import { comboKey } from "../../components/flightPhysics.ts";
 import { rng } from "../support/game.ts";
-import type { BotPersonalityId } from "../../lib/game/botPersonalities.ts";
 
-/**
- * `lib/game/gameEngine.ts`'s `shuffleDeck` draws from `globalThis.crypto`
- * whenever it exists (Node 18+ always has it), which is unseedable. Swapping
- * in `rng(seed).source` for the duration of one simulated match is what makes
- * "seed 4242 stalls" a claim anyone can reproduce, offline included.
- */
-export function withSeededDeals<T>(seed: number, run: () => T): T {
-  const original = Object.getOwnPropertyDescriptor(globalThis, "crypto");
-  const fake = rng(seed).source;
-  // `crypto` is a non-configurable getter in some Node builds and a plain
-  // property in others — defineProperty with configurable:true covers both,
-  // where a bare assignment throws on the getter-only shape.
-  Object.defineProperty(globalThis, "crypto", {
-    value: fake,
-    configurable: true,
-    writable: true,
-  });
-  try {
-    return run();
-  } finally {
-    if (original) Object.defineProperty(globalThis, "crypto", original);
-  }
-}
-
-export interface OfflinePlayerSetup {
-  name: string;
-  type: PlayerType;
-  team?: "A" | "B";
-  /** Absent means `DEFAULT_BOT_PERSONALITY` (`lib/game/botPersonalities.ts`). */
-  personality?: BotPersonalityId;
-}
+export type OfflinePlayerSetup = SeatSetup;
 
 export interface SimulateMatchOptions {
   seed: number;
@@ -112,7 +77,7 @@ export interface SimulatedRound {
   moves: number;
   /**
    * How many of the six top cards (the four 2s and two Jokers) each seat held
-   * the moment this round's hand was set — after `initializeRematch`'s
+   * the moment this round's hand was set — after `startRound`'s
    * automatic loser-to-winner card (docs/GAME-RULES.md §10) for every round past
    * the first, before any card is played. The giveback leg never touches this:
    * it is restricted to ranks 3-10 (`EXCHANGE_VALID_RANKS`), so it cannot move
@@ -288,207 +253,190 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
   const maxRounds = opts.maxRounds ?? 500;
   const maxMovesPerRound = opts.maxMovesPerRound ?? 2000;
 
-  return withSeededDeals(opts.seed, () => {
-    let match = freshMatch(opts.length, opts.players.length);
-    let dealFirstSeat = 0;
-    let prevFinishingOrder: string[] = [];
-    const rounds: SimulatedRound[] = [];
-    let botTurnKeyChecks = 0;
-    const botRng = opts.botRng?.(opts.seed);
-    const topCardCount = (hand: { rank: string }[]) =>
-      hand.filter((c) => c.rank === "2" || c.rank === "joker_bw" || c.rank === "joker_colored").length;
+  // One stream for every deal of the match, so a seed replays the whole of it.
+  const random = rng(opts.seed).source;
+  let table = startTable(opts.players, opts.gameMode, opts.length, undefined, random);
+  const rounds: SimulatedRound[] = [];
+  let botTurnKeyChecks = 0;
+  const botRng = opts.botRng?.(opts.seed);
+  const topCardCount = (hand: { rank: string }[]) =>
+    hand.filter((c) => c.rank === "2" || c.rank === "joker_bw" || c.rank === "joker_colored").length;
 
-    while (!match.over) {
-      if (rounds.length >= maxRounds) {
+  while (!table.match.over) {
+    if (rounds.length >= maxRounds) {
+      throw new MatchStallError(
+        `match did not reach target ${table.match.target} after ${rounds.length} rounds ` +
+          `(scores: ${JSON.stringify(table.match.scores)})`,
+        opts.seed,
+        rounds
+      );
+    }
+
+    if (rounds.length > 0) table = dealNext(table, random);
+    let state = table.state;
+
+    const topCardCounts = state.players.map((p) => topCardCount(p.hand));
+
+    // Every seat dealt cards must be given at least one turn before this
+    // round's `roundOver` — a turn-advance that silently keeps re-picking
+    // the same seat still reaches `activePlayers.length <= 1` and looks
+    // like a normal finish (a winner, a plausible finishingOrder array) with the
+    // other seat never once having acted.
+    const dealtSeats = state.players
+      .map((p, i) => ({ i, dealt: p.hand.length > 0 }))
+      .filter((s) => s.dealt)
+      .map((s) => s.i);
+    const actedSeats = new Set<number>();
+
+    // `context/offlineDriver.ts`'s `botTurnKey`, reset per round because that screen
+    // remounts on every navigation to /game (a fresh component instance
+    // has no previous effect value to compare against) — see
+    // `computeBotTurnKey`'s own comment for what this is chasing.
+    let lastBotTurnKey: string | null = null;
+    let lastBotTurnFingerprint: string | null = null;
+    let lastBotTurnState: GameState | null = null;
+
+    let moves = 0;
+    while (!state.roundOver) {
+      if (moves >= maxMovesPerRound) {
         throw new MatchStallError(
-          `match did not reach target ${match.target} after ${rounds.length} rounds ` +
-            `(scores: ${JSON.stringify(match.scores)})`,
+          `round ${rounds.length} did not reach roundOver after ${moves} moves ` +
+            `(seats holding cards: ${state.players.map((p) => p.hand.length).join(",")})`,
+          opts.seed,
+          rounds
+        );
+      }
+      moves++;
+
+      const key = computeBotTurnKey(state);
+      if (key !== null) {
+        botTurnKeyChecks++;
+        const fingerprint = handFingerprint(state);
+        if (key === lastBotTurnKey && fingerprint !== lastBotTurnFingerprint && lastBotTurnState) {
+          opts.collectBotTurnKeyCollisions?.push({
+            seed: opts.seed,
+            roundIndex: rounds.length,
+            key,
+            before: { fingerprint: lastBotTurnFingerprint!, state: lastBotTurnState },
+            after: { fingerprint, state },
+          });
+        }
+        lastBotTurnKey = key;
+        lastBotTurnFingerprint = fingerprint;
+        lastBotTurnState = state;
+      } else {
+        lastBotTurnKey = null;
+        lastBotTurnFingerprint = null;
+        lastBotTurnState = null;
+      }
+
+      const isExchangeTurn = !!state.exchangePhase?.active;
+      const seat = isExchangeTurn ? state.exchangePhase!.winnerIdx : state.currentTurnIndex;
+      actedSeats.add(seat);
+      let playedCombo: Combination | null = null;
+      let comboSeen = false;
+      let next: GameState | null;
+      if (!isExchangeTurn && opts.contest?.[seat]) {
+        const combo = weakestBeatingPlay(state, seat);
+        comboSeen = true;
+        playedCombo = combo;
+        next = combo ? processPlay(state, combo) : processPass(state);
+      } else {
+        const ctx: AutoMoveContext = {
+          onMove: (_s, combo) => {
+            comboSeen = true;
+            playedCombo = combo;
+          },
+          rng: botRng,
+        };
+        next =
+          !isExchangeTurn && state.players[seat]?.type === "bot"
+            ? offlineBotMove(state, ctx)
+            : autoMoveForSeat(state, seat, opts.useBot?.[seat] ?? true, ctx);
+      }
+      if (!next) {
+        throw new MatchStallError(
+          `round ${rounds.length} stuck: seat ${seat} could not act at move ${moves} ` +
+            `(exchange active: ${isExchangeTurn})`,
           opts.seed,
           rounds
         );
       }
 
-      // Mirrors `GameContext.tsx`'s `dealNext` exactly: it advances
-      // `dealFirstSeat` *before* dealing the rematch and deals from the new
-      // value, so the first rematch opens one seat past `initializeGame`'s own
-      // implicit seat 0 rather than from it again.
-      let state: GameState;
-      if (rounds.length === 0) {
-        state = initializeGame(opts.players, opts.gameMode, dealFirstSeat);
-      } else {
-        dealFirstSeat = nextDealFirstSeat(dealFirstSeat, opts.players.length);
-        state = initializeRematch(
-          opts.players.map((p, i) => ({ ...p, id: `player_${i}` })),
-          opts.gameMode,
-          prevFinishingOrder,
-          dealFirstSeat
-        );
-      }
-
-      const topCardCounts = state.players.map((p) => topCardCount(p.hand));
-
-      // Every seat dealt cards must be given at least one turn before this
-      // round's `roundOver` — a turn-advance that silently keeps re-picking
-      // the same seat still reaches `activePlayers.length <= 1` and looks
-      // like a normal finish (a winner, a plausible finishingOrder array) with the
-      // other seat never once having acted.
-      const dealtSeats = state.players
-        .map((p, i) => ({ i, dealt: p.hand.length > 0 }))
-        .filter((s) => s.dealt)
-        .map((s) => s.i);
-      const actedSeats = new Set<number>();
-
-      // `context/offlineDriver.ts`'s `botTurnKey`, reset per round because that screen
-      // remounts on every navigation to /game (a fresh component instance
-      // has no previous effect value to compare against) — see
-      // `computeBotTurnKey`'s own comment for what this is chasing.
-      let lastBotTurnKey: string | null = null;
-      let lastBotTurnFingerprint: string | null = null;
-      let lastBotTurnState: GameState | null = null;
-
-      let moves = 0;
-      while (!state.roundOver) {
-        if (moves >= maxMovesPerRound) {
-          throw new MatchStallError(
-            `round ${rounds.length} did not reach roundOver after ${moves} moves ` +
-              `(seats holding cards: ${state.players.map((p) => p.hand.length).join(",")})`,
-            opts.seed,
-            rounds
-          );
-        }
-        moves++;
-
-        const key = computeBotTurnKey(state);
-        if (key !== null) {
-          botTurnKeyChecks++;
-          const fingerprint = handFingerprint(state);
-          if (key === lastBotTurnKey && fingerprint !== lastBotTurnFingerprint && lastBotTurnState) {
-            opts.collectBotTurnKeyCollisions?.push({
-              seed: opts.seed,
-              roundIndex: rounds.length,
-              key,
-              before: { fingerprint: lastBotTurnFingerprint!, state: lastBotTurnState },
-              after: { fingerprint, state },
-            });
-          }
-          lastBotTurnKey = key;
-          lastBotTurnFingerprint = fingerprint;
-          lastBotTurnState = state;
-        } else {
-          lastBotTurnKey = null;
-          lastBotTurnFingerprint = null;
-          lastBotTurnState = null;
-        }
-
-        const isExchangeTurn = !!state.exchangePhase?.active;
-        const seat = isExchangeTurn ? state.exchangePhase!.winnerIdx : state.currentTurnIndex;
-        actedSeats.add(seat);
-        let playedCombo: Combination | null = null;
-        let comboSeen = false;
-        let next: GameState | null;
-        if (!isExchangeTurn && opts.contest?.[seat]) {
-          const combo = weakestBeatingPlay(state, seat);
-          comboSeen = true;
-          playedCombo = combo;
-          next = combo ? processPlay(state, combo) : processPass(state);
-        } else {
-          const ctx: AutoMoveContext = {
-            onMove: (_s, combo) => {
-              comboSeen = true;
-              playedCombo = combo;
-            },
-            rng: botRng,
-          };
-          next =
-            !isExchangeTurn && state.players[seat]?.type === "bot"
-              ? offlineBotMove(state, ctx)
-              : autoMoveForSeat(state, seat, opts.useBot?.[seat] ?? true, ctx);
-        }
-        if (!next) {
-          throw new MatchStallError(
-            `round ${rounds.length} stuck: seat ${seat} could not act at move ${moves} ` +
-              `(exchange active: ${isExchangeTurn})`,
-            opts.seed,
-            rounds
-          );
-        }
-
-        // Exchange choices and the stuck-exchange release neither play nor
-        // pass in `processPlay`/`processPass`'s sense (`onMove` never fires
-        // for them) and never touch `getNextActivePlayer` — out of scope for
-        // both checks below.
-        if (!isExchangeTurn && comboSeen) {
-          if (playedCombo !== null) {
-            const before = state.players[seat]?.hand.length ?? 0;
-            const after = next.players[seat]?.hand.length ?? 0;
-            const shed = (playedCombo as Combination).cards.length;
-            if (after !== before - shed) {
-              throw new HandNotShrunkError(
-                `round ${rounds.length} move ${moves}: seat ${seat} played ` +
-                  `${shed} card(s) but its hand went from ${before} to ${after}`,
-                opts.seed,
-                rounds.length,
-                seat
-              );
-            }
-          }
-
-          if (!next.roundOver) {
-            const hands = next.players.map((p) => p.hand);
-            const expected =
-              playedCombo === null && next.trickWinner !== null
-                ? (next.players[next.lastPlayedBy]?.hand.length ?? 0) > 0
-                  ? next.lastPlayedBy
-                  : expectedNextActive(next.lastPlayedBy, hands)
-                : expectedNextActive(seat, hands);
-            if (expected !== next.currentTurnIndex) {
-              throw new RotationOrderError(
-                `round ${rounds.length} move ${moves}: expected seat ${expected} next, ` +
-                  `got seat ${next.currentTurnIndex} (acting seat was ${seat}, ` +
-                  `${playedCombo === null ? "passed" : "played"})`,
-                opts.seed,
-                rounds.length,
-                moves,
-                expected,
-                next.currentTurnIndex
-              );
-            }
+      // Exchange choices and the stuck-exchange release neither play nor
+      // pass in `processPlay`/`processPass`'s sense (`onMove` never fires
+      // for them) and never touch `getNextActivePlayer` — out of scope for
+      // both checks below.
+      if (!isExchangeTurn && comboSeen) {
+        if (playedCombo !== null) {
+          const before = state.players[seat]?.hand.length ?? 0;
+          const after = next.players[seat]?.hand.length ?? 0;
+          const shed = (playedCombo as Combination).cards.length;
+          if (after !== before - shed) {
+            throw new HandNotShrunkError(
+              `round ${rounds.length} move ${moves}: seat ${seat} played ` +
+                `${shed} card(s) but its hand went from ${before} to ${after}`,
+              opts.seed,
+              rounds.length,
+              seat
+            );
           }
         }
 
-        state = next;
-      }
-
-      for (const seat of dealtSeats) {
-        if (!actedSeats.has(seat)) {
-          throw new SilentSeatError(
-            `round ${rounds.length} ended with seat ${seat} never given a turn ` +
-              `(acted: [${[...actedSeats].join(",")}], finishingOrder: ${JSON.stringify(state.finishingOrder)})`,
-            opts.seed,
-            rounds.length,
-            seat
-          );
+        if (!next.roundOver) {
+          const hands = next.players.map((p) => p.hand);
+          const expected =
+            playedCombo === null && next.trickWinner !== null
+              ? (next.players[next.lastPlayedBy]?.hand.length ?? 0) > 0
+                ? next.lastPlayedBy
+                : expectedNextActive(next.lastPlayedBy, hands)
+              : expectedNextActive(seat, hands);
+          if (expected !== next.currentTurnIndex) {
+            throw new RotationOrderError(
+              `round ${rounds.length} move ${moves}: expected seat ${expected} next, ` +
+                `got seat ${next.currentTurnIndex} (acting seat was ${seat}, ` +
+                `${playedCombo === null ? "passed" : "played"})`,
+              opts.seed,
+              rounds.length,
+              moves,
+              expected,
+              next.currentTurnIndex
+            );
+          }
         }
       }
 
-      prevFinishingOrder = state.finishingOrder;
-      match = applyRoundToMatch(match, state);
-      rounds.push({
-        finishingOrder: state.finishingOrder,
-        cumulativeAfter: match.scores,
-        target: match.target,
-        moves,
-        topCardCounts,
-      });
+      state = next;
     }
 
-    return {
-      seed: opts.seed,
-      rounds,
-      target: match.target,
-      winners: match.winners,
-      isDraw: match.isDraw,
-      botTurnKeyChecks,
-    };
-  });
+    for (const seat of dealtSeats) {
+      if (!actedSeats.has(seat)) {
+        throw new SilentSeatError(
+          `round ${rounds.length} ended with seat ${seat} never given a turn ` +
+            `(acted: [${[...actedSeats].join(",")}], finishingOrder: ${JSON.stringify(state.finishingOrder)})`,
+          opts.seed,
+          rounds.length,
+          seat
+        );
+      }
+    }
+
+    table = advance(table, state);
+    rounds.push({
+      finishingOrder: state.finishingOrder,
+      cumulativeAfter: table.match.scores,
+      target: table.match.target,
+      moves,
+      topCardCounts,
+    });
+  }
+
+  return {
+    seed: opts.seed,
+    rounds,
+    target: table.match.target,
+    winners: table.match.winners,
+    isDraw: table.match.isDraw,
+    botTurnKeyChecks,
+  };
 }

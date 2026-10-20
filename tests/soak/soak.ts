@@ -553,7 +553,7 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
       // which is the one thing the log has to carry.
       //
       // The signal is that no card has left a hand yet, not `firstPlayMade`:
-      // `initializeRematch` returns that already `true`, so keying on it logged
+      // an exchange opening from `startRound` returns that already `true`, so keying on it logged
       // a deal for the first round and for no other, and every later entry
       // named cards the log never dealt. The exchange moves one card between
       // two hands and so leaves the total alone, which is why this still holds

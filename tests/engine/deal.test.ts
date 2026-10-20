@@ -11,7 +11,7 @@ import {
   dealFirstSeatFor,
   findStartingPlayer,
   freshHandFloor,
-  initializeGame,
+  startRound,
   nextDealFirstSeat,
   shuffleDeck,
   type Card,
@@ -259,11 +259,11 @@ describe("dealFirstSeatFor: one function decides a new match from a continuing o
   test("all four sites that decide a deal's first seat route through dealFirstSeatFor", () => {
     const serverSrc = readFileSync(path.join(repoRoot, "server", "game", "tableHandlers.ts"), "utf8");
     const newTableSrc = readFileSync(path.join(repoRoot, "server", "game", "tableState.ts"), "utf8");
-    const offlineSrc = readFileSync(path.join(repoRoot, "context", "GameContext.tsx"), "utf8");
+    const offlineSrc = readFileSync(path.join(repoRoot, "lib", "game", "matchFlow.ts"), "utf8");
     // The two sites that must tell a continuing match from a finished one —
     // the ones #803's blind critique found disagreeing.
     assert.match(serverSrc, /dealFirstSeatFor\(game\.matchOver,/);
-    assert.match(offlineSrc, /dealFirstSeatFor\(matchIsOver,/);
+    assert.match(offlineSrc, /dealFirstSeatFor\(freshMatchNext,/);
     // The two sites that start a match from nothing, where `matchOver` is
     // unconditionally true — a literal `dealFirstSeat: 0` would read the same
     // today, but would stop being the one place this decision is made.
@@ -364,7 +364,7 @@ describe("findStartingPlayer (defect 4)", () => {
   test("a real 4-player game always opens on the 3 of spades", () => {
     const setup = [0, 1, 2, 3].map((i) => ({ name: `p${i}`, type: "human" as const }));
     for (let i = 0; i < 100; i++) {
-      const state = initializeGame(setup, "free_for_all");
+      const state = startRound(setup, "free_for_all");
       assert.equal(state.startCard?.id, "3_spades");
       assert.ok(
         state.players[state.currentTurnIndex].hand.some((card) => card.id === "3_spades"),

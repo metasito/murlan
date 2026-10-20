@@ -56,8 +56,6 @@ const roundJustEndedSave = () =>
       winners: [],
       isDraw: false,
     },
-    players: FOUR_PLAYERS,
-    gameMode: "free_for_all",
     dealFirstSeat: 1,
   });
 

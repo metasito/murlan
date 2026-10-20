@@ -57,7 +57,6 @@ async function foldAndRestore(spec: {
   const game = onlineTable({
     roomId: ROOM,
     gameState: finishedRound(spec.gameMode),
-    gameMode: spec.gameMode,
     matchLength: spec.matchLength ?? "match",
     matchTarget: 21,
     playerMap: spec.playerMap,

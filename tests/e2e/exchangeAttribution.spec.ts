@@ -196,7 +196,7 @@ test("a seat outside the announced reads both legs off the pile and the lit seat
 });
 
 // A deal the loser holds both Jokers in: the shuffle draws from `crypto.getRandomValues`, held at 92
-// for the deal (found by running `initializeRematch` under the same stub).
+// for the deal (found by dealing an exchange `startRound` under the same stub).
 test("both Jokers rest side by side on the pile under their notice, and go back", async ({ page, baseURL }) => {
   const over = offlineSave({
     seats: 3,

@@ -111,6 +111,7 @@ export function offlineSave(o: SaveOptions): OfflineSave {
       name: names[i],
       hand: dealt[i],
       type: i === 0 ? "human" : "bot",
+      personality: i === 0 ? undefined : personalities[i],
     })),
     currentTurnIndex: o.turn ?? 0,
     lastPlayedBy: -1,
@@ -134,12 +135,6 @@ export function offlineSave(o: SaveOptions): OfflineSave {
       winners: [],
       isDraw: false,
     },
-    players: Array.from({ length: o.seats }, (_, i) =>
-      i === 0
-        ? { name: names[0], type: "human" as const }
-        : { name: names[i], type: "bot" as const, personality: personalities[i] }
-    ),
-    gameMode: gameState.gameMode,
     dealFirstSeat: 0,
   };
 }

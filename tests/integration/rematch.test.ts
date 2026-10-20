@@ -194,7 +194,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
    * `handleRoundOver` sets `rooms.status = "finished"` after every round, not
    * only at the end of a match, so the room row alone cannot tell a running
    * match from an ended one. Accepting room:start on that status is a second
-   * deal path: it deals with `initializeGame` (no exchange phase, so the
+   * deal path: it deals the 3♠ opening (no exchange phase, so the
    * loser never gives up their strongest card) and takes `matchLength`
    * straight from the payload while the running match's scores and target
    * carry on.

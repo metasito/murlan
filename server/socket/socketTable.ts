@@ -32,7 +32,7 @@ import { sendGameStateTo } from "../game/gamePersistence.ts";
 import { emitEndMatchVoteState, emitMatchState, emitVoteState } from "./emit.ts";
 import { armTurnIfIdle } from "../game/gameTurn.ts";
 import { payload } from "../shared/payload.ts";
-import { TEAMS_PLAYER_COUNT } from "../../lib/game/gameEngine.ts";
+import { modeFits, type GameMode } from "../../lib/game/gameEngine.ts";
 import { refuse, type Refusal } from "../shared/refusal.ts";
 import type { ServerToClientEvents, WireRoomState } from "../../shared/protocol.ts";
 
@@ -105,7 +105,7 @@ function roomOf(game: OnlineGameState) {
     code: game.joinCode,
     hostUserId: game.playerMap[0] ?? null,
     status: "in_progress",
-    gameMode: game.gameMode,
+    gameMode: game.gameState.gameMode,
     maxPlayers: game.maxPlayers,
     // Reached only when the rooms row could not be read, and a running game
     // takes nobody either way. Private is the answer that cannot mislead.
@@ -118,8 +118,8 @@ function roomOf(game: OnlineGameState) {
  * and where it is seated. Returns the refusal when the size is wrong, null when
  * the caller may carry on.
  */
-export function teamsSizeRefusal(gameMode: string, playerCount: number): Refusal | null {
-  if (gameMode !== "teams" || playerCount === TEAMS_PLAYER_COUNT) return null;
+export function teamsSizeRefusal(gameMode: GameMode, playerCount: number): Refusal | null {
+  if (modeFits(gameMode, playerCount)) return null;
   return refuse("TEAMS_REQUIRE_FOUR");
 }
 

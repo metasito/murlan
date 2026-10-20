@@ -2,7 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { applyRoundToMatch, freshMatch } from "../../lib/game/matchFlow.ts";
 import { resolveRoundEnd } from "../../server/game/onlineGameLogic.ts";
-import { initializeGame, teamForSeat, type GameMode } from "../../lib/game/gameEngine.ts";
+import { startRound, type GameMode } from "../../lib/game/gameEngine.ts";
 import { simulateOfflineMatch } from "../helpers/offlineMatch.ts";
 import { mulberry32 } from "../support/game.ts";
 
@@ -21,8 +21,8 @@ const TABLES: { players: number; mode: GameMode }[] = [
 
 for (const { players, mode } of TABLES) {
   describe(`${players} seats, ${mode}`, () => {
-    const setup = Array.from({ length: players }, (_, i) => ({ name: `P${i}`, type: "bot" as const, team: teamForSeat(i, players, mode) }));
-    const template = initializeGame(setup, mode, 0);
+    const setup = Array.from({ length: players }, (_, i) => ({ name: `P${i}`, type: "bot" as const }));
+    const template = startRound(setup, mode);
     const allSeats = new Set(setup.map((_, i) => i));
 
     for (let seed = 1; seed <= SEEDS; seed++) {
