@@ -144,10 +144,11 @@ test("friends screen — Add Friend is the first section, above the lists", asyn
   await registerNewAccount(page, uniqueUsername("e2eorder"));
   await openFriends(page);
 
-  // A fresh account has no friends and nothing pending, so the only headings
-  // on the screen are the sections themselves — group labels appear with rows.
+  // The screen title heads the page; a fresh account has no friends and nothing
+  // pending, so the only other headings are the sections — group labels appear with rows.
   const headings = await page.getByRole("heading").allInnerTexts();
   expect(headings.map((h) => h.trim())).toEqual([
+    copy["friends.title"],
     copy["friends.sectionAddFriend"],
     copy["friends.sectionFriends"],
     copy["friends.sectionPending"],

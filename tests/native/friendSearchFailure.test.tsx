@@ -61,7 +61,7 @@ async function searchFailingWith(error: unknown) {
     </QueryClientProvider>
   );
   await fireEvent.changeText(screen.getByPlaceholderText(locale['friends.usernamePlaceholder']), 'ghost');
-  await fireEvent.press(screen.getByRole('button', { name: locale['friends.searchA11yLabel'] }));
+  await fireEvent.press(screen.getByRole('button', { name: locale['friends.searchButtonA11yLabel'] }));
   return view;
 }
 
