@@ -93,7 +93,7 @@ export async function playAnyLegal(page: Page): Promise<string | null> {
     for (const held of await labelsOf(`${TABLE} ${HAND_SELECTED}`)) {
       if (!(await toggle(page, card(held)))) return null;
     }
-    if (!(await toggle(page, card(label)))) continue;
+    if (!(await toggle(page, card(label)))) return null;
     if (await giocaAccepts(page, 1_000)) {
       return (await tap(page, page.locator(GIOCA_BTN)).then(() => true, () => false)) ? label : null;
     }
