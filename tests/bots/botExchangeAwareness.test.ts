@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { botChoosePlay, knownOpponentExchangeCard } from "../../lib/game/bot.ts";
 import { buildCombination, getRankStrength, RANK_SLOTS } from "../../lib/game/gameEngine.ts";
 import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
-import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
+import { card as c, seat as makePlayer, state as makeState, viewOf } from "../support/game.ts";
 import type { ExchangePhase } from "../../lib/game/gameEngine.ts";
 
 const exchange = (
@@ -55,9 +55,7 @@ describe("every tier: never lead the exact card known to lose", () => {
       const me = makePlayer(0, hand, { type: "bot", personality });
       const knownOpponentCard = c("6", "spades");
 
-      const choice = botChoosePlay(
-        me, null, true, [8], undefined, () => 0.5, false, undefined, knownOpponentCard
-      );
+      const choice = botChoosePlay(viewOf(me, { opponentHandCounts: [8], knownOpponentCard }), () => 0.5);
 
       assert.ok(choice, "a bot on lead must always play something");
       assert.equal(choice!.cards[0].rank, "9", "led the 4 straight into the known 6");
@@ -68,9 +66,7 @@ describe("every tier: never lead the exact card known to lose", () => {
       const me = makePlayer(0, hand, { type: "bot", personality });
       const knownOpponentCard = c("9", "spades");
 
-      const choice = botChoosePlay(
-        me, null, true, [8], undefined, () => 0.5, false, undefined, knownOpponentCard
-      );
+      const choice = botChoosePlay(viewOf(me, { opponentHandCounts: [8], knownOpponentCard }), () => 0.5);
 
       assert.ok(choice, "no safe lead exists, but a new round cannot be passed");
     });
@@ -82,12 +78,8 @@ describe("every tier: never lead the exact card known to lose", () => {
     const lastPlayed = buildCombination([c("3", "diamonds")])!;
     const knownOpponentCard = c("6", "spades");
 
-    const withKnown = botChoosePlay(
-      me, lastPlayed, false, [8], undefined, () => 0.5, false, undefined, knownOpponentCard
-    );
-    const without = botChoosePlay(
-      me, lastPlayed, false, [8], undefined, () => 0.5, false, undefined, undefined
-    );
+    const withKnown = botChoosePlay(viewOf(me, { toBeat: lastPlayed, opponentHandCounts: [8], knownOpponentCard }), () => 0.5);
+    const without = botChoosePlay(viewOf(me, { toBeat: lastPlayed, opponentHandCounts: [8] }), () => 0.5);
 
     assert.equal(withKnown?.cards[0].id, without?.cards[0].id);
   });
@@ -101,9 +93,7 @@ describe("every tier: never lead the exact card known to lose", () => {
     const playedRanks = new Array<number>(RANK_SLOTS).fill(0);
     playedRanks[getRankStrength("6")] = 4;
 
-    const choice = botChoosePlay(
-      me, null, true, [8], undefined, () => 0.5, false, playedRanks, knownOpponentCard
-    );
+    const choice = botChoosePlay(viewOf(me, { opponentHandCounts: [8], playedRanks, knownOpponentCard }), () => 0.5);
 
     assert.equal(choice?.cards[0].rank, "4", "avoided a card that was already gone");
   });

@@ -21,8 +21,8 @@ import {
   getAllValidPlays,
   startRound,
 } from "../../lib/game/gameEngine.ts";
-import { passed, played } from "../support/moves.ts";
-import { card as c, joker as j, seat as makePlayer } from "../support/game.ts";
+import { playRoundOut } from "../support/moves.ts";
+import { card as c, joker as j, seat as makePlayer, viewOf } from "../support/game.ts";
 import type { GameState } from "../../lib/game/gameEngine.ts";
 import type { BotPersonalityId } from "../../lib/game/botPersonalities.ts";
 
@@ -47,60 +47,9 @@ function botTable(
   );
 }
 
-/**
- * Runs a whole hand with every seat on `personality`, asserting at each step
- * that the chosen play was one getAllValidPlays offered. Returns the turns taken.
- */
-function playOutRound(
-  personality: BotPersonalityId,
-  rng: () => number,
-  shape: TableShape = {}
-): number {
-  let state = botTable(personality, shape);
-  let turns = 0;
-  const limit = 2000;
-
-  while (!state.roundOver && turns < limit) {
-    turns++;
-    const seat = state.currentTurnIndex;
-    const player = state.players[seat];
-    const isNewTrick = state.lastPlayedCombination === null;
-    const requireCard = !state.firstPlayMade ? state.startCard : undefined;
-    const legal = getAllValidPlays(
-      player.hand,
-      isNewTrick ? null : state.lastPlayedCombination,
-      isNewTrick,
-      requireCard
-    );
-
-    const choice = botChoosePlay(
-      player,
-      isNewTrick ? null : state.lastPlayedCombination,
-      isNewTrick,
-      state.players.filter((_, i) => i !== seat).map((p) => p.hand.length),
-      requireCard,
-      rng
-    );
-
-    if (choice) {
-      // botChoosePlay enumerates its own candidates, so compare by content:
-      // same combination type over the same card ids.
-      const key = (c: { type: string; cards: { id: string }[] }) =>
-        `${c.type}:${c.cards.map((x) => x.id).sort().join(",")}`;
-      assert.ok(
-        legal.some((p) => key(p) === key(choice)),
-        `${personality} returned a play getAllValidPlays did not offer`
-      );
-      state = played(state, choice);
-      continue;
-    }
-
-    assert.ok(!isNewTrick, `${personality} passed while leading a round`);
-    state = passed(state);
-  }
-
-  assert.ok(state.roundOver, `${personality} did not finish a round in ${limit} turns`);
-  return turns;
+/** A whole hand with every seat on `personality`; the engine refuses any play it would not offer. */
+function playOutRound(personality: BotPersonalityId, rng: () => number, shape: TableShape = {}): number {
+  return playRoundOut(botTable(personality, shape), rng).length - 1;
 }
 
 for (const p of BOT_PERSONALITIES) {
@@ -178,10 +127,7 @@ test("the hard tier leads a plain play rather than dump a royal straight", () =>
   // play the shortcut can see.
   const hand = [c("3", "spades"), c("4", "spades"), c("5", "spades"),
     c("6", "spades"), c("7", "spades"), c("9", "clubs"), c("J", "diamonds")];
-  const choice = botChoosePlay(
-    makePlayer(0, hand, { type: "bot", personality: "gent" }), null, true,
-    [9, 9, 9], undefined, fixedRng([0.5])
-  );
+  const choice = botChoosePlay(viewOf(makePlayer(0, hand, { type: "bot", personality: "gent" }), { opponentHandCounts: [9, 9, 9] }), fixedRng([0.5]));
   assert.notEqual(choice?.type, "royal_straight", "the royal is defence, not a lead");
   assert.ok(
     !choice!.cards.some((x) => x.rank === "2" || x.isJoker),
@@ -195,10 +141,7 @@ test("the hard tier's near-finish shortcut leads its longest play", () => {
   const hand = [c("3", "hearts"), c("4", "diamonds"), c("5", "clubs"),
     c("6", "spades"), c("7", "hearts"), c("8", "diamonds"),
     c("9", "clubs"), c("J", "diamonds")];
-  const choice = botChoosePlay(
-    makePlayer(0, hand, { type: "bot", personality: "gent" }), null, true,
-    [9, 9, 9], undefined, fixedRng([0.5])
-  );
+  const choice = botChoosePlay(viewOf(makePlayer(0, hand, { type: "bot", personality: "gent" }), { opponentHandCounts: [9, 9, 9] }), fixedRng([0.5]));
   assert.equal(choice?.cards.length, 7, "the longest straight goes down");
 });
 
@@ -207,10 +150,7 @@ test("the hard tier's near-finish shortcut leads its longest play", () => {
 // would lead the weaker one. Four cards, so both pairs clear `myCards - 2`.
 test("the hard tier's near-finish shortcut sorts on length, not on dump value", () => {
   const hand = [c("K", "clubs"), c("K", "hearts"), c("3", "clubs"), c("3", "diamonds")];
-  const choice = botChoosePlay(
-    makePlayer(0, hand, { type: "bot", personality: "gent" }), null, true,
-    [9, 9, 9], undefined, fixedRng([0.5])
-  );
+  const choice = botChoosePlay(viewOf(makePlayer(0, hand, { type: "bot", personality: "gent" }), { opponentHandCounts: [9, 9, 9] }), fixedRng([0.5]));
   assert.deepEqual(choice?.cards.map((x) => x.rank), ["K", "K"]);
 });
 
@@ -222,10 +162,7 @@ test("the hard tier leads its longest plain play rather than open with a bomb", 
     c("K", "diamonds"), c("3", "clubs"), c("4", "diamonds")];
   for (const personality of ["gent"] as BotPersonalityId[]) {
     for (const roll of [0, 0.5, 0.99]) {
-      const choice = botChoosePlay(
-        makePlayer(0, hand, { type: "bot", personality }), null, true,
-        [9, 9, 9], undefined, fixedRng([roll])
-      );
+      const choice = botChoosePlay(viewOf(makePlayer(0, hand, { type: "bot", personality }), { opponentHandCounts: [9, 9, 9] }), fixedRng([roll]));
       assert.deepEqual(
         choice?.cards.map((x) => x.rank), ["K", "K", "K"],
         `${personality} at rng ${roll} led ${choice?.type}`
@@ -243,10 +180,7 @@ test("the hard tier answers plainly rather than spend a joker, at every roll", (
   const lastPlayed = buildCombination([c("Q", "spades")])!;
   for (const personality of ["gent"] as BotPersonalityId[]) {
     for (const roll of [0, 0.5, 0.99]) {
-      const choice = botChoosePlay(
-        makePlayer(0, hand, { type: "bot", personality }), lastPlayed, false,
-        [9, 9, 9], undefined, fixedRng([roll])
-      );
+      const choice = botChoosePlay(viewOf(makePlayer(0, hand, { type: "bot", personality }), { toBeat: lastPlayed, opponentHandCounts: [9, 9, 9] }), fixedRng([roll]));
       assert.ok(
         !choice?.cards.some((x) => x.isJoker || x.rank === "2"),
         `${personality} at rng ${roll} spent ${choice?.cards.map((x) => x.rank).join("+")}`
@@ -276,11 +210,7 @@ test("easy tier leads its lowest-strength play when no knob fires", () => {
     c("K", "spades"), c("7", "hearts"), c("3", "clubs"), c("J", "diamonds"),
   ];
   const choice = botChoosePlay(
-    makePlayer(0, hand, { type: "bot", personality: "luan" }),
-    null,
-    true,
-    [8, 8, 8],
-    undefined,
+    viewOf(makePlayer(0, hand, { type: "bot", personality: "luan" }), { opponentHandCounts: [8, 8, 8] }),
     // Above every knob's threshold, so neither knob fires and the tier's own
     // preference is the whole answer.
     fixedRng([0.99])
@@ -304,11 +234,7 @@ test("easy tier's unpredictability alt follows getAllValidPlays' own order", () 
   const expected = alts[Math.min(alts.length - 1, Math.floor(altRng * alts.length))];
 
   const choice = botChoosePlay(
-    makePlayer(0, hand, { type: "bot", personality: "luan" }),
-    null,
-    true,
-    [8, 8, 8],
-    undefined,
+    viewOf(makePlayer(0, hand, { type: "bot", personality: "luan" }), { opponentHandCounts: [8, 8, 8] }),
     fixedRng([0.1, altRng]) // 0.1 < luan's 0.45 unpredictability: the knob fires
   );
   assert.deepEqual(choice?.cards.map((x) => x.id), expected.cards.map((x) => x.id));
@@ -334,14 +260,7 @@ test("leading a round always produces a play, for every personality and hand siz
     for (let size = 1; size <= 14; size++) {
       for (let offset = 0; offset + size <= deck.length; offset += 5) {
         const hand = deck.slice(offset, offset + size);
-        const play = botChoosePlay(
-          makePlayer(0, hand, { type: "bot", personality: id }),
-          null,
-          true,
-          [size, size, size],
-          undefined,
-          fixedRng([0.1, 0.5, 0.9])
-        );
+        const play = botChoosePlay(viewOf(makePlayer(0, hand, { type: "bot", personality: id }), { opponentHandCounts: [size, size, size] }), fixedRng([0.1, 0.5, 0.9]));
         assert.ok(play, `${id} led nothing holding ${size} cards from offset ${offset}`);
       }
     }
@@ -376,14 +295,7 @@ test("a requireCard that is not the 3♠ is still honoured", () => {
   ];
   for (const required of [hand[0], hand[3], hand[7]]) {
     for (const p of BOT_PERSONALITIES) {
-      const choice = botChoosePlay(
-        makePlayer(0, hand, { type: "bot", personality: p.id }),
-        null,
-        true,
-        [8, 8, 8],
-        required,
-        fixedRng([0.5])
-      );
+      const choice = botChoosePlay(viewOf(makePlayer(0, hand, { type: "bot", personality: p.id }), { opponentHandCounts: [8, 8, 8], mustInclude: required }), fixedRng([0.5]));
       assert.ok(choice, `${p.id} must lead when it holds ${required.id}`);
       assert.ok(
         choice!.cards.some((x) => x.id === required.id),

@@ -2,7 +2,7 @@ import { now } from "../http/clock.ts";
 import type { InboundSchemas, IntentReply } from "../../shared/protocol.ts";
 import type { GameSocket as Socket } from "./socketTypes.ts";
 import { z } from "zod";
-import { logger } from "../http/logger.ts";
+import { logger } from "../shared/logger.ts";
 import { refuse as refusal, type Outcome, type Refusal } from "../shared/refusal.ts";
 
 /**
@@ -27,7 +27,7 @@ interface RateWindow {
  *
  * Only ever a *parsed* payload reaches `extra`: the raw packet is
  * attacker-shaped and unbounded. Room codes are the one credential a payload
- * carries, and `server/http/logger.ts` redacts them — `tests/server/logRedaction.test.ts`
+ * carries, and `server/shared/logger.ts` redacts them — `tests/server/logRedaction.test.ts`
  * pins that a new one cannot be added without being redacted too.
  */
 function logRefusal(

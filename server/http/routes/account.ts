@@ -6,11 +6,11 @@ import { onSignedIn } from "../mount.ts";
 import { validate } from "../validate.ts";
 import { sessionUser } from "../accountSession.ts";
 import { deleteUser } from "../deleteAccount.ts";
-import { logger } from "../logger.ts";
+import { logger } from "../../shared/logger.ts";
 import { userStore, UsernameTakenError } from "../../store/userStore.ts";
 import { savePushToken } from "../../socket/push.ts";
 import { evictUser } from "../../socket/socketRegistry.ts";
-import { trackEvent } from "../../socket/events.ts";
+import { trackEvent } from "../../shared/events.ts";
 import { payload } from "../../shared/payload.ts";
 
 /**

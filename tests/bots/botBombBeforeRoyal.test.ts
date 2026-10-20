@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { botChoosePlay } from "../../lib/game/bot.ts";
 import { BOT_PERSONALITIES } from "../../lib/game/botPersonalities.ts";
 import { buildCombination } from "../../lib/game/gameEngine.ts";
-import { card as c, seat } from "../support/game.ts";
+import { card as c, seat, viewOf } from "../support/game.ts";
 
 const hand = [
   c("Q", "hearts"), c("Q", "diamonds"), c("Q", "clubs"), c("Q", "spades"),
@@ -17,7 +17,7 @@ for (const personality of BOT_PERSONALITIES) {
       const player = seat(0, hand, { type: "bot", personality: personality.id });
       const top = buildCombination([c("2", "hearts")])!;
 
-      const choice = botChoosePlay(player, top, false, [1, 6, 6], undefined, () => rngValue);
+      const choice = botChoosePlay(viewOf(player, { toBeat: top, opponentHandCounts: [1, 6, 6] }), () => rngValue);
 
       assert.notEqual(choice?.type, "royal_straight");
     });

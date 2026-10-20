@@ -21,7 +21,7 @@ const EXCHANGE_HOLD = exchangeHold(Platform.OS);
 export interface OfflineDriver {
   viewerSeat: number;
   autoPassed: number;
-  /** The table has shown the received card, so the choice follows what was seen. */
+  /** The table has shown the received card, so a bot winner's choice follows what was seen. */
   onExchangeReady: () => void;
   onDealing: (dealing: boolean) => void;
   onRoundLanded: ((landsAt: number) => void) | undefined;
@@ -32,7 +32,7 @@ export interface OfflineDriver {
 /** Null-safe, so the screen calls it before its `if (!gameState)`. */
 export function useOfflineDriver(): OfflineDriver {
   const { gameState, passTurn, runBotTurn } = useLocalTable();
-  const { exchangeAnnouncing, settleExchange } = useLocalExchange();
+  const { exchangeAnnouncing } = useLocalExchange();
   const { match, startNextRound } = useLocalMatch();
   const [autoPassed, setAutoPassed] = useState(0);
 
@@ -107,10 +107,16 @@ export function useOfflineDriver(): OfflineDriver {
     setAutoPassed((n) => n + 1);
   }, [clockTurn, passTurn]);
 
+  // Only the giveback is the table's to release: once it lands, a bot loser is on move under the ceremony.
+  const exchangeOpen = gameState?.exchangePhase?.active === true;
+  const onExchangeReady = useCallback(() => {
+    if (exchangeOpen) runBotTurn();
+  }, [exchangeOpen, runBotTurn]);
+
   return {
     viewerSeat,
     autoPassed,
-    onExchangeReady: settleExchange,
+    onExchangeReady,
     onDealing: setDealing,
     onRoundLanded: roundEnding ? setRoundLandedAt : undefined,
     // Leading a trick has no deadline offline; nothing else is keeping this clock, so it can be stopped

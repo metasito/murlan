@@ -7,7 +7,6 @@
 // not with a mock that pretends to.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import pg from "pg";
 import {
   startTestServer,
   hasDatabase,
@@ -19,10 +18,9 @@ import { EVENT_NAMES } from "../../shared/events.ts";
 
 describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  let dbPool: pg.Pool;
   let cookie: string;
   let ownerCookie: string;
-  let trackEvent: typeof import("../../server/socket/events.ts").trackEvent;
+  let trackEvent: typeof import("../../server/shared/events.ts").trackEvent;
   let retentionDays: number;
   let sweepRetention: typeof import("../../server/game/retention.ts").sweepRetention;
 
@@ -32,31 +30,24 @@ describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () =>
     // DATABASE_URL when first loaded, and the harness is what points that at
     // this run's own schema.
     ({ trackEvent, EVENT_RETENTION_DAYS: retentionDays } = await import(
-      "../../server/socket/events.ts"
+      "../../server/shared/events.ts"
     ));
     ({ sweepRetention } = await import("../../server/game/retention.ts"));
-    dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
     ({ cookie } = await register(server, "funnel_player"));
     ({ cookie: ownerCookie } = await register(server, "funnel_owner"));
-    await dbPool.query(
+    await server.query(
       `UPDATE "${server.schema}".users SET is_admin = true WHERE username = $1`,
       ["funnel_owner"]
     );
   });
 
   after(async () => {
-    await dbPool.end();
     await server.stop();
   });
 
   const rowsNamed = async (name: string) =>
-    (
-      await dbPool.query<{ name: string }>(
-        `SELECT name FROM "${server.schema}".events WHERE name = $1`,
-        [name]
-      )
-    ).rows;
+    server.query<{ name: string }>(`SELECT name FROM "${server.schema}".events WHERE name = $1`, [name]);
 
   /** The write is fire-and-forget, so it lands just after the response. */
   async function settle<T>(read: () => Promise<T[]>, want: number): Promise<T[]> {
@@ -104,7 +95,7 @@ describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () =>
   });
 
   test("retention is off the write path, and the scheduled sweep still works", async () => {
-    await dbPool.query(
+    await server.query(
       `INSERT INTO "${server.schema}".events (name, occurred_at)
        VALUES ($1, now() - make_interval(days => $2))`,
       ["lobby.entered", retentionDays + 1]

@@ -11,7 +11,6 @@ const TABLE: LocalTable = {
   runBotTurn: noop,
   chooseExchangeCard: noop,
   acknowledgeExchange: noop,
-  settleExchange: noop,
   startNextRound: noop,
   startNewMatch: noop,
 };

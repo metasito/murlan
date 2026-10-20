@@ -1,4 +1,4 @@
-import { logger } from "../http/logger.ts";
+import { logger } from "../shared/logger.ts";
 import { recordGameResult } from "./stats.ts";
 import { previewRatedDeltas, recordRatedResult } from "./ratings.ts";
 import { saveReplay } from "./replays.ts";

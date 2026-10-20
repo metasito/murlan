@@ -139,6 +139,23 @@ describe("a table's round trip through active_games", () => {
     });
   });
 
+  test("an open exchange the winner cannot give back from is refused; one they can is kept", () => {
+    const withExchange = (winnerHand: GameState["players"][number]["hand"]) => {
+      const game = midMatch();
+      game.gameState.players[0].hand = winnerHand;
+      game.gameState.exchangePhase = {
+        active: true,
+        winnerIdx: 0,
+        loserIdx: 1,
+        cardFromLoser: { id: "A_spades", rank: "A", suit: "spades", isJoker: false },
+        twoJokerException: false,
+      };
+      return fromEnvelope(persisted(game));
+    };
+    assert.equal(withExchange([]).ok, false);
+    assert.equal(withExchange([{ id: "5_clubs", rank: "5", suit: "clubs", isJoker: false }]).ok, true);
+  });
+
   test("a newer revision's row is refused as newer, an older one as unrestorable", () => {
     const envelope = viaJson(toEnvelope(midMatch()));
     const newer = fromEnvelope({ roomId: ROOM, gameState: { ...envelope, schemaVersion: GAME_SCHEMA_VERSION + 1 } });

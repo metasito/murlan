@@ -6,7 +6,7 @@ import { userStore } from "../store/userStore.ts";
 import { roomStore } from "../store/roomStore.ts";
 import { friendRequestRow, friendRow } from "../store/friendRows.ts";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "../../shared/http.ts";
-import { logger } from "../http/logger.ts";
+import { logger } from "../shared/logger.ts";
 import { notifyUser } from "./push.ts";
 import { announceRoom, emitToUser, isUserOnline } from "./socketRegistry.ts";
 

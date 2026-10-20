@@ -51,7 +51,7 @@ describe("docs/PRIVACY.md states the retention the code enforces", () => {
       "bug reports",
       () => `${constantFrom("server/http/bugReports.ts", "BUG_REPORT_RETENTION_DAYS")} days`,
     ],
-    ["usage events", () => `${constantFrom("server/socket/events.ts", "EVENT_RETENTION_DAYS")} days`],
+    ["usage events", () => `${constantFrom("server/shared/events.ts", "EVENT_RETENTION_DAYS")} days`],
     [
       "stale rooms",
       () => `${hours(constantFrom("server/game/retention.ts", "STALE_ROOM_MAX_AGE_MS"))} hours`,

@@ -5,7 +5,7 @@ import { onSignedIn } from "../mount.ts";
 import { validate } from "../validate.ts";
 import { recordClientError } from "../clientErrors.ts";
 import { recordBugReport } from "../bugReports.ts";
-import { logger } from "../logger.ts";
+import { logger } from "../../shared/logger.ts";
 import { payload } from "../../shared/payload.ts";
 
 const errorReportLimiter = routeLimiter({

@@ -6,7 +6,7 @@
 // is the one setter that stays.
 import type { ServerToClientEvents } from "../../shared/protocol.ts";
 import type { TableRuntime } from "../game/tableRuntime.ts";
-import { logger } from "../http/logger.ts";
+import { logger } from "../shared/logger.ts";
 import { socketRoomMap, userRoom, userSocketMap } from "../game/gameRoom.ts";
 import { safeTimer } from "../game/gamePersistence.ts";
 import { announceRoomChanged, handleSeatRelease } from "./socketTable.ts";

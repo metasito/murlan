@@ -1,7 +1,7 @@
 // Tables that stopped answering: a deal, a vote or a grace that never came.
 import { test, describe, afterEach, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { rehydrateGame } from "../../server/game/tableHandlers.ts";
+import { rehydrateGame } from "../../server/game/tableLifecycle.ts";
 import { applyOrForward } from "../../server/game/tableRouter.ts";
 import { handleRoundOver } from "../../server/game/roundOver.ts";
 import type { Presence, TableRuntime, TableWriters } from "../../server/game/tableRuntime.ts";

@@ -14,9 +14,9 @@ import type { TableRuntime } from "../game/tableRuntime.ts";
 import { friendStore } from "../store/friendStore.ts";
 import { roomStore } from "../store/roomStore.ts";
 import { userStore } from "../store/userStore.ts";
-import { logger } from "../http/logger.ts";
+import { logger } from "../shared/logger.ts";
 import { friendships, type InviteRefusal } from "./friendships.ts";
-import { trackEvent } from "./events.ts";
+import { trackEvent } from "../shared/events.ts";
 import { onEvent } from "./socketSafety.ts";
 import {
   activeGames,

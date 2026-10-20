@@ -1,4 +1,4 @@
-import { logger } from "./logger.ts";
+import { logger } from "../shared/logger.ts";
 
 const reported = new Set<string>();
 

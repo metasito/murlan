@@ -40,7 +40,7 @@ const LENSES = [
   },
   {
     key: 'network', model: 'opus', skills: ['react-native-best-practices'],
-    start: 'lib/socket.ts, lib/sendIntent.ts, context/SocketContext.tsx, context/OnlineGameContext.tsx, server/socket/*.ts, server/game/game{Room,Turn,Timers,Ownership}.ts, server/socket/emit.ts, server/socket/events.ts, server/game/tableRouter.ts, server/store/roomStore.ts, server/http/shutdown.ts, server/store/drainPool.ts, docs/DISCONNECT-POLICY.md, docs/adr/0003-*',
+    start: 'lib/socket.ts, lib/sendIntent.ts, context/SocketContext.tsx, context/OnlineGameContext.tsx, server/socket/*.ts, server/game/game{Room,Turn,Timers,Ownership}.ts, server/game/tableBroadcasts.ts, server/shared/events.ts, server/game/tableRouter.ts, server/store/roomStore.ts, server/http/shutdown.ts, server/store/drainPool.ts, docs/DISCONNECT-POLICY.md, docs/adr/0003-*',
     refs: 'socket.io/docs/v4: delivery-guarantees (at-most-once by default), connection-state-recovery (maxDisconnectionDuration), using-multiple-nodes, adapter; Nielsen heuristic 1 (visibility of system status) for reconnect states.',
     ask: `Build a table of every client<->server event: name, direction, acked?, idempotent?, and what happens if it is lost, duplicated or reordered.
 - Listeners are registered before any await.
@@ -84,7 +84,7 @@ Invariants to confirm:
   },
   {
     key: 'stability', model: 'opus', skills: ['react-native-best-practices'],
-    start: 'components/ErrorBoundary.tsx, components/ErrorFallback.tsx, lib/errorReporting.ts, server/http/logger.ts, server/index.ts, server/app.ts, server/http/shutdown.ts, context/, .github/workflows/soak.yml, tests/soak/',
+    start: 'components/ErrorBoundary.tsx, components/ErrorFallback.tsx, lib/errorReporting.ts, server/shared/logger.ts, server/http/logger.ts, server/index.ts, server/app.ts, server/http/shutdown.ts, context/, .github/workflows/soak.yml, tests/soak/',
     refs: 'OWASP Top 10:2025 A10 (mishandling of exceptional conditions); structured logs carrying a correlation id across HTTP and socket, with tokens and cookies redacted.',
     ask: `- Unhandled rejections and exceptions, on client and server.
 - The error boundary covers every route.
@@ -110,7 +110,7 @@ Quote measured numbers from the docs, and name what is still unmeasured.`,
   },
   {
     key: 'perf-server', model: 'sonnet', skills: [],
-    start: 'server/socket/socketGameplay.ts, server/socket/socketTable.ts, server/game/tableActions.ts, server/game/tableHandlers.ts, server/game/gamePersistence.ts, server/socket/emit.ts, shared/http.ts, server/app.ts, server/http/staticPaths.ts, tests/soak/',
+    start: 'server/socket/socketGameplay.ts, server/socket/socketTable.ts, server/game/tableActions.ts, server/game/tableHandlers.ts, server/game/gamePersistence.ts, server/game/tableBroadcasts.ts, shared/http.ts, server/app.ts, server/http/staticPaths.ts, tests/soak/',
     refs: 'socket.io/docs/v4 adapter and performance-tuning pages.',
     ask: `- DB writes per move.
 - Broadcast fan-out and state payload size.

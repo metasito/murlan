@@ -1,7 +1,7 @@
 import type { TableRuntime } from "./tableRuntime.ts";
-import { logger } from "../http/logger.ts";
+import { logger } from "../shared/logger.ts";
 import { rollMatchForward } from "./roundOver.ts";
-import { emitMatchState } from "../socket/emit.ts";
+import { emitMatchState } from "./tableBroadcasts.ts";
 import { publishState } from "./gamePersistence.ts";
 import { armTurn } from "./gameTurn.ts";
 import { clearForDeal } from "./seatLedger.ts";

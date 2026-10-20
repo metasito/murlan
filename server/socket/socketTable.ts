@@ -8,7 +8,7 @@ import { now } from "../http/clock.ts";
 import type { TableRuntime } from "../game/tableRuntime.ts";
 import { friendStore } from "../store/friendStore.ts";
 import { roomStore } from "../store/roomStore.ts";
-import { logger } from "../http/logger.ts";
+import { logger } from "../shared/logger.ts";
 import { isShuttingDown, seatName } from "../game/gameRoom.ts";
 import { seatOfUser } from "../game/onlineGameLogic.ts";
 import type { OnlineGameState } from "../game/gameRoom.ts";
@@ -24,7 +24,7 @@ import {
   seatHoldMs,
 } from "../game/gameTimers.ts";
 import { sendGameStateTo } from "../game/gamePersistence.ts";
-import { emitEndMatchVoteState, emitMatchState, emitVoteState } from "./emit.ts";
+import { emitEndMatchVoteState, emitMatchState, emitVoteState } from "../game/tableBroadcasts.ts";
 import { armTurnIfIdle } from "../game/gameTurn.ts";
 import { payload } from "../shared/payload.ts";
 import { modeFits, type GameMode } from "../../lib/game/gameEngine.ts";

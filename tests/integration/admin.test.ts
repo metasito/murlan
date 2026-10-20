@@ -7,7 +7,6 @@
 // what a stranger gets, and neither may learn that the page exists.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import pg from "pg";
 import {
   startTestServer,
   hasDatabase,
@@ -18,7 +17,6 @@ import { DEADLINE_SCALE, register } from "../helpers/client.ts";
 
 describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  let dbPool: pg.Pool;
   let ownerCookie: string;
   let playerCookie: string;
   let retentionDays: number;
@@ -31,19 +29,17 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
     // run's own schema. A top-level import would connect to public instead.
     ({ CLIENT_ERROR_RETENTION_DAYS: retentionDays } = await import("../../server/http/clientErrors.ts"));
     ({ sweepRetention } = await import("../../server/game/retention.ts"));
-    dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
     ({ cookie: ownerCookie } = await register(server, "the_owner"));
     ({ cookie: playerCookie } = await register(server, "a_player"));
 
-    await dbPool.query(
+    await server.query(
       `UPDATE "${server.schema}".users SET is_admin = true WHERE username = $1`,
       ["the_owner"]
     );
   });
 
   after(async () => {
-    await dbPool.end();
     await server.stop();
   });
 
@@ -99,11 +95,11 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
     // The write is fire-and-forget, so it may land just after the 204.
     let rows: { message: string }[] = [];
     for (let attempt = 0; attempt < 20 && rows.length === 0; attempt++) {
-      const result = await dbPool.query<{ message: string }>(
+      const result = await server.query<{ message: string }>(
         `SELECT message FROM "${server.schema}".client_errors WHERE message = $1`,
         ["a crash worth reading later"]
       );
-      rows = result.rows;
+      rows = result;
       if (rows.length === 0) await new Promise((r) => setTimeout(r, 50));
     }
 
@@ -111,17 +107,17 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
   });
 
   test("retention is off the write path, and the scheduled sweep still removes an aged report", async () => {
-    await dbPool.query(
+    await server.query(
       `INSERT INTO "${server.schema}".client_errors (message, occurred_at)
        VALUES ($1, now() - make_interval(days => $2))`,
       ["ancient crash", retentionDays + 1]
     );
 
-    const before = await dbPool.query(
+    const before = await server.query(
       `SELECT 1 FROM "${server.schema}".client_errors WHERE message = $1`,
       ["ancient crash"]
     );
-    assert.equal(before.rows.length, 1, "the fixture row was never inserted");
+    assert.equal(before.length, 1, "the fixture row was never inserted");
 
     // recordClientError is a bare insert (#895) — only sweepRetention() prunes.
     const res = await fetch(`${server.url}/api/client-errors`, {
@@ -135,24 +131,24 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
     // asserting on what it did *not* also do.
     await new Promise((r) => setTimeout(r, 300 * DEADLINE_SCALE));
 
-    const afterWrite = await dbPool.query(
+    const afterWrite = await server.query(
       `SELECT 1 FROM "${server.schema}".client_errors WHERE message = $1`,
       ["ancient crash"]
     );
     assert.equal(
-      afterWrite.rows.length,
+      afterWrite.length,
       1,
       "a write must not prune the table it just grew"
     );
 
     await sweepRetention();
 
-    const afterSweep = await dbPool.query(
+    const afterSweep = await server.query(
       `SELECT 1 FROM "${server.schema}".client_errors WHERE message = $1`,
       ["ancient crash"]
     );
     assert.equal(
-      afterSweep.rows.length,
+      afterSweep.length,
       0,
       "the scheduled sweep must still remove a row past the retention window"
     );
@@ -175,11 +171,11 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
     // showing a real but momentary count of 1.
     let rows: { message: string }[] = [];
     for (let attempt = 0; attempt < 20 && rows.length < 2; attempt++) {
-      const result = await dbPool.query<{ message: string }>(
+      const result = await server.query<{ message: string }>(
         `SELECT message FROM "${server.schema}".client_errors WHERE message = $1`,
         [message]
       );
-      rows = result.rows;
+      rows = result;
       if (rows.length < 2) await new Promise((r) => setTimeout(r, 50));
     }
     assert.equal(rows.length, 2, "both crash reports were never stored");
@@ -197,7 +193,7 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
   // must not vanish into some other row just because both have no fingerprint.
   test("rows with no fingerprint are never merged into each other", async () => {
     const message = "a legacy crash with no fingerprint";
-    await dbPool.query(
+    await server.query(
       `INSERT INTO "${server.schema}".client_errors (message, occurred_at) VALUES ($1, now()), ($1, now())`,
       [message]
     );
@@ -224,11 +220,11 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
 
     let rows: { message: string }[] = [];
     for (let attempt = 0; attempt < 20 && rows.length === 0; attempt++) {
-      const result = await dbPool.query<{ message: string }>(
+      const result = await server.query<{ message: string }>(
         `SELECT message FROM "${server.schema}".client_errors WHERE message = $1`,
         [message]
       );
-      rows = result.rows;
+      rows = result;
       if (rows.length === 0) await new Promise((r) => setTimeout(r, 50));
     }
     assert.equal(rows.length, 1, "the crash report was never stored");
@@ -255,11 +251,11 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
   });
   test("text a player wrote reaches the page escaped, never as markup", async () => {
     const hostile = `<img src=x onerror=1> "'&`;
-    await dbPool.query(
+    await server.query(
       `INSERT INTO "${server.schema}".client_errors (message, occurred_at) VALUES ($1, now())`,
       [`crash ${hostile}`]
     );
-    await dbPool.query(
+    await server.query(
       `INSERT INTO "${server.schema}".bug_reports (user_id, description)
        SELECT id, $1 FROM "${server.schema}".users WHERE username = 'a_player'`,
       [`report ${hostile}`]
@@ -273,15 +269,15 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
   });
 
   test("a server error becomes a row, is shown on the page and ages out", async () => {
-    const { logger } = await import("../../server/http/logger.ts");
+    const { logger } = await import("../../server/shared/logger.ts");
     const { SERVER_ERROR_RETENTION_DAYS } = await import("../../server/http/serverErrors.ts");
     const rows = (message: string) =>
-      dbPool.query(`SELECT context FROM "${server.schema}".server_errors WHERE message = $1`, [message]);
+      server.query<{ context: { roomId?: string } }>(`SELECT context FROM "${server.schema}".server_errors WHERE message = $1`, [message]);
 
     logger.error({ roomId: "r-planted" }, "a planted server failure");
     let found: { context: { roomId?: string } }[] = [];
     for (let attempt = 0; attempt < 40 && found.length === 0; attempt++) {
-      found = (await rows("a planted server failure")).rows;
+      found = await rows("a planted server failure");
       if (found.length === 0) await new Promise((r) => setTimeout(r, 50));
     }
     assert.equal(found.length, 1, "the error line was never stored");
@@ -291,23 +287,23 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
     assert.ok(body.includes("Server errors"), "the page has no server-error panel");
     assert.ok(body.includes("a planted server failure"), "the stored error is not on the page");
 
-    await dbPool.query(
+    await server.query(
       `INSERT INTO "${server.schema}".server_errors (level, message, occurred_at)
        VALUES (50, $1, now() - make_interval(days => $2))`,
       ["an ancient server failure", SERVER_ERROR_RETENTION_DAYS + 1]
     );
     await sweepRetention();
-    assert.equal((await rows("an ancient server failure")).rowCount, 0);
-    assert.equal((await rows("a planted server failure")).rowCount, 1);
+    assert.equal((await rows("an ancient server failure")).length, 0);
+    assert.equal((await rows("a planted server failure")).length, 1);
   });
 
   test("a server error line naming a user stores no user id", async () => {
-    const { logger } = await import("../../server/http/logger.ts");
+    const { logger } = await import("../../server/shared/logger.ts");
     const message = "a failure that names a user";
     logger.error({ userId: "u-planted", roomId: "r-keep" }, message);
     let found: { context: Record<string, unknown> }[] = [];
     for (let attempt = 0; attempt < 40 && found.length === 0; attempt++) {
-      found = (await dbPool.query(`SELECT context FROM "${server.schema}".server_errors WHERE message = $1`, [message])).rows;
+      found = await server.query(`SELECT context FROM "${server.schema}".server_errors WHERE message = $1`, [message]);
       if (found.length === 0) await new Promise((r) => setTimeout(r, 50));
     }
     assert.equal(found.length, 1, "the error line was never stored");
@@ -316,29 +312,29 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
   });
 
   test("deleting an account leaves no server error row naming its id", async () => {
-    const { logger } = await import("../../server/http/logger.ts");
+    const { logger } = await import("../../server/shared/logger.ts");
     const { user, cookie } = await register(server, "erased_logged");
     const message = "a failure logged for a soon-deleted account";
     logger.error({ accountId: user.id, err: "boom" }, message);
     let stored = 0;
     for (let attempt = 0; attempt < 40 && stored === 0; attempt++) {
-      stored = (await dbPool.query(`SELECT 1 FROM "${server.schema}".server_errors WHERE message = $1`, [message])).rowCount ?? 0;
+      stored = (await server.query(`SELECT 1 FROM "${server.schema}".server_errors WHERE message = $1`, [message])).length;
       if (stored === 0) await new Promise((r) => setTimeout(r, 50));
     }
     assert.equal(stored, 1, "the error line was never stored");
-    const before = await dbPool.query(
+    const before = await server.query(
       `SELECT 1 FROM "${server.schema}".server_errors WHERE context::text LIKE $1`,
       [`%${user.id}%`]
     );
-    assert.equal(before.rowCount, 1, "the seeded row must name the account before it is deleted");
+    assert.equal(before.length, 1, "the seeded row must name the account before it is deleted");
 
     const res = await fetch(`${server.url}/api/users/me`, { method: "DELETE", headers: { cookie } });
     assert.equal(res.status, 200, await res.text());
 
-    const named = await dbPool.query(
+    const named = await server.query(
       `SELECT message FROM "${server.schema}".server_errors WHERE context::text LIKE $1`,
       [`%${user.id}%`]
     );
-    assert.equal(named.rowCount, 0, "a server_errors row still names the deleted account");
+    assert.equal(named.length, 0, "a server_errors row still names the deleted account");
   });
 });

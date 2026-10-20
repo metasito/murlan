@@ -1,13 +1,16 @@
 // Bot heuristics. `lib/game/autoMove.ts` is the only module that calls into this one
 // (`tests/engine/matchState.test.ts`); relative imports for the same reason it gives.
 import { getBotPersonality } from "./botPersonalities.ts";
+import type { BotPersonalityId } from "./botPersonalities.ts";
 import {
   cardStrength,
   DECK_BY_STRENGTH,
   emptyRankTally,
   getAllValidPlays,
   getRankStrength,
+  getValidGivebackCards,
   RANK_SLOTS,
+  sortHand,
   teamForSeat,
 } from "./gameEngine.ts";
 import type {
@@ -16,7 +19,6 @@ import type {
   Combination,
   ExchangePhase,
   GameState,
-  Player,
 } from "./gameEngine.ts";
 
 /**
@@ -219,32 +221,60 @@ export function isExchangeCardStillOut(
   return outstandingTally(playedRanks, hand)[cardStrength(card)] > 0;
 }
 
+/** Everything a bot may read when choosing a play; `botView` is how production builds one. */
+export interface BotView {
+  hand: Card[];
+  personality?: BotPersonalityId;
+  /** Null when leading a new trick. */
+  toBeat: Combination | null;
+  /** The opening card, only for the seat holding it. */
+  mustInclude?: Card;
+  opponentHandCounts: number[];
+  partnerHoldsTop: boolean;
+  playedRanks: number[] | undefined;
+  knownOpponentCard?: Card;
+}
+
+export function botView(state: GameState, seat: number): BotView {
+  const player = state.players[seat];
+  const hand = player?.hand ?? [];
+  const opening = !state.firstPlayMade ? state.startCard : undefined;
+  const opponents = opponentsOf(state, seat);
+  return {
+    hand,
+    personality: player?.personality,
+    toBeat: state.lastPlayedCombination,
+    mustInclude: opening ? hand.find((c) => c.id === opening.id) : undefined,
+    opponentHandCounts: opponents.handCounts,
+    partnerHoldsTop: opponents.partnerHoldsTop,
+    playedRanks: state.playedRanks,
+    knownOpponentCard: knownOpponentExchangeCard(state.exchangePhase, seat),
+  };
+}
+
+/** The card a bot gives back: the weakest legal choice. Never undefined for a non-empty hand. */
+export function pickGivebackCard(hand: Card[], excludeCardId?: string): Card | undefined {
+  return sortHand(getValidGivebackCards(hand, excludeCardId))[0];
+}
+
 /**
- * The bot's move for `player`, or null to pass. `rng` is a parameter so that
+ * The bot's play, or null to pass. `rng` is a parameter so that
  * personalities can vary their play without making the engine untestable —
  * tests inject a fixed sequence and stay deterministic.
  */
-export function botChoosePlay(
-  player: Player,
-  lastPlayed: Combination | null,
-  isNewTrick: boolean,
-  otherPlayersHandCount: number[],
-  requireCard?: Card,
-  rng: () => number = Math.random,
-  partnerHoldsTop = false,
-  playedRanks?: number[],
-  knownOpponentCard?: Card
-): Combination | null {
-  const plays = getAllValidPlays(player.hand, lastPlayed, isNewTrick, requireCard);
+export function botChoosePlay(view: BotView, rng: () => number = Math.random): Combination | null {
+  const { hand, toBeat: lastPlayed, mustInclude: requireCard, partnerHoldsTop, playedRanks, knownOpponentCard } = view;
+  const isNewTrick = lastPlayed === null;
+  const plays = getAllValidPlays(hand, lastPlayed, isNewTrick, requireCard);
   if (plays.length === 0) return null;
 
-  const personality = getBotPersonality(player.personality);
+  const personality = getBotPersonality(view.personality);
   const diff = personality.difficulty;
-  const myCards = player.hand.length;
-  const minOpponent = Math.min(...otherPlayersHandCount);
+  const myCards = hand.length;
+  const minOpponent = Math.min(...view.opponentHandCounts);
 
   const knownCard =
-    knownOpponentCard && isExchangeCardStillOut(knownOpponentCard, playedRanks, player.hand)
+    knownOpponentCard && isExchangeCardStillOut(knownOpponentCard, playedRanks, hand)
       ? knownOpponentCard
       : undefined;
 
@@ -271,8 +301,8 @@ export function botChoosePlay(
    */
   const takesTheTrick = (play: Combination) =>
     play.cards.length === 1 &&
-    outstandingAbove(cardStrength(play.cards[0]), playedRanks, player.hand) === 0 &&
-    !bombPossible(playedRanks, player.hand);
+    outstandingAbove(cardStrength(play.cards[0]), playedRanks, hand) === 0 &&
+    !bombPossible(playedRanks, hand);
 
   // Universal: if this play empties the hand, always do it. No personality
   // declines to win, so this returns before the knobs are applied.

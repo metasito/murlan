@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { recordingRuntime, type JournalEntry } from "../helpers/recordingRuntime.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
-import { commitMove } from "../../server/game/gameTurn.ts";
+import { commitMove } from "../../server/game/tableMoves.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
 import { botMoveDelayMs, clearRoomTimers, pending } from "../../server/game/gameTimers.ts";
 import { applyMove, createDeck, startRound, type GameState, type Move } from "../../lib/game/gameEngine.ts";
