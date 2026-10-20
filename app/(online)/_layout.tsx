@@ -5,8 +5,9 @@ import { OnlineGameProvider } from "@/context/OnlineGameContext";
 import { useOnlineRouting } from "@/context/useOnlineRouting";
 import { View, ActivityIndicator } from "react-native";
 import { Colors } from '@/lib/theme';
+import { routeErrorBoundary } from "@/components/RouteErrorBoundary";
 
-export { RouteErrorBoundary as ErrorBoundary } from "@/components/RouteErrorBoundary";
+export const ErrorBoundary = routeErrorBoundary("online");
 
 function FollowTable() {
   useOnlineRouting();

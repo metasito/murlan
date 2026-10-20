@@ -40,6 +40,11 @@ export function storeTableHandles(next: Partial<TableHandles>): void {
   write(WAITING_ROOM_KEY, next.waitingCode);
 }
 
+/** Both handles removed, resolved once storage has them gone. */
+export async function forgetTableHandles(): Promise<void> {
+  await AsyncStorage.multiRemove([ACTIVE_ROOM_KEY, WAITING_ROOM_KEY]).catch(() => {});
+}
+
 /** Whether a live game is waiting for this player — what home offers to resume. */
 export async function holdsLiveTable(): Promise<boolean> {
   return !!(await AsyncStorage.getItem(ACTIVE_ROOM_KEY));

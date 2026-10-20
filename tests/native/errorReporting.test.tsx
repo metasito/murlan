@@ -238,6 +238,29 @@ describe('a report the server never took', () => {
     expect(await kept()).toEqual([]);
   });
 
+  // An earlier build queued without an owner: whose they were is unknown, so
+  // they are dropped rather than posted under whoever signs in.
+  it('drops a report from before owners were recorded', async () => {
+    await AsyncStorage.setItem(
+      PENDING_CRASH_REPORTS_KEY,
+      JSON.stringify([{ message: 'legacy crash of A' }])
+    );
+
+    apiRequest.mockClear();
+    await setReportingAccount('B');
+
+    expect(sent()).toEqual([]);
+    expect(await kept()).toEqual([]);
+  });
+
+  it('records a signed-out report as owned by nobody', async () => {
+    await setReportingAccount(null);
+    apiRequest.mockImplementationOnce(refused);
+    reportError(new Error('signed out'));
+    await eventually(async () => (await kept()).length > 0);
+    expect(await kept()).toEqual([expect.objectContaining({ message: 'signed out', account: null })]);
+  });
+
   it('queued while signed out, goes with whoever signs in next', async () => {
     await setReportingAccount(null);
     apiRequest.mockImplementationOnce(refused);

@@ -16,17 +16,18 @@ import { Colors, Spacing, Radius, FontSize, Shadow, TOUCH_TARGET_MIN, Layer } fr
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden } from "@/lib/a11y";
-import { storeTableHandles } from "@/lib/tableHandles";
 import { AppModal } from "./AppModal";
 
 type ErrorFallbackProps = {
   error: Error;
   resetError: () => void;
+  /** Releases and forgets the crashed table, so neither button leads back into it. */
+  leaveTable: () => Promise<void>;
 };
 
 const NO_INSETS = { top: 0, right: 0, bottom: 0, left: 0 };
 
-export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
+export function ErrorFallback({ error, resetError, leaveTable }: ErrorFallbackProps) {
   // Read the context directly rather than through useSafeAreaInsets(), which
   // throws when no provider is above. This is the last screen the app has; it
   // has to render even when the crash was in SafeAreaProvider itself.
@@ -34,14 +35,19 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
   const { t } = useTranslation();
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  const leaveToHome = () => {
+    router.replace("/");
+    resetError();
+  };
   const handleRestart = async () => {
     setRestarting(true);
     try {
+      await leaveTable();
       await reloadAppAsync();
     } catch (restartError) {
       console.error("Failed to restart app:", restartError);
       setRestarting(false);
-      resetError();
+      leaveToHome();
     }
   };
 
@@ -101,10 +107,8 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
           <MenuButton
             label={t("errorFallback.continue")}
             onPress={() => {
-              // Left in place, the stored handles rejoin the table that crashed.
-              storeTableHandles({ roomId: null, waitingCode: null });
-              router.replace("/");
-              resetError();
+              void leaveTable();
+              leaveToHome();
             }}
             variant="ghost"
             disabled={restarting}

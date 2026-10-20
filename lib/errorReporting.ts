@@ -49,14 +49,21 @@ function alreadyReported(error: unknown, signature: string, now: number): boolea
 
 type CrashReport = Record<string, unknown>;
 /** `account` is who was signed in when it was queued, null for nobody. It is never posted. */
-type PendingReport = CrashReport & { account?: string | null };
+type PendingReport = CrashReport & { account: string | null };
 
 let account: string | null = null;
 
+/**
+ * Drops an entry with no `account` key: an earlier build queued without one, and
+ * a report whose owner is unknown must not be posted under whoever signs in.
+ */
 function parsePending(raw: string | null): PendingReport[] {
   try {
     const stored: unknown = JSON.parse(raw ?? "[]");
-    return Array.isArray(stored) ? stored : [];
+    if (!Array.isArray(stored)) return [];
+    return stored.filter(
+      (r): r is PendingReport => typeof r === "object" && r !== null && "account" in r
+    );
   } catch {
     return [];
   }
@@ -101,13 +108,13 @@ function send(report: CrashReport, owner: string | null = account): Promise<void
 export async function setReportingAccount(userId: string | null): Promise<void> {
   account = userId;
   if (!userId) return;
-  const ours = (r: PendingReport) => (r.account ?? null) === null || r.account === userId;
+  const ours = (r: PendingReport) => r.account === null || r.account === userId;
   let taken: PendingReport[] = [];
   await updatePending((reports) => {
     taken = reports.filter(ours);
     return reports.filter((r) => !ours(r));
   });
-  await Promise.all(taken.map(({ account: owner, ...report }) => send(report, owner ?? null)));
+  await Promise.all(taken.map(({ account: owner, ...report }) => send(report, owner)));
 }
 
 /** The schema accepts these three and rejects anything else. */
