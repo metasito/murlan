@@ -21,7 +21,8 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { DIAGNOSTICS, diag } from "@/lib/diagnostics";
 import { readFlightFromDom } from "./flightTrace";
-import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n";
+import { comboLabel as comboText } from "./spokenLabels";
 import type { Card, Combination } from "@/lib/game/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
 import { seatDirection } from "@/components/seatLayout";
@@ -349,15 +350,6 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned
 
 // ─── The pile's notices ───────────────────────────────────────────────────────
 
-const COMBO_LABEL_KEYS: Record<string, TranslationKey> = {
-  single:        "gameShared.comboSingle",
-  pair:          "gameShared.comboPair",
-  triple:        "gameShared.comboTriple",
-  straight:      "gameShared.comboStraight",
-  bomb:          "gameShared.comboBomb",
-  royal_straight: "gameShared.comboRoyalStraight",
-};
-
 const FELT_SCRIM_PEAK = 0.25;
 const SCRIM_EASING = Easing.in(Easing.quad);
 
@@ -503,7 +495,7 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
 
   const top = topPlay(trick.plays);
   const stack = top ? fieldSlots(top.combo.cards, cardScale, roomW) : null;
-  const label = getComboLabel(comboLabel, t);
+  const label = comboText(comboLabel, t);
 
   // A plain view with no z-index of its own, so each group's `zIndex` reaches the moments beside it.
   return (
@@ -565,18 +557,6 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
     </Animated.View>
   );
 });
-// ─── getComboLabel ────────────────────────────────────────────────────────────
-
-export function getComboLabel(
-  combo: Combination | null,
-  t: (key: TranslationKey, params?: Record<string, string | number>) => string
-): string | null {
-  if (!combo) return null;
-  const key = COMBO_LABEL_KEYS[combo.type];
-  const label = key ? t(key) : combo.type;
-  if (combo.cards.length > 2) return `${label}${t("gameShared.comboMultiplier", { count: combo.cards.length })}`;
-  return label;
-}
 
 // ─── usePileFlight ────────────────────────────────────────────────────────────
 

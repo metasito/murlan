@@ -11,16 +11,22 @@
 // `no-portrait-lock`.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 describe("orientation is never narrowed behind the player's back", () => {
-  test("the game table forces landscape", () => {
-    const src = readFileSync(path.join(repoRoot, "components", "GameTable.tsx"), "utf8");
-    assert.match(src, /lockAsync\(\s*ScreenOrientation\.OrientationLock\.LANDSCAPE\s*\)/);
+  test("the game table forces landscape, and is the only caller of the lock", () => {
+    const lock = readFileSync(path.join(repoRoot, "lib", "device", "orientation.tsx"), "utf8");
+    assert.match(lock, /export function useLandscapeLock\(/);
+    assert.match(lock, /lockAsync\(\s*ScreenOrientation\.OrientationLock\.LANDSCAPE\s*\)/);
+    const callers = ["app", "components", "context", "lib"]
+      .flatMap((dir) => readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" }).map((f) => path.join(dir, f)))
+      .filter((f) => /\.tsx?$/.test(f) && /(?<!function )\buseLandscapeLock\(\)/.test(readFileSync(path.join(repoRoot, f), "utf8")))
+      .map((f) => f.split(path.sep).join("/"));
+    assert.deepEqual(callers, ["components/GameTable.tsx"]);
   });
 
   test("app.json leaves the app free to rotate", () => {

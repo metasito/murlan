@@ -7,8 +7,11 @@ import {
   urgentThresholdSeconds,
   pulseRepeats,
   CLOCK_RUNNING_OUT_SECONDS,
+  turnPresentation,
+  turnState,
 } from "../../components/turnTimerUi.ts";
 import { describeTableForA11y, type TableA11yStrings } from "../../components/tableA11y.ts";
+import type { TFn } from "../../lib/i18n.ts";
 
 
 describe("canPassNow", () => {
@@ -202,6 +205,7 @@ const clockRows = CLOCK_TABLE.flatMap((line) => line.split(" ")).map((cell) => {
   return { isMyTurn, isFinished, isNewTrick, roundOver, exchangeActive, includeNewTrick, pausable, holdingForStart, answer };
 });
 
+const fakeT = ((key: string, params?: Record<string, unknown>) => (params ? `${key}(${params.name})` : key)) as TFn;
 const a11yFirst: TableA11yStrings = {
   yourTurn: "a11y.yourTurn",
   turnOf: (name) => `a11y.turnOf(${name})`,
@@ -247,13 +251,86 @@ describe("the turn, as GameTable's branches decided it", () => {
     });
   }
 
+  const base = {
+    onMoveName: "Ana",
+    clockShown: false,
+    exchange: { chip: null, choiceOpen: false, viewerIsWinner: false, active: false },
+    isMyTurn: false,
+    isFinished: false,
+    isNewTrick: false,
+    holdingForStart: false,
+    held: false,
+    turnToken: "tok",
+    t: fakeT,
+  };
+
+  for (const [roundOver, matchOver, dealing, viewerOnMove, exchange, chip, spoken, lit] of TURN_TABLE) {
+    test(`chip for ${[roundOver, matchOver, dealing, viewerOnMove, exchange].join("")}`, () => {
+      const state = turnState({ roundOver: roundOver === 1, matchOver: matchOver === 1, dealing: dealing === 1, viewerOnMove: viewerOnMove === 1 });
+      const shown = turnPresentation({
+        ...base,
+        state,
+        exchange: exchange ? { chip: "CHIP", choiceOpen: true, viewerIsWinner: true, active: true } : base.exchange,
+      }).chip;
+      assert.deepEqual(shown, { text: chip, spoken, lit: lit === 1 });
+    });
+  }
+
+  test("an exchange chip lights only for the winner whose choice is open", () => {
+    for (const [choiceOpen, viewerIsWinner] of [[false, true], [true, false], [false, false]]) {
+      const shown = turnPresentation({ ...base, state: "yourTurn", exchange: { chip: "CHIP", choiceOpen, viewerIsWinner, active: true } });
+      assert.equal(shown.chip.lit, false);
+    }
+  });
+
   test("both timer questions", () => {
     for (const r of clockRows) {
-      const announcementHolds = r.holdingForStart && r.pausable;
-      const shared = { isNewTrick: r.isNewTrick, roundOver: r.roundOver, exchangeActive: r.exchangeActive, announcementHolds };
-      const clock = turnTimerActive({ ...shared, isMyTurn: r.isMyTurn, isFinished: r.isFinished, includeNewTrick: r.includeNewTrick });
-      const seat = turnTimerActive({ ...shared, isMyTurn: true, isFinished: false, includeNewTrick: true });
-      assert.equal(`${clock ? "c" : "-"}${seat ? "s" : "-"}`, r.answer, JSON.stringify(r));
+      const shown = turnPresentation({
+        ...base,
+        state: r.roundOver ? "roundOver" : "turnOf",
+        exchange: { ...base.exchange, active: r.exchangeActive },
+        timer: { seconds: 20, includeNewTrick: r.includeNewTrick, pausable: r.pausable },
+        isMyTurn: r.isMyTurn,
+        isFinished: r.isFinished,
+        isNewTrick: r.isNewTrick,
+        holdingForStart: r.holdingForStart,
+      });
+      assert.equal(`${shown.clock.active ? "c" : "-"}${shown.seat ? "s" : "-"}`, r.answer, JSON.stringify(r));
     }
+  });
+
+  test("with no timer, neither clock runs", () => {
+    const shown = turnPresentation({ ...base, state: "yourTurn", isMyTurn: true });
+    assert.equal(shown.clock.active, false);
+    assert.equal(shown.seat, undefined);
+  });
+
+  test("the chip's clock and the ring restart on the same key, and hold together", () => {
+    const shown = turnPresentation({
+      ...base,
+      state: "yourTurn",
+      clockShown: true,
+      isMyTurn: true,
+      held: true,
+      timer: { seconds: 20, resetKey: "re", includeNewTrick: true },
+    });
+    assert.deepEqual(shown.seat, { seconds: 20, resetKey: "tok|re", held: true });
+    assert.equal(shown.clock.resetKey, "tok|re");
+    assert.equal(shown.clock.frozen, true);
+    assert.equal(shown.clock.revealed, true);
+  });
+
+  test("the next-round vote takes the chip's countdown, which nothing holds and nothing expires", () => {
+    const onExpire = () => {};
+    const shown = turnPresentation({
+      ...base,
+      state: "roundOver",
+      held: true,
+      timer: { seconds: 20, onExpire },
+      vote: { seconds: 30, resetKey: "v1" },
+    });
+    assert.deepEqual(shown.clock, { active: true, revealed: true, seconds: 30, resetKey: "vote|v1", frozen: false });
+    const turn = turnPresentation({ ...base, state: "roundOver", timer: { seconds: 20, onExpire } });
+    assert.equal(turn.clock.onExpire, onExpire);
   });
 });

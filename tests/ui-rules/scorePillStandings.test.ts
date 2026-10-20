@@ -1,6 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { scorePillStandings } from "../../lib/game/scorePill.ts";
+import { matchBoardFor, scorePillStandings } from "../../lib/game/scorePill.ts";
+import type { TFn } from "../../lib/i18n.ts";
 
 const four = [
   { id: "player_0", name: "Arta" },
@@ -138,4 +139,58 @@ test("a spectator sees the standings and no row of their own", () => {
   assert.equal(s.mine, null);
   assert.equal(s.rows.length, 4);
   assert.ok(s.rows.every((r) => r.place === 1 && r.total === 0 && !r.mine));
+});
+
+describe("matchBoardFor", () => {
+  const t = ((key: string, params?: Record<string, unknown>) =>
+    params ? `${key}(${Object.values(params).join(",")})` : key) as TFn;
+  const actions = { onHome: () => {} };
+  const solo = scorePillStandings({
+    players: four,
+    teams: false,
+    scores: { player_0: 21, player_1: 12, player_2: 21, player_3: 3 },
+    placementPoints: {},
+    finishingOrder: [],
+    viewerId: "player_0",
+  });
+
+  test("a single winner is named, with the race and their total", () => {
+    const board = matchBoardFor({ standings: solo, players: four, winners: ["player_0"], score: { target: 21 }, actions, rating: 7, t });
+    assert.deepEqual(board, {
+      winnerKeys: ["player_0"],
+      actions,
+      winner: { name: "Arta", mine: true, draw: false, line: "scorePill.race(21) · 21", rating: 7 },
+    });
+  });
+
+  test("a draw names every winner and gives the race alone", () => {
+    const board = matchBoardFor({ standings: solo, players: four, winners: ["player_0", "player_2"], score: { target: 21 }, actions, t });
+    assert.deepEqual(board.winner, { name: "Arta · Besnik", mine: false, draw: true, line: "scorePill.race(21)", rating: undefined });
+  });
+
+  test("a teams win is keyed and named by the team", () => {
+    const players = [
+      { id: "player_0", name: "Arta", team: "A" },
+      { id: "player_1", name: "Luan", team: "B" },
+      { id: "player_2", name: "Besnik", team: "A" },
+      { id: "player_3", name: "Gent", team: "B" },
+    ];
+    const standings = scorePillStandings({
+      players,
+      teams: true,
+      scores: { player_0: 15, player_1: 4, player_2: 6, player_3: 2 },
+      placementPoints: {},
+      finishingOrder: [],
+      viewerId: "player_1",
+    });
+    const board = matchBoardFor({ standings, players, winners: ["player_0", "player_2"], score: { target: 21 }, actions, t });
+    assert.deepEqual(board.winnerKeys, ["A", "A"]);
+    assert.deepEqual(board.winner, { name: "lobby.team(A)", mine: false, draw: false, line: "scorePill.race(21) · 21", rating: undefined });
+  });
+
+  test("a single round names the format instead of a race", () => {
+    const board = matchBoardFor({ standings: solo, players: four, winners: ["player_1"], score: { target: 21, single: true }, actions, t });
+    assert.equal(board.winner.line, "result.singleRoundFormat · 12");
+    assert.equal(board.winner.mine, false);
+  });
 });

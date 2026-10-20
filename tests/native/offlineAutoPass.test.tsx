@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import type { GameState } from '@/lib/game/gameEngine';
-import type { TurnTimerConfig } from '@/components/GameTable';
+import type { TurnTimerConfig } from '@/components/turnTimerUi';
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },

@@ -225,9 +225,11 @@ export function A11yStatus({
   role = "text",
   live = "polite",
   nonce,
+  testID,
 }: {
   label: string;
   veiled?: boolean;
+  testID?: string;
   /** A new value re-arms the region, so the same sentence arriving again is announced again. */
   nonce?: number;
   /** `alert` for a layer that arrives unbidden rather than a running commentary. */
@@ -258,6 +260,7 @@ export function A11yStatus({
 
   return (
     <Text
+      testID={testID}
       accessible
       accessibilityRole={role}
       accessibilityLabel={spoken}

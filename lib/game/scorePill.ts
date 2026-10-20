@@ -4,6 +4,7 @@
 // "Node's TypeScript loader".
 import { aggregateTeamScores } from "./gameEngine.ts";
 import { standings } from "./standings.ts";
+import type { TranslationKey, TranslationParams } from "../../shared/i18n.ts";
 
 export interface PillRow {
   /** Engine player id, or the team letter in teams mode. */
@@ -91,4 +92,38 @@ export function scorePillStandings({
   );
   const mine = rows.find((r) => r.mine);
   return { teams, rows, mine: mine ? { total: mine.total, place: mine.place } : null };
+}
+
+/** What the pill shows once it becomes the match's board; the actions and the rating pass through untouched. */
+export interface MatchBoard<Actions, Rating> {
+  winnerKeys: string[];
+  actions: Actions;
+  winner: { name: string; mine: boolean; draw: boolean; line: string; rating?: Rating };
+}
+
+export function matchBoardFor<Actions, Rating>(i: {
+  standings: PillStandings;
+  players: readonly { id: string; team?: string }[];
+  winners: readonly string[];
+  score: { target: number; single?: boolean };
+  actions: Actions;
+  rating?: Rating;
+  t: (key: TranslationKey, params?: TranslationParams) => string;
+}): MatchBoard<Actions, Rating> {
+  const { standings: pill, t } = i;
+  const teamOf: Record<string, string | undefined> = Object.fromEntries(i.players.map((p) => [p.id, p.team]));
+  const winnerKeys = i.winners.map((id) => (pill.teams ? (teamOf[id] ?? id) : id));
+  const won = pill.rows.filter((row) => winnerKeys.includes(row.key));
+  const race = i.score.single ? t("result.singleRoundFormat") : t("scorePill.race", { target: i.score.target });
+  return {
+    winnerKeys,
+    actions: i.actions,
+    winner: {
+      name: won.map((row) => (pill.teams ? t("lobby.team", { team: row.name }) : row.name)).join(" · "),
+      mine: won.length === 1 && won[0].mine,
+      draw: won.length > 1,
+      line: won.length === 1 ? `${race} · ${won[0].total}` : race,
+      rating: i.rating,
+    },
+  };
 }
