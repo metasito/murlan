@@ -1,7 +1,18 @@
 import { z } from "zod";
-import { SUPPORTED_LOCALES, type Locale } from "../../shared/i18n.ts";
-import { USERNAME_MAX, USERNAME_MIN, USERNAME_PATTERN } from "../../shared/username.ts";
-import { BUG_REPORT_LIMITS } from "./bugReports.ts";
+import { SUPPORTED_LOCALES, type Locale } from "./i18n.ts";
+import { USERNAME_MAX, USERNAME_MIN, USERNAME_PATTERN } from "./username.ts";
+
+/**
+ * Caps, in characters, on a bug report — enforced by `BugReportSchema` below rather than by the
+ * field's `maxLength`: a client is not the thing to trust with the size of what it sends.
+ */
+export const BUG_REPORT_LIMITS = {
+  description: 2000,
+  screen: 200,
+  appVersion: 50,
+  platform: 50,
+  locale: 20,
+} as const;
 
 export const PASSWORD_MIN = 8;
 
@@ -113,6 +124,13 @@ export const PushTokenSchema = z.object({
   }),
   platform: z.enum(["ios", "android"]),
   // Optional: the DELETE sends no locale, and neither does a client older than
-  // this field. Absent means English (server/http/routes.ts).
+  // this field. Absent means English (server/http/routes/account.ts).
   locale: z.enum(SUPPORTED_LOCALES as [Locale, ...Locale[]]).optional(),
 });
+
+/** A path segment naming a row: `safeParse`d, so a malformed id is the caller's 400, not a 500. */
+export const RouteParam = z.string().min(1).max(64);
+
+export const RoomCodeParam = z.string().length(6);
+
+export const UserSearchQuery = z.object({ username: z.string().min(1).max(USERNAME_MAX) });

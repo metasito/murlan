@@ -13,13 +13,14 @@
 import { now } from "../http/clock.ts";
 import { randomUUID } from "node:crypto";
 import type { TableRuntime } from "./tableRuntime.ts";
-import { logger } from "../http/logger.ts";
+import { logger } from "../shared/logger.ts";
 import { activeGames, isShuttingDown } from "./gameRoom.ts";
 import { claimRoom, ownsRoom, releaseRoom } from "./gameOwnership.ts";
 import type { Outcome } from "../shared/refusal.ts";
 import type { TableAction, TableActionDraft, TakeoverMode } from "./tableActions.ts";
 import { TAKEOVER } from "./tableActions.ts";
-import { applyTableAction, rehydrateGame } from "./tableHandlers.ts";
+import { applyTableAction } from "./tableHandlers.ts";
+import { rehydrateGame } from "./tableLifecycle.ts";
 
 export const TABLE_ACTION_EVENT = "murlan:table";
 

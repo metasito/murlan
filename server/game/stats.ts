@@ -2,7 +2,7 @@ import { now } from "../http/clock.ts";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { lockUsers } from "../store/userLock.ts";
-import { logger } from "../http/logger.ts";
+import { logger } from "../shared/logger.ts";
 import { userStats, roundHistory, userAchievements } from "../../shared/schema.ts";
 import type { UserStats, RoundHistory } from "../../shared/schema.ts";
 import type { AchievementStatusDto } from "../../shared/http.ts";

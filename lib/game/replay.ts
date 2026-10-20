@@ -192,7 +192,7 @@ export function nextMoment(moments: ReplayMoment[], index: number): ReplayMoment
 /**
  * How many bombs one player threw in this round. Attributed by the same
  * `combo.type === "bomb"` test the server's own flag uses
- * (server/game/gameTurn.ts `recordPlayFlags`), so the count agrees with the
+ * (server/game/tableMoves.ts `commitMove`), so the count agrees with the
  * lifetime figure on `user_stats`.
  *
  * A bot seat carries no user id and can never match, so a bot's bombs are not
