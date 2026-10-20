@@ -12,7 +12,7 @@ test("the seat asked for opens from every deal start, and every card dealt is de
     for (let firstSeat = 0; firstSeat < n; firstSeat++) {
       for (let seat = 0; seat < n; seat++) {
         for (let run = 0; run < 20; run++) {
-          const state = initializeOpeningAt(players, "free_for_all", firstSeat, seat);
+          const state = initializeOpeningAt(players, "free_for_all", seat)(firstSeat);
           assert.equal(state.currentTurnIndex, seat);
           assert.equal(findStartingPlayer(state.players).playerIdx, seat);
           const ids = state.players.flatMap((p) => p.hand.map((c) => c.id));

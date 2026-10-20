@@ -228,7 +228,6 @@ export function createDeck(): Card[] {
 // React Native / Hermes; Math.random is only ever the last-resort fallback.
 export type RandomSource = { getRandomValues(array: Uint32Array): Uint32Array };
 
-/** `globalThis.crypto`, looked up on every draw: the e2e browser patch replaces it after this module loads. */
 export const cryptoRandom: RandomSource = {
   getRandomValues(array) {
     const c = (globalThis as { crypto?: Partial<RandomSource> }).crypto;

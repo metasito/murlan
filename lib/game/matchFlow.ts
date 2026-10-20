@@ -53,17 +53,16 @@ export interface OfflineTable {
   dealFirstSeat: number;
 }
 
-/** `first` is a round already dealt for these seats, in place of a fresh one. */
+/** `deal` deals the first round from the seat given, in place of `startRound`. */
 export function startTable(
   seats: readonly SeatSetup[],
   mode: GameMode,
   length: MatchLength,
-  first?: GameState,
-  random?: RandomSource
+  { deal, random }: { deal?: (firstSeat: number) => GameState; random?: RandomSource } = {}
 ): OfflineTable {
   const dealFirstSeat = dealFirstSeatFor(true, 0, seats.length);
   return {
-    state: first ?? startRound(seats, mode, { firstSeat: dealFirstSeat, random }),
+    state: deal ? deal(dealFirstSeat) : startRound(seats, mode, { firstSeat: dealFirstSeat, random }),
     match: freshMatch(length, seats.length),
     dealFirstSeat,
   };
@@ -75,24 +74,15 @@ export function advance(table: OfflineTable, next: GameState): OfflineTable {
   return { ...table, state: next, match: ends ? applyRoundToMatch(table.match, next) : table.match };
 }
 
-function deal(table: OfflineTable, freshMatchNext: boolean, random?: RandomSource): OfflineTable {
+/** The round after a finished one: the match's next, or a fresh match's first once it is over. The same table while a round is live. */
+export function dealNext(table: OfflineTable, random?: RandomSource): OfflineTable {
   const { state, match } = table;
   if (!state.roundOver) return table;
   const seatCount = state.players.length;
-  const dealFirstSeat = dealFirstSeatFor(freshMatchNext, table.dealFirstSeat, seatCount);
+  const dealFirstSeat = dealFirstSeatFor(match.over, table.dealFirstSeat, seatCount);
   return {
     state: startRound(seatsOf(state), state.gameMode, { firstSeat: dealFirstSeat, opening: openingAfter(state), random }),
-    match: freshMatchNext ? freshMatch(match.length, seatCount) : match,
+    match: match.over ? freshMatch(match.length, seatCount) : match,
     dealFirstSeat,
   };
-}
-
-/** The round after a finished one: the match's next, or a fresh match's first once it is over. The same table while a round is live. */
-export function dealNext(table: OfflineTable, random?: RandomSource): OfflineTable {
-  return deal(table, table.match.over, random);
-}
-
-/** A fresh match at the same table, dealt from a finished round, whatever the score stood at. */
-export function dealNewMatch(table: OfflineTable, random?: RandomSource): OfflineTable {
-  return deal(table, true, random);
 }

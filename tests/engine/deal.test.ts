@@ -263,7 +263,7 @@ describe("dealFirstSeatFor: one function decides a new match from a continuing o
     // The two sites that must tell a continuing match from a finished one —
     // the ones #803's blind critique found disagreeing.
     assert.match(serverSrc, /dealFirstSeatFor\(game\.matchOver,/);
-    assert.match(offlineSrc, /dealFirstSeatFor\(freshMatchNext,/);
+    assert.match(offlineSrc, /dealFirstSeatFor\(match\.over,/);
     // The two sites that start a match from nothing, where `matchOver` is
     // unconditionally true — a literal `dealFirstSeat: 0` would read the same
     // today, but would stop being the one place this decision is made.

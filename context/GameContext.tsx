@@ -12,7 +12,6 @@ import {
   GameState,
   GameMode,
   MatchLength,
-  dealFirstSeatFor,
   pickGivebackCard,
   processExchangeChoice,
   processPlay,
@@ -139,11 +138,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const setupGame = useCallback(
     (players: PlayerSetupConfig[], mode: GameMode, length: MatchLength = "match") => {
       const viewer = Math.max(0, players.findIndex((p) => p.type === "human"));
-      const first = opener(Platform.OS, () => Settings.get(E2E_OPENER_KEY))
-        ? initializeOpeningAt(players, mode, dealFirstSeatFor(true, 0, players.length), viewer)
+      const deal = opener(Platform.OS, () => Settings.get(E2E_OPENER_KEY))
+        ? initializeOpeningAt(players, mode, viewer)
         : undefined;
       dropBoot();
-      write(flow.startTable(players, mode, length, first));
+      write(flow.startTable(players, mode, length, { deal }));
     },
     [dropBoot, write]
   );
@@ -159,7 +158,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   );
 
   const startNextRound = useCallback(() => dealNext(flow.dealNext), [dealNext]);
-  const startNewMatch = useCallback(() => dealNext(flow.dealNewMatch), [dealNext]);
+  const startNewMatch = startNextRound;
 
   const chooseExchangeCard = useCallback(
     (cardId: string) => {

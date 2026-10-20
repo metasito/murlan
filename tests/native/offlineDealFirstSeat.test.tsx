@@ -59,11 +59,40 @@ const roundJustEndedSave = () =>
     dealFirstSeat: 1,
   });
 
+/**
+ * One card from the end of a match dealt from seat 1: Luan and Besnik are out, Ana on move holds her
+ * last card, and Luan's first place takes him to the target.
+ */
+const lastCardOfMatchSave = () => {
+  const card = (rank: string, suit: string) => ({ id: `${rank}_${suit}`, rank, suit, isJoker: false });
+  const hands = [[card("7", "hearts")], [], [], [card("5", "clubs")]];
+  const saved = JSON.parse(roundJustEndedSave());
+  return JSON.stringify({
+    ...saved,
+    gameState: {
+      ...saved.gameState,
+      players: saved.gameState.players.map((p: object, i: number) => ({
+        ...p,
+        hand: hands[i],
+        ...(i === 1 || i === 2 ? { finishPosition: i } : {}),
+      })),
+      currentTurnIndex: 0,
+      roundOver: false,
+      finishingOrder: ["player_1", "player_2"],
+    },
+    match: { ...saved.match, scores: { player_1: 18 } },
+  });
+};
+
 function Probe() {
-  const { hasSavedGame, resumeGame, startNextRound, startNewMatch } = useGame();
+  const { hasSavedGame, resumeGame, startNextRound, startNewMatch, playCards, match } = useGame();
   return (
     <>
       <Text testID="saved">{String(hasSavedGame)}</Text>
+      <Text testID="over">{String(match.over)}</Text>
+      <Pressable testID="playLast" onPress={() => playCards(["7_hearts"])}>
+        <Text>play last</Text>
+      </Pressable>
       <Pressable testID="resume" onPress={() => resumeGame()}>
         <Text>resume</Text>
       </Pressable>
@@ -132,12 +161,15 @@ test("the next round of a running match rotates the deal one seat further (#803)
 });
 
 test("a rematch after the match ends resets the deal to seat 0, not a further rotation (#803)", async () => {
-  await AsyncStorage.setItem(OFFLINE_SAVE_KEY, roundJustEndedSave());
+  await AsyncStorage.setItem(OFFLINE_SAVE_KEY, lastCardOfMatchSave());
   const r = await mount();
   await waitFor(() => expect(textOf(r, "saved")).toBe("true"));
 
   await press(r, "resume");
+  await press(r, "playLast");
+  expect(textOf(r, "over")).toBe("true");
   await press(r, "newMatch");
+  expect(textOf(r, "over")).toBe("false");
 
   await waitFor(async () => {
     expect(await savedDealFirstSeat()).toBe(0);

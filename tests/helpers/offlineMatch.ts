@@ -255,7 +255,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
 
   // One stream for every deal of the match, so a seed replays the whole of it.
   const random = rng(opts.seed).source;
-  let table = startTable(opts.players, opts.gameMode, opts.length, undefined, random);
+  let table = startTable(opts.players, opts.gameMode, opts.length, { random });
   const rounds: SimulatedRound[] = [];
   let botTurnKeyChecks = 0;
   const botRng = opts.botRng?.(opts.seed);
