@@ -68,6 +68,22 @@ describe("db reset guard", () => {
     assert.match(stderr, /production/);
   });
 
+  test("refuses a DATABASE_URL host that is not local, unless ALLOW_REMOTE_RESET=1", () => {
+    const armed = { ALLOW_DESTRUCTIVE: "1", DATABASE_URL: "postgres://u:p@db.example.com:5432/x" };
+    const refused = run(armed, ["--yes"]);
+    assert.equal(refused.code, 1);
+    assert.match(refused.stderr, /ALLOW_REMOTE_RESET/);
+    const allowed = run({ ...armed, ALLOW_REMOTE_RESET: "1" }, ["--yes"]);
+    assert.doesNotMatch(allowed.stderr, /Refusing to run: DATABASE_URL host/);
+  });
+
+  test("local hosts pass the host check", () => {
+    for (const host of ["localhost", "127.0.0.1", "[::1]"]) {
+      const { stderr } = run({ ALLOW_DESTRUCTIVE: "1", DATABASE_URL: `postgres://u:p@${host}:1/x` }, ["--yes"]);
+      assert.doesNotMatch(stderr, /Refusing to run: DATABASE_URL host/, host);
+    }
+  });
+
   test("the npm script does not supply the opt-in", () => {
     const pkg = JSON.parse(
       readFileSync(path.join(repoRoot, "package.json"), "utf8")

@@ -47,6 +47,22 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+const dbHost = (() => {
+  try {
+    return new URL(process.env.DATABASE_URL).hostname.replace(/^\[|\]$/g, "");
+  } catch {
+    return "";
+  }
+})();
+if (!LOCAL_HOSTS.has(dbHost) && process.env.ALLOW_REMOTE_RESET !== "1") {
+  console.error(
+    `Refusing to run: DATABASE_URL host "${dbHost}" is not localhost, 127.0.0.1 or ::1.\n` +
+      "This DELETES ALL DATA on that database. If that is truly the target, also set ALLOW_REMOTE_RESET=1."
+  );
+  process.exit(1);
+}
+
 const TABLES = ["active_games", "room_players", "rooms", "friends", "users"];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });

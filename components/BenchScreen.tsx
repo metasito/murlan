@@ -11,6 +11,7 @@ import { Colors, FontSize, Layer, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/
 import { feltOnly, legibilityRing } from "@/components/table/legibilityRing";
 import { benchHandles, diag } from "@/lib/diagnostics";
 import { LAMP_SIDES, annulusLuminance, type LampSide } from "@/lib/diagnostics/lampLegibility";
+import { benchTargetHost } from "@/lib/diagnostics/benchLaunch";
 import { recorder } from "@/lib/diagnostics/recorder";
 import { benchScenarios, type BenchContext, type NoticeShot } from "@/lib/diagnostics/bench";
 import { benchBuild } from "@/lib/diagnostics/build";
@@ -45,9 +46,6 @@ function GalleryStage({ bind }: { bind: (show: (shot: NoticeShot | null) => void
     </View>
   );
 }
-
-const collectorHost = (param: string | undefined) =>
-  param ?? (process.env.EXPO_PUBLIC_DOMAIN ? new URL(process.env.EXPO_PUBLIC_DOMAIN).hostname : "127.0.0.1");
 
 /** Module-wide: a second screen instance, e.g. the link opened over an icon-started run, must not start a second run. */
 let benchRunning = false;
@@ -89,7 +87,9 @@ export function BenchScreen() {
   const run = useCallback(
     (only?: string[]) =>
       latched(stopDrain, async () => {
-        recorder.postTo(collectorHost(params.host));
+        const host = benchTargetHost(params.host, process.env.EXPO_PUBLIC_DOMAIN);
+        if (host === null) return;
+        recorder.postTo(host);
         const capturing = params.capture !== "0" && probe.canCapture() && (await probe.startCapture(true).catch(() => false));
         drain.current = setInterval(() => probe.drain(), 1000);
         diag({ k: "build", t: performance.now(), ...benchBuild() });
