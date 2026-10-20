@@ -25,12 +25,6 @@ import { act, render } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { getAnimatedStyle } from "react-native-reanimated";
 
-jest.mock("@/lib/accessibility", () => ({
-  usePrefersReducedMotion: () => false,
-  setMotionPreference: () => {},
-  getMotionPreference: () => "off",
-}));
-
 import { GameTable } from "@/components/GameTable";
 import { farthest, frameOfFirst } from "./helpers/landing";
 import type { Card, Combination, GameState, Player } from "@/lib/game/gameEngine";

@@ -42,14 +42,9 @@ jest.mock('@/lib/query-client', () => ({
   getApiUrl: () => 'http://localhost',
   apiRequest: jest.fn(async () => ({ json: async () => ({}) })),
 }));
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 import HomeScreen from '@/app/index';
 import { t } from '@/lib/i18n';
+import { setMotion } from './harness/env';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -62,6 +57,8 @@ const mount = () =>
       <HomeScreen />
     </SafeAreaProvider>
   );
+
+beforeEach(() => setMotion('on'));
 
 describe('the home screen and a table still holding a seat', () => {
   beforeEach(() => {

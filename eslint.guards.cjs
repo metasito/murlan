@@ -31,6 +31,11 @@ const importsOf = (source, { values = false } = {}) =>
     `CallExpression[callee.name="require"][arguments.0.value=${source}]`,
   ].join(", ");
 
+// A jest.mock or doMock of a module, by its literal path or a template literal ending in it.
+const JEST_MOCK = 'CallExpression[callee.object.name="jest"][callee.property.name=/^(mock|doMock)$/]';
+const mockOf = (path, tail) =>
+  [`${JEST_MOCK} > Literal:first-child[value=${path}]`, `${JEST_MOCK} > TemplateLiteral:first-child:has(TemplateElement[value.raw=${tail}])`].join(", ");
+
 /** @type {readonly Guard[]} */
 const GUARDS = [
   {
@@ -580,6 +585,63 @@ const GUARDS = [
       'const reduced = process.env.EXPO_PUBLIC_E2E_REDUCE_MOTION === "1";',
       '// process.env.EXPO_PUBLIC_E2E_FAST\nconst s = "EXPO_PUBLIC_E2E_FAST";',
     ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "motion-and-connectivity-are-knobs",
+    why: "Motion and connectivity are knobs in tests/native/harness/env.ts, reset before every test: call setMotion or setConnectivity there; a module mock can answer what the real hook never would.",
+    selector: [
+      mockOf("/^(@|\\.\\.?(\\x2F\\.\\.)*)\\x2Flib\\x2Faccessibility(\\.ts)?$/", "/(^|\\x2F)lib\\x2Faccessibility(\\.ts)?$/"),
+      mockOf("/^@react-native-community\\x2Fnetinfo$/", "/^@react-native-community\\x2Fnetinfo$/"),
+      'CallExpression[callee.object.name="jest"][callee.property.name="spyOn"][arguments.1.value="usePrefersReducedMotion"]',
+    ].join(", "),
+    files: ["tests/native/**/*.{ts,tsx}"],
+    ignores: [{ glob: "tests/native/setup.ts", reason: "installs the one netinfo mock whose listeners setConnectivity drives" }],
+    plant: { file: "tests/native/plant.test.tsx", code: [
+      "jest.mock('@/lib/accessibility', () => ({ usePrefersReducedMotion: () => true }));",
+      'jest.mock("@react-native-community/netinfo", () => ({}));',
+      "jest.doMock('@/lib/accessibility', () => ({}));",
+      "jest.mock('../../lib/accessibility', () => ({}));",
+      "jest.mock('../lib/accessibility.ts', () => ({}));",
+      "jest.mock(`@/lib/accessibility`, () => ({}));",
+      "jest.mock(`${root}/lib/accessibility`, () => ({}));",
+      "jest.mock(`@react-native-community/netinfo`, () => ({}));",
+      "jest.spyOn(accessibility, 'usePrefersReducedMotion');",
+    ].join("\n"), hits: 9 },
+    spare: [
+      "await setMotion('on');",
+      "jest.mock('@/lib/accessibilityLabels', () => ({}));",
+      "jest.mock(`@/lib/accessibilityLabels`, () => ({}));",
+      "jest.mock('../../lib/accessibility/extra', () => ({}));",
+      "jest.requireActual('@/lib/accessibility');",
+      "jest.spyOn(accessibility, 'getMotionPreference');",
+    ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
+  },
+  {
+    id: "window-is-a-knob",
+    why: "The window is a knob in tests/native/harness/env.ts, reset before every test: call setWindow there, which moves Dimensions and every reader of it together.",
+    selector: [
+      mockOf("/^react-native\\x2FLibraries\\x2FUtilities\\x2FuseWindowDimensions(\\.js)?$/", "/(^|\\x2F)Libraries\\x2FUtilities\\x2FuseWindowDimensions(\\.js)?$/"),
+      `${JEST_MOCK}[arguments.0.value="react-native"] Property[key.name="useWindowDimensions"]`,
+      'CallExpression[callee.object.name="jest"][callee.property.name="spyOn"][arguments.1.value="useWindowDimensions"]',
+    ].join(", "),
+    files: ["tests/native/**/*.{ts,tsx}"],
+    ignores: [
+      { glob: "tests/native/orientationFirstRender.test.tsx", reason: "a cold bridge whose first window is wrong and never fires a change, which Dimensions.set cannot hold" },
+      { glob: "tests/native/tableRelocksAfterEntry.test.tsx", reason: "a bridge frozen in portrait while Dimensions moves, which Dimensions.set cannot split" },
+    ],
+    plant: { file: "tests/native/plant.test.tsx", code: [
+      "jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({ default: () => W }));",
+      'jest.doMock("react-native/Libraries/Utilities/useWindowDimensions", () => ({}));',
+      "jest.mock(`react-native/Libraries/Utilities/useWindowDimensions`, () => ({}));",
+      "jest.mock('react-native', () => ({ ...jest.requireActual('react-native'), useWindowDimensions: () => W }));",
+      "jest.spyOn(ReactNative, 'useWindowDimensions');",
+    ].join("\n"), hits: 5 },
+    spare: [
+      "await setWindow({ width: 390, height: 844 });",
+      "jest.mock('react-native/Libraries/Utilities/Dimensions', () => ({}));",
+      "jest.mock('react-native', () => ({ ...jest.requireActual('react-native'), Platform: { OS: 'ios' } }));",
+      "const { width } = useWindowDimensions();",
+    ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
   },
 ];
 

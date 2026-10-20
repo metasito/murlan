@@ -30,11 +30,6 @@ jest.mock('@/lib/device/pushRegistration', () => ({
   forgetPushRegistration: () => {},
 }));
 
-jest.mock('@react-native-community/netinfo', () => ({
-  __esModule: true,
-  default: { addEventListener: jest.fn(() => () => {}) },
-}));
-
 import { AUTH_USER_KEY as STORAGE_KEY } from '@/lib/storageKeys';
 const SIGNED_IN = { id: 'u1', username: 'Ana', tutorialSeenAt: null };
 const RENAMED = { ...SIGNED_IN, username: 'AnaBesi' };

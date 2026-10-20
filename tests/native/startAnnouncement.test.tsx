@@ -7,30 +7,20 @@
 // ceremony and then ran its own fixed five seconds, with the game live
 // underneath it. So the property to pin is not a duration — it is that the
 // table having moved on is enough, on its own, to take the announcement away.
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 const WINDOW = { width: 844, height: 390, scale: 2, fontScale: 1 };
-jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
-  __esModule: true,
-  default: () => WINDOW,
-}));
-
 // Reduced motion on throughout: a cue whose only channel is an animation goes
 // silent under this preference, and the announcement must still say its piece.
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 import { GameTable } from '@/components/GameTable';
 import type { TurnTimerConfig } from '@/components/turnTimerUi';
 import { t, tn } from '@/lib/i18n';
 import { RANK_SLOTS, type Card, type GameState, type Player } from '@/lib/game/gameEngine';
+import { setMotion, setWindow } from './harness/env';
 
 const INSETS = { top: 0, left: 47, right: 0, bottom: 21 };
 const METRICS = { frame: { x: 0, y: 0, width: WINDOW.width, height: WINDOW.height }, insets: INSETS };
@@ -110,6 +100,10 @@ const withdrawn = (props: Record<string, unknown>) =>
   props.accessibilityElementsHidden === true ||
   props.importantForAccessibility === 'no-hide-descendants' ||
   props['aria-hidden'] === true;
+
+beforeEach(() => setMotion('on'));
+
+beforeEach(() => setWindow(WINDOW));
 
 describe('the round-opening announcement', () => {
   it('is on screen for the turn it names', async () => {

@@ -23,11 +23,6 @@ jest.mock('@/lib/query-client', () => ({
   apiRequest: (...args: unknown[]) => mockApiRequest(...args),
 }));
 
-jest.mock('@react-native-community/netinfo', () => ({
-  __esModule: true,
-  default: { addEventListener: jest.fn(() => () => {}) },
-}));
-
 import AuthScreen from '@/app/auth';
 import { stubFetch } from './helpers/stubFetch';
 import { AuthProvider } from '@/context/AuthContext';

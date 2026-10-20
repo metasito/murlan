@@ -1,39 +1,24 @@
 // tests/native/offlineBannerLargeText.test.tsx — the offline pill off the table, as G2 approved it
 // (offline.shape=pill offline.tone=solid): white ink on a red deep enough for body-size text, capped
 // at the table's font scale, one line, at Layer.alert; on the table the turn pill carries it instead.
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import React from 'react';
-import { act, render, screen } from '@testing-library/react-native';
+import { render, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-const mockNetListeners = new Set<(state: { isConnected: boolean | null }) => void>();
-jest.mock('@react-native-community/netinfo', () => ({
-  __esModule: true,
-  default: {
-    addEventListener: (l: (state: { isConnected: boolean | null }) => void) => {
-      mockNetListeners.add(l);
-      return () => mockNetListeners.delete(l);
-    },
-  },
-}));
-
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 import { OfflineBanner, useTableClaim } from '@/components/OfflineBanner';
 import { Colors, Layer, TABLE_FONT_SCALE_MAX } from '@/lib/theme';
+import { setConnectivity, setMotion } from './harness/env';
 
 const METRICS = { frame: { x: 0, y: 0, width: 874, height: 402 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } };
 const hidden = { includeHiddenElements: true };
-const net = (isConnected: boolean | null) => act(async () => mockNetListeners.forEach((l) => l({ isConnected })));
 const Table = () => {
   useTableClaim(true);
   return null;
 };
+
+beforeEach(() => setMotion('on'));
 
 describe('the offline pill', () => {
   it('is white on the offline alert red, capped at the table scale, on one line, at Layer.alert', async () => {
@@ -42,7 +27,7 @@ describe('the offline pill', () => {
         <OfflineBanner />
       </SafeAreaProvider>,
     );
-    await net(false);
+    await setConnectivity(false);
     const text = screen.getByTestId('offline-banner-text', hidden);
     const ink = StyleSheet.flatten(text.props.style);
     expect(ink.color).toBe(Colors.white);
@@ -63,9 +48,9 @@ describe('the offline pill', () => {
       </SafeAreaProvider>,
     );
     const live = () => screen.getByTestId('offline-banner', hidden).props.accessibilityLiveRegion;
-    await net(null);
+    await setConnectivity(null);
     expect(live()).toBe('none');
-    await net(false);
+    await setConnectivity(false);
     expect(live()).toBe('assertive');
     await r.unmount();
   });
@@ -78,7 +63,7 @@ describe('the offline pill', () => {
         <OfflineBanner overTable />
       </SafeAreaProvider>,
     );
-    await net(false);
+    await setConnectivity(false);
     const regions = screen.getAllByTestId('offline-banner', hidden).map((b) => b.props.accessibilityLiveRegion);
     expect(regions).toEqual(['none', 'assertive']);
     await r.unmount();

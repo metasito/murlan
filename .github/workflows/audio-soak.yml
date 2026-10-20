@@ -14,7 +14,6 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: "24"
   EXPO_PUBLIC_DIAGNOSTICS: "1"
 
 jobs:
@@ -23,11 +22,7 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/install
       - name: Generate the native project, on the NDK React Native pins
         run: |
           npx expo prebuild --platform android --no-install
@@ -102,16 +97,12 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
+      - uses: ./.github/actions/install
       - name: Find and boot an iPhone simulator
         run: |
           udid=$(xcrun simctl list devices available -j | node tools/ci/pick-simulator.mjs)
           echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
           xcrun simctl boot "$udid"
-      - run: npm ci
       - name: Build a diagnostics release for the simulator
         run: |
           npx expo prebuild --platform ios --no-install

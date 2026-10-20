@@ -12,7 +12,7 @@ const bare = (expr: unknown) => String(expr ?? "").replace(/^\$\{\{\s*([\s\S]*?)
 const needsOf = (job: Job) => [job.needs ?? []].flat();
 // `bash -e`, as a `run:` step runs on ubuntu-latest.
 const exitOf = (script: string, env: Record<string, string>) =>
-  spawnSync("bash", ["-e", "-c", script], { env: { ...process.env, ...env }, encoding: "utf8" }).status;
+  spawnSync("bash", ["-e", "-c", script], { cwd: root, env: { ...process.env, ...env }, encoding: "utf8" }).status;
 
 for (const wf of [".github/workflows/ios.yml", ".github/workflows/maestro.yml"]) {
   describe(`${wf} runs a device only on attempt 1 of a schedule or a ticket's own branch`, () => {
@@ -26,6 +26,7 @@ for (const wf of [".github/workflows/ios.yml", ".github/workflows/maestro.yml"])
       assert.equal(bare(step.env!.REF), "github.ref_name");
       assert.equal(bare(step.env!.EVENT), "github.event_name");
       assert.equal(jobs.gate!.if, undefined);
+      assert.equal(step.run.trim(), "bash tools/ci/device-gate.sh");
       const gate = (EVENT: string, REF: string) => exitOf(step.run!, { EVENT, REF });
       assert.equal(gate("schedule", "main"), 0);
       for (const ref of ["agent/1529-push-own-ticket", "claude/1259-lantern"]) assert.equal(gate("workflow_dispatch", ref), 0, ref);

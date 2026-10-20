@@ -1,5 +1,6 @@
 import { AccessibilityInfo, Platform } from 'react-native';
 import { useSyncExternalStore } from 'react';
+import { readStoredSettings } from '@/lib/storedSettings';
 
 /**
  * Whether animation is reduced. "system" follows the OS (or browser) setting;
@@ -12,14 +13,31 @@ export type MotionPreference = 'system' | 'on' | 'off';
 // setSoundsMasterEnabled is: SettingsProvider pushes the value in, and the ~20
 // components that already call usePrefersReducedMotion pick it up without any
 // of them changing.
-let motionPreference: MotionPreference = 'system';
+// Reduced until the stored choice is read: a cold start has nothing to go on yet, and a player
+// who asked for less motion must not see a burst of it first. Any push wins over the preload.
+let motionPreference: MotionPreference = 'on';
+let pushed = false;
 const listeners = new Set<() => void>();
 
-export function setMotionPreference(next: MotionPreference): void {
+export function isMotionPreference(v: unknown): v is MotionPreference {
+  return v === 'system' || v === 'on' || v === 'off';
+}
+
+function publishMotionPreference(next: MotionPreference): void {
   if (next === motionPreference) return;
   motionPreference = next;
   listeners.forEach((fn) => fn());
 }
+
+export function setMotionPreference(next: MotionPreference): void {
+  pushed = true;
+  publishMotionPreference(next);
+}
+
+void readStoredSettings().then((stored) => {
+  if (pushed) return;
+  publishMotionPreference(isMotionPreference(stored?.motion) ? stored.motion : 'system');
+});
 
 export function getMotionPreference(): MotionPreference {
   return motionPreference;

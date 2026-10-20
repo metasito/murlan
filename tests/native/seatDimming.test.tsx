@@ -1,18 +1,13 @@
 // tests/native/seatDimming.test.tsx — a seat waiting for its turn stays at full
 // strength (#1259 D4 #1, the mockup's `.seat`); only a reconnecting seat recedes.
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
-  setMotionPreference: () => {},
-  getMotionPreference: () => 'off',
-}));
-
 import { OpponentSeat } from '@/components/table/seats';
 import type { Player } from '@/lib/game/gameEngine';
+import { setMotion } from './harness/env';
 
 const player: Player = { id: 'player_1', name: 'Besi', hand: [], type: 'human' };
 const reconnecting = { seconds: 30, resetKey: 'drop-1' };
@@ -30,6 +25,8 @@ const seats = [
     seat: (props: object) => <OpponentSeat place="left" player={player} cardCount={5} isActive={false} {...props} />,
   },
 ];
+
+beforeEach(() => setMotion('on'));
 
 describe.each(seats)('$name', ({ testId, seat }) => {
   it('is not dimmed while another seat is on move', async () => {

@@ -1,13 +1,6 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import { render } from '@testing-library/react-native';
 
-let mockReduce = false;
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => mockReduce,
-  setMotionPreference: () => {},
-  getMotionPreference: () => (mockReduce ? 'on' : 'off'),
-}));
-
 jest.mock('@/components/table/lampRig', () => {
   const actual = jest.requireActual<typeof import('@/components/table/lampRig')>('@/components/table/lampRig');
   return {
@@ -33,12 +26,12 @@ import { lampControls, restingLamp } from '@/components/table/lampRig';
 import { dealSpecks } from '@/components/table/particles';
 import { along, breath, frame, handPoses, table } from './helpers/dealTable';
 import { bootFeedback } from './helpers/feedback';
+import { setMotion } from './harness/env';
 
 const breathHolds = () => jest.mocked(lampControls.hold).mock.calls.filter((c) => c[1] === 'breath');
 
 describe("the viewer's hand is dealt with the felt's breath, the lamp's rise and specks", () => {
   beforeEach(async () => {
-    mockReduce = false;
     jest.clearAllMocks();
     jest.useFakeTimers();
     await bootFeedback();
@@ -101,7 +94,7 @@ describe("the viewer's hand is dealt with the felt's breath, the lamp's rise and
     expect(handPoses().some((p) => p.opacity !== 1)).toBe(true);
     const levels = () => breathHolds().map((c) => c[2]);
     expect(levels()).toEqual([0.75]);
-    mockReduce = true;
+    await setMotion('on');
     await r.rerender(table());
     for (let t = 0; t < 400; t += 16) await frame();
     expect(handPoses().map((p) => [p.opacity, along(p, 'scale')])).toEqual(Array(13).fill([1, 1]));
@@ -111,7 +104,7 @@ describe("the viewer's hand is dealt with the felt's breath, the lamp's rise and
   }, 20_000);
 
   it('lays the hand in place under reduced motion, with no breath, lamp rise or specks', async () => {
-    mockReduce = true;
+    await setMotion('on');
     const r = await render(table());
     expect(jest.mocked(restingLamp).mock.calls[0][1]).toBe(1);
     for (let t = 0; t < 1200; t += 16) {

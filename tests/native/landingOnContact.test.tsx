@@ -4,7 +4,6 @@ import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals
 import { act } from '@testing-library/react-native';
 
 const mockTraceOnset = jest.fn();
-const mockMotion = { reduced: false };
 
 jest.mock('@/components/table/particles', () => {
   const actual = jest.requireActual<typeof import('@/components/table/particles')>('@/components/table/particles');
@@ -14,15 +13,10 @@ jest.mock('@/lib/e2eTrace', () => ({
   traceOnset: (...args: unknown[]) => mockTraceOnset(...args),
   useTraceSource: () => {},
 }));
-jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => mockMotion.reduced,
-  setMotionPreference: () => {},
-  getMotionPreference: () => (mockMotion.reduced ? 'on' : 'off'),
-}));
-
 import { landingDust } from '@/components/table/particles';
 import { bootFeedback, haptics } from './helpers/feedback';
 import { frameOfFirst, throwPair } from './helpers/landing';
+import { setMotion } from './harness/env';
 
 const landings = () => mockTraceOnset.mock.calls.filter(([kind, name]) => kind === 'moment' && name === 'landing');
 
@@ -34,7 +28,6 @@ describe('the landing on the contact frame', () => {
   });
   afterEach(() => {
     jest.useRealTimers();
-    mockMotion.reduced = false;
   });
 
   it('throws the dust on the first frame every card is within 1 pt of its slot, not before', async () => {
@@ -55,7 +48,7 @@ describe('the landing on the contact frame', () => {
   });
 
   it('under reduced motion the dust is withheld and the landing is traced on the first frame', async () => {
-    mockMotion.reduced = true;
+    await setMotion('on');
     const view = await throwPair();
     await act(async () => {
       jest.advanceTimersByTime(16);
