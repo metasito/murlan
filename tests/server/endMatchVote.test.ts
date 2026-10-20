@@ -8,7 +8,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import type { TableRuntime } from "../../server/game/tableRuntime.ts";
-import { rehydrateGame } from "../../server/game/tableHandlers.ts";
+import { rehydrateGame } from "../../server/game/tableLifecycle.ts";
 import { applyOrForward } from "../../server/game/tableRouter.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";

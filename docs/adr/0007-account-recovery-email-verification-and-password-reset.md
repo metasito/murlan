@@ -8,7 +8,7 @@
 Design for #38, settling six open questions ("boxes") a real recovery flow forces, each with a
 recommendation, its reversal cost, and its place on the cheapest-change ladder (derive from
 existing rows → ride an existing jsonb column → new table → new column). Shipped across #861–#864.
-`server/http/routes.ts`, `shared/schema.ts`, `server/http/mail.ts` and `lib/emailNudge.ts` cite
+`server/http/routes/auth.ts`, `shared/schema.ts`, `server/http/mail.ts` and `lib/emailNudge.ts` cite
 these by box number; the numbering below is that citation's target.
 
 ## Decision

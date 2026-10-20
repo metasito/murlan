@@ -1,6 +1,6 @@
 import type { TableRuntime } from "./tableRuntime.ts";
-import { emitVoteState } from "../socket/emit.ts";
-import { logger } from "../http/logger.ts";
+import { emitVoteState } from "./tableBroadcasts.ts";
+import { logger } from "../shared/logger.ts";
 import { activeGames, seatName } from "./gameRoom.ts";
 import { seatOfUser } from "./onlineGameLogic.ts";
 import { vacate } from "./seatLedger.ts";
@@ -19,44 +19,14 @@ import {
 } from "./gameTimers.ts";
 import { closeTable, disposeGame, publishState, safeTimer } from "./gamePersistence.ts";
 import { handleRoundOver, voidAbandonedMatch } from "./roundOver.ts";
-import { appendReplayMove } from "./replayShape.ts";
-import { autoMoveForSeat, type AutoMove } from "../../lib/game/autoMove.ts";
+import { commitMove } from "./tableMoves.ts";
+import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
 import { actingSeat, concedeRound, roundUnplayed, openingIsPending } from "../../lib/game/gameEngine.ts";
-import type { GameState, Combination } from "../../lib/game/gameEngine.ts";
+import type { GameState } from "../../lib/game/gameEngine.ts";
 import { Motion, Reading } from "../../lib/tokens.ts";
 import { dealEndMs } from "../../lib/timeline/dealTimeline.ts";
 import { exchangeAnnounceMs, exchangeGiveDelayMs } from "../../lib/timeline/exchangeTimeline.ts";
 import { handCountOf } from "../../shared/protocol.ts";
-
-/**
- * Achievement bookkeeping: the engine has no notion of "did this seat play a
- * bomb/joker this round", and the counters are read off these flags after the
- * round, so a forced move (most commonly an AFK-forced lone joker) that skipped
- * them would silently under-count the purist / iron_will / wild_card achievements.
- */
-function recordPlayFlags(game: OnlineGameState, seat: number, combo: Combination) {
-  const flags = (game.roundFlags[seat] ??= { bomb: false, joker: false });
-  if (combo.type === "bomb") flags.bomb = true;
-  if (combo.cards.some((c) => c.isJoker)) flags.joker = true;
-}
-
-/**
- * The one way a move lands on a live table, whoever chose it: flagged and logged
- * for the replay, sent, persisted, then the next seat armed — or, when it ended
- * the round, the round-over handoff, whose promise is returned.
- */
-export function commitMove(rt: TableRuntime, game: OnlineGameState, applied: AutoMove): Promise<void> | undefined {
-  const { state: next, move } = applied;
-  if (move.kind === "play") recordPlayFlags(game, move.seat, move.combo);
-  if (move.kind === "play" || move.kind === "pass") {
-    appendReplayMove(game, move.seat, move.kind === "play" ? move.combo : null, next);
-  }
-  const prev = game.gameState;
-  game.gameState = next;
-  void publishState(rt, game);
-  if (next.roundOver) return handleRoundOver(rt, game.roomId, game);
-  armAfterMove(rt, game.roomId, prev);
-}
 
 /**
  * Tells the table how long the acting seat has left. Sent on its own as well
@@ -126,7 +96,7 @@ export function armTurn(rt: TableRuntime, roomId: string, botDelayMs = botMoveDe
 }
 
 /** Every move re-arms here, so an exchange's ceremony holds the next seat on each path that closes it. */
-function armAfterMove(rt: TableRuntime, roomId: string, prev: GameState) {
+export function armAfterMove(rt: TableRuntime, roomId: string, prev: GameState) {
   const phase = prev.exchangePhase;
   armTurn(rt, roomId, phase?.active ? exchangeAnnounceMs(phase.twoJokerException === true) : botMoveDelayMs());
 }

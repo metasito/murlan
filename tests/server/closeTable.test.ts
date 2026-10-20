@@ -7,7 +7,7 @@ import { onlineTable } from "../helpers/onlineTable.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { closeTable } from "../../server/game/gamePersistence.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
-import { logger } from "../../server/http/logger.ts";
+import { logger } from "../../server/shared/logger.ts";
 import { startRound } from "../../lib/game/gameEngine.ts";
 
 // One room per test: the first leaves a status write that never settles in its room's queue.

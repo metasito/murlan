@@ -50,8 +50,10 @@ lib/game/gameEngine.ts (offline: called directly)   server/socket/socket.ts (onl
   state. Every intent lands in a `server/socket/socketGameplay.ts` listener, which resolves the room
   and calls `applyOrForward` (`server/game/tableRouter.ts`) and does nothing else. **The single
   mutator is `applyTableAction` in `server/game/tableHandlers.ts`**, which dispatches to
-  `moveAction` (every play, pass and giveback, through the engine's `applyMove`) / `rejoinAction` / `startMatchAction` /
-  `seatLostAction`; those in turn use `gameTurn.ts` (`commitMove`, `armTurn`, the AFK timer and bot turns),
+  `tableMoves.ts` `moveAction` (every play, pass and giveback, through the engine's `applyMove`, landed by
+  `commitMove`) / `tableVotes.ts` (`everySeatedVoted`, the one vote gate) / `tableLifecycle.ts`
+  `startMatchAction` (with `rehydrateGame`, the only writers of `activeGames`) / `rejoinAction` /
+  `seatLostAction`; those in turn use `gameTurn.ts` (`armTurn`, the AFK timer and bot turns),
   `roundOver.ts` (`handleRoundOver`) and `dealRound.ts` (the shared fresh-round reset used by
   both the first deal and a rematch). See §3 for how `applyOrForward` reaches the process that
   owns the room.
@@ -116,7 +118,7 @@ excluded cards, which would put cards nobody has seen into a broadcast field.
 **Connection:** `lib/socket.ts` owns a singleton `Map<userId, Socket>` — `SocketContext` is
 the only place that creates or tears down a socket. Nothing else is allowed to call `io()`.
 
-**Auth handshake — ticket model (`server/socket/ticket.ts`, `server/http/routes.ts`,
+**Auth handshake — ticket model (`server/socket/ticket.ts`, `server/http/routes/auth.ts`,
 `server/socket/socket.ts`):**
 1. The client calls `POST /api/auth/socket-ticket` (behind `requireAuth`, so it needs a
    live session cookie) and receives a short-lived, single-use HMAC-signed ticket —
@@ -183,7 +185,7 @@ single round.
 
 **AFK (distinct from disconnect):** a connected-but-idle player gets a 30s-default
 (`afkTimeoutMs()`) auto-pass/auto-play timer, re-armed on every turn transition: every move,
-human or automated, lands through `gameTurn.ts` `commitMove`, which ends in `armTurn`, so it
+human or automated, lands through `tableMoves.ts` `commitMove`, which ends in `armTurn`, so it
 can't be armed once and then silently stop covering later turns.
 
 ## 4. Persistence
@@ -316,7 +318,7 @@ they *decide*, so a rule cannot hold in one mode and not the other:
   next-round vote at its foot until the deal arrives. A match ends with the pill growing into the
   result board over the dimmed table (`lib/timeline/matchEnding.ts`, `components/table/matchBoard.tsx`),
   with Home and New match; online, New match is the rematch vote. There is no result route.
-- **`server/socket/emit.ts`** — every `game:match_state` and `game:vote_state` broadcast, so the
+- **`server/game/tableBroadcasts.ts`** — every `game:match_state` and `game:vote_state` broadcast, so the
   vote total is derived once rather than at each call site.
 
 `lib/game/` holds the rules, the bots, the match flow and pure derivations only: every runtime

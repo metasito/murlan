@@ -2,7 +2,7 @@
 // over Socket.IO.
 import type { SocketServer } from "./socketTypes.ts";
 import type { Emitter, Presence, TableOutbox } from "../game/tableRuntime.ts";
-import { logger } from "../http/logger.ts";
+import { logger } from "../shared/logger.ts";
 import { socketRoomMap, userRoom, userSocketMap } from "../game/gameRoom.ts";
 import { stateAckTimeoutMs } from "../game/gameTimers.ts";
 

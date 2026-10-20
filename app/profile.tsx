@@ -204,7 +204,7 @@ function UserCard({ user }: { user: { username: string } }) {
 /**
  * A logged-in user who still knows their current password sets a new one.
  * Requires the current password (a live session alone is not proof of intent
- * to change a credential — server/http/routes.ts's change-password route) and
+ * to change a credential — server/http/routes/auth.ts's change-password route) and
  * clears every other session for the account on success.
  */
 function ChangePasswordCard() {
@@ -331,7 +331,7 @@ function ChangePasswordCard() {
  * The non-blocking nudge for an account that predates the email requirement
  * (#863, `lib/emailNudge.ts`) — never a login wall, never an `Alert`. Submitting
  * mints an `email_verify` token and sends it through the same machinery signup
- * uses; server/http/routes.ts's `/api/auth/verify-email` (reached from the emailed
+ * uses; server/http/routes/auth.ts's `/api/auth/verify-email` (reached from the emailed
  * link, not from this screen) is what redeems it and makes the card disappear
  * on the next `/api/auth/me`.
  */

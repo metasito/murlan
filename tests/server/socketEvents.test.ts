@@ -98,7 +98,7 @@ const COMPUTED_EVENT_NAMES = new Set(["event", "errorEventFor(event)"]);
 /**
  * Both shapes an outbound event takes: `<anything>.emit(name, …)` — covering
  * `socket.emit`, `io.emit` and `io.to(x).emit` — and `emitToUser(userId, name,
- * …)`, the dispatcher server/http/routes.ts reaches sockets through.
+ * …)`, the dispatcher server/socket/friendships.ts reaches sockets through.
  */
 const EMIT_PATTERNS = [
   /\.emit\(\s*(["'`])((?:(?!\1).)*)\1/gs,

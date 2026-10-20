@@ -143,7 +143,7 @@ describe("rows the restore path refuses", () => {
   });
 
   test("a row a newer revision wrote is refused and kept; an older one is deleted", async (t) => {
-    const { rehydrateGame } = await import("../../server/game/tableHandlers.ts");
+    const { rehydrateGame } = await import("../../server/game/tableLifecycle.ts");
     const newer = `version-${GAME_SCHEMA_VERSION + 1}`;
     const older = `version-${GAME_SCHEMA_VERSION - 1}`;
     const { rows } = useMemoryTableStores(t, {

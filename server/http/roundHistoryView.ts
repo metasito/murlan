@@ -26,7 +26,8 @@ interface HistoryParticipant {
   bot: boolean;
 }
 
-export interface RoundHistoryRow extends RoundHistory {
+export interface RoundHistoryRow extends Omit<RoundHistory, "opponents"> {
+  opponents: string[];
   /** The other seats, in the order `opponents` holds them. */
   participants: HistoryParticipant[];
   /** This round's replay, while one still exists to watch. */
@@ -99,12 +100,13 @@ export async function getRoundHistoryView(userId: string): Promise<RoundHistoryR
 
   return rows.map((row) => {
     const replay = byInstant.get(row.finishedAt.getTime()) ?? null;
-    const participants = (row.opponents as string[]).map((id) => {
+    const opponents = row.opponents as string[];
+    const participants = opponents.map((id) => {
       if (!isBotSeatKey(id)) return { name: humans.get(id) ?? null, bot: false };
       const seat = botSeatIndex(id);
       const named = replay?.seats.find((s) => s.seatIndex === seat);
       return { name: named?.name ?? null, bot: true };
     });
-    return { ...row, participants, replayId: replay?.id ?? null };
+    return { ...row, opponents, participants, replayId: replay?.id ?? null };
   });
 }
