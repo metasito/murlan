@@ -264,8 +264,8 @@ describe("offlineBotMove", () => {
 
   test("plays a bot at full strength, not the floor an AFK human gets", () => {
     const state = leading("bot");
-    const floor = autoMoveForSeat(state, 0, false, {})!.lastPlayedCombination!.cards.map((c) => c.id);
-    const played = offlineBotMove(state)?.lastPlayedCombination?.cards.map((c) => c.id);
+    const floor = autoMoveForSeat(state, 0, "floor")!.state.lastPlayedCombination!.cards.map((c) => c.id);
+    const played = offlineBotMove(state)?.state.lastPlayedCombination?.cards.map((c) => c.id);
     assert.equal(floor.length, 1);
     assert.deepEqual(played?.toSorted(), ["9h", "9s"], "the bot finishes with the pair; the floor would lead one card");
   });

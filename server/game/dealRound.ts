@@ -4,7 +4,6 @@ import { rollMatchForward } from "./roundOver.ts";
 import { emitMatchState } from "../socket/emit.ts";
 import { publishState } from "./gamePersistence.ts";
 import { armTurn } from "./gameTurn.ts";
-import { startReplayLog } from "./replayShape.ts";
 import { clearForDeal } from "./seatLedger.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { GameState } from "../../lib/game/gameEngine.ts";
@@ -22,7 +21,7 @@ export async function dealRound(rt: TableRuntime, game: OnlineGameState, nextSta
   // A new round: last round's flags would record the same bombs, jokers and
   // departures again in every remaining round.
   game.roundFlags = {};
-  game.moveLog = startReplayLog();
+  game.moveLog = [];
   clearForDeal(game);
   // Not required for correctness — announceRejoin's `else if` already makes a
   // stale payload unreachable the instant gameState.roundOver goes false, and

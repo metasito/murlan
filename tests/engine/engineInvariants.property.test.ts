@@ -79,12 +79,12 @@ function apply(state: GameState, step: Step, rng: () => number): { next: GameSta
       return { next: processPlay(state, step.combo), played: step.combo.cards };
     }
     case "bot": {
-      let chosen: Combination | null | undefined;
-      const next = autoMoveForSeat(state, acting, true, { rng, onMove: (_, combo) => { chosen = combo; } });
-      assert.ok(next, `seat ${acting} is on move and the bot has nothing to do`);
+      const auto = autoMoveForSeat(state, acting, "bot", rng);
+      assert.ok(auto?.move, `seat ${acting} is on move and the bot has nothing to do`);
+      const chosen = auto.move.kind === "play" ? auto.move.combo : null;
       if (chosen) assert.ok(checkPlay(state, acting, ids(chosen.cards)).ok, "the bot played an illegal combination");
-      if (chosen === null) assert.ok(checkPass(state).ok, "the bot passed where a pass is refused");
-      return { next, played: chosen?.cards ?? [] };
+      if (auto.move.kind === "pass") assert.ok(checkPass(state).ok, "the bot passed where a pass is refused");
+      return { next: auto.state, played: chosen?.cards ?? [] };
     }
   }
 }

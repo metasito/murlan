@@ -64,10 +64,10 @@ test("a play serves every viewer, then persists", async (t) => {
   useAnaTable(t, state);
   const { rt, journal } = recordingRuntime({ persist: "real" });
   const outcome = await applyOrForward(rt, {
-    kind: "play",
+    kind: "move",
     roomId: ROOM,
     userId: "ana",
-    cardIds: [state.startCard!.id],
+    move: { kind: "play", cardIds: [state.startCard!.id] },
   });
   assert.deepEqual(outcome, { ok: true });
   await settle();
@@ -85,7 +85,7 @@ test("the state that closes an exchange shows every viewer the ceremony", async 
   const give = state.players[0].hand.find((c) => c.id !== phase.cardFromLoser?.id)!;
   useAnaTable(t, { ...state, currentTurnIndex: 0 });
   const { rt, journal } = recordingRuntime({ persist: "real" });
-  assert.deepEqual(await applyOrForward(rt, { kind: "exchange", roomId: ROOM, userId: "ana", cardId: give.id }), {
+  assert.deepEqual(await applyOrForward(rt, { kind: "move", roomId: ROOM, userId: "ana", move: { kind: "giveback", cardId: give.id } }), {
     ok: true,
   });
   await settle();

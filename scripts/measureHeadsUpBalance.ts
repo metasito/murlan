@@ -322,7 +322,7 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
         }
       }
 
-      const next = autoMoveForSeat(state, seat, true, { rng });
+      const next = autoMoveForSeat(state, seat, "bot", rng)?.state;
       if (!next) break;
       state = next;
     }
@@ -443,7 +443,7 @@ function measureRoyalStraightBlindSpot(n: number, seed: number): RoyalStraightBl
           }
         }
 
-        const next = autoMoveForSeat(state, seat, true, { rng });
+        const next = autoMoveForSeat(state, seat, "bot", rng)?.state;
         if (!next) break;
         state = next;
       }

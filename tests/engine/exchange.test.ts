@@ -235,7 +235,7 @@ describe("REGRESSION (#784): exchangePhase.active clears after exactly one giveb
     let rescued = false;
     for (let i = 0; i < winnerHand.length + 2 && state.exchangePhase?.active; i++) {
       const before = { winner: state.players[0].hand.length, loser: state.players[1].hand.length };
-      const next = autoMoveForSeat(state, 0, false, {});
+      const next = autoMoveForSeat(state, 0, "floor")?.state;
       assert.ok(next, "seat 0 is exchangePhase.winnerIdx and must always be able to act");
       const after = { winner: next!.players[0].hand.length, loser: next!.players[1].hand.length };
       if (after.winner === before.winner - 1 && after.loser === before.loser + 1) {

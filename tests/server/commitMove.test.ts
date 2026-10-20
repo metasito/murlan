@@ -3,18 +3,9 @@ import assert from "node:assert/strict";
 import { recordingRuntime, type JournalEntry } from "../helpers/recordingRuntime.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { commitMove } from "../../server/game/gameTurn.ts";
-import { startReplayLog } from "../../server/game/replayShape.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
 import { botMoveDelayMs, clearRoomTimers, pending } from "../../server/game/gameTimers.ts";
-import {
-  checkPlay,
-  createDeck,
-  startRound,
-  processExchangeChoice,
-  processPass,
-  processPlay,
-  type GameState,
-} from "../../lib/game/gameEngine.ts";
+import { applyMove, createDeck, startRound, type GameState, type Move } from "../../lib/game/gameEngine.ts";
 import { exchangeAnnounceMs } from "../../lib/timeline/exchangeTimeline.ts";
 
 const ROOM = "commit-move-room";
@@ -41,18 +32,23 @@ function table(gameState: GameState): OnlineGameState {
     endMatchVotes: new Set(),
     dealFirstSeat: 0,
     spectators: new Set(),
-    moveLog: startReplayLog(),
+    moveLog: [],
     gameState,
   };
   activeGames.set(ROOM, game);
   return game;
 }
 
+function applied(state: GameState, move: Move) {
+  const result = applyMove(state, state.currentTurnIndex, move);
+  assert.ok(result.ok, `the engine refused the ${move.kind}`);
+  return result;
+}
+
+const leadStartCard = (state: GameState) => applied(state, { kind: "play", cardIds: [state.startCard!.id] });
+
 function opened(): GameState {
-  const state = startRound(SEATS, "free_for_all");
-  const check = checkPlay(state, state.currentTurnIndex, [state.startCard!.id]);
-  assert.ok(check.ok, "the opener can lead the start card alone");
-  return processPlay(state, check.combo);
+  return leadStartCard(startRound(SEATS, "free_for_all")).state;
 }
 
 /** Rows that landed in the store, not writes asked for. */
@@ -91,17 +87,14 @@ for (const kind of ["play", "pass"] as const) {
     try {
       if (kind === "play") {
         const fresh = startRound(SEATS, "free_for_all");
-        const seat = fresh.currentTurnIndex;
-        const check = checkPlay(fresh, seat, [fresh.startCard!.id]);
-        assert.ok(check.ok);
         const game = table(fresh);
-        const over = commitMove(rt, game, processPlay(fresh, check.combo), { seat, combo: check.combo });
+        const over = commitMove(rt, game, leadStartCard(fresh));
         assert.equal(over, undefined, "a play that leaves the round open hands nothing to round over");
         await assertCommitted(t, game, persists, 1, botMoveDelayMs());
       } else {
         const state = opened();
         const game = table(state);
-        commitMove(rt, game, processPass(state), { seat: state.currentTurnIndex, combo: null });
+        commitMove(rt, game, applied(state, { kind: "pass" }));
         await assertCommitted(t, game, persists, 1, botMoveDelayMs());
       }
     } finally {
@@ -116,21 +109,21 @@ test("a play that ends the round is logged, persisted, and handed to round over 
   const { rt, journal } = recordingRuntime({ persist: "real" });
   try {
     const dealt = startRound(SEATS.slice(0, 2), "free_for_all");
-    const seat = dealt.currentTurnIndex;
     const state = structuredClone(dealt);
-    state.players[seat].hand = [state.startCard!];
-    const check = checkPlay(state, seat, [state.startCard!.id]);
-    assert.ok(check.ok);
-    const next = processPlay(state, check.combo);
-    assert.equal(next.roundOver, true, "emptying the last hand of two ends the round");
+    state.players[dealt.currentTurnIndex].hand = [state.startCard!];
+    const last = leadStartCard(state);
+    assert.equal(last.state.roundOver, true, "emptying the last hand of two ends the round");
     const game = table(state);
-    const over = commitMove(rt, game, next, { seat, combo: check.combo });
+    const over = commitMove(rt, game, last);
     assert.ok(over instanceof Promise, "the round-over handoff was not returned");
     assert.equal(pending("bot", ROOM), false, "a seat was armed on a finished round");
     await over;
     await writesSettle();
     assert.ok(rowsWritten(journal) >= 1, "the final move was never persisted");
     assert.equal(game.moveLog?.length, 1, "the final move was not logged once");
+    assert.ok(last.move.kind === "play");
+    assert.deepEqual(game.moveLog![0].combo, last.move.combo, "the log holds a different play than the one applied");
+    assert.equal(game.moveLog![0].seat, last.move.seat);
   } finally {
     clearRoomTimers(ROOM);
     activeGames.delete(ROOM);
@@ -153,7 +146,7 @@ test("an exchange logs no replay move, persists, and holds the next seat for the
     assert.equal(phase.active, true);
     const game = table(state);
     const give = state.players[phase.winnerIdx].hand.find((c) => c.id !== phase.cardFromLoser?.id)!;
-    commitMove(rt, game, processExchangeChoice(state, give.id), null);
+    commitMove(rt, game, applied(state, { kind: "giveback", cardId: give.id }));
     await assertCommitted(t, game, persists, 0, Math.max(botMoveDelayMs(), exchangeAnnounceMs(phase.twoJokerException === true)));
   } finally {
     clearRoomTimers(ROOM);

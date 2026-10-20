@@ -5,9 +5,8 @@ import {
   appendReplayMove,
   replayPlayerIdsOf,
   replaySeatsOf,
-  startReplayLog,
 } from "../../server/game/replayShape.ts";
-import { MAX_REPLAY_MOVES } from "../../lib/game/replay.ts";
+import { MAX_REPLAY_MOVES, type ReplayMove } from "../../lib/game/replay.ts";
 import { card as c } from "../support/game.ts";
 import { buildCombination } from "../../lib/game/gameEngine.ts";
 
@@ -49,7 +48,7 @@ test("a seat somebody left still says who left it, without granting them the rep
 });
 
 test("a play records its combination and the counts that followed", () => {
-  const game = { moveLog: startReplayLog() };
+  const game: { moveLog: ReplayMove[] | null } = { moveLog: [] };
   appendReplayMove(game, 0, buildCombination([c("3", "spades")])!, after([12, 13]));
   assert.equal(game.moveLog!.length, 1);
   assert.equal(game.moveLog![0].seat, 0);
@@ -58,13 +57,13 @@ test("a play records its combination and the counts that followed", () => {
 });
 
 test("a pass records a null combination", () => {
-  const game = { moveLog: startReplayLog() };
+  const game: { moveLog: ReplayMove[] | null } = { moveLog: [] };
   appendReplayMove(game, 1, null, after([12, 13]));
   assert.equal(game.moveLog![0].combo, null);
 });
 
 test("a log past the cap is dropped, not silently truncated", () => {
-  const game: { moveLog: ReturnType<typeof startReplayLog> | null } = { moveLog: startReplayLog() };
+  const game: { moveLog: ReplayMove[] | null } = { moveLog: [] };
   for (let i = 0; i <= MAX_REPLAY_MOVES; i++) appendReplayMove(game, 0, null, after([1, 1]));
   assert.equal(game.moveLog, null);
 });

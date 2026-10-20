@@ -68,15 +68,11 @@ const play = (...cardIds: string[]): Send => ({ event: "game:play", body: { card
 const pass: Send = { event: "game:pass" };
 const giveback = (cardId: string): Send => ({ event: "game:exchange_give_card", body: { cardId } });
 
-interface Case {
-  name: string;
-  state: GameState;
-  user?: string;
-  send: Send;
-  code: ServerCode;
-  /** Absent: refused silently, with the ack alone. */
-  told?: Record<string, string>;
-}
+/** `told` absent: refused silently, with the ack alone. */
+type Case = { name: string; state: GameState; user?: string; send: Send } & (
+  | { code: ServerCode; told: Record<string, string> }
+  | { code: string; told?: undefined }
+);
 
 const CASES: Case[] = [
   { name: "a play after the round is over", state: midTrick({ roundOver: true }), send: play("9_clubs"), code: "NO_LIVE_GAME" },
@@ -115,7 +111,8 @@ function fakeSocket(userId: string) {
   return { socket: socket as unknown as GameSocket, emitted, send };
 }
 
-for (const { name, state, user = "u1", send, code, told } of CASES) {
+for (const testCase of CASES) {
+  const { name, state, user = "u1", send, code, told } = testCase;
   test(`${name}: ${code}, ${told ? "told" : "silent"}`, async () => {
     const { rt, sent } = recordingRuntime();
     activeGames.set(ROOM, onlineTable({ roomId: ROOM, playerMap: { 0: "u1", 1: "u2" }, gameState: state }));
@@ -125,7 +122,7 @@ for (const { name, state, user = "u1", send, code, told } of CASES) {
     registerGameplayHandlers({ rt, socket, userId: user });
 
     assert.deepEqual(await emit(send), { ok: false, code });
-    assert.deepEqual(emitted, told ? [{ event: "game:error", payload: payload(code, told) }] : []);
+    assert.deepEqual(emitted, testCase.told ? [{ event: "game:error", payload: payload(testCase.code, testCase.told) }] : []);
     assert.deepEqual(sent, [], "a refused move reached the table");
     assert.deepEqual(activeGames.get(ROOM)!.gameState, before, "a refused move changed the state");
   });

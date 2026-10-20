@@ -471,7 +471,7 @@ export function canPlay(
 
 /**
  * Whether `seat` may play `cardIds` now, and the combination its own cards form
- * if so. Turn ownership is the transport's: `seat` names whose hand to read,
+ * if so. Turn ownership is `applyMove`'s: here `seat` names whose hand to read,
  * not a claim that it is on move. A repeated id is the one card it names.
  */
 export function checkPlay(
@@ -508,11 +508,77 @@ export function checkSelection(
   return refusal ? { ok: false, code: refusal } : { ok: true, combo };
 }
 
-/** Whether the seat on move may pass now. Turn ownership is the transport's, as in `checkPlay`. */
+/** Whether the seat on move may pass now. Turn ownership is `applyMove`'s, as in `checkPlay`. */
 export function checkPass(state: GameState): { ok: true } | { ok: false; code: PassRefusal } {
   if (state.exchangePhase?.active) return { ok: false, code: "exchangeOpen" };
   if (state.lastPlayedCombination === null) return { ok: false, code: "mustLead" };
   return { ok: true };
+}
+
+export type Move =
+  | { kind: "play"; cardIds: string[] }
+  | { kind: "pass" }
+  | { kind: "giveback"; cardId: string };
+
+export type AppliedMove =
+  | { kind: "play"; seat: number; combo: Combination }
+  | { kind: "pass"; seat: number }
+  | { kind: "giveback"; seat: number; card: Card };
+
+/** Why a move is refused, in the order `applyMove` asks. */
+export type MoveRefusal =
+  | "roundOver"
+  | "exchangeOpen"
+  | "noExchange"
+  | "notExchangeWinner"
+  | "notYourTurn"
+  | "notHeld"
+  | SelectionRefusal
+  | "mustLead"
+  | "notGiveable";
+
+/** A refusal leaves the state untouched. */
+export type MoveResult =
+  | { ok: true; state: GameState; move: AppliedMove }
+  | { ok: false; code: MoveRefusal };
+
+/** Who must act now: the exchange winner while an exchange is open, else the turn holder. */
+export function actingSeat(state: GameState): number {
+  return state.exchangePhase?.active ? state.exchangePhase.winnerIdx : state.currentTurnIndex;
+}
+
+/** `seat` is the transport's claim of who is acting; it is checked here, never trusted. */
+export function applyMove(state: GameState, seat: number, move: Move): MoveResult {
+  if (state.roundOver) return { ok: false, code: "roundOver" };
+  const exchange = state.exchangePhase?.active ? state.exchangePhase : null;
+  if (move.kind === "giveback") {
+    if (!exchange) return { ok: false, code: "noExchange" };
+    if (seat !== exchange.winnerIdx) return { ok: false, code: "notExchangeWinner" };
+  } else if (exchange) {
+    return { ok: false, code: "exchangeOpen" };
+  }
+  if (seat !== actingSeat(state)) return { ok: false, code: "notYourTurn" };
+
+  switch (move.kind) {
+    case "play": {
+      const check = checkPlay(state, seat, move.cardIds);
+      if (!check.ok) return check;
+      return { ok: true, state: processPlay(state, check.combo), move: { kind: "play", seat, combo: check.combo } };
+    }
+    case "pass": {
+      const check = checkPass(state);
+      if (!check.ok) return check;
+      return { ok: true, state: processPass(state), move: { kind: "pass", seat } };
+    }
+    case "giveback": {
+      const hand = state.players[seat]?.hand ?? [];
+      const card = hand.find((held) => held.id === move.cardId);
+      if (!card) return { ok: false, code: "notHeld" };
+      const offered = getValidGivebackCards(hand, state.exchangePhase?.cardFromLoser?.id);
+      if (!offered.some((c) => c.id === card.id)) return { ok: false, code: "notGiveable" };
+      return { ok: true, state: processExchangeChoice(state, card.id), move: { kind: "giveback", seat, card } };
+    }
+  }
 }
 
 // ─── Complete, correct valid-play enumeration ─────────────────────────────────
@@ -691,10 +757,10 @@ function placeLastSeat(state: GameState): void {
  * construction — but a caller that forgot would otherwise strip cards a hand
  * never held and leave the state quietly wrong rather than loudly refused.
  *
- * Turn ownership is not here on purpose: which seat is acting is resolved by
- * the transport, so the engine has nothing independent to check a claim of it
- * against. What it can check is what `checkPlay` checks for the seat on move,
- * and that the shape it claims is the shape its own cards actually form.
+ * Turn ownership is `applyMove`'s, which checks the transport's claim of the
+ * acting seat against `actingSeat`. What this checks is what `checkPlay` checks
+ * for the seat on move, and that the shape it claims is the shape its own cards
+ * actually form.
  *
  * `combination.type`/`.strength` are re-derived from `.cards` rather than
  * trusted as given: a caller could otherwise claim any shape for any cards,

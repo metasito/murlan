@@ -27,7 +27,8 @@ import {
   getCardDisplayRank,
   getSuitSymbol,
   getValidGivebackCards,
-  processExchangeChoice,
+  actingSeat,
+  applyMove,
 } from "@/lib/game/gameEngine";
 import { useTranslation, type TFn, type TranslationKey } from "@/lib/i18n";
 import { IconButton } from "@/components/IconButton";
@@ -445,8 +446,7 @@ function evaluateExchange(selected: Card, beat: ExchangeBeat, t: TFn): { ok: boo
     }
     return { ok: false, message: t("tutorial.errExchangeRange") };
   }
-  const result = processExchangeChoice(beat.state, selected.id);
-  if (result.exchangePhase?.active === false) {
+  if (applyMove(beat.state, actingSeat(beat.state), { kind: "giveback", cardId: selected.id }).ok) {
     return { ok: true, message: beat.successNarrative };
   }
   return { ok: false, message: t("tutorial.errExchangeGeneric") };
