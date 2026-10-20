@@ -36,7 +36,7 @@ export function isExpectedNoise(text: string, url: string): boolean {
 // The crash report is account-only by design (server/http/routes/reports.ts); the error it reports is caught on its own.
 const UNAUTHORIZED = "Failed to load resource: the server responded with a status of 401 (Unauthorized)";
 
-// Emscripten's own, only when CanvasKit's wasm cannot be fetched: mockupParity.spec.ts blocks it on purpose.
+// Emscripten's own, only when CanvasKit's wasm cannot be fetched: mockupParity.nightly.spec.ts blocks it on purpose.
 const CANVASKIT_UNREACHABLE = new Set([
   "wasm streaming compile failed: TypeError: Failed to fetch",
   "falling back to ArrayBuffer instantiation",

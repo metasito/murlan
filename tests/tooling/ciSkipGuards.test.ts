@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { unloaded } from "../helpers/filesRunReporter.mjs";
 import { sourcesUnder } from "../helpers/sourceScan.ts";
+import { allSteps, loadWorkflow, stepIn } from "../helpers/workflow.ts";
 
 /**
  * A suite that skips still exits 0, so ci.yml reads the test log for the
@@ -25,18 +26,20 @@ const readRepoFile = (...parts: string[]) =>
 /** The files allowed to contain a phrase, because they are the ones printing it. */
 const OWNERS = ["tests/helpers/testServer.ts", "tests/server/backupDb.test.ts"];
 
+const CI = loadWorkflow("ci.yml");
+/** The step that fails on a silent skip; `stepIn` throws when ci.yml no longer has it. */
+const assertStep = () => stepIn(CI, "Assert the integration suites actually ran").step.run ?? "";
+
 /** Every alternative inside the `grep -q…"…"` calls of the assert step. */
-function grepPhrases(workflow: string): string[] {
-  const step = /Assert the integration suites actually ran[\s\S]*?(?=\n  [a-z])/.exec(workflow);
-  assert.ok(step, "ci.yml no longer has the step that fails on a silent skip");
-  return [...step[0].matchAll(/grep -q[a-zA-Z]* "([^"]+)"/g)]
+function grepPhrases(step: string): string[] {
+  return [...step.matchAll(/grep -q[a-zA-Z]* "([^"]+)"/g)]
     .flatMap((m) => m[1].split("|"))
     .map((phrase) => phrase.trim())
     .filter(Boolean);
 }
 
 describe("what CI greps for is what the suites actually print", () => {
-  const phrases = grepPhrases(readRepoFile(".github", "workflows", "ci.yml"));
+  const phrases = grepPhrases(assertStep());
 
   test("the step greps for something", () => {
     assert.ok(phrases.length >= 4, `the assert step greps for ${phrases.length} phrases`);
@@ -64,8 +67,8 @@ describe("what CI greps for is what the suites actually print", () => {
 });
 
 describe("the integration guard counts the files that ran, not only the skips", () => {
-  const workflow = readRepoFile(".github", "workflows", "ci.yml");
-  const step = /Assert the integration suites actually ran[\s\S]*?(?=\n  [a-z])/.exec(workflow)?.[0] ?? "";
+  const workflow = allSteps(CI).map((s) => s.run ?? "").join("\n");
+  const step = assertStep();
 
   test("npm test's own flags put the per-directory count in the log the step reads", () => {
     const script = JSON.parse(readRepoFile("package.json")).scripts.test as string;
@@ -164,13 +167,14 @@ describe("loop:test fails when a test file never loaded", () => {
 });
 
 describe("the loop tests that skip off win32 run on Windows", () => {
-  const job = /\n {2}harness-windows:\n[\s\S]*?(?=\n {2}[\w-]+:\n)/.exec(readRepoFile(".github", "workflows", "ci.yml"))?.[0] ?? "";
+  const windows = CI.jobs["harness-windows"];
+  const job = (windows.steps ?? []).map((s) => s.run ?? "").join("\n");
   const dir = path.join(repoRoot, "tools", "loop", "tests");
   const loopTests = sourcesUnder(repoRoot, ["tools/loop/tests"], /^[^/\\]+\.test\.ts$/).map(([rel]) => path.posix.basename(rel));
   const lines = (f: string) => readFileSync(path.join(dir, f), "utf8").split("\n");
 
   test("the Windows leg selects every one of them", () => {
-    assert.match(job, /runs-on: windows-latest/);
+    assert.equal(windows["runs-on"], "windows-latest");
     const pattern = /grep -lE '([^']+)' tools\/loop\/tests\/\*\.test\.ts/.exec(job)?.[1];
     assert.ok(pattern, "the Windows leg no longer selects its files with grep");
     const selected = loopTests.filter((f) => lines(f).some((l) => new RegExp(pattern).test(l)));

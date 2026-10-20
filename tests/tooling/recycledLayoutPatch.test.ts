@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,10 +22,17 @@ function staleResets(source: string): string[] {
   return source.split("\n").filter((line) => STALE_RESET.test(line));
 }
 
+const DROP = `react-native contains react/react-native#57590: delete ${OVERRIDE} and this test`;
+
+/** The covered file still resets stale, or the override fixes nothing. */
+function assertStillStale(file: string): void {
+  assert.ok(staleResets(readFileSync(file, "utf8")).length > 0, DROP);
+}
+
 test("the override resets a recycled view to EmptyLayoutMetrics after React Native's own prepareForRecycle", () => {
   const source = read(OVERRIDE);
   assert.match(source, /@implementation RCTViewComponentView \(\w+\)/);
-  assert.match(source, /class_getInstanceMethod\(self, @selector\(prepareForRecycle\)\)/);
+  assert.match(source, /Method method = class_getInstanceMethod\(self, @selector\(prepareForRecycle\)\);\s*NSCAssert\(method, @"[^"]+"\);/);
   assert.match(source, /original\(view, @selector\(prepareForRecycle\)\);\s*\[view \w+\];/);
   assert.match(source, /_layoutMetrics = EmptyLayoutMetrics;/);
   assert.match(read("modules/murlan-diagnostics/ios/MurlanDiagnostics.podspec"), /source_files = '\*\.\{[^}]*\bmm\b[^}]*\}'/);
@@ -46,4 +54,19 @@ test("every spelling of a stale reset is caught, and the empty sentinel is not",
   }
   assert.deepEqual(staleResets("  _layoutMetrics = EmptyLayoutMetrics;"), []);
   assert.deepEqual(staleResets("  _layoutMetrics = layoutMetrics;"), []);
+});
+
+test("the file the override covers still resets its layout stale", () => {
+  assertStillStale(path.join(repoRoot, COVERED));
+});
+
+test("a covered file with no stale reset left is named for dropping the override", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "recycled-layout-"));
+  try {
+    const fixed = path.join(dir, "RCTViewComponentView.mm");
+    writeFileSync(fixed, "- (void)prepareForRecycle\n{\n  _layoutMetrics = EmptyLayoutMetrics;\n}\n");
+    assert.throws(() => assertStillStale(fixed), { message: DROP });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

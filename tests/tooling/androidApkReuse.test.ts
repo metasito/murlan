@@ -7,67 +7,68 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
+import { loadWorkflow, step as stepOf, stepIndex, type Step } from "../helpers/workflow.ts";
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
-const src = read(".github/workflows/maestro.yml");
+const workflow = loadWorkflow("maestro.yml");
+const android = workflow.jobs.android;
 const script = read("tools/ci/rebundle-android-app.sh")
   .split("\n")
   .filter((l) => !l.trim().startsWith("#"))
   .join("\n");
 
-function step(name: string): string {
-  const at = src.indexOf(`- name: ${name}\n`);
-  assert.notEqual(at, -1, `no step named "${name}"`);
-  const next = src.indexOf("\n      - ", at + 1);
-  return src.slice(at, next === -1 ? undefined : next);
-}
-
-const code = (block: string) => block.split("\n").filter((l) => !l.trim().startsWith("#")).join("\n");
+const code = (run = "") => run.split("\n").filter((l) => !l.trim().startsWith("#")).join("\n");
+const step = (name: string) => stepOf(android, name);
+const run = (name: string) => code(step(name).run);
+const uses = (prefix: string): { at: number; step: Step } => {
+  const at = (android.steps ?? []).findIndex((s) => s.uses?.startsWith(prefix));
+  assert.notEqual(at, -1, `no step uses ${prefix}`);
+  return { at, step: android.steps![at] };
+};
+const RESTORE = "actions/cache/restore@";
+const ON_A_MISS = "steps.cached.outputs.cache-hit != 'true'";
 
 describe("maestro.yml reuses the native build", () => {
   test("the bundle is made once, by Gradle's own task, before anything is keyed on it", () => {
-    const bundle = code(step("Bundle the JS"));
-    assert.match(bundle, /gradlew -p android createBundleReleaseJsAndAssets/);
-    assert.doesNotMatch(bundle, /^\s+if:/m, "a run that skips the bundle installs a stale one");
-    assert.ok(src.indexOf("- name: Bundle the JS") < src.indexOf("actions/cache/restore"));
+    assert.match(run("Bundle the JS"), /gradlew -p android createBundleReleaseJsAndAssets/);
+    assert.equal(step("Bundle the JS").if, undefined, "a run that skips the bundle installs a stale one");
+    assert.ok(stepIndex(android, "Bundle the JS") < uses(RESTORE).at);
   });
 
   test("the APK is keyed on the native fingerprint and on the resources the bundle carries", () => {
-    const fingerprint = code(step("Fingerprint the native build"));
-    assert.match(fingerprint, /fingerprint:generate --platform android/);
+    assert.match(run("Fingerprint the native build"), /fingerprint:generate --platform android/);
     assert.ok(
-      src.indexOf("- name: Fingerprint the native build") < src.indexOf("- name: Generate the native project"),
+      stepIndex(android, "Fingerprint the native build") < stepIndex(android, "Generate the native project"),
       "after prebuild the fingerprint hashes the generated android/ tree",
     );
-    const key = code(step("Key the native build"));
+    const key = run("Key the native build");
     assert.match(key, /steps\.fingerprint\.outputs\.hash/);
     assert.match(key, /steps\.prebuild\.outputs\.ndk/);
     assert.match(key, /generated\/res\/react\/release/, "a new image would install into an APK without it");
     assert.match(key, /hashFiles\('\.github\/workflows\/maestro\.yml'\)/);
-    const restore = src.slice(src.indexOf("actions/cache/restore"), src.indexOf("actions/cache/restore") + 300);
-    assert.match(restore, /key: \$\{\{ steps\.native\.outputs\.key \}\}/);
+    assert.equal(uses(RESTORE).step.with?.key, "${{ steps.native.outputs.key }}");
   });
 
   test("the native build runs only on a miss, with the bundle's env whether Gradle re-bundles or not", () => {
-    const build = code(step("Build the app"));
-    assert.match(build, /if: steps\.cached\.outputs\.cache-hit != 'true'/);
-    assert.doesNotMatch(build, /-x createBundleReleaseJsAndAssets/, "packageReleaseResources reads its output");
-    const at = src.indexOf("\n  android:");
-    assert.ok(at >= 0, "maestro.yml has no android job");
-    const job = src.slice(at, src.indexOf("\n    steps:", at));
-    assert.match(job, /\n    env:[\s\S]*EXPO_PUBLIC_E2E_FAST: "1"/);
-    assert.doesNotMatch(src.replace(job, ""), /EXPO_PUBLIC_E2E_FAST:/);
-    const save = src.slice(src.indexOf("actions/cache/save"), src.indexOf("actions/cache/save") + 300);
-    assert.match(save, /if: steps\.cached\.outputs\.cache-hit != 'true'/);
+    assert.equal(step("Build the app").if, ON_A_MISS);
+    assert.doesNotMatch(run("Build the app"), /-x createBundleReleaseJsAndAssets/, "packageReleaseResources reads its output");
+    assert.equal(android.env?.EXPO_PUBLIC_E2E_FAST, "1");
+    const elsewhere = { ...workflow, jobs: { ...workflow.jobs, android: { ...android, env: undefined } } };
+    assert.doesNotMatch(JSON.stringify(elsewhere), /EXPO_PUBLIC_E2E_FAST/);
+    assert.equal(uses("actions/cache/save@").step.if, ON_A_MISS);
   });
 
   test("every run installs the APK this commit's bundle was packed into", () => {
-    const pack = code(step("Put the JS into the app"));
-    assert.doesNotMatch(pack, /^\s+if:/m, "a miss would install an APK the packing path never touched");
+    assert.equal(step("Put the JS into the app").if, undefined, "a miss would install an APK the packing path never touched");
+    const pack = run("Put the JS into the app");
     assert.match(pack, /tools\/ci\/rebundle-android-app\.sh/);
-    const writers = [...src.matchAll(/^[^#\n]*APP_APK=/gm)];
+    const writers = Object.values(workflow.jobs)
+      .flatMap((j) => j.steps ?? [])
+      .flatMap((s) => code(s.run).split("\n"))
+      .filter((line) => line.includes("APP_APK="));
     assert.equal(writers.length, 1, "more than one step decides which APK is installed");
-    assert.ok(pack.includes(writers[0][0].trim()));
+    assert.ok(pack.includes(writers[0].trim()));
   });
 
   test("the packed APK carries Gradle's bundle byte for byte, stored, aligned and re-signed", () => {
@@ -79,9 +80,9 @@ describe("maestro.yml reuses the native build", () => {
   });
 
   test("the build uses an NDK the runner already has", () => {
-    const prebuild = code(step("Generate the native project"));
+    const prebuild = run("Generate the native project");
     assert.match(prebuild, /\$ANDROID_HOME\/ndk/);
     assert.match(prebuild, /ext\.ndkVersion/);
-    assert.ok(src.indexOf("- name: Generate the native project") < src.indexOf("- name: Bundle the JS"));
+    assert.ok(stepIndex(android, "Generate the native project") < stepIndex(android, "Bundle the JS"));
   });
 });

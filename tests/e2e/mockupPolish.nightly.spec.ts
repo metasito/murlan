@@ -1,4 +1,4 @@
-// tests/e2e/mockupPolish.spec.ts — #1259 plan 5: each notice held to the mockup it was approved in.
+// tests/e2e/mockupPolish.nightly.spec.ts — #1259 plan 5: each notice held to the mockup it was approved in.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import path from "node:path";

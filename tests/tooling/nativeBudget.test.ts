@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { loadWorkflow, step } from "../helpers/workflow.ts";
 import NativeBudgetReporter, { BUDGET_S, budgetLines, CI_SLOWER, EXCEPTIONS, HARD_FACTOR, MAX_EXCEPTION_S, OUTSIDE_S, overBudget } from "../../tools/ci/native-budget.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
@@ -103,9 +104,11 @@ test("each native shard uploads the list from the runner's temp directory, and a
     if (prior === undefined) delete process.env.RUNNER_TEMP;
     else process.env.RUNNER_TEMP = prior;
   }
-  const ci = readFileSync(path.join(repoRoot, ".github/workflows/ci.yml"), "utf8");
-  const native = /^ {2}native:\n([\s\S]*?)(?=^ {2}\S)/m.exec(ci.replace(/^\s*#.*\n/gm, ""))?.[1] ?? "";
-  assert.match(native, /upload-artifact@\S+.*\n\s+with:\n\s+name: over-budget-native-\$\{\{ matrix\.shard \}\}\n\s+path: \$\{\{ runner\.temp \}\}\/over-budget\.json\n\s+if-no-files-found: error\n/);
+  const uploads = (loadWorkflow("ci.yml").jobs.native.steps ?? []).filter((s) => s.uses?.startsWith("actions/upload-artifact@"));
+  assert.deepEqual(
+    uploads.map(({ with: w }) => ({ name: w?.name, path: w?.path, "if-no-files-found": w?.["if-no-files-found"] })).find((w) => w.name === "over-budget-native-${{ matrix.shard }}"),
+    { name: "over-budget-native-${{ matrix.shard }}", path: "${{ runner.temp }}/over-budget.json", "if-no-files-found": "error" },
+  );
 });
 
 test("the budget cannot be loosened past what was measured, nor an exception past a minute, nor the exceptions multiplied", () => {
@@ -117,12 +120,11 @@ test("the budget cannot be loosened past what was measured, nor an exception pas
 });
 
 test("the native job restores its jest cache only under the exact dependency set it was built from", () => {
-  const ci = readFileSync(path.join(repoRoot, ".github/workflows/ci.yml"), "utf8");
-  const native = /^ {2}native:\n([\s\S]*?)(?=^ {2}\S)/m.exec(ci.replace(/^\s*#.*\n/gm, ""))?.[1] ?? "";
-  const restore = /- id: jest-cache\n([\s\S]*?)(?=\n\s*- )/.exec(native)?.[1] ?? "";
-  assert.match(restore, /actions\/cache\/restore@/);
-  assert.match(restore, /key: native-jest-\$\{\{ matrix\.shard \}\}-\$\{\{ hashFiles\('package-lock\.json', 'patches\/\*\*', 'babel\.config\.js'/);
-  assert.doesNotMatch(native, /restore-keys/);
+  const native = loadWorkflow("ci.yml").jobs.native;
+  const restore = step(native, "jest-cache");
+  assert.match(String(restore.uses), /^actions\/cache\/restore@/);
+  assert.match(String(restore.with?.key), /^native-jest-\$\{\{ matrix\.shard \}\}-\$\{\{ hashFiles\('package-lock\.json', 'patches\/\*\*', 'babel\.config\.js'/);
+  assert.doesNotMatch(JSON.stringify(native), /restore-keys/);
 });
 
 test("each exception names a native file and a project, says why, and grants more than the budget and no more than the cap", () => {
