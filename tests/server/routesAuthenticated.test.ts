@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import express, { type RequestHandler } from "express";
+import express, { type Express, type RequestHandler } from "express";
 import { z } from "zod";
 import { mountedRoutes } from "../helpers/mountedRoutes.ts";
 import { mountApi } from "../../server/http/routes/index.ts";
@@ -84,6 +84,8 @@ test("the walker reads routes from the live router, and refuses a nested one (po
   const nested = express();
   nested.use("/x", express.Router().get("/y", noop));
   assert.throws(() => mountedRoutes(nested), /nested Router/);
+
+  assert.throws(() => mountedRoutes((() => {}) as unknown as Express), /not an Express app/);
 });
 
 test("the mounted routes are exactly the ones written here", () => {

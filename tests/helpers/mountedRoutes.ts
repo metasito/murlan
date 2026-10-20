@@ -22,7 +22,8 @@ interface Layer {
  * except by being known. A nested Router is refused for the same reason.
  */
 export function mountedRoutes(app: Express, passThrough: ReadonlySet<string> = new Set()): MountedRoute[] {
-  const stack = (app.router as unknown as { stack: Layer[] }).stack;
+  const stack = (app.router as unknown as { stack?: Layer[] } | undefined)?.stack;
+  if (!Array.isArray(stack)) throw new Error("not an Express app: it has no router stack to walk");
   const found: MountedRoute[] = [];
   for (const layer of stack) {
     if (!layer.route) {
