@@ -43,7 +43,7 @@ for (const [name, platform] of [
     const workflow = loadWorkflow(name);
     const { id, job, step: report } = stepIn(workflow, "Report a red scheduled run to the tracker");
     assert.equal(report.if, "(failure() || cancelled()) && github.event_name == 'schedule'");
-    assert.equal(report.run?.trim(), `bash tools/ci/report-device-run.sh ${name}`);
+    assert.match(report.run ?? "", new RegExp(`bash tools/ci/report-to-tracker\\.sh "A scheduled ${name} run went red" \\S+ device-run\\s*$`));
     assert.equal((job.permissions ?? workflow.permissions)?.issues, "write", "the report's job may not write issues");
     assert.equal(job.steps?.at(-1), report, "a step after the report can fail without being reported");
     assert.equal(Object.keys(workflow.jobs).at(-1), id, "a job after the report's can fail without being reported");

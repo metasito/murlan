@@ -44,15 +44,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      # Expressions have no regex, and `startsWith` admits every worktree branch.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: tools/ci
       - name: A schedule, or a dispatch on agent/<n>-… or claude/<n>-…
         env:
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref_name }}
-        run: |
-          [[ "$EVENT" == schedule || "$REF" =~ ^(agent|claude)/[0-9]+- ]] && exit 0
-          echo "::error::A device run is dispatched only on a ticket's own branch (agent/<n>-… or claude/<n>-…), not $REF."
-          exit 1
+        run: bash tools/ci/device-gate.sh
 
   verdict:
     name: The emulator ran and passed on this attempt
@@ -106,13 +105,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
+      - uses: ./.github/actions/install
 
       # Before prebuild: once android/ exists, the fingerprint hashes the generated tree instead of
       # what generates it. The dist-tag named for the installed SDK is the version that reads its config.
@@ -478,4 +471,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: bash tools/ci/report-device-run.sh maestro.yml
+        run: |
+          sed -e "s|@WORKFLOW@|maestro.yml|g" -e "s|@RUN_URL@|$RUN_URL|g" tools/ci/device-run-report.txt > "$RUNNER_TEMP/report.md"
+          bash tools/ci/report-to-tracker.sh "A scheduled maestro.yml run went red" "$RUNNER_TEMP/report.md" device-run

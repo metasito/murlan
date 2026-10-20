@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -32,17 +32,26 @@ describe("every Postgres in the project is production's major", () => {
     assert.deepEqual(dev, production);
   });
 
-  test("CI's service containers and its client match it", () => {
-    const ci = readRepoFile(".github", "workflows", "ci.yml");
-    const services = majors(ci, /image:\s*(?:[\w.-]+\/)*postgres:(\d+)-alpine/g);
-    // The install command, not a mention of it: an error message naming the
-    // package would otherwise satisfy this on its own.
-    const clients = majors(ci, /apt-get install[^\n]*postgresql-client-(\d+)/g);
-
-    assert.ok(services.length > 0, "ci.yml runs no Postgres service");
-    assert.ok(clients.length > 0, "ci.yml installs no Postgres client");
-    for (const major of [...services, ...clients]) {
-      assert.equal(major, production[0]);
+  test("every workflow's service containers and clients match it", () => {
+    const dir = path.join(repoRoot, ".github", "workflows");
+    const served: string[] = [];
+    for (const name of readdirSync(dir).filter((n) => /\.ya?ml$/.test(n))) {
+      const source = readRepoFile(".github", "workflows", name);
+      const services = majors(source, /image:\s*(?:[\w.-]+\/)*postgres:(\d+)-alpine/g);
+      // The install command, not a mention of it: an error message naming the
+      // package would otherwise satisfy this on its own.
+      const clients = majors(source, /apt-get install[^\n]*postgresql-client-(\d+)/g);
+      if (services.length > 0) served.push(name);
+      for (const major of [...services, ...clients]) {
+        assert.equal(major, production[0], name);
+      }
     }
+    assert.ok(served.includes("ci.yml"), "ci.yml runs no Postgres service");
+    assert.ok(served.includes("soak.yml"), "soak.yml runs no Postgres service");
+  });
+
+  test("ci.yml installs a Postgres client", () => {
+    const clients = majors(readRepoFile(".github", "workflows", "ci.yml"), /apt-get install[^\n]*postgresql-client-(\d+)/g);
+    assert.ok(clients.length > 0, "ci.yml installs no Postgres client");
   });
 });
