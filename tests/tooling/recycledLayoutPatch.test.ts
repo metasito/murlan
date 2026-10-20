@@ -5,11 +5,12 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { patchedAppDelegate, podOf } from "../helpers/appDelegate.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
 
-const OVERRIDE = "modules/murlan-diagnostics/ios/MurlanRecycledLayout.mm";
+const OVERRIDE = "modules/murlan-rn-patches/ios/MurlanRecycledLayout.mm";
 // Resolved, never `node_modules/` under repoRoot: a worktree has no install of its own (RULES.md rule 9).
 const reactNative = path.dirname(createRequire(import.meta.url).resolve("react-native/package.json"));
 const MOUNTING = path.relative(repoRoot, path.join(reactNative, "React/Fabric/Mounting/ComponentViews")).replaceAll("\\", "/");
@@ -35,7 +36,12 @@ test("the override resets a recycled view to EmptyLayoutMetrics after React Nati
   assert.match(source, /Method method = class_getInstanceMethod\(self, @selector\(prepareForRecycle\)\);\s*NSCAssert\(method, @"[^"]+"\);/);
   assert.match(source, /original\(view, @selector\(prepareForRecycle\)\);\s*\[view \w+\];/);
   assert.match(source, /_layoutMetrics = EmptyLayoutMetrics;/);
-  assert.match(read("modules/murlan-diagnostics/ios/MurlanDiagnostics.podspec"), /source_files = '\*\.\{[^}]*\bmm\b[^}]*\}'/);
+});
+
+test("the pod that compiles the override is one the app imports, so its +load runs in every release", () => {
+  const pod = podOf(path.join(repoRoot, OVERRIDE));
+  assert.match(pod.sourceFiles, /^\*\.\{[^}]*\bmm\b[^}]*\}$/);
+  assert.ok(patchedAppDelegate().includes(`\ninternal import ${pod.name}\n`), `the AppDelegate no longer imports ${pod.name}`);
 });
 
 test("no installed component view the override does not cover resets its layout stale", () => {

@@ -1,11 +1,12 @@
 import native from "@/modules/murlan-diagnostics";
+import session from "@/modules/murlan-audio-session";
 import { diag, type DiagRow } from "./index";
 
 export const probe = {
   hostNowMs: (): number | null => native?.hostNowMs() ?? null,
   footprintMb: (): number | null => native?.footprintMb() ?? null,
-  outputLatencyMs: (): number | null => native?.outputLatencyMs?.() ?? null,
-  ioBufferMs: (): number | null => native?.ioBufferMs?.() ?? null,
+  outputLatencyMs: (): number | null => session?.outputLatencyMs() ?? null,
+  ioBufferMs: (): number | null => session?.ioBufferMs() ?? null,
   inputLatencyMs: (): number | null => native?.inputLatencyMs?.() ?? null,
   canCapture: (): boolean => typeof native?.startCapture === "function",
   startCapture: (mic: boolean): Promise<boolean> => native?.startCapture?.(mic) ?? Promise.resolve(false),
