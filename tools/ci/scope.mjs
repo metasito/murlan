@@ -33,7 +33,7 @@ export const QUEUE_LOOP_TESTS = /^tools\/loop\/tests\//;
  * names `check-steps.mjs` pins each delegated step to. Derived by `tests/tooling/ciScope.test.ts`.
  */
 export const HARNESS =
-  /^(tools\/loop\/|scripts\/lib\/(entry|proc)\.mjs$|scripts\/nodeTest\.mjs$|tools\/ci\/(preflightMemory|native-budget|e2e-budget|e2e-shard|budget-gate)\.mjs$|tests\/helpers\/(importShellGuard\.ts|processWorlds\.ts|filesRunReporter\.mjs|fileDeadline\.mjs|runWatch\.mjs|exitGuard\.mjs|exitWatch\.mjs)$|docs\/agents\/|\.claude\/|CLAUDE\.md$|package\.json$|jest\.config\.js$|\.github\/workflows\/ci\.yml$)/;
+  /^(tools\/loop\/|scripts\/lib\/(entry|proc|blockingStdout)\.mjs$|scripts\/nodeTest\.mjs$|tools\/ci\/(preflightMemory|native-budget|e2e-budget|e2e-shard|budget-gate)\.mjs$|tests\/helpers\/(importShellGuard\.ts|processWorlds\.ts|filesRunReporter\.mjs|fileDeadline\.mjs|runWatch\.mjs|exitGuard\.mjs|exitWatch\.mjs)$|docs\/agents\/|\.claude\/|CLAUDE\.md$|package\.json$|jest\.config\.js$|\.github\/workflows\/ci\.yml$)/;
 
 /**
  * `scans` holds `docReferences.test.ts` and the other scans that list the repository from its

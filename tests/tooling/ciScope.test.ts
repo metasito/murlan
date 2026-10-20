@@ -150,6 +150,7 @@ describe("scopeOf, change by change", () => {
     ["the loop's tests alone skip the app suites", ["tools/loop/tests/x.test.ts"], { app: false, harness: true, scans: true }],
     ["the loop's source can reach the game", ["tools/loop/reap.mjs"], { app: true, harness: true, scans: true }],
     ["this workflow runs both suites", [".github/workflows/ci.yml"], { app: true, harness: true, scans: true }],
+    ["the preload in every test file's process runs both suites", ["scripts/lib/blockingStdout.mjs"], { app: true, harness: true, scans: true }],
     ["a path no rule names runs the app suites", ["newdir/thing.xyz"], { app: true, harness: false, scans: true }],
     ["prose beside code is not prose alone", ["docs/research/a-note.md", "app/index.tsx"], { app: true, harness: false, scans: true }],
     ["prose beside the loop's tests is neither alone", ["README.md", "tools/loop/tests/x.test.ts"], { app: true, harness: true, scans: true }],
