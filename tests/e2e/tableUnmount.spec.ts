@@ -18,6 +18,13 @@ async function playTopCard(page: Page): Promise<void> {
   await tap(page, page.getByRole("button", { name: GIOCA_VALID_LABEL }));
 }
 
+// The felt redraws every sway of the lamp, which on SwiftShader takes the main thread (feltIdle.spec.ts)
+// and leaves a press waiting past its reach; at rest it draws only when a card moves.
+async function skiaAtRest(page: Page): Promise<void> {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await skiaOnSoftware(page);
+}
+
 async function untilHome(page: Page): Promise<void> {
   await page.waitForURL((url) => url.pathname === "/" || url.pathname === "");
   // fixed wait on purpose: the error is thrown frames after the route changes, with no state to wait on.
@@ -28,7 +35,7 @@ test("Home on the end-of-match board leaves the Skia felt without an error", asy
   test.setTimeout(3 * 60_000);
   const errors = pageErrors(page);
   const save = offlineSave({ seats: 2, hand: 1, length: "single" });
-  await skiaOnSoftware(page);
+  await skiaAtRest(page);
   await resumeSaved(page, baseURL!, save);
   await untilSkiaFelt(page);
 
@@ -42,7 +49,7 @@ test("Home on the end-of-match board leaves the Skia felt without an error", asy
 test("leaving mid-round through the menu leaves the Skia felt without an error", async ({ page, baseURL }) => {
   test.setTimeout(3 * 60_000);
   const errors = pageErrors(page);
-  await skiaOnSoftware(page);
+  await skiaAtRest(page);
   await resumeSaved(page, baseURL!, offlineSave({ seats: 2 }));
   await untilSkiaFelt(page);
 
