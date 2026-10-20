@@ -24,7 +24,9 @@ import type { Channel } from "@/lib/harnessChannels";
  * A sentence for the browser harness, on a channel lib/harnessChannels.ts registers. Not a
  * label: a container that cannot be `accessible` names no reader. The cast is for web-only `dataSet`.
  */
-export const harnessState = (state: Partial<Record<Channel, string>>) => ({ dataSet: state }) as ViewProps;
+export const harnessState = <S extends Partial<Record<Channel, string>>>(
+  state: S & Record<Exclude<keyof S, Channel>, never>,
+) => ({ dataSet: state }) as ViewProps;
 
 // ─── Control rail ─────────────────────────────────────────────────────────────
 

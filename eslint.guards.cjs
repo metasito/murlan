@@ -265,14 +265,21 @@ const GUARDS = [
       'CallExpression[callee.name="harnessState"] > ObjectExpression',
     ]
       .flatMap((writer) => [`${writer} > Property:not([key.name=${CHANNEL_KEYS}]):not([key.value=${CHANNEL_KEYS}])`, `${writer} > SpreadElement`])
+      .concat([
+        'JSXAttribute[name.name="dataSet"] > JSXExpressionContainer[expression.type!="ObjectExpression"]',
+        'Property:matches([key.name="dataSet"], [key.value="dataSet"])[value.type!="ObjectExpression"]',
+      ])
       .join(", "),
     files: SCREENS,
+    ignores: [{ glob: "components/table/chrome.tsx", reason: "harnessState passes on an object its parameter type already holds to the registered keys" }],
     plant: { file: "components/Plant.tsx", code: [
       "const a = <View dataSet={{ tableState: s, rogue: x }} />;",
       "const b = <View {...harnessState({ handStat: s })} />;",
       'const c = <Text {...({ dataSet: { "seat-lit": v } } as TextProps)} />;',
       "const d = <View dataSet={{ ...extra }} />;",
-    ].join("\n"), hits: 4 },
+      "const e = <View dataSet={ds} />;",
+      "const f = <Text {...({ dataSet: pick(x) } as TextProps)} />;",
+    ].join("\n"), hits: 6 },
     spare: [
       "const a = <View dataSet={{ tableState: s, dealing: d }} />;",
       "const b = <View {...harnessState({ handState: s })} />;",

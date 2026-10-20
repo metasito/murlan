@@ -12,6 +12,7 @@ import { PHONES, type Phone } from "./helpers/phones";
 import { setSafeArea } from "./helpers/safeArea";
 import { feltPixels, seatAnchor, settledLight, skiaOnSoftware, tracedLamp, untilSkiaFelt } from "./helpers/tableTrace";
 import { CAPTURE_STATES, CAPTURE_VIEWER_SEAT, captureGameState, type CaptureState } from "../../lib/captureStates";
+import { HAND_CARD_BOXES } from "./helpers/selectors.ts";
 
 /** "To the nearest point." */
 const NEAREST_PT = 0.5;
@@ -57,7 +58,7 @@ for (const phone of PHONES) {
 
       await expectLampOver(page, state.side, `${phone.name}, ${state.id}`);
 
-      const boxes = await page.evaluate(() => {
+      const boxes = await page.evaluate((handBoxes) => {
         const rects = (sel: string) =>
           [...document.querySelectorAll(sel)].map((el) => {
             const r = el.getBoundingClientRect();
@@ -67,9 +68,9 @@ for (const phone of PHONES) {
           seats: rects(
             '[data-testid="top-seat"], [data-testid="side-seat-left"], [data-testid="side-seat-right"]'
           ),
-          cards: rects('[data-hand-state] [data-testid="card-box"]'),
+          cards: rects(handBoxes),
         };
-      });
+      }, HAND_CARD_BOXES);
 
       expect(boxes.cards.length, "the viewer's own hand did not render").toBeGreaterThan(0);
       for (const c of boxes.cards) {

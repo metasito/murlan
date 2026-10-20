@@ -10,6 +10,7 @@ import { captureStateById, seatedSituation, type CaptureState } from "../../lib/
 import { CARD_H, cardScale, HAND_SCALE } from "../../components/cardFaceModel";
 import { handVisibleH } from "../../components/seatLayout";
 import { RANK_SLOTS, type Card } from "../../lib/game/gameEngine";
+import { HAND_CARD_BOXES, HAND_SELECTED } from "./helpers/selectors.ts";
 
 const HALF_PT = 0.5;
 const ONE_PT = 1;
@@ -511,8 +512,8 @@ test("reject: a refused GIOCA floats G2's reason, its right edge on GIOCA's and 
       pile: { cards: ["9_spades"], by: 1 },
     })
   );
-  await tap(app.page, app.page.locator('[data-hand-state] [data-testid="card-box"]').first());
-  await expect(app.page.locator('[data-hand-state] [aria-pressed="true"]')).toHaveCount(1);
+  await tap(app.page, app.page.locator(HAND_CARD_BOXES).first());
+  await expect(app.page.locator(HAND_SELECTED)).toHaveCount(1);
   await tap(app.page, app.page.getByTestId("btn-gioca"));
   await expect
     .poll(async () => (await app.plate(REJECT))?.opacity, { message: "the reason risen and faded in", intervals: [20], timeout: 30_000 })

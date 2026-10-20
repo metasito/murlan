@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { blankCommentsAndStrings, jsxTags, scannedFiles } from "../helpers/sourceScan.ts";
+import { blankCommentsAndStrings, jsxTags, scannedFiles, sourcesUnder } from "../helpers/sourceScan.ts";
 import { CHANNELS, type Channel } from "../../lib/harnessChannels.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -54,4 +54,31 @@ test("the scan sees a channel written as a dataSet prop, a dataSet property and 
   assert.deepEqual(keys("<View {...({ dataSet: { seatLit: String(lit) } } as ViewProps)} />"), ["seatLit"]);
   assert.deepEqual(keys("<View {...harnessState({ handState: label })}>"), ["handState"]);
   assert.deepEqual(keys('// <View dataSet={{ lit: "x" }} />\n<View />'), []);
+});
+
+const SELECTORS = "tests/e2e/helpers/selectors.ts";
+
+/** Every place under tests/e2e/ that spells a channel's attribute instead of reading selectors.ts. */
+function handWritten(files: [string, string][]): string[] {
+  const attributes = Object.values(CHANNELS);
+  return files.flatMap(([rel, source]) =>
+    rel === SELECTORS
+      ? []
+      : source
+          .split("\n")
+          .flatMap((line, i) => (attributes.some((a) => new RegExp(`\\b${a}\\b`).test(line)) ? [`${rel}:${i + 1}`] : [])),
+  );
+}
+
+test("no browser spec spells a channel's attribute outside selectors.ts", () => {
+  const files = sourcesUnder(repoRoot, ["tests/e2e"]);
+  assert.ok(files.some(([rel]) => rel === SELECTORS), "the scan never reached selectors.ts, so it read nothing");
+  assert.deepEqual(handWritten(files), [], "read these through tests/e2e/helpers/selectors.ts, which builds them from CHANNELS");
+});
+
+test("the spelling check sees a hand-written channel, and nothing in selectors.ts", () => {
+  const spec = "tests/e2e/plant.spec.ts";
+  assert.deepEqual(handWritten([[spec, 'const ok = 1;\nel.getAttribute("data-seat-lit");']]), [`${spec}:2`]);
+  assert.deepEqual(handWritten([[SELECTORS, 'const z = "[data-hand-state]";']]), []);
+  assert.deepEqual(handWritten([[spec, 'const s = "[data-testid=x] [data-side=top]";']]), []);
 });

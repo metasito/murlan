@@ -209,10 +209,11 @@ describe("the guard registry's floor", () => {
       const dir = mkdtempSync(path.join(tmpdir(), "murlan-guards-"));
       try {
         const file = path.join(dir, "guards.cjs");
-        symlinkSync(path.join(ROOT, "lib"), path.join(dir, "lib"));
+        symlinkSync(path.join(ROOT, "lib"), path.join(dir, "lib"), "junction");
         writeFileSync(file, edit(source));
         return (require(file) as { plugin: { meta: { version?: string } } }).plugin.meta.version;
       } finally {
+        rmSync(path.join(dir, "lib"), { force: true });
         rmSync(dir, { recursive: true, force: true });
       }
     };

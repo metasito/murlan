@@ -17,6 +17,11 @@ export const TABLE_STATE = CHANNELS.tableState;
 /** "true" from the table's entry until the last dealt card lands. */
 export const TABLE_DEALING = CHANNELS.dealing;
 export const HAND_ZONE = `[${CHANNELS.handState}]`;
+/** The drawn card inside each hand slot, not its pressable strip. */
+export const HAND_CARD_BOXES = `${HAND_ZONE} [data-testid="card-box"]`;
+export const HAND_SELECTED = `${HAND_ZONE} [aria-pressed="true"]`;
+/** "true" on a seat ring while its seat holds the turn. */
+export const SEAT_LIT = CHANNELS.seatLit;
 
 /**
  * Scoped to the hand wrapper, not anywhere under the table: the played pile renders

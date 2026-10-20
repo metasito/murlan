@@ -563,8 +563,8 @@ describe("translate() produces the expected output per locale", () => {
 
   test("every game:rejoin_failed reason is renderable and distinct in every locale", () => {
     // No two reasons may render the same sentence, or the codes carry no information. What the
-    // emit carries is pinned by tests/integration/gameplay.test.ts on the payload a stranger gets.
-    const source = readFileSync(path.join(SERVER_DIR, "socket", "socketGameplay.ts"), "utf8");
+    // emit carries is pinned by tests/server/rejoinFailure.test.ts.
+    const source = readFileSync(path.join(SERVER_DIR, "socket", "rejoinFailure.ts"), "utf8");
     // The reasons themselves, from the table that emit spreads.
     const table = /REJOIN_FAILURE[^=]*=\s*\{([\s\S]*?)\n\};/.exec(source)?.[1] ?? "";
     const entries = [...table.matchAll(/payload\("([A-Z_]+)"\)/g)];
