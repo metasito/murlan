@@ -66,7 +66,7 @@ export function FloatSlot({
       : [styles.slot, float?.kind === "toast" && styles.overBoard, { width: slot, left: at.x - slot / 2, top: at.y }];
   return (
     <>
-      <A11yStatus label={float?.live ? float.text : ""} veiled={veiled} nonce={float?.id} />
+      <A11yStatus testID="float-status" label={float?.live ? float.text : ""} veiled={veiled} nonce={float?.id} />
       {float && (
         <View pointerEvents="none" {...a11yHidden()} style={place}>
           {float.kind === "reject" ? (

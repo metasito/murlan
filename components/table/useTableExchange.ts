@@ -48,9 +48,12 @@ export function useTableExchange(input: {
   const { gameState, viewerSeat, spectating, announcement, onExchangeReady, sortedHand } = input;
   const { t } = useTranslation();
   const players = gameState.players;
-  const exchange = readExchange(gameState, viewerSeat, spectating);
-  // The exchange runs from the phase opening, before any announcement: the receive flies ahead of the choice.
   const phase = gameState.exchangePhase;
+  const exchange = useMemo(
+    () => readExchange({ exchangePhase: phase, players }, viewerSeat, spectating),
+    [phase, players, viewerSeat, spectating]
+  );
+  // The exchange runs from the phase opening, before any announcement: the receive flies ahead of the choice.
   const shownExchange: ExchangeAnnounceData | null =
     announcement ??
     (phase?.active && !phase.twoJokerException ? buildExchangeAnnounce(players, phase, { received: phase.cardFromLoser }) : null);

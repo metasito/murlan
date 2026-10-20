@@ -1,6 +1,53 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { Platform, View, StyleSheet, useWindowDimensions, type LayoutChangeEvent } from "react-native";
 import * as ScreenOrientation from "expo-screen-orientation";
+import type { NativeStackNavigationProp } from "expo-router";
+import { NavigationContext, type ParamListBase } from "expo-router/react-navigation";
+import nativeOrientation from "@/modules/murlan-orientation";
+import { useOrientationRows } from "@/lib/diagnostics";
+
+const RELOCK_MS = 1000;
+
+const lockLandscape = () => {
+  ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+  nativeOrientation?.holdLandscape().catch(() => {});
+};
+
+/**
+ * Holds the screen in landscape while mounted, and lets go on unmount. Read from the navigator
+ * above it, if any; a rejected lock or release is swallowed, since fast game -> menu -> game
+ * navigation makes them cancel each other and an unhandled rejection is fatal on device.
+ */
+export function useLandscapeLock(): void {
+  const navigation = useContext(NavigationContext) as NativeStackNavigationProp<ParamListBase> | undefined;
+  const { width, height } = useOrientedWindow();
+  useOrientationRows(width, height);
+  useEffect(
+    () => () => {
+      ScreenOrientation.unlockAsync().catch(() => {});
+      nativeOrientation?.release().catch(() => {});
+    },
+    []
+  );
+  // A portrait-only lock from UIKit can land after ours with no rotation to report
+  // it, so an upright window keeps re-asking until it turns (#1378).
+  const upright = width < height;
+  useEffect(() => {
+    lockLandscape();
+    if (!upright) return;
+    const relock = setInterval(lockLandscape, RELOCK_MS);
+    return () => clearInterval(relock);
+  }, [upright]);
+  // UIKit pins the scene to its current orientation for an animated screen
+  // transition, overriding a lock that lands inside it (#1211).
+  useEffect(
+    () =>
+      navigation?.addListener("transitionEnd", (e) => {
+        if (!e.data.closing) lockLandscape();
+      }),
+    [navigation]
+  );
+}
 
 const { Orientation } = ScreenOrientation;
 const portraitOf = (o: ScreenOrientation.Orientation) =>

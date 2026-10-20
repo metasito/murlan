@@ -27,7 +27,8 @@ jest.mock('@/lib/accessibility', () => ({
   getMotionPreference: () => 'off',
 }));
 
-import { GameTable, type TurnTimerConfig } from '@/components/GameTable';
+import { GameTable } from '@/components/GameTable';
+import type { TurnTimerConfig } from '@/components/turnTimerUi';
 import { t, tn } from '@/lib/i18n';
 import { RANK_SLOTS, type Card, type GameState, type Player } from '@/lib/game/gameEngine';
 

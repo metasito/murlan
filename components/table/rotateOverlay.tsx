@@ -63,7 +63,7 @@ export function RotateOverlay() {
   }));
 
   return (
-    <View style={portraitOverlayStyles.overlay} accessibilityViewIsModal>
+    <View testID="rotate-overlay" style={portraitOverlayStyles.overlay} accessibilityViewIsModal>
       <View style={portraitOverlayStyles.card} {...a11yGroup(t("gameTable.rotateA11yLabel"))}>
         <Animated.View style={glyphStyle} {...a11yHidden()}>
           <Ionicons name="phone-landscape-outline" size={GLYPH_SIZE} color={Colors.gold} {...a11yHidden()} />
