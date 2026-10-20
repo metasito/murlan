@@ -6,7 +6,7 @@ import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { announceIfFilled } from "../../server/socket/socketTable.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { friendStore } from "../../server/store/friendStore.ts";
-import { logger } from "../../server/http/logger.ts";
+import { logger } from "../../server/shared/logger.ts";
 import { installClock } from "../../server/http/clock.ts";
 import { autoStartDelayMs, clearAutoStart } from "../../server/game/gameTimers.ts";
 import { refuse } from "../../server/shared/refusal.ts";

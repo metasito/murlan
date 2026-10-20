@@ -11,7 +11,7 @@
 // `round_history` row.
 
 export const EVENT_NAMES = [
-  /** The tutorial was offered and opened — see the note in server/socket/events.ts. */
+  /** The tutorial was offered and opened — see the note in server/shared/events.ts. */
   "tutorial.started",
   /** The player reached the online area, which is what opens their socket. */
   "lobby.entered",

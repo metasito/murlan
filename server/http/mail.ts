@@ -1,6 +1,6 @@
 import { appendFile } from "node:fs/promises";
-import { logger } from "./logger.ts";
-import { trackEvent } from "../socket/events.ts";
+import { logger } from "../shared/logger.ts";
+import { trackEvent } from "../shared/events.ts";
 import { testOnlyEnv } from "./testOnlyEnv.ts";
 import { OUTBOUND_TIMEOUT_MS } from "./outbound.ts";
 

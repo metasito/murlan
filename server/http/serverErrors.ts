@@ -3,7 +3,7 @@ import { now } from "./clock.ts";
 import { sql } from "drizzle-orm";
 import { db, pool } from "../store/db.ts";
 import { serverErrors } from "../../shared/schema.ts";
-import { setErrorRecorder } from "./logger.ts";
+import { setErrorRecorder } from "../shared/logger.ts";
 
 /** The same window as client crash reports. */
 export const SERVER_ERROR_RETENTION_DAYS = 90;

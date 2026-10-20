@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { io as ioClient, type Socket } from "socket.io-client";
 import { PROTOCOL_AUTH, reconnectAs, register, waitFor, waitForWhere } from "../helpers/client.ts";
 import { eq } from "drizzle-orm";
-import { logger } from "../../server/http/logger.ts";
+import { logger } from "../../server/shared/logger.ts";
 import { createDeck, getAllValidPlays } from "../../lib/game/gameEngine.ts";
 import {
   startTestServer,

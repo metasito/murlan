@@ -1,4 +1,4 @@
-import { logger } from "./http/logger.ts";
+import { logger } from "./shared/logger.ts";
 import { createApp } from "./app.ts";
 import { shutdown } from "./http/shutdown.ts";
 import { installProcessGuards } from "./socket/socketSafety.ts";

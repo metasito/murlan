@@ -1,6 +1,6 @@
 import { DEFAULT_LOCALE, isLocale, translate, type Locale } from "../../shared/i18n.ts";
 import { EMAIL_VERIFY_CODE_TTL_MS, PASSWORD_RESET_TOKEN_TTL_MS } from "./authTokens.ts";
-import { logger } from "./logger.ts";
+import { logger } from "../shared/logger.ts";
 import { sendMail } from "./mail.ts";
 
 /**

@@ -9,7 +9,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { handleRoundOver } from "../../server/game/roundOver.ts";
-import { logger } from "../../server/http/logger.ts";
+import { logger } from "../../server/shared/logger.ts";
 import type { RoundOverWriters } from "../../server/game/roundOver.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";

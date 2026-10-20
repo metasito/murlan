@@ -17,7 +17,7 @@ import { loadUser } from "../access.ts";
 import { hashPassword, sessionUser, signIn, SignInError } from "../accountSession.ts";
 import { mailLocale, sendPasswordResetEmail, sendVerificationEmail } from "../accountMail.ts";
 import { deleteUser } from "../deleteAccount.ts";
-import { logger } from "../logger.ts";
+import { logger } from "../../shared/logger.ts";
 import {
   mintAuthToken,
   redeemAuthToken,

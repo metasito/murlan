@@ -9,7 +9,7 @@ import { afkTimeoutMs } from "../../server/game/gameTimers.ts";
 import { sendMail } from "../../server/http/mail.ts";
 import { maxFrom } from "../../server/http/rateLimit.ts";
 import { testOnlyEnv } from "../../server/http/testOnlyEnv.ts";
-import { logger } from "../../server/http/logger.ts";
+import { logger } from "../../server/shared/logger.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const saved = { ...process.env };
