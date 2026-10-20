@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { GIOCA_VALID_LABEL } from "./labels";
+import { legalGioca } from "./bot.ts";
 import { DEPART_SCRIPT, expectDeparted } from "./lanternDepartures";
 import { cards, offlineSave, resumeOnVirtualClock } from "./offlineSeed";
 import { buildCombination, createDeck } from "../../../lib/game/gameEngine";
@@ -236,7 +236,7 @@ export const botMove = (page: Page) => page.evaluate(() => (globalThis as unknow
 export const playLowest = (cards: number) => async (page: Page) => {
   const hand = page.locator(HAND_CARD_BOXES);
   for (let i = 0; i < cards; i++) await hand.nth(i).click({ force: true, position: { x: 8, y: 30 } });
-  await page.getByRole("button", { name: GIOCA_VALID_LABEL }).click({ force: true, timeout: 10_000 });
+  await legalGioca(page).click({ force: true, timeout: 10_000 });
 };
 
 const REST_AIR_FROM = MAX_PRE_ROLL_MS;
@@ -499,7 +499,7 @@ const MOMENTS: Moment[] = [
     // The chapter's `at(200)` and `at(500)` run on the frames at 208 and 512.
     actions: [
       { atMs: 208, app: (page) => page.locator(HAND_CARD_BOXES).first().click({ force: true, position: { x: 8, y: 30 } }) },
-      { atMs: 512, app: (page) => page.getByRole("button", { name: GIOCA_VALID_LABEL }).click({ force: true, timeout: 10_000 }) },
+      { atMs: 512, app: (page) => legalGioca(page).click({ force: true, timeout: 10_000 }) },
     ],
     variants: ["skia"],
   },

@@ -4,7 +4,7 @@
 // about elapsed time — a hold, a measuring window — says so where it stands.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { blankComments } from "../helpers/sourceScan.ts";
 
@@ -15,25 +15,29 @@ const MARKER = /fixed wait on purpose:\s*\S+\s+\S+\s+\S+/;
 /**
  * The waits that predate this check, per file. A count may only fall: a new unjustified wait
  * goes red above it, and a removed one goes red until its entry is lowered, so the allowance
- * can never quietly grow back.
+ * can never quietly grow back. A wait that is a poll's cadence rather than a guess at the app
+ * carries its reason here.
  */
-const LEGACY: Record<string, number> = {
+const LEGACY: Record<string, number | { n: number; why: string }> = {
   "tests/e2e/a11yOverlays.spec.ts": 1,
   "tests/e2e/cardScale.spec.ts": 3,
   "tests/e2e/controlRail.spec.ts": 3,
   "tests/e2e/exchangeFit.spec.ts": 1,
   "tests/e2e/feltIdle.spec.ts": 3,
   "tests/e2e/feltNap.spec.ts": 1,
-  "tests/e2e/handBudget.spec.ts": 3,
   "tests/e2e/handClearance.spec.ts": 6,
   "tests/e2e/handScroll.spec.ts": 5,
   "tests/e2e/handTapStrips.spec.ts": 2,
-  "tests/e2e/helpers/bot.ts": 7,
-  "tests/e2e/helpers/feltParityGrid.ts": 1,
-  "tests/e2e/helpers/mailSink.ts": 1,
+  "tests/e2e/helpers/mailSink.ts": { n: 1, why: "the cadence of polling the server's mail sink, which pushes nothing" },
   "tests/e2e/helpers/mockupParity.ts": 1,
-  "tests/e2e/helpers/settle.ts": 1,
-  "tests/e2e/helpers/virtualClock.ts": 1,
+  "tests/e2e/helpers/settle.ts": {
+    n: 1,
+    why: "the cadence of `settled`'s stillness readings: three equal readings this far apart are what still means",
+  },
+  "tests/e2e/helpers/virtualClock.ts": {
+    n: 1,
+    why: "the real-time gap between virtual steps, which lets the page's own work run between them",
+  },
   "tests/e2e/onlineTableSurvey.spec.ts": 2,
   "tests/e2e/playedRound.spec.ts": 2,
   "tests/e2e/profileSignedOut.spec.ts": 1,
@@ -115,9 +119,16 @@ export function fixedSleeps(files: [string, string][]): Site[] {
   return sites;
 }
 
+const allowance = (file: string) => {
+  const entry = LEGACY[file];
+  return typeof entry === "object" ? entry.n : (entry ?? 0);
+};
+
+const CODE = /\.(?:[cm]?[jt]s|tsx)$/;
+
 function e2eSources(): [string, string][] {
   return readdirSync(path.join(repoRoot, E2E), { recursive: true, encoding: "utf8" })
-    .filter((f) => /\.ts$/.test(f))
+    .filter((f) => CODE.test(f))
     .map((f) => {
       const rel = path.posix.join(E2E, f.split(path.sep).join("/"));
       return [rel, readFileSync(path.join(repoRoot, rel), "utf8")];
@@ -150,13 +161,22 @@ const sites = fixedSleeps(e2eSources());
 
 test("the suite is scanned at all", () => {
   assert.ok(e2eSources().length > 60, "fewer than 60 files under tests/e2e: the walk no longer sees the suite");
+  const scanned = new Set(e2eSources().map(([f]) => f));
+  const helpers = readdirSync(path.join(repoRoot, E2E, "helpers"), { recursive: true, encoding: "utf8" })
+    .filter((f) => statSync(path.join(repoRoot, E2E, "helpers", f)).isFile())
+    .map((f) => path.posix.join(E2E, "helpers", f.split(path.sep).join("/")));
+  assert.deepEqual(
+    helpers.filter((f) => !scanned.has(f)),
+    [],
+    "a file under tests/e2e/helpers/ is not scanned: a helper is where a sleep hides from every spec that calls it"
+  );
   assert.ok(sites.length > 0, "no fixed wait found anywhere, which the legacy list says is false");
 });
 
 test("no fixed real-time wait is added to the browser suite without a written reason", () => {
   const unjustified = new Map<string, Site[]>();
   for (const s of sites.filter((x) => !x.justified)) unjustified.set(s.file, [...(unjustified.get(s.file) ?? []), s]);
-  const over = [...unjustified].filter(([file, list]) => list.length > (LEGACY[file] ?? 0));
+  const over = [...unjustified].filter(([file, list]) => list.length > allowance(file));
   assert.deepEqual(
     over.map(([file, list]) => `${file}: ${list.length} (${list.map((s) => s.line).join(", ")})`),
     [],
@@ -168,9 +188,9 @@ test("no fixed real-time wait is added to the browser suite without a written re
 test("the legacy allowance shrinks with every wait removed", () => {
   const counts = new Map<string, number>();
   for (const s of sites.filter((x) => !x.justified)) counts.set(s.file, (counts.get(s.file) ?? 0) + 1);
-  const stale = Object.entries(LEGACY).filter(([file, n]) => (counts.get(file) ?? 0) < n);
+  const stale = Object.keys(LEGACY).filter((file) => (counts.get(file) ?? 0) < allowance(file));
   assert.deepEqual(
-    stale.map(([file, n]) => `${file}: ${n} → ${counts.get(file) ?? 0}`),
+    stale.map((file) => `${file}: ${allowance(file)} → ${counts.get(file) ?? 0}`),
     [],
     "lower (or delete) these LEGACY entries to what the file now holds"
   );

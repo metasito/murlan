@@ -18,12 +18,12 @@ import { expect, test } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { exchangeSave, offlineSave, resumeSaved } from "./helpers/offlineSeed";
 import type { Card, Rank, Suit } from "../../lib/game/gameEngine";
-import { GIOCA_VALID_LABEL, YOUR_TURN_PREFIX } from "./helpers/labels.ts";
+import { YOUR_TURN_PREFIX } from "./helpers/labels.ts";
+import { cardsInHands, expectSelectionLegal } from "./helpers/bot.ts";
 import { HAND_CARDS, HAND_ZONE, TABLE, TABLE_STATE } from "./helpers/selectors.ts";
 import { PHONES } from "./helpers/phones.ts";
 import { PAST_HOLD_MS, tap, tapPoint } from "./helpers/press";
 import { settled } from "./helpers/settle";
-import { cardsInHands } from "./helpers/bot";
 
 const SETTLE_MS = 1_500;
 
@@ -210,10 +210,7 @@ test("one round, played through every interaction the table has", async ({ page,
 
   // --- play ---
   await tap(page, named(page, TO_PLAY));
-  await expect(
-    page.getByTestId("btn-gioca"),
-    "the seeded hand beats the seeded pile, so GIOCA has to offer the play"
-  ).toHaveAttribute("aria-label", GIOCA_VALID_LABEL, { timeout: 10_000 });
+  await expectSelectionLegal(page, "the seeded hand beats the seeded pile, so GIOCA has to offer the play");
   await tap(page, page.getByTestId("btn-gioca"));
   await expect(named(page, TO_PLAY), "the card played leaves the hand").toHaveCount(0, {
     timeout: 15_000,

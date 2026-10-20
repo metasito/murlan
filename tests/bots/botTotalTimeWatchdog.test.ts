@@ -35,7 +35,8 @@ function fakePage(): Page {
     }
     throw new Error(`fakePage: unexpected locator "${selector}"`);
   };
-  return { locator } as unknown as Page;
+  const waitForFunction = () => new Promise((resolve) => setImmediate(resolve));
+  return { locator, waitForFunction } as unknown as Page;
 }
 
 test("a match that keeps advancing without ever finishing is caught by maxTotalMs, not left to Playwright's own timeout", async () => {
