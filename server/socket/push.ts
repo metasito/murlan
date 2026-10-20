@@ -10,7 +10,7 @@ import { db } from "../store/db.ts";
 import { lockUsers } from "../store/userLock.ts";
 import { pushTokens } from "../../shared/schema.ts";
 import type { Locale } from "../../shared/i18n.ts";
-import { logger } from "../http/logger.ts";
+import { logger } from "../shared/logger.ts";
 import { buildPushRequest, deadTokens, type ExpoTicket, type PushDevice, type PushMessage } from "./pushShape.ts";
 import { testOnlyEnv } from "../http/testOnlyEnv.ts";
 import { OUTBOUND_TIMEOUT_MS } from "../http/outbound.ts";

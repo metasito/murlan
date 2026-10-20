@@ -9,7 +9,7 @@ import { userStore, UsernameTakenError } from "../store/userStore.ts";
 import { deleteUser } from "./deleteAccount.ts";
 import { friendRequestRow, friendRow } from "../store/friendRows.ts";
 import type { User } from "../../shared/schema.ts";
-import { logger } from "./logger.ts";
+import { logger } from "../shared/logger.ts";
 import { runningCommitSha } from "./buildInfo.ts";
 import { validate } from "./validate.ts";
 import {
@@ -47,7 +47,7 @@ import { getCircleLeaderboard, getLeaderboard, getRating, PROVISIONAL_ROUNDS } f
 import { recordClientError } from "./clientErrors.ts";
 import { recordBugReport } from "./bugReports.ts";
 import { adminSnapshot } from "./admin.ts";
-import { trackEvent } from "../socket/events.ts";
+import { trackEvent } from "../shared/events.ts";
 import { renderAdminPage } from "./adminPage.ts";
 import { payload } from "../shared/payload.ts";
 import { z } from "zod";

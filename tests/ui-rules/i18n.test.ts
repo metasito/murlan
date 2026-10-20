@@ -1126,7 +1126,7 @@ describe("every player-facing server response carries a code", () => {
       }
     }
     // A floor against the scanner silently matching nothing, not a count of
-    // the server's responses — it moved down when server/socket/emit.ts collapsed the
+    // the server's responses — it moved down when server/game/tableBroadcasts.ts collapsed the
     // twice- and thrice-built socket emits into one declaration each, which
     // removed real payload literals rather than hiding any.
     assert.ok(

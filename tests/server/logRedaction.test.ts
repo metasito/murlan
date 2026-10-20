@@ -24,7 +24,8 @@ import express from "express";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { Writable } from "node:stream";
-import { createLogger, createRequestLogger, REDACT_PATHS, setErrorRecorder } from "../../server/http/logger.ts";
+import { createLogger, REDACT_PATHS, setErrorRecorder } from "../../server/shared/logger.ts";
+import { createRequestLogger } from "../../server/http/logger.ts";
 import { errorHandler } from "../../server/http/errorHandler.ts";
 import { ANSWERED_BY_SHELL, unmatchedKind } from "../../server/http/staticPaths.ts";
 
@@ -72,7 +73,7 @@ describe("what a refused socket event leaves in the log", () => {
       assert.ok(
         REDACT_PATHS.includes(`payload.${field}`),
         `${field} is a socket payload field that reads like a room code and is logged in the ` +
-          `clear — add "payload.${field}" to REDACT_PATHS in server/http/logger.ts`
+          `clear — add "payload.${field}" to REDACT_PATHS in server/shared/logger.ts`
       );
     }
   });

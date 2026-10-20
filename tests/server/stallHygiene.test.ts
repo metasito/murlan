@@ -7,7 +7,7 @@ import { OUTBOUND_TIMEOUT_MS } from "../../server/http/outbound.ts";
 import { notifyUser } from "../../server/socket/push.ts";
 import { dealRound } from "../../server/game/dealRound.ts";
 import { ERROR_GROUP_WINDOW_DAYS, installServerErrorRecorder, serverErrorsDropped } from "../../server/http/serverErrors.ts";
-import { logger, setErrorRecorder } from "../../server/http/logger.ts";
+import { logger, setErrorRecorder } from "../../server/shared/logger.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { db, pool } from "../../server/store/db.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";

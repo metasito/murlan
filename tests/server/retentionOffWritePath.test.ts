@@ -67,7 +67,7 @@ test("no server module prunes an aged row inside the write that just grew the ta
     [],
     "an age-based prune belongs to server/game/retention.ts's scheduled sweep, " +
       "not the write path — this shape once justified itself in " +
-      "server/socket/events.ts, server/http/clientErrors.ts, server/game/replays.ts and " +
+      "server/shared/events.ts, server/http/clientErrors.ts, server/game/replays.ts and " +
       "server/http/bugReports.ts by citing each other as precedent. Offending " +
       "module(s): " +
       offenders.join(", ")

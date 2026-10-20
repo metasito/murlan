@@ -1,6 +1,6 @@
 import { now } from "../http/clock.ts";
 import type { TableRuntime } from "./tableRuntime.ts";
-import { logger } from "../http/logger.ts";
+import { logger } from "../shared/logger.ts";
 import { arm, clearRoomTimers, clearRoomDisconnectTimers, voteDeadlineMs } from "./gameTimers.ts";
 import { voteStateOf, type OnlineGameState } from "./gameRoom.ts";
 import { resolveRoundEnd, seatTotal } from "./onlineGameLogic.ts";

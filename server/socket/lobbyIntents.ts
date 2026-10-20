@@ -6,7 +6,7 @@
 import type { roomStore, SeatClaim } from "../store/roomStore.ts";
 import type { roomStatePayload, announceIfFilled } from "./socketTable.ts";
 import type { TableActionDraft } from "../game/tableActions.ts";
-import type { trackEvent } from "./events.ts";
+import type { trackEvent } from "../shared/events.ts";
 import type { WireRoomState } from "../../shared/protocol.ts";
 import type { z } from "zod";
 import type {
@@ -17,7 +17,7 @@ import type {
 } from "../../shared/socketSchemas.ts";
 import type { ServerCode } from "../shared/payload.ts";
 import { teamsSizeRefusal } from "./socketTable.ts";
-import { logger } from "../http/logger.ts";
+import { logger } from "../shared/logger.ts";
 import { OK, refuse, type Outcome } from "../shared/refusal.ts";
 
 export interface LobbyPort {

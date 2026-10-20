@@ -17,13 +17,13 @@ import {
   rooms,
 } from "../../shared/schema.ts";
 import { activeGames as liveGames } from "./gameRoom.ts";
-import { EVENT_RETENTION_DAYS } from "../socket/events.ts";
+import { EVENT_RETENTION_DAYS } from "../shared/events.ts";
 import { CLIENT_ERROR_RETENTION_DAYS } from "../http/clientErrors.ts";
 import { SERVER_ERROR_RETENTION_DAYS } from "../http/serverErrors.ts";
 import { REPLAY_RETENTION_DAYS } from "../../lib/game/replay.ts";
 import { BUG_REPORT_RETENTION_DAYS } from "../http/bugReports.ts";
 import { TICKET_TTL_MS } from "../socket/ticket.ts";
-import { logger } from "../http/logger.ts";
+import { logger } from "../shared/logger.ts";
 
 const DAY_MS = 24 * 60 * 60_000;
 

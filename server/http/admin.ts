@@ -13,7 +13,7 @@ import { sql } from "drizzle-orm";
 import { db, POOL_MAX } from "../store/db.ts";
 import { activeGameStore } from "../store/activeGameStore.ts";
 import { ABANDONED_GAME_MAX_AGE_MS } from "../game/retention.ts";
-import { funnel, type FunnelStep } from "../socket/events.ts";
+import { funnel, type FunnelStep } from "../shared/events.ts";
 import { recentClientErrorGroups, topFrame, type ClientErrorGroup } from "./clientErrors.ts";
 import { recentServerErrorGroups, serverErrorsDropped, serverErrorsThisWeek, type ServerErrorGroup } from "./serverErrors.ts";
 import { recentBugReports } from "./bugReports.ts";
