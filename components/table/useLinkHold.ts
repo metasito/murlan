@@ -17,7 +17,7 @@ const PILL_CLASS: Record<OwnLink, string> = { up: "", dropped: "", reconnecting:
 const IOS = Platform.OS === "ios";
 
 /** The table holding its breath while the viewer's own link is down: the grey, the freeze, the dimmed lamp and the chime back. */
-export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLevel">, missedInFlight = false) {
+export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "hold">, missedInFlight = false) {
   const reduceMotion = usePrefersReducedMotion();
   const held = linkHeld(link);
   const grey = useSharedValue(holdGrey(link));
@@ -62,11 +62,8 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
   }, [link, rig]);
 
   const lost = link === "lost";
-  const dimmed = useRef(false);
   useEffect(() => {
-    if (dimmed.current === lost) return;
-    dimmed.current = lost;
-    rig.setLevel(lost ? Reconnect.lamp : 1, Reconnect.lampRate);
+    rig.hold("link", lost ? Reconnect.lamp : null, Reconnect.lampRate);
   }, [lost, rig]);
 
   useTraceSource(

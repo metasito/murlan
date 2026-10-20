@@ -689,6 +689,7 @@ export function GameTable({
     onFlightClock,
     bombClock,
     feltDim,
+    ending,
   } = usePileFlight({
     lastPlayedCombination: gameState.lastPlayedCombination,
     lastPlayedBy: gameState.lastPlayedBy,
@@ -706,15 +707,16 @@ export function GameTable({
     catchUp,
     restored,
   });
+  const landed = ending?.landedAt ?? null;
   const roundEnding = useRoundEnding({
     ended: gameState.roundOver && !matchOver && (onRoundLanded !== undefined || roundVote !== null || leftTable !== null),
+    landed,
     hold: roundVote !== null || leftTable !== null,
-    timeline,
     pileEmpty: trick.plays.length === 0,
     onLanded: onRoundLanded,
   });
-  const roundShown = useRoundOutcome({ ended: gameState.roundOver && !matchOver, outcome, timeline });
-  const matchShown = useRoundOutcome({ ended: gameState.roundOver && matchOver, outcome: matchOutcome, timeline });
+  const roundShown = useRoundOutcome({ ended: gameState.roundOver && !matchOver, outcome, landed });
+  const matchShown = useRoundOutcome({ ended: gameState.roundOver && matchOver, outcome: matchOutcome, landed });
   const shown = matchShown ?? roundShown;
   // A won match bursts from the viewer's own seat, so a teams win never lands on the partner's.
   const winnerId = matchShown === null ? gameState.finishingOrder[0] : matchShown === "won" ? viewer?.id : matchWinners?.[0];
@@ -724,8 +726,8 @@ export function GameTable({
   const matchOnTable = gameState.roundOver && matchOver && matchActions !== undefined;
   const matchEnding = useRoundEnding({
     ended: matchOnTable,
+    landed,
     match: true,
-    timeline,
     pileEmpty: trick.plays.length === 0,
   });
   const dimStyle = useAnimatedStyle(() => ({ opacity: matchDim(matchEnding.clock.value) }));
