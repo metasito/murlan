@@ -11,7 +11,7 @@ import { BASH_DEFAULT_TIMEOUT_MS, CHECK_BASH_TIMEOUT_MS, SESSION_POLICY, STALL_M
 import { closePhase, readLine, reduceSession, sessionStart } from "./loop-stream.mjs";
 import { spawnEnv } from "./session-env.mjs";
 import { estimateCost } from "./loop-cost.mjs";
-import { DIR, streamLog } from "./loop-logs.mjs";
+import { DIR, sealStream, streamLog } from "./loop-logs.mjs";
 import { ticker } from "./loop-screen.mjs";
 import { ROOT } from "./paths.mjs";
 import { openTicket, roundOf, sessionView, ticketFacts } from "./loop-board.mjs";
@@ -43,6 +43,7 @@ export function runSession(
   },
 ) {
   mkdirSync(path.dirname(log), { recursive: true });
+  const seal = sealStream(log);
   const sink = createWriteStream(log, { flags: "a" });
   const startedAt = Date.now();
   let state = sessionStart(at, startedAt);
@@ -72,6 +73,7 @@ export function runSession(
     proc.stopTree(child.pid, { graceMs: killGraceMs }).catch((err) => onStderr(`${err.message}\n`));
 
   createInterface({ input: child.stdout }).on("line", (line) => {
+    seal.add(`${line}\n`);
     sink.write(`${line}\n`);
     heardAt = Date.now();
     const next = reduceSession(state, line, { now: heardAt, at, planned });

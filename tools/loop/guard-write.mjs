@@ -1,13 +1,14 @@
 /**
  * PreToolUse for Write|Edit|NotebookEdit, registered by loop-settings.json alone: the shared checkout is another
  * session's (RULES.md rules 8 and 31), and nothing outside the repo is scratch (rule 32). Only
- * `.worktrees/` and `.loop-logs/` are writable. stdout carries the deny, or nothing. An unreadable payload exits 0
- * (ADR-0010); a call it cannot judge exits 2.
+ * `.worktrees/` and `.loop-logs/` are writable, bar the evidence artefacts `loop-logs.mjs` marks. stdout carries
+ * the deny, or nothing. An unreadable payload exits 0 (ADR-0010); a call it cannot judge exits 2.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { checkoutRoot, firstLine } from "./cli.mjs";
+import { DIR, isEvidence } from "./loop-logs.mjs";
 
 const inside = (child, parent) => {
   const rel = path.relative(parent, child);
@@ -16,6 +17,9 @@ const inside = (child, parent) => {
 
 export function verdict(filePath, root, cwd = root) {
   const p = path.resolve(cwd, filePath);
+  if (path.basename(path.dirname(p)) === DIR && isEvidence(p)) {
+    return `${path.basename(p)} is the loop's record of what ran, and the gate reads it as proof: only the supervisor writes it. A scratch file goes under ${DIR}/ by another name.`;
+  }
   if (inside(p, path.join(root, ".worktrees")) || inside(p, path.join(root, ".loop-logs"))) return null;
   if (!inside(p, root)) {
     return `This writes ${p}, outside the repo. A loop session's scratch goes under .loop-logs/ (rule 32), its work in .worktrees/agent-<n>/.`;

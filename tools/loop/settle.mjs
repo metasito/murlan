@@ -18,7 +18,7 @@ import { ciRedPosted } from "./loop-derive.mjs";
 import { ghTracker, prUrl } from "./tracker.mjs";
 import { readLine } from "./loop-stream.mjs";
 import { ciLine, LAND } from "./loop-render.mjs";
-import { DIR, ciLogPath, ciRedNotePath, streamLog } from "./loop-logs.mjs";
+import { DIR, ciLogPath, ciRedNotePath, streamIntact, streamLog } from "./loop-logs.mjs";
 import { landable, reviewerRan } from "./loop-gate.mjs";
 import { CI_RED_TIMEOUT_MS, LIMITS, REFRESH_TIMEOUT_MS, sleepClock } from "./limits.mjs";
 import { decide } from "./decide.mjs";
@@ -304,7 +304,12 @@ function settlePorts(pending, log, pause, io) {
         return { ok: false, why: `could not fetch ${pending.branch} — ${firstLine(err)}` };
       }
       const v = landable(comments, sha, (args) => run("git", args).trim());
-      if (!v.ok || reviewerRan(facts(), pending.ticket)) return v;
+      if (!v.ok) return v;
+      if (!io.facts) {
+        const sealed = streamIntact(streamLog(pending.ticket, dir));
+        if (!sealed.ok) return { ok: false, why: `#${pending.ticket}'s stream is not the supervisor's record: ${sealed.why}` };
+      }
+      if (reviewerRan(facts(), pending.ticket)) return v;
       return { ok: false, why: `no loop-review or loop-fix completed for #${pending.ticket} since its last build` };
     });
   return ports;

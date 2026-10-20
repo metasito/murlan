@@ -53,9 +53,9 @@ const diff = (wt, base) =>
       : laterDelta(wt, base);
 const issue = (n) => `\`${readIssue(n)}\``;
 
-const ASKS_COMMENTS = /(^|\s)(--comments|-c)(\s|$)|--json[\s=]\S*\bcomments\b/;
+const ASKS_COMMENTS = /(^|\s)(--comments|-c)(\s|$)|--json[\s=]\S*\b(comments|reviews|latestReviews|timeline)\b/;
 const API_BODY = /^(-f|-F|--field|--raw-field|--input)$|^--(raw-)?field=/;
-const API_THREAD = /(?:^|\/)(?:issues|pulls)\/(?:\d+\/)?(?:comments|reviews)(?:[/?]|$)/;
+const API_THREAD = /(?:^|\/)(?:issues|pulls)\/(?:\d+\/)?(?:comments|reviews|timeline)(?:[/?]|$)/;
 
 /** The method a `gh api` call sends: its `-X`/`--method`, else POST once it carries a field or input, as gh does. */
 export function apiMethod(args) {
@@ -71,9 +71,16 @@ const rule25Read = (args) => args[0] === "tracker.mjs" && args[1] === "read";
 export const readsComments = (args) =>
   rule25Read(args) ||
   (/^(issue|pr)$/.test(args[0] ?? "") && args[1] === "view" && ASKS_COMMENTS.test(args.slice(2).join(" "))) ||
-  (args[0] === "api" && apiMethod(args) === "GET" && args.some((a) => API_THREAD.test(a)));
-/** A thread read without rule 25's filter, where an outsider's `DOD-CHECK` or `REVIEW` reads as the loop's own. */
-export const untrustedRead = (args) => readsComments(args) && !rule25Read(args) && !args.some((a) => a.includes(TRUSTED_SELECT));
+  (args[0] === "api" && (args.includes("graphql") || (apiMethod(args) === "GET" && args.some((a) => API_THREAD.test(a)))));
+/** The jq programs a `gh` call runs: the value of `--jq`/`-q`, and nothing else it merely carries. */
+const jqPrograms = (args) =>
+  args.flatMap((a, i) => (/^(--jq|-q)$/.test(a) ? [args[i + 1] ?? ""] : [/^--jq=([\s\S]*)$/.exec(a)?.[1] ?? /^-q([\s\S]+)$/.exec(a)?.[1]].filter((v) => v !== undefined)));
+/** A thread read without rule 25's filter, where an outsider's `DOD-CHECK` or `REVIEW` reads as the loop's own. GraphQL's shape has no filter that keeps it. */
+export const untrustedRead = (args) =>
+  readsComments(args) && !rule25Read(args) && (args.includes("graphql") || !jqPrograms(args).some((p) => p.includes(TRUSTED_SELECT)));
+/** A thread fetched by an HTTP client, which no jq filter of `gh` reaches. */
+export const fetchesThread = (cmd, args) =>
+  /^(curl|wget|invoke-restmethod|invoke-webrequest|irm|iwr)$/.test(cmd) && args.some((a) => API_THREAD.test(a));
 /**
  * Each thread read a document gives: `gh`'s arguments, or `tracker.mjs read <n>` for rule 25's. A
  * `\` continuation joins its lines.

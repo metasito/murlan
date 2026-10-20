@@ -9,6 +9,7 @@
  * builder. `tools/loop/tests/loopLogs.test.ts` holds the pair together: every builder's output must
  * match its own `name` and no other artefact's.
  */
+import { createHash } from "node:crypto";
 import fsNode from "node:fs";
 import path from "node:path";
 import { PLAIN, reportRow } from "./loop-render.mjs";
@@ -17,21 +18,31 @@ export const DIR = ".loop-logs";
 
 /**
  * `ephemeral` is "two weeks from now this is only taking up disk". The ledger and the run reports
- * are the record itself, so they are never swept.
+ * are the record itself, so they are never swept. `evidence` is "the gate reads this as proof that
+ * something ran": a session never writes it (`guard-write.mjs`, `guard-bash.mjs`), and every artefact
+ * must decide.
  */
 export const ARTEFACTS = {
-  stream: { path: (t, dir = DIR) => path.join(dir, `${t}.jsonl`), name: /^\d+\.jsonl$/, ephemeral: true },
-  ciTail: { path: (t, dir = DIR) => path.join(dir, `ci-${t}.log`), name: /^ci-\d+\.log$/, ephemeral: true },
-  ciRedNote: { path: (t, dir = DIR) => path.join(dir, `ci-red-${t}.md`), name: /^ci-red-\d+\.md$/, ephemeral: true },
-  parkNote: { path: (t, dir = DIR) => path.join(dir, `park-${t}.md`), name: /^park-\d+\.md$/, ephemeral: true },
-  conflictNote: { path: (t, dir = DIR) => path.join(dir, `conflict-${t}.md`), name: /^conflict-\d+\.md$/, ephemeral: true },
-  leftover: { path: (t, dir = DIR) => path.join(dir, `leftover-${t}.patch`), name: /^leftover-\d+\.patch$/, ephemeral: false },
-  report: { path: (runId, dir = DIR) => path.join(dir, `run-${runId}.md`), name: /^run-.+\.md$/, ephemeral: false },
+  stream: { path: (t, dir = DIR) => path.join(dir, `${t}.jsonl`), name: /^\d+\.jsonl$/, ephemeral: true, evidence: true },
+  ciTail: { path: (t, dir = DIR) => path.join(dir, `ci-${t}.log`), name: /^ci-\d+\.log$/, ephemeral: true, evidence: false },
+  ciRedNote: { path: (t, dir = DIR) => path.join(dir, `ci-red-${t}.md`), name: /^ci-red-\d+\.md$/, ephemeral: true, evidence: false },
+  parkNote: { path: (t, dir = DIR) => path.join(dir, `park-${t}.md`), name: /^park-\d+\.md$/, ephemeral: true, evidence: false },
+  conflictNote: { path: (t, dir = DIR) => path.join(dir, `conflict-${t}.md`), name: /^conflict-\d+\.md$/, ephemeral: true, evidence: false },
+  leftover: { path: (t, dir = DIR) => path.join(dir, `leftover-${t}.patch`), name: /^leftover-\d+\.patch$/, ephemeral: false, evidence: false },
+  report: { path: (runId, dir = DIR) => path.join(dir, `run-${runId}.md`), name: /^run-.+\.md$/, ephemeral: false, evidence: true },
   // `_` so every builder takes the same two arguments: the table is only useful if one loop can
   // call all of them.
-  ledger: { path: (_, dir = DIR) => path.join(dir, "tickets.jsonl"), name: /^tickets\.jsonl$/, ephemeral: false },
-  supervisor: { path: (_, dir = DIR) => path.join(dir, "supervisor.log"), name: /^supervisor\.log$/, ephemeral: false },
+  ledger: { path: (_, dir = DIR) => path.join(dir, "tickets.jsonl"), name: /^tickets\.jsonl$/, ephemeral: false, evidence: true },
+  supervisor: { path: (_, dir = DIR) => path.join(dir, "supervisor.log"), name: /^supervisor\.log$/, ephemeral: false, evidence: false },
 };
+
+/** Whether a file name is an evidence artefact's, wherever it sits. */
+export const isEvidence = (file) => Object.values(ARTEFACTS).some((a) => a.evidence && a.name.test(path.basename(file)));
+
+/** One real name per evidence artefact, for a guard to match a glob against. */
+export const EVIDENCE_SAMPLES = Object.values(ARTEFACTS)
+  .filter((a) => a.evidence)
+  .map((a) => path.basename(a.path("1")));
 
 export const streamLog = ARTEFACTS.stream.path;
 export const ciLogPath = ARTEFACTS.ciTail.path;
@@ -47,6 +58,39 @@ export const supervisorLogPath = ARTEFACTS.supervisor.path;
 export function appendSupervisor(line, dir = DIR) {
   fsNode.mkdirSync(dir, { recursive: true });
   fsNode.appendFileSync(supervisorLogPath(null, dir), line);
+}
+
+const seals = new Map();
+
+/**
+ * The supervisor's memory of a stream log: how many bytes it has written to the file and their
+ * hash. A file first seen here is taken as it stands; later calls for the same file continue the
+ * seal, so a line a session planted between two of the supervisor's writes breaks it.
+ */
+export function sealStream(file) {
+  const key = path.resolve(file);
+  if (!seals.has(key)) {
+    const prior = fsNode.existsSync(file) ? fsNode.readFileSync(file) : Buffer.alloc(0);
+    seals.set(key, { length: prior.length, hash: createHash("sha256").update(prior) });
+  }
+  const seal = seals.get(key);
+  return {
+    add(text) {
+      const bytes = Buffer.from(text);
+      seal.length += bytes.length;
+      seal.hash.update(bytes);
+    },
+  };
+}
+
+/** Whether a stream log is still exactly what the supervisor wrote. A file it never wrote to is not. */
+export function streamIntact(file) {
+  const seal = seals.get(path.resolve(file));
+  if (!fsNode.existsSync(file)) return seal && seal.length > 0 ? { ok: false, why: `${file} is gone` } : { ok: true };
+  if (!seal) return { ok: false, why: `${file} was not written by this supervisor` };
+  const now = fsNode.readFileSync(file);
+  if (now.length === seal.length && createHash("sha256").update(now).digest("hex") === seal.hash.copy().digest("hex")) return { ok: true };
+  return { ok: false, why: `${file} holds lines the supervisor did not write` };
 }
 
 /** One of the files above, written whole, its directory made first. */
