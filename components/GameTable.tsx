@@ -67,7 +67,8 @@ import { matchDim } from "@/lib/timeline/matchEnding";
 import { scorePillHitBox, voteTop } from "@/components/table/scorePillModel";
 import { matchBoardFor, scorePillStandings } from "@/lib/game/scorePill";
 import { useTranslation } from "@/lib/i18n";
-import { HudComboPill, TurnChip, type ConnectionNote } from "@/components/table/notices/hud";
+import { HudComboPill, WindowTurnChip, type ConnectionNote } from "@/components/table/notices/hud";
+import { useCountdown } from "@/components/table/countdown";
 import { useDeviceOffline, useTableClaim } from "@/components/OfflineBanner";
 import {
   ControlRail,
@@ -895,6 +896,7 @@ export function GameTable({
     turnToken: turnKey(gameState),
     t,
   });
+  const countdown = useCountdown(turn.window);
 
   const startCardDue = !gameState.firstPlayMade && !!gameState.startCard;
   const whoStarts: StartReason | undefined =
@@ -922,7 +924,7 @@ export function GameTable({
           {...seatView(opponent.seat, opponent.player, seatTable)}
           dealArrivals={deal.arrivalsFor(opponent.seat)}
           scale={scale}
-          countdown={turn.seat}
+          countdown={turn.seat && countdown}
           focusMode={focusMode}
           flash={ringFlash}
         />
@@ -990,17 +992,14 @@ export function GameTable({
         >
           <A11yVeil veil={clockVeil}>
             <View testID={choiceOpen ? "exchange-prompt" : undefined}>
-              <TurnChip
+              <WindowTurnChip
                 scale={scale}
                 lit={turn.chip.lit}
                 chipText={turn.chip.text}
                 spokenSeat={turn.chip.spoken}
-                seconds={turn.clock.seconds}
+                countdown={countdown}
                 active={turn.clock.active}
                 revealed={turn.clock.revealed}
-                resetKey={turn.clock.resetKey}
-                onExpire={turn.clock.onExpire}
-                frozen={turn.clock.frozen}
                 connection={choiceOpen && connectionNote?.state === "reconnected" ? null : connectionNote}
               />
             </View>

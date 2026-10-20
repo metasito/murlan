@@ -23,10 +23,13 @@ jest.mock('@/lib/accessibility', () => ({
 }));
 
 const { CountdownRing } = require('@/components/table/seats') as typeof import('@/components/table/seats');
+const { useCountdown } = require('@/components/table/countdown') as typeof import('@/components/table/countdown');
 
-const ring = (held: boolean) => (
-  <CountdownRing size={40} seconds={1} resetKey="t" held={held} scale={1} fade={makeMutable(1)} />
-);
+function Ring({ held }: { held: boolean }) {
+  const clock = useCountdown({ seconds: 1, resetKey: 't', running: true, held });
+  return <CountdownRing size={40} clock={clock} leaving={false} scale={1} fade={makeMutable(1)} />;
+}
+const ring = (held: boolean) => <Ring held={held} />;
 
 describe('the turn ring re-arming after its clock ran out', () => {
   afterEach(() => {

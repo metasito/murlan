@@ -2,7 +2,7 @@ import { StyleSheet, View } from "react-native";
 import { useTranslation } from "@/lib/i18n";
 import { NoticeText, TableNotice } from "../TableNotice";
 import { markAt, mockupPx } from "../noticeModel";
-import { useCountdown } from "../countdown";
+import { useCountdown, useSecondsLeft } from "../countdown";
 
 /** Any width past the widest mark: the slot only centres it. */
 const MARK_SLOT = 120;
@@ -31,7 +31,7 @@ export function PassedMark({ side, disc, scale }: { side: "top" | "side"; disc: 
  */
 export function ReconnectingMark({ seconds, resetKey, scale }: { seconds: number; resetKey: string; scale: number }) {
   const { t } = useTranslation();
-  const { left } = useCountdown({ seconds, resetKey, running: true });
+  const left = useSecondsLeft(useCountdown({ seconds, resetKey, running: true }));
 
   return (
     <TableNotice kind="reconnecting" tone="neutral" scale={scale}>

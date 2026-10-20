@@ -127,10 +127,6 @@ export interface TurnClock {
   active: boolean;
   /** Whether the count is drawn: the viewer's seat is on move, or a vote is counting. */
   revealed: boolean;
-  seconds: number;
-  resetKey: string;
-  frozen: boolean;
-  onExpire?: () => void;
 }
 
 export interface TurnPresentation {
@@ -138,6 +134,8 @@ export interface TurnPresentation {
   clock: TurnClock;
   /** The ring's window on the seat on move; absent while no seat's clock runs. */
   seat?: { seconds: number; resetKey: string; held: boolean };
+  /** The one window the chip and the ring both read. */
+  window: { seconds: number; resetKey: string; running: boolean; held: boolean; onExpire?: () => void };
 }
 
 /** The turn chip, its countdown and the seat ring's, from one reading of the turn. */
@@ -173,25 +171,29 @@ export function turnPresentation(i: {
     !!timer &&
     turnTimerActive({ ...who, isNewTrick: i.isNewTrick, roundOver, exchangeActive: exchange.active, announcementHolds });
   const turnResetKey = `${i.turnToken}|${timer?.resetKey ?? ""}`;
+  const active = runs({ isMyTurn: i.isMyTurn, isFinished: i.isFinished, includeNewTrick: timer?.includeNewTrick ?? false });
+  // The seat runs whenever the chip does and on more: offline, a lead runs the window though the
+  // chip has no deadline there, so only an active chip's turn expires.
+  const seat =
+    timer && runs({ isMyTurn: true, isFinished: false, includeNewTrick: true })
+      ? { seconds: timer.seconds, resetKey: turnResetKey, held: i.held }
+      : undefined;
   return {
     chip: {
       text: exchange.chip ?? say(CHIP_KEYS[state]),
       spoken: exchange.chip ?? say(SPOKEN_KEYS[state]),
       lit: exchange.chip === null ? state === "yourTurn" : exchange.choiceOpen && exchange.viewerIsWinner,
     },
-    clock: vote
-      ? { active: true, revealed: true, seconds: vote.seconds, resetKey: `vote|${vote.resetKey}`, frozen: false }
+    clock: vote ? { active: true, revealed: true } : { active, revealed: clockShown },
+    seat,
+    window: vote
+      ? { seconds: vote.seconds, resetKey: `vote|${vote.resetKey}`, running: true, held: false }
       : {
-          active: runs({ isMyTurn: i.isMyTurn, isFinished: i.isFinished, includeNewTrick: timer?.includeNewTrick ?? false }),
-          revealed: clockShown,
           seconds: timer?.seconds ?? 0,
           resetKey: turnResetKey,
-          frozen: i.held,
-          onExpire: timer?.onExpire,
+          running: seat !== undefined,
+          held: i.held,
+          onExpire: active ? timer?.onExpire : undefined,
         },
-    seat:
-      timer && runs({ isMyTurn: true, isFinished: false, includeNewTrick: true })
-        ? { seconds: timer.seconds, resetKey: turnResetKey, held: i.held }
-        : undefined,
   };
 }

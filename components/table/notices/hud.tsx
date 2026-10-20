@@ -9,7 +9,7 @@ import { urgentThresholdSeconds, CLOCK_RUNNING_OUT_SECONDS } from "@/components/
 import { NoticeDot, NoticeKey, NoticeText, TableNotice } from "../TableNotice";
 import { noticeBox } from "../noticeModel";
 import { useClockFade } from "../useClockFade";
-import { useCountdown } from "../countdown";
+import { useCountdown, useSecondsLeft, type CountdownClock } from "../countdown";
 
 /**
  * The name run, capped so a long username ellipsizes rather than pushing the
@@ -53,32 +53,10 @@ export function HudComboPill({ scale, play }: { scale: number; play: { name: str
   );
 }
 
-// The chip and its countdown are one component so the once-a-second tick
-// re-renders a single chip and not the whole board — which, with hands of up to
-// 18 cards, matters. It is also the only place that holds both halves of what a
-// reader has to hear, since the seconds never leave this component's state.
-export function TurnChip({
-  seconds,
-  active,
-  resetKey,
-  onExpire,
-  scale,
-  lit,
-  chipText,
-  spokenSeat,
-  connection: carried = null,
-  frozen = false,
-  revealed = true,
-}: {
-  seconds: number;
+type TurnChipProps = {
   active: boolean;
   /** False keeps an active clock counting toward its deadline without drawing it: the table has not shown the turn yet. */
   revealed?: boolean;
-  /** Holds the count without counting down or sounding, and runs on from it once released. */
-  frozen?: boolean;
-  /** Restarts the countdown whenever it changes — one full clock per turn. */
-  resetKey: string;
-  onExpire?: () => void;
   scale: number;
   lit: boolean;
   /** The seat state as the chip draws it: short, uppercase, glanceable. */
@@ -87,19 +65,65 @@ export function TurnChip({
   spokenSeat: string;
   /** Outranks the seat state; `reconnected` gives way to the viewer's own running clock. */
   connection?: ConnectionNote | null;
+};
+
+/** A chip that owns its window, for a screen with no seat ring to share it with. */
+export function TurnChip({
+  seconds,
+  resetKey,
+  onExpire,
+  frozen = false,
+  ...chip
+}: TurnChipProps & {
+  seconds: number;
+  /** Restarts the countdown whenever it changes — one full clock per turn. */
+  resetKey: string;
+  /** Holds the count without counting down or sounding, and runs on from it once released. */
+  frozen?: boolean;
+  onExpire?: () => void;
 }) {
+  const countdown = useCountdown({ seconds, resetKey: `${resetKey}|${chip.active}`, running: chip.active, held: frozen, onExpire });
+  return <WindowTurnChip countdown={countdown} {...chip} />;
+}
+
+// The seconds are read here, off the window the table owns, so the once-a-second
+// tick re-renders a single chip and not the whole board — which, with hands of
+// up to 18 cards, matters. It is also the only place that holds both halves of
+// what a reader has to hear, since the seconds never leave this component's state.
+export function WindowTurnChip({
+  countdown,
+  active,
+  scale,
+  lit,
+  chipText,
+  spokenSeat,
+  connection: carried = null,
+  revealed = true,
+}: TurnChipProps & { countdown: CountdownClock }) {
   const { tn } = useTranslation();
   const connection = carried?.state === "reconnected" && active ? null : carried;
-  const { left: timeLeft } = useCountdown({ seconds, resetKey: `${resetKey}|${active}`, running: active, held: frozen, onExpire });
-  const window = `${resetKey}|${seconds}|${active}`;
-  const runningOut = active && !frozen && timeLeft > 0 && timeLeft <= CLOCK_RUNNING_OUT_SECONDS;
-  const sounded = useRef("");
+  const seconds = countdown.seconds;
+  const timeLeft = useSecondsLeft(countdown, active);
+  const runningOut = active && countdown.counting && timeLeft > 0 && timeLeft <= CLOCK_RUNNING_OUT_SECONDS;
+  // The sound answers a tick into the last seconds, never a chip that mounts or resumes inside them.
+  const voice = useRef({ key: countdown.key, left: timeLeft, sounded: false, sounding: false });
   useEffect(() => {
-    if (!runningOut || sounded.current === window) return;
-    sounded.current = window;
+    const v = voice.current;
+    const crossed = v.key === countdown.key && timeLeft < v.left;
+    if (v.key !== countdown.key) Object.assign(v, { key: countdown.key, sounded: false });
+    v.left = timeLeft;
+    if (!runningOut || !crossed || v.sounded) return;
+    Object.assign(v, { sounded: true, sounding: true });
     event([{ kind: "clockRunningOut" }]);
-    return () => silence("clockRunningOut");
-  }, [runningOut, window]);
+  }, [countdown.key, timeLeft, runningOut]);
+  useEffect(() => {
+    const v = voice.current;
+    return () => {
+      if (!v.sounding) return;
+      v.sounding = false;
+      silence("clockRunningOut");
+    };
+  }, [runningOut, countdown.key]);
 
   const count = useClockFade(active && revealed && !connection ? timeLeft : null, String);
   const countFade = useAnimatedStyle(() => ({ opacity: count.opacity.value }));
