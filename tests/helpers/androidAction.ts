@@ -3,13 +3,15 @@
 // emulator. Shared because a second copy is how one of them ends up weaker than
 // the other — a scan over the raw file text is satisfied by a commented-out
 // command, which is the one failure a test about a CI script must not have.
-import { readFileSync } from "node:fs";
-import path from "node:path";
+import { loadAction, type Step } from "./workflow.ts";
 
-const ACTION = ".github/actions/drive-android-flows/action.yml";
+const EMULATOR = "reactivecircus/android-emulator-runner@";
 
-function readAction(repoRoot: string): string {
-  return readFileSync(path.join(repoRoot, ACTION), "utf8");
+/** The action's step that boots the emulator and runs `script:` on it. */
+export function emulatorStep(): Step {
+  const found = loadAction("drive-android-flows").steps!.filter((s) => s.uses?.startsWith(EMULATOR));
+  if (found.length !== 1) throw new Error(`the action has ${found.length} steps using ${EMULATOR}`);
+  return found[0];
 }
 
 /**
@@ -17,14 +19,11 @@ function readAction(repoRoot: string): string {
  * command per entry. Dropping `#` lines is the point: what the script *runs* is
  * the only thing any claim here is about.
  */
-export function actionScriptLines(repoRoot: string): string[] {
-  const src = readAction(repoRoot);
-  const start = src.indexOf("script: |");
-  if (start === -1) throw new Error("the action no longer carries a script block");
-  return src
-    .slice(start)
+export function actionScriptLines(): string[] {
+  const script = emulatorStep().with?.script;
+  if (typeof script !== "string") throw new Error("the action no longer carries a script block");
+  return script
     .split("\n")
-    .slice(1)
     .map((l) => l.trim())
     .filter((l) => l !== "" && !l.startsWith("#"));
 }
@@ -37,22 +36,9 @@ export function markerIndex(lines: string[], name: string): number {
   return i;
 }
 
-/**
- * The action's `with:` block — what configures the emulator, as opposed to what
- * the script runs on it. Sliced from `with:` rather than from the top of the
- * file: `description:` above it is folded prose, and a line in an English
- * sentence can look enough like `profile: something` to answer for one.
- */
-export function actionConfigLines(repoRoot: string): string[] {
-  const src = readAction(repoRoot);
-  const start = src.indexOf("with:");
-  const end = src.indexOf("script: |");
-  if (start === -1 || end === -1 || start > end) {
-    throw new Error("the action no longer carries a `with:` block above its script");
-  }
-  return src
-    .slice(start, end)
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l !== "" && !l.startsWith("#"));
+/** The action's `with:` block bar its script, one `key: value` per entry: what configures the emulator. */
+export function actionConfigLines(): string[] {
+  return Object.entries(emulatorStep().with ?? {})
+    .filter(([key]) => key !== "script")
+    .map(([key, value]) => `${key}: ${String(value)}`);
 }

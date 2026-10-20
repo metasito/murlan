@@ -6,6 +6,7 @@ import { writeFileSync } from "node:fs";
 import { localGlobalTimeoutMs } from "../../tools/ci/e2eGlobalTimeout.mjs";
 import { CHECK_BASH_TIMEOUT_MS } from "../../tools/loop/limits.mjs";
 import { E2E_VOTE_DEADLINE_MS } from "./helpers/voteDeadline";
+import { NIGHTLY, PERF } from "./tiers.mjs";
 
 // This is the one place that knows both `baseURL` and the `webServer` command, so it is the one
 // place that can hand a single port to the server, the health check and every spec at once.
@@ -46,9 +47,8 @@ export default defineConfig({
   globalSetup: resolve(__dirname, "../../tools/ci/preflightMemory.mjs"),
   // Recorded by `npm run perf:web` through playwright.perf.config.ts, never
   // here: frame timing on a shared runner is noisy, and a perf check that
-  // goes red at random gets disabled and then lies (#118). The mockup-parity specs run nightly
-  // through playwright.parity.config.ts, report-only. One line: tools/ci/e2e-shard.mjs scrapes it.
-  testIgnore: /(^|\/)(webPerf|mockupParity\w*|feltParityGrid(Phone|Tablet)[234]|cardShadowParity|cardGlowParity|handParity|lampLegibility|lampSeats|mockupPolish)\.spec\.ts$/,
+  // goes red at random gets disabled and then lies (#118).
+  testIgnore: [PERF, NIGHTLY],
   outputDir: "test-results",
   // A default backstop only — every test sets its own budget explicitly
   // (larger player counts and multi-hand matches need more), since a real

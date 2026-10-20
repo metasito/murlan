@@ -13,6 +13,7 @@ using namespace facebook::react;
 + (void)load
 {
   Method method = class_getInstanceMethod(self, @selector(prepareForRecycle));
+  NSCAssert(method, @"RCTViewComponentView no longer has prepareForRecycle to wrap");
   auto original = (void (*)(id, SEL))method_getImplementation(method);
   method_setImplementation(method, imp_implementationWithBlock(^(RCTViewComponentView *view) {
     original(view, @selector(prepareForRecycle));

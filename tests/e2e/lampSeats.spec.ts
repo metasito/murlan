@@ -4,43 +4,18 @@
 // (`settledLight`), measured off the rings and the hand zone at every phone; the states come from
 // `lib/captureStates.ts`, so this run and the iOS capture `app/capture.tsx` takes are of the same
 // states. Chromium is the only renderer this spec reaches; `docs/agents/checks.md` has what that
-// does and does not prove.
-import type { Page } from "@playwright/test";
+// does and does not prove. The felt's own pixels are lampSeats.nightly.spec.ts's.
 import { test, expect } from "./fixtures";
-import { openCaptureState } from "./helpers/offlineSeed";
-import { PHONES, type Phone } from "./helpers/phones";
+import { PHONES } from "./helpers/phones";
 import { setSafeArea } from "./helpers/safeArea";
-import { feltPixels, seatAnchor, settledLight, skiaOnSoftware, tracedLamp, untilSkiaFelt } from "./helpers/tableTrace";
-import { CAPTURE_STATES, CAPTURE_VIEWER_SEAT, captureGameState, type CaptureState } from "../../lib/captureStates";
+import { seatAnchor, tracedLamp } from "./helpers/tableTrace";
+import { NEAREST_PT, expectLampOver, openStill, stateById } from "./helpers/lampSeat";
+import { CAPTURE_STATES, CAPTURE_VIEWER_SEAT, captureGameState } from "../../lib/captureStates";
 import { HAND_CARD_BOXES } from "./helpers/selectors.ts";
-
-/** "To the nearest point." */
-const NEAREST_PT = 0.5;
 
 /** locales/it.ts `gameShared.turnOf` — the chip the lamp's own seat writes. */
 const turnOf = (name: string) => `Turno di ${name}`;
 const YOUR_TURN = "Il tuo turno";
-
-const stateById = (id: string) => CAPTURE_STATES.find((s) => s.id === id)!;
-
-/** Reduced motion: the light snaps to its pool and does not sway, so its point is exact, and there is no deal to wait out. */
-async function openStill(page: Page, baseURL: string, phone: Phone, state: CaptureState): Promise<void> {
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.setViewportSize({ width: phone.width, height: phone.height });
-  await openCaptureState(page, baseURL, state);
-}
-
-async function lampOff(page: Page, side: CaptureState["side"]): Promise<{ x: number; y: number }> {
-  const [lamp, want] = await Promise.all([tracedLamp(page), settledLight(page, side)]);
-  return { x: lamp.x - want.x, y: lamp.y - want.y };
-}
-
-async function expectLampOver(page: Page, side: CaptureState["side"], where: string): Promise<void> {
-  const worst = async () => Math.max(...Object.values(await lampOff(page, side)).map(Math.abs));
-  await expect
-    .poll(worst, { message: `${where}: the lamp is not over the ${side} seat's light`, timeout: 10_000 })
-    .toBeLessThanOrEqual(NEAREST_PT);
-}
 
 for (const phone of PHONES) {
   for (const state of CAPTURE_STATES) {
@@ -119,31 +94,4 @@ test("under the device's insets the light aims by the table's own box, not the w
       expect(Math.abs(lamp.x - pile.x), `${where}: the light at ${lamp.x.toFixed(1)}, the pile at ${pile.x.toFixed(1)}`).toBeLessThanOrEqual(NEAREST_PT);
     }
   }
-});
-
-test("under the device's insets the felt's light sits over the pile (D4 #9)", async ({ page, baseURL }) => {
-  test.setTimeout(120_000);
-  await skiaOnSoftware(page);
-  await openStill(page, baseURL!, PHONES.find((p) => p.name === "iPhone 16 Pro")!, stateById("lamp-bottom"));
-  const bare = await seatAnchor(page, "pile");
-  await setSafeArea(page, 62, 21, 62);
-  await expect.poll(async () => (await seatAnchor(page, "pile")).x, { message: "the floor: the insets moved the table" }).not.toBeCloseTo(bare.x, 0);
-  await expectLampOver(page, "bottom", "under 62/21/62 insets");
-  await untilSkiaFelt(page);
-
-  const pile = await seatAnchor(page, "pile");
-  // Only the pool: the vignette's tail runs to the table's far edge and pulls a whole-felt centroid towards the box's middle.
-  const { pixels, perPt, origin } = await feltPixels(page);
-  const lums = Array.from({ length: pixels.data.length / 4 }, (_, p) => 0.2126 * pixels.data[p * 4] + 0.7152 * pixels.data[p * 4 + 1] + 0.0722 * pixels.data[p * 4 + 2]);
-  const pool = lums.reduce((a, b) => Math.max(a, b), 0) / 2;
-  let [sum, weight] = [0, 0];
-  lums.forEach((lum, p) => {
-    if (lum < pool) return;
-    sum += (p % pixels.width) * lum * lum;
-    weight += lum * lum;
-  });
-  const centroid = { x: origin.x + (sum / weight + 0.5) / perPt, weight };
-  console.log(`light centroid x ${centroid.x.toFixed(1)}, pile centre x ${pile.x.toFixed(1)}`);
-  expect(centroid.weight, "the felt drew no light").toBeGreaterThan(0);
-  expect(Math.abs(centroid.x - pile.x), `the light's centroid ${centroid.x.toFixed(1)} against the pile's ${pile.x.toFixed(1)}`).toBeLessThanOrEqual(2);
 });

@@ -1,5 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -16,30 +18,41 @@ import {
   TARGET_RUN_SECONDS,
   UNMEASURED_SECONDS,
 } from "../../tools/ci/e2e-shard.mjs";
+import { NIGHTLY, PERF } from "../e2e/tiers.mjs";
+import { loadWorkflow, needsOf, type Job } from "../helpers/workflow.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const E2E_DIR = path.join(repoRoot, "tests", "e2e");
 const ciYml = readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
-const ciJobs = ciYml.slice(ciYml.indexOf("\njobs:\n")).split(/\n(?= {2}[a-z][\w-]*:\n)/).slice(1);
+const ciJobs = Object.entries(loadWorkflow("ci.yml").jobs);
 // Left out: the device compiles, which start only on a native change or the weekly schedule — runs
 // their own 9–29 min already put far past the target (#1408), where two queued jobs cost nothing.
-const deviceCompile = (job: string) => /^ {4}if: .*\bnative\b/m.test(job);
+const deviceCompile = (job: Job) => /\bnative\b/.test(job.if ?? "");
 // A job that needs the shards' own job starts only once every shard has finished.
-const afterShards = (job: string) => /^ {4}needs: .*\bbrowser\b(?!-)/m.test(job);
+const afterShards = (job: Job) => needsOf(job).includes("browser");
 const besideShards = ciJobs
-  .filter((job) => !/^ {2}(scope|browser):/.test(job) && !afterShards(job) && !deviceCompile(job))
-  .reduce((n, job) => n + (/^ {8}shard: \[([^\]]*)\]$/m.exec(job)?.[1].split(",").length ?? 1), 0);
+  .filter(([id, job]) => id !== "scope" && id !== "browser" && !afterShards(job) && !deviceCompile(job))
+  .reduce((n, [, job]) => {
+    const shard = job.strategy?.matrix?.shard;
+    return n + (Array.isArray(shard) ? shard.length : 1);
+  }, 0);
 const SHARDS = plan([path.join(E2E_DIR, "timings.json")]).shards.length;
 
-const config = readFileSync(path.join(E2E_DIR, "playwright.config.ts"), "utf8");
-const ignore = /testIgnore: \/(.+)\/,$/m.exec(config);
-assert.ok(ignore, "playwright.config.ts no longer declares a testIgnore regex");
-/** Playwright's own walk: recursive from `testDir`, its default testMatch, minus the config's ignore. */
-const playwrightRuns = (dir: string) =>
-  (readdirSync(dir, { recursive: true }) as string[])
-    .map((f) => f.split(path.sep).join("/"))
-    .filter((f) => /\.(spec|test)\.[cm]?[jt]sx?$/.test(f) && !new RegExp(ignore[1]).test(f))
-    .sort();
+/** The spec files Playwright itself lists under `config`, relative to tests/e2e. */
+function playwrightLists(config: string): string[] {
+  const out = execFileSync(
+    process.execPath,
+    [createRequire(import.meta.url).resolve("@playwright/test/cli"), "test", "--list", "--reporter=json", "-c", path.join(E2E_DIR, config)],
+    { cwd: repoRoot, encoding: "utf8", env: { ...process.env, E2E_PORT: "5199", MURLAN_MAIL_SINK: path.join(tmpdir(), "e2e-shard-split-mail.jsonl") } },
+  );
+  const listing = JSON.parse(out.slice(out.indexOf("{"))) as { suites: { file: string }[]; errors: unknown[] };
+  assert.deepEqual(listing.errors, [], `${config} does not load`);
+  return listing.suites.map((s) => s.file).sort();
+}
+const PR_RUN = playwrightLists("playwright.config.ts");
+const NIGHTLY_RUN = playwrightLists("playwright.parity.config.ts");
+const specFiles = () =>
+  (readdirSync(E2E_DIR, { recursive: true }) as string[]).map((f) => f.split(path.sep).join("/")).filter((f) => /\.spec\.ts$/.test(f));
 
 /**
  * How much of the suite may sit at `UNMEASURED_SECONDS` before the evenness
@@ -51,10 +64,9 @@ const UNMEASURED_SHARE = 0.1;
 
 describe("every browser spec reaches exactly one shard", () => {
   test("the splitter sees every spec Playwright would run, under a floor", () => {
-    const files = playwrightRuns(E2E_DIR);
-    assert.ok(files.length >= 40, `only ${files.length} specs found`);
+    assert.ok(PR_RUN.length >= 40, `only ${PR_RUN.length} specs found`);
     assert.ok(SHARDS >= 2, `the plan runs ${SHARDS} shard`);
-    assert.deepEqual(specFilesIn(E2E_DIR), files);
+    assert.deepEqual(specFilesIn(E2E_DIR), PR_RUN);
   });
 
   test("ci.yml runs the shards the scope job planned, and counts that many back", () => {
@@ -76,18 +88,17 @@ describe("every browser spec reaches exactly one shard", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "e2e-shard-"));
     try {
       mkdirSync(path.join(dir, "online"));
-      for (const f of ["a.spec.ts", "online/b.spec.ts", "webPerf.spec.ts", "helper.ts"]) {
+      for (const f of ["a.spec.ts", "online/b.spec.ts", "online/c.nightly.spec.ts", "webPerf.spec.ts", "helper.ts"]) {
         writeFileSync(path.join(dir, f), "");
       }
-      assert.deepEqual(playwrightRuns(dir), ["a.spec.ts", "online/b.spec.ts"]);
-      assert.deepEqual(specFilesIn(dir), playwrightRuns(dir));
+      assert.deepEqual(specFilesIn(dir), ["a.spec.ts", "online/b.spec.ts"]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
   test("the union of the shards is the whole suite, with nothing repeated", () => {
-    const files = playwrightRuns(E2E_DIR);
+    const files = PR_RUN;
     const assigned = assignShards(files, readTimings(), SHARDS).flatMap((s) => s.files);
 
     assert.deepEqual([...assigned].sort(), [...files].sort());
@@ -117,14 +128,18 @@ describe("every browser spec reaches exactly one shard", () => {
     assert.ok(!specFilesIn(E2E_DIR).includes("webPerf.spec.ts"));
   });
 
-  test("every spec the suite ignores but webPerf runs nightly under playwright.parity.config.ts", () => {
-    const parity = readFileSync(path.join(E2E_DIR, "playwright.parity.config.ts"), "utf8");
-    const match = /testMatch: \/(.+)\/,$/m.exec(parity);
-    assert.ok(match, "playwright.parity.config.ts declares no testMatch regex");
-    const all = (readdirSync(E2E_DIR, { recursive: true }) as string[]).map((f) => f.split(path.sep).join("/")).filter((f) => /\.spec\.ts$/.test(f));
-    const ignored = all.filter((f) => new RegExp(ignore[1]).test(f) && f !== "webPerf.spec.ts");
-    assert.ok(ignored.length >= 20, `only ${ignored.length} parity specs found`);
-    assert.deepEqual(all.filter((f) => new RegExp(match[1]).test(f)), ignored);
+  test("every spec runs in exactly one tier: a pull request's, nightly's, or the perf recorder's", () => {
+    const all = specFiles();
+    assert.ok(NIGHTLY_RUN.length >= 20, `only ${NIGHTLY_RUN.length} nightly specs found`);
+    assert.deepEqual(NIGHTLY_RUN, all.filter((f) => NIGHTLY.test(f)).sort());
+    const perf = all.filter((f) => PERF.test(f));
+    assert.deepEqual(perf, ["webPerf.spec.ts"]);
+    assert.deepEqual([...PR_RUN, ...NIGHTLY_RUN, ...perf].sort(), [...all].sort());
+  });
+
+  test("the layout guards with no pixels in them run on every pull request", () => {
+    for (const file of ["handParity.spec.ts", "lampSeats.spec.ts"]) assert.ok(PR_RUN.includes(file), file);
+    assert.ok(NIGHTLY_RUN.includes("lampSeats.nightly.spec.ts"), "the felt's pixels left the nightly run");
   });
 });
 
@@ -196,7 +211,7 @@ describe("the split is stable and even", () => {
   test("the shards and every job started beside them fit the measured concurrency cap", () => {
     assert.ok(besideShards >= 8, `found ${besideShards} jobs beside the shards; the split of ci.yml is wrong`);
     assert.ok(MAX_SHARDS + besideShards <= MAX_CONCURRENT_JOBS, `${MAX_SHARDS} shards and ${besideShards} other jobs exceed ${MAX_CONCURRENT_JOBS}`);
-    assert.equal(ciJobs.filter(deviceCompile).length, 2, "only the two device compiles may be left out");
+    assert.equal(ciJobs.filter(([, job]) => deviceCompile(job)).length, 2, "only the two device compiles may be left out");
   });
 
   test("timings.json describes specs that exist", () => {

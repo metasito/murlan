@@ -5,16 +5,13 @@
 // result about the branch. A step inserted on the wrong side of it silently
 // reclassifies a whole category of failure — an environment wedge announced as a
 // verdict on the diff, or a genuine red retried at twice the cost (#186).
-//
-// Read as text rather than parsed: no YAML parser is a dependency of this project,
-// and every claim below is about which line comes before which, which is the level
-// the file is actually edited at.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { actionScriptLines, markerIndex } from "../helpers/androidAction.ts";
+import { actionScriptLines, emulatorStep, markerIndex } from "../helpers/androidAction.ts";
+import { loadAction, loadWorkflow, step, stepIndex, type Step } from "../helpers/workflow.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -36,17 +33,28 @@ function annotations(): string[] {
     .map((m) => m[0].trim());
 }
 
+const workflow = loadWorkflow("maestro.yml");
+const android = workflow.jobs.android;
+/** A run's commands, its comment lines dropped: a comment quoting a command is not one. */
+const code = (s: Step) => (s.run ?? "").split("\n").filter((l) => !l.trim().startsWith("#")).join("\n");
+const runs = Object.values(workflow.jobs).flatMap((j) => j.steps ?? []).map(code).join("\n");
+const run = (key: string) => code(step(android, key));
+const VERDICT = "The run's real verdict";
+const COLLECT = "Collect whatever the emulator wrote about itself";
+const EXITED = "Say how the emulator exited";
+const uploaded = () => String(step(android, "Upload Maestro debug output").with?.path);
+
 /** Every `$RUNNER_TEMP` file the script streams a running command into. */
 const STREAMED = [
   ...new Set(
-    actionScriptLines(repoRoot).flatMap((l) =>
+    actionScriptLines().flatMap((l) =>
       [...l.matchAll(/>\s*"\$RUNNER_TEMP\/([\w.-]+)"/g)].map((m) => m[1]),
     ),
   ),
 ];
 
 describe("the Android flow marker", () => {
-  const lines = actionScriptLines(repoRoot);
+  const lines = actionScriptLines();
 
   test("is the last thing the script does before running the flows", () => {
     const marker = markerIndex(lines, "app-launched");
@@ -88,7 +96,7 @@ describe("the Android flow marker", () => {
     // sick runner.
     // The names come from the build step's own `$GITHUB_ENV` writes, so a third
     // export consumed up there is caught without this test being told about it.
-    const exported = [...read(WORKFLOW).matchAll(/echo "(\w+)=[^"]*" >> "\$GITHUB_ENV"/g)].map(
+    const exported = [...runs.matchAll(/echo "(\w+)=[^"]*" >> "\$GITHUB_ENV"/g)].map(
       (m) => m[1],
     );
     assert.ok(exported.length >= 2, "the build no longer exports what it built, or the scan broke");
@@ -159,17 +167,12 @@ describe("the Android flow marker", () => {
 });
 
 describe("maestro.yml reads that marker", () => {
-  const src = read(WORKFLOW);
-
   test("the retry fires only when the flows never started", () => {
-    const retry = src.indexOf("id: retry");
-    assert.notEqual(retry, -1, "the retry step is gone");
-    const block = src.slice(src.lastIndexOf("- name:", retry), retry + 200);
-    assert.match(block, /steps\.kind\.outputs\.started == 'false'/);
+    assert.match(String(step(android, "retry").if), /steps\.kind\.outputs\.started == 'false'/);
   });
 
   test("it tells three states apart, and retries the two it can", () => {
-    const kind = src.slice(src.indexOf("id: kind"), src.indexOf("id: retry"));
+    const kind = run("kind");
     assert.match(kind, /app-launched/, "the app-launch state is not distinguished at all");
     assert.match(kind, /emulator-booted/, "the device state is not distinguished at all");
     // `started=true` is what withholds the retry, so exactly one branch may set
@@ -224,7 +227,7 @@ describe("maestro.yml reads that marker", () => {
     // The retry clears both markers before writing them, so afterwards they
     // describe that attempt alone; `kind` ran before it and is the only account
     // of the first.
-    const verdict = src.slice(src.indexOf("The run's real verdict"));
+    const verdict = run(VERDICT);
     const twice = verdict.search(/::error::[^\n]*twice/);
     assert.notEqual(twice, -1, "no branch of the verdict claims anything happened twice");
     const guard = verdict.slice(verdict.lastIndexOf("if [", twice), twice);
@@ -246,9 +249,9 @@ describe("maestro.yml reads that marker", () => {
   });
 
   test("a device lost while the flows ran is not called a result about the diff", () => {
-    const flows = actionScriptLines(repoRoot).find((l) => /^maestro\b.*\btest\b/.test(l)) ?? "";
+    const flows = actionScriptLines().find((l) => /^maestro\b.*\btest\b/.test(l)) ?? "";
     assert.match(flows, /\|\|[^\n]*adb[^\n]*\|\|\s*touch "\$RUNNER_TEMP\/emulator-lost"/);
-    const verdict = src.slice(src.indexOf("The run's real verdict"));
+    const verdict = run(VERDICT);
     const lost = verdict.indexOf("emulator-lost");
     assert.ok(lost !== -1 && lost < verdict.indexOf("result about the diff"), "the lost device is read after the blame");
     const said = verdict.slice(lost).match(/::error::[^\n]*/)?.[0] ?? "";
@@ -260,7 +263,7 @@ describe("maestro.yml reads that marker", () => {
     // then an app that launched. Read in any other order the broadest answer
     // arrives first and every failure becomes the diff's, which is the defect
     // itself.
-    const verdict = src.slice(src.indexOf("The run's real verdict"));
+    const verdict = run(VERDICT);
     const blame = verdict.indexOf("result about the diff");
     const launch = verdict.indexOf("app-launched");
     const booted = verdict.indexOf("emulator-booted");
@@ -272,14 +275,11 @@ describe("maestro.yml reads that marker", () => {
   test("the verdict is stated before the steps whose `if: failure()` uploads the artefacts", () => {
     // The step that decides, not the step that classifies: both read the same
     // markers, and only this one reads the retry's outcome.
-    const verdict = src.indexOf("steps.retry.outcome");
-    // A real key, not the prose about it: the comment above the verdict step quotes
-    // `if: failure()` verbatim, and matching that would put the artefacts first.
-    const artefacts = src.search(/^ *if: failure\(\)/m);
-    assert.notEqual(verdict, -1, "no step states the run's verdict");
+    assert.match(run(VERDICT), /steps\.retry\.outcome/, "no step states the run's verdict");
+    const artefacts = (android.steps ?? []).findIndex((s) => s.if?.startsWith("failure()"));
     assert.notEqual(artefacts, -1, "nothing uploads the artefacts any more");
     assert.ok(
-      verdict < artefacts,
+      stepIndex(android, VERDICT) < artefacts,
       "continue-on-error means the job has no verdict of its own; stating it after the " +
         "artefact steps leaves them nothing to trigger on",
     );
@@ -288,13 +288,13 @@ describe("maestro.yml reads that marker", () => {
   test("a green run carrying a tombstone still uploads what the warning points at", () => {
     // `always()` exists for the crash that did not fail the run. If the artefact
     // steps stay on failure() alone, that warning names a path nobody can reach.
-    const uploads = [...src.matchAll(/^ *if: failure\(\).*$/gm)].map((m) => m[0]);
+    const uploads = (android.steps ?? []).filter((s) => s.if?.startsWith("failure()"));
     assert.ok(uploads.length >= 1, "nothing uploads the artefacts any more");
     for (const gate of uploads) {
       assert.match(
-        gate,
+        String(gate.if),
         /steps\.crash\.outputs\.found == 'true'/,
-        `this step does not run for a crash on a green run: ${gate.trim()}`,
+        `this step does not run for a crash on a green run: ${gate.if}`,
       );
     }
   });
@@ -304,10 +304,9 @@ describe("maestro.yml reads that marker", () => {
     // outlive the device — so the artefact path has to name them, and a
     // collector whose output nobody uploads is not an instrument. Derived from
     // the script rather than listed: a list is silent about the next one added.
-    const upload = src.slice(src.indexOf("name: maestro-debug"), src.indexOf("if-no-files-found"));
     assert.ok(STREAMED.length >= 3, `only ${STREAMED.length} instrument output(s) found; the scan broke`);
     for (const file of STREAMED) {
-      assert.ok(upload.includes(file), `${file} is collected and then not uploaded`);
+      assert.ok(uploaded().includes(file), `${file} is collected and then not uploaded`);
     }
   });
 
@@ -315,58 +314,50 @@ describe("maestro.yml reads that marker", () => {
     // The flag's target is opened without `O_CREAT`, so the creating step has to
     // come before the launch or the VM never boots; and three places have to
     // name one path, which is why all three are read rather than one asserted.
-    const action = read(ACTION);
-    const told = /-stdouterr-file \$\{\{ runner\.temp \}\}\/([\w.-]+)/.exec(action);
+    const action = loadAction("drive-android-flows").steps!;
+    const told = /-stdouterr-file \$\{\{ runner\.temp \}\}\/([\w.-]+)/.exec(String(emulatorStep().with?.["emulator-options"]));
     assert.ok(told, "nothing tells the emulator where to write its own stdout and stderr");
     const file = told[1];
-    const created = action.indexOf(`touch "\${{ runner.temp }}/${file}"`);
+    const created = action.findIndex((s) => code(s).includes(`touch "\${{ runner.temp }}/${file}"`));
     assert.notEqual(created, -1, `${file} is never created, so the launcher exits "cannot open"`);
-    assert.ok(
-      created < action.indexOf("uses: reactivecircus/android-emulator-runner"),
-      `${file} is created after the emulator that has to open it`,
-    );
-    const upload = src.slice(src.indexOf("name: maestro-debug"), src.indexOf("if-no-files-found"));
-    assert.ok(upload.includes(file), `${file} is written and then not uploaded`);
+    assert.ok(created < action.findIndex((s) => s.uses === emulatorStep().uses), `${file} is created after the emulator that has to open it`);
+    assert.ok(uploaded().includes(file), `${file} is written and then not uploaded`);
   });
 
   test("the emulator's own files are swept up, and an empty sweep still says so", () => {
     // The VM's stderr is orphaned by the launcher (#1062), so what it leaves on
     // disk is the whole of its own account. A sweep that wrote nothing when it
     // found nothing would be indistinguishable from one that never ran.
-    const step = src.slice(src.indexOf("Collect whatever the emulator wrote"), src.indexOf("Upload Maestro debug output"));
-    assert.match(step, /if: always\(\)/, "the sweep skips the runs it exists for");
-    assert.match(step, /\[ -s "\$out\/found\.txt" \] \|\|/, "an empty sweep leaves no record of having searched");
-    const upload = src.slice(src.indexOf("name: maestro-debug"), src.indexOf("if-no-files-found"));
-    assert.ok(upload.includes("emulator-logs/"), "the sweep's output is collected and then not uploaded");
+    assert.equal(step(android, COLLECT).if, "always()", "the sweep skips the runs it exists for");
+    assert.match(run(COLLECT), /\[ -s "\$out\/found\.txt" \] \|\|/, "an empty sweep leaves no record of having searched");
+    assert.ok(uploaded().includes("emulator-logs/"), "the sweep's output is collected and then not uploaded");
   });
 
   test("the sweep reaches inside the emulator's crash database", () => {
-    const step = src.slice(src.indexOf("Collect whatever the emulator wrote"), src.indexOf("Upload Maestro debug output"));
-    assert.match(step, /-ipath '\*crash\*'/, "a dump inside emu-crash-*.db is not named for a crash, so a name match misses it");
-    const depth = Number(/-maxdepth (\d+) -type f/.exec(step)?.[1]);
+    const sweep = run(COLLECT);
+    assert.match(sweep, /-ipath '\*crash\*'/, "a dump inside emu-crash-*.db is not named for a crash, so a name match misses it");
+    const depth = Number(/-maxdepth (\d+) -type f/.exec(sweep)?.[1]);
     assert.ok(depth >= 5, `depth ${depth} stops short of <tmp>/android-runner/emu-crash-*.db/attachments/<id>/<file>`);
   });
 
   test("the kernel's record of how the emulator ended is taken and uploaded", () => {
-    const trace = src.slice(src.indexOf("Trace every signal and exit"), src.indexOf("Install Maestro"));
+    const trace = run("Trace every signal and exit on the host");
     for (const event of ["signal/signal_generate", "sched/sched_process_exit", "syscalls/sys_enter_exit_group"]) {
       assert.ok(trace.includes(event), `${event} is not traced`);
     }
-    const upload = src.slice(src.indexOf("name: maestro-debug"), src.indexOf("if-no-files-found"));
     for (const file of ["kernel-trace.txt", "journal.txt", "coredump.txt"]) {
-      assert.ok(upload.includes(file), `${file} is collected and then not uploaded`);
+      assert.ok(uploaded().includes(file), `${file} is collected and then not uploaded`);
     }
   });
 
   test("a trace that cannot be read is not reported as one never started", () => {
-    const step = src.slice(src.indexOf("Say how the emulator exited"), src.indexOf("Upload Maestro debug output"));
-    assert.doesNotMatch(step, /&& sudo cat [^\n]*\|\| echo "no kernel trace was started"/);
-    assert.match(step, /coredumpctl info [^\n]*coredump\.txt/, "the core dump's own account of the crash is not taken");
+    const exited = run(EXITED);
+    assert.doesNotMatch(exited, /&& sudo cat [^\n]*\|\| echo "no kernel trace was started"/);
+    assert.match(exited, /coredumpctl info [^\n]*coredump\.txt/, "the core dump's own account of the crash is not taken");
   });
 
   test("the warning names the fatal signal whichever thread took it, not qemu's vCPU kicks", () => {
-    const step = src.slice(src.indexOf("Say how the emulator exited"), src.indexOf("Upload Maestro debug output"));
-    const pipeline = /exits=\$\(grep -E "([^"]+)" [^|]*\| (head|tail) -(\d+)/.exec(step);
+    const pipeline = /exits=\$\(grep -E "([^"]+)" [^|]*\| (head|tail) -(\d+)/.exec(run(EXITED));
     assert.ok(pipeline, "the exit summary is no longer one grep into head or tail");
     const kept = (lines: string[]) => lines.filter((l) => new RegExp(pipeline[1]).test(l));
     const trace = [
@@ -381,14 +372,13 @@ describe("maestro.yml reads that marker", () => {
   });
 
   test("the host renders with ANGLE, not the legacy SwiftShader GL that segfaulted on its RenderThread", () => {
-    const options = /emulator-options: (.*)/.exec(read(ACTION))?.[1] ?? "";
+    const options = String(emulatorStep().with?.["emulator-options"]);
     assert.match(options, /-gpu swangle_indirect\b/);
   });
 
   test("the tombstone search reads the stream that survives the device", () => {
-    const step = src.slice(src.indexOf("id: crash"), src.indexOf("Upload Maestro debug output"));
     assert.match(
-      step,
+      run("crash"),
       /find-native-crash\.mjs android "\$APP_ID"[^\n]*"\$RUNNER_TEMP\/logcat\.txt"/,
       "the crash check reads only Maestro's own logcat, which does not exist when " +
         "the device died before Maestro could pull it",
@@ -396,12 +386,13 @@ describe("maestro.yml reads that marker", () => {
   });
 
   test("both invocations of the action stay in step", () => {
-    const invocations = [...src.matchAll(/uses: \.\/\.github\/actions\/drive-android-flows\n(.*?)(?=\n *- name:|\n *#|\n\n)/gs)];
+    const invocations = (android.steps ?? []).filter((s) => s.uses === "./.github/actions/drive-android-flows");
     assert.equal(invocations.length, 2, "the first attempt and its retry");
-    assert.equal(
-      invocations[0][1].trim(),
-      invocations[1][1].trim(),
+    assert.deepEqual(
+      invocations[0].with,
+      invocations[1].with,
       "a retry configured differently from the first attempt is not a retry",
     );
+    assert.equal(invocations[0]["continue-on-error"], invocations[1]["continue-on-error"]);
   });
 });
