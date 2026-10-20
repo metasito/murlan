@@ -34,6 +34,7 @@ jest.mock("react-native-reanimated", () => {
 import { CardView, PRESS_RISE, PRESS_TILT } from "@/components/CardView";
 import { TutorialCard } from "@/components/TutorialCard";
 import type { Card } from "@/lib/game/gameEngine";
+import { Motion } from "@/lib/theme";
 import { setMotion } from "./harness/env";
 
 const CARD = { id: "3_spades", rank: "3", suit: "spades", isJoker: false } as Card;
@@ -45,6 +46,7 @@ function transform(): Transform {
 }
 const translateY = () => transform().find((t) => "translateY" in t)?.translateY;
 const settle = () => act(async () => void jest.advanceTimersByTime(3000));
+const pastTheTap = () => act(async () => void jest.advanceTimersByTime(Motion.duration.tap + 16));
 const card = (selected: boolean, onPress = () => {}) => (
   <TutorialCard testID="tc" card={CARD} selected={selected} onPress={onPress} />
 );
@@ -66,6 +68,8 @@ describe("TutorialCard", () => {
     expect(translateY()).toBe(0);
 
     await view.rerender(card(true));
+    await pastTheTap();
+    expect(translateY()! < -13.9).toBe(reduced);
     await settle();
     expect(translateY()).toBeCloseTo(-14, 1);
 
@@ -83,6 +87,8 @@ describe("TutorialCard", () => {
     await act(async () => void jest.advanceTimersByTime(16));
     expect(translateY()).toBeGreaterThan(-14);
     expect(translateY()).toBeLessThan(0);
+    await pastTheTap();
+    expect(translateY()).toBeGreaterThan(-13);
     await view.unmount();
   });
 

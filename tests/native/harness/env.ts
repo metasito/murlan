@@ -20,11 +20,18 @@ function accessibility(): typeof import('@/lib/accessibility') {
   return require('@/lib/accessibility');
 }
 
+// Storage is touched only after setStoredMotion wrote it: files that mock AsyncStorage whole count its reads, or have no setItem.
+let storedMotion = false;
+
 /** Run by setup.ts before every test, while nothing is mounted. */
-export function resetEnv(): void {
+export async function resetEnv(): Promise<void> {
   dimensions().set({ window: LANDSCAPE_PHONE, screen: LANDSCAPE_PHONE });
   accessibility().setMotionPreference('system');
   netInfoListeners().clear();
+  if (!storedMotion) return;
+  storedMotion = false;
+  const { motion: _, ...rest } = JSON.parse((await AsyncStorage.getItem(SETTINGS_KEY)) ?? '{}');
+  await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(rest));
 }
 
 /** The window every `useWindowDimensions` reads; `scale` and `fontScale` default to the landscape phone's. */
@@ -40,6 +47,7 @@ export async function setMotion(preference: MotionPreference): Promise<void> {
 
 /** `setMotion`, also stored for a SettingsProvider mounted after it to read back. */
 export async function setStoredMotion(preference: MotionPreference): Promise<void> {
+  storedMotion = true;
   await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify({ motion: preference }));
   await setMotion(preference);
 }

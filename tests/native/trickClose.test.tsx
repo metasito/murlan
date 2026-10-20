@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import React from 'react';
 import { act, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { getAnimatedStyle } from 'react-native-reanimated';
 
 // Reduced motion collapses the card's flight to a single timer, so the pile
 // reaches its settled state on a tick rather than on a spring callback.
@@ -165,6 +166,10 @@ describe('the pass that closes a trick', () => {
 
     const swept = (card: Card) =>
       within(screen.getByTestId('sweep-cards', { includeHiddenElements: true })).queryByLabelText(cardSpokenName(card, t), { includeHiddenElements: true });
+    const travelled = () => {
+      const { transform } = getAnimatedStyle(screen.getByTestId('sweep-cards', { includeHiddenElements: true })) as { transform: Record<string, number>[] };
+      return Math.hypot(transform[0].translateX, transform[1].translateY);
+    };
 
     it('sweeps the winning cards off the felt once the hold ends', async () => {
       const r = await render(table(LED));
@@ -176,7 +181,11 @@ describe('the pass that closes a trick', () => {
       expect(onFelt(KING)).toBeNull();
 
       await act(async () => {
-        jest.advanceTimersByTime(Motion.duration.travel);
+        jest.advanceTimersByTime(Motion.duration.travel / 2);
+      });
+      expect(travelled()).toBeGreaterThan(1);
+      await act(async () => {
+        jest.advanceTimersByTime(Motion.duration.travel / 2);
       });
       expect(screen.queryByTestId('sweep-cards')).toBeNull();
 

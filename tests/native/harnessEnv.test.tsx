@@ -7,7 +7,8 @@ import { render, screen } from '@testing-library/react-native';
 
 import { usePrefersReducedMotion } from '@/lib/accessibility';
 import { useDeviceOffline } from '@/components/OfflineBanner';
-import { setConnectivity, setMotion, setWindow } from './harness/env';
+import { SettingsProvider } from '@/context/SettingsContext';
+import { setConnectivity, setMotion, setStoredMotion, setWindow } from './harness/env';
 
 function Probe() {
   const { width, height, fontScale } = useWindowDimensions();
@@ -33,6 +34,30 @@ describe('the native test environment', () => {
   it('starts the next test from the defaults', async () => {
     const view = await render(<Probe />);
     expect(read()).toEqual(DEFAULTS);
+    await view.unmount();
+  });
+});
+
+describe('the stored motion choice', () => {
+  const settled = async () => {
+    const view = await render(
+      <SettingsProvider>
+        <Probe />
+      </SettingsProvider>
+    );
+    return { view, reduced: read().reduced as boolean };
+  };
+
+  it('is what a SettingsProvider mounted after it reads back', async () => {
+    await setStoredMotion('on');
+    const { view, reduced } = await settled();
+    expect(reduced).toBe(true);
+    await view.unmount();
+  });
+
+  it('is gone by the next test', async () => {
+    const { view, reduced } = await settled();
+    expect(reduced).toBe(false);
     await view.unmount();
   });
 });
