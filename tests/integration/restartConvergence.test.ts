@@ -262,8 +262,6 @@ describe(
       for (const c of [t1, t2]) c.socket.emit("game:rejoin", { roomId: table.roomId });
       for (const c of [l1, l2, l3]) c.socket.emit("room:rejoin", { code: lobby.code });
 
-      setTimeout(() => (t1.socket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["game:rejoin_failed", {}]), 50); // RED: injected emit
-      setTimeout(() => (t2.socket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["game:rejoin_failed", {}]), 50); // RED: injected emit
       await Promise.all(
         [t1, t2].map((c) =>
           nothingArrives(c.socket, "game:rejoin_failed", { why: "a seat was refused its own table after the restart" })

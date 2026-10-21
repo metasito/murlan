@@ -108,7 +108,6 @@ describe("a state broadcast is delivered", { skip: hasDatabase() ? false : skipM
 
     await eventually(() => silent.length >= 2, "the one re-send", 3_000);
     // A third would follow the second by one more ack timeout.
-    setTimeout(() => (a.socket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["game:state", {}]), 50); // RED: injected emit
     await nothingArrives(a.socket, "game:state", {
       ms: stateAckTimeoutMs() * 3,
       why: "a silent client must cost one retry, not a stream",

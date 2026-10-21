@@ -716,7 +716,6 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       bob.socket.emit("game:rematch_vote");
       await dealt;
 
-      setTimeout(() => (bob.socket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["game:round_over", {}]), 50); // RED: injected emit
       const noStaleOver = nothingArrives(bob.socket, "game:round_over");
       const state = waitFor(bob.socket, "game:state", 5_000);
       const framing = waitFor(
@@ -791,7 +790,6 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
         // synchronously before handleRoundOver ran); lastRoundOverPayload has
         // not been reassigned yet, because the gated write above is still
         // pending.
-        setTimeout(() => (bob.socket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["game:round_over", {}]), 50); // RED: injected emit
         const noStaleOver = nothingArrives(bob.socket, "game:round_over");
         const state = waitFor(bob.socket, "game:state", 5_000);
         bob.socket.emit("game:rejoin", { roomId: room.roomId });

@@ -218,7 +218,6 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     table: { alice: { socket: TestSocket }; bob: { socket: TestSocket }; aliceState: WireGameState; bobState: WireGameState },
     why: string
   ): Promise<void> {
-    setTimeout(() => (socket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["game:state", {}]), 50); // RED: injected emit
     const quiet = nothingArrives(socket, "game:state", { why });
     const moved = Promise.all([table.alice, table.bob].map((c) => waitFor(c.socket, "game:state")));
     playOpening([table.alice, table.bob], [table.aliceState, table.bobState]);

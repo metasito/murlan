@@ -121,7 +121,6 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
     // Anything the host hears before the grace runs out would be the seat being
     // released — the whole point is that nothing happens.
     await onServerTime(async () => {
-      setTimeout(() => (host.socket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["room:state", {}]), 50); // RED: injected emit
       const churn = nothingArrives(host.socket, "room:state", { why: "a blip must not tell the room that someone left" });
       guest.socket.close();
       await graceArmed(room.roomId, guest.user.id);

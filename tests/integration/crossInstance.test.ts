@@ -319,7 +319,6 @@ describe("broadcasts cross server instances", {
     await armed;
     assert.ok(received > 0, "the game never started across the two instances");
 
-    setTimeout(() => (bSocket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["game:state", {}]), 50); // RED: injected emit
     await nothingArrives(bSocket, "game:state", {
       ms: ACK_TIMEOUT_MS * 4,
       why:

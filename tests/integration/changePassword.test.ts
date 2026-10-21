@@ -84,7 +84,6 @@ describe("in-app change password", { skip: hasDatabase() ? false : skipMessage()
   test("a change keeps the caller's own socket", async () => {
     const { deviceB } = await twoSessions("change_pw_sock_own");
     const socket = await reconnectWith(server, deviceB);
-    setTimeout(() => (socket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["disconnect", "io server disconnect"]), 50); // RED: injected emit
     const kept = nothingArrives(socket, "disconnect", { why: "the socket the change came from must survive" });
     assert.equal((await changePassword(deviceB, "password123", "new-password-456")).status, 200);
     await kept;

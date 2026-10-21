@@ -69,7 +69,6 @@ describe("a matchmade table deals itself", { skip: hasDatabase() ? false : skipM
       const full = await seated;
       assert.equal(full.players.length, 2, "the guest must be seated for the room to be full");
 
-      setTimeout(() => (host.socket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["game:started", {}]), 50); // RED: injected emit
       const quiet = nothingArrives(host.socket, "game:started", {
         why: "a room its host opened dealt itself — room:start is the host's to send",
       });

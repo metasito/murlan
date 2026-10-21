@@ -50,7 +50,6 @@ describe(
           const isAfk = (notice: { type: string }) => notice.type === "afk";
 
           clock.advance(AFK_MS + Reading.notice - 1);
-          setTimeout(() => (clients[1]!.socket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["game:notification", { type: "afk" }]), 50); // RED: injected emit
           await nothingArrives(clients[1]!.socket, "game:notification", {
             matches: isAfk,
             why: "the opener was auto-passed before its base AFK window plus the opening grace ran out",

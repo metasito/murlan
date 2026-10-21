@@ -91,8 +91,6 @@ describe(
           );
           await closed;
 
-          setTimeout(() => (bob.socket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["game:player_disconnected", {}]), 50); // RED: injected emit
-          setTimeout(() => (bob.socket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["game:seat_bot_takeover", {}]), 50); // RED: injected emit
           const quiet = [
             nothingArrives(bob.socket, "game:player_disconnected"),
             nothingArrives(bob.socket, "game:seat_bot_takeover"),
