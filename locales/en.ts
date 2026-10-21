@@ -29,6 +29,12 @@ export const en = {
   "term.mode.freeForAll": "Free-for-all",
   "term.mode.teamsShort": "Teams",
   "term.mode.freeForAllShort": "Free-for-all",
+  "term.combo.single": "Single",
+  "term.combo.pair": "Pair",
+  "term.combo.triple": "Triple",
+  "term.combo.straight": "Straight",
+  "term.combo.bomb": "💣 Bomb",
+  "term.combo.royalStraight": "★ Royal Straight",
 
   // ------------------------------------------------------------- server.*
   "server.AUTH_RATE_LIMITED": "Too many attempts, try again in 15 minutes.",
@@ -343,12 +349,6 @@ export const en = {
   "cardView.selectedA11yHint": "Selected",
 
   // ------------------------------------------------------------- gameShared.*
-  "gameShared.comboSingle": "Single",
-  "gameShared.comboPair": "Pair",
-  "gameShared.comboTriple": "Triple",
-  "gameShared.comboStraight": "Straight",
-  "gameShared.comboBomb": "💣 Bomb",
-  "gameShared.comboRoyalStraight": "★ Royal Straight",
   "gameShared.comboMultiplier": " ×{{count}}",
   "gameShared.emptyHand": "Hand empty!",
   "gameShared.startReasonCard": "{{name}} starts — holds the {{rank}}{{suit}}",
@@ -638,17 +638,11 @@ export const en = {
   "rules.strengthTen": "Ten",
   "rules.strengthThree": "Three",
   "rules.combosSectionLabel": "VALID COMBINATIONS",
-  "rules.comboSingleName": "Single",
   "rules.comboSingleDesc": "Any 1 card",
-  "rules.comboPairName": "Pair",
   "rules.comboPairDesc": "2 cards of the same rank",
-  "rules.comboTripleName": "Triple",
   "rules.comboTripleDesc": "3 cards of the same rank",
-  "rules.comboStraightName": "Straight",
   "rules.comboStraightDesc": "Min. 5 consecutive cards, up to 13 (e.g. A-2-3-4-5)",
-  "rules.comboBombName": "Bomb 💣",
   "rules.comboBombDesc": "4 cards of the same rank · beats everything except a Royal Straight",
-  "rules.comboRoyalName": "Royal Straight ★",
   "rules.comboRoyalDesc": "Straight of one suit · beats even a Bomb",
   "rules.faqSectionLabel": "FREQUENTLY ASKED QUESTIONS",
 

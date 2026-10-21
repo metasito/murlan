@@ -10,31 +10,22 @@ import {
   type Combination,
   type SelectionRefusal,
 } from "../../lib/game/gameEngine.ts";
+import { comboName } from "../../lib/comboName.ts";
 import { rankSpokenName, cardSpokenName, suitSpokenName } from "../../lib/cardNames.ts";
 import {
   translateServerPayload,
   type ServerPayload,
   type TFn,
   type TnFn,
-  type TranslationKey,
 } from "../../lib/i18n.ts";
 import { straightTopRankChar } from "./straightTopRank.ts";
 import { PLAY_SPOKEN_KEYS, playRefusalLabel } from "../../lib/table/playRefusal.ts";
 import type { TableA11yStrings } from "@/components/tableA11y";
 
-const COMBO_LABEL_KEYS: Record<Combination["type"], TranslationKey> = {
-  single: "gameShared.comboSingle",
-  pair: "gameShared.comboPair",
-  triple: "gameShared.comboTriple",
-  straight: "gameShared.comboStraight",
-  bomb: "gameShared.comboBomb",
-  royal_straight: "gameShared.comboRoyalStraight",
-};
-
 /** The combination chip's text: its kind, and how many cards once there are more than two. */
 export function comboLabel(combo: Combination | null, t: TFn): string | null {
   if (!combo) return null;
-  const label = t(COMBO_LABEL_KEYS[combo.type]);
+  const label = comboName(combo.type, t);
   if (combo.cards.length > 2) return `${label}${t("gameShared.comboMultiplier", { count: combo.cards.length })}`;
   return label;
 }
