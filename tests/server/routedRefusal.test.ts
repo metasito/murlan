@@ -10,6 +10,7 @@ import { registerGameplayHandlers } from "../../server/socket/socketGameplay.ts"
 import { __resetRateLimits } from "../../server/socket/socketSafety.ts";
 import { payload } from "../../server/shared/payload.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
+import { emptyRankTally } from "../../lib/game/gameEngine.ts";
 
 const ROOM = "routed-refusal-room";
 
@@ -58,6 +59,7 @@ test("a pass the owner refuses during the exchange reaches the asking socket onc
         roundOver: false,
         finishingOrder: [],
         firstPlayMade: false,
+        playedRanks: emptyRankTally(),
         lastMove: { seq: 0, kind: "deal" },
         exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, twoJokerException: false },
       },

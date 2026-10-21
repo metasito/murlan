@@ -6,6 +6,7 @@ import { fromEnvelope, toEnvelope } from "../../server/game/tableState.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import type { GameMode, GameState, MatchLength, Player } from "../../lib/game/gameEngine.ts";
+import { emptyRankTally } from "../../lib/game/gameEngine.ts";
 
 const ROOM = "room_verdict";
 
@@ -35,6 +36,7 @@ function finishedRound(gameMode: GameMode): GameState {
     roundOver: true,
     finishingOrder: ["p0", "p1", "p2", "p3"],
     firstPlayMade: true,
+    playedRanks: emptyRankTally(),
     lastMove: { seq: 0, kind: "deal" },
   };
 }

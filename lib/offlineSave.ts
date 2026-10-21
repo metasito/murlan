@@ -8,8 +8,10 @@
 // Pure: encoding, decoding and the decision to trust a stored blob live here so
 // they can be tested without AsyncStorage or a renderer. The context does the
 // I/O and nothing else.
-import { exchangeIsSatisfiable, type GameState } from "./game/gameEngine.ts";
+import { z } from "zod";
+import type { GameState } from "./game/gameEngine.ts";
 import type { MatchState } from "./game/matchState.ts";
+import { parseGameState } from "../shared/gameStateSchema.ts";
 
 /**
  * Bumped whenever the stored shape changes. A blob written by an older build is
@@ -19,7 +21,7 @@ import type { MatchState } from "./game/matchState.ts";
  * abandoned match costs nothing.
  * Held to the stored shape by tests/server/storedShapeVersions.test.ts.
  */
-export const OFFLINE_SAVE_VERSION = 5;
+export const OFFLINE_SAVE_VERSION = 6;
 
 export { OFFLINE_SAVE_KEY } from "./storageKeys.ts";
 
@@ -35,10 +37,21 @@ export function encodeOfflineSave(save: Omit<OfflineSave, "version">): string {
   return JSON.stringify({ ...save, version: OFFLINE_SAVE_VERSION });
 }
 
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
+const points = z.record(z.number().finite());
 
-const isCard = (v: unknown): boolean => isObject(v) && typeof v.id === "string" && typeof v.rank === "string";
+const matchSchema = z.object({
+  length: z.enum(["match", "single"]),
+  target: z.number().int().min(1),
+  over: z.boolean(),
+  winners: z.array(z.string()),
+  isDraw: z.boolean(),
+  scores: points,
+  rounds: z.array(z.object({ finishingOrder: z.array(z.string()), pointsAwarded: points })),
+});
+
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+const declaresMatchState: Same<z.infer<typeof matchSchema>, MatchState> = true;
+void declaresMatchState;
 
 export type OfflineDecode =
   | { kind: "none" }
@@ -50,14 +63,9 @@ const INCOMPATIBLE: OfflineDecode = { kind: "incompatible" };
 
 /**
  * A stored blob; `incompatible` when a save was there and cannot be trusted,
- * which the player is told about, and `none` when there was never one.
- *
- * Deliberately shallow. The version is what actually protects against a shape
- * change; re-validating every card would be a second copy of the engine's types
- * that could drift from them. What is checked here is that the pieces the
- * restore path immediately dereferences are present and the right kind of
- * thing, so a truncated or hand-edited blob fails here rather than as
- * `Cannot read property 'cards' of null` three screens later.
+ * which the player is told about, and `none` when there was never one. The
+ * engine state is held to `parseGameState`, the same document `active_games`
+ * restores through.
  */
 export function decodeOfflineSave(raw: string | null): OfflineDecode {
   if (!raw) return NONE;
@@ -68,20 +76,16 @@ export function decodeOfflineSave(raw: string | null): OfflineDecode {
   } catch {
     return NONE;
   }
-  if (!isObject(parsed)) return NONE;
-  if (parsed.version !== OFFLINE_SAVE_VERSION) return INCOMPATIBLE;
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return NONE;
+  const { version, gameState, match, dealFirstSeat } = parsed as Record<string, unknown>;
+  if (version !== OFFLINE_SAVE_VERSION) return INCOMPATIBLE;
 
-  const { gameState, match, dealFirstSeat } = parsed;
-  if (!isObject(gameState) || !Array.isArray(gameState.players)) return INCOMPATIBLE;
-  if (gameState.players.length === 0) return INCOMPATIBLE;
-  if (!isObject(match) || !isObject(match.scores) || !Array.isArray(match.rounds)) return INCOMPATIBLE;
-  if (gameState.gameMode !== "free_for_all" && gameState.gameMode !== "teams") return INCOMPATIBLE;
-  if (!isObject(gameState.lastMove) || !Number.isInteger(gameState.lastMove.seq)) return INCOMPATIBLE;
-  if (!Number.isInteger(dealFirstSeat)) return INCOMPATIBLE;
-  if (!gameState.players.every((p) => isObject(p) && Array.isArray(p.hand) && p.hand.every(isCard))) return INCOMPATIBLE;
-  if (!exchangeIsSatisfiable(gameState as unknown as GameState)) return INCOMPATIBLE;
+  const state = parseGameState(gameState);
+  const verdict = matchSchema.safeParse(match);
+  if (!state.ok || !verdict.success) return INCOMPATIBLE;
+  if (typeof dealFirstSeat !== "number" || !Number.isInteger(dealFirstSeat)) return INCOMPATIBLE;
 
-  return { kind: "ok", save: parsed as unknown as OfflineSave };
+  return { kind: "ok", save: { version, gameState: state.state, match: verdict.data, dealFirstSeat } };
 }
 
 /**

@@ -11,8 +11,9 @@ import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
-import type { RoundOverPayload } from "../../lib/game/matchState.ts";
+import { roundOverSchema } from "../../shared/protocol.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
+import { emptyRankTally } from "../../lib/game/gameEngine.ts";
 
 const ROOM = "void-abandoned-room";
 
@@ -36,6 +37,7 @@ function midRoundTwoSeats(): GameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
+    playedRanks: emptyRankTally(),
     lastMove: { seq: 0, kind: "deal" },
   };
 }
@@ -53,14 +55,12 @@ describe("a match abandoned with no round yet decided is voided, not scored (#85
     try {
       await vacateSeat(rt, ROOM, "bob");
 
-      const over = events("game:round_over")[0] as
-        | RoundOverPayload
-        | undefined;
-      assert.ok(over, "a voided match still tells the table it is over");
-      assert.equal(over!.voided, true);
-      assert.deepEqual(over!.finishingOrder, []);
-      assert.deepEqual(over!.scores, []);
-      assert.equal(over!.recorded, false);
+      assert.ok(events("game:round_over")[0], "a voided match still tells the table it is over");
+      const over = roundOverSchema.parse(events("game:round_over")[0]);
+      assert.equal(over.voided, true);
+      assert.deepEqual(over.finishingOrder, []);
+      assert.deepEqual(over.scores, []);
+      assert.equal(over.recorded, false);
       // The table is gone — void is terminal, not "waiting on a rematch vote".
       assert.equal(activeGames.has(ROOM), false);
     } finally {
@@ -82,11 +82,9 @@ describe("a match abandoned with no round yet decided is voided, not scored (#85
     try {
       await vacateSeat(rt, ROOM, "bob");
 
-      const over = events("game:round_over")[0] as
-        | RoundOverPayload
-        | undefined;
-      assert.ok(over, "the concede-and-score path still ends the match");
-      assert.equal(over!.voided, false, "a round was genuinely played — nothing here is voided");
+      assert.ok(events("game:round_over")[0], "the concede-and-score path still ends the match");
+      const over = roundOverSchema.parse(events("game:round_over")[0]);
+      assert.equal(over.voided, false, "a round was genuinely played — nothing here is voided");
     } finally {
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);

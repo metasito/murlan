@@ -7,7 +7,7 @@
 //
 // Loads under `node --test`, and under the server — docs/agents/checks.md,
 // "Node's TypeScript loader".
-import { passesToCloseTrick } from "./gameEngine.ts";
+import { emptyRankTally, getRankStrength, passesToCloseTrick } from "./gameEngine.ts";
 import type { Combination, GameMode, GameState, LastMove, Player } from "./gameEngine.ts";
 
 export interface ReplaySeat {
@@ -118,9 +118,11 @@ export function replayStateAt(replay: ReplayDto, index: number): GameState {
   let passes = 0;
   const opening: LastMove = replay.opening ?? { seq: 0, kind: "deal" };
   let lastMove = opening;
+  const playedRanks = emptyRankTally();
   for (let i = 0; i <= at; i++) {
     const move = replay.moves[i];
     if (move.combo) {
+      for (const card of move.combo.cards) playedRanks[getRankStrength(card.rank)] += 1;
       pile = move.combo;
       pileSeat = move.seat;
       passes = 0;
@@ -160,6 +162,7 @@ export function replayStateAt(replay: ReplayDto, index: number): GameState {
     roundOver: finished,
     finishingOrder: finished ? replay.finishingOrder : [],
     firstPlayMade: at >= 0,
+    playedRanks,
     lastMove,
   };
 }

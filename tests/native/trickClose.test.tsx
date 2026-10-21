@@ -21,6 +21,7 @@ import { t } from '@/lib/i18n';
 import { Motion } from '@/lib/theme';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
 import { setMotion } from './harness/env';
+import { emptyRankTally } from '@/lib/game/gameEngine';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -54,6 +55,7 @@ const state = (over: Partial<GameState>): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
   ...over,
 });

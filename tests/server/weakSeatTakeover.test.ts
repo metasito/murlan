@@ -87,6 +87,7 @@ describe("a mid-round takeover is weak only for the round it happened on (#850 c
       roundOver: true, // between rounds
       finishingOrder: ["p0", "p1"],
       firstPlayMade: true,
+      playedRanks: emptyRankTally(),
       lastMove: { seq: 0, kind: "deal" },
     };
     const game = baseGame({
@@ -262,6 +263,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
       roundOver: true,
       finishingOrder: ["p0", "p1"],
       firstPlayMade: true,
+      playedRanks: emptyRankTally(),
       lastMove: { seq: 0, kind: "deal" },
     };
     activeGames.set(ROOM, baseGame({ gameState, playerMap: { 0: "alice", 1: "drita" } }));
@@ -292,6 +294,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
       roundOver: true,
       finishingOrder: ["p0"],
       firstPlayMade: true,
+      playedRanks: emptyRankTally(),
       lastMove: { seq: 0, kind: "deal" },
     };
     activeGames.set(ROOM, baseGame({ gameState, playerMap: { 0: "drita" } }));
@@ -330,6 +333,7 @@ describe("autoMoveForSeat at the floor — what a weak seat's turn resolves to (
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: true,
+      playedRanks: emptyRankTally(),
       lastMove: { seq: 0, kind: "deal" },
     };
 
@@ -362,6 +366,7 @@ describe("autoMoveForSeat at the floor — what a weak seat's turn resolves to (
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: true,
+      playedRanks: emptyRankTally(),
       lastMove: { seq: 0, kind: "deal" },
     };
 
@@ -386,6 +391,7 @@ describe("autoMoveForSeat at the floor — what a weak seat's turn resolves to (
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: false,
+      playedRanks: emptyRankTally(),
       lastMove: { seq: 0, kind: "deal" },
       startCard: { rank: "3", suit: "clubs", id: "start" } as never,
     };

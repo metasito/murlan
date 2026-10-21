@@ -1,5 +1,6 @@
 import { resolveRoundEnd } from "../../server/game/onlineGameLogic.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
+import { emptyRankTally } from "../../lib/game/gameEngine.ts";
 
 function seat(id: string, name: string, team: "A" | "B", handSize: number): Player {
   return {
@@ -24,6 +25,7 @@ export function drawnTeamsMatch() {
     roundOver: true,
     finishingOrder: ["p0", "p1", "p2", "p3"],
     firstPlayMade: true,
+    playedRanks: emptyRankTally(),
     lastMove: { seq: 0, kind: "deal" },
   };
   return resolveRoundEnd({

@@ -34,6 +34,7 @@ const mockTable: { state: GameState; announcing: boolean } = {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
+    playedRanks: emptyRankTally(),
     lastMove: { seq: 0, kind: 'deal' },
   },
 };
@@ -62,6 +63,7 @@ jest.mock('@/context/GameContext', () =>
 import GameScreen, { HUMAN_TURN_SECONDS } from '@/app/game';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t, tn } from '@/lib/i18n';
+import { emptyRankTally } from '@/lib/game/gameEngine';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -135,6 +137,7 @@ describe('pass and play', () => {
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: true,
+      playedRanks: emptyRankTally(),
       lastMove: { seq: 0, kind: 'deal' },
       exchangePhase: {
         active: false,

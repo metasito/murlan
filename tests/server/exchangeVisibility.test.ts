@@ -10,10 +10,11 @@ import { packPersistedState, unpackPersistedState } from "../../shared/persisted
 import { exchangeAnnounceMs } from "../../lib/timeline/exchangeTimeline.ts";
 import { stateAckTimeoutMs } from "../../server/game/gameTimers.ts";
 import { readFileSync } from "node:fs";
+import { card, state } from "../support/game.ts";
 
 /** Any instant: these phases carry no settle stamp, so no ceremony is measured. */
 const AT = 1_700_000_000_000;
-const CARD = { id: "2_spades", suit: "spades", rank: "2", isJoker: false };
+const CARD = card("2", "spades");
 
 const activePhase = {
   active: true,
@@ -84,7 +85,7 @@ describe("visibleExchangePhase", () => {
   // finished, public fact about the table, which is the same argument #602
   // already made for the other leg.
   describe("the card handed back", () => {
-    const RETURNED = { id: "6_clubs", suit: "clubs", rank: "6", isJoker: false };
+    const RETURNED = card("6", "clubs");
     const SETTLED_AT = 1_700_000_000_000;
     const settled = {
       ...activePhase,
@@ -209,7 +210,7 @@ describe("visibleExchangePhase", () => {
       // new one, so a restart has to come back inside the window it left in —
       // an envelope that dropped it would silently reopen the exposure instead.
       test("the stamp survives the persisted envelope", () => {
-        const stored = packPersistedState({ exchangePhase: settled }, {}, 0, "ABC123", {
+        const stored = packPersistedState(state({ exchangePhase: settled }), {}, 0, "ABC123", {
           playerMap: { 0: "u" },
           scores: { u: 0 },
           endedByVote: false,
@@ -220,11 +221,11 @@ describe("visibleExchangePhase", () => {
           matchTarget: 1,
           maxPlayers: 4,
         }, { vacatedSeats: [], releasedSeats: [], weakSeats: [], abandonedSeats: [] });
-        const back = unpackPersistedState<{ exchangePhase: typeof settled }>(
+        const back = unpackPersistedState(
           JSON.parse(JSON.stringify(stored))
         );
         assert.ok(back.ok, back.ok ? "" : back.reason);
-        assert.equal(back.gameState.exchangePhase.settledAt, SETTLED_AT);
+        assert.equal(back.gameState.exchangePhase?.settledAt, SETTLED_AT);
       });
     });
 

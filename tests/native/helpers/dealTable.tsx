@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getAnimatedStyle } from 'react-native-reanimated';
 import { GameTable } from '@/components/GameTable';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
+import { emptyRankTally } from '@/lib/game/gameEngine';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -28,6 +29,7 @@ export const freshDeal: GameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: false,
+  playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
 };
 

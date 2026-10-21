@@ -14,13 +14,10 @@ import {
   type PersistedMatch,
   type PersistedSeats,
 } from "../../shared/persistedEnvelope.ts";
+import { parseGameState } from "../../shared/gameStateSchema.ts";
+import { card, seat, state } from "../support/game.ts";
 
-const gameState = {
-  currentTurnIndex: 2,
-  roundOver: false,
-  gameMode: "teams",
-  players: [{ id: "player_0" }],
-};
+const gameState = state({ currentTurnIndex: 2, gameMode: "teams" });
 const flags: RoundFlags = { 0: { bomb: true, joker: false }, 3: { bomb: false, joker: true } };
 const match: PersistedMatch = {
   playerMap: { 0: "alice", 3: "dan" },
@@ -48,7 +45,7 @@ const pack = (over: Partial<PersistedMatch> = {}, seatsOver: Partial<PersistedSe
 
 /** The restored side of a round trip, or a failure naming the rejection. */
 function restore(persisted: unknown) {
-  const result = unpackPersistedState<typeof gameState>(persisted);
+  const result = unpackPersistedState(persisted);
   assert.ok(result.ok, `refused: ${result.ok ? "" : result.reason}`);
   return result;
 }
@@ -192,6 +189,24 @@ describe("rows the restore path refuses", () => {
     assert.match(refusal({ ...pack(), roundFlags: undefined }), /round flags/);
     assert.match(refusal({ ...pack(), dealFirstSeat: "3" }), /deal rotation/);
     assert.match(refusal({ ...pack(), match: undefined }), /match state/);
+  });
+
+  test("an open exchange whose winner has nothing to give back, for parseGameState's reason", () => {
+    const unsatisfiable = state({
+      players: [seat(0, []), seat(1, [card("4", "clubs")])],
+      firstPlayMade: true,
+      exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, twoJokerException: false },
+    });
+    const verdict = parseGameState(unsatisfiable);
+    assert.equal(verdict.ok, false);
+    assert.equal(refusal(packPersistedState(unsatisfiable, flags, 0, JOIN_CODE, match, seats)), verdict.ok ? "" : verdict.reason);
+  });
+
+  test("an engine state the engine could not have written", () => {
+    const { playedRanks: _dropped, ...untallied } = gameState;
+    assert.match(refusal({ ...pack(), gameState: untallied }), /game state playedRanks/);
+    assert.match(refusal({ ...pack(), gameState: { ...gameState, players: [{ id: "player_0" }] } }), /game state players\.0/);
+    assert.match(refusal({ ...pack(), roundFlags: { 0: { bomb: "yes" } } }), /round flags/);
   });
 
   test("a missing join code", () => {

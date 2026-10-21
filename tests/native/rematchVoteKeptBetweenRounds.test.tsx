@@ -8,6 +8,7 @@ import { renderAppHook } from './harness/renderApp';
 import { OnlineGameProvider } from '@/context/OnlineGameContext';
 import type { WireGameState } from '@/shared/protocol';
 import { useOnlineMatch } from '@/context/onlineGameHooks';
+import { emptyRankTally } from '@/lib/game/gameEngine';
 
 type Listener = (...args: unknown[]) => void;
 const listeners = new Map<string, Set<Listener>>();
@@ -43,6 +44,7 @@ const table = (roundOver: boolean): WireGameState => ({
   roundOver,
   finishingOrder: roundOver ? ['player_0', 'player_1'] : [],
   firstPlayMade: true,
+  playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
   viewerSeatIndex: 0,
   turnSecondsRemaining: 30,

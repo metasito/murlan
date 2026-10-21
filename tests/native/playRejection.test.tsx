@@ -23,6 +23,7 @@ import {
   type Player,
   type Rank,
   type Suit,
+  emptyRankTally,
 } from '@/lib/game/gameEngine';
 
 const METRICS = {
@@ -57,6 +58,7 @@ const state = (over: Partial<GameState>): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
   ...over,
 });

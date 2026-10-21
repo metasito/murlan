@@ -15,6 +15,7 @@ import { t } from '@/lib/i18n';
 import { LEG } from '@/lib/timeline/exchangeTimeline';
 import { Motion } from '@/lib/tokens';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
+import { emptyRankTally } from '@/lib/game/gameEngine';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -66,6 +67,7 @@ const settled = (winnerHand: Card[] = [...KEPT_BY_WINNER, FROM_LOSER]): GameStat
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
   exchangePhase: {
     active: false,

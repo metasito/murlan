@@ -9,6 +9,7 @@ import { GameTable } from '@/components/GameTable';
 import { useRoundEnding } from '@/components/table/useRoundEnding';
 import type { Combination, GameState, Player } from '@/lib/game/gameEngine';
 import { card, PAIR } from './helpers/landing';
+import { emptyRankTally } from '@/lib/game/gameEngine';
 
 async function mount(landed: number | null) {
   const onLanded = jest.fn<(at: number) => void>();
@@ -46,6 +47,7 @@ function table(onRoundLanded: (at: number) => void, over: boolean, last: Combina
     roundOver: over,
     finishingOrder: over ? ORDER : [],
     firstPlayMade: true,
+    playedRanks: emptyRankTally(),
     lastMove: { seq: 0, kind: 'deal' },
   };
   const placementPoints = over ? Object.fromEntries(ORDER.map((id, i) => [id, 3 - i])) : {};

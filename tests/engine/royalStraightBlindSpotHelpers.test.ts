@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { card as c, joker as j } from "../support/game.ts";
-import { cardStrength, type Card } from "../../lib/game/gameEngine.ts";
+import { cardStrength, emptyRankTally, type Card } from "../../lib/game/gameEngine.ts";
 import {
   handHasLegalRoyalStraight,
   isCertainLead,
@@ -83,12 +83,12 @@ describe("isCertainLead", () => {
   test("a pair is never a certain lead, regardless of ranks", () => {
     const hand: Card[] = [c("A", "hearts"), c("A", "clubs")];
     const pair = { type: "pair" as const, cards: hand, strength: cardStrength(c("A", "hearts")) };
-    assert.equal(isCertainLead(pair, undefined, hand), false);
+    assert.equal(isCertainLead(pair, emptyRankTally(), hand), false);
   });
 
   test("a single is not certain when a higher rank is still outstanding", () => {
     const hand: Card[] = [c("K", "hearts")];
     const single = { type: "single" as const, cards: hand, strength: cardStrength(c("K", "hearts")) };
-    assert.equal(isCertainLead(single, undefined, hand), false); // A and 2 still outstanding
+    assert.equal(isCertainLead(single, emptyRankTally(), hand), false); // A and 2 still outstanding
   });
 });

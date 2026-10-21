@@ -21,7 +21,7 @@ import { whileUserLocked } from "../helpers/userLock.ts";
 import { driveHumansToRoundOver, waitForRow, type RoomState } from "../helpers/gameDriver.ts";
 import { START_RATING, seasonKey } from "../../lib/game/rating.ts";
 import type { ReplayMove, ReplaySeat } from "../../lib/game/replay.ts";
-import type { RoundOverPayload } from "../../lib/game/matchState.ts";
+import type { RoundOverPayload } from "../../shared/protocol.ts";
 
 // Same convention as the other integration suites: an exchange phase left to
 // the AFK path must not stall the run.

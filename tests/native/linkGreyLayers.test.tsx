@@ -34,6 +34,7 @@ import { Colors, Layer, Reconnect } from '@/lib/tokens';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import type { OwnLink } from '@/lib/ownLink';
 import { setMotion } from './harness/env';
+import { emptyRankTally } from '@/lib/game/gameEngine';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -58,6 +59,7 @@ const STATE: GameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
 };
 

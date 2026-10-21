@@ -24,6 +24,7 @@ import { GameTable } from '@/components/GameTable';
 import { bootFeedback, settle, startsOf } from './helpers/feedback';
 import { choiceOpensAt } from '@/lib/timeline/exchangeTimeline';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
+import { emptyRankTally } from '@/lib/game/gameEngine';
 
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
 const card = (rank: Rank, suit: Suit): Card => ({ id: `${rank}_${suit}`, rank, suit, isJoker: false });
@@ -46,6 +47,7 @@ const state = (open: boolean): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
   exchangePhase: {
     active: open,

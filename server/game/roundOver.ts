@@ -7,7 +7,7 @@ import { resolveRoundEnd, seatTotal } from "./onlineGameLogic.ts";
 import { closeMatch, applyRoundFold, rollForward } from "./matchLedger.ts";
 import { replaySeatsOf } from "./replayShape.ts";
 import { firstTargetFor } from "../../lib/game/gameEngine.ts";
-import type { RoundOverPayload } from "../../lib/game/matchState.ts";
+import type { RoundOverPayload } from "../../shared/protocol.ts";
 import type { GameMode, LastMove } from "../../lib/game/gameEngine.ts";
 import type { GameResult } from "../../lib/achievements.ts";
 import type { ReplayMove, ReplaySeat } from "../../lib/game/replay.ts";

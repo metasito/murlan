@@ -10,7 +10,6 @@ import { buildSeatRoster, seatOfUser } from "./onlineGameLogic.ts";
 import { unpackPersistedState } from "../../shared/persistedEnvelope.ts";
 import { fromEnvelope, newTable } from "./tableState.ts";
 import { handleSeatRelease, retireRoomInvites, roomStatePayload, teamsSizeRefusal } from "../socket/socketTable.ts";
-import type { GameState } from "../../lib/game/gameEngine.ts";
 import { dealRound } from "./dealRound.ts";
 import type { TableAction } from "./tableActions.ts";
 import type { RehydrateOutcome } from "./tableRouter.ts";
@@ -221,7 +220,7 @@ export async function resumeOrphanedTables(rt: TableRuntime): Promise<void> {
   if (!online) return;
   for (const row of rows) {
     if (activeGames.has(row.roomId) || isShuttingDown()) continue;
-    const restored = unpackPersistedState<GameState>(row.gameState);
+    const restored = unpackPersistedState(row.gameState);
     if (!restored.ok || restored.gameState.roundOver) continue;
     const userId = Object.values(restored.match.playerMap).find((id) => online.has(id));
     if (userId === undefined) continue;

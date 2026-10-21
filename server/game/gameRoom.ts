@@ -3,7 +3,7 @@
 // server, and everything it drags in behind it.
 import type { GameState, LastMove, MatchLength } from "../../lib/game/gameEngine.ts";
 import type { ReplayMove } from "../../lib/game/replay.ts";
-import type { RoundOverPayload } from "../../lib/game/matchState.ts";
+import type { RoundOverPayload } from "../../shared/protocol.ts";
 import { deadline, secondsUntil } from "./gameTimers.ts";
 
 export interface OnlineGameState {

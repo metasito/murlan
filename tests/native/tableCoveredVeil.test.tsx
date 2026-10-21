@@ -22,6 +22,7 @@ import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { A11yStatus } from '@/lib/a11y';
 import { tn } from '@/lib/i18n';
 import { setMotion, setWindow } from './harness/env';
+import { emptyRankTally } from '@/lib/game/gameEngine';
 
 /** A caller's own live region, in the slot the table veils along with itself. */
 const BANNER = 'P1 has left the table.';
@@ -48,6 +49,7 @@ const gameState: GameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
 };
 

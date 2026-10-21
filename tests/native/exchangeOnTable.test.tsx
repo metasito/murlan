@@ -15,7 +15,7 @@ import { GameTable } from '@/components/GameTable';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';
 import { choiceOpensAt } from '@/lib/timeline/exchangeTimeline';
-import { getValidGivebackCards } from '@/lib/game/gameEngine';
+import { getValidGivebackCards, emptyRankTally } from '@/lib/game/gameEngine';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
 import { activate } from './tapHelpers';
 import type { ConnectionNote } from '@/components/table/notices/hud';
@@ -68,6 +68,7 @@ const state = (exchange = true): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
   exchangePhase: exchange
     ? { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: FROM_LOSER, twoJokerException: false }

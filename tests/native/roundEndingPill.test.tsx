@@ -10,6 +10,7 @@ import { GameTable } from '@/components/GameTable';
 import { setMotionPreference } from '@/lib/accessibility';
 import { roundEndingOnsets } from '@/lib/timeline/roundEnding';
 import type { GameState, Player } from '@/lib/game/gameEngine';
+import { emptyRankTally } from '@/lib/game/gameEngine';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -29,6 +30,7 @@ const ENDED: GameState = {
   roundOver: true,
   finishingOrder: ['player_0', 'player_1', 'player_2', 'player_3'],
   firstPlayMade: true,
+  playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
 };
 const BEFORE = 7;

@@ -11,6 +11,7 @@ import { applyRoundFold } from "../../server/game/matchLedger.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
+import { emptyRankTally } from "../../lib/game/gameEngine.ts";
 
 function player(id: string, name: string, type: Player["type"] = "human"): Player {
   return { id, name, hand: [], type };
@@ -28,6 +29,7 @@ function table(overrides: Partial<OnlineGameState> = {}): OnlineGameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
+    playedRanks: emptyRankTally(),
     lastMove: { seq: 0, kind: "deal" },
   };
   return onlineTable({

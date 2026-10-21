@@ -8,7 +8,7 @@ import { GameProvider, useGameSession, useGameTable } from "@/context/GameContex
 import { NotificationProvider } from "@/context/NotificationContext";
 import { useOfflineDriver } from "@/context/offlineDriver";
 import { encodeOfflineSave, OFFLINE_SAVE_KEY } from "@/lib/offlineSave";
-import { buildCombination, type Card, type GameState } from "@/lib/game/gameEngine";
+import { buildCombination, type Card, type GameState, emptyRankTally } from "@/lib/game/gameEngine";
 import { passed } from "../support/moves.ts";
 
 /** Both halves of the provider, for a probe that reads across them. */
@@ -32,6 +32,7 @@ const trick = (): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: "deal" },
 } as GameState);
 

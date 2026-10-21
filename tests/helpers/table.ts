@@ -3,7 +3,7 @@ import type { Socket } from "socket.io-client";
 import type { Card } from "../../lib/game/gameEngine.ts";
 import { connectAs, waitFor, DEADLINE_SCALE, type RegisteredUser } from "./client.ts";
 import type { TestServer } from "./testServer.ts";
-import type { RoundOverPayload } from "../../lib/game/matchState.ts";
+import type { RoundOverPayload } from "../../shared/protocol.ts";
 export type { RoundOverPayload };
 
 /**

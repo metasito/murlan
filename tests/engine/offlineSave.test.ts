@@ -9,7 +9,7 @@ import {
   encodeOfflineSave,
   isResumable,
 } from "../../lib/offlineSave.ts";
-import { buildCombination } from "../../lib/game/gameEngine.ts";
+import { buildCombination, emptyRankTally } from "../../lib/game/gameEngine.ts";
 import { played } from "../support/moves.ts";
 
 const decodeOfflineSave = (raw: string | null) => {
@@ -33,6 +33,7 @@ const save = (over = false) => ({
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: false,
+    playedRanks: emptyRankTally(),
     lastMove: { seq: 0, kind: "deal" },
   },
   match: { length: "match", target: 21, scores: { player_0: 3 }, rounds: [], over, winners: [], isDraw: false },
@@ -107,6 +108,8 @@ test("a blob missing anything the restore path needs is refused", () => {
     ["an unknown game mode", (s) => { (s.gameState as Record<string, unknown>).gameMode = "battle_royale"; }],
     ["gameState without its last move", (s) => { delete (s.gameState as Record<string, unknown>).lastMove; }],
     ["a last move without a count", (s) => { (s.gameState as Record<string, unknown>).lastMove = { kind: "deal" }; }],
+    ["gameState without its played-rank tally", (s) => { delete (s.gameState as Record<string, unknown>).playedRanks; }],
+    ["a match round without its points", (s) => { (s.match as Record<string, unknown>).rounds = [{ finishingOrder: [] }]; }],
   ];
   for (const [what, mutate] of mutations) {
     const blob = JSON.parse(encodeOfflineSave(save()));

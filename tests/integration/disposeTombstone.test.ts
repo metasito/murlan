@@ -6,6 +6,7 @@ import pg from "pg";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { Player } from "../../lib/game/gameEngine.ts";
+import { emptyRankTally } from "../../lib/game/gameEngine.ts";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const player = (id: string, name: string): Player => ({ id, name, hand: [], type: "human" });
@@ -25,6 +26,7 @@ function liveGame(roomId: string): OnlineGameState {
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: true,
+      playedRanks: emptyRankTally(),
       lastMove: { seq: 0, kind: "deal" },
     },
     playerMap: { 0: "ana", 1: "besi" },

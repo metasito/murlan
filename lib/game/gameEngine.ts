@@ -112,12 +112,8 @@ export interface GameState {
    * How many cards of each rank have been played this round, indexed by
    * `getRankStrength`. Public information — every seat watched them land — so
    * `sanitizeStateForPlayer` passes it through untouched.
-   *
-   * Optional because `GameState` is persisted as jsonb: a round in flight across
-   * a deploy rehydrates without it, and a bot reading an absent tally must play
-   * exactly as it did before the tally existed.
    */
-  playedRanks?: number[];
+  playedRanks: number[];
   /**
    * `seq` counts the round's moves from the deal's 0. Play writes it through `startRound` and
    * `applyMove` alone; `replayStateAt` and `lib/captureStates.ts` write it for states nobody played.
@@ -829,7 +825,7 @@ function processPlay(state: GameState, combination: Combination): GameState {
 
   // Both paths route every play through here — the server online, the client
   // itself offline — so the tally is written once and cannot drift between them.
-  const tally = newState.playedRanks ?? emptyRankTally();
+  const tally = newState.playedRanks;
   combination.cards.forEach((played) => {
     player.hand = player.hand.filter((c) => c.id !== played.id);
     tally[getRankStrength(played.rank)] += 1;
@@ -1035,11 +1031,11 @@ export function openingIsPending(state: {
   currentTurnIndex: number;
   roundOver: boolean;
   startReason?: { playerIdx: number };
-  playedRanks?: number[];
+  playedRanks: number[];
 }): boolean {
   if (state.roundOver || state.startReason === undefined) return false;
   if (state.currentTurnIndex !== state.startReason.playerIdx) return false;
-  return state.playedRanks?.every((played) => played === 0) ?? false;
+  return state.playedRanks.every((played) => played === 0);
 }
 
 /**
@@ -1049,10 +1045,10 @@ export function openingIsPending(state: {
 export function roundUnplayed(state: {
   roundOver: boolean;
   firstPlayMade: boolean;
-  playedRanks?: number[];
+  playedRanks: number[];
 }): boolean {
   if (state.roundOver) return false;
-  return !state.firstPlayMade || (state.playedRanks?.every((played) => played === 0) ?? false);
+  return !state.firstPlayMade || state.playedRanks.every((played) => played === 0);
 }
 
 /** Teams is 2-v-2 and only 2-v-2 (docs/GAME-RULES.md §11). */

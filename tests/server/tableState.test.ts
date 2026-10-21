@@ -7,7 +7,7 @@ import { GAME_SCHEMA_VERSION } from "../../shared/persistedEnvelope.ts";
 import { firstTargetFor, startRound } from "../../lib/game/gameEngine.ts";
 import type { GameMode, GameState } from "../../lib/game/gameEngine.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
-import type { RoundOverPayload } from "../../lib/game/matchState.ts";
+import type { RoundOverPayload } from "../../shared/protocol.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 
 const ROOM = "table-state-room";
