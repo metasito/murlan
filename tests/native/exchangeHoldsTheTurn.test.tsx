@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import React from 'react';
 import { act } from '@testing-library/react-native';
 import type { GameState } from '@/lib/game/gameEngine';
+import { BOT_THINK_MS } from '@/lib/game/turnSchedule';
 import { aThreePlayed, state } from '../support/game';
 import { useGameTable } from '@/context/GameContext';
 import { offlineSave, renderAppHook } from './harness/renderApp';
@@ -115,13 +116,20 @@ describe('a bot on move while the exchange is being announced', () => {
   });
 
   // What the bot gives is the provider's (tests/native/offlineDriver.test.tsx); when is the table's.
-  it('a bot winner gives when the table opens the choice, not on a clock of its own', async () => {
+  it('a bot winner gives once the table opens the choice and it has thought, not on a clock of its own', async () => {
     const view = await mount(CHOOSING);
     await act(async () => {
       jest.advanceTimersByTime(PAST_THE_THINK * 4);
     });
     expect(view.moves()).toBe(0);
     await act(async () => mockTable.props.onExchangeReady?.());
+    await act(async () => {
+      jest.advanceTimersByTime(BOT_THINK_MS - 1);
+    });
+    expect(view.moves()).toBe(0);
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
     expect(view.moves()).toBe(1);
     expect(view.result.current?.exchangePhase?.kind).toBe('settled');
     await view.unmount();

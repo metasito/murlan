@@ -8,6 +8,7 @@ import { GameProvider, useGameSession, useGameTable } from "@/context/GameContex
 import { NotificationProvider } from "@/context/NotificationContext";
 import { useOfflineDriver } from "@/context/offlineDriver";
 import { encodeOfflineSave, OFFLINE_SAVE_KEY } from "@/lib/offlineSave";
+import { BOT_THINK_MS } from "@/lib/game/turnSchedule";
 import { buildCombination, type Card, type GameState } from "@/lib/game/gameEngine";
 import { passed } from "../support/moves.ts";
 import { aThreePlayed } from "../support/game.ts";
@@ -142,6 +143,9 @@ const settled = async (state: GameState) => {
   });
   await act(async () => {
     fireEvent.press(view.getByTestId("settle"));
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, BOT_THINK_MS + 100));
   });
   const shown = { active: view.getByTestId("active").props.children, loser: view.getByTestId("loserHand").props.children };
   await act(async () => {

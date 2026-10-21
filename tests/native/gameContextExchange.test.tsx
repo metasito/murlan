@@ -301,6 +301,10 @@ for (const loser of ["human", "bot"] as const) test(`an offline bot winner gives
   expect(shown(view, "winnerHand")).toBe("A_spades,9_hearts,5_hearts");
 
   await press(view, "ready");
+  expect(shown(view, "active")).toBe("true");
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, BOT_THINK_MS + 100));
+  });
   expect(shown(view, "active")).toBe("false");
   expect(shown(view, "winnerHand")).toBe("A_spades,9_hearts");
   expect(shown(view, "loserHand")).toBe("3_clubs,5_hearts");

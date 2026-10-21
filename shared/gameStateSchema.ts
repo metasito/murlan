@@ -97,6 +97,7 @@ const gameStateSchema = z
       .optional(),
     playedRanks: playedRanksSchema,
     lastMove,
+    dealtAt: z.number().optional(),
   })
   .superRefine((state, ctx) => {
     const id = repeatedCard(state);

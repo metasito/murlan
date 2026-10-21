@@ -9,7 +9,7 @@ import type { FriendRequestAccepted, FriendRequestIncoming } from "./http.ts";
 import type * as Inbound from "./socketSchemas.ts";
 import type { TranslationParams } from "./i18n.ts";
 
-export const PROTOCOL_VERSION = 12;
+export const PROTOCOL_VERSION = 13;
 export const MIN_PROTOCOL_VERSION = 12;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */

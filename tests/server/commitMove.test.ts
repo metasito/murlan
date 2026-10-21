@@ -134,7 +134,7 @@ test("an exchange logs no replay move, persists, and holds the next seat for the
   useMemoryTableStores(t);
   const { rt, journal } = recordingRuntime({ persist: "real" });
   const persists = () => rowsWritten(journal);
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   try {
     const deck = createDeck();
     const hands = SEATS.map((_, s) => deck.filter((_, i) => i % SEATS.length === s));

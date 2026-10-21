@@ -17,12 +17,12 @@ export interface TurnPolicy {
 /** docs/GAME-RULES.md § Decisions, "The turn clock". */
 export const TURN_POLICY: Readonly<Record<TableKind, Readonly<Record<TurnAction, TurnPolicy>>>> = {
   online: {
-    give: { timed: true, thinks: false },
+    give: { timed: true, thinks: true },
     lead: { timed: true, thinks: true },
     follow: { timed: true, thinks: true },
   },
   offline: {
-    give: { timed: false, thinks: false },
+    give: { timed: false, thinks: true },
     lead: { timed: false, thinks: true },
     follow: { timed: true, thinks: true },
   },

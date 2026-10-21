@@ -41,14 +41,18 @@ function emitTurnDeadline(rt: TableRuntime, roomId: string, game: OnlineGameStat
 }
 
 /**
- * How far into the gates the table already is: a re-arm later in the turn (a walkout, a reclaim)
- * waits out only what is left of them. Only a giveback carries a stamp (`settledAt`); a deal
- * carries none, so a re-arm after one waits its gates again in full.
+ * How far into the gates the table already is: a re-arm later in the turn (a walkout, a reclaim,
+ * a restart) waits out only what is left of them. A move with no stamp is timed from the re-arm.
  */
 function elapsedSinceMove(state: GameState): number {
   const phase = state.exchangePhase;
-  if (state.lastMove.kind !== "giveback" || phase?.kind !== "settled" || phase.settledAt === undefined) return 0;
-  return Math.max(0, now() - phase.settledAt);
+  const at =
+    state.lastMove.kind === "deal"
+      ? state.dealtAt
+      : state.lastMove.kind === "giveback" && phase?.kind === "settled"
+        ? phase.settledAt
+        : undefined;
+  return at === undefined ? 0 : Math.max(0, now() - at);
 }
 
 /** A vacant seat is the bot's. */

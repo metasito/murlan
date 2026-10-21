@@ -67,7 +67,7 @@ const ROWS: Row[] = [
   ...row("pass closing the trick", passedClosingTrick, "lead", [], [], false),
   ...row("pass inside the trick", passedInTrick, "follow", [], [], true),
   ...row("giveback, the opener leads", gaveBack, "lead", ["ceremony"], ["opening"], false),
-  ...row("deal into an open exchange, the winner gives", () => exchangeDealt(false), "give", ["deal", "receive"], [], false, false),
+  ...row("deal into an open exchange, the winner gives", () => exchangeDealt(false), "give", ["deal", "receive"], [], false),
   ...row("deal holding both Jokers", () => exchangeDealt(true), "lead", ["deal", "ceremony"], ["opening"], false),
 ];
 
