@@ -67,44 +67,7 @@ export function viewOf(player: Player, over: Partial<BotView> = {}): BotView {
   };
 }
 
-/**
- * Self-contained so Playwright can ship its source into the page (`String(mulberry32)`): it may
- * reference nothing outside its own body.
- */
-export function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/** `lib/game/gameEngine.ts`'s `RandomSource`, which the deal draws from. */
-interface RandomSource {
-  getRandomValues(array: Uint32Array): Uint32Array;
-}
-
-interface Rng {
-  next: () => number;
-  source: RandomSource;
-}
-
-/** One stream behind both: `next` for a bot's choice, `source` for the deal. */
-export function rng(seed: number): Rng {
-  const next = mulberry32(seed);
-  return {
-    next,
-    source: {
-      getRandomValues(array) {
-        for (let i = 0; i < array.length; i++) array[i] = Math.floor(next() * 0x100000000);
-        return array;
-      },
-    },
-  };
-}
+export { mulberry32, rng } from "../../lib/game/simulate.ts";
 
 /** `count` distinct cards from `deck`. */
 export function sample(deck: Card[], count: number, rand: () => number): Card[] {

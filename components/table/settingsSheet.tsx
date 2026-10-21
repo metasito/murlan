@@ -233,153 +233,154 @@ export function GameSettingsSheet({
           { left: rail, right: 0, zIndex: SHEET_Z },
         ]}
       />
-      <Animated.View
-        testID={SHEET_TESTID}
-        {...a11yDialog(t("gameSettingsSheet.title"))}
-        entering={
-          reduceMotion
-            ? undefined
-            : SlideInLeft.duration(Motion.duration.shift)
-        }
-        style={[
-          sheetStyles.sheetPos,
-          {
-            left: rail,
-            top: topPad,
-            bottom: bottomPad,
-            width: SHEET_W * scale,
-            zIndex: SHEET_Z + 1,
-          },
-        ]}
-      >
-        <LinearGradient
-          colors={SHEET_GRADIENT}
+      {/* The slide starts a screen-width left; unclipped, it covers the knob mid-tap. */}
+      <View style={[sheetStyles.sheetClip, { left: rail, zIndex: SHEET_Z + 1 }]}>
+        <Animated.View
+          testID={SHEET_TESTID}
+          {...a11yDialog(t("gameSettingsSheet.title"))}
+          entering={
+            reduceMotion
+              ? undefined
+              : SlideInLeft.duration(Motion.duration.shift)
+          }
           style={[
-            sheetStyles.sheet,
+            sheetStyles.sheetPos,
             {
-              borderRadius: SHEET_RADIUS * scale,
-              padding: SHEET_PAD * scale,
-              paddingHorizontal: SHEET_PAD_H * scale,
+              top: topPad,
+              bottom: bottomPad,
+              width: SHEET_W * scale,
             },
-            makeShadow(Colors.shadow, 0, SHEET_SHADOW_Y * scale, 0.6, SHEET_SHADOW * scale, 12),
           ]}
         >
-          <TableText style={[sheetStyles.header, { fontSize: tableFontSize(HEADER_FS, scale), letterSpacing: HEADER_TRACKING * scale }]}>
-            {t("gameSettingsSheet.title")}
-          </TableText>
+          <LinearGradient
+            colors={SHEET_GRADIENT}
+            style={[
+              sheetStyles.sheet,
+              {
+                borderRadius: SHEET_RADIUS * scale,
+                padding: SHEET_PAD * scale,
+                paddingHorizontal: SHEET_PAD_H * scale,
+              },
+              makeShadow(Colors.shadow, 0, SHEET_SHADOW_Y * scale, 0.6, SHEET_SHADOW * scale, 12),
+            ]}
+          >
+            <TableText style={[sheetStyles.header, { fontSize: tableFontSize(HEADER_FS, scale), letterSpacing: HEADER_TRACKING * scale }]}>
+              {t("gameSettingsSheet.title")}
+            </TableText>
 
-          {/* flex: 1 is what makes the list fit without scrolling when the
-              rows leave room and scroll cleanly when they don't — the sheet's
-              own height is fixed by `top`/`bottom`, so this is the only part
-              of it free to give. */}
-          <View style={sheetStyles.rowsWrap}>
-            <ScrollView
-              testID="settings-rows"
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ gap: ROW_GAP * scale, flexGrow: 1 }}
-            >
-              {/* The rows keep their own rhythm and sit in the middle of what
-                  they are given: on a tablet the sheet is twice the height five
-                  toggles need, and stretching the gaps would read as a list
-                  with something missing from it. Two shrinkable spacers rather
-                  than `justifyContent`, which centres a list too tall for its
-                  box by pushing the first row out of reach above it. */}
-              <View style={sheetStyles.rowsSlack} />
-              <SheetRow
-                label={t("settings.sounds")}
-                icon={soundsEnabled ? "volume-2" : "volume-x"}
-                a11yLabel={t("settings.soundsA11yLabel")}
-                a11yHint={t("settings.soundsA11yHint")}
-                on={soundsEnabled}
-                onToggle={() => setSoundsEnabled(!soundsEnabled)}
-                scale={scale}
-              />
-              <SheetRow
-                label={t("settings.music")}
-                icon="music"
-                a11yLabel={t("settings.musicA11yLabel")}
-                a11yHint={t("settings.musicA11yHint")}
-                on={musicEnabled}
-                onToggle={() => setMusicEnabled(!musicEnabled)}
-                scale={scale}
-              />
-              {hapticsAvailable && (
+            {/* flex: 1 is what makes the list fit without scrolling when the
+                rows leave room and scroll cleanly when they don't — the sheet's
+                own height is fixed by `top`/`bottom`, so this is the only part
+                of it free to give. */}
+            <View style={sheetStyles.rowsWrap}>
+              <ScrollView
+                testID="settings-rows"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ gap: ROW_GAP * scale, flexGrow: 1 }}
+              >
+                {/* The rows keep their own rhythm and sit in the middle of what
+                    they are given: on a tablet the sheet is twice the height five
+                    toggles need, and stretching the gaps would read as a list
+                    with something missing from it. Two shrinkable spacers rather
+                    than `justifyContent`, which centres a list too tall for its
+                    box by pushing the first row out of reach above it. */}
+                <View style={sheetStyles.rowsSlack} />
                 <SheetRow
-                  label={t("settings.haptics")}
-                  icon="smartphone"
-                  a11yLabel={t("settings.hapticsA11yLabel")}
-                  a11yHint={t("settings.hapticsA11yHint")}
-                  on={hapticsEnabled}
-                  onToggle={() => setHapticsEnabled(!hapticsEnabled)}
+                  label={t("settings.sounds")}
+                  icon={soundsEnabled ? "volume-2" : "volume-x"}
+                  a11yLabel={t("settings.soundsA11yLabel")}
+                  a11yHint={t("settings.soundsA11yHint")}
+                  on={soundsEnabled}
+                  onToggle={() => setSoundsEnabled(!soundsEnabled)}
                   scale={scale}
                 />
-              )}
-              <SheetRow
-                label={t("gameSettingsSheet.focusMode")}
-                icon="eye"
-                hint={t("gameSettingsSheet.focusModeHint")}
-                a11yHint={t("gameSettingsSheet.focusModeA11yHint")}
-                on={focusMode}
-                onToggle={onToggleFocusMode}
-                scale={scale}
+                <SheetRow
+                  label={t("settings.music")}
+                  icon="music"
+                  a11yLabel={t("settings.musicA11yLabel")}
+                  a11yHint={t("settings.musicA11yHint")}
+                  on={musicEnabled}
+                  onToggle={() => setMusicEnabled(!musicEnabled)}
+                  scale={scale}
+                />
+                {hapticsAvailable && (
+                  <SheetRow
+                    label={t("settings.haptics")}
+                    icon="smartphone"
+                    a11yLabel={t("settings.hapticsA11yLabel")}
+                    a11yHint={t("settings.hapticsA11yHint")}
+                    on={hapticsEnabled}
+                    onToggle={() => setHapticsEnabled(!hapticsEnabled)}
+                    scale={scale}
+                  />
+                )}
+                <SheetRow
+                  label={t("gameSettingsSheet.focusMode")}
+                  icon="eye"
+                  hint={t("gameSettingsSheet.focusModeHint")}
+                  a11yHint={t("gameSettingsSheet.focusModeA11yHint")}
+                  on={focusMode}
+                  onToggle={onToggleFocusMode}
+                  scale={scale}
+                />
+                <SheetRow
+                  label={t("gameSettingsSheet.playOnLeft")}
+                  icon="corner-down-left"
+                  hint={t("gameSettingsSheet.playOnLeftHint")}
+                  a11yHint={t("gameSettingsSheet.playOnLeftA11yHint")}
+                  on={playOnLeft}
+                  onToggle={onTogglePlayOnLeft}
+                  scale={scale}
+                />
+                <View style={sheetStyles.rowsSlack} />
+              </ScrollView>
+              <LinearGradient
+                pointerEvents="none"
+                colors={ROWS_FADE_GRADIENT}
+                style={[sheetStyles.rowsFade, { height: ROWS_FADE_H * scale }]}
               />
-              <SheetRow
-                label={t("gameSettingsSheet.playOnLeft")}
-                icon="corner-down-left"
-                hint={t("gameSettingsSheet.playOnLeftHint")}
-                a11yHint={t("gameSettingsSheet.playOnLeftA11yHint")}
-                on={playOnLeft}
-                onToggle={onTogglePlayOnLeft}
-                scale={scale}
-              />
-              <View style={sheetStyles.rowsSlack} />
-            </ScrollView>
-            <LinearGradient
-              pointerEvents="none"
-              colors={ROWS_FADE_GRADIENT}
-              style={[sheetStyles.rowsFade, { height: ROWS_FADE_H * scale }]}
-            />
-          </View>
+            </View>
 
-          <View style={[sheetStyles.divider, { marginVertical: DIVIDER_MARGIN_V * scale }]} />
+            <View style={[sheetStyles.divider, { marginVertical: DIVIDER_MARGIN_V * scale }]} />
 
-          <Pressable
-            testID="settings-exit"
-            onPress={onExit}
-            accessibilityRole="button"
-            accessibilityLabel={t("gameSettingsSheet.exit")}
-            style={({ pressed }) => [pressed && sheetStyles.exitPressed]}
-          >
-            <LinearGradient
-              colors={EXIT_GRADIENT}
-              locations={EXIT_GRADIENT_LOCATIONS}
-              style={[
-                sheetStyles.exit,
-                {
-                  borderRadius: EXIT_RADIUS * scale,
-                  paddingVertical: EXIT_PAD_V * scale,
-                  // The floor is physical, never `TOUCH_TARGET_MIN * scale`: padding
-                  // around a scaled label shrinks straight through it on a small phone.
-                  // The rows list above is the part of the sheet free to give, and it
-                  // scrolls.
-                  minHeight: physicalTouchTarget(scale),
-                },
-              ]}
+            <Pressable
+              testID="settings-exit"
+              onPress={onExit}
+              accessibilityRole="button"
+              accessibilityLabel={t("gameSettingsSheet.exit")}
+              style={({ pressed }) => [pressed && sheetStyles.exitPressed]}
             >
-              <TableText
-                {...a11yHidden()}
-                style={[sheetStyles.exitLabel, { fontSize: tableFontSize(EXIT_FS, scale), letterSpacing: EXIT_TRACKING * scale }]}
+              <LinearGradient
+                colors={EXIT_GRADIENT}
+                locations={EXIT_GRADIENT_LOCATIONS}
+                style={[
+                  sheetStyles.exit,
+                  {
+                    borderRadius: EXIT_RADIUS * scale,
+                    paddingVertical: EXIT_PAD_V * scale,
+                    // The floor is physical, never `TOUCH_TARGET_MIN * scale`: padding
+                    // around a scaled label shrinks straight through it on a small phone.
+                    // The rows list above is the part of the sheet free to give, and it
+                    // scrolls.
+                    minHeight: physicalTouchTarget(scale),
+                  },
+                ]}
               >
-                {t("gameSettingsSheet.exit")}
-              </TableText>
-            </LinearGradient>
-          </Pressable>
+                <TableText
+                  {...a11yHidden()}
+                  style={[sheetStyles.exitLabel, { fontSize: tableFontSize(EXIT_FS, scale), letterSpacing: EXIT_TRACKING * scale }]}
+                >
+                  {t("gameSettingsSheet.exit")}
+                </TableText>
+              </LinearGradient>
+            </Pressable>
 
-          <TableText style={[sheetStyles.foot, { fontSize: tableFontSize(FOOT_FS, scale), marginTop: FOOT_MARGIN * scale }]}>
-            {t("gameSettingsSheet.footnote")}
-          </TableText>
-        </LinearGradient>
-      </Animated.View>
+            <TableText style={[sheetStyles.foot, { fontSize: tableFontSize(FOOT_FS, scale), marginTop: FOOT_MARGIN * scale }]}>
+              {t("gameSettingsSheet.footnote")}
+            </TableText>
+          </LinearGradient>
+        </Animated.View>
+      </View>
     </>
   );
 }
@@ -393,7 +394,8 @@ const sheetStyles = StyleSheet.create({
     bottom: 0,
     backgroundColor: Scrim.medium,
   },
-  sheetPos: { position: "absolute" },
+  sheetClip: { position: "absolute", top: 0, right: 0, bottom: 0, overflow: "hidden", pointerEvents: "box-none" },
+  sheetPos: { position: "absolute", left: 0 },
   sheet: {
     flex: 1,
     borderWidth: 1,
