@@ -7,8 +7,10 @@ import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import type { GameMode, GameState, MatchLength, Player } from "../../lib/game/gameEngine.ts";
 import { emptyRankTally } from "../../lib/game/gameEngine.ts";
+import { card } from "../support/game.ts";
 
 const ROOM = "room_verdict";
+const HELD = [card("3", "spades"), card("4", "spades"), card("5", "spades")];
 
 const { rt } = recordingRuntime();
 
@@ -16,7 +18,7 @@ function seat(id: string, team: "A" | "B" | undefined, handSize: number): Player
   return {
     id,
     name: id,
-    hand: Array.from({ length: handSize }, () => ({ rank: "3", suit: "spades" }) as never),
+    hand: HELD.slice(0, handSize),
     type: "human",
     team,
   };

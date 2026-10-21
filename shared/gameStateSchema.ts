@@ -3,7 +3,7 @@
 // purpose; this one is exact, because a state that parses here is handed straight to the engine.
 import { z } from "zod";
 import { isBotPersonalityId, type BotPersonalityId } from "../lib/game/botPersonalities.ts";
-import { DECK_BY_STRENGTH, RANK_SLOTS, exchangeIsSatisfiable, type GameState } from "../lib/game/gameEngine.ts";
+import { DECK_BY_STRENGTH, RANK_SLOTS, exchangeIsSatisfiable, type GameMode, type GameState, type MatchLength } from "../lib/game/gameEngine.ts";
 
 export const UNSATISFIABLE_EXCHANGE = "an open exchange nobody can give back from";
 
@@ -39,19 +39,28 @@ const lastMove = z.union([
   z.object({ seq: z.number().int().nonnegative(), kind: z.literal("giveback"), seat }),
 ]);
 
-const playedRanks = z
+export const gameModeSchema = z.enum(["free_for_all", "teams"]);
+export const matchLengthSchema = z.enum(["match", "single"]);
+
+export const playedRanksSchema = z
   .array(z.number().int().nonnegative())
   .length(RANK_SLOTS, `a played-rank tally of other than ${RANK_SLOTS} ranks`)
   .refine((tally) => tally.every((n, i) => n <= DECK_BY_STRENGTH[i]), "more of a rank played than the deck holds");
 
-export const gameStateSchema = z
+function repeatedCard(state: GameState): string | undefined {
+  const seen = new Set<string>();
+  const held = state.players.flatMap((p) => p.hand).concat(state.lastPlayedCombination?.cards ?? []);
+  return held.find(({ id }) => seen.size === seen.add(id).size)?.id;
+}
+
+const gameStateSchema = z
   .object({
     players: z.array(player).min(1, "no players"),
     currentTurnIndex: z.number().int(),
     lastPlayedCombination: combination.nullable(),
     lastPlayedBy: z.number().int(),
     passCount: z.number().int().nonnegative(),
-    gameMode: z.enum(["free_for_all", "teams"]),
+    gameMode: gameModeSchema,
     trickWinner: z.number().int().nullable(),
     roundOver: z.boolean(),
     finishingOrder: z.array(z.string()),
@@ -75,14 +84,20 @@ export const gameStateSchema = z
         settledAt: z.number().optional(),
       })
       .optional(),
-    playedRanks,
+    playedRanks: playedRanksSchema,
     lastMove,
+  })
+  .superRefine((state, ctx) => {
+    const id = repeatedCard(state);
+    if (id !== undefined) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `card ${id} more than once` });
   })
   .refine((state) => exchangeIsSatisfiable(state), UNSATISFIABLE_EXCHANGE);
 
-type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+export type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 const declaresGameState: Same<z.infer<typeof gameStateSchema>, GameState> = true;
-void declaresGameState;
+const declaresGameMode: Same<z.infer<typeof gameModeSchema>, GameMode> = true;
+const declaresMatchLength: Same<z.infer<typeof matchLengthSchema>, MatchLength> = true;
+void [declaresGameState, declaresGameMode, declaresMatchLength];
 
 export type GameStateParse = { ok: true; state: GameState } | { ok: false; reason: string };
 

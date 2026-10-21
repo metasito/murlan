@@ -16,7 +16,7 @@ import { applyRoundFold } from "../../server/game/matchLedger.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
-import { emptyRankTally } from "../../lib/game/gameEngine.ts";
+import { emptyRankTally, getRankStrength } from "../../lib/game/gameEngine.ts";
 
 const ROOM = "seat-reclaim-room";
 
@@ -45,7 +45,7 @@ function midRound(): GameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
-    playedRanks: emptyRankTally(),
+    playedRanks: emptyRankTally().map((n, i) => (i === getRankStrength("3") ? 1 : n)),
     lastMove: { seq: 0, kind: "deal" },
   };
 }

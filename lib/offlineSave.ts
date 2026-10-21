@@ -11,7 +11,7 @@
 import { z } from "zod";
 import type { GameState } from "./game/gameEngine.ts";
 import type { MatchState } from "./game/matchState.ts";
-import { parseGameState } from "../shared/gameStateSchema.ts";
+import { matchLengthSchema, parseGameState, type Same } from "../shared/gameStateSchema.ts";
 
 /**
  * Bumped whenever the stored shape changes. A blob written by an older build is
@@ -40,7 +40,7 @@ export function encodeOfflineSave(save: Omit<OfflineSave, "version">): string {
 const points = z.record(z.number().finite());
 
 const matchSchema = z.object({
-  length: z.enum(["match", "single"]),
+  length: matchLengthSchema,
   target: z.number().int().min(1),
   over: z.boolean(),
   winners: z.array(z.string()),
@@ -49,7 +49,6 @@ const matchSchema = z.object({
   rounds: z.array(z.object({ finishingOrder: z.array(z.string()), pointsAwarded: points })),
 });
 
-type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 const declaresMatchState: Same<z.infer<typeof matchSchema>, MatchState> = true;
 void declaresMatchState;
 

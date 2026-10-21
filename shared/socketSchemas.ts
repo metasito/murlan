@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { gameModeSchema, matchLengthSchema } from "./gameStateSchema.ts";
 
 /**
  * Runtime schemas for every inbound socket event.
@@ -9,7 +10,6 @@ import { z } from "zod";
  * taking the whole process down for every table on the server.
  */
 
-const GameModeSchema = z.enum(["free_for_all", "teams"]);
 const IdSchema = z.string().min(1).max(64);
 
 /** Events that carry no payload still receive `undefined` from socket.io. */
@@ -18,7 +18,7 @@ export const NoPayloadSchema = z
   .transform(() => ({}));
 
 export const RoomCreateSchema = z.object({
-  gameMode: GameModeSchema,
+  gameMode: gameModeSchema,
   maxPlayers: z.number().int().min(2).max(4),
 });
 
@@ -47,7 +47,7 @@ export const RoomSetVisibilitySchema = z.object({
 
 export const RoomQuickmatchSchema = z.object({
   maxPlayers: z.number().int().min(2).max(4),
-  gameMode: GameModeSchema,
+  gameMode: gameModeSchema,
 });
 
 // Not a strict enum of BOT_PERSONALITIES: a client on an older bundle can
@@ -57,7 +57,6 @@ export const RoomQuickmatchSchema = z.object({
 // fallback. IdSchema's bound is enough to keep this a bot-personality-shaped
 // string rather than an open field.
 const BotPersonalitySchema = IdSchema;
-const MatchLengthSchema = z.enum(["match", "single"]);
 
 /**
  * `room:start` is emitted with no payload from most call sites (rematch,
@@ -72,7 +71,7 @@ export const RoomStartSchema = z
     z.object({
       fillWithBots: z.boolean().optional(),
       botPersonality: BotPersonalitySchema.optional(),
-      matchLength: MatchLengthSchema.optional(),
+      matchLength: matchLengthSchema.optional(),
     }),
   ])
   .transform((v) => v ?? {});

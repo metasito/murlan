@@ -3,6 +3,7 @@
 // tests/server/protocolVersion.test.ts holds the file, tests/server/storedShapeVersions.test.ts
 // the types. Raise MIN_PROTOCOL_VERSION to turn away the bundles a change breaks.
 import { z } from "zod";
+import { matchLengthSchema, playedRanksSchema } from "./gameStateSchema.ts";
 import type { GameState, MatchLength, Player } from "../lib/game/gameEngine.ts";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "./http.ts";
 import type * as Inbound from "./socketSchemas.ts";
@@ -155,7 +156,7 @@ export const gameStateSchema = z
     currentTurnIndex: z.number(),
     roundOver: z.boolean(),
     finishingOrder: z.array(z.string()).default([]),
-    playedRanks: z.array(z.number()),
+    playedRanks: playedRanksSchema,
   })
   .passthrough();
 
@@ -187,7 +188,7 @@ const roundOverFields = z.object({
   finishingOrder: z.array(z.string()),
   scores: z.array(scoreLine),
   matchTarget: z.number(),
-  matchLength: z.enum(["match", "single"]),
+  matchLength: matchLengthSchema,
   roundsPlayed: z.number(),
   matchOver: z.boolean(),
   matchWinnerIds: z.array(z.string()),

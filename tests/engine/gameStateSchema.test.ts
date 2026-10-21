@@ -54,6 +54,16 @@ describe("states the engine could not have written", () => {
     assert.match(reason(state({ lastMove: { seq: 3, kind: "deal" } as never })), /^game state lastMove: /);
   });
 
+  test("a card dealt twice, held twice or held while on the pile", () => {
+    const four = card("4", "clubs");
+    assert.match(reason(state({ players: [seat(0, [four, four]), seat(1)] })), /4_clubs more than once/);
+    assert.match(reason(state({ players: [seat(0, [four]), seat(1, [four])] })), /4_clubs more than once/);
+    assert.match(
+      reason(state({ players: [seat(0, [four]), seat(1)], lastPlayedCombination: { type: "single", cards: [four], strength: 1 } })),
+      /4_clubs more than once/
+    );
+  });
+
   test("anything that is not an object", () => {
     for (const raw of [null, undefined, [], "state", 4]) assert.equal(reason(raw), "no game state");
   });

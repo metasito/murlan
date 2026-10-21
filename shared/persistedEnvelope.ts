@@ -2,7 +2,7 @@
 // without importing the server.
 import { z } from "zod";
 import type { GameState } from "../lib/game/gameEngine.ts";
-import { parseGameState } from "./gameStateSchema.ts";
+import { gameModeSchema, matchLengthSchema, parseGameState } from "./gameStateSchema.ts";
 
 const isSeat = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value >= 0;
@@ -108,10 +108,10 @@ export const persistedMatchSchema = z.object({
       .finite("scores are not all numbers"),
     { required_error: "scores are not all numbers", invalid_type_error: "scores are not all numbers" },
   ),
-  gameMode: z.enum(["free_for_all", "teams"], {
+  gameMode: z.enum(gameModeSchema.options, {
     errorMap: (_iss, ctx) => ({ message: `game mode ${String(ctx.data)}` }),
   }),
-  matchLength: z.enum(["match", "single"], {
+  matchLength: z.enum(matchLengthSchema.options, {
     errorMap: (_iss, ctx) => ({ message: `match length ${String(ctx.data)}` }),
   }),
   matchTarget: z
