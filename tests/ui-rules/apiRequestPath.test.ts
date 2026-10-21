@@ -9,6 +9,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import ts from "typescript";
+import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const owner = "lib/query-client.ts";
@@ -114,9 +115,9 @@ test("fetch, getApiUrl and requestOf appear only as calls, each one named here",
 });
 
 test("every top-level directory with TypeScript in it is scanned or named as not client code", () => {
-  const unaccounted = readdirSync(repoRoot, { withFileTypes: true })
-    .filter((e) => !scanned.includes(e.name) && !(e.name in notClient))
-    .filter((e) => (e.isDirectory() ? sourceFiles(e.name).length > 0 : isSource(e.name)))
-    .map((e) => e.name);
-  assert.deepEqual(unaccounted, []);
+  const unaccounted = trackedFiles(repoRoot)
+    .filter(isSource)
+    .map((f) => f.split("/")[0])
+    .filter((top) => !scanned.includes(top) && !(top in notClient));
+  assert.deepEqual([...new Set(unaccounted)], []);
 });
