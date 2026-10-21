@@ -28,7 +28,7 @@ import type { BotPersonalityId } from "../../../lib/game/botPersonalities.ts";
 import { captureGameState, type CaptureState } from "../../../lib/captureStates.ts";
 import { encodeOfflineSave, OFFLINE_SAVE_VERSION, type OfflineSave } from "../../../lib/offlineSave.ts";
 import { E2E_SUSPEND_BOT_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../../lib/storageKeys.ts";
-import { state } from "../../support/game.ts";
+import { aThreePlayed, state } from "../../support/game.ts";
 
 /** Bot names and personalities as app/lobby.tsx fills empty seats. */
 const BOTS = [
@@ -118,8 +118,10 @@ export function offlineSave(o: SaveOptions): OfflineSave {
     currentTurnIndex: o.turn ?? 0,
     lastPlayedBy: -1,
     // Past the opening, so nothing is waiting on the 3 of spades and the
-    // table renders as a round in progress rather than a first move.
+    // table renders as a round in progress rather than a first move — which
+    // takes a tally with a card on it, or `roundUnplayed` deals the table again.
     firstPlayMade: true,
+    ...(o.state?.firstPlayMade !== false && { playedRanks: aThreePlayed() }),
     ...(o.pile && { lastPlayedCombination: buildCombination(cards(o.pile.cards)), lastPlayedBy: o.pile.by }),
     ...o.state,
   });
