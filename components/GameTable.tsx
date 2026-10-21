@@ -38,7 +38,6 @@ import {
 import { handCountOf } from "@/shared/protocol";
 import type { CardFrom } from "@/components/flightPose";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
-import { turnKey } from "@/components/passes";
 import { tableLayout, type Seating } from "@/components/tableLayout";
 import { useTableExchange } from "@/components/table/useTableExchange";
 import { FloatSlot } from "@/components/table/notices/floats";
@@ -642,9 +641,7 @@ export function GameTable({
     isMyTurn: turnShown,
     isFinished,
     canPass,
-    passCount: gameState.passCount,
-    lastPlayedCombination: gameState.lastPlayedCombination,
-    trickWinner: gameState.trickWinner,
+    lastMove: gameState.lastMove,
     roundOver: gameState.roundOver,
     outcome: scoredOutcome(outcome, gameState.finishingOrder, placementPoints),
     matchOutcome: matchOver ? matchOutcome : "pending",
@@ -678,7 +675,7 @@ export function GameTable({
   } = usePileFlight({
     lastPlayedCombination: gameState.lastPlayedCombination,
     lastPlayedBy: gameState.lastPlayedBy,
-    trickWinner: gameState.trickWinner,
+    lastMove: gameState.lastMove,
     roundOver: gameState.roundOver,
     matchOver,
     viewerWon: (matchOver ? matchOutcome : outcome) === "won",
@@ -877,7 +874,7 @@ export function GameTable({
     isNewTrick,
     holdingForStart,
     held: clockHeld,
-    turnToken: turnKey(gameState),
+    turnToken: String(gameState.lastMove.seq),
     t,
   });
   const countdown = useCountdown(turn.window);

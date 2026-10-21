@@ -145,7 +145,7 @@ const LED: GameState = {
   finishingOrder: [],
   firstPlayMade: true,
   playedRanks: aThreePlayed(),
-  lastMove: { seq: 0, kind: 'deal' },
+  lastMove: { seq: 1, kind: 'play', seat: 1 },
 };
 const METRICS = { frame: { x: 0, y: 0, width: 874, height: 402 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } };
 const noop = () => {};
@@ -157,7 +157,7 @@ const table = (state: GameState, viewerSeat: number, spectating = false) => (
 const floats = () => screen.queryAllByTestId(PLATE, hidden).length;
 
 describe('the table puts up the viewer’s own pass', () => {
-  const passed = { ...LED, currentTurnIndex: 3, passCount: 1 };
+  const passed: GameState = { ...LED, currentTurnIndex: 3, passCount: 1, lastMove: { seq: 2, kind: 'pass', seat: 0, closedTrick: false } };
 
   it('when the viewer passes, and not when another seat does', async () => {
     const r = await render(table(LED, 0));
@@ -196,8 +196,9 @@ describe('the table puts up the viewer’s own pass', () => {
       lastPlayedBy: 3,
       currentTurnIndex: 0,
       passCount: 2,
-    };
-    const closedByAna = { ...drinPlayedTwoPassed, lastPlayedCombination: null, trickWinner: 3, currentTurnIndex: 3, passCount: 0 };
+      lastMove: { seq: 9, kind: 'pass', seat: 1, closedTrick: false },
+    } satisfies GameState;
+    const closedByAna: GameState = { ...drinPlayedTwoPassed, lastPlayedCombination: null, trickWinner: 3, currentTurnIndex: 3, passCount: 0, lastMove: { seq: 10, kind: 'pass', seat: 0, closedTrick: true } };
     const r = await render(table(LED, 0));
     await r.rerender(table(passed, 0));
     expect(await said()).toBe(1);
@@ -209,8 +210,8 @@ describe('the table puts up the viewer’s own pass', () => {
   });
 
   it('when the viewer’s pass is the one that closes the trick', async () => {
-    const lastToAnswer = { ...LED, currentTurnIndex: 2, passCount: 2 };
-    const closed = { ...LED, currentTurnIndex: 1, passCount: 0, lastPlayedCombination: null, trickWinner: 1 };
+    const lastToAnswer: GameState = { ...LED, currentTurnIndex: 2, passCount: 2, lastMove: { seq: 3, kind: 'pass', seat: 3, closedTrick: false } };
+    const closed: GameState = { ...LED, currentTurnIndex: 1, passCount: 0, lastPlayedCombination: null, trickWinner: 1, lastMove: { seq: 4, kind: 'pass', seat: 2, closedTrick: true } };
     const r = await render(table(lastToAnswer, 2));
     await r.rerender(table(closed, 2));
     expect(floats()).toBe(1);

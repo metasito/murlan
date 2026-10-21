@@ -73,7 +73,6 @@ jest.mock('@/components/GameTable', () => {
 });
 
 import { bootFeedback, haptics, sounds } from './helpers/feedback';
-import { turnKey } from '@/components/passes';
 import GameScreen from '@/app/game';
 
 const mount = (ui: React.ReactElement) =>
@@ -103,7 +102,7 @@ describe('the offline turn clock expiring', () => {
     expect(shown).toEqual([]);
     expect(mockSeenTimer.autoPassed).toBe((before ?? 0) + 1);
     expect(mockPassTurn).toHaveBeenCalledTimes(1);
-    expect(mockPassTurn).toHaveBeenCalledWith(turnKey(mockState));
+    expect(mockPassTurn).toHaveBeenCalledWith(mockState.lastMove);
 
     await r.unmount();
   });

@@ -14,7 +14,7 @@ import { bootFeedback, settle, sounds } from './helpers/feedback';
 import { GameTable } from '@/components/GameTable';
 import { PILE_UP_WINDOW_MS } from '@/lib/device/moments';
 import { OpponentSeat } from '@/components/table/seats';
-import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
+import type { Card, Combination, GameState, LastMove, Player } from '@/lib/game/gameEngine';
 import { en as locale } from '@/locales/en';
 import { setMotion } from './harness/env';
 import { aThreePlayed } from '../support/game';
@@ -51,7 +51,19 @@ const seat = (i: number, name: string): Player => ({
 
 const NAMES = ['Ana', 'Besi', 'Cimi', 'Drin'];
 
+/**
+ * The move a state shaped like this records. Turns run downward, so the seat that passed is the one
+ * above the seat on move; a trick closed by a pass leaves its winner on move.
+ */
+const moveOf = (count: number, s: Partial<GameState>): LastMove => {
+  const passer = ((s.currentTurnIndex ?? 0) + 1) % count;
+  if (s.lastPlayedCombination === null && s.trickWinner != null) return { seq: 1 + count, kind: 'pass', seat: passer, closedTrick: true };
+  if ((s.passCount ?? 0) > 0) return { seq: 1 + s.passCount!, kind: 'pass', seat: passer, closedTrick: false };
+  return s.lastPlayedCombination ? { seq: 1, kind: 'play', seat: s.lastPlayedBy! } : { seq: 0, kind: 'deal' };
+};
+
 const state = (count: number, over: Partial<GameState>): GameState => ({
+  lastMove: moveOf(count, over),
   players: Array.from({ length: count }, (_, i) => seat(i, NAMES[i])),
   currentTurnIndex: 0,
   lastPlayedCombination: null,
@@ -63,7 +75,6 @@ const state = (count: number, over: Partial<GameState>): GameState => ({
   finishingOrder: [],
   firstPlayMade: true,
   playedRanks: aThreePlayed(),
-  lastMove: { seq: 0, kind: 'deal' },
   ...over,
 });
 

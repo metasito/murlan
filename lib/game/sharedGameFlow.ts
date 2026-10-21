@@ -1,4 +1,5 @@
 import type { Card, GameState } from "@/lib/game/gameEngine";
+import { moveSince } from "./moves.ts";
 
 export interface ExchangeAnnounceData {
   winnerName: string;
@@ -43,19 +44,18 @@ export function buildExchangeAnnounce(
 
 /**
  * What one committed state announces, given the one it replaces: the give closing the phase, or a
- * two-joker deal arriving. `prev` is null when nothing was seen before. A fresh deal opening the
- * phase announces nothing; the table draws the receive from the phase itself.
+ * two-joker deal arriving. `prev` is null when nothing was seen before, and then the deal counts as
+ * unseen. A fresh deal opening the phase announces nothing; the table draws the receive from the phase.
  */
 export function exchangeAnnouncementOf(prev: GameState | null, next: GameState): ExchangeAnnounceData | null {
-  if (prev === next) return null;
   const phase = next.exchangePhase;
-  if (!phase || phase.active) return null;
-  if (prev?.exchangePhase?.active) {
+  const move = moveSince(prev?.lastMove, next.lastMove);
+  if (!move || !phase || phase.active) return null;
+  if (move.kind === "giveback" && prev?.exchangePhase?.active) {
     // Online's closing state withholds `cardFromLoser`, so the received card is read from `prev`.
     const received = prev.exchangePhase.cardFromLoser;
     const given = phase.cardToLoser;
     return received || given ? buildExchangeAnnounce(next.players, phase, { given, received }) : null;
   }
-  const jokersBefore = prev?.exchangePhase?.twoJokerException === true && (!prev.roundOver || next.roundOver);
-  return phase.twoJokerException && !jokersBefore ? buildExchangeAnnounce(next.players, phase) : null;
+  return phase.twoJokerException && (!prev || move.kind === "deal") ? buildExchangeAnnounce(next.players, phase) : null;
 }

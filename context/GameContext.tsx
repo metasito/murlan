@@ -11,6 +11,7 @@ import React, {
 import {
   GameState,
   GameMode,
+  type LastMove,
   MatchLength,
   actingSeat,
   applyMove,
@@ -23,7 +24,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform, Settings } from "react-native";
 import { initializeOpeningAt, E2E_OPENER_KEY } from "@/lib/e2eOpener";
 import { opener } from "@/lib/e2eConfig";
-import { turnKey } from "@/components/passes";
+import { moveSince } from "@/lib/game/moves";
 import {
   OFFLINE_SAVE_KEY,
   decodeOfflineSave,
@@ -60,8 +61,8 @@ export interface LocalTable {
   exchangeAnnouncing: boolean;
   exchangeAnnounceData: ExchangeAnnounceData | null;
   playCards: (cardIds: string[]) => boolean;
-  /** `expectedTurn` is the `turnKey` the caller saw; a pass for a turn that has since moved on is refused. */
-  passTurn: (expectedTurn?: string) => boolean;
+  /** `expectedTurn` is the move the caller saw; a pass for a turn that has since moved on is refused. */
+  passTurn: (expectedTurn?: LastMove) => boolean;
   runBotTurn: () => void;
   chooseExchangeCard: (cardId: string) => void;
   acknowledgeExchange: () => void;
@@ -174,9 +175,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const playCards = useCallback((cardIds: string[]) => act({ kind: "play", cardIds }), [act]);
 
   const passTurn = useCallback(
-    (expectedTurn?: string): boolean => {
+    (expectedTurn?: LastMove): boolean => {
       const state = stateRef.current?.state;
-      if (expectedTurn !== undefined && (!state || expectedTurn !== turnKey(state))) return false;
+      if (expectedTurn !== undefined && (!state || moveSince(expectedTurn, state.lastMove))) return false;
       return act({ kind: "pass" });
     },
     [act]

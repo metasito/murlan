@@ -80,8 +80,8 @@ const onFelt = (card: Card) =>
   within(screen.getByTestId('pile-area')).queryByLabelText(cardSpokenName(card, t));
 
 /** Seat 1 leads the King; seat 0's pass closes the trick in seat 1's favour. */
-const LED = state({ lastPlayedCombination: single(KING), lastPlayedBy: 1, currentTurnIndex: 0 });
-const CLOSED = state({ lastPlayedCombination: null, lastPlayedBy: 1, trickWinner: 1 });
+const LED = state({ lastPlayedCombination: single(KING), lastPlayedBy: 1, currentTurnIndex: 0, lastMove: { seq: 1, kind: 'play', seat: 1 } });
+const CLOSED = state({ lastPlayedCombination: null, lastPlayedBy: 1, trickWinner: 1, lastMove: { seq: 2, kind: 'pass', seat: 0, closedTrick: true } });
 
 beforeEach(() => setMotion('on'));
 
@@ -150,7 +150,7 @@ describe('the pass that closes a trick', () => {
     await act(async () => {
       jest.advanceTimersByTime(200);
       r.rerender(
-        table(state({ lastPlayedCombination: single(ACE), lastPlayedBy: 1, trickWinner: 1 }))
+        table(state({ lastPlayedCombination: single(ACE), lastPlayedBy: 1, trickWinner: 1, lastMove: { seq: 3, kind: 'play', seat: 1 } }))
       );
     });
     await act(async () => {
@@ -200,7 +200,7 @@ describe('the pass that closes a trick', () => {
       await act(async () => {
         jest.advanceTimersByTime(BOT_DELAY_MS);
         r.rerender(
-          table(state({ lastPlayedCombination: single(ACE), lastPlayedBy: 1, trickWinner: 1 }))
+          table(state({ lastPlayedCombination: single(ACE), lastPlayedBy: 1, trickWinner: 1, lastMove: { seq: 3, kind: 'play', seat: 1 } }))
         );
       });
       expect(swept(KING)).toBeTruthy();

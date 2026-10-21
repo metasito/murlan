@@ -1,8 +1,8 @@
-// Which turn the table is on, and who has passed in it.
+// Who has passed in the trick on the table, and which play is on it.
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import type { Combination, GameState } from "@/lib/game/gameEngine";
+import type { Combination } from "@/lib/game/gameEngine";
 
 /**
  * Identity of a played combination. Two different players playing the same
@@ -11,34 +11,6 @@ import type { Combination, GameState } from "@/lib/game/gameEngine";
  */
 export function comboKey(combo: Combination, playedBy: number): string {
   return combo.cards.map((c) => c.id).join(",") + "_" + playedBy;
-}
-
-/** Changes on every move and every pass, including the same seat leading a new trick after winning one. */
-export function turnKey(
-  state: Pick<GameState, "currentTurnIndex" | "passCount" | "lastPlayedCombination" | "lastPlayedBy">,
-): string {
-  return (
-    `${state.currentTurnIndex}|${state.passCount}|` +
-    (state.lastPlayedCombination ? comboKey(state.lastPlayedCombination, state.lastPlayedBy) : "-")
-  );
-}
-
-/**
- * The pass that just closed a trick, seen from one state. `processPass`
- * (lib/game/gameEngine.ts) clears `lastPlayedCombination` and credits `trickWinner`
- * in the same transition, so the table gets both on a single commit — and the
- * winning cards must stay on the felt under the tag that announces them
- * instead of being wiped by the empty-table branch.
- */
-export function trickClosedWithWinner(state: {
-  lastPlayedCombination: Combination | null;
-  trickWinner?: number | null;
-}): boolean {
-  return (
-    state.lastPlayedCombination === null &&
-    state.trickWinner !== null &&
-    state.trickWinner !== undefined
-  );
 }
 
 /**
@@ -73,18 +45,4 @@ export function passedSeats(state: {
     passed.push(seat);
   }
   return passed;
-}
-
-type PassView = Parameters<typeof passedSeats>[0] & { trickWinner?: number | null };
-
-/**
- * The seats one change of state shows passing: each `passedSeats` names anew, and the seat on move
- * when a pass closed the trick, which `passedSeats` never names because the trick is gone with it.
- */
-export function seatsJustPassed(before: PassView, after: PassView): number[] {
-  const was = passedSeats(before);
-  const now = passedSeats(after).filter((seat) => !was.includes(seat));
-  const closedByPass =
-    before.lastPlayedCombination !== null && trickClosedWithWinner(after) && after.lastPlayedBy === before.lastPlayedBy;
-  return closedByPass ? [...now, before.currentTurnIndex] : now;
 }

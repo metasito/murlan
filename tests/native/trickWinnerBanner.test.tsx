@@ -21,6 +21,7 @@ import { GameTable } from '@/components/GameTable';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
 import { setMotion } from './harness/env';
 import { aThreePlayed } from '../support/game';
+import { replayStateAt, type ReplayDto } from '@/lib/game/replay';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -29,6 +30,8 @@ const METRICS = {
 
 const WINNER = 'Besi';
 const WINNER_SEAT = 1;
+/** `botMoveDelayMs()`'s default: the least time between two seats' moves. */
+const BOT_DELAY_MS = 1200;
 
 const KING: Card = { id: 'K_hearts', rank: 'K', suit: 'hearts', isJoker: false };
 const LED: Combination = { type: 'single', cards: [KING], strength: 13 };
@@ -51,12 +54,12 @@ const state = (over: Partial<GameState>): GameState => ({
   ...over,
 });
 
-/** The pass that closed the trick in the winner's favour. */
-const closed = () => state({ trickWinner: WINNER_SEAT });
+/** The pass that closed the trick in the winner's favour, as move `seq`. */
+const closed = (seq: number) => state({ trickWinner: WINNER_SEAT, lastMove: { seq, kind: 'pass', seat: 0, closedTrick: true } });
 /** The winner leading the next trick; `trickWinner` still stands. */
-const leading = () => state({ lastPlayedCombination: LED, trickWinner: WINNER_SEAT });
+const leading = (seq: number) => state({ lastPlayedCombination: LED, trickWinner: WINNER_SEAT, lastMove: { seq, kind: 'play', seat: WINNER_SEAT } });
 /** A pass that closed nothing, three-handed. */
-const between = () => state({ trickWinner: null });
+const between = (seq: number) => state({ trickWinner: null, lastMove: { seq, kind: 'pass', seat: 0, closedTrick: false } });
 
 const noop = () => {};
 
@@ -104,7 +107,7 @@ describe('the trick-winner tag', () => {
   });
 
   it('shows the winner, dismisses itself, and shows the same winner again next trick', async () => {
-    const r = await render(table(closed()));
+    const r = await render(table(closed(2)));
     await tagShown();
 
     await act(async () => {
@@ -113,10 +116,14 @@ describe('the trick-winner tag', () => {
     expect(tagGone()).toBe(true);
 
     // The pass that ends nothing: three-handed, the engine clears trickWinner.
-    await act(async () => r.rerender(table(between())));
+    await act(async () => r.rerender(table(between(4))));
     expect(tagGone()).toBe(true);
+    // Its own pass sound holds the mix, as a turn's wait does at a real table.
+    await act(async () => {
+      jest.advanceTimersByTime(BOT_DELAY_MS);
+    });
 
-    await act(async () => r.rerender(table(closed())));
+    await act(async () => r.rerender(table(closed(6))));
     await tagShown();
     expect(startsOf('trick_win')).toHaveLength(1);
 
@@ -126,7 +133,7 @@ describe('the trick-winner tag', () => {
   it('announces the second win when trickWinner never changes value', async () => {
     // Two-handed: the winner leads the next trick and takes it as well, so
     // `trickWinner` reads the same seat from the first close to the second.
-    const r = await render(table(closed()));
+    const r = await render(table(closed(8)));
     await tagShown();
 
     await act(async () => {
@@ -134,15 +141,52 @@ describe('the trick-winner tag', () => {
     });
     expect(tagGone()).toBe(true);
 
-    await act(async () => r.rerender(table(leading())));
+    await act(async () => r.rerender(table(leading(10))));
     await act(async () => {
       jest.advanceTimersByTime(500);
     });
     expect(tagGone()).toBe(true);
 
-    await act(async () => r.rerender(table(closed())));
+    await act(async () => r.rerender(table(closed(12))));
     await tagShown();
     expect(startsOf('trick_win')).toHaveLength(1);
+
+    await r.unmount();
+  });
+});
+
+describe('the trick-winner tag in a replay', () => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    await bootFeedback();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  // D4: a replay shows the tag as live play does, when it steps onto the pass that closed the trick.
+  it('shows the winner once the scrubber reaches the closing pass', async () => {
+    const replay = {
+      id: 'r1',
+      finishedAt: '2026-10-16T10:00:00.000Z',
+      gameMode: 'free_for_all',
+      seats: [
+        { seatIndex: 0, userId: 'u0', name: 'Ana' },
+        { seatIndex: 1, userId: 'u1', name: WINNER },
+      ],
+      finishingOrder: [],
+      moves: [
+        { seat: WINNER_SEAT, combo: LED, handCounts: [3, 2] },
+        { seat: 0, combo: null, handCounts: [3, 2] },
+      ],
+    } as unknown as ReplayDto;
+
+    const r = await render(table(replayStateAt(replay, 0)));
+    expect(tagGone()).toBe(true);
+
+    await act(async () => r.rerender(table(replayStateAt(replay, 1))));
+    await tagShown();
 
     await r.unmount();
   });
