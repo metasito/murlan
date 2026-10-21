@@ -29,7 +29,7 @@ import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceMo
 import { seatDirection } from "@/components/seatLayout";
 import { flinchFor, landingTier, LAND_WOBBLE_MS, landWobble } from "@/components/impact";
 import { comboKey } from "@/components/passes";
-import { moveSince } from "@/lib/game/moves";
+import { moveSince, stepSince } from "@/lib/game/moves";
 import { readThrownPlay } from "@/components/table/throws";
 import type { Seating, TableLayout } from "@/components/tableLayout";
 import { clearTrick, NO_TRICK, playOnto, roleOf, sweepEnded, sweepTrick, topPlay, type PlayRole, type Trick, type TrickPlay } from "./trick";
@@ -625,18 +625,27 @@ export function usePileFlight({
   const { awaitFlight, moment, flightStarted, drop, inFlight, landsAt } = timeline;
   useTraceSource("flight", readFlightFromDom);
 
-  // The pass that closed a trick leaves `lastPlayedBy` naming the trick's winner.
-  const closing = lastMove.kind === "pass" && lastMove.closedTrick ? lastMove : null;
-  const trickClosedBy = closing ? lastPlayedBy : null;
-  // The tag over the pile, raised once per closing pass. The seat is what is stored, not the name —
-  // the name is looked up at render, so a game update that only changes the player list cannot
-  // restart the banner's own timers.
-  const [tagged, setTagged] = useState<{ move: LastMove | null; tag: { seat: number; closure: number } | null }>({
-    move: null,
-    tag: null,
-  });
-  if (closing && moveSince(tagged.move, closing)) setTagged({ move: closing, tag: { seat: lastPlayedBy, closure: closing.seq } });
-  const trickWinnerTag = tagged.tag;
+  // The tag over the pile, raised by every closing pass seen; the pass leaves `lastPlayedBy` naming
+  // the trick's winner. The seat is what is stored, not the name — the name is looked up at render,
+  // so a game update that only changes the player list cannot restart the banner's own timers.
+  // The won cards are held under it only when the pass follows the play the felt last drew: a
+  // replay's rewind or jump onto it has some other play on the felt.
+  const [watch, setWatch] = useState<{
+    seen: LastMove | null;
+    holds: boolean;
+    tag: { seat: number; closure: number } | null;
+  }>({ seen: null, holds: false, tag: null });
+  const fresh = moveSince(watch.seen, lastMove);
+  if (fresh) {
+    const closes = fresh.kind === "pass" && fresh.closedTrick;
+    setWatch({
+      seen: lastMove,
+      holds: closes && stepSince(watch.seen, lastMove) !== null,
+      tag: closes ? { seat: lastPlayedBy, closure: fresh.seq } : watch.tag,
+    });
+  }
+  const trickWinnerTag = watch.tag;
+  const trickClosedBy = watch.holds ? lastPlayedBy : null;
   const [trick, setTrick] = useState<Trick>(NO_TRICK);
   const [flights, setFlights] = useState<Flight[]>([]);
   const [endedAt, setEndedAt] = useState<number | null>(null);
@@ -795,7 +804,7 @@ export function usePileFlight({
   // the trick-start sting is deferred for as long as it is up.
   useEffect(() => {
     if (trickWinnerTag === null) return;
-    const dismiss = setTimeout(() => setTagged((t) => ({ ...t, tag: null })), TRICK_WINNER_MS);
+    const dismiss = setTimeout(() => setWatch((w) => ({ ...w, tag: null })), TRICK_WINNER_MS);
     return () => clearTimeout(dismiss);
   }, [trickWinnerTag]);
 

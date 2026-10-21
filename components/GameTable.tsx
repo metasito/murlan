@@ -42,6 +42,7 @@ import { tableLayout, type Seating } from "@/components/tableLayout";
 import { useTableExchange } from "@/components/table/useTableExchange";
 import { FloatSlot } from "@/components/table/notices/floats";
 import { useTableFloat } from "@/components/table/useTableFloat";
+import { turnOf } from "@/lib/game/moves";
 import { tableVeils } from "@/components/table/tableVeils";
 import type { ServerError } from "@/context/OnlineGameContext";
 import {
@@ -874,7 +875,7 @@ export function GameTable({
     isNewTrick,
     holdingForStart,
     held: clockHeld,
-    turnToken: String(gameState.lastMove.seq),
+    turnToken: turnOf(gameState),
     t,
   });
   const countdown = useCountdown(turn.window);

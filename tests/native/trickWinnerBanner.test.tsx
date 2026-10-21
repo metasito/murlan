@@ -118,14 +118,14 @@ describe('the trick-winner tag', () => {
     expect(tagGone()).toBe(true);
 
     // The pass that ends nothing: three-handed, the engine clears trickWinner.
-    await act(async () => r.rerender(table(between(4))));
+    await act(async () => r.rerender(table(between(3))));
     expect(tagGone()).toBe(true);
     // Its own pass sound holds the mix, as a turn's wait does at a real table.
     await act(async () => {
       jest.advanceTimersByTime(BOT_DELAY_MS);
     });
 
-    await act(async () => r.rerender(table(closed(6))));
+    await act(async () => r.rerender(table(closed(4))));
     await tagShown();
     expect(startsOf('trick_win')).toHaveLength(1);
 
@@ -135,7 +135,7 @@ describe('the trick-winner tag', () => {
   it('announces the second win when trickWinner never changes value', async () => {
     // Two-handed: the winner leads the next trick and takes it as well, so
     // `trickWinner` reads the same seat from the first close to the second.
-    const r = await render(table(closed(8)));
+    const r = await render(table(closed(5)));
     await tagShown();
 
     await act(async () => {
@@ -143,13 +143,13 @@ describe('the trick-winner tag', () => {
     });
     expect(tagGone()).toBe(true);
 
-    await act(async () => r.rerender(table(leading(10))));
+    await act(async () => r.rerender(table(leading(6))));
     await act(async () => {
       jest.advanceTimersByTime(500);
     });
     expect(tagGone()).toBe(true);
 
-    await act(async () => r.rerender(table(closed(12))));
+    await act(async () => r.rerender(table(closed(7))));
     await tagShown();
     expect(startsOf('trick_win')).toHaveLength(1);
 
@@ -212,6 +212,10 @@ describe('the trick-winner tag in a replay', () => {
   it('shows the winner once the scrubber reaches the closing pass', async () => {
     const r = await render(at(0));
     expect(tagGone()).toBe(true);
+    // Past the lead's landing, whose pile-up window would mask the sting.
+    await act(async () => {
+      jest.advanceTimersByTime(4000);
+    });
 
     await act(async () => r.rerender(at(1)));
     await tagShown();

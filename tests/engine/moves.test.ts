@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { moveSince } from "../../lib/game/moves.ts";
+import { moveSince, stepSince, turnOf } from "../../lib/game/moves.ts";
 import type { LastMove } from "../../lib/game/gameEngine.ts";
 
 const deal: LastMove = { seq: 0, kind: "deal" };
@@ -28,4 +28,17 @@ test("the next round's deal is new after the last round's moves", () => {
 test("a move that shares a count with one from another round is still new", () => {
   assert.equal(moveSince({ seq: 4, kind: "play", seat: 2 }, pass), pass);
   assert.equal(moveSince({ seq: 4, kind: "pass", seat: 1, closedTrick: false }, pass), pass);
+});
+
+test("a step is the move straight after the one seen, and only that", () => {
+  assert.equal(stepSince(play, pass), pass);
+  assert.equal(stepSince(pass, pass), null, "nothing new");
+  assert.equal(stepSince(pass, play), null, "a rewind");
+  assert.equal(stepSince(deal, pass), null, "a jump past moves never seen");
+  assert.equal(stepSince(null, deal), null, "nothing seen to step from");
+});
+
+test("the turn key moves with the move count", () => {
+  assert.equal(turnOf({ lastMove: pass }), "4");
+  assert.notEqual(turnOf({ lastMove: play }), turnOf({ lastMove: pass }));
 });

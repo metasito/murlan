@@ -10,6 +10,7 @@ import { e2e, exchangeHold } from "@/lib/e2eConfig";
 import { flushSync } from "@/lib/flushSync";
 import { OFFLINE_BOT_DELAY_MS } from "@/lib/timeline/offlineBotDelay";
 import { uiFeedback } from "@/lib/device/feedback";
+import { turnOf } from "@/lib/game/moves";
 import { RoundEnding } from "@/lib/theme";
 
 /** Local response deadline. Offline there is no server, so the client enforces it. */
@@ -84,7 +85,7 @@ export function useOfflineDriver(): OfflineDriver {
         !gameState.exchangePhase?.active &&
         !exchangeAnnouncing &&
         gameState.players[gameState.currentTurnIndex]?.type === "bot"
-      ? String(gameState.lastMove.seq)
+      ? turnOf(gameState)
       : null;
 
   useEffect(() => {

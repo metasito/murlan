@@ -17,7 +17,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useScreenShakeEnabled } from "@/lib/screenShake";
 import { scheduleOnRN } from "react-native-worklets";
 import { traumaFor, shakeOffset, shakeAmplitudeFor } from "@/components/impact";
-import { moveSince } from "@/lib/game/moves";
+import { stepSince } from "@/lib/game/moves";
 import { cancelLandingPulses, runLandingPulses } from "@/lib/device/feedback";
 import type { RoundOutcome } from "@/lib/game/matchState";
 import { Hold, Motion, motionMs } from "@/lib/theme";
@@ -271,7 +271,8 @@ export function useTableFeedback({
   // on the state the pass produced, not the tap, so a bot, an opponent and the
   // server moving for a seat all announce themselves identically.
   useEffect(() => {
-    const move = moveSince(seenMoveRef.current, lastMove);
+    // A step only: a replay's rewind or jump is a scrub, not a pass made at the table.
+    const move = stepSince(seenMoveRef.current, lastMove);
     seenMoveRef.current = lastMove;
     if (move?.kind !== "pass") return;
     moment({ kind: "pass" });

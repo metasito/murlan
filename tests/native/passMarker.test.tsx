@@ -57,7 +57,7 @@ const NAMES = ['Ana', 'Besi', 'Cimi', 'Drin'];
  */
 const moveOf = (count: number, s: Partial<GameState>): LastMove => {
   const passer = ((s.currentTurnIndex ?? 0) + 1) % count;
-  if (s.lastPlayedCombination === null && s.trickWinner != null) return { seq: 1 + count, kind: 'pass', seat: passer, closedTrick: true };
+  if (s.lastPlayedCombination === null && s.trickWinner != null) return { seq: count, kind: 'pass', seat: passer, closedTrick: true };
   if ((s.passCount ?? 0) > 0) return { seq: 1 + s.passCount!, kind: 'pass', seat: passer, closedTrick: false };
   return s.lastPlayedCombination ? { seq: 1, kind: 'play', seat: s.lastPlayedBy! } : { seq: 0, kind: 'deal' };
 };
