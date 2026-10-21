@@ -60,15 +60,14 @@ retyped. Running the app against an empty database is all the setup there is.
 
 ```sh
 npm run db:push   # only for destructive changes — dropping, retyping, renaming
-npm run db:reset  # DESTRUCTIVE — refuses unless you opt in explicitly (see below)
 ```
 
-`db:reset` empties every table's contents except `session` (which is only
-emptied, never dropped — see `docs/DEPLOY-RUNBOOK.md` for why), then re-applies the schema.
+`scripts/reset-db.mjs` empties every table's contents except `session` (which is only
+emptied, never dropped — see `docs/DEPLOY-RUNBOOK.md` for why), then `db:push` re-applies the schema.
 
-It cannot run from the npm script alone, by design: the script does not set the
-opt-in variable, and the underlying script refuses outright when
-`NODE_ENV=production`. To really wipe a non-production database:
+It has no npm script, by design: it refuses without `ALLOW_DESTRUCTIVE=1` and `--yes` typed
+by whoever runs it, and refuses outright when `NODE_ENV=production`. To really wipe a
+non-production database:
 
 ```sh
 ALLOW_DESTRUCTIVE=1 node scripts/reset-db.mjs --yes && npm run db:push

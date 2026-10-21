@@ -24,13 +24,14 @@ import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { BASE_PORT, PLAY_PORT } from "../tools/ci/e2ePortRange.mjs";
 import { assertBundleHasRoutes } from "./bundleRoutes.mjs";
 import { assertMark } from "./e2eBuildMark.mjs";
 import { startBin, stopTree } from "./lib/proc.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PLAY = process.argv.includes("--play");
-const PORT = process.env.E2E_PORT ?? (PLAY ? "5000" : "5199");
+const PORT = process.env.E2E_PORT ?? String(PLAY ? PLAY_PORT : BASE_PORT);
 const DEV_STACK = path.join(ROOT, "scripts", "dev-stack.mjs");
 const DIST = PLAY ? "dist" : "dist-e2e";
 

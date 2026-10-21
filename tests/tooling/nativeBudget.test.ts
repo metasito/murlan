@@ -7,7 +7,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { loadWorkflow, step } from "../helpers/workflow.ts";
-import NativeBudgetReporter, { BUDGET_S, budgetLines, CI_SLOWER, EXCEPTIONS, HARD_FACTOR, MAX_EXCEPTION_S, OUTSIDE_S, overBudget } from "../../tools/ci/native-budget.mjs";
+import { HARD_FACTOR } from "../../tools/ci/e2e-budget.mjs";
+import NativeBudgetReporter, { BUDGET_S, budgetLines, CI_SLOWER, EXCEPTIONS, MAX_EXCEPTION_S, OUTSIDE_S, overBudget } from "../../tools/ci/native-budget.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 const exceptions: Record<string, { seconds: number; why: string }> = EXCEPTIONS;

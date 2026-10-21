@@ -3,9 +3,9 @@
 
 import { execFileSync } from "node:child_process";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import { HARD_FACTOR } from "./e2e-budget.mjs";
 
 export const BUDGET_S = 15 * 60;
-export const HARD_FACTOR = 3;
 
 /** @param {number} seconds */
 export const overBudget = (seconds) => seconds > BUDGET_S;
