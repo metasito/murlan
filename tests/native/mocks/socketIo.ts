@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import { act } from '@testing-library/react-native';
 import type { ClientToServerEvents, IntentReply, ServerToClientEvents } from '@/shared/protocol';
 
 type Listener = (...args: never[]) => void;
@@ -45,6 +46,7 @@ export class FakeSocket {
   });
   readonly io = { reconnection: jest.fn() };
   private readonly listeners = new Map<string, Listener[]>();
+  private readonly unanswered = new Set<() => void>();
 
   constructor(
     readonly uri: string,
@@ -113,8 +115,11 @@ export class FakeSocket {
           if (pending.settled) return;
           pending.settled = true;
           clearTimeout(timer);
+          this.unanswered.delete(drop);
           call();
         };
+        const drop = () => settle(() => {});
+        this.unanswered.add(drop);
         this.acks.push(pending);
       },
     };
@@ -128,6 +133,16 @@ export class FakeSocket {
   /** The server sending `event`, or socket.io raising one of its own. */
   serverEmit<E extends keyof Incoming>(event: E, ...args: Parameters<Incoming[E]>): void {
     [...(this.listeners.get(event) ?? [])].forEach((l) => (l as (...a: unknown[]) => void)(...args));
+  }
+
+  /** `serverEmit` as one act: what a mounted screen shows once the server has said it. */
+  async deliver<E extends keyof Incoming>(event: E, ...args: Parameters<Incoming[E]>): Promise<void> {
+    await act(async () => this.serverEmit(event, ...args));
+  }
+
+  /** Every ack still out, never answered: its timer would outlive the test that sent it. */
+  abandonAcks(): void {
+    [...this.unanswered].forEach((drop) => drop());
   }
 
   /** The handshake succeeding. */

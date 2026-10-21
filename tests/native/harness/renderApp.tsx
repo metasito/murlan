@@ -5,22 +5,37 @@ import React, { useEffect } from 'react';
 import { Dimensions } from 'react-native';
 import { AppProviders } from '@/context/AppProviders';
 import { useAuth, type AuthUser } from '@/context/AuthContext';
+import { useGameSession, type LocalSession } from '@/context/GameContext';
+import { OnlineGameProvider } from '@/context/OnlineGameContext';
+import { encodeOfflineSave, OFFLINE_SAVE_KEY, type OfflineSave } from '@/lib/offlineSave';
 import { queryClient } from '@/lib/query-client';
 import { peekSocket } from '@/lib/socket';
 import { AUTH_USER_KEY } from '@/lib/storageKeys';
 import { route, type HttpRequest, type HttpReply } from '../mocks/http';
-import type { FakeSocket } from '../mocks/socketIo';
+import { fakeSockets, type FakeSocket } from '../mocks/socketIo';
 
 const auth = { settled: false, value: null as ReturnType<typeof useAuth> | null };
+const local = { value: null as LocalSession | null };
 
 // Runs after the testing library's cleanup unmounts: a query left in the app's client holds a gc timer that keeps jest from exiting.
-afterEach(() => queryClient.clear());
+afterEach(() => {
+  queryClient.clear();
+  //ABANDON
+});
 
 function AuthSettled() {
   const value = useAuth();
   useEffect(() => {
     auth.value = value;
     auth.settled = !value.loading;
+  });
+  return null;
+}
+
+function LocalSessionProbe() {
+  const value = useGameSession();
+  useEffect(() => {
+    local.value = value;
   });
   return null;
 }
@@ -37,18 +52,34 @@ type Boot = {
   me?: HttpReply | ((request: HttpRequest) => HttpReply | Promise<HttpReply>);
   /** False returns while the boot check is still out, for a screen's restoring state. */
   booted?: boolean;
+  /** Under the online group's own provider, as `app/(online)/_layout.tsx` mounts it for `user`. */
+  online?: boolean;
+  /** The socket's handshake succeeds once mounted. */
+  connected?: boolean;
+  /** An offline match the device saved, which the player has already resumed. */
+  offline?: Omit<OfflineSave, 'version'>;
 };
 
 /** `ui` under the app's own provider stack, once the account has booted. */
-export async function renderApp(ui: React.ReactElement, { user = null, cached = user, me, booted = true }: Boot = {}) {
+export async function renderApp(
+  ui: React.ReactElement,
+  { user = null, cached = user, me, booted = true, online = false, connected = false, offline }: Boot = {}
+) {
   auth.settled = false;
+  local.value = null;
   route('GET', '/api/auth/me', me ?? (user ? { body: user } : { status: 401 }));
   if (cached) await AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(cached));
   else await AsyncStorage.removeItem(AUTH_USER_KEY);
+  if (offline) await AsyncStorage.setItem(OFFLINE_SAVE_KEY, encodeOfflineSave(offline));
+  else await AsyncStorage.removeItem(OFFLINE_SAVE_KEY);
+  if (online && !user) throw new Error('the online group redirects a signed-out player to /auth');
+  const screen = (node: React.ReactElement) =>
+    online && user ? <OnlineGameProvider userId={user.id}>{node}</OnlineGameProvider> : node;
   const app = (node: React.ReactElement) => (
     <AppProviders>
       <AuthSettled />
-      {node}
+      <LocalSessionProbe />
+      {screen(node)}
     </AppProviders>
   );
   const view = await render(app(ui));
@@ -58,16 +89,22 @@ export async function renderApp(ui: React.ReactElement, { user = null, cached = 
     nativeEvent: { insets: { top: 0, right: 0, bottom: 0, left: 0 }, frame: { x: 0, y: 0, width, height } },
   });
   if (booted) await waitFor(() => expect(auth.settled).toBe(true));
+  const socket = (): FakeSocket => {
+    const live = peekSocket(user?.id);
+    if (!live) throw new Error('the account has no socket');
+    return live as unknown as FakeSocket;
+  };
+  if (connected) await act(async () => socket().open());
+  if (offline) {
+    await waitFor(() => expect(local.value?.bootSettled).toBe(true));
+    await act(async () => void local.value!.resumeGame());
+  }
   return {
     ...view,
     /** `next` in place of the screen, under the same providers. */
     rerender: (next: React.ReactElement) => view.rerender(app(next)),
     /** The signed-in account's socket, which a later render in the same file reuses. */
-    socket: (): FakeSocket => {
-      const socket = peekSocket(user?.id);
-      if (!socket) throw new Error('the account has no socket');
-      return socket as unknown as FakeSocket;
-    },
+    socket,
     /** The player signing in as `next` through the login form's own call, which the server accepts. */
     signIn: async (next: AuthUser) => {
       route('POST', '/api/auth/login', { body: next });

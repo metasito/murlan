@@ -35,25 +35,6 @@ jest.mock('@/lib/device/pushRegistration', () => ({
   forgetPushRegistration: () => {},
 }));
 
-const mockJoinRoom = jest.fn(async (_code: string): Promise<{ ok: boolean; code?: string } | null> => ({ ok: true }));
-const mockOnline = { connected: false };
-jest.mock('@/context/onlineGameHooks', () => ({
-  useOnlineRoom: () => ({
-    joinRoom: mockJoinRoom,
-    room: null,
-    hasGame: false,
-    isSpectator: false,
-    entrySource: null,
-  }),
-  useOnlineConnection: () => ({
-    connected: mockOnline.connected,
-    rejoinFailed: false,
-    clearRejoinFailed: () => {},
-    clearError: () => {},
-  }),
-  useServerError: () => null,
-}));
-
 type Invites = ReturnType<typeof useInvites>;
 
 /** `hook` rendered under the app, read back as `result.current`. */
@@ -84,8 +65,6 @@ const invite = async () => {
 
 beforeEach(() => {
   route('DELETE', '/api/friends/invites/ABC123', { body: {} });
-  mockJoinRoom.mockClear();
-  mockOnline.connected = false;
 });
 
 describe('accepting an invite', () => {
@@ -237,7 +216,7 @@ describe('hidden invites across accounts', () => {
 });
 
 describe('accepting from the friends screen', () => {
-  const mountFriends = async () => {
+  const mountFriends = async ({ connected = false } = {}) => {
     const FriendsScreen = (require('@/app/(online)/friends') as { default: React.ComponentType }).default;
     const row = { fromUsername: 'ana', roomCode: 'ABC123' };
     route('GET', '/api/friends/invites', { body: [row] });
@@ -256,12 +235,18 @@ describe('accepting from the friends screen', () => {
         <FriendsScreen />
       </>
     );
-    const view = await renderApp(tree(), { user: ANA });
-    return { view, seen, rerender: () => view.rerender(tree()) };
+    const view = await renderApp(tree(), { user: ANA, online: true });
+    const socket = view.socket();
+    if (socket.connected !== connected) await act(async () => (connected ? socket.open() : socket.drop('transport close')));
+    socket.reset();
+    const joins = () => socket.sentAs('room:join').map((j) => j.code);
+    const answerJoin = (reply: { ok: boolean; code?: string }) =>
+      act(async () => socket.acks.find((a) => a.event === 'room:join')!.answer(reply));
+    return { view, seen, socket, joins, answerJoin };
   };
 
   it('answers the invite for both signals, as the home card does', async () => {
-    const { view, seen } = await mountFriends();
+    const { view, seen, joins } = await mountFriends();
     await invite();
     expect(seen.current?.prompt).not.toBeNull();
 
@@ -269,24 +254,23 @@ describe('accepting from the friends screen', () => {
 
     expect(seen.current?.prompt).toBeNull();
     expect(seen.current?.accepted).toBe('ABC123');
-    expect(mockJoinRoom).not.toHaveBeenCalled();
+    expect(joins()).toEqual([]);
 
     await view.unmount();
   });
 
   it('joins from the layout once the socket is up, and only once', async () => {
-    const { view, seen, rerender } = await mountFriends();
+    const { view, seen, socket, joins, answerJoin } = await mountFriends();
     await invite();
 
     await fireEvent.press(screen.getByLabelText(/join ana/i));
-    expect(mockJoinRoom).not.toHaveBeenCalled();
+    expect(joins()).toEqual([]);
 
-    mockOnline.connected = true;
-    await rerender();
-    await rerender();
+    await act(async () => socket.open());
+    await answerJoin({ ok: true });
+    await act(async () => socket.open());
 
-    expect(mockJoinRoom).toHaveBeenCalledTimes(1);
-    expect(mockJoinRoom).toHaveBeenCalledWith('ABC123');
+    expect(joins()).toEqual(['ABC123']);
     expect(seen.current?.accepted).toBeNull();
 
     await view.unmount();
@@ -295,24 +279,20 @@ describe('accepting from the friends screen', () => {
   for (const answer of [{ ok: true }, { ok: false, code: 'ROOM_FULL' }]) {
     it(`says it is joining until the join is answered (${answer.code ?? 'ok'}), though no room fact moves`, async () => {
       const JOINING = locale['onlineLobby.joiningInvite'];
-      let reply: (outcome: typeof answer) => void = () => {};
-      mockJoinRoom.mockImplementationOnce(() => new Promise((resolve) => (reply = resolve)));
-      mockOnline.connected = true;
-      const { view, seen, rerender } = await mountFriends();
+      const { view, seen, joins, answerJoin } = await mountFriends({ connected: true });
       await invite();
 
       await fireEvent.press(screen.getByLabelText(/join ana/i));
-      await rerender();
 
-      expect(mockJoinRoom).toHaveBeenCalledTimes(1);
+      expect(joins()).toHaveLength(1);
       expect(seen.current?.accepted).toBe('ABC123');
       expect(screen.queryAllByText(JOINING).length).toBeGreaterThan(0);
 
-      await act(async () => reply(answer));
+      await answerJoin(answer);
 
       expect(seen.current?.accepted).toBeNull();
       expect(screen.queryAllByText(JOINING)).toHaveLength(0);
-      expect(mockJoinRoom).toHaveBeenCalledTimes(1);
+      expect(joins()).toHaveLength(1);
       await view.unmount();
     });
   }

@@ -12,23 +12,22 @@ import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { en as locale } from '@/locales/en';
 import { state } from '../support/game';
 import { renderApp } from './harness/renderApp';
+import { roundOver, wire } from './harness/wire';
 
-const mockLeaveRoom = jest.fn();
-let mockMatchOver = false;
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
-const mockSeat = (id: string, name: string): Player => ({
+const seat = (id: string, name: string): Player => ({
   id,
   name,
   hand: [] as Card[],
   type: 'human',
 });
 
-const mockFinished: GameState = state({
-  players: [mockSeat('player_0', 'Alice'), mockSeat('player_1', 'Carl')],
+const finished: GameState = state({
+  players: [seat('player_0', 'Alice'), seat('player_1', 'Carl')],
   currentTurnIndex: 0,
   lastPlayedCombination: null,
   lastPlayedBy: -1,
@@ -40,63 +39,6 @@ const mockFinished: GameState = state({
   firstPlayMade: true,
   lastMove: { seq: 0, kind: 'deal' },
 });
-
-jest.mock('@/context/onlineGameHooks', () => ({
-  useServerError: () => null,
-  useOnlineTable: () => ({
-    gameState: mockFinished,
-    mySeatIndex: 0,
-    playCards: jest.fn(),
-    pass: jest.fn(),
-    sendReaction: jest.fn(),
-    disconnectedSeats: {},
-  }),
-  useOnlineTurnClock: () => ({}),
-  useOnlineRoom: () => ({
-    isSpectator: false,
-    entrySource: 'lobby',
-    leaveRoom: mockLeaveRoom,
-  }),
-  useOnlineConnection: () => ({
-    connected: true,
-    error: null,
-    reconnectNotice: null,
-    playerLeft: false,
-    rejoinFailed: false,
-    clearError: jest.fn(),
-    clearPlayerLeft: jest.fn(),
-    clearRejoinFailed: jest.fn(),
-    retryConnection: jest.fn(),
-    ownLink: 'up',
-  }),
-  useOnlineMatch: () => ({
-    matchState: {
-      target: 21,
-      length: 'match',
-      over: mockMatchOver,
-      winners: mockMatchOver ? ['player_0'] : [],
-      isDraw: false,
-      continues: !mockMatchOver,
-      roundsPlayed: 1,
-    },
-    cumulativeScores: {},
-    placementPoints: {},
-    placementPointsCurrent: true,
-    rematchVoteState: null,
-    endMatchVoteState: null,
-    voteRematch: jest.fn(),
-    voteToEndMatch: jest.fn(),
-    ratingDeltas: {},
-    ratingsAfter: {},
-    roundRecorded: true,
-  }),
-  useOnlineExchange: () => ({
-    exchangeAnnouncing: false,
-    exchangeAnnounceData: null,
-    giveExchangeCard: jest.fn(),
-    acknowledgeExchange: jest.fn(),
-  }),
-}));
 
 jest.mock('@/components/GameTable', () => {
   const react = require('react') as typeof import('react');
@@ -129,12 +71,22 @@ const METRICS = {
   insets: { top: 0, left: 0, right: 0, bottom: 0 },
 };
 
-async function overlayShown() {
+async function overlayShown(matchOver: boolean) {
   const view = await mount(
     <SafeAreaProvider initialMetrics={METRICS}>
       <OnlineGameScreen />
     </SafeAreaProvider>
   );
+  await view.socket().deliver('game:state', wire(finished, 0), () => {});
+  await view.socket().deliver(
+    'game:round_over',
+    roundOver(finished, { player_0: matchOver ? 21 : 3, player_1: 0 }, {
+      matchOver,
+      matchContinues: !matchOver,
+      matchWinnerIds: matchOver ? ['player_0'] : [],
+    })
+  );
+  view.socket().reset();
   await act(async () => {
     jest.advanceTimersByTime(GAME_OVER_DELAY_CEILING);
   });
@@ -144,11 +96,13 @@ async function overlayShown() {
 /** Comfortably past the match ending's settled board. */
 const GAME_OVER_DELAY_CEILING = 10_000;
 
-const mount = (ui: React.ReactElement) => renderApp(ui, { user: { id: 'alice', username: 'Alice' } });
+const mount = (ui: React.ReactElement) =>
+  renderApp(ui, { user: { id: 'alice', username: 'Alice' }, online: true, connected: true });
+
+const left = (view: Awaited<ReturnType<typeof mount>>) => view.socket().sentAs('room:leave').length;
 
 describe('leaving between rounds, online', () => {
   beforeEach(() => {
-    mockLeaveRoom.mockClear();
     jest.useFakeTimers();
   });
   afterEach(() => {
@@ -156,27 +110,25 @@ describe('leaving between rounds, online', () => {
   });
 
   it('asks before abandoning a match that is still being scored', async () => {
-    mockMatchOver = false;
-    const view = await overlayShown();
+    const view = await overlayShown(false);
     expect(view.queryByTestId('btn-home', { includeHiddenElements: true })).toBeNull();
 
     await fireEvent.press(view.getByTestId('table-quit'));
-    expect(mockLeaveRoom).not.toHaveBeenCalled();
+    expect(left(view)).toBe(0);
     expect(view.getByText(locale['onlineGame.quitConfirmTitle'])).toBeTruthy();
 
     await fireEvent.press(view.getByTestId('confirm-accept'));
-    expect(mockLeaveRoom).toHaveBeenCalled();
+    expect(left(view)).toBe(1);
 
     await view.unmount();
   });
 
   it('asks nothing once the match is decided', async () => {
-    mockMatchOver = true;
-    const view = await overlayShown();
+    const view = await overlayShown(true);
 
     await fireEvent.press(view.getByTestId('btn-home', { includeHiddenElements: true }));
     expect(view.queryByText(locale['onlineGame.quitConfirmTitle'])).toBeNull();
-    expect(mockLeaveRoom).toHaveBeenCalled();
+    expect(left(view)).toBe(1);
 
     await view.unmount();
   });
