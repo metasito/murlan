@@ -115,19 +115,6 @@ void [declaresGameState, declaresGameMode, declaresMatchLength];
 
 export type GameStateParse = { ok: true; state: GameState } | { ok: false; reason: string };
 
-/**
- * How a stored state was written, oldest first; each shape is read by converting it to the next.
- * `openingFlags` came before `openingCard`, when the opening card was `startCard`, owed only while
- * `firstPlayMade` was false, and a closed trick also named `trickWinner`. `exchangeFlags` came
- * before the exchange phase's `kind`, when it was `active` and `twoJokerException` flags.
- */
-export type StoredStateShape = "openingFlags" | "exchangeFlags" | "current";
-
-/** The shape a document of `version` was written in, given the version each later shape began at. */
-export function storedShapeAt(version: number, since: Record<Exclude<StoredStateShape, "openingFlags">, number>): StoredStateShape {
-  return version >= since.current ? "current" : version >= since.exchangeFlags ? "exchangeFlags" : "openingFlags";
-}
-
 type Raw = Record<string, unknown>;
 
 function fromOpeningFlags(raw: Raw): Raw {
@@ -149,14 +136,31 @@ function fromExchangeFlags(raw: Raw): Raw {
   return { ...raw, exchangePhase: { kind: "settled", ...phase } };
 }
 
-const CONVERSIONS: readonly [StoredStateShape, (raw: Raw) => Raw][] = [
-  ["openingFlags", fromOpeningFlags],
-  ["exchangeFlags", fromExchangeFlags],
-];
+/**
+ * How a stored state was written, oldest first; each shape is read by converting it to the next.
+ * `openingFlags` came before `openingCard`, when the opening card was `startCard`, owed only while
+ * `firstPlayMade` was false, and a closed trick also named `trickWinner`. `exchangeFlags` came
+ * before the exchange phase's `kind`, when it was `active` and `twoJokerException` flags.
+ */
+const STORED_SHAPES = [
+  { shape: "openingFlags", toNext: fromOpeningFlags },
+  { shape: "exchangeFlags", toNext: fromExchangeFlags },
+  { shape: "current", toNext: (raw: Raw) => raw },
+] as const;
+
+export type StoredStateShape = (typeof STORED_SHAPES)[number]["shape"];
+
+/** The version each shape after the oldest began at. */
+export type ShapesSince = Record<Exclude<StoredStateShape, (typeof STORED_SHAPES)[0]["shape"]>, number>;
+
+/** The shape a document of `version` was written in: the newest one begun at or before it. */
+export function storedShapeAt(version: number, since: ShapesSince): StoredStateShape {
+  const begun = STORED_SHAPES.slice(1).filter(({ shape }) => version >= since[shape as keyof ShapesSince]);
+  return (begun.at(-1) ?? STORED_SHAPES[0]).shape;
+}
 
 function asCurrent(raw: Raw, shape: StoredStateShape): Raw {
-  const first = CONVERSIONS.findIndex(([from]) => from === shape);
-  return first < 0 ? raw : CONVERSIONS.slice(first).reduce((doc, [, convert]) => convert(doc), raw);
+  return STORED_SHAPES.slice(STORED_SHAPES.findIndex((s) => s.shape === shape)).reduce((doc, s) => s.toNext(doc), raw);
 }
 
 /** A stored state as the engine's, or the first thing wrong with it, its path leading. */

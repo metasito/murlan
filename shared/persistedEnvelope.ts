@@ -2,7 +2,7 @@
 // without importing the server.
 import { z } from "zod";
 import type { GameState } from "../lib/game/gameEngine.ts";
-import { gameModeSchema, matchLengthSchema, parseGameState, storedShapeAt } from "./gameStateSchema.ts";
+import { gameModeSchema, matchLengthSchema, parseGameState, storedShapeAt, type ShapesSince } from "./gameStateSchema.ts";
 
 const isSeat = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value >= 0;
@@ -97,7 +97,7 @@ export const GAME_SCHEMA_VERSION = 8;
 export const OLDEST_GAME_SCHEMA_VERSION = 5;
 
 /** The version each later stored shape began at (`storedShapeAt`). */
-const SHAPES_SINCE = { exchangeFlags: 7, current: 8 };
+export const SHAPES_SINCE: ShapesSince = { exchangeFlags: 7, current: 8 };
 
 export type RoundFlags = Record<number, { bomb: boolean; joker: boolean }>;
 

@@ -155,6 +155,14 @@ describe("readExchange", () => {
     const v = readExchange(withPhase({ kind: "open", winnerIdx: 9, loserIdx: 2 }), 9, false);
     assert.equal(v.winner, null);
   });
+
+  test("an open phase carries the card taken off the loser, for every viewer", () => {
+    for (const [seat, spectating] of [[0, false], [2, false], [1, false], [0, true]] as const) {
+      const v = readExchange(withPhase(phase), seat, spectating);
+      assert.ok(v.open, `seat ${seat} does not see the phase open`);
+      assert.deepEqual(v.cardFromLoser, ACE, `seat ${seat} lost the received card`);
+    }
+  });
 });
 
 

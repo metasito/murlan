@@ -7,6 +7,8 @@ import type { Card, GameState, Player } from "../../lib/game/gameEngine.ts";
 import { reachSteps } from "../../lib/situation.ts";
 import { ALL_CAPTURE_STATES, captureGameState } from "../../lib/captureStates.ts";
 import { card, seat, state } from "../support/game.ts";
+import { GAME_SCHEMA_VERSION, SHAPES_SINCE as GAME_SHAPES_SINCE } from "../../shared/persistedEnvelope.ts";
+import { OFFLINE_SAVE_VERSION, SHAPES_SINCE as OFFLINE_SHAPES_SINCE } from "../../lib/offlineSave.ts";
 
 const reason = (raw: unknown): string => {
   const parsed = parseGameState(raw);
@@ -88,10 +90,15 @@ describe("a state stored before the exchange phase's kind, read as exchangeFlags
     assert.match(reason(stored(rows[1][1])), /^game state exchangePhase/);
   });
 
-  test("each version reads in the shape it was written in", () => {
-    const since = { exchangeFlags: 7, current: 8 };
-    assert.deepEqual([5, 6, 7, 8].map((v) => storedShapeAt(v, since)), ["openingFlags", "openingFlags", "exchangeFlags", "current"]);
-  });
+  for (const [seam, since, version] of [
+    ["active_games", GAME_SHAPES_SINCE, GAME_SCHEMA_VERSION],
+    ["the offline save", OFFLINE_SHAPES_SINCE, OFFLINE_SAVE_VERSION],
+  ] as const) {
+    test(`each version of ${seam} reads in the shape it was written in`, () => {
+      assert.deepEqual([5, 6, 7, 8].map((v) => storedShapeAt(v, since)), ["openingFlags", "openingFlags", "exchangeFlags", "current"]);
+      assert.equal(storedShapeAt(version, since), "current");
+    });
+  }
 });
 
 describe("states the engine could not have written", () => {

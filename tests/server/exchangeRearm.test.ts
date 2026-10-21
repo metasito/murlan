@@ -1,13 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
-import { armTurn } from "../../server/game/gameTurn.ts";
+import { armAfterMove, armTurn } from "../../server/game/gameTurn.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
 import { botMoveDelayMs, clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { createDeck, startRound, type GameState } from "../../lib/game/gameEngine.ts";
 import { LEG, exchangeAnnounceMs, exchangeGiveDelayMs, legPose, legShows, restPoint } from "../../lib/timeline/exchangeTimeline.ts";
 import { dealEndMs } from "../../lib/timeline/dealTimeline.ts";
+import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
 import { Motion } from "../../lib/tokens.ts";
 
 const ROOM = "exchange-rearm-room";
@@ -73,6 +74,29 @@ test("a bot winner gives no earlier than the receive has landed and been read, a
     assert.deepEqual(game.gameState, after, "the next seat moved during the ceremony");
     t.mock.timers.tick(1);
     assert.notDeepEqual(game.gameState, after, "the next seat never moved");
+  } finally {
+    clearRoomTimers(ROOM);
+    activeGames.delete(ROOM);
+  }
+});
+
+test("after a giveback the next seat is re-armed on the giveback ceremony's own clock", (t) => {
+  t.mock.method(activeGameStore, "write", async () => {});
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const game = exchangeTable();
+  try {
+    const phase = game.gameState.exchangePhase;
+    assert.ok(phase?.kind === "open");
+    const give = autoMoveForSeat(game.gameState, phase.winnerIdx, "floor");
+    assert.equal(give?.move.kind, "giveback");
+    game.gameState = give.state;
+    assert.ok(exchangeAnnounceMs(false) > botMoveDelayMs(), "the ceremony is no longer than a bot's own delay, so this proves nothing");
+    armAfterMove(rt, ROOM, game.gameState);
+    const settled = structuredClone(game.gameState);
+    t.mock.timers.tick(exchangeAnnounceMs(false) - 1);
+    assert.deepEqual(game.gameState, settled, "the next seat moved during the ceremony");
+    t.mock.timers.tick(1);
+    assert.notDeepEqual(game.gameState, settled, "the next seat did not move when the ceremony ended");
   } finally {
     clearRoomTimers(ROOM);
     activeGames.delete(ROOM);

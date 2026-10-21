@@ -14,15 +14,19 @@ import { FAN_CARD_SCALE } from "../impact.ts";
 import { seatDirection, viewerOwnsSeat } from "../seatLayout.ts";
 import { ownSlotFrom, type Seating, type TableLayout } from "../tableLayout.ts";
 
-export interface ExchangeView {
-  open: boolean;
-  /** The viewer owes the loser a card and must pick one. */
-  viewerIsWinner: boolean;
-  /** The viewer is waiting to receive a card. */
-  viewerIsLoser: boolean;
-  winner: Player | null;
-  loser: Player | null;
-}
+export type ExchangeView =
+  | { open: false; viewerIsWinner: false; viewerIsLoser: false; winner: null; loser: null }
+  | {
+      open: true;
+      /** The viewer owes the loser a card and must pick one. */
+      viewerIsWinner: boolean;
+      /** The viewer is waiting to receive a card. */
+      viewerIsLoser: boolean;
+      winner: Player | null;
+      loser: Player | null;
+      /** The card taken off the loser, which the engine has already put in the winner's hand. */
+      cardFromLoser: Card;
+    };
 
 export const INACTIVE_EXCHANGE: ExchangeView = {
   open: false,
@@ -45,6 +49,7 @@ export function readExchange(
     viewerIsLoser: viewerOwnsSeat(phase.loserIdx, viewerSeat, spectating),
     winner: state.players[phase.winnerIdx] ?? null,
     loser: state.players[phase.loserIdx] ?? null,
+    cardFromLoser: phase.cardFromLoser,
   };
 }
 

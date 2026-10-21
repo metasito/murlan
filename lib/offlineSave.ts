@@ -11,7 +11,7 @@
 import { z } from "zod";
 import type { GameState } from "./game/gameEngine.ts";
 import type { MatchState } from "./game/matchState.ts";
-import { matchLengthSchema, parseGameState, storedShapeAt, type Same } from "../shared/gameStateSchema.ts";
+import { matchLengthSchema, parseGameState, storedShapeAt, type Same, type ShapesSince } from "../shared/gameStateSchema.ts";
 
 /**
  * Bumped whenever the stored shape changes, or how strictly it is read. A blob
@@ -24,7 +24,7 @@ export const OFFLINE_SAVE_VERSION = 8;
 export const OLDEST_OFFLINE_SAVE_VERSION = 5;
 
 /** The version each later stored shape began at (`storedShapeAt`). */
-const SHAPES_SINCE = { exchangeFlags: 7, current: 8 };
+export const SHAPES_SINCE: ShapesSince = { exchangeFlags: 7, current: 8 };
 
 export { OFFLINE_SAVE_KEY } from "./storageKeys.ts";
 

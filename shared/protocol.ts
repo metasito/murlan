@@ -21,10 +21,7 @@ export const AUTH_UNAVAILABLE = "AUTH_UNAVAILABLE";
 /** A seat as one viewer receives it: every hand but theirs is blanked. */
 export type WirePlayer = Player & { handCount: number; vacated: boolean };
 
-/**
- * An exchange as one viewer receives it. `cardFromLoser` is public only while the phase is open;
- * `cardToLoser` reaches the two participants, and every other seat only while the ceremony runs.
- */
+/** An exchange as one viewer receives it; who sees which card is `visibleExchangePhase`'s (server/game/onlineGameLogic.ts). */
 export type WireExchangePhase =
   | { kind: "twoJokers"; winnerIdx: number; loserIdx: number }
   | { kind: "open"; winnerIdx: number; loserIdx: number; cardFromLoser: Card }

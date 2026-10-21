@@ -66,7 +66,12 @@ export function seatTotal(
  */
 function ceremonyRunning(phase: Extract<ExchangePhase, { kind: "settled" }>, now: number): boolean {
   if (phase.settledAt === undefined) return false;
-  return now - phase.settledAt < exchangeAnnounceMs(false);
+  return now - phase.settledAt < settledCeremonyMs();
+}
+
+/** How long a giveback's ceremony runs: the window above, and the wait before the next seat moves. */
+export function settledCeremonyMs(): number {
+  return exchangeAnnounceMs(false);
 }
 
 /**

@@ -112,6 +112,19 @@ for (const [name, kind, moveKind] of [["open", "open", "giveback"], ["twoJokers"
   });
 }
 
+test("a version-7 save written just after a giveback resumes settled and plays the next move", () => {
+  const raw = readFileSync(new URL("../fixtures/offlineSave.v7.settled.json", import.meta.url), "utf8");
+  const stored = JSON.parse(raw);
+  assert.equal(stored.version, 7);
+  const restored = decodeOfflineSave(raw);
+  assert.ok(restored, "the version-7 settled save no longer decodes");
+  const { active: _active, twoJokerException: _jokers, ...phase } = stored.gameState.exchangePhase;
+  assert.deepEqual(restored.gameState, { ...stored.gameState, exchangePhase: { kind: "settled", ...phase } });
+  const seat = actingSeat(restored.gameState);
+  assert.equal(seat, phase.loserIdx);
+  assert.equal(autoMoveForSeat(restored.gameState, seat, "floor")?.move.kind, "play");
+});
+
 test("the golden save of this version still decodes and plays a legal move", () => {
   const raw = readFileSync(new URL("../fixtures/offlineSave.json", import.meta.url), "utf8");
   assert.equal(

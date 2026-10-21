@@ -84,8 +84,8 @@ export function useTableExchange(input: {
   // `getValidGivebackCards` is the same call `processExchangeChoice` validates
   // against, asked here only to decide which cards light up.
   const giveable = useMemo(
-    () => (exchangeIsMine && phase?.kind === "open" ? getValidGivebackCards(sortedHand, phase.cardFromLoser.id) : undefined),
-    [exchangeIsMine, sortedHand, phase]
+    () => (exchangeIsMine && exchange.open ? getValidGivebackCards(sortedHand, exchange.cardFromLoser.id) : undefined),
+    [exchangeIsMine, sortedHand, exchange]
   );
   const giveableIds = useMemo(() => giveable?.map((c) => c.id), [giveable]);
   const notes = exchangeNotes({ shown: shownExchange, stages, live: exchange, giveable, players, viewerSeat, spectating, t });
