@@ -181,4 +181,16 @@ describe("the repository layout (#1131)", () => {
       [`a.ts -> ${inLib("gameEngine.ts")}`],
     );
   });
+
+  test("no lib/ file imports from components/", () => {
+    const scanned = lib.filter((f) => /\.tsx?$/.test(f));
+    const imports = scanned.flatMap((f) =>
+      [...readFileSync(path.join(repoRoot, f), "utf8").matchAll(/from\s+["']([^"']+)["']/g)].map(([, spec]) => [f, spec] as const),
+    );
+    assert.ok(imports.length > 100, "the scan finds almost no imports");
+    assert.deepEqual(
+      imports.filter(([, spec]) => /(^|\/)components\//.test(spec)).map(([f, spec]) => `${f} -> ${spec}`),
+      [],
+    );
+  });
 });

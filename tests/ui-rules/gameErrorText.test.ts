@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { gameErrorText, playRefusalLabel } from "../../components/table/spokenLabels.ts";
+import { gameErrorText } from "../../components/table/spokenLabels.ts";
+import { playRefusalLabel } from "../../lib/table/playRefusal.ts";
 import { translate, translateServerPayload, type ServerPayload, type TFn } from "../../lib/i18n.ts";
 import type { Locale } from "../../shared/i18n.ts";
 import type { Card, SelectionRefusal } from "../../lib/game/gameEngine.ts";

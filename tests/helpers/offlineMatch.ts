@@ -7,31 +7,25 @@
 // (tests/engine/matchState.test.ts pins both callers), and the deal and the
 // round->match accounting are `lib/game/matchFlow.ts`, which GameContext.tsx
 // drives too.
-import {
-  actingSeat,
-  applyMove,
-  type Combination,
-  type GameMode,
-  type GameState,
-  type MatchLength,
-  type SeatSetup,
-} from "../../lib/game/gameEngine.ts";
-import { advance, dealNext, startTable } from "../../lib/game/matchFlow.ts";
+import { applyMove, type Combination, type GameState, type SeatSetup } from "../../lib/game/gameEngine.ts";
 import { autoMoveForSeat, offlineBotMove, type AutoMove } from "../../lib/game/autoMove.ts";
-import { rng } from "../support/game.ts";
+import {
+  MatchStallError,
+  simulateMatch,
+  type SimulatedMatch,
+  type SimulatedRound,
+  type SimulateOptions,
+} from "../../lib/game/simulate.ts";
 import { legalPlays } from "../support/moves.ts";
+
+export { MatchStallError, type SimulatedRound };
+export type SimulateMatchResult = SimulatedMatch;
 
 export type OfflinePlayerSetup = SeatSetup;
 
-export interface SimulateMatchOptions {
-  seed: number;
+export interface SimulateMatchOptions
+  extends Pick<SimulateOptions, "seed" | "gameMode" | "length" | "maxRounds" | "maxMovesPerRound" | "botRng" | "onTransition"> {
   players: OfflinePlayerSetup[];
-  gameMode: GameMode;
-  length: MatchLength;
-  /** Rounds played with no match-over before this is a stall, not a long match. */
-  maxRounds?: number;
-  /** Moves (plays + passes + exchange choices) in one round before that round is a stall. */
-  maxMovesPerRound?: number;
   /**
    * Per-seat bot choice for a seat that is not `"bot"` (a bot seat always plays
    * through `offlineBotMove`), indexed like `players`. Defaults to the real
@@ -51,54 +45,6 @@ export interface SimulateMatchOptions {
    * Takes priority over `useBot` for that seat; unset seats keep using `useBot`.
    */
   contest?: boolean[];
-  /**
-   * Forwarded to every bot seat's `botChoosePlay` call (`lib/game/autoMove.ts`'s
-   * `rng` parameter). Absent means that function's own default —
-   * `Math.random`, unseeded. A caller measuring outcomes across many seeds
-   * (rather than only checking that a match terminates) wants this seeded
-   * too, so the whole match — deal and personality knobs both — replays from
-   * `seed` alone.
-   */
-  botRng?: (seed: number) => () => number;
-  /** Every committed state, with the one before it: a deal, then each move. `prev` is null before the first deal. */
-  onTransition?: (prev: GameState | null, next: GameState) => void;
-}
-
-export interface SimulatedRound {
-  finishingOrder: string[];
-  cumulativeAfter: Record<string, number>;
-  target: number;
-  /** Plays + passes + exchange choices this round took to reach `roundOver`. */
-  moves: number;
-  /**
-   * How many of the six top cards (the four 2s and two Jokers) each seat held
-   * the moment this round's hand was set — after `startRound`'s
-   * automatic loser-to-winner card (docs/GAME-RULES.md §10) for every round past
-   * the first, before any card is played. The giveback leg never touches this:
-   * it is restricted to ranks 3-10 (`EXCHANGE_VALID_RANKS`), so it cannot move
-   * a 2 or a Joker either way.
-   */
-  topCardCounts: number[];
-}
-
-export interface SimulateMatchResult {
-  seed: number;
-  rounds: SimulatedRound[];
-  target: number;
-  winners: string[];
-  isDraw: boolean;
-}
-
-export class MatchStallError extends Error {
-  seed: number;
-  rounds: SimulatedRound[];
-
-  constructor(message: string, seed: number, rounds: SimulatedRound[]) {
-    super(message);
-    this.name = "MatchStallError";
-    this.seed = seed;
-    this.rounds = rounds;
-  }
 }
 
 /**
@@ -205,161 +151,90 @@ export function weakestBeatingPlay(state: GameState, seat: number): Combination 
  * turn the seed into a fixture.
  */
 export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchResult {
-  const maxRounds = opts.maxRounds ?? 500;
-  const maxMovesPerRound = opts.maxMovesPerRound ?? 2000;
+  const { seed } = opts;
+  // Every seat dealt cards must be given at least one turn before this
+  // round's `roundOver` — a turn-advance that silently keeps re-picking
+  // the same seat still reaches `activePlayers.length <= 1` and looks
+  // like a normal finish (a winner, a plausible finishingOrder array) with the
+  // other seat never once having acted.
+  let dealtSeats: number[] = [];
+  const actedSeats = new Set<number>();
 
-  // One stream for every deal of the match, so a seed replays the whole of it.
-  const random = rng(opts.seed).source;
-  let table = startTable(opts.players, opts.gameMode, opts.length, { random });
-  const rounds: SimulatedRound[] = [];
-  const botRng = opts.botRng?.(opts.seed);
-  let endOfLastRound: GameState | null = null;
-  const topCardCount = (hand: { rank: string }[]) =>
-    hand.filter((c) => c.rank === "2" || c.rank === "joker_bw" || c.rank === "joker_colored").length;
-
-  while (!table.match.over) {
-    if (rounds.length >= maxRounds) {
-      throw new MatchStallError(
-        `match did not reach target ${table.match.target} after ${rounds.length} rounds ` +
-          `(scores: ${JSON.stringify(table.match.scores)})`,
-        opts.seed,
-        rounds
-      );
+  const move = (state: GameState, seat: number, botRng: (() => number) | undefined): AutoMove | null => {
+    const isExchangeTurn = state.exchangePhase?.kind === "open";
+    if (!isExchangeTurn && opts.contest?.[seat]) {
+      const combo = weakestBeatingPlay(state, seat);
+      const result = applyMove(state, seat, combo ? { kind: "play", cardIds: combo.cards.map((c) => c.id) } : { kind: "pass" });
+      return result.ok ? result : null;
     }
+    return !isExchangeTurn && state.players[seat]?.type === "bot"
+      ? offlineBotMove(state, botRng)
+      : autoMoveForSeat(state, seat, (opts.useBot?.[seat] ?? true) ? "bot" : "floor", botRng);
+  };
 
-    if (rounds.length > 0) table = dealNext(table, random);
-    let state = table.state;
-    opts.onTransition?.(endOfLastRound, state);
-
-    const topCardCounts = state.players.map((p) => topCardCount(p.hand));
-
-    // Every seat dealt cards must be given at least one turn before this
-    // round's `roundOver` — a turn-advance that silently keeps re-picking
-    // the same seat still reaches `activePlayers.length <= 1` and looks
-    // like a normal finish (a winner, a plausible finishingOrder array) with the
-    // other seat never once having acted.
-    const dealtSeats = state.players
-      .map((p, i) => ({ i, dealt: p.hand.length > 0 }))
-      .filter((s) => s.dealt)
-      .map((s) => s.i);
-    const actedSeats = new Set<number>();
-
-    let moves = 0;
-    while (!state.roundOver) {
-      if (moves >= maxMovesPerRound) {
-        throw new MatchStallError(
-          `round ${rounds.length} did not reach roundOver after ${moves} moves ` +
-            `(seats holding cards: ${state.players.map((p) => p.hand.length).join(",")})`,
-          opts.seed,
-          rounds
-        );
-      }
-      moves++;
-
-      const isExchangeTurn = state.exchangePhase?.kind === "open";
-      const seat = actingSeat(state);
+  return simulateMatch({
+    ...opts,
+    move,
+    onRoundStart: (state) => {
+      dealtSeats = state.players.flatMap((p, i) => (p.hand.length > 0 ? [i] : []));
+      actedSeats.clear();
+    },
+    onMove: ({ state, seat, move: auto, roundIndex, moveIndex }) => {
       actedSeats.add(seat);
-      let auto: AutoMove | null;
-      if (!isExchangeTurn && opts.contest?.[seat]) {
-        const combo = weakestBeatingPlay(state, seat);
-        const result = applyMove(
-          state,
-          seat,
-          combo ? { kind: "play", cardIds: combo.cards.map((c) => c.id) } : { kind: "pass" }
-        );
-        auto = result.ok ? result : null;
-      } else {
-        auto =
-          !isExchangeTurn && state.players[seat]?.type === "bot"
-            ? offlineBotMove(state, botRng)
-            : autoMoveForSeat(state, seat, (opts.useBot?.[seat] ?? true) ? "bot" : "floor", botRng);
-      }
-      if (!auto) {
-        throw new MatchStallError(
-          `round ${rounds.length} stuck: seat ${seat} could not act at move ${moves} ` +
-            `(exchange active: ${isExchangeTurn})`,
-          opts.seed,
-          rounds
-        );
-      }
-
       // Exchange choices and the stuck-exchange release neither play nor
       // pass, and never touch `getNextActivePlayer` — out of scope for both
       // checks below.
-      const next: GameState = auto.state;
-      const comboSeen = auto.move?.kind === "play" || auto.move?.kind === "pass";
-      const playedCombo: Combination | null = auto.move?.kind === "play" ? auto.move.combo : null;
-      if (!isExchangeTurn && comboSeen) {
-        if (playedCombo !== null) {
-          const before = state.players[seat]?.hand.length ?? 0;
-          const after = next.players[seat]?.hand.length ?? 0;
-          const shed = playedCombo.cards.length;
-          if (after !== before - shed) {
-            throw new HandNotShrunkError(
-              `round ${rounds.length} move ${moves}: seat ${seat} played ` +
-                `${shed} card(s) but its hand went from ${before} to ${after}`,
-              opts.seed,
-              rounds.length,
-              seat
-            );
-          }
-        }
-
-        if (!next.roundOver) {
-          const hands = next.players.map((p) => p.hand);
-          const expected =
-            next.lastMove.kind === "pass" && next.lastMove.closedTrick
-              ? (next.players[next.lastPlayedBy]?.hand.length ?? 0) > 0
-                ? next.lastPlayedBy
-                : expectedNextActive(next.lastPlayedBy, hands)
-              : expectedNextActive(seat, hands);
-          if (expected !== next.currentTurnIndex) {
-            throw new RotationOrderError(
-              `round ${rounds.length} move ${moves}: expected seat ${expected} next, ` +
-                `got seat ${next.currentTurnIndex} (acting seat was ${seat}, ` +
-                `${playedCombo === null ? "passed" : "played"})`,
-              opts.seed,
-              rounds.length,
-              moves,
-              expected,
-              next.currentTurnIndex
-            );
-          }
+      if (state.exchangePhase?.kind === "open") return;
+      if (auto.move?.kind !== "play" && auto.move?.kind !== "pass") return;
+      const next = auto.state;
+      const playedCombo: Combination | null = auto.move.kind === "play" ? auto.move.combo : null;
+      if (playedCombo !== null) {
+        const before = state.players[seat]?.hand.length ?? 0;
+        const after = next.players[seat]?.hand.length ?? 0;
+        const shed = playedCombo.cards.length;
+        if (after !== before - shed) {
+          throw new HandNotShrunkError(
+            `round ${roundIndex} move ${moveIndex}: seat ${seat} played ` +
+              `${shed} card(s) but its hand went from ${before} to ${after}`,
+            seed,
+            roundIndex,
+            seat
+          );
         }
       }
-
-      opts.onTransition?.(state, next);
-      state = next;
-    }
-
-    for (const seat of dealtSeats) {
-      if (!actedSeats.has(seat)) {
-        throw new SilentSeatError(
-          `round ${rounds.length} ended with seat ${seat} never given a turn ` +
-            `(acted: [${[...actedSeats].join(",")}], finishingOrder: ${JSON.stringify(state.finishingOrder)})`,
-          opts.seed,
-          rounds.length,
-          seat
+      if (next.roundOver) return;
+      const hands = next.players.map((p) => p.hand);
+      const expected =
+        next.lastMove.kind === "pass" && next.lastMove.closedTrick
+          ? (next.players[next.lastPlayedBy]?.hand.length ?? 0) > 0
+            ? next.lastPlayedBy
+            : expectedNextActive(next.lastPlayedBy, hands)
+          : expectedNextActive(seat, hands);
+      if (expected !== next.currentTurnIndex) {
+        throw new RotationOrderError(
+          `round ${roundIndex} move ${moveIndex}: expected seat ${expected} next, ` +
+            `got seat ${next.currentTurnIndex} (acting seat was ${seat}, ` +
+            `${playedCombo === null ? "passed" : "played"})`,
+          seed,
+          roundIndex,
+          moveIndex,
+          expected,
+          next.currentTurnIndex
         );
       }
-    }
-
-    endOfLastRound = state;
-    table = advance(table, state);
-    rounds.push({
-      finishingOrder: state.finishingOrder,
-      cumulativeAfter: table.match.scores,
-      target: table.match.target,
-      moves,
-      topCardCounts,
-    });
-  }
-
-  return {
-    seed: opts.seed,
-    rounds,
-    target: table.match.target,
-    winners: table.match.winners,
-    isDraw: table.match.isDraw,
-  };
+    },
+    onRoundEnd: (state, roundIndex) => {
+      for (const seat of dealtSeats) {
+        if (!actedSeats.has(seat)) {
+          throw new SilentSeatError(
+            `round ${roundIndex} ended with seat ${seat} never given a turn ` +
+              `(acted: [${[...actedSeats].join(",")}], finishingOrder: ${JSON.stringify(state.finishingOrder)})`,
+            seed,
+            roundIndex,
+            seat
+          );
+        }
+      }
+    },
+  });
 }

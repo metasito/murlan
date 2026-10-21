@@ -4,6 +4,7 @@ import { StyleSheet } from "react-native";
 import type { TestInstance } from "test-renderer";
 import { getAnimatedStyle } from "react-native-reanimated";
 import { setMotionPreference } from "@/lib/accessibility";
+import { Motion } from "@/lib/theme";
 import { pileOf } from "./helpers/landing";
 import { mockupPx } from "@/components/table/noticeModel";
 import type { Card, Combination } from "@/lib/game/gameEngine";
@@ -12,8 +13,6 @@ const CARD: Card = { id: "3_clubs", suit: "clubs", rank: "3", isJoker: false };
 const SINGLE: Combination = { type: "single", cards: [CARD], strength: 3 };
 const BOMB: Combination = { type: "bomb", cards: [CARD, CARD, CARD, CARD], strength: 3 };
 const ROYAL: Combination = { type: "royal_straight", cards: [CARD, CARD, CARD, CARD, CARD], strength: 3 };
-/** #1259 Q1: a mark enters in the mockup's 100 ms. */
-const MARK_ENTER_MS = 100;
 /** The mockup's rise for every notice, in mockup px. */
 const RISE_PX = 6;
 
@@ -75,7 +74,7 @@ describe("the combination mark enters as the mockup's .cchip, the same for every
     expect(riseOf(markStyle())).toBeCloseTo(mockupPx(RISE_PX, 1), 5);
 
     await act(async () => {
-      jest.advanceTimersByTime(MARK_ENTER_MS);
+      jest.advanceTimersByTime(Motion.mark.enter);
       jest.runOnlyPendingTimers();
     });
     expect(markStyle().opacity).toBe(1);
