@@ -17,8 +17,7 @@
 // `.github/workflows/soak.yml` moves MURLAN_MATCH_SOAK_START forward on a
 // schedule so the search covers new ground over time, and widens every band
 // below with its own MURLAN_MATCH_SOAK_SEEDS_* override — the app runs 3-
-// and 4-seat tables too, and #770's second review found the collision hunt
-// had only ever run the 2-seat case.
+// and 4-seat tables too, which #770's second review found had never been soaked.
 //
 // Left uncaught by every seed loop below, so each names what it found
 // without the loop translating it:
@@ -32,9 +31,6 @@
 //   - `MatchStallError` — a round or the match itself blew its move/round
 //     ceiling; collected rather than thrown so a soak run reports every
 //     stalling seed, not just the first.
-//   - `BotTurnKeyCollision` — two different engine states hashing to the same
-//     `context/offlineDriver.ts` `botTurnKey`, so a real render would never reschedule
-//     the second bot decision; collected the same way as stalls.
 //   - a round past `ROUND_MOVES_CEILING` — not a stall (it still reaches
 //     `roundOver`), but a round that takes an order of magnitude more moves
 //     than any this file has measured is the shape that costs real-world
@@ -46,7 +42,6 @@ import assert from "node:assert/strict";
 import {
   MatchStallError,
   simulateOfflineMatch,
-  type BotTurnKeyCollision,
   type OfflinePlayerSetup,
   type SimulateMatchResult,
 } from "../helpers/offlineMatch.ts";
@@ -54,10 +49,7 @@ import {
 const SOAK_START = Number(process.env.MURLAN_MATCH_SOAK_START ?? 1);
 
 /** One bot opponent per seat past the first — this repo's "bot" lobby default
- * (`app/lobby.tsx`'s `buildDefaultPlayers`), and the shape #770's second
- * review named: a human seat exists specifically so the key can go null
- * when it holds the turn, and every remaining seat is `"bot"` so the key
- * chase actually has bot-owned turns to compare. */
+ * (`app/lobby.tsx`'s `buildDefaultPlayers`). */
 function tableOf(playerCount: number): OfflinePlayerSetup[] {
   return Array.from({ length: playerCount }, (_, i) => ({
     name: i === 0 ? "You" : `Bot${i}`,
@@ -89,15 +81,12 @@ interface SlowRound {
 
 /**
  * Plays `count` seeded matches at `playerCount` seats and fails the test
- * naming every stall, every anomalously slow round and every `botTurnKey`
- * collision found, or reports the total states checked when it finds none.
+ * naming every stall and every anomalously slow round found.
  */
 function soakMatches(playerCount: number, count: number, contest?: boolean[]): void {
   const players = tableOf(playerCount);
   const failures: MatchStallError[] = [];
-  const collisions: BotTurnKeyCollision[] = [];
   const slowRounds: SlowRound[] = [];
-  let botTurnKeyChecks = 0;
 
   for (let i = 0; i < count; i++) {
     const seed = SOAK_START + i;
@@ -109,7 +98,6 @@ function soakMatches(playerCount: number, count: number, contest?: boolean[]): v
         gameMode: "free_for_all",
         length: "match",
         contest,
-        collectBotTurnKeyCollisions: collisions,
       });
     } catch (err) {
       if (err instanceof MatchStallError) {
@@ -118,7 +106,6 @@ function soakMatches(playerCount: number, count: number, contest?: boolean[]): v
       }
       throw err;
     }
-    botTurnKeyChecks += result.botTurnKeyChecks;
     result.rounds.forEach((m, roundIndex) => {
       if (m.moves > ROUND_MOVES_CEILING) {
         slowRounds.push({ seed, roundIndex, moves: m.moves });
@@ -147,14 +134,6 @@ function soakMatches(playerCount: number, count: number, contest?: boolean[]): v
     );
   }
 
-  if (collisions.length > 0) {
-    const [first] = collisions;
-    assert.fail(
-      `${playerCount}p: ${collisions.length} botTurnKey collision(s) across ${botTurnKeyChecks} ` +
-        `states checked. First: seed ${first.seed}, round ${first.roundIndex}, ` +
-        `key "${first.key}", hands ${first.before.fingerprint} -> ${first.after.fingerprint}`
-    );
-  }
 }
 
 // Cheap (a round is a few hundred synchronous engine calls) and, per the

@@ -134,8 +134,8 @@ export function replayStateAt(replay: ReplayDto, index: number): GameState {
     const lastPlayerStillActive = pileSeat >= 0 && (move.handCounts[pileSeat] ?? 0) > 0;
     const closedTrick = !!pile && passes >= passesToCloseTrick(active, lastPlayerStillActive);
     if (closedTrick) {
+      // As the engine does: the closing pass leaves `lastPlayedBy` naming the trick's winner.
       pile = null;
-      pileSeat = -1;
       passes = 0;
     }
     lastMove = { seq: opening.seq + i + 1, kind: "pass", seat: move.seat, closedTrick };

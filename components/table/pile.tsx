@@ -24,11 +24,12 @@ import { DIAGNOSTICS, diag } from "@/lib/diagnostics";
 import { readFlightFromDom } from "./flightTrace";
 import { useTranslation } from "@/lib/i18n";
 import { comboLabel as comboText } from "./spokenLabels";
-import type { Card, Combination } from "@/lib/game/gameEngine";
+import type { Card, Combination, LastMove } from "@/lib/game/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
 import { seatDirection } from "@/components/seatLayout";
 import { flinchFor, landingTier, LAND_WOBBLE_MS, landWobble } from "@/components/impact";
-import { comboKey, trickClosedWithWinner } from "@/components/passes";
+import { comboKey } from "@/components/passes";
+import { moveSince } from "@/lib/game/moves";
 import { readThrownPlay } from "@/components/table/throws";
 import type { Seating, TableLayout } from "@/components/tableLayout";
 import { clearTrick, NO_TRICK, playOnto, roleOf, sweepEnded, sweepTrick, topPlay, type PlayRole, type Trick, type TrickPlay } from "./trick";
@@ -567,7 +568,9 @@ export interface PileFlightInput {
   seating: Seating;
   lastPlayedCombination: Combination | null;
   lastPlayedBy: number;
-  trickWinner: number | null;
+  lastMove: LastMove;
+  /** GameTable's `scrubbed`. */
+  scrubbed?: boolean;
   roundOver: boolean;
   /**
    * Online, `matchOver` arrives on its own socket packet after `roundOver` — a
@@ -605,7 +608,8 @@ export interface PileFlightInput {
 export function usePileFlight({
   lastPlayedCombination,
   lastPlayedBy,
-  trickWinner,
+  lastMove,
+  scrubbed = false,
   roundOver,
   matchOver,
   viewerWon,
@@ -624,13 +628,27 @@ export function usePileFlight({
   const { awaitFlight, moment, flightStarted, drop, inFlight, landsAt } = timeline;
   useTraceSource("flight", readFlightFromDom);
 
-  // The seat that took the last trick and a counter of how many tricks have
-  // closed. The counter is what makes an identical repeat a new announcement:
-  // the seat that wins a trick leads the next one, so the same seat winning
-  // twice running is ordinary play.
-  const [trickWinnerTag, setTrickWinnerTag] = useState<{ seat: number; closure: number } | null>(
-    null
-  );
+  // The tag over the pile, raised by every closing pass seen; the pass leaves `lastPlayedBy` naming
+  // the trick's winner. The seat is what is stored, not the name — the name is looked up at render,
+  // so a game update that only changes the player list cannot restart the banner's own timers.
+  // The won cards are held under it unless a replay reached the pass by a rewind or a jump, which
+  // leaves some other play on the felt.
+  const [watch, setWatch] = useState<{
+    seen: LastMove | null;
+    holds: boolean;
+    tag: { seat: number; closure: number } | null;
+  }>({ seen: null, holds: false, tag: null });
+  const fresh = moveSince(watch.seen, lastMove);
+  if (fresh) {
+    const closes = fresh.kind === "pass" && fresh.closedTrick;
+    setWatch({
+      seen: lastMove,
+      holds: closes && !scrubbed,
+      tag: closes ? { seat: lastPlayedBy, closure: fresh.seq } : watch.tag,
+    });
+  }
+  const trickWinnerTag = watch.tag;
+  const trickClosedBy = watch.holds ? lastPlayedBy : null;
   const [trick, setTrick] = useState<Trick>(NO_TRICK);
   const [flights, setFlights] = useState<Flight[]>([]);
   const [endedAt, setEndedAt] = useState<number | null>(null);
@@ -648,7 +666,6 @@ export function usePileFlight({
   );
   const prevComboKeyRef = useRef<string>("");
   const atRestRef = useRef(restored);
-  const trickClosedRef = useRef(false);
   const closureRef = useRef({ matchOver, viewerWon });
   const clocks = useRef(new Map<string, FlightClock>());
   useEffect(() => {
@@ -710,8 +727,8 @@ export function usePileFlight({
         return;
       }
       prevComboKeyRef.current = "";
-      if (trickClosedWithWinner({ lastPlayedCombination: combo, trickWinner })) {
-        const origin = layout.seatPoint(seatDirection(trickWinner!, seating.viewerSeat, seating.players.length));
+      if (trickClosedBy !== null) {
+        const origin = layout.seatPoint(seatDirection(trickClosedBy, seating.viewerSeat, seating.players.length));
         const collect = () => {
           trickHoldRef.current = null;
           setTrick((t) => sweepTrick(t, origin));
@@ -771,7 +788,7 @@ export function usePileFlight({
   }, [
     lastPlayedCombination,
     lastPlayedBy,
-    trickWinner,
+    trickClosedBy,
     roundOver,
     reduceMotion,
     playTrickStart,
@@ -785,29 +802,12 @@ export function usePileFlight({
     drop,
   ]);
 
-  // Trick-winner tag over the pile, keyed on the trick *closing* rather than on
-  // the value of `trickWinner`: processPlay leaves that field standing through
-  // the trick the winner goes on to lead, so with two players it never changes
-  // and every win after the first would go unannounced. The seat is what is
-  // stored, not the name — the name is looked up at render, so a game update
-  // that only changes the player list cannot restart the banner's own timers.
-  useEffect(() => {
-    if (!trickClosedWithWinner({ lastPlayedCombination, trickWinner })) {
-      trickClosedRef.current = false;
-      return;
-    }
-    if (trickClosedRef.current) return;
-    trickClosedRef.current = true;
-    const seat = trickWinner!;
-    setTrickWinnerTag((prev) => ({ seat, closure: (prev?.closure ?? 0) + 1 }));
-  }, [lastPlayedCombination, trickWinner]);
-
   // A trick closes on a pass, never on a play, so the trick-win sting is that
   // closing pass's own event (useTableFeedback) and this tag is only the banner —
   // the trick-start sting is deferred for as long as it is up.
   useEffect(() => {
     if (trickWinnerTag === null) return;
-    const dismiss = setTimeout(() => setTrickWinnerTag(null), TRICK_WINNER_MS);
+    const dismiss = setTimeout(() => setWatch((w) => ({ ...w, tag: null })), TRICK_WINNER_MS);
     return () => clearTimeout(dismiss);
   }, [trickWinnerTag]);
 

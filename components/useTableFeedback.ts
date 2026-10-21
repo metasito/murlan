@@ -12,12 +12,12 @@ import {
   type AnimatedStyle,
   type SharedValue,
 } from "react-native-reanimated";
-import type { Combination } from "@/lib/game/gameEngine";
+import type { LastMove } from "@/lib/game/gameEngine";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useScreenShakeEnabled } from "@/lib/screenShake";
 import { scheduleOnRN } from "react-native-worklets";
 import { traumaFor, shakeOffset, shakeAmplitudeFor } from "@/components/impact";
-import { trickClosedWithWinner } from "@/components/passes";
+import { moveSince } from "@/lib/game/moves";
 import { cancelLandingPulses, runLandingPulses } from "@/lib/device/feedback";
 import type { RoundOutcome } from "@/lib/game/matchState";
 import { Hold, Motion, motionMs } from "@/lib/theme";
@@ -62,9 +62,9 @@ interface TableFeedbackState {
   isMyTurn: boolean;
   isFinished: boolean;
   canPass: boolean;
-  passCount: number;
-  lastPlayedCombination: Combination | null;
-  trickWinner: number | null;
+  lastMove: LastMove;
+  /** GameTable's `scrubbed`. */
+  scrubbed?: boolean;
   roundOver: boolean;
   /** The round's, `"pending"` until it is scored (`scoredOutcome`). */
   outcome: RoundOutcome;
@@ -233,9 +233,8 @@ export function useTableFeedback({
   isMyTurn,
   isFinished,
   canPass,
-  passCount,
-  lastPlayedCombination,
-  trickWinner,
+  lastMove,
+  scrubbed = false,
   roundOver,
   outcome,
   matchOutcome,
@@ -249,10 +248,7 @@ export function useTableFeedback({
   const prevRoundOverRef = useRef(false);
   // Seeded from the state the table mounts on, so rejoining mid-round does not
   // replay the passes that happened before the viewer arrived.
-  const prevPassCountRef = useRef(passCount);
-  const prevTrickClosedRef = useRef(
-    trickClosedWithWinner({ lastPlayedCombination, trickWinner })
-  );
+  const seenMoveRef = useRef(lastMove);
   // Steady-state emphasis is opacity and glow, never scale: a fractional scale
   // on a view containing text makes React Native resample the already-rasterised
   // glyphs, and PASSA/GIOCA read as blurry for as long as it is applied.
@@ -277,20 +273,13 @@ export function useTableFeedback({
   // A pass moves nothing on the felt, so the sound is the whole event. Keyed
   // on the state the pass produced, not the tap, so a bot, an opponent and the
   // server moving for a seat all announce themselves identically.
-  //
-  // `processPass` zeroes `passCount` on the pass that closes a trick, so the
-  // trick closing stands in for that edge — heads-up, every legal pass closes
-  // one, and without this a two-player game would hear nothing.
   useEffect(() => {
-    const prevCount = prevPassCountRef.current;
-    prevPassCountRef.current = passCount;
-    const closed = trickClosedWithWinner({ lastPlayedCombination, trickWinner });
-    const wasClosed = prevTrickClosedRef.current;
-    prevTrickClosedRef.current = closed;
-    const closedNow = closed && !wasClosed;
-    if (passCount > prevCount || closedNow) moment({ kind: "pass" });
-    if (closedNow) moment({ kind: "trickWon" });
-  }, [passCount, lastPlayedCombination, trickWinner, moment]);
+    const move = moveSince(seenMoveRef.current, lastMove);
+    seenMoveRef.current = lastMove;
+    if (scrubbed || move?.kind !== "pass") return;
+    moment({ kind: "pass" });
+    if (move.closedTrick) moment({ kind: "trickWon" });
+  }, [lastMove, scrubbed, moment]);
 
   useEffect(() => {
     // Reset on the way back down so a rematch — which never unmounts the

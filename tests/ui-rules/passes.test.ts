@@ -1,7 +1,7 @@
-// Which turn the table is on, and who has passed in it.
+// Who has passed in the trick on the table, and which play is on it.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { comboKey, passedSeats, seatsJustPassed, trickClosedWithWinner, turnKey } from "../../components/passes.ts";
+import { comboKey, passedSeats } from "../../components/passes.ts";
 import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
   buildCombination,
@@ -27,63 +27,6 @@ describe("comboKey", () => {
 
   test("the same play produces a stable key", () => {
     assert.equal(comboKey(combo(["a", "b"]), 2), comboKey(combo(["a", "b"]), 2));
-  });
-});
-
-describe("turnKey", () => {
-  const turn = { currentTurnIndex: 1, passCount: 0, lastPlayedCombination: combo(["a"]), lastPlayedBy: 0 };
-
-  test("a pass is a new turn", () => {
-    assert.notEqual(turnKey(turn), turnKey({ ...turn, currentTurnIndex: 2, passCount: 1 }));
-  });
-
-  test("the trick's winner leading on an empty table is a new turn", () => {
-    const lastToPlay = { ...turn, currentTurnIndex: 0, passCount: 0 };
-    const won = { ...lastToPlay, lastPlayedCombination: null };
-    assert.equal(turnKey(won), "0|0|-");
-    assert.notEqual(turnKey(won), turnKey(lastToPlay));
-  });
-
-  test("the same state is the same turn", () => {
-    assert.equal(turnKey(turn), turnKey({ ...turn }));
-  });
-});
-
-describe("trickClosedWithWinner", () => {
-  test("the closing pass — the table is empty and a seat took it", () => {
-    assert.equal(
-      trickClosedWithWinner({ lastPlayedCombination: null, trickWinner: 2 }),
-      true
-    );
-  });
-
-  test("seat 0 counts, which a truthiness check would miss", () => {
-    assert.equal(
-      trickClosedWithWinner({ lastPlayedCombination: null, trickWinner: 0 }),
-      true
-    );
-  });
-
-  test("a round in progress has not closed, whoever won the last one", () => {
-    assert.equal(
-      trickClosedWithWinner({ lastPlayedCombination: combo(["a"]), trickWinner: 1 }),
-      false
-    );
-  });
-
-  test("a pass that does not close the round leaves nobody credited", () => {
-    assert.equal(
-      trickClosedWithWinner({ lastPlayedCombination: combo(["a"]), trickWinner: null }),
-      false
-    );
-  });
-
-  test("a freshly dealt hand is empty but nothing has been won", () => {
-    assert.equal(
-      trickClosedWithWinner({ lastPlayedCombination: null, trickWinner: null }),
-      false
-    );
-    assert.equal(trickClosedWithWinner({ lastPlayedCombination: null }), false);
   });
 });
 
@@ -300,31 +243,5 @@ describe("passedSeats walks the direction the engine deals turns", () => {
     assert.equal(s.currentTurnIndex, s.lastPlayedBy);
     assert.notEqual(s.lastPlayedCombination, null);
     assert.deepEqual(passedSeats(view(s)), []);
-  });
-});
-
-
-describe("seatsJustPassed", () => {
-  const hands = (): Player[] =>
-    (["5", "7", "9", "J"] as const).map((rank, i) => makePlayer(i, [c(rank, "spades"), c("3", "hearts")]));
-  const view = (s: GameState) => ({
-    currentTurnIndex: s.currentTurnIndex,
-    lastPlayedBy: s.lastPlayedBy,
-    lastPlayedCombination: s.lastPlayedCombination,
-    trickWinner: s.trickWinner,
-    outOfCards: s.players.map((p) => p.hand.length === 0),
-  });
-
-  test("each engine pass names the seat that made it, the one closing the round too; a play names nobody", () => {
-    let s = makeState({ players: hands(), currentTurnIndex: 3, lastPlayedBy: 3, firstPlayMade: true });
-    const step = (next: GameState) => {
-      const passed = seatsJustPassed(view(s), view(next));
-      s = next;
-      return passed;
-    };
-    assert.deepEqual(step(played(s, buildCombination([c("J", "spades")])!)), []);
-    for (const seat of [2, 1, 0]) assert.deepEqual(step(passed(s)), [seat], `seat ${seat}'s pass`);
-    assert.equal(s.lastPlayedCombination, null, "the third pass closed the round");
-    assert.deepEqual(seatsJustPassed(view(s), view(s)), [], "an unchanged state names nobody");
   });
 });

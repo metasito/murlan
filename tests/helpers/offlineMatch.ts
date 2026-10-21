@@ -18,7 +18,6 @@ import {
 } from "../../lib/game/gameEngine.ts";
 import { advance, dealNext, startTable } from "../../lib/game/matchFlow.ts";
 import { autoMoveForSeat, offlineBotMove, type AutoMove } from "../../lib/game/autoMove.ts";
-import { comboKey } from "../../components/passes.ts";
 import { rng } from "../support/game.ts";
 
 export type OfflinePlayerSetup = SeatSetup;
@@ -51,12 +50,6 @@ export interface SimulateMatchOptions {
    * Takes priority over `useBot` for that seat; unset seats keep using `useBot`.
    */
   contest?: boolean[];
-  /**
-   * Collects every `computeBotTurnKey` collision found while playing, instead
-   * of stopping at the first one — so a soak run can report how many turned
-   * up across the whole search rather than only the first.
-   */
-  collectBotTurnKeyCollisions?: BotTurnKeyCollision[];
   /**
    * Forwarded to every bot seat's `botChoosePlay` call (`lib/game/autoMove.ts`'s
    * `rng` parameter). Absent means that function's own default —
@@ -93,8 +86,6 @@ export interface SimulateMatchResult {
   target: number;
   winners: string[];
   isDraw: boolean;
-  /** How many non-null `botTurnKey` states this match's run checked for a collision. */
-  botTurnKeyChecks: number;
 }
 
 export class MatchStallError extends Error {
@@ -195,32 +186,6 @@ export class HandNotShrunkError extends Error {
   }
 }
 
-/**
- * `context/offlineDriver.ts`'s own key for "does the bot turn effect need to reschedule",
- * reproduced exactly: seat, pass count, and the table's last combination —
- * gated on `!roundOver`, `!exchangePhase.active` and the acting seat being
- * `"bot"`, matching that file's `botTurnKey`. `exchangeAnnouncing` is not
- * modelled (this harness never renders a ceremony) — treating it as always
- * false only *adds* candidate collisions the real app's extra null would
- * break, so it cannot hide one that exists.
- */
-function computeBotTurnKey(state: GameState): string | null {
-  if (state.roundOver) return null;
-  if (state.exchangePhase?.active) return null;
-  const player = state.players[state.currentTurnIndex];
-  if (!player || player.type !== "bot") return null;
-  const combo = state.lastPlayedCombination
-    ? comboKey(state.lastPlayedCombination, state.lastPlayedBy)
-    : "-";
-  return `${state.currentTurnIndex}|${state.passCount}|${combo}`;
-}
-
-/** Everything the key leaves out — if this differs while the key doesn't,
- * a real render would skip the reschedule a new bot decision needs. */
-function handFingerprint(state: GameState): string {
-  return state.players.map((p) => p.hand.map((c) => c.id).join(",")).join("|");
-}
-
 /** `SimulateMatchOptions.contest`'s move: the weakest legal beating
  * combination, or null to pass. Exported so `tests/engine/offlineMatchContestPlay.test.ts`
  * can pin the ordering directly — a soak asserting only that a match ends
@@ -233,14 +198,6 @@ export function weakestBeatingPlay(state: GameState, seat: number): Combination 
   const plays = getAllValidPlays(player.hand, isNewTrick ? null : state.lastPlayedCombination, isNewTrick, requireCard);
   if (plays.length === 0) return null;
   return [...plays].sort((a, b) => a.cards.length - b.cards.length || a.strength - b.strength)[0];
-}
-
-export interface BotTurnKeyCollision {
-  seed: number;
-  roundIndex: number;
-  key: string;
-  before: { fingerprint: string; state: GameState };
-  after: { fingerprint: string; state: GameState };
 }
 
 /**
@@ -258,7 +215,6 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
   const random = rng(opts.seed).source;
   let table = startTable(opts.players, opts.gameMode, opts.length, { random });
   const rounds: SimulatedRound[] = [];
-  let botTurnKeyChecks = 0;
   const botRng = opts.botRng?.(opts.seed);
   let endOfLastRound: GameState | null = null;
   const topCardCount = (hand: { rank: string }[]) =>
@@ -291,14 +247,6 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
       .map((s) => s.i);
     const actedSeats = new Set<number>();
 
-    // `context/offlineDriver.ts`'s `botTurnKey`, reset per round because that screen
-    // remounts on every navigation to /game (a fresh component instance
-    // has no previous effect value to compare against) — see
-    // `computeBotTurnKey`'s own comment for what this is chasing.
-    let lastBotTurnKey: string | null = null;
-    let lastBotTurnFingerprint: string | null = null;
-    let lastBotTurnState: GameState | null = null;
-
     let moves = 0;
     while (!state.roundOver) {
       if (moves >= maxMovesPerRound) {
@@ -310,28 +258,6 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
         );
       }
       moves++;
-
-      const key = computeBotTurnKey(state);
-      if (key !== null) {
-        botTurnKeyChecks++;
-        const fingerprint = handFingerprint(state);
-        if (key === lastBotTurnKey && fingerprint !== lastBotTurnFingerprint && lastBotTurnState) {
-          opts.collectBotTurnKeyCollisions?.push({
-            seed: opts.seed,
-            roundIndex: rounds.length,
-            key,
-            before: { fingerprint: lastBotTurnFingerprint!, state: lastBotTurnState },
-            after: { fingerprint, state },
-          });
-        }
-        lastBotTurnKey = key;
-        lastBotTurnFingerprint = fingerprint;
-        lastBotTurnState = state;
-      } else {
-        lastBotTurnKey = null;
-        lastBotTurnFingerprint = null;
-        lastBotTurnState = null;
-      }
 
       const isExchangeTurn = !!state.exchangePhase?.active;
       const seat = isExchangeTurn ? state.exchangePhase!.winnerIdx : state.currentTurnIndex;
@@ -438,6 +364,5 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
     target: table.match.target,
     winners: table.match.winners,
     isDraw: table.match.isDraw,
-    botTurnKeyChecks,
   };
 }

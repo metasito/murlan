@@ -97,9 +97,9 @@ export function armTurn(rt: TableRuntime, roomId: string, botDelayMs = botMoveDe
 }
 
 /** Every move re-arms here, so an exchange's ceremony holds the next seat on each path that closes it. */
-export function armAfterMove(rt: TableRuntime, roomId: string, prev: GameState) {
-  const phase = prev.exchangePhase;
-  armTurn(rt, roomId, phase?.active ? exchangeAnnounceMs(phase.twoJokerException === true) : botMoveDelayMs());
+export function armAfterMove(rt: TableRuntime, roomId: string, next: GameState) {
+  const closedExchange = next.lastMove.kind === "giveback";
+  armTurn(rt, roomId, closedExchange ? exchangeAnnounceMs(next.exchangePhase?.twoJokerException === true) : botMoveDelayMs());
 }
 
 /**

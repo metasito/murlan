@@ -89,5 +89,5 @@ export function commitMove(rt: TableRuntime, game: OnlineGameState, applied: Aut
   game.gameState = next;
   void publishState(rt, game);
   if (next.roundOver) return handleRoundOver(rt, game.roomId, game);
-  armAfterMove(rt, game.roomId, prev);
+  armAfterMove(rt, game.roomId, next);
 }
