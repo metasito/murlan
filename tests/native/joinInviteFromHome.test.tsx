@@ -7,44 +7,12 @@
 // the half that silently stops working: that the group's router acts on an
 // accepted invite, and that the hub does NOT re-open the join modal to ask for a
 // code the player has already chosen (#398).
-import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { act, screen } from '@testing-library/react-native';
 import { setWindow } from './harness/env';
-import { renderApp } from './harness/renderApp';
-
-// `mock`-prefixed because jest hoists these factories above every other
-// statement in the file, and only that prefix is allowed out of scope.
-const mockJoinRoom = jest.fn(async (_code: string) => ({ ok: true }));
-const mockClearAccepted = jest.fn();
-const mockState = {
-  invites: {} as Record<string, unknown>,
-  connected: true,
-  room: null as { roomId: string } | null,
-};
-
-jest.mock('@/context/onlineGameHooks', () => ({
-  useServerError: () => null,
-  useOnlineRoom: () => ({
-    createRoom: jest.fn(),
-    joinRoom: mockJoinRoom,
-    spectateRoom: jest.fn(),
-    room: mockState.room,
-    hasGame: false,
-    isSpectator: false,
-  }),
-  useOnlineTable: () => ({ gameState: null }),
-  useOnlineConnection: () => ({
-    connected: mockState.connected,
-    error: null,
-    clearError: jest.fn(),
-  }),
-}));
-
-jest.mock('@/context/SocketContext', () => ({
-  ...jest.requireActual<object>('@/context/SocketContext'),
-  useInvites: () => mockState.invites,
-}));
+import { renderAppHook } from './harness/renderApp';
+import { room } from './harness/wire';
 
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), back: jest.fn(), replace: jest.fn() },
@@ -52,49 +20,38 @@ jest.mock('expo-router', () => ({
 }));
 
 import OnlineLobbyScreen from '@/app/(online)/index';
-import { useOnlineRouting } from '@/context/useOnlineRouting';
+import { useInvites } from '@/context/SocketContext';
 
-const Router = () => {
-  useOnlineRouting();
-  return null;
-};
-
-
-const mount = async () => {
+let accounts = 0;
+/** The hub under the online group's routing, on an account of its own so its socket starts never connected. */
+const mount = async ({ connected = true }: { connected?: boolean } = {}) => {
   await setWindow({ width: 390, height: 844 });
-  return renderApp(
-    <>
-      <Router />
-      <OnlineLobbyScreen />
-    </>,
-    { user: { id: 'u1', username: 'me' } }
-  );
+  const view = await renderAppHook(useInvites, {
+    user: { id: `u${++accounts}`, username: 'me' },
+    online: true,
+    follow: true,
+    connected,
+    wrap: (probe) => (
+      <>
+        {probe}
+        <OnlineLobbyScreen />
+      </>
+    ),
+  });
+  const joins = () => view.socket().sentAs('room:join').map((join) => join.code);
+  return { ...view, joins };
 };
-
-const base = {
-  prompt: null,
-  clearPrompt: jest.fn(),
-  invites: [],
-  dismiss: jest.fn(),
-  accepted: null,
-  accept: jest.fn(),
-  clearAccepted: mockClearAccepted,
-};
-
-beforeEach(() => {
-  mockJoinRoom.mockClear();
-  mockClearAccepted.mockClear();
-  mockState.connected = true;
-  mockState.room = null;
-  mockState.invites = { ...base };
-});
+type View = Awaited<ReturnType<typeof mount>>;
+const accept = (r: View) => act(async () => r.result.current.accept('ABC123'));
+const answerJoin = (r: View) =>
+  act(async () => r.socket().acks.find((ack) => ack.event === 'room:join')!.answer({ ok: true }));
 
 describe('an invite the player has already accepted', () => {
   it('joins that room without asking again', async () => {
-    mockState.invites = { ...base, accepted: 'ABC123' };
     const r = await mount();
+    await accept(r);
 
-    expect(mockJoinRoom).toHaveBeenCalledWith('ABC123');
+    expect(r.joins()).toEqual(['ABC123']);
     // The owner's requirement in as many words: no room-code screen on this
     // path. The modal's own title is the thing that must not be on screen.
     expect(screen.queryByText('Join a room')).toBeNull();
@@ -103,13 +60,13 @@ describe('an invite the player has already accepted', () => {
   });
 
   it('consumes it once the join is answered, so a re-render cannot join twice', async () => {
-    mockState.invites = { ...base, accepted: 'ABC123' };
     const r = await mount();
-    await act(async () => {});
+    await accept(r);
+    await answerJoin(r);
+    await r.rerender();
 
-    expect(mockJoinRoom).toHaveBeenCalledTimes(1);
-    expect(mockClearAccepted).toHaveBeenCalledTimes(1);
-    expect(mockClearAccepted).toHaveBeenCalledWith('ABC123');
+    expect(r.joins()).toEqual(['ABC123']);
+    expect(r.result.current.accepted).toBeNull();
 
     await r.unmount();
   });
@@ -117,20 +74,18 @@ describe('an invite the player has already accepted', () => {
   it('waits for the socket rather than emitting into a closed one', async () => {
     // `joinRoom` is `socket?.emit`, which is a silent no-op before the socket
     // connects — the player would sit on an unchanged lobby forever.
-    mockState.connected = false;
-    mockState.invites = { ...base, accepted: 'ABC123' };
-    const r = await mount();
+    const r = await mount({ connected: false });
+    await accept(r);
 
-    expect(mockJoinRoom).not.toHaveBeenCalled();
-    expect(mockClearAccepted).not.toHaveBeenCalled();
+    expect(r.joins()).toEqual([]);
+    expect(r.result.current.accepted).toBe('ABC123');
 
     await r.unmount();
   });
 
   it('says it is joining, so the wait is not a dead screen', async () => {
-    mockState.connected = false;
-    mockState.invites = { ...base, accepted: 'ABC123' };
-    const r = await mount();
+    const r = await mount({ connected: false });
+    await accept(r);
 
     expect(screen.getByText('Joining the table…')).toBeTruthy();
 
@@ -140,9 +95,10 @@ describe('an invite the player has already accepted', () => {
   it('stops saying so once the room arrives', async () => {
     // The room is pushed *on top of* this screen rather than replacing it, so
     // this instance survives the join and is what back returns to.
-    mockState.room = { roomId: 'r1' };
-    mockState.invites = { ...base, accepted: 'ABC123' };
     const r = await mount();
+    await accept(r);
+    await r.socket().deliver('room:state', room({ code: 'ABC123', hostUserId: 'host' }));
+    await answerJoin(r);
 
     expect(screen.queryByText('Joining the table…')).toBeNull();
 
@@ -152,11 +108,11 @@ describe('an invite the player has already accepted', () => {
 
 describe('an invite that merely arrived', () => {
   it('still asks, because nobody has answered it', async () => {
-    mockState.invites = { ...base, prompt: { from: 'ana', roomCode: 'ZZZ999' } };
     const r = await mount();
+    await r.socket().deliver('friend:invite', { from: 'ana', roomCode: 'ZZZ999' });
 
     // An invite turning up must never move anyone: it prefills and asks.
-    expect(mockJoinRoom).not.toHaveBeenCalled();
+    expect(r.joins()).toEqual([]);
     expect(screen.getByText('Join a room')).toBeTruthy();
 
     await r.unmount();
@@ -167,7 +123,7 @@ describe('an ordinary visit to the hub', () => {
   it('joins nothing and asks nothing', async () => {
     const r = await mount();
 
-    expect(mockJoinRoom).not.toHaveBeenCalled();
+    expect(r.joins()).toEqual([]);
     expect(screen.queryByText('Join a room')).toBeNull();
     expect(screen.queryByText('Joining the table…')).toBeNull();
 
