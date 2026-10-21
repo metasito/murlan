@@ -154,12 +154,27 @@ describe('the replay move list', () => {
     );
 
     const bombAction = t('replay.movePlayed', {
-      combo: t('term.combo.bomb'),
+      combo: t('term.combo.bomb').replace('💣 ', ''),
       cards: '7 7 7 7',
     });
     expect(
       view.getByLabelText(t('replay.moveRowA11yLabel', { n: 3, name: 'Ana', action: bombAction }))
     ).toBeTruthy();
+  });
+
+  it.each(['en', 'it', 'sq'] as const)('speaks no glyph for a bomb or royal straight row in %s', async (locale) => {
+    const lt = (key: TranslationKey, params?: TranslationParams) => translate(locale, key, params);
+    const royal = combo('royal_straight', ['3', '4', '5', '6', '7'].map((r) => card(r, 'hearts')));
+    const replay = { ...REPLAY, moves: [REPLAY.moves[2], { seat: 0, combo: royal, handCounts: [0, 3] }] } as ReplayDto;
+    const view = await render(
+      <ReplayMoveList replay={replay} index={0} onJumpTo={NOOP} onClose={NOOP} t={lt} />
+    );
+
+    const rows = view.getAllByRole('button').filter((b) => /Ana/.test(String(b.props.accessibilityLabel)));
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.props.accessibilityLabel).not.toMatch(/💣|★/);
+    }
   });
 
   it('says so rather than rendering an empty panel when a round has no moves', async () => {

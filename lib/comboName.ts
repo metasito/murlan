@@ -14,3 +14,8 @@ const KEYS: Record<CombinationType, TranslationKey> = {
 export function comboName(type: CombinationType, t: TFn): string {
   return t(KEYS[type]);
 }
+
+/** The name as a screen reader should hear it: without the glyph the chip draws. */
+export function spokenComboName(type: CombinationType, t: TFn): string {
+  return comboName(type, t).replace(/^[^\p{L}\p{N}]+/u, "");
+}

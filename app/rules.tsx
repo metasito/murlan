@@ -186,14 +186,14 @@ export default function RulesScreen() {
           <Text style={styles.sectionLabel}>{t("rules.combosSectionLabel")}</Text>
           <View style={styles.comboGrid}>
             {[
-              { name: comboName("single", t), desc: t("rules.comboSingleDesc"), icon: "card" },
-              { name: comboName("pair", t), desc: t("rules.comboPairDesc"), icon: "copy" },
-              { name: comboName("triple", t), desc: t("rules.comboTripleDesc"), icon: "layers" },
-              { name: comboName("straight", t), desc: t("rules.comboStraightDesc"), icon: "trending-up" },
-              { name: comboName("bomb", t), desc: t("rules.comboBombDesc"), icon: "flash" },
-              { name: comboName("royal_straight", t), desc: t("rules.comboRoyalDesc"), icon: "star" },
+              { type: "single" as const, name: comboName("single", t), desc: t("rules.comboSingleDesc"), icon: "card" },
+              { type: "pair" as const, name: comboName("pair", t), desc: t("rules.comboPairDesc"), icon: "copy" },
+              { type: "triple" as const, name: comboName("triple", t), desc: t("rules.comboTripleDesc"), icon: "layers" },
+              { type: "straight" as const, name: comboName("straight", t), desc: t("rules.comboStraightDesc"), icon: "trending-up" },
+              { type: "bomb" as const, name: comboName("bomb", t), desc: t("rules.comboBombDesc"), icon: "flash" },
+              { type: "royal_straight" as const, name: comboName("royal_straight", t), desc: t("rules.comboRoyalDesc"), icon: "star" },
             ].map((c) => (
-              <View key={c.name} style={styles.comboCard}>
+              <View key={c.type} style={styles.comboCard}>
                 <Ionicons
                   name={c.icon as React.ComponentProps<typeof Ionicons>["name"]}
                   size={NAV_ICON}
