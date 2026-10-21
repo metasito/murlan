@@ -50,7 +50,7 @@ function teardown() {
 
 describe("a vacant opener waits out the deal (#1726)", () => {
   for (const seats of [4, 2]) {
-    test(`${seats} bots, no exchange: the first play lands at dealEndMs, not botMoveDelayMs`, () => {
+    test(`${seats} bots, no exchange: the first play lands at dealEndMs, then the think`, () => {
       const clock = fakeClock();
       restoreClock = installClock(clock);
       const gameState = dealtRound(seats);
@@ -62,7 +62,7 @@ describe("a vacant opener waits out the deal (#1726)", () => {
           Motion.duration.reveal
         );
         assert.ok(floor > botMoveDelayMs(), "the deal outlasts the bot's think delay");
-        assert.equal(deadline("bot", ROOM)! - clock.now(), floor);
+        assert.equal(deadline("bot", ROOM)! - clock.now(), floor + botMoveDelayMs());
       } finally {
         teardown();
       }
@@ -75,6 +75,7 @@ describe("a vacant opener waits out the deal (#1726)", () => {
     const gameState = dealtRound(4);
     gameState.openingCard = null;
     gameState.playedRanks![0] = 1;
+    gameState.lastMove = { seq: 1, kind: "play", seat: 3 };
     activeGames.set(ROOM, { roomId: ROOM, gameState, playerMap: {} } as unknown as OnlineGameState);
     try {
       armTurn(rt, ROOM);

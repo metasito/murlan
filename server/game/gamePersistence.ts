@@ -213,7 +213,7 @@ export function closeTable(rt: TableRuntime, roomId: string, notice: CloseNotice
  * Runs a timer body under the same contract `onEvent` gives an inbound event: a
  * throw degrades to a closed table rather than escaping the callback.
  *
- * The containment is load-bearing rather than tidy. `armTurn` clears the room's
+ * The containment is load-bearing rather than tidy. `armTurn` clears the turn's
  * timers before it arms the next one, and it is only ever reached from a move, a
  * rejoin, a disconnect or another timer — so a throw inside a timer body leaves
  * the room with nothing pending and nothing that will ever re-arm it. The table

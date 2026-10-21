@@ -180,7 +180,7 @@ export function registerDisconnect({ rt, socket, userId }: HandlerContext) {
 
           // Whether this is a round in progress, a finished table or a waiting
           // lobby is a question about the game, which lives in one instance's
-          // memory — and not necessarily this one. Reading `activeGames` here
+          // memory — and not necessarily this one. Consulting `activeGames` here
           // read every table held elsewhere as a lobby and released the seat.
           // A lobby has no game anywhere, so a process on its way out need not
           // spend its last seconds asking.

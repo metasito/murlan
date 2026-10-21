@@ -36,7 +36,7 @@ function poolMax(): number {
  */
 export function channelPrefix(databaseUrl: string | undefined): string {
   // `options` can carry several `-c` clauses separated by encoded spaces, so
-  // the value ends at the first `%20` as surely as at an `&`. Reading to the
+  // the value ends at the first `%20` as surely as at an `&`. Scanning to the
   // next `&` alone swallows every later clause into the "schema", and two
   // instances on one schema whose other options differ would then compute
   // different channels and quietly stop hearing each other.

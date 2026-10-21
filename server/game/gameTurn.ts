@@ -2,7 +2,7 @@ import type { TableRuntime } from "./tableRuntime.ts";
 import { emitVoteState } from "./tableBroadcasts.ts";
 import { logger } from "../shared/logger.ts";
 import { activeGames, seatName } from "./gameRoom.ts";
-import { seatOfUser, settledCeremonyMs } from "./onlineGameLogic.ts";
+import { seatOfUser } from "./onlineGameLogic.ts";
 import { vacate } from "./seatLedger.ts";
 import { withdrawRematchVote } from "./matchLedger.ts";
 import { payload } from "../shared/payload.ts";
@@ -15,18 +15,16 @@ import {
   afkTimeoutMs,
   botMoveDelayMs,
   clearAfkTimer,
-  clearRoomTimers,
+  clearTurnTimers,
   secondsUntil,
 } from "./gameTimers.ts";
 import { closeTable, disposeGame, publishState, safeTimer } from "./gamePersistence.ts";
 import { handleRoundOver, voidAbandonedMatch } from "./roundOver.ts";
 import { commitMove } from "./tableMoves.ts";
 import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
-import { actingSeat, concedeRound, roundUnplayed, openingIsPending } from "../../lib/game/gameEngine.ts";
-import type { GameState } from "../../lib/game/gameEngine.ts";
-import { Motion, Reading } from "../../lib/tokens.ts";
-import { dealEndMs } from "../../lib/timeline/dealTimeline.ts";
-import { exchangeGiveDelayMs } from "../../lib/timeline/exchangeTimeline.ts";
+import { concedeRound } from "../../lib/game/gameEngine.ts";
+import { turnSchedule, type TurnSlot } from "../../lib/game/turnSchedule.ts";
+import { gateMs } from "../../lib/timeline/turnGates.ts";
 import { handCountOf } from "../../shared/protocol.ts";
 
 /**
@@ -42,69 +40,57 @@ function emitTurnDeadline(rt: TableRuntime, roomId: string, game: OnlineGameStat
   });
 }
 
+/** A vacant seat is the bot's. */
+function slotOf(game: OnlineGameState): TurnSlot | null {
+  return turnSchedule(game.gameState, "online", (seat) => game.playerMap[seat] === undefined);
+}
+
 /**
- * Single scheduler for "whose move is it". Called after every state change, so
- * the AFK chain never breaks and a vacated seat is always resolvable:
- *   seat has a user  -> arm that user's AFK timer
- *   seat is vacant   -> a bot plays it after a short delay
- *
- * `botDelayMs` is that delay. A move the table is still watching an animation
- * for has to lengthen it, or the bot plays over the ceremony announcing the
- * move before it.
+ * The server's side of `turnSchedule`: called after every state change, so the
+ * AFK chain never breaks and a vacant seat is always played. It clears only the
+ * turn's own timers; a deal clears the room's others (`dealRound`).
  */
-export function armTurn(rt: TableRuntime, roomId: string, botDelayMs = botMoveDelayMs()) {
+export function armTurn(rt: TableRuntime, roomId: string) {
   const game = activeGames.get(roomId);
   if (!game) return;
 
-  // Ahead of the clear: a rejoin at the results screen reaches here through
-  // `armTurnIfIdle`, and must not cancel the vote deadline the table is under.
-  if (game.gameState.roundOver) {
+  clearTurnTimers(roomId);
+  const slot = slotOf(game);
+  if (!slot) {
     game.turnDeadlineMs = undefined;
     return;
   }
-  clearRoomTimers(roomId);
 
-  const seat = actingSeat(game.gameState);
-  const userId = game.playerMap[seat];
+  const gatedMs = gateMs(
+    slot.gates,
+    game.gameState.players.map(handCountOf),
+    game.gameState.exchangePhase?.kind === "twoJokers"
+  );
 
-  if (userId === undefined) {
+  if (slot.bot) {
     game.turnDeadlineMs = undefined;
-    const phase = game.gameState.exchangePhase;
-    const exchangeOnTable = phase?.kind === "open" || (phase?.kind === "twoJokers" && roundUnplayed(game.gameState));
-    const counts = game.gameState.players.map(handCountOf);
-    const delayMs = exchangeOnTable
-      ? Math.max(botDelayMs, exchangeGiveDelayMs(counts))
-      : roundUnplayed(game.gameState)
-        ? Math.max(botDelayMs, dealEndMs(counts, Motion.duration.reveal))
-        : botDelayMs;
-    arm("bot", roomId, delayMs, () => safeTimer(rt, "botTurn", roomId, () => runBotTurn(rt, roomId)));
+    const thinkMs = slot.thinkMs > 0 ? botMoveDelayMs() : 0;
+    arm("bot", roomId, gatedMs + thinkMs, () => safeTimer(rt, "botTurn", roomId, () => runBotTurn(rt, roomId)));
     emitTurnDeadline(rt, roomId, game);
     return;
   }
 
-  const username = game.gameState.players[seat]?.name ?? "";
-  // The opener's own client holds the table behind the opening announcement
-  // for Reading.notice before it can act — an online-only cost, since the
-  // client draws that gate from state the server already dealt (startReason)
-  // rather than a message announcing it. Granted once, on the turn
-  // `openingIsPending` names: the opener's first play of the round, never a
-  // seat replaying a turn it already spent its grant on.
-  const openingGraceMs = openingIsPending(game.gameState) ? Reading.notice : 0;
-  const timeoutMs = afkTimeoutMs() + openingGraceMs;
+  const userId = game.playerMap[slot.seat];
+  if (!slot.timed || userId === undefined) {
+    game.turnDeadlineMs = undefined;
+    emitTurnDeadline(rt, roomId, game);
+    return;
+  }
+  const username = game.gameState.players[slot.seat]?.name ?? "";
+  const timeoutMs = gatedMs + afkTimeoutMs();
   game.turnDeadlineMs = now() + timeoutMs;
   startAfkTimer(rt, roomId, userId, username, timeoutMs);
   emitTurnDeadline(rt, roomId, game);
 }
 
-/** Every move re-arms here, so an exchange's ceremony holds the next seat on each path that closes it. */
-export function armAfterMove(rt: TableRuntime, roomId: string, next: GameState) {
-  const closedExchange = next.lastMove.kind === "giveback";
-  armTurn(rt, roomId, closedExchange ? settledCeremonyMs() : botMoveDelayMs());
-}
-
 /**
  * Arms the turn scheduler only if nothing is pending for the acting seat.
- * `armTurn` clears the room's timers before arming, so calling it on every
+ * `armTurn` clears the turn's timers before arming, so calling it on every
  * rejoin would hand the acting seat a fresh AFK window each time — a player
  * could hold the table open indefinitely by rejoining in a loop.
  *
@@ -116,7 +102,8 @@ export function armTurnIfIdle(rt: TableRuntime, roomId: string) {
   if (!game) return;
 
   if (pending("bot", roomId)) return emitTurnDeadline(rt, roomId, game);
-  const seatUserId = game.playerMap[actingSeat(game.gameState)];
+  const slot = slotOf(game);
+  const seatUserId = slot ? game.playerMap[slot.seat] : undefined;
   if (seatUserId !== undefined && pending("afk", seatKey(roomId, seatUserId))) {
     return emitTurnDeadline(rt, roomId, game);
   }
@@ -134,10 +121,10 @@ export function heldRoundFor(userId: string): { roomId: string; game: OnlineGame
 
 function runBotTurn(rt: TableRuntime, roomId: string) {
   const game = activeGames.get(roomId);
-  if (!game || game.gameState.roundOver) return;
-
-  const seat = actingSeat(game.gameState);
-  if (game.playerMap[seat] !== undefined) {
+  const slot = game && slotOf(game);
+  if (!game || !slot) return;
+  const { seat } = slot;
+  if (!slot.bot) {
     // The seat was reclaimed while the timer was pending.
     armTurn(rt, roomId);
     return;
@@ -164,9 +151,9 @@ function handleAutoPass(
   userId: string
 ): "exchange" | "move" | null {
   const game = activeGames.get(roomId);
-  if (!game || game.gameState.roundOver) return null;
-
-  const seat = actingSeat(game.gameState);
+  const slot = game && slotOf(game);
+  if (!game || !slot) return null;
+  const { seat } = slot;
   if (game.playerMap[seat] !== userId) return null;
 
   const auto = autoMoveForSeat(game.gameState, seat, "floor");

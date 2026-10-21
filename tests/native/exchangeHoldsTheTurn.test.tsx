@@ -83,7 +83,7 @@ jest.mock('@/components/GameTable', () => {
 
 import GameScreen from '@/app/game';
 
-/** Comfortably past the bot's think, whatever it is set to (lib/timeline/offlineBotDelay.ts). */
+/** Comfortably past the bot's think, whatever it is set to (lib/game/turnSchedule.ts). */
 const PAST_THE_THINK = 5_000;
 
 /** The screen over `table` resumed; `moves()` counts the tables the provider has committed since. */

@@ -4,6 +4,7 @@ import { rollMatchForward } from "./roundOver.ts";
 import { emitMatchState } from "./tableBroadcasts.ts";
 import { publishState } from "./gamePersistence.ts";
 import { armTurn } from "./gameTurn.ts";
+import { clearRoomTimers } from "./gameTimers.ts";
 import { clearForDeal } from "./seatLedger.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { GameState } from "../../lib/game/gameEngine.ts";
@@ -42,5 +43,6 @@ export async function dealRound(rt: TableRuntime, game: OnlineGameState, nextSta
   void publishState(rt, game);
   rt.out.room(game.roomId).emit("game:started");
   emitMatchState(rt.out.room(game.roomId), game);
+  clearRoomTimers(game.roomId);
   armTurn(rt, game.roomId);
 }
