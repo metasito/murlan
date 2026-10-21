@@ -18,9 +18,7 @@ import { connectAs, waitFor } from "../helpers/client.ts";
 import { befriend, inviteRowsFor } from "../helpers/friends.ts";
 import { skewedClock } from "../helpers/fakeClock.ts";
 import { seatHoldMs } from "../../server/game/gameTimers.ts";
-import { teamForSeat } from "../../lib/game/gameEngine.ts";
-
-const TEAMS_SEATS = 4;
+import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/game/gameEngine.ts";
 
 interface RoomState {
   code: string;
@@ -35,7 +33,7 @@ interface RoomError {
 }
 
 const sideOf = (seatIndex: number) =>
-  teamForSeat(seatIndex, TEAMS_SEATS, "teams");
+  teamForSeat(seatIndex, TEAMS_PLAYER_COUNT, "teams");
 
 describe(
   "a seat held for an invited friend",
@@ -67,7 +65,7 @@ describe(
       await befriend(server, host, friend);
 
       const made = waitFor<RoomState>(host.socket, "room:state");
-      host.socket.emit("room:create", { gameMode: "teams", maxPlayers: TEAMS_SEATS });
+      host.socket.emit("room:create", { gameMode: "teams", maxPlayers: TEAMS_PLAYER_COUNT });
       const room = await made;
 
       const heard = waitFor<RoomState>(host.socket, "room:state");
@@ -201,7 +199,7 @@ describe(
       await befriend(server, host, friend);
 
       const made = waitFor<RoomState>(host.socket, "room:state");
-      host.socket.emit("room:create", { gameMode: "teams", maxPlayers: TEAMS_SEATS });
+      host.socket.emit("room:create", { gameMode: "teams", maxPlayers: TEAMS_PLAYER_COUNT });
       const room = await made;
 
       const firstInvite = waitFor<RoomState>(host.socket, "room:state");
@@ -265,7 +263,7 @@ describe(
       await befriend(server, host, friend);
 
       const made = waitFor<RoomState>(host.socket, "room:state");
-      host.socket.emit("room:create", { gameMode: "teams", maxPlayers: TEAMS_SEATS });
+      host.socket.emit("room:create", { gameMode: "teams", maxPlayers: TEAMS_PLAYER_COUNT });
       const room = await made;
 
       const heard = waitFor<RoomState>(host.socket, "room:state");

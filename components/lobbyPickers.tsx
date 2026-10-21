@@ -5,7 +5,7 @@ import { Colors } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden } from "@/lib/a11y";
 import { modeLabel } from "@/lib/modeLabel";
-import { firstTargetFor, type GameMode, type MatchLength } from "@/lib/game/gameEngine";
+import { TEAMS_PLAYER_COUNT, firstTargetFor, modeFits, type GameMode, type MatchLength } from "@/lib/game/gameEngine";
 
 const SEAT_COUNTS = [2, 3, 4] as const;
 const MODES: readonly GameMode[] = ["free_for_all", "teams"];
@@ -21,10 +21,12 @@ export function ModeIcon({ mode, size, color }: { mode: GameMode; size: number; 
 export function SeatCountPicker({
   value,
   onChange,
+  mode,
   compact = false,
 }: {
   value: number;
   onChange: (count: number) => void;
+  mode: GameMode;
   compact?: boolean;
 }) {
   const { t } = useTranslation();
@@ -34,6 +36,7 @@ export function SeatCountPicker({
         value: n,
         label: String(n),
         a11yLabel: t("lobby.playerCountOptionA11yLabel", { n }),
+        disabled: !modeFits(mode, n),
       }))}
       value={value}
       onChange={onChange}
@@ -46,30 +49,41 @@ export function SeatCountPicker({
 export function ModePicker({
   value,
   onChange,
+  seats,
+  form = "full",
   compact = false,
 }: {
   value: GameMode;
   onChange: (mode: GameMode) => void;
+  seats: number;
+  form?: "full" | "short";
   compact?: boolean;
 }) {
   const { t } = useTranslation();
   return (
     <ChoiceChips
-      choices={MODES.map((mode) => ({
-        value: mode,
-        label: modeLabel(mode, t, compact ? "short" : "full"),
-        icon: (active: boolean) => (
-          <ModeIcon
-            mode={mode}
-            size={compact ? MODE_ICON_COMPACT : MODE_ICON}
-            color={active ? Colors.gold : Colors.textSecondary}
-          />
-        ),
-      }))}
+      choices={MODES.map((mode) => {
+        const label = modeLabel(mode, t, form);
+        const fits = modeFits(mode, seats);
+        return {
+          value: mode,
+          label,
+          a11yLabel: fits ? label : t("lobby.modeNeedsSeatsA11yLabel", { mode: label, n: TEAMS_PLAYER_COUNT }),
+          disabled: !fits,
+          icon: (active: boolean) => (
+            <ModeIcon
+              mode={mode}
+              size={compact ? MODE_ICON_COMPACT : MODE_ICON}
+              color={active ? Colors.gold : Colors.textSecondary}
+            />
+          ),
+        };
+      })}
       value={value}
       onChange={onChange}
       weight={compact ? "caption" : "label"}
       compact={compact}
+      lines={form === "full" ? 2 : 1}
     />
   );
 }

@@ -13,6 +13,8 @@ export interface Choice<T> {
   a11yLabel?: string;
   /** The caller builds it, so an icon name stays a literal `scripts/iconSubsetChars.mjs` can see. */
   icon?: (active: boolean) => React.ReactNode;
+  /** Offered but not choosable; the row's own `disabled` dims every chip. */
+  disabled?: boolean;
 }
 
 /** How much the label weighs: a bare count reads bigger than a sentence. */
@@ -26,6 +28,7 @@ export function ChoiceChips<T extends string | number>({
   fill = true,
   compact = false,
   disabled = false,
+  lines = 1,
   a11yLabel,
 }: {
   choices: Choice<T>[];
@@ -36,6 +39,8 @@ export function ChoiceChips<T extends string | number>({
   fill?: boolean;
   compact?: boolean;
   disabled?: boolean;
+  /** How many lines a label may wrap to before it is cut. */
+  lines?: number;
   /** Names the set where no visible label does. The row carries the role that makes it reachable. */
   a11yLabel?: string;
 }) {
@@ -46,6 +51,7 @@ export function ChoiceChips<T extends string | number>({
     <View style={[styles.row, compact && styles.rowCompact, disabled && styles.rowDisabled]} {...named}>
       {choices.map((choice) => {
         const active = choice.value === value;
+        const off = disabled || !!choice.disabled;
         return (
           <Pressable
             key={String(choice.value)}
@@ -53,22 +59,24 @@ export function ChoiceChips<T extends string | number>({
               uiFeedback("selection");
               onChange(choice.value);
             }}
-            disabled={disabled}
+            disabled={off}
             accessibilityLabel={choice.a11yLabel ?? choice.label}
-            {...a11yState({ role: "radio", selected: active, disabled })}
+            {...a11yState({ role: "radio", selected: active, disabled: off })}
             style={({ pressed }) => [
               styles.chip,
               fill && styles.chipFill,
               compact && styles.chipCompact,
               active && styles.chipActive,
+              choice.disabled && styles.chipDisabled,
               pressed && styles.chipPressed,
             ]}
           >
             {choice.icon?.(active)}
             <Text
               {...a11yHidden()}
-              numberOfLines={1}
+              numberOfLines={lines}
               style={[
+                lines > 1 && styles.labelWrapping,
                 weightStyles[weight],
                 compact && weight === "digit" && styles.digitCompact,
                 active && styles.labelActive,
@@ -111,8 +119,10 @@ const styles = StyleSheet.create({
   chipCompact: { paddingVertical: Spacing.xs, paddingHorizontal: Spacing.xs },
   chipActive: { borderColor: Colors.gold, backgroundColor: Colors.goldMuted },
   chipPressed: { opacity: 0.8 },
+  chipDisabled: { opacity: 0.4 },
   digitCompact: { fontSize: FontSize.lg },
   labelActive: { color: Colors.gold },
+  labelWrapping: { textAlign: "center", flexShrink: 1 },
   detail: { ...Type.caption, textAlign: "center", width: "100%" },
   detailActive: { color: Colors.goldLight },
 });

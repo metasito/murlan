@@ -25,7 +25,7 @@ export async function createRoom(page: Page, setup: RoomSetup): Promise<string> 
   if (setup.gameMode === "teams") {
     await page.getByRole("radio", { name: it["term.mode.teams"], exact: true }).click();
   }
-  await page.getByRole("radio", { name: `${setup.playerCount} giocatori` }).click();
+  await page.getByRole("radio", { name: `${setup.playerCount} giocatori`, exact: true }).click();
   await page.getByRole("button", { name: "Crea Stanza" }).click();
   await page.waitForURL(/\/room/);
 

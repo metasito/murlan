@@ -476,22 +476,31 @@ function repeatedValues(catalogue: Record<string, string>): string[] {
 }
 
 describe("a glossary word is keyed once, as term.*", () => {
-  /** Lower it when a repeat goes; a new one reads the key that already holds the word. */
-  const REPEATED_EN_VALUES = 84;
+  /**
+   * Each locale's own count, exact: lower it when a repeat goes; a new one reads the key that
+   * already holds the word. The key floor is the catalogue's size when this was set.
+   */
+  const REPEATED_VALUES: Record<LocaleName, number> = { en: 84, it: 81, sq: 82 };
+  const KEY_FLOOR = 900;
 
-  test("en repeats no more values than it did", () => {
-    assert.ok(Object.keys(en).length > REPEATED_EN_VALUES, "en is empty or failed to load");
-    assert.equal(
-      repeatedValues(en).length,
-      REPEATED_EN_VALUES,
-      `en repeats ${repeatedValues(en).join(", ")}`
-    );
-  });
+  for (const name of LOCALE_NAMES) {
+    test(`${name} repeats no more values than it did`, () => {
+      const catalogue: Record<string, string> = LOCALES[name];
+      assert.ok(Object.keys(catalogue).length >= KEY_FLOOR, `${name} is empty or failed to load`);
+      assert.equal(
+        repeatedValues(catalogue).length,
+        REPEATED_VALUES[name],
+        `${name} repeats ${repeatedValues(catalogue).join(", ")}`
+      );
+    });
 
-  test("a per-screen copy of a mode word counts as one more repeat", () => {
-    const restored = { ...en, "room.modeTeams": en["term.mode.teams"] };
-    assert.equal(repeatedValues(restored).length, repeatedValues(en).length + 1);
-  });
+    test(`${name}: a per-screen copy of a mode word counts as one more repeat`, () => {
+      const catalogue: Record<string, string> = LOCALES[name];
+      assert.ok(!("room.modeTeams" in catalogue));
+      const restored = { ...catalogue, "room.modeTeams": catalogue["term.mode.teams"] };
+      assert.equal(repeatedValues(restored).length, repeatedValues(catalogue).length + 1);
+    });
+  }
 });
 
 describe("interpolation placeholders stay in sync across locales", () => {

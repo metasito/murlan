@@ -9,8 +9,7 @@ import React from "react";
 import { render, screen, act } from "@testing-library/react-native";
 import { RoomSeatList } from "@/components/RoomSeatList";
 import { t } from "@/lib/i18n";
-
-const TEAMS_SEATS = 4;
+import { TEAMS_PLAYER_COUNT } from "@/lib/game/gameEngine";
 
 const HOLD_MS = 120_000;
 
@@ -22,7 +21,7 @@ const heldLabel = () => t("room.seatHeldFor", { username: "Ben" });
 function seatList(seatHolds: { seatIndex: number; username: string; expiresInMs: number }[]) {
   return (
     <RoomSeatList
-      maxSeats={TEAMS_SEATS}
+      maxSeats={TEAMS_PLAYER_COUNT}
       gameMode="teams"
       players={[HOST]}
       hostUserId={HOST.userId}
@@ -46,7 +45,7 @@ describe("a seat held for an invited friend", () => {
 
     expect(screen.getByText(heldLabel())).toBeTruthy();
     // Four seats: the host's, the one held, and the two still open to anyone.
-    expect(screen.getAllByText(t("room.waitingSeat")).length).toBe(TEAMS_SEATS - 2);
+    expect(screen.getAllByText(t("room.waitingSeat")).length).toBe(TEAMS_PLAYER_COUNT - 2);
 
     await view.unmount();
   });
@@ -60,7 +59,7 @@ describe("a seat held for an invited friend", () => {
     });
 
     expect(screen.queryByText(heldLabel())).toBeNull();
-    expect(screen.getAllByText(t("room.waitingSeat")).length).toBe(TEAMS_SEATS - 1);
+    expect(screen.getAllByText(t("room.waitingSeat")).length).toBe(TEAMS_PLAYER_COUNT - 1);
 
     await view.unmount();
   });
@@ -80,7 +79,7 @@ describe("a seat held for an invited friend", () => {
   it("holds nothing when the server sends none", async () => {
     const view = await render(seatList([]));
 
-    expect(screen.getAllByText(t("room.waitingSeat")).length).toBe(TEAMS_SEATS - 1);
+    expect(screen.getAllByText(t("room.waitingSeat")).length).toBe(TEAMS_PLAYER_COUNT - 1);
     expect(screen.queryByText(heldLabel())).toBeNull();
 
     await view.unmount();

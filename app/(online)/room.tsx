@@ -68,26 +68,31 @@ export const BOTS_OFFERED_AFTER_MS = 30_000;
 /** One second, as the countdown's step and as its ms-to-seconds divisor. */
 const COUNTDOWN_TICK_MS = 1_000;
 
+function secondsToBotsFrom(startedAt: number): number {
+  return Math.max(0, Math.ceil((BOTS_OFFERED_AFTER_MS - (Date.now() - startedAt)) / COUNTDOWN_TICK_MS));
+}
+
 /**
- * Mounted only while the host waits, so its tick re-renders this line and not the room.
- * Counted from a wall-clock start, not from the number of ticks: a backgrounded tab throttles
- * the interval, and a countdown that trusts its own ticks says "12s" long after the offer is due.
+ * The countdown line, mounted only while the host waits so its tick re-renders this line and not
+ * the room. It counts from the room's own `startedAt`, never from its mount or its ticks: the
+ * table can fill and empty again, and a backgrounded tab throttles the interval.
  */
-function BotsComingHint({ onDue }: { onDue: () => void }) {
+function BotsComingHint({ startedAt, onDue }: { startedAt: number; onDue: () => void }) {
   const { t } = useTranslation();
-  const [secondsToBots, setSecondsToBots] = useState(BOTS_OFFERED_AFTER_MS / COUNTDOWN_TICK_MS);
+  const [secondsToBots, setSecondsToBots] = useState(() => secondsToBotsFrom(startedAt));
   useEffect(() => {
-    const startedAt = Date.now();
+    const step = () => {
+      const left = secondsToBotsFrom(startedAt);
+      setSecondsToBots(left);
+      if (left === 0) onDue();
+      return left;
+    };
+    if (step() === 0) return;
     const timer = setInterval(() => {
-      const left = Math.ceil((BOTS_OFFERED_AFTER_MS - (Date.now() - startedAt)) / COUNTDOWN_TICK_MS);
-      setSecondsToBots(Math.max(0, left));
-      if (left <= 0) {
-        clearInterval(timer);
-        onDue();
-      }
+      if (step() === 0) clearInterval(timer);
     }, COUNTDOWN_TICK_MS);
     return () => clearInterval(timer);
-  }, [onDue]);
+  }, [startedAt, onDue]);
   return <Text style={styles.botsComingHint}>{t("room.botsComingIn", { seconds: secondsToBots })}</Text>;
 }
 
@@ -330,6 +335,7 @@ export default function RoomScreen() {
   const [fillWithBots, setFillWithBots] = useState(false);
   const [botsOffered, setBotsOffered] = useState(false);
   const showBots = useCallback(() => setBotsOffered(true), []);
+  const [botsClockStartedAt] = useState(() => Date.now());
   const [botPersonality, setBotPersonality] = useState<BotPersonalityId>(DEFAULT_BOT_PERSONALITY);
   const [matchLength, setMatchLength] = useState<MatchLength>("match");
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
@@ -463,7 +469,7 @@ export default function RoomScreen() {
       onChangeBotPersonality={setBotPersonality}
     />
   ) : (
-    hostIsWaiting && <BotsComingHint onDue={showBots} />
+    hostIsWaiting && <BotsComingHint startedAt={botsClockStartedAt} onDue={showBots} />
   );
 
   const StartButton = isHost ? (

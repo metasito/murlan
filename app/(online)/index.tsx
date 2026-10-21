@@ -26,7 +26,7 @@ import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { ModePicker, SeatCountPicker } from "@/components/lobbyPickers";
-import { modeFits, type GameMode } from "@/lib/game/gameEngine";
+import type { GameMode } from "@/lib/game/gameEngine";
 import { useTranslation } from "@/lib/i18n";
 import { A11yStatus, a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 import { AppModal } from "@/components/AppModal";
@@ -49,7 +49,6 @@ export default function OnlineLobbyScreen() {
   const [createMode, setCreateMode] = useState<GameMode>("free_for_all");
   const [createPlayers, setCreatePlayers] = useState(4);
 
-  const sizeFits = modeFits(createMode, createPlayers);
   const isLandscape = useIsLandscape();
 
   const roomId = room?.roomId;
@@ -130,17 +129,13 @@ export default function OnlineLobbyScreen() {
       <MenuCard title={t("onlineLobby.createRoomTitle")} style={isLandscape ? styles.compactCard : undefined}>
         <View style={isLandscape ? styles.optSectionLandscape : styles.optSection}>
           <Text style={styles.optLabelSmall}>{t("onlineLobby.modeLabel")}</Text>
-          <ModePicker value={createMode} onChange={setCreateMode} compact={isLandscape} />
+          <ModePicker value={createMode} onChange={setCreateMode} seats={createPlayers} form="short" compact={isLandscape} />
         </View>
 
         <View style={isLandscape ? styles.optSectionLandscape : styles.optSection}>
           <Text style={styles.optLabelSmall}>{t("onlineLobby.playersLabel")}</Text>
-          <SeatCountPicker value={createPlayers} onChange={setCreatePlayers} compact={isLandscape} />
+          <SeatCountPicker value={createPlayers} onChange={setCreatePlayers} mode={createMode} compact={isLandscape} />
         </View>
-
-        {!sizeFits && (
-          <Text style={styles.warn}>{t("onlineLobby.teamsRequire4")}</Text>
-        )}
 
         <View style={{ marginTop: isLandscape ? Spacing.xs : Spacing.sm }}>
           <MenuButton
@@ -149,8 +144,7 @@ export default function OnlineLobbyScreen() {
             variant="primary"
             fullWidth={true}
             style={isLandscape ? { minHeight: TOUCH_TARGET_MIN } : undefined}
-            disabled={!sizeFits}
-            icon={<Ionicons name="add-circle-outline" size={20} color={sizeFits ? Colors.bg : Colors.textMuted} />}
+            icon={<Ionicons name="add-circle-outline" size={20} color={Colors.bg} />}
           />
         </View>
       </MenuCard>
@@ -448,7 +442,6 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     marginBottom: Spacing.xxs,
   },
-  warn: { fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.dangerDim, marginBottom: Spacing.xs },
   sectionFlex: { flex: 1 },
   divider: { flexDirection: "row", alignItems: "center", gap: Spacing.cosy },
   divLine: { flex: 1, height: 1, backgroundColor: Colors.border },

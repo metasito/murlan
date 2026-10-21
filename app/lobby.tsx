@@ -16,7 +16,7 @@ import type { PlayerSetupConfig } from "@/context/GameContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useLocalSession } from "@/context/gameHooks";
 import { useAuth } from "@/context/AuthContext";
-import { GameMode, MatchLength, modeFits, teamForSeat } from "@/lib/game/gameEngine";
+import { GameMode, MatchLength, teamForSeat } from "@/lib/game/gameEngine";
 import { BOT_PERSONALITIES, botSeatNames, getBotPersonality } from "@/lib/game/botPersonalities";
 import { DifficultyLadder } from "@/components/DifficultyLadder";
 import { Colors, Spacing, Radius, FontSize } from '@/lib/theme';
@@ -143,7 +143,6 @@ export default function LobbyScreen() {
 
   const handleCountChange = (count: number) => {
     setPlayerCount(count);
-    setGameMode(modeFits(gameMode, count) ? gameMode : "free_for_all");
     setPlayers(buildDefaultPlayers(count));
   };
 
@@ -192,15 +191,13 @@ export default function LobbyScreen() {
     <>
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>{t("lobby.playerCountLabel")}</Text>
-        <SeatCountPicker value={playerCount} onChange={handleCountChange} />
+        <SeatCountPicker value={playerCount} onChange={handleCountChange} mode={gameMode} />
       </View>
 
-      {modeFits("teams", playerCount) && (
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>{t("lobby.modeLabel")}</Text>
-          <ModePicker value={gameMode} onChange={setGameMode} />
-        </View>
-      )}
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>{t("lobby.modeLabel")}</Text>
+        <ModePicker value={gameMode} onChange={setGameMode} seats={playerCount} form={isLandscape ? "short" : "full"} />
+      </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>{t("lobby.formatLabel")}</Text>

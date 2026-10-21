@@ -59,11 +59,15 @@ export interface OfflineSetup {
 /** From the home screen: opens the offline lobby, configures it, and starts the game. */
 export async function startOfflineGame(page: Page, setup: OfflineSetup): Promise<void> {
   await page.getByRole("button", { name: "Offline" }).click();
-  await page.getByRole("radio", { name: `${setup.playerCount} giocatori` }).click();
+  await page.getByRole("radio", { name: `${setup.playerCount} giocatori`, exact: true }).click();
 
   if (setup.playerCount === 4) {
-    const modeLabel = it[setup.gameMode === "teams" ? "term.mode.teams" : "term.mode.freeForAll"];
-    await page.getByRole("radio", { name: modeLabel, exact: true }).click();
+    // The lobby names a mode in full or short as its width allows; either is the same chip.
+    const [full, short] =
+      setup.gameMode === "teams"
+        ? [it["term.mode.teams"], it["term.mode.teamsShort"]]
+        : [it["term.mode.freeForAll"], it["term.mode.freeForAllShort"]];
+    await page.getByRole("radio", { name: new RegExp(`^(${full}|${short})$`) }).click();
   }
 
   if (setup.format === "single") {

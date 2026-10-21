@@ -74,12 +74,22 @@ function automationReducedMotion(): boolean {
  */
 let systemReduceMotion = false;
 const systemListeners = new Set<() => void>();
-let nativeSubscription: ReturnType<typeof AccessibilityInfo.addEventListener> | undefined;
+/** Undoes the one platform listener the first subscriber added. */
+let releaseSource: (() => void) | undefined;
+/**
+ * Bumped by every change event and every release, so a query answer that was
+ * asked before either cannot overwrite what they brought.
+ */
+let systemEpoch = 0;
+
+function notifySystem(): void {
+  systemListeners.forEach((fn) => fn());
+}
 
 function publishSystemReduceMotion(next: boolean): void {
   if (next === systemReduceMotion) return;
   systemReduceMotion = next;
-  systemListeners.forEach((fn) => fn());
+  notifySystem();
 }
 
 /**
@@ -96,31 +106,41 @@ function motionQuery(): MediaQueryList | null {
   return motionQueryOnce;
 }
 
-function subscribeSystemReduceMotion(fn: () => void): () => void {
+function listenToSource(): () => void {
   const mq = motionQuery();
   if (mq) {
-    const handler = () => fn();
     try {
-      mq.addEventListener('change', handler);
-      return () => mq.removeEventListener('change', handler);
+      mq.addEventListener('change', notifySystem);
+      return () => mq.removeEventListener('change', notifySystem);
     } catch {
       // Fallback for older browsers
-      mq.addListener(handler);
-      return () => mq.removeListener(handler);
+      mq.addListener(notifySystem);
+      return () => mq.removeListener(notifySystem);
     }
   }
-
   if (Platform.OS === 'web') return () => {};
 
+  const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', (next) => {
+    systemEpoch += 1;
+    publishSystemReduceMotion(next);
+  });
+  const asked = ++systemEpoch;
+  AccessibilityInfo.isReduceMotionEnabled()
+    .then((next) => {
+      if (asked === systemEpoch) publishSystemReduceMotion(next);
+    })
+    .catch(() => {});
+  return () => sub?.remove();
+}
+
+function subscribeSystemReduceMotion(fn: () => void): () => void {
   systemListeners.add(fn);
-  if (systemListeners.size === 1) {
-    nativeSubscription = AccessibilityInfo.addEventListener('reduceMotionChanged', publishSystemReduceMotion);
-    AccessibilityInfo.isReduceMotionEnabled().then(publishSystemReduceMotion).catch(() => {});
-  }
+  if (systemListeners.size === 1) releaseSource = listenToSource();
   return () => {
     if (!systemListeners.delete(fn) || systemListeners.size > 0) return;
-    nativeSubscription?.remove();
-    nativeSubscription = undefined;
+    systemEpoch += 1;
+    releaseSource?.();
+    releaseSource = undefined;
   };
 }
 

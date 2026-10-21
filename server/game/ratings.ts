@@ -211,6 +211,7 @@ export async function getLeaderboard(asOf: Date): Promise<LeaderboardEntryDto[]>
     })
     .from(userRatings)
     .innerJoin(users, eq(users.id, userRatings.userId))
+    // provisionalLeft (lib/game/rating.ts) in SQL: listed once it is undefined.
     .where(and(eq(userRatings.season, season), gte(userRatings.rounds, PROVISIONAL_ROUNDS)))
     .orderBy(desc(userRatings.rating), userRatings.updatedAt)
     .limit(LEADERBOARD_SIZE);

@@ -185,4 +185,34 @@ describe('the native reduce-motion setting is read through one listener', () => 
     expect(view.getAllByText('reduced')).toHaveLength(3);
     await view.unmount();
   });
+
+  it('an initial "reduce" reaches every subscriber', async () => {
+    asked.mockResolvedValue(true);
+    const { view } = await mountProbes(3);
+    expect(view.getAllByText('reduced')).toHaveLength(3);
+    await view.unmount();
+  });
+
+  it('an answer to the first query that lands after a change event does not overwrite it', async () => {
+    let answer: (reduced: boolean) => void = () => {};
+    asked.mockReturnValue(new Promise<boolean>((resolve) => (answer = resolve)));
+    const { view } = await mountProbes(3);
+    const onChange = listened.mock.calls[0][1] as unknown as (reduced: boolean) => void;
+    await act(async () => onChange(true));
+    await act(async () => answer(false));
+    expect(view.getAllByText('reduced')).toHaveLength(3);
+    await view.unmount();
+  });
+
+  it('an answer that lands after its subscribers are gone does not reach the next ones', async () => {
+    let stale: (reduced: boolean) => void = () => {};
+    asked.mockReturnValueOnce(new Promise<boolean>((resolve) => (stale = resolve)));
+    const first = await mountProbes(2);
+    await first.view.unmount();
+    asked.mockResolvedValue(false);
+    const second = await mountProbes(2);
+    await act(async () => stale(true));
+    expect(second.view.getAllByText('full')).toHaveLength(2);
+    await second.view.unmount();
+  });
 });

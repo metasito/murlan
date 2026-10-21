@@ -203,4 +203,40 @@ describe('the room screen matchmaking toggle', () => {
       jest.useRealTimers();
     }
   });
+
+  it('keeps counting from when the room opened while the table fills and empties again', async () => {
+    jest.useFakeTimers();
+    try {
+      const view = await renderRoom();
+      const hint = (seconds: number) =>
+        locale['room.botsComingIn'].replace('{{seconds}}', String(seconds));
+      const tick = async (steps: number) => {
+        for (let i = 0; i < steps; i++) {
+          await act(async () => {
+            jest.advanceTimersByTime(COUNTDOWN_STEP_MS);
+          });
+        }
+      };
+
+      await tick(10);
+      expect(view.getByText(hint(20))).toBeTruthy();
+
+      const seated = (n: number) =>
+        Array.from({ length: n }, (_, i) => ({ seatIndex: i, userId: i === 0 ? 'host' : `p${i}`, username: `P${i}` }));
+      mockRoom = { ...roomWith('private'), players: seated(4) };
+      await view.rerender(<RoomScreen />);
+      expect(view.queryByText(hint(20))).toBeNull();
+
+      await tick(5);
+      mockRoom = { ...roomWith('private'), players: seated(1) };
+      await view.rerender(<RoomScreen />);
+      expect(view.getByText(hint(15))).toBeTruthy();
+
+      await tick(15);
+      expect(view.getByRole('switch', { name: BOTS })).toBeTruthy();
+      await view.unmount();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

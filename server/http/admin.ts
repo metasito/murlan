@@ -138,6 +138,7 @@ async function ratingSpread(): Promise<{ bucket: string; n: number }[]> {
   return rows.rows;
 }
 
+/** provisionalLeft (lib/game/rating.ts) in SQL: counts the records it is defined for. */
 async function provisionalPlayers(provisionalRounds: number): Promise<number> {
   const rows = await db.execute<{ n: number }>(sql`
     SELECT count(*)::int AS n
