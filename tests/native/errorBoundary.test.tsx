@@ -23,11 +23,10 @@ import { ACTIVE_ROOM_KEY, WAITING_ROOM_KEY } from '@/lib/storageKeys';
 import { SettingsProvider } from '@/context/SettingsContext';
 import { t } from '@/lib/i18n';
 import { resetErrorReportingForTests } from '@/lib/errorReporting';
+import { httpRequests, route } from './mocks/http';
 
-jest.mock('@/lib/query-client', () => ({
-  apiRequest: jest.fn(() => Promise.resolve({ ok: true })),
-  getApiUrl: () => 'http://localhost',
-}));
+// The server a device build names; this file never loads socket.io, which names it for the rest.
+process.env.EXPO_PUBLIC_DOMAIN ??= 'murlan.test';
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn() } }));
 const replace = (require('expo-router') as { router: { replace: jest.Mock } }).router.replace;
@@ -35,8 +34,7 @@ const replace = (require('expo-router') as { router: { replace: jest.Mock } }).r
 jest.mock('expo', () => ({ ...jest.requireActual<object>('expo'), reloadAppAsync: jest.fn() }));
 const reloadAppAsync = (require('expo') as { reloadAppAsync: jest.Mock }).reloadAppAsync;
 
-const apiRequest = (require('@/lib/query-client') as { apiRequest: jest.Mock })
-  .apiRequest;
+const reports = () => httpRequests().filter((r) => r.method === 'POST' && r.path === '/api/client-errors').map((r) => r.body);
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -54,7 +52,7 @@ const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
 // same message from the same line — so without this the second render is
 // correctly suppressed and reads as a broken test.
 beforeEach(() => {
-  apiRequest.mockClear();
+  route('POST', '/api/client-errors', { body: { ok: true } });
   resetErrorReportingForTests();
 });
 afterAll(() => {
@@ -121,9 +119,7 @@ describe('the root boundary renders its fallback', () => {
   it('reports the crash to the server', async () => {
     const view = await render(rootStack(<Thrower />));
 
-    expect(apiRequest).toHaveBeenCalledWith(
-      'POST',
-      '/api/client-errors',
+    expect(reports()).toContainEqual(
       expect.objectContaining({
         message: 'boom',
         // The boundary is the only caller that has one, and #165's point is
@@ -219,11 +215,7 @@ describe('a table route has its own boundary', () => {
 
     expect(view.getByText(t('errorFallback.title'))).toBeTruthy();
     expect(outer).toEqual({ mounts: 1, unmounts: 0 });
-    expect(apiRequest).toHaveBeenCalledWith(
-      'POST',
-      '/api/client-errors',
-      expect.objectContaining({ message: 'boom' })
-    );
+    expect(reports()).toContainEqual(expect.objectContaining({ message: 'boom' }));
     await view.unmount();
   });
 

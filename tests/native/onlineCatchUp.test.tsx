@@ -2,9 +2,10 @@
 // table replaying: every throw keeps the full flight while the notice is up.
 import { afterEach, describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
-import { render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
+import { state } from '../support/game';
+import { renderApp } from './harness/renderApp';
 
 const mockTableProps = jest.fn();
 const mockRetry = jest.fn();
@@ -17,12 +18,8 @@ jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'alice', username: 'Alice' } }),
-}));
-
 const mockSeat = (id: string, name: string): Player => ({ id, name, hand: [] as Card[], type: 'human' });
-const mockMidRound: GameState = {
+const mockMidRound: GameState = state({
   players: [mockSeat('player_0', 'Alice'), mockSeat('player_1', 'Carl')],
   currentTurnIndex: 0,
   lastPlayedCombination: null,
@@ -34,7 +31,7 @@ const mockMidRound: GameState = {
   finishingOrder: [],
   firstPlayMade: true,
   lastMove: { seq: 0, kind: 'deal' },
-};
+});
 
 jest.mock('@/context/onlineGameHooks', () => ({
   useServerError: () => null,
@@ -93,9 +90,11 @@ const OnlineGameScreen = (require('@/app/(online)/game') as { default: React.Com
 
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } };
 
+const mount = (ui: React.ReactElement) => renderApp(ui, { user: { id: 'alice', username: 'Alice' } });
+
 describe('the online table under a reconnect notice', () => {
   it('throws at the full flight while another seat is away', async () => {
-    const view = await render(
+    const view = await mount(
       <SafeAreaProvider initialMetrics={METRICS}>
         <OnlineGameScreen />
       </SafeAreaProvider>
@@ -132,7 +131,7 @@ describe("the online table on the viewer's own link", () => {
         <OnlineGameScreen />
       </SafeAreaProvider>
     );
-    const view = await render(screen());
+    const view = await mount(screen());
     const at = async (link: typeof mockOwnLink.current, state?: GameState) => {
       mockOwnLink.current = link;
       if (state) mockState.current = state;
@@ -151,7 +150,7 @@ describe("the online table on the viewer's own link", () => {
 
   it('offers Riprova once given up, and Riprova retries the connection', async () => {
     mockOwnLink.current = 'lost';
-    const view = await render(
+    const view = await mount(
       <SafeAreaProvider initialMetrics={METRICS}>
         <OnlineGameScreen />
       </SafeAreaProvider>
@@ -167,7 +166,7 @@ describe("the online table on the viewer's own link", () => {
     mockOwnLink.current = 'lost';
     mockMatchOver.current = true;
     mockState.current = { ...mockMidRound, roundOver: true, finishingOrder: ['player_0', 'player_1'] };
-    const view = await render(
+    const view = await mount(
       <SafeAreaProvider initialMetrics={METRICS}>
         <OnlineGameScreen />
       </SafeAreaProvider>
@@ -182,7 +181,7 @@ describe("the online table on the viewer's own link", () => {
 
   it('says it is reconnecting from the first frame for a socket that was never up', async () => {
     mockConnected.current = false;
-    const view = await render(
+    const view = await mount(
       <SafeAreaProvider initialMetrics={METRICS}>
         <OnlineGameScreen />
       </SafeAreaProvider>

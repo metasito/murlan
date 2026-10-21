@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { act, render } from '@testing-library/react-native';
+import { act } from '@testing-library/react-native';
 
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { Card, GameState, Rank } from '@/lib/game/gameEngine';
 import { stillSelection, storeOf } from './tapHelpers';
+import { state } from '../support/game';
+import { renderApp } from './harness/renderApp';
 
 // CardView asks lib/cosmetics which back to draw exactly once per render, and
 // it asks before any branch, so counting that call counts renders of every card
@@ -28,10 +30,6 @@ const mockOnline: { value: unknown } = { value: null };
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
-}));
-
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' } }),
 }));
 
 jest.mock('@/context/OnlineGameContext', () =>
@@ -71,6 +69,8 @@ const view = (cards: Card[], onActivate: (id: string) => void) => (
   />
 );
 
+const mount = (ui: React.ReactElement) => renderApp(ui, { user: { id: 'u1', username: 'Ana' } });
+
 describe('the hand is not rebuilt by a render that changes nothing about it', () => {
   beforeEach(() => {
     mockCardRenders.n = 0;
@@ -78,7 +78,7 @@ describe('the hand is not rebuilt by a render that changes nothing about it', ()
   });
 
   it('re-rendering with a fresh array of the same cards commits no card render', async () => {
-    const r = await render(view(hand(), noop));
+    const r = await mount(view(hand(), noop));
     const afterMount = mockCardRenders.n;
     expect(afterMount).toBe(RANKS.length);
 
@@ -88,7 +88,7 @@ describe('the hand is not rebuilt by a render that changes nothing about it', ()
 
   // The other half of the claim: the memo must not be swallowing real updates.
   it('selecting a card re-renders that card alone', async () => {
-    await render(view(hand(), noop));
+    await mount(view(hand(), noop));
     mockCardRenders.n = 0;
 
     await act(async () => store.set({ mode: 'play', ids: ['5_spades'], held: [] }));
@@ -98,7 +98,7 @@ describe('the hand is not rebuilt by a render that changes nothing about it', ()
   // The reason GameTable stabilizes handleCardPress with useCallback: a fresh
   // arrow per render defeats every comparator below it.
   it('a new onActivate reference rebuilds every card', async () => {
-    const r = await render(view(hand(), noop));
+    const r = await mount(view(hand(), noop));
     mockCardRenders.n = 0;
 
     await r.rerender(view(hand(), () => {}));
@@ -111,7 +111,7 @@ const METRICS = {
   insets: { top: 0, left: 47, right: 34, bottom: 0 },
 };
 
-const state = (cards: Card[]): GameState => ({
+const dealt = (cards: Card[]): GameState => state({
   players: [
     { id: 'u1', name: 'Ana', hand: cards, type: 'human' },
     { id: 'u2', name: 'Besi', hand: [], type: 'human' },
@@ -145,7 +145,7 @@ const CALLBACKS = {
 
 const online = (cards: Card[]) => ({
   ...CALLBACKS,
-  gameState: state(cards),
+  gameState: dealt(cards),
   mySeatIndex: 0,
   isSpectator: false,
   playerLeft: false,
@@ -177,7 +177,7 @@ describe('an incoming game:state does not rebuild the online hand', () => {
 
   it('commits no card render for a state that changes neither the hand nor the selection', async () => {
     mockOnline.value = online(hand());
-    const r = await render(screenView());
+    const r = await mount(screenView());
     const afterMount = mockCardRenders.n;
     expect(afterMount).toBeGreaterThanOrEqual(RANKS.length);
 

@@ -7,8 +7,9 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { BackHandler, Platform } from 'react-native';
-import { render, fireEvent, act, screen } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { fireEvent, act, screen } from '@testing-library/react-native';
+import { setWindow } from './harness/env';
+import { renderApp } from './harness/renderApp';
 
 import { en as locale } from '@/locales/en';
 
@@ -43,18 +44,11 @@ jest.mock('@/lib/browserBack', () => ({
   },
 }));
 
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'host', username: 'Ana' } }),
-}));
-
 jest.mock('@/context/SocketContext', () => ({
+  ...jest.requireActual<object>('@/context/SocketContext'),
   usePresence: () => ({ onlineIds: new Set(), refresh: () => {} }),
   useInvites: () => ({ send: async () => false }),
 }));
-
-jest.mock('@/context/NotificationContext', () =>
-  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
-);
 
 jest.mock('@tanstack/react-query', () => ({
   ...jest.requireActual<object>('@tanstack/react-query'),
@@ -77,10 +71,6 @@ jest.mock('@/context/onlineGameHooks', () => ({
 
 const RoomScreen = (require('@/app/(online)/room') as { default: React.ComponentType }).default;
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 390, height: 844 },
-  insets: { top: 0, left: 0, right: 0, bottom: 0 },
-};
 
 const START = locale['room.startGame'];
 const MATCHMAKING = locale['room.fillWithMatchmakingA11yLabel'];
@@ -100,11 +90,11 @@ const twoSeated = () => ({
   seatHolds: [],
 });
 
-const tree = () => (
-  <SafeAreaProvider initialMetrics={METRICS}>
-    <RoomScreen />
-  </SafeAreaProvider>
-);
+const tree = () => <RoomScreen />;
+const mount = async () => {
+  await setWindow({ width: 390, height: 844 });
+  return renderApp(tree(), { user: { id: 'host', username: 'Ana' } });
+};
 
 beforeEach(() => {
   mockRoom = twoSeated();
@@ -121,7 +111,7 @@ beforeEach(() => {
 describe('the waiting room without a connection', () => {
   it('says it is connecting and holds Start and the visibility switch', async () => {
     mockConnected = false;
-    const view = await render(tree());
+    const view = await mount();
 
     expect(screen.getByText(locale['onlineLobby.connecting'])).toBeTruthy();
     expect(screen.getByRole('button', { name: START })).toBeDisabled();
@@ -132,7 +122,7 @@ describe('the waiting room without a connection', () => {
   });
 
   it('frees both once connected', async () => {
-    const view = await render(tree());
+    const view = await mount();
 
     expect(screen.queryByText(locale['onlineLobby.connecting'])).toBeNull();
     expect(screen.getByRole('button', { name: START })).not.toBeDisabled();
@@ -143,7 +133,7 @@ describe('the waiting room without a connection', () => {
 
 describe('back on the waiting room', () => {
   it('asks the leave question, and leaves only on confirm', async () => {
-    const view = await render(tree());
+    const view = await mount();
     expect(mockGuard.prevent).toBe(true);
 
     await act(async () => mockGuard.onPrevented!(POP));
@@ -157,7 +147,7 @@ describe('back on the waiting room', () => {
   });
 
   it("answers the browser's back with the same question, under the same guard", async () => {
-    const view = await render(tree());
+    const view = await mount();
     expect(mockBrowserBack.active).toBe(true);
 
     await act(async () => mockBrowserBack.onBack!());
@@ -171,7 +161,7 @@ describe('back on the waiting room', () => {
   });
 
   it('lets the router replace the room once a game exists or the room is gone', async () => {
-    const view = await render(tree());
+    const view = await mount();
     mockHasGame = true;
     await view.rerender(tree());
     expect(mockGuard.prevent).toBe(false);
@@ -196,7 +186,7 @@ describe('back on the waiting room', () => {
       };
     });
     try {
-      const view = await render(tree());
+      const view = await mount();
       if (Platform.OS !== 'android') {
         expect(listeners).toHaveLength(0);
         await view.unmount();

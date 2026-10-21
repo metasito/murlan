@@ -2,8 +2,8 @@
 // reclaimed seat re-broadcasts the table and sends no tally), so the client keeps it too.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook } from '@testing-library/react-native';
+import { act } from '@testing-library/react-native';
+import { renderAppHook } from './harness/renderApp';
 
 import { OnlineGameProvider } from '@/context/OnlineGameContext';
 import type { WireGameState } from '@/shared/protocol';
@@ -25,11 +25,9 @@ const mockSocket = {
   emit() {},
 };
 jest.mock('@/context/SocketContext', () => ({
+  ...jest.requireActual<object>('@/context/SocketContext'),
   useSocketConnection: () => mockSocket,
 }));
-jest.mock('@/context/NotificationContext', () =>
-  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
-);
 
 const table = (roundOver: boolean): WireGameState => ({
   players: [
@@ -59,12 +57,9 @@ describe('the rematch tally', () => {
   beforeEach(() => listeners.clear());
 
   const mount = () =>
-    renderHook(() => useOnlineMatch(), {
-      wrapper: ({ children }: { children: React.ReactNode }) => (
-        <QueryClientProvider client={new QueryClient()}>
-          <OnlineGameProvider userId="u1">{children}</OnlineGameProvider>
-        </QueryClientProvider>
-      ),
+    renderAppHook(() => useOnlineMatch(), {
+      user: { id: 'u1', username: 'Ana' },
+      wrap: (hook) => <OnlineGameProvider userId="u1">{hook}</OnlineGameProvider>,
     });
 
   it('survives a game:state that leaves the table between hands', async () => {

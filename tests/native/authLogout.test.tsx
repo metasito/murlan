@@ -1,22 +1,16 @@
 // tests/native/authLogout.test.tsx — logout itself retires everything the
 // signed-in account left on this device, and a refused logout retires nothing.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import React from 'react';
-import { act, renderHook, waitFor } from '@testing-library/react-native';
+import React, { useEffect } from 'react';
+import { act, waitFor } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { stubFetch } from './helpers/stubFetch';
-import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { useAuth } from '@/context/AuthContext';
 import { queryClient } from '@/lib/query-client';
+import { renderApp } from './harness/renderApp';
+import { httpRequests, route } from './mocks/http';
 
-const mockApiRequest = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockForgetPushRegistration = jest.fn<() => void>();
-
-jest.mock('@/lib/query-client', () => ({
-  getApiUrl: () => 'http://localhost',
-  apiRequest: (...args: unknown[]) => mockApiRequest(...args),
-  queryClient: new (jest.requireActual('@tanstack/react-query') as typeof import('@tanstack/react-query')).QueryClient(),
-}));
 
 // Called through rather than handed over: the factory runs while AuthContext
 // is being imported, before the consts above have initialised.
@@ -33,37 +27,36 @@ import {
 } from '@/lib/storageKeys';
 const SIGNED_IN = { id: 'u1', username: 'Ana', tutorialSeenAt: null };
 
-const mockFetch = jest.fn<() => Promise<unknown>>();
-
-const wrapper = ({ children }: { children: React.ReactNode }) => (
-  <AuthProvider>{children}</AuthProvider>
-);
+const auth = {} as { current: ReturnType<typeof useAuth> };
+function Capture() {
+  const value = useAuth();
+  useEffect(() => {
+    auth.current = value;
+  });
+  return null;
+}
+const result = auth;
 
 /** A player signed in on this device, mid-game, with a friends list cached. */
 const signedIn = async () => {
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(SIGNED_IN));
   await AsyncStorage.setItem(ACTIVE_ROOM_KEY, 'room-1');
   await AsyncStorage.setItem(WAITING_ROOM_KEY, 'ABCD');
   queryClient.setQueryData(['/api/friends'], [{ id: 'u2' }]);
-  const hook = await renderHook(() => useAuth(), { wrapper });
-  await waitFor(() => expect(hook.result.current.loading).toBe(false));
-  expect(hook.result.current.user?.username).toBe('Ana');
-  return hook;
+  const view = await renderApp(<Capture />, { user: SIGNED_IN });
+  await waitFor(() => expect(auth.current.loading).toBe(false));
+  expect(auth.current.user?.username).toBe('Ana');
+  return { result, unmount: view.unmount };
 };
 
 beforeEach(async () => {
   jest.clearAllMocks();
   await AsyncStorage.clear();
   queryClient.clear();
-  // `fetchMe` uses a raw fetch rather than apiRequest, so the boot check is
-  // steered here and every apiRequest below belongs to logout itself.
-  mockFetch.mockResolvedValue({ status: 200, ok: true, json: async () => SIGNED_IN });
-  stubFetch(mockFetch);
 });
 
 describe('a logout the server refuses', () => {
   beforeEach(() => {
-    mockApiRequest.mockRejectedValue(new Error('500: logout failed'));
+    route('POST', '/api/auth/logout', { status: 500, body: 'logout failed' });
   });
 
   it('leaves the account signed in and every piece of its state in place', async () => {
@@ -78,24 +71,24 @@ describe('a logout the server refuses', () => {
     expect(await AsyncStorage.getItem(ACTIVE_ROOM_KEY)).toBe('room-1');
     expect(queryClient.getQueryData(['/api/friends'])).toEqual([{ id: 'u2' }]);
     expect(mockForgetPushRegistration).not.toHaveBeenCalled();
-    unmount();
+    await unmount();
   });
 });
 
 describe('a logout the server accepts', () => {
-  it('retires every account-scoped key and the push registration, and leaves the cache to SocketProvider', async () => {
-    mockApiRequest.mockResolvedValue({ ok: true });
+  it('retires every account-scoped key and the push registration, and SocketProvider empties the cache', async () => {
+    route('POST', '/api/auth/logout', { body: { ok: true } });
     const { result, unmount } = await signedIn();
 
     await act(async () => {
       await result.current.logout();
     });
 
-    expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/logout');
+    expect(httpRequests().filter((r) => r.path === '/api/auth/logout').map((r) => r.method)).toEqual(['POST']);
     expect(result.current.user).toBeNull();
     for (const key of ACCOUNT_KEYS) expect(await AsyncStorage.getItem(key)).toBeNull();
-    expect(queryClient.getQueryData(['/api/friends'])).toEqual([{ id: 'u2' }]);
+    expect(queryClient.getQueryData(['/api/friends'])).toBeUndefined();
     expect(mockForgetPushRegistration).toHaveBeenCalledTimes(1);
-    unmount();
+    await unmount();
   });
 });

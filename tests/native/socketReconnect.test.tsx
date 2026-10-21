@@ -10,28 +10,12 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { Text } from 'react-native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, act } from '@testing-library/react-native';
+import { act } from '@testing-library/react-native';
 
+import { renderApp } from './harness/renderApp';
 import { lastSocket } from './mocks/socketIo';
 
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
-}));
-
-const { SocketProvider } = require('@/context/SocketContext') as typeof import('@/context/SocketContext');
-const { NotificationProvider } = require('@/context/NotificationContext') as typeof import('@/context/NotificationContext');
-
-const mount = () =>
-  render(
-    <QueryClientProvider client={new QueryClient()}>
-      <NotificationProvider>
-        <SocketProvider>
-          <Text>child</Text>
-        </SocketProvider>
-      </NotificationProvider>
-    </QueryClientProvider>
-  );
+const mount = () => renderApp(<Text>child</Text>, { user: { id: 'u1', username: 'Ana' } });
 
 const fireConnectError = async () => {
   await act(async () => {

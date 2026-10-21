@@ -3,23 +3,20 @@
 // Only a 401 answers the question. A network throw or a 5xx — a redeploy
 // window, a tunnel — is silence, and must leave the cached user and
 // AsyncStorage untouched rather than signing the player out of a live session.
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, afterEach, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { Text } from 'react-native';
-import { act, render, waitFor } from '@testing-library/react-native';
+import { act, waitFor } from '@testing-library/react-native';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { stubFetch } from './helpers/stubFetch';
-import { AuthProvider, useAuth } from '@/context/AuthContext';
-
-jest.mock('@/lib/query-client', () => ({
-  getApiUrl: () => 'http://localhost',
-  apiRequest: jest.fn(),
-}));
+import { useAuth, type AuthUser } from '@/context/AuthContext';
+import { renderApp } from './harness/renderApp';
+import { route, unreachable, type HttpReply } from './mocks/http';
 
 jest.mock('@/lib/errorReporting', () => ({
+  ...jest.requireActual<object>('@/lib/errorReporting'),
   setReportingAccount: jest.fn(async () => {}),
 }));
 const reportingAccount = (require('@/lib/errorReporting') as { setReportingAccount: jest.Mock })
@@ -29,8 +26,6 @@ const flushes = () => reportingAccount.mock.calls.filter(([id]) => id !== null);
 
 import { ACCOUNT_KEYS, ACTIVE_ROOM_KEY, AUTH_USER_KEY as STORAGE_KEY, WAITING_ROOM_KEY } from '@/lib/storageKeys';
 const CACHED = { id: 'u1', username: 'Ana' };
-
-const mockFetch = jest.fn<() => Promise<unknown>>();
 
 function Probe() {
   const { user, loading } = useAuth();
@@ -43,27 +38,25 @@ function Probe() {
   );
 }
 
-const mount = () => render(<AuthProvider><Probe /></AuthProvider>);
+type Me = HttpReply | typeof unreachable;
+const mount = (me: Me, cached: AuthUser | null = null) => renderApp(<Probe />, { cached, me });
+const meIs = (me: Me) => route('GET', '/api/auth/me', me);
+const signedIn: Me = { body: CACHED };
 
-const bootWithCachedUser = async () => {
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(CACHED));
-  const view = await mount();
+const bootWithCachedUser = async (me: Me) => {
+  const view = await mount(me, CACHED);
   await waitFor(() => expect(view.getByTestId('loading').props.children).toBe('false'));
   return view;
 };
 
 beforeEach(async () => {
   await AsyncStorage.clear();
-  mockFetch.mockReset();
   reportingAccount.mockClear();
-  stubFetch(mockFetch);
 });
 
 describe('the boot check', () => {
   it('keeps the cached user when the request never lands', async () => {
-    mockFetch.mockRejectedValue(new Error('Network request failed'));
-
-    const view = await bootWithCachedUser();
+    const view = await bootWithCachedUser(unreachable);
 
     expect(view.getByTestId('user').props.children).toBe('Ana');
     expect(await AsyncStorage.getItem(STORAGE_KEY)).toBe(JSON.stringify(CACHED));
@@ -72,9 +65,7 @@ describe('the boot check', () => {
   });
 
   it('keeps the cached user on a 503', async () => {
-    mockFetch.mockResolvedValue({ status: 503, ok: false });
-
-    const view = await bootWithCachedUser();
+    const view = await bootWithCachedUser({ status: 503 });
 
     expect(view.getByTestId('user').props.children).toBe('Ana');
     expect(await AsyncStorage.getItem(STORAGE_KEY)).toBe(JSON.stringify(CACHED));
@@ -83,13 +74,7 @@ describe('the boot check', () => {
   });
 
   it('drops a cached field of the wrong type rather than trusting it', async () => {
-    mockFetch.mockRejectedValue(new Error('Network request failed'));
-    await AsyncStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ ...CACHED, email: 7, emailVerified: 'yes', tutorialSeenAt: 0 })
-    );
-
-    const view = await mount();
+    const view = await mount(unreachable, { ...CACHED, email: 7, emailVerified: 'yes', tutorialSeenAt: 0 } as never);
     await waitFor(() => expect(view.getByTestId('loading').props.children).toBe('false'));
 
     expect(JSON.parse(view.getByTestId('user-json').props.children)).toEqual(CACHED);
@@ -98,9 +83,7 @@ describe('the boot check', () => {
   });
 
   it('clears the cached user on a 401', async () => {
-    mockFetch.mockResolvedValue({ status: 401, ok: false });
-
-    const view = await bootWithCachedUser();
+    const view = await bootWithCachedUser({ status: 401 });
 
     await waitFor(() => expect(view.getByTestId('user').props.children).toBe('none'));
     expect(await AsyncStorage.getItem(STORAGE_KEY)).toBeNull();
@@ -118,7 +101,7 @@ describe('every path that ends the session empties the account keys', () => {
   const leftOver = async () =>
     (await AsyncStorage.multiGet(ACCOUNT_KEYS)).filter(([, value]) => value !== null);
 
-  const capture = async () => {
+  const capture = async (me: Me) => {
     const auth: { current?: ReturnType<typeof useAuth> } = {};
     function Capture() {
       const value = useAuth();
@@ -127,16 +110,15 @@ describe('every path that ends the session empties the account keys', () => {
       });
       return null;
     }
-    const view = await render(<AuthProvider><Capture /></AuthProvider>);
+    const view = await renderApp(<Capture />, { cached: CACHED, me });
     await waitFor(() => expect(auth.current?.loading).toBe(false));
     return { auth, view };
   };
 
   it('a 401 on boot', async () => {
     await seedAccount();
-    mockFetch.mockResolvedValue({ status: 401, ok: false });
 
-    const { auth, view } = await capture();
+    const { auth, view } = await capture({ status: 401 });
 
     await waitFor(() => expect(auth.current?.user).toBeNull());
     await waitFor(async () => expect(await leftOver()).toEqual([]));
@@ -144,12 +126,11 @@ describe('every path that ends the session empties the account keys', () => {
   });
 
   it('a 401 on refreshUser', async () => {
-    mockFetch.mockResolvedValue({ status: 200, ok: true, json: async () => CACHED });
-    const { auth, view } = await capture();
+    const { auth, view } = await capture(signedIn);
     await waitFor(() => expect(auth.current?.user?.id).toBe('u1'));
     await seedAccount();
 
-    mockFetch.mockResolvedValue({ status: 401, ok: false });
+    meIs({ status: 401 });
     await act(async () => auth.current!.refreshUser());
 
     expect(auth.current?.user).toBeNull();
@@ -159,8 +140,7 @@ describe('every path that ends the session empties the account keys', () => {
 
   // What SocketContext calls on a ticket 401 (tests/native/authFailureAfterSwitch.test.tsx).
   it('forgetSession, the socket 401', async () => {
-    mockFetch.mockResolvedValue({ status: 200, ok: true, json: async () => CACHED });
-    const { auth, view } = await capture();
+    const { auth, view } = await capture(signedIn);
     await waitFor(() => expect(auth.current?.user?.id).toBe('u1'));
     await seedAccount();
 
@@ -172,12 +152,11 @@ describe('every path that ends the session empties the account keys', () => {
   });
 
   it('a 503 on refreshUser keeps everything', async () => {
-    mockFetch.mockResolvedValue({ status: 200, ok: true, json: async () => CACHED });
-    const { auth, view } = await capture();
+    const { auth, view } = await capture(signedIn);
     await waitFor(() => expect(auth.current?.user?.id).toBe('u1'));
     await seedAccount();
 
-    mockFetch.mockResolvedValue({ status: 503, ok: false });
+    meIs({ status: 503 });
     await act(async () => auth.current!.refreshUser());
 
     expect(auth.current?.user?.id).toBe('u1');
@@ -208,14 +187,12 @@ describe('every path that ends the session empties the account keys', () => {
   });
 
   it('a register that finds no session', async () => {
-    mockFetch.mockResolvedValue({ status: 200, ok: true, json: async () => CACHED });
-    const { auth, view } = await capture();
+    const { auth, view } = await capture(signedIn);
     await waitFor(() => expect(auth.current?.user?.id).toBe('u1'));
     await seedAccount();
-    const { apiRequest } = require('@/lib/query-client') as { apiRequest: jest.Mock };
-    apiRequest.mockImplementation(async () => ({ json: async () => ({ ok: true }) }));
+    route('POST', '/api/auth/register', { body: { ok: true } });
 
-    mockFetch.mockResolvedValue({ status: 401, ok: false });
+    meIs({ status: 401 });
     await act(async () => {
       await auth.current!.register('Ana', 'pw', 'a@b.c');
     });
@@ -228,15 +205,13 @@ describe('every path that ends the session empties the account keys', () => {
 
 describe('crash reports kept while signed out', () => {
   it('are sent once a user is signed in', async () => {
-    mockFetch.mockResolvedValue({ status: 200, ok: true, json: async () => CACHED });
-    const view = await mount();
+    const view = await mount(signedIn);
     await waitFor(() => expect(flushes()).toEqual([['u1']]));
     await view.unmount();
   });
 
   it('wait while nobody is', async () => {
-    mockFetch.mockResolvedValue({ status: 401, ok: false });
-    const view = await mount();
+    const view = await mount({ status: 401 });
     await waitFor(() => expect(view.getByTestId('loading').props.children).toBe('false'));
     expect(flushes()).toEqual([]);
     await view.unmount();
@@ -245,22 +220,37 @@ describe('crash reports kept while signed out', () => {
 
 describe('a storage failure', () => {
   const diskFull = () => Promise.reject(new Error('disk full'));
+  /** Fails `method` for the cached account only, once; every other key reaches storage. */
+  const failAccountCache = (method: 'getItem' | 'setItem') => {
+    const mock = AsyncStorage[method] as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>;
+    const real = mock.getMockImplementation()!;
+    restore = () => mock.mockImplementation(real);
+    let failed = false;
+    mock.mockImplementation((key, ...rest) => {
+      if (key !== STORAGE_KEY || failed) return real(key, ...rest);
+      failed = true;
+      return diskFull();
+    });
+  };
+  let restore = () => {};
+  afterEach(() => {
+    restore();
+    restore = () => {};
+  });
 
   it('still ends the boot when the cache cannot be read', async () => {
-    jest.spyOn(AsyncStorage, 'getItem').mockImplementationOnce(diskFull);
-    mockFetch.mockResolvedValue({ status: 503, ok: false });
+    failAccountCache('getItem');
 
-    const view = await mount();
+    const view = await mount({ status: 503 });
 
     await waitFor(() => expect(view.getByTestId('loading').props.children).toBe('false'));
     await view.unmount();
   });
 
   it('still ends the boot when the answer cannot be cached', async () => {
-    jest.spyOn(AsyncStorage, 'setItem').mockImplementationOnce(diskFull);
-    mockFetch.mockResolvedValue({ status: 200, ok: true, json: async () => CACHED });
+    failAccountCache('setItem');
 
-    const view = await mount();
+    const view = await mount(signedIn);
 
     await waitFor(() => expect(view.getByTestId('loading').props.children).toBe('false'));
     expect(view.getByTestId('user').props.children).toBe('Ana');
@@ -268,9 +258,9 @@ describe('a storage failure', () => {
   });
 
   it('does not fail a sign-in, rename or email change that already landed', async () => {
-    mockFetch.mockResolvedValue({ status: 401, ok: false });
-    const { apiRequest } = require('@/lib/query-client') as { apiRequest: jest.Mock };
-    apiRequest.mockImplementation(async () => ({ json: async () => CACHED }));
+    for (const [method, path] of [['POST', '/api/auth/login'], ['PATCH', '/api/users/me'], ['POST', '/api/auth/add-email']]) {
+      route(method, path, { body: CACHED });
+    }
     const auth: { current?: ReturnType<typeof useAuth> } = {};
     function Capture() {
       const value = useAuth();
@@ -279,7 +269,7 @@ describe('a storage failure', () => {
       });
       return null;
     }
-    const view = await render(<AuthProvider><Capture /></AuthProvider>);
+    const view = await renderApp(<Capture />);
     await waitFor(() => expect(auth.current?.loading).toBe(false));
 
     jest.spyOn(AsyncStorage, 'setItem').mockImplementation(diskFull);

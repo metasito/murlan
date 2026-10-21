@@ -10,56 +10,26 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({}),
 }));
 
-const mockShowNotification = jest.fn();
-jest.mock('@/context/NotificationContext', () =>
-  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock(() => mockShowNotification)
-);
-
-let mockUser: Record<string, unknown> = { id: 'u1', username: 'Ana' };
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({
-    user: mockUser,
-    forgetSession: async () => {},
-    changePassword: async () => {},
-    rename: async () => {},
-  }),
-}));
-
-jest.mock('@/lib/query-client', () => ({
-  getApiUrl: () => 'http://localhost',
-  apiRequest: jest.fn(),
-}));
-
-const mockData: Record<string, unknown> = {};
-jest.mock('@tanstack/react-query', () => ({
-  useQuery: ({ queryKey }: { queryKey: string[] }) => ({
-    data: mockData[queryKey[0]],
-    isLoading: false,
-    isError: false,
-    isSuccess: true,
-    refetch: jest.fn(),
-  }),
-  useQueryClient: () => ({ setQueryData: jest.fn(), invalidateQueries: jest.fn() }),
-}));
-
 import React from 'react';
-import { render, act, fireEvent } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { act, fireEvent, waitFor } from '@testing-library/react-native';
 import { translate, DEFAULT_LOCALE } from '@/shared/i18n';
 import type { TranslationKey, TranslationParams } from '@/shared/i18n';
 import * as i18n from '@/lib/i18n';
 
-import { SettingsProvider } from '@/context/SettingsContext';
+import type { AuthUser } from '@/context/AuthContext';
+import { bannerLog } from './harness/bannerLog';
+import { setWindow } from './harness/env';
+import { queriesSettled, renderApp } from './harness/renderApp';
+import { httpRequests, route } from './mocks/http';
+
+const { shown, BannerLog } = bannerLog();
+let user: AuthUser = { id: 'u1', username: 'Ana' };
 
 const ProfileScreen = require('@/app/profile').default as React.ComponentType;
 
 const t = (key: string, params?: TranslationParams) =>
   translate(DEFAULT_LOCALE, key as TranslationKey, params);
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 800, height: 600 },
-  insets: { top: 0, left: 0, right: 0, bottom: 0 },
-};
 
 const match = (id: string, daysAgo: number, placement: number, playerCount = 4) => ({
   id,
@@ -74,9 +44,10 @@ const match = (id: string, daysAgo: number, placement: number, playerCount = 4) 
   replayId: null,
 });
 
-function show(history: unknown[]) {
-  mockData['/api/stats/history'] = history;
-  mockData['/api/stats/me'] = {
+async function show(history: unknown[]) {
+  const answer = (path: string, body: unknown) => route('GET', path, { body });
+  answer('/api/stats/history', history);
+  answer('/api/stats/me', {
     userId: 'u1',
     roundsPlayed: history.length,
     roundsWon: 1,
@@ -86,22 +57,26 @@ function show(history: unknown[]) {
     dailyStreak: 1,
     bombsPlayed: 0,
     updatedAt: new Date().toISOString(),
-  };
-  mockData['/api/ratings/me'] = { season: '2026-08', rating: 1000, rounds: history.length, provisional: true };
-  mockData['/api/stats/achievements'] = [];
-  mockData['/api/replays'] = [];
-  return render(
-    <SafeAreaProvider initialMetrics={METRICS}>
-      <SettingsProvider>
-        <ProfileScreen />
-      </SettingsProvider>
-    </SafeAreaProvider>
+  });
+  answer('/api/ratings/me', { season: '2026-08', rating: 1000, rounds: history.length, provisional: true });
+  answer('/api/stats/achievements', []);
+  answer('/api/replays', []);
+  await setWindow({ width: 800, height: 600 });
+  const view = await renderApp(
+    <>
+      <BannerLog />
+      <ProfileScreen />
+    </>,
+    { user }
   );
+  await queriesSettled();
+  return view;
 }
 
 beforeEach(() => {
-  for (const key of Object.keys(mockData)) delete mockData[key];
-  mockUser = { id: 'u1', username: 'Ana' };
+  user = { id: 'u1', username: 'Ana' };
+  route('POST', '/api/auth/change-password', { body: { ok: true } });
+  route('POST', '/api/auth/resend-verification', { body: { ok: true } });
 });
 
 afterEach(() => {
@@ -148,7 +123,7 @@ describe('the profile trend panels', () => {
 
 describe('the account controls', () => {
   it('confirm a changed password, and that other sessions were signed out', async () => {
-    mockShowNotification.mockClear();
+    shown.length = 0;
     const view = await show([]);
     await fireEvent.press(view.getByLabelText(t('profile.changePasswordAction')));
     await fireEvent.changeText(view.getByTestId('input-current-password'), 'old-secret');
@@ -156,8 +131,8 @@ describe('the account controls', () => {
     const saves = view.getAllByLabelText(t('common.save'));
     await fireEvent.press(saves[saves.length - 1]);
 
-    expect(mockShowNotification).toHaveBeenCalledWith(
-      expect.objectContaining({ message: t('profile.passwordChangedBody') })
+    await waitFor(() =>
+      expect(shown).toContainEqual(expect.objectContaining({ message: t('profile.passwordChangedBody') }))
     );
     await view.unmount();
   });
@@ -173,15 +148,16 @@ describe('the account controls', () => {
   });
 
   it('resend the verification mail in the active locale', async () => {
-    mockUser = { id: 'u1', username: 'Ana', email: 'ana@example.test', emailVerified: false };
-    const { apiRequest } = require('@/lib/query-client') as { apiRequest: jest.Mock };
+    user = { id: 'u1', username: 'Ana', email: 'ana@example.test', emailVerified: false };
     jest.spyOn(i18n, 'getLocale').mockReturnValue('it');
     const view = await show([]);
     await act(async () => {
       fireEvent.press(view.getByLabelText(t('profile.verifyEmailResend')));
     });
 
-    expect(apiRequest).toHaveBeenCalledWith('POST', '/api/auth/resend-verification', { locale: 'it' });
+    expect(httpRequests().filter((r) => r.path === '/api/auth/resend-verification').map((r) => [r.method, r.body])).toEqual([
+      ['POST', { locale: 'it' }],
+    ]);
     await view.unmount();
   });
 });

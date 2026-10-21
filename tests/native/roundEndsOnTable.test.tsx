@@ -2,10 +2,12 @@
 // is dealt from the landing that ended it.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
-import { act, render } from '@testing-library/react-native';
+import { act } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import type { GameState } from '@/lib/game/gameEngine';
 import { RoundEnding } from '@/lib/tokens';
+import { state } from '../support/game';
+import { renderApp } from './harness/renderApp';
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
@@ -15,7 +17,7 @@ const mockStartNextRound = jest.fn();
 const mockTable: { props: { onRoundLanded?: (landsAt: number) => void } } = { props: {} };
 const mockMatch = { over: false };
 
-const OVER: GameState = {
+const mockOver: GameState = state({
   players: [
     { id: 'player_0', name: 'Ana', hand: [], type: 'human' },
     { id: 'player_1', name: 'Luan', hand: [], type: 'bot' },
@@ -30,20 +32,16 @@ const OVER: GameState = {
   finishingOrder: ['player_0', 'player_1'],
   firstPlayMade: true,
   lastMove: { seq: 0, kind: 'deal' },
-};
+});
 
 jest.mock('@/context/GameContext', () =>
   (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(() => ({
-    gameState: OVER,
+    gameState: mockOver,
     exchangeAnnouncing: false,
     exchangeAnnounceData: null,
     startNextRound: mockStartNextRound,
     match: { length: 'match', target: 21, over: mockMatch.over, scores: {}, rounds: [] },
   }))
-);
-
-jest.mock('@/context/NotificationContext', () =>
-  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
 );
 
 jest.mock('@/components/GameTable', () => {
@@ -61,6 +59,8 @@ import GameScreen from '@/app/game';
 
 const LONG_AFTER = 10_000;
 
+const mount = (ui: React.ReactElement) => renderApp(ui);
+
 describe('the end of a round, offline', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -73,7 +73,7 @@ describe('the end of a round, offline', () => {
   });
 
   it('deals the next round once, at the ending landing plus the deal onset, and never changes route', async () => {
-    const view = await render(<GameScreen />);
+    const view = await mount(<GameScreen />);
     await act(async () => {
       jest.advanceTimersByTime(LONG_AFTER);
     });
@@ -98,7 +98,7 @@ describe('the end of a round, offline', () => {
   });
 
   it('a landing reported late still deals at its own onset', async () => {
-    const view = await render(<GameScreen />);
+    const view = await mount(<GameScreen />);
     const landedAt = performance.now();
     await act(async () => {
       jest.advanceTimersByTime(1_000);
@@ -112,7 +112,7 @@ describe('the end of a round, offline', () => {
   });
 
   it('leaving before the deal cancels it', async () => {
-    const view = await render(<GameScreen />);
+    const view = await mount(<GameScreen />);
     await act(async () => mockTable.props.onRoundLanded?.(performance.now()));
     await view.unmount();
     jest.advanceTimersByTime(LONG_AFTER);
@@ -121,7 +121,7 @@ describe('the end of a round, offline', () => {
 
   it('a match ends on the table too, and the table is not asked to deal', async () => {
     mockMatch.over = true;
-    const view = await render(<GameScreen />);
+    const view = await mount(<GameScreen />);
     expect(mockTable.props.onRoundLanded).toBeUndefined();
     await act(async () => {
       jest.advanceTimersByTime(LONG_AFTER);

@@ -3,20 +3,14 @@
 // only on a render that onlineIds/pendingInvite/gameInvites happens to
 // trigger. A render forced by something else, before "connect"
 // fires, is exactly the window a ref-backed memo goes stale in.
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import React, { useState } from 'react';
 import { Pressable, Text } from 'react-native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, fireEvent } from '@testing-library/react-native';
+import { fireEvent } from '@testing-library/react-native';
 
+import { useSocketConnection } from '@/context/SocketContext';
+import { renderApp } from './harness/renderApp';
 import { lastSocket } from './mocks/socketIo';
-
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
-}));
-
-const { SocketProvider, useSocketConnection } = require('@/context/SocketContext') as typeof import('@/context/SocketContext');
-const { NotificationProvider } = require('@/context/NotificationContext') as typeof import('@/context/NotificationContext');
 
 let seen: { hasSocket: boolean }[] = [];
 
@@ -29,16 +23,12 @@ function Probe() {
 function Harness() {
   const [tick, setTick] = useState(0);
   return (
-    <QueryClientProvider client={new QueryClient()}>
-      <NotificationProvider>
-        <SocketProvider>
-          <Pressable testID="tick" onPress={() => setTick((t) => t + 1)}>
-            <Text>{tick}</Text>
-          </Pressable>
-          <Probe />
-        </SocketProvider>
-      </NotificationProvider>
-    </QueryClientProvider>
+    <>
+      <Pressable testID="tick" onPress={() => setTick((t) => t + 1)}>
+        <Text>{tick}</Text>
+      </Pressable>
+      <Probe />
+    </>
   );
 }
 
@@ -48,7 +38,7 @@ describe('useSocketConnection() freshness', () => {
   });
 
   it('is non-null on a render triggered by something else, before "connect" fires', async () => {
-    const view = await render(<Harness />);
+    const view = await renderApp(<Harness />, { user: { id: 'u1', username: 'Ana' } });
 
     expect(lastSocket().listening('connect')).toBe(1);
 

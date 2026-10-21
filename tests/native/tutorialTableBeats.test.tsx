@@ -1,35 +1,23 @@
 // tests/native/tutorialTableBeats.test.tsx — the Pass, turn-clock and staging beats.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() },
 }));
 
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: null, loading: false }),
-}));
-
 import TutorialScreen from '@/app/tutorial';
 import { t } from '@/lib/i18n';
 import { TUTORIAL_PROGRESS_KEY } from '@/lib/storageKeys';
-import { setMotion } from './harness/env';
-
-const METRICS = {
-  frame: { x: 0, y: 0, width: 390, height: 844 },
-  insets: { top: 47, left: 0, right: 0, bottom: 34 },
-};
+import { setMotion, setWindow } from './harness/env';
+import { renderApp } from './harness/renderApp';
 
 async function openAt(beatId: string, title: string) {
   await AsyncStorage.setItem(TUTORIAL_PROGRESS_KEY, beatId);
-  const r = await render(
-    <SafeAreaProvider initialMetrics={METRICS}>
-      <TutorialScreen />
-    </SafeAreaProvider>
-  );
+  await setWindow({ width: 390, height: 844 });
+  const r = await renderApp(<TutorialScreen />);
   await waitFor(() => expect(screen.getByText(title)).toBeTruthy());
   return r;
 }

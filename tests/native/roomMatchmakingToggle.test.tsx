@@ -6,8 +6,9 @@
 // whole point of both is what they emit, so this renders the screen.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { render, fireEvent, act } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { fireEvent, act } from '@testing-library/react-native';
+import { setWindow } from './harness/env';
+import { renderApp } from './harness/renderApp';
 
 import { en as locale } from '@/locales/en';
 
@@ -21,19 +22,12 @@ jest.mock('expo-router', () => ({
 
 jest.mock('expo-router/react-navigation', () => ({ usePreventRemove: () => {} }));
 
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'host', username: 'Ana' } }),
-}));
-
 jest.mock('@/context/SocketContext', () => ({
+  ...jest.requireActual<object>('@/context/SocketContext'),
   useSocketConnection: () => null,
   usePresence: () => ({ onlineIds: new Set(), refresh: () => {} }),
   useInvites: () => ({ send: async () => false }),
 }));
-
-jest.mock('@/context/NotificationContext', () =>
-  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
-);
 
 jest.mock('@tanstack/react-query', () => ({
   ...jest.requireActual<object>('@tanstack/react-query'),
@@ -61,10 +55,6 @@ const RoomScreen = roomModule.default;
 const { BOTS_OFFERED_AFTER_MS } = roomModule;
 const COUNTDOWN_STEP_MS = 1_000;
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 390, height: 844 },
-  insets: { top: 0, left: 0, right: 0, bottom: 0 },
-};
 
 const MATCHMAKING = locale['room.fillWithMatchmakingA11yLabel'];
 const BOTS = locale['room.fillWithBotsA11yLabel'];
@@ -83,12 +73,9 @@ function roomWith(visibility: string) {
   };
 }
 
-function renderRoom() {
-  return render(
-    <SafeAreaProvider initialMetrics={METRICS}>
-      <RoomScreen />
-    </SafeAreaProvider>
-  );
+async function renderRoom() {
+  await setWindow({ width: 390, height: 844 });
+  return renderApp(<RoomScreen />, { user: { id: 'host', username: 'Ana' } });
 }
 
 describe('the room screen matchmaking toggle', () => {

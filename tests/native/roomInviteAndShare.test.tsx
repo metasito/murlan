@@ -3,8 +3,10 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { Platform, Share } from 'react-native';
-import { render, fireEvent, act } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { fireEvent, act } from '@testing-library/react-native';
+import { setWindow } from './harness/env';
+import { renderApp } from './harness/renderApp';
+import { bannerLog } from './harness/bannerLog';
 
 import { en as locale } from '@/locales/en';
 import { it as itLocale } from '@/locales/it';
@@ -12,7 +14,7 @@ import { sq as sqLocale } from '@/locales/sq';
 
 const mockAcks: ((sent: boolean) => void)[] = [];
 
-const mockShowNotification = jest.fn();
+const { shown, BannerLog } = bannerLog();
 const mockSetString = jest.fn(async (_s: string) => true);
 let mockFriendsQuery: Record<string, unknown>;
 
@@ -26,20 +28,13 @@ jest.mock('expo-clipboard', () => ({
   setStringAsync: (s: string) => mockSetString(s),
 }));
 
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'host', username: 'Ana' } }),
-}));
-
 jest.mock('@/context/SocketContext', () => ({
+  ...jest.requireActual<object>('@/context/SocketContext'),
   usePresence: () => ({ onlineIds: new Set(['f1']), refresh: () => {} }),
   useInvites: () => ({
     send: () => new Promise<boolean>((resolve) => mockAcks.push(resolve)),
   }),
 }));
-
-jest.mock('@/context/NotificationContext', () =>
-  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock(() => mockShowNotification)
-);
 
 jest.mock('@tanstack/react-query', () => ({
   ...jest.requireActual<object>('@tanstack/react-query'),
@@ -71,26 +66,25 @@ jest.mock('@/context/onlineGameHooks', () => ({
 
 const RoomScreen = (require('@/app/(online)/room') as { default: React.ComponentType }).default;
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 390, height: 844 },
-  insets: { top: 0, left: 0, right: 0, bottom: 0 },
-};
 
 const INVITE = locale['room.inviteA11yLabel'].replace('{{username}}', 'Besi');
 const SENT = locale['room.inviteSentA11yLabel'].replace('{{username}}', 'Besi');
 
-function renderRoom() {
-  return render(
-    <SafeAreaProvider initialMetrics={METRICS}>
+async function renderRoom() {
+  await setWindow({ width: 390, height: 844 });
+  return renderApp(
+    <>
+      <BannerLog />
       <RoomScreen />
-    </SafeAreaProvider>
+    </>,
+    { user: { id: 'host', username: 'Ana' } }
   );
 }
 
 beforeEach(() => {
   process.env.EXPO_PUBLIC_DOMAIN = 'murlan.example';
   mockAcks.length = 0;
-  mockShowNotification.mockClear();
+  shown.length = 0;
   mockSetString.mockClear();
   mockFriendsQuery = { data: [{ id: 'f1', username: 'Besi', lastSeen: null }], isLoading: false, isError: false };
 });
@@ -153,7 +147,7 @@ describe('share', () => {
     const spy = jest.spyOn(Share, 'share').mockRejectedValue(Object.assign(new Error('x'), { name: 'AbortError' }));
     const view = await renderRoom();
     await fireEvent.press(view.getByLabelText(locale['room.share']));
-    expect(mockShowNotification).not.toHaveBeenCalled();
+    expect(shown).toEqual([]);
     spy.mockRestore();
     await view.unmount();
   });
@@ -162,7 +156,7 @@ describe('share', () => {
     const spy = jest.spyOn(Share, 'share').mockRejectedValue(new Error('boom'));
     const view = await renderRoom();
     await fireEvent.press(view.getByLabelText(locale['room.share']));
-    expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({ type: 'game_error', message: locale['room.shareFailed'] }));
+    expect(shown).toContainEqual(expect.objectContaining({ type: 'game_error', message: locale['room.shareFailed'] }));
     spy.mockRestore();
     await view.unmount();
   });
@@ -202,7 +196,7 @@ describe('share', () => {
     mockSetString.mockRejectedValueOnce(new Error('denied'));
     const view = await renderRoom();
     await fireEvent.press(view.getByLabelText(locale['common.copy']));
-    expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({ type: 'game_error', message: locale['room.copyFailed'] }));
+    expect(shown).toContainEqual(expect.objectContaining({ type: 'game_error', message: locale['room.copyFailed'] }));
     await view.unmount();
   });
 });

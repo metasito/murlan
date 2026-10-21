@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { LocalSession, LocalTable } from '@/context/GameContext';
 
 const noop = () => {};
@@ -33,6 +34,8 @@ export function localContextMock(
   session: () => Partial<Record<keyof LocalSession, unknown>> = () => ({})
 ) {
   return {
+    // Mounted by the app's provider stack (renderApp), which a screen under this mock still needs.
+    GameProvider: ({ children }: { children: ReactNode }) => children,
     useGameTable: () => ({ ...TABLE, ...table() }) as LocalTable,
     useGameSession: () => ({ ...SESSION, ...session() }) as LocalSession,
   };

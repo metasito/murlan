@@ -1,7 +1,6 @@
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { screen } from '@testing-library/react-native';
 
 const mockFocus = { focused: true };
 jest.mock('expo-router', () => ({
@@ -24,30 +23,23 @@ jest.mock('react-native-reanimated', () => {
 });
 
 jest.mock('@/components/SettingsModal', () => ({ SettingsModal: () => null }));
-jest.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: null, loading: false }) }));
 jest.mock('@/context/GameContext', () =>
   (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(undefined, () => ({
     hasSavedGame: false,
     resumeGame: () => false,
   }))
 );
-jest.mock('@/context/SocketContext', () => ({ useInvites: () => ({ invites: [], accept: () => {} }) }));
-jest.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: [] }) }));
-jest.mock('@/lib/query-client', () => ({
-  getApiUrl: () => 'http://localhost',
-  apiRequest: jest.fn(async () => ({ json: async () => ({}) })),
+jest.mock('@/context/SocketContext', () => ({
+  ...jest.requireActual<object>('@/context/SocketContext'),
+  useInvites: () => ({ invites: [], accept: () => {} }),
 }));
 import HomeScreen from '@/app/index';
-
-const METRICS = {
-  frame: { x: 0, y: 0, width: 844, height: 390 },
-  insets: { top: 0, left: 47, right: 47, bottom: 21 },
-};
+import { renderApp } from './harness/renderApp';
 
 const loopsOnMount = async (focused: boolean) => {
   mockFocus.focused = focused;
   mockLoops.n = 0;
-  const r = await render(<SafeAreaProvider initialMetrics={METRICS}><HomeScreen /></SafeAreaProvider>);
+  const r = await renderApp(<HomeScreen />);
   const cards = screen.getAllByTestId('floating-card', { includeHiddenElements: true }).length;
   const loops = mockLoops.n;
   await r.unmount();

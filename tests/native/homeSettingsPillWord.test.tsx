@@ -8,8 +8,7 @@
 // searching the screen.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { render, screen, within } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { screen, within } from '@testing-library/react-native';
 
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() },
@@ -18,23 +17,18 @@ jest.mock('expo-router', () => ({
 
 jest.mock('@/components/SettingsModal', () => ({ SettingsModal: () => null }));
 
-let mockAuthUser: { id: string; username: string; tutorialSeenAt: string | null } | null = null;
+let authUser: { id: string; username: string; tutorialSeenAt: string | null } | null = null;
 let mockLandscape = true;
 
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: mockAuthUser, loading: false }),
-}));
 jest.mock('@/context/GameContext', () =>
   (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(undefined, () => ({
     hasSavedGame: false,
     resumeGame: () => false,
   }))
 );
-jest.mock('@/context/SocketContext', () => ({ useInvites: () => ({ invites: [], accept: () => {} }) }));
-jest.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: [] }) }));
-jest.mock('@/lib/query-client', () => ({
-  getApiUrl: () => 'http://localhost',
-  apiRequest: jest.fn(async () => ({ json: async () => ({}) })),
+jest.mock('@/context/SocketContext', () => ({
+  ...jest.requireActual<object>('@/context/SocketContext'),
+  useInvites: () => ({ invites: [], accept: () => {} }),
 }));
 jest.mock('@/lib/device/orientation', () => ({
   ...jest.requireActual<object>('@/lib/device/orientation'),
@@ -43,13 +37,9 @@ jest.mock('@/lib/device/orientation', () => ({
 import HomeScreen from '@/app/index';
 import { t } from '@/lib/i18n';
 import { setMotion } from './harness/env';
+import { renderApp } from './harness/renderApp';
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 844, height: 390 },
-  insets: { top: 0, left: 47, right: 47, bottom: 21 },
-};
-
-const mount = () => render(<SafeAreaProvider initialMetrics={METRICS}><HomeScreen /></SafeAreaProvider>);
+const mount = () => renderApp(<HomeScreen />, { user: authUser });
 
 // The word is drawn inside `a11yHidden()`, and RNTL skips a hidden subtree by
 // default — without this every query below is answered by the veil rather than
@@ -61,7 +51,7 @@ beforeEach(() => setMotion('on'));
 describe('the landscape Settings pill', () => {
   beforeEach(() => {
     mockLandscape = true;
-    mockAuthUser = null;
+    authUser = null;
   });
 
   it('carries the Settings word when nobody is signed in', async () => {
@@ -74,7 +64,7 @@ describe('the landscape Settings pill', () => {
   });
 
   it('carries it when someone is', async () => {
-    mockAuthUser = { id: 'u1', username: 'Ana', tutorialSeenAt: new Date().toISOString() };
+    authUser = { id: 'u1', username: 'Ana', tutorialSeenAt: new Date().toISOString() };
     const r = await mount();
 
     const pill = screen.getByTestId('home-account-settings');
@@ -87,7 +77,7 @@ describe('the landscape Settings pill', () => {
   // hidden from assistive technology: two nodes reading "Settings" is the
   // defect `tests/ui-rules/a11yOneNode.test.ts` exists to refuse.
   it('leaves the pill a single node named Settings', async () => {
-    mockAuthUser = { id: 'u1', username: 'Ana', tutorialSeenAt: null };
+    authUser = { id: 'u1', username: 'Ana', tutorialSeenAt: null };
     const r = await mount();
 
     const pill = screen.getByTestId('home-account-settings');
@@ -103,7 +93,7 @@ describe('the landscape Settings pill', () => {
   // touch it — a word there would be the only one in a uniform row.
   it('is not what portrait draws', async () => {
     mockLandscape = false;
-    mockAuthUser = { id: 'u1', username: 'Ana', tutorialSeenAt: null };
+    authUser = { id: 'u1', username: 'Ana', tutorialSeenAt: null };
     const r = await mount();
 
     expect(screen.queryByTestId('home-account-settings')).toBeNull();

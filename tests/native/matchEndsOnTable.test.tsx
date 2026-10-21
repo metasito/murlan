@@ -3,19 +3,23 @@
 // winner and both actions; a tap during the ending, or reduced motion, jumps to the settled board.
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { ReduceMotion, ReducedMotionConfig, getAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setMotionPreference } from '@/lib/accessibility';
+import { SETTINGS_KEY } from '@/lib/storageKeys';
 import type { GameState, Player } from '@/lib/game/gameEngine';
 import { matchEndingOnsets } from '@/lib/timeline/matchEnding';
 import { t } from '@/lib/i18n';
 import { Layer } from '@/lib/theme';
 import { StyleSheet } from 'react-native';
+import { state } from '../support/game';
+import { renderApp } from './harness/renderApp';
 
 const seat = (i: number): Player => ({ id: `player_${i}`, name: ['Ana', 'Luan', 'Erion', 'Besa'][i], hand: [], type: i === 0 ? 'human' : 'bot' });
-const MOCK_ENDED: GameState = {
+const MOCK_ENDED: GameState = state({
   players: [0, 1, 2, 3].map(seat),
   currentTurnIndex: 0,
   lastPlayedCombination: null,
@@ -27,7 +31,7 @@ const MOCK_ENDED: GameState = {
   finishingOrder: ['player_1', 'player_0', 'player_2', 'player_3'],
   firstPlayMade: true,
   lastMove: { seq: 0, kind: 'deal' },
-};
+});
 const MOCK_SCORES = { player_0: 12, player_1: 22, player_2: 6, player_3: 3 };
 const MOCK_ROUND = { player_0: 1, player_1: 3, player_2: 0, player_3: 0 };
 const MOCK_MATCH = { target: 21, over: true, winners: ['player_1'], isDraw: false, continues: true, roundsPlayed: 6 };
@@ -43,10 +47,6 @@ let mockRecorded = true;
 let mockRatingsAfter: Record<string, { rating: number; rounds: number }> = {};
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() } }));
-jest.mock('@/context/NotificationContext', () =>
-  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
-);
-jest.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: { id: 'alice', username: 'Alice' } }) }));
 jest.mock('@/context/GameContext', () =>
   (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(() => ({
     gameState: MOCK_ENDED,
@@ -132,9 +132,10 @@ beforeEach(() => {
   mockRecorded = true;
   mockRatingsAfter = {};
 });
-afterEach(() => {
+afterEach(async () => {
   jest.useRealTimers();
   setMotionPreference('system');
+  await AsyncStorage.removeItem(SETTINGS_KEY);
 });
 
 describe.each<[string, React.ComponentType, string]>([
@@ -142,7 +143,7 @@ describe.each<[string, React.ComponentType, string]>([
   ['online', OnlineGameScreen, 'btn-rivincita'],
 ])('a match ending %s', (_where, Screen, againID) => {
   it('stays on the table and settles on the board with the winner and both actions', async () => {
-    const view = await render(wrap(Screen));
+    const view = await mount(wrap(Screen));
     await advance(board - 100);
     expect(screen.queryByTestId('match-winner', HIDDEN)).toBeNull();
     expect(pressable(againID)).toBe(false);
@@ -159,7 +160,7 @@ describe.each<[string, React.ComponentType, string]>([
   });
 
   it('a tap during the ending jumps to the settled board', async () => {
-    const view = await render(wrap(Screen));
+    const view = await mount(wrap(Screen));
     await advance(board - 600);
     expect(pressable(againID)).toBe(false);
     await tap();
@@ -170,8 +171,8 @@ describe.each<[string, React.ComponentType, string]>([
   });
 
   it('under reduced motion, the board is settled at once', async () => {
-    setMotionPreference('on');
-    const view = await render(wrap(Screen));
+    await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify({ motion: 'on' }));
+    const view = await mount(wrap(Screen));
     await advance(16);
     expect(pressable(againID)).toBe(true);
     expect(screen.getByTestId('match-winner-name', HIDDEN)).toHaveTextContent('Luan');
@@ -179,9 +180,11 @@ describe.each<[string, React.ComponentType, string]>([
   });
 });
 
+const mount = (ui: React.ReactElement) => renderApp(ui, { user: { id: 'alice', username: 'Alice' } });
+
 describe('New match on the board', () => {
   it('starts a new match offline, with no route change', async () => {
-    const view = await render(wrap(OfflineGameScreen));
+    const view = await mount(wrap(OfflineGameScreen));
     await advance(settled + 100);
     await fireEvent.press(screen.getByTestId('btn-new-match', HIDDEN));
     expect(mockStartNewMatch).toHaveBeenCalledTimes(1);
@@ -195,7 +198,7 @@ describe('New match on the board', () => {
 
   it('holds the online board until the placement points arrive', async () => {
     mockScoresCurrent = false;
-    const view = await render(wrap(OnlineGameScreen));
+    const view = await mount(wrap(OnlineGameScreen));
     await advance(settled + 100);
     expect(screen.queryByTestId('btn-home', HIDDEN)).toBeNull();
 
@@ -207,7 +210,7 @@ describe('New match on the board', () => {
   });
 
   it('sends the rematch vote online and shows its count', async () => {
-    const view = await render(wrap(OnlineGameScreen));
+    const view = await mount(wrap(OnlineGameScreen));
     await advance(settled + 100);
     await fireEvent.press(screen.getByTestId('btn-rivincita', HIDDEN));
     expect(mockVoteRematch).toHaveBeenCalledTimes(1);
@@ -220,7 +223,7 @@ describe('New match on the board', () => {
   });
 
   it('shows a refused rematch over the board, not under it', async () => {
-    const view = await render(wrap(OnlineGameScreen));
+    const view = await mount(wrap(OnlineGameScreen));
     await advance(settled + 100);
     mockError = { text: t('server.REMATCH_DECLINED'), seq: 1 };
     await act(async () => view.rerender(wrap(OnlineGameScreen)));
@@ -234,7 +237,7 @@ describe('New match on the board', () => {
 
 describe('the viewer rating under the winner', () => {
   const settle = async (Screen: React.ComponentType) => {
-    const view = await render(wrap(Screen));
+    const view = await mount(wrap(Screen));
     await advance(board + settled);
     expect(screen.getByTestId('match-winner-name', HIDDEN)).toHaveTextContent('Luan');
     return view;

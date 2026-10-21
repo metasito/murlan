@@ -6,16 +6,14 @@
 // tree — see tests/native/visibilityHelpers.ts.
 import { describe, it, jest } from '@jest/globals';
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { screen } from '@testing-library/react-native';
+import { setWindow } from './harness/env';
+import { renderApp } from './harness/renderApp';
 
 import { getVisibleText } from './visibilityHelpers';
 
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, loading: false }),
-}));
-
 jest.mock('@/context/SocketContext', () => ({
+  ...jest.requireActual<object>('@/context/SocketContext'),
   useInvites: () => ({
     prompt: null,
     clearPrompt: jest.fn(),
@@ -45,17 +43,11 @@ jest.mock('@/context/onlineGameHooks', () => ({
 
 import OnlineLobbyScreen from '@/app/(online)/index';
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 390, height: 844 },
-  insets: { top: 0, left: 0, right: 0, bottom: 0 },
-};
 
-const mount = () =>
-  render(
-    <SafeAreaProvider initialMetrics={METRICS}>
-      <OnlineLobbyScreen />
-    </SafeAreaProvider>
-  );
+const mount = async () => {
+  await setWindow({ width: 390, height: 844 });
+  return renderApp(<OnlineLobbyScreen />, { user: { id: 'u1', username: 'Ana' } });
+};
 
 describe('the online lobby connection status', () => {
   it('names the connected state next to the dot, actually visible — not colour alone', async () => {

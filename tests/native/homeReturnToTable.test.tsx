@@ -4,71 +4,55 @@
 // cannot see is whether the screen ever asks storage, so this renders it.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { screen } from '@testing-library/react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const mockPush = jest.fn();
-let mockStoredRoom: string | null = null;
-let mockAuthUser: { id: string; username: string; tutorialSeenAt: string | null } | null = null;
+let storedRoom: string | null = null;
+let authUser: { id: string; username: string; tutorialSeenAt: string | null } | null = null;
 
 jest.mock('expo-router', () => ({
-  router: { push: mockPush, replace: jest.fn(), back: jest.fn() },
+  router: { push: (...args: unknown[]) => mockPush(...args), replace: jest.fn(), back: jest.fn() },
   useIsFocused: () => true,
-}));
-
-jest.mock('@react-native-async-storage/async-storage', () => ({
-  __esModule: true,
-  default: {
-    getItem: jest.fn(async () => mockStoredRoom),
-    setItem: jest.fn(async () => {}),
-    removeItem: jest.fn(async () => {}),
-  },
 }));
 
 jest.mock('@/components/SettingsModal', () => ({ SettingsModal: () => null }));
 
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: mockAuthUser, loading: false }),
-}));
 jest.mock('@/context/GameContext', () =>
   (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(undefined, () => ({
     hasSavedGame: true,
     resumeGame: () => false,
   }))
 );
-jest.mock('@/context/SocketContext', () => ({ useInvites: () => ({ invites: [], accept: () => {} }) }));
-jest.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: [] }) }));
-jest.mock('@/lib/query-client', () => ({
-  getApiUrl: () => 'http://localhost',
-  apiRequest: jest.fn(async () => ({ json: async () => ({}) })),
+jest.mock('@/context/SocketContext', () => ({
+  ...jest.requireActual<object>('@/context/SocketContext'),
+  useInvites: () => ({ invites: [], accept: () => {} }),
 }));
 import HomeScreen from '@/app/index';
 import { t } from '@/lib/i18n';
+import { ACTIVE_ROOM_KEY } from '@/lib/storageKeys';
 import { setMotion } from './harness/env';
+import { renderApp } from './harness/renderApp';
+import { unreachable } from './mocks/http';
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 844, height: 390 },
-  insets: { top: 0, left: 0, right: 0, bottom: 0 },
+const mount = async () => {
+  await AsyncStorage.clear();
+  if (storedRoom) await AsyncStorage.setItem(ACTIVE_ROOM_KEY, storedRoom);
+  // Signed out with the session never confirmed gone: nothing has cleared the stale room key.
+  return renderApp(<HomeScreen />, authUser ? { user: authUser } : { me: unreachable });
 };
-
-const mount = () =>
-  render(
-    <SafeAreaProvider initialMetrics={METRICS}>
-      <HomeScreen />
-    </SafeAreaProvider>
-  );
 
 beforeEach(() => setMotion('on'));
 
 describe('the home screen and a table still holding a seat', () => {
   beforeEach(() => {
     mockPush.mockClear();
-    mockStoredRoom = null;
-    mockAuthUser = { id: 'u1', username: 'Ana', tutorialSeenAt: new Date().toISOString() };
+    storedRoom = null;
+    authUser = { id: 'u1', username: 'Ana', tutorialSeenAt: new Date().toISOString() };
   });
 
   it('offers the way back, ahead of the offline save', async () => {
-    mockStoredRoom = 'room-42';
+    storedRoom = 'room-42';
     const view = await mount();
 
     const hero = await screen.findByText(t('home.returnToTable'), {
@@ -96,8 +80,8 @@ describe('the home screen and a table still holding a seat', () => {
   });
 
   it('asks nothing of storage for a signed-out player', async () => {
-    mockAuthUser = null;
-    mockStoredRoom = 'room-42';
+    authUser = null;
+    storedRoom = 'room-42';
     const view = await mount();
 
     expect(

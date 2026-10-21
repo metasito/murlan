@@ -3,9 +3,13 @@
 // says that instead of "nothing pending".
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react-native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+
+import { queryClient as qc } from '@/lib/query-client';
+import { bannerLog } from './harness/bannerLog';
+import { setWindow } from './harness/env';
+import { renderApp } from './harness/renderApp';
+import { httpRequests, route, unreachable, type HttpReply } from './mocks/http';
 
 jest.mock('expo-router', () => {
   const ReactActual = require('react');
@@ -21,6 +25,7 @@ jest.mock('@/lib/device/pushRegistration', () => ({
 }));
 
 jest.mock('@/context/SocketContext', () => ({
+  ...jest.requireActual<object>('@/context/SocketContext'),
   usePresence: () => ({ onlineIds: new Set(), refresh: () => {} }),
   useInvites: () => ({ invites: [], dismiss: jest.fn(), accept: jest.fn() }),
 }));
@@ -31,22 +36,10 @@ jest.mock('@/context/onlineGameHooks', () => ({
   useServerError: () => null,
 }));
 
-const mockShowNotification = jest.fn();
-jest.mock('@/context/NotificationContext', () =>
-  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock(() => mockShowNotification)
-);
-
-jest.mock('@/lib/query-client', () => ({
-  ...(jest.requireActual('@/lib/query-client') as object),
-  apiRequest: () => Promise.reject(new Error('offline')),
-}));
+const { shown, BannerLog } = bannerLog();
 
 import FriendsScreen from '@/app/(online)/friends';
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 390, height: 844 },
-  insets: { top: 0, left: 0, right: 0, bottom: 0 },
-};
 
 const SEED: Record<string, unknown[]> = {
   '/api/friends': [{ id: 'f1', username: 'Besi', lastSeen: null }],
@@ -55,54 +48,58 @@ const SEED: Record<string, unknown[]> = {
 };
 
 async function mount(failing: string[] = [], seed: Record<string, unknown[]> = SEED) {
-  const qc: QueryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
-        queryFn: async ({ queryKey }): Promise<unknown> => {
-          const key = String(queryKey[0]);
-          if (failing.includes(key)) throw new Error('offline');
-          return qc.getQueryData(queryKey) ?? seed[key];
-        },
-      },
-    },
-  });
-  for (const key of Object.keys(seed)) if (!failing.includes(key)) qc.setQueryData([key], seed[key]);
-  return render(
-    <QueryClientProvider client={qc}>
-      <SafeAreaProvider initialMetrics={METRICS}>
-        <FriendsScreen />
-      </SafeAreaProvider>
-    </QueryClientProvider>
+  for (const key of Object.keys(seed)) {
+    if (failing.includes(key)) {
+      route('GET', key, unreachable);
+    } else {
+      route('GET', key, { body: seed[key] });
+      qc.setQueryData([key], seed[key]);
+    }
+  }
+  await setWindow({ width: 390, height: 844 });
+  return renderApp(
+    <>
+      <BannerLog />
+      <FriendsScreen />
+    </>,
+    { user: { id: 'u1', username: 'Ana' } }
   );
 }
 
 describe('a refused friend action is undone and reported', () => {
   beforeEach(() => {
-    mockShowNotification.mockClear();
+    shown.length = 0;
   });
 
-  const cases: [string, RegExp, string][] = [
-    ['accept', /accept dora/i, 'Dora'],
-    ['decline', /decline dora/i, 'Dora'],
-    ['cancel', /cancel your request to gent/i, 'Gent'],
+  const REFUSED: HttpReply = { status: 409, body: { message: 'Not any more.' } };
+  const asked = (method: string, path: string) =>
+    httpRequests().filter((r) => r.method === method && r.path === path).length;
+
+  const cases: [string, RegExp, string, string, string, typeof REFUSED | typeof unreachable][] = [
+    ['accept', /accept dora/i, 'Dora', 'POST', '/api/friends/accept/r1', REFUSED],
+    ['decline', /decline dora/i, 'Dora', 'POST', '/api/friends/decline/r1', unreachable],
+    ['cancel', /cancel your request to gent/i, 'Gent', 'DELETE', '/api/friends/requests/s1', REFUSED],
   ];
-  for (const [name, label, username] of cases) {
+  for (const [name, label, username, method, path, answer] of cases) {
     it(`${name} puts the row back and shows the error`, async () => {
+      route(method, path, answer);
       const view = await mount();
       await fireEvent.press(screen.getByLabelText(label));
       expect(screen.getByText(username)).toBeTruthy();
-      expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({ type: 'game_error' }));
+      await waitFor(() => expect(shown).toContainEqual(expect.objectContaining({ type: 'game_error' })));
+      expect(asked(method, path)).toBe(1);
       await view.unmount();
     });
   }
 
   it('remove puts the friend back and shows the error', async () => {
+    route('DELETE', '/api/friends/f1', REFUSED);
     const view = await mount();
     await fireEvent.press(screen.getByLabelText(/remove besi/i));
     await fireEvent.press(screen.getByTestId('confirm-accept'));
     expect(screen.getByText('Besi')).toBeTruthy();
-    expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({ type: 'game_error' }));
+    await waitFor(() => expect(shown).toContainEqual(expect.objectContaining({ type: 'game_error' })));
+    expect(asked('DELETE', '/api/friends/f1')).toBe(1);
     await view.unmount();
   });
 });

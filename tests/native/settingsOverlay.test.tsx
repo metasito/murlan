@@ -3,41 +3,31 @@
 // banner that can paint over it (UI-12) both have to be proved.
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import React from 'react';
-import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { Platform, StyleSheet, Text } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-jest.mock('@/lib/query-client', () => ({
-  apiRequest: jest.fn(),
-}));
-// Hoisted above the factories below, which is why they carry the `mock` prefix
+// Hoisted above the factory below, which is why it carries the `mock` prefix
 // jest requires for an out-of-scope reference.
-const mockLogout = jest.fn<() => Promise<void>>();
 const mockReplace = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: () => ({ replace: mockReplace }),
   // The bug-report control sends the route it was opened from.
   usePathname: () => '/lobby',
 }));
-jest.mock('@/context/AuthContext', () => ({ useAuth: () => ({ logout: mockLogout }) }));
 
 import { SettingsModal } from '@/components/SettingsModal';
-import {
-  NotificationProvider,
-  useBanner,
-  useNotification,
-} from '@/context/NotificationContext';
-import { SettingsProvider } from '@/context/SettingsContext';
+import { useBanner, useNotification } from '@/context/NotificationContext';
 import { useScreenShakeEnabled } from '@/lib/screenShake';
 import { en as locale } from '@/locales/en';
 import { Colors } from '@/lib/theme';
+import { setWindow } from './harness/env';
+import { renderApp } from './harness/renderApp';
+import { httpRequests, route, unreachable } from './mocks/http';
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 568, height: 320 },
-  insets: { top: 0, left: 0, right: 0, bottom: 0 },
-};
-
-const apiRequest = (require('@/lib/query-client') as { apiRequest: jest.Mock }).apiRequest;
+const sentTo = (method: string, path: string) =>
+  httpRequests().filter((r) => r.method === method && r.path === path);
+const bugReports = () => sentTo('POST', '/api/bug-reports').map((r) => r.body);
+const logouts = () => sentTo('POST', '/api/auth/logout').length;
 
 let notify: ReturnType<typeof useNotification> & ReturnType<typeof useBanner>;
 
@@ -47,15 +37,13 @@ function Probe() {
 }
 
 async function mount() {
-  return render(
-    <SafeAreaProvider initialMetrics={METRICS}>
-      <NotificationProvider>
-        <SettingsProvider>
-          <Probe />
-          <SettingsModal visible onClose={() => {}} />
-        </SettingsProvider>
-      </NotificationProvider>
-    </SafeAreaProvider>
+  await setWindow({ width: 568, height: 320 });
+  return renderApp(
+    <>
+      <Probe />
+      <SettingsModal visible onClose={() => {}} />
+    </>,
+    { user: { id: 'u1', username: 'Ana' } }
   );
 }
 
@@ -112,15 +100,10 @@ describe('settings modal', () => {
   });
 
   // The control's own round trip: open, type, send, and both outcomes of
-  // what apiRequest does with it. Everything the mock at the top of this
-  // file exists for and nothing here used before.
+  // what the server does with it.
   describe('reporting a bug', () => {
-    beforeEach(() => {
-      apiRequest.mockReset();
-    });
-
     it('sends the reporter\'s own context and nothing about the table', async () => {
-      apiRequest.mockImplementationOnce(() => Promise.resolve({ ok: true }));
+      route('POST', '/api/bug-reports', { body: { ok: true } });
       const view = await mount();
 
       await act(async () => {
@@ -139,13 +122,15 @@ describe('settings modal', () => {
       // appVersion is read from Constants.expoConfig?.version, which the
       // jest-expo preset's own mock does not populate — undefined here, not
       // a value this test controls or should pin beyond that.
-      expect(apiRequest).toHaveBeenCalledWith('POST', '/api/bug-reports', {
-        description: 'the cards went weird',
-        screen: '/lobby',
-        appVersion: undefined,
-        platform: Platform.OS,
-        locale: 'en',
-      });
+      expect(bugReports()).toEqual([
+        {
+          description: 'the cards went weird',
+          screen: '/lobby',
+          appVersion: undefined,
+          platform: Platform.OS,
+          locale: 'en',
+        },
+      ]);
       expect(
         screen.getByText(locale['settings.reportBugSentBody'], { includeHiddenElements: true })
       ).toBeTruthy();
@@ -157,7 +142,7 @@ describe('settings modal', () => {
     });
 
     it('leaves the form open and the text intact when the send fails', async () => {
-      apiRequest.mockImplementationOnce(() => Promise.reject(new Error('network')));
+      route('POST', '/api/bug-reports', unreachable);
       const view = await mount();
 
       await act(async () => {
@@ -194,7 +179,7 @@ describe('settings modal', () => {
       });
 
       expect(screen.getByLabelText(locale['settings.reportBugSend'])).toBeDisabled();
-      expect(apiRequest).not.toHaveBeenCalled();
+      expect(bugReports()).toEqual([]);
       await view.unmount();
     });
   });
@@ -203,8 +188,7 @@ describe('settings modal', () => {
   // to stay told apart: one is reversible and the other is not.
   describe('logging out', () => {
     beforeEach(() => {
-      mockLogout.mockReset();
-      mockLogout.mockResolvedValue(undefined);
+      route('POST', '/api/auth/logout', { body: { ok: true } });
       mockReplace.mockReset();
     });
 
@@ -221,7 +205,7 @@ describe('settings modal', () => {
       expect(
         screen.getByText(locale['settings.logoutConfirmBody'], { includeHiddenElements: true })
       ).toBeTruthy();
-      expect(mockLogout).not.toHaveBeenCalled();
+      expect(logouts()).toBe(0);
       await view.unmount();
     });
 
@@ -232,7 +216,7 @@ describe('settings modal', () => {
         fireEvent.press(screen.getByTestId('confirm-accept', { includeHiddenElements: true }));
       });
 
-      expect(mockLogout).toHaveBeenCalledTimes(1);
+      expect(logouts()).toBe(1);
       expect(mockReplace).toHaveBeenCalledWith('/auth');
       await view.unmount();
     });
@@ -244,7 +228,7 @@ describe('settings modal', () => {
         fireEvent.press(screen.getByTestId('confirm-cancel', { includeHiddenElements: true }));
       });
 
-      expect(mockLogout).not.toHaveBeenCalled();
+      expect(logouts()).toBe(0);
       expect(mockReplace).not.toHaveBeenCalled();
       await view.unmount();
     });
@@ -253,7 +237,7 @@ describe('settings modal', () => {
     // failed post leaves the player signed in — and being told that is the
     // difference between a slow button and a dead one.
     it('says so when the server cannot be reached, and stays put', async () => {
-      mockLogout.mockRejectedValueOnce(new Error('network'));
+      route('POST', '/api/auth/logout', unreachable);
       const view = await mount();
       await pressLogout();
       await act(async () => {

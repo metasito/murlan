@@ -2,21 +2,19 @@
 // not a toast the screen paints over it.
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
+import { state } from '../support/game';
+import { renderApp } from './harness/renderApp';
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'alice', username: 'Alice' } }),
-}));
-
 const ERROR = "You can't pass";
 const seat = (id: string, name: string): Player => ({ id, name, hand: [] as Card[], type: 'human' });
-const mockState: GameState = {
+const mockState: GameState = state({
   players: [seat('player_0', 'Alice'), seat('player_1', 'Carl')],
   currentTurnIndex: 0,
   lastPlayedCombination: null,
@@ -28,7 +26,7 @@ const mockState: GameState = {
   finishingOrder: [],
   firstPlayMade: true,
   lastMove: { seq: 0, kind: 'deal' },
-};
+});
 
 jest.mock('@/context/onlineGameHooks', () => ({
   useServerError: (surface: string) => (surface === 'table' ? { text: ERROR, seq: 1 } : null),
@@ -78,9 +76,11 @@ const OnlineGameScreen = (require('@/app/(online)/game') as { default: React.Com
 
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
 
+const mount = (ui: React.ReactElement) => renderApp(ui, { user: { id: 'alice', username: 'Alice' } });
+
 describe('a server error on the online table', () => {
   it('goes to the table, and the screen paints none of its own', async () => {
-    const view = await render(
+    const view = await mount(
       <SafeAreaProvider initialMetrics={METRICS}>
         <OnlineGameScreen />
       </SafeAreaProvider>

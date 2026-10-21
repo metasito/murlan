@@ -2,10 +2,11 @@
 // whichever human seat is on move (#1070).
 import { describe, it, expect, jest, afterEach } from '@jest/globals';
 import React from 'react';
-import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { activate } from './tapHelpers';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState } from '@/lib/game/gameEngine';
+import { renderApp } from './harness/renderApp';
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
@@ -58,10 +59,6 @@ jest.mock('@/context/GameContext', () =>
   }))
 );
 
-jest.mock('@/context/NotificationContext', () =>
-  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
-);
-
 import GameScreen, { HUMAN_TURN_SECONDS } from '@/app/game';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t, tn } from '@/lib/i18n';
@@ -81,6 +78,8 @@ const cardShown = (c: Card) => screen.queryByLabelText(cardSpokenName(c, t)) !==
 const pill = () =>
   within(screen.getByTestId('game-hud-stack')).getByText(/'s turn$/, { includeHiddenElements: true }).props.children;
 
+const mount = (ui: React.ReactElement) => renderApp(ui);
+
 describe('pass and play', () => {
   afterEach(() => {
     jest.useRealTimers();
@@ -88,7 +87,7 @@ describe('pass and play', () => {
 
   it('gives seat 1 its own hand and an enabled pass at once, and its clock once the pill turns to it', async () => {
     jest.useFakeTimers();
-    const view = await render(screenTree());
+    const view = await mount(screenTree());
     expect(cardShown(SEAT0_REST)).toBe(true);
     expect(cardShown(SEAT1_CARD)).toBe(false);
 
@@ -147,7 +146,7 @@ describe('pass and play', () => {
       },
     };
     mockTable.announcing = true;
-    const view = await render(screenTree());
+    const view = await mount(screenTree());
     expect(cardShown(winnerCard)).toBe(true);
     expect(cardShown(loserCard)).toBe(false);
 

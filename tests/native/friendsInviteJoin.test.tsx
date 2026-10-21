@@ -4,10 +4,11 @@
 // a room or a refusal answers, and a refusal is told here, where it was asked.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react-native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import type { NotificationData } from '@/context/NotificationContext';
+import { fireEvent, screen } from '@testing-library/react-native';
+import { bannerLog } from './harness/bannerLog';
+import { setWindow } from './harness/env';
+import { renderApp } from './harness/renderApp';
+import { route } from './mocks/http';
 
 jest.mock('expo-router', () => {
   const ReactActual = require('react');
@@ -26,6 +27,7 @@ const mockDismiss = jest.fn();
 const mockAccept = jest.fn();
 let mockAccepted: string | null = null;
 jest.mock('@/context/SocketContext', () => ({
+  ...jest.requireActual<object>('@/context/SocketContext'),
   usePresence: () => ({ onlineIds: new Set(), refresh: () => {} }),
   useInvites: () => ({
     invites: [{ from: 'Besi', roomCode: 'ABC123' }],
@@ -42,46 +44,38 @@ jest.mock('@/context/onlineGameHooks', () => ({
   useServerError: (surface: string) => (surface === 'lobby' ? mockLobbyError : null),
 }));
 
-const mockShown: NotificationData[] = [];
-jest.mock('@/context/NotificationContext', () =>
-  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock(
-    () => (n) => mockShown.push(n)
-  )
-);
+const { shown, BannerLog } = bannerLog();
 
 import FriendsScreen from '@/app/(online)/friends';
 import { en as locale } from '@/locales/en';
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 390, height: 844 },
-  insets: { top: 0, left: 0, right: 0, bottom: 0 },
-};
 
 const JOINING = locale['onlineLobby.joiningInvite'];
 
-const qc = () => new QueryClient({ defaultOptions: { queries: { retry: false, queryFn: async () => [] } } });
+const tree = () => (
+  <>
+    <BannerLog />
+    <FriendsScreen />
+  </>
+);
 
-function tree(client: QueryClient) {
-  return (
-    <QueryClientProvider client={client}>
-      <SafeAreaProvider initialMetrics={METRICS}>
-        <FriendsScreen />
-      </SafeAreaProvider>
-    </QueryClientProvider>
-  );
+async function mount() {
+  for (const path of ['/api/friends', '/api/friends/requests', '/api/friends/sent']) route('GET', path, { body: [] });
+  await setWindow({ width: 390, height: 844 });
+  return renderApp(tree(), { user: { id: 'u1', username: 'Ana' } });
 }
 
 describe('joining from a friends-screen invite', () => {
   beforeEach(() => {
     mockAccepted = null;
     mockLobbyError = null;
-    mockShown.length = 0;
+    shown.length = 0;
     mockClearError.mockClear();
     mockAccept.mockClear();
   });
 
   it('accepts the invite without declining it', async () => {
-    const view = await render(tree(qc()));
+    const view = await mount();
 
     await fireEvent.press(screen.getByLabelText(/join besi/i));
 
@@ -91,19 +85,18 @@ describe('joining from a friends-screen invite', () => {
   });
 
   it('says it is joining, then tells the refusal', async () => {
-    const client = qc();
-    const view = await render(tree(client));
+    const view = await mount();
     expect(screen.queryAllByText(JOINING)).toHaveLength(0);
 
     mockAccepted = 'ABC123';
-    await view.rerender(tree(client));
+    await view.rerender(tree());
     expect(screen.queryAllByText(JOINING).length).toBeGreaterThan(0);
 
     mockLobbyError = { text: 'That room is full.', seq: 4 };
     mockAccepted = null;
-    await view.rerender(tree(client));
+    await view.rerender(tree());
 
-    expect(mockShown.map((n) => n.message)).toContain('That room is full.');
+    expect(shown.map((n) => n.message)).toContain('That room is full.');
     expect(mockClearError).toHaveBeenCalledWith(4);
     expect(screen.queryAllByText(JOINING)).toHaveLength(0);
     await view.unmount();

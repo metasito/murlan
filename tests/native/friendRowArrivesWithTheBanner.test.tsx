@@ -9,29 +9,18 @@
 // What this pins is the cache, read back — not that `setQueryData` was called.
 // A push that names the wrong key, builds the wrong shape, or drops the row on
 // a list that already has entries is invisible to a spy and plain here.
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import React from 'react';
-import { Text } from 'react-native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render } from '@testing-library/react-native';
+import { act } from '@testing-library/react-native';
 import type { FriendInfo, FriendRequestInfo } from '@/shared/http';
 
 import type { ServerToClientEvents } from '@/shared/protocol';
+import { queryClient as qc } from '@/lib/query-client';
+import { bannerLog } from './harness/bannerLog';
+import { renderApp } from './harness/renderApp';
 import { lastSocket } from './mocks/socketIo';
 
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
-}));
-
-// The real provider schedules a dismissal timer per banner, which outlives the
-// test and stops jest exiting. Capturing instead also makes 'the banner still
-// arrives' something this file can assert rather than assume.
-const mockShown: { type: string; message: string }[] = [];
-jest.mock('@/context/NotificationContext', () =>
-  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock(() => (n) => void mockShown.push(n))
-);
-
-const { SocketProvider } = require('@/context/SocketContext') as typeof import('@/context/SocketContext');
+const { shown, BannerLog } = bannerLog();
 
 const REQUEST: FriendRequestInfo = {
   id: 'req-1',
@@ -42,19 +31,10 @@ const REQUEST: FriendRequestInfo = {
 const FRIEND: FriendInfo = { id: 'u2', username: 'Blerim', lastSeen: null };
 
 async function harness() {
-  // No `queryFn` anywhere: every assertion below is about what the push put in
-  // the cache, and a fetch that could answer would be answering off the slow
-  // path this change exists to get ahead of. `retry: false` is what keeps the
-  // one query `SocketProvider` mounts from backing off for the whole test.
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  qc.getQueryCache().config.onError = () => {};
-  const view = await render(
-    <QueryClientProvider client={qc}>
-      <SocketProvider>
-        <Text>probe</Text>
-      </SocketProvider>
-    </QueryClientProvider>
-  );
+  // No route answers a fetch: every assertion below is about what the push put
+  // in the cache, and a fetch that could answer would be answering off the slow
+  // path this change exists to get ahead of.
+  const view = await renderApp(<BannerLog />, { user: { id: 'u1', username: 'Ana' } });
   return { qc, view };
 }
 
@@ -63,7 +43,7 @@ const fire = <E extends keyof ServerToClientEvents>(event: E, ...args: Parameter
 
 describe('a friend request carries its row', () => {
   beforeEach(() => {
-    mockShown.length = 0;
+    shown.length = 0;
   });
 
   it('seats the pushed request in the cache the badge and the list both read', async () => {
@@ -110,7 +90,7 @@ describe('a friend request carries its row', () => {
 
     await fire('friend:request_incoming', { from: 'Blerim' });
 
-    expect(mockShown.map((n) => n.type)).toEqual(['friend_request']);
+    expect(shown.map((n) => n.type)).toEqual(['friend_request']);
     expect(qc.getQueryData(['/api/friends/requests'])).toBeUndefined();
 
     await view.unmount();
@@ -121,7 +101,7 @@ describe('a friend request carries its row', () => {
 // a fix to both rather than a second copy that can drift.
 describe('an acceptance carries its row too', () => {
   beforeEach(() => {
-    mockShown.length = 0;
+    shown.length = 0;
   });
 
   it('seats the new friend in the friends list', async () => {
@@ -151,7 +131,7 @@ describe('an acceptance carries its row too', () => {
 
     await fire('friend:request_accepted', { by: 'Blerim' });
 
-    expect(mockShown.map((n) => n.type)).toEqual(['friend_accepted']);
+    expect(shown.map((n) => n.type)).toEqual(['friend_accepted']);
     expect(qc.getQueryData(['/api/friends'])).toBeUndefined();
 
     await view.unmount();
