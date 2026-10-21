@@ -56,7 +56,6 @@ export function flightClockModule() {
 
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
 const noop = () => {};
-const HOLD_MS = 1800;
 const OVERLAPPING = 2;
 const outOfSight = (n: TestInstance | null): boolean => !!n && (StyleSheet.flatten(n.props.style)?.display === 'none' || outOfSight(n.parent));
 const fliers = (view: RenderResult) => view.queryAllByTestId('flying-cards', { includeHiddenElements: true });
@@ -65,6 +64,7 @@ const fliers = (view: RenderResult) => view.queryAllByTestId('flying-cards', { i
 export function fourTricks(name: string, preference: 'on' | 'off') {
   const { GameTable } = require('@/components/GameTable') as typeof import('@/components/GameTable');
   const { comboKey } = require('@/components/passes') as typeof import('@/components/passes');
+  const { TRICK_WINNER_MS } = require('@/components/table/pile') as typeof import('@/components/table/pile');
   const { startRound } = require('@/lib/game/gameEngine') as typeof import('@/lib/game/gameEngine');
   const { offlineBotMove } = require('@/lib/game/autoMove') as typeof import('@/lib/game/autoMove');
   const { setMotionPreference } = require('@/lib/accessibility') as typeof import('@/lib/accessibility');
@@ -107,8 +107,8 @@ export function fourTricks(name: string, preference: 'on' | 'off') {
         if (!next) break;
         const lead = state.lastPlayedCombination === null && next.lastPlayedCombination !== null;
         if (lead && closedAt !== null) {
-          await settle(closed % 2 === 1 ? 300 : HOLD_MS + 700);
-          const sweepAt = Math.min(performance.now(), closedAt + HOLD_MS);
+          await settle(closed % 2 === 1 ? 300 : TRICK_WINNER_MS + 700);
+          const sweepAt = Math.min(performance.now(), closedAt + TRICK_WINNER_MS);
           round.forEach((id) => sweptFrom.set(id, sweepAt));
           round = [];
           closedAt = null;

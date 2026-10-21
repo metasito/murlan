@@ -7,8 +7,9 @@ import { event, uiFeedback } from "@/lib/device/feedback";
 import { useGiocaCues } from "@/components/useTableFeedback";
 import { GiocaButton } from "./actions";
 import { harnessState } from "./chrome";
-import { handLabel, playRefusalLabel } from "./spokenLabels";
-import { readStagedPlay, type TableFacts } from "./stagedPlay";
+import { handLabel } from "./spokenLabels";
+import { playRefusalLabel } from "@/lib/table/playRefusal";
+import { readStagedPlay, type TableFacts } from "@/lib/table/stagedPlay";
 import { NO_SELECTION, settle, type Selection, type SelectionMode, type SelectionStore } from "./selection";
 
 /** The selection as it applies to one hand and mode, which is what every leaf subscribes to. */

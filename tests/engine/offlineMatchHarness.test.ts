@@ -3,8 +3,9 @@
 // aggression/unpredictability knobs) from one seed, via `botRng`, and each
 // round's top-card counts, via `SimulatedRound.topCardCounts`. Pinned here
 // rather than only exercised by the measurement script
-// (scripts/measureHeadsUpBalance.ts) so a regression in either shows up as a
-// red test, not as a quietly wrong report next time someone reruns it.
+// (scripts/measureHeadsUpBalance.ts, which plays the same lib/game/simulate.ts)
+// so a regression in either shows up as a red test, not as a quietly wrong
+// report next time someone reruns it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { simulateOfflineMatch, type OfflinePlayerSetup } from "../helpers/offlineMatch.ts";
@@ -98,3 +99,4 @@ test("topCardCounts stays within [0, 6] per seat at 2 seats, where 26 of 54 card
     assert.ok(total <= 6, `round ${i}: top-card counts summed to ${total} > 6`);
   }
 });
+

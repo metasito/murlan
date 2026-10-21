@@ -44,7 +44,7 @@ export async function saveReplay(input: {
   // An all-bot table produces a replay nobody could ever open.
   if (playerIds.length === 0) return;
 
-  await db.insert(roundReplays).values({
+  await db().insert(roundReplays).values({
     roomId: input.roomId,
     finishedAt: input.finishedAt,
     gameMode: input.gameMode,
@@ -57,7 +57,7 @@ export async function saveReplay(input: {
 }
 
 export async function listReplaysForUser(userId: string): Promise<ReplaySummary[]> {
-  const rows = await db
+  const rows = await db()
     .select({
       id: roundReplays.id,
       finishedAt: roundReplays.finishedAt,
@@ -89,7 +89,7 @@ export async function getReplayForUser(
   id: string,
   userId: string
 ): Promise<ReplayDto | null> {
-  const [row] = await db
+  const [row] = await db()
     .select()
     .from(roundReplays)
     .where(and(eq(roundReplays.id, id), ownedBy(userId)))

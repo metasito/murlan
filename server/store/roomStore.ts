@@ -1,6 +1,6 @@
 import { now } from "../http/clock.ts";
 import { eq, and, asc, inArray, sql } from "drizzle-orm";
-import { db } from "./db.ts";
+import { db, type Database } from "./db.ts";
 import { users, rooms, roomPlayers, gameInvites, activeGames } from "../../shared/schema.ts";
 import type { User, Room, RoomPlayer, RoomVisibility } from "../../shared/schema.ts";
 import { heldSeats, renumbering, seatForClaim, settleRelease, startRefusal } from "../game/seatAllocation.ts";
@@ -13,7 +13,7 @@ export type SeatClaim =
   | { ok: false; reason: "no_room" | "not_waiting" | "full" | "held" | "not_public" | "empty" };
 
 type SeatedUser = RoomPlayer & { user: User };
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 export type StartClose =
   | { ok: true; room: Room; roster: SeatedUser[] }
@@ -44,7 +44,7 @@ async function upsertSeatRow(tx: Tx, roomId: string, userId: string, seatIndex: 
   }
 }
 
-async function seatedUsers(tx: Tx | typeof db, roomId: string): Promise<SeatedUser[]> {
+async function seatedUsers(tx: Tx | Database, roomId: string): Promise<SeatedUser[]> {
   const rows = await tx
     .select()
     .from(roomPlayers)
@@ -94,7 +94,7 @@ export const roomStore = {
   ): Promise<Room> {
     for (let attempt = 0; attempt < 10; attempt++) {
       try {
-        return await db.transaction(async (tx) => {
+        return await db().transaction(async (tx) => {
           const [room] = await tx.insert(rooms).values({
             code: generateRoomCode(),
             hostUserId,
@@ -119,12 +119,12 @@ export const roomStore = {
   },
 
   async getRoomByCode(code: string) {
-    const [room] = await db.select().from(rooms).where(eq(rooms.code, code));
+    const [room] = await db().select().from(rooms).where(eq(rooms.code, code));
     return room;
   },
 
   async getRoomById(id: string) {
-    const [room] = await db.select().from(rooms).where(eq(rooms.id, id));
+    const [room] = await db().select().from(rooms).where(eq(rooms.id, id));
     return room;
   },
 
@@ -135,7 +135,7 @@ export const roomStore = {
    */
   updateRoomStatus(roomId: string, status: "waiting" | "in_progress" | "finished"): Promise<void> {
     const write = (statusWrites.get(roomId) ?? Promise.resolve()).then(async () => {
-      await db.update(rooms).set({ status }).where(eq(rooms.id, roomId));
+      await db().update(rooms).set({ status }).where(eq(rooms.id, roomId));
     });
     const tail = write.catch(() => {});
     statusWrites.set(roomId, tail);
@@ -146,11 +146,11 @@ export const roomStore = {
   },
 
   async updateRoomVisibility(roomId: string, visibility: RoomVisibility) {
-    await db.update(rooms).set({ visibility }).where(eq(rooms.id, roomId));
+    await db().update(rooms).set({ visibility }).where(eq(rooms.id, roomId));
   },
 
   async getRoomPlayers(roomId: string): Promise<SeatedUser[]> {
-    return seatedUsers(db, roomId);
+    return seatedUsers(db(), roomId);
   },
 
   /**
@@ -167,7 +167,7 @@ export const roomStore = {
     userId: string,
     opts: { liveMatch: boolean; renumber: boolean; admits: (roster: SeatedUser[]) => boolean }
   ): Promise<StartClose> {
-    return db.transaction(async (tx): Promise<StartClose> => {
+    return db().transaction(async (tx): Promise<StartClose> => {
       const room = await lockRoom(tx, roomId);
       if (!room) return { ok: false, reason: "no_room" };
       const refused = startRefusal(room, userId, opts.liveMatch);
@@ -198,7 +198,7 @@ export const roomStore = {
     roomId: string,
     userId: string
   ): Promise<{ room: Room; remaining: SeatedUser[]; emptied: boolean; wasHost: boolean } | null> {
-    return db.transaction(async (tx) => {
+    return db().transaction(async (tx) => {
       const room = await lockRoom(tx, roomId);
       if (!room) return null;
       await tx
@@ -219,7 +219,7 @@ export const roomStore = {
    * they held it.
    */
   async restoreSeat(roomId: string, userId: string, seatIndex: number, host: boolean) {
-    await db.transaction(async (tx) => {
+    await db().transaction(async (tx) => {
       if (!(await lockRoom(tx, roomId))) return;
       await upsertSeatRow(tx, roomId, userId, seatIndex);
       if (host) await tx.update(rooms).set({ hostUserId: userId }).where(eq(rooms.id, roomId));
@@ -232,7 +232,7 @@ export const roomStore = {
    * mapping on the next rematch.
    */
   async upsertRoomPlayer(roomId: string, userId: string, seatIndex: number) {
-    await db.transaction((tx) => upsertSeatRow(tx, roomId, userId, seatIndex));
+    await db().transaction((tx) => upsertSeatRow(tx, roomId, userId, seatIndex));
   },
 
   /**
@@ -247,7 +247,7 @@ export const roomStore = {
     holdMs: number,
     opts: { requirePublic?: boolean; requireOccupied?: boolean } = {}
   ): Promise<SeatClaim> {
-    return db.transaction(async (tx): Promise<SeatClaim> => {
+    return db().transaction(async (tx): Promise<SeatClaim> => {
       const room = await lockRoom(tx, roomId);
       if (!room) return { ok: false, reason: "no_room" };
       if (room.status !== "waiting") return { ok: false, reason: "not_waiting" };
@@ -298,7 +298,7 @@ export const roomStore = {
     seated: readonly SeatedPlayer[],
     holdMs: number
   ): Promise<(SeatHold & { username: string })[]> {
-    const invites: (SeatInvite & { username: string })[] = await db
+    const invites: (SeatInvite & { username: string })[] = await db()
       .select({
         inviterId: gameInvites.inviterId,
         inviteeId: gameInvites.inviteeId,
@@ -332,7 +332,7 @@ export const roomStore = {
    * while its row still said "waiting".
    */
   async findWaitingPublicRooms(userId?: string): Promise<JoinableRoom[]> {
-    const rows = await db
+    const rows = await db()
       .select({
         room: rooms,
         playerCount: sql<number>`count(${roomPlayers.id})`,
@@ -354,7 +354,7 @@ export const roomStore = {
   },
 
   /** `room_players` has no cascade, so its rows go before the rooms they name. Returns how many rooms went. */
-  async purgeRooms(tx: Tx | typeof db, ids: string[]): Promise<number> {
+  async purgeRooms(tx: Tx | Database, ids: string[]): Promise<number> {
     if (ids.length === 0) return 0;
     await tx.delete(roomPlayers).where(inArray(roomPlayers.roomId, ids));
     await tx.delete(activeGames).where(inArray(activeGames.roomId, ids));

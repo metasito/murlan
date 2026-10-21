@@ -481,7 +481,7 @@ describe("a glossary word is keyed once, as term.*", () => {
    * Each locale's own count, exact: lower it when a repeat goes; a new one reads the key that
    * already holds the word. The key floor is the catalogue's size when this was set.
    */
-  const REPEATED_VALUES: Record<LocaleName, number> = { en: 84, it: 81, sq: 82 };
+  const REPEATED_VALUES: Record<LocaleName, number> = { en: 80, it: 77, sq: 78 };
   const KEY_FLOOR = 900;
 
   for (const name of LOCALE_NAMES) {
@@ -1144,10 +1144,8 @@ describe("Albanian card terminology", () => {
 
   /** Attested combination names, settled in #29. */
   const COMBO_NAMES = {
-    "gameShared.comboPair": "Dyshe",
-    "gameShared.comboTriple": "Treshe",
-    "rules.comboPairName": "Dyshe",
-    "rules.comboTripleName": "Treshe",
+    "term.combo.pair": "Dyshe",
+    "term.combo.triple": "Treshe",
     "tutorial.typePair": "një Dyshe",
     "tutorial.typeTriple": "një Treshe",
     "tutorial.typeBomb": "një Katërshe",
@@ -1157,8 +1155,7 @@ describe("Albanian card terminology", () => {
     for (const [key, expected] of Object.entries(COMBO_NAMES)) {
       assert.equal((sq as Record<string, string>)[key], expected, `sq.ts ${key}`);
     }
-    assert.match((sq as Record<string, string>)["gameShared.comboBomb"], /Katërshe/, "sq.ts gameShared.comboBomb");
-    assert.match((sq as Record<string, string>)["rules.comboBombName"], /Katërshe/, "sq.ts rules.comboBombName");
+    assert.match((sq as Record<string, string>)["term.combo.bomb"], /Katërshe/, "sq.ts term.combo.bomb");
   });
 
   /**

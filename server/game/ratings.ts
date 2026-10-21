@@ -1,6 +1,6 @@
 import { now } from "../http/clock.ts";
 import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
-import { db } from "../store/db.ts";
+import { db, type Database } from "../store/db.ts";
 import { userRatings, users } from "../../shared/schema.ts";
 import { lockUsers } from "../store/userLock.ts";
 import {
@@ -24,7 +24,7 @@ export interface RatedPreview extends RatingAfter {
 }
 
 /** Either the pool or an open transaction — currentRows only ever reads. */
-type Reader = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+type Reader = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 type SeasonRow = { rating: number; rounds: number };
 
@@ -131,7 +131,7 @@ export async function previewRatedDeltas(
   gameMode: string,
   finishedAt: Date
 ): Promise<Map<string, RatedPreview>> {
-  const seats = await ratedSeatsOf(seatResults, gameMode, seasonKey(finishedAt), db);
+  const seats = await ratedSeatsOf(seatResults, gameMode, seasonKey(finishedAt), db());
   if (seats.length < 2) return new Map();
   const deltas = ratingDeltas(seats);
   return new Map(
@@ -160,7 +160,7 @@ export async function recordRatedResult(
 ): Promise<Map<string, number>> {
   const season = seasonKey(finishedAt);
 
-  return db.transaction(async (tx) => {
+  return db().transaction(async (tx) => {
     // Resolved inside the transaction and under every seat's row lock, not
     // taken from the preview: the absolute values written below are only
     // right if no other round's write lands between this read and them.
@@ -195,14 +195,14 @@ export async function recordRatedResult(
 /** This season's standing for one player, seeded but not yet written if unplayed. */
 export async function getRating(userId: string, asOf: Date): Promise<RatingDto> {
   const season = seasonKey(asOf);
-  const { rating, rounds } = await currentRow(db, userId, season);
+  const { rating, rounds } = await currentRow(db(), userId, season);
   return { season, rating, rounds, provisional: provisionalLeft({ rounds }) !== undefined };
 }
 
 /** The current season's ladder. Provisional records are not listed. */
 export async function getLeaderboard(asOf: Date): Promise<LeaderboardEntryDto[]> {
   const season = seasonKey(asOf);
-  const rows = await db
+  const rows = await db()
     .select({
       userId: userRatings.userId,
       username: users.username,
@@ -226,11 +226,11 @@ export async function getLeaderboard(asOf: Date): Promise<LeaderboardEntryDto[]>
  */
 export async function getCircleLeaderboard(userIds: string[], asOf: Date): Promise<LeaderboardEntryDto[]> {
   const season = seasonKey(asOf);
-  const members = await db
+  const members = await db()
     .select({ userId: users.id, username: users.username })
     .from(users)
     .where(inArray(users.id, [...new Set(userIds)]));
-  const current = await currentRows(db, members.map((m) => m.userId), season);
+  const current = await currentRows(db(), members.map((m) => m.userId), season);
   const rows = members.map((m) => ({ ...m, ...current.get(m.userId)! }));
   // Code-unit order, not localeCompare: a tie must break the same way on every server.
   rows.sort((a, b) => b.rating - a.rating || (a.username < b.username ? -1 : 1));

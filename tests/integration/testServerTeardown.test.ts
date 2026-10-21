@@ -4,9 +4,6 @@ import { hasDatabase, skipMessage, startTestServer } from "../helpers/testServer
 import { register } from "../helpers/client.ts";
 
 /**
- * Its own file: `server/store/db.ts`'s Pool is a module singleton that `stop()` ends,
- * so a second `startTestServer()` in this process boots against a closed pool.
- *
  * Ten seconds against the harness's two-minute keep-alive — outside any honest
  * teardown, well inside a wait for one.
  */

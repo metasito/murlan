@@ -117,7 +117,8 @@ export const stateAckTimeoutMs = () => timeoutFromEnv("MURLAN_STATE_ACK_TIMEOUT_
 // Paced so a bot seat reads as thinking rather than as an instant reflex.
 // Tunable for tests, which otherwise pay it on every move of every table a
 // disconnect hands over to the bot.
-export const botMoveDelayMs = () => timeoutFromEnv("MURLAN_BOT_MOVE_DELAY_MS", 1_200);
+export const BOT_MOVE_DELAY_MS = 1_200;
+export const botMoveDelayMs = () => timeoutFromEnv("MURLAN_BOT_MOVE_DELAY_MS", BOT_MOVE_DELAY_MS);
 export const sweepIntervalMs = () => timeoutFromEnv("MURLAN_SWEEP_INTERVAL_MS", 5 * 60_000);
 /**
  * How long a matchmade table waits, once full, before dealing itself.

@@ -74,7 +74,7 @@ export async function deleteInBatches(
 ): Promise<number> {
   let total = 0;
   for (let i = 0; i < maxBatches; i++) {
-    const result = await db.execute(
+    const result = await db().execute(
       sql`DELETE FROM ${table} WHERE ctid IN (SELECT ctid FROM ${table} WHERE ${where} LIMIT ${batch})`
     );
     const gone = result.rowCount ?? 0;
@@ -113,7 +113,7 @@ export async function pruneStaleRooms(): Promise<number> {
   const cutoff = new Date(now() - STALE_ROOM_MAX_AGE_MS);
   let total = 0;
   for (let i = 0; i < MAX_BATCHES; i++) {
-    const { rows } = await db.execute<{ id: string }>(
+    const { rows } = await db().execute<{ id: string }>(
       sql`SELECT ${rooms.id} AS id FROM ${rooms}
           WHERE ${lt(rooms.createdAt, cutoff)}
             AND NOT EXISTS (
@@ -124,7 +124,7 @@ export async function pruneStaleRooms(): Promise<number> {
     );
     const ids = rows.map((r) => r.id).filter((id) => !liveGames.has(id));
     if (ids.length === 0) break;
-    const gone = await db.transaction((tx) => roomStore.purgeRooms(tx, ids));
+    const gone = await db().transaction((tx) => roomStore.purgeRooms(tx, ids));
     total += gone;
     if (rows.length < STALE_ROOM_BATCH || gone === 0) break;
   }

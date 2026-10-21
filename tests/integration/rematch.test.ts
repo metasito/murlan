@@ -17,13 +17,12 @@ import {
   type Client,
   type SanitizedState,
 } from "../helpers/table.ts";
+import { hasActiveGame, seatedUsers, matchSnapshot, forceMatchNearTarget } from "../helpers/liveGame.ts";
 
 /**
  * Shortened well below the 60s disconnect grace and 30s AFK production
  * defaults so a round played out against bots finishes in about a second; the
- * bot's own pace comes from the harness. `server/socket/socket.ts` reads these once at
- * module scope, so they must be
- * set before that module is first imported — this file always runs as its own
+ * bot's own pace comes from the harness. This file always runs as its own
  * process under `node --test`, so the override never leaks into another test
  * file's process.
  */
@@ -58,7 +57,6 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
    * disposes it.
    */
   async function closeTable(roomId: string, host: Client) {
-    const { hasActiveGame } = await import("../helpers/liveGame.ts");
     host.socket.emit("room:leave");
     const deadline = Date.now() + 5_000;
     while (Date.now() < deadline) {
@@ -69,7 +67,6 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
   }
 
   test("a lone human plus bots deals a second round with the same seats", async () => {
-    const { seatedUsers, matchSnapshot } = await import("../helpers/liveGame.ts");
     const [ivan] = await makeClients(server, ["rematch_solo_ivan"]);
     const room = await setUpRoom([ivan], 4);
 
@@ -120,7 +117,6 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
   });
 
   test("a two-human, two-bot table keeps all four seats across a rematch", async () => {
-    const { seatedUsers } = await import("../helpers/liveGame.ts");
     const [jack, kira] = await makeClients(server, [
       "rematch_mixed_jack",
       "rematch_mixed_kira",
@@ -200,7 +196,6 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
    * carry on.
    */
   test("room:start cannot deal the next round of a running match", async () => {
-    const { matchSnapshot } = await import("../helpers/liveGame.ts");
     const [mira] = await makeClients(server, ["newmatch_running_mira"]);
     const room = await setUpRoom([mira], 4);
 
@@ -291,7 +286,6 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
   });
 
   test("after a finished match nobody was asked about, every seat's vote starts a new one", async () => {
-    const { matchSnapshot } = await import("../helpers/liveGame.ts");
     const [liam, mona] = await makeClients(server, ["rematch_unasked_liam", "rematch_unasked_mona"]);
     const room = await setUpRoom([liam, mona], 2);
     roundOverOf(
@@ -377,7 +371,6 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
    * real event both branches answer.
    */
   test("a rematch after the match ends resets the deal to seat 0; one still running rotates", async () => {
-    const { matchSnapshot, forceMatchNearTarget } = await import("../helpers/liveGame.ts");
     // Four seats, not two: a reset to 0 and a rotation from seat 1 land on the
     // same seat at two players, so a mutation that always rotates would pass
     // undetected there. At four they land on 0 and 2 — different seats.

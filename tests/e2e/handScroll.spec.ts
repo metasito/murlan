@@ -16,14 +16,13 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { DEAL_SIZE, openSeededGame } from "./helpers/offlineSeed";
+import { PAST_HOLD_MS } from "./helpers/press";
 import { HAND_CARDS, TABLE } from "./helpers/selectors";
 
 /** iPhone SE landscape — the smallest real phone, and the worst case. */
 const VIEWPORT = { width: 568, height: 320 };
 /** The widest hand the game deals anyone, whatever §3 says today. */
 const MAX_HAND = DEAL_SIZE[3];
-/** Past `HOLD_MS` in components/table/hand.tsx, with room for a slow runner. */
-const HELD_MS = 800;
 
 interface HandCard {
   label: string;
@@ -154,7 +153,7 @@ test.describe("a hand wider than the phone", () => {
       from: held!.x + 4,
       to: win.right - 12,
       y: held!.y,
-      holdMs: HELD_MS,
+      holdMs: PAST_HOLD_MS,
     });
 
     const after = await handRow(page);
