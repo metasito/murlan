@@ -96,7 +96,7 @@ export const GAME_SCHEMA_VERSION = 7;
  */
 export const OLDEST_GAME_SCHEMA_VERSION = 5;
 
-/** The first version that stores `openingCard`; an older row is read as `openingFlags`. */
+/** An older row is read as `openingFlags`. */
 const OPENING_CARD_SCHEMA_VERSION = 7;
 
 export type RoundFlags = Record<number, { bomb: boolean; joker: boolean }>;

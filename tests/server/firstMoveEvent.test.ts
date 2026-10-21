@@ -1,5 +1,5 @@
-// `game.firstMoveMade` is the funnel's "made a move after sitting down": one per match, on the
-// opening play, never again on a later round's lead.
+// `game.firstMoveMade` is the funnel's "made a move after sitting down": it fires on the opening
+// card's play, and not on a later move of that round or on the lead of a round dealt from an exchange.
 import { test, afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import type { GameSocket } from "../../server/socket/socketTypes.ts";

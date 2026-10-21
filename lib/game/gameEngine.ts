@@ -996,9 +996,9 @@ function getBestCardFromHand(hand: Card[]): Card | undefined {
  * The turn index matching the opener does not answer this: `startReason` labels
  * the whole round and is never cleared, and the opener takes the lead again
  * every round they win. `openingCard` does not either — only a start-card
- * deal sets one; a round dealt after a lost round opens with none. What every deal empties and every play writes is the rank
- * tally, so an empty one is the state's own word for "nobody has played this
- * round yet". A round persisted before the tally existed has none, and reads as
+ * deal sets one; a round dealt after a lost round opens with none. What every
+ * deal empties and every play writes is the rank tally, so an empty one is the
+ * state's own word for "nobody has played this round yet". A round persisted before the tally existed has none, and reads as
  * past its opening: a missing announcement costs less than one over a live round.
  *
  * True during the round-winner's exchange choice only by accident of index —

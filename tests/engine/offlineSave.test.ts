@@ -77,7 +77,9 @@ test("nothing stored, or nothing parseable, is simply nothing", () => {
   }
 });
 
-for (const version of [5, 6]) {
+const THREE_SPADES = { id: "3_spades", suit: "spades", rank: "3", isJoker: false };
+
+for (const [version, openingCard] of [[5, THREE_SPADES], [6, THREE_SPADES]] as const) {
   test(`a version-${version} save resumes whole, its opening card carried over, and plays a legal move`, () => {
     const raw = readFileSync(new URL(`../fixtures/offlineSave.v${version}.json`, import.meta.url), "utf8");
     const stored = JSON.parse(raw);
@@ -85,8 +87,8 @@ for (const version of [5, 6]) {
     assert.ok(OLDEST_OFFLINE_SAVE_VERSION <= version && version < OFFLINE_SAVE_VERSION);
     const restored = decodeOfflineSave(raw);
     assert.ok(restored, `the version-${version} save no longer decodes`);
-    const { firstPlayMade, startCard, trickWinner: _closed, ...kept } = stored.gameState;
-    assert.deepEqual(restored.gameState, { ...kept, openingCard: firstPlayMade ? null : startCard });
+    const { firstPlayMade: _played, startCard: _start, trickWinner: _closed, ...kept } = stored.gameState;
+    assert.deepEqual(restored.gameState, { ...kept, openingCard });
     const { gameState } = restored;
     const start = gameState.players[gameState.currentTurnIndex].hand.find((c) => c.id === gameState.openingCard?.id);
     assert.ok(start, "the seat on move does not hold the opening card");

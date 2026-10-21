@@ -130,14 +130,15 @@ describe("persisted game_state envelope", () => {
 });
 
 describe("a row an older revision wrote, through the same gate", () => {
-  for (const version of [5, 6]) {
+  const THREE_SPADES = { id: "3_spades", suit: "spades", rank: "3", isJoker: false };
+  for (const [version, openingCard] of [[5, null], [6, THREE_SPADES]] as const) {
     test(`a version-${version} row restores whole, its opening card carried over, and takes a legal move`, () => {
       const raw = JSON.parse(readFileSync(new URL(`../fixtures/activeGames.v${version}.json`, import.meta.url), "utf8"));
       assert.equal(raw.schemaVersion, version);
       assert.ok(OLDEST_GAME_SCHEMA_VERSION <= version && version < GAME_SCHEMA_VERSION);
       const back = restore(raw);
-      const { firstPlayMade, startCard, trickWinner: _closed, ...kept } = raw.gameState;
-      assert.deepEqual(back.gameState, { ...kept, openingCard: firstPlayMade ? null : startCard });
+      const { firstPlayMade: _played, startCard: _start, trickWinner: _closed, ...kept } = raw.gameState;
+      assert.deepEqual(back.gameState, { ...kept, openingCard });
       assert.deepEqual(back.match.playerMap, raw.match.playerMap);
       assert.equal(back.dealFirstSeat, raw.dealFirstSeat);
       const seat = actingSeat(back.gameState);

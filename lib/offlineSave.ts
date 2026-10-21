@@ -23,7 +23,7 @@ export const OFFLINE_SAVE_VERSION = 7;
 /** The oldest save still resumed, on `OLDEST_GAME_SCHEMA_VERSION`'s policy (shared/persistedEnvelope.ts). */
 export const OLDEST_OFFLINE_SAVE_VERSION = 5;
 
-/** The first version that stores `openingCard`; an older save is read as `openingFlags`. */
+/** An older save is read as `openingFlags`. */
 const OPENING_CARD_SAVE_VERSION = 7;
 
 export { OFFLINE_SAVE_KEY } from "./storageKeys.ts";
