@@ -36,12 +36,13 @@ const real = new ESLint({ cwd: ROOT });
 // is most of what a lint costs and none of what is counted.
 const guarded = new ESLint({ cwd: ROOT, ruleFilter: ({ ruleId }) => ruleId.startsWith("murlan/") });
 
-async function reports(lint: ESLint, source: string, file: string, rule: string): Promise<number> {
+async function reported(lint: ESLint, source: string, file: string, rule: string): Promise<Linter.LintMessage[]> {
   const [result] = await lint.lintText(source, { filePath: path.join(ROOT, file) });
   const unread = result!.messages.filter((m) => m.fatal || (m.ruleId === null && /ignored/i.test(m.message)));
   assert.deepEqual(unread, [], `not linted at ${file}:\n${source}`);
-  return result!.messages.filter((m) => m.ruleId === rule).length;
+  return result!.messages.filter((m) => m.ruleId === rule);
 }
+const reports = async (lint: ESLint, source: string, file: string, rule: string) => (await reported(lint, source, file, rule)).length;
 
 /** A disable naming no rule, and any directive naming a guard: both take a guard out of eslint.config.js's hands (D17). */
 function guardSwitches(source: string, file: string): string[] {
@@ -53,6 +54,7 @@ function guardSwitches(source: string, file: string): string[] {
 
 describe("the guard registry's floor", () => {
   test("1. every guard's plant fires it exactly `hits` times under the real config, and no spare fires it", async () => {
+    const doubled: string[] = [];
     for (const guard of GUARDS) {
       const { file, code, hits } = guard.plant;
       assert.ok(hits > 0 && guard.spare.length > 0, `${guard.id} needs a plant that fires and a spare`);
@@ -62,11 +64,16 @@ describe("the guard registry's floor", () => {
           `${guard.id}: ${sample.file} is outside what it reads, so its sample tests nothing`
         );
       }
-      assert.equal(await reports(guarded, code, file, ruleOf(guard)), hits, `${guard.id}'s plant at ${file}:\n${code}`);
+      const hit = await reported(guarded, code, file, ruleOf(guard));
+      assert.equal(hit.length, hits, `${guard.id}'s plant at ${file}:\n${code}`);
+      const lines = hit.map((m) => m.line);
+      doubled.push(...lines.filter((line, i) => lines.indexOf(line) !== i).map((line) => `${guard.id}: line ${line}`));
       for (const spare of guard.spare) {
         assert.equal(await reports(guarded, spare.code, spare.file, ruleOf(guard)), 0, `${guard.id} reports its spare at ${spare.file}:\n${spare.code}`);
       }
     }
+    // A line firing twice could stand in for one that stopped firing, and the count would not move.
+    assert.deepEqual(doubled, [], "a plant fires twice on one line");
   });
 
   test("2. every glob a guard names reads a tracked file, and the real config runs the guard on each", async () => {

@@ -22,17 +22,6 @@ jest.mock('@/lib/device/pushRegistration', () => ({
   forgetPushRegistration: () => {},
 }));
 
-jest.mock('@/context/SocketContext', () => ({
-  ...jest.requireActual<object>('@/context/SocketContext'),
-  usePresence: () => ({ onlineIds: new Set(), refresh: () => {} }),
-  useInvites: () => ({ invites: [], dismiss: jest.fn(), accept: jest.fn() }),
-}));
-
-jest.mock('@/context/onlineGameHooks', () => ({
-  useOnlineRoom: () => ({ joinRoom: jest.fn(), room: null }),
-  useOnlineConnection: () => ({ error: null }),
-  useServerError: () => null,
-}));
 
 
 import FriendsScreen from '@/app/(online)/friends';
@@ -42,7 +31,7 @@ async function searchFailingWith(answer: HttpReply | typeof unreachable) {
   route('GET', '/api/users/search', answer);
   for (const path of ['/api/friends', '/api/friends/requests', '/api/friends/sent']) route('GET', path, { body: [] });
   await setWindow({ width: 390, height: 844 });
-  const view = await renderApp(<FriendsScreen />, { user: { id: 'u1', username: 'Ana' } });
+  const view = await renderApp(<FriendsScreen />, { user: { id: 'u1', username: 'Ana' }, online: true });
   await fireEvent.changeText(screen.getByPlaceholderText(locale['friends.usernamePlaceholder']), 'ghost');
   await fireEvent.press(screen.getByRole('button', { name: locale['friends.searchButtonA11yLabel'] }));
   return view;

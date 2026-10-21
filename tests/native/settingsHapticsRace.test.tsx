@@ -19,6 +19,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   default: {
     getItem: jest.fn(async () => JSON.stringify({ hapticsEnabled: false })),
     setItem: jest.fn(async () => {}),
+    clear: jest.fn(async () => {}),
   },
 }));
 

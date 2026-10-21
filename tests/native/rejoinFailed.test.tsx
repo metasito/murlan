@@ -5,51 +5,15 @@
 // land after they have already moved to another one. Only a reply naming the
 // room still awaited may tear anything down.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import React from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook, waitFor } from '@testing-library/react-native';
+import { act, waitFor } from '@testing-library/react-native';
 
-import { OnlineGameProvider } from '@/context/OnlineGameContext';
 import { useOnlineGame } from './onlineSurface';
-import { NotificationProvider, useBanner } from '@/context/NotificationContext';
+import { useBanner } from '@/context/NotificationContext';
+import { renderAppHook } from './harness/renderApp';
+import { room } from './harness/wire';
+import type { FakeSocket } from './mocks/socketIo';
 import { en as locale } from '@/locales/en';
-
-type Listener = (...args: unknown[]) => void;
-
-const emitted: { event: string; payload?: unknown }[] = [];
-// A set per event, as socket.io has: the provider registers more than one
-// `connect` handler, and a map of one would silently keep only the last.
-const listeners = new Map<string, Set<Listener>>();
-
-const mockSocket = {
-  connected: true,
-  on(event: string, fn: Listener) {
-    if (!listeners.has(event)) listeners.set(event, new Set());
-    listeners.get(event)!.add(fn);
-  },
-  off() {},
-  once() {},
-  timeout() {
-    return mockSocket;
-  },
-  emit(event: string, payload?: unknown) {
-    emitted.push({ event, payload });
-  },
-  disconnect() {
-    emitted.push({ event: 'socket:disconnect' });
-    return mockSocket;
-  },
-  connect() {
-    emitted.push({ event: 'socket:connect' });
-    for (const fn of listeners.get('connect') ?? []) fn();
-    return mockSocket;
-  },
-};
-
-jest.mock('@/context/SocketContext', () => ({
-  useSocketConnection: () => mockSocket,
-}));
 
 import { ACTIVE_ROOM_KEY } from '@/lib/storageKeys';
 // REJOIN_RETRY_DELAY_MS / MAX_REJOIN_RETRIES, same file.
@@ -65,47 +29,23 @@ const useRejoin = () => ({
   notification: useBanner().notification,
 });
 
-function roomState(roomId: string) {
-  return {
-    roomId,
-    code: roomId,
-    hostUserId: 'u1',
-    status: 'in_progress' as const,
-    gameMode: 'free_for_all' as const,
-    maxPlayers: 2,
-    players: [{ seatIndex: 0, userId: 'u1', username: 'Ana' }],
-  };
-}
+const roomState = (roomId: string) =>
+  room({ roomId, code: roomId, status: 'in_progress', maxPlayers: 2, players: [{ seatIndex: 0, userId: 'u1', username: 'Ana' }] });
+
+let live: FakeSocket;
+const emitted = () => live.sent.map((e) => ({ event: e.event, payload: e.args[0] }));
 
 /** Mounts the provider with `roomId` already persisted, so it rejoins on mount. */
 async function mountRejoining(roomId: string) {
   await AsyncStorage.setItem(ACTIVE_ROOM_KEY, roomId);
-  // Out here, not in the wrapper's body, which React re-runs on every render.
-  const client = new QueryClient();
-  const hook = await renderHook(useRejoin, {
-    wrapper: ({ children }: { children: React.ReactNode }) => (
-      <QueryClientProvider client={client}>
-        <NotificationProvider>
-          <OnlineGameProvider userId="u1">{children}</OnlineGameProvider>
-        </NotificationProvider>
-      </QueryClientProvider>
-    ),
-  });
+  const hook = await renderAppHook(useRejoin, { user: { id: 'u1', username: 'Ana' }, online: true, connected: true });
+  live = hook.socket();
   // The persisted id is read back asynchronously; the rejoin follows it.
   await waitFor(() =>
-    expect(emitted).toContainEqual({ event: 'game:rejoin', payload: expect.objectContaining({ roomId }) })
+    expect(emitted()).toContainEqual({ event: 'game:rejoin', payload: expect.objectContaining({ roomId }) })
   );
   return hook;
 }
-
-// The provider's own listeners are what the socket calls at runtime. Async
-// act(), not the synchronous form: several of these handlers settle a promise
-// before they set state, and a sync act() closes before that lands.
-const deliver = async (event: string, payload: unknown) => {
-  await act(async () => {
-    listeners.get(event)?.forEach((fn) => fn(payload));
-  });
-};
 
 const failure = (roomId: string) => ({
   roomId,
@@ -115,20 +55,22 @@ const failure = (roomId: string) => ({
 
 describe('game:rejoin_failed', () => {
   beforeEach(async () => {
-    emitted.length = 0;
-    listeners.clear();
     await AsyncStorage.clear();
   });
 
   it("Riprova cuts the socket, opens it again, and rejoins through the connect handler", async () => {
     const { result, unmount } = await mountRejoining('R1');
-    emitted.length = 0;
+    live.reset();
 
     await act(async () => result.current.game.retryConnection());
 
-    expect(emitted.map((e) => e.event).slice(0, 2)).toEqual(['socket:disconnect', 'socket:connect']);
+    expect(live.disconnect).toHaveBeenCalledTimes(1);
+    expect(live.connect).toHaveBeenCalledTimes(1);
+    expect(live.disconnect.mock.invocationCallOrder[0]).toBeLessThan(live.connect.mock.invocationCallOrder[0]);
+    expect(emitted()).toEqual([]);
+    await act(async () => live.open());
     await waitFor(() =>
-      expect(emitted).toContainEqual({ event: 'game:rejoin', payload: expect.objectContaining({ roomId: 'R1' }) })
+      expect(emitted()).toContainEqual({ event: 'game:rejoin', payload: expect.objectContaining({ roomId: 'R1' }) })
     );
     await unmount();
   });
@@ -136,10 +78,10 @@ describe('game:rejoin_failed', () => {
   it('ignores a reply for a room the player has already left behind', async () => {
     const { result, unmount } = await mountRejoining('R1');
 
-    await deliver('room:state', roomState('R2'));
+    await live.deliver('room:state', roomState('R2'));
     await waitFor(() => expect(result.current.game.room?.roomId).toBe('R2'));
 
-    await deliver('game:rejoin_failed', failure('R1'));
+    await live.deliver('game:rejoin_failed', failure('R1'));
 
     expect(result.current.game.room?.roomId).toBe('R2');
     expect(result.current.game.rejoinFailed).toBe(false);
@@ -151,7 +93,7 @@ describe('game:rejoin_failed', () => {
   it('still tears down while that room is the outstanding attempt', async () => {
     const { result, unmount } = await mountRejoining('R1');
 
-    await deliver('game:rejoin_failed', failure('R1'));
+    await live.deliver('game:rejoin_failed', failure('R1'));
 
     await waitFor(() => expect(result.current.game.rejoinFailed).toBe(true));
     expect(result.current.game.room).toBeNull();
@@ -159,7 +101,7 @@ describe('game:rejoin_failed', () => {
     // in their own language, rather than watching the table disappear.
     expect(result.current.notification?.message).toBe(locale['server.GAME_NOT_FOUND']);
     // The seat is the disconnect grace timer's to release, not this path's.
-    expect(emitted.map((e) => e.event)).not.toContain('room:leave');
+    expect(emitted().map((e) => e.event)).not.toContain('room:leave');
 
     await unmount();
   });
@@ -170,22 +112,22 @@ describe('game:rejoin_failed', () => {
     jest.useFakeTimers();
     try {
       const { result, unmount } = await mountRejoining('R1');
-      emitted.length = 0;
+      live.reset();
 
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-        await deliver('game:rejoin_failed', { roomId: 'R1', code: 'SERVER_ERROR' });
+        await live.deliver('game:rejoin_failed', { roomId: 'R1', code: 'SERVER_ERROR' });
         expect(result.current.game.rejoinFailed).toBe(false);
         expect(await AsyncStorage.getItem(ACTIVE_ROOM_KEY)).toBe('R1');
-        jest.advanceTimersByTime(RETRY_DELAY_MS);
+        await act(async () => void jest.advanceTimersByTime(RETRY_DELAY_MS));
       }
-      expect(emitted).toHaveLength(MAX_RETRIES);
-      expect(emitted.every((e) => e.event === 'game:rejoin')).toBe(true);
+      expect(emitted()).toHaveLength(MAX_RETRIES);
+      expect(emitted().every((e) => e.event === 'game:rejoin')).toBe(true);
 
       // Past the cap it is treated as terminal, so a server that is genuinely
       // down does not leave the player retrying into the rate limiter.
-      await deliver('game:rejoin_failed', { roomId: 'R1', code: 'SERVER_ERROR' });
-      jest.advanceTimersByTime(RETRY_DELAY_MS * 4);
-      expect(emitted).toHaveLength(MAX_RETRIES);
+      await live.deliver('game:rejoin_failed', { roomId: 'R1', code: 'SERVER_ERROR' });
+      await act(async () => void jest.advanceTimersByTime(RETRY_DELAY_MS * 4));
+      expect(emitted()).toHaveLength(MAX_RETRIES);
 
       await waitFor(() => expect(result.current.game.rejoinFailed).toBe(true));
       expect(await AsyncStorage.getItem(ACTIVE_ROOM_KEY)).toBeNull();
@@ -202,12 +144,12 @@ describe('game:rejoin_failed', () => {
   it('does not survive into a spectated table', async () => {
     const { result, unmount } = await mountRejoining('R1');
 
-    await deliver('game:rejoin_failed', failure('R1'));
+    await live.deliver('game:rejoin_failed', failure('R1'));
     await waitFor(() => expect(result.current.game.rejoinFailed).toBe(true));
 
     await waitFor(() => result.current.game.spectateRoom('ABCDEF'));
     await waitFor(() => expect(result.current.game.rejoinFailed).toBe(false));
-    expect(emitted).toContainEqual({
+    expect(emitted()).toContainEqual({
       event: 'room:spectate',
       payload: expect.objectContaining({ code: 'ABCDEF' }),
     });

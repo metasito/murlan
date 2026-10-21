@@ -9,26 +9,8 @@ import { activate } from './tapHelpers';
 import { t } from '@/lib/i18n';
 import { cardSpokenName } from '@/lib/cardNames';
 
-const mockSocketListeners = new Map<string, Set<(payload: unknown) => void>>();
-jest.mock('@/context/SocketContext', () => {
-  const socket = {
-    connected: true,
-    on: (event: string, fn: (payload: unknown) => void) => {
-      if (!mockSocketListeners.has(event)) mockSocketListeners.set(event, new Set());
-      mockSocketListeners.get(event)!.add(fn);
-    },
-    off: (event: string, fn: (payload: unknown) => void) => mockSocketListeners.get(event)?.delete(fn),
-    once: () => {},
-    timeout: () => socket,
-    emit: () => {},
-  };
-  return { useSocketConnection: () => socket };
-});
-
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { OnlineGameProvider, type ServerError } from '@/context/OnlineGameContext';
+import type { ServerError } from '@/context/OnlineGameContext';
 import { useOnlineRoom, useServerError } from '@/context/onlineGameHooks';
-import { NotificationProvider } from '@/context/NotificationContext';
 import { NOTICE_GALLERY, type NoticeFixture } from '@/components/table/notices/gallery';
 import { NOTICES, type NoticeKind } from '@/components/table/noticeModel';
 import { GameTable } from '@/components/GameTable';
@@ -41,6 +23,9 @@ import { CLOCK_RUNNING_OUT_SECONDS, urgentThresholdSeconds } from '@/components/
 import { Colors, makeShadow, NoticePalette, TABLE_FONT_SCALE_MAX } from '@/lib/theme';
 import { buildCombination, type Card, type GameState, type Player } from '@/lib/game/gameEngine';
 import { setConnectivity, setStoredMotion } from './harness/env';
+import { renderApp } from './harness/renderApp';
+import { wire } from './harness/wire';
+import type { FakeSocket } from './mocks/socketIo';
 import { aThreePlayed } from '../support/game';
 
 const KINDS = Object.keys(NOTICES) as NoticeKind[];
@@ -515,34 +500,24 @@ describe("the table's refusals and lines", () => {
     await r.unmount();
   });
 
-  const online = (child: React.ReactNode) => (
-    <QueryClientProvider client={new QueryClient()}>
-      <NotificationProvider>
-        <OnlineGameProvider userId="u1">
-          <SafeAreaProvider initialMetrics={METRICS}>{child}</SafeAreaProvider>
-        </OnlineGameProvider>
-      </NotificationProvider>
-    </QueryClientProvider>
-  );
-  const refuse = () => act(async () => mockSocketListeners.get('game:error')?.forEach((fn) => fn({ message: 'Nope' })));
-
-  const deal = () =>
-    act(async () =>
-      mockSocketListeners.get('game:state')?.forEach((fn) =>
-        fn({
-          ...STATE,
-          players: STATE.players.map((p) => ({ ...p, handCount: p.hand.length, vacated: false })),
-          viewerSeatIndex: 0,
-          turnSecondsRemaining: 0,
-        })
-      )
-    );
+  let live: FakeSocket;
+  const online = async (child: React.ReactNode) => {
+    const view = await renderApp(<SafeAreaProvider initialMetrics={METRICS}>{child}</SafeAreaProvider>, {
+      user: { id: 'u1', username: 'Ana' },
+      online: true,
+      connected: true,
+    });
+    live = view.socket();
+    return view;
+  };
+  const refuse = () => live.deliver('game:error', { code: 'NEWER_SERVER_REFUSAL', message: 'Nope' });
+  const deal = () => live.deliver('game:state', wire(STATE, 0, { players: STATE.players.map((p) => ({ ...p, handCount: p.hand.length, vacated: false })) }), () => {});
 
   it('the same server error arriving twice floats twice', async () => {
     const OnlineTable = () => (
       <GameTable gameState={STATE} viewerSeat={0} error={useServerError('table')} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
     );
-    const r = await render(online(<OnlineTable />));
+    const r = await online(<OnlineTable />);
     await deal();
     await refuse();
     const first = screen.getByTestId('notice-errorToast', hidden);
@@ -558,7 +533,7 @@ describe("the table's refusals and lines", () => {
       seen.leaveRoom = useOnlineRoom().leaveRoom;
       return null;
     };
-    const r = await render(online(<Probe />));
+    const r = await online(<Probe />);
     await refuse();
     expect(seen.error?.text).toBe('Nope');
     await act(async () => seen.leaveRoom?.());

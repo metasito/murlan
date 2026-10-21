@@ -9,15 +9,13 @@ import React from 'react';
 import { BackHandler, Platform } from 'react-native';
 import { fireEvent, act, screen } from '@testing-library/react-native';
 import { setWindow } from './harness/env';
+import { state } from '../support/game';
 import { renderApp } from './harness/renderApp';
+import { room, wire } from './harness/wire';
+import { route } from './mocks/http';
 
 import { en as locale } from '@/locales/en';
 
-const mockLeaveRoom = jest.fn();
-const mockStartGame = jest.fn();
-let mockRoom: Record<string, unknown> | null;
-let mockHasGame = false;
-let mockConnected = true;
 type Prevented = { data: { action: { type: string } } };
 const mockGuard: { prevent: boolean | null; onPrevented: ((e: Prevented) => void) | null } = {
   prevent: null,
@@ -44,80 +42,54 @@ jest.mock('@/lib/browserBack', () => ({
   },
 }));
 
-jest.mock('@/context/SocketContext', () => ({
-  ...jest.requireActual<object>('@/context/SocketContext'),
-  usePresence: () => ({ onlineIds: new Set(), refresh: () => {} }),
-  useInvites: () => ({ send: async () => false }),
-}));
-
-jest.mock('@tanstack/react-query', () => ({
-  ...jest.requireActual<object>('@tanstack/react-query'),
-  useQuery: () => ({ data: [], isLoading: false }),
-}));
-
-jest.mock('@/context/onlineGameHooks', () => ({
-  useOnlineRoom: () => ({
-    room: mockRoom,
-    hasGame: mockHasGame,
-    isSpectator: false,
-    entrySource: 'friends',
-    leaveRoom: mockLeaveRoom,
-    startGame: mockStartGame,
-    setRoomVisibility: jest.fn(),
-  }),
-  useOnlineConnection: () => ({ connected: mockConnected, rejoinFailed: false, clearError: jest.fn() }),
-  useServerError: () => null,
-}));
-
 const RoomScreen = (require('@/app/(online)/room') as { default: React.ComponentType }).default;
 
 
 const START = locale['room.startGame'];
 const MATCHMAKING = locale['room.fillWithMatchmakingA11yLabel'];
 
-const twoSeated = () => ({
-  roomId: 'r1',
-  code: 'ABCDEF',
-  hostUserId: 'host',
-  status: 'waiting',
-  gameMode: 'free_for_all',
-  maxPlayers: 4,
-  visibility: 'private',
-  players: [
-    { seatIndex: 0, userId: 'host', username: 'Ana' },
-    { seatIndex: 1, userId: 'b', username: 'Besi' },
-  ],
-  seatHolds: [],
-});
-
-const tree = () => <RoomScreen />;
-const mount = async () => {
+let accounts = 0;
+/** The host of a two-seat lobby, on an account of its own so its socket starts never connected. */
+const mount = async ({ connected = true }: { connected?: boolean } = {}) => {
+  const host = `host${++accounts}`;
+  route('GET', '/api/friends', { body: [] });
   await setWindow({ width: 390, height: 844 });
-  return renderApp(tree(), { user: { id: 'host', username: 'Ana' } });
+  const view = await renderApp(<RoomScreen />, { user: { id: host, username: 'Ana' }, online: true, connected });
+  await view.socket().deliver(
+    'room:state',
+    room({
+      code: 'ABCDEF',
+      hostUserId: host,
+      players: [
+        { seatIndex: 0, userId: host, username: 'Ana' },
+        { seatIndex: 1, userId: 'b', username: 'Besi' },
+      ],
+    })
+  );
+  return view;
 };
+type View = Awaited<ReturnType<typeof mount>>;
+const left = (view: View) => view.socket().sentAs('room:leave').length;
+/** The server telling the player their room is gone. */
+const goneAway = (view: View) =>
+  view.socket().deliver('game:rejoin_failed', { code: 'ROOM_NOT_FOUND', message: 'That room has closed.' });
 
 beforeEach(() => {
-  mockRoom = twoSeated();
-  mockHasGame = false;
-  mockConnected = true;
   mockGuard.prevent = null;
   mockGuard.onPrevented = null;
   mockBrowserBack.active = null;
   mockBrowserBack.onBack = null;
-  mockLeaveRoom.mockClear();
-  mockStartGame.mockClear();
 });
 
 describe('the waiting room without a connection', () => {
   it('says it is connecting and holds Start and the visibility switch', async () => {
-    mockConnected = false;
-    const view = await mount();
+    const view = await mount({ connected: false });
 
     expect(screen.getByText(locale['onlineLobby.connecting'])).toBeTruthy();
     expect(screen.getByRole('button', { name: START })).toBeDisabled();
     expect(screen.getByRole('switch', { name: MATCHMAKING })).toBeDisabled();
     await fireEvent.press(screen.getByRole('button', { name: START }));
-    expect(mockStartGame).not.toHaveBeenCalled();
+    expect(view.socket().sentAs('room:start')).toEqual([]);
     await view.unmount();
   });
 
@@ -138,11 +110,11 @@ describe('back on the waiting room', () => {
 
     await act(async () => mockGuard.onPrevented!(POP));
     await fireEvent.press(screen.getByLabelText(locale['common.cancel']));
-    expect(mockLeaveRoom).not.toHaveBeenCalled();
+    expect(left(view)).toBe(0);
 
     await act(async () => mockGuard.onPrevented!(POP));
     await fireEvent.press(screen.getByLabelText(locale['room.leaveConfirmConfirm']));
-    expect(mockLeaveRoom).toHaveBeenCalledTimes(1);
+    expect(left(view)).toBe(1);
     await view.unmount();
   });
 
@@ -152,27 +124,27 @@ describe('back on the waiting room', () => {
 
     await act(async () => mockBrowserBack.onBack!());
     await fireEvent.press(screen.getByLabelText(locale['common.cancel']));
-    expect(mockLeaveRoom).not.toHaveBeenCalled();
+    expect(left(view)).toBe(0);
 
     await act(async () => mockBrowserBack.onBack!());
     await fireEvent.press(screen.getByLabelText(locale['room.leaveConfirmConfirm']));
-    expect(mockLeaveRoom).toHaveBeenCalledTimes(1);
+    expect(left(view)).toBe(1);
     await view.unmount();
   });
 
   it('lets the router replace the room once a game exists or the room is gone', async () => {
-    const view = await mount();
-    mockHasGame = true;
-    await view.rerender(tree());
+    const dealt = await mount();
+    await dealt.socket().deliver('game:state', wire(state(), 0), () => {});
     expect(mockGuard.prevent).toBe(false);
     expect(mockBrowserBack.active).toBe(false);
+    await dealt.unmount();
 
-    mockHasGame = false;
-    mockRoom = null;
-    await view.rerender(tree());
+    const gone = await mount();
+    expect(mockGuard.prevent).toBe(true);
+    await goneAway(gone);
     expect(mockGuard.prevent).toBe(false);
     expect(mockBrowserBack.active).toBe(false);
-    await view.unmount();
+    await gone.unmount();
   });
 
   it('answers the Android back button with the same question', async () => {
@@ -199,10 +171,9 @@ describe('back on the waiting room', () => {
       });
       expect(handled).toBe(true);
       await fireEvent.press(screen.getByLabelText(locale['room.leaveConfirmConfirm']));
-      expect(mockLeaveRoom).toHaveBeenCalledTimes(1);
+      expect(left(view)).toBe(1);
 
-      mockRoom = null;
-      await view.rerender(tree());
+      await goneAway(view);
       expect(listeners).toHaveLength(0);
       await view.unmount();
     } finally {

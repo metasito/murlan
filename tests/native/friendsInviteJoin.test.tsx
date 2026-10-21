@@ -4,16 +4,19 @@
 // a room or a refusal answers, and a refusal is told here, where it was asked.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { fireEvent, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen } from '@testing-library/react-native';
 import { bannerLog } from './harness/bannerLog';
 import { setWindow } from './harness/env';
-import { renderApp } from './harness/renderApp';
-import { route } from './mocks/http';
+import { useInvites } from '@/context/SocketContext';
+import { useServerError } from '@/context/onlineGameHooks';
+import { renderAppHook } from './harness/renderApp';
+import { httpRequests, route } from './mocks/http';
 
 jest.mock('expo-router', () => {
   const ReactActual = require('react');
   return {
     router: { push: jest.fn(), replace: jest.fn() },
+    useSegments: () => ['(online)', 'friends'],
     useFocusEffect: (cb: () => void) => ReactActual.useEffect(cb, []),
   };
 });
@@ -21,27 +24,6 @@ jest.mock('expo-router', () => {
 jest.mock('@/lib/device/pushRegistration', () => ({
   registerForPush: async () => {},
   forgetPushRegistration: () => {},
-}));
-
-const mockDismiss = jest.fn();
-const mockAccept = jest.fn();
-let mockAccepted: string | null = null;
-jest.mock('@/context/SocketContext', () => ({
-  ...jest.requireActual<object>('@/context/SocketContext'),
-  usePresence: () => ({ onlineIds: new Set(), refresh: () => {} }),
-  useInvites: () => ({
-    invites: [{ from: 'Besi', roomCode: 'ABC123' }],
-    dismiss: mockDismiss,
-    accept: mockAccept,
-    accepted: mockAccepted,
-  }),
-}));
-
-let mockLobbyError: { text: string; seq: number } | null = null;
-const mockClearError = jest.fn();
-jest.mock('@/context/onlineGameHooks', () => ({
-  useOnlineConnection: () => ({ clearError: mockClearError }),
-  useServerError: (surface: string) => (surface === 'lobby' ? mockLobbyError : null),
 }));
 
 const { shown, BannerLog } = bannerLog();
@@ -52,35 +34,38 @@ import { en as locale } from '@/locales/en';
 
 const JOINING = locale['onlineLobby.joiningInvite'];
 
-const tree = () => (
-  <>
-    <BannerLog />
-    <FriendsScreen />
-  </>
-);
-
 async function mount() {
   for (const path of ['/api/friends', '/api/friends/requests', '/api/friends/sent']) route('GET', path, { body: [] });
+  route('GET', '/api/friends/invites', { body: [{ id: 'i1', fromUsername: 'Besi', roomCode: 'ABC123', createdAt: '2026-10-01T10:00:00.000Z' }] });
   await setWindow({ width: 390, height: 844 });
-  return renderApp(tree(), { user: { id: 'u1', username: 'Ana' } });
+  return renderAppHook(() => ({ accepted: useInvites().accepted, lobbyError: useServerError('lobby') }), {
+    user: { id: 'u1', username: 'Ana' },
+    online: true,
+    follow: true,
+    connected: true,
+    wrap: (probe) => (
+      <>
+        <BannerLog />
+        <FriendsScreen />
+        {probe}
+      </>
+    ),
+  });
 }
 
 describe('joining from a friends-screen invite', () => {
   beforeEach(() => {
-    mockAccepted = null;
-    mockLobbyError = null;
     shown.length = 0;
-    mockClearError.mockClear();
-    mockAccept.mockClear();
   });
 
   it('accepts the invite without declining it', async () => {
     const view = await mount();
 
-    await fireEvent.press(screen.getByLabelText(/join besi/i));
+    await fireEvent.press(await screen.findByLabelText(/join besi/i));
 
-    expect(mockAccept).toHaveBeenCalledWith('ABC123');
-    expect(mockDismiss).not.toHaveBeenCalled();
+    expect(view.socket().sentAs('room:join')).toEqual([expect.objectContaining({ code: 'ABC123' })]);
+    expect(view.result.current.accepted).toBe('ABC123');
+    expect(httpRequests().filter((r) => r.method === 'DELETE')).toEqual([]);
     await view.unmount();
   });
 
@@ -88,16 +73,15 @@ describe('joining from a friends-screen invite', () => {
     const view = await mount();
     expect(screen.queryAllByText(JOINING)).toHaveLength(0);
 
-    mockAccepted = 'ABC123';
-    await view.rerender(tree());
+    await fireEvent.press(await screen.findByLabelText(/join besi/i));
     expect(screen.queryAllByText(JOINING).length).toBeGreaterThan(0);
 
-    mockLobbyError = { text: 'That room is full.', seq: 4 };
-    mockAccepted = null;
-    await view.rerender(tree());
+    // A code this bundle has no words for, so the server's own text is what the player reads.
+    await view.socket().deliver('game:error', { code: 'NEWER_SERVER_REFUSAL', message: 'That room is full.' });
+    await act(async () => view.socket().acks.find((a) => a.event === 'room:join')!.answer({ ok: false, code: 'NEWER_SERVER_REFUSAL' }));
 
     expect(shown.map((n) => n.message)).toContain('That room is full.');
-    expect(mockClearError).toHaveBeenCalledWith(4);
+    expect(view.result.current.lobbyError).toBeNull();
     expect(screen.queryAllByText(JOINING)).toHaveLength(0);
     await view.unmount();
   });

@@ -5,7 +5,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   // Inlined rather than referencing an outer const: lib/device/feedback.ts's
   // module-init preload calls this the moment the import below is required,
   // ahead of any later statement in this file.
-  default: { getItem: jest.fn(async () => JSON.stringify({ hapticsEnabled: false })) },
+  default: { getItem: jest.fn(async () => JSON.stringify({ hapticsEnabled: false })), clear: jest.fn(async () => {}) },
 }));
 
 import { hapticsEnabled, uiFeedback } from '@/lib/device/feedback';

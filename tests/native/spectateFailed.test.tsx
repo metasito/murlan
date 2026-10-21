@@ -6,81 +6,29 @@
 // `room:leave`. Left set by a refusal it releases nothing on the next table the
 // player actually sits at: the seat keeps being dealt hands and auto-passed
 // while their own screen shows the lobby.
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import React from 'react';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook, waitFor } from '@testing-library/react-native';
+import { act, waitFor } from '@testing-library/react-native';
 
-import { OnlineGameProvider } from '@/context/OnlineGameContext';
+import { seat, state } from '../support/game';
+import { renderAppHook } from './harness/renderApp';
+import { wire } from './harness/wire';
+import type { FakeSocket } from './mocks/socketIo';
 import { useOnlineGame } from './onlineSurface';
-import { NotificationProvider } from '@/context/NotificationContext';
 
-type Listener = (...args: unknown[]) => void;
-
-const emitted: { event: string; payload?: unknown }[] = [];
-// A set per event, as socket.io has: the provider registers more than one
-// `connect` handler, and a map of one would silently keep only the last.
-const listeners = new Map<string, Set<Listener>>();
-
-const mockSocket = {
-  connected: true,
-  on(event: string, fn: Listener) {
-    if (!listeners.has(event)) listeners.set(event, new Set());
-    listeners.get(event)!.add(fn);
-  },
-  off() {},
-  once() {},
-  timeout() {
-    return mockSocket;
-  },
-  emit(event: string, payload?: unknown) {
-    emitted.push({ event, payload });
-  },
-};
-
-jest.mock('@/context/SocketContext', () => ({
-  useSocketConnection: () => mockSocket,
-}));
-
+let live: FakeSocket;
 async function mountProvider() {
-  // Out here, not in the wrapper's body, which React re-runs on every render.
-  const client = new QueryClient();
-  return renderHook(() => useOnlineGame(), {
-    wrapper: ({ children }: { children: React.ReactNode }) => (
-      <QueryClientProvider client={client}>
-        <NotificationProvider>
-          <OnlineGameProvider userId="u1">{children}</OnlineGameProvider>
-        </NotificationProvider>
-      </QueryClientProvider>
-    ),
-  });
+  const view = await renderAppHook(() => useOnlineGame(), { user: { id: 'u1', username: 'Ana' }, online: true, connected: true });
+  live = view.socket();
+  return view;
 }
-
-// The provider's own listeners are what the socket calls at runtime. Async
-// act(), not the synchronous form: several of these handlers settle a promise
-// before they set state, and a sync act() closes before that lands.
-const deliver = async (event: string, payload: unknown) => {
-  await act(async () => {
-    listeners.get(event)?.forEach((fn) => fn(payload));
-  });
-};
+const sentEvents = () => live.sent.map((e) => e.event);
 
 /** A sanitized seatless view — what a spectate the server accepted answers with. */
-const spectatorState = () => ({
-  players: [
-    { id: 'p0', name: 'Ana', hand: [], handCount: 13 },
-    { id: 'p1', name: 'Bea', hand: [], handCount: 13 },
-  ],
-  viewerSeatIndex: null,
-  currentTurnIndex: 0,
-  roundOver: false,
-});
+const spectatorState = () => wire(state({ players: [seat(0), seat(1)] }), null);
 
 describe('a refused spectate', () => {
   beforeEach(async () => {
-    emitted.length = 0;
-    listeners.clear();
     await AsyncStorage.clear();
   });
 
@@ -88,14 +36,14 @@ describe('a refused spectate', () => {
     const { result, unmount } = await mountProvider();
 
     await act(async () => result.current.spectateRoom('ZZZZZZ'));
-    await deliver('room:error', { code: 'GAME_NOT_FOUND', message: 'Game not found' });
+    await live.deliver('room:error', { code: 'GAME_NOT_FOUND', message: 'Game not found' });
     await waitFor(() => expect(result.current.isSpectator).toBe(false));
 
-    emitted.length = 0;
+    live.reset();
     await act(async () => result.current.leaveRoom());
 
-    expect(emitted.map((e) => e.event)).toContain('room:leave');
-    expect(emitted.map((e) => e.event)).not.toContain('room:unspectate');
+    expect(sentEvents()).toContain('room:leave');
+    expect(sentEvents()).not.toContain('room:unspectate');
 
     await unmount();
   });
@@ -113,11 +61,11 @@ describe('a refused spectate', () => {
     });
     await waitFor(() => expect(result.current.isSpectator).toBe(false));
 
-    emitted.length = 0;
+    live.reset();
     await act(async () => result.current.leaveRoom());
 
-    expect(emitted.map((e) => e.event)).toContain('room:leave');
-    expect(emitted.map((e) => e.event)).not.toContain('room:unspectate');
+    expect(sentEvents()).toContain('room:leave');
+    expect(sentEvents()).not.toContain('room:unspectate');
 
     await unmount();
   });
@@ -129,14 +77,14 @@ describe('a refused spectate', () => {
     const { result, unmount } = await mountProvider();
 
     await act(async () => result.current.spectateRoom('ABCDEF'));
-    await deliver('game:state', spectatorState());
+    await live.deliver('game:state', spectatorState(), () => {});
     await waitFor(() => expect(result.current.isSpectator).toBe(true));
 
-    emitted.length = 0;
+    live.reset();
     await act(async () => result.current.leaveRoom());
 
-    expect(emitted.map((e) => e.event)).toContain('room:unspectate');
-    expect(emitted.map((e) => e.event)).not.toContain('room:leave');
+    expect(sentEvents()).toContain('room:unspectate');
+    expect(sentEvents()).not.toContain('room:leave');
 
     await unmount();
   });

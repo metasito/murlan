@@ -8,6 +8,7 @@ import type { Card, GameState, Rank } from '@/lib/game/gameEngine';
 import { stillSelection, storeOf } from './tapHelpers';
 import { state } from '../support/game';
 import { renderApp } from './harness/renderApp';
+import { wire } from './harness/wire';
 
 // CardView asks lib/cosmetics which back to draw exactly once per render, and
 // it asks before any branch, so counting that call counts renders of every card
@@ -24,19 +25,9 @@ jest.mock('@/lib/cosmetics', () => {
   };
 });
 
-// What `useOnlineGame()` returns, swapped between renders the way an incoming
-// `game:state` swaps the context value.
-const mockOnline: { value: unknown } = { value: null };
-
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
-
-jest.mock('@/context/OnlineGameContext', () =>
-  (require('./onlineContextMock') as typeof import('./onlineContextMock')).onlineContextMock(
-    () => mockOnline.value
-  )
-);
 
 const { StraightHand } = require('@/components/table/hand') as typeof import('@/components/table/hand');
 
@@ -128,39 +119,6 @@ const dealt = (cards: Card[]): GameState => state({
   lastMove: { seq: 0, kind: 'deal' },
 });
 
-// The context value's own callbacks keep their identity across a state, as the
-// provider's do, so the only reference this test can move is the screen's.
-const CALLBACKS = {
-  clearError: jest.fn(),
-  playCards: jest.fn(),
-  pass: jest.fn(),
-  giveExchangeCard: jest.fn(),
-  sendReaction: jest.fn(),
-  leaveRoom: jest.fn(),
-  voteRematch: jest.fn(),
-  acknowledgeExchange: jest.fn(),
-  clearPlayerLeft: jest.fn(),
-  clearRejoinFailed: jest.fn(),
-};
-
-const online = (cards: Card[]) => ({
-  ...CALLBACKS,
-  gameState: dealt(cards),
-  mySeatIndex: 0,
-  isSpectator: false,
-  playerLeft: false,
-  rejoinFailed: false,
-  reconnectNotice: null,
-  connected: true,
-  error: null,
-  entrySource: null,
-  rematchVoteState: null,
-  cumulativeScores: {},
-  matchState: { target: 21, length: 'match', over: false, winners: [], isDraw: false, continues: false },
-  exchangeAnnouncing: false,
-  exchangeAnnounceData: null,
-});
-
 const screenView = () => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <OnlineGameScreen />
@@ -176,13 +134,12 @@ describe('an incoming game:state does not rebuild the online hand', () => {
   });
 
   it('commits no card render for a state that changes neither the hand nor the selection', async () => {
-    mockOnline.value = online(hand());
-    const r = await mount(screenView());
+    const r = await renderApp(screenView(), { user: { id: 'u1', username: 'Ana' }, online: true, connected: true });
+    await r.socket().deliver('game:state', wire(dealt(hand()), 0), () => {});
     const afterMount = mockCardRenders.n;
     expect(afterMount).toBeGreaterThanOrEqual(RANKS.length);
 
-    mockOnline.value = online(hand());
-    await r.rerender(screenView());
+    await r.socket().deliver('game:state', wire(dealt(hand()), 0), () => {});
     expect(mockCardRenders.n).toBe(afterMount);
 
     await r.unmount();
