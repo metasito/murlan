@@ -662,6 +662,22 @@ const GUARDS = [
       "const { width } = useWindowDimensions();",
     ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
   },
+  {
+    id: "socket-is-faked-at-the-wire",
+    why: "The socket is faked where it meets socket.io (tests/native/mocks/socketIo.ts, installed by setup.ts): drive it with lastSocket() or renderApp's socket(), so lib/socket.ts and its ticket fetch run for real.",
+    selector: mockOf("/^(@|\\.\\.?(\\x2F\\.\\.)*)\\x2Flib\\x2Fsocket(\\.ts)?$/", "/(^|\\x2F)lib\\x2Fsocket(\\.ts)?$/"),
+    files: ["tests/native/**/*.{ts,tsx}"],
+    plant: { file: "tests/native/plant.test.tsx", code: [
+      "jest.mock('@/lib/socket', () => ({ connectSocket: () => s }));",
+      'jest.doMock("../../lib/socket", () => ({}));',
+      "jest.mock(`@/lib/socket`, () => ({}));",
+    ].join("\n"), hits: 3 },
+    spare: [
+      "lastSocket().serverEmit('friend:invite', invite);",
+      "jest.mock('socket.io-client', () => ({ io }));",
+      "jest.mock('@/lib/sendIntent', () => ({}));",
+    ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
+  },
 ];
 
 // eslint's --cache keys a plugin's results on its meta.version, so an unversioned guard edit would

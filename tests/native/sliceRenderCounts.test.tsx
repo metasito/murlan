@@ -34,36 +34,7 @@ import {
 import { NotificationProvider } from '@/context/NotificationContext';
 import { SocketProvider, useInvites, usePresence, useSocketConnection } from '@/context/SocketContext';
 
-type Listener = (...args: unknown[]) => void;
-
-// A set per event, as socket.io has: the provider registers more than one
-// `connect` handler, and a map of one would silently keep only the last.
-const listeners = new Map<string, Set<Listener>>();
-
-const mockSocket = {
-  connected: true,
-  active: true,
-  io: { reconnection() {} },
-  connect() {},
-  disconnect() {},
-  on(event: string, fn: Listener) {
-    if (!listeners.has(event)) listeners.set(event, new Set());
-    listeners.get(event)!.add(fn);
-  },
-  off() {},
-  once() {},
-  timeout() {
-    return mockSocket;
-  },
-  emit() {},
-};
-
-jest.mock('@/lib/socket', () => ({
-  connectSocket: () => mockSocket,
-  disconnectSocket: () => {},
-  peekSocket: (userId?: string | null) => (userId ? mockSocket : null),
-  subscribeToSockets: () => () => {},
-}));
+import { lastSocket } from './mocks/socketIo';
 
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
@@ -124,10 +95,9 @@ function mount() {
   );
 }
 
-const deliver = async (event: string, payload: Broadcast['payloads'][number]) => {
-  await act(async () => {
-    listeners.get(event)?.forEach((fn) => fn(payload));
-  });
+// Each case's payload is its event's, which the union cannot carry to a call; `game:state` alone reads the ack.
+const deliver = async (event: Broadcast['event'], payload: Broadcast['payloads'][number]) => {
+  await act(async () => lastSocket().serverEmit(event, ...([payload, () => {}] as never)));
 };
 
 const gameState: Omit<WireGameState, 'viewerSeatIndex' | 'turnSecondsRemaining'> = {
@@ -226,7 +196,6 @@ const CASES: (Broadcast & {
 
 describe('a field change wakes its own slice', () => {
   beforeEach(() => {
-    listeners.clear();
     for (const key of Object.keys(renders)) delete renders[key];
   });
 

@@ -7,24 +7,6 @@ import { Text } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, act } from '@testing-library/react-native';
 
-const mockSocket = {
-  connected: false,
-  active: true,
-  on() {},
-  off() {},
-  emit() {},
-  connect: jest.fn(),
-  disconnect: jest.fn(),
-  io: { reconnection: jest.fn() },
-};
-
-jest.mock('@/lib/socket', () => ({
-  connectSocket: () => mockSocket,
-  disconnectSocket: () => {},
-  peekSocket: (userId?: string | null) => (userId ? mockSocket : null),
-  subscribeToSockets: () => () => {},
-}));
-
 let mockUser: { id: string; username: string } | null = { id: 'u1', username: 'Ana' };
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: mockUser, forgetSession: async () => {} }),

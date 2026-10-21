@@ -9,34 +9,9 @@ import { renderHook, act } from '@testing-library/react-native';
 
 import { en as locale } from '@/locales/en';
 
-type Ack = (err: unknown, reply?: { ok: boolean; code?: string }) => void;
-const mockAcks: { event: string; payload: unknown; ack: Ack }[] = [];
-
-type Listener = (payload: unknown) => void;
-const mockListeners = new Map<string, Listener>();
-
-const mockSocket = {
-  connected: false,
-  active: true,
-  on(event: string, fn: Listener) {
-    mockListeners.set(event, fn);
-  },
-  off() {},
-  emit() {},
-  timeout: () => ({
-    emit: (event: string, payload: unknown, ack: Ack) => mockAcks.push({ event, payload, ack }),
-  }),
-  connect: jest.fn(),
-  disconnect: jest.fn(),
-  io: { reconnection: jest.fn() },
-};
-
-jest.mock('@/lib/socket', () => ({
-  connectSocket: () => mockSocket,
-  disconnectSocket: () => {},
-  peekSocket: (userId?: string | null) => (userId ? mockSocket : null),
-  subscribeToSockets: () => () => {},
-}));
+import { INTENT_ACK_TIMEOUT_MS } from '@/lib/sendIntent';
+import type { IntentReply } from '@/shared/protocol';
+import { lastSocket } from './mocks/socketIo';
 
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
@@ -61,19 +36,22 @@ const mount = () => {
   });
 };
 
-async function sendAnswered(...answer: Parameters<Ack>) {
+/** `silence` lets the ack's own timer run out. */
+async function sendAnswered(answer: IntentReply | undefined | 'silence') {
+  jest.useFakeTimers();
   const { result, unmount } = await mount();
   let sent: Promise<boolean> = Promise.resolve(false);
   await act(async () => {
     sent = result.current.send('f1', 'ABC123');
   });
-  expect(mockAcks[0].event).toBe('friend:invite');
-  expect(mockAcks[0].payload).toEqual(expect.objectContaining({ friendUserId: 'f1', roomCode: 'ABC123' }));
+  const [ack] = lastSocket().acks;
+  expect(ack.event).toBe('friend:invite');
+  expect(ack.payload).toEqual(expect.objectContaining({ friendUserId: 'f1', roomCode: 'ABC123' }));
   await act(async () => {
-    const [, reply] = answer;
+    if (answer === 'silence') return void jest.advanceTimersByTime(INTENT_ACK_TIMEOUT_MS);
     // As the server does: a refusal is acked and announced as `friend:error`.
-    if (reply && !reply.ok) mockListeners.get('friend:error')?.({ code: reply.code, message: 'refused' });
-    mockAcks[0].ack(...answer);
+    if (answer && !answer.ok) lastSocket().serverEmit('friend:error', { code: answer.code, message: 'refused' });
+    ack.answer(answer);
   });
   const outcome = await sent;
   await unmount();
@@ -81,19 +59,17 @@ async function sendAnswered(...answer: Parameters<Ack>) {
 }
 
 beforeEach(() => {
-  mockAcks.length = 0;
-  mockListeners.clear();
   mockShowNotification.mockClear();
 });
 
 describe('sending an invite', () => {
   it('reports success and says nothing more', async () => {
-    expect(await sendAnswered(null, { ok: true, code: 'INVITE_SHOWN' })).toBe(true);
+    expect(await sendAnswered({ ok: true, code: 'INVITE_SHOWN' })).toBe(true);
     expect(mockShowNotification).not.toHaveBeenCalled();
   });
 
   it('tells the player the server refused, in its words, once', async () => {
-    expect(await sendAnswered(null, { ok: false, code: 'NOT_FRIENDS' })).toBe(false);
+    expect(await sendAnswered({ ok: false, code: 'NOT_FRIENDS' })).toBe(false);
     expect(mockShowNotification).toHaveBeenCalledTimes(1);
     expect(mockShowNotification).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'game_error', message: locale['server.NOT_FRIENDS'] })
@@ -101,12 +77,12 @@ describe('sending an invite', () => {
   });
 
   it('counts an ack with no reply as heard, as every intent does', async () => {
-    expect(await sendAnswered(null)).toBe(true);
+    expect(await sendAnswered(undefined)).toBe(true);
     expect(mockShowNotification).not.toHaveBeenCalled();
   });
 
   it('tells the player the invite never arrived', async () => {
-    expect(await sendAnswered(new Error('timeout'))).toBe(false);
+    expect(await sendAnswered('silence')).toBe(false);
     expect(mockShowNotification).toHaveBeenCalledTimes(1);
     expect(mockShowNotification).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'game_error', message: locale['room.requestNotDelivered'] })

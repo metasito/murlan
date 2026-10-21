@@ -10,37 +10,13 @@
 //
 // The row is the truth and the client only has to ask again. Connecting is
 // when it must ask: the socket already re-reads the online list there.
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { Text } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render } from '@testing-library/react-native';
 
-type Listener = (...args: unknown[]) => void;
-
-const mockSocket = {
-  connected: false,
-  active: true,
-  listeners: new Map<string, Listener>(),
-  emitted: [] as string[],
-  on(event: string, fn: Listener) {
-    this.listeners.set(event, fn);
-  },
-  off() {},
-  emit(event: string) {
-    this.emitted.push(event);
-  },
-  connect: jest.fn(),
-  disconnect: jest.fn(),
-  io: { reconnection: jest.fn() },
-};
-
-jest.mock('@/lib/socket', () => ({
-  connectSocket: () => mockSocket,
-  disconnectSocket: () => {},
-  peekSocket: (userId?: string | null) => (userId ? mockSocket : null),
-  subscribeToSockets: () => () => {},
-}));
+import { lastSocket } from './mocks/socketIo';
 
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
@@ -75,18 +51,10 @@ async function harness() {
 }
 
 describe('a reconnect reconciles what arrived while the socket was down', () => {
-  beforeEach(() => {
-    mockSocket.connected = false;
-    mockSocket.listeners.clear();
-    mockSocket.emitted = [];
-  });
-
   it('re-reads the pending friend requests on connect', async () => {
     const { invalidated } = await harness();
 
-    await act(async () => {
-      mockSocket.listeners.get('connect')?.();
-    });
+    await act(async () => lastSocket().open());
 
     // Named one by one rather than as a set, so a failure says which query
     // stopped being re-read: a request that arrived while this client was
@@ -99,9 +67,7 @@ describe('a reconnect reconciles what arrived while the socket was down', () => 
   it('re-reads the friends list too, since an accept is dropped the same way', async () => {
     const { invalidated } = await harness();
 
-    await act(async () => {
-      mockSocket.listeners.get('connect')?.();
-    });
+    await act(async () => lastSocket().open());
 
     expect(invalidated).toContain('/api/friends');
   });
@@ -111,10 +77,8 @@ describe('a reconnect reconciles what arrived while the socket was down', () => 
   it('still asks who is online', async () => {
     await harness();
 
-    await act(async () => {
-      mockSocket.listeners.get('connect')?.();
-    });
+    await act(async () => lastSocket().open());
 
-    expect(mockSocket.emitted).toContain('friend:get_online_list');
+    expect(lastSocket().sent.map((s) => s.event)).toContain('friend:get_online_list');
   });
 });

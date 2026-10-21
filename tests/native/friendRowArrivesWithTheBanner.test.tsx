@@ -16,31 +16,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render } from '@testing-library/react-native';
 import type { FriendInfo, FriendRequestInfo } from '@/shared/http';
 
-type Listener = (...args: unknown[]) => void;
-
-const mockSocket = {
-  connected: false,
-  active: true,
-  listeners: new Map<string, Listener>(),
-  emitted: [] as string[],
-  on(event: string, fn: Listener) {
-    this.listeners.set(event, fn);
-  },
-  off() {},
-  emit(event: string) {
-    this.emitted.push(event);
-  },
-  connect: jest.fn(),
-  disconnect: jest.fn(),
-  io: { reconnection: jest.fn() },
-};
-
-jest.mock('@/lib/socket', () => ({
-  connectSocket: () => mockSocket,
-  disconnectSocket: () => {},
-  peekSocket: (userId?: string | null) => (userId ? mockSocket : null),
-  subscribeToSockets: () => () => {},
-}));
+import type { ServerToClientEvents } from '@/shared/protocol';
+import { lastSocket } from './mocks/socketIo';
 
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
@@ -81,16 +58,11 @@ async function harness() {
   return { qc, view };
 }
 
-const fire = (event: string, payload: unknown) =>
-  act(async () => {
-    mockSocket.listeners.get(event)?.(payload);
-  });
+const fire = <E extends keyof ServerToClientEvents>(event: E, ...args: Parameters<ServerToClientEvents[E]>) =>
+  act(async () => lastSocket().serverEmit(event, ...args));
 
 describe('a friend request carries its row', () => {
   beforeEach(() => {
-    mockSocket.connected = false;
-    mockSocket.listeners.clear();
-    mockSocket.emitted = [];
     mockShown.length = 0;
   });
 
@@ -149,9 +121,6 @@ describe('a friend request carries its row', () => {
 // a fix to both rather than a second copy that can drift.
 describe('an acceptance carries its row too', () => {
   beforeEach(() => {
-    mockSocket.connected = false;
-    mockSocket.listeners.clear();
-    mockSocket.emitted = [];
     mockShown.length = 0;
   });
 

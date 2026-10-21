@@ -63,11 +63,11 @@ afterAll(() => {
 
 // The rendering cases below build the stack themselves, which proves the
 // fallback works in that shape but not that the app is in it. The ordering is a
-// property of how app/_layout.tsx is written, so it is checked by reading it —
+// property of how context/AppProviders.tsx is written, so it is checked by reading it —
 // the same approach as tests/server/socketEvents.test.ts.
-describe('app/_layout.tsx keeps the boundary inside SafeAreaProvider', () => {
+describe('context/AppProviders.tsx keeps the boundary inside SafeAreaProvider', () => {
   const tagsOf = (source: string) => jsxTags(blankCommentsAndStrings(source));
-  const tags = tagsOf(readFileSync(join(__dirname, '..', '..', 'app', '_layout.tsx'), 'utf8'));
+  const tags = tagsOf(readFileSync(join(__dirname, '..', '..', 'context', 'AppProviders.tsx'), 'utf8'));
   const opens = (name: string, of = tags) => of.filter((t) => t.name === name && !t.isClose);
   const at = (name: string, isClose: boolean) => tags.findIndex((t) => t.name === name && t.isClose === isClose);
 
@@ -95,7 +95,7 @@ describe('app/_layout.tsx keeps the boundary inside SafeAreaProvider', () => {
 });
 
 describe('the root boundary renders its fallback', () => {
-  // The same nesting as app/_layout.tsx, pinned by the structural check above.
+  // The same nesting as context/AppProviders.tsx, pinned by the structural check above.
   const rootStack = (ui: React.ReactElement) => (
     <SettingsProvider>
       <QueryClientProvider client={new QueryClient()}>
