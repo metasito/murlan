@@ -10,11 +10,20 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
-import { io as ioClient, type Socket } from "socket.io-client";
-import { PROTOCOL_AUTH, waitFor } from "../helpers/client.ts";
+import {
+  connectSocket as connectTo,
+  eventually,
+  intent,
+  nothingArrives,
+  openSocket,
+  waitFor,
+  waitForOrNull,
+  waitForWhere,
+  type TestSocket,
+} from "../helpers/client.ts";
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
-import { boot, type Instance } from "../helpers/instance.ts";
-import { driveHumansToRoundOver } from "../helpers/gameDriver.ts";
+import { boot, stopInstance, type Instance } from "../helpers/instance.ts";
+import { playRoundOut } from "../helpers/gameDriver.ts";
 import { userStore } from "../../server/store/userStore.ts";
 import { mintAuthToken } from "../../server/http/authTokens.ts";
 import { closeDatabase, openDatabase } from "../../server/store/db.ts";
@@ -34,20 +43,9 @@ async function register(port: number, username: string): Promise<string> {
   return (res.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join("; ");
 }
 
-function connectSocket(port: number, cookie: string): Promise<Socket> {
-  return new Promise((resolve, reject) => {
-    const s = ioClient(`http://127.0.0.1:${port}`, {
-      transports: ["websocket"],
-      auth: PROTOCOL_AUTH,
-      extraHeaders: { Cookie: cookie },
-      reconnection: false,
-    });
-    s.once("connect", () => resolve(s));
-    s.once("connect_error", reject);
-  });
-}
+const at = (port: number) => `http://127.0.0.1:${port}`;
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const connectSocket = (port: number, cookie: string) => connectTo(at(port), { cookie });
 
 describe("broadcasts cross server instances", {
   skip: hasDatabase() ? false : skipMessage(),
@@ -56,11 +54,11 @@ describe("broadcasts cross server instances", {
   const baseUrl = process.env.DATABASE_URL!;
   const scoped = scopedDatabaseUrl(baseUrl, schema);
   const instances: Instance[] = [];
-  const sockets: Socket[] = [];
+  const sockets: TestSocket[] = [];
   let aCookie = "";
   let bCookie = "";
-  let aSocket: Socket;
-  let bSocket: Socket;
+  let aSocket: TestSocket;
+  let bSocket: TestSocket;
   let aName = "";
   let bName = "";
 
@@ -100,12 +98,12 @@ describe("broadcasts cross server instances", {
   });
 
   test("a room broadcast reaches the player on the other instance", async () => {
-    const created = waitFor<{ code: string; roomId: string }>(aSocket, "room:state");
+    const created = waitFor(aSocket, "room:state");
     aSocket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const room = await created;
     assert.ok(room, "instance 1 never answered room:create");
 
-    const aHears = waitFor<{ players: unknown[] }>(aSocket, "room:state");
+    const aHears = waitFor(aSocket, "room:state");
     bSocket.emit("room:join", { code: room.code });
 
     const aState = await aHears;
@@ -134,7 +132,7 @@ describe("broadcasts cross server instances", {
     // The accept happens on instance 2 and the person who must hear about it
     // is on instance 1 — `emitToUser` addresses the account, not a socket, so
     // this is delivered by the adapter or not at all.
-    const accepted = waitFor<{ by: string }>(aSocket, "friend:request_accepted");
+    const accepted = waitFor(aSocket, "friend:request_accepted");
     const accept = await fetch(
       `http://127.0.0.1:${PORTS[1]}/api/friends/accept/${requests[0].id}`,
       { method: "POST", headers: { cookie: bCookie } }
@@ -148,8 +146,8 @@ describe("broadcasts cross server instances", {
     );
     assert.equal(notice.by, bName);
 
-    const list = waitFor<{ onlineIds: string[] }>(aSocket, "friend:online_list");
-    aSocket.emit("friend:get_online_list");
+    const list = waitFor(aSocket, "friend:online_list");
+    aSocket.emit("friend:get_online_list", {});
     const payload = await list;
     assert.ok(payload, "no online list came back");
     assert.equal(
@@ -169,18 +167,15 @@ describe("broadcasts cross server instances", {
     const first = await connectSocket(PORTS[0], extraCookie);
     sockets.push(first);
 
-    const dropped = new Promise<string>((resolve) => {
-      first.once("disconnect", (reason: string) => resolve(reason));
-      setTimeout(() => resolve("still connected"), 6_000);
-    });
-    const told = waitFor<{ code: string }>(first, "socket:error");
+    const dropped = waitForOrNull(first, "disconnect", 6_000);
+    const told = waitFor(first, "socket:error");
 
     const second = await connectSocket(PORTS[1], extraCookie);
     sockets.push(second);
 
     assert.notEqual(
       await dropped,
-      "still connected",
+      null,
       "the socket on the other instance stayed live — one account now has two"
     );
     assert.equal(second.connected, true, "the arriving socket must be the one that survives");
@@ -212,29 +207,13 @@ describe("broadcasts cross server instances", {
     return ((await res.json()) as { ticket: string }).ticket;
   }
 
-  function connectTicket(port: number, ticket: string): Promise<Socket | null> {
-    return new Promise((resolve) => {
-      const s = ioClient(`http://127.0.0.1:${port}`, {
-        transports: ["websocket"],
-        auth: { ...PROTOCOL_AUTH, ticket },
-        reconnection: false,
-      });
-      s.once("connect", () => resolve(s));
-      s.once("connect_error", () => {
-        s.close();
-        resolve(null);
-      });
-    });
+  async function connectTicket(port: number, ticket: string): Promise<TestSocket | null> {
+    const opened = await openSocket(at(port), { ticket });
+    return opened.ok ? opened.socket : null;
   }
 
-  function closed(socket: Socket, ms = 6_000): Promise<boolean> {
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => resolve(false), ms);
-      socket.once("disconnect", () => {
-        clearTimeout(timer);
-        resolve(true);
-      });
-    });
+  async function closed(socket: TestSocket): Promise<boolean> {
+    return (await waitForOrNull(socket, "disconnect", 6_000)) !== null;
   }
 
   /** Signed in over instance 1, socket on instance 2. */
@@ -302,7 +281,7 @@ describe("broadcasts cross server instances", {
   test("deleting an account on one instance ends its seat and socket on the other", async () => {
     const host = await accountOnSecond("dh");
     const leaver = await accountOnSecond("dl");
-    const created = waitFor<{ code: string }>(host.socket, "room:state");
+    const created = waitFor(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const room = await created;
     assert.ok(room, "instance 2 never answered room:create");
@@ -310,10 +289,10 @@ describe("broadcasts cross server instances", {
     leaver.socket.emit("room:join", { code: room.code });
     assert.ok(await joined, "the join never reached the host");
     const dealt = waitFor(leaver.socket, "game:state", 15_000);
-    host.socket.emit("room:start");
+    host.socket.emit("room:start", {});
     assert.ok(await dealt, "the game never started");
 
-    const left = waitFor<{ userId: string }>(host.socket, "game:player_left");
+    const left = waitFor(host.socket, "game:player_left");
     const cut = closed(leaver.socket);
     const res = await fetch(`http://127.0.0.1:${PORTS[0]}/api/users/me`, {
       method: "DELETE",
@@ -335,28 +314,28 @@ describe("broadcasts cross server instances", {
       received += 1;
     });
 
-    aSocket.emit("room:start");
-    await sleep(1_500);
-    const afterStart = received;
-    assert.ok(afterStart > 0, "the game never started across the two instances");
+    const armed = waitForWhere(bSocket, "game:state", (state) => state.turnDeadlineMs !== undefined);
+    aSocket.emit("room:start", {});
+    await armed;
+    assert.ok(received > 0, "the game never started across the two instances");
 
-    await sleep(ACK_TIMEOUT_MS * 4);
-    assert.equal(
-      received,
-      afterStart,
-      "game:state arrived again after the acknowledgement window — the ack did " +
-        "not cross instances, so every broadcast is being re-sent"
-    );
+    setTimeout(() => (bSocket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["game:state", {}]), 50); // RED: injected emit
+    await nothingArrives(bSocket, "game:state", {
+      ms: ACK_TIMEOUT_MS * 4,
+      why:
+        "game:state arrived again after the acknowledgement window — the ack did " +
+        "not cross instances, so every broadcast is being re-sent",
+    });
   });
 
   /** A fresh two-seat table, both seats human, hosted from instance 1. */
   async function openTable(): Promise<{ roomId: string; code: string }> {
-    const created = waitFor<{ code: string; roomId: string }>(aSocket, "room:state");
+    const created = waitFor(aSocket, "room:state");
     aSocket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const room = await created;
     assert.ok(room, "instance 1 never answered room:create");
 
-    const seated = waitFor<{ players: unknown[] }>(aSocket, "room:state");
+    const seated = waitFor(aSocket, "room:state");
     bSocket.emit("room:join", { code: room.code });
     assert.ok(await seated, "the join never reached the host");
     return room;
@@ -369,7 +348,7 @@ describe("broadcasts cross server instances", {
     // was playable by exactly the half of it that happened to land on the
     // instance that dealt.
     await openTable();
-    const over = await driveHumansToRoundOver(
+    const over = await playRoundOut(
       [aSocket, bSocket],
       () => aSocket.emit("room:start"),
       45_000
@@ -380,7 +359,7 @@ describe("broadcasts cross server instances", {
   test("the table outlives the instance that owned it", async () => {
     const room = await openTable();
     const dealt = waitFor(bSocket, "game:state", 15_000);
-    aSocket.emit("room:start");
+    aSocket.emit("room:start", {});
     assert.ok(await dealt, "the game never started");
 
     // What survives the kill is the `active_games` row, and it is written
@@ -388,16 +367,11 @@ describe("broadcasts cross server instances", {
     // nothing but the race. Its own pool: both servers are child processes.
     const admin = new pg.Pool({ connectionString: scoped });
     try {
-      const deadline = Date.now() + 15_000;
-      for (;;) {
-        const { rowCount } = await admin.query(
-          "SELECT 1 FROM active_games WHERE room_id = $1",
-          [room.roomId]
-        );
-        if (rowCount) break;
-        assert.ok(Date.now() < deadline, "the deal was never persisted");
-        await sleep(200);
-      }
+      await eventually(
+        async () => (await admin.query("SELECT 1 FROM active_games WHERE room_id = $1", [room.roomId])).rowCount,
+        "the deal persisted",
+        15_000
+      );
     } finally {
       await admin.end();
     }
@@ -406,14 +380,11 @@ describe("broadcasts cross server instances", {
     // this game, and a table that dies with one process is a table nobody can
     // finish. `game:pass` carries no payload, so a reply of NO_LIVE_GAME can
     // only mean the handler ran and found no table.
-    instances[0].child.kill("SIGKILL");
-    await sleep(2_000);
+    await stopInstance(instances[0].child);
 
-    const reply = await bSocket
-      .timeout(20_000)
-      .emitWithAck("game:pass") as { ok: boolean; code?: string };
+    const reply = await intent(bSocket, "game:pass", undefined, 20_000);
     assert.notEqual(
-      reply.code,
+      reply.ok ? undefined : reply.code,
       "NO_LIVE_GAME",
       "the surviving instance never took the table over — the round died with " +
         "the process that dealt it"

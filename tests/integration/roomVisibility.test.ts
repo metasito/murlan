@@ -8,38 +8,29 @@
 // process is replaced.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Socket } from "socket.io-client";
 import {
   startTestServer,
   hasDatabase,
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor } from "../helpers/client.ts";
+import { connectAs, leaveRooms, type TestSocket, waitFor } from "../helpers/client.ts";
 import { befriend } from "../helpers/friends.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { db } from "../../server/store/db.ts";
 import { sql } from "drizzle-orm";
 
-interface RoomState {
-  code: string;
-  roomId: string;
-  visibility: string;
-  players: { seatIndex: number; userId: string }[];
-  seatHolds: { seatIndex: number; username: string }[];
-}
 
 describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  const sockets: Socket[] = [];
+  const sockets: TestSocket[] = [];
   let n = 0;
 
   before(async () => {
     server = await startTestServer();
   });
   after(async () => {
-    for (const s of sockets) s.emit("room:leave");
-    await new Promise((r) => setTimeout(r, 200));
+    await leaveRooms(sockets);
     for (const s of sockets) s.close();
     await server.stop();
   });
@@ -52,11 +43,11 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
   }
 
   async function quickmatch(
-    client: { socket: Socket },
+    client: { socket: TestSocket },
     maxPlayers = 2,
-    gameMode = "free_for_all"
+    gameMode: "free_for_all" | "teams" = "free_for_all"
   ) {
-    const state = waitFor<RoomState>(client.socket, "room:state");
+    const state = waitFor(client.socket, "room:state");
     client.socket.emit("room:quickmatch", { maxPlayers, gameMode });
     return state;
   }
@@ -75,7 +66,7 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     const host = await player("priv_host");
     const stranger = await player("priv_stranger");
 
-    const made = waitFor<RoomState>(host.socket, "room:state");
+    const made = waitFor(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const room = await made;
 
@@ -91,11 +82,11 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     const host = await player("code_host");
     const guest = await player("code_guest");
 
-    const made = waitFor<RoomState>(host.socket, "room:state");
+    const made = waitFor(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const room = await made;
 
-    const joined = waitFor<RoomState>(guest.socket, "room:state");
+    const joined = waitFor(guest.socket, "room:state");
     guest.socket.emit("room:join", { code: room.code });
     const after = await joined;
 
@@ -112,7 +103,7 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     const opened = await quickmatch(opener);
 
     const host = await player("db_private");
-    const made = waitFor<RoomState>(host.socket, "room:state");
+    const made = waitFor(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const privateRoom = await made;
     const open = await roomStore.findWaitingPublicRooms();
@@ -134,11 +125,11 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     const host = await player("start_host");
     const mate = await player("start_mate");
 
-    const made = waitFor<RoomState>(host.socket, "room:state");
+    const made = waitFor(host.socket, "room:state");
     host.socket.emit("room:quickmatch", { maxPlayers: 2, gameMode: "free_for_all" });
     const room = await made;
 
-    const seated = waitFor<RoomState>(host.socket, "room:state");
+    const seated = waitFor(host.socket, "room:state");
     mate.socket.emit("room:join", { code: room.code });
     await seated;
 
@@ -166,14 +157,14 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     assert.notEqual(landed.roomId, opened.roomId, "an empty room is not a room to join");
   });
 
-  async function createRoom(client: { socket: Socket }, maxPlayers = 2, gameMode = "free_for_all") {
-    const made = waitFor<RoomState>(client.socket, "room:state");
+  async function createRoom(client: { socket: TestSocket }, maxPlayers = 2, gameMode: "free_for_all" | "teams" = "free_for_all") {
+    const made = waitFor(client.socket, "room:state");
     client.socket.emit("room:create", { gameMode, maxPlayers });
     return made;
   }
 
-  async function setVisibility(client: { socket: Socket }, visibility: "public" | "private") {
-    const next = waitFor<RoomState>(client.socket, "room:state");
+  async function setVisibility(client: { socket: TestSocket }, visibility: "public" | "private") {
+    const next = waitFor(client.socket, "room:state");
     client.socket.emit("room:setVisibility", { visibility });
     return next;
   }
@@ -227,11 +218,11 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     const mate = await player("tell_mate");
 
     const room = await createRoom(host, 4);
-    const joined = waitFor<RoomState>(mate.socket, "room:state");
+    const joined = waitFor(mate.socket, "room:state");
     mate.socket.emit("room:join", { code: room.code });
     await joined;
 
-    const seenByMate = waitFor<RoomState>(mate.socket, "room:state");
+    const seenByMate = waitFor(mate.socket, "room:state");
     host.socket.emit("room:setVisibility", { visibility: "public" });
     assert.equal(
       (await seenByMate).visibility,
@@ -247,7 +238,7 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     const room = await createRoom(host, 4);
     await setVisibility(host, "public");
 
-    const joined = waitFor<RoomState>(holder.socket, "room:state");
+    const joined = waitFor(holder.socket, "room:state");
     holder.socket.emit("room:join", { code: room.code });
     const after = await joined;
 
@@ -260,19 +251,19 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     const mate = await player("auth_mate");
 
     const room = await createRoom(host, 4);
-    const joined = waitFor<RoomState>(mate.socket, "room:state");
+    const joined = waitFor(mate.socket, "room:state");
     mate.socket.emit("room:join", { code: room.code });
     await joined;
 
-    const refused = waitFor<{ code: string }>(mate.socket, "room:error");
+    const refused = waitFor(mate.socket, "room:error");
     mate.socket.emit("room:setVisibility", { visibility: "public" });
     assert.equal((await refused).code, "NOT_HOST");
     const row = await roomStore.getRoomById(room.roomId);
     assert.equal(row?.visibility, "private", "only the host decides who may see the room");
   });
 
-  async function joinByCode(client: { socket: Socket }, code: string) {
-    const joined = waitFor<RoomState>(client.socket, "room:state");
+  async function joinByCode(client: { socket: TestSocket }, code: string) {
+    const joined = waitFor(client.socket, "room:state");
     client.socket.emit("room:join", { code });
     return joined;
   }
@@ -286,10 +277,10 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     await befriend(server, host, friend);
 
     const room = await createRoom(host, 4, "teams");
-    const invited = waitFor<RoomState>(host.socket, "room:state");
+    const invited = waitFor(host.socket, "room:state");
     host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
     const held = await invited;
-    assert.equal(held.seatHolds.length, 1, "the invite row is the hold");
+    assert.equal(held.seatHolds?.length, 1, "the invite row is the hold");
 
     return { host, room, held };
   }
@@ -307,10 +298,10 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     const seat = landed.players.find((p) => p.userId === stranger.user.id);
     assert.ok(seat, "the stranger must be seated, not merely subscribed");
     assert.ok(
-      !landed.seatHolds.some((h) => h.seatIndex === seat.seatIndex),
+      !landed.seatHolds?.some((h) => h.seatIndex === seat.seatIndex),
       "a stranger may take an open seat, never the one promised to the friend"
     );
-    assert.equal(landed.seatHolds.length, 1, "the friend's hold outlives the stranger's arrival");
+    assert.equal(landed.seatHolds?.length, 1, "the friend's hold outlives the stranger's arrival");
   });
 
   test("an opened room still holds the seat its invited friend was promised", async () => {

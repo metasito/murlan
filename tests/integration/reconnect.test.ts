@@ -1,6 +1,5 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Socket } from "socket.io-client";
 import {
   startTestServer,
   hasDatabase,
@@ -8,26 +7,23 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { MATCH_TARGETS, firstTargetFor } from "../../lib/game/gameEngine.ts";
-import { lobbyGraceMs, usersInLobbyGrace, clearRoomTimers } from "../../server/game/gameTimers.ts";
+import { usersInLobbyGrace, clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { Reading } from "../../lib/tokens.ts";
-import { connectAs, reconnectAs, waitFor } from "../helpers/client.ts";
+import { connectAs, eventually, intent, nothingArrives, reconnectWith, waitFor, type TestSocket } from "../helpers/client.ts";
 import {
-  driveRoundToExchangeOrOver,
-  roundOverOf,
   setUpRoom,
   startGame,
   waitForDeal,
   type Client,
-  type RoundOverPayload,
-  type RoomState,
-  type SanitizedState,
 } from "../helpers/table.ts";
+import { driveRound, roundOverOf } from "../helpers/gameDriver.ts";
 import { db } from "../../server/store/db.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { activeGames as activeGamesTable } from "../../shared/schema.ts";
 import { eq } from "drizzle-orm";
 import { hasActiveGame, forgetActiveGame, matchSnapshot, seatedUsers } from "../helpers/liveGame.ts";
+import type { WireGameState, WireRoomState } from "../../shared/protocol.ts";
 
 /**
  * The reconnect paths: what the table is told when a dropped player comes
@@ -72,11 +68,11 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    * live game arms a disconnect grace timer, and this suite's grace outlasts
    * the whole file — the timer would then fire against a stopped server.
    */
-  async function closeTable(clients: { socket: Socket }[]) {
+  async function closeTable(clients: { socket: TestSocket }[]) {
     const leaves = await Promise.allSettled(
       clients
         .filter((client) => client.socket.connected)
-        .map((client) => client.socket.timeout(5_000).emitWithAck("room:leave"))
+        .map((client) => intent(client.socket, "room:leave"))
     );
     for (const client of clients) client.socket.close();
     for (const leave of leaves) if (leave.status === "rejected") unansweredLeaves.push(String(leave.reason));
@@ -110,14 +106,14 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     bob.socket.disconnect();
     await dropped;
 
-    const announced = waitFor<ReconnectNotice>(
+    const announced = waitFor(
       alice.socket,
       "game:player_reconnected",
       5_000
     );
     // No game:rejoin: this is the connection handler's own grace-timer path,
     // reached by the socket coming back and nothing else.
-    const back = await reconnectAs(server, bob);
+    const back = await reconnectWith(server, bob.cookie);
     table[1] = { ...bob, socket: back };
     try {
       const notice = await announced;
@@ -162,7 +158,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    * into — read it at assertion time, and attach it before the move that
    * could produce one.
    */
-  function collectAfkPasses(socket: Socket): string[] {
+  function collectAfkPasses(socket: TestSocket): string[] {
     const seen: string[] = [];
     socket.on("game:notification", (payload: {
       code?: string;
@@ -175,22 +171,9 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     return seen;
   }
 
-  async function waitUntil(
-    predicate: () => boolean,
-    message: string,
-    ms: number
-  ): Promise<void> {
-    const deadline = Date.now() + ms;
-    while (Date.now() < deadline) {
-      if (predicate()) return;
-      await new Promise((resolve) => setTimeout(resolve, 20)); // fixed wait on purpose: the poll interval, bounded by the deadline above
-    }
-    assert.fail(message);
-  }
-
   /** Arming the lobby grace is the last thing the server does with a drop from a waiting room. */
-  function lobbyGraceArmed(roomId: string, client: Client): Promise<void> {
-    return waitUntil(
+  async function lobbyGraceArmed(roomId: string, client: Client): Promise<void> {
+    await eventually(
       () => usersInLobbyGrace(roomId).includes(client.user.id),
       `${client.user.username}'s drop never armed the lobby grace`,
       5_000
@@ -214,7 +197,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       while (running) {
         client.socket.disconnect();
         await new Promise((resolve) => setTimeout(resolve, AFK_MS / 4));
-        client.socket = await reconnectAs(server, client);
+        client.socket = await reconnectWith(server, client.cookie);
         client.socket.emit("game:rejoin", { roomId });
         await new Promise((resolve) => setTimeout(resolve, AFK_MS / 4));
       }
@@ -227,18 +210,14 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
 
   /** Waits for the `active_games` row the rehydration branch reads. */
   async function waitForPersistedGame(roomId: string): Promise<void> {
-    for (let attempt = 0; attempt < 100; attempt++) {
-      const row = await db().query.activeGames.findFirst({
-        where: eq(activeGamesTable.roomId, roomId),
-      });
-      if (row) return;
-      await new Promise((resolve) => setTimeout(resolve, 20)); // fixed wait on purpose: the poll interval, bounded at 100 attempts
-    }
-    assert.fail("the live game was never written to active_games");
+    await eventually(
+      () => db().query.activeGames.findFirst({ where: eq(activeGamesTable.roomId, roomId) }),
+      "the live game to be written to active_games"
+    );
   }
 
   /** The client whose own seat has to act, from each client's opening state. */
-  function clientOnTurn(clients: Client[], states: SanitizedState[]): Client {
+  function clientOnTurn(clients: Client[], states: WireGameState[]): Client {
     const index = states.findIndex(
       (state) => state.currentTurnIndex === state.viewerSeatIndex
     );
@@ -261,22 +240,23 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     const room = await setUpRoom([alice, bob, carol], 3);
     await startGame([alice, bob, carol]);
 
-    const carolGone = waitFor<{ seatIndex: number }>(alice.socket, "game:player_disconnected", 5_000);
+    const carolGone = waitFor(alice.socket, "game:player_disconnected", 5_000);
     carol.socket.disconnect();
     const carolSeat = (await carolGone).seatIndex;
     const bobGone = waitFor(alice.socket, "game:player_disconnected", 5_000);
     bob.socket.disconnect();
     await bobGone;
 
-    const back = await reconnectAs(server, bob);
+    const back = await reconnectWith(server, bob.cookie);
     const table = [alice, { ...bob, socket: back }];
     try {
-      const grace = waitFor<{ seatIndex: number; params: { seconds: number } }>(back, "game:player_disconnected", 5_000);
-      const tally = waitFor<{ votes: string[] }>(back, "game:end_match_vote_state", 5_000);
+      const grace = waitFor(back, "game:player_disconnected", 5_000);
+      const tally = waitFor(back, "game:end_match_vote_state", 5_000);
       back.emit("game:rejoin", { roomId: room.roomId });
       const notice = await grace;
       assert.equal(notice.seatIndex, carolSeat);
-      assert.ok(notice.params.seconds > 0 && notice.params.seconds <= 20, `${notice.params.seconds}s left`);
+      const seconds = Number(notice.params?.seconds);
+      assert.ok(seconds > 0 && seconds <= 20, `${seconds}s left`);
       assert.deepEqual((await tally).votes, []);
     } finally {
       await closeTable(table);
@@ -296,7 +276,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       const passes = collectAfkPasses(observer.socket);
       const stop = rejoinOnALoop(actor, room.roomId);
       try {
-        await waitUntil(
+        await eventually(
           () => passes.includes(actor.user.username),
           "the looping player's seat was never auto-passed — every rejoin re-armed its AFK window",
           AFK_MS * 2.5 + OPENING_GRACE_MS
@@ -324,7 +304,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       const passes = collectAfkPasses(bystander.socket);
       const stop = rejoinOnALoop(bystander, room.roomId);
       try {
-        await waitUntil(
+        await eventually(
           () => passes.includes(actor.user.username),
           "another seat's rejoins pushed the acting player's AFK deadline out",
           AFK_MS * 2.5 + OPENING_GRACE_MS
@@ -352,7 +332,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       const votes = planted.endMatchVotes;
       planted.endMatchVotes = { [Symbol.iterator]: () => { throw new Error("planted rejoin fault"); } };
       try {
-        bob.socket = await reconnectAs(server, bob);
+        bob.socket = await reconnectWith(server, bob.cookie);
         await waitFor(bob.socket, "friend:online_list", 5_000);
       } finally {
         planted.endMatchVotes = votes;
@@ -379,7 +359,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
         const passes = collectAfkPasses(others[1].socket);
         const stop = reconnectOnALoop(looper, room.roomId);
         try {
-          await waitUntil(
+          await eventually(
             () => passes.includes(actor.user.username),
             `${who}'s dropped sockets re-armed the acting seat's AFK window`,
             AFK_MS * 2.5 + OPENING_GRACE_MS
@@ -424,7 +404,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       assert.equal(hasActiveGame(room.roomId), false);
 
       const passes = collectAfkPasses(frank.socket);
-      const restored = waitFor<SanitizedState>(erin.socket, "game:state", 5_000);
+      const restored = waitFor(erin.socket, "game:state", 5_000);
       const refused = new Promise<never>((_, reject) => {
         erin.socket.once("game:rejoin_failed", (payload: unknown) =>
           reject(new Error(`game:rejoin_failed ${JSON.stringify(payload)}`))
@@ -435,7 +415,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       assert.equal(hasActiveGame(room.roomId), true);
 
       const onTurn = state.players[state.currentTurnIndex].name;
-      await waitUntil(
+      await eventually(
         () => passes.includes(onTurn),
         "the rehydrated game came back with no armed timer — the table would sit there forever",
         AFK_MS * 4 + OPENING_GRACE_MS
@@ -472,7 +452,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
         return realGetRoomPlayers.call(this, roomId);
       };
 
-      const restored = waitFor<SanitizedState>(hank.socket, "game:state", 5_000);
+      const restored = waitFor(hank.socket, "game:state", 5_000);
       const refused = new Promise<never>((_, reject) => {
         hank.socket.once("game:rejoin_failed", (payload: unknown) =>
           reject(new Error(`game:rejoin_failed ${JSON.stringify(payload)}`))
@@ -484,7 +464,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       assert.equal(tripped, 1, "the roster read never failed — the test proved nothing");
       // viewerSeatIndex is read straight out of the game's playerMap.
       assert.ok(
-        state.viewerSeatIndex >= 0,
+        state.viewerSeatIndex !== null && state.viewerSeatIndex >= 0,
         "the rejoining player was not recognised at their own seat"
       );
     } finally {
@@ -497,7 +477,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     const jo = await connectAs(server, "cold_start_jo");
     const kai = await connectAs(server, "cold_start_kai");
     const room = await setUpRoom([jo, kai], 2);
-    const table: { socket: Socket }[] = [jo, kai];
+    const table: { socket: TestSocket }[] = [jo, kai];
     const realGetRoomPlayers = roomStore.getRoomPlayers;
     let tripped = 0;
     try {
@@ -517,10 +497,10 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
 
       // A socket that has never been sent room:state: the app after a restart,
       // rejoining on the room id it read back from storage and nothing else.
-      const back = await reconnectAs(server, kai);
+      const back = await reconnectWith(server, kai.cookie);
       table[1] = { socket: back };
-      const recovered = waitFor<RoomState>(back, "room:state", 5_000);
-      const restored = waitFor<SanitizedState>(back, "game:state", 5_000);
+      const recovered = waitFor(back, "room:state", 5_000);
+      const restored = waitFor(back, "game:state", 5_000);
       back.emit("game:rejoin", { roomId: room.roomId });
       const [roomState, state] = await Promise.all([recovered, restored]);
 
@@ -533,7 +513,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
         "the recovered room must still seat both players"
       );
       assert.ok(
-        state.viewerSeatIndex >= 0,
+        state.viewerSeatIndex !== null && state.viewerSeatIndex >= 0,
         "the rejoining player was not recognised at their own seat"
       );
     } finally {
@@ -553,10 +533,10 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       // A round has to be banked first, or every score is zero and an empty
       // scoreboard would pass for the real one.
       roundOverOf(
-        await driveRoundToExchangeOrOver(
+        await driveRound(
           table,
           () => alice.socket.emit("room:start"),
-          { stopOnExchange: false }
+          { onExchange: "wait" }
         )
       );
       const dealt = waitForDeal(alice.socket);
@@ -579,13 +559,9 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       bob.socket.disconnect();
       await dropped;
 
-      const back = await reconnectAs(server, bob);
+      const back = await reconnectWith(server, bob.cookie);
       table[1] = { ...bob, socket: back };
-      const framing = waitFor<{
-        target: number;
-        length: string;
-        scores: Record<string, number>;
-      }>(back, "game:match_state", 5_000);
+      const framing = waitFor(back, "game:match_state", 5_000);
       back.emit("game:rejoin", { roomId: room.roomId });
       const sent = await framing;
 
@@ -623,10 +599,10 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     const table = [alice, bob];
     try {
       roundOverOf(
-        await driveRoundToExchangeOrOver(
+        await driveRound(
           table,
           () => alice.socket.emit("room:start"),
-          { stopOnExchange: false }
+          { onExchange: "wait" }
         )
       );
       assert.equal(
@@ -636,12 +612,8 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       );
 
       bob.socket.disconnect();
-      // Nothing is broadcast on this path, so there is no event to await: the
-      // release runs off the socket's own disconnect. Asked of the server
-      // rather than restated, so a grace shorter than this reads as the seat
-      // legitimately expiring instead of as the defect.
-      // fixed wait on purpose: a window for the drop to cost the seat, since nothing marks the handler's end
-      await new Promise((resolve) => setTimeout(resolve, Math.min(500, lobbyGraceMs() / 2)));
+      // Nothing is broadcast on this path: the grace it arms is the handler's last word.
+      await lobbyGraceArmed(room.roomId, bob);
 
       assert.equal(
         seatedUsers(room.roomId)?.[1],
@@ -649,11 +621,11 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
         "a drop between rounds must hold the seat under the same grace as any other"
       );
 
-      const back = await reconnectAs(server, bob);
+      const back = await reconnectWith(server, bob.cookie);
       table[1] = { ...bob, socket: back };
       const answered = Promise.race([
         waitFor(back, "game:player_reconnected", 5_000).then(() => "rejoined" as const),
-        waitFor<{ code?: string }>(back, "game:rejoin_failed", 5_000).then(
+        waitFor(back, "game:rejoin_failed", 5_000).then(
           (p) => `refused ${p.code}` as const
         ),
       ]);
@@ -671,7 +643,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    * never sent anything in its place. Bob is offline for the whole round, so
    * the AFK path (armed by the same `MURLAN_AFK_TIMEOUT_MS` this file already
    * sets) forces his seat's minimum legal moves in his place — the same
-   * forced-minimum play `driveRoundToExchangeOrOver` does for a connected
+   * forced-minimum play `driveRound` does for a connected
    * client — and alice alone drives her own side to `game:round_over`.
    */
   test("a client that missed game:over is sent the finished round's scores on rejoin", async () => {
@@ -687,13 +659,13 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       await dropped;
 
       const aliceOver = roundOverOf(
-        await driveRoundToExchangeOrOver([alice], () => {}, { stopOnExchange: false })
+        await driveRound([alice], () => {}, { onExchange: "wait" })
       );
       assert.ok(aliceOver.scores.length > 0, "the round must have banked real scores");
 
-      const back = await reconnectAs(server, bob);
+      const back = await reconnectWith(server, bob.cookie);
       table[1] = { ...bob, socket: back };
-      const bobOver = waitFor<RoundOverPayload>(back, "game:round_over", 5_000);
+      const bobOver = waitFor(back, "game:round_over", 5_000);
       back.emit("game:rejoin", { roomId: room.roomId });
       const payload = await bobOver;
 
@@ -719,27 +691,6 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
   });
 
   /**
-   * A promise that resolves once `waitMs` has passed with `event` never
-   * having landed on `socket`, or rejects with the first payload it does see
-   * — the shape a "this must NOT arrive" assertion needs, since a bare
-   * `waitFor` only ever resolves on the event showing up.
-   */
-  function assertNeverReceives<T>(socket: Socket, event: string, waitMs: number): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const onEvent = (payload: T) => {
-        clearTimeout(timer);
-        reject(new Error(`${event} must not have arrived, got ${JSON.stringify(payload)}`));
-      };
-      // fixed wait on purpose: an event that must not arrive can only be watched for a window
-      const timer = setTimeout(() => {
-        socket.off(event, onEvent);
-        resolve();
-      }, waitMs);
-      socket.once(event, onEvent);
-    });
-  }
-
-  /**
    * #808 review: the regression test above only exercises a rejoin *before*
    * the next round deals. `announceRejoin`'s branch that re-sends `game:round_over`
    * is gated on `gameState.roundOver` — while round 2 is live that is false, so
@@ -756,9 +707,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     const table = [alice, bob];
     try {
       const hand1Over = roundOverOf(
-        await driveRoundToExchangeOrOver(table, () => alice.socket.emit("room:start"), {
-          stopOnExchange: false,
-        })
+        await driveRound(table, () => alice.socket.emit("room:start"), { onExchange: "wait" })
       );
       assert.ok(hand1Over.scores.length > 0, "round 1 must have banked real scores");
 
@@ -767,9 +716,10 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       bob.socket.emit("game:rematch_vote");
       await dealt;
 
-      const noStaleOver = assertNeverReceives<RoundOverPayload>(bob.socket, "game:round_over", 1_000);
-      const state = waitFor<SanitizedState>(bob.socket, "game:state", 5_000);
-      const framing = waitFor<{ target: number; scores: Record<string, number> }>(
+      setTimeout(() => (bob.socket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["game:round_over", {}]), 50); // RED: injected emit
+      const noStaleOver = nothingArrives(bob.socket, "game:round_over");
+      const state = waitFor(bob.socket, "game:state", 5_000);
+      const framing = waitFor(
         bob.socket,
         "game:match_state",
         5_000
@@ -803,9 +753,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     const table = [alice, bob];
     try {
       const hand1Over = roundOverOf(
-        await driveRoundToExchangeOrOver(table, () => alice.socket.emit("room:start"), {
-          stopOnExchange: false,
-        })
+        await driveRound(table, () => alice.socket.emit("room:start"), { onExchange: "wait" })
       );
       assert.ok(hand1Over.scores.length > 0, "round 1 must have banked real scores");
 
@@ -825,9 +773,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
         return realPreview(seatResults, gameMode, finishedAt);
       };
 
-      const hand2OverPromise = driveRoundToExchangeOrOver(table, () => {}, {
-        stopOnExchange: false,
-      });
+      const hand2OverPromise = driveRound(table, () => {}, { onExchange: "wait" });
       // Never left as an unhandled rejection if an assertion below throws
       // before releaseGate() runs — the inner finally still releases the
       // gate so the driver settles either way; only the awaited value is
@@ -835,7 +781,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       hand2OverPromise.catch(() => {});
 
       try {
-        await waitUntil(
+        await eventually(
           () => gateReached,
           "handleRoundOver never reached the gated rating-delta read — round 2 did not finish",
           10_000
@@ -845,8 +791,9 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
         // synchronously before handleRoundOver ran); lastRoundOverPayload has
         // not been reassigned yet, because the gated write above is still
         // pending.
-        const noStaleOver = assertNeverReceives<RoundOverPayload>(bob.socket, "game:round_over", 1_000);
-        const state = waitFor<SanitizedState>(bob.socket, "game:state", 5_000);
+        setTimeout(() => (bob.socket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["game:round_over", {}]), 50); // RED: injected emit
+        const noStaleOver = nothingArrives(bob.socket, "game:round_over");
+        const state = waitFor(bob.socket, "game:state", 5_000);
         bob.socket.emit("game:rejoin", { roomId: room.roomId });
         const rejoinedState = await state;
         assert.equal(rejoinedState.roundOver, true, "round 2 must already be over in this window");
@@ -877,7 +824,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
   test("a rejoin failure echoes the requested roomId verbatim", async () => {
     const gina = await connectAs(server, "echo_gina");
     try {
-      const failed = waitFor<{ roomId?: string; code?: string }>(
+      const failed = waitFor(
         gina.socket,
         "game:rejoin_failed",
         5_000
@@ -913,9 +860,9 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       bob.socket.disconnect();
       await lobbyGraceArmed(room.roomId, bob);
 
-      const back = await reconnectAs(server, bob);
+      const back = await reconnectWith(server, bob.cookie);
       table[1] = { ...bob, socket: back };
-      const recovered = waitFor<RoomState>(back, "room:state", 5_000);
+      const recovered = waitFor(back, "room:state", 5_000);
       // The code the client already holds — no re-entry by the player.
       back.emit("room:rejoin", { code: room.code });
       const state = await recovered;
@@ -948,13 +895,13 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       carol.socket.disconnect();
       await lobbyGraceArmed(room.roomId, carol);
 
-      const back = await reconnectAs(server, carol);
+      const back = await reconnectWith(server, carol.cookie);
       table[0] = { ...carol, socket: back };
-      const recovered = waitFor<RoomState>(back, "room:state", 5_000);
+      const recovered = waitFor(back, "room:state", 5_000);
       back.emit("room:rejoin", { code: room.code });
       assert.equal((await recovered).hostUserId, carol.user.id);
 
-      const dealt = waitFor<SanitizedState>(dave.socket, "game:state", 5_000);
+      const dealt = waitFor(dave.socket, "game:state", 5_000);
       back.emit("room:start");
       const state = await dealt;
       assert.equal(state.players.length, 2);
@@ -970,7 +917,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
   test("a rejoin to a room that no longer waits is refused", async () => {
     const jack = await connectAs(server, "lobby_gone_jack");
     try {
-      const refused = waitFor<{ code?: string }>(jack.socket, "room:error", 5_000);
+      const refused = waitFor(jack.socket, "room:error", 5_000);
       jack.socket.emit("room:rejoin", { code: "ZZZZZZ" });
       assert.equal((await refused).code, "ROOM_NOT_FOUND");
     } finally {
@@ -991,7 +938,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     let liam: Client;
     let mia: Client;
     let nate: Client;
-    let room: RoomState;
+    let room: WireRoomState;
 
     before(async () => {
       kate = await connectAs(server, "seat_back_kate");
@@ -1013,7 +960,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
      * over the host role.
      */
     test("refuses a caller who was never in the room", async () => {
-      const refused = waitFor<{ code?: string }>(nate.socket, "room:error", 5_000);
+      const refused = waitFor(nate.socket, "room:error", 5_000);
       nate.socket.emit("room:rejoin", { code: room.code });
       assert.equal((await refused).code, "NOT_IN_ROOM");
     });
@@ -1024,7 +971,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
      * player was host". Only the account that lost the role gets it back.
      */
     test("re-seats a member who was not host without handing them the room", async () => {
-      const migrated = waitFor<RoomState>(liam.socket, "room:state", 5_000);
+      const migrated = waitFor(liam.socket, "room:state", 5_000);
       kate.socket.emit("room:leave");
       const afterLeave = await migrated;
       assert.equal(afterLeave.hostUserId, liam.user.id);
@@ -1036,9 +983,9 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       mia.socket.disconnect();
       await lobbyGraceArmed(room.roomId, mia);
 
-      const back = await reconnectAs(server, mia);
+      const back = await reconnectWith(server, mia.cookie);
       mia = { ...mia, socket: back };
-      const recovered = waitFor<RoomState>(back, "room:state", 5_000);
+      const recovered = waitFor(back, "room:state", 5_000);
       back.emit("room:rejoin", { code: room.code });
       const state = await recovered;
 
@@ -1070,7 +1017,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       await server.query("DELETE FROM room_players WHERE room_id = $1", [room.roomId]);
       await server.query("DELETE FROM rooms WHERE id = $1", [room.roomId]);
 
-      const answered = waitFor<RoomState>(alice.socket, "room:state", 5_000);
+      const answered = waitFor(alice.socket, "room:state", 5_000);
       alice.socket.emit("game:rejoin", { roomId: room.roomId });
       const state = await answered;
 

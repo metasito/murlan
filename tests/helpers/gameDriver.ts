@@ -1,140 +1,138 @@
-// Drives a real online table to game over, for integration suites that care
-// about what the game-over path *writes* rather than about the game itself.
-//
-// Extracted from tests/integration/stats.test.ts once a second suite needed
-// it: stats, history, replays and ratings are all written from the same
-// `handleRoundOver` block, so they all need the same "get a table to finish"
-// machinery and none of them should own a private copy of it.
-import type { Socket } from "socket.io-client";
-import { getValidGivebackCards } from "../../lib/game/gameEngine.ts";
-import type { Card } from "../../lib/game/gameEngine.ts";
-import { DEADLINE_SCALE } from "./client.ts";
-import type { WireExchangePhase } from "../../shared/protocol.ts";
+// Plays a real online table through a round on its clients' behalf, for the integration suites that
+// need a round finished (or an exchange reached) rather than played move by move.
+import assert from "node:assert/strict";
+import { getValidGivebackCards, type Move } from "../../lib/game/gameEngine.ts";
+import type { RoundOverPayload, WireGameState } from "../../shared/protocol.ts";
+import { DEADLINE_SCALE, sendMove, type TestSocket } from "./client.ts";
 
+export type DriveResult =
+  | { stoppedOn: "roundOver"; payload: RoundOverPayload }
+  | { stoppedOn: "exchange"; states: WireGameState[] };
 
-export interface SanitizedPlayer {
-  id: string;
-  name: string;
-  hand: Card[];
-  handCount: number;
-  type: string;
-}
+/**
+ * What the driver does when an exchange opens. `stop` resolves once every socket is shown it;
+ * `giveback` answers it at once for the winner; `wait` idles and leaves it to the server's own
+ * AFK/bot forced move.
+ */
+export type OnExchange = "stop" | "giveback" | "wait";
 
-export interface SanitizedState {
-  players: SanitizedPlayer[];
-  currentTurnIndex: number;
-  lastPlayedCombination: unknown | null;
-  roundOver: boolean;
-  openingCard: Card | null;
-  exchangePhase?: WireExchangePhase;
-  viewerSeatIndex: number;
-}
-
-export interface RoomState {
-  roomId: string;
-  code: string;
+/**
+ * Forced-minimum play: whoever leads plays the largest same-rank group anchored on their lowest card
+ * (or the opening card), everyone else passes. It sheds several cards a play, which keeps a socket
+ * under the action rate limit across repeated rounds.
+ */
+function forcedMinimum(state: WireGameState, seat: number, onExchange: OnExchange): Move | null {
+  const hand = state.players[seat]?.hand ?? [];
+  const exchange = state.exchangePhase;
+  if (exchange?.kind === "open") {
+    if (onExchange !== "giveback" || exchange.winnerIdx !== seat) return null;
+    const [card] = getValidGivebackCards(hand, exchange.cardFromLoser.id);
+    return card ? { kind: "giveback", cardId: card.id } : null;
+  }
+  if (state.currentTurnIndex !== seat || hand.length === 0) return null;
+  if (state.lastPlayedCombination !== null) return { kind: "pass" };
+  const opening = state.openingCard;
+  const anchor = (opening && hand.find((c) => c.id === opening.id)) || hand[0]!;
+  return { kind: "play", cardIds: hand.filter((c) => c.rank === anchor.rank).map((c) => c.id) };
 }
 
 /**
- * Plays every given human seat to the end of the round: the forced-minimum
- * grouped play on a new trick, a pass otherwise, and an immediate valid
- * giveback the instant a seat is the exchange winner. Resolves with the
- * `game:round_over` payload.
+ * Drives every given socket's seat through the round. Listeners attach before `kickoff()`, so the
+ * first state — which decides who opens — is never missed. Resolves once every socket still connected
+ * has been sent `game:round_over` (or, under `stop`, the open exchange), so no closing broadcast is
+ * left in flight to be read as the next round starting.
  *
- * Real clients only — a bot-filled seat is left to the server's own turn
- * arbiter (armTurn/runBotTurn), which paces bot moves roughly 1.2s apart.
- * Driving the *human* seats immediately, rather than also waiting on their AFK
- * timers, keeps the wall-clock cost down to "however many bot turns the table
- * needs" instead of "every turn at the AFK pace".
+ * Seats nobody drives are the server's: a bot's turn is paced by the turn arbiter, which is what
+ * `ms` is budgeted against.
  */
-export function driveHumansToRoundOver(
-  clients: Socket[],
+export function driveRound(
+  seats: (TestSocket | { socket: TestSocket })[],
   kickoff: () => void,
-  timeoutMs = 60_000
-): Promise<unknown> {
+  opts: { onExchange?: OnExchange; ms?: number } = {}
+): Promise<DriveResult> {
+  const sockets = seats.map((s) => ("socket" in s ? s.socket : s));
+  const onExchange = opts.onExchange ?? "stop";
   return new Promise((resolve, reject) => {
-    let settled = false;
-    const seats = new Map<Socket, number>();
-    const handlers = new Map<Socket, (state: SanitizedState) => void>();
+    let done = false;
+    const live = new Set(sockets);
+    const over = new Map<TestSocket, RoundOverPayload>();
+    const atExchange = new Map<TestSocket, WireGameState>();
+    const detach: (() => void)[] = [];
 
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(new Error("timed out driving the table to game:over"));
-    }, timeoutMs * DEADLINE_SCALE);
+    const timer = setTimeout(
+      () => finish(new Error("timed out driving a round toward its end or an exchange")),
+      (opts.ms ?? 15_000) * DEADLINE_SCALE
+    );
 
-    function cleanup() {
+    function finish(result: DriveResult | Error) {
+      if (done) return;
+      done = true;
       clearTimeout(timer);
-      for (const c of clients) {
-        c.off("game:state", handlers.get(c)!);
-        c.off("game:round_over", onOver);
+      for (const off of detach) off();
+      if (result instanceof Error) reject(result);
+      else resolve(result);
+    }
+
+    function check() {
+      const waiting = [...live];
+      if (waiting.length === 0) return;
+      if (waiting.every((s) => over.has(s))) {
+        finish({ stoppedOn: "roundOver", payload: over.get(waiting[0]!)! });
+      } else if (onExchange === "stop" && waiting.every((s) => atExchange.has(s))) {
+        finish({ stoppedOn: "exchange", states: waiting.map((s) => atExchange.get(s)!) });
       }
     }
 
-    function onOver(payload: unknown) {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(payload);
-    }
-
-    for (const client of clients) {
-      const onState = (state: SanitizedState) => {
-        if (settled || state.roundOver) return;
-        if (!seats.has(client)) seats.set(client, state.viewerSeatIndex);
-        const seat = seats.get(client)!;
-
-        if (state.exchangePhase?.kind === "open") {
-          if (state.exchangePhase.winnerIdx !== seat) return;
-          const hand = state.players[seat]?.hand ?? [];
-          const [card] = getValidGivebackCards(hand, state.exchangePhase.cardFromLoser.id);
-          if (card) client.emit("game:exchange_give_card", { cardId: card.id });
-          return;
-        }
-
-        if (state.currentTurnIndex !== seat) return;
-        const hand = state.players[seat]?.hand ?? [];
-        if (hand.length === 0) return;
-
-        if (state.lastPlayedCombination !== null) {
-          client.emit("game:pass");
-          return;
-        }
-
-        let anchor = hand[0];
-        if (state.openingCard) {
-          const forced = hand.find((c) => c.id === state.openingCard!.id);
-          if (forced) anchor = forced;
-        }
-        const group = hand.filter((c) => c.rank === anchor.rank).map((c) => c.id);
-        client.emit("game:play", { cardIds: group });
+    for (const socket of sockets) {
+      const onOver = (payload: RoundOverPayload) => {
+        over.set(socket, payload);
+        check();
       };
-      handlers.set(client, onState);
-      client.on("game:state", onState);
-      client.on("game:round_over", onOver);
+      const onGone = () => {
+        live.delete(socket);
+        check();
+      };
+      const onState = (state: WireGameState) => {
+        if (done || state.roundOver) return;
+        if (onExchange === "stop" && state.exchangePhase?.kind === "open") {
+          atExchange.set(socket, state);
+          check();
+          return;
+        }
+        const seat = state.viewerSeatIndex;
+        if (seat === null) return;
+        const move = forcedMinimum(state, seat, onExchange);
+        if (move) void sendMove(socket, move);
+      };
+      socket.on("game:round_over", onOver);
+      socket.on("game:state", onState);
+      socket.on("disconnect", onGone);
+      detach.push(() => {
+        socket.off("game:round_over", onOver);
+        socket.off("game:state", onState);
+        socket.off("disconnect", onGone);
+      });
     }
 
     kickoff();
   });
 }
 
+/** The `game:round_over` payload of a round a suite drove to completion. */
+export function roundOverOf(result: DriveResult): RoundOverPayload {
+  assert.ok(result.stoppedOn === "roundOver", `the round had to run to game:over, stopped on ${result.stoppedOn}`);
+  return result.payload;
+}
+
 /**
- * Polls until `check` returns something truthy, or gives up.
- *
- * Everything `handleRoundOver` writes is deliberately fire-and-forget, so it
- * lands a beat after `game:round_over` itself — a straight read right after the
- * event is a race, not an assertion.
+ * Plays the round to `game:round_over`, answering any exchange at once. For suites that need a
+ * round finished — what the game-over path writes — rather than the round itself; a table with bot
+ * seats needs every bot turn's pace, hence the longer default.
  */
-export async function waitForRow<T>(
-  check: () => Promise<T | null>,
-  ms = 5_000
-): Promise<T> {
-  const deadline = Date.now() + ms * DEADLINE_SCALE;
-  for (;;) {
-    const row = await check();
-    if (row) return row;
-    if (Date.now() > deadline) throw new Error("timed out waiting for a DB row to appear");
-    await new Promise((r) => setTimeout(r, 100));
-  }
+export async function playRoundOut(
+  seats: (TestSocket | { socket: TestSocket })[],
+  kickoff: () => void,
+  ms = 60_000
+): Promise<RoundOverPayload> {
+  return roundOverOf(await driveRound(seats, kickoff, { onExchange: "giveback", ms }));
 }

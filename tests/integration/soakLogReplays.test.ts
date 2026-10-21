@@ -7,7 +7,7 @@
 //
 // The log below is not written by hand. It is the output of
 //   npm run soak -- --seats 4 --minutes 0.2 --seed 4242 --chaos 0
-// on 2026-08-31, copied from the JSON the runner prints. That is the whole
+// on 2026-10-21, copied from the JSON the runner prints. That is the whole
 // claim of this file: a printed log is enough to rebuild the hand it came from,
 // on a fresh server, and get the same table back.
 import { test, describe, before, after } from "node:test";
@@ -22,45 +22,43 @@ const CAPTURED: SoakLogEntry[] = [
     kind: "deal",
     round: 0,
     hands: [
-      ["3_hearts", "4_clubs", "5_clubs", "7_diamonds", "7_hearts", "8_clubs", "10_clubs", "10_hearts", "J_diamonds", "J_spades", "K_hearts", "K_spades", "A_spades", "joker_bw"],
-      ["3_spades", "4_diamonds", "4_spades", "6_clubs", "6_hearts", "7_clubs", "7_spades", "8_diamonds", "8_spades", "10_spades", "J_clubs", "Q_diamonds", "2_diamonds", "joker_colored"],
-      ["3_diamonds", "5_diamonds", "5_hearts", "5_spades", "6_spades", "8_hearts", "J_hearts", "Q_clubs", "Q_hearts", "Q_spades", "K_diamonds", "2_hearts", "2_spades"],
-      ["3_clubs", "4_hearts", "6_diamonds", "9_clubs", "9_diamonds", "9_hearts", "9_spades", "10_diamonds", "K_clubs", "A_clubs", "A_diamonds", "A_hearts", "2_clubs"],
+      ["3_clubs", "5_clubs", "6_diamonds", "6_spades", "7_spades", "9_spades", "10_spades", "J_hearts", "Q_diamonds", "Q_hearts", "2_diamonds", "2_hearts", "2_spades", "joker_bw"],
+      ["6_clubs", "6_hearts", "7_clubs", "8_hearts", "9_clubs", "9_diamonds", "J_diamonds", "J_spades", "Q_spades", "K_diamonds", "K_hearts", "A_diamonds", "A_spades", "2_clubs"],
+      ["4_clubs", "5_diamonds", "5_hearts", "7_diamonds", "8_spades", "10_diamonds", "10_hearts", "J_clubs", "K_clubs", "K_spades", "A_clubs", "A_hearts", "joker_colored"],
+      ["3_diamonds", "3_hearts", "3_spades", "4_diamonds", "4_hearts", "4_spades", "5_spades", "7_hearts", "8_clubs", "8_diamonds", "9_hearts", "10_clubs", "Q_clubs"],
     ],
   },
-  { at: 1, kind: "play", seat: 1, cardIds: ["3_spades"] },
-  { at: 2, kind: "play", seat: 0, cardIds: ["A_spades"] },
-  { at: 3, kind: "play", seat: 3, cardIds: ["2_clubs"] },
-  { at: 4, kind: "pass", seat: 2 },
-  { at: 5, kind: "play", seat: 1, cardIds: ["joker_colored"] },
-  { at: 6, kind: "pass", seat: 0 },
-  { at: 7, kind: "play", seat: 3, cardIds: ["9_clubs", "9_diamonds", "9_hearts", "9_spades"] },
-  { at: 8, kind: "pass", seat: 2 },
-  { at: 9, kind: "pass", seat: 1 },
-  { at: 10, kind: "pass", seat: 0 },
-  { at: 11, kind: "play", seat: 3, cardIds: ["6_diamonds"] },
-  { at: 12, kind: "play", seat: 2, cardIds: ["2_hearts"] },
-  { at: 13, kind: "pass", seat: 1 },
-  { at: 14, kind: "play", seat: 0, cardIds: ["joker_bw"] },
-  { at: 15, kind: "pass", seat: 3 },
-  { at: 16, kind: "pass", seat: 2 },
-  { at: 17, kind: "pass", seat: 1 },
-  { at: 18, kind: "play", seat: 0, cardIds: ["J_diamonds"] },
-  { at: 19, kind: "play", seat: 3, cardIds: ["A_clubs"] },
-  { at: 20, kind: "play", seat: 2, cardIds: ["2_spades"] },
-  { at: 21, kind: "pass", seat: 1 },
-  { at: 22, kind: "pass", seat: 0 },
-  { at: 23, kind: "pass", seat: 3 },
-  { at: 24, kind: "play", seat: 2, cardIds: ["Q_clubs", "Q_hearts"] },
+  { at: 1, kind: "move", seat: 3, move: { kind: "play", cardIds: ["3_spades"] } },
+  { at: 2, kind: "move", seat: 2, move: { kind: "play", cardIds: ["A_clubs"] } },
+  { at: 3, kind: "move", seat: 1, move: { kind: "play", cardIds: ["2_clubs"] } },
+  { at: 4, kind: "move", seat: 0, move: { kind: "play", cardIds: ["joker_bw"] } },
+  { at: 5, kind: "move", seat: 3, move: { kind: "pass" } },
+  { at: 6, kind: "move", seat: 2, move: { kind: "play", cardIds: ["joker_colored"] } },
+  { at: 7, kind: "move", seat: 1, move: { kind: "pass" } },
+  { at: 8, kind: "move", seat: 0, move: { kind: "pass" } },
+  { at: 9, kind: "move", seat: 3, move: { kind: "pass" } },
+  { at: 10, kind: "move", seat: 2, move: { kind: "play", cardIds: ["10_diamonds"] } },
+  { at: 11, kind: "move", seat: 1, move: { kind: "play", cardIds: ["K_diamonds"] } },
+  { at: 12, kind: "move", seat: 0, move: { kind: "play", cardIds: ["2_diamonds"] } },
+  { at: 13, kind: "move", seat: 3, move: { kind: "pass" } },
+  { at: 14, kind: "move", seat: 2, move: { kind: "pass" } },
+  { at: 15, kind: "move", seat: 1, move: { kind: "pass" } },
+  { at: 16, kind: "move", seat: 0, move: { kind: "play", cardIds: ["2_hearts"] } },
+  { at: 17, kind: "move", seat: 3, move: { kind: "pass" } },
+  { at: 18, kind: "move", seat: 2, move: { kind: "pass" } },
+  { at: 19, kind: "move", seat: 1, move: { kind: "pass" } },
+  { at: 20, kind: "move", seat: 0, move: { kind: "play", cardIds: ["10_spades"] } },
+  { at: 21, kind: "move", seat: 3, move: { kind: "play", cardIds: ["Q_clubs"] } },
+  { at: 22, kind: "move", seat: 2, move: { kind: "play", cardIds: ["A_hearts"] } },
+  { at: 23, kind: "move", seat: 1, move: { kind: "pass" } },
+  { at: 24, kind: "move", seat: 0, move: { kind: "play", cardIds: ["2_spades"] } },
 ];
 
 /** Cards each seat had left when the run above stopped. */
-const FINAL_COUNTS = [11, 12, 9, 6];
+const FINAL_COUNTS = [9, 12, 9, 11];
 
 /** Derived, not counted: `drop` and `rejoin` entries are replayed without applying a move. */
-const MOVES = CAPTURED.filter(
-  (e) => e.kind === "play" || e.kind === "pass" || e.kind === "exchange"
-).length;
+const MOVES = CAPTURED.filter((e) => e.kind === "move").length;
 
 describe("a printed soak log replays as a fixed case", {
   skip: hasDatabase() ? false : skipMessage(),
@@ -89,7 +87,9 @@ describe("a printed soak log replays as a fixed case", {
   // refuses to follow, this file would pass while replaying nothing.
   test("a log the table cannot follow is reported, not played around", async () => {
     const tampered = CAPTURED.map((entry) =>
-      entry.at === 7 ? { ...entry, kind: "play" as const, seat: 3, cardIds: ["3_spades"] } : entry
+      entry.at === 7
+        ? { at: 7, kind: "move" as const, seat: 3, move: { kind: "play" as const, cardIds: ["3_spades"] } }
+        : entry
     );
     const result = await replaySoakLog(tampered, server);
 

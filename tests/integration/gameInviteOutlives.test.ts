@@ -11,20 +11,16 @@
 // the connection that would have announced it.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Socket } from "socket.io-client";
 import {
   startTestServer,
   hasDatabase,
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, DEADLINE_SCALE, reconnectWith, waitFor } from "../helpers/client.ts";
+import { connectAs, DEADLINE_SCALE, eventually, reconnectWith, waitFor, type TestSocket } from "../helpers/client.ts";
+import { isUserOnline } from "../../server/socket/socketRegistry.ts";
 import { befriend, inviteRowsFor } from "../helpers/friends.ts";
 
-interface RoomState {
-  code: string;
-  roomId: string;
-}
 
 interface InviteRow {
   roomCode: string;
@@ -35,7 +31,7 @@ describe("a game invite outlives the socket that would have carried it", {
   skip: hasDatabase() ? false : skipMessage(),
 }, () => {
   let server: TestServer;
-  const sockets: Socket[] = [];
+  const sockets: TestSocket[] = [];
   let n = 0;
 
   before(async () => {
@@ -62,7 +58,7 @@ describe("a game invite outlives the socket that would have carried it", {
   }
 
   /** The invite's answer: the row is written before the server acks, so nothing after this races it. */
-  async function invite(from: Socket, friendUserId: string, roomCode: string): Promise<string> {
+  async function invite(from: TestSocket, friendUserId: string, roomCode: string): Promise<string> {
     const reply = (await from.timeout(5_000 * DEADLINE_SCALE).emitWithAck("friend:invite", { friendUserId, roomCode })) as {
       ok: boolean;
       code?: string;
@@ -76,13 +72,13 @@ describe("a game invite outlives the socket that would have carried it", {
     const friend = await player(`${tag}_friend`);
     await befriend(server, host, friend);
 
-    const made = waitFor<RoomState>(host.socket, "room:state");
+    const made = waitFor(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
     const room = await made;
 
     // The whole point: nobody is listening when the invite is sent.
     friend.socket.close();
-    await new Promise((r) => setTimeout(r, 150));
+    await eventually(async () => !(await isUserOnline(friend.user.id)), "the friend's socket gone from the registry");
     return { host, friend, room };
   }
 
@@ -134,8 +130,9 @@ describe("a game invite outlives the socket that would have carried it", {
     assert.equal(await invite(host.socket, friend.user.id, room.code), "ok");
     assert.equal((await invitesFor(friend.cookie)).length, 1, "waiting room, invite stands");
 
-    host.socket.emit("room:start", { fillWithBots: true, botDifficulty: "easy" });
-    await new Promise((r) => setTimeout(r, 800));
+    const dealt = waitFor(host.socket, "game:state");
+    host.socket.emit("room:start", { fillWithBots: true });
+    await dealt;
 
     assert.deepEqual(
       await invitesFor(friend.cookie),
@@ -155,7 +152,7 @@ describe("a game invite outlives the socket that would have carried it", {
     const friend = await player("full_friend");
     await befriend(server, host, friend);
 
-    const made = waitFor<RoomState>(host.socket, "room:state");
+    const made = waitFor(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const room = await made;
 
@@ -165,7 +162,7 @@ describe("a game invite outlives the socket that would have carried it", {
     // Someone else takes the last seat. Nobody has pressed start, so the room
     // is still `waiting`.
     const filler = await player("full_filler");
-    const seated = waitFor<RoomState>(host.socket, "room:state");
+    const seated = waitFor(host.socket, "room:state");
     filler.socket.emit("room:join", { code: room.code });
     await seated;
 
@@ -188,7 +185,7 @@ describe("a game invite outlives the socket that would have carried it", {
     const friend = await player("outsider_friend");
     await befriend(server, outsider, friend);
 
-    const made = waitFor<RoomState>(host.socket, "room:state");
+    const made = waitFor(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
     const room = await made;
 
@@ -223,7 +220,7 @@ describe("a game invite outlives the socket that would have carried it", {
     // Back on their socket, so there is something listening when the room dies.
     const back = await reconnectWith(server, friend.cookie);
     sockets.push(back);
-    const told = waitFor<{ roomCode: string }>(back, "friend:invite_retired");
+    const told = waitFor(back, "friend:invite_retired");
 
     host.socket.emit("room:leave", { roomId: room.roomId });
 
@@ -250,7 +247,7 @@ describe("a game invite outlives the socket that would have carried it", {
     const host = await player("stranger_host");
     const stranger = await player("stranger_other");
 
-    const made = waitFor<RoomState>(host.socket, "room:state");
+    const made = waitFor(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
     const room = await made;
 

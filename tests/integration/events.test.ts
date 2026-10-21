@@ -5,7 +5,7 @@
 // fails must cost a log line and nothing else — never a rejected move, never a
 // dropped socket. That is asserted here with an insert that genuinely fails,
 // not with a mock that pretends to.
-import { test, before, after, describe } from "node:test";
+import { test, before, after, describe, mock } from "node:test";
 import assert from "node:assert/strict";
 import {
   startTestServer,
@@ -13,7 +13,8 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { DEADLINE_SCALE, register } from "../helpers/client.ts";
+import { DEADLINE_SCALE, eventually, register } from "../helpers/client.ts";
+import { logger } from "../../server/shared/logger.ts";
 import { EVENT_NAMES } from "../../shared/events.ts";
 import { trackEvent, EVENT_RETENTION_DAYS as retentionDays } from "../../server/shared/events.ts";
 import { sweepRetention } from "../../server/game/retention.ts";
@@ -42,22 +43,15 @@ describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () =>
     server.query<{ name: string }>(`SELECT name FROM "${server.schema}".events WHERE name = $1`, [name]);
 
   /** The write is fire-and-forget, so it lands just after the response. */
-  async function settle<T>(read: () => Promise<T[]>, want: number): Promise<T[]> {
-    let rows: T[] = [];
-    for (let attempt = 0; attempt < 20; attempt++) {
-      rows = await read();
-      if (rows.length >= want) return rows;
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    return rows;
-  }
+  const landed = (name: string) =>
+    eventually(async () => (await rowsNamed(name)).length >= 1, `a "${name}" row`);
 
   test("opening the tutorial is recorded once, not once per device", async () => {
     const seen = () =>
       fetch(`${server.url}/api/users/me/tutorial-seen`, { method: "POST", headers: { cookie } });
 
     assert.equal((await seen()).status, 200);
-    await settle(() => rowsNamed("tutorial.started"), 1);
+    await landed("tutorial.started");
 
     // The same endpoint is the catch-up write app/index.tsx makes when the
     // device knows and the account does not. That is not a second player
@@ -72,10 +66,18 @@ describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () =>
     // No such user, so the foreign key rejects the insert. If trackEvent let
     // that surface, the move or the socket that emitted it would carry the
     // failure instead.
-    assert.doesNotThrow(() =>
-      trackEvent("game.firstMoveMade", "00000000-0000-0000-0000-000000000000")
-    );
-    await new Promise((r) => setTimeout(r, 400));
+    const logged = mock.method(logger, "error");
+    try {
+      assert.doesNotThrow(() =>
+        trackEvent("game.firstMoveMade", "00000000-0000-0000-0000-000000000000")
+      );
+      await eventually(
+        () => logged.mock.calls.some((c) => c.arguments[1] === "Failed to record a funnel event"),
+        "the refused insert to be logged"
+      );
+    } finally {
+      logged.mock.restore();
+    }
 
     // The row is genuinely absent — the insert really did fail, so this is not
     // a test of a write that quietly succeeded.
@@ -95,7 +97,7 @@ describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () =>
     assert.equal((await rowsNamed("lobby.entered")).length, 1);
 
     trackEvent("room.joined", null);
-    await settle(() => rowsNamed("room.joined"), 1);
+    await landed("room.joined");
 
     assert.equal(
       (await rowsNamed("lobby.entered")).length,
@@ -114,7 +116,7 @@ describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () =>
 
   test("the funnel renders on /admin", async () => {
     trackEvent("room.joined", null, { playerCount: 4, gameMode: "free_for_all" });
-    await settle(() => rowsNamed("room.joined"), 1);
+    await landed("room.joined");
 
     const body = await (await fetch(`${server.url}/admin`, { headers: { cookie: ownerCookie } })).text();
 

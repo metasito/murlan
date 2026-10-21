@@ -11,6 +11,7 @@ import { activeGames } from "../../server/game/gameRoom.ts";
 import { disposeGame } from "../../server/game/gamePersistence.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { claimRoom, ownershipKey } from "../../server/game/gameOwnership.ts";
+import { eventually } from "../helpers/client.ts";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const player = (id: string, name: string): Player => ({ id, name, hand: [], type: "human" });
@@ -99,6 +100,7 @@ describe("a disposed table", { skip: hasDatabase() ? false : skipMessage() }, ()
       await gate;
       return real.apply(activeGameStore, args);
     };
+    let late: Promise<unknown> = Promise.resolve();
     try {
       const held = persistGameState(roomId, game);
       await writing;
@@ -108,19 +110,15 @@ describe("a disposed table", { skip: hasDatabase() ? false : skipMessage() }, ()
       assert.equal(await claimRoom(roomId), false, "the room was claimed again while its row was still being deleted");
       assert.equal(await lockFree(), false, "the lock went while the row it guards was still there");
 
-      void persistGameState(roomId, game);
+      late = persistGameState(roomId, game);
       open();
       await held;
     } finally {
       activeGameStore.write = real;
     }
 
-    const deadline = Date.now() + 5_000;
-    while (!(await lockFree())) {
-      assert.ok(Date.now() < deadline, "the room was never handed back");
-      await sleep(50);
-    }
-    await sleep(200);
+    await eventually(lockFree, "the room to be handed back");
+    await late;
     assert.equal(await rowExists(), false, "a write from the disposed table brought its row back");
   });
 });

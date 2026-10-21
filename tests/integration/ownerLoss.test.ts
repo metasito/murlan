@@ -1,11 +1,11 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
-import type { Socket } from "socket.io-client";
 import { hasDatabase, skipMessage, startTestServer, type TestServer } from "../helpers/testServer.ts";
-import { connectAs, waitFor } from "../helpers/client.ts";
+import { connectAs, eventually, waitFor, type TestSocket } from "../helpers/client.ts";
 import { boot, type Instance } from "../helpers/instance.ts";
-import type { Client, RoomState, SanitizedState } from "../helpers/table.ts";
+import type { Client } from "../helpers/table.ts";
+import type { WireGameState, WireRoomState } from "../../shared/protocol.ts";
 import { shutdown } from "../../server/http/shutdown.ts";
 import { userStore } from "../../server/store/userStore.ts";
 
@@ -22,7 +22,7 @@ describe("a table outlives losing its owner", { skip: hasDatabase() ? false : sk
   let local: TestServer;
   let observer: pg.Pool;
   let owner: Instance | undefined;
-  const sockets: Socket[] = [];
+  const sockets: TestSocket[] = [];
 
   before(async () => {
     local = await startTestServer();
@@ -37,7 +37,7 @@ describe("a table outlives losing its owner", { skip: hasDatabase() ? false : sk
     await local.stop().catch(() => {});
   });
 
-  async function openTable(tag: string, maxPlayers: number): Promise<{ host: Client; guest: Client; room: RoomState }> {
+  async function openTable(tag: string, maxPlayers: number): Promise<{ host: Client; guest: Client; room: WireRoomState }> {
     owner = await boot(OWNER_PORT, process.env.DATABASE_URL!, {
       MURLAN_AFK_TIMEOUT_MS: "300",
       MURLAN_BOT_MOVE_DELAY_MS: String(OWNER_BOT_DELAY_MS),
@@ -46,28 +46,27 @@ describe("a table outlives losing its owner", { skip: hasDatabase() ? false : sk
     const host = await connectAs(remote, `own_${tag}_h${Date.now() % 1e6}`);
     const guest = await connectAs(local, `own_${tag}_g${Date.now() % 1e6}`);
     sockets.push(host.socket, guest.socket);
-    const created = waitFor<RoomState>(host.socket, "room:state");
+    const created = waitFor(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers });
     const room = await created;
-    const joined = waitFor<RoomState>(host.socket, "room:state");
+    const joined = waitFor(host.socket, "room:state");
     guest.socket.emit("room:join", { code: room.code });
     await joined;
     return { host, guest, room };
   }
 
   async function persisted(roomId: string): Promise<void> {
-    for (let i = 0; i < 100; i++) {
-      const { rowCount } = await observer.query("SELECT 1 FROM active_games WHERE room_id = $1", [roomId]);
-      if (rowCount) return;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    assert.fail("the deal was never persisted");
+    await eventually(
+      async () => (await observer.query("SELECT 1 FROM active_games WHERE room_id = $1", [roomId])).rowCount,
+      "the deal to be persisted",
+      10_000
+    );
   }
 
   test("a survivor resumes the table when its owner dies on a bot's turn", { timeout: 90_000 }, async () => {
     const { host, guest, room } = await openTable("bot", 3);
     const onBot = new Promise<void>((resolve) => {
-      guest.socket.on("game:state", (s: SanitizedState) => {
+      guest.socket.on("game:state", (s: WireGameState) => {
         if (s.players[s.currentTurnIndex]?.type === "bot" && !s.roundOver) resolve();
       });
     });
@@ -95,7 +94,7 @@ describe("a table outlives losing its owner", { skip: hasDatabase() ? false : sk
     };
     after(() => { userStore.updateLastSeen = updateLastSeen; });
 
-    const told = waitFor<{ userId: string }>(host.socket, "game:player_disconnected", 15_000);
+    const told = waitFor(host.socket, "game:player_disconnected", 15_000);
     await shutdown("SIGTERM", { io: local.io, server: local.httpServer, tables: local.rt, exit: () => {} });
     assert.equal((await told).userId, guest.user.id);
     const seat = await observer.query(

@@ -11,44 +11,19 @@
 // Throughput: npm run soak -- --tables 8 --minutes 1 (moves/sec and broadcast p99)
 import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
-import type { Socket } from "socket.io-client";
 import { startTestServer, hasDatabase, type TestServer } from "../helpers/testServer.ts";
-import { connectAs, reconnectWith, DEADLINE_SCALE } from "../helpers/client.ts";
+import { connectAs, reconnectWith, sendMove, DEADLINE_SCALE, type TestEmits, type TestSocket } from "../helpers/client.ts";
 import { disconnectGraceMs, lobbyGraceMs } from "../../server/game/gameTimers.ts";
 import {
   createDeck,
   getAllValidPlays,
   getValidGivebackCards,
   tableDemand,
-  type Card,
-  type Combination,
+  type Move,
 } from "../../lib/game/gameEngine.ts";
 import { checkAll, checkTeardown, progressViolations, type SeatView, type Violation } from "./invariants.ts";
 import { SETTLE_CAP_MS } from "./gateBudget.ts";
-import type { WireExchangePhase } from "../../shared/protocol.ts";
-
-interface SanitizedPlayer {
-  name: string;
-  hand: Card[];
-  handCount: number;
-}
-
-interface TableState {
-  players: SanitizedPlayer[];
-  currentTurnIndex: number;
-  lastPlayedCombination: Combination | null;
-  roundOver: boolean;
-  openingCard: Card | null;
-  exchangePhase?: WireExchangePhase;
-  /** `null` once this account holds no seat — the server's own "not seated". */
-  viewerSeatIndex: number | null;
-}
-
-export interface RoomState {
-  roomId: string;
-  code: string;
-  status: string;
-}
+import type { WireGameState, WireRoomState } from "../../shared/protocol.ts";
 
 /**
  * A deterministic generator, so a failure can be replayed. `Math.random` would
@@ -226,9 +201,7 @@ interface Options {
  */
 export type SoakAction =
   | { kind: "deal"; round: number; hands: string[][] }
-  | { kind: "play"; seat: number; cardIds: string[] }
-  | { kind: "pass"; seat: number }
-  | { kind: "exchange"; seat: number; cardId: string }
+  | { kind: "move"; seat: number; move: Move }
   | { kind: "drop"; seat: number; username: string }
   | { kind: "rejoin"; seat: number; username: string };
 
@@ -236,7 +209,7 @@ export type SoakAction =
 export type SoakLogEntry = SoakAction & { at: number };
 
 /** What one seat can decide to do on its own turn. */
-export type SeatAction = Extract<SoakAction, { kind: "play" | "pass" | "exchange" }>;
+export type SeatAction = Extract<SoakAction, { kind: "move" }>;
 
 /** One log entry as a line, in the shape a replay reads back. */
 export function formatLogEntry(entry: SoakLogEntry): string {
@@ -246,12 +219,12 @@ export function formatLogEntry(entry: SoakLogEntry): string {
       return `${at}  deal   round ${entry.round}  ${entry.hands
         .map((hand, seat) => `seat${seat}=[${hand.join(" ")}]`)
         .join("  ")}`;
-    case "play":
-      return `${at}  play   seat${entry.seat}  ${entry.cardIds.join(" ")}`;
-    case "pass":
-      return `${at}  pass   seat${entry.seat}`;
-    case "exchange":
-      return `${at}  give   seat${entry.seat}  ${entry.cardId}`;
+    case "move": {
+      const { move } = entry;
+      if (move.kind === "play") return `${at}  play   seat${entry.seat}  ${move.cardIds.join(" ")}`;
+      if (move.kind === "pass") return `${at}  pass   seat${entry.seat}`;
+      return `${at}  give   seat${entry.seat}  ${move.cardId}`;
+    }
     case "drop":
       return `${at}  drop   seat${entry.seat}  ${entry.username}`;
     case "rejoin":
@@ -275,27 +248,18 @@ function parseArgs(argv: string[]): Options {
   };
 }
 
-/** The events a seat's socket may be asked to send from outside it: leaving a room is `Seat.leave()`'s alone. */
-type SeatIntent =
-  | "room:create"
-  | "room:join"
-  | "room:start"
-  | "game:rematch_vote"
-  | "game:play"
-  | "game:pass"
-  | "game:exchange_give_card";
+/**
+ * The events a seat's socket may be asked to send from outside it: leaving a room is `Seat.leave()`'s
+ * alone, and a move is `Seat.move()`'s.
+ */
+type SeatIntent = "room:create" | "room:join" | "room:start" | "game:rematch_vote";
 
 /** What the runner may do with a seat's socket. */
-export interface SeatSocket {
-  readonly connected: boolean;
-  emit(event: SeatIntent, ...args: unknown[]): unknown;
-  on(event: string, listener: (...args: never[]) => void): unknown;
-  once(event: string, listener: (...args: never[]) => void): unknown;
-  off(event: string, listener?: (...args: never[]) => void): unknown;
-  close(): unknown;
-}
+export type SeatSocket = Pick<TestSocket, "connected" | "on" | "once" | "off" | "close"> & {
+  emit<E extends SeatIntent>(event: E, ...args: Parameters<TestEmits[E]>): unknown;
+};
 
-let socketOf: (seat: Seat) => Socket;
+let socketOf: (seat: Seat) => TestSocket;
 
 export function seatSocket(seat: Seat): SeatSocket {
   return socketOf(seat);
@@ -303,11 +267,11 @@ export function seatSocket(seat: Seat): SeatSocket {
 
 /** One virtual player: a real socket, its own view, and legal moves only. */
 export class Seat {
-  #socket: Socket;
+  #socket: TestSocket;
   readonly username: string;
   readonly userId: string;
   readonly cookie: string;
-  state: TableState | null = null;
+  state: WireGameState | null = null;
   /** Bumped on every `game:state`, so the runner can wait for quiescence. */
   version = 0;
   /**
@@ -354,7 +318,7 @@ export class Seat {
     socketOf = (seat) => seat.#socket;
   }
 
-  constructor(socket: Socket, username: string, userId: string, cookie: string) {
+  constructor(socket: TestSocket, username: string, userId: string, cookie: string) {
     this.#socket = socket;
     this.username = username;
     this.userId = userId;
@@ -363,7 +327,7 @@ export class Seat {
   }
 
   private listen() {
-    this.#socket.on("game:state", (state: TableState, ack?: () => void) => {
+    this.#socket.on("game:state", (state, ack) => {
       ack?.();
       this.state = state;
       this.version += 1;
@@ -410,7 +374,7 @@ export class Seat {
   }
 
   /** Re-attached after a reconnect, because the socket object is new. */
-  adopt(socket: Socket) {
+  adopt(socket: TestSocket) {
     this.#socket = socket;
     this.clearRefusal();
     this.listen();
@@ -459,8 +423,7 @@ export class Seat {
       const giveable = getValidGivebackCards(hand, phase.cardFromLoser.id);
       const card = giveable[Math.floor(rng() * giveable.length)];
       if (!card) return null;
-      this.#socket.emit("game:exchange_give_card", { cardId: card.id });
-      return { kind: "exchange", seat, cardId: card.id };
+      return this.move(seat, { kind: "giveback", cardId: card.id });
     }
 
     if (s.currentTurnIndex !== seat) return null;
@@ -469,14 +432,15 @@ export class Seat {
 
     const plays = getAllValidPlays(hand, tableDemand(s));
 
-    if (plays.length === 0) {
-      this.#socket.emit("game:pass");
-      return { kind: "pass", seat };
-    }
-    const combo = plays[Math.floor(rng() * plays.length)];
-    const cardIds = combo.cards.map((c) => c.id);
-    this.#socket.emit("game:play", { cardIds });
-    return { kind: "play", seat, cardIds };
+    if (plays.length === 0) return this.move(seat, { kind: "pass" });
+    const combo = plays[Math.floor(rng() * plays.length)]!;
+    return this.move(seat, { kind: "play", cardIds: combo.cards.map((c) => c.id) });
+  }
+
+  /** Sends `move` for this seat, and the log entry that records it. */
+  move(seat: number, move: Move): SeatAction {
+    void sendMove(this.#socket, move);
+    return { kind: "move", seat, move };
   }
 
   /** Every card this seat holds, in the order the server sent them. */
@@ -496,14 +460,14 @@ export async function openTable(
   server: TestServer,
   count: number,
   seats: Seat[]
-): Promise<RoomState> {
+): Promise<WireRoomState> {
   const tag = Date.now().toString(36);
   for (let i = 0; i < count; i++) {
     const c = await connectAs(server, `soak_${tag}_${i}`);
     seats.push(new Seat(c.socket, c.user.username, c.user.id, c.cookie));
   }
   const host = seats[0];
-  const room = await new Promise<RoomState>((resolve) => {
+  const room = await new Promise<WireRoomState>((resolve) => {
     seatSocket(host).once("room:state", resolve);
     seatSocket(host).emit("room:create", { gameMode: "free_for_all", maxPlayers: count });
   });

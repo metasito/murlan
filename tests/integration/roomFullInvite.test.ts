@@ -11,32 +11,22 @@
 // notification is awaited on the invitee's own socket.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Socket } from "socket.io-client";
 import {
   startTestServer,
   hasDatabase,
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor } from "../helpers/client.ts";
+import { connectAs, waitFor, type TestSocket } from "../helpers/client.ts";
 import { befriend, inviteRowsFor } from "../helpers/friends.ts";
 
-interface RoomState {
-  code: string;
-  roomId: string;
-}
-
-interface JoinableEvent {
-  roomCode: string;
-  joinable: boolean;
-}
 
 describe(
   "a room that fills up tells its invitees without dropping their invites",
   { skip: hasDatabase() ? false : skipMessage() },
   () => {
     let server: TestServer;
-    const sockets: Socket[] = [];
+    const sockets: TestSocket[] = [];
     let n = 0;
 
     before(async () => {
@@ -67,7 +57,7 @@ describe(
       const stranger = await player("stranger");
       await befriend(server, host, friend);
 
-      const made = waitFor<RoomState>(host.socket, "room:state");
+      const made = waitFor(host.socket, "room:state");
       // Two seats: the host holds one, so a single stranger fills the room.
       host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
       const room = await made;
@@ -77,7 +67,7 @@ describe(
       await invited;
       assert.equal((await offeredTo(friend.cookie)).length, 1, "the invite is offered to start with");
 
-      const filled = waitFor<JoinableEvent>(friend.socket, "friend:room_joinable");
+      const filled = waitFor(friend.socket, "friend:room_joinable");
       stranger.socket.emit("room:join", { code: room.code });
       const shut = await filled;
       assert.equal(shut.roomCode, room.code);
@@ -94,7 +84,7 @@ describe(
         "and the endpoint stops offering it while there is no seat"
       );
 
-      const freed = waitFor<JoinableEvent>(friend.socket, "friend:room_joinable");
+      const freed = waitFor(friend.socket, "friend:room_joinable");
       stranger.socket.emit("room:leave");
       const open = await freed;
       assert.equal(open.roomCode, room.code);
@@ -120,7 +110,7 @@ describe(
       const stranger = await player("qm_stranger");
       await befriend(server, host, friend);
 
-      const made = waitFor<RoomState>(host.socket, "room:state");
+      const made = waitFor(host.socket, "room:state");
       host.socket.emit("room:quickmatch", { gameMode: "free_for_all", maxPlayers: 2 });
       const room = await made;
 
@@ -128,7 +118,7 @@ describe(
       host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
       await invited;
 
-      const filled = waitFor<JoinableEvent>(friend.socket, "friend:room_joinable");
+      const filled = waitFor(friend.socket, "friend:room_joinable");
       stranger.socket.emit("room:quickmatch", { gameMode: "free_for_all", maxPlayers: 2 });
       const shut = await filled;
       assert.equal(shut.roomCode, room.code, "the stranger landed in the room, and it said so");

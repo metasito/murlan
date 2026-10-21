@@ -14,8 +14,8 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor } from "../helpers/client.ts";
-import type { Socket } from "socket.io-client";
+import { connectAs, eventually, intent, waitFor, type TestSocket } from "../helpers/client.ts";
+import { isUserOnline } from "../../server/socket/socketRegistry.ts";
 import { translate } from "../../shared/i18n.ts";
 import { createServer, type Server } from "node:http";
 import { whileUserLocked } from "../helpers/userLock.ts";
@@ -68,20 +68,18 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
    * foreign key, so a made-up code is refused — which is the point: it could
    * never have been joined.
    */
-  async function roomFor(client: { socket: Socket }): Promise<string> {
-    const made = waitFor<{ code: string }>(client.socket, "room:state");
+  async function roomFor(client: { socket: TestSocket }): Promise<string> {
+    const made = waitFor(client.socket, "room:state");
     client.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
     return (await made).code;
   }
 
-  async function waitForPush(timeoutMs = 3_000): Promise<unknown[]> {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      if (received.length > 0) return received.shift()!;
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    throw new Error("no push was sent");
-  }
+  const waitForPush = (timeoutMs = 3_000): Promise<unknown[]> =>
+    eventually(() => received.shift(), "a push to be sent", timeoutMs);
+
+  /** The server itself has seen `userId` go: what the invite asks before it chooses a push. */
+  const offline = (userId: string) =>
+    eventually(async () => !(await isUserOnline(userId)), `${userId} to be offline`);
 
   const post = (cookie: string, body: unknown) =>
     fetch(`${server.url}/api/push/token`, {
@@ -257,7 +255,7 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
       assert.equal(accepted.status, 200, await accepted.text());
 
       const code = await roomFor(ana);
-      const invited = waitFor<{ from: string; roomCode: string }>(ben.socket, "friend:invite");
+      const invited = waitFor(ben.socket, "friend:invite");
       ana.socket.emit("friend:invite", { friendUserId: ben.user.id, roomCode: code });
       const payload = await invited;
 
@@ -295,7 +293,7 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
       // reachable, and its absence is what used to make it vanish.
       const code = await roomFor(ana);
       ben.socket.close();
-      await new Promise((r) => setTimeout(r, 300));
+      await offline(ben.user.id);
 
       ana.socket.emit("friend:invite", { friendUserId: ben.user.id, roomCode: code });
       const sent = (await waitForPush()) as {
@@ -342,7 +340,7 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
 
       const code = await roomFor(ana);
       ben.socket.close();
-      await new Promise((r) => setTimeout(r, 300));
+      await offline(ben.user.id);
 
       ana.socket.emit("friend:invite", { friendUserId: ben.user.id, roomCode: code });
       const sent = (await waitForPush()) as { to: string; body: string }[];
@@ -371,11 +369,11 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
     try {
       await post(ben.cookie, { token: TOKEN_A, platform: "ios" });
       ben.socket.close();
-      await new Promise((r) => setTimeout(r, 300));
+      await offline(ben.user.id);
 
       // No friendship was ever accepted between these two.
-      ana.socket.emit("friend:invite", { friendUserId: ben.user.id, roomCode: "ZZZ999" });
-      await new Promise((r) => setTimeout(r, 800));
+      const reply = await intent(ana.socket, "friend:invite", { friendUserId: ben.user.id, roomCode: "ZZZ999" });
+      assert.deepEqual(reply, { ok: false, code: "NOT_FRIENDS" });
 
       assert.equal(received.length, 0, "the friendship check must gate the push too");
     } finally {

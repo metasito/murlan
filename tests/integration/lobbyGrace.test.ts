@@ -9,55 +9,44 @@
 // the room see, not the bookkeeping that produces it.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Socket } from "socket.io-client";
 import {
   startTestServer,
   hasDatabase,
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { PROTOCOL_AUTH, connectAs, waitFor } from "../helpers/client.ts";
-import { io as ioClient } from "socket.io-client";
-import type { SanitizedState } from "../helpers/table.ts";
-import { pending, seatKey } from "../../server/game/gameTimers.ts";
+import { connectAs, eventually, leaveRooms, nothingArrives, reconnectWith, type TestSocket, waitFor } from "../helpers/client.ts";
+import { lobbyGraceMs, pending, seatKey } from "../../server/game/gameTimers.ts";
+import { installClock } from "../../server/http/clock.ts";
+import { fakeClock, type FakeClock } from "../helpers/fakeClock.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
+import type { WireRoomState } from "../../shared/protocol.ts";
 
 // Short enough that the expiry test does not stall the suite, long enough that
 // the survival test is not racing it.
 process.env.MURLAN_LOBBY_GRACE_MS = "1500";
 
-/**
- * Resolves with the payload, or null if the window passes in silence.
- * `waitFor` throws on timeout, which cannot express "nothing should happen".
- */
-function within<T>(socket: Socket, event: string, ms: number): Promise<T | null> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(null), ms);
-    socket.once(event, (payload: T) => {
-      clearTimeout(timer);
-      resolve(payload);
-    });
-  });
-}
-
-interface RoomState {
-  code: string;
-  roomId: string;
-  hostUserId: string | null;
-  players: { userId: string; seatIndex: number }[];
+/** Runs `body` on server time that moves only when it says so, so no grace expires behind its back. */
+async function onServerTime(body: (clock: FakeClock) => Promise<void>): Promise<void> {
+  const clock = fakeClock(Date.now());
+  const restore = installClock(clock);
+  try {
+    await body(clock);
+  } finally {
+    restore();
+  }
 }
 
 describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  const sockets: Socket[] = [];
+  const sockets: TestSocket[] = [];
   let n = 0;
 
   before(async () => {
     server = await startTestServer();
   });
   after(async () => {
-    for (const s of sockets) if (s.connected) s.emit("room:leave");
-    await new Promise((r) => setTimeout(r, 200));
+    await leaveRooms(sockets);
     for (const s of sockets) s.close();
     await server.stop();
   });
@@ -70,21 +59,8 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
 
   /** The same account back on a second socket, as the client's own retry does. */
   async function reconnect(cookie: string) {
-    const res = await fetch(`${server.url}/api/auth/socket-ticket`, {
-      method: "POST",
-      headers: { cookie },
-    });
-    const { ticket } = (await res.json()) as { ticket: string };
-    const socket = ioClient(server.url, {
-      auth: { ...PROTOCOL_AUTH, ticket },
-      transports: ["websocket"],
-      reconnection: false,
-    });
+    const socket = await reconnectWith(server, cookie);
     sockets.push(socket);
-    await new Promise<void>((resolve, reject) => {
-      socket.once("connect", () => resolve());
-      socket.once("connect_error", reject);
-    });
     return socket;
   }
 
@@ -95,11 +71,10 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
    * test fails for a reason that has nothing to do with what it asserts.
    */
   async function graceArmed(roomId: string, userId: string) {
-    for (let i = 0; i < 200; i++) {
-      if (pending("lobbyGrace", seatKey(roomId, userId))) return;
-      await new Promise((r) => setTimeout(r, 25));
-    }
-    throw new Error("the server never armed a lobby grace for the closed socket");
+    await eventually(
+      () => pending("lobbyGrace", seatKey(roomId, userId)),
+      "the server to arm a lobby grace for the closed socket"
+    );
   }
 
   /** A two-seat lobby with a host and a guest, both seated. */
@@ -107,26 +82,51 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
     const host = await player(`${tag}_host`);
     const guest = await player(`${tag}_guest`);
 
-    const made = waitFor<RoomState>(host.socket, "room:state");
+    const made = waitFor(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
     const room = await made;
 
-    const seated = waitFor<RoomState>(host.socket, "room:state");
+    const seated = waitFor(host.socket, "room:state");
     guest.socket.emit("room:join", { code: room.code });
     const full = await seated;
     assert.equal(full.players.length, 2, "both players must be seated before the drop");
     return { host, guest, room };
   }
 
+  /** The `room:state` the host is sent once the grace armed by `drop` has run out. */
+  async function waitForReleaseOnExpiry(host: TestSocket, drop: () => Promise<void>) {
+    let released!: Promise<WireRoomState>;
+    await onServerTime(async (clock) => {
+      await drop();
+      released = waitFor(host, "room:state");
+      clock.advance(lobbyGraceMs());
+    });
+    return released;
+  }
+
+  /** The `room:state` `act` makes the host hear while no server time passes at all. */
+  async function onServerTimeAnnounced(host: TestSocket, act: () => void) {
+    let heard!: Promise<WireRoomState>;
+    await onServerTime(async () => {
+      heard = waitFor(host, "room:state");
+      act();
+      await heard;
+    });
+    return heard;
+  }
+
   test("a guest who blinks keeps their seat, and the others never see them go", async () => {
     const { host, guest, room } = await lobby("blink");
 
-    // Anything the host hears in the next second would be the seat being
+    // Anything the host hears before the grace runs out would be the seat being
     // released — the whole point is that nothing happens.
-    const churn = within<RoomState>(host.socket, "room:state", 1000);
-    guest.socket.close();
-    const heard = await churn;
-    assert.equal(heard, null, "a blip must not tell the room that someone left");
+    await onServerTime(async () => {
+      setTimeout(() => (host.socket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["room:state", {}]), 50); // RED: injected emit
+      const churn = nothingArrives(host.socket, "room:state", { why: "a blip must not tell the room that someone left" });
+      guest.socket.close();
+      await graceArmed(room.roomId, guest.user.id);
+      await churn;
+    });
     const seats = await roomStore.getRoomPlayers(room.roomId);
     assert.equal(seats.length, 2, "the seat row must survive the disconnect");
     assert.ok(
@@ -136,12 +136,13 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
   });
 
   test("the seat is released once the grace expires, so a blip is not a lease", async () => {
-    const { host, guest } = await lobby("expire");
+    const { host, guest, room } = await lobby("expire");
 
-    guest.socket.close();
-    const released = await within<RoomState>(host.socket, "room:state", 6000);
+    const released = await waitForReleaseOnExpiry(host.socket, async () => {
+      guest.socket.close();
+      await graceArmed(room.roomId, guest.user.id);
+    });
 
-    assert.ok(released, "the room must be told when the grace runs out");
     assert.equal(released.players.length, 1, "the seat must be given back");
     assert.ok(
       !released.players.some((p) => p.userId === guest.user.id),
@@ -153,7 +154,7 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
     const { host, guest, room } = await lobby("host");
 
     host.socket.close();
-    await new Promise((r) => setTimeout(r, 300));
+    await graceArmed(room.roomId, host.user.id);
     const room2 = await roomStore.getRoomById(room.roomId);
     assert.equal(
       room2?.hostUserId,
@@ -166,17 +167,18 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
   test("a player who reconnects into a different room stops holding the first seat", async () => {
     const { guest, room } = await lobby("moved");
 
-    guest.socket.close();
-    await graceArmed(room.roomId, guest.user.id);
-    const second = await reconnect(guest.cookie);
-    const elsewhere = waitFor<RoomState>(second, "room:state");
-    second.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
-    await elsewhere;
+    await onServerTime(async (clock) => {
+      guest.socket.close();
+      await graceArmed(room.roomId, guest.user.id);
+      const second = await reconnect(guest.cookie);
+      const elsewhere = waitFor(second, "room:state");
+      second.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
+      await elsewhere;
+      clock.advance(lobbyGraceMs() * 2);
+    });
 
-    await new Promise((r) => setTimeout(r, 3000));
-    const seats = await roomStore.getRoomPlayers(room.roomId);
-    assert.ok(
-      !seats.some((s) => s.userId === guest.user.id),
+    await eventually(
+      async () => !(await roomStore.getRoomPlayers(room.roomId)).some((s) => s.userId === guest.user.id),
       "being online somewhere else is not being in this room: the seat must be given back"
     );
   });
@@ -186,8 +188,8 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
 
     guest.socket.close();
     await graceArmed(room.roomId, guest.user.id);
-    const dealt = waitFor<SanitizedState>(host.socket, "game:state");
-    host.socket.emit("room:start", { fillWithBots: true, botDifficulty: "easy" });
+    const dealt = waitFor(host.socket, "game:state");
+    host.socket.emit("room:start", { fillWithBots: true });
     const state = await dealt;
 
     assert.equal(
@@ -205,11 +207,9 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
   test("leaving on purpose still gives the seat back at once", async () => {
     const { host, guest } = await lobby("leave");
 
-    const left = within<RoomState>(host.socket, "room:state", 1500);
-    guest.socket.emit("room:leave");
-    const after = await left;
+    // A deliberate leave is not a blip, and is announced with no grace in between.
+    const after = await onServerTimeAnnounced(host.socket, () => guest.socket.emit("room:leave"));
 
-    assert.ok(after, "a deliberate leave is not a blip and must be announced immediately");
     assert.equal(after.players.length, 1, "the seat is free the moment they choose to go");
   });
 });

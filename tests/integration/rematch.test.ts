@@ -6,18 +6,17 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { waitFor, waitForWhere } from "../helpers/client.ts";
+import { eventually, waitFor, waitForWhere } from "../helpers/client.ts";
 import {
   assertHandSecrecy,
-  driveRoundToExchangeOrOver,
-  roundOverOf,
   makeClients,
   setUpRoom,
   waitForDeal,
   type Client,
-  type SanitizedState,
 } from "../helpers/table.ts";
+import { driveRound, roundOverOf } from "../helpers/gameDriver.ts";
 import { hasActiveGame, seatedUsers, matchSnapshot, forceMatchNearTarget } from "../helpers/liveGame.ts";
+import type { WireGameState } from "../../shared/protocol.ts";
 
 /**
  * Shortened well below the 60s disconnect grace and 30s AFK production
@@ -58,12 +57,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
    */
   async function closeTable(roomId: string, host: Client) {
     host.socket.emit("room:leave");
-    const deadline = Date.now() + 5_000;
-    while (Date.now() < deadline) {
-      if (!hasActiveGame(roomId)) return;
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-    assert.fail("the table was still live after its host left");
+    await eventually(() => !hasActiveGame(roomId), "the table disposed after its host left");
   }
 
   test("a lone human plus bots deals a second round with the same seats", async () => {
@@ -71,7 +65,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     const room = await setUpRoom([ivan], 4);
 
     const over = roundOverOf(
-      await driveRoundToExchangeOrOver([ivan], () => {
+      await driveRound([ivan], () => {
         ivan.socket.emit("room:start", { fillWithBots: true, botPersonality: "gent" });
       })
     );
@@ -111,7 +105,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
 
     // And the second round is playable end to end: the bot seats really act.
     roundOverOf(
-      await driveRoundToExchangeOrOver([ivan], () => {}, { stopOnExchange: false })
+      await driveRound([ivan], () => {}, { onExchange: "wait" })
     );
     await closeTable(room.roomId, ivan);
   });
@@ -124,7 +118,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     const room = await setUpRoom([jack, kira], 4);
 
     roundOverOf(
-      await driveRoundToExchangeOrOver([jack, kira], () => {
+      await driveRound([jack, kira], () => {
         jack.socket.emit("room:start", { fillWithBots: true });
       })
     );
@@ -170,7 +164,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     const room = await setUpRoom([nora, omar], 4);
 
     roundOverOf(
-      await driveRoundToExchangeOrOver([nora, omar], () => {
+      await driveRound([nora, omar], () => {
         nora.socket.emit("room:start", { fillWithBots: true });
       })
     );
@@ -200,14 +194,14 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     const room = await setUpRoom([mira], 4);
 
     const over = roundOverOf(
-      await driveRoundToExchangeOrOver([mira], () => {
+      await driveRound([mira], () => {
         mira.socket.emit("room:start", { fillWithBots: true, botPersonality: "gent" });
       })
     );
     const before = matchSnapshot(room.roomId);
     assert.equal(before?.matchOver, false, "one round of a 21-point match settles nothing");
 
-    const refused = waitFor<{ code: string }>(mira.socket, "room:error", 5_000);
+    const refused = waitFor(mira.socket, "room:error", 5_000);
     // The payload a losing host would send: convert the match into a one-round
     // shootout and re-deal it without the exchange.
     mira.socket.emit("room:start", { fillWithBots: true, matchLength: "single" });
@@ -237,12 +231,12 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     // `matchLength: "single"` ends the match with the first round, so what
     // follows is a genuinely new match rather than the next round of this one.
     roundOverOf(
-      await driveRoundToExchangeOrOver([nadia, omar], () => {
+      await driveRound([nadia, omar], () => {
         nadia.socket.emit("room:start", { matchLength: "single" });
       })
     );
 
-    const refused = waitFor<{ code: string }>(nadia.socket, "room:error", 5_000);
+    const refused = waitFor(nadia.socket, "room:error", 5_000);
     nadia.socket.emit("room:start");
     assert.equal(
       (await refused).code,
@@ -270,15 +264,15 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     const [pia, remy] = await makeClients(server, ["rejoin_tally_pia", "rejoin_tally_remy"]);
     const room = await setUpRoom([pia, remy], 2);
     roundOverOf(
-      await driveRoundToExchangeOrOver([pia, remy], () => {
+      await driveRound([pia, remy], () => {
         pia.socket.emit("room:start");
       })
     );
-    const voted = waitForWhere<{ votes: string[] }>(pia.socket, "game:vote_state", (v) => v.votes.length > 0, 5_000);
+    const voted = waitForWhere(pia.socket, "game:vote_state", (v) => v.votes.length > 0, 5_000);
     remy.socket.emit("game:rematch_vote");
     await voted;
 
-    const votes = waitFor<{ votes: string[] }>(pia.socket, "game:vote_state", 5_000);
+    const votes = waitFor(pia.socket, "game:vote_state", 5_000);
     pia.socket.emit("game:rejoin", { roomId: room.roomId });
     assert.deepEqual((await votes).votes, [remy.user.id]);
     remy.socket.emit("room:leave");
@@ -289,14 +283,14 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     const [liam, mona] = await makeClients(server, ["rematch_unasked_liam", "rematch_unasked_mona"]);
     const room = await setUpRoom([liam, mona], 2);
     roundOverOf(
-      await driveRoundToExchangeOrOver([liam, mona], () => {
+      await driveRound([liam, mona], () => {
         liam.socket.emit("room:start", { matchLength: "single" });
       })
     );
     assert.equal(matchSnapshot(room.roomId)?.matchOver, true);
     assert.notDeepEqual(matchSnapshot(room.roomId)?.cumulativeScores, {});
 
-    const refused = waitFor<{ code: string }>(liam.socket, "game:error", 2_000).then(
+    const refused = waitFor(liam.socket, "game:error", 2_000).then(
       (e) => e.code,
       () => null
     );
@@ -317,7 +311,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     const room = await setUpRoom([pia, quinn], 2);
 
     roundOverOf(
-      await driveRoundToExchangeOrOver([pia, quinn], () => {
+      await driveRound([pia, quinn], () => {
         pia.socket.emit("room:start");
       })
     );
@@ -336,7 +330,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     let next = await dealNextRound();
     for (let attempt = 0; attempt < 6 && next.exchangePhase?.kind !== "open"; attempt++) {
       roundOverOf(
-        await driveRoundToExchangeOrOver([pia, quinn], () => {}, { stopOnExchange: false })
+        await driveRound([pia, quinn], () => {}, { onExchange: "wait" })
       );
       next = await dealNextRound();
     }
@@ -345,17 +339,11 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     // Registered only now: an AFK auto-pass from any round played above would
     // otherwise be the first code seen and would pass this test for the wrong
     // reason.
-    const afk: string[] = [];
-    pia.socket.on("game:notification", (payload: { code?: string }) => {
-      if (payload?.code?.startsWith("PLAYER_AFK_AUTO_")) afk.push(payload.code);
-    });
-
-    const deadline = Date.now() + 5_000;
-    while (afk.length === 0 && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
+    const afk = await waitForWhere(pia.socket, "game:notification", (payload) =>
+      Boolean(payload.code?.startsWith("PLAYER_AFK_AUTO_"))
+    );
     assert.equal(
-      afk[0],
+      afk.code,
       "PLAYER_AFK_AUTO_EXCHANGE",
       "the exchange winner's timer hands over a card, so announcing a pass tells every seat the wrong thing"
     );
@@ -384,7 +372,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     const room = await setUpRoom(clients, 4);
 
     roundOverOf(
-      await driveRoundToExchangeOrOver(clients, () => {
+      await driveRound(clients, () => {
         a.socket.emit("room:start");
       })
     );
@@ -421,7 +409,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
       [clients[2].user.id]: -1_000_000,
       [clients[3].user.id]: -1_000_000,
     });
-    roundOverOf(await driveRoundToExchangeOrOver(clients, () => {}, { stopOnExchange: false }));
+    roundOverOf(await driveRound(clients, () => {}, { onExchange: "wait" }));
     assert.equal(
       matchSnapshot(room.roomId)?.matchOver,
       true,
@@ -451,7 +439,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
  * one card up (`dealCards`). An open exchange has already moved the loser's
  * card to the winner, so that move is undone first.
  */
-function seatsDealtTheExtraCards(state: SanitizedState): number[] {
+function seatsDealtTheExtraCards(state: WireGameState): number[] {
   const dealt = state.players.map((p) => p.handCount);
   const ex = state.exchangePhase;
   if (ex?.kind === "open") {

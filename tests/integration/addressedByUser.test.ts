@@ -10,28 +10,18 @@
 // is the thing under test rather than the thing assumed.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Socket } from "socket.io-client";
-import { io as ioClient } from "socket.io-client";
-import { PROTOCOL_AUTH, connectAs, waitFor } from "../helpers/client.ts";
+import { connectAs, reconnectWith, waitFor, waitForWhere, type TestSocket } from "../helpers/client.ts";
 import {
   startTestServer,
   hasDatabase,
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import type { SanitizedState } from "../helpers/table.ts";
 
-interface RoomState {
-  code: string;
-  roomId: string;
-  status: string;
-  hostUserId: string | null;
-  players: { userId: string; seatIndex: number }[];
-}
 
 describe("a message for a person", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  const sockets: Socket[] = [];
+  const sockets: TestSocket[] = [];
   let n = 0;
 
   before(async () => {
@@ -50,31 +40,18 @@ describe("a message for a person", { skip: hasDatabase() ? false : skipMessage()
 
   /** A second live socket for an account that already has one. */
   async function secondSocket(cookie: string) {
-    const res = await fetch(`${server.url}/api/auth/socket-ticket`, {
-      method: "POST",
-      headers: { cookie },
-    });
-    const { ticket } = (await res.json()) as { ticket: string };
-    const socket = ioClient(server.url, {
-      auth: { ...PROTOCOL_AUTH, ticket },
-      transports: ["websocket"],
-      reconnection: false,
-    });
+    const socket = await reconnectWith(server, cookie);
     sockets.push(socket);
-    await new Promise<void>((resolve, reject) => {
-      socket.once("connect", () => resolve());
-      socket.once("connect_error", reject);
-    });
     return socket;
   }
 
   async function lobby(tag: string) {
     const host = await player(`${tag}_host`);
     const guest = await player(`${tag}_guest`);
-    const made = waitFor<RoomState>(host.socket, "room:state");
+    const made = waitFor(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const room = await made;
-    const seated = waitFor<RoomState>(host.socket, "room:state");
+    const seated = waitFor(host.socket, "room:state");
     guest.socket.emit("room:join", { code: room.code });
     assert.equal((await seated).players.length, 2);
     return { host, guest, room };
@@ -93,15 +70,15 @@ describe("a message for a person", { skip: hasDatabase() ? false : skipMessage()
     // remembered id.
     const replacement = await secondSocket(guest.cookie);
 
-    const dealt = waitFor<SanitizedState>(replacement, "game:state", 8_000);
-    host.socket.emit("room:start", { fillWithBots: true, botDifficulty: "easy" });
+    const dealt = waitFor(replacement, "game:state", 8_000);
+    host.socket.emit("room:start", { fillWithBots: true });
     const state = await dealt;
 
     assert.ok(
       state.players.some((p) => p.name === guest.user.username),
       "the account was dealt into the round"
     );
-    assert.ok(state.viewerSeatIndex >= 0, "and was shown it, on the socket it is holding");
+    assert.ok((state.viewerSeatIndex ?? -1) >= 0, "and was shown it, on the socket it is holding");
   });
 
   /**
@@ -115,17 +92,10 @@ describe("a message for a person", { skip: hasDatabase() ? false : skipMessage()
 
     // Not merely the next `room:state`: the guest's copy of the join broadcast
     // is delivered after the host's, so it can still be in flight here.
-    const roomTold = new Promise<RoomState | null>((resolve) => {
-      const timer = setTimeout(() => resolve(null), 8_000);
-      const onState = (payload: RoomState) => {
-        if (payload.status !== "in_progress") return;
-        clearTimeout(timer);
-        guest.socket.off("room:state", onState);
-        resolve(payload);
-      };
-      guest.socket.on("room:state", onState);
-    });
-    host.socket.emit("room:start", { fillWithBots: true, botDifficulty: "easy" });
+    const roomTold = waitForWhere(guest.socket, "room:state", (room) => room.status === "in_progress", 8_000).catch(
+      () => null
+    );
+    host.socket.emit("room:start", { fillWithBots: true });
 
     assert.ok(
       await roomTold,

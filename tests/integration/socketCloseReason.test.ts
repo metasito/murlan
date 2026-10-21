@@ -8,7 +8,7 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs } from "../helpers/client.ts";
+import { connectAs, eventually } from "../helpers/client.ts";
 
 describe("socket close reason", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -29,13 +29,10 @@ describe("socket close reason", { skip: hasDatabase() ? false : skipMessage() },
 
   /** The write is fire-and-forget, so it lands just after the disconnect. */
   async function settle(userId: string, want: number) {
-    let rows: { context: { reason?: string } }[] = [];
-    for (let attempt = 0; attempt < 20; attempt++) {
-      rows = await closesFor(userId);
-      if (rows.length >= want) return rows;
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    return rows;
+    return eventually(async () => {
+      const rows = await closesFor(userId);
+      return rows.length >= want ? rows : null;
+    }, `${want} socket.closed event(s) for ${userId}`);
   }
 
   test("a client-initiated close is recorded with the reason Socket.IO named", async () => {

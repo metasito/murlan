@@ -1,7 +1,6 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import { io as ioClient, type Socket } from "socket.io-client";
-import { PROTOCOL_AUTH, DEADLINE_SCALE, register, connectAs, waitFor } from "../helpers/client.ts";
+import { DEADLINE_SCALE, register, connectAs, openSocket, waitFor } from "../helpers/client.ts";
 import {
   startTestServer,
   hasDatabase,
@@ -84,28 +83,11 @@ describe(
     });
 
     /**
-     * Handshakes on the account's session cookie rather than a ticket: the
-     * ticket route mints at most 60 a minute per address, so the attempt that
-     * has to reach the socket limiter would be refused by the REST one first.
-     * Resolves either way — the refusal is what half of this suite asserts on.
+     * On the account's session cookie rather than a ticket: the ticket route mints at most 60 a
+     * minute per address, so the attempt that has to reach the socket limiter would be refused by
+     * the REST one first.
      */
-    function connectWithCookie(
-      cookie: string
-    ): Promise<{ ok: boolean; err?: string; socket?: Socket }> {
-      return new Promise((resolve) => {
-        const socket = ioClient(server.url, {
-          transports: ["websocket"],
-          auth: PROTOCOL_AUTH,
-          extraHeaders: { cookie },
-          reconnection: false,
-        });
-        socket.on("connect", () => resolve({ ok: true, socket }));
-        socket.on("connect_error", (err) => {
-          socket.close();
-          resolve({ ok: false, err: err.message });
-        });
-      });
-    }
+    const connectWithCookie = (cookie: string) => openSocket(server, { cookie });
 
     test("the 61st handshake by one account in a minute is refused while another account still connects", async () => {
       const flooder = await register(server, "handshake_flooder");
@@ -115,9 +97,9 @@ describe(
         const accepted = await connectWithCookie(flooder.cookie);
         assert.ok(
           accepted.ok,
-          `handshake ${attempt} is inside the account's budget but was refused: ${accepted.err}`
+          `handshake ${attempt} is inside the account's budget but was refused: ${accepted.ok || accepted.err}`
         );
-        accepted.socket!.close();
+        accepted.socket.close();
       }
 
       const refused = await connectWithCookie(flooder.cookie);
@@ -126,16 +108,16 @@ describe(
         false,
         "the 61st handshake inside the window must be refused"
       );
-      assert.match(refused.err ?? "", /Too many connections/);
+      assert.match(refused.ok ? "" : refused.err, /Too many connections/);
 
       // Per account, not per server: one account exhausting its budget must
       // not keep anyone else off the game.
       const other = await connectWithCookie(bystander.cookie);
       assert.ok(
         other.ok,
-        `a different account must not share the flooder's budget: ${other.err}`
+        `a different account must not share the flooder's budget: ${other.ok || other.err}`
       );
-      other.socket!.close();
+      other.socket.close();
     });
 
     /**
@@ -156,9 +138,9 @@ describe(
         const back = await connectWithCookie(commuter.cookie);
         assert.ok(
           back.ok,
-          `reconnect ${attempt} of an ordinary flapping connection was refused: ${back.err}`
+          `reconnect ${attempt} of an ordinary flapping connection was refused: ${back.ok || back.err}`
         );
-        back.socket!.close();
+        back.socket.close();
       }
     });
 

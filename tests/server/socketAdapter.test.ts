@@ -110,7 +110,8 @@ class FakeClient extends EventEmitter {
   unref() {}
 }
 
-test("the adapter pool reports who is queued for a client and how long they waited", async () => {
+test("the adapter pool reports who is queued for a client and how long they waited", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: 0 });
   const pool = new Pool({ Client: FakeClient as never, max: 1 });
   const stats = meterPool(pool);
   assert.deepEqual(stats(), { total: 0, idle: 0, waiting: 0, waits: 0, longestWaitMs: 0 });
@@ -118,13 +119,13 @@ test("the adapter pool reports who is queued for a client and how long they wait
   const first = await pool.connect();
   const second = pool.connect();
   assert.equal(stats().waiting, 1);
-  await new Promise((resolve) => setTimeout(resolve, 30));
+  t.mock.timers.tick(30);
   first.release();
   (await second).release();
 
   const after = stats();
   assert.equal(after.waiting, 0);
   assert.equal(after.waits, 2);
-  assert.ok(after.longestWaitMs >= 25, `longest wait ${after.longestWaitMs}ms`);
+  assert.equal(after.longestWaitMs, 30);
   await pool.end();
 });

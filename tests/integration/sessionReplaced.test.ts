@@ -1,7 +1,8 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import { io as ioClient, type Socket } from "socket.io-client";
-import { PROTOCOL_AUTH, connectAs, waitFor, DEADLINE_SCALE } from "../helpers/client.ts";
+import { connectAs, leaveRooms, nothingArrives, reconnectWith, type TestSocket, waitFor } from "../helpers/client.ts";
+import { installClock } from "../../server/http/clock.ts";
+import { fakeClock } from "../helpers/fakeClock.ts";
 import {
   startTestServer,
   hasDatabase,
@@ -13,12 +14,11 @@ import { disconnectGraceMs } from "../../server/game/gameTimers.ts";
 import {
   setUpRoom,
   startGame,
-  driveRoundToExchangeOrOver,
   assertHandSecrecy,
   type Client,
-  type RoomState,
-  type SanitizedState,
 } from "../helpers/table.ts";
+import { driveRound } from "../helpers/gameDriver.ts";
+import type { WireRoomState } from "../../shared/protocol.ts";
 
 /**
  * NET-06 / decision D5: one live socket per account. A second connection takes
@@ -44,11 +44,6 @@ process.env.MURLAN_DISCONNECT_GRACE_MS = "500";
  */
 const GRACE_MS = disconnectGraceMs();
 
-interface SocketError {
-  code?: string;
-  message?: string;
-}
-
 describe(
   "a second connection for one account",
   { skip: hasDatabase() ? false : skipMessage() },
@@ -63,74 +58,50 @@ describe(
       await server.stop();
     });
 
-    /**
-     * Another socket for an account that already registered. `connectAs` would
-     * register a new user, and the register route is rate limited per process,
-     * so the session cookie is reused for a fresh ticket instead.
-     */
-    async function openSecondSocket(cookie: string): Promise<Socket> {
-      const res = await fetch(`${server.url}/api/auth/socket-ticket`, {
-        method: "POST",
-        headers: { cookie },
-      });
-      const text = await res.text();
-      assert.equal(res.status, 200, text);
-      const { ticket } = JSON.parse(text) as { ticket: string };
-
-      const socket = ioClient(server.url, {
-        auth: { ...PROTOCOL_AUTH, ticket },
-        transports: ["websocket"],
-        reconnection: false,
-      });
-      await new Promise<void>((resolve, reject) => {
-        socket.once("connect", () => resolve());
-        socket.once("connect_error", (e) => reject(e));
-      });
-      return socket;
-    }
-
     test("evicts the first with SESSION_REPLACED and leaves the seat alone", async () => {
       const alice = await connectAs(server, "sess_repl_alma");
       const bob = await connectAs(server, "sess_repl_bekim");
-      let second: Socket | null = null;
+      let second: TestSocket | null = null;
       try {
-        const room: RoomState = await setUpRoom([alice, bob], 2);
+        const room: WireRoomState = await setUpRoom([alice, bob], 2);
         await startGame([alice, bob]);
 
         // The two things the table must never be told. Collected for the whole
         // test rather than asserted once: a takeover that arrives late is the
         // same bug as one that arrives early.
         const announced: string[] = [];
-        for (const event of ["game:player_disconnected", "game:seat_bot_takeover"]) {
+        for (const event of ["game:player_disconnected", "game:seat_bot_takeover"] as const) {
           bob.socket.on(event, () => announced.push(event));
         }
 
-        const evicted = waitFor<SocketError>(alice.socket, "socket:error");
-        const closed = new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(
-            () => reject(new Error("the replaced socket was never closed")),
-            5_000 * DEADLINE_SCALE
+        const evicted = waitFor(alice.socket, "socket:error");
+        const closed = waitFor(alice.socket, "disconnect");
+
+        // Server time from here to past the grace: a grace the eviction armed fires on the advance.
+        const clock = fakeClock(Date.now());
+        const restore = installClock(clock);
+        try {
+          second = await reconnectWith(server, alice.cookie);
+
+          const error = await evicted;
+          assert.equal(error.code, "SESSION_REPLACED");
+          assert.ok(
+            error.message,
+            "the payload needs the server's plain-text fallback for a client that does not know the code"
           );
-          alice.socket.once("disconnect", () => {
-            clearTimeout(timer);
-            resolve();
-          });
-        });
+          await closed;
 
-        second = await openSecondSocket(alice.cookie);
-
-        const error = await evicted;
-        assert.equal(error.code, "SESSION_REPLACED");
-        assert.ok(
-          error.message,
-          "the payload needs the server's plain-text fallback for a client that does not know the code"
-        );
-        await closed;
-
-        // Long past the grace the eviction must not have armed. Scaled like
-        // every other deadline here: on a slow runner an unscaled sleep stops
-        // outlasting the grace, and the test passes by not having waited.
-        await new Promise((resolve) => setTimeout(resolve, GRACE_MS * 3 * DEADLINE_SCALE));
+          setTimeout(() => (bob.socket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["game:player_disconnected", {}]), 50); // RED: injected emit
+          setTimeout(() => (bob.socket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["game:seat_bot_takeover", {}]), 50); // RED: injected emit
+          const quiet = [
+            nothingArrives(bob.socket, "game:player_disconnected"),
+            nothingArrives(bob.socket, "game:seat_bot_takeover"),
+          ];
+          clock.advance(GRACE_MS * 3);
+          await Promise.all(quiet);
+        } finally {
+          restore();
+        }
         assert.deepEqual(
           announced,
           [],
@@ -138,7 +109,7 @@ describe(
         );
 
         const secondClient: Client = { socket: second, user: alice.user, cookie: alice.cookie };
-        const rejoined = waitFor<SanitizedState>(second, "game:state");
+        const rejoined = waitFor(second, "game:state");
         second.emit("game:rejoin", { roomId: room.roomId });
         const state = await rejoined;
         assert.equal(state.players.length, 2, "the same table, with both seats still human");
@@ -146,7 +117,7 @@ describe(
 
         // Plays the round out from the new socket: broadcasts reach it, its
         // moves are accepted, and the seat is still its own.
-        const result = await driveRoundToExchangeOrOver([secondClient, bob], () => {
+        const result = await driveRound([secondClient, bob], () => {
           for (const client of [secondClient, bob]) {
             client.socket.emit("game:rejoin", { roomId: room.roomId });
           }
@@ -160,10 +131,7 @@ describe(
         // Empty the table before its sockets go: a socket that simply closes on
         // a live game arms a grace timer that would then fire against a stopped
         // server.
-        for (const socket of [second, bob.socket]) {
-          if (socket?.connected) socket.emit("room:leave");
-        }
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        await leaveRooms([second, bob.socket]);
         for (const socket of [alice.socket, bob.socket, second]) socket?.close();
       }
     });
@@ -182,19 +150,19 @@ describe(
       const alice = await connectAs(server, "sess_repl_arta");
       const bob = await connectAs(server, "sess_repl_besnik");
       const carol = await connectAs(server, "sess_repl_cela");
-      let second: Socket | null = null;
+      let second: TestSocket | null = null;
       try {
         await setUpRoom([alice, bob, carol], 3);
         await startGame([alice, bob, carol]);
 
-        const dropped = waitFor<{ userId: string }>(
+        const dropped = waitFor(
           bob.socket,
           "game:player_disconnected"
         );
         // The takeover is one grace after the close, plus whatever the round
         // trip costs — so the deadline is that, not a multiple picked to look
         // generous. `waitFor` applies DEADLINE_SCALE itself.
-        const takenOver = waitFor<{ userId: string; seatIndex: number }>(
+        const takenOver = waitFor(
           bob.socket,
           "game:seat_bot_takeover",
           GRACE_MS + 2_000
@@ -205,18 +173,9 @@ describe(
         // of the failure that actually happened.
         takenOver.catch(() => {});
 
-        const closed = new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(
-            () => reject(new Error("the replaced socket was never closed")),
-            5_000 * DEADLINE_SCALE
-          );
-          alice.socket.once("disconnect", () => {
-            clearTimeout(timer);
-            resolve();
-          });
-        });
+        const closed = waitFor(alice.socket, "disconnect");
 
-        second = await openSecondSocket(alice.cookie);
+        second = await reconnectWith(server, alice.cookie);
         await closed;
 
         // The replacement's own connection has to be fully established before it
@@ -286,10 +245,7 @@ describe(
           "and the grace has to expire into a bot taking the seat over"
         );
       } finally {
-        for (const socket of [bob.socket, carol.socket]) {
-          if (socket.connected) socket.emit("room:leave");
-        }
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        await leaveRooms([bob.socket, carol.socket]);
         for (const socket of [alice.socket, bob.socket, carol.socket, second])
           socket?.close();
       }

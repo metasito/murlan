@@ -13,6 +13,7 @@ import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { createDeck, startRound, type GameState } from "../../lib/game/gameEngine.ts";
 import type { WireGameState } from "../../shared/protocol.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
+import { eventually } from "../helpers/client.ts";
 
 const ROOM = "publish-order-room";
 const SEATS = ["Ana", "B1", "B2", "B3"].map((name, i) => ({
@@ -139,7 +140,7 @@ test("a row write still in flight lands before the last leaver's delete", async 
   await applyOrForward(rt, { kind: "vacate", roomId: ROOM, userId: "besi" });
   await applyOrForward(rt, { kind: "vacate", roomId: ROOM, userId: "ana" });
   assert.equal(activeGames.has(ROOM), false, "the table outlived its last player");
-  await new Promise((resolve) => setTimeout(resolve, 60));
+  await eventually(() => journal.some(isRemove), "the last leaver's delete");
 
   assert.deepEqual(
     journal.filter((e) => isPersist(e) || isRemove(e)).map((e) => (e as { name: string }).name),

@@ -26,10 +26,12 @@ test("a seat is kept for a player back at the table on another instance", async 
   });
   const { rt } = recordingRuntime({ presence: socketPresence(cluster) });
 
+  const asked = t.mock.method(rt.presence, "isAtTable");
+
   armLobbyGrace(rt, ROOM, USER);
   assert.equal(expiries.length, 1);
   expiries[0]();
-  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(await asked.mock.calls[0]?.result, true, "the expiry did not find the player at the table");
 
   assert.equal(released.mock.callCount(), 0, "the seat was released from under a player at the table");
 });
@@ -51,9 +53,11 @@ test("a seat is kept for a player at the table here when the cluster does not an
   });
   const { rt } = recordingRuntime({ presence: socketPresence(cluster) });
 
+  const asked = t.mock.method(rt.presence, "isAtTable");
+
   armLobbyGrace(rt, ROOM, USER);
   expiries[0]();
-  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(await asked.mock.calls[0]?.result, true, "the expiry did not find the player at the table");
 
   assert.equal(released.mock.callCount(), 0, "a failed cluster query released a player sitting on this instance");
 });

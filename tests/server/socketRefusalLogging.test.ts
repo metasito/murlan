@@ -19,6 +19,8 @@ import { payload } from "../../server/shared/payload.ts";
 import { onEvent, __resetRateLimits } from "../../server/socket/socketSafety.ts";
 import { logger } from "../../server/shared/logger.ts";
 import { OK, refuse } from "../../server/shared/refusal.ts";
+import { installClock } from "../../server/http/clock.ts";
+import { fakeClock } from "../helpers/fakeClock.ts";
 
 interface Recorded {
   level: string;
@@ -113,10 +115,10 @@ describe("onEvent leaves every refusal in the log", () => {
     assert.equal(socket.emitted.filter((e) => e.event === "game:error").length, 199);
   });
 
-  test("the next window is recorded again — a throttle is not a mute", async () => {
+  test("the next window is recorded again — a throttle is not a mute", async (t) => {
+    const clock = fakeClock();
+    t.after(installClock(clock));
     const socket = fakeSocket();
-    // Wide enough that both packets of a pair land in the same window even on
-    // a loaded machine: a window this test outran would count three.
     onEvent(socket as any, "game:rejoin", Payload, async () => OK, {
       limit: 1,
       windowMs: 200,
@@ -124,7 +126,7 @@ describe("onEvent leaves every refusal in the log", () => {
 
     await socket.send("game:rejoin", { roomId: "r1" });
     await socket.send("game:rejoin", { roomId: "r1" });
-    await new Promise((r) => setTimeout(r, 250));
+    clock.advance(200);
     await socket.send("game:rejoin", { roomId: "r1" });
     await socket.send("game:rejoin", { roomId: "r1" });
 

@@ -3,9 +3,9 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
-import { connectAs, register, waitFor } from "../helpers/client.ts";
+import { connectAs, eventually, register, waitFor } from "../helpers/client.ts";
 import { holdRowLock } from "../helpers/userLock.ts";
-import type { Client, RoomState, SanitizedState } from "../helpers/table.ts";
+import { setUpRoom, type Client } from "../helpers/table.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { seatHoldMs } from "../../server/game/gameTimers.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
@@ -34,18 +34,6 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     return made;
   }
 
-  async function lobby(seated: Client[], maxPlayers: number, gameMode = "free_for_all") {
-    const [host, ...guests] = seated;
-    const made = waitFor<RoomState>(host!.socket, "room:state");
-    host!.socket.emit("room:create", { gameMode, maxPlayers });
-    const room = await made;
-    for (const g of guests) {
-      const joined = waitFor<RoomState>(g.socket, "room:state");
-      g.socket.emit("room:join", { code: room.code });
-      await joined;
-    }
-    return room;
-  }
 
   const lockRoom = (roomId: string) =>
     holdRowLock("SELECT id FROM rooms WHERE id = $1 FOR UPDATE", [roomId]);
@@ -66,17 +54,9 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     return rows.map((r) => [r.user_id, r.seat_index] as const);
   }
 
-  async function until(check: () => Promise<boolean>, what: string) {
-    const deadline = Date.now() + 5_000;
-    while (!(await check())) {
-      if (Date.now() > deadline) throw new Error(what);
-      await new Promise((r) => setTimeout(r, 25));
-    }
-  }
-
   test("149/120: a join queued ahead of the start is dealt a round", async () => {
     const [host, a, late] = await players(3);
-    const room = await lobby([host!, a!], 3);
+    const room = await setUpRoom([host!, a!], 3);
     const lock = await lockRoom(room.roomId);
     try {
       late!.socket.emit("room:join", { code: room.code });
@@ -86,15 +66,15 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     } finally {
       await lock.release();
     }
-    const dealt = await waitFor<SanitizedState>(late!.socket, "game:state");
+    const dealt = await waitFor(late!.socket, "game:state");
     assert.equal(dealt.players.length, 3);
   });
 
   test("178: a leave queued ahead of the start is not dealt a round", async () => {
     const [host, a, leaver] = await players(3);
-    const room = await lobby([host!, a!, leaver!], 3);
+    const room = await setUpRoom([host!, a!, leaver!], 3);
     const lock = await lockRoom(room.roomId);
-    const dealt = waitFor<SanitizedState>(host!.socket, "game:state");
+    const dealt = waitFor(host!.socket, "game:state");
     try {
       leaver!.socket.emit("room:leave");
       await lock.waitForBlocked(1);
@@ -112,7 +92,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
 
   test("150: a join queued ahead of the last leave keeps the room, and hosts it", async () => {
     const [host, friend] = await players(2);
-    const room = await lobby([host!], 3);
+    const room = await setUpRoom([host!], 3);
     const lock = await lockRoom(room.roomId);
     try {
       friend!.socket.emit("room:join", { code: room.code });
@@ -122,7 +102,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     } finally {
       await lock.release();
     }
-    await until(
+    await eventually(
       async () => (await roomRow(room.roomId)).host_user_id === friend!.user.id,
       "the room is still hosted by the player who left"
     );
@@ -132,7 +112,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
 
   test("121: host and next seat leaving together pass the room to someone still seated", async () => {
     const [host, s1, s2] = await players(3);
-    const room = await lobby([host!, s1!, s2!], 3);
+    const room = await setUpRoom([host!, s1!, s2!], 3);
     const lock = await lockRoom(room.roomId);
     try {
       host!.socket.emit("room:leave");
@@ -142,11 +122,11 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     } finally {
       await lock.release();
     }
-    await until(
+    await eventually(
       async () => (await seats(room.roomId)).length === 1,
       "both leaves never landed"
     );
-    await until(
+    await eventually(
       async () => (await roomRow(room.roomId)).host_user_id === s2!.user.id,
       "the room is hosted by someone who left"
     );
@@ -154,11 +134,11 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
 
   test("180: a leave queued ahead of a join frees the seat the join takes", async () => {
     const [host, a, b] = await players(3);
-    const room = await lobby([host!, a!], 2);
+    const room = await setUpRoom([host!, a!], 2);
     const lock = await lockRoom(room.roomId);
     const outcome = Promise.race([
-      waitFor<RoomState>(b!.socket, "room:state").then(() => "seated"),
-      waitFor<{ code: string }>(b!.socket, "room:error").then((e) => e.code),
+      waitFor(b!.socket, "room:state").then(() => "seated"),
+      waitFor(b!.socket, "room:error").then((e) => e.code),
     ]);
     try {
       a!.socket.emit("room:leave");
@@ -176,7 +156,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     meddle: (roomId: string, hostId: string) => Promise<void>
   ) {
     const [host, stranger] = await players(2);
-    const opened = waitFor<RoomState>(host!.socket, "room:state");
+    const opened = waitFor(host!.socket, "room:state");
     host!.socket.emit("room:quickmatch", { maxPlayers, gameMode: "free_for_all" });
     const room = await opened;
     const real = roomStore.findWaitingPublicRooms;
@@ -190,7 +170,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
       return found;
     };
     try {
-      const landed = waitFor<RoomState>(stranger!.socket, "room:state");
+      const landed = waitFor(stranger!.socket, "room:state");
       stranger!.socket.emit("room:quickmatch", { maxPlayers, gameMode: "free_for_all" });
       const state = await landed;
       assert.equal(meddled, 1, "the room never changed under the match — the test proved nothing");
@@ -212,14 +192,14 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
 
   test("177: a join broadcasts the host the room has now, not the one it read", async () => {
     const [host, a, b] = await players(3);
-    const room = await lobby([host!, a!], 3);
+    const room = await setUpRoom([host!, a!], 3);
     const real = roomStore.getRoomByCode;
     let meddled = 0;
     roomStore.getRoomByCode = async function (code: string) {
       const read = await real.call(this, code);
       if (code === room.code && meddled++ === 0) {
         host!.socket.emit("room:leave");
-        await until(
+        await eventually(
           async () => (await roomRow(room.roomId)).host_user_id === a!.user.id,
           "the host never left"
         );
@@ -227,7 +207,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
       return read;
     };
     try {
-      const joined = waitFor<RoomState>(b!.socket, "room:state");
+      const joined = waitFor(b!.socket, "room:state");
       b!.socket.emit("room:join", { code: room.code });
       assert.equal((await joined).hostUserId, a!.user.id);
       assert.equal(meddled, 1);
@@ -238,12 +218,12 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
 
   test("151: a seat left and reclaimed mid-round keeps its row across a gap in the seats", async () => {
     const [host, gone, b, c] = await players(4);
-    const room = await lobby([host!, gone!, b!, c!], 4);
+    const room = await setUpRoom([host!, gone!, b!, c!], 4);
     const left = waitFor(host!.socket, "room:state");
     gone!.socket.emit("room:leave");
     await left;
 
-    const dealt = [host!, b!, c!].map((p) => waitFor<SanitizedState>(p.socket, "game:state"));
+    const dealt = [host!, b!, c!].map((p) => waitFor(p.socket, "game:state"));
     host!.socket.emit("room:start");
     await Promise.all(dealt);
 
@@ -263,7 +243,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
 
   async function claimRace(gameMode: "free_for_all" | "teams", hold: boolean) {
     const [host, guest] = await players(2);
-    const room = await lobby(hold ? [host!] : [host!, guest!], 4, gameMode);
+    const room = await setUpRoom(hold ? [host!] : [host!, guest!], 4, gameMode);
     if (hold) {
       const { user: invitee } = await register(server, `race_inv_${n++}_${Date.now().toString(36)}`);
       await server.query(
@@ -297,8 +277,8 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
 
   test("049: a held persist does not land over the one after it", async () => {
     const [host, a] = await players(2);
-    const room = await lobby([host!, a!], 2);
-    const dealt = [host!, a!].map((p) => waitFor<SanitizedState>(p.socket, "game:state"));
+    const room = await setUpRoom([host!, a!], 2);
+    const dealt = [host!, a!].map((p) => waitFor(p.socket, "game:state"));
     host!.socket.emit("room:start");
     await Promise.all(dealt);
     const { persistGameState } = server.rt.writers;

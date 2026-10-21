@@ -13,7 +13,7 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { DEADLINE_SCALE, register } from "../helpers/client.ts";
+import { eventually, register } from "../helpers/client.ts";
 import { logger } from "../../server/shared/logger.ts";
 import { SERVER_ERROR_RETENTION_DAYS } from "../../server/http/serverErrors.ts";
 import { CLIENT_ERROR_RETENTION_DAYS as retentionDays } from "../../server/http/clientErrors.ts";
@@ -90,15 +90,13 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
     assert.equal(res.status, 204);
 
     // The write is fire-and-forget, so it may land just after the 204.
-    let rows: { message: string }[] = [];
-    for (let attempt = 0; attempt < 20 && rows.length === 0; attempt++) {
-      const result = await server.query<{ message: string }>(
-        `SELECT message FROM "${server.schema}".client_errors WHERE message = $1`,
-        ["a crash worth reading later"]
-      );
-      rows = result;
-      if (rows.length === 0) await new Promise((r) => setTimeout(r, 50));
-    }
+    const rows = await eventually(async () => {
+      const found = await server.query<{ message: string }>(
+          `SELECT message FROM "${server.schema}".client_errors WHERE message = $1`,
+          ["a crash worth reading later"]
+        );
+      return found.length >= 1 ? found : null;
+    }, "the crash reports to be stored");
 
     assert.equal(rows.length, 1, "the crash report was never stored");
   });
@@ -124,9 +122,13 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
     });
     assert.equal(res.status, 204);
 
-    // The write is fire-and-forget, so give it a moment to land before
-    // asserting on what it did *not* also do.
-    await new Promise((r) => setTimeout(r, 300 * DEADLINE_SCALE));
+    // Fire-and-forget: the fresh row landing is the write having finished, so what it did not also do is settled.
+    await eventually(
+      async () =>
+        (await server.query(`SELECT 1 FROM "${server.schema}".client_errors WHERE message = $1`, ["a fresh crash"]))
+          .length > 0,
+      "the fresh crash report to be stored"
+    );
 
     const afterWrite = await server.query(
       `SELECT 1 FROM "${server.schema}".client_errors WHERE message = $1`,
@@ -166,15 +168,13 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
     // Both writes are fire-and-forget, so wait for both rows before reading
     // the page — the page can otherwise be read between the two landing,
     // showing a real but momentary count of 1.
-    let rows: { message: string }[] = [];
-    for (let attempt = 0; attempt < 20 && rows.length < 2; attempt++) {
-      const result = await server.query<{ message: string }>(
-        `SELECT message FROM "${server.schema}".client_errors WHERE message = $1`,
-        [message]
-      );
-      rows = result;
-      if (rows.length < 2) await new Promise((r) => setTimeout(r, 50));
-    }
+    const rows = await eventually(async () => {
+      const found = await server.query<{ message: string }>(
+          `SELECT message FROM "${server.schema}".client_errors WHERE message = $1`,
+          [message]
+        );
+      return found.length >= 2 ? found : null;
+    }, "the crash reports to be stored");
     assert.equal(rows.length, 2, "both crash reports were never stored");
 
     const body = await (await get(ownerCookie)).text();
@@ -215,15 +215,13 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
       }),
     });
 
-    let rows: { message: string }[] = [];
-    for (let attempt = 0; attempt < 20 && rows.length === 0; attempt++) {
-      const result = await server.query<{ message: string }>(
-        `SELECT message FROM "${server.schema}".client_errors WHERE message = $1`,
-        [message]
-      );
-      rows = result;
-      if (rows.length === 0) await new Promise((r) => setTimeout(r, 50));
-    }
+    const rows = await eventually(async () => {
+      const found = await server.query<{ message: string }>(
+          `SELECT message FROM "${server.schema}".client_errors WHERE message = $1`,
+          [message]
+        );
+      return found.length >= 1 ? found : null;
+    }, "the crash reports to be stored");
     assert.equal(rows.length, 1, "the crash report was never stored");
 
     const body = await (await get(ownerCookie)).text();
@@ -270,11 +268,10 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
       server.query<{ context: { roomId?: string } }>(`SELECT context FROM "${server.schema}".server_errors WHERE message = $1`, [message]);
 
     logger.error({ roomId: "r-planted" }, "a planted server failure");
-    let found: { context: { roomId?: string } }[] = [];
-    for (let attempt = 0; attempt < 40 && found.length === 0; attempt++) {
-      found = await rows("a planted server failure");
-      if (found.length === 0) await new Promise((r) => setTimeout(r, 50));
-    }
+    const found = await eventually(async () => {
+      const stored = await rows("a planted server failure");
+      return stored.length > 0 ? stored : null;
+    }, "the error line to be stored");
     assert.equal(found.length, 1, "the error line was never stored");
     assert.equal(found[0].context.roomId, "r-planted");
 
@@ -295,11 +292,13 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
   test("a server error line naming a user stores no user id", async () => {
     const message = "a failure that names a user";
     logger.error({ userId: "u-planted", roomId: "r-keep" }, message);
-    let found: { context: Record<string, unknown> }[] = [];
-    for (let attempt = 0; attempt < 40 && found.length === 0; attempt++) {
-      found = await server.query(`SELECT context FROM "${server.schema}".server_errors WHERE message = $1`, [message]);
-      if (found.length === 0) await new Promise((r) => setTimeout(r, 50));
-    }
+    const found = await eventually(async () => {
+      const stored = await server.query<{ context: Record<string, unknown> }>(
+        `SELECT context FROM "${server.schema}".server_errors WHERE message = $1`,
+        [message]
+      );
+      return stored.length > 0 ? stored : null;
+    }, "the error line to be stored");
     assert.equal(found.length, 1, "the error line was never stored");
     assert.equal("userId" in found[0].context, false);
     assert.equal(found[0].context.roomId, "r-keep");
@@ -309,11 +308,10 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
     const { user, cookie } = await register(server, "erased_logged");
     const message = "a failure logged for a soon-deleted account";
     logger.error({ accountId: user.id, err: "boom" }, message);
-    let stored = 0;
-    for (let attempt = 0; attempt < 40 && stored === 0; attempt++) {
-      stored = (await server.query(`SELECT 1 FROM "${server.schema}".server_errors WHERE message = $1`, [message])).length;
-      if (stored === 0) await new Promise((r) => setTimeout(r, 50));
-    }
+    const stored = await eventually(
+      async () => (await server.query(`SELECT 1 FROM "${server.schema}".server_errors WHERE message = $1`, [message])).length,
+      "the error line to be stored"
+    );
     assert.equal(stored, 1, "the error line was never stored");
     const before = await server.query(
       `SELECT 1 FROM "${server.schema}".server_errors WHERE context::text LIKE $1`,

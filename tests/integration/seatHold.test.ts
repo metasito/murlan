@@ -7,31 +7,19 @@
 // reads them, and the room's own broadcast is where the lobby learns of a hold.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Socket } from "socket.io-client";
 import {
   startTestServer,
   hasDatabase,
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor } from "../helpers/client.ts";
+import { connectAs, waitFor, type TestSocket } from "../helpers/client.ts";
 import { befriend, inviteRowsFor } from "../helpers/friends.ts";
 import { skewedClock } from "../helpers/fakeClock.ts";
 import { seatHoldMs } from "../../server/game/gameTimers.ts";
 import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/game/gameEngine.ts";
 import { friendStore } from "../../server/store/friendStore.ts";
 
-interface RoomState {
-  code: string;
-  roomId: string;
-  players: { seatIndex: number; userId: string; username: string }[];
-  seatHolds: { seatIndex: number; username: string; expiresInMs: number }[];
-}
-
-interface RoomError {
-  code: string;
-  message: string;
-}
 
 const sideOf = (seatIndex: number) =>
   teamForSeat(seatIndex, TEAMS_PLAYER_COUNT, "teams");
@@ -41,7 +29,7 @@ describe(
   { skip: hasDatabase() ? false : skipMessage() },
   () => {
     let server: TestServer;
-    const sockets: Socket[] = [];
+    const sockets: TestSocket[] = [];
     let n = 0;
     const clock = skewedClock();
 
@@ -65,11 +53,11 @@ describe(
       const friend = await player(`${tag}_friend`);
       await befriend(server, host, friend);
 
-      const made = waitFor<RoomState>(host.socket, "room:state");
+      const made = waitFor(host.socket, "room:state");
       host.socket.emit("room:create", { gameMode: "teams", maxPlayers: TEAMS_PLAYER_COUNT });
       const room = await made;
 
-      const heard = waitFor<RoomState>(host.socket, "room:state");
+      const heard = waitFor(host.socket, "room:state");
       host.socket.emit("friend:invite", {
         friendUserId: friend.user.id,
         roomCode: room.code,
@@ -77,8 +65,8 @@ describe(
       return { host, friend, room, held: await heard };
     }
 
-    async function joins(who: { socket: Socket }, code: string, watcher: Socket) {
-      const seated = waitFor<RoomState>(watcher, "room:state");
+    async function joins(who: { socket: TestSocket }, code: string, watcher: TestSocket) {
+      const seated = waitFor(watcher, "room:state");
       who.socket.emit("room:join", { code });
       return seated;
     }
@@ -87,7 +75,7 @@ describe(
       const { host, friend, room, held } = await roomWithAnInvite("teams");
 
       assert.deepEqual(
-        held.seatHolds.map((h) => h.seatIndex),
+        held.seatHolds?.map((h) => h.seatIndex),
         [2],
         "the room says which seat is held the moment the invite is written"
       );
@@ -151,7 +139,7 @@ describe(
       await joins(strangerB, room.code, host.socket);
 
       const latecomer = await player("expiry_late");
-      const refused = waitFor<RoomError>(latecomer.socket, "room:error");
+      const refused = waitFor(latecomer.socket, "room:error");
       latecomer.socket.emit("room:join", { code: room.code });
       assert.equal(
         (await refused).code,
@@ -176,11 +164,11 @@ describe(
       const friend = await player("ffa_friend");
       await befriend(server, host, friend);
 
-      const made = waitFor<RoomState>(host.socket, "room:state");
+      const made = waitFor(host.socket, "room:state");
       host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
       const room = await made;
 
-      const heard = waitFor<RoomState>(host.socket, "room:state");
+      const heard = waitFor(host.socket, "room:state");
       host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
       assert.deepEqual((await heard).seatHolds, [], "there is no team to hold a seat on");
 
@@ -199,11 +187,11 @@ describe(
       const friend = await player("rn_friend");
       await befriend(server, host, friend);
 
-      const made = waitFor<RoomState>(host.socket, "room:state");
+      const made = waitFor(host.socket, "room:state");
       host.socket.emit("room:create", { gameMode: "teams", maxPlayers: TEAMS_PLAYER_COUNT });
       const room = await made;
 
-      const firstInvite = waitFor<RoomState>(host.socket, "room:state");
+      const firstInvite = waitFor(host.socket, "room:state");
       host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
       await firstInvite;
 
@@ -217,7 +205,7 @@ describe(
       // If the conflict path still restamped created_at, this would buy the
       // hold another full length from here instead of leaving the first invite's
       // clock alone.
-      const reinvite = waitFor<RoomState>(host.socket, "room:state");
+      const reinvite = waitFor(host.socket, "room:state");
       host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
       await reinvite;
 
@@ -234,11 +222,11 @@ describe(
 
     test("unfriending withdraws the invite and frees the seat it held", async () => {
       const { host, friend, room, held } = await roomWithAnInvite("unf");
-      assert.deepEqual(held.seatHolds.map((h) => h.seatIndex), [2]);
+      assert.deepEqual(held.seatHolds?.map((h) => h.seatIndex), [2]);
       await joins(await player("unf_sA"), room.code, host.socket);
       await joins(await player("unf_sB"), room.code, host.socket);
 
-      const freed = waitFor<RoomState>(host.socket, "room:state");
+      const freed = waitFor(host.socket, "room:state");
       const unfriend = await fetch(`${server.url}/api/friends/${friend.user.id}`, {
         method: "DELETE",
         headers: { cookie: host.cookie },
@@ -261,15 +249,15 @@ describe(
       const friend = await player("dec_friend");
       await befriend(server, host, friend);
 
-      const made = waitFor<RoomState>(host.socket, "room:state");
+      const made = waitFor(host.socket, "room:state");
       host.socket.emit("room:create", { gameMode: "teams", maxPlayers: TEAMS_PLAYER_COUNT });
       const room = await made;
 
-      const heard = waitFor<RoomState>(host.socket, "room:state");
+      const heard = waitFor(host.socket, "room:state");
       host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
       const held = await heard;
       assert.deepEqual(
-        held.seatHolds.map((h) => h.seatIndex),
+        held.seatHolds?.map((h) => h.seatIndex),
         [2],
         "the seat is held before the decline"
       );
@@ -300,7 +288,7 @@ describe(
       assert.equal(forged.status, 200, await forged.text());
       assert.equal((await inviteRowsFor(room.roomId)).length, 1, "an account never invited declined the friend's invite");
 
-      const freed = waitFor<RoomState>(host.socket, "room:state");
+      const freed = waitFor(host.socket, "room:state");
       const decline = await fetch(`${server.url}/api/friends/invites/${room.code}`, {
         method: "DELETE",
         headers: { cookie: friend.cookie },

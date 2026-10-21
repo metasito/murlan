@@ -158,9 +158,7 @@ export async function replaySoakLog(
       await settle(seats);
       const before = seat.version;
       seat.clearRefusal();
-      if (entry.kind === "play") seatSocket(seat).emit("game:play", { cardIds: entry.cardIds });
-      else if (entry.kind === "pass") seatSocket(seat).emit("game:pass");
-      else seatSocket(seat).emit("game:exchange_give_card", { cardId: entry.cardId });
+      seat.move(entry.seat, entry.move);
 
       if (await waitForOwnBroadcast(seat, before)) {
         applied += 1;

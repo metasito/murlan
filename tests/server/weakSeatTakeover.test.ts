@@ -16,6 +16,9 @@ import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
+import { installClock } from "../../server/http/clock.ts";
+import { fakeClock } from "../helpers/fakeClock.ts";
+import { eventually } from "../helpers/client.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { emptyRankTally, sortHand } from "../../lib/game/gameEngine.ts";
@@ -139,11 +142,15 @@ describe("runBotTurn plays a weak seat at the floor and a bot seat with the bot"
       weakSeats: new Set(weak ? [0] : []),
     });
     activeGames.set(ROOM, game);
+    const clock = fakeClock();
+    const restore = installClock(clock);
     try {
       armTurn(rt, ROOM, 0);
-      await new Promise((r) => setTimeout(r, 30));
-      return { state, played: game.gameState.lastPlayedCombination?.cards.map((c) => c.id) };
+      clock.advance(0);
+      const played = await eventually(() => game.gameState.lastPlayedCombination, "the vacant seat's play");
+      return { state, played: played.cards.map((c) => c.id) };
     } finally {
+      restore();
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);
     }

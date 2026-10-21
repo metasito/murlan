@@ -17,61 +17,29 @@
 // assertion and fail this one.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import pg from "pg";
-import { io as ioClient, type Socket } from "socket.io-client";
-import { PROTOCOL_AUTH, waitFor, waitForOrNull } from "../helpers/client.ts";
+import type { WireGameState, WireRoomState } from "../../shared/protocol.ts";
+import { connectSocket, eventually, nothingArrives, settled, waitFor, type TestSocket } from "../helpers/client.ts";
+import { boot as bootInstance, stopInstance } from "../helpers/instance.ts";
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
 
 const PORT = 5571;
-/**
- * How long the table must say nothing before it counts as settled. The server
- * addresses each recipient separately, so two views captured mid-broadcast
- * disagree for a reason that is not a defect.
- */
-const QUIET_MS = 900;
 const SETTLE_CEILING_MS = 20_000;
 
 interface Client {
   name: string;
   cookie: string;
-  socket: Socket;
+  socket: TestSocket;
   /** The last state this client was sent, whatever it was addressed about. */
-  game: Record<string, unknown> | null;
-  room: Record<string, unknown> | null;
-  /** Bumped by every inbound state, so quiescence is observable. */
-  heard: number;
+  game: WireGameState | null;
+  room: WireRoomState | null;
 }
 
-function boot(databaseUrl: string, extraEnv: Record<string, string> = {}): Promise<ChildProcess> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ["--experimental-strip-types", "server/index.ts"], {
-      env: {
-        ...process.env,
-        DATABASE_URL: databaseUrl,
-        PORT: String(PORT),
-        SESSION_SECRET: "restart-convergence-secret",
-        LOG_LEVEL: "silent",
-        NODE_ENV: "development",
-        // Nothing here plays a round, and an AFK auto-move between the two
-        // captures would be a table that changed for a reason that is not the
-        // restart.
-        MURLAN_AFK_TIMEOUT_MS: "600000",
-        ...extraEnv,
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const giveUp = setTimeout(() => reject(new Error("the server never came up")), 45_000);
-    const watch = (buf: unknown) => {
-      const line = String(buf);
-      if (line.includes(String(PORT)) || line.includes("listening")) {
-        clearTimeout(giveUp);
-        setTimeout(() => resolve(child), 600);
-      }
-    };
-    child.stdout?.on("data", watch);
-    child.stderr?.on("data", watch);
-  });
+async function boot(databaseUrl: string, extraEnv: Record<string, string> = {}): Promise<ChildProcess> {
+  // Nothing here plays a round, and an AFK auto-move between the two captures
+  // would be a table that changed for a reason that is not the restart.
+  return (await bootInstance(PORT, databaseUrl, { MURLAN_AFK_TIMEOUT_MS: "600000", ...extraEnv })).child;
 }
 
 async function register(username: string): Promise<string> {
@@ -86,31 +54,18 @@ async function register(username: string): Promise<string> {
 }
 
 /** A socket that does not reconnect itself: the restart is what this measures. */
-function connect(cookie: string): Promise<Socket> {
-  return new Promise((resolve, reject) => {
-    const s = ioClient(`http://127.0.0.1:${PORT}`, {
-      transports: ["websocket"],
-      auth: PROTOCOL_AUTH,
-      extraHeaders: { Cookie: cookie },
-      reconnection: false,
-    });
-    s.once("connect", () => resolve(s));
-    s.once("connect_error", reject);
-  });
+function connect(cookie: string): Promise<TestSocket> {
+  return connectSocket(`http://127.0.0.1:${PORT}`, { cookie });
 }
 
 function listen(client: Client): void {
-  client.socket.on("game:state", (state: Record<string, unknown>) => {
+  client.socket.on("game:state", (state) => {
     client.game = state;
-    client.heard += 1;
   });
-  client.socket.on("room:state", (state: Record<string, unknown>) => {
+  client.socket.on("room:state", (state) => {
     client.room = state;
-    client.heard += 1;
   });
 }
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * The `seats` block of the `active_games` row a replacement instance rehydrates
@@ -127,19 +82,18 @@ async function storedSeats(
   // The servers here are child processes, so this process holds no app pool to ask.
   const admin = new pg.Pool({ connectionString: databaseUrl });
   try {
-    const deadline = Date.now() + SETTLE_CEILING_MS;
-    for (;;) {
-      const { rows } = await admin.query<{ game_state: { seats?: Record<string, unknown> } }>(
-        "SELECT game_state FROM active_games WHERE room_id = $1",
-        [roomId]
-      );
-      if (rows[0]) {
-        const seats = rows[0].game_state?.seats ?? {};
-        if (ready(seats)) return seats;
-      }
-      assert.ok(Date.now() < deadline, what);
-      await sleep(200);
-    }
+    return await eventually(
+      async () => {
+        const { rows } = await admin.query<{ game_state: { seats?: Record<string, unknown> } }>(
+          "SELECT game_state FROM active_games WHERE room_id = $1",
+          [roomId]
+        );
+        const seats = rows[0] ? (rows[0].game_state?.seats ?? {}) : null;
+        return seats && ready(seats) ? seats : null;
+      },
+      what,
+      SETTLE_CEILING_MS
+    );
   } finally {
     await admin.end();
   }
@@ -150,9 +104,9 @@ async function storedSeats(
  * seen them. The sockets close after the kill, never before, so no disconnect
  * grace is armed on a server still up to arm one.
  *
- * The sleep is the kernel releasing the listening socket, which is all this
- * waits on: a room's advisory lock is session-scoped, and Postgres drops it
- * when the killed backend dies.
+ * The exit is the listening socket released, which is all this waits on: a
+ * room's advisory lock is session-scoped, and Postgres drops it when the
+ * killed backend dies.
  */
 async function replaceServer(
   dying: ChildProcess,
@@ -160,9 +114,9 @@ async function replaceServer(
   databaseUrl: string,
   extraEnv: Record<string, string> = {}
 ): Promise<ChildProcess> {
-  dying.kill("SIGKILL");
+  const gone = stopInstance(dying);
   for (const c of clients) c.socket.close();
-  await sleep(1_000);
+  await gone;
   return boot(databaseUrl, extraEnv);
 }
 
@@ -172,28 +126,21 @@ async function replaceServer(
  * `undefined` when that client has been sent no state yet.
  */
 function vacatedAt(client: Client, seat: number): boolean | undefined {
-  return (client.game?.players as { vacated?: boolean }[] | undefined)?.[seat]?.vacated;
+  return client.game?.players[seat]?.vacated;
 }
 
 /** Waits for something the server says only through a state it broadcasts. */
 async function until(what: string, ready: () => boolean): Promise<void> {
-  const deadline = Date.now() + SETTLE_CEILING_MS;
-  while (!ready()) {
-    assert.ok(Date.now() < deadline, what);
-    await sleep(100);
-  }
+  await eventually(ready, what, SETTLE_CEILING_MS);
 }
 
-/** Waits until nobody has been told anything for `QUIET_MS`. */
-async function settled(clients: Client[]): Promise<void> {
-  const deadline = Date.now() + SETTLE_CEILING_MS;
-  for (;;) {
-    const before = clients.reduce((n, c) => n + c.heard, 0);
-    await sleep(QUIET_MS);
-    const after = clients.reduce((n, c) => n + c.heard, 0);
-    if (before === after) return;
-    assert.ok(Date.now() < deadline, "the table never went quiet, so nothing could be compared");
-  }
+/**
+ * Every client has been sent everything its table had to say. Two rounds of barriers: the first
+ * finishes every intent any socket sent, the second flushes what those intents broadcast to the
+ * other sockets. Nothing here runs on a timer — the AFK clock is parked — so that is everything.
+ */
+async function quiesced(clients: Client[]): Promise<void> {
+  for (let round = 0; round < 2; round++) await Promise.all(clients.map((c) => settled(c.socket)));
 }
 
 /**
@@ -204,7 +151,7 @@ async function settled(clients: Client[]): Promise<void> {
  */
 const MOVES_ON_ITS_OWN = new Set(["turnDeadlineMs", "turnSecondsRemaining"]);
 
-function held(state: Record<string, unknown> | null): unknown {
+function held(state: object | null): unknown {
   if (state === null) return null;
   const kept = Object.fromEntries(
     Object.entries(state).filter(([key]) => !MOVES_ON_ITS_OWN.has(key))
@@ -238,7 +185,7 @@ describe(
         const name = `rc${who}${tag}`;
         const cookie = await register(name);
         const socket = await connect(cookie);
-        const client: Client = { name, cookie, socket, game: null, room: null, heard: 0 };
+        const client: Client = { name, cookie, socket, game: null, room: null };
         listen(client);
         clients.push(client);
       }
@@ -246,7 +193,7 @@ describe(
 
     after(async () => {
       for (const c of clients) c.socket.close();
-      server?.kill("SIGKILL");
+      if (server) await stopInstance(server);
       await dropSchema(baseUrl, schema);
     });
 
@@ -254,7 +201,7 @@ describe(
       const [t1, t2, l1, l2, l3] = clients;
 
       // A table with a round actually dealt.
-      const madeTable = waitFor<{ code: string; roomId: string }>(t1.socket, "room:state");
+      const madeTable = waitFor(t1.socket, "room:state");
       t1.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
       const created = await madeTable;
       assert.ok(created, "the table was never created");
@@ -269,7 +216,7 @@ describe(
       assert.ok(await dealt, "the round was never dealt");
 
       // A lobby that has not started: three seated, nothing else.
-      const madeLobby = waitFor<{ code: string; roomId: string }>(l1.socket, "room:state");
+      const madeLobby = waitFor(l1.socket, "room:state");
       l1.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
       const opened = await madeLobby;
       assert.ok(opened, "the lobby was never created");
@@ -280,7 +227,7 @@ describe(
         assert.ok(await heard, "a lobby join never reached the host");
       }
 
-      await settled(clients);
+      await quiesced(clients);
       // Quiet sockets are not a persisted table. `publishState` persists
       // fire-and-forget after it serves, so a client can be holding
       // a round the `active_games` row does not carry yet — and the replacement
@@ -308,7 +255,6 @@ describe(
       // then the rejoin it emits on connect (context/SocketContext.tsx).
       for (const c of clients) {
         c.socket = await connect(c.cookie);
-        c.heard = 0;
         c.game = null;
         c.room = null;
         listen(c);
@@ -316,16 +262,15 @@ describe(
       for (const c of [t1, t2]) c.socket.emit("game:rejoin", { roomId: table.roomId });
       for (const c of [l1, l2, l3]) c.socket.emit("room:rejoin", { code: lobby.code });
 
-      const refused = await Promise.all(
-        [t1, t2].map((c) => waitForOrNull<{ roomId: string }>(c.socket, "game:rejoin_failed", 2_000))
-      );
-      assert.deepEqual(
-        refused.filter(Boolean),
-        [],
-        "a seat was refused its own table after the restart"
+      setTimeout(() => (t1.socket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["game:rejoin_failed", {}]), 50); // RED: injected emit
+      setTimeout(() => (t2.socket as unknown as { emitEvent(args: unknown[]): void }).emitEvent(["game:rejoin_failed", {}]), 50); // RED: injected emit
+      await Promise.all(
+        [t1, t2].map((c) =>
+          nothingArrives(c.socket, "game:rejoin_failed", { why: "a seat was refused its own table after the restart" })
+        )
       );
 
-      await settled(clients);
+      await quiesced(clients);
       const after = clients.map((c) => ({ game: held(c.game), room: held(c.room) }));
 
       for (const [i, c] of clients.entries()) {
@@ -373,9 +318,6 @@ describe(
       await admin.query(`CREATE SCHEMA "${schema}"`);
       await admin.end();
 
-      // Both blocks boot on PORT, and the block above kills its own server in
-      // an `after` that does not wait for the kernel to release the socket.
-      await sleep(1_000);
       server = await boot(scoped, SHORT_GRACE);
 
       const tag = Date.now().toString(36);
@@ -383,7 +325,7 @@ describe(
         const name = `rv${who}${tag}`;
         const cookie = await register(name);
         const socket = await connect(cookie);
-        const client: Client = { name, cookie, socket, game: null, room: null, heard: 0 };
+        const client: Client = { name, cookie, socket, game: null, room: null };
         listen(client);
         clients.push(client);
       }
@@ -391,7 +333,7 @@ describe(
 
     after(async () => {
       for (const c of clients) c.socket.close();
-      server?.kill("SIGKILL");
+      if (server) await stopInstance(server);
       await dropSchema(baseUrl, schema);
     });
 
@@ -400,7 +342,7 @@ describe(
 
       // Three seats, not two: a vacate that leaves one human disposes the
       // table outright (`vacateSeat`), and there would be nothing to restore.
-      const madeTable = waitFor<{ code: string; roomId: string }>(a.socket, "room:state");
+      const madeTable = waitFor(a.socket, "room:state");
       a.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 3 });
       const created = await madeTable;
       assert.ok(created, "the table was never created");
@@ -461,7 +403,7 @@ describe(
       // and the match stays live. `endMatchVoteAction` refuses with
       // NO_VACANCY_TO_END before it tallies anything when `vacatedSeats` is
       // empty, so a tally arriving at all is the restored map being read.
-      const tally = waitFor<{ votes: string[] }>(a.socket, "game:end_match_vote_state", 10_000);
+      const tally = waitFor(a.socket, "game:end_match_vote_state", 10_000);
       a.socket.emit("game:end_match_vote", { wants: true });
       assert.equal(
         (await tally)?.votes.length,
@@ -477,7 +419,7 @@ describe(
 
       const stranger = await connect(await register(`rvx${Date.now().toString(36)}`));
       try {
-        const failed = waitFor<{ code: string }>(stranger, "game:rejoin_failed", 10_000);
+        const failed = waitFor(stranger, "game:rejoin_failed", 10_000);
         stranger.emit("game:rejoin", { roomId: table.roomId });
         assert.equal((await failed)?.code, "UNAUTHORIZED");
         // Spectating never revives a table, so it is admitted only if the refused rejoin restored one.

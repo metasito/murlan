@@ -17,16 +17,6 @@ import {
 import { connectAs, waitFor } from "../helpers/client.ts";
 import type { FriendInfo, FriendRequestInfo } from "../../shared/http.ts";
 
-interface Incoming {
-  from: string;
-  request?: FriendRequestInfo;
-}
-
-interface Accepted {
-  by: string;
-  friend?: FriendInfo;
-}
-
 async function get<T>(server: TestServer, path: string, cookie: string): Promise<T> {
   const res = await fetch(`${server.url}${path}`, { headers: { cookie } });
   const text = await res.text();
@@ -51,7 +41,7 @@ describe("a friend event carries the row the cache needs", {
     const sender = await connectAs(server, "row_sender");
     const recipient = await connectAs(server, "row_recipient");
 
-    const incoming = waitFor<Incoming>(recipient.socket, "friend:request_incoming");
+    const incoming = waitFor(recipient.socket, "friend:request_incoming");
     const add = await fetch(`${server.url}/api/friends/add`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie: sender.cookie },
@@ -113,7 +103,7 @@ describe("a friend event carries the row the cache needs", {
     );
     assert.equal(pending.length, 1);
 
-    const accepted = waitFor<Accepted>(sender.socket, "friend:request_accepted");
+    const accepted = waitFor(sender.socket, "friend:request_accepted");
     const res = await fetch(`${server.url}/api/friends/accept/${pending[0].id}`, {
       method: "POST",
       headers: { cookie: recipient.cookie },

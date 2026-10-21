@@ -1,9 +1,10 @@
 import pg from "pg";
+import { eventually } from "./client.ts";
 
 /**
  * Takes a row lock from a side connection and holds it until `release`.
  * `waitForBlocked(n)` resolves once `n` sessions are queued behind it and throws
- * after five seconds, so a writer that skips the lock fails the test.
+ * once `eventually` gives up, so a writer that skips the lock fails the test.
  */
 export async function holdRowLock(lockSql: string, params: unknown[]) {
   // Its own pool, not the app's: a lock held on one of the app's clients takes it from the writers it blocks.
@@ -27,8 +28,8 @@ export async function holdRowLock(lockSql: string, params: unknown[]) {
   const { rows } = await side.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
 
   async function waitForBlocked(n: number) {
-    const deadline = Date.now() + 5_000;
-    for (;;) {
+    let queued = 0;
+    await eventually(async () => {
       // Transitively: a second waiter queues behind the first one's tuple
       // lock, so only the first names the side connection as its blocker.
       const blocked = await pool.query<{ n: number }>(
@@ -39,12 +40,11 @@ export async function holdRowLock(lockSql: string, params: unknown[]) {
          ) SELECT count(*)::int AS n FROM blocked`,
         [rows[0]!.pid]
       );
-      if (blocked.rows[0]!.n >= n) return;
-      if (Date.now() > deadline) {
-        throw new Error(`only ${blocked.rows[0]!.n} of ${n} writers waited on the row lock`);
-      }
-      await new Promise((r) => setTimeout(r, 25));
-    }
+      queued = blocked.rows[0]!.n;
+      return queued >= n;
+    }, `${n} writers queued on the row lock`).catch(() => {
+      throw new Error(`only ${queued} of ${n} writers waited on the row lock`);
+    });
   }
 
   return { waitForBlocked, release };
