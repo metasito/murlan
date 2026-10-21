@@ -138,9 +138,11 @@ export const belowCapsTable = (page: Page, baseURL: string) =>
 /** The mockup's `H13` in your hand, the rest of the deck round the others, 13 across as `dealRun` deals; nobody has played yet. */
 const MOCKUP_DEAL = mockupCards(["3h", "4c", "5c", "5d", "6s", "7h", "8s", "9c", "10d", "Jh", "Qs", "Kc", "Ad"]);
 const dealTable = (page: Page, baseURL: string) => {
-  const save = offlineSave({ seats: 4, turn: 0, scores: MOCKUP_SCORES, holding: [MOCKUP_DEAL, ...othersBesides(MOCKUP_DEAL)] });
-  save.gameState.firstPlayMade = false;
-  return seatTable(page, baseURL, save);
+  return seatTable(
+    page,
+    baseURL,
+    offlineSave({ seats: 4, turn: 0, scores: MOCKUP_SCORES, holding: [MOCKUP_DEAL, ...othersBesides(MOCKUP_DEAL)], state: { firstPlayMade: false } })
+  );
 };
 
 /** The mockup's `bomb`: luan's sevens on the pile, besnik across on move with four sixes. */

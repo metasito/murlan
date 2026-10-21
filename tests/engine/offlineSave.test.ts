@@ -10,8 +10,9 @@ import {
   encodeOfflineSave,
   isResumable,
 } from "../../lib/offlineSave.ts";
-import { buildCombination, emptyRankTally } from "../../lib/game/gameEngine.ts";
-import { played } from "../support/moves.ts";
+import { buildCombination, emptyRankTally, startRound } from "../../lib/game/gameEngine.ts";
+import { played, playRoundOut } from "../support/moves.ts";
+import type { MatchState } from "../../lib/game/matchState.ts";
 
 const decodeOfflineSave = (raw: string | null) => {
   const result = decode(raw);
@@ -164,4 +165,18 @@ test("an open exchange the winner cannot give back from is refused; one they can
   assert.equal(kindOf(withExchange([{ id: "5_clubs", rank: "5", suit: "clubs", isJoker: false }])), "ok");
   assert.equal(kindOf(withExchange([null])), "incompatible");
   assert.equal(kindOf(withExchange([{ id: "5_clubs" }])), "incompatible");
+});
+
+test("every state a played round passes through, exchange and all, saves and resumes whole", () => {
+  const seats = ["Ana", "Luan", "Gent", "Besnik"].map((name, i) => ({ name, type: i === 0 ? ("human" as const) : ("bot" as const) }));
+  const match: MatchState = { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false };
+  for (const opening of [undefined, { kind: "exchange" as const, winnerSeat: 2, loserSeat: 0 }]) {
+    const states = playRoundOut(startRound(seats, "free_for_all", opening && { opening }));
+    assert.ok(states.length > 13);
+    for (const [step, gameState] of states.entries()) {
+      const back = decode(encodeOfflineSave({ gameState, match, dealFirstSeat: 0 }));
+      assert.equal(back.kind, "ok", `${opening?.kind ?? "start card"} step ${step}`);
+      assert.deepEqual(back.kind === "ok" && back.save.gameState, JSON.parse(JSON.stringify(gameState)));
+    }
+  }
 });
