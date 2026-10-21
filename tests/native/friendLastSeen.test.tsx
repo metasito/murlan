@@ -3,44 +3,29 @@
 // from the ["/api/friends"] cache, so an event that updates only onlineIds
 // leaves the row showing whatever the last fetch returned — which, taken while
 // the friend was still online, is their *previous* disconnect.
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import React from 'react';
 import { Text } from 'react-native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, act } from '@testing-library/react-native';
+import { act } from '@testing-library/react-native';
 
+import { queryClient as qc } from '@/lib/query-client';
+import { renderApp } from './harness/renderApp';
 import { lastSocket } from './mocks/socketIo';
-
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
-}));
-
-const { SocketProvider } = require('@/context/SocketContext') as typeof import('@/context/SocketContext');
-const { NotificationProvider } = require('@/context/NotificationContext') as typeof import('@/context/NotificationContext');
 
 const PREVIOUS_DISCONNECT = '2026-08-20T10:00:00.000Z';
 const JUST_NOW = '2026-08-20T10:11:00.000Z';
 
-function friendsIn(qc: QueryClient) {
+function friendsIn() {
   return qc.getQueryData(['/api/friends']) as { id: string; username: string; lastSeen: string | null }[];
 }
 
 describe('friend:status carries the time the row shows', () => {
-  let qc: QueryClient;
-
   beforeEach(async () => {
-    qc = new QueryClient();
     qc.setQueryData(['/api/friends'], [
       { id: 'f1', username: 'Ben', lastSeen: PREVIOUS_DISCONNECT },
       { id: 'f2', username: 'Drita', lastSeen: PREVIOUS_DISCONNECT },
     ]);
-    await render(
-      <QueryClientProvider client={qc}>
-        <NotificationProvider>
-          <SocketProvider><Text>probe</Text></SocketProvider>
-        </NotificationProvider>
-      </QueryClientProvider>
-    );
+    await renderApp(<Text>probe</Text>, { user: { id: 'u1', username: 'Ana' } });
   });
 
   it('writes the disconnect time the event carries into the friends cache', async () => {
@@ -50,7 +35,7 @@ describe('friend:status carries the time the row shows', () => {
       lastSocket().serverEmit('friend:status', { userId: 'f1', online: false, lastSeen: JUST_NOW });
     });
 
-    expect(friendsIn(qc).find((f) => f.id === 'f1')!.lastSeen).toBe(JUST_NOW);
+    expect(friendsIn().find((f) => f.id === 'f1')!.lastSeen).toBe(JUST_NOW);
   });
 
   it('moves no one else, and keeps the rest of the row intact', async () => {
@@ -58,9 +43,9 @@ describe('friend:status carries the time the row shows', () => {
       lastSocket().serverEmit('friend:status', { userId: 'f1', online: false, lastSeen: JUST_NOW });
     });
 
-    const other = friendsIn(qc).find((f) => f.id === 'f2')!;
+    const other = friendsIn().find((f) => f.id === 'f2')!;
     expect(other.lastSeen).toBe(PREVIOUS_DISCONNECT);
-    expect(friendsIn(qc).find((f) => f.id === 'f1')!.username).toBe('Ben');
+    expect(friendsIn().find((f) => f.id === 'f1')!.username).toBe('Ben');
   });
 
   it('leaves the cache alone when the event carries no time', async () => {
@@ -68,6 +53,6 @@ describe('friend:status carries the time the row shows', () => {
       lastSocket().serverEmit('friend:status', { userId: 'f1', online: true });
     });
 
-    expect(friendsIn(qc).find((f) => f.id === 'f1')!.lastSeen).toBe(PREVIOUS_DISCONNECT);
+    expect(friendsIn().find((f) => f.id === 'f1')!.lastSeen).toBe(PREVIOUS_DISCONNECT);
   });
 });

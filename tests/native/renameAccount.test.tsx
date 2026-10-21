@@ -11,19 +11,13 @@
 // sentence looks exactly like four codes reaching the player as four, so the
 // last test compares them to each other rather than checking each is non-empty.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import React from 'react';
-import { act, renderHook, waitFor } from '@testing-library/react-native';
+import React, { useEffect } from 'react';
+import { act, waitFor } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { stubFetch } from './helpers/stubFetch';
-import { AuthProvider, useAuth } from '@/context/AuthContext';
-
-const mockApiRequest = jest.fn<(...args: unknown[]) => Promise<unknown>>();
-
-jest.mock('@/lib/query-client', () => ({
-  getApiUrl: () => 'http://localhost',
-  apiRequest: (...args: unknown[]) => mockApiRequest(...args),
-}));
+import { useAuth } from '@/context/AuthContext';
+import { renderApp } from './harness/renderApp';
+import { httpRequests, route } from './mocks/http';
 
 jest.mock('@/lib/device/pushRegistration', () => ({
   registerForPush: async () => {},
@@ -34,48 +28,46 @@ import { AUTH_USER_KEY as STORAGE_KEY } from '@/lib/storageKeys';
 const SIGNED_IN = { id: 'u1', username: 'Ana', tutorialSeenAt: null };
 const RENAMED = { ...SIGNED_IN, username: 'AnaBesi' };
 
-const mockFetch = jest.fn<() => Promise<unknown>>();
-
-const wrapper = ({ children }: { children: React.ReactNode }) => (
-  <AuthProvider>{children}</AuthProvider>
-);
+const result = {} as { current: ReturnType<typeof useAuth> };
+function Capture() {
+  const value = useAuth();
+  useEffect(() => {
+    result.current = value;
+  });
+  return null;
+}
 
 const signedIn = async () => {
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(SIGNED_IN));
-  const hook = await renderHook(() => useAuth(), { wrapper });
-  await waitFor(() => expect(hook.result.current.loading).toBe(false));
-  expect(hook.result.current.user?.username).toBe('Ana');
-  return hook;
+  const view = await renderApp(<Capture />, { user: SIGNED_IN });
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(result.current.user?.username).toBe('Ana');
+  return { result, unmount: view.unmount };
 };
 
 beforeEach(async () => {
   jest.clearAllMocks();
   await AsyncStorage.clear();
-  // `fetchMe` uses a raw fetch rather than apiRequest, so the boot check is
-  // steered here and every apiRequest below belongs to the rename itself.
-  mockFetch.mockResolvedValue({ status: 200, ok: true, json: async () => SIGNED_IN });
-  stubFetch(mockFetch);
 });
 
 describe('renaming the signed-in account', () => {
   it('patches the account and shows the new name', async () => {
-    mockApiRequest.mockResolvedValue({ json: async () => RENAMED });
+    route('PATCH', '/api/users/me', { body: RENAMED });
     const { result, unmount } = await signedIn();
 
     await act(async () => {
       await result.current.rename('AnaBesi');
     });
 
-    expect(mockApiRequest).toHaveBeenCalledWith('PATCH', '/api/users/me', {
-      username: 'AnaBesi',
-    });
+    expect(httpRequests().filter((r) => r.path === '/api/users/me').map((r) => [r.method, r.body])).toEqual([
+      ['PATCH', { username: 'AnaBesi' }],
+    ]);
     await waitFor(() => expect(result.current.user?.username).toBe('AnaBesi'));
 
     await unmount();
   });
 
   it('writes the new name to storage, so it survives a restart offline', async () => {
-    mockApiRequest.mockResolvedValue({ json: async () => RENAMED });
+    route('PATCH', '/api/users/me', { body: RENAMED });
     const { result, unmount } = await signedIn();
 
     await act(async () => {
@@ -89,7 +81,7 @@ describe('renaming the signed-in account', () => {
   });
 
   it('leaves the account alone when the server refuses', async () => {
-    mockApiRequest.mockRejectedValue(new Error('409: taken'));
+    route('PATCH', '/api/users/me', { status: 409, body: 'taken' });
     const { result, unmount } = await signedIn();
 
     await expect(result.current.rename('AnaBesi')).rejects.toThrow();

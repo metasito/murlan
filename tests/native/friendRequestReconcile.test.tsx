@@ -13,40 +13,25 @@
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { Text } from 'react-native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render } from '@testing-library/react-native';
+import { act } from '@testing-library/react-native';
 
+import { queryClient as qc } from '@/lib/query-client';
+import { renderApp } from './harness/renderApp';
 import { lastSocket } from './mocks/socketIo';
-
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
-}));
-
-const { SocketProvider } = require('@/context/SocketContext') as typeof import('@/context/SocketContext');
-const { NotificationProvider } = require('@/context/NotificationContext') as typeof import('@/context/NotificationContext');
 
 /** The queries whose rows can change while the socket is down. */
 const PENDING_KEYS = ['/api/friends/requests', '/api/friends/sent', '/api/friends'];
 
 async function harness() {
-  const qc = new QueryClient();
   const invalidated: string[] = [];
   const realInvalidate = qc.invalidateQueries.bind(qc);
-  qc.invalidateQueries = ((filters?: { queryKey?: unknown[] }) => {
+  jest.spyOn(qc, 'invalidateQueries').mockImplementation(((filters?: { queryKey?: unknown[] }) => {
     const key = filters?.queryKey?.[0];
     if (typeof key === 'string') invalidated.push(key);
     return realInvalidate(filters as never);
-  }) as typeof qc.invalidateQueries;
+  }) as typeof qc.invalidateQueries);
 
-  await render(
-    <QueryClientProvider client={qc}>
-      <NotificationProvider>
-        <SocketProvider>
-          <Text>probe</Text>
-        </SocketProvider>
-      </NotificationProvider>
-    </QueryClientProvider>
-  );
+  await renderApp(<Text>probe</Text>, { user: { id: 'u1', username: 'Ana' } });
   return { invalidated };
 }
 

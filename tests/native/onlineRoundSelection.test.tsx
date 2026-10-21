@@ -2,17 +2,15 @@
 // own keeps what the server's answer leaves in the hand and drops the rest at the deal.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen } from '@testing-library/react-native';
 import { activate } from './tapHelpers';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
+import { state } from '../support/game';
+import { renderApp } from './harness/renderApp';
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
-}));
-
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' } }),
 }));
 
 const card = (rank: Rank, suit: Suit): Card => ({
@@ -33,7 +31,7 @@ const seat = (id: string, name: string, hand: Card[]): Player => ({
   type: 'human',
 });
 
-const stateWith = (hand: Card[], over: Partial<GameState> = {}): GameState => ({
+const stateWith = (hand: Card[], over: Partial<GameState> = {}): GameState => state({
   players: [seat('player_0', 'Ana', hand), seat('player_1', 'Besi', [card('4', 'clubs')])],
   currentTurnIndex: 0,
   lastPlayedCombination: null,
@@ -105,10 +103,12 @@ const tap = async (c: Card) => {
     await activate(cardNode(c));
   });
 };
-const serverSends = async (r: Awaited<ReturnType<typeof render>>, next: GameState) => {
+const serverSends = async (r: Awaited<ReturnType<typeof mount>>, next: GameState) => {
   mockGameState = next;
   await act(async () => r.rerender(screenUnderTest()));
 };
+
+const mount = (ui: React.ReactElement) => renderApp(ui, { user: { id: 'u1', username: 'Ana' } });
 
 describe('the online table selection', () => {
   beforeEach(() => {
@@ -117,7 +117,7 @@ describe('the online table selection', () => {
   });
 
   it('is cleared by the deal, even one that deals the staged card back', async () => {
-    const r = await render(screenUnderTest());
+    const r = await mount(screenUnderTest());
     await tap(KING);
     expect(selected(KING)).toBe(true);
 
@@ -131,7 +131,7 @@ describe('the online table selection', () => {
   });
 
   it('keeps a staged card the acknowledged play left in the hand', async () => {
-    const r = await render(screenUnderTest());
+    const r = await mount(screenUnderTest());
     await tap(KING);
     await act(async () => {
       fireEvent.press(screen.getByTestId('btn-gioca'));
@@ -153,7 +153,7 @@ describe('the online table selection', () => {
   });
 
   it('survives GIOCA, and keeps all of it while the hand holds still, as on a rejected play', async () => {
-    const r = await render(screenUnderTest());
+    const r = await mount(screenUnderTest());
     await tap(KING);
     await act(async () => {
       fireEvent.press(screen.getByTestId('btn-gioca'));
@@ -167,7 +167,7 @@ describe('the online table selection', () => {
   });
 
   it('leaves a selection alone while the round is still being played', async () => {
-    const r = await render(screenUnderTest());
+    const r = await mount(screenUnderTest());
     await tap(KING);
 
     await serverSends(r, stateWith([KING, NINE], { currentTurnIndex: 1 }));

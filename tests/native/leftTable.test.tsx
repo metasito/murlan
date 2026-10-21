@@ -2,8 +2,8 @@
 // takeover is a state with a way back, everyone else's is only a notice.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook } from '@testing-library/react-native';
+import { act } from '@testing-library/react-native';
+import { renderAppHook } from './harness/renderApp';
 
 import { OnlineGameProvider } from '@/context/OnlineGameContext';
 import type { WireGameState } from '@/shared/protocol';
@@ -29,11 +29,9 @@ const mockSocket = {
   },
 };
 jest.mock('@/context/SocketContext', () => ({
+  ...jest.requireActual<object>('@/context/SocketContext'),
   useSocketConnection: () => mockSocket,
 }));
-jest.mock('@/context/NotificationContext', () =>
-  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
-);
 
 const ROOM = {
   roomId: 'R1',
@@ -82,13 +80,9 @@ const deliver = (event: string, payload: unknown) =>
   });
 
 const mount = async () => {
-  const client = new QueryClient();
-  const view = await renderHook(() => useOnlineGame(), {
-    wrapper: ({ children }: { children: React.ReactNode }) => (
-      <QueryClientProvider client={client}>
-        <OnlineGameProvider userId="u1">{children}</OnlineGameProvider>
-      </QueryClientProvider>
-    ),
+  const view = await renderAppHook(() => useOnlineGame(), {
+    user: { id: 'u1', username: 'Ana' },
+    wrap: (hook) => <OnlineGameProvider userId="u1">{hook}</OnlineGameProvider>,
   });
   await deliver('room:state', ROOM);
   await deliver('game:state', table(true));

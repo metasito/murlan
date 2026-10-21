@@ -17,6 +17,11 @@ export function route(method: string, path: string, answer: Answer): void {
   state().routes.set(key(method, path), answer);
 }
 
+/** An answer that never arrives: the request rejects as it does with no network. */
+export const unreachable: Answer = () => {
+  throw new TypeError('Network request failed');
+};
+
 /** Every request `fetch` was asked, routed or not, in order. */
 export function httpRequests(): readonly HttpRequest[] {
   return state().requests;

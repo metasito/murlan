@@ -4,9 +4,7 @@
 // apart).
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -23,38 +21,45 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => mockUseLocalSearchParams(),
 }));
 
-const mockApiRequest = jest.fn<(...args: unknown[]) => Promise<unknown>>();
-jest.mock('@/lib/query-client', () => ({
-  getApiUrl: () => 'http://localhost',
-  apiRequest: (...args: unknown[]) => mockApiRequest(...args),
-}));
-
 import VerifyEmailScreen from '@/app/verify-email';
 import RecoverScreen from '@/app/recover';
 import AuthScreen from '@/app/auth';
-import { stubFetch } from './helpers/stubFetch';
-import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { useAuth, type AuthUser } from '@/context/AuthContext';
 import * as i18n from '@/lib/i18n';
 import { en as locale } from '@/locales/en';
-import { AUTH_USER_KEY } from '@/lib/storageKeys';
+import { renderApp } from './harness/renderApp';
+import { httpRequests, route, unreachable } from './mocks/http';
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 390, height: 844 },
-  insets: { top: 47, left: 0, right: 0, bottom: 34 },
-};
+type Answer = Parameters<typeof route>[2];
 
-// AuthProvider's own boot check (`GET /api/auth/me`) is a raw `fetch`, not
-// `apiRequest` — see context/AuthContext.tsx's fetchMe(). VerifyEmailScreen's
-// refreshUser() rides the same call, so mocking this is how these tests can
-// tell it actually fired.
-const mockFetch = jest.fn<() => Promise<unknown>>();
+/** Every request these screens send through apiRequest; each is answered alike. */
+const ACCOUNT_CALLS = [
+  '/api/auth/register',
+  '/api/auth/add-email',
+  '/api/auth/verify-email',
+  '/api/auth/resend-verification',
+  '/api/auth/request-password-reset',
+  '/api/auth/reset-password',
+];
+const serverAnswers = (answer: Answer) => ACCOUNT_CALLS.forEach((path) => route('POST', path, answer));
+const accountCalls = () =>
+  httpRequests()
+    .filter((r) => ACCOUNT_CALLS.includes(r.path))
+    .map((r) => [r.method, r.path, r.body]);
+const ok = { body: { ok: true } };
+const inFlight: Answer = () => new Promise(() => {});
+
+// VerifyEmailScreen's refreshUser() rides the boot check's own `GET /api/auth/me`,
+// so counting it is how these tests can tell it actually fired.
+const meAsked = () => httpRequests().filter((r) => r.method === 'GET' && r.path === '/api/auth/me').length;
+let me: Answer;
+const app = (ui: React.ReactElement, cached: AuthUser | null = null) => renderApp(ui, { me, cached });
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockFetch.mockResolvedValue({ status: 401, ok: false });
+  me = { status: 401 };
   mockCanGoBack.mockReturnValue(true);
   mockUseLocalSearchParams.mockReturnValue({});
-  stubFetch(mockFetch);
 });
 
 afterEach(() => {
@@ -63,7 +68,7 @@ afterEach(() => {
 
 describe('the auth calls that send a mail', () => {
   it('carry the active locale', async () => {
-    mockApiRequest.mockResolvedValue({ ok: true, json: async () => ({ id: 'u1', username: 'Ana' }) });
+    serverAnswers({ body: { id: 'u1', username: 'Ana' } });
     const auth: { current?: ReturnType<typeof useAuth> } = {};
     function Capture() {
       const value = useAuth();
@@ -72,7 +77,7 @@ describe('the auth calls that send a mail', () => {
       });
       return null;
     }
-    const view = await render(<AuthProvider><Capture /></AuthProvider>);
+    const view = await app(<Capture />);
     await waitFor(() => expect(auth.current?.loading).toBe(false));
 
     jest.spyOn(i18n, 'getLocale').mockReturnValue('it');
@@ -81,31 +86,24 @@ describe('the auth calls that send a mail', () => {
       await auth.current!.addEmail('ana@example.test');
     });
 
-    expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/register', {
+    expect(accountCalls()).toContainEqual(['POST', '/api/auth/register', {
       username: 'Ana',
       password: 'password123',
       email: 'ana@example.test',
       locale: 'it',
-    });
-    expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/add-email', { email: 'ana@example.test', locale: 'it' });
+    }]);
+    expect(accountCalls()).toContainEqual(['POST', '/api/auth/add-email', { email: 'ana@example.test', locale: 'it' }]);
     await view.unmount();
   });
 });
 
 describe('app/verify-email', () => {
-  const mount = () =>
-    render(
-      <SafeAreaProvider initialMetrics={METRICS}>
-        <AuthProvider>
-          <VerifyEmailScreen />
-        </AuthProvider>
-      </SafeAreaProvider>
-    );
+  const mount = (cached: AuthUser | null = null) => app(<VerifyEmailScreen />, cached);
 
   it('redeems the pasted code, refreshes the signed-in user, and says so before leaving', async () => {
-    mockApiRequest.mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    serverAnswers(ok);
     const view = await mount();
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1)); // the boot check settles first
+    await waitFor(() => expect(meAsked()).toBe(1)); // the boot check settles first
 
     await act(async () => {
       fireEvent.changeText(screen.getByLabelText(locale['auth.emailA11yLabel']), 'player@example.test');
@@ -117,11 +115,11 @@ describe('app/verify-email', () => {
       fireEvent.press(screen.getByRole('button', { name: locale['verifyEmail.submit'] }));
     });
 
-    expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/verify-email', {
+    expect(accountCalls()).toContainEqual(['POST', '/api/auth/verify-email', {
       email: 'player@example.test',
       code: '123456',
-    });
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2)); // refreshUser's own fetchMe
+    }]);
+    await waitFor(() => expect(meAsked()).toBe(2)); // refreshUser's own fetchMe
 
     // The screen confirms rather than vanishing: leaving silently is
     // indistinguishable from a tap that did nothing. Asked for by its group
@@ -143,7 +141,7 @@ describe('app/verify-email', () => {
 
   it('goes home instead of back when there is nowhere to go back to', async () => {
     mockCanGoBack.mockReturnValue(false);
-    mockApiRequest.mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    serverAnswers(ok);
     const view = await mount();
 
     await act(async () => {
@@ -173,7 +171,7 @@ describe('app/verify-email', () => {
     });
 
     expect(screen.getByText(locale['verifyEmail.missingEmail'])).toBeTruthy();
-    expect(mockApiRequest).not.toHaveBeenCalled();
+    expect(accountCalls()).toEqual([]);
     await view.unmount();
   });
 
@@ -188,12 +186,12 @@ describe('app/verify-email', () => {
     });
 
     expect(screen.getByText(locale['verifyEmail.missingCode'])).toBeTruthy();
-    expect(mockApiRequest).not.toHaveBeenCalled();
+    expect(accountCalls()).toEqual([]);
     await view.unmount();
   });
 
   it('shows a fallback message when the server refuses the code', async () => {
-    mockApiRequest.mockRejectedValue(new Error('boom'));
+    serverAnswers(unreachable);
     const view = await mount();
 
     await act(async () => {
@@ -216,18 +214,14 @@ describe('app/verify-email', () => {
     // value (the prefill only fills an empty field), and resend must still
     // target the signed-in account's own address, not the field.
     mockUseLocalSearchParams.mockReturnValue({ email: 'fresh@example.test' });
-    mockApiRequest.mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
-    mockFetch.mockResolvedValue({
-      status: 200,
-      ok: true,
-      json: async () => ({
+    serverAnswers(ok);
+    me = { body: {
         id: 'u1',
         username: 'fresh',
         tutorialSeenAt: null,
         email: 'signedin@example.test',
         emailVerified: false,
-      }),
-    });
+      } };
     const view = await mount();
 
     // The resend button only renders once `user` has landed (AuthContext's
@@ -242,37 +236,31 @@ describe('app/verify-email', () => {
       fireEvent.press(resend);
     });
 
-    expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/resend-verification', { locale: 'it' });
+    expect(accountCalls()).toContainEqual(['POST', '/api/auth/resend-verification', { locale: 'it' }]);
     const resendSent = locale['verifyEmail.resendSent'].replace('{{email}}', 'signedin@example.test');
     await waitFor(() => expect(screen.getByText(resendSent)).toBeTruthy());
     await view.unmount();
   });
 
   it('offers no resend to a cached user whose verification is unknown', async () => {
-    await AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify({ id: 'u1', username: 'Ana', email: 'cached@example.test' }));
-    mockFetch.mockReturnValue(new Promise(() => {}));
-    const view = await mount();
+    me = unreachable;
+    const view = await mount({ id: 'u1', username: 'Ana', email: 'cached@example.test' });
 
     const emailInput = screen.getByLabelText(locale['auth.emailA11yLabel']);
     await waitFor(() => expect(emailInput.props.value).toBe('cached@example.test'));
     expect(screen.queryByRole('button', { name: locale['verifyEmail.resend'] })).toBeNull();
     await view.unmount();
-    await AsyncStorage.clear();
   });
 
   it('prefills the email from the signed-in user when there is no route param', async () => {
     mockUseLocalSearchParams.mockReturnValue({});
-    mockFetch.mockResolvedValue({
-      status: 200,
-      ok: true,
-      json: async () => ({
+    me = { body: {
         id: 'u1',
         username: 'signedin',
         tutorialSeenAt: null,
         email: 'signedin@example.test',
         emailVerified: false,
-      }),
-    });
+      } };
     const view = await mount();
 
     const emailInput = await screen.findByLabelText(locale['auth.emailA11yLabel']);
@@ -282,10 +270,10 @@ describe('app/verify-email', () => {
 });
 
 describe('app/recover', () => {
-  const mount = () => render(<SafeAreaProvider initialMetrics={METRICS}><RecoverScreen /></SafeAreaProvider>);
+  const mount = () => app(<RecoverScreen />);
 
   it('requests a reset, then submits the code and new password from step two', async () => {
-    mockApiRequest.mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    serverAnswers(ok);
     const view = await mount();
 
     await act(async () => {
@@ -297,10 +285,10 @@ describe('app/recover', () => {
     });
 
     await waitFor(() =>
-      expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/request-password-reset', {
+      expect(accountCalls()).toContainEqual(['POST', '/api/auth/request-password-reset', {
         email: 'player@example.test',
         locale: 'sq',
-      })
+      }])
     );
 
     // Step two — the code and new password fields only exist past the request.
@@ -315,10 +303,10 @@ describe('app/recover', () => {
       fireEvent.press(screen.getByRole('button', { name: locale['recover.resetSubmit'] }));
     });
 
-    expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/reset-password', {
+    expect(accountCalls()).toContainEqual(['POST', '/api/auth/reset-password', {
       token: 'the-reset-code',
       newPassword: 'a-new-password',
-    });
+    }]);
     // reset-password mints no session — back to sign-in with a notice, never
     // straight into the app.
     expect(mockReplace).toHaveBeenCalledWith({ pathname: '/auth', params: { notice: 'passwordReset' } });
@@ -327,7 +315,7 @@ describe('app/recover', () => {
 
   it('the email field stops taking keystrokes while the request is in flight', async () => {
     // Never resolves: the request stays in flight for the rest of the case.
-    mockApiRequest.mockReturnValue(new Promise(() => {}));
+    serverAnswers(inFlight);
     const view = await mount();
 
     await act(async () => {
@@ -344,7 +332,7 @@ describe('app/recover', () => {
   });
 
   it('a second submit while the reset request is in flight issues no second request', async () => {
-    mockApiRequest.mockReturnValue(new Promise(() => {}));
+    serverAnswers(inFlight);
     const view = await mount();
 
     await act(async () => {
@@ -361,7 +349,7 @@ describe('app/recover', () => {
     await act(async () => {
       submit()();
     });
-    expect(mockApiRequest).toHaveBeenCalledTimes(1);
+    expect(accountCalls()).toHaveLength(1);
 
     await view.unmount();
   });
@@ -374,20 +362,13 @@ describe('app/recover', () => {
     });
 
     expect(screen.getByLabelText(locale['recover.codeA11yLabel'])).toBeTruthy();
-    expect(mockApiRequest).not.toHaveBeenCalled();
+    expect(accountCalls()).toEqual([]);
     await view.unmount();
   });
 });
 
 describe('app/auth reaches both new screens', () => {
-  const mount = () =>
-    render(
-      <SafeAreaProvider initialMetrics={METRICS}>
-        <AuthProvider>
-          <AuthScreen />
-        </AuthProvider>
-      </SafeAreaProvider>
-    );
+  const mount = () => app(<AuthScreen />);
 
   it('the login tab carries a reachable "forgot password" control into /recover', async () => {
     const view = await mount();
@@ -402,18 +383,14 @@ describe('app/auth reaches both new screens', () => {
   });
 
   it('the register interstitial carries a reachable control into /verify-email', async () => {
-    mockApiRequest.mockResolvedValue({ ok: true, json: async () => ({}) });
-    mockFetch.mockResolvedValue({
-      status: 200,
-      ok: true,
-      json: async () => ({
+    serverAnswers({ body: {} });
+    me = { body: {
         id: 'u1',
         username: 'newplayer',
         tutorialSeenAt: null,
         email: 'newplayer@example.test',
         emailVerified: false,
-      }),
-    });
+      } };
     const view = await mount();
 
     await act(async () => {
@@ -459,15 +436,15 @@ describe('app/auth reaches both new screens', () => {
   // the state it was created in rather than the account's would leave it
   // still asking for a code already redeemed.
   it('the interstitial reports a verified address instead of asking again', async () => {
-    mockApiRequest.mockResolvedValue({ ok: true, json: async () => ({}) });
-    const me = {
+    serverAnswers({ body: {} });
+    const signedIn = {
       id: 'u1',
       username: 'newplayer',
       tutorialSeenAt: null,
       email: 'newplayer@example.test',
       emailVerified: true,
     };
-    mockFetch.mockResolvedValue({ status: 200, ok: true, json: async () => me });
+    me = { body: signedIn };
     const view = await mount();
 
     await act(async () => {

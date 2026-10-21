@@ -2,18 +2,22 @@
 // overlay, the score pill holds open with the next-round vote at its foot, and the next deal closes it.
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import React from 'react';
-import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { getAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as particles from '@/components/table/particles';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setMotionPreference } from '@/lib/accessibility';
+import { SETTINGS_KEY } from '@/lib/storageKeys';
 import type { GameState, Player } from '@/lib/game/gameEngine';
 import { roundEndingOnsets } from '@/lib/timeline/roundEnding';
 import { t } from '@/lib/i18n';
+import { state } from '../support/game';
+import { renderApp } from './harness/renderApp';
 
 const mockVoteRematch = jest.fn();
 const seat = (i: number): Player => ({ id: `player_${i}`, name: `P${i}`, hand: [], type: i === 0 ? 'human' : 'bot' });
-const ENDED: GameState = {
+const ENDED: GameState = state({
   players: [0, 1, 2, 3].map(seat),
   currentTurnIndex: 0,
   lastPlayedCombination: null,
@@ -25,15 +29,14 @@ const ENDED: GameState = {
   finishingOrder: ['player_0', 'player_1', 'player_2', 'player_3'],
   firstPlayMade: true,
   lastMove: { seq: 0, kind: 'deal' },
-};
-const DEALT: GameState = { ...ENDED, roundOver: false, finishingOrder: [], firstPlayMade: false };
+});
+const DEALT: GameState = state({ ...ENDED, roundOver: false, finishingOrder: [], firstPlayMade: false });
 let mockGameState: GameState = ENDED;
 let mockScoresCurrent = true;
 let mockPlacementPoints: Record<string, number> = { player_0: 3, player_1: 1, player_2: 0, player_3: 0 };
 let mockVotes: { votes: string[]; total: number } | null = null;
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() } }));
-jest.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: { id: 'alice', username: 'Alice' } }) }));
 jest.mock('@/context/onlineGameHooks', () => ({
   useServerError: () => null,
   useOnlineTable: () => ({
@@ -102,14 +105,17 @@ beforeEach(() => {
   mockVotes = null;
   mockVoteRematch.mockClear();
 });
-afterEach(() => {
+afterEach(async () => {
   jest.useRealTimers();
   setMotionPreference('system');
+  await AsyncStorage.removeItem(SETTINGS_KEY);
 });
+
+const mount = (ui: React.ReactElement) => renderApp(ui, { user: { id: 'alice', username: 'Alice' } });
 
 describe('a round ending online', () => {
   it('holds the pill open with the vote at its foot, no overlay, until the next deal', async () => {
-    const view = await render(screenNow());
+    const view = await mount(screenNow());
     await advance(close + settled);
     expect(overlayLeave()).toBeNull();
     expect(pillOpen()).toBe(true);
@@ -134,8 +140,8 @@ describe('a round ending online', () => {
   });
 
   it('under reduced motion, the next deal closes the held pill at once', async () => {
-    setMotionPreference('on');
-    const view = await render(screenNow());
+    await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify({ motion: 'on' }));
+    const view = await mount(screenNow());
     await advance(close + settled);
     expect(pillOpen()).toBe(true);
 
@@ -148,7 +154,7 @@ describe('a round ending online', () => {
 
   it("waits for this round's placement points before the pill opens", async () => {
     mockScoresCurrent = false;
-    const view = await render(screenNow());
+    const view = await mount(screenNow());
     await advance(close + settled);
     expect(overlayLeave()).toBeNull();
     expect(pillOpen()).toBe(false);
@@ -171,7 +177,7 @@ describe('a round ending online', () => {
     mockPlacementPoints = { player_0: 2, player_3: 1, player_1: 2, player_2: 1 };
     mockScoresCurrent = false;
     const motes = jest.spyOn(particles, 'roundMotes');
-    const view = await render(screenNow());
+    const view = await mount(screenNow());
     await advance(close + settled);
     expect(motes).not.toHaveBeenCalled();
 

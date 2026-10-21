@@ -9,53 +9,25 @@ import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
-  router: { back: jest.fn(), push: mockPush, replace: jest.fn() },
+  router: { back: jest.fn(), push: (...args: unknown[]) => mockPush(...args), replace: jest.fn() },
   useLocalSearchParams: () => ({}),
 }));
 
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
-}));
-
-jest.mock('@/context/NotificationContext', () =>
-  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
-);
-
-jest.mock('@/lib/query-client', () => ({
-  getApiUrl: () => 'http://localhost',
-  apiRequest: jest.fn(),
-}));
-
-const mockData: Record<string, unknown> = {};
-const mockFailing = new Set<string>();
-jest.mock('@tanstack/react-query', () => ({
-  useQuery: ({ queryKey }: { queryKey: string[] }) => ({
-    data: mockData[queryKey[0]],
-    isLoading: false,
-    isError: mockFailing.has(queryKey[0]),
-    isSuccess: !mockFailing.has(queryKey[0]),
-    refetch: jest.fn(),
-  }),
-  useQueryClient: () => ({ setQueryData: jest.fn(), invalidateQueries: jest.fn() }),
-}));
-
 import React from 'react';
-import { render, act, fireEvent } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { act, fireEvent, waitFor } from '@testing-library/react-native';
 import { translate, DEFAULT_LOCALE } from '@/shared/i18n';
 import type { TranslationKey, TranslationParams } from '@/shared/i18n';
 
-import { SettingsProvider } from '@/context/SettingsContext';
+import { queryClient } from '@/lib/query-client';
+import { setWindow } from './harness/env';
+import { queriesSettled, renderApp } from './harness/renderApp';
+import { httpRequests, route } from './mocks/http';
 
 const ProfileScreen = require('@/app/profile').default as React.ComponentType;
 
 const t = (key: string, params?: TranslationParams) =>
   translate(DEFAULT_LOCALE, key as TranslationKey, params);
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 800, height: 600 },
-  insets: { top: 0, left: 0, right: 0, bottom: 0 },
-};
 
 interface Participant {
   name: string | null;
@@ -90,9 +62,10 @@ const seats = (names: string) =>
     t('history.with', { names }).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   );
 
-function show(history: unknown[]) {
-  mockData['/api/stats/history'] = history;
-  mockData['/api/stats/me'] = {
+async function show(history: unknown[]) {
+  const answer = (path: string, body: unknown) => route('GET', path, { body });
+  answer('/api/stats/history', history);
+  answer('/api/stats/me', {
     userId: 'u1',
     roundsPlayed: history.length,
     roundsWon: 1,
@@ -102,21 +75,17 @@ function show(history: unknown[]) {
     dailyStreak: 1,
     bombsPlayed: 0,
     updatedAt: new Date().toISOString(),
-  };
-  mockData['/api/ratings/me'] = { season: '2026-08', rating: 1000, rounds: history.length, provisional: true };
-  mockData['/api/stats/achievements'] = [];
-  return render(
-    <SafeAreaProvider initialMetrics={METRICS}>
-      <SettingsProvider>
-        <ProfileScreen />
-      </SettingsProvider>
-    </SafeAreaProvider>
-  );
+  });
+  answer('/api/ratings/me', { season: '2026-08', rating: 1000, rounds: history.length, provisional: true });
+  answer('/api/stats/achievements', []);
+  await setWindow({ width: 800, height: 600 });
+  const view = await renderApp(<ProfileScreen />, { user: { id: 'u1', username: 'Ana' } });
+  await waitFor(() => expect(httpRequests().some((r) => r.path === '/api/stats/history')).toBe(true));
+  await queriesSettled();
+  return view;
 }
 
 beforeEach(() => {
-  for (const key of Object.keys(mockData)) delete mockData[key];
-  mockFailing.clear();
   mockPush.mockClear();
 });
 
@@ -127,7 +96,7 @@ describe('the recent-rounds card', () => {
     ]);
     await act(async () => {});
 
-    expect(view.getByLabelText(seats('Bea, Luan'))).toBeTruthy();
+    expect(await view.findByLabelText(seats('Bea, Luan'))).toBeTruthy();
     await view.unmount();
   });
 
@@ -141,7 +110,7 @@ describe('the recent-rounds card', () => {
     await act(async () => {});
 
     const names = `${t('history.botSeat')}, ${t('history.unknownSeat')}`;
-    expect(view.getByLabelText(seats(names))).toBeTruthy();
+    expect(await view.findByLabelText(seats(names))).toBeTruthy();
     await view.unmount();
   });
 
@@ -157,7 +126,7 @@ describe('the recent-rounds card', () => {
     const view = await show([hand('a', [{ name: 'Bea', bot: false }], 'r1')]);
     await act(async () => {});
 
-    await fireEvent.press(view.getByLabelText(WATCH_LABEL));
+    await fireEvent.press(await view.findByLabelText(WATCH_LABEL));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(online)/replay', params: { id: 'r1' } });
     await view.unmount();
   });
@@ -208,7 +177,7 @@ describe('the door out of the card', () => {
     await act(async () => {});
 
     await fireEvent.press(
-      view.getByLabelText(t('history.doorA11yLabel', { n: 8 }))
+      await view.findByLabelText(t('history.doorA11yLabel', { n: 8 }))
     );
     expect(mockPush).toHaveBeenCalledWith('/(online)/history');
     await view.unmount();
@@ -217,11 +186,12 @@ describe('the door out of the card', () => {
 
 describe('a failed refresh of the card', () => {
   it('keeps the rounds it has and says only that it could not refresh', async () => {
-    mockFailing.add('/api/stats/history');
     const view = await show([hand('a', [{ name: 'Bea', bot: false }], null)]);
-    await act(async () => {});
+    route('GET', '/api/stats/history', { status: 500 });
+    await act(() => queryClient.refetchQueries({ queryKey: ['/api/stats/history'] }));
+    await view.findByText(t('common.refreshFailed'));
 
-    expect(view.getByLabelText(seats('Bea'))).toBeTruthy();
+    expect(await view.findByLabelText(seats('Bea'))).toBeTruthy();
     expect(view.queryByText(t('history.errorTitle'))).toBeNull();
     expect(view.getByText(t('common.refreshFailed'))).toBeTruthy();
     await view.unmount();

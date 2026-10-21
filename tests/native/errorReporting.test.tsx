@@ -6,10 +6,8 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 
 jest.mock('react-native', () => ({ Platform: { OS: 'web' } }));
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: { version: '9.9.9' } } }));
-jest.mock('@/lib/query-client', () => ({
-  apiRequest: jest.fn(() => Promise.resolve({ ok: true })),
-  getApiUrl: () => 'http://localhost',
-}));
+// The server a device build names; this file never loads socket.io, which names it for the rest.
+process.env.EXPO_PUBLIC_DOMAIN ??= 'murlan.test';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -23,8 +21,25 @@ import {
 } from '@/lib/errorReporting';
 
 import { PENDING_CRASH_REPORTS_KEY } from '@/lib/storageKeys';
+import { httpRequests, route, type HttpReply } from './mocks/http';
 
-const apiRequest = (require('@/lib/query-client') as { apiRequest: jest.Mock }).apiRequest;
+type Answer = () => HttpReply;
+const accepted: Answer = () => ({ body: { ok: true } });
+/** How the endpoint answers every report, after the one-offs queued by `answerNext`. */
+let answer: Answer = accepted;
+let next: Answer[] = [];
+const answerNext = (once: Answer) => next.push(once);
+const answerAll = (always: Answer) => {
+  answer = always;
+};
+
+/** Reports posted since the last `forgetPosts`. */
+let forgotten = 0;
+const allPosts = () => httpRequests().filter((r) => r.path === '/api/client-errors');
+const posts = () => allPosts().slice(forgotten);
+const forgetPosts = () => {
+  forgotten = allPosts().length;
+};
 
 type Listener = (event: unknown) => void;
 const listeners = new Map<string, Set<Listener>>();
@@ -45,13 +60,16 @@ const emit = (type: string, event: unknown) => {
   for (const fn of fns!) fn(event);
 };
 
-const sent = () => apiRequest.mock.calls.map((c) => c[2] as Record<string, unknown>);
+const sent = () => posts().map((r) => r.body as Record<string, unknown>);
 
 let teardown: () => void = () => {};
 
 beforeEach(() => {
   listeners.clear();
-  apiRequest.mockClear();
+  answer = accepted;
+  next = [];
+  forgotten = 0;
+  route('POST', '/api/client-errors', () => (next.shift() ?? answer)());
   resetErrorReportingForTests();
   (globalThis as { window?: unknown }).window = fakeWindow;
   teardown = installGlobalErrorHandlers();
@@ -67,10 +85,10 @@ describe('an unhandled rejection reaches the endpoint', () => {
     setCurrentScreen('/game');
     emit('unhandledrejection', { reason: new Error('socket ack never came') });
 
-    expect(apiRequest).toHaveBeenCalledTimes(1);
-    const [method, route] = apiRequest.mock.calls[0];
+    expect(posts()).toHaveLength(1);
+    const { method, path } = posts()[0];
     expect(method).toBe('POST');
-    expect(route).toBe('/api/client-errors');
+    expect(path).toBe('/api/client-errors');
     expect(sent()[0]).toMatchObject({
       message: 'socket ack never came',
       screen: '/game',
@@ -99,7 +117,7 @@ describe('one throw makes one row', () => {
     emit('unhandledrejection', { reason: error });
     reportError(error, 'at Hand\n at GameTable');
 
-    expect(apiRequest).toHaveBeenCalledTimes(1);
+    expect(posts()).toHaveLength(1);
   });
 
   // The floor. Deduplicating everything would satisfy the assertion above
@@ -109,14 +127,14 @@ describe('one throw makes one row', () => {
     emit('unhandledrejection', { reason: new Error('first') });
     emit('unhandledrejection', { reason: new Error('second') });
 
-    expect(apiRequest).toHaveBeenCalledTimes(2);
+    expect(posts()).toHaveLength(2);
     expect(sent().map((s) => s.message)).toEqual(['first', 'second']);
   });
 });
 
 describe('the reporter cannot take the app down with it', () => {
   it('swallows a reporter that throws, rather than throwing from the handler', () => {
-    apiRequest.mockImplementationOnce(() => {
+    answerNext(() => {
       throw new Error('the outage that caused the crash also breaks reporting');
     });
 
@@ -124,7 +142,7 @@ describe('the reporter cannot take the app down with it', () => {
   });
 
   it('does not report its own failure, which is the infinite loop', () => {
-    apiRequest.mockImplementationOnce(() => {
+    answerNext(() => {
       // What a global handler would do if the throw escaped: report it.
       const inner = new Error('reporting failed');
       expect(reportError(inner)).toBe(false);
@@ -132,7 +150,7 @@ describe('the reporter cannot take the app down with it', () => {
     });
 
     emit('unhandledrejection', { reason: new Error('original') });
-    expect(apiRequest).toHaveBeenCalledTimes(1);
+    expect(posts()).toHaveLength(1);
   });
 });
 
@@ -141,10 +159,10 @@ describe('reportSocketClose', () => {
     setCurrentScreen('/game');
     reportSocketClose('transport error');
 
-    expect(apiRequest).toHaveBeenCalledTimes(1);
-    const [method, route] = apiRequest.mock.calls[0];
+    expect(posts()).toHaveLength(1);
+    const { method, path } = posts()[0];
     expect(method).toBe('POST');
-    expect(route).toBe('/api/client-errors');
+    expect(path).toBe('/api/client-errors');
     expect(sent()[0]).toMatchObject({
       message: 'socket disconnect: transport error',
       screen: '/game',
@@ -162,16 +180,16 @@ describe('reportSocketClose', () => {
     reportSocketClose('transport close');
     reportSocketClose('ping timeout');
 
-    expect(apiRequest).not.toHaveBeenCalled();
+    expect(posts()).toEqual([]);
   });
 
   it('posts for parse error too — the other reason only the client ever sees', () => {
     reportSocketClose('parse error');
-    expect(apiRequest).toHaveBeenCalledTimes(1);
+    expect(posts()).toHaveLength(1);
   });
 
   it('never throws when the endpoint itself throws', () => {
-    apiRequest.mockImplementationOnce(() => {
+    answerNext(() => {
       throw new Error('the outage that dropped the socket also breaks reporting');
     });
 
@@ -180,7 +198,7 @@ describe('reportSocketClose', () => {
 });
 
 describe('a report the server never took', () => {
-  const refused = () => Promise.reject(new Error('401: sign in first'));
+  const refused: Answer = () => ({ status: 401, body: 'sign in first' });
   const kept = async () =>
     JSON.parse((await AsyncStorage.getItem(PENDING_CRASH_REPORTS_KEY)) ?? '[]') as { message: string }[];
   const eventually = async (check: () => Promise<boolean>) => {
@@ -190,12 +208,12 @@ describe('a report the server never took', () => {
   beforeEach(() => AsyncStorage.clear());
 
   it('is kept on the device and sent after the next sign-in', async () => {
-    apiRequest.mockImplementationOnce(refused);
+    answerNext(refused);
     reportError(new Error('signed-out crash'));
     await eventually(async () => (await kept()).length > 0);
     expect((await kept()).map((r) => r.message)).toEqual(['signed-out crash']);
 
-    apiRequest.mockClear();
+    forgetPosts();
     await setReportingAccount('u1');
 
     expect(sent().map((r) => r.message)).toEqual(['signed-out crash']);
@@ -203,19 +221,19 @@ describe('a report the server never took', () => {
   });
 
   it('keeps only the newest few', async () => {
-    apiRequest.mockImplementation(refused);
+    answerAll(refused);
     const count = PENDING_CRASH_REPORTS_MAX + 2;
     for (let i = 0; i < count; i++) reportError(new Error(`crash ${i}`));
     await eventually(async () => (await kept()).some((r) => r.message === `crash ${count - 1}`));
     expect((await kept()).map((r) => r.message)).toEqual(
       Array.from({ length: PENDING_CRASH_REPORTS_MAX }, (_, i) => `crash ${i + 2}`)
     );
-    apiRequest.mockImplementation(() => Promise.resolve({ ok: true }));
+    answerAll(accepted);
   });
 
   it('overwrites a corrupt list rather than losing every later report', async () => {
     await AsyncStorage.setItem(PENDING_CRASH_REPORTS_KEY, '{not json');
-    apiRequest.mockImplementationOnce(refused);
+    answerNext(refused);
     reportError(new Error('after the corruption'));
     await eventually(async () => (await AsyncStorage.getItem(PENDING_CRASH_REPORTS_KEY)) !== '{not json');
     expect((await kept()).map((r) => r.message)).toEqual(['after the corruption']);
@@ -223,11 +241,11 @@ describe('a report the server never took', () => {
 
   it('is posted only by the account it was queued under', async () => {
     await setReportingAccount('A');
-    apiRequest.mockImplementationOnce(refused);
+    answerNext(refused);
     reportError(new Error('crash of A'));
     await eventually(async () => (await kept()).length > 0);
 
-    apiRequest.mockClear();
+    forgetPosts();
     await setReportingAccount('B');
     expect(sent()).toEqual([]);
     expect((await kept()).map((r) => r.message)).toEqual(['crash of A']);
@@ -246,7 +264,7 @@ describe('a report the server never took', () => {
       JSON.stringify([{ message: 'legacy crash of A' }])
     );
 
-    apiRequest.mockClear();
+    forgetPosts();
     await setReportingAccount('B');
 
     expect(sent()).toEqual([]);
@@ -255,7 +273,7 @@ describe('a report the server never took', () => {
 
   it('records a signed-out report as owned by nobody', async () => {
     await setReportingAccount(null);
-    apiRequest.mockImplementationOnce(refused);
+    answerNext(refused);
     reportError(new Error('signed out'));
     await eventually(async () => (await kept()).length > 0);
     expect(await kept()).toEqual([expect.objectContaining({ message: 'signed out', account: null })]);
@@ -263,11 +281,11 @@ describe('a report the server never took', () => {
 
   it('queued while signed out, goes with whoever signs in next', async () => {
     await setReportingAccount(null);
-    apiRequest.mockImplementationOnce(refused);
+    answerNext(refused);
     reportError(new Error('nobody signed in'));
     await eventually(async () => (await kept()).length > 0);
 
-    apiRequest.mockClear();
+    forgetPosts();
     await setReportingAccount('B');
     expect(sent().map((r) => r.message)).toEqual(['nobody signed in']);
   });

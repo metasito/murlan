@@ -5,21 +5,19 @@
 // from a defined one.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
-import { render, fireEvent, act } from '@testing-library/react-native';
+import { fireEvent, act } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 
 import { en as locale } from '@/locales/en';
+import { state } from '../support/game';
+import { renderApp } from './harness/renderApp';
 
 const mockLeaveRoom = jest.fn();
 let mockMatchOver = false;
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
-}));
-
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'alice', username: 'Alice' } }),
 }));
 
 const mockSeat = (id: string, name: string): Player => ({
@@ -29,7 +27,7 @@ const mockSeat = (id: string, name: string): Player => ({
   type: 'human',
 });
 
-const mockFinished: GameState = {
+const mockFinished: GameState = state({
   players: [mockSeat('player_0', 'Alice'), mockSeat('player_1', 'Carl')],
   currentTurnIndex: 0,
   lastPlayedCombination: null,
@@ -41,7 +39,7 @@ const mockFinished: GameState = {
   finishingOrder: ['player_0', 'player_1'],
   firstPlayMade: true,
   lastMove: { seq: 0, kind: 'deal' },
-};
+});
 
 jest.mock('@/context/onlineGameHooks', () => ({
   useServerError: () => null,
@@ -132,7 +130,7 @@ const METRICS = {
 };
 
 async function overlayShown() {
-  const view = await render(
+  const view = await mount(
     <SafeAreaProvider initialMetrics={METRICS}>
       <OnlineGameScreen />
     </SafeAreaProvider>
@@ -145,6 +143,8 @@ async function overlayShown() {
 
 /** Comfortably past the match ending's settled board. */
 const GAME_OVER_DELAY_CEILING = 10_000;
+
+const mount = (ui: React.ReactElement) => renderApp(ui, { user: { id: 'alice', username: 'Alice' } });
 
 describe('leaving between rounds, online', () => {
   beforeEach(() => {

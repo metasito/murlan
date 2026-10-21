@@ -10,10 +10,6 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({}),
 }));
 
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
-}));
-
 const mockScrollTo = jest.fn();
 jest.mock('@/components/MenuLayout', () => ({
   MenuLayout: ({ children, scrollRef }: { children: unknown; scrollRef?: { current: unknown } }) => {
@@ -22,37 +18,22 @@ jest.mock('@/components/MenuLayout', () => ({
   },
 }));
 
-const mockData: Record<string, unknown> = {};
-let mockState: Record<string, unknown> = {};
-jest.mock('@tanstack/react-query', () => ({
-  useQuery: ({ queryKey }: { queryKey: string[] }) => ({
-    data: mockData[queryKey[0]],
-    isLoading: false,
-    isError: false,
-    isSuccess: true,
-    refetch: jest.fn(),
-    ...mockState,
-  }),
-  useQueryClient: () => ({ setQueryData: jest.fn(), invalidateQueries: jest.fn() }),
-}));
-
 import React from 'react';
-import { render, act, fireEvent } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { act, fireEvent, waitFor } from '@testing-library/react-native';
 import { translate, DEFAULT_LOCALE } from '@/shared/i18n';
 import type { TranslationKey, TranslationParams } from '@/shared/i18n';
 
-import { SettingsProvider } from '@/context/SettingsContext';
+import { queryClient } from '@/lib/query-client';
+import { setWindow } from './harness/env';
+import { renderApp } from './harness/renderApp';
+import { route } from './mocks/http';
 
 const HistoryScreen = require('@/app/(online)/history').default as React.ComponentType;
 
 const t = (key: string, params?: TranslationParams) =>
   translate(DEFAULT_LOCALE, key as TranslationKey, params);
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 800, height: 600 },
-  insets: { top: 0, left: 0, right: 0, bottom: 0 },
-};
+const HISTORY = '/api/stats/history';
 
 /** Each round is given the seat name its index makes, so a row is identifiable. */
 const hands = (n: number) =>
@@ -73,26 +54,29 @@ const hands = (n: number) =>
 const seats = (names: string) =>
   new RegExp(t('history.with', { names }).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 
-function show(history: unknown[]) {
-  mockData['/api/stats/history'] = history;
-  return render(
-    <SafeAreaProvider initialMetrics={METRICS}>
-      <SettingsProvider>
-        <HistoryScreen />
-      </SettingsProvider>
-    </SafeAreaProvider>
-  );
+/** The screen once the server has answered `answer` for the player's rounds. */
+async function show(answer: { status?: number; body?: unknown }) {
+  route('GET', HISTORY, answer);
+  await setWindow({ width: 800, height: 600 });
+  const view = await renderApp(<HistoryScreen />, { user: { id: 'u1', username: 'Ana' } });
+  await waitFor(() => expect(queryClient.getQueryState([HISTORY])?.fetchStatus).toBe('idle'));
+  return view;
+}
+const rounds = (history: unknown[]) => show({ body: history });
+
+/** A refresh that fails over the rounds already shown. */
+async function refreshFails() {
+  route('GET', HISTORY, { status: 500 });
+  await act(() => queryClient.refetchQueries({ queryKey: [HISTORY] }));
 }
 
 beforeEach(() => {
-  for (const key of Object.keys(mockData)) delete mockData[key];
-  mockState = {};
   mockBack.mockClear();
 });
 
 describe('the full history screen', () => {
   it('shows one page of rounds and says which page it is', async () => {
-    const view = await show(hands(23));
+    const view = await rounds(hands(23));
     await act(async () => {});
 
     expect(view.getByText(t('history.pageLabel', { page: 1, total: 3 }))).toBeTruthy();
@@ -102,7 +86,7 @@ describe('the full history screen', () => {
   });
 
   it('walks forward and back through the pages', async () => {
-    const view = await show(hands(23));
+    const view = await rounds(hands(23));
     await act(async () => {});
 
     await fireEvent.press(view.getByLabelText(t('history.nextA11yLabel')));
@@ -119,7 +103,7 @@ describe('the full history screen', () => {
   // The last page is short, and it is the last: there is no page four to walk
   // into, which is the whole difference from a scroll that never ends.
   it('ends, with a final page that is not full', async () => {
-    const view = await show(hands(23));
+    const view = await rounds(hands(23));
     await act(async () => {});
 
     await fireEvent.press(view.getByLabelText(t('history.nextA11yLabel')));
@@ -133,7 +117,7 @@ describe('the full history screen', () => {
   });
 
   it('offers no paging at all when everything fits on one page', async () => {
-    const view = await show(hands(4));
+    const view = await rounds(hands(4));
     await act(async () => {});
 
     expect(view.queryByLabelText(t('history.nextA11yLabel'))).toBeNull();
@@ -143,7 +127,7 @@ describe('the full history screen', () => {
   });
 
   it('says so when there are no rounds at all', async () => {
-    const view = await show([]);
+    const view = await rounds([]);
     await act(async () => {});
 
     expect(view.getByLabelText(new RegExp(t('history.emptyTitle')))).toBeTruthy();
@@ -154,9 +138,9 @@ describe('the full history screen', () => {
 
 describe('a refresh that fails over rounds already shown', () => {
   it('keeps the rounds and offers a compact retry, not the full error', async () => {
-    mockState = { isError: true, isSuccess: false };
-    const view = await show(hands(4));
-    await act(async () => {});
+    const view = await rounds(hands(4));
+    await refreshFails();
+    await view.findByText(t('common.refreshFailed'));
 
     expect(view.getByLabelText(seats('Seat0'))).toBeTruthy();
     expect(view.queryByText(t('history.errorTitle'))).toBeNull();
@@ -166,8 +150,7 @@ describe('a refresh that fails over rounds already shown', () => {
   });
 
   it('shows the full error when there is nothing to fall back on', async () => {
-    mockState = { isError: true, isSuccess: false };
-    const view = await show(undefined as unknown as unknown[]);
+    const view = await show({ status: 500 });
     await act(async () => {});
 
     expect(view.getByText(t('history.errorTitle'))).toBeTruthy();
@@ -178,7 +161,7 @@ describe('a refresh that fails over rounds already shown', () => {
 
 describe('changing page', () => {
   it('scrolls back to the top of the list', async () => {
-    const view = await show(hands(23));
+    const view = await rounds(hands(23));
     await act(async () => {});
     mockScrollTo.mockClear();
 

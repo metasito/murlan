@@ -10,18 +10,21 @@
 // caller here would double it, so its absence is asserted.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen } from '@testing-library/react-native';
 import type { GameState } from '@/lib/game/gameEngine';
 import type { TurnTimerConfig } from '@/components/turnTimerUi';
+import { state } from '../support/game';
+import { renderApp } from './harness/renderApp';
+import { bannerLog } from './harness/bannerLog';
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
 const mockPassTurn = jest.fn((_expectedTurn?: string) => true);
-const mockShowNotification = jest.fn();
+const { shown, BannerLog } = bannerLog();
 
-const STATE: GameState = {
+const mockState: GameState = state({
   players: [
     { id: 'player_0', name: 'Ana', hand: [], type: 'human' },
     { id: 'player_1', name: 'Luan', hand: [], type: 'bot' },
@@ -36,20 +39,16 @@ const STATE: GameState = {
   finishingOrder: [],
   firstPlayMade: true,
   lastMove: { seq: 0, kind: 'deal' },
-};
+});
 
 jest.mock('@/context/GameContext', () =>
   (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(() => ({
-    gameState: STATE,
+    gameState: mockState,
     passTurn: mockPassTurn,
     exchangeAnnouncing: false,
     exchangeAnnounceData: null,
     match: { length: 'single', target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
   }))
-);
-
-jest.mock('@/context/NotificationContext', () =>
-  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock(() => mockShowNotification)
 );
 
 // The clock itself is GameTable's; what is under test is what the screen wires
@@ -77,6 +76,14 @@ import { bootFeedback, haptics, sounds } from './helpers/feedback';
 import { turnKey } from '@/components/passes';
 import GameScreen from '@/app/game';
 
+const mount = (ui: React.ReactElement) =>
+  renderApp(
+    <>
+      <BannerLog />
+      {ui}
+    </>
+  );
+
 describe('the offline turn clock expiring', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -84,7 +91,7 @@ describe('the offline turn clock expiring', () => {
   });
 
   it('passes with the warn haptic and tells the table, whose pass float names it, leaving the sound to the table', async () => {
-    const r = await render(<GameScreen />);
+    const r = await mount(<GameScreen />);
     const before = mockSeenTimer.autoPassed;
 
     await act(async () => {
@@ -93,17 +100,17 @@ describe('the offline turn clock expiring', () => {
 
     expect(haptics()).toContain('notificationWarning');
     expect(sounds()).not.toContain('pass');
-    expect(mockShowNotification).not.toHaveBeenCalled();
+    expect(shown).toEqual([]);
     expect(mockSeenTimer.autoPassed).toBe((before ?? 0) + 1);
     expect(mockPassTurn).toHaveBeenCalledTimes(1);
-    expect(mockPassTurn).toHaveBeenCalledWith(turnKey(STATE));
+    expect(mockPassTurn).toHaveBeenCalledWith(turnKey(mockState));
 
     await r.unmount();
   });
 
   it('says nothing when the turn it was kept for has already moved on', async () => {
     mockPassTurn.mockReturnValueOnce(false);
-    const r = await render(<GameScreen />);
+    const r = await mount(<GameScreen />);
     const before = mockSeenTimer.autoPassed;
 
     await act(async () => {
@@ -121,7 +128,7 @@ describe('the offline turn clock expiring', () => {
   // AFK window and this stays off, or the countdown would draw time the seat
   // has already spent.
   it('is the screen’s own to stop, and says so', async () => {
-    const r = await render(<GameScreen />);
+    const r = await mount(<GameScreen />);
 
     expect(mockSeenTimer.current?.pausable).toBe(true);
 

@@ -9,8 +9,10 @@
 // and whether the screen ever calls it is the whole question.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
-import { act, render } from '@testing-library/react-native';
+import { act } from '@testing-library/react-native';
 import type { GameState } from '@/lib/game/gameEngine';
+import { state } from '../support/game';
+import { renderApp } from './harness/renderApp';
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
@@ -20,7 +22,7 @@ const mockRunBotTurn = jest.fn();
 const mockTable: { props: { onExchangeReady?: () => void } } = { props: {} };
 
 /** The bot is on move and the exchange has just resolved. */
-const STATE: GameState = {
+const STATE: GameState = state({
   players: [
     { id: 'player_0', name: 'Ana', hand: [], type: 'human' },
     { id: 'player_1', name: 'Luan', hand: [], type: 'bot' },
@@ -35,17 +37,17 @@ const STATE: GameState = {
   finishingOrder: [],
   firstPlayMade: true,
   lastMove: { seq: 0, kind: 'deal' },
-};
+});
 
 /** A bot won the last round and owes the human a card back. */
-const CHOOSING: GameState = {
+const CHOOSING: GameState = state({
   ...STATE,
   players: [
     { id: 'player_0', name: 'Ana', hand: [{ id: '4_clubs', suit: 'clubs', rank: '4', isJoker: false }], type: 'human' },
     { id: 'player_1', name: 'Luan', hand: [{ id: '6_clubs', suit: 'clubs', rank: '6', isJoker: false }], type: 'bot' },
   ],
   exchangePhase: { active: true, winnerIdx: 1, loserIdx: 0, cardFromLoser: { id: '2_clubs', suit: 'clubs', rank: '2', isJoker: false }, twoJokerException: false },
-};
+});
 
 /** Flipped between renders: prefixed so jest.mock may close over it. */
 const mockCeremony = { announcing: false, state: STATE };
@@ -58,10 +60,6 @@ jest.mock('@/context/GameContext', () =>
     exchangeAnnounceData: null,
     match: { length: 'single', target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
   }))
-);
-
-jest.mock('@/context/NotificationContext', () =>
-  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
 );
 
 // The table draws nothing here: every path under test is the screen's own
@@ -82,6 +80,8 @@ import GameScreen from '@/app/game';
 /** Comfortably past the bot's think, whatever it is set to (lib/timeline/offlineBotDelay.ts). */
 const PAST_THE_THINK = 5_000;
 
+const mount = (ui: React.ReactElement) => renderApp(ui);
+
 describe('a bot on move while the exchange is being announced', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -94,7 +94,7 @@ describe('a bot on move while the exchange is being announced', () => {
   // What the bot gives is the provider's (tests/native/offlineDriver.test.tsx); when is the table's.
   it('a bot winner gives when the table opens the choice, not on a clock of its own', async () => {
     mockCeremony.state = CHOOSING;
-    const view = await render(<GameScreen />);
+    const view = await mount(<GameScreen />);
     await act(async () => {
       jest.advanceTimersByTime(PAST_THE_THINK * 4);
     });
@@ -107,7 +107,7 @@ describe('a bot on move while the exchange is being announced', () => {
 
   it('does not play until the ceremony is over', async () => {
     mockCeremony.announcing = true;
-    const view = await render(<GameScreen />);
+    const view = await mount(<GameScreen />);
 
     await act(async () => {
       jest.advanceTimersByTime(PAST_THE_THINK);

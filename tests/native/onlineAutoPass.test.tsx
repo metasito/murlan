@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook } from '@testing-library/react-native';
+import { act } from '@testing-library/react-native';
+import { bannerLog } from './harness/bannerLog';
+import { renderAppHook } from './harness/renderApp';
 
 import { OnlineGameProvider } from '@/context/OnlineGameContext';
 import type { WireGameState } from '@/shared/protocol';
@@ -23,13 +24,11 @@ const mockSocket = {
   emit() {},
 };
 jest.mock('@/context/SocketContext', () => ({
+  ...jest.requireActual<object>('@/context/SocketContext'),
   useSocketConnection: () => mockSocket,
 }));
 
-const mockShowNotification = jest.fn();
-jest.mock('@/context/NotificationContext', () =>
-  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock(() => mockShowNotification)
-);
+const { shown, BannerLog } = bannerLog();
 
 /** The name the server reads for its notice is the dealt seat's, `gameState.players[seat].name`. */
 const DEALT: WireGameState = {
@@ -65,15 +64,17 @@ const afk = (username: string, code = 'PLAYER_AFK_AUTO_PASS') => ({
 describe('the server auto-passing', () => {
   beforeEach(() => {
     listeners.clear();
-    mockShowNotification.mockClear();
+    shown.length = 0;
   });
 
   const mount = async () => {
-    const view = await renderHook(() => useOnlineTable(), {
-      wrapper: ({ children }: { children: React.ReactNode }) => (
-        <QueryClientProvider client={new QueryClient()}>
-          <OnlineGameProvider userId="u1">{children}</OnlineGameProvider>
-        </QueryClientProvider>
+    const view = await renderAppHook(() => useOnlineTable(), {
+      user: { id: 'u1', username: 'Ana' },
+      wrap: (hook) => (
+        <OnlineGameProvider userId="u1">
+          <BannerLog />
+          {hook}
+        </OnlineGameProvider>
       ),
     });
     await deliver('game:state', DEALT);
@@ -85,7 +86,7 @@ describe('the server auto-passing', () => {
     const before = view.result.current.autoPassed;
     await deliver('game:notification', afk('Ana'));
     expect(view.result.current.autoPassed).toBe((before ?? 0) + 1);
-    expect(mockShowNotification).not.toHaveBeenCalled();
+    expect(shown).toEqual([]);
     await view.unmount();
   });
 
@@ -95,7 +96,7 @@ describe('the server auto-passing', () => {
     await deliver('game:notification', afk('Besi'));
     await deliver('game:notification', afk('Ana', 'PLAYER_AFK_AUTO_EXCHANGE'));
     expect(view.result.current.autoPassed).toBe(before);
-    expect(mockShowNotification).toHaveBeenCalledTimes(2);
+    expect(shown).toHaveLength(2);
     await view.unmount();
   });
 });

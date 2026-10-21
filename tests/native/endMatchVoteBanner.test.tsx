@@ -4,20 +4,18 @@
 // live tally must land on a node of its own rather than inside the control.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { render, fireEvent, waitFor, within } from '@testing-library/react-native';
+import { fireEvent, waitFor, within } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { NoticePalette } from '@/lib/theme';
 
 import { en as locale } from '@/locales/en';
+import { state } from '../support/game';
+import { renderApp } from './harness/renderApp';
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
-}));
-
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'alice', username: 'Alice' } }),
 }));
 
 const seat = (id: string, name: string, extra: Partial<Player> = {}): Player => ({
@@ -28,7 +26,7 @@ const seat = (id: string, name: string, extra: Partial<Player> = {}): Player => 
   ...extra,
 });
 
-const stateWith = (over: Partial<GameState>): GameState => ({
+const stateWith = (over: Partial<GameState>): GameState => state({
   players: [
     seat('player_0', 'Alice'),
     seat('player_1', 'Drita', { type: 'bot', vacated: true } as Partial<Player>),
@@ -131,6 +129,8 @@ const screenUnderTest = () => (
   </SafeAreaProvider>
 );
 
+const mount = (ui: React.ReactElement) => renderApp(ui, { user: { id: 'alice', username: 'Alice' } });
+
 describe('the end-match vote banner, a seat vacated', () => {
   beforeEach(() => {
     mockVoteToEndMatch.mockClear();
@@ -138,7 +138,7 @@ describe('the end-match vote banner, a seat vacated', () => {
   });
 
   it('names what tapping it does, not its own hint, before anyone has voted', async () => {
-    const view = await render(screenUnderTest());
+    const view = await mount(screenUnderTest());
 
     const button = view.getByRole('button', { name: locale['game.endMatchVoteButton'] });
     expect(button).toBeTruthy();
@@ -147,7 +147,7 @@ describe('the end-match vote banner, a seat vacated', () => {
   });
 
   it('opens a confirmation and emits nothing until the accept control is pressed', async () => {
-    const view = await render(screenUnderTest());
+    const view = await mount(screenUnderTest());
 
     await fireEvent.press(view.getByRole('button', { name: locale['game.endMatchVoteButton'] }));
     expect(mockVoteToEndMatch).not.toHaveBeenCalled();
@@ -161,7 +161,7 @@ describe('the end-match vote banner, a seat vacated', () => {
 
   it('reads as the withdraw control once the tally shows the viewer has voted', async () => {
     mockEndMatchVoteState = { votes: ['alice'], total: 2 };
-    const view = await render(screenUnderTest());
+    const view = await mount(screenUnderTest());
 
     const button = view.getByRole('button', { name: locale['game.endMatchWithdrawButton'] });
     expect(button).toBeTruthy();
@@ -177,7 +177,7 @@ describe('the end-match vote banner, a seat vacated', () => {
 
   it('puts the live tally on a node of its own, apart from the button', async () => {
     mockEndMatchVoteState = { votes: ['alice'], total: 2 };
-    const view = await render(screenUnderTest());
+    const view = await mount(screenUnderTest());
 
     const tallyText = locale['game.endMatchVoteTallyVoted']
       .replace('{{votes}}', '1')
@@ -193,14 +193,14 @@ describe('the end-match vote banner, a seat vacated', () => {
   });
 
   it('is one notice plate, lit once the viewer has voted, so a second tap visibly withdraws', async () => {
-    const edge = (view: Awaited<ReturnType<typeof render>>) =>
+    const edge = (view: Awaited<ReturnType<typeof mount>>) =>
       StyleSheet.flatten(view.getByTestId('notice-endMatchVote', { includeHiddenElements: true }).props.style).borderColor;
-    const idle = await render(screenUnderTest());
+    const idle = await mount(screenUnderTest());
     expect(edge(idle)).toBe(NoticePalette.pill.neutral.edge);
     await idle.unmount();
 
     mockEndMatchVoteState = { votes: ['alice'], total: 2 };
-    const voted = await render(screenUnderTest());
+    const voted = await mount(screenUnderTest());
     expect(edge(voted)).toBe(NoticePalette.pill.lit.edge);
     expect(voted.getAllByTestId('notice-endMatchVote', { includeHiddenElements: true })).toHaveLength(1);
     await voted.unmount();
@@ -208,7 +208,7 @@ describe('the end-match vote banner, a seat vacated', () => {
 
   it('reverts to the base label once the tally returns to zero (a withdrawal)', async () => {
     mockEndMatchVoteState = { votes: [], total: 2 };
-    const view = await render(screenUnderTest());
+    const view = await mount(screenUnderTest());
 
     expect(
       view.getByText(locale['game.endMatchVoteButton'], { includeHiddenElements: true })

@@ -6,12 +6,13 @@
 // consume what another is showing.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen } from '@testing-library/react-native';
+import { setWindow } from './harness/env';
+import { renderApp } from './harness/renderApp';
+import { bannerLog } from './harness/bannerLog';
 import { Pressable, Text } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-const mockShowNotification = jest.fn();
+const { shown, BannerLog } = bannerLog();
 const mockSocketListeners = new Map<string, Set<(payload: unknown) => void>>();
 
 jest.mock('expo-router', () => ({
@@ -19,10 +20,6 @@ jest.mock('expo-router', () => ({
 }));
 
 jest.mock('expo-router/react-navigation', () => ({ usePreventRemove: () => {} }));
-
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' } }),
-}));
 
 jest.mock('@/context/SocketContext', () => {
   const socket = {
@@ -37,15 +34,12 @@ jest.mock('@/context/SocketContext', () => {
     emit: () => {},
   };
   return {
+    ...jest.requireActual<object>('@/context/SocketContext'),
     useSocketConnection: () => socket,
     usePresence: () => ({ onlineIds: new Set(), refresh: () => {} }),
     useInvites: () => ({ send: async () => false }),
   };
 });
-
-jest.mock('@/context/NotificationContext', () =>
-  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock(() => mockShowNotification)
-);
 
 jest.mock('@tanstack/react-query', () => ({
   ...jest.requireActual<object>('@tanstack/react-query'),
@@ -60,10 +54,6 @@ import { sq } from '@/locales/sq';
 
 const RoomScreen = (require('@/app/(online)/room') as { default: React.ComponentType }).default;
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 390, height: 844 },
-  insets: { top: 0, left: 0, right: 0, bottom: 0 },
-};
 
 const ROOM = {
   roomId: 'r1',
@@ -102,20 +92,20 @@ function Attempts() {
 }
 const lobbyError = () => screen.getByTestId('lobby-error').props.children;
 
-const mount = (child?: React.ReactNode) =>
-  render(
-    <QueryClientProvider client={new QueryClient()}>
-      <OnlineGameProvider userId="u1">
-        <SafeAreaProvider initialMetrics={METRICS}>
-          <LobbyProbe />
-          {child}
-        </SafeAreaProvider>
-      </OnlineGameProvider>
-    </QueryClientProvider>
+const mount = async (child?: React.ReactNode) => {
+  await setWindow({ width: 390, height: 844 });
+  return renderApp(
+    <OnlineGameProvider userId="u1">
+      <BannerLog />
+      <LobbyProbe />
+      {child}
+    </OnlineGameProvider>,
+    { user: { id: 'u1', username: 'Ana' } }
   );
+};
 
 beforeEach(() => {
-  mockShowNotification.mockClear();
+  shown.length = 0;
   mockSocketListeners.clear();
 });
 afterEach(async () => {
@@ -127,7 +117,7 @@ describe('a server refusal', () => {
     const r = await mount(<RoomScreen />);
     await emit('room:error', { code: 'ROOM_NOT_FOUND', message: 'Room not found' });
     await emit('room:state', ROOM);
-    expect(mockShowNotification).not.toHaveBeenCalled();
+    expect(shown).toEqual([]);
     expect(lobbyError()).toBe(en['server.ROOM_NOT_FOUND']);
     await r.unmount();
   });
@@ -136,8 +126,8 @@ describe('a server refusal', () => {
     const r = await mount(<RoomScreen />);
     await emit('room:state', ROOM);
     await emit('room:error', { code: 'ROOM_NOT_FOUND', message: 'Room not found' });
-    expect(mockShowNotification).toHaveBeenCalledTimes(1);
-    expect(mockShowNotification.mock.calls[0]?.[0]).toMatchObject({ message: en['server.ROOM_NOT_FOUND'] });
+    expect(shown).toHaveLength(1);
+    expect(shown[0]).toMatchObject({ message: en['server.ROOM_NOT_FOUND'] });
     expect(lobbyError()).toBe('');
     await r.unmount();
   });

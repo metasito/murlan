@@ -8,24 +8,18 @@
 // flight (#398).
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, act, render, fireEvent, screen } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { act, fireEvent, screen } from '@testing-library/react-native';
 import { en as locale } from '@/locales/en';
 
+import { useAuth } from '@/context/AuthContext';
+import { useInvites } from '@/context/SocketContext';
+import { queryClient as client } from '@/lib/query-client';
+import { renderApp } from './harness/renderApp';
+import { httpRequests, route } from './mocks/http';
 import { lastSocket } from './mocks/socketIo';
 
-const mockApiRequest = jest.fn(async (..._args: unknown[]) => ({}));
-jest.mock('@/lib/query-client', () => ({
-  ...(jest.requireActual('@/lib/query-client') as object),
-  apiRequest: (...args: unknown[]) => mockApiRequest(...args),
-}));
-
 const ANA = { id: 'u1', username: 'Ana' };
-let mockUser: { id: string; username: string } | null = ANA;
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: mockUser, forgetSession: async () => {} }),
-}));
+const BEN = { id: 'u2', username: 'Ben' };
 
 jest.mock('expo-router', () => {
   const ReactActual = require('react');
@@ -60,22 +54,25 @@ jest.mock('@/context/onlineGameHooks', () => ({
   useServerError: () => null,
 }));
 
-const { SocketProvider, useInvites } =
-  require('@/context/SocketContext') as typeof import('@/context/SocketContext');
-const { NotificationProvider } =
-  require('@/context/NotificationContext') as typeof import('@/context/NotificationContext');
+type Invites = ReturnType<typeof useInvites>;
 
-const mount = (client = new QueryClient()) => {
-  // Out here, not in the wrapper's body, which React re-runs on every render.
-  return renderHook(() => useInvites(), {
-    wrapper: ({ children }: { children: React.ReactNode }) => (
-      <QueryClientProvider client={client}>
-        <NotificationProvider>
-          <SocketProvider>{children}</SocketProvider>
-        </NotificationProvider>
-      </QueryClientProvider>
-    ),
-  });
+/** `hook` rendered under the app, read back as `result.current`. */
+const mountHook = async (hook: () => Invites, user: typeof ANA | null = ANA) => {
+  const result = {} as { current: Invites };
+  function Capture() {
+    result.current = hook();
+    return null;
+  }
+  const view = await renderApp(<Capture />, { user });
+  return { result, unmount: view.unmount, signIn: view.signIn, signOut: view.signOut };
+};
+const mount = () => mountHook(useInvites);
+
+/** A decline the test answers: `reject` fails it as a dropped connection does. */
+const heldDecline = () => {
+  const held = { reject: (_reason: Error) => {} };
+  route('DELETE', '/api/friends/invites/ABC123', () => new Promise((_resolve, reject) => (held.reject = reject)));
+  return held;
 };
 
 /** What the server sends when a friend invites this player to their table. */
@@ -86,7 +83,7 @@ const invite = async () => {
 };
 
 beforeEach(() => {
-  mockUser = ANA;
+  route('DELETE', '/api/friends/invites/ABC123', { body: {} });
   mockJoinRoom.mockClear();
   mockOnline.connected = false;
 });
@@ -120,24 +117,22 @@ describe('accepting an invite', () => {
   });
 
   it('takes the invite off the list without declining the seat it holds', async () => {
-    const client = new QueryClient();
     client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'ana', roomCode: 'ABC123' }]);
-    const { result, unmount } = await mount(client);
+    const { result, unmount } = await mount();
     expect(result.current.invites).toHaveLength(1);
 
     await act(async () => result.current.accept('ABC123'));
 
     expect(result.current.invites).toEqual([]);
-    expect(mockApiRequest).not.toHaveBeenCalledWith('DELETE', '/api/friends/invites/ABC123');
+    expect(httpRequests().filter((r) => r.method === 'DELETE' && r.path === '/api/friends/invites/ABC123')).toEqual([]);
 
     await unmount();
   });
 
   it('keeps an accepted invite off the list when a refetch still returns its row', async () => {
-    const client = new QueryClient();
     const row = { fromUsername: 'ana', roomCode: 'ABC123' };
     client.setQueryData(['/api/friends/invites'], [row]);
-    const { result, unmount } = await mount(client);
+    const { result, unmount } = await mount();
     const serverStillReturnsRow = () =>
       act(async () => {
         client.setQueryData(['/api/friends/invites'], [row]);
@@ -156,18 +151,14 @@ describe('accepting an invite', () => {
   });
 
   it('puts a declined invite back when the decline never reached the server', async () => {
-    const client = new QueryClient();
     client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'ana', roomCode: 'ABC123' }]);
-    const { result, unmount } = await mount(client);
-    let rejectDecline: (reason: Error) => void = () => {};
-    mockApiRequest.mockImplementationOnce(
-      () => new Promise((_resolve, reject) => (rejectDecline = reject))
-    );
+    const { result, unmount } = await mount();
+    const decline = heldDecline();
 
     await act(async () => result.current.dismiss('ABC123'));
     expect(result.current.invites).toEqual([]);
 
-    await act(async () => rejectDecline(new Error('offline')));
+    await act(async () => decline.reject(new Error('offline')));
     expect(result.current.invites).toEqual([{ from: 'ana', roomCode: 'ABC123' }]);
 
     await unmount();
@@ -186,42 +177,33 @@ describe('accepting an invite', () => {
 
 describe('hidden invites across accounts', () => {
   it("leaves the next account's hidden invites alone when an old decline fails", async () => {
-    const client = new QueryClient();
     client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'ana', roomCode: 'ABC123' }]);
-    const { result, rerender, unmount } = await mount(client);
-    let rejectDecline: (reason: Error) => void = () => {};
-    mockApiRequest.mockImplementationOnce(
-      () => new Promise((_resolve, reject) => (rejectDecline = reject))
-    );
+    const { result, signIn, signOut, unmount } = await mount();
+    const decline = heldDecline();
     await act(async () => result.current.dismiss('ABC123'));
 
-    mockUser = null;
-    await act(async () => rerender({}));
-    mockUser = { id: 'u2', username: 'Ben' };
-    await act(async () => rerender({}));
+    await signOut();
+    await signIn(BEN);
     await act(async () => {
       client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'cleo', roomCode: 'XYZ789' }]);
     });
     await act(async () => result.current.accept('XYZ789'));
     expect(result.current.invites).toEqual([]);
 
-    await act(async () => rejectDecline(new Error('unauthorized')));
+    await act(async () => decline.reject(new Error('unauthorized')));
     expect(result.current.invites).toEqual([]);
 
     await unmount();
   });
 
   it('keeps a hide when the same account signs out and back in', async () => {
-    const client = new QueryClient();
     const row = { fromUsername: 'ana', roomCode: 'ABC123' };
     client.setQueryData(['/api/friends/invites'], [row]);
-    const { result, rerender, unmount } = await mount(client);
+    const { result, signIn, signOut, unmount } = await mount();
     await act(async () => result.current.accept('ABC123'));
 
-    mockUser = null;
-    await act(async () => rerender({}));
-    mockUser = ANA;
-    await act(async () => rerender({}));
+    await signOut();
+    await signIn(ANA);
     await act(async () => {
       client.setQueryData(['/api/friends/invites'], [row]);
     });
@@ -232,35 +214,20 @@ describe('hidden invites across accounts', () => {
   });
 
   it('hides an invite accepted by a child in the commit that signs the account in', async () => {
-    const { useAuth } = require('@/context/AuthContext') as typeof import('@/context/AuthContext');
-    mockUser = null;
-    const client = new QueryClient();
     client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'cleo', roomCode: 'XYZ789' }]);
-    const { result, rerender, unmount } = await renderHook(
-      () => {
-        const invites = useInvites();
-        const { accept } = invites;
-        const signedIn = useAuth().user !== null;
-        React.useEffect(() => {
-          if (signedIn) accept('XYZ789');
-        }, [signedIn, accept]);
-        return invites;
-      },
-      {
-        wrapper: ({ children }: { children: React.ReactNode }) => (
-          <QueryClientProvider client={client}>
-            <NotificationProvider>
-              <SocketProvider>{children}</SocketProvider>
-            </NotificationProvider>
-          </QueryClientProvider>
-        ),
-      }
-    );
+    const { result, signIn, unmount } = await mountHook(() => {
+      const invites = useInvites();
+      const { accept } = invites;
+      const signedIn = useAuth().user !== null;
+      React.useEffect(() => {
+        if (signedIn) accept('XYZ789');
+      }, [signedIn, accept]);
+      return invites;
+    }, null);
 
     expect(result.current.invites).toEqual([{ from: 'cleo', roomCode: 'XYZ789' }]);
 
-    mockUser = { id: 'u2', username: 'Ben' };
-    await act(async () => rerender({}));
+    await signIn(BEN);
 
     expect(result.current.accepted).toBe('XYZ789');
     expect(result.current.invites).toEqual([]);
@@ -270,22 +237,11 @@ describe('hidden invites across accounts', () => {
 });
 
 describe('accepting from the friends screen', () => {
-  const METRICS = {
-    frame: { x: 0, y: 0, width: 390, height: 844 },
-    insets: { top: 0, left: 0, right: 0, bottom: 0 },
-  };
-
   const mountFriends = async () => {
     const FriendsScreen = (require('@/app/(online)/friends') as { default: React.ComponentType }).default;
     const row = { fromUsername: 'ana', roomCode: 'ABC123' };
-    const client = new QueryClient({
-      defaultOptions: {
-        queries: {
-          retry: false,
-          queryFn: async ({ queryKey }) => (queryKey[0] === '/api/friends/invites' ? [row] : []),
-        },
-      },
-    });
+    route('GET', '/api/friends/invites', { body: [row] });
+    for (const path of ['/api/friends', '/api/friends/requests', '/api/friends/sent']) route('GET', path, { body: [] });
     const seen: { current: ReturnType<typeof useInvites> | null } = { current: null };
     const { useOnlineRouting } =
       require('@/context/useOnlineRouting') as typeof import('@/context/useOnlineRouting');
@@ -295,18 +251,12 @@ describe('accepting from the friends screen', () => {
       return null;
     };
     const tree = () => (
-      <QueryClientProvider client={client}>
-        <NotificationProvider>
-          <SocketProvider>
-            <SafeAreaProvider initialMetrics={METRICS}>
-              <Probe />
-              <FriendsScreen />
-            </SafeAreaProvider>
-          </SocketProvider>
-        </NotificationProvider>
-      </QueryClientProvider>
+      <>
+        <Probe />
+        <FriendsScreen />
+      </>
     );
-    const view = await render(tree());
+    const view = await renderApp(tree(), { user: ANA });
     return { view, seen, rerender: () => view.rerender(tree()) };
   };
 

@@ -2,18 +2,17 @@
 // offline match without asking.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { fireEvent, screen } from '@testing-library/react-native';
 
 import { en as locale } from '@/locales/en';
+import { setWindow } from './harness/env';
+import { renderApp } from './harness/renderApp';
 
 const mockSetupGame = jest.fn();
 let mockHasSavedGame = false;
 jest.mock('@/context/gameHooks', () => ({
   useLocalSession: () => ({ setupGame: mockSetupGame, hasSavedGame: mockHasSavedGame, bootSettled: true }),
 }));
-
-jest.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: null }) }));
 
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), back: jest.fn(), replace: jest.fn() },
@@ -22,17 +21,10 @@ jest.mock('expo-router', () => ({
 
 import LobbyScreen from '@/app/lobby';
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 390, height: 844 },
-  insets: { top: 0, left: 0, right: 0, bottom: 0 },
+const show = async () => {
+  await setWindow({ width: 390, height: 844 });
+  return renderApp(<LobbyScreen />);
 };
-
-const show = () =>
-  render(
-    <SafeAreaProvider initialMetrics={METRICS}>
-      <LobbyScreen />
-    </SafeAreaProvider>
-  );
 
 const start = () => fireEvent.press(screen.getAllByLabelText(locale['lobby.start'])[0]);
 

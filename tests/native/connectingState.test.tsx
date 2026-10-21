@@ -7,8 +7,8 @@
 // control leaves the browser's back button as the only way out.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { render, fireEvent, waitFor } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { fireEvent, waitFor } from '@testing-library/react-native';
+import { renderApp } from './harness/renderApp';
 
 import { en as locale } from '@/locales/en';
 
@@ -16,11 +16,7 @@ const mockReplace = jest.fn();
 const mockLeaveRoom = jest.fn();
 
 jest.mock('expo-router', () => ({
-  router: { replace: mockReplace, push: jest.fn(), back: jest.fn() },
-}));
-
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' } }),
+  router: { replace: (...args: unknown[]) => mockReplace(...args), push: jest.fn(), back: jest.fn() },
 }));
 
 jest.mock('@/context/onlineGameHooks', () => ({
@@ -58,10 +54,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
 const OnlineGameScreen = (require('@/app/(online)/game') as { default: React.ComponentType })
   .default;
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 844, height: 390 },
-  insets: { top: 0, left: 47, right: 34, bottom: 0 },
-};
+const mount = () => renderApp(<OnlineGameScreen />, { user: { id: 'u1', username: 'Ana' } });
 
 const BACK_LABEL = locale['onlineGame.backToLobby'];
 
@@ -72,11 +65,7 @@ describe('the online table with no state yet', () => {
   });
 
   it('says what it is waiting for', async () => {
-    const view = await render(
-      <SafeAreaProvider initialMetrics={METRICS}>
-        <OnlineGameScreen />
-      </SafeAreaProvider>
-    );
+    const view = await mount();
 
     expect(view.getByText(locale['onlineGame.connecting'])).toBeTruthy();
 
@@ -84,11 +73,7 @@ describe('the online table with no state yet', () => {
   });
 
   it('offers a back control a screen reader can reach', async () => {
-    const view = await render(
-      <SafeAreaProvider initialMetrics={METRICS}>
-        <OnlineGameScreen />
-      </SafeAreaProvider>
-    );
+    const view = await mount();
 
     const back = view.getByRole('button', { name: BACK_LABEL });
     expect(back).toBeTruthy();
@@ -97,11 +82,7 @@ describe('the online table with no state yet', () => {
   });
 
   it('releases the table and returns to the lobby when it is pressed', async () => {
-    const view = await render(
-      <SafeAreaProvider initialMetrics={METRICS}>
-        <OnlineGameScreen />
-      </SafeAreaProvider>
-    );
+    const view = await mount();
 
     fireEvent.press(view.getByRole('button', { name: BACK_LABEL }));
 

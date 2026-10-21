@@ -16,8 +16,7 @@
 // an invites-only reader may wake with it.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render } from '@testing-library/react-native';
+import { act } from '@testing-library/react-native';
 
 import { OnlineGameProvider } from '@/context/OnlineGameContext';
 import { useOnlineGame } from './onlineSurface';
@@ -31,14 +30,10 @@ import {
   useOnlineTable,
   useOnlineTurnClock,
 } from '@/context/onlineGameHooks';
-import { NotificationProvider } from '@/context/NotificationContext';
-import { SocketProvider, useInvites, usePresence, useSocketConnection } from '@/context/SocketContext';
+import { useInvites, usePresence, useSocketConnection } from '@/context/SocketContext';
 
+import { renderApp } from './harness/renderApp';
 import { lastSocket } from './mocks/socketIo';
-
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
-}));
 
 jest.mock('expo-router', () => ({
   router: { push: () => {}, replace: () => {}, back: () => {} },
@@ -80,18 +75,13 @@ function probe(name: keyof typeof PROBES) {
 const Probes = Object.keys(PROBES).map((name) => probe(name as keyof typeof PROBES));
 
 function mount() {
-  return render(
-    <QueryClientProvider client={new QueryClient()}>
-      <NotificationProvider>
-        <SocketProvider>
-          <OnlineGameProvider userId="u1">
-            {Probes.map((P, i) => (
-              <P key={i} />
-            ))}
-          </OnlineGameProvider>
-        </SocketProvider>
-      </NotificationProvider>
-    </QueryClientProvider>
+  return renderApp(
+    <OnlineGameProvider userId="u1">
+      {Probes.map((P, i) => (
+        <P key={i} />
+      ))}
+    </OnlineGameProvider>,
+    { user: { id: 'u1', username: 'Ana' } }
   );
 }
 

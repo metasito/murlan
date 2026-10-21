@@ -4,12 +4,10 @@
 // hands the answer to the router instead of the hardcoded "/".
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { fireEvent, screen, waitFor } from '@testing-library/react-native';
 
 const mockReplace = jest.fn();
 let mockParams: Record<string, string> = {};
-const mockLogin = jest.fn(async () => {});
 
 // Wrapped rather than passed by reference: `import AuthScreen` hoists above
 // `const mockReplace`, so a factory that reads the binding eagerly captures
@@ -23,30 +21,16 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => mockParams,
 }));
 
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ login: mockLogin, register: jest.fn(), user: null }),
-}));
-
-jest.mock('@/lib/query-client', () => ({
-  getApiUrl: () => 'http://localhost',
-  apiRequest: jest.fn(),
-}));
-
 import AuthScreen from '@/app/auth';
 import { returnPathFor } from '@/lib/authRedirect';
 import { en as locale } from '@/locales/en';
+import { renderApp } from './harness/renderApp';
+import { route } from './mocks/http';
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 390, height: 844 },
-  insets: { top: 47, left: 0, right: 0, bottom: 34 },
+const mount = () => {
+  route('POST', '/api/auth/login', { body: { id: 'u1', username: 'ana' } });
+  return renderApp(<AuthScreen />);
 };
-
-const mount = () =>
-  render(
-    <SafeAreaProvider initialMetrics={METRICS}>
-      <AuthScreen />
-    </SafeAreaProvider>
-  );
 
 async function signIn() {
   await fireEvent.changeText(screen.getByLabelText(locale['auth.usernameA11yLabel']), 'ana');
@@ -57,7 +41,6 @@ async function signIn() {
 describe('where signing in lands', () => {
   beforeEach(() => {
     mockReplace.mockClear();
-    mockLogin.mockClear();
     mockParams = {};
   });
 

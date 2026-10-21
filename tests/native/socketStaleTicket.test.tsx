@@ -1,20 +1,15 @@
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-
-type AuthFn = (cb: (data: Record<string, unknown>) => void) => void;
-
-const mockIo = jest.fn();
-jest.mock('socket.io-client', () => ({ io: (...args: unknown[]) => mockIo(...args) }));
-jest.mock('@/lib/query-client', () => ({ getApiUrl: () => 'http://localhost/' }));
+import { describe, it, expect } from '@jest/globals';
 
 import { connectSocket, disconnectSocket } from '@/lib/socket';
+import { route, type HttpReply } from './mocks/http';
+import { lastSocket } from './mocks/socketIo';
 
 function deferredTickets() {
   const resolvers: ((ticket: string) => void)[] = [];
-  (global as unknown as { fetch: unknown }).fetch = jest.fn(
-    () =>
-      new Promise((resolve) => {
-        resolvers.push((ticket) => resolve({ status: 200, ok: true, json: async () => ({ ticket }) }));
-      }),
+  route(
+    'POST',
+    '/api/auth/socket-ticket',
+    () => new Promise<HttpReply>((resolve) => resolvers.push((ticket) => resolve({ body: { ticket } })))
   );
   return resolvers;
 }
@@ -22,22 +17,20 @@ function deferredTickets() {
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe('socket auth ticket attempts', () => {
-  beforeEach(() => {
-    mockIo.mockReset();
-    mockIo.mockReturnValue({ removeAllListeners() {}, disconnect() {} });
-  });
-
   it('delivers only the latest attempt when a retry supersedes a pending one', async () => {
     const tickets = deferredTickets();
     connectSocket('u1', { onAuthFailure: () => {} });
-    const auth = (mockIo.mock.calls[0][1] as { auth: AuthFn }).auth;
+    const socket = lastSocket();
     const delivered: Record<string, unknown>[] = [];
-
-    auth((d) => delivered.push(d));
-    auth((d) => delivered.push(d));
-    tickets[0]('stale');
     await flush();
-    tickets[1]('fresh');
+
+    void socket.handshake().then((d) => delivered.push(d));
+    void socket.handshake().then((d) => delivered.push(d));
+    await flush();
+    tickets[0]('first');
+    tickets[1]('stale');
+    await flush();
+    tickets[2]('fresh');
     await flush();
 
     expect(delivered).toHaveLength(1);
@@ -48,10 +41,9 @@ describe('socket auth ticket attempts', () => {
   it('still delivers a lone slow attempt', async () => {
     const tickets = deferredTickets();
     connectSocket('u2', { onAuthFailure: () => {} });
-    const auth = (mockIo.mock.calls[0][1] as { auth: AuthFn }).auth;
     const delivered: Record<string, unknown>[] = [];
 
-    auth((d) => delivered.push(d));
+    void lastSocket().credentials!.then((d) => delivered.push(d));
     await flush();
     tickets[0]('only');
     await flush();

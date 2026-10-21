@@ -678,6 +678,25 @@ const GUARDS = [
       "jest.mock('@/lib/sendIntent', () => ({}));",
     ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
   },
+  {
+    id: "account-renders-through-the-app",
+    why: "Sign-in, banners and the query cache are the app's own (tests/native/harness/renderApp.tsx): pass renderApp a user, answer its fetches with route(), read banners with bannerLog().",
+    selector: mockOf(
+      "/^(@|\\.\\.?(\\x2F\\.\\.)*)\\x2F(context\\x2F(AuthContext|NotificationContext)(\\.tsx)?|lib\\x2Fquery-client(\\.ts)?)$/",
+      "/(^|\\x2F)(context\\x2F(AuthContext|NotificationContext)(\\.tsx)?|lib\\x2Fquery-client(\\.ts)?)$/"
+    ),
+    files: ["tests/native/**/*.{ts,tsx}"],
+    plant: { file: "tests/native/plant.test.tsx", code: [
+      "jest.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user }) }));",
+      'jest.doMock("../../context/NotificationContext", () => ({}));',
+      "jest.mock(`@/lib/query-client`, () => ({}));",
+    ].join("\n"), hits: 3 },
+    spare: [
+      "jest.mock('@/context/SocketContext', () => ({ ...jest.requireActual('@/context/SocketContext') }));",
+      "jest.mock('@/context/AuthContextual', () => ({}));",
+      "await renderApp(<Screen />, { user: { id: 'u1', username: 'Ana' } });",
+    ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
+  },
 ];
 
 // eslint's --cache keys a plugin's results on its meta.version, so an unversioned guard edit would

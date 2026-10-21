@@ -8,10 +8,11 @@
 // because nothing read the row's resolved style.
 import { describe, it, jest } from '@jest/globals';
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { screen } from '@testing-library/react-native';
 
+import { queryClient as qc } from '@/lib/query-client';
+import { setWindow } from './harness/env';
+import { renderApp } from './harness/renderApp';
 import { getVisibleText } from './visibilityHelpers';
 
 jest.mock('expo-router', () => {
@@ -28,6 +29,7 @@ jest.mock('@/lib/device/pushRegistration', () => ({
 }));
 
 jest.mock('@/context/SocketContext', () => ({
+  ...jest.requireActual<object>('@/context/SocketContext'),
   usePresence: () => ({ onlineIds: new Set(['f1']), refresh: () => {} }),
   useInvites: () => ({ invites: [], dismiss: jest.fn(), accept: jest.fn() }),
 }));
@@ -38,32 +40,19 @@ jest.mock('@/context/onlineGameHooks', () => ({
   useServerError: () => null,
 }));
 
-jest.mock('@/context/NotificationContext', () =>
-  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock()
-);
 
 import FriendsScreen from '@/app/(online)/friends';
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 390, height: 844 },
-  insets: { top: 0, left: 0, right: 0, bottom: 0 },
-};
 
-function mount() {
-  const qc = new QueryClient();
+async function mount() {
   qc.setQueryData(['/api/friends'], [
     { id: 'f1', username: 'Besi', lastSeen: null },
     { id: 'f2', username: 'Ana', lastSeen: '2026-08-20T10:00:00.000Z' },
   ]);
   qc.setQueryData(['/api/friends/requests'], []);
   qc.setQueryData(['/api/friends/sent'], []);
-  return render(
-    <QueryClientProvider client={qc}>
-      <SafeAreaProvider initialMetrics={METRICS}>
-        <FriendsScreen />
-      </SafeAreaProvider>
-    </QueryClientProvider>
-  );
+  await setWindow({ width: 390, height: 844 });
+  return renderApp(<FriendsScreen />, { user: { id: 'u1', username: 'Ana' } });
 }
 
 describe('a friend row carries presence by text, not only by the avatar dot', () => {

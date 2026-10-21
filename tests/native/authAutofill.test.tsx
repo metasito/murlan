@@ -6,36 +6,18 @@
 // field either.
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { act, fireEvent, screen } from '@testing-library/react-native';
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
   useLocalSearchParams: () => ({}),
 }));
 
-jest.mock('@/lib/query-client', () => ({
-  getApiUrl: () => 'http://localhost',
-  apiRequest: jest.fn(),
-}));
-
 import AuthScreen from '@/app/auth';
-import { AuthProvider } from '@/context/AuthContext';
 import { en as locale } from '@/locales/en';
+import { renderApp } from './harness/renderApp';
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 390, height: 844 },
-  insets: { top: 47, left: 0, right: 0, bottom: 34 },
-};
-
-const mount = () =>
-  render(
-    <SafeAreaProvider initialMetrics={METRICS}>
-      <AuthProvider>
-        <AuthScreen />
-      </AuthProvider>
-    </SafeAreaProvider>
-  );
+const mount = () => renderApp(<AuthScreen />);
 
 const password = () => screen.getByLabelText(locale['auth.passwordA11yLabel']);
 

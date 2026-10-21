@@ -1,18 +1,16 @@
 // tests/native/lobbyRealSession.test.tsx — the lobby against the real GameContext:
 // Start never replaces a saved match unasked, however early it is pressed.
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, afterEach, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { Text } from 'react-native';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { GameProvider, useGameSession, useGameTable } from '@/context/GameContext';
-import { NotificationProvider } from '@/context/NotificationContext';
+import { useGameSession, useGameTable } from '@/context/GameContext';
 import { OFFLINE_SAVE_KEY } from '@/lib/offlineSave';
 import { en as locale } from '@/locales/en';
-
-jest.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: null }) }));
+import { setWindow } from './harness/env';
+import { renderApp } from './harness/renderApp';
 
 const mockReplace = jest.fn();
 jest.mock('expo-router', () => ({
@@ -22,10 +20,6 @@ jest.mock('expo-router', () => ({
 
 import LobbyScreen from '@/app/lobby';
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 390, height: 844 },
-  insets: { top: 0, left: 0, right: 0, bottom: 0 },
-};
 
 const SEED = [
   { name: 'Ana', type: 'human' as const },
@@ -49,17 +43,34 @@ function Probe() {
   );
 }
 
-const tree = (children: React.ReactNode) => (
-  <NotificationProvider>
-    <GameProvider>
-      <SafeAreaProvider initialMetrics={METRICS}>{children}</SafeAreaProvider>
-    </GameProvider>
-  </NotificationProvider>
-);
+const mount = async (ui: React.ReactElement) => {
+  await setWindow({ width: 390, height: 844 });
+  return renderApp(ui);
+};
+
+/** Holds the read of the saved match, and only that read, until `land` answers it. */
+function holdSavedMatchRead() {
+  const getItem = AsyncStorage.getItem as unknown as jest.Mock<(key: string) => Promise<string | null>>;
+  const real = getItem.getMockImplementation()!;
+  restoreGetItem = () => getItem.mockImplementation(real);
+  const held = { land: (_raw: string | null) => {} };
+  let holding = true;
+  getItem.mockImplementation((key) => {
+    if (key !== OFFLINE_SAVE_KEY || !holding) return real(key);
+    holding = false;
+    return new Promise((resolve) => (held.land = resolve));
+  });
+  return held;
+}
+let restoreGetItem = () => {};
+afterEach(() => {
+  restoreGetItem();
+  restoreGetItem = () => {};
+});
 
 /** Leaves the match from a first launch in storage, as a killed app would. */
 async function storeOldMatch(): Promise<string> {
-  const first = await render(tree(<Seed />));
+  const first = await mount(<Seed />);
   await fireEvent.press(screen.getByTestId('seed'));
   await waitFor(async () => expect(await AsyncStorage.getItem(OFFLINE_SAVE_KEY)).not.toBeNull());
   await act(async () => { first.unmount(); });
@@ -76,7 +87,7 @@ beforeEach(async () => {
 describe('Start in the lobby, against the real session', () => {
   it('Cancel leaves the saved match resumable and untouched', async () => {
     const old = await storeOldMatch();
-    const view = await render(tree(<><LobbyScreen /><Probe /></>));
+    const view = await mount(<><LobbyScreen /><Probe /></>);
     await waitFor(() => expect(screen.getByTestId('saved').props.children).toBe('true'));
 
     await start();
@@ -90,7 +101,7 @@ describe('Start in the lobby, against the real session', () => {
 
   it('Replace deals a new match and the old one is not offered back', async () => {
     const old = await storeOldMatch();
-    const view = await render(tree(<><LobbyScreen /><Probe /></>));
+    const view = await mount(<><LobbyScreen /><Probe /></>);
     await waitFor(() => expect(screen.getByTestId('saved').props.children).toBe('true'));
 
     await start();
@@ -110,17 +121,14 @@ describe('Start in the lobby, against the real session', () => {
 
   it('cannot be pressed before the stored match has been read', async () => {
     const old = await storeOldMatch();
-    let land: (raw: string | null) => void = () => {};
-    jest.spyOn(AsyncStorage, 'getItem').mockImplementationOnce(
-      () => new Promise<string | null>((resolve) => (land = resolve))
-    );
-    const view = await render(tree(<LobbyScreen />));
+    const read = holdSavedMatchRead();
+    const view = await mount(<LobbyScreen />);
 
     await start();
     expect(mockReplace).not.toHaveBeenCalled();
     expect(screen.queryByText(locale['lobby.replaceSavedTitle'])).toBeNull();
 
-    await act(async () => land(old));
+    await act(async () => read.land(old));
     await start();
     expect(screen.getByText(locale['lobby.replaceSavedTitle'])).toBeTruthy();
     expect(mockReplace).not.toHaveBeenCalled();

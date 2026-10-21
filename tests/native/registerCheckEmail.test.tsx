@@ -8,8 +8,7 @@
 // after a successful registration).
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 
 const mockReplace = jest.fn();
 jest.mock('expo-router', () => ({
@@ -17,21 +16,10 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({}),
 }));
 
-const mockApiRequest = jest.fn<(...args: unknown[]) => Promise<unknown>>();
-jest.mock('@/lib/query-client', () => ({
-  getApiUrl: () => 'http://localhost',
-  apiRequest: (...args: unknown[]) => mockApiRequest(...args),
-}));
-
 import AuthScreen from '@/app/auth';
-import { stubFetch } from './helpers/stubFetch';
-import { AuthProvider } from '@/context/AuthContext';
 import { en as locale } from '@/locales/en';
-
-const METRICS = {
-  frame: { x: 0, y: 0, width: 390, height: 844 },
-  insets: { top: 47, left: 0, right: 0, bottom: 34 },
-};
+import { renderApp } from './harness/renderApp';
+import { route, unreachable, type HttpReply } from './mocks/http';
 
 const SIGNED_IN = {
   id: 'u1',
@@ -41,16 +29,10 @@ const SIGNED_IN = {
   emailVerified: false,
 };
 
-const mockFetch = jest.fn<() => Promise<unknown>>();
+/** What every `GET /api/auth/me` answers, at boot and after registering alike. */
+let me: HttpReply | typeof unreachable;
 
-const mount = () =>
-  render(
-    <SafeAreaProvider initialMetrics={METRICS}>
-      <AuthProvider>
-        <AuthScreen />
-      </AuthProvider>
-    </SafeAreaProvider>
-  );
+const mount = () => renderApp(<AuthScreen />, { me });
 
 async function fillAndSubmitRegister() {
   await act(async () => {
@@ -72,13 +54,12 @@ async function fillAndSubmitRegister() {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockApiRequest.mockResolvedValue({ ok: true, json: async () => ({}) });
-  stubFetch(mockFetch);
+  route('POST', '/api/auth/register', { status: 202, body: {} });
 });
 
 describe('registering signs this device in', () => {
   beforeEach(() => {
-    mockFetch.mockResolvedValue({ status: 200, ok: true, json: async () => SIGNED_IN });
+    me = { body: SIGNED_IN };
   });
 
   it('shows the check-your-email state instead of navigating straight in', async () => {
@@ -112,7 +93,7 @@ describe('registering to an address this device did not end up signed in with', 
   // confirms — with a definitive 401 — that no session was minted for this
   // device.
   beforeEach(() => {
-    mockFetch.mockResolvedValue({ status: 401, ok: false });
+    me = { status: 401 };
   });
 
   it('still shows the check-your-email state — not a spurious error', async () => {
@@ -149,7 +130,7 @@ describe('a network hiccup right after registering', () => {
   // it would show "check your email" with signedIn: false, telling an
   // already-registered player to go sign back in.
   beforeEach(() => {
-    mockFetch.mockRejectedValue(new Error('Network request failed'));
+    me = unreachable;
   });
 
   it('surfaces an error instead of a confident "not signed in" state', async () => {

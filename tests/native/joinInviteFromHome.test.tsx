@@ -9,8 +9,9 @@
 // code the player has already chosen (#398).
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import React from 'react';
-import { act, render, screen } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { act, screen } from '@testing-library/react-native';
+import { setWindow } from './harness/env';
+import { renderApp } from './harness/renderApp';
 
 // `mock`-prefixed because jest hoists these factories above every other
 // statement in the file, and only that prefix is allowed out of scope.
@@ -40,11 +41,8 @@ jest.mock('@/context/onlineGameHooks', () => ({
   }),
 }));
 
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'me' }, loading: false }),
-}));
-
 jest.mock('@/context/SocketContext', () => ({
+  ...jest.requireActual<object>('@/context/SocketContext'),
   useInvites: () => mockState.invites,
 }));
 
@@ -61,18 +59,17 @@ const Router = () => {
   return null;
 };
 
-const METRICS = {
-  frame: { x: 0, y: 0, width: 390, height: 844 },
-  insets: { top: 0, left: 0, right: 0, bottom: 0 },
-};
 
-const mount = () =>
-  render(
-    <SafeAreaProvider initialMetrics={METRICS}>
+const mount = async () => {
+  await setWindow({ width: 390, height: 844 });
+  return renderApp(
+    <>
       <Router />
       <OnlineLobbyScreen />
-    </SafeAreaProvider>
+    </>,
+    { user: { id: 'u1', username: 'me' } }
   );
+};
 
 const base = {
   prompt: null,

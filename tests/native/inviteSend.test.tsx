@@ -3,37 +3,31 @@
 // server sends with it; only silence is this hook's to tell, as a request that
 // never arrived.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import React from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, act } from '@testing-library/react-native';
+import React, { useEffect } from 'react';
+import { act } from '@testing-library/react-native';
 
 import { en as locale } from '@/locales/en';
 
 import { INTENT_ACK_TIMEOUT_MS } from '@/lib/sendIntent';
 import type { IntentReply } from '@/shared/protocol';
+import { useInvites } from '@/context/SocketContext';
+import { bannerLog } from './harness/bannerLog';
+import { renderApp } from './harness/renderApp';
 import { lastSocket } from './mocks/socketIo';
 
-jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
-}));
-
-const mockShowNotification = jest.fn();
-jest.mock('@/context/NotificationContext', () =>
-  (require('./helpers/notificationMock') as typeof import('./helpers/notificationMock')).notificationContextMock(() => mockShowNotification)
-);
-
-const { SocketProvider, useInvites } =
-  require('@/context/SocketContext') as typeof import('@/context/SocketContext');
-
-const mount = () => {
-  const client = new QueryClient();
-  return renderHook(() => useInvites(), {
-    wrapper: ({ children }: { children: React.ReactNode }) => (
-      <QueryClientProvider client={client}>
-        <SocketProvider>{children}</SocketProvider>
-      </QueryClientProvider>
-    ),
+const { shown, BannerLog } = bannerLog();
+const result = {} as { current: ReturnType<typeof useInvites> };
+function Capture() {
+  const invites = useInvites();
+  useEffect(() => {
+    result.current = invites;
   });
+  return <BannerLog />;
+}
+
+const mount = async () => {
+  const view = await renderApp(<Capture />, { user: { id: 'u1', username: 'Ana' } });
+  return { result, unmount: view.unmount };
 };
 
 /** `silence` lets the ack's own timer run out. */
@@ -59,32 +53,32 @@ async function sendAnswered(answer: IntentReply | undefined | 'silence') {
 }
 
 beforeEach(() => {
-  mockShowNotification.mockClear();
+  shown.length = 0;
 });
 
 describe('sending an invite', () => {
   it('reports success and says nothing more', async () => {
     expect(await sendAnswered({ ok: true, code: 'INVITE_SHOWN' })).toBe(true);
-    expect(mockShowNotification).not.toHaveBeenCalled();
+    expect(shown).toEqual([]);
   });
 
   it('tells the player the server refused, in its words, once', async () => {
     expect(await sendAnswered({ ok: false, code: 'NOT_FRIENDS' })).toBe(false);
-    expect(mockShowNotification).toHaveBeenCalledTimes(1);
-    expect(mockShowNotification).toHaveBeenCalledWith(
+    expect(shown).toHaveLength(1);
+    expect(shown).toContainEqual(
       expect.objectContaining({ type: 'game_error', message: locale['server.NOT_FRIENDS'] })
     );
   });
 
   it('counts an ack with no reply as heard, as every intent does', async () => {
     expect(await sendAnswered(undefined)).toBe(true);
-    expect(mockShowNotification).not.toHaveBeenCalled();
+    expect(shown).toEqual([]);
   });
 
   it('tells the player the invite never arrived', async () => {
     expect(await sendAnswered('silence')).toBe(false);
-    expect(mockShowNotification).toHaveBeenCalledTimes(1);
-    expect(mockShowNotification).toHaveBeenCalledWith(
+    expect(shown).toHaveLength(1);
+    expect(shown).toContainEqual(
       expect.objectContaining({ type: 'game_error', message: locale['room.requestNotDelivered'] })
     );
   });
