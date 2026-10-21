@@ -46,6 +46,8 @@ export class FakeSocket {
   });
   readonly io = { reconnection: jest.fn() };
   private readonly listeners = new Map<string, Listener[]>();
+  /** How often each event was subscribed and unsubscribed over the socket's life. */
+  readonly subscriptions = new Map<string, { on: number; off: number }>();
   private readonly unanswered = new Set<() => void>();
 
   constructor(
@@ -61,12 +63,19 @@ export class FakeSocket {
     this.credentials = this.handshake();
   }
 
+  private count(event: string, way: 'on' | 'off'): void {
+    const tally = this.subscriptions.get(event) ?? { on: 0, off: 0 };
+    this.subscriptions.set(event, { ...tally, [way]: tally[way] + 1 });
+  }
+
   on(event: string, fn: Listener): this {
+    this.count(event, 'on');
     this.listeners.set(event, [...(this.listeners.get(event) ?? []), fn]);
     return this;
   }
 
   off(event: string, fn?: Listener): this {
+    this.count(event, 'off');
     if (!fn) {
       this.listeners.delete(event);
       return this;
