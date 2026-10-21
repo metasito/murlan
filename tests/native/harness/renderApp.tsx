@@ -8,6 +8,8 @@ import { useAuth, type AuthUser } from '@/context/AuthContext';
 import { useGameSession, type LocalSession } from '@/context/GameContext';
 import { OnlineGameProvider } from '@/context/OnlineGameContext';
 import { useOnlineRouting } from '@/context/useOnlineRouting';
+import type { GameState } from '@/lib/game/gameEngine';
+import type { MatchState } from '@/lib/game/matchState';
 import { encodeOfflineSave, OFFLINE_SAVE_KEY, type OfflineSave } from '@/lib/offlineSave';
 import { queryClient } from '@/lib/query-client';
 import { peekSocket } from '@/lib/socket';
@@ -55,6 +57,18 @@ export const queriesSettled = async () => {
   await waitFor(() => expect(queryClient.isFetching()).toBe(0));
   await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
 };
+
+/** `gameState` as a single match the device saved, with nothing scored yet. */
+export function offlineSave(
+  gameState: GameState,
+  match: Partial<MatchState> = {}
+): Omit<OfflineSave, 'version'> {
+  return {
+    gameState,
+    match: { length: 'single', target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false, ...match },
+    dealFirstSeat: 0,
+  };
+}
 
 type Boot = {
   /** The session the server confirms; `null`, the default, answers 401. */

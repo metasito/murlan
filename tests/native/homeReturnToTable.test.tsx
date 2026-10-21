@@ -20,18 +20,13 @@ jest.mock('@/components/SettingsModal', () => ({ SettingsModal: () => null }));
 
 import HomeScreen from '@/app/index';
 import { t } from '@/lib/i18n';
-import type { OfflineSave } from '@/lib/offlineSave';
 import { ACTIVE_ROOM_KEY } from '@/lib/storageKeys';
 import { setMotion } from './harness/env';
 import { state } from '../support/game';
-import { renderApp } from './harness/renderApp';
+import { offlineSave, renderApp } from './harness/renderApp';
 import { unreachable } from './mocks/http';
 
-const OFFLINE_MATCH: Omit<OfflineSave, 'version'> = {
-  gameState: state({ firstPlayMade: true }),
-  match: { length: 'match', target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
-  dealFirstSeat: 0,
-};
+const OFFLINE_MATCH = offlineSave(state({ firstPlayMade: true }), { length: 'match' });
 
 const mount = async () => {
   await AsyncStorage.clear();
