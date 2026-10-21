@@ -12,7 +12,7 @@ import { PileLayer, type Flight, type PileLayerProps } from '@/components/table/
 import type { TrickPlay } from '@/components/table/trick';
 import { landingPulsesFor } from '@/lib/device/feedback';
 import { flightSpec, NO_LANDING, type LandingSignal } from '@/components/table/useFlightClock';
-import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
+import type { Card, Combination, GameState, LastMove, Player } from '@/lib/game/gameEngine';
 import { aThreePlayed } from '../../support/game';
 
 /** Writes one landing onto the signal, as the flight clock does on its contact frame. */
@@ -56,6 +56,14 @@ export function throwPair(by = 3, catchUp = false) {
 
 /** That table as an element, for `rerender`: `by` threw `combo` and seat `turn` is on move. */
 export function tableAfter({ by, combo, passCount = 0, turn = 0, catchUp = false, turnSeconds }: { by: number; combo: Combination | null; passCount?: number; turn?: number; catchUp?: boolean; turnSeconds?: number }) {
+  // A distinct count per thrower and pass, so each state this helper draws records its own move.
+  const seq = 1 + by * 8 + passCount;
+  const lastMove: LastMove =
+    combo === null
+      ? { seq: 0, kind: 'deal' }
+      : passCount > 0
+        ? { seq, kind: 'pass', seat: (turn + 1) % 4, closedTrick: false }
+        : { seq, kind: 'play', seat: by };
   const state: GameState = {
     players: [0, 1, 2, 3].map(seat),
     currentTurnIndex: turn,
@@ -68,7 +76,7 @@ export function tableAfter({ by, combo, passCount = 0, turn = 0, catchUp = false
     finishingOrder: [],
     firstPlayMade: true,
     playedRanks: aThreePlayed(),
-    lastMove: { seq: 0, kind: 'deal' },
+    lastMove,
   };
   return (
     <SafeAreaProvider initialMetrics={METRICS}>

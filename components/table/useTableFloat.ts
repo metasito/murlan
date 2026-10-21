@@ -1,12 +1,10 @@
 import { useCallback, useState } from "react";
 import type { GameState } from "@/lib/game/gameEngine";
-import { handCountOf } from "@/shared/protocol";
 import type { ServerError } from "@/context/OnlineGameContext";
 import { useTranslation } from "@/lib/i18n";
-import { seatsJustPassed } from "@/components/passes";
+import { moveSince } from "@/lib/game/moves";
+import { viewerOwnsSeat } from "@/components/seatLayout";
 import { nextFloat, raised, type Float } from "./floatModel";
-
-const passView = (s: GameState) => ({ ...s, outOfCards: s.players.map((p) => handCountOf(p) === 0) });
 
 /** The float over the pile: what each new state, refusal and auto-pass raises, and a refusal raised by hand. */
 export function useTableFloat(i: {
@@ -23,6 +21,7 @@ export function useTableFloat(i: {
   const [seen, setSeen] = useState<typeof inputs>({ ...inputs, error: null });
   const [float, setFloat] = useState<Float | null>(null);
   const moved = seen.gameState !== gameState;
+  const move = moved ? moveSince(seen.gameState.lastMove, gameState.lastMove) : null;
   const erred = seen.error?.seq !== error?.seq;
   if (moved || erred || seen.autoPassed !== autoPassed || seen.withdrawn !== withdrawn) {
     setSeen(inputs);
@@ -30,7 +29,7 @@ export function useTableFloat(i: {
       float,
       {
         viewerPassed: moved
-          ? !spectating && seatsJustPassed(passView(seen.gameState), passView(gameState)).includes(viewerSeat)
+          ? move?.kind === "pass" && viewerOwnsSeat(move.seat, viewerSeat, spectating)
           : undefined,
         error: erred ? error : undefined,
         autoPassed: seen.autoPassed !== autoPassed,

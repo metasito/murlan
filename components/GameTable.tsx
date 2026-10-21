@@ -38,11 +38,11 @@ import {
 import { handCountOf } from "@/shared/protocol";
 import type { CardFrom } from "@/components/flightPose";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
-import { turnKey } from "@/components/passes";
 import { tableLayout, type Seating } from "@/components/tableLayout";
 import { useTableExchange } from "@/components/table/useTableExchange";
 import { FloatSlot } from "@/components/table/notices/floats";
 import { useTableFloat } from "@/components/table/useTableFloat";
+import { turnOf } from "@/lib/game/moves";
 import { tableVeils } from "@/components/table/tableVeils";
 import type { ServerError } from "@/context/OnlineGameContext";
 import {
@@ -260,6 +260,8 @@ export interface GameTableProps {
   catchUp?: boolean;
   /** Mounting on a match restored from its save: the play on the pile was thrown before, so it mounts at rest. */
   restored?: boolean;
+  /** A replay reached this state by a rewind or a jump, not a move: no pass or trick-won sound, and the felt holds nothing. */
+  scrubbed?: boolean;
   /** The viewer's own link; anything but `up` holds the table (#1268). */
   ownLink?: OwnLink;
   /**
@@ -311,6 +313,7 @@ export function GameTable({
   connection,
   catchUp = false,
   restored = false,
+  scrubbed = false,
   ownLink = "up",
   overlays,
   tableCovered = false,
@@ -642,9 +645,8 @@ export function GameTable({
     isMyTurn: turnShown,
     isFinished,
     canPass,
-    passCount: gameState.passCount,
-    lastPlayedCombination: gameState.lastPlayedCombination,
-    trickWinner: gameState.trickWinner,
+    lastMove: gameState.lastMove,
+    scrubbed,
     roundOver: gameState.roundOver,
     outcome: scoredOutcome(outcome, gameState.finishingOrder, placementPoints),
     matchOutcome: matchOver ? matchOutcome : "pending",
@@ -678,7 +680,8 @@ export function GameTable({
   } = usePileFlight({
     lastPlayedCombination: gameState.lastPlayedCombination,
     lastPlayedBy: gameState.lastPlayedBy,
-    trickWinner: gameState.trickWinner,
+    lastMove: gameState.lastMove,
+    scrubbed,
     roundOver: gameState.roundOver,
     matchOver,
     viewerWon: (matchOver ? matchOutcome : outcome) === "won",
@@ -877,7 +880,7 @@ export function GameTable({
     isNewTrick,
     holdingForStart,
     held: clockHeld,
-    turnToken: turnKey(gameState),
+    turnToken: turnOf(gameState),
     t,
   });
   const countdown = useCountdown(turn.window);

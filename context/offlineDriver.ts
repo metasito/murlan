@@ -9,8 +9,8 @@ import type { ExchangeHold } from "@/lib/game/sharedGameFlow";
 import { e2e, exchangeHold } from "@/lib/e2eConfig";
 import { flushSync } from "@/lib/flushSync";
 import { OFFLINE_BOT_DELAY_MS } from "@/lib/timeline/offlineBotDelay";
-import { turnKey } from "@/components/passes";
 import { uiFeedback } from "@/lib/device/feedback";
+import { turnOf } from "@/lib/game/moves";
 import { RoundEnding } from "@/lib/theme";
 
 /** Local response deadline. Offline there is no server, so the client enforces it. */
@@ -70,9 +70,8 @@ export function useOfflineDriver(): OfflineDriver {
     return () => clearTimeout(t);
   }, [roundLandedAt, startNextRound]);
 
-  // Bot turn loop. The key identifies one bot turn — seat, pass count and the
-  // combination on the table — and is null whenever no bot is on move, so an
-  // update that changes neither cannot restart the "thinking" timer.
+  // Bot turn loop. The key is the move the bot answers, and null whenever no bot is on move, so an
+  // update that records no move cannot restart the "thinking" timer.
   // The exchange ends the phase the moment the card is chosen, so `active` is
   // false while the two cards are still crossing the table. A play made into
   // that is a play made over the ceremony announcing it, which is the one
@@ -86,7 +85,7 @@ export function useOfflineDriver(): OfflineDriver {
         !gameState.exchangePhase?.active &&
         !exchangeAnnouncing &&
         gameState.players[gameState.currentTurnIndex]?.type === "bot"
-      ? turnKey(gameState)
+      ? turnOf(gameState)
       : null;
 
   useEffect(() => {
@@ -100,7 +99,7 @@ export function useOfflineDriver(): OfflineDriver {
   // the committed state; what is added here is the warn haptic and the
   // reason, which the table floats in place of its own pass.
   // The turn the clock was kept for: if it has moved on by the time the clock fires, nobody is passed.
-  const clockTurn = gameState ? turnKey(gameState) : undefined;
+  const clockTurn = gameState?.lastMove;
   const onExpire = useCallback(() => {
     if (clockTurn === undefined || !passTurn(clockTurn)) return;
     uiFeedback("warn");

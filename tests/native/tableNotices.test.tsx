@@ -544,8 +544,8 @@ describe("the table's refusals and lines", () => {
 
 describe('an autopass', () => {
   const hidden = { includeHiddenElements: true };
-  const onMove = { ...STATE, currentTurnIndex: 0 };
-  const passed = { ...STATE, currentTurnIndex: 3, passCount: 1 };
+  const onMove: GameState = { ...STATE, currentTurnIndex: 0, lastMove: { seq: 1, kind: 'play', seat: 1 } };
+  const passed: GameState = { ...STATE, currentTurnIndex: 3, passCount: 1, lastMove: { seq: 2, kind: 'pass', seat: 0, closedTrick: false } };
   const at = (state: GameState, autoPassed: number) => (
     <SafeAreaProvider initialMetrics={METRICS}>
       <GameTable gameState={state} viewerSeat={0} autoPassed={autoPassed} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
