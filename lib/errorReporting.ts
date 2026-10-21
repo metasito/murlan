@@ -1,7 +1,7 @@
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { apiRequest } from "@/lib/query-client";
+import { api, type Sent } from "@/lib/query-client";
 import { PENDING_CRASH_REPORTS_KEY } from "@/lib/storageKeys";
 
 const MESSAGE_MAX = 500;
@@ -47,7 +47,7 @@ function alreadyReported(error: unknown, signature: string, now: number): boolea
   return false;
 }
 
-type CrashReport = Record<string, unknown>;
+type CrashReport = Sent<"POST client-errors">;
 /** `account` is who was signed in when it was queued, null for nobody. It is never posted. */
 type PendingReport = CrashReport & { account: string | null };
 
@@ -91,7 +91,7 @@ function updatePending(change: (reports: PendingReport[]) => PendingReport[]): P
 function send(report: CrashReport, owner: string | null = account): Promise<void> {
   let posted: Promise<unknown>;
   try {
-    posted = apiRequest("POST", "/api/client-errors", report);
+    posted = api("POST client-errors", { body: report });
   } catch (err) {
     posted = Promise.reject(err);
   }
@@ -118,14 +118,14 @@ export async function setReportingAccount(userId: string | null): Promise<void> 
 }
 
 /** The schema accepts these three and rejects anything else. */
-function reportablePlatform(): "ios" | "android" | "web" | undefined {
+export function reportablePlatform(): "ios" | "android" | "web" | undefined {
   return Platform.OS === "ios" || Platform.OS === "android" || Platform.OS === "web"
     ? Platform.OS
     : undefined;
 }
 
 /**
- * Sends one crash to `/api/client-errors`, or decides not to. Never throws and
+ * Sends one crash to `POST client-errors`, or decides not to. Never throws and
  * never rejects: every caller is either a global error handler or a component
  * already displaying a crash, and both make the failure worse by failing.
  *

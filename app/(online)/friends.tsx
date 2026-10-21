@@ -17,7 +17,7 @@ import { useInvites, usePresence } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
 import { useOnlineConnection, useServerError } from "@/context/onlineGameHooks";
 import { ApiError, serverErrorMessage } from "@/lib/apiError";
-import { apiRequest } from "@/lib/query-client";
+import { api } from "@/lib/query-client";
 import { useGuardedSubmit } from "@/lib/useGuardedSubmit";
 import { Colors, Spacing, FontSize, Radius, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { MenuLayout, takesSlack } from "@/components/MenuLayout";
@@ -114,7 +114,7 @@ export default function FriendsScreen() {
 
   const acceptMutation = useMutation({
     mutationFn: async (id: string) => {
-      await apiRequest("POST", `/api/friends/accept/${id}`);
+      await api("POST friends/accept/:id", { params: { id } });
     },
     ...dropRow(queryKey("friends/requests")),
     onSuccess: () => markStale(qc, [queryKey("friends"), queryKey("friends/requests")]),
@@ -122,7 +122,7 @@ export default function FriendsScreen() {
 
   const declineMutation = useMutation({
     mutationFn: async (id: string) => {
-      await apiRequest("POST", `/api/friends/decline/${id}`);
+      await api("POST friends/decline/:id", { params: { id } });
     },
     ...dropRow(queryKey("friends/requests")),
     onSuccess: () => markStale(qc, [queryKey("friends/requests")]),
@@ -130,7 +130,7 @@ export default function FriendsScreen() {
 
   const cancelMutation = useMutation({
     mutationFn: async (requestId: string) => {
-      await apiRequest("DELETE", `/api/friends/requests/${requestId}`);
+      await api("DELETE friends/requests/:id", { params: { id: requestId } });
     },
     ...dropRow(queryKey("friends/sent")),
     onSuccess: () => markStale(qc, [queryKey("friends/sent")]),
@@ -138,7 +138,7 @@ export default function FriendsScreen() {
 
   const removeMutation = useMutation({
     mutationFn: async (friendId: string) => {
-      await apiRequest("DELETE", `/api/friends/${friendId}`);
+      await api("DELETE friends/:friendUserId", { params: { friendUserId: friendId } });
     },
     ...dropRow(queryKey("friends")),
     onSuccess: () => markStale(qc, [queryKey("friends")]),
@@ -161,8 +161,7 @@ export default function FriendsScreen() {
     setSearchError(null);
     setSearchDone(false);
     try {
-      const res = await apiRequest("GET", `/api/users/search?username=${encodeURIComponent(searchQuery.trim())}`);
-      const data = await res.json();
+      const data = await api("GET users/search", { query: { username: searchQuery.trim() } });
       setSearchResult(data);
       setSearchDone(true);
       setSearchNonce((n) => n + 1);
@@ -177,8 +176,7 @@ export default function FriendsScreen() {
     if (!searchResult) return;
     setAddLoading(true);
     try {
-      const res = await apiRequest("POST", "/api/friends/add", { username: searchResult.username });
-      const data = await res.json();
+      const data = await api("POST friends/add", { body: { username: searchResult.username } });
       uiFeedback("success");
       showNotification({
         type: "friend_request",

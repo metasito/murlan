@@ -9,7 +9,7 @@ import { EmptyBlock } from "@/components/StateBlock";
 import { FormField, FormNotice, fieldStyles } from "@/components/FormField";
 import { useAuth } from "@/context/AuthContext";
 import { getLocale, useTranslation } from "@/lib/i18n";
-import { apiRequest } from "@/lib/query-client";
+import { api } from "@/lib/query-client";
 import { serverErrorMessage } from "@/lib/apiError";
 import { Colors, Spacing } from "@/lib/theme";
 import { useGuardedSubmit } from "@/lib/useGuardedSubmit";
@@ -57,7 +57,7 @@ export default function VerifyEmailScreen() {
     setError(null);
     setNotice(null);
     try {
-      await apiRequest("POST", "/api/auth/verify-email", { email: trimmedEmail, code: trimmedCode });
+      await api("POST auth/verify-email", { body: { email: trimmedEmail, code: trimmedCode } });
       await refreshUser();
       setVerified(true);
     } catch (e: unknown) {
@@ -73,7 +73,7 @@ export default function VerifyEmailScreen() {
     setError(null);
     setNotice(null);
     try {
-      await apiRequest("POST", "/api/auth/resend-verification", { locale: getLocale() });
+      await api("POST auth/resend-verification", { body: { locale: getLocale() } });
       setNotice(t("verifyEmail.resendSent", { email: destination }));
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("verifyEmail.resendFailed")));

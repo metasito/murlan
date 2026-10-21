@@ -170,7 +170,7 @@ export const HTTP = {
   "POST /api/auth/change-password": ep<Ok>()({ body: S.ChangePasswordSchema }),
   "POST /api/auth/add-email": ep<SessionUserDto>()({ body: S.AddEmailSchema }),
   "POST /api/auth/verify-email": ep<Ok>()({ body: S.VerifyEmailSchema }),
-  "POST /api/auth/resend-verification": ep<Ok>()(),
+  "POST /api/auth/resend-verification": ep<Ok>()({ body: S.ResendVerificationSchema }),
   "POST /api/auth/request-password-reset": ep<Ok>()({ body: S.RequestPasswordResetSchema }),
   "POST /api/auth/reset-password": ep<Ok>()({ body: S.ResetPasswordSchema }),
   "POST /api/auth/socket-ticket": ep<SocketTicketDto>()(),

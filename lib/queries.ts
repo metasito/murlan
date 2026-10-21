@@ -1,7 +1,6 @@
-import { fetch } from "expo/fetch";
 import { useQuery, type QueryClient, type UseQueryOptions, type UseQueryResult } from "@tanstack/react-query";
 import type { GetRoute, ParamsOf, QueryOf, ResOf } from "@/shared/http";
-import { getApiUrl, throwIfResNotOk } from "./query-client";
+import { api, apiPath } from "./query-client";
 
 /** A cacheable read: a GET in the contract, named by its path under /api, that takes no query string. */
 export type Read = GetRoute extends infer R
@@ -21,21 +20,14 @@ declare const read: unique symbol;
 export type ApiKey<P extends Read = Read> = readonly [url: string] & { readonly [read]?: P };
 
 export function queryKey<P extends Read>(path: P, ...[params]: Params<P>): ApiKey<P> {
-  const named = params as Record<string, string> | undefined;
-  return [`/api/${path.replace(/:(\w+)/g, (_, name: string) => encodeURIComponent(named![name]))}`] as ApiKey<P>;
-}
-
-async function get<T>(key: ApiKey): Promise<T> {
-  const res = await fetch(new URL(key[0], getApiUrl()).toString(), { credentials: "include" });
-  await throwIfResNotOk(res);
-  return (await res.json()) as T;
+  return [apiPath(path, params as Record<string, string> | undefined)] as ApiKey<P>;
 }
 
 export function useApi<P extends Read>(
   key: ApiKey<P>,
   options: Omit<UseQueryOptions<Answer<P>>, "queryKey" | "queryFn"> = {}
 ): UseQueryResult<Answer<P>> {
-  return useQuery<Answer<P>>({ ...options, queryKey: key, queryFn: () => get<Answer<P>>(key) });
+  return useQuery<Answer<P>>({ ...options, queryKey: key, queryFn: () => api(key) });
 }
 
 const ladder = [queryKey("ratings/leaderboard"), queryKey("ratings/leaderboard/friends")];

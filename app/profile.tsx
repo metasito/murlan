@@ -38,7 +38,7 @@ import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { shouldShowAddEmailCard, shouldShowVerifyEmailCard } from "@/lib/emailNudge";
 import { HistoryRow } from "@/components/HistoryRow";
 import { serverErrorMessage } from "@/lib/apiError";
-import { apiRequest } from "@/lib/query-client";
+import { api } from "@/lib/query-client";
 import { USERNAME_MAX, USERNAME_MIN, usernameProblem } from "@/shared/username";
 import { placementColor, positionLabelKey } from "@/lib/placement";
 import { useGuardedSubmit } from "@/lib/useGuardedSubmit";
@@ -432,7 +432,7 @@ function VerifyEmailCard({ email }: { email: string }) {
     setResending(true);
     setError(null);
     try {
-      await apiRequest("POST", "/api/auth/resend-verification", { locale: getLocale() });
+      await api("POST auth/resend-verification", { body: { locale: getLocale() } });
       setResent(true);
     } catch (e: unknown) {
       setResent(false);

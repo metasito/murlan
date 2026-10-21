@@ -11,7 +11,7 @@ import React, {
 } from "react";
 import { router } from "expo-router";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/query-client";
+import { api } from "@/lib/query-client";
 import { markStale, queryKey, stale, useApi, type ApiKey } from "@/lib/queries";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -209,7 +209,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const dismissGameInvite = useCallback(
     (roomCode: string) => {
       hideGameInvite(roomCode);
-      void apiRequest("DELETE", `/api/friends/invites/${roomCode}`)
+      void api("DELETE friends/invites/:roomCode", { params: { roomCode } })
         .catch(() => unhideGameInvite(roomCode))
         .finally(() => markStale(qc, [queryKey("friends/invites")]));
     },

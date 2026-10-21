@@ -7,7 +7,7 @@ import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { FormField, FormNotice, fieldStyles } from "@/components/FormField";
 import { getLocale, useTranslation } from "@/lib/i18n";
-import { apiRequest } from "@/lib/query-client";
+import { api } from "@/lib/query-client";
 import { serverErrorMessage } from "@/lib/apiError";
 import { Colors, Spacing } from "@/lib/theme";
 import { useGuardedSubmit } from "@/lib/useGuardedSubmit";
@@ -35,7 +35,7 @@ export default function RecoverScreen() {
     }
     setError(null);
     try {
-      await apiRequest("POST", "/api/auth/request-password-reset", { email: email.trim(), locale: getLocale() });
+      await api("POST auth/request-password-reset", { body: { email: email.trim(), locale: getLocale() } });
       setStep("reset");
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("recover.requestFailed")));
@@ -49,7 +49,7 @@ export default function RecoverScreen() {
     }
     setError(null);
     try {
-      await apiRequest("POST", "/api/auth/reset-password", { token: code.trim(), newPassword });
+      await api("POST auth/reset-password", { body: { token: code.trim(), newPassword } });
       // reset-password mints no session: the password just chosen is the
       // thing to prove, not this request.
       router.replace({ pathname: "/auth", params: { notice: "passwordReset" } });

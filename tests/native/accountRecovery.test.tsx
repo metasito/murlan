@@ -32,7 +32,7 @@ import { httpRequests, route, unreachable } from './mocks/http';
 
 type Answer = Parameters<typeof route>[2];
 
-/** Every request these screens send through apiRequest; each is answered alike. */
+/** Every request these screens send through api(); each is answered alike. */
 const ACCOUNT_CALLS = [
   '/api/auth/register',
   '/api/auth/add-email',
