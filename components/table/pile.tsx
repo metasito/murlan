@@ -561,7 +561,7 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
 
 // How long the trick-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
-const TRICK_WINNER_MS = 1800;
+export const TRICK_WINNER_MS = 1800;
 
 export interface PileFlightInput {
   layout: TableLayout;

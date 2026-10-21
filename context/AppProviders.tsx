@@ -24,7 +24,7 @@ function AccountNotifications({ children }: { children: React.ReactNode }) {
  * above it. A table screen's crash stops at its route's own ErrorBoundary
  * export, so the providers below this one stay mounted.
  */
-export function AppProviders({ children }: { children: React.ReactNode }) {
+export function AppProviders({ children, random }: { children: React.ReactNode; random?: () => number }) {
   return (
     <SettingsProvider>
       <QueryClientProvider client={queryClient}>
@@ -34,7 +34,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
               <OrientationProvider>
                 <AuthProvider>
                   <AccountNotifications>
-                    <SocketProvider>
+                    <SocketProvider random={random}>
                       <GameProvider>{children}</GameProvider>
                     </SocketProvider>
                   </AccountNotifications>
