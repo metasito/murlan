@@ -1,17 +1,17 @@
 import { useQuery, type QueryClient, type UseQueryOptions, type UseQueryResult } from "@tanstack/react-query";
-import type { GetRoute, ParamsOf, QueryOf, ResOf } from "@/shared/http";
-import { api, apiPath } from "./query-client";
+import type { ParamsOf, QueryOf, ResOf } from "@/shared/http";
+import { api, apiPath, type Call, type RouteOf as RouteOfCall } from "./query-client";
 
 /** A cacheable read: a GET in the contract, named by its path under /api, that takes no query string. */
-export type Read = GetRoute extends infer R
-  ? R extends `GET /api/${infer P}`
-    ? QueryOf<R & GetRoute> extends undefined
+export type Read = Call extends infer C
+  ? C extends `GET ${infer P}`
+    ? QueryOf<RouteOfCall<C & Call>> extends undefined
       ? P
       : never
     : never
   : never;
 
-type RouteOf<P extends Read> = Extract<GetRoute, `GET /api/${P}`>;
+type RouteOf<P extends Read> = RouteOfCall<`GET ${P}`>;
 type Params<P extends Read> = keyof ParamsOf<RouteOf<P>> extends never ? [] : [params: ParamsOf<RouteOf<P>>];
 export type Answer<P extends Read> = ResOf<RouteOf<P>>;
 /** A read whose answer is a list of rows with ids, which a pushed row can be seated in. */

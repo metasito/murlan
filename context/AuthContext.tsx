@@ -16,7 +16,7 @@ interface AuthContextValue {
   login: (username: string, password: string) => Promise<void>;
   /**
    * Resolves to the signed-in account, null when the follow-up
-   * `GET /api/auth/me` confirmed no session, or undefined when that
+   * `GET auth/me` confirmed no session, or undefined when that
    * confirmation itself could not be reached (a dropped connection, a 5xx) —
    * see fetchMe()'s own contract below. The caller needs this to show a
    * coherent "check your email" state rather than guessing from `user`,
@@ -154,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // { ok: true, code: "CHECK_YOUR_EMAIL" } whether or not the address was
   // already taken, and a user object in one case and not the other would
   // put the leak straight back). Who actually got signed in is answered the
-  // same way a boot-time check already answers it: GET /api/auth/me — and by
+  // same way a boot-time check already answers it: GET auth/me — and by
   // fetchMe()'s own contract, `undefined` means that question went
   // unanswered, not that it was answered "no". A flaky connection right
   // after a successful POST must not read as a sign-out.
@@ -190,7 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Like rename: the card that calls this (app/profile.tsx) hides itself off
   // `user.email`, so the state has to update in the same place the request
-  // lands, not wait for the next /api/auth/me poll.
+  // lands, not wait for the next GET auth/me poll.
   const addEmail = useCallback(async (email: string) => {
     const data = await api("POST auth/add-email", { body: { email, locale: getLocale() } });
     setUser(data);

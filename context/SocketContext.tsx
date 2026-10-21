@@ -352,7 +352,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         return next;
       });
       // The row reads its time from this cache, which otherwise keeps whatever
-      // /api/friends returned while the friend was still online — their
+      // GET friends returned while the friend was still online — their
       // previous disconnect, not the one just announced.
       if (lastSeen) {
         qc.setQueryData<Answer<"friends">>(

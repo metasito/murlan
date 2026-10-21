@@ -201,7 +201,6 @@ export const HTTP = {
 } as const;
 
 export type Route = keyof typeof HTTP;
-export type GetRoute = Extract<Route, `GET ${string}`>;
 export type ResOf<K extends Route> = NonNullable<(typeof HTTP)[K][typeof res]>;
 type BodySchema<K extends Route> = (typeof HTTP)[K] extends Endpoint<unknown, infer B, z.ZodTypeAny | undefined> ? B : never;
 type QuerySchema<K extends Route> = (typeof HTTP)[K] extends Endpoint<unknown, z.ZodTypeAny | undefined, infer Q> ? Q : never;

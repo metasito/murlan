@@ -196,11 +196,11 @@ export interface RoundOverPayload {
   /**
    * Each rated seat's standing once this round is written, keyed as
    * `ratingDeltas`. Sent rather than fetched: the ladder write lands after
-   * `game:round_over`, so `/api/ratings/me` read on it can still be the old rating.
+   * `game:round_over`, so `GET ratings/me` read on it can still be the old rating.
    */
   ratingsAfter: Record<string, RatingAfter>;
   /**
-   * Whether this round wrote a `/api/stats/history` row — a bot-majority
+   * Whether this round wrote a `GET stats/history` row — a bot-majority
    * table writes none. Wider than `ratingDeltas` being empty: a teams round
    * is recorded and unrated.
    */

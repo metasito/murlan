@@ -27,7 +27,7 @@ async function throwIfResNotOk(res: Response) {
 
 /** A contract route named by its method and its path under /api, the way lib/queries.ts names a read. */
 export type Call = Route extends infer R ? (R extends `${infer M} /api/${infer P}` ? `${M} ${P}` : never) : never;
-type RouteOf<C extends Call> = C extends `${infer M} ${infer P}` ? Extract<Route, `${M} /api/${P}`> : never;
+export type RouteOf<C extends Call> = C extends `${infer M} ${infer P}` ? Extract<Route, `${M} /api/${P}`> : never;
 export type Reply<C extends Call> = ResOf<RouteOf<C>>;
 export type Sent<C extends Call> = BodyOf<RouteOf<C>>;
 

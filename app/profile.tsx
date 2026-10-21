@@ -318,9 +318,9 @@ function ChangePasswordCard() {
  * The non-blocking nudge for an account that predates the email requirement
  * (#863, `lib/emailNudge.ts`) — never a login wall, never an `Alert`. Submitting
  * mints an `email_verify` token and sends it through the same machinery signup
- * uses; server/http/routes/auth.ts's `/api/auth/verify-email` (reached from the emailed
+ * uses; server/http/routes/auth.ts's `POST auth/verify-email` (reached from the emailed
  * link, not from this screen) is what redeems it and makes the card disappear
- * on the next `/api/auth/me`.
+ * on the next `GET auth/me`.
  */
 function AddEmailCard() {
   const { t } = useTranslation();
