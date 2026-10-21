@@ -23,10 +23,9 @@ import { ACTIVE_ROOM_KEY, WAITING_ROOM_KEY } from '@/lib/storageKeys';
 import { SettingsProvider } from '@/context/SettingsContext';
 import { t } from '@/lib/i18n';
 import { resetErrorReportingForTests } from '@/lib/errorReporting';
+import { renderApp } from './harness/renderApp';
 import { httpRequests, route } from './mocks/http';
-
-// The server a device build names; this file never loads socket.io, which names it for the rest.
-process.env.EXPO_PUBLIC_DOMAIN ??= 'murlan.test';
+import type { FakeSocket } from './mocks/socketIo';
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn() } }));
 const replace = (require('expo-router') as { router: { replace: jest.Mock } }).router.replace;
@@ -159,17 +158,16 @@ const KEPT = [
   [WAITING_ROOM_KEY, 'ABCD'],
 ];
 
-/** Records each intent and acknowledges it, as the server does. */
-const mockEmitted: string[] = [];
-const mockSocket = {
-  timeout: () => ({
-    emit: (event: string, _message: unknown, ack: (err: unknown, reply: unknown) => void) => {
-      mockEmitted.push(event);
-      ack(null, { ok: true });
-    },
-  }),
+let live: FakeSocket;
+const emitted = () => live.sent.map((e) => e.event);
+/** `ui` signed in with the socket up, every intent it sends accepted. */
+const mount = async (ui: React.ReactElement) => {
+  const view = await renderApp(ui, { user: { id: 'u1', username: 'Ana' }, connected: true });
+  live = view.socket();
+  live.reset();
+  live.answering = { ok: true };
+  return view;
 };
-jest.mock('@/context/SocketContext', () => ({ useSocketConnection: () => mockSocket }));
 
 const crashedRoute = (scope: CrashScope) => {
   const Boundary = routeErrorBoundary(scope);
@@ -186,7 +184,6 @@ const crashedRoute = (scope: CrashScope) => {
 // boundary above them unmounts all three, and their remount rejoins the table.
 describe('a table route has its own boundary', () => {
   beforeEach(() => {
-    mockEmitted.length = 0;
     replace.mockReset();
     reloadAppAsync.mockReset();
     return AsyncStorage.clear();
@@ -211,7 +208,7 @@ describe('a table route has its own boundary', () => {
       }, []);
       return <>{children}</>;
     }
-    const view = await render(<Outer>{crashedRoute('online')}</Outer>);
+    const view = await mount(<Outer>{crashedRoute('online')}</Outer>);
 
     expect(view.getByText(t('errorFallback.title'))).toBeTruthy();
     expect(outer).toEqual({ mounts: 1, unmounts: 0 });
@@ -224,12 +221,12 @@ describe('a table route has its own boundary', () => {
   // takes it over. Releasing it stops those states (tests/integration/gameplay.test.ts).
   it('online Continue releases the seat and forgets the table', async () => {
     await seedHandles();
-    const view = await render(crashedRoute('online'));
+    const view = await mount(crashedRoute('online'));
 
     await fireEvent.press(view.getByRole('button', { name: t('errorFallback.continue') }));
 
     await waitFor(async () => expect(await handles()).toEqual(FORGOTTEN));
-    expect(mockEmitted).toEqual(expect.arrayContaining(['room:leave', 'room:unspectate']));
+    expect(emitted()).toEqual(expect.arrayContaining(['room:leave', 'room:unspectate']));
     expect(replace).toHaveBeenCalledWith('/');
     await view.unmount();
   });
@@ -238,9 +235,9 @@ describe('a table route has its own boundary', () => {
     await seedHandles();
     let atReload: unknown[] = [];
     reloadAppAsync.mockImplementation(async () => {
-      atReload = [[...mockEmitted], await handles()];
+      atReload = [emitted(), await handles()];
     });
-    const view = await render(crashedRoute('online'));
+    const view = await mount(crashedRoute('online'));
 
     await fireEvent.press(view.getByRole('button', { name: t('errorFallback.restart') }));
 
@@ -253,7 +250,7 @@ describe('a table route has its own boundary', () => {
 
   it('a Restart that cannot reload lands on / rather than retrying the crashed route', async () => {
     reloadAppAsync.mockImplementation(() => Promise.reject(new Error('no reload here')));
-    const view = await render(crashedRoute('online'));
+    const view = await mount(crashedRoute('online'));
 
     await fireEvent.press(view.getByRole('button', { name: t('errorFallback.restart') }));
 
@@ -263,12 +260,12 @@ describe('a table route has its own boundary', () => {
 
   it('an offline crash keeps the online resume handles', async () => {
     await seedHandles();
-    const view = await render(crashedRoute('offline'));
+    const view = await mount(crashedRoute('offline'));
 
     await fireEvent.press(view.getByRole('button', { name: t('errorFallback.continue') }));
 
     expect(replace).toHaveBeenCalledWith('/');
-    expect(mockEmitted).toEqual([]);
+    expect(emitted()).toEqual([]);
     expect(await handles()).toEqual(KEPT);
     await view.unmount();
   });

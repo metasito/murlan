@@ -33,6 +33,8 @@ export class FakeSocket {
   active = false;
   readonly sent: { event: keyof Outgoing; args: unknown[] }[] = [];
   readonly acks: PendingAck[] = [];
+  /** Set, every ack is answered with it as it is sent, as a server that takes every intent does. */
+  answering: IntentReply | null = null;
   /** The latest credentials lib/socket.ts handed over, as each connection attempt asks for them. */
   credentials: Promise<Record<string, unknown>> | null = null;
   readonly connect = jest.fn(() => {
@@ -130,6 +132,7 @@ export class FakeSocket {
         const drop = () => settle(() => {});
         this.unanswered.add(drop);
         this.acks.push(pending);
+        if (this.answering) pending.answer(this.answering);
       },
     };
   }
@@ -188,6 +191,7 @@ export class FakeSocket {
     this.connect.mockClear();
     this.disconnect.mockClear();
     this.io.reconnection.mockClear();
+    this.answering = null;
   }
 }
 
