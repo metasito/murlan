@@ -87,6 +87,7 @@ const rows: [string, GameState | null, GameState, ReturnType<typeof exchangeAnno
   ["9: the same state again", same, same, null],
   ["a two-joker round over, re-sent", state(jokers, OUT, true), state(jokers, OUT, true), null],
   ["a two-joker round over, seen first", null, state(jokers, OUT, true), jokersAnnounced],
+  ["a two-joker deal after a round that ended on no move", state(closed(), DEAL, true), state(jokers, DEAL), jokersAnnounced],
 ];
 
 for (const [name, prev, next, expected] of rows) {

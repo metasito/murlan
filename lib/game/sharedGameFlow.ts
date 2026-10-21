@@ -44,18 +44,20 @@ export function buildExchangeAnnounce(
 
 /**
  * What one committed state announces, given the one it replaces: the give closing the phase, or a
- * two-joker deal arriving. `prev` is null when nothing was seen before, and then the deal counts as
- * unseen. A fresh deal opening the phase announces nothing; the table draws the receive from the phase.
+ * two-joker deal arriving. `prev` is null when nothing was seen before. A fresh deal opening the
+ * phase announces nothing; the table draws the receive from the phase itself.
  */
 export function exchangeAnnouncementOf(prev: GameState | null, next: GameState): ExchangeAnnounceData | null {
   const phase = next.exchangePhase;
   const move = moveSince(prev?.lastMove, next.lastMove);
-  if (!move || !phase || phase.active) return null;
-  if (move.kind === "giveback" && prev?.exchangePhase?.active) {
+  // Every deal records the same move, so a round that ended on none (a concession) hides the next deal from `moveSince`.
+  const dealt = !prev || (prev.roundOver && !next.roundOver) || move?.kind === "deal";
+  if (!phase || phase.active) return null;
+  if (move?.kind === "giveback" && prev?.exchangePhase?.active) {
     // Online's closing state withholds `cardFromLoser`, so the received card is read from `prev`.
     const received = prev.exchangePhase.cardFromLoser;
     const given = phase.cardToLoser;
     return received || given ? buildExchangeAnnounce(next.players, phase, { given, received }) : null;
   }
-  return phase.twoJokerException && (!prev || move.kind === "deal") ? buildExchangeAnnounce(next.players, phase) : null;
+  return phase.twoJokerException && dealt ? buildExchangeAnnounce(next.players, phase) : null;
 }
