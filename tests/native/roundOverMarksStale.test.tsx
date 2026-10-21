@@ -5,26 +5,44 @@ import { act } from '@testing-library/react-native';
 import { renderApp } from './harness/renderApp';
 import { OnlineGameProvider } from '@/context/OnlineGameContext';
 import { queryClient } from '@/lib/query-client';
-import { stale } from '@/lib/queries';
+import { queryKey } from '@/lib/queries';
+import type { RoundOverPayload } from '@/lib/game/matchState';
+
+const MOVED_BY_A_ROUND = [
+  queryKey('stats/me'),
+  queryKey('stats/history'),
+  queryKey('stats/achievements'),
+  queryKey('ratings/me'),
+  queryKey('ratings/leaderboard'),
+  queryKey('ratings/leaderboard/friends'),
+];
 
 describe('game:round_over', () => {
-  it('invalidates every read in stale.afterRound', async () => {
+  it('invalidates the stats, the rating and both ladder boards', async () => {
     const view = await renderApp(<OnlineGameProvider userId="u1">{null}</OnlineGameProvider>, {
       user: { id: 'u1', username: 'Ana' },
     });
-    for (const key of stale.afterRound) queryClient.setQueryData(key, []);
+    for (const key of MOVED_BY_A_ROUND) queryClient.setQueryData(key, []);
 
     await act(async () =>
       view.socket().serverEmit('game:round_over', {
         finishingOrder: [],
         scores: [],
+        matchTarget: 0,
+        matchLength: 'single',
+        roundsPlayed: 1,
         matchOver: false,
         matchWinnerIds: [],
+        matchContinues: false,
+        isDraw: false,
         ratingDeltas: {},
-      } as never)
+        ratingsAfter: {},
+        recorded: true,
+        voided: false,
+      } satisfies RoundOverPayload)
     );
 
-    const left = stale.afterRound.filter((key) => !queryClient.getQueryState(key)?.isInvalidated);
+    const left = MOVED_BY_A_ROUND.filter((key) => !queryClient.getQueryState(key)?.isInvalidated);
     expect(left).toEqual([]);
   });
 });

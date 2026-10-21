@@ -16,7 +16,7 @@ export function getApiUrl(): string {
   return new URL(host.includes("://") ? host : `https://${host}`).href;
 }
 
-export async function throwIfResNotOk(res: Response) {
+async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
     throw new ApiError(res.status, parseServerPayload(text), text);

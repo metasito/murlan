@@ -1,7 +1,6 @@
-import { fetch } from "expo/fetch";
 import { useQuery, type QueryClient, type UseQueryOptions, type UseQueryResult } from "@tanstack/react-query";
 import type { GetRoute, ParamsOf, QueryOf, ResOf } from "@/shared/http";
-import { getApiUrl, throwIfResNotOk } from "./query-client";
+import { apiRequest } from "./query-client";
 
 /** A cacheable read: a GET in the contract, named by its path under /api, that takes no query string. */
 export type Read = GetRoute extends infer R
@@ -15,20 +14,21 @@ export type Read = GetRoute extends infer R
 type RouteOf<P extends Read> = Extract<GetRoute, `GET /api/${P}`>;
 type Params<P extends Read> = keyof ParamsOf<RouteOf<P>> extends never ? [] : [params: ParamsOf<RouteOf<P>>];
 export type Answer<P extends Read> = ResOf<RouteOf<P>>;
+/** A read whose answer is a list of rows with ids, which a pushed row can be seated in. */
+export type ListRead = { [P in Read]: Answer<P> extends readonly { id: string }[] ? P : never }[Read];
+export type Row<P extends ListRead> = Answer<P>[number];
 
 declare const read: unique symbol;
 /** One cache entry: the URL it is read from, and at the type level which read answers it. */
-export type ApiKey<P extends Read = Read> = readonly [url: string] & { readonly [read]?: P };
+export type ApiKey<P extends Read = Read> = readonly [url: string] & { readonly [read]: P };
 
 export function queryKey<P extends Read>(path: P, ...[params]: Params<P>): ApiKey<P> {
   const named = params as Record<string, string> | undefined;
-  return [`/api/${path.replace(/:(\w+)/g, (_, name: string) => encodeURIComponent(named![name]))}`] as ApiKey<P>;
+  return [`/api/${path.replace(/:(\w+)/g, (_, name: string) => encodeURIComponent(named![name]))}`] as unknown as ApiKey<P>;
 }
 
 async function get<T>(key: ApiKey): Promise<T> {
-  const res = await fetch(new URL(key[0], getApiUrl()).toString(), { credentials: "include" });
-  await throwIfResNotOk(res);
-  return (await res.json()) as T;
+  return (await apiRequest("GET", key[0])).json() as Promise<T>;
 }
 
 export function useApi<P extends Read>(
@@ -38,7 +38,11 @@ export function useApi<P extends Read>(
   return useQuery<Answer<P>>({ ...options, queryKey: key, queryFn: () => get<Answer<P>>(key) });
 }
 
-const ladder = [queryKey("ratings/leaderboard"), queryKey("ratings/leaderboard/friends")];
+export const ladderBoards = {
+  global: queryKey("ratings/leaderboard"),
+  friends: queryKey("ratings/leaderboard/friends"),
+} as const;
+const ladder = Object.values(ladderBoards);
 const friendLists = [queryKey("friends"), queryKey("friends/requests"), queryKey("friends/sent")];
 
 /** What each event can have moved, the server being the one who knows by how much. */
