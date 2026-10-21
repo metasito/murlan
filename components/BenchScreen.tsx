@@ -64,6 +64,11 @@ async function latched(stop: () => void, body: () => Promise<void>) {
   }
 }
 
+const captureFailed = (phase: "start" | "stop") => (e: unknown) => {
+  diag({ k: "capture", t: performance.now(), phase, error: String(e) });
+  return false;
+};
+
 export function BenchScreen() {
   useKeepAwake();
   const params = useLocalSearchParams<Record<string, string>>();
@@ -97,7 +102,7 @@ export function BenchScreen() {
         }
         setRefused(null);
         recorder.postTo(host);
-        const capturing = params.capture !== "0" && probe.canCapture() && (await probe.startCapture(true).catch(() => false));
+        const capturing = params.capture !== "0" && probe.canCapture() && (await probe.startCapture(true).catch(captureFailed("start")));
         drain.current = setInterval(() => probe.drain(), 1000);
         diag({ k: "build", t: performance.now(), ...benchBuild() });
         const ctx: BenchContext = {
@@ -130,7 +135,7 @@ export function BenchScreen() {
         }
         stopDrain();
         probe.drain();
-        if (capturing) await probe.stopCapture().catch(() => false);
+        if (capturing) await probe.stopCapture().catch(captureFailed("stop"));
         diag({ k: "run", t: performance.now(), phase: "end", names });
       }),
     [params, stopDrain]

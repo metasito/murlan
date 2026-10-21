@@ -389,7 +389,10 @@ const GUARDS = [
     why: "ADR-0009 (docs/adr/0009-audio-and-haptics-libraries.md) gives react-native-audio-api and the audio-session module one owner, lib/device/audioEngine.ts: play through lib/device/feedback.ts.",
     selector: importsOf("/^react-native-audio-api(\\x2F|$)|(^|\\x2F)murlan-audio-session(\\x2F|$)/", { values: true }),
     files: AUDIO_LAYERED,
-    ignores: [{ glob: "lib/device/audioEngine.ts", reason: "the owner of the audio engine" }],
+    ignores: [
+      { glob: "lib/device/audioEngine.ts", reason: "the owner of the audio engine" },
+      { glob: "lib/diagnostics/probe.ts", reason: "the bench reads the session's latency and never configures it, which tests/tooling/probeReadsSessionOnly.test.ts holds" },
+    ],
     plant: { file: "components/Plant.tsx", code: [
       'import { AudioContext } from "react-native-audio-api";',
       'import { type AudioBuffer, AudioContext as Ctx } from "react-native-audio-api";',
