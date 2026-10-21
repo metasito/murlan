@@ -4,70 +4,28 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen, waitFor } from '@testing-library/react-native';
-
-type Listener = (...args: unknown[]) => void;
-const listeners = new Map<string, Set<Listener>>();
-const emitted: string[] = [];
-
-const mockSocket = {
-  connected: true,
-  on(event: string, fn: Listener) {
-    if (!listeners.has(event)) listeners.set(event, new Set());
-    listeners.get(event)!.add(fn);
-  },
-  off() {},
-  once() {},
-  timeout() {
-    return mockSocket;
-  },
-  emit(event: string) {
-    emitted.push(event);
-  },
-};
-
-jest.mock('@/context/SocketContext', () => ({
-  useSocketConnection: () => mockSocket,
-}));
+import { screen, waitFor } from '@testing-library/react-native';
 
 const mockReportError = jest.fn(() => true);
 jest.mock('@/lib/errorReporting', () => ({
+  ...jest.requireActual<object>('@/lib/errorReporting'),
   reportError: (...args: unknown[]) => mockReportError(...(args as [])),
 }));
 
-import { OnlineGameProvider } from '@/context/OnlineGameContext';
-import { NotificationProvider } from '@/context/NotificationContext';
 import { UpdateRequired } from '@/components/UpdateRequired';
 import { ACTIVE_ROOM_KEY } from '@/lib/storageKeys';
 import { t } from '@/lib/i18n';
-
-const deliver = async (event: string, ...args: unknown[]) => {
-  await act(async () => {
-    listeners.get(event)?.forEach((fn) => fn(...args));
-  });
-};
+import { renderApp } from './harness/renderApp';
 
 async function mount() {
   await AsyncStorage.setItem(ACTIVE_ROOM_KEY, 'R1');
-  const client = new QueryClient();
-  const view = await render(
-    <QueryClientProvider client={client}>
-      <NotificationProvider>
-        <OnlineGameProvider userId="u1">
-          <UpdateRequired />
-        </OnlineGameProvider>
-      </NotificationProvider>
-    </QueryClientProvider>
-  );
-  await waitFor(() => expect(emitted).toContain('game:rejoin'));
+  const view = await renderApp(<UpdateRequired />, { user: { id: 'u1', username: 'Ana' }, online: true, connected: true });
+  await waitFor(() => expect(view.socket().sentAs('game:rejoin')).not.toEqual([]));
   return view;
 }
 
 describe('a game:state this bundle cannot read', () => {
   beforeEach(async () => {
-    listeners.clear();
-    emitted.length = 0;
     mockReportError.mockClear();
     await AsyncStorage.clear();
   });
@@ -77,7 +35,7 @@ describe('a game:state this bundle cannot read', () => {
     expect(screen.queryByText(t('updateRequired.title'))).toBeNull();
 
     const ack = jest.fn();
-    await deliver('game:state', { currentTurnIndex: 0, roundOver: false, finishingOrder: [] }, ack);
+    await view.socket().deliver('game:state', { currentTurnIndex: 0, roundOver: false, finishingOrder: [] } as never, ack);
 
     await waitFor(() => expect(screen.getByText(t('updateRequired.title'))).toBeTruthy());
     await waitFor(async () => expect(await AsyncStorage.getItem(ACTIVE_ROOM_KEY)).toBeNull());

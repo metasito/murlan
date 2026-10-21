@@ -4,7 +4,7 @@
 //
 // A source scan cannot tell a rendered control from a defined one, and the
 // whole point of both is what they emit, so this renders the screen.
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { fireEvent, act } from '@testing-library/react-native';
 import { setWindow } from './harness/env';
