@@ -9,7 +9,7 @@ import {
   type RandomSource,
   type SeatSetup,
 } from "./gameEngine.ts";
-import { advance, dealNext, startTable } from "./matchFlow.ts";
+import { advance, dealNext, startTable, type OfflineTable } from "./matchFlow.ts";
 import { autoMoveForSeat, type AutoMove } from "./autoMove.ts";
 
 /**
@@ -116,6 +116,11 @@ export interface SimulateOptions {
   onRoundStart?: (state: GameState, roundIndex: number) => void;
   /** Each round's final state, before it is scored into the match. */
   onRoundEnd?: (state: GameState, roundIndex: number) => void;
+  /**
+   * Every committed table, a deal and then each move; play, `onTransition` and the round's scoring
+   * continue from what it returns. Absent is identity.
+   */
+  passThrough?: (table: OfflineTable) => OfflineTable;
   /** Every committed state, with the one before it: a deal, then each move. `prev` is null before the first deal. */
   onTransition?: (prev: GameState | null, next: GameState) => void;
 }
@@ -130,6 +135,7 @@ export function simulateMatch(opts: SimulateOptions): SimulatedMatch {
   const maxRounds = opts.maxRounds ?? 500;
   const maxMovesPerRound = opts.maxMovesPerRound ?? 2000;
   const choose = opts.move ?? ((state, seat, botRng) => autoMoveForSeat(state, seat, "bot", botRng));
+  const pass = opts.passThrough ?? ((t: OfflineTable) => t);
 
   const random = rng(opts.seed).source;
   let table = startTable(opts.players, opts.gameMode, opts.length, { random });
@@ -148,6 +154,7 @@ export function simulateMatch(opts: SimulateOptions): SimulatedMatch {
     }
 
     if (rounds.length > 0) table = dealNext(table, random);
+    table = pass(table);
     let state = table.state;
     opts.onTransition?.(endOfLastRound, state);
     opts.onRoundStart?.(state, rounds.length);
@@ -175,8 +182,11 @@ export function simulateMatch(opts: SimulateOptions): SimulatedMatch {
         );
       }
       opts.onMove?.({ state, seat, move, roundIndex: rounds.length, moveIndex: moves });
-      opts.onTransition?.(state, move.state);
-      state = move.state;
+      // `table.state` stays the deal: `advance` scores the round only when it was not already over.
+      const committed = pass({ ...table, state: move.state });
+      table = { ...committed, state: table.state };
+      opts.onTransition?.(state, committed.state);
+      state = committed.state;
     }
 
     opts.onRoundEnd?.(state, rounds.length);
