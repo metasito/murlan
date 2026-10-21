@@ -14,24 +14,12 @@ const onCommit: ProfilerOnRenderCallback = (id) => {
   mockRenders[id] = (mockRenders[id] ?? 0) + 1;
 };
 
-type Render = (p: object) => React.ReactNode;
-type Memo = { type: Render; compare?: (a: object, b: object) => boolean };
-
-// Counts the component's own body, inside its memo if it has one: a counter outside the memo counts the parent instead.
+function mockCount(name: string, p: { place?: string }) {
+  const key = p.place === undefined ? name : `${name}:${p.place}`;
+  mockRenders[key] = (mockRenders[key] ?? 0) + 1;
+}
 function mockProfiled(path: string, names: string[]) {
-  const R = jest.requireActual('react') as typeof React;
-  const actual = jest.requireActual(path) as Record<string, Render | Memo>;
-  const wrap = (name: string) => {
-    const c = actual[name];
-    const body = typeof c === 'function' ? c : c.type;
-    const counted = (p: object & { place?: string }) => {
-      const key = p.place === undefined ? name : `${name}:${p.place}`;
-      mockRenders[key] = (mockRenders[key] ?? 0) + 1;
-      return body(p);
-    };
-    return typeof c === 'function' ? counted : R.memo(counted, c.compare);
-  };
-  return { ...actual, ...Object.fromEntries(names.map((name) => [name, wrap(name)])) };
+  return (require('./helpers/renderCounts') as typeof import('./helpers/renderCounts')).renderCounts(path, names, mockCount);
 }
 
 jest.mock('@/components/table/seats', () => mockProfiled('@/components/table/seats', ['OpponentSeat']));

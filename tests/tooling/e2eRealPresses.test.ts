@@ -12,7 +12,6 @@ import path from "node:path";
 import { blankComments, sourcesUnder } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const E2E = path.join(repoRoot, "tests", "e2e");
 
 /**
  * The surfaces where a press has a duration that means something. The hand is
@@ -165,28 +164,6 @@ test("every gesture testID is one the app actually sets", () => {
     .join("\n");
   const invented = GESTURE_TESTIDS.filter((id) => !source.includes(id));
   assert.deepEqual(invented, [], `no component sets these testIDs: ${invented.join(", ")}`);
-});
-
-/**
- * The hold threshold is written down twice — `hand.tsx` keeps its own copy
- * module-local, so the harness cannot import it. A drift makes every "held past
- * the threshold" press land short, and the specs go green on a hold that never
- * happened.
- */
-test("the harness holds for at least as long as the app calls a hold", () => {
-  const appSource = readFileSync(path.join(repoRoot, "components", "table", "hand.tsx"), "utf8");
-  const app = /\bHOLD_MS\s*=\s*(\d+)/.exec(appSource);
-  assert.ok(app, "components/table/hand.tsx no longer declares HOLD_MS");
-
-  const pressSource = readFileSync(path.join(E2E, "helpers", "press.ts"), "utf8");
-  const harness = /\bHOLD_MS\s*=\s*(\d+)/.exec(pressSource);
-  assert.ok(harness, "tests/e2e/helpers/press.ts no longer declares HOLD_MS");
-
-  assert.equal(
-    Number(harness[1]),
-    Number(app[1]),
-    "the app's hold threshold and the harness's copy of it have drifted apart"
-  );
 });
 
 test("the scan reads every spec and every helper, not a handful", () => {

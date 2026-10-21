@@ -12,10 +12,12 @@ import React from 'react';
 import { Text } from 'react-native';
 import { act } from '@testing-library/react-native';
 
+import { reconnectDelayMs } from '@/lib/reconnectDelay';
 import { renderApp } from './harness/renderApp';
 import { lastSocket } from './mocks/socketIo';
 
-const mount = () => renderApp(<Text>child</Text>, { user: { id: 'u1', username: 'Ana' } });
+const random = () => 0.123;
+const mount = () => renderApp(<Text>child</Text>, { user: { id: 'u1', username: 'Ana' }, random });
 
 const fireConnectError = async () => {
   await act(async () => {
@@ -23,9 +25,12 @@ const fireConnectError = async () => {
   });
 };
 
-// The first attempt's delay with Math.random pinned below (lib/reconnectDelay.ts),
-// and what identifies this handler's timer among the renderer's and react-query's.
-const FIRST_RETRY_MS = 246;
+// What identifies this handler's timer among the renderer's and react-query's.
+const FIRST_RETRY_MS = reconnectDelayMs(0, random);
+
+it('draws a first retry that waits at all', () => {
+  expect(FIRST_RETRY_MS).toBeGreaterThan(0);
+});
 
 describe('connect_error', () => {
   let setTimeoutSpy: jest.Spied<typeof setTimeout>;
@@ -33,7 +38,6 @@ describe('connect_error', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     setTimeoutSpy = jest.spyOn(globalThis, 'setTimeout');
-    jest.spyOn(Math, 'random').mockReturnValue(0.123);
   });
 
   afterEach(() => {
@@ -71,6 +75,25 @@ describe('connect_error', () => {
     await act(async () => {
       jest.advanceTimersByTime(60_000);
     });
+    expect(lastSocket().connect).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      view.unmount();
+    });
+  });
+
+  it('keeps its retry and its socket when the jitter source changes identity', async () => {
+    const view = await mount();
+    lastSocket().active = false;
+
+    await fireConnectError();
+    await act(async () => {
+      view.rerender(<Text>child</Text>, { random: () => 0.123 });
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(60_000);
+    });
+    expect(lastSocket().disconnect).not.toHaveBeenCalled();
     expect(lastSocket().connect).toHaveBeenCalledTimes(1);
 
     await act(async () => {

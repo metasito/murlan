@@ -8,6 +8,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
+import { tapPoint } from "./helpers/press";
 import { TOUCH_TARGET_MIN } from "../../lib/tokens";
 
 const VIEWPORT = { width: 844, height: 390 };
@@ -73,6 +74,55 @@ test.describe("the rail's settings sheet", () => {
     await knob.click();
     await expect(page.locator(SHEET)).toBeVisible();
     await page.locator(VEIL).click({ position: { x: 5, y: 5 } });
+    await expect(page.locator(SHEET)).toHaveCount(0);
+  });
+
+  // A tap the sheet's entrance passes over between the finger going down and
+  // coming up is a tap nothing receives, so the sheet stays open under a
+  // player who tapped twice.
+  test("the knob answers a second tap while the sheet is still sliding in", async ({ page, baseURL }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize(VIEWPORT);
+    await openSeededGame(page, baseURL!, 4);
+
+    const knob = page.getByRole("button", { name: "Impostazioni" });
+    const box = (await knob.boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+
+    const railRight = await page.locator(RAIL).evaluate((el) => el.getBoundingClientRect().right);
+    const entrance = page.evaluate(
+      ({ x, y, sheet, railRight }) =>
+        new Promise<{ covered: string[]; slid: boolean }>((resolve) => {
+          const covered: string[] = [];
+          let slid = false;
+          let since = 0;
+          const sample = (t: number) => {
+            const el = document.querySelector(sheet);
+            if (el) {
+              since ||= t;
+              if (el.getBoundingClientRect().left < railRight - 1) slid = true;
+              const hit = document.elementFromPoint(x, y);
+              if (hit?.closest('[role="button"][aria-label="Impostazioni"]') == null) {
+                covered.push(`${Math.round(t - since)}ms: ${hit?.closest("[data-testid]")?.getAttribute("data-testid")}`);
+              }
+              if (t - since > 500) return resolve({ covered, slid });
+            }
+            requestAnimationFrame(sample);
+          };
+          requestAnimationFrame(sample);
+        }),
+      { x, y, sheet: SHEET, railRight }
+    );
+    await knob.click();
+    const { covered, slid } = await entrance;
+    expect(slid, "no sampled frame caught the sheet mid-slide, so nothing was checked").toBe(true);
+    expect(covered, "the sheet's entrance passes over the knob").toEqual([]);
+    await knob.click();
+    await expect(page.locator(SHEET)).toHaveCount(0);
+
+    await knob.click();
+    await tapPoint(page, x, y);
     await expect(page.locator(SHEET)).toHaveCount(0);
   });
 
