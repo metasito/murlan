@@ -13,6 +13,7 @@ import { getAnimatedStyle } from "react-native-reanimated";
 import { GameTable } from "@/components/GameTable";
 import type { Card, Combination, GameState, Player } from "@/lib/game/gameEngine";
 import { setMotion } from "./harness/env";
+import { Motion } from "@/lib/theme";
 import { aThreePlayed } from "../support/game";
 
 const METRICS = {
@@ -34,8 +35,6 @@ const BOMB_PLAY: Combination = {
 };
 
 const noop = () => {};
-/** #1259 Q1: a mark enters in the mockup's 100 ms; under reduced motion the fade stays. */
-const MARK_ENTER_MS = 100;
 const opacityOf = (testID: string) =>
   (getAnimatedStyle(screen.getByTestId(testID, { includeHiddenElements: true })) as { opacity?: number }).opacity ?? 0;
 const table = (gameState: GameState, matchOver: boolean) => (
@@ -112,7 +111,7 @@ describe("reduced motion holds the lamp's flare at exactly zero (#765)", () => {
     }
 
     await act(async () => {
-      jest.advanceTimersByTime(MARK_ENTER_MS);
+      jest.advanceTimersByTime(Motion.mark.enter);
     });
     const mark = within(screen.getByTestId("pile-area")).getByTestId("notice-combo", { includeHiddenElements: true });
     within(mark).getByText(/bomb/i, { includeHiddenElements: true });

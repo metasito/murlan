@@ -100,12 +100,14 @@ type Boot = {
   offline?: Omit<OfflineSave, 'version'>;
   /** An offline match the device saved, not yet resumed. */
   saved?: Omit<OfflineSave, 'version'>;
+  /** What the socket's own reconnect jitter draws from. */
+  random?: () => number;
 };
 
 /** `ui` under the app's own provider stack, once the account has booted. */
 export async function renderApp(
   ui: React.ReactElement,
-  { user = null, cached = user, me, booted = true, online = false, follow = false, connected = false, offline, saved = offline }: Boot = {}
+  { user = null, cached = user, me, booted = true, online = false, follow = false, connected = false, offline, saved = offline, random }: Boot = {}
 ) {
   auth.settled = false;
   local.value = null;
@@ -124,8 +126,8 @@ export async function renderApp(
     ) : (
       node
     );
-  const app = (node: React.ReactElement) => (
-    <AppProviders>
+  const app = (node: React.ReactElement, jitter = random) => (
+    <AppProviders random={jitter}>
       <AuthSettled />
       <LocalSessionProbe />
       <ResumedFirst held={!!offline}>{screen(node)}</ResumedFirst>
@@ -154,8 +156,8 @@ export async function renderApp(
   }
   return {
     ...view,
-    /** `next` in place of the screen, under the same providers. */
-    rerender: (next: React.ReactElement) => view.rerender(app(next)),
+    /** `next` in place of the screen, under the same providers; `random` swaps the reconnect jitter's source. */
+    rerender: (next: React.ReactElement, over: { random?: () => number } = {}) => view.rerender(app(next, over.random ?? random)),
     /** The signed-in account's socket, which a later render in the same file reuses. */
     socket,
     /** The player signing in as `next` through the login form's own call, which the server accepts. */
