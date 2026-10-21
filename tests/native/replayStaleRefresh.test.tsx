@@ -10,7 +10,7 @@ jest.mock('expo-router', () => ({
 const card = (rank: string, suit: string) => ({ id: `${rank}_${suit}`, rank, suit, isJoker: false });
 const combo = (type: string, cards: ReturnType<typeof card>[]) => ({ type, cards, strength: 1 });
 
-const mockReplay = {
+const REPLAY = {
   id: 'r1',
   finishedAt: '2026-08-20T10:00:00.000Z',
   gameMode: 'free_for_all',
@@ -25,19 +25,15 @@ const mockReplay = {
   ],
 };
 
-let mockQuery: Record<string, unknown>;
-jest.mock('@tanstack/react-query', () => ({
-  ...jest.requireActual<object>('@tanstack/react-query'),
-  useQuery: () => mockQuery,
-  useQueryClient: () => ({ setQueryData: jest.fn(), invalidateQueries: jest.fn() }),
-}));
-
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react-native';
+import { act, fireEvent } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { en as locale } from '@/locales/en';
 import { translate, DEFAULT_LOCALE } from '@/shared/i18n';
 import type { TranslationKey } from '@/shared/i18n';
+import { queryClient } from '@/lib/query-client';
+import { queriesSettled, renderApp } from './harness/renderApp';
+import { httpRequests, route, unreachable } from './mocks/http';
 
 const ReplayScreen = require('@/app/(online)/replay').default as React.ComponentType;
 
@@ -48,17 +44,24 @@ const METRICS = {
   insets: { top: 0, left: 0, right: 0, bottom: 0 },
 };
 
-const show = () =>
-  render(
+const show = async (answer?: Parameters<typeof route>[2]) => {
+  if (answer) route('GET', '/api/replays/r1', answer);
+  const view = await renderApp(
     <SafeAreaProvider initialMetrics={METRICS}>
       <ReplayScreen />
-    </SafeAreaProvider>
+    </SafeAreaProvider>,
+    { user: { id: 'u1', username: 'Ana' } }
   );
+  await queriesSettled();
+  return view;
+};
 
 describe('a failed refresh of a replay', () => {
   it('keeps the table and the transport, with a quiet note above them', async () => {
-    mockQuery = { data: mockReplay, isError: true, isLoading: false, refetch: jest.fn() };
-    const view = await show();
+    const view = await show({ body: REPLAY });
+    route('GET', '/api/replays/r1', unreachable);
+    await act(async () => void (await queryClient.refetchQueries({ queryKey: ['/api/replays/r1'] })));
+    await queriesSettled();
     expect(view.getByText(locale['common.refreshFailed'])).toBeTruthy();
     expect(view.getByLabelText(t('replay.nextA11yLabel'))).toBeTruthy();
     expect(view.queryByText(locale['replay.loadFailedTitle'])).toBeNull();
@@ -66,12 +69,12 @@ describe('a failed refresh of a replay', () => {
   });
 
   it('with no replay to show, is the full error with a retry', async () => {
-    const refetch = jest.fn();
-    mockQuery = { data: undefined, isError: true, isLoading: false, refetch };
-    const view = await show();
+    const view = await show(unreachable);
     expect(view.queryByText(locale['common.refreshFailed'])).toBeNull();
+    const asked = () => httpRequests().filter((r) => r.path === '/api/replays/r1').length;
+    const before = asked();
     await fireEvent.press(view.getByLabelText(t('replay.retryA11yLabel')));
-    expect(refetch).toHaveBeenCalled();
+    expect(asked()).toBe(before + 1);
     await view.unmount();
   });
 });
