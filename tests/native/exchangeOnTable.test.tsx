@@ -15,11 +15,11 @@ import { GameTable } from '@/components/GameTable';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';
 import { choiceOpensAt } from '@/lib/timeline/exchangeTimeline';
-import { getValidGivebackCards } from '@/lib/game/gameEngine';
+import { getValidGivebackCards, emptyRankTally } from '@/lib/game/gameEngine';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
 import { activate } from './tapHelpers';
 import type { ConnectionNote } from '@/components/table/notices/hud';
-import { aThreePlayed } from '../support/game';
+import { dealEndMs } from '@/lib/timeline/dealTimeline';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -33,7 +33,7 @@ const card = (rank: Rank, suit: Suit): Card => ({
   isJoker: false,
 });
 
-const OPENS = choiceOpensAt(false);
+
 const WINNER = 'Ana';
 const LOSER = 'Bea';
 const BYSTANDER = 'Cesk';
@@ -69,7 +69,7 @@ const state = (exchange = true): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
-  playedRanks: aThreePlayed(),
+  playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
   exchangePhase: exchange
     ? { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: FROM_LOSER, twoJokerException: false }
@@ -77,6 +77,8 @@ const state = (exchange = true): GameState => ({
 });
 
 const noop = () => {};
+/** The fresh round is dealt first; its exchange opens after. */
+const OPENS = dealEndMs(state().players.map((p) => p.hand.length), 600) + choiceOpensAt(false);
 
 const table = (opts: { viewerSeat: number; onExchangeGive?: (id: string) => void; onExchangeReady?: () => void; exchange?: boolean; connection?: ConnectionNote }) => (
   <SafeAreaProvider initialMetrics={METRICS}>
@@ -138,7 +140,7 @@ describe('the winner picks from their own hand', () => {
     await act(async () => r.rerender(table({ viewerSeat: 0, onExchangeReady })));
     expect(screen.queryByTestId('exchange-prompt')).toBeNull();
 
-    await step(OPENS - 64);
+    await step(choiceOpensAt(false) - 64);
     expect(screen.queryByTestId('exchange-prompt')).toBeNull();
     expect(onExchangeReady).toHaveBeenCalledTimes(1);
     await step(128);
