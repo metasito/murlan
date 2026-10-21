@@ -32,7 +32,7 @@ import {
 } from '@/context/onlineGameHooks';
 import { useInvites, usePresence, useSocketConnection } from '@/context/SocketContext';
 
-import { renderApp } from './harness/renderApp';
+import { queriesSettled, renderApp } from './harness/renderApp';
 import { lastSocket } from './mocks/socketIo';
 
 jest.mock('expo-router', () => ({
@@ -192,6 +192,7 @@ describe('a field change wakes its own slice', () => {
   for (const { what, event, payloads, expected, primed } of CASES) {
     it(`leaves the slices ${what} says nothing about unrendered`, async () => {
       const view = await mount();
+      await queriesSettled();
       if (primed) await deliver(event, payloads[0]);
       // Mount settles first: what is measured is the delta a field change
       // costs, not the mount that had to happen either way.

@@ -252,6 +252,18 @@ describe('app/verify-email', () => {
     await view.unmount();
   });
 
+  it('offers no resend to a cached user while the boot check is still in flight', async () => {
+    me = () => new Promise<never>(() => {});
+    const cached = { id: 'u1', username: 'Ana', email: 'cached@example.test' };
+    const view = await renderApp(<VerifyEmailScreen />, { me, cached, booted: false });
+
+    const emailInput = await screen.findByLabelText(locale['auth.emailA11yLabel']);
+    await waitFor(() => expect(emailInput.props.value).toBe('cached@example.test'));
+    expect(meAsked()).toBe(1);
+    expect(screen.queryByRole('button', { name: locale['verifyEmail.resend'] })).toBeNull();
+    await view.unmount();
+  });
+
   it('prefills the email from the signed-in user when there is no route param', async () => {
     mockUseLocalSearchParams.mockReturnValue({});
     me = { body: {
