@@ -15,16 +15,21 @@ import {
   emptyRankTally,
 } from "../game/gameEngine.ts";
 import type { TFn, TranslationKey } from "../i18n.ts";
-import { readStagedPlay, type StagedPlay } from "../../components/table/stagedPlay.ts";
-import { playRefusalLabel } from "../../components/table/spokenLabels.ts";
-import { TUTORIAL_REFUSAL_KEYS } from "../../components/tutorialRefusal.ts";
+import { readStagedPlay, type PlayButtonLabel, type StagedPlay } from "../table/stagedPlay.ts";
+import { playRefusalLabel } from "../table/playRefusal.ts";
 
-// ─── Fixed, seeded cards ────────────────────────────────────────────────────
-// The tutorial never uses the random dealer: every card below is a literal,
-// deterministic Card so every step always matches what the player is holding.
-// IDs only need to be unique within the single beat they appear in together
-// (hand + table are never rendered from two different beats at once), so the
-// same rank/suit is reused across unrelated beats without any ambiguity.
+/** The tutorial's own sentence for a refusal the staged play reports; one with none gets the game's. */
+export const TUTORIAL_REFUSAL_KEYS: Partial<Record<PlayButtonLabel, TranslationKey>> = {
+  notACombination: "tutorial.errNotAValidCombo",
+  royalUnbeatable: "tutorial.errRoyalBeatsAll",
+  bombOnly: "tutorial.errOnlyHigherBomb",
+  wrongType: "tutorial.errSameType",
+  wrongLength: "tutorial.errSameLength",
+  tooLow: "tutorial.errTooWeak",
+};
+
+// Every card is a literal, so each beat always matches what the player holds.
+// Ids need only be unique within one beat; the same card recurs across beats.
 function mk(rank: Exclude<Rank, "joker_bw" | "joker_colored">, suit: Suit): Card {
   return { id: `${rank}_${suit}`, suit, rank, isJoker: false };
 }
@@ -39,12 +44,7 @@ const TYPE_LABEL_KEYS: Record<CombinationType, TranslationKey> = {
   royal_straight: "tutorial.typeRoyalStraight",
 };
 
-// ─── Beat model ─────────────────────────────────────────────────────────────
-// `InfoBeat` and `CompleteBeat` are structurally identical but kept as two
-// interfaces (each with a single-literal `kind`) rather than one interface
-// with a `"info" | "complete"` union tag — a union-valued discriminant
-// defeats TypeScript's discriminated-union narrowing on the `kind` switch
-// below, since exhaustive exclusion requires one literal tag per member.
+// InfoBeat and CompleteBeat stay two interfaces: narrowing on `kind` needs one literal tag per member.
 export interface InfoBeat {
   kind: "info";
   id: string;
@@ -95,8 +95,6 @@ export interface ExchangeBeat {
 
 export type Beat = InfoBeat | PlayBeat | ExchangeBeat | CompleteBeat;
 
-// ─── The script ─────────────────────────────────────────────────────────────
-
 const threeSpades = mk("3", "spades");
 
 const respondLastPlayed = buildCombination([mk("6", "spades")])!;
@@ -123,10 +121,7 @@ const CLOCK_DEMO_SECONDS = 10;
 const exchangeWinnerCard = mk("5", "diamonds");
 const exchangeDeadCard = mk("K", "clubs");
 const exchangeThreeHearts = mk("3", "hearts");
-// A function, not a module-level constant: the player's own display name
-// ("Tu") is translated, so it has to be rebuilt with the current `t` on
-// every render rather than frozen at import time (before the device locale
-// is even known).
+// Rebuilt per render: the player's name is translated, and the locale is not known at import.
 function buildExchangeState(t: TFn): OpenExchangeState {
   return {
     players: [
@@ -157,10 +152,6 @@ function buildExchangeState(t: TFn): OpenExchangeState {
   };
 }
 
-// Built with the current `t` on every render (via useMemo in the screen
-// component) rather than frozen at import time, so every string — including
-// the bot's reported moves and the success narratives — follows a live
-// language change with no app restart.
 export function buildBeats(t: TFn): Beat[] {
   return [
     {
@@ -330,10 +321,6 @@ export function buildBeats(t: TFn): Beat[] {
   ];
 }
 
-// ─── Engine-backed validation ───────────────────────────────────────────────
-// Every legality check below goes through lib/game/gameEngine.ts — the tutorial can
-// never accept (or reject) a move the real game engine wouldn't.
-
 export function stageBeat(beat: PlayBeat, selectedIds: Set<string>): StagedPlay {
   return readStagedPlay({
     hand: beat.handCards,
@@ -382,19 +369,34 @@ export function evaluatePlay(selectedIds: Set<string>, beat: PlayBeat, t: TFn): 
   return { ok: true, message: beat.successNarrative };
 }
 
-export function evaluateExchange(selected: Card, beat: ExchangeBeat, t: TFn): { ok: boolean; message: string } {
-  const winnerHand = beat.state.players[beat.state.exchangePhase.winnerIdx].hand;
-  const receivedId = beat.state.exchangePhase.cardFromLoser.id;
-  const valid = getValidGivebackCards(winnerHand, receivedId);
-  if (!valid.some((c) => c.id === selected.id)) {
-    if (selected.id === receivedId) {
-      return { ok: false, message: t("tutorial.errJustReceived") };
-    }
-    return { ok: false, message: t("tutorial.errExchangeRange") };
+export function stagedLine(beat: PlayBeat, selectedIds: Set<string>, done: boolean, t: TFn): string | null {
+  if (!beat.staged || done || selectedIds.size === 0) return null;
+  const staged = stageBeat(beat, selectedIds);
+  return staged.playable
+    ? t("tutorial.stagedReady")
+    : t("tutorial.stagedBlocked", {
+        reason: playRefusalLabel({ refusal: staged.refusal, isMyTurn: true, isFinished: false, openingCard: null }, t),
+      });
+}
+
+export function playEnabled(beat: PlayBeat, selectedIds: Set<string>): boolean {
+  return selectedIds.size > 0 && (!beat.staged || stageBeat(beat, selectedIds).playable);
+}
+
+export function exchangeHand(beat: ExchangeBeat): { hand: Card[]; receivedId: string } {
+  const { winnerIdx, cardFromLoser } = beat.state.exchangePhase;
+  return { hand: beat.state.players[winnerIdx].hand, receivedId: cardFromLoser.id };
+}
+
+export function evaluateExchange(selectedIds: Set<string>, beat: ExchangeBeat, t: TFn): { ok: boolean; message: string } {
+  const { hand, receivedId } = exchangeHand(beat);
+  const selected = hand.find((c) => selectedIds.has(c.id));
+  if (!selected) return { ok: false, message: t("tutorial.errSelectCardToReturn") };
+  if (!getValidGivebackCards(hand, receivedId).some((c) => c.id === selected.id)) {
+    return { ok: false, message: t(selected.id === receivedId ? "tutorial.errJustReceived" : "tutorial.errExchangeRange") };
   }
   if (applyMove(beat.state, actingSeat(beat.state), { kind: "giveback", cardId: selected.id }).ok) {
     return { ok: true, message: beat.successNarrative };
   }
   return { ok: false, message: t("tutorial.errExchangeGeneric") };
 }
-

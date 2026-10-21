@@ -19,7 +19,9 @@ import {
   buildBeats,
   evaluateExchange,
   evaluatePlay,
-  stageBeat,
+  exchangeHand,
+  playEnabled,
+  stagedLine,
   type ExchangeBeat,
   type PlayBeat,
 } from "@/lib/tutorial/beats";
@@ -28,10 +30,6 @@ import { useTranslation } from "@/lib/i18n";
 import { IconButton } from "@/components/IconButton";
 import { A11yStatus, a11yHidden } from "@/lib/a11y";
 import { TurnChip } from "@/components/table/notices/hud";
-import { playRefusalLabel } from "@/components/table/spokenLabels";
-
-
-// ─── Screen ─────────────────────────────────────────────────────────────────
 
 function FeedbackBox({ feedback }: { feedback: { ok: boolean; text: string } | null }) {
   return (
@@ -157,11 +155,7 @@ export default function TutorialScreen() {
   const submitPlay = (b: PlayBeat) => settle(evaluatePlay(selectedIds, b, t));
   const submitPass = (b: PlayBeat) => settle({ ok: true, message: b.successNarrative });
 
-  function submitExchange(b: ExchangeBeat) {
-    const selected = b.state.players[b.state.exchangePhase.winnerIdx].hand.find((c) => selectedIds.has(c.id));
-    if (!selected) setFeedback({ ok: false, text: t("tutorial.errSelectCardToReturn") });
-    else settle(evaluateExchange(selected, b, t));
-  }
+  const submitExchange = (b: ExchangeBeat) => settle(evaluateExchange(selectedIds, b, t));
 
   const header = (
     <View style={styles.header}>
@@ -216,18 +210,8 @@ export default function TutorialScreen() {
     }
 
     if (beat.kind === "play") {
-      const staged = stageBeat(beat, selectedIds);
-      const stagedLine =
-        beat.staged && !beatDone && selectedIds.size > 0
-          ? staged.playable
-            ? t("tutorial.stagedReady")
-            : t("tutorial.stagedBlocked", {
-                reason: playRefusalLabel(
-                  { refusal: staged.refusal, isMyTurn: true, isFinished: false, openingCard: null },
-                  t
-                ),
-              })
-          : null;
+      const stagedText = stagedLine(beat, selectedIds, beatDone, t);
+      const canPlay = playEnabled(beat, selectedIds);
       return (
         <>
           <MenuCard title={beat.title}>
@@ -264,14 +248,14 @@ export default function TutorialScreen() {
                 />
               ))}
             </View>
-            <A11yStatus label={stagedLine ?? ""} />
-            {stagedLine !== null && (
+            <A11yStatus label={stagedText ?? ""} />
+            {stagedText !== null && (
               <Text
                 testID="tutorial-staged"
-                style={[styles.stagedText, staged.playable && styles.stagedReady]}
+                style={[styles.stagedText, canPlay && styles.stagedReady]}
                 {...a11yHidden()}
               >
-                {stagedLine}
+                {stagedText}
               </Text>
             )}
           </MenuCard>
@@ -290,7 +274,7 @@ export default function TutorialScreen() {
             <MenuButton
               label={t("tutorial.playCombination")}
               onPress={() => submitPlay(beat)}
-              disabled={selectedIds.size === 0 || (!!beat.staged && !staged.playable)}
+              disabled={!canPlay}
               icon={<Ionicons name="play" size={18} color={Colors.bg} />}
             />
           ) : (
@@ -305,8 +289,7 @@ export default function TutorialScreen() {
     }
 
     // exchange
-    const winnerHand = beat.state.players[beat.state.exchangePhase.winnerIdx].hand;
-    const receivedId = beat.state.exchangePhase.cardFromLoser.id;
+    const { hand: winnerHand, receivedId } = exchangeHand(beat);
     return (
       <>
         <MenuCard title={beat.title}>
