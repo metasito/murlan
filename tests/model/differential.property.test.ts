@@ -9,9 +9,7 @@ import { mulberry32 } from "../support/game.ts";
 import * as model from "./rules.ts";
 import { isSilent, type ModelCard, type SilenceId } from "./rules.ts";
 
-// The model (tests/model/rules.ts) is written from docs/GAME-RULES.md alone; these properties hold
-// the engine to it. Every silence of the doc that a property meets must be listed in
-// disagreements.json for the owner to rule on (docs/adr/0012-a-rules-model-is-a-test-oracle.md).
+// docs/adr/0012-a-rules-model-is-a-test-oracle.md
 
 // Fixed so CI explores the same space each run; set FC_SEED to search elsewhere.
 const SEED = Number(process.env.FC_SEED ?? 20261021);
@@ -174,6 +172,9 @@ function legalPlaysAgree(engine: Engine) {
       const modelKeys = new Set(plays.map(key));
       assert.deepEqual(offered.filter((cardIds) => !modelKeys.has(key(cardIds))).map(key), [], "the engine offers plays the model refuses");
       assert.deepEqual([...new Set(offered.map(classOf))].sort(), [...new Set(plays.map(classOf))].sort(), "the classes of play offered");
+      const demand = { toBeat: toBeatCards && engine.buildCombination(toEngine(toBeatCards)), mustInclude: mustInclude === null ? null : ENGINE_CARD.get(mustInclude)! };
+      const refused = plays.filter((cardIds) => !engine.checkSelection(toEngine(cardIds.map(byId)), demand).ok).map(key);
+      assert.deepEqual(refused, [], "the engine refuses plays the model offers");
     },
     NUM_RUNS * 5
   );
@@ -218,9 +219,7 @@ function roundPlayAgrees(engine: Engine) {
       const rand = mulberry32(choiceSeed);
       const hands = dealt(seats, rand);
       let state = engine.startRound(seatsFor(seats), "free_for_all", { dealt: hands.map(toEngine) });
-      const first = model.firstRound(hands);
-      if (isSilent(first)) return meet(first, { hands: hands.map(ids) });
-      let round = first;
+      let round = model.firstRound(hands);
       seen.add(round.mustInclude === "3_spades" ? "opened on the 3♠" : "opened on the lowest card");
       assert.equal(state.openingCard?.id ?? null, round.mustInclude, "the opening card");
       assert.deepEqual(engineView(state), modelView(round), "the deal");
@@ -323,7 +322,7 @@ function givebackAgrees(engine: Engine) {
       const m = model.givebackOptions(hand, receivedId);
       if (isSilent(m)) return meet(m, { hand: ids(hand), receivedId });
       seen.add(m.some((id) => IN_RANGE.has(byId(id).rank)) ? "3 to 10" : "lowest card");
-      assert.deepEqual(ids(engine.getValidGivebackCards(toEngine(hand), receivedId)).sort(), m, `${key(ids(hand))} receiving ${receivedId}`);
+      assert.deepEqual(ids(engine.getValidGivebackCards(toEngine(hand), receivedId)).sort(), m, `${key(ids(hand))} receiving ${receivedId}: the cards offered back`);
     },
     NUM_RUNS * 10
   );
@@ -372,11 +371,33 @@ const closesOnePassEarly: Engine = {
   },
 };
 
+const givebackKeepsReceived: Engine = {
+  ...REAL,
+  getValidGivebackCards: (hand) => REAL.getValidGivebackCards(hand),
+};
+
+const owesSecondHighest: Engine = {
+  ...REAL,
+  startRound(seats, mode, opts) {
+    const state = REAL.startRound(seats, mode, opts);
+    const phase = state.exchangePhase;
+    if (phase?.kind !== "open") return state;
+    const loser = state.players[phase.loserIdx];
+    const winner = state.players[phase.winnerIdx];
+    const second = [...loser.hand].sort((a, b) => gameEngine.cardStrength(b) - gameEngine.cardStrength(a))[0];
+    loser.hand = [...loser.hand.filter((c) => c.id !== second.id), phase.cardFromLoser];
+    winner.hand = [...winner.hand.filter((c) => c.id !== phase.cardFromLoser.id), second];
+    return { ...state, exchangePhase: { ...phase, cardFromLoser: second } };
+  },
+};
+
 const PLANTED: [string, Engine, (engine: Engine) => void, RegExp][] = [
   ["a 2 above the Ace in a straight", twoAboveAce, classificationAgrees, /^(?=.*\b2_)(?=.*\bA_).*: the combination it is/],
   ["a bomb beating a royal straight", bombOnRoyal, beatsAgrees, /^whether (\w+_\w+,?){4} beats/],
   ["a bomb beating a royal straight", bombOnRoyal, legalPlaysAgree, /the engine offers plays the model refuses/],
   ["a trick closing one pass early", closesOnePassEarly, roundPlayAgrees, /whether pass closed the trick/],
+  ["a giveback offering the card just received", givebackKeepsReceived, givebackAgrees, /receiving \w+: the cards offered back/],
+  ["the last place owing their second-highest card", owesSecondHighest, exchangeAgrees, /the card the last place owes/],
 ];
 
 for (const [defect, engine, property, reason] of PLANTED) {
@@ -399,11 +420,13 @@ interface Disagreement {
   seed: number;
   case: { candidate?: string[]; toBeat?: string[]; lastHand?: string[]; hand?: string[]; receivedId?: string };
   engine: unknown;
+  conflictsWith?: string;
   question: string;
   issue: number;
 }
 
 const LISTED: Disagreement[] = JSON.parse(readFileSync(path.join(import.meta.dirname, "disagreements.json"), "utf8"));
+const GAME_RULES = readFileSync(path.join(import.meta.dirname, "..", "..", "docs", "GAME-RULES.md"), "utf8");
 
 function answers(entry: Disagreement): { model: unknown; engine: unknown } {
   const c = entry.case;
@@ -428,6 +451,8 @@ test("disagreements.json: every silence met is listed, and every listed case is 
   assert.ok(LISTED.length > 0, "disagreements.json lists nothing");
   for (const entry of LISTED) {
     assert.ok(entry.section && entry.question && Number.isInteger(entry.seed) && Number.isInteger(entry.issue), `${entry.id} is missing its §, question, seed or issue`);
+    const row = entry.conflictsWith?.match(/§ Decisions "([^"]+)"/)?.[1];
+    if (entry.conflictsWith !== undefined) assert.ok(row && GAME_RULES.includes(`| **${row}** |`), `${entry.id} conflicts with a § Decisions row that does not exist: ${entry.conflictsWith}`);
     const { model: m, engine } = answers(entry);
     assert.deepEqual(m, { silent: entry.id }, `${entry.id}: the model now answers this case, so its entry goes`);
     assert.deepEqual(engine, entry.engine, `${entry.id}: the engine's answer changed`);

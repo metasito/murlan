@@ -4,9 +4,7 @@ import path from "node:path";
 import ts from "typescript";
 import { sourcesUnder } from "../helpers/sourceScan.ts";
 
-// The rules model is written from docs/GAME-RULES.md alone (docs/adr/0012-a-rules-model-is-a-test-oracle.md):
-// at runtime it reaches nothing outside tests/model/, and only the engine's Card and Combination
-// types may be named. Its *.test.ts files are the comparison, which must import the engine.
+// docs/adr/0012-a-rules-model-is-a-test-oracle.md
 
 const root = path.resolve(import.meta.dirname, "..", "..");
 const MODEL = path.join(root, "tests", "model");
@@ -104,4 +102,38 @@ test("a planted import from outside the model is caught, and a type-only Card or
     at("<non-literal `../../lib/${name}`>", "runtime import"),
     at(engine, "types other than Card and Combination: GameState"),
   ]);
+});
+
+const CALLER_DIRS = ["app", "components", "context", "lib", "modules", "plugins", "scripts", "server", "shared", "tools"];
+
+function reachesModel(file: string, spec: string | null): boolean {
+  if (spec === null) return false;
+  const target = spec.startsWith(".") ? path.resolve(path.dirname(file), spec) : spec.startsWith("@/") ? path.join(root, spec.slice(2)) : null;
+  return target !== null && (target === MODEL || target.startsWith(MODEL + path.sep));
+}
+
+const callers = (file: string, imports: Import[]) => imports.filter((i) => reachesModel(file, i.spec)).map((i) => `${path.relative(root, file)} -> ${i.spec}`);
+
+test("nothing outside tests/ imports the rules model", () => {
+  const sources = sourcesUnder(root, CALLER_DIRS, /\.[cm]?[jt]sx?$/);
+  const scanned = sources.map(([rel]) => rel);
+  assert.ok(scanned.includes("lib/game/gameEngine.ts") && scanned.includes("server/game/gameTurn.ts"), `the reverse scan missed the engine or the server; it scanned ${scanned.length} files`);
+  assert.ok(sources.length >= 300, `the reverse scan read ${sources.length} files, below the floor of 300`);
+  assert.deepEqual(sources.flatMap(([rel, text]) => callers(path.join(root, rel), scan(path.join(root, rel), text))), []);
+});
+
+test("a planted import of the model from outside tests/ is caught", () => {
+  const probe = path.join(root, "lib", "game", "__modelCallerProbe.ts");
+  const planted = scan(
+    probe,
+    [
+      `import { classify } from "../../tests/model/rules.ts";`,
+      `import type { Silent } from "@/tests/model/rules";`,
+      `const late = await import("../../tests/model/rules.ts");`,
+      `import { mulberry32 } from "../../tests/support/game.ts";`,
+      `import { buildCombination } from "./gameEngine.ts";`,
+    ].join("\n")
+  );
+  const from = path.relative(root, probe);
+  assert.deepEqual(callers(probe, planted), [`${from} -> ../../tests/model/rules.ts`, `${from} -> @/tests/model/rules`, `${from} -> ../../tests/model/rules.ts`]);
 });

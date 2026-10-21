@@ -1,7 +1,6 @@
 /** Where docs/GAME-RULES.md states no rule; each id is an entry in tests/model/disagreements.json. */
 export type SilenceId =
   | "thirteen-card-straight-top"
-  | "opening-without-three-of-spades"
   | "last-place-highest-card-tied"
   | "giveback-received-is-the-only-3-to-10"
   | "giveback-lowest-card-tied"
@@ -133,10 +132,10 @@ export function legalPlays(hand: ModelCard[], toBeat: Combo | null, mustInclude:
 }
 
 /** docs/GAME-RULES.md §4 and § Decisions "2-player opening tie": the first round at a table. */
-export function opening(hands: ModelCard[][]): { seat: number; cardId: string } | Silent {
+export function opening(hands: ModelCard[][]): { seat: number; cardId: string } {
   const spade3 = hands.findIndex((hand) => hand.some((c) => c.id === "3_spades"));
   if (spade3 >= 0) return { seat: spade3, cardId: "3_spades" };
-  if (hands.length !== 2) return silent("opening-without-three-of-spades");
+  if (hands.length !== 2) throw new Error(`§4 deals the 3♠ at ${hands.length} seats, and none of these hands holds it`);
   const dealt = hands.flatMap((hand, seat) => hand.map((card) => ({ card, seat })));
   dealt.sort((a, b) => strength(a.card) - strength(b.card) || SUIT_ORDER.indexOf(a.card.suit!) - SUIT_ORDER.indexOf(b.card.suit!));
   return { seat: dealt[0].seat, cardId: dealt[0].card.id };
@@ -165,9 +164,8 @@ export type Move = { kind: "play"; cardIds: string[] } | { kind: "pass" };
 export type Step = { ok: true; round: Round; closedTrick: boolean } | { ok: false };
 
 /** docs/GAME-RULES.md §4: the first round at a table, opened by `opening`. */
-export function firstRound(hands: ModelCard[][]): Round | Silent {
+export function firstRound(hands: ModelCard[][]): Round {
   const open = opening(hands);
-  if (isSilent(open)) return open;
   return { hands, toAct: open.seat, table: null, passes: 0, mustInclude: open.cardId, finishingOrder: [], roundOver: false };
 }
 

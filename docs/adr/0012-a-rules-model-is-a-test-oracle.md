@@ -22,7 +22,8 @@ which reads as a breach of `docs/agents/RULES.md` 48, "One decision has one copy
    outside `tests/` may call the model; the engine stays the one copy the game runs on.
 2. **Independence.** `tests/model/` imports nothing at runtime from outside itself; type-only imports
    of `Card` and `Combination` are allowed. `tests/tooling/rulesModelIndependence.test.ts` enforces
-   it, with a floor and a planted runtime import. The model builds its own deck from §1, and
+   it, with a floor and a planted runtime import, and holds the other direction too: nothing outside
+   `tests/` imports the model. The model builds its own deck from §1, and
    `tests/model/differential.property.test.ts` asserts its card ids are `createDeck()`'s. Its
    `*.test.ts` files are the comparison and import the engine.
 3. **Scope.** §1, §4–§10: classification, every legal play against the table's demand, beats, the
@@ -43,8 +44,9 @@ which reads as a breach of `docs/agents/RULES.md` 48, "One decision has one copy
 - A rule change is still made only in `lib/game/gameEngine.ts` through a § Decisions row. The model
   changes with it, from the row, never to match the engine without one.
 - Each property is proven red on a planted engine defect, planted in a test-side wrapper rather than
-  in the engine: a 2 above the Ace in a straight, a bomb beating a royal straight, and a trick
-  closing one pass early.
+  in the engine: a 2 above the Ace in a straight, a bomb beating a royal straight, a trick closing
+  one pass early, a giveback offering the card just received, and the last place owing their
+  second-highest card.
 - The properties follow `tests/engine/engineInvariants.property.test.ts`: a fixed `FC_SEED` in CI,
   `FC_RUNS`, and the nightly `offline-match-soak` step moving the seed.
 - `getAllValidPlays` returns one play per type, length and strength, so legal plays are compared as
