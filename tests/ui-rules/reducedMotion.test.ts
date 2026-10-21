@@ -61,10 +61,11 @@ test("every screen and component that animates reads the motion preference", () 
 });
 
 // The looping ones are the ones that matter most: an entrance is over in half a
-// second, a `withRepeat(..., -1)` never is.
+// second, a `withRepeat(..., -1)` never is. lib/ too: `useLoop` (lib/motion.ts)
+// is where every loop asks.
 test("nothing loops forever without checking first", () => {
   const offenders: string[] = [];
-  for (const rel of [...sourcesUnder("app"), ...sourcesUnder("components")]) {
+  for (const rel of [...sourcesUnder("app"), ...sourcesUnder("components"), ...sourcesUnder("lib")]) {
     const source = readFileSync(path.join(repoRoot, rel), "utf8");
     if (!/\bwithRepeat\s*\(|\bAnimated\.loop\s*\(/.test(source)) continue;
     if (source.includes("usePrefersReducedMotion")) continue;

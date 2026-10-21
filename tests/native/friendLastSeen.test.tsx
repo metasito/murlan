@@ -9,28 +9,7 @@ import { Text } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, act } from '@testing-library/react-native';
 
-type Listener = (...args: unknown[]) => void;
-
-const mockSocket = {
-  connected: false,
-  active: true,
-  listeners: new Map<string, Listener>(),
-  on(event: string, fn: Listener) {
-    this.listeners.set(event, fn);
-  },
-  off() {},
-  emit() {},
-  connect: jest.fn(),
-  disconnect: jest.fn(),
-  io: { reconnection: jest.fn() },
-};
-
-jest.mock('@/lib/socket', () => ({
-  connectSocket: () => mockSocket,
-  disconnectSocket: () => {},
-  peekSocket: (userId?: string | null) => (userId ? mockSocket : null),
-  subscribeToSockets: () => () => {},
-}));
+import { lastSocket } from './mocks/socketIo';
 
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
@@ -50,8 +29,6 @@ describe('friend:status carries the time the row shows', () => {
   let qc: QueryClient;
 
   beforeEach(async () => {
-    mockSocket.connected = false;
-    mockSocket.listeners.clear();
     qc = new QueryClient();
     qc.setQueryData(['/api/friends'], [
       { id: 'f1', username: 'Ben', lastSeen: PREVIOUS_DISCONNECT },
@@ -67,21 +44,18 @@ describe('friend:status carries the time the row shows', () => {
   });
 
   it('writes the disconnect time the event carries into the friends cache', async () => {
-    const onFriendStatus = mockSocket.listeners.get('friend:status');
-    expect(onFriendStatus).toBeDefined();
+    expect(lastSocket().listening('friend:status')).toBe(1);
 
     await act(async () => {
-      onFriendStatus!({ userId: 'f1', online: false, lastSeen: JUST_NOW });
+      lastSocket().serverEmit('friend:status', { userId: 'f1', online: false, lastSeen: JUST_NOW });
     });
 
     expect(friendsIn(qc).find((f) => f.id === 'f1')!.lastSeen).toBe(JUST_NOW);
   });
 
   it('moves no one else, and keeps the rest of the row intact', async () => {
-    const onFriendStatus = mockSocket.listeners.get('friend:status');
-
     await act(async () => {
-      onFriendStatus!({ userId: 'f1', online: false, lastSeen: JUST_NOW });
+      lastSocket().serverEmit('friend:status', { userId: 'f1', online: false, lastSeen: JUST_NOW });
     });
 
     const other = friendsIn(qc).find((f) => f.id === 'f2')!;
@@ -90,10 +64,8 @@ describe('friend:status carries the time the row shows', () => {
   });
 
   it('leaves the cache alone when the event carries no time', async () => {
-    const onFriendStatus = mockSocket.listeners.get('friend:status');
-
     await act(async () => {
-      onFriendStatus!({ userId: 'f1', online: true });
+      lastSocket().serverEmit('friend:status', { userId: 'f1', online: true });
     });
 
     expect(friendsIn(qc).find((f) => f.id === 'f1')!.lastSeen).toBe(PREVIOUS_DISCONNECT);

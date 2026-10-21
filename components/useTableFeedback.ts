@@ -6,7 +6,6 @@ import {
   useSharedValue,
   withTiming,
   withSequence,
-  withRepeat,
   cancelAnimation,
   Easing,
   ReduceMotion,
@@ -23,6 +22,7 @@ import { cancelLandingPulses, runLandingPulses } from "@/lib/device/feedback";
 import type { RoundOutcome } from "@/lib/game/matchState";
 import { Hold, Motion, motionMs } from "@/lib/theme";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
+import { useLoop, useOwnedValue } from "@/lib/motion";
 import { useLandingReaction } from "@/components/table/useLandingReaction";
 import type { LandingSignal } from "@/components/table/useFlightClock";
 import type { TableTimeline } from "@/components/table/tableTimeline";
@@ -116,9 +116,8 @@ interface TableFeedback {
 }
 
 /**
- * The kick and reject animations: the values, the style that reads them, the
- * two callbacks that write them, and the cancellation that follows them on
- * unmount — all in the one hook.
+ * The kick and reject animations: the values, the style that reads them and
+ * the two callbacks that write them, all in the one hook.
  *
  * They are together because the compiler will not compile them apart, and each
  * of the four other arrangements is refused for a different reason: writing a
@@ -129,10 +128,10 @@ interface TableFeedback {
  * the same place from the other side, with its gesture.
  */
 function useImpactFeedback(landing: SharedValue<LandingSignal>, reduceMotion: boolean, screenShake: boolean, scale: number) {
-  const kickX = useSharedValue(0);
-  const kickY = useSharedValue(0);
-  const kickScale = useSharedValue(1);
-  const giocaRejectX = useSharedValue(0);
+  const kickX = useOwnedValue(0);
+  const kickY = useOwnedValue(0);
+  const kickScale = useOwnedValue(1);
+  const giocaRejectX = useOwnedValue(0);
   // The escalation's own shake (#763): a trauma peak, an elapsed clock and the
   // decay window that landed with it — `shakeOffset` reads all four back
   // every frame, riding the table #101 settled — never a second amplitude
@@ -140,7 +139,7 @@ function useImpactFeedback(landing: SharedValue<LandingSignal>, reduceMotion: bo
   // which peak a landing reads is decided once, when it fires, not
   // re-derived every frame from a tier this hook does not otherwise keep.
   const shakeTrauma = useSharedValue(0);
-  const shakeElapsed = useSharedValue(0);
+  const shakeElapsed = useOwnedValue(0);
   const shakeDecayMs = useSharedValue(0);
   const shakeAmpX = useSharedValue(0);
   const shakeAmpY = useSharedValue(0);
@@ -188,11 +187,13 @@ function useImpactFeedback(landing: SharedValue<LandingSignal>, reduceMotion: bo
 
   const reject = () => {
     if (reduceMotionRef.current) return;
-    giocaRejectX.value = withSequence(
-      withTiming(BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
-      withTiming(-BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
-      withTiming(BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
-      withTiming(0, { duration: BTN_REJECT_LEG_MS })
+    giocaRejectX.set(
+      withSequence(
+        withTiming(BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
+        withTiming(-BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
+        withTiming(BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
+        withTiming(0, { duration: BTN_REJECT_LEG_MS })
+      )
     );
   };
 
@@ -218,18 +219,6 @@ function useImpactFeedback(landing: SharedValue<LandingSignal>, reduceMotion: bo
       y: shakeAmpY.value,
       rotate: shakeAmpRotate.value,
     })
-  );
-
-  // Reanimated keeps driving shared values after unmount unless cancelled.
-  useEffect(
-    () => () => {
-      cancelAnimation(kickX);
-      cancelAnimation(kickY);
-      cancelAnimation(kickScale);
-      cancelAnimation(giocaRejectX);
-      cancelAnimation(shakeElapsed);
-    },
-    [kickX, kickY, kickScale, giocaRejectX, shakeElapsed]
   );
 
   // A plain closure: the compiler refuses a function that writes a shared value if that function
@@ -269,10 +258,10 @@ export function useTableFeedback({
   // glyphs, and PASSA/GIOCA read as blurry for as long as it is applied.
   //
   // The two scales on the table are both moments no one reads through — the
-  // buttons' own press (BTN_PRESS_SCALE, GameTable.tsx), which lasts as long as
+  // buttons' own press (`usePressScale`, components/table/actions.tsx), which lasts as long as
   // a finger is down, and the bomb's punch-in below, which peaks at 1.012 and
   // decays back to 1 within the one beat.
-  const passaFlashVal = useSharedValue(0);
+  const passaFlashVal = useOwnedValue(0);
   const { kickStyle, giocaRejectX, rejectPlay, shakeStyle, tableMotion } = useImpactFeedback(landing, reduceMotion, screenShake, scale);
   // Sweep and the pile's catch own their animations; this just says "again".
   const [goingOutTrigger, setGoingOutTrigger] = useState(0);
@@ -335,17 +324,14 @@ export function useTableFeedback({
   // new, so the transition into it is the whole trigger.
   useEffect(() => {
     if (canPass && !reduceMotion) {
-      passaFlashVal.value = withSequence(
-        withTiming(1, { duration: Motion.duration.shift }),
-        withTiming(0, { duration: Motion.duration.travel })
+      passaFlashVal.set(
+        withSequence(
+          withTiming(1, { duration: Motion.duration.shift }),
+          withTiming(0, { duration: Motion.duration.travel })
+        )
       );
     }
   }, [canPass, reduceMotion, passaFlashVal]);
-
-  // Reanimated keeps driving shared values after unmount unless cancelled.
-  // GiocaButton/PassaButton own and cancel their own press values; the impact
-  // values cancel themselves, in the hook that owns them.
-  useEffect(() => () => cancelAnimation(passaFlashVal), [passaFlashVal]);
 
   const passaFlashStyle = useAnimatedStyle(() => ({ opacity: passaFlashVal.value }));
 
@@ -370,37 +356,33 @@ export function useTableFeedback({
 /** GIOCA's own cues: the bloom while a staged play is legal, the flash as the staging changes. */
 export function useGiocaCues(playable: boolean, selectedCount: number, onMove: boolean) {
   const reduceMotion = usePrefersReducedMotion();
-  const flash = useSharedValue(0);
-  const glow = useSharedValue(0);
+  const flash = useOwnedValue(0);
+  const glow = useOwnedValue(0);
 
+  const blooming = playable && !reduceMotion;
+  useLoop(glow, blooming ? () => {
+    const breath = (to: number) =>
+      withTiming(to, { duration: Motion.duration.dwell, easing: Easing.inOut(Easing.sin) });
+    return { cycle: withSequence(breath(1.0), breath(0.35)) };
+  } : null);
   useEffect(() => {
-    if (playable && !reduceMotion) {
-      const breath = (to: number) =>
-        withTiming(to, { duration: Motion.duration.dwell, easing: Easing.inOut(Easing.sin) });
-      glow.value = withRepeat(withSequence(breath(1.0), breath(0.35)), -1, false);
-    } else {
-      cancelAnimation(glow);
-      glow.value = reduceMotion && playable ? 0.6 : withTiming(0, { duration: Motion.duration.tap });
-    }
-    return () => {
-      cancelAnimation(glow);
-    };
-  }, [playable, reduceMotion, glow]);
+    if (!blooming) glow.set(reduceMotion && playable ? 0.6 : withTiming(0, { duration: Motion.duration.tap }));
+  }, [blooming, playable, reduceMotion, glow]);
 
   // Seeded with the count it mounts over: GIOCA remounts when the seat stops spectating, and a
   // staging that was already there is no change to flash for.
   const prevSelectedLen = useRef(selectedCount);
   useEffect(() => {
     if (selectedCount > 0 && onMove && prevSelectedLen.current !== selectedCount && !reduceMotion) {
-      flash.value = withSequence(
-        withTiming(1, { duration: Motion.duration.tap }),
-        withTiming(0, { duration: Motion.duration.shift })
+      flash.set(
+        withSequence(
+          withTiming(1, { duration: Motion.duration.tap }),
+          withTiming(0, { duration: Motion.duration.shift })
+        )
       );
     }
     prevSelectedLen.current = selectedCount;
   }, [selectedCount, onMove, reduceMotion, flash]);
-
-  useEffect(() => () => cancelAnimation(flash), [flash]);
 
   const flashStyle = useAnimatedStyle(() => ({ opacity: flash.value }));
   // Opacity only, on the childless sibling behind the button. A shadow written

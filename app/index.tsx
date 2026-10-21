@@ -10,11 +10,9 @@ import { useIsLandscape } from "@/lib/device/orientation";
 import { router, useIsFocused } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
-  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
-  withRepeat,
   withSequence,
   Easing,
   ReduceMotion,
@@ -43,6 +41,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useLocalSession } from "@/context/gameHooks";
 import { useInvites } from "@/context/SocketContext";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useLoop, type Loop } from "@/lib/motion";
 import { useEntrance } from "@/lib/useEntrance";
 import { Colors, FontSize, makeShadow, Motion, motionMs, Radius, Spacing, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { useTranslation } from "@/lib/i18n";
@@ -71,27 +70,6 @@ function resumeSine(t0: number) {
 }
 
 /**
- * A there-and-back loop with no end, entered at `at` rather than at rest, so a
- * field of them is scattered and already moving on first paint. Under reduced
- * motion it is that position and nothing more: there is nothing here to
- * convey, only mood.
- *
- * How far along its *value* a card starts is not how far along its *time* it
- * starts — an ease is the difference between the two — so the entry point goes
- * back through the ease rather than standing in for a fraction of the leg.
- */
-function phased(at: number, from: number, to: number, halfMs: number, reduceMotion: boolean) {
-  if (reduceMotion) return at;
-  const t0 = Math.acos(1 - 2 * ((at - from) / (to - from))) / Math.PI;
-  const leg = (target: number, ms: number) =>
-    withTiming(target, { duration: ms, easing: Easing.inOut(Easing.sin) });
-  return withSequence(
-    withTiming(to, { duration: halfMs * (1 - t0), easing: resumeSine(t0) }),
-    withRepeat(withSequence(leg(from, halfMs), leg(to, halfMs)), -1, false)
-  );
-}
-
-/**
  * One drifting card. Two shared values carry three channels: the rise, and a
  * swing whose tilt and sideways travel peak together the way a hanging card's
  * do. Both start part-way through their first leg, so the field is already in
@@ -105,14 +83,32 @@ function FloatingCard({ spec, covered }: { spec: FloatingCardSpec; covered: bool
   const lift = useSharedValue(restLift);
   const swing = useSharedValue(restSwing);
 
-  useEffect(() => {
-    lift.value = phased(restLift, 0, 1, band.driftMs / 2, still);
-    swing.value = phased(restSwing, -1, 1, band.tiltMs / 2, still);
-    return () => {
-      cancelAnimation(lift);
-      cancelAnimation(swing);
+  /**
+   * A there-and-back loop with no end, entered at `at` rather than at rest, so a
+   * field of them is scattered and already moving on first paint. Under reduced
+   * motion it is never started, and the card holds `at`: there is nothing here
+   * to convey, only mood.
+   *
+   * How far along its *value* a card starts is not how far along its *time* it
+   * starts — an ease is the difference between the two — so the entry point goes
+   * back through the ease rather than standing in for a fraction of the leg.
+   */
+  const phased = (at: number, from: number, to: number, halfMs: number): Loop => {
+    const t0 = Math.acos(1 - 2 * ((at - from) / (to - from))) / Math.PI;
+    const leg = (target: number, ms: number) =>
+      withTiming(target, { duration: ms, easing: Easing.inOut(Easing.sin) });
+    return {
+      lead: withTiming(to, { duration: halfMs * (1 - t0), easing: resumeSine(t0) }),
+      cycle: withSequence(leg(from, halfMs), leg(to, halfMs)),
     };
-  }, [band, lift, still, restLift, restSwing, swing]);
+  };
+  useLoop(lift, covered ? null : () => phased(restLift, 0, 1, band.driftMs / 2));
+  useLoop(swing, covered ? null : () => phased(restSwing, -1, 1, band.tiltMs / 2));
+  useEffect(() => {
+    if (!still) return;
+    lift.set(restLift);
+    swing.set(restSwing);
+  }, [lift, still, restLift, restSwing, swing]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [

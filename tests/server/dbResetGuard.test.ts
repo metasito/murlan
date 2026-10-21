@@ -1,8 +1,8 @@
 // tests/server/dbResetGuard.test.ts — the destructive reset must be impossible to
-// trigger by accident: typing `npm run db:reset` instead of `db:push` must
+// trigger by accident: running `scripts/reset-db.mjs` instead of `db:push` must
 // not silently pass the script's own --yes guard and wipe whatever
 // DATABASE_URL points at (production). These tests pin the guard
-// AND the fact that the convenience wrapper does not defeat it.
+// AND the fact that no npm script wraps it.
 //
 // Every case here exits before the script ever opens a pg connection, so no
 // database is required — DATABASE_URL is set to a value that would fail to
@@ -94,19 +94,11 @@ describe("db reset guard", () => {
     assert.match(viaParam.stderr, /Reset failed/);
   });
 
-  test("the npm script does not supply the opt-in", () => {
+  test("no npm script wraps the reset, so the opt-in is always typed", () => {
     const pkg = JSON.parse(
       readFileSync(path.join(repoRoot, "package.json"), "utf8")
     ) as { scripts: Record<string, string> };
-    const dbReset = pkg.scripts["db:reset"];
-    assert.ok(dbReset, "db:reset script is missing");
-    assert.ok(
-      !dbReset.includes("ALLOW_DESTRUCTIVE"),
-      "db:reset must not set ALLOW_DESTRUCTIVE — the guard would be pointless"
-    );
-    assert.ok(
-      !dbReset.includes("--yes"),
-      "db:reset must not pass --yes — the guard would be pointless"
-    );
+    const wrapping = Object.entries(pkg.scripts).filter(([, cmd]) => cmd.includes("reset-db"));
+    assert.deepEqual(wrapping, []);
   });
 });

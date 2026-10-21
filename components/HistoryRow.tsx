@@ -11,16 +11,8 @@ import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { positionLabelKey } from "@/lib/placement";
 import type { RoundHistoryDto } from "@/shared/http";
 
-
-
-
 const PLAY_ICON = 28;
 
-/**
- * Passed the
- * translators rather than calling the hook, so a row inside a list renders
- * without one lookup per row.
- */
 export function HistoryRow({ hand }: { hand: RoundHistoryDto }) {
   const { t, tn } = useTranslation();
 

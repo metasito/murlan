@@ -9,28 +9,7 @@ import { Pressable, Text } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, fireEvent } from '@testing-library/react-native';
 
-type Listener = (...args: unknown[]) => void;
-
-const mockSocket = {
-  connected: false,
-  active: true,
-  listeners: new Map<string, Listener>(),
-  on(event: string, fn: Listener) {
-    this.listeners.set(event, fn);
-  },
-  off() {},
-  emit() {},
-  connect: jest.fn(),
-  disconnect: jest.fn(),
-  io: { reconnection: jest.fn() },
-};
-
-jest.mock('@/lib/socket', () => ({
-  connectSocket: () => mockSocket,
-  disconnectSocket: () => {},
-  peekSocket: (userId?: string | null) => (userId ? mockSocket : null),
-  subscribeToSockets: () => () => {},
-}));
+import { lastSocket } from './mocks/socketIo';
 
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, forgetSession: async () => {} }),
@@ -65,15 +44,13 @@ function Harness() {
 
 describe('useSocketConnection() freshness', () => {
   beforeEach(() => {
-    mockSocket.connected = false;
-    mockSocket.listeners.clear();
     seen = [];
   });
 
   it('is non-null on a render triggered by something else, before "connect" fires', async () => {
     const view = await render(<Harness />);
 
-    expect(mockSocket.listeners.has('connect')).toBe(true);
+    expect(lastSocket().listening('connect')).toBe(1);
 
     await fireEvent.press(view.getByTestId('tick'));
 

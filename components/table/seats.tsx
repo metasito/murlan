@@ -20,7 +20,6 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
-  withRepeat,
   withDelay,
   withSequence,
   interpolate,
@@ -47,6 +46,7 @@ import { useTranslation } from "@/lib/i18n";
 import { Colors, LastCard, makeShadow, Motion, motionMs, Spacing, withAlpha } from "@/lib/theme";
 import { pulseRepeats, RING_PULSE_MS, urgentThresholdSeconds } from "@/components/turnTimerUi";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { repeatTimes, useLoop } from "@/lib/motion";
 import type { Combination, Player } from "@/lib/game/gameEngine";
 import { useRingProbe } from "@/lib/diagnostics";
 
@@ -302,13 +302,8 @@ export function CountdownRing({
       swept.value = withTiming(1, { duration: leftMs, easing: Easing.linear });
       const dim = { duration: RING_PULSE_MS / 2, easing: Easing.inOut(Easing.sin) };
       const urgentMs = urgentFor * 1000;
-      if (pulseRepeats(urgentMs, leftMs) >= 1) {
-        pulse.value = withDelay(
-          calmMs,
-          withRepeat(withSequence(withTiming(RING_PULSE_LOW, dim), withTiming(1, dim)), pulseRepeats(urgentMs, leftMs)),
-          ReduceMotion.Never
-        );
-      }
+      const beats = repeatTimes(withSequence(withTiming(RING_PULSE_LOW, dim), withTiming(1, dim)), pulseRepeats(urgentMs, leftMs));
+      if (beats !== null) pulse.value = withDelay(calmMs, beats, ReduceMotion.Never);
     }
     return () => {
       cancelAnimation(swept);
@@ -457,18 +452,12 @@ function SeatRing({
   // long as the turn lasts, not a one-shot like the ping above.
   const breathe = useSharedValue(0);
   const breathing = isActive && focusMode && !reduceMotion;
+  useLoop(breathe, breathing ? () => ({
+    cycle: withTiming(1, { duration: BREATHE_MS / 2, easing: Easing.inOut(Easing.sin) }),
+    reverse: true,
+  }) : null);
   useEffect(() => {
-    if (!breathing) {
-      cancelAnimation(breathe);
-      breathe.value = 0;
-      return;
-    }
-    breathe.value = withRepeat(
-      withTiming(1, { duration: BREATHE_MS / 2, easing: Easing.inOut(Easing.sin) }),
-      -1,
-      true
-    );
-    return () => cancelAnimation(breathe);
+    if (!breathing) breathe.set(0);
   }, [breathing, breathe]);
   const breatheStyle = useAnimatedStyle(() => ({
     opacity: isActive && focusMode ? interpolate(breathe.value, [0, 1], [0.35, 1]) : 0,

@@ -146,6 +146,7 @@ function DealtBack({ legs, scale, clock }: { legs: readonly DealLeg[]; scale: nu
     table,
     `deal:${legs[0].key}`,
     true,
+    [clock, motion],
     () => {
       "worklet";
       const f = dealFlight(legAt(legs, clock.value), clock.value);

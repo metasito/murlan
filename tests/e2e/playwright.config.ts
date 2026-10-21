@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import os from "node:os";
 import { writeFileSync } from "node:fs";
+import { BASE_PORT } from "../../tools/ci/e2ePortRange.mjs";
 import { localGlobalTimeoutMs } from "../../tools/ci/e2eGlobalTimeout.mjs";
 import { CHECK_BASH_TIMEOUT_MS } from "../../tools/loop/limits.mjs";
 import { E2E_VOTE_DEADLINE_MS } from "./helpers/voteDeadline";
@@ -24,7 +25,7 @@ const PORT =
 process.env.E2E_PORT = PORT;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 // A run whose server is not where the docs say it is has to be able to say where it is.
-if (PORT !== "5199") console.log(`e2e: port 5199 is taken, serving on ${PORT}`);
+if (PORT !== String(BASE_PORT)) console.log(`e2e: port ${BASE_PORT} is taken, serving on ${PORT}`);
 
 // #893: the only way accountRecovery.spec.ts can get a raw verification or
 // reset token — only its hash is stored server-side, and the real send goes

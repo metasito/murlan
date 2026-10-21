@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { appAt, appResumed, mockupAt, type PlatePaint, type Rect, type Stage } from "./helpers/mockupStage";
 import { exchangeSave, offlineSave, resumeSaved } from "./helpers/offlineSeed";
 import { tap } from "./helpers/press";
-import { captureStateById, seatedSituation, type CaptureState } from "../../lib/captureStates";
+import { captureGameState, captureStateById, seatedSituation, type CaptureState } from "../../lib/captureStates";
 import { CARD_H, cardScale, HAND_SCALE } from "../../components/cardFaceModel";
 import { handVisibleH } from "../../components/seatLayout";
 import { RANK_SLOTS, type Card } from "../../lib/game/gameEngine";
@@ -163,7 +163,7 @@ test(`exchange label: two of the longest names stay whole on one line — ${SMAL
 });
 
 for (const phone of STAGES) {
-  test(`turn fits its band: Besnik on move, in it-IT, clear of every neighbour by the mockup's gap — ${phone.name}`, async ({
+  test(`turn fits its band: a bot on move, in it-IT, clear of every neighbour by the mockup's gap — ${phone.name}`, async ({
     browser,
     baseURL,
   }) => {
@@ -176,8 +176,9 @@ for (const phone of STAGES) {
     await mockup.close();
     expect(mockupGap, "the mockup's #turn clears its neighbours").toBeGreaterThan(0);
 
-    const app = await appAt(browser, baseURL!, captureStateById("lamp-left")!, phone);
-    await expect(app.page.getByTestId("game-hud-stack")).toContainText("Turno di Besnik");
+    const onMove = captureStateById("lamp-left")!;
+    const app = await appAt(browser, baseURL!, onMove, phone);
+    await expect(app.page.getByTestId("game-hud-stack")).toContainText(`Turno di ${captureGameState(onMove).players[onMove.turn].name}`);
     const pill = (await shown(app, TURN)).box;
     const named = { hudCombo: '[data-testid="notice-hudCombo"]', score: '[data-testid="score-pill"]', name: '[data-testid="seat-name"]', ring: '[data-testid="seat-ring"]' };
     const neighbours = (
