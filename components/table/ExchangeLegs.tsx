@@ -204,7 +204,7 @@ export function ExchangeLegs({
 }) {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
-  const jokers = announced.twoJokerException;
+  const jokers = announced.twoJokers;
   const key = stages.key;
   const calls = useRef({ onStage, onReady, onDismiss, key });
   useEffect(() => {

@@ -34,7 +34,7 @@ describe("turnTimerActive", () => {
     isFinished: false,
     isNewTrick: false,
     roundOver: false,
-    exchangeActive: false,
+    exchangeOpen: false,
     includeNewTrick: false,
   };
 
@@ -54,7 +54,7 @@ describe("turnTimerActive", () => {
   });
 
   test("never during the exchange, after the game, or when it is not your turn", () => {
-    assert.equal(turnTimerActive({ ...base, exchangeActive: true }), false);
+    assert.equal(turnTimerActive({ ...base, exchangeOpen: true }), false);
     assert.equal(turnTimerActive({ ...base, roundOver: true }), false);
     assert.equal(turnTimerActive({ ...base, isMyTurn: false }), false);
     assert.equal(turnTimerActive({ ...base, isFinished: true }), false);
@@ -62,7 +62,7 @@ describe("turnTimerActive", () => {
 
   test("includeNewTrick never overrides the harder stops", () => {
     assert.equal(
-      turnTimerActive({ ...base, includeNewTrick: true, exchangeActive: true }),
+      turnTimerActive({ ...base, includeNewTrick: true, exchangeOpen: true }),
       false
     );
   });
@@ -159,7 +159,7 @@ const TURN_TABLE: [Bit, Bit, Bit, Bit, Bit, string, string, Bit, string][] = [
  * Both timer questions over every input they read: `c` the viewer's chip counts down,
  * `s` the ring on the seat on move sweeps.
  *
- * Bits: isMyTurn, isFinished, isNewTrick, roundOver, exchangeActive, includeNewTrick, pausable, holdingForStart.
+ * Bits: isMyTurn, isFinished, isNewTrick, roundOver, exchangeOpen, includeNewTrick, pausable, holdingForStart.
  */
 const CLOCK_TABLE: string[] = [
   "00000000:-s 00000001:-s 00000010:-s 00000011:-- 00000100:-s 00000101:-s 00000110:-s 00000111:--",
@@ -197,10 +197,10 @@ const CLOCK_TABLE: string[] = [
 ];
 const clockRows = CLOCK_TABLE.flatMap((line) => line.split(" ")).map((cell) => {
   const [bits, answer] = cell.split(":");
-  const [isMyTurn, isFinished, isNewTrick, roundOver, exchangeActive, includeNewTrick, pausable, holdingForStart] = [...bits].map(
+  const [isMyTurn, isFinished, isNewTrick, roundOver, exchangeOpen, includeNewTrick, pausable, holdingForStart] = [...bits].map(
     (b) => b === "1"
   );
-  return { isMyTurn, isFinished, isNewTrick, roundOver, exchangeActive, includeNewTrick, pausable, holdingForStart, answer };
+  return { isMyTurn, isFinished, isNewTrick, roundOver, exchangeOpen, includeNewTrick, pausable, holdingForStart, answer };
 });
 
 const fakeT = ((key: string, params?: Record<string, unknown>) => (params ? `${key}(${params.name})` : key)) as TFn;
@@ -240,7 +240,7 @@ describe("the turn chip and its clocks", () => {
           matchOver: matchOver === 1,
           dealing: dealing === 1,
           exchange: exchange
-            ? { active: true, viewerIsWinner: true, viewerIsLoser: false, winnerName: "W", loserName: "L" }
+            ? { open: true, viewerIsWinner: true, viewerIsLoser: false, winnerName: "W", loserName: "L" }
             : undefined,
         },
         a11yFirst
@@ -255,7 +255,7 @@ describe("the turn chip and its clocks", () => {
     matchOver: false,
     dealing: false,
     shownTurnIsMine: false,
-    exchange: { chip: null, choiceOpen: false, viewerIsWinner: false, active: false },
+    exchange: { chip: null, choiceOpen: false, viewerIsWinner: false, open: false },
     isMyTurn: false,
     isFinished: false,
     isNewTrick: false,
@@ -273,7 +273,7 @@ describe("the turn chip and its clocks", () => {
         matchOver: matchOver === 1,
         dealing: dealing === 1,
         shownTurnIsMine: viewerOnMove === 1,
-        exchange: exchange ? { chip: "CHIP", choiceOpen: true, viewerIsWinner: true, active: true } : base.exchange,
+        exchange: exchange ? { chip: "CHIP", choiceOpen: true, viewerIsWinner: true, open: true } : base.exchange,
       }).chip;
       assert.deepEqual(shown, { text: chip, spoken, lit: lit === 1 });
     });
@@ -288,7 +288,7 @@ describe("the turn chip and its clocks", () => {
 
   test("an exchange chip lights only for the winner whose choice is open", () => {
     for (const [choiceOpen, viewerIsWinner] of [[false, true], [true, false], [false, false]]) {
-      const shown = turnPresentation({ ...base, shownTurnIsMine: true, exchange: { chip: "CHIP", choiceOpen, viewerIsWinner, active: true } });
+      const shown = turnPresentation({ ...base, shownTurnIsMine: true, exchange: { chip: "CHIP", choiceOpen, viewerIsWinner, open: true } });
       assert.equal(shown.chip.lit, false);
     }
   });
@@ -298,7 +298,7 @@ describe("the turn chip and its clocks", () => {
       const shown = turnPresentation({
         ...base,
         roundOver: r.roundOver,
-        exchange: { ...base.exchange, active: r.exchangeActive },
+        exchange: { ...base.exchange, open: r.exchangeOpen },
         timer: { seconds: 20, includeNewTrick: r.includeNewTrick, pausable: r.pausable },
         isMyTurn: r.isMyTurn,
         isFinished: r.isFinished,

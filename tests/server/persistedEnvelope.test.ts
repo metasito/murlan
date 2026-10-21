@@ -19,6 +19,7 @@ import {
 import { parseGameState } from "../../shared/gameStateSchema.ts";
 import { actingSeat, applyMove } from "../../lib/game/gameEngine.ts";
 import { chooseMove } from "../../lib/game/autoMove.ts";
+import { visibleExchangePhase } from "../../server/game/onlineGameLogic.ts";
 import { card, seat, state } from "../support/game.ts";
 
 const gameState = state({ currentTurnIndex: 2, gameMode: "teams" });
@@ -148,11 +149,49 @@ describe("a row an older revision wrote, through the same gate", () => {
     });
   }
 
+  for (const [name, kind, moveKind] of [["open", "open", "giveback"], ["twoJokers", "twoJokers", "play"]] as const) {
+    test(`a version-7 row packed mid-exchange (${name}) restores as the phase union and takes the legal move`, () => {
+      const raw = JSON.parse(readFileSync(new URL(`../fixtures/activeGames.v7.${name}.json`, import.meta.url), "utf8"));
+      assert.equal(raw.schemaVersion, 7);
+      const back = restore(raw);
+      const { active: _active, twoJokerException: _jokers, ...phase } = raw.gameState.exchangePhase;
+      assert.deepEqual(back.gameState, { ...raw.gameState, exchangePhase: { kind, ...phase } });
+      const seat = actingSeat(back.gameState);
+      assert.equal(seat, phase.winnerIdx);
+      const move = chooseMove(back.gameState, seat, "floor");
+      assert.equal(move?.kind, moveKind);
+      assert.ok(applyMove(back.gameState, seat, move!).ok, "the engine refused the move");
+    });
+  }
+
+  test("a version-7 row packed just after a giveback restores settled, inside its ceremony, and takes the next move", () => {
+    const raw = JSON.parse(readFileSync(new URL("../fixtures/activeGames.v7.settled.json", import.meta.url), "utf8"));
+    assert.equal(raw.schemaVersion, 7);
+    const back = restore(raw);
+    const { active: _active, twoJokerException: _jokers, ...phase } = raw.gameState.exchangePhase;
+    assert.deepEqual(back.gameState, { ...raw.gameState, exchangePhase: { kind: "settled", ...phase } });
+    const watcher = [0, 1, 2, 3].find((s) => s !== phase.winnerIdx && s !== phase.loserIdx)!;
+    const view = visibleExchangePhase(back.gameState.exchangePhase, watcher, phase.settledAt + 1);
+    assert.deepEqual(view, { kind: "settled", winnerIdx: phase.winnerIdx, loserIdx: phase.loserIdx, cardToLoser: phase.cardToLoser });
+    const seat = actingSeat(back.gameState);
+    assert.equal(seat, phase.loserIdx);
+    const move = chooseMove(back.gameState, seat, "floor");
+    assert.equal(move?.kind, "play");
+    assert.ok(applyMove(back.gameState, seat, move!).ok, "the engine refused the move");
+  });
+
   test("a row of this version in the older shape is refused, not read as one", () => {
     const raw = JSON.parse(readFileSync(new URL("../fixtures/activeGames.v6.json", import.meta.url), "utf8"));
     const result = unpackPersistedState({ ...raw, schemaVersion: GAME_SCHEMA_VERSION });
     assert.equal(result.ok, false);
     assert.match(result.ok ? "" : result.reason, /game state openingCard/);
+  });
+
+  test("a row of this version holding the older exchange flags is refused, not read as one", () => {
+    const raw = JSON.parse(readFileSync(new URL("../fixtures/activeGames.v7.open.json", import.meta.url), "utf8"));
+    const result = unpackPersistedState({ ...raw, schemaVersion: GAME_SCHEMA_VERSION });
+    assert.equal(result.ok, false);
+    assert.match(result.ok ? "" : result.reason, /game state exchangePhase/);
   });
 
   test("a version-5 row is still held to parseGameState", () => {
@@ -234,7 +273,7 @@ describe("rows the restore path refuses", () => {
     const unsatisfiable = state({
       players: [seat(0, []), seat(1, [card("4", "clubs")])],
       openingCard: null,
-      exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, twoJokerException: false },
+      exchangePhase: { kind: "open", winnerIdx: 0, loserIdx: 1, cardFromLoser: card("A", "spades") },
     });
     const verdict = parseGameState(unsatisfiable);
     assert.equal(verdict.ok, false);

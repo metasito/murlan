@@ -293,7 +293,7 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
 
     for (let turn = 0; turn < 300 && !state.roundOver; turn++) {
       const seat = state.currentTurnIndex;
-      const isNewTrick = !state.exchangePhase?.active && state.lastPlayedCombination === null;
+      const isNewTrick = state.exchangePhase?.kind !== "open" && state.lastPlayedCombination === null;
 
       if (isNewTrick) {
         const leader = state.players[seat];
@@ -388,7 +388,7 @@ function measureRoyalStraightBlindSpot(n: number, seed: number): RoyalStraightBl
 
       for (let turn = 0; turn < 300 && !state.roundOver; turn++) {
         const seat = state.currentTurnIndex;
-        const isNewTrick = !state.exchangePhase?.active && state.lastPlayedCombination === null;
+        const isNewTrick = state.exchangePhase?.kind !== "open" && state.lastPlayedCombination === null;
 
         if (isNewTrick) {
           const leader = state.players[seat];

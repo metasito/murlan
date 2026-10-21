@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
-import { getValidGivebackCards, type Card, type GameState } from "@/lib/game/gameEngine";
+import { getValidGivebackCards, type Card } from "@/lib/game/gameEngine";
+import type { ViewedGameState } from "@/shared/protocol";
 import { buildExchangeAnnounce, type ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 import type { LegStage } from "@/lib/timeline/exchangeTimeline";
 import { useTranslation } from "@/lib/i18n";
@@ -37,7 +38,7 @@ export interface TableExchange {
 
 /** The exchange as the table shows it: what flies, each leg's stage, the seats it marks, the choice and its words. */
 export function useTableExchange(input: {
-  gameState: GameState;
+  gameState: ViewedGameState;
   viewerSeat: number;
   spectating: boolean;
   /** The announcement while it is visible. */
@@ -56,7 +57,7 @@ export function useTableExchange(input: {
   // The exchange runs from the phase opening, before any announcement: the receive flies ahead of the choice.
   const shownExchange: ExchangeAnnounceData | null =
     announcement ??
-    (phase?.active && !phase.twoJokerException ? buildExchangeAnnounce(players, phase, { received: phase.cardFromLoser }) : null);
+    (phase?.kind === "open" ? buildExchangeAnnounce(players, phase, { received: phase.cardFromLoser }) : null);
   // A pairing and its card repeat across rounds, so each exchange is also counted.
   const [exchangeSeq, setExchangeSeq] = useState({ open: false, seq: 0 });
   if (!!shownExchange !== exchangeSeq.open) setExchangeSeq({ open: !!shownExchange, seq: exchangeSeq.seq + (shownExchange ? 1 : 0) });
@@ -75,7 +76,7 @@ export function useTableExchange(input: {
     [onExchangeReady]
   );
   const seats = readExchangeSeats(shownExchange, stages);
-  const exchangeIsWinners = exchange.active && exchange.viewerIsWinner;
+  const exchangeIsWinners = exchange.open && exchange.viewerIsWinner;
   const exchangeIsMine = exchangeIsWinners && choiceReady;
 
   // The winner picks from their own hand rather than from a filtered row in a
@@ -83,8 +84,8 @@ export function useTableExchange(input: {
   // `getValidGivebackCards` is the same call `processExchangeChoice` validates
   // against, asked here only to decide which cards light up.
   const giveable = useMemo(
-    () => (exchangeIsMine ? getValidGivebackCards(sortedHand, exchange.cardFromLoser?.id) : undefined),
-    [exchangeIsMine, sortedHand, exchange.cardFromLoser?.id]
+    () => (exchangeIsMine && exchange.open ? getValidGivebackCards(sortedHand, exchange.cardFromLoser.id) : undefined),
+    [exchangeIsMine, sortedHand, exchange]
   );
   const giveableIds = useMemo(() => giveable?.map((c) => c.id), [giveable]);
   const notes = exchangeNotes({ shown: shownExchange, stages, live: exchange, giveable, players, viewerSeat, spectating, t });
@@ -101,7 +102,7 @@ export function useTableExchange(input: {
     exchangeIsMine,
     giveableIds,
     exchangeLoserName: exchange.loser?.name ?? "",
-    choiceOpen: exchange.active && stages.ready,
+    choiceOpen: exchange.open && stages.ready,
     exchangeChip: notes.chip,
     pileNote: notes.pileNote,
   };

@@ -60,7 +60,7 @@ test("a pass the owner refuses during the exchange reaches the asking socket onc
         openingCard: null,
         playedRanks: emptyRankTally(),
         lastMove: { seq: 0, kind: "deal" },
-        exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, twoJokerException: false },
+        exchangePhase: { kind: "open", winnerIdx: 0, loserIdx: 1, cardFromLoser: { id: "A_spades", suit: "spades", rank: "A", isJoker: false } },
       },
     })
   );

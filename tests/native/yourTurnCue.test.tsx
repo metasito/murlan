@@ -19,7 +19,6 @@ const state = (isMyTurn: boolean, currentTurnIndex = 0) => ({
   isMyTurn,
   currentTurnIndex,
   isFinished: false,
-  exchangeActive: false,
   canPass: false,
   lastMove: { seq: 0, kind: "deal" } as const,
   roundOver: false,

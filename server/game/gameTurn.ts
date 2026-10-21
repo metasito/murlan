@@ -2,7 +2,7 @@ import type { TableRuntime } from "./tableRuntime.ts";
 import { emitVoteState } from "./tableBroadcasts.ts";
 import { logger } from "../shared/logger.ts";
 import { activeGames, seatName } from "./gameRoom.ts";
-import { seatOfUser } from "./onlineGameLogic.ts";
+import { seatOfUser, settledCeremonyMs } from "./onlineGameLogic.ts";
 import { vacate } from "./seatLedger.ts";
 import { withdrawRematchVote } from "./matchLedger.ts";
 import { payload } from "../shared/payload.ts";
@@ -26,7 +26,7 @@ import { actingSeat, concedeRound, roundUnplayed, openingIsPending } from "../..
 import type { GameState } from "../../lib/game/gameEngine.ts";
 import { Motion, Reading } from "../../lib/tokens.ts";
 import { dealEndMs } from "../../lib/timeline/dealTimeline.ts";
-import { exchangeAnnounceMs, exchangeGiveDelayMs } from "../../lib/timeline/exchangeTimeline.ts";
+import { exchangeGiveDelayMs } from "../../lib/timeline/exchangeTimeline.ts";
 import { handCountOf } from "../../shared/protocol.ts";
 
 /**
@@ -70,7 +70,7 @@ export function armTurn(rt: TableRuntime, roomId: string, botDelayMs = botMoveDe
   if (userId === undefined) {
     game.turnDeadlineMs = undefined;
     const phase = game.gameState.exchangePhase;
-    const exchangeOnTable = phase?.active || (phase?.twoJokerException && roundUnplayed(game.gameState));
+    const exchangeOnTable = phase?.kind === "open" || (phase?.kind === "twoJokers" && roundUnplayed(game.gameState));
     const counts = game.gameState.players.map(handCountOf);
     const delayMs = exchangeOnTable
       ? Math.max(botDelayMs, exchangeGiveDelayMs(counts))
@@ -99,7 +99,7 @@ export function armTurn(rt: TableRuntime, roomId: string, botDelayMs = botMoveDe
 /** Every move re-arms here, so an exchange's ceremony holds the next seat on each path that closes it. */
 export function armAfterMove(rt: TableRuntime, roomId: string, next: GameState) {
   const closedExchange = next.lastMove.kind === "giveback";
-  armTurn(rt, roomId, closedExchange ? exchangeAnnounceMs(next.exchangePhase?.twoJokerException === true) : botMoveDelayMs());
+  armTurn(rt, roomId, closedExchange ? settledCeremonyMs() : botMoveDelayMs());
 }
 
 /**

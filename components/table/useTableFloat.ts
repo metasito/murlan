@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import type { GameState } from "@/lib/game/gameEngine";
+import type { ViewedGameState } from "@/shared/protocol";
 import type { ServerError } from "@/context/OnlineGameContext";
 import { useTranslation } from "@/lib/i18n";
 import { moveSince } from "@/lib/game/moves";
@@ -8,7 +8,7 @@ import { nextFloat, raised, type Float } from "./floatModel";
 
 /** The float over the pile: what each new state, refusal and auto-pass raises, and a refusal raised by hand. */
 export function useTableFloat(i: {
-  gameState: GameState;
+  gameState: ViewedGameState;
   error: ServerError | null;
   autoPassed: number;
   withdrawn: boolean;

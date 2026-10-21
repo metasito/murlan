@@ -25,6 +25,7 @@ import {
 } from "../../lib/game/gameEngine.ts";
 import { checkAll, checkTeardown, progressViolations, type SeatView, type Violation } from "./invariants.ts";
 import { SETTLE_CAP_MS } from "./gateBudget.ts";
+import type { WireExchangePhase } from "../../shared/protocol.ts";
 
 interface SanitizedPlayer {
   name: string;
@@ -38,7 +39,7 @@ interface TableState {
   lastPlayedCombination: Combination | null;
   roundOver: boolean;
   openingCard: Card | null;
-  exchangePhase?: { active: boolean; winnerIdx: number; cardFromLoser?: Card };
+  exchangePhase?: WireExchangePhase;
   /** `null` once this account holds no seat — the server's own "not seated". */
   viewerSeatIndex: number | null;
 }
@@ -449,13 +450,13 @@ export class Seat {
     if (!s || s.roundOver || typeof seat !== "number" || seat < 0) return null;
 
     const phase = s.exchangePhase;
-    if (phase?.active) {
+    if (phase?.kind === "open") {
       if (phase.winnerIdx !== seat) return null;
       const hand = s.players[seat]?.hand ?? [];
       // The engine's own list, which is what the server validates against and
       // what the UI offers: a giveback is a 3 through 10, and a hand holding
       // none of those falls back to its lowest card (docs/GAME-RULES.md §10).
-      const giveable = getValidGivebackCards(hand, phase.cardFromLoser?.id);
+      const giveable = getValidGivebackCards(hand, phase.cardFromLoser.id);
       const card = giveable[Math.floor(rng() * giveable.length)];
       if (!card) return null;
       this.#socket.emit("game:exchange_give_card", { cardId: card.id });

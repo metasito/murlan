@@ -267,7 +267,7 @@ describe('a tap on the hand', () => {
     const exchange: GameState = {
       ...state,
       currentTurnIndex: 0,
-      exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), twoJokerException: false },
+      exchangePhase: { kind: 'open', winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades') },
     };
     const view = await mountTable(exchange, choiceOpensAt(false) - 400);
     const rest = lift(SEVEN).y;

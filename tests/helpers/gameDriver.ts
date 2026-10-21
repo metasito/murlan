@@ -9,14 +9,8 @@ import type { Socket } from "socket.io-client";
 import { getValidGivebackCards } from "../../lib/game/gameEngine.ts";
 import type { Card } from "../../lib/game/gameEngine.ts";
 import { DEADLINE_SCALE } from "./client.ts";
+import type { WireExchangePhase } from "../../shared/protocol.ts";
 
-interface ExchangePhaseView {
-  active: boolean;
-  winnerIdx: number;
-  loserIdx: number;
-  cardFromLoser: Card;
-  twoJokerException: boolean;
-}
 
 export interface SanitizedPlayer {
   id: string;
@@ -32,7 +26,7 @@ export interface SanitizedState {
   lastPlayedCombination: unknown | null;
   roundOver: boolean;
   openingCard: Card | null;
-  exchangePhase?: ExchangePhaseView;
+  exchangePhase?: WireExchangePhase;
   viewerSeatIndex: number;
 }
 
@@ -91,10 +85,10 @@ export function driveHumansToRoundOver(
         if (!seats.has(client)) seats.set(client, state.viewerSeatIndex);
         const seat = seats.get(client)!;
 
-        if (state.exchangePhase?.active) {
+        if (state.exchangePhase?.kind === "open") {
           if (state.exchangePhase.winnerIdx !== seat) return;
           const hand = state.players[seat]?.hand ?? [];
-          const [card] = getValidGivebackCards(hand, state.exchangePhase.cardFromLoser?.id);
+          const [card] = getValidGivebackCards(hand, state.exchangePhase.cardFromLoser.id);
           if (card) client.emit("game:exchange_give_card", { cardId: card.id });
           return;
         }

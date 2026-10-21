@@ -53,7 +53,7 @@ export function useOfflineDriver(): OfflineDriver {
   // Pass and play seats several humans at one device, so the table belongs to
   // whichever of them is on move; a bot's turn leaves it with the first human.
   // The exchange winner keeps it until the ceremony ends, not just the phase.
-  const seatOnMove = gameState?.exchangePhase && (gameState.exchangePhase.active || exchangeAnnouncing)
+  const seatOnMove = gameState?.exchangePhase && (gameState.exchangePhase.kind === "open" || exchangeAnnouncing)
     ? gameState.exchangePhase.winnerIdx
     : gameState?.currentTurnIndex;
   const viewerSeat =
@@ -82,7 +82,7 @@ export function useOfflineDriver(): OfflineDriver {
     : gameState &&
         !dealing &&
         !gameState.roundOver &&
-        !gameState.exchangePhase?.active &&
+        gameState.exchangePhase?.kind !== "open" &&
         !exchangeAnnouncing &&
         gameState.players[gameState.currentTurnIndex]?.type === "bot"
       ? turnOf(gameState)
@@ -107,7 +107,7 @@ export function useOfflineDriver(): OfflineDriver {
   }, [clockTurn, passTurn]);
 
   // Only the giveback is the table's to release: once it lands, a bot loser is on move under the ceremony.
-  const exchangeOpen = gameState?.exchangePhase?.active === true;
+  const exchangeOpen = gameState?.exchangePhase?.kind === "open";
   const onExchangeReady = useCallback(() => {
     if (exchangeOpen) runBotTurn();
   }, [exchangeOpen, runBotTurn]);

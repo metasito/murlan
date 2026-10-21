@@ -103,7 +103,7 @@ const exchange = (winner: "human" | "bot", winnerHand: Card[]): GameState => ({
   currentTurnIndex: 1,
   lastPlayedCombination: null,
   lastPlayedBy: -1,
-  exchangePhase: { active: true, winnerIdx: 1, loserIdx: 0, cardFromLoser: card("2", "clubs"), twoJokerException: false },
+  exchangePhase: { kind: "open", winnerIdx: 1, loserIdx: 0, cardFromLoser: card("2", "clubs") },
 } as GameState);
 
 function SettleProbe() {
@@ -112,7 +112,7 @@ function SettleProbe() {
   return (
     <>
       <Text testID="saved">{String(hasSavedGame)}</Text>
-      <Text testID="active">{String(gameState?.exchangePhase?.active ?? "-")}</Text>
+      <Text testID="active">{String(gameState?.exchangePhase ? gameState.exchangePhase.kind === "open" : "-")}</Text>
       <Text testID="loserHand">{gameState ? gameState.players[0].hand.map((c) => c.id).join(",") : "-"}</Text>
       <Pressable testID="resume" onPress={() => resumeGame()}><Text>resume</Text></Pressable>
       <Pressable testID="settle" onPress={onExchangeReady}><Text>settle</Text></Pressable>

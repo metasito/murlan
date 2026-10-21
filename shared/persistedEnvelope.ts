@@ -2,7 +2,7 @@
 // without importing the server.
 import { z } from "zod";
 import type { GameState } from "../lib/game/gameEngine.ts";
-import { gameModeSchema, matchLengthSchema, parseGameState } from "./gameStateSchema.ts";
+import { gameModeSchema, matchLengthSchema, parseGameState, storedShapeAt, type ShapesSince } from "./gameStateSchema.ts";
 
 const isSeat = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value >= 0;
@@ -87,7 +87,7 @@ function readPersistedSeats(stored: unknown): PersistedSeats {
  * `OLDEST_GAME_SCHEMA_VERSION` on are restored, each held to the current parse.
  * Held to the stored shape by tests/server/storedShapeVersions.test.ts.
  */
-export const GAME_SCHEMA_VERSION = 7;
+export const GAME_SCHEMA_VERSION = 8;
 
 /**
  * The oldest row still restored. Raise it to GAME_SCHEMA_VERSION when a bump changes what a
@@ -96,8 +96,8 @@ export const GAME_SCHEMA_VERSION = 7;
  */
 export const OLDEST_GAME_SCHEMA_VERSION = 5;
 
-/** An older row is read as `openingFlags`. */
-const OPENING_CARD_SCHEMA_VERSION = 7;
+/** The version each later stored shape began at (`storedShapeAt`). */
+export const SHAPES_SINCE: ShapesSince = { exchangeFlags: 7, current: 8 };
 
 export type RoundFlags = Record<number, { bomb: boolean; joker: boolean }>;
 
@@ -243,10 +243,7 @@ export function unpackPersistedState(persisted: unknown): PersistedRestore {
   if (!parsed.success) {
     return { ok: false, reason: parsed.error.issues[0]?.message ?? "malformed envelope" };
   }
-  const gameState = parseGameState(
-    parsed.data.gameState,
-    version < OPENING_CARD_SCHEMA_VERSION ? "openingFlags" : "current"
-  );
+  const gameState = parseGameState(parsed.data.gameState, storedShapeAt(version, SHAPES_SINCE));
   if (!gameState.ok) return { ok: false, reason: gameState.reason };
   return { ok: true, ...parsed.data, gameState: gameState.state };
 }

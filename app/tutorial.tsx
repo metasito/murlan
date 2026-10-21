@@ -23,6 +23,7 @@ import {
   Combination,
   CombinationType,
   GameState,
+  ExchangePhase,
   buildCombination,
   getCardDisplayRank,
   getSuitSymbol,
@@ -113,13 +114,15 @@ interface PlayBeat {
   passes?: boolean;
 }
 
+type OpenExchangeState = GameState & { exchangePhase: Extract<ExchangePhase, { kind: "open" }> };
+
 interface ExchangeBeat {
   kind: "exchange";
   id: string;
   title: string;
   instruction: string;
   tip: string;
-  state: GameState;
+  state: OpenExchangeState;
   successNarrative: string;
 }
 
@@ -157,7 +160,7 @@ const exchangeThreeHearts = mk("3", "hearts");
 // ("Tu") is translated, so it has to be rebuilt with the current `t` on
 // every render rather than frozen at import time (before the device locale
 // is even known).
-function buildExchangeState(t: TFn): GameState {
+function buildExchangeState(t: TFn): OpenExchangeState {
   return {
     players: [
       {
@@ -183,13 +186,7 @@ function buildExchangeState(t: TFn): GameState {
     openingCard: null,
     playedRanks: emptyRankTally(),
     lastMove: { seq: 0, kind: "deal" },
-    exchangePhase: {
-      active: true,
-      winnerIdx: 0,
-      loserIdx: 1,
-      cardFromLoser: JOKER_COLORED,
-      twoJokerException: false,
-    },
+    exchangePhase: { kind: "open", winnerIdx: 0, loserIdx: 1, cardFromLoser: JOKER_COLORED },
   };
 }
 
@@ -436,8 +433,8 @@ function evaluatePlay(selectedIds: Set<string>, beat: PlayBeat, t: TFn): { ok: b
 }
 
 function evaluateExchange(selected: Card, beat: ExchangeBeat, t: TFn): { ok: boolean; message: string } {
-  const winnerHand = beat.state.players[beat.state.exchangePhase!.winnerIdx].hand;
-  const receivedId = beat.state.exchangePhase!.cardFromLoser?.id;
+  const winnerHand = beat.state.players[beat.state.exchangePhase.winnerIdx].hand;
+  const receivedId = beat.state.exchangePhase.cardFromLoser.id;
   const valid = getValidGivebackCards(winnerHand, receivedId);
   if (!valid.some((c) => c.id === selected.id)) {
     if (selected.id === receivedId) {
@@ -591,7 +588,7 @@ export default function TutorialScreen() {
   }
 
   function submitExchange(b: ExchangeBeat) {
-    const winnerHand = b.state.players[b.state.exchangePhase!.winnerIdx].hand;
+    const winnerHand = b.state.players[b.state.exchangePhase.winnerIdx].hand;
     const selected = winnerHand.find((c) => selectedIds.has(c.id));
     if (!selected) {
       setFeedback({ ok: false, text: t("tutorial.errSelectCardToReturn") });
@@ -749,8 +746,8 @@ export default function TutorialScreen() {
     }
 
     // exchange
-    const winnerHand = beat.state.players[beat.state.exchangePhase!.winnerIdx].hand;
-    const receivedId = beat.state.exchangePhase!.cardFromLoser?.id;
+    const winnerHand = beat.state.players[beat.state.exchangePhase.winnerIdx].hand;
+    const receivedId = beat.state.exchangePhase.cardFromLoser.id;
     return (
       <>
         <MenuCard title={beat.title}>

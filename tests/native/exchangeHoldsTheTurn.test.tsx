@@ -1,8 +1,8 @@
 // tests/native/exchangeHoldsTheTurn.test.tsx — the table waits for the exchange.
 //
 // The exchange closes its own phase the moment the card is chosen, so
-// `exchangePhase.active` is already false while the two cards are still
-// crossing the felt. A turn loop reading only that flag starts a bot's
+// `exchangePhase` is already settled while the two cards are still
+// crossing the felt. A turn loop reading only the phase starts a bot's
 // "thinking" timer over the top of the ceremony every seat is watching.
 //
 // What is under test is the gate, not the clock: whether the bot ever moves the
@@ -47,7 +47,7 @@ const CHOOSING: GameState = state({
     { id: 'player_0', name: 'Ana', hand: [{ id: '4_clubs', suit: 'clubs', rank: '4', isJoker: false }], type: 'human' },
     { id: 'player_1', name: 'Luan', hand: [{ id: '6_clubs', suit: 'clubs', rank: '6', isJoker: false }], type: 'bot' },
   ],
-  exchangePhase: { active: true, winnerIdx: 1, loserIdx: 0, cardFromLoser: { id: '2_clubs', suit: 'clubs', rank: '2', isJoker: false }, twoJokerException: false },
+  exchangePhase: { kind: 'open', winnerIdx: 1, loserIdx: 0, cardFromLoser: { id: '2_clubs', suit: 'clubs', rank: '2', isJoker: false } },
 });
 
 /** The human won the last round and owes the bot a card back; the bot, having lost, leads. */
@@ -65,7 +65,7 @@ const GIVING: GameState = state({
     },
     { id: 'player_1', name: 'Luan', hand: [{ id: '6_clubs', suit: 'clubs', rank: '6', isJoker: false }], type: 'bot' },
   ],
-  exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: { id: '2_clubs', suit: 'clubs', rank: '2', isJoker: false }, twoJokerException: false },
+  exchangePhase: { kind: 'open', winnerIdx: 0, loserIdx: 1, cardFromLoser: { id: '2_clubs', suit: 'clubs', rank: '2', isJoker: false } },
 });
 
 // The table draws nothing here: every path under test is the screen's own
@@ -123,7 +123,7 @@ describe('a bot on move while the exchange is being announced', () => {
     expect(view.moves()).toBe(0);
     await act(async () => mockTable.props.onExchangeReady?.());
     expect(view.moves()).toBe(1);
-    expect(view.result.current?.exchangePhase?.active).toBe(false);
+    expect(view.result.current?.exchangePhase?.kind).toBe('settled');
     await view.unmount();
   });
 

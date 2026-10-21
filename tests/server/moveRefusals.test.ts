@@ -47,13 +47,7 @@ const exchangeOpen = (over: Partial<GameState> = {}): GameState =>
       seat(1, [c("4", "clubs"), c("J", "diamonds")]),
     ],
     lastPlayedCombination: null,
-    exchangePhase: {
-      active: true,
-      winnerIdx: 0,
-      loserIdx: 1,
-      cardFromLoser: c("2", "clubs"),
-      twoJokerException: false,
-    },
+    exchangePhase: { kind: "open", winnerIdx: 0, loserIdx: 1, cardFromLoser: c("2", "clubs") },
     ...over,
   });
 

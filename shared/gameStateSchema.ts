@@ -82,15 +82,18 @@ const gameStateSchema = z
       })
       .optional(),
     exchangePhase: z
-      .object({
-        active: z.boolean(),
-        winnerIdx: seat,
-        loserIdx: seat,
-        cardFromLoser: card.optional(),
-        cardToLoser: card.optional(),
-        twoJokerException: z.boolean(),
-        settledAt: z.number().optional(),
-      })
+      .discriminatedUnion("kind", [
+        z.object({ kind: z.literal("twoJokers"), winnerIdx: seat, loserIdx: seat }),
+        z.object({ kind: z.literal("open"), winnerIdx: seat, loserIdx: seat, cardFromLoser: card }),
+        z.object({
+          kind: z.literal("settled"),
+          winnerIdx: seat,
+          loserIdx: seat,
+          cardFromLoser: card,
+          cardToLoser: card,
+          settledAt: z.number().optional(),
+        }),
+      ])
       .optional(),
     playedRanks: playedRanksSchema,
     lastMove,
@@ -112,21 +115,58 @@ void [declaresGameState, declaresGameMode, declaresMatchLength];
 
 export type GameStateParse = { ok: true; state: GameState } | { ok: false; reason: string };
 
-/**
- * How a stored state was written: `openingFlags` before `openingCard`, when the opening card was
- * `startCard`, owed only while `firstPlayMade` was false, and a closed trick also named `trickWinner`.
- */
-export type StoredStateShape = "current" | "openingFlags";
+type Raw = Record<string, unknown>;
 
-function fromOpeningFlags(raw: Record<string, unknown>): Record<string, unknown> {
+function fromOpeningFlags(raw: Raw): Raw {
   const { firstPlayMade, startCard, trickWinner: _trickWinner, ...rest } = raw;
   return { ...rest, openingCard: firstPlayMade === false && startCard !== undefined ? startCard : null };
+}
+
+function fromExchangeFlags(raw: Raw): Raw {
+  if (typeof raw.exchangePhase !== "object" || raw.exchangePhase === null) return raw;
+  const { active, twoJokerException, ...phase } = raw.exchangePhase as Raw;
+  if (twoJokerException === true) {
+    const { winnerIdx, loserIdx } = phase;
+    return { ...raw, exchangePhase: { kind: "twoJokers", winnerIdx, loserIdx } };
+  }
+  if (active === true) {
+    const { cardToLoser: _unchosen, settledAt: _unsettled, ...open } = phase;
+    return { ...raw, exchangePhase: { kind: "open", ...open } };
+  }
+  return { ...raw, exchangePhase: { kind: "settled", ...phase } };
+}
+
+/**
+ * How a stored state was written, oldest first; each shape is read by converting it to the next.
+ * `openingFlags` came before `openingCard`, when the opening card was `startCard`, owed only while
+ * `firstPlayMade` was false, and a closed trick also named `trickWinner`. `exchangeFlags` came
+ * before the exchange phase's `kind`, when it was `active` and `twoJokerException` flags.
+ */
+const STORED_SHAPES = [
+  { shape: "openingFlags", toNext: fromOpeningFlags },
+  { shape: "exchangeFlags", toNext: fromExchangeFlags },
+  { shape: "current", toNext: (raw: Raw) => raw },
+] as const;
+
+export type StoredStateShape = (typeof STORED_SHAPES)[number]["shape"];
+
+/** The version each shape after the oldest began at. */
+export type ShapesSince = Record<Exclude<StoredStateShape, (typeof STORED_SHAPES)[0]["shape"]>, number>;
+
+/** The shape a document of `version` was written in: the newest one begun at or before it. */
+export function storedShapeAt(version: number, since: ShapesSince): StoredStateShape {
+  const begun = STORED_SHAPES.slice(1).filter(({ shape }) => version >= since[shape as keyof ShapesSince]);
+  return (begun.at(-1) ?? STORED_SHAPES[0]).shape;
+}
+
+function asCurrent(raw: Raw, shape: StoredStateShape): Raw {
+  return STORED_SHAPES.slice(STORED_SHAPES.findIndex((s) => s.shape === shape)).reduce((doc, s) => s.toNext(doc), raw);
 }
 
 /** A stored state as the engine's, or the first thing wrong with it, its path leading. */
 export function parseGameState(raw: unknown, shape: StoredStateShape = "current"): GameStateParse {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return { ok: false, reason: "no game state" };
-  const parsed = gameStateSchema.safeParse(shape === "openingFlags" ? fromOpeningFlags(raw as Record<string, unknown>) : raw);
+  const parsed = gameStateSchema.safeParse(asCurrent(raw as Raw, shape));
   if (parsed.success) return { ok: true, state: parsed.data };
   const issue = parsed.error.issues[0];
   const at = issue.path.join(".");

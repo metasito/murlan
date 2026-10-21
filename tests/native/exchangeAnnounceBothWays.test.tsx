@@ -66,7 +66,7 @@ describe('the exchange ceremony states both legs', () => {
   });
 
   it('replaces both legs with the two-Joker notice', async () => {
-    const view = await legs({ twoJokerException: true, cardReceived: undefined });
+    const view = await legs({ twoJokers: true, cardReceived: undefined });
     await frames(X.beat + LEG.rest + 32);
 
     expect(spoken(view)).toContain(LOSER);

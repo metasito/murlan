@@ -4,13 +4,13 @@
 // the types. Raise MIN_PROTOCOL_VERSION to turn away the bundles a change breaks.
 import { z } from "zod";
 import { matchLengthSchema } from "./gameStateSchema.ts";
-import type { GameState, MatchLength, Player } from "../lib/game/gameEngine.ts";
+import type { Card, GameState, MatchLength, Player } from "../lib/game/gameEngine.ts";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "./http.ts";
 import type * as Inbound from "./socketSchemas.ts";
 import type { TranslationParams } from "./i18n.ts";
 
-export const PROTOCOL_VERSION = 11;
-export const MIN_PROTOCOL_VERSION = 11;
+export const PROTOCOL_VERSION = 12;
+export const MIN_PROTOCOL_VERSION = 12;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */
 export const CLIENT_OUTDATED = "CLIENT_OUTDATED";
@@ -21,7 +21,16 @@ export const AUTH_UNAVAILABLE = "AUTH_UNAVAILABLE";
 /** A seat as one viewer receives it: every hand but theirs is blanked. */
 export type WirePlayer = Player & { handCount: number; vacated: boolean };
 
-export type WireGameState = Omit<GameState, "players"> & {
+/** An exchange as one viewer receives it; who sees which card is `visibleExchangePhase`'s (server/game/onlineGameLogic.ts). */
+export type WireExchangePhase =
+  | { kind: "twoJokers"; winnerIdx: number; loserIdx: number }
+  | { kind: "open"; winnerIdx: number; loserIdx: number; cardFromLoser: Card }
+  | { kind: "settled"; winnerIdx: number; loserIdx: number; cardToLoser?: Card };
+
+/** A state the table is drawn from: the engine's own offline, or one viewer's online. */
+export type ViewedGameState = Omit<GameState, "exchangePhase"> & { exchangePhase?: WireExchangePhase };
+
+export type WireGameState = Omit<ViewedGameState, "players"> & {
   players: WirePlayer[];
   viewerSeatIndex: number | null;
   turnDeadlineMs?: number;

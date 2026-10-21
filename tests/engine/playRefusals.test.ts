@@ -43,13 +43,7 @@ const table = (pile: Card[] | null, over: Partial<GameState> = {}) =>
   });
 
 const ids = (cards: Card[]) => cards.map((card) => card.id);
-const openExchange = {
-  active: true,
-  winnerIdx: 0,
-  loserIdx: 1,
-  cardFromLoser: c("K", "hearts"),
-  twoJokerException: false,
-};
+const openExchange = { kind: "open", winnerIdx: 0, loserIdx: 1, cardFromLoser: c("K", "hearts") } as const;
 
 const play = (state: GameState, cards: string[]) => applyMove(state, 0, { kind: "play", cardIds: cards });
 const pass = (state: GameState) => applyMove(state, 0, { kind: "pass" });

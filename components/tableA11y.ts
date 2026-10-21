@@ -26,7 +26,7 @@ export interface TableA11yLastPlay {
 }
 
 export interface TableA11yExchange {
-  active: boolean;
+  open: boolean;
   viewerIsWinner: boolean;
   viewerIsLoser: boolean;
   /** Ignored unless `viewerIsLoser`. */
@@ -83,7 +83,7 @@ export function describeTableForA11y(input: TableA11yInput, strings: TableA11ySt
     viewerOnMove: input.isMyTurn,
   });
   const exchange = input.exchange;
-  const asked = exchange?.active && (exchange.viewerIsWinner || exchange.viewerIsLoser) ? exchange : undefined;
+  const asked = exchange?.open && (exchange.viewerIsWinner || exchange.viewerIsLoser) ? exchange : undefined;
   const onMove = asked
     ? () => (asked.viewerIsWinner ? strings.exchangeGiveCard(asked.loserName) : strings.exchangeWaitForCard(asked.winnerName))
     : undefined;

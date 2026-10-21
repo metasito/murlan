@@ -215,11 +215,7 @@ describe('a seated player is still the player on move', () => {
   });
 });
 
-const PHASE = {
-  active: true,
-  cardFromLoser: card('given', '2', 'hearts'),
-  twoJokerException: false,
-} as const;
+const PHASE = { kind: 'open', cardFromLoser: card('given', '2', 'hearts') } as const;
 
 /** Seat 0 owes seat 2 a card. */
 const owing = (): GameState => ({

@@ -45,11 +45,7 @@ export function sanitizeStateForPlayer(
     // over or never moves. The deadline rides along only as a reset key.
     turnDeadlineMs,
     turnSecondsRemaining: secondsUntil(turnDeadlineMs),
-    exchangePhase: visibleExchangePhase(
-      state.exchangePhase,
-      viewerSeatIndex,
-      now()
-    ) as GameState["exchangePhase"],
+    exchangePhase: visibleExchangePhase(state.exchangePhase, viewerSeatIndex, now()),
     players: state.players.map((p, idx) => {
       const isViewer = playerMap[idx] === viewerUserId;
       return {

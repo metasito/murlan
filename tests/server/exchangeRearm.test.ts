@@ -1,13 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
-import { armTurn } from "../../server/game/gameTurn.ts";
+import { armAfterMove, armTurn } from "../../server/game/gameTurn.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
 import { botMoveDelayMs, clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { createDeck, startRound, type GameState } from "../../lib/game/gameEngine.ts";
 import { LEG, exchangeAnnounceMs, exchangeGiveDelayMs, legPose, legShows, restPoint } from "../../lib/timeline/exchangeTimeline.ts";
 import { dealEndMs } from "../../lib/timeline/dealTimeline.ts";
+import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
 import { Motion } from "../../lib/tokens.ts";
 
 const ROOM = "exchange-rearm-room";
@@ -24,7 +25,7 @@ function exchangeTable(loserHoldsBothJokers = false): OnlineGameState {
     opening: { kind: "exchange", winnerSeat: 0, loserSeat: 3 },
     dealt: hands,
   });
-  assert.equal(gameState.exchangePhase?.active, !loserHoldsBothJokers, "the rematch opens an exchange unless the loser holds both Jokers");
+  assert.equal(gameState.exchangePhase?.kind, loserHoldsBothJokers ? "twoJokers" : "open", "the rematch opens an exchange unless the loser holds both Jokers");
   const game: OnlineGameState = {
     roomId: ROOM,
     joinCode: "AAAAAA",
@@ -57,7 +58,6 @@ test("a bot winner gives no earlier than the receive has landed and been read, a
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const game = exchangeTable();
   try {
-    const phase = game.gameState.exchangePhase!;
     armTurn(rt, ROOM);
     const counts = game.gameState.players.map((p) => p.hand.length);
     const floor = exchangeGiveDelayMs(counts);
@@ -66,14 +66,37 @@ test("a bot winner gives no earlier than the receive has landed and been read, a
     const received = dealEndMs(counts, Motion.duration.reveal) + legShows(null, false)[0] + drawn.lastIndexOf(true) + 1;
     assert.ok(floor >= received + Motion.exchange.read, `the receive is drawn until ${received}, and read after`);
     t.mock.timers.tick(floor - 1);
-    assert.equal(game.gameState.exchangePhase?.active, true, "gave before the receive was read");
+    assert.equal(game.gameState.exchangePhase?.kind, "open", "gave before the receive was read");
     t.mock.timers.tick(1);
-    assert.equal(game.gameState.exchangePhase?.active ?? false, false, "the bot winner gave");
+    assert.equal(game.gameState.exchangePhase?.kind, "settled", "the bot winner gave");
     const after = structuredClone(game.gameState);
-    t.mock.timers.tick(Math.max(botMoveDelayMs(), exchangeAnnounceMs(phase.twoJokerException)) - 1);
+    t.mock.timers.tick(Math.max(botMoveDelayMs(), exchangeAnnounceMs(false)) - 1);
     assert.deepEqual(game.gameState, after, "the next seat moved during the ceremony");
     t.mock.timers.tick(1);
     assert.notDeepEqual(game.gameState, after, "the next seat never moved");
+  } finally {
+    clearRoomTimers(ROOM);
+    activeGames.delete(ROOM);
+  }
+});
+
+test("after a giveback the next seat is re-armed on the giveback ceremony's own clock", (t) => {
+  t.mock.method(activeGameStore, "write", async () => {});
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const game = exchangeTable();
+  try {
+    const phase = game.gameState.exchangePhase;
+    assert.ok(phase?.kind === "open");
+    const give = autoMoveForSeat(game.gameState, phase.winnerIdx, "floor");
+    assert.equal(give?.move.kind, "giveback");
+    game.gameState = give.state;
+    assert.ok(exchangeAnnounceMs(false) > botMoveDelayMs(), "the ceremony is no longer than a bot's own delay, so this proves nothing");
+    armAfterMove(rt, ROOM, game.gameState);
+    const settled = structuredClone(game.gameState);
+    t.mock.timers.tick(exchangeAnnounceMs(false) - 1);
+    assert.deepEqual(game.gameState, settled, "the next seat moved during the ceremony");
+    t.mock.timers.tick(1);
+    assert.notDeepEqual(game.gameState, settled, "the next seat did not move when the ceremony ended");
   } finally {
     clearRoomTimers(ROOM);
     activeGames.delete(ROOM);
@@ -93,7 +116,7 @@ test("a bot opening a both-Jokers round waits out the deal and the ceremony it o
     assert.deepEqual(game.gameState, dealt, "the opener played over the deal or the ceremony");
     t.mock.timers.tick(1);
     assert.notDeepEqual(game.gameState, dealt, "the opener never played");
-    assert.equal(game.gameState.exchangePhase?.twoJokerException, true);
+    assert.equal(game.gameState.exchangePhase?.kind, "twoJokers");
     const opened = structuredClone(game.gameState);
     t.mock.timers.tick(botMoveDelayMs() - 1);
     assert.deepEqual(game.gameState, opened, "the next seat moved early");

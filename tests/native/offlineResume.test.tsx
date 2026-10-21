@@ -58,13 +58,7 @@ const midExchangeSave = () => {
       openingCard: null,
       playedRanks: emptyRankTally(),
       lastMove: { seq: 0, kind: "deal" },
-      exchangePhase: {
-        active: true,
-        winnerIdx: 1,
-        loserIdx: 0,
-        cardFromLoser: card,
-        twoJokerException: true,
-      },
+      exchangePhase: { kind: "open", winnerIdx: 1, loserIdx: 0, cardFromLoser: card },
     },
     match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
     dealFirstSeat: 1,
@@ -91,9 +85,8 @@ function Probe() {
       <Text testID="hand">{gameState ? String(gameState.players[0].hand.length) : "none"}</Text>
       <Text testID="saved">{String(hasSavedGame)}</Text>
       <Text testID="exchange">
-        {gameState?.exchangePhase?.active
-          ? `${gameState.exchangePhase.winnerIdx}>${gameState.exchangePhase.loserIdx}` +
-            (gameState.exchangePhase.twoJokerException ? " jokers" : "")
+        {gameState?.exchangePhase
+          ? `${gameState.exchangePhase.kind} ${gameState.exchangePhase.winnerIdx}>${gameState.exchangePhase.loserIdx}`
           : "none"}
       </Text>
       <Text testID="announcing">{String(exchangeAnnouncing)}</Text>
@@ -226,7 +219,7 @@ test("a game killed mid-exchange comes back with the exchange, and no stuck over
   await waitFor(() => expect(textOf(r, "saved")).toBe("true"));
   await press(r, "resume");
 
-  expect(textOf(r, "exchange")).toBe("1>0 jokers");
+  expect(textOf(r, "exchange")).toBe("open 1>0");
   expect(textOf(r, "announcing")).toBe("false");
 });
 
@@ -307,7 +300,7 @@ test("a saved match nobody replaced stays resumable", async () => {
   const r = await mount();
   await waitFor(() => expect(textOf(r, "saved")).toBe("true"));
   await press(r, "resume");
-  expect(textOf(r, "exchange")).toBe("1>0 jokers");
+  expect(textOf(r, "exchange")).toBe("open 1>0");
   await unmount(r);
 });
 

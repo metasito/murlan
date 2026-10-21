@@ -54,11 +54,10 @@ function exchangeState(): GameState {
     playedRanks: emptyRankTally(),
     lastMove: { seq: 0, kind: "deal" },
     exchangePhase: {
-      active: true,
+      kind: "open",
       winnerIdx: 0,
       loserIdx: 1,
       cardFromLoser: { id: "3_spades", suit: "spades", rank: "3", isJoker: false },
-      twoJokerException: false,
     },
   };
 }
@@ -105,7 +104,7 @@ function Probe() {
         <Text>new match</Text>
       </Pressable>
       <Text testID="saved">{String(hasSavedGame)}</Text>
-      <Text testID="active">{String(gameState?.exchangePhase?.active ?? "none")}</Text>
+      <Text testID="active">{String(gameState?.exchangePhase ? gameState.exchangePhase.kind === "open" : "none")}</Text>
       <Text testID="phasePresent">{String(gameState?.exchangePhase !== undefined)}</Text>
       <Text testID="winnerHand">{gameState ? gameState.players[0].hand.map((c) => c.id).join(",") : "-"}</Text>
       <Text testID="loserHand">{gameState ? gameState.players[1].hand.map((c) => c.id).join(",") : "-"}</Text>
@@ -249,7 +248,7 @@ function BotWinnerProbe() {
         <Text>ready</Text>
       </Pressable>
       <Text testID="saved">{String(hasSavedGame)}</Text>
-      <Text testID="active">{String(gameState?.exchangePhase?.active ?? "none")}</Text>
+      <Text testID="active">{String(gameState?.exchangePhase ? gameState.exchangePhase.kind === "open" : "none")}</Text>
       <Text testID="winnerHand">{gameState ? gameState.players[1].hand.map((c) => c.id).join(",") : "-"}</Text>
       <Text testID="loserHand">{gameState ? gameState.players[0].hand.map((c) => c.id).join(",") : "-"}</Text>
     </>
@@ -275,7 +274,7 @@ for (const loser of ["human", "bot"] as const) test(`an offline bot winner gives
       },
     ],
     currentTurnIndex: 1,
-    exchangePhase: { active: true, winnerIdx: 1, loserIdx: 0, cardFromLoser: ace, twoJokerException: false },
+    exchangePhase: { kind: "open", winnerIdx: 1, loserIdx: 0, cardFromLoser: ace },
   };
   await AsyncStorage.setItem(
     OFFLINE_SAVE_KEY,

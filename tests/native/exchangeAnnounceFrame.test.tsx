@@ -42,7 +42,7 @@ describe('ExchangeLegs with no geometry measured', () => {
 
 describe('ExchangeLegs frame', () => {
   it.each([false, true])('exposes exchange-announce with a non-zero frame (bothJokers=%s)', async (bothJokers) => {
-    const view = await render(<Legs announced={announced({ twoJokerException: bothJokers })} />);
+    const view = await render(<Legs announced={announced({ twoJokers: bothJokers })} />);
     await act(async () => {});
     const style = StyleSheet.flatten(view.getByTestId('exchange-announce').props.style) as ViewStyle;
     expect(spans(style, 'width', 'left', 'right')).toBe(true);

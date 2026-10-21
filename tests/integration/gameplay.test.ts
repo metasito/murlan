@@ -165,7 +165,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     const exchange = new Map<Client, SanitizedState>();
     const dealt = Promise.all(
       [alice, bob].map(async (client) => {
-        const state = await waitForWhere<SanitizedState>(client.socket, "game:state", (s) => !!s.exchangePhase?.active);
+        const state = await waitForWhere<SanitizedState>(client.socket, "game:state", (s) => s.exchangePhase?.kind === "open");
         exchange.set(client, state);
       })
     );
@@ -178,8 +178,8 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     await dealt;
 
     const anyState = [...exchange.values()][0];
-    const phase = anyState.exchangePhase!;
-    assert.equal(phase.active, true);
+    const phase = anyState.exchangePhase;
+    assert.ok(phase?.kind === "open");
 
     const winnerName = anyState.players[phase.winnerIdx].name;
     const winner = [alice, bob].find((c) => c.user.username === winnerName);
@@ -209,7 +209,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     const freshState = waitFor<SanitizedState>(winner!.socket, "game:state");
     winner!.socket.emit("game:rejoin", { roomId: room.roomId });
     const fresh = await freshState;
-    assert.equal(fresh.exchangePhase?.active, true);
+    assert.equal(fresh.exchangePhase?.kind, "open");
     assert.deepEqual(
       fresh.players[phase.winnerIdx].hand.map((c) => c.id),
       handBefore.map((c) => c.id)

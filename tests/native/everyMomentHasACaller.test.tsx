@@ -36,7 +36,7 @@ const human = (turn: number, exchange = false): GameState => ({
   openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
-  ...(exchange ? { exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: TWO_S, twoJokerException: false } } : {}),
+  ...(exchange ? { exchangePhase: { kind: 'open', winnerIdx: 0, loserIdx: 1, cardFromLoser: TWO_S } } : {}),
 });
 
 const table = (s: GameState, x: Extra = {}) => (

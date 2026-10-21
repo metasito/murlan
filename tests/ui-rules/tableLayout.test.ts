@@ -235,7 +235,7 @@ describe("throws and exchange legs start from the layout's seat points", () => {
   });
 
   test("an exchange", () => {
-    const announced = { winnerName: "", loserName: "", winnerIdx: 0, loserIdx: 2, twoJokerException: false, cardReceived: card("t"), cardGiven: card("x") };
+    const announced = { winnerName: "", loserName: "", winnerIdx: 0, loserIdx: 2, twoJokers: false, cardReceived: card("t"), cardGiven: card("x") };
     const legs = readExchangeLegs(announced, odd, seating, own);
     assert.deepEqual(legs.receive.from, fanFrom("top", 2));
     assert.deepEqual(legs.receive.to, ownSlotFrom(POINTS.bottom, undefined));

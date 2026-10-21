@@ -17,7 +17,6 @@ const idleState = () => ({
   isMyTurn: false,
   currentTurnIndex: 0,
   isFinished: false,
-  exchangeActive: false,
   canPass: false,
   lastMove: { seq: 0, kind: "deal" } as const,
   roundOver: false,

@@ -30,7 +30,7 @@ function deepFreeze<T>(value: T): T {
 test("both openings record the deal as move 0", () => {
   assert.deepEqual(startRound(SEATS, "free_for_all").lastMove, { seq: 0, kind: "deal" });
   const exchange = exchangeDeal();
-  assert.equal(exchange.exchangePhase?.active, true);
+  assert.equal(exchange.exchangePhase?.kind, "open");
   assert.deepEqual(exchange.lastMove, { seq: 0, kind: "deal" });
 });
 
@@ -41,14 +41,14 @@ test("a two-Joker deal records the deal and nothing else", () => {
   const size = deck.length / 4;
   const dealt = [rest.slice(0, size), rest.slice(size, 2 * size), rest.slice(2 * size, 3 * size), [...jokers, ...rest.slice(3 * size)]];
   const state = startRound(SEATS, "free_for_all", { dealt, opening: { kind: "exchange", winnerSeat: 0, loserSeat: 3 } });
-  assert.equal(state.exchangePhase?.twoJokerException, true);
+  assert.equal(state.exchangePhase?.kind, "twoJokers");
   assert.deepEqual(state.lastMove, { seq: 0, kind: "deal" });
 });
 
 test("the giveback is move 1, by the exchange winner", () => {
   const state = exchangeDeal();
   const winnerHand = state.players[0].hand;
-  const offered = winnerHand.find((card) => ["3", "4", "5", "6", "7", "8", "9", "10"].includes(card.rank) && card.id !== state.exchangePhase?.cardFromLoser?.id)!;
+  const offered = winnerHand.find((card) => ["3", "4", "5", "6", "7", "8", "9", "10"].includes(card.rank) && !(state.exchangePhase?.kind === "open" && card.id === state.exchangePhase.cardFromLoser.id))!;
   assert.deepEqual(givenBack(state, offered.id).lastMove, { seq: 1, kind: "giveback", seat: 0 });
 });
 

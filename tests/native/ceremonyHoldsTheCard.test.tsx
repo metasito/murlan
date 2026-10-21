@@ -68,22 +68,15 @@ const settled = (winnerHand: Card[] = [...KEPT_BY_WINNER, FROM_LOSER]): GameStat
   openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
-  exchangePhase: {
-    active: false,
-    winnerIdx: WINNER_SEAT,
-    loserIdx: LOSER_SEAT,
-    cardFromLoser: FROM_LOSER,
-    cardToLoser: TO_LOSER,
-    twoJokerException: false,
-  },
+  exchangePhase: { kind: 'settled', winnerIdx: WINNER_SEAT, loserIdx: LOSER_SEAT, cardFromLoser: FROM_LOSER, cardToLoser: TO_LOSER },
 });
 
-const announce = (twoJokerException = false) => ({
+const announce = (twoJokers = false) => ({
   winnerName: 'Ana',
   loserName: 'Bea',
   winnerIdx: WINNER_SEAT,
   loserIdx: LOSER_SEAT,
-  twoJokerException,
+  twoJokers,
   cardGiven: TO_LOSER,
   cardReceived: FROM_LOSER,
 });
@@ -96,7 +89,7 @@ const noop = () => {};
  */
 const prompting = (): GameState => {
   const state = settled();
-  state.exchangePhase = { ...state.exchangePhase!, active: true, cardToLoser: undefined };
+  state.exchangePhase = { kind: 'open', winnerIdx: WINNER_SEAT, loserIdx: LOSER_SEAT, cardFromLoser: FROM_LOSER };
   state.players[LOSER_SEAT] = seat('player_1', 'Bea', KEPT_BY_LOSER);
   return state;
 };
@@ -104,7 +97,7 @@ const prompting = (): GameState => {
 const table = (opts: {
   viewerSeat: number;
   visible: boolean;
-  twoJokerException?: boolean;
+  twoJokers?: boolean;
   spectating?: boolean;
   /** Build the winner's hand without the exchanged card, as a size control. */
   shortOne?: boolean;
@@ -124,7 +117,7 @@ const table = (opts: {
       onExchangeGive={noop}
       exchangeAnnouncement={{
         visible: opts.visible,
-        data: announce(opts.twoJokerException),
+        data: announce(opts.twoJokers),
         onDismiss: noop,
       }}
     />
@@ -208,7 +201,7 @@ describe('the hand leaves a place for the card still in the air', () => {
 
   it('holds nothing back when both Jokers cancelled the exchange', async () => {
     const r = await render(
-      table({ viewerSeat: WINNER_SEAT, visible: true, twoJokerException: true })
+      table({ viewerSeat: WINNER_SEAT, visible: true, twoJokers: true })
     );
 
     expect(named(FROM_LOSER)).toBeGreaterThan(0);

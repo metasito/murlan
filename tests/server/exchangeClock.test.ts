@@ -13,6 +13,7 @@ import { fakeClock } from "../helpers/fakeClock.ts";
 import { emptyRankTally } from "../../lib/game/gameEngine.ts";
 
 const RETURNED = { id: "6_clubs", suit: "clubs", rank: "6", isJoker: false } as const;
+const TAKEN = { id: "A_spades", suit: "spades", rank: "A", isJoker: false } as const;
 const USERS = ["u0", "u1", "u2", "u3"];
 const WINNER = 1;
 const LOSER = 3;
@@ -35,7 +36,7 @@ function justClosedExchange(): OnlineGameState {
     openingCard: null,
     playedRanks: emptyRankTally(),
     lastMove: { seq: 1, kind: "giveback", seat: WINNER },
-    exchangePhase: { active: false, winnerIdx: WINNER, loserIdx: LOSER, twoJokerException: false, cardToLoser: RETURNED },
+    exchangePhase: { kind: "settled", winnerIdx: WINNER, loserIdx: LOSER, cardFromLoser: TAKEN, cardToLoser: RETURNED },
   };
   return {
     roomId: "exchange-clock-room",

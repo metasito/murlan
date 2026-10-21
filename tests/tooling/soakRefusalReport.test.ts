@@ -121,7 +121,7 @@ describe("the soak does not manufacture its own refusals", () => {
     ({ id, rank, suit: id.split("_")[1] ?? "clubs" }) as Card;
 
   /** A table where this seat won the round and owes the loser a card. */
-  function exchangeTurn(hand: Card[], cardFromLoser?: Card) {
+  function exchangeTurn(hand: Card[], cardFromLoser = card("2_diamonds", "2")) {
     const socket = fakeSocket();
     const seat = new Seat(socket as never, "winner", "u1", "cookie=1");
     seat.state = {
@@ -130,7 +130,7 @@ describe("the soak does not manufacture its own refusals", () => {
       lastPlayedCombination: null,
       roundOver: false,
       openingCard: null,
-      exchangePhase: { active: true, winnerIdx: 0, cardFromLoser },
+      exchangePhase: { kind: "open", winnerIdx: 0, loserIdx: 1, cardFromLoser },
       viewerSeatIndex: 0,
     } as never;
     return { seat, socket };

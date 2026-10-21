@@ -159,7 +159,7 @@ describe("describeTableForA11y", () => {
         lastPlay: null,
         opponents: [],
         exchange: {
-          active: true,
+          open: true,
           viewerIsWinner: true,
           viewerIsLoser: false,
           winnerName: "",
@@ -181,7 +181,7 @@ describe("describeTableForA11y", () => {
         lastPlay: null,
         opponents: [],
         exchange: {
-          active: true,
+          open: true,
           viewerIsWinner: false,
           viewerIsLoser: true,
           winnerName: "Ana",
@@ -202,7 +202,7 @@ describe("describeTableForA11y", () => {
         lastPlay: null,
         opponents: [],
         exchange: {
-          active: true,
+          open: true,
           viewerIsWinner: false,
           viewerIsLoser: false,
           winnerName: "Ana",

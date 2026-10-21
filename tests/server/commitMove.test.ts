@@ -142,12 +142,12 @@ test("an exchange logs no replay move, persists, and holds the next seat for the
       opening: { kind: "exchange", winnerSeat: 0, loserSeat: SEATS.length - 1 },
       dealt: hands,
     });
-    const phase = state.exchangePhase!;
-    assert.equal(phase.active, true);
+    const phase = state.exchangePhase;
+    assert.ok(phase?.kind === "open");
     const game = table(state);
-    const give = state.players[phase.winnerIdx].hand.find((c) => c.id !== phase.cardFromLoser?.id)!;
+    const give = state.players[phase.winnerIdx].hand.find((c) => c.id !== phase.cardFromLoser.id)!;
     commitMove(rt, game, applied(state, { kind: "giveback", cardId: give.id }));
-    await assertCommitted(t, game, persists, 0, Math.max(botMoveDelayMs(), exchangeAnnounceMs(phase.twoJokerException === true)));
+    await assertCommitted(t, game, persists, 0, Math.max(botMoveDelayMs(), exchangeAnnounceMs(false)));
   } finally {
     clearRoomTimers(ROOM);
     activeGames.delete(ROOM);
