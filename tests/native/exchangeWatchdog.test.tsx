@@ -66,7 +66,7 @@ describe('an exchange whose frame clock never advances', () => {
     const onReady = jest.fn();
     const onDismiss = jest.fn();
     const view = await render(
-      <Legs announced={announced({ twoJokerException: true, cardReceived: undefined })} onReady={onReady} onDismiss={onDismiss} />
+      <Legs announced={announced({ twoJokers: true, cardReceived: undefined })} onReady={onReady} onDismiss={onDismiss} />
     );
     await advance(GATE_WATCHDOG_MS - 100);
     expect(onDismiss).not.toHaveBeenCalled();

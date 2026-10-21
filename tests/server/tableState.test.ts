@@ -143,11 +143,10 @@ describe("a table's round trip through active_games", () => {
       const game = midMatch();
       if (winnerHand) game.gameState.players[0].hand = winnerHand;
       game.gameState.exchangePhase = {
-        active: true,
+        kind: "open",
         winnerIdx: 0,
         loserIdx: 1,
         cardFromLoser: { id: "A_spades", rank: "A", suit: "spades", isJoker: false },
-        twoJokerException: false,
       };
       return fromEnvelope(persisted(game));
     };

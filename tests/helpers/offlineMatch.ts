@@ -8,6 +8,7 @@
 // round->match accounting are `lib/game/matchFlow.ts`, which GameContext.tsx
 // drives too.
 import {
+  actingSeat,
   applyMove,
   type Combination,
   type GameMode,
@@ -255,8 +256,8 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
       }
       moves++;
 
-      const isExchangeTurn = !!state.exchangePhase?.active;
-      const seat = isExchangeTurn ? state.exchangePhase!.winnerIdx : state.currentTurnIndex;
+      const isExchangeTurn = state.exchangePhase?.kind === "open";
+      const seat = actingSeat(state);
       actedSeats.add(seat);
       let auto: AutoMove | null;
       if (!isExchangeTurn && opts.contest?.[seat]) {

@@ -9,32 +9,27 @@ import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
 import { card as c, seat as makePlayer, state as makeState, viewOf } from "../support/game.ts";
 import type { ExchangePhase } from "../../lib/game/gameEngine.ts";
 
-const exchange = (
-  winnerIdx: number,
-  loserIdx: number,
-  overrides: Partial<ExchangePhase> = {}
-): ExchangePhase => ({
-  active: false,
+const exchange = (winnerIdx: number, loserIdx: number, cardFromLoser = c("4", "hearts")): ExchangePhase => ({
+  kind: "settled",
   winnerIdx,
   loserIdx,
-  cardFromLoser: c("4", "hearts"),
-  twoJokerException: false,
-  ...overrides,
+  cardFromLoser,
+  cardToLoser: c("5", "spades"),
 });
 
 describe("knownOpponentExchangeCard", () => {
   test("the loser learns what it gave away — now the winner's", () => {
-    const phase = exchange(0, 1, { cardFromLoser: c("6", "clubs") });
+    const phase = exchange(0, 1, c("6", "clubs"));
     assert.equal(knownOpponentExchangeCard(phase, 1)?.id, "6_clubs");
   });
 
   test("the winner learns nothing — its own giveback can never be led under", () => {
-    const phase = exchange(0, 1, { cardToLoser: c("5", "spades") });
+    const phase = exchange(0, 1);
     assert.equal(knownOpponentExchangeCard(phase, 0), undefined);
   });
 
   test("the both-jokers exception moves no card, so the loser learns nothing", () => {
-    const phase = exchange(0, 1, { twoJokerException: true, cardFromLoser: c("2", "spades") });
+    const phase: ExchangePhase = { kind: "twoJokers", winnerIdx: 0, loserIdx: 1 };
     assert.equal(knownOpponentExchangeCard(phase, 1), undefined);
   });
 
@@ -109,7 +104,7 @@ describe("autoMoveForSeat wires the exchange into the loser that leads next", ()
         currentTurnIndex: 1,
         lastPlayedBy: 1,
         openingCard: null,
-        exchangePhase: exchange(0, 1, { cardFromLoser: c("6", "diamonds") }),
+        exchangePhase: exchange(0, 1, c("6", "diamonds")),
       }
     );
 

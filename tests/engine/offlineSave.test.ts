@@ -97,6 +97,21 @@ for (const [version, openingCard] of [[5, THREE_SPADES], [6, THREE_SPADES]] as c
   });
 }
 
+for (const [name, kind, moveKind] of [["open", "open", "giveback"], ["twoJokers", "twoJokers", "play"]] as const) {
+  test(`a version-7 save written mid-exchange (${name}) resumes as the phase union and plays the legal move`, () => {
+    const raw = readFileSync(new URL(`../fixtures/offlineSave.v7.${name}.json`, import.meta.url), "utf8");
+    const stored = JSON.parse(raw);
+    assert.equal(stored.version, 7);
+    const restored = decodeOfflineSave(raw);
+    assert.ok(restored, `the version-7 ${name} save no longer decodes`);
+    const { active: _active, twoJokerException: _jokers, ...phase } = stored.gameState.exchangePhase;
+    assert.deepEqual(restored.gameState, { ...stored.gameState, exchangePhase: { kind, ...phase } });
+    const seat = actingSeat(restored.gameState);
+    assert.equal(seat, phase.winnerIdx);
+    assert.equal(autoMoveForSeat(restored.gameState, seat, "floor")?.move.kind, moveKind);
+  });
+}
+
 test("the golden save of this version still decodes and plays a legal move", () => {
   const raw = readFileSync(new URL("../fixtures/offlineSave.json", import.meta.url), "utf8");
   assert.equal(
@@ -160,11 +175,10 @@ test("an open exchange the winner cannot give back from is refused; one they can
     const blob = JSON.parse(encodeOfflineSave(save()));
     blob.gameState.players[0].hand = winnerHand;
     blob.gameState.exchangePhase = {
-      active: true,
+      kind: "open",
       winnerIdx: 0,
       loserIdx: 1,
       cardFromLoser: { id: "A_spades", rank: "A", suit: "spades", isJoker: false },
-      twoJokerException: false,
     };
     return JSON.stringify(blob);
   };

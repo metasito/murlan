@@ -77,11 +77,11 @@ test("game:pass delivers a pass for the sender's seat", async () => {
 test("game:exchange_give_card delivers a giveback of the card named, from the sender's seat", async () => {
   const state = table({
     lastPlayedCombination: null,
-    exchangePhase: { active: true, winnerIdx: 1, loserIdx: 2, cardFromLoser: c("J", "diamonds"), twoJokerException: false },
+    exchangePhase: { kind: "open", winnerIdx: 1, loserIdx: 2, cardFromLoser: c("J", "diamonds") },
   });
   const next = await deliver(state, "game:exchange_give_card", { cardId: "4_clubs" });
-  assert.equal(next.exchangePhase?.active, false);
-  assert.equal(next.exchangePhase?.cardToLoser?.id, "4_clubs");
+  assert.equal(next.exchangePhase?.kind, "settled");
+  assert.equal(next.exchangePhase.cardToLoser.id, "4_clubs");
   assert.deepEqual(next.players[1].hand.map((x) => x.id), ["J_diamonds"]);
   assert.ok(next.players[2].hand.some((x) => x.id === "4_clubs"));
   assert.equal(next.currentTurnIndex, 2);

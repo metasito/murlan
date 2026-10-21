@@ -10,8 +10,9 @@ const PLAYER_MAP = { 0: "u0", 1: "u1", 2: "u2", 3: "u3" };
 
 function afterGiveback(): GameState {
   const dealt = startRound(SEATS, "free_for_all", { random: rng(1).source, opening: { kind: "exchange", winnerSeat: 0, loserSeat: 3 } });
-  const phase = dealt.exchangePhase!;
-  return givenBack(dealt, getValidGivebackCards(dealt.players[0].hand, phase.cardFromLoser?.id)[0].id);
+  const phase = dealt.exchangePhase;
+  assert.ok(phase?.kind === "open");
+  return givenBack(dealt, getValidGivebackCards(dealt.players[0].hand, phase.cardFromLoser.id)[0].id);
 }
 
 function afterPass(): GameState {

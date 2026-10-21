@@ -2,11 +2,11 @@
 // without pulling storage/db/session — and the pg pool they build at import —
 // onto a path that needs none of it.
 import { botSeatKey, isBotSeatKey } from "../../lib/game/botSeat.ts";
-import type { ScoreLine } from "../../shared/protocol.ts";
+import type { ScoreLine, WireExchangePhase } from "../../shared/protocol.ts";
 import { botSeatNames, getBotPersonality } from "../../lib/game/botPersonalities.ts";
 import type { BotPersonalityId } from "../../lib/game/botPersonalities.ts";
 import { foldRound } from "../../lib/game/gameEngine.ts";
-import type { GameState, GameMode, MatchLength, SeatScoring } from "../../lib/game/gameEngine.ts";
+import type { ExchangePhase, GameState, GameMode, MatchLength, SeatScoring } from "../../lib/game/gameEngine.ts";
 import type { GameResult } from "../../lib/achievements.ts";
 import { exchangeAnnounceMs } from "../../lib/timeline/exchangeTimeline.ts";
 
@@ -51,19 +51,6 @@ export function seatTotal(
     : (cumulativeScores[key] ?? 0);
 }
 
-/** The shape of GameState.exchangePhase, restated because the two cards are
- * `unknown` here on purpose: this helper only decides whether to forward
- * them, never reads one. */
-export interface VisibleExchangePhaseInput {
-  active: boolean;
-  winnerIdx: number;
-  loserIdx: number;
-  twoJokerException: boolean;
-  cardFromLoser?: unknown;
-  cardToLoser?: unknown;
-  settledAt?: number;
-}
-
 /**
  * Whether the ceremony that reads `cardToLoser` is still on screen. An
  * unstamped closed phase reads as over: with no window to be inside, a seat
@@ -72,14 +59,14 @@ export interface VisibleExchangePhaseInput {
  * The window has to outlast `STATE_ACK_TIMEOUT_MS`, because `sendGameStateTo`
  * owes one resend to a client that never acknowledged the settle and that
  * resend re-derives from live state — answering it after the window would hand
- * over half an exchange, which `OnlineGameContext`'s `cardReceived || cardGiven`
- * guard raises as a one-legged ceremony rather than refusing. That ordering is
+ * over half an exchange, which `exchangeAnnouncementOf` raises as a one-legged
+ * ceremony rather than refusing. That ordering is
  * asserted in `tests/server/exchangeVisibility.test.ts` rather than added to the window
  * here, so the two clocks stay independent of each other.
  */
-function ceremonyRunning(phase: VisibleExchangePhaseInput, now: number): boolean {
-  if (phase.active || phase.settledAt === undefined) return false;
-  return now - phase.settledAt < exchangeAnnounceMs(phase.twoJokerException);
+function ceremonyRunning(phase: Extract<ExchangePhase, { kind: "settled" }>, now: number): boolean {
+  if (phase.settledAt === undefined) return false;
+  return now - phase.settledAt < exchangeAnnounceMs(false);
 }
 
 /**
@@ -90,13 +77,8 @@ function ceremonyRunning(phase: VisibleExchangePhaseInput, now: number): boolean
  * and one funnel cannot be half-updated the way three call sites can. That
  * wiring is pinned by `tests/server/exchangeVisibility.test.ts`.
  */
-export function markExchangeSettled(
-  phase: Pick<VisibleExchangePhaseInput, "active" | "settledAt"> | undefined,
-  now: number
-): void {
-  if (!phase) return;
-  if (phase.active) delete phase.settledAt;
-  else phase.settledAt ??= now;
+export function markExchangeSettled(phase: ExchangePhase | undefined, now: number): void {
+  if (phase?.kind === "settled") phase.settledAt ??= now;
 }
 
 /**
@@ -115,34 +97,28 @@ export function markExchangeSettled(
  * flag would keep the card public for the rest of the round. The two
  * participants keep it either way: it came out of one's hand into the other's.
  *
- * Every seat also gets the two seat indices and the both-jokers flag — all the
+ * Every seat also gets the phase's kind and the two seat indices — all the
  * announcement banner reads from them.
  */
 export function visibleExchangePhase(
-  phase: VisibleExchangePhaseInput | undefined,
+  phase: ExchangePhase | undefined,
   viewerSeatIndex: number | null,
   now: number
-): Record<string, unknown> | undefined {
+): WireExchangePhase | undefined {
   if (!phase) return undefined;
-
-  const visible: Record<string, unknown> = {
-    active: phase.active,
-    winnerIdx: phase.winnerIdx,
-    loserIdx: phase.loserIdx,
-    twoJokerException: phase.twoJokerException,
-  };
-
-  const isParticipant =
-    viewerSeatIndex !== null &&
-    (viewerSeatIndex === phase.winnerIdx || viewerSeatIndex === phase.loserIdx);
-
-  const maySeeChosenCard = isParticipant || ceremonyRunning(phase, now);
-
-  if (phase.active) visible.cardFromLoser = phase.cardFromLoser;
-  if (maySeeChosenCard && phase.cardToLoser !== undefined) {
-    visible.cardToLoser = phase.cardToLoser;
+  const { winnerIdx, loserIdx } = phase;
+  switch (phase.kind) {
+    case "twoJokers":
+      return { kind: "twoJokers", winnerIdx, loserIdx };
+    case "open":
+      return { kind: "open", winnerIdx, loserIdx, cardFromLoser: phase.cardFromLoser };
+    case "settled": {
+      const isParticipant = viewerSeatIndex === winnerIdx || viewerSeatIndex === loserIdx;
+      return isParticipant || ceremonyRunning(phase, now)
+        ? { kind: "settled", winnerIdx, loserIdx, cardToLoser: phase.cardToLoser }
+        : { kind: "settled", winnerIdx, loserIdx };
+    }
   }
-  return visible;
 }
 
 /**

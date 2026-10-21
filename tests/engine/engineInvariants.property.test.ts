@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as fc from "fast-check";
 import {
+  actingSeat,
   getRankStrength,
   getValidGivebackCards,
   openingAfter,
@@ -44,9 +45,9 @@ const handIds = (state: GameState) => state.players.flatMap((p) => ids(p.hand));
 
 function stepsFor(state: GameState): Step[] {
   const exchange = state.exchangePhase;
-  if (exchange?.active) {
+  if (exchange?.kind === "open") {
     const winner = state.players[exchange.winnerIdx];
-    return [{ kind: "bot" }, ...getValidGivebackCards(winner.hand, exchange.cardFromLoser?.id).map((card) => ({ kind: "giveback" as const, card }))];
+    return [{ kind: "bot" }, ...getValidGivebackCards(winner.hand, exchange.cardFromLoser.id).map((card) => ({ kind: "giveback" as const, card }))];
   }
   const plays = legalPlays(state, state.currentTurnIndex);
   return [
@@ -58,7 +59,7 @@ function stepsFor(state: GameState): Step[] {
 
 /** Applies one step and returns what it put on the table, checking it was legal before it landed. */
 function apply(state: GameState, step: Step, rng: () => number): { next: GameState; played: Card[] } {
-  const acting = state.exchangePhase?.active ? state.exchangePhase.winnerIdx : state.currentTurnIndex;
+  const acting = actingSeat(state);
   switch (step.kind) {
     case "giveback":
       return { next: givenBack(state, step.card.id), played: [] };
@@ -98,7 +99,7 @@ function assertHolds(state: GameState, dealt: string[], played: Card[]) {
   assert.equal(new Set(state.finishingOrder).size, state.finishingOrder.length, "a seat finished twice");
   if (state.roundOver) {
     assert.deepEqual([...state.finishingOrder].sort(), state.players.map((p) => p.id).sort(), "the finishing order is not every seat once");
-  } else if (!state.exchangePhase?.active) {
+  } else if (state.exchangePhase?.kind !== "open") {
     assert.ok(state.players[state.currentTurnIndex].hand.length > 0, `seat ${state.currentTurnIndex} is on move with no cards`);
   }
 }

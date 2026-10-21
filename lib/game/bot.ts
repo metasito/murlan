@@ -198,7 +198,7 @@ export function knownOpponentExchangeCard(
   exchangePhase: ExchangePhase | undefined,
   seat: number
 ): Card | undefined {
-  if (!exchangePhase || exchangePhase.twoJokerException) return undefined;
+  if (!exchangePhase || exchangePhase.kind === "twoJokers") return undefined;
   if (seat !== exchangePhase.loserIdx) return undefined;
   return exchangePhase.cardFromLoser;
 }

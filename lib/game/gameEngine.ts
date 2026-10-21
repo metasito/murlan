@@ -41,26 +41,15 @@ export interface Player {
   finishPosition?: number;
 }
 
-export interface ExchangePhase {
-  active: boolean;
-  winnerIdx: number;
-  loserIdx: number;
-  /** Absent on the two-Jokers exception, where no card moves. */
-  cardFromLoser?: Card;
-  /**
-   * What the winner handed back. Absent until they choose, so it arrives in
-   * the same state that closes the phase. Online this is the only record of
-   * the return leg — every other seat's hand is sanitized out of the view.
-   */
-  cardToLoser?: Card;
-  twoJokerException: boolean;
-  /**
-   * When the phase closed, in epoch ms — how long `cardToLoser` stays public.
-   * Written by the server and never sent to a client; the engine must not write
-   * it, or a clock inside the rules makes every engine test a different game.
-   */
-  settledAt?: number;
-}
+/**
+ * Where a round's exchange stands (docs/GAME-RULES.md §10). The engine never writes `settledAt`:
+ * the server stamps it when the phase closes, how long `cardToLoser` stays public, and a clock
+ * inside the rules would make every engine test a different game.
+ */
+export type ExchangePhase =
+  | { kind: "twoJokers"; winnerIdx: number; loserIdx: number }
+  | { kind: "open"; winnerIdx: number; loserIdx: number; cardFromLoser: Card }
+  | { kind: "settled"; winnerIdx: number; loserIdx: number; cardFromLoser: Card; cardToLoser: Card; settledAt?: number };
 
 export interface StartReason {
   type: "start_card" | "lost_round" | "won_no_exchange";
@@ -457,7 +446,7 @@ function checkPlay(
   seat: number,
   cardIds: string[]
 ): PlayCheck {
-  if (state.exchangePhase?.active) return { ok: false, code: "exchangeOpen" };
+  if (state.exchangePhase?.kind === "open") return { ok: false, code: "exchangeOpen" };
   const hand = state.players[seat]?.hand ?? [];
   const wanted = new Set(cardIds);
   const cards = hand.filter((card) => wanted.has(card.id));
@@ -497,7 +486,7 @@ export function checkSelection(cards: Card[], demand: TableDemand): SelectionChe
 
 /** Whether the seat on move may pass now. Turn ownership is `applyMove`'s, as in `checkPlay`. */
 function checkPass(state: GameState): { ok: true } | { ok: false; code: PassRefusal } {
-  if (state.exchangePhase?.active) return { ok: false, code: "exchangeOpen" };
+  if (state.exchangePhase?.kind === "open") return { ok: false, code: "exchangeOpen" };
   if (state.lastPlayedCombination === null) return { ok: false, code: "mustLead" };
   return { ok: true };
 }
@@ -531,13 +520,13 @@ export type MoveResult =
 
 /** Who must act now: the exchange winner while an exchange is open, else the turn holder. */
 export function actingSeat(state: GameState): number {
-  return state.exchangePhase?.active ? state.exchangePhase.winnerIdx : state.currentTurnIndex;
+  return state.exchangePhase?.kind === "open" ? state.exchangePhase.winnerIdx : state.currentTurnIndex;
 }
 
 /** `seat` is the transport's claim of who is acting; it is checked here, never trusted. */
 export function applyMove(state: GameState, seat: number, move: Move): MoveResult {
   if (state.roundOver) return { ok: false, code: "roundOver" };
-  const exchange = state.exchangePhase?.active ? state.exchangePhase : null;
+  const exchange = state.exchangePhase?.kind === "open" ? state.exchangePhase : null;
   if (move.kind === "giveback") {
     if (!exchange) return { ok: false, code: "noExchange" };
     if (seat !== exchange.winnerIdx) return { ok: false, code: "notExchangeWinner" };
@@ -566,7 +555,7 @@ export function applyMove(state: GameState, seat: number, move: Move): MoveResul
       const hand = state.players[seat]?.hand ?? [];
       const card = hand.find((held) => held.id === move.cardId);
       if (!card) return { ok: false, code: "notHeld" };
-      const offered = getValidGivebackCards(hand, state.exchangePhase?.cardFromLoser?.id);
+      const offered = getValidGivebackCards(hand, exchange?.cardFromLoser.id);
       if (!offered.some((c) => c.id === card.id)) return { ok: false, code: "notGiveable" };
       const next = processExchangeChoice(state, card.id);
       next.lastMove = { seq, kind: "giveback", seat };
@@ -917,8 +906,9 @@ export function getSuitSymbol(suit: Suit | null): string {
 const EXCHANGE_VALID_RANKS: Rank[] = ["3","4","5","6","7","8","9","10"];
 
 function processExchangeChoice(state: GameState, cardId: string): GameState {
-  if (!state.exchangePhase?.active) return state;
-  const { winnerIdx, loserIdx } = state.exchangePhase;
+  const phase = state.exchangePhase;
+  if (phase?.kind !== "open") return state;
+  const { winnerIdx, loserIdx, cardFromLoser } = phase;
   const newState = structuredClone(state);
   const winnerHand = newState.players[winnerIdx].hand;
   const cardIdx = winnerHand.findIndex((c) => c.id === cardId);
@@ -926,7 +916,7 @@ function processExchangeChoice(state: GameState, cardId: string): GameState {
   const card = winnerHand[cardIdx];
   // Validate against the same list the UI offers, so the fallback below can
   // never leave the winner with no legal choice (which froze the table).
-  const offered = getValidGivebackCards(winnerHand, state.exchangePhase.cardFromLoser?.id);
+  const offered = getValidGivebackCards(winnerHand, cardFromLoser.id);
   if (!offered.some((c) => c.id === card.id)) {
     return state;
   }
@@ -935,8 +925,7 @@ function processExchangeChoice(state: GameState, cardId: string): GameState {
   newState.players[loserIdx].hand = sortHand([...newState.players[loserIdx].hand, card]);
   newState.currentTurnIndex = loserIdx;
   newState.lastPlayedBy = loserIdx;
-  newState.exchangePhase!.cardToLoser = card;
-  newState.exchangePhase!.active = false;
+  newState.exchangePhase = { kind: "settled", winnerIdx, loserIdx, cardFromLoser, cardToLoser: card };
   return newState;
 }
 
@@ -963,9 +952,9 @@ export function getValidGivebackCards(hand: Card[], excludeCardId?: string): Car
  */
 export function exchangeIsSatisfiable(state: GameState): boolean {
   const phase = state.exchangePhase;
-  if (!phase?.active || state.roundOver) return true;
+  if (phase?.kind !== "open" || state.roundOver) return true;
   const winner = state.players[phase.winnerIdx];
-  return winner !== undefined && getValidGivebackCards(winner.hand, phase.cardFromLoser?.id).length > 0;
+  return winner !== undefined && getValidGivebackCards(winner.hand, phase.cardFromLoser.id).length > 0;
 }
 
 /**
@@ -1129,7 +1118,7 @@ function exchangeOpening(players: Player[], gameMode: GameMode, winnerIdx: numbe
       currentTurnIndex: winnerIdx,
       lastPlayedBy: winnerIdx,
       startReason: { type: "won_no_exchange", playerIdx: winnerIdx },
-      exchangePhase: { active: false, winnerIdx, loserIdx, twoJokerException: true },
+      exchangePhase: { kind: "twoJokers", winnerIdx, loserIdx },
     };
   }
 
@@ -1143,7 +1132,7 @@ function exchangeOpening(players: Player[], gameMode: GameMode, winnerIdx: numbe
     currentTurnIndex: winnerIdx,
     lastPlayedBy: winnerIdx,
     startReason: { type: "lost_round", playerIdx: loserIdx },
-    exchangePhase: { active: true, winnerIdx, loserIdx, cardFromLoser, twoJokerException: false },
+    exchangePhase: { kind: "open", winnerIdx, loserIdx, cardFromLoser },
   };
 }
 

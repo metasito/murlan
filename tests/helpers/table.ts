@@ -3,7 +3,7 @@ import type { Socket } from "socket.io-client";
 import type { Card } from "../../lib/game/gameEngine.ts";
 import { connectAs, waitFor, DEADLINE_SCALE, type RegisteredUser } from "./client.ts";
 import type { TestServer } from "./testServer.ts";
-import type { RoundOverPayload } from "../../shared/protocol.ts";
+import type { RoundOverPayload, WireExchangePhase } from "../../shared/protocol.ts";
 export type { RoundOverPayload };
 
 /**
@@ -26,13 +26,7 @@ export interface SanitizedPlayer {
   finishPosition?: number;
 }
 
-export interface ExchangePhase {
-  active: boolean;
-  winnerIdx: number;
-  loserIdx: number;
-  cardFromLoser: Card;
-  twoJokerException: boolean;
-}
+export type ExchangePhase = WireExchangePhase;
 
 export interface SanitizedState {
   players: SanitizedPlayer[];
@@ -168,7 +162,7 @@ export function driveRoundToExchangeOrOver(
 
       const onState = (state: SanitizedState) => {
         if (settled || state.roundOver) return;
-        if (state.exchangePhase?.active) {
+        if (state.exchangePhase?.kind === "open") {
           if (!stopOnExchange) return;
           exchangeStates.set(client, state);
           if (exchangeStates.size === clients.length) {

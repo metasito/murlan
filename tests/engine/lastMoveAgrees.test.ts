@@ -26,7 +26,7 @@ function agrees(prev: GameState | null, next: GameState): void {
   if (move.kind === "play") assert.equal(move.seat, prev.currentTurnIndex, "the seat on move played");
   if (move.kind === "giveback") assert.equal(move.seat, prev.exchangePhase?.winnerIdx, "the exchange winner gave back");
 
-  const announces = move.kind === "giveback" || (move.kind === "deal" && next.exchangePhase?.twoJokerException === true);
+  const announces = move.kind === "giveback" || (move.kind === "deal" && next.exchangePhase?.kind === "twoJokers");
   assert.equal(exchangeAnnouncementOf(prev, next) !== null, announces, "the exchange announces on a giveback or a two-Joker deal");
 }
 

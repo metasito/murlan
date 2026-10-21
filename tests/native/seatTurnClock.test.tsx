@@ -299,13 +299,7 @@ describe("a seat's turn clock", () => {
         state({
           lastPlayedCombination: single(KING),
           lastPlayedBy: 0,
-          exchangePhase: {
-            active: true,
-            winnerIdx: 1,
-            loserIdx: 0,
-            cardFromLoser: KING,
-            twoJokerException: false,
-          },
+          exchangePhase: { kind: "open", winnerIdx: 1, loserIdx: 0, cardFromLoser: KING },
         }),
         ONLINE_TIMER
       )

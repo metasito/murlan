@@ -40,7 +40,7 @@ const ended: GameState = { ...base, roundOver: true, finishingOrder: ['player_0'
 const exchange: GameState = {
   ...base,
   playedRanks: emptyRankTally(),
-  exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), twoJokerException: false },
+  exchangePhase: { kind: 'open', winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades') },
 };
 
 const table = (gameState: GameState) => (

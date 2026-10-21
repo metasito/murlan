@@ -163,7 +163,8 @@ export function exchangeSave(
     opening: { kind: "exchange", winnerSeat: o.winner, loserSeat: o.loser },
     dealt,
   });
-  const taken = gameState.exchangePhase?.cardFromLoser?.id;
+  const phase = gameState.exchangePhase;
+  const taken = phase?.kind === "open" ? phase.cardFromLoser.id : undefined;
   if (o.cardFromLoser && taken !== o.cardFromLoser) {
     throw new Error(`the engine takes ${taken ?? "nothing"} from seat ${o.loser}, not ${o.cardFromLoser}`);
   }

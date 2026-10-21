@@ -340,13 +340,13 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     // §10), and in a two-handed deal that is one round in sixteen — play those
     // out and deal again rather than asserting on whichever one turns up.
     let next = await dealNextRound();
-    for (let attempt = 0; attempt < 6 && !next.exchangePhase?.active; attempt++) {
+    for (let attempt = 0; attempt < 6 && next.exchangePhase?.kind !== "open"; attempt++) {
       roundOverOf(
         await driveRoundToExchangeOrOver([pia, quinn], () => {}, { stopOnExchange: false })
       );
       next = await dealNextRound();
     }
-    assert.ok(next.exchangePhase?.active, "the next round opens on an exchange");
+    assert.equal(next.exchangePhase?.kind, "open", "the next round opens on an exchange");
 
     // Registered only now: an AFK auto-pass from any round played above would
     // otherwise be the first code seen and would pass this test for the wrong
@@ -461,7 +461,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
 function seatsDealtTheExtraCards(state: SanitizedState): number[] {
   const dealt = state.players.map((p) => p.handCount);
   const ex = state.exchangePhase;
-  if (ex?.active) {
+  if (ex?.kind === "open") {
     dealt[ex.winnerIdx]!--;
     dealt[ex.loserIdx]!++;
   }

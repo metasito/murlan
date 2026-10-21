@@ -71,7 +71,7 @@ const state = (exchange = true): GameState => ({
   playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
   exchangePhase: exchange
-    ? { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: FROM_LOSER, twoJokerException: false }
+    ? { kind: 'open', winnerIdx: 0, loserIdx: 1, cardFromLoser: FROM_LOSER }
     : undefined,
 });
 

@@ -70,7 +70,7 @@ export function armTurn(rt: TableRuntime, roomId: string, botDelayMs = botMoveDe
   if (userId === undefined) {
     game.turnDeadlineMs = undefined;
     const phase = game.gameState.exchangePhase;
-    const exchangeOnTable = phase?.active || (phase?.twoJokerException && roundUnplayed(game.gameState));
+    const exchangeOnTable = phase?.kind === "open" || (phase?.kind === "twoJokers" && roundUnplayed(game.gameState));
     const counts = game.gameState.players.map(handCountOf);
     const delayMs = exchangeOnTable
       ? Math.max(botDelayMs, exchangeGiveDelayMs(counts))
@@ -99,7 +99,7 @@ export function armTurn(rt: TableRuntime, roomId: string, botDelayMs = botMoveDe
 /** Every move re-arms here, so an exchange's ceremony holds the next seat on each path that closes it. */
 export function armAfterMove(rt: TableRuntime, roomId: string, next: GameState) {
   const closedExchange = next.lastMove.kind === "giveback";
-  armTurn(rt, roomId, closedExchange ? exchangeAnnounceMs(next.exchangePhase?.twoJokerException === true) : botMoveDelayMs());
+  armTurn(rt, roomId, closedExchange ? exchangeAnnounceMs(next.exchangePhase?.kind === "twoJokers") : botMoveDelayMs());
 }
 
 /**

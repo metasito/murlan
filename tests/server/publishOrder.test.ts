@@ -11,6 +11,7 @@ import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { createDeck, startRound, type GameState } from "../../lib/game/gameEngine.ts";
+import type { WireGameState } from "../../shared/protocol.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 
 const ROOM = "publish-order-room";
@@ -81,8 +82,9 @@ test("the state that closes an exchange shows every viewer the ceremony", async 
     opening: { kind: "exchange", winnerSeat: 0, loserSeat: 3 },
     dealt: hands,
   });
-  const phase = state.exchangePhase!;
-  const give = state.players[0].hand.find((c) => c.id !== phase.cardFromLoser?.id)!;
+  const phase = state.exchangePhase;
+  assert.ok(phase?.kind === "open");
+  const give = state.players[0].hand.find((c) => c.id !== phase.cardFromLoser.id)!;
   useAnaTable(t, { ...state, currentTurnIndex: 0 });
   const { rt, journal } = recordingRuntime({ persist: "real" });
   assert.deepEqual(await applyOrForward(rt, { kind: "move", roomId: ROOM, userId: "ana", move: { kind: "giveback", cardId: give.id } }), {
@@ -92,8 +94,8 @@ test("the state that closes an exchange shows every viewer the ceremony", async 
   const states = journal.filter(isState);
   assert.ok(states.length >= 2);
   for (const e of states) {
-    const sent = (e as Extract<JournalEntry, { kind: "send" }>).args[0] as GameState;
-    assert.ok(sent.exchangePhase?.cardToLoser, "a viewer was served before the exchange settled");
+    const sent = (e as Extract<JournalEntry, { kind: "send" }>).args[0] as WireGameState;
+    assert.ok(sent.exchangePhase?.kind === "settled" && sent.exchangePhase.cardToLoser, "a viewer was served before the exchange settled");
   }
   assertServedThenPersisted(journal);
 });

@@ -40,7 +40,7 @@ const exchangeState = (): GameState =>
       seat(2, [card('6', 'hearts')]),
     ],
     openingCard: null,
-    exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), twoJokerException: false },
+    exchangePhase: { kind: 'open', winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades') },
   });
 
 export type Scenario = 'throw' | 'deal' | 'exchange' | 'goingOut';

@@ -1,5 +1,5 @@
 // tests/server/exchangeVisibility.test.ts — `visibleExchangePhase` sends
-// `cardFromLoser` to the whole table while the phase is active (GAME-RULES.md §10.1
+// `cardFromLoser` to the whole table while the phase is open (GAME-RULES.md §10.1
 // determines it, so it is no one's secret) and `cardToLoser` — which the winner
 // chose — to the two of them while it is open, and to the table for as long as
 // the ceremony that reads it is on screen.
@@ -10,27 +10,26 @@ import { packPersistedState, unpackPersistedState } from "../../shared/persisted
 import { exchangeAnnounceMs } from "../../lib/timeline/exchangeTimeline.ts";
 import { stateAckTimeoutMs } from "../../server/game/gameTimers.ts";
 import { readFileSync } from "node:fs";
+import type { ExchangePhase } from "../../lib/game/gameEngine.ts";
 import { card, state } from "../support/game.ts";
 
 /** Any instant: these phases carry no settle stamp, so no ceremony is measured. */
 const AT = 1_700_000_000_000;
 const CARD = card("2", "spades");
 
-const activePhase = {
-  active: true,
-  winnerIdx: 1,
-  loserIdx: 3,
-  twoJokerException: false,
-  cardFromLoser: CARD,
+const openPhase: Extract<ExchangePhase, { kind: "open" }> = { kind: "open", winnerIdx: 1, loserIdx: 3, cardFromLoser: CARD };
+const fromLoser = (seat: number | null) => {
+  const view = visibleExchangePhase(openPhase, seat, AT);
+  return view?.kind === "open" ? view.cardFromLoser : undefined;
 };
 
 describe("visibleExchangePhase", () => {
   test("the winner sees the card they were handed", () => {
-    assert.deepEqual(visibleExchangePhase(activePhase, 1, AT)?.cardFromLoser, CARD);
+    assert.deepEqual(fromLoser(1), CARD);
   });
 
   test("the loser sees the card taken off them", () => {
-    assert.deepEqual(visibleExchangePhase(activePhase, 3, AT)?.cardFromLoser, CARD);
+    assert.deepEqual(fromLoser(3), CARD);
   });
 
   // #602: the card has to be on the felt for every seat, not just the two
@@ -38,7 +37,7 @@ describe("visibleExchangePhase", () => {
   test("the seats watching see it too", () => {
     for (const seat of [0, 2]) {
       assert.deepEqual(
-        visibleExchangePhase(activePhase, seat, AT)?.cardFromLoser,
+        fromLoser(seat),
         CARD,
         `seat ${seat} was not shown the card`
       );
@@ -46,11 +45,11 @@ describe("visibleExchangePhase", () => {
   });
 
   test("a viewer with no seat (spectator, unknown user) sees it", () => {
-    assert.deepEqual(visibleExchangePhase(activePhase, null, AT)?.cardFromLoser, CARD);
+    assert.deepEqual(fromLoser(null), CARD);
   });
 
   test("the card stops being sent once the phase closes, at every seat", () => {
-    const closed = { ...activePhase, active: false };
+    const closed: ExchangePhase = { ...openPhase, kind: "settled", cardToLoser: card("6", "clubs") };
     for (const seat of [0, 1, 2, 3, null]) {
       assert.equal(
         "cardFromLoser" in visibleExchangePhase(closed, seat, AT)!,
@@ -63,14 +62,8 @@ describe("visibleExchangePhase", () => {
   test("everything the announcement banner reads is still sent to everyone", () => {
     for (const seat of [0, 1, 2, 3]) {
       assert.deepEqual(
-        { ...visibleExchangePhase(activePhase, seat, AT), cardFromLoser: undefined },
-        {
-          active: true,
-          winnerIdx: 1,
-          loserIdx: 3,
-          twoJokerException: false,
-          cardFromLoser: undefined,
-        }
+        { ...visibleExchangePhase(openPhase, seat, AT), cardFromLoser: undefined },
+        { kind: "open", winnerIdx: 1, loserIdx: 3, cardFromLoser: undefined }
       );
     }
   });
@@ -87,21 +80,22 @@ describe("visibleExchangePhase", () => {
   describe("the card handed back", () => {
     const RETURNED = card("6", "clubs");
     const SETTLED_AT = 1_700_000_000_000;
-    const settled = {
-      ...activePhase,
-      active: false,
-      cardToLoser: RETURNED,
-      settledAt: SETTLED_AT,
+    const settled: ExchangePhase = { ...openPhase, kind: "settled", cardToLoser: RETURNED, settledAt: SETTLED_AT };
+    const shown = (phase: ExchangePhase, seat: number | null, now: number) => {
+      const view = visibleExchangePhase(phase, seat, now);
+      return view?.kind === "settled" ? view.cardToLoser : undefined;
     };
+    const told = (phase: ExchangePhase, seat: number | null, now: number) =>
+      "cardToLoser" in visibleExchangePhase(phase, seat, now)!;
     /** Inside the window the announcement is on screen for. */
     const DURING = SETTLED_AT + 1;
 
     test("the winner sees what they handed back", () => {
-      assert.deepEqual(visibleExchangePhase(settled, 1, DURING)?.cardToLoser, RETURNED);
+      assert.deepEqual(shown(settled, 1, DURING), RETURNED);
     });
 
     test("the loser sees what they were handed", () => {
-      assert.deepEqual(visibleExchangePhase(settled, 3, DURING)?.cardToLoser, RETURNED);
+      assert.deepEqual(shown(settled, 3, DURING), RETURNED);
     });
 
     // With only one leg, the watching seats animate a delivery rather than a
@@ -109,7 +103,7 @@ describe("visibleExchangePhase", () => {
     test("the watching seats see the announced cross once it is settled", () => {
       for (const seat of [0, 2]) {
         assert.deepEqual(
-          visibleExchangePhase(settled, seat, DURING)?.cardToLoser,
+          shown(settled, seat, DURING),
           RETURNED,
           `seat ${seat} saw only half the announced`
         );
@@ -117,7 +111,7 @@ describe("visibleExchangePhase", () => {
     });
 
     test("a viewer with no seat sees it too", () => {
-      assert.deepEqual(visibleExchangePhase(settled, null, DURING)?.cardToLoser, RETURNED);
+      assert.deepEqual(shown(settled, null, DURING), RETURNED);
     });
 
     // `exchangePhase` is never cleared, so the flag alone would keep the card
@@ -130,8 +124,8 @@ describe("visibleExchangePhase", () => {
        * `sendGameStateTo` owes one resend to a client that never acknowledged
        * the settle, and that resend re-derives from live state when it fires.
        * If the ack timeout ever outgrew the window it would be answered with
-       * half an exchange, and `OnlineGameContext`'s `cardReceived || cardGiven`
-       * guard raises that as a one-legged ceremony rather than refusing it.
+       * half an exchange, and `exchangeAnnouncementOf` raises that as a
+       * one-legged ceremony rather than refusing it.
        *
        * Asserted here rather than added to the window in `onlineGameLogic.ts`:
        * `gameTimers` reads `process.env` at module scope, and importing it into
@@ -156,7 +150,7 @@ describe("visibleExchangePhase", () => {
       test("a seat arriving after the ceremony is told nothing", () => {
         for (const seat of [0, 2, null]) {
           assert.equal(
-            "cardToLoser" in visibleExchangePhase(settled, seat, OVER)!,
+            told(settled, seat, OVER),
             false,
             `seat ${seat} was handed a card it never watched cross`
           );
@@ -168,7 +162,7 @@ describe("visibleExchangePhase", () => {
       test("…and one millisecond earlier it is still on screen", () => {
         for (const seat of [0, 2, null]) {
           assert.deepEqual(
-            visibleExchangePhase(settled, seat, OVER - 1)?.cardToLoser,
+            shown(settled, seat, OVER - 1),
             RETURNED,
             `seat ${seat} lost the card before the ceremony ended`
           );
@@ -178,32 +172,19 @@ describe("visibleExchangePhase", () => {
       test("the two trading keep it for as long as the phase lasts", () => {
         for (const seat of [1, 3]) {
           assert.deepEqual(
-            visibleExchangePhase(settled, seat, OVER + 60 * 60_000)?.cardToLoser,
+            shown(settled, seat, OVER + 60 * 60_000),
             RETURNED,
             `seat ${seat} lost the card out of its own announced`
           );
         }
       });
 
-      // Both Jokers cancel the flight, so the ceremony is shorter — the window
-      // is the ceremony's own clock rather than a number of its own.
-      test("the two-joker ceremony closes on its own shorter clock", () => {
-        const cancelled = { ...settled, twoJokerException: true };
-        const shorter = SETTLED_AT + exchangeAnnounceMs(true);
-        assert.deepEqual(visibleExchangePhase(cancelled, 0, shorter - 1)?.cardToLoser, RETURNED);
-        assert.equal("cardToLoser" in visibleExchangePhase(cancelled, 0, shorter)!, false);
-        assert.ok(
-          exchangeAnnounceMs(true) < exchangeAnnounceMs(false),
-          "the two clocks are the same length, so this proves nothing"
-        );
-      });
-
       // A row persisted before the stamp existed, or a phase closed by a path
       // that never broadcast. Nobody watched that one cross either.
       test("a close nobody stamped reads as over", () => {
-        const unstamped = { ...settled, settledAt: undefined };
-        assert.equal("cardToLoser" in visibleExchangePhase(unstamped, 0, DURING)!, false);
-        assert.deepEqual(visibleExchangePhase(unstamped, 1, DURING)?.cardToLoser, RETURNED);
+        const unstamped: ExchangePhase = { ...settled, settledAt: undefined };
+        assert.equal(told(unstamped, 0, DURING), false);
+        assert.deepEqual(shown(unstamped, 1, DURING), RETURNED);
       });
 
       // The stamp rides the phase into the existing jsonb column rather than a
@@ -225,24 +206,8 @@ describe("visibleExchangePhase", () => {
           JSON.parse(JSON.stringify(stored))
         );
         assert.ok(back.ok, back.ok ? "" : back.reason);
-        assert.equal(back.gameState.exchangePhase?.settledAt, SETTLED_AT);
+        assert.deepEqual(back.gameState.exchangePhase, settled);
       });
-    });
-
-    // The phase closing is what makes it public, so the guard has to be the
-    // flag and not merely the card's existence: a state carrying a chosen card
-    // while still open must not leak it, however it came about.
-    test("an open phase keeps it from everyone but the two trading", () => {
-      const leaking = { ...activePhase, cardToLoser: RETURNED };
-      for (const seat of [0, 2, null]) {
-        assert.equal(
-          "cardToLoser" in visibleExchangePhase(leaking, seat, AT)!,
-          false,
-          `seat ${seat} was shown the winner's card a beat early`
-        );
-      }
-      assert.deepEqual(visibleExchangePhase(leaking, 1, AT)?.cardToLoser, RETURNED);
-      assert.deepEqual(visibleExchangePhase(leaking, 3, AT)?.cardToLoser, RETURNED);
     });
 
     // The floor: with nothing chosen there is nothing to reveal, so the key is
@@ -251,7 +216,7 @@ describe("visibleExchangePhase", () => {
     test("is absent from every view before the winner chooses", () => {
       for (const seat of [0, 1, 2, 3, null]) {
         assert.equal(
-          "cardToLoser" in visibleExchangePhase(activePhase, seat, AT)!,
+          told(openPhase, seat, AT),
           false,
           `seat ${seat} was told a card that had not been chosen`
         );
@@ -259,9 +224,14 @@ describe("visibleExchangePhase", () => {
     });
   });
 
-  test("the two-joker exception is visible to the table", () => {
-    const both = { ...activePhase, active: false, twoJokerException: true };
-    assert.equal(visibleExchangePhase(both, 0, AT)?.twoJokerException, true);
+  test("the two-joker exception is visible to the table, and nothing else is", () => {
+    for (const seat of [0, 1, 3, null]) {
+      assert.deepEqual(visibleExchangePhase({ kind: "twoJokers", winnerIdx: 1, loserIdx: 3 }, seat, AT), {
+        kind: "twoJokers",
+        winnerIdx: 1,
+        loserIdx: 3,
+      });
+    }
   });
 });
 
@@ -270,14 +240,18 @@ describe("visibleExchangePhase", () => {
 describe("markExchangeSettled", () => {
   const NOW = 1_700_000_000_000;
 
-  test("an open phase carries no settle time", () => {
-    const phase = { active: true, settledAt: NOW };
-    markExchangeSettled(phase, NOW + 5);
-    assert.equal("settledAt" in phase, false, "a reopened phase kept the last one's clock");
+  const CHOSEN = card("6", "clubs");
+
+  test("only a settled phase is stamped", () => {
+    for (const phase of [openPhase, { kind: "twoJokers", winnerIdx: 1, loserIdx: 3 } as const]) {
+      const before = structuredClone(phase);
+      markExchangeSettled(phase, NOW);
+      assert.deepEqual(phase, before, `a ${phase.kind} phase was stamped`);
+    }
   });
 
   test("a closed phase is stamped where it closed", () => {
-    const phase: { active: boolean; settledAt?: number } = { active: false };
+    const phase: ExchangePhase = { ...openPhase, kind: "settled", cardToLoser: CHOSEN };
     markExchangeSettled(phase, NOW);
     assert.equal(phase.settledAt, NOW);
   });
@@ -285,7 +259,7 @@ describe("markExchangeSettled", () => {
   // Every broadcast runs through this, and the window has to run from the
   // settle rather than from whichever broadcast happened last.
   test("a phase already stamped keeps its own moment", () => {
-    const phase = { active: false, settledAt: NOW };
+    const phase: ExchangePhase = { ...openPhase, kind: "settled", cardToLoser: CHOSEN, settledAt: NOW };
     markExchangeSettled(phase, NOW + 60_000);
     assert.equal(phase.settledAt, NOW, "a later broadcast pushed the window forward");
   });

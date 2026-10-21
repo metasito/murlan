@@ -43,7 +43,7 @@ export function turnTimerActive(opts: {
   isFinished: boolean;
   isNewTrick: boolean;
   roundOver: boolean;
-  exchangeActive: boolean;
+  exchangeOpen: boolean;
   includeNewTrick: boolean;
   /**
    * An announcement is holding the table, and this client owns the deadline it
@@ -54,7 +54,7 @@ export function turnTimerActive(opts: {
   announcementHolds?: boolean;
 }): boolean {
   if (!opts.isMyTurn || opts.isFinished) return false;
-  if (opts.roundOver || opts.exchangeActive) return false;
+  if (opts.roundOver || opts.exchangeOpen) return false;
   if (opts.announcementHolds) return false;
   if (opts.isNewTrick && !opts.includeNewTrick) return false;
   return true;
@@ -148,7 +148,7 @@ export function turnPresentation(i: {
   shownTurnIsMine: boolean;
   onMoveName: string;
   /** `chip` outranks the state. */
-  exchange: { chip: string | null; choiceOpen: boolean; viewerIsWinner: boolean; active: boolean };
+  exchange: { chip: string | null; choiceOpen: boolean; viewerIsWinner: boolean; open: boolean };
   timer?: TurnTimerConfig;
   /** The next-round vote's deadline, which takes the chip's countdown while no turn runs. */
   vote?: { seconds: number; resetKey: string } | null;
@@ -169,7 +169,7 @@ export function turnPresentation(i: {
   // `getNextActivePlayer` (lib/game/gameEngine.ts) steps over an empty hand.
   const runs = (who: { isMyTurn: boolean; isFinished: boolean; includeNewTrick: boolean }) =>
     !!timer &&
-    turnTimerActive({ ...who, isNewTrick: i.isNewTrick, roundOver, exchangeActive: exchange.active, announcementHolds });
+    turnTimerActive({ ...who, isNewTrick: i.isNewTrick, roundOver, exchangeOpen: exchange.open, announcementHolds });
   const turnResetKey = `${i.turnToken}|${timer?.resetKey ?? ""}`;
   const active = runs({ isMyTurn: i.isMyTurn, isFinished: i.isFinished, includeNewTrick: timer?.includeNewTrick ?? false });
   // The seat runs whenever the chip does and on more: offline, a lead runs the window though the

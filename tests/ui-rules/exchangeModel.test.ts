@@ -30,7 +30,7 @@ const WINNER = 2;
 const LOSER = 0;
 const WATCHER = 1;
 
-const phase = { active: true, winnerIdx: WINNER, loserIdx: LOSER, twoJokerException: false, cardFromLoser: ACE };
+const phase = { kind: "open", winnerIdx: WINNER, loserIdx: LOSER, cardFromLoser: ACE } as const;
 const openState = { players: PLAYERS, exchangePhase: phase } as unknown as GameState;
 const receiving = buildExchangeAnnounce(PLAYERS, phase, { received: ACE });
 const given = buildExchangeAnnounce(PLAYERS, phase, { received: ACE, given: SEVEN });
@@ -92,7 +92,7 @@ test("after the phase has closed, the winner's give still reads as theirs", () =
 });
 
 test("two jokers: no exchange, the jokers on the pile while they rest there", () => {
-  const jokers = buildExchangeAnnounce(PLAYERS, { ...phase, twoJokerException: true });
+  const jokers = buildExchangeAnnounce(PLAYERS, { ...phase, kind: "twoJokers" });
   assert.deepEqual(notes(LOSER, { shown: jokers, live: INACTIVE_EXCHANGE }), {
     chip: "exchange.chipTitle",
     pileNote: { text: "exchangeAnnouncement.noExchangeText", testID: "exchange-none", cards: JOKERS },
@@ -108,19 +108,19 @@ describe("readExchange", () => {
   const players = [{ name: "A" }, { name: "B" }, { name: "C" }] as any[];
   const withPhase = (phase: any) => ({ players, exchangePhase: phase }) as any;
 
-  test("no phase at all is inactive", () => {
+  test("no phase at all is not open", () => {
     assert.deepEqual(readExchange(withPhase(undefined), 0, false), INACTIVE_EXCHANGE);
   });
 
-  test("an inactive phase object is still inactive", () => {
+  test("a settled phase is not open", () => {
     assert.deepEqual(
-      readExchange(withPhase({ active: false, winnerIdx: 0, loserIdx: 2 }), 0, false),
+      readExchange(withPhase({ kind: "settled", winnerIdx: 0, loserIdx: 2 }), 0, false),
       INACTIVE_EXCHANGE
     );
   });
 
   test("the winner is asked to give, the loser to wait", () => {
-    const state = withPhase({ active: true, winnerIdx: 0, loserIdx: 2 });
+    const state = withPhase({ kind: "open", winnerIdx: 0, loserIdx: 2 });
     const asWinner = readExchange(state, 0, false);
     assert.equal(asWinner.viewerIsWinner, true);
     assert.equal(asWinner.viewerIsLoser, false);
@@ -133,10 +133,10 @@ describe("readExchange", () => {
   });
 
   test("a watcher is neither, whichever seat they are drawn from", () => {
-    const state = withPhase({ active: true, winnerIdx: 0, loserIdx: 2 });
+    const state = withPhase({ kind: "open", winnerIdx: 0, loserIdx: 2 });
     for (const seat of [0, 1, 2]) {
       const v = readExchange(state, seat, true);
-      assert.equal(v.active, true, `seat ${seat} still sees the phase`);
+      assert.equal(v.open, true, `seat ${seat} still sees the phase`);
       assert.equal(v.viewerIsWinner, false, `seat ${seat} was called the winner`);
       assert.equal(v.viewerIsLoser, false, `seat ${seat} was called the loser`);
       assert.equal(v.winner, players[0], `seat ${seat} lost the winner's name`);
@@ -145,14 +145,14 @@ describe("readExchange", () => {
   });
 
   test("a bystander is neither", () => {
-    const v = readExchange(withPhase({ active: true, winnerIdx: 0, loserIdx: 2 }), 1, false);
-    assert.equal(v.active, true);
+    const v = readExchange(withPhase({ kind: "open", winnerIdx: 0, loserIdx: 2 }), 1, false);
+    assert.equal(v.open, true);
     assert.equal(v.viewerIsWinner, false);
     assert.equal(v.viewerIsLoser, false);
   });
 
   test("an out-of-range seat resolves to null rather than undefined", () => {
-    const v = readExchange(withPhase({ active: true, winnerIdx: 9, loserIdx: 2 }), 9, false);
+    const v = readExchange(withPhase({ kind: "open", winnerIdx: 9, loserIdx: 2 }), 9, false);
     assert.equal(v.winner, null);
   });
 });
@@ -166,7 +166,7 @@ describe("arrivingCard", () => {
     loserName: "Bea",
     winnerIdx: 1,
     loserIdx: 3,
-    twoJokerException: false,
+    twoJokers: false,
     cardGiven: GIVEN,
     cardReceived: RECEIVED,
   };
@@ -191,7 +191,7 @@ describe("arrivingCard", () => {
   });
 
   test("both Jokers cancelling the exchange delivers nothing to either seat", () => {
-    const cancelled = { ...announce, twoJokerException: true };
+    const cancelled = { ...announce, twoJokers: true };
     for (const seat of [1, 3]) {
       assert.equal(arrivingCard(cancelled, seat), undefined, `seat ${seat} was given a card`);
     }
@@ -265,7 +265,7 @@ describe("arrivingCard", () => {
     });
 
     test("both Jokers leave the loser's hand only while they are in the air", () => {
-      const jokers = { ...announce, twoJokerException: true };
+      const jokers = { ...announce, twoJokers: true };
       const hand = [KEPT, ...JOKERS] as Card[];
       const ids = (s: LegStage) => read({ announced: jokers, hand, viewerSeat: 3, stages: at(s) }).withheldIds;
       assert.deepEqual(ids("waiting"), []);
@@ -301,7 +301,7 @@ describe("arrivingCard", () => {
     });
 
     test("both Jokers light the loser and leave its fan while they fly", () => {
-      const jokers = { ...announce, twoJokerException: true };
+      const jokers = { ...announce, twoJokers: true };
       assert.deepEqual(seats(jokers, "rest"), { lit: [3], shift: { 3: -2 } });
       assert.deepEqual(seats(jokers, "landed"), { lit: [], shift: {} });
     });
@@ -326,12 +326,12 @@ describe("readExchangeLegs", () => {
   /** Four seats, the viewer at 0: 1 is right, 2 is top, 3 is left. */
   const players = [seat("me", 5), seat("right", 6), seat("top", 7), seat("left", 8)];
 
-  const announced = (winnerIdx: number, loserIdx: number, twoJokerException = false) => ({
+  const announced = (winnerIdx: number, loserIdx: number, twoJokers = false) => ({
     winnerName: "",
     loserName: "",
     winnerIdx,
     loserIdx,
-    twoJokerException,
+    twoJokers,
     cardReceived: card("taken"),
     cardGiven: card("given"),
   });
@@ -391,12 +391,12 @@ describe("a spectator (null seat) owns no seat in the exchange", () => {
     [0, 1, 2]
       .filter((loserIdx) => loserIdx !== winnerIdx)
       .flatMap((loserIdx) =>
-        [false, true].map((twoJokerException) => ({
+        [false, true].map((twoJokers) => ({
           winnerName: "",
           loserName: "",
           winnerIdx,
           loserIdx,
-          twoJokerException,
+          twoJokers,
           cardReceived: ACE,
           cardGiven: SEVEN,
         }))
@@ -422,7 +422,7 @@ describe("a spectator (null seat) owns no seat in the exchange", () => {
   });
 
   test("the same seats, seated, do own them, so the sweep above can tell", () => {
-    const seated = shapes.filter((a) => !a.twoJokerException);
+    const seated = shapes.filter((a) => !a.twoJokers);
     assert.ok(seated.every((a) => arrivingCard(a, a.winnerIdx) === ACE && arrivingCard(a, a.loserIdx) === SEVEN));
     const lent = seated.map((a) =>
       readHandArrival({ hand, announced: a, stages: { key: "k", receive: "flying", give: "flying", ready: false }, viewerSeat: a.winnerIdx })

@@ -115,7 +115,7 @@ describe('pass and play', () => {
         lastPlayedBy: 1,
         openingCard: null,
         playedRanks: aThreePlayed(),
-        exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('s1-a', 'A'), twoJokerException: false },
+        exchangePhase: { kind: 'open', winnerIdx: 0, loserIdx: 1, cardFromLoser: card('s1-a', 'A') },
       })
     );
     await act(async () => view.result.current.chooseExchangeCard(given.id));

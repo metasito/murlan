@@ -43,7 +43,7 @@ const exchange: GameState = {
   openingCard: null,
   lastMove: { seq: 0, kind: 'deal' },
   playedRanks: emptyRankTally(),
-  exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), twoJokerException: false },
+  exchangePhase: { kind: 'open', winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades') },
 };
 
 const prompt = () => screen.queryByTestId('exchange-prompt');

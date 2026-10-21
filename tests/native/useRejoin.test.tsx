@@ -6,8 +6,7 @@ import { act, renderHook } from '@testing-library/react-native';
 
 import { useRejoin } from '@/context/useRejoin';
 import type { Socket } from '@/lib/socket';
-import type { GameState } from '@/lib/game/gameEngine';
-import type { WireRoomState } from '@/shared/protocol';
+import type { WireGameState, WireRoomState } from '@/shared/protocol';
 
 const emitted: { event: string; payload?: unknown }[] = [];
 
@@ -36,7 +35,7 @@ const playing: WireRoomState = {
 
 async function mount(room: WireRoomState | null) {
   const roomRef = { current: room };
-  const gameStateRef = { current: null as GameState | null };
+  const gameStateRef = { current: null as WireGameState | null };
   const seatLossRef = { current: null };
   const view = await renderHook(() => useRejoin(mockSocket, 'u1', roomRef, gameStateRef, seatLossRef));
   return { ...view, roomRef };

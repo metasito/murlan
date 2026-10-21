@@ -23,7 +23,6 @@ import {
   tableDemand,
   sortHand,
   type Card,
-  type GameState,
   type StartReason,
 } from "@/lib/game/gameEngine";
 import type { ExchangeAnnounceData, ExchangeHold } from "@/lib/game/sharedGameFlow";
@@ -36,7 +35,7 @@ import {
   viewerOwnsSeat,
   type OpponentSide,
 } from "@/components/seatLayout";
-import { handCountOf } from "@/shared/protocol";
+import { handCountOf, type ViewedGameState } from "@/shared/protocol";
 import type { CardFrom } from "@/components/flightPose";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
 import { tableLayout, type Seating } from "@/components/tableLayout";
@@ -182,7 +181,7 @@ export interface GameTableProps {
    * engine's state; online it is the server's, sanitized for this viewer
    * (opponents' hands blanked, `handCount` shipped alongside).
    */
-  gameState: GameState;
+  gameState: ViewedGameState;
   /**
    * Whether the *match* — the match, not this hand — is over. `MatchVerdict.over`
    * offline, `matchState.over` online: the same landing that empties a hand can
@@ -577,9 +576,9 @@ export function GameTable({
     const opponentsA11y: TableA11yOpponent[] = players
       .filter((_, seat) => seat !== viewerSeat)
       .map((p) => ({ name: p.name, cardCount: handCountOf(p) }));
-    const exchangeA11y: TableA11yExchange | undefined = exchange.active
+    const exchangeA11y: TableA11yExchange | undefined = exchange.open
       ? {
-          active: true,
+          open: true,
           viewerIsWinner: exchange.viewerIsWinner,
           viewerIsLoser: exchange.viewerIsLoser,
           winnerName: exchange.winner?.name ?? "",
@@ -647,7 +646,7 @@ export function GameTable({
   });
 
   const { style: handLiftStyle, lift: handLift } = useHandLift(
-    (turnShown && !isFinished && !exchange.active) || exchangeIsMine,
+    (turnShown && !isFinished && !exchange.open) || exchangeIsMine,
     scale
   );
 
@@ -863,7 +862,7 @@ export function GameTable({
     dealing: deal.dealing,
     shownTurnIsMine,
     onMoveName: players[shownTurnIndex]?.name ?? "",
-    exchange: { chip: exchangeChip, choiceOpen, viewerIsWinner: exchange.viewerIsWinner, active: exchange.active },
+    exchange: { chip: exchangeChip, choiceOpen, viewerIsWinner: exchange.viewerIsWinner, open: exchange.open },
     timer: turnTimer,
     vote: roundVote?.deadline ?? null,
     isMyTurn,
@@ -1291,7 +1290,7 @@ export function GameTable({
                   store={shownSelection}
                   facts={giocaFacts}
                   giveTo={exchangeIsMine ? exchangeLoserName : null}
-                  lit={exchangeIsMine || (turnShown && !isFinished && !exchange.active)}
+                  lit={exchangeIsMine || (turnShown && !isFinished && !exchange.open)}
                   rejectX={giocaRejectX}
                   rejectPlay={rejectPlay}
                   onRefuse={showRefusal}

@@ -107,13 +107,7 @@ describe("the engine's floor under a play", () => {
 });
 
 describe("a play that cannot happen", () => {
-  const openExchange = {
-    active: true,
-    winnerIdx: 0,
-    loserIdx: 1,
-    cardFromLoser: c("K", "hearts"),
-    twoJokerException: false,
-  };
+  const openExchange = { kind: "open", winnerIdx: 0, loserIdx: 1, cardFromLoser: c("K", "hearts") } as const;
 
   test("a card named four times is the one card, never a bomb", () => {
     const next = played(table(), {

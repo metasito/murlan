@@ -2,12 +2,12 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import type { Card, GameState, Player } from "@/lib/game/gameEngine";
+import type { Card, Player } from "@/lib/game/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 import type { TFn } from "@/lib/i18n";
 import { getCardDisplayRank, getSuitSymbol, givebackIsFallback } from "../../lib/game/gameEngine.ts";
 import { restPoint, type LegPoints, type LegStage } from "../../lib/timeline/exchangeTimeline.ts";
-import { handCountOf } from "../../shared/protocol.ts";
+import { handCountOf, type ViewedGameState } from "../../shared/protocol.ts";
 import { fanPoint } from "../fanGeometry.ts";
 import type { CardFrom } from "../flightPose.ts";
 import { FAN_CARD_SCALE } from "../impact.ts";
@@ -15,40 +15,36 @@ import { seatDirection, viewerOwnsSeat } from "../seatLayout.ts";
 import { ownSlotFrom, type Seating, type TableLayout } from "../tableLayout.ts";
 
 export interface ExchangeView {
-  active: boolean;
+  open: boolean;
   /** The viewer owes the loser a card and must pick one. */
   viewerIsWinner: boolean;
   /** The viewer is waiting to receive a card. */
   viewerIsLoser: boolean;
   winner: Player | null;
   loser: Player | null;
-  /** The card taken off the loser, which the engine has already put in the winner's hand. */
-  cardFromLoser: Card | null;
 }
 
 export const INACTIVE_EXCHANGE: ExchangeView = {
-  active: false,
+  open: false,
   viewerIsWinner: false,
   viewerIsLoser: false,
   winner: null,
   loser: null,
-  cardFromLoser: null,
 };
 
 export function readExchange(
-  state: Pick<GameState, "exchangePhase" | "players">,
+  state: Pick<ViewedGameState, "exchangePhase" | "players">,
   viewerSeat: number,
   spectating: boolean
 ): ExchangeView {
   const phase = state.exchangePhase;
-  if (!phase?.active) return INACTIVE_EXCHANGE;
+  if (phase?.kind !== "open") return INACTIVE_EXCHANGE;
   return {
-    active: true,
+    open: true,
     viewerIsWinner: viewerOwnsSeat(phase.winnerIdx, viewerSeat, spectating),
     viewerIsLoser: viewerOwnsSeat(phase.loserIdx, viewerSeat, spectating),
     winner: state.players[phase.winnerIdx] ?? null,
     loser: state.players[phase.loserIdx] ?? null,
-    cardFromLoser: phase.cardFromLoser ?? null,
   };
 }
 
@@ -68,7 +64,7 @@ export function arrivingCard(
   announce: ExchangeAnnounceData | null | undefined,
   viewerSeat: number | null
 ): Card | undefined {
-  if (!announce || announce.twoJokerException) return undefined;
+  if (!announce || announce.twoJokers) return undefined;
   if (viewerOwnsSeat(announce.winnerIdx, viewerSeat)) return announce.cardReceived;
   if (viewerOwnsSeat(announce.loserIdx, viewerSeat)) return announce.cardGiven;
   return undefined;
@@ -102,7 +98,7 @@ export function readHandArrival(input: {
   const { hand, announced, stages, viewerSeat } = input;
   if (!announced) return { withheldIds: [] };
   const holds = (card: Card | undefined) => !!card && hand.some((c) => c.id === card.id);
-  if (announced.twoJokerException) {
+  if (announced.twoJokers) {
     const shown = viewerOwnsSeat(announced.loserIdx, viewerSeat) && airborne(stages.receive);
     return { withheldIds: shown ? hand.filter((c) => c.isJoker).map((c) => c.id) : [] };
   }
@@ -131,7 +127,7 @@ export function readHandArrival(input: {
 export interface ExchangeStages { key: string; receive: LegStage; give: LegStage; ready: boolean }
 
 export const exchangeKey = (announced: ExchangeAnnounceData): string =>
-  announced.twoJokerException ? `jokers:${announced.loserIdx}` : `${announced.loserIdx}>${announced.winnerIdx}`;
+  announced.twoJokers ? `jokers:${announced.loserIdx}` : `${announced.loserIdx}>${announced.winnerIdx}`;
 
 export const NO_STAGES: Omit<ExchangeStages, "key"> = { receive: "waiting", give: "waiting", ready: false };
 
@@ -145,7 +141,7 @@ export function readExchangeSeats(announced: ExchangeAnnounceData | null, stages
   const shift = new Map<number, number>();
   const add = (seat: number, n: number) => shift.set(seat, (shift.get(seat) ?? 0) + n);
   if (!announced) return { lit: [], shift };
-  if (announced.twoJokerException) {
+  if (announced.twoJokers) {
     if (airborne(stages.receive)) {
       lit.add(announced.loserIdx);
       add(announced.loserIdx, -JOKERS.length);
@@ -231,7 +227,7 @@ export function exchangeNotes(input: {
         : t("exchange.pileGives", { from: name(from), card: c, to: name(to) });
     return { text, testID: "exchange-pile-label", cards: [card] };
   };
-  const pileNote = shown.twoJokerException
+  const pileNote = shown.twoJokers
     ? stages.receive === "rest"
       ? { text: t("exchangeAnnouncement.noExchangeText"), testID: "exchange-none", cards: JOKERS }
       : null
@@ -244,7 +240,7 @@ export function exchangeNotes(input: {
   // The choice opens once the received card has landed and been read; until then the chip names the exchange.
   const loserName = live.loser?.name ?? "";
   const winnerName = live.winner?.name ?? "";
-  const chip = !(live.active && stages.ready)
+  const chip = !(live.open && stages.ready)
     ? t("exchange.chipTitle")
     : live.viewerIsWinner
       ? giveable && givebackIsFallback(giveable)

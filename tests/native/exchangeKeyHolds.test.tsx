@@ -49,14 +49,9 @@ const state = (open: boolean): GameState => ({
   openingCard: null,
   playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
-  exchangePhase: {
-    active: open,
-    winnerIdx: 0,
-    loserIdx: 1,
-    cardFromLoser: FROM_LOSER,
-    cardToLoser: open ? undefined : TO_LOSER,
-    twoJokerException: false,
-  },
+  exchangePhase: open
+    ? { kind: 'open', winnerIdx: 0, loserIdx: 1, cardFromLoser: FROM_LOSER }
+    : { kind: 'settled', winnerIdx: 0, loserIdx: 1, cardFromLoser: FROM_LOSER, cardToLoser: TO_LOSER },
 });
 
 const noop = () => {};
@@ -74,7 +69,7 @@ const table = (open: boolean) => (
       onExchangeReady={onReady}
       exchangeAnnouncement={{
         visible: !open,
-        data: { winnerName: 'Ana', loserName: 'Bea', winnerIdx: 0, loserIdx: 1, twoJokerException: false, cardGiven: TO_LOSER, cardReceived: undefined },
+        data: { winnerName: 'Ana', loserName: 'Bea', winnerIdx: 0, loserIdx: 1, twoJokers: false, cardGiven: TO_LOSER, cardReceived: undefined },
         onDismiss: noop,
       }}
     />

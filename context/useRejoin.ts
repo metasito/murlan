@@ -2,8 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
 import { send } from "@/lib/sendIntent";
 import type { Socket } from "@/lib/socket";
 import { readTableHandles, storeTableHandles, type TableHandles } from "@/lib/tableHandles";
-import type { GameState } from "@/lib/game/gameEngine";
-import type { WireRoomState } from "@/shared/protocol";
+import type { WireGameState, WireRoomState } from "@/shared/protocol";
 
 // A SERVER_ERROR rejoin failure is the server handler's blanket catch, not a
 // verdict on the table, so it is retried rather than treated as terminal. The
@@ -60,7 +59,7 @@ export function useRejoin(
   socket: Socket | null,
   userId: string,
   roomRef: RefObject<WireRoomState | null>,
-  gameStateRef: RefObject<GameState | null>,
+  gameStateRef: RefObject<WireGameState | null>,
   seatLossRef: RefObject<"vacated" | "reclaiming" | null>
 ): Rejoin {
   const handlesRef = useRef<TableHandles>({ roomId: null, waitingCode: null });

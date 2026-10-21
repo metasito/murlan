@@ -21,9 +21,10 @@ export type Strength = "bot" | "floor";
  */
 export function chooseMove(state: GameState, seat: number, strength: Strength, rng?: () => number): Move | null {
   if (state.roundOver) return null;
-  if (state.exchangePhase?.active) {
-    if (state.exchangePhase.winnerIdx !== seat) return null;
-    const chosen = pickGivebackCard(state.players[seat]?.hand ?? [], state.exchangePhase.cardFromLoser?.id);
+  const phase = state.exchangePhase;
+  if (phase?.kind === "open") {
+    if (phase.winnerIdx !== seat) return null;
+    const chosen = pickGivebackCard(state.players[seat]?.hand ?? [], phase.cardFromLoser.id);
     return chosen ? { kind: "giveback", cardId: chosen.id } : null;
   }
 

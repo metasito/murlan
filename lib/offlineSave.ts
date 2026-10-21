@@ -11,20 +11,20 @@
 import { z } from "zod";
 import type { GameState } from "./game/gameEngine.ts";
 import type { MatchState } from "./game/matchState.ts";
-import { matchLengthSchema, parseGameState, type Same } from "../shared/gameStateSchema.ts";
+import { matchLengthSchema, parseGameState, storedShapeAt, type Same } from "../shared/gameStateSchema.ts";
 
 /**
  * Bumped whenever the stored shape changes, or how strictly it is read. A blob
  * older than `OLDEST_OFFLINE_SAVE_VERSION` is discarded rather than migrated.
  * Held to the stored shape by tests/server/storedShapeVersions.test.ts.
  */
-export const OFFLINE_SAVE_VERSION = 7;
+export const OFFLINE_SAVE_VERSION = 8;
 
 /** The oldest save still resumed, on `OLDEST_GAME_SCHEMA_VERSION`'s policy (shared/persistedEnvelope.ts). */
 export const OLDEST_OFFLINE_SAVE_VERSION = 5;
 
-/** An older save is read as `openingFlags`. */
-const OPENING_CARD_SAVE_VERSION = 7;
+/** The version each later stored shape began at (`storedShapeAt`). */
+const SHAPES_SINCE = { exchangeFlags: 7, current: 8 };
 
 export { OFFLINE_SAVE_KEY } from "./storageKeys.ts";
 
@@ -84,7 +84,7 @@ export function decodeOfflineSave(raw: string | null): OfflineDecode {
     return INCOMPATIBLE;
   }
 
-  const state = parseGameState(gameState, version < OPENING_CARD_SAVE_VERSION ? "openingFlags" : "current");
+  const state = parseGameState(gameState, storedShapeAt(version, SHAPES_SINCE));
   const verdict = matchSchema.safeParse(match);
   if (!state.ok || !verdict.success) return INCOMPATIBLE;
   if (typeof dealFirstSeat !== "number" || !Number.isInteger(dealFirstSeat)) return INCOMPATIBLE;
