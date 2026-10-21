@@ -597,6 +597,7 @@ export const it: Record<keyof typeof en, string> = {
   "bot.difficultyHard": "Difficile",
   "lobby.playerCountOptionA11yLabel": "{{n}} giocatori",
   "lobby.modeNeedsSeatsA11yLabel": "{{mode}}, servono {{n}} giocatori",
+  "lobby.seatsNeedModeA11yLabel": "{{seats}}, {{mode}} richiede {{n}} giocatori",
   "lobby.defaultPlayerName1": "Giocatore 1",
   "lobby.playerName": "Giocatore {{n}}",
   "lobby.replaceSavedTitle": "Sostituire la partita salvata?",

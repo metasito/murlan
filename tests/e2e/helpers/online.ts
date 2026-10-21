@@ -23,7 +23,10 @@ export interface RoomSetup {
 /** Creates a room and returns its 6-character join code. */
 export async function createRoom(page: Page, setup: RoomSetup): Promise<string> {
   if (setup.gameMode === "teams") {
-    await page.getByRole("radio", { name: it["term.mode.teams"], exact: true }).click();
+    // The lobby names a mode in full or short as its width allows; either is the same chip.
+    await page
+      .getByRole("radio", { name: new RegExp(`^(${it["term.mode.teams"]}|${it["term.mode.teamsShort"]})$`) })
+      .click();
   }
   await page.getByRole("radio", { name: `${setup.playerCount} giocatori`, exact: true }).click();
   await page.getByRole("button", { name: "Crea Stanza" }).click();

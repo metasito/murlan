@@ -604,6 +604,7 @@ export const sq: Record<keyof typeof en, string> = {
   "bot.difficultyHard": "Vështirë",
   "lobby.playerCountOptionA11yLabel": "{{n}} lojtarë",
   "lobby.modeNeedsSeatsA11yLabel": "{{mode}}, duhen {{n}} lojtarë",
+  "lobby.seatsNeedModeA11yLabel": "{{seats}}, {{mode}} kërkon {{n}} lojtarë",
   "lobby.defaultPlayerName1": "Lojtari 1",
   "lobby.playerName": "Lojtari {{n}}",
   "lobby.replaceSavedTitle": "Të zëvendësohet loja e ruajtur?",

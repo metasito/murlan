@@ -601,6 +601,7 @@ export const en = {
   "bot.difficultyHard": "Hard",
   "lobby.playerCountOptionA11yLabel": "{{n}} players",
   "lobby.modeNeedsSeatsA11yLabel": "{{mode}}, needs {{n}} players",
+  "lobby.seatsNeedModeA11yLabel": "{{seats}}, {{mode}} needs {{n}} players",
   "lobby.defaultPlayerName1": "Player 1",
   "lobby.playerName": "Player {{n}}",
   "lobby.replaceSavedTitle": "Replace your saved match?",

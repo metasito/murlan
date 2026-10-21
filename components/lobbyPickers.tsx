@@ -32,12 +32,18 @@ export function SeatCountPicker({
   const { t } = useTranslation();
   return (
     <ChoiceChips
-      choices={SEAT_COUNTS.map((n) => ({
-        value: n,
-        label: String(n),
-        a11yLabel: t("lobby.playerCountOptionA11yLabel", { n }),
-        disabled: !modeFits(mode, n),
-      }))}
+      choices={SEAT_COUNTS.map((n) => {
+        const seats = t("lobby.playerCountOptionA11yLabel", { n });
+        const fits = modeFits(mode, n);
+        return {
+          value: n,
+          label: String(n),
+          a11yLabel: fits
+            ? seats
+            : t("lobby.seatsNeedModeA11yLabel", { seats, mode: modeLabel(mode, t), n: TEAMS_PLAYER_COUNT }),
+          disabled: !fits,
+        };
+      })}
       value={value}
       onChange={onChange}
       weight="digit"

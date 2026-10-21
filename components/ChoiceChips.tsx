@@ -13,7 +13,7 @@ export interface Choice<T> {
   a11yLabel?: string;
   /** The caller builds it, so an icon name stays a literal `scripts/iconSubsetChars.mjs` can see. */
   icon?: (active: boolean) => React.ReactNode;
-  /** Offered but not choosable; the row's own `disabled` dims every chip. */
+  /** Offered but not choosable, and never shown selected; the row's own `disabled` dims every chip. */
   disabled?: boolean;
 }
 
@@ -50,7 +50,7 @@ export function ChoiceChips<T extends string | number>({
   return (
     <View style={[styles.row, compact && styles.rowCompact, disabled && styles.rowDisabled]} {...named}>
       {choices.map((choice) => {
-        const active = choice.value === value;
+        const active = choice.value === value && !choice.disabled;
         const off = disabled || !!choice.disabled;
         return (
           <Pressable
@@ -119,7 +119,7 @@ const styles = StyleSheet.create({
   chipCompact: { paddingVertical: Spacing.xs, paddingHorizontal: Spacing.xs },
   chipActive: { borderColor: Colors.gold, backgroundColor: Colors.goldMuted },
   chipPressed: { opacity: 0.8 },
-  chipDisabled: { opacity: 0.4 },
+  chipDisabled: { backgroundColor: Colors.bgClear, borderStyle: "dashed" },
   digitCompact: { fontSize: FontSize.lg },
   labelActive: { color: Colors.gold },
   labelWrapping: { textAlign: "center", flexShrink: 1 },

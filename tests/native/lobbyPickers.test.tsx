@@ -40,12 +40,36 @@ describe('ModePicker', () => {
   });
 });
 
+describe('a choice the rule rules out', () => {
+  it('is never shown selected, even when it is the value', async () => {
+    const mode = await render(<ModePicker value="teams" onChange={() => {}} seats={2} />);
+    const teams = mode.getAllByRole('radio')[1];
+    expect(teams.props.accessibilityState).toEqual(expect.objectContaining({ disabled: true, selected: false }));
+    await mode.unmount();
+
+    const seats = await render(<SeatCountPicker value={2} onChange={() => {}} mode="teams" />);
+    expect(seats.getByRole('radio', { name: new RegExp(`^${seatLabel(2)}`) }).props.accessibilityState).toEqual(
+      expect.objectContaining({ disabled: true, selected: false })
+    );
+    await seats.unmount();
+  });
+});
+
 describe('SeatCountPicker', () => {
+  it('a disabled seat count says which mode rules it out and what that mode needs', async () => {
+    const view = await render(<SeatCountPicker value={4} onChange={() => {}} mode="teams" />);
+    const two = view.getAllByRole('radio')[0];
+    expect(two.props.accessibilityLabel).toContain(seatLabel(2));
+    expect(two.props.accessibilityLabel).toContain(en['term.mode.teams']);
+    expect(two.props.accessibilityLabel).toContain(String(TEAMS_PLAYER_COUNT));
+    await view.unmount();
+  });
+
   it('disables every seat count modeFits rules out for the mode, and only those', async () => {
     for (const mode of ['teams', 'free_for_all'] as const) {
       const view = await render(<SeatCountPicker value={4} onChange={() => {}} mode={mode} />);
       for (const n of [2, 3, 4]) {
-        expect(view.getByRole('radio', { name: seatLabel(n) }).props.accessibilityState.disabled).toBe(
+        expect(view.getByRole('radio', { name: new RegExp(`^${seatLabel(n)}`) }).props.accessibilityState.disabled).toBe(
           !modeFits(mode, n)
         );
       }
