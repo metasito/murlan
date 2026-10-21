@@ -154,5 +154,7 @@ export async function renderAppHook<T>(
     return null;
   }
   const view = await renderApp(wrap(<Capture />), boot);
-  return { ...view, result };
+  /** The same tree rendered again, as a parent's render does. */
+  const rerender = () => view.rerender(wrap(<Capture />));
+  return { ...view, rerender, result };
 }
