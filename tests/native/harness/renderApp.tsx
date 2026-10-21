@@ -1,7 +1,7 @@
 import { afterEach, expect } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Dimensions } from 'react-native';
 import { AppProviders } from '@/context/AppProviders';
 import { useAuth, type AuthUser } from '@/context/AuthContext';
@@ -18,7 +18,7 @@ import { route, type HttpRequest, type HttpReply } from '../mocks/http';
 import { fakeSockets, type FakeSocket } from '../mocks/socketIo';
 
 const auth = { settled: false, value: null as ReturnType<typeof useAuth> | null };
-const local = { value: null as LocalSession | null };
+const local = { value: null as LocalSession | null, open: (_open: boolean) => {} };
 
 // Runs after the testing library's cleanup unmounts: a query left in the app's client, or an ack
 // left unanswered, holds a timer that keeps jest from exiting.
@@ -39,6 +39,15 @@ function AuthSettled() {
 function FollowTable() {
   useOnlineRouting();
   return null;
+}
+
+/** Holds the screen back until the saved match is resumed, as the app only navigates to the table once it is. */
+function ResumedFirst({ held, children }: { held: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(!held);
+  useEffect(() => {
+    local.open = setOpen;
+  });
+  return open ? children : null;
 }
 
 function LocalSessionProbe() {
@@ -117,7 +126,7 @@ export async function renderApp(
     <AppProviders>
       <AuthSettled />
       <LocalSessionProbe />
-      {screen(node)}
+      <ResumedFirst held={!!offline}>{screen(node)}</ResumedFirst>
     </AppProviders>
   );
   const view = await render(app(ui));
@@ -136,6 +145,7 @@ export async function renderApp(
   if (offline) {
     await waitFor(() => expect(local.value?.bootSettled).toBe(true));
     await act(async () => void local.value!.resumeGame());
+    await act(async () => local.open(true));
   }
   return {
     ...view,
