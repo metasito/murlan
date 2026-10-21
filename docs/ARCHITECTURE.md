@@ -270,7 +270,7 @@ collapsed:
   landing earns; `passes` the turn key and the seats that passed; `table/throws` where a throw
   starts; `table/exchangeModel` the exchange-state reads, its legs, the hand's arrival and its chip
   and pile note;
-  `turnTimerUi` whether passing is open and the turn clock; `table/stagedPlay` the play-button
+  `turnTimerUi` whether passing is open and the turn clock; `lib/table/stagedPlay.ts` the play-button
   label, which is the engine's `SelectionRefusal` or `"play"`; `tableFrame` the
   safe-area/rail arithmetic; `tableA11y` the screen-reader description. `table/throws`
   takes `seatDirection` from `seatLayout`; the reverse must never happen.

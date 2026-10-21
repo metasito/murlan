@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { canBeatPileOf, readStagedPlay } from "../../components/table/stagedPlay.ts";
-import { TUTORIAL_REFUSAL_KEYS } from "../../components/tutorialRefusal.ts";
+import { canBeatPileOf, readStagedPlay } from "../../lib/table/stagedPlay.ts";
+import { TUTORIAL_REFUSAL_KEYS } from "../../lib/tutorial/beats.ts";
 import { card, seat as makePlayer, state as makeState } from "../support/game.ts";
 import { passed } from "../support/moves.ts";
 import {

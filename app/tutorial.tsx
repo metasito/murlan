@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { router } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import Animated, { FadeIn } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { uiFeedback } from "@/lib/device/feedback";
@@ -9,446 +8,28 @@ import { leaveScreen } from "@/components/ScreenHeader";
 import { Colors, Spacing, Radius, FontSize, Type, Motion, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { markTutorialSeen } from "@/lib/tutorialSeen";
-import { TUTORIAL_PROGRESS_KEY as PROGRESS_KEY } from "@/lib/storageKeys";
 import { useAuth } from "@/context/AuthContext";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { CardView } from "@/components/CardView";
 import { TutorialCard } from "@/components/TutorialCard";
+import type { Card } from "@/lib/game/gameEngine";
 import {
-  Card,
-  Suit,
-  Rank,
-  Combination,
-  CombinationType,
-  GameState,
-  ExchangePhase,
-  buildCombination,
-  getCardDisplayRank,
-  getSuitSymbol,
-  getValidGivebackCards,
-  actingSeat,
-  applyMove,
-  emptyRankTally,
-} from "@/lib/game/gameEngine";
-import { useTranslation, type TFn, type TranslationKey } from "@/lib/i18n";
+  buildBeats,
+  evaluateExchange,
+  evaluatePlay,
+  exchangeHand,
+  playEnabled,
+  stagedLine,
+  type ExchangeBeat,
+  type PlayBeat,
+} from "@/lib/tutorial/beats";
+import { clearProgress, loadResumeIndex, saveProgress } from "@/lib/tutorial/progress";
+import { useTranslation } from "@/lib/i18n";
 import { IconButton } from "@/components/IconButton";
 import { A11yStatus, a11yHidden } from "@/lib/a11y";
 import { TurnChip } from "@/components/table/notices/hud";
-import { readStagedPlay, type StagedPlay } from "@/components/table/stagedPlay";
-import { playRefusalLabel } from "@/components/table/spokenLabels";
-import { TUTORIAL_REFUSAL_KEYS } from "@/components/tutorialRefusal";
-
-
-// ─── Storage keys ──────────────────────────────────────────────────────────
-// "Has the tutorial ever been offered" is lib/tutorialSeen.ts's question, and
-// it is answered on mount, because every way out of this screen except two —
-// the back gesture, the header chevron, the two rows on the last beat —
-// leaves no other moment to write it in.
-//
-// Independent of that: where to resume, cleared only when the player is
-// deliberately done (skip, or the final beat).
-
-// ─── Fixed, seeded cards ────────────────────────────────────────────────────
-// The tutorial never uses the random dealer: every card below is a literal,
-// deterministic Card so every step always matches what the player is holding.
-// IDs only need to be unique within the single beat they appear in together
-// (hand + table are never rendered from two different beats at once), so the
-// same rank/suit is reused across unrelated beats without any ambiguity.
-function mk(rank: Exclude<Rank, "joker_bw" | "joker_colored">, suit: Suit): Card {
-  return { id: `${rank}_${suit}`, suit, rank, isJoker: false };
-}
-const JOKER_COLORED: Card = { id: "joker_colored", suit: null, rank: "joker_colored", isJoker: true };
-
-const TYPE_LABEL_KEYS: Record<CombinationType, TranslationKey> = {
-  single: "tutorial.typeSingle",
-  pair: "tutorial.typePair",
-  triple: "tutorial.typeTriple",
-  straight: "tutorial.typeStraight",
-  bomb: "tutorial.typeBomb",
-  royal_straight: "tutorial.typeRoyalStraight",
-};
-
-// ─── Beat model ─────────────────────────────────────────────────────────────
-// `InfoBeat` and `CompleteBeat` are structurally identical but kept as two
-// interfaces (each with a single-literal `kind`) rather than one interface
-// with a `"info" | "complete"` union tag — a union-valued discriminant
-// defeats TypeScript's discriminated-union narrowing on the `kind` switch
-// below, since exhaustive exclusion requires one literal tag per member.
-interface InfoBeat {
-  kind: "info";
-  id: string;
-  title: string;
-  body: string[];
-  cta: string;
-  /** Runs the table's own turn clock under the text, from this many seconds. */
-  clockSeconds?: number;
-}
-
-interface CompleteBeat {
-  kind: "complete";
-  id: string;
-  title: string;
-  body: string[];
-  cta: string;
-}
-
-interface PlayBeat {
-  kind: "play";
-  id: string;
-  title: string;
-  instruction: string;
-  tip?: string;
-  handCards: Card[];
-  lastPlayed: Combination | null;
-  isNewTrick: boolean;
-  requireCard?: Card;
-  expectedType: CombinationType;
-  highlightIds: string[];
-  opponentLabel?: string;
-  successNarrative: string;
-  /** Says, as cards are picked up, whether the selection would go — the table's staging. */
-  staged?: boolean;
-  /** Nothing in hand beats the table: the answer is Pass. */
-  passes?: boolean;
-}
-
-type OpenExchangeState = GameState & { exchangePhase: Extract<ExchangePhase, { kind: "open" }> };
-
-interface ExchangeBeat {
-  kind: "exchange";
-  id: string;
-  title: string;
-  instruction: string;
-  tip: string;
-  state: OpenExchangeState;
-  successNarrative: string;
-}
-
-type Beat = InfoBeat | PlayBeat | ExchangeBeat | CompleteBeat;
-
-// ─── The script ─────────────────────────────────────────────────────────────
-
-const threeSpades = mk("3", "spades");
-
-const respondLastPlayed = buildCombination([mk("6", "spades")])!;
-
-const bombLastPlayed = buildCombination([
-  mk("7", "diamonds"),
-  mk("8", "spades"),
-  mk("9", "hearts"),
-  mk("10", "clubs"),
-  mk("J", "diamonds"),
-])!;
-
-const royalLastPlayed = buildCombination([
-  mk("5", "spades"),
-  mk("5", "hearts"),
-  mk("5", "diamonds"),
-  mk("5", "clubs"),
-])!;
-
-const passLastPlayed = buildCombination([mk("2", "spades")])!;
-const stageLastPlayed = buildCombination([mk("7", "spades"), mk("7", "hearts")])!;
-const CLOCK_DEMO_SECONDS = 10;
-
-const exchangeWinnerCard = mk("5", "diamonds");
-const exchangeDeadCard = mk("K", "clubs");
-const exchangeThreeHearts = mk("3", "hearts");
-// A function, not a module-level constant: the player's own display name
-// ("Tu") is translated, so it has to be rebuilt with the current `t` on
-// every render rather than frozen at import time (before the device locale
-// is even known).
-function buildExchangeState(t: TFn): OpenExchangeState {
-  return {
-    players: [
-      {
-        id: "player_0",
-        name: t("tutorial.you"),
-        hand: [JOKER_COLORED, exchangeWinnerCard, exchangeDeadCard, exchangeThreeHearts],
-        type: "human",
-      },
-      {
-        id: "player_1",
-        name: "Dea",
-        hand: [mk("4", "spades"), mk("7", "spades")],
-        type: "bot",
-      },
-    ],
-    currentTurnIndex: 0,
-    lastPlayedCombination: null,
-    lastPlayedBy: 0,
-    passCount: 0,
-    gameMode: "free_for_all",
-    roundOver: false,
-    finishingOrder: [],
-    openingCard: null,
-    playedRanks: emptyRankTally(),
-    lastMove: { seq: 0, kind: "deal" },
-    exchangePhase: { kind: "open", winnerIdx: 0, loserIdx: 1, cardFromLoser: JOKER_COLORED },
-  };
-}
-
-// Built with the current `t` on every render (via useMemo in the screen
-// component) rather than frozen at import time, so every string — including
-// the bot's reported moves and the success narratives — follows a live
-// language change with no app restart.
-function buildBeats(t: TFn): Beat[] {
-  return [
-    {
-      kind: "info",
-      id: "welcome",
-      title: t("tutorial.beat.welcome.title"),
-      body: [
-        t("tutorial.beat.welcome.body1"),
-        t("tutorial.beat.welcome.body2"),
-        t("tutorial.beat.welcome.body3"),
-      ],
-      cta: t("tutorial.beat.welcome.cta"),
-    },
-    {
-      kind: "play",
-      id: "open",
-      title: t("tutorial.beat.open.title"),
-      instruction: t("tutorial.beat.open.instruction"),
-      handCards: [threeSpades, mk("4", "diamonds"), mk("7", "hearts")],
-      lastPlayed: null,
-      isNewTrick: true,
-      requireCard: threeSpades,
-      expectedType: "single",
-      highlightIds: [threeSpades.id],
-      successNarrative: t("tutorial.beat.open.successNarrative"),
-    },
-    {
-      kind: "play",
-      id: "respond",
-      title: t("tutorial.beat.respond.title"),
-      instruction: t("tutorial.beat.respond.instruction"),
-      tip: t("tutorial.beat.respond.tip"),
-      handCards: [mk("5", "hearts"), mk("6", "hearts"), mk("9", "clubs"), mk("2", "diamonds")],
-      lastPlayed: respondLastPlayed,
-      isNewTrick: false,
-      expectedType: "single",
-      highlightIds: [],
-      opponentLabel: t("tutorial.beat.respond.opponentLabel"),
-      successNarrative: t("tutorial.beat.respond.successNarrative"),
-    },
-    {
-      kind: "play",
-      id: "pass",
-      title: t("tutorial.beat.pass.title"),
-      instruction: t("tutorial.beat.pass.instruction"),
-      tip: t("tutorial.beat.pass.tip"),
-      handCards: [mk("4", "diamonds"), mk("8", "clubs"), mk("J", "hearts"), mk("A", "clubs")],
-      lastPlayed: passLastPlayed,
-      isNewTrick: false,
-      expectedType: "single",
-      highlightIds: [],
-      opponentLabel: t("tutorial.beat.pass.opponentLabel"),
-      successNarrative: t("tutorial.beat.pass.successNarrative"),
-      passes: true,
-    },
-    {
-      kind: "info",
-      id: "clock",
-      title: t("tutorial.beat.clock.title"),
-      body: [t("tutorial.beat.clock.body1"), t("tutorial.beat.clock.body2")],
-      cta: t("tutorial.beat.clock.cta"),
-      clockSeconds: CLOCK_DEMO_SECONDS,
-    },
-    {
-      kind: "play",
-      id: "pair",
-      title: t("tutorial.beat.pair.title"),
-      instruction: t("tutorial.beat.pair.instruction"),
-      handCards: [mk("8", "hearts"), mk("8", "diamonds"), mk("5", "clubs"), mk("4", "clubs")],
-      lastPlayed: null,
-      isNewTrick: true,
-      expectedType: "pair",
-      highlightIds: [],
-      successNarrative: t("tutorial.beat.pair.successNarrative"),
-    },
-    {
-      kind: "play",
-      id: "stage",
-      title: t("tutorial.beat.stage.title"),
-      instruction: t("tutorial.beat.stage.instruction"),
-      tip: t("tutorial.beat.stage.tip"),
-      handCards: [mk("6", "hearts"), mk("6", "clubs"), mk("9", "diamonds"), mk("9", "spades"), mk("4", "clubs")],
-      lastPlayed: stageLastPlayed,
-      isNewTrick: false,
-      expectedType: "pair",
-      highlightIds: [],
-      opponentLabel: t("tutorial.beat.stage.opponentLabel"),
-      successNarrative: t("tutorial.beat.stage.successNarrative"),
-      staged: true,
-    },
-    {
-      kind: "play",
-      id: "triple",
-      title: t("tutorial.beat.triple.title"),
-      instruction: t("tutorial.beat.triple.instruction"),
-      handCards: [mk("J", "clubs"), mk("J", "diamonds"), mk("J", "hearts"), mk("3", "diamonds"), mk("6", "clubs")],
-      lastPlayed: null,
-      isNewTrick: true,
-      expectedType: "triple",
-      highlightIds: [],
-      successNarrative: t("tutorial.beat.triple.successNarrative"),
-    },
-    {
-      kind: "play",
-      id: "straight",
-      title: t("tutorial.beat.straight.title"),
-      instruction: t("tutorial.beat.straight.instruction"),
-      handCards: [
-        mk("5", "spades"),
-        mk("6", "diamonds"),
-        mk("7", "clubs"),
-        mk("8", "clubs"),
-        mk("9", "diamonds"),
-        mk("2", "clubs"),
-      ],
-      lastPlayed: null,
-      isNewTrick: true,
-      expectedType: "straight",
-      highlightIds: [],
-      successNarrative: t("tutorial.beat.straight.successNarrative"),
-    },
-    {
-      kind: "play",
-      id: "bomb",
-      title: t("tutorial.beat.bomb.title"),
-      instruction: t("tutorial.beat.bomb.instruction"),
-      tip: t("tutorial.beat.bomb.tip"),
-      handCards: [mk("K", "spades"), mk("K", "hearts"), mk("K", "diamonds"), mk("K", "clubs"), mk("A", "clubs")],
-      lastPlayed: bombLastPlayed,
-      isNewTrick: false,
-      expectedType: "bomb",
-      highlightIds: [],
-      opponentLabel: t("tutorial.beat.bomb.opponentLabel"),
-      successNarrative: t("tutorial.beat.bomb.successNarrative"),
-    },
-    {
-      kind: "play",
-      id: "royal",
-      title: t("tutorial.beat.royal.title"),
-      instruction: t("tutorial.beat.royal.instruction"),
-      tip: t("tutorial.beat.royal.tip"),
-      handCards: [
-        mk("8", "spades"),
-        mk("9", "spades"),
-        mk("10", "spades"),
-        mk("J", "spades"),
-        mk("Q", "spades"),
-        mk("Q", "hearts"),
-      ],
-      lastPlayed: royalLastPlayed,
-      isNewTrick: false,
-      expectedType: "royal_straight",
-      highlightIds: [],
-      opponentLabel: t("tutorial.beat.royal.opponentLabel"),
-      successNarrative: t("tutorial.beat.royal.successNarrative"),
-    },
-    {
-      kind: "exchange",
-      id: "exchange",
-      title: t("tutorial.beat.exchange.title"),
-      instruction: t("tutorial.beat.exchange.instruction"),
-      tip: t("tutorial.beat.exchange.tip"),
-      state: buildExchangeState(t),
-      successNarrative: t("tutorial.beat.exchange.successNarrative"),
-    },
-    {
-      kind: "complete",
-      id: "done",
-      title: t("tutorial.beat.done.title"),
-      body: [
-        t("tutorial.beat.done.body1"),
-        t("tutorial.beat.done.body2"),
-        t("tutorial.beat.done.body3"),
-      ],
-      cta: t("tutorial.beat.done.cta"),
-    },
-  ];
-}
-
-// ─── Engine-backed validation ───────────────────────────────────────────────
-// Every legality check below goes through lib/game/gameEngine.ts — the tutorial can
-// never accept (or reject) a move the real game engine wouldn't.
-
-function stageBeat(beat: PlayBeat, selectedIds: Set<string>): StagedPlay {
-  return readStagedPlay({
-    hand: beat.handCards,
-    selectedIds: [...selectedIds],
-    demand: { toBeat: beat.isNewTrick ? null : beat.lastPlayed, mustInclude: null },
-    isMyTurn: true,
-    isFinished: false,
-  });
-}
-
-function refusalMessage(staged: StagedPlay, t: TFn): string {
-  const key = TUTORIAL_REFUSAL_KEYS[staged.refusal];
-  return key
-    ? t(key)
-    : playRefusalLabel(
-        { refusal: staged.refusal, isMyTurn: true, isFinished: false, openingCard: null },
-        t
-      );
-}
-
-function evaluatePlay(selectedIds: Set<string>, beat: PlayBeat, t: TFn): { ok: boolean; message: string } {
-  if (selectedIds.size === 0) {
-    return { ok: false, message: t("tutorial.errSelectAtLeastOne") };
-  }
-
-  const staged = stageBeat(beat, selectedIds);
-  if (!staged.playable && staged.refusal === "notACombination") {
-    return { ok: false, message: refusalMessage(staged, t) };
-  }
-
-  if (beat.requireCard && !selectedIds.has(beat.requireCard.id)) {
-    return {
-      ok: false,
-      message: t("tutorial.errMustIncludeCard", {
-        rank: getCardDisplayRank(beat.requireCard.rank),
-        suit: getSuitSymbol(beat.requireCard.suit),
-      }),
-    };
-  }
-
-  if (!staged.playable) {
-    return { ok: false, message: refusalMessage(staged, t) };
-  }
-
-  const combo = buildCombination(staged.cards)!;
-  if (combo.type !== beat.expectedType) {
-    return {
-      ok: false,
-      message: t("tutorial.errWrongExpectedType", { type: t(TYPE_LABEL_KEYS[beat.expectedType]) }),
-    };
-  }
-
-  return { ok: true, message: beat.successNarrative };
-}
-
-function evaluateExchange(selected: Card, beat: ExchangeBeat, t: TFn): { ok: boolean; message: string } {
-  const winnerHand = beat.state.players[beat.state.exchangePhase.winnerIdx].hand;
-  const receivedId = beat.state.exchangePhase.cardFromLoser.id;
-  const valid = getValidGivebackCards(winnerHand, receivedId);
-  if (!valid.some((c) => c.id === selected.id)) {
-    if (selected.id === receivedId) {
-      return { ok: false, message: t("tutorial.errJustReceived") };
-    }
-    return { ok: false, message: t("tutorial.errExchangeRange") };
-  }
-  if (applyMove(beat.state, actingSeat(beat.state), { kind: "giveback", cardId: selected.id }).ok) {
-    return { ok: true, message: beat.successNarrative };
-  }
-  return { ok: false, message: t("tutorial.errExchangeGeneric") };
-}
-
-// ─── Screen ─────────────────────────────────────────────────────────────────
 
 function FeedbackBox({ feedback }: { feedback: { ok: boolean; text: string } | null }) {
   return (
@@ -496,8 +77,8 @@ export default function TutorialScreen() {
   }, [authLoading, userId]);
 
   useEffect(() => {
-    AsyncStorage.getItem(PROGRESS_KEY)
-      .then((id) => setStepIndex(Math.max(0, BEATS.findIndex((b) => b.id === id))))
+    loadResumeIndex(BEATS.map((b) => b.id))
+      .then(setStepIndex)
       .finally(() => setLoaded(true))
       .catch(() => {});
   }, [BEATS]);
@@ -505,7 +86,7 @@ export default function TutorialScreen() {
   const stepId = BEATS[stepIndex]?.id;
   useEffect(() => {
     if (!loaded || !stepId) return;
-    AsyncStorage.setItem(PROGRESS_KEY, stepId).catch(() => {});
+    void saveProgress(stepId);
   }, [stepId, loaded]);
 
   const [shownStep, setShownStep] = useState(stepIndex);
@@ -520,11 +101,6 @@ export default function TutorialScreen() {
 
   const beat = BEATS[stepIndex];
   const isLast = stepIndex === BEATS.length - 1;
-
-  /** Deliberately done with this run, so the next one starts from the top. */
-  async function clearProgress() {
-    await AsyncStorage.removeItem(PROGRESS_KEY);
-  }
 
   async function handleSkip() {
     uiFeedback("light");
@@ -570,39 +146,16 @@ export default function TutorialScreen() {
     });
   }
 
-  function submitPlay(b: PlayBeat) {
-    const result = evaluatePlay(selectedIds, b, t);
+  function settle(result: { ok: boolean; message: string }) {
     setFeedback({ ok: result.ok, text: result.message });
-    if (result.ok) {
-      uiFeedback("success");
-      setBeatDone(true);
-    } else {
-      uiFeedback("error");
-    }
+    uiFeedback(result.ok ? "success" : "error");
+    if (result.ok) setBeatDone(true);
   }
 
-  function submitPass(b: PlayBeat) {
-    setFeedback({ ok: true, text: b.successNarrative });
-    uiFeedback("success");
-    setBeatDone(true);
-  }
+  const submitPlay = (b: PlayBeat) => settle(evaluatePlay(selectedIds, b, t));
+  const submitPass = (b: PlayBeat) => settle({ ok: true, message: b.successNarrative });
 
-  function submitExchange(b: ExchangeBeat) {
-    const winnerHand = b.state.players[b.state.exchangePhase.winnerIdx].hand;
-    const selected = winnerHand.find((c) => selectedIds.has(c.id));
-    if (!selected) {
-      setFeedback({ ok: false, text: t("tutorial.errSelectCardToReturn") });
-      return;
-    }
-    const result = evaluateExchange(selected, b, t);
-    setFeedback({ ok: result.ok, text: result.message });
-    if (result.ok) {
-      uiFeedback("success");
-      setBeatDone(true);
-    } else {
-      uiFeedback("error");
-    }
-  }
+  const submitExchange = (b: ExchangeBeat) => settle(evaluateExchange(selectedIds, b, t));
 
   const header = (
     <View style={styles.header}>
@@ -657,18 +210,8 @@ export default function TutorialScreen() {
     }
 
     if (beat.kind === "play") {
-      const staged = stageBeat(beat, selectedIds);
-      const stagedLine =
-        beat.staged && !beatDone && selectedIds.size > 0
-          ? staged.playable
-            ? t("tutorial.stagedReady")
-            : t("tutorial.stagedBlocked", {
-                reason: playRefusalLabel(
-                  { refusal: staged.refusal, isMyTurn: true, isFinished: false, openingCard: null },
-                  t
-                ),
-              })
-          : null;
+      const stagedText = stagedLine(beat, selectedIds, beatDone, t);
+      const canPlay = playEnabled(beat, selectedIds);
       return (
         <>
           <MenuCard title={beat.title}>
@@ -681,10 +224,10 @@ export default function TutorialScreen() {
             )}
           </MenuCard>
 
-          {beat.lastPlayed && (
+          {beat.demand.toBeat && (
             <MenuCard title={beat.opponentLabel ?? t("tutorial.onTable")}>
               <View style={styles.cardRow}>
-                {beat.lastPlayed.cards.map((c) => (
+                {beat.demand.toBeat.cards.map((c) => (
                   <CardView key={c.id} card={c} scale={0.625} compact />
                 ))}
               </View>
@@ -705,14 +248,14 @@ export default function TutorialScreen() {
                 />
               ))}
             </View>
-            <A11yStatus label={stagedLine ?? ""} />
-            {stagedLine !== null && (
+            <A11yStatus label={stagedText ?? ""} />
+            {stagedText !== null && (
               <Text
                 testID="tutorial-staged"
-                style={[styles.stagedText, staged.playable && styles.stagedReady]}
+                style={[styles.stagedText, canPlay && styles.stagedReady]}
                 {...a11yHidden()}
               >
-                {stagedLine}
+                {stagedText}
               </Text>
             )}
           </MenuCard>
@@ -731,7 +274,7 @@ export default function TutorialScreen() {
             <MenuButton
               label={t("tutorial.playCombination")}
               onPress={() => submitPlay(beat)}
-              disabled={selectedIds.size === 0 || (!!beat.staged && !staged.playable)}
+              disabled={!canPlay}
               icon={<Ionicons name="play" size={18} color={Colors.bg} />}
             />
           ) : (
@@ -746,8 +289,7 @@ export default function TutorialScreen() {
     }
 
     // exchange
-    const winnerHand = beat.state.players[beat.state.exchangePhase.winnerIdx].hand;
-    const receivedId = beat.state.exchangePhase.cardFromLoser.id;
+    const { hand: winnerHand, receivedId } = exchangeHand(beat);
     return (
       <>
         <MenuCard title={beat.title}>

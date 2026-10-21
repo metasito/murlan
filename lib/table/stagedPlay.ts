@@ -9,7 +9,7 @@ import {
   type Card,
   type SelectionRefusal,
   type TableDemand,
-} from "../../lib/game/gameEngine.ts";
+} from "../game/gameEngine.ts";
 
 /** Why GIOCA is dim: the engine's code, or "play" when the selection is not what is wrong. */
 export type PlayButtonLabel = "play" | SelectionRefusal;
