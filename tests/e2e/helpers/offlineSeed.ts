@@ -276,16 +276,17 @@ export async function resumeSaved(page: Page, baseURL: string, save: OfflineSave
 
 /**
  * `resumeSaved` on a page whose clock `installVirtualClock` already holds, every
- * seat held: the home screen is stepped to rather than waited for, and
- * `beforeResume` runs on it before the click.
+ * seat held unless `o` lets them play: the home screen is stepped to rather than
+ * waited for, and `beforeResume` runs on it before the click.
  */
 export async function resumeOnVirtualClock(
   page: Page,
   baseURL: string,
   save: OfflineSave,
-  beforeResume?: () => Promise<void>
+  beforeResume?: () => Promise<void>,
+  o: SeedOptions = { holdTurn: true }
 ): Promise<void> {
-  await seedSave(page, save, { holdTurn: true });
+  await seedSave(page, save, o);
   await page.addInitScript((key) => window.localStorage.setItem(key, "1"), TUTORIAL_SEEN_KEY);
   await page.goto(baseURL);
   await takeOver(page);

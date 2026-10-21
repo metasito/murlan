@@ -1,8 +1,9 @@
 // tests/e2e/exchangeRowSettles.spec.ts — on a freshly dealt exchange round the hand row ends the
 // ceremony as wide as the hand it settles into, so the fan does not jump as the ceremony closes (#1806).
 import { test, expect } from "./fixtures";
-import { exchangeSave, resumeSaved } from "./helpers/offlineSeed";
-import { tap } from "./helpers/press";
+import type { Locator, Page } from "@playwright/test";
+import { exchangeSave, resumeOnVirtualClock } from "./helpers/offlineSeed";
+import { installVirtualClock, step, stepThen, stepUntil } from "./helpers/virtualClock";
 import { E2E_REAL_EXCHANGE_KEY } from "../../lib/storageKeys";
 import { HAND_SCALE, HAND_SCALE_ON_TURN } from "../../components/cardFaceModel";
 
@@ -47,12 +48,25 @@ const ROLES = [
   },
 ] as const;
 
+/** A press the hand reads as a tap: it measures the press on the clock this spec holds. */
+async function press(page: Page, target: Locator) {
+  const box = (await target.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await step(page, 8 * 16);
+  await page.mouse.up();
+  await step(page);
+}
+
 /** The row in card widths, which moves with the slot count and not with the card's size. */
 const slots = (s: Sample) => s.rowW / s.cardW;
 
 for (const { role, save, resizesAfter } of ROLES) {
   test(`the ${role}'s hand row ends the ceremony as wide as the hand it settles into`, async ({ page, baseURL }) => {
-    test.setTimeout(120_000);
+    test.setTimeout(240_000);
+    // On the real clock the resize's 120 ms can pass inside the one long task that commits it, so no
+    // frame between its two sizes is ever painted (#1806, CI). Virtual time gives it its frames.
+    await installVirtualClock(page, 1806);
     await page.addInitScript((key) => window.localStorage.setItem(key, "1"), E2E_REAL_EXCHANGE_KEY);
     await page.addInitScript((afterMs) => {
       const out: Sample[] = [];
@@ -77,16 +91,19 @@ for (const { role, save, resizesAfter } of ROLES) {
       };
       requestAnimationFrame(frame);
     }, AFTER_MS);
-    await resumeSaved(page, baseURL!, save());
+    // The seats play: the winner's size comes back with the lead the round hands it after the ceremony.
+    await resumeOnVirtualClock(page, baseURL!, save(), undefined, { holdTurn: false });
 
     if (role === "winner") {
-      await expect(page.getByTestId("exchange-prompt")).toBeVisible({ timeout: 15_000 });
-      await tap(page, page.getByRole("button", { name: "5 di Cuori", exact: true }));
-      await tap(page, page.getByTestId("btn-gioca"));
+      const prompt = page.getByTestId("exchange-prompt");
+      await stepUntil(page, () => prompt.isVisible(), "the exchange prompt", { chunkMs: 16 });
+      await press(page, page.getByRole("button", { name: "5 di Cuori", exact: true }));
+      await press(page, page.getByTestId("btn-gioca"));
     }
-    await expect
-      .poll(() => page.evaluate(() => (window as unknown as { __settled?: boolean }).__settled === true), { timeout: 60_000 })
-      .toBe(true);
+    const settledBy = Date.now() + 180_000;
+    while (!(await stepThen<boolean>(page, 16, "window.__settled === true"))) {
+      expect(Date.now(), "the ceremony and the half second after it ran").toBeLessThan(settledBy);
+    }
     const rows = await page.evaluate(() => (window as unknown as { __rows: Sample[] }).__rows);
 
     const trace = rows
@@ -105,10 +122,10 @@ for (const { role, save, resizesAfter } of ROLES) {
       expect(Math.min(Math.abs(k - 1), Math.abs(k - TURN_RATIO)), `a card size that is not the turn's: ${trace}`).toBeLessThan(SIZE_TOLERANCE);
     }
 
-    const resizes = after.filter((s, i) => i > 0 && s.cardW !== after[i - 1].cardW);
+    const resizes = rows.filter((s, i) => !s.ceremony && s.cardW !== rows[i - 1].cardW);
     expect(resizes.length, `size changes after the ceremony: ${trace}`).toBe(resizesAfter);
     for (const s of resizes) {
-      const from = after[after.indexOf(s) - 1].cardW;
+      const from = rows[rows.indexOf(s) - 1].cardW;
       expect(s.cardW / from, `the resize after the ceremony: ${trace}`).toBeCloseTo(TURN_RATIO, 3);
       const lo = Math.min(from, s.cardW);
       const margin = 0.05 * Math.abs(s.cardW - from);
