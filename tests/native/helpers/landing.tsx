@@ -71,10 +71,9 @@ export function tableAfter({ by, combo, passCount = 0, turn = 0, catchUp = false
     lastPlayedBy: by,
     passCount,
     gameMode: 'free_for_all',
-    trickWinner: null,
     roundOver: false,
     finishingOrder: [],
-    firstPlayMade: true,
+    openingCard: null,
     playedRanks: aThreePlayed(),
     lastMove,
   };

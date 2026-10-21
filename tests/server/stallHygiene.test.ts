@@ -76,10 +76,9 @@ test("a hanging status write still deals the round", async (t) => {
     lastPlayedBy: -1,
     passCount: 0,
     gameMode: "free_for_all",
-    trickWinner: null,
     roundOver: false,
     finishingOrder: [],
-    firstPlayMade: false,
+    openingCard: null,
     playedRanks: emptyRankTally(),
     lastMove: { seq: 0, kind: "deal" },
   };

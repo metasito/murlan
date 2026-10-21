@@ -101,7 +101,7 @@ function Mover() {
       onPress={() => {
         if (!gameState) return;
         const seat = gameState.players[gameState.currentTurnIndex];
-        if (!playCards([gameState.startCard?.id ?? seat.hand[0].id])) passTurn();
+        if (!playCards([gameState.openingCard?.id ?? seat.hand[0].id])) passTurn();
       }}
     >
       <Text>move</Text>

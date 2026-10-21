@@ -3,11 +3,10 @@ import assert from "node:assert/strict";
 import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
   buildCombination,
-  getAllValidPlays,
   startRound,
   type Card,
 } from "../../lib/game/gameEngine.ts";
-import { passed, played, refusalOf } from "../support/moves.ts";
+import { legalPlays, passed, played, refusalOf, trickClosedBy } from "../support/moves.ts";
 import { seatDirection } from "../../components/seatLayout.ts";
 
 const pair = (rank: Parameters<typeof c>[0]): Card[] => [c(rank, "hearts"), c(rank, "clubs")];
@@ -26,7 +25,7 @@ describe("processPlay", () => {
     assert.deepEqual(next.players[0].hand.map((card) => card.id), ["K_spades"]);
     assert.equal(next.passCount, 0);
     assert.equal(next.lastPlayedBy, 0);
-    assert.equal(next.firstPlayMade, true);
+    assert.equal(next.openingCard, null);
     assert.equal(next.lastPlayedCombination?.type, "pair");
     assert.deepEqual(
       state.players[0].hand.length,
@@ -94,11 +93,11 @@ describe("processPass — round end threshold (defect 5)", () => {
     );
 
     state = passed(state);
-    assert.equal(state.trickWinner, null, "one pass does not end the round");
+    assert.equal(trickClosedBy(state), null, "one pass does not end the round");
     state = passed(state);
-    assert.equal(state.trickWinner, null, "two passes do not end the round");
+    assert.equal(trickClosedBy(state), null, "two passes do not end the round");
     state = passed(state);
-    assert.equal(state.trickWinner, 0, "the third pass hands the round to p0");
+    assert.equal(trickClosedBy(state), 0, "the third pass hands the round to p0");
     assert.equal(state.lastPlayedCombination, null);
     assert.equal(state.passCount, 0);
     assert.equal(state.currentTurnIndex, 0, "the round winner leads next");
@@ -117,9 +116,9 @@ describe("processPass — round end threshold (defect 5)", () => {
       }
     );
     state = passed(state);
-    assert.equal(state.trickWinner, null);
+    assert.equal(trickClosedBy(state), null);
     state = passed(state);
-    assert.equal(state.trickWinner, 0);
+    assert.equal(trickClosedBy(state), 0);
   });
 
   test("2 players still holding cards: a single pass closes the round", () => {
@@ -132,7 +131,7 @@ describe("processPass — round end threshold (defect 5)", () => {
         }
       )
     );
-    assert.equal(state.trickWinner, 0);
+    assert.equal(trickClosedBy(state), 0);
     assert.equal(state.currentTurnIndex, 0);
   });
 
@@ -154,7 +153,7 @@ describe("processPass — round end threshold (defect 5)", () => {
 
     state = passed(state);
     assert.equal(
-      state.trickWinner,
+      trickClosedBy(state),
       null,
       "one pass must not close the round while another opponent can still answer"
     );
@@ -162,7 +161,7 @@ describe("processPass — round end threshold (defect 5)", () => {
     assert.notEqual(state.currentTurnIndex, 0, "the finished player never gets the turn");
 
     state = passed(state);
-    assert.equal(state.trickWinner, 0, "the second pass closes the round");
+    assert.equal(trickClosedBy(state), 0, "the second pass closes the round");
     assert.equal(state.lastPlayedCombination, null);
     assert.notEqual(
       state.currentTurnIndex,
@@ -187,11 +186,11 @@ describe("processPass — round end threshold (defect 5)", () => {
       }
     );
     state = passed(state);
-    assert.equal(state.trickWinner, null);
+    assert.equal(trickClosedBy(state), null);
     state = passed(state);
-    assert.equal(state.trickWinner, null);
+    assert.equal(trickClosedBy(state), null);
     state = passed(state);
-    assert.equal(state.trickWinner, 0);
+    assert.equal(trickClosedBy(state), 0);
   });
 
   test("a pass that does not close the round leaves the round winner unset", () => {
@@ -205,11 +204,10 @@ describe("processPass — round end threshold (defect 5)", () => {
           currentTurnIndex: 2,
           lastPlayedBy: 0,
           lastPlayedCombination: combo(pair("5")),
-          trickWinner: 1,
         }
       )
     );
-    assert.equal(state.trickWinner, null);
+    assert.equal(trickClosedBy(state), null);
   });
 });
 
@@ -287,9 +285,9 @@ describe("a 3-player game", () => {
     const state0 = startRound(["a", "b", "c"].map((name) => ({ name, type: "human" as const })), "free_for_all");
 
     assert.deepEqual(state0.players.map((p) => p.hand.length), [18, 18, 18]);
-    assert.ok(state0.startCard, "the opening deal names a start card");
+    assert.ok(state0.openingCard, "the opening deal names a start card");
     assert.ok(
-      state0.players[state0.currentTurnIndex].hand.some((x) => x.id === state0.startCard!.id),
+      state0.players[state0.currentTurnIndex].hand.some((x) => x.id === state0.openingCard!.id),
       "the seat on turn is the one holding the start card"
     );
 
@@ -307,12 +305,7 @@ describe("a 3-player game", () => {
       );
 
       const isNewTrick = state.lastPlayedCombination === null;
-      const plays = getAllValidPlays(
-        state.players[seat].hand,
-        isNewTrick ? null : state.lastPlayedCombination,
-        isNewTrick,
-        state.firstPlayMade ? undefined : state.startCard
-      );
+      const plays = legalPlays(state, seat);
 
       if (plays.length === 0) {
         assert.ok(!isNewTrick, `seat ${seat} had no legal lead on turn ${turns}`);

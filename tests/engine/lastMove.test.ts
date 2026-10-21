@@ -61,7 +61,7 @@ const trick = (): GameState =>
     ],
     currentTurnIndex: 0,
     lastPlayedBy: 0,
-    firstPlayMade: true,
+    openingCard: null,
     lastMove: { seq: 4, kind: "play", seat: 1 },
   });
 
@@ -79,7 +79,7 @@ test("the play that goes out is recorded like any other", () => {
   const state = makeState({
     players: [seat(0, [c("5", "hearts")]), seat(1, [c("6", "hearts")])],
     currentTurnIndex: 0,
-    firstPlayMade: true,
+    openingCard: null,
     lastMove: { seq: 2, kind: "pass", seat: 1, closedTrick: true },
   });
   const out = played(state, combo(c("5", "hearts")));

@@ -36,7 +36,7 @@ const hand = [
 const table = (pile: Card[] | null, over: Partial<GameState> = {}) =>
   makeState({ players: [makePlayer(0, hand), makePlayer(1, [c("4", "clubs")])],
     currentTurnIndex: 0,
-    firstPlayMade: true,
+    openingCard: null,
     lastPlayedCombination: pile ? combo(pile) : null,
     lastPlayedBy: 1,
     ...over,
@@ -62,7 +62,7 @@ describe("a play names its refusal", () => {
     ["cards forming no combination", table(null), [c("5", "spades"), c("K", "hearts")], "notACombination"],
     [
       "an opening play without the start card",
-      table(null, { firstPlayMade: false, startCard: c("3", "spades") }),
+      table(null, { openingCard: c("3", "spades") }),
       [c("5", "spades")],
       "needsStartCard",
     ],
@@ -82,7 +82,7 @@ describe("a play names its refusal", () => {
   }
 
   test("the start card is asked for before the table is beaten", () => {
-    const state = table([c("A", "diamonds")], { firstPlayMade: false, startCard: c("3", "spades") });
+    const state = table([c("A", "diamonds")], { openingCard: c("3", "spades") });
     assert.deepEqual(play(state, [c("K", "hearts").id]), { ok: false, code: "needsStartCard" });
   });
 

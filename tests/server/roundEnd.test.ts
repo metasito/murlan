@@ -23,10 +23,9 @@ function mkState(players: Player[], finishingOrder: string[]): GameState {
     lastPlayedBy: -1,
     passCount: 0,
     gameMode: "free_for_all",
-    trickWinner: null,
     roundOver: true,
     finishingOrder,
-    firstPlayMade: true,
+    openingCard: null,
     playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: "deal" },
   };

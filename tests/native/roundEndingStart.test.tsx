@@ -43,10 +43,9 @@ function table(onRoundLanded: (at: number) => void, over: boolean, last: Combina
     lastPlayedBy: last === PAIR ? 2 : 3,
     passCount: 0,
     gameMode: 'free_for_all',
-    trickWinner: null,
     roundOver: over,
     finishingOrder: over ? ORDER : [],
-    firstPlayMade: true,
+    openingCard: null,
     playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: 'deal' },
   };

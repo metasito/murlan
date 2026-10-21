@@ -24,7 +24,7 @@ test("a shutdown keeps a between-hands seat, so the vote it held cannot deal wit
       lastPlayedBy: -1,
       roundOver: true,
       finishingOrder: ["p0", "p1"],
-      firstPlayMade: true,
+      openingCard: null,
     }),
     playerMap: { 0: "ana", 1: "besi" },
     rematchVotes: new Set(["ana"]),

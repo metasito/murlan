@@ -39,10 +39,9 @@ function finishedHand(players: Player[], finishingOrder: string[]): GameState {
     lastPlayedBy: -1,
     passCount: 0,
     gameMode: "free_for_all",
-    trickWinner: null,
     roundOver: true,
     finishingOrder,
-    firstPlayMade: true,
+    openingCard: null,
     playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: "deal" },
   };
@@ -241,7 +240,7 @@ describe("a new match at a standing bot-filled table", () => {
     assert.ok(dealt.exchangePhase, "the new match opened on the 3♠ instead");
     assert.equal(dealt.exchangePhase.winnerIdx, 2);
     assert.equal(dealt.exchangePhase.loserIdx, 0);
-    assert.equal(dealt.startCard, undefined);
+    assert.equal(dealt.openingCard, null);
   });
 });
 

@@ -74,10 +74,9 @@ const inPlay = (combo: Combination): GameState => ({
   lastPlayedBy: 1,
   passCount: 0,
   gameMode: "free_for_all",
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: "deal" },
 });

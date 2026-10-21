@@ -27,12 +27,10 @@ const opening = (players: GameState['players']): GameState => state({
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: false,
+  openingCard: hand('spades')[0],
   lastMove: { seq: 0, kind: 'deal' },
-  startCard: hand('spades')[0],
 });
 
 /** The bot in seat 1 holds the 3♠ and opens, at either table shape. */

@@ -175,7 +175,7 @@ describe("passedSeats walks the direction the engine deals turns", () => {
     let s = makeState({ players: hands(),
       currentTurnIndex: 3,
       lastPlayedBy: 3,
-      firstPlayMade: true,
+      openingCard: null,
     });
 
     s = played(s, buildCombination([c("J", "diamonds")])!);
@@ -203,7 +203,7 @@ describe("passedSeats walks the direction the engine deals turns", () => {
     let s = makeState({ players,
       currentTurnIndex: 3,
       lastPlayedBy: 3,
-      firstPlayMade: true,
+      openingCard: null,
     });
 
     s = played(s, buildCombination([c("J", "diamonds")])!);
@@ -234,7 +234,7 @@ describe("passedSeats walks the direction the engine deals turns", () => {
     let s = makeState({ players,
       currentTurnIndex: 3,
       lastPlayedBy: 3,
-      firstPlayMade: true,
+      openingCard: null,
       finishingOrder: ["player_0", "player_1"],
     });
 

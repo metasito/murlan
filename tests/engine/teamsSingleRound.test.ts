@@ -21,10 +21,9 @@ const finished = (gameMode: GameState["gameMode"], finishingOrder: string[]): Ga
   lastPlayedBy: 0,
   passCount: 0,
   gameMode,
-  trickWinner: null,
   roundOver: true,
   finishingOrder,
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: "deal" },
 });

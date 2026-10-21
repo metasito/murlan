@@ -34,10 +34,9 @@ const stateAfter = (play: Combination): GameState => ({
   lastPlayedBy: 0,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 });

@@ -19,7 +19,7 @@ jest.mock('expo-router', () => ({
 
 import LobbyScreen from '@/app/lobby';
 
-const SAVED = state({ firstPlayMade: true, playedRanks: aThreePlayed() });
+const SAVED = state({ openingCard: null, playedRanks: aThreePlayed() });
 
 /** The lobby, with `SAVED` on the device if `saved`; `result.current` is the table the offline game holds. */
 const show = async (saved = false) => {

@@ -19,6 +19,7 @@ import {
   createDeck,
   getAllValidPlays,
   getValidGivebackCards,
+  tableDemand,
   type Card,
   type Combination,
 } from "../../lib/game/gameEngine.ts";
@@ -36,8 +37,7 @@ interface TableState {
   currentTurnIndex: number;
   lastPlayedCombination: Combination | null;
   roundOver: boolean;
-  firstPlayMade: boolean;
-  startCard?: Card;
+  openingCard: Card | null;
   exchangePhase?: { active: boolean; winnerIdx: number; cardFromLoser?: Card };
   /** `null` once this account holds no seat — the server's own "not seated". */
   viewerSeatIndex: number | null;
@@ -466,9 +466,7 @@ export class Seat {
     const hand = s.players[seat]?.hand ?? [];
     if (hand.length === 0) return null;
 
-    const isNewTrick = s.lastPlayedCombination === null;
-    const mustPlay = !s.firstPlayMade ? s.startCard : undefined;
-    const plays = getAllValidPlays(hand, s.lastPlayedCombination, isNewTrick, mustPlay);
+    const plays = getAllValidPlays(hand, tableDemand(s));
 
     if (plays.length === 0) {
       this.#socket.emit("game:pass");
@@ -591,8 +589,8 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
       // the first settled table would otherwise print a log with no deal in it,
       // which is the one thing the log has to carry.
       //
-      // The signal is that no card has left a hand yet, not `firstPlayMade`:
-      // an exchange opening from `startRound` returns that already `true`, so keying on it logged
+      // The signal is that no card has left a hand yet, not `openingCard`:
+      // an exchange opening from `startRound` deals none, so keying on it logged
       // a deal for the first round and for no other, and every later entry
       // named cards the log never dealt. The exchange moves one card between
       // two hands and so leaves the total alone, which is why this still holds

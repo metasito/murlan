@@ -185,7 +185,7 @@ for (const vp of VIEWPORTS) {
 
     test("mid-deal, every back in the air is where it is drawn", async ({ page, baseURL }) => {
       test.setTimeout(90_000);
-      await resumeSaved(page, baseURL!, offlineSave({ seats: 4, state: { firstPlayMade: false } }), HELD);
+      await resumeSaved(page, baseURL!, offlineSave({ seats: 4, fresh: true }), HELD);
       expectOnTheCards(await sample(page, 4_000), ["deal", "fan", "hand"]);
     });
 

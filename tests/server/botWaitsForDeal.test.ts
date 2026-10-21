@@ -33,10 +33,9 @@ function dealtRound(seats: number): GameState {
     lastPlayedBy: 0,
     passCount: 0,
     gameMode: "free_for_all",
-    trickWinner: null,
     roundOver: false,
     finishingOrder: [],
-    firstPlayMade: false,
+    openingCard: null,
     lastMove: { seq: 0, kind: "deal" },
     startReason: { type: "start_card", playerIdx: 0 },
     playedRanks: emptyRankTally(),
@@ -74,7 +73,7 @@ describe("a vacant opener waits out the deal (#1726)", () => {
     const clock = fakeClock();
     restoreClock = installClock(clock);
     const gameState = dealtRound(4);
-    gameState.firstPlayMade = true;
+    gameState.openingCard = null;
     gameState.playedRanks![0] = 1;
     activeGames.set(ROOM, { roomId: ROOM, gameState, playerMap: {} } as unknown as OnlineGameState);
     try {

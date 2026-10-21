@@ -17,7 +17,7 @@ function afterGiveback(): GameState {
 function afterPass(): GameState {
   const opened = startRound(SEATS, "free_for_all", { random: rng(2).source });
   const opener = opened.players[opened.currentTurnIndex];
-  return passed(played(opened, buildCombination([opener.hand.find((c) => c.id === opened.startCard!.id)!])!));
+  return passed(played(opened, buildCombination([opener.hand.find((c) => c.id === opened.openingCard!.id)!])!));
 }
 
 for (const [name, state] of [["giveback", afterGiveback()], ["pass", afterPass()]] as const) {

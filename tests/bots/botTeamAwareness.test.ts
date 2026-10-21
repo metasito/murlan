@@ -28,7 +28,7 @@ function table(hands: Card[][], overrides: Partial<GameState> = {}): GameState {
         personality: "gent",
         team: seat % 2 === 0 ? "A" : "B",
       })
-    ), gameMode: "teams", firstPlayMade: true, lastPlayedCombination: TOP_PLAY, ...overrides }
+    ), gameMode: "teams", openingCard: null, lastPlayedCombination: TOP_PLAY, ...overrides }
   );
 }
 

@@ -33,10 +33,9 @@ const finished: GameState = state({
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: 0,
   roundOver: true,
   finishingOrder: ['player_0', 'player_1'],
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 });

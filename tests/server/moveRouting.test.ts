@@ -35,7 +35,7 @@ const table = (over: Partial<GameState>): GameState =>
     currentTurnIndex: 1,
     lastPlayedCombination: buildCombination([c("7", "diamonds")]),
     lastPlayedBy: 2,
-    firstPlayMade: true,
+    openingCard: null,
     playedRanks: new Array(15).fill(0),
     ...over,
   });

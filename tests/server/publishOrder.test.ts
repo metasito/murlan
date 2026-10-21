@@ -67,7 +67,7 @@ test("a play serves every viewer, then persists", async (t) => {
     kind: "move",
     roomId: ROOM,
     userId: "ana",
-    move: { kind: "play", cardIds: [state.startCard!.id] },
+    move: { kind: "play", cardIds: [state.openingCard!.id] },
   });
   assert.deepEqual(outcome, { ok: true });
   await settle();

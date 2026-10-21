@@ -7,7 +7,7 @@ import { buildCombination, getAllValidPlays, type Card } from "../../lib/game/ga
 const typeOf = (cards: Card[]) => buildCombination(cards)?.type ?? null;
 
 const straightsOf = (hand: Card[], length?: number) =>
-  getAllValidPlays(hand, null, true).filter(
+  getAllValidPlays(hand, { toBeat: null, mustInclude: null }).filter(
     (p) =>
       (p.type === "straight" || p.type === "royal_straight") &&
       (length === undefined || p.cards.length === length)
@@ -86,7 +86,7 @@ describe("enumeration completeness", () => {
     ];
     const found = straightsOf(hand, 5);
     assert.ok(found.length > 0, "3-4-5-6-7 must be enumerated");
-    assert.ok(getAllValidPlays(hand, null, true).length > 0);
+    assert.ok(getAllValidPlays(hand, { toBeat: null, mustInclude: null }).length > 0);
   });
 
   test("finds straights through several duplicated ranks", () => {
@@ -142,7 +142,7 @@ describe("enumeration completeness", () => {
       c("6", "spades"), j("bw"), j("colored"),
     ];
     assert.equal(straightsOf(hand).length, 0);
-    const jokerPlays = getAllValidPlays(hand, null, true).filter((p) =>
+    const jokerPlays = getAllValidPlays(hand, { toBeat: null, mustInclude: null }).filter((p) =>
       p.cards.some((card) => card.isJoker)
     );
     assert.ok(jokerPlays.every((p) => p.type === "single" && p.cards.length === 1));
@@ -169,7 +169,7 @@ describe("enumeration completeness", () => {
       c("3", "hearts"), c("4", "hearts"), c("5", "hearts"),
       c("6", "hearts"), c("7", "hearts"),
     ];
-    const royals = getAllValidPlays(hand, null, true).filter(
+    const royals = getAllValidPlays(hand, { toBeat: null, mustInclude: null }).filter(
       (p) => p.type === "royal_straight"
     );
     assert.deepEqual(
@@ -183,7 +183,7 @@ describe("enumeration completeness", () => {
       c("3", "spades"), c("3", "hearts"), c("4", "hearts"),
       c("5", "clubs"), c("6", "spades"), c("7", "hearts"),
     ];
-    const plays = getAllValidPlays(hand, null, true, c("3", "spades"));
+    const plays = getAllValidPlays(hand, { toBeat: null, mustInclude: c("3", "spades") });
     assert.ok(plays.length > 0);
     for (const play of plays) {
       assert.ok(
@@ -222,7 +222,7 @@ describe("enumeration completeness", () => {
       }
     }
 
-    const plays = getAllValidPlays(hand, null, true);
+    const plays = getAllValidPlays(hand, { toBeat: null, mustInclude: null });
 
     assert.ok(plays.length > 0);
     const ceiling = size ** 3;

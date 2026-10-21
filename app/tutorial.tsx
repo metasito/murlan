@@ -178,10 +178,9 @@ function buildExchangeState(t: TFn): GameState {
     lastPlayedBy: 0,
     passCount: 0,
     gameMode: "free_for_all",
-    trickWinner: null,
     roundOver: false,
     finishingOrder: [],
-    firstPlayMade: true,
+    openingCard: null,
     playedRanks: emptyRankTally(),
     lastMove: { seq: 0, kind: "deal" },
     exchangePhase: {
@@ -385,10 +384,7 @@ function stageBeat(beat: PlayBeat, selectedIds: Set<string>): StagedPlay {
   return readStagedPlay({
     hand: beat.handCards,
     selectedIds: [...selectedIds],
-    lastPlayedCombination: beat.lastPlayed,
-    startCard: undefined,
-    firstPlayMade: true,
-    isNewTrick: beat.isNewTrick,
+    demand: { toBeat: beat.isNewTrick ? null : beat.lastPlayed, mustInclude: null },
     isMyTurn: true,
     isFinished: false,
   });
@@ -399,7 +395,7 @@ function refusalMessage(staged: StagedPlay, t: TFn): string {
   return key
     ? t(key)
     : playRefusalLabel(
-        { refusal: staged.refusal, isMyTurn: true, isFinished: false, startCard: undefined },
+        { refusal: staged.refusal, isMyTurn: true, isFinished: false, openingCard: null },
         t
       );
 }
@@ -671,7 +667,7 @@ export default function TutorialScreen() {
             ? t("tutorial.stagedReady")
             : t("tutorial.stagedBlocked", {
                 reason: playRefusalLabel(
-                  { refusal: staged.refusal, isMyTurn: true, isFinished: false, startCard: undefined },
+                  { refusal: staged.refusal, isMyTurn: true, isFinished: false, openingCard: null },
                   t
                 ),
               })

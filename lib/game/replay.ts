@@ -158,10 +158,9 @@ export function replayStateAt(replay: ReplayDto, index: number): GameState {
     lastPlayedBy: pileSeat,
     passCount: 0,
     gameMode: replay.gameMode,
-    trickWinner: null,
     roundOver: finished,
     finishingOrder: finished ? replay.finishingOrder : [],
-    firstPlayMade: at >= 0,
+    openingCard: null,
     playedRanks,
     lastMove,
   };

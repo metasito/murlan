@@ -45,7 +45,7 @@ function applied(state: GameState, move: Move) {
   return result;
 }
 
-const leadStartCard = (state: GameState) => applied(state, { kind: "play", cardIds: [state.startCard!.id] });
+const leadStartCard = (state: GameState) => applied(state, { kind: "play", cardIds: [state.openingCard!.id] });
 
 function opened(): GameState {
   return leadStartCard(startRound(SEATS, "free_for_all")).state;
@@ -110,7 +110,7 @@ test("a play that ends the round is logged, persisted, and handed to round over 
   try {
     const dealt = startRound(SEATS.slice(0, 2), "free_for_all");
     const state = structuredClone(dealt);
-    state.players[dealt.currentTurnIndex].hand = [state.startCard!];
+    state.players[dealt.currentTurnIndex].hand = [state.openingCard!];
     const last = leadStartCard(state);
     assert.equal(last.state.roundOver, true, "emptying the last hand of two ends the round");
     const game = table(state);

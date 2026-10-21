@@ -20,6 +20,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import {
   roundUnplayed,
   openingIsPending,
+  tableDemand,
   sortHand,
   type Card,
   type GameState,
@@ -450,25 +451,15 @@ export function GameTable({
     () => canPassNowOf({ isMyTurn, isFinished, isNewTrick }),
     [isMyTurn, isFinished, isNewTrick]
   );
+  const { lastPlayedCombination, openingCard } = gameState;
   const facts = React.useMemo<TableFacts>(
     () => ({
       hand: sortedHand,
-      lastPlayedCombination: gameState.lastPlayedCombination,
-      startCard: gameState.startCard,
-      firstPlayMade: gameState.firstPlayMade,
-      isNewTrick,
+      demand: tableDemand({ lastPlayedCombination, openingCard }),
       isMyTurn,
       isFinished,
     }),
-    [
-      sortedHand,
-      gameState.lastPlayedCombination,
-      gameState.startCard,
-      gameState.firstPlayMade,
-      isNewTrick,
-      isMyTurn,
-      isFinished,
-    ]
+    [sortedHand, lastPlayedCombination, openingCard, isMyTurn, isFinished]
   );
   const passIsOnlyMove = React.useMemo(() => canPass && !canBeatPileOf(facts), [canPass, facts]);
   const passed = usePassedSeats(
@@ -741,7 +732,7 @@ export function GameTable({
     lampToWinner ? winnerDir : holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length)
   ];
   const emberFrom = useRef(shownTurnIndex);
-  const emberRuns = !holdingForStart && !shownExchange && !gameState.roundOver && gameState.firstPlayMade;
+  const emberRuns = !holdingForStart && !shownExchange && !gameState.roundOver && gameState.openingCard === null;
   useEffect(() => {
     const from = emberFrom.current;
     emberFrom.current = shownTurnIndex;
@@ -885,11 +876,11 @@ export function GameTable({
   });
   const countdown = useCountdown(turn.window);
 
-  const startCardDue = !gameState.firstPlayMade && !!gameState.startCard;
+  const startCardDue = gameState.openingCard !== null;
   const whoStarts: StartReason | undefined =
     startReason ??
-    (gameState.startCard
-      ? { type: "start_card", card: gameState.startCard, playerIdx: gameState.currentTurnIndex }
+    (gameState.openingCard
+      ? { type: "start_card", card: gameState.openingCard, playerIdx: gameState.currentTurnIndex }
       : undefined);
   const startGated = holdingForStart && !!startReason;
 

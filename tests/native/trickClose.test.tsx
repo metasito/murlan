@@ -1,7 +1,7 @@
 // tests/native/trickClose.test.tsx — winning a trick pays off on the cards
 // that won it.
 //
-// `processPass` clears `lastPlayedCombination` and credits `trickWinner` in the
+// `processPass` clears `lastPlayedCombination` and records the closing pass in the
 // same transition, so the table sees both on one commit. Taken naively that
 // wipes the felt at the exact moment the winner tag goes up, and plays the
 // new-round sting ahead of the trick-win sting.
@@ -51,10 +51,9 @@ const state = (over: Partial<GameState>): GameState => ({
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
   ...over,
@@ -81,7 +80,7 @@ const onFelt = (card: Card) =>
 
 /** Seat 1 leads the King; seat 0's pass closes the trick in seat 1's favour. */
 const LED = state({ lastPlayedCombination: single(KING), lastPlayedBy: 1, currentTurnIndex: 0, lastMove: { seq: 1, kind: 'play', seat: 1 } });
-const CLOSED = state({ lastPlayedCombination: null, lastPlayedBy: 1, trickWinner: 1, lastMove: { seq: 2, kind: 'pass', seat: 0, closedTrick: true } });
+const CLOSED = state({ lastPlayedCombination: null, lastPlayedBy: 1, lastMove: { seq: 2, kind: 'pass', seat: 0, closedTrick: true } });
 
 beforeEach(() => setMotion('on'));
 
@@ -168,7 +167,7 @@ describe('the pass that closes a trick', () => {
     await act(async () => {
       jest.advanceTimersByTime(200);
       r.rerender(
-        table(state({ lastPlayedCombination: single(ACE), lastPlayedBy: 1, trickWinner: 1, lastMove: { seq: 3, kind: 'play', seat: 1 } }))
+        table(state({ lastPlayedCombination: single(ACE), lastPlayedBy: 1, lastMove: { seq: 3, kind: 'play', seat: 1 } }))
       );
     });
     await act(async () => {
@@ -218,7 +217,7 @@ describe('the pass that closes a trick', () => {
       await act(async () => {
         jest.advanceTimersByTime(BOT_DELAY_MS);
         r.rerender(
-          table(state({ lastPlayedCombination: single(ACE), lastPlayedBy: 1, trickWinner: 1, lastMove: { seq: 3, kind: 'play', seat: 1 } }))
+          table(state({ lastPlayedCombination: single(ACE), lastPlayedBy: 1, lastMove: { seq: 3, kind: 'play', seat: 1 } }))
         );
       });
       expect(swept(KING)).toBeTruthy();

@@ -299,7 +299,7 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
         const leader = state.players[seat];
         const known = knownOpponentExchangeCard(state.exchangePhase, seat);
         if (known && isExchangeCardStillOut(known, state.playedRanks, leader.hand)) {
-          const legalPlays = getAllValidPlays(leader.hand, null, true, undefined);
+          const legalPlays = getAllValidPlays(leader.hand, { toBeat: null, mustInclude: null });
           const hadSafeAlternative = legalPlays.some((p) => !losesLeadToExchangeCard(p, known));
 
           if (!hadSafeAlternative) {
@@ -353,7 +353,7 @@ export function isCertainLead(
  * "certain" single lead needs answered.
  */
 export function handHasLegalRoyalStraight(hand: Card[]): boolean {
-  return getAllValidPlays(hand, null, true).some((play) => play.type === "royal_straight");
+  return getAllValidPlays(hand, { toBeat: null, mustInclude: null }).some((play) => play.type === "royal_straight");
 }
 
 interface RoyalStraightBlindSpot {
@@ -392,7 +392,7 @@ function measureRoyalStraightBlindSpot(n: number, seed: number): RoyalStraightBl
 
         if (isNewTrick) {
           const leader = state.players[seat];
-          const legalPlays = getAllValidPlays(leader.hand, null, true, undefined);
+          const legalPlays = getAllValidPlays(leader.hand, { toBeat: null, mustInclude: null });
           const certain = legalPlays.filter((p) => isCertainLead(p, state.playedRanks, leader.hand));
           if (certain.length > 0) {
             certainLeadsChecked++;

@@ -42,10 +42,9 @@ const state = (currentTurnIndex: number): GameState => ({
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 });
@@ -147,8 +146,7 @@ const startsOther = filled('gameShared.startReasonCard', { name: 'Ana', rank: '3
 
 const dealt = (turn: number): GameState => ({
   ...state(turn),
-  firstPlayMade: false,
-  startCard: START_CARD,
+  openingCard: START_CARD,
 });
 
 /** `chipDotLit` is the only thing that separates a lit dot from an unlit one. */

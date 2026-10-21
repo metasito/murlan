@@ -39,10 +39,9 @@ const state = (cards: Card[], passCount: number): GameState => ({
   lastPlayedBy: -1,
   passCount,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 });

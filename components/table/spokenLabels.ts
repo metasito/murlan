@@ -10,7 +10,6 @@ import {
   getSuitSymbol,
   type Card,
   type Combination,
-  type GameState,
   type SelectionRefusal,
 } from "../../lib/game/gameEngine.ts";
 import { rankSpokenName, cardSpokenName, suitSpokenName } from "../../lib/cardNames.ts";
@@ -152,7 +151,7 @@ export function playRefusalLabel(
     refusal: PlayButtonLabel;
     isMyTurn: boolean;
     isFinished: boolean;
-    startCard: GameState["startCard"];
+    openingCard: Card | null;
   },
   t: TFn
 ): string {
@@ -161,7 +160,7 @@ export function playRefusalLabel(
     : play.isFinished
       ? "gameTable.playA11ySpokenYouAreDone"
       : PLAY_SPOKEN_KEYS[play.refusal];
-  const card = play.startCard;
+  const card = play.openingCard;
   return t(key, {
     rank: card ? getCardDisplayRank(card.rank) : "",
     suit: card ? getSuitSymbol(card.suit) : "",
@@ -170,7 +169,7 @@ export function playRefusalLabel(
 }
 
 /** The float's text for a `game:error`: a refused selection in GIOCA's words, anything else as the server coded it. */
-export function gameErrorText(payload: ServerPayload, startCard: GameState["startCard"], t: TFn): string {
+export function gameErrorText(payload: ServerPayload, openingCard: Card | null, t: TFn): string {
   const refusal = payload.params?.refusal;
   if (
     payload.code !== "INVALID_MOVE" ||
@@ -180,5 +179,5 @@ export function gameErrorText(payload: ServerPayload, startCard: GameState["star
   ) {
     return translateServerPayload(payload);
   }
-  return playRefusalLabel({ refusal: refusal as SelectionRefusal, isMyTurn: true, isFinished: false, startCard }, t);
+  return playRefusalLabel({ refusal: refusal as SelectionRefusal, isMyTurn: true, isFinished: false, openingCard }, t);
 }

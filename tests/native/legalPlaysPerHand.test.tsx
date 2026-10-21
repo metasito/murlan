@@ -43,10 +43,9 @@ const state = (over: Partial<GameState> = {}): GameState => ({
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: engine.emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
   ...over,
@@ -125,13 +124,13 @@ describe('the legal plays of a hand', () => {
   });
 
   it('follow the start card and whether the opening play is made', async () => {
-    const r = await render(table(onPile({ firstPlayMade: false, startCard: SEVEN_H })));
+    const r = await render(table(onPile({ openingCard: SEVEN_H })));
     expect(passaBorder()).toBeUndefined();
 
-    await r.rerender(table(onPile({ firstPlayMade: false, startCard: THREE_S })));
+    await r.rerender(table(onPile({ openingCard: THREE_S })));
     expect(passaBorder()).toBe(2);
 
-    await r.rerender(table(onPile({ firstPlayMade: true, startCard: THREE_S })));
+    await r.rerender(table(onPile({ openingCard: null })));
     expect(passaBorder()).toBeUndefined();
     await r.unmount();
   });

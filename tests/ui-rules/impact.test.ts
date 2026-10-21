@@ -146,7 +146,7 @@ describe("the table's own trauma escalation (#763)", () => {
   });
 
   // The round rung is `GameState.roundOver` (processPlay: "the round is
-  // decided"), never `trickWinner` — that is a trick, closing many times a
+  // decided"), never a pass's `closedTrick` — that is a trick, closing many times a
   // round (docs/GAME-RULES.md §9). The match rung is a further fact about the
   // same landing (`MatchVerdict.over`), not a second, later event.
   describe("landingTier", () => {

@@ -27,7 +27,7 @@ for (const locale of ["en", "it", "sq"] as const) {
   for (const refusal of SELECTION_REFUSALS) {
     test(`${locale}: a refused ${refusal} reads GIOCA's sentence`, () => {
       const t = tIn(locale);
-      const giocaSays = playRefusalLabel({ refusal, isMyTurn: true, isFinished: false, startCard: fourOfHearts }, t);
+      const giocaSays = playRefusalLabel({ refusal, isMyTurn: true, isFinished: false, openingCard: fourOfHearts }, t);
       assert.equal(gameErrorText(refused(refusal), fourOfHearts, t), giocaSays);
       assert.notEqual(giocaSays, translate(locale, "server.INVALID_MOVE"));
     });

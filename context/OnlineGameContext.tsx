@@ -85,7 +85,7 @@ export type ServerNotice = {
   payload: ServerPayload;
   seq: number;
   surface: "lobby" | "room" | "table";
-  startCard: WireGameState["startCard"] | undefined;
+  openingCard: WireGameState["openingCard"];
 };
 
 /** A refusal as one surface shows it, in the language on screen. */
@@ -282,7 +282,7 @@ export function useServerError(surface: ServerNotice["surface"]): ServerError | 
   const { t } = useTranslation();
   return useMemo(
     () =>
-      error?.surface === surface ? { text: gameErrorText(error.payload, error.startCard, t), seq: error.seq } : null,
+      error?.surface === surface ? { text: gameErrorText(error.payload, error.openingCard, t), seq: error.seq } : null,
     [error, surface, t]
   );
 }
@@ -350,7 +350,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
   const refuse = useCallback((payload: ServerPayload) => {
     const surface = gameStateRef.current ? "table" : roomRef.current ? "room" : "lobby";
-    setError({ payload, seq: ++errorSeqRef.current, surface, startCard: gameStateRef.current?.startCard });
+    setError({ payload, seq: ++errorSeqRef.current, surface, openingCard: gameStateRef.current?.openingCard ?? null });
   }, []);
 
   /** The one teardown: whatever ends a table, nothing of it survives into the next. */

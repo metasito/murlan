@@ -115,7 +115,7 @@ export function HandRow({
         // counted to: Maestro's `index` sorts by position, and the
         // arc puts the outermost card below its neighbours (#757).
         deal={deal.hand}
-        startCardId={facts.firstPlayMade ? undefined : facts.startCard?.id}
+        startCardId={facts.demand.mustInclude?.id}
       />
     </HandStatus>
   );

@@ -7,9 +7,8 @@ import {
   checkSelection,
   getAllValidPlays,
   type Card,
-  type Combination,
-  type GameState,
   type SelectionRefusal,
+  type TableDemand,
 } from "../../lib/game/gameEngine.ts";
 
 /** Why GIOCA is dim: the engine's code, or "play" when the selection is not what is wrong. */
@@ -26,36 +25,20 @@ export interface StagedPlay {
 
 export type TableFacts = {
   hand: Card[];
-  lastPlayedCombination: Combination | null;
-  startCard: GameState["startCard"];
-  firstPlayMade: boolean;
-  isNewTrick: boolean;
+  demand: TableDemand;
   isMyTurn: boolean;
   isFinished: boolean;
 };
 
-function whatMustBeMet(input: TableFacts) {
-  return {
-    toBeat: input.isNewTrick ? null : input.lastPlayedCombination,
-    requiredCard: !input.firstPlayMade && input.startCard ? input.startCard : undefined,
-  };
-}
-
 /** Some selection of this hand is legal right now — so PASSA is a choice, not the only move. */
 export function canBeatPileOf(input: TableFacts): boolean {
   if (!input.isMyTurn || input.isFinished) return false;
-  const { toBeat, requiredCard } = whatMustBeMet(input);
-  return getAllValidPlays(input.hand, toBeat, input.isNewTrick, requiredCard).length > 0;
+  return getAllValidPlays(input.hand, input.demand).length > 0;
 }
 
 export function readStagedPlay(input: TableFacts & { selectedIds: string[] }): StagedPlay {
   const cards = input.hand.filter((c) => input.selectedIds.includes(c.id));
-  const { toBeat } = whatMustBeMet(input);
-  const check = checkSelection(cards, {
-    lastPlayedCombination: toBeat,
-    firstPlayMade: input.firstPlayMade,
-    startCard: input.startCard,
-  });
+  const check = checkSelection(cards, input.demand);
   const myMove = input.isMyTurn && !input.isFinished;
   return {
     cards,

@@ -56,7 +56,7 @@ export function moveAction(
     const { seat, combo } = result.move;
     logger.debug({ roomId, seat, comboType: combo.type, cardCount: combo.cards.length }, "Play accepted");
   }
-  if (!prev.firstPlayMade && result.state.firstPlayMade) {
+  if (prev.openingCard !== null && result.state.openingCard === null) {
     trackEvent("game.firstMoveMade", userId, {
       playerCount: result.state.players.length,
       gameMode: result.state.gameMode,

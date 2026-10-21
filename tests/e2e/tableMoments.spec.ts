@@ -56,7 +56,7 @@ async function readEntry(page: Page, windowMs: number): Promise<EntryFrame[]> {
 
 /** A fresh, undealt hand — the state `GameTable`'s own `freshDeal` arms on. */
 async function openFreshTable(page: Page, baseURL: string): Promise<EntryFrame[]> {
-  await seedSave(page, offlineSave({ seats: 4, hand: SEAT_HAND, state: { firstPlayMade: false } }));
+  await seedSave(page, offlineSave({ seats: 4, hand: SEAT_HAND, fresh: true }));
   await openApp(page, baseURL);
   const resume = page.getByRole("button", { name: "Riprendi partita" });
   await resume.waitFor({ state: "visible", timeout: 60_000 });

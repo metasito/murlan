@@ -26,10 +26,9 @@ const ENDED: GameState = {
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: true,
   finishingOrder: ['player_0', 'player_1', 'player_2', 'player_3'],
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 };
@@ -108,7 +107,7 @@ describe('the score pill at the end of a round', () => {
     expect(pile()).toBe(1);
     await advance(deal - pileFade + 32);
     expect(pile()).toBe(0);
-    await act(async () => view.rerender(table(noop, { ...ENDED, roundOver: false, finishingOrder: [], firstPlayMade: false })));
+    await act(async () => view.rerender(table(noop, { ...ENDED, roundOver: false, finishingOrder: [], openingCard: null })));
     await advance(16);
     expect(pile()).toBe(1);
     await view.unmount();
@@ -117,7 +116,7 @@ describe('the score pill at the end of a round', () => {
   it('keeps the glow fading through the next deal', async () => {
     const view = await render(table(noop));
     await advance(deal);
-    await act(async () => view.rerender(table(noop, { ...ENDED, roundOver: false, finishingOrder: [], firstPlayMade: false })));
+    await act(async () => view.rerender(table(noop, { ...ENDED, roundOver: false, finishingOrder: [], openingCard: null })));
     await advance(16);
     expect(glow()).toBeGreaterThan(0.5);
     await advance(1000);

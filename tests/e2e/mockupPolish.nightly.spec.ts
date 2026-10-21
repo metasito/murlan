@@ -9,7 +9,7 @@ import { tap } from "./helpers/press";
 import { captureGameState, captureStateById, seatedSituation, type CaptureState } from "../../lib/captureStates";
 import { CARD_H, cardScale, HAND_SCALE } from "../../components/cardFaceModel";
 import { handVisibleH } from "../../components/seatLayout";
-import { RANK_SLOTS, type Card } from "../../lib/game/gameEngine";
+import type { Card } from "../../lib/game/gameEngine";
 import { HAND_CARD_BOXES, HAND_SELECTED } from "./helpers/selectors.ts";
 
 const HALF_PT = 0.5;
@@ -308,11 +308,10 @@ function openingWithStartCard() {
     names: ["Ana", "Besnik"],
     personalities: [undefined, "luan"],
     holding: [["3_clubs", "5_hearts", "K_spades"], ["J_hearts", "Q_diamonds"]],
+    fresh: true,
     state: {
-      firstPlayMade: false,
-      startCard: three,
+      openingCard: three,
       startReason: { type: "start_card", card: three, playerIdx: 0 },
-      playedRanks: Array.from({ length: RANK_SLOTS }, () => 0),
     },
   });
 }

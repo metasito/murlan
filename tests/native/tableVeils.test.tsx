@@ -26,10 +26,9 @@ const STATE: GameState = {
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: true,
+  openingCard: null,
   lastMove: { seq: 0, kind: 'deal' },
   startReason: { type: 'lost_round', playerIdx: 1 },
   playedRanks: Array.from({ length: RANK_SLOTS }, () => 0),
@@ -51,7 +50,7 @@ const FIXTURES: Fixture[] = ['table', 'scoreOpen', 'refusal', 'matchEnd', 'start
 
 function stateFor(fixture: Fixture): GameState {
   if (fixture === 'matchEnd') return { ...STATE, roundOver: true, finishingOrder: ['player_0', 'player_1', 'player_2', 'player_3'] };
-  if (fixture === 'startCard') return { ...STATE, firstPlayMade: false, startCard: card('3_1'), startReason: undefined };
+  if (fixture === 'startCard') return { ...STATE, openingCard: card('3_1'), startReason: undefined };
   return STATE;
 }
 

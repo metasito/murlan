@@ -83,7 +83,7 @@ describe("an opponent's hand arrives with the deal", () => {
     expect(handPoses().some((p) => p.opacity !== 1)).toBe(true);
     await dealt.unmount();
 
-    const resumed = await render(table({ ...freshDeal, firstPlayMade: true, playedRanks: aThreePlayed() }));
+    const resumed = await render(table({ ...freshDeal, openingCard: null, playedRanks: aThreePlayed() }));
     await frame();
     expect(backs()).toHaveLength(0);
     expect(handPoses()).toHaveLength(13);

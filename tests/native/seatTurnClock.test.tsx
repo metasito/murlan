@@ -60,10 +60,9 @@ const state = (over: Partial<GameState>): GameState => ({
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
   ...over,
@@ -280,7 +279,7 @@ describe("a seat's turn clock", () => {
 
   it('is dark offline while the start announcement holds the table, and sweeps once it lets go', async () => {
     const opening = state({
-      firstPlayMade: false,
+      openingCard: null,
       startReason: { type: 'start_card', card: card('3_1', '3', 'spades'), playerIdx: 1 },
       playedRanks: Array.from({ length: 15 }, () => 0),
     });

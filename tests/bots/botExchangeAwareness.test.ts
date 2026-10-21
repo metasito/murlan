@@ -108,7 +108,7 @@ describe("autoMoveForSeat wires the exchange into the loser that leads next", ()
       ],
         currentTurnIndex: 1,
         lastPlayedBy: 1,
-        firstPlayMade: true,
+        openingCard: null,
         exchangePhase: exchange(0, 1, { cardFromLoser: c("6", "diamonds") }),
       }
     );

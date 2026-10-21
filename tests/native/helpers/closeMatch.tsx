@@ -59,10 +59,9 @@ export const table = (c: Case, over: boolean, decided = over) => {
     lastPlayedBy: over ? c.closer : (c.closer + 3) % 4,
     passCount: 0,
     gameMode: c.teams ? 'teams' : 'free_for_all',
-    trickWinner: null,
     roundOver: over,
     finishingOrder: over ? FINISHING_ORDER : [],
-    firstPlayMade: true,
+    openingCard: null,
     playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: "deal" },
   };

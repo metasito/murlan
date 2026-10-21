@@ -47,7 +47,7 @@ describe("teams: every seat gets a placement", () => {
     const state = teamsState([0, 3, 1, 5], {
       currentTurnIndex: 2,
       finishingOrder: ["p0"],
-      firstPlayMade: true,
+      openingCard: null,
       lastPlayedCombination: null,
     });
     state.players[0].finishPosition = 1;
@@ -98,7 +98,7 @@ describe("teams: every seat gets a placement", () => {
     const state = teamsState([0, 0, 1, 4], {
       currentTurnIndex: 2,
       finishingOrder: ["p0", "p1"],
-      firstPlayMade: true,
+      openingCard: null,
     });
     state.players[0].finishPosition = 1;
     state.players[1].finishPosition = 2;

@@ -25,10 +25,9 @@ export const freshDeal: GameState = {
   lastPlayedBy: 0,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: false,
+  openingCard: null,
   playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
 };

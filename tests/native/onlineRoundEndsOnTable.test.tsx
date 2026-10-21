@@ -24,14 +24,13 @@ const ENDED: GameState = state({
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: true,
   finishingOrder: ['player_0', 'player_1', 'player_2', 'player_3'],
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 });
-const DEALT: GameState = state({ ...ENDED, roundOver: false, finishingOrder: [], firstPlayMade: false });
+const DEALT: GameState = state({ ...ENDED, roundOver: false, finishingOrder: [], openingCard: null });
 const POINTS = { player_0: 3, player_1: 1, player_2: 0, player_3: 0 };
 const TOTALS = { player_0: 10, player_1: 4, player_2: 2, player_3: 1 };
 
@@ -132,7 +131,7 @@ describe('a round ending online', () => {
     const motes = jest.spyOn(particles, 'roundMotes');
     // The last round's points stay with the match while the next round is dealt and played out.
     const view = await mount(screenNow(), { ended: teamsEnded, points: { player_0: 2, player_3: 1, player_1: 2, player_2: 1 } });
-    await sends(view, { ...teamsEnded, roundOver: false, finishingOrder: [], firstPlayMade: false });
+    await sends(view, { ...teamsEnded, roundOver: false, finishingOrder: [], openingCard: null });
     await sends(view, teamsEnded);
     motes.mockClear();
     await advance(close + settled);
