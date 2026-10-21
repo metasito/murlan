@@ -1,21 +1,12 @@
-import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { View } from "react-native";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ReducedMotionConfig, ReduceMotion } from "react-native-reanimated";
-import { SafeAreaProvider } from "react-native-safe-area-context";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { queryClient } from "@/lib/query-client";
-import { GameProvider } from "@/context/GameContext";
-import { AuthProvider, useAuth } from "@/context/AuthContext";
-import { SocketProvider } from "@/context/SocketContext";
-import { SettingsProvider } from "@/context/SettingsContext";
-import { NotificationProvider, useBanner } from "@/context/NotificationContext";
+import { useBanner } from "@/context/NotificationContext";
+import { AppProviders } from "@/context/AppProviders";
 import NotificationBanner from "@/components/NotificationBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
-import { OrientationProvider } from "@/lib/device/orientation";
 import { followInviteTaps } from "@/lib/device/inviteTaps";
 import { initLocale } from "@/lib/i18n";
 import { useFonts } from "expo-font";
@@ -49,11 +40,6 @@ function trackForRoute(pathname: string): TrackId {
 const BenchAutostart: () => null =
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- a static import would ship the bench
   process.env.EXPO_PUBLIC_DIAGNOSTICS === "1" ? require("@/lib/diagnostics/BenchAutostart").BenchAutostart : () => null;
-
-function AccountNotifications({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
-  return <NotificationProvider accountId={user?.id}>{children}</NotificationProvider>;
-}
 
 export function RootLayoutNav() {
   const { notification, dismissNotification, reportBannerBottom } = useBanner();
@@ -149,31 +135,9 @@ export default function RootLayout() {
   // holds until fonts and locale are both settled.
   if (!localeReady) return null;
 
-  // ErrorBoundary sits inside SafeAreaProvider: its fallback needs insets to
-  // lay itself out. Nothing catches a throw in Settings, Query or SafeArea
-  // above it. A table screen's crash stops at its route's own ErrorBoundary
-  // export, so the providers below this one stay mounted.
   return (
-    <SettingsProvider>
-      <QueryClientProvider client={queryClient}>
-        <SafeAreaProvider>
-          <ErrorBoundary>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-              <OrientationProvider>
-                <AuthProvider>
-                  <AccountNotifications>
-                    <SocketProvider>
-                      <GameProvider>
-                        <RootLayoutNav />
-                      </GameProvider>
-                    </SocketProvider>
-                  </AccountNotifications>
-                </AuthProvider>
-              </OrientationProvider>
-            </GestureHandlerRootView>
-          </ErrorBoundary>
-        </SafeAreaProvider>
-      </QueryClientProvider>
-    </SettingsProvider>
+    <AppProviders>
+      <RootLayoutNav />
+    </AppProviders>
   );
 }

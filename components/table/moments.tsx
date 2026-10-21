@@ -20,13 +20,13 @@ import Animated, {
   withTiming,
   withSequence,
   withDelay,
-  cancelAnimation,
   Easing,
   ReduceMotion,
   type SharedValue,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useOwnedValue } from "@/lib/motion";
 import { flareKindFor, type FlareKind } from "@/components/impact";
 import { BombFx, Layer, makeShadow, withAlpha, Motion, Scrim } from "@/lib/theme";
 import { useLandingReaction } from "@/components/table/useLandingReaction";
@@ -138,8 +138,8 @@ function useBurst(landing: SharedValue<LandingSignal>, reduceMotion: boolean, fi
 }
 
 function Flare({ landing, scale }: { landing: SharedValue<LandingSignal>; scale: number }) {
-  const opacity = useSharedValue(0);
-  const scaleV = useSharedValue(0.15);
+  const opacity = useOwnedValue(0);
+  const scaleV = useOwnedValue(0.15);
 
   useBurst(landing, usePrefersReducedMotion(), (kind) => {
     "worklet";
@@ -162,14 +162,6 @@ function Flare({ landing, scale }: { landing: SharedValue<LandingSignal>; scale:
       )
     );
   });
-
-  useEffect(
-    () => () => {
-      cancelAnimation(opacity);
-      cancelAnimation(scaleV);
-    },
-    [opacity, scaleV]
-  );
 
   const aStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -222,8 +214,8 @@ function Wave({
   delayMs: number;
   durationMs: number;
 }) {
-  const opacity = useSharedValue(0);
-  const scaleV = useSharedValue(0.15);
+  const opacity = useOwnedValue(0);
+  const scaleV = useOwnedValue(0.15);
 
   useBurst(landing, usePrefersReducedMotion(), () => {
     "worklet";
@@ -242,14 +234,6 @@ function Wave({
     );
     scaleV.set(withDelay(delayMs, withTiming(6.5, { duration: durationMs, easing: e }), ReduceMotion.System));
   });
-
-  useEffect(
-    () => () => {
-      cancelAnimation(opacity);
-      cancelAnimation(scaleV);
-    },
-    [opacity, scaleV]
-  );
 
   const aStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -323,7 +307,7 @@ export function FeltScrim({ dim }: { dim: SharedValue<number> }) {
 
 /** The mockup's `flash(1, 280)`, once per bomb and, a photosensitivity cap, never twice within `BombFx.flashGapMs`. */
 export function BombFlash({ landing }: { landing: SharedValue<LandingSignal> }) {
-  const opacity = useSharedValue(0);
+  const opacity = useOwnedValue(0);
   const lastAt = useSharedValue(-Infinity);
   useBombBeat(landing, usePrefersReducedMotion(), (l) => {
     "worklet";
@@ -332,7 +316,6 @@ export function BombFlash({ landing }: { landing: SharedValue<LandingSignal> }) 
     opacity.set(1);
     opacity.set(withTiming(0, { duration: BombFx.flashMs, easing: Easing.out(Easing.cubic) }));
   });
-  useEffect(() => () => cancelAnimation(opacity), [opacity]);
   const aStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
   return (
     <Animated.View
@@ -368,34 +351,28 @@ export function Sweep({
   durationMs?: number;
 }) {
   const reduceMotion = usePrefersReducedMotion();
-  const opacity = useSharedValue(0);
+  const opacity = useOwnedValue(0);
   // -1 to 1 across the band's own travel, which is applied at render: a
   // window resize changes how far that is, and must not restart the pass.
-  const x = useSharedValue(0);
+  const x = useOwnedValue(0);
   const bandW = width * SWEEP_W_FACTOR;
   const bandH = height * SWEEP_H_FACTOR;
   const travel = bandW * SWEEP_TRAVEL_FACTOR;
 
   useEffect(() => {
     if (!trigger || reduceMotion) return;
-    opacity.value = 0;
-    x.value = -1;
+    opacity.set(0);
+    x.set(-1);
     const e = SWEEP_EASING;
-    opacity.value = withSequence(
-      withTiming(1, { duration: durationMs * 0.12, easing: e }),
-      withTiming(1, { duration: durationMs * 0.76, easing: e }),
-      withTiming(0, { duration: durationMs * 0.12, easing: e })
+    opacity.set(
+      withSequence(
+        withTiming(1, { duration: durationMs * 0.12, easing: e }),
+        withTiming(1, { duration: durationMs * 0.76, easing: e }),
+        withTiming(0, { duration: durationMs * 0.12, easing: e })
+      )
     );
-    x.value = withTiming(1, { duration: durationMs, easing: e });
+    x.set(withTiming(1, { duration: durationMs, easing: e }));
   }, [trigger, reduceMotion, durationMs, opacity, x]);
-
-  useEffect(
-    () => () => {
-      cancelAnimation(opacity);
-      cancelAnimation(x);
-    },
-    [opacity, x]
-  );
 
   const aStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,

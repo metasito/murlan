@@ -9,7 +9,7 @@ const scriptsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".
 
 /** Each entry is one exact offender and states why it may listen beyond loopback. */
 const ALLOWED: Record<string, string> = {
-  "diagnostics-collector.mjs: .listen(5099, \"0.0.0.0\", ()": "the phone posts bench rows to the PC over the LAN; the body and file are capped instead",
+  "diagnostics-collector.mjs: .listen(COLLECTOR_PORT, \"0.0.0.0\", ()": "the phone posts bench rows to the PC over the LAN; the body and file are capped instead",
   "dev-stack.mjs: .listen(${port},'0.0.0.0',()": "canBind is a probe that opens and closes at once; it must see a port held on any interface",
 };
 

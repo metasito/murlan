@@ -5,11 +5,14 @@ import QuartzCore
 import ReplayKit
 
 public final class MurlanDiagnosticsModule: Module {
+  private static let maxRows = 20_000
   private let queue = DispatchQueue(label: "murlan.diagnostics")
   private var rows: [[String: Any]] = []
   private var appOnsets = OnsetDetector(source: "app", levels: true)
   private var micOnsets = OnsetDetector(source: "mic", levels: false)
   private var shakes = ShakeDetector()
+  private var capture = 0
+  private var motionRun = 0
   private let motion = CMMotionManager()
 
   public func definition() -> ModuleDefinition {
@@ -28,19 +31,24 @@ public final class MurlanDiagnosticsModule: Module {
       return kr == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : -1
     }
 
-    Function("outputLatencyMs") { () -> Double in AVAudioSession.sharedInstance().outputLatency * 1000 }
-    Function("ioBufferMs") { () -> Double in AVAudioSession.sharedInstance().ioBufferDuration * 1000 }
     Function("inputLatencyMs") { () -> Double in AVAudioSession.sharedInstance().inputLatency * 1000 }
 
     AsyncFunction("startCapture") { (mic: Bool, promise: Promise) in
+      // Buffers the last capture still has queued would feed the fresh detectors.
+      let run = self.queue.sync { () -> Int in
+        self.capture += 1
+        self.appOnsets = OnsetDetector(source: "app", levels: true)
+        self.micOnsets = OnsetDetector(source: "mic", levels: false)
+        return self.capture
+      }
       let recorder = RPScreenRecorder.shared()
       recorder.isMicrophoneEnabled = mic
       recorder.startCapture(handler: { [weak self] buffer, type, error in
         guard let self, error == nil else { return }
-        switch type {
-        case .audioApp: self.queue.async { self.rows.append(contentsOf: self.appOnsets.feed(buffer)) }
-        case .audioMic: self.queue.async { self.rows.append(contentsOf: self.micOnsets.feed(buffer)) }
-        default: return
+        guard type == .audioApp || type == .audioMic else { return }
+        self.queue.async {
+          guard self.capture == run else { return }
+          self.keep(type == .audioApp ? self.appOnsets.feed(buffer) : self.micOnsets.feed(buffer))
         }
       }, completionHandler: { error in
         if let error { promise.reject("E_CAPTURE", error.localizedDescription) } else { promise.resolve(true) }
@@ -48,18 +56,25 @@ public final class MurlanDiagnosticsModule: Module {
     }
 
     AsyncFunction("stopCapture") { (promise: Promise) in
-      RPScreenRecorder.shared().stopCapture { _ in promise.resolve(true) }
+      RPScreenRecorder.shared().stopCapture { error in
+        if let error { promise.reject("E_CAPTURE", error.localizedDescription) } else { promise.resolve(true) }
+      }
     }
 
     Function("startMotion") { () -> Bool in
       guard self.motion.isAccelerometerAvailable else { return false }
+      let run = self.queue.sync { () -> Int in
+        self.motionRun += 1
+        self.shakes = ShakeDetector()
+        return self.motionRun
+      }
       self.motion.accelerometerUpdateInterval = 0.01
       let operations = OperationQueue()
       operations.underlyingQueue = self.queue
       self.motion.startAccelerometerUpdates(to: operations) { [weak self] data, _ in
-        guard let self, let data else { return }
+        guard let self, let data, self.motionRun == run else { return }
         let a = data.acceleration
-        self.rows.append(contentsOf: self.shakes.feed(t: data.timestamp * 1000, x: a.x, y: a.y, z: a.z))
+        self.keep(self.shakes.feed(t: data.timestamp * 1000, x: a.x, y: a.y, z: a.z))
       }
       return true
     }
@@ -73,5 +88,11 @@ public final class MurlanDiagnosticsModule: Module {
         return out
       }
     }
+  }
+
+  /// On `queue`.
+  private func keep(_ new: [[String: Any]]) {
+    rows.append(contentsOf: new)
+    if rows.count > Self.maxRows { rows.removeFirst(rows.count - Self.maxRows * 9 / 10) }
   }
 }

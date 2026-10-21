@@ -1,5 +1,5 @@
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
-import { Motion, motionMs, Radius, type NoticePalette } from "../../lib/tokens.ts";
+import { Hold, Motion, motionMs, Radius, type NoticePalette } from "../../lib/tokens.ts";
 import { cardScale, tableFontSize } from "../cardFaceModel.ts";
 import { CHIP_H } from "../seatLayout.ts";
 
@@ -209,8 +209,8 @@ export function noticeTiming(
   shape: NoticeShape,
   reduceMotion: boolean,
 ): { enter: number; hold: number | null; exit: number } {
-  const { enter, hold, exit } = Motion.mark;
-  if (shape === "chip" || shape === "float") return { enter, hold, exit };
+  const fade: { enter: number; exit: number } = (reduceMotion ? Motion.reduced.mark : null) ?? Motion.mark;
+  if (shape === "chip" || shape === "float") return { enter: fade.enter, hold: Hold.mark, exit: fade.exit };
   const ms = motionMs("notice", reduceMotion);
   return { enter: ms, hold: null, exit: ms };
 }

@@ -142,6 +142,7 @@ function LegCard({ card, leg, show, points, clock, shows, reduced, drawn, scale,
     table,
     `leg:${testID}`,
     true,
+    [pose, motion],
     () => {
       "worklet";
       const p = pose.value;

@@ -73,9 +73,17 @@ function forget(rects: SharedValue<CardRects>, key: string, prefix: boolean) {
  * Publishes one card from the UI thread whenever a shared value `read` reaches moves; null while it is
  * not drawn. A commit queues its writes in order — the last run's forget, then this run's rect, read on
  * the UI thread from values the commit has already set — so a card still drawn is never left out once
- * the UI thread has run them. On native nothing on JS sees them within the commit.
+ * the UI thread has run them. On native nothing on JS sees them within the commit. `inputs` holds every
+ * shared value `read` reaches, directly or inside a plain object or array: the publish re-runs on those
+ * alone, so one left out freezes the card's rect on the table.
  */
-export function useCardRect(table: CardTable | null, key: string, drawn: boolean, read: () => CardRect | null): OwnedRects {
+export function useCardRect(
+  table: CardTable | null,
+  key: string,
+  drawn: boolean,
+  inputs: readonly unknown[],
+  read: () => CardRect | null
+): OwnedRects {
   const rects = table?.rects;
   const own = useSharedValue<CardRects>({}) as OwnedRects;
   useLayoutEffect(() => {
@@ -100,14 +108,14 @@ export function useCardRect(table: CardTable | null, key: string, drawn: boolean
       }, false);
     };
     publish();
-    const mapper = startMapper(publish, Object.values((read as { __closure?: Record<string, unknown> }).__closure ?? {}));
+    const mapper = startMapper(publish, [...inputs]);
     return () => {
       alive.value = false;
       stopMapper(mapper);
       own.value = {};
       forget(rects, key, false);
     };
-  }, [rects, own, key, drawn, read]);
+  }, [rects, own, key, drawn, inputs, read]);
   return own;
 }
 

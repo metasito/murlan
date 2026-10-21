@@ -13,28 +13,7 @@ import { renderHook, act, render, fireEvent, screen } from '@testing-library/rea
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { en as locale } from '@/locales/en';
 
-type Listener = (...args: unknown[]) => void;
-
-const mockSocket = {
-  connected: true,
-  active: true,
-  listeners: new Map<string, Listener>(),
-  on(event: string, fn: Listener) {
-    this.listeners.set(event, fn);
-  },
-  off() {},
-  emit() {},
-  connect: jest.fn(),
-  disconnect: jest.fn(),
-  io: { reconnection: jest.fn() },
-};
-
-jest.mock('@/lib/socket', () => ({
-  connectSocket: () => mockSocket,
-  disconnectSocket: () => {},
-  peekSocket: (userId?: string | null) => (userId ? mockSocket : null),
-  subscribeToSockets: () => () => {},
-}));
+import { lastSocket } from './mocks/socketIo';
 
 const mockApiRequest = jest.fn(async (..._args: unknown[]) => ({}));
 jest.mock('@/lib/query-client', () => ({
@@ -102,12 +81,11 @@ const mount = (client = new QueryClient()) => {
 /** What the server sends when a friend invites this player to their table. */
 const invite = async () => {
   await act(async () => {
-    mockSocket.listeners.get('friend:invite')?.({ from: 'ana', roomCode: 'ABC123' });
+    lastSocket().serverEmit('friend:invite', { from: 'ana', roomCode: 'ABC123' });
   });
 };
 
 beforeEach(() => {
-  mockSocket.listeners.clear();
   mockUser = ANA;
   mockJoinRoom.mockClear();
   mockOnline.connected = false;
@@ -131,7 +109,7 @@ describe('accepting an invite', () => {
     const { result, unmount } = await mount();
     await invite();
     await act(async () => {
-      mockSocket.listeners.get('friend:invite')?.({ from: 'bob', roomCode: 'XYZ789' });
+      lastSocket().serverEmit('friend:invite', { from: 'bob', roomCode: 'XYZ789' });
     });
 
     await act(async () => result.current.accept('ABC123'));

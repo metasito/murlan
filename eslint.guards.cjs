@@ -389,7 +389,10 @@ const GUARDS = [
     why: "ADR-0009 (docs/adr/0009-audio-and-haptics-libraries.md) gives react-native-audio-api and the audio-session module one owner, lib/device/audioEngine.ts: play through lib/device/feedback.ts.",
     selector: importsOf("/^react-native-audio-api(\\x2F|$)|(^|\\x2F)murlan-audio-session(\\x2F|$)/", { values: true }),
     files: AUDIO_LAYERED,
-    ignores: [{ glob: "lib/device/audioEngine.ts", reason: "the owner of the audio engine" }],
+    ignores: [
+      { glob: "lib/device/audioEngine.ts", reason: "the owner of the audio engine" },
+      { glob: "lib/diagnostics/probe.ts", reason: "the bench reads the session's latency and never configures it, which tests/tooling/probeReadsSessionOnly.test.ts holds" },
+    ],
     plant: { file: "components/Plant.tsx", code: [
       'import { AudioContext } from "react-native-audio-api";',
       'import { type AudioBuffer, AudioContext as Ctx } from "react-native-audio-api";',
@@ -449,29 +452,48 @@ const GUARDS = [
   },
   {
     id: "animation-callback-takes-finished",
-    why: "A completion callback that ignores `finished` runs its follow-up on an animation that was cancelled, and a `withRepeat` count of 0 repeats forever: take `(finished)` and act only when it is true, as the sweep in components/table/pile.tsx does, and give `withRepeat` a literal count or `pulseRepeats(...)` from components/turnTimerUi.ts, which is guarded by a check for at least 1.",
-    selector: [
+    why: "A completion callback that ignores `finished` runs its follow-up on an animation that was cancelled: take `(finished)` and act only when it is true, as the sweep in components/table/pile.tsx does.",
+    selector:
       'CallExpression[callee.name=/^(withTiming|withSpring|withDecay|withRepeat)$/] > :matches(ArrowFunctionExpression, FunctionExpression):matches([params.length=0], [params.0.name=/^_/])',
-      'CallExpression[callee.name="withRepeat"][arguments.length>=2]:not([arguments.1.type="Literal"]):not([arguments.1.operator="-"][arguments.1.argument.type="Literal"]):not([arguments.1.callee.name="pulseRepeats"])',
-      'CallExpression[callee.name="withRepeat"][arguments.1.value=0]',
-    ].join(", "),
     files: SCREENS,
     plant: { file: "components/Plant.tsx", code: [
       "a.value = withTiming(1, { duration: 1 }, () => go());",
       "a.value = withSpring(1, {}, function () { go(); });",
       "a.value = withDecay({ velocity: 1 }, (_finished) => go());",
       "a.value = withRepeat(b, 2, false, () => go());",
-      "a.value = withRepeat(b, 0);",
-      "a.value = withRepeat(b, Math.ceil(left / 1000));",
-      "a.value = withRepeat(b, beats);",
-    ].join("\n"), hits: 7 },
+    ].join("\n"), hits: 4 },
     spare: [
       "a.value = withTiming(1, { duration: 1 }, (finished) => { if (finished) go(); });",
       "a.value = withRepeat(b, 2, false, (finished) => { if (finished) go(); });",
-      "a.value = withRepeat(b, -1);",
-      "a.value = withRepeat(b, pulseRepeats(urgentMs, leftMs));",
       "setTimeout(() => go(), 10);",
       "const leg = (to) => withTiming(to, { duration: 1 });",
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "repeat-through-motion",
+    why: "A repeat is lib/motion.ts's: run an endless one with `useLoop`, which never starts under reduced motion and is cancelled when it stops or its owner unmounts, and a counted one with `repeatTimes`, which never reads a count of 0 as forever.",
+    selector: [
+      'CallExpression[callee.name="withRepeat"]',
+      'MemberExpression[property.name="withRepeat"]',
+      'MemberExpression[computed=true][property.value="withRepeat"]',
+      'ImportSpecifier[imported.name="withRepeat"]',
+      'ExportSpecifier[local.name="withRepeat"]',
+    ].join(", "),
+    files: SCREENS,
+    ignores: [{ glob: "lib/motion.ts", reason: "useLoop and repeatTimes, the two owners of a repeat" }],
+    plant: { file: "components/Plant.tsx", code: [
+      'import { withRepeat } from "react-native-reanimated";',
+      'import { withRepeat as again } from "react-native-reanimated";',
+      "a.value = withRepeat(b, -1);",
+      "a.value = Reanimated.withRepeat(b, 2);",
+      'export { withRepeat } from "react-native-reanimated";',
+      'a.value = R["withRepeat"](b, 2);',
+    ].join("\n"), hits: 6 },
+    spare: [
+      "useLoop(a, () => ({ cycle: b }));",
+      'a.value = R["withRepeatCount"];',
+      "a.value = repeatTimes(b, beats);",
+      '// withRepeat(b, -1)\nconst s = "withRepeat(b, -1)";',
     ].map((code) => ({ file: "components/Plant.tsx", code })),
   },
   {
@@ -638,6 +660,22 @@ const GUARDS = [
       "jest.mock('react-native/Libraries/Utilities/Dimensions', () => ({}));",
       "jest.mock('react-native', () => ({ ...jest.requireActual('react-native'), Platform: { OS: 'ios' } }));",
       "const { width } = useWindowDimensions();",
+    ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
+  },
+  {
+    id: "socket-is-faked-at-the-wire",
+    why: "The socket is faked where it meets socket.io (tests/native/mocks/socketIo.ts, installed by setup.ts): drive it with lastSocket() or renderApp's socket(), so lib/socket.ts and its ticket fetch run for real.",
+    selector: mockOf("/^(@|\\.\\.?(\\x2F\\.\\.)*)\\x2Flib\\x2Fsocket(\\.ts)?$/", "/(^|\\x2F)lib\\x2Fsocket(\\.ts)?$/"),
+    files: ["tests/native/**/*.{ts,tsx}"],
+    plant: { file: "tests/native/plant.test.tsx", code: [
+      "jest.mock('@/lib/socket', () => ({ connectSocket: () => s }));",
+      'jest.doMock("../../lib/socket", () => ({}));',
+      "jest.mock(`@/lib/socket`, () => ({}));",
+    ].join("\n"), hits: 3 },
+    spare: [
+      "lastSocket().serverEmit('friend:invite', invite);",
+      "jest.mock('socket.io-client', () => ({ io }));",
+      "jest.mock('@/lib/sendIntent', () => ({}));",
     ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
   },
 ];

@@ -4,31 +4,10 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
 
-const makeSocket = () => ({
-  connected: false,
-  active: true,
-  on() {},
-  off() {},
-  emit() {},
-  connect: jest.fn(),
-  disconnect: jest.fn(),
-  io: { reconnection: jest.fn() },
-});
-const mockSockets = new Map<string, ReturnType<typeof makeSocket>>();
-const mockAuthFailure = new Map<string, () => void>();
-
-jest.mock('@/lib/socket', () => ({
-  connectSocket: (userId: string, { onAuthFailure }: { onAuthFailure: () => void }) => {
-    mockAuthFailure.set(userId, onAuthFailure);
-    if (!mockSockets.has(userId)) mockSockets.set(userId, makeSocket());
-    return mockSockets.get(userId);
-  },
-  disconnectSocket: () => {},
-  peekSocket: (userId?: string | null) => (userId ? (mockSockets.get(userId) ?? null) : null),
-  subscribeToSockets: () => () => {},
-}));
+import { route } from './mocks/http';
+import { fakeSockets } from './mocks/socketIo';
 
 const mockLogout = jest.fn(async () => {});
 let mockUser: { id: string; username: string } | null = null;
@@ -55,8 +34,7 @@ const tree = () => (
 );
 
 beforeEach(() => {
-  mockSockets.clear();
-  mockAuthFailure.clear();
+  route('POST', '/api/auth/socket-ticket', { body: { ticket: 't' } });
   mockLogout.mockClear();
   mockReplace.mockClear();
 });
@@ -65,17 +43,20 @@ describe('a 401 after the account changed', () => {
   it('on the previous account’s socket signs nobody out', async () => {
     mockUser = { id: 'u1', username: 'Ana' };
     const view = await render(tree());
-    const failAna = mockAuthFailure.get('u1')!;
+    const [ana] = fakeSockets();
 
     mockUser = { id: 'u2', username: 'Ben' };
     await view.rerender(tree());
-    failAna();
+    const [, ben] = fakeSockets();
+    await act(async () => void (await Promise.all([ana.credentials, ben.credentials])));
+    route('POST', '/api/auth/socket-ticket', { status: 401 });
+    await act(async () => void (await ana.handshake()));
 
     expect(mockLogout).not.toHaveBeenCalled();
-    expect(mockSockets.get('u2')!.disconnect).not.toHaveBeenCalled();
+    expect(ben.disconnect).not.toHaveBeenCalled();
 
     // The control: the signed-in account's own 401 still signs it out.
-    mockAuthFailure.get('u2')!();
+    await act(async () => void (await ben.handshake()));
     expect(mockLogout).toHaveBeenCalledTimes(1);
     await view.unmount();
   });

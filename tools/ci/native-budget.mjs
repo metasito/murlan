@@ -8,6 +8,7 @@
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { HARD_FACTOR } from "./e2e-budget.mjs";
 
 /** Under twice the slowest file outside the exceptions, exchangeOnTable's 8.5 s in run 36817916976. */
 export const BUDGET_S = 15;
@@ -17,8 +18,6 @@ export const OUTSIDE_S = 45;
 
 /** botMoveCost.compiled read 7.8 s on this machine and 16.8-24.5 s on CI's runner: 2.2-3.1x. */
 export const CI_SLOWER = 3.2;
-
-export const HARD_FACTOR = 3;
 
 /** No exception may grant more: one file alone at a minute is the whole job's share of five. */
 export const MAX_EXCEPTION_S = 60;

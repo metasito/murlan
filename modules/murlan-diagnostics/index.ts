@@ -3,8 +3,6 @@ import { requireOptionalNativeModule } from "expo";
 export interface MurlanDiagnostics {
   hostNowMs(): number;
   footprintMb(): number;
-  outputLatencyMs?(): number;
-  ioBufferMs?(): number;
   inputLatencyMs?(): number;
   startCapture?(mic: boolean): Promise<boolean>;
   stopCapture?(): Promise<boolean>;
