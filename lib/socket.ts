@@ -1,5 +1,5 @@
 import { io, type Socket as UntypedSocket } from "socket.io-client";
-import { getApiUrl } from "@/lib/query-client";
+import { getApiUrl, requestOf, type Reply } from "@/lib/query-client";
 import {
   PROTOCOL_VERSION,
   type ClientToServerEvents,
@@ -45,22 +45,18 @@ export function peekSocket(userId: string | null | undefined): Socket | null {
  * session. Native clients do not reliably send the session cookie on the
  * websocket upgrade, and the handshake accepts only a session or a ticket.
  *
- * Uses a raw fetch (not apiRequest) so a 401 can be told apart from a
+ * Uses a raw fetch (not api) so a 401 can be told apart from a
  * transient network failure instead of being swallowed identically.
  */
 async function fetchSocketTicket(onAuthFailure: () => void): Promise<string | null> {
   try {
-    const baseUrl = getApiUrl().replace(/\/$/, "");
-    const res = await fetch(`${baseUrl}/api/auth/socket-ticket`, {
-      method: "POST",
-      credentials: "include",
-    });
+    const res = await fetch(...requestOf("POST auth/socket-ticket"));
     if (res.status === 401) {
       onAuthFailure();
       return null;
     }
     if (!res.ok) return null;
-    const data = (await res.json()) as { ticket?: string };
+    const data = (await res.json()) as Partial<Reply<"POST auth/socket-ticket">>;
     return data.ticket ?? null;
   } catch {
     return null;

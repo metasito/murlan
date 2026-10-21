@@ -1,17 +1,17 @@
 import { useQuery, type QueryClient, type UseQueryOptions, type UseQueryResult } from "@tanstack/react-query";
-import type { GetRoute, ParamsOf, QueryOf, ResOf } from "@/shared/http";
-import { apiRequest } from "./query-client";
+import type { ParamsOf, QueryOf, ResOf } from "@/shared/http";
+import { api, apiPath, type Call, type RouteOf as RouteOfCall } from "./query-client";
 
 /** A cacheable read: a GET in the contract, named by its path under /api, that takes no query string. */
-export type Read = GetRoute extends infer R
-  ? R extends `GET /api/${infer P}`
-    ? QueryOf<R & GetRoute> extends undefined
+export type Read = Call extends infer C
+  ? C extends `GET ${infer P}`
+    ? QueryOf<RouteOfCall<C & Call>> extends undefined
       ? P
       : never
     : never
   : never;
 
-type RouteOf<P extends Read> = Extract<GetRoute, `GET /api/${P}`>;
+type RouteOf<P extends Read> = RouteOfCall<`GET ${P}`>;
 type Params<P extends Read> = keyof ParamsOf<RouteOf<P>> extends never ? [] : [params: ParamsOf<RouteOf<P>>];
 export type Answer<P extends Read> = ResOf<RouteOf<P>>;
 /** A read whose answer is a list of rows with ids, which a pushed row can be seated in. */
@@ -23,19 +23,14 @@ declare const read: unique symbol;
 export type ApiKey<P extends Read = Read> = readonly [url: string] & { readonly [read]: P };
 
 export function queryKey<P extends Read>(path: P, ...[params]: Params<P>): ApiKey<P> {
-  const named = params as Record<string, string> | undefined;
-  return [`/api/${path.replace(/:(\w+)/g, (_, name: string) => encodeURIComponent(named![name]))}`] as unknown as ApiKey<P>;
-}
-
-async function get<T>(key: ApiKey): Promise<T> {
-  return (await apiRequest("GET", key[0])).json() as Promise<T>;
+  return [apiPath(path, params as Record<string, string> | undefined)] as unknown as ApiKey<P>;
 }
 
 export function useApi<P extends Read>(
   key: ApiKey<P>,
   options: Omit<UseQueryOptions<Answer<P>>, "queryKey" | "queryFn"> = {}
 ): UseQueryResult<Answer<P>> {
-  return useQuery<Answer<P>>({ ...options, queryKey: key, queryFn: () => get<Answer<P>>(key) });
+  return useQuery<Answer<P>>({ ...options, queryKey: key, queryFn: () => api(key) });
 }
 
 export const ladderBoards = {

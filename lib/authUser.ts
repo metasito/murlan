@@ -12,7 +12,7 @@ const isStringOrNull = (v: unknown): v is string | null => v === null || typeof 
 
 /**
  * The cache may predate any field but `id` and `username`. A field that is
- * missing or of the wrong type stays absent — unknown until /api/auth/me
+ * missing or of the wrong type stays absent — unknown until GET auth/me
  * answers — because `false` or `null` would assert something nobody said.
  */
 export function parseCachedUser(raw: string | null): AuthUser | null {

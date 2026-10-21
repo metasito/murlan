@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { setReportingAccount } from "@/lib/errorReporting";
 import NetInfo from "@react-native-community/netinfo";
-import { apiRequest, getApiUrl } from "@/lib/query-client";
+import { api, requestOf, type Reply } from "@/lib/query-client";
 import { forgetPushRegistration } from "@/lib/device/pushRegistration";
 import { ACCOUNT_KEYS, AUTH_USER_KEY as STORAGE_KEY } from "@/lib/storageKeys";
 import { parseCachedUser, type AuthUser } from "@/lib/authUser";
@@ -16,7 +16,7 @@ interface AuthContextValue {
   login: (username: string, password: string) => Promise<void>;
   /**
    * Resolves to the signed-in account, null when the follow-up
-   * `GET /api/auth/me` confirmed no session, or undefined when that
+   * `GET auth/me` confirmed no session, or undefined when that
    * confirmation itself could not be reached (a dropped connection, a 5xx) —
    * see fetchMe()'s own contract below. The caller needs this to show a
    * coherent "check your email" state rather than guessing from `user`,
@@ -46,18 +46,17 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 /**
  * Asks the server who we are.
  *
- * Uses a raw fetch (not apiRequest) so a 401 can be told apart from a transient
+ * Uses a raw fetch (not api) so a 401 can be told apart from a transient
  * network failure instead of being swallowed identically: only a 401 proves the
  * session is gone. `undefined` means the question was not answered — a 5xx, a
  * dropped connection — and the caller must keep whatever it already had.
  */
 async function fetchMe(): Promise<AuthUser | null | undefined> {
   try {
-    const baseUrl = getApiUrl().replace(/\/$/, "");
-    const res = await fetch(`${baseUrl}/api/auth/me`, { credentials: "include" });
+    const res = await fetch(...requestOf("GET auth/me"));
     if (res.status === 401) return null;
     if (!res.ok) return undefined;
-    return (await res.json()) as AuthUser;
+    return (await res.json()) as Reply<"GET auth/me">;
   } catch {
     return undefined;
   }
@@ -146,8 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [userId]);
 
   const login = useCallback(async (username: string, password: string) => {
-    const res = await apiRequest("POST", "/api/auth/login", { username, password });
-    const data = await res.json();
+    const data = await api("POST auth/login", { body: { username, password } });
     setUser(data);
     await cacheUser(data);
   }, []);
@@ -156,12 +154,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // { ok: true, code: "CHECK_YOUR_EMAIL" } whether or not the address was
   // already taken, and a user object in one case and not the other would
   // put the leak straight back). Who actually got signed in is answered the
-  // same way a boot-time check already answers it: GET /api/auth/me — and by
+  // same way a boot-time check already answers it: GET auth/me — and by
   // fetchMe()'s own contract, `undefined` means that question went
   // unanswered, not that it was answered "no". A flaky connection right
   // after a successful POST must not read as a sign-out.
   const register = useCallback(async (username: string, password: string, email: string) => {
-    await apiRequest("POST", "/api/auth/register", { username, password, email, locale: getLocale() });
+    await api("POST auth/register", { body: { username, password, email, locale: getLocale() } });
     const data = await fetchMe();
     if (data === undefined) return undefined;
     if (data === null) {
@@ -178,8 +176,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // cannot be reached. A rename that updated only the state would come back
   // under the old name on the next launch, offline, with nothing to see.
   const rename = useCallback(async (username: string) => {
-    const res = await apiRequest("PATCH", "/api/users/me", { username });
-    const data = await res.json();
+    const data = await api("PATCH users/me", { body: { username } });
     setUser(data);
     await cacheUser(data);
   }, []);
@@ -188,15 +185,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // anything AuthContext holds, only the server's stored hash and its other
   // live sessions.
   const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
-    await apiRequest("POST", "/api/auth/change-password", { currentPassword, newPassword });
+    await api("POST auth/change-password", { body: { currentPassword, newPassword } });
   }, []);
 
   // Like rename: the card that calls this (app/profile.tsx) hides itself off
   // `user.email`, so the state has to update in the same place the request
-  // lands, not wait for the next /api/auth/me poll.
+  // lands, not wait for the next GET auth/me poll.
   const addEmail = useCallback(async (email: string) => {
-    const res = await apiRequest("POST", "/api/auth/add-email", { email, locale: getLocale() });
-    const data = await res.json();
+    const data = await api("POST auth/add-email", { body: { email, locale: getLocale() } });
     setUser(data);
     await cacheUser(data);
   }, []);
@@ -213,7 +209,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [forgetSession]);
 
   const logout = useCallback(async () => {
-    await apiRequest("POST", "/api/auth/logout");
+    await api("POST auth/logout");
     await forgetSession();
   }, [forgetSession]);
 
