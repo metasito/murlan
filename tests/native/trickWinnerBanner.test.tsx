@@ -19,6 +19,8 @@ import { getAnimatedStyle } from 'react-native-reanimated';
 import { bootFeedback, startsOf } from './helpers/feedback';
 import { GameTable } from '@/components/GameTable';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
+import { cardSpokenName } from '@/lib/cardNames';
+import { t } from '@/lib/i18n';
 import { setMotion } from './harness/env';
 import { aThreePlayed } from '../support/game';
 import { replayStateAt, type ReplayDto } from '@/lib/game/replay';
@@ -153,7 +155,48 @@ describe('the trick-winner tag', () => {
 
     await r.unmount();
   });
+
+  it('announces a later round\'s close that repeats an earlier round\'s count and seat', async () => {
+    // `seq` starts again at every deal, so the same move number comes round again.
+    const r = await render(table(closed(8)));
+    await tagShown();
+    await act(async () => {
+      jest.advanceTimersByTime(4000);
+    });
+    expect(tagGone()).toBe(true);
+
+    await act(async () => r.rerender(table(state({ lastMove: { seq: 0, kind: 'deal' } }))));
+    await act(async () => r.rerender(table(leading(7))));
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+    await act(async () => r.rerender(table(closed(8))));
+    await tagShown();
+
+    await r.unmount();
+  });
 });
+
+const QUEEN: Card = { id: 'Q_hearts', rank: 'Q', suit: 'hearts', isJoker: false };
+const NEXT_LEAD: Combination = { type: 'single', cards: [QUEEN], strength: 12 };
+/** Besi leads the King, Ana's pass closes the trick, Besi leads the Queen. */
+const REPLAY = {
+  id: 'r1',
+  finishedAt: '2026-10-16T10:00:00.000Z',
+  gameMode: 'free_for_all',
+  seats: [
+    { seatIndex: 0, userId: 'u0', name: 'Ana' },
+    { seatIndex: 1, userId: 'u1', name: WINNER },
+  ],
+  finishingOrder: [],
+  moves: [
+    { seat: WINNER_SEAT, combo: LED, handCounts: [3, 2] },
+    { seat: 0, combo: null, handCounts: [3, 2] },
+    { seat: WINNER_SEAT, combo: NEXT_LEAD, handCounts: [3, 1] },
+  ],
+} as unknown as ReplayDto;
+const at = (index: number) => table(replayStateAt(REPLAY, index));
+const onFelt = (card: Card) => pileArea().queryByLabelText(cardSpokenName(card, t), { includeHiddenElements: true });
 
 describe('the trick-winner tag in a replay', () => {
   beforeEach(async () => {
@@ -167,27 +210,68 @@ describe('the trick-winner tag in a replay', () => {
 
   // D4: a replay shows the tag as live play does, when it steps onto the pass that closed the trick.
   it('shows the winner once the scrubber reaches the closing pass', async () => {
-    const replay = {
-      id: 'r1',
-      finishedAt: '2026-10-16T10:00:00.000Z',
-      gameMode: 'free_for_all',
-      seats: [
-        { seatIndex: 0, userId: 'u0', name: 'Ana' },
-        { seatIndex: 1, userId: 'u1', name: WINNER },
-      ],
-      finishingOrder: [],
-      moves: [
-        { seat: WINNER_SEAT, combo: LED, handCounts: [3, 2] },
-        { seat: 0, combo: null, handCounts: [3, 2] },
-      ],
-    } as unknown as ReplayDto;
-
-    const r = await render(table(replayStateAt(replay, 0)));
+    const r = await render(at(0));
     expect(tagGone()).toBe(true);
 
-    await act(async () => r.rerender(table(replayStateAt(replay, 1))));
+    await act(async () => r.rerender(at(1)));
+    await tagShown();
+    expect(startsOf('trick_win')).toHaveLength(1);
+
+    await r.unmount();
+  });
+
+  it('shows the winner again when the scrubber steps back onto the closing pass', async () => {
+    const r = await render(at(0));
+    await act(async () => r.rerender(at(1)));
+    await tagShown();
+    await act(async () => {
+      jest.advanceTimersByTime(4000);
+    });
+    expect(tagGone()).toBe(true);
+
+    await act(async () => r.rerender(at(2)));
+    await act(async () => r.rerender(at(1)));
     await tagShown();
 
     await r.unmount();
+  });
+
+  it('clears the felt on a step back onto the closing pass, rather than holding the later lead under the tag', async () => {
+    const r = await render(at(2));
+    await act(async () => {
+      jest.advanceTimersByTime(4000);
+    });
+    expect(onFelt(QUEEN)).not.toBeNull();
+
+    await act(async () => r.rerender(at(1)));
+    await act(async () => {
+      jest.advanceTimersByTime(200);
+    });
+    expect(onFelt(QUEEN)).toBeNull();
+
+    await r.unmount();
+  });
+
+  it('is silent on a scrub: a step back or a jump onto the closing pass sounds neither the pass nor the sting', async () => {
+    const back = await render(at(2));
+    await act(async () => {
+      jest.advanceTimersByTime(4000);
+    });
+    await act(async () => back.rerender(at(1)));
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+    expect(startsOf('pass')).toHaveLength(0);
+    expect(startsOf('trick_win')).toHaveLength(0);
+    await back.unmount();
+
+    const jump = await render(at(-1));
+    await act(async () => jump.rerender(at(1)));
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+    expect(startsOf('pass')).toHaveLength(0);
+    expect(startsOf('trick_win')).toHaveLength(0);
+    await jump.unmount();
   });
 });
