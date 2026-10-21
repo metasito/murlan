@@ -23,16 +23,6 @@ jest.mock('react-native-reanimated', () => {
 });
 
 jest.mock('@/components/SettingsModal', () => ({ SettingsModal: () => null }));
-jest.mock('@/context/GameContext', () =>
-  (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(undefined, () => ({
-    hasSavedGame: false,
-    resumeGame: () => false,
-  }))
-);
-jest.mock('@/context/SocketContext', () => ({
-  ...jest.requireActual<object>('@/context/SocketContext'),
-  useInvites: () => ({ invites: [], accept: () => {} }),
-}));
 import HomeScreen from '@/app/index';
 import { renderApp } from './harness/renderApp';
 

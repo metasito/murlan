@@ -24,18 +24,6 @@ jest.mock('@/lib/device/pushRegistration', () => ({
   forgetPushRegistration: () => {},
 }));
 
-jest.mock('@/context/SocketContext', () => ({
-  ...jest.requireActual<object>('@/context/SocketContext'),
-  usePresence: () => ({ onlineIds: new Set(), refresh: () => {} }),
-  useInvites: () => ({ invites: [], dismiss: jest.fn(), accept: jest.fn() }),
-}));
-
-jest.mock('@/context/onlineGameHooks', () => ({
-  useOnlineRoom: () => ({ joinRoom: jest.fn(), room: null }),
-  useOnlineConnection: () => ({ clearError: jest.fn() }),
-  useServerError: () => null,
-}));
-
 const { shown, BannerLog } = bannerLog();
 
 import FriendsScreen from '@/app/(online)/friends';
@@ -62,7 +50,7 @@ async function mount(failing: string[] = [], seed: Record<string, unknown[]> = S
       <BannerLog />
       <FriendsScreen />
     </>,
-    { user: { id: 'u1', username: 'Ana' } }
+    { user: { id: 'u1', username: 'Ana' }, online: true }
   );
 }
 

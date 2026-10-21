@@ -3,25 +3,30 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import React from 'react';
 
-import { renderApp } from './harness/renderApp';
+import { useInvites } from '@/context/SocketContext';
+import { renderAppHook } from './harness/renderApp';
 
-const mockAcceptInvite = jest.fn();
 const mockRedirects: unknown[] = [];
 const mockState = {
   params: {} as Record<string, string>,
 };
 
-jest.mock('expo-router', () => ({
-  useLocalSearchParams: () => mockState.params,
-  Redirect: ({ href }: { href: unknown }) => {
-    mockRedirects.push(href);
-    return null;
-  },
-}));
-jest.mock('@/context/SocketContext', () => ({
-  ...jest.requireActual<object>('@/context/SocketContext'),
-  useInvites: () => ({ accept: mockAcceptInvite }),
-}));
+// expo-router's Redirect navigates once, when it mounts, however often its screen re-renders.
+jest.mock('expo-router', () => {
+  const { useEffect, useRef } = require('react') as typeof import('react');
+  return {
+    useLocalSearchParams: () => mockState.params,
+    Redirect: ({ href }: { href: unknown }) => {
+      const went = useRef(false);
+      useEffect(() => {
+        if (went.current) return;
+        went.current = true;
+        mockRedirects.push(href);
+      });
+      return null;
+    },
+  };
+});
 
 import JoinScreen from '@/app/join/[code]';
 
@@ -32,30 +37,31 @@ describe('the /join/<CODE> route', () => {
     mockState.params = { code: 'qx7k2m' };
   });
   const signedIn = { user: { id: 'u1', username: 'Ana' } };
+  const join = (boot = {}) =>
+    renderAppHook(() => useInvites().accepted, { ...boot, wrap: (probe) => <><JoinScreen />{probe}</> });
 
   it('accepts the invite for that room and takes a signed-in player to the online hub', async () => {
-    await renderApp(<JoinScreen />, signedIn);
-    expect(mockAcceptInvite).toHaveBeenCalledTimes(1);
-    expect(mockAcceptInvite).toHaveBeenCalledWith('QX7K2M');
+    const { result } = await join(signedIn);
+    expect(result.current).toBe('QX7K2M');
     expect(mockRedirects).toEqual(['/(online)']);
   });
 
   it('sends a signed-out player to sign in first, carrying the room back', async () => {
-    await renderApp(<JoinScreen />);
-    expect(mockAcceptInvite).not.toHaveBeenCalled();
+    const { result } = await join();
+    expect(result.current).toBeNull();
     expect(mockRedirects).toEqual([{ pathname: '/auth', params: { next: '/join/QX7K2M' } }]);
   });
 
   it('lands a malformed code on home without joining anything', async () => {
     mockState.params = { code: 'AB/1' };
-    await renderApp(<JoinScreen />, signedIn);
-    expect(mockAcceptInvite).not.toHaveBeenCalled();
+    const { result } = await join(signedIn);
+    expect(result.current).toBeNull();
     expect(mockRedirects).toEqual(['/']);
   });
 
   it('waits while the session is still being restored', async () => {
-    await renderApp(<JoinScreen />, { me: () => new Promise(() => {}), booted: false });
-    expect(mockAcceptInvite).not.toHaveBeenCalled();
+    const { result } = await join({ me: () => new Promise(() => {}), booted: false });
+    expect(result.current).toBeNull();
     expect(mockRedirects).toEqual([]);
   });
 });

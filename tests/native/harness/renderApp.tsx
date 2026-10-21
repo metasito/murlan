@@ -7,6 +7,7 @@ import { AppProviders } from '@/context/AppProviders';
 import { useAuth, type AuthUser } from '@/context/AuthContext';
 import { useGameSession, type LocalSession } from '@/context/GameContext';
 import { OnlineGameProvider } from '@/context/OnlineGameContext';
+import { useOnlineRouting } from '@/context/useOnlineRouting';
 import { encodeOfflineSave, OFFLINE_SAVE_KEY, type OfflineSave } from '@/lib/offlineSave';
 import { queryClient } from '@/lib/query-client';
 import { peekSocket } from '@/lib/socket';
@@ -17,10 +18,11 @@ import { fakeSockets, type FakeSocket } from '../mocks/socketIo';
 const auth = { settled: false, value: null as ReturnType<typeof useAuth> | null };
 const local = { value: null as LocalSession | null };
 
-// Runs after the testing library's cleanup unmounts: a query left in the app's client holds a gc timer that keeps jest from exiting.
+// Runs after the testing library's cleanup unmounts: a query left in the app's client, or an ack
+// left unanswered, holds a timer that keeps jest from exiting.
 afterEach(() => {
   queryClient.clear();
-  //ABANDON
+  fakeSockets().forEach((socket) => socket.abandonAcks());
 });
 
 function AuthSettled() {
@@ -29,6 +31,11 @@ function AuthSettled() {
     auth.value = value;
     auth.settled = !value.loading;
   });
+  return null;
+}
+
+function FollowTable() {
+  useOnlineRouting();
   return null;
 }
 
@@ -60,27 +67,38 @@ type Boot = {
   booted?: boolean;
   /** Under the online group's own provider, as `app/(online)/_layout.tsx` mounts it for `user`. */
   online?: boolean;
+  /** With the online group's routing mounted too, which reads expo-router's `useSegments`. */
+  follow?: boolean;
   /** The socket's handshake succeeds once mounted. */
   connected?: boolean;
   /** An offline match the device saved, which the player has already resumed. */
   offline?: Omit<OfflineSave, 'version'>;
+  /** An offline match the device saved, not yet resumed. */
+  saved?: Omit<OfflineSave, 'version'>;
 };
 
 /** `ui` under the app's own provider stack, once the account has booted. */
 export async function renderApp(
   ui: React.ReactElement,
-  { user = null, cached = user, me, booted = true, online = false, connected = false, offline }: Boot = {}
+  { user = null, cached = user, me, booted = true, online = false, follow = false, connected = false, offline, saved = offline }: Boot = {}
 ) {
   auth.settled = false;
   local.value = null;
   route('GET', '/api/auth/me', me ?? (user ? { body: user } : { status: 401 }));
   if (cached) await AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(cached));
   else await AsyncStorage.removeItem(AUTH_USER_KEY);
-  if (offline) await AsyncStorage.setItem(OFFLINE_SAVE_KEY, encodeOfflineSave(offline));
+  if (saved) await AsyncStorage.setItem(OFFLINE_SAVE_KEY, encodeOfflineSave(saved));
   else await AsyncStorage.removeItem(OFFLINE_SAVE_KEY);
   if (online && !user) throw new Error('the online group redirects a signed-out player to /auth');
   const screen = (node: React.ReactElement) =>
-    online && user ? <OnlineGameProvider userId={user.id}>{node}</OnlineGameProvider> : node;
+    online && user ? (
+      <OnlineGameProvider userId={user.id}>
+        {follow && <FollowTable />}
+        {node}
+      </OnlineGameProvider>
+    ) : (
+      node
+    );
   const app = (node: React.ReactElement) => (
     <AppProviders>
       <AuthSettled />
