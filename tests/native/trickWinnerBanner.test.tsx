@@ -65,10 +65,11 @@ const between = (seq: number) => state({ trickWinner: null, lastMove: { seq, kin
 
 const noop = () => {};
 
-const table = (gameState: GameState) => (
+const table = (gameState: GameState, scrubbed = false) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
       gameState={gameState}
+      scrubbed={scrubbed}
       viewerSeat={0}
       onPlay={noop}
       onPass={noop}
@@ -195,7 +196,8 @@ const REPLAY = {
     { seat: WINNER_SEAT, combo: NEXT_LEAD, handCounts: [3, 1] },
   ],
 } as unknown as ReplayDto;
-const at = (index: number) => table(replayStateAt(REPLAY, index));
+/** The replay at `index`; `scrubbed` when the screen reached it by anything but a step forward. */
+const at = (index: number, scrubbed = false) => table(replayStateAt(REPLAY, index), scrubbed);
 const onFelt = (card: Card) => pileArea().queryByLabelText(cardSpokenName(card, t), { includeHiddenElements: true });
 
 describe('the trick-winner tag in a replay', () => {
@@ -234,7 +236,7 @@ describe('the trick-winner tag in a replay', () => {
     expect(tagGone()).toBe(true);
 
     await act(async () => r.rerender(at(2)));
-    await act(async () => r.rerender(at(1)));
+    await act(async () => r.rerender(at(1, true)));
     await tagShown();
 
     await r.unmount();
@@ -247,7 +249,7 @@ describe('the trick-winner tag in a replay', () => {
     });
     expect(onFelt(QUEEN)).not.toBeNull();
 
-    await act(async () => r.rerender(at(1)));
+    await act(async () => r.rerender(at(1, true)));
     await act(async () => {
       jest.advanceTimersByTime(200);
     });
@@ -261,7 +263,7 @@ describe('the trick-winner tag in a replay', () => {
     await act(async () => {
       jest.advanceTimersByTime(4000);
     });
-    await act(async () => back.rerender(at(1)));
+    await act(async () => back.rerender(at(1, true)));
     await act(async () => {
       jest.advanceTimersByTime(500);
     });
@@ -270,7 +272,7 @@ describe('the trick-winner tag in a replay', () => {
     await back.unmount();
 
     const jump = await render(at(-1));
-    await act(async () => jump.rerender(at(1)));
+    await act(async () => jump.rerender(at(1, true)));
     await act(async () => {
       jest.advanceTimersByTime(500);
     });

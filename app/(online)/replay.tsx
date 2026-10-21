@@ -39,6 +39,8 @@ export default function ReplayScreen() {
   const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [index, setIndex] = useState(-1);
+  // Every mover but a step forward and playback is a scrub, which the table shows without a move's feedback.
+  const [scrubbed, setScrubbed] = useState(false);
   const [playRequested, setPlayRequested] = useState(false);
   const [speedIndex, setSpeedIndex] = useState(0);
   const [movesOpen, setMovesOpen] = useState(false);
@@ -59,7 +61,10 @@ export default function ReplayScreen() {
 
   useEffect(() => {
     if (!playing) return;
-    const timer = setTimeout(() => setIndex((i) => i + 1), STEP_MS / speed);
+    const timer = setTimeout(() => {
+      setScrubbed(false);
+      setIndex((i) => i + 1);
+    }, STEP_MS / speed);
     return () => clearTimeout(timer);
   }, [playing, index, speed]);
 
@@ -72,6 +77,7 @@ export default function ReplayScreen() {
   const scrubTo = useCallback(
     (next: number) => {
       setPlayRequested(false);
+      setScrubbed(true);
       setIndex(clamp(next));
     },
     [clamp]
@@ -88,6 +94,7 @@ export default function ReplayScreen() {
   const step = useCallback(
     (delta: number) => {
       setPlayRequested(false);
+      setScrubbed(delta !== 1);
       setIndex((i) => clamp(i + delta));
       uiFeedback("selection");
     },
@@ -179,6 +186,7 @@ export default function ReplayScreen() {
       gameState={state}
       viewerSeat={0}
       spectating
+      scrubbed={scrubbed}
       onPlay={NOOP}
       onPass={NOOP}
       onQuit={leaveScreen}

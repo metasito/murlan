@@ -119,6 +119,24 @@ describe('the pass that closes a trick', () => {
     await r.unmount();
   });
 
+  it('holds and sounds a close that reaches the table with a move it never saw', async () => {
+    // A reconnect, or two commits in one update: the pass before the close is never drawn.
+    const r = await render(table(LED));
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+    newEpoch();
+
+    await act(async () => r.rerender(table({ ...CLOSED, lastMove: { seq: 3, kind: 'pass', seat: 0, closedTrick: true } })));
+    expect(startsOf('trick_win')).toHaveLength(1);
+    await act(async () => {
+      jest.advanceTimersByTime(HOLD_MS - 1);
+    });
+    expect(onFelt(KING)).toBeTruthy();
+
+    await r.unmount();
+  });
+
   it('plays the trick-win sting before the new-round sting', async () => {
     const r = await render(table(LED));
     await act(async () => {

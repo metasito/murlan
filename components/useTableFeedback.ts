@@ -17,7 +17,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useScreenShakeEnabled } from "@/lib/screenShake";
 import { scheduleOnRN } from "react-native-worklets";
 import { traumaFor, shakeOffset, shakeAmplitudeFor } from "@/components/impact";
-import { stepSince } from "@/lib/game/moves";
+import { moveSince } from "@/lib/game/moves";
 import { cancelLandingPulses, runLandingPulses } from "@/lib/device/feedback";
 import type { RoundOutcome } from "@/lib/game/matchState";
 import { Hold, Motion, motionMs } from "@/lib/theme";
@@ -63,6 +63,8 @@ interface TableFeedbackState {
   isFinished: boolean;
   canPass: boolean;
   lastMove: LastMove;
+  /** GameTable's `scrubbed`. */
+  scrubbed?: boolean;
   roundOver: boolean;
   /** The round's, `"pending"` until it is scored (`scoredOutcome`). */
   outcome: RoundOutcome;
@@ -232,6 +234,7 @@ export function useTableFeedback({
   isFinished,
   canPass,
   lastMove,
+  scrubbed = false,
   roundOver,
   outcome,
   matchOutcome,
@@ -271,13 +274,12 @@ export function useTableFeedback({
   // on the state the pass produced, not the tap, so a bot, an opponent and the
   // server moving for a seat all announce themselves identically.
   useEffect(() => {
-    // A step only: a replay's rewind or jump is a scrub, not a pass made at the table.
-    const move = stepSince(seenMoveRef.current, lastMove);
+    const move = moveSince(seenMoveRef.current, lastMove);
     seenMoveRef.current = lastMove;
-    if (move?.kind !== "pass") return;
+    if (scrubbed || move?.kind !== "pass") return;
     moment({ kind: "pass" });
     if (move.closedTrick) moment({ kind: "trickWon" });
-  }, [lastMove, moment]);
+  }, [lastMove, scrubbed, moment]);
 
   useEffect(() => {
     // Reset on the way back down so a rematch — which never unmounts the

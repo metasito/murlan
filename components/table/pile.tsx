@@ -29,7 +29,7 @@ import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceMo
 import { seatDirection } from "@/components/seatLayout";
 import { flinchFor, landingTier, LAND_WOBBLE_MS, landWobble } from "@/components/impact";
 import { comboKey } from "@/components/passes";
-import { moveSince, stepSince } from "@/lib/game/moves";
+import { moveSince } from "@/lib/game/moves";
 import { readThrownPlay } from "@/components/table/throws";
 import type { Seating, TableLayout } from "@/components/tableLayout";
 import { clearTrick, NO_TRICK, playOnto, roleOf, sweepEnded, sweepTrick, topPlay, type PlayRole, type Trick, type TrickPlay } from "./trick";
@@ -569,6 +569,8 @@ export interface PileFlightInput {
   lastPlayedCombination: Combination | null;
   lastPlayedBy: number;
   lastMove: LastMove;
+  /** GameTable's `scrubbed`. */
+  scrubbed?: boolean;
   roundOver: boolean;
   /**
    * Online, `matchOver` arrives on its own socket packet after `roundOver` — a
@@ -607,6 +609,7 @@ export function usePileFlight({
   lastPlayedCombination,
   lastPlayedBy,
   lastMove,
+  scrubbed = false,
   roundOver,
   matchOver,
   viewerWon,
@@ -628,8 +631,8 @@ export function usePileFlight({
   // The tag over the pile, raised by every closing pass seen; the pass leaves `lastPlayedBy` naming
   // the trick's winner. The seat is what is stored, not the name — the name is looked up at render,
   // so a game update that only changes the player list cannot restart the banner's own timers.
-  // The won cards are held under it only when the pass follows the play the felt last drew: a
-  // replay's rewind or jump onto it has some other play on the felt.
+  // The won cards are held under it unless a replay reached the pass by a rewind or a jump, which
+  // leaves some other play on the felt.
   const [watch, setWatch] = useState<{
     seen: LastMove | null;
     holds: boolean;
@@ -640,7 +643,7 @@ export function usePileFlight({
     const closes = fresh.kind === "pass" && fresh.closedTrick;
     setWatch({
       seen: lastMove,
-      holds: closes && stepSince(watch.seen, lastMove) !== null,
+      holds: closes && !scrubbed,
       tag: closes ? { seat: lastPlayedBy, closure: fresh.seq } : watch.tag,
     });
   }

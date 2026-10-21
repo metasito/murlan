@@ -260,6 +260,8 @@ export interface GameTableProps {
   catchUp?: boolean;
   /** Mounting on a match restored from its save: the play on the pile was thrown before, so it mounts at rest. */
   restored?: boolean;
+  /** A replay reached this state by a rewind or a jump, not a move: no pass or trick-won sound, and the felt holds nothing. */
+  scrubbed?: boolean;
   /** The viewer's own link; anything but `up` holds the table (#1268). */
   ownLink?: OwnLink;
   /**
@@ -311,6 +313,7 @@ export function GameTable({
   connection,
   catchUp = false,
   restored = false,
+  scrubbed = false,
   ownLink = "up",
   overlays,
   tableCovered = false,
@@ -643,6 +646,7 @@ export function GameTable({
     isFinished,
     canPass,
     lastMove: gameState.lastMove,
+    scrubbed,
     roundOver: gameState.roundOver,
     outcome: scoredOutcome(outcome, gameState.finishingOrder, placementPoints),
     matchOutcome: matchOver ? matchOutcome : "pending",
@@ -677,6 +681,7 @@ export function GameTable({
     lastPlayedCombination: gameState.lastPlayedCombination,
     lastPlayedBy: gameState.lastPlayedBy,
     lastMove: gameState.lastMove,
+    scrubbed,
     roundOver: gameState.roundOver,
     matchOver,
     viewerWon: (matchOver ? matchOutcome : outcome) === "won",

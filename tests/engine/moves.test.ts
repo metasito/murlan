@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { moveSince, stepSince, turnOf } from "../../lib/game/moves.ts";
+import { moveSince, turnOf } from "../../lib/game/moves.ts";
+import { simulateOfflineMatch } from "../helpers/offlineMatch.ts";
+import { mulberry32 } from "../support/game.ts";
 import type { LastMove } from "../../lib/game/gameEngine.ts";
 
 const deal: LastMove = { seq: 0, kind: "deal" };
@@ -30,15 +32,23 @@ test("a move that shares a count with one from another round is still new", () =
   assert.equal(moveSince({ seq: 4, kind: "pass", seat: 1, closedTrick: false }, pass), pass);
 });
 
-test("a step is the move straight after the one seen, and only that", () => {
-  assert.equal(stepSince(play, pass), pass);
-  assert.equal(stepSince(pass, pass), null, "nothing new");
-  assert.equal(stepSince(pass, play), null, "a rewind");
-  assert.equal(stepSince(deal, pass), null, "a jump past moves never seen");
-  assert.equal(stepSince(null, deal), null, "nothing seen to step from");
-});
-
-test("the turn key moves with the move count", () => {
-  assert.equal(turnOf({ lastMove: pass }), "4");
-  assert.notEqual(turnOf({ lastMove: play }), turnOf({ lastMove: pass }));
+test("the turn key changes on every move a real match makes, a giveback and a new round's deal among them", () => {
+  const seen = { giveback: 0, turnover: 0, moves: 0 };
+  for (let seed = 1; seed <= 10; seed++) {
+    simulateOfflineMatch({
+      seed,
+      players: [0, 1, 2].map((i) => ({ name: `Bot${i}`, type: "bot" as const })),
+      gameMode: "free_for_all",
+      length: "match",
+      botRng: mulberry32,
+      onTransition: (prev, next) => {
+        if (prev === null) return;
+        seen.moves++;
+        if (next.lastMove.kind === "giveback") seen.giveback++;
+        if (prev.roundOver) seen.turnover++;
+        assert.notEqual(turnOf(next), turnOf(prev), `seed ${seed}, move ${next.lastMove.seq} kept the key`);
+      },
+    });
+  }
+  assert.ok(seen.giveback > 0 && seen.turnover > 0, `only ${JSON.stringify(seen)}`);
 });
