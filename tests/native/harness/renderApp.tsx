@@ -25,12 +25,14 @@ function AuthSettled() {
   return null;
 }
 
-/** Every query the screen asked for has its answer, and the screen has rendered it. */
-export async function queriesSettled() {
+/**
+ * Every query the screen asked for has its answer, and its readers have rendered it: query-core
+ * hands a settled answer to its observers on a zero timeout, after `isFetching()` already reads 0.
+ */
+export const queriesSettled = async () => {
   await waitFor(() => expect(queryClient.isFetching()).toBe(0));
-  // The cache holds an answer before its observers hear of it: query-core batches that notice on a timer.
   await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
-}
+};
 
 type Boot = {
   /** The session the server confirms; `null`, the default, answers 401. */
