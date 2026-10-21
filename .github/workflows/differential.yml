@@ -1,0 +1,49 @@
+# Replays seeded all-bot matches on a baseline commit and on this one and diffs the traces
+# (its row in docs/agents/checks.md's table). A search, so never on `pull_request`.
+name: Differential replay
+
+on:
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: Commit to replay against; empty takes tests/differential/accepted.json's
+        default: ""
+
+concurrency:
+  group: differential-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    name: Replay seeded matches
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/install
+
+      - name: Check out the baseline beside this tree
+        env:
+          INPUT_BASELINE: ${{ inputs.baseline }}
+        run: |
+          baseline="${INPUT_BASELINE:-$(node -p "require('./tests/differential/accepted.json').baseline")}"
+          echo "BASELINE=$(git rev-parse "$baseline^{commit}")" >> "$GITHUB_ENV"
+          git worktree add --detach "$RUNNER_TEMP/baseline" "$baseline"
+          ln -s "$PWD/node_modules" "$RUNNER_TEMP/baseline/node_modules"
+
+      - name: Trace both trees
+        run: |
+          node tests/differential/trace.ts "$RUNNER_TEMP/baseline" > "$RUNNER_TEMP/baseline.jsonl"
+          node tests/differential/trace.ts . > "$RUNNER_TEMP/head.jsonl"
+
+      - name: Compare against accepted.json
+        run: >-
+          node tests/differential/compare.ts "$RUNNER_TEMP/baseline.jsonl" "$RUNNER_TEMP/head.jsonl"
+          --accepted tests/differential/accepted.json --baseline "$BASELINE"
