@@ -20,6 +20,20 @@ jest.mock('expo-router', () => ({
 
 jest.mock('expo-router/react-navigation', () => ({ usePreventRemove: () => {} }));
 
+// The code card's note is a plain child the room screen draws on every render of its own, so its
+// renders count the screen's without standing in for any state.
+let mockRoomScreenRenders = 0;
+jest.mock('@/components/RoomKindNote', () => {
+  const actual = jest.requireActual<typeof import('@/components/RoomKindNote')>('@/components/RoomKindNote');
+  return {
+    ...actual,
+    RoomKindNote: (props: React.ComponentProps<typeof actual.RoomKindNote>) => {
+      mockRoomScreenRenders += 1;
+      return actual.RoomKindNote(props);
+    },
+  };
+});
+
 const roomModule = require('@/app/(online)/room') as {
   default: React.ComponentType;
   BOTS_OFFERED_AFTER_MS: number;
@@ -109,4 +123,83 @@ describe('the room screen matchmaking toggle', () => {
       jest.useRealTimers();
     }
   });
+
+  it('counts down without re-rendering the room screen', async () => {
+    jest.useFakeTimers();
+    try {
+      const view = await renderRoom();
+      const rendersBefore = mockRoomScreenRenders;
+      expect(rendersBefore).toBeGreaterThan(0);
+      await tick(5);
+      expect(view.getByText(hint(25))).toBeTruthy();
+      expect(mockRoomScreenRenders).toBe(rendersBefore);
+      await view.unmount();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('shows no countdown to a player who is not the host', async () => {
+    jest.useFakeTimers();
+    try {
+      route('GET', '/api/friends', { body: [] });
+      await setWindow({ width: 390, height: 844 });
+      const view = await renderApp(<RoomScreen />, { user: { id: 'guest', username: 'Bo' }, online: true, connected: true });
+      await view.socket().deliver('room:state', room({ code: 'ABCDEF', hostUserId: 'host', players: seated(2, 'guest') }));
+      const rendersBefore = mockRoomScreenRenders;
+      expect(rendersBefore).toBeGreaterThan(0);
+      await tick(5);
+      expect(view.queryByText(ANY_COUNTDOWN)).toBeNull();
+      expect(mockRoomScreenRenders).toBe(rendersBefore);
+      await view.unmount();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('keeps counting from when the room opened while the table fills and empties again', async () => {
+    jest.useFakeTimers();
+    try {
+      const view = await renderRoom();
+      await tick(10);
+      expect(view.getByText(hint(20))).toBeTruthy();
+
+      await view.socket().deliver('room:state', room({ code: 'ABCDEF', hostUserId: 'host', players: seated(4) }));
+      expect(view.queryByText(ANY_COUNTDOWN)).toBeNull();
+
+      await tick(5);
+      await view.socket().deliver('room:state', room({ code: 'ABCDEF', hostUserId: 'host', players: seated(1) }));
+      expect(view.getByText(hint(15))).toBeTruthy();
+
+      await tick(15);
+      expect(view.getByRole('switch', { name: BOTS })).toBeTruthy();
+      await view.unmount();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
+
+function hint(seconds: number) {
+  return locale['room.botsComingIn'].replace('{{seconds}}', String(seconds));
+}
+
+const ANY_COUNTDOWN = new RegExp(
+  locale['room.botsComingIn'].replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace('{{seconds}}', '\\d+')
+);
+
+async function tick(steps: number) {
+  for (let i = 0; i < steps; i++) {
+    await act(async () => {
+      jest.advanceTimersByTime(COUNTDOWN_STEP_MS);
+    });
+  }
+}
+
+function seated(n: number, second = 'p1') {
+  return Array.from({ length: n }, (_, i) => ({
+    seatIndex: i,
+    userId: i === 0 ? 'host' : i === 1 ? second : `p${i}`,
+    username: `P${i}`,
+  }));
+}

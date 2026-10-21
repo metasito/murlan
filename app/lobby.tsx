@@ -16,13 +16,13 @@ import type { PlayerSetupConfig } from "@/context/GameContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useLocalSession } from "@/context/gameHooks";
 import { useAuth } from "@/context/AuthContext";
-import { GameMode, MatchLength, firstTargetFor, modeFits, teamForSeat } from "@/lib/game/gameEngine";
+import { GameMode, MatchLength, teamForSeat } from "@/lib/game/gameEngine";
 import { BOT_PERSONALITIES, botSeatNames, getBotPersonality } from "@/lib/game/botPersonalities";
 import { DifficultyLadder } from "@/components/DifficultyLadder";
 import { Colors, Spacing, Radius, FontSize } from '@/lib/theme';
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
-import { ChoiceChips } from "@/components/ChoiceChips";
+import { MatchLengthPicker, ModePicker, SeatCountPicker } from "@/components/lobbyPickers";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden } from "@/lib/a11y";
 
@@ -88,10 +88,7 @@ function PlayerRow({ config, team, onChange, isHuman }: PlayerRowProps) {
   );
 }
 
-/** Full match first: it is the canonical Murlan match (docs/GAME-RULES.md §12). */
-const FORMAT_OPTIONS: readonly MatchLength[] = ["match", "single"];
 const START_BAR_CLEARANCE = 120;
-const MODE_ICON = 16;
 
 export default function LobbyScreen() {
   const insets = useSafeAreaInsets();
@@ -112,11 +109,6 @@ export default function LobbyScreen() {
   const [playerCount, setPlayerCount] = useState(2);
   const [gameMode, setGameMode] = useState<GameMode>("free_for_all");
   const [matchLength, setMatchLength] = useState<MatchLength>("match");
-
-  const formatCopy = (length: MatchLength) =>
-    length === "match"
-      ? { title: t("lobby.formatMatch"), detail: t("lobby.formatMatchSub", { target: firstTargetFor(playerCount) }) }
-      : { title: t("lobby.formatSingle"), detail: t("lobby.formatSingleSub") };
 
   /** A bot seat is called after its personality; humans keep the name they were given. */
   const withBotNames = (configs: PlayerSetupConfig[]): PlayerSetupConfig[] => {
@@ -151,7 +143,6 @@ export default function LobbyScreen() {
 
   const handleCountChange = (count: number) => {
     setPlayerCount(count);
-    setGameMode(modeFits(gameMode, count) ? gameMode : "free_for_all");
     setPlayers(buildDefaultPlayers(count));
   };
 
@@ -200,54 +191,17 @@ export default function LobbyScreen() {
     <>
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>{t("lobby.playerCountLabel")}</Text>
-        <ChoiceChips
-          choices={[2, 3, 4].map((n) => ({
-            value: n,
-            label: String(n),
-            a11yLabel: t("lobby.playerCountOptionA11yLabel", { n }),
-          }))}
-          value={playerCount}
-          onChange={handleCountChange}
-          weight="digit"
-        />
+        <SeatCountPicker value={playerCount} onChange={handleCountChange} mode={gameMode} />
       </View>
 
-      {modeFits("teams", playerCount) && (
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>{t("lobby.modeLabel")}</Text>
-          <ChoiceChips
-            choices={(["free_for_all", "teams"] as GameMode[]).map((gm) => ({
-              value: gm,
-              label: gm === "teams" ? t("lobby.modeTeams") : t("lobby.modeFreeForAll"),
-              icon: (active: boolean) =>
-                gm === "teams" ? (
-                  <Ionicons name="people" size={MODE_ICON} color={active ? Colors.gold : Colors.textSecondary} {...a11yHidden()} />
-                ) : (
-                  <Ionicons name="person" size={MODE_ICON} color={active ? Colors.gold : Colors.textSecondary} {...a11yHidden()} />
-                ),
-            }))}
-            value={gameMode}
-            onChange={setGameMode}
-          />
-        </View>
-      )}
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>{t("lobby.modeLabel")}</Text>
+        <ModePicker value={gameMode} onChange={setGameMode} seats={playerCount} form={isLandscape ? "short" : "full"} />
+      </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>{t("lobby.formatLabel")}</Text>
-        <ChoiceChips
-          choices={FORMAT_OPTIONS.map((length) => {
-            const { title, detail } = formatCopy(length);
-            return {
-              value: length,
-              label: title,
-              detail,
-              a11yLabel: t("lobby.formatA11yLabel", { format: title, detail }),
-            };
-          })}
-          value={matchLength}
-          onChange={setMatchLength}
-          weight="title"
-        />
+        <MatchLengthPicker value={matchLength} onChange={setMatchLength} seats={playerCount} />
       </View>
     </>
   );

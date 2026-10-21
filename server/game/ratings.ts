@@ -5,6 +5,7 @@ import { userRatings, users } from "../../shared/schema.ts";
 import { lockUsers } from "../store/userLock.ts";
 import {
   PROVISIONAL_ROUNDS,
+  provisionalLeft,
   ratedFinishers,
   ratingDeltas,
   seasonKey,
@@ -195,7 +196,7 @@ export async function recordRatedResult(
 export async function getRating(userId: string, asOf: Date): Promise<RatingDto> {
   const season = seasonKey(asOf);
   const { rating, rounds } = await currentRow(db, userId, season);
-  return { season, rating, rounds, provisional: rounds < PROVISIONAL_ROUNDS };
+  return { season, rating, rounds, provisional: provisionalLeft({ rounds }) !== undefined };
 }
 
 /** The current season's ladder. Provisional records are not listed. */
@@ -210,6 +211,7 @@ export async function getLeaderboard(asOf: Date): Promise<LeaderboardEntryDto[]>
     })
     .from(userRatings)
     .innerJoin(users, eq(users.id, userRatings.userId))
+    // provisionalLeft (lib/game/rating.ts) in SQL: listed once it is undefined.
     .where(and(eq(userRatings.season, season), gte(userRatings.rounds, PROVISIONAL_ROUNDS)))
     .orderBy(desc(userRatings.rating), userRatings.updatedAt)
     .limit(LEADERBOARD_SIZE);

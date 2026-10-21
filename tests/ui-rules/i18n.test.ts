@@ -15,7 +15,7 @@ import ts from "typescript";
 import { it } from "../../locales/it.ts";
 import { en } from "../../locales/en.ts";
 import { sq } from "../../locales/sq.ts";
-import { translate, interpolate, DEFAULT_LOCALE } from "../../lib/i18n.ts";
+import { translate, interpolate, DEFAULT_LOCALE, getLocale, tn } from "../../lib/i18n.ts";
 import { CARD_BACK_IDS, TABLE_FELT_IDS } from "../../lib/cosmetics.ts";
 import { BOT_PERSONALITIES } from "../../lib/game/botPersonalities.ts";
 import { dealCards } from "../../lib/game/gameEngine.ts";
@@ -455,6 +455,53 @@ describe("pluralisation pairs", () => {
       }
     }
   });
+
+  test("tn takes only a base that has both plural forms", () => {
+    assert.equal(tn("history.players", 2), translate(getLocale(), "history.players_other", { count: 2 }));
+    // @ts-expect-error -- "history.player" has no _one/_other pair, so it is no plural base.
+    assert.equal(tn("history.player", 2), "history.player_other");
+    // @ts-expect-error -- a whole plural key is not its base.
+    assert.equal(tn("history.players_one", 1), "history.players_one_one");
+  });
+});
+
+/** Every en key whose value an earlier key already holds, ignoring case and edge spaces. */
+function repeatedValues(catalogue: Record<string, string>): string[] {
+  const seen = new Set<string>();
+  return Object.entries(catalogue).flatMap(([key, value]) => {
+    const word = value.trim().toLowerCase();
+    if (seen.has(word)) return [key];
+    seen.add(word);
+    return [];
+  });
+}
+
+describe("a glossary word is keyed once, as term.*", () => {
+  /**
+   * Each locale's own count, exact: lower it when a repeat goes; a new one reads the key that
+   * already holds the word. The key floor is the catalogue's size when this was set.
+   */
+  const REPEATED_VALUES: Record<LocaleName, number> = { en: 84, it: 81, sq: 82 };
+  const KEY_FLOOR = 900;
+
+  for (const name of LOCALE_NAMES) {
+    test(`${name} repeats no more values than it did`, () => {
+      const catalogue: Record<string, string> = LOCALES[name];
+      assert.ok(Object.keys(catalogue).length >= KEY_FLOOR, `${name} is empty or failed to load`);
+      assert.equal(
+        repeatedValues(catalogue).length,
+        REPEATED_VALUES[name],
+        `${name} repeats ${repeatedValues(catalogue).join(", ")}`
+      );
+    });
+
+    test(`${name}: a per-screen copy of a mode word counts as one more repeat`, () => {
+      const catalogue: Record<string, string> = LOCALES[name];
+      assert.ok(!("room.modeTeams" in catalogue));
+      const restored = { ...catalogue, "room.modeTeams": catalogue["term.mode.teams"] };
+      assert.equal(repeatedValues(restored).length, repeatedValues(catalogue).length + 1);
+    });
+  }
 });
 
 describe("interpolation placeholders stay in sync across locales", () => {

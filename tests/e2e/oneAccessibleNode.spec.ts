@@ -146,7 +146,7 @@ test("a revisited room screen carries the room code on exactly one accessible no
     await openApp(page, baseURL!);
     await registerNewAccount(page, uniqueUsername(username));
     await goToOnlineLobby(page);
-    await page.getByRole("radio", { name: "2 giocatori" }).click();
+    await page.getByRole("radio", { name: "2 giocatori", exact: true }).click();
     await page.getByRole("button", { name: "Crea Stanza" }).click();
     await page.waitForURL(/\/room/);
   }

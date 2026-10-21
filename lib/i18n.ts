@@ -126,17 +126,20 @@ export function t(key: TranslationKey, params?: TranslationParams): string {
   return translate(currentLocale, key, params);
 }
 
+/** Every key that has a `_one` form; tests/ui-rules/i18n.test.ts holds each to its `_other`. */
+export type PluralBase = {
+  [K in TranslationKey]: K extends `${infer B}_one` ? B : never;
+}[TranslationKey];
+
 /**
- * Simple pluralisation: picks `${base}_one` when `count` is 1, otherwise
- * `${base}_other`. Both suffixed keys must exist in every locale catalogue
- * (enforced by tests/ui-rules/i18n.test.ts) and `count` is always available to the
- * template as `{{count}}`.
+ * Picks `${base}_one` when `count` is 1, otherwise `${base}_other`, and
+ * `count` is always available to the template as `{{count}}`.
  */
-function pluralKey(base: string, count: number): TranslationKey {
+function pluralKey(base: PluralBase, count: number): TranslationKey {
   return `${base}${Math.abs(count) === 1 ? "_one" : "_other"}` as TranslationKey;
 }
 
-export function tn(base: string, count: number, params?: TranslationParams): string {
+export function tn(base: PluralBase, count: number, params?: TranslationParams): string {
   return t(pluralKey(base, count), { count, ...params });
 }
 
@@ -175,7 +178,7 @@ export function useTranslation() {
     [locale]
   );
   const tnBound = useCallback(
-    (base: string, count: number, params?: TranslationParams) =>
+    (base: PluralBase, count: number, params?: TranslationParams) =>
       tBound(pluralKey(base, count), { count, ...params }),
     [tBound]
   );

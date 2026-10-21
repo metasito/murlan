@@ -13,7 +13,8 @@ import { MenuButton } from "@/components/MenuButton";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { LoadingBlock, ErrorBlock, EmptyBlock } from "@/components/StateBlock";
 import { Colors, FontSize, Radius, Spacing, Type } from "@/lib/theme";
-import { PROVISIONAL_ROUNDS, formatSeason } from "@/lib/game/rating";
+import { PROVISIONAL_ROUNDS } from "@/lib/game/rating";
+import { RatingSummary } from "@/components/RatingSummary";
 import { useTranslation } from "@/lib/i18n";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { ladderBoards, queryKey, useApi } from "@/lib/queries";
@@ -32,12 +33,6 @@ export default function LeaderboardScreen() {
 
   const board = boardQuery.data ?? [];
   const me = meQuery.data;
-  const selfSeason = me ? t("ladder.seasonLabel", { season: formatSeason(me.season, t) }) : "";
-  const selfGames = me
-    ? me.provisional
-      ? t("ladder.provisional", { n: PROVISIONAL_ROUNDS - me.rounds })
-      : t("ladder.roundsLabel", { n: me.rounds })
-    : "";
 
   return (
     <MenuLayout scrollable centered={false}>
@@ -52,18 +47,7 @@ export default function LeaderboardScreen() {
             retry={{ label: t("common.retry"), a11yLabel: t("ladder.meRetryA11yLabel"), onPress: () => meQuery.refetch() }}
           />
         )}
-        {me && (
-          <View
-            style={styles.selfBlock}
-            {...a11yGroup(
-              `${t("ladder.ratingLabel")}: ${me.rating}. ${selfSeason}. ${selfGames}`
-            )}
-          >
-            <Text style={styles.selfRating} {...a11yHidden()}>{me.rating}</Text>
-            <Text style={styles.selfSeason} {...a11yHidden()}>{selfSeason}</Text>
-            <Text style={styles.selfGames} {...a11yHidden()}>{selfGames}</Text>
-          </View>
-        )}
+        {me && <RatingSummary rating={me} style={styles.selfBlock} />}
 
         <SegmentedControl
           testID="ladder-scope"
@@ -148,18 +132,7 @@ export default function LeaderboardScreen() {
 
 const styles = StyleSheet.create({
 
-  selfBlock: {
-    alignItems: "center",
-    gap: Spacing.xxs,
-    paddingVertical: Spacing.md,
-  },
-  selfRating: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: FontSize.hero,
-    color: Colors.gold,
-  },
-  selfSeason: { ...Type.label },
-  selfGames: { ...Type.caption, textAlign: "center" },
+  selfBlock: { paddingTop: Spacing.md },
 
   // The board is the card's elastic part: the rating above it and the note and
   // the back button below it keep their own heights, so a taller window shows
