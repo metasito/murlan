@@ -696,6 +696,29 @@ const GUARDS = [
       "jest.mock('@/context/AuthContextual', () => ({}));",
       "await renderApp(<Screen />, { user: { id: 'u1', username: 'Ana' } });",
     ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
+  },  {
+    id: "table-renders-through-the-app",
+    why: "The socket, the game contexts and the query client are the app's own (tests/native/harness/renderApp.tsx): online state arrives through socket().deliver('game:state', …), an offline table through renderApp's `offline` save. A typed slice fixture is only for a single-slice components/table leaf (D16).",
+    selector: mockOf(
+      "/^((@|\\.\\.?(\\x2F\\.\\.)*)\\x2Fcontext\\x2F(SocketContext|GameContext|OnlineGameContext|onlineGameHooks|gameHooks)(\\.tsx?)?|\\.\\.?(\\x2F\\.\\.)*\\x2F([\\w-]+\\x2F)*onlineContextMock(\\.tsx?)?|@tanstack\\x2Freact-query)$/",
+      "/((^|\\x2F)(context\\x2F(SocketContext|GameContext|OnlineGameContext|onlineGameHooks|gameHooks)|onlineContextMock)(\\.tsx?)?|^@tanstack\\x2Freact-query)$/"
+    ),
+    files: ["tests/native/**/*.{ts,tsx}"],
+    plant: { file: "tests/native/plant.test.tsx", code: [
+      "jest.mock('@/context/SocketContext', () => ({ useSocket: () => ({ socket }) }));",
+      'jest.doMock("../../context/OnlineGameContext.tsx", () => ({}));',
+      "jest.mock(`@/context/onlineGameHooks`, () => ({}));",
+      "jest.mock('@/context/GameContext', () => ({}));",
+      "jest.mock('@/context/gameHooks', () => ({}));",
+      "jest.mock('./helpers/onlineContextMock', () => ({}));",
+      "jest.mock('@tanstack/react-query', () => ({ ...jest.requireActual('@tanstack/react-query') }));",
+    ].join("\n"), hits: 7 },
+    spare: [
+      "jest.mock('@/context/SocketContextual', () => ({}));",
+      "jest.mock('@tanstack/react-query-devtools', () => ({}));",
+      "jest.mock('@/components/GameTable', () => ({}));",
+      "await live.deliver('game:state', wire(ENDED, 0), () => {});",
+    ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
   },
 ];
 

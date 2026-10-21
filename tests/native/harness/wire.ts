@@ -33,7 +33,7 @@ export function room(over: Partial<WireRoomState> = {}): WireRoomState {
   };
 }
 
-/** `state`'s round scored as the server scores it: each seat's `points`, and `totals` equal to them unless given. */
+/** The server's word on `state`'s round: each seat's placement `points`, and `totals` equal to them unless given. */
 export function roundOver(
   state: GameState,
   points: Record<string, number>,

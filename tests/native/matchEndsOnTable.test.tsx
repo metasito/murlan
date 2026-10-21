@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals
 import React from 'react';
 import { act, fireEvent, screen } from '@testing-library/react-native';
 import { router } from 'expo-router';
-import { ReduceMotion, ReducedMotionConfig, getAnimatedStyle } from 'react-native-reanimated';
+import { getAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setMotionPreference } from '@/lib/accessibility';
@@ -16,10 +16,13 @@ import { t } from '@/lib/i18n';
 import { Layer } from '@/lib/theme';
 import { StyleSheet } from 'react-native';
 import { state } from '../support/game';
-import { renderApp } from './harness/renderApp';
+import { useGameTable } from '@/context/GameContext';
+import { offlineSave, renderAppHook } from './harness/renderApp';
+import { roundOver, wire } from './harness/wire';
+import type { FakeSocket } from './mocks/socketIo';
 
 const seat = (i: number): Player => ({ id: `player_${i}`, name: ['Ana', 'Luan', 'Erion', 'Besa'][i], hand: [], type: i === 0 ? 'human' : 'bot' });
-const MOCK_ENDED: GameState = state({
+const ENDED: GameState = state({
   players: [0, 1, 2, 3].map(seat),
   currentTurnIndex: 0,
   lastPlayedCombination: null,
@@ -32,88 +35,83 @@ const MOCK_ENDED: GameState = state({
   firstPlayMade: true,
   lastMove: { seq: 0, kind: 'deal' },
 });
-const MOCK_SCORES = { player_0: 12, player_1: 22, player_2: 6, player_3: 3 };
-const MOCK_ROUND = { player_0: 1, player_1: 3, player_2: 0, player_3: 0 };
-const MOCK_MATCH = { target: 21, over: true, winners: ['player_1'], isDraw: false, continues: true, roundsPlayed: 6 };
-
-const mockStartNewMatch = jest.fn();
-const mockResetGame = jest.fn();
-const mockVoteRematch = jest.fn();
-let mockVotes: { votes: string[]; total: number } | null = null;
-let mockError: { text: string; seq: number } | null = null;
-let mockScoresCurrent = true;
-let mockRatingDeltas: Record<string, number> = {};
-let mockRecorded = true;
-let mockRatingsAfter: Record<string, { rating: number; rounds: number }> = {};
+const SCORES = { player_0: 12, player_1: 22, player_2: 6, player_3: 3 };
+const ROUND = { player_0: 1, player_1: 3, player_2: 0, player_3: 0 };
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() } }));
-jest.mock('@/context/GameContext', () =>
-  (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(() => ({
-    gameState: MOCK_ENDED,
-    exchangeAnnouncing: false,
-    exchangeAnnounceData: null,
-    startNewMatch: mockStartNewMatch,
-    match: { ...MOCK_MATCH, length: 'match', scores: MOCK_SCORES, hands: [{ pointsAwarded: MOCK_ROUND, finishingOrder: MOCK_ENDED.finishingOrder }] },
-  }), () => ({
-    resetGame: mockResetGame,
-  }))
-);
-jest.mock('@/context/onlineGameHooks', () => ({
-  useServerError: (surface: string) => (surface === 'table' ? mockError : null),
-  useOnlineTable: () => ({
-    gameState: MOCK_ENDED,
-    mySeatIndex: 0,
-    playCards: jest.fn(),
-    pass: jest.fn(),
-    sendReaction: jest.fn(),
-    disconnectedSeats: {},
-  }),
-  useOnlineTurnClock: () => ({}),
-  useOnlineRoom: () => ({ isSpectator: false, entrySource: 'lobby', leaveRoom: jest.fn() }),
-  useOnlineConnection: () => ({
-    connected: true,
-    reconnectNotice: null,
-    playerLeft: false,
-    rejoinFailed: false,
-    clearError: jest.fn(),
-    clearPlayerLeft: jest.fn(),
-    clearRejoinFailed: jest.fn(),
-    retryConnection: jest.fn(),
-    ownLink: 'up',
-  }),
-  useOnlineMatch: () => ({
-    matchState: { ...MOCK_MATCH, length: 'match' },
-    cumulativeScores: MOCK_SCORES,
-    placementPoints: MOCK_ROUND,
-    placementPointsCurrent: mockScoresCurrent,
-    ratingDeltas: mockRatingDeltas,
-    roundRecorded: mockRecorded,
-    ratingsAfter: mockRatingsAfter,
-    rematchVoteState: mockVotes,
-    endMatchVoteState: null,
-    voteRematch: mockVoteRematch,
-    voteToEndMatch: jest.fn(),
-  }),
-  useOnlineExchange: () => ({
-    exchangeAnnouncing: false,
-    exchangeAnnounceData: null,
-    giveExchangeCard: jest.fn(),
-    acknowledgeExchange: jest.fn(),
-  }),
-}));
+
+/** Luan and Erion are out, Luan first; Ana's last card ends the round, and Luan's 20 points end the match. */
+const LAST_CARD = { id: '3_spades', rank: '3', suit: 'spades', isJoker: false } as const;
+const ENDING: GameState = state({
+  ...ENDED,
+  players: [
+    { ...seat(0), hand: [LAST_CARD] },
+    seat(1),
+    seat(2),
+    { ...seat(3), hand: [{ id: '4_spades', rank: '4', suit: 'spades', isJoker: false }] },
+  ],
+  roundOver: false,
+  finishingOrder: ['player_1', 'player_2'],
+});
+
+/** The server's word on the last round, which `over` sets for the viewer `alice`. */
+const lastRound = (over: { ratingDeltas?: Record<string, number>; ratingsAfter?: Record<string, { rating: number; rounds: number }>; recorded?: boolean; matchContinues?: boolean } = {}) =>
+  roundOver(ENDED, ROUND, {
+    totals: SCORES,
+    roundsPlayed: 6,
+    matchOver: true,
+    matchWinnerIds: ['player_1'],
+    matchContinues: true,
+    ...over,
+  });
 
 const OfflineGameScreen = (require('@/app/game') as { default: React.ComponentType }).default;
 const OnlineGameScreen = (require('@/app/(online)/game') as { default: React.ComponentType }).default;
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
 const HIDDEN = { includeHiddenElements: true };
 const { board, settled } = matchEndingOnsets(4);
-const advance = (ms: number) => act(async () => void jest.advanceTimersByTime(ms));
-const wrap = (Screen: React.ComponentType) => (
-  <SafeAreaProvider initialMetrics={METRICS}>
-    <ReducedMotionConfig mode={ReduceMotion.Always} />
-    <Screen />
-  </SafeAreaProvider>
-);
+/** `ms` of frames: a flight's clock runs on frame callbacks, which one long jump skips. */
+const advance = async (ms: number) => {
+  for (let t = 0; t < ms; t += 16) await act(async () => void jest.advanceTimersByTime(Math.min(16, ms - t)));
+};
+type Screen = 'offline' | 'online';
+/** Past the deal of the saved table, so the last card is thrown onto a table at rest. */
+const DEALT = 3_000;
+/** The flight of Ana's last card: the ending's onsets count from its landing, as online they count from the finished table. */
+const THROWN = 300;
+let live: FakeSocket;
+
+/**
+ * The table the match ends on. Offline, Ana has played the last card of a saved match; online, the server
+ * sends the finished table and then its word on the round, unless `scored` is false.
+ */
+const mount = async (where: Screen, { round = lastRound(), scored = true }: { round?: ReturnType<typeof lastRound>; scored?: boolean } = {}) => {
+  const Screen = where === 'offline' ? OfflineGameScreen : OnlineGameScreen;
+  const view = await renderAppHook(useGameTable, {
+    user: { id: 'alice', username: 'Alice' },
+    online: where === 'online',
+    connected: where === 'online',
+    offline: where === 'offline' ? offlineSave(ENDING, { length: 'match', target: 21, scores: { player_0: 11, player_1: 20, player_2: 6, player_3: 3 } }) : undefined,
+    wrap: (probe) => (
+      <SafeAreaProvider initialMetrics={METRICS}>
+        {probe}
+        <Screen />
+      </SafeAreaProvider>
+    ),
+  });
+  if (where === 'offline') {
+    await advance(DEALT);
+    await act(async () => void view.result.current.playCards([LAST_CARD.id]));
+    await advance(THROWN);
+  }
+  if (where === 'online') {
+    live = view.socket();
+    live.reset();
+    await live.deliver('game:state', wire(ENDED, 0), () => {});
+    if (scored) await live.deliver('game:round_over', round);
+  }
+  return view;
+};
 const pressable = (testID: string) => {
   const button = screen.queryByTestId(testID, HIDDEN);
   return button !== null && button.props.accessibilityState?.disabled !== true;
@@ -125,12 +123,6 @@ const tap = () =>
 beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
-  mockVotes = null;
-  mockError = null;
-  mockScoresCurrent = true;
-  mockRatingDeltas = {};
-  mockRecorded = true;
-  mockRatingsAfter = {};
 });
 afterEach(async () => {
   jest.useRealTimers();
@@ -138,12 +130,12 @@ afterEach(async () => {
   await AsyncStorage.removeItem(SETTINGS_KEY);
 });
 
-describe.each<[string, React.ComponentType, string]>([
-  ['offline', OfflineGameScreen, 'btn-new-match'],
-  ['online', OnlineGameScreen, 'btn-rivincita'],
-])('a match ending %s', (_where, Screen, againID) => {
+describe.each<[Screen, string]>([
+  ['offline', 'btn-new-match'],
+  ['online', 'btn-rivincita'],
+])('a match ending %s', (where, againID) => {
   it('stays on the table and settles on the board with the winner and both actions', async () => {
-    const view = await mount(wrap(Screen));
+    const view = await mount(where);
     await advance(board - 100);
     expect(screen.queryByTestId('match-winner', HIDDEN)).toBeNull();
     expect(pressable(againID)).toBe(false);
@@ -160,7 +152,7 @@ describe.each<[string, React.ComponentType, string]>([
   });
 
   it('a tap during the ending jumps to the settled board', async () => {
-    const view = await mount(wrap(Screen));
+    const view = await mount(where);
     await advance(board - 600);
     expect(pressable(againID)).toBe(false);
     await tap();
@@ -172,7 +164,7 @@ describe.each<[string, React.ComponentType, string]>([
 
   it('under reduced motion, the board is settled at once', async () => {
     await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify({ motion: 'on' }));
-    const view = await mount(wrap(Screen));
+    const view = await mount(where);
     await advance(16);
     expect(pressable(againID)).toBe(true);
     expect(screen.getByTestId('match-winner-name', HIDDEN)).toHaveTextContent('Luan');
@@ -180,53 +172,53 @@ describe.each<[string, React.ComponentType, string]>([
   });
 });
 
-const mount = (ui: React.ReactElement) => renderApp(ui, { user: { id: 'alice', username: 'Alice' } });
-
 describe('New match on the board', () => {
   it('starts a new match offline, with no route change', async () => {
-    const view = await mount(wrap(OfflineGameScreen));
+    const view = await mount('offline');
     await advance(settled + 100);
     await fireEvent.press(screen.getByTestId('btn-new-match', HIDDEN));
-    expect(mockStartNewMatch).toHaveBeenCalledTimes(1);
+    expect(view.result.current.match).toMatchObject({ over: false, rounds: [] });
+    expect(view.result.current.gameState?.roundOver).toBe(false);
     expect(router.replace).not.toHaveBeenCalled();
+    await view.unmount();
+  });
 
+  it('Home leaves the finished table offline', async () => {
+    const view = await mount('offline');
+    await advance(settled + 100);
     await fireEvent.press(screen.getByTestId('btn-home', HIDDEN));
-    expect(mockResetGame).toHaveBeenCalledTimes(1);
+    expect(view.result.current.gameState).toBeNull();
     expect(router.replace).toHaveBeenCalledWith('/');
     await view.unmount();
   });
 
   it('holds the online board until the placement points arrive', async () => {
-    mockScoresCurrent = false;
-    const view = await mount(wrap(OnlineGameScreen));
+    const view = await mount('online', { scored: false });
     await advance(settled + 100);
     expect(screen.queryByTestId('btn-home', HIDDEN)).toBeNull();
 
-    mockScoresCurrent = true;
-    await act(async () => view.rerender(wrap(OnlineGameScreen)));
+    await live.deliver('game:round_over', lastRound());
     await advance(settled + 100);
     expect(pressable('btn-home')).toBe(true);
     await view.unmount();
   });
 
   it('sends the rematch vote online and shows its count', async () => {
-    const view = await mount(wrap(OnlineGameScreen));
+    const view = await mount('online');
     await advance(settled + 100);
     await fireEvent.press(screen.getByTestId('btn-rivincita', HIDDEN));
-    expect(mockVoteRematch).toHaveBeenCalledTimes(1);
+    expect(live.sentAs('game:rematch_vote')).toHaveLength(1);
 
-    mockVotes = { votes: ['alice'], total: 4 };
-    await act(async () => view.rerender(wrap(OnlineGameScreen)));
+    await live.deliver('game:vote_state', { votes: ['alice'], total: 4 });
     expect(screen.getAllByText(t('roundOverOverlay.nextRoundWaiting', { count: 1, total: 4 }), HIDDEN).length).toBe(1);
     expect(pressable('btn-rivincita')).toBe(false);
     await view.unmount();
   });
 
   it('shows a refused rematch over the board, not under it', async () => {
-    const view = await mount(wrap(OnlineGameScreen));
+    const view = await mount('online');
     await advance(settled + 100);
-    mockError = { text: t('server.REMATCH_DECLINED'), seq: 1 };
-    await act(async () => view.rerender(wrap(OnlineGameScreen)));
+    await live.deliver('game:error', { code: 'REMATCH_DECLINED', message: 'Rematch declined' });
     const toast = screen.getByText(t('server.REMATCH_DECLINED'), HIDDEN);
     let slot = toast.parent;
     while (slot && StyleSheet.flatten(slot.props.style)?.position !== 'absolute') slot = slot.parent;
@@ -236,8 +228,8 @@ describe('New match on the board', () => {
 });
 
 describe('the viewer rating under the winner', () => {
-  const settle = async (Screen: React.ComponentType) => {
-    const view = await mount(wrap(Screen));
+  const settle = async (where: Screen, round?: ReturnType<typeof lastRound>) => {
+    const view = await mount(where, { round });
     await advance(board + settled);
     expect(screen.getByTestId('match-winner-name', HIDDEN)).toHaveTextContent('Luan');
     return view;
@@ -245,9 +237,13 @@ describe('the viewer rating under the winner', () => {
   const spoken = () => screen.getByTestId('score-pill-panel', HIDDEN).props.accessibilityLabel as string;
 
   it('shows the signed delta, the new rating and the provisional count for a ranked match', async () => {
-    mockRatingDeltas = { alice: -8, luan: 14 };
-    mockRatingsAfter = { alice: { rating: 1192, rounds: 3 }, luan: { rating: 1214, rounds: 9 } };
-    const view = await settle(OnlineGameScreen);
+    const view = await settle(
+      'online',
+      lastRound({
+        ratingDeltas: { alice: -8, luan: 14 },
+        ratingsAfter: { alice: { rating: 1192, rounds: 3 }, luan: { rating: 1214, rounds: 9 } },
+      })
+    );
     expect(screen.getByText(t('matchBoard.ratingLabel'), HIDDEN)).toBeTruthy();
     expect(screen.getByTestId('match-rating-delta', HIDDEN)).toHaveTextContent('−8');
     expect(screen.getByTestId('match-rating', HIDDEN)).toHaveTextContent('1192', { exact: false });
@@ -258,16 +254,14 @@ describe('the viewer rating under the winner', () => {
   });
 
   it('shows the delta alone, signed, when no rating came with it', async () => {
-    mockRatingDeltas = { alice: 14 };
-    const view = await settle(OnlineGameScreen);
+    const view = await settle('online', lastRound({ ratingDeltas: { alice: 14 } }));
     expect(screen.getByTestId('match-rating', HIDDEN)).toHaveTextContent('+14');
     expect(screen.queryByText(/provvisorio|provisional/i, HIDDEN)).toBeNull();
     await view.unmount();
   });
 
   it('says when the hand was not recorded, with no delta', async () => {
-    mockRecorded = false;
-    const view = await settle(OnlineGameScreen);
+    const view = await settle('online', lastRound({ recorded: false }));
     expect(screen.getByText(t('matchBoard.notRecorded'), HIDDEN)).toBeTruthy();
     expect(screen.getByText(t('matchBoard.tooManyBots'), HIDDEN)).toBeTruthy();
     expect(screen.queryByTestId('match-rating-delta', HIDDEN)).toBeNull();
@@ -276,22 +270,13 @@ describe('the viewer rating under the winner', () => {
   });
 
   it('says nothing about a match the server closed unscored', async () => {
-    mockRecorded = false;
-    const closed = MOCK_MATCH.continues;
-    MOCK_MATCH.continues = false;
-    try {
-      const view = await settle(OnlineGameScreen);
-      expect(screen.queryByText(t('matchBoard.notRecorded'), HIDDEN)).toBeNull();
-      await view.unmount();
-    } finally {
-      MOCK_MATCH.continues = closed;
-    }
+    const view = await settle('online', lastRound({ recorded: false, matchContinues: false }));
+    expect(screen.queryByText(t('matchBoard.notRecorded'), HIDDEN)).toBeNull();
+    await view.unmount();
   });
 
   it('shows neither on an offline table', async () => {
-    mockRatingDeltas = { alice: 14 };
-    mockRecorded = false;
-    const view = await settle(OfflineGameScreen);
+    const view = await settle('offline');
     expect(screen.queryByTestId('match-rating', HIDDEN)).toBeNull();
     expect(screen.queryByText(t('matchBoard.notRecorded'), HIDDEN)).toBeNull();
     await view.unmount();
