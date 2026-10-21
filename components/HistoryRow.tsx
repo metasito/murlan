@@ -9,6 +9,7 @@ import { useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { positionLabelKey } from "@/lib/placement";
+import { modeLabel } from "@/lib/modeLabel";
 import type { RoundHistoryDto } from "@/shared/http";
 
 const PLAY_ICON = 28;
@@ -18,10 +19,7 @@ export function HistoryRow({ hand }: { hand: RoundHistoryDto }) {
 
   const labelKey = positionLabelKey(hand.placement);
   const posText = labelKey ? t(labelKey) : `${hand.placement}°`;
-  const modeText =
-    hand.gameMode === "teams"
-      ? t("result.modeTeams")
-      : t("result.modeFreeForAll");
+  const modeText = modeLabel(hand.gameMode, t, "short");
   const timeText = relativeTime(hand.finishedAt, t, tn);
   const pointsText = t("common.pointsAbbrev", { n: hand.points });
   const playersText = tn("history.players", hand.playerCount);

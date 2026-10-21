@@ -33,7 +33,7 @@ test("menu screens render every icon glyph, across the states reachable with no 
   // replaced the per-seat personality button (an Ionicons chevron-down) with
   // DifficultyLadder's own bar glyph, which draws Views rather than an icon
   // font glyph, so the bot seats no longer add to this count.
-  await page.getByRole("radio", { name: "4 giocatori" }).click();
+  await page.getByRole("radio", { name: "4 giocatori", exact: true }).click();
   await assertAllGlyphsRender(page, "offline lobby — 4 players", 8);
   await page.goBack();
 
@@ -75,8 +75,8 @@ test("online screens render every icon glyph, across the states reachable once s
   await registerNewAccount(page, uniqueUsername("glyphs"));
 
   await goToOnlineLobby(page);
-  // Both "Libera" and "Coppie" render together — both branches of
-  // `m === "teams" ? "people" : "person"` are already on screen.
+  // Both mode chips render together, so both branches of `ModeIcon`'s
+  // `mode === "teams" ? "people" : "person"` are already on screen.
   await assertAllGlyphsRender(page, "online lobby — room creator", 5);
   await page.goBack();
 

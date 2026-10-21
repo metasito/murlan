@@ -19,7 +19,8 @@ import Animated, { FadeIn } from "react-native-reanimated";
 import { uiFeedback } from "@/lib/device/feedback";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Avatar } from "@/components/Avatar";
-import { ChoiceChips } from "@/components/ChoiceChips";
+import { MatchLengthPicker, ModeIcon } from "@/components/lobbyPickers";
+import { modeLabel } from "@/lib/modeLabel";
 import * as Clipboard from "expo-clipboard";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { queryKey, useApi } from "@/lib/queries";
@@ -32,7 +33,7 @@ import { useNotification } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import { useInvites, usePresence } from "@/context/SocketContext";
 import { Colors, Spacing, Radius, FontSize, Motion, TOUCH_TARGET_MIN } from '@/lib/theme';
-import { firstTargetFor, TEAMS_PLAYER_COUNT } from "@/lib/game/gameEngine";
+import { modeFits } from "@/lib/game/gameEngine";
 import type { MatchLength } from "@/lib/game/gameEngine";
 import { DEFAULT_BOT_PERSONALITY, botBlurbKey } from "@/lib/game/botPersonalities";
 import type { BotPersonalityId } from "@/lib/game/botPersonalities";
@@ -66,6 +67,34 @@ export const BOTS_OFFERED_AFTER_MS = 30_000;
 
 /** One second, as the countdown's step and as its ms-to-seconds divisor. */
 const COUNTDOWN_TICK_MS = 1_000;
+
+function secondsToBotsFrom(startedAt: number): number {
+  return Math.max(0, Math.ceil((BOTS_OFFERED_AFTER_MS - (Date.now() - startedAt)) / COUNTDOWN_TICK_MS));
+}
+
+/**
+ * The countdown line, mounted only while the host waits so its tick re-renders this line and not
+ * the room. It counts from the room's own `startedAt`, never from its mount or its ticks: the
+ * table can fill and empty again, and a backgrounded tab throttles the interval.
+ */
+function BotsComingHint({ startedAt, onDue }: { startedAt: number; onDue: () => void }) {
+  const { t } = useTranslation();
+  const [secondsToBots, setSecondsToBots] = useState(() => secondsToBotsFrom(startedAt));
+  useEffect(() => {
+    const step = () => {
+      const left = secondsToBotsFrom(startedAt);
+      setSecondsToBots(left);
+      if (left === 0) onDue();
+      return left;
+    };
+    if (step() === 0) return;
+    const timer = setInterval(() => {
+      if (step() === 0) clearInterval(timer);
+    }, COUNTDOWN_TICK_MS);
+    return () => clearInterval(timer);
+  }, [startedAt, onDue]);
+  return <Text style={styles.botsComingHint}>{t("room.botsComingIn", { seconds: secondsToBots })}</Text>;
+}
 
 function BotFillControls({
   fillWithBots,
@@ -145,7 +174,7 @@ function MatchmakingToggle({
   );
 }
 
-/** Host-only: how long the match runs. Mirrors the offline lobby's picker. */
+/** Host-only: how long the match runs. */
 function MatchLengthControls({
   value,
   onChange,
@@ -156,28 +185,10 @@ function MatchLengthControls({
   seats: number;
 }) {
   const { t } = useTranslation();
-  const copy = (length: MatchLength) =>
-    length === "match"
-      ? { title: t("lobby.formatMatch"), detail: t("lobby.formatMatchSub", { target: firstTargetFor(seats) }) }
-      : { title: t("lobby.formatSingle"), detail: t("lobby.formatSingleSub") };
-
   return (
     <View style={formatStyles.section}>
       <Text style={formatStyles.label}>{t("room.formatLabel")}</Text>
-      <ChoiceChips
-        choices={(["match", "single"] as MatchLength[]).map((length) => {
-          const { title, detail } = copy(length);
-          return {
-            value: length,
-            label: title,
-            detail,
-            a11yLabel: t("lobby.formatA11yLabel", { format: title, detail }),
-          };
-        })}
-        value={value}
-        onChange={onChange}
-        weight="title"
-      />
+      <MatchLengthPicker value={value} onChange={onChange} seats={seats} />
     </View>
   );
 }
@@ -323,7 +334,8 @@ export default function RoomScreen() {
 
   const [fillWithBots, setFillWithBots] = useState(false);
   const [botsOffered, setBotsOffered] = useState(false);
-  const [secondsToBots, setSecondsToBots] = useState(BOTS_OFFERED_AFTER_MS / COUNTDOWN_TICK_MS);
+  const showBots = useCallback(() => setBotsOffered(true), []);
+  const [botsClockStartedAt] = useState(() => Date.now());
   const [botPersonality, setBotPersonality] = useState<BotPersonalityId>(DEFAULT_BOT_PERSONALITY);
   const [matchLength, setMatchLength] = useState<MatchLength>("match");
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
@@ -332,22 +344,6 @@ export default function RoomScreen() {
   useEffect(() => () => clearTimeout(copiedTimer.current), []);
 
   const isLandscape = useIsLandscape();
-
-  // Counted from a wall-clock start, not from the number of ticks: a
-  // backgrounded tab throttles the interval, and a countdown that trusts its
-  // own ticks then says "12s" long after the offer is due.
-  useEffect(() => {
-    const startedAt = Date.now();
-    const timer = setInterval(() => {
-      const left = Math.ceil((BOTS_OFFERED_AFTER_MS - (Date.now() - startedAt)) / COUNTDOWN_TICK_MS);
-      setSecondsToBots(Math.max(0, left));
-      if (left <= 0) {
-        clearInterval(timer);
-        setBotsOffered(true);
-      }
-    }, COUNTDOWN_TICK_MS);
-    return () => clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     if (error) {
@@ -391,8 +387,7 @@ export default function RoomScreen() {
   // otherwise at least 2 seated humans are required.
   const notEnoughPlayers = !fillWithBots && room.players.length < 2;
   const seatsAtStart = fillWithBots ? maxSeats : room.players.length;
-  const teamsNeedFour =
-    room.gameMode === "teams" && seatsAtStart !== TEAMS_PLAYER_COUNT;
+  const teamsNeedFour = !modeFits(room.gameMode, seatsAtStart);
   const canStart =
     isHost && connected && !notEnoughPlayers && !teamsNeedFour && room.status === "waiting";
   // Offered, never assumed: the card is not on screen until the host has
@@ -452,9 +447,6 @@ export default function RoomScreen() {
     startGame({ fillWithBots, botPersonality, matchLength });
   }
 
-  const modeLabel = room.gameMode === "teams" ? t("room.modeTeams") : t("room.modeFreeForAll");
-  const modeIcon: "people" | "person" = room.gameMode === "teams" ? "people" : "person";
-
   const playerUserIds = room.players.map((p) => p.userId);
 
   const formatControls = isHost && room.status === "waiting" ? (
@@ -477,11 +469,7 @@ export default function RoomScreen() {
       onChangeBotPersonality={setBotPersonality}
     />
   ) : (
-    hostIsWaiting && (
-      <Text style={styles.botsComingHint}>
-        {t("room.botsComingIn", { seconds: secondsToBots })}
-      </Text>
-    )
+    hostIsWaiting && <BotsComingHint startedAt={botsClockStartedAt} onDue={showBots} />
   );
 
   const StartButton = isHost ? (
@@ -546,9 +534,9 @@ export default function RoomScreen() {
 
   const modePill = (
     <View style={styles.modePill}>
-      <Ionicons name={modeIcon} size={MODE_ICON} color={Colors.textMuted} {...a11yHidden()} />
+      <ModeIcon mode={room.gameMode} size={MODE_ICON} color={Colors.textMuted} />
       <Text style={styles.modePillText}>
-        {t("room.modeAndPlayers", { mode: modeLabel, n: room.maxPlayers })}
+        {t("room.modeAndPlayers", { mode: modeLabel(room.gameMode, t), n: room.maxPlayers })}
       </Text>
     </View>
   );

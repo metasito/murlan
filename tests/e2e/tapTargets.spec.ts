@@ -185,7 +185,7 @@ for (const size of SIZES) {
     await settled(page, 1500);
     await expectNoBuriedControls(page, "offline lobby, 2 players", 8);
 
-    await page.getByRole("radio", { name: "4 giocatori" }).click();
+    await page.getByRole("radio", { name: "4 giocatori", exact: true }).click();
     await settled(page, 1200);
     await expectNoBuriedControls(page, "offline lobby, 4 players", 10);
 

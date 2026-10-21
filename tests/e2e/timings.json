@@ -35,6 +35,7 @@
   "leftTable.spec.ts": 54,
   "menuFit.spec.ts": 6.3,
   "menuHeight.spec.ts": 19.8,
+  "modeChipsFit.spec.ts": 14,
   "motionMatch.spec.ts": 36.1,
   "motionThirdDeal.spec.ts": 48.8,
   "musicLoops.spec.ts": 6,
@@ -69,6 +70,7 @@
   "tapTargets.spec.ts": 69,
   "tapTargetsOnlineRound.spec.ts": 66.3,
   "tapTargetsVotes.spec.ts": 78.7,
+  "teamsRoom.spec.ts": 4,
   "throwLeavesTheFan.spec.ts": 7.9,
   "tutorialSkip.spec.ts": 1.8,
   "webFonts.spec.ts": 1.3

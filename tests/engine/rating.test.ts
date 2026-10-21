@@ -8,6 +8,7 @@ import {
   expectedScore,
   formatSeason,
   kFactor,
+  provisionalLeft,
   ratedFinishers,
   ratingDeltas,
   seasonKey,
@@ -222,4 +223,11 @@ test("the formatter asks for the month the key names", () => {
     return "Dicembre";
   }) as never);
   assert.deepEqual(asked, ["month.12"]);
+});
+
+test("provisionalLeft counts the rounds a record still needs, and is undefined once it is settled", () => {
+  assert.equal(provisionalLeft({ rounds: 0 }), PROVISIONAL_ROUNDS);
+  assert.equal(provisionalLeft({ rounds: PROVISIONAL_ROUNDS - 1 }), 1);
+  assert.equal(provisionalLeft({ rounds: PROVISIONAL_ROUNDS }), undefined);
+  assert.equal(provisionalLeft({ rounds: PROVISIONAL_ROUNDS + 7 }), undefined);
 });
