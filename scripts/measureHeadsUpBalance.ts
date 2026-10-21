@@ -5,10 +5,10 @@
 // (lib/game/gameEngine.ts's dealCards), or the default bot personality being the
 // passive one (lib/game/botPersonalities.ts).
 //
-// Calls the real engine and the real bot through ./headsUpBalance.ts's
-// `playMatch` — no copy of either, per the ticket's own constraint. Its
-// `botRng` makes a whole match, deal and personality knobs both,
-// reproducible from one seed, per `botChoosePlay`'s own injectable `rng`.
+// Calls the real engine and the real bot through lib/game/simulate.ts's
+// `simulateMatch`. Its `botRng` makes a whole match, deal and personality
+// knobs both, reproducible from one seed, per `botChoosePlay`'s own
+// injectable `rng`.
 //
 // Run: node --experimental-strip-types scripts/measureHeadsUpBalance.ts
 // Flags (all optional, see `parseArgs`): --seed --dealN --matchN2p
@@ -38,7 +38,7 @@ import {
   DEFAULT_BOT_PERSONALITY,
   type BotPersonalityId,
 } from "../lib/game/botPersonalities.ts";
-import { isTopCard, mulberry32, playMatch, rng as seeded, type PlayedMatch } from "./headsUpBalance.ts";
+import { isTopCard, mulberry32, rng as seeded, simulateMatch, type SimulatedMatch } from "../lib/game/simulate.ts";
 
 interface Options {
   seed: number;
@@ -142,11 +142,11 @@ function runMatches(
   players: SeatSetup[],
   n: number,
   seedBase: number
-): PlayedMatch[] {
-  const results: PlayedMatch[] = [];
+): SimulatedMatch[] {
+  const results: SimulatedMatch[] = [];
   for (let i = 0; i < n; i++) {
     results.push(
-      playMatch({
+      simulateMatch({
         seed: seedBase + i,
         players,
         gameMode: "free_for_all",
@@ -177,7 +177,7 @@ interface CompoundingAndStreak {
  * `results` all come from symmetric tables (every seat the same personality),
  * so any measured skew is the format's own mechanics, not a personality gap.
  */
-function measureCompoundingAndStreak(results: PlayedMatch[], playerCount: number): CompoundingAndStreak {
+function measureCompoundingAndStreak(results: SimulatedMatch[], playerCount: number): CompoundingAndStreak {
   const round0TopCards: number[][] = [];
   const deltaByRoundIndex = new Map<number, number[]>();
   let streakRepeats = 0;

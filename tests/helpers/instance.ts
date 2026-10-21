@@ -33,6 +33,7 @@ export async function boot(
     await new Promise<void>((resolve, reject) => {
       giveUp = setTimeout(() => reject(new Error(`instance on ${port} never came up`)), 45_000);
       child.once("exit", (code) => reject(new Error(`instance on ${port} exited with ${code} before it came up`)));
+      child.once("error", (err) => reject(new Error(`instance on ${port} did not start: ${err.message}`)));
       const watch = (buf: unknown) => {
         const line = String(buf);
         if (line.includes(String(port)) || line.includes("listening")) {

@@ -1,16 +1,15 @@
 // #839 needed two things from tests/helpers/offlineMatch.ts that did not
 // exist before: a match reproducible end to end (deal *and* the bot's
 // aggression/unpredictability knobs) from one seed, via `botRng`, and each
-// round's top-card counts, via `SimulatedRound.topCardCounts`. The measurement
-// script (scripts/measureHeadsUpBalance.ts) plays through scripts/headsUpBalance.ts
-// instead, which the last test holds to this harness's match seed for seed,
+// round's top-card counts, via `SimulatedRound.topCardCounts`. Pinned here
+// rather than only exercised by the measurement script
+// (scripts/measureHeadsUpBalance.ts, which plays the same lib/game/simulate.ts)
 // so a regression in either shows up as a red test, not as a quietly wrong
 // report next time someone reruns it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { simulateOfflineMatch, type OfflinePlayerSetup } from "../helpers/offlineMatch.ts";
 import { mulberry32 } from "../support/game.ts";
-import { playMatch } from "../../scripts/headsUpBalance.ts";
 
 const seededBot = (s: number) => mulberry32(s + 1);
 
@@ -101,22 +100,3 @@ test("topCardCounts stays within [0, 6] per seat at 2 seats, where 26 of 54 card
   }
 });
 
-test("the measurement script's matches are this harness's, seed for seed", () => {
-  for (const seats of [2, 4]) {
-    const players: OfflinePlayerSetup[] = Array.from({ length: seats }, (_, i) => ({ name: `Bot${i}`, type: "bot" as const }));
-    for (const seed of [3, 21]) {
-      const opts = { seed, players, gameMode: "free_for_all" as const, length: "match" as const, botRng: seededBot };
-      const harness = simulateOfflineMatch(opts);
-      const script = playMatch(opts);
-      assert.deepEqual(
-        script,
-        {
-          rounds: harness.rounds.map(({ finishingOrder, topCardCounts }) => ({ finishingOrder, topCardCounts })),
-          winners: harness.winners,
-          isDraw: harness.isDraw,
-        },
-        `${seats} seats, seed ${seed}`
-      );
-    }
-  }
-});

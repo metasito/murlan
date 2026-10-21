@@ -1,5 +1,5 @@
 // tests/native/helpers/renderCounts.ts — a module whose components report each render, for a
-// `jest.mock` factory: `jest.mock(path, () => require('./helpers/renderCounts').renderCounts(path, names, mockCount))`.
+// `jest.mock` factory, which must `require` it: an import is not in scope there.
 import { jest } from '@jest/globals';
 import type React from 'react';
 

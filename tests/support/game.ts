@@ -67,7 +67,7 @@ export function viewOf(player: Player, over: Partial<BotView> = {}): BotView {
   };
 }
 
-export { mulberry32, rng } from "../../scripts/headsUpBalance.ts";
+export { mulberry32, rng } from "../../lib/game/simulate.ts";
 
 /** `count` distinct cards from `deck`. */
 export function sample(deck: Card[], count: number, rand: () => number): Card[] {

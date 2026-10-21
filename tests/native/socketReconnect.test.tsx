@@ -28,6 +28,10 @@ const fireConnectError = async () => {
 // What identifies this handler's timer among the renderer's and react-query's.
 const FIRST_RETRY_MS = reconnectDelayMs(0, random);
 
+it('draws a first retry that waits at all', () => {
+  expect(FIRST_RETRY_MS).toBeGreaterThan(0);
+});
+
 describe('connect_error', () => {
   let setTimeoutSpy: jest.Spied<typeof setTimeout>;
 
@@ -71,6 +75,25 @@ describe('connect_error', () => {
     await act(async () => {
       jest.advanceTimersByTime(60_000);
     });
+    expect(lastSocket().connect).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      view.unmount();
+    });
+  });
+
+  it('keeps its retry and its socket when the jitter source changes identity', async () => {
+    const view = await mount();
+    lastSocket().active = false;
+
+    await fireConnectError();
+    await act(async () => {
+      view.rerender(<Text>child</Text>, { random: () => 0.123 });
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(60_000);
+    });
+    expect(lastSocket().disconnect).not.toHaveBeenCalled();
     expect(lastSocket().connect).toHaveBeenCalledTimes(1);
 
     await act(async () => {

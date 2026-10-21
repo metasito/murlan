@@ -51,6 +51,11 @@ const failure = (roomId: string) => ({
   message: 'Game not found',
 });
 
+it('retries a rejoin at least once, after a wait', () => {
+  expect(MAX_REJOIN_RETRIES).toBeGreaterThan(0);
+  expect(REJOIN_RETRY_DELAY_MS).toBeGreaterThan(0);
+});
+
 describe('game:rejoin_failed', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();

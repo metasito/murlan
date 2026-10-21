@@ -22,15 +22,13 @@ import { t } from '@/lib/i18n';
 import { Motion } from '@/lib/theme';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
 import { setMotion } from './harness/env';
+import { BOT_MOVE_DELAY_MS } from '@/server/game/gameTimers';
 import { aThreePlayed } from '../support/game';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
   insets: { top: 0, left: 47, right: 34, bottom: 0 },
 };
-
-/** `botMoveDelayMs()`'s default — a bot trick winner leads inside the hold. */
-const BOT_DELAY_MS = 1200;
 
 const KING: Card = { id: 'K_hearts', rank: 'K', suit: 'hearts', isJoker: false };
 const ACE: Card = { id: 'A_spades', rank: 'A', suit: 'spades', isJoker: false };
@@ -84,6 +82,10 @@ const CLOSED = state({ lastPlayedCombination: null, lastPlayedBy: 1, lastMove: {
 beforeEach(() => setMotion('on'));
 
 describe('the pass that closes a trick', () => {
+  it("is held longer than a bot takes to lead, so a bot winner's lead lands inside the hold", () => {
+    expect(BOT_MOVE_DELAY_MS).toBeLessThan(TRICK_WINNER_MS);
+  });
+
   beforeEach(async () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
@@ -214,7 +216,7 @@ describe('the pass that closes a trick', () => {
       const r = await render(table(LED));
       await act(async () => r.rerender(table(CLOSED)));
       await act(async () => {
-        jest.advanceTimersByTime(BOT_DELAY_MS);
+        jest.advanceTimersByTime(BOT_MOVE_DELAY_MS);
         r.rerender(
           table(state({ lastPlayedCombination: single(ACE), lastPlayedBy: 1, lastMove: { seq: 3, kind: 'play', seat: 1 } }))
         );

@@ -188,6 +188,11 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
   // Consecutive failed handshake attempts, for the backoff below. Reset on
   // every successful connect.
   const retryAttemptRef = useRef(0);
+  // Through a ref, not the socket effect's deps: re-running that effect cancels a pending retry.
+  const randomRef = useRef(random);
+  useEffect(() => {
+    randomRef.current = random;
+  }, [random]);
 
   const clearInvite = useCallback(() => setPendingInvite(null), []);
 
@@ -322,7 +327,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
       if (socket.active) return;
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       const attempt = retryAttemptRef.current++;
-      const delay = reconnectDelayMs(attempt, random);
+      const delay = reconnectDelayMs(attempt, randomRef.current);
       retryTimerRef.current = setTimeout(() => {
         retryTimerRef.current = null;
         if (!socket.connected) socket.connect();
@@ -474,7 +479,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
       socket.off("friend:error", onFriendError);
       socket.off("socket:error", onSocketError);
     };
-  }, [userId, forgetSession, qc, showNotification, notifyServerError, unhideGameInvite, random]);
+  }, [userId, forgetSession, qc, showNotification, notifyServerError, unhideGameInvite]);
 
   const refresh = useCallback(() => {
     if (socket) askWhoIsOnline(socket);
