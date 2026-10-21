@@ -15,7 +15,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { startTestServer, type TestServer } from "../helpers/testServer.ts";
 import { reconnectWith, DEADLINE_SCALE } from "../helpers/client.ts";
-import { redealExactly, forgetActiveGame } from "../helpers/liveGame.ts";
+import { redealExactly, forgetActiveGame, restartUnder } from "../helpers/liveGame.ts";
 import { createDeck } from "../../lib/game/gameEngine.ts";
 import { checkAll, type SeatView, type Violation } from "./invariants.ts";
 import { Seat, openTable, seatSocket, settle, type SoakLogEntry } from "./soak.ts";
@@ -94,8 +94,10 @@ export async function replaySoakLog(
     for (const id of hand) if (!known.has(id)) throw new Error(`no such card in the deck: ${id}`);
   }
   for (const entry of log) {
-    if (entry.kind === "deal" || entry.kind === "restart" || entry.seat < deal.hands.length) continue;
-    throw new Error(`the log names seat ${entry.seat} at move ${entry.at}, of ${deal.hands.length}`);
+    if (entry.kind === "deal" || entry.kind === "restart") continue;
+    const seat = "move" in entry ? entry.move.seat : entry.seat;
+    if (seat < deal.hands.length) continue;
+    throw new Error(`the log names seat ${seat} at move ${entry.at}, of ${deal.hands.length}`);
   }
   // A second deal is a rematch, and a rematch does not start where this can put
   // a table: it opens in the exchange, with the loser's best card already
@@ -133,17 +135,19 @@ export async function replaySoakLog(
     await settle(seats);
 
     for (const entry of log.slice(1)) {
-      // A fault was judged by its own oracle in the run that injected it, which
-      // held it to changing nothing beyond the move it rode on: the moves alone
-      // rebuild the table.
-      if (entry.kind !== "play" && entry.kind !== "pass" && entry.kind !== "exchange" && entry.kind !== "drop" && entry.kind !== "rejoin") continue;
-      const seat = seats[entry.seat];
+      if (entry.kind === "deal") continue;
+      if (entry.kind === "restart") {
+        await settle(seats);
+        restartUnder(roomId);
+        continue;
+      }
       if (entry.kind === "drop") {
-        seatSocket(seat).close();
+        seatSocket(seats[entry.seat]).close();
         await sleep(200);
         continue;
       }
       if (entry.kind === "rejoin") {
+        const seat = seats[entry.seat];
         const back = await reconnectWith(server, seat.cookie);
         const before = seat.version;
         seat.adopt(back);
@@ -156,14 +160,20 @@ export async function replaySoakLog(
         continue;
       }
 
+      // A fault that landed moved the table the rest of the log was written against, so it
+      // is applied as the move it carried; one the server turned away moved nothing.
+      const move = "move" in entry ? (entry.landed ? entry.move : null) : entry;
+      if (!move) continue;
+      const seat = seats[move.seat];
+
       // Every move starts from a quiet table, so the broadcast this waits for
       // cannot be the previous move's still arriving.
       await settle(seats);
       const before = seat.version;
       seat.clearRefusal();
-      if (entry.kind === "play") seatSocket(seat).emit("game:play", { cardIds: entry.cardIds });
-      else if (entry.kind === "pass") seatSocket(seat).emit("game:pass");
-      else seatSocket(seat).emit("game:exchange_give_card", { cardId: entry.cardId });
+      if (move.kind === "play") seatSocket(seat).emit("game:play", { cardIds: move.cardIds });
+      else if (move.kind === "pass") seatSocket(seat).emit("game:pass");
+      else seatSocket(seat).emit("game:exchange_give_card", { cardId: move.cardId });
 
       if (await waitForOwnBroadcast(seat, before)) {
         applied += 1;

@@ -70,7 +70,12 @@ const APPLIED_MAX = 2_000;
 export type RehydrateOutcome = "restored" | "missing" | "unrestorable" | "newer" | "not_seated";
 
 /** Every action this process has already applied, by id. */
-export const applied = new Map<string, { outcome: Promise<Outcome>; at: number }>();
+const applied = new Map<string, { outcome: Promise<Outcome>; at: number }>();
+
+/** What a process restart does to the record above: tests stand in for one with this. */
+export function forgetAppliedIntents(): void {
+  applied.clear();
+}
 
 function remember(id: string, outcome: Promise<Outcome>): Promise<Outcome> {
   const at = now();

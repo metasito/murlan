@@ -6,7 +6,7 @@ import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { publishState } from "../../server/game/gamePersistence.ts";
 import { armTurn } from "../../server/game/gameTurn.ts";
-import { applied } from "../../server/game/tableRouter.ts";
+import { forgetAppliedIntents } from "../../server/game/tableRouter.ts";
 import { clearForDeal } from "../../server/game/seatLedger.ts";
 import { createDeck, seatsOf, startRound, type Opening } from "../../lib/game/gameEngine.ts";
 
@@ -37,7 +37,7 @@ export function forgetActiveGame(roomId: string): boolean {
  * process would still hold.
  */
 export function restartUnder(roomId: string): boolean {
-  applied.clear();
+  forgetAppliedIntents();
   return forgetActiveGame(roomId);
 }
 

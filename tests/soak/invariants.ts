@@ -25,6 +25,8 @@ export interface SeatView {
 export interface Violation {
   kind: string;
   detail: string;
+  /** The open issue this is already filed as. Still a violation: the run fails on it. */
+  known?: string;
 }
 
 const NO_VIOLATIONS: Violation[] = [];
@@ -166,6 +168,18 @@ export function injectionViolations({ chaos, injected }: { chaos: number; inject
   return [{ kind: "no-faults-injected", detail: `chaos was ${chaos} and no fault was injected: nothing adversarial was tested` }];
 }
 
+/**
+ * One arming can lose to the round ending before its seat is on move again, so a single
+ * unreached stale fault is the round's doing; two in a run is the fault not being reached.
+ */
+const STALE_UNREACHED_FLOOR = 2;
+
+/** A stale play is injected only on its seat's own turn; a run that never got there tested no stale cards. */
+export function staleReachViolations({ armed, injected }: { armed: number; injected: number }): Violation[] {
+  if (injected > 0 || armed < STALE_UNREACHED_FLOOR) return NO_VIOLATIONS;
+  return [{ kind: "stale-never-reached", detail: `a stale play was armed ${armed} times and its seat was never on move again` }];
+}
+
 /** How the server answered one intent; `null` is no answer at all. */
 export interface IntentAck {
   ok: boolean;
@@ -265,6 +279,22 @@ export function checkLandedOnce(
     }
   }
   return found;
+}
+
+/** An intent sent again later, inside the server's memory of it: answered as it was, and nothing moves. */
+export function checkRepeatAnswered(
+  fault: string,
+  original: IntentAck | null,
+  again: IntentAck | null,
+  before: SeatView[],
+  after: SeatView[]
+): Violation[] {
+  const found: Violation[] = [];
+  if (!again) found.push({ kind: "fault-unanswered", detail: `${fault} was never answered` });
+  else if (!original || original.ok !== again.ok || original.code !== again.code) {
+    found.push({ kind: "duplicate-ack-differs", detail: `${fault} was answered ${JSON.stringify(again)}, the original ${JSON.stringify(original)}` });
+  }
+  return [...found, ...checkUnchanged(fault, before, after)];
 }
 
 /** The same intent sent twice at once: one answer for both, and one move on the table. */

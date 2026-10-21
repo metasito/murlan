@@ -28,10 +28,12 @@ import {
   checkDuplicate,
   checkLandedOnce,
   checkRefused,
+  checkRepeatAnswered,
   checkTeardown,
   checkUnchanged,
   injectionViolations,
   progressViolations,
+  staleReachViolations,
   type IntentAck,
   type SeatView,
   type Violation,
@@ -264,32 +266,63 @@ interface Options {
  * `deal` is assembled from all four seats' own hands, because no single client
  * is ever sent another seat's cards.
  *
- * `duplicate` through `restart` are the faults; each changes the table by
- * nothing beyond the move it rode on, which is what `tests/soak/invariants.ts`
- * holds them to.
+ * `landed` is what the server did with a fault, read off the table rather than
+ * its answer: a duplicate is answered "ok" and lands nowhere, and a replay has
+ * to apply exactly the faults that moved the table.
  */
 export type SoakAction =
+  | SeatAction
   | { kind: "deal"; round: number; hands: string[][] }
-  | { kind: "play"; seat: number; cardIds: string[] }
-  | { kind: "pass"; seat: number }
-  | { kind: "exchange"; seat: number; cardId: string }
   | { kind: "drop"; seat: number; username: string }
   | { kind: "rejoin"; seat: number; username: string }
-  | { kind: "duplicate"; seat: number; intentId: string }
-  | { kind: "delayed-duplicate"; seat: number; intentId: string }
-  | { kind: "out-of-turn"; seat: number; cardIds?: string[] }
-  | { kind: "stale"; seat: number; cardIds: string[] }
+  | { kind: "duplicate" | "delayed-duplicate" | "restart-duplicate"; move: SeatAction; intentId: string; landed: boolean }
+  | { kind: "out-of-turn" | "stale"; move: SeatAction; landed: boolean }
   | { kind: "restart" };
 
+/** What one seat can decide to do on its own turn. */
+export type SeatAction =
+  | { kind: "play"; seat: number; cardIds: string[] }
+  | { kind: "pass"; seat: number }
+  | { kind: "exchange"; seat: number; cardId: string };
+
 /** The faults the chaos driver draws from, one per draw. */
-export const FAULTS = ["drop", "duplicate", "delayed-duplicate", "out-of-turn", "stale", "restart"] as const;
-type Fault = (typeof FAULTS)[number];
+export const FAULTS = [
+  "drop",
+  "duplicate",
+  "delayed-duplicate",
+  "restart-duplicate",
+  "out-of-turn",
+  "stale",
+  "restart",
+] as const;
+export type Fault = (typeof FAULTS)[number];
+
+/** The faults a broken client or a deploy produces, as against the drop the soak always had. */
+export const INTENT_FAULTS = FAULTS.filter((fault) => fault !== "drop");
+
+/**
+ * Defects already filed, by the fault that finds them. A violation tagged with one still
+ * fails the run; the tag is what lets a nightly report tell it from a new one.
+ */
+const KNOWN_DEFECTS: Partial<Record<Fault, string>> = {
+  // The dedupe record is in memory only, so a restarted process applies a re-sent pass again.
+  "restart-duplicate": "#1824",
+};
+
+/** A fault's violations, tagged with the issue it is filed as when the server accepted what it was filed for. */
+export function tagKnown(fault: Fault, ack: IntentAck | null, found: Violation[]): Violation[] {
+  const known = KNOWN_DEFECTS[fault];
+  return known && ack?.ok ? found.map((v) => ({ ...v, known })) : found;
+}
 
 /** An intersection rather than `at` on each member: `Omit` over a union collapses it. */
 export type SoakLogEntry = SoakAction & { at: number };
 
-/** What one seat can decide to do on its own turn. */
-export type SeatAction = Extract<SoakAction, { kind: "play" | "pass" | "exchange" }>;
+function describeMove(move: SeatAction): string {
+  if (move.kind === "play") return move.cardIds.join(" ");
+  if (move.kind === "exchange") return `give ${move.cardId}`;
+  return "pass";
+}
 
 /** One log entry as a line, in the shape a replay reads back. */
 export function formatLogEntry(entry: SoakLogEntry): string {
@@ -310,13 +343,14 @@ export function formatLogEntry(entry: SoakLogEntry): string {
     case "rejoin":
       return `${at}  rejoin seat${entry.seat}  ${entry.username}`;
     case "duplicate":
-      return `${at}  dup    seat${entry.seat}  ${entry.intentId}`;
     case "delayed-duplicate":
-      return `${at}  late   seat${entry.seat}  ${entry.intentId} after a restart`;
+    case "restart-duplicate":
     case "out-of-turn":
-      return `${at}  early  seat${entry.seat}  ${entry.cardIds ? entry.cardIds.join(" ") : "pass"}`;
     case "stale":
-      return `${at}  stale  seat${entry.seat}  ${entry.cardIds.join(" ")}`;
+      return (
+        `${at}  ${entry.kind}  seat${entry.move.seat}  ${describeMove(entry.move)}` +
+        `${"intentId" in entry ? `  ${entry.intentId}` : ""}  ${entry.landed ? "LANDED" : "turned away"}`
+      );
     case "restart":
       return `${at}  restart`;
   }
@@ -422,7 +456,6 @@ export class Seat {
    */
   readonly refusals = new Map<string, number>();
   #intents = 0;
-  /** The last intent `act` sent. */
   lastIntent: SentIntent | null = null;
 
   static {
@@ -495,7 +528,6 @@ export class Seat {
     return { event, payload, ack };
   }
 
-  /** The same intent again, under the same id. */
   resend(intent: SentIntent): SentIntent {
     const { intentId, ...body } = intent.payload;
     return this.send(intent.event, body, intentId);
@@ -625,6 +657,8 @@ export interface SoakResult {
   moveLog: SoakLogEntry[];
   /** `moves` when the first violation was found; `null` for a clean run. */
   firstViolationAt: number | null;
+  /** Stale plays drawn; each waits for its seat to be on move again, so fewer may land in `moveLog`. */
+  staleArmed: number;
 }
 
 /**
@@ -650,9 +684,11 @@ export async function settle(
 
 /** A fault drawn on one move, injected at the first settled table it fits. */
 type Pending =
-  | { kind: "delayed-duplicate"; from: number; seat: Seat; index: number; intent: SentIntent }
-  | { kind: "stale"; from: number; seat: Seat; index: number; cardIds: string[] }
+  | { kind: "delayed-duplicate" | "restart-duplicate"; from: number; seat: Seat; move: SeatAction; intent: SentIntent }
+  | { kind: "stale"; from: number; seat: Seat; move: Extract<SeatAction, { kind: "play" }> }
   | { kind: "out-of-turn" | "restart"; from: number };
+
+const seqOf = (views: SeatView[]) => views[0]?.seq ?? 0;
 
 function lastMoveSeq(node: unknown): number | null {
   if (!node || typeof node !== "object") return null;
@@ -759,19 +795,24 @@ export async function runSoak(
       fault: Exclude<Pending, { kind: "restart" }>,
       before: SeatView[]
     ): Promise<Violation[]> => {
-      if (fault.kind === "delayed-duplicate") {
-        if (!(await restart(before))) return [];
+      if (fault.kind === "delayed-duplicate" || fault.kind === "restart-duplicate") {
+        const restarted = fault.kind === "restart-duplicate";
+        if (restarted && !(await restart(before))) return [];
         const { intentId } = fault.intent.payload;
-        moveLog.push({ at: moves, kind: "delayed-duplicate", seat: fault.index, intentId });
         const ack = await fault.seat.resend(fault.intent).ack;
-        const what = `seat ${fault.index}'s ${fault.intent.event} ${intentId} re-sent after the next move and a restart`;
-        return checkRefused(what, ack, before, await settled());
+        const after = await settled();
+        moveLog.push({ at: moves, kind: fault.kind, move: fault.move, intentId, landed: seqOf(after) !== seqOf(before) });
+        const what = `seat ${fault.move.seat}'s ${fault.intent.event} ${intentId} re-sent after the next move${restarted ? " and a restart" : ""}`;
+        if (!restarted) return checkRepeatAnswered(what, await fault.intent.ack, ack, before, after);
+        return tagKnown(fault.kind, ack, checkRefused(what, ack, before, after));
       }
       if (fault.kind === "stale") {
-        moveLog.push({ at: moves, kind: "stale", seat: fault.index, cardIds: fault.cardIds });
-        const ack = await fault.seat.send("game:play", { cardIds: fault.cardIds }).ack;
-        const what = `seat ${fault.index} playing [${fault.cardIds.join(" ")}] again, cards it no longer holds`;
-        return checkRefused(what, ack, before, await settled());
+        const { seat, move } = fault;
+        const ack = await seat.send("game:play", { cardIds: move.cardIds }).ack;
+        const after = await settled();
+        moveLog.push({ at: moves, kind: "stale", move, landed: seqOf(after) !== seqOf(before) });
+        const what = `seat ${move.seat}, on move, playing [${move.cardIds.join(" ")}] again, cards it no longer holds`;
+        return checkRefused(what, ack, before, after, "INVALID_CARD");
       }
       const turn = before[0]?.currentTurnIndex;
       const off = seats.filter((s) => {
@@ -782,15 +823,30 @@ export async function runSoak(
       const index = seat?.view()?.seat;
       if (!seat || index === undefined) return [];
       const hand = seat.hand();
-      const cardIds = hand.length > 0 && rng() < 0.5 ? [hand[Math.floor(rng() * hand.length)]] : undefined;
-      moveLog.push({ at: moves, kind: "out-of-turn", seat: index, ...(cardIds ? { cardIds } : {}) });
-      const sent = cardIds ? seat.send("game:play", { cardIds }) : seat.send("game:pass", {});
-      const what = `seat ${index} ${cardIds ? `playing ${cardIds[0]}` : "passing"} on seat ${turn}'s turn`;
-      return checkRefused(what, await sent.ack, before, await settled(), "NOT_YOUR_TURN");
+      const move: SeatAction =
+        hand.length > 0 && rng() < 0.5
+          ? { kind: "play", seat: index, cardIds: [hand[Math.floor(rng() * hand.length)]] }
+          : { kind: "pass", seat: index };
+      const sent = move.kind === "play" ? seat.send("game:play", { cardIds: move.cardIds }) : seat.send("game:pass", {});
+      const ack = await sent.ack;
+      const after = await settled();
+      moveLog.push({ at: moves, kind: "out-of-turn", move, landed: seqOf(after) !== seqOf(before) });
+      const what = `seat ${index} ${move.kind === "play" ? `playing ${move.cardIds[0]}` : "passing"} on seat ${turn}'s turn`;
+      return checkRefused(what, ack, before, after, "NOT_YOUR_TURN");
+    };
+
+    // The engine refuses anything but the giveback in an open exchange before it asks whose
+    // turn it is, and a stale play off its seat's turn is refused for the turn, never the cards.
+    const faultReady = (fault: Exclude<Pending, { kind: "restart" }>, views: SeatView[]) => {
+      const exchangeOpen = seats.some((s) => s.state?.exchangePhase?.kind === "open");
+      if (fault.kind === "out-of-turn") return !exchangeOpen;
+      if (fault.kind === "stale") return !exchangeOpen && views[0]?.currentTurnIndex === fault.move.seat;
+      return true;
     };
 
     let pending: Pending | null = null;
-    let lastPlay: { seat: Seat; index: number; cardIds: string[] } | null = null;
+    let lastPlay: { seat: Seat; move: Extract<SeatAction, { kind: "play" }> } | null = null;
+    let staleArmed = 0;
     const deadline = Date.now() + opts.minutes * 60_000;
 
     while (Date.now() < deadline && violations.length === 0) {
@@ -850,9 +906,7 @@ export async function runSoak(
           if (!(await restart(views))) break;
           moveLog.push({ at: moves, kind: "restart" });
           restartedFrom = views;
-        } else if (fault.kind !== "out-of-turn" || !seats.some((s) => s.state?.exchangePhase?.kind === "open")) {
-          // Out of turn waits out an open exchange: the engine refuses anything
-          // but the giveback there before it asks whose turn it is.
+        } else if (faultReady(fault, views)) {
           pending = null;
           flag(await injectRefused(fault, views));
           continue;
@@ -870,8 +924,10 @@ export async function runSoak(
       if (acted && moves % 25 === 0 && views[0]) {
         log(`soak: move ${moves}, hands [${views[0].handCounts}]`);
       }
-      if (acted?.did.kind === "play") {
-        lastPlay = { seat: acted.seat, index: acted.did.seat, cardIds: acted.did.cardIds };
+      // Read before the broadcast lands, so `hand()` is still the hand the play came out of: a
+      // seat that emptied it is never on move again, and its stale play could never be injected.
+      if (acted?.did.kind === "play" && acted.seat.hand().length > acted.did.cardIds.length) {
+        lastPlay = { seat: acted.seat, move: acted.did };
       }
 
       if (restartedFrom) {
@@ -897,12 +953,20 @@ export async function runSoak(
         // Before any await: "at once" is the same socket buffer, not the next pass.
         const first = actor.lastIntent;
         const second = actor.resend(first);
-        moveLog.push({ at: moves, kind: "duplicate", seat: did.seat, intentId: first.payload.intentId });
         const [a, b] = await Promise.all([first.ack, second.ack]);
-        flag(checkDuplicate(a, b, views, await settled(), did));
-      } else if (fault === "delayed-duplicate" && actor.lastIntent) {
-        pending = { kind: fault, from: moves + 1, seat: actor, index: did.seat, intent: actor.lastIntent };
+        const after = await settled();
+        moveLog.push({
+          at: moves,
+          kind: "duplicate",
+          move: did,
+          intentId: first.payload.intentId,
+          landed: seqOf(after) - seqOf(views) > 1,
+        });
+        flag(checkDuplicate(a, b, views, after, did));
+      } else if ((fault === "delayed-duplicate" || fault === "restart-duplicate") && actor.lastIntent) {
+        pending = { kind: fault, from: moves + 1, seat: actor, move: did, intent: actor.lastIntent };
       } else if (fault === "stale" && lastPlay) {
+        staleArmed += 1;
         pending = { kind: fault, from: moves, ...lastPlay };
       } else if (fault === "out-of-turn" || fault === "restart") {
         pending = { kind: fault, from: moves };
@@ -958,6 +1022,7 @@ export async function runSoak(
       seed: opts.seed,
       moveLog,
       firstViolationAt,
+      staleArmed,
     };
   } finally {
     for (const seat of seats) if (roomId && seatSocket(seat).connected) seat.leave(roomId);
@@ -1102,11 +1167,12 @@ async function main() {
   }
   const result = await runSoak(opts);
   result.violations.push(...progressViolations(result));
-  result.violations.push(...injectionViolations({ chaos: opts.chaos, injected: result.chaosEvents.length }));
+  result.violations.push(...injectionViolations({ chaos: opts.chaos, injected: countOf(result.moveLog, INTENT_FAULTS) }));
+  result.violations.push(...staleReachViolations({ armed: result.staleArmed, injected: countOf(result.moveLog, ["stale"]) }));
 
   console.log(
     `soak: ${result.moves} rounds of moves, ${result.rounds} rounds, ` +
-      `${formatFaults(result.moveLog)}, ${formatRefusals(result.refusals)}`
+      `${formatFaults(result.moveLog)}, stale armed ${result.staleArmed}, ${formatRefusals(result.refusals)}`
   );
   if (result.violations.length === 0) {
     console.log(`soak: no disagreement found (seed ${result.seed})`);
@@ -1114,6 +1180,10 @@ async function main() {
   }
   for (const line of failureReport(result)) console.error(line);
   process.exit(1);
+}
+
+function countOf(moveLog: SoakLogEntry[], kinds: readonly string[]): number {
+  return moveLog.filter((e) => kinds.includes(e.kind)).length;
 }
 
 function formatFaults(moveLog: SoakLogEntry[]): string {
@@ -1133,10 +1203,13 @@ function formatFaults(moveLog: SoakLogEntry[]): string {
 export function failureReport(result: SoakResult): string[] {
   const at = result.firstViolationAt === null ? "after the run" : `at move ${result.firstViolationAt}`;
   const round = roundOf(result.moveLog, result.firstViolationAt);
+  const known = [...new Set(result.violations.flatMap((v) => (v.known ? [v.known] : [])))];
+  const fresh = result.violations.filter((v) => !v.known).length;
   return [
     "",
-    `soak: FAILED (seed ${result.seed}, first violation ${at}).`,
-    ...result.violations.map((v) => `  [${v.kind}] ${v.detail}`),
+    `soak: FAILED (seed ${result.seed}, first violation ${at}; ` +
+      `${known.length > 0 ? `known: ${known.join(", ")}` : "none known"}; ${fresh} new).`,
+    ...result.violations.map((v) => `  [${v.kind}]${v.known ? ` (known: ${v.known})` : ""} ${v.detail}`),
     "",
     "that round, in order:",
     ...round.map((entry) => `  ${formatLogEntry(entry)}`),
