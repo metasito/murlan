@@ -28,16 +28,16 @@ async function throwIfResNotOk(res: Response) {
 /** A contract route named by its method and its path under /api, the way lib/queries.ts names a read. */
 export type Call = Route extends infer R ? (R extends `${infer M} /api/${infer P}` ? `${M} ${P}` : never) : never;
 export type RouteOf<C extends Call> = C extends `${infer M} ${infer P}` ? Extract<Route, `${M} /api/${P}`> : never;
-export type Reply<C extends Call> = ResOf<RouteOf<C>>;
+export type Reply<C extends Call> = [ResOf<RouteOf<C>>] extends [void] ? undefined : ResOf<RouteOf<C>>;
 export type Sent<C extends Call> = BodyOf<RouteOf<C>>;
 
-type Fields<K extends Route> = (BodyOf<K> extends undefined ? unknown : { body: BodyOf<K> }) &
-  (keyof ParamsOf<K> extends never ? unknown : { params: ParamsOf<K> }) &
+type ParamsField<K extends Route> = keyof ParamsOf<K> extends never ? unknown : { params: ParamsOf<K> };
+type Fields<K extends Route> = (undefined extends BodyOf<K> ? { body?: Exclude<BodyOf<K>, undefined> } : { body: BodyOf<K> }) &
+  ParamsField<K> &
   (QueryOf<K> extends undefined ? unknown : { query: QueryOf<K> });
-type Input<C extends Call> = Fields<RouteOf<C>>;
-type Args<C extends Call> = object extends Input<C> ? [] : [input: Input<C>];
+type Optional<I> = object extends I ? [input?: I] : [input: I];
+type Args<C extends Call> = Optional<Fields<RouteOf<C>>>;
 
-/** `/api/<path>` with each `:name` filled from `params`. */
 export function apiPath(path: string, params?: Record<string, string>): string {
   return `/api/${path.replace(/:(\w+)/g, (_, name: string) => encodeURIComponent(params![name]))}`;
 }
@@ -47,20 +47,27 @@ function split(call: string): [method: string, path: string] {
   return [call.slice(0, space), call.slice(space + 1)];
 }
 
-/** The absolute URL of a call, for the two requests that must tell a 401 apart and so keep their own fetch. */
-export function urlOf<C extends Call>(call: C, ...[params]: keyof ParamsOf<RouteOf<C>> extends never ? [] : [ParamsOf<RouteOf<C>>]): string {
-  return new URL(apiPath(split(call)[1], params as Record<string, string> | undefined), getApiUrl()).toString();
+function urlFor(apiPathname: string): URL {
+  return new URL(apiPathname, getApiUrl());
+}
+
+/** The `fetch` arguments of a call, for the two requests that must tell a 401 apart and so keep their own fetch (D9). */
+export function requestOf<C extends Call>(call: C, ...[input]: Optional<ParamsField<RouteOf<C>>>): [url: string, init: RequestInit] {
+  const [method, path] = split(call);
+  const { params } = (input ?? {}) as { params?: Record<string, string> };
+  return [urlFor(apiPath(path, params)).toString(), { method, credentials: "include" }];
 }
 
 /**
  * Sends one request of the contract, or reads one cache key, and answers its JSON — `undefined`
- * for a 204. Throws an `ApiError` for any non-2xx, and whatever `fetch` threw when nothing came back.
+ * for an empty body. Throws an `ApiError` for any non-2xx or a 2xx whose body is not JSON, and
+ * whatever `fetch` threw when nothing came back.
  */
 export function api<P extends Read>(key: ApiKey<P>): Promise<Answer<P>>;
 export function api<C extends Call>(call: C, ...input: Args<C>): Promise<Reply<C>>;
 export async function api(target: string | ApiKey, input: { body?: unknown; params?: Record<string, string>; query?: Record<string, string> } = {}): Promise<unknown> {
   const [method, path] = typeof target === "string" ? split(target) : ["GET", null];
-  const url = new URL(path === null ? target[0] : apiPath(path, input.params), getApiUrl());
+  const url = urlFor(path === null ? target[0] : apiPath(path, input.params));
   if (input.query) url.search = new URLSearchParams(input.query).toString();
   const res = await fetch(url.toString(), {
     method,
@@ -69,7 +76,13 @@ export async function api(target: string | ApiKey, input: { body?: unknown; para
     credentials: "include",
   });
   await throwIfResNotOk(res);
-  return res.status === 204 ? undefined : res.json();
+  const text = await res.text();
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new ApiError(res.status, null, text);
+  }
 }
 
 export const queryClient = new QueryClient({

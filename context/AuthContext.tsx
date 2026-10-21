@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { setReportingAccount } from "@/lib/errorReporting";
 import NetInfo from "@react-native-community/netinfo";
-import { api, urlOf, type Reply } from "@/lib/query-client";
+import { api, requestOf, type Reply } from "@/lib/query-client";
 import { forgetPushRegistration } from "@/lib/device/pushRegistration";
 import { ACCOUNT_KEYS, AUTH_USER_KEY as STORAGE_KEY } from "@/lib/storageKeys";
 import { parseCachedUser, type AuthUser } from "@/lib/authUser";
@@ -53,7 +53,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
  */
 async function fetchMe(): Promise<AuthUser | null | undefined> {
   try {
-    const res = await fetch(urlOf("GET auth/me"), { credentials: "include" });
+    const res = await fetch(...requestOf("GET auth/me"));
     if (res.status === 401) return null;
     if (!res.ok) return undefined;
     return (await res.json()) as Reply<"GET auth/me">;

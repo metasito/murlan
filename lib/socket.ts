@@ -1,5 +1,5 @@
 import { io, type Socket as UntypedSocket } from "socket.io-client";
-import { getApiUrl, urlOf, type Reply } from "@/lib/query-client";
+import { getApiUrl, requestOf, type Reply } from "@/lib/query-client";
 import {
   PROTOCOL_VERSION,
   type ClientToServerEvents,
@@ -50,10 +50,7 @@ export function peekSocket(userId: string | null | undefined): Socket | null {
  */
 async function fetchSocketTicket(onAuthFailure: () => void): Promise<string | null> {
   try {
-    const res = await fetch(urlOf("POST auth/socket-ticket"), {
-      method: "POST",
-      credentials: "include",
-    });
+    const res = await fetch(...requestOf("POST auth/socket-ticket"));
     if (res.status === 401) {
       onAuthFailure();
       return null;
