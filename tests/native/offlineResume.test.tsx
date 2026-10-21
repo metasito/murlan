@@ -14,7 +14,8 @@ import { GameProvider, useGameSession, useGameTable } from "@/context/GameContex
 import { OFFLINE_SAVE_KEY, OFFLINE_SAVE_VERSION, OLDEST_OFFLINE_SAVE_VERSION, decodeOfflineSave } from "@/lib/offlineSave";
 import { NotificationProvider, useBanner } from "@/context/NotificationContext";
 import { t } from "@/lib/i18n";
-import { aThreePlayed, nothingPlayed } from "../support/game";
+import { aThreePlayed } from "../support/game";
+import { emptyRankTally } from "@/lib/game/gameEngine";
 
 /** Both halves of the provider, for a probe that reads across them. */
 const useGame = () => ({ ...useGameSession(), ...useGameTable() });
@@ -56,7 +57,7 @@ const midExchangeSave = () => {
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: true,
-      playedRanks: nothingPlayed(),
+      playedRanks: emptyRankTally(),
       lastMove: { seq: 0, kind: "deal" },
       exchangePhase: {
         active: true,

@@ -1,23 +1,14 @@
 import type { BotPersonalityId } from "./botPersonalities.ts";
 
-export type Suit = "hearts" | "diamonds" | "clubs" | "spades";
+export const SUITS = ["hearts", "diamonds", "clubs", "spades"] as const;
+export type Suit = (typeof SUITS)[number];
 
-export type Rank =
-  | "3"
-  | "4"
-  | "5"
-  | "6"
-  | "7"
-  | "8"
-  | "9"
-  | "10"
-  | "J"
-  | "Q"
-  | "K"
-  | "A"
-  | "2"
-  | "joker_bw"
-  | "joker_colored";
+/** Weakest first: a rank's index here is its `getRankStrength`. */
+export const RANK_ORDER = [
+  "3", "4", "5", "6", "7", "8", "9", "10",
+  "J", "Q", "K", "A", "2", "joker_bw", "joker_colored",
+] as const;
+export type Rank = (typeof RANK_ORDER)[number];
 
 export interface Card {
   id: string;
@@ -26,13 +17,8 @@ export interface Card {
   isJoker: boolean;
 }
 
-export type CombinationType =
-  | "single"
-  | "pair"
-  | "triple"
-  | "straight"
-  | "bomb"
-  | "royal_straight";
+export const COMBINATION_TYPES = ["single", "pair", "triple", "straight", "bomb", "royal_straight"] as const;
+export type CombinationType = (typeof COMBINATION_TYPES)[number];
 
 export interface Combination {
   type: CombinationType;
@@ -120,11 +106,6 @@ export interface GameState {
    */
   lastMove: LastMove;
 }
-
-const RANK_ORDER: Rank[] = [
-  "3", "4", "5", "6", "7", "8", "9", "10",
-  "J", "Q", "K", "A", "2", "joker_bw", "joker_colored",
-];
 
 export const RANK_SLOTS = RANK_ORDER.length;
 
@@ -215,12 +196,11 @@ function isRoyalStraight(cards: Card[]): boolean {
 }
 
 export function createDeck(): Card[] {
-  const suits: Suit[] = ["hearts", "diamonds", "clubs", "spades"];
   const ranks: Rank[] = [
     "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A",
   ];
   const cards: Card[] = [];
-  for (const suit of suits) {
+  for (const suit of SUITS) {
     for (const rank of ranks) {
       cards.push({ id: `${rank}_${suit}`, suit, rank, isJoker: false });
     }
@@ -655,7 +635,7 @@ export function getAllValidPlays(
   for (const groups of enumerateStraightWindows(nj)) {
     tryAdd(selectStraightCards(groups, requireCard));
   }
-  for (const suit of STRAIGHT_SUITS) {
+  for (const suit of SUITS) {
     const suited = nj.filter((c) => c.suit === suit);
     if (suited.length < STRAIGHT_MIN_LEN) continue;
     for (const groups of enumerateStraightWindows(suited)) {
@@ -666,7 +646,6 @@ export function getAllValidPlays(
   return plays;
 }
 
-const STRAIGHT_SUITS: Suit[] = ["hearts", "diamonds", "clubs", "spades"];
 const STRAIGHT_MIN_VALUE = 1; // Ace low
 const STRAIGHT_MAX_VALUE = 14; // Ace high
 

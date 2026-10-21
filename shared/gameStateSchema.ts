@@ -3,7 +3,17 @@
 // purpose; this one is exact, because a state that parses here is handed straight to the engine.
 import { z } from "zod";
 import { isBotPersonalityId, type BotPersonalityId } from "../lib/game/botPersonalities.ts";
-import { DECK_BY_STRENGTH, RANK_SLOTS, exchangeIsSatisfiable, type GameMode, type GameState, type MatchLength } from "../lib/game/gameEngine.ts";
+import {
+  COMBINATION_TYPES,
+  DECK_BY_STRENGTH,
+  RANK_ORDER,
+  RANK_SLOTS,
+  SUITS,
+  exchangeIsSatisfiable,
+  type GameMode,
+  type GameState,
+  type MatchLength,
+} from "../lib/game/gameEngine.ts";
 
 export const UNSATISFIABLE_EXCHANGE = "an open exchange nobody can give back from";
 
@@ -11,8 +21,8 @@ const seat = z.number().int().nonnegative();
 
 const card = z.object({
   id: z.string(),
-  suit: z.enum(["hearts", "diamonds", "clubs", "spades"]).nullable(),
-  rank: z.enum(["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2", "joker_bw", "joker_colored"]),
+  suit: z.enum(SUITS).nullable(),
+  rank: z.enum(RANK_ORDER),
   isJoker: z.boolean(),
 });
 
@@ -27,7 +37,7 @@ const player = z.object({
 });
 
 const combination = z.object({
-  type: z.enum(["single", "pair", "triple", "straight", "bomb", "royal_straight"]),
+  type: z.enum(COMBINATION_TYPES),
   cards: z.array(card),
   strength: z.number(),
 });
@@ -42,7 +52,7 @@ const lastMove = z.union([
 export const gameModeSchema = z.enum(["free_for_all", "teams"]);
 export const matchLengthSchema = z.enum(["match", "single"]);
 
-export const playedRanksSchema = z
+const playedRanksSchema = z
   .array(z.number().int().nonnegative())
   .length(RANK_SLOTS, `a played-rank tally of other than ${RANK_SLOTS} ranks`)
   .refine((tally) => tally.every((n, i) => n <= DECK_BY_STRENGTH[i]), "more of a rank played than the deck holds");
@@ -93,7 +103,10 @@ const gameStateSchema = z
   })
   .refine((state) => exchangeIsSatisfiable(state), UNSATISFIABLE_EXCHANGE);
 
-export type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type Filled<T> = T extends (infer U)[] ? Filled<U>[] : T extends object ? { [K in keyof T]-?: Filled<T[K]> } : T;
+type Mutual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+/** Whether two types match field for field, optional fields included: neither may lack one the other has. */
+export type Same<A, B> = Mutual<Filled<A>, Filled<B>>;
 const declaresGameState: Same<z.infer<typeof gameStateSchema>, GameState> = true;
 const declaresGameMode: Same<z.infer<typeof gameModeSchema>, GameMode> = true;
 const declaresMatchLength: Same<z.infer<typeof matchLengthSchema>, MatchLength> = true;

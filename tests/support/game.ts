@@ -1,5 +1,6 @@
-// Loaded by `node --test`, jest and Playwright alike: type-only imports, and the `.ts` specifier
+// Loaded by `node --test`, jest and Playwright alike: no `@/` alias, and the `.ts` specifier
 // Node's loader needs (docs/agents/checks.md).
+import { emptyRankTally, getRankStrength } from "../../lib/game/gameEngine.ts";
 import type { Card, GameState, Player, Rank, Suit } from "../../lib/game/gameEngine.ts";
 import type { BotView } from "../../lib/game/bot.ts";
 
@@ -29,11 +30,12 @@ export function seat(i: number, hand: Card[] = [], over: Partial<Player> = {}): 
   return { id: `p${i}`, name: `p${i}`, hand, type: "human", ...over };
 }
 
-/** `emptyRankTally()`, which this file's type-only imports cannot call. */
-export const nothingPlayed = (): number[] => new Array<number>(15).fill(0);
-
 /** A round someone has played into, one 3 down: `roundUnplayed` reads false on it. */
-export const aThreePlayed = (): number[] => nothingPlayed().map((n, i) => (i === 0 ? 1 : n));
+export function aThreePlayed(): number[] {
+  const tally = emptyRankTally();
+  tally[getRankStrength("3")] = 1;
+  return tally;
+}
 
 export function state(over: Partial<GameState> = {}): GameState {
   return {
@@ -47,7 +49,7 @@ export function state(over: Partial<GameState> = {}): GameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: false,
-    playedRanks: nothingPlayed(),
+    playedRanks: emptyRankTally(),
     lastMove: { seq: 0, kind: "deal" },
     ...over,
   };
@@ -61,7 +63,7 @@ export function viewOf(player: Player, over: Partial<BotView> = {}): BotView {
     toBeat: null,
     opponentHandCounts: [13],
     partnerHoldsTop: false,
-    playedRanks: nothingPlayed(),
+    playedRanks: emptyRankTally(),
     ...over,
   };
 }

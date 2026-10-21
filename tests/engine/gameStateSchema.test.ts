@@ -1,7 +1,9 @@
 // tests/engine/gameStateSchema.test.ts — the one parse both restore seams hold a stored engine state to.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { UNSATISFIABLE_EXCHANGE, parseGameState } from "../../shared/gameStateSchema.ts";
+import { z } from "zod";
+import { UNSATISFIABLE_EXCHANGE, parseGameState, type Same } from "../../shared/gameStateSchema.ts";
+import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 import { reachSteps } from "../../lib/situation.ts";
 import { ALL_CAPTURE_STATES, captureGameState } from "../../lib/captureStates.ts";
 import { card, seat, state } from "../support/game.ts";
@@ -66,5 +68,30 @@ describe("states the engine could not have written", () => {
 
   test("anything that is not an object", () => {
     for (const raw of [null, undefined, [], "state", 4]) assert.equal(reason(raw), "no game state");
+  });
+});
+
+describe("Same, the check that pins each schema to the engine's type", () => {
+  type Phase = NonNullable<GameState["exchangePhase"]>;
+  const phase = {
+    active: z.boolean(),
+    winnerIdx: z.number(),
+    loserIdx: z.number(),
+    cardFromLoser: z.custom<Phase["cardFromLoser"]>().optional(),
+    cardToLoser: z.custom<Phase["cardToLoser"]>().optional(),
+    twoJokerException: z.boolean(),
+  };
+
+  test("refuses a schema missing an optional field, at the top or nested", () => {
+    const whole = z.object({ ...phase, settledAt: z.number().optional() });
+    const withoutSettledAt = z.object(phase);
+    const matches: Same<z.infer<typeof whole>, Phase> = true;
+    // @ts-expect-error a schema missing the optional `settledAt` is not the engine's phase
+    const drifted: Same<z.infer<typeof withoutSettledAt>, Phase> = true;
+    // @ts-expect-error a player missing the optional `finishPosition`, inside an array, is not the engine's
+    const nested: Same<{ players: Omit<Player, "finishPosition">[] }, { players: Player[] }> = true;
+    const open = { active: true, winnerIdx: 0, loserIdx: 1, twoJokerException: false };
+    assert.ok(whole.safeParse(open).success && withoutSettledAt.safeParse(open).success, "only the type can tell them apart");
+    assert.deepEqual([matches, drifted, nested], [true, true, true]);
   });
 });
