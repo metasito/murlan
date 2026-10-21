@@ -14,6 +14,7 @@ import { busiest } from './helpers/dealSweep';
 import { along, freshDeal, frame, handPoses, table, type Pose } from './helpers/dealTable';
 import { bootFeedback, startsOf } from './helpers/feedback';
 import { setMotion } from './harness/env';
+import { aThreePlayed } from '../support/game';
 
 const SEATS = ['top-seat', 'side-seat-left', 'side-seat-right'];
 const counted = (testID: string) => {
@@ -82,7 +83,7 @@ describe("an opponent's hand arrives with the deal", () => {
     expect(handPoses().some((p) => p.opacity !== 1)).toBe(true);
     await dealt.unmount();
 
-    const resumed = await render(table({ ...freshDeal, firstPlayMade: true }));
+    const resumed = await render(table({ ...freshDeal, firstPlayMade: true, playedRanks: aThreePlayed() }));
     await frame();
     expect(backs()).toHaveLength(0);
     expect(handPoses()).toHaveLength(13);

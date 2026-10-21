@@ -24,6 +24,8 @@ import { GameTable } from '@/components/GameTable';
 import { bootFeedback, settle, startsOf } from './helpers/feedback';
 import { choiceOpensAt } from '@/lib/timeline/exchangeTimeline';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
+import { emptyRankTally } from '@/lib/game/gameEngine';
+import { dealEndMs } from '@/lib/timeline/dealTimeline';
 
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
 const card = (rank: Rank, suit: Suit): Card => ({ id: `${rank}_${suit}`, rank, suit, isJoker: false });
@@ -46,6 +48,7 @@ const state = (open: boolean): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
   exchangePhase: {
     active: open,
@@ -97,7 +100,7 @@ describe('an announcement taking over from the open phase', () => {
 
   it('keeps the ceremony mounted, cued once and ready once when it does not know the card received', async () => {
     const view = await render(table(true));
-    await frames(choiceOpensAt(false) + 160);
+    await frames(dealEndMs(state(true).players.map((p) => p.hand.length), 600) + choiceOpensAt(false) + 160);
     expect(mockMounts.n).toBe(1);
     expect(cues()).toEqual([expect.any(Number)]);
     expect(onReady).toHaveBeenCalledTimes(1);

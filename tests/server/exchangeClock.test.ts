@@ -10,6 +10,7 @@ import { exchangeAnnounceMs } from "../../lib/timeline/exchangeTimeline.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 import { installClock } from "../../server/http/clock.ts";
 import { fakeClock } from "../helpers/fakeClock.ts";
+import { emptyRankTally } from "../../lib/game/gameEngine.ts";
 
 const RETURNED = { id: "6_clubs", suit: "clubs", rank: "6", isJoker: false } as const;
 const USERS = ["u0", "u1", "u2", "u3"];
@@ -33,6 +34,7 @@ function justClosedExchange(): OnlineGameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: false,
+    playedRanks: emptyRankTally(),
     lastMove: { seq: 1, kind: "giveback", seat: WINNER },
     exchangePhase: { active: false, winnerIdx: WINNER, loserIdx: LOSER, twoJokerException: false, cardToLoser: RETURNED },
   };

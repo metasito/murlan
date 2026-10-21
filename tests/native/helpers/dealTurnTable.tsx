@@ -4,7 +4,7 @@ import { act, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { GameTable } from '@/components/GameTable';
-import { dealCards, type GameState, type Player } from '@/lib/game/gameEngine';
+import { dealCards, type GameState, type Player, emptyRankTally } from '@/lib/game/gameEngine';
 
 export const freshDeal = (): GameState => ({
   players: dealCards(4).hands.map((hand, i) => ({ id: `p${i}`, name: `P${i}`, hand, type: 'human' }) as Player),
@@ -17,6 +17,7 @@ export const freshDeal = (): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: false,
+  playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
 });
 

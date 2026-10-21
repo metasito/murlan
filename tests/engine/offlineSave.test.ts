@@ -5,12 +5,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   OFFLINE_SAVE_VERSION,
+  OLDEST_OFFLINE_SAVE_VERSION,
   decodeOfflineSave as decode,
   encodeOfflineSave,
   isResumable,
 } from "../../lib/offlineSave.ts";
-import { buildCombination } from "../../lib/game/gameEngine.ts";
-import { played } from "../support/moves.ts";
+import { buildCombination, emptyRankTally, startRound } from "../../lib/game/gameEngine.ts";
+import { played, playRoundOut } from "../support/moves.ts";
+import type { MatchState } from "../../lib/game/matchState.ts";
 
 const decodeOfflineSave = (raw: string | null) => {
   const result = decode(raw);
@@ -33,6 +35,7 @@ const save = (over = false) => ({
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: false,
+    playedRanks: emptyRankTally(),
     lastMove: { seq: 0, kind: "deal" },
   },
   match: { length: "match", target: 21, scores: { player_0: 3 }, rounds: [], over, winners: [], isDraw: false },
@@ -55,13 +58,13 @@ test("a save with no deal rotation at all is not trusted", () => {
   assert.equal(kindOf(JSON.stringify(blob)), "incompatible");
 });
 
-// The version is the real guard. A blob from an older build is discarded rather
-// than migrated, because restoring a hand into a shape the engine no longer
+// A blob older than the oldest version still resumed is discarded rather than
+// migrated, because restoring a hand into a shape the engine no longer
 // expects corrupts a game silently, while losing one abandoned match costs
 // nothing — the same call active_games makes.
 test("a save from another version is discarded, not migrated, and says so", () => {
   const older = JSON.parse(encodeOfflineSave(save()));
-  older.version = OFFLINE_SAVE_VERSION - 1;
+  older.version = OLDEST_OFFLINE_SAVE_VERSION - 1;
   assert.equal(kindOf(JSON.stringify(older)), "incompatible");
   older.version = OFFLINE_SAVE_VERSION + 1;
   assert.equal(kindOf(JSON.stringify(older)), "incompatible");
@@ -72,6 +75,19 @@ test("nothing stored, or nothing parseable, is simply nothing", () => {
   for (const raw of [null, "", "not json", "[]", '"a string"', "null", "42"]) {
     assert.equal(kindOf(raw), "none", JSON.stringify(raw));
   }
+});
+
+test("a version-5 save origin/main wrote resumes whole and plays a legal move", () => {
+  const raw = readFileSync(new URL("../fixtures/offlineSave.v5.json", import.meta.url), "utf8");
+  assert.equal(JSON.parse(raw).version, 5);
+  assert.ok(OLDEST_OFFLINE_SAVE_VERSION <= 5 && 5 < OFFLINE_SAVE_VERSION);
+  const restored = decodeOfflineSave(raw);
+  assert.ok(restored, "the version-5 save no longer decodes");
+  assert.deepEqual(restored.gameState, JSON.parse(raw).gameState);
+  const { gameState } = restored;
+  const start = gameState.players[gameState.currentTurnIndex].hand.find((c) => c.id === gameState.startCard?.id);
+  assert.ok(start);
+  assert.equal(played(gameState, buildCombination([start])!).firstPlayMade, true);
 });
 
 test("the golden save of this version still decodes and plays a legal move", () => {
@@ -107,6 +123,8 @@ test("a blob missing anything the restore path needs is refused", () => {
     ["an unknown game mode", (s) => { (s.gameState as Record<string, unknown>).gameMode = "battle_royale"; }],
     ["gameState without its last move", (s) => { delete (s.gameState as Record<string, unknown>).lastMove; }],
     ["a last move without a count", (s) => { (s.gameState as Record<string, unknown>).lastMove = { kind: "deal" }; }],
+    ["gameState without its played-rank tally", (s) => { delete (s.gameState as Record<string, unknown>).playedRanks; }],
+    ["a match round without its points", (s) => { (s.match as Record<string, unknown>).rounds = [{ finishingOrder: [] }]; }],
   ];
   for (const [what, mutate] of mutations) {
     const blob = JSON.parse(encodeOfflineSave(save()));
@@ -147,4 +165,18 @@ test("an open exchange the winner cannot give back from is refused; one they can
   assert.equal(kindOf(withExchange([{ id: "5_clubs", rank: "5", suit: "clubs", isJoker: false }])), "ok");
   assert.equal(kindOf(withExchange([null])), "incompatible");
   assert.equal(kindOf(withExchange([{ id: "5_clubs" }])), "incompatible");
+});
+
+test("every state a played round passes through, exchange and all, saves and resumes whole", () => {
+  const seats = ["Ana", "Luan", "Gent", "Besnik"].map((name, i) => ({ name, type: i === 0 ? ("human" as const) : ("bot" as const) }));
+  const match: MatchState = { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false };
+  for (const opening of [undefined, { kind: "exchange" as const, winnerSeat: 2, loserSeat: 0 }]) {
+    const states = playRoundOut(startRound(seats, "free_for_all", opening && { opening }));
+    assert.ok(states.length > 13);
+    for (const [step, gameState] of states.entries()) {
+      const back = decode(encodeOfflineSave({ gameState, match, dealFirstSeat: 0 }));
+      assert.equal(back.kind, "ok", `${opening?.kind ?? "start card"} step ${step}`);
+      assert.deepEqual(back.kind === "ok" && back.save.gameState, JSON.parse(JSON.stringify(gameState)));
+    }
+  }
 });

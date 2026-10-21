@@ -34,6 +34,7 @@ import { useInvites, usePresence, useSocketConnection } from '@/context/SocketCo
 
 import { queriesSettled, renderApp } from './harness/renderApp';
 import { lastSocket } from './mocks/socketIo';
+import { aThreePlayed } from '../support/game';
 
 jest.mock('expo-router', () => ({
   router: { push: () => {}, replace: () => {}, back: () => {} },
@@ -104,6 +105,7 @@ const gameState: Omit<WireGameState, 'viewerSeatIndex' | 'turnSecondsRemaining'>
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 };
 

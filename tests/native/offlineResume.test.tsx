@@ -11,9 +11,11 @@ import { Text, Pressable } from "react-native";
 import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GameProvider, useGameSession, useGameTable } from "@/context/GameContext";
-import { OFFLINE_SAVE_KEY, OFFLINE_SAVE_VERSION, decodeOfflineSave } from "@/lib/offlineSave";
+import { OFFLINE_SAVE_KEY, OFFLINE_SAVE_VERSION, OLDEST_OFFLINE_SAVE_VERSION, decodeOfflineSave } from "@/lib/offlineSave";
 import { NotificationProvider, useBanner } from "@/context/NotificationContext";
 import { t } from "@/lib/i18n";
+import { aThreePlayed } from "../support/game";
+import { emptyRankTally } from "@/lib/game/gameEngine";
 
 /** Both halves of the provider, for a probe that reads across them. */
 const useGame = () => ({ ...useGameSession(), ...useGameTable() });
@@ -37,7 +39,7 @@ const midExchangeSave = () => {
     version: OFFLINE_SAVE_VERSION,
     gameState: {
       players: [
-        { id: "player_0", name: "Ana", hand: [card], type: "human" },
+        { id: "player_0", name: "Ana", hand: [{ id: "9_spades", rank: "9", suit: "spades", isJoker: false }], type: "human" },
         {
           id: "player_1",
           name: "Luan",
@@ -55,6 +57,7 @@ const midExchangeSave = () => {
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: true,
+      playedRanks: emptyRankTally(),
       lastMove: { seq: 0, kind: "deal" },
       exchangePhase: {
         active: true,
@@ -203,7 +206,7 @@ test("with nothing stored, there is nothing to offer", async () => {
 
 test("a save an update can no longer read is removed, and the player is told", async () => {
   const stale = JSON.parse(midExchangeSave());
-  stale.version = OFFLINE_SAVE_VERSION - 1;
+  stale.version = OLDEST_OFFLINE_SAVE_VERSION - 1;
   await AsyncStorage.setItem(OFFLINE_SAVE_KEY, JSON.stringify(stale));
 
   const r = await mount();
@@ -247,6 +250,7 @@ const freeLeadSave = () => {
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: true,
+      playedRanks: aThreePlayed(),
       lastMove: { seq: 0, kind: "deal" },
     },
   });

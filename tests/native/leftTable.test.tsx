@@ -9,6 +9,7 @@ import { OnlineGameProvider } from '@/context/OnlineGameContext';
 import type { WireGameState } from '@/shared/protocol';
 import { useOnlineGame } from './onlineSurface';
 import { REJOIN_RETRY_DELAY_MS } from '@/context/useRejoin';
+import { aThreePlayed } from '../support/game';
 
 type Listener = (...args: unknown[]) => void;
 const listeners = new Map<string, Set<Listener>>();
@@ -60,6 +61,7 @@ const table = (roundOver: boolean): WireGameState => ({
   roundOver,
   finishingOrder: roundOver ? ['player_0', 'player_1'] : [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
   viewerSeatIndex: 0,
   turnSecondsRemaining: 30,

@@ -7,6 +7,7 @@ import { renderAppHook } from './harness/renderApp';
 import { OnlineGameProvider } from '@/context/OnlineGameContext';
 import type { WireGameState } from '@/shared/protocol';
 import { useOnlineTable } from '@/context/onlineGameHooks';
+import { aThreePlayed } from '../support/game';
 
 type Listener = (...args: unknown[]) => void;
 const listeners = new Map<string, Set<Listener>>();
@@ -45,6 +46,7 @@ const DEALT: WireGameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
   viewerSeatIndex: 0,
   turnSecondsRemaining: 30,

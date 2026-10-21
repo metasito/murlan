@@ -6,7 +6,7 @@ import { renderApp } from './harness/renderApp';
 import { OnlineGameProvider } from '@/context/OnlineGameContext';
 import { queryClient } from '@/lib/query-client';
 import { queryKey } from '@/lib/queries';
-import type { RoundOverPayload } from '@/lib/game/matchState';
+import type { RoundOverPayload } from '@/shared/protocol';
 
 const MOVED_BY_A_ROUND = [
   queryKey('stats/me'),

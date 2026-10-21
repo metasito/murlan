@@ -14,6 +14,7 @@ import { choiceOpensAt } from '@/lib/timeline/exchangeTimeline';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { bootFeedback, ctxTime, effects, settle, soundOf, sounds } from './helpers/feedback';
 import { botRound, playBotRound } from './helpers/botRound';
+import { aThreePlayed } from '../support/game';
 
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
 const noop = () => {};
@@ -34,6 +35,7 @@ const human = (turn: number, exchange = false): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
   ...(exchange ? { exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: TWO_S, twoJokerException: false } } : {}),
 });

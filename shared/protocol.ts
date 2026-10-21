@@ -3,13 +3,13 @@
 // tests/server/protocolVersion.test.ts holds the file, tests/server/storedShapeVersions.test.ts
 // the types. Raise MIN_PROTOCOL_VERSION to turn away the bundles a change breaks.
 import { z } from "zod";
+import { matchLengthSchema } from "./gameStateSchema.ts";
 import type { GameState, MatchLength, Player } from "../lib/game/gameEngine.ts";
-import type { RoundOverPayload } from "../lib/game/matchState.ts";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "./http.ts";
 import type * as Inbound from "./socketSchemas.ts";
 import type { TranslationParams } from "./i18n.ts";
 
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 10;
 export const MIN_PROTOCOL_VERSION = 6;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */
@@ -156,19 +156,78 @@ export const gameStateSchema = z
     currentTurnIndex: z.number(),
     roundOver: z.boolean(),
     finishingOrder: z.array(z.string()).default([]),
+    // Looser than parseGameState's tally on purpose: the server already held its state to that,
+    // and a stricter wire would refuse a state over a tally a newer server reshaped.
+    playedRanks: z.array(z.number()),
   })
   .passthrough();
 
-export const roundOverSchema = z
-  .object({
-    finishingOrder: z.array(z.string()),
-    scores: z.array(z.object({ engineId: z.string(), points: z.number(), total: z.number() }).passthrough()),
-    matchOver: z.boolean(),
-    matchWinnerIds: z.array(z.string()),
-    ratingDeltas: z.record(z.number()),
-    ratingsAfter: z.record(z.object({ rating: z.number(), rounds: z.number() })).optional(),
-  })
-  .passthrough();
+/** One seat's line on the end-of-round scoreboard, in every identity it is indexed by. */
+const scoreLine = z.object({
+  seatIndex: z.number(),
+  /** The engine player id the finishingOrder and the match winners are stated in. */
+  engineId: z.string(),
+  userId: z.string().nullable(),
+  username: z.string(),
+  points: z.number(),
+  total: z.number(),
+  /**
+   * The seat is a human's that left, played on by the engine. `username` is
+   * still the person's real name — the client renders the departed label
+   * itself, through `t()`, rather than reading it off the wire as text.
+   */
+  vacated: z.boolean(),
+});
+
+const ratingAfter = z.object({ rating: z.number(), rounds: z.number() });
+
+/**
+ * `game:round_over`, as the server states it and the client reads it: every field required, so a
+ * server that stops sending one is refused rather than read as one that never did.
+ */
+const roundOverFields = z.object({
+  /** Finish order, as engine player ids. */
+  finishingOrder: z.array(z.string()),
+  scores: z.array(scoreLine),
+  matchTarget: z.number(),
+  matchLength: matchLengthSchema,
+  roundsPlayed: z.number(),
+  matchOver: z.boolean(),
+  matchWinnerIds: z.array(z.string()),
+  matchContinues: z.boolean(),
+  isDraw: z.boolean(),
+  /**
+   * By user id, and empty for a round that earns no rating. The server reads
+   * this before it writes the ladder, because the inputs stop existing once
+   * that write lands (server/game/ratings.ts).
+   */
+  ratingDeltas: z.record(z.number()),
+  /**
+   * Each rated seat's standing once this round is written, keyed as
+   * `ratingDeltas`. Sent rather than fetched: the ladder write lands after
+   * `game:round_over`, so `GET ratings/me` read on it can still be the old rating.
+   */
+  ratingsAfter: z.record(ratingAfter),
+  /**
+   * Whether this round wrote a `GET stats/history` row — a bot-majority
+   * table writes none. Wider than `ratingDeltas` being empty: a teams round
+   * is recorded and unrated.
+   */
+  recorded: z.boolean(),
+  /**
+   * The match ended before its first point, on an abandonment
+   * (docs/GAME-RULES.md § Decisions) — nothing earned, nothing taken, rated for nobody.
+   * `finishingOrder` and `scores` are empty and `recorded` is false alongside it;
+   * false for every other round, voided or not.
+   */
+  voided: z.boolean(),
+});
+
+export const roundOverSchema = roundOverFields.passthrough();
+
+export type RoundOverPayload = z.infer<typeof roundOverFields>;
+export type ScoreLine = z.infer<typeof scoreLine>;
+export type RatingAfter = z.infer<typeof ratingAfter>;
 
 export const roomStateSchema = z
   .object({

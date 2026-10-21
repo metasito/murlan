@@ -12,7 +12,7 @@ import {
   START_RATING,
   type RatedSeat,
 } from "../../lib/game/rating.ts";
-import type { RatingAfter } from "../../lib/game/matchState.ts";
+import type { RatingAfter } from "../../shared/protocol.ts";
 import type { LeaderboardEntryDto, RatingDto } from "../../shared/http.ts";
 
 /** How many players the public ladder shows. */

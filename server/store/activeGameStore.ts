@@ -4,7 +4,6 @@ import { activeGames } from "../../shared/schema.ts";
 import { now } from "../http/clock.ts";
 import type { roomStore } from "./roomStore.ts";
 import type { PersistedEnvelope } from "../../shared/persistedEnvelope.ts";
-import type { GameState } from "../../lib/game/gameEngine.ts";
 
 export interface ActiveGameRow {
   roomId: string;
@@ -24,7 +23,7 @@ export const activeGameStore = {
     return db.select(row).from(activeGames);
   },
 
-  async write(roomId: string, gameState: PersistedEnvelope<GameState>): Promise<void> {
+  async write(roomId: string, gameState: PersistedEnvelope): Promise<void> {
     const updatedAt = new Date(now());
     await db
       .insert(activeGames)

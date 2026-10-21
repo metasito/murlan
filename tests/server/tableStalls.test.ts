@@ -23,6 +23,7 @@ import { packPersistedState } from "../../shared/persistedEnvelope.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
+import { aThreePlayed } from "../support/game.ts";
 
 const ROOM = "table-stalls-room";
 
@@ -42,6 +43,7 @@ function finishedHand(players: Player[], finishingOrder: string[]): GameState {
     roundOver: true,
     finishingOrder,
     firstPlayMade: true,
+    playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: "deal" },
   };
 }

@@ -11,6 +11,7 @@ import { vacateSeat } from "../../server/game/gameTurn.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
+import { aThreePlayed } from "../support/game.ts";
 
 const ROOM = "vacate-personality-room";
 
@@ -34,6 +35,7 @@ test("vacateSeat never sets personality on the seat it hands to the bot", async 
     roundOver: true,
     finishingOrder: ["p0", "p1"],
     firstPlayMade: true,
+    playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: "deal" },
   };
   const game = {

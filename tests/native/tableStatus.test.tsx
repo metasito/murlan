@@ -14,6 +14,7 @@ import { buildCombination, type Card, type GameState, type Player } from '@/lib/
 import { en as locale } from '@/locales/en';
 import { Colors } from '@/lib/theme';
 import { setMotion } from './harness/env';
+import { aThreePlayed } from '../support/game';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -45,6 +46,7 @@ const state = (currentTurnIndex: number): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 });
 

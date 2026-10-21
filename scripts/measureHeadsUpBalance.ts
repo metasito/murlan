@@ -337,7 +337,7 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
 /** Mirrors `takesTheTrick` inside `lib/game/bot.ts`'s `botChoosePlay`. */
 export function isCertainLead(
   play: Combination,
-  playedRanks: number[] | undefined,
+  playedRanks: number[],
   hand: Card[]
 ): boolean {
   return (
