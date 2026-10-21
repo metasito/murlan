@@ -1,9 +1,9 @@
 // tests/soak/replay.ts — hands a soak log back to a real server, move for move.
 //
-// The soak is a search and its seed is a label: the deal comes from `crypto`
-// (`lib/game/gameEngine.ts`'s `shuffleDeck`), so re-running a seed plays a different
-// game with different cards, and the card ids a failure printed mean nothing in
-// it. What survives the run is the log. This replays one, so a night's find can
+// The soak is a search and its seed reproduces only the first deal (`seedDeals`):
+// which seat is waited on, and so every later draw, is wall clock (#597), and a
+// rerun past that plays a different game. What survives the run is the log.
+// This replays one, so a night's find can
 // become a `tests/integration/` case that fails on demand for ever after
 // (`tests/integration/soakLogReplays.test.ts`).
 //
@@ -94,7 +94,7 @@ export async function replaySoakLog(
     for (const id of hand) if (!known.has(id)) throw new Error(`no such card in the deck: ${id}`);
   }
   for (const entry of log) {
-    if (entry.kind === "deal" || entry.seat < deal.hands.length) continue;
+    if (entry.kind === "deal" || entry.kind === "restart" || entry.seat < deal.hands.length) continue;
     throw new Error(`the log names seat ${entry.seat} at move ${entry.at}, of ${deal.hands.length}`);
   }
   // A second deal is a rematch, and a rematch does not start where this can put
@@ -133,7 +133,10 @@ export async function replaySoakLog(
     await settle(seats);
 
     for (const entry of log.slice(1)) {
-      if (entry.kind === "deal") continue;
+      // A fault was judged by its own oracle in the run that injected it, which
+      // held it to changing nothing beyond the move it rode on: the moves alone
+      // rebuild the table.
+      if (entry.kind !== "play" && entry.kind !== "pass" && entry.kind !== "exchange" && entry.kind !== "drop" && entry.kind !== "rejoin") continue;
       const seat = seats[entry.seat];
       if (entry.kind === "drop") {
         seatSocket(seat).close();

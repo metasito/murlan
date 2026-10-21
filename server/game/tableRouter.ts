@@ -70,7 +70,7 @@ const APPLIED_MAX = 2_000;
 export type RehydrateOutcome = "restored" | "missing" | "unrestorable" | "newer" | "not_seated";
 
 /** Every action this process has already applied, by id. */
-const applied = new Map<string, { outcome: Promise<Outcome>; at: number }>();
+export const applied = new Map<string, { outcome: Promise<Outcome>; at: number }>();
 
 function remember(id: string, outcome: Promise<Outcome>): Promise<Outcome> {
   const at = now();
