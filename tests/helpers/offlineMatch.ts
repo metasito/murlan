@@ -24,7 +24,7 @@ export type SimulateMatchResult = SimulatedMatch;
 export type OfflinePlayerSetup = SeatSetup;
 
 export interface SimulateMatchOptions
-  extends Pick<SimulateOptions, "seed" | "gameMode" | "length" | "maxRounds" | "maxMovesPerRound" | "botRng" | "onTransition"> {
+  extends Pick<SimulateOptions, "seed" | "gameMode" | "length" | "maxRounds" | "maxMovesPerRound" | "botRng" | "passThrough" | "onMove" | "onTransition"> {
   players: OfflinePlayerSetup[];
   /**
    * Per-seat bot choice for a seat that is not `"bot"` (a bot seat always plays
@@ -179,7 +179,9 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
       dealtSeats = state.players.flatMap((p, i) => (p.hand.length > 0 ? [i] : []));
       actedSeats.clear();
     },
-    onMove: ({ state, seat, move: auto, roundIndex, moveIndex }) => {
+    onMove: (ctx) => {
+      opts.onMove?.(ctx);
+      const { state, seat, move: auto, roundIndex, moveIndex } = ctx;
       actedSeats.add(seat);
       // Exchange choices and the stuck-exchange release neither play nor
       // pass, and never touch `getNextActivePlayer` — out of scope for both
