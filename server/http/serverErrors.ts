@@ -38,7 +38,7 @@ export function installServerErrorRecorder(): void {
   setErrorRecorder(({ level, msg, time: _time, pid: _pid, hostname: _host, userId: _userId, ...context }) => {
     // An error burst is usually the pool starving; an insert per line would
     // queue behind the very requests that are failing.
-    if (pool.waitingCount > 0) {
+    if (pool().waitingCount > 0) {
       countDropped(now());
       process.stderr.write(
         `server_errors insert skipped, pool starved (${serverErrorsDropped()} dropped in ` +
@@ -46,7 +46,7 @@ export function installServerErrorRecorder(): void {
       );
       return;
     }
-    db.insert(serverErrors)
+    db().insert(serverErrors)
       .values({ level: Number(level), message: String(msg ?? "").slice(0, MESSAGE_MAX), context })
       .catch((err: unknown) => {
         process.stderr.write(`server_errors insert failed: ${String(err)}\n`);
@@ -61,7 +61,7 @@ export type ServerErrorGroup = {
 };
 
 export async function recentServerErrorGroups(limit: number): Promise<ServerErrorGroup[]> {
-  const rows = await db.execute<ServerErrorGroup>(sql`
+  const rows = await db().execute<ServerErrorGroup>(sql`
     SELECT message, count(*)::int AS count, max(occurred_at) AS "lastSeen"
     FROM server_errors
     WHERE occurred_at >= now() - make_interval(days => ${ERROR_GROUP_WINDOW_DAYS})
@@ -73,7 +73,7 @@ export async function recentServerErrorGroups(limit: number): Promise<ServerErro
 }
 
 export async function serverErrorsThisWeek(): Promise<number> {
-  const rows = await db.execute<{ n: number }>(sql`
+  const rows = await db().execute<{ n: number }>(sql`
     SELECT count(*)::int AS n
     FROM server_errors
     WHERE occurred_at >= now() - make_interval(days => 7)

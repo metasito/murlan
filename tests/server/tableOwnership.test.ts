@@ -16,6 +16,8 @@ import type { TableActionKind } from "../../server/game/tableActions.ts";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { blankComments } from "../helpers/sourceScan.ts";
+import { TABLE_ACTION_EVENT, applyOrForward } from "../../server/game/tableRouter.ts";
+import { activeGames } from "../../server/game/gameRoom.ts";
 
 const SERVER_DIR = path.resolve(import.meta.dirname, "..", "..", "server");
 
@@ -140,7 +142,6 @@ describe("a forwarded action is applied once, however often it is sent", () => {
   // for the de-duplication in the same change as the retry, not after it.
   // A reaction is the action whose every application is visible: one send each.
   async function responder() {
-    const { TABLE_ACTION_EVENT } = await import("../../server/game/tableRouter.ts");
     let receive: ((action: unknown, reply: (r: unknown) => void) => void) | undefined;
     const { sent } = recordingRuntime({
       transport: {
@@ -159,7 +160,6 @@ describe("a forwarded action is applied once, however often it is sent", () => {
   }
 
   async function respondTwice(ids: [string, string]): Promise<number> {
-    const { activeGames } = await import("../../server/game/gameRoom.ts");
     const { receive, counter } = await responder();
 
     const roomId = `dedupe-${ids.join("-")}`;
@@ -201,8 +201,6 @@ describe("an action kind the owner does not know", () => {
   const future = (roomId: string) => ({ kind: "future", roomId, userId: "u", username: "u" }) as never;
 
   test("is refused with a code by an owner that holds the room", async () => {
-    const { applyOrForward } = await import("../../server/game/tableRouter.ts");
-    const { activeGames } = await import("../../server/game/gameRoom.ts");
     activeGames.set("future-owned", {} as never);
     try {
       assert.deepEqual(await applyOrForward(recordingRuntime().rt, future("future-owned")), {
@@ -215,7 +213,6 @@ describe("an action kind the owner does not know", () => {
   });
 
   test("is a refusal, not a missing owner, when an older owner answers with nothing", async () => {
-    const { applyOrForward } = await import("../../server/game/tableRouter.ts");
     const { rt } = recordingRuntime({
       transport: {
         serverSideEmit: (_e: string, _a: unknown, ack: (err: unknown, replies: unknown[]) => void) =>

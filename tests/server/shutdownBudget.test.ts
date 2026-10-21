@@ -7,8 +7,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { pool, QUERY_TIMEOUT_MS } from "../../server/store/db.ts";
+import { openDatabase, pool, QUERY_TIMEOUT_MS } from "../../server/store/db.ts";
 import { DRAIN_TIMEOUT_MS, FORCED_EXIT_MS, SHUTDOWN_BUDGET } from "../../server/http/shutdown.ts";
+
+openDatabase();
 
 const { sigtermGraceMs } = JSON.parse(
   readFileSync(path.resolve(import.meta.dirname, "..", "..", "deploy", "runtime.json"), "utf8")
@@ -64,8 +66,8 @@ test("the watchdog leaves the host's grace a margin", () => {
 test("the pool is the thing QUERY_TIMEOUT_MS bounds", () => {
   assert.deepEqual(
     {
-      statement_timeout: pool.options.statement_timeout,
-      query_timeout: pool.options.query_timeout,
+      statement_timeout: pool().options.statement_timeout,
+      query_timeout: pool().options.query_timeout,
     },
     { statement_timeout: QUERY_TIMEOUT_MS, query_timeout: QUERY_TIMEOUT_MS },
     "the shutdown budget is derived from QUERY_TIMEOUT_MS, which is only true if the pool uses it"

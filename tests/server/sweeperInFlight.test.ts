@@ -4,10 +4,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SQL } from "drizzle-orm";
-import { db } from "../../server/store/db.ts";
+import { db, openDatabase } from "../../server/store/db.ts";
 import { startSweeper } from "../../server/game/gamePersistence.ts";
 import { sweepIntervalMs } from "../../server/game/gameTimers.ts";
 import type { TableRuntime } from "../../server/game/tableRuntime.ts";
+
+openDatabase();
 
 /** Lets a sweep whose orphans have resumed run its mocked queries to the end. */
 async function settle() {
@@ -16,7 +18,7 @@ async function settle() {
 
 test("a tick that lands while the last sweep runs starts nothing", async (t) => {
   t.mock.timers.enable({ apis: ["setInterval"] });
-  t.mock.method(db, "execute", async (_q: SQL) => ({ rows: [], rowCount: 0 }));
+  t.mock.method(db(), "execute", async (_q: SQL) => ({ rows: [], rowCount: 0 }));
 
   let started = 0;
   let finish: () => void = () => {};

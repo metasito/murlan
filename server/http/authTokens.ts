@@ -1,7 +1,7 @@
 import { now } from "./clock.ts";
 import { randomBytes, randomInt, createHash } from "node:crypto";
 import { and, eq, gt, inArray, isNull, sql } from "drizzle-orm";
-import { db } from "../store/db.ts";
+import { db, type Database } from "../store/db.ts";
 import { lockUsers, type Tx } from "../store/userLock.ts";
 import { userStore, uniqueViolation } from "../store/userStore.ts";
 import { authTokens } from "../../shared/schema.ts";
@@ -33,7 +33,7 @@ function codeHashInput(email: string, purpose: AuthTokenPurpose, code: string): 
   return `${email.trim().toLowerCase()}:${purpose}:${code}`;
 }
 
-async function insertCredential(executor: typeof db | Tx, params: {
+async function insertCredential(executor: Database | Tx, params: {
   userId: string;
   purpose: AuthTokenPurpose;
   tokenHash: string;
@@ -62,7 +62,7 @@ async function claimCredential(params: {
 }): Promise<string | null> {
   const { tokenHash, purpose, maxAttempts } = params;
   const attemptsGuard = maxAttempts === undefined ? sql`` : sql`AND attempts < ${maxAttempts}`;
-  const result = await db.execute<{ user_id: string }>(sql`
+  const result = await db().execute<{ user_id: string }>(sql`
     UPDATE auth_tokens
     SET used_at = now()
     WHERE token_hash = ${tokenHash}
@@ -82,7 +82,7 @@ export async function mintAuthToken(
   ttlMs: number
 ): Promise<string> {
   const raw = randomBytes(32).toString("base64url");
-  await insertCredential(db, { userId, purpose, tokenHash: hashToken(raw), ttlMs });
+  await insertCredential(db(), { userId, purpose, tokenHash: hashToken(raw), ttlMs });
   return raw;
 }
 
@@ -127,7 +127,7 @@ export async function replaceEmailVerifyCode(params: {
   for (let attempt = 0; ; attempt++) {
     const code = randomInt(0, 1_000_000).toString().padStart(6, "0");
     try {
-      await db.transaction(async (tx) => {
+      await db().transaction(async (tx) => {
         await lockUsers(tx, [userId]);
         const replaced = await tx
           .delete(authTokens)
@@ -173,7 +173,7 @@ export async function redeemAuthCode(params: {
   if (redeemedUserId) return redeemedUserId;
 
   const userIds = await userStore.getUserIdsByEmail(email);
-  await db.execute(sql`
+  await db().execute(sql`
     UPDATE auth_tokens
     SET attempts = attempts + 1
     WHERE purpose = ${purpose}
@@ -191,7 +191,7 @@ export async function redeemAuthCode(params: {
  * guard leaves it untouched and only catches its unredeemed siblings.
  */
 export async function invalidateAuthTokens(userId: string, purpose: AuthTokenPurpose): Promise<void> {
-  await db.execute(sql`
+  await db().execute(sql`
     UPDATE auth_tokens
     SET used_at = now()
     WHERE user_id = ${userId}

@@ -7,6 +7,10 @@ import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../h
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { Player } from "../../lib/game/gameEngine.ts";
 import { aThreePlayed } from "../support/game.ts";
+import { activeGames } from "../../server/game/gameRoom.ts";
+import { disposeGame } from "../../server/game/gamePersistence.ts";
+import { activeGameStore } from "../../server/store/activeGameStore.ts";
+import { claimRoom, ownershipKey } from "../../server/game/gameOwnership.ts";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const player = (id: string, name: string): Player => ({ id, name, hand: [], type: "human" });
@@ -65,11 +69,7 @@ describe("a disposed table", { skip: hasDatabase() ? false : skipMessage() }, ()
   });
 
   test("stays disposed: its row is deleted before the lock goes, and never written again", async () => {
-    const { activeGames } = await import("../../server/game/gameRoom.ts");
-    const { disposeGame } = await import("../../server/game/gamePersistence.ts");
     const { persistGameState } = server.rt.writers;
-    const { activeGameStore } = await import("../../server/store/activeGameStore.ts");
-    const { claimRoom, ownershipKey } = await import("../../server/game/gameOwnership.ts");
     const roomId = `tombstone-${Date.now()}`;
     const key = ownershipKey(roomId);
     const rowExists = async () =>

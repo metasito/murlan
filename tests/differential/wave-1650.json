@@ -1,0 +1,139 @@
+{
+  "baseline": "9d0359590ade2996571a8e8cb4980d1ad3698ae5",
+  "level": "round",
+  "entries": [
+    {
+      "table": "2",
+      "seed": 7,
+      "round": 0,
+      "where": "round 0",
+      "cause": "06681b5ac (#1759), GAME-RULES.md § Decisions \"2-player opening tie\": equal lowest ranks open with the lower suit, so the first round opens from seat 1, not seat 0"
+    },
+    {
+      "table": "2",
+      "seed": 17,
+      "round": 0,
+      "where": "round 0",
+      "cause": "06681b5ac (#1759), GAME-RULES.md § Decisions \"2-player opening tie\": equal lowest ranks open with the lower suit, so the first round opens from seat 1, not seat 0"
+    },
+    {
+      "table": "2",
+      "seed": 22,
+      "round": 0,
+      "where": "round 0",
+      "cause": "06681b5ac (#1759), GAME-RULES.md § Decisions \"2-player opening tie\": equal lowest ranks open with the lower suit, so the first round opens from seat 1, not seat 0"
+    },
+    {
+      "table": "2",
+      "seed": 34,
+      "round": 0,
+      "where": "round 0",
+      "cause": "06681b5ac (#1759), GAME-RULES.md § Decisions \"2-player opening tie\": equal lowest ranks open with the lower suit, so the first round opens from seat 1, not seat 0"
+    },
+    {
+      "table": "2",
+      "seed": 41,
+      "round": 0,
+      "where": "round 0",
+      "cause": "06681b5ac (#1759), GAME-RULES.md § Decisions \"2-player opening tie\": equal lowest ranks open with the lower suit, so the first round opens from seat 1, not seat 0"
+    },
+    {
+      "table": "2",
+      "seed": 62,
+      "round": 0,
+      "where": "round 0",
+      "cause": "06681b5ac (#1759), GAME-RULES.md § Decisions \"2-player opening tie\": equal lowest ranks open with the lower suit, so the first round opens from seat 1, not seat 0"
+    },
+    {
+      "table": "2",
+      "seed": 70,
+      "round": 0,
+      "where": "round 0",
+      "cause": "06681b5ac (#1759), GAME-RULES.md § Decisions \"2-player opening tie\": equal lowest ranks open with the lower suit, so the first round opens from seat 1, not seat 0"
+    },
+    {
+      "table": "2",
+      "seed": 75,
+      "round": 0,
+      "where": "round 0",
+      "cause": "06681b5ac (#1759), GAME-RULES.md § Decisions \"2-player opening tie\": equal lowest ranks open with the lower suit, so the first round opens from seat 1, not seat 0"
+    },
+    {
+      "table": "2",
+      "seed": 78,
+      "round": 0,
+      "where": "round 0",
+      "cause": "06681b5ac (#1759), GAME-RULES.md § Decisions \"2-player opening tie\": equal lowest ranks open with the lower suit, so the first round opens from seat 1, not seat 0"
+    },
+    {
+      "table": "2",
+      "seed": 88,
+      "round": 0,
+      "where": "round 0",
+      "cause": "06681b5ac (#1759), GAME-RULES.md § Decisions \"2-player opening tie\": equal lowest ranks open with the lower suit, so the first round opens from seat 1, not seat 0"
+    },
+    {
+      "table": "2",
+      "seed": 106,
+      "round": 0,
+      "where": "round 0",
+      "cause": "06681b5ac (#1759), GAME-RULES.md § Decisions \"2-player opening tie\": equal lowest ranks open with the lower suit, so the first round opens from seat 1, not seat 0"
+    },
+    {
+      "table": "2",
+      "seed": 124,
+      "round": 0,
+      "where": "round 0",
+      "cause": "06681b5ac (#1759), GAME-RULES.md § Decisions \"2-player opening tie\": equal lowest ranks open with the lower suit, so the first round opens from seat 1, not seat 0"
+    },
+    {
+      "table": "2",
+      "seed": 126,
+      "round": 0,
+      "where": "round 0",
+      "cause": "06681b5ac (#1759), GAME-RULES.md § Decisions \"2-player opening tie\": equal lowest ranks open with the lower suit, so the first round opens from seat 1, not seat 0"
+    },
+    {
+      "table": "2",
+      "seed": 149,
+      "round": 0,
+      "where": "round 0",
+      "cause": "06681b5ac (#1759), GAME-RULES.md § Decisions \"2-player opening tie\": equal lowest ranks open with the lower suit, so the first round opens from seat 1, not seat 0"
+    },
+    {
+      "table": "2",
+      "seed": 150,
+      "round": 0,
+      "where": "round 0",
+      "cause": "06681b5ac (#1759), GAME-RULES.md § Decisions \"2-player opening tie\": equal lowest ranks open with the lower suit, so the first round opens from seat 1, not seat 0"
+    },
+    {
+      "table": "3",
+      "seed": 61,
+      "round": 10,
+      "where": "round 10",
+      "cause": "3d543c384 (#1759), GAME-RULES.md § Decisions \"Royal straight beats any play\": the bot answers a straight with a plain bomb, no longer with a royal straight it also holds"
+    },
+    {
+      "table": "3",
+      "seed": 91,
+      "round": 9,
+      "where": "round 9",
+      "cause": "3d543c384 (#1759), GAME-RULES.md § Decisions \"Royal straight beats any play\": the bot answers a straight with a plain bomb, no longer with a royal straight it also holds"
+    },
+    {
+      "table": "3",
+      "seed": 110,
+      "round": 2,
+      "where": "round 2",
+      "cause": "3d543c384 (#1759), GAME-RULES.md § Decisions \"Royal straight beats any play\": the bot answers a straight with a plain bomb, no longer with a royal straight it also holds"
+    },
+    {
+      "table": "3",
+      "seed": 126,
+      "round": 3,
+      "where": "round 3",
+      "cause": "3d543c384 (#1759), GAME-RULES.md § Decisions \"Royal straight beats any play\": the bot answers a straight with a plain bomb, no longer with a royal straight it also holds"
+    }
+  ]
+}

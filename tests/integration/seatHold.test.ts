@@ -19,6 +19,7 @@ import { befriend, inviteRowsFor } from "../helpers/friends.ts";
 import { skewedClock } from "../helpers/fakeClock.ts";
 import { seatHoldMs } from "../../server/game/gameTimers.ts";
 import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/game/gameEngine.ts";
+import { friendStore } from "../../server/store/friendStore.ts";
 
 interface RoomState {
   code: string;
@@ -244,8 +245,6 @@ describe(
       });
       assert.equal(unfriend.status, 200, await unfriend.text());
       assert.deepEqual((await freed).seatHolds, [], "the room hears the hold is gone");
-
-      const { friendStore } = await import("../../server/store/friendStore.ts");
       assert.deepEqual(await friendStore.getGameInvites(friend.user.id), []);
 
       const latecomer = await player("unf_late");

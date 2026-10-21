@@ -15,6 +15,9 @@ import { PROTOCOL_AUTH, waitFor } from "../helpers/client.ts";
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
 import { boot, type Instance } from "../helpers/instance.ts";
 import { driveHumansToRoundOver } from "../helpers/gameDriver.ts";
+import { userStore } from "../../server/store/userStore.ts";
+import { mintAuthToken } from "../../server/http/authTokens.ts";
+import { closeDatabase, openDatabase } from "../../server/store/db.ts";
 
 const PORTS = [5561, 5562] as const;
 /** Short, so the "was it re-sent?" window below is seconds rather than tens. */
@@ -246,10 +249,14 @@ describe("broadcasts cross server instances", {
   test("a password reset on one instance cuts the socket on the other", async () => {
     const acct = await accountOnSecond("rs");
     process.env.DATABASE_URL = scoped;
-    const { userStore } = await import("../../server/store/userStore.ts");
-    const { mintAuthToken } = await import("../../server/http/authTokens.ts");
-    await userStore.markEmailVerified(acct.id, `${acct.name}@example.test`);
-    const token = await mintAuthToken(acct.id, "password_reset", 60_000);
+    openDatabase();
+    let token: string;
+    try {
+      await userStore.markEmailVerified(acct.id, `${acct.name}@example.test`);
+      token = await mintAuthToken(acct.id, "password_reset", 60_000);
+    } finally {
+      await (await closeDatabase()).ended;
+    }
 
     const cut = closed(acct.socket);
     const res = await post(PORTS[0], "/api/auth/reset-password", "", {
