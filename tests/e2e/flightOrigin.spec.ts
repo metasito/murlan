@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { installVirtualClock, step, takeOver } from "./helpers/virtualClock";
 import { belowCapsTable, botMove, pairsTable } from "./helpers/mockupParity";
-import { GIOCA_VALID_LABEL } from "./helpers/labels";
+import { legalGioca } from "./helpers/bot.ts";
 import { HAND_CARD_BOXES } from "./helpers/selectors.ts";
 
 const centre = (b: { x: number; y: number; width: number; height: number }) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
@@ -15,7 +15,7 @@ test("a thrown card's first frame is where the viewer last saw it", async ({ pag
   await hand.nth(1).click({ force: true, position: { x: 8, y: 30 } });
   await step(page);
   const before = [centre((await hand.nth(0).boundingBox())!), centre((await hand.nth(1).boundingBox())!)];
-  await page.getByRole("button", { name: GIOCA_VALID_LABEL }).click({ force: true });
+  await legalGioca(page).click({ force: true });
   await step(page);
   const flying = page.locator('[data-testid="flying-card"]');
   await expect(flying).toHaveCount(2);

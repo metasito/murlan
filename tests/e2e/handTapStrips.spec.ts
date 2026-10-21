@@ -17,7 +17,7 @@ import { layoutHandRow } from "../../components/handLayout";
 import { computeTableFrame } from "../../components/tableFrame";
 import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
-import { GIOCA_VALID_LABEL } from "./helpers/labels";
+import { legalGioca } from "./helpers/bot.ts";
 import { tap } from "./helpers/press";
 import { HAND_CARDS, TABLE } from "./helpers/selectors";
 
@@ -134,7 +134,7 @@ test.describe("the hand's tap strips", () => {
 
     const played = dealt[0].label;
     await tap(page, page.locator(HAND_CARDS).and(page.getByLabel(played)));
-    await page.getByRole("button", { name: GIOCA_VALID_LABEL }).click();
+    await legalGioca(page).click();
     await expect(
       page.locator(HAND_CARDS),
       `playing ${played} did not leave the hand`

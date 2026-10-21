@@ -14,9 +14,9 @@ import { openSeededGame, offlineSave, resumeSaved, DEAL_SIZE } from "./helpers/o
 import type { OfflineSave } from "../../lib/offlineSave";
 import { openOnlineTable } from "./helpers/onlineTable";
 import { buildCombination } from "../../lib/game/gameEngine";
-import { GIOCA_VALID_LABEL, YOUR_TURN_PREFIX } from "./helpers/labels";
-import { HAND_ZONE, TABLE_SCREEN, TABLE_STATE } from "./helpers/selectors.ts";
-import { tap } from "./helpers/press";
+import { OTHERS_PLAY, YOUR_TURN_PREFIX } from "./helpers/labels";
+import { playAnyLegal } from "./helpers/bot.ts";
+import { TABLE_SCREEN, TABLE_STATE } from "./helpers/selectors.ts";
 import { atRest } from "./helpers/settle";
 
 const TOP_BAR = '[data-testid="game-top-bar"]';
@@ -275,8 +275,6 @@ test.describe("the table's bands", () => {
 
 /** locales/it.ts `game.autoPassTitle` — the offline clock expiring. */
 const AUTO_PASS_TITLE = "Passaggio automatico";
-/** locales/it.ts `gameTable.a11yPlayerPlayed`. */
-const OPPONENT_PLAYED = " ha giocato ";
 /** context/offlineDriver.ts HUMAN_TURN_SECONDS, which EXPO_PUBLIC_E2E_FAST does not shorten. */
 const OFFLINE_CLOCK_MS = 30_000;
 
@@ -292,28 +290,10 @@ async function waitForAnswerableTurn(page: Page): Promise<void> {
 
   await expect(async () => {
     const desc = (await table.getAttribute(TABLE_STATE)) ?? "";
-    if (desc.startsWith(YOUR_TURN_PREFIX) && desc.includes(OPPONENT_PLAYED)) return;
-    if (desc.startsWith(YOUR_TURN_PREFIX)) await playFirstLegalCard(page);
+    if (desc.startsWith(YOUR_TURN_PREFIX) && OTHERS_PLAY.test(desc)) return;
+    if (desc.startsWith(YOUR_TURN_PREFIX)) await playAnyLegal(page);
     throw new Error("never reached a turn with a combination to answer");
   }).toPass({ timeout: 120_000, intervals: [200] });
-}
-
-/** Plays the first single GIOCA accepts, and reports whether one was played. */
-async function playFirstLegalCard(page: Page): Promise<boolean> {
-  const gioca = page.locator('[data-testid="btn-gioca"]');
-  const labels = await page
-    .locator(`${HAND_ZONE} [role="button"]`)
-    .evaluateAll((els) => els.map((el) => el.getAttribute("aria-label") ?? ""));
-  for (const label of labels) {
-    const card = page.locator(`${HAND_ZONE} [aria-label="${label.replace(/"/g, '\\"')}"]`);
-    await tap(page, card).catch(() => {});
-    if ((await gioca.getAttribute("aria-label")) === GIOCA_VALID_LABEL) {
-      await tap(page, gioca).catch(() => {});
-      return true;
-    }
-    await tap(page, card).catch(() => {});
-  }
-  return false;
 }
 
 test.describe("the offline clock running out", () => {
@@ -386,7 +366,7 @@ test.describe("the notification banner over a live table", () => {
       const tableState = page.locator('[data-testid="game-table"]');
       await expect(async () => {
         if ((await page.locator(BANNER).textContent())?.includes(OTHER_SEAT_AFK)) return;
-        if (((await tableState.getAttribute(TABLE_STATE)) ?? "").startsWith(YOUR_TURN_PREFIX)) await playFirstLegalCard(page);
+        if (((await tableState.getAttribute(TABLE_STATE)) ?? "").startsWith(YOUR_TURN_PREFIX)) await playAnyLegal(page);
         throw new Error(`no "${OTHER_SEAT_AFK}" banner over the table yet`);
       }).toPass({ timeout: 2 * SERVER_AFK_MS + 30_000, intervals: [500] });
 

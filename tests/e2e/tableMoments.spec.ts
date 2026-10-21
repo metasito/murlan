@@ -1,12 +1,12 @@
-// tests/e2e/tableMoments.spec.ts — #1102's four table moments, sampled live:
-// the lamp comes up with the deal, an opponent's hand ramps in as it lands, a
-// flown card's raised shadow drops once it is down, and a won match dusts gold.
+// tests/e2e/tableMoments.spec.ts — #1102's table moments, sampled live: the
+// lamp comes up with the deal, an opponent's hand ramps in as it lands, and a
+// won match turns the score pill into the board.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp } from "./helpers/navigation";
 import { offlineSave, oneCardFromFinishing, resumeSaved, seedSave } from "./helpers/offlineSeed";
 import type { Card } from "../../lib/game/gameEngine";
-import { GIOCA_VALID_LABEL } from "./helpers/labels";
+import { expectSelectionLegal } from "./helpers/bot.ts";
 import { TABLE, HAND_ZONE } from "./helpers/selectors";
 import { tap } from "./helpers/press";
 import { settled } from "./helpers/settle";
@@ -137,7 +137,7 @@ test.describe("a match won on the felt", () => {
 
     await tap(page, page.locator(HAND_ZONE).getByRole("button", { name: BEATER_LABEL, exact: true }));
     const gioca = page.getByTestId("btn-gioca");
-    await expect(gioca).toHaveAttribute("aria-label", GIOCA_VALID_LABEL, { timeout: 10_000 });
+    await expectSelectionLegal(page, "the seeded beater over the seeded pile is a legal play");
     await tap(page, gioca);
 
     await expect(page.getByTestId("btn-new-match")).toBeVisible({ timeout: 20_000 });

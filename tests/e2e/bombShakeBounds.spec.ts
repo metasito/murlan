@@ -23,7 +23,7 @@ import { expect, test } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { offlineSave, resumeSaved } from "./helpers/offlineSeed";
 import type { Card, Rank, Suit } from "../../lib/game/gameEngine";
-import { GIOCA_VALID_LABEL } from "./helpers/labels.ts";
+import { expectSelectionLegal } from "./helpers/bot.ts";
 import { HAND_ZONE, TABLE } from "./helpers/selectors.ts";
 import { tap } from "./helpers/press";
 
@@ -243,10 +243,7 @@ async function armedBomb(page: Page, baseURL: string): Promise<void> {
   ).toBe(false);
 
   for (const c of BOMB) await tap(page, named(page, spoken(c)));
-  await expect(
-    page.getByTestId("btn-gioca"),
-    "four of a rank over a single is a bomb, so GIOCA has to offer the play"
-  ).toHaveAttribute("aria-label", GIOCA_VALID_LABEL, { timeout: 10_000 });
+  await expectSelectionLegal(page, "four of a rank over a single is a bomb, so GIOCA has to offer the play");
 }
 
 test.describe("a bomb's landing never moves the felt off the window (#101)", () => {

@@ -4,7 +4,7 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { offlineSave, resumeSaved } from "./helpers/offlineSeed";
 import { skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
-import { GIOCA_VALID_LABEL } from "./helpers/labels";
+import { legalGioca } from "./helpers/bot.ts";
 import { tap } from "./helpers/press";
 import { HAND_CARD_BOXES } from "./helpers/selectors.ts";
 
@@ -16,7 +16,7 @@ function pageErrors(page: Page): string[] {
 
 async function playTopCard(page: Page): Promise<void> {
   await tap(page, page.locator(HAND_CARD_BOXES).last());
-  await tap(page, page.getByRole("button", { name: GIOCA_VALID_LABEL }));
+  await tap(page, legalGioca(page));
 }
 
 // The felt redraws every sway of the lamp, which on SwiftShader takes the main thread (feltIdle.spec.ts)

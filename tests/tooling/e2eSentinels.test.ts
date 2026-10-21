@@ -17,6 +17,18 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { blankComments } from "../helpers/sourceScan.ts";
+import {
+  CARD_NAME_JOIN,
+  EXCHANGE_GIVE_PREFIX,
+  handCounts,
+  OTHERS_PLAY,
+  RANK_WORDS,
+  REPLY_SIZE,
+  SUIT_WORDS,
+} from "../e2e/helpers/labels.ts";
+import { cardSpokenName } from "../../lib/cardNames.ts";
+import { createDeck, getRankStrength } from "../../lib/game/gameEngine.ts";
+import type { TFn } from "../../lib/i18n";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const E2E = path.join(repoRoot, "tests", "e2e");
@@ -239,4 +251,54 @@ test("a sentinel is declared once, and nowhere else spells it out", () => {
     "import the sentinel from tests/e2e/helpers/labels.ts instead of spelling it out:\n  " +
       offenders.join("\n  ")
   );
+});
+
+/** A locale sentence with its `{{placeholders}}` filled, refusing one `vars` does not name. */
+function said(key: string, vars: Record<string, string | number> = {}): string {
+  return localeValue(key).replace(/\{\{(\w+)\}\}/g, (_, name: string) => {
+    assert.ok(name in vars, `${key} now takes {{${name}}}, which this test does not fill`);
+    return String(vars[name]);
+  });
+}
+
+test("the state sentence still parses the way the browser suite reads it", () => {
+  assert.ok(said("gameTable.a11yExchangeGive", { name: "Ana" }).startsWith(EXCHANGE_GIVE_PREFIX), "EXCHANGE_GIVE_PREFIX no longer opens a11yExchangeGive");
+  assert.ok(!said("gameTable.a11yExchangeWait", { name: "Ana" }).startsWith(EXCHANGE_GIVE_PREFIX), "EXCHANGE_GIVE_PREFIX also opens the wait");
+
+  for (const [key, count] of [
+    ["gameTable.a11yYourCards_one", 1],
+    ["gameTable.a11yYourCards_other", 7],
+    ["gameTable.a11yOpponentCards_one", 1],
+    ["gameTable.a11yOpponentCards_other", 7],
+  ] as const) {
+    assert.deepEqual(handCounts(said(key, { name: "Ana", count })), [count], `HAND_COUNT misreads ${key}`);
+  }
+
+  const card = said("cards.nameFormat", { rank: "8", suit: localeValue("cards.suitHearts") });
+  assert.equal(card, `8${CARD_NAME_JOIN}${localeValue("cards.suitHearts")}`, "CARD_NAME_JOIN is not how cards.nameFormat joins");
+  assert.equal(said("gameTable.a11yPlayerPlayed", { name: "Ana", label: card }).match(OTHERS_PLAY)?.[1], card, "OTHERS_PLAY misreads a11yPlayerPlayed");
+  assert.equal(said("gameTable.a11yYouPlayed", { label: card }).match(OTHERS_PLAY), null, "OTHERS_PLAY reads the viewer's own play as another's");
+
+  const replySize = (label: string) =>
+    REPLY_SIZE.find(([shape]) => shape.test(said("gameTable.a11yPlayerPlayed", { name: "Ana", label })))?.[1] ?? null;
+  assert.equal(replySize(card), null, "a single reads as a shape");
+  for (const [key, vars, size] of [
+    ["gameTable.a11yLastPlayPair", { rank: "Re" }, 2],
+    ["gameTable.a11yLastPlayTriple", { rank: "Re" }, 3],
+    ["gameTable.a11yLastPlayBomb", { rank: "Re" }, 4],
+    ["gameTable.a11yLastPlayStraight", { count: 5, rank: "9" }, -1],
+    ["gameTable.a11yLastPlayRoyalStraight", { count: 5, suit: "Cuori", rank: "9" }, -1],
+  ] as const) {
+    assert.equal(replySize(said(key, vars)), size, `REPLY_SIZE misreads ${key}`);
+  }
+});
+
+test("every card's label splits into the rank word of its strength and a suit word", () => {
+  const t = ((key: string, vars: Record<string, string> = {}) => said(key, vars)) as unknown as TFn;
+  for (const card of createDeck()) {
+    const label = cardSpokenName(card, t);
+    const [rank, suit] = card.isJoker ? [label, null] : label.split(CARD_NAME_JOIN);
+    assert.equal(rank, RANK_WORDS[getRankStrength(card.rank)], `${label}: its rank word is not RANK_WORDS at its strength`);
+    if (suit !== null) assert.ok(SUIT_WORDS.includes(suit), `${label}: ${suit} is not in SUIT_WORDS`);
+  }
 });

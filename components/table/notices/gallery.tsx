@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { View } from "react-native";
 import { SEAT_DISC } from "@/components/seatLayout";
+import { START_CARD } from "@/lib/game/gameEngine";
 import type { KindTone, NoticeKind } from "../noticeModel";
 import { ErrorToast, PassFloat, RejectFloat } from "./floats";
 import { EmptyHandLine, WaitingLine } from "./tableLines";
@@ -101,7 +102,7 @@ export const NOTICE_GALLERY = {
           scale={scale}
           starterName="Ana"
           starterIsViewer
-          reason={{ type: "start_card", card: { id: "3_spades", rank: "3", suit: "spades", isJoker: false }, playerIdx: 0 }}
+          reason={{ type: "start_card", card: START_CARD, playerIdx: 0 }}
         />
       ),
     },

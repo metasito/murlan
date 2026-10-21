@@ -12,9 +12,9 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
-import { GIOCA_VALID_LABEL } from "./helpers/labels";
-import { HAND_ZONE } from "./helpers/selectors.ts";
-import { tap } from "./helpers/press";
+import { playAnyLegal } from "./helpers/bot.ts";
+import { HAND_CARD_BOXES, HAND_ZONE } from "./helpers/selectors.ts";
+import { atRest } from "./helpers/settle";
 
 const VIEWPORT = { width: 844, height: 390 };
 
@@ -40,7 +40,7 @@ test.describe("the hand's own budget", () => {
     test.setTimeout(120_000);
     await page.setViewportSize(VIEWPORT);
     await openSeededGame(page, baseURL!, 4);
-    await page.waitForTimeout(2_000);
+    await atRest(page, HAND_ZONE);
 
     const cards = await handCards(page);
     expect(cards.length, "the seeded hand is thirteen cards").toBe(13);
@@ -88,7 +88,9 @@ test.describe("the hand's own budget", () => {
     //    card played leaves the span where it was and the overlap loosens
     //    instead — which is the prototype's own behaviour, and why this is a
     //    ceiling rather than a strict shrink.
-    await playOneCombination(page);
+    expect(await playAnyLegal(page), "no legal opening play was found in the seeded hand").not.toBeNull();
+    await expect(page.locator(HAND_CARD_BOXES)).toHaveCount(cards.length - 1);
+    await atRest(page, HAND_ZONE);
     const shorter = await handCards(page);
     expect(shorter.length, "no card was played, so nothing shrank").toBeLessThan(cards.length);
     const shorterSpan = shorter[shorter.length - 1].right - shorter[0].left;
@@ -108,7 +110,7 @@ test.describe("the hand's own budget", () => {
     test.setTimeout(120_000);
     await page.setViewportSize(VIEWPORT);
     await openSeededGame(page, baseURL!, 4, 4);
-    await page.waitForTimeout(2_000);
+    await atRest(page, HAND_ZONE);
 
     const cards = await handCards(page);
     expect(cards.length, "the seeded hand is four cards").toBe(4);
@@ -119,25 +121,3 @@ test.describe("the hand's own budget", () => {
     ).toBeLessThan(0.35);
   });
 });
-
-/**
- * Plays the first legal selection. GIOCA is the only judge of what is legal,
- * exactly as in tests/e2e/helpers/bot.ts.
- */
-async function playOneCombination(page: Page): Promise<void> {
-  const gioca = page.locator('[data-testid="btn-gioca"]');
-  const labels = await page
-    .locator(`${HAND_ZONE} [role="button"]`)
-    .evaluateAll((els) => els.map((el) => el.getAttribute("aria-label") ?? ""));
-  for (const label of labels) {
-    const card = page.locator(`${HAND_ZONE} [aria-label="${label}"]`);
-    await tap(page, card).catch(() => {});
-    if ((await gioca.getAttribute("aria-label")) === GIOCA_VALID_LABEL) {
-      await tap(page, gioca).catch(() => {});
-      await page.waitForTimeout(1_500);
-      return;
-    }
-    await tap(page, card).catch(() => {});
-  }
-  throw new Error("no legal opening play was found in the seeded hand");
-}

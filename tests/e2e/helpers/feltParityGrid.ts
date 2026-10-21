@@ -9,6 +9,7 @@ import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "../fixtures";
 import { openCaptureState } from "./offlineSeed";
 import { settledLight, skiaOnSoftware, tracedLamp, UNLIT_AIR, untilSkiaFelt } from "./tableTrace";
+import { TABLE, TABLE_DEALING } from "./selectors.ts";
 import {
   CAPTURE_VIEWER_SEAT,
   seatedSituation,
@@ -28,9 +29,6 @@ const VIEWPORTS = {
  * area on the other, so mirrored fractions of it are not mirrored points on the cloth.
  */
 const OUR_TABLE = '[data-testid="table-felt"]';
-
-/** Past the deal stagger; every card is at opacity 0 until its own leg runs. */
-const DEALT_MS = 2_000;
 
 /** The rig's resting sway, in design points. */
 const SWAY = 20;
@@ -234,7 +232,8 @@ export function gridTest(name: keyof typeof VIEWPORTS, playerCount: PlayerCount)
       for (const cell of cells) {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
         await openCaptureState(page, baseURL!, cell);
-        await page.waitForTimeout(DEALT_MS);
+        // Every card is at opacity 0 until its own leg runs, and the patches are picked clear of the cards.
+        await page.locator(`${TABLE}[${TABLE_DEALING}="false"]`).waitFor({ timeout: 30_000 });
         await untilSkiaFelt(page);
 
         const felt = page.locator(OUR_TABLE);

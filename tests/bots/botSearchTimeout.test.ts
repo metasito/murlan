@@ -149,10 +149,20 @@ function makeFake(opts: FakeOptions = {}): Fake {
 
   const box = { x: 0, y: 0, width: 10, height: 10 };
   const pressable = { hover: async () => {}, boundingBox: async () => box };
+  const selected = new Set<string>();
   const handRead = async () => {
     tick();
-    return HAND.map((label) => ({ label, selected: false }));
+    return HAND.map((label) => ({ label, selected: selected.has(label) }));
   };
+  const card = (label: string) => ({
+    hover: async () => {},
+    boundingBox: async () => {
+      if (selected.has(label)) selected.delete(label);
+      else selected.add(label);
+      return box;
+    },
+    getAttribute: async () => String(selected.has(label)),
+  });
 
   const locator = (selector: string) => {
     if (selector === '[data-testid="start-reason-gate"]') {
@@ -186,9 +196,10 @@ function makeFake(opts: FakeOptions = {}): Fake {
             throw new Error("card detached");
           },
           boundingBox: async () => box,
+          getAttribute: async () => "false",
         };
       }
-      return pressable;
+      return card(JSON.parse(selector.slice(selector.indexOf('[aria-label="') + 12, -1)) as string);
     }
     if (selector === '[data-testid="btn-gioca"]') {
       return {
@@ -220,6 +231,9 @@ function makeFake(opts: FakeOptions = {}): Fake {
     locator,
     mouse: { move: async () => {}, down: async () => {}, up: async () => {} },
     waitForTimeout: async () => {},
+    waitForFunction: async () => {
+      tick();
+    },
   } as unknown as Page;
 
   return {

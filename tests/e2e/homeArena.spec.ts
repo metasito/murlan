@@ -2,11 +2,12 @@
 // half of #394 no unit test can decide.
 //
 // `tests/ui-rules/homeMenuModel.test.ts` settles *which* ways to play are offered and
-// which are promoted; that is a set, and a set is decidable from source. Where
-// they land is not: `@testing-library/react-native` runs on
-// `react-test-renderer`, which never runs flexbox, so "one hero", "the quiet
-// row is against the bottom edge" and "the account block is never one line"
-// are true or false only in a browser.
+// which are promoted; that is a set, and a set is decidable from source.
+// `tests/native/homeHeroSignedOut.test.tsx` holds the signed-out hero's name to
+// it. Where they land is not decidable there: `@testing-library/react-native`
+// runs on `react-test-renderer`, which never runs flexbox, so "the quiet row is
+// against the bottom edge" and "the account block is never one line" are true
+// or false only in a browser.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigation";
@@ -31,27 +32,6 @@ async function openWithSave(page: Page, baseURL: string): Promise<void> {
 
 const box = (page: Page, selector: string) => page.locator(selector).first().boundingBox();
 
-test("no save: one hero, and it says where it leads", async ({ page, baseURL }) => {
-  await page.setViewportSize(PORTRAIT);
-  await openApp(page, baseURL!);
-
-  await expect(page.locator(HERO), "the screen drew more than one hero, or none").toHaveCount(1);
-
-  // Signed out, and the silent redirect to /auth is the defect being fixed:
-  // the hero has to say so on its face.
-  const name = await page.locator(HERO).getAttribute("aria-label");
-  expect(name, "the hero is not the online one").toContain(copy["home.playOnline"]);
-  expect(
-    name,
-    "the signed-out hero does not say it leads to signing in"
-  ).toContain(copy["home.playOnlineSignedOut"]);
-
-  await expect(
-    page.getByRole("button", { name: copy["home.resumeGame"] }),
-    "Resume was offered with nothing to resume"
-  ).toHaveCount(0);
-});
-
 test("a save promotes Resume, and Online drops out of the grid it now leads", async ({
   page,
   baseURL,
@@ -70,20 +50,6 @@ test("a save promotes Resume, and Online drops out of the grid it now leads", as
   expect(
     tiles.filter((l) => l.includes(copy["home.resumeGame"])),
     "Resume is both hero and tile"
-  ).toHaveLength(0);
-});
-
-test("no save: the grid loses the way to play the hero became", async ({ page, baseURL }) => {
-  await page.setViewportSize(PORTRAIT);
-  await openApp(page, baseURL!);
-
-  await expect(page.locator(TILE)).toHaveCount(3);
-  const tiles = await page.locator(TILE).evaluateAll((els) =>
-    els.map((el) => el.getAttribute("aria-label") ?? "")
-  );
-  expect(
-    tiles.filter((l) => l === copy["home.modeOnline"]),
-    "Online is the hero and is offered again as a tile"
   ).toHaveLength(0);
 });
 

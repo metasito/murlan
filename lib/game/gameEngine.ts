@@ -332,12 +332,15 @@ export function sortHand(hand: Card[]): Card[] {
  */
 const OPENING_SUIT_ORDER: Card["suit"][] = ["clubs", "diamonds", "hearts", "spades"];
 
+/** The card that opens a match whenever it is dealt. */
+export const START_CARD: Card = { id: "3_spades", suit: "spades", rank: "3", isJoker: false };
+
 function findStartingPlayer(
   players: Player[]
 ): { playerIdx: number; startCard: Card } {
   for (let i = 0; i < players.length; i++) {
     const card = players[i].hand.find(
-      (c) => c.rank === "3" && c.suit === "spades"
+      (c) => c.rank === START_CARD.rank && c.suit === START_CARD.suit
     );
     if (card) return { playerIdx: i, startCard: card };
   }
@@ -363,7 +366,7 @@ function findStartingPlayer(
   // Unreachable unless every hand is empty.
   return {
     playerIdx: 0,
-    startCard: { id: "3_spades", suit: "spades", rank: "3", isJoker: false },
+    startCard: START_CARD,
   };
 }
 

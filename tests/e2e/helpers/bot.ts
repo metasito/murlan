@@ -13,18 +13,92 @@
 // triples, then four-of-a-kind bombs, ascending by rank, and passes when
 // nothing beats the table.
 
-import type { Locator, Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 // Extensioned because `tests/tooling/botProgress.test.ts` loads this file through Node's ESM
 // resolver, which will not guess one. Playwright accepts it either way.
-import { GIOCA_VALID_LABEL, YOUR_TURN_PREFIX } from "./labels.ts";
+import {
+  CARD_NAME_JOIN,
+  EXCHANGE_GIVE_PREFIX,
+  GIOCA_VALID_LABEL,
+  GIVEBACK_RANK_WORDS,
+  handCounts,
+  OTHERS_PLAY,
+  RANK_WORDS,
+  REPLY_SIZE,
+  START_CARD_LABEL,
+  SUIT_WORDS,
+  YOUR_TURN_PREFIX,
+} from "./labels.ts";
 import { dismissStartAnnouncement } from "./navigation.ts";
 
 import { tap } from "./press.ts";
-import { HAND_CARDS, TABLE, TABLE_STATE } from "./selectors.ts";
-export const EXCHANGE_GIVE_PREFIX = "Fase di scambio: devi dare una carta a";
+import { HAND_CARDS, HAND_SELECTED, TABLE, TABLE_STATE } from "./selectors.ts";
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+const GIOCA_BTN = '[data-testid="btn-gioca"]';
+
+/** GIOCA, only while it offers the current selection as a legal play. */
+export function legalGioca(page: Page): Locator {
+  return page.getByRole("button", { name: GIOCA_VALID_LABEL, exact: true });
+}
+
+/** Whether GIOCA offers the current selection as a legal play, read once. */
+async function giocaAccepts(page: Page, timeout = CARD_CLICK_TIMEOUT_MS): Promise<boolean> {
+  return (await page.locator(GIOCA_BTN).getAttribute("aria-label", { timeout }).catch(() => null)) === GIOCA_VALID_LABEL;
+}
+
+/** Fails with `message` unless GIOCA comes to offer the current selection as a legal play. */
+export async function expectSelectionLegal(page: Page, message: string, timeout = 10_000): Promise<void> {
+  await expect(page.locator(GIOCA_BTN), message).toHaveAttribute("aria-label", GIOCA_VALID_LABEL, { timeout });
+}
+
+/** Resolves once the table state differs from `was`, or the table has gone; false at `timeoutMs`. */
+function stateLeaves(page: Page, was: string, timeoutMs: number): Promise<boolean> {
+  return page
+    .waitForFunction(
+      ({ sel, attr, was }) => document.querySelector(sel)?.getAttribute(attr) !== was,
+      { sel: TABLE, attr: TABLE_STATE, was },
+      { timeout: timeoutMs }
+    )
+    .then(
+      () => true,
+      () => false
+    );
+}
+
+/** Taps `card` and waits for its selection to flip; false when it never did. */
+async function toggle(page: Page, card: Locator): Promise<boolean> {
+  try {
+    const was = await card.getAttribute("aria-pressed", { timeout: CARD_CLICK_TIMEOUT_MS });
+    await tap(page, card);
+    const now = () => card.getAttribute("aria-pressed", { timeout: 1_000 }).catch(() => was);
+    await expect.poll(now, { timeout: CARD_CLICK_TIMEOUT_MS }).not.toBe(was);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Plays the first single in hand that GIOCA accepts, weakest first, and returns its label — null
+ * when none is legal or the hand stopped answering. GIOCA is the only judge: the first play of a
+ * match must hold the dealt opening card, and no rule here could know which that is.
+ */
+export async function playAnyLegal(page: Page): Promise<string | null> {
+  const labelsOf = (selector: string) =>
+    page.locator(`${selector}[aria-label]`).evaluateAll((els) => els.map((el) => el.getAttribute("aria-label") ?? ""));
+  const card = (label: string) => page.locator(`${HAND_CARDS}${labelSelector(label)}`);
+  const hand = await labelsOf(HAND_CARDS);
+  const order = hand.includes(START_CARD_LABEL) ? [START_CARD_LABEL, ...hand.filter((l) => l !== START_CARD_LABEL)] : hand;
+  for (const label of order) {
+    for (const held of await labelsOf(`${TABLE} ${HAND_SELECTED}`)) {
+      if (!(await toggle(page, card(held)))) return null;
+    }
+    if (!(await toggle(page, card(label)))) return null;
+    if (await giocaAccepts(page, 1_000)) {
+      return (await tap(page, page.locator(GIOCA_BTN)).then(() => true, () => false)) ? label : null;
+    }
+  }
+  return null;
 }
 
 async function tableDescription(page: Page): Promise<string | null> {
@@ -46,8 +120,8 @@ async function tableDescription(page: Page): Promise<string | null> {
  * names none.
  */
 export function cardsInHands(desc: string): number | null {
-  const counts = [...desc.matchAll(/(\d+) cart[ae] in mano/g)];
-  return counts.length === 0 ? null : counts.reduce((sum, m) => sum + Number(m[1]), 0);
+  const counts = handCounts(desc);
+  return counts.length === 0 ? null : counts.reduce((sum, n) => sum + n, 0);
 }
 
 /** An `isFinished` for a round that ends on the table: its only sign is the next deal growing the hands. */
@@ -85,7 +159,7 @@ export function observeProgress(prev: Progress, desc: string): Progress {
 }
 
 function rankKeyOf(cardLabel: string): string {
-  const sep = cardLabel.indexOf(" di ");
+  const sep = cardLabel.indexOf(CARD_NAME_JOIN);
   return sep === -1 ? cardLabel : cardLabel.slice(0, sep);
 }
 
@@ -165,22 +239,9 @@ export const DEFAULT_MAX_SEARCH_MS = 90_000;
  * Null means leading or replying to a single; -1 means a straight, which this
  * bot cannot build, so only a bomb can answer.
  */
-/**
- * Card strength, weakest first, by the word the table uses for each rank
- * (lib/cardNames.ts against locales/it.ts) — "Jolly nero"/"Jolly rosso" for
- * the jokers, since cardView.jokerBlack/jokerColored render "Jolly", not
- * "Joker". Suit is absent on purpose: no source gives suits an order and
- * `cardStrength()` ignores them, so equal ranks are equal strength.
- */
-const RANK_ORDER = [
-  "3", "4", "5", "6", "7", "8", "9", "10",
-  "Fante", "Donna", "Re", "Asso", "2",
-  "Jolly nero", "Jolly rosso",
-];
-
 /** -1 for anything this does not recognise, which callers treat as "try it". */
 function rankIndex(cardLabel: string): number {
-  return RANK_ORDER.indexOf(rankKeyOf(cardLabel));
+  return RANK_WORDS.indexOf(rankKeyOf(cardLabel));
 }
 
 /**
@@ -198,18 +259,14 @@ function rankIndex(cardLabel: string): number {
  * only legal move.
  */
 function tableSingleStrength(desc: string): number | null {
-  const played = desc.match(/ha giocato (.+?)\./);
+  const played = desc.match(OTHERS_PLAY);
   if (!played) return null;
   const index = rankIndex(played[1]);
   return index === -1 ? null : index;
 }
 
 function requiredReplySize(desc: string): number | null {
-  if (/ha giocato coppia di/.test(desc)) return 2;
-  if (/ha giocato tris di/.test(desc)) return 3;
-  if (/ha giocato bomba di/.test(desc)) return 4;
-  if (/ha giocato scala( reale)? di \d+ carte/.test(desc)) return -1;
-  return null;
+  return REPLY_SIZE.find(([shape]) => shape.test(desc))?.[1] ?? null;
 }
 
 /**
@@ -251,7 +308,7 @@ async function playOrPass(
     }))
   )) as { label: string; selected: boolean }[];
   const labels = cardsNow.map((c) => c.label);
-  const giocaBtn = page.locator('[data-testid="btn-gioca"]');
+  const giocaBtn = page.locator(GIOCA_BTN);
   const passBtn = page.locator('[data-testid="btn-passa"]');
 
   // An empty hand is the end of the race described above, not a stuck table:
@@ -269,11 +326,6 @@ async function playOrPass(
   async function click(locator: Locator): Promise<boolean> {
     try {
       await tap(page, locator);
-      // Selecting a card runs a haptic call, a sound, and a Reanimated pop;
-      // clicking the next candidate before React has flushed the resulting
-      // state update is how a select and its own deselect end up racing
-      // each other and a card is left selected across attempts.
-      await sleep(80);
       return true;
     } catch {
       return false;
@@ -309,12 +361,12 @@ async function playOrPass(
     let selected = await currentSelection();
     for (const l of selected) {
       if (target.includes(l)) continue;
-      if (!(await click(cardByLabel(l)))) return false;
+      if (!(await toggle(page, cardByLabel(l)))) return false;
       selected = selected.filter((x) => x !== l);
     }
     for (const l of target) {
       if (selected.includes(l)) continue;
-      if (!(await click(cardByLabel(l)))) return false;
+      if (!(await toggle(page, cardByLabel(l)))) return false;
       selected = [...selected, l];
     }
     return true;
@@ -339,10 +391,7 @@ async function playOrPass(
     }
     combosTried += 1;
     if (!(await setSelection(cardLabels))) return "gone";
-    const label = await giocaBtn
-      .getAttribute("aria-label", { timeout: CARD_CLICK_TIMEOUT_MS })
-      .catch(() => null);
-    if (label === GIOCA_VALID_LABEL) {
+    if (await giocaAccepts(page)) {
       if (!(await click(giocaBtn))) return "gone";
       return "played";
     }
@@ -412,11 +461,10 @@ async function playOrPass(
 // on this — rather than excluding known UI chrome by label — means the
 // selector can't accidentally land on an unrelated button such as the
 // top-bar quit control, whatever its label happens to be.
-const GIVEBACK_CARD_LABEL = /^(3|4|5|6|7|8|9|10) di (Fiori|Cuori|Quadri|Picche)$/;
+const GIVEBACK_CARD_LABEL = new RegExp(`^(${GIVEBACK_RANK_WORDS.join("|")})${CARD_NAME_JOIN}(${SUIT_WORDS.join("|")})$`);
 
 /** The prompt on the felt. Its presence is what says an exchange is open. */
 const EXCHANGE_PROMPT = '[data-testid="exchange-prompt"]';
-const GIOCA_BTN = '[data-testid="btn-gioca"]';
 
 /**
  * The winner's giveable cards, in their own hand.
@@ -460,24 +508,28 @@ export async function giveExchangeCard(page: Page): Promise<boolean> {
   if ((await prompt.count()) === 0) return false;
 
   const labels = await giveCandidateLabels(page);
-  const picks = labels
-    .map((l, i) => ({ l, i }))
-    .filter(({ l }) => GIVEBACK_CARD_LABEL.test(l));
+  const picks = labels.filter((l) => GIVEBACK_CARD_LABEL.test(l));
   // The fallback case: nothing in 3-10, so the engine offers the lowest card
   // and it is the only enabled one in the fan.
-  const order = picks.length > 0 ? picks.map((p) => p.i) : labels.map((_, i) => i);
+  const order = picks.length > 0 ? picks : labels;
 
-  for (const i of order.reverse()) {
+  for (const label of order.reverse()) {
+    const card = page.locator(`${HAND_CARDS}${labelSelector(label)}`);
     for (let attempt = 0; attempt < 3; attempt++) {
-      await tap(page, giveCandidates(page).nth(i)).catch(() => {});
-      await sleep(250);
+      if ((await card.getAttribute("aria-pressed", { timeout: CARD_CLICK_TIMEOUT_MS }).catch(() => null)) !== "true") await toggle(page, card);
       await tap(page, page.locator(GIOCA_BTN)).catch(() => {});
-      await sleep(250);
-      if ((await prompt.count()) === 0) return true;
+      if (await expect(prompt).toHaveCount(0, { timeout: 1_000 }).then(() => true, () => false)) return true;
     }
   }
   return false;
 }
+
+/** How long one idle pass waits for the table to move before the watchdogs look again. */
+const IDLE_WAIT_MS = 1_000;
+/** Shorter: an abandoned turn is usually a table one tick from moving on. */
+const ABANDON_WAIT_MS = 250;
+
+const onViewer = (desc: string) => desc.startsWith(YOUR_TURN_PREFIX) || desc.startsWith(EXCHANGE_GIVE_PREFIX);
 
 export interface DriveOptions {
   /** Resolves true once the game has reached a terminal, checkable screen. */
@@ -558,7 +610,7 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
 
     const desc = await tableDescription(page);
     if (desc === null) {
-      await sleep(200);
+      await page.locator(`${TABLE}[${TABLE_STATE}]`).waitFor({ timeout: 1_000 }).catch(() => {});
       continue;
     }
 
@@ -575,11 +627,13 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
       }
     }
 
+    let acted = false;
     if (desc.startsWith(EXCHANGE_GIVE_PREFIX)) {
       const gaveCard = await giveExchangeCard(page);
+      acted = gaveCard;
       if (gaveCard) {
         log(`exchange: gave back a card (${desc})`);
-        const changed = await waitForChange(page, desc, stallMs);
+        const changed = await stateLeaves(page, desc, stallMs);
         if (!changed) {
           throw new StuckError(
             `Gave back an exchange card but the table state did not advance. Last state: "${desc}".`
@@ -610,11 +664,12 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
               `keeps moving. Last table state: "${desc}".`
           );
         }
-        await sleep(150);
+        await stateLeaves(page, desc, ABANDON_WAIT_MS);
         continue;
       }
       consecutiveAbandons = 0;
-      const changed = await waitForChange(page, desc, stallMs);
+      acted = true;
+      const changed = await stateLeaves(page, desc, stallMs);
       if (!changed) {
         throw new StuckError(
           `Took action "${action}" but the table state did not advance. Last state: "${desc}".`
@@ -630,21 +685,7 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
       );
     }
 
-    await sleep(150);
+    // A move that lands on the viewer's next move has nothing left to wait for.
+    if (!(acted && onViewer(lastDesc))) await stateLeaves(page, lastDesc, IDLE_WAIT_MS);
   }
-}
-
-/**
- * Waits for the table's description to differ from `previous`, or for the
- * table to disappear entirely (a full navigation away counts as progress on
- * its own).
- */
-async function waitForChange(page: Page, previous: string, timeoutMs: number): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const desc = await tableDescription(page);
-    if (desc === null || desc !== previous) return true;
-    await sleep(100);
-  }
-  return false;
 }

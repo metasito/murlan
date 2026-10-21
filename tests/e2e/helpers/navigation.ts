@@ -82,11 +82,16 @@ export async function startOfflineGame(page: Page, setup: OfflineSetup): Promise
  * would otherwise be spent on. A real player's tap, so a spec does what a
  * player does instead of reaching under it. A no-op when nothing is up — a
  * seeded table has no start reason to announce.
+ *
+ * The gate also lifts on its own clock, so it can go between the count and the
+ * click; that click is then moot rather than failed. A gate still up when the
+ * wait ends is a failure.
  */
 export async function dismissStartAnnouncement(page: Page): Promise<void> {
   const gate = page.locator('[data-testid="start-reason-gate"]');
   if ((await gate.count()) === 0) return;
-  await gate.click({ timeout: 10_000 }).catch(() => {});
+  const gone = gate.waitFor({ state: "detached", timeout: 10_000 });
+  await Promise.race([gate.click({ timeout: 10_000 }).then(() => gone, () => gone), gone]);
 }
 
 /**

@@ -1,13 +1,13 @@
 // Plays an offline table on the motion path a player's build ships: the deal animates, and the
 // exchange closes when its ceremony does rather than on the e2e hold's timer
 // (`lib/e2eConfig.ts`). Every other spec that plays a round reduces motion.
-import type { Locator, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { E2E_REAL_EXCHANGE_KEY } from "../../../lib/storageKeys.ts";
-import { EXCHANGE_GIVE_PREFIX, giveExchangeCard } from "./bot.ts";
-import { GIOCA_VALID_LABEL, YOUR_TURN_PREFIX } from "./labels.ts";
+import { giveExchangeCard, playAnyLegal } from "./bot.ts";
+import { EXCHANGE_GIVE_PREFIX, YOUR_TURN_PREFIX } from "./labels.ts";
 import { dismissStartAnnouncement } from "./navigation.ts";
 import { tap } from "./press.ts";
-import { HAND_CARDS, TABLE, TABLE_DEALING, TABLE_STATE } from "./selectors.ts";
+import { TABLE, TABLE_DEALING, TABLE_STATE } from "./selectors.ts";
 
 type Kind = "deal" | "landed" | "announce" | "announced" | "play";
 type Seen = { kind: Kind; at: number };
@@ -117,24 +117,6 @@ function settledTable(page: Page): Promise<boolean> {
   );
 }
 
-async function lead(page: Page, gioca: Locator): Promise<void> {
-  const cards = page.locator(`${HAND_CARDS}[aria-label]`);
-  const labels = await cards.evaluateAll((els) => els.map((el) => el.getAttribute("aria-label") ?? ""));
-  const opener = labels.indexOf("3 di Picche");
-  const order = opener >= 0 ? [opener] : labels.map((_, i) => i);
-  const picked = page.locator(`${HAND_CARDS}[aria-pressed="true"]`);
-  for (const i of order) {
-    for (let tries = 0; tries < 20 && (await picked.count()) > 0; tries++) {
-      await tap(page, picked.first()).catch(() => {});
-    }
-    await tap(page, cards.nth(i)).catch(() => {});
-    if ((await gioca.getAttribute("aria-label", { timeout: 1_000 }).catch(() => null)) === GIOCA_VALID_LABEL) {
-      await tap(page, gioca).catch(() => {});
-      return;
-    }
-  }
-}
-
 /**
  * The viewer passes whenever it may and otherwise leads its lowest legal single, so the bot plays
  * the round out fast. `driveGameToCompletion` searches every combination before it passes, which
@@ -143,7 +125,6 @@ async function lead(page: Page, gioca: Locator): Promise<void> {
 async function playOn(page: Page, stop: () => boolean): Promise<void> {
   const table = page.locator(TABLE);
   const pass = page.getByTestId("btn-passa");
-  const gioca = page.getByTestId("btn-gioca");
   let last: string | null = null;
   let since = Date.now();
   while (!stop()) {
@@ -163,7 +144,7 @@ async function playOn(page: Page, stop: () => boolean): Promise<void> {
       if (await pass.isEnabled({ timeout: 1_000 }).catch(() => false)) {
         await tap(page, pass).catch(() => {});
       } else {
-        await lead(page, gioca);
+        await playAnyLegal(page);
       }
       acted = true;
     }
