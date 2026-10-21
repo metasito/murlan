@@ -9,7 +9,7 @@ import type { ExchangeStages } from "./exchangeModel";
 import { StraightHand, useHandArrival, type HandDeal } from "./hand";
 import { HandStatus, type SettledSelection } from "./selectionLeaves";
 import { arrangedLabel } from "./spokenLabels";
-import type { TableFacts } from "./stagedPlay";
+import type { TableFacts } from "@/lib/table/stagedPlay";
 import type { HandSelection } from "./useSelection";
 
 /**
