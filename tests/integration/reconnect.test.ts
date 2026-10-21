@@ -8,7 +8,7 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { MATCH_TARGETS, firstTargetFor } from "../../lib/game/gameEngine.ts";
-import { lobbyGraceMs, usersInLobbyGrace } from "../../server/game/gameTimers.ts";
+import { lobbyGraceMs, usersInLobbyGrace, clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { Reading } from "../../lib/tokens.ts";
 import { connectAs, reconnectAs, waitFor } from "../helpers/client.ts";
 import {
@@ -22,6 +22,12 @@ import {
   type RoomState,
   type SanitizedState,
 } from "../helpers/table.ts";
+import { db } from "../../server/store/db.ts";
+import { activeGames } from "../../server/game/gameRoom.ts";
+import { roomStore } from "../../server/store/roomStore.ts";
+import { activeGames as activeGamesTable } from "../../shared/schema.ts";
+import { eq } from "drizzle-orm";
+import { hasActiveGame, forgetActiveGame, matchSnapshot, seatedUsers } from "../helpers/liveGame.ts";
 
 /**
  * The reconnect paths: what the table is told when a dropped player comes
@@ -221,12 +227,9 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
 
   /** Waits for the `active_games` row the rehydration branch reads. */
   async function waitForPersistedGame(roomId: string): Promise<void> {
-    const { db } = await import("../../server/store/db.ts");
-    const { activeGames } = await import("../../shared/schema.ts");
-    const { eq } = await import("drizzle-orm");
     for (let attempt = 0; attempt < 100; attempt++) {
-      const row = await db.query.activeGames.findFirst({
-        where: eq(activeGames.roomId, roomId),
+      const row = await db().query.activeGames.findFirst({
+        where: eq(activeGamesTable.roomId, roomId),
       });
       if (row) return;
       await new Promise((resolve) => setTimeout(resolve, 20)); // fixed wait on purpose: the poll interval, bounded at 100 attempts
@@ -335,7 +338,6 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
   });
 
   test("a rejoin that throws still sends the friend list", async () => {
-    const { activeGames } = await import("../../server/game/gameRoom.ts");
     const alice = await connectAs(server, "rejoin_throw_alice");
     const bob = await connectAs(server, "rejoin_throw_bob");
     const room = await setUpRoom([alice, bob], 2);
@@ -400,7 +402,6 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    * table comes back frozen.
    */
   test("a rejoin that rehydrates a game from the database arms its turn timer", async () => {
-    const { hasActiveGame, forgetActiveGame } = await import("../helpers/liveGame.ts");
     const erin = await connectAs(server, "rehydrate_erin");
     const frank = await connectAs(server, "rehydrate_frank");
     const room = await setUpRoom([erin, frank], 2);
@@ -413,7 +414,6 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       // vacating a seat, and a vacated seat plays at BOT_MOVE_DELAY_MS. What
       // gets rehydrated below is then a round that is already over, and the
       // table is disposed before the assertions can look at it.
-      const { clearRoomTimers } = await import("../../server/game/gameTimers.ts");
       clearRoomTimers(room.roomId);
       // The write that outlives a restart is fire-and-forget, so the row is
       // not there yet when the opening deal reaches the clients.
@@ -455,7 +455,6 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    * a live seat to a bot.
    */
   test("a failed roster read does not fail a rejoin that holds a seat", async () => {
-    const { roomStore } = await import("../../server/store/roomStore.ts");
     const hank = await connectAs(server, "roster_hank");
     const ivy = await connectAs(server, "roster_ivy");
     const room = await setUpRoom([hank, ivy], 2);
@@ -495,7 +494,6 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
   });
 
   test("a cold-start rejoin is given its room even when the roster read fails", async () => {
-    const { roomStore } = await import("../../server/store/roomStore.ts");
     const jo = await connectAs(server, "cold_start_jo");
     const kai = await connectAs(server, "cold_start_kai");
     const room = await setUpRoom([jo, kai], 2);
@@ -547,7 +545,6 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
   // ── The match framing a rejoin arrives with ─────────────────────────────
 
   test("a rejoin is sent the running match target and scoreboard", async () => {
-    const { matchSnapshot } = await import("../helpers/liveGame.ts");
     const alice = await connectAs(server, "framing_alice");
     const bob = await connectAs(server, "framing_bob");
     const room = await setUpRoom([alice, bob], 2);
@@ -620,7 +617,6 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    * took no part in any of the ones that followed.
    */
   test("a blip between rounds does not cost the player their seat", async () => {
-    const { seatedUsers } = await import("../helpers/liveGame.ts");
     const alice = await connectAs(server, "between_alice");
     const bob = await connectAs(server, "between_bob");
     const room = await setUpRoom([alice, bob], 2);

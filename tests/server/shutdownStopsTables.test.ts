@@ -3,9 +3,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Client } from "pg";
 import type { Server as HttpServer } from "node:http";
-import type { Pool } from "pg";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { shutdown } from "../../server/http/shutdown.ts";
+import { openDatabase, pool } from "../../server/store/db.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
 import { arm, pending } from "../../server/game/gameTimers.ts";
 import { claimRoom, ownsRoom } from "../../server/game/gameOwnership.ts";
@@ -25,21 +25,16 @@ test("a shutdown stops every table before the drain, and drops the locks only af
   });
 
   const atPoolEnd: { botArmed?: boolean; locked?: boolean } = {};
-  const pool = {
-    totalCount: 0,
-    idleCount: 0,
-    waitingCount: 0,
-    end: async () => {
-      atPoolEnd.botArmed = pending("bot", ROOM);
-      atPoolEnd.locked = ownsRoom(ROOM);
-    },
-  } as unknown as Pool;
+  openDatabase();
+  t.mock.method(pool(), "end", async () => {
+    atPoolEnd.botArmed = pending("bot", ROOM);
+    atPoolEnd.locked = ownsRoom(ROOM);
+  });
   const exits: number[] = [];
   await shutdown("SIGTERM", {
     io: { close: async () => {} },
     tables: recordingRuntime().rt,
     server: { listening: false } as unknown as HttpServer,
-    pool,
     exit: (code) => exits.push(code),
   });
 

@@ -14,6 +14,9 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { register } from "../helpers/client.ts";
+import { db, pool } from "../../server/store/db.ts";
+import { ensureSchema } from "../../server/store/schemaDdl.ts";
+import { friends } from "../../shared/schema.ts";
 
 interface Account {
   cookie: string;
@@ -31,16 +34,11 @@ function add(server: TestServer, from: Account, to: Account): Promise<Response> 
 /**
  * The rows themselves, not what an endpoint answers: every endpoint filters by
  * status and direction, so a duplicate is exactly what they hide.
- *
- * Imported inside the call rather than at module scope — `server/store/db.ts` builds
- * its pool as it loads, and `startTestServer` sets `DATABASE_URL` first.
  */
 async function friendRows(): Promise<
   { id: string; userId: string; friendUserId: string; status: string }[]
 > {
-  const { db } = await import("../../server/store/db.ts");
-  const { friends } = await import("../../shared/schema.ts");
-  return db.select().from(friends);
+  return db().select().from(friends);
 }
 
 async function codeOf(res: Response): Promise<string> {
@@ -150,7 +148,6 @@ describe("simultaneous friend requests", {
   test("a request left over beside the friendship it asked for is cleared, not refused forever", async () => {
     const alice = await register(server, "stale_alice");
     const bob = await register(server, "stale_bob");
-    const { pool } = await import("../../server/store/db.ts");
 
     // What an add and an accept crossing leaves behind: neither partial index
     // forbids a pending row beside an accepted one in the same direction, and
@@ -160,7 +157,7 @@ describe("simultaneous friend requests", {
       [bob.user.id, alice.user.id, "accepted"],
       [alice.user.id, bob.user.id, "pending"],
     ]) {
-      await pool.query(
+      await pool().query(
         `INSERT INTO "friends" ("user_id", "friend_user_id", "status") VALUES ($1, $2, $3)`,
         [userId, friendUserId, status]
       );
@@ -196,15 +193,13 @@ describe("simultaneous friend requests", {
     const bob = await register(server, "dedupe_bob");
     const carol = await register(server, "dedupe_carol");
     const dave = await register(server, "dedupe_dave");
-    const { pool } = await import("../../server/store/db.ts");
-    const { ensureSchema } = await import("../../server/store/schemaDdl.ts");
 
     // The state a database upgraded into these indexes is already in: nothing
     // forbade any of it until now. Every shape each index forbids is seeded —
     // a duplicate accepted row per direction, a repeated request and a crossed
     // pair — because a dedupe that never meets a row it must delete is a
     // CREATE UNIQUE INDEX that fails in production and nowhere else.
-    await pool.query(`DROP INDEX "friends_accepted_uq", "friends_pending_pair_uq"`);
+    await pool().query(`DROP INDEX "friends_accepted_uq", "friends_pending_pair_uq"`);
     const values = [
       [alice.user.id, bob.user.id, "accepted"],
       [bob.user.id, alice.user.id, "accepted"],
@@ -218,7 +213,7 @@ describe("simultaneous friend requests", {
     // the table rather than the first: an order that only agrees with the heap
     // is one a dedupe keeping an arbitrary row would also satisfy.
     for (const [i, [userId, friendUserId, status]] of values.entries()) {
-      await pool.query(
+      await pool().query(
         `INSERT INTO "friends" ("user_id", "friend_user_id", "status", "created_at")
          VALUES ($1, $2, $3, now() - ($4 || ' seconds')::interval)`,
         [userId, friendUserId, status, String(i)]
@@ -237,7 +232,7 @@ describe("simultaneous friend requests", {
       `${bob.user.id}->${alice.user.id}`,
     ].sort();
 
-    await ensureSchema(pool);
+    await ensureSchema(pool());
     assert.deepEqual(
       await accepted(),
       bothWays,
@@ -253,7 +248,7 @@ describe("simultaneous friend requests", {
 
     // The second boot is the one that proves nothing here is a migration.
     const survivors = await pending();
-    await ensureSchema(pool);
+    await ensureSchema(pool());
     assert.deepEqual(await accepted(), bothWays);
     assert.deepEqual(await pending(), survivors);
   });

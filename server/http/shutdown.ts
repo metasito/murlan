@@ -1,10 +1,8 @@
 import type { Server as HttpServer } from "node:http";
-import type { Pool } from "pg";
 import type { SocketServer as SocketIOServer } from "../socket/socketTypes.ts";
 import runtime from "../../deploy/runtime.json" with { type: "json" };
 import { logger } from "../shared/logger.ts";
-import { pool as appPool, QUERY_TIMEOUT_MS } from "../store/db.ts";
-import { drainPool } from "../store/drainPool.ts";
+import { closeDatabase, QUERY_TIMEOUT_MS } from "../store/db.ts";
 import { beginShutdown } from "../game/gameRoom.ts";
 import { socketAdapterPool, socketAdapterReady } from "../socket/socketAdapter.ts";
 import { closeOwnership } from "../game/gameOwnership.ts";
@@ -68,8 +66,6 @@ export interface ShutdownDeps {
   io: Pick<SocketIOServer, "close">;
   server: Pick<HttpServer, "listening" | "close">;
   tables: Pick<TableRuntime, "stopTables">;
-  /** Defaults to the app's module-singleton pool. */
-  pool?: Pool;
   /** Defaults to `process.exit`. Injected so a test can observe the code. */
   exit?: (code: number) => void;
 }
@@ -88,7 +84,7 @@ let shuttingDown = false;
  */
 export async function shutdown(
   signal: string,
-  { io, server, tables, pool = appPool, exit = (code) => process.exit(code) }: ShutdownDeps
+  { io, server, tables, exit = (code) => process.exit(code) }: ShutdownDeps
 ): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
@@ -130,26 +126,9 @@ export async function shutdown(
       );
     }
     // Disconnecting the sockets above starts writes — updateLastSeen, the
-    // lobby teardown — and `handleRoundOver` and `persistGameState` are
-    // fire-and-forget, so nothing else holds a promise for any of them.
-    // `pool.end()` makes every subsequent checkout fail, which would drop
-    // exactly the stats, ladder and replay rows this shutdown exists to save.
-    if (await drainPool(pool, { timeoutMs: SHUTDOWN_BUDGET.drain })) {
-      await within(
-        SHUTDOWN_BUDGET.poolEnd,
-        pool.end().catch((err) => logger.error({ err }, "Pool close failed"))
-      );
-    } else {
-      logger.error(
-        { busy: pool.totalCount - pool.idleCount, waiting: pool.waitingCount },
-        "Postgres pool still busy after the drain window — in-flight writes are being abandoned"
-      );
-      // `pool.end()` resolves only once every checked-out client is released,
-      // which a client the drain could not account for will not do inside the
-      // remaining budget. Start the close, exit on our own terms, and let the
-      // process teardown drop the sockets.
-      void pool.end().catch((err) => logger.error({ err }, "Pool close failed"));
-    }
+    // lobby teardown — that only the drain inside closeDatabase waits for.
+    const { ended } = await closeDatabase({ drainMs: SHUTDOWN_BUDGET.drain });
+    await within(SHUTDOWN_BUDGET.poolEnd, ended);
     // After the drain, never before: the locks go with this connection, and a
     // table write still in flight once they are gone lands over the row of
     // whichever instance restored the table meanwhile.

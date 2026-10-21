@@ -62,7 +62,7 @@ function computeFingerprint(message: string, stack: string | undefined): string 
 
 /** Writes one report. Retention is server/game/retention.ts's job, on a schedule. */
 export async function recordClientError(input: ClientErrorInput): Promise<void> {
-  await db.insert(clientErrors).values({
+  await db().insert(clientErrors).values({
     userId: input.userId,
     message: input.message,
     stack: input.stack ?? null,
@@ -82,7 +82,7 @@ export async function recordClientError(input: ClientErrorInput): Promise<void> 
  * as each of those rows' own group instead, so none are hidden.
  */
 export async function recentClientErrorGroups(limit = CLIENT_ERROR_PAGE): Promise<ClientErrorGroup[]> {
-  const rows = await db.execute<{
+  const rows = await db().execute<{
     fingerprint: string | null;
     message: string;
     count: number;

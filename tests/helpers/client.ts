@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { io as ioClient, type Socket } from "socket.io-client";
 import type { TestServer } from "./testServer.ts";
 import { PROTOCOL_VERSION } from "../../shared/protocol.ts";
+import { db } from "../../server/store/db.ts";
+import { authTokens } from "../../shared/schema.ts";
+import { eq, and } from "drizzle-orm";
 
 export const PROTOCOL_AUTH = { protocolVersion: PROTOCOL_VERSION };
 
@@ -250,11 +253,8 @@ export function waitForOrNull<T = unknown>(socket: Socket, event: string, ms = 5
  * or register's can delete it afterwards.
  */
 export async function waitForPendingCode(userId: string): Promise<void> {
-  const { db } = await import("../../server/store/db.ts");
-  const { authTokens } = await import("../../shared/schema.ts");
-  const { eq, and } = await import("drizzle-orm");
   for (let attempt = 0; attempt < 100; attempt++) {
-    const rows = await db
+    const rows = await db()
       .select()
       .from(authTokens)
       .where(and(eq(authTokens.userId, userId), eq(authTokens.purpose, "email_verify")));

@@ -19,6 +19,7 @@ import type { Socket } from "socket.io-client";
 import { translate } from "../../shared/i18n.ts";
 import { createServer, type Server } from "node:http";
 import { whileUserLocked } from "../helpers/userLock.ts";
+import { savePushToken, MAX_DEVICES_PER_USER as maxDevices } from "../../server/socket/push.ts";
 
 /**
  * Stands in for Expo's push service.
@@ -50,16 +51,10 @@ const TOKEN_B = "ExponentPushToken[bbbbbbbbbbbbbbbbbbbbbb]";
 
 describe("push token registry", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  let maxDevices: number;
 
   before(async () => {
     await startExpoStub();
     server = await startTestServer();
-    // Imported here, not at the top: server/socket/push.ts pulls in server/store/db.ts,
-    // which builds its pool the moment it loads. Loading it before
-    // startTestServer has pointed connections at its throwaway schema binds
-    // the app to the default one, and every test then shares state.
-    ({ MAX_DEVICES_PER_USER: maxDevices } = await import("../../server/socket/push.ts"));
   });
 
   after(async () => {
@@ -396,7 +391,6 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
         const token = `ExponentPushToken[old${String(i).padStart(18, "0")}]`;
         assert.equal((await post(ana.cookie, { token, platform: "ios" })).status, 200);
       }
-      const { savePushToken } = await import("../../server/socket/push.ts");
       const fresh = ["ExponentPushToken[race000000000000000001]", "ExponentPushToken[race000000000000000002]"];
       await whileUserLocked([ana.user.id], () => fresh.map((t) => savePushToken(ana.user.id, t, "ios", "en")));
 

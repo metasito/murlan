@@ -21,6 +21,7 @@ import { actingSeat, applyMove } from "../../lib/game/gameEngine.ts";
 import { chooseMove } from "../../lib/game/autoMove.ts";
 import { visibleExchangePhase } from "../../server/game/onlineGameLogic.ts";
 import { card, seat, state } from "../support/game.ts";
+import { rehydrateGame } from "../../server/game/tableLifecycle.ts";
 
 const gameState = state({ currentTurnIndex: 2, gameMode: "teams" });
 const flags: RoundFlags = { 0: { bomb: true, joker: false }, 3: { bomb: false, joker: true } };
@@ -218,7 +219,6 @@ describe("rows the restore path refuses", () => {
   });
 
   test("a row a newer revision wrote is refused and kept; an older one is deleted", async (t) => {
-    const { rehydrateGame } = await import("../../server/game/tableLifecycle.ts");
     const newer = `version-${GAME_SCHEMA_VERSION + 1}`;
     const older = `version-${OLDEST_GAME_SCHEMA_VERSION - 1}`;
     const { rows } = useMemoryTableStores(t, {
