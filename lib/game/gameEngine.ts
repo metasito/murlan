@@ -125,7 +125,7 @@ export interface GameState {
   lastMove: LastMove;
 }
 
-export const RANK_ORDER: readonly Rank[] = [
+const RANK_ORDER: Rank[] = [
   "3", "4", "5", "6", "7", "8", "9", "10",
   "J", "Q", "K", "A", "2", "joker_bw", "joker_colored",
 ];
@@ -936,7 +936,7 @@ export function getSuitSymbol(suit: Suit | null): string {
   return symbols[suit];
 }
 
-export const EXCHANGE_VALID_RANKS: readonly Rank[] = ["3","4","5","6","7","8","9","10"];
+const EXCHANGE_VALID_RANKS: Rank[] = ["3","4","5","6","7","8","9","10"];
 
 function processExchangeChoice(state: GameState, cardId: string): GameState {
   if (!state.exchangePhase?.active) return state;

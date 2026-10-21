@@ -1,5 +1,5 @@
 import { cardSpokenName, rankSpokenName, suitSpokenName } from "../../../lib/cardNames.ts";
-import { createDeck, EXCHANGE_VALID_RANKS, RANK_ORDER, START_CARD, type Rank } from "../../../lib/game/gameEngine.ts";
+import { createDeck, getRankStrength, getValidGivebackCards, START_CARD, type Card, type Rank } from "../../../lib/game/gameEngine.ts";
 import type { TFn } from "../../../lib/i18n";
 import { it } from "../../../locales/it.ts";
 
@@ -52,11 +52,14 @@ const t = ((key: keyof typeof it, vars: Record<string, string> = {}) =>
 const rankWord = (rank: Rank) =>
   rank.startsWith("joker") ? cardSpokenName({ id: rank, rank, suit: null, isJoker: true }, t) : rankSpokenName(rank, t);
 
-/** Every rank's spoken word, weakest first. */
-export const RANK_WORDS = RANK_ORDER.map(rankWord);
+/** Each rank once, weakest first, as the engine orders them. */
+const ranksOf = (cards: Card[]) => [...new Set(cards.map((c) => c.rank))].sort((a, b) => getRankStrength(a) - getRankStrength(b));
 
-/** The words of the ranks a winner may give back (docs/GAME-RULES.md §10). */
-export const GIVEBACK_RANK_WORDS = EXCHANGE_VALID_RANKS.map(rankWord);
+/** Every rank's spoken word, weakest first. */
+export const RANK_WORDS = ranksOf(createDeck()).map(rankWord);
+
+/** The words of the ranks a winner may give back, read off the engine's own giveback choice. */
+export const GIVEBACK_RANK_WORDS = ranksOf(getValidGivebackCards(createDeck())).map(rankWord);
 
 export const SUIT_WORDS = [...new Set(createDeck().flatMap((c) => (c.suit ? [suitSpokenName(c.suit, t)] : [])))];
 
