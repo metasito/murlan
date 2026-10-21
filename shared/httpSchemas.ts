@@ -37,6 +37,9 @@ export const VerifyEmailSchema = z.object({
   code: z.string().regex(/^\d{6}$/, "6 digits"),
 });
 
+/** Optional as a whole: a client older than the locale sends no body at all. */
+export const ResendVerificationSchema = z.object({ locale: RegisterSchema.shape.locale }).optional();
+
 export const RequestPasswordResetSchema = z.object({
   email: RegisterSchema.shape.email,
   locale: RegisterSchema.shape.locale,

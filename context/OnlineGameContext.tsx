@@ -125,7 +125,7 @@ interface OnlineGameContextValue {
   placementPointsCurrent: boolean;
   /** What the round just played did to each seat's rating, by user id. Empty when the round rated nobody. */
   ratingDeltas: Record<string, number>;
-  /** Whether the round just played wrote a `/api/stats/history` row — a bot-majority table writes none. */
+  /** Whether the round just played wrote a `GET stats/history` row — a bot-majority table writes none. */
   roundRecorded: boolean;
   /** Each rated seat's standing after the round just played, by user id; empty when it rated nobody. */
   ratingsAfter: Record<string, RatingAfter>;

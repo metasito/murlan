@@ -5,7 +5,6 @@ import {
   ScrollView,
   Pressable,
   StyleSheet,
-  Platform,
   TextInput,
   KeyboardAvoidingView,
 } from "react-native";
@@ -21,7 +20,8 @@ import { Slider } from "@/components/Slider";
 import { Toggle } from "@/components/Toggle";
 import { ChoiceChips } from "@/components/ChoiceChips";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
-import { apiRequest } from "@/lib/query-client";
+import { api } from "@/lib/query-client";
+import { reportablePlatform } from "@/lib/errorReporting";
 import { hapticsAvailable } from "@/lib/platform";
 import { uiFeedback } from "@/lib/device/feedback";
 import { Colors, Spacing, Radius, FontSize, Type, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
@@ -118,12 +118,8 @@ export function SettingsModal({ visible, onClose }: Props) {
       // The route it was reported from, the build and the locale — all of it
       // about the reporter, none of it about the table. Deliberately no game
       // state: that carries other players' names (#116).
-      await apiRequest("POST", "/api/bug-reports", {
-        description: bugText.trim(),
-        screen: pathname,
-        appVersion,
-        platform: Platform.OS,
-        locale,
+      await api("POST bug-reports", {
+        body: { description: bugText.trim(), screen: pathname, appVersion, platform: reportablePlatform(), locale },
       });
       setBugOpen(false);
       setBugText("");
@@ -160,9 +156,9 @@ export function SettingsModal({ visible, onClose }: Props) {
   async function handleDeleteAccount() {
     setDeleting(true);
     try {
-      // apiRequest throws on a non-ok response, so a failed deletion always
+      // api throws on a non-ok response, so a failed deletion always
       // lands in the catch below instead of silently logging the user out.
-      await apiRequest("DELETE", "/api/users/me");
+      await api("DELETE users/me");
     } catch {
       setDeleting(false);
       notifyError(t("settings.deleteFailedBody"), { title: t("settings.deleteFailedTitle") });

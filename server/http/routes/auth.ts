@@ -7,6 +7,7 @@ import {
   LoginSchema,
   RegisterSchema,
   RequestPasswordResetSchema,
+  ResendVerificationSchema,
   ResetPasswordSchema,
   VerifyEmailSchema,
 } from "../../../shared/httpSchemas.ts";
@@ -425,7 +426,7 @@ export function mountAuth(app: Express): void {
    * keyed on the session rather than a submitted address: the address to
    * resend to is the one already on the caller's own row.
    */
-  onSignedIn(app, "POST /api/auth/resend-verification", resendVerificationLimiter, async (req, res, userId) => {
+  onSignedIn(app, "POST /api/auth/resend-verification", resendVerificationLimiter, validate(ResendVerificationSchema), async (req, res, userId) => {
     const user = await loadUser(res, userId);
     if (!user) return;
     if (!user.email) {

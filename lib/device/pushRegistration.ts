@@ -7,7 +7,7 @@
 // has not yet decided to play with anyone is the one most reliably denied.
 import { Platform } from "react-native";
 import Constants from "expo-constants";
-import { apiRequest } from "../query-client";
+import { api } from "../query-client";
 import { getLocale } from "../i18n";
 
 /** The device's Expo push token, once registered for the signed-in account. */
@@ -72,10 +72,8 @@ export async function registerForPush(): Promise<void> {
     const locale = getLocale();
     if (!token || (token === currentToken && locale === registeredLocale)) return;
 
-    await apiRequest("POST", "/api/push/token", {
-      token,
-      platform: Platform.OS === "ios" ? "ios" : "android",
-      locale,
+    await api("POST push/token", {
+      body: { token, platform: Platform.OS === "ios" ? "ios" : "android", locale },
     });
     currentToken = token;
     registeredLocale = locale;
