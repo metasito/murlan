@@ -13,7 +13,7 @@ import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { roundOverSchema } from "../../shared/protocol.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
-import { emptyRankTally } from "../../lib/game/gameEngine.ts";
+import { aThreePlayed } from "../support/game.ts";
 
 const ROOM = "void-abandoned-room";
 
@@ -37,7 +37,7 @@ function midRoundTwoSeats(): GameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
-    playedRanks: emptyRankTally(),
+    playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: "deal" },
   };
 }

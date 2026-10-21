@@ -11,6 +11,8 @@ import { act, renderHook } from '@testing-library/react-native';
 import { OnlineGameProvider } from '@/context/OnlineGameContext';
 import { useOnlineGame } from './onlineSurface';
 import { NotificationProvider } from '@/context/NotificationContext';
+import { aThreePlayed } from '../support/game';
+import type { RoundOverPayload } from '@/shared/protocol';
 
 type Listener = (...args: unknown[]) => void;
 type OnlineGameContextValue = ReturnType<typeof useOnlineGame>;
@@ -94,6 +96,7 @@ async function playARound() {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
+    playedRanks: aThreePlayed(),
     viewerSeatIndex: 0,
     turnDeadlineMs: 1000,
     turnSecondsRemaining: 30,
@@ -107,13 +110,21 @@ async function playARound() {
   await deliver('game:match_state', { target: 41, length: 'match', roundsPlayed: 1, scores: { player_0: 5 } });
   await deliver('game:round_over', {
     finishingOrder: ['player_0', 'player_1'],
-    scores: [{ engineId: 'player_0', points: 3, total: 8 }],
+    scores: [
+      { seatIndex: 0, engineId: 'player_0', userId: 'u1', username: 'Ana', points: 3, total: 8, vacated: false },
+    ],
+    matchTarget: 41,
+    matchLength: 'match',
+    roundsPlayed: 1,
     matchOver: true,
     matchWinnerIds: ['player_0'],
+    matchContinues: false,
+    isDraw: false,
     ratingDeltas: { u1: 14 },
     ratingsAfter: { u1: { rating: 1014, rounds: 3 } },
     recorded: true,
-  });
+    voided: false,
+  } satisfies RoundOverPayload);
 }
 
 beforeEach(async () => {

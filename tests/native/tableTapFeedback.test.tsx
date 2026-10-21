@@ -8,7 +8,7 @@ import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { api, bootFeedback, effects, haptics, settle, sounds } from './helpers/feedback';
-import { emptyRankTally } from '@/lib/game/gameEngine';
+import { aThreePlayed } from '../support/game';
 
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
 const SEVEN_H: Card = { id: '7_hearts', rank: '7', suit: 'hearts', isJoker: false };
@@ -24,7 +24,7 @@ const state: GameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
-  playedRanks: emptyRankTally(),
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 };
 const noop = () => {};

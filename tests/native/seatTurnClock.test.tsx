@@ -26,7 +26,7 @@ import { Reading } from '@/lib/theme';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
 import type { OwnLink } from '@/lib/ownLink';
 import { setMotion } from './harness/env';
-import { emptyRankTally } from '@/lib/game/gameEngine';
+import { aThreePlayed } from '../support/game';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -64,7 +64,7 @@ const state = (over: Partial<GameState>): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
-  playedRanks: emptyRankTally(),
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
   ...over,
 });

@@ -14,7 +14,7 @@ import { commitMove } from "../../server/game/tableMoves.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
-import { emptyRankTally } from "../../lib/game/gameEngine.ts";
+import { aThreePlayed } from "../support/game.ts";
 
 const ROOM = "round-flags-room";
 
@@ -49,7 +49,7 @@ function baseState(overrides: Partial<GameState> = {}): GameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
-    playedRanks: emptyRankTally(),
+    playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: "deal" },
     ...overrides,
   };

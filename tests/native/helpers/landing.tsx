@@ -13,7 +13,7 @@ import type { TrickPlay } from '@/components/table/trick';
 import { landingPulsesFor } from '@/lib/device/feedback';
 import { flightSpec, NO_LANDING, type LandingSignal } from '@/components/table/useFlightClock';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
-import { emptyRankTally } from '@/lib/game/gameEngine';
+import { aThreePlayed } from '../../support/game';
 
 /** Writes one landing onto the signal, as the flight clock does on its contact frame. */
 export function fireLanding(
@@ -67,7 +67,7 @@ export function tableAfter({ by, combo, passCount = 0, turn = 0, catchUp = false
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
-    playedRanks: emptyRankTally(),
+    playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: 'deal' },
   };
   return (

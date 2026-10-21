@@ -4,7 +4,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { applyRoundToMatch } from "../../lib/game/matchFlow.ts";
 import type { GameState } from "../../lib/game/gameEngine.ts";
-import { emptyRankTally } from "../../lib/game/gameEngine.ts";
+import { aThreePlayed } from "../support/game.ts";
 
 const seat = (i: number, team: "A" | "B") => ({
   id: `player_${i}`,
@@ -25,7 +25,7 @@ const finished = (gameMode: GameState["gameMode"], finishingOrder: string[]): Ga
   roundOver: true,
   finishingOrder,
   firstPlayMade: true,
-  playedRanks: emptyRankTally(),
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: "deal" },
 });
 

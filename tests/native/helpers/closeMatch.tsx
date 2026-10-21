@@ -13,7 +13,7 @@ import * as impact from '@/components/impact';
 import { lampControls, type Pool } from '@/components/table/lampRig';
 import { bootFeedback, haptics, settle } from './feedback';
 import { card, PAIR } from './landing';
-import { emptyRankTally } from '@/lib/game/gameEngine';
+import { aThreePlayed } from '../../support/game';
 
 export const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -63,7 +63,7 @@ export const table = (c: Case, over: boolean, decided = over) => {
     roundOver: over,
     finishingOrder: over ? FINISHING_ORDER : [],
     firstPlayMade: true,
-    playedRanks: emptyRankTally(),
+    playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: "deal" },
   };
   const placementPoints = decided ? Object.fromEntries(FINISHING_ORDER.map((id, i) => [id, 3 - i])) : {};

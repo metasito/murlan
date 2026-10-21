@@ -32,6 +32,9 @@ export function seat(i: number, hand: Card[] = [], over: Partial<Player> = {}): 
 /** `emptyRankTally()`, which this file's type-only imports cannot call. */
 export const nothingPlayed = (): number[] => new Array<number>(15).fill(0);
 
+/** A round someone has played into, one 3 down: `roundUnplayed` reads false on it. */
+export const aThreePlayed = (): number[] => nothingPlayed().map((n, i) => (i === 0 ? 1 : n));
+
 export function state(over: Partial<GameState> = {}): GameState {
   return {
     players: [seat(0), seat(1), seat(2), seat(3)],

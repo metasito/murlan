@@ -8,7 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GameTable } from '@/components/GameTable';
 import type { RoundVoteNote } from '@/components/table/notices/netNotes';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
-import { emptyRankTally } from '@/lib/game/gameEngine';
+import { aThreePlayed } from '../support/game';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -33,7 +33,7 @@ const results: GameState = {
   roundOver: true,
   finishingOrder: ['player_0', 'player_1'],
   firstPlayMade: true,
-  playedRanks: emptyRankTally(),
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 };
 

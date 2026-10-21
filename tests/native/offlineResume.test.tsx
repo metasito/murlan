@@ -14,6 +14,7 @@ import { GameProvider, useGameSession, useGameTable } from "@/context/GameContex
 import { OFFLINE_SAVE_KEY, OFFLINE_SAVE_VERSION, decodeOfflineSave } from "@/lib/offlineSave";
 import { NotificationProvider, useBanner } from "@/context/NotificationContext";
 import { t } from "@/lib/i18n";
+import { aThreePlayed, nothingPlayed } from "../support/game";
 
 /** Both halves of the provider, for a probe that reads across them. */
 const useGame = () => ({ ...useGameSession(), ...useGameTable() });
@@ -37,7 +38,7 @@ const midExchangeSave = () => {
     version: OFFLINE_SAVE_VERSION,
     gameState: {
       players: [
-        { id: "player_0", name: "Ana", hand: [card], type: "human" },
+        { id: "player_0", name: "Ana", hand: [{ id: "9_spades", rank: "9", suit: "spades", isJoker: false }], type: "human" },
         {
           id: "player_1",
           name: "Luan",
@@ -55,6 +56,7 @@ const midExchangeSave = () => {
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: true,
+      playedRanks: nothingPlayed(),
       lastMove: { seq: 0, kind: "deal" },
       exchangePhase: {
         active: true,
@@ -247,6 +249,7 @@ const freeLeadSave = () => {
       roundOver: false,
       finishingOrder: [],
       firstPlayMade: true,
+      playedRanks: aThreePlayed(),
       lastMove: { seq: 0, kind: "deal" },
     },
   });

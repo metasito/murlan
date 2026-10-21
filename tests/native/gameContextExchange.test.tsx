@@ -17,7 +17,7 @@ import { useOfflineDriver } from "@/context/offlineDriver";
 import { encodeOfflineSave, OFFLINE_SAVE_KEY } from "@/lib/offlineSave";
 import { OFFLINE_BOT_DELAY_MS } from "@/lib/timeline/offlineBotDelay";
 import type { GameState } from "@/lib/game/gameEngine";
-import { emptyRankTally } from "@/lib/game/gameEngine";
+import { aThreePlayed } from "../support/game";
 
 /** Both halves of the provider, for a probe that reads across them. */
 const useGame = () => ({ ...useGameSession(), ...useGameTable() });
@@ -52,7 +52,7 @@ function exchangeState(): GameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
-    playedRanks: emptyRankTally(),
+    playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: "deal" },
     exchangePhase: {
       active: true,

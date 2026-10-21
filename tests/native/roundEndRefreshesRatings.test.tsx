@@ -8,6 +8,23 @@ import { act, renderHook } from '@testing-library/react-native';
 import { OnlineGameProvider } from '@/context/OnlineGameContext';
 import { useOnlineGame } from './onlineSurface';
 import { NotificationProvider } from '@/context/NotificationContext';
+import type { RoundOverPayload } from '@/shared/protocol';
+
+const ROUND_OVER: RoundOverPayload = {
+  finishingOrder: [],
+  scores: [],
+  matchTarget: 21,
+  matchLength: 'match',
+  roundsPlayed: 1,
+  matchOver: false,
+  matchWinnerIds: [],
+  matchContinues: true,
+  isDraw: false,
+  ratingDeltas: {},
+  ratingsAfter: {},
+  recorded: false,
+  voided: false,
+};
 
 type Listener = (...args: unknown[]) => void;
 const listeners = new Map<string, Set<Listener>>();
@@ -52,7 +69,7 @@ describe('game:round_over', () => {
 
     await act(async () => {
       listeners.get('game:round_over')?.forEach((fn) =>
-        fn({ finishingOrder: [], scores: [], matchOver: false, matchWinnerIds: [], ratingDeltas: {} })
+        fn(ROUND_OVER)
       );
     });
 
@@ -79,14 +96,12 @@ describe('game:round_over', () => {
     await act(async () => {
       listeners.get('game:round_over')?.forEach((fn) =>
         fn({
-          finishingOrder: [],
-          scores: [],
+          ...ROUND_OVER,
           matchOver: true,
-          matchWinnerIds: [],
           ratingDeltas: { u1: 14 },
           ratingsAfter: { u1: { rating: 1014, rounds: 3 } },
           recorded: true,
-        })
+        } satisfies RoundOverPayload)
       );
     });
 

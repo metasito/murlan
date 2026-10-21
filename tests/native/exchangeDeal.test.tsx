@@ -11,6 +11,7 @@ import { LEG, choiceOpensAt } from '@/lib/timeline/exchangeTimeline';
 import { emptyRankTally, type Card, type GameState, type Player, type Rank, type Suit } from '@/lib/game/gameEngine';
 import { frames } from './helpers/exchangeLegs';
 import { bootFeedback } from './helpers/feedback';
+import { aThreePlayed } from '../support/game';
 
 const card = (rank: Rank, suit: Suit): Card => ({ id: `${rank}_${suit}`, rank, suit, isJoker: false });
 const seat = (id: string, name: string, hand: Card[]): Player => ({ id, name, hand, type: 'human' });
@@ -33,7 +34,7 @@ const base: GameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
-  playedRanks: emptyRankTally(),
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 };
 const ended: GameState = { ...base, roundOver: true, finishingOrder: ['player_0', 'player_2', 'player_1'] };

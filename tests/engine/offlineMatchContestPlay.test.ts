@@ -5,8 +5,9 @@
 // reply with more than one legal beating card, the weaker one is chosen.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildCombination, type Card, type GameState, emptyRankTally } from "../../lib/game/gameEngine.ts";
+import { buildCombination, type Card, type GameState } from "../../lib/game/gameEngine.ts";
 import { weakestBeatingPlay } from "../helpers/offlineMatch.ts";
+import { aThreePlayed } from "../support/game.ts";
 
 function card(id: string, rank: Card["rank"]): Card {
   return { id, suit: "hearts", rank, isJoker: false };
@@ -25,7 +26,7 @@ function stateWithHand(hand: Card[], onTable: Card["rank"] | null): GameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
-    playedRanks: emptyRankTally(),
+    playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: "deal" },
   };
 }

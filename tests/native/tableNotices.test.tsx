@@ -39,8 +39,9 @@ import { TurnChip, type ConnectionNote } from '@/components/table/notices/hud';
 import { CHIP_H } from '@/components/seatLayout';
 import { CLOCK_RUNNING_OUT_SECONDS, urgentThresholdSeconds } from '@/components/turnTimerUi';
 import { Colors, makeShadow, NoticePalette, TABLE_FONT_SCALE_MAX } from '@/lib/theme';
-import { buildCombination, type Card, type GameState, type Player, emptyRankTally } from '@/lib/game/gameEngine';
+import { buildCombination, type Card, type GameState, type Player } from '@/lib/game/gameEngine';
 import { setConnectivity, setStoredMotion } from './harness/env';
+import { aThreePlayed } from '../support/game';
 
 const KINDS = Object.keys(NOTICES) as NoticeKind[];
 const fixtures = (kind: NoticeKind) => NOTICE_GALLERY[kind] as NoticeFixture[];
@@ -105,7 +106,7 @@ const STATE: GameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
-  playedRanks: emptyRankTally(),
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 };
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };

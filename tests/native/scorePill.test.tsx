@@ -13,7 +13,7 @@ import { motionMs } from '@/lib/tokens';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { activate } from './tapHelpers';
 import { setMotion } from './harness/env';
-import { emptyRankTally } from '@/lib/game/gameEngine';
+import { aThreePlayed } from '../support/game';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -39,7 +39,7 @@ const state = (teams: boolean): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
-  playedRanks: emptyRankTally(),
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: "deal" },
 });
 

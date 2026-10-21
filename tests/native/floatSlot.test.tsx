@@ -10,7 +10,8 @@ import { FloatSlot, type Float } from '@/components/table/notices/floats';
 import { NoticeText, TableNotice } from '@/components/table/TableNotice';
 import { noticeRise } from '@/components/table/noticeModel';
 import { GameTable } from '@/components/GameTable';
-import { buildCombination, type Card, type GameState, type Player, emptyRankTally } from '@/lib/game/gameEngine';
+import { buildCombination, type Card, type GameState, type Player } from '@/lib/game/gameEngine';
+import { aThreePlayed } from '../support/game';
 
 const PLATE = 'notice-passFloat';
 const hidden = { includeHiddenElements: true };
@@ -143,7 +144,7 @@ const LED: GameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
-  playedRanks: emptyRankTally(),
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 };
 const METRICS = { frame: { x: 0, y: 0, width: 874, height: 402 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } };

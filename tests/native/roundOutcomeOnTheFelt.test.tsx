@@ -13,7 +13,7 @@ import { RoundMoment } from '@/lib/tokens';
 import { bootFeedback, settle } from './helpers/feedback';
 import { card, PAIR } from './helpers/landing';
 import { setMotion } from './harness/env';
-import { emptyRankTally } from '@/lib/game/gameEngine';
+import { aThreePlayed } from '../support/game';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -51,7 +51,7 @@ const table = ({ teams, finishingOrder }: (typeof CASES)[number], over: boolean,
     roundOver: over,
     finishingOrder: over ? finishingOrder : [],
     firstPlayMade: true,
-    playedRanks: emptyRankTally(),
+    playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: "deal" },
   };
   const placementPoints = scored ? Object.fromEntries(finishingOrder.map((id, i) => [id, 3 - i])) : {};

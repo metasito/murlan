@@ -14,7 +14,7 @@ import { computeTableFrame } from '@/components/tableFrame';
 import { cardScale } from '@/components/cardFaceModel';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { setMotion, setWindow } from './harness/env';
-import { emptyRankTally } from '@/lib/game/gameEngine';
+import { aThreePlayed } from '../support/game';
 
 // Two windows of different card scale, so of different chip height: the band follows the one now.
 const WINDOW = { width: 568, height: 320, scale: 2, fontScale: 1 };
@@ -47,7 +47,7 @@ const gameState: GameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
-  playedRanks: emptyRankTally(),
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 };
 

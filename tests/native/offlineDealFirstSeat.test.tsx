@@ -14,6 +14,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GameProvider, useGameSession, useGameTable } from "@/context/GameContext";
 import { OFFLINE_SAVE_KEY, OFFLINE_SAVE_VERSION, decodeOfflineSave } from "@/lib/offlineSave";
 import { NotificationProvider } from "@/context/NotificationContext";
+import { aThreePlayed } from "../support/game";
 
 /** Both halves of the provider, for a probe that reads across them. */
 const useGame = () => ({ ...useGameSession(), ...useGameTable() });
@@ -46,6 +47,7 @@ const roundJustEndedSave = () =>
       roundOver: true,
       finishingOrder: ["player_2", "player_0", "player_3", "player_1"],
       firstPlayMade: true,
+      playedRanks: aThreePlayed(),
       lastMove: { seq: 0, kind: "deal" },
     },
     match: {

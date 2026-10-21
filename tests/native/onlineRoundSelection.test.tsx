@@ -6,7 +6,7 @@ import { act, fireEvent, screen } from '@testing-library/react-native';
 import { activate } from './tapHelpers';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
-import { state } from '../support/game';
+import { aThreePlayed, state } from '../support/game';
 import { renderApp } from './harness/renderApp';
 
 jest.mock('expo-router', () => ({
@@ -42,6 +42,7 @@ const stateWith = (hand: Card[], over: Partial<GameState> = {}): GameState => st
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
   ...over,
 });

@@ -15,7 +15,7 @@ import { bootFeedback, sounds } from './helpers/feedback';
 import { choiceOpensAt } from '@/lib/timeline/exchangeTimeline';
 import { activate, gesturesOf, storeOf, type Captured } from './tapHelpers';
 import { setMotion } from './harness/env';
-import { emptyRankTally } from '@/lib/game/gameEngine';
+import { aThreePlayed } from '../support/game';
 
 const mockHeld: { on: boolean; queue: (() => void)[] } = { on: false, queue: [] };
 jest.mock('react-native-worklets', () => {
@@ -60,7 +60,7 @@ const state: GameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
-  playedRanks: emptyRankTally(),
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 };
 const noop = () => {};

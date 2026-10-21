@@ -19,7 +19,7 @@ import { onlineTable } from "../helpers/onlineTable.ts";
 import type { RoundOverPayload } from "../../shared/protocol.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 import { refuse } from "../../server/shared/refusal.ts";
-import { emptyRankTally } from "../../lib/game/gameEngine.ts";
+import { aThreePlayed } from "../support/game.ts";
 
 const ROOM = "end-match-vote-room";
 
@@ -48,7 +48,7 @@ function midRoundOneVacated(): GameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
-    playedRanks: emptyRankTally(),
+    playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: "deal" },
   };
 }
@@ -82,7 +82,7 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
         roundOver: false,
         finishingOrder: [],
         firstPlayMade: true,
-        playedRanks: emptyRankTally(),
+        playedRanks: aThreePlayed(),
         lastMove: { seq: 0, kind: "deal" },
       },
       playerMap: { 0: "alice", 1: "bob" },

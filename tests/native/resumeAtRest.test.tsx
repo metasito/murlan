@@ -17,7 +17,7 @@ import { NotificationProvider } from '@/context/NotificationContext';
 import { encodeOfflineSave, OFFLINE_SAVE_KEY } from '@/lib/offlineSave';
 import type { Card, Combination, GameState, Rank, Suit } from '@/lib/game/gameEngine';
 import { bootFeedback, settle, sounds } from './helpers/feedback';
-import { emptyRankTally } from '@/lib/game/gameEngine';
+import { aThreePlayed } from '../support/game';
 
 /** Both halves of the provider, for a probe that reads across them. */
 const useGame = () => ({ ...useGameSession(), ...useGameTable() });
@@ -43,7 +43,7 @@ const saved = (): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
-  playedRanks: emptyRankTally(),
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 });
 

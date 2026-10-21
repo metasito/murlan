@@ -8,11 +8,12 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { GameTable } from '@/components/GameTable';
 import type { HandShadeProps } from '@/components/table/feltReady';
-import { dealCards, type GameState, emptyRankTally } from '@/lib/game/gameEngine';
+import { dealCards, type GameState } from '@/lib/game/gameEngine';
 import { Layer } from '@/lib/theme';
 import { frames } from './helpers/exchangeLegs';
 import { PAIR, throwPair } from './helpers/landing';
 import { bootFeedback } from './helpers/feedback';
+import { aThreePlayed } from '../support/game';
 
 const HIDDEN = { includeHiddenElements: true };
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
@@ -43,7 +44,7 @@ function state(): GameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
-    playedRanks: emptyRankTally(),
+    playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: 'deal' },
   };
 }

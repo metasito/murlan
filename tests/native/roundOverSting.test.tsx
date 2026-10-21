@@ -14,7 +14,7 @@ import { Hold } from '@/lib/theme';
 import type { GameState, Player } from '@/lib/game/gameEngine';
 import { bootFeedback, ctxAt, haptics, settle as advance, sounds, startsOf } from './helpers/feedback';
 import { setMotion } from './harness/env';
-import { emptyRankTally } from '@/lib/game/gameEngine';
+import { aThreePlayed } from '../support/game';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -35,7 +35,7 @@ const finished = (finishingOrder: string[]): GameState => ({
   roundOver: true,
   finishingOrder,
   firstPlayMade: true,
-  playedRanks: emptyRankTally(),
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 });
 
@@ -99,7 +99,7 @@ const drawnTeamsTable = (viewerSeat: number) => (
         roundOver: true,
         finishingOrder: DRAWN_TEAMS_FINISHING_ORDER,
         firstPlayMade: true,
-        playedRanks: emptyRankTally(),
+        playedRanks: aThreePlayed(),
         lastMove: { seq: 0, kind: 'deal' },
       }}
       placementPoints={DRAWN_TEAMS_SCORES}
@@ -136,7 +136,7 @@ const wonTeamsTable = (viewerSeat: number) => (
         roundOver: true,
         finishingOrder: WON_TEAMS_FINISHING_ORDER,
         firstPlayMade: true,
-        playedRanks: emptyRankTally(),
+        playedRanks: aThreePlayed(),
         lastMove: { seq: 0, kind: 'deal' },
       }}
       placementPoints={WON_TEAMS_SCORES}
@@ -290,7 +290,7 @@ describe('the end-of-round sting', () => {
             roundOver: false,
             finishingOrder: [],
             firstPlayMade: true,
-            playedRanks: emptyRankTally(),
+            playedRanks: aThreePlayed(),
             lastMove: { seq: 0, kind: 'deal' },
           }}
           viewerSeat={3}
@@ -320,7 +320,7 @@ describe('the end-of-round sting', () => {
             roundOver: true,
             finishingOrder: WON_TEAMS_FINISHING_ORDER,
             firstPlayMade: true,
-            playedRanks: emptyRankTally(),
+            playedRanks: aThreePlayed(),
             lastMove: { seq: 0, kind: 'deal' },
           }}
           placementPoints={placementPoints}
