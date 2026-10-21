@@ -521,7 +521,7 @@ export default function ProfileScreen() {
   const reduceMotion = usePrefersReducedMotion();
 
   // Every one of these needs a session. The screen is reachable without one
-  // now, and a query left running there is five 401s and a record section
+  // now, and a query left running there is a 401 apiece and a record section
   // that renders nothing anyway.
   const signedIn = !!user;
   const statsQuery = useApi(queryKey("stats/me"), { enabled: signedIn });
