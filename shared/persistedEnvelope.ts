@@ -89,6 +89,12 @@ function readPersistedSeats(stored: unknown): PersistedSeats {
  */
 export const GAME_SCHEMA_VERSION = 6;
 
+/**
+ * The oldest row still restored. Raise it to GAME_SCHEMA_VERSION when a bump changes what a
+ * row holds; leave it when the bump only tightens the parse, which still holds every row to it.
+ */
+export const OLDEST_GAME_SCHEMA_VERSION = 5;
+
 export type RoundFlags = Record<number, { bomb: boolean; joker: boolean }>;
 
 /**
@@ -216,8 +222,9 @@ export const persistedEnvelopeSchema = z.object({
  * checked before the parse — it answers "may this row be restored at all",
  * which a field schema cannot — and the schema's first complaint becomes the
  * reason; `gameState`'s is `parseGameState`'s. `match.playerMap` and `seats`
- * are filtered entry by entry rather than refused: a wholly malformed map reads back as an empty one, which
- * the caller's seat check turns into UNAUTHORIZED.
+ * are filtered entry by entry rather than refused: a wholly malformed map
+ * reads back as an empty one, which the caller's seat check turns into
+ * UNAUTHORIZED.
  */
 export function unpackPersistedState(persisted: unknown): PersistedRestore {
   if (!isPlainObject(persisted)) return { ok: false, reason: "not an object" };
@@ -225,7 +232,7 @@ export function unpackPersistedState(persisted: unknown): PersistedRestore {
   if (typeof version === "number" && version > GAME_SCHEMA_VERSION) {
     return { ok: false, newer: true, reason: `schema version ${version} is newer` };
   }
-  if (version !== GAME_SCHEMA_VERSION) {
+  if (typeof version !== "number" || version < OLDEST_GAME_SCHEMA_VERSION) {
     return { ok: false, reason: `schema version ${String(persisted.schemaVersion)}` };
   }
   const parsed = persistedEnvelopeSchema.safeParse(persisted);

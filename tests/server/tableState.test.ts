@@ -3,7 +3,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { MEMORY_ONLY, PERSISTED, fromEnvelope, newTable, toEnvelope } from "../../server/game/tableState.ts";
-import { GAME_SCHEMA_VERSION } from "../../shared/persistedEnvelope.ts";
+import { GAME_SCHEMA_VERSION, OLDEST_GAME_SCHEMA_VERSION } from "../../shared/persistedEnvelope.ts";
 import { firstTargetFor, startRound } from "../../lib/game/gameEngine.ts";
 import type { GameMode, GameState } from "../../lib/game/gameEngine.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
@@ -160,7 +160,7 @@ describe("a table's round trip through active_games", () => {
     const newer = fromEnvelope({ roomId: ROOM, gameState: { ...envelope, schemaVersion: GAME_SCHEMA_VERSION + 1 } });
     assert.equal(newer.ok, false);
     assert.equal(!newer.ok && newer.newer, true);
-    const older = fromEnvelope({ roomId: ROOM, gameState: { ...envelope, schemaVersion: GAME_SCHEMA_VERSION - 1 } });
+    const older = fromEnvelope({ roomId: ROOM, gameState: { ...envelope, schemaVersion: OLDEST_GAME_SCHEMA_VERSION - 1 } });
     assert.equal(older.ok, false);
     assert.equal(!older.ok && older.newer, undefined);
   });

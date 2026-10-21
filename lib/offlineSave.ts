@@ -14,14 +14,17 @@ import type { MatchState } from "./game/matchState.ts";
 import { matchLengthSchema, parseGameState, type Same } from "../shared/gameStateSchema.ts";
 
 /**
- * Bumped whenever the stored shape changes. A blob written by an older build is
- * discarded rather than migrated — the same call `server/game/onlineGameLogic.ts`
+ * Bumped whenever the stored shape changes. A blob older than
+ * `OLDEST_OFFLINE_SAVE_VERSION` is discarded rather than migrated — the same call `server/game/onlineGameLogic.ts`
  * makes for `active_games`, and for the same reason: restoring a round into a
  * shape the engine no longer expects corrupts a match silently, while losing one
  * abandoned match costs nothing.
  * Held to the stored shape by tests/server/storedShapeVersions.test.ts.
  */
 export const OFFLINE_SAVE_VERSION = 6;
+
+/** The oldest save still resumed; raised on the same terms as `OLDEST_GAME_SCHEMA_VERSION`. */
+export const OLDEST_OFFLINE_SAVE_VERSION = 5;
 
 export { OFFLINE_SAVE_KEY } from "./storageKeys.ts";
 
@@ -77,7 +80,9 @@ export function decodeOfflineSave(raw: string | null): OfflineDecode {
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return NONE;
   const { version, gameState, match, dealFirstSeat } = parsed as Record<string, unknown>;
-  if (version !== OFFLINE_SAVE_VERSION) return INCOMPATIBLE;
+  if (typeof version !== "number" || version < OLDEST_OFFLINE_SAVE_VERSION || version > OFFLINE_SAVE_VERSION) {
+    return INCOMPATIBLE;
+  }
 
   const state = parseGameState(gameState);
   const verdict = matchSchema.safeParse(match);

@@ -11,7 +11,7 @@ import { Text, Pressable } from "react-native";
 import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GameProvider, useGameSession, useGameTable } from "@/context/GameContext";
-import { OFFLINE_SAVE_KEY, OFFLINE_SAVE_VERSION, decodeOfflineSave } from "@/lib/offlineSave";
+import { OFFLINE_SAVE_KEY, OFFLINE_SAVE_VERSION, OLDEST_OFFLINE_SAVE_VERSION, decodeOfflineSave } from "@/lib/offlineSave";
 import { NotificationProvider, useBanner } from "@/context/NotificationContext";
 import { t } from "@/lib/i18n";
 import { aThreePlayed, nothingPlayed } from "../support/game";
@@ -205,7 +205,7 @@ test("with nothing stored, there is nothing to offer", async () => {
 
 test("a save an update can no longer read is removed, and the player is told", async () => {
   const stale = JSON.parse(midExchangeSave());
-  stale.version = OFFLINE_SAVE_VERSION - 1;
+  stale.version = OLDEST_OFFLINE_SAVE_VERSION - 1;
   await AsyncStorage.setItem(OFFLINE_SAVE_KEY, JSON.stringify(stale));
 
   const r = await mount();

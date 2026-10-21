@@ -2,10 +2,12 @@
 // row, and reading it back is a trust boundary.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import {
   GAME_SCHEMA_VERSION,
+  OLDEST_GAME_SCHEMA_VERSION,
   packPersistedState,
   persistedEnvelopeSchema,
   persistedMatchSchema,
@@ -125,6 +127,26 @@ describe("persisted game_state envelope", () => {
   });
 });
 
+describe("a row an older revision wrote, through the same gate", () => {
+  test("a version-5 row origin/main packed restores whole", () => {
+    const raw = JSON.parse(readFileSync(new URL("../fixtures/activeGames.v5.json", import.meta.url), "utf8"));
+    assert.equal(raw.schemaVersion, 5);
+    assert.ok(OLDEST_GAME_SCHEMA_VERSION <= 5 && 5 < GAME_SCHEMA_VERSION);
+    const back = restore(raw);
+    assert.deepEqual(back.gameState, raw.gameState);
+    assert.deepEqual(back.match.playerMap, raw.match.playerMap);
+    assert.equal(back.dealFirstSeat, raw.dealFirstSeat);
+  });
+
+  test("a version-5 row is still held to parseGameState", () => {
+    const raw = JSON.parse(readFileSync(new URL("../fixtures/activeGames.v5.json", import.meta.url), "utf8"));
+    delete raw.gameState.playedRanks;
+    const result = unpackPersistedState(raw);
+    assert.equal(result.ok, false);
+    assert.match(result.ok ? "" : result.reason, /game state playedRanks/);
+  });
+});
+
 describe("rows the restore path refuses", () => {
   /** The rejection reason, or a failure if the row was restored instead. */
   function refusal(persisted: unknown): string {
@@ -142,11 +164,11 @@ describe("rows the restore path refuses", () => {
   test("a row a newer revision wrote is refused and kept; an older one is deleted", async (t) => {
     const { rehydrateGame } = await import("../../server/game/tableLifecycle.ts");
     const newer = `version-${GAME_SCHEMA_VERSION + 1}`;
-    const older = `version-${GAME_SCHEMA_VERSION - 1}`;
+    const older = `version-${OLDEST_GAME_SCHEMA_VERSION - 1}`;
     const { rows } = useMemoryTableStores(t, {
       rows: [
         [newer, { ...pack(), schemaVersion: GAME_SCHEMA_VERSION + 1 }],
-        [older, { ...pack(), schemaVersion: GAME_SCHEMA_VERSION - 1 }],
+        [older, { ...pack(), schemaVersion: OLDEST_GAME_SCHEMA_VERSION - 1 }],
       ],
     });
 
