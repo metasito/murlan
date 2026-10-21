@@ -40,8 +40,14 @@ function LocalSessionProbe() {
   return null;
 }
 
-/** Every query the screen asked for has its answer. */
-export const queriesSettled = () => waitFor(() => expect(queryClient.isFetching()).toBe(0));
+/**
+ * Every query the screen asked for has its answer, and its readers have rendered it: query-core
+ * hands a settled answer to its observers on a zero timeout, after `isFetching()` already reads 0.
+ */
+export const queriesSettled = async () => {
+  await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+};
 
 type Boot = {
   /** The session the server confirms; `null`, the default, answers 401. */
