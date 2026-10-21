@@ -34,7 +34,7 @@ test("an eviction closes only the account's sockets older than the one it keeps"
     assert.ok(io.sockets.sockets.has(newerId), "a late eviction closed the newer socket");
     assert.ok(io.sockets.sockets.has(olderId));
 
-    const told = new Promise<string>((r) => older.once("socket:error", (p) => r(p.code)));
+    const told = new Promise<string>((r) => older.once("socket:error", (p) => r(p.code ?? "")));
     evictOlderSessions(io, eviction(newer));
     assert.ok(!io.sockets.sockets.has(olderId), "the older socket survived its replacement");
     assert.ok(io.sockets.sockets.has(newerId));

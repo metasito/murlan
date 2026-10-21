@@ -14,7 +14,7 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, eventually, intent, waitFor, type TestSocket } from "../helpers/client.ts";
+import { connectAs, DEADLINE_SCALE, eventually, waitFor, type TestSocket } from "../helpers/client.ts";
 import { isUserOnline } from "../../server/socket/socketRegistry.ts";
 import { translate } from "../../shared/i18n.ts";
 import { createServer, type Server } from "node:http";
@@ -372,7 +372,9 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
       await offline(ben.user.id);
 
       // No friendship was ever accepted between these two.
-      const reply = await intent(ana.socket, "friend:invite", { friendUserId: ben.user.id, roomCode: "ZZZ999" });
+      const reply = await ana.socket
+        .timeout(5_000 * DEADLINE_SCALE)
+        .emitWithAck("friend:invite", { friendUserId: ben.user.id, roomCode: "ZZZ999" });
       assert.deepEqual(reply, { ok: false, code: "NOT_FRIENDS" });
 
       assert.equal(received.length, 0, "the friendship check must gate the push too");
