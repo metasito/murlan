@@ -154,7 +154,7 @@ describe('the replay move list', () => {
     );
 
     const bombAction = t('replay.movePlayed', {
-      combo: t('rules.comboBombName'),
+      combo: t('term.combo.bomb'),
       cards: '7 7 7 7',
     });
     expect(

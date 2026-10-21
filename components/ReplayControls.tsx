@@ -19,23 +19,13 @@ import {
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { getCardDisplayRank } from "@/lib/game/gameEngine";
-import type { CombinationType } from "@/lib/game/gameEngine";
 import type { ReplayDto, ReplayMoment } from "@/lib/game/replay";
 import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { a11yHidden } from "@/lib/a11y";
 import { IconButton } from "@/components/IconButton";
-import type { TFn, TranslationKey } from "@/lib/i18n";
+import type { TFn } from "@/lib/i18n";
+import { comboName } from "@/lib/comboName";
 
-
-/** The rules screen already names every combination, in all three locales. */
-const COMBO_NAME_KEYS: Record<CombinationType, TranslationKey> = {
-  single: "rules.comboSingleName",
-  pair: "rules.comboPairName",
-  triple: "rules.comboTripleName",
-  straight: "rules.comboStraightName",
-  bomb: "rules.comboBombName",
-  royal_straight: "rules.comboRoyalName",
-};
 
 const SCRUB_TRACK_H = 4;
 const SCRUB_THUMB = 14;
@@ -51,7 +41,7 @@ function moveActionText(replay: ReplayDto, index: number, t: TFn): string {
   const combo = replay.moves[index]?.combo;
   if (!combo) return t("replay.movePassed");
   const ranks = combo.cards.map((card) => getCardDisplayRank(card.rank)).join(" ");
-  return t("replay.movePlayed", { combo: t(COMBO_NAME_KEYS[combo.type]), cards: ranks });
+  return t("replay.movePlayed", { combo: comboName(combo.type, t), cards: ranks });
 }
 
 function clampRatio(value: number): number {

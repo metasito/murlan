@@ -23,6 +23,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import { dealCards } from "@/lib/game/gameEngine";
 import { a11yHidden, a11yState, a11yVeiled } from "@/lib/a11y";
+import { comboName } from "@/lib/comboName";
 
 interface FAQ {
   question: string;
@@ -185,12 +186,12 @@ export default function RulesScreen() {
           <Text style={styles.sectionLabel}>{t("rules.combosSectionLabel")}</Text>
           <View style={styles.comboGrid}>
             {[
-              { name: t("rules.comboSingleName"), desc: t("rules.comboSingleDesc"), icon: "card" },
-              { name: t("rules.comboPairName"), desc: t("rules.comboPairDesc"), icon: "copy" },
-              { name: t("rules.comboTripleName"), desc: t("rules.comboTripleDesc"), icon: "layers" },
-              { name: t("rules.comboStraightName"), desc: t("rules.comboStraightDesc"), icon: "trending-up" },
-              { name: t("rules.comboBombName"), desc: t("rules.comboBombDesc"), icon: "flash" },
-              { name: t("rules.comboRoyalName"), desc: t("rules.comboRoyalDesc"), icon: "star" },
+              { name: comboName("single", t), desc: t("rules.comboSingleDesc"), icon: "card" },
+              { name: comboName("pair", t), desc: t("rules.comboPairDesc"), icon: "copy" },
+              { name: comboName("triple", t), desc: t("rules.comboTripleDesc"), icon: "layers" },
+              { name: comboName("straight", t), desc: t("rules.comboStraightDesc"), icon: "trending-up" },
+              { name: comboName("bomb", t), desc: t("rules.comboBombDesc"), icon: "flash" },
+              { name: comboName("royal_straight", t), desc: t("rules.comboRoyalDesc"), icon: "star" },
             ].map((c) => (
               <View key={c.name} style={styles.comboCard}>
                 <Ionicons
