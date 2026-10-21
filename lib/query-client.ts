@@ -28,7 +28,9 @@ async function throwIfResNotOk(res: Response) {
 /** A contract route named by its method and its path under /api, the way lib/queries.ts names a read. */
 export type Call = Route extends infer R ? (R extends `${infer M} /api/${infer P}` ? `${M} ${P}` : never) : never;
 export type RouteOf<C extends Call> = C extends `${infer M} ${infer P}` ? Extract<Route, `${M} /api/${P}`> : never;
-export type Reply<C extends Call> = [ResOf<RouteOf<C>>] extends [void] ? undefined : ResOf<RouteOf<C>>;
+/** `any` is tested first because it also extends `void`. */
+export type Unvoided<R> = 0 extends 1 & R ? R : [R] extends [void] ? undefined : R;
+export type Reply<C extends Call> = Unvoided<ResOf<RouteOf<C>>>;
 export type Sent<C extends Call> = BodyOf<RouteOf<C>>;
 
 type ParamsField<K extends Route> = keyof ParamsOf<K> extends never ? unknown : { params: ParamsOf<K> };
@@ -60,8 +62,8 @@ export function requestOf<C extends Call>(call: C, ...[input]: Optional<ParamsFi
 
 /**
  * Sends one request of the contract, or reads one cache key, and answers its JSON — `undefined`
- * for an empty body. Throws an `ApiError` for any non-2xx or a 2xx whose body is not JSON, and
- * whatever `fetch` threw when nothing came back.
+ * for a 204 or 205. Throws an `ApiError` for any non-2xx or any other 2xx whose body is not JSON,
+ * an empty one included, and whatever `fetch` threw when nothing came back.
  */
 export function api<P extends Read>(key: ApiKey<P>): Promise<Answer<P>>;
 export function api<C extends Call>(call: C, ...input: Args<C>): Promise<Reply<C>>;
@@ -76,8 +78,8 @@ export async function api(target: string | ApiKey, input: { body?: unknown; para
     credentials: "include",
   });
   await throwIfResNotOk(res);
+  if (res.status === 204 || res.status === 205) return undefined;
   const text = await res.text();
-  if (!text) return undefined;
   try {
     return JSON.parse(text);
   } catch {

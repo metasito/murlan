@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import { api } from '@/lib/query-client';
+import { api, type Unvoided } from '@/lib/query-client';
 import { ApiError } from '@/lib/apiError';
 import { queryKey } from '@/lib/queries';
 import { httpRequests, route, unreachable } from './mocks/http';
@@ -35,6 +35,18 @@ describe('api()', () => {
     expect((refused as ApiError).body).toBe('<html>proxy</html>');
   });
 
+  it('rejects a 200 with an empty body, which no route answers', async () => {
+    route('GET', '/api/friends', { status: 200 });
+    const refused = await api(queryKey('friends')).catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(ApiError);
+    expect((refused as ApiError).status).toBe(200);
+  });
+
+  it('answers a 205 with undefined, as a 204', async () => {
+    route('POST', '/api/client-errors', { status: 205 });
+    await expect(api('POST client-errors', { body: { message: 'boom' } })).resolves.toBeUndefined();
+  });
+
   it('answers a 2xx with its JSON', async () => {
     route('POST', '/api/friends/add', { body: { ok: true, username: 'ana' } });
     await expect(api('POST friends/add', { body: { username: 'ana' } })).resolves.toEqual({ ok: true, username: 'ana' });
@@ -62,6 +74,13 @@ describe('api()', () => {
     await expect(api(queryKey('friends'))).resolves.toEqual([]);
     expect(new URL(httpRequests()[1].url).searchParams.get('username')).toBe('ana b');
     expect(httpRequests().map((r) => r.method)).toEqual(['DELETE', 'GET', 'GET']);
+  });
+
+  it('maps only a void answer to undefined, not an any or unknown one', () => {
+    const anyStaysAny: 0 extends 1 & Unvoided<any> ? true : false = true;
+    const unknownStaysUnknown: unknown extends Unvoided<unknown> ? true : false = true;
+    const voidIsUndefined: [Unvoided<void>] extends [undefined] ? true : false = true;
+    expect([anyStaysAny, unknownStaysUnknown, voidIsUndefined]).toEqual([true, true, true]);
   });
 
   it('refuses at compile time a body field the contract does not name', () => {
