@@ -83,9 +83,9 @@ let live: FakeSocket;
 
 /**
  * The table the match ends on. Offline, Ana has played the last card of a saved match; online, the server
- * sends the finished table and then its word on the round, unless `scored` is false.
+ * sends the finished table and then its word on the round, unless `scored` is false. `served` stands the
+ * online table's word up offline too, so an offline screen that showed it would be seen.
  */
-/** `served`: the online table's word on a match is standing too, so an offline screen showing it would be seen. */
 const mount = async (
   where: Screen,
   { round = lastRound(), scored = true, served = where === 'online' }: { round?: ReturnType<typeof lastRound>; scored?: boolean; served?: boolean } = {}

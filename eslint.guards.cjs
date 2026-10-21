@@ -38,10 +38,11 @@ const mockOf = (path, tail) =>
 
 // Every way a test reaches into a module to replace it: a module mock under any spelling of its path, a
 // namespace or default import (only a spy needs the module object), the module object from require,
-// requireActual or requireMock, and a spy on one handed straight to jest.spyOn. `modules` are `@/`- or
-// relative paths and `packages` bare ones, each an alternation; a deep path into a package counts.
+// requireActual, requireMock, `import x = require` or a dynamic import, and a spy on one handed straight
+// to jest.spyOn. `modules` are `@/`- or relative paths and `packages` bare ones, each an alternation; a
+// deep path into a package counts.
 const seamsOf = ({ modules, packages }) => {
-  const ext = "(\\.[cm]?[jt]sx?)?(\\x2Findex(\\.[cm]?[jt]sx?)?)?";
+  const ext = "(\\.[cm]?[jt]sx?)?(\\x2Findex(\\.[cm]?[jt]sx?)?)?\\x2F?";
   const pkg = packages ? `|^(${packages})(\\x2F.*)?` : "";
   const path = `/(^(@|\\.\\.?(\\x2F\\.\\.)*)\\x2F(${modules})${ext}$${pkg})$/`;
   const tail = `/((^|\\x2F)(${modules})${ext}$${pkg})$/`;
@@ -53,6 +54,8 @@ const seamsOf = ({ modules, packages }) => {
     `VariableDeclarator[id.type="Identifier"] > ${required}`,
     `VariableDeclarator[id.type="Identifier"] > TSAsExpression > ${required}`,
     `${spy} > ${required}:first-child`,
+    `ImportExpression[source.value=${path}]:not(VariableDeclarator[id.type="ObjectPattern"] > AwaitExpression > ImportExpression)`,
+    `TSImportEqualsDeclaration > TSExternalModuleReference > Literal[value=${path}]`,
   ].join(", ");
 };
 
@@ -175,7 +178,7 @@ const GUARDS = [
     selector: "Identifier[name=/^lock\\w*Async$/]",
     files: SCREENS,
     ignores: [{ glob: "lib/device/orientation.tsx", reason: "useLandscapeLock, which only the game table calls: the one screen that needs the width" }],
-    plant: { file: "components/Plant.tsx", code: ["ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);", 'import { lockPlatformAsync } from "expo-screen-orientation";'].join("\n"), hits: 3 },
+    plant: { file: "components/Plant.tsx", code: ["ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);", 'import { lockPlatformAsync as lockPlatform } from "expo-screen-orientation";'].join("\n"), hits: 2 },
     spare: ["ScreenOrientation.unlockAsync();", "const locked = true;", '// lockAsync\nconst s = "lockAsync";'].map((code) => ({ file: "components/Plant.tsx", code })),
   },
   {
@@ -260,7 +263,8 @@ const GUARDS = [
     plant: { file: "components/Plant.tsx", code: [
       'const a = <View accessibilityState={{ selected: true }} accessibilityLabel="x" />;',
       'const b = <Pressable accessibilityHint="opens" />;',
-      "const c = <View accessibilityElementsHidden importantForAccessibility=\"no\" />;",
+      "const c = <View accessibilityElementsHidden />;",
+      "const d = <View importantForAccessibility=\"no\" />;",
     ].join("\n"), hits: 4 },
     spare: [
       "const a = <View {...a11yState({ selected: true })} accessibilityLabel={x} />;",
@@ -282,7 +286,8 @@ const GUARDS = [
       "  }",
       "  return { shadowRadius: 18 * v };",
       "});",
-      'const t = useAnimatedStyle(() => ({ borderTopColor: c.value, "elevation": 2 }));',
+      "const t = useAnimatedStyle(() => ({ borderTopColor: c.value }));",
+      'const w = useAnimatedStyle(() => ({ "elevation": 2 }));',
       "const u = Reanimated.useAnimatedStyle(() => ({ shadowRadius: r.value }));",
     ].join("\n"), hits: 5 },
     spare: [
@@ -714,7 +719,10 @@ const GUARDS = [
       "import notifications from '../context/NotificationContext';",
       "const client = require('@/lib/query-client') as typeof import('@/lib/query-client');",
       "jest.spyOn(jest.requireActual('@/context/AuthContext'), 'useAuth');",
-    ].join("\n"), hits: 10 },
+      "const late = await import('@/context/NotificationContext');",
+      "import auth = require('@/context/AuthContext');",
+      "jest.mock('@/context/AuthContext/', () => ({}));",
+    ].join("\n"), hits: 13 },
     spare: [
       "jest.mock('@/context/SocketContext', () => ({ ...jest.requireActual('@/context/SocketContext') }));",
       "jest.mock('@/context/AuthContextual', () => ({}));",
@@ -765,7 +773,10 @@ const GUARDS = [
       "jest.spyOn(sockets, 'useSocket');",
       "const hooks = jest.requireActual('@/context/onlineGameHooks');",
       "jest.spyOn(require('@/context/GameContext'), 'useGameTable');",
-    ].join("\n"), hits: 15 },
+      "const sockets = await import('@/context/SocketContext');",
+      "import game = require('../context/GameContext');",
+      "jest.mock('@/context/OnlineGameContext/', () => ({}));",
+    ].join("\n"), hits: 18 },
     spare: [
       "jest.mock('@/context/SocketContextual', () => ({}));",
       "jest.mock('@tanstack/react-query-devtools', () => ({}));",
@@ -773,6 +784,8 @@ const GUARDS = [
       "await live.deliver('game:state', wire(ENDED, 0), () => {});",
       "import { useGameTable } from '@/context/GameContext';",
       "import { QueryClient } from '@tanstack/react-query';",
+      "const { useGameTable } = await import('@/context/GameContext');",
+      "import type { LocalTable } from '@/context/GameContext';",
       "jest.spyOn(lampControls, 'setTarget');",
     ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
   },
