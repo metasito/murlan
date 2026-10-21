@@ -11,9 +11,6 @@ import { appendReplayMove, replaySeatsOf } from "../../server/game/replayShape.t
 import { simulateOfflineMatch, type SimulateMatchOptions } from "../helpers/offlineMatch.ts";
 import { mulberry32 } from "../support/game.ts";
 
-// Every state of a seeded match makes three round trips — the offline save, the persisted restore
-// gate, the replay — and each loses nothing. fast-check shrinks a failure to its (seed, table).
-
 const SEED = Number(process.env.FC_SEED ?? 20261021);
 const NUM_RUNS = Number(process.env.FC_RUNS ?? 6);
 const MIN_TRANSITIONS = 40;
@@ -123,6 +120,7 @@ function replayAgrees(round: LoggedRound): void {
     opening: game.replayOpening ?? null,
     finishingOrder: final.finishingOrder,
   };
+  const firstPlay = after.findIndex((s) => s.lastMove.kind === "play");
   for (let k = -1; k < after.length; k++) {
     const live = k < 0 ? before : after[k];
     const shown = replayStateAt(dto, k);
@@ -134,20 +132,20 @@ function replayAgrees(round: LoggedRound): void {
     );
     assert.deepEqual(shown.lastMove, live.lastMove, `${at}: lastMove`);
     assert.deepEqual(shown.lastPlayedCombination, live.lastPlayedCombination, `${at}: pile`);
-    if (live.lastPlayedCombination) assert.equal(shown.lastPlayedBy, live.lastPlayedBy, `${at}: whose pile`);
+    if (firstPlay >= 0 && k >= firstPlay) assert.equal(shown.lastPlayedBy, live.lastPlayedBy, `${at}: lastPlayedBy`);
     assert.deepEqual(shown.playedRanks, live.playedRanks, `${at}: playedRanks`);
     assert.equal(shown.gameMode, live.gameMode, `${at}: gameMode`);
     assert.equal(shown.roundOver, live.roundOver, `${at}: roundOver`);
     if (live.roundOver) assert.deepEqual(shown.finishingOrder, live.finishingOrder, `${at}: finishingOrder`);
-    else if (k >= 0) assert.equal(shown.currentTurnIndex, live.currentTurnIndex, `${at}: seat on move`);
+    else assert.equal(shown.currentTurnIndex, live.currentTurnIndex, `${at}: seat on move`);
   }
 }
 
 test("every round of a seeded match replays as the live table played it, move by move", () => {
   seen.exchange = seen.twoJokers = false;
-  let rounds = 0;
   fc.assert(
     fc.property(draws, ([seed, table]) => {
+      let rounds = 0;
       let round: LoggedRound | null = null;
       let roundIndex = -1;
       play(seed, table, {
@@ -173,9 +171,9 @@ test("every round of a seeded match replays as the live table played it, move by
           }
         },
       });
+      assert.ok(rounds >= 1, `no round of seed ${seed} at ${table.players} seats, ${table.mode} was replayed`);
     }),
     { seed: SEED, numRuns: NUM_RUNS }
   );
-  assert.ok(rounds >= NUM_RUNS, `only ${rounds} rounds replayed`);
   assertBandCovered();
 });
