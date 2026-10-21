@@ -84,26 +84,24 @@ export function db(): Database {
 
 /**
  * Waits up to `drainMs` for the pool to go quiet, then ends it; `ended` settles
- * once it has. A pool still busy past `drainMs` is ended without waiting:
- * `pool.end()` waits on every checked-out client, and one the drain could not
- * account for never comes back.
+ * once it has. A pool still busy past `drainMs` is logged and ended anyway, and
+ * its `ended` may never settle — `pool.end()` waits on every checked-out client
+ * — so a caller with a deadline bounds the wait itself.
  *
  * The drain comes first because the writes this protects — `handleRoundOver`,
  * `persistGameState`, a disconnect's teardown — are fire-and-forget, and
  * nothing else holds a promise for any of them.
  */
-export async function closeDatabase(
-  { drainMs = 5_000 }: { drainMs?: number } = {}
-): Promise<{ ended: Promise<void> }> {
+export async function closeDatabase({ drainMs }: { drainMs?: number } = {}): Promise<{ ended: Promise<void> }> {
   if (!open) return { ended: Promise.resolve() };
   const closing = open.pool;
-  const drained = await drainPool(closing, { timeoutMs: drainMs });
+  if (!(await drainPool(closing, { timeoutMs: drainMs }))) {
+    // While still open: the error recorder writes this line through db().
+    logger.error(
+      { busy: closing.totalCount - closing.idleCount, waiting: closing.waitingCount },
+      "Postgres pool still busy after the drain window — in-flight writes are being abandoned"
+    );
+  }
   open = null;
-  const ended = closing.end().catch((err) => logger.error({ err }, "Pool close failed"));
-  if (drained) return { ended };
-  logger.error(
-    { busy: closing.totalCount - closing.idleCount, waiting: closing.waitingCount },
-    "Postgres pool still busy after the drain window — in-flight writes are being abandoned"
-  );
-  return { ended: Promise.resolve() };
+  return { ended: closing.end().catch((err) => logger.error({ err }, "Pool close failed")) };
 }

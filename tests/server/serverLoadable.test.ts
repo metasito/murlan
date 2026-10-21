@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { closeDatabase, DatabaseNotOpenError, openDatabase, pool } from "../../server/store/db.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -59,7 +60,6 @@ for (const name of SERVER_SAFE_LIB) {
 // No database needed: this inspects how the Pool was constructed, not whether
 // it can connect.
 test("the Postgres pool is constructed with an error handler and timeouts", async () => {
-  const { openDatabase, closeDatabase, pool, DatabaseNotOpenError } = await import("../../server/store/db.ts");
   assert.throws(() => pool(), DatabaseNotOpenError);
   openDatabase();
   const appPool = pool();

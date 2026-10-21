@@ -9,10 +9,11 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 /**
  * Two servers in one process each read their own env when they boot; a read
  * made while a module loads is settled by whoever imported it first.
- * `NODE_ENV` in the logger is the one read left: it picks pino's transport,
- * which is fixed when the instance every module imports is built.
+ * `NODE_ENV` in `createLogger` is the one setting left: it picks pino's level
+ * and transport, fixed when the instance every module imports is built. Named
+ * by line, so another read, even of the same variable, fails.
  */
-const KNOWN = ["NODE_ENV @ server/shared/logger.ts"];
+const KNOWN = ["NODE_ENV @ server/shared/logger.ts:71", "NODE_ENV @ server/shared/logger.ts:79"];
 
 const reads = new Set<string>();
 const env = process.env;
@@ -21,9 +22,9 @@ const env = process.env;
 process.env = new Proxy(env, {
   get(target, key, receiver) {
     const caller = new Error().stack?.split("\n")[2] ?? "";
-    const file = caller.match(/file:\/\/(\/[^:]+):\d+:\d+/)?.[1];
+    const [, file, line] = caller.match(/file:\/\/(\/[^:]+):(\d+):\d+/) ?? [];
     if (file?.startsWith(repoRoot) && !file.includes("node_modules")) {
-      reads.add(`${String(key)} @ ${path.relative(repoRoot, file).split(path.sep).join("/")}`);
+      reads.add(`${String(key)} @ ${path.relative(repoRoot, file).split(path.sep).join("/")}:${line}`);
     }
     return Reflect.get(target, key, receiver);
   },
@@ -36,7 +37,7 @@ const MODULES = readdirSync(path.join(repoRoot, "server"), { recursive: true, en
 test("no server module reads the environment while it loads", async () => {
   void process.env.MURLAN_IMPORT_PROBE;
   assert.ok(
-    reads.has("MURLAN_IMPORT_PROBE @ tests/server/noEnvReadAtImport.test.ts"),
+    [...reads].some((r) => r.startsWith("MURLAN_IMPORT_PROBE @ tests/server/noEnvReadAtImport.test.ts:")),
     "the probe did not see a read made in plain sight, so it proves nothing"
   );
   reads.clear();
