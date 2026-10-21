@@ -16,20 +16,18 @@ import { Colors, FontSize, Radius, Spacing, Type } from "@/lib/theme";
 import { PROVISIONAL_ROUNDS, formatSeason } from "@/lib/game/rating";
 import { useTranslation } from "@/lib/i18n";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
-import { queryKey, useApi } from "@/lib/queries";
+import { ladderBoards, queryKey, useApi } from "@/lib/queries";
 
 
 
 /** Gold, silver and bronze for the top three; everyone else takes the plain ink. */
 const RANK_COLORS = [Colors.podiumGold, Colors.podiumSilver, Colors.podiumBronze];
 
-const BOARDS = { global: queryKey("ratings/leaderboard"), friends: queryKey("ratings/leaderboard/friends") };
-
 export default function LeaderboardScreen() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [scope, setScope] = useState<keyof typeof BOARDS>("global");
-  const boardQuery = useApi(BOARDS[scope]);
+  const [scope, setScope] = useState<keyof typeof ladderBoards>("global");
+  const boardQuery = useApi(ladderBoards[scope]);
   const meQuery = useApi(queryKey("ratings/me"));
 
   const board = boardQuery.data ?? [];

@@ -14,13 +14,16 @@ export type Read = GetRoute extends infer R
 type RouteOf<P extends Read> = Extract<GetRoute, `GET /api/${P}`>;
 type Params<P extends Read> = keyof ParamsOf<RouteOf<P>> extends never ? [] : [params: ParamsOf<RouteOf<P>>];
 export type Answer<P extends Read> = ResOf<RouteOf<P>>;
+/** A read whose answer is a list of rows with ids, which a pushed row can be seated in. */
+export type ListRead = { [P in Read]: Answer<P> extends readonly { id: string }[] ? P : never }[Read];
+export type Row<P extends ListRead> = Answer<P>[number];
 
 declare const read: unique symbol;
 /** One cache entry: the URL it is read from, and at the type level which read answers it. */
-export type ApiKey<P extends Read = Read> = readonly [url: string] & { readonly [read]?: P };
+export type ApiKey<P extends Read = Read> = readonly [url: string] & { readonly [read]: P };
 
 export function queryKey<P extends Read>(path: P, ...[params]: Params<P>): ApiKey<P> {
-  return [apiPath(path, params as Record<string, string> | undefined)] as ApiKey<P>;
+  return [apiPath(path, params as Record<string, string> | undefined)] as unknown as ApiKey<P>;
 }
 
 export function useApi<P extends Read>(
@@ -30,7 +33,11 @@ export function useApi<P extends Read>(
   return useQuery<Answer<P>>({ ...options, queryKey: key, queryFn: () => api(key) });
 }
 
-const ladder = [queryKey("ratings/leaderboard"), queryKey("ratings/leaderboard/friends")];
+export const ladderBoards = {
+  global: queryKey("ratings/leaderboard"),
+  friends: queryKey("ratings/leaderboard/friends"),
+} as const;
+const ladder = Object.values(ladderBoards);
 const friendLists = [queryKey("friends"), queryKey("friends/requests"), queryKey("friends/sent")];
 
 /** What each event can have moved, the server being the one who knows by how much. */

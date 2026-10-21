@@ -12,7 +12,7 @@ import React, {
 import { router } from "expo-router";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/query-client";
-import { markStale, queryKey, stale, useApi, type ApiKey } from "@/lib/queries";
+import { markStale, queryKey, stale, useApi, type Answer, type ApiKey, type ListRead, type Row } from "@/lib/queries";
 import { useAuth } from "@/context/AuthContext";
 import {
   connectSocket,
@@ -43,9 +43,9 @@ import type { Socket as UntypedSocket } from "socket.io-client";
  * call site — a server that predates it, or a row created by a path that emits
  * nothing — and without one the fetch does all of the work, as it always did.
  */
-function seatRow<T extends { id: string }>(qc: QueryClient, key: ApiKey, row: T | undefined) {
+function seatRow<P extends ListRead>(qc: QueryClient, key: ApiKey<P>, row: Row<P> | undefined) {
   if (!row) return;
-  qc.setQueryData<T[]>(key, (rows = []) =>
+  qc.setQueryData<Row<P>[]>(key, (rows = []) =>
     rows.some((r) => r.id === row.id) ? rows : [...rows, row]
   );
 }
@@ -355,7 +355,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       // /api/friends returned while the friend was still online — their
       // previous disconnect, not the one just announced.
       if (lastSeen) {
-        qc.setQueryData<{ id: string; lastSeen: string | null }[]>(
+        qc.setQueryData<Answer<"friends">>(
           queryKey("friends"),
           (friends) => friends?.map((f) => (f.id === friendId ? { ...f, lastSeen } : f))
         );

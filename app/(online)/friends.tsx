@@ -12,7 +12,7 @@ import { uiFeedback } from "@/lib/device/feedback";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { markStale, queryKey, useApi, type ApiKey } from "@/lib/queries";
+import { markStale, queryKey, useApi, type ApiKey, type ListRead, type Row } from "@/lib/queries";
 import { useInvites, usePresence } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
 import { useOnlineConnection, useServerError } from "@/context/onlineGameHooks";
@@ -99,14 +99,14 @@ export default function FriendsScreen() {
   const pendingCount = requests.length + sentRequests.length;
 
   // A row leaves its list at once and comes back if the server refuses.
-  const dropRow = (key: ApiKey) => ({
+  const dropRow = <P extends ListRead>(key: ApiKey<P>) => ({
     onMutate: async (id: string) => {
       await qc.cancelQueries({ queryKey: key });
-      const previous = qc.getQueryData<{ id: string }[]>(key);
-      qc.setQueryData<{ id: string }[]>(key, (old = []) => old.filter((r) => r.id !== id));
+      const previous = qc.getQueryData<Row<P>[]>(key);
+      qc.setQueryData<Row<P>[]>(key, (old = []) => old.filter((r) => r.id !== id));
       return { previous };
     },
-    onError: (e: unknown, _id: string, context?: { previous?: { id: string }[] }) => {
+    onError: (e: unknown, _id: string, context?: { previous?: Row<P>[] }) => {
       qc.setQueryData(key, context?.previous);
       notifyError(serverErrorMessage(e, t("friends.actionFailed")));
     },
