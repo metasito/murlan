@@ -5,21 +5,22 @@
 // crossing the felt. A turn loop reading only that flag starts a bot's
 // "thinking" timer over the top of the ceremony every seat is watching.
 //
-// What is under test is the gate, not the clock: `runBotTurn` is the context's,
-// and whether the screen ever calls it is the whole question.
+// What is under test is the gate, not the clock: whether the bot ever moves the
+// provider's table is the whole question.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { act } from '@testing-library/react-native';
 import type { GameState } from '@/lib/game/gameEngine';
-import { state } from '../support/game';
-import { renderApp } from './harness/renderApp';
+import { aThreePlayed, state } from '../support/game';
+import { useGameTable } from '@/context/GameContext';
+import { offlineSave, renderAppHook } from './harness/renderApp';
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
-const mockRunBotTurn = jest.fn();
-const mockTable: { props: { onExchangeReady?: () => void } } = { props: {} };
+type TableProps = { onExchangeReady?: () => void; onExchangeGive?: (cardId: string) => void; exchangeAnnouncement?: { visible: boolean; onDismiss: () => void } };
+const mockTable: { props: TableProps } = { props: {} };
 
 /** The bot is on move and the exchange has just resolved. */
 const STATE: GameState = state({
@@ -36,6 +37,7 @@ const STATE: GameState = state({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 });
 
@@ -49,18 +51,23 @@ const CHOOSING: GameState = state({
   exchangePhase: { active: true, winnerIdx: 1, loserIdx: 0, cardFromLoser: { id: '2_clubs', suit: 'clubs', rank: '2', isJoker: false }, twoJokerException: false },
 });
 
-/** Flipped between renders: prefixed so jest.mock may close over it. */
-const mockCeremony = { announcing: false, state: STATE };
-
-jest.mock('@/context/GameContext', () =>
-  (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(() => ({
-    gameState: mockCeremony.state,
-    runBotTurn: mockRunBotTurn,
-    exchangeAnnouncing: mockCeremony.announcing,
-    exchangeAnnounceData: null,
-    match: { length: 'single', target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
-  }))
-);
+/** The human won the last round and owes the bot a card back; the bot, having lost, leads. */
+const GIVING: GameState = state({
+  ...STATE,
+  players: [
+    {
+      id: 'player_0',
+      name: 'Ana',
+      hand: [
+        { id: '4_clubs', suit: 'clubs', rank: '4', isJoker: false },
+        { id: '2_clubs', suit: 'clubs', rank: '2', isJoker: false },
+      ],
+      type: 'human',
+    },
+    { id: 'player_1', name: 'Luan', hand: [{ id: '6_clubs', suit: 'clubs', rank: '6', isJoker: false }], type: 'bot' },
+  ],
+  exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: { id: '2_clubs', suit: 'clubs', rank: '2', isJoker: false }, twoJokerException: false },
+});
 
 // The table draws nothing here: every path under test is the screen's own
 // effect, and a real table would bring the whole felt with it.
@@ -68,7 +75,7 @@ jest.mock('@/components/GameTable', () => {
   const react = require('react') as typeof import('react');
   const rn = require('react-native') as typeof import('react-native');
   return {
-    GameTable: (props: { onExchangeReady?: () => void }) => {
+    GameTable: (props: TableProps) => {
       mockTable.props = props;
       return react.createElement(rn.View, { testID: 'table' });
     },
@@ -80,11 +87,28 @@ import GameScreen from '@/app/game';
 /** Comfortably past the bot's think, whatever it is set to (lib/timeline/offlineBotDelay.ts). */
 const PAST_THE_THINK = 5_000;
 
-const mount = (ui: React.ReactElement) => renderApp(ui);
+/** The screen over `table` resumed; `moves()` counts the tables the provider has committed since. */
+const mount = async (table: GameState) => {
+  const seen: (GameState | null)[] = [];
+  const view = await renderAppHook(() => useGameTable().gameState, {
+    offline: offlineSave(table),
+    wrap: (probe) => (
+      <>
+        {probe}
+        <GameScreen />
+      </>
+    ),
+  });
+  const moves = () => {
+    if (seen.at(-1) !== view.result.current) seen.push(view.result.current);
+    return seen.length - 1;
+  };
+  moves();
+  return { ...view, moves };
+};
 
 describe('a bot on move while the exchange is being announced', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
     jest.useFakeTimers();
   });
   afterEach(() => {
@@ -93,37 +117,36 @@ describe('a bot on move while the exchange is being announced', () => {
 
   // What the bot gives is the provider's (tests/native/offlineDriver.test.tsx); when is the table's.
   it('a bot winner gives when the table opens the choice, not on a clock of its own', async () => {
-    mockCeremony.state = CHOOSING;
-    const view = await mount(<GameScreen />);
+    const view = await mount(CHOOSING);
     await act(async () => {
       jest.advanceTimersByTime(PAST_THE_THINK * 4);
     });
-    expect(mockRunBotTurn).not.toHaveBeenCalled();
+    expect(view.moves()).toBe(0);
     await act(async () => mockTable.props.onExchangeReady?.());
-    expect(mockRunBotTurn).toHaveBeenCalledTimes(1);
+    expect(view.moves()).toBe(1);
+    expect(view.result.current?.exchangePhase?.active).toBe(false);
     await view.unmount();
-    mockCeremony.state = STATE;
   });
 
   it('does not play until the ceremony is over', async () => {
-    mockCeremony.announcing = true;
-    const view = await mount(<GameScreen />);
+    const view = await mount(GIVING);
+    await act(async () => mockTable.props.onExchangeGive?.('4_clubs'));
+    expect(view.moves()).toBe(1);
+    expect(mockTable.props.exchangeAnnouncement?.visible).toBe(true);
+    expect(view.result.current?.players[view.result.current.currentTurnIndex].type).toBe('bot');
 
     await act(async () => {
       jest.advanceTimersByTime(PAST_THE_THINK);
     });
-    // A call here is a card thrown over the ceremony every seat is watching.
-    expect(mockRunBotTurn).not.toHaveBeenCalled();
+    // A move here is a card thrown over the ceremony every seat is watching.
+    expect(view.moves()).toBe(1);
 
-    mockCeremony.announcing = false;
-    await act(async () => {
-      view.rerender(<GameScreen />);
-    });
+    await act(async () => mockTable.props.exchangeAnnouncement?.onDismiss());
     await act(async () => {
       jest.advanceTimersByTime(PAST_THE_THINK);
     });
-    // …and no call here is a table that never takes its turn back.
-    expect(mockRunBotTurn).toHaveBeenCalled();
+    // …and none here is a table that never takes its turn back.
+    expect(view.moves()).toBe(2);
 
     await view.unmount();
   });

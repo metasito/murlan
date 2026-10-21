@@ -12,16 +12,6 @@ jest.mock('expo-router', () => ({
 
 jest.mock('@/components/SettingsModal', () => ({ SettingsModal: () => null }));
 
-jest.mock('@/context/GameContext', () =>
-  (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(undefined, () => ({
-    hasSavedGame: false,
-    resumeGame: () => false,
-  }))
-);
-jest.mock('@/context/SocketContext', () => ({
-  ...jest.requireActual<object>('@/context/SocketContext'),
-  useInvites: () => ({ invites: [], accept: () => {} }),
-}));
 import HomeScreen from '@/app/index';
 import { t } from '@/lib/i18n';
 import { setMotion } from './harness/env';

@@ -13,7 +13,7 @@ jest.mock('expo-router', () => ({
 const card = (rank: string, suit: string) => ({ id: `${rank}_${suit}`, rank, suit, isJoker: false });
 const combo = (type: string, cards: ReturnType<typeof card>[]) => ({ type, cards, strength: 1 });
 
-const mockReplay = {
+const REPLAY = {
   id: 'r1',
   finishedAt: '2026-08-20T10:00:00.000Z',
   gameMode: 'free_for_all',
@@ -28,17 +28,13 @@ const mockReplay = {
   ],
 };
 
-jest.mock('@tanstack/react-query', () => ({
-  ...jest.requireActual<object>('@tanstack/react-query'),
-  useQuery: () => ({ data: mockReplay, isError: false, isLoading: false }),
-  useQueryClient: () => ({ setQueryData: jest.fn(), invalidateQueries: jest.fn() }),
-}));
-
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react-native';
+import { fireEvent } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { translate, DEFAULT_LOCALE } from '@/shared/i18n';
 import type { TranslationKey } from '@/shared/i18n';
+import { queriesSettled, renderApp } from './harness/renderApp';
+import { route } from './mocks/http';
 
 const ReplayScreen = require('@/app/(online)/replay').default as React.ComponentType;
 
@@ -49,16 +45,21 @@ const METRICS = {
   insets: { top: 0, left: 0, right: 0, bottom: 0 },
 };
 
-const show = () =>
-  render(
+const show = async (answer?: Parameters<typeof route>[2]) => {
+  if (answer) route('GET', '/api/replays/r1', answer);
+  const view = await renderApp(
     <SafeAreaProvider initialMetrics={METRICS}>
       <ReplayScreen />
-    </SafeAreaProvider>
+    </SafeAreaProvider>,
+    { user: { id: 'u1', username: 'Ana' } }
   );
+  await queriesSettled();
+  return view;
+};
 
 describe('the replay transport once the tape has run out', () => {
   it('answers play, not pause, to a play tapped on the last move', async () => {
-    const view = await show();
+    const view = await show({ body: REPLAY });
     // Two moves, so stepping twice lands on the last one.
     await fireEvent.press(view.getByLabelText(t('replay.nextA11yLabel')));
     await fireEvent.press(view.getByLabelText(t('replay.nextA11yLabel')));

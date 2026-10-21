@@ -12,54 +12,26 @@ import { renderApp } from './harness/renderApp';
 
 import { getVisibleText } from './visibilityHelpers';
 
-jest.mock('@/context/SocketContext', () => ({
-  ...jest.requireActual<object>('@/context/SocketContext'),
-  useInvites: () => ({
-    prompt: null,
-    clearPrompt: jest.fn(),
-    invites: [],
-    dismiss: jest.fn(),
-    accepted: null,
-    accept: jest.fn(),
-    clearAccepted: jest.fn(),
-  }),
-}));
-
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn(), replace: jest.fn() } }));
-
-const mockUseOnlineConnection = jest.fn();
-jest.mock('@/context/onlineGameHooks', () => ({
-  useServerError: () => null,
-  useOnlineRoom: () => ({
-    createRoom: jest.fn(),
-    joinRoom: jest.fn(),
-    spectateRoom: jest.fn(),
-    room: null,
-    isSpectator: false,
-  }),
-  useOnlineTable: () => ({ gameState: null }),
-  useOnlineConnection: () => mockUseOnlineConnection(),
-}));
 
 import OnlineLobbyScreen from '@/app/(online)/index';
 
 
-const mount = async () => {
+/** `id` apart per test: an account's socket outlives the render, connected or not. */
+const mount = async (id: string, connected: boolean) => {
   await setWindow({ width: 390, height: 844 });
-  return renderApp(<OnlineLobbyScreen />, { user: { id: 'u1', username: 'Ana' } });
+  return renderApp(<OnlineLobbyScreen />, { user: { id, username: 'Ana' }, online: true, connected });
 };
 
 describe('the online lobby connection status', () => {
   it('names the connected state next to the dot, actually visible — not colour alone', async () => {
-    mockUseOnlineConnection.mockReturnValue({ connected: true, error: null, clearError: jest.fn() });
-    const r = await mount();
+    const r = await mount('u1', true);
     getVisibleText(screen, 'Connected as Ana');
     await r.unmount();
   });
 
   it('names the connecting state next to the dot, actually visible — not colour alone', async () => {
-    mockUseOnlineConnection.mockReturnValue({ connected: false, error: null, clearError: jest.fn() });
-    const r = await mount();
+    const r = await mount('u2', false);
     getVisibleText(screen, 'Connecting…');
     await r.unmount();
   });

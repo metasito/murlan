@@ -6,16 +6,16 @@ import { act } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import type { GameState } from '@/lib/game/gameEngine';
 import { RoundEnding } from '@/lib/tokens';
-import { state } from '../support/game';
-import { renderApp } from './harness/renderApp';
+import { aThreePlayed, state } from '../support/game';
+import { useGameTable } from '@/context/GameContext';
+import { offlineSave, renderAppHook } from './harness/renderApp';
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
-const mockStartNextRound = jest.fn();
-const mockTable: { props: { onRoundLanded?: (landsAt: number) => void } } = { props: {} };
-const mockMatch = { over: false };
+type TableProps = { onRoundLanded?: (landsAt: number) => void; onPlay?: (cardIds: string[]) => void };
+const mockTable: { props: TableProps } = { props: {} };
 
 const mockOver: GameState = state({
   players: [
@@ -31,24 +31,15 @@ const mockOver: GameState = state({
   roundOver: true,
   finishingOrder: ['player_0', 'player_1'],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 });
-
-jest.mock('@/context/GameContext', () =>
-  (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(() => ({
-    gameState: mockOver,
-    exchangeAnnouncing: false,
-    exchangeAnnounceData: null,
-    startNextRound: mockStartNextRound,
-    match: { length: 'match', target: 21, over: mockMatch.over, scores: {}, rounds: [] },
-  }))
-);
 
 jest.mock('@/components/GameTable', () => {
   const react = require('react') as typeof import('react');
   const rn = require('react-native') as typeof import('react-native');
   return {
-    GameTable: (props: { onRoundLanded?: (landsAt: number) => void }) => {
+    GameTable: (props: TableProps) => {
       mockTable.props = props;
       return react.createElement(rn.View, { testID: 'table' });
     },
@@ -59,13 +50,43 @@ import GameScreen from '@/app/game';
 
 const LONG_AFTER = 10_000;
 
-const mount = (ui: React.ReactElement) => renderApp(ui);
+/** One card left in Ana's hand, hers to lead: playing it ends the round, and in a single match the match. */
+const LAST_CARD: GameState = state({
+  ...mockOver,
+  players: [
+    { id: 'player_0', name: 'Ana', hand: [{ id: '3_spades', rank: '3', suit: 'spades', isJoker: false }], type: 'human' },
+    { id: 'player_1', name: 'Luan', hand: [{ id: '4_spades', rank: '4', suit: 'spades', isJoker: false }], type: 'bot' },
+  ],
+  roundOver: false,
+  finishingOrder: [],
+});
+
+let seen: (GameState | null)[] = [];
+const useRecordedTable = () => {
+  const { gameState } = useGameTable();
+  if (seen.at(-1) !== gameState) seen.push(gameState);
+  return gameState;
+};
+/** Rounds dealt since the screen mounted: each one takes a finished table back to a live one. */
+const deals = () => seen.filter((s, i) => i > 0 && s && !s.roundOver && seen[i - 1]?.roundOver).length;
+
+const mount = async (save = offlineSave(mockOver, { length: 'match' })) => {
+  seen = [];
+  return renderAppHook(useRecordedTable, {
+    offline: save,
+    wrap: (probe) => (
+      <>
+        {probe}
+        <GameScreen />
+      </>
+    ),
+  });
+};
 
 describe('the end of a round, offline', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
-    mockMatch.over = false;
     mockTable.props = {};
   });
   afterEach(() => {
@@ -73,32 +94,32 @@ describe('the end of a round, offline', () => {
   });
 
   it('deals the next round once, at the ending landing plus the deal onset, and never changes route', async () => {
-    const view = await mount(<GameScreen />);
+    const view = await mount();
     await act(async () => {
       jest.advanceTimersByTime(LONG_AFTER);
     });
     expect(router.replace).not.toHaveBeenCalled();
-    expect(mockStartNextRound).not.toHaveBeenCalled();
+    expect(deals()).toBe(0);
 
     await act(async () => mockTable.props.onRoundLanded?.(performance.now()));
     await act(async () => {
       jest.advanceTimersByTime(RoundEnding.deal - 1);
     });
-    expect(mockStartNextRound).not.toHaveBeenCalled();
+    expect(deals()).toBe(0);
     await act(async () => {
       jest.advanceTimersByTime(1);
     });
-    expect(mockStartNextRound).toHaveBeenCalledTimes(1);
+    expect(deals()).toBe(1);
     await act(async () => {
       jest.advanceTimersByTime(LONG_AFTER);
     });
-    expect(mockStartNextRound).toHaveBeenCalledTimes(1);
+    expect(deals()).toBe(1);
     expect(router.replace).not.toHaveBeenCalled();
     await view.unmount();
   });
 
   it('a landing reported late still deals at its own onset', async () => {
-    const view = await mount(<GameScreen />);
+    const view = await mount();
     const landedAt = performance.now();
     await act(async () => {
       jest.advanceTimersByTime(1_000);
@@ -107,27 +128,28 @@ describe('the end of a round, offline', () => {
     await act(async () => {
       jest.advanceTimersByTime(RoundEnding.deal - 1_000);
     });
-    expect(mockStartNextRound).toHaveBeenCalledTimes(1);
+    expect(deals()).toBe(1);
     await view.unmount();
   });
 
   it('leaving before the deal cancels it', async () => {
-    const view = await mount(<GameScreen />);
+    const view = await mount();
     await act(async () => mockTable.props.onRoundLanded?.(performance.now()));
     await view.unmount();
     jest.advanceTimersByTime(LONG_AFTER);
-    expect(mockStartNextRound).not.toHaveBeenCalled();
+    expect(deals()).toBe(0);
   });
 
   it('a match ends on the table too, and the table is not asked to deal', async () => {
-    mockMatch.over = true;
-    const view = await mount(<GameScreen />);
+    const view = await mount(offlineSave(LAST_CARD, { length: 'single' }));
+    await act(async () => void mockTable.props.onPlay?.(['3_spades']));
+    expect(view.result.current?.roundOver).toBe(true);
     expect(mockTable.props.onRoundLanded).toBeUndefined();
     await act(async () => {
       jest.advanceTimersByTime(LONG_AFTER);
     });
     expect(router.replace).not.toHaveBeenCalled();
-    expect(mockStartNextRound).not.toHaveBeenCalled();
+    expect(deals()).toBe(0);
     await view.unmount();
   });
 });

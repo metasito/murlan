@@ -18,28 +18,21 @@ jest.mock('expo-router', () => ({
 
 jest.mock('@/components/SettingsModal', () => ({ SettingsModal: () => null }));
 
-jest.mock('@/context/GameContext', () =>
-  (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(undefined, () => ({
-    hasSavedGame: true,
-    resumeGame: () => false,
-  }))
-);
-jest.mock('@/context/SocketContext', () => ({
-  ...jest.requireActual<object>('@/context/SocketContext'),
-  useInvites: () => ({ invites: [], accept: () => {} }),
-}));
 import HomeScreen from '@/app/index';
 import { t } from '@/lib/i18n';
 import { ACTIVE_ROOM_KEY } from '@/lib/storageKeys';
 import { setMotion } from './harness/env';
-import { renderApp } from './harness/renderApp';
+import { aThreePlayed, state } from '../support/game';
+import { offlineSave, renderApp } from './harness/renderApp';
 import { unreachable } from './mocks/http';
+
+const OFFLINE_MATCH = offlineSave(state({ firstPlayMade: true, playedRanks: aThreePlayed() }), { length: 'match' });
 
 const mount = async () => {
   await AsyncStorage.clear();
   if (storedRoom) await AsyncStorage.setItem(ACTIVE_ROOM_KEY, storedRoom);
   // Signed out with the session never confirmed gone: nothing has cleared the stale room key.
-  return renderApp(<HomeScreen />, authUser ? { user: authUser } : { me: unreachable });
+  return renderApp(<HomeScreen />, { ...(authUser ? { user: authUser } : { me: unreachable }), saved: OFFLINE_MATCH });
 };
 
 beforeEach(() => setMotion('on'));

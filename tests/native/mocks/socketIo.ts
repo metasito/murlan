@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import { act } from '@testing-library/react-native';
 import type { ClientToServerEvents, IntentReply, ServerToClientEvents } from '@/shared/protocol';
 
 type Listener = (...args: never[]) => void;
@@ -32,6 +33,8 @@ export class FakeSocket {
   active = false;
   readonly sent: { event: keyof Outgoing; args: unknown[] }[] = [];
   readonly acks: PendingAck[] = [];
+  /** Set, every ack is answered with it as it is sent, as a server that takes every intent does. */
+  answering: IntentReply | null = null;
   /** The latest credentials lib/socket.ts handed over, as each connection attempt asks for them. */
   credentials: Promise<Record<string, unknown>> | null = null;
   readonly connect = jest.fn(() => {
@@ -45,6 +48,9 @@ export class FakeSocket {
   });
   readonly io = { reconnection: jest.fn() };
   private readonly listeners = new Map<string, Listener[]>();
+  /** How often each event was subscribed and unsubscribed over the socket's life. */
+  readonly subscriptions = new Map<string, { on: number; off: number }>();
+  private readonly unanswered = new Set<() => void>();
 
   constructor(
     readonly uri: string,
@@ -59,12 +65,19 @@ export class FakeSocket {
     this.credentials = this.handshake();
   }
 
+  private count(event: string, way: 'on' | 'off'): void {
+    const tally = this.subscriptions.get(event) ?? { on: 0, off: 0 };
+    this.subscriptions.set(event, { ...tally, [way]: tally[way] + 1 });
+  }
+
   on(event: string, fn: Listener): this {
+    this.count(event, 'on');
     this.listeners.set(event, [...(this.listeners.get(event) ?? []), fn]);
     return this;
   }
 
   off(event: string, fn?: Listener): this {
+    this.count(event, 'off');
     if (!fn) {
       this.listeners.delete(event);
       return this;
@@ -107,15 +120,20 @@ export class FakeSocket {
           payload: payload as never,
           timeoutMs,
           settled: false,
-          answer: (reply) => settle(() => ack(null, reply)),
+          // A reply crosses the wire, so it lands after the emit returns; a promise, as fake timers hold queueMicrotask.
+          answer: (reply) => void Promise.resolve().then(() => settle(() => ack(null, reply))),
         };
         const settle = (call: () => void) => {
           if (pending.settled) return;
           pending.settled = true;
           clearTimeout(timer);
+          this.unanswered.delete(drop);
           call();
         };
+        const drop = () => settle(() => {});
+        this.unanswered.add(drop);
         this.acks.push(pending);
+        if (this.answering) pending.answer(this.answering);
       },
     };
   }
@@ -128,6 +146,16 @@ export class FakeSocket {
   /** The server sending `event`, or socket.io raising one of its own. */
   serverEmit<E extends keyof Incoming>(event: E, ...args: Parameters<Incoming[E]>): void {
     [...(this.listeners.get(event) ?? [])].forEach((l) => (l as (...a: unknown[]) => void)(...args));
+  }
+
+  /** `serverEmit` as one act: what a mounted screen shows once the server has said it. */
+  async deliver<E extends keyof Incoming>(event: E, ...args: Parameters<Incoming[E]>): Promise<void> {
+    await act(async () => this.serverEmit(event, ...args));
+  }
+
+  /** Every ack still out, never answered: its timer would outlive the test that sent it. */
+  abandonAcks(): void {
+    [...this.unanswered].forEach((drop) => drop());
   }
 
   /** The handshake succeeding. */
@@ -164,6 +192,7 @@ export class FakeSocket {
     this.connect.mockClear();
     this.disconnect.mockClear();
     this.io.reconnection.mockClear();
+    this.answering = null;
   }
 }
 
