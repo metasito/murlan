@@ -23,6 +23,16 @@ test("a later move is new", () => {
   assert.equal(moveSince(play, pass), pass);
 });
 
+test("a seat that plays again at a later count is new", () => {
+  const next: LastMove = { seq: 5, kind: "play", seat: 2 };
+  assert.equal(moveSince({ seq: 3, kind: "play", seat: 2 }, next), next);
+});
+
+test("a seat that passes again at a later count is new", () => {
+  const next: LastMove = { seq: 6, kind: "pass", seat: 1, closedTrick: false };
+  assert.equal(moveSince({ seq: 4, kind: "pass", seat: 1, closedTrick: false }, next), next);
+});
+
 test("the next round's deal is new after the last round's moves", () => {
   assert.equal(moveSince(pass, deal), deal);
 });
