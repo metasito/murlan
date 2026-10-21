@@ -6,7 +6,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocalSearchParams } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { queryKey, useApi } from "@/lib/queries";
 import { GameTable } from "@/components/GameTable";
 import { MenuLayout } from "@/components/MenuLayout";
 import { leaveScreen } from "@/components/ScreenHeader";
@@ -25,8 +25,6 @@ import {
   replayMoments,
   nextMoment,
   isReadableReplay,
-  replayQueryKey,
-  type ReplayDto,
 } from "@/lib/game/replay";
 import { uiFeedback } from "@/lib/device/feedback";
 import { useTranslation } from "@/lib/i18n";
@@ -45,8 +43,7 @@ export default function ReplayScreen() {
   const [speedIndex, setSpeedIndex] = useState(0);
   const [movesOpen, setMovesOpen] = useState(false);
 
-  const { data, isError, isLoading, error, refetch } = useQuery<ReplayDto>({
-    queryKey: replayQueryKey(id ?? ""),
+  const { data, isError, isLoading, error, refetch } = useApi(queryKey("replays/:id", { id: id ?? "" }), {
     enabled: !!id,
   });
   const replay = data && isReadableReplay(data) ? data : null;

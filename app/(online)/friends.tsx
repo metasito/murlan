@@ -11,7 +11,8 @@ import { useFocusEffect } from "expo-router";
 import { uiFeedback } from "@/lib/device/feedback";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { markStale, queryKey, useApi, type ApiKey } from "@/lib/queries";
 import { useInvites, usePresence } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
 import { useOnlineConnection, useServerError } from "@/context/onlineGameHooks";
@@ -27,7 +28,7 @@ import { useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
 import { registerForPush } from "@/lib/device/pushRegistration";
 import { A11yStatus, a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
-import type { FriendInfo, FriendRequestInfo } from "@/shared/http";
+import type { FriendInfo } from "@/shared/http";
 
 
 interface SearchResult { id: string; username: string }
@@ -84,20 +85,11 @@ export default function FriendsScreen() {
     isLoading: friendsLoading,
     isError: friendsErrored,
     refetch: refetchFriends,
-  } = useQuery<FriendInfo[]>({
-    queryKey: ["/api/friends"],
-    refetchOnWindowFocus: true,
-  });
+  } = useApi(queryKey("friends"), { refetchOnWindowFocus: true });
   const friends = friendsData ?? [];
 
-  const requestsQuery = useQuery<FriendRequestInfo[]>({
-    queryKey: ["/api/friends/requests"],
-    refetchOnWindowFocus: true,
-  });
-  const sentQuery = useQuery<FriendRequestInfo[]>({
-    queryKey: ["/api/friends/sent"],
-    refetchOnWindowFocus: true,
-  });
+  const requestsQuery = useApi(queryKey("friends/requests"), { refetchOnWindowFocus: true });
+  const sentQuery = useApi(queryKey("friends/sent"), { refetchOnWindowFocus: true });
   const requests = requestsQuery.data ?? [];
   const sentRequests = sentQuery.data ?? [];
   const pendingLoading = requestsQuery.isLoading || sentQuery.isLoading;
@@ -107,15 +99,15 @@ export default function FriendsScreen() {
   const pendingCount = requests.length + sentRequests.length;
 
   // A row leaves its list at once and comes back if the server refuses.
-  const dropRow = (key: string) => ({
+  const dropRow = (key: ApiKey) => ({
     onMutate: async (id: string) => {
-      await qc.cancelQueries({ queryKey: [key] });
-      const previous = qc.getQueryData<{ id: string }[]>([key]);
-      qc.setQueryData<{ id: string }[]>([key], (old = []) => old.filter((r) => r.id !== id));
+      await qc.cancelQueries({ queryKey: key });
+      const previous = qc.getQueryData<{ id: string }[]>(key);
+      qc.setQueryData<{ id: string }[]>(key, (old = []) => old.filter((r) => r.id !== id));
       return { previous };
     },
     onError: (e: unknown, _id: string, context?: { previous?: { id: string }[] }) => {
-      qc.setQueryData([key], context?.previous);
+      qc.setQueryData(key, context?.previous);
       notifyError(serverErrorMessage(e, t("friends.actionFailed")));
     },
   });
@@ -124,41 +116,32 @@ export default function FriendsScreen() {
     mutationFn: async (id: string) => {
       await apiRequest("POST", `/api/friends/accept/${id}`);
     },
-    ...dropRow("/api/friends/requests"),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/friends"] });
-      qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
-    },
+    ...dropRow(queryKey("friends/requests")),
+    onSuccess: () => markStale(qc, [queryKey("friends"), queryKey("friends/requests")]),
   });
 
   const declineMutation = useMutation({
     mutationFn: async (id: string) => {
       await apiRequest("POST", `/api/friends/decline/${id}`);
     },
-    ...dropRow("/api/friends/requests"),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
-    },
+    ...dropRow(queryKey("friends/requests")),
+    onSuccess: () => markStale(qc, [queryKey("friends/requests")]),
   });
 
   const cancelMutation = useMutation({
     mutationFn: async (requestId: string) => {
       await apiRequest("DELETE", `/api/friends/requests/${requestId}`);
     },
-    ...dropRow("/api/friends/sent"),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/friends/sent"] });
-    },
+    ...dropRow(queryKey("friends/sent")),
+    onSuccess: () => markStale(qc, [queryKey("friends/sent")]),
   });
 
   const removeMutation = useMutation({
     mutationFn: async (friendId: string) => {
       await apiRequest("DELETE", `/api/friends/${friendId}`);
     },
-    ...dropRow("/api/friends"),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/friends"] });
-    },
+    ...dropRow(queryKey("friends")),
+    onSuccess: () => markStale(qc, [queryKey("friends")]),
   });
 
   function handleRemoveFriend(friend: FriendInfo) {
@@ -205,7 +188,7 @@ export default function FriendsScreen() {
       setSearchQuery("");
       setSearchResult(null);
       setSearchDone(false);
-      qc.invalidateQueries({ queryKey: ["/api/friends/sent"] });
+      markStale(qc, [queryKey("friends/sent")]);
     } catch (e: unknown) {
       notifyError(serverErrorMessage(e, t("common.error")));
     }

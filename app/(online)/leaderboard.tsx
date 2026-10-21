@@ -4,7 +4,6 @@
 // only past however much of the board is on screen.
 import React, { useState } from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
 import { MenuLayout, takesSlack } from "@/components/MenuLayout";
@@ -17,20 +16,21 @@ import { Colors, FontSize, Radius, Spacing, Type } from "@/lib/theme";
 import { PROVISIONAL_ROUNDS, formatSeason } from "@/lib/game/rating";
 import { useTranslation } from "@/lib/i18n";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
-import type { LeaderboardEntryDto, RatingDto } from "@/shared/http";
-import { ladderKey, type LadderScope } from "@/lib/ladderQuery";
+import { queryKey, useApi } from "@/lib/queries";
 
 
 
 /** Gold, silver and bronze for the top three; everyone else takes the plain ink. */
 const RANK_COLORS = [Colors.podiumGold, Colors.podiumSilver, Colors.podiumBronze];
 
+const BOARDS = { global: queryKey("ratings/leaderboard"), friends: queryKey("ratings/leaderboard/friends") };
+
 export default function LeaderboardScreen() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [scope, setScope] = useState<LadderScope>("global");
-  const boardQuery = useQuery<LeaderboardEntryDto[]>({ queryKey: ladderKey(scope) });
-  const meQuery = useQuery<RatingDto>({ queryKey: ["/api/ratings/me"] });
+  const [scope, setScope] = useState<keyof typeof BOARDS>("global");
+  const boardQuery = useApi(BOARDS[scope]);
+  const meQuery = useApi(queryKey("ratings/me"));
 
   const board = boardQuery.data ?? [];
   const me = meQuery.data;
