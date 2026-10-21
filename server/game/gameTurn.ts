@@ -22,7 +22,7 @@ import { closeTable, disposeGame, publishState, safeTimer } from "./gamePersiste
 import { handleRoundOver, voidAbandonedMatch } from "./roundOver.ts";
 import { commitMove } from "./tableMoves.ts";
 import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
-import { concedeRound } from "../../lib/game/gameEngine.ts";
+import { concedeRound, type GameState } from "../../lib/game/gameEngine.ts";
 import { turnSchedule, type TurnSlot } from "../../lib/game/turnSchedule.ts";
 import { gateMs } from "../../lib/timeline/turnGates.ts";
 import { handCountOf } from "../../shared/protocol.ts";
@@ -38,6 +38,17 @@ function emitTurnDeadline(rt: TableRuntime, roomId: string, game: OnlineGameStat
     turnDeadlineMs: game.turnDeadlineMs,
     turnSecondsRemaining: secondsUntil(game.turnDeadlineMs),
   });
+}
+
+/**
+ * How far into the gates the table already is: a re-arm later in the turn (a walkout, a reclaim)
+ * waits out only what is left of them. Only a giveback carries a stamp (`settledAt`); a deal
+ * carries none, so a re-arm after one waits its gates again in full.
+ */
+function elapsedSinceMove(state: GameState): number {
+  const phase = state.exchangePhase;
+  if (state.lastMove.kind !== "giveback" || phase?.kind !== "settled" || phase.settledAt === undefined) return 0;
+  return Math.max(0, now() - phase.settledAt);
 }
 
 /** A vacant seat is the bot's. */
@@ -61,10 +72,10 @@ export function armTurn(rt: TableRuntime, roomId: string) {
     return;
   }
 
-  const gatedMs = gateMs(
-    slot.gates,
-    game.gameState.players.map(handCountOf),
-    game.gameState.exchangePhase?.kind === "twoJokers"
+  const gatedMs = Math.max(
+    0,
+    gateMs(slot.gates, game.gameState.players.map(handCountOf), game.gameState.exchangePhase?.kind === "twoJokers") -
+      elapsedSinceMove(game.gameState)
   );
 
   if (slot.bot) {

@@ -3,6 +3,7 @@
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
 import type { TFn, TranslationKey } from "@/lib/i18n";
+import { TURN_POLICY, type TableKind } from "../lib/game/turnSchedule.ts";
 
 // ─── Pass affordance ─────────────────────────────────────────────────────────
 
@@ -33,11 +34,7 @@ export function urgentThresholdSeconds(clockSeconds: number): number {
   return Math.max(CLOCK_RUNNING_OUT_SECONDS, Math.ceil(clockSeconds * URGENT_FRACTION));
 }
 
-/**
- * Whether the turn countdown should run. Offline it only answers a played
- * combination (leading has no deadline); online it mirrors the server's AFK
- * window, which is armed on every turn — hence `includeNewTrick`.
- */
+/** Whether the turn countdown should run; `includeNewTrick` is whether a lead is under a deadline at all. */
 export function turnTimerActive(opts: {
   isMyTurn: boolean;
   isFinished: boolean;
@@ -79,11 +76,8 @@ export interface TurnTimerConfig {
    * a disconnect — and the clock has to follow.
    */
   resetKey?: string;
-  /**
-   * The viewer's own chip counts down while leading a new trick too (seat rings
-   * always do). False offline, no deadline; true online, armed every turn.
-   */
-  includeNewTrick?: boolean;
+  /** Whose deadline this is: `TURN_POLICY` says which turns the chip counts down on (seat rings always run). */
+  table: TableKind;
   /**
    * Called when the countdown reaches zero. Offline this auto-passes locally;
    * online it is omitted, because the server owns the timeout and the client
@@ -171,7 +165,8 @@ export function turnPresentation(i: {
     !!timer &&
     turnTimerActive({ ...who, isNewTrick: i.isNewTrick, roundOver, exchangeOpen: exchange.open, announcementHolds });
   const turnResetKey = `${i.turnToken}|${timer?.resetKey ?? ""}`;
-  const active = runs({ isMyTurn: i.isMyTurn, isFinished: i.isFinished, includeNewTrick: timer?.includeNewTrick ?? false });
+  const timedHere = !!timer && TURN_POLICY[timer.table][i.isNewTrick ? "lead" : "follow"].timed;
+  const active = timedHere && runs({ isMyTurn: i.isMyTurn, isFinished: i.isFinished, includeNewTrick: true });
   // The seat runs whenever the chip does and on more: offline, a lead runs the window though the
   // chip has no deadline there, so only an active chip's turn expires.
   const seatClock = !!timer && runs({ isMyTurn: true, isFinished: false, includeNewTrick: true });

@@ -11,6 +11,11 @@ import {
 } from "../../components/turnTimerUi.ts";
 import { describeTableForA11y, type TableA11yStrings } from "../../components/tableA11y.ts";
 import type { TFn } from "../../lib/i18n.ts";
+import { TURN_POLICY } from "../../lib/game/turnSchedule.ts";
+import { scanSources, sourcesUnder } from "../helpers/sourceScan.ts";
+import path from "node:path";
+
+const root = path.resolve(import.meta.dirname, "..", "..");
 
 
 describe("canPassNow", () => {
@@ -299,7 +304,7 @@ describe("the turn chip and its clocks", () => {
         ...base,
         roundOver: r.roundOver,
         exchange: { ...base.exchange, open: r.exchangeOpen },
-        timer: { seconds: 20, includeNewTrick: r.includeNewTrick, pausable: r.pausable },
+        timer: { seconds: 20, table: r.includeNewTrick ? "online" : "offline", pausable: r.pausable },
         isMyTurn: r.isMyTurn,
         isFinished: r.isFinished,
         isNewTrick: r.isNewTrick,
@@ -321,7 +326,7 @@ describe("the turn chip and its clocks", () => {
       shownTurnIsMine: true,
       isMyTurn: true,
       held: true,
-      timer: { seconds: 20, resetKey: "re", includeNewTrick: true },
+      timer: { seconds: 20, resetKey: "re", table: "online" },
     });
     assert.equal(shown.seatClock, true);
     assert.deepEqual([shown.window.resetKey, shown.window.running, shown.window.held], ["tok|re", true, true]);
@@ -330,9 +335,9 @@ describe("the turn chip and its clocks", () => {
 
   test("a lead offline runs the window, which only an active chip's turn lets expire", () => {
     const onExpire = () => {};
-    const lead = turnPresentation({ ...base, isMyTurn: true, isNewTrick: true, timer: { seconds: 20, onExpire } });
+    const lead = turnPresentation({ ...base, isMyTurn: true, isNewTrick: true, timer: { seconds: 20, table: "offline", onExpire } });
     assert.deepEqual([lead.clock.active, lead.window.running, lead.window.onExpire], [false, true, undefined]);
-    const answer = turnPresentation({ ...base, isMyTurn: true, timer: { seconds: 20, onExpire } });
+    const answer = turnPresentation({ ...base, isMyTurn: true, timer: { seconds: 20, table: "offline", onExpire } });
     assert.deepEqual([answer.clock.active, answer.window.running, answer.window.onExpire], [true, true, onExpire]);
   });
 
@@ -342,10 +347,25 @@ describe("the turn chip and its clocks", () => {
       ...base,
       roundOver: true,
       held: true,
-      timer: { seconds: 20, onExpire },
+      timer: { seconds: 20, table: "offline", onExpire },
       vote: { seconds: 30, resetKey: "v1" },
     });
     assert.deepEqual(shown.clock, { active: true, revealed: true });
     assert.deepEqual(shown.window, { seconds: 30, resetKey: "vote|v1", running: true, held: false });
+  });
+
+  test("the chip's clock on a lead and on an answer is the table's TURN_POLICY", () => {
+    for (const table of ["online", "offline"] as const) {
+      for (const [isNewTrick, action] of [[true, "lead"], [false, "follow"]] as const) {
+        const shown = turnPresentation({ ...base, shownTurnIsMine: true, isMyTurn: true, isNewTrick, timer: { seconds: 20, table } });
+        assert.equal(shown.clock.active, TURN_POLICY[table][action].timed, `${table} ${action}`);
+      }
+    }
+  });
+
+  test("no table states its own lead clock: each names its table and the policy answers", () => {
+    const callers = sourcesUnder(root, ["app", "context"]).filter(([, text]) => /turnTimer/.test(text));
+    assert.ok(callers.length >= 2, `found only ${callers.map(([f]) => f).join(", ")}`);
+    assert.deepEqual(scanSources(/includeNewTrick\s*:/g, callers), []);
   });
 });

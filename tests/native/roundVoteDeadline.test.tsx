@@ -48,7 +48,7 @@ const table = (roundVote: RoundVoteNote) => (
       onPass={noop}
       onQuit={noop}
       onExchangeGive={noop}
-      turnTimer={{ seconds: 0, includeNewTrick: true }}
+      turnTimer={{ seconds: 0, table: 'online' }}
       roundVote={roundVote}
     />
   </SafeAreaProvider>

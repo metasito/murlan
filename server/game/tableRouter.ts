@@ -151,7 +151,7 @@ function askOtherInstances(
         // with nothing; it answered, and it did not apply the action.
         const owner = replies.findIndex((r) => r?.code !== NOT_MINE);
         if (owner !== -1) return resolve(replies[owner] ?? UNKNOWN_ACTION);
-        // An error means some instance did not answer in time. Taking that as
+        // An error means some instance did not answer in time. Reading that as
         // "no owner" is how a slow owner's table gets taken over underneath it.
         if (err) {
           logger.debug(

@@ -33,8 +33,9 @@ Verify against source before changing any.
   (`server/game/gameTurn.ts`) and the offline table (`context/GameContext.tsx`) both. It once
   landed with only the server calling it, every check green.
 - **One module decides when a seat acts: `lib/game/turnSchedule.ts`**: who, after which gates,
-  timed or not, and how long a bot thinks. The server's `armTurn` and `context/offlineDriver.ts`
-  only resolve it to their own clocks (`tests/tooling/turnScheduleCallers.test.ts`).
+  timed or not, and how long a bot thinks. The server's `armTurn`, `context/offlineDriver.ts` and
+  the turn chip (`components/turnTimerUi.ts`) only resolve it to their own clocks
+  (`tests/tooling/turnScheduleCallers.test.ts`).
 - **Before changing a game rule** — it lives in `lib/game/gameEngine.ts`, specified by
   `docs/GAME-RULES.md`; change it only via a decision recorded in `docs/GAME-RULES.md` §
   Decisions.

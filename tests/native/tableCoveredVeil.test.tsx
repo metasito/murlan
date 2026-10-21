@@ -72,7 +72,7 @@ const withdrawn = (props: Record<string, unknown>) =>
 const tree = (tableCovered: boolean, turnTimer?: { seconds: number; resetKey: string }) => (
     <SafeAreaProvider initialMetrics={METRICS}>
       <GameTable
-        turnTimer={turnTimer && { ...turnTimer, includeNewTrick: true, onExpire: noop }}
+        turnTimer={turnTimer && { ...turnTimer, table: 'online', onExpire: noop }}
         banners={<A11yStatus label={BANNER} />}
         gameState={gameState}
         viewerSeat={0}
