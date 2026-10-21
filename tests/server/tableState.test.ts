@@ -3,11 +3,11 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { MEMORY_ONLY, PERSISTED, fromEnvelope, newTable, toEnvelope } from "../../server/game/tableState.ts";
-import { GAME_SCHEMA_VERSION } from "../../shared/persistedEnvelope.ts";
+import { GAME_SCHEMA_VERSION, OLDEST_GAME_SCHEMA_VERSION } from "../../shared/persistedEnvelope.ts";
 import { firstTargetFor, startRound } from "../../lib/game/gameEngine.ts";
 import type { GameMode, GameState } from "../../lib/game/gameEngine.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
-import type { RoundOverPayload } from "../../lib/game/matchState.ts";
+import type { RoundOverPayload } from "../../shared/protocol.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 
 const ROOM = "table-state-room";
@@ -139,9 +139,9 @@ describe("a table's round trip through active_games", () => {
   });
 
   test("an open exchange the winner cannot give back from is refused; one they can is kept", () => {
-    const withExchange = (winnerHand: GameState["players"][number]["hand"]) => {
+    const withExchange = (winnerHand?: GameState["players"][number]["hand"]) => {
       const game = midMatch();
-      game.gameState.players[0].hand = winnerHand;
+      if (winnerHand) game.gameState.players[0].hand = winnerHand;
       game.gameState.exchangePhase = {
         active: true,
         winnerIdx: 0,
@@ -152,7 +152,7 @@ describe("a table's round trip through active_games", () => {
       return fromEnvelope(persisted(game));
     };
     assert.equal(withExchange([]).ok, false);
-    assert.equal(withExchange([{ id: "5_clubs", rank: "5", suit: "clubs", isJoker: false }]).ok, true);
+    assert.equal(withExchange().ok, true);
   });
 
   test("a newer revision's row is refused as newer, an older one as unrestorable", () => {
@@ -160,7 +160,7 @@ describe("a table's round trip through active_games", () => {
     const newer = fromEnvelope({ roomId: ROOM, gameState: { ...envelope, schemaVersion: GAME_SCHEMA_VERSION + 1 } });
     assert.equal(newer.ok, false);
     assert.equal(!newer.ok && newer.newer, true);
-    const older = fromEnvelope({ roomId: ROOM, gameState: { ...envelope, schemaVersion: GAME_SCHEMA_VERSION - 1 } });
+    const older = fromEnvelope({ roomId: ROOM, gameState: { ...envelope, schemaVersion: OLDEST_GAME_SCHEMA_VERSION - 1 } });
     assert.equal(older.ok, false);
     assert.equal(!older.ok && older.newer, undefined);
   });

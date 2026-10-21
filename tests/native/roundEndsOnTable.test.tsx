@@ -6,7 +6,7 @@ import { act } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import type { GameState } from '@/lib/game/gameEngine';
 import { RoundEnding } from '@/lib/tokens';
-import { state } from '../support/game';
+import { aThreePlayed, state } from '../support/game';
 import { useGameTable } from '@/context/GameContext';
 import { offlineSave, renderAppHook } from './harness/renderApp';
 
@@ -31,6 +31,7 @@ const mockOver: GameState = state({
   roundOver: true,
   finishingOrder: ['player_0', 'player_1'],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 });
 

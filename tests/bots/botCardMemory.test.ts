@@ -114,13 +114,6 @@ describe("outstandingAbove counts what can still beat a card", () => {
     // Only the coloured joker is left above an ace.
     assert.equal(outstandingAbove(getRankStrength("A"), played, []), 1);
   });
-
-  test("an absent tally means nothing is known to be played", () => {
-    assert.equal(
-      outstandingAbove(getRankStrength("A"), undefined, []),
-      outstandingAbove(getRankStrength("A"), empty, [])
-    );
-  });
 });
 
 describe("bombPossible answers the half rank can still decide", () => {
@@ -258,35 +251,6 @@ describe("the easy bot is untouched", () => {
     const without = botChoosePlay(viewOf(me, { opponentHandCounts: [8, 8, 8] }), () => 0.5);
 
     assert.deepEqual(withMemory?.cards.map((x) => x.id), without?.cards.map((x) => x.id));
-  });
-});
-
-describe("a game rehydrated from before the tally existed", () => {
-  // GameState is persisted as jsonb, so a hand in flight across a deploy comes
-  // back without playedRanks. A bot reading an absent tally must behave exactly
-  // as it did before it existed, and nothing may throw.
-  test("chooses a legal play and does not throw", () => {
-    const hand = [c("2", "hearts"), c("J", "spades"), c("4", "clubs")];
-    const me = makePlayer(0, hand, { type: "bot", personality: "gent" });
-
-    for (const lead of [null, buildCombination([c("9", "clubs")])!]) {
-      const choice = botChoosePlay(viewOf(me, { toBeat: lead, opponentHandCounts: [5, 5, 5] }), () => 0.5);
-      if (choice) {
-        assert.ok(choice.cards.every((card) => hand.some((h) => h.id === card.id)));
-      }
-    }
-  });
-
-  test("processPlay starts a tally on a state that has none", () => {
-    const hand = [c("3", "hearts"), c("4", "clubs")];
-    const state = makeState({ players: [makePlayer(1, hand), makePlayer(2, [c("5", "clubs")])],
-      firstPlayMade: true,
-    });
-    delete (state as { playedRanks?: number[] }).playedRanks;
-
-    const after = played(state, buildCombination([hand[0]])!);
-
-    assert.equal(after.playedRanks?.[getRankStrength("3")], 1);
   });
 });
 

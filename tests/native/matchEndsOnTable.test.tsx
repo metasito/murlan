@@ -15,7 +15,7 @@ import { matchEndingOnsets } from '@/lib/timeline/matchEnding';
 import { t } from '@/lib/i18n';
 import { Layer } from '@/lib/theme';
 import { StyleSheet } from 'react-native';
-import { state } from '../support/game';
+import { aThreePlayed, state } from '../support/game';
 import { useGameTable } from '@/context/GameContext';
 import { offlineSave, renderAppHook } from './harness/renderApp';
 import { roundOver, wire } from './harness/wire';
@@ -33,6 +33,7 @@ const ENDED: GameState = state({
   roundOver: true,
   finishingOrder: ['player_1', 'player_0', 'player_2', 'player_3'],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 });
 const SCORES = { player_0: 12, player_1: 22, player_2: 6, player_3: 3 };

@@ -11,7 +11,7 @@ import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { NoticePalette } from '@/lib/theme';
 
 import { en as locale } from '@/locales/en';
-import { state } from '../support/game';
+import { aThreePlayed, state } from '../support/game';
 import { renderApp } from './harness/renderApp';
 import { wire } from './harness/wire';
 
@@ -42,6 +42,7 @@ const stateWith = (over: Partial<GameState>): GameState => state({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
   ...over,
 });

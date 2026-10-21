@@ -114,7 +114,7 @@ test("the shape hash moves with the stored document and nothing else", () => {
     "an extra WirePlayer field"
   );
   assert.deepEqual(
-    moved(edit("lib/game/matchState.ts", "  matchOver: boolean;\n  matchWinnerIds", "  matchOver: boolean;\n  extra: number;\n  matchWinnerIds")),
+    moved(edit("shared/protocol.ts", "  matchOver: z.boolean(),\n  matchWinnerIds", "  matchOver: z.boolean(),\n  extra: z.number(),\n  matchWinnerIds")),
     ["wire"],
     "an extra RoundOverPayload field"
   );

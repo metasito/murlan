@@ -29,13 +29,10 @@ import type {
  * are counted here as outstanding. That errs towards caution — the bot may hold
  * back a card that was actually unbeatable — and never towards over-confidence,
  * which is the only direction that loses a round it should have won.
- *
- * An absent `played` means nothing is known to have been played, which is what a
- * state rehydrated from before the tally existed must look like.
  */
 export function outstandingAbove(
   strength: number,
-  played: number[] | undefined,
+  played: number[],
   myHand: Card[]
 ): number {
   const out = outstandingTally(played, myHand);
@@ -45,11 +42,11 @@ export function outstandingAbove(
 }
 
 /** How many of each rank are neither played nor in `myHand`. */
-function outstandingTally(played: number[] | undefined, myHand: Card[]): number[] {
+function outstandingTally(played: number[], myHand: Card[]): number[] {
   const mine = emptyRankTally();
   for (const card of myHand) mine[getRankStrength(card.rank)] += 1;
   return DECK_BY_STRENGTH.map((total, i) =>
-    Math.max(0, total - (played?.[i] ?? 0) - mine[i])
+    Math.max(0, total - played[i] - mine[i])
   );
 }
 
@@ -61,7 +58,7 @@ function outstandingTally(played: number[] | undefined, myHand: Card[]): number[
  * size, at any time — including a joker played as a single. So rank alone never
  * makes a card safe, and this is the half a tally can still answer exactly.
  */
-export function bombPossible(played: number[] | undefined, myHand: Card[]): boolean {
+export function bombPossible(played: number[], myHand: Card[]): boolean {
   const out = outstandingTally(played, myHand);
   return out.some((n, i) => DECK_BY_STRENGTH[i] === 4 && n === 4);
 }
@@ -215,7 +212,7 @@ export function losesLeadToExchangeCard(play: Combination, known: Card): boolean
 // reverse.
 export function isExchangeCardStillOut(
   card: Card,
-  playedRanks: number[] | undefined,
+  playedRanks: number[],
   hand: Card[]
 ): boolean {
   return outstandingTally(playedRanks, hand)[cardStrength(card)] > 0;
@@ -231,7 +228,7 @@ export interface BotView {
   mustInclude?: Card;
   opponentHandCounts: number[];
   partnerHoldsTop: boolean;
-  playedRanks: number[] | undefined;
+  playedRanks: number[];
   knownOpponentCard?: Card;
 }
 

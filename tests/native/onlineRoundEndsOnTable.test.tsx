@@ -12,7 +12,7 @@ import { SETTINGS_KEY } from '@/lib/storageKeys';
 import type { GameState, Player } from '@/lib/game/gameEngine';
 import { roundEndingOnsets } from '@/lib/timeline/roundEnding';
 import { t } from '@/lib/i18n';
-import { state } from '../support/game';
+import { aThreePlayed, state } from '../support/game';
 import { renderApp } from './harness/renderApp';
 import { roundOver, wire } from './harness/wire';
 
@@ -28,6 +28,7 @@ const ENDED: GameState = state({
   roundOver: true,
   finishingOrder: ['player_0', 'player_1', 'player_2', 'player_3'],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 });
 const DEALT: GameState = state({ ...ENDED, roundOver: false, finishingOrder: [], firstPlayMade: false });

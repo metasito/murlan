@@ -9,7 +9,7 @@ import { fireEvent, screen } from '@testing-library/react-native';
 import { en as locale } from '@/locales/en';
 import { setWindow } from './harness/env';
 import { useGameTable } from '@/context/GameContext';
-import { state } from '../support/game';
+import { aThreePlayed, state } from '../support/game';
 import { offlineSave, renderAppHook } from './harness/renderApp';
 
 jest.mock('expo-router', () => ({
@@ -19,7 +19,7 @@ jest.mock('expo-router', () => ({
 
 import LobbyScreen from '@/app/lobby';
 
-const SAVED = state({ firstPlayMade: true });
+const SAVED = state({ firstPlayMade: true, playedRanks: aThreePlayed() });
 
 /** The lobby, with `SAVED` on the device if `saved`; `result.current` is the table the offline game holds. */
 const show = async (saved = false) => {

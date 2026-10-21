@@ -14,7 +14,7 @@ import { act, fireEvent, screen } from '@testing-library/react-native';
 import { buildCombination, type Card, type GameState } from '@/lib/game/gameEngine';
 import { useGameTable } from '@/context/GameContext';
 import type { TurnTimerConfig } from '@/components/turnTimerUi';
-import { state } from '../support/game';
+import { aThreePlayed, state } from '../support/game';
 import { offlineSave, renderAppHook } from './harness/renderApp';
 import { bannerLog } from './harness/bannerLog';
 
@@ -40,6 +40,7 @@ const mockState: GameState = state({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 1, kind: 'play', seat: 1 },
 });
 

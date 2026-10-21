@@ -26,6 +26,7 @@ import { setConnectivity, setStoredMotion } from './harness/env';
 import { renderApp } from './harness/renderApp';
 import { wire } from './harness/wire';
 import type { FakeSocket } from './mocks/socketIo';
+import { aThreePlayed } from '../support/game';
 
 const KINDS = Object.keys(NOTICES) as NoticeKind[];
 const fixtures = (kind: NoticeKind) => NOTICE_GALLERY[kind] as NoticeFixture[];
@@ -90,6 +91,7 @@ const STATE: GameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 };
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };

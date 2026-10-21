@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import React from 'react';
 import { act } from '@testing-library/react-native';
 import type { GameState } from '@/lib/game/gameEngine';
-import { state } from '../support/game';
+import { aThreePlayed, state } from '../support/game';
 import { useGameTable } from '@/context/GameContext';
 import { offlineSave, renderAppHook } from './harness/renderApp';
 
@@ -37,6 +37,7 @@ const STATE: GameState = state({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 });
 

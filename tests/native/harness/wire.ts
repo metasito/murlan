@@ -1,6 +1,5 @@
 import type { GameState } from '@/lib/game/gameEngine';
-import type { RoundOverPayload } from '@/lib/game/matchState';
-import type { WireGameState, WireRoomState } from '@/shared/protocol';
+import type { RoundOverPayload, WireGameState, WireRoomState } from '@/shared/protocol';
 
 /** `state` as the server sends it to the player at `viewer`: every other seat's hand is only a count, and a seat is vacated only if it says so. */
 export function wire(state: GameState, viewer: number | null, over: Partial<WireGameState> = {}): WireGameState {

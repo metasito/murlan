@@ -22,6 +22,7 @@ import {
   roomStateSchema,
   type WireGameState,
   type WireRoomState,
+  type RatingAfter,
 } from "@/shared/protocol";
 import { requireUpdate } from "@/lib/updateRequired";
 import { reportError } from "@/lib/errorReporting";
@@ -31,7 +32,7 @@ import { joinCode } from "@/lib/deepLink";
 import { handlesFor } from "@/lib/tableHandles";
 import { useRejoin } from "@/context/useRejoin";
 import type { MatchLength } from "@/lib/game/gameEngine";
-import type { RoundOverPayload, MatchVerdict, RatingAfter } from "@/lib/game/matchState";
+import type { MatchVerdict } from "@/lib/game/matchState";
 import {
   exchangeAnnouncementOf,
   type ExchangeAnnounceData,
@@ -555,27 +556,24 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         ratingDeltas,
         ratingsAfter,
         recorded,
-      } = parsed.data as unknown as RoundOverPayload;
+      } = parsed.data;
       // Kept whole and keyed by user id: this context has no identity of its
       // own, and the overlay that shows the number already knows whose it is.
-      // Undefined and empty are the same answer — the round rated nobody.
-      setRatingDeltas(ratingDeltas ?? {});
-      setRatingsAfter(ratingsAfter ?? {});
+      setRatingDeltas(ratingDeltas);
+      setRatingsAfter(ratingsAfter);
       setRoundRecorded(recorded);
       setPlacementPointsCurrent(true);
-      if (scores) {
-        setCumulativeScores(Object.fromEntries(scores.map((r) => [r.engineId, r.total])));
-        setPlacementPoints(Object.fromEntries(scores.map((r) => [r.engineId, r.points])));
-      }
-      setMatchState((prev) => ({
-        target: matchTarget ?? prev.target,
-        length: matchLength ?? prev.length,
-        roundsPlayed: roundsPlayed ?? prev.roundsPlayed,
-        over: matchOver ?? false,
-        winners: matchWinnerIds ?? [],
-        isDraw: isDraw ?? false,
-        continues: matchContinues ?? false,
-      }));
+      setCumulativeScores(Object.fromEntries(scores.map((r) => [r.engineId, r.total])));
+      setPlacementPoints(Object.fromEntries(scores.map((r) => [r.engineId, r.points])));
+      setMatchState({
+        target: matchTarget,
+        length: matchLength,
+        roundsPlayed,
+        over: matchOver,
+        winners: matchWinnerIds,
+        isDraw,
+        continues: matchContinues,
+      });
       // The stats queries are configured with `staleTime: Infinity`
       // (lib/query-client.ts), so without this the profile keeps showing
       // whatever it read on first open for the rest of the session — a player

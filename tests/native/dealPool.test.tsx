@@ -28,7 +28,7 @@ import { GameTable } from '@/components/GameTable';
 import { DealFlights, useDeal } from '@/components/table/deal';
 import { dealPose } from '@/components/table/dealPose';
 import { dealLegs, dealSlots, legAt } from '@/components/table/dealSlots';
-import { dealCards, type GameState, type Player } from '@/lib/game/gameEngine';
+import { dealCards, type GameState, type Player, emptyRankTally } from '@/lib/game/gameEngine';
 import { LAYOUT, SEATING, frames } from './helpers/exchangeLegs';
 import { busiest, inAir } from './helpers/dealSweep';
 import { bootFeedback } from './helpers/feedback';
@@ -47,6 +47,7 @@ const freshDeal = (seats: number): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: false,
+  playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
 });
 

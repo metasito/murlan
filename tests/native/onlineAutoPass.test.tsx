@@ -5,6 +5,7 @@ import { renderAppHook } from './harness/renderApp';
 
 import type { WireGameState } from '@/shared/protocol';
 import { useOnlineTable } from '@/context/onlineGameHooks';
+import { aThreePlayed } from '../support/game';
 
 const { shown, BannerLog } = bannerLog();
 
@@ -23,6 +24,7 @@ const DEALT: WireGameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
   viewerSeatIndex: 0,
   turnSecondsRemaining: 30,

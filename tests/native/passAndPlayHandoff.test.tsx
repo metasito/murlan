@@ -7,7 +7,7 @@ import { activate } from './tapHelpers';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState } from '@/lib/game/gameEngine';
 import { useGameTable } from '@/context/GameContext';
-import { state } from '../support/game';
+import { aThreePlayed, state } from '../support/game';
 import { offlineSave, renderAppHook } from './harness/renderApp';
 
 jest.mock('expo-router', () => ({
@@ -34,6 +34,7 @@ const LEADING: GameState = state({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 });
 
@@ -114,6 +115,7 @@ describe('pass and play', () => {
         lastPlayedCombination: null,
         lastPlayedBy: 1,
         firstPlayMade: true,
+        playedRanks: aThreePlayed(),
         exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('s1-a', 'A'), twoJokerException: false },
       })
     );

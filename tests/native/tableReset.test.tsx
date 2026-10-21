@@ -6,7 +6,7 @@ import { describe, it, expect } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act } from '@testing-library/react-native';
 
-import { seat, state } from '../support/game';
+import { aThreePlayed, seat, state } from '../support/game';
 import { ACTIVE_ROOM_KEY } from '@/lib/storageKeys';
 import { renderAppHook } from './harness/renderApp';
 import { room, roundOver, wire } from './harness/wire';
@@ -36,7 +36,7 @@ function dataOf(value: OnlineGameContextValue) {
 
 /** A table played through a round: every field the table owns holds something. */
 async function playARound() {
-  const dealt = state({ players: [seat(0, [], { id: 'player_0', name: 'Ana' }), seat(1, [], { id: 'player_1', name: 'Besi' })], firstPlayMade: true });
+  const dealt = state({ players: [seat(0, [], { id: 'player_0', name: 'Ana' }), seat(1, [], { id: 'player_1', name: 'Besi' })], firstPlayMade: true, playedRanks: aThreePlayed() });
   await live.deliver('room:state', room({ roomId: 'R1', code: 'ABCD', hostUserId: userId, status: 'in_progress', maxPlayers: 2, players: seated() }));
   await live.deliver('game:state', wire(dealt, 0, { turnDeadlineMs: 1000, turnSecondsRemaining: 30 }), () => {});
   await live.deliver('game:notification', {

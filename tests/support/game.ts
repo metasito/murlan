@@ -1,5 +1,6 @@
-// Loaded by `node --test`, jest and Playwright alike: type-only imports, and the `.ts` specifier
+// Loaded by `node --test`, jest and Playwright alike: no `@/` alias, and the `.ts` specifier
 // Node's loader needs (docs/agents/checks.md).
+import { emptyRankTally, getRankStrength } from "../../lib/game/gameEngine.ts";
 import type { Card, GameState, Player, Rank, Suit } from "../../lib/game/gameEngine.ts";
 import type { BotView } from "../../lib/game/bot.ts";
 
@@ -29,6 +30,13 @@ export function seat(i: number, hand: Card[] = [], over: Partial<Player> = {}): 
   return { id: `p${i}`, name: `p${i}`, hand, type: "human", ...over };
 }
 
+/** A round someone has played into, one 3 down: `roundUnplayed` reads false on it. */
+export function aThreePlayed(): number[] {
+  const tally = emptyRankTally();
+  tally[getRankStrength("3")] = 1;
+  return tally;
+}
+
 export function state(over: Partial<GameState> = {}): GameState {
   return {
     players: [seat(0), seat(1), seat(2), seat(3)],
@@ -41,6 +49,7 @@ export function state(over: Partial<GameState> = {}): GameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: false,
+    playedRanks: emptyRankTally(),
     lastMove: { seq: 0, kind: "deal" },
     ...over,
   };
@@ -54,7 +63,7 @@ export function viewOf(player: Player, over: Partial<BotView> = {}): BotView {
     toBeat: null,
     opponentHandCounts: [13],
     partnerHoldsTop: false,
-    playedRanks: undefined,
+    playedRanks: emptyRankTally(),
     ...over,
   };
 }

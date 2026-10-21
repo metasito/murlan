@@ -5,6 +5,7 @@ import { renderAppHook } from './harness/renderApp';
 
 import type { WireGameState } from '@/shared/protocol';
 import { useOnlineMatch } from '@/context/onlineGameHooks';
+import { aThreePlayed } from '../support/game';
 
 const table = (roundOver: boolean): WireGameState => ({
   players: [
@@ -20,6 +21,7 @@ const table = (roundOver: boolean): WireGameState => ({
   roundOver,
   finishingOrder: roundOver ? ['player_0', 'player_1'] : [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
   viewerSeatIndex: 0,
   turnSecondsRemaining: 30,

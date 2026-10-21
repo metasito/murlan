@@ -5,7 +5,7 @@ import React from 'react';
 import { screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
-import { state } from '../support/game';
+import { aThreePlayed, state } from '../support/game';
 import { renderApp } from './harness/renderApp';
 import { wire } from './harness/wire';
 
@@ -26,6 +26,7 @@ const mockState: GameState = state({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 });
 

@@ -10,6 +10,7 @@ import type { Card, GameState, Rank } from '@/lib/game/gameEngine';
 import { Motion } from '@/lib/tokens';
 import { steps } from './helpers/steps';
 import { bootFeedback } from './helpers/feedback';
+import { emptyRankTally } from '@/lib/game/gameEngine';
 
 const RANKS: Rank[] = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'];
 const hand = (suit: 'spades' | 'hearts'): Card[] => RANKS.map((rank) => ({ id: `${rank}_${suit}`, rank, suit, isJoker: false }));
@@ -28,6 +29,7 @@ const OPENING: GameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: false,
+  playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
   startCard: hand('spades')[0],
 };

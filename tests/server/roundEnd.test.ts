@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { resolveRoundEnd } from "../../server/game/onlineGameLogic.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 import { drawnTeamsMatch } from "../helpers/drawnTeamsMatch.ts";
+import { aThreePlayed } from "../support/game.ts";
 
 function player(id: string, name: string, handSize: number, extra: Partial<Player> = {}): Player {
   return {
@@ -26,6 +27,7 @@ function mkState(players: Player[], finishingOrder: string[]): GameState {
     roundOver: true,
     finishingOrder,
     firstPlayMade: true,
+    playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: "deal" },
   };
 }

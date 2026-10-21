@@ -10,7 +10,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 
 import { en as locale } from '@/locales/en';
-import { state } from '../support/game';
+import { aThreePlayed, state } from '../support/game';
 import { renderApp } from './harness/renderApp';
 import { roundOver, wire } from './harness/wire';
 
@@ -37,6 +37,7 @@ const finished: GameState = state({
   roundOver: true,
   finishingOrder: ['player_0', 'player_1'],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 });
 

@@ -22,11 +22,11 @@ import HomeScreen from '@/app/index';
 import { t } from '@/lib/i18n';
 import { ACTIVE_ROOM_KEY } from '@/lib/storageKeys';
 import { setMotion } from './harness/env';
-import { state } from '../support/game';
+import { aThreePlayed, state } from '../support/game';
 import { offlineSave, renderApp } from './harness/renderApp';
 import { unreachable } from './mocks/http';
 
-const OFFLINE_MATCH = offlineSave(state({ firstPlayMade: true }), { length: 'match' });
+const OFFLINE_MATCH = offlineSave(state({ firstPlayMade: true, playedRanks: aThreePlayed() }), { length: 'match' });
 
 const mount = async () => {
   await AsyncStorage.clear();

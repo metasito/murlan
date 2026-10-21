@@ -24,6 +24,7 @@ import {
   type Rank,
   type Suit,
 } from '@/lib/game/gameEngine';
+import { aThreePlayed } from '../support/game';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -57,6 +58,7 @@ const state = (over: Partial<GameState>): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
   ...over,
 });
