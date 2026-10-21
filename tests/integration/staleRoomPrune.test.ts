@@ -3,17 +3,13 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
+import { pruneStaleRooms, STALE_ROOM_MAX_AGE_MS as maxAgeMs } from "../../server/game/retention.ts";
 
 describe("stale-room prune", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  let pruneStaleRooms: () => Promise<number>;
-  let maxAgeMs: number;
 
   before(async () => {
     server = await startTestServer();
-    const retention = await import("../../server/game/retention.ts");
-    pruneStaleRooms = retention.pruneStaleRooms;
-    maxAgeMs = retention.STALE_ROOM_MAX_AGE_MS;
   });
 
   after(async () => {

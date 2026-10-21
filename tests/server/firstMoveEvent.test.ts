@@ -8,10 +8,12 @@ import { activeGames, socketRoomMap } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { registerGameplayHandlers } from "../../server/socket/socketGameplay.ts";
 import { __resetRateLimits } from "../../server/socket/socketSafety.ts";
-import { db } from "../../server/store/db.ts";
+import { db, openDatabase } from "../../server/store/db.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { actingSeat, startRound, type GameState } from "../../lib/game/gameEngine.ts";
 import { chooseMove } from "../../lib/game/autoMove.ts";
+
+openDatabase();
 
 const ROOM = "first-move-room";
 const SEATS = [0, 1, 2].map((i) => ({ name: `p${i}`, type: "human" as const }));
@@ -28,7 +30,7 @@ afterEach(() => {
 /** Each seat's own socket, plus the `name`s of every event the table recorded. */
 function seatedTable(t: { mock: typeof import("node:test").mock }, gameState: GameState) {
   const recorded: string[] = [];
-  t.mock.method(db, "insert", () => ({
+  t.mock.method(db(), "insert", () => ({
     values: async (row: { name: string }) => {
       recorded.push(row.name);
     },

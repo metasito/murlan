@@ -40,7 +40,7 @@ export interface BugReportRow {
 
 /** Writes one report. Retention is server/game/retention.ts's job, on a schedule. */
 export async function recordBugReport(input: BugReportInput): Promise<void> {
-  await db.insert(bugReports).values({
+  await db().insert(bugReports).values({
     userId: input.userId,
     description: input.description,
     screen: input.screen ?? null,
@@ -53,7 +53,7 @@ export async function recordBugReport(input: BugReportInput): Promise<void> {
 /** Newest first, for /admin. The reporter's name, so a reply is possible by hand. */
 export async function recentBugReports(limit = BUG_REPORT_PAGE): Promise<BugReportRow[]> {
   // `db.execute` hands a timestamp back as text; only drizzle's query builder parses it.
-  const rows = await db.execute<{
+  const rows = await db().execute<{
     id: string;
     created_at: string;
     username: string | null;

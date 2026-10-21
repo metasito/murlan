@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import pg from "pg";
 import { hasDatabase, skipMessage, startTestServer, type TestServer } from "../helpers/testServer.ts";
 import { connectAs, waitFor } from "../helpers/client.ts";
+import { shutdown } from "../../server/http/shutdown.ts";
+import { DatabaseNotOpenError, pool } from "../../server/store/db.ts";
 
 /**
  * Drives the real shutdown routine against a real booted server with a real
@@ -10,8 +12,8 @@ import { connectAs, waitFor } from "../helpers/client.ts";
  * callback actually fires while a socket is connected, and that the writes the
  * disconnect itself triggers still reach Postgres.
  *
- * This file boots one server and then ends the app's module-singleton pool, so
- * nothing else can go in it.
+ * This file boots one server and then shuts it down, which cannot be undone
+ * inside a process, so nothing else can go in it.
  */
 
 /** Well under the routine's own watchdog; anything near this is a hang. */
@@ -30,7 +32,7 @@ describe("graceful shutdown", { skip: hasDatabase() ? false : skipMessage() }, (
 
   after(async () => {
     await observer.end().catch(() => {});
-    // stop() ends the same pool shutdown() already ended, so it throws — but
+    // stop() ends the adapter's pool, which shutdown() already ended, so it throws — but
     // its own `finally` still drops the throwaway schema and restores
     // DATABASE_URL, which is what this hook is here for. If the test body
     // failed before shutdown() ran there is nothing to double-end, so the
@@ -46,8 +48,6 @@ describe("graceful shutdown", { skip: hasDatabase() ? false : skipMessage() }, (
   });
 
   test("disconnects sockets, lets their writes land, ends the pool and exits 0", { timeout: 60_000 }, async () => {
-    const { shutdown } = await import("../../server/http/shutdown.ts");
-    const { pool } = await import("../../server/store/db.ts");
 
     const { socket, user } = await connectAs(server, `shutdown_${Date.now()}`);
 
@@ -67,6 +67,7 @@ describe("graceful shutdown", { skip: hasDatabase() ? false : skipMessage() }, (
 
     const disconnected = waitFor<string>(socket, "disconnect", PROMPT_MS);
 
+    const appPool = pool();
     const exitCodes: number[] = [];
     // Awaiting this is the whole check that shutdown does not wait on a
     // connection that never ends: one that did would sit here until the
@@ -78,7 +79,8 @@ describe("graceful shutdown", { skip: hasDatabase() ? false : skipMessage() }, (
       exit: (code) => exitCodes.push(code),
     });
     await disconnected;
-    assert.equal(pool.ended, true, "the pool must be closed");
+    assert.equal(appPool.ended, true, "the pool must be closed");
+    assert.throws(() => pool(), DatabaseNotOpenError);
     assert.deepEqual(exitCodes, [0], "a graceful shutdown exits 0, exactly once");
 
     // Read after the pool is closed: whatever is in these rows now is what the

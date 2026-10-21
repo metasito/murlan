@@ -9,11 +9,13 @@ import { dealRound } from "../../server/game/dealRound.ts";
 import { ERROR_GROUP_WINDOW_DAYS, installServerErrorRecorder, serverErrorsDropped } from "../../server/http/serverErrors.ts";
 import { logger, setErrorRecorder } from "../../server/shared/logger.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
-import { db, pool } from "../../server/store/db.ts";
+import { db, pool, openDatabase } from "../../server/store/db.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import type { GameState } from "../../lib/game/gameEngine.ts";
 import { emptyRankTally } from "../../lib/game/gameEngine.ts";
+
+openDatabase();
 
 /** A fetch that never answers on its own, and an `AbortSignal.timeout` the test fires. */
 function neverAnswering(t: TestContext) {
@@ -32,7 +34,7 @@ function neverAnswering(t: TestContext) {
 }
 
 function quietDb(t: TestContext) {
-  t.mock.method(db, "insert", () => ({ values: async () => {} }));
+  t.mock.method(db(), "insert", () => ({ values: async () => {} }));
 }
 
 test("a mail provider that never answers resolves false", async (t) => {
@@ -54,7 +56,7 @@ test("a mail provider that never answers resolves false", async (t) => {
 });
 
 test("a push service that never answers lets notifyUser return", async (t) => {
-  t.mock.method(db, "select", () => ({
+  t.mock.method(db(), "select", () => ({
     from: () => ({ where: async () => [{ token: "ExponentPushToken[a]", locale: "en" }] }),
   }));
   const fetchHangs = neverAnswering(t);
@@ -94,10 +96,10 @@ test("a hanging status write still deals the round", async (t) => {
 });
 
 test("the server-error recorder does not queue behind a starved pool", async (t) => {
-  const inserts = t.mock.method(db, "insert", () => ({ values: async () => {} }));
+  const inserts = t.mock.method(db(), "insert", () => ({ values: async () => {} }));
   const stderr = t.mock.method(process.stderr, "write", () => true);
   let waiting = 3;
-  t.mock.getter(pool, "waitingCount", () => waiting);
+  t.mock.getter(pool(), "waitingCount", () => waiting);
   installServerErrorRecorder();
   t.after(() => setErrorRecorder(undefined));
 
@@ -120,7 +122,7 @@ test("the server-error recorder does not queue behind a starved pool", async (t)
 
 test("drops older than the error-group window fall out of the count", (t) => {
   t.mock.method(process.stderr, "write", () => true);
-  t.mock.getter(pool, "waitingCount", () => 1);
+  t.mock.getter(pool(), "waitingCount", () => 1);
   const start = Date.now();
   t.mock.timers.enable({ apis: ["Date"], now: start });
   installServerErrorRecorder();
@@ -137,7 +139,7 @@ test("a room's status writes land in the order they were issued", async (t) => {
   const started: string[] = [];
   const landed: string[] = [];
   const release = new Map<string, () => void>();
-  t.mock.method(db, "update", () => ({
+  t.mock.method(db(), "update", () => ({
     set: ({ status }: { status: string }) => ({
       where: () => {
         started.push(status);

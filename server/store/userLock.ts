@@ -1,8 +1,8 @@
 import { inArray, sql } from "drizzle-orm";
-import { db } from "./db.ts";
+import type { Database } from "./db.ts";
 import { users } from "../../shared/schema.ts";
 
-export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 /**
  * Serializes every per-user writer on the `users` row, which exists for every

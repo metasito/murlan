@@ -31,7 +31,7 @@ async function insertEvent(
   userId: string | null,
   context: EventContext
 ): Promise<void> {
-  await db.insert(events).values({ name, userId, context });
+  await db().insert(events).values({ name, userId, context });
 }
 
 /**
@@ -62,7 +62,7 @@ export interface FunnelStep {
  * seated. Bounded by the window and covered by events_name_occurred_idx.
  */
 export async function funnel(days = FUNNEL_WINDOW_DAYS): Promise<FunnelStep[]> {
-  const rows = await db
+  const rows = await db()
     .select({
       name: events.name,
       events: sql<number>`count(*)::int`,

@@ -83,7 +83,7 @@ import {
   tableStrings,
   topBarLabel,
 } from "@/components/table/spokenLabels";
-import { canBeatPileOf, type TableFacts } from "@/components/table/stagedPlay";
+import { canBeatPileOf, type TableFacts } from "@/lib/table/stagedPlay";
 import {
   createSelectionStore,
   press,

@@ -1,9 +1,4 @@
-/**
- * Waiting for a `pg` pool to go quiet, shared by the shutdown path and the
- * integration harness. Pure — takes the counters structurally and imports
- * nothing, so a caller can use it without pulling in `server/store/db.ts`, which
- * builds the app's Pool from `DATABASE_URL` at import time.
- */
+/** Waiting for a `pg` pool to go quiet; takes the counters structurally. */
 
 export interface PoolActivity {
   totalCount: number;

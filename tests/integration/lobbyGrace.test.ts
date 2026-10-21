@@ -19,6 +19,8 @@ import {
 import { PROTOCOL_AUTH, connectAs, waitFor } from "../helpers/client.ts";
 import { io as ioClient } from "socket.io-client";
 import type { SanitizedState } from "../helpers/table.ts";
+import { pending, seatKey } from "../../server/game/gameTimers.ts";
+import { roomStore } from "../../server/store/roomStore.ts";
 
 // Short enough that the expiry test does not stall the suite, long enough that
 // the survival test is not racing it.
@@ -93,7 +95,6 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
    * test fails for a reason that has nothing to do with what it asserts.
    */
   async function graceArmed(roomId: string, userId: string) {
-    const { pending, seatKey } = await import("../../server/game/gameTimers.ts");
     for (let i = 0; i < 200; i++) {
       if (pending("lobbyGrace", seatKey(roomId, userId))) return;
       await new Promise((r) => setTimeout(r, 25));
@@ -126,8 +127,6 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
     guest.socket.close();
     const heard = await churn;
     assert.equal(heard, null, "a blip must not tell the room that someone left");
-
-    const { roomStore } = await import("../../server/store/roomStore.ts");
     const seats = await roomStore.getRoomPlayers(room.roomId);
     assert.equal(seats.length, 2, "the seat row must survive the disconnect");
     assert.ok(
@@ -155,8 +154,6 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
 
     host.socket.close();
     await new Promise((r) => setTimeout(r, 300));
-
-    const { roomStore } = await import("../../server/store/roomStore.ts");
     const room2 = await roomStore.getRoomById(room.roomId);
     assert.equal(
       room2?.hostUserId,
@@ -177,8 +174,6 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
     await elsewhere;
 
     await new Promise((r) => setTimeout(r, 3000));
-
-    const { roomStore } = await import("../../server/store/roomStore.ts");
     const seats = await roomStore.getRoomPlayers(room.roomId);
     assert.ok(
       !seats.some((s) => s.userId === guest.user.id),
