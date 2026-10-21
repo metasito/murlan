@@ -36,7 +36,7 @@ import { holdsLiveTable } from "@/lib/tableHandles";
 import { uiFeedback } from "@/lib/device/feedback";
 import Feather from "@expo/vector-icons/Feather";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useQuery } from "@tanstack/react-query";
+import { queryKey, useApi } from "@/lib/queries";
 import { useAuth } from "@/context/AuthContext";
 import { useLocalSession } from "@/context/gameHooks";
 import { useInvites } from "@/context/SocketContext";
@@ -383,8 +383,7 @@ const BADGE_MAX = 9;
 /** How many friend requests are waiting, for whoever is signed in. */
 function useFriendRequestCount() {
   const { user } = useAuth();
-  const { data = [] } = useQuery<{ id: string }[]>({
-    queryKey: ["/api/friends/requests"],
+  const { data = [] } = useApi(queryKey("friends/requests"), {
     enabled: !!user,
     staleTime: FRIEND_REQUEST_STALE_MS,
     refetchOnWindowFocus: true,

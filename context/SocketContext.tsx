@@ -10,8 +10,9 @@ import React, {
   ReactNode,
 } from "react";
 import { router } from "expo-router";
-import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/query-client";
+import { markStale, queryKey, stale, useApi, type Answer, type ApiKey, type ListRead, type Row } from "@/lib/queries";
 import { useAuth } from "@/context/AuthContext";
 import {
   connectSocket,
@@ -29,7 +30,7 @@ import { t, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
 import { reconnectDelayMs } from "@/lib/reconnectDelay";
 import { sendInvite, undelivered } from "@/lib/sendIntent";
-import type { FriendRequestAccepted, FriendRequestIncoming } from "@/shared/http";
+import type { FriendRequestAccepted, FriendRequestIncoming, GameInviteDto } from "@/shared/http";
 import type { Socket as UntypedSocket } from "socket.io-client";
 
 /**
@@ -42,9 +43,9 @@ import type { Socket as UntypedSocket } from "socket.io-client";
  * call site — a server that predates it, or a row created by a path that emits
  * nothing — and without one the fetch does all of the work, as it always did.
  */
-function seatRow<T extends { id: string }>(qc: QueryClient, key: string, row: T | undefined) {
+function seatRow<P extends ListRead>(qc: QueryClient, key: ApiKey<P>, row: Row<P> | undefined) {
   if (!row) return;
-  qc.setQueryData<T[]>([key], (rows = []) =>
+  qc.setQueryData<Row<P>[]>(key, (rows = []) =>
     rows.some((r) => r.id === row.id) ? rows : [...rows, row]
   );
 }
@@ -59,14 +60,6 @@ const SESSION_REPLACED = "SESSION_REPLACED";
 interface PendingInvite {
   from: string;
   roomCode: string;
-}
-
-/** `GET /api/friends/invites` — the invites still open for this account. */
-interface InviteRow {
-  id: string;
-  roomCode: string;
-  fromUsername: string;
-  createdAt: string;
 }
 
 interface Presence {
@@ -100,24 +93,11 @@ interface Invites {
   send: (friendUserId: string, roomCode: string) => Promise<boolean>;
 }
 
-/**
- * What a reconnect re-reads, because the events that would have changed it are
- * dropped rather than queued when the socket is down. Presence is deliberately
- * absent: who was online while you were away is not a fact worth catching up
- * on, and `friend:get_online_list` answers it fresh anyway.
- */
-const RECONCILED_ON_CONNECT = [
-  ["/api/friends"],
-  ["/api/friends/requests"],
-  ["/api/friends/sent"],
-  ["/api/friends/invites"],
-] as const;
-
 const askWhoIsOnline = (socket: Socket) => socket.emit("friend:get_online_list");
 
 const NO_HIDDEN_INVITES: ReadonlySet<string> = new Set();
 // One empty list, not `= []`: a fresh default every render would wake every invites reader.
-const NO_INVITE_ROWS: InviteRow[] = [];
+const NO_INVITE_ROWS: GameInviteDto[] = [];
 const NO_PROVIDER = Symbol("no SocketProvider");
 
 // Three contexts over one provider, so a friend coming online wakes only the
@@ -163,8 +143,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   // The row is the invite; the socket event and the push are both only "look
   // now". Holding this in component state instead was why an invite that
   // arrived while the socket was down could not be seen anywhere afterwards.
-  const { data: inviteRows = NO_INVITE_ROWS } = useQuery<InviteRow[]>({
-    queryKey: ["/api/friends/invites"],
+  const { data: inviteRows = NO_INVITE_ROWS } = useApi(queryKey("friends/invites"), {
     enabled: !!userId,
     refetchOnWindowFocus: true,
   });
@@ -232,7 +211,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       hideGameInvite(roomCode);
       void apiRequest("DELETE", `/api/friends/invites/${roomCode}`)
         .catch(() => unhideGameInvite(roomCode))
-        .finally(() => qc.invalidateQueries({ queryKey: ["/api/friends/invites"] }));
+        .finally(() => markStale(qc, [queryKey("friends/invites")]));
     },
     [qc, hideGameInvite, unhideGameInvite]
   );
@@ -326,7 +305,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       // second attempt is ever made. The rows are the truth, so connecting is
       // where we ask again — otherwise a friend request sent to someone
       // offline is invisible to them, and neither side can then act on it.
-      for (const queryKey of RECONCILED_ON_CONNECT) qc.invalidateQueries({ queryKey });
+      markStale(qc, stale.onReconnect);
     };
 
     const onDisconnect = (reason: UntypedSocket.DisconnectReason) => reportSocketClose(reason);
@@ -376,16 +355,16 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       // /api/friends returned while the friend was still online — their
       // previous disconnect, not the one just announced.
       if (lastSeen) {
-        qc.setQueryData<{ id: string; lastSeen: string | null }[]>(
-          ["/api/friends"],
+        qc.setQueryData<Answer<"friends">>(
+          queryKey("friends"),
           (friends) => friends?.map((f) => (f.id === friendId ? { ...f, lastSeen } : f))
         );
       }
     };
 
     const onRequestIncoming = ({ from, request }: FriendRequestIncoming) => {
-      seatRow(qc, "/api/friends/requests", request);
-      qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
+      seatRow(qc, queryKey("friends/requests"), request);
+      markStale(qc, [queryKey("friends/requests")]);
       showNotification({
         type: "friend_request",
         title: t("notifications.friendRequestTitle"),
@@ -395,10 +374,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     };
 
     const onRequestAccepted = ({ by, friend }: FriendRequestAccepted) => {
-      seatRow(qc, "/api/friends", friend);
-      qc.invalidateQueries({ queryKey: ["/api/friends"] });
-      qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
-      qc.invalidateQueries({ queryKey: ["/api/friends/sent"] });
+      seatRow(qc, queryKey("friends"), friend);
+      markStale(qc, stale.friendAccepted);
       askWhoIsOnline(socket);
       showNotification({
         type: "friend_accepted",
@@ -411,7 +388,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     const onInvite = ({ from, roomCode }: { from: string; roomCode: string }) => {
       setPendingInvite({ from, roomCode });
       unhideGameInvite(roomCode);
-      qc.invalidateQueries({ queryKey: ["/api/friends/invites"] });
+      markStale(qc, [queryKey("friends/invites")]);
       showNotification({
         type: "game_invite",
         title: t("notifications.gameInviteTitle", { name: from }),
@@ -430,7 +407,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     // invites survive is the server's answer to give, so the list is re-asked.
     const onInviteRetired = ({ roomCode }: { roomCode: string }) => {
       setPendingInvite((prev) => (prev?.roomCode === roomCode ? null : prev));
-      qc.invalidateQueries({ queryKey: ["/api/friends/invites"] });
+      markStale(qc, [queryKey("friends/invites")]);
     };
 
     // The invite itself is still good either way, so the list is simply re-asked
@@ -438,7 +415,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     // stranger leaving a lobby is not an invitation.
     const onRoomJoinable = ({ roomCode, joinable }: { roomCode: string; joinable: boolean }) => {
       if (!joinable) setPendingInvite((prev) => (prev?.roomCode === roomCode ? null : prev));
-      qc.invalidateQueries({ queryKey: ["/api/friends/invites"] });
+      markStale(qc, [queryKey("friends/invites")]);
     };
 
     // Keep the whole payload: the server emits a stable `code` (plus `params`)

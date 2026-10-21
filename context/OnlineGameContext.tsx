@@ -38,7 +38,7 @@ import {
 } from "@/lib/game/sharedGameFlow";
 import { useExchangeAnnouncement } from "@/context/useExchangeAnnouncement";
 import type { BotPersonalityId } from "@/lib/game/botPersonalities";
-import { LADDER_KEY } from "@/lib/ladderQuery";
+import { markStale, stale } from "@/lib/queries";
 import { useOwnLink } from "@/lib/useOwnLink";
 import { gameErrorText } from "@/components/table/spokenLabels";
 import { linkPill, type LinkPill, type OwnLink } from "@/lib/ownLink";
@@ -581,11 +581,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // whatever it read on first open for the rest of the session — a player
       // finishes a match and their counters, history and achievements do not
       // move. A round just finished, so this is exactly when they are stale.
-      qc.invalidateQueries({ queryKey: ["/api/stats/me"] });
-      qc.invalidateQueries({ queryKey: ["/api/stats/history"] });
-      qc.invalidateQueries({ queryKey: ["/api/stats/achievements"] });
-      qc.invalidateQueries({ queryKey: ["/api/ratings/me"] });
-      qc.invalidateQueries({ queryKey: LADDER_KEY });
+      markStale(qc, stale.afterRound);
     };
 
     const onVoteState = (vs: RematchVoteState) => setRematchVoteState(vs);
