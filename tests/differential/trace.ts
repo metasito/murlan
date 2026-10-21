@@ -54,9 +54,14 @@ function transition(table: string, seed: number, round: number, seq: number, pre
   };
 }
 
-export async function traceTree(root: string, seeds: number[], tables: string[]): Promise<TraceLine[]> {
+type Simulate = (opts: any) => any;
+
+export async function loadSimulator(root: string): Promise<Simulate> {
   const url = pathToFileURL(path.join(path.resolve(root), "tests", "helpers", "offlineMatch.ts")).href;
-  const { simulateOfflineMatch } = await import(url);
+  return (await import(url)).simulateOfflineMatch;
+}
+
+export function traceTree(simulateOfflineMatch: Simulate, seeds: number[], tables: string[]): TraceLine[] {
   const out: TraceLine[] = [];
   for (const table of tables) {
     const { seats, gameMode } = TABLES[table];
@@ -128,13 +133,14 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     console.error(`usage: trace.ts <tree-root> [--seeds 1-150] [--tables ${Object.keys(TABLES).join(",")}]`);
     process.exit(2);
   }
-  let lines: TraceLine[];
+  let simulate: Simulate;
   try {
-    lines = await traceTree(root, parseRange(flag("--seeds", "1-150")), tables);
+    simulate = await loadSimulator(root);
   } catch (e) {
     // git bisect run reads 125 as "this commit cannot be tested": skip it.
     console.error(e);
     process.exit(125);
   }
+  const lines = traceTree(simulate, parseRange(flag("--seeds", "1-150")), tables);
   process.stdout.write(lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
 }
