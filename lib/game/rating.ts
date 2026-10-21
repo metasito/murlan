@@ -12,6 +12,11 @@ export const START_RATING = 1000;
 /** Rounds before a rating is settled enough to list publicly. */
 export const PROVISIONAL_ROUNDS = 5;
 
+/** Rounds a record still needs before it is listed; undefined once it is. */
+export function provisionalLeft(record: { rounds: number }): number | undefined {
+  return record.rounds < PROVISIONAL_ROUNDS ? PROVISIONAL_ROUNDS - record.rounds : undefined;
+}
+
 /**
  * How much one result can move a rating. Falls as a record grows, so a new
  * account converges quickly and an established rating stops jittering.

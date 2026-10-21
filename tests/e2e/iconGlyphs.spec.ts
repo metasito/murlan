@@ -75,8 +75,8 @@ test("online screens render every icon glyph, across the states reachable once s
   await registerNewAccount(page, uniqueUsername("glyphs"));
 
   await goToOnlineLobby(page);
-  // Both "Libera" and "Coppie" render together — both branches of
-  // `m === "teams" ? "people" : "person"` are already on screen.
+  // Both mode chips render together, so both branches of `ModeIcon`'s
+  // `mode === "teams" ? "people" : "person"` are already on screen.
   await assertAllGlyphsRender(page, "online lobby — room creator", 5);
   await page.goBack();
 

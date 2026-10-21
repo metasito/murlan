@@ -25,6 +25,10 @@ export const en = {
   "common.copy": "Copy",
   "common.copied": "Copied!",
   "common.pointsAbbrev": "{{n}}pt",
+  "term.mode.teams": "Teams",
+  "term.mode.freeForAll": "Free-for-all",
+  "term.mode.teamsShort": "Teams",
+  "term.mode.freeForAllShort": "Free-for-all",
 
   // ------------------------------------------------------------- server.*
   "server.AUTH_RATE_LIMITED": "Too many attempts, try again in 15 minutes.",
@@ -332,8 +336,6 @@ export const en = {
   "roundOverOverlay.nextRoundA11yLabel": "Ready for the next hand",
   "roundOverOverlay.waitingA11yLabel": "Waiting for the others: {{count}} of {{total}} ready",
   "roundOverOverlay.newMatchA11yLabel": "Start a new match",
-  "result.modeTeams": "Teams",
-  "result.modeFreeForAll": "Free-for-all",
 
   // -------------------------------------------------------------- cardView.*
   "cardView.jokerColored": "Red Joker",
@@ -606,8 +608,6 @@ export const en = {
   "lobby.start": "Start Game",
   "lobby.playerCountLabel": "PLAYERS",
   "lobby.modeLabel": "MODE",
-  "lobby.modeTeams": "Teams",
-  "lobby.modeFreeForAll": "Free-for-all",
   "lobby.formatLabel": "FORMAT",
   "lobby.formatMatch": "Match",
   "lobby.formatMatchSub": "First to {{target}} points",
@@ -810,8 +810,6 @@ export const en = {
   "onlineLobby.joiningInvite": "Joining the table…",
   "onlineLobby.createRoomTitle": "CREATE ROOM",
   "onlineLobby.modeLabel": "MODE",
-  "onlineLobby.modeFreeForAll": "Free-for-all",
-  "onlineLobby.modeTeams": "Teams",
   "onlineLobby.playersLabel": "PLAYERS",
   "onlineLobby.teamsRequire4": "Teams mode requires 4 players",
   "onlineLobby.createRoom": "Create Room",
@@ -843,8 +841,6 @@ export const en = {
   "room.shareFailed": "Couldn't share the room code.",
   "room.copyFailed": "Couldn't copy the room code.",
   "room.modeAndPlayers": "{{mode}} · {{n}} players",
-  "room.modeTeams": "Teams",
-  "room.modeFreeForAll": "Free-for-all",
   "room.playersCount": "PLAYERS ({{current}}/{{max}})",
   "room.youSuffix": " (you)",
   "room.hostBadge": "Host",

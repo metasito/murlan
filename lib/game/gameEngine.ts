@@ -1056,7 +1056,7 @@ export function roundUnplayed(state: {
 }
 
 /** Teams is 2-v-2 and only 2-v-2 (docs/GAME-RULES.md §11). */
-export const TEAMS_PLAYER_COUNT = 4;
+const TEAMS_PLAYER_COUNT = 4;
 
 export function modeFits(gameMode: GameMode, playerCount: number): boolean {
   return gameMode !== "teams" || playerCount === TEAMS_PLAYER_COUNT;

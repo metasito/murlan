@@ -33,7 +33,7 @@ import { getLocale, useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
 import type { TranslationKey } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { PROVISIONAL_ROUNDS, formatSeason } from "@/lib/game/rating";
+import { RatingSummary } from "@/components/RatingSummary";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { shouldShowAddEmailCard, shouldShowVerifyEmailCard } from "@/lib/emailNudge";
 import { HistoryRow } from "@/components/HistoryRow";
@@ -569,22 +569,7 @@ export default function ProfileScreen() {
                   retry={{ label: t("common.retry"), a11yLabel: t("ladder.errorRetry"), onPress: () => ratingQuery.refetch() }}
                 />
               )}
-              {rating && (() => {
-                const season = t("ladder.seasonLabel", { season: formatSeason(rating.season, t) });
-                const rounds = rating.provisional
-                  ? t("ladder.provisional", { n: PROVISIONAL_ROUNDS - rating.rounds })
-                  : t("ladder.roundsLabel", { n: rating.rounds });
-                return (
-                  <View
-                    style={styles.ratingBlock}
-                    {...a11yGroup(`${t("ladder.ratingLabel")}: ${rating.rating}. ${season}. ${rounds}`)}
-                  >
-                    <Text style={styles.ratingValue} {...a11yHidden()}>{rating.rating}</Text>
-                    <Text style={styles.ratingSeason} {...a11yHidden()}>{season}</Text>
-                    <Text style={styles.ratingRounds} {...a11yHidden()}>{rounds}</Text>
-                  </View>
-                );
-              })()}
+              {rating && <RatingSummary rating={rating} />}
               <MenuButton
                 label={t("ladder.open")}
                 onPress={() => router.push("/(online)/leaderboard")}
@@ -1010,11 +995,6 @@ const styles = StyleSheet.create({
     minHeight: TOUCH_TARGET_MIN,
   },
   doorText: { ...Type.label, color: Colors.gold },
-
-  ratingBlock: { alignItems: "center", gap: Spacing.xxs, paddingBottom: Spacing.md },
-  ratingValue: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.hero, color: Colors.gold },
-  ratingSeason: { ...Type.label },
-  ratingRounds: { ...Type.caption, textAlign: "center" },
 
   rowInfo: { flex: 1, gap: Spacing.xxs },
 

@@ -11,13 +11,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { heldSeats, renumbering, seatForClaim, settleRelease, startRefusal } from "../../server/game/seatAllocation.ts";
 import type { SeatInvite, SeatedPlayer } from "../../server/game/seatAllocation.ts";
-import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/game/gameEngine.ts";
+import { teamForSeat } from "../../lib/game/gameEngine.ts";
+
+const TEAMS_SEATS = 4;
 
 const HOLD_MS = 120_000;
 const NOW = 1_700_000_000_000;
 
-const teamsRoom = { maxPlayers: TEAMS_PLAYER_COUNT, gameMode: "teams" };
-const freeForAllRoom = { maxPlayers: TEAMS_PLAYER_COUNT, gameMode: "free_for_all" };
+const teamsRoom = { maxPlayers: TEAMS_SEATS, gameMode: "teams" };
+const freeForAllRoom = { maxPlayers: TEAMS_SEATS, gameMode: "free_for_all" };
 
 function seats(...pairs: [string, number][]): SeatedPlayer[] {
   return pairs.map(([userId, seatIndex]) => ({ userId, seatIndex }));
@@ -43,8 +45,8 @@ describe("a seat held for an invited friend", () => {
       "seat 2 is the host's partner; seat 1 is an opponent"
     );
     assert.equal(
-      teamForSeat(2, TEAMS_PLAYER_COUNT, "teams"),
-      teamForSeat(0, TEAMS_PLAYER_COUNT, "teams"),
+      teamForSeat(2, TEAMS_SEATS, "teams"),
+      teamForSeat(0, TEAMS_SEATS, "teams"),
       "and that is the same side the host is on"
     );
   });
@@ -241,8 +243,8 @@ describe("the seat a newcomer is given", () => {
     });
     assert.equal(c, 2);
     assert.notEqual(
-      teamForSeat(0, TEAMS_PLAYER_COUNT, "teams"),
-      teamForSeat(1, TEAMS_PLAYER_COUNT, "teams")
+      teamForSeat(0, TEAMS_SEATS, "teams"),
+      teamForSeat(1, TEAMS_SEATS, "teams")
     );
   });
 });

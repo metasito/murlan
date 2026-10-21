@@ -74,6 +74,7 @@ function automationReducedMotion(): boolean {
  */
 let systemReduceMotion = false;
 const systemListeners = new Set<() => void>();
+let nativeSubscription: ReturnType<typeof AccessibilityInfo.addEventListener> | undefined;
 
 function publishSystemReduceMotion(next: boolean): void {
   if (next === systemReduceMotion) return;
@@ -112,11 +113,14 @@ function subscribeSystemReduceMotion(fn: () => void): () => void {
   if (Platform.OS === 'web') return () => {};
 
   systemListeners.add(fn);
-  AccessibilityInfo.isReduceMotionEnabled().then(publishSystemReduceMotion).catch(() => {});
-  const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', publishSystemReduceMotion);
+  if (systemListeners.size === 1) {
+    nativeSubscription = AccessibilityInfo.addEventListener('reduceMotionChanged', publishSystemReduceMotion);
+    AccessibilityInfo.isReduceMotionEnabled().then(publishSystemReduceMotion).catch(() => {});
+  }
   return () => {
-    systemListeners.delete(fn);
-    sub?.remove();
+    if (!systemListeners.delete(fn) || systemListeners.size > 0) return;
+    nativeSubscription?.remove();
+    nativeSubscription = undefined;
   };
 }
 

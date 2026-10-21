@@ -23,7 +23,7 @@ import { useAuth } from "@/context/AuthContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { GameTable } from "@/components/GameTable";
 import type { MatchRating } from "@/components/table/matchBoard";
-import { PROVISIONAL_ROUNDS } from "@/lib/game/rating";
+import { provisionalLeft } from "@/lib/game/rating";
 import { vacatedOf } from "@/shared/protocol";
 import { railWidth } from "@/components/tableFrame";
 import { cardScale } from "@/components/cardFaceModel";
@@ -198,8 +198,7 @@ export default function OnlineGameScreen() {
       ? {
           delta: myDelta,
           rating: myRating?.rating,
-          provisionalLeft:
-            myRating && myRating.rounds < PROVISIONAL_ROUNDS ? PROVISIONAL_ROUNDS - myRating.rounds : undefined,
+          provisionalLeft: myRating && provisionalLeft(myRating),
         }
       : !isSpectator && !roundRecorded && matchState.continues
         ? { notRecorded: true }

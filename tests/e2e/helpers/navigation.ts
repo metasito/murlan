@@ -4,6 +4,7 @@
 
 import type { Page } from "@playwright/test";
 import { TUTORIAL_SEEN_KEY } from "../../../lib/storageKeys.ts";
+import { it } from "../../../locales/it.ts";
 
 /**
  * How long the home screen has to become interactive.
@@ -61,7 +62,7 @@ export async function startOfflineGame(page: Page, setup: OfflineSetup): Promise
   await page.getByRole("radio", { name: `${setup.playerCount} giocatori` }).click();
 
   if (setup.playerCount === 4) {
-    const modeLabel = setup.gameMode === "teams" ? "A Coppie" : "Tutti vs Tutti";
+    const modeLabel = it[setup.gameMode === "teams" ? "term.mode.teams" : "term.mode.freeForAll"];
     await page.getByRole("radio", { name: modeLabel, exact: true }).click();
   }
 

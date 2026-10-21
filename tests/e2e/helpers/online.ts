@@ -2,6 +2,7 @@
 // creating/joining a room, and starting the server-authoritative game.
 
 import type { Page } from "@playwright/test";
+import { it } from "../../../locales/it.ts";
 
 /**
  * From an already-authenticated home screen, opens the online room lobby.
@@ -22,7 +23,7 @@ export interface RoomSetup {
 /** Creates a room and returns its 6-character join code. */
 export async function createRoom(page: Page, setup: RoomSetup): Promise<string> {
   if (setup.gameMode === "teams") {
-    await page.getByRole("radio", { name: "Coppie" }).click();
+    await page.getByRole("radio", { name: it["term.mode.teams"], exact: true }).click();
   }
   await page.getByRole("radio", { name: `${setup.playerCount} giocatori` }).click();
   await page.getByRole("button", { name: "Crea Stanza" }).click();

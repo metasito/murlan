@@ -121,3 +121,68 @@ describe('the CI automation flag (EXPO_PUBLIC_E2E_REDUCE_MOTION) forces reduced 
     expect(view.getByText('full')).toBeTruthy();
   });
 });
+
+describe('the native reduce-motion setting is read through one listener', () => {
+  let asked: jest.SpiedFunction<typeof AccessibilityInfo.isReduceMotionEnabled>;
+  let listened: jest.SpiedFunction<typeof AccessibilityInfo.addEventListener>;
+  let released: jest.Mock;
+
+  beforeEach(() => {
+    setMotionPreference('system');
+    asked = jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
+    released = jest.fn();
+    listened = jest.spyOn(AccessibilityInfo, 'addEventListener').mockReturnValue({
+      remove: released,
+    } as unknown as ReturnType<typeof AccessibilityInfo.addEventListener>);
+    // react-native's jest setup already holds these as mocks, so a spy inherits their past calls.
+    asked.mockClear();
+    listened.mockClear();
+  });
+
+  afterEach(async () => {
+    await act(async () => setMotionPreference('system'));
+    jest.restoreAllMocks();
+  });
+
+  async function mountProbes(n: number) {
+    const probes = (count: number) => (
+      <>
+        {Array.from({ length: count }, (_, i) => (
+          <Probe key={i} />
+        ))}
+      </>
+    );
+    const view = await render(probes(n));
+    await act(async () => {});
+    return { view, probes };
+  }
+
+  it('adds one listener and asks once for N subscribers, and releases it at zero', async () => {
+    const { view, probes } = await mountProbes(3);
+    expect(listened).toHaveBeenCalledTimes(1);
+    expect(asked).toHaveBeenCalledTimes(1);
+
+    await view.rerender(probes(1));
+    expect(released).not.toHaveBeenCalled();
+
+    await view.unmount();
+    expect(released).toHaveBeenCalledTimes(1);
+  });
+
+  it('a subscriber arriving after the release listens and asks again', async () => {
+    const first = await mountProbes(2);
+    await first.view.unmount();
+    const second = await mountProbes(2);
+    expect(listened).toHaveBeenCalledTimes(2);
+    expect(asked).toHaveBeenCalledTimes(2);
+    await second.view.unmount();
+  });
+
+  it('a change reaches every subscriber through the one listener', async () => {
+    const { view } = await mountProbes(3);
+    const onChange = listened.mock.calls[0][1] as unknown as (reduced: boolean) => void;
+    await act(async () => onChange(true));
+    expect(view.getAllByText('reduced')).toHaveLength(3);
+    await view.unmount();
+  });
+});

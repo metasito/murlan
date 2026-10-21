@@ -7,7 +7,9 @@ import {
 } from "../../server/game/onlineGameLogic.ts";
 import { readPersistedPlayerMap } from "../../shared/persistedEnvelope.ts";
 import { isBotSeatKey } from "../../lib/game/botSeat.ts";
-import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/game/gameEngine.ts";
+import { teamForSeat } from "../../lib/game/gameEngine.ts";
+
+const TEAMS_SEATS = 4;
 
 describe("readPersistedPlayerMap (seat resolution on rejoin)", () => {
   test("reads the seat -> userId map", () => {
@@ -98,7 +100,7 @@ describe("teams seating (buildSeatRoster + teamForSeat)", () => {
     roster.map((_, idx) => teamForSeat(idx, roster.length, "teams"));
 
   test("a full teams table is two A seats and two B seats, sitting opposite", () => {
-    const roster = buildSeatRoster(seats(TEAMS_PLAYER_COUNT), TEAMS_PLAYER_COUNT, {});
+    const roster = buildSeatRoster(seats(TEAMS_SEATS), TEAMS_SEATS, {});
     const teams = teamsOf(roster);
     assert.deepEqual(teams, ["A", "B", "A", "B"]);
     assert.equal(teams.filter((t) => t === "A").length, 2);
@@ -106,8 +108,8 @@ describe("teams seating (buildSeatRoster + teamForSeat)", () => {
   });
 
   test("a bot-filled teams table is still two and two", () => {
-    const roster = buildSeatRoster(seats(1), TEAMS_PLAYER_COUNT, { fillWithBots: true });
-    assert.equal(roster.length, TEAMS_PLAYER_COUNT);
+    const roster = buildSeatRoster(seats(1), TEAMS_SEATS, { fillWithBots: true });
+    assert.equal(roster.length, TEAMS_SEATS);
     assert.deepEqual(teamsOf(roster), ["A", "B", "A", "B"]);
   });
 
@@ -123,10 +125,10 @@ describe("teams seating (buildSeatRoster + teamForSeat)", () => {
   });
 
   test("free-for-all never assigns a team, however many seats", () => {
-    const roster = buildSeatRoster(seats(TEAMS_PLAYER_COUNT), TEAMS_PLAYER_COUNT, {});
+    const roster = buildSeatRoster(seats(TEAMS_SEATS), TEAMS_SEATS, {});
     assert.deepEqual(
       roster.map((_, idx) => teamForSeat(idx, roster.length, "free_for_all")),
-      new Array(TEAMS_PLAYER_COUNT).fill(undefined)
+      new Array(TEAMS_SEATS).fill(undefined)
     );
   });
 });

@@ -15,6 +15,7 @@ import { en as locale } from '@/locales/en';
 const mockSetRoomVisibility = jest.fn();
 
 let mockRoom: Record<string, unknown>;
+let mockRoomScreenRenders = 0;
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
@@ -35,13 +36,16 @@ jest.mock('@tanstack/react-query', () => ({
 }));
 
 jest.mock('@/context/onlineGameHooks', () => ({
-  useOnlineRoom: () => ({
+  useOnlineRoom: () => {
+    mockRoomScreenRenders += 1;
+    return {
     room: mockRoom,
     entrySource: 'friends',
     leaveRoom: jest.fn(),
     startGame: jest.fn(),
     setRoomVisibility: mockSetRoomVisibility,
-  }),
+    };
+  },
   useOnlineTable: () => ({ gameState: null }),
   useOnlineConnection: () => ({ connected: true, clearError: jest.fn() }),
   useServerError: () => null,
@@ -149,6 +153,51 @@ describe('the room screen matchmaking toggle', () => {
       });
       expect(view.getByRole('switch', { name: BOTS, checked: false })).toBeTruthy();
 
+      await view.unmount();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('counts down without re-rendering the room screen', async () => {
+    jest.useFakeTimers();
+    try {
+      const view = await renderRoom();
+      const hint = (seconds: number) =>
+        locale['room.botsComingIn'].replace('{{seconds}}', String(seconds));
+      const rendersBefore = mockRoomScreenRenders;
+
+      for (let tick = 0; tick < 5; tick++) {
+        await act(async () => {
+          jest.advanceTimersByTime(COUNTDOWN_STEP_MS);
+        });
+      }
+      expect(view.getByText(hint(25))).toBeTruthy();
+      expect(mockRoomScreenRenders).toBe(rendersBefore);
+
+      await view.unmount();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('shows no countdown to a player who is not the host', async () => {
+    jest.useFakeTimers();
+    try {
+      mockRoom = { ...roomWith('private'), players: [{ seatIndex: 0, userId: 'host', username: 'Ana' }, { seatIndex: 1, userId: 'guest', username: 'Bo' }] };
+      await setWindow({ width: 390, height: 844 });
+      const view = await renderApp(<RoomScreen />, { user: { id: 'guest', username: 'Bo' } });
+      const rendersBefore = mockRoomScreenRenders;
+      for (let tick = 0; tick < 5; tick++) {
+        await act(async () => {
+          jest.advanceTimersByTime(COUNTDOWN_STEP_MS);
+        });
+      }
+      const anyCountdown = new RegExp(
+        locale['room.botsComingIn'].replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace('{{seconds}}', '\\d+')
+      );
+      expect(view.queryByText(anyCountdown)).toBeNull();
+      expect(mockRoomScreenRenders).toBe(rendersBefore);
       await view.unmount();
     } finally {
       jest.useRealTimers();

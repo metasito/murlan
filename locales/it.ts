@@ -18,6 +18,10 @@ export const it: Record<keyof typeof en, string> = {
   "common.copy": "Copia",
   "common.copied": "Copiato!",
   "common.pointsAbbrev": "{{n}}pt",
+  "term.mode.teams": "A coppie",
+  "term.mode.freeForAll": "Tutti contro tutti",
+  "term.mode.teamsShort": "Coppie",
+  "term.mode.freeForAllShort": "Libero",
 
   // ------------------------------------------------------------- server.*
   "server.AUTH_RATE_LIMITED": "Troppi tentativi, riprova tra 15 minuti.",
@@ -323,8 +327,6 @@ export const it: Record<keyof typeof en, string> = {
   "roundOverOverlay.nextRoundA11yLabel": "Pronto per la prossima manche",
   "roundOverOverlay.waitingA11yLabel": "In attesa degli altri: {{count}} su {{total}} pronti",
   "roundOverOverlay.newMatchA11yLabel": "Inizia una nuova partita",
-  "result.modeTeams": "Coppie",
-  "result.modeFreeForAll": "Libero",
 
   // -------------------------------------------------------------- cardView.*
   "cardView.jokerColored": "Jolly rosso",
@@ -602,8 +604,6 @@ export const it: Record<keyof typeof en, string> = {
   "lobby.start": "Inizia Partita",
   "lobby.playerCountLabel": "N° GIOCATORI",
   "lobby.modeLabel": "MODALITÀ",
-  "lobby.modeTeams": "A Coppie",
-  "lobby.modeFreeForAll": "Tutti vs Tutti",
   "lobby.formatLabel": "FORMATO",
   "lobby.formatMatch": "Partita",
   "lobby.formatMatchSub": "Primo a {{target}} punti",
@@ -806,8 +806,6 @@ export const it: Record<keyof typeof en, string> = {
   "onlineLobby.joiningInvite": "Ingresso al tavolo…",
   "onlineLobby.createRoomTitle": "CREA STANZA",
   "onlineLobby.modeLabel": "MODALITÀ",
-  "onlineLobby.modeFreeForAll": "Libera",
-  "onlineLobby.modeTeams": "Coppie",
   "onlineLobby.playersLabel": "GIOCATORI",
   "onlineLobby.teamsRequire4": "La modalità Coppie richiede 4 giocatori",
   "onlineLobby.createRoom": "Crea Stanza",
@@ -839,8 +837,6 @@ export const it: Record<keyof typeof en, string> = {
   "room.shareFailed": "Impossibile condividere il codice della stanza.",
   "room.copyFailed": "Impossibile copiare il codice della stanza.",
   "room.modeAndPlayers": "{{mode}} · {{n}} giocatori",
-  "room.modeTeams": "A coppie",
-  "room.modeFreeForAll": "Tutti contro tutti",
   "room.playersCount": "GIOCATORI ({{current}}/{{max}})",
   "room.youSuffix": " (tu)",
   "room.hostBadge": "Host",

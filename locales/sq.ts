@@ -34,6 +34,10 @@ export const sq: Record<keyof typeof en, string> = {
   "common.copy": "Kopjo",
   "common.copied": "U kopjua!",
   "common.pointsAbbrev": "{{n}}p",
+  "term.mode.teams": "Në çifte",
+  "term.mode.freeForAll": "Të gjithë kundër të gjithëve",
+  "term.mode.teamsShort": "Çifte",
+  "term.mode.freeForAllShort": "I lirë",
 
   // ------------------------------------------------------------- server.*
   "server.AUTH_RATE_LIMITED": "Shumë përpjekje, provo përsëri pas 15 minutash.",
@@ -335,8 +339,6 @@ export const sq: Record<keyof typeof en, string> = {
   "roundOverOverlay.nextRoundA11yLabel": "Gati për dorën tjetër",
   "roundOverOverlay.waitingA11yLabel": "Në pritje të të tjerëve: {{count}} nga {{total}} gati",
   "roundOverOverlay.newMatchA11yLabel": "Fillo një ndeshje të re",
-  "result.modeTeams": "Çifte",
-  "result.modeFreeForAll": "I lirë",
 
   // -------------------------------------------------------------- cardView.*
   "cardView.jokerColored": "Xholi i kuq",
@@ -609,8 +611,6 @@ export const sq: Record<keyof typeof en, string> = {
   "lobby.start": "Fillo Lojën",
   "lobby.playerCountLabel": "NR. LOJTARËSH",
   "lobby.modeLabel": "MODALITETI",
-  "lobby.modeTeams": "Në Çifte",
-  "lobby.modeFreeForAll": "Të Gjithë kundër të Gjithëve",
   "lobby.formatLabel": "FORMATI",
   "lobby.formatMatch": "Ndeshje",
   "lobby.formatMatchSub": "I pari në {{target}} pikë",
@@ -813,8 +813,6 @@ export const sq: Record<keyof typeof en, string> = {
   "onlineLobby.joiningInvite": "Duke hyrë në tavolinë…",
   "onlineLobby.createRoomTitle": "KRIJO DHOMË",
   "onlineLobby.modeLabel": "MODALITETI",
-  "onlineLobby.modeFreeForAll": "E lirë",
-  "onlineLobby.modeTeams": "Çifte",
   "onlineLobby.playersLabel": "LOJTARËT",
   "onlineLobby.teamsRequire4": "Modaliteti Çifte kërkon 4 lojtarë",
   "onlineLobby.createRoom": "Krijo Dhomë",
@@ -846,8 +844,6 @@ export const sq: Record<keyof typeof en, string> = {
   "room.shareFailed": "Kodi i dhomës nuk u nda dot.",
   "room.copyFailed": "Kodi i dhomës nuk u kopjua dot.",
   "room.modeAndPlayers": "{{mode}} · {{n}} lojtarë",
-  "room.modeTeams": "Në çifte",
-  "room.modeFreeForAll": "Të gjithë kundër të gjithëve",
   "room.playersCount": "LOJTARËT ({{current}}/{{max}})",
   "room.youSuffix": " (ti)",
   "room.hostBadge": "Mikpritës",
