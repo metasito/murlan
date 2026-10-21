@@ -111,7 +111,6 @@ export async function renderApp(
   if (cached) await AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(cached));
   else await AsyncStorage.removeItem(AUTH_USER_KEY);
   if (saved) await AsyncStorage.setItem(OFFLINE_SAVE_KEY, encodeOfflineSave(saved));
-  else await AsyncStorage.removeItem(OFFLINE_SAVE_KEY);
   if (online && !user) throw new Error('the online group redirects a signed-out player to /auth');
   const screen = (node: React.ReactElement) =>
     online && user ? (
