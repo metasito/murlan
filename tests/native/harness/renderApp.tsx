@@ -46,7 +46,7 @@ function ResumedFirst({ held, children }: { held: boolean; children: React.React
   const [open, setOpen] = useState(!held);
   useEffect(() => {
     local.open = setOpen;
-  });
+  }, []);
   return open ? children : null;
 }
 
