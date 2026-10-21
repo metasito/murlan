@@ -23,7 +23,8 @@ test("every step states what it becomes under reduced motion", () => {
       `per call site: ${missing.join(", ")}`
   );
 
-  const spare = Object.keys(reduced).filter((name) => !(name in Motion.duration));
+  assert.ok("mark" in Motion, "Motion.reduced.mark is the reduced form of Motion.mark");
+  const spare = Object.keys(reduced).filter((name) => !(name in Motion.duration) && name !== "mark");
   assert.deepEqual(
     spare,
     [],

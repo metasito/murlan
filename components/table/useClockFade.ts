@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { ReduceMotion, useSharedValue, withDelay, withTiming, type SharedValue } from "react-native-reanimated";
+import { ReduceMotion, withDelay, withTiming, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useOwnedValue } from "@/lib/motion";
 import { Handoff } from "@/lib/tokens";
 import { useTraceSource } from "@/lib/e2eTrace";
 import type { OpponentSide } from "@/components/seatLayout";
@@ -25,17 +26,19 @@ export function useClockFade<T>(
     setHeld({ ...held, leaving: false });
   }
   // Unmounting hides a clock under reduced motion, so its opacity stays at 1 for the next to mount at.
-  const opacity = useSharedValue(on || reduced ? 1 : 0);
+  const opacity = useOwnedValue(on || reduced ? 1 : 0);
   // A fade's report lands a hop after it ends, past any later fade the clock went off for meanwhile.
   const gone = useCallback((fade: number) => setHeld((h) => (h.on || h.fade !== fade ? h : { ...h, leaving: false })), []);
   const fade = held.fade;
   useEffect(() => {
-    if (reduced) opacity.value = 1;
-    else if (on) opacity.value = withDelay(Handoff.clockOutMs, withTiming(1, { duration: Handoff.clockInMs }), ReduceMotion.Never);
+    if (reduced) opacity.set(1);
+    else if (on) opacity.set(withDelay(Handoff.clockOutMs, withTiming(1, { duration: Handoff.clockInMs }), ReduceMotion.Never));
     else {
-      opacity.value = withTiming(0, { duration: Handoff.clockOutMs }, (finished) => {
-        if (finished) scheduleOnRN(gone, fade);
-      });
+      opacity.set(
+        withTiming(0, { duration: Handoff.clockOutMs }, (finished) => {
+          if (finished) scheduleOnRN(gone, fade);
+        })
+      );
     }
   }, [on, reduced, opacity, gone, fade]);
   const shown = on ? clock : held.leaving ? held.last : null;

@@ -544,6 +544,8 @@ export const Motion = {
     reveal: 200,
     /** Hold at rest; do not loop. */
     dwell: null,
+    /** A mark's fade is already in place: `noticeRise` drops the travel. */
+    mark: null as { enter: number; exit: number } | null,
   },
   /**
    * A spring when the player caused it and is still touching it — picked up,
@@ -577,12 +579,14 @@ export const Motion = {
   throw: { card: 380, stagger: 45, catchUpCard: 200, catchUpStagger: 20 },
   /** The exchange's legs, giver → pile → receiver, and the holds between them: the owner's "Through the pile" (tests/e2e/fixtures/exchange-legs, PLAN). */
   exchange: { beat: 344, lift: 500, fly: 1000, tuck: 1000, highlight: 1500, giveWait: 420, read: 900, descend: 500 },
-  /** A notice's mark or float, and the connection dot's blink: the lantern mockup's `passSeat`, `passYou` and `blink` (#1259 Q1). */
-  mark: { enter: 100, hold: 1000, exit: 100, blink: 900 },
+  /** A notice's mark or float fading in and out, and the connection dot's blink: the lantern mockup's `passSeat`, `passYou` and `blink` (#1259 Q1). */
+  mark: { enter: 100, exit: 100, blink: 900 },
   /** The beaten play's turn: the lantern mockup's `.grp` transition, ease-out. Off the ladder, a hair past travel; at once under reduced motion. */
   beaten: 280,
   /** The hand growing into its turn: the mockup's `.12s`. Off the ladder, a tap's length that travels; at once under reduced motion. */
   handResize: 120,
+  /** The hand rising off the bottom edge on the viewer's turn. Off the ladder, between travel and reveal; at once under reduced motion. */
+  handLift: 500,
 } as const;
 
 /** The viewer's own drop: the lantern mockup's `reconnect` chapter, `grayTo` and `net()` (#1268). */
@@ -653,7 +657,7 @@ export const MatchEnding = {
  * the answer `Motion.reduced` already wrote down, which is the point: a call site
  * that decides for itself is how "reduced" came to mean a 200ms fade in one
  * screen and an instant jump in the next. `beaten` and `handResize`, the steps off the ladder,
- * have their reduced form (0) written here, since `Motion.reduced` holds ladder steps only.
+ * have their reduced form (0) written here; `Motion.reduced` holds the ladder steps and `mark`.
  */
 export function motionMs(step: keyof typeof Motion.duration | "beaten" | "handResize", reduceMotion: boolean): number {
   if (step === "beaten" || step === "handResize") return reduceMotion ? 0 : Motion[step];
@@ -690,6 +694,8 @@ export const Hold = {
   sting: 300,
   /** A face shown to be read before it moves on: the exchange's rest on the pile (the fixture's PLAN.rest). */
   reveal: 1500,
+  /** A notice's mark or float, between its fade in and out: the lantern mockup's `passSeat` and `passYou`. */
+  mark: 1000,
 } as const;
 
 /** How late a sound may still start and be heard as on time; later, it is dropped. */

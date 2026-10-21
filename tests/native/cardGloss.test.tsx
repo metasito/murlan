@@ -91,7 +91,7 @@ function RiggedTable({ pool, children }: { pool: Pool; children: React.ReactNode
 }
 
 function Published({ id, x }: { id: string; x: SharedValue<number> }) {
-  const rects = useCardRect(useCardTable(), `hand:${id}`, true, () => {
+  const rects = useCardRect(useCardTable(), `hand:${id}`, true, [x], () => {
     'worklet';
     return rectAt(x.value, 330);
   });

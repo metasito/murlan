@@ -9,11 +9,9 @@ import {
 } from "react-native";
 import { useOrientedWindow } from "@/lib/device/orientation";
 import Animated, {
-  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
   withSequence,
   withTiming,
 } from "react-native-reanimated";
@@ -29,6 +27,7 @@ import { a11yHidden, a11yState } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
 import type { GameMode } from "@/lib/game/gameEngine";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useLoop } from "@/lib/motion";
 
 interface ModeOption {
   maxPlayers: number;
@@ -116,17 +115,15 @@ export default function QuickmatchScreen() {
     return () => sub.remove();
   }, [phase, handleCancelSearch, navigation]);
 
-  useEffect(() => {
-    if (phase !== "searching" || reduceMotion) {
-      cancelAnimation(pulse);
-      pulse.value = 1;
-      return;
-    }
+  const searching = phase === "searching";
+  useLoop(pulse, searching ? () => {
     const breath = (to: number) =>
       withTiming(to, { duration: Motion.duration.dwell, easing: Easing.inOut(Easing.sin) });
-    pulse.value = withRepeat(withSequence(breath(1.15), breath(1)), -1, false);
-    return () => cancelAnimation(pulse);
-  }, [phase, pulse, reduceMotion]);
+    return { cycle: withSequence(breath(1.15), breath(1)) };
+  } : null);
+  useEffect(() => {
+    if (!searching || reduceMotion) pulse.set(1);
+  }, [searching, pulse, reduceMotion]);
 
   // After the effect above, not before it: reading a shared value here freezes
   // it for the React Compiler, and the assignment then bails the whole file.

@@ -7,7 +7,6 @@ import Animated, {
   ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
   withSequence,
   withTiming,
 } from "react-native-reanimated";
@@ -16,6 +15,7 @@ import Svg from "react-native-svg";
 import { a11yHidden } from "@/lib/a11y";
 import { Colors, Layer, makeShadow, NoticePalette, Scrim, withAlpha } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useLoop, useOwnedValue } from "@/lib/motion";
 import { DIAGNOSTICS, diag, type DiagRows } from "@/lib/diagnostics";
 import type { Suit } from "@/lib/game/gameEngine";
 import { clocked } from "./noticeClock";
@@ -223,20 +223,9 @@ export function NoticeDot({ testID, blink = false }: { testID?: string; blink?: 
   const { kind, paint, box, dotGlow } = useInk("NoticeDot");
   const reduceMotion = usePrefersReducedMotion();
   const timing = blink ? noticeBlink(reduceMotion) : null;
-  const half = timing?.half;
-  const dim = timing?.dim;
-  const opacity = useSharedValue(1);
-  useEffect(() => {
-    if (half === undefined || dim === undefined) {
-      if (!DIAGNOSTICS || !blink) return undefined;
-      const sample = () => diag({ k: "dot", t: performance.now(), kind, opacity: opacity.get() });
-      sample();
-      const every = setInterval(sample, DOT_SAMPLE_MS);
-      return () => {
-        clearInterval(every);
-        sample();
-      };
-    }
+  const opacity = useOwnedValue(1);
+  const blinking = timing !== null;
+  useLoop(opacity, blinking ? () => {
     let first: number | null = null;
     const halfEnded = (ms: number) => {
       if (first === null) {
@@ -246,14 +235,22 @@ export function NoticeDot({ testID, blink = false }: { testID?: string; blink?: 
       diag({ k: "blink", t: performance.now(), kind, period: first + ms });
       first = null;
     };
-    const fade = withTiming(dim, { duration: half, easing: Easing.inOut(Easing.ease) });
+    const fade = withTiming(timing.dim, { duration: timing.half, easing: Easing.inOut(Easing.ease) });
     // `noticeBlink` already answers the app's preference; Reanimated's own reads the system's once, at load.
-    opacity.value = withRepeat(DIAGNOSTICS ? clocked(fade, halfEnded) : fade, -1, true, undefined, ReduceMotion.Never);
+    return { cycle: DIAGNOSTICS ? clocked(fade, halfEnded) : fade, reverse: true, reduceMotion: ReduceMotion.Never };
+  } : null, kind);
+  useEffect(() => {
+    if (blinking) return undefined;
+    opacity.set(1);
+    if (!DIAGNOSTICS || !blink) return undefined;
+    const sample = () => diag({ k: "dot", t: performance.now(), kind, opacity: opacity.get() });
+    sample();
+    const every = setInterval(sample, DOT_SAMPLE_MS);
     return () => {
-      cancelAnimation(opacity);
-      opacity.value = 1;
+      clearInterval(every);
+      sample();
     };
-  }, [half, dim, opacity, blink, kind]);
+  }, [blinking, opacity, blink, kind]);
   const fade = useAnimatedStyle(() => ({ opacity: opacity.value }));
   const dot = paint.dot;
   if (!dot) throw new Error("this notice's tone paints no dot");

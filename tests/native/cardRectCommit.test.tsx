@@ -32,7 +32,7 @@ function Owner({ table, arc, turn, tick, drawn }: { table: CardTable; arc: Share
   useLayoutEffect(() => {
     arc.set(turn);
   }, [arc, turn]);
-  useCardRect(table, 'hand:a', drawn, () => {
+  useCardRect(table, 'hand:a', drawn, [arc], () => {
     'worklet';
     return rect(arc.value + tick * 0);
   });
