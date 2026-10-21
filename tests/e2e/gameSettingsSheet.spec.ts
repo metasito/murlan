@@ -90,28 +90,34 @@ test.describe("the rail's settings sheet", () => {
     const x = box.x + box.width / 2;
     const y = box.y + box.height / 2;
 
-    const covered = page.evaluate(
-      ({ x, y, sheet }) =>
-        new Promise<string[]>((resolve) => {
-          const seen: string[] = [];
+    const railRight = await page.locator(RAIL).evaluate((el) => el.getBoundingClientRect().right);
+    const entrance = page.evaluate(
+      ({ x, y, sheet, railRight }) =>
+        new Promise<{ covered: string[]; slid: boolean }>((resolve) => {
+          const covered: string[] = [];
+          let slid = false;
           let since = 0;
           const sample = (t: number) => {
-            if (document.querySelector(sheet)) {
+            const el = document.querySelector(sheet);
+            if (el) {
               since ||= t;
+              if (el.getBoundingClientRect().left < railRight - 1) slid = true;
               const hit = document.elementFromPoint(x, y);
               if (hit?.closest('[role="button"][aria-label="Impostazioni"]') == null) {
-                seen.push(`${Math.round(t - since)}ms: ${hit?.closest("[data-testid]")?.getAttribute("data-testid")}`);
+                covered.push(`${Math.round(t - since)}ms: ${hit?.closest("[data-testid]")?.getAttribute("data-testid")}`);
               }
-              if (t - since > 500) return resolve(seen);
+              if (t - since > 500) return resolve({ covered, slid });
             }
             requestAnimationFrame(sample);
           };
           requestAnimationFrame(sample);
         }),
-      { x, y, sheet: SHEET }
+      { x, y, sheet: SHEET, railRight }
     );
     await knob.click();
-    expect(await covered, "the sheet's entrance passes over the knob").toEqual([]);
+    const { covered, slid } = await entrance;
+    expect(slid, "no sampled frame caught the sheet mid-slide, so nothing was checked").toBe(true);
+    expect(covered, "the sheet's entrance passes over the knob").toEqual([]);
     await knob.click();
     await expect(page.locator(SHEET)).toHaveCount(0);
 

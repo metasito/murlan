@@ -233,8 +233,7 @@ export function GameSettingsSheet({
           { left: rail, right: 0, zIndex: SHEET_Z },
         ]}
       />
-      {/* Clipped at the rail's edge: the slide starts a screen-width to the left,
-          and unclipped it passes over the knob, eating a tap that lands as it does. */}
+      {/* The slide starts a screen-width left; unclipped, it covers the knob mid-tap. */}
       <View style={[sheetStyles.sheetClip, { left: rail, zIndex: SHEET_Z + 1 }]}>
         <Animated.View
           testID={SHEET_TESTID}
