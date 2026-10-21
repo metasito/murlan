@@ -39,10 +39,9 @@ const stateWith = (hand: Card[], over: Partial<GameState> = {}): GameState => st
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
   ...over,
@@ -93,7 +92,7 @@ describe('the online table selection', () => {
     await serverSends(r, stateWith([KING, NINE], { roundOver: true, finishingOrder: ['player_1'] }));
     expect(selected(KING)).toBe(true);
 
-    await serverSends(r, stateWith([KING, NINE, FOUR], { firstPlayMade: false }));
+    await serverSends(r, stateWith([KING, NINE, FOUR], { openingCard: null }));
     expect(selected(KING)).toBe(false);
 
     await r.unmount();

@@ -141,7 +141,7 @@ const dealTable = (page: Page, baseURL: string) => {
   return seatTable(
     page,
     baseURL,
-    offlineSave({ seats: 4, turn: 0, scores: MOCKUP_SCORES, holding: [MOCKUP_DEAL, ...othersBesides(MOCKUP_DEAL)], state: { firstPlayMade: false } })
+    offlineSave({ seats: 4, turn: 0, scores: MOCKUP_SCORES, holding: [MOCKUP_DEAL, ...othersBesides(MOCKUP_DEAL)], fresh: true })
   );
 };
 

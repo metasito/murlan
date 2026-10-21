@@ -20,7 +20,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
 import { buildCombination, type Card } from "../../lib/game/gameEngine.ts";
-import { beats, passed, played, refusalOf } from "../support/moves.ts";
+import { beats, passed, played, refusalOf, trickClosedBy } from "../support/moves.ts";
 
 const pair = (rank: Parameters<typeof c>[0]): Card[] => [c(rank, "hearts"), c(rank, "clubs")];
 const combo = (cards: Card[]) => buildCombination(cards)!;
@@ -73,13 +73,13 @@ describe("§9.2 — \"Passing does not lock a player out of the round … three 
     );
     state = passed(state);
     assert.equal(
-      state.trickWinner,
+      trickClosedBy(state),
       null,
       "one pass must not close the round while another active player can still answer"
     );
     state = passed(state);
     assert.equal(
-      state.trickWinner,
+      trickClosedBy(state),
       0,
       "the second pass closes it once every remaining active player has passed"
     );
@@ -96,7 +96,7 @@ describe("§9.3 — \"The player who made the last (unbeaten) play leads the nex
       }
     );
     const next = passed(state);
-    assert.equal(next.trickWinner, 0);
+    assert.equal(trickClosedBy(next), 0);
     assert.equal(next.currentTurnIndex, 0, "the unbeaten play's owner leads the next trick");
     assert.equal(next.lastPlayedCombination, null, "the table is cleared for the new lead");
   });
@@ -118,7 +118,7 @@ describe("§9.4 — \"If that player has just gone out (played their last card),
     );
     let next = passed(state);
     next = passed(next);
-    assert.equal(next.trickWinner, 0, "p0's play is still the one nobody beat");
+    assert.equal(trickClosedBy(next), 0, "p0's play is still the one nobody beat");
     assert.notEqual(next.currentTurnIndex, 0, "p0 has gone out and cannot lead");
     assert.ok(
       next.players[next.currentTurnIndex].hand.length > 0,

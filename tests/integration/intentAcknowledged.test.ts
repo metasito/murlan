@@ -132,7 +132,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
     assert.ok(seat, "the leading seat");
     const before = seat.hand.length;
 
-    const lead = seat.hand.find((c) => c.id === state.startCard?.id);
+    const lead = seat.hand.find((c) => c.id === state.openingCard?.id);
     assert.ok(lead, "the opening seat holds the start card and must lead it");
 
     // Armed before the first emit: the broadcast lands while `ackOf` is still
@@ -172,7 +172,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
 
   test("a pass retried under one intentId is answered as the pass that landed", async () => {
     const { c: leader, s: state, waiting } = await dealtPair("passretry");
-    const lead = state.players[state.viewerSeatIndex]?.hand.find((c) => c.id === state.startCard?.id);
+    const lead = state.players[state.viewerSeatIndex]?.hand.find((c) => c.id === state.openingCard?.id);
     assert.ok(lead);
     assert.deepEqual(await ackOf(leader.socket, "game:play", { cardIds: [lead.id] }), { ok: true });
 

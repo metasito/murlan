@@ -26,7 +26,7 @@ import { aThreePlayed, state } from '../support/game';
 import { offlineSave, renderApp } from './harness/renderApp';
 import { unreachable } from './mocks/http';
 
-const OFFLINE_MATCH = offlineSave(state({ firstPlayMade: true, playedRanks: aThreePlayed() }), { length: 'match' });
+const OFFLINE_MATCH = offlineSave(state({ openingCard: null, playedRanks: aThreePlayed() }), { length: 'match' });
 
 const mount = async () => {
   await AsyncStorage.clear();

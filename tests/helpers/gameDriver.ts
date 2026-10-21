@@ -31,8 +31,7 @@ export interface SanitizedState {
   currentTurnIndex: number;
   lastPlayedCombination: unknown | null;
   roundOver: boolean;
-  firstPlayMade: boolean;
-  startCard?: Card;
+  openingCard: Card | null;
   exchangePhase?: ExchangePhaseView;
   viewerSeatIndex: number;
 }
@@ -110,8 +109,8 @@ export function driveHumansToRoundOver(
         }
 
         let anchor = hand[0];
-        if (!state.firstPlayMade && state.startCard) {
-          const forced = hand.find((c) => c.id === state.startCard!.id);
+        if (state.openingCard) {
+          const forced = hand.find((c) => c.id === state.openingCard!.id);
           if (forced) anchor = forced;
         }
         const group = hand.filter((c) => c.rank === anchor.rank).map((c) => c.id);

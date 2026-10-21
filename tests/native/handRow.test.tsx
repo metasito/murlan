@@ -21,10 +21,7 @@ const RECEIVED = HAND[1];
 
 const facts: TableFacts = {
   hand: HAND,
-  lastPlayedCombination: null,
-  startCard: undefined,
-  firstPlayMade: true,
-  isNewTrick: true,
+  demand: { toBeat: null, mustInclude: null },
   isMyTurn: false,
   isFinished: false,
 };

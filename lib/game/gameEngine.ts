@@ -87,11 +87,10 @@ export interface GameState {
   lastPlayedBy: number;
   passCount: number;
   gameMode: GameMode;
-  trickWinner: number | null;
   roundOver: boolean;
   finishingOrder: string[];
-  firstPlayMade: boolean;
-  startCard?: Card;
+  /** The card the round's opening play must contain, held by the seat on move; null once it is down. */
+  openingCard: Card | null;
   startReason?: StartReason;
   exchangePhase?: ExchangePhase;
   /**
@@ -313,12 +312,12 @@ export const START_CARD: Card = { id: "3_spades", suit: "spades", rank: "3", isJ
 
 function findStartingPlayer(
   players: Player[]
-): { playerIdx: number; startCard: Card } {
+): { playerIdx: number; openingCard: Card } {
   for (let i = 0; i < players.length; i++) {
     const card = players[i].hand.find(
       (c) => c.rank === START_CARD.rank && c.suit === START_CARD.suit
     );
-    if (card) return { playerIdx: i, startCard: card };
+    if (card) return { playerIdx: i, openingCard: card };
   }
 
   // Defensive fallback: lowest card held by any player.
@@ -337,12 +336,12 @@ function findStartingPlayer(
       }
     }
   }
-  if (bestCard) return { playerIdx: bestIdx, startCard: bestCard };
+  if (bestCard) return { playerIdx: bestIdx, openingCard: bestCard };
 
   // Unreachable unless every hand is empty.
   return {
     playerIdx: 0,
-    startCard: START_CARD,
+    openingCard: START_CARD,
   };
 }
 
@@ -463,7 +462,7 @@ function checkPlay(
   const wanted = new Set(cardIds);
   const cards = hand.filter((card) => wanted.has(card.id));
   if (cards.length !== wanted.size) return { ok: false, code: "notHeld" };
-  return checkSelection(cards, state);
+  return checkSelection(cards, tableDemand(state));
 }
 
 export type PlayCheck = { ok: true; combo: Combination } | { ok: false; code: PlayRefusal };
@@ -472,18 +471,27 @@ export type SelectionCheck =
   | { ok: true; combo: Combination }
   | { ok: false; code: SelectionRefusal };
 
-/** `checkPlay` past the seat: whether these cards, already known held, answer this table. */
-export function checkSelection(
-  cards: Card[],
-  table: Pick<GameState, "lastPlayedCombination" | "firstPlayMade" | "startCard">
-): SelectionCheck {
+/** What the seat on move must answer. */
+export interface TableDemand {
+  /** The combination to beat; null when the seat on move leads. */
+  toBeat: Combination | null;
+  /** A card the play must contain: the opening card, else null. */
+  mustInclude: Card | null;
+}
+
+export function tableDemand(state: Pick<GameState, "lastPlayedCombination" | "openingCard">): TableDemand {
+  return { toBeat: state.lastPlayedCombination, mustInclude: state.openingCard };
+}
+
+/** `checkPlay` past the seat: whether these cards, already known held, answer this demand. */
+export function checkSelection(cards: Card[], demand: TableDemand): SelectionCheck {
   const combo = buildCombination(cards);
   if (!combo) return { ok: false, code: "notACombination" };
-  const startCard = table.firstPlayMade ? undefined : table.startCard;
-  if (startCard && !cards.some((card) => card.id === startCard.id)) {
+  const required = demand.mustInclude;
+  if (required && !cards.some((card) => card.id === required.id)) {
     return { ok: false, code: "needsStartCard" };
   }
-  const refusal = beatRefusal(combo, table.lastPlayedCombination);
+  const refusal = beatRefusal(combo, demand.toBeat);
   return refusal ? { ok: false, code: refusal } : { ok: true, combo };
 }
 
@@ -571,12 +579,9 @@ export function applyMove(state: GameState, seat: number, move: Move): MoveResul
 // Handles any hand size by enumerating by combination structure,
 // not bitmask, so no hand size is a special case.
 
-export function getAllValidPlays(
-  hand: Card[],
-  lastPlayed: Combination | null,
-  isNewTrick: boolean,
-  requireCard?: Card
-): Combination[] {
+export function getAllValidPlays(hand: Card[], demand: TableDemand): Combination[] {
+  const lastPlayed = demand.toBeat;
+  const requireCard = demand.mustInclude ?? undefined;
   const plays: Combination[] = [];
   const seen = new Set<string>();
 
@@ -588,7 +593,7 @@ export function getAllValidPlays(
     if (!selected.length) return;
     if (requireCard && !selected.some((c) => c.id === requireCard.id)) return;
     const combo = buildCombination(selected);
-    if (!combo || !canPlay(combo, isNewTrick ? null : lastPlayed)) return;
+    if (!combo || !canPlay(combo, lastPlayed)) return;
     const key = `${combo.type}:${combo.cards.length}:${combo.strength}`;
     if (seen.has(key)) return;
     seen.add(key);
@@ -790,7 +795,7 @@ function refusalMessage(
     case "notACombination":
       return `${played.join(", ")} is not a ${combination.type}`;
     case "needsStartCard":
-      return `${player.name} must open with ${state.startCard!.id}`;
+      return `${player.name} must open with ${state.openingCard!.id}`;
     default:
       return `${combination.type} of ${combination.cards.length} does not beat the table`;
   }
@@ -814,7 +819,7 @@ function processPlay(state: GameState, combination: Combination): GameState {
   newState.lastPlayedCombination = combination;
   newState.lastPlayedBy = newState.currentTurnIndex;
   newState.passCount = 0;
-  newState.firstPlayMade = true;
+  newState.openingCard = null;
 
   if (player.hand.length === 0) {
     const position = newState.finishingOrder.length + 1;
@@ -864,7 +869,6 @@ function processPass(state: GameState): GameState {
   if (newState.passCount >= passesNeeded) {
     newState.lastPlayedCombination = null;
     newState.passCount = 0;
-    newState.trickWinner = newState.lastPlayedBy;
 
     const lastWinner = newState.players[newState.lastPlayedBy];
     if (lastWinner && lastWinner.hand.length > 0) {
@@ -876,7 +880,6 @@ function processPass(state: GameState): GameState {
       });
     }
   } else {
-    newState.trickWinner = null;
     newState.currentTurnIndex = getNextActivePlayer(newState);
   }
 
@@ -992,11 +995,10 @@ function getBestCardFromHand(hand: Card[]): Card | undefined {
  *
  * The turn index matching the opener does not answer this: `startReason` labels
  * the whole round and is never cleared, and the opener takes the lead again
- * every round they win. `firstPlayMade` does not either — only the very first
- * deal of a match starts it false; a round dealt after a lost round carries
- * it already true. What every deal empties and every play writes is the rank
- * tally, so an empty one is the state's own word for "nobody has played this
- * round yet". A round persisted before the tally existed has none, and reads as
+ * every round they win. `openingCard` does not either — only a start-card
+ * deal sets one; a round dealt after a lost round opens with none. What every
+ * deal empties and every play writes is the rank tally, so an empty one is the
+ * state's own word for "nobody has played this round yet". A round persisted before the tally existed has none, and reads as
  * past its opening: a missing announcement costs less than one over a live round.
  *
  * True during the round-winner's exchange choice only by accident of index —
@@ -1017,17 +1019,10 @@ export function openingIsPending(state: {
   return state.playedRanks.every((played) => played === 0);
 }
 
-/**
- * Whether the round on the table is still as dealt: nobody has played into it.
- * An exchange round counts, though it carries `firstPlayMade` from the last one.
- */
-export function roundUnplayed(state: {
-  roundOver: boolean;
-  firstPlayMade: boolean;
-  playedRanks: number[];
-}): boolean {
+/** Whether the round on the table is still as dealt: nobody has played into it. */
+export function roundUnplayed(state: { roundOver: boolean; playedRanks: number[] }): boolean {
   if (state.roundOver) return false;
-  return !state.firstPlayMade || state.playedRanks.every((played) => played === 0);
+  return state.playedRanks.every((played) => played === 0);
 }
 
 /** Teams is 2-v-2 and only 2-v-2 (docs/GAME-RULES.md §11). */
@@ -1112,16 +1107,16 @@ function checkedDeal(dealt: Card[][], seatCount: number): Card[][] {
 function dealtRound(
   players: Player[],
   gameMode: GameMode
-): Omit<GameState, "currentTurnIndex" | "lastPlayedBy" | "firstPlayMade"> {
+): Omit<GameState, "currentTurnIndex" | "lastPlayedBy"> {
   return {
     players,
     lastPlayedCombination: null,
     playedRanks: emptyRankTally(),
     passCount: 0,
     gameMode,
-    trickWinner: null,
     roundOver: false,
     finishingOrder: [],
+    openingCard: null,
     lastMove: { seq: 0, kind: "deal" },
   };
 }
@@ -1133,7 +1128,6 @@ function exchangeOpening(players: Player[], gameMode: GameMode, winnerIdx: numbe
       ...dealtRound(players, gameMode),
       currentTurnIndex: winnerIdx,
       lastPlayedBy: winnerIdx,
-      firstPlayMade: true,
       startReason: { type: "won_no_exchange", playerIdx: winnerIdx },
       exchangePhase: { active: false, winnerIdx, loserIdx, twoJokerException: true },
     };
@@ -1148,7 +1142,6 @@ function exchangeOpening(players: Player[], gameMode: GameMode, winnerIdx: numbe
     ...dealtRound(players, gameMode),
     currentTurnIndex: winnerIdx,
     lastPlayedBy: winnerIdx,
-    firstPlayMade: true,
     startReason: { type: "lost_round", playerIdx: loserIdx },
     exchangePhase: { active: true, winnerIdx, loserIdx, cardFromLoser, twoJokerException: false },
   };
@@ -1180,14 +1173,13 @@ export function startRound(seats: readonly SeatSetup[], gameMode: GameMode, opts
     return exchangeOpening(players, gameMode, opening.winnerSeat, opening.loserSeat);
   }
 
-  const { playerIdx: startIdx, startCard } = findStartingPlayer(players);
+  const { playerIdx: startIdx, openingCard } = findStartingPlayer(players);
   return {
     ...dealtRound(players, gameMode),
     currentTurnIndex: startIdx,
     lastPlayedBy: startIdx,
-    firstPlayMade: false,
-    startCard,
-    startReason: { type: "start_card", card: startCard, playerIdx: startIdx },
+    openingCard,
+    startReason: { type: "start_card", card: openingCard, playerIdx: startIdx },
   };
 }
 

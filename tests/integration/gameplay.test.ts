@@ -710,9 +710,9 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     // the seat on turn genuinely holds and forge a legal opening play from
     // it. The ownership guard passes it; only the turn guard stops it.
     const held = new Set(before.players[before.viewerSeatIndex].hand.map((c) => c.id));
-    assert.ok(before.startCard && !held.has(before.startCard.id));
+    assert.ok(before.openingCard && !held.has(before.openingCard.id));
 
-    idle.socket.emit("game:play", { cardIds: [before.startCard.id] });
+    idle.socket.emit("game:play", { cardIds: [before.openingCard.id] });
 
     const after = await authoritativeState(idle, room.roomId);
     assert.equal(after.currentTurnIndex, before.currentTurnIndex);
@@ -735,18 +735,18 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     const held = new Set(before.players[before.viewerSeatIndex].hand.map((c) => c.id));
     const foreign = createDeck().find((c) => !held.has(c.id));
     assert.ok(foreign, "a two-handed deal cannot exhaust the deck");
-    assert.ok(before.startCard && held.has(before.startCard.id));
+    assert.ok(before.openingCard && held.has(before.openingCard.id));
 
     // The play is *refused*, not narrowed to the cards the sender does hold.
     // `player.hand.filter(...)` would otherwise turn a forged two-card play
     // into a legal single and let it through as if it had been asked for.
     const rejected = waitFor<{ code: string }>(onTurn.socket, "game:error");
-    onTurn.socket.emit("game:play", { cardIds: [before.startCard.id, foreign.id] });
+    onTurn.socket.emit("game:play", { cardIds: [before.openingCard.id, foreign.id] });
     assert.equal((await rejected).code, "INVALID_CARD");
 
     const after = await authoritativeState(onTurn, room.roomId);
     assert.equal(after.currentTurnIndex, before.currentTurnIndex);
-    assert.equal(after.firstPlayMade, false);
+    assert.notEqual(after.openingCard, null);
     assert.deepEqual(
       after.players.map((p) => p.handCount),
       before.players.map((p) => p.handCount)
@@ -763,11 +763,11 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     );
     assert.ok(onTurn, "somebody must be on turn at the opening deal");
     const before = states[[alice, bob].indexOf(onTurn)];
-    assert.equal(before.firstPlayMade, false);
-    assert.ok(before.startCard, "the opening deal must name a start card");
+    assert.notEqual(before.openingCard, null);
+    assert.ok(before.openingCard, "the opening deal must name a start card");
 
     const other = before.players[before.viewerSeatIndex].hand.find(
-      (c) => c.id !== before.startCard!.id
+      (c) => c.id !== before.openingCard!.id
     );
     assert.ok(other, "the seat on turn holds more than the start card");
 
@@ -778,7 +778,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     assert.equal(told.params?.refusal, "needsStartCard");
 
     const after = await authoritativeState(onTurn, room.roomId);
-    assert.equal(after.firstPlayMade, false);
+    assert.notEqual(after.openingCard, null);
     assert.deepEqual(
       after.players.map((p) => p.handCount),
       before.players.map((p) => p.handCount)
@@ -817,7 +817,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     const other = [alice, bob][1 - leadIdx]!;
     const before = states[leadIdx]!;
     const hand = before.players[before.viewerSeatIndex].hand;
-    const start = before.startCard!;
+    const start = before.openingCard!;
     const offRank = hand.find((c) => !c.isJoker && c.rank !== start.rank);
     assert.ok(offRank, "a fourteen-card hand holds a second rank");
 
@@ -832,12 +832,12 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
 
     const unmoved = await authoritativeState(lead, room.roomId);
     assert.equal(unmoved.currentTurnIndex, before.currentTurnIndex);
-    assert.equal(unmoved.firstPlayMade, false);
+    assert.notEqual(unmoved.openingCard, null);
 
     assert.equal((await refusal(lead, "game:play", { cardIds: [start.id] })).ok, true);
     const otherBefore = states[1 - leadIdx]!;
     const otherHand = otherBefore.players[otherBefore.viewerSeatIndex].hand;
-    const wrongShape = getAllValidPlays(otherHand, null, true).find(
+    const wrongShape = getAllValidPlays(otherHand, { toBeat: null, mustInclude: null }).find(
       (p) => p.cards.length > 1 && p.type !== "bomb" && p.type !== "royal_straight"
     );
     assert.ok(wrongShape, "a fourteen-card hand holds a pair or a run");

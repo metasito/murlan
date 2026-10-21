@@ -99,6 +99,8 @@ export interface SaveOptions {
   personalities?: (BotPersonalityId | undefined)[];
   /** A play already on the felt, built by the engine so its strength is the rules' own. */
   pile?: { cards: string[]; by: number };
+  /** The round as dealt: nobody has played into it, so the table deals it in. */
+  fresh?: boolean;
   state?: Partial<GameState>;
 }
 
@@ -117,11 +119,11 @@ export function offlineSave(o: SaveOptions): OfflineSave {
     })),
     currentTurnIndex: o.turn ?? 0,
     lastPlayedBy: -1,
-    // Past the opening, so nothing is waiting on the 3 of spades and the
+    // Past the opening unless `fresh`, so nothing is waiting on the 3 of spades and the
     // table renders as a round in progress rather than a first move — which
     // takes a tally with a card on it, or `roundUnplayed` deals the table again.
-    firstPlayMade: true,
-    ...(o.state?.firstPlayMade !== false && { playedRanks: aThreePlayed() }),
+    openingCard: null,
+    ...(!o.fresh && { playedRanks: aThreePlayed() }),
     ...(o.pile && { lastPlayedCombination: buildCombination(cards(o.pile.cards)), lastPlayedBy: o.pile.by }),
     ...o.state,
   });

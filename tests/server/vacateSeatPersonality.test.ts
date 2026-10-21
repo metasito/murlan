@@ -29,12 +29,11 @@ test("vacateSeat never sets personality on the seat it hands to the bot", async 
     lastPlayedBy: -1,
     passCount: 0,
     gameMode: "free_for_all",
-    trickWinner: null,
     // Between rounds: vacateSeat's simplest branch, no board- or DB-affecting
     // side effect once `remaining` stays above zero.
     roundOver: true,
     finishingOrder: ["p0", "p1"],
-    firstPlayMade: true,
+    openingCard: null,
     playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: "deal" },
   };

@@ -9,8 +9,8 @@ import type { FriendRequestAccepted, FriendRequestIncoming } from "./http.ts";
 import type * as Inbound from "./socketSchemas.ts";
 import type { TranslationParams } from "./i18n.ts";
 
-export const PROTOCOL_VERSION = 10;
-export const MIN_PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 11;
+export const MIN_PROTOCOL_VERSION = 11;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */
 export const CLIENT_OUTDATED = "CLIENT_OUTDATED";
@@ -159,6 +159,7 @@ export const gameStateSchema = z
     // Looser than parseGameState's tally on purpose: the server already held its state to that,
     // and a stricter wire would refuse a state over a tally a newer server reshaped.
     playedRanks: z.array(z.number()),
+    openingCard: card.nullable(),
   })
   .passthrough();
 

@@ -87,13 +87,17 @@ function readPersistedSeats(stored: unknown): PersistedSeats {
  * `OLDEST_GAME_SCHEMA_VERSION` on are restored, each held to the current parse.
  * Held to the stored shape by tests/server/storedShapeVersions.test.ts.
  */
-export const GAME_SCHEMA_VERSION = 6;
+export const GAME_SCHEMA_VERSION = 7;
 
 /**
  * The oldest row still restored. Raise it to GAME_SCHEMA_VERSION when a bump changes what a
- * row holds; leave it when the bump only tightens the parse, which still holds every row to it.
+ * row holds and `parseGameState` keeps no reading of the older shape; leave it when the bump only
+ * tightens the parse, which still holds every row to it.
  */
 export const OLDEST_GAME_SCHEMA_VERSION = 5;
+
+/** An older row is read as `openingFlags`. */
+const OPENING_CARD_SCHEMA_VERSION = 7;
 
 export type RoundFlags = Record<number, { bomb: boolean; joker: boolean }>;
 
@@ -239,7 +243,10 @@ export function unpackPersistedState(persisted: unknown): PersistedRestore {
   if (!parsed.success) {
     return { ok: false, reason: parsed.error.issues[0]?.message ?? "malformed envelope" };
   }
-  const gameState = parseGameState(parsed.data.gameState);
+  const gameState = parseGameState(
+    parsed.data.gameState,
+    version < OPENING_CARD_SCHEMA_VERSION ? "openingFlags" : "current"
+  );
   if (!gameState.ok) return { ok: false, reason: gameState.reason };
   return { ok: true, ...parsed.data, gameState: gameState.state };
 }

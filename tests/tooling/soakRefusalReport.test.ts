@@ -129,7 +129,7 @@ describe("the soak does not manufacture its own refusals", () => {
       currentTurnIndex: 0,
       lastPlayedCombination: null,
       roundOver: false,
-      firstPlayMade: true,
+      openingCard: null,
       exchangePhase: { active: true, winnerIdx: 0, cardFromLoser },
       viewerSeatIndex: 0,
     } as never;

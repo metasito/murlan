@@ -10,7 +10,8 @@ import {
   encodeOfflineSave,
   isResumable,
 } from "../../lib/offlineSave.ts";
-import { buildCombination, emptyRankTally, startRound } from "../../lib/game/gameEngine.ts";
+import { actingSeat, buildCombination, emptyRankTally, startRound } from "../../lib/game/gameEngine.ts";
+import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
 import { played, playRoundOut } from "../support/moves.ts";
 import type { MatchState } from "../../lib/game/matchState.ts";
 
@@ -31,10 +32,9 @@ const save = (over = false) => ({
     lastPlayedBy: -1,
     passCount: 0,
     gameMode: "free_for_all",
-    trickWinner: null,
     roundOver: false,
     finishingOrder: [],
-    firstPlayMade: false,
+    openingCard: null,
     playedRanks: emptyRankTally(),
     lastMove: { seq: 0, kind: "deal" },
   },
@@ -77,18 +77,25 @@ test("nothing stored, or nothing parseable, is simply nothing", () => {
   }
 });
 
-test("a version-5 save origin/main wrote resumes whole and plays a legal move", () => {
-  const raw = readFileSync(new URL("../fixtures/offlineSave.v5.json", import.meta.url), "utf8");
-  assert.equal(JSON.parse(raw).version, 5);
-  assert.ok(OLDEST_OFFLINE_SAVE_VERSION <= 5 && 5 < OFFLINE_SAVE_VERSION);
-  const restored = decodeOfflineSave(raw);
-  assert.ok(restored, "the version-5 save no longer decodes");
-  assert.deepEqual(restored.gameState, JSON.parse(raw).gameState);
-  const { gameState } = restored;
-  const start = gameState.players[gameState.currentTurnIndex].hand.find((c) => c.id === gameState.startCard?.id);
-  assert.ok(start);
-  assert.equal(played(gameState, buildCombination([start])!).firstPlayMade, true);
-});
+const THREE_SPADES = { id: "3_spades", suit: "spades", rank: "3", isJoker: false };
+
+for (const [version, openingCard] of [[5, THREE_SPADES], [6, THREE_SPADES]] as const) {
+  test(`a version-${version} save resumes whole, its opening card carried over, and plays a legal move`, () => {
+    const raw = readFileSync(new URL(`../fixtures/offlineSave.v${version}.json`, import.meta.url), "utf8");
+    const stored = JSON.parse(raw);
+    assert.equal(stored.version, version);
+    assert.ok(OLDEST_OFFLINE_SAVE_VERSION <= version && version < OFFLINE_SAVE_VERSION);
+    const restored = decodeOfflineSave(raw);
+    assert.ok(restored, `the version-${version} save no longer decodes`);
+    const { firstPlayMade: _played, startCard: _start, trickWinner: _closed, ...kept } = stored.gameState;
+    assert.deepEqual(restored.gameState, { ...kept, openingCard });
+    const { gameState } = restored;
+    const start = gameState.players[gameState.currentTurnIndex].hand.find((c) => c.id === gameState.openingCard?.id);
+    assert.ok(start, "the seat on move does not hold the opening card");
+    assert.equal(played(gameState, buildCombination([start])!).openingCard, null);
+    assert.ok(autoMoveForSeat(gameState, actingSeat(gameState), "floor"), "the engine refused every move");
+  });
+}
 
 test("the golden save of this version still decodes and plays a legal move", () => {
   const raw = readFileSync(new URL("../fixtures/offlineSave.json", import.meta.url), "utf8");
@@ -100,12 +107,12 @@ test("the golden save of this version still decodes and plays a legal move", () 
   const restored = decodeOfflineSave(raw);
   assert.ok(restored, "the fixture no longer decodes");
   const { gameState } = restored;
-  const start = gameState.players[gameState.currentTurnIndex].hand.find((c) => c.id === gameState.startCard?.id);
+  const start = gameState.players[gameState.currentTurnIndex].hand.find((c) => c.id === gameState.openingCard?.id);
   assert.ok(start, "the seat on move does not hold the start card");
   const combo = buildCombination([start]);
   assert.ok(combo);
   const after = played(gameState, combo);
-  assert.equal(after.firstPlayMade, true);
+  assert.equal(after.openingCard, null);
   assert.deepEqual(after.lastMove, { seq: 1, kind: "play", seat: gameState.currentTurnIndex });
   assert.notEqual(after.currentTurnIndex, gameState.currentTurnIndex);
 });

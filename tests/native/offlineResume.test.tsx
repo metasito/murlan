@@ -53,10 +53,9 @@ const midExchangeSave = () => {
       lastPlayedBy: -1,
       passCount: 0,
       gameMode: "free_for_all",
-      trickWinner: null,
       roundOver: false,
       finishingOrder: [],
-      firstPlayMade: true,
+      openingCard: null,
       playedRanks: emptyRankTally(),
       lastMove: { seq: 0, kind: "deal" },
       exchangePhase: {
@@ -86,7 +85,7 @@ function Probe() {
   } = useGame();
   // The opening play is forced to the 3♠, so it is the one move that is always
   // legal and always available without reading the engine's rules here.
-  const start = gameState?.startCard;
+  const start = gameState?.openingCard;
   return (
     <>
       <Text testID="hand">{gameState ? String(gameState.players[0].hand.length) : "none"}</Text>
@@ -246,10 +245,9 @@ const freeLeadSave = () => {
       lastPlayedBy: -1,
       passCount: 0,
       gameMode: "free_for_all",
-      trickWinner: null,
       roundOver: false,
       finishingOrder: [],
-      firstPlayMade: true,
+      openingCard: null,
       playedRanks: aThreePlayed(),
       lastMove: { seq: 0, kind: "deal" },
     },

@@ -17,6 +17,8 @@ import {
   type PersistedSeats,
 } from "../../shared/persistedEnvelope.ts";
 import { parseGameState } from "../../shared/gameStateSchema.ts";
+import { actingSeat, applyMove } from "../../lib/game/gameEngine.ts";
+import { chooseMove } from "../../lib/game/autoMove.ts";
 import { card, seat, state } from "../support/game.ts";
 
 const gameState = state({ currentTurnIndex: 2, gameMode: "teams" });
@@ -128,14 +130,29 @@ describe("persisted game_state envelope", () => {
 });
 
 describe("a row an older revision wrote, through the same gate", () => {
-  test("a version-5 row origin/main packed restores whole", () => {
-    const raw = JSON.parse(readFileSync(new URL("../fixtures/activeGames.v5.json", import.meta.url), "utf8"));
-    assert.equal(raw.schemaVersion, 5);
-    assert.ok(OLDEST_GAME_SCHEMA_VERSION <= 5 && 5 < GAME_SCHEMA_VERSION);
-    const back = restore(raw);
-    assert.deepEqual(back.gameState, raw.gameState);
-    assert.deepEqual(back.match.playerMap, raw.match.playerMap);
-    assert.equal(back.dealFirstSeat, raw.dealFirstSeat);
+  const THREE_SPADES = { id: "3_spades", suit: "spades", rank: "3", isJoker: false };
+  for (const [version, openingCard] of [[5, null], [6, THREE_SPADES]] as const) {
+    test(`a version-${version} row restores whole, its opening card carried over, and takes a legal move`, () => {
+      const raw = JSON.parse(readFileSync(new URL(`../fixtures/activeGames.v${version}.json`, import.meta.url), "utf8"));
+      assert.equal(raw.schemaVersion, version);
+      assert.ok(OLDEST_GAME_SCHEMA_VERSION <= version && version < GAME_SCHEMA_VERSION);
+      const back = restore(raw);
+      const { firstPlayMade: _played, startCard: _start, trickWinner: _closed, ...kept } = raw.gameState;
+      assert.deepEqual(back.gameState, { ...kept, openingCard });
+      assert.deepEqual(back.match.playerMap, raw.match.playerMap);
+      assert.equal(back.dealFirstSeat, raw.dealFirstSeat);
+      const seat = actingSeat(back.gameState);
+      const move = chooseMove(back.gameState, seat, "floor");
+      assert.ok(move, "no move for the seat on move");
+      assert.ok(applyMove(back.gameState, seat, move).ok, "the engine refused the move");
+    });
+  }
+
+  test("a row of this version in the older shape is refused, not read as one", () => {
+    const raw = JSON.parse(readFileSync(new URL("../fixtures/activeGames.v6.json", import.meta.url), "utf8"));
+    const result = unpackPersistedState({ ...raw, schemaVersion: GAME_SCHEMA_VERSION });
+    assert.equal(result.ok, false);
+    assert.match(result.ok ? "" : result.reason, /game state openingCard/);
   });
 
   test("a version-5 row is still held to parseGameState", () => {
@@ -216,7 +233,7 @@ describe("rows the restore path refuses", () => {
   test("an open exchange whose winner has nothing to give back, for parseGameState's reason", () => {
     const unsatisfiable = state({
       players: [seat(0, []), seat(1, [card("4", "clubs")])],
-      firstPlayMade: true,
+      openingCard: null,
       exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, twoJokerException: false },
     });
     const verdict = parseGameState(unsatisfiable);

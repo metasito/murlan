@@ -263,10 +263,9 @@ describe("offlineBotMove", () => {
     lastPlayedBy: -1,
     passCount: 0,
     gameMode: "free_for_all",
-    trickWinner: null,
     roundOver: false,
     finishingOrder: [],
-    firstPlayMade: true,
+    openingCard: null,
     lastMove: { seq: 0, kind: "deal" },
     playedRanks: emptyRankTally(),
   });

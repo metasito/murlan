@@ -25,13 +25,11 @@ const OPENING: GameState = {
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: false,
+  openingCard: hand('spades')[0],
   playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
-  startCard: hand('spades')[0],
 };
 
 const notYourTurn = () => String(screen.getByTestId('btn-gioca').props.accessibilityLabel).includes('it is not your turn');

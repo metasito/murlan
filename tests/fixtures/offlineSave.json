@@ -360,10 +360,24 @@
     "lastPlayedBy": 1,
     "passCount": 0,
     "gameMode": "free_for_all",
-    "trickWinner": null,
     "roundOver": false,
     "finishingOrder": [],
-    "firstPlayMade": false,
+    "openingCard": {
+      "id": "3_spades",
+      "suit": "spades",
+      "rank": "3",
+      "isJoker": false
+    },
+    "startReason": {
+      "type": "start_card",
+      "card": {
+        "id": "3_spades",
+        "suit": "spades",
+        "rank": "3",
+        "isJoker": false
+      },
+      "playerIdx": 1
+    },
     "playedRanks": [
       0,
       0,
@@ -381,22 +395,6 @@
       0,
       0
     ],
-    "startCard": {
-      "id": "3_spades",
-      "suit": "spades",
-      "rank": "3",
-      "isJoker": false
-    },
-    "startReason": {
-      "type": "start_card",
-      "card": {
-        "id": "3_spades",
-        "suit": "spades",
-        "rank": "3",
-        "isJoker": false
-      },
-      "playerIdx": 1
-    },
     "lastMove": {
       "seq": 0,
       "kind": "deal"
@@ -405,12 +403,12 @@
   "match": {
     "length": "match",
     "target": 21,
-    "scores": {},
-    "rounds": [],
     "over": false,
     "winners": [],
-    "isDraw": false
+    "isDraw": false,
+    "scores": {},
+    "rounds": []
   },
   "dealFirstSeat": 0,
-  "version": 6
+  "version": 7
 }

@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import { canBeatPileOf, readStagedPlay } from "../../components/table/stagedPlay.ts";
 import { TUTORIAL_REFUSAL_KEYS } from "../../components/tutorialRefusal.ts";
 import { card, seat as makePlayer, state as makeState } from "../support/game.ts";
+import { passed } from "../support/moves.ts";
 import {
   applyMove,
   buildCombination,
+  tableDemand,
   type Card,
   type Combination,
   type Rank,
@@ -25,10 +27,7 @@ const staged = (over: Partial<Parameters<typeof readStagedPlay>[0]>) =>
   readStagedPlay({
     hand: HAND,
     selectedIds: [],
-    lastPlayedCombination: null,
-    startCard: undefined,
-    firstPlayMade: true,
-    isNewTrick: true,
+    demand: { toBeat: null, mustInclude: null },
     isMyTurn: true,
     isFinished: false,
     ...over,
@@ -77,30 +76,21 @@ describe("whether GIOCA will take them", () => {
   });
 
   test("a lower pair cannot answer the pile", () => {
-    const s = staged({
-      ...pair,
-      isNewTrick: false,
-      lastPlayedCombination: pairOfSevens,
-    });
+    const s = staged({ ...pair, demand: { toBeat: pairOfSevens, mustInclude: null } });
     assert.equal(s.playable, false);
     assert.equal(s.refusal, "tooLow");
   });
 
-  /**
-   * The pile is still on the table when the round it belongs to has closed, so
-   * only `isNewTrick` says whether it must be beaten. Reading the pile alone
-   * would refuse the lead that opens the next round.
-   */
   test("the same pair leads freely once the round has closed", () => {
-    assert.equal(
-      staged({ ...pair, isNewTrick: true, lastPlayedCombination: pairOfSevens }).playable,
-      true
+    const closed = passed(
+      makeState({ players: [makePlayer(0, HAND), makePlayer(1, [card("2", "clubs")])], currentTurnIndex: 1, lastPlayedBy: 0, lastPlayedCombination: pairOfSevens })
     );
+    assert.equal(staged({ ...pair, demand: tableDemand(closed) }).playable, true);
   });
 });
 
 describe("the opening play", () => {
-  const opening = { firstPlayMade: false, startCard: THREE_SPADES };
+  const opening = { demand: { toBeat: null, mustInclude: THREE_SPADES } };
 
   test("a selection without the opening card is refused, however legal it is", () => {
     const s = staged({ ...opening, selectedIds: ["9_diamonds"] });
@@ -118,8 +108,7 @@ describe("the opening play", () => {
 
   test("the gate lifts for good once the opening play has been made", () => {
     assert.equal(
-      staged({ firstPlayMade: true, startCard: THREE_SPADES, selectedIds: ["9_diamonds"] })
-        .playable,
+      staged({ demand: tableDemand(makeState({ openingCard: null })), selectedIds: ["9_diamonds"] }).playable,
       true
     );
   });
@@ -129,23 +118,17 @@ describe("whether the hand can answer the trick at all", () => {
   const beatable = (over: Partial<Parameters<typeof canBeatPileOf>[0]>) =>
     canBeatPileOf({
       hand: HAND,
-      lastPlayedCombination: null,
-      startCard: undefined,
-      firstPlayMade: true,
-      isNewTrick: true,
+      demand: { toBeat: null, mustInclude: null },
       isMyTurn: true,
       isFinished: false,
       ...over,
     });
 
   test("a hand holding a higher pair can beat a pair", () => {
-    assert.equal(beatable({ lastPlayedCombination: pairOfSevens, isNewTrick: false }), false);
+    const onSevens = { toBeat: pairOfSevens, mustInclude: null };
+    assert.equal(beatable({ demand: onSevens }), false);
     assert.equal(
-      beatable({
-        hand: [...HAND, card("J", "spades"), card("J", "hearts")],
-        lastPlayedCombination: pairOfSevens,
-        isNewTrick: false,
-      }),
+      beatable({ hand: [...HAND, card("J", "spades"), card("J", "hearts")], demand: onSevens }),
       true
     );
   });
@@ -160,9 +143,8 @@ describe("whether the hand can answer the trick at all", () => {
   });
 
   test("the opening card constrains the opening lead", () => {
-    const opening = { startCard: card("4", "clubs"), firstPlayMade: false };
-    assert.equal(beatable(opening), false);
-    assert.equal(beatable({ ...opening, startCard: THREE_SPADES }), true);
+    assert.equal(beatable({ demand: { toBeat: null, mustInclude: card("4", "clubs") } }), false);
+    assert.equal(beatable({ demand: { toBeat: null, mustInclude: THREE_SPADES } }), true);
   });
 });
 
@@ -203,11 +185,7 @@ describe("one reason for a refused play", () => {
     test(row.name, () => {
       const hand = [START, ...row.selection];
       const lastPlayedCombination = row.pile ? buildCombination(row.pile) : null;
-      const table = {
-        lastPlayedCombination,
-        startCard: START,
-        firstPlayMade: !row.opening,
-      };
+      const table = { lastPlayedCombination, openingCard: row.opening ? START : null };
       const ids = row.selection.map((card) => card.id);
 
       const engine = applyMove(
@@ -221,10 +199,9 @@ describe("one reason for a refused play", () => {
       assert.deepEqual(engine, { ok: false, code: row.refusal }, "the engine");
 
       const read = readStagedPlay({
-        ...table,
+        demand: tableDemand(table),
         hand,
         selectedIds: ids,
-        isNewTrick: lastPlayedCombination === null,
         isMyTurn: true,
         isFinished: false,
       });
@@ -236,7 +213,7 @@ describe("one reason for a refused play", () => {
 
   test("empty selection, not my turn and finished all read play", () => {
     const hand = [START, card("5", "hearts")];
-    const base = { hand, lastPlayedCombination: null, startCard: START, firstPlayMade: true, isNewTrick: true, isMyTurn: true, isFinished: false };
+    const base = { hand, demand: { toBeat: null, mustInclude: null }, isMyTurn: true, isFinished: false };
     assert.equal(readStagedPlay({ ...base, selectedIds: [] }).refusal, "play");
     assert.equal(readStagedPlay({ ...base, selectedIds: ["5_hearts"], isMyTurn: false }).refusal, "play");
     assert.equal(readStagedPlay({ ...base, selectedIds: ["5_hearts"], isFinished: true }).refusal, "play");

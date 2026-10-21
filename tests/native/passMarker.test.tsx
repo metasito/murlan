@@ -57,7 +57,7 @@ const NAMES = ['Ana', 'Besi', 'Cimi', 'Drin'];
  */
 const moveOf = (count: number, s: Partial<GameState>): LastMove => {
   const passer = ((s.currentTurnIndex ?? 0) + 1) % count;
-  if (s.lastPlayedCombination === null && s.trickWinner != null) return { seq: count, kind: 'pass', seat: passer, closedTrick: true };
+  if (s.lastPlayedCombination === null && (s.lastPlayedBy ?? -1) >= 0) return { seq: count, kind: 'pass', seat: passer, closedTrick: true };
   if ((s.passCount ?? 0) > 0) return { seq: 1 + s.passCount!, kind: 'pass', seat: passer, closedTrick: false };
   return s.lastPlayedCombination ? { seq: 1, kind: 'play', seat: s.lastPlayedBy! } : { seq: 0, kind: 'deal' };
 };
@@ -70,10 +70,9 @@ const state = (count: number, over: Partial<GameState>): GameState => ({
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: aThreePlayed(),
   ...over,
 });
@@ -186,7 +185,6 @@ describe('the per-seat pass marker', () => {
             lastPlayedCombination: null,
             lastPlayedBy: 0,
             currentTurnIndex: 0,
-            trickWinner: 0,
             passCount: 0,
           })
         )
@@ -329,7 +327,6 @@ describe('the pass sound', () => {
             lastPlayedCombination: null,
             lastPlayedBy: 0,
             currentTurnIndex: 0,
-            trickWinner: 0,
             passCount: 0,
           })
         )
@@ -369,7 +366,6 @@ describe('the pass sound', () => {
             lastPlayedCombination: null,
             lastPlayedBy: 1,
             currentTurnIndex: 1,
-            trickWinner: 1,
             passCount: 0,
           }),
           onPass

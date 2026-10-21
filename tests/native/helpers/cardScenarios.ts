@@ -21,13 +21,13 @@ export const cardTable = (gameState: GameState) =>
   );
 
 export const dealtTable = (overrides: Partial<GameState> = {}): GameState =>
-  state({ players: dealCards(4).hands.map((h, i) => seat(i, h)), firstPlayMade: true, ...overrides });
+  state({ players: dealCards(4).hands.map((h, i) => seat(i, h)), openingCard: null, ...overrides });
 
 /** Seat 3 has just thrown `PAIR`; `emptied`, it threw its last cards and the pile is caught going out. */
 export const pairThrownBy3 = (hands: Card[][], emptied: boolean): GameState =>
   state({
     players: hands.map((h, i) => seat(i, i === 3 && emptied ? [] : h)),
-    firstPlayMade: true,
+    openingCard: null,
     lastPlayedCombination: PAIR,
     lastPlayedBy: 3,
   });
@@ -39,7 +39,7 @@ const exchangeState = (): GameState =>
       seat(1, [card('4', 'clubs')]),
       seat(2, [card('6', 'hearts')]),
     ],
-    firstPlayMade: true,
+    openingCard: null,
     exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), twoJokerException: false },
   });
 
@@ -55,7 +55,7 @@ const inTheAir = () => screen.queryAllByTestId('flying-card', HIDDEN).length > 0
 
 const mount = (s: Scenario) => {
   if (s === 'throw') return throwPair(3);
-  if (s === 'deal') return render(cardTable(dealtTable({ firstPlayMade: false })));
+  if (s === 'deal') return render(cardTable(dealtTable({ openingCard: null })));
   if (s === 'exchange') return render(cardTable(exchangeState()));
   return render(cardTable(pairThrownBy3(dealCards(4).hands, true)));
 };

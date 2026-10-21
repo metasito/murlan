@@ -80,7 +80,7 @@ describe("the game records what has been played", () => {
     const hand = [c("3", "hearts"), c("3", "spades"), c("4", "hearts")];
     let state = makeState({ players: [makePlayer(1, hand), makePlayer(2, [c("5", "clubs")])],
       playedRanks: new Array<number>(RANK_SLOTS).fill(0),
-      firstPlayMade: true,
+      openingCard: null,
     });
     state = played(state, buildCombination([hand[0], hand[1]])!);
 

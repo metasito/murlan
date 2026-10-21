@@ -43,10 +43,9 @@ const table = ({ teams, finishingOrder }: (typeof CASES)[number], over: boolean)
     lastPlayedBy: over ? 3 : 2,
     passCount: 0,
     gameMode: teams ? 'teams' : 'free_for_all',
-    trickWinner: null,
     roundOver: over,
     finishingOrder: over ? finishingOrder : [],
-    firstPlayMade: true,
+    openingCard: null,
     playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: "deal" },
   };

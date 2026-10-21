@@ -41,8 +41,7 @@ interface SanitizedState {
   players: SanitizedPlayer[];
   viewerSeatIndex: number | null;
   currentTurnIndex: number;
-  firstPlayMade: boolean;
-  startCard: { id: string } | null;
+  openingCard: { id: string } | null;
 }
 interface RoomState {
   code: string;
@@ -100,7 +99,7 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     const turn = states[0].currentTurnIndex;
     const idx = states.findIndex((st) => st.viewerSeatIndex === turn);
     assert.ok(idx >= 0, "neither client holds the seat on turn");
-    const start = states[idx].startCard;
+    const start = states[idx].openingCard;
     assert.ok(start, "the opening round must name a start card");
     seats[idx].socket.emit("game:play", { cardIds: [start!.id] });
   }
@@ -159,7 +158,7 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     const before = await joined;
 
     // Including the genuinely legal opening card, played from the wrong socket.
-    watcher.socket.emit("game:play", { cardIds: [aliceState.startCard!.id] });
+    watcher.socket.emit("game:play", { cardIds: [aliceState.openingCard!.id] });
     watcher.socket.emit("game:pass");
     await new Promise((r) => setTimeout(r, 250));
 
@@ -171,7 +170,7 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
       before.currentTurnIndex,
       "a spectator's play or pass must not advance the table"
     );
-    assert.equal(after.firstPlayMade, before.firstPlayMade, "a spectator opened the game");
+    assert.deepEqual(after.openingCard, before.openingCard, "a spectator opened the game");
   });
 
   test("spectating a room that does not exist is refused", async () => {

@@ -200,9 +200,8 @@ describe("the state a capture renders", () => {
   test("nothing waits on the opening, so the table draws mid-round", () => {
     for (const state of CAPTURE_STATES) {
       const game = captureGameState(state);
-      assert.equal(game.firstPlayMade, true, state.id);
+      assert.equal(game.openingCard, null, state.id);
       assert.equal(game.roundOver, false, state.id);
-      assert.equal(game.startCard, undefined, state.id);
     }
   });
 

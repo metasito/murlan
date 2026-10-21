@@ -9,7 +9,6 @@
 // drives too.
 import {
   applyMove,
-  getAllValidPlays,
   type Combination,
   type GameMode,
   type GameState,
@@ -19,6 +18,7 @@ import {
 import { advance, dealNext, startTable } from "../../lib/game/matchFlow.ts";
 import { autoMoveForSeat, offlineBotMove, type AutoMove } from "../../lib/game/autoMove.ts";
 import { rng } from "../support/game.ts";
+import { legalPlays } from "../support/moves.ts";
 
 export type OfflinePlayerSetup = SeatSetup;
 
@@ -191,11 +191,7 @@ export class HandNotShrunkError extends Error {
  * can pin the ordering directly — a soak asserting only that a match ends
  * cannot tell "weakest" from "strongest legal beating combination" apart. */
 export function weakestBeatingPlay(state: GameState, seat: number): Combination | null {
-  const player = state.players[seat];
-  const isNewTrick = state.lastPlayedCombination === null;
-  const startCard = !state.firstPlayMade ? state.startCard : undefined;
-  const requireCard = startCard ? player.hand.find((c) => c.id === startCard.id) : undefined;
-  const plays = getAllValidPlays(player.hand, isNewTrick ? null : state.lastPlayedCombination, isNewTrick, requireCard);
+  const plays = legalPlays(state, seat);
   if (plays.length === 0) return null;
   return [...plays].sort((a, b) => a.cards.length - b.cards.length || a.strength - b.strength)[0];
 }
@@ -311,7 +307,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
         if (!next.roundOver) {
           const hands = next.players.map((p) => p.hand);
           const expected =
-            playedCombo === null && next.trickWinner !== null
+            next.lastMove.kind === "pass" && next.lastMove.closedTrick
               ? (next.players[next.lastPlayedBy]?.hand.length ?? 0) > 0
                 ? next.lastPlayedBy
                 : expectedNextActive(next.lastPlayedBy, hands)

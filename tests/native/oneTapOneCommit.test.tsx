@@ -142,10 +142,9 @@ const state: GameState = {
   lastPlayedBy: 3,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: engine.emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
 };
@@ -165,7 +164,7 @@ const exchange: GameState = {
   players: [seat('player_0', [FIVE, NINE, card('K', 'diamonds'), card('A', 'spades')]), ...state.players.slice(1)],
   lastPlayedCombination: null,
   lastPlayedBy: -1,
-  firstPlayMade: false,
+  openingCard: null,
   exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), twoJokerException: false },
 };
 

@@ -33,10 +33,9 @@ function finishedRound(gameMode: GameMode): GameState {
     lastPlayedBy: -1,
     passCount: 0,
     gameMode,
-    trickWinner: null,
     roundOver: true,
     finishingOrder: ["p0", "p1", "p2", "p3"],
-    firstPlayMade: true,
+    openingCard: null,
     playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: "deal" },
   };

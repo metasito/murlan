@@ -33,6 +33,31 @@ describe("every state the engine writes parses, unchanged", () => {
   });
 });
 
+describe("a state stored before openingCard, read as openingFlags", () => {
+  const THREE_SPADES = card("3", "spades");
+  const legacy = (flags: Record<string, unknown>) => {
+    const { openingCard: _opening, ...rest } = state({ players: [seat(0, [THREE_SPADES]), seat(1, [card("4", "clubs")])] });
+    return { ...rest, trickWinner: null, ...flags };
+  };
+  const rows: [string, Record<string, unknown>, unknown][] = [
+    ["the opening still owed", { firstPlayMade: false, startCard: THREE_SPADES }, THREE_SPADES],
+    ["the opening played", { firstPlayMade: true, startCard: THREE_SPADES }, null],
+    ["an exchange round, no start card", { firstPlayMade: true }, null],
+  ];
+  for (const [name, flags, openingCard] of rows) {
+    test(name, () => {
+      const parsed = parseGameState(legacy(flags), "openingFlags");
+      assert.ok(parsed.ok, parsed.ok ? "" : parsed.reason);
+      assert.deepEqual(parsed.state.openingCard, openingCard);
+      assert.ok(!("firstPlayMade" in parsed.state) && !("startCard" in parsed.state) && !("trickWinner" in parsed.state));
+    });
+  }
+
+  test("the same state read as current is refused for its missing openingCard", () => {
+    assert.match(reason(legacy({ firstPlayMade: true })), /^game state openingCard: /);
+  });
+});
+
 describe("states the engine could not have written", () => {
   test("an open exchange whose winner holds nothing to give back", () => {
     const empty = state({

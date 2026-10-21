@@ -70,7 +70,7 @@ export function comboImpactTier(comboType: Combination["type"]): ImpactTier {
  * `lib/game/matchFlow.ts` `applyRoundToMatch`, the online
  * `game:round_over`/`matchOver` payload): the play that empties a seat's hand is
  * also the play that happens to close the match, never a second, later
- * event. `GameState.trickWinner` is not read here — `docs/GAME-RULES.md` §9
+ * event. A pass's `closedTrick` is not read here — `docs/GAME-RULES.md` §9
  * calls that a *trick*, and it closes many times a round.
  *
  * One landing fires one tier: a play that is itself a bomb and also closes

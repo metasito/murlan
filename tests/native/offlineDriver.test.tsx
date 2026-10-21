@@ -29,10 +29,9 @@ const trick = (): GameState => ({
   lastPlayedBy: 2,
   passCount: 0,
   gameMode: "free_for_all",
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: "deal" },
 } as GameState);

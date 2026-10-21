@@ -4,6 +4,8 @@ import {
   actingSeat,
   applyMove,
   checkSelection,
+  getAllValidPlays,
+  tableDemand,
   type Combination,
   type GameState,
   type Move,
@@ -51,6 +53,14 @@ export function playRoundOut(start: GameState, rng: () => number = Math.random, 
   return states;
 }
 
+/** Every play `seat` may make now, against the table's demand. */
+export const legalPlays = (state: GameState, seat: number): Combination[] =>
+  getAllValidPlays(state.players[seat]?.hand ?? [], tableDemand(state));
+
 /** Whether `candidate` beats `lastPlayed` once the opening is past, asked as the table asks it. */
 export const beats = (candidate: Combination, lastPlayed: Combination | null): boolean =>
-  checkSelection(candidate.cards, { lastPlayedCombination: lastPlayed, firstPlayMade: true }).ok;
+  checkSelection(candidate.cards, { toBeat: lastPlayed, mustInclude: null }).ok;
+
+/** The seat whose play nobody beat, when `state`'s last move closed a trick; null otherwise. */
+export const trickClosedBy = (state: GameState): number | null =>
+  state.lastMove.kind === "pass" && state.lastMove.closedTrick ? state.lastPlayedBy : null;

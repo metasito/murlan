@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as fc from "fast-check";
 import {
-  getAllValidPlays,
   getRankStrength,
   getValidGivebackCards,
   openingAfter,
@@ -14,7 +13,7 @@ import {
   type GameState,
   type Move,
 } from "../../lib/game/gameEngine.ts";
-import { givenBack, passed, played, refusalOf } from "../support/moves.ts";
+import { givenBack, legalPlays, passed, played, refusalOf } from "../support/moves.ts";
 import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
 import { mulberry32, rng as seeded } from "../support/game.ts";
 
@@ -49,12 +48,7 @@ function stepsFor(state: GameState): Step[] {
     const winner = state.players[exchange.winnerIdx];
     return [{ kind: "bot" }, ...getValidGivebackCards(winner.hand, exchange.cardFromLoser?.id).map((card) => ({ kind: "giveback" as const, card }))];
   }
-  const seat = state.players[state.currentTurnIndex];
-  const isNewTrick = state.lastPlayedCombination === null;
-  const requireCard = !state.firstPlayMade && state.startCard
-    ? seat.hand.find((c) => c.id === state.startCard!.id)
-    : undefined;
-  const plays = getAllValidPlays(seat.hand, state.lastPlayedCombination, isNewTrick, requireCard);
+  const plays = legalPlays(state, state.currentTurnIndex);
   return [
     { kind: "bot" },
     ...plays.map((combo) => ({ kind: "play" as const, combo })),

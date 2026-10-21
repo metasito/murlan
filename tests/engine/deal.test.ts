@@ -21,7 +21,7 @@ const ids = (cards: Card[]) => cards.map((card) => card.id);
 function openerOf(players: Player[]) {
   const seats = players.map((p) => ({ name: p.name, type: p.type }));
   const state = startRound(seats, "free_for_all", { dealt: players.map((p) => p.hand) });
-  return { playerIdx: state.currentTurnIndex, startCard: state.startCard! };
+  return { playerIdx: state.currentTurnIndex, opening: state.openingCard! };
 }
 
 /** The whole deck in the order a deal draws it: one seat takes every card. */
@@ -171,18 +171,18 @@ describe("the deal at 2 players — 14 each, 26 undealt", () => {
       ran = true;
 
       const players = hands.map((hand, idx) => makePlayer(idx, hand));
-      const { playerIdx, startCard } = openerOf(players);
+      const { playerIdx, opening } = openerOf(players);
 
-      assert.notEqual(startCard.id, "3_spades", "the 3♠ was undealt — it cannot be the start card");
+      assert.notEqual(opening.id, "3_spades", "the 3♠ was undealt — it cannot be the start card");
       const allDealt = hands.flat();
       const lowestStrength = Math.min(...allDealt.map(cardStrength));
-      assert.equal(cardStrength(startCard), lowestStrength);
+      assert.equal(cardStrength(opening), lowestStrength);
       const suits = ["clubs", "diamonds", "hearts", "spades"];
       const lowestSuit = Math.min(
         ...allDealt.filter((card) => cardStrength(card) === lowestStrength).map((card) => suits.indexOf(card.suit!))
       );
-      assert.equal(suits.indexOf(startCard.suit!), lowestSuit);
-      assert.ok(players[playerIdx].hand.some((c) => c.id === startCard.id));
+      assert.equal(suits.indexOf(opening.suit!), lowestSuit);
+      assert.ok(players[playerIdx].hand.some((c) => c.id === opening.id));
     }
     assert.ok(ran, "200 deals never gave a case where the 3♠ was undealt");
   });
@@ -317,9 +317,9 @@ describe("who opens a round (defect 4)", () => {
       makePlayer(1, [c("3", "hearts"), c("3", "spades")]),
       makePlayer(2, [c("2", "spades")]),
     ];
-    const { playerIdx, startCard } = openerOf(players);
+    const { playerIdx, opening } = openerOf(players);
     assert.equal(playerIdx, 1);
-    assert.equal(startCard.id, "3_spades");
+    assert.equal(opening.id, "3_spades");
   });
 
   test("does not fall back to a lower spade when the 3 of spades exists elsewhere", () => {
@@ -335,9 +335,9 @@ describe("who opens a round (defect 4)", () => {
       makePlayer(0, [c("K", "hearts"), c("9", "clubs")]),
       makePlayer(1, [c("5", "diamonds"), j("colored")]),
     ];
-    const { playerIdx, startCard } = openerOf(players);
+    const { playerIdx, opening } = openerOf(players);
     assert.equal(playerIdx, 1);
-    assert.equal(startCard.id, "5_diamonds");
+    assert.equal(opening.id, "5_diamonds");
   });
 
   test("defensive fallback: equal lowest ranks open with the lower suit, whatever the seat order", () => {
@@ -346,23 +346,23 @@ describe("who opens a round (defect 4)", () => {
       makePlayer(1, [c("4", "hearts"), c("9", "clubs")]),
       makePlayer(2, [c("4", "diamonds"), c("Q", "clubs")]),
     ];
-    const { playerIdx, startCard } = openerOf(players);
+    const { playerIdx, opening } = openerOf(players);
     assert.equal(playerIdx, 2);
-    assert.equal(startCard.id, "4_diamonds");
+    assert.equal(opening.id, "4_diamonds");
   });
 
   test("defensive fallback: every hand empty — returns a card instead of crashing", () => {
     const players = [makePlayer(0, []), makePlayer(1, [])];
-    const { playerIdx, startCard } = openerOf(players);
+    const { playerIdx, opening } = openerOf(players);
     assert.equal(playerIdx, 0);
-    assert.ok(startCard, "must not be undefined");
+    assert.ok(opening, "must not be undefined");
   });
 
   test("a real 4-player game always opens on the 3 of spades", () => {
     const setup = [0, 1, 2, 3].map((i) => ({ name: `p${i}`, type: "human" as const }));
     for (let i = 0; i < 100; i++) {
       const state = startRound(setup, "free_for_all");
-      assert.equal(state.startCard?.id, "3_spades");
+      assert.equal(state.openingCard?.id, "3_spades");
       assert.ok(
         state.players[state.currentTurnIndex].hand.some((card) => card.id === "3_spades"),
         "the opener must hold the start card"

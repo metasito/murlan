@@ -112,10 +112,9 @@ const dealt = (cards: Card[]): GameState => state({
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: false,
+  openingCard: null,
   lastMove: { seq: 0, kind: 'deal' },
 });
 

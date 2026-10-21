@@ -30,10 +30,9 @@ const LEADING: GameState = state({
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 });
@@ -114,7 +113,7 @@ describe('pass and play', () => {
         currentTurnIndex: 1,
         lastPlayedCombination: null,
         lastPlayedBy: 1,
-        firstPlayMade: true,
+        openingCard: null,
         playedRanks: aThreePlayed(),
         exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('s1-a', 'A'), twoJokerException: false },
       })

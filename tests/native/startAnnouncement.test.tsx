@@ -37,10 +37,9 @@ const seat = (i: number): Player => ({
 const OPENER = 1;
 
 /**
- * A round dealt after a lost round is dealt with `firstPlayMade` already true
- * — only the very first deal of a match starts it false — so what says the
- * opening is still to come is the rank tally, which every deal empties and
- * every play writes.
+ * A round dealt after a lost round has no `openingCard` — only a start-card
+ * deal names one — so what says the opening is still to come is the rank
+ * tally, which every deal empties and every play writes.
  */
 function state(currentTurnIndex: number, cardsPlayed = 0): GameState {
   const playedRanks = Array.from({ length: RANK_SLOTS }, () => 0);
@@ -52,10 +51,9 @@ function state(currentTurnIndex: number, cardsPlayed = 0): GameState {
     lastPlayedBy: -1,
     passCount: 0,
     gameMode: 'free_for_all',
-    trickWinner: null,
     roundOver: false,
     finishingOrder: [],
-    firstPlayMade: true,
+    openingCard: null,
     lastMove: { seq: 0, kind: 'deal' },
     startReason: { type: 'lost_round', playerIdx: OPENER },
     playedRanks,
@@ -253,8 +251,7 @@ describe('the round-opening announcement', () => {
   it('is one panel while the gate holds and the start card is due, and stays until the first play', async () => {
     const dealt: GameState = {
       ...state(OPENER),
-      firstPlayMade: false,
-      startCard: card(`3_${OPENER}`),
+      openingCard: card(`3_${OPENER}`),
       startReason: { type: 'start_card', card: card(`3_${OPENER}`), playerIdx: OPENER },
     };
     const plates = () => screen.queryAllByTestId('notice-whoStarts', { includeHiddenElements: true });
@@ -269,7 +266,7 @@ describe('the round-opening announcement', () => {
     expect(plates()).toHaveLength(1);
     expect(screen.getAllByRole('alert')).toHaveLength(1);
 
-    await view.rerender(table({ ...midRound(OPENER + 1), firstPlayMade: true, startCard: dealt.startCard }));
+    await view.rerender(table({ ...midRound(OPENER + 1), openingCard: null }));
     expect(plates()).toHaveLength(0);
 
     await view.unmount();

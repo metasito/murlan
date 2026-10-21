@@ -63,10 +63,9 @@ const settled = (winnerHand: Card[] = [...KEPT_BY_WINNER, FROM_LOSER]): GameStat
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
   exchangePhase: {

@@ -2,11 +2,10 @@
 // is announced once per trick, for every trick.
 //
 // The seat that wins a trick leads the next one, so the same seat winning two
-// tricks in a row is ordinary play rather than an edge case. `trickWinner`
-// survives the trick the winner then leads — `processPlay` never touches it —
-// so with two players it goes seat → seat with nothing in between, and with
-// three it goes seat → null → seat. The tag has to arrive both times either
-// way, and the sting with the close that raises it.
+// tricks in a row is ordinary play rather than an edge case: with two players
+// one closing pass follows another with the same seat named, and with three a
+// pass that closes nothing comes between. The tag has to arrive both times
+// either way, and the sting with the close that raises it.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, render, screen, within } from '@testing-library/react-native';
@@ -47,21 +46,20 @@ const state = (over: Partial<GameState>): GameState => ({
   lastPlayedBy: WINNER_SEAT,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
   ...over,
 });
 
 /** The pass that closed the trick in the winner's favour, as move `seq`. */
-const closed = (seq: number) => state({ trickWinner: WINNER_SEAT, lastMove: { seq, kind: 'pass', seat: 0, closedTrick: true } });
-/** The winner leading the next trick; `trickWinner` still stands. */
-const leading = (seq: number) => state({ lastPlayedCombination: LED, trickWinner: WINNER_SEAT, lastMove: { seq, kind: 'play', seat: WINNER_SEAT } });
+const closed = (seq: number) => state({ lastMove: { seq, kind: 'pass', seat: 0, closedTrick: true } });
+/** The winner leading the next trick. */
+const leading = (seq: number) => state({ lastPlayedCombination: LED, lastMove: { seq, kind: 'play', seat: WINNER_SEAT } });
 /** A pass that closed nothing, three-handed. */
-const between = (seq: number) => state({ trickWinner: null, lastMove: { seq, kind: 'pass', seat: 0, closedTrick: false } });
+const between = (seq: number) => state({ lastMove: { seq, kind: 'pass', seat: 0, closedTrick: false } });
 
 const noop = () => {};
 
@@ -118,7 +116,7 @@ describe('the trick-winner tag', () => {
     });
     expect(tagGone()).toBe(true);
 
-    // The pass that ends nothing: three-handed, the engine clears trickWinner.
+    // The pass that ends nothing, three-handed.
     await act(async () => r.rerender(table(between(3))));
     expect(tagGone()).toBe(true);
     // Its own pass sound holds the mix, as a turn's wait does at a real table.
@@ -133,9 +131,9 @@ describe('the trick-winner tag', () => {
     await r.unmount();
   });
 
-  it('announces the second win when trickWinner never changes value', async () => {
+  it('announces the second win when the same seat takes it', async () => {
     // Two-handed: the winner leads the next trick and takes it as well, so
-    // `trickWinner` reads the same seat from the first close to the second.
+    // both closes name the same seat.
     const r = await render(table(closed(5)));
     await tagShown();
 

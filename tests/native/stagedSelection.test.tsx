@@ -53,10 +53,9 @@ const state = (currentTurnIndex: number, over: Partial<GameState> = {}): GameSta
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
   ...over,
@@ -194,7 +193,7 @@ describe('passing', () => {
 function OfflineTable() {
   const { gameState, playCards, passTurn, runBotTurn } = useLocalTable();
   const { setupGame } = useLocalSession();
-  const start = gameState?.startCard;
+  const start = gameState?.openingCard;
   return (
     <>
       <Pressable

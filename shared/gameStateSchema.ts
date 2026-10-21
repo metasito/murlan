@@ -71,11 +71,9 @@ const gameStateSchema = z
     lastPlayedBy: z.number().int(),
     passCount: z.number().int().nonnegative(),
     gameMode: gameModeSchema,
-    trickWinner: z.number().int().nullable(),
     roundOver: z.boolean(),
     finishingOrder: z.array(z.string()),
-    firstPlayMade: z.boolean(),
-    startCard: card.optional(),
+    openingCard: card.nullable(),
     startReason: z
       .object({
         type: z.enum(["start_card", "lost_round", "won_no_exchange"]),
@@ -114,10 +112,21 @@ void [declaresGameState, declaresGameMode, declaresMatchLength];
 
 export type GameStateParse = { ok: true; state: GameState } | { ok: false; reason: string };
 
+/**
+ * How a stored state was written: `openingFlags` before `openingCard`, when the opening card was
+ * `startCard`, owed only while `firstPlayMade` was false, and a closed trick also named `trickWinner`.
+ */
+export type StoredStateShape = "current" | "openingFlags";
+
+function fromOpeningFlags(raw: Record<string, unknown>): Record<string, unknown> {
+  const { firstPlayMade, startCard, trickWinner: _trickWinner, ...rest } = raw;
+  return { ...rest, openingCard: firstPlayMade === false && startCard !== undefined ? startCard : null };
+}
+
 /** A stored state as the engine's, or the first thing wrong with it, its path leading. */
-export function parseGameState(raw: unknown): GameStateParse {
+export function parseGameState(raw: unknown, shape: StoredStateShape = "current"): GameStateParse {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return { ok: false, reason: "no game state" };
-  const parsed = gameStateSchema.safeParse(raw);
+  const parsed = gameStateSchema.safeParse(shape === "openingFlags" ? fromOpeningFlags(raw as Record<string, unknown>) : raw);
   if (parsed.success) return { ok: true, state: parsed.data };
   const issue = parsed.error.issues[0];
   const at = issue.path.join(".");

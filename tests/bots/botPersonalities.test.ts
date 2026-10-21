@@ -94,7 +94,7 @@ test("aggression decides whether a round is contested or conceded", () => {
   const hand = [c("2", "hearts"), c("2", "diamonds"), c("3", "clubs"), c("4", "clubs"),
     c("5", "clubs"), c("6", "clubs"), c("7", "clubs"), c("9", "clubs")];
   const lastPlayed = buildCombination([c("10", "spades")])!;
-  const plays = getAllValidPlays(hand, lastPlayed, false, undefined);
+  const plays = getAllValidPlays(hand, { toBeat: lastPlayed, mustInclude: null });
   const ask = (aggression: number) =>
     applyPersonality(null, plays, false, { aggression, unpredictability: 0, difficulty: "hard" },
       fixedRng([0.5]));
@@ -108,7 +108,7 @@ test("aggression decides whether a lead spends premium cards", () => {
   // and a plain pair is available instead.
   const hand = [c("2", "hearts"), c("2", "diamonds"), c("2", "clubs"), c("3", "hearts"),
     c("3", "diamonds"), c("5", "clubs"), c("7", "diamonds"), c("9", "spades"), c("J", "clubs")];
-  const plays = getAllValidPlays(hand, null, true, undefined);
+  const plays = getAllValidPlays(hand, { toBeat: null, mustInclude: null });
   const triple = buildCombination([c("2", "hearts"), c("2", "diamonds"), c("2", "clubs")])!;
   const ask = (aggression: number) =>
     applyPersonality(triple, plays, true, { aggression, unpredictability: 0, difficulty: "medium" },
@@ -223,7 +223,7 @@ test("easy tier's unpredictability alt follows getAllValidPlays' own order", () 
     c("9", "clubs"), c("9", "hearts"), c("5", "diamonds"), c("5", "clubs"),
     c("K", "spades"), c("7", "hearts"), c("3", "clubs"), c("J", "diamonds"),
   ];
-  const legal = getAllValidPlays(hand, null, true, undefined);
+  const legal = getAllValidPlays(hand, { toBeat: null, mustInclude: null });
   const primary = [...legal].sort((a, b) => a.strength - b.strength)[0];
   const alts = legal.filter(
     (p) => p !== primary && p.type === primary.type && p.cards.length === primary.cards.length

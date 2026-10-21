@@ -35,7 +35,7 @@ const midTrick = (over: Partial<GameState> = {}): GameState =>
     currentTurnIndex: 0,
     lastPlayedCombination: buildCombination([c("7", "diamonds")]),
     lastPlayedBy: 1,
-    firstPlayMade: true,
+    openingCard: null,
     playedRanks: new Array(15).fill(0),
     ...over,
   });
@@ -59,8 +59,7 @@ const exchangeOpen = (over: Partial<GameState> = {}): GameState =>
 
 const opening = midTrick({
   lastPlayedCombination: null,
-  firstPlayMade: false,
-  startCard: c("5", "spades"),
+  openingCard: c("5", "spades"),
 });
 
 type Send = { event: "game:play"; body: { cardIds: string[] } } | { event: "game:pass" } | { event: "game:exchange_give_card"; body: { cardId: string } };

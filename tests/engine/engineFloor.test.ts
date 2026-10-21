@@ -83,8 +83,7 @@ describe("the engine's floor under a play", () => {
 
   test("refuses an opening play that skips the mandatory 3♠", () => {
     const opening = table({
-      firstPlayMade: false,
-      startCard: c("3", "spades"),
+      openingCard: c("3", "spades"),
       players: [
         makePlayer(0, [c("3", "spades"), c("5", "spades"), c("K", "hearts")]),
         makePlayer(1, [c("9", "clubs"), c("10", "clubs")]),
@@ -95,15 +94,14 @@ describe("the engine's floor under a play", () => {
 
   test("lets the opening play through once it includes the start card", () => {
     const opening = table({
-      firstPlayMade: false,
-      startCard: c("3", "spades"),
+      openingCard: c("3", "spades"),
       players: [
         makePlayer(0, [c("3", "spades"), c("5", "spades"), c("K", "hearts")]),
         makePlayer(1, [c("9", "clubs"), c("10", "clubs")]),
       ],
     });
     const next = played(opening, combo([c("3", "spades")]));
-    assert.equal(next.firstPlayMade, true);
+    assert.equal(next.openingCard, null);
     assert.equal(next.lastPlayedCombination?.cards[0].id, "3_spades");
   });
 });

@@ -87,9 +87,9 @@ export function GiocaControl({
   const ids = useSyncExternalStore(store.subscribe, () => store.get().ids);
   const giving = giveTo !== null;
   const selectedIds = giving ? NO_IDS : ids;
-  const { hand, isMyTurn, isFinished, startCard } = facts;
+  const { hand, isMyTurn, isFinished, demand } = facts;
   const staged = useMemo(() => readStagedPlay({ ...facts, selectedIds }), [facts, selectedIds]);
-  const reason = playRefusalLabel({ refusal: staged.refusal, isMyTurn, isFinished, startCard }, t);
+  const reason = playRefusalLabel({ refusal: staged.refusal, isMyTurn, isFinished, openingCard: demand.mustInclude }, t);
   const pick = giving ? (ids[0] ?? null) : null;
   const picked = pick === null ? null : (hand.find((c) => c.id === pick) ?? null);
   const { flashStyle, glowStyle } = useGiocaCues(staged.playable, selectedIds.length, isMyTurn && !isFinished);

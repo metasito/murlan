@@ -11,6 +11,7 @@ import {
   getValidGivebackCards,
   RANK_SLOTS,
   sortHand,
+  tableDemand,
   teamForSeat,
 } from "./gameEngine.ts";
 import type {
@@ -235,12 +236,12 @@ export interface BotView {
 export function botView(state: GameState, seat: number): BotView {
   const player = state.players[seat];
   const hand = player?.hand ?? [];
-  const opening = !state.firstPlayMade ? state.startCard : undefined;
+  const { toBeat, mustInclude: opening } = tableDemand(state);
   const opponents = opponentsOf(state, seat);
   return {
     hand,
     personality: player?.personality,
-    toBeat: state.lastPlayedCombination,
+    toBeat,
     mustInclude: opening ? hand.find((c) => c.id === opening.id) : undefined,
     opponentHandCounts: opponents.handCounts,
     partnerHoldsTop: opponents.partnerHoldsTop,
@@ -262,7 +263,7 @@ export function pickGivebackCard(hand: Card[], excludeCardId?: string): Card | u
 export function botChoosePlay(view: BotView, rng: () => number = Math.random): Combination | null {
   const { hand, toBeat: lastPlayed, mustInclude: requireCard, partnerHoldsTop, playedRanks, knownOpponentCard } = view;
   const isNewTrick = lastPlayed === null;
-  const plays = getAllValidPlays(hand, lastPlayed, isNewTrick, requireCard);
+  const plays = getAllValidPlays(hand, { toBeat: lastPlayed, mustInclude: requireCard ?? null });
   if (plays.length === 0) return null;
 
   const personality = getBotPersonality(view.personality);

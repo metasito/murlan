@@ -54,10 +54,9 @@ const state = (over: Partial<GameState>): GameState => ({
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  trickWinner: null,
   roundOver: false,
   finishingOrder: [],
-  firstPlayMade: true,
+  openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
   ...over,
@@ -80,7 +79,7 @@ const table = (gameState: GameState, onPlay: (ids: string[]) => void = noop) => 
 
 const mount = async (gameState: GameState, picked: Card[], onPlay?: (ids: string[]) => void) => {
   const r = await render(table(gameState, onPlay));
-  if (!gameState.firstPlayMade) await steps(dealEndMs(gameState.players.map((p) => p.hand.length), Motion.duration.reveal) + 200);
+  if (gameState.openingCard) await steps(dealEndMs(gameState.players.map((p) => p.hand.length), Motion.duration.reveal) + 200);
   for (const c of picked) {
     await act(async () => {
       await activate(screen.getByLabelText(cardSpokenName(c, t)));
@@ -118,7 +117,7 @@ describe('the refused GIOCA names the right reason', () => {
   });
 
   it('tells the opening play it needs the start card, and names it', async () => {
-    const r = await mount(state({ firstPlayMade: false, startCard: THREE_S }), [SEVEN_H, SEVEN_C]);
+    const r = await mount(state({ openingCard: THREE_S }), [SEVEN_H, SEVEN_C]);
 
     expect(reasonOf()).toContain(
       t('gameTable.playA11ySpokenStartCard', { card: cardSpokenName(THREE_S, t) })
@@ -130,7 +129,7 @@ describe('the refused GIOCA names the right reason', () => {
 
   it('names the actual 2-player fallback card, not the 3♠, when it opens instead', async () => {
     const FIVE_H = card('5', 'hearts');
-    const r = await mount(state({ firstPlayMade: false, startCard: FIVE_H }), [SEVEN_H, SEVEN_C]);
+    const r = await mount(state({ openingCard: FIVE_H }), [SEVEN_H, SEVEN_C]);
 
     expect(reasonOf()).toContain(
       t('gameTable.playA11ySpokenStartCard', { card: cardSpokenName(FIVE_H, t) })
@@ -173,7 +172,7 @@ describe('the start-card banner names the real fallback card', () => {
   const FIVE_H = card('5', 'hearts');
 
   it('the viewer opens: banner names the actual card, not the 3♠', async () => {
-    const r = await render(table(state({ firstPlayMade: false, startCard: FIVE_H, currentTurnIndex: 0 })));
+    const r = await render(table(state({ openingCard: FIVE_H, currentTurnIndex: 0 })));
 
     const panel = within(screen.getByTestId('notice-whoStarts', { includeHiddenElements: true }));
     expect(panel.getByText('You start! You hold the 5♥', { includeHiddenElements: true })).toBeTruthy();
@@ -183,7 +182,7 @@ describe('the start-card banner names the real fallback card', () => {
   });
 
   it('another seat opens: banner names the actual card, not the 3♠', async () => {
-    const r = await render(table(state({ firstPlayMade: false, startCard: FIVE_H, currentTurnIndex: 1 })));
+    const r = await render(table(state({ openingCard: FIVE_H, currentTurnIndex: 1 })));
 
     const panel = within(screen.getByTestId('notice-whoStarts', { includeHiddenElements: true }));
     expect(panel.getByText('Besi starts — holds the 5♥', { includeHiddenElements: true })).toBeTruthy();
