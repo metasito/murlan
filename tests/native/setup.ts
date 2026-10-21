@@ -69,6 +69,12 @@ beforeEach(() => {
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
+// One store for the whole file: a save or a token one test leaves would be the next one's boot.
+// Required here, not imported: an import would load the store before a test file's own mock of it.
+beforeEach(() => {
+  const storage = require('@react-native-async-storage/async-storage') as { default?: { clear(): Promise<void> }; clear(): Promise<void> };
+  return (storage.default ?? storage).clear();
+});
 jest.mock('@react-native-community/netinfo', () => require('./mocks/netInfo').netInfoModule());
 
 // Same story for gesture-handler: GestureHandlerRootView calls into the native

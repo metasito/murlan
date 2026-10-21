@@ -8,6 +8,7 @@ import { act, fireEvent, screen } from '@testing-library/react-native';
 import { bannerLog } from './harness/bannerLog';
 import { setWindow } from './harness/env';
 import { useInvites } from '@/context/SocketContext';
+import { useServerError } from '@/context/onlineGameHooks';
 import { renderAppHook } from './harness/renderApp';
 import { httpRequests, route } from './mocks/http';
 
@@ -37,7 +38,7 @@ async function mount() {
   for (const path of ['/api/friends', '/api/friends/requests', '/api/friends/sent']) route('GET', path, { body: [] });
   route('GET', '/api/friends/invites', { body: [{ id: 'i1', fromUsername: 'Besi', roomCode: 'ABC123', createdAt: '2026-10-01T10:00:00.000Z' }] });
   await setWindow({ width: 390, height: 844 });
-  return renderAppHook(() => useInvites().accepted, {
+  return renderAppHook(() => ({ accepted: useInvites().accepted, lobbyError: useServerError('lobby') }), {
     user: { id: 'u1', username: 'Ana' },
     online: true,
     follow: true,
@@ -63,7 +64,7 @@ describe('joining from a friends-screen invite', () => {
     await fireEvent.press(await screen.findByLabelText(/join besi/i));
 
     expect(view.socket().sentAs('room:join')).toEqual([expect.objectContaining({ code: 'ABC123' })]);
-    expect(view.result.current).toBe('ABC123');
+    expect(view.result.current.accepted).toBe('ABC123');
     expect(httpRequests().filter((r) => r.method === 'DELETE')).toEqual([]);
     await view.unmount();
   });
@@ -80,6 +81,7 @@ describe('joining from a friends-screen invite', () => {
     await act(async () => view.socket().acks.find((a) => a.event === 'room:join')!.answer({ ok: false, code: 'NEWER_SERVER_REFUSAL' }));
 
     expect(shown.map((n) => n.message)).toContain('That room is full.');
+    expect(view.result.current.lobbyError).toBeNull();
     expect(screen.queryAllByText(JOINING)).toHaveLength(0);
     await view.unmount();
   });

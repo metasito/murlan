@@ -5,7 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { Dimensions } from 'react-native';
 import { AppProviders } from '@/context/AppProviders';
 import { useAuth, type AuthUser } from '@/context/AuthContext';
-import { useGameSession, type LocalSession } from '@/context/GameContext';
+import { useGameSession, useGameTable, type LocalSession } from '@/context/GameContext';
 import { OnlineGameProvider } from '@/context/OnlineGameContext';
 import { useOnlineRouting } from '@/context/useOnlineRouting';
 import type { GameState } from '@/lib/game/gameEngine';
@@ -18,7 +18,7 @@ import { route, type HttpRequest, type HttpReply } from '../mocks/http';
 import { fakeSockets, type FakeSocket } from '../mocks/socketIo';
 
 const auth = { settled: false, value: null as ReturnType<typeof useAuth> | null };
-const local = { value: null as LocalSession | null, open: (_open: boolean) => {} };
+const local = { value: null as LocalSession | null, dealt: false, open: (_open: boolean) => {} };
 
 // Runs after the testing library's cleanup unmounts: a query left in the app's client, or an ack
 // left unanswered, holds a timer that keeps jest from exiting.
@@ -52,8 +52,10 @@ function ResumedFirst({ held, children }: { held: boolean; children: React.React
 
 function LocalSessionProbe() {
   const value = useGameSession();
+  const dealt = useGameTable().gameState !== null;
   useEffect(() => {
     local.value = value;
+    local.dealt = dealt;
   });
   return null;
 }
@@ -107,6 +109,7 @@ export async function renderApp(
 ) {
   auth.settled = false;
   local.value = null;
+  local.dealt = false;
   route('GET', '/api/auth/me', me ?? (user ? { body: user } : { status: 401 }));
   if (cached) await AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(cached));
   else await AsyncStorage.removeItem(AUTH_USER_KEY);
@@ -143,7 +146,10 @@ export async function renderApp(
   if (connected) await act(async () => socket().open());
   if (offline) {
     await waitFor(() => expect(local.value?.bootSettled).toBe(true));
-    await act(async () => void local.value!.resumeGame());
+    let resumed = false;
+    await act(async () => void (resumed = local.value!.resumeGame()));
+    expect(resumed).toBe(true);
+    await waitFor(() => expect(local.dealt).toBe(true));
     await act(async () => local.open(true));
   }
   return {

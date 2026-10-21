@@ -120,7 +120,8 @@ export class FakeSocket {
           payload: payload as never,
           timeoutMs,
           settled: false,
-          answer: (reply) => settle(() => ack(null, reply)),
+          // A reply crosses the wire, so it lands after the emit returns; a promise, as fake timers hold queueMicrotask.
+          answer: (reply) => void Promise.resolve().then(() => settle(() => ack(null, reply))),
         };
         const settle = (call: () => void) => {
           if (pending.settled) return;

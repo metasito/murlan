@@ -23,8 +23,10 @@ import OnlineLobbyScreen from '@/app/(online)/index';
 import { useInvites } from '@/context/SocketContext';
 
 let accounts = 0;
+const hub = { shown: true };
 /** The hub under the online group's routing, on an account of its own so its socket starts never connected. */
-const mount = async ({ connected = true }: { connected?: boolean } = {}) => {
+const mount = async ({ connected = true, shown = true }: { connected?: boolean; shown?: boolean } = {}) => {
+  hub.shown = shown;
   await setWindow({ width: 390, height: 844 });
   const view = await renderAppHook(useInvites, {
     user: { id: `u${++accounts}`, username: 'me' },
@@ -34,7 +36,7 @@ const mount = async ({ connected = true }: { connected?: boolean } = {}) => {
     wrap: (probe) => (
       <>
         {probe}
-        <OnlineLobbyScreen />
+        {hub.shown && <OnlineLobbyScreen />}
       </>
     ),
   });
@@ -55,6 +57,19 @@ describe('an invite the player has already accepted', () => {
     // The owner's requirement in as many words: no room-code screen on this
     // path. The modal's own title is the thing that must not be on screen.
     expect(screen.queryByText('Join a room')).toBeNull();
+
+    await r.unmount();
+  });
+
+  it('accepted before the hub mounts, the hub joins it and does not ask for its code', async () => {
+    const r = await mount({ shown: false });
+    await accept(r);
+    hub.shown = true;
+    await act(async () => r.rerender());
+
+    expect(screen.getByText('Joining the table…')).toBeTruthy();
+    expect(screen.queryByText('Join a room')).toBeNull();
+    expect(r.joins()).toEqual(['ABC123']);
 
     await r.unmount();
   });

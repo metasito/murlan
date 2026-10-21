@@ -56,7 +56,7 @@ const TABLES: [string, GameState][] = [
 ];
 import GameScreen from '@/app/game';
 
-/** The screen over `table` resumed; `moved()` says whether the provider's table has changed since. */
+/** The screen over `table` resumed; `plays()` counts the moves made on it since. */
 const mount = async (table: GameState) => {
   const view = await renderAppHook(() => useGameTable().gameState, {
     offline: offlineSave(table),

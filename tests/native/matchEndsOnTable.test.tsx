@@ -85,12 +85,16 @@ let live: FakeSocket;
  * The table the match ends on. Offline, Ana has played the last card of a saved match; online, the server
  * sends the finished table and then its word on the round, unless `scored` is false.
  */
-const mount = async (where: Screen, { round = lastRound(), scored = true }: { round?: ReturnType<typeof lastRound>; scored?: boolean } = {}) => {
+/** `served`: the online table's word on a match is standing too, so an offline screen showing it would be seen. */
+const mount = async (
+  where: Screen,
+  { round = lastRound(), scored = true, served = where === 'online' }: { round?: ReturnType<typeof lastRound>; scored?: boolean; served?: boolean } = {}
+) => {
   const Screen = where === 'offline' ? OfflineGameScreen : OnlineGameScreen;
   const view = await renderAppHook(useGameTable, {
     user: { id: 'alice', username: 'Alice' },
-    online: where === 'online',
-    connected: where === 'online',
+    online: served,
+    connected: served,
     offline: where === 'offline' ? offlineSave(ENDING, { length: 'match', target: 21, scores: { player_0: 11, player_1: 20, player_2: 6, player_3: 3 } }) : undefined,
     wrap: (probe) => (
       <SafeAreaProvider initialMetrics={METRICS}>
@@ -104,7 +108,7 @@ const mount = async (where: Screen, { round = lastRound(), scored = true }: { ro
     await act(async () => void view.result.current.playCards([LAST_CARD.id]));
     await advance(THROWN);
   }
-  if (where === 'online') {
+  if (served) {
     live = view.socket();
     live.reset();
     await live.deliver('game:state', wire(ENDED, 0), () => {});
@@ -228,8 +232,8 @@ describe('New match on the board', () => {
 });
 
 describe('the viewer rating under the winner', () => {
-  const settle = async (where: Screen, round?: ReturnType<typeof lastRound>) => {
-    const view = await mount(where, { round });
+  const settle = async (where: Screen, round?: ReturnType<typeof lastRound>, served?: boolean) => {
+    const view = await mount(where, { round, served });
     await advance(board + settled);
     expect(screen.getByTestId('match-winner-name', HIDDEN)).toHaveTextContent('Luan');
     return view;
@@ -275,8 +279,11 @@ describe('the viewer rating under the winner', () => {
     await view.unmount();
   });
 
-  it('shows neither on an offline table', async () => {
-    const view = await settle('offline');
+  it.each([
+    ['a rated', lastRound({ ratingDeltas: { alice: 14 } })],
+    ['an unrecorded', lastRound({ recorded: false })],
+  ])('shows neither on an offline table, with %s online round standing', async (_, round) => {
+    const view = await settle('offline', round, true);
     expect(screen.queryByTestId('match-rating', HIDDEN)).toBeNull();
     expect(screen.queryByText(t('matchBoard.notRecorded'), HIDDEN)).toBeNull();
     await view.unmount();

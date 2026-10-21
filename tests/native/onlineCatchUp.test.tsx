@@ -78,7 +78,7 @@ describe('the online table under a reconnect notice', () => {
       message: 'Carl disconnected',
       params: { seconds: 30 },
     });
-    expect(mockTableProps).toHaveBeenCalled();
+    expect(mockTableProps.mock.calls.at(-1)![0]).toMatchObject({ disconnectedSeats: { 1: { seconds: 30 } } });
     for (const [props] of mockTableProps.mock.calls) expect((props as { catchUp?: boolean }).catchUp ?? false).toBe(false);
     await view.unmount();
   });

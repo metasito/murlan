@@ -2,11 +2,12 @@
 //
 // Every teardown runs the one reset, so a table played to its last round and
 // then left reads exactly like a provider that never sat at one.
-import { describe, it, expect, beforeEach } from '@jest/globals';
+import { describe, it, expect } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act } from '@testing-library/react-native';
 
 import { seat, state } from '../support/game';
+import { ACTIVE_ROOM_KEY } from '@/lib/storageKeys';
 import { renderAppHook } from './harness/renderApp';
 import { room, roundOver, wire } from './harness/wire';
 import type { FakeSocket } from './mocks/socketIo';
@@ -58,10 +59,6 @@ async function playARound() {
   );
 }
 
-beforeEach(async () => {
-  await AsyncStorage.clear();
-});
-
 describe('a table torn down', () => {
   const TEARDOWNS: { what: string; run: (value: OnlineGameContextValue) => Promise<void>; differs: object }[] = [
     {
@@ -85,6 +82,7 @@ describe('a table torn down', () => {
       const freshKeys = await AsyncStorage.getAllKeys();
 
       await playARound();
+      expect(await AsyncStorage.getItem(ACTIVE_ROOM_KEY)).not.toBeNull();
       const played = dataOf(result.current);
       for (const field of [
         'autoPassed',

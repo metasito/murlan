@@ -32,9 +32,29 @@ const importsOf = (source, { values = false } = {}) =>
   ].join(", ");
 
 // A jest.mock or doMock of a module, by its literal path or a template literal ending in it.
-const JEST_MOCK = 'CallExpression[callee.object.name="jest"][callee.property.name=/^(mock|doMock)$/]';
+const JEST_MOCK = 'CallExpression[callee.object.name="jest"][callee.property.name=/^(mock|doMock|setMock|unstable_mockModule)$/]';
 const mockOf = (path, tail) =>
   [`${JEST_MOCK} > Literal:first-child[value=${path}]`, `${JEST_MOCK} > TemplateLiteral:first-child:has(TemplateElement[value.raw=${tail}])`].join(", ");
+
+// Every way a test reaches into a module to replace it: a module mock under any spelling of its path, a
+// namespace or default import (only a spy needs the module object), the module object from require,
+// requireActual or requireMock, and a spy on one handed straight to jest.spyOn. `modules` are `@/`- or
+// relative paths and `packages` bare ones, each an alternation; a deep path into a package counts.
+const seamsOf = ({ modules, packages }) => {
+  const ext = "(\\.[cm]?[jt]sx?)?(\\x2Findex(\\.[cm]?[jt]sx?)?)?";
+  const pkg = packages ? `|^(${packages})(\\x2F.*)?` : "";
+  const path = `/(^(@|\\.\\.?(\\x2F\\.\\.)*)\\x2F(${modules})${ext}$${pkg})$/`;
+  const tail = `/((^|\\x2F)(${modules})${ext}$${pkg})$/`;
+  const required = `CallExpression:matches([callee.name="require"], [callee.object.name="jest"][callee.property.name=/^require(Actual|Mock)$/])[arguments.0.value=${path}]`;
+  const spy = 'CallExpression[callee.object.name="jest"][callee.property.name="spyOn"]';
+  return [
+    mockOf(path, tail),
+    `ImportDeclaration[source.value=${path}]:has(ImportNamespaceSpecifier, ImportDefaultSpecifier)`,
+    `VariableDeclarator[id.type="Identifier"] > ${required}`,
+    `VariableDeclarator[id.type="Identifier"] > TSAsExpression > ${required}`,
+    `${spy} > ${required}:first-child`,
+  ].join(", ");
+};
 
 /** @type {readonly Guard[]} */
 const GUARDS = [
@@ -681,28 +701,52 @@ const GUARDS = [
   {
     id: "account-renders-through-the-app",
     why: "Sign-in, banners and the query cache are the app's own (tests/native/harness/renderApp.tsx): pass renderApp a user, answer its fetches with route(), read banners with bannerLog().",
-    selector: mockOf(
-      "/^(@|\\.\\.?(\\x2F\\.\\.)*)\\x2F(context\\x2F(AuthContext|NotificationContext)(\\.tsx)?|lib\\x2Fquery-client(\\.ts)?)$/",
-      "/(^|\\x2F)(context\\x2F(AuthContext|NotificationContext)(\\.tsx)?|lib\\x2Fquery-client(\\.ts)?)$/"
-    ),
+    selector: seamsOf({ modules: "context\\x2F(AuthContext|NotificationContext)|lib\\x2Fquery-client" }),
     files: ["tests/native/**/*.{ts,tsx}"],
     plant: { file: "tests/native/plant.test.tsx", code: [
       "jest.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user }) }));",
       'jest.doMock("../../context/NotificationContext", () => ({}));',
       "jest.mock(`@/lib/query-client`, () => ({}));",
-    ].join("\n"), hits: 3 },
+      "jest.setMock('@/context/AuthContext', {});",
+      "jest.mock('@/context/AuthContext.js', () => ({}));",
+      "jest.mock('@/lib/query-client/index', () => ({}));",
+      "import * as auth from '@/context/AuthContext';",
+      "import notifications from '../context/NotificationContext';",
+      "const client = require('@/lib/query-client') as typeof import('@/lib/query-client');",
+      "jest.spyOn(jest.requireActual('@/context/AuthContext'), 'useAuth');",
+    ].join("\n"), hits: 10 },
     spare: [
       "jest.mock('@/context/SocketContext', () => ({ ...jest.requireActual('@/context/SocketContext') }));",
       "jest.mock('@/context/AuthContextual', () => ({}));",
       "await renderApp(<Screen />, { user: { id: 'u1', username: 'Ana' } });",
+      "import { useAuth, type AuthUser } from '@/context/AuthContext';",
+      "const { useAuth } = require('@/context/AuthContext') as typeof import('@/context/AuthContext');",
     ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
-  },  {
+  },
+  {
+    id: "native-mocks-name-their-module",
+    why: "A module mock names its module in a literal, so a guard can tell what it replaces (docs/agents/checks.md § Where a forbidden-shape rule goes): write the path out instead of building it.",
+    selector: `${JEST_MOCK} > :first-child:not(Literal, TemplateLiteral[expressions.length=0])`,
+    files: ["tests/native/**/*.{ts,tsx}"],
+    plant: { file: "tests/native/plant.test.tsx", code: [
+      "const CONTEXT = '@/context/GameContext';",
+      "jest.mock(CONTEXT, () => ({}));",
+      "jest.doMock('@/context/' + 'SocketContext', () => ({}));",
+      "jest.mock(`@/context/${name}`, () => ({}));",
+      "jest.setMock(path.join('context', 'GameContext'), {});",
+    ].join("\n"), hits: 4 },
+    spare: [
+      "jest.mock('expo-router', () => ({ router: { replace: jest.fn() } }));",
+      "jest.doMock(`expo-asset`, () => ({}));",
+    ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
+  },
+  {
     id: "table-renders-through-the-app",
     why: "The socket, the game contexts and the query client are the app's own (tests/native/harness/renderApp.tsx): online state arrives through socket().deliver('game:state', …), an offline table through renderApp's `offline` save. A typed slice fixture is only for a single-slice components/table leaf (D16).",
-    selector: mockOf(
-      "/^((@|\\.\\.?(\\x2F\\.\\.)*)\\x2Fcontext\\x2F(SocketContext|GameContext|OnlineGameContext|onlineGameHooks|gameHooks)(\\.tsx?)?|\\.\\.?(\\x2F\\.\\.)*\\x2F([\\w-]+\\x2F)*onlineContextMock(\\.tsx?)?|@tanstack\\x2Freact-query)$/",
-      "/((^|\\x2F)(context\\x2F(SocketContext|GameContext|OnlineGameContext|onlineGameHooks|gameHooks)|onlineContextMock)(\\.tsx?)?|^@tanstack\\x2Freact-query)$/"
-    ),
+    selector: seamsOf({
+      modules: "context\\x2F(SocketContext|GameContext|OnlineGameContext|onlineGameHooks|gameHooks|AppProviders)|([\\w-]+\\x2F)*onlineContextMock",
+      packages: "@tanstack\\x2Freact-query",
+    }),
     files: ["tests/native/**/*.{ts,tsx}"],
     plant: { file: "tests/native/plant.test.tsx", code: [
       "jest.mock('@/context/SocketContext', () => ({ useSocket: () => ({ socket }) }));",
@@ -712,12 +756,24 @@ const GUARDS = [
       "jest.mock('@/context/gameHooks', () => ({}));",
       "jest.mock('./helpers/onlineContextMock', () => ({}));",
       "jest.mock('@tanstack/react-query', () => ({ ...jest.requireActual('@tanstack/react-query') }));",
-    ].join("\n"), hits: 7 },
+      "jest.mock('@tanstack/react-query/build/modern/index.js', () => ({}));",
+      "jest.mock('@/context/AppProviders', () => ({ AppProviders: ({ children }) => children }));",
+      "jest.setMock('@/context/SocketContext', {});",
+      "jest.doMock('../context/GameContext/index.tsx', () => ({}));",
+      "jest.mock('@/context/OnlineGameContext.js', () => ({}));",
+      "import * as sockets from '@/context/SocketContext';",
+      "jest.spyOn(sockets, 'useSocket');",
+      "const hooks = jest.requireActual('@/context/onlineGameHooks');",
+      "jest.spyOn(require('@/context/GameContext'), 'useGameTable');",
+    ].join("\n"), hits: 15 },
     spare: [
       "jest.mock('@/context/SocketContextual', () => ({}));",
       "jest.mock('@tanstack/react-query-devtools', () => ({}));",
       "jest.mock('@/components/GameTable', () => ({}));",
       "await live.deliver('game:state', wire(ENDED, 0), () => {});",
+      "import { useGameTable } from '@/context/GameContext';",
+      "import { QueryClient } from '@tanstack/react-query';",
+      "jest.spyOn(lampControls, 'setTarget');",
     ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
   },
 ];
