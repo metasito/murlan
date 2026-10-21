@@ -9,7 +9,7 @@ import { queryClient as qc } from '@/lib/query-client';
 import { bannerLog } from './harness/bannerLog';
 import { setWindow } from './harness/env';
 import { renderApp } from './harness/renderApp';
-import { route, unreachable } from './mocks/http';
+import { httpRequests, route, unreachable, type HttpReply } from './mocks/http';
 
 jest.mock('expo-router', () => {
   const ReactActual = require('react');
@@ -36,7 +36,6 @@ jest.mock('@/context/onlineGameHooks', () => ({
   useServerError: () => null,
 }));
 
-// No route answers an action: every one of them is lost on the way, as offline.
 const { shown, BannerLog } = bannerLog();
 
 import FriendsScreen from '@/app/(online)/friends';
@@ -72,27 +71,35 @@ describe('a refused friend action is undone and reported', () => {
     shown.length = 0;
   });
 
-  const cases: [string, RegExp, string][] = [
-    ['accept', /accept dora/i, 'Dora'],
-    ['decline', /decline dora/i, 'Dora'],
-    ['cancel', /cancel your request to gent/i, 'Gent'],
+  const REFUSED: HttpReply = { status: 409, body: { message: 'Not any more.' } };
+  const asked = (method: string, path: string) =>
+    httpRequests().filter((r) => r.method === method && r.path === path).length;
+
+  const cases: [string, RegExp, string, string, string, typeof REFUSED | typeof unreachable][] = [
+    ['accept', /accept dora/i, 'Dora', 'POST', '/api/friends/accept/r1', REFUSED],
+    ['decline', /decline dora/i, 'Dora', 'POST', '/api/friends/decline/r1', unreachable],
+    ['cancel', /cancel your request to gent/i, 'Gent', 'DELETE', '/api/friends/requests/s1', REFUSED],
   ];
-  for (const [name, label, username] of cases) {
+  for (const [name, label, username, method, path, answer] of cases) {
     it(`${name} puts the row back and shows the error`, async () => {
+      route(method, path, answer);
       const view = await mount();
       await fireEvent.press(screen.getByLabelText(label));
       expect(screen.getByText(username)).toBeTruthy();
       await waitFor(() => expect(shown).toContainEqual(expect.objectContaining({ type: 'game_error' })));
+      expect(asked(method, path)).toBe(1);
       await view.unmount();
     });
   }
 
   it('remove puts the friend back and shows the error', async () => {
+    route('DELETE', '/api/friends/f1', REFUSED);
     const view = await mount();
     await fireEvent.press(screen.getByLabelText(/remove besi/i));
     await fireEvent.press(screen.getByTestId('confirm-accept'));
     expect(screen.getByText('Besi')).toBeTruthy();
     await waitFor(() => expect(shown).toContainEqual(expect.objectContaining({ type: 'game_error' })));
+    expect(asked('DELETE', '/api/friends/f1')).toBe(1);
     await view.unmount();
   });
 });

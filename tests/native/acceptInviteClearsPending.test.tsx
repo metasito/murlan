@@ -75,6 +75,12 @@ const heldDecline = () => {
   return held;
 };
 
+/** The invites the server holds open, already in this device's cache. */
+const serverHas = (rows: unknown[]) => {
+  route('GET', '/api/friends/invites', { body: rows });
+  client.setQueryData(['/api/friends/invites'], rows);
+};
+
 /** What the server sends when a friend invites this player to their table. */
 const invite = async () => {
   await act(async () => {
@@ -117,7 +123,7 @@ describe('accepting an invite', () => {
   });
 
   it('takes the invite off the list without declining the seat it holds', async () => {
-    client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'ana', roomCode: 'ABC123' }]);
+    serverHas([{ fromUsername: 'ana', roomCode: 'ABC123' }]);
     const { result, unmount } = await mount();
     expect(result.current.invites).toHaveLength(1);
 
@@ -131,11 +137,11 @@ describe('accepting an invite', () => {
 
   it('keeps an accepted invite off the list when a refetch still returns its row', async () => {
     const row = { fromUsername: 'ana', roomCode: 'ABC123' };
-    client.setQueryData(['/api/friends/invites'], [row]);
+    serverHas([row]);
     const { result, unmount } = await mount();
     const serverStillReturnsRow = () =>
       act(async () => {
-        client.setQueryData(['/api/friends/invites'], [row]);
+        serverHas([row]);
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
 
@@ -151,7 +157,7 @@ describe('accepting an invite', () => {
   });
 
   it('puts a declined invite back when the decline never reached the server', async () => {
-    client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'ana', roomCode: 'ABC123' }]);
+    serverHas([{ fromUsername: 'ana', roomCode: 'ABC123' }]);
     const { result, unmount } = await mount();
     const decline = heldDecline();
 
@@ -177,7 +183,7 @@ describe('accepting an invite', () => {
 
 describe('hidden invites across accounts', () => {
   it("leaves the next account's hidden invites alone when an old decline fails", async () => {
-    client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'ana', roomCode: 'ABC123' }]);
+    serverHas([{ fromUsername: 'ana', roomCode: 'ABC123' }]);
     const { result, signIn, signOut, unmount } = await mount();
     const decline = heldDecline();
     await act(async () => result.current.dismiss('ABC123'));
@@ -185,7 +191,7 @@ describe('hidden invites across accounts', () => {
     await signOut();
     await signIn(BEN);
     await act(async () => {
-      client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'cleo', roomCode: 'XYZ789' }]);
+      serverHas([{ fromUsername: 'cleo', roomCode: 'XYZ789' }]);
     });
     await act(async () => result.current.accept('XYZ789'));
     expect(result.current.invites).toEqual([]);
@@ -198,14 +204,14 @@ describe('hidden invites across accounts', () => {
 
   it('keeps a hide when the same account signs out and back in', async () => {
     const row = { fromUsername: 'ana', roomCode: 'ABC123' };
-    client.setQueryData(['/api/friends/invites'], [row]);
+    serverHas([row]);
     const { result, signIn, signOut, unmount } = await mount();
     await act(async () => result.current.accept('ABC123'));
 
     await signOut();
     await signIn(ANA);
     await act(async () => {
-      client.setQueryData(['/api/friends/invites'], [row]);
+      serverHas([row]);
     });
 
     expect(result.current.invites).toEqual([]);
@@ -214,7 +220,7 @@ describe('hidden invites across accounts', () => {
   });
 
   it('hides an invite accepted by a child in the commit that signs the account in', async () => {
-    client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'cleo', roomCode: 'XYZ789' }]);
+    serverHas([{ fromUsername: 'cleo', roomCode: 'XYZ789' }]);
     const { result, signIn, unmount } = await mountHook(() => {
       const invites = useInvites();
       const { accept } = invites;
