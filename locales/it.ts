@@ -22,6 +22,12 @@ export const it: Record<keyof typeof en, string> = {
   "term.mode.freeForAll": "Tutti contro tutti",
   "term.mode.teamsShort": "Coppie",
   "term.mode.freeForAllShort": "Libero",
+  "term.combo.single": "Singola",
+  "term.combo.pair": "Coppia",
+  "term.combo.triple": "Tris",
+  "term.combo.straight": "Scala",
+  "term.combo.bomb": "💣 Bomba",
+  "term.combo.royalStraight": "★ Scala Reale",
 
   // ------------------------------------------------------------- server.*
   "server.AUTH_RATE_LIMITED": "Troppi tentativi, riprova tra 15 minuti.",
@@ -334,12 +340,6 @@ export const it: Record<keyof typeof en, string> = {
   "cardView.selectedA11yHint": "Selezionata",
 
   // ------------------------------------------------------------- gameShared.*
-  "gameShared.comboSingle": "Singola",
-  "gameShared.comboPair": "Coppia",
-  "gameShared.comboTriple": "Tris",
-  "gameShared.comboStraight": "Scala",
-  "gameShared.comboBomb": "💣 Bomba",
-  "gameShared.comboRoyalStraight": "★ Scala Reale",
   "gameShared.comboMultiplier": " ×{{count}}",
   "gameShared.emptyHand": "Carte finite!",
   "gameShared.startReasonCard": "{{name}} inizia — ha il {{rank}}{{suit}}",
@@ -634,17 +634,11 @@ export const it: Record<keyof typeof en, string> = {
   "rules.strengthTen": "Dieci",
   "rules.strengthThree": "Tre",
   "rules.combosSectionLabel": "COMBINAZIONI VALIDE",
-  "rules.comboSingleName": "Singola",
   "rules.comboSingleDesc": "1 carta qualsiasi",
-  "rules.comboPairName": "Coppia",
   "rules.comboPairDesc": "2 carte dello stesso valore",
-  "rules.comboTripleName": "Tris",
   "rules.comboTripleDesc": "3 carte dello stesso valore",
-  "rules.comboStraightName": "Scala",
   "rules.comboStraightDesc": "Min. 5 carte consecutive, fino a 13 (es. A-2-3-4-5)",
-  "rules.comboBombName": "Bomba 💣",
   "rules.comboBombDesc": "4 carte stesso valore · batte tutto tranne la Scala Reale",
-  "rules.comboRoyalName": "Scala Reale ★",
   "rules.comboRoyalDesc": "Scala stesso seme · batte anche la Bomba",
   "rules.faqSectionLabel": "DOMANDE FREQUENTI",
 
