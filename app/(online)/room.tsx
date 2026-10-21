@@ -22,7 +22,7 @@ import { Avatar } from "@/components/Avatar";
 import { ChoiceChips } from "@/components/ChoiceChips";
 import * as Clipboard from "expo-clipboard";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useQuery } from "@tanstack/react-query";
+import { queryKey, useApi } from "@/lib/queries";
 import {
   useOnlineConnection,
   useOnlineRoom,
@@ -212,9 +212,7 @@ function InviteFriendsPanel({
     refresh();
   }, [refresh]);
 
-  const { data: friendsData, isLoading, isError, refetch } = useQuery<FriendInfo[]>({
-    queryKey: ["/api/friends"],
-  });
+  const { data: friendsData, isLoading, isError, refetch } = useApi(queryKey("friends"));
 
   const friends = friendsData ?? [];
   const onlineFriendsNotInRoom = friends.filter(

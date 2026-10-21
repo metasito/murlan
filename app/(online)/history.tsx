@@ -6,7 +6,7 @@
 // anyway.
 import React, { useRef, useState } from "react";
 import { View, Text, StyleSheet, ScrollView } from "react-native";
-import { useQuery } from "@tanstack/react-query";
+import { queryKey, useApi } from "@/lib/queries";
 import { MenuLayout } from "@/components/MenuLayout";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { MenuCard } from "@/components/MenuCard";
@@ -15,14 +15,13 @@ import { LoadingBlock, ErrorBlock, EmptyBlock } from "@/components/StateBlock";
 import { HistoryRow } from "@/components/HistoryRow";
 import { Colors, Spacing, Type } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
-import type { RoundHistoryDto } from "@/shared/http";
 
 /** Rows per page. Chosen to fill a phone in portrait without spilling. */
 const PAGE_SIZE = 10;
 
 export default function HistoryScreen() {
   const { t } = useTranslation();
-  const historyQuery = useQuery<RoundHistoryDto[]>({ queryKey: ["/api/stats/history"] });
+  const historyQuery = useApi(queryKey("stats/history"));
   const history = historyQuery.data ?? [];
 
   const pageCount = Math.max(1, Math.ceil(history.length / PAGE_SIZE));

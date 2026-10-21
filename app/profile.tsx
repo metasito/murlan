@@ -9,7 +9,7 @@ import {
 import Animated, { FadeIn } from "react-native-reanimated";
 import { router } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { useNotification } from "@/context/NotificationContext";
 import { Colors, Spacing, Radius, FontSize, Type, Motion, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
@@ -18,7 +18,7 @@ import { MenuLayout } from "@/components/MenuLayout";
 import { Avatar } from "@/components/Avatar";
 import { MenuCard } from "@/components/MenuCard";
 import { AppModal } from "@/components/AppModal";
-import { LADDER_KEY } from "@/lib/ladderQuery";
+import { markStale, queryKey, stale, useApi } from "@/lib/queries";
 import {
   recentForm,
   placementDistribution,
@@ -42,7 +42,6 @@ import { apiRequest } from "@/lib/query-client";
 import { USERNAME_MAX, USERNAME_MIN, usernameProblem } from "@/shared/username";
 import { placementColor, positionLabelKey } from "@/lib/placement";
 import { useGuardedSubmit } from "@/lib/useGuardedSubmit";
-import type { UserStatsDto, RatingDto, AchievementStatusDto, RoundHistoryDto } from "@/shared/http";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -112,10 +111,7 @@ function UserCard({ user }: { user: { username: string } }) {
     setError(null);
     try {
       await rename(name);
-      // The ladder is the only cached list that carries the viewer's own name —
-      // friends and requests carry other people's, and home reads the account
-      // straight from AuthContext.
-      queryClient.invalidateQueries({ queryKey: LADDER_KEY });
+      markStale(queryClient, stale.afterRename);
       setEditing(false);
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("profile.renameFailed")));
@@ -524,20 +520,11 @@ export default function ProfileScreen() {
   const { user, loading } = useAuth();
   const reduceMotion = usePrefersReducedMotion();
 
-  // Every one of these needs a session. The screen is reachable without one
-  // now, and a query left running there is five 401s and a record section
-  // that renders nothing anyway.
   const signedIn = !!user;
-  const statsQuery = useQuery<UserStatsDto>({ queryKey: ["/api/stats/me"], enabled: signedIn });
-  const historyQuery = useQuery<RoundHistoryDto[]>({
-    queryKey: ["/api/stats/history"],
-    enabled: signedIn,
-  });
-  const achievementsQuery = useQuery<AchievementStatusDto[]>({
-    queryKey: ["/api/stats/achievements"],
-    enabled: signedIn,
-  });
-  const ratingQuery = useQuery<RatingDto>({ queryKey: ["/api/ratings/me"], enabled: signedIn });
+  const statsQuery = useApi(queryKey("stats/me"), { enabled: signedIn });
+  const historyQuery = useApi(queryKey("stats/history"), { enabled: signedIn });
+  const achievementsQuery = useApi(queryKey("stats/achievements"), { enabled: signedIn });
+  const ratingQuery = useApi(queryKey("ratings/me"), { enabled: signedIn });
 
   const stats = statsQuery.data;
   const history = historyQuery.data ?? [];
