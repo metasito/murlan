@@ -4,10 +4,20 @@ import { test, expect } from "./fixtures";
 import { exchangeSave, resumeSaved } from "./helpers/offlineSeed";
 import { tap } from "./helpers/press";
 import { E2E_REAL_EXCHANGE_KEY } from "../../lib/storageKeys";
+import { HAND_SCALE, HAND_SCALE_ON_TURN } from "../../components/cardFaceModel";
 
 const AFTER_MS = 500;
+const TURN_RATIO = HAND_SCALE_ON_TURN / HAND_SCALE;
+/** Both widths are fractional layout widths, so equal ones agree far inside this; one slot is over 0.6 card. */
+const SLOT_TOLERANCE = 0.01;
+const SIZE_TOLERANCE = 0.001;
 
-interface Sample { t: number; rowW: number; cardW: number; ceremony: boolean }
+/**
+ * `cardW` is the card's laid-out width, not its bounding box: the box also carries the card's
+ * rotation, lift and the scale a resize animates through, which move it at a constant size.
+ * `cardDrawn` is that width under the card's own transform scale.
+ */
+interface Sample { t: number; ceremony: boolean; rowW: number; cardW: number; cardDrawn: number }
 
 const ROLES = [
   {
@@ -20,6 +30,8 @@ const ROLES = [
         cardFromLoser: "2_spades",
         holding: [["5_hearts", "K_spades", "2_spades"], ["J_hearts", "Q_diamonds"]],
       }),
+    /** The winner gives its card and loses the turn's size until the ceremony hands it the lead. */
+    resizesAfter: 1,
   },
   {
     role: "loser",
@@ -31,17 +43,14 @@ const ROLES = [
         cardFromLoser: "2_spades",
         holding: [["J_hearts", "Q_diamonds"], ["5_hearts", "K_spades", "2_spades"]],
       }),
+    resizesAfter: 0,
   },
 ] as const;
 
-/**
- * The row in card widths. The hand grows when the turn reaches the viewer (`handCardSize`), and the
- * ceremony closing is what hands it over, so the row's raw width legitimately steps there; in card
- * widths it moves only with the slot count.
- */
+/** The row in card widths, which moves with the slot count and not with the card's size. */
 const slots = (s: Sample) => s.rowW / s.cardW;
 
-for (const { role, save } of ROLES) {
+for (const { role, save, resizesAfter } of ROLES) {
   test(`the ${role}'s hand row ends the ceremony as wide as the hand it settles into`, async ({ page, baseURL }) => {
     test.setTimeout(120_000);
     await page.addInitScript((key) => window.localStorage.setItem(key, "1"), E2E_REAL_EXCHANGE_KEY);
@@ -57,7 +66,11 @@ for (const { role, save } of ROLES) {
         const row = document.querySelector<HTMLElement>('[data-testid="hand-row"]');
         const card = row?.querySelector<HTMLElement>('[data-testid^="hand-card-"]');
         if (ceremony) began = true;
-        if (began && row && card) out.push({ t, rowW: row.getBoundingClientRect().width, cardW: card.offsetWidth, ceremony });
+        if (began && row && card) {
+          const cardW = parseFloat(getComputedStyle(card).width);
+          const m = new DOMMatrixReadOnly(getComputedStyle(card).transform);
+          out.push({ t, ceremony, rowW: parseFloat(getComputedStyle(row).width), cardW, cardDrawn: cardW * Math.hypot(m.a, m.b) });
+        }
         if (began && !ceremony && ended === null) ended = t;
         if (ended !== null && t - ended >= afterMs) w.__settled = true;
         else requestAnimationFrame(frame);
@@ -76,18 +89,39 @@ for (const { role, save } of ROLES) {
       .toBe(true);
     const rows = await page.evaluate(() => (window as unknown as { __rows: Sample[] }).__rows);
 
+    const trace = rows
+      .filter((s, i) => i === 0 || s.rowW !== rows[i - 1].rowW || s.cardW !== rows[i - 1].cardW)
+      .map((s) => `${s.rowW.toFixed(2)}/${s.cardW.toFixed(3)}@${(s.t - rows[0].t).toFixed(0)}${s.ceremony ? "" : " after"}`)
+      .join(", ");
     const during = rows.filter((s) => s.ceremony);
+    const after = rows.slice(during.length);
     expect(during.length, "the ceremony was sampled").toBeGreaterThan(10);
+    expect(after.every((s) => !s.ceremony), "the ceremony ran once, then the row was sampled after it").toBe(true);
+
+    // The card has two sizes, off turn and on it, and nothing else resizes it, during the ceremony or after.
+    const small = Math.min(...rows.map((s) => s.cardW));
+    for (const s of rows) {
+      const k = s.cardW / small;
+      expect(Math.min(Math.abs(k - 1), Math.abs(k - TURN_RATIO)), `a card size that is not the turn's: ${trace}`).toBeLessThan(SIZE_TOLERANCE);
+    }
+
+    const resizes = after.filter((s, i) => i > 0 && s.cardW !== after[i - 1].cardW);
+    expect(resizes.length, `size changes after the ceremony: ${trace}`).toBe(resizesAfter);
+    for (const s of resizes) {
+      const from = after[after.indexOf(s) - 1].cardW;
+      expect(s.cardW / from, `the resize after the ceremony: ${trace}`).toBeCloseTo(TURN_RATIO, 3);
+      const lo = Math.min(from, s.cardW);
+      const margin = 0.05 * Math.abs(s.cardW - from);
+      const between = after.filter((f) => f.t >= s.t && f.cardDrawn > lo + margin && f.cardDrawn < lo + Math.abs(s.cardW - from) - margin);
+      expect(between.length, `the card is drawn between its two sizes on some frame: ${trace}`).toBeGreaterThan(0);
+    }
+
+    // The floor: the row steps by whole slots through the ceremony, so the equality below is not a
+    // measure that never moves.
+    const spread = Math.max(...during.map(slots)) - Math.min(...during.map(slots));
+    expect(spread, `the row stepped a slot during the ceremony: ${trace}`).toBeGreaterThan(0.5);
     const last = during[during.length - 1];
     const settled = rows[rows.length - 1];
-    expect(settled.ceremony, "the row was sampled after the ceremony").toBe(false);
-    const trace = rows
-      .filter((s, i) => i === 0 || Math.abs(s.rowW - rows[i - 1].rowW) > 0.5)
-      .map((s) => `${s.rowW.toFixed(1)}/${s.cardW}@${(s.t - rows[0].t).toFixed(0)}${s.ceremony ? "" : " after"}`)
-      .join(", ");
-    // The floor: the ceremony steps the row for the card in the air, so this measure does move with the
-    // slot count, and the equality below is not a number that never changes.
-    expect(new Set(during.map((s) => slots(s).toFixed(2))).size, `the row stepped during the ceremony: ${trace}`).toBeGreaterThan(1);
-    expect(slots(last), `the last ceremony frame against the settled row: ${trace}`).toBeCloseTo(slots(settled), 2);
+    expect(Math.abs(slots(last) - slots(settled)), `the last ceremony frame against the settled row: ${trace}`).toBeLessThan(SLOT_TOLERANCE);
   });
 }
