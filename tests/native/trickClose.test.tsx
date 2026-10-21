@@ -16,6 +16,7 @@ import { getAnimatedStyle } from 'react-native-reanimated';
 import { bootFeedback, startsOf } from './helpers/feedback';
 import { newEpoch } from './mocks/audioApi';
 import { GameTable } from '@/components/GameTable';
+import { TRICK_WINNER_MS } from '@/components/table/pile';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';
 import { Motion } from '@/lib/theme';
@@ -28,8 +29,6 @@ const METRICS = {
   insets: { top: 0, left: 47, right: 34, bottom: 0 },
 };
 
-/** How long the winning cards are held. Mirrors TRICK_WINNER_MS. */
-const HOLD_MS = 1800;
 /** `botMoveDelayMs()`'s default — a bot trick winner leads inside the hold. */
 const BOT_DELAY_MS = 1200;
 
@@ -106,7 +105,7 @@ describe('the pass that closes a trick', () => {
     expect(onFelt(KING)).toBeTruthy();
 
     await act(async () => {
-      jest.advanceTimersByTime(HOLD_MS - 1);
+      jest.advanceTimersByTime(TRICK_WINNER_MS - 1);
     });
     expect(onFelt(KING)).toBeTruthy();
 
@@ -129,7 +128,7 @@ describe('the pass that closes a trick', () => {
     await act(async () => r.rerender(table({ ...CLOSED, lastMove: { seq: 3, kind: 'pass', seat: 0, closedTrick: true } })));
     expect(startsOf('trick_win')).toHaveLength(1);
     await act(async () => {
-      jest.advanceTimersByTime(HOLD_MS - 1);
+      jest.advanceTimersByTime(TRICK_WINNER_MS - 1);
     });
     expect(onFelt(KING)).toBeTruthy();
 
@@ -148,7 +147,7 @@ describe('the pass that closes a trick', () => {
     expect(startsOf('trick_start')).toEqual([]);
 
     await act(async () => {
-      jest.advanceTimersByTime(HOLD_MS + 1);
+      jest.advanceTimersByTime(TRICK_WINNER_MS + 1);
     });
     expect(startsOf('trick_start')).toHaveLength(1);
     expect(startsOf('trick_win')[0]).toBeLessThan(startsOf('trick_start')[0]);
@@ -194,7 +193,7 @@ describe('the pass that closes a trick', () => {
       const r = await render(table(LED));
       await act(async () => r.rerender(table(CLOSED)));
       await act(async () => {
-        jest.advanceTimersByTime(HOLD_MS + 1);
+        jest.advanceTimersByTime(TRICK_WINNER_MS + 1);
       });
       expect(swept(KING)).toBeTruthy();
       expect(onFelt(KING)).toBeNull();

@@ -12,10 +12,12 @@ import React from 'react';
 import { Text } from 'react-native';
 import { act } from '@testing-library/react-native';
 
+import { reconnectDelayMs } from '@/lib/reconnectDelay';
 import { renderApp } from './harness/renderApp';
 import { lastSocket } from './mocks/socketIo';
 
-const mount = () => renderApp(<Text>child</Text>, { user: { id: 'u1', username: 'Ana' } });
+const random = () => 0.123;
+const mount = () => renderApp(<Text>child</Text>, { user: { id: 'u1', username: 'Ana' }, random });
 
 const fireConnectError = async () => {
   await act(async () => {
@@ -23,9 +25,8 @@ const fireConnectError = async () => {
   });
 };
 
-// The first attempt's delay with Math.random pinned below (lib/reconnectDelay.ts),
-// and what identifies this handler's timer among the renderer's and react-query's.
-const FIRST_RETRY_MS = 246;
+// What identifies this handler's timer among the renderer's and react-query's.
+const FIRST_RETRY_MS = reconnectDelayMs(0, random);
 
 describe('connect_error', () => {
   let setTimeoutSpy: jest.Spied<typeof setTimeout>;
@@ -33,7 +34,6 @@ describe('connect_error', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     setTimeoutSpy = jest.spyOn(globalThis, 'setTimeout');
-    jest.spyOn(Math, 'random').mockReturnValue(0.123);
   });
 
   afterEach(() => {

@@ -124,7 +124,7 @@ export function useInvites(): Invites {
   return ctx;
 }
 
-export function SocketProvider({ children }: { children: ReactNode }) {
+export function SocketProvider({ children, random }: { children: ReactNode; random?: () => number }) {
   const { user, forgetSession } = useAuth();
   // The id, not the object: this is what the socket effect below keys on, and
   // `user` gets a new identity on every refetch of the same account.
@@ -322,7 +322,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       if (socket.active) return;
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       const attempt = retryAttemptRef.current++;
-      const delay = reconnectDelayMs(attempt);
+      const delay = reconnectDelayMs(attempt, random);
       retryTimerRef.current = setTimeout(() => {
         retryTimerRef.current = null;
         if (!socket.connected) socket.connect();
@@ -474,7 +474,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       socket.off("friend:error", onFriendError);
       socket.off("socket:error", onSocketError);
     };
-  }, [userId, forgetSession, qc, showNotification, notifyServerError, unhideGameInvite]);
+  }, [userId, forgetSession, qc, showNotification, notifyServerError, unhideGameInvite, random]);
 
   const refresh = useCallback(() => {
     if (socket) askWhoIsOnline(socket);

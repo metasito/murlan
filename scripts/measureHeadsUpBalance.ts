@@ -5,10 +5,9 @@
 // (lib/game/gameEngine.ts's dealCards), or the default bot personality being the
 // passive one (lib/game/botPersonalities.ts).
 //
-// Calls the real engine and the real bot through
-// tests/helpers/offlineMatch.ts's `simulateOfflineMatch` — no copy of
-// either, per the ticket's own constraint. `botRng` (added to that harness
-// for this ticket) makes a whole match, deal and personality knobs both,
+// Calls the real engine and the real bot through ./headsUpBalance.ts's
+// `playMatch` — no copy of either, per the ticket's own constraint. Its
+// `botRng` makes a whole match, deal and personality knobs both,
 // reproducible from one seed, per `botChoosePlay`'s own injectable `rng`.
 //
 // Run: node --experimental-strip-types scripts/measureHeadsUpBalance.ts
@@ -31,6 +30,7 @@ import {
   startRound,
   type Card,
   type Combination,
+  type SeatSetup,
 } from "../lib/game/gameEngine.ts";
 import { autoMoveForSeat } from "../lib/game/autoMove.ts";
 import {
@@ -38,12 +38,7 @@ import {
   DEFAULT_BOT_PERSONALITY,
   type BotPersonalityId,
 } from "../lib/game/botPersonalities.ts";
-import {
-  simulateOfflineMatch,
-  type OfflinePlayerSetup,
-  type SimulateMatchResult,
-} from "../tests/helpers/offlineMatch.ts";
-import { mulberry32, rng as seeded } from "../tests/support/game.ts";
+import { isTopCard, mulberry32, playMatch, rng as seeded, type PlayedMatch } from "./headsUpBalance.ts";
 
 interface Options {
   seed: number;
@@ -70,8 +65,6 @@ function parseArgs(argv: string[]): Options {
 }
 
 // ─── Small stats helpers ────────────────────────────────────────────────────
-
-const isTopCard = (c: Card) => c.isJoker || c.rank === "2";
 
 function mean(xs: number[]): number {
   return xs.length === 0 ? NaN : xs.reduce((a, b) => a + b, 0) / xs.length;
@@ -137,7 +130,7 @@ function measureDealConcentration(playerCount: number, n: number, seed: number) 
 
 // ─── Shared match running ───────────────────────────────────────────────────
 
-function tableOf(playerCount: number, personalities?: (BotPersonalityId | undefined)[]): OfflinePlayerSetup[] {
+function tableOf(playerCount: number, personalities?: (BotPersonalityId | undefined)[]): SeatSetup[] {
   return Array.from({ length: playerCount }, (_, i) => ({
     name: `Bot${i}`,
     type: "bot" as const,
@@ -146,14 +139,14 @@ function tableOf(playerCount: number, personalities?: (BotPersonalityId | undefi
 }
 
 function runMatches(
-  players: OfflinePlayerSetup[],
+  players: SeatSetup[],
   n: number,
   seedBase: number
-): SimulateMatchResult[] {
-  const results: SimulateMatchResult[] = [];
+): PlayedMatch[] {
+  const results: PlayedMatch[] = [];
   for (let i = 0; i < n; i++) {
     results.push(
-      simulateOfflineMatch({
+      playMatch({
         seed: seedBase + i,
         players,
         gameMode: "free_for_all",
@@ -184,7 +177,7 @@ interface CompoundingAndStreak {
  * `results` all come from symmetric tables (every seat the same personality),
  * so any measured skew is the format's own mechanics, not a personality gap.
  */
-function measureCompoundingAndStreak(results: SimulateMatchResult[], playerCount: number): CompoundingAndStreak {
+function measureCompoundingAndStreak(results: PlayedMatch[], playerCount: number): CompoundingAndStreak {
   const round0TopCards: number[][] = [];
   const deltaByRoundIndex = new Map<number, number[]>();
   let streakRepeats = 0;

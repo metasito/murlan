@@ -16,9 +16,7 @@ import type { FakeSocket } from './mocks/socketIo';
 import { en as locale } from '@/locales/en';
 
 import { ACTIVE_ROOM_KEY } from '@/lib/storageKeys';
-// REJOIN_RETRY_DELAY_MS / MAX_REJOIN_RETRIES, same file.
-const RETRY_DELAY_MS = 2000;
-const MAX_RETRIES = 3;
+import { MAX_REJOIN_RETRIES, REJOIN_RETRY_DELAY_MS } from '@/context/useRejoin';
 
 /**
  * Both contexts in one callback: the notice the teardown raises is the other
@@ -114,20 +112,20 @@ describe('game:rejoin_failed', () => {
       const { result, unmount } = await mountRejoining('R1');
       live.reset();
 
-      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      for (let attempt = 0; attempt < MAX_REJOIN_RETRIES; attempt++) {
         await live.deliver('game:rejoin_failed', { roomId: 'R1', code: 'SERVER_ERROR' });
         expect(result.current.game.rejoinFailed).toBe(false);
         expect(await AsyncStorage.getItem(ACTIVE_ROOM_KEY)).toBe('R1');
-        await act(async () => void jest.advanceTimersByTime(RETRY_DELAY_MS));
+        await act(async () => void jest.advanceTimersByTime(REJOIN_RETRY_DELAY_MS));
       }
-      expect(emitted()).toHaveLength(MAX_RETRIES);
+      expect(emitted()).toHaveLength(MAX_REJOIN_RETRIES);
       expect(emitted().every((e) => e.event === 'game:rejoin')).toBe(true);
 
       // Past the cap it is treated as terminal, so a server that is genuinely
       // down does not leave the player retrying into the rate limiter.
       await live.deliver('game:rejoin_failed', { roomId: 'R1', code: 'SERVER_ERROR' });
-      await act(async () => void jest.advanceTimersByTime(RETRY_DELAY_MS * 4));
-      expect(emitted()).toHaveLength(MAX_RETRIES);
+      await act(async () => void jest.advanceTimersByTime(REJOIN_RETRY_DELAY_MS * 4));
+      expect(emitted()).toHaveLength(MAX_REJOIN_RETRIES);
 
       await waitFor(() => expect(result.current.game.rejoinFailed).toBe(true));
       expect(await AsyncStorage.getItem(ACTIVE_ROOM_KEY)).toBeNull();

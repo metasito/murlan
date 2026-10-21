@@ -16,6 +16,7 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { resumeSaved, exchangeSave, offlineSave, DEAL_SIZE } from "./helpers/offlineSeed";
 import { PHONES } from "./helpers/phones";
+import { PAST_HOLD_MS, TAP_MS } from "./helpers/press";
 import { TABLE, HAND_CARDS, HAND_ZONE } from "./helpers/selectors";
 
 /**
@@ -29,10 +30,6 @@ const WIDEST_SEATS = ([2, 3, 4] as const).reduce((a, b) =>
 
 /** The handset the row cannot fit on, whatever the list holds. */
 const NARROWEST = PHONES.reduce((a, b) => (b.width < a.width ? b : a));
-/** A press long enough to be a press, and far short of `HOLD_MS`. */
-const TAP_MS = 120;
-/** Past `HOLD_MS` in components/table/hand.tsx, with room for a slow runner. */
-const HOLD_PAST_MS = 800;
 const DRAG_ALONG = 60;
 const DRAG_UP = 40;
 
@@ -196,7 +193,7 @@ test(`a card dragged out of the fan is not cut off — ${NARROWEST.name}`, async
   const y = box!.y + box!.height / 2;
   await page.mouse.move(x, y);
   await page.mouse.down();
-  await page.waitForTimeout(HOLD_PAST_MS);
+  await page.waitForTimeout(PAST_HOLD_MS);
   // Up as well as along: a thumb reordering cards does not stay on one line,
   // and up is the direction the window has least room in.
   await page.mouse.move(x + DRAG_ALONG, y - DRAG_UP, { steps: 8 });

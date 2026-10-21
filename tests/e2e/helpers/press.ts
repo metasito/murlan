@@ -4,6 +4,7 @@
 // cannot tell a tap from a hold. A card answers both, and which one it gets
 // decides whether it is selected or dragged.
 import type { Locator, Page } from "@playwright/test";
+import { LONG_PRESS_MS } from "../../../lib/tokens.ts";
 
 /**
  * How long a real tap lasts. Human taps cluster around 60-120ms; this is the
@@ -11,14 +12,8 @@ import type { Locator, Page } from "@playwright/test";
  */
 export const TAP_MS = 120;
 
-/**
- * The app's own hold threshold, and a press comfortably past it.
- *
- * `hand.tsx` keeps `HOLD_MS` module-local, so this is a copy rather than an
- * import — `tests/tooling/e2eRealPresses.test.ts` fails if the two ever disagree.
- */
-export const HOLD_MS = 500;
-export const PAST_HOLD_MS = HOLD_MS + 300;
+/** A press comfortably past the app's own hold threshold. */
+export const PAST_HOLD_MS = LONG_PRESS_MS + 300;
 
 const REACHABLE_MS = 4_000;
 

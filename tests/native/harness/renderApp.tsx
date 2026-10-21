@@ -100,12 +100,14 @@ type Boot = {
   offline?: Omit<OfflineSave, 'version'>;
   /** An offline match the device saved, not yet resumed. */
   saved?: Omit<OfflineSave, 'version'>;
+  /** What the socket's own reconnect jitter draws from. */
+  random?: () => number;
 };
 
 /** `ui` under the app's own provider stack, once the account has booted. */
 export async function renderApp(
   ui: React.ReactElement,
-  { user = null, cached = user, me, booted = true, online = false, follow = false, connected = false, offline, saved = offline }: Boot = {}
+  { user = null, cached = user, me, booted = true, online = false, follow = false, connected = false, offline, saved = offline, random }: Boot = {}
 ) {
   auth.settled = false;
   local.value = null;
@@ -125,7 +127,7 @@ export async function renderApp(
       node
     );
   const app = (node: React.ReactElement) => (
-    <AppProviders>
+    <AppProviders random={random}>
       <AuthSettled />
       <LocalSessionProbe />
       <ResumedFirst held={!!offline}>{screen(node)}</ResumedFirst>
