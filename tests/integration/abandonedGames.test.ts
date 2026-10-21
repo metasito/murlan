@@ -17,21 +17,18 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
+import {
+  pruneAbandonedGames as prune,
+  ABANDONED_GAME_MAX_AGE_MS as maxAgeMs,
+  pruneStaleRooms as pruneRooms,
+  STALE_ROOM_MAX_AGE_MS as roomMaxAgeMs,
+} from "../../server/game/retention.ts";
 
 describe("abandoned game rows", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  let prune: () => Promise<number>;
-  let maxAgeMs: number;
-  let pruneRooms: () => Promise<number>;
-  let roomMaxAgeMs: number;
 
   before(async () => {
     server = await startTestServer();
-    const retention = await import("../../server/game/retention.ts");
-    prune = retention.pruneAbandonedGames;
-    maxAgeMs = retention.ABANDONED_GAME_MAX_AGE_MS;
-    pruneRooms = retention.pruneStaleRooms;
-    roomMaxAgeMs = retention.STALE_ROOM_MAX_AGE_MS;
   });
 
   after(async () => {

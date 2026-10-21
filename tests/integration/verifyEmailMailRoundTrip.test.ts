@@ -14,6 +14,9 @@ import path from "node:path";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { readMailToken } from "../e2e/helpers/mailSink.ts";
 import { register } from "../helpers/client.ts";
+import { db } from "../../server/store/db.ts";
+import { users } from "../../shared/schema.ts";
+import { eq } from "drizzle-orm";
 
 // Read at call time by server/http/mail.ts, not at module load, but set here
 // before startTestServer() below dynamically imports it — same convention
@@ -77,11 +80,7 @@ describe("register -> mail -> verify-email, end to end", { skip: hasDatabase() ?
     const resendRes = await post("resend-verification", { locale: "sq" });
     assert.equal(resendRes.status, 200, await resendRes.text());
     assert.match(await readMailToken("mailshqip@example.test", "Verifiko email-in për Murlan"), /\S+/);
-
-    const { db } = await import("../../server/store/db.ts");
-    const { users } = await import("../../shared/schema.ts");
-    const { eq } = await import("drizzle-orm");
-    await db.update(users).set({ email: null, emailVerifiedAt: null }).where(eq(users.id, user.id));
+    await db().update(users).set({ email: null, emailVerifiedAt: null }).where(eq(users.id, user.id));
     const addRes = await post("add-email", { email: "mailitaliano2@example.test", locale: "it" });
     assert.equal(addRes.status, 200, await addRes.text());
     assert.match(await readMailToken("mailitaliano2@example.test", "Verifica la tua email Murlan"), /\S+/);

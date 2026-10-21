@@ -403,6 +403,11 @@ export const Spacing = {
 // own box is the whole target.
 export const TOUCH_TARGET_MIN = 44;
 
+// How long a press lasts before it is a hold. react-native-gesture-handler's
+// own default, the number the thumb has learned elsewhere: shorter starts
+// catching the slow taps of someone deciding which card to play.
+export const LONG_PRESS_MS = 500;
+
 /**
  * How dim a control goes while it is held, and while it is refusing.
  *

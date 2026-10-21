@@ -1,6 +1,5 @@
 // Pure helpers used by the server's game and socket modules, kept here so a test can reach them
-// without pulling storage/db/session — and the pg pool they build at import —
-// onto a path that needs none of it.
+// without pulling storage/db/session onto a path that needs none of it.
 import { botSeatKey, isBotSeatKey } from "../../lib/game/botSeat.ts";
 import type { ScoreLine, WireExchangePhase } from "../../shared/protocol.ts";
 import { botSeatNames, getBotPersonality } from "../../lib/game/botPersonalities.ts";

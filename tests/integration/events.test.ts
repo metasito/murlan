@@ -15,24 +15,16 @@ import {
 } from "../helpers/testServer.ts";
 import { DEADLINE_SCALE, register } from "../helpers/client.ts";
 import { EVENT_NAMES } from "../../shared/events.ts";
+import { trackEvent, EVENT_RETENTION_DAYS as retentionDays } from "../../server/shared/events.ts";
+import { sweepRetention } from "../../server/game/retention.ts";
 
 describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
   let cookie: string;
   let ownerCookie: string;
-  let trackEvent: typeof import("../../server/shared/events.ts").trackEvent;
-  let retentionDays: number;
-  let sweepRetention: typeof import("../../server/game/retention.ts").sweepRetention;
 
   before(async () => {
     server = await startTestServer();
-    // After startTestServer, never at file scope: server/store/db.ts binds to
-    // DATABASE_URL when first loaded, and the harness is what points that at
-    // this run's own schema.
-    ({ trackEvent, EVENT_RETENTION_DAYS: retentionDays } = await import(
-      "../../server/shared/events.ts"
-    ));
-    ({ sweepRetention } = await import("../../server/game/retention.ts"));
 
     ({ cookie } = await register(server, "funnel_player"));
     ({ cookie: ownerCookie } = await register(server, "funnel_owner"));

@@ -1,5 +1,8 @@
-import { drizzle } from "drizzle-orm/node-postgres";
+import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { Pool } from "pg";
 import { createPool } from "./pool.ts";
+import { drainPool } from "./drainPool.ts";
+import { logger } from "../shared/logger.ts";
 import * as schema from "../../shared/schema.ts";
 
 /**
@@ -42,17 +45,63 @@ export function resolvePoolMax(raw: string | undefined): number {
   return parsed;
 }
 
-export const POOL_MAX = resolvePoolMax(process.env.MURLAN_PG_POOL_MAX);
+export type Database = NodePgDatabase<typeof schema>;
 
-export const pool = createPool("app", {
-  max: POOL_MAX,
-  // Every bound here is a failure mode with a deadline rather than a hang:
-  // without them a caller waits forever for a free client, and a single stuck
-  // backend query holds one of the ten slots for as long as it likes.
-  connectionTimeoutMillis: 5_000,
-  idleTimeoutMillis: 30_000,
-  statement_timeout: QUERY_TIMEOUT_MS,
-  query_timeout: QUERY_TIMEOUT_MS,
-});
+/** A query reached the database before boot opened it, or after shutdown closed it. */
+export class DatabaseNotOpenError extends Error {
+  constructor() {
+    super("The database is not open: createApp() opens it, and closeDatabase() closes it");
+    this.name = "DatabaseNotOpenError";
+  }
+}
 
-export const db = drizzle(pool, { schema });
+let open: { pool: Pool; db: Database } | null = null;
+
+export function openDatabase(): void {
+  if (open) throw new Error("The database is already open: closeDatabase() the first one");
+  const appPool = createPool("app", {
+    max: resolvePoolMax(process.env.MURLAN_PG_POOL_MAX),
+    // Every bound here is a failure mode with a deadline rather than a hang:
+    // without them a caller waits forever for a free client, and a single stuck
+    // backend query holds one of the ten slots for as long as it likes.
+    connectionTimeoutMillis: 5_000,
+    idleTimeoutMillis: 30_000,
+    statement_timeout: QUERY_TIMEOUT_MS,
+    query_timeout: QUERY_TIMEOUT_MS,
+  });
+  open = { pool: appPool, db: drizzle(appPool, { schema }) };
+}
+
+export function pool(): Pool {
+  if (!open) throw new DatabaseNotOpenError();
+  return open.pool;
+}
+
+export function db(): Database {
+  if (!open) throw new DatabaseNotOpenError();
+  return open.db;
+}
+
+/**
+ * Waits up to `drainMs` for the pool to go quiet, then ends it; `ended` settles
+ * once it has. A pool still busy past `drainMs` is logged and ended anyway, and
+ * its `ended` may never settle — `pool.end()` waits on every checked-out client
+ * — so a caller with a deadline bounds the wait itself.
+ *
+ * The drain comes first because the writes this protects — `handleRoundOver`,
+ * `persistGameState`, a disconnect's teardown — are fire-and-forget, and
+ * nothing else holds a promise for any of them.
+ */
+export async function closeDatabase({ drainMs }: { drainMs?: number } = {}): Promise<{ ended: Promise<void> }> {
+  if (!open) return { ended: Promise.resolve() };
+  const closing = open.pool;
+  if (!(await drainPool(closing, { timeoutMs: drainMs }))) {
+    // While still open: the error recorder writes this line through db().
+    logger.error(
+      { busy: closing.totalCount - closing.idleCount, waiting: closing.waitingCount },
+      "Postgres pool still busy after the drain window — in-flight writes are being abandoned"
+    );
+  }
+  open = null;
+  return { ended: closing.end().catch((err) => logger.error({ err }, "Pool close failed")) };
+}

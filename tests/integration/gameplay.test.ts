@@ -25,6 +25,11 @@ import {
   type RoomState,
   type SanitizedState,
 } from "../helpers/table.ts";
+import { friendStore } from "../../server/store/friendStore.ts";
+import { disposeGame } from "../../server/game/gamePersistence.ts";
+import { db } from "../../server/store/db.ts";
+import { redealExactly, seatedUsers, hasActiveGame } from "../helpers/liveGame.ts";
+import { activeGames as activeGamesTable } from "../../shared/schema.ts";
 
 /**
  * Shortened well below the 60s disconnect grace and 30s AFK production
@@ -84,7 +89,6 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
 
     // The handler's first await is this read. Held until the reply arrives, an
     // await moved above the registrations fails every run, not only on a slow database.
-    const { friendStore } = await import("../../server/store/friendStore.ts");
     const realGetFriends = friendStore.getFriends;
     let release = () => {};
     const gate = new Promise<void>((resolve) => (release = resolve));
@@ -169,7 +173,6 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
         exchange.set(client, state);
       })
     );
-    const { redealExactly } = await import("../helpers/liveGame.ts");
     assert.ok(
       redealExactly(server.rt, room.roomId, [deck.slice(0, 14), deck.slice(14, 28)], {
         opening: { kind: "exchange", winnerSeat: 0, loserSeat: 1 },
@@ -561,7 +564,6 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
    * window was never away as far as the rest of the room is concerned.
    */
   test("a hard disconnect at the results screen holds the seat, then frees it", async () => {
-    const { seatedUsers } = await import("../helpers/liveGame.ts");
     const [dave, erin, frank] = await makeClients([
       "results_drop_dave",
       "results_drop_erin",
@@ -649,7 +651,6 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
   // ── Test 9 ──────────────────────────────────────────────────────────────
 
   test("the last player leaving the results screen disposes the room", async () => {
-    const { hasActiveGame } = await import("../helpers/liveGame.ts");
     const [gina, hugo] = await makeClients([
       "results_dispose_gina",
       "results_dispose_hugo",
@@ -851,12 +852,9 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     assert.equal(after.players[otherBefore.viewerSeatIndex].handCount, otherHand.length);
 
     // A restart that lost the game leaves exactly this: a room row mid-game, and nothing to deal into.
-    const { disposeGame } = await import("../../server/game/gamePersistence.ts");
-    const { db } = await import("../../server/store/db.ts");
-    const { activeGames: activeGamesTable } = await import("../../shared/schema.ts");
     disposeGame(server.rt, room.roomId);
     for (let tries = 0; ; tries++) {
-      const rows = await db.select().from(activeGamesTable).where(eq(activeGamesTable.roomId, room.roomId));
+      const rows = await db().select().from(activeGamesTable).where(eq(activeGamesTable.roomId, room.roomId));
       if (rows.length === 0) break;
       assert.ok(tries < 50, "the persisted game was never deleted");
       await new Promise((r) => setTimeout(r, 50));

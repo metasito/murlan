@@ -13,7 +13,6 @@ import type { Session, SessionData } from "express-session";
 import { userStore } from "../store/userStore.ts";
 import { logger } from "../shared/logger.ts";
 import { trackEvent } from "../shared/events.ts";
-import { sessionMiddleware } from "../http/session.ts";
 import { redeemSocketTicket, verifySocketTicket } from "./ticket.ts";
 import { isAllowedOrigin } from "../http/cors.ts";
 import { createSocketAdapter } from "./socketAdapter.ts";
@@ -81,7 +80,7 @@ export function handshakeSession(middleware: RequestHandler) {
   };
 }
 
-export function setupSocket(httpServer: HttpServer) {
+export function setupSocket(httpServer: HttpServer, sessionMiddleware: RequestHandler) {
   const io: SocketServer = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
     cors: {
       // Mirrors the Express allowlist. `origin: "*"` with credentials is both

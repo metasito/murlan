@@ -17,6 +17,8 @@ import {
 } from "../helpers/gameDriver.ts";
 import { waitForDeal } from "../helpers/table.ts";
 import { whileUserLocked } from "../helpers/userLock.ts";
+import { getRoundHistoryView } from "../../server/http/roundHistoryView.ts";
+import { recordGameResult, getUserAchievements, MAX_HISTORY_ROWS_PER_USER } from "../../server/game/stats.ts";
 
 /**
  * recordGameResult is called (fire-and-forget) from the game-over path.
@@ -123,8 +125,6 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
         cara.socket.emit("room:start", { fillWithBots: true, botPersonality: "luan" });
       });
       assert.ok(payload, "game:over must fire");
-
-      const { getRoundHistoryView } = await import("../../server/http/roundHistoryView.ts");
       const rows = await waitForRow(async () => {
         const view = await getRoundHistoryView(cara.user.id);
         return view.length > 0 && view[0].replayId !== null ? view : null;
@@ -181,8 +181,6 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
        VALUES ($1, now() - interval '30 days', 'free_for_all', 2, 3, 1, $2::jsonb)`,
       [user.id, JSON.stringify(["bot:1", "bot:2"])]
     );
-
-    const { getRoundHistoryView } = await import("../../server/http/roundHistoryView.ts");
     const [hand] = await getRoundHistoryView(user.id);
 
     assert.equal(hand.replayId, null, "no replay pairs it, so nothing offers to play it");
@@ -387,13 +385,6 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
   test("recordGameResult upserts stats, prunes history to 50 rows, and dedupes achievements", async () => {
     const { user } = await register(server, "stats_prune_user");
 
-    // Dynamically imported after startTestServer() has pointed
-    // DATABASE_URL at the scoped test schema — a static top-level import
-    // would resolve server/store/db.ts's module-scope Pool against whatever
-    // DATABASE_URL was set before this file's before() hook ran (see
-    // tests/helpers/testServer.ts's own comment on this).
-    const { recordGameResult, getUserAchievements } = await import("../../server/game/stats.ts");
-
     const result: GameResult = {
       userId: user.id,
       placement: 1,
@@ -461,7 +452,6 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
        SELECT $1, now() - make_interval(hours => g), 'free_for_all', 2, 2, 0 FROM generate_series(1, $2::int) g`,
       [user.id, 50]
     );
-    const { recordGameResult, MAX_HISTORY_ROWS_PER_USER } = await import("../../server/game/stats.ts");
     const result: GameResult = {
       userId: user.id,
       placement: 1,

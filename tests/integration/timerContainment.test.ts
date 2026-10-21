@@ -9,6 +9,8 @@ import {
 } from "../helpers/testServer.ts";
 import { connectAs, waitFor } from "../helpers/client.ts";
 import { setUpRoom, startGame } from "../helpers/table.ts";
+import { __testables } from "../../server/socket/socketRegistry.ts";
+import { hasActiveGame } from "../helpers/liveGame.ts";
 
 /**
  * A throw inside a turn timer must close the table, not freeze it.
@@ -46,9 +48,6 @@ describe(
       const bob = await connectAs(server, "timer_boom_bob");
       const room = await setUpRoom([alice, bob], 2);
       await startGame([alice, bob]);
-
-      const { hasActiveGame } = await import("../helpers/liveGame.ts");
-      const { __testables } = await import("../../server/socket/socketRegistry.ts");
       assert.equal(
         hasActiveGame(room.roomId),
         true,

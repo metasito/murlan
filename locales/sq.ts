@@ -38,6 +38,12 @@ export const sq: Record<keyof typeof en, string> = {
   "term.mode.freeForAll": "Të gjithë kundër të gjithëve",
   "term.mode.teamsShort": "Çifte",
   "term.mode.freeForAllShort": "I lirë",
+  "term.combo.single": "Letër teke",
+  "term.combo.pair": "Dyshe",
+  "term.combo.triple": "Treshe",
+  "term.combo.straight": "Shkallë",
+  "term.combo.bomb": "💣 Katërshe",
+  "term.combo.royalStraight": "★ Shkallë Mbretërore",
 
   // ------------------------------------------------------------- server.*
   "server.AUTH_RATE_LIMITED": "Shumë përpjekje, provo përsëri pas 15 minutash.",
@@ -346,12 +352,6 @@ export const sq: Record<keyof typeof en, string> = {
   "cardView.selectedA11yHint": "E zgjedhur",
 
   // ------------------------------------------------------------- gameShared.*
-  "gameShared.comboSingle": "Letër teke",
-  "gameShared.comboPair": "Dyshe",
-  "gameShared.comboTriple": "Treshe",
-  "gameShared.comboStraight": "Shkallë",
-  "gameShared.comboBomb": "💣 Katërshe",
-  "gameShared.comboRoyalStraight": "★ Shkallë Mbretërore",
   "gameShared.comboMultiplier": " ×{{count}}",
   "gameShared.emptyHand": "Letrat mbaruan!",
   "gameShared.startReasonCard": "{{name}} fillon — ka {{rank}}{{suit}}",
@@ -641,17 +641,11 @@ export const sq: Record<keyof typeof en, string> = {
   "rules.strengthTen": "Dhjeta",
   "rules.strengthThree": "Treshi",
   "rules.combosSectionLabel": "KOMBINIME TË VLEFSHME",
-  "rules.comboSingleName": "Letër teke",
   "rules.comboSingleDesc": "1 letër çfarëdo",
-  "rules.comboPairName": "Dyshe",
   "rules.comboPairDesc": "2 letra të së njëjtës vlerë",
-  "rules.comboTripleName": "Treshe",
   "rules.comboTripleDesc": "3 letra të së njëjtës vlerë",
-  "rules.comboStraightName": "Shkallë",
   "rules.comboStraightDesc": "Min. 5 letra të njëpasnjëshme, deri në 13 (p.sh. A-2-3-4-5)",
-  "rules.comboBombName": "Katërshe 💣",
   "rules.comboBombDesc": "4 letra të së njëjtës vlerë · i mund të gjitha përveç Shkallës Mbretërore",
-  "rules.comboRoyalName": "Shkallë Mbretërore ★",
   "rules.comboRoyalDesc": "Shkallë me të njëjtën ngjyrë · e mund edhe Bombën",
   "rules.faqSectionLabel": "PYETJE TË SHPESHTA",
 

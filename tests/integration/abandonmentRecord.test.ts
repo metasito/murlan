@@ -13,6 +13,7 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { register } from "../helpers/client.ts";
+import { recordGameResult } from "../../server/game/stats.ts";
 
 describe("the abandonment record", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -29,7 +30,6 @@ describe("the abandonment record", { skip: hasDatabase() ? false : skipMessage()
 
   /** Writes one recorded round for `userId`, `abandoned` as given. */
   async function recordRound(userId: string, abandoned: boolean, finishedAt: Date) {
-    const { recordGameResult } = await import("../../server/game/stats.ts");
     const result: GameResult = {
       userId,
       placement: abandoned ? 4 : 1,

@@ -23,16 +23,11 @@ jest.mock('expo-router/react-navigation', () => ({ usePreventRemove: () => {} })
 // The code card's note is a plain child the room screen draws on every render of its own, so its
 // renders count the screen's without standing in for any state.
 let mockRoomScreenRenders = 0;
-jest.mock('@/components/RoomKindNote', () => {
-  const actual = jest.requireActual<typeof import('@/components/RoomKindNote')>('@/components/RoomKindNote');
-  return {
-    ...actual,
-    RoomKindNote: (props: React.ComponentProps<typeof actual.RoomKindNote>) => {
-      mockRoomScreenRenders += 1;
-      return actual.RoomKindNote(props);
-    },
-  };
-});
+jest.mock('@/components/RoomKindNote', () =>
+  (require('./helpers/renderCounts') as typeof import('./helpers/renderCounts')).renderCounts('@/components/RoomKindNote', ['RoomKindNote'], () => {
+    mockRoomScreenRenders += 1;
+  })
+);
 
 const roomModule = require('@/app/(online)/room') as {
   default: React.ComponentType;

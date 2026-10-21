@@ -15,18 +15,12 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { register } from "../helpers/client.ts";
+import { sweepRetention } from "../../server/game/retention.ts";
+import { BUG_REPORT_RETENTION_DAYS as retentionDays } from "../../server/http/bugReports.ts";
 
 /**
- * The caps, written out rather than imported from `server/http/bugReports.ts`, for
- * two reasons.
- *
- * Importing them would drag in `server/store/db.ts`, whose Pool is built at module
- * scope from `DATABASE_URL` — read before `startTestServer` scopes it. The app
- * would then create its tables in the default schema instead of the throwaway
- * one, and this suite would write real rows into whatever database the
- * variable points at, with `stop()` dropping an empty schema.
- *
- * And a cap read from the thing it is checking cannot fail: raise the constant
+ * The caps, written out rather than imported from `server/http/bugReports.ts`:
+ * a cap read from the thing it is checking cannot fail: raise the constant
  * and `cap + 1` rises with it. Written out, drift fails here — the same reason
  * `clientErrors.test.ts` spells its own out.
  */
@@ -43,8 +37,6 @@ describe("bug reports", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let cookie: string;
   let capCookie: string;
   let capCookie2: string;
-  let sweepRetention: typeof import("../../server/game/retention.ts").sweepRetention;
-  let retentionDays: number;
   // Unique per run: the suite must be runnable twice against the same
   // database without the second run failing on USERNAME_TAKEN.
   const suffix = `${Date.now()}`.slice(-8);
@@ -54,10 +46,6 @@ describe("bug reports", { skip: hasDatabase() ? false : skipMessage() }, () => {
     ({ cookie } = await register(server, `bug_reporter_${suffix}`));
     ({ cookie: capCookie } = await register(server, `bug_caps_${suffix}`));
     ({ cookie: capCookie2 } = await register(server, `bug_caps2_${suffix}`));
-    // After startTestServer, never at file scope — see the CAP comment above
-    // for why a module reaching server/store/db.ts cannot be imported any earlier.
-    ({ sweepRetention } = await import("../../server/game/retention.ts"));
-    ({ BUG_REPORT_RETENTION_DAYS: retentionDays } = await import("../../server/http/bugReports.ts"));
   });
   after(async () => {
     await server.stop();

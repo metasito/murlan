@@ -19,18 +19,11 @@ import { activate, gesturesOf, type Captured } from './tapHelpers';
 const ZERO = { card: 0, hand: 0, seat: 0, pile: 0, table: 0, home: 0, writes: 0 };
 const mockCount = { ...ZERO };
 
-jest.mock('@/components/table/hand', () => {
-  const R = jest.requireActual('react') as typeof React;
-  const actual = jest.requireActual('@/components/table/hand') as typeof import('@/components/table/hand');
-  const memo = actual.StraightHand as unknown as { type: (p: object) => React.ReactNode; compare?: (a: object, b: object) => boolean };
-  return {
-    ...actual,
-    StraightHand: R.memo((p: object) => {
-      mockCount.hand += 1;
-      return memo.type(p);
-    }, memo.compare),
-  };
-});
+jest.mock('@/components/table/hand', () =>
+  (require('./helpers/renderCounts') as typeof import('./helpers/renderCounts')).renderCounts('@/components/table/hand', ['StraightHand'], () => {
+    mockCount.hand += 1;
+  })
+);
 
 jest.mock('@/components/table/selection', () => {
   const actual = jest.requireActual('@/components/table/selection') as typeof import('@/components/table/selection');
@@ -60,27 +53,27 @@ jest.mock('@/lib/cosmetics', () => {
   };
 });
 
-jest.mock('@/components/table/seats', () => {
-  const R = jest.requireActual('react') as typeof React;
-  const actual = jest.requireActual('@/components/table/seats') as Record<string, React.ComponentType<object>>;
-  const counted = (C: React.ComponentType<object>) => (p: object) => {
-    mockCount.seat += 1;
-    return R.createElement(C, p);
-  };
-  return { ...actual, OpponentSeat: counted(actual.OpponentSeat) };
-});
-
-jest.mock('@/components/table/pile', () => {
-  const R = jest.requireActual('react') as typeof React;
-  const actual = jest.requireActual('@/components/table/pile') as Record<string, React.ComponentType<object>>;
-  return {
-    ...actual,
-    PileLayer: (p: object) => {
-      mockCount.pile += 1;
-      return R.createElement(actual.PileLayer, p);
+jest.mock('@/components/table/seats', () =>
+  (require('./helpers/renderCounts') as typeof import('./helpers/renderCounts')).renderCounts(
+    '@/components/table/seats',
+    ['OpponentSeat'],
+    () => {
+      mockCount.seat += 1;
     },
-  };
-});
+    'element'
+  )
+);
+
+jest.mock('@/components/table/pile', () =>
+  (require('./helpers/renderCounts') as typeof import('./helpers/renderCounts')).renderCounts(
+    '@/components/table/pile',
+    ['PileLayer'],
+    () => {
+      mockCount.pile += 1;
+    },
+    'element'
+  )
+);
 
 jest.mock('@/components/useTableFeedback', () => {
   const actual = jest.requireActual('@/components/useTableFeedback') as typeof import('@/components/useTableFeedback');
