@@ -8,6 +8,7 @@ import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigatio
 import { PHONES } from "./helpers/phones";
 import { it } from "../../locales/it.ts";
 import { sq } from "../../locales/sq.ts";
+import { LOCALE_KEY } from "../../lib/storageKeys.ts";
 
 const SMALLEST = PHONES.reduce((a, b) => (a.width * a.height <= b.width * b.height ? a : b));
 const ORIENTATIONS = {
@@ -15,7 +16,6 @@ const ORIENTATIONS = {
   portrait: { width: SMALLEST.height, height: SMALLEST.width },
 };
 const LOCALES = { it, sq };
-const LOCALE_KEY = "murlan.locale";
 
 type Catalogue = typeof it;
 
