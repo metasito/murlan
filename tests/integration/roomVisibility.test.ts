@@ -17,6 +17,9 @@ import {
 } from "../helpers/testServer.ts";
 import { connectAs, waitFor } from "../helpers/client.ts";
 import { befriend } from "../helpers/friends.ts";
+import { roomStore } from "../../server/store/roomStore.ts";
+import { db } from "../../server/store/db.ts";
+import { sql } from "drizzle-orm";
 
 interface RoomState {
   code: string;
@@ -112,8 +115,6 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     const made = waitFor<RoomState>(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const privateRoom = await made;
-
-    const { roomStore } = await import("../../server/store/roomStore.ts");
     const open = await roomStore.findWaitingPublicRooms();
     const ids = open.map((c) => c.room.id);
 
@@ -143,8 +144,6 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
 
     host.socket.emit("room:start");
     await waitFor(host.socket, "game:started");
-
-    const { roomStore } = await import("../../server/store/roomStore.ts");
     const open = await roomStore.findWaitingPublicRooms();
     assert.ok(
       !open.some((c) => c.room.id === room.roomId),
@@ -158,10 +157,7 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     // host has already gone.
     const opener = await player("orphan_opener");
     const opened = await quickmatch(opener);
-
-    const { db } = await import("../../server/store/db.ts");
-    const { sql } = await import("drizzle-orm");
-    await db.execute(
+    await db().execute(
       sql`DELETE FROM room_players WHERE room_id = ${opened.roomId} AND user_id = ${opener.user.id}`
     );
 
@@ -188,7 +184,6 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
    * not about which of several waiting rooms another case left behind first.
    */
   async function onlyPublicRoom(roomId: string) {
-    const { roomStore } = await import("../../server/store/roomStore.ts");
     for (const rival of await roomStore.findWaitingPublicRooms()) {
       if (rival.room.id !== roomId) {
         await roomStore.updateRoomVisibility(rival.room.id, "private");
@@ -272,8 +267,6 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     const refused = waitFor<{ code: string }>(mate.socket, "room:error");
     mate.socket.emit("room:setVisibility", { visibility: "public" });
     assert.equal((await refused).code, "NOT_HOST");
-
-    const { roomStore } = await import("../../server/store/roomStore.ts");
     const row = await roomStore.getRoomById(room.roomId);
     assert.equal(row?.visibility, "private", "only the host decides who may see the room");
   });

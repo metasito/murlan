@@ -16,6 +16,7 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { connectAs, waitFor } from "../helpers/client.ts";
+import { roomStore } from "../../server/store/roomStore.ts";
 
 // Comfortably longer than any window a test below waits in, so an AFK
 // auto-pass can never advance the table by itself — that would make "a
@@ -203,8 +204,6 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     const joined = waitFor<RoomState>(eve.socket, "room:state");
     eve.socket.emit("room:join", { code: room.code });
     await joined;
-
-    const { roomStore } = await import("../../server/store/roomStore.ts");
     const seated = async () =>
       (await roomStore.getRoomPlayers(room.roomId)).some((p) => p.userId === eve.user.id);
     assert.ok(await seated(), "the join must have taken a seat for the assertions below to mean anything");

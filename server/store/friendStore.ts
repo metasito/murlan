@@ -1,12 +1,12 @@
 import { now } from "../http/clock.ts";
 import { eq, and, or, sql, desc, inArray } from "drizzle-orm";
-import { db } from "./db.ts";
+import { db, type Database } from "./db.ts";
 import { uniqueViolation } from "./userStore.ts";
 import { users, rooms, roomPlayers, friends, gameInvites } from "../../shared/schema.ts";
 import type { User, Friend } from "../../shared/schema.ts";
 
 /** `db`, or the handle inside `db.transaction` — the same read surface. */
-type Executor = Pick<typeof db, "select">;
+type Executor = Pick<Database, "select">;
 
 /** Why a friend request cannot exist, in the terms the route answers in. */
 export type AddFriendRefusal = "already_friends" | "already_sent" | "incoming_pending";
@@ -23,7 +23,7 @@ export type AddFriendResult =
  */
 export const friendStore = {
   async getFriends(userId: string): Promise<(Friend & { friend: User })[]> {
-    const rows = await db
+    const rows = await db()
       .select()
       .from(friends)
       .innerJoin(users, eq(friends.friendUserId, users.id))
@@ -33,7 +33,7 @@ export const friendStore = {
   },
 
   async getPendingFriendRequests(userId: string): Promise<(Friend & { requester: User })[]> {
-    const rows = await db
+    const rows = await db()
       .select()
       .from(friends)
       .innerJoin(users, eq(friends.userId, users.id))
@@ -52,7 +52,7 @@ export const friendStore = {
   async pendingRequestBetween(
     userId: string,
     friendUserId: string,
-    exec: Executor = db
+    exec: Executor = db()
   ): Promise<"sent" | "received" | null> {
     const [row] = await exec
       .select()
@@ -86,7 +86,7 @@ export const friendStore = {
     // the caller's own terms if it is still there, succeeding if it is not.
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        return await db.transaction(async (tx): Promise<AddFriendResult> => {
+        return await db().transaction(async (tx): Promise<AddFriendResult> => {
           if (await this.areFriends(userId, friendUserId, tx)) {
             return { ok: false, reason: "already_friends" };
           }
@@ -128,7 +128,7 @@ export const friendStore = {
     // leaves a request nobody can ever answer.
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        return await db.transaction(async (tx) => {
+        return await db().transaction(async (tx) => {
           const [f] = await tx
             .update(friends)
             .set({ status: "accepted" })
@@ -160,21 +160,21 @@ export const friendStore = {
     // update can never move it, because that row's key is in the index
     // already. It is a leftover of a request and an accept that crossed, so
     // clearing it is what the accept would have done.
-    const [stale] = await db
+    const [stale] = await db()
       .select()
       .from(friends)
       .where(
         and(eq(friends.id, id), eq(friends.friendUserId, accepterId), eq(friends.status, "pending"))
       );
     if (!stale || !(await this.areFriends(stale.userId, accepterId))) return null;
-    await db.delete(friends).where(eq(friends.id, id));
+    await db().delete(friends).where(eq(friends.id, id));
     return { requesterId: stale.userId };
   },
 
   async areFriends(
     userId: string,
     friendUserId: string,
-    exec: Executor = db
+    exec: Executor = db()
   ): Promise<boolean> {
     const [row] = await exec
       .select()
@@ -204,7 +204,7 @@ export const friendStore = {
     inviterId: string,
     inviteeId: string
   ): Promise<void> {
-    await db
+    await db()
       .insert(gameInvites)
       .values({ roomId, inviterId, inviteeId, createdAt: new Date(now()) })
       .onConflictDoUpdate({
@@ -224,15 +224,15 @@ export const friendStore = {
   async getGameInvites(
     inviteeId: string
   ): Promise<{ id: string; roomCode: string; fromUsername: string; createdAt: Date }[]> {
-    const seatCount = db
+    const seatCount = db()
       .select({ count: sql<number>`count(*)::int` })
       .from(roomPlayers)
       .where(eq(roomPlayers.roomId, gameInvites.roomId));
-    const alreadySeated = db
+    const alreadySeated = db()
       .select({ one: sql`1` })
       .from(roomPlayers)
       .where(and(eq(roomPlayers.roomId, gameInvites.roomId), eq(roomPlayers.userId, inviteeId)));
-    const rows = await db
+    const rows = await db()
       .select({
         id: gameInvites.id,
         roomCode: rooms.code,
@@ -260,7 +260,7 @@ export const friendStore = {
    * the people it has to stop pointing for are exactly the rows just deleted.
    */
   async clearGameInvites(roomId: string): Promise<string[]> {
-    const cleared = await db
+    const cleared = await db()
       .delete(gameInvites)
       .where(eq(gameInvites.roomId, roomId))
       .returning({ inviteeId: gameInvites.inviteeId });
@@ -269,7 +269,7 @@ export const friendStore = {
 
   /** Who holds an invite to this room, leaving the rows alone. */
   async getRoomInvitees(roomId: string): Promise<string[]> {
-    const held = await db
+    const held = await db()
       .select({ inviteeId: gameInvites.inviteeId })
       .from(gameInvites)
       .where(eq(gameInvites.roomId, roomId));
@@ -285,14 +285,14 @@ export const friendStore = {
    * nothing to decline — the caller's cue for whether the room needs telling.
    */
   async declineGameInvite(inviteeId: string, roomCode: string): Promise<string | null> {
-    const [row] = await db
+    const [row] = await db()
       .delete(gameInvites)
       .where(
         and(
           eq(gameInvites.inviteeId, inviteeId),
           inArray(
             gameInvites.roomId,
-            db.select({ id: rooms.id }).from(rooms).where(eq(rooms.code, roomCode))
+            db().select({ id: rooms.id }).from(rooms).where(eq(rooms.code, roomCode))
           )
         )
       )
@@ -302,7 +302,7 @@ export const friendStore = {
 
   /** Returns the rooms whose invites between the pair were withdrawn with it. */
   async removeFriend(userId: string, friendUserId: string): Promise<string[]> {
-    return db.transaction(async (tx) => {
+    return db().transaction(async (tx) => {
       await tx.delete(friends).where(
         or(
           and(eq(friends.userId, userId), eq(friends.friendUserId, friendUserId)),
@@ -324,7 +324,7 @@ export const friendStore = {
 
   /** Only the recipient may decline a pending request. */
   async declineFriendRequest(id: string, recipientId: string): Promise<boolean> {
-    const deleted = await db
+    const deleted = await db()
       .delete(friends)
       .where(
         and(
@@ -338,7 +338,7 @@ export const friendStore = {
   },
 
   async getSentFriendRequests(userId: string): Promise<(Friend & { recipient: User })[]> {
-    const rows = await db
+    const rows = await db()
       .select()
       .from(friends)
       .innerJoin(users, eq(friends.friendUserId, users.id))
@@ -348,7 +348,7 @@ export const friendStore = {
 
   /** Only the sender may cancel their own pending request. */
   async cancelFriendRequest(requestId: string, fromUserId: string): Promise<boolean> {
-    const deleted = await db
+    const deleted = await db()
       .delete(friends)
       .where(
         and(eq(friends.id, requestId), eq(friends.userId, fromUserId), eq(friends.status, "pending"))

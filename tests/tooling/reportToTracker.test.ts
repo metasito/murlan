@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { loadWorkflow, step } from "../helpers/workflow.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 const script = path.join(repoRoot, "tools", "ci", "report-to-tracker.sh");
@@ -50,3 +51,18 @@ test("an empty tracker files a new issue", () => {
 test("a gh failure fails the report", () => {
   assert.notEqual(report("A red", [{ number: 1, title: "A red" }], true).status, 0);
 });
+
+for (const name of ["soak.yml", "differential.yml"]) {
+  test(`${name}: every job ends by reporting a red run to the tracker`, () => {
+    const workflow = loadWorkflow(name);
+    const jobs = Object.values(workflow.jobs);
+    assert.ok(jobs.length > 0, `${name} has no jobs`);
+    for (const job of jobs) {
+      const report = step(job, "Report the failure to the tracker");
+      assert.equal(report.if, "failure()");
+      assert.match(report.run ?? "", /bash tools\/ci\/report-to-tracker\.sh "[^"]+" \S+ /);
+      assert.equal(job.steps?.at(-1), report, "a step after the report can fail without being reported");
+      assert.equal((job.permissions ?? workflow.permissions)?.issues, "write", "the report's job may not write issues");
+    }
+  });
+}

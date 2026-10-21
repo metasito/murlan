@@ -1,0 +1,79 @@
+# Replays seeded all-bot matches on a baseline commit and on this one and diffs the traces
+# (its row in docs/agents/checks.md's table). A search, so never on `pull_request`.
+name: Differential replay
+
+on:
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: >-
+          Commit to replay tests/differential/accepted.json's leg against; empty takes the
+          baseline that file names. Any other commit fails, since --baseline must match it.
+        default: ""
+
+concurrency:
+  group: differential-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  replay:
+    name: Replay seeded matches (${{ matrix.accepted }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # accepted.json is the current baseline; wave-1650.json keeps the #1650 wave's audit
+        # against 9d0359590 checked.
+        accepted: [accepted.json, wave-1650.json]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/install
+
+      - name: Check out the baseline beside this tree
+        env:
+          ACCEPTED: tests/differential/${{ matrix.accepted }}
+          INPUT_BASELINE: ${{ matrix.accepted == 'accepted.json' && inputs.baseline || '' }}
+        run: |
+          baseline="${INPUT_BASELINE:-$(node -p "require('./$ACCEPTED').baseline")}"
+          echo "BASELINE=$(git rev-parse "$baseline^{commit}")" >> "$GITHUB_ENV"
+          git worktree add --detach "$RUNNER_TEMP/baseline" "$baseline"
+          ln -s "$PWD/node_modules" "$RUNNER_TEMP/baseline/node_modules"
+
+      - name: Trace both trees
+        run: |
+          node tests/differential/trace.ts "$RUNNER_TEMP/baseline" > "$RUNNER_TEMP/baseline.jsonl"
+          node tests/differential/trace.ts . > "$RUNNER_TEMP/head.jsonl"
+
+      - name: Compare against the accepted entries
+        # An explicit bash runs with pipefail, so tee cannot hide compare's exit.
+        shell: bash
+        run: >-
+          node tests/differential/compare.ts "$RUNNER_TEMP/baseline.jsonl" "$RUNNER_TEMP/head.jsonl"
+          --accepted "tests/differential/${{ matrix.accepted }}" --baseline "$BASELINE" --head-level transition
+          2>&1 | tee "$RUNNER_TEMP/compare.txt"
+
+      - name: Report the failure to the tracker
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "The differential replay against \`${{ matrix.accepted }}\` found something. [Run]($RUN_URL)"
+            echo
+            echo '```'
+            tail -40 "$RUNNER_TEMP/compare.txt" 2>/dev/null || echo "No comparison was printed; the run log names the step that failed."
+            echo '```'
+            echo "Attribute each match with the bisect in docs/agents/checks.md's row for a change to how a round plays."
+          } > differential-failure.md
+          bash tools/ci/report-to-tracker.sh "The differential replay found something (${{ matrix.accepted }})" differential-failure.md soak bug needs-triage

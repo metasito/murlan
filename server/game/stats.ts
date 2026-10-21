@@ -59,7 +59,7 @@ export async function recordGameResult(
     // mid-round still holds its seat in `results`, and its insert violates a
     // foreign key. Sharing a transaction would roll that failure back over
     // every other player's stats, history and achievements for the round.
-    await db
+    await db()
       .transaction(async (tx) => {
         const { userId, placement, playerCount, playedBomb, matchWon, abandoned } = result;
         const won = placement === 1;
@@ -175,8 +175,8 @@ export interface UserStatsView extends UserStats {
 
 export async function getUserStats(userId: string): Promise<UserStatsView> {
   const [row, played] = await Promise.all([
-    db.query.userStats.findFirst({ where: eq(userStats.userId, userId) }),
-    db
+    db().query.userStats.findFirst({ where: eq(userStats.userId, userId) }),
+    db()
       .select({ finishedAt: roundHistory.finishedAt })
       .from(roundHistory)
       .where(eq(roundHistory.userId, userId))
@@ -201,7 +201,7 @@ export async function getUserStats(userId: string): Promise<UserStatsView> {
 }
 
 export async function getRoundHistory(userId: string): Promise<RoundHistory[]> {
-  return db.query.roundHistory.findMany({
+  return db().query.roundHistory.findMany({
     where: eq(roundHistory.userId, userId),
     orderBy: desc(roundHistory.finishedAt),
     limit: MAX_HISTORY_ROWS_PER_USER,
@@ -210,7 +210,7 @@ export async function getRoundHistory(userId: string): Promise<RoundHistory[]> {
 
 /** The full catalogue (locked and unlocked), for a profile/achievements screen. */
 export async function getUserAchievements(userId: string): Promise<AchievementStatusDto[]> {
-  const rows = await db.query.userAchievements.findMany({
+  const rows = await db().query.userAchievements.findMany({
     where: eq(userAchievements.userId, userId),
   });
   const unlockedAt = new Map(rows.map((r) => [r.achievementId, r.unlockedAt]));

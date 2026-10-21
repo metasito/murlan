@@ -75,7 +75,7 @@ export async function getRoundHistoryView(userId: string): Promise<RoundHistoryR
   if (rows.length === 0) return [];
 
   const [replays, humans] = await Promise.all([
-    db
+    db()
       .select({
         id: roundReplays.id,
         finishedAt: roundReplays.finishedAt,

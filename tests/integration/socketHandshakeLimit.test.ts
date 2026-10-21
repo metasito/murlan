@@ -1,13 +1,15 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { io as ioClient, type Socket } from "socket.io-client";
-import { PROTOCOL_AUTH, DEADLINE_SCALE, register } from "../helpers/client.ts";
+import { PROTOCOL_AUTH, DEADLINE_SCALE, register, connectAs, waitFor } from "../helpers/client.ts";
 import {
   startTestServer,
   hasDatabase,
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
+import { pool } from "../../server/store/db.ts";
+import { friendStore } from "../../server/store/friendStore.ts";
 
 /**
  * SEC-05: the socket.io handshake is the one entry point no Express limiter
@@ -42,7 +44,6 @@ import {
  * down that says nothing about why.
  */
 async function quiet(server: TestServer, ceilingMs = 10_000): Promise<PoolRest> {
-  const { pool } = await import("../../server/store/db.ts");
   const deadline = Date.now() + ceilingMs * DEADLINE_SCALE;
   const until = async (settled: () => boolean) => {
     while (Date.now() < deadline && !settled()) {
@@ -53,9 +54,9 @@ async function quiet(server: TestServer, ceilingMs = 10_000): Promise<PoolRest> 
   await until(() => server.io.engine.clientsCount === 0);
   await new Promise((resolve) => setTimeout(resolve, 450));
   const atRest = await until(
-    () => pool.waitingCount === 0 && pool.idleCount === pool.totalCount
+    () => pool().waitingCount === 0 && pool().idleCount === pool().totalCount
   );
-  return { atRest, waiting: pool.waitingCount, idle: pool.idleCount, total: pool.totalCount };
+  return { atRest, waiting: pool().waitingCount, idle: pool().idleCount, total: pool().totalCount };
 }
 
 interface PoolRest {
@@ -167,7 +168,6 @@ describe(
      * need the very same rows.
      */
     test("a connection reads the caller's friends once", async () => {
-      const { friendStore } = await import("../../server/store/friendStore.ts");
       // The two tests above accept 72 connections between them, and each one
       // leaves two fire-and-forget friends reads behind — the connect handler's
       // and the debounced offline notice its close schedules. The suite's pool
@@ -185,7 +185,6 @@ describe(
           `${rest.idle}/${rest.total} idle. The reads left behind by the ` +
           `connections above are still draining, so this test cannot get a slot.`
       );
-      const { connectAs, waitFor } = await import("../helpers/client.ts");
       const realGetFriends = friendStore.getFriends;
       // Keyed by caller, not a bare counter: the two tests above open 72
       // sockets between them, and a connection handler's read is

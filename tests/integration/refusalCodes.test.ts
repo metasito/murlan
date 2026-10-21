@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { connectAs, register, waitFor } from "../helpers/client.ts";
 import { befriend } from "../helpers/friends.ts";
+import { pool } from "../../server/store/db.ts";
 
 describe("every refusal answers with its own code", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -66,18 +67,17 @@ describe("every refusal answers with its own code", { skip: hasDatabase() ? fals
   test("a deletion the database refuses reports the failure", async () => {
     const { user, cookie } = await register(server, "rc_undeletable");
     assert.match(user.id, /^[\w-]+$/);
-    const { pool } = await import("../../server/store/db.ts");
-    await pool.query(
+    await pool().query(
       "CREATE FUNCTION rc_refuse_delete() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'refused'; END $$"
     );
-    await pool.query(
+    await pool().query(
       `CREATE TRIGGER rc_refuse_delete BEFORE DELETE ON users FOR EACH ROW WHEN (OLD.id = '${user.id}') EXECUTE FUNCTION rc_refuse_delete()`
     );
     try {
       assert.equal(await refused("/api/users/me", { method: "DELETE", headers: { cookie } }, 500), "ACCOUNT_DELETE_FAILED");
     } finally {
-      await pool.query("DROP TRIGGER rc_refuse_delete ON users");
-      await pool.query("DROP FUNCTION rc_refuse_delete()");
+      await pool().query("DROP TRIGGER rc_refuse_delete ON users");
+      await pool().query("DROP FUNCTION rc_refuse_delete()");
     }
   });
 });

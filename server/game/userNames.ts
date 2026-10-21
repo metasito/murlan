@@ -6,7 +6,7 @@ import { users } from "../../shared/schema.ts";
 export async function namesOf(ids: string[]): Promise<Map<string, string>> {
   const unique = [...new Set(ids)];
   if (unique.length === 0) return new Map();
-  const rows = await db
+  const rows = await db()
     .select({ id: users.id, username: users.username })
     .from(users)
     .where(inArray(users.id, unique));

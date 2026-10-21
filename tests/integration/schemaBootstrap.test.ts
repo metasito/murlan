@@ -10,13 +10,16 @@
 // startTestServer() now creates an empty Postgres schema and nothing else, so
 // everything below runs against tables `ensureSchema()` made at boot.
 //
-// One server for the whole file: `server/store/db.ts`'s pool is a module singleton
-// that stop() closes, so a second startTestServer() in the same process cannot
-// work. The subtests run in order and the destructive one is last.
+// The subtests run in order and the destructive one is last.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
+import * as schemaModule from "../../shared/schema.ts";
 import { hasDatabase, skipMessage, startTestServer } from "../helpers/testServer.ts";
+import { ensureSchema } from "../../server/store/schemaDdl.ts";
+import { pool } from "../../server/store/db.ts";
+import { is } from "drizzle-orm";
+import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 
 test("a fresh database is usable on the first boot", async (t) => {
   if (!hasDatabase()) {
@@ -81,9 +84,6 @@ test("a fresh database is usable on the first boot", async (t) => {
     });
 
     await t.test("every table in shared/schema.ts was created", async () => {
-      const schemaModule = await import("../../shared/schema.ts");
-      const { is } = await import("drizzle-orm");
-      const { getTableConfig, PgTable } = await import("drizzle-orm/pg-core");
       const expected = Object.values(schemaModule)
         .filter((v) => is(v, PgTable))
         .map((table) => getTableConfig(table as never).name)
@@ -103,9 +103,6 @@ test("a fresh database is usable on the first boot", async (t) => {
     });
 
     await t.test("every index in shared/schema.ts was created, method included", async () => {
-      const schemaModule = await import("../../shared/schema.ts");
-      const { is } = await import("drizzle-orm");
-      const { getTableConfig, PgTable } = await import("drizzle-orm/pg-core");
       const expected = Object.values(schemaModule)
         .filter((v) => is(v, PgTable))
         .flatMap((table) => getTableConfig(table as never).indexes)
@@ -133,16 +130,14 @@ test("a fresh database is usable on the first boot", async (t) => {
     await t.test("re-running the bootstrap changes nothing", async () => {
       // What every restart does: the same statements against tables,
       // indexes and enum types that already exist.
-      const { ensureSchema } = await import("../../server/store/schemaDdl.ts");
-      const { pool } = await import("../../server/store/db.ts");
-      await ensureSchema(pool);
+      await ensureSchema(pool());
       const ran: string[] = [];
       const watched = {
         query: (text: string, ...rest: unknown[]) => {
           ran.push(text);
-          return (pool.query as (...a: unknown[]) => unknown)(text, ...rest);
+          return (pool().query as (...a: unknown[]) => unknown)(text, ...rest);
         },
-      } as unknown as typeof pool;
+      } as unknown as ReturnType<typeof pool>;
       await ensureSchema(watched);
       assert.deepEqual(ran.filter((s) => /ADD COLUMN/.test(s)), [], "a booted database takes no ACCESS EXCLUSIVE per column");
 
