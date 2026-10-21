@@ -14,8 +14,7 @@ import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';
 import { LEG } from '@/lib/timeline/exchangeTimeline';
 import { Motion } from '@/lib/tokens';
-import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
-import { aThreePlayed } from '../support/game';
+import { emptyRankTally, type Card, type GameState, type Player, type Rank, type Suit } from '@/lib/game/gameEngine';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -66,7 +65,7 @@ const settled = (winnerHand: Card[] = [...KEPT_BY_WINNER, FROM_LOSER]): GameStat
   roundOver: false,
   finishingOrder: [],
   openingCard: null,
-  playedRanks: aThreePlayed(),
+  playedRanks: emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
   exchangePhase: { kind: 'settled', winnerIdx: WINNER_SEAT, loserIdx: LOSER_SEAT, cardFromLoser: FROM_LOSER, cardToLoser: TO_LOSER },
 });
@@ -209,6 +208,16 @@ describe('the hand leaves a place for the card still in the air', () => {
     await r.unmount();
   });
 
+  const dealing = () =>
+    (screen.getByTestId('game-table').props.dataSet as { dealing: string }).dealing === 'true';
+
+  // A fresh deal draws the hand off turn, at its smaller size, until it lands:
+  // a row read mid-deal and one read after differ in card size, not in slots.
+  const afterTheDeal = async () => {
+    for (let at = 0; dealing() && at < 10_000; at += 16) await act(async () => jest.advanceTimersByTime(16));
+    expect(dealing()).toBe(false);
+  };
+
   /**
    * The row's own width, which `computeHandLayout` solves from the number of
    * slots. It is the one number that says whether the row stepped for the hand
@@ -231,11 +240,13 @@ describe('the hand leaves a place for the card still in the air', () => {
   // the card would arrive on top of a fan that never moved.
   it('steps the row for the card tucking in, not for the cards it draws', async () => {
     const during = await render(table({ viewerSeat: WINNER_SEAT, visible: false, choosing: true }));
+    await afterTheDeal();
     for (let at = 0; at < Motion.exchange.beat + LEG.tuck + 160; at += 16) await act(async () => jest.advanceTimersByTime(16));
     const holdingASlot = rowWidth();
     await during.unmount();
 
     const after = await render(table({ viewerSeat: WINNER_SEAT, visible: false }));
+    await afterTheDeal();
     const withTheCard = rowWidth();
     await after.unmount();
 
@@ -243,6 +254,7 @@ describe('the hand leaves a place for the card still in the air', () => {
     // equality above is a row that stepped for the missing card rather than a
     // number that never moves.
     const never = await render(table({ viewerSeat: WINNER_SEAT, visible: false, shortOne: true }));
+    await afterTheDeal();
     const twoCards = rowWidth();
     await never.unmount();
 
