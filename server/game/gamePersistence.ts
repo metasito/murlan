@@ -120,8 +120,8 @@ export function tableWriters(store: TableStore): TableWriters {
     updateRoomStatus: (roomId, status) => store.rooms.updateRoomStatus(roomId, status),
     // Returned so a caller about to delete the same row can order itself after it.
     persistGameState(roomId, game) {
-      // Stamped so a restart can tell a current-shape row from a stale one (see
-      // GAME_SCHEMA_VERSION) rather than restoring a corrupt round silently.
+      // Stamped so a restart can tell a row it still restores from one too old to
+      // (see OLDEST_GAME_SCHEMA_VERSION) rather than restoring a corrupt round silently.
       const gameState = toEnvelope(game);
       return inRoomOrder(roomId, async () => {
         // Judged when the write runs, not when it was queued: a table disposed in

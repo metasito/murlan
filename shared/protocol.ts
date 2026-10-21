@@ -156,6 +156,8 @@ export const gameStateSchema = z
     currentTurnIndex: z.number(),
     roundOver: z.boolean(),
     finishingOrder: z.array(z.string()).default([]),
+    // Looser than parseGameState's tally on purpose: the server already held its state to that,
+    // and a stricter wire would refuse a state over a tally a newer server reshaped.
     playedRanks: z.array(z.number()),
   })
   .passthrough();

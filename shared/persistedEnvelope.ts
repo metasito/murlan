@@ -80,11 +80,11 @@ function readPersistedSeats(stored: unknown): PersistedSeats {
 }
 
 /**
- * Bumped whenever the persisted shape of a game stops being safe to restore
- * verbatim (e.g. a change to how many cards are dealt per player). A row
- * written under an older version can hold hands that no longer match the
- * current rules — rehydrating it deals a silently corrupt game instead of
- * crashing, so it must be rejected, not restored.
+ * Bumped whenever the persisted shape of a game changes, or how strictly it is
+ * read. A row older than `OLDEST_GAME_SCHEMA_VERSION` can hold hands that no
+ * longer match the current rules — rehydrating it deals a silently corrupt game
+ * instead of crashing, so it is rejected, not restored. Rows from
+ * `OLDEST_GAME_SCHEMA_VERSION` on are restored, each held to the current parse.
  * Held to the stored shape by tests/server/storedShapeVersions.test.ts.
  */
 export const GAME_SCHEMA_VERSION = 6;
@@ -212,8 +212,8 @@ export const persistedEnvelopeSchema = z.object({
     .min(1, "no join code"),
   match: persistedMatchSchema,
   // Read through a filter rather than declared required, so a row without the
-  // block restores at this same GAME_SCHEMA_VERSION with four empty
-  // collections. Bumping the version instead disposes every live table.
+  // block restores with four empty collections. Refusing it instead would
+  // dispose every live table that lacks it.
   seats: z.unknown().transform(readPersistedSeats),
 });
 
