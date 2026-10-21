@@ -20,6 +20,7 @@ import { NotificationProvider } from '@/context/NotificationContext';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t, type TranslationKey } from '@/lib/i18n';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
+import { aThreePlayed } from '../support/game';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -56,6 +57,7 @@ const state = (currentTurnIndex: number, over: Partial<GameState> = {}): GameSta
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
   ...over,
 });

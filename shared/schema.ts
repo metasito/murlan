@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, timestamp, integer, boolean, pgEnum, jsonb, index, uniqueIndex, primaryKey, bigserial, customType } from "drizzle-orm/pg-core";
-import type { GameState, LastMove } from "../lib/game/gameEngine.ts";
+import type { LastMove } from "../lib/game/gameEngine.ts";
 import type { PersistedEnvelope } from "./persistedEnvelope.ts";
 import type { ReplayMove, ReplaySeat } from "../lib/game/replay.ts";
 
@@ -164,7 +164,7 @@ export const gameInvites = pgTable(
 // envelope — see `PersistedEnvelope` in shared/persistedEnvelope.ts.
 export const activeGames = pgTable("active_games", {
   roomId:     text("room_id").primaryKey(),
-  gameState:  jsonb("game_state").$type<PersistedEnvelope<GameState>>().notNull(),
+  gameState:  jsonb("game_state").$type<PersistedEnvelope>().notNull(),
   updatedAt:  timestamp("updated_at").defaultNow().notNull(),
 });
 

@@ -10,6 +10,7 @@ import { useOfflineDriver } from "@/context/offlineDriver";
 import { encodeOfflineSave, OFFLINE_SAVE_KEY } from "@/lib/offlineSave";
 import { buildCombination, type Card, type GameState } from "@/lib/game/gameEngine";
 import { passed } from "../support/moves.ts";
+import { aThreePlayed } from "../support/game.ts";
 
 /** Both halves of the provider, for a probe that reads across them. */
 const useGame = () => ({ ...useGameSession(), ...useGameTable() });
@@ -32,6 +33,7 @@ const trick = (): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: "deal" },
 } as GameState);
 

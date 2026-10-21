@@ -13,6 +13,7 @@ import { Layer } from '@/lib/theme';
 import { frames } from './helpers/exchangeLegs';
 import { PAIR, throwPair } from './helpers/landing';
 import { bootFeedback } from './helpers/feedback';
+import { aThreePlayed } from '../support/game';
 
 const HIDDEN = { includeHiddenElements: true };
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
@@ -43,6 +44,7 @@ function state(): GameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
+    playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: 'deal' },
   };
 }

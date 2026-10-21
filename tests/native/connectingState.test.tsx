@@ -6,47 +6,17 @@
 // explains why is further down the same tree, and a screen with no text and no
 // control leaves the browser's back button as the only way out.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { fireEvent, waitFor } from '@testing-library/react-native';
+import { useOnlineRoom } from '@/context/onlineGameHooks';
 import { renderApp } from './harness/renderApp';
 
 import { en as locale } from '@/locales/en';
 
 const mockReplace = jest.fn();
-const mockLeaveRoom = jest.fn();
 
 jest.mock('expo-router', () => ({
   router: { replace: (...args: unknown[]) => mockReplace(...args), push: jest.fn(), back: jest.fn() },
-}));
-
-jest.mock('@/context/onlineGameHooks', () => ({
-  useServerError: () => null,
-  // A spectate the server refused: no state, and no rejoin failure to bounce
-  // off the screen either. Only the concerns this path actually reads.
-  useOnlineTable: () => ({ gameState: null, mySeatIndex: -1 }),
-  useOnlineTurnClock: () => ({}),
-  useOnlineRoom: () => ({ isSpectator: true, entrySource: null, leaveRoom: mockLeaveRoom }),
-  useOnlineConnection: () => ({
-    connected: true,
-    error: null,
-    reconnectNotice: null,
-    playerLeft: false,
-    rejoinFailed: false,
-    clearError: jest.fn(),
-    clearPlayerLeft: jest.fn(),
-    clearRejoinFailed: jest.fn(),
-    retryConnection: jest.fn(),
-    ownLink: 'up',
-  }),
-  useOnlineMatch: () => ({
-    matchState: { target: 21, length: 'match', over: false, winners: [], isDraw: false, continues: false },
-    rematchVoteState: null,
-    cumulativeScores: {},
-    ratingDeltas: {},
-    ratingsAfter: {},
-    roundRecorded: true,
-  }),
-  useOnlineExchange: () => ({ exchangeAnnouncing: false, exchangeAnnounceData: null }),
 }));
 
 // Required, not imported: an import is hoisted above the mock functions the
@@ -54,14 +24,28 @@ jest.mock('@/context/onlineGameHooks', () => ({
 const OnlineGameScreen = (require('@/app/(online)/game') as { default: React.ComponentType })
   .default;
 
-const mount = () => renderApp(<OnlineGameScreen />, { user: { id: 'u1', username: 'Ana' } });
+// A spectate the server has not answered: no state, and no rejoin failure to
+// bounce off the screen either.
+function Spectating() {
+  const { spectateRoom } = useOnlineRoom();
+  useEffect(() => spectateRoom('ABCD'), [spectateRoom]);
+  return null;
+}
+
+const mount = () =>
+  renderApp(
+    <>
+      <Spectating />
+      <OnlineGameScreen />
+    </>,
+    { user: { id: 'u1', username: 'Ana' }, online: true, connected: true }
+  );
 
 const BACK_LABEL = locale['onlineGame.backToLobby'];
 
 describe('the online table with no state yet', () => {
   beforeEach(() => {
     mockReplace.mockClear();
-    mockLeaveRoom.mockClear();
   });
 
   it('says what it is waiting for', async () => {
@@ -84,9 +68,10 @@ describe('the online table with no state yet', () => {
   it('releases the table and returns to the lobby when it is pressed', async () => {
     const view = await mount();
 
+    view.socket().reset();
     fireEvent.press(view.getByRole('button', { name: BACK_LABEL }));
 
-    await waitFor(() => expect(mockLeaveRoom).toHaveBeenCalled());
+    await waitFor(() => expect(view.socket().sentAs('room:unspectate')).toHaveLength(1));
     expect(mockReplace).toHaveBeenCalledWith('/(online)');
 
     await view.unmount();

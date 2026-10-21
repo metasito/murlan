@@ -1,6 +1,8 @@
 // The stored `active_games.game_state` envelope, shared so `shared/schema.ts` can type the column
 // without importing the server.
 import { z } from "zod";
+import type { GameState } from "../lib/game/gameEngine.ts";
+import { gameModeSchema, matchLengthSchema, parseGameState } from "./gameStateSchema.ts";
 
 const isSeat = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value >= 0;
@@ -78,14 +80,20 @@ function readPersistedSeats(stored: unknown): PersistedSeats {
 }
 
 /**
- * Bumped whenever the persisted shape of a game stops being safe to restore
- * verbatim (e.g. a change to how many cards are dealt per player). A row
- * written under an older version can hold hands that no longer match the
- * current rules — rehydrating it deals a silently corrupt game instead of
- * crashing, so it must be rejected, not restored.
+ * Bumped whenever the persisted shape of a game changes, or how strictly it is
+ * read. A row older than `OLDEST_GAME_SCHEMA_VERSION` can hold hands that no
+ * longer match the current rules — rehydrating it deals a silently corrupt game
+ * instead of crashing, so it is rejected, not restored. Rows from
+ * `OLDEST_GAME_SCHEMA_VERSION` on are restored, each held to the current parse.
  * Held to the stored shape by tests/server/storedShapeVersions.test.ts.
  */
-export const GAME_SCHEMA_VERSION = 5;
+export const GAME_SCHEMA_VERSION = 6;
+
+/**
+ * The oldest row still restored. Raise it to GAME_SCHEMA_VERSION when a bump changes what a
+ * row holds; leave it when the bump only tightens the parse, which still holds every row to it.
+ */
+export const OLDEST_GAME_SCHEMA_VERSION = 5;
 
 export type RoundFlags = Record<number, { bomb: boolean; joker: boolean }>;
 
@@ -106,10 +114,10 @@ export const persistedMatchSchema = z.object({
       .finite("scores are not all numbers"),
     { required_error: "scores are not all numbers", invalid_type_error: "scores are not all numbers" },
   ),
-  gameMode: z.enum(["free_for_all", "teams"], {
+  gameMode: z.enum(gameModeSchema.options, {
     errorMap: (_iss, ctx) => ({ message: `game mode ${String(ctx.data)}` }),
   }),
-  matchLength: z.enum(["match", "single"], {
+  matchLength: z.enum(matchLengthSchema.options, {
     errorMap: (_iss, ctx) => ({ message: `match length ${String(ctx.data)}` }),
   }),
   matchTarget: z
@@ -143,9 +151,9 @@ export type PersistedMatch = z.infer<typeof persistedMatchSchema>;
  * `gameState` is nested, not spread: `GameState` has its own `gameMode`, which
  * a flat envelope would have the match's overwrite.
  */
-export interface PersistedEnvelope<S> {
+export interface PersistedEnvelope {
   schemaVersion: number;
-  gameState: S;
+  gameState: GameState;
   roundFlags: RoundFlags;
   dealFirstSeat: number;
   /**
@@ -159,24 +167,29 @@ export interface PersistedEnvelope<S> {
   seats: PersistedSeats;
 }
 
-export function packPersistedState<S extends object>(
-  gameState: S,
+export function packPersistedState(
+  gameState: GameState,
   roundFlags: RoundFlags,
   dealFirstSeat: number,
   joinCode: string,
   match: PersistedMatch,
   seats: PersistedSeats
-): PersistedEnvelope<S> {
+): PersistedEnvelope {
   return { schemaVersion: GAME_SCHEMA_VERSION, gameState, roundFlags, dealFirstSeat, joinCode, match, seats };
 }
 
-export type PersistedRestore<S> =
-  | ({ ok: true } & Omit<PersistedEnvelope<S>, "schemaVersion">)
+export type PersistedRestore =
+  | ({ ok: true } & Omit<PersistedEnvelope, "schemaVersion">)
   | { ok: false; reason: string; newer?: true };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+const roundFlag = z.boolean({
+  required_error: "round flags are not all booleans",
+  invalid_type_error: "round flags are not all booleans",
+});
 
 /**
  * The envelope a stored row must parse into. Declared here and nowhere else:
@@ -184,11 +197,9 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * schema's), `unpackPersistedState` refuses anything that does not satisfy it.
  */
 export const persistedEnvelopeSchema = z.object({
-  gameState: z.record(z.unknown(), {
-    required_error: "no game state",
-    invalid_type_error: "no game state",
-  }),
-  roundFlags: z.record(z.unknown(), {
+  // Held to `parseGameState` once the rest of the envelope has parsed.
+  gameState: z.unknown(),
+  roundFlags: z.record(z.object({ bomb: roundFlag, joker: roundFlag }, { invalid_type_error: "no round flags" }), {
     required_error: "no round flags",
     invalid_type_error: "no round flags",
   }),
@@ -201,8 +212,8 @@ export const persistedEnvelopeSchema = z.object({
     .min(1, "no join code"),
   match: persistedMatchSchema,
   // Read through a filter rather than declared required, so a row without the
-  // block restores at this same GAME_SCHEMA_VERSION with four empty
-  // collections. Bumping the version instead disposes every live table.
+  // block restores with four empty collections. Refusing it instead would
+  // dispose every live table that lacks it.
   seats: z.unknown().transform(readPersistedSeats),
 });
 
@@ -210,39 +221,25 @@ export const persistedEnvelopeSchema = z.object({
  * Reads a stored blob back, or says why it cannot be. The version stamp is
  * checked before the parse — it answers "may this row be restored at all",
  * which a field schema cannot — and the schema's first complaint becomes the
- * reason. `gameState` and `roundFlags` are only checked for being objects and
- * then cast, and `match.playerMap` and `seats` are filtered entry by entry
- * rather than refused: a wholly malformed map reads back as an empty one, which
- * the caller's seat check turns into UNAUTHORIZED.
+ * reason; `gameState`'s is `parseGameState`'s. `match.playerMap` and `seats`
+ * are filtered entry by entry rather than refused: a wholly malformed map
+ * reads back as an empty one, which the caller's seat check turns into
+ * UNAUTHORIZED.
  */
-export function unpackPersistedState<S>(persisted: unknown): PersistedRestore<S> {
+export function unpackPersistedState(persisted: unknown): PersistedRestore {
   if (!isPlainObject(persisted)) return { ok: false, reason: "not an object" };
   const version = persisted.schemaVersion;
   if (typeof version === "number" && version > GAME_SCHEMA_VERSION) {
     return { ok: false, newer: true, reason: `schema version ${version} is newer` };
   }
-  if (version !== GAME_SCHEMA_VERSION) {
+  if (typeof version !== "number" || version < OLDEST_GAME_SCHEMA_VERSION) {
     return { ok: false, reason: `schema version ${String(persisted.schemaVersion)}` };
   }
   const parsed = persistedEnvelopeSchema.safeParse(persisted);
   if (!parsed.success) {
     return { ok: false, reason: parsed.error.issues[0]?.message ?? "malformed envelope" };
   }
-  const d = parsed.data as {
-    gameState: S;
-    roundFlags: RoundFlags;
-    dealFirstSeat: number;
-    joinCode: string;
-    match: PersistedMatch;
-    seats: PersistedSeats;
-  };
-  return {
-    ok: true,
-    gameState: d.gameState,
-    roundFlags: d.roundFlags,
-    dealFirstSeat: d.dealFirstSeat,
-    joinCode: d.joinCode,
-    match: d.match,
-    seats: d.seats,
-  };
+  const gameState = parseGameState(parsed.data.gameState);
+  if (!gameState.ok) return { ok: false, reason: gameState.reason };
+  return { ok: true, ...parsed.data, gameState: gameState.state };
 }

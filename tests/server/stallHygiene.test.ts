@@ -13,6 +13,7 @@ import { db, pool } from "../../server/store/db.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import type { GameState } from "../../lib/game/gameEngine.ts";
+import { emptyRankTally } from "../../lib/game/gameEngine.ts";
 
 /** A fetch that never answers on its own, and an `AbortSignal.timeout` the test fires. */
 function neverAnswering(t: TestContext) {
@@ -79,6 +80,7 @@ test("a hanging status write still deals the round", async (t) => {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: false,
+    playedRanks: emptyRankTally(),
     lastMove: { seq: 0, kind: "deal" },
   };
   t.after(() => clearRoomTimers("deal-hangs"));

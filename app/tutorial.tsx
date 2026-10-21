@@ -29,6 +29,7 @@ import {
   getValidGivebackCards,
   actingSeat,
   applyMove,
+  emptyRankTally,
 } from "@/lib/game/gameEngine";
 import { useTranslation, type TFn, type TranslationKey } from "@/lib/i18n";
 import { IconButton } from "@/components/IconButton";
@@ -181,6 +182,7 @@ function buildExchangeState(t: TFn): GameState {
     roundOver: false,
     finishingOrder: [],
     firstPlayMade: true,
+    playedRanks: emptyRankTally(),
     lastMove: { seq: 0, kind: "deal" },
     exchangePhase: {
       active: true,

@@ -14,6 +14,7 @@ import type { RoundOverWriters } from "../../server/game/roundOver.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 import type { ReplayMove } from "../../lib/game/replay.ts";
+import { aThreePlayed } from "../support/game.ts";
 
 const ROOM = "room_1";
 
@@ -78,6 +79,7 @@ function finishedState(overrides: Partial<GameState> = {}): GameState {
     roundOver: true,
     finishingOrder: ["player_0", "player_1"],
     firstPlayMade: true,
+    playedRanks: aThreePlayed(),
     lastMove: { seq: 0, kind: "deal" },
     ...overrides,
   };

@@ -2,10 +2,12 @@
 // row, and reading it back is a trust boundary.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import {
   GAME_SCHEMA_VERSION,
+  OLDEST_GAME_SCHEMA_VERSION,
   packPersistedState,
   persistedEnvelopeSchema,
   persistedMatchSchema,
@@ -14,13 +16,10 @@ import {
   type PersistedMatch,
   type PersistedSeats,
 } from "../../shared/persistedEnvelope.ts";
+import { parseGameState } from "../../shared/gameStateSchema.ts";
+import { card, seat, state } from "../support/game.ts";
 
-const gameState = {
-  currentTurnIndex: 2,
-  roundOver: false,
-  gameMode: "teams",
-  players: [{ id: "player_0" }],
-};
+const gameState = state({ currentTurnIndex: 2, gameMode: "teams" });
 const flags: RoundFlags = { 0: { bomb: true, joker: false }, 3: { bomb: false, joker: true } };
 const match: PersistedMatch = {
   playerMap: { 0: "alice", 3: "dan" },
@@ -48,7 +47,7 @@ const pack = (over: Partial<PersistedMatch> = {}, seatsOver: Partial<PersistedSe
 
 /** The restored side of a round trip, or a failure naming the rejection. */
 function restore(persisted: unknown) {
-  const result = unpackPersistedState<typeof gameState>(persisted);
+  const result = unpackPersistedState(persisted);
   assert.ok(result.ok, `refused: ${result.ok ? "" : result.reason}`);
   return result;
 }
@@ -128,6 +127,26 @@ describe("persisted game_state envelope", () => {
   });
 });
 
+describe("a row an older revision wrote, through the same gate", () => {
+  test("a version-5 row origin/main packed restores whole", () => {
+    const raw = JSON.parse(readFileSync(new URL("../fixtures/activeGames.v5.json", import.meta.url), "utf8"));
+    assert.equal(raw.schemaVersion, 5);
+    assert.ok(OLDEST_GAME_SCHEMA_VERSION <= 5 && 5 < GAME_SCHEMA_VERSION);
+    const back = restore(raw);
+    assert.deepEqual(back.gameState, raw.gameState);
+    assert.deepEqual(back.match.playerMap, raw.match.playerMap);
+    assert.equal(back.dealFirstSeat, raw.dealFirstSeat);
+  });
+
+  test("a version-5 row is still held to parseGameState", () => {
+    const raw = JSON.parse(readFileSync(new URL("../fixtures/activeGames.v5.json", import.meta.url), "utf8"));
+    delete raw.gameState.playedRanks;
+    const result = unpackPersistedState(raw);
+    assert.equal(result.ok, false);
+    assert.match(result.ok ? "" : result.reason, /game state playedRanks/);
+  });
+});
+
 describe("rows the restore path refuses", () => {
   /** The rejection reason, or a failure if the row was restored instead. */
   function refusal(persisted: unknown): string {
@@ -145,11 +164,11 @@ describe("rows the restore path refuses", () => {
   test("a row a newer revision wrote is refused and kept; an older one is deleted", async (t) => {
     const { rehydrateGame } = await import("../../server/game/tableLifecycle.ts");
     const newer = `version-${GAME_SCHEMA_VERSION + 1}`;
-    const older = `version-${GAME_SCHEMA_VERSION - 1}`;
+    const older = `version-${OLDEST_GAME_SCHEMA_VERSION - 1}`;
     const { rows } = useMemoryTableStores(t, {
       rows: [
         [newer, { ...pack(), schemaVersion: GAME_SCHEMA_VERSION + 1 }],
-        [older, { ...pack(), schemaVersion: GAME_SCHEMA_VERSION - 1 }],
+        [older, { ...pack(), schemaVersion: OLDEST_GAME_SCHEMA_VERSION - 1 }],
       ],
     });
 
@@ -192,6 +211,24 @@ describe("rows the restore path refuses", () => {
     assert.match(refusal({ ...pack(), roundFlags: undefined }), /round flags/);
     assert.match(refusal({ ...pack(), dealFirstSeat: "3" }), /deal rotation/);
     assert.match(refusal({ ...pack(), match: undefined }), /match state/);
+  });
+
+  test("an open exchange whose winner has nothing to give back, for parseGameState's reason", () => {
+    const unsatisfiable = state({
+      players: [seat(0, []), seat(1, [card("4", "clubs")])],
+      firstPlayMade: true,
+      exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, twoJokerException: false },
+    });
+    const verdict = parseGameState(unsatisfiable);
+    assert.equal(verdict.ok, false);
+    assert.equal(refusal(packPersistedState(unsatisfiable, flags, 0, JOIN_CODE, match, seats)), verdict.ok ? "" : verdict.reason);
+  });
+
+  test("an engine state the engine could not have written", () => {
+    const { playedRanks: _dropped, ...untallied } = gameState;
+    assert.match(refusal({ ...pack(), gameState: untallied }), /game state playedRanks/);
+    assert.match(refusal({ ...pack(), gameState: { ...gameState, players: [{ id: "player_0" }] } }), /game state players\.0/);
+    assert.match(refusal({ ...pack(), roundFlags: { 0: { bomb: "yes" } } }), /round flags/);
   });
 
   test("a missing join code", () => {

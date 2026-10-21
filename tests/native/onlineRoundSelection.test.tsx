@@ -6,8 +6,9 @@ import { act, fireEvent, screen } from '@testing-library/react-native';
 import { activate } from './tapHelpers';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
-import { state } from '../support/game';
+import { aThreePlayed, state } from '../support/game';
 import { renderApp } from './harness/renderApp';
+import { wire } from './harness/wire';
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
@@ -42,44 +43,10 @@ const stateWith = (hand: Card[], over: Partial<GameState> = {}): GameState => st
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
   ...over,
 });
-
-let mockGameState: GameState = stateWith([KING, NINE]);
-const mockPlayCards = jest.fn<(ids: string[]) => void>();
-
-jest.mock('@/context/OnlineGameContext', () =>
-  (require('./onlineContextMock') as typeof import('./onlineContextMock')).onlineContextMock(
-    () => ({
-      gameState: mockGameState,
-      mySeatIndex: 0,
-      isSpectator: false,
-      playerLeft: false,
-      rejoinFailed: false,
-      reconnectNotice: null,
-      connected: true,
-      error: null,
-      clearError: () => {},
-      playCards: mockPlayCards,
-      pass: () => {},
-      giveExchangeCard: () => {},
-      sendReaction: () => {},
-      leaveRoom: () => {},
-      voteRematch: () => {},
-      entrySource: 'lobby',
-      rematchVoteState: null,
-      cumulativeScores: {},
-      placementPoints: {},
-      matchState: { target: 21, length: 'match', over: false, winners: [] },
-      exchangeAnnouncing: false,
-      exchangeAnnounceData: null,
-      acknowledgeExchange: () => {},
-      clearPlayerLeft: () => {},
-      clearRejoinFailed: () => {},
-    })
-  )
-);
 
 import OnlineGameScreen from '@/app/(online)/game';
 import { cardSpokenName } from '@/lib/cardNames';
@@ -103,17 +70,19 @@ const tap = async (c: Card) => {
     await activate(cardNode(c));
   });
 };
-const serverSends = async (r: Awaited<ReturnType<typeof mount>>, next: GameState) => {
-  mockGameState = next;
-  await act(async () => r.rerender(screenUnderTest()));
-};
+const serverSends = (r: Awaited<ReturnType<typeof mount>>, next: GameState) =>
+  r.socket().deliver('game:state', wire(next, 0), () => {});
 
-const mount = (ui: React.ReactElement) => renderApp(ui, { user: { id: 'u1', username: 'Ana' } });
+const mount = async (ui: React.ReactElement) => {
+  const r = await renderApp(ui, { user: { id: 'u1', username: 'Ana' }, online: true, connected: true });
+  await serverSends(r, stateWith([KING, NINE]));
+  r.socket().reset();
+  return r;
+};
 
 describe('the online table selection', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGameState = stateWith([KING, NINE]);
   });
 
   it('is cleared by the deal, even one that deals the staged card back', async () => {
@@ -136,7 +105,7 @@ describe('the online table selection', () => {
     await act(async () => {
       fireEvent.press(screen.getByTestId('btn-gioca'));
     });
-    expect(mockPlayCards).toHaveBeenCalledWith([KING.id]);
+    expect(r.socket().sentAs('game:play').map((p) => p.cardIds)).toEqual([[KING.id]]);
     await tap(NINE);
 
     await serverSends(

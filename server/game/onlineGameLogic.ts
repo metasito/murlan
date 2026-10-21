@@ -2,7 +2,7 @@
 // without pulling storage/db/session — and the pg pool they build at import —
 // onto a path that needs none of it.
 import { botSeatKey, isBotSeatKey } from "../../lib/game/botSeat.ts";
-import type { ScoreLine } from "../../lib/game/matchState.ts";
+import type { ScoreLine } from "../../shared/protocol.ts";
 import { botSeatNames, getBotPersonality } from "../../lib/game/botPersonalities.ts";
 import type { BotPersonalityId } from "../../lib/game/botPersonalities.ts";
 import { foldRound } from "../../lib/game/gameEngine.ts";

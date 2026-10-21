@@ -24,16 +24,6 @@ jest.mock('@/components/SettingsModal', () => ({ SettingsModal: () => null }));
 
 // The signed-in state each test boots into.
 let authUser: { id: string; username: string; tutorialSeenAt: string | null } | null = null;
-jest.mock('@/context/GameContext', () =>
-  (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(undefined, () => ({
-    hasSavedGame: false,
-    resumeGame: () => false,
-  }))
-);
-jest.mock('@/context/SocketContext', () => ({
-  ...jest.requireActual<object>('@/context/SocketContext'),
-  useInvites: () => ({ invites: [], accept: () => {} }),
-}));
 
 // Both screens stagger themselves in on mount; under reduced motion the values
 // are set outright, so nothing here waits on an animation it does not assert.

@@ -20,16 +20,6 @@ jest.mock('@/components/SettingsModal', () => ({ SettingsModal: () => null }));
 let authUser: { id: string; username: string; tutorialSeenAt: string | null } | null = null;
 let mockLandscape = true;
 
-jest.mock('@/context/GameContext', () =>
-  (require('./helpers/localContextMock') as typeof import('./helpers/localContextMock')).localContextMock(undefined, () => ({
-    hasSavedGame: false,
-    resumeGame: () => false,
-  }))
-);
-jest.mock('@/context/SocketContext', () => ({
-  ...jest.requireActual<object>('@/context/SocketContext'),
-  useInvites: () => ({ invites: [], accept: () => {} }),
-}));
 jest.mock('@/lib/device/orientation', () => ({
   ...jest.requireActual<object>('@/lib/device/orientation'),
   useIsLandscape: () => mockLandscape,

@@ -10,9 +10,9 @@ import { describe, it, jest } from '@jest/globals';
 import React from 'react';
 import { screen } from '@testing-library/react-native';
 
-import { queryClient as qc } from '@/lib/query-client';
 import { setWindow } from './harness/env';
-import { renderApp } from './harness/renderApp';
+import { queriesSettled, renderApp } from './harness/renderApp';
+import { route } from './mocks/http';
 import { getVisibleText } from './visibilityHelpers';
 
 jest.mock('expo-router', () => {
@@ -28,31 +28,24 @@ jest.mock('@/lib/device/pushRegistration', () => ({
   forgetPushRegistration: () => {},
 }));
 
-jest.mock('@/context/SocketContext', () => ({
-  ...jest.requireActual<object>('@/context/SocketContext'),
-  usePresence: () => ({ onlineIds: new Set(['f1']), refresh: () => {} }),
-  useInvites: () => ({ invites: [], dismiss: jest.fn(), accept: jest.fn() }),
-}));
-
-jest.mock('@/context/onlineGameHooks', () => ({
-  useOnlineRoom: () => ({ joinRoom: jest.fn(), room: null }),
-  useOnlineConnection: () => ({ clearError: jest.fn() }),
-  useServerError: () => null,
-}));
 
 
 import FriendsScreen from '@/app/(online)/friends';
 
 
 async function mount() {
-  qc.setQueryData(['/api/friends'], [
-    { id: 'f1', username: 'Besi', lastSeen: null },
-    { id: 'f2', username: 'Ana', lastSeen: '2026-08-20T10:00:00.000Z' },
-  ]);
-  qc.setQueryData(['/api/friends/requests'], []);
-  qc.setQueryData(['/api/friends/sent'], []);
+  route('GET', '/api/friends', {
+    body: [
+      { id: 'f1', username: 'Besi', lastSeen: null },
+      { id: 'f2', username: 'Ana', lastSeen: '2026-08-20T10:00:00.000Z' },
+    ],
+  });
+  route('GET', '/api/friends/sent', { body: [] });
   await setWindow({ width: 390, height: 844 });
-  return renderApp(<FriendsScreen />, { user: { id: 'u1', username: 'Ana' } });
+  const view = await renderApp(<FriendsScreen />, { user: { id: 'u1', username: 'Ana' }, online: true, connected: true });
+  await view.socket().deliver('friend:online_list', { onlineIds: ['f1'] });
+  await queriesSettled();
+  return view;
 }
 
 describe('a friend row carries presence by text, not only by the avatar dot', () => {

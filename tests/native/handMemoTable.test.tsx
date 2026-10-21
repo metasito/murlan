@@ -17,6 +17,7 @@ jest.mock('@/lib/cosmetics', () => {
 
 import { GameTable } from '@/components/GameTable';
 import type { Card, GameState, Rank } from '@/lib/game/gameEngine';
+import { aThreePlayed } from '../support/game';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -42,6 +43,7 @@ const state = (cards: Card[], passCount: number): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
 });
 

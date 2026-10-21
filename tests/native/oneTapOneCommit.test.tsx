@@ -146,6 +146,7 @@ const state: GameState = {
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: engine.emptyRankTally(),
   lastMove: { seq: 0, kind: 'deal' },
 };
 const noop = () => {};

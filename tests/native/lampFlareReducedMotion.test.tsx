@@ -13,6 +13,7 @@ import { getAnimatedStyle } from "react-native-reanimated";
 import { GameTable } from "@/components/GameTable";
 import type { Card, Combination, GameState, Player } from "@/lib/game/gameEngine";
 import { setMotion } from "./harness/env";
+import { aThreePlayed } from "../support/game";
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -64,6 +65,7 @@ const inPlay = (combo: Combination): GameState => ({
   roundOver: false,
   finishingOrder: [],
   firstPlayMade: true,
+  playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: "deal" },
 });
 

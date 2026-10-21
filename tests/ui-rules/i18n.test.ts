@@ -30,11 +30,12 @@ const TRANSLATED = LOCALE_NAMES.filter((name) => name !== "en");
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SERVER_DIR = path.join(REPO_ROOT, "server");
 
-/** The server's sources, plus the shared module whose schema is the restore path's refusal text. */
+/** The server's sources, plus the shared modules whose schemas are the restore path's refusal text. */
 function serverSources(): { file: string; source: string }[] {
   return [
     ...sourcesUnder(REPO_ROOT, ["server"], /\.ts$/).map(([file]) => file),
     "shared/persistedEnvelope.ts",
+    "shared/gameStateSchema.ts",
     "shared/socketSchemas.ts",
     "shared/httpSchemas.ts",
   ].map((file) => ({ file, source: readFileSync(path.join(REPO_ROOT, file), "utf8") }));
