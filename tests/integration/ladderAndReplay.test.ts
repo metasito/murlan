@@ -22,6 +22,9 @@ import { driveHumansToRoundOver, waitForRow, type RoomState } from "../helpers/g
 import { START_RATING, seasonKey } from "../../lib/game/rating.ts";
 import type { ReplayMove, ReplaySeat } from "../../lib/game/replay.ts";
 import type { RoundOverPayload } from "../../shared/protocol.ts";
+import { pool } from "../../server/store/db.ts";
+import { listReplaysForUser } from "../../server/game/replays.ts";
+import { recordRatedResult } from "../../server/game/ratings.ts";
 
 // Same convention as the other integration suites: an exchange phase left to
 // the AFK path must not stall the run.
@@ -368,11 +371,9 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
       // The listing must not pull the `moves` jsonb — ~9 KB per row, twenty
       // rows — to report its length. The response shape cannot show that, so
       // the SQL itself is what is read, off the app's own pool.
-      const { pool } = await import("../../server/store/db.ts");
-      const { listReplaysForUser } = await import("../../server/game/replays.ts");
       const seen: string[] = [];
-      const realQuery = pool.query.bind(pool);
-      (pool as { query: unknown }).query = (...args: unknown[]) => {
+      const realQuery = pool().query.bind(pool());
+      (pool() as { query: unknown }).query = (...args: unknown[]) => {
         const first = args[0];
         seen.push(typeof first === "string" ? first : String((first as { text?: string })?.text));
         return (realQuery as (...a: unknown[]) => unknown)(...args);
@@ -381,7 +382,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
       try {
         summaries = await listReplaysForUser(alice.user.id);
       } finally {
-        (pool as { query: unknown }).query = realQuery;
+        (pool() as { query: unknown }).query = realQuery;
       }
 
       const captured = seen.join("\n");
@@ -414,7 +415,6 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
   test("two rated hands for one pair wait on the row lock, and both deltas land", async () => {
     const { user: ann } = await register(server, "ladder_race_ann");
     const { user: ben } = await register(server, "ladder_race_ben");
-    const { recordRatedResult } = await import("../../server/game/ratings.ts");
     const now = new Date();
     const hand = (winner: string, loser: string) =>
       recordRatedResult([{ userId: winner, placement: 1 }, { userId: loser, placement: 2 }], "free_for_all", now);

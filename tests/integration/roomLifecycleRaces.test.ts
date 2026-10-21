@@ -6,6 +6,10 @@ import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../h
 import { connectAs, register, waitFor } from "../helpers/client.ts";
 import { holdRowLock } from "../helpers/userLock.ts";
 import type { Client, RoomState, SanitizedState } from "../helpers/table.ts";
+import { roomStore } from "../../server/store/roomStore.ts";
+import { seatHoldMs } from "../../server/game/gameTimers.ts";
+import { activeGames } from "../../server/game/gameRoom.ts";
+import { activeGameStore } from "../../server/store/activeGameStore.ts";
 
 describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -175,8 +179,6 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     const opened = waitFor<RoomState>(host!.socket, "room:state");
     host!.socket.emit("room:quickmatch", { maxPlayers, gameMode: "free_for_all" });
     const room = await opened;
-
-    const { roomStore } = await import("../../server/store/roomStore.ts");
     const real = roomStore.findWaitingPublicRooms;
     let meddled = 0;
     roomStore.findWaitingPublicRooms = async function (userId?: string) {
@@ -211,7 +213,6 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
   test("177: a join broadcasts the host the room has now, not the one it read", async () => {
     const [host, a, b] = await players(3);
     const room = await lobby([host!, a!], 3);
-    const { roomStore } = await import("../../server/store/roomStore.ts");
     const real = roomStore.getRoomByCode;
     let meddled = 0;
     roomStore.getRoomByCode = async function (code: string) {
@@ -276,9 +277,6 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     for (let i = 0; i < free + 1; i++) {
       claimants.push((await register(server, `race_cl_${n++}_${Date.now().toString(36)}`)).user.id);
     }
-
-    const { roomStore } = await import("../../server/store/roomStore.ts");
-    const { seatHoldMs } = await import("../../server/game/gameTimers.ts");
     const lock = await lockRoom(room.roomId);
     let settled: Promise<PromiseSettledResult<Awaited<ReturnType<typeof roomStore.claimRoomSeat>>>[]>;
     try {
@@ -303,10 +301,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     const dealt = [host!, a!].map((p) => waitFor<SanitizedState>(p.socket, "game:state"));
     host!.socket.emit("room:start");
     await Promise.all(dealt);
-
-    const { activeGames } = await import("../../server/game/gameRoom.ts");
     const { persistGameState } = server.rt.writers;
-    const { activeGameStore } = await import("../../server/store/activeGameStore.ts");
     const game = activeGames.get(room.roomId)!;
     const real = activeGameStore.write;
     let open!: () => void;

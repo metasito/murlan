@@ -6,6 +6,8 @@ import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { register } from "../helpers/client.ts";
+import { saveReplay, listReplaysForUser } from "../../server/game/replays.ts";
+import { deleteUser } from "../../server/http/deleteAccount.ts";
 
 describe("what a replay seat names", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -15,7 +17,6 @@ describe("what a replay seat names", { skip: hasDatabase() ? false : skipMessage
   async function replayWithLeaver(tag: string) {
     const { user: stayer, cookie } = await register(server, `${tag}_stayer`);
     const { user: leaver, cookie: leaverCookie } = await register(server, `${tag}_leaver`);
-    const { saveReplay } = await import("../../server/game/replays.ts");
     await saveReplay({
       roomId: `room-${tag}`,
       finishedAt: new Date(),
@@ -42,8 +43,6 @@ describe("what a replay seat names", { skip: hasDatabase() ? false : skipMessage
 
   test("a departed player's account deletion reaches the seat they left", async () => {
     const { stayer, leaver } = await replayWithLeaver("vacated");
-    const { deleteUser } = await import("../../server/http/deleteAccount.ts");
-    const { listReplaysForUser } = await import("../../server/game/replays.ts");
 
     await deleteUser(leaver.id);
 
@@ -56,7 +55,6 @@ describe("what a replay seat names", { skip: hasDatabase() ? false : skipMessage
 
   test("a rename reaches a replay already written", async () => {
     const { stayer, leaver, cookie } = await replayWithLeaver("renamed");
-    const { listReplaysForUser } = await import("../../server/game/replays.ts");
 
     await rename(cookie, "renamed_after");
 
@@ -74,7 +72,6 @@ describe("what a replay seat names", { skip: hasDatabase() ? false : skipMessage
   // `vacatedBy` follows the account it still names.
   test("a rename reaches the seat its owner left", async () => {
     const { stayer, leaverCookie } = await replayWithLeaver("leaver_renamed");
-    const { listReplaysForUser } = await import("../../server/game/replays.ts");
 
     await rename(leaverCookie, "leaver_renamed_after");
 

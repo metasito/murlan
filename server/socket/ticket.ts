@@ -87,14 +87,14 @@ export function verifySocketTicket(raw: unknown): SocketTicket | null {
  * session, and a ticket minted before it must not open a socket after it.
  */
 export async function redeemSocketTicket(ticket: SocketTicket): Promise<boolean> {
-  const burned = await db
+  const burned = await db()
     .insert(socketTicketNonces)
     .values({ nonce: ticket.nonce, expiresAt: new Date(ticket.expiresAt) })
     .onConflictDoNothing()
     .returning({ nonce: socketTicketNonces.nonce });
   if (burned.length === 0) return false;
 
-  const live = await db.execute(
+  const live = await db().execute(
     sql`SELECT 1 FROM session WHERE sid = ${ticket.sid} AND expire > now()
         AND sess->>'userId' = ${ticket.userId}`
   );

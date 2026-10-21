@@ -59,21 +59,25 @@ for (const name of SERVER_SAFE_LIB) {
 // No database needed: this inspects how the Pool was constructed, not whether
 // it can connect.
 test("the Postgres pool is constructed with an error handler and timeouts", async () => {
-  const { pool } = await import("../../server/store/db.ts");
+  const { openDatabase, closeDatabase, pool, DatabaseNotOpenError } = await import("../../server/store/db.ts");
+  assert.throws(() => pool(), DatabaseNotOpenError);
+  openDatabase();
+  const appPool = pool();
+  await (await closeDatabase()).ended;
 
   assert.equal(
-    pool.listenerCount("error"),
+    appPool.listenerCount("error"),
     1,
     "the pool must handle its own `error` event — an idle-client error with no listener is an unhandled EventEmitter error"
   );
   // pg defaults none of these, so an absent option reads as `undefined`.
   assert.deepEqual(
     {
-      max: pool.options.max,
-      connectionTimeoutMillis: pool.options.connectionTimeoutMillis,
-      idleTimeoutMillis: pool.options.idleTimeoutMillis,
-      statement_timeout: pool.options.statement_timeout,
-      query_timeout: pool.options.query_timeout,
+      max: appPool.options.max,
+      connectionTimeoutMillis: appPool.options.connectionTimeoutMillis,
+      idleTimeoutMillis: appPool.options.idleTimeoutMillis,
+      statement_timeout: appPool.options.statement_timeout,
+      query_timeout: appPool.options.query_timeout,
     },
     {
       max: 10,

@@ -6,12 +6,14 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { getTableName, type SQL } from "drizzle-orm";
-import { db } from "../../server/store/db.ts";
+import { db, openDatabase } from "../../server/store/db.ts";
 import { installClock } from "../../server/http/clock.ts";
 import { redeemAuthCode, redeemAuthToken } from "../../server/http/authTokens.ts";
 import { sweepRetention } from "../../server/game/retention.ts";
 import { userStore } from "../../server/store/userStore.ts";
 import { skewedClock } from "../helpers/fakeClock.ts";
+
+openDatabase();
 
 const dialect = new PgDialect();
 const AHEAD_MS = 10 * 60 * 60_000;
@@ -36,7 +38,7 @@ describe("auth token expiry is judged on the server clock", () => {
   test("a redeem compares expires_at with the installed clock's now", async (t) => {
     const clock = onSkewedClock(t);
     const seen: SQL[] = [];
-    t.mock.method(db, "execute", async (q: SQL) => {
+    t.mock.method(db(), "execute", async (q: SQL) => {
       seen.push(q);
       return { rows: [] };
     });
@@ -48,7 +50,7 @@ describe("auth token expiry is judged on the server clock", () => {
   test("a wrong code's attempt charge only counts codes live on the installed clock", async (t) => {
     const clock = onSkewedClock(t);
     const seen: SQL[] = [];
-    t.mock.method(db, "execute", async (q: SQL) => {
+    t.mock.method(db(), "execute", async (q: SQL) => {
       seen.push(q);
       return { rows: [] };
     });
@@ -61,7 +63,7 @@ describe("auth token expiry is judged on the server clock", () => {
   test("the retention sweep drops tokens expired on the installed clock", async (t) => {
     const clock = onSkewedClock(t);
     const statements: SQL[] = [];
-    t.mock.method(db, "execute", async (q: SQL) => {
+    t.mock.method(db(), "execute", async (q: SQL) => {
       statements.push(q);
       return { rows: [], rowCount: 0 };
     });

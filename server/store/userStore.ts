@@ -30,12 +30,12 @@ export class EmailTakenError extends Error {
 
 export const userStore = {
   async getUser(id: string) {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
+    const [user] = await db().select().from(users).where(eq(users.id, id));
     return user;
   },
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db
+    const [user] = await db()
       .select()
       .from(users)
       .where(sql`lower(${users.username}) = lower(${username})`);
@@ -43,7 +43,7 @@ export const userStore = {
   },
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db
+    const [user] = await db()
       .select()
       .from(users)
       .where(sql`lower(${users.email}) = lower(${email})`);
@@ -62,7 +62,7 @@ export const userStore = {
    * address.
    */
   async getVerifiedUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db
+    const [user] = await db()
       .select()
       .from(users)
       .where(and(sql`lower(${users.email}) = lower(${email})`, isNotNull(users.emailVerifiedAt)));
@@ -75,7 +75,7 @@ export const userStore = {
    * accounts can share an address (see `getVerifiedUserByEmail`'s doc).
    */
   async getUserIdsByEmail(email: string): Promise<string[]> {
-    const rows = await db
+    const rows = await db()
       .select({ id: users.id })
       .from(users)
       .where(sql`lower(${users.email}) = lower(${email})`);
@@ -86,7 +86,7 @@ export const userStore = {
     for (let attempt = 0; attempt < 10; attempt++) {
       try {
         const friendCode = randomCode(6);
-        const [user] = await db
+        const [user] = await db()
           .insert(users)
           .values({ ...insertUser, friendCode })
           .returning();
@@ -122,7 +122,7 @@ export const userStore = {
   async markEmailVerified(userId: string, email: string): Promise<"verified" | "lost_race" | "not_found"> {
     const ownClaim = and(eq(users.id, userId), sql`lower(${users.email}) = lower(${email})`);
     try {
-      const [row] = await db
+      const [row] = await db()
         .update(users)
         .set({ emailVerifiedAt: new Date(now()) })
         .where(ownClaim)
@@ -130,7 +130,7 @@ export const userStore = {
       return row ? "verified" : "not_found";
     } catch (err) {
       if (!uniqueViolation(err)?.includes("email")) throw err;
-      await db.update(users).set({ email: null }).where(ownClaim);
+      await db().update(users).set({ email: null }).where(ownClaim);
       return "lost_race";
     }
   },
@@ -140,7 +140,7 @@ export const userStore = {
    * with an address verified elsewhere surfaces when this claim is verified, not here.
    */
   async setEmail(userId: string, email: string): Promise<User> {
-    const [user] = await db.update(users).set({ email }).where(eq(users.id, userId)).returning();
+    const [user] = await db().update(users).set({ email }).where(eq(users.id, userId)).returning();
     if (!user) throw new Error("setEmail: no such user");
     return user;
   },
@@ -152,7 +152,7 @@ export const userStore = {
    */
   async renameUser(userId: string, username: string): Promise<User> {
     try {
-      const [user] = await db
+      const [user] = await db()
         .update(users)
         .set({ username })
         .where(eq(users.id, userId))
@@ -171,7 +171,7 @@ export const userStore = {
    * arrived on survives the clear.
    */
   async changePassword(userId: string, passwordHash: string, keepSid: string): Promise<void> {
-    await db.transaction(async (tx) => {
+    await db().transaction(async (tx) => {
       await tx.update(users).set({ password: passwordHash }).where(eq(users.id, userId));
       await tx.execute(
         sql`DELETE FROM session WHERE sess->>'userId' = ${userId} AND sid != ${keepSid}`
@@ -187,7 +187,7 @@ export const userStore = {
    * account is cleared.
    */
   async resetPassword(userId: string, passwordHash: string): Promise<void> {
-    await db.transaction(async (tx) => {
+    await db().transaction(async (tx) => {
       await tx.update(users).set({ password: passwordHash }).where(eq(users.id, userId));
       await tx.execute(sql`DELETE FROM session WHERE sess->>'userId' = ${userId}`);
       await tx.delete(pushTokens).where(eq(pushTokens.userId, userId));
@@ -195,12 +195,12 @@ export const userStore = {
   },
 
   async updateLastSeen(userId: string): Promise<void> {
-    await db.update(users).set({ lastSeen: new Date(now()) }).where(eq(users.id, userId));
+    await db().update(users).set({ lastSeen: new Date(now()) }).where(eq(users.id, userId));
   },
 
   /** First time only: the answer is "has it ever been offered", so the first date is the true one. */
   async markTutorialSeen(userId: string): Promise<void> {
-    await db
+    await db()
       .update(users)
       .set({ tutorialSeenAt: new Date(now()) })
       .where(and(eq(users.id, userId), isNull(users.tutorialSeenAt)));

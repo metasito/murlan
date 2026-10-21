@@ -25,7 +25,7 @@ export type { PushMessage };
  * tokens to Expo's production service on every run. The default is the real
  * endpoint, so an unset variable is the shipping behaviour.
  */
-const EXPO_PUSH_URL =
+const expoPushUrl = () =>
   testOnlyEnv("MURLAN_EXPO_PUSH_URL") ?? "https://exp.host/--/api/v2/push/send";
 
 /**
@@ -50,7 +50,7 @@ export async function savePushToken(
   platform: string,
   locale: Locale
 ): Promise<void> {
-  await db.transaction(async (tx) => {
+  await db().transaction(async (tx) => {
     await lockUsers(tx, [userId]);
     await tx
       .insert(pushTokens)
@@ -81,13 +81,13 @@ export async function savePushToken(
  * phone it points at.
  */
 export async function deletePushToken(userId: string, token: string): Promise<void> {
-  await db
+  await db()
     .delete(pushTokens)
     .where(and(eq(pushTokens.userId, userId), eq(pushTokens.token, token)));
 }
 
 export async function tokensFor(userId: string): Promise<PushDevice[]> {
-  return db
+  return db()
     .select({ token: pushTokens.token, locale: pushTokens.locale })
     .from(pushTokens)
     .where(eq(pushTokens.userId, userId));
@@ -108,7 +108,7 @@ export async function notifyUser(userId: string, message: PushMessage): Promise<
     const devices = await tokensFor(userId);
     if (devices.length === 0) return;
 
-    const res = await fetch(EXPO_PUSH_URL, {
+    const res = await fetch(expoPushUrl(), {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify(buildPushRequest(devices, message)),
@@ -124,7 +124,7 @@ export async function notifyUser(userId: string, message: PushMessage): Promise<
     const dead = deadTokens(devices.map((d) => d.token), body.data);
 
     if (dead.length > 0) {
-      await db.delete(pushTokens).where(inArray(pushTokens.token, dead));
+      await db().delete(pushTokens).where(inArray(pushTokens.token, dead));
       logger.info({ userId, count: dead.length }, "Dropped push tokens Expo no longer knows");
     }
   } catch (err) {

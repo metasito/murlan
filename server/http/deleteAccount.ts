@@ -19,7 +19,7 @@ import {
  * the store its `tx`, rather than calling a store method that opens its own.
  */
 export async function deleteUser(userId: string): Promise<string[]> {
-  return db.transaction(async (tx) => {
+  return db().transaction(async (tx) => {
     await tx
       .delete(friends)
       .where(or(eq(friends.userId, userId), eq(friends.friendUserId, userId)));
