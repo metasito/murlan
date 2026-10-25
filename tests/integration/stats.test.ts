@@ -8,13 +8,8 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor, register } from "../helpers/client.ts";
-import {
-  driveHumansToRoundOver,
-  waitForRow,
-  type RoomState,
-
-} from "../helpers/gameDriver.ts";
+import { eventually, connectAs, waitFor, register } from "../helpers/client.ts";
+import { playRoundOut } from "../helpers/gameDriver.ts";
 import { waitForDeal } from "../helpers/table.ts";
 import { whileUserLocked } from "../helpers/userLock.ts";
 import { getRoundHistoryView } from "../../server/http/roundHistoryView.ts";
@@ -44,21 +39,21 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
     const alice = await connectAs(server, "stats_alice");
     const bob = await connectAs(server, "stats_bob");
     try {
-      const created = waitFor<RoomState>(alice.socket, "room:state");
+      const created = waitFor(alice.socket, "room:state");
       alice.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 3 });
       const room = await created;
 
-      const joined = waitFor<RoomState>(bob.socket, "room:state");
+      const joined = waitFor(bob.socket, "room:state");
       bob.socket.emit("room:join", { code: room.code });
       await joined;
 
-      const payload = await driveHumansToRoundOver([alice.socket, bob.socket], () => {
+      const payload = await playRoundOut([alice.socket, bob.socket], () => {
         alice.socket.emit("room:start", { fillWithBots: true, botPersonality: "luan" });
       });
       assert.ok(payload, "game:over must fire");
 
       for (const { user } of [alice, bob]) {
-        const statsRow = await waitForRow(async () => {
+        const statsRow = await eventually(async () => {
           const res = await server.query(
             "SELECT user_id, rounds_played, rounds_won FROM user_stats WHERE user_id = $1",
             [user.id]
@@ -68,7 +63,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
         assert.equal(statsRow.user_id, user.id);
         assert.equal(Number(statsRow.rounds_played), 1);
 
-        const historyRows = await waitForRow(async () => {
+        const historyRows = await eventually(async () => {
           const res = await server.query(
             "SELECT user_id, game_mode, placement, player_count, points, opponents FROM round_history WHERE user_id = $1",
             [user.id]
@@ -113,19 +108,19 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
     const cara = await connectAs(server, "view_cara");
     const dan = await connectAs(server, "view_dan");
     try {
-      const created = waitFor<RoomState>(cara.socket, "room:state");
+      const created = waitFor(cara.socket, "room:state");
       cara.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 3 });
       const room = await created;
 
-      const joined = waitFor<RoomState>(dan.socket, "room:state");
+      const joined = waitFor(dan.socket, "room:state");
       dan.socket.emit("room:join", { code: room.code });
       await joined;
 
-      const payload = await driveHumansToRoundOver([cara.socket, dan.socket], () => {
+      const payload = await playRoundOut([cara.socket, dan.socket], () => {
         cara.socket.emit("room:start", { fillWithBots: true, botPersonality: "luan" });
       });
       assert.ok(payload, "game:over must fire");
-      const rows = await waitForRow(async () => {
+      const rows = await eventually(async () => {
         const view = await getRoundHistoryView(cara.user.id);
         return view.length > 0 && view[0].replayId !== null ? view : null;
       });
@@ -203,11 +198,11 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
     }
     const [leaver, ...stayers] = clients;
     try {
-      const created = waitFor<RoomState>(leaver.socket, "room:state");
+      const created = waitFor(leaver.socket, "room:state");
       leaver.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
       const room = await created;
       for (const c of stayers) {
-        const joined = waitFor<RoomState>(c.socket, "room:state");
+        const joined = waitFor(c.socket, "room:state");
         c.socket.emit("room:join", { code: room.code });
         await joined;
       }
@@ -218,12 +213,12 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
 
       // A bot takes the empty seat, so the round reaches game over the ordinary
       // way and the seat that was walked out on is scored inside it.
-      await driveHumansToRoundOver(
+      await playRoundOut(
         stayers.map((c) => c.socket),
         () => leaver.socket.emit("room:leave")
       );
 
-      const history = await waitForRow(async () => {
+      const history = await eventually(async () => {
         const res = await server.query(
           "SELECT placement, player_count FROM round_history WHERE user_id = $1",
           [leaver.user.id]
@@ -270,11 +265,11 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
     }
     const [leaver, ...stayers] = clients;
     try {
-      const created = waitFor<RoomState>(leaver.socket, "room:state");
+      const created = waitFor(leaver.socket, "room:state");
       leaver.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
       const room = await created;
       for (const c of stayers) {
-        const joined = waitFor<RoomState>(c.socket, "room:state");
+        const joined = waitFor(c.socket, "room:state");
         c.socket.emit("room:join", { code: room.code });
         await joined;
       }
@@ -283,12 +278,12 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       leaver.socket.emit("room:start");
       await Promise.all(dealt);
 
-      await driveHumansToRoundOver(
+      await playRoundOut(
         stayers.map((c) => c.socket),
         () => leaver.socket.emit("room:leave")
       );
 
-      const rows = await waitForRow<{ user_id: string; placement: number }[]>(async () => {
+      const rows = await eventually(async () => {
         const res = await server.query<{ user_id: string; placement: number }>(
           "SELECT user_id, placement FROM round_history WHERE user_id = ANY($1)",
           [clients.map((c) => c.user.id)]
@@ -329,11 +324,11 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
     const stayer = await connectAs(server, "half_ilir");
     const leaver = await connectAs(server, "half_jeta");
     try {
-      const created = waitFor<RoomState>(stayer.socket, "room:state");
+      const created = waitFor(stayer.socket, "room:state");
       stayer.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
       const room = await created;
 
-      const joined = waitFor<RoomState>(leaver.socket, "room:state");
+      const joined = waitFor(leaver.socket, "room:state");
       leaver.socket.emit("room:join", { code: room.code });
       await joined;
 
@@ -341,7 +336,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       stayer.socket.emit("room:start", { fillWithBots: true, botPersonality: "luan" });
       await Promise.all(dealt);
 
-      await driveHumansToRoundOver([stayer.socket, leaver.socket], () => {});
+      await playRoundOut([stayer.socket, leaver.socket], () => {});
 
       const nextDeal = waitForDeal(stayer.socket);
       stayer.socket.emit("game:rematch_vote");
@@ -356,7 +351,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       // already wrote one row per user before the walkout below could. Only
       // the latest row per user is the one the walkout wrote.
       // One statement, so the count and the latest row come from one snapshot: each seat commits in its own transaction.
-      const rows = await waitForRow<{ user_id: string; placement: number; player_count: number; n: number }[]>(
+      const rows = await eventually(
         async () => {
           const res = await server.query<{ user_id: string; placement: number; player_count: number; n: number }>(
             `SELECT DISTINCT ON (user_id) user_id, placement, player_count,
@@ -369,6 +364,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
           const bothHaveTwo = res.every((r) => Number(r.n) === 2);
           return bothHaveTwo ? res : null;
         },
+        "both players' two rounds in round_history",
         15_000
       );
 

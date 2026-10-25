@@ -55,7 +55,7 @@ describe("graceful shutdown", { skip: hasDatabase() ? false : skipMessage() }, (
     // (handleLeaveRoom_lobby) is four queries deep and only starts after
     // updateLastSeen has already resolved, so it is a write that provably had
     // not been issued when io.close() returned.
-    const created = waitFor<{ roomId: string; code: string }>(socket, "room:state");
+    const created = waitFor(socket, "room:state");
     socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const { roomId } = await created;
 
@@ -65,7 +65,7 @@ describe("graceful shutdown", { skip: hasDatabase() ? false : skipMessage() }, (
     );
     assert.equal(before.rows[0].status, "waiting");
 
-    const disconnected = waitFor<string>(socket, "disconnect", PROMPT_MS);
+    const disconnected = waitFor(socket, "disconnect", PROMPT_MS);
 
     const appPool = pool();
     const exitCodes: number[] = [];

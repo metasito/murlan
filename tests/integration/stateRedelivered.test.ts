@@ -9,28 +9,24 @@
 // the state again.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Socket } from "socket.io-client";
 import {
   startTestServer,
   hasDatabase,
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor } from "../helpers/client.ts";
-import type { SanitizedState } from "../helpers/table.ts";
+import { connectAs, eventually, nothingArrives, settled, waitFor, type TestSocket } from "../helpers/client.ts";
+import type { WireGameState } from "../../shared/protocol.ts";
+import { stateAckTimeoutMs } from "../../server/game/gameTimers.ts";
 
 // Short enough that a suite is not spent waiting for a retry, long enough that
 // the ack of a healthy client wins the race comfortably.
 process.env.MURLAN_STATE_ACK_TIMEOUT_MS = "700";
 
-interface RoomState {
-  code: string;
-  roomId: string;
-}
 
 describe("a state broadcast is delivered", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  const sockets: Socket[] = [];
+  const sockets: TestSocket[] = [];
   let n = 0;
 
   before(async () => {
@@ -55,19 +51,19 @@ describe("a state broadcast is delivered", { skip: hasDatabase() ? false : skipM
   async function pair(tag: string) {
     const a = await player(`${tag}_a`);
     const b = await player(`${tag}_b`);
-    const made = waitFor<RoomState>(a.socket, "room:state");
+    const made = waitFor(a.socket, "room:state");
     a.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const room = await made;
-    const seated = waitFor<RoomState>(a.socket, "room:state");
+    const seated = waitFor(a.socket, "room:state");
     b.socket.emit("room:join", { code: room.code });
     await seated;
     return { a, b };
   }
 
   /** Counts deliveries, answering the server or staying silent as asked. */
-  function countStates(socket: Socket, { ack }: { ack: boolean }) {
-    const seen: SanitizedState[] = [];
-    socket.on("game:state", (state: SanitizedState, reply?: () => void) => {
+  function countStates(socket: TestSocket, { ack }: { ack: boolean }) {
+    const seen: WireGameState[] = [];
+    socket.on("game:state", (state: WireGameState, reply?: () => void) => {
       seen.push(state);
       if (ack) reply?.();
     });
@@ -79,15 +75,17 @@ describe("a state broadcast is delivered", { skip: hasDatabase() ? false : skipM
     const silent = countStates(a.socket, { ack: false });
     const answering = countStates(b.socket, { ack: true });
 
-    const dealt = waitFor<SanitizedState>(a.socket, "game:state", 10_000);
+    const dealt = waitFor(a.socket, "game:state", 10_000);
     a.socket.emit("room:start");
     await dealt;
 
-    await new Promise((r) => setTimeout(r, 3_000));
-    assert.ok(
-      silent.length >= 2,
-      `a client that never answered was left with ${silent.length} deliveries — the state it missed is never coming again`
+    await eventually(
+      () => silent.length >= 2,
+      "a re-send to the client that never answered — the state it missed is never coming again",
+      3_000
     );
+    // The answering client's re-send, had there been one, left with the silent one's.
+    await settled(b.socket);
     assert.equal(
       answering.length,
       1,
@@ -104,14 +102,16 @@ describe("a state broadcast is delivered", { skip: hasDatabase() ? false : skipM
     const { a } = await pair("bounded");
     const silent = countStates(a.socket, { ack: false });
 
-    const dealt = waitFor<SanitizedState>(a.socket, "game:state", 10_000);
+    const dealt = waitFor(a.socket, "game:state", 10_000);
     a.socket.emit("room:start");
     await dealt;
 
-    await new Promise((r) => setTimeout(r, 4_000));
-    assert.ok(
-      silent.length <= 2,
-      `the server sent the same state ${silent.length} times — a silent client must cost one retry, not a stream`
-    );
+    await eventually(() => silent.length >= 2, "the one re-send", 3_000);
+    // A third would follow the second by one more ack timeout.
+    await nothingArrives(a.socket, "game:state", {
+      ms: stateAckTimeoutMs() * 3,
+      why: "a silent client must cost one retry, not a stream",
+    });
+    assert.equal(silent.length, 2);
   });
 });

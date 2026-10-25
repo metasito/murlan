@@ -8,15 +8,15 @@
 // still pass and every spectator would see a hand.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Socket } from "socket.io-client";
 import {
   startTestServer,
   hasDatabase,
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor } from "../helpers/client.ts";
+import { connectAs, intent, leaveRooms, nothingArrives, sendMove, type TestSocket, waitFor } from "../helpers/client.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
+import type { WireGameState } from "../../shared/protocol.ts";
 
 // Comfortably longer than any window a test below waits in, so an AFK
 // auto-pass can never advance the table by itself — that would make "a
@@ -32,29 +32,11 @@ process.env.MURLAN_DISCONNECT_GRACE_MS = "500";
 // for tests that finished in seconds.
 process.env.MURLAN_BOT_MOVE_DELAY_MS = "1";
 
-interface SanitizedPlayer {
-  id: string;
-  name: string;
-  hand: { id: string }[];
-  handCount: number;
-}
-interface SanitizedState {
-  players: SanitizedPlayer[];
-  viewerSeatIndex: number | null;
-  currentTurnIndex: number;
-  openingCard: { id: string } | null;
-  turn: string;
-}
-interface RoomState {
-  code: string;
-  roomId: string;
-}
-
 describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  const sockets: Socket[] = [];
+  const sockets: TestSocket[] = [];
   /** Seated clients per table, so each table can be closed down explicitly. */
-  const tables: Socket[][] = [];
+  const tables: TestSocket[][] = [];
 
   before(async () => {
     server = await startTestServer();
@@ -64,8 +46,7 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     // 21 points, so an abandoned one is handed to the bot and plays round after
     // round — every exchange resolved by an AFK timeout — long after the tests
     // that created it have finished, holding the event loop open.
-    for (const seats of tables) for (const s of seats) s.emit("room:leave");
-    await new Promise((r) => setTimeout(r, 200));
+    await leaveRooms(tables.flat());
     for (const s of sockets) s.close();
     await server.stop();
   });
@@ -75,14 +56,14 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     const bob = await connectAs(server, `${prefix}_bob`);
     sockets.push(alice.socket, bob.socket);
 
-    const created = waitFor<RoomState>(alice.socket, "room:state");
+    const created = waitFor(alice.socket, "room:state");
     alice.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const room = await created;
-    const joined = waitFor<RoomState>(bob.socket, "room:state");
+    const joined = waitFor(bob.socket, "room:state");
     bob.socket.emit("room:join", { code: room.code });
     await joined;
 
-    const started = [alice, bob].map((c) => waitFor<SanitizedState>(c.socket, "game:state"));
+    const started = [alice, bob].map((c) => waitFor(c.socket, "game:state"));
     alice.socket.emit("room:start");
     const [aliceState, bobState] = await Promise.all(started);
     tables.push([alice.socket, bob.socket]);
@@ -95,15 +76,15 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
    * legal without inspecting a hand.
    */
   function playOpening(
-    seats: { socket: Socket }[],
-    states: SanitizedState[]
+    seats: { socket: TestSocket }[],
+    states: WireGameState[]
   ): void {
     const turn = states[0].currentTurnIndex;
     const idx = states.findIndex((st) => st.viewerSeatIndex === turn);
     assert.ok(idx >= 0, "neither client holds the seat on turn");
     const start = states[idx].openingCard;
     assert.ok(start, "the opening round must name a start card");
-    seats[idx].socket.emit("game:play", { cardIds: [start!.id], turn: states[idx].turn });
+    void sendMove(seats[idx].socket, { kind: "play", cardIds: [start!.id] });
   }
 
   test("a seated player still receives their own hand", async () => {
@@ -119,7 +100,7 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     const watcher = await connectAs(server, "spec_watch_eve");
     sockets.push(watcher.socket);
 
-    const state = waitFor<SanitizedState>(watcher.socket, "game:state");
+    const state = waitFor(watcher.socket, "game:state");
     watcher.socket.emit("room:spectate", { code: room.code });
     const seen = await state;
 
@@ -136,11 +117,11 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     const watcher = await connectAs(server, "spec_live_eve");
     sockets.push(watcher.socket);
 
-    const first = waitFor<SanitizedState>(watcher.socket, "game:state");
+    const first = waitFor(watcher.socket, "game:state");
     watcher.socket.emit("room:spectate", { code: room.code });
     const before = await first;
 
-    const next = waitFor<SanitizedState>(watcher.socket, "game:state", 8000);
+    const next = waitFor(watcher.socket, "game:state", 8000);
     playOpening([alice, bob], [aliceState, bobState]);
     const after = await next;
 
@@ -155,16 +136,15 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     const watcher = await connectAs(server, "spec_mute_eve");
     sockets.push(watcher.socket);
 
-    const joined = waitFor<SanitizedState>(watcher.socket, "game:state");
+    const joined = waitFor(watcher.socket, "game:state");
     watcher.socket.emit("room:spectate", { code: room.code });
     const before = await joined;
 
     // Including the genuinely legal opening card, played from the wrong socket.
-    watcher.socket.emit("game:play", { cardIds: [aliceState.openingCard!.id], turn: before.turn });
-    watcher.socket.emit("game:pass", { turn: before.turn });
-    await new Promise((r) => setTimeout(r, 250));
+    await intent(watcher.socket, "game:play", { cardIds: [aliceState.openingCard!.id], turn: before.turn });
+    await intent(watcher.socket, "game:pass", { turn: before.turn });
 
-    const check = waitFor<SanitizedState>(watcher.socket, "game:state", 4000);
+    const check = waitFor(watcher.socket, "game:state", 4000);
     watcher.socket.emit("room:spectate", { code: room.code });
     const after = await check;
     assert.equal(
@@ -178,7 +158,7 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
   test("spectating a room that does not exist is refused", async () => {
     const watcher = await connectAs(server, "spec_ghost");
     sockets.push(watcher.socket);
-    const err = waitFor<{ code?: string }>(watcher.socket, "room:error", 4000);
+    const err = waitFor(watcher.socket, "room:error", 4000);
     watcher.socket.emit("room:spectate", { code: "ZZZZZZ" });
     const payload = await err;
     assert.equal(payload.code, "ROOM_NOT_FOUND");
@@ -193,27 +173,26 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
   test("a refused spectate leaves a later seat to be released by room:leave", async () => {
     const eve = await connectAs(server, "spec_latch_eve");
     sockets.push(eve.socket);
-    const refused = waitFor<{ code?: string }>(eve.socket, "room:error", 4000);
+    const refused = waitFor(eve.socket, "room:error", 4000);
     eve.socket.emit("room:spectate", { code: "ZZZZZZ" });
     assert.equal((await refused).code, "ROOM_NOT_FOUND");
 
     const alice = await connectAs(server, "spec_latch_alice");
     sockets.push(alice.socket);
-    const created = waitFor<RoomState>(alice.socket, "room:state");
+    const created = waitFor(alice.socket, "room:state");
     alice.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
     const room = await created;
-    const joined = waitFor<RoomState>(eve.socket, "room:state");
+    const joined = waitFor(eve.socket, "room:state");
     eve.socket.emit("room:join", { code: room.code });
     await joined;
     const seated = async () =>
       (await roomStore.getRoomPlayers(room.roomId)).some((p) => p.userId === eve.user.id);
     assert.ok(await seated(), "the join must have taken a seat for the assertions below to mean anything");
 
-    eve.socket.emit("room:unspectate");
-    await new Promise((r) => setTimeout(r, 250));
+    await intent(eve.socket, "room:unspectate");
     assert.ok(await seated(), "room:unspectate must not be mistaken for releasing a seat");
 
-    const roster = waitFor<RoomState>(alice.socket, "room:state");
+    const roster = waitFor(alice.socket, "room:state");
     eve.socket.emit("room:leave");
     await roster;
     assert.equal(await seated(), false, "room:leave must free the seat");
@@ -224,30 +203,26 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     const watcher = await connectAs(server, "spec_leave_eve");
     sockets.push(watcher.socket);
 
-    const joined = waitFor<SanitizedState>(watcher.socket, "game:state");
+    const joined = waitFor(watcher.socket, "game:state");
     watcher.socket.emit("room:spectate", { code: room.code });
     await joined;
 
-    watcher.socket.emit("room:unspectate");
-    await new Promise((r) => setTimeout(r, 150));
+    await intent(watcher.socket, "room:unspectate");
 
-    let received = false;
-    watcher.socket.once("game:state", () => {
-      received = true;
-    });
-    playOpening([alice, bob], [aliceState, bobState]);
-    await new Promise((r) => setTimeout(r, 400));
-    assert.equal(received, false, "an unspectated socket must stop receiving state");
+    await noStateWhileOpening(watcher.socket, { alice, bob, aliceState, bobState }, "an unspectated socket must stop receiving state");
   });
 
-  async function receivesStateWhile(socket: Socket, act: () => void): Promise<boolean> {
-    let received = false;
-    socket.once("game:state", () => {
-      received = true;
-    });
-    act();
-    await new Promise((r) => setTimeout(r, 400));
-    return received;
+  /** The watched table moves — its seats are sent the move — and `socket` is sent none of it. */
+  async function noStateWhileOpening(
+    socket: TestSocket,
+    table: { alice: { socket: TestSocket }; bob: { socket: TestSocket }; aliceState: WireGameState; bobState: WireGameState },
+    why: string
+  ): Promise<void> {
+    const quiet = nothingArrives(socket, "game:state", { why });
+    const moved = Promise.all([table.alice, table.bob].map((c) => waitFor(c.socket, "game:state")));
+    playOpening([table.alice, table.bob], [table.aliceState, table.bobState]);
+    await moved;
+    await quiet;
   }
 
   test("taking a seat elsewhere stops the watched table's updates", async () => {
@@ -255,19 +230,16 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     const watcher = await connectAs(server, "spec_seat_eve");
     sockets.push(watcher.socket);
 
-    const joined = waitFor<SanitizedState>(watcher.socket, "game:state");
+    const joined = waitFor(watcher.socket, "game:state");
     watcher.socket.emit("room:spectate", { code: watched.room.code });
     await joined;
 
-    const created = waitFor<RoomState>(watcher.socket, "room:state");
+    const created = waitFor(watcher.socket, "room:state");
     watcher.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     await created;
     tables.push([watcher.socket]);
 
-    const received = await receivesStateWhile(watcher.socket, () =>
-      playOpening([watched.alice, watched.bob], [watched.aliceState, watched.bobState])
-    );
-    assert.equal(received, false, "a seated socket must not still be watching another table");
+    await noStateWhileOpening(watcher.socket, watched, "a seated socket must not still be watching another table");
   });
 
   test("starting the table a watcher is seated at stops the watched table's updates", async () => {
@@ -276,26 +248,22 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     const guest = await connectAs(server, "spec_start_guest");
     sockets.push(host.socket, guest.socket);
 
-    const created = waitFor<RoomState>(host.socket, "room:state");
+    const created = waitFor(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const own = await created;
-    const filled = waitFor<RoomState>(guest.socket, "room:state");
+    const filled = waitFor(guest.socket, "room:state");
     guest.socket.emit("room:join", { code: own.code });
     await filled;
     tables.push([host.socket, guest.socket]);
 
-    const watching = waitFor<SanitizedState>(host.socket, "game:state");
+    const watching = waitFor(host.socket, "game:state");
     host.socket.emit("room:spectate", { code: watched.room.code });
     await watching;
 
-    const dealt = waitFor<SanitizedState>(guest.socket, "game:state");
-    host.socket.emit("room:start");
-    await dealt;
-    await new Promise((r) => setTimeout(r, 150));
+    const dealt = [host, guest].map((c) => waitFor(c.socket, "game:state"));
+    assert.equal((await intent(host.socket, "room:start")).ok, true);
+    await Promise.all(dealt);
 
-    const received = await receivesStateWhile(host.socket, () =>
-      playOpening([watched.alice, watched.bob], [watched.aliceState, watched.bobState])
-    );
-    assert.equal(received, false, "a dealt-in socket must not still be watching another table");
+    await noStateWhileOpening(host.socket, watched, "a dealt-in socket must not still be watching another table");
   });
 });

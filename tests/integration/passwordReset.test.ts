@@ -21,7 +21,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
-import { dropped, reconnectWith, register } from "../helpers/client.ts";
+import { dropped, eventually, reconnectWith, register } from "../helpers/client.ts";
 import { mintAuthToken, redeemAuthToken } from "../../server/http/authTokens.ts";
 import { userStore } from "../../server/store/userStore.ts";
 import { db } from "../../server/store/db.ts";
@@ -168,11 +168,10 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
     // The route replies before minting (design doc, Box 5) precisely so the
     // mint can never be timed from the response — which means this row is
     // not guaranteed to exist the instant the 200 lands, only shortly after.
-    let rows = await readRows();
-    for (let attempt = 0; attempt < 20 && rows.length === 0; attempt++) {
-      await new Promise((r) => setTimeout(r, 50));
-      rows = await readRows();
-    }
+    const rows = await eventually(async () => {
+      const found = await readRows();
+      return found.length > 0 ? found : null;
+    }, "the password_reset token");
     assert.equal(rows.length, 1, "a verified request must mint exactly one password_reset token");
     assert.equal(rows[0]!.usedAt, null);
   });
@@ -211,11 +210,10 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
         .from(authTokens)
         .where(and(eq(authTokens.userId, userId), eq(authTokens.purpose, "password_reset")));
 
-    let ownerRows = await readRows(owner.id);
-    for (let attempt = 0; attempt < 20 && ownerRows.length === 0; attempt++) {
-      await new Promise((r) => setTimeout(r, 50));
-      ownerRows = await readRows(owner.id);
-    }
+    const ownerRows = await eventually(async () => {
+      const found = await readRows(owner.id);
+      return found.length > 0 ? found : null;
+    }, "the owner's password_reset token");
     assert.equal(ownerRows.length, 1, "the verified owner must get the reset token");
 
     const squatterId = (await (await fetch(`${server.url}/api/auth/me`, {

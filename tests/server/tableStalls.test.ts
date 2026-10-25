@@ -12,11 +12,13 @@ import {
   clearAllTimersForUser,
   clearRoomTimers,
   deadline,
+  lobbyGraceMs,
   pending,
   usersInLobbyGrace,
 } from "../../server/game/gameTimers.ts";
 import { installClock } from "../../server/http/clock.ts";
 import { fakeClock } from "../helpers/fakeClock.ts";
+import { eventually } from "../helpers/client.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { packPersistedState } from "../../shared/persistedEnvelope.ts";
@@ -72,8 +74,6 @@ const room = { id: ROOM, code: "AAAAAA", gameMode: "free_for_all" as const, maxP
 const vote = (rt: TableRuntime, userId: string) =>
   applyOrForward(rt, { kind: "rematchVote", roomId: ROOM, userId });
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 afterEach(() => {
   for (const userId of ["ana", "besi"]) clearAllTimersForUser(userId, ROOM);
   clearRoomTimers(ROOM);
@@ -114,8 +114,8 @@ describe("a table restored after a restart", () => {
   });
 
   test("a between-hands seat nobody came back to is released, so the vote it held up deals", async (t) => {
-    process.env.MURLAN_LOBBY_GRACE_MS = "30";
-    t.after(() => delete process.env.MURLAN_LOBBY_GRACE_MS);
+    const clock = fakeClock();
+    t.after(installClock(clock));
     const { rt, emitted } = stubIo();
     const row = finishedRow();
     useMemoryTableStores(t, { rows: [[ROOM, row]] });
@@ -130,9 +130,9 @@ describe("a table restored after a restart", () => {
     await vote(rt, "ana");
     assert.ok(!emitted.some((e) => e.event === "game:started"), "one vote of two deals nothing");
 
-    await sleep(150);
+    clock.advance(lobbyGraceMs());
+    await eventually(() => emitted.some((e) => e.event === "game:started"), "ana's vote closing the gate");
     assert.equal(game.playerMap[1], undefined, "besi's seat went when the grace ran out");
-    assert.ok(emitted.some((e) => e.event === "game:started"), "ana's vote now closes the gate");
     assert.equal(game.gameState.roundOver, false);
   });
 });
@@ -164,7 +164,7 @@ describe("dealing the next round", () => {
     const { rt, emitted } = stubIo();
     let release!: () => void;
     const held = new Promise<void>((r) => (release = r));
-    t.mock.method(roomStore, "getRoomById", async () => {
+    const read = t.mock.method(roomStore, "getRoomById", async () => {
       await held;
       return room;
     });
@@ -178,7 +178,7 @@ describe("dealing the next round", () => {
 
     const first = vote(rt, "besi");
     const second = vote(rt, "ana");
-    await sleep(10);
+    await eventually(() => read.mock.callCount() > 0, "a vote reaching the room read");
     assert.ok(!emitted.some((e) => e.event === "game:started"), "both are still waiting on the room read");
     release();
     await Promise.all([first, second]);
@@ -366,8 +366,21 @@ async function roundJustEnded(t: TestContext) {
     playerMap: { 0: "ana", 1: "besi" },
   });
   activeGames.set(ROOM, game);
+  const expiries = expiriesOf(t, rt);
   await handleRoundOver(rt, ROOM, game);
-  return { rt, emitted, game, clock };
+  return { rt, emitted, game, clock, expiries };
+}
+
+/** Each vote-deadline expiry the clock fires, to be awaited rather than slept past. */
+function expiriesOf(t: TestContext, rt: TableRuntime): Promise<void>[] {
+  const runs: Promise<void>[] = [];
+  const expire = rt.expireVoteDeadline;
+  t.mock.method(rt, "expireVoteDeadline", (roomId: string) => {
+    const run = expire(roomId);
+    runs.push(run);
+    return run;
+  });
+  return runs;
 }
 
 const lastVoteState = (emitted: { event: string; payload: unknown }[]) =>
@@ -377,7 +390,7 @@ const lastVoteState = (emitted: { event: string; payload: unknown }[]) =>
 
 describe("the next-round vote deadline", () => {
   test("a seated human who never votes is handed to a bot, the round deals, and the seat can be reclaimed", async (t) => {
-    const { rt, emitted, game, clock } = await roundJustEnded(t);
+    const { rt, emitted, game, clock, expiries } = await roundJustEnded(t);
     assert.equal(game.matchOver, false);
     assert.ok(pending("voteDeadline", ROOM), "a round of a continuing match ended with no deadline");
     assert.equal(lastVoteState(emitted)?.secondsRemaining, 30, "the clients were never told the deadline");
@@ -387,11 +400,11 @@ describe("the next-round vote deadline", () => {
     assert.equal(game.gameState.roundOver, true);
 
     clock.advance(29_000);
-    await sleep(20);
+    assert.equal(expiries.length, 0, "the deadline expired before its 30 s were up");
     assert.equal(game.playerMap[1], "besi", "the seat went before its 30 s were up");
 
     clock.advance(1_000);
-    await sleep(20);
+    await Promise.all(expiries);
     assert.equal(game.playerMap[1], undefined, "besi still holds the seat past the deadline");
     assert.equal(game.gameState.players[1]!.type, "bot");
     assert.equal(game.playerMap[0], "ana", "the voter was vacated too");
@@ -404,7 +417,7 @@ describe("the next-round vote deadline", () => {
   });
 
   test("a vote landing while the deadline expires never abandons the match", async (t) => {
-    const { rt, emitted, game, clock } = await roundJustEnded(t);
+    const { rt, emitted, game, clock, expiries } = await roundJustEnded(t);
     await vote(rt, "ana");
     t.mock.method(roomStore, "releaseSeat", async (_roomId: string, userId: string) => {
       if (userId === "besi") await vote(rt, "besi");
@@ -412,7 +425,8 @@ describe("the next-round vote deadline", () => {
     });
 
     clock.advance(30_000);
-    await sleep(20);
+    assert.equal(expiries.length, 1, "the deadline never expired");
+    await Promise.all(expiries);
 
     assert.ok(!emitted.some((e) => e.event === "game:player_left"), "a vacate ran against the hand the vote dealt");
     assert.equal(activeGames.get(ROOM), game, "the match was disposed");
@@ -440,11 +454,13 @@ describe("the next-round vote deadline", () => {
       playerMap: { 0: "ana", 1: "besi", 2: "cleo" },
     });
     activeGames.set(ROOM, game);
+    const expiries = expiriesOf(t, rt);
     await handleRoundOver(rt, ROOM, game);
     await vote(rt, "ana");
 
     clock.advance(30_000);
-    await sleep(20);
+    assert.equal(expiries.length, 1, "the deadline never expired");
+    await Promise.all(expiries);
 
     assert.equal(game.playerMap[1], undefined, "besi never voted and still holds the seat");
     assert.equal(game.playerMap[2], "cleo", "cleo was vacated after her vote counted");
@@ -452,7 +468,7 @@ describe("the next-round vote deadline", () => {
   });
 
   test("a seat reclaimed while its row is being released keeps its row and the room", async (t) => {
-    const { rt, game, clock } = await roundJustEnded(t);
+    const { rt, game, clock, expiries } = await roundJustEnded(t);
     const rows = new Set(["ana", "besi"]);
     let host = "besi";
     const upsert = async (_roomId: string, userId: string) => {
@@ -473,7 +489,8 @@ describe("the next-round vote deadline", () => {
     await vote(rt, "ana");
 
     clock.advance(30_000);
-    await sleep(20);
+    assert.equal(expiries.length, 1, "the deadline never expired");
+    await Promise.all(expiries);
 
     assert.equal(game.playerMap[1], "besi", "besi's rejoin never reclaimed the seat");
     assert.ok(rows.has("besi"), "besi is seated with no room_players row");
@@ -493,10 +510,11 @@ describe("the next-round vote deadline", () => {
   });
 
   test("a table where nobody voted loses every human seat", async (t) => {
-    const { clock } = await roundJustEnded(t);
+    const { clock, expiries } = await roundJustEnded(t);
 
     clock.advance(30_000);
-    await sleep(20);
+    assert.equal(expiries.length, 1, "the deadline never expired");
+    await Promise.all(expiries);
 
     assert.equal(activeGames.has(ROOM), false, "a table of bots alone was kept between rounds");
     assert.ok(!pending("voteDeadline", ROOM));

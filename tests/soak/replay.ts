@@ -18,7 +18,7 @@ import { reconnectWith, DEADLINE_SCALE } from "../helpers/client.ts";
 import { redealExactly, forgetActiveGame, restartUnder } from "../helpers/liveGame.ts";
 import { createDeck } from "../../lib/game/gameEngine.ts";
 import { checkAll, type SeatView, type Violation } from "./invariants.ts";
-import { Seat, openTable, seatSocket, settle, type SoakLogEntry } from "./soak.ts";
+import { Seat, carriedMove, openTable, seatSocket, settle, type SoakLogEntry } from "./soak.ts";
 
 /** How long one replayed move may take to come back as a broadcast. */
 const MOVE_BUDGET_MS = 3_000 * DEADLINE_SCALE;
@@ -95,7 +95,7 @@ export async function replaySoakLog(
   }
   for (const entry of log) {
     if (entry.kind === "deal" || entry.kind === "restart") continue;
-    const seat = "move" in entry ? entry.move.seat : entry.seat;
+    const seat = carriedMove(entry)?.seat ?? ("seat" in entry ? entry.seat : 0);
     if (seat < deal.hands.length) continue;
     throw new Error(`the log names seat ${seat} at move ${entry.at}, of ${deal.hands.length}`);
   }
@@ -162,7 +162,7 @@ export async function replaySoakLog(
 
       // A fault that landed moved the table the rest of the log was written against, so it
       // is applied as the move it carried; one the server turned away moved nothing.
-      const move = "move" in entry ? (entry.landed ? entry.move : null) : entry;
+      const move = entry.kind === "move" ? entry : "landed" in entry && entry.landed ? carriedMove(entry) : null;
       if (!move) continue;
       const seat = seats[move.seat];
 
@@ -171,11 +171,7 @@ export async function replaySoakLog(
       await settle(seats);
       const before = seat.version;
       seat.clearRefusal();
-      if (!seat.state) throw new Error(`${seat.username} holds no state to replay a move against`);
-      const { turn } = seat.state;
-      if (move.kind === "play") seatSocket(seat).emit("game:play", { cardIds: move.cardIds, turn });
-      else if (move.kind === "pass") seatSocket(seat).emit("game:pass", { turn });
-      else seatSocket(seat).emit("game:exchange_give_card", { cardId: move.cardId, turn });
+      seat.move(move.seat, move.move);
 
       if (await waitForOwnBroadcast(seat, before)) {
         applied += 1;

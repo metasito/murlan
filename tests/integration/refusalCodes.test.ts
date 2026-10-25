@@ -56,7 +56,7 @@ describe("every refusal answers with its own code", { skip: hasDatabase() ? fals
     const { socket } = await connectAs(server, "rc_inviter");
     try {
       const stranger = await register(server, "rc_stranger");
-      const told = waitFor<{ code: string }>(socket, "friend:error");
+      const told = waitFor(socket, "friend:error");
       socket.emit("friend:invite", { friendUserId: stranger.user.id, roomCode: "ABCDEF" });
       assert.equal((await told).code, "NOT_FRIENDS");
     } finally {

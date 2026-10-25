@@ -3,16 +3,13 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
-import { io as ioClient, type Socket } from "socket.io-client";
-import { PROTOCOL_AUTH, waitFor } from "../helpers/client.ts";
+import { connectSocket as connectTo, eventually, waitFor, type TestSocket } from "../helpers/client.ts";
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
 import { boot, type Instance } from "../helpers/instance.ts";
 import { listenPattern } from "../../server/socket/socketAdapter.ts";
 import { FORCED_EXIT_MS } from "../../server/http/shutdown.ts";
 
 const PORTS = [5591, 5592] as const;
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function register(port: number, username: string): Promise<string> {
   const res = await fetch(`http://127.0.0.1:${port}/api/auth/register`, {
@@ -25,18 +22,7 @@ async function register(port: number, username: string): Promise<string> {
   return (res.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join("; ");
 }
 
-function connectSocket(port: number, cookie: string): Promise<Socket> {
-  return new Promise((resolve, reject) => {
-    const s = ioClient(`http://127.0.0.1:${port}`, {
-      transports: ["websocket"],
-      auth: PROTOCOL_AUTH,
-      extraHeaders: { Cookie: cookie },
-      reconnection: false,
-    });
-    s.once("connect", () => resolve(s));
-    s.once("connect_error", reject);
-  });
-}
+const connectSocket = (port: number, cookie: string) => connectTo(`http://127.0.0.1:${port}`, { cookie });
 
 interface Watched {
   instance: Instance;
@@ -73,7 +59,7 @@ describe("the server survives its Postgres backends being terminated", {
   const scoped = scopedDatabaseUrl(baseUrl, schema);
   const tag = Date.now().toString(36);
   const watched: Watched[] = [];
-  const sockets: Socket[] = [];
+  const sockets: TestSocket[] = [];
   let admin: pg.Pool;
   let subscribed: number[] = [];
   let owner: number[] = [];
@@ -103,17 +89,18 @@ describe("the server survives its Postgres backends being terminated", {
     excluding: number[],
     ms: number
   ): Promise<number[]> {
-    const deadline = Date.now() + ms;
-    for (;;) {
-      watched.forEach(assertAlive);
-      const found = (await read()).filter((p) => !excluding.includes(p));
-      if (found.length === count) return found;
-      assert.ok(Date.now() < deadline, `${found.length} of ${count} ${what} after ${ms} ms`);
-      await sleep(100);
-    }
+    return eventually(
+      async () => {
+        watched.forEach(assertAlive);
+        const found = (await read()).filter((p) => !excluding.includes(p));
+        return found.length === count ? found : null;
+      },
+      `${count} ${what}`,
+      ms
+    );
   }
 
-  async function join(port: number, username: string): Promise<Socket> {
+  async function join(port: number, username: string): Promise<TestSocket> {
     const socket = await connectSocket(port, await register(port, username));
     sockets.push(socket);
     return socket;
@@ -146,14 +133,14 @@ describe("the server survives its Postgres backends being terminated", {
   test("a game dealt across the instances claims its room", { timeout: 90_000 }, async () => {
     const host = await join(PORTS[0], `pa${tag}`);
     const guest = await join(PORTS[1], `pb${tag}`);
-    const created = waitFor<{ code: string }>(host, "room:state");
+    const created = waitFor(host, "room:state");
     host.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const room = await created;
     const seated = waitFor(host, "room:state");
     guest.emit("room:join", { code: room.code });
     await seated;
     const dealt = waitFor(guest, "game:state", 10_000);
-    host.emit("room:start");
+    host.emit("room:start", {});
     await dealt;
     owner = await awaitPids("room locks held", lockPids, 1, [], 5_000);
   });
@@ -172,7 +159,7 @@ describe("the server survives its Postgres backends being terminated", {
       `only ${killed.length} backends terminated: each instance's LISTEN and app-pool client, and the lock holder, should be among them`
     );
     await awaitPids("instances subscribed again", listenPids, PORTS.length, killed, 10_000);
-    await sleep(500);
+    await new Promise((r) => setTimeout(r, 500));
     watched.forEach(assertAlive);
   });
 
@@ -181,18 +168,16 @@ describe("the server survives its Postgres backends being terminated", {
   });
 
   test("each instance holds exactly one adapter client checked out", async () => {
-    const deadline = Date.now() + 5_000;
     for (const port of PORTS) {
       let checkedOut = -1;
-      for (;;) {
+      await eventually(async () => {
         const res = await fetch(`http://127.0.0.1:${port}/health`);
         const body = (await res.json()) as { db: string; adapterPool: { total: number; idle: number } };
         assert.equal(res.status, 200, `/health on ${port}: ${JSON.stringify(body)}`);
         assert.equal(body.db, "connected");
         checkedOut = body.adapterPool.total - body.adapterPool.idle;
-        if (checkedOut === 1 || Date.now() > deadline) break;
-        await sleep(200);
-      }
+        return checkedOut === 1;
+      }, `instance ${port} to release the dead LISTEN client, leaving one adapter client checked out`);
       assert.equal(
         checkedOut,
         1,
@@ -204,10 +189,10 @@ describe("the server survives its Postgres backends being terminated", {
   test("a room made after the restart still reaches the other instance", { timeout: 60_000 }, async () => {
     const host = await join(PORTS[0], `pc${tag}`);
     const guest = await join(PORTS[1], `pd${tag}`);
-    const created = waitFor<{ code: string }>(host, "room:state");
+    const created = waitFor(host, "room:state");
     host.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const room = await created;
-    const heard = waitFor<{ players: unknown[] }>(host, "room:state", 5_000);
+    const heard = waitFor(host, "room:state", 5_000);
     guest.emit("room:join", { code: room.code });
     assert.equal((await heard).players.length, 2, "the join on the other instance never reached the host");
     watched.forEach(assertAlive);
@@ -215,7 +200,10 @@ describe("the server survives its Postgres backends being terminated", {
 
   test(
     "SIGTERM after the restart shuts down cleanly",
-    { skip: process.platform === "win32" && "Windows has no SIGTERM: kill() ends the process outright" },
+    {
+      skip: process.platform === "win32" && "Windows has no SIGTERM: kill() ends the process outright",
+      timeout: FORCED_EXIT_MS + 3_000,
+    },
     async () => {
       const w = watched[1];
       let log = "";
@@ -223,7 +211,7 @@ describe("the server survives its Postgres backends being terminated", {
       w.instance.child.stderr?.on("data", (buf) => (log += String(buf)));
       const exited = new Promise((resolve) => w.instance.child.once("exit", resolve));
       w.instance.child.kill("SIGTERM");
-      await Promise.race([exited, sleep(FORCED_EXIT_MS + 3_000)]);
+      await exited;
       assert.match(log, /Graceful shutdown initiated/, `no shutdown line, so this output is not the server's:\n${log.slice(-3000)}`);
       assert.deepEqual(w.exit, { code: 0, signal: null }, `exited ${JSON.stringify(w.exit)}:\n${log.slice(-3000)}`);
       assert.doesNotMatch(log, /Forced shutdown/);

@@ -238,9 +238,10 @@ export function checkLandedOnce(
   fault: string,
   before: SeatView[],
   after: SeatView[],
-  move: SeatAction
+  action: SeatAction
 ): Violation[] {
-  const moved = move.kind === "play" ? move.cardIds : move.kind === "exchange" ? [move.cardId] : [];
+  const { move } = action;
+  const moved = move.kind === "play" ? move.cardIds : move.kind === "giveback" ? [move.cardId] : [];
   const now = new Map(after.map((v) => [v.seat, v]));
   const found: Violation[] = [];
   for (const was of before) {
@@ -257,12 +258,12 @@ export function checkLandedOnce(
       continue;
     }
     const delta = is.handCounts.map((n, i) => n - (was.handCounts[i] ?? 0));
-    const rose = delta.flatMap((d, i) => (i !== move.seat && d > 0 ? [i] : []));
-    const receiver = move.kind === "exchange" && rose.length === 1 ? rose[0] : -1;
-    const expected = delta.map((_, i) => (i === move.seat ? -moved.length : i === receiver ? 1 : 0));
-    const countsRight = delta.join(",") === expected.join(",") && (move.kind !== "exchange" || receiver >= 0);
+    const rose = delta.flatMap((d, i) => (i !== action.seat && d > 0 ? [i] : []));
+    const receiver = move.kind === "giveback" && rose.length === 1 ? rose[0] : -1;
+    const expected = delta.map((_, i) => (i === action.seat ? -moved.length : i === receiver ? 1 : 0));
+    const countsRight = delta.join(",") === expected.join(",") && (move.kind !== "giveback" || receiver >= 0);
     const expectedHand =
-      was.seat === move.seat
+      was.seat === action.seat
         ? was.ownHand.filter((id) => !moved.includes(id))
         : was.seat === receiver
           ? [...was.ownHand, ...moved]
@@ -271,7 +272,7 @@ export function checkLandedOnce(
       found.push({
         kind: "move-landed-wrong",
         detail:
-          `after ${fault}, ${move.kind} by seat ${move.seat} [${moved.join(" ")}] took seat ${was.seat} ` +
+          `after ${fault}, ${move.kind} by seat ${action.seat} [${moved.join(" ")}] took seat ${was.seat} ` +
           `from ${describeView(was)} to ${describeView(is)}`,
       });
     }
@@ -301,16 +302,16 @@ export function checkDuplicate(
   second: IntentAck | null,
   before: SeatView[],
   after: SeatView[],
-  move: SeatAction
+  action: SeatAction
 ): Violation[] {
-  const fault = `a duplicated ${move.kind} by seat ${move.seat}`;
+  const fault = `a duplicated ${action.move.kind} by seat ${action.seat}`;
   const found: Violation[] = [];
   if (!first || !second) {
     found.push({ kind: "fault-unanswered", detail: `${fault}: an answer never came (${JSON.stringify([first, second])})` });
   } else if (first.ok !== second.ok || first.code !== second.code) {
     found.push({ kind: "duplicate-ack-differs", detail: `${fault} was answered ${JSON.stringify(first)}, then ${JSON.stringify(second)}` });
   }
-  const landed = first?.ok ? checkLandedOnce(fault, before, after, move) : checkUnchanged(fault, before, after);
+  const landed = first?.ok ? checkLandedOnce(fault, before, after, action) : checkUnchanged(fault, before, after);
   return [...found, ...landed];
 }
 

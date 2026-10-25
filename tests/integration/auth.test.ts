@@ -1,7 +1,7 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
-import { register, connect as connectRaw, waitForPendingCode } from "../helpers/client.ts";
+import { register, eventually, openSocket, waitForPendingCode } from "../helpers/client.ts";
 import { CLIENT_OUTDATED, MIN_PROTOCOL_VERSION } from "../../shared/protocol.ts";
 import { userStore, UsernameTakenError } from "../../server/store/userStore.ts";
 import { db } from "../../server/store/db.ts";
@@ -22,9 +22,10 @@ describe("socket authentication", { skip: hasDatabase() ? false : skipMessage() 
   // Local wrapper: this suite only cares about accept/reject, not the raw
   // socket, and always closes on success so sockets never leak across cases.
   async function connect(auth: Record<string, unknown>): Promise<{ ok: boolean; err?: string }> {
-    const r = await connectRaw(server, auth);
-    r.socket?.close();
-    return { ok: r.ok, err: r.err };
+    const r = await openSocket(server, { auth });
+    if (!r.ok) return { ok: false, err: r.err };
+    r.socket.close();
+    return { ok: true };
   }
 
   test("a socket with no credentials is rejected", async () => {
@@ -371,11 +372,10 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
     // never be timed from the response — the row is not guaranteed to exist
     // the instant the 202 lands, only shortly after (tests/integration/
     // passwordReset.test.ts's identical "mints exactly one" poll).
-    let rows = await readRows();
-    for (let attempt = 0; attempt < 20 && rows.length === 0; attempt++) {
-      await new Promise((r) => setTimeout(r, 50));
-      rows = await readRows();
-    }
+    const rows = await eventually(async () => {
+      const found = await readRows();
+      return found.length > 0 ? found : null;
+    }, "register's email_verify token");
     assert.equal(rows.length, 1, "register must mint exactly one email_verify token");
     assert.equal(rows[0]!.usedAt, null);
   });
@@ -517,12 +517,7 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
     });
     assert.equal(res.status, 202, await res.text());
 
-    let after = before;
-    for (let attempt = 0; attempt < 20 && after <= before; attempt++) {
-      after = await countFailures();
-      if (after <= before) await new Promise((r) => setTimeout(r, 50));
-    }
-    assert.ok(after > before, "sendMail's failure never became an events row");
+    await eventually(async () => (await countFailures()) > before, "sendMail's failure to become an events row");
 
     const latest = await server.query<{ context: { mailFailureReason?: string } }>(
       `SELECT context FROM "${server.schema}".events

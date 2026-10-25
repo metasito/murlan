@@ -13,11 +13,19 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { register } from "../helpers/client.ts";
+import { eventually, register } from "../helpers/client.ts";
 
 describe("client crash reports", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
   let cookie: string;
+
+  /** The handler writes after it replies, so a row can land just after the 204. */
+  async function stored<Row extends object>(sql: string, params: unknown[], count: number): Promise<Row[]> {
+    return eventually(async () => {
+      const rows = await server.query<Row>(sql, params);
+      return rows.length >= count ? rows : null;
+    }, `${count} stored report(s)`);
+  }
 
   before(async () => {
     server = await startTestServer();
@@ -98,20 +106,11 @@ describe("client crash reports", { skip: hasDatabase() ? false : skipMessage() }
     });
     assert.equal(res.status, 204, await res.text());
 
-    // Fire-and-forget, so the row may land just after the 204.
-    let rows: { screen: string | null; app_version: string | null; context: unknown }[] = [];
-    for (let attempt = 0; attempt < 20 && rows.length === 0; attempt++) {
-      const result = await server.query<{
-        screen: string | null;
-        app_version: string | null;
-        context: unknown;
-      }>(
-        `SELECT screen, app_version, context FROM "${server.schema}".client_errors WHERE message = $1`,
-        [message]
-      );
-      rows = result;
-      if (rows.length === 0) await new Promise((r) => setTimeout(r, 50));
-    }
+    const rows = await stored<{ screen: string | null; app_version: string | null; context: unknown }>(
+      `SELECT screen, app_version, context FROM "${server.schema}".client_errors WHERE message = $1`,
+      [message],
+      1
+    );
 
     assert.equal(rows.length, 1, "the report was never stored");
     assert.equal(rows[0].screen, "/game");
@@ -126,15 +125,11 @@ describe("client crash reports", { skip: hasDatabase() ? false : skipMessage() }
     const message = "a crash with no route known yet";
     assert.equal((await postAs(own, { message })).status, 204);
 
-    let rows: { screen: string | null; app_version: string | null }[] = [];
-    for (let attempt = 0; attempt < 20 && rows.length === 0; attempt++) {
-      const result = await server.query<{ screen: string | null; app_version: string | null }>(
-        `SELECT screen, app_version FROM "${server.schema}".client_errors WHERE message = $1`,
-        [message]
-      );
-      rows = result;
-      if (rows.length === 0) await new Promise((r) => setTimeout(r, 50));
-    }
+    const rows = await stored<{ screen: string | null; app_version: string | null }>(
+      `SELECT screen, app_version FROM "${server.schema}".client_errors WHERE message = $1`,
+      [message],
+      1
+    );
 
     assert.equal(rows.length, 1, "the report was never stored");
     assert.equal(rows[0].screen, null);
@@ -152,15 +147,11 @@ describe("client crash reports", { skip: hasDatabase() ? false : skipMessage() }
     await postAs(sessionA, { message, stack });
     await postAs(sessionB, { message, stack });
 
-    let rows: { fingerprint: string | null }[] = [];
-    for (let attempt = 0; attempt < 20 && rows.length < 2; attempt++) {
-      const result = await server.query<{ fingerprint: string | null }>(
-        `SELECT fingerprint FROM "${server.schema}".client_errors WHERE message = $1`,
-        [message]
-      );
-      rows = result;
-      if (rows.length < 2) await new Promise((r) => setTimeout(r, 50));
-    }
+    const rows = await stored<{ fingerprint: string | null }>(
+      `SELECT fingerprint FROM "${server.schema}".client_errors WHERE message = $1`,
+      [message],
+      2
+    );
 
     assert.equal(rows.length, 2, "both reports were never stored");
     assert.ok(rows[0].fingerprint, "no fingerprint was computed");
@@ -174,15 +165,11 @@ describe("client crash reports", { skip: hasDatabase() ? false : skipMessage() }
     await postAs(own, { message, stack: "at renderCard (bundle.a1b2c3d4.js:100:5)" });
     await postAs(own, { message, stack: "at renderCard (bundle.e5f6a7b8.js:112:9)" });
 
-    let rows: { fingerprint: string | null }[] = [];
-    for (let attempt = 0; attempt < 20 && rows.length < 2; attempt++) {
-      const result = await server.query<{ fingerprint: string | null }>(
-        `SELECT fingerprint FROM "${server.schema}".client_errors WHERE message = $1`,
-        [message]
-      );
-      rows = result;
-      if (rows.length < 2) await new Promise((r) => setTimeout(r, 50));
-    }
+    const rows = await stored<{ fingerprint: string | null }>(
+      `SELECT fingerprint FROM "${server.schema}".client_errors WHERE message = $1`,
+      [message],
+      2
+    );
 
     assert.equal(rows.length, 2, "both reports were never stored");
     assert.ok(rows[0].fingerprint, "no fingerprint was computed");
@@ -195,15 +182,11 @@ describe("client crash reports", { skip: hasDatabase() ? false : skipMessage() }
     await postAs(own, { message: "first distinct crash", stack: "at a (x.ts:1:1)" });
     await postAs(own, { message: "second distinct crash", stack: "at b (y.ts:2:2)" });
 
-    let rows: { message: string; fingerprint: string | null }[] = [];
-    for (let attempt = 0; attempt < 20 && rows.length < 2; attempt++) {
-      const result = await server.query<{ message: string; fingerprint: string | null }>(
-        `SELECT message, fingerprint FROM "${server.schema}".client_errors WHERE message IN ($1, $2)`,
-        ["first distinct crash", "second distinct crash"]
-      );
-      rows = result;
-      if (rows.length < 2) await new Promise((r) => setTimeout(r, 50));
-    }
+    const rows = await stored<{ message: string; fingerprint: string | null }>(
+      `SELECT message, fingerprint FROM "${server.schema}".client_errors WHERE message IN ($1, $2)`,
+      ["first distinct crash", "second distinct crash"],
+      2
+    );
 
     assert.equal(rows.length, 2, "both reports were never stored");
     assert.notEqual(rows[0].fingerprint, rows[1].fingerprint);

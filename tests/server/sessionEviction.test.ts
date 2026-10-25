@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Server } from "socket.io";
-import { io as ioClient, type Socket } from "socket.io-client";
+import { connectSocket, type TestSocket } from "../helpers/client.ts";
 import { evictOlderSessions } from "../../server/socket/socketPresence.ts";
 import { userRoom } from "../../server/game/gameRoom.ts";
 
@@ -15,12 +15,8 @@ test("an eviction closes only the account's sockets older than the one it keeps"
   io.on("connection", (s) => void s.join(userRoom("u1")));
   await new Promise<void>((r) => http.listen(0, "127.0.0.1", r));
   const url = `http://127.0.0.1:${(http.address() as AddressInfo).port}`;
-  const connect = () =>
-    new Promise<Socket>((resolve) => {
-      const s = ioClient(url, { transports: ["websocket"], reconnection: false });
-      s.once("connect", () => resolve(s));
-    });
-  const eviction = (keep: Socket) => ({
+  const connect = () => connectSocket(url, {});
+  const eviction = (keep: TestSocket) => ({
     userId: "u1",
     keepSocketId: keep.id!,
     connectedAt: io.sockets.sockets.get(keep.id!)!.handshake.issued,
@@ -38,7 +34,7 @@ test("an eviction closes only the account's sockets older than the one it keeps"
     assert.ok(io.sockets.sockets.has(newerId), "a late eviction closed the newer socket");
     assert.ok(io.sockets.sockets.has(olderId));
 
-    const told = new Promise<string>((r) => older.once("socket:error", (p: { code: string }) => r(p.code)));
+    const told = new Promise<string>((r) => older.once("socket:error", (p) => r(p.code ?? "")));
     evictOlderSessions(io, eviction(newer));
     assert.ok(!io.sockets.sockets.has(olderId), "the older socket survived its replacement");
     assert.ok(io.sockets.sockets.has(newerId));
@@ -56,10 +52,7 @@ test("two instances' evictions stamped in the same millisecond close exactly one
   await new Promise<void>((r) => http.listen(0, "127.0.0.1", r));
   const url = `http://127.0.0.1:${(http.address() as AddressInfo).port}`;
   try {
-    const local = await new Promise<Socket>((resolve) => {
-      const s = ioClient(url, { transports: ["websocket"], reconnection: false });
-      s.once("connect", () => resolve(s));
-    });
+    const local = await connectSocket(url, {});
     const id = local.id!;
     const connectedAt = io.sockets.sockets.get(id)!.handshake.issued;
 

@@ -16,9 +16,9 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor, register } from "../helpers/client.ts";
+import { eventually, connectAs, waitFor, register } from "../helpers/client.ts";
 import { whileUserLocked } from "../helpers/userLock.ts";
-import { driveHumansToRoundOver, waitForRow, type RoomState } from "../helpers/gameDriver.ts";
+import { playRoundOut } from "../helpers/gameDriver.ts";
 import { START_RATING, seasonKey } from "../../lib/game/rating.ts";
 import type { ReplayMove, ReplaySeat } from "../../lib/game/replay.ts";
 import type { RoundOverPayload } from "../../shared/protocol.ts";
@@ -48,15 +48,15 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
     const alice = await connectAs(server, `${prefix}_alice`);
     const bob = await connectAs(server, `${prefix}_bob`);
 
-    const created = waitFor<RoomState>(alice.socket, "room:state");
+    const created = waitFor(alice.socket, "room:state");
     alice.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 3 });
     const room = await created;
 
-    const joined = waitFor<RoomState>(bob.socket, "room:state");
+    const joined = waitFor(bob.socket, "room:state");
     bob.socket.emit("room:join", { code: room.code });
     await joined;
 
-    const over = (await driveHumansToRoundOver([alice.socket, bob.socket], () => {
+    const over = (await playRoundOut([alice.socket, bob.socket], () => {
       alice.socket.emit("room:start", { fillWithBots: true, botPersonality: "luan" });
     })) as RoundOverPayload;
 
@@ -72,7 +72,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
     test("a finished hand is stored as a replay, and the replay holds no hand", async () => {
       const { alice, bob } = await playOneRound("rep");
       try {
-        const row = await waitForRow(async () => {
+        const row = await eventually(async () => {
           const res = await server.query(
             "SELECT player_ids, seats, moves, opening, finishing_order, game_mode FROM round_replays WHERE player_ids @> $1::jsonb",
             [JSON.stringify([alice.user.id])]
@@ -121,7 +121,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
         const season = seasonKey(new Date());
 
         for (const { user } of [alice, bob]) {
-          const row = await waitForRow(async () => {
+          const row = await eventually(async () => {
             const res = await server.query(
               "SELECT rating, rounds, season FROM user_ratings WHERE user_id = $1",
               [user.id]
@@ -158,7 +158,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
     test("the two humans' rating changes cancel out", async () => {
       const { alice, bob } = await playOneRound("cons");
       try {
-        const ratings = await waitForRow(async () => {
+        const ratings = await eventually(async () => {
           const res = await server.query<{ rating: number }>(
             "SELECT user_id, rating, rounds FROM user_ratings WHERE user_id = ANY($1)",
             [[alice.user.id, bob.user.id]]
@@ -197,11 +197,11 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
       const quitter = await connectAs(server, "quit_qara");
       const survivor = await connectAs(server, "quit_sten");
       try {
-        const created = waitFor<RoomState>(quitter.socket, "room:state");
+        const created = waitFor(quitter.socket, "room:state");
         quitter.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
         const room = await created;
 
-        const joined = waitFor<RoomState>(survivor.socket, "room:state");
+        const joined = waitFor(survivor.socket, "room:state");
         survivor.socket.emit("room:join", { code: room.code });
         await joined;
 
@@ -211,7 +211,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
 
         // Mid-hand: neither seat has emptied a hand, and the match is nowhere
         // near its target — the narrow window clause 11 covers.
-        const over = waitFor<{ voided?: boolean; recorded?: boolean }>(
+        const over = waitFor(
           survivor.socket,
           "game:round_over",
           5_000
@@ -223,7 +223,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
 
         // The write has had its chance once the room itself is closed out —
         // the last thing a voided match does.
-        await waitForRow(async () => {
+        await eventually(async () => {
           const res = await server.query("SELECT status FROM rooms WHERE id = $1", [
             room.roomId,
           ]);
@@ -249,7 +249,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
       const { alice, bob } = await playOneRound("own");
       const stranger = await connectAs(server, "own_stranger");
       try {
-        await waitForRow(async () => {
+        await eventually(async () => {
           const res = await server.query(
             "SELECT id FROM round_replays WHERE player_ids @> $1::jsonb",
             [JSON.stringify([alice.user.id])]
@@ -309,7 +309,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
     test("deleting an account erases that player from replays others keep", async () => {
       const { alice, bob } = await playOneRound("del");
       try {
-        const before = await waitForRow(async () => {
+        const before = await eventually(async () => {
           const res = await server.query(
             "SELECT id, player_ids, seats FROM round_replays WHERE player_ids @> $1::jsonb",
             [JSON.stringify([alice.user.id])]
@@ -360,7 +360,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
   test("the list counts the moves in Postgres and leaves them there", async () => {
     const { alice, bob } = await playOneRound("proj");
     try {
-      await waitForRow(async () => {
+      await eventually(async () => {
         const res = await server.query(
           "SELECT id FROM round_replays WHERE player_ids @> $1::jsonb",
           [JSON.stringify([alice.user.id])]

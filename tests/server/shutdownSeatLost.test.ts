@@ -34,9 +34,14 @@ test("a shutdown keeps a between-hands seat, so the vote it held cannot deal wit
   activeGames.set(ROOM, game);
 
   try {
+    const routed = t.mock.method(rt, "route");
     beginShutdown();
-    await applyOrForward(rt, { kind: "seatLost", roomId: ROOM, userId: "besi" });
-    await new Promise((r) => setTimeout(r, 20));
+    const outcome = await applyOrForward(rt, { kind: "seatLost", roomId: ROOM, userId: "besi" });
+    assert.deepEqual(outcome, { ok: true }, "the handler must have answered the seat loss, or the absences below prove nothing");
+    for (let seen = -1; seen !== routed.mock.callCount(); ) {
+      seen = routed.mock.callCount();
+      await Promise.all(routed.mock.calls.map((call) => call.result));
+    }
 
     assert.deepEqual(game.playerMap, { 0: "ana", 1: "besi" });
     assert.equal(game.gameState.roundOver, true);

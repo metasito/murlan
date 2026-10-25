@@ -6,8 +6,8 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor } from "../helpers/client.ts";
-import { driveHumansToRoundOver, waitForRow, type RoomState } from "../helpers/gameDriver.ts";
+import { eventually, connectAs, waitFor } from "../helpers/client.ts";
+import { playRoundOut } from "../helpers/gameDriver.ts";
 
 /**
  * SEC-03: deleting an account mid-round must not take the whole table's results
@@ -22,12 +22,6 @@ import { driveHumansToRoundOver, waitForRow, type RoomState } from "../helpers/g
 
 process.env.MURLAN_AFK_TIMEOUT_MS = "300";
 process.env.MURLAN_DISCONNECT_GRACE_MS = "500";
-
-interface BotTakeover {
-  userId: string;
-  seatIndex: number;
-  code?: string;
-}
 
 describe(
   "an account deleted mid-round",
@@ -50,11 +44,11 @@ describe(
       const alice = await connectAs(server, "del_stay_alma");
       const bob = await connectAs(server, "del_stay_bekim");
       try {
-        const created = waitFor<RoomState>(leaver.socket, "room:state");
+        const created = waitFor(leaver.socket, "room:state");
         leaver.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 3 });
         const room = await created;
         for (const guest of [alice, bob]) {
-          const joined = waitFor<RoomState>(guest.socket, "room:state");
+          const joined = waitFor(guest.socket, "room:state");
           guest.socket.emit("room:join", { code: room.code });
           await joined;
         }
@@ -63,20 +57,11 @@ describe(
         leaver.socket.emit("room:start");
         await Promise.all(dealt);
 
-        const takeover = waitFor<BotTakeover>(alice.socket, "game:seat_bot_takeover", 5_000);
-        const socketClosed = new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(
-            () => reject(new Error("the deleted account's socket was never closed")),
-            5_000
-          );
-          leaver.socket.once("disconnect", () => {
-            clearTimeout(timer);
-            resolve();
-          });
-        });
+        const takeover = waitFor(alice.socket, "game:seat_bot_takeover", 5_000);
+        const socketClosed = waitFor(leaver.socket, "disconnect");
 
         let deleteStatus = 0;
-        const over = driveHumansToRoundOver([alice.socket, bob.socket], () => {
+        const over = playRoundOut([alice.socket, bob.socket], () => {
           void (async () => {
             const res = await fetch(`${server.url}/api/users/me`, {
               method: "DELETE",
@@ -97,26 +82,26 @@ describe(
         assert.equal(me.status, 401, "the deleted account's cookie must sign nobody in");
 
         for (const { user } of [alice, bob]) {
-          const stats = await waitForRow(async () => {
+          const stats = await eventually(async () => {
             const res = await server.query(
               "SELECT rounds_played FROM user_stats WHERE user_id = $1",
               [user.id]
             );
             return res[0] ?? null;
-          }, 10_000);
+          }, `the stats row for ${user.username}`, 10_000);
           assert.equal(
             Number(stats.rounds_played),
             1,
             `${user.username} played the round out and must be credited with it`
           );
 
-          const history = await waitForRow(async () => {
+          const history = await eventually(async () => {
             const res = await server.query(
               "SELECT placement FROM round_history WHERE user_id = $1",
               [user.id]
             );
             return res[0] ?? null;
-          }, 10_000);
+          }, `the history row for ${user.username}`, 10_000);
           assert.ok(
             Number(history.placement) >= 1,
             `${user.username} must have a round_history row for the round`
@@ -124,13 +109,13 @@ describe(
 
           // The ladder is one transaction for the whole table by design, so
           // the seat that cannot be rated has to be dropped before it opens.
-          const rating = await waitForRow(async () => {
+          const rating = await eventually(async () => {
             const res = await server.query(
               "SELECT rounds FROM user_ratings WHERE user_id = $1",
               [user.id]
             );
             return res[0] ?? null;
-          }, 10_000);
+          }, `the rating row for ${user.username}`, 10_000);
           assert.equal(Number(rating.rounds), 1, `${user.username} must move on the ladder`);
         }
 
