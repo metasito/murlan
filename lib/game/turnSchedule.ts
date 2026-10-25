@@ -29,6 +29,11 @@ export const TURN_POLICY: Readonly<Record<TableKind, Readonly<Record<TurnAction,
   },
 };
 
+/** Whether a seat on move is under a deadline: a bot never is, a human is where the table's policy says. */
+export function underDeadline(table: TableKind, action: TurnAction, bot: boolean): boolean {
+  return !bot && TURN_POLICY[table][action].timed;
+}
+
 export const BOT_THINK_MS = 1200;
 
 export interface TurnSlot {
@@ -76,7 +81,7 @@ export function turnSchedule(state: GameState, table: TableKind, isBot: (seat: n
     bot,
     action,
     gates: bot ? tableGates(state) : openingIsPending(state) ? ["opening"] : NO_GATES,
-    timed: !bot && policy.timed,
+    timed: underDeadline(table, action, bot),
     thinkMs: bot && policy.thinks ? BOT_THINK_MS : 0,
   };
 }

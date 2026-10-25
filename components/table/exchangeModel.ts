@@ -23,6 +23,7 @@ export type ExchangeView =
       /** The viewer is waiting to receive a card. */
       viewerIsLoser: boolean;
       winner: Player | null;
+      winnerSeat: number;
       loser: Player | null;
       /** The card taken off the loser, which the engine has already put in the winner's hand. */
       cardFromLoser: Card;
@@ -48,6 +49,7 @@ export function readExchange(
     viewerIsWinner: viewerOwnsSeat(phase.winnerIdx, viewerSeat, spectating),
     viewerIsLoser: viewerOwnsSeat(phase.loserIdx, viewerSeat, spectating),
     winner: state.players[phase.winnerIdx] ?? null,
+    winnerSeat: phase.winnerIdx,
     loser: state.players[phase.loserIdx] ?? null,
     cardFromLoser: phase.cardFromLoser,
   };
