@@ -117,6 +117,8 @@ interface Landing {
   flareSeen: boolean;
 }
 
+test.beforeEach(({ page }) => paintedFrames(page));
+
 /**
  * Starts an every-frame record of where the felt is and how far the table has
  * moved, and leaves it on `window` to be read once the landing is over.
@@ -125,8 +127,6 @@ interface Landing {
  * jolts, so a poll can land between two of them and read the table at rest in
  * the middle of the excursion.
  */
-test.beforeEach(({ page }) => paintedFrames(page));
-
 async function watchLanding(page: Page): Promise<void> {
   await page.evaluate((windowMs) => {
     const felt = document.querySelector('[data-testid="table-felt"]');

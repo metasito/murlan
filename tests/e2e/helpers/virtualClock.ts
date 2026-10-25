@@ -94,10 +94,12 @@ export async function stepUntil(
 export type EachPaint = (sample: (t: number) => boolean | void) => void;
 
 /**
- * Before the first navigation, on either clock: gives the page `murlanEachPaint`. A sampler in a
- * plain rAF callback runs before Reanimated's own in the same frame, so it reads a React commit made
- * between two frames beside a transform the next frame's mapper has not yet written, a state the
- * browser never paints (#1829). This keeps one callback last in every frame, after all the page's.
+ * Before the first navigation: gives the page `murlanEachPaint`. A sampler in a plain rAF callback
+ * runs before Reanimated's own in the same frame, so it reads a React commit made between two frames
+ * beside a transform the next frame's mapper has not yet written, a state the browser never paints.
+ * This keeps one callback last in every frame, after all the page's. Install it after
+ * `installVirtualClock`: the clock assigns `window.requestAnimationFrame` and would replace the
+ * hook, so `murlanEachPaint` throws when a request no longer reaches it.
  */
 export async function paintedFrames(page: Page): Promise<void> {
   const install = () => {
@@ -119,7 +121,9 @@ export async function paintedFrames(page: Page): Promise<void> {
     };
     // A request made inside a frame is for the next one, which `close` arms for itself; one made
     // between frames joins the frame `last` waits on, so `last` moves behind it.
+    let reached = false;
     const hooked = (cb: FrameRequestCallback) => {
+      reached = true;
       const id = raf.call(window, (t: number) => {
         inFrame = true;
         cb(t);
@@ -131,6 +135,9 @@ export async function paintedFrames(page: Page): Promise<void> {
     let top: typeof window.requestAnimationFrame = hooked;
     Object.defineProperty(window, "requestAnimationFrame", { configurable: true, get: () => top, set: (v) => (top = v) });
     (window as unknown as { murlanEachPaint: EachPaint }).murlanEachPaint = (sample) => {
+      reached = false;
+      caf.call(window, window.requestAnimationFrame(() => {}));
+      if (!reached) throw new Error("paintedFrames: window.requestAnimationFrame was replaced after it was installed; install it after installVirtualClock");
       samplers.push(sample);
       if (last) return;
       inFrame = false;

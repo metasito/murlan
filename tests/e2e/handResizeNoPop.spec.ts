@@ -129,7 +129,6 @@ test("a hand card moves between its two sizes on every frame of a turn change, w
         const d = drawn(f, series);
         expect(d > lo && d < hi, `${series}: drawn ${d.toFixed(2)} outside ${lo.toFixed(2)}..${hi.toFixed(2)} on ${frameText(f, t0)}: ${trace}`).toBe(true);
       }
-      // The floor: the window has frames, and the size strictly moves across them toward the new one.
       expect(inside.length, `${series}: frames inside the resize: ${trace}`).toBeGreaterThanOrEqual(Math.floor(Motion.handResize / STEP_MS) - 2);
       for (let k = 1; k < r.length; k++) {
         const step = (drawn(r[k], series) - drawn(r[k - 1], series)) * Math.sign(to - from);
