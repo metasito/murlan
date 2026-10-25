@@ -12,9 +12,12 @@ import { tap } from "./helpers/press";
 import { settled } from "./helpers/settle";
 import { Motion } from "../../lib/tokens";
 import { STEP_MS } from "./helpers/traceDiff";
+import { paintedFrames, type EachPaint } from "./helpers/virtualClock";
 
 const VIEWPORT = { width: 874, height: 402 };
 const SEAT_HAND = 13;
+
+test.beforeEach(({ page }) => paintedFrames(page));
 
 interface EntryFrame {
   t: number;
@@ -38,10 +41,11 @@ async function watchEntry(page: Page, windowMs: number): Promise<void> {
         level: trace.frames.at(-1)?.lamp?.level ?? null,
         leftCount: count ? count.textContent : null,
       });
-      if (performance.now() - started < windowMs) requestAnimationFrame(step);
-      else state.done = true;
+      if (performance.now() - started < windowMs) return;
+      state.done = true;
+      return false;
     };
-    requestAnimationFrame(step);
+    (window as unknown as { murlanEachPaint: EachPaint }).murlanEachPaint(step);
   }, windowMs);
 }
 

@@ -49,7 +49,7 @@ export interface Player {
 export type ExchangePhase =
   | { kind: "twoJokers"; winnerIdx: number; loserIdx: number }
   | { kind: "open"; winnerIdx: number; loserIdx: number; cardFromLoser: Card }
-  | { kind: "settled"; winnerIdx: number; loserIdx: number; cardFromLoser: Card; cardToLoser: Card; settledAt?: number };
+  | { kind: "settled"; winnerIdx: number; loserIdx: number; cardFromLoser: Card; cardToLoser?: Card; settledAt?: number };
 
 export interface StartReason {
   type: "start_card" | "lost_round" | "won_no_exchange";
@@ -916,8 +916,6 @@ function processExchangeChoice(state: GameState, cardId: string): GameState {
   const cardIdx = winnerHand.findIndex((c) => c.id === cardId);
   if (cardIdx < 0) return state;
   const card = winnerHand[cardIdx];
-  // Validate against the same list the UI offers, so the fallback below can
-  // never leave the winner with no legal choice (which froze the table).
   const offered = getValidGivebackCards(winnerHand, cardFromLoser.id);
   if (!offered.some((c) => c.id === card.id)) {
     return state;
@@ -932,19 +930,12 @@ function processExchangeChoice(state: GameState, cardId: string): GameState {
 }
 
 /**
- * Cards the round winner may hand back to the loser.
- *
- * Any card ranked 3 through 10, other than the one just handed over — giving
- * that straight back is not an exchange (docs/GAME-RULES.md §10). A hand can hold
- * no card in 3-10 at all, and an empty result deadlocks the exchange behind an
- * undismissable overlay, so there the single lowest card is the giveback.
+ * Cards the round winner may hand back to the loser (docs/GAME-RULES.md §10): any card ranked 3
+ * through 10 other than the one just handed over. Empty is nothing to give, and the exchange
+ * settles one-way.
  */
 export function getValidGivebackCards(hand: Card[], excludeCardId?: string): Card[] {
-  const eligible = excludeCardId ? hand.filter((c) => c.id !== excludeCardId) : hand;
-  const inRange = eligible.filter((c) => EXCHANGE_VALID_RANKS.includes(c.rank));
-  if (inRange.length > 0) return inRange;
-  if (eligible.length === 0) return [];
-  return [sortHand(eligible)[0]];
+  return hand.filter((c) => c.id !== excludeCardId && EXCHANGE_VALID_RANKS.includes(c.rank));
 }
 
 /**
@@ -957,15 +948,6 @@ export function exchangeIsSatisfiable(state: GameState): boolean {
   if (phase?.kind !== "open" || state.roundOver) return true;
   const winner = state.players[phase.winnerIdx];
   return winner !== undefined && getValidGivebackCards(winner.hand, phase.cardFromLoser.id).length > 0;
-}
-
-/**
- * Whether a giveback set is the fallback rather than the ordinary rule — the
- * hand held nothing in 3-10, so the lowest card was offered instead. The
- * prompt names a different rule then, and the ranks that decide it stay here.
- */
-export function givebackIsFallback(giveback: Card[]): boolean {
-  return giveback.length > 0 && !giveback.some((c) => EXCHANGE_VALID_RANKS.includes(c.rank));
 }
 
 function loserHasBothJokers(hand: Card[]): boolean {
@@ -1128,6 +1110,16 @@ function exchangeOpening(players: Player[], gameMode: GameMode, winnerIdx: numbe
   const cardFromLoser = getBestCardFromHand(loser.hand)!;
   loser.hand = loser.hand.filter((c) => c.id !== cardFromLoser.id);
   players[winnerIdx].hand = sortHand([...players[winnerIdx].hand, cardFromLoser]);
+
+  if (getValidGivebackCards(players[winnerIdx].hand, cardFromLoser.id).length === 0) {
+    return {
+      ...dealtRound(players, gameMode),
+      currentTurnIndex: loserIdx,
+      lastPlayedBy: loserIdx,
+      startReason: { type: "lost_round", playerIdx: loserIdx },
+      exchangePhase: { kind: "settled", winnerIdx, loserIdx, cardFromLoser },
+    };
+  }
 
   return {
     ...dealtRound(players, gameMode),

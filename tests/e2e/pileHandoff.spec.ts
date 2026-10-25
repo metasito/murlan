@@ -5,6 +5,7 @@
 import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
 import { settled } from "./helpers/settle";
+import { paintedFrames, type EachPaint } from "./helpers/virtualClock";
 
 const VIEWPORT = { width: 844, height: 390 };
 const OPPONENT_TURN = 1;
@@ -15,6 +16,7 @@ test("a bot's thrown cards come to rest where the pile then draws them", async (
   test.setTimeout(60_000);
   await page.setViewportSize(VIEWPORT);
   await page.emulateMedia({ reducedMotion: "no-preference" });
+  await paintedFrames(page);
   await page.addInitScript(() => {
     const w = window as unknown as { __lastFlight: Centre[] | null };
     w.__lastFlight = null;
@@ -26,9 +28,8 @@ test("a bot's thrown cards come to rest where the pile then draws them", async (
     const sample = () => {
       const flight = document.querySelector('[data-testid="flying-cards"]');
       if (flight) w.__lastFlight = centres(flight);
-      requestAnimationFrame(sample);
     };
-    requestAnimationFrame(sample);
+    (window as unknown as { murlanEachPaint: EachPaint }).murlanEachPaint(sample);
   });
 
   await openSeededGame(page, baseURL!, 4, undefined, OPPONENT_TURN, true);

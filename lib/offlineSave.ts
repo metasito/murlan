@@ -18,7 +18,7 @@ import { matchLengthSchema, parseGameState, storedShapeAt, type Same, type Shape
  * older than `OLDEST_OFFLINE_SAVE_VERSION` is discarded rather than migrated.
  * Held to the stored shape by tests/server/storedShapeVersions.test.ts.
  */
-export const OFFLINE_SAVE_VERSION = 9;
+export const OFFLINE_SAVE_VERSION = 10;
 
 /** The oldest save still resumed, on `OLDEST_GAME_SCHEMA_VERSION`'s policy (shared/persistedEnvelope.ts). */
 export const OLDEST_OFFLINE_SAVE_VERSION = 5;
