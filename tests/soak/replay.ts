@@ -171,9 +171,11 @@ export async function replaySoakLog(
       await settle(seats);
       const before = seat.version;
       seat.clearRefusal();
-      if (move.kind === "play") seatSocket(seat).emit("game:play", { cardIds: move.cardIds });
-      else if (move.kind === "pass") seatSocket(seat).emit("game:pass");
-      else seatSocket(seat).emit("game:exchange_give_card", { cardId: move.cardId });
+      if (!seat.state) throw new Error(`${seat.username} holds no state to replay a move against`);
+      const { turn } = seat.state;
+      if (move.kind === "play") seatSocket(seat).emit("game:play", { cardIds: move.cardIds, turn });
+      else if (move.kind === "pass") seatSocket(seat).emit("game:pass", { turn });
+      else seatSocket(seat).emit("game:exchange_give_card", { cardId: move.cardId, turn });
 
       if (await waitForOwnBroadcast(seat, before)) {
         applied += 1;

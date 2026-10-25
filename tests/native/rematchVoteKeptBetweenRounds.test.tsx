@@ -22,6 +22,7 @@ const table = (roundOver: boolean): WireGameState => ({
   openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
+  turn: '0',
   viewerSeatIndex: 0,
   turnSecondsRemaining: 30,
 });

@@ -57,6 +57,7 @@ interface TableState {
   exchangePhase?: WireExchangePhase;
   /** `null` once this account holds no seat — the server's own "not seated". */
   viewerSeatIndex: number | null;
+  turn: string;
   lastMove: { seq: number };
 }
 
@@ -300,21 +301,6 @@ export type Fault = (typeof FAULTS)[number];
 /** The faults a broken client or a deploy produces, as against the drop the soak always had. */
 export const INTENT_FAULTS = FAULTS.filter((fault) => fault !== "drop");
 
-/**
- * Defects already filed, by the fault that finds them. A violation tagged with one still
- * fails the run; the tag is what lets a nightly report tell it from a new one.
- */
-const KNOWN_DEFECTS: Partial<Record<Fault, string>> = {
-  // The dedupe record is in memory only, so a restarted process applies a re-sent pass again.
-  "restart-duplicate": "#1824",
-};
-
-/** A fault's violations, tagged with the issue it is filed as when the server accepted what it was filed for. */
-export function tagKnown(fault: Fault, ack: IntentAck | null, found: Violation[]): Violation[] {
-  const known = KNOWN_DEFECTS[fault];
-  return known && ack?.ok ? found.map((v) => ({ ...v, known })) : found;
-}
-
 /** An intersection rather than `at` on each member: `Omit` over a union collapses it. */
 export type SoakLogEntry = SoakAction & { at: number };
 
@@ -519,7 +505,8 @@ export class Seat {
 
   /** Sends a move intent with an id, as the app does, and keeps the server's answer. */
   send(event: MoveIntent, body: Record<string, unknown>, intentId = `i${++this.#intents}`): SentIntent {
-    const payload = { ...body, intentId };
+    if (!this.state) throw new Error(`${this.username} holds no state to send a move against`);
+    const payload = { turn: this.state.turn, ...body, intentId };
     const ack = new Promise<IntentAck | null>((resolve) => {
       this.#socket
         .timeout(ACK_BUDGET_MS)
@@ -684,7 +671,7 @@ export async function settle(
 /** A fault drawn on one move, injected at the first settled table it fits. */
 type Pending =
   | { kind: "delayed-duplicate" | "restart-duplicate"; from: number; seat: Seat; move: SeatAction; intent: SentIntent }
-  | { kind: "stale"; from: number; seat: Seat; move: Extract<SeatAction, { kind: "play" }> }
+  | { kind: "stale"; from: number; seat: Seat; move: Extract<SeatAction, { kind: "play" }>; turn: unknown }
   | { kind: "out-of-turn" | "restart"; from: number };
 
 const seqOf = (views: SeatView[]) => views[0]?.seq ?? 0;
@@ -803,15 +790,15 @@ export async function runSoak(
         moveLog.push({ at: moves, kind: fault.kind, move: fault.move, intentId, landed: seqOf(after) !== seqOf(before) });
         const what = `seat ${fault.move.seat}'s ${fault.intent.event} ${intentId} re-sent after the next move${restarted ? " and a restart" : ""}`;
         if (!restarted) return checkRepeatAnswered(what, await fault.intent.ack, ack, before, after);
-        return tagKnown(fault.kind, ack, checkRefused(what, ack, before, after));
+        return checkRefused(what, ack, before, after);
       }
       if (fault.kind === "stale") {
-        const { seat, move } = fault;
-        const ack = await seat.send("game:play", { cardIds: move.cardIds }).ack;
+        const { seat, move, turn } = fault;
+        const ack = await seat.send("game:play", { cardIds: move.cardIds, turn }).ack;
         const after = await settled();
         moveLog.push({ at: moves, kind: "stale", move, landed: seqOf(after) !== seqOf(before) });
-        const what = `seat ${move.seat}, on move, playing [${move.cardIds.join(" ")}] again, cards it no longer holds`;
-        return checkRefused(what, ack, before, after, "INVALID_CARD");
+        const what = `seat ${move.seat}, on move, playing [${move.cardIds.join(" ")}] again, against the turn it already moved on`;
+        return checkRefused(what, ack, before, after, "NOT_YOUR_TURN");
       }
       const turn = before[0]?.currentTurnIndex;
       const off = seats.filter((s) => {
@@ -835,7 +822,7 @@ export async function runSoak(
     };
 
     // The engine refuses anything but the giveback in an open exchange before it asks whose
-    // turn it is, and a stale play off its seat's turn is refused for the turn, never the cards.
+    // turn it is, and a stale play is refused for its turn token, never the cards.
     const faultReady = (fault: Exclude<Pending, { kind: "restart" }>, views: SeatView[]) => {
       const exchangeOpen = seats.some((s) => s.state?.exchangePhase?.kind === "open");
       if (fault.kind === "out-of-turn") return !exchangeOpen;
@@ -844,7 +831,7 @@ export async function runSoak(
     };
 
     let pending: Pending | null = null;
-    let lastPlay: { seat: Seat; move: Extract<SeatAction, { kind: "play" }> } | null = null;
+    let lastPlay: { seat: Seat; move: Extract<SeatAction, { kind: "play" }>; turn: unknown } | null = null;
     let staleArmed = 0;
     const deadline = Date.now() + opts.minutes * 60_000;
 
@@ -926,7 +913,7 @@ export async function runSoak(
       // Read before the broadcast lands, so `hand()` is still the hand the play came out of: a
       // seat that emptied it is never on move again, and its stale play could never be injected.
       if (acted?.did.kind === "play" && acted.seat.hand().length > acted.did.cardIds.length) {
-        lastPlay = { seat: acted.seat, move: acted.did };
+        lastPlay = { seat: acted.seat, move: acted.did, turn: acted.seat.lastIntent?.payload.turn };
       }
 
       if (restartedFrom) {
@@ -1202,13 +1189,10 @@ function formatFaults(moveLog: SoakLogEntry[]): string {
 export function failureReport(result: SoakResult): string[] {
   const at = result.firstViolationAt === null ? "after the run" : `at move ${result.firstViolationAt}`;
   const round = roundOf(result.moveLog, result.firstViolationAt);
-  const known = [...new Set(result.violations.flatMap((v) => (v.known ? [v.known] : [])))];
-  const fresh = result.violations.filter((v) => !v.known).length;
   return [
     "",
-    `soak: FAILED (seed ${result.seed}, first violation ${at}; ` +
-      `${known.length > 0 ? `known: ${known.join(", ")}` : "none known"}; ${fresh} new).`,
-    ...result.violations.map((v) => `  [${v.kind}]${v.known ? ` (known: ${v.known})` : ""} ${v.detail}`),
+    `soak: FAILED (seed ${result.seed}, first violation ${at}).`,
+    ...result.violations.map((v) => `  [${v.kind}] ${v.detail}`),
     "",
     "that round, in order:",
     ...round.map((entry) => `  ${formatLogEntry(entry)}`),

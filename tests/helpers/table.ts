@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { Socket } from "socket.io-client";
-import type { Card } from "../../lib/game/gameEngine.ts";
+import type { Card, LastMove } from "../../lib/game/gameEngine.ts";
 import { connectAs, waitFor, DEADLINE_SCALE, type RegisteredUser } from "./client.ts";
 import type { TestServer } from "./testServer.ts";
 import type { RoundOverPayload, WireExchangePhase } from "../../shared/protocol.ts";
@@ -37,6 +37,8 @@ export interface SanitizedState {
   openingCard: Card | null;
   exchangePhase?: ExchangePhase;
   viewerSeatIndex: number;
+  lastMove: LastMove;
+  turn: string;
 }
 
 export interface RoomState {
@@ -176,7 +178,7 @@ export function driveRoundToExchangeOrOver(
         if (hand.length === 0) return;
 
         if (state.lastPlayedCombination !== null) {
-          client.socket.emit("game:pass");
+          client.socket.emit("game:pass", { turn: state.turn });
           return;
         }
 
@@ -186,7 +188,7 @@ export function driveRoundToExchangeOrOver(
           if (forced) anchor = forced;
         }
         const group = hand.filter((c) => c.rank === anchor.rank).map((c) => c.id);
-        client.socket.emit("game:play", { cardIds: group });
+        client.socket.emit("game:play", { cardIds: group, turn: state.turn });
       };
       stateHandlers.push([client, onState]);
       client.socket.on("game:state", onState);

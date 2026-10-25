@@ -25,8 +25,6 @@ export interface SeatView {
 export interface Violation {
   kind: string;
   detail: string;
-  /** The open issue this is already filed as. Still a violation: the run fails on it. */
-  known?: string;
 }
 
 const NO_VIOLATIONS: Violation[] = [];

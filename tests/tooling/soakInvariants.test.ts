@@ -25,7 +25,7 @@ import {
   type SeatView,
   type Violation,
 } from "../soak/invariants.ts";
-import { failureReport, tagKnown, INTENT_FAULTS, type SeatAction, type SoakResult } from "../soak/soak.ts";
+import { failureReport, INTENT_FAULTS, type SeatAction, type SoakResult } from "../soak/soak.ts";
 
 test("a soak that finished no round fails rather than reporting no disagreement", () => {
   assert.deepEqual(progressViolations({ moves: 560, rounds: 5 }), []);
@@ -308,7 +308,7 @@ describe("a failed run's report", () => {
     ...injectionViolations({ chaos: 0.05, injected: 0 }),
     ...staleReachViolations({ armed: 2, injected: 0 }),
     ...checkRepeatAnswered("a late pass", { ok: true }, { ok: false, code: "NOT_YOUR_TURN" }, agreeingPair(), agreeingPair()),
-    ...tagKnown("restart-duplicate", { ok: true }, checkRefused("a pass re-sent after a restart", { ok: true }, agreeingPair(), afterPlayingD())),
+    ...checkRefused("a pass re-sent after a restart", { ok: true }, agreeingPair(), afterPlayingD()),
   ];
 
   const result: SoakResult = {
@@ -353,7 +353,7 @@ describe("a failed run's report", () => {
     const failed = lines.filter((line) => line.startsWith("soak: FAILED"));
     assert.equal(failed.length, 1);
     assert.match(failed[0], caught);
-    assert.match(failed[0], /seed 31, first violation at move 2; known: #1824; \d+ new\)/);
+    assert.match(failed[0], /seed 31, first violation at move 2\)/);
     for (const v of planted) {
       const line = lines.find((l) => l.startsWith(`  [${v.kind}]`) && l.endsWith(v.detail));
       assert.ok(line, `${v.kind} is not in the report`);
@@ -365,33 +365,6 @@ describe("a failed run's report", () => {
     const json = JSON.parse(failureReport(result).at(-1)!);
     assert.deepEqual(json.map((e: { kind: string }) => e.kind), ["deal", "pass", "restart", "restart-duplicate"]);
     assert.equal(json[0].round, 1);
-  });
-});
-
-describe("a known defect in the report", () => {
-  const accepted = checkRefused("a pass re-sent after a restart", { ok: true }, agreeingPair(), afterPlayingD());
-
-  test("names #1824 on every violation of a re-sent intent the restarted server accepted", () => {
-    const tagged = tagKnown("restart-duplicate", { ok: true }, accepted);
-    assert.ok(tagged.length > 0);
-    assert.ok(tagged.every((v) => v.known === "#1824"), JSON.stringify(tagged));
-  });
-
-  test("leaves anything else to read as new", () => {
-    const refusedButMoved = checkRefused("a pass re-sent after a restart", { ok: false }, agreeingPair(), afterPlayingD());
-    assert.ok(tagKnown("restart-duplicate", { ok: false }, refusedButMoved).every((v) => !v.known));
-    assert.ok(tagKnown("stale", { ok: true }, accepted).every((v) => !v.known));
-    assert.ok(tagKnown("delayed-duplicate", { ok: true }, accepted).every((v) => !v.known));
-  });
-
-  test("a known violation still fails the run and prints as known, the rest as new", () => {
-    const violations = [...tagKnown("restart-duplicate", { ok: true }, accepted), ...checkRefused("a stale play", { ok: true }, agreeingPair(), agreeingPair())];
-    const lines = failureReport({
-      violations, moves: 1, rounds: 0, chaosEvents: [], refusals: {}, seed: 7, moveLog: [], firstViolationAt: 1, staleArmed: 0,
-    });
-    assert.match(lines[1], /^soak: FAILED \(seed 7, first violation at move 1; known: #1824; 1 new\)\.$/);
-    assert.ok(lines.some((l) => /^ {2}\[fault-accepted\] \(known: #1824\) /.test(l)));
-    assert.ok(lines.some((l) => /^ {2}\[fault-accepted\] a stale play/.test(l)));
   });
 });
 

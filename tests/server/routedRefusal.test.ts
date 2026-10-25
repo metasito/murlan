@@ -68,7 +68,7 @@ test("a pass the owner refuses during the exchange reaches the asking socket onc
   socketRoomMap.set("s1", ROOM);
   registerGameplayHandlers({ rt, socket, userId: "u1" });
 
-  assert.deepEqual(await send("game:pass"), { ok: false, code: "EXCHANGE_PENDING" });
+  assert.deepEqual(await send("game:pass", { turn: "0" }), { ok: false, code: "EXCHANGE_PENDING" });
   assert.deepEqual(emitted, [{ event: "game:error", payload: payload("EXCHANGE_PENDING") }]);
   assert.deepEqual(ownerEmits.filter((e) => e.event.endsWith(":error")), [], "the owner says nothing itself");
 });

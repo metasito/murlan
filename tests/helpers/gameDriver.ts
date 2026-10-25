@@ -28,6 +28,7 @@ export interface SanitizedState {
   openingCard: Card | null;
   exchangePhase?: WireExchangePhase;
   viewerSeatIndex: number;
+  turn: string;
 }
 
 export interface RoomState {
@@ -89,7 +90,7 @@ export function driveHumansToRoundOver(
           if (state.exchangePhase.winnerIdx !== seat) return;
           const hand = state.players[seat]?.hand ?? [];
           const [card] = getValidGivebackCards(hand, state.exchangePhase.cardFromLoser.id);
-          if (card) client.emit("game:exchange_give_card", { cardId: card.id });
+          if (card) client.emit("game:exchange_give_card", { cardId: card.id, turn: state.turn });
           return;
         }
 
@@ -98,7 +99,7 @@ export function driveHumansToRoundOver(
         if (hand.length === 0) return;
 
         if (state.lastPlayedCombination !== null) {
-          client.emit("game:pass");
+          client.emit("game:pass", { turn: state.turn });
           return;
         }
 
@@ -108,7 +109,7 @@ export function driveHumansToRoundOver(
           if (forced) anchor = forced;
         }
         const group = hand.filter((c) => c.rank === anchor.rank).map((c) => c.id);
-        client.emit("game:play", { cardIds: group });
+        client.emit("game:play", { cardIds: group, turn: state.turn });
       };
       handlers.set(client, onState);
       client.on("game:state", onState);
