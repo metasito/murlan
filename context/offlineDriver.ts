@@ -105,10 +105,7 @@ export function useOfflineDriver(): OfflineDriver {
 
   useEffect(() => {
     if (botTurnKey === null) return;
-    if (thinkMs === 0) {
-      runBotTurn();
-      return;
-    }
+    // Even at zero: the table raises the deal's flag in an effect of its own, and this commit still reads it down.
     const t = setTimeout(runBotTurn, thinkMs);
     return () => clearTimeout(t);
   }, [botTurnKey, thinkMs, runBotTurn]);
