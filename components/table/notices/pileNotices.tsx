@@ -18,12 +18,3 @@ export function TrickWinnerMark({ name, scale }: { name: string; scale: number }
     </TableNotice>
   );
 }
-
-/** The exchange's who gives what to whom, under the card resting there: the leg's own clock times it. */
-export function PileLabelMark({ text, testID, scale }: { text: string; testID: string; scale: number }) {
-  return (
-    <TableNotice kind="pileLabel" tone="lit" scale={scale} still>
-      <NoticeText testID={testID}>{text}</NoticeText>
-    </TableNotice>
-  );
-}

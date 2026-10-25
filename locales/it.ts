@@ -292,6 +292,7 @@ export const it: Record<keyof typeof en, string> = {
 
   // ----------------------------------------------------------------- exchange.*
   "exchange.chipTitle": "Scambio",
+  "exchange.chipOneWay": "Senso unico: {{name}}",
   "exchange.chipGive": "Scegli una carta da 3 a 10 per {{name}}",
   "exchange.watching": "{{winner}} sta scegliendo una carta per {{loser}}",
   "exchange.waitingForYou": "{{winner}} sta scegliendo una carta per te",
@@ -303,6 +304,7 @@ export const it: Record<keyof typeof en, string> = {
   "exchange.pileGives": "{{from}} dà {{card}} a {{to}}",
   "exchange.pileYouGive": "Dai {{card}} a {{to}}",
   "exchange.pileGivesYou": "{{from}} ti dà {{card}}",
+  "exchange.pillNothing": "Niente da restituire",
 
   // ----------------------------------------------------------------- cards.*
   // Card names as read aloud/announced (ExchangeAnnouncement) — card ranks
@@ -343,6 +345,8 @@ export const it: Record<keyof typeof en, string> = {
   "gameShared.emptyHand": "Carte finite!",
   "gameShared.startReasonCard": "{{name}} inizia — ha il {{rank}}{{suit}}",
   "gameShared.startReasonCardSub": "(il 3♠ non è stato distribuito)",
+  "gameShared.startReasonOneWaySub": "{{name}} non aveva carte da 3 a 10 da restituire",
+  "gameShared.startReasonOneWaySubYou": "Non avevi carte da 3 a 10 da restituire",
   "gameShared.startReasonLostRound": "{{name}} inizia — ha perso il round",
   "gameShared.startReasonWonNoExchange": "{{name}} inizia — ha vinto (nessuno scambio)",
   "gameShared.startReasonDismiss": "Tocca per continuare",

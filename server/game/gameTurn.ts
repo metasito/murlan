@@ -26,7 +26,8 @@ import { actingSeat, concedeRound, roundUnplayed, openingIsPending } from "../..
 import type { GameState } from "../../lib/game/gameEngine.ts";
 import { Motion, Reading } from "../../lib/tokens.ts";
 import { dealEndMs } from "../../lib/timeline/dealTimeline.ts";
-import { exchangeGiveDelayMs } from "../../lib/timeline/exchangeTimeline.ts";
+import { exchangeGiveDelayMs, exchangeOneWayDelayMs } from "../../lib/timeline/exchangeTimeline.ts";
+import { isOneWay } from "../../lib/game/sharedGameFlow.ts";
 import { handCountOf } from "../../shared/protocol.ts";
 
 /**
@@ -66,17 +67,22 @@ export function armTurn(rt: TableRuntime, roomId: string, botDelayMs = botMoveDe
 
   const seat = actingSeat(game.gameState);
   const userId = game.playerMap[seat];
+  const counts = game.gameState.players.map(handCountOf);
+  // The loser's first move waits for the pills to tell a one-way exchange, as the opener's does for two Jokers.
+  const oneWayMs = isOneWay(game.gameState.exchangePhase) && roundUnplayed(game.gameState) ? exchangeOneWayDelayMs(counts) : 0;
 
   if (userId === undefined) {
     game.turnDeadlineMs = undefined;
     const phase = game.gameState.exchangePhase;
     const exchangeOnTable = phase?.kind === "open" || (phase?.kind === "twoJokers" && roundUnplayed(game.gameState));
-    const counts = game.gameState.players.map(handCountOf);
-    const delayMs = exchangeOnTable
-      ? Math.max(botDelayMs, exchangeGiveDelayMs(counts))
-      : roundUnplayed(game.gameState)
-        ? Math.max(botDelayMs, dealEndMs(counts, Motion.duration.reveal))
-        : botDelayMs;
+    const waitMs = oneWayMs > 0
+      ? oneWayMs
+      : exchangeOnTable
+        ? exchangeGiveDelayMs(counts)
+        : roundUnplayed(game.gameState)
+          ? dealEndMs(counts, Motion.duration.reveal)
+          : 0;
+    const delayMs = Math.max(botDelayMs, waitMs);
     arm("bot", roomId, delayMs, () => safeTimer(rt, "botTurn", roomId, () => runBotTurn(rt, roomId)));
     emitTurnDeadline(rt, roomId, game);
     return;
@@ -90,7 +96,7 @@ export function armTurn(rt: TableRuntime, roomId: string, botDelayMs = botMoveDe
   // `openingIsPending` names: the opener's first play of the round, never a
   // seat replaying a turn it already spent its grant on.
   const openingGraceMs = openingIsPending(game.gameState) ? Reading.notice : 0;
-  const timeoutMs = afkTimeoutMs() + openingGraceMs;
+  const timeoutMs = afkTimeoutMs() + openingGraceMs + oneWayMs;
   game.turnDeadlineMs = now() + timeoutMs;
   startAfkTimer(rt, roomId, userId, username, timeoutMs);
   emitTurnDeadline(rt, roomId, game);

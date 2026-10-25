@@ -21,7 +21,7 @@ import { cardSpokenName } from "@/lib/cardNames";
 import { event, withdraw } from "@/lib/device/feedback";
 import type { Card } from "@/lib/game/gameEngine";
 import type { ExchangeAnnounceData, ExchangeHold } from "@/lib/game/sharedGameFlow";
-import { ceremonyEndsAt, choiceOpensAt, legPose, legShows, legStage, legTimes, type LegPoints, type LegStage } from "@/lib/timeline/exchangeTimeline";
+import { ceremonyEndsAt, choiceOpensAt, legPose, legShows, legStage, legTimes, oneWayEndsAt, type LegPoints, type LegStage } from "@/lib/timeline/exchangeTimeline";
 import { useTranslation } from "@/lib/i18n";
 import { armGateWatchdog, gateForced } from "./gateForced";
 import { inBackground } from "./useFlightClock";
@@ -41,7 +41,8 @@ interface Report { cue: (at: number) => void; stage: (leg: number, stage: number
 
 /**
  * One clock for the exchange: the receive (or both Jokers) shows `beat` after the go, the give
- * `giveWait` after the choice and never before the receive has landed and been read.
+ * `giveWait` after the choice and never before the receive has landed and been read. A one-way
+ * exchange has no give: it opens the choice's moment all the same, and closes a beat after it.
  */
 function stepper(
   run: SharedValue<Run>,
@@ -55,6 +56,7 @@ function stepper(
   lifted: SharedValue<string[]>,
   outgoing: SharedValue<string[][]>,
   jokers: boolean,
+  oneWay: boolean,
   report: Report
 ) {
   const ping = (seat: number) => {
@@ -93,7 +95,7 @@ function stepper(
       r.ready = true;
       scheduleOnRN(report.ready);
     }
-    if (t >= ceremonyEndsAt(shows.value, reduced.value, jokers)) {
+    if (t >= (oneWay ? oneWayEndsAt(reduced.value) : ceremonyEndsAt(shows.value, reduced.value, jokers))) {
       r.done = true;
       scheduleOnRN(report.done);
     }
@@ -205,6 +207,7 @@ export function ExchangeLegs({
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
   const jokers = announced.twoJokers;
+  const oneWay = announced.oneWay;
   const key = stages.key;
   const calls = useRef({ onStage, onReady, onDismiss, key });
   useEffect(() => {
@@ -254,7 +257,7 @@ export function ExchangeLegs({
     : [mine(announced.loserIdx, announced.cardReceived), mine(announced.winnerIdx, announced.cardGiven)];
   const outgoing = useSharedValue(out);
   const drawn = useSharedValue([false, false]);
-  const frames = useLegClock(run, goAt, choiceAt, clock, shows, reduced, ends, flash, lifted, outgoing, jokers, { cue, stage, ready, done });
+  const frames = useLegClock(run, goAt, choiceAt, clock, shows, reduced, ends, flash, lifted, outgoing, jokers, oneWay, { cue, stage, ready, done });
 
   useEffect(() => {
     outgoing.set(out);
@@ -302,20 +305,20 @@ export function ExchangeLegs({
   }, [go, goAt, jokers, run, forcedReady, forcedDone]);
   useEffect(() => {
     // From the later of the choice and its opening: a choice made before the choice opens still gives only after it.
-    if (jokers || !opened || !chosen || !(choiceAt.get() < Infinity)) return;
+    if (jokers || !opened || !(chosen || oneWay) || !(oneWay || choiceAt.get() < Infinity)) return;
     return armGateWatchdog(() => scheduleOnUI(release, run, "done", forcedDone));
-  }, [jokers, opened, chosen, choiceAt, run, forcedDone]);
+  }, [jokers, oneWay, opened, chosen, choiceAt, run, forcedDone]);
   useEffect(() => {
     if (run.get().done) frames.setActive(false);
   });
 
   useEffect(() => {
     holdRef.current = holdMsOverride;
-    if (typeof holdMsOverride !== "number" || !(chosen || jokers)) return;
+    if (typeof holdMsOverride !== "number" || !(chosen || jokers || oneWay)) return;
     const done = setTimeout(() => calls.current.onDismiss(), holdMsOverride);
     return () => clearTimeout(done);
-  }, [holdMsOverride, chosen, jokers]);
-  const tapToRelease = holdMsOverride === "untilTapped" && (chosen || jokers);
+  }, [holdMsOverride, chosen, jokers, oneWay]);
+  const tapToRelease = holdMsOverride === "untilTapped" && (chosen || jokers || oneWay);
 
   const nameOf = (seat: number) => (seat === announced.winnerIdx ? announced.winnerName : announced.loserName);
   const shown = (stage: LegStage) => stage !== "waiting" && stage !== "flying";
@@ -326,6 +329,9 @@ export function ExchangeLegs({
     : [
         announced.cardReceived && shown(stages.receive) && giveLine(announced.cardReceived, announced.loserIdx, announced.winnerIdx),
         announced.cardGiven && shown(stages.give) && giveLine(announced.cardGiven, announced.winnerIdx, announced.loserIdx),
+        announced.oneWay &&
+          stages.ready &&
+          `${t("exchange.chipOneWay", { name: viewerSeat === announced.winnerIdx ? t("gameShared.you") : announced.winnerName })}. ${t("exchange.pillNothing")}`,
       ]
         .filter(Boolean)
         .join(". ");

@@ -7,9 +7,11 @@ import {
   choiceOpensAt,
   exchangeAnnounceMs,
   exchangeGiveDelayMs,
+  exchangeOneWayDelayMs,
   legPose,
   legShows,
   legStage,
+  oneWayEndsAt,
   restPoint,
   type LegPoints,
 } from "../../lib/timeline/exchangeTimeline.ts";
@@ -122,4 +124,21 @@ test("a choice made once it opens has its give landed and read by the server's r
   }
   assert.equal(landedAt(legShows(choiceOpensAt(false), false)[1]) + X.read, choiceOpensAt(false) + exchangeAnnounceMs(false));
   assert.ok(landedAt(legShows(0, false)[1]) + X.read > exchangeAnnounceMs(false), "an early give is held back past the re-arm");
+});
+
+test("a one-way exchange ends on the beat after the choice would have opened, which is a face's reading", () => {
+  for (const reduced of [false, true]) {
+    assert.equal(oneWayEndsAt(reduced), choiceOpensAt(reduced) + Hold.reveal);
+    assert.ok(oneWayEndsAt(reduced) > choiceOpensAt(reduced), "the beat has a length");
+  }
+});
+
+test("the server holds a one-way loser's first move until the client's ceremony has ended, and no more than a read past it", () => {
+  for (const dealt of [[27, 27], [18, 18, 18], [14, 14, 13, 13]]) {
+    for (const offset of [0, Motion.duration.reveal]) {
+      const counts = dealt.map((n, i) => n + Number(i === 0) - Number(i === 1));
+      const late = exchangeOneWayDelayMs(counts) - (dealEndMs(counts, offset) + oneWayEndsAt(false));
+      assert.ok(late >= 0 && late <= X.read, `${counts} dealt at ${offset}: the hold ends ${late} ms after the ceremony`);
+    }
+  }
 });

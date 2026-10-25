@@ -67,13 +67,13 @@ test("the give shows only once the receive has landed: never two cards in the ai
   expect(track.filter((f) => f.shown.length > 1).map((f) => f.t.toFixed(0)), "both cards were in the air at once").toEqual([]);
 });
 
-test("the pile label covers no card and stays on screen", async ({ page, baseURL }) => {
+test("the exchange note covers no card and stays on screen", async ({ page, baseURL }) => {
   test.setTimeout(120_000);
   // A real phone in landscape: the window labels used to go off the bottom of.
   await page.setViewportSize({ width: 844, height: 390 });
   await resumeSaved(page, baseURL!, midExchangeSave());
 
-  const label = page.getByTestId("exchange-pile-label");
+  const label = page.getByTestId("exchange-pill-note");
   await expect(label).toBeVisible({ timeout: 15_000 });
   const box = (await label.boundingBox())!;
   const cards = await page.evaluate(() =>

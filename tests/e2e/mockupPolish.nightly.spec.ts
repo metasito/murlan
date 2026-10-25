@@ -149,16 +149,16 @@ const exchangeBetweenBots = () =>
     holding: [["5_hearts", "K_spades"], ["2_spades", "6_diamonds", "K_diamonds"], ["7_clubs", "8_clubs"]],
   });
 
-test(`exchange label: two of the longest names stay whole on one line — ${SMALLEST.name}`, async ({ page, baseURL }) => {
+test(`exchange note: two of the longest names stay whole on one line — ${SMALLEST.name}`, async ({ page, baseURL }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(SMALLEST);
   await resumeSaved(page, baseURL!, exchangeBetweenBots());
-  const label = page.getByTestId("exchange-pile-label");
-  await expect(label, "the pile names the announced").toBeVisible({ timeout: 30_000 });
+  const label = page.getByTestId("exchange-pill-note");
+  await expect(label, "the last-played pill names the announced").toBeVisible({ timeout: 30_000 });
   const run = await label.evaluate((el) => ({ text: el.textContent ?? "", scroll: el.scrollWidth, client: el.clientWidth, wraps: getComputedStyle(el).whiteSpace }));
 
   for (const name of LONGEST) expect.soft(run.text, "both seats are named").toContain(name);
-  expect.soft(run.wraps, "the label is held to one line").toBe("nowrap");
+  expect.soft(run.wraps, "the note is held to one line").toBe("nowrap");
   expect.soft(run.scroll, `"${run.text}" needs ${run.scroll} pt and has ${run.client}: its tail is cut`).toBeLessThanOrEqual(run.client);
 });
 

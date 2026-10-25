@@ -119,6 +119,17 @@ export function ceremonyEndsAt(shows: readonly number[], reduced: boolean, joker
   return shows[jokers ? 0 : 1] + legTimes(reduced).end + X.read;
 }
 
+/** When a one-way exchange closes: where the choice would have opened, and a beat for the pills to say there is nothing to give back. */
+export function oneWayEndsAt(reduced: boolean): number {
+  "worklet";
+  return choiceOpensAt(reduced) + Hold.reveal;
+}
+
+/** From the deal's state to the one-way loser's earliest first move: the give's arming, and the beat the pills hold. */
+export function exchangeOneWayDelayMs(counts: readonly number[]): number {
+  return exchangeGiveDelayMs(counts) + Hold.reveal;
+}
+
 /** From the deal's state to the give's earliest arming, counting the table's entry beat: a standing table, dealing at once, opens up to that beat earlier. */
 export function exchangeGiveDelayMs(counts: readonly number[]): number {
   return dealEndMs(counts, Motion.duration.reveal) + RECEIVE_MS + X.read;

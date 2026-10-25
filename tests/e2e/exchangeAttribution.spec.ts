@@ -66,7 +66,7 @@ async function frame(page: Page): Promise<Frame> {
       if (el && seen(el) > 0) out[id] = { ...centre(el), face: seen(el.firstElementChild) > 0.5 };
     }
     const pile = document.querySelector('[data-testid="pile-area"]');
-    const label = document.querySelector('[data-testid="exchange-pile-label"], [data-testid="exchange-none"]');
+    const label = document.querySelector('[data-testid="exchange-pill-note"]');
     const seats = [...document.querySelectorAll('[data-testid="top-seat"], [data-testid^="side-seat-"]')].map((s) => ({
       name: s.querySelector('[data-testid="seat-name"]')?.textContent ?? "",
       lit: s.querySelector('[data-testid="seat-ring"]')?.getAttribute(seatLit) === "true",
@@ -111,7 +111,7 @@ function checkLeg(frames: Frame[], leg: { id: string; giver: string; receiver: s
   expect(i0, `${leg.id} was never drawn`).toBeGreaterThan(0);
   const f0 = frames[i0].t;
   const rest = frames.findIndex((f, i) => i > i0 && f.label?.text === leg.label);
-  expect(rest, `the pile never read "${leg.label}"`).toBeGreaterThan(i0);
+  expect(rest, `the last-played pill never read "${leg.label}"`).toBeGreaterThan(i0);
   const landed = frames.findIndex((f, i) => i > rest && !f.fliers[leg.id]);
   expect(landed, `${leg.id} never landed`).toBeGreaterThan(rest);
   expect(Math.abs(frames[rest].t - f0 - LEG.rest), "the rest starts one lift and flight after the first frame").toBeLessThanOrEqual(FRAME);
@@ -124,9 +124,9 @@ function checkLeg(frames: Frame[], leg: { id: string; giver: string; receiver: s
     if (resting) {
       expect(near(f.fliers[leg.id], f.pile!, 4), `${leg.id} at ${at} ms is off the pile centre`).toBe(true);
       expect(f.fliers[leg.id].face, `${leg.id} at ${at} ms rests face down`).toBe(true);
-      expect(f.label?.text, `the pile at ${at} ms`).toBe(leg.label);
+      expect(f.label?.text, `the pill at ${at} ms`).toBe(leg.label);
     }
-    if (flying) expect(f.label, `the pile label at ${at} ms, outside the rest`).toBeNull();
+    if (flying) expect(f.label, `the pill note at ${at} ms, outside the rest`).toBeNull();
   }
   const seat = (name: string, f: Frame) => name !== leg.viewer && f.lit.includes(name);
   if (leg.giver !== leg.viewer) {
@@ -230,8 +230,7 @@ test("both Jokers rest side by side on the pile under their notice, and go back"
       expect(f.fliers[id].face).toBe(true);
     }
     expect(f.label?.text, "the notice names no exchange").toBe("Nessuno scambio — Jolly doppio 🃏");
-    expect(Math.abs(f.label!.x - f.pile!.x), "the notice is centred on the pile").toBeLessThanOrEqual(4);
-    expect(f.label!.y, "and sits under it").toBeGreaterThan(f.pile!.y);
+    expect(f.label!.y, "the notice sits in the last-played pill, above the pile").toBeLessThan(f.pile!.y);
   }
   expect(frames.at(-1)!.fliers["exchange-joker-0"], "the Jokers go back").toBeUndefined();
 });

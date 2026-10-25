@@ -31,7 +31,7 @@ const ANNOUNCED: ExchangeAnnounceData = {
   loserName: 'Besi',
   winnerIdx: 0,
   loserIdx: 1,
-  twoJokers: false,
+  twoJokers: false, oneWay: false,
   cardReceived: RECEIVED,
   cardGiven: card('7'),
 };

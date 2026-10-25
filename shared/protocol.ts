@@ -9,7 +9,7 @@ import type { FriendRequestAccepted, FriendRequestIncoming } from "./http.ts";
 import type * as Inbound from "./socketSchemas.ts";
 import type { TranslationParams } from "./i18n.ts";
 
-export const PROTOCOL_VERSION = 12;
+export const PROTOCOL_VERSION = 13;
 export const MIN_PROTOCOL_VERSION = 12;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */
@@ -25,7 +25,7 @@ export type WirePlayer = Player & { handCount: number; vacated: boolean };
 export type WireExchangePhase =
   | { kind: "twoJokers"; winnerIdx: number; loserIdx: number }
   | { kind: "open"; winnerIdx: number; loserIdx: number; cardFromLoser: Card }
-  | { kind: "settled"; winnerIdx: number; loserIdx: number; cardToLoser?: Card };
+  | { kind: "settled"; winnerIdx: number; loserIdx: number; cardToLoser?: Card; cardFromLoser?: Card };
 
 /** A state the table is drawn from: the engine's own offline, or one viewer's online. */
 export type ViewedGameState = Omit<GameState, "exchangePhase"> & { exchangePhase?: WireExchangePhase };

@@ -23,7 +23,7 @@ export const announced = (over: Partial<ExchangeAnnounceData> = {}): ExchangeAnn
   loserName: 'Bea',
   winnerIdx: 0,
   loserIdx: 1,
-  twoJokers: false,
+  twoJokers: false, oneWay: false,
   cardReceived: card('2_clubs', '2'),
   ...over,
 });

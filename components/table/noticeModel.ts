@@ -49,7 +49,7 @@ type Spec<S extends NoticeShape> = {
 export type NoticeSpec = { [S in NoticeShape]: Spec<S> }[NoticeShape];
 
 export const NOTICES = {
-  hudCombo: { shape: "pill", selector: ".chip", tones: ["neutral"], tableChip: true },
+  hudCombo: { shape: "pill", selector: ".chip", tones: ["neutral", "lit"], tableChip: true },
   turn: { shape: "pill", selector: "#turn", tones: ["neutral", "lit", "urgent", "ok", "bad"], keepsEmber: true },
   offline: { shape: "pill", selector: "#n-offline", tones: ["solid"] },
   whoStarts: { shape: "panel", selector: "#panel", tones: ["neutral"] },
@@ -59,7 +59,6 @@ export const NOTICES = {
   vacated: { shape: "chip", selector: ".passo", tones: ["neutral"] },
   combo: { shape: "chip", selector: ".cchip", tones: ["lit"] },
   trickWinner: { shape: "chip", selector: ".cchip", tones: ["lit"] },
-  pileLabel: { shape: "chip", selector: ".cchip", tones: ["lit"] },
   passFloat: { shape: "float", selector: ".floatchip", tones: ["neutral"] },
   rejectFloat: { shape: "float", selector: "#n-reject", tones: ["bad"] },
   errorToast: { shape: "float", selector: "#n-toast", tones: ["bad"] },

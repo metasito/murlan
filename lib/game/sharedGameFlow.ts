@@ -12,6 +12,8 @@ export interface ExchangeAnnounceData {
   winnerIdx: number;
   loserIdx: number;
   twoJokers: boolean;
+  /** The winner held nothing to give back, so the deal settled the exchange: only the receive plays. */
+  oneWay: boolean;
   cardGiven?: Card;
   cardReceived?: Card;
 }
@@ -38,15 +40,25 @@ export function buildExchangeAnnounce(
     winnerIdx: phase.winnerIdx,
     loserIdx: phase.loserIdx,
     twoJokers: phase.kind === "twoJokers",
+    oneWay: false,
     cardGiven: cards.given,
     cardReceived: cards.received,
   };
 }
 
 /**
- * What one committed state announces, given the one it replaces: the give closing the phase, or a
- * two-joker deal arriving. `prev` is null when nothing was seen before. A fresh deal opening the
- * phase announces nothing; the table draws the receive from the phase itself.
+ * Whether the deal settled this exchange with nothing handed back (docs/GAME-RULES.md § Decisions,
+ * "What the winner may hand back"). The wire sends a settled phase's `cardFromLoser` for this case
+ * alone, so a closed two-way phase is never mistaken for it, whoever is reading.
+ */
+export function isOneWay(phase: WireExchangePhase | undefined): phase is Extract<WireExchangePhase, { kind: "settled" }> & { cardFromLoser: Card } {
+  return phase?.kind === "settled" && phase.cardFromLoser !== undefined && phase.cardToLoser === undefined;
+}
+
+/**
+ * What one committed state announces, given the one it replaces: the give closing the phase, a
+ * two-joker deal arriving or a one-way deal arriving. `prev` is null when nothing was seen before.
+ * A fresh deal opening the phase announces nothing; the table draws the receive from the phase itself.
  */
 export function exchangeAnnouncementOf(prev: ViewedGameState | null, next: ViewedGameState): ExchangeAnnounceData | null {
   const phase = next.exchangePhase;
@@ -54,6 +66,11 @@ export function exchangeAnnouncementOf(prev: ViewedGameState | null, next: Viewe
   // Every deal records the same move, so a round that ended on none (a concession) hides the next deal from `moveSince`.
   const dealt = !prev || (prev.roundOver && !next.roundOver) || move?.kind === "deal";
   if (!phase || phase.kind === "open") return null;
+  if (isOneWay(phase)) {
+    return dealt && next.lastMove.kind === "deal"
+      ? { ...buildExchangeAnnounce(next.players, phase, { received: phase.cardFromLoser }), oneWay: true }
+      : null;
+  }
   if (phase.kind === "settled") {
     // Online's closing state withholds `cardFromLoser`, so the received card is read from `prev`.
     const received = prev?.exchangePhase?.kind === "open" ? prev.exchangePhase.cardFromLoser : undefined;

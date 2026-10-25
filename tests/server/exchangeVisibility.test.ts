@@ -59,10 +59,21 @@ describe("visibleExchangePhase", () => {
     }
   });
 
-  test("a one-way exchange, with nothing handed back, names no card handed back at any seat", () => {
+  test("a one-way exchange, with nothing handed back, names no card handed back and sends the taken card to every seat", () => {
     const oneWay: ExchangePhase = { ...openPhase, kind: "settled", settledAt: AT };
     for (const seat of [0, 1, 2, 3, null]) {
-      assert.deepEqual(visibleExchangePhase(oneWay, seat, AT + 1), { kind: "settled", winnerIdx: 1, loserIdx: 3 }, `seat ${seat}`);
+      assert.deepEqual(
+        visibleExchangePhase(oneWay, seat, AT + 1),
+        { kind: "settled", winnerIdx: 1, loserIdx: 3, cardFromLoser: CARD },
+        `seat ${seat}`
+      );
+    }
+  });
+
+  test("a one-way exchange keeps sending the taken card for as long as the round stands, not only for its ceremony", () => {
+    const oneWay: ExchangePhase = { ...openPhase, kind: "settled", settledAt: AT };
+    for (const seat of [0, 1, 2, 3, null]) {
+      assert.deepEqual(visibleExchangePhase(oneWay, seat, AT + 60 * 60_000), visibleExchangePhase(oneWay, seat, AT + 1), `seat ${seat}`);
     }
   });
 

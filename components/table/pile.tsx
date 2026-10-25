@@ -34,7 +34,7 @@ import { readThrownPlay } from "@/components/table/throws";
 import type { Seating, TableLayout } from "@/components/tableLayout";
 import { clearTrick, NO_TRICK, playOnto, roleOf, sweepEnded, sweepTrick, topPlay, type PlayRole, type Trick, type TrickPlay } from "./trick";
 import { flightPose, pileSlots, type CardFrom } from "@/components/flightPose";
-import { ComboMark, PileLabelMark, TrickWinnerMark } from "./notices/pileNotices";
+import { ComboMark, TrickWinnerMark } from "./notices/pileNotices";
 import { noticeTiming } from "./noticeModel";
 import { a11yHidden } from "@/lib/a11y";
 import { landingPulsesFor } from "@/lib/device/moments";
@@ -363,8 +363,6 @@ const NO_BOMB: BombClock = { elapsed: -1, contact: 0 };
 
 // ─── PileLayer ────────────────────────────────────────────────────────────────
 
-export interface PileNote { text: string; testID: string; cards: Card[] }
-
 export interface PileLayerProps {
   trick: Trick;
   /** The plays in the air, each until its flight reports its end. */
@@ -382,8 +380,6 @@ export interface PileLayerProps {
   /** The combination the chip names, which may run ahead of the cards landing. */
   comboLabel: Combination | null;
   trickWinner: string | null;
-  /** Said by the combination's chip in place of the combination: the exchange's who gives what to whom, under the card resting there. */
-  note?: PileNote | null;
   /** The width share the field's arc may take — see FIELD_WIDTH_SHARE. */
   roomW: number;
   /** The table's own scale — the pile draws its cards at `scale * FIELD_SCALE`. */
@@ -398,10 +394,10 @@ export interface PileLayerProps {
 
 /**
  * Every play of the trick and the swept trick, each one group of views from
- * the throw to the end of its sweep, with the pile's chip, note and winner tag.
+ * the throw to the end of its sweep, with the pile's chip and winner tag.
  */
 export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
-  const { trick, flights, signal, bombClock, comboLabel, trickWinner, note, roomW, scale = 1, hidden = false, lit = false } = props;
+  const { trick, flights, signal, bombClock, comboLabel, trickWinner, roomW, scale = 1, hidden = false, lit = false } = props;
   const { t } = useTranslation();
   const cardScale = scale * FIELD_SCALE;
   const reduceMotion = usePrefersReducedMotion();
@@ -531,17 +527,7 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
         ))}
       </View>
 
-      {hidden ? null : note ? (
-        <View
-          {...a11yHidden()}
-          style={[
-            pileStyles.noteLabel,
-            { width: roomW, marginLeft: -roomW / 2, marginTop: fieldSlots(note.cards, cardScale, roomW).h / 2 + Spacing.snug },
-          ]}
-        >
-          <PileLabelMark text={note.text} testID={note.testID} scale={scale} />
-        </View>
-      ) : comboLabel && label !== null && (
+      {hidden ? null : comboLabel && label !== null && (
         <View
           style={[
             pileStyles.comboLabel,
@@ -901,5 +887,4 @@ const pileStyles = StyleSheet.create({
   // flight has just set down.
   comboLabel: { position: "absolute", top: "50%", left: 0, right: 0, alignItems: "center" },
   // The field's width, not the pile's: an empty pile is as narrow as its minimum, and the note is cut.
-  noteLabel: { position: "absolute", top: "50%", left: "50%", alignItems: "center" },
 });

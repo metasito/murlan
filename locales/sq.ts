@@ -307,6 +307,7 @@ export const sq: Record<keyof typeof en, string> = {
 
   // ----------------------------------------------------------------- exchange.*
   "exchange.chipTitle": "Shkëmbim",
+  "exchange.chipOneWay": "Një drejtim: {{name}}",
   "exchange.chipGive": "Zgjidh një letër nga 3 në 10 për {{name}}",
   "exchange.watching": "{{winner}} po zgjedh një letër për {{loser}}",
   "exchange.waitingForYou": "{{winner}} po zgjedh një letër për ty",
@@ -318,6 +319,7 @@ export const sq: Record<keyof typeof en, string> = {
   "exchange.pileGives": "{{from}} i jep {{card}} {{to}}",
   "exchange.pileYouGive": "Ti i jep {{card}} {{to}}",
   "exchange.pileGivesYou": "{{from}} të jep {{card}}",
+  "exchange.pillNothing": "Asgjë për të kthyer",
 
   // ----------------------------------------------------------------- cards.*
   "cards.rankAce": "Asi",
@@ -355,6 +357,8 @@ export const sq: Record<keyof typeof en, string> = {
   "gameShared.emptyHand": "Letrat mbaruan!",
   "gameShared.startReasonCard": "{{name}} fillon — ka {{rank}}{{suit}}",
   "gameShared.startReasonCardSub": "(3♠ nuk u nda)",
+  "gameShared.startReasonOneWaySub": "{{name}} nuk kishte letër nga 3 në 10 për ta kthyer",
+  "gameShared.startReasonOneWaySubYou": "Ti nuk kishe letër nga 3 në 10 për ta kthyer",
   "gameShared.startReasonLostRound": "{{name}} fillon — humbi raundin",
   "gameShared.startReasonWonNoExchange": "{{name}} fillon — fitoi (pa shkëmbim)",
   "gameShared.startReasonDismiss": "Prek për të vazhduar",

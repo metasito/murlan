@@ -300,6 +300,8 @@ export const en = {
   // ----------------------------------------------------------------- exchange.*
   // The turn chip's, while the trade runs and then while the winner chooses.
   "exchange.chipTitle": "Exchange",
+  // The turn chip once the received card is read and the winner holds nothing from 3 to 10 to give back; `name` is the winner, or "You".
+  "exchange.chipOneWay": "One-way: {{name}}",
   "exchange.chipGive": "Choose a card from 3 to 10 for {{name}}",
   // Murlan's 3-to-10 rule is this game's own; every other game in the family
   // lets the winner give any card. The glow says which cards; this says why.
@@ -311,10 +313,12 @@ export const en = {
   "exchange.confirmA11yWaiting": "Give a card to {{name}}. Choose one of the highlighted cards first.",
   "exchange.cardA11yHint": "Chooses this card to give",
   "exchange.cardA11yNotGiveable": "Cannot be given — only a 3 to a 10 may be given",
-  // Under the pile while a traded card rests there face up; `card` is its short name, "2♥".
+  // On the last-played pill while a traded card rests on the pile face up; `card` is its short name, "2♥".
   "exchange.pileGives": "{{from}} gives {{card}} to {{to}}",
   "exchange.pileYouGive": "You give {{card}} to {{to}}",
   "exchange.pileGivesYou": "{{from}} gives you {{card}}",
+  // The last-played pill beside it, which names no one: the chip does.
+  "exchange.pillNothing": "Nothing to give back",
 
   // ----------------------------------------------------------------- cards.*
   "cards.rankAce": "Ace",
@@ -352,6 +356,8 @@ export const en = {
   "gameShared.emptyHand": "Hand empty!",
   "gameShared.startReasonCard": "{{name}} starts — holds the {{rank}}{{suit}}",
   "gameShared.startReasonCardSub": "(the 3♠ was not dealt)",
+  "gameShared.startReasonOneWaySub": "{{name}} had nothing from 3 to 10 to give back",
+  "gameShared.startReasonOneWaySubYou": "You had nothing from 3 to 10 to give back",
   "gameShared.startReasonLostRound": "{{name}} starts — lost the round",
   "gameShared.startReasonWonNoExchange": "{{name}} starts — won (no exchange)",
   "gameShared.startReasonDismiss": "Tap to continue",

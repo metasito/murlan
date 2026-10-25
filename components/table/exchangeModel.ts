@@ -202,12 +202,15 @@ export function readExchangeLegs(
   };
 }
 
-export interface PileNote { text: string; testID: string; cards: Card[] }
+export interface PillNote { text: string; testID: string }
+
+const NOTE_ID = "exchange-pill-note";
 
 /**
- * The chip over the hand and the note on the pile. They answer "is this the viewer?" from different
- * sources on purpose: the chip from the live phase, the note from the shown exchange's seats, which
- * outlive the phase — one role for both makes the winner read their own give in the third person.
+ * The turn pill's words and the last-played pill's note. They answer "is this the viewer?" from
+ * different sources on purpose: the chip from the live phase, the note from the shown exchange's
+ * seats, which outlive the phase — one role for both makes the winner read their own give in the
+ * third person.
  */
 export function exchangeNotes(input: {
   shown: ExchangeAnnounceData | null;
@@ -217,38 +220,45 @@ export function exchangeNotes(input: {
   viewerSeat: number;
   spectating: boolean;
   t: TFn;
-}): { chip: string | null; pileNote: PileNote | null } {
+}): { chip: string | null; pillNote: PillNote | null } {
   const { shown, stages, live, players, viewerSeat, spectating, t } = input;
-  if (!shown) return { chip: null, pileNote: null };
+  if (!shown) return { chip: null, pillNote: null };
   const name = (seat: number) => players[seat]?.name ?? "";
-  const giveNote = (card: Card, from: number, to: number): PileNote => {
+  const note = (text: string): PillNote => ({ text, testID: NOTE_ID });
+  const giveNote = (card: Card, from: number, to: number): PillNote => {
     const c = `${getCardDisplayRank(card.rank)}${getSuitSymbol(card.suit)}`;
-    const text = viewerOwnsSeat(from, viewerSeat, spectating)
-      ? t("exchange.pileYouGive", { card: c, to: name(to) })
-      : viewerOwnsSeat(to, viewerSeat, spectating)
-        ? t("exchange.pileGivesYou", { from: name(from), card: c })
-        : t("exchange.pileGives", { from: name(from), card: c, to: name(to) });
-    return { text, testID: "exchange-pile-label", cards: [card] };
+    return note(
+      viewerOwnsSeat(from, viewerSeat, spectating)
+        ? t("exchange.pileYouGive", { card: c, to: name(to) })
+        : viewerOwnsSeat(to, viewerSeat, spectating)
+          ? t("exchange.pileGivesYou", { from: name(from), card: c })
+          : t("exchange.pileGives", { from: name(from), card: c, to: name(to) })
+    );
   };
-  const pileNote = shown.twoJokers
+  const winnerWord = viewerOwnsSeat(shown.winnerIdx, viewerSeat, spectating) ? t("gameShared.you") : name(shown.winnerIdx);
+  const pillNote = shown.twoJokers
     ? stages.receive === "rest"
-      ? { text: t("exchangeAnnouncement.noExchangeText"), testID: "exchange-none", cards: JOKERS }
+      ? note(t("exchangeAnnouncement.noExchangeText"))
       : null
     : stages.receive === "rest" && shown.cardReceived
       ? giveNote(shown.cardReceived, shown.loserIdx, shown.winnerIdx)
-      : stages.give === "rest" && shown.cardGiven
-        ? giveNote(shown.cardGiven, shown.winnerIdx, shown.loserIdx)
-        : null;
+      : shown.oneWay && stages.ready
+        ? note(t("exchange.pillNothing"))
+        : stages.give === "rest" && shown.cardGiven
+          ? giveNote(shown.cardGiven, shown.winnerIdx, shown.loserIdx)
+          : null;
 
   // The choice opens once the received card has landed and been read; until then the chip names the exchange.
   const loserName = live.loser?.name ?? "";
   const winnerName = live.winner?.name ?? "";
-  const chip = !(live.open && stages.ready)
-    ? t("exchange.chipTitle")
-    : live.viewerIsWinner
-      ? t("exchange.chipGive", { name: loserName })
-      : live.viewerIsLoser
-        ? t("exchange.waitingForYou", { winner: winnerName })
-        : t("exchange.watching", { winner: winnerName, loser: loserName });
-  return { chip, pileNote };
+  const chip = shown.oneWay && stages.ready
+    ? t("exchange.chipOneWay", { name: winnerWord })
+    : !(live.open && stages.ready)
+      ? t("exchange.chipTitle")
+      : live.viewerIsWinner
+        ? t("exchange.chipGive", { name: loserName })
+        : live.viewerIsLoser
+          ? t("exchange.waitingForYou", { winner: winnerName })
+          : t("exchange.watching", { winner: winnerName, loser: loserName });
+  return { chip, pillNote };
 }

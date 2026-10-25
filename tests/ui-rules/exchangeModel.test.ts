@@ -1,4 +1,4 @@
-// What the table says about an exchange: the chip and the note on the pile.
+// What the table says about an exchange: the turn pill's words and the note on the last-played pill.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -49,7 +49,7 @@ const notes = (viewerSeat: number, over: Partial<Parameters<typeof exchangeNotes
   });
 
 test("nothing shown says nothing", () => {
-  assert.deepEqual(notes(WINNER, { shown: null }), { chip: null, pileNote: null });
+  assert.deepEqual(notes(WINNER, { shown: null }), { chip: null, pillNote: null });
 });
 
 test("until the received card is read, the chip only names the exchange", () => {
@@ -57,46 +57,46 @@ test("until the received card is read, the chip only names the exchange", () => 
 });
 
 test("the winner is asked to give to the loser, and told the card came to them", () => {
-  const { chip, pileNote } = notes(WINNER, { stages: stages({ receive: "rest", ready: true }) });
+  const { chip, pillNote } = notes(WINNER, { stages: stages({ receive: "rest", ready: true }) });
   assert.equal(chip, 'exchange.chipGive {"name":"Ana"}');
-  assert.deepEqual(pileNote, { text: 'exchange.pileGivesYou {"from":"Ana","card":"A♠"}', testID: "exchange-pile-label", cards: [ACE] });
+  assert.deepEqual(pillNote, { text: 'exchange.pileGivesYou {"from":"Ana","card":"A♠"}', testID: "exchange-pill-note" });
 });
 
 test("the loser waits on the winner, and reads their own card as theirs", () => {
-  const { chip, pileNote } = notes(LOSER, { stages: stages({ receive: "rest", ready: true }) });
+  const { chip, pillNote } = notes(LOSER, { stages: stages({ receive: "rest", ready: true }) });
   assert.equal(chip, 'exchange.waitingForYou {"winner":"Cim"}');
-  assert.equal(pileNote?.text, 'exchange.pileYouGive {"card":"A♠","to":"Cim"}');
+  assert.equal(pillNote?.text, 'exchange.pileYouGive {"card":"A♠","to":"Cim"}');
 });
 
 test("a watcher reads both seats in the third person", () => {
   for (const [seat, spectating] of [[WATCHER, false], [WINNER, true]] as const) {
-    const { chip, pileNote } = notes(seat, {
+    const { chip, pillNote } = notes(seat, {
       stages: stages({ receive: "rest", ready: true }),
       live: readExchange(openState, seat, spectating),
       spectating,
     });
     assert.equal(chip, 'exchange.watching {"winner":"Cim","loser":"Ana"}');
-    assert.equal(pileNote?.text, 'exchange.pileGives {"from":"Ana","card":"A♠","to":"Cim"}');
+    assert.equal(pillNote?.text, 'exchange.pileGives {"from":"Ana","card":"A♠","to":"Cim"}');
   }
 });
 
 test("after the phase has closed, the winner's give still reads as theirs", () => {
-  const { chip, pileNote } = notes(WINNER, { shown: given, stages: stages({ receive: "landed", give: "rest", ready: true }), live: INACTIVE_EXCHANGE });
+  const { chip, pillNote } = notes(WINNER, { shown: given, stages: stages({ receive: "landed", give: "rest", ready: true }), live: INACTIVE_EXCHANGE });
   assert.equal(chip, "exchange.chipTitle");
-  assert.deepEqual(pileNote, { text: 'exchange.pileYouGive {"card":"7♥","to":"Ana"}', testID: "exchange-pile-label", cards: [SEVEN] });
+  assert.deepEqual(pillNote, { text: 'exchange.pileYouGive {"card":"7♥","to":"Ana"}', testID: "exchange-pill-note" });
 });
 
 test("two jokers: no exchange, the jokers on the pile while they rest there", () => {
   const jokers = buildExchangeAnnounce(PLAYERS, { ...phase, kind: "twoJokers" });
   assert.deepEqual(notes(LOSER, { shown: jokers, live: INACTIVE_EXCHANGE }), {
     chip: "exchange.chipTitle",
-    pileNote: { text: "exchangeAnnouncement.noExchangeText", testID: "exchange-none", cards: JOKERS },
+    pillNote: { text: "exchangeAnnouncement.noExchangeText", testID: "exchange-pill-note" },
   });
-  assert.equal(notes(LOSER, { shown: jokers, live: INACTIVE_EXCHANGE, stages: stages({ receive: "landed" }) }).pileNote, null);
+  assert.equal(notes(LOSER, { shown: jokers, live: INACTIVE_EXCHANGE, stages: stages({ receive: "landed" }) }).pillNote, null);
 });
 
 test("a stuck release, with no give, leaves the pile bare once the receive has left it", () => {
-  assert.equal(notes(WINNER, { stages: stages({ receive: "landed", give: "rest" }), live: INACTIVE_EXCHANGE }).pileNote, null);
+  assert.equal(notes(WINNER, { stages: stages({ receive: "landed", give: "rest" }), live: INACTIVE_EXCHANGE }).pillNote, null);
 });
 
 describe("readExchange", () => {
@@ -169,7 +169,7 @@ describe("arrivingCard", () => {
     loserName: "Bea",
     winnerIdx: 1,
     loserIdx: 3,
-    twoJokers: false,
+    twoJokers: false, oneWay: false,
     cardGiven: GIVEN,
     cardReceived: RECEIVED,
   };
@@ -335,6 +335,7 @@ describe("readExchangeLegs", () => {
     winnerIdx,
     loserIdx,
     twoJokers,
+    oneWay: false,
     cardReceived: card("taken"),
     cardGiven: card("given"),
   });
@@ -400,6 +401,7 @@ describe("a spectator (null seat) owns no seat in the exchange", () => {
           winnerIdx,
           loserIdx,
           twoJokers,
+          oneWay: false,
           cardReceived: ACE,
           cardGiven: SEVEN,
         }))
@@ -431,5 +433,40 @@ describe("a spectator (null seat) owns no seat in the exchange", () => {
       readHandArrival({ hand, announced: a, stages: { key: "k", receive: "flying", give: "flying", ready: false }, viewerSeat: a.winnerIdx })
     );
     assert.ok(lent.every((r) => r.withheldIds.length > 0));
+  });
+});
+
+describe("a one-way exchange: the winner holds nothing to give back", () => {
+  const oneWay = { ...buildExchangeAnnounce(PLAYERS, { kind: "settled", winnerIdx: WINNER, loserIdx: LOSER }, { received: ACE }), oneWay: true };
+  const asked = (viewerSeat: number, over: Partial<Parameters<typeof exchangeNotes>[0]> = {}) =>
+    notes(viewerSeat, { shown: oneWay, live: INACTIVE_EXCHANGE, ...over });
+
+  test("the receive reads on the last-played pill as any other, in each viewer's own person", () => {
+    assert.equal(asked(WINNER).pillNote?.text, 'exchange.pileGivesYou {"from":"Ana","card":"A♠"}');
+    assert.equal(asked(LOSER).pillNote?.text, 'exchange.pileYouGive {"card":"A♠","to":"Cim"}');
+    assert.equal(asked(WATCHER).pillNote?.text, 'exchange.pileGives {"from":"Ana","card":"A♠","to":"Cim"}');
+    assert.equal(asked(WINNER).chip, "exchange.chipTitle");
+  });
+
+  test("once the receive is read, the turn pill names the winner one-way and the last-played pill says there is nothing to give back", () => {
+    const read = { stages: stages({ receive: "landed", ready: true }) };
+    for (const seat of [LOSER, WATCHER]) {
+      assert.deepEqual(asked(seat, read), {
+        chip: 'exchange.chipOneWay {"name":"Cim"}',
+        pillNote: { text: "exchange.pillNothing", testID: "exchange-pill-note" },
+      });
+    }
+    assert.equal(asked(WINNER, read).chip, 'exchange.chipOneWay {"name":"gameShared.you"}');
+    assert.equal(asked(WINNER, read).pillNote?.text, "exchange.pillNothing");
+    assert.equal(asked(WINNER, { ...read, spectating: true }).chip, 'exchange.chipOneWay {"name":"Cim"}');
+  });
+
+  test("between the receive leaving the pile and the choice's beat, the pills say nothing of it", () => {
+    assert.equal(asked(WINNER, { stages: stages({ receive: "tuck" }) }).pillNote, null);
+    assert.equal(asked(WINNER, { stages: stages({ receive: "landed" }) }).pillNote, null);
+  });
+
+  test("a two-way exchange never says it", () => {
+    assert.equal(notes(WINNER, { stages: stages({ receive: "landed", ready: true }) }).pillNote, null);
   });
 });
