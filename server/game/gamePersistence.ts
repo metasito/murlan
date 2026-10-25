@@ -24,6 +24,7 @@ import {
 } from "./onlineGameLogic.ts";
 import { toEnvelope } from "./tableState.ts";
 import type { GameState, Card } from "../../lib/game/gameEngine.ts";
+import { turnOf } from "../../lib/game/moves.ts";
 import type { WireGameState } from "../../shared/protocol.ts";
 
 export function sanitizeStateForPlayer(
@@ -45,6 +46,7 @@ export function sanitizeStateForPlayer(
     // over or never moves. The deadline rides along only as a reset key.
     turnDeadlineMs,
     turnSecondsRemaining: secondsUntil(turnDeadlineMs),
+    turn: turnOf(state),
     exchangePhase: visibleExchangePhase(state.exchangePhase, viewerSeatIndex, now()),
     players: state.players.map((p, idx) => {
       const isViewer = playerMap[idx] === viewerUserId;

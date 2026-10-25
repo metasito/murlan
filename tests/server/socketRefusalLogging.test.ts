@@ -14,7 +14,7 @@
 // inherits whichever answer this file pins.
 import { test, describe, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
-import { GameRejoinSchema as Payload, NoPayloadSchema, RoomJoinSchema } from "../../shared/socketSchemas.ts";
+import { GameRejoinSchema as Payload, GamePassSchema, RoomJoinSchema } from "../../shared/socketSchemas.ts";
 import { payload } from "../../server/shared/payload.ts";
 import { onEvent, __resetRateLimits } from "../../server/socket/socketSafety.ts";
 import { logger } from "../../server/shared/logger.ts";
@@ -173,9 +173,9 @@ describe("onEvent leaves every refusal in the log", () => {
 
   test("a silent refusal is acked and logged, and tells the socket nothing", async () => {
     const socket = fakeSocket();
-    onEvent(socket as any, "game:pass", NoPayloadSchema, async () => ({ ok: false, code: "NOT_YOUR_TURN" }));
+    onEvent(socket as any, "game:pass", GamePassSchema, async () => ({ ok: false, code: "NOT_YOUR_TURN" }));
 
-    assert.deepEqual(await socket.send("game:pass"), { ok: false, code: "NOT_YOUR_TURN" });
+    assert.deepEqual(await socket.send("game:pass", { turn: "0" }), { ok: false, code: "NOT_YOUR_TURN" });
     assert.equal(lines.filter((l) => l.fields.code === "NOT_YOUR_TURN").length, 1);
     assert.deepEqual(socket.emitted, []);
   });

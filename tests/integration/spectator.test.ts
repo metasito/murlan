@@ -43,6 +43,7 @@ interface SanitizedState {
   viewerSeatIndex: number | null;
   currentTurnIndex: number;
   openingCard: { id: string } | null;
+  turn: string;
 }
 interface RoomState {
   code: string;
@@ -102,7 +103,7 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.ok(idx >= 0, "neither client holds the seat on turn");
     const start = states[idx].openingCard;
     assert.ok(start, "the opening round must name a start card");
-    seats[idx].socket.emit("game:play", { cardIds: [start!.id] });
+    seats[idx].socket.emit("game:play", { cardIds: [start!.id], turn: states[idx].turn });
   }
 
   test("a seated player still receives their own hand", async () => {
@@ -159,8 +160,8 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     const before = await joined;
 
     // Including the genuinely legal opening card, played from the wrong socket.
-    watcher.socket.emit("game:play", { cardIds: [aliceState.openingCard!.id] });
-    watcher.socket.emit("game:pass");
+    watcher.socket.emit("game:play", { cardIds: [aliceState.openingCard!.id], turn: before.turn });
+    watcher.socket.emit("game:pass", { turn: before.turn });
     await new Promise((r) => setTimeout(r, 250));
 
     const check = waitFor<SanitizedState>(watcher.socket, "game:state", 4000);

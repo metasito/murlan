@@ -26,6 +26,7 @@ import type { Card, Rank, Suit } from "../../lib/game/gameEngine";
 import { expectSelectionLegal } from "./helpers/bot.ts";
 import { HAND_ZONE, TABLE } from "./helpers/selectors.ts";
 import { tap } from "./helpers/press";
+import { paintedFrames, type EachPaint } from "./helpers/virtualClock";
 
 /** The reference handset, and the viewport every other table spec measures at. */
 const VIEWPORT = { width: 844, height: 390 };
@@ -116,6 +117,8 @@ interface Landing {
   flareSeen: boolean;
 }
 
+test.beforeEach(({ page }) => paintedFrames(page));
+
 /**
  * Starts an every-frame record of where the felt is and how far the table has
  * moved, and leaves it on `window` to be read once the landing is over.
@@ -161,10 +164,11 @@ async function watchLanding(page: Page): Promise<void> {
         if (Number.isFinite(o)) state.flareOpacity = Math.max(state.flareOpacity, o);
       }
       state.frames += 1;
-      if (performance.now() - started < windowMs) requestAnimationFrame(step);
-      else state.done = true;
+      if (performance.now() - started < windowMs) return;
+      state.done = true;
+      return false;
     };
-    requestAnimationFrame(step);
+    (window as unknown as { murlanEachPaint: EachPaint }).murlanEachPaint(step);
   }, LANDING_WINDOW_MS);
 }
 

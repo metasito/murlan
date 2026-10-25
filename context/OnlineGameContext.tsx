@@ -13,12 +13,11 @@ import { useSocketConnection } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
 import { t, translateServerPayload, useTranslation, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
-import { send, undelivered, type IntentEvent, type IntentOutcome } from "@/lib/sendIntent";
+import { send, undelivered, type IntentEvent, type IntentOutcome, type SendArgs } from "@/lib/sendIntent";
 import { MATCH_TARGETS } from "@/lib/game/gameEngine";
 import {
   roundOverSchema,
   gameStateSchema,
-  type IntentPayload,
   roomStateSchema,
   type WireGameState,
   type WireRoomState,
@@ -740,8 +739,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
    * move that vanished used to look exactly like a player who did not move.
    */
   const deliver = useCallback(
-    <E extends IntentEvent>(event: E, payload?: IntentPayload<E>, options?: { retry?: boolean }) => {
-      return send(socket, event, payload, options).then((outcome) => {
+    <E extends IntentEvent>(event: E, ...args: SendArgs<E>) => {
+      return send(socket, event, ...args).then((outcome) => {
         if (undelivered(outcome)) {
           notifyError(t(event.startsWith("game:") ? "game.moveNotDelivered" : "room.requestNotDelivered"), {
             duration: Reading.notice,
@@ -834,17 +833,29 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     deliver("game:end_match_vote", { wants });
   }, [deliver]);
 
-  const playCards = useCallback(
-    (cardIds: string[]) => deliver("game:play", { cardIds }),
-    [deliver]
+  // A move refused as out of turn was made against a state this client may have missed the
+  // successor of; nothing else would bring that successor until the next broadcast.
+  const catchUpIfStale = useCallback(
+    (outcome: IntentOutcome) => {
+      if (outcome.code === "NOT_YOUR_TURN") rejoin.attempt();
+    },
+    [rejoin]
   );
 
-  const pass = useCallback(() => deliver("game:pass"), [deliver]);
+  const playCards = useCallback((cardIds: string[]) => {
+    const state = gameStateRef.current;
+    if (state) void deliver("game:play", { cardIds, turn: state.turn }).then(catchUpIfStale);
+  }, [deliver, catchUpIfStale]);
 
-  const giveExchangeCard = useCallback(
-    (cardId: string) => deliver("game:exchange_give_card", { cardId }),
-    [deliver]
-  );
+  const pass = useCallback(() => {
+    const state = gameStateRef.current;
+    if (state) void deliver("game:pass", { turn: state.turn }).then(catchUpIfStale);
+  }, [deliver, catchUpIfStale]);
+
+  const giveExchangeCard = useCallback((cardId: string) => {
+    const state = gameStateRef.current;
+    if (state) void deliver("game:exchange_give_card", { cardId, turn: state.turn }).then(catchUpIfStale);
+  }, [deliver, catchUpIfStale]);
 
   const reclaimSeat = useCallback(() => {
     if (seatLossRef.current !== "vacated") return;

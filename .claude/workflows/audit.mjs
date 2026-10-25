@@ -260,7 +260,7 @@ Also check:
     ask: `Run \`npm audit --omit=dev\` and \`npx expo install --check\`, and report the output.
 Then check:
 - outdated or abandoned dependencies, and duplicate versions;
-- whether patch-package's postinstall step (package.json) still has anything to apply — no patches/ directory exists today;
+- whether patch-package's postinstall step (package.json) still has anything to apply — whether each file in patches/ still applies to the installed version and is still needed;
 - APIs the code uses against server:build --target=node22;
 - app.json permissions and store readiness;
 - Actions pinning and permissions;

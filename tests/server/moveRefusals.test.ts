@@ -14,6 +14,7 @@ import type { ServerCode } from "../../server/shared/payload.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { buildCombination, type GameState } from "../../lib/game/gameEngine.ts";
 import { card as c, seat, state as makeState } from "../support/game.ts";
+import { turnOf } from "../../lib/game/moves.ts";
 
 const ROOM = "move-refusals-room";
 const SOCKET_ID = "move-refusals-socket";
@@ -56,10 +57,17 @@ const opening = midTrick({
   openingCard: c("5", "spades"),
 });
 
-type Send = { event: "game:play"; body: { cardIds: string[] } } | { event: "game:pass" } | { event: "game:exchange_give_card"; body: { cardId: string } };
-const play = (...cardIds: string[]): Send => ({ event: "game:play", body: { cardIds } });
-const pass: Send = { event: "game:pass" };
-const giveback = (cardId: string): Send => ({ event: "game:exchange_give_card", body: { cardId } });
+/** Every `Send` below names the turn of a freshly dealt table; a table past it holds each of them stale. */
+const DEALT = turnOf(midTrick());
+const movedOn = { lastMove: { seq: 3, kind: "pass", seat: 1, closedTrick: false } } as const;
+
+type Send =
+  | { event: "game:play"; body: { cardIds: string[]; turn: string } }
+  | { event: "game:pass"; body: { turn: string } }
+  | { event: "game:exchange_give_card"; body: { cardId: string; turn: string } };
+const play = (...cardIds: string[]): Send => ({ event: "game:play", body: { cardIds, turn: DEALT } });
+const pass: Send = { event: "game:pass", body: { turn: DEALT } };
+const giveback = (cardId: string): Send => ({ event: "game:exchange_give_card", body: { cardId, turn: DEALT } });
 
 /** `told` absent: refused silently, with the ack alone. */
 type Case = { name: string; state: GameState; user?: string; send: Send } & (
@@ -90,6 +98,9 @@ const CASES: Case[] = [
   { name: "a giveback of a card not held", state: exchangeOpen(), send: giveback("9_hearts"), code: "INVALID_CARD", told: {} },
   { name: "a giveback outside 3-10", state: exchangeOpen(), send: giveback("A_hearts"), code: "INVALID_CARD", told: {} },
   { name: "a giveback of the card just handed over", state: exchangeOpen(), send: giveback("2_clubs"), code: "INVALID_CARD", told: {} },
+  { name: "a legal play made against an earlier turn", state: midTrick(movedOn), send: play("9_clubs"), code: "NOT_YOUR_TURN" },
+  { name: "a legal pass made against an earlier turn", state: midTrick(movedOn), send: pass, code: "NOT_YOUR_TURN" },
+  { name: "a legal giveback made against an earlier turn", state: exchangeOpen(movedOn), send: giveback("5_spades"), code: "NOT_YOUR_TURN" },
 ];
 
 function fakeSocket(userId: string) {
@@ -102,7 +113,7 @@ function fakeSocket(userId: string) {
     emit: (event: string, body: unknown) => emitted.push({ event, payload: body }),
   };
   const send = (s: Send) =>
-    new Promise<unknown>((resolve) => handlers.get(s.event)!("body" in s ? s.body : undefined, resolve));
+    new Promise<unknown>((resolve) => handlers.get(s.event)!(s.body, resolve));
   return { socket: socket as unknown as GameSocket, emitted, send };
 }
 
