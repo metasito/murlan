@@ -443,6 +443,8 @@ jobs:
       - name: Typecheck — noUncheckedIndexedAccess ratchet
         run: npm run typecheck:strict
       - run: npm run lint
+      - name: Audit
+        run: node tools/ci/audit-gate.mjs
 
   # Nothing else in this workflow compiles the app for a device. `build` makes
   # the web bundle and the server bundle, neither of which touches Gradle or Xcode, so a plugin or dependency that breaks the

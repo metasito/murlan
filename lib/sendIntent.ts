@@ -15,6 +15,13 @@ const INTENT_ATTEMPTS = 3;
 /** A `room:` or `game:` intent emitted any other way: the `intents-through-send` guard in eslint.guards.cjs refuses it. */
 export type { IntentEvent };
 
+/** The payload is optional only for an intent whose schema needs nothing in it. */
+type PayloadArgs<E extends IntentEvent, O> = Record<never, never> extends IntentPayload<E>
+  ? [payload?: IntentPayload<E>, options?: O]
+  : [payload: IntentPayload<E>, options?: O];
+
+export type SendArgs<E extends IntentEvent> = PayloadArgs<E, { retry?: boolean }>;
+
 /** Acked as an intent is, but not deduped by the server, so it is sent once. */
 type InvitePayload = Parameters<ClientToServerEvents["friend:invite"]>[0];
 
@@ -70,8 +77,7 @@ export type IntentOutcome = IntentReply;
 export function sendIntent<E extends IntentEvent>(
   socket: Socket | null,
   event: E,
-  payload?: IntentPayload<E>,
-  options?: { attempts?: number; timeoutMs?: number }
+  ...args: PayloadArgs<E, { attempts?: number; timeoutMs?: number }>
 ): Promise<IntentOutcome>;
 export function sendIntent(
   socket: Socket | null,
@@ -113,10 +119,11 @@ export async function sendIntent(
 export function send<E extends IntentEvent>(
   socket: Socket | null,
   event: E,
-  payload?: IntentPayload<E>,
-  { retry = true }: { retry?: boolean } = {}
+  ...[payload, { retry = true } = {}]: SendArgs<E>
 ): Promise<IntentOutcome> {
-  return sendIntent(socket, event, payload, { attempts: retry ? INTENT_ATTEMPTS : 1 });
+  return sendIntent(socket, event as IntentEvent, payload as IntentPayload<IntentEvent>, {
+    attempts: retry ? INTENT_ATTEMPTS : 1,
+  });
 }
 
 /** `friend:invite`, acked and judged as every intent is. */

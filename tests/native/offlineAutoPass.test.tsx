@@ -128,7 +128,7 @@ describe('the offline turn clock expiring', () => {
   it('is the screen’s own to stop, and says so', async () => {
     const r = await mount();
 
-    expect(mockSeenTimer.current?.pausable).toBe(true);
+    expect(mockSeenTimer.current?.table).toBe("offline");
 
     await r.unmount();
   });

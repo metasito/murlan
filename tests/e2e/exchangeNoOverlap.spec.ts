@@ -5,6 +5,7 @@ import { expectNoteFits, NEIGHBOUR_IDS, readPillFacts } from "./helpers/pillNote
 import { test, expect } from "./fixtures";
 import { exchangeSave, resumeSaved } from "./helpers/offlineSeed";
 import { tap } from "./helpers/press";
+import { paintedFrames, type EachPaint } from "./helpers/virtualClock";
 
 const GIVEBACK_SPOKEN = "5 di Cuori";
 const LEGS = ["exchange-flier-to-winner", "exchange-flier-to-loser"] as const;
@@ -18,6 +19,8 @@ const midExchangeSave = () =>
     cardFromLoser: "2_spades",
     holding: [["5_hearts", "K_spades", "2_spades"], ["J_hearts", "Q_diamonds"]],
   });
+
+test.beforeEach(({ page }) => paintedFrames(page));
 
 test("the give shows only once the receive has landed: never two cards in the air", async ({ page, baseURL }) => {
   test.setTimeout(120_000);
@@ -34,9 +37,8 @@ test("the give shows only once the receive has landed: never two cards in the ai
       const el = shown[0] ? document.querySelector(`[data-testid="${shown[0]}"]`) : null;
       const r = el?.getBoundingClientRect();
       out.push({ t: performance.now() - t0, shown, x: r?.x ?? 0, y: r?.y ?? 0 });
-      requestAnimationFrame(frame);
     };
-    requestAnimationFrame(frame);
+    (window as unknown as { murlanEachPaint: EachPaint }).murlanEachPaint(frame);
   }, LEGS);
 
   await expect(page.getByTestId("exchange-prompt")).toBeVisible({ timeout: 15_000 });

@@ -35,7 +35,7 @@ import {
   viewerOwnsSeat,
   type OpponentSide,
 } from "@/components/seatLayout";
-import { handCountOf, type ViewedGameState } from "@/shared/protocol";
+import { handCountOf, vacatedOf, type ViewedGameState } from "@/shared/protocol";
 import type { CardFrom } from "@/components/flightPose";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
 import { tableLayout, type Seating } from "@/components/tableLayout";
@@ -857,14 +857,17 @@ export function GameTable({
 
   const topBarA11yLabel = pillNote?.text ?? topBarLabel(onTop, playedByViewer, lastPlayName, t);
 
+  const onMoveSeat = !shownExchange && shown === null ? shownTurnIndex : null;
   const turn = turnPresentation({
     roundOver: gameState.roundOver,
     matchOver,
     dealing: deal.dealing,
     shownTurnIsMine,
     onMoveName: players[shownTurnIndex]?.name ?? "",
-    exchange: { chip: exchangeChip, choiceOpen, viewerIsWinner: exchange.viewerIsWinner, open: exchange.open },
+    exchange: { chip: exchangeChip, choiceOpen, viewerIsWinner: exchange.viewerIsWinner, open: exchange.open, winnerSeat: exchange.open ? exchange.winnerSeat : null },
     timer: turnTimer,
+    shownTurnSeat: onMoveSeat,
+    isBot: (seat) => players[seat]?.type === "bot" || (!!players[seat] && vacatedOf(players[seat])),
     vote: roundVote?.deadline ?? null,
     isMyTurn,
     isFinished,
@@ -891,7 +894,7 @@ export function GameTable({
 
   useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
   const seatTable: SeatTable = {
-    onMoveSeat: !shownExchange && shown === null ? shownTurnIndex : null,
+    onMoveSeat,
     passed,
     disconnectedSeats,
     exchangeLit,
@@ -907,7 +910,7 @@ export function GameTable({
           {...seatView(opponent.seat, opponent.player, seatTable)}
           dealArrivals={deal.arrivalsFor(opponent.seat)}
           scale={scale}
-          countdown={turn.seatClock ? countdown : undefined}
+          countdown={turn.clockSeat === opponent.seat ? countdown : undefined}
           focusMode={focusMode}
           flash={ringFlash}
         />

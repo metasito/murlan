@@ -106,6 +106,7 @@ const gameState: Omit<WireGameState, 'viewerSeatIndex' | 'turnSecondsRemaining'>
   openingCard: null,
   playedRanks: aThreePlayed(),
   lastMove: { seq: 0, kind: 'deal' },
+  turn: '0',
 };
 
 const roomState: RoomState = {

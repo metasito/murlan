@@ -9,8 +9,8 @@ import type { FriendRequestAccepted, FriendRequestIncoming } from "./http.ts";
 import type * as Inbound from "./socketSchemas.ts";
 import type { TranslationParams } from "./i18n.ts";
 
-export const PROTOCOL_VERSION = 14;
-export const MIN_PROTOCOL_VERSION = 12;
+export const PROTOCOL_VERSION = 15;
+export const MIN_PROTOCOL_VERSION = 14;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */
 export const CLIENT_OUTDATED = "CLIENT_OUTDATED";
@@ -35,6 +35,8 @@ export type WireGameState = Omit<ViewedGameState, "players"> & {
   viewerSeatIndex: number | null;
   turnDeadlineMs?: number;
   turnSecondsRemaining: number;
+  /** Opaque to the client: a move intent echoes it as `turn`, and the server refuses one that names any other. */
+  turn: string;
 };
 
 export interface WireRoomState {
@@ -120,7 +122,7 @@ export interface IntentSchemas {
   "room:quickmatch": typeof Inbound.RoomQuickmatchSchema;
   "room:start": typeof Inbound.RoomStartSchema;
   "game:play": typeof Inbound.GamePlaySchema;
-  "game:pass": typeof Inbound.NoPayloadSchema;
+  "game:pass": typeof Inbound.GamePassSchema;
   "game:rematch_vote": typeof Inbound.NoPayloadSchema;
   "game:end_match_vote": typeof Inbound.GameEndMatchVoteSchema;
   "game:rejoin": typeof Inbound.GameRejoinSchema;
@@ -169,6 +171,7 @@ export const gameStateSchema = z
     // and a stricter wire would refuse a state over a tally a newer server reshaped.
     playedRanks: z.array(z.number()),
     openingCard: card.nullable(),
+    turn: z.string(),
   })
   .passthrough();
 

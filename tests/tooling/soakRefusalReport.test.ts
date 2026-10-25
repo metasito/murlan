@@ -27,6 +27,9 @@ function fakeSocket() {
     emit(event: string, payload?: unknown) {
       sent.push({ event, payload });
     },
+    timeout() {
+      return this;
+    },
     refuse(event: string, code: string, message = "no") {
       handlers.get(event)!({ code, message });
     },
@@ -132,6 +135,7 @@ describe("the soak does not manufacture its own refusals", () => {
       openingCard: null,
       exchangePhase: { kind: "open", winnerIdx: 0, loserIdx: 1, cardFromLoser },
       viewerSeatIndex: 0,
+      turn: "t0",
     } as never;
     return { seat, socket };
   }

@@ -4,6 +4,7 @@ import { sanitizeStateForPlayer } from "../../server/game/gamePersistence.ts";
 import { buildCombination, getValidGivebackCards, startRound, type GameState, type SeatSetup } from "../../lib/game/gameEngine.ts";
 import { givenBack, passed, played } from "../support/moves.ts";
 import { rng } from "../support/game.ts";
+import { turnOf } from "../../lib/game/moves.ts";
 
 const SEATS: SeatSetup[] = [0, 1, 2, 3].map((i) => ({ name: `p${i}`, type: "human" }));
 const PLAYER_MAP = { 0: "u0", 1: "u1", 2: "u2", 3: "u3" };
@@ -32,3 +33,11 @@ for (const [name, state] of [["giveback", afterGiveback()], ["pass", afterPass()
     for (const view of views) assert.deepEqual(view, state.lastMove);
   });
 }
+
+test("every viewer is sent the turn token a move must name, and a move changes it", () => {
+  const state = afterPass();
+  const tokens = ["u0", "u1", "spectator"].map((viewer) => sanitizeStateForPlayer(state, viewer, PLAYER_MAP).turn);
+  assert.deepEqual(tokens, [turnOf(state), turnOf(state), turnOf(state)]);
+  const dealt = startRound(SEATS, "free_for_all", { random: rng(2).source });
+  assert.notEqual(sanitizeStateForPlayer(dealt, "u0", PLAYER_MAP).turn, tokens[0]);
+});
