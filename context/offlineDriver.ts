@@ -6,11 +6,11 @@ import { Platform } from "react-native";
 import { useLocalExchange, useLocalMatch, useLocalTable } from "@/context/gameHooks";
 import { TURN_TIMEOUT_MS } from "@/lib/game/gameEngine";
 import type { ExchangeHold } from "@/lib/game/sharedGameFlow";
-import { e2e, exchangeHold } from "@/lib/e2eConfig";
+import { E2E_FAST, e2e, exchangeHold } from "@/lib/e2eConfig";
 import { flushSync } from "@/lib/flushSync";
-import { OFFLINE_BOT_DELAY_MS } from "@/lib/timeline/offlineBotDelay";
 import { uiFeedback } from "@/lib/device/feedback";
 import { turnOf } from "@/lib/game/moves";
+import { turnSchedule, type Gate } from "@/lib/game/turnSchedule";
 import { RoundEnding } from "@/lib/theme";
 
 /** Local response deadline. Offline there is no server, so the client enforces it. */
@@ -25,8 +25,30 @@ export interface OfflineDriver {
   onExchangeReady: () => void;
   onDealing: (dealing: boolean) => void;
   onRoundLanded: ((landsAt: number) => void) | undefined;
-  turnTimer: { seconds: number; includeNewTrick: false; pausable: true; onExpire: () => void };
+  turnTimer: { seconds: number; table: "offline"; pausable: true; onExpire: () => void };
   exchangeHold: ExchangeHold | undefined;
+}
+
+/** What the table has shown, as the flags the screen reports it by. */
+export interface GatesSeen {
+  dealing: boolean;
+  announcing: boolean;
+  received: boolean;
+}
+
+/** Whether each gate is past; a `Record` over `Gate`, so a gate added to the schedule fails to compile until it is answered here. */
+const PAST: Record<Gate, (seen: GatesSeen) => boolean> = {
+  deal: (seen) => !seen.dealing,
+  receive: (seen) => seen.received,
+  ceremony: (seen) => !seen.announcing,
+  oneWay: (seen) => !seen.announcing,
+  // A human's own client holds the opening notice; a bot's slot never carries it.
+  opening: () => true,
+};
+
+/** Whether the table has observed every gate the schedule names. */
+export function gatesPast(gates: readonly Gate[], seen: GatesSeen): boolean {
+  return gates.every((gate) => PAST[gate](seen));
 }
 
 /** Null-safe, so the screen calls it before its `if (!gameState)`. */
@@ -70,29 +92,24 @@ export function useOfflineDriver(): OfflineDriver {
     return () => clearTimeout(t);
   }, [roundLandedAt, startNextRound]);
 
-  // Bot turn loop. The key is the move the bot answers, and null whenever no bot is on move, so an
-  // update that records no move cannot restart the "thinking" timer.
-  // The exchange ends the phase the moment the card is chosen, so `active` is
-  // false while the two cards are still crossing the table. A play made into
-  // that is a play made over the ceremony announcing it, which is the one
-  // moment every seat is watching the middle.
+  // Bot turn loop. The key is the move the bot answers, and null whenever no bot is on move or a gate
+  // is still up, so an update that records no move cannot restart the "thinking" timer. Each gate
+  // lifts on the table's own event, never on a time computed here.
   const [dealing, setDealing] = useState(false);
-  const botTurnKey = e2e.suspendBot
-    ? null
-    : gameState &&
-        !dealing &&
-        !gameState.roundOver &&
-        gameState.exchangePhase?.kind !== "open" &&
-        !exchangeAnnouncing &&
-        gameState.players[gameState.currentTurnIndex]?.type === "bot"
-      ? turnOf(gameState)
-      : null;
+  const exchangeOpen = gameState?.exchangePhase?.kind === "open";
+  const [exchangeReady, setExchangeReady] = useState(false);
+  if (!exchangeOpen && exchangeReady) setExchangeReady(false);
+  const slot = gameState && turnSchedule(gameState, "offline", (seat) => gameState.players[seat]?.type === "bot");
+  const gatesObserved = !!slot && gatesPast(slot.gates, { dealing, announcing: exchangeAnnouncing, received: exchangeReady });
+  const botTurnKey = gameState && slot?.bot && gatesObserved && !e2e.suspendBot ? turnOf(gameState) : null;
+  const thinkMs = E2E_FAST ? 0 : (slot?.thinkMs ?? 0);
 
   useEffect(() => {
     if (botTurnKey === null) return;
-    const t = setTimeout(runBotTurn, OFFLINE_BOT_DELAY_MS);
+    // Even at zero: the table raises the deal's flag in an effect of its own, and this commit still reads it down.
+    const t = setTimeout(runBotTurn, thinkMs);
     return () => clearTimeout(t);
-  }, [botTurnKey, runBotTurn]);
+  }, [botTurnKey, thinkMs, runBotTurn]);
 
   // Offline there is no server to announce the deadline expiring, so the
   // turn would simply vanish. The pass sound is the table's, fired off
@@ -106,11 +123,7 @@ export function useOfflineDriver(): OfflineDriver {
     setAutoPassed((n) => n + 1);
   }, [clockTurn, passTurn]);
 
-  // Only the giveback is the table's to release: once it lands, a bot loser is on move under the ceremony.
-  const exchangeOpen = gameState?.exchangePhase?.kind === "open";
-  const onExchangeReady = useCallback(() => {
-    if (exchangeOpen) runBotTurn();
-  }, [exchangeOpen, runBotTurn]);
+  const onExchangeReady = useCallback(() => setExchangeReady(true), []);
 
   return {
     viewerSeat,
@@ -118,9 +131,8 @@ export function useOfflineDriver(): OfflineDriver {
     onExchangeReady,
     onDealing: setDealing,
     onRoundLanded: roundEnding ? setRoundLandedAt : undefined,
-    // Leading a trick has no deadline offline; nothing else is keeping this clock, so it can be stopped
-    // while an announcement holds the table.
-    turnTimer: { seconds: HUMAN_TURN_SECONDS, includeNewTrick: false, pausable: true, onExpire },
+    // Nothing else is keeping this clock, so it can be stopped while an announcement holds the table.
+    turnTimer: { seconds: HUMAN_TURN_SECONDS, table: "offline", pausable: true, onExpire },
     exchangeHold: EXCHANGE_HOLD,
   };
 }

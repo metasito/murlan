@@ -12,9 +12,8 @@ import { activeGames } from "../../server/game/gameRoom.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { createDeck, emptyRankTally } from "../../lib/game/gameEngine.ts";
 import type { Card, GameState, Player } from "../../lib/game/gameEngine.ts";
-import { dealEndMs } from "../../lib/timeline/dealTimeline.ts";
-import { exchangeGiveDelayMs, exchangeOneWayDelayMs } from "../../lib/timeline/exchangeTimeline.ts";
-import { Motion, Reading } from "../../lib/tokens.ts";
+import { exchangeGiveDelayMs } from "../../lib/timeline/exchangeTimeline.ts";
+import { gateMs } from "../../lib/timeline/turnGates.ts";
 
 const ROOM = "one-way-hold-room";
 const WINNER = 0;
@@ -44,7 +43,7 @@ function dealt(seats: number, phase: GameState["exchangePhase"], played = false)
     roundOver: false,
     finishingOrder: [],
     openingCard: null,
-    lastMove: { seq: 0, kind: "deal" },
+    lastMove: played ? { seq: 1, kind: "play", seat: LOSER } : { seq: 0, kind: "deal" },
     startReason: { type: "lost_round", playerIdx: LOSER },
     playedRanks,
     exchangePhase: phase,
@@ -74,23 +73,22 @@ function teardown() {
 
 describe("a one-way exchange's loser leads once the ceremony has told it", () => {
   for (const seats of [4, 3]) {
-    test(`${seats} seats: a bot loser's first move waits the deal, the receive and the beat`, () => {
+    test(`${seats} seats: a bot loser's first move waits the deal, the receive and the beat, then thinks`, () => {
       const { clock, counts } = arm(dealt(seats, oneWay));
       try {
-        const floor = exchangeOneWayDelayMs(counts);
-        assert.ok(floor > exchangeGiveDelayMs(counts), "longer than a giveback's own wait");
-        assert.ok(floor > dealEndMs(counts, Motion.duration.reveal) + botMoveDelayMs());
-        assert.equal(deadline("bot", ROOM)! - clock.now(), floor);
+        const gates = gateMs(["deal", "oneWay"], counts, false);
+        assert.ok(gates > exchangeGiveDelayMs(counts), "longer than a giveback's own wait");
+        assert.equal(deadline("bot", ROOM)! - clock.now(), gates + botMoveDelayMs());
       } finally {
         teardown();
       }
     });
   }
 
-  test("a human loser's window starts after the ceremony, on top of the opening's reading", () => {
-    const { clock, game, counts } = arm(dealt(3, oneWay), { [LOSER]: "u1" });
+  test("a human loser's window runs on its own: the ceremony is inside it, as for two Jokers", () => {
+    const { clock, game } = arm(dealt(3, oneWay), { [LOSER]: "u1" });
     try {
-      assert.equal(game.turnDeadlineMs! - clock.now(), afkTimeoutMs() + Reading.notice + exchangeOneWayDelayMs(counts));
+      assert.equal(game.turnDeadlineMs! - clock.now(), gateMs(["opening"], [], false) + afkTimeoutMs());
     } finally {
       teardown();
     }
@@ -109,7 +107,7 @@ describe("a one-way exchange's loser leads once the ceremony has told it", () =>
     const { clock, counts } = arm(dealt(4, twoWay));
     try {
       const waited = deadline("bot", ROOM)! - clock.now();
-      assert.ok(waited < exchangeOneWayDelayMs(counts), `${waited} ms`);
+      assert.ok(waited < gateMs(["deal", "oneWay"], counts, false), `${waited} ms`);
     } finally {
       teardown();
     }

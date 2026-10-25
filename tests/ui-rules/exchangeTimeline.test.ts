@@ -7,7 +7,6 @@ import {
   choiceOpensAt,
   exchangeAnnounceMs,
   exchangeGiveDelayMs,
-  exchangeOneWayDelayMs,
   legPose,
   legShows,
   legStage,
@@ -16,6 +15,7 @@ import {
   type LegPoints,
 } from "../../lib/timeline/exchangeTimeline.ts";
 import { dealEndMs } from "../../lib/timeline/dealTimeline.ts";
+import { gateMs } from "../../lib/timeline/turnGates.ts";
 import { Hold, Motion } from "../../lib/tokens.ts";
 
 const X = Motion.exchange;
@@ -133,11 +133,11 @@ test("a one-way exchange ends on the beat after the choice would have opened, wh
   }
 });
 
-test("the server holds a one-way loser's first move until the client's ceremony has ended, and no more than a read past it", () => {
+test("the server's gates hold a one-way loser's first move until the client's ceremony has ended, and no more than a read past it", () => {
   for (const dealt of [[27, 27], [18, 18, 18], [14, 14, 13, 13]]) {
     for (const offset of [0, Motion.duration.reveal]) {
       const counts = dealt.map((n, i) => n + Number(i === 0) - Number(i === 1));
-      const late = exchangeOneWayDelayMs(counts) - (dealEndMs(counts, offset) + oneWayEndsAt(false));
+      const late = gateMs(["deal", "oneWay"], counts, false) - (dealEndMs(counts, offset) + oneWayEndsAt(false));
       assert.ok(late >= 0 && late <= X.read, `${counts} dealt at ${offset}: the hold ends ${late} ms after the ceremony`);
     }
   }

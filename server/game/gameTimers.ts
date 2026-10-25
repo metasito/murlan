@@ -1,6 +1,7 @@
 import type { OnlineGameState } from "./gameRoom.ts";
 import { testOnlyEnv } from "../http/testOnlyEnv.ts";
 import { TURN_TIMEOUT_MS } from "../../lib/game/gameEngine.ts";
+import { BOT_THINK_MS } from "../../lib/game/turnSchedule.ts";
 import { clock, now } from "../http/clock.ts";
 
 /**
@@ -114,11 +115,9 @@ export const seatHoldMs = () => timeoutFromEnv("MURLAN_SEAT_HOLD_MS", 120_000);
  * table on a bad connection pays a duplicate snapshot for every move.
  */
 export const stateAckTimeoutMs = () => timeoutFromEnv("MURLAN_STATE_ACK_TIMEOUT_MS", 5_000);
-// Paced so a bot seat reads as thinking rather than as an instant reflex.
 // Tunable for tests, which otherwise pay it on every move of every table a
 // disconnect hands over to the bot.
-export const BOT_MOVE_DELAY_MS = 1_200;
-export const botMoveDelayMs = () => timeoutFromEnv("MURLAN_BOT_MOVE_DELAY_MS", BOT_MOVE_DELAY_MS);
+export const botMoveDelayMs = () => timeoutFromEnv("MURLAN_BOT_MOVE_DELAY_MS", BOT_THINK_MS);
 export const sweepIntervalMs = () => timeoutFromEnv("MURLAN_SWEEP_INTERVAL_MS", 5 * 60_000);
 /**
  * How long a matchmade table waits, once full, before dealing itself.
@@ -149,9 +148,13 @@ export function clearAfkTimer(roomId: string, userId: string) {
   clear("afk", seatKey(roomId, userId));
 }
 
-export function clearRoomTimers(roomId: string) {
+export function clearTurnTimers(roomId: string) {
   clearByPrefix("afk", `${roomId}:`);
   clear("bot", roomId);
+}
+
+export function clearRoomTimers(roomId: string) {
+  clearTurnTimers(roomId);
   clearAutoStart(roomId);
   clear("voteDeadline", roomId);
 }

@@ -70,10 +70,10 @@ const state = (over: Partial<GameState>): GameState => ({
 
 const noop = () => {};
 
-/** Offline: leading a trick has no deadline, so `includeNewTrick` is false. */
-const OFFLINE_TIMER = { seconds: 30, includeNewTrick: false };
+/** Offline: leading a trick has no deadline (TURN_POLICY). */
+const OFFLINE_TIMER = { seconds: 30, table: 'offline' as const };
 /** Online: the server arms its window on every turn, leads included. */
-const ONLINE_TIMER = { seconds: 30, includeNewTrick: true };
+const ONLINE_TIMER = { seconds: 30, table: 'online' as const };
 
 const table = (gameState: GameState, turnTimer: TurnTimerConfig, ownLink: OwnLink = 'up', catchUp = false) => (
   <SafeAreaProvider initialMetrics={METRICS}>

@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { Layer, Reading } from "@/lib/theme";
+import { Layer } from "@/lib/theme";
+import { OPENING_NOTICE_MS } from "@/lib/timeline/turnGates";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden, A11yStatus } from "@/lib/a11y";
 import { getCardDisplayRank, getSuitSymbol, type StartReason } from "@/lib/game/gameEngine";
@@ -103,7 +104,7 @@ export function WhoStartsPanel({
   });
   useEffect(() => {
     if (!gated) return;
-    const timer = setTimeout(() => doneRef.current(), Reading.notice);
+    const timer = setTimeout(() => doneRef.current(), OPENING_NOTICE_MS);
     return () => clearTimeout(timer);
   }, [gated]);
 

@@ -104,6 +104,8 @@
     "@expo/env": "^2.4.3",
     "@jest/globals": "^29.7.0",
     "@playwright/test": "^1.62.1",
+    "@stryker-mutator/core": "10.0.0",
+    "@stryker-mutator/tap-runner": "10.0.0",
     "@testing-library/react-native": "^14.0.1",
     "@types/compression": "^1.8.1",
     "@types/connect-pg-simple": "^7.0.3",
