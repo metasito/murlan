@@ -45,8 +45,8 @@ which reads as a breach of `docs/agents/RULES.md` 48, "One decision has one copy
   changes with it, from the row, never to match the engine without one.
 - Each property is proven red on a planted engine defect, planted in a test-side wrapper rather than
   in the engine: a 2 above the Ace in a straight, a bomb beating a royal straight, a trick closing
-  one pass early, a giveback offering the card just received, and the last place owing their
-  second-highest card.
+  one pass early, a giveback offering the card just received, a giveback falling back to the lowest card, and the
+  last place owing their second-highest card.
 - The properties follow `tests/engine/engineInvariants.property.test.ts`: a fixed `FC_SEED` in CI,
   `FC_RUNS`, and the nightly `offline-match-soak` step moving the seed.
 - `getAllValidPlays` returns one play per type, length and strength, so legal plays are compared as

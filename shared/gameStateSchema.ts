@@ -90,7 +90,7 @@ const gameStateSchema = z
           winnerIdx: seat,
           loserIdx: seat,
           cardFromLoser: card,
-          cardToLoser: card,
+          cardToLoser: card.optional(),
           settledAt: z.number().optional(),
         }),
       ])

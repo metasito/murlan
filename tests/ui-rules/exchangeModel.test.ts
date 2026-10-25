@@ -41,7 +41,6 @@ const notes = (viewerSeat: number, over: Partial<Parameters<typeof exchangeNotes
     shown: receiving,
     stages: stages({ receive: "rest" }),
     live: readExchange(openState, viewerSeat, false),
-    giveable: undefined,
     players: PLAYERS,
     viewerSeat,
     spectating: false,
@@ -58,13 +57,9 @@ test("until the received card is read, the chip only names the exchange", () => 
 });
 
 test("the winner is asked to give to the loser, and told the card came to them", () => {
-  const { chip, pileNote } = notes(WINNER, { stages: stages({ receive: "rest", ready: true }), giveable: [SEVEN] });
+  const { chip, pileNote } = notes(WINNER, { stages: stages({ receive: "rest", ready: true }) });
   assert.equal(chip, 'exchange.chipGive {"name":"Ana"}');
   assert.deepEqual(pileNote, { text: 'exchange.pileGivesYou {"from":"Ana","card":"A♠"}', testID: "exchange-pile-label", cards: [ACE] });
-});
-
-test("a winner holding nothing in 3-10 is told the fallback, not the rule", () => {
-  assert.equal(notes(WINNER, { stages: stages({ ready: true }), giveable: [TWO] }).chip, "exchange.noValidCards");
 });
 
 test("the loser waits on the winner, and reads their own card as theirs", () => {

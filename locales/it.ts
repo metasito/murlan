@@ -293,7 +293,6 @@ export const it: Record<keyof typeof en, string> = {
   // ----------------------------------------------------------------- exchange.*
   "exchange.chipTitle": "Scambio",
   "exchange.chipGive": "Scegli una carta da 3 a 10 per {{name}}",
-  "exchange.noValidCards": "Nessuna carta da 3 a 10 — dai la più bassa",
   "exchange.watching": "{{winner}} sta scegliendo una carta per {{loser}}",
   "exchange.waitingForYou": "{{winner}} sta scegliendo una carta per te",
   "exchange.confirm": "Dai",
@@ -661,7 +660,7 @@ export const it: Record<keyof typeof en, string> = {
   "rules.faq.q9": "Quali modalità di gioco esistono?",
   "rules.faq.a9": "Murlan supporta 4 formati:\n\n• 1 vs 1 — due giocatori, vince chi finisce le carte per primo\n• Trio — tre giocatori, tutti contro tutti\n• 4 Liberi — quattro giocatori, tutti contro tutti\n• 2 vs 2 — quattro giocatori divisi in due coppie sedute una di fronte all'altra: Giocatore 1&3 vs Giocatore 2&4. La manche si gioca fino in fondo: non finisce quando un giocatore, o anche un'intera coppia, resta senza carte, ma solo quando un solo giocatore ha ancora carte in mano. I punti di piazzamento dei due compagni si sommano: vince la coppia con il totale più alto, e a parità di totale è pareggio.\n\nNella modalità Online trovi tutti e 4 i formati. In offline scegli tu quanti giocatori e quale modalità.",
   "rules.faq.q10": "Come funziona lo scambio di carte?",
-  "rules.faq.a10": "Dopo ogni manche (quando tutti hanno finito le carte), avviene uno scambio:\n\n1. Il perdente (ultimo classificato) dà automaticamente la sua carta più forte al vincitore (primo classificato).\n2. Il vincitore sceglie una carta da 3 a 10 da restituire al perdente.\n3. Dopodichè il perdente inizia il round successivo.\n\nEccezione dei due Jolly: se il perdente ha in mano entrambi i Jolly (rosso e nero), lo scambio NON avviene. Il vincitore inizia lui stesso il round seguente.",
+  "rules.faq.a10": "Dopo ogni manche (quando tutti hanno finito le carte), avviene uno scambio:\n\n1. Il perdente (ultimo classificato) dà automaticamente la sua carta più forte al vincitore (primo classificato).\n2. Il vincitore sceglie una carta da 3 a 10 da restituire al perdente — mai la carta appena ricevuta. Se non ne ha, non restituisce nulla.\n3. Dopodichè il perdente inizia il round successivo.\n\nEccezione dei due Jolly: se il perdente ha in mano entrambi i Jolly (rosso e nero), lo scambio NON avviene. Il vincitore inizia lui stesso il round seguente.",
   "rules.faq.q11": "Cosa sono i Jolly?",
   "rules.faq.a11": "I Jolly sono le carte più forti del mazzo nelle combinazioni normali:\n• Jolly Rosso ★: il più forte in assoluto\n• Jolly Nero ☆: secondo per forza\n\nAttenzione: i Jolly si possono giocare SOLO come singola carta — mai in coppia, tris o scala. Un Jolly giocato come carta singola può essere battuto da una Bomba!",
   "rules.faq.q12": "Cos'è una Bomba?",

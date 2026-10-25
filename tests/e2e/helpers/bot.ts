@@ -472,9 +472,8 @@ const EXCHANGE_PROMPT = '[data-testid="exchange-prompt"]';
  * The exchange happens on the table now, so the hand is the picker: the cards
  * in the 3-10 range are the enabled ones and everything else in the fan reports
  * itself disabled. Asking for the enabled ones rather than filtering by rank
- * alone means this follows `getValidGivebackCards` — including its fallback,
- * where a hand holding nothing in range offers its single lowest card instead
- * and a rank filter would find nothing to click.
+ * alone means this follows `getValidGivebackCards`, which also refuses the
+ * card just received — a rank filter would offer it.
  *
  * Scoped to the hand, not the table: with nothing in range the rank filter
  * matches nothing and every candidate is tried in turn, so a selector reaching
@@ -507,13 +506,9 @@ export async function giveExchangeCard(page: Page): Promise<boolean> {
   const prompt = page.locator(EXCHANGE_PROMPT);
   if ((await prompt.count()) === 0) return false;
 
-  const labels = await giveCandidateLabels(page);
-  const picks = labels.filter((l) => GIVEBACK_CARD_LABEL.test(l));
-  // The fallback case: nothing in 3-10, so the engine offers the lowest card
-  // and it is the only enabled one in the fan.
-  const order = picks.length > 0 ? picks : labels;
+  const picks = (await giveCandidateLabels(page)).filter((l) => GIVEBACK_CARD_LABEL.test(l));
 
-  for (const label of order.reverse()) {
+  for (const label of picks.reverse()) {
     const card = page.locator(`${HAND_CARDS}${labelSelector(label)}`);
     for (let attempt = 0; attempt < 3; attempt++) {
       if ((await card.getAttribute("aria-pressed", { timeout: CARD_CLICK_TIMEOUT_MS }).catch(() => null)) !== "true") await toggle(page, card);
