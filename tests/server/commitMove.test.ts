@@ -134,7 +134,7 @@ test("an exchange logs no replay move, persists, and holds the next seat for the
   useMemoryTableStores(t);
   const { rt, journal } = recordingRuntime({ persist: "real" });
   const persists = () => rowsWritten(journal);
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   try {
     const deck = createDeck();
     const hands = SEATS.map((_, s) => deck.filter((_, i) => i % SEATS.length === s));
@@ -147,7 +147,7 @@ test("an exchange logs no replay move, persists, and holds the next seat for the
     const game = table(state);
     const give = state.players[phase.winnerIdx].hand.find((c) => c.id !== phase.cardFromLoser.id)!;
     commitMove(rt, game, applied(state, { kind: "giveback", cardId: give.id }));
-    await assertCommitted(t, game, persists, 0, Math.max(botMoveDelayMs(), exchangeAnnounceMs(false)));
+    await assertCommitted(t, game, persists, 0, exchangeAnnounceMs(false) + botMoveDelayMs());
   } finally {
     clearRoomTimers(ROOM);
     activeGames.delete(ROOM);

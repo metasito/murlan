@@ -93,6 +93,8 @@ export interface GameState {
    * `applyMove` alone; `replayStateAt` and `lib/captureStates.ts` write it for states nobody played.
    */
   lastMove: LastMove;
+  /** When the server dealt the round; the engine never writes it, as it never writes `settledAt`. */
+  dealtAt?: number;
 }
 
 export const RANK_SLOTS = RANK_ORDER.length;
