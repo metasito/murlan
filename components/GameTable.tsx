@@ -18,7 +18,6 @@ import Animated, { useAnimatedReaction, useAnimatedStyle, useSharedValue } from 
 import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
-  actingSeat,
   roundUnplayed,
   openingIsPending,
   tableDemand,
@@ -36,7 +35,7 @@ import {
   viewerOwnsSeat,
   type OpponentSide,
 } from "@/components/seatLayout";
-import { handCountOf, type ViewedGameState } from "@/shared/protocol";
+import { handCountOf, vacatedOf, type ViewedGameState } from "@/shared/protocol";
 import type { CardFrom } from "@/components/flightPose";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
 import { tableLayout, type Seating } from "@/components/tableLayout";
@@ -864,10 +863,10 @@ export function GameTable({
     dealing: deal.dealing,
     shownTurnIsMine,
     onMoveName: players[shownTurnIndex]?.name ?? "",
-    exchange: { chip: exchangeChip, choiceOpen, viewerIsWinner: exchange.viewerIsWinner, open: exchange.open },
+    exchange: { chip: exchangeChip, choiceOpen, viewerIsWinner: exchange.viewerIsWinner, open: exchange.open, winnerSeat: exchange.open ? exchange.winnerSeat : null },
     timer: turnTimer,
     shownTurnSeat: onMoveSeat,
-    actingSeat: actingSeat(gameState),
+    isBot: (seat) => players[seat]?.type === "bot" || (!!players[seat] && vacatedOf(players[seat])),
     vote: roundVote?.deadline ?? null,
     isMyTurn,
     isFinished,

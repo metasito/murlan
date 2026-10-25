@@ -3,7 +3,7 @@
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
 import type { TFn, TranslationKey } from "@/lib/i18n";
-import { TURN_POLICY, turnAction, type TableKind } from "../lib/game/turnSchedule.ts";
+import { TURN_POLICY, turnAction, underDeadline, type TableKind } from "../lib/game/turnSchedule.ts";
 
 // ─── Pass affordance ─────────────────────────────────────────────────────────
 
@@ -135,11 +135,12 @@ export function turnPresentation(i: {
   shownTurnIsMine: boolean;
   onMoveName: string;
   /** `chip` outranks the state. */
-  exchange: { chip: string | null; choiceOpen: boolean; viewerIsWinner: boolean; open: boolean };
+  exchange: { chip: string | null; choiceOpen: boolean; viewerIsWinner: boolean; open: boolean; winnerSeat: number | null };
   timer?: TurnTimerConfig;
-  /** The seat the table lights as on move, null while an exchange or the round's outcome holds the turn; and the seat the engine says acts (`actingSeat`), the exchange winner's while the exchange is open. */
+  /** The seat the table lights as on move, null while an exchange or the round's outcome holds the turn. */
   shownTurnSeat: number | null;
-  actingSeat: number;
+  /** The server arms no deadline for a bot or a vacated seat, so neither draws a ring. */
+  isBot: (seat: number) => boolean;
   /** The next-round vote's deadline, which takes the chip's countdown while no turn runs. */
   vote?: { seconds: number; resetKey: string } | null;
   isMyTurn: boolean;
@@ -162,11 +163,13 @@ export function turnPresentation(i: {
     !!timer &&
     turnTimerActive({ ...who, roundOver, exchangeHolds: giveHeld, announcementHolds });
   const turnResetKey = `${i.turnToken}|${timer?.resetKey ?? ""}`;
-  const timedHere = !!timer && TURN_POLICY[timer.table][turnAction({ exchangeOpen: exchange.open, leading: i.isNewTrick })].timed;
+  const action = turnAction({ exchangeOpen: exchange.open, leading: i.isNewTrick });
+  const timedHere = !!timer && underDeadline(timer.table, action, false);
   const active = timedHere && runs({ isMyTurn: i.isMyTurn, isFinished: i.isFinished });
   // The seat runs whenever the chip does and on more: offline, a lead runs the window though the
   // chip has no deadline there, so only an active chip's turn expires.
-  const seatClock = !!timer && runs({ isMyTurn: true, isFinished: false });
+  const onClock = exchange.open ? exchange.winnerSeat : i.shownTurnSeat;
+  const seatClock = !!timer && (onClock === null || !i.isBot(onClock)) && runs({ isMyTurn: true, isFinished: false });
   return {
     chip: {
       text: exchange.chip ?? say(CHIP_KEYS[state]),
@@ -175,7 +178,7 @@ export function turnPresentation(i: {
     },
     clock: vote ? { active: true, revealed: true } : { active, revealed: clockShown },
     seatClock,
-    clockSeat: seatClock ? (exchange.open ? i.actingSeat : i.shownTurnSeat) : null,
+    clockSeat: seatClock ? onClock : null,
     window: vote
       ? { seconds: vote.seconds, resetKey: `vote|${vote.resetKey}`, running: true, held: false }
       : {

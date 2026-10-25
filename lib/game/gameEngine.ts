@@ -521,11 +521,8 @@ export type MoveResult =
   | { ok: false; code: MoveRefusal };
 
 /** Who must act now: the exchange winner while an exchange is open, else the turn holder. */
-export function actingSeat(state: {
-  currentTurnIndex: number;
-  exchangePhase?: { kind: string; winnerIdx?: number };
-}): number {
-  return state.exchangePhase?.kind === "open" ? (state.exchangePhase.winnerIdx ?? state.currentTurnIndex) : state.currentTurnIndex;
+export function actingSeat(state: GameState): number {
+  return state.exchangePhase?.kind === "open" ? state.exchangePhase.winnerIdx : state.currentTurnIndex;
 }
 
 /** `seat` is the transport's claim of who is acting; it is checked here, never trusted. */

@@ -216,6 +216,13 @@ describe('the round-opening announcement', () => {
     await view.unmount();
   });
 
+  it("never stops a ring on the server's clock while it holds", async () => {
+    const view = await render(table(state(OPENER), { turnTimer: { seconds: 20, table: 'online' } }));
+    expect(screen.getByTestId('start-reason-gate', { includeHiddenElements: true })).toBeTruthy();
+    expect(screen.queryAllByTestId('seat-turn-clock', { includeHiddenElements: true })).toHaveLength(1);
+    await view.unmount();
+  });
+
   // Online the deadline is the server's AFK window, which runs whatever this
   // client draws — so the countdown keeps going, and a clock that keeps going
   // is one the player has to be able to see. It is the one thing the hold

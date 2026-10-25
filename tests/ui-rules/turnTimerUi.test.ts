@@ -11,7 +11,7 @@ import {
 } from "../../components/turnTimerUi.ts";
 import { describeTableForA11y, type TableA11yStrings } from "../../components/tableA11y.ts";
 import type { TFn } from "../../lib/i18n.ts";
-import { TURN_POLICY, turnAction } from "../../lib/game/turnSchedule.ts";
+import { TURN_POLICY, turnAction, underDeadline } from "../../lib/game/turnSchedule.ts";
 import { scanSources, sourcesUnder } from "../helpers/sourceScan.ts";
 import path from "node:path";
 
@@ -229,12 +229,12 @@ describe("the turn chip and its clocks", () => {
     matchOver: false,
     dealing: false,
     shownTurnIsMine: false,
-    exchange: { chip: null, choiceOpen: false, viewerIsWinner: false, open: false },
+    exchange: { chip: null, choiceOpen: false, viewerIsWinner: false, open: false, winnerSeat: null },
     isMyTurn: false,
     isFinished: false,
     isNewTrick: false,
     shownTurnSeat: 0,
-    actingSeat: 0,
+    isBot: (_seat: number) => false,
     holdingForStart: false,
     held: false,
     turnToken: "tok",
@@ -249,7 +249,7 @@ describe("the turn chip and its clocks", () => {
         matchOver: matchOver === 1,
         dealing: dealing === 1,
         shownTurnIsMine: viewerOnMove === 1,
-        exchange: exchange ? { chip: "CHIP", choiceOpen: true, viewerIsWinner: true, open: true } : base.exchange,
+        exchange: exchange ? { chip: "CHIP", choiceOpen: true, viewerIsWinner: true, open: true, winnerSeat: null } : base.exchange,
       }).chip;
       assert.deepEqual(shown, { text: chip, spoken, lit: lit === 1 });
     });
@@ -264,7 +264,7 @@ describe("the turn chip and its clocks", () => {
 
   test("an exchange chip lights only for the winner whose choice is open", () => {
     for (const [choiceOpen, viewerIsWinner] of [[false, true], [true, false], [false, false]]) {
-      const shown = turnPresentation({ ...base, shownTurnIsMine: true, exchange: { chip: "CHIP", choiceOpen, viewerIsWinner, open: true } });
+      const shown = turnPresentation({ ...base, shownTurnIsMine: true, exchange: { chip: "CHIP", choiceOpen, viewerIsWinner, open: true, winnerSeat: null } });
       assert.equal(shown.chip.lit, false);
     }
   });
@@ -289,18 +289,35 @@ describe("the turn chip and its clocks", () => {
     for (const [table, expected] of [["online", 2], ["offline", null]] as const) {
       const shown = turnPresentation({
         ...base,
-        shownTurnIsMine: false,
-        isMyTurn: false,
-        exchange: { ...base.exchange, open: true },
-        shownTurnSeat: 0,
-        actingSeat: 2,
+        exchange: { ...base.exchange, open: true, winnerSeat: 2 },
+        shownTurnSeat: null,
         timer: { seconds: 20, table },
       });
       assert.equal(shown.clockSeat, expected, table);
     }
-    const turn = turnPresentation({ ...base, shownTurnSeat: 1, actingSeat: 3, timer: { seconds: 20, table: "online" } });
+    const turn = turnPresentation({ ...base, shownTurnSeat: 1, timer: { seconds: 20, table: "online" } });
     assert.equal(turn.clockSeat, 1, "outside the exchange it is the seat the table shows on move");
-    assert.equal(turnPresentation({ ...base, shownTurnSeat: 1, actingSeat: 1 }).clockSeat, null);
+    assert.equal(turnPresentation({ ...base, shownTurnSeat: 1 }).clockSeat, null);
+  });
+
+  test("a bot or vacated seat has no deadline online, so it draws no ring, in the exchange or out of it", () => {
+    const bots = { isBot: (seat: number) => seat === 2 };
+    const exchange = { ...base.exchange, open: true, winnerSeat: 2 };
+    const botWinner = turnPresentation({ ...base, ...bots, exchange, shownTurnSeat: null, timer: { seconds: 20, table: "online" } });
+    assert.deepEqual([botWinner.clockSeat, botWinner.seatClock], [null, false]);
+    const human = turnPresentation({ ...base, ...bots, exchange: { ...exchange, winnerSeat: 1 }, shownTurnSeat: null, timer: { seconds: 20, table: "online" } });
+    assert.equal(human.clockSeat, 1);
+    const botTurn = turnPresentation({ ...base, ...bots, shownTurnSeat: 2, timer: { seconds: 20, table: "online" } });
+    assert.equal(botTurn.clockSeat, null);
+  });
+
+  test("the chip and the server read one decision: underDeadline", () => {
+    for (const table of ["online", "offline"] as const) {
+      for (const action of ["give", "lead", "follow"] as const) {
+        assert.equal(underDeadline(table, action, true), false, `a bot ${table} ${action}`);
+        assert.equal(underDeadline(table, action, false), TURN_POLICY[table][action].timed);
+      }
+    }
   });
 
   test("with no timer, neither clock runs", () => {
