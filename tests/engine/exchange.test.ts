@@ -5,7 +5,6 @@ import {
   actingSeat,
   exchangeIsSatisfiable,
   getValidGivebackCards,
-  givebackIsFallback,
   openingAfter,
   startRound,
   type Card,
@@ -25,29 +24,13 @@ describe("getValidGivebackCards (defect 7)", () => {
     assert.deepEqual(ids(getValidGivebackCards(hand)), ids([c("3", "spades"), c("10", "hearts")]));
   });
 
-  test("FALLBACK: a hand with no 3-10 card offers its lowest card instead of nothing", () => {
+  test("a hand with no 3-10 card has nothing to give", () => {
     const hand = [c("K", "clubs"), c("J", "hearts"), c("A", "spades"), j("colored")];
-    const valid = getValidGivebackCards(hand);
-    assert.equal(valid.length, 1, "the exchange must never be left with zero choices");
-    assert.equal(valid[0].id, "J_hearts", "the lowest card is the fallback giveback");
+    assert.deepEqual(getValidGivebackCards(hand), []);
   });
 
   test("empty hand yields no choices and does not crash", () => {
     assert.deepEqual(getValidGivebackCards([]), []);
-  });
-
-  // The prompt tells the winner which rule is in force, and the fallback is
-  // not "no cards" — it is one card the ordinary rule would have refused. A UI
-  // asking whether the list came back empty asks a question the engine never
-  // answers yes to, so it always states the 3-10 rule beside a King.
-  test("the fallback is recognisable as one, and the ordinary rule is not", () => {
-    const noneInRange = [c("K", "clubs"), c("J", "hearts"), c("A", "spades")];
-    assert.equal(givebackIsFallback(getValidGivebackCards(noneInRange)), true);
-
-    const inRange = [c("K", "clubs"), c("7", "hearts")];
-    assert.equal(givebackIsFallback(getValidGivebackCards(inRange)), false);
-
-    assert.equal(givebackIsFallback([]), false, "an empty hand is not the fallback either");
   });
 });
 
@@ -111,18 +94,6 @@ describe("processExchangeChoice", () => {
     assert.equal(refusalOf(state, { kind: "giveback", cardId: "7_clubs" }), "notHeld");
   });
 
-  test("REGRESSION: the fallback card is accepted, so the exchange cannot deadlock", () => {
-    const winnerHand = [c("K", "clubs"), c("J", "hearts"), c("A", "spades")];
-    const state = buildState(winnerHand, [c("9", "clubs")]);
-    const offered = getValidGivebackCards(winnerHand);
-    assert.equal(offered.length, 1);
-
-    const next = givenBack(state, offered[0].id);
-    assert.notEqual(next, state, "the only offered choice must be accepted");
-    assert.equal(next.exchangePhase?.kind, "settled");
-    assert.ok(next.players[1].hand.some((card) => card.id === offered[0].id));
-  });
-
   const withReceived = (winnerHand: Card[], received: Card) =>
     makeState(
       { players: [makePlayer(0, winnerHand), makePlayer(1, [c("4", "clubs")])],
@@ -144,15 +115,9 @@ describe("processExchangeChoice", () => {
     assert.equal(refusalOf(state, { kind: "giveback", cardId: received.id }), "notGiveable");
   });
 
-  test("excluding the received card still leaves exactly one fallback choice", () => {
-    const received = c("10", "hearts");
-    const winnerHand = [received, c("K", "clubs"), c("A", "spades")];
-    const offered = getValidGivebackCards(winnerHand, received.id);
-    assert.equal(offered.length, 1, "the exchange must never be left with zero choices");
-    assert.equal(offered[0].id, "K_clubs");
-
-    const next = givenBack(withReceived(winnerHand, received), offered[0].id);
-    assert.equal(next.exchangePhase?.kind, "settled");
+  test("the received card, as the only 3-10 card, leaves nothing to give", () => {
+    const received = c("8", "hearts");
+    assert.deepEqual(getValidGivebackCards([j("bw"), j("colored"), received], received.id), []);
   });
 
   test("does nothing when no exchange is open", () => {
@@ -203,8 +168,9 @@ describe("exchangeIsSatisfiable", () => {
       exchangePhase: { kind: "open", winnerIdx: 0, loserIdx: 1, cardFromLoser: c("A", "spades") },
     });
 
-  test("an open exchange is satisfiable while the winner holds a card other than the one received", () => {
-    assert.equal(exchangeIsSatisfiable(open([c("K", "hearts")])), true);
+  test("an open exchange is satisfiable while the winner holds a 3-10 card other than the one received", () => {
+    assert.equal(exchangeIsSatisfiable(open([c("4", "hearts")])), true);
+    assert.equal(exchangeIsSatisfiable(open([c("K", "hearts")])), false);
     assert.equal(exchangeIsSatisfiable(open([])), false);
     assert.equal(exchangeIsSatisfiable(open([c("A", "spades")])), false);
   });
@@ -268,6 +234,31 @@ describe("round-to-round exchange setup", () => {
   test("a loser holding both jokers among other cards is the exception", () => {
     const phase = fixedDeal([j("bw"), j("colored"), c("3", "hearts")]);
     assert.deepEqual(phase, { kind: "twoJokers", winnerIdx: 0, loserIdx: 3 });
+  });
+});
+
+describe("a winner with nothing to give, on a fixed deal", () => {
+  const setup = [0, 1].map((i) => ({ name: `p${i}`, type: "bot" as const }));
+  const hands: Card[][] = [
+    [c("K", "clubs"), c("A", "spades"), j("bw")],
+    [c("4", "hearts"), c("10", "diamonds"), c("Q", "hearts")],
+  ];
+  const deal = () => startRound(setup, "free_for_all", { opening: { kind: "exchange", winnerSeat: 0, loserSeat: 1 }, dealt: hands });
+
+  test("the exchange settles one-way and the loser leads", () => {
+    const state = deal();
+    assert.deepEqual(state.exchangePhase, { kind: "settled", winnerIdx: 0, loserIdx: 1, cardFromLoser: c("Q", "hearts") });
+    assert.deepEqual(ids(state.players[0].hand), ids([...hands[0], c("Q", "hearts")]));
+    assert.deepEqual(ids(state.players[1].hand), ids([c("4", "hearts"), c("10", "diamonds")]));
+    assert.equal(actingSeat(state), 1);
+    assert.equal(state.startReason?.type, "lost_round");
+  });
+
+  test("no giveback is asked of the winner, and the loser's bot plays", () => {
+    const state = deal();
+    assert.equal(refusalOf(state, { kind: "giveback", cardId: "K_clubs" }), "noExchange");
+    assert.equal(autoMoveForSeat(state, 0, "bot"), null);
+    assert.equal(autoMoveForSeat(state, 1, "bot")?.move.kind, "play");
   });
 });
 

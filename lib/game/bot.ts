@@ -250,7 +250,7 @@ export function botView(state: GameState, seat: number): BotView {
   };
 }
 
-/** The card a bot gives back: the weakest legal choice. Never undefined for a non-empty hand. */
+/** The card a bot gives back: the weakest legal choice, undefined when there is nothing to give. */
 export function pickGivebackCard(hand: Card[], excludeCardId?: string): Card | undefined {
   return sortHand(getValidGivebackCards(hand, excludeCardId))[0];
 }
