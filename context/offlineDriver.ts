@@ -25,7 +25,7 @@ export interface OfflineDriver {
   onExchangeReady: () => void;
   onDealing: (dealing: boolean) => void;
   onRoundLanded: ((landsAt: number) => void) | undefined;
-  turnTimer: { seconds: number; table: "offline"; pausable: true; onExpire: () => void };
+  turnTimer: { seconds: number; table: "offline"; onExpire: () => void };
   exchangeHold: ExchangeHold | undefined;
 }
 
@@ -131,7 +131,7 @@ export function useOfflineDriver(): OfflineDriver {
     onDealing: setDealing,
     onRoundLanded: roundEnding ? setRoundLandedAt : undefined,
     // Nothing else is keeping this clock, so it can be stopped while an announcement holds the table.
-    turnTimer: { seconds: HUMAN_TURN_SECONDS, table: "offline", pausable: true, onExpire },
+    turnTimer: { seconds: HUMAN_TURN_SECONDS, table: "offline", onExpire },
     exchangeHold: EXCHANGE_HOLD,
   };
 }

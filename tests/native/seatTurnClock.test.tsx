@@ -283,7 +283,7 @@ describe("a seat's turn clock", () => {
       startReason: { type: 'start_card', card: card('3_1', '3', 'spades'), playerIdx: 1 },
       playedRanks: Array.from({ length: 15 }, () => 0),
     });
-    await render(table(opening, { ...OFFLINE_TIMER, pausable: true }));
+    await render(table(opening, OFFLINE_TIMER));
     expect(gate()).not.toBeNull();
     expect(clocks()).toBe(0);
     await act(async () => {
@@ -293,18 +293,66 @@ describe("a seat's turn clock", () => {
     expect(clocks()).toBe(1);
   });
 
-  it('is dark through the exchange', async () => {
-    await renderSettled(
-      table(
-        state({
-          lastPlayedCombination: single(KING),
-          lastPlayedBy: 0,
-          exchangePhase: { kind: "open", winnerIdx: 1, loserIdx: 0, cardFromLoser: KING },
-        }),
-        ONLINE_TIMER
-      )
-    );
+  const EXCHANGE = (winnerIdx: number): Partial<GameState> => ({
+    lastPlayedCombination: single(KING),
+    lastPlayedBy: 0,
+    currentTurnIndex: winnerIdx,
+    exchangePhase: { kind: 'open', winnerIdx, loserIdx: 3 - winnerIdx, cardFromLoser: KING },
+  });
+
+  it('is dark through the exchange offline', async () => {
+    await renderSettled(table(state(EXCHANGE(1)), OFFLINE_TIMER));
     expect(clocks()).toBe(0);
+  });
+
+  it("sweeps the winner's seat for everyone else online, and not offline", async () => {
+    await renderSettled(table(state(EXCHANGE(1)), ONLINE_TIMER));
+    expect(clocks()).toBe(1);
+    await screen.unmount();
+    await renderSettled(table(state(EXCHANGE(1)), OFFLINE_TIMER));
+    expect(clocks()).toBe(0);
+  });
+
+  it('draws no ring for a bot or vacated winner online, and a ring for a human one', async () => {
+    const bot = (i: number): Player => ({ ...seat(i), type: 'bot' });
+    const players = [0, 1, 2, 3].map((i) => (i === 1 ? bot(i) : seat(i)));
+    await renderSettled(table(state({ ...EXCHANGE(1), players }), ONLINE_TIMER));
+    expect(clocks()).toBe(0);
+    await screen.unmount();
+    await renderSettled(table(state({ ...EXCHANGE(1), players: players.map((p, i) => (i === 1 ? seat(i) : p)) }), ONLINE_TIMER));
+    expect(clocks()).toBe(1);
+  });
+
+  it('draws no ring for a bot on an ordinary turn, whatever the table', async () => {
+    const players = [0, 1, 2, 3].map((i) => (i === 1 ? { ...seat(i), type: 'bot' as const } : seat(i)));
+    const play = { lastPlayedCombination: single(KING), lastPlayedBy: 0, players };
+    await renderSettled(table(state(play), ONLINE_TIMER));
+    expect(clocks()).toBe(0);
+    await screen.unmount();
+    await renderSettled(table(state(play), OFFLINE_TIMER));
+    expect(clocks()).toBe(0);
+  });
+
+  // `seats.tsx` takes the ring from the one seat that is handed a countdown, so this pins the single call site.
+  it.each<[string, () => GameState, TurnTimerConfig, OwnLink, number]>([
+    ['a trick under way', () => state({ lastPlayedCombination: single(KING), lastPlayedBy: 0 }), OFFLINE_TIMER, 'up', 1],
+    ['the link held', () => state({ lastPlayedCombination: single(KING), lastPlayedBy: 0 }), ONLINE_TIMER, 'lost', 1],
+    ['the round over', () => state({ roundOver: true, lastPlayedCombination: single(KING), lastPlayedBy: 0 }), ONLINE_TIMER, 'up', 0],
+    ['the offline exchange', () => state(EXCHANGE(1)), OFFLINE_TIMER, 'up', 0],
+    ['the online exchange', () => state(EXCHANGE(1)), ONLINE_TIMER, 'up', 1],
+  ])('has exactly one ring, or none, in %s', async (_name, make, timer, link, expected) => {
+    await renderSettled(table(make(), timer, link));
+    expect(clocks()).toBe(expected);
+  });
+
+  it("counts the viewer's own chip down while they choose the card to give online, and not offline", async () => {
+    await renderSettled(table(state(EXCHANGE(0)), ONLINE_TIMER));
+    const left = screen.getByTestId('turn-chip-count', { includeHiddenElements: true }).props.children as number;
+    expect(left).toBeGreaterThan(0);
+    expect(left).toBeLessThanOrEqual(ONLINE_TIMER.seconds);
+    await screen.unmount();
+    await renderSettled(table(state(EXCHANGE(0)), OFFLINE_TIMER));
+    expect(screen.queryByTestId('turn-chip-clock', { includeHiddenElements: true })).toBeNull();
   });
 });
 
