@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { register, connect as connectRaw, waitForPendingCode } from "../helpers/client.ts";
 import { CLIENT_OUTDATED, MIN_PROTOCOL_VERSION } from "../../shared/protocol.ts";
+import { userStore, UsernameTakenError } from "../../server/store/userStore.ts";
+import { db } from "../../server/store/db.ts";
+import { replaceEmailVerifyCode, redeemAuthCode } from "../../server/http/authTokens.ts";
+import { authTokens } from "../../shared/schema.ts";
+import { eq, and } from "drizzle-orm";
 
-// One server for the whole file, shared by both describe blocks below.
-// server/store/db.ts's pool is a module-level singleton created on first import;
-// stop() ends it, and a second full startTestServer()/stop() cycle in this
-// same process would reuse that already-ended pool and fail to boot. Guarded
+// One server for the whole file, shared by both describe blocks below. Guarded
 // by hasDatabase() so a checkout with no DB configured still runs `npm test`
 // (see skipMessage()) without this hook itself throwing.
 let server: TestServer;
@@ -228,7 +230,6 @@ describe("username case", { skip: hasDatabase() ? false : skipMessage() }, () =>
   // can both pass the pre-check. Only the index refuses the second, and it is
   // reached by inserting directly — the route's own check would mask it.
   test("the database refuses a differently-cased duplicate the pre-check let through", async () => {
-    const { userStore, UsernameTakenError } = await import("../../server/store/userStore.ts");
     await userStore.createUser({ username: "CaseCarol", password: "x" });
     await assert.rejects(
       () => userStore.createUser({ username: "casecarol", password: "x" }),
@@ -357,16 +358,11 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
 
   test("registration stores the email and mints an email_verify token", async () => {
     const { user } = await register(server, "email_stores");
-    const { userStore } = await import("../../server/store/userStore.ts");
     const stored = await userStore.getUser(user.id);
     assert.equal(stored?.email, "email_stores@example.test");
     assert.equal(stored?.emailVerifiedAt, null);
-
-    const { db } = await import("../../server/store/db.ts");
-    const { authTokens } = await import("../../shared/schema.ts");
-    const { eq, and } = await import("drizzle-orm");
     const readRows = () =>
-      db
+      db()
         .select()
         .from(authTokens)
         .where(and(eq(authTokens.userId, user.id), eq(authTokens.purpose, "email_verify")));
@@ -401,8 +397,6 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
     const text = await res.text();
     assert.equal(res.status, 202, text);
     assert.equal(JSON.parse(text).code, "CHECK_YOUR_EMAIL");
-
-    const { userStore } = await import("../../server/store/userStore.ts");
     const other = await userStore.getUserByUsername("email_dup_other");
     assert.ok(other, "the taken-address branch must still create an account");
     assert.notEqual(other.id, owner.id);
@@ -413,7 +407,6 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
   test("verify-email redeems a code once, and a second redemption fails", async () => {
     const { user } = await register(server, "verify_once");
     await waitForPendingCode(user.id);
-    const { replaceEmailVerifyCode, redeemAuthCode } = await import("../../server/http/authTokens.ts");
     const code = await replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: 60_000 });
 
     const first = await fetch(`${server.url}/api/auth/verify-email`, {
@@ -422,8 +415,6 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
       body: JSON.stringify({ email: user.email, code }),
     });
     assert.equal(first.status, 200, await first.text());
-
-    const { userStore } = await import("../../server/store/userStore.ts");
     const stored = await userStore.getUser(user.id);
     assert.ok(stored?.emailVerifiedAt, "emailVerifiedAt must be set after redemption");
 
@@ -444,7 +435,6 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
   test("an expired code fails to redeem", async () => {
     const { user } = await register(server, "verify_expired");
     await waitForPendingCode(user.id);
-    const { replaceEmailVerifyCode, redeemAuthCode } = await import("../../server/http/authTokens.ts");
     const code = await replaceEmailVerifyCode({
       userId: user.id,
       email: user.email!,
@@ -470,7 +460,6 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
   test("a POST to verify-email does not sweep an unrelated expired row", async () => {
     const { user } = await register(server, "verify_no_sweep");
     await waitForPendingCode(user.id);
-    const { replaceEmailVerifyCode } = await import("../../server/http/authTokens.ts");
     await replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: -60_000 });
 
     const res = await fetch(`${server.url}/api/auth/verify-email`, {

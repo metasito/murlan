@@ -3,19 +3,18 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
+import { sweepRetention, deleteInBatches } from "../../server/game/retention.ts";
+import { EVENT_RETENTION_DAYS as retentionDays } from "../../server/shared/events.ts";
+import { events } from "../../shared/schema.ts";
+import { eq } from "drizzle-orm";
 
 const BACKLOG = 12_001;
 
 describe("retention sweep batches", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  let sweepRetention: () => Promise<void>;
-  let deleteInBatches: typeof import("../../server/game/retention.ts").deleteInBatches;
-  let retentionDays: number;
 
   before(async () => {
     server = await startTestServer();
-    ({ sweepRetention, deleteInBatches } = await import("../../server/game/retention.ts"));
-    ({ EVENT_RETENTION_DAYS: retentionDays } = await import("../../server/shared/events.ts"));
   });
 
   after(async () => {
@@ -41,8 +40,6 @@ describe("retention sweep batches", { skip: hasDatabase() ? false : skipMessage(
   });
 
   test("one call deletes at most batch × maxBatches rows, and the next call takes the rest", async () => {
-    const { events } = await import("../../shared/schema.ts");
-    const { eq } = await import("drizzle-orm");
     await server.query(
       `INSERT INTO events (name) SELECT 'retention.capped' FROM generate_series(1, 350)`
     );

@@ -2,11 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { KEEP_ALIVE_MS, hasDatabase, skipMessage, startTestServer } from "../helpers/testServer.ts";
 
-/**
- * Its own file: `startTestServer()`'s pool is module-scoped, so a second boot
- * after any `stop()` in the same process cannot open one.
- */
-
 /** What `fetch`'s own agent will keep an idle socket for. */
 const UNDICI_KEEP_ALIVE_MS = 4_000;
 

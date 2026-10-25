@@ -25,7 +25,7 @@ import Animated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { CardView, FallbackGlow, PRESS_RISE, PRESS_TILT } from "@/components/CardView";
-import { CardGlow, Colors, Layer, Motion, motionMs, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
+import { CardGlow, Colors, Layer, LONG_PRESS_MS, Motion, motionMs, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useOwnedValue } from "@/lib/motion";
 import { useTranslation } from "@/lib/i18n";
@@ -127,11 +127,7 @@ const UNGIVEABLE_FILTER = { filter: "grayscale(1)" } as const;
 // ─── Reordering (#531) ────────────────────────────────────────────────────────
 //
 // A press already selects and a press on the confirm already plays, so the hold
-// is the one gesture left that neither can be mistaken for — and 500ms is
-// react-native-gesture-handler's own default, the number the thumb has learned
-// elsewhere. Shortening it starts catching the slow taps of someone deciding
-// which card to play, which is the exact moment a hand is being read.
-const HOLD_MS = 500;
+// is the one gesture left that neither can be mistaken for.
 /**
  * How far the finger travels before the hold becomes a drag. The gate the tap
  * needs: below it the press belongs to the card it is on, so selecting one to
@@ -937,7 +933,7 @@ export const StraightHand = React.memo(function StraightHand({
     clearTimeout(holdTimer.value);
     holdTimer.value = setTimeout(() => {
       holding.value = true;
-    }, HOLD_MS) as unknown as number;
+    }, LONG_PRESS_MS) as unknown as number;
   };
   const disarmHold = () => {
     clearTimeout(holdTimer.value);

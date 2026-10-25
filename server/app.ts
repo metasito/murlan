@@ -7,8 +7,9 @@ import type { SocketServer as SocketIOServer } from "./socket/socketTypes.ts";
 import type { TableRuntime } from "./game/tableRuntime.ts";
 import { createRequestLogger } from "./http/logger.ts";
 import { logger } from "./shared/logger.ts";
-import { sessionMiddleware } from "./http/session.ts";
-import { pool } from "./store/db.ts";
+import { createSessionMiddleware } from "./http/session.ts";
+import { openDatabase, pool } from "./store/db.ts";
+import { setupSocket } from "./socket/socket.ts";
 import { socketAdapterPoolStats } from "./socket/socketAdapter.ts";
 import { errorHandler } from "./http/errorHandler.ts";
 import { installServerErrorRecorder } from "./http/serverErrors.ts";
@@ -193,6 +194,7 @@ export interface CreatedApp {
  * real PORT.
  */
 export async function createApp(): Promise<CreatedApp> {
+  openDatabase();
   installServerErrorRecorder();
   const app = express();
 
@@ -224,14 +226,15 @@ export async function createApp(): Promise<CreatedApp> {
 
   // Before the session middleware, which reads `session` on the very first
   // request that carries a cookie — and before any route touches a table.
-  await ensureSchema(pool);
+  await ensureSchema(pool());
   checkMailConfigOnBoot();
 
+  const sessionMiddleware = createSessionMiddleware();
   app.use(sessionMiddleware);
 
   app.get("/health", async (_req, res) => {
     try {
-      await pool.query("SELECT 1");
+      await pool().query("SELECT 1");
       // Unauthenticated, and scheduled probes are not the only readers: the
       // deployed commit and the environment name are `GET /api/admin/version`.
       res.json({
@@ -251,8 +254,7 @@ export async function createApp(): Promise<CreatedApp> {
   mountApi(app);
   const server = createServer(app);
 
-  const { setupSocket } = await import("./socket/socket.ts");
-  const { io, rt } = setupSocket(server);
+  const { io, rt } = setupSocket(server, sessionMiddleware);
 
   app.use(errorHandler);
 

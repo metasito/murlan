@@ -10,6 +10,9 @@ import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { register } from "../helpers/client.ts";
+import { db } from "../../server/store/db.ts";
+import { users } from "../../shared/schema.ts";
+import { eq } from "drizzle-orm";
 
 describe("add-email is rate limited per address", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -30,10 +33,7 @@ describe("add-email is rate limited per address", { skip: hasDatabase() ? false 
   // than by registering (which always carries one).
   async function legacyAccount(username: string) {
     const { user, cookie } = await register(server, username);
-    const { db } = await import("../../server/store/db.ts");
-    const { users } = await import("../../shared/schema.ts");
-    const { eq } = await import("drizzle-orm");
-    await db.update(users).set({ email: null, emailVerifiedAt: null }).where(eq(users.id, user.id));
+    await db().update(users).set({ email: null, emailVerifiedAt: null }).where(eq(users.id, user.id));
     return { user, cookie };
   }
 

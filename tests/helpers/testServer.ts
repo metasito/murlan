@@ -3,11 +3,10 @@ import type { Server as HttpServer } from "node:http";
 import type { Express } from "express";
 import type { Server as SocketIOServer } from "socket.io";
 import type { TableRuntime } from "../../server/game/tableRuntime.ts";
-import type { db as appDb } from "../../server/store/db.ts";
-// Pure by design: importing anything that reaches server/store/db.ts from module
-// scope here would build the app's Pool before startTestServer() has pointed
-// DATABASE_URL at the throwaway schema.
-import { drainPool } from "../../server/store/drainPool.ts";
+import { createApp } from "../../server/app.ts";
+import { closeDatabase, db as appDb, pool as appPool, type Database } from "../../server/store/db.ts";
+import { socketAdapterPool, socketAdapterReady } from "../../server/socket/socketAdapter.ts";
+import { closeOwnership } from "../../server/game/gameOwnership.ts";
 import { installClock, type Clock } from "../../server/http/clock.ts";
 
 /**
@@ -17,9 +16,6 @@ import { installClock, type Clock } from "../../server/http/clock.ts";
  * this, not this — the deployed default of 10 overruns a stock 100 on any
  * ordinary machine and surfaces as `Connection terminated unexpectedly` from
  * whichever suite happened to be starting.
- *
- * Set before anything reaches `server/store/db.ts`, which reads it when it builds the
- * Pool at module scope.
  */
 process.env.MURLAN_PG_POOL_MAX ??= "4";
 
@@ -122,7 +118,7 @@ export interface TestServer {
   rt: TableRuntime;
   httpServer: HttpServer;
   /** The app's own database handle, on its own pool; unusable after `stop()`. */
-  db: typeof appDb;
+  db: Database;
   /** Raw SQL on the app's pool, for fixtures and assertions; unusable after `stop()`. */
   query<R = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<R[]>;
   stop(): Promise<void>;
@@ -181,9 +177,6 @@ export async function startTestServer(
   const restoreClock = opts.clock ? installClock(opts.clock) : () => {};
 
   try {
-    // Point every connection at the throwaway schema via search_path, and at
-    // an ephemeral port, before importing the server (module scope reads
-    // these — see server/store/db.ts, which builds its Pool at import time).
     const scopedUrl = scopedDatabaseUrl(baseUrl, schema);
     process.env.DATABASE_URL = scopedUrl;
     process.env.PORT = "0";
@@ -193,20 +186,11 @@ export async function startTestServer(
       throw new Error("forced failure after CREATE SCHEMA");
     }
 
-    // Dynamic import of app.ts (not index.ts): index.ts calls listen()
-    // on the real PORT and installs SIGTERM/SIGINT handlers as a side
-    // effect of being imported — importing it would start (and never stop)
-    // a second, unwanted server. app.ts only builds the app and its
-    // http.Server (with Socket.io already attached via server/socket/socket.ts's
-    // setupSocket); nothing binds a port until this harness explicitly
-    // listens below.
-    const { createApp } = await import("../../server/app.ts");
-    // Same module identity as whatever createApp()'s import chain (session
-    // store, storage) resolved — Node's ESM cache is keyed by specifier, so
-    // this is the one live `pg.Pool` the running app holds open, not a new
-    // one.
-    const { pool: appPool, db } = await import("../../server/store/db.ts");
+    // app.ts, not index.ts: index.ts listens on the real PORT and installs
+    // SIGTERM/SIGINT handlers as a side effect of being imported.
     const { app, server, io, rt } = await createApp();
+    const db = appDb();
+    const pool = appPool();
     server.keepAliveTimeout = KEEP_ALIVE_MS;
     // Node refuses to read headers for longer than it will hold the socket.
     server.headersTimeout = HEADERS_TIMEOUT_MS;
@@ -215,7 +199,6 @@ export async function startTestServer(
     // Before any test can call stop(): the adapter strands its Postgres client
     // if it is closed mid-checkout, and a suite that boots and stops without
     // connecting a socket is entirely inside that window.
-    const { socketAdapterReady } = await import("../../server/socket/socketAdapter.ts");
     await socketAdapterReady();
 
     return {
@@ -228,7 +211,7 @@ export async function startTestServer(
       httpServer: server,
       db,
       async query<R>(sql: string, params?: unknown[]) {
-        return (await appPool.query(sql, params)).rows as R[];
+        return (await pool.query(sql, params)).rows as R[];
       },
       async stop() {
         try {
@@ -246,28 +229,17 @@ export async function startTestServer(
           // fire-and-forget writes that outlive it are the pool's, below.
           server.closeAllConnections();
           await closed;
-          // A suite whose assertions are satisfied early reaches teardown while
-          // the tail of a fire-and-forget chain is still writing; ending the
-          // pool under it abandons the write and fails the next one with
-          // "Cannot use a pool after calling end on the pool". A pool that is
-          // still busy after the bound is reported by the assertions that then
-          // fail, so the result is not inspected here.
-          await drainPool(appPool);
-          // The app's own pool (session store + storage) is a module-level
-          // singleton that nothing else closes — server/index.ts only does
-          // so in its SIGTERM/SIGINT handler, which this harness never goes
-          // through. Left open it both leaks a connection and keeps the
-          // test process alive indefinitely.
-          await appPool.end();
+          // After the http server, before the adapter's pool: closeDatabase
+          // drains the fire-and-forget writes still landing from the requests
+          // and disconnects above.
+          await (await closeDatabase()).ended;
+          await ioClosed;
           // The socket adapter holds a second pool whose `LISTEN` client is
           // released by the close started above. Left open it keeps the test
           // process alive exactly as the app's pool would.
-          await ioClosed;
-          const { socketAdapterPool } = await import("../../server/socket/socketAdapter.ts");
           await socketAdapterPool()?.end();
           // The room-ownership client is a third connection, held open for the
           // life of the process exactly as the two pools are.
-          const { closeOwnership } = await import("../../server/game/gameOwnership.ts");
           await closeOwnership();
         } finally {
           // Always run, even if closing the server/pool above threw: a
@@ -286,6 +258,7 @@ export async function startTestServer(
     // Nothing was returned to the caller, so there is no stop() to call —
     // this is the only chance to undo the CREATE SCHEMA above and the
     // DATABASE_URL mutation.
+    await (await closeDatabase()).ended;
     restoreClock();
     process.env.DATABASE_URL = baseUrl;
     try {

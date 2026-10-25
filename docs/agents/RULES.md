@@ -113,6 +113,6 @@ Another agent is working in this repository, on this machine, right now.
 ## Design
 
 47. **A decision another module owns is asked of that module, never re-derived or restated.** A rule, timing, policy, mapping or threshold computed again in a caller is a copy of the owner's, even when it agrees today. A doc describing it (rule 43) names the owner rather than becoming a second source.
-48. **One decision has one copy.** A change that adds a second copy of a constant, rule, policy or mapping, or edits one of two existing copies without merging them, deletes one or routes it through the other in the same change.
+48. **One decision has one copy.** A change that adds a second copy of a constant, rule, policy or mapping, or edits one of two existing copies without merging them, deletes one or routes it through the other in the same change. A rules model under `tests/model/` compared with the engine is not a second copy (ADR 0012).
 49. **A new guard, check or scan lands proven and floored**: it meets rule 6, and it fails when what it inspects is gone, empty or renamed, so it cannot pass by not looking.
 50. **No seam, interface or adapter layer until a second adapter exists.**
