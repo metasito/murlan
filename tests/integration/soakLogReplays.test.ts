@@ -85,8 +85,9 @@ describe("a printed soak log replays as a fixed case", {
   });
 
   // A fault the run saw land moved the table, and every entry after it was written against
-  // that table. Here seat 2's pass from move 8 is re-sent once seat 2 is on move again and
-  // lands as a second pass (#1824), so seat 1's queen at 12 only follows if the replay applies it.
+  // that table. Here a landed entry stands for seat 2's pass from move 8 as a second pass,
+  // so seat 1's queen at 12 only follows if the replay applies it. A server that checks the turn
+  // token no longer writes such an entry; the replay must still follow one.
   test("a fault that landed is replayed as the move it carried", async () => {
     const throughEleven = CAPTURED.filter((entry) => entry.at <= 11);
     const lateDuplicate: SoakLogEntry = {
