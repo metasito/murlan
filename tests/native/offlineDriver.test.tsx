@@ -1,14 +1,14 @@
 // tests/native/offlineDriver.test.tsx — the offline table's commands read the state the last one committed.
-import { test, expect, beforeEach } from "@jest/globals";
+import { test, expect, beforeEach, afterEach, jest } from "@jest/globals";
 import React from "react";
 import { Text, Pressable } from "react-native";
 import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GameProvider, useGameSession, useGameTable } from "@/context/GameContext";
 import { NotificationProvider } from "@/context/NotificationContext";
-import { useOfflineDriver } from "@/context/offlineDriver";
+import { gatesPast, useOfflineDriver } from "@/context/offlineDriver";
 import { encodeOfflineSave, OFFLINE_SAVE_KEY } from "@/lib/offlineSave";
-import { BOT_THINK_MS } from "@/lib/game/turnSchedule";
+import { BOT_THINK_MS, GATES } from "@/lib/game/turnSchedule";
 import { buildCombination, type Card, type GameState } from "@/lib/game/gameEngine";
 import { passed } from "../support/moves.ts";
 import { aThreePlayed } from "../support/game.ts";
@@ -60,6 +60,10 @@ function Probe() {
 
 beforeEach(async () => {
   await AsyncStorage.clear();
+});
+
+afterEach(() => {
+  jest.useRealTimers();
 });
 
 test("two passes in one event compose, the second answering the first", async () => {
@@ -122,6 +126,7 @@ function SettleProbe() {
 }
 
 const settled = async (state: GameState) => {
+  jest.useFakeTimers();
   await AsyncStorage.setItem(
     OFFLINE_SAVE_KEY,
     encodeOfflineSave({
@@ -145,7 +150,7 @@ const settled = async (state: GameState) => {
     fireEvent.press(view.getByTestId("settle"));
   });
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, BOT_THINK_MS + 100));
+    jest.advanceTimersByTime(BOT_THINK_MS + 100);
   });
   const shown = { active: view.getByTestId("active").props.children, loser: view.getByTestId("loserHand").props.children };
   await act(async () => {
@@ -224,4 +229,14 @@ test("a clock that runs out in the tick the turn moved on passes nobody", async 
   await act(async () => {
     view.unmount();
   });
+});
+
+test("every gate the schedule names holds a bot until the table has observed it", () => {
+  const open = { dealing: true, announcing: true, received: false };
+  const clear = { dealing: false, announcing: false, received: true };
+  for (const gate of GATES) {
+    expect(gatesPast([gate], clear)).toBe(true);
+    if (gate !== "opening") expect(gatesPast([gate], open)).toBe(false);
+  }
+  expect(gatesPast([], open)).toBe(true);
 });

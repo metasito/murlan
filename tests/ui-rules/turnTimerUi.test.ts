@@ -11,7 +11,7 @@ import {
 } from "../../components/turnTimerUi.ts";
 import { describeTableForA11y, type TableA11yStrings } from "../../components/tableA11y.ts";
 import type { TFn } from "../../lib/i18n.ts";
-import { TURN_POLICY } from "../../lib/game/turnSchedule.ts";
+import { TURN_POLICY, turnAction } from "../../lib/game/turnSchedule.ts";
 import { scanSources, sourcesUnder } from "../helpers/sourceScan.ts";
 import path from "node:path";
 
@@ -37,25 +37,12 @@ describe("turnTimerActive", () => {
   const base = {
     isMyTurn: true,
     isFinished: false,
-    isNewTrick: false,
     roundOver: false,
     exchangeOpen: false,
-    includeNewTrick: false,
   };
 
   test("runs while answering a combination on your turn", () => {
     assert.equal(turnTimerActive(base), true);
-  });
-
-  test("offline: leading a new round has no deadline", () => {
-    assert.equal(turnTimerActive({ ...base, isNewTrick: true }), false);
-  });
-
-  test("online: the server AFK window covers leading too", () => {
-    assert.equal(
-      turnTimerActive({ ...base, isNewTrick: true, includeNewTrick: true }),
-      true
-    );
   });
 
   test("never during the exchange, after the game, or when it is not your turn", () => {
@@ -65,19 +52,16 @@ describe("turnTimerActive", () => {
     assert.equal(turnTimerActive({ ...base, isFinished: true }), false);
   });
 
-  test("includeNewTrick never overrides the harder stops", () => {
-    assert.equal(
-      turnTimerActive({ ...base, includeNewTrick: true, exchangeOpen: true }),
-      false
-    );
+  test("a lifted announcement hold never overrides the harder stops", () => {
+    assert.equal(turnTimerActive({ ...base, exchangeOpen: true, announcementHolds: false }), false);
   });
 
   test("an announcement holding the table stops a clock this client owns", () => {
     // The floor: without the hold the same case runs, so this is about the
     // hold and not about some other stop already covering it.
-    assert.equal(turnTimerActive({ ...base, includeNewTrick: true }), true);
+    assert.equal(turnTimerActive(base), true);
     assert.equal(
-      turnTimerActive({ ...base, includeNewTrick: true, announcementHolds: true }),
+      turnTimerActive({ ...base, announcementHolds: true }),
       false
     );
   });
@@ -86,7 +70,7 @@ describe("turnTimerActive", () => {
     // Online the deadline is the server's: `app/(online)/game.tsx` passes no
     // `pausable`, so the hold never reaches here and the clock keeps running.
     assert.equal(
-      turnTimerActive({ ...base, includeNewTrick: true, announcementHolds: false }),
+      turnTimerActive({ ...base, announcementHolds: false }),
       true
     );
   });
@@ -164,7 +148,7 @@ const TURN_TABLE: [Bit, Bit, Bit, Bit, Bit, string, string, Bit, string][] = [
  * Both timer questions over every input they read: `c` the viewer's chip counts down,
  * `s` the ring on the seat on move sweeps.
  *
- * Bits: isMyTurn, isFinished, isNewTrick, roundOver, exchangeOpen, includeNewTrick, pausable, holdingForStart.
+ * Bits: isMyTurn, isFinished, isNewTrick, roundOver, exchangeOpen, online, pausable, holdingForStart.
  */
 const CLOCK_TABLE: string[] = [
   "00000000:-s 00000001:-s 00000010:-s 00000011:-- 00000100:-s 00000101:-s 00000110:-s 00000111:--",
@@ -202,10 +186,10 @@ const CLOCK_TABLE: string[] = [
 ];
 const clockRows = CLOCK_TABLE.flatMap((line) => line.split(" ")).map((cell) => {
   const [bits, answer] = cell.split(":");
-  const [isMyTurn, isFinished, isNewTrick, roundOver, exchangeOpen, includeNewTrick, pausable, holdingForStart] = [...bits].map(
+  const [isMyTurn, isFinished, isNewTrick, roundOver, exchangeOpen, online, pausable, holdingForStart] = [...bits].map(
     (b) => b === "1"
   );
-  return { isMyTurn, isFinished, isNewTrick, roundOver, exchangeOpen, includeNewTrick, pausable, holdingForStart, answer };
+  return { isMyTurn, isFinished, isNewTrick, roundOver, exchangeOpen, online, pausable, holdingForStart, answer };
 });
 
 const fakeT = ((key: string, params?: Record<string, unknown>) => (params ? `${key}(${params.name})` : key)) as TFn;
@@ -304,7 +288,7 @@ describe("the turn chip and its clocks", () => {
         ...base,
         roundOver: r.roundOver,
         exchange: { ...base.exchange, open: r.exchangeOpen },
-        timer: { seconds: 20, table: r.includeNewTrick ? "online" : "offline", pausable: r.pausable },
+        timer: { seconds: 20, table: r.online ? "online" : "offline", pausable: r.pausable },
         isMyTurn: r.isMyTurn,
         isFinished: r.isFinished,
         isNewTrick: r.isNewTrick,
@@ -361,6 +345,16 @@ describe("the turn chip and its clocks", () => {
         assert.equal(shown.clock.active, TURN_POLICY[table][action].timed, `${table} ${action}`);
       }
     }
+  });
+
+  test("the give row is the policy's too: offline it has no deadline, online it has", () => {
+    for (const table of ["online", "offline"] as const) {
+      const shown = turnPresentation({ ...base, shownTurnIsMine: true, isMyTurn: true, isNewTrick: true, exchange: { ...base.exchange, open: true }, timer: { seconds: 20, table } });
+      assert.equal(shown.clock.active, false, "the exchange holds the clock whatever the row says");
+      assert.equal(turnAction({ exchangeOpen: true, leading: true }), "give");
+    }
+    assert.equal(turnAction({ exchangeOpen: false, leading: true }), "lead");
+    assert.equal(turnAction({ exchangeOpen: false, leading: false }), "follow");
   });
 
   test("no table states its own lead clock: each names its table and the policy answers", () => {

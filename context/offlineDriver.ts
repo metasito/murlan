@@ -10,7 +10,7 @@ import { E2E_FAST, e2e, exchangeHold } from "@/lib/e2eConfig";
 import { flushSync } from "@/lib/flushSync";
 import { uiFeedback } from "@/lib/device/feedback";
 import { turnOf } from "@/lib/game/moves";
-import { turnSchedule } from "@/lib/game/turnSchedule";
+import { turnSchedule, type Gate } from "@/lib/game/turnSchedule";
 import { RoundEnding } from "@/lib/theme";
 
 /** Local response deadline. Offline there is no server, so the client enforces it. */
@@ -27,6 +27,27 @@ export interface OfflineDriver {
   onRoundLanded: ((landsAt: number) => void) | undefined;
   turnTimer: { seconds: number; table: "offline"; pausable: true; onExpire: () => void };
   exchangeHold: ExchangeHold | undefined;
+}
+
+/** What the table has shown, as the flags the screen reports it by. */
+export interface GatesSeen {
+  dealing: boolean;
+  announcing: boolean;
+  received: boolean;
+}
+
+/** Whether each gate is past; a `Record` over `Gate`, so a gate added to the schedule fails to compile until it is answered here. */
+const PAST: Record<Gate, (seen: GatesSeen) => boolean> = {
+  deal: (seen) => !seen.dealing,
+  receive: (seen) => seen.received,
+  ceremony: (seen) => !seen.announcing,
+  // A human's own client holds the opening notice; a bot's slot never carries it.
+  opening: () => true,
+};
+
+/** Whether the table has observed every gate the schedule names. */
+export function gatesPast(gates: readonly Gate[], seen: GatesSeen): boolean {
+  return gates.every((gate) => PAST[gate](seen));
 }
 
 /** Null-safe, so the screen calls it before its `if (!gameState)`. */
@@ -78,7 +99,7 @@ export function useOfflineDriver(): OfflineDriver {
   const [exchangeReady, setExchangeReady] = useState(false);
   if (!exchangeOpen && exchangeReady) setExchangeReady(false);
   const slot = gameState && turnSchedule(gameState, "offline", (seat) => gameState.players[seat]?.type === "bot");
-  const gatesObserved = !dealing && !exchangeAnnouncing && (!exchangeOpen || exchangeReady);
+  const gatesObserved = !!slot && gatesPast(slot.gates, { dealing, announcing: exchangeAnnouncing, received: exchangeReady });
   const botTurnKey = gameState && slot?.bot && gatesObserved && !e2e.suspendBot ? turnOf(gameState) : null;
   const thinkMs = E2E_FAST ? 0 : (slot?.thinkMs ?? 0);
 

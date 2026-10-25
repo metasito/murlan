@@ -3,7 +3,7 @@
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
 import type { TFn, TranslationKey } from "@/lib/i18n";
-import { TURN_POLICY, type TableKind } from "../lib/game/turnSchedule.ts";
+import { TURN_POLICY, turnAction, type TableKind } from "../lib/game/turnSchedule.ts";
 
 // ─── Pass affordance ─────────────────────────────────────────────────────────
 
@@ -34,14 +34,12 @@ export function urgentThresholdSeconds(clockSeconds: number): number {
   return Math.max(CLOCK_RUNNING_OUT_SECONDS, Math.ceil(clockSeconds * URGENT_FRACTION));
 }
 
-/** Whether the turn countdown should run; `includeNewTrick` is whether a lead is under a deadline at all. */
+/** Whether the turn countdown should run on this client; which turns are under a deadline at all is `TURN_POLICY`'s. */
 export function turnTimerActive(opts: {
   isMyTurn: boolean;
   isFinished: boolean;
-  isNewTrick: boolean;
   roundOver: boolean;
   exchangeOpen: boolean;
-  includeNewTrick: boolean;
   /**
    * An announcement is holding the table, and this client owns the deadline it
    * would be holding. A pause a server is not keeping would draw a clock with
@@ -53,7 +51,6 @@ export function turnTimerActive(opts: {
   if (!opts.isMyTurn || opts.isFinished) return false;
   if (opts.roundOver || opts.exchangeOpen) return false;
   if (opts.announcementHolds) return false;
-  if (opts.isNewTrick && !opts.includeNewTrick) return false;
   return true;
 }
 
@@ -161,15 +158,15 @@ export function turnPresentation(i: {
   const announcementHolds = i.holdingForStart && (timer?.pausable ?? false);
   // The ring only ever sits on a seat whose turn it is, and never on one that has gone out:
   // `getNextActivePlayer` (lib/game/gameEngine.ts) steps over an empty hand.
-  const runs = (who: { isMyTurn: boolean; isFinished: boolean; includeNewTrick: boolean }) =>
+  const runs = (who: { isMyTurn: boolean; isFinished: boolean }) =>
     !!timer &&
-    turnTimerActive({ ...who, isNewTrick: i.isNewTrick, roundOver, exchangeOpen: exchange.open, announcementHolds });
+    turnTimerActive({ ...who, roundOver, exchangeOpen: exchange.open, announcementHolds });
   const turnResetKey = `${i.turnToken}|${timer?.resetKey ?? ""}`;
-  const timedHere = !!timer && TURN_POLICY[timer.table][i.isNewTrick ? "lead" : "follow"].timed;
-  const active = timedHere && runs({ isMyTurn: i.isMyTurn, isFinished: i.isFinished, includeNewTrick: true });
+  const timedHere = !!timer && TURN_POLICY[timer.table][turnAction({ exchangeOpen: exchange.open, leading: i.isNewTrick })].timed;
+  const active = timedHere && runs({ isMyTurn: i.isMyTurn, isFinished: i.isFinished });
   // The seat runs whenever the chip does and on more: offline, a lead runs the window though the
   // chip has no deadline there, so only an active chip's turn expires.
-  const seatClock = !!timer && runs({ isMyTurn: true, isFinished: false, includeNewTrick: true });
+  const seatClock = !!timer && runs({ isMyTurn: true, isFinished: false });
   return {
     chip: {
       text: exchange.chip ?? say(CHIP_KEYS[state]),

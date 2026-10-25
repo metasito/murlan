@@ -3,7 +3,8 @@ import { actingSeat, openingIsPending, type GameState } from "./gameEngine.ts";
 export type TableKind = "online" | "offline";
 
 /** What the table shows before the seat on move may act, in the order it shows them. */
-export type Gate = "deal" | "receive" | "ceremony" | "opening";
+export const GATES = ["deal", "receive", "ceremony", "opening"] as const;
+export type Gate = (typeof GATES)[number];
 
 export type TurnAction = "give" | "lead" | "follow";
 
@@ -54,6 +55,11 @@ function tableGates(state: GameState): readonly Gate[] {
   }
 }
 
+/** Which row of `TURN_POLICY` a turn is: the exchange's give outranks a lead, a lead is a turn with nothing to answer. */
+export function turnAction(facts: { exchangeOpen: boolean; leading: boolean }): TurnAction {
+  return facts.exchangeOpen ? "give" : facts.leading ? "lead" : "follow";
+}
+
 /**
  * Who acts next, after which gates, and whether against a deadline; null once the round is over.
  * A human's gates are only the opening notice: its own client holds it there, out of the server's
@@ -63,8 +69,7 @@ export function turnSchedule(state: GameState, table: TableKind, isBot: (seat: n
   if (state.roundOver) return null;
   const seat = actingSeat(state);
   const bot = isBot(seat);
-  const action: TurnAction =
-    state.exchangePhase?.kind === "open" ? "give" : state.lastPlayedCombination === null ? "lead" : "follow";
+  const action = turnAction({ exchangeOpen: state.exchangePhase?.kind === "open", leading: state.lastPlayedCombination === null });
   const policy = TURN_POLICY[table][action];
   return {
     seat,
