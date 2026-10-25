@@ -89,3 +89,60 @@ export async function stepUntil(
   }
   throw new Error(`${what}: not ready after ${realMs} ms`);
 }
+
+/** `paintedFrames`' in-page hook: `sample` runs at the end of every frame until it returns false. */
+export type EachPaint = (sample: (t: number) => boolean | void) => void;
+
+/**
+ * Before the first navigation: gives the page `murlanEachPaint`. A sampler in a plain rAF callback
+ * runs before Reanimated's own in the same frame, so it reads a React commit made between two frames
+ * beside a transform the next frame's mapper has not yet written, a state the browser never paints.
+ * This keeps one callback last in every frame, after all the page's. Install it after
+ * `installVirtualClock`: the clock assigns `window.requestAnimationFrame` and would replace the
+ * hook, so `murlanEachPaint` throws when a request no longer reaches it.
+ */
+export async function paintedFrames(page: Page): Promise<void> {
+  const install = () => {
+    const raf = window.requestAnimationFrame;
+    const caf = window.cancelAnimationFrame;
+    const samplers: ((t: number) => boolean | void)[] = [];
+    let last = 0;
+    let inFrame = false;
+    const close = (t: number) => {
+      last = 0;
+      inFrame = false;
+      for (const s of [...samplers]) if (s(t) === false) samplers.splice(samplers.indexOf(s), 1);
+      // Kept armed with no sampler left: only a frame `close` ends tells a request inside a frame from one between.
+      arm();
+    };
+    const arm = () => {
+      if (last) caf.call(window, last);
+      last = raf.call(window, close);
+    };
+    // A request made inside a frame is for the next one, which `close` arms for itself; one made
+    // between frames joins the frame `last` waits on, so `last` moves behind it.
+    let reached = false;
+    const hooked = (cb: FrameRequestCallback) => {
+      reached = true;
+      const id = raf.call(window, (t: number) => {
+        inFrame = true;
+        cb(t);
+      });
+      if (last && !inFrame) arm();
+      return id;
+    };
+    // The app wraps rAF in turn, calling what it read here, so its wrapper sits above the hook.
+    let top: typeof window.requestAnimationFrame = hooked;
+    Object.defineProperty(window, "requestAnimationFrame", { configurable: true, get: () => top, set: (v) => (top = v) });
+    (window as unknown as { murlanEachPaint: EachPaint }).murlanEachPaint = (sample) => {
+      reached = false;
+      caf.call(window, window.requestAnimationFrame(() => {}));
+      if (!reached) throw new Error("paintedFrames: window.requestAnimationFrame was replaced after it was installed; install it after installVirtualClock");
+      samplers.push(sample);
+      if (last) return;
+      inFrame = false;
+      arm();
+    };
+  };
+  await page.addInitScript(install);
+}

@@ -21,7 +21,7 @@
     ],
     "soft_deny": [
       "$defaults",
-      "Bash(npm run db:reset:*) in this repo — package.json db:reset already bundles --yes per CLAUDE.md's own self-defeating-safeguard warning; treat as a destructive footgun requiring explicit confirmation each time"
+      "Bash(node scripts/reset-db.mjs:*) in this repo — it wipes the database once given --yes (and ALLOW_DESTRUCTIVE=1); no npm script wraps it, so require explicit confirmation each time"
     ]
   },
   "hooks": {
