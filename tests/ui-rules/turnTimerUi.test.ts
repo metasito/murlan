@@ -233,6 +233,8 @@ describe("the turn chip and its clocks", () => {
     isMyTurn: false,
     isFinished: false,
     isNewTrick: false,
+    shownTurnSeat: 0,
+    actingSeat: 0,
     holdingForStart: false,
     held: false,
     turnToken: "tok",
@@ -281,6 +283,24 @@ describe("the turn chip and its clocks", () => {
       });
       assert.equal(`${shown.clock.active ? "c" : "-"}${shown.seatClock ? "s" : "-"}`, r.answer, JSON.stringify(r));
     }
+  });
+
+  test("the clock's seat is the exchange winner while the exchange is open online, and nobody offline", () => {
+    for (const [table, expected] of [["online", 2], ["offline", null]] as const) {
+      const shown = turnPresentation({
+        ...base,
+        shownTurnIsMine: false,
+        isMyTurn: false,
+        exchange: { ...base.exchange, open: true },
+        shownTurnSeat: 0,
+        actingSeat: 2,
+        timer: { seconds: 20, table },
+      });
+      assert.equal(shown.clockSeat, expected, table);
+    }
+    const turn = turnPresentation({ ...base, shownTurnSeat: 1, actingSeat: 3, timer: { seconds: 20, table: "online" } });
+    assert.equal(turn.clockSeat, 1, "outside the exchange it is the seat the table shows on move");
+    assert.equal(turnPresentation({ ...base, shownTurnSeat: 1, actingSeat: 1 }).clockSeat, null);
   });
 
   test("with no timer, neither clock runs", () => {

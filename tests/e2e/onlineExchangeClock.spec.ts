@@ -1,5 +1,5 @@
 // The exchange winner online is under the server's AFK deadline (docs/GAME-RULES.md § Decisions,
-// "The turn clock"), so their chip counts it down. Two real accounts play a round out and vote;
+// "The turn clock"), so their chip counts it down and their seat's ring sweeps for everyone else. Two real accounts play a round out and vote;
 // whichever one the next deal makes the exchange winner is the one asked.
 import path from "node:path";
 import type { Page } from "@playwright/test";
@@ -50,6 +50,10 @@ test("online — the exchange winner's chip counts the server's clock down", asy
     expect(count).toBeGreaterThan(0);
     expect(count).toBeLessThanOrEqual(30);
     if (SHOTS) await page.screenshot({ path: path.join(SHOTS, "online-exchange-winner-clock.png") });
+
+    const other = pages[1 - winner];
+    await expect(other.locator('[data-testid="seat-turn-clock"]'), "everyone else sees the winner's ring sweep").toHaveCount(1);
+    if (SHOTS) await other.screenshot({ path: path.join(SHOTS, "online-exchange-other-seat-ring.png") });
   } finally {
     for (const c of contexts) await c.close();
   }

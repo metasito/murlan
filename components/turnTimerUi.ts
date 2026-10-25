@@ -117,8 +117,10 @@ export interface TurnClock {
 export interface TurnPresentation {
   chip: { text: string; spoken: string; lit: boolean };
   clock: TurnClock;
-  /** Whether the seat on move draws its ring. */
+  /** Whether the seat on the clock draws its ring. */
   seatClock: boolean;
+  /** The seat whose ring sweeps: the one the table shows on move, or the exchange winner while the exchange is open. */
+  clockSeat: number | null;
   /** The one window the chip and the ring both read. */
   window: { seconds: number; resetKey: string; running: boolean; held: boolean; onExpire?: () => void };
 }
@@ -135,6 +137,9 @@ export function turnPresentation(i: {
   /** `chip` outranks the state. */
   exchange: { chip: string | null; choiceOpen: boolean; viewerIsWinner: boolean; open: boolean };
   timer?: TurnTimerConfig;
+  /** The seat the table lights as on move, null while an exchange or the round's outcome holds the turn; and the seat the engine says acts (`actingSeat`), the exchange winner's while the exchange is open. */
+  shownTurnSeat: number | null;
+  actingSeat: number;
   /** The next-round vote's deadline, which takes the chip's countdown while no turn runs. */
   vote?: { seconds: number; resetKey: string } | null;
   isMyTurn: boolean;
@@ -170,6 +175,7 @@ export function turnPresentation(i: {
     },
     clock: vote ? { active: true, revealed: true } : { active, revealed: clockShown },
     seatClock,
+    clockSeat: seatClock ? (exchange.open ? i.actingSeat : i.shownTurnSeat) : null,
     window: vote
       ? { seconds: vote.seconds, resetKey: `vote|${vote.resetKey}`, running: true, held: false }
       : {

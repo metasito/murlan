@@ -305,6 +305,14 @@ describe("a seat's turn clock", () => {
     expect(clocks()).toBe(0);
   });
 
+  it("sweeps the winner's seat for everyone else online, and not offline", async () => {
+    await renderSettled(table(state(EXCHANGE(1)), ONLINE_TIMER));
+    expect(clocks()).toBe(1);
+    await screen.unmount();
+    await renderSettled(table(state(EXCHANGE(1)), OFFLINE_TIMER));
+    expect(clocks()).toBe(0);
+  });
+
   it("counts the viewer's own chip down while they choose the card to give online, and not offline", async () => {
     await renderSettled(table(state(EXCHANGE(0)), ONLINE_TIMER));
     const left = screen.getByTestId('turn-chip-count', { includeHiddenElements: true }).props.children as number;

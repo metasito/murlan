@@ -432,7 +432,7 @@ function SeatRing({
   );
   const lit = seatLit(isActive, mark);
   const probe = useRingProbe(name);
-  const clock = useClockFade(isActive ? (countdown ?? null) : null, clockKey, side);
+  const clock = useClockFade(countdown ?? null, clockKey, side);
 
   useEffect(
     () => () => {
@@ -518,7 +518,7 @@ function SeatRing({
         <CountdownRing
           size={size}
           clock={clock.shown}
-          leaving={!isActive}
+          leaving={!countdown}
           scale={scale}
           fade={clock.opacity}
         />
@@ -615,7 +615,7 @@ export const OpponentSeat = memo(function OpponentSeat({
   reconnecting?: { seconds: number; resetKey: string };
   /** The table's own scale — the seat's fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
-  /** The turn window, so the seat on move can sweep its own rim. */
+  /** The turn window, given to the seat on the clock only, which sweeps its own rim. */
   countdown?: SeatCountdown;
   /** Cards only: the name, the badges and the card count fall away. */
   focusMode?: boolean;

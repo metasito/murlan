@@ -18,6 +18,7 @@ import Animated, { useAnimatedReaction, useAnimatedStyle, useSharedValue } from 
 import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
+  actingSeat,
   roundUnplayed,
   openingIsPending,
   tableDemand,
@@ -856,6 +857,7 @@ export function GameTable({
 
   const topBarA11yLabel = topBarLabel(onTop, playedByViewer, lastPlayName, t);
 
+  const onMoveSeat = !shownExchange && shown === null ? shownTurnIndex : null;
   const turn = turnPresentation({
     roundOver: gameState.roundOver,
     matchOver,
@@ -864,6 +866,8 @@ export function GameTable({
     onMoveName: players[shownTurnIndex]?.name ?? "",
     exchange: { chip: exchangeChip, choiceOpen, viewerIsWinner: exchange.viewerIsWinner, open: exchange.open },
     timer: turnTimer,
+    shownTurnSeat: onMoveSeat,
+    actingSeat: actingSeat(gameState),
     vote: roundVote?.deadline ?? null,
     isMyTurn,
     isFinished,
@@ -885,7 +889,7 @@ export function GameTable({
 
   useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
   const seatTable: SeatTable = {
-    onMoveSeat: !shownExchange && shown === null ? shownTurnIndex : null,
+    onMoveSeat,
     passed,
     disconnectedSeats,
     exchangeLit,
@@ -901,7 +905,7 @@ export function GameTable({
           {...seatView(opponent.seat, opponent.player, seatTable)}
           dealArrivals={deal.arrivalsFor(opponent.seat)}
           scale={scale}
-          countdown={turn.seatClock ? countdown : undefined}
+          countdown={turn.clockSeat === opponent.seat ? countdown : undefined}
           focusMode={focusMode}
           flash={ringFlash}
         />
