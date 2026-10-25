@@ -20,6 +20,7 @@ instead of sitting unguarded in prose.
 | --- | --- | --- | --- | --- |
 | Pure logic (`lib/`, `*Model.ts`, `tableArc.ts`) | `node --test tests/<file>.test.ts` | the maths, the guards, i18n key parity, colour contrast under CVD | nothing | ~1s |
 | The server, the socket protocol, auth or storage | same command, under `tests/integration/` | routes and handlers end to end, boot-time schema creation | `DATABASE_URL` (dev-stack, below) | ~10s/file |
+| Whether any test asserts a line of `lib/game/` or `server/game/` | `npx stryker run --mutate <file>` (`stryker.config.mjs`); `.github/workflows/mutation.yml` runs every file weekly in line-range shards of at most `SHARD_MUTANTS` mutants (`tools/ci/mutation.mjs`), and files the survivors under `mutation` | a mutant no node test notices; never a gate | nothing | ~2 min dry run, then per mutant |
 | A component's props or tree | `jest`, once per `Platform.OS` | render, memo, hook order, native-only branches | nothing | ~8s |
 | Anything with **layout** (flex, absolute, transform) | Playwright | which side of the screen it is on | Docker + a built web bundle | ~35s |
 | Anything **visual** (colour, gradient, shadow, size) | pixel-sample two PNGs on the same grid | pixels vs the prototype | Docker + a built web bundle | ~40s |

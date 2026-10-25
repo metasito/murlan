@@ -27,6 +27,10 @@ sourcemaps/
 coverage/
 /diagnostics/
 
+# Mutation testing (stryker.config.mjs)
+/.stryker-tmp/
+/reports/
+
 # Native
 /ios/
 /android/
