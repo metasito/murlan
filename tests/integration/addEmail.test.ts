@@ -7,6 +7,10 @@ import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { register, waitForPendingCode } from "../helpers/client.ts";
 import { whileUserLocked } from "../helpers/userLock.ts";
+import { db } from "../../server/store/db.ts";
+import { replaceEmailVerifyCode, redeemAuthCode } from "../../server/http/authTokens.ts";
+import { users, authTokens } from "../../shared/schema.ts";
+import { eq, and } from "drizzle-orm";
 
 describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -37,10 +41,7 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
    */
   async function legacyAccount(username: string) {
     const { user, cookie } = await register(server, username);
-    const { db } = await import("../../server/store/db.ts");
-    const { users, authTokens } = await import("../../shared/schema.ts");
-    const { eq } = await import("drizzle-orm");
-    await db.update(users).set({ email: null, emailVerifiedAt: null }).where(eq(users.id, user.id));
+    await db().update(users).set({ email: null, emailVerifiedAt: null }).where(eq(users.id, user.id));
     // register() already minted its own email_verify token; a real legacy
     // account predates that flow entirely, so drop it rather than count it
     // alongside the one add-email mints. Registration replies *before* that
@@ -49,12 +50,12 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
     // waiting for it leaves it to land afterwards and be counted.
     const deadline = Date.now() + 5_000;
     for (;;) {
-      const rows = await db.select().from(authTokens).where(eq(authTokens.userId, user.id));
+      const rows = await db().select().from(authTokens).where(eq(authTokens.userId, user.id));
       if (rows.length > 0) break;
       assert.ok(Date.now() < deadline, "register never minted the token this account has to shed");
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
-    await db.delete(authTokens).where(eq(authTokens.userId, user.id));
+    await db().delete(authTokens).where(eq(authTokens.userId, user.id));
     return { user, cookie };
   }
 
@@ -66,11 +67,7 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
     const body = JSON.parse(text);
     assert.equal(body.email, "nudge_add@example.test");
     assert.equal(body.emailVerified, false);
-
-    const { db } = await import("../../server/store/db.ts");
-    const { authTokens } = await import("../../shared/schema.ts");
-    const { eq, and } = await import("drizzle-orm");
-    const rows = await db
+    const rows = await db()
       .select()
       .from(authTokens)
       .where(and(eq(authTokens.userId, user.id), eq(authTokens.purpose, "email_verify")));
@@ -88,9 +85,6 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
   test("minting a second email_verify code invalidates the first, unconditionally", async () => {
     const { user } = await register(server, "nudge_invalidate");
     await waitForPendingCode(user.id);
-    const { replaceEmailVerifyCode, redeemAuthCode } = await import(
-      "../../server/http/authTokens.ts"
-    );
     const email = user.email!;
 
     const first = await replaceEmailVerifyCode({ userId: user.id, email, ttlMs: 60_000 });
@@ -112,7 +106,6 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
     // The raw code is only ever mailed, never returned in the response (same
     // as register's own mint) — mint an equivalent one directly to drive the
     // shared redemption path add-email's mint call feeds in production.
-    const { replaceEmailVerifyCode, redeemAuthCode } = await import("../../server/http/authTokens.ts");
     const code = await replaceEmailVerifyCode({ userId: user.id, email, ttlMs: 60_000 });
 
     const verifyRes = await fetch(`${server.url}/api/auth/verify-email`, {
@@ -154,7 +147,6 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
   test("verifying a claim against an address already verified elsewhere is refused, and clears this account's email", async () => {
     const { user: owner, cookie: ownerCookie } = await register(server, "nudge_verified_owner");
     await waitForPendingCode(owner.id);
-    const { replaceEmailVerifyCode } = await import("../../server/http/authTokens.ts");
     const ownerCode = await replaceEmailVerifyCode({
       userId: owner.id,
       email: owner.email!,
@@ -231,7 +223,6 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
   test("two mints for one user wait on its row lock, and one code survives", async () => {
     const { user } = await register(server, "nudge_lock");
     await waitForPendingCode(user.id);
-    const { replaceEmailVerifyCode } = await import("../../server/http/authTokens.ts");
     const mint = () => replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: 60_000 });
     await whileUserLocked([user.id], () => [mint(), mint()]);
     const rows = await server.query("SELECT 1 FROM auth_tokens WHERE user_id = $1 AND purpose = 'email_verify'", [
@@ -243,7 +234,6 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
   test("a code minted for one address does not verify the address the account holds now", async () => {
     const { user, cookie } = await legacyAccount("nudge_moved");
     const minted = "nudge_moved_a@example.test";
-    const { replaceEmailVerifyCode } = await import("../../server/http/authTokens.ts");
     const code = await replaceEmailVerifyCode({ userId: user.id, email: minted, ttlMs: 60_000 });
     await server.query("UPDATE users SET email = 'nudge_moved_b@example.test' WHERE id = $1", [user.id]);
 

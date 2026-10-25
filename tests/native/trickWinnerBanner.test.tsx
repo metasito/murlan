@@ -21,6 +21,8 @@ import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine
 import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';
 import { setMotion } from './harness/env';
+import { BOT_THINK_MS } from '@/lib/game/turnSchedule';
+import { Motion } from '@/lib/theme';
 import { aThreePlayed } from '../support/game';
 import { replayStateAt, type ReplayDto } from '@/lib/game/replay';
 
@@ -31,8 +33,6 @@ const METRICS = {
 
 const WINNER = 'Besi';
 const WINNER_SEAT = 1;
-/** `botMoveDelayMs()`'s default: the least time between two seats' moves. */
-const BOT_DELAY_MS = 1200;
 
 const KING: Card = { id: 'K_hearts', rank: 'K', suit: 'hearts', isJoker: false };
 const LED: Combination = { type: 'single', cards: [KING], strength: 13 };
@@ -80,12 +80,10 @@ const table = (gameState: GameState, scrubbed = false) => (
 /** The tag's scope over the pile, not the same name on its seat. */
 const pileArea = () => within(screen.getByTestId('pile-area'));
 const plate = () => pileArea().getByTestId('notice-trickWinner', { includeHiddenElements: true });
-/** #1259 Q1: a mark enters in the mockup's 100 ms. */
-const MARK_ENTER_MS = 100;
 const STAR = String.fromCodePoint(Number(Ionicons.glyphMap.star));
 const tagShown = async () => {
   await act(async () => {
-    jest.advanceTimersByTime(MARK_ENTER_MS + 16);
+    jest.advanceTimersByTime(Motion.mark.enter + 16);
   });
   expect((getAnimatedStyle(plate()) as { opacity?: number }).opacity).toBe(1);
   within(plate()).getByText(WINNER, { includeHiddenElements: true });
@@ -121,7 +119,7 @@ describe('the trick-winner tag', () => {
     expect(tagGone()).toBe(true);
     // Its own pass sound holds the mix, as a turn's wait does at a real table.
     await act(async () => {
-      jest.advanceTimersByTime(BOT_DELAY_MS);
+      jest.advanceTimersByTime(BOT_THINK_MS);
     });
 
     await act(async () => r.rerender(table(closed(4))));

@@ -14,21 +14,18 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { DEADLINE_SCALE, register } from "../helpers/client.ts";
+import { logger } from "../../server/shared/logger.ts";
+import { SERVER_ERROR_RETENTION_DAYS } from "../../server/http/serverErrors.ts";
+import { CLIENT_ERROR_RETENTION_DAYS as retentionDays } from "../../server/http/clientErrors.ts";
+import { sweepRetention } from "../../server/game/retention.ts";
 
 describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
   let ownerCookie: string;
   let playerCookie: string;
-  let retentionDays: number;
-  let sweepRetention: typeof import("../../server/game/retention.ts").sweepRetention;
 
   before(async () => {
     server = await startTestServer();
-    // Imported here, not at file scope: server/store/db.ts reads DATABASE_URL when
-    // it is first loaded, and startTestServer() is what points that at this
-    // run's own schema. A top-level import would connect to public instead.
-    ({ CLIENT_ERROR_RETENTION_DAYS: retentionDays } = await import("../../server/http/clientErrors.ts"));
-    ({ sweepRetention } = await import("../../server/game/retention.ts"));
 
     ({ cookie: ownerCookie } = await register(server, "the_owner"));
     ({ cookie: playerCookie } = await register(server, "a_player"));
@@ -269,8 +266,6 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
   });
 
   test("a server error becomes a row, is shown on the page and ages out", async () => {
-    const { logger } = await import("../../server/shared/logger.ts");
-    const { SERVER_ERROR_RETENTION_DAYS } = await import("../../server/http/serverErrors.ts");
     const rows = (message: string) =>
       server.query<{ context: { roomId?: string } }>(`SELECT context FROM "${server.schema}".server_errors WHERE message = $1`, [message]);
 
@@ -298,7 +293,6 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
   });
 
   test("a server error line naming a user stores no user id", async () => {
-    const { logger } = await import("../../server/shared/logger.ts");
     const message = "a failure that names a user";
     logger.error({ userId: "u-planted", roomId: "r-keep" }, message);
     let found: { context: Record<string, unknown> }[] = [];
@@ -312,7 +306,6 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
   });
 
   test("deleting an account leaves no server error row naming its id", async () => {
-    const { logger } = await import("../../server/shared/logger.ts");
     const { user, cookie } = await register(server, "erased_logged");
     const message = "a failure logged for a soon-deleted account";
     logger.error({ accountId: user.id, err: "boom" }, message);

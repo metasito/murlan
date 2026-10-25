@@ -21,6 +21,7 @@ import { actingSeat, applyMove } from "../../lib/game/gameEngine.ts";
 import { chooseMove } from "../../lib/game/autoMove.ts";
 import { visibleExchangePhase } from "../../server/game/onlineGameLogic.ts";
 import { card, seat, state } from "../support/game.ts";
+import { rehydrateGame } from "../../server/game/tableLifecycle.ts";
 
 const gameState = state({ currentTurnIndex: 2, gameMode: "teams" });
 const flags: RoundFlags = { 0: { bomb: true, joker: false }, 3: { bomb: false, joker: true } };
@@ -98,6 +99,20 @@ describe("persisted game_state envelope", () => {
     // engine output — a stray schemaVersion or roundFlags on it is a real bug.
     const restored = restore(pack());
     assert.deepEqual(restored.gameState, gameState);
+  });
+
+  test("a one-way exchange, with nothing handed back, restores as it was and the loser takes the next move", () => {
+    const oneWay = state({
+      players: [seat(0, [card("K", "clubs"), card("A", "spades")]), seat(1, [card("4", "clubs")])],
+      currentTurnIndex: 1,
+      lastPlayedBy: 1,
+      openingCard: null,
+      exchangePhase: { kind: "settled", winnerIdx: 0, loserIdx: 1, cardFromLoser: card("A", "spades"), settledAt: 7 },
+    });
+    const back = restore(packPersistedState(oneWay, flags, 0, JOIN_CODE, match, seats));
+    assert.deepEqual(back.gameState, oneWay);
+    const move = chooseMove(back.gameState, actingSeat(back.gameState), "floor");
+    assert.deepEqual(move, { kind: "play", cardIds: ["4_clubs"] });
   });
 
   test("the match's game mode does not overwrite the round's", () => {
@@ -218,7 +233,6 @@ describe("rows the restore path refuses", () => {
   });
 
   test("a row a newer revision wrote is refused and kept; an older one is deleted", async (t) => {
-    const { rehydrateGame } = await import("../../server/game/tableLifecycle.ts");
     const newer = `version-${GAME_SCHEMA_VERSION + 1}`;
     const older = `version-${OLDEST_GAME_SCHEMA_VERSION - 1}`;
     const { rows } = useMemoryTableStores(t, {

@@ -29,6 +29,12 @@ export const en = {
   "term.mode.freeForAll": "Free-for-all",
   "term.mode.teamsShort": "Teams",
   "term.mode.freeForAllShort": "Free-for-all",
+  "term.combo.single": "Single",
+  "term.combo.pair": "Pair",
+  "term.combo.triple": "Triple",
+  "term.combo.straight": "Straight",
+  "term.combo.bomb": "💣 Bomb",
+  "term.combo.royalStraight": "★ Royal Straight",
 
   // ------------------------------------------------------------- server.*
   "server.AUTH_RATE_LIMITED": "Too many attempts, try again in 15 minutes.",
@@ -297,7 +303,6 @@ export const en = {
   "exchange.chipGive": "Choose a card from 3 to 10 for {{name}}",
   // Murlan's 3-to-10 rule is this game's own; every other game in the family
   // lets the winner give any card. The glow says which cards; this says why.
-  "exchange.noValidCards": "No card in 3–10 — give your lowest",
   // What the other two seats read while the winner decides.
   "exchange.watching": "{{winner}} is choosing a card for {{loser}}",
   "exchange.waitingForYou": "{{winner}} is choosing a card for you",
@@ -343,12 +348,6 @@ export const en = {
   "cardView.selectedA11yHint": "Selected",
 
   // ------------------------------------------------------------- gameShared.*
-  "gameShared.comboSingle": "Single",
-  "gameShared.comboPair": "Pair",
-  "gameShared.comboTriple": "Triple",
-  "gameShared.comboStraight": "Straight",
-  "gameShared.comboBomb": "💣 Bomb",
-  "gameShared.comboRoyalStraight": "★ Royal Straight",
   "gameShared.comboMultiplier": " ×{{count}}",
   "gameShared.emptyHand": "Hand empty!",
   "gameShared.startReasonCard": "{{name}} starts — holds the {{rank}}{{suit}}",
@@ -638,17 +637,11 @@ export const en = {
   "rules.strengthTen": "Ten",
   "rules.strengthThree": "Three",
   "rules.combosSectionLabel": "VALID COMBINATIONS",
-  "rules.comboSingleName": "Single",
   "rules.comboSingleDesc": "Any 1 card",
-  "rules.comboPairName": "Pair",
   "rules.comboPairDesc": "2 cards of the same rank",
-  "rules.comboTripleName": "Triple",
   "rules.comboTripleDesc": "3 cards of the same rank",
-  "rules.comboStraightName": "Straight",
   "rules.comboStraightDesc": "Min. 5 consecutive cards, up to 13 (e.g. A-2-3-4-5)",
-  "rules.comboBombName": "Bomb 💣",
   "rules.comboBombDesc": "4 cards of the same rank · beats everything except a Royal Straight",
-  "rules.comboRoyalName": "Royal Straight ★",
   "rules.comboRoyalDesc": "Straight of one suit · beats even a Bomb",
   "rules.faqSectionLabel": "FREQUENTLY ASKED QUESTIONS",
 
@@ -661,7 +654,7 @@ export const en = {
   "rules.faq.q4": "What combinations can I play?",
   "rules.faq.a4": "• Single: any one card\n• Pair: two cards of the same rank\n• Triple: three cards of the same rank\n• Straight: at least 5 consecutive cards (up to 13)\n• Bomb: four cards of the same rank (beats a Single, Pair, Triple and Straight of any strength — but not a Royal Straight)\n• Royal Straight: a straight (5+) with every card of the same suit — beats even the strongest Bomb, it's the most powerful combination in the game",
   "rules.faq.q5": "How do straights work?",
-  "rules.faq.a5": "A straight is a sequence of consecutive-rank cards: minimum 5, maximum 13 (the whole suit run — an ace can act as the low or high end, but not both at once).\n\nInside a straight, the 2 is worth very little — it's the lowest card of all, even though it's normally the strongest in the deck! The Ace can sit before the 2 (lowest possible 5-card straight: A-2-3-4-5) or after the King (highest possible 5-card straight: 10-J-Q-K-A).\n\nTwo straights are compared by their highest card, and must have the SAME number of cards: a 6-card straight can't be beaten by a 5-card one.",
+  "rules.faq.a5": "A straight is a sequence of consecutive-rank cards: minimum 5, maximum 13 (the whole suit run — an ace can act as the low or high end, but not both at once). A full 13-card straight runs from A to K only: with the 2 in it, the Ace is low.\n\nInside a straight, the 2 is worth very little — it's the lowest card of all, even though it's normally the strongest in the deck! The Ace can sit before the 2 (lowest possible 5-card straight: A-2-3-4-5) or after the King (highest possible 5-card straight: 10-J-Q-K-A).\n\nTwo straights are compared by their highest card, and must have the SAME number of cards: a 6-card straight can't be beaten by a 5-card one.",
   "rules.faq.q6": "How do turns work?",
   "rules.faq.a6": "You must play the same type of combination as the previous player, but STRICTLY higher.\n\nExample: if a pair of 9s is played, you must answer with a pair of 10s or higher. An equal pair of 9s is NOT valid — it must be higher.",
   "rules.faq.q7": "When is a round won?",
@@ -671,7 +664,7 @@ export const en = {
   "rules.faq.q9": "What game modes exist?",
   "rules.faq.a9": "Murlan supports 4 formats:\n\n• 1 vs 1 — two players, whoever finishes their cards first wins\n• Trio — three players, free-for-all\n• 4 Free — four players, free-for-all\n• 2 vs 2 — four players split into two pairs seated opposite each other: Player 1&3 vs Player 2&4. The hand is played out to the end: it doesn't end when a player, or even a whole pair, runs out of cards, but only when a single player still holds cards. The two partners' placement points are added together: the pair with the higher total wins, and equal totals are a draw.\n\nOnline mode offers all 4 formats. Offline, you choose the number of players and the mode yourself.",
   "rules.faq.q10": "How does the card exchange work?",
-  "rules.faq.a10": "After every hand (once everyone has finished their cards), an exchange takes place:\n\n1. The loser (last place) automatically gives their strongest card to the winner (first place).\n2. The winner chooses a card ranked 3 to 10 to give back to the loser.\n3. The loser then opens the next round.\n\nTwo-Joker exception: if the loser holds both Jokers (red and black), the exchange does NOT happen. The winner opens the next round themselves.",
+  "rules.faq.a10": "After every hand (once everyone has finished their cards), an exchange takes place:\n\n1. The loser (last place) automatically gives their strongest card to the winner (first place).\n2. The winner chooses a card ranked 3 to 10 to give back to the loser — never the card just received. Holding none, they give nothing back.\n3. The loser then opens the next round.\n\nTwo-Joker exception: if the loser holds both Jokers (red and black), the exchange does NOT happen. The winner opens the next round themselves.",
   "rules.faq.q11": "What are the Jokers?",
   "rules.faq.a11": "The Jokers are the strongest cards in the deck in normal combinations:\n• Red Joker ★: the strongest of all\n• Black Joker ☆: second strongest\n\nWarning: Jokers can ONLY be played as a single card — never in a pair, triple or straight. A Joker played as a single can be beaten by a Bomb!",
   "rules.faq.q12": "What's a Bomb?",

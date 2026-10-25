@@ -47,8 +47,8 @@ function danglingServerPaths(files: [string, string][], exists: (p: string) => b
 }
 
 const LIB_FOLDERS: Record<string, string[]> = {
-  game: ["gameEngine", "autoMove", "botPersonalities", "rating", "standings", "replay", "matchState", "sharedGameFlow"],
-  timeline: ["dealTimeline", "exchangeTimeline", "roundEnding", "matchEnding", "offlineBotDelay", "gateWatchdog"],
+  game: ["gameEngine", "autoMove", "botPersonalities", "rating", "standings", "replay", "matchState", "sharedGameFlow", "turnSchedule"],
+  timeline: ["dealTimeline", "exchangeTimeline", "roundEnding", "matchEnding", "turnGates", "gateWatchdog"],
   device: ["feedback", "audioEngine", "hapticsEngine", "moments", "musicTracks", "musicTracks.web", "soundAssets", "pushRegistration", "orientation", "keyboard", "fonts", "fonts.web"],
 };
 const inLib = (p: string) => `lib/${p}`;
@@ -179,6 +179,18 @@ describe("the repository layout (#1131)", () => {
     assert.deepEqual(
       danglingLibPaths([["a.ts", `see ${inLib("gameEngine.ts")}, ${inLib("x.ts")}, ../${inLib("w.ts")}, @/${inLib("y.ts")} and node_modules/${inLib("z.ts")}`]], () => false),
       [`a.ts -> ${inLib("gameEngine.ts")}`],
+    );
+  });
+
+  test("no lib/ file imports from components/", () => {
+    const scanned = lib.filter((f) => /\.tsx?$/.test(f));
+    const imports = scanned.flatMap((f) =>
+      [...readFileSync(path.join(repoRoot, f), "utf8").matchAll(/from\s+["']([^"']+)["']/g)].map(([, spec]) => [f, spec] as const),
+    );
+    assert.ok(imports.length > 100, "the scan finds almost no imports");
+    assert.deepEqual(
+      imports.filter(([, spec]) => /(^|\/)components\//.test(spec)).map(([f, spec]) => `${f} -> ${spec}`),
+      [],
     );
   });
 });
