@@ -475,10 +475,8 @@ const EXCHANGE_PROMPT = '[data-testid="exchange-prompt"]';
  * alone means this follows `getValidGivebackCards`, which also refuses the
  * card just received — a rank filter would offer it.
  *
- * Scoped to the hand, not the table: with nothing in range the rank filter
- * matches nothing and every candidate is tried in turn, so a selector reaching
- * the whole table would work its way through GIOCA, PASS and the rail's own
- * controls looking for a card.
+ * Scoped to the hand, not the table: a selector reaching the whole table would
+ * also find GIOCA, PASS and the rail's own controls.
  */
 function giveCandidates(page: Page) {
   return page.locator(`${HAND_CARDS}[aria-label]:not([aria-disabled="true"])`);
