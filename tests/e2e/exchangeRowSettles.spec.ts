@@ -3,7 +3,7 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import { exchangeSave, resumeOnVirtualClock } from "./helpers/offlineSeed";
-import { installVirtualClock, step, stepThen, stepUntil } from "./helpers/virtualClock";
+import { installVirtualClock, paintedFrames, step, stepThen, stepUntil, type EachPaint } from "./helpers/virtualClock";
 import { E2E_REAL_EXCHANGE_KEY } from "../../lib/storageKeys";
 import { HAND_SCALE, HAND_SCALE_ON_TURN } from "../../components/cardFaceModel";
 
@@ -68,9 +68,10 @@ for (const { role, save, resizesAfter } of ROLES) {
     // frame between its two sizes is ever painted (#1806, CI). Virtual time gives it its frames.
     await installVirtualClock(page, 1806);
     await page.addInitScript((key) => window.localStorage.setItem(key, "1"), E2E_REAL_EXCHANGE_KEY);
+    await paintedFrames(page);
     await page.addInitScript((afterMs) => {
       const out: Sample[] = [];
-      const w = window as unknown as { __rows: Sample[]; __settled?: boolean };
+      const w = window as unknown as { __rows: Sample[]; __settled?: boolean; murlanEachPaint: EachPaint };
       w.__rows = out;
       let began = false;
       let ended: number | null = null;
@@ -86,10 +87,12 @@ for (const { role, save, resizesAfter } of ROLES) {
           out.push({ t, ceremony, rowW: parseFloat(getComputedStyle(row).width), cardW, cardDrawn: cardW * Math.hypot(m.a, m.b) });
         }
         if (began && !ceremony && ended === null) ended = t;
-        if (ended !== null && t - ended >= afterMs) w.__settled = true;
-        else requestAnimationFrame(frame);
+        if (ended !== null && t - ended >= afterMs) {
+          w.__settled = true;
+          return false;
+        }
       };
-      requestAnimationFrame(frame);
+      w.murlanEachPaint(frame);
     }, AFTER_MS);
     // The seats play: the winner's size comes back with the lead the round hands it after the ceremony.
     await resumeOnVirtualClock(page, baseURL!, save(), undefined, { holdTurn: false });

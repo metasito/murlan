@@ -7,6 +7,7 @@ import { exchangeSave, offlineSave, resumeSaved } from "./helpers/offlineSeed";
 import { settled } from "./helpers/settle";
 import { tap, tapPoint } from "./helpers/press";
 import { HAND_ZONE } from "./helpers/selectors.ts";
+import { paintedFrames, type EachPaint } from "./helpers/virtualClock";
 
 const VIEWPORTS = [
   { name: "phone", width: 844, height: 390 },
@@ -15,6 +16,8 @@ const VIEWPORTS = [
 const TOLERANCE = 1;
 
 interface Worst { frames: number; scopes: string[]; centre: number; size: number; rot: number; worstAt: string; badFrames: number; counts: string[]; moved: number }
+
+test.beforeEach(({ page }) => paintedFrames(page));
 
 /**
  * Samples every frame for `ms`: each published rectangle against the corners of its own card's
@@ -104,10 +107,11 @@ async function sample(page: Page, ms: number, until?: string): Promise<Worst> {
           if (frameOff > 1) worst.badFrames++;
           worst.frames++;
           const over = performance.now() - t0 > ms || (until !== undefined && worst.frames > 1 && !document.querySelector(until));
-          if (over) done({ ...worst, scopes: [...seen].sort(), counts: worst.counts.slice(0, 5) });
-          else requestAnimationFrame(frame);
+          if (!over) return;
+          done({ ...worst, scopes: [...seen].sort(), counts: worst.counts.slice(0, 5) });
+          return false;
         };
-        requestAnimationFrame(frame);
+        (window as unknown as { murlanEachPaint: EachPaint }).murlanEachPaint(frame);
       }),
     { ms, until }
   );
