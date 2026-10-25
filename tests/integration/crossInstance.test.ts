@@ -404,14 +404,15 @@ describe("broadcasts cross server instances", {
 
     // Last, and deliberately destructive: instance 1 holds the only copy of
     // this game, and a table that dies with one process is a table nobody can
-    // finish. `game:pass` carries no payload, so a reply of NO_LIVE_GAME can
+    // finish. `game:pass` carries no cards, so a reply of NO_LIVE_GAME can
     // only mean the handler ran and found no table.
     instances[0].child.kill("SIGKILL");
     await sleep(2_000);
 
     const reply = await bSocket
       .timeout(20_000)
-      .emitWithAck("game:pass") as { ok: boolean; code?: string };
+      .emitWithAck("game:pass", { seq: 0 }) as { ok: boolean; code?: string };
+    assert.notEqual(reply.code, "INVALID_PAYLOAD", "the pass never reached a handler");
     assert.notEqual(
       reply.code,
       "NO_LIVE_GAME",

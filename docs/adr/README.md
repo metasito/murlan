@@ -18,6 +18,7 @@ An ADR is history and is never rewritten. A decision that no longer holds gets
 | [0009](0009-audio-and-haptics-libraries.md) | Audio is react-native-audio-api and haptics are react-native-turbo-haptics | Accepted | expo-audio and expo-haptics go; the libraries' known defects are guarded in our code, and adoption waits for CI builds and a soak on both platforms. |
 | [0010](0010-the-loop-on-the-5-5-family.md) | The loop on the 5.5 family: no Haiku executor, effort by round, Opus review | Accepted; decision 3 superseded by 0011 | Opus 5.5 builds a fresh ticket at `medium` and a fix round at `high`; reviewers and refuter run Opus at `medium`; no advisor or orchestrator; `loop-cost` prices each 5.5 release; `PreToolUse` guards are `onFailure: "block"`. |
 | [0011](0011-review-converges-and-the-loop-works-toward-launch.md) | Review converges, and the loop works toward launch | Accepted | One Opus reviewer, only a Blocking finding holds, at most 3 reviews and never a land at the cap; the loop files no agent work; the picker takes main-red and ci-flake, then the Launch milestone, first. Supersedes ADR-0010 decision 3. |
+| [0012](0012-a-move-intent-names-the-seq-it-was-made-against.md) | A move intent names the seq it was made against | Accepted | Every play, pass and giveback carries the `seq` it was made against, and the table drops a stale one, so a retry across a restart is not applied twice; protocol 13. |
 
 ## Writing one
 

@@ -16,3 +16,12 @@ export function moveSince(seen: LastMove | null | undefined, next: LastMove): La
 export function turnOf(state: Pick<GameState, "lastMove">): string {
   return String(state.lastMove.seq);
 }
+
+/** What a move intent names as the state it was made against; one made against any other is stale. */
+export function intentSeq(state: Pick<GameState, "lastMove">): number {
+  return state.lastMove.seq;
+}
+
+export function isStaleIntent(state: Pick<GameState, "lastMove">, seq: number): boolean {
+  return seq !== intentSeq(state);
+}

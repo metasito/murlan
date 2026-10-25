@@ -7,7 +7,8 @@
 // machinery and none of them should own a private copy of it.
 import type { Socket } from "socket.io-client";
 import { getValidGivebackCards } from "../../lib/game/gameEngine.ts";
-import type { Card } from "../../lib/game/gameEngine.ts";
+import type { Card, LastMove } from "../../lib/game/gameEngine.ts";
+import { intentSeq } from "../../lib/game/moves.ts";
 import { DEADLINE_SCALE } from "./client.ts";
 import type { WireExchangePhase } from "../../shared/protocol.ts";
 
@@ -28,6 +29,7 @@ export interface SanitizedState {
   openingCard: Card | null;
   exchangePhase?: WireExchangePhase;
   viewerSeatIndex: number;
+  lastMove: LastMove;
 }
 
 export interface RoomState {
@@ -89,7 +91,7 @@ export function driveHumansToRoundOver(
           if (state.exchangePhase.winnerIdx !== seat) return;
           const hand = state.players[seat]?.hand ?? [];
           const [card] = getValidGivebackCards(hand, state.exchangePhase.cardFromLoser.id);
-          if (card) client.emit("game:exchange_give_card", { cardId: card.id });
+          if (card) client.emit("game:exchange_give_card", { cardId: card.id, seq: intentSeq(state) });
           return;
         }
 
@@ -98,7 +100,7 @@ export function driveHumansToRoundOver(
         if (hand.length === 0) return;
 
         if (state.lastPlayedCombination !== null) {
-          client.emit("game:pass");
+          client.emit("game:pass", { seq: intentSeq(state) });
           return;
         }
 
@@ -108,7 +110,7 @@ export function driveHumansToRoundOver(
           if (forced) anchor = forced;
         }
         const group = hand.filter((c) => c.rank === anchor.rank).map((c) => c.id);
-        client.emit("game:play", { cardIds: group });
+        client.emit("game:play", { cardIds: group, seq: intentSeq(state) });
       };
       handlers.set(client, onState);
       client.on("game:state", onState);

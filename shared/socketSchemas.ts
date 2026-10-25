@@ -86,8 +86,16 @@ export const GameEndMatchVoteSchema = z
   .union([z.undefined(), z.null(), z.object({ wants: z.boolean().optional() }).passthrough()])
   .transform((v) => ({ wants: v?.wants ?? true }));
 
+/** The table's `seq` a move was made against (`intentSeq`); the server drops one made against any other. */
+const MoveSeqSchema = z.number().int().min(0);
+
 export const GamePlaySchema = z.object({
   cardIds: z.array(IdSchema).min(1).max(14),
+  seq: MoveSeqSchema,
+});
+
+export const GamePassSchema = z.object({
+  seq: MoveSeqSchema,
 });
 
 export const GameRejoinSchema = z.object({
@@ -101,6 +109,7 @@ export const GameReactionSchema = z.object({
 
 export const GameExchangeGiveCardSchema = z.object({
   cardId: IdSchema,
+  seq: MoveSeqSchema,
 });
 
 export const FriendInviteSchema = z.object({

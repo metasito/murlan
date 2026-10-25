@@ -117,7 +117,7 @@ const PROBE_HEADER = [
 
 const ACCEPTED = [
   `client.emit("friend:get_online_list");`,
-  `void send(client, "game:play", { cardIds: ["a"] });`,
+  `void send(client, "game:play", { cardIds: ["a"], seq: 0 });`,
   `emitToUser("u", "friend:status", { userId: "u", online: true });`,
   `onEvent(socket, "game:play", GamePlaySchema, () => OK);`,
 ];
@@ -127,6 +127,7 @@ const REFUSED = [
   `client.on("game:unlisted", () => {});`,
   `void send(client, "room:unlisted");`,
   `void sendIntent(client, "game:play", { cardId: "a" });`,
+  `void send(client, "game:play", { cardIds: ["a"] });`,
   `io.to("r").emit("game:unlisted");`,
   `socket.emit("game:vote_state", { votes: 1, total: 2 });`,
   `emitToUser("u", "friend:unlisted", {});`,

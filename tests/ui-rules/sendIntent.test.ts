@@ -41,7 +41,7 @@ function fakeSocket(script: ({ ok: boolean; code?: string } | null)[], rejoinAns
 describe("sendIntent", () => {
   test("an answered intent is sent once", async () => {
     const { socket, sent } = fakeSocket([{ ok: true }]);
-    assert.deepEqual(await sendIntent(socket, "game:play", { cardIds: ["a"] }), { ok: true });
+    assert.deepEqual(await sendIntent(socket, "game:play", { cardIds: ["a"], seq: 0 }), { ok: true });
     assert.equal(sent.length, 1);
   });
 
@@ -57,7 +57,7 @@ describe("sendIntent", () => {
    */
   test("a refusal ends it rather than being repeated", async () => {
     const { socket, sent } = fakeSocket([{ ok: false, code: "INVALID_CARD" }, { ok: true }]);
-    assert.deepEqual(await sendIntent(socket, "game:play", { cardIds: ["x"] }), {
+    assert.deepEqual(await sendIntent(socket, "game:play", { cardIds: ["x"], seq: 0 }), {
       ok: false,
       code: "INVALID_CARD",
     });
@@ -71,7 +71,7 @@ describe("sendIntent", () => {
    */
   test("giving up reports failure with no code, and does not hang", async () => {
     const { socket, sent } = fakeSocket([null, null, null]);
-    assert.deepEqual(await sendIntent(socket, "game:play", { cardIds: ["a"] }), { ok: false });
+    assert.deepEqual(await sendIntent(socket, "game:play", { cardIds: ["a"], seq: 0 }), { ok: false });
     assert.equal(sent.length, 3, "bounded: it stops rather than retrying forever");
   });
 
@@ -91,7 +91,7 @@ describe("sendIntent", () => {
 
   test("a socket not yet back at its table is retried, not taken as a refusal", async () => {
     const { socket, sent } = fakeSocket([{ ok: false, code: "NOT_AT_A_TABLE" }, { ok: true }]);
-    assert.deepEqual(await sendIntent(socket, "game:play", { cardIds: ["a"] }), { ok: true });
+    assert.deepEqual(await sendIntent(socket, "game:play", { cardIds: ["a"], seq: 0 }), { ok: true });
     assert.equal(sent.length, 2);
   });
 

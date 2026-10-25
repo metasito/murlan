@@ -6,6 +6,7 @@ import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { publishState } from "../../server/game/gamePersistence.ts";
 import { armTurn } from "../../server/game/gameTurn.ts";
+import { forgetAppliedIntents } from "../../server/game/tableRouter.ts";
 import { clearForDeal } from "../../server/game/seatLedger.ts";
 import { createDeck, seatsOf, startRound, type Opening } from "../../lib/game/gameEngine.ts";
 
@@ -26,6 +27,18 @@ export function hasActiveGame(roomId: string): boolean {
 export function forgetActiveGame(roomId: string): boolean {
   clearRoomTimers(roomId);
   return activeGames.delete(roomId);
+}
+
+/**
+ * Everything a process restart loses under one table: the game and its timers,
+ * as `forgetActiveGame`, and the record of intents already answered, which a
+ * restart takes from every table at once. Without the second, a duplicate
+ * re-sent across the "restart" is answered from a record no restarted
+ * process would still hold.
+ */
+export function restartUnder(roomId: string): boolean {
+  forgetAppliedIntents();
+  return forgetActiveGame(roomId);
 }
 
 /**

@@ -98,6 +98,18 @@ describe('the online table selection', () => {
     await r.unmount();
   });
 
+  it('sends a play under the seq of the state it was made against', async () => {
+    const r = await mount(screenUnderTest());
+    await serverSends(r, stateWith([KING, NINE], { lastMove: { seq: 4, kind: 'pass', seat: 1, closedTrick: true } }));
+    await tap(KING);
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('btn-gioca'));
+    });
+    expect(r.socket().sentAs('game:play').map((p) => [p.cardIds, p.seq])).toEqual([[[KING.id], 4]]);
+
+    await r.unmount();
+  });
+
   it('keeps a staged card the acknowledged play left in the hand', async () => {
     const r = await mount(screenUnderTest());
     await tap(KING);

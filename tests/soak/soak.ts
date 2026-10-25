@@ -22,7 +22,9 @@ import {
   tableDemand,
   type Card,
   type Combination,
+  type LastMove,
 } from "../../lib/game/gameEngine.ts";
+import { intentSeq } from "../../lib/game/moves.ts";
 import { checkAll, checkTeardown, progressViolations, type SeatView, type Violation } from "./invariants.ts";
 import { SETTLE_CAP_MS } from "./gateBudget.ts";
 import type { WireExchangePhase } from "../../shared/protocol.ts";
@@ -42,6 +44,7 @@ interface TableState {
   exchangePhase?: WireExchangePhase;
   /** `null` once this account holds no seat — the server's own "not seated". */
   viewerSeatIndex: number | null;
+  lastMove: LastMove;
 }
 
 export interface RoomState {
@@ -459,7 +462,7 @@ export class Seat {
       const giveable = getValidGivebackCards(hand, phase.cardFromLoser.id);
       const card = giveable[Math.floor(rng() * giveable.length)];
       if (!card) return null;
-      this.#socket.emit("game:exchange_give_card", { cardId: card.id });
+      this.#socket.emit("game:exchange_give_card", { cardId: card.id, seq: intentSeq(s) });
       return { kind: "exchange", seat, cardId: card.id };
     }
 
@@ -470,12 +473,12 @@ export class Seat {
     const plays = getAllValidPlays(hand, tableDemand(s));
 
     if (plays.length === 0) {
-      this.#socket.emit("game:pass");
+      this.#socket.emit("game:pass", { seq: intentSeq(s) });
       return { kind: "pass", seat };
     }
     const combo = plays[Math.floor(rng() * plays.length)];
     const cardIds = combo.cards.map((c) => c.id);
-    this.#socket.emit("game:play", { cardIds });
+    this.#socket.emit("game:play", { cardIds, seq: intentSeq(s) });
     return { kind: "play", seat, cardIds };
   }
 

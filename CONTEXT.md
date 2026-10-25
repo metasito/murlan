@@ -70,7 +70,7 @@ Declining to beat the play on the table; it does not lock the seat out of the tr
 Playing one's last card, which fixes the seat's placement and takes it out of the round.
 
 **Move**:
-One seat's act on the round: a play, a pass or a giveback. The engine applies one through `applyMove` and records the last as `GameState.lastMove`, counted from the deal's 0. The socket carries a move as three intents (`game:play`, `game:pass`, `game:exchange_give_card`), mapped one-to-one at `server/socket/socketGameplay.ts`; collapsing them into one event needs a `MIN_PROTOCOL_VERSION` raise (D34).
+One seat's act on the round: a play, a pass or a giveback. The engine applies one through `applyMove` and records the last as `GameState.lastMove`, counted from the deal's 0. The socket carries a move as three intents (`game:play`, `game:pass`, `game:exchange_give_card`), mapped one-to-one at `server/socket/socketGameplay.ts`; collapsing them into one event needs a `MIN_PROTOCOL_VERSION` raise (D34). Each names the `seq` it was made against, and the table drops one made against any other (ADR-0012).
 
 ### Between rounds
 

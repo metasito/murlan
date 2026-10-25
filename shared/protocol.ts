@@ -9,8 +9,8 @@ import type { FriendRequestAccepted, FriendRequestIncoming } from "./http.ts";
 import type * as Inbound from "./socketSchemas.ts";
 import type { TranslationParams } from "./i18n.ts";
 
-export const PROTOCOL_VERSION = 12;
-export const MIN_PROTOCOL_VERSION = 12;
+export const PROTOCOL_VERSION = 13;
+export const MIN_PROTOCOL_VERSION = 13;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */
 export const CLIENT_OUTDATED = "CLIENT_OUTDATED";
@@ -120,7 +120,7 @@ export interface IntentSchemas {
   "room:quickmatch": typeof Inbound.RoomQuickmatchSchema;
   "room:start": typeof Inbound.RoomStartSchema;
   "game:play": typeof Inbound.GamePlaySchema;
-  "game:pass": typeof Inbound.NoPayloadSchema;
+  "game:pass": typeof Inbound.GamePassSchema;
   "game:rematch_vote": typeof Inbound.NoPayloadSchema;
   "game:end_match_vote": typeof Inbound.GameEndMatchVoteSchema;
   "game:rejoin": typeof Inbound.GameRejoinSchema;

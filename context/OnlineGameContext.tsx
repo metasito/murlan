@@ -15,6 +15,7 @@ import { t, translateServerPayload, useTranslation, type ServerPayload } from "@
 import { Reading } from "@/lib/theme";
 import { send, undelivered, type IntentEvent, type IntentOutcome } from "@/lib/sendIntent";
 import { MATCH_TARGETS } from "@/lib/game/gameEngine";
+import { intentSeq } from "@/lib/game/moves";
 import {
   roundOverSchema,
   gameStateSchema,
@@ -834,17 +835,20 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     deliver("game:end_match_vote", { wants });
   }, [deliver]);
 
-  const playCards = useCallback(
-    (cardIds: string[]) => deliver("game:play", { cardIds }),
-    [deliver]
-  );
+  const playCards = useCallback((cardIds: string[]) => {
+    const state = gameStateRef.current;
+    if (state) deliver("game:play", { cardIds, seq: intentSeq(state) });
+  }, [deliver]);
 
-  const pass = useCallback(() => deliver("game:pass"), [deliver]);
+  const pass = useCallback(() => {
+    const state = gameStateRef.current;
+    if (state) deliver("game:pass", { seq: intentSeq(state) });
+  }, [deliver]);
 
-  const giveExchangeCard = useCallback(
-    (cardId: string) => deliver("game:exchange_give_card", { cardId }),
-    [deliver]
-  );
+  const giveExchangeCard = useCallback((cardId: string) => {
+    const state = gameStateRef.current;
+    if (state) deliver("game:exchange_give_card", { cardId, seq: intentSeq(state) });
+  }, [deliver]);
 
   const reclaimSeat = useCallback(() => {
     if (seatLossRef.current !== "vacated") return;

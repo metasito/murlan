@@ -72,6 +72,11 @@ export type RehydrateOutcome = "restored" | "missing" | "unrestorable" | "newer"
 /** Every action this process has already applied, by id. */
 const applied = new Map<string, { outcome: Promise<Outcome>; at: number }>();
 
+/** What a process restart does to the record above: tests stand in for one with this. */
+export function forgetAppliedIntents(): void {
+  applied.clear();
+}
+
 function remember(id: string, outcome: Promise<Outcome>): Promise<Outcome> {
   const at = now();
   for (const [key, entry] of applied) {
