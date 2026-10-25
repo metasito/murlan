@@ -7,6 +7,7 @@ import {
   INACTIVE_EXCHANGE,
   JOKERS,
   NO_STAGES,
+  oneWayWords,
   readExchange,
   readExchangeLegs,
   readExchangeSeats,
@@ -436,6 +437,15 @@ describe("a spectator (null seat) owns no seat in the exchange", () => {
   });
 });
 
+test("the one-way words are composed in one place: who in the turn pill, why in the last-played pill, both when spoken", () => {
+  assert.deepEqual(oneWayWords(t, { name: "Cim", isViewer: false }), {
+    chip: 'exchange.chipOneWay {"name":"Cim"}',
+    note: "exchange.pillNothing",
+    spoken: 'exchange.chipOneWay {"name":"Cim"}. exchange.pillNothing',
+  });
+  assert.equal(oneWayWords(t, { name: "Cim", isViewer: true }).chip, "exchange.chipOneWayYou");
+});
+
 describe("a one-way exchange: the winner holds nothing to give back", () => {
   const oneWay = { ...buildExchangeAnnounce(PLAYERS, { kind: "settled", winnerIdx: WINNER, loserIdx: LOSER }, { received: ACE }), oneWay: true };
   const asked = (viewerSeat: number, over: Partial<Parameters<typeof exchangeNotes>[0]> = {}) =>
@@ -456,7 +466,7 @@ describe("a one-way exchange: the winner holds nothing to give back", () => {
         pillNote: { text: "exchange.pillNothing", testID: "exchange-pill-note" },
       });
     }
-    assert.equal(asked(WINNER, read).chip, 'exchange.chipOneWay {"name":"gameShared.you"}');
+    assert.equal(asked(WINNER, read).chip, "exchange.chipOneWayYou");
     assert.equal(asked(WINNER, read).pillNote?.text, "exchange.pillNothing");
     assert.equal(asked(WINNER, { ...read, spectating: true }).chip, 'exchange.chipOneWay {"name":"Cim"}');
   });

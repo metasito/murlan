@@ -204,6 +204,13 @@ export function readExchangeLegs(
 
 export interface PillNote { text: string; testID: string }
 
+/** A one-way exchange's words: who in the turn pill, why in the last-played pill, both when spoken. */
+export function oneWayWords(t: TFn, winner: { name: string; isViewer: boolean }): { chip: string; note: string; spoken: string } {
+  const chip = winner.isViewer ? t("exchange.chipOneWayYou") : t("exchange.chipOneWay", { name: winner.name });
+  const note = t("exchange.pillNothing");
+  return { chip, note, spoken: `${chip}. ${note}` };
+}
+
 const NOTE_ID = "exchange-pill-note";
 
 /**
@@ -235,7 +242,7 @@ export function exchangeNotes(input: {
           : t("exchange.pileGives", { from: name(from), card: c, to: name(to) })
     );
   };
-  const winnerWord = viewerOwnsSeat(shown.winnerIdx, viewerSeat, spectating) ? t("gameShared.you") : name(shown.winnerIdx);
+  const oneWay = oneWayWords(t, { name: name(shown.winnerIdx), isViewer: viewerOwnsSeat(shown.winnerIdx, viewerSeat, spectating) });
   const pillNote = shown.twoJokers
     ? stages.receive === "rest"
       ? note(t("exchangeAnnouncement.noExchangeText"))
@@ -243,7 +250,7 @@ export function exchangeNotes(input: {
     : stages.receive === "rest" && shown.cardReceived
       ? giveNote(shown.cardReceived, shown.loserIdx, shown.winnerIdx)
       : shown.oneWay && stages.ready
-        ? note(t("exchange.pillNothing"))
+        ? note(oneWay.note)
         : stages.give === "rest" && shown.cardGiven
           ? giveNote(shown.cardGiven, shown.winnerIdx, shown.loserIdx)
           : null;
@@ -252,7 +259,7 @@ export function exchangeNotes(input: {
   const loserName = live.loser?.name ?? "";
   const winnerName = live.winner?.name ?? "";
   const chip = shown.oneWay && stages.ready
-    ? t("exchange.chipOneWay", { name: winnerWord })
+    ? oneWay.chip
     : !(live.open && stages.ready)
       ? t("exchange.chipTitle")
       : live.viewerIsWinner

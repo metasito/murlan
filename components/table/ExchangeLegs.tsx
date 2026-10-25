@@ -13,7 +13,7 @@ import { CardView } from "@/components/CardView";
 import { BACK_SCALE, CARD_BACK_H, CARD_BACK_W, CARD_H, CARD_W, FIELD_SCALE } from "@/components/cardFaceModel";
 import { FAN_CARD_SCALE } from "@/components/impact";
 import type { Seating, TableLayout } from "@/components/tableLayout";
-import { JOKERS, readExchangeLegs, type ExchangeStages } from "@/components/table/exchangeModel";
+import { JOKERS, oneWayWords, readExchangeLegs, type ExchangeStages } from "@/components/table/exchangeModel";
 import type { CardFrom } from "@/components/flightPose";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { A11yStatus, a11yHidden } from "@/lib/a11y";
@@ -331,7 +331,7 @@ export function ExchangeLegs({
         announced.cardGiven && shown(stages.give) && giveLine(announced.cardGiven, announced.winnerIdx, announced.loserIdx),
         announced.oneWay &&
           stages.ready &&
-          `${t("exchange.chipOneWay", { name: viewerSeat === announced.winnerIdx ? t("gameShared.you") : announced.winnerName })}. ${t("exchange.pillNothing")}`,
+          oneWayWords(t, { name: announced.winnerName, isViewer: viewerSeat === announced.winnerIdx }).spoken,
       ]
         .filter(Boolean)
         .join(". ");

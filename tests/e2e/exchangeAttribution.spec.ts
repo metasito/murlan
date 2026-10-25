@@ -8,9 +8,11 @@ import { exchangeSave, offlineSave, resumeOnVirtualClock } from "./helpers/offli
 import type { OfflineSave } from "../../lib/offlineSave";
 import { LEG } from "../../lib/timeline/exchangeTimeline";
 import { Hold, RoundEnding, Motion } from "../../lib/tokens";
+import { expectNoteFits, NEIGHBOUR_IDS, readPillFacts, type PillFacts } from "./helpers/pillNote";
 
 const X = Motion.exchange;
 const FRAME = 16;
+const WINDOW = { width: 1280, height: 720 };
 const NAMES = ["Ana", "Luan", "Gent"];
 const TO_WINNER = "exchange-flier-to-winner";
 const TO_LOSER = "exchange-flier-to-loser";
@@ -25,6 +27,7 @@ interface Frame {
   lit: string[];
   ping: string[];
   glow: boolean;
+  facts: PillFacts;
   hand: string[];
   dealt: number;
 }
@@ -51,7 +54,8 @@ async function frame(page: Page): Promise<Frame> {
     c.port1.onmessage = () => r();
     c.port2.postMessage(0);
   }));
-  return page.evaluate(({ fliers, hand, seatLit }) => {
+  const facts = await page.evaluate(readPillFacts, NEIGHBOUR_IDS);
+  return page.evaluate(({ fliers, hand, seatLit, facts }) => {
     const seen = (el: Element | null) => {
       let k = el ? 1 : 0;
       for (let n = el; n; n = n.parentElement) k *= Number(getComputedStyle(n).opacity);
@@ -83,8 +87,9 @@ async function frame(page: Page): Promise<Frame> {
       glow: [...document.querySelectorAll('[data-testid="hand-received-highlight"]')].some((el) => seen(el) > 0),
       hand: [...document.querySelectorAll(hand)].map((el) => el.getAttribute("aria-label") ?? ""),
       dealt: document.querySelectorAll('[data-testid="dealt-back"]').length,
+      facts,
     };
-  }, { fliers: FLIERS, hand: HAND_CARDS, seatLit: SEAT_LIT });
+  }, { fliers: FLIERS, hand: HAND_CARDS, seatLit: SEAT_LIT, facts });
 }
 
 async function run(page: Page, ms: number, frames: Frame[]) {
@@ -126,6 +131,7 @@ function checkLeg(frames: Frame[], leg: { id: string; giver: string; receiver: s
       expect(near(f.fliers[leg.id], f.pile!, 4), `${leg.id} at ${at} ms is off the pile centre`).toBe(true);
       expect(f.fliers[leg.id].face, `${leg.id} at ${at} ms rests face down`).toBe(true);
       expect(f.label?.text, `the pill at ${at} ms`).toBe(leg.label);
+      expectNoteFits(f.facts, WINDOW, `${leg.id} at ${at} ms`);
     }
     if (flying) expect(f.label, `the pill note at ${at} ms, outside the rest`).toBeNull();
   }
@@ -231,7 +237,7 @@ test("both Jokers rest side by side on the pile under their notice, and go back"
       expect(f.fliers[id].face).toBe(true);
     }
     expect(f.label?.text, "the notice names no exchange").toBe("Nessuno scambio — Jolly doppio 🃏");
-    expect(f.label!.y, "the notice sits in the last-played pill, above the pile").toBeLessThan(f.pile!.y);
+    expectNoteFits(f.facts, WINDOW, "the Jokers' notice");
   }
   expect(frames.at(-1)!.fliers["exchange-joker-0"], "the Jokers go back").toBeUndefined();
 });

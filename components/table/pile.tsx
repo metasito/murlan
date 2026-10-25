@@ -886,5 +886,4 @@ const pileStyles = StyleSheet.create({
   // Out of the flow and hung off the centre: in it, the chip's arrival would lift the cards the
   // flight has just set down.
   comboLabel: { position: "absolute", top: "50%", left: 0, right: 0, alignItems: "center" },
-  // The field's width, not the pile's: an empty pile is as narrow as its minimum, and the note is cut.
 });

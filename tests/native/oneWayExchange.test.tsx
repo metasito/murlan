@@ -106,12 +106,11 @@ describe('a one-way exchange on the table', () => {
   });
 
   it.each([
-    ['the winner', 0, t('gameShared.you')],
-    ['the loser', 1, WINNER],
-    ['a seat outside the exchange', 2, WINNER],
-  ])('says to %s that the winner has nothing to give back, on both pills, once the receive is read', async (_who, viewerSeat, who) => {
+    ['the winner', 0, t('exchange.chipOneWayYou')],
+    ['the loser', 1, t('exchange.chipOneWay', { name: WINNER })],
+    ['a seat outside the exchange', 2, t('exchange.chipOneWay', { name: WINNER })],
+  ])('says to %s that the winner has nothing to give back, on both pills, once the receive is read', async (_who, viewerSeat, chip) => {
     const line = t('exchange.pillNothing');
-    const chip = t('exchange.chipOneWay', { name: who });
     const r = await render(table(oneWay(), { viewerSeat }));
     await step(DEAL_END + choiceOpensAt(false) - 96);
     expect(comboPill(line)).toBe(0);
