@@ -1,5 +1,6 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
+import { isDeepStrictEqual } from "node:util";
 import {
   startTestServer,
   hasDatabase,
@@ -779,6 +780,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       // used, and only once the assertions have already passed.
       hand2OverPromise.catch(() => {});
 
+      let noStaleOver: Promise<void> | undefined;
       try {
         await eventually(
           () => gateReached,
@@ -790,15 +792,21 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
         // synchronously before handleRoundOver ran); lastRoundOverPayload has
         // not been reassigned yet, because the gated write above is still
         // pending.
-        const noStaleOver = nothingArrives(bob.socket, "game:round_over");
+        // Watched past the gate's release: bob's intents queue behind the gated write, so the
+        // barrier that closes the window cannot answer before it.
+        noStaleOver = nothingArrives(bob.socket, "game:round_over", {
+          matches: (over) => isDeepStrictEqual(over.scores, hand1Over.scores),
+          why: "the rejoin was handed the previous round's game:over",
+        });
+        noStaleOver.catch(() => {});
         const state = waitFor(bob.socket, "game:state", 5_000);
         bob.socket.emit("game:rejoin", { roomId: room.roomId });
         const rejoinedState = await state;
         assert.equal(rejoinedState.roundOver, true, "round 2 must already be over in this window");
-        await noStaleOver;
       } finally {
         releaseGate();
       }
+      await noStaleOver;
 
       const hand2Over = roundOverOf(await hand2OverPromise);
       assert.notDeepEqual(
