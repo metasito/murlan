@@ -14,7 +14,13 @@ const LeaderboardScreen = require('@/app/(online)/leaderboard').default as React
 
 const ME = '/api/ratings/me';
 const asked = (path: string) => httpRequests().filter((r) => r.method === 'GET' && r.path === path).length;
-const settled = (path: string) => waitFor(() => expect(queryClient.getQueryState([path])?.fetchStatus).toBe('idle'));
+// Idle alone also matches a query mounted but not yet fetching, which still shows the spinner.
+const settled = (path: string) =>
+  waitFor(() => {
+    const state = queryClient.getQueryState([path]);
+    expect(state?.status).not.toBe('pending');
+    expect(state?.fetchStatus).toBe('idle');
+  });
 const show = async () => {
   await setWindow({ width: 390, height: 844 });
   return renderApp(<LeaderboardScreen />, { user: { id: 'u1', username: 'Ana' } });
