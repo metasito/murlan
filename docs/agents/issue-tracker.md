@@ -28,6 +28,7 @@ every `tools/loop/brief.mjs` brief keep only those authors' (`tests/tooling/issu
 | `ci-flake` | A test that fails CI intermittently; the owner's to add, never a loop session's (`tools/loop/guard-bash.mjs` refuses it). When a rerun turns a red green, the supervisor files `CI flake: <test>` as `ready-for-human` for the owner to promote | ranked with `main-red` |
 | `soak` | Filed by the nightly soak (`.github/workflows/soak.yml`), one open per title (`tools/ci/report-to-tracker.sh`) | — |
 | `device-run` | Filed by a red scheduled `ios.yml` or `maestro.yml` run (`tools/ci/report-to-tracker.sh`), one open per workflow; closed by hand once diagnosed | — |
+| `mutation` | Filed by the weekly mutation run (`.github/workflows/mutation.yml`): one open issue, "Mutation testing: surviving mutants", commented on each week with every file's score and every survivor (`tools/ci/report-to-tracker.sh`) | owner |
 | `gauntlet` | A piece in a gauntlet round, critiqued blind against a named bar | — |
 | `parity` | Filed by a red nightly mockup-parity run (`.github/workflows/parity-nightly.yml`), one open issue, commented on each red night | owner |
 | `noticed` | One open issue collecting the small defects a session saw outside its ticket, one comment each; the owner promotes what matters | owner |
