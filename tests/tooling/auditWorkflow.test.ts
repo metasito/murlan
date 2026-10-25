@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 // Runs .claude/workflows/audit.mjs with stub agents: what each verifier is
 // shown, and what verdict each outcome of a reproduction becomes.
@@ -91,4 +91,9 @@ test("the merge folds the duplicates it names and drops nothing", async () => {
   assert.equal(result.record.merged, 4);
   const folded = result.judged.find((f: { title: string }) => f.title === "proven one");
   assert.deepEqual(folded.locations.map((l: { path: string }) => l.path), ["src/a.ts", "src/c.ts"]);
+});
+
+test("the audit's dependency lens does not deny the patches/ folder that exists", () => {
+  assert.ok(existsSync("patches"));
+  assert.ok(!/no patches\/ directory/.test(SCRIPT));
 });
