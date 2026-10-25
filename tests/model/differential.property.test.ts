@@ -279,7 +279,6 @@ function exchangeAgrees(engine: Engine) {
       const loserSeat = (winnerSeat + 1 + (b % (seats - 1))) % seats;
       const state = engine.startRound(seatsFor(seats), "free_for_all", { dealt: hands.map(toEngine), opening: { kind: "exchange", winnerSeat, loserSeat } });
       const owed = model.exchange(hands[loserSeat]);
-      if (isSilent(owed)) return meet(owed, { lastHand: ids(hands[loserSeat]) });
       const phase = state.exchangePhase!;
       seen.add(owed.kind);
       if (owed.kind === "shown") {
@@ -287,11 +286,17 @@ function exchangeAgrees(engine: Engine) {
         assert.equal(actingSeat(state), winnerSeat, "the first place leads");
         return;
       }
-      assert.ok(phase.kind === "open", `the exchange is ${phase.kind}`);
+      assert.ok(phase.kind === "open" || phase.kind === "settled", `the exchange is ${phase.kind}`);
       assert.equal(phase.cardFromLoser.id, owed.fromLast, "the card the last place owes");
       const hand = [...hands[winnerSeat], byId(owed.fromLast)];
       const options = model.givebackOptions(hand, owed.fromLast);
-      if (isSilent(options)) return meet(options, { hand: ids(hand), receivedId: owed.fromLast });
+      if (options.length === 0) {
+        seen.add("nothing to give");
+        assert.deepEqual(phase, { kind: "settled", winnerIdx: winnerSeat, loserIdx: loserSeat, cardFromLoser: phase.cardFromLoser }, "the exchange settles one-way");
+        assert.equal(actingSeat(state), loserSeat, "the last place leads");
+        return;
+      }
+      assert.ok(phase.kind === "open", `the exchange is ${phase.kind}`);
       assert.deepEqual(ids(engine.getValidGivebackCards(state.players[winnerSeat].hand, phase.cardFromLoser.id)).sort(), options);
       const after = engine.applyMove(state, winnerSeat, { kind: "giveback", cardId: options[0] });
       assert.ok(after.ok, "the engine refused a giveback both sides offer");
@@ -320,13 +325,12 @@ function givebackAgrees(engine: Engine) {
     arbGivebackCase,
     ({ hand, receivedId }) => {
       const m = model.givebackOptions(hand, receivedId);
-      if (isSilent(m)) return meet(m, { hand: ids(hand), receivedId });
-      seen.add(m.some((id) => IN_RANGE.has(byId(id).rank)) ? "3 to 10" : "lowest card");
+      seen.add(m.length > 0 ? "3 to 10" : "nothing to give");
       assert.deepEqual(ids(engine.getValidGivebackCards(toEngine(hand), receivedId)).sort(), m, `${key(ids(hand))} receiving ${receivedId}: the cards offered back`);
     },
     NUM_RUNS * 10
   );
-  seen.floor(["3 to 10", "lowest card"]);
+  seen.floor(["3 to 10", "nothing to give"]);
 }
 
 for (const property of [classificationAgrees, beatsAgrees, legalPlaysAgree, roundPlayAgrees, exchangeAgrees, givebackAgrees]) {
@@ -376,6 +380,15 @@ const givebackKeepsReceived: Engine = {
   getValidGivebackCards: (hand) => REAL.getValidGivebackCards(hand),
 };
 
+const givebackFallsBackToLowest: Engine = {
+  ...REAL,
+  getValidGivebackCards(hand, excludeCardId) {
+    const offered = REAL.getValidGivebackCards(hand, excludeCardId);
+    const rest = hand.filter((c) => c.id !== excludeCardId);
+    return offered.length > 0 || rest.length === 0 ? offered : [gameEngine.sortHand(rest)[0]];
+  },
+};
+
 const owesSecondHighest: Engine = {
   ...REAL,
   startRound(seats, mode, opts) {
@@ -397,6 +410,7 @@ const PLANTED: [string, Engine, (engine: Engine) => void, RegExp][] = [
   ["a bomb beating a royal straight", bombOnRoyal, legalPlaysAgree, /the engine offers plays the model refuses/],
   ["a trick closing one pass early", closesOnePassEarly, roundPlayAgrees, /whether pass closed the trick/],
   ["a giveback offering the card just received", givebackKeepsReceived, givebackAgrees, /receiving \w+: the cards offered back/],
+  ["a giveback falling back to the lowest card", givebackFallsBackToLowest, givebackAgrees, /receiving \w+: the cards offered back/],
   ["the last place owing their second-highest card", owesSecondHighest, exchangeAgrees, /the card the last place owes/],
 ];
 
@@ -448,7 +462,6 @@ function answers(entry: Disagreement): { model: unknown; engine: unknown } {
 }
 
 test("disagreements.json: every silence met is listed, and every listed case is still one", () => {
-  assert.ok(LISTED.length > 0, "disagreements.json lists nothing");
   for (const entry of LISTED) {
     assert.ok(entry.section && entry.question && Number.isInteger(entry.seed) && Number.isInteger(entry.issue), `${entry.id} is missing its §, question, seed or issue`);
     const row = entry.conflictsWith?.match(/§ Decisions "([^"]+)"/)?.[1];

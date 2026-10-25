@@ -5,7 +5,7 @@ import { trackEvent } from "../shared/events.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import { publishState } from "./gamePersistence.ts";
 import { handleRoundOver } from "./roundOver.ts";
-import { armAfterMove } from "./gameTurn.ts";
+import { armTurn } from "./gameTurn.ts";
 import { appendReplayMove } from "./replayShape.ts";
 import { seatOfUser } from "./onlineGameLogic.ts";
 import { applyMove } from "../../lib/game/gameEngine.ts";
@@ -92,5 +92,5 @@ export function commitMove(rt: TableRuntime, game: OnlineGameState, applied: Aut
   game.gameState = next;
   void publishState(rt, game);
   if (next.roundOver) return handleRoundOver(rt, game.roomId, game);
-  armAfterMove(rt, game.roomId, next);
+  armTurn(rt, game.roomId);
 }

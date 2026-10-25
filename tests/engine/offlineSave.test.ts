@@ -13,6 +13,7 @@ import {
 import { actingSeat, buildCombination, emptyRankTally, startRound } from "../../lib/game/gameEngine.ts";
 import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
 import { played, playRoundOut } from "../support/moves.ts";
+import { card } from "../support/game.ts";
 import type { MatchState } from "../../lib/game/matchState.ts";
 
 const decodeOfflineSave = (raw: string | null) => {
@@ -50,6 +51,17 @@ test("a save round-trips", () => {
   assert.equal(decoded.match.scores.player_0, 3);
   assert.equal(decoded.gameState.players[1].personality, "luan");
   assert.equal(decoded.dealFirstSeat, 1, "the deal rotation survives a restart");
+});
+
+test("a save dealt with a one-way exchange resumes as dealt, and the loser's bot plays", () => {
+  const seats = [{ name: "Ana", type: "human" as const }, { name: "Luan", type: "bot" as const }];
+  const hands = [[card("K", "clubs"), card("A", "spades")], [card("4", "hearts"), card("Q", "hearts")]];
+  const gameState = startRound(seats, "free_for_all", { opening: { kind: "exchange", winnerSeat: 0, loserSeat: 1 }, dealt: hands });
+  assert.equal(gameState.exchangePhase?.kind, "settled");
+  const decoded = decodeOfflineSave(encodeOfflineSave({ ...(save() as object), gameState } as never));
+  assert.ok(decoded, "a one-way exchange no longer decodes");
+  assert.deepEqual(decoded.gameState, JSON.parse(JSON.stringify(gameState)));
+  assert.equal(autoMoveForSeat(decoded.gameState, actingSeat(decoded.gameState), "floor")?.move.kind, "play");
 });
 
 test("a save with no deal rotation at all is not trusted", () => {

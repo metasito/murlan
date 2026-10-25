@@ -87,7 +87,7 @@ export function tableAfter({ by, combo, passCount = 0, turn = 0, catchUp = false
         onQuit={noop}
         onExchangeGive={noop}
         catchUp={catchUp}
-        turnTimer={turnSeconds === undefined ? undefined : { seconds: turnSeconds }}
+        turnTimer={turnSeconds === undefined ? undefined : { seconds: turnSeconds, table: 'offline' }}
       />
     </SafeAreaProvider>
   );

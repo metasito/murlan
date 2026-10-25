@@ -21,7 +21,7 @@ import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine
 import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';
 import { setMotion } from './harness/env';
-import { BOT_MOVE_DELAY_MS } from '@/server/game/gameTimers';
+import { BOT_THINK_MS } from '@/lib/game/turnSchedule';
 import { Motion } from '@/lib/theme';
 import { aThreePlayed } from '../support/game';
 import { replayStateAt, type ReplayDto } from '@/lib/game/replay';
@@ -119,7 +119,7 @@ describe('the trick-winner tag', () => {
     expect(tagGone()).toBe(true);
     // Its own pass sound holds the mix, as a turn's wait does at a real table.
     await act(async () => {
-      jest.advanceTimersByTime(BOT_MOVE_DELAY_MS);
+      jest.advanceTimersByTime(BOT_THINK_MS);
     });
 
     await act(async () => r.rerender(table(closed(4))));
