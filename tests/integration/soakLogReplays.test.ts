@@ -84,6 +84,39 @@ describe("a printed soak log replays as a fixed case", {
     assert.deepEqual(result.violations, [], JSON.stringify(result.violations));
   });
 
+  // A fault the run saw land moved the table, and every entry after it was written against
+  // that table. Here seat 2's pass from move 8 is re-sent once seat 2 is on move again and
+  // lands as a second pass (#1824), so seat 1's queen at 12 only follows if the replay applies it.
+  test("a fault that landed is replayed as the move it carried", async () => {
+    const throughEleven = CAPTURED.filter((entry) => entry.at <= 11);
+    const lateDuplicate: SoakLogEntry = {
+      at: 11,
+      kind: "restart-duplicate",
+      move: { kind: "pass", seat: 2 },
+      intentId: "i3",
+      landed: true,
+    };
+    const log: SoakLogEntry[] = [
+      ...throughEleven,
+      { at: 11, kind: "restart" },
+      lateDuplicate,
+      { at: 12, kind: "play", seat: 1, cardIds: ["Q_diamonds"] },
+    ];
+    const moves = throughEleven.filter((e) => e.kind === "play" || e.kind === "pass").length;
+
+    const result = await replaySoakLog(log, server);
+
+    assert.deepEqual(result.skipped, [], "the replay did not reach the table the run had");
+    assert.equal(result.applied, moves + 2);
+    assert.deepEqual(result.finalCounts, [13, 11, 13, 7]);
+
+    const turnedAway = await replaySoakLog(
+      log.map((entry) => (entry === lateDuplicate ? { ...lateDuplicate, landed: false } : entry)),
+      server
+    );
+    assert.equal(turnedAway.abandonedAt, 12, "a fault the server refused was applied anyway");
+  });
+
   // The floor. Every assertion above is also satisfied by a replay that seats
   // four clients and lets the game play itself, so without a log the driver
   // refuses to follow, this file would pass while replaying nothing.
