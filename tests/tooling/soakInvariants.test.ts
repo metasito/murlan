@@ -170,7 +170,7 @@ describe("the soak's teardown check", () => {
 });
 
 /** `agreeingPair` after seat 1, on move, played its `d`. */
-const PLAY_D: SeatAction = { kind: "play", seat: 1, cardIds: ["d"] };
+const PLAY_D: SeatAction = { kind: "move", seat: 1, move: { kind: "play", cardIds: ["d"] } };
 function afterPlayingD(): SeatView[] {
   return agreeingPair().map((v) => ({
     ...v,
@@ -212,7 +212,7 @@ describe("the oracle for a move under a fault", () => {
   });
 
   test("a giveback lands its one card in exactly one other hand", () => {
-    const give: SeatAction = { kind: "exchange", seat: 1, cardId: "d" };
+    const give: SeatAction = { kind: "move", seat: 1, move: { kind: "giveback", cardId: "d" } };
     const after = afterPlayingD().map((v) => ({
       ...v,
       handCounts: [4, 3],
@@ -320,11 +320,11 @@ describe("a failed run's report", () => {
     seed: 31,
     moveLog: [
       { at: 0, kind: "deal", round: 0, hands: [["a"], ["b"]] },
-      { at: 1, kind: "play", seat: 0, cardIds: ["a"] },
+      { at: 1, kind: "move", seat: 0, move: { kind: "play", cardIds: ["a"] } },
       { at: 1, kind: "deal", round: 1, hands: [["c"], ["d"]] },
-      { at: 2, kind: "pass", seat: 1 },
+      { at: 2, kind: "move", seat: 1, move: { kind: "pass" } },
       { at: 2, kind: "restart" },
-      { at: 2, kind: "restart-duplicate", move: { kind: "pass", seat: 1 }, intentId: "i1", landed: true },
+      { at: 2, kind: "restart-duplicate", move: { kind: "move", seat: 1, move: { kind: "pass" } }, intentId: "i1", landed: true },
     ],
     firstViolationAt: 2,
     staleArmed: 0,
@@ -363,7 +363,7 @@ describe("a failed run's report", () => {
 
   test("prints the round the first violation fell in, from its deal", () => {
     const json = JSON.parse(failureReport(result).at(-1)!);
-    assert.deepEqual(json.map((e: { kind: string }) => e.kind), ["deal", "pass", "restart", "restart-duplicate"]);
+    assert.deepEqual(json.map((e: { kind: string }) => e.kind), ["deal", "move", "restart", "restart-duplicate"]);
     assert.equal(json[0].round, 1);
   });
 });

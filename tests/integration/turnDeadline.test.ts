@@ -6,9 +6,10 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { waitFor } from "../helpers/client.ts";
+import { leaveRooms, waitFor } from "../helpers/client.ts";
+import { fakeClock } from "../helpers/fakeClock.ts";
+import { installClock } from "../../server/http/clock.ts";
 import { makeClients, setUpRoom, type Client } from "../helpers/table.ts";
-import type { SanitizedState } from "../helpers/gameDriver.ts";
 import { Reading } from "../../lib/tokens.ts";
 
 /**
@@ -25,11 +26,6 @@ process.env.MURLAN_AFK_TIMEOUT_MS = String(AFK_SECONDS * 1000);
  */
 const OPENING_GRACE_SECONDS = Reading.notice / 1000;
 
-interface TurnDeadline {
-  turnDeadlineMs?: number;
-  turnSecondsRemaining: number;
-}
-
 describe("turn deadline", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
   before(async () => {
@@ -39,17 +35,16 @@ describe("turn deadline", { skip: hasDatabase() ? false : skipMessage() }, () =>
     await server.stop();
   });
 
-  async function closeTable(host: Client) {
-    host.socket.emit("room:leave");
-    await new Promise((resolve) => setTimeout(resolve, 50));
+  async function closeTable(clients: Client[]) {
+    await leaveRooms(clients.map((c) => c.socket));
   }
 
   test("the window the server armed is the window the table is told about", async () => {
     const clients = await makeClients(server, ["deadline_a", "deadline_b"]);
     try {
       await setUpRoom(clients, 2);
-      const armed = waitFor<TurnDeadline>(clients[1].socket, "game:turn_deadline");
-      clients[0].socket.emit("room:start");
+      const armed = waitFor(clients[1].socket, "game:turn_deadline");
+      clients[0].socket.emit("room:start", {});
       const deadline = await armed;
 
       assert.equal(
@@ -62,7 +57,7 @@ describe("turn deadline", { skip: hasDatabase() ? false : skipMessage() }, () =>
         "the deadline rides along as the clock's reset key"
       );
     } finally {
-      await closeTable(clients[0]);
+      await closeTable(clients);
       for (const c of clients) c.socket.close();
     }
   });
@@ -71,24 +66,26 @@ describe("turn deadline", { skip: hasDatabase() ? false : skipMessage() }, () =>
     const clients = await makeClients(server, ["deadline_c", "deadline_d"]);
     try {
       const room = await setUpRoom(clients, 2);
-      const armed = waitFor<TurnDeadline>(clients[0].socket, "game:turn_deadline");
-      clients[0].socket.emit("room:start");
-      await armed;
+      const clock = fakeClock(Date.now());
+      const restore = installClock(clock);
+      try {
+        const armed = waitFor(clients[0].socket, "game:turn_deadline");
+        clients[0].socket.emit("room:start", {});
+        await armed;
 
-      const elapsedMs = 2500;
-      await new Promise((resolve) => setTimeout(resolve, elapsedMs));
+        const elapsedMs = 2500;
+        clock.advance(elapsedMs);
 
-      const rejoined = waitFor<SanitizedState & TurnDeadline>(clients[0].socket, "game:state");
-      clients[0].socket.emit("game:rejoin", { roomId: room.roomId });
-      const state = await rejoined;
+        const rejoined = waitFor(clients[0].socket, "game:state");
+        clients[0].socket.emit("game:rejoin", { roomId: room.roomId });
+        const state = await rejoined;
 
-      const expected = AFK_SECONDS + OPENING_GRACE_SECONDS - elapsedMs / 1000;
-      assert.ok(
-        Math.abs(state.turnSecondsRemaining - expected) <= 1,
-        `expected about ${expected}s left, got ${state.turnSecondsRemaining}`
-      );
+        assert.equal(state.turnSecondsRemaining, Math.ceil(AFK_SECONDS + OPENING_GRACE_SECONDS - elapsedMs / 1000));
+      } finally {
+        restore();
+      }
     } finally {
-      await closeTable(clients[0]);
+      await closeTable(clients);
       for (const c of clients) c.socket.close();
     }
   });

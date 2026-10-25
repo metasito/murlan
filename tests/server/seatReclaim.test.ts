@@ -10,6 +10,8 @@ import { applyOrForward } from "../../server/game/tableRouter.ts";
 import { armTurn } from "../../server/game/gameTurn.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
+import { installClock } from "../../server/http/clock.ts";
+import { fakeClock } from "../helpers/fakeClock.ts";
 import { resolveRoundEnd } from "../../server/game/onlineGameLogic.ts";
 import { scoresByEngineId } from "../../server/game/roundOver.ts";
 import { applyRoundFold } from "../../server/game/matchLedger.ts";
@@ -129,7 +131,9 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
     }
   });
 
-  test("a reclaim ahead of a pending bot timer re-arms instead of playing the reclaimed seat's turn", async () => {
+  test("a reclaim ahead of a pending bot timer re-arms instead of playing the reclaimed seat's turn", async (t) => {
+    const clock = fakeClock();
+    t.after(installClock(clock));
     const { rt } = stubIo();
     const state = midRound();
     state.currentTurnIndex = 1; // the vacated seat's own turn is up next
@@ -154,7 +158,7 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
         userId: "drita",
       });
 
-      await new Promise((r) => setTimeout(r, 40));
+      clock.advance(5);
 
       // The guard (server/game/gameTurn.ts's runBotTurn) sees the seat reclaimed
       // and re-arms rather than playing on drita's behalf — her hand is

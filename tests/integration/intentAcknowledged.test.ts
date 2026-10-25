@@ -9,17 +9,24 @@
 // retry upon reconnection". The acknowledgement is the guarantee.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import { io as ioClient, type Socket } from "socket.io-client";
 import {
   startTestServer,
   hasDatabase,
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { PROTOCOL_AUTH, connectAs, waitFor } from "../helpers/client.ts";
-import { AUTH_UNAVAILABLE } from "../../shared/protocol.ts";
-import type { SanitizedState } from "../helpers/table.ts";
-import type { IntentReply } from "../../shared/protocol.ts";
+import {
+  ackUnchecked,
+  connectAs,
+  eventually,
+  openSocket,
+  settled,
+  socketTicket,
+  waitFor,
+  waitForWhere,
+  type TestSocket,
+} from "../helpers/client.ts";
+import { AUTH_UNAVAILABLE, type IntentReply } from "../../shared/protocol.ts";
 import { payload } from "../../server/shared/payload.ts";
 import { userStore } from "../../server/store/userStore.ts";
 import { db } from "../../server/store/db.ts";
@@ -31,27 +38,18 @@ import { turnOf } from "../../lib/game/moves.ts";
 /** The token a move at the round's `seq`-th move names, asked of its owner rather than spelled here. */
 const turnAt = (seq: number) => turnOf({ lastMove: { seq, kind: "pass", seat: 0, closedTrick: false } });
 
-interface RoomState {
-  code: string;
-  roomId: string;
-  status: string;
-  players: { userId: string; seatIndex: number }[];
-}
 
-/** Resolves with the ack payload, or null if the server never answers. */
-function ackOf(socket: Socket, event: string, payload: unknown, ms = 4_000) {
-  return new Promise<unknown>((resolve) => {
-    const timer = setTimeout(() => resolve(null), ms);
-    socket.emit(event, payload, (reply: unknown) => {
-      clearTimeout(timer);
-      resolve(reply ?? "acked");
-    });
-  });
+/** Resolves with the ack payload, or null if the server never answers. Any event, typed or not: answering is the claim. */
+function ackOf(socket: TestSocket, event: string, payload: unknown, ms = 4_000): Promise<unknown> {
+  return ackUnchecked(socket, event, [payload], ms).then(
+      (reply: unknown) => reply ?? "acked",
+      () => null
+    );
 }
 
 describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  const sockets: Socket[] = [];
+  const sockets: TestSocket[] = [];
   let n = 0;
 
   before(async () => {
@@ -76,16 +74,16 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
   async function dealtPair(tag: string) {
     const a = await player(`${tag}_a`);
     const b = await player(`${tag}_b`);
-    const made = waitFor<RoomState>(a.socket, "room:state");
+    const made = waitFor(a.socket, "room:state");
     a.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const room = await made;
-    const seated = waitFor<RoomState>(a.socket, "room:state");
+    const seated = waitFor(a.socket, "room:state");
     b.socket.emit("room:join", { code: room.code });
     await seated;
 
     const deals = [
-      waitFor<SanitizedState>(a.socket, "game:state", 10_000),
-      waitFor<SanitizedState>(b.socket, "game:state", 10_000),
+      waitFor(a.socket, "game:state", 10_000),
+      waitFor(b.socket, "game:state", 10_000),
     ];
     a.socket.emit("room:start");
     const [sa, sb] = await Promise.all(deals);
@@ -103,12 +101,12 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
   /** A host alone at a two-seat table, with a bot for company, mid-round. */
   async function table(tag: string) {
     const host = await player(tag);
-    const made = waitFor<RoomState>(host.socket, "room:state");
+    const made = waitFor(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     await made;
 
-    const dealt = waitFor<SanitizedState>(host.socket, "game:state", 10_000);
-    host.socket.emit("room:start", { fillWithBots: true, botDifficulty: "easy" });
+    const dealt = waitFor(host.socket, "game:state", 10_000);
+    host.socket.emit("room:start", { fillWithBots: true });
     return { host, state: await dealt };
   }
 
@@ -119,7 +117,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
    */
   test("the server answers a play, so the client can tell it arrived", async () => {
     const { host, state } = await table("play");
-    const seat = state.players[state.viewerSeatIndex];
+    const seat = state.players[state.viewerSeatIndex!];
     assert.ok(seat, "the host holds a seat");
 
     const reply = await ackOf(host.socket, "game:play", {
@@ -137,7 +135,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
    */
   test("a play sent twice is played once", async () => {
     const { c: host, s: state } = await dealtPair("twice");
-    const seat = state.players[state.viewerSeatIndex];
+    const seat = state.players[state.viewerSeatIndex!];
     assert.ok(seat, "the leading seat");
     const before = seat.hand.length;
 
@@ -147,25 +145,15 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
     // Armed before the first emit: the broadcast lands while `ackOf` is still
     // awaiting the server, so a listener attached afterwards has already
     // missed it.
-    const settled = new Promise<SanitizedState | null>((resolve) => {
-      const timer = setTimeout(() => resolve(null), 5_000);
-      const onState = (st: SanitizedState) => {
-        if (st.players[st.viewerSeatIndex]?.hand.length === before) return;
-        clearTimeout(timer);
-        host.socket.off("game:state", onState);
-        resolve(st);
-      };
-      host.socket.on("game:state", onState);
-    });
+    const moved = waitForWhere(host.socket, "game:state", (st) => st.players[st.viewerSeatIndex!]?.hand.length !== before);
 
     const first = await ackOf(host.socket, "game:play", { cardIds: [lead.id], turn: state.turn });
     const second = await ackOf(host.socket, "game:play", { cardIds: [lead.id], turn: state.turn });
     assert.deepEqual(first, { ok: true });
     assert.deepEqual(second, { ok: false, code: "NOT_YOUR_TURN" }, "the duplicate is answered as stale, not left hanging");
 
-    const finalState = await settled;
-    assert.ok(finalState, "the table reported the round back");
-    const after = finalState.players[finalState.viewerSeatIndex];
+    const finalState = await moved;
+    const after = finalState.players[finalState.viewerSeatIndex!];
     assert.ok(after);
     assert.equal(
       after.hand.length,
@@ -182,7 +170,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
   /** The defence behind the stale check: a play named against the current turn still finds its cards gone. */
   test("a play replayed under the current turn is refused because its cards have left the hand", async () => {
     const { c: leader, s: state, waiting, roomId } = await dealtPair("cardsgone");
-    const lead = state.players[state.viewerSeatIndex]?.hand.find((c) => c.id === state.openingCard?.id);
+    const lead = state.players[state.viewerSeatIndex!]?.hand.find((c) => c.id === state.openingCard?.id);
     assert.ok(lead);
     assert.deepEqual(await ackOf(leader.socket, "game:play", { cardIds: [lead.id], turn: state.turn }), { ok: true });
     assert.deepEqual(await ackOf(waiting.socket, "game:pass", { turn: turnAt(1) }), { ok: true });
@@ -193,12 +181,12 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
     assert.equal(replay.code, "INVALID_CARD", "the turn guard let it through, and the hand refused it");
     const after = await stateOf(leader, roomId);
     assert.equal(after.turn, current.turn, "nothing moved");
-    assert.equal(after.players[after.viewerSeatIndex]?.hand.length, current.players[current.viewerSeatIndex]?.hand.length);
+    assert.equal(after.players[after.viewerSeatIndex!]?.hand.length, current.players[current.viewerSeatIndex!]?.hand.length);
   });
 
   test("a pass retried under one intentId is answered as the pass that landed", async () => {
     const { c: leader, s: state, waiting } = await dealtPair("passretry");
-    const lead = state.players[state.viewerSeatIndex]?.hand.find((c) => c.id === state.openingCard?.id);
+    const lead = state.players[state.viewerSeatIndex!]?.hand.find((c) => c.id === state.openingCard?.id);
     assert.ok(lead);
     assert.deepEqual(await ackOf(leader.socket, "game:play", { cardIds: [lead.id], turn: state.turn }), { ok: true });
 
@@ -215,23 +203,21 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
 
   /** What a restart restores from: the persisted round, once it has caught up with `seq`. */
   async function persistedAt(roomId: string, seq: number) {
-    for (let attempt = 0; attempt < 100; attempt++) {
+    await eventually(async () => {
       const row = await db().query.activeGames.findFirst({ where: eq(activeGamesTable.roomId, roomId) });
-      if (row?.gameState.gameState.lastMove.seq === seq) return;
-      await new Promise((resolve) => setTimeout(resolve, 20)); // fixed wait on purpose: the poll interval, bounded at 100 attempts
-    }
-    assert.fail(`active_games never reached seq ${seq}`);
+      return row?.gameState.gameState.lastMove.seq === seq;
+    }, `active_games to reach seq ${seq}`);
   }
 
-  async function stateOf(c: { socket: Socket }, roomId: string) {
-    const restored = waitFor<SanitizedState>(c.socket, "game:state", 5_000);
+  async function stateOf(c: { socket: TestSocket }, roomId: string) {
+    const restored = waitFor(c.socket, "game:state", 5_000);
     c.socket.emit("game:rejoin", { roomId });
     return restored;
   }
 
   test("a pass re-sent across a restart is not applied a second time", async () => {
     const { c: leader, s: state, waiting, roomId } = await dealtPair("restartpass");
-    const hand = state.players[state.viewerSeatIndex]?.hand ?? [];
+    const hand = state.players[state.viewerSeatIndex!]?.hand ?? [];
     const lead = hand.find((c) => c.id === state.openingCard?.id);
     const next = hand.find((c) => c.id !== lead?.id);
     assert.ok(lead && next);
@@ -258,7 +244,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
 
   test("a play made against an earlier turn is refused, though its cards are still held", async () => {
     const { c: leader, s: state, waiting, roomId } = await dealtPair("staleplay");
-    const hand = state.players[state.viewerSeatIndex]?.hand ?? [];
+    const hand = state.players[state.viewerSeatIndex!]?.hand ?? [];
     const lead = hand.find((c) => c.id === state.openingCard?.id);
     const next = hand.find((c) => c.id !== lead?.id);
     assert.ok(lead && next);
@@ -272,7 +258,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
     );
     const held = await stateOf(leader, roomId);
     assert.equal(held.lastMove.seq, 2);
-    assert.ok(held.players[held.viewerSeatIndex]?.hand.some((c) => c.id === next.id), "the card never left the hand");
+    assert.ok(held.players[held.viewerSeatIndex!]?.hand.some((c) => c.id === next.id), "the card never left the hand");
     assert.deepEqual(await ackOf(leader.socket, "game:play", { cardIds: [next.id], turn: held.turn }), { ok: true });
   });
 
@@ -292,7 +278,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
 
   test("a rejoin refused at the boundary is answered on the rejoin's own channel", async () => {
     const c = await player("badrejoin");
-    const failed = waitFor<{ code: string }>(c.socket, "game:rejoin_failed");
+    const failed = waitFor(c.socket, "game:rejoin_failed");
     const reply = (await ackOf(c.socket, "game:rejoin", { roomId: 42 })) as IntentReply;
     assert.equal(reply.code, "INVALID_PAYLOAD");
     assert.equal((await failed).code, "INVALID_PAYLOAD");
@@ -301,14 +287,13 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
   test("a handshake the database could not check is refused apart from a spent ticket", async () => {
     const { socket, cookie } = await player("authdown");
     socket.close();
-    const res = await fetch(`${server.url}/api/auth/socket-ticket`, { method: "POST", headers: { cookie } });
-    const { ticket } = (await res.json()) as { ticket: string };
-    const refusal = () =>
-      new Promise<string>((resolve) => {
-        const s = ioClient(server.url, { auth: { ...PROTOCOL_AUTH, ticket }, transports: ["websocket"], reconnection: false });
-        s.once("connect", () => resolve("connected"));
-        s.once("connect_error", (e) => resolve(e.message));
-      });
+    const ticket = await socketTicket(server, cookie);
+    const refusal = async () => {
+      const opened = await openSocket(server, { ticket });
+      if (!opened.ok) return opened.err;
+      opened.socket.close();
+      return "connected";
+    };
     const getUser = userStore.getUser;
     userStore.getUser = async () => {
       throw new Error("database down");
@@ -358,19 +343,19 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
   });
 
   /** The ack, and every `room:error` the socket hears while the intent is answered. */
-  async function refusedInLobby(socket: Socket, event: string, body: unknown) {
+  async function refusedInLobby(socket: TestSocket, event: string, body: unknown) {
     const told: unknown[] = [];
     const listen = (p: unknown) => told.push(p);
     socket.on("room:error", listen);
     const reply = (await ackOf(socket, event, body)) as IntentReply | null;
-    await new Promise((r) => setTimeout(r, 200));
+    await settled(socket);
     socket.off("room:error", listen);
     return { reply, told };
   }
 
   async function lobby(tag: string) {
     const host = await player(`${tag}_host`);
-    const made = waitFor<RoomState>(host.socket, "room:state");
+    const made = waitFor(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     return { host, room: await made };
   }
@@ -378,7 +363,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
   test("a join to a full room is acked as refused, and told once", async () => {
     const { host, room } = await lobby("full");
     const second = await player("full_second");
-    const seated = waitFor<RoomState>(host.socket, "room:state");
+    const seated = waitFor(host.socket, "room:state");
     second.socket.emit("room:join", { code: room.code });
     await seated;
 

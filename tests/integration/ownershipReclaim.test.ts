@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import net from "node:net";
 import pg from "pg";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
+import { eventually } from "../helpers/client.ts";
 import {
   claimRoom,
   closeOwnership,
@@ -13,16 +14,18 @@ import {
   reopenOwnership,
 } from "../../server/game/gameOwnership.ts";
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 test("rooms outlast a stretch of refused connections and are locked again", {
   skip: hasDatabase() ? false : skipMessage(),
 }, async () => {
   const target = new URL(process.env.DATABASE_URL!);
   let refusing = false;
+  let refused = 0;
   const open = new Set<net.Socket>();
   const proxy = net.createServer((inbound) => {
-    if (refusing) return void inbound.destroy();
+    if (refusing) {
+      refused += 1;
+      return void inbound.destroy();
+    }
     const outbound = net.connect(Number(target.port), target.hostname);
     for (const s of [inbound, outbound]) {
       open.add(s);
@@ -67,16 +70,12 @@ test("rooms outlast a stretch of refused connections and are locked again", {
 
   refusing = true;
   for (const s of open) s.destroy();
-  await sleep(2_500);
+  await eventually(() => refused >= 2, "the ownership connection to be refused twice", 10_000);
   assert.equal(await lockHeld(), false, "the ownership connection never died, so nothing was refused");
   assert.deepEqual(lost, [], "a room was given up because Postgres could not be reached");
   assert.equal(ownsRoom(room), true);
 
   refusing = false;
-  const deadline = Date.now() + 10_000;
-  while (!(await lockHeld())) {
-    assert.ok(Date.now() < deadline, "the room's lock was never taken again once Postgres was back");
-    await sleep(100);
-  }
+  await eventually(lockHeld, "the room's lock to be taken again once Postgres was back", 10_000);
   assert.deepEqual(lost, []);
 });

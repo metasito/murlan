@@ -20,6 +20,8 @@ import type { RoundOverPayload } from "../../shared/protocol.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 import { refuse } from "../../server/shared/refusal.ts";
 import { aThreePlayed } from "../support/game.ts";
+import { unpackPersistedState } from "../../shared/persistedEnvelope.ts";
+import { eventually } from "../helpers/client.ts";
 
 const ROOM = "end-match-vote-room";
 
@@ -258,7 +260,7 @@ describe("a match ended by the vote is never rematched (docs/GAME-RULES.md § De
 
   test("a restart does not reopen the rematch", async (t) => {
     const { rt } = recordingRuntime({ persist: "real" });
-    useMemoryTableStores(t);
+    const { rows } = useMemoryTableStores(t);
     const game = baseGame({
       gameState: partlyRanked(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
@@ -267,7 +269,10 @@ describe("a match ended by the vote is never rematched (docs/GAME-RULES.md § De
 
     try {
       await endByVote(game, rt);
-      await new Promise((r) => setTimeout(r, 20));
+      await eventually(() => {
+        const row = unpackPersistedState(rows.get(ROOM));
+        return row.ok && row.match.endedByVote;
+      }, "the vote's end persisted");
       activeGames.delete(ROOM);
 
       assert.equal(await rehydrateGame(rt, ROOM, "alice"), "restored");

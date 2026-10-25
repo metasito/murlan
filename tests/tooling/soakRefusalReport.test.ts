@@ -27,14 +27,13 @@ function fakeSocket() {
     emit(event: string, payload?: unknown) {
       sent.push({ event, payload });
     },
-    timeout() {
-      return this;
-    },
+    once() {},
+    off() {},
     refuse(event: string, code: string, message = "no") {
       handlers.get(event)!({ code, message });
     },
     sent,
-    connected: false,
+    connected: true,
     close() {},
   };
 }

@@ -7,7 +7,7 @@
 //
 // The log below is not written by hand. It is the output of
 //   npm run soak -- --seats 4 --minutes 0.2 --seed 4242 --chaos 0
-// on 2026-08-31, copied from the JSON the runner prints. That is the whole
+// on 2026-10-25, copied from the JSON the runner prints. That is the whole
 // claim of this file: a printed log is enough to rebuild the hand it came from,
 // on a fresh server, and get the same table back.
 import { test, describe, before, after } from "node:test";
@@ -22,45 +22,43 @@ const CAPTURED: SoakLogEntry[] = [
     kind: "deal",
     round: 0,
     hands: [
-      ["3_hearts", "4_clubs", "5_clubs", "7_diamonds", "7_hearts", "8_clubs", "10_clubs", "10_hearts", "J_diamonds", "J_spades", "K_hearts", "K_spades", "A_spades", "joker_bw"],
-      ["3_spades", "4_diamonds", "4_spades", "6_clubs", "6_hearts", "7_clubs", "7_spades", "8_diamonds", "8_spades", "10_spades", "J_clubs", "Q_diamonds", "2_diamonds", "joker_colored"],
-      ["3_diamonds", "5_diamonds", "5_hearts", "5_spades", "6_spades", "8_hearts", "J_hearts", "Q_clubs", "Q_hearts", "Q_spades", "K_diamonds", "2_hearts", "2_spades"],
-      ["3_clubs", "4_hearts", "6_diamonds", "9_clubs", "9_diamonds", "9_hearts", "9_spades", "10_diamonds", "K_clubs", "A_clubs", "A_diamonds", "A_hearts", "2_clubs"],
+      ["4_diamonds", "4_hearts", "5_clubs", "5_hearts", "7_diamonds", "7_hearts", "8_diamonds", "8_spades", "9_clubs", "9_hearts", "9_spades", "J_clubs", "Q_clubs", "Q_hearts"],
+      ["3_clubs", "4_clubs", "5_spades", "8_clubs", "9_diamonds", "10_hearts", "10_spades", "J_spades", "K_diamonds", "K_hearts", "A_spades", "2_clubs", "2_spades", "joker_bw"],
+      ["3_diamonds", "3_spades", "4_spades", "5_diamonds", "6_clubs", "6_diamonds", "6_hearts", "6_spades", "10_diamonds", "K_spades", "A_diamonds", "2_diamonds", "joker_colored"],
+      ["3_hearts", "7_clubs", "7_spades", "8_hearts", "10_clubs", "J_diamonds", "J_hearts", "Q_diamonds", "Q_spades", "K_clubs", "A_clubs", "A_hearts", "2_hearts"],
     ],
   },
-  { at: 1, kind: "play", seat: 1, cardIds: ["3_spades"] },
-  { at: 2, kind: "play", seat: 0, cardIds: ["A_spades"] },
-  { at: 3, kind: "play", seat: 3, cardIds: ["2_clubs"] },
-  { at: 4, kind: "pass", seat: 2 },
-  { at: 5, kind: "play", seat: 1, cardIds: ["joker_colored"] },
-  { at: 6, kind: "pass", seat: 0 },
-  { at: 7, kind: "play", seat: 3, cardIds: ["9_clubs", "9_diamonds", "9_hearts", "9_spades"] },
-  { at: 8, kind: "pass", seat: 2 },
-  { at: 9, kind: "pass", seat: 1 },
-  { at: 10, kind: "pass", seat: 0 },
-  { at: 11, kind: "play", seat: 3, cardIds: ["6_diamonds"] },
-  { at: 12, kind: "play", seat: 2, cardIds: ["2_hearts"] },
-  { at: 13, kind: "pass", seat: 1 },
-  { at: 14, kind: "play", seat: 0, cardIds: ["joker_bw"] },
-  { at: 15, kind: "pass", seat: 3 },
-  { at: 16, kind: "pass", seat: 2 },
-  { at: 17, kind: "pass", seat: 1 },
-  { at: 18, kind: "play", seat: 0, cardIds: ["J_diamonds"] },
-  { at: 19, kind: "play", seat: 3, cardIds: ["A_clubs"] },
-  { at: 20, kind: "play", seat: 2, cardIds: ["2_spades"] },
-  { at: 21, kind: "pass", seat: 1 },
-  { at: 22, kind: "pass", seat: 0 },
-  { at: 23, kind: "pass", seat: 3 },
-  { at: 24, kind: "play", seat: 2, cardIds: ["Q_clubs", "Q_hearts"] },
+  { at: 1, kind: "move", seat: 2, move: { kind: "play", cardIds: ["3_diamonds", "3_spades"] } },
+  { at: 2, kind: "move", seat: 1, move: { kind: "play", cardIds: ["2_clubs", "2_spades"] } },
+  { at: 3, kind: "move", seat: 0, move: { kind: "pass" } },
+  { at: 4, kind: "move", seat: 3, move: { kind: "pass" } },
+  { at: 5, kind: "move", seat: 2, move: { kind: "play", cardIds: ["6_clubs", "6_diamonds", "6_hearts", "6_spades"] } },
+  { at: 6, kind: "move", seat: 1, move: { kind: "pass" } },
+  { at: 7, kind: "move", seat: 0, move: { kind: "pass" } },
+  { at: 8, kind: "move", seat: 3, move: { kind: "pass" } },
+  { at: 9, kind: "move", seat: 2, move: { kind: "play", cardIds: ["joker_colored"] } },
+  { at: 10, kind: "move", seat: 1, move: { kind: "pass" } },
+  { at: 11, kind: "move", seat: 0, move: { kind: "pass" } },
+  { at: 12, kind: "move", seat: 3, move: { kind: "pass" } },
+  { at: 13, kind: "move", seat: 2, move: { kind: "play", cardIds: ["K_spades"] } },
+  { at: 14, kind: "move", seat: 1, move: { kind: "play", cardIds: ["A_spades"] } },
+  { at: 15, kind: "move", seat: 0, move: { kind: "pass" } },
+  { at: 16, kind: "move", seat: 3, move: { kind: "play", cardIds: ["2_hearts"] } },
+  { at: 17, kind: "move", seat: 2, move: { kind: "pass" } },
+  { at: 18, kind: "move", seat: 1, move: { kind: "play", cardIds: ["joker_bw"] } },
+  { at: 19, kind: "move", seat: 0, move: { kind: "pass" } },
+  { at: 20, kind: "move", seat: 3, move: { kind: "pass" } },
+  { at: 21, kind: "move", seat: 2, move: { kind: "pass" } },
+  { at: 22, kind: "move", seat: 1, move: { kind: "play", cardIds: ["8_clubs"] } },
+  { at: 23, kind: "move", seat: 0, move: { kind: "play", cardIds: ["J_clubs"] } },
+  { at: 24, kind: "move", seat: 3, move: { kind: "play", cardIds: ["Q_diamonds"] } },
 ];
 
 /** Cards each seat had left when the run above stopped. */
-const FINAL_COUNTS = [11, 12, 9, 6];
+const FINAL_COUNTS = [13, 9, 5, 11];
 
 /** Derived, not counted: `drop` and `rejoin` entries are replayed without applying a move. */
-const MOVES = CAPTURED.filter(
-  (e) => e.kind === "play" || e.kind === "pass" || e.kind === "exchange"
-).length;
+const MOVES = CAPTURED.filter((e) => e.kind === "move").length;
 
 describe("a printed soak log replays as a fixed case", {
   skip: hasDatabase() ? false : skipMessage(),
@@ -85,37 +83,37 @@ describe("a printed soak log replays as a fixed case", {
   });
 
   // A fault the run saw land moved the table, and every entry after it was written against
-  // that table. Here a landed entry stands for seat 2's pass from move 8 as a second pass,
-  // so seat 1's queen at 12 only follows if the replay applies it. A server that checks the turn
+  // that table. Here a landed entry stands for seat 3's pass from move 4 as a second pass,
+  // so seat 2's four sixes at 5 only follow if the replay applies it. A server that checks the turn
   // token no longer writes such an entry; the replay must still follow one.
   test("a fault that landed is replayed as the move it carried", async () => {
-    const throughEleven = CAPTURED.filter((entry) => entry.at <= 11);
-    const lateDuplicate: SoakLogEntry = {
-      at: 11,
+    const throughThree = CAPTURED.filter((entry) => entry.at <= 3);
+    const latePass: SoakLogEntry = {
+      at: 3,
       kind: "restart-duplicate",
-      move: { kind: "pass", seat: 2 },
-      intentId: "i3",
+      move: { kind: "move", seat: 3, move: { kind: "pass" } },
+      intentId: "i1",
       landed: true,
     };
     const log: SoakLogEntry[] = [
-      ...throughEleven,
-      { at: 11, kind: "restart" },
-      lateDuplicate,
-      { at: 12, kind: "play", seat: 1, cardIds: ["Q_diamonds"] },
+      ...throughThree,
+      { at: 3, kind: "restart" },
+      latePass,
+      { at: 5, kind: "move", seat: 2, move: { kind: "play", cardIds: ["6_clubs", "6_diamonds", "6_hearts", "6_spades"] } },
     ];
-    const moves = throughEleven.filter((e) => e.kind === "play" || e.kind === "pass").length;
+    const moves = throughThree.filter((e) => e.kind === "move").length;
 
     const result = await replaySoakLog(log, server);
 
     assert.deepEqual(result.skipped, [], "the replay did not reach the table the run had");
     assert.equal(result.applied, moves + 2);
-    assert.deepEqual(result.finalCounts, [13, 11, 13, 7]);
+    assert.deepEqual(result.finalCounts, [14, 12, 7, 13]);
 
     const turnedAway = await replaySoakLog(
-      log.map((entry) => (entry === lateDuplicate ? { ...lateDuplicate, landed: false } : entry)),
+      log.map((entry) => (entry === latePass ? { ...latePass, landed: false } : entry)),
       server
     );
-    assert.equal(turnedAway.abandonedAt, 12, "a fault the server refused was applied anyway");
+    assert.equal(turnedAway.abandonedAt, 5, "a fault the server refused was applied anyway");
   });
 
   // The floor. Every assertion above is also satisfied by a replay that seats
@@ -123,7 +121,9 @@ describe("a printed soak log replays as a fixed case", {
   // refuses to follow, this file would pass while replaying nothing.
   test("a log the table cannot follow is reported, not played around", async () => {
     const tampered = CAPTURED.map((entry) =>
-      entry.at === 7 ? { ...entry, kind: "play" as const, seat: 3, cardIds: ["3_spades"] } : entry
+      entry.at === 7
+        ? { at: 7, kind: "move" as const, seat: 0, move: { kind: "play" as const, cardIds: ["3_spades"] } }
+        : entry
     );
     const result = await replaySoakLog(tampered, server);
 

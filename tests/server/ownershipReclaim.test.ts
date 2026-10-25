@@ -12,8 +12,7 @@ import {
   releaseRoomAfter,
   reopenOwnership,
 } from "../../server/game/gameOwnership.ts";
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+import { eventually } from "../helpers/client.ts";
 
 test("a lock query that throws once does not give the room up", async (t) => {
   const clients: EventEmitter[] = [];
@@ -40,8 +39,7 @@ test("a lock query that throws once does not give the room up", async (t) => {
 
   throwNext = true;
   clients[0].emit("error", new Error("Connection terminated unexpectedly"));
-  const deadline = Date.now() + 3_000;
-  while (lockQueries < 3 && Date.now() < deadline) await sleep(50);
+  await eventually(() => lockQueries >= 3, "the reclaim asking for the lock again after the failed query");
 
   assert.deepEqual(lost, [], "a failed lock query was read as the room being held elsewhere");
   assert.equal(ownsRoom("reclaim-room"), true);

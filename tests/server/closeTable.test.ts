@@ -9,12 +9,11 @@ import { closeTable } from "../../server/game/gamePersistence.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { logger } from "../../server/shared/logger.ts";
 import { startRound } from "../../lib/game/gameEngine.ts";
+import { eventually } from "../helpers/client.ts";
 
 // One room per test: the first leaves a status write that never settles in its room's queue.
 let ROOM = "";
 const SEATS = ["Ana", "B1"].map((name, i) => ({ name, type: "human" as const, id: `player_${i}` }));
-
-const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
 
 afterEach(() => activeGames.delete(ROOM));
 
@@ -31,7 +30,7 @@ test("announced, then marked finished, then the row deleted — and gone from me
   closeTable(rt, ROOM, "GAME_INTERRUPTED_EMPTY_SEAT");
 
   assert.equal(activeGames.has(ROOM), false, "the table stayed in memory while its status was written");
-  await settle();
+  await eventually(() => journal.some((e) => e.kind !== "send" && e.name === "discardGame"), "the row's discard queued");
   const order = journal.map((e) => (e.kind === "send" ? e.event : e.name));
   assert.deepEqual(order, ["game:notification", "updateRoomStatus", "discardGame"]);
   assert.equal(journal.some((e) => e.kind === "store" && e.name === "remove"), false, "the delete overtook the status write");
@@ -52,7 +51,7 @@ test("a failed status write is logged and still lets the row go", async (t) => {
   liveTable();
 
   closeTable(rt, ROOM, null);
-  await settle();
+  await eventually(() => journal.some((e) => e.kind === "store" && e.name === "remove"), "the row deleted");
 
   assert.equal(warned.mock.callCount(), 1);
   assert.ok(journal.some((e) => e.kind === "store" && e.name === "remove"), "the row outlived a failed status write");

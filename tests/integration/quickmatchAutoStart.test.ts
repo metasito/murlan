@@ -7,27 +7,20 @@
 // produced it: `rooms.auto_start` has to survive the process being replaced.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Socket } from "socket.io-client";
 import {
   startTestServer,
   hasDatabase,
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor } from "../helpers/client.ts";
-
-interface RoomState {
-  code: string;
-  roomId: string;
-  players: { seatIndex: number; userId: string }[];
-}
-
-/** Long enough for the deal to have arrived if it was ever going to. */
-const OBSERVE_MS = 2_000;
+import { connectAs, leaveRooms, nothingArrives, type TestSocket, waitFor } from "../helpers/client.ts";
+import { installClock } from "../../server/http/clock.ts";
+import { autoStartDelayMs } from "../../server/game/gameTimers.ts";
+import { fakeClock } from "../helpers/fakeClock.ts";
 
 describe("a matchmade table deals itself", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  const sockets: Socket[] = [];
+  const sockets: TestSocket[] = [];
   let n = 0;
 
   before(async () => {
@@ -36,8 +29,7 @@ describe("a matchmade table deals itself", { skip: hasDatabase() ? false : skipM
   });
   after(async () => {
     delete process.env.MURLAN_AUTOSTART_DELAY_MS;
-    for (const s of sockets) s.emit("room:leave");
-    await new Promise((r) => setTimeout(r, 200));
+    await leaveRooms(sockets);
     for (const s of sockets) s.close();
     await server.stop();
   });
@@ -48,19 +40,9 @@ describe("a matchmade table deals itself", { skip: hasDatabase() ? false : skipM
     return client;
   }
 
-  function neverDeals(socket: Socket) {
-    return new Promise<boolean>((resolve) => {
-      const timer = setTimeout(() => resolve(true), OBSERVE_MS);
-      socket.once("game:started", () => {
-        clearTimeout(timer);
-        resolve(false);
-      });
-    });
-  }
-
   test("once quick-match fills it, with nobody asked to host", async () => {
     const first = await player("qm_first");
-    const made = waitFor<RoomState>(first.socket, "room:state");
+    const made = waitFor(first.socket, "room:state");
     first.socket.emit("room:quickmatch", { maxPlayers: 2, gameMode: "free_for_all" });
     await made;
 
@@ -73,19 +55,27 @@ describe("a matchmade table deals itself", { skip: hasDatabase() ? false : skipM
 
   test("but a room opened with create room still waits for its host", async () => {
     const host = await player("cr_host");
-    const made = waitFor<RoomState>(host.socket, "room:state");
+    const made = waitFor(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const room = await made;
 
     const guest = await player("cr_guest");
-    const seated = waitFor<RoomState>(host.socket, "room:state");
-    guest.socket.emit("room:join", { code: room.code });
-    const full = await seated;
-    assert.equal(full.players.length, 2, "the guest must be seated for the room to be full");
+    // Server time from the room filling, so an auto-start it armed fires on the advance below.
+    const clock = fakeClock(Date.now());
+    const restore = installClock(clock);
+    try {
+      const seated = waitFor(host.socket, "room:state");
+      guest.socket.emit("room:join", { code: room.code });
+      const full = await seated;
+      assert.equal(full.players.length, 2, "the guest must be seated for the room to be full");
 
-    assert.ok(
-      await neverDeals(host.socket),
-      "a room its host opened dealt itself — room:start is the host's to send"
-    );
+      const quiet = nothingArrives(host.socket, "game:started", {
+        why: "a room its host opened dealt itself — room:start is the host's to send",
+      });
+      clock.advance(autoStartDelayMs() * 10);
+      await quiet;
+    } finally {
+      restore();
+    }
   });
 });

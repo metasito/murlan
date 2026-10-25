@@ -11,17 +11,15 @@
 // Throughput: npm run soak -- --tables 8 --minutes 1 (moves/sec and broadcast p99)
 import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
-import type { Socket } from "socket.io-client";
 import { startTestServer, hasDatabase, type TestServer } from "../helpers/testServer.ts";
-import { connectAs, reconnectWith, DEADLINE_SCALE } from "../helpers/client.ts";
+import { connectAs, reconnectWith, sendMove, DEADLINE_SCALE, type TestEmits, type TestSocket } from "../helpers/client.ts";
 import { disconnectGraceMs, lobbyGraceMs } from "../../server/game/gameTimers.ts";
 import {
   createDeck,
   getAllValidPlays,
   getValidGivebackCards,
   tableDemand,
-  type Card,
-  type Combination,
+  type Move,
 } from "../../lib/game/gameEngine.ts";
 import {
   checkAll,
@@ -40,32 +38,7 @@ import {
 } from "./invariants.ts";
 import { rng as dealStream } from "../support/game.ts";
 import { SETTLE_CAP_MS } from "./gateBudget.ts";
-import type { WireExchangePhase } from "../../shared/protocol.ts";
-
-interface SanitizedPlayer {
-  name: string;
-  hand: Card[];
-  handCount: number;
-}
-
-interface TableState {
-  players: SanitizedPlayer[];
-  currentTurnIndex: number;
-  lastPlayedCombination: Combination | null;
-  roundOver: boolean;
-  openingCard: Card | null;
-  exchangePhase?: WireExchangePhase;
-  /** `null` once this account holds no seat — the server's own "not seated". */
-  viewerSeatIndex: number | null;
-  turn: string;
-  lastMove: { seq: number };
-}
-
-export interface RoomState {
-  roomId: string;
-  code: string;
-  status: string;
-}
+import type { WireGameState, WireRoomState } from "../../shared/protocol.ts";
 
 /**
  * A deterministic generator, so a failure can be replayed. `Math.random` would
@@ -281,10 +254,7 @@ export type SoakAction =
   | { kind: "restart" };
 
 /** What one seat can decide to do on its own turn. */
-export type SeatAction =
-  | { kind: "play"; seat: number; cardIds: string[] }
-  | { kind: "pass"; seat: number }
-  | { kind: "exchange"; seat: number; cardId: string };
+export type SeatAction = { kind: "move"; seat: number; move: Move };
 
 /** The faults the chaos driver draws from, one per draw. */
 export const FAULTS = [
@@ -304,9 +274,15 @@ export const INTENT_FAULTS = FAULTS.filter((fault) => fault !== "drop");
 /** An intersection rather than `at` on each member: `Omit` over a union collapses it. */
 export type SoakLogEntry = SoakAction & { at: number };
 
-function describeMove(move: SeatAction): string {
+/** The seat's move a log entry carries: its own, or the one a fault re-sent. */
+export function carriedMove(entry: SoakAction): SeatAction | null {
+  if (entry.kind === "move") return entry;
+  return "move" in entry ? entry.move : null;
+}
+
+function describeMove({ move }: SeatAction): string {
   if (move.kind === "play") return move.cardIds.join(" ");
-  if (move.kind === "exchange") return `give ${move.cardId}`;
+  if (move.kind === "giveback") return `give ${move.cardId}`;
   return "pass";
 }
 
@@ -318,12 +294,12 @@ export function formatLogEntry(entry: SoakLogEntry): string {
       return `${at}  deal   round ${entry.round}  ${entry.hands
         .map((hand, seat) => `seat${seat}=[${hand.join(" ")}]`)
         .join("  ")}`;
-    case "play":
-      return `${at}  play   seat${entry.seat}  ${entry.cardIds.join(" ")}`;
-    case "pass":
-      return `${at}  pass   seat${entry.seat}`;
-    case "exchange":
-      return `${at}  give   seat${entry.seat}  ${entry.cardId}`;
+    case "move": {
+      const { move } = entry;
+      if (move.kind === "play") return `${at}  play   seat${entry.seat}  ${move.cardIds.join(" ")}`;
+      if (move.kind === "pass") return `${at}  pass   seat${entry.seat}`;
+      return `${at}  give   seat${entry.seat}  ${move.cardId}`;
+    }
     case "drop":
       return `${at}  drop   seat${entry.seat}  ${entry.username}`;
     case "rejoin":
@@ -358,36 +334,27 @@ function parseArgs(argv: string[]): Options {
   };
 }
 
-/** The events a seat's socket may be asked to send from outside it: leaving a room is `Seat.leave()`'s alone. */
-type SeatIntent =
-  | "room:create"
-  | "room:join"
-  | "room:start"
-  | "game:rematch_vote"
-  | "game:play"
-  | "game:pass"
-  | "game:exchange_give_card";
+/**
+ * The events a seat's socket may be asked to send from outside it: leaving a room is `Seat.leave()`'s
+ * alone, and a move is `Seat.move()`'s.
+ */
+type SeatIntent = "room:create" | "room:join" | "room:start" | "game:rematch_vote";
 
-type MoveIntent = "game:play" | "game:pass" | "game:exchange_give_card";
-
-/** One intent as it went out, so a fault can send it again under the same id. */
+/** One move as it went out, so a fault can send it again under the same id and turn. */
 export interface SentIntent {
-  event: MoveIntent;
-  payload: { intentId: string; [field: string]: unknown };
+  move: Move;
+  intentId: string;
+  turn: string;
+  /** `null` is no answer: none within the budget, or the socket closed under it. */
   ack: Promise<IntentAck | null>;
 }
 
 /** What the runner may do with a seat's socket. */
-export interface SeatSocket {
-  readonly connected: boolean;
-  emit(event: SeatIntent, ...args: unknown[]): unknown;
-  on(event: string, listener: (...args: never[]) => void): unknown;
-  once(event: string, listener: (...args: never[]) => void): unknown;
-  off(event: string, listener?: (...args: never[]) => void): unknown;
-  close(): unknown;
-}
+export type SeatSocket = Pick<TestSocket, "connected" | "on" | "once" | "off" | "close"> & {
+  emit<E extends SeatIntent>(event: E, ...args: Parameters<TestEmits[E]>): unknown;
+};
 
-let socketOf: (seat: Seat) => Socket;
+let socketOf: (seat: Seat) => TestSocket;
 
 export function seatSocket(seat: Seat): SeatSocket {
   return socketOf(seat);
@@ -395,11 +362,11 @@ export function seatSocket(seat: Seat): SeatSocket {
 
 /** One virtual player: a real socket, its own view, and legal moves only. */
 export class Seat {
-  #socket: Socket;
+  #socket: TestSocket;
   readonly username: string;
   readonly userId: string;
   readonly cookie: string;
-  state: TableState | null = null;
+  state: WireGameState | null = null;
   /** Bumped on every `game:state`, so the runner can wait for quiescence. */
   version = 0;
   /**
@@ -448,7 +415,7 @@ export class Seat {
     socketOf = (seat) => seat.#socket;
   }
 
-  constructor(socket: Socket, username: string, userId: string, cookie: string) {
+  constructor(socket: TestSocket, username: string, userId: string, cookie: string) {
     this.#socket = socket;
     this.username = username;
     this.userId = userId;
@@ -457,7 +424,7 @@ export class Seat {
   }
 
   private listen() {
-    this.#socket.on("game:state", (state: TableState, ack?: () => void) => {
+    this.#socket.on("game:state", (state, ack) => {
       ack?.();
       this.state = state;
       this.version += 1;
@@ -503,25 +470,25 @@ export class Seat {
     this.#lastRefusalCode = null;
   }
 
-  /** Sends a move intent with an id, as the app does, and keeps the server's answer. */
-  send(event: MoveIntent, body: Record<string, unknown>, intentId = `i${++this.#intents}`): SentIntent {
-    if (!this.state) throw new Error(`${this.username} holds no state to send a move against`);
-    const payload = { turn: this.state.turn, ...body, intentId };
+  /** Sends a move with an id, as the app does, and keeps the server's answer. */
+  send(move: Move, intentId = `i${++this.#intents}`, turn = this.state?.turn): SentIntent {
+    if (turn === undefined) throw new Error(`${this.username} holds no state to send a move against`);
     const ack = new Promise<IntentAck | null>((resolve) => {
-      this.#socket
-        .timeout(ACK_BUDGET_MS)
-        .emit(event, payload, (err: unknown, reply: IntentAck) => resolve(err ? null : reply));
+      const timer = setTimeout(resolve, ACK_BUDGET_MS, null);
+      void sendMove(this.#socket, move, { intentId, turn }).then((reply) => {
+        clearTimeout(timer);
+        resolve(reply.ok === false && reply.code === "SOCKET_CLOSED" ? null : reply);
+      });
     });
-    return { event, payload, ack };
+    return { move, intentId, turn, ack };
   }
 
   resend(intent: SentIntent): SentIntent {
-    const { intentId, ...body } = intent.payload;
-    return this.send(intent.event, body, intentId);
+    return this.send(intent.move, intent.intentId, intent.turn);
   }
 
   /** Re-attached after a reconnect, because the socket object is new. */
-  adopt(socket: Socket) {
+  adopt(socket: TestSocket) {
     this.#socket = socket;
     this.clearRefusal();
     this.listen();
@@ -570,8 +537,7 @@ export class Seat {
       const giveable = getValidGivebackCards(hand, phase.cardFromLoser.id);
       const card = giveable[Math.floor(rng() * giveable.length)];
       if (!card) return null;
-      this.lastIntent = this.send("game:exchange_give_card", { cardId: card.id });
-      return { kind: "exchange", seat, cardId: card.id };
+      return this.move(seat, { kind: "giveback", cardId: card.id });
     }
 
     if (s.currentTurnIndex !== seat) return null;
@@ -580,14 +546,15 @@ export class Seat {
 
     const plays = getAllValidPlays(hand, tableDemand(s));
 
-    if (plays.length === 0) {
-      this.lastIntent = this.send("game:pass", {});
-      return { kind: "pass", seat };
-    }
-    const combo = plays[Math.floor(rng() * plays.length)];
-    const cardIds = combo.cards.map((c) => c.id);
-    this.lastIntent = this.send("game:play", { cardIds });
-    return { kind: "play", seat, cardIds };
+    if (plays.length === 0) return this.move(seat, { kind: "pass" });
+    const combo = plays[Math.floor(rng() * plays.length)]!;
+    return this.move(seat, { kind: "play", cardIds: combo.cards.map((c) => c.id) });
+  }
+
+  /** Sends `move` for this seat, and the log entry that records it. */
+  move(seat: number, move: Move): SeatAction {
+    this.lastIntent = this.send(move);
+    return { kind: "move", seat, move };
   }
 
   /** Every card this seat holds, in the order the server sent them. */
@@ -607,14 +574,14 @@ export async function openTable(
   server: TestServer,
   count: number,
   seats: Seat[]
-): Promise<RoomState> {
+): Promise<WireRoomState> {
   const tag = Date.now().toString(36);
   for (let i = 0; i < count; i++) {
     const c = await connectAs(server, `soak_${tag}_${i}`);
     seats.push(new Seat(c.socket, c.user.username, c.user.id, c.cookie));
   }
   const host = seats[0];
-  const room = await new Promise<RoomState>((resolve) => {
+  const room = await new Promise<WireRoomState>((resolve) => {
     seatSocket(host).once("room:state", resolve);
     seatSocket(host).emit("room:create", { gameMode: "free_for_all", maxPlayers: count });
   });
@@ -668,10 +635,12 @@ export async function settle(
   }
 }
 
+type PlayAction = SeatAction & { move: Extract<Move, { kind: "play" }> };
+
 /** A fault drawn on one move, injected at the first settled table it fits. */
 type Pending =
   | { kind: "delayed-duplicate" | "restart-duplicate"; from: number; seat: Seat; move: SeatAction; intent: SentIntent }
-  | { kind: "stale"; from: number; seat: Seat; move: Extract<SeatAction, { kind: "play" }>; turn: unknown }
+  | { kind: "stale"; from: number; seat: Seat; move: PlayAction; turn: string }
   | { kind: "out-of-turn" | "restart"; from: number };
 
 const seqOf = (views: SeatView[]) => views[0]?.seq ?? 0;
@@ -784,20 +753,20 @@ export async function runSoak(
       if (fault.kind === "delayed-duplicate" || fault.kind === "restart-duplicate") {
         const restarted = fault.kind === "restart-duplicate";
         if (restarted && !(await restart(before))) return [];
-        const { intentId } = fault.intent.payload;
+        const { intentId } = fault.intent;
         const ack = await fault.seat.resend(fault.intent).ack;
         const after = await settled();
         moveLog.push({ at: moves, kind: fault.kind, move: fault.move, intentId, landed: seqOf(after) !== seqOf(before) });
-        const what = `seat ${fault.move.seat}'s ${fault.intent.event} ${intentId} re-sent after the next move${restarted ? " and a restart" : ""}`;
+        const what = `seat ${fault.move.seat}'s ${fault.intent.move.kind} ${intentId} re-sent after the next move${restarted ? " and a restart" : ""}`;
         if (!restarted) return checkRepeatAnswered(what, await fault.intent.ack, ack, before, after);
         return checkRefused(what, ack, before, after);
       }
       if (fault.kind === "stale") {
         const { seat, move, turn } = fault;
-        const ack = await seat.send("game:play", { cardIds: move.cardIds, turn }).ack;
+        const ack = await seat.send(move.move, undefined, turn).ack;
         const after = await settled();
         moveLog.push({ at: moves, kind: "stale", move, landed: seqOf(after) !== seqOf(before) });
-        const what = `seat ${move.seat}, on move, playing [${move.cardIds.join(" ")}] again, against the turn it already moved on`;
+        const what = `seat ${move.seat}, on move, playing [${move.move.cardIds.join(" ")}] again, against the turn it already moved on`;
         return checkRefused(what, ack, before, after, "NOT_YOUR_TURN");
       }
       const turn = before[0]?.currentTurnIndex;
@@ -809,15 +778,18 @@ export async function runSoak(
       const index = seat?.view()?.seat;
       if (!seat || index === undefined) return [];
       const hand = seat.hand();
-      const move: SeatAction =
-        hand.length > 0 && rng() < 0.5
-          ? { kind: "play", seat: index, cardIds: [hand[Math.floor(rng() * hand.length)]] }
-          : { kind: "pass", seat: index };
-      const sent = move.kind === "play" ? seat.send("game:play", { cardIds: move.cardIds }) : seat.send("game:pass", {});
-      const ack = await sent.ack;
+      const move: SeatAction = {
+        kind: "move",
+        seat: index,
+        move:
+          hand.length > 0 && rng() < 0.5
+            ? { kind: "play", cardIds: [hand[Math.floor(rng() * hand.length)]] }
+            : { kind: "pass" },
+      };
+      const ack = await seat.send(move.move).ack;
       const after = await settled();
       moveLog.push({ at: moves, kind: "out-of-turn", move, landed: seqOf(after) !== seqOf(before) });
-      const what = `seat ${index} ${move.kind === "play" ? `playing ${move.cardIds[0]}` : "passing"} on seat ${turn}'s turn`;
+      const what = `seat ${index} ${move.move.kind === "play" ? `playing ${move.move.cardIds[0]}` : "passing"} on seat ${turn}'s turn`;
       return checkRefused(what, ack, before, after, "NOT_YOUR_TURN");
     };
 
@@ -831,7 +803,7 @@ export async function runSoak(
     };
 
     let pending: Pending | null = null;
-    let lastPlay: { seat: Seat; move: Extract<SeatAction, { kind: "play" }>; turn: unknown } | null = null;
+    let lastPlay: { seat: Seat; move: PlayAction; turn: string } | null = null;
     let staleArmed = 0;
     const deadline = Date.now() + opts.minutes * 60_000;
 
@@ -912,8 +884,9 @@ export async function runSoak(
       }
       // Read before the broadcast lands, so `hand()` is still the hand the play came out of: a
       // seat that emptied it is never on move again, and its stale play could never be injected.
-      if (acted?.did.kind === "play" && acted.seat.hand().length > acted.did.cardIds.length) {
-        lastPlay = { seat: acted.seat, move: acted.did, turn: acted.seat.lastIntent?.payload.turn };
+      const played = acted?.did.move;
+      if (acted && played?.kind === "play" && acted.seat.hand().length > played.cardIds.length) {
+        lastPlay = { seat: acted.seat, move: { ...acted.did, move: played }, turn: acted.seat.lastIntent!.turn };
       }
 
       if (restartedFrom) {
@@ -945,7 +918,7 @@ export async function runSoak(
           at: moves,
           kind: "duplicate",
           move: did,
-          intentId: first.payload.intentId,
+          intentId: first.intentId,
           landed: seqOf(after) - seqOf(views) > 1,
         });
         flag(checkDuplicate(a, b, views, after, did));

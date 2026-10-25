@@ -16,8 +16,10 @@ export function fakeClock(startMs = 1_000_000): FakeClock {
       due.set(id, { at: now + ms, fn });
       return id;
     },
+    // A timer armed before this clock was installed is still the real clock's to clear.
     clearTimeout(handle) {
-      due.delete(handle as number);
+      if (typeof handle === "number") due.delete(handle);
+      else realClock.clearTimeout(handle);
     },
     advance(ms) {
       const end = now + ms;

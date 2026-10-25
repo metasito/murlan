@@ -14,22 +14,11 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor } from "../helpers/client.ts";
-import type { Socket } from "socket.io-client";
-import {
-  driveHumansToRoundOver,
-  waitForRow,
-  type RoomState,
-  type SanitizedState,
-} from "../helpers/gameDriver.ts";
+import { eventually, connectAs, waitFor, type TestSocket } from "../helpers/client.ts";
+import { playRoundOut } from "../helpers/gameDriver.ts";
 
 process.env.MURLAN_AFK_TIMEOUT_MS = "300";
 process.env.MURLAN_DISCONNECT_GRACE_MS = "500";
-
-/** Seats carry their team once the engine has dealt; the sanitiser passes it through. */
-interface TeamedState extends SanitizedState {
-  players: (SanitizedState["players"][number] & { team?: "A" | "B" })[];
-}
 
 describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -43,23 +32,23 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
   });
 
   test("partners sit opposite, the table finishes, and nothing is rated", async () => {
-    const clients: { socket: Socket; user: { id: string }; cookie: string }[] = [];
+    const clients: { socket: TestSocket; user: { id: string }; cookie: string }[] = [];
     for (const name of ["team_a1", "team_b1", "team_a2", "team_b2"]) {
       clients.push(await connectAs(server, name));
     }
 
     try {
-      const created = waitFor<RoomState>(clients[0].socket, "room:state");
+      const created = waitFor(clients[0].socket, "room:state");
       clients[0].socket.emit("room:create", { gameMode: "teams", maxPlayers: 4 });
       let room = await created;
       for (const guest of clients.slice(1)) {
-        const joined = waitFor<RoomState>(guest.socket, "room:state");
+        const joined = waitFor(guest.socket, "room:state");
         guest.socket.emit("room:join", { code: room.code });
         room = await joined;
       }
 
-      const firstState = waitFor<TeamedState>(clients[0].socket, "game:state");
-      const over = driveHumansToRoundOver(
+      const firstState = waitFor(clients[0].socket, "game:state");
+      const over = playRoundOut(
         clients.map((c) => c.socket),
         () => clients[0].socket.emit("room:start"),
         120_000
@@ -79,7 +68,7 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
       assert.equal(payload.scores.length, 4);
 
       for (const { user } of clients) {
-        const row = await waitForRow(async () => {
+        const row = await eventually(async () => {
           const res = await server.query(
             "SELECT game_mode, player_count FROM round_history WHERE user_id = $1",
             [user.id]
@@ -94,7 +83,7 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
       // here. Waiting for it is also what keeps this test honest: it finishes in
       // under a second, and tearing the server down while game-over's
       // fire-and-forget writes are still in flight would cut them off mid-query.
-      const replay = await waitForRow(async () => {
+      const replay = await eventually(async () => {
         const res = await server.query(
           "SELECT game_mode, seats FROM round_replays WHERE player_ids @> $1::jsonb",
           [JSON.stringify([clients[0].user.id])]
@@ -117,23 +106,23 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
     }
   });
   test("a one-round teams match is won by the team, not by the seat that went out", async () => {
-    const clients: { socket: Socket; user: { id: string }; cookie: string }[] = [];
+    const clients: { socket: TestSocket; user: { id: string }; cookie: string }[] = [];
     for (const name of ["single_a1", "single_b1", "single_a2", "single_b2"]) {
       clients.push(await connectAs(server, name));
     }
 
     try {
-      const created = waitFor<RoomState>(clients[0].socket, "room:state");
+      const created = waitFor(clients[0].socket, "room:state");
       clients[0].socket.emit("room:create", { gameMode: "teams", maxPlayers: 4 });
       let room = await created;
       for (const guest of clients.slice(1)) {
-        const joined = waitFor<RoomState>(guest.socket, "room:state");
+        const joined = waitFor(guest.socket, "room:state");
         guest.socket.emit("room:join", { code: room.code });
         room = await joined;
       }
 
-      const firstState = waitFor<TeamedState>(clients[0].socket, "game:state");
-      const over = driveHumansToRoundOver(
+      const firstState = waitFor(clients[0].socket, "game:state");
+      const over = playRoundOut(
         clients.map((c) => c.socket),
         () => clients[0].socket.emit("room:start", { matchLength: "single" }),
         120_000
@@ -170,7 +159,7 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
   test("a teams room cannot be created with fewer than four seats", async () => {
     const host = await connectAs(server, "teams_two_seat");
     try {
-      const refused = waitFor<{ code?: string }>(host.socket, "room:error");
+      const refused = waitFor(host.socket, "room:error");
       host.socket.emit("room:create", { gameMode: "teams", maxPlayers: 2 });
       assert.equal((await refused).code, "TEAMS_REQUIRE_FOUR");
     } finally {
@@ -179,17 +168,17 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
   });
 
   test("three seated humans cannot start a teams match — 2-v-1 is not a teams match", async () => {
-    const clients: { socket: Socket }[] = [];
+    const clients: { socket: TestSocket }[] = [];
     for (const name of ["teams_odd1", "teams_odd2", "teams_odd3"]) {
       clients.push(await connectAs(server, name));
     }
 
     try {
-      const created = waitFor<RoomState>(clients[0].socket, "room:state");
+      const created = waitFor(clients[0].socket, "room:state");
       clients[0].socket.emit("room:create", { gameMode: "teams", maxPlayers: 4 });
       let room = await created;
       for (const guest of clients.slice(1)) {
-        const joined = waitFor<RoomState>(guest.socket, "room:state");
+        const joined = waitFor(guest.socket, "room:state");
         guest.socket.emit("room:join", { code: room.code });
         room = await joined;
       }
@@ -199,7 +188,7 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
         started = true;
       });
 
-      const refused = waitFor<{ code?: string }>(clients[0].socket, "room:error");
+      const refused = waitFor(clients[0].socket, "room:error");
       clients[0].socket.emit("room:start", { fillWithBots: false });
       assert.equal((await refused).code, "TEAMS_REQUIRE_FOUR");
       assert.equal(started, false, "no game is dealt into a 2-v-1");

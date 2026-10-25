@@ -103,12 +103,12 @@ describe("renaming an account", { skip: hasDatabase() ? false : skipMessage() },
     const friend = await connectAs(server, "ren_invitee");
     try {
       await befriend(server, host, friend);
-      const made = waitFor<{ code: string }>(host.socket, "room:state");
+      const made = waitFor(host.socket, "room:state");
       host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
       const room = await made;
 
       assert.equal((await rename(host.cookie, "ren_inviter_now")).status, 200);
-      const invite = waitFor<{ from: string }>(friend.socket, "friend:invite");
+      const invite = waitFor(friend.socket, "friend:invite");
       host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
       assert.equal((await invite).from, "ren_inviter_now");
     } finally {

@@ -25,12 +25,6 @@ import { hasActiveGame } from "../helpers/liveGame.ts";
 
 process.env.MURLAN_AFK_TIMEOUT_MS = "60000";
 
-interface Notification {
-  type?: string;
-  code?: string;
-  message?: string;
-}
-
 describe(
   "timer containment",
   { skip: hasDatabase() ? false : skipMessage() },
@@ -54,7 +48,7 @@ describe(
         "the game must be live before the timer throws"
       );
 
-      const announced = waitFor<Notification>(
+      const announced = waitFor(
         alice.socket,
         "game:notification",
         5_000
