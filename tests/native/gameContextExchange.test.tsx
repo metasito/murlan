@@ -15,7 +15,7 @@ import { GameProvider, useGameSession, useGameTable } from "@/context/GameContex
 import { NotificationProvider } from "@/context/NotificationContext";
 import { useOfflineDriver } from "@/context/offlineDriver";
 import { encodeOfflineSave, OFFLINE_SAVE_KEY } from "@/lib/offlineSave";
-import { OFFLINE_BOT_DELAY_MS } from "@/lib/timeline/offlineBotDelay";
+import { BOT_THINK_MS } from "@/lib/game/turnSchedule";
 import type { GameState } from "@/lib/game/gameEngine";
 import { emptyRankTally } from "@/lib/game/gameEngine";
 
@@ -294,13 +294,17 @@ for (const loser of ["human", "bot"] as const) test(`an offline bot winner gives
   await waitFor(() => expect(shown(view, "saved")).toBe("true"));
   await press(view, "resume");
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, OFFLINE_BOT_DELAY_MS + 100));
+    await new Promise((resolve) => setTimeout(resolve, BOT_THINK_MS + 100));
   });
 
   expect(shown(view, "active")).toBe("true");
   expect(shown(view, "winnerHand")).toBe("A_spades,9_hearts,5_hearts");
 
   await press(view, "ready");
+  expect(shown(view, "active")).toBe("true");
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, BOT_THINK_MS + 100));
+  });
   expect(shown(view, "active")).toBe("false");
   expect(shown(view, "winnerHand")).toBe("A_spades,9_hearts");
   expect(shown(view, "loserHand")).toBe("3_clubs,5_hearts");

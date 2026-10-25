@@ -27,11 +27,13 @@ function fakeSocket() {
     emit(event: string, payload?: unknown) {
       sent.push({ event, payload });
     },
+    once() {},
+    off() {},
     refuse(event: string, code: string, message = "no") {
       handlers.get(event)!({ code, message });
     },
     sent,
-    connected: false,
+    connected: true,
     close() {},
   };
 }
@@ -132,6 +134,7 @@ describe("the soak does not manufacture its own refusals", () => {
       openingCard: null,
       exchangePhase: { kind: "open", winnerIdx: 0, loserIdx: 1, cardFromLoser },
       viewerSeatIndex: 0,
+      turn: "t0",
     } as never;
     return { seat, socket };
   }
@@ -170,15 +173,5 @@ describe("the soak does not manufacture its own refusals", () => {
     const { seat, socket } = exchangeTurn(hand, fromLoser);
     seat.act(() => 0);
     assert.equal(socket.sent[0].payload.cardId, "6_clubs");
-  });
-
-  test("a hand with nothing in 3-10 still gives something back", () => {
-    // The engine's own fallback: an empty giveback list deadlocks the table
-    // behind an overlay that cannot be dismissed.
-    const hand = [card("A_clubs", "A"), card("K_hearts", "K")];
-    const { seat, socket } = exchangeTurn(hand);
-    assert.ok(seat.act(() => 0), "the winner owes a card and did nothing");
-    assert.equal(socket.sent.length, 1);
-    assert.equal(socket.sent[0].payload.cardId, "K_hearts", "the lowest of the two");
   });
 });

@@ -5,10 +5,11 @@ import { trackEvent } from "../shared/events.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import { publishState } from "./gamePersistence.ts";
 import { handleRoundOver } from "./roundOver.ts";
-import { armAfterMove } from "./gameTurn.ts";
+import { armTurn } from "./gameTurn.ts";
 import { appendReplayMove } from "./replayShape.ts";
 import { seatOfUser } from "./onlineGameLogic.ts";
 import { applyMove } from "../../lib/game/gameEngine.ts";
+import { isStaleTurn } from "../../lib/game/moves.ts";
 import type { MoveRefusal, SelectionRefusal } from "../../lib/game/gameEngine.ts";
 import type { AutoMove } from "../../lib/game/autoMove.ts";
 import type { TableAction } from "./tableActions.ts";
@@ -42,6 +43,8 @@ export function moveAction(
 ): Promise<Outcome> | Outcome {
   const { roomId, userId, move } = action;
   const prev = game.gameState;
+  // Before the engine, not after: a retry of a pass that already landed is a legal pass again once the turn comes back.
+  if (isStaleTurn(prev, action.turn)) return MOVE_REFUSAL_CODES.notYourTurn();
   const seat = seatOfUser(game.playerMap, userId) ?? -1;
   const result = applyMove(prev, seat, move);
   if (!result.ok) {
@@ -89,5 +92,5 @@ export function commitMove(rt: TableRuntime, game: OnlineGameState, applied: Aut
   game.gameState = next;
   void publishState(rt, game);
   if (next.roundOver) return handleRoundOver(rt, game.roomId, game);
-  armAfterMove(rt, game.roomId, next);
+  armTurn(rt, game.roomId);
 }

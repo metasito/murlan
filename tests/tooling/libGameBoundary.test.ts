@@ -151,18 +151,20 @@ const serverSafeOffenders = (scans: Scan[]): string[] =>
     .map(describeImport);
 
 const serverFiles = sourcesUnder(root, ["server"]).map(([rel]) => path.join(root, rel));
-const serverLoadedTimelines = [
-  ...new Set(
-    serverFiles
-      .flatMap((f) => scan(f, readFileSync(f, "utf8")).imports)
-      .filter((i) => !i.typeOnly && inside(TIMELINE)(i))
-      .map((i) => target(i.file, i.spec as string) as string),
-  ),
-].sort();
+const timelinesImportedBy = (files: string[]): string[] =>
+  files
+    .flatMap((f) => scan(f, readFileSync(f, "utf8")).imports)
+    .filter((i) => !i.typeOnly && inside(TIMELINE)(i))
+    .map((i) => target(i.file, i.spec as string) as string);
+const serverLoadedTimelines = (() => {
+  const loaded = new Set(timelinesImportedBy(serverFiles));
+  for (const f of loaded) for (const next of timelinesImportedBy([f])) loaded.add(next);
+  return [...loaded].sort();
+})();
 
 test("every lib/timeline module the server imports loads under plain Node: relative `.ts` runtime imports only", () => {
   const named = serverLoadedTimelines.map((f) => path.relative(root, f));
-  for (const needed of ["lib/timeline/dealTimeline.ts", "lib/timeline/exchangeTimeline.ts"]) {
+  for (const needed of ["lib/timeline/turnGates.ts", "lib/timeline/dealTimeline.ts", "lib/timeline/exchangeTimeline.ts"]) {
     assert.ok(named.includes(needed), `the scan of server/ no longer finds its import of ${needed}; it found ${named.join(", ") || "none"}`);
   }
   assert.deepEqual(serverSafeOffenders(serverLoadedTimelines.map((f) => scan(f, readFileSync(f, "utf8")))), []);

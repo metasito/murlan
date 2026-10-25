@@ -377,11 +377,12 @@ describe("broadcasts cross server instances", {
 
     // Last, and deliberately destructive: instance 1 holds the only copy of
     // this game, and a table that dies with one process is a table nobody can
-    // finish. `game:pass` carries no payload, so a reply of NO_LIVE_GAME can
+    // finish. `game:pass` carries no cards, so a reply of NO_LIVE_GAME can
     // only mean the handler ran and found no table.
     await stopInstance(instances[0].child);
 
-    const reply = await intent(bSocket, "game:pass", undefined, 20_000);
+    const reply = await intent(bSocket, "game:pass", { turn: "0" }, 20_000);
+    assert.notEqual(reply.ok ? undefined : reply.code, "INVALID_PAYLOAD", "the pass never reached a handler");
     assert.notEqual(
       reply.ok ? undefined : reply.code,
       "NO_LIVE_GAME",

@@ -128,8 +128,8 @@ describe("runBotTurn plays a weak seat at the floor and a bot seat with the bot"
       roundOver: false,
       finishingOrder: [],
       openingCard: null,
-      lastMove: { seq: 0, kind: "deal" },
-      // A tally of zero reads as a fresh deal, whose bot waits out the deal animation.
+      // A trick just closed, so no deal animation holds the bot.
+      lastMove: { seq: 1, kind: "pass", seat: 3, closedTrick: true },
       playedRanks: [1, ...emptyRankTally().slice(1)],
     };
   }
@@ -144,12 +144,14 @@ describe("runBotTurn plays a weak seat at the floor and a bot seat with the bot"
     activeGames.set(ROOM, game);
     const clock = fakeClock();
     const restore = installClock(clock);
+    process.env.MURLAN_BOT_MOVE_DELAY_MS = "1";
     try {
-      armTurn(rt, ROOM, 0);
-      clock.advance(0);
+      armTurn(rt, ROOM);
+      clock.advance(1);
       const played = await eventually(() => game.gameState.lastPlayedCombination, "the vacant seat's play");
       return { state, played: played.cards.map((c) => c.id) };
     } finally {
+      delete process.env.MURLAN_BOT_MOVE_DELAY_MS;
       restore();
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);

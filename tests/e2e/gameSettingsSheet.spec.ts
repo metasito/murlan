@@ -9,6 +9,7 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
 import { tapPoint } from "./helpers/press";
+import { paintedFrames, type EachPaint } from "./helpers/virtualClock";
 import { TOUCH_TARGET_MIN } from "../../lib/tokens";
 
 const VIEWPORT = { width: 844, height: 390 };
@@ -37,6 +38,8 @@ async function reachableBehindVeil(page: Page): Promise<string[]> {
     `${SHEET},${RAIL}`
   );
 }
+
+test.beforeEach(({ page }) => paintedFrames(page));
 
 test.describe("the rail's settings sheet", () => {
   test("opens beside the rail without trapping the knob that opened it", async ({
@@ -106,11 +109,13 @@ test.describe("the rail's settings sheet", () => {
               if (hit?.closest('[role="button"][aria-label="Impostazioni"]') == null) {
                 covered.push(`${Math.round(t - since)}ms: ${hit?.closest("[data-testid]")?.getAttribute("data-testid")}`);
               }
-              if (t - since > 500) return resolve({ covered, slid });
+              if (t - since > 500) {
+                resolve({ covered, slid });
+                return false;
+              }
             }
-            requestAnimationFrame(sample);
           };
-          requestAnimationFrame(sample);
+          (window as unknown as { murlanEachPaint: EachPaint }).murlanEachPaint(sample);
         }),
       { x, y, sheet: SHEET, railRight }
     );

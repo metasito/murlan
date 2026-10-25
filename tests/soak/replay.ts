@@ -1,9 +1,9 @@
 // tests/soak/replay.ts — hands a soak log back to a real server, move for move.
 //
-// The soak is a search and its seed is a label: the deal comes from `crypto`
-// (`lib/game/gameEngine.ts`'s `shuffleDeck`), so re-running a seed plays a different
-// game with different cards, and the card ids a failure printed mean nothing in
-// it. What survives the run is the log. This replays one, so a night's find can
+// The soak is a search and its seed reproduces only the first deal (`seedDeals`):
+// which seat is waited on, and so every later draw, is wall clock (#597), and a
+// rerun past that plays a different game. What survives the run is the log.
+// This replays one, so a night's find can
 // become a `tests/integration/` case that fails on demand for ever after
 // (`tests/integration/soakLogReplays.test.ts`).
 //
@@ -15,10 +15,10 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { startTestServer, type TestServer } from "../helpers/testServer.ts";
 import { reconnectWith, DEADLINE_SCALE } from "../helpers/client.ts";
-import { redealExactly, forgetActiveGame } from "../helpers/liveGame.ts";
+import { redealExactly, forgetActiveGame, restartUnder } from "../helpers/liveGame.ts";
 import { createDeck } from "../../lib/game/gameEngine.ts";
 import { checkAll, type SeatView, type Violation } from "./invariants.ts";
-import { Seat, openTable, seatSocket, settle, type SoakLogEntry } from "./soak.ts";
+import { Seat, carriedMove, openTable, seatSocket, settle, type SoakLogEntry } from "./soak.ts";
 
 /** How long one replayed move may take to come back as a broadcast. */
 const MOVE_BUDGET_MS = 3_000 * DEADLINE_SCALE;
@@ -94,8 +94,10 @@ export async function replaySoakLog(
     for (const id of hand) if (!known.has(id)) throw new Error(`no such card in the deck: ${id}`);
   }
   for (const entry of log) {
-    if (entry.kind === "deal" || entry.seat < deal.hands.length) continue;
-    throw new Error(`the log names seat ${entry.seat} at move ${entry.at}, of ${deal.hands.length}`);
+    if (entry.kind === "deal" || entry.kind === "restart") continue;
+    const seat = carriedMove(entry)?.seat ?? ("seat" in entry ? entry.seat : 0);
+    if (seat < deal.hands.length) continue;
+    throw new Error(`the log names seat ${seat} at move ${entry.at}, of ${deal.hands.length}`);
   }
   // A second deal is a rematch, and a rematch does not start where this can put
   // a table: it opens in the exchange, with the loser's best card already
@@ -134,13 +136,18 @@ export async function replaySoakLog(
 
     for (const entry of log.slice(1)) {
       if (entry.kind === "deal") continue;
-      const seat = seats[entry.seat];
+      if (entry.kind === "restart") {
+        await settle(seats);
+        restartUnder(roomId);
+        continue;
+      }
       if (entry.kind === "drop") {
-        seatSocket(seat).close();
+        seatSocket(seats[entry.seat]).close();
         await sleep(200);
         continue;
       }
       if (entry.kind === "rejoin") {
+        const seat = seats[entry.seat];
         const back = await reconnectWith(server, seat.cookie);
         const before = seat.version;
         seat.adopt(back);
@@ -153,12 +160,18 @@ export async function replaySoakLog(
         continue;
       }
 
+      // A fault that landed moved the table the rest of the log was written against, so it
+      // is applied as the move it carried; one the server turned away moved nothing.
+      const move = entry.kind === "move" ? entry : "landed" in entry && entry.landed ? carriedMove(entry) : null;
+      if (!move) continue;
+      const seat = seats[move.seat];
+
       // Every move starts from a quiet table, so the broadcast this waits for
       // cannot be the previous move's still arriving.
       await settle(seats);
       const before = seat.version;
       seat.clearRefusal();
-      seat.move(entry.seat, entry.move);
+      seat.move(move.seat, move.move);
 
       if (await waitForOwnBroadcast(seat, before)) {
         applied += 1;

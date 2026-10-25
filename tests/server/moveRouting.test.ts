@@ -11,6 +11,7 @@ import { __resetRateLimits } from "../../server/socket/socketSafety.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { buildCombination, type GameState } from "../../lib/game/gameEngine.ts";
 import { card as c, seat, state as makeState } from "../support/game.ts";
+import { turnOf } from "../../lib/game/moves.ts";
 
 const ROOM = "move-routing-room";
 const SOCKET_ID = "move-routing-socket";
@@ -41,6 +42,13 @@ const table = (over: Partial<GameState>): GameState =>
   });
 
 async function deliver(state: GameState, event: string, body?: unknown) {
+  const { reply, sent } = await replyTo(state, event, body);
+  assert.deepEqual(reply, { ok: true });
+  assert.ok(sent.some((e) => e.event === "game:state"), "the move was not published");
+  return activeGames.get(ROOM)!.gameState;
+}
+
+async function replyTo(state: GameState, event: string, body?: unknown) {
   const { rt, sent } = recordingRuntime();
   activeGames.set(ROOM, onlineTable({ roomId: ROOM, playerMap: { 1: "u1" }, gameState: state }));
   const handlers = new Map<string, (...args: unknown[]) => void>();
@@ -53,13 +61,28 @@ async function deliver(state: GameState, event: string, body?: unknown) {
   socketRoomMap.set(SOCKET_ID, ROOM);
   registerGameplayHandlers({ rt, socket: socket as unknown as GameSocket, userId: "u1" });
   const reply = await new Promise((resolve) => handlers.get(event)!(body, resolve));
-  assert.deepEqual(reply, { ok: true });
-  assert.ok(sent.some((e) => e.event === "game:state"), "the move was not published");
-  return activeGames.get(ROOM)!.gameState;
+  return { reply, sent };
 }
 
+test("a move naming no turn is refused before it reaches the table, for each of the three events", async () => {
+  const exchange = table({
+    lastPlayedCombination: null,
+    exchangePhase: { kind: "open", winnerIdx: 1, loserIdx: 2, cardFromLoser: c("J", "diamonds") },
+  });
+  const moves: [GameState, string, unknown][] = [
+    [table({}), "game:play", { cardIds: ["J_diamonds"] }],
+    [table({}), "game:pass", undefined],
+    [exchange, "game:exchange_give_card", { cardId: "4_clubs" }],
+  ];
+  for (const [state, event, body] of moves) {
+    const { reply, sent } = await replyTo(state, event, body);
+    assert.deepEqual(reply, { ok: false, code: "INVALID_PAYLOAD" }, event);
+    assert.deepEqual(sent, [], `${event} reached the table`);
+  }
+});
+
 test("game:play delivers a play of exactly the cards named, for the sender's seat", async () => {
-  const next = await deliver(table({}), "game:play", { cardIds: ["J_diamonds"] });
+  const next = await deliver(table({}), "game:play", { cardIds: ["J_diamonds"], turn: turnOf(table({})) });
   assert.equal(next.lastPlayedBy, 1);
   assert.deepEqual(next.lastPlayedCombination?.cards.map((x) => x.id), ["J_diamonds"]);
   assert.deepEqual(next.players[1].hand.map((x) => x.id), ["4_clubs"]);
@@ -67,7 +90,7 @@ test("game:play delivers a play of exactly the cards named, for the sender's sea
 });
 
 test("game:pass delivers a pass for the sender's seat", async () => {
-  const next = await deliver(table({}), "game:pass");
+  const next = await deliver(table({}), "game:pass", { turn: turnOf(table({})) });
   assert.equal(next.passCount, 1);
   assert.equal(next.lastPlayedBy, 2);
   assert.deepEqual(next.players[1].hand.map((x) => x.id), ["4_clubs", "J_diamonds"]);
@@ -79,9 +102,9 @@ test("game:exchange_give_card delivers a giveback of the card named, from the se
     lastPlayedCombination: null,
     exchangePhase: { kind: "open", winnerIdx: 1, loserIdx: 2, cardFromLoser: c("J", "diamonds") },
   });
-  const next = await deliver(state, "game:exchange_give_card", { cardId: "4_clubs" });
+  const next = await deliver(state, "game:exchange_give_card", { cardId: "4_clubs", turn: turnOf(state) });
   assert.equal(next.exchangePhase?.kind, "settled");
-  assert.equal(next.exchangePhase.cardToLoser.id, "4_clubs");
+  assert.equal(next.exchangePhase.cardToLoser?.id, "4_clubs");
   assert.deepEqual(next.players[1].hand.map((x) => x.id), ["J_diamonds"]);
   assert.ok(next.players[2].hand.some((x) => x.id === "4_clubs"));
   assert.equal(next.currentTurnIndex, 2);

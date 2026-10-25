@@ -14,7 +14,7 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, intent, leaveRooms, nothingArrives, type TestSocket, waitFor } from "../helpers/client.ts";
+import { connectAs, intent, leaveRooms, nothingArrives, sendMove, type TestSocket, waitFor } from "../helpers/client.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import type { WireGameState } from "../../shared/protocol.ts";
 
@@ -84,7 +84,7 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.ok(idx >= 0, "neither client holds the seat on turn");
     const start = states[idx].openingCard;
     assert.ok(start, "the opening round must name a start card");
-    seats[idx].socket.emit("game:play", { cardIds: [start!.id] });
+    void sendMove(seats[idx].socket, { kind: "play", cardIds: [start!.id] });
   }
 
   test("a seated player still receives their own hand", async () => {
@@ -141,8 +141,8 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     const before = await joined;
 
     // Including the genuinely legal opening card, played from the wrong socket.
-    await intent(watcher.socket, "game:play", { cardIds: [aliceState.openingCard!.id] });
-    await intent(watcher.socket, "game:pass");
+    await intent(watcher.socket, "game:play", { cardIds: [aliceState.openingCard!.id], turn: before.turn });
+    await intent(watcher.socket, "game:pass", { turn: before.turn });
 
     const check = waitFor(watcher.socket, "game:state", 4000);
     watcher.socket.emit("room:spectate", { code: room.code });

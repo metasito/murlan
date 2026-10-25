@@ -69,7 +69,7 @@ function ceremonyRunning(phase: Extract<ExchangePhase, { kind: "settled" }>, now
 }
 
 /** How long a giveback's ceremony runs: the window above, and the wait before the next seat moves. */
-export function settledCeremonyMs(): number {
+function settledCeremonyMs(): number {
   return exchangeAnnounceMs(false);
 }
 
@@ -118,8 +118,9 @@ export function visibleExchangePhase(
       return { kind: "open", winnerIdx, loserIdx, cardFromLoser: phase.cardFromLoser };
     case "settled": {
       const isParticipant = viewerSeatIndex === winnerIdx || viewerSeatIndex === loserIdx;
-      return isParticipant || ceremonyRunning(phase, now)
-        ? { kind: "settled", winnerIdx, loserIdx, cardToLoser: phase.cardToLoser }
+      const { cardToLoser } = phase;
+      return cardToLoser && (isParticipant || ceremonyRunning(phase, now))
+        ? { kind: "settled", winnerIdx, loserIdx, cardToLoser }
         : { kind: "settled", winnerIdx, loserIdx };
     }
   }

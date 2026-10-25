@@ -101,6 +101,20 @@ describe("persisted game_state envelope", () => {
     assert.deepEqual(restored.gameState, gameState);
   });
 
+  test("a one-way exchange, with nothing handed back, restores as it was and the loser takes the next move", () => {
+    const oneWay = state({
+      players: [seat(0, [card("K", "clubs"), card("A", "spades")]), seat(1, [card("4", "clubs")])],
+      currentTurnIndex: 1,
+      lastPlayedBy: 1,
+      openingCard: null,
+      exchangePhase: { kind: "settled", winnerIdx: 0, loserIdx: 1, cardFromLoser: card("A", "spades"), settledAt: 7 },
+    });
+    const back = restore(packPersistedState(oneWay, flags, 0, JOIN_CODE, match, seats));
+    assert.deepEqual(back.gameState, oneWay);
+    const move = chooseMove(back.gameState, actingSeat(back.gameState), "floor");
+    assert.deepEqual(move, { kind: "play", cardIds: ["4_clubs"] });
+  });
+
   test("the match's game mode does not overwrite the round's", () => {
     // GameState carries its own gameMode. A flat envelope would have the two
     // share a key, and the round on the table would come back a different game.

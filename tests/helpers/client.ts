@@ -92,6 +92,9 @@ export interface SocketCredentials {
 
 export type Opened = { ok: true; socket: TestSocket } | { ok: false; err: string };
 
+/** The `turn` of the latest `game:state` each socket was sent: what `sendMove` names its move against. */
+const latestTurn = new WeakMap<TestSocket, string>();
+
 /** The one handshake: resolves either way, and a refused socket is already closed. */
 export function openSocket(at: TestServer | string, how: SocketCredentials = {}): Promise<Opened> {
   const url = typeof at === "string" ? at : at.url;
@@ -104,6 +107,7 @@ export function openSocket(at: TestServer | string, how: SocketCredentials = {})
     transports: ["websocket"],
     reconnection: false,
   });
+  socket.on("game:state", (state) => latestTurn.set(socket, state.turn));
   return new Promise((resolve) => {
     socket.once("connect", () => resolve({ ok: true, socket }));
     socket.once("connect_error", (e) => {
@@ -236,11 +240,20 @@ export async function leaveRooms(sockets: (TestSocket | null | undefined)[]): Pr
 /**
  * The one test-side map from a `Move` to its socket intent. Never rejects: a driver fires it from a
  * listener, and a socket closed under it is the scenario, not a failure. A move the socket cannot
- * carry, or that is lost when it closes, resolves `{ ok: false, code: "SOCKET_CLOSED" }`.
+ * carry, or that is lost when it closes, resolves `{ ok: false, code: "SOCKET_CLOSED" }`. The move
+ * names the turn of the latest state the socket saw, unless `opts.turn` names another; a socket that
+ * has seen none cannot move. `opts.intentId` sends it as a retry of the intent that id names.
  */
-export function sendMove(socket: TestSocket, move: Move): Promise<IntentReply> {
+export function sendMove(
+  socket: TestSocket,
+  move: Move,
+  opts: { intentId?: string; turn?: string } = {}
+): Promise<IntentReply> {
   const closed: IntentReply = { ok: false, code: "SOCKET_CLOSED" };
   if (!socket.connected) return Promise.resolve(closed);
+  const turn = opts.turn ?? latestTurn.get(socket);
+  assert.ok(turn !== undefined, "sendMove: this socket has been sent no game:state to name a turn from");
+  const id = opts.intentId === undefined ? {} : { intentId: opts.intentId };
   return new Promise((resolve) => {
     const gone = () => resolve(closed);
     socket.once("disconnect", gone);
@@ -248,9 +261,9 @@ export function sendMove(socket: TestSocket, move: Move): Promise<IntentReply> {
       socket.off("disconnect", gone);
       resolve(reply);
     };
-    if (move.kind === "play") socket.emit("game:play", { cardIds: move.cardIds }, ack);
-    else if (move.kind === "pass") socket.emit("game:pass", undefined, ack);
-    else socket.emit("game:exchange_give_card", { cardId: move.cardId }, ack);
+    if (move.kind === "play") socket.emit("game:play", { cardIds: move.cardIds, turn, ...id }, ack);
+    else if (move.kind === "pass") socket.emit("game:pass", { turn, ...id }, ack);
+    else socket.emit("game:exchange_give_card", { cardId: move.cardId, turn, ...id }, ack);
   });
 }
 

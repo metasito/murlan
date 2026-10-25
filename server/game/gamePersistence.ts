@@ -24,6 +24,7 @@ import {
 } from "./onlineGameLogic.ts";
 import { toEnvelope } from "./tableState.ts";
 import type { GameState, Card } from "../../lib/game/gameEngine.ts";
+import { turnOf } from "../../lib/game/moves.ts";
 import type { WireGameState } from "../../shared/protocol.ts";
 
 export function sanitizeStateForPlayer(
@@ -45,6 +46,7 @@ export function sanitizeStateForPlayer(
     // over or never moves. The deadline rides along only as a reset key.
     turnDeadlineMs,
     turnSecondsRemaining: secondsUntil(turnDeadlineMs),
+    turn: turnOf(state),
     exchangePhase: visibleExchangePhase(state.exchangePhase, viewerSeatIndex, now()),
     players: state.players.map((p, idx) => {
       const isViewer = playerMap[idx] === viewerUserId;
@@ -183,7 +185,9 @@ export function sendGameStateTo(rt: TableRuntime, uid: string, game: OnlineGameS
 export function publishState(rt: TableRuntime, game: OnlineGameState): Promise<unknown> {
   // Before the first seat is served, so the broadcast that closes an exchange
   // is inside its own ceremony window rather than one tick outside it.
-  markExchangeSettled(game.gameState.exchangePhase, now());
+  const at = now();
+  markExchangeSettled(game.gameState.exchangePhase, at);
+  if (game.gameState.lastMove.kind === "deal") game.gameState.dealtAt ??= at;
   Object.values(game.playerMap).forEach((uid) => sendGameStateTo(rt, uid, game));
   // Spectators go through the same sanitiser. seatOfUser returns null for
   // a userId that holds no seat, and every hand is blanked on that basis, so a
@@ -213,7 +217,7 @@ export function closeTable(rt: TableRuntime, roomId: string, notice: CloseNotice
  * Runs a timer body under the same contract `onEvent` gives an inbound event: a
  * throw degrades to a closed table rather than escaping the callback.
  *
- * The containment is load-bearing rather than tidy. `armTurn` clears the room's
+ * The containment is load-bearing rather than tidy. `armTurn` clears the turn's
  * timers before it arms the next one, and it is only ever reached from a move, a
  * rejoin, a disconnect or another timer — so a throw inside a timer body leaves
  * the room with nothing pending and nothing that will ever re-arm it. The table
