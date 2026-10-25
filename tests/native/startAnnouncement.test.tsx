@@ -202,17 +202,16 @@ describe('the round-opening announcement', () => {
   // charged is the one the deadline's owner keeps, so the client stops its own
   // and leaves a server's alone.
   it('stops a clock this client owns while it holds, and starts it on the way out', async () => {
-    const clock: TurnTimerConfig = { seconds: 20, table: 'online', pausable: true };
-    const view = await render(table(state(OPENER), { viewerSeat: OPENER, turnTimer: clock }));
+    const clock: TurnTimerConfig = { seconds: 20, table: 'offline' };
+    const view = await render(table(state(OPENER), { turnTimer: clock }));
+    // The opener's seat ring: an offline lead has no chip countdown, so the ring is the clock here.
+    const rings = () => screen.queryAllByTestId('seat-turn-clock', { includeHiddenElements: true }).length;
 
-    // Hidden elements included both times: while the gate holds, the chip
-    // carrying the countdown is withdrawn along with the rest of the table, so
-    // a default query would report the clock stopped whether it was or not.
-    expect(screen.queryByText('20', { includeHiddenElements: true })).toBeNull();
+    expect(rings()).toBe(0);
 
     await fireEvent.press(screen.getByTestId('start-reason-gate', { includeHiddenElements: true }));
     expect(screen.queryByTestId('start-reason-gate', { includeHiddenElements: true })).toBeNull();
-    expect(screen.getByText('20', { includeHiddenElements: true })).toBeTruthy();
+    expect(rings()).toBe(1);
 
     await view.unmount();
   });

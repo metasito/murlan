@@ -38,7 +38,7 @@ describe("turnTimerActive", () => {
     isMyTurn: true,
     isFinished: false,
     roundOver: false,
-    exchangeOpen: false,
+    exchangeHolds: false,
   };
 
   test("runs while answering a combination on your turn", () => {
@@ -46,14 +46,14 @@ describe("turnTimerActive", () => {
   });
 
   test("never during the exchange, after the game, or when it is not your turn", () => {
-    assert.equal(turnTimerActive({ ...base, exchangeOpen: true }), false);
+    assert.equal(turnTimerActive({ ...base, exchangeHolds: true }), false);
     assert.equal(turnTimerActive({ ...base, roundOver: true }), false);
     assert.equal(turnTimerActive({ ...base, isMyTurn: false }), false);
     assert.equal(turnTimerActive({ ...base, isFinished: true }), false);
   });
 
   test("a lifted announcement hold never overrides the harder stops", () => {
-    assert.equal(turnTimerActive({ ...base, exchangeOpen: true, announcementHolds: false }), false);
+    assert.equal(turnTimerActive({ ...base, exchangeHolds: true, announcementHolds: false }), false);
   });
 
   test("an announcement holding the table stops a clock this client owns", () => {
@@ -67,8 +67,8 @@ describe("turnTimerActive", () => {
   });
 
   test("…and the caller says so, because a pause a server is not keeping is a lie", () => {
-    // Online the deadline is the server's: `app/(online)/game.tsx` passes no
-    // `pausable`, so the hold never reaches here and the clock keeps running.
+    // Online the deadline is the server's: `turnPresentation` holds only an
+    // offline table, so the hold never reaches here and the clock keeps running.
     assert.equal(
       turnTimerActive({ ...base, announcementHolds: false }),
       true
@@ -148,48 +148,33 @@ const TURN_TABLE: [Bit, Bit, Bit, Bit, Bit, string, string, Bit, string][] = [
  * Both timer questions over every input they read: `c` the viewer's chip counts down,
  * `s` the ring on the seat on move sweeps.
  *
- * Bits: isMyTurn, isFinished, isNewTrick, roundOver, exchangeOpen, online, pausable, holdingForStart.
+ * Bits: isMyTurn, isFinished, isNewTrick, roundOver, exchangeOpen, online, holdingForStart.
+ * Offline owns its deadline and pauses it for an announcement; online never does (the server's AFK window runs on).
  */
 const CLOCK_TABLE: string[] = [
-  "00000000:-s 00000001:-s 00000010:-s 00000011:-- 00000100:-s 00000101:-s 00000110:-s 00000111:--",
-  "00001000:-- 00001001:-- 00001010:-- 00001011:-- 00001100:-- 00001101:-- 00001110:-- 00001111:--",
-  "00010000:-- 00010001:-- 00010010:-- 00010011:-- 00010100:-- 00010101:-- 00010110:-- 00010111:--",
-  "00011000:-- 00011001:-- 00011010:-- 00011011:-- 00011100:-- 00011101:-- 00011110:-- 00011111:--",
-  "00100000:-s 00100001:-s 00100010:-s 00100011:-- 00100100:-s 00100101:-s 00100110:-s 00100111:--",
-  "00101000:-- 00101001:-- 00101010:-- 00101011:-- 00101100:-- 00101101:-- 00101110:-- 00101111:--",
-  "00110000:-- 00110001:-- 00110010:-- 00110011:-- 00110100:-- 00110101:-- 00110110:-- 00110111:--",
-  "00111000:-- 00111001:-- 00111010:-- 00111011:-- 00111100:-- 00111101:-- 00111110:-- 00111111:--",
-  "01000000:-s 01000001:-s 01000010:-s 01000011:-- 01000100:-s 01000101:-s 01000110:-s 01000111:--",
-  "01001000:-- 01001001:-- 01001010:-- 01001011:-- 01001100:-- 01001101:-- 01001110:-- 01001111:--",
-  "01010000:-- 01010001:-- 01010010:-- 01010011:-- 01010100:-- 01010101:-- 01010110:-- 01010111:--",
-  "01011000:-- 01011001:-- 01011010:-- 01011011:-- 01011100:-- 01011101:-- 01011110:-- 01011111:--",
-  "01100000:-s 01100001:-s 01100010:-s 01100011:-- 01100100:-s 01100101:-s 01100110:-s 01100111:--",
-  "01101000:-- 01101001:-- 01101010:-- 01101011:-- 01101100:-- 01101101:-- 01101110:-- 01101111:--",
-  "01110000:-- 01110001:-- 01110010:-- 01110011:-- 01110100:-- 01110101:-- 01110110:-- 01110111:--",
-  "01111000:-- 01111001:-- 01111010:-- 01111011:-- 01111100:-- 01111101:-- 01111110:-- 01111111:--",
-  "10000000:cs 10000001:cs 10000010:cs 10000011:-- 10000100:cs 10000101:cs 10000110:cs 10000111:--",
-  "10001000:-- 10001001:-- 10001010:-- 10001011:-- 10001100:-- 10001101:-- 10001110:-- 10001111:--",
-  "10010000:-- 10010001:-- 10010010:-- 10010011:-- 10010100:-- 10010101:-- 10010110:-- 10010111:--",
-  "10011000:-- 10011001:-- 10011010:-- 10011011:-- 10011100:-- 10011101:-- 10011110:-- 10011111:--",
-  "10100000:-s 10100001:-s 10100010:-s 10100011:-- 10100100:cs 10100101:cs 10100110:cs 10100111:--",
-  "10101000:-- 10101001:-- 10101010:-- 10101011:-- 10101100:-- 10101101:-- 10101110:-- 10101111:--",
-  "10110000:-- 10110001:-- 10110010:-- 10110011:-- 10110100:-- 10110101:-- 10110110:-- 10110111:--",
-  "10111000:-- 10111001:-- 10111010:-- 10111011:-- 10111100:-- 10111101:-- 10111110:-- 10111111:--",
-  "11000000:-s 11000001:-s 11000010:-s 11000011:-- 11000100:-s 11000101:-s 11000110:-s 11000111:--",
-  "11001000:-- 11001001:-- 11001010:-- 11001011:-- 11001100:-- 11001101:-- 11001110:-- 11001111:--",
-  "11010000:-- 11010001:-- 11010010:-- 11010011:-- 11010100:-- 11010101:-- 11010110:-- 11010111:--",
-  "11011000:-- 11011001:-- 11011010:-- 11011011:-- 11011100:-- 11011101:-- 11011110:-- 11011111:--",
-  "11100000:-s 11100001:-s 11100010:-s 11100011:-- 11100100:-s 11100101:-s 11100110:-s 11100111:--",
-  "11101000:-- 11101001:-- 11101010:-- 11101011:-- 11101100:-- 11101101:-- 11101110:-- 11101111:--",
-  "11110000:-- 11110001:-- 11110010:-- 11110011:-- 11110100:-- 11110101:-- 11110110:-- 11110111:--",
-  "11111000:-- 11111001:-- 11111010:-- 11111011:-- 11111100:-- 11111101:-- 11111110:-- 11111111:--",
+  "0000000:-s 0000001:-- 0000010:-s 0000011:-s 0000100:-- 0000101:-- 0000110:-s 0000111:-s",
+  "0001000:-- 0001001:-- 0001010:-- 0001011:-- 0001100:-- 0001101:-- 0001110:-- 0001111:--",
+  "0010000:-s 0010001:-- 0010010:-s 0010011:-s 0010100:-- 0010101:-- 0010110:-s 0010111:-s",
+  "0011000:-- 0011001:-- 0011010:-- 0011011:-- 0011100:-- 0011101:-- 0011110:-- 0011111:--",
+  "0100000:-s 0100001:-- 0100010:-s 0100011:-s 0100100:-- 0100101:-- 0100110:-s 0100111:-s",
+  "0101000:-- 0101001:-- 0101010:-- 0101011:-- 0101100:-- 0101101:-- 0101110:-- 0101111:--",
+  "0110000:-s 0110001:-- 0110010:-s 0110011:-s 0110100:-- 0110101:-- 0110110:-s 0110111:-s",
+  "0111000:-- 0111001:-- 0111010:-- 0111011:-- 0111100:-- 0111101:-- 0111110:-- 0111111:--",
+  "1000000:cs 1000001:-- 1000010:cs 1000011:cs 1000100:-- 1000101:-- 1000110:cs 1000111:cs",
+  "1001000:-- 1001001:-- 1001010:-- 1001011:-- 1001100:-- 1001101:-- 1001110:-- 1001111:--",
+  "1010000:-s 1010001:-- 1010010:cs 1010011:cs 1010100:-- 1010101:-- 1010110:cs 1010111:cs",
+  "1011000:-- 1011001:-- 1011010:-- 1011011:-- 1011100:-- 1011101:-- 1011110:-- 1011111:--",
+  "1100000:-s 1100001:-- 1100010:-s 1100011:-s 1100100:-- 1100101:-- 1100110:-s 1100111:-s",
+  "1101000:-- 1101001:-- 1101010:-- 1101011:-- 1101100:-- 1101101:-- 1101110:-- 1101111:--",
+  "1110000:-s 1110001:-- 1110010:-s 1110011:-s 1110100:-- 1110101:-- 1110110:-s 1110111:-s",
+  "1111000:-- 1111001:-- 1111010:-- 1111011:-- 1111100:-- 1111101:-- 1111110:-- 1111111:--",
 ];
 const clockRows = CLOCK_TABLE.flatMap((line) => line.split(" ")).map((cell) => {
   const [bits, answer] = cell.split(":");
-  const [isMyTurn, isFinished, isNewTrick, roundOver, exchangeOpen, online, pausable, holdingForStart] = [...bits].map(
+  const [isMyTurn, isFinished, isNewTrick, roundOver, exchangeOpen, online, holdingForStart] = [...bits].map(
     (b) => b === "1"
   );
-  return { isMyTurn, isFinished, isNewTrick, roundOver, exchangeOpen, online, pausable, holdingForStart, answer };
+  return { isMyTurn, isFinished, isNewTrick, roundOver, exchangeOpen, online, holdingForStart, answer };
 });
 
 const fakeT = ((key: string, params?: Record<string, unknown>) => (params ? `${key}(${params.name})` : key)) as TFn;
@@ -212,8 +197,8 @@ describe("the turn chip and its clocks", () => {
   test("the tables cover every input", () => {
     assert.equal(TURN_TABLE.length, 20);
     assert.equal(new Set(TURN_TABLE.map((r) => r.slice(0, 5).join(""))).size, 20);
-    assert.equal(clockRows.length, 256);
-    assert.equal(new Set(clockRows.map((r) => JSON.stringify(r))).size, 256);
+    assert.equal(clockRows.length, 128);
+    assert.equal(new Set(clockRows.map((r) => JSON.stringify(r))).size, 128);
   });
 
   for (const [roundOver, matchOver, dealing, viewerOnMove, exchange, , , , a11y] of TURN_TABLE) {
@@ -288,7 +273,7 @@ describe("the turn chip and its clocks", () => {
         ...base,
         roundOver: r.roundOver,
         exchange: { ...base.exchange, open: r.exchangeOpen },
-        timer: { seconds: 20, table: r.online ? "online" : "offline", pausable: r.pausable },
+        timer: { seconds: 20, table: r.online ? "online" : "offline" },
         isMyTurn: r.isMyTurn,
         isFinished: r.isFinished,
         isNewTrick: r.isNewTrick,
@@ -347,10 +332,10 @@ describe("the turn chip and its clocks", () => {
     }
   });
 
-  test("the give row is the policy's too: offline it has no deadline, online it has", () => {
+  test("the give row is the policy's too: offline it has no deadline, online it has one the chip counts down", () => {
     for (const table of ["online", "offline"] as const) {
       const shown = turnPresentation({ ...base, shownTurnIsMine: true, isMyTurn: true, isNewTrick: true, exchange: { ...base.exchange, open: true }, timer: { seconds: 20, table } });
-      assert.equal(shown.clock.active, false, "the exchange holds the clock whatever the row says");
+      assert.equal(shown.clock.active, TURN_POLICY[table].give.timed, `${table} give`);
       assert.equal(turnAction({ exchangeOpen: true, leading: true }), "give");
     }
     assert.equal(turnAction({ exchangeOpen: false, leading: true }), "lead");

@@ -283,7 +283,7 @@ describe("a seat's turn clock", () => {
       startReason: { type: 'start_card', card: card('3_1', '3', 'spades'), playerIdx: 1 },
       playedRanks: Array.from({ length: 15 }, () => 0),
     });
-    await render(table(opening, { ...OFFLINE_TIMER, pausable: true }));
+    await render(table(opening, OFFLINE_TIMER));
     expect(gate()).not.toBeNull();
     expect(clocks()).toBe(0);
     await act(async () => {
@@ -293,18 +293,26 @@ describe("a seat's turn clock", () => {
     expect(clocks()).toBe(1);
   });
 
-  it('is dark through the exchange', async () => {
-    await renderSettled(
-      table(
-        state({
-          lastPlayedCombination: single(KING),
-          lastPlayedBy: 0,
-          exchangePhase: { kind: "open", winnerIdx: 1, loserIdx: 0, cardFromLoser: KING },
-        }),
-        ONLINE_TIMER
-      )
-    );
+  const EXCHANGE = (winnerIdx: number): Partial<GameState> => ({
+    lastPlayedCombination: single(KING),
+    lastPlayedBy: 0,
+    currentTurnIndex: winnerIdx,
+    exchangePhase: { kind: 'open', winnerIdx, loserIdx: 3 - winnerIdx, cardFromLoser: KING },
+  });
+
+  it('is dark through the exchange offline', async () => {
+    await renderSettled(table(state(EXCHANGE(1)), OFFLINE_TIMER));
     expect(clocks()).toBe(0);
+  });
+
+  it("counts the viewer's own chip down while they choose the card to give online, and not offline", async () => {
+    await renderSettled(table(state(EXCHANGE(0)), ONLINE_TIMER));
+    const left = screen.getByTestId('turn-chip-count', { includeHiddenElements: true }).props.children as number;
+    expect(left).toBeGreaterThan(0);
+    expect(left).toBeLessThanOrEqual(ONLINE_TIMER.seconds);
+    await screen.unmount();
+    await renderSettled(table(state(EXCHANGE(0)), OFFLINE_TIMER));
+    expect(screen.queryByTestId('turn-chip-clock', { includeHiddenElements: true })).toBeNull();
   });
 });
 

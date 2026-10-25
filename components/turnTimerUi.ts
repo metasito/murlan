@@ -39,7 +39,8 @@ export function turnTimerActive(opts: {
   isMyTurn: boolean;
   isFinished: boolean;
   roundOver: boolean;
-  exchangeOpen: boolean;
+  /** The exchange is open and its give has no deadline at this table: `TURN_POLICY.give.timed` is false. */
+  exchangeHolds: boolean;
   /**
    * An announcement is holding the table, and this client owns the deadline it
    * would be holding. A pause a server is not keeping would draw a clock with
@@ -49,7 +50,7 @@ export function turnTimerActive(opts: {
   announcementHolds?: boolean;
 }): boolean {
   if (!opts.isMyTurn || opts.isFinished) return false;
-  if (opts.roundOver || opts.exchangeOpen) return false;
+  if (opts.roundOver || opts.exchangeHolds) return false;
   if (opts.announcementHolds) return false;
   return true;
 }
@@ -81,13 +82,6 @@ export interface TurnTimerConfig {
    * countdown is only a display of it.
    */
   onExpire?: () => void;
-  /**
-   * Whether this client owns the deadline, and may therefore stop the clock
-   * while an announcement is holding the table. True offline. False online:
-   * the server's AFK window keeps running whatever the client draws, so a
-   * pause here would show a seat more time than it has.
-   */
-  pausable?: boolean;
 }
 
 export type TurnState = "matchOver" | "roundOver" | "dealing" | "yourTurn" | "turnOf";
@@ -155,12 +149,13 @@ export function turnPresentation(i: {
   const clockShown = i.shownTurnIsMine && !i.isFinished && !roundOver;
   const state = turnState({ roundOver, matchOver: i.matchOver, dealing: i.dealing, viewerOnMove: clockShown && !i.dealing });
   const say = (key: TranslationKey) => (state === "turnOf" ? i.t(key, { name: i.onMoveName }) : i.t(key));
-  const announcementHolds = i.holdingForStart && (timer?.pausable ?? false);
+  const announcementHolds = i.holdingForStart && timer?.table === "offline";
   // The ring only ever sits on a seat whose turn it is, and never on one that has gone out:
   // `getNextActivePlayer` (lib/game/gameEngine.ts) steps over an empty hand.
+  const giveHeld = !!timer && exchange.open && !TURN_POLICY[timer.table].give.timed;
   const runs = (who: { isMyTurn: boolean; isFinished: boolean }) =>
     !!timer &&
-    turnTimerActive({ ...who, roundOver, exchangeOpen: exchange.open, announcementHolds });
+    turnTimerActive({ ...who, roundOver, exchangeHolds: giveHeld, announcementHolds });
   const turnResetKey = `${i.turnToken}|${timer?.resetKey ?? ""}`;
   const timedHere = !!timer && TURN_POLICY[timer.table][turnAction({ exchangeOpen: exchange.open, leading: i.isNewTrick })].timed;
   const active = timedHere && runs({ isMyTurn: i.isMyTurn, isFinished: i.isFinished });
