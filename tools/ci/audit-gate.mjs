@@ -5,11 +5,23 @@
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { runBin } from "../../scripts/lib/proc.mjs";
 
-/** @param {{ vulnerabilities?: Record<string, { severity: string, fixAvailable: unknown }> } | null} report */
+/**
+ * A package flagged only because of another package (`via` names it) is fixable only when that package is:
+ * npm reports `fixAvailable: true` for the dependent while the advisory's own package has no non-major fix.
+ * @param {{ vulnerabilities?: Record<string, { severity: string, fixAvailable: unknown, via?: unknown[] }> } | null} report
+ */
 export function fixableSevere(report) {
   if (!report || typeof report.vulnerabilities !== "object" || report.vulnerabilities === null) return null;
-  return Object.entries(report.vulnerabilities)
-    .filter(([, v]) => (v.severity === "critical" || v.severity === "high") && (v.fixAvailable === true || v.fixAvailable?.isSemVerMajor === false))
+  const all = report.vulnerabilities;
+  const fixable = (name, seen = new Set()) => {
+    const v = all[name];
+    if (!v || seen.has(name)) return true;
+    seen.add(name);
+    const nonMajor = v.fixAvailable === true || v.fixAvailable?.isSemVerMajor === false;
+    return nonMajor && (v.via ?? []).every((x) => typeof x !== "string" || fixable(x, seen));
+  };
+  return Object.entries(all)
+    .filter(([name, v]) => (v.severity === "critical" || v.severity === "high") && fixable(name))
     .map(([name, v]) => `${name} (${v.severity})`);
 }
 
