@@ -22,10 +22,6 @@ import { fakeClock, type FakeClock } from "../helpers/fakeClock.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import type { WireRoomState } from "../../shared/protocol.ts";
 
-// Short enough that the expiry test does not stall the suite, long enough that
-// the survival test is not racing it.
-process.env.MURLAN_LOBBY_GRACE_MS = "1500";
-
 /** Runs `body` on server time that moves only when it says so, so no grace expires behind its back. */
 async function onServerTime(body: (clock: FakeClock) => Promise<void>): Promise<void> {
   const clock = fakeClock(Date.now());
@@ -120,10 +116,11 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
 
     // Anything the host hears before the grace runs out would be the seat being
     // released — the whole point is that nothing happens.
-    await onServerTime(async () => {
+    await onServerTime(async (clock) => {
       const churn = nothingArrives(host.socket, "room:state", { why: "a blip must not tell the room that someone left" });
       guest.socket.close();
       await graceArmed(room.roomId, guest.user.id);
+      clock.advance(lobbyGraceMs() - 1);
       await churn;
     });
     const seats = await roomStore.getRoomPlayers(room.roomId);

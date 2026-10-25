@@ -5,6 +5,7 @@ import { io as ioClient } from "socket.io-client";
 import {
   PROTOCOL_AUTH,
   emitUnchecked,
+  ackUnchecked,
   eventually,
   intent,
   reconnectWith,
@@ -126,13 +127,10 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
       const answers = new Promise<Record<string, unknown>[]>((resolve, reject) => {
         socket.once("connect", () => {
           Promise.all(
-            groups.map((group) =>
-              (
-                socket.timeout(3_000) as unknown as {
-                  emitWithAck(event: string, ...args: unknown[]): Promise<Record<string, unknown>>;
-                }
-              ).emitWithAck(...probes[group]!)
-            )
+            groups.map((group) => {
+              const [event, ...args] = probes[group]!;
+              return ackUnchecked(socket, event, args, 3_000) as Promise<Record<string, unknown>>;
+            })
           ).then(resolve, reject);
         });
       });

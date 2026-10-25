@@ -1,6 +1,6 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import { DEADLINE_SCALE, register, connectAs, openSocket, waitFor } from "../helpers/client.ts";
+import { eventually, register, connectAs, openSocket, waitFor } from "../helpers/client.ts";
 import {
   startTestServer,
   hasDatabase,
@@ -43,13 +43,11 @@ import { friendStore } from "../../server/store/friendStore.ts";
  * down that says nothing about why.
  */
 async function quiet(server: TestServer, ceilingMs = 10_000): Promise<PoolRest> {
-  const deadline = Date.now() + ceilingMs * DEADLINE_SCALE;
-  const until = async (settled: () => boolean) => {
-    while (Date.now() < deadline && !settled()) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    return settled();
-  };
+  const until = (settled: () => boolean) =>
+    eventually(settled, "the pool to come to rest", ceilingMs).then(
+      () => true,
+      () => settled()
+    );
   await until(() => server.io.engine.clientsCount === 0);
   await new Promise((resolve) => setTimeout(resolve, 450));
   const atRest = await until(

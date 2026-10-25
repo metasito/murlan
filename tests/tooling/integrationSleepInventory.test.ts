@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fixedSleeps } from "../helpers/sleepScan.ts";
+import { blankComments } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 const SCANNED = ["tests/integration", "tests/server", "tests/helpers"];
@@ -41,8 +42,8 @@ const INVENTORY: Record<string, { n: number; why: string }> = {
     why: "the database is held closed while two writes race, and that window is the race",
   },
   "tests/integration/socketHandshakeLimit.test.ts": {
-    n: 4,
-    why: "the server's offline notice waits on a real 400ms timer no installed clock reaches, which quiet() and after() outwait; quiet() polls engine and pool counts that push nothing; and the connect's second friends read is fire-and-forget",
+    n: 3,
+    why: "the server's offline notice waits on a real 400ms timer no installed clock reaches, which quiet() and after() outwait; and the connect's second friends read is fire-and-forget",
   },
   "tests/integration/socketOrigin.test.ts": {
     n: 1,
@@ -77,6 +78,36 @@ const INVENTORY: Record<string, { n: number; why: string }> = {
     why: "the deadline a deal has to beat: a stall is the absence of the event",
   },
 };
+
+/** Exact: a call site that widens `nothingArrives` past its default window is real time the sweep above cannot see. */
+const WINDOWS: Record<string, { n: number; why: string }> = {
+  "tests/integration/stateRedelivered.test.ts": {
+    n: 1,
+    why: "a third re-send would follow the second by one more ack timeout, a real timer, so the absence is watched for three of them",
+  },
+  "tests/integration/crossInstance.test.ts": {
+    n: 1,
+    why: "an ack that did not cross instances shows as a re-send after the ack timeout, so the absence is watched for four of them",
+  },
+};
+
+/** The `nothingArrives(...)` calls in `code` whose options set `ms`, by file. */
+export function widenedWindows(files: [string, string][]): Map<string, number> {
+  const found = new Map<string, number>();
+  for (const [file, src] of files) {
+    const code = blankComments(src);
+    for (const m of code.matchAll(/(?<!function\s+)\bnothingArrives\s*(?:<[^>(]*>)?\(/g)) {
+      let depth = 1;
+      let end = m.index + m[0].length;
+      for (; end < code.length && depth > 0; end++) {
+        if (code[end] === "(") depth++;
+        else if (code[end] === ")") depth--;
+      }
+      if (/\bms\s*[:,}]/.test(code.slice(m.index + m[0].length, end))) found.set(file, (found.get(file) ?? 0) + 1);
+    }
+  }
+  return found;
+}
 
 const CODE = /\.(?:[cm]?[jt]s|tsx)$/;
 
@@ -117,5 +148,16 @@ test("every fixed real-time wait left is inventoried, at its exact count", () =>
 test("each inventoried wait says why it is real time", () => {
   for (const [file, { why }] of Object.entries(INVENTORY)) {
     assert.ok(why.split(/\s+/).length >= 6, `${file}: say why this wait is about real time`);
+  }
+});
+
+test("every nothingArrives call that widens its window is inventoried, at its exact count", () => {
+  assert.deepEqual(
+    Object.fromEntries(widenedWindows(files)),
+    Object.fromEntries(Object.entries(WINDOWS).map(([file, { n }]) => [file, n])),
+    "A call site that passes `ms` to nothingArrives waits that long on every green run: list it in WINDOWS with its reason, or drop the override."
+  );
+  for (const [file, { why }] of Object.entries(WINDOWS)) {
+    assert.ok(why.split(/\s+/).length >= 6, `${file}: say why this window is wider than the default`);
   }
 });

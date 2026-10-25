@@ -9,7 +9,6 @@
 // retry upon reconnection". The acknowledgement is the guarantee.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Socket } from "socket.io-client";
 import {
   startTestServer,
   hasDatabase,
@@ -17,13 +16,13 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import {
+  ackUnchecked,
   connectAs,
   openSocket,
   settled,
   socketTicket,
   waitFor,
   waitForWhere,
-  DEADLINE_SCALE,
   type TestSocket,
 } from "../helpers/client.ts";
 import { AUTH_UNAVAILABLE, type IntentReply } from "../../shared/protocol.ts";
@@ -33,10 +32,7 @@ import { userStore } from "../../server/store/userStore.ts";
 
 /** Resolves with the ack payload, or null if the server never answers. Any event, typed or not: answering is the claim. */
 function ackOf(socket: TestSocket, event: string, payload: unknown, ms = 4_000): Promise<unknown> {
-  return (socket as unknown as Socket)
-    .timeout(ms * DEADLINE_SCALE)
-    .emitWithAck(event, payload)
-    .then(
+  return ackUnchecked(socket, event, [payload], ms).then(
       (reply: unknown) => reply ?? "acked",
       () => null
     );

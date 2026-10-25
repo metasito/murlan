@@ -168,13 +168,13 @@ export async function connectAs(
 export const SLOW_RUNNER_SCALE = 4;
 export const DEADLINE_SCALE = process.env.CI ? SLOW_RUNNER_SCALE : 1;
 
-/** The first `event` on `socket` whose payload `matches`. `ms` is the local budget, scaled by `DEADLINE_SCALE`. */
 /** The listener half of a socket, by event name alone: `Payload` is what types it. */
 interface Listening {
   on(event: string, listener: (payload: never) => void): unknown;
   off(event: string, listener: (payload: never) => void): unknown;
 }
 
+/** The first `event` on `socket` whose payload `matches`. `ms` is the local budget, scaled by `DEADLINE_SCALE`. */
 export function waitForWhere<E extends Incoming>(
   socket: TestSocket,
   event: E,
@@ -213,15 +213,19 @@ export async function intent<E extends IntentEvent>(
   payload?: Sent<E>,
   ms = 5_000
 ): Promise<IntentReply> {
-  const send = socket.timeout(ms * DEADLINE_SCALE) as unknown as {
-    emitWithAck(event: string, payload: unknown): Promise<IntentReply>;
-  };
-  return send.emitWithAck(event, payload);
+  return untyped(socket).timeout(ms * DEADLINE_SCALE).emitWithAck(event, payload);
 }
 
-/** Sends what the wire contract refuses to type: a malformed payload a suite probes the server with. */
+/** The one place a socket loses its wire types: a suite probing with what the contract refuses to type goes through it. */
+const untyped = (socket: TestSocket) => socket as unknown as Socket;
+
 export function emitUnchecked(socket: TestSocket, event: string, ...args: unknown[]): void {
-  (socket as unknown as Socket).emit(event, ...args);
+  untyped(socket).emit(event, ...args);
+}
+
+/** `emitWithAck` for an event or payload the wire contract refuses to type; rejects when no ack comes within `ms` (scaled). */
+export function ackUnchecked(socket: TestSocket, event: string, args: unknown[], ms = 5_000): Promise<unknown> {
+  return untyped(socket).timeout(ms * DEADLINE_SCALE).emitWithAck(event, ...args);
 }
 
 /** Every connected socket leaves its room, and the server has answered each: a suite's teardown. */
@@ -231,11 +235,19 @@ export async function leaveRooms(sockets: (TestSocket | null | undefined)[]): Pr
 
 /**
  * The one test-side map from a `Move` to its socket intent. Never rejects: a driver fires it from a
- * listener, and a socket closed under it is the scenario, not a failure.
+ * listener, and a socket closed under it is the scenario, not a failure. A move the socket cannot
+ * carry, or that is lost when it closes, resolves `{ ok: false, code: "SOCKET_CLOSED" }`.
  */
 export function sendMove(socket: TestSocket, move: Move): Promise<IntentReply> {
+  const closed: IntentReply = { ok: false, code: "SOCKET_CLOSED" };
+  if (!socket.connected) return Promise.resolve(closed);
   return new Promise((resolve) => {
-    const ack = (reply: IntentReply) => resolve(reply);
+    const gone = () => resolve(closed);
+    socket.once("disconnect", gone);
+    const ack = (reply: IntentReply) => {
+      socket.off("disconnect", gone);
+      resolve(reply);
+    };
     if (move.kind === "play") socket.emit("game:play", { cardIds: move.cardIds }, ack);
     else if (move.kind === "pass") socket.emit("game:pass", undefined, ack);
     else socket.emit("game:exchange_give_card", { cardId: move.cardId }, ack);
@@ -248,10 +260,7 @@ export function sendMove(socket: TestSocket, move: Move): Promise<IntentReply> {
  * server/socket/socketSafety.ts), so the answer to a read-only intent is a barrier behind them.
  */
 export async function settled(socket: TestSocket, ms = 5_000): Promise<void> {
-  const send = socket.timeout(ms * DEADLINE_SCALE) as unknown as {
-    emitWithAck(event: "friend:get_online_list", payload: Record<string, never>): Promise<IntentReply>;
-  };
-  await send.emitWithAck("friend:get_online_list", {});
+  await socket.timeout(ms * DEADLINE_SCALE).emitWithAck("friend:get_online_list", {});
 }
 
 /** How long absence is observed for. Absence has no event to await, so this is real time. */
