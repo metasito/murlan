@@ -4,7 +4,7 @@ import React from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState, Rank, Suit } from '@/lib/game/gameEngine';
 import { dealEndMs } from '@/lib/timeline/dealTimeline';
-import { OFFLINE_BOT_DELAY_MS } from '@/lib/timeline/offlineBotDelay';
+import { BOT_THINK_MS } from '@/lib/game/turnSchedule';
 import { Motion } from '@/lib/tokens';
 import { steps } from './helpers/steps';
 import { bootFeedback } from './helpers/feedback';
@@ -80,14 +80,14 @@ describe('the first round, offline', () => {
 
   it.each(TABLES)('%s: holds the bot holding the 3♠ until the deal has landed, then plays', async (_, table) => {
     const DEAL_ENDS = dealEndMs(table.players.map((p) => p.hand.length), Motion.duration.reveal);
-    expect(DEAL_ENDS).toBeGreaterThan(OFFLINE_BOT_DELAY_MS + 200);
+    expect(DEAL_ENDS).toBeGreaterThan(BOT_THINK_MS + 200);
     const view = await mount(table);
-    await steps(OFFLINE_BOT_DELAY_MS + 100);
+    await steps(BOT_THINK_MS + 100);
     expect(view.plays()).toBe(0);
 
-    await steps(DEAL_ENDS - OFFLINE_BOT_DELAY_MS + 100);
+    await steps(DEAL_ENDS - BOT_THINK_MS + 100);
     expect(view.plays()).toBe(0);
-    await steps(OFFLINE_BOT_DELAY_MS + 100);
+    await steps(BOT_THINK_MS + 100);
     expect(view.plays()).toBe(1);
     await view.unmount();
   }, 30_000);

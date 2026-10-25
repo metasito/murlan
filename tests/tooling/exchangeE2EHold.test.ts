@@ -88,7 +88,7 @@ describe("the offline exchange overlay's E2E hold", () => {
       "the driver no longer takes its hold from lib/e2eConfig.ts, whose floor test " +
         "(tests/tooling/e2eConfig.test.ts) proves a player's build gets none"
     );
-    assert.match(driver, /import \{ e2e, exchangeHold \} from "@\/lib\/e2eConfig";/);
+    assert.match(driver, /import \{ (?:E2E_FAST, )?e2e, exchangeHold \} from "@\/lib\/e2eConfig";/);
     assert.doesNotMatch(gameContext, /\bholdMsOverride|ExchangeHold\b/, "the hold is back in a context");
   });
 

@@ -45,7 +45,7 @@ function midRound(): GameState {
     finishingOrder: [],
     openingCard: null,
     playedRanks: aThreePlayed(),
-    lastMove: { seq: 0, kind: "deal" },
+    lastMove: { seq: 1, kind: "pass", seat: 3, closedTrick: true },
   };
 }
 
@@ -140,11 +140,11 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
       releasedSeats: new Set(["drita"]),
     });
     activeGames.set(ROOM, game);
+    // A short delay stands in for the real 1.2 s default.
+    process.env.MURLAN_BOT_MOVE_DELAY_MS = "5";
 
     try {
-      // A short, explicit delay stands in for botMoveDelayMs() so the test
-      // does not wait out the real 1.2 s default.
-      armTurn(rt, ROOM, 5);
+      armTurn(rt, ROOM);
       assert.ok(!game.turnDeadlineMs, "a vacant acting seat carries no human AFK clock yet");
 
       // The reclaim lands while that timer is still pending.
@@ -168,6 +168,7 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
       );
       assert.equal(typeof game.turnDeadlineMs, "number", "the seat now carries its own AFK clock");
     } finally {
+      delete process.env.MURLAN_BOT_MOVE_DELAY_MS;
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);
     }

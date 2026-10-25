@@ -202,7 +202,7 @@ describe('the round-opening announcement', () => {
   // charged is the one the deadline's owner keeps, so the client stops its own
   // and leaves a server's alone.
   it('stops a clock this client owns while it holds, and starts it on the way out', async () => {
-    const clock: TurnTimerConfig = { seconds: 20, includeNewTrick: true, pausable: true };
+    const clock: TurnTimerConfig = { seconds: 20, table: 'online', pausable: true };
     const view = await render(table(state(OPENER), { viewerSeat: OPENER, turnTimer: clock }));
 
     // Hidden elements included both times: while the gate holds, the chip
@@ -222,7 +222,7 @@ describe('the round-opening announcement', () => {
   // is one the player has to be able to see. It is the one thing the hold
   // takes neither from the eye nor from the reader.
   it('leaves a clock it cannot pause running, and in plain sight', async () => {
-    const serverClock: TurnTimerConfig = { seconds: 20, includeNewTrick: true };
+    const serverClock: TurnTimerConfig = { seconds: 20, table: 'online' };
     const view = await render(table(state(OPENER), { viewerSeat: OPENER, turnTimer: serverClock }));
 
     expect(screen.getByTestId('start-reason-gate', { includeHiddenElements: true })).toBeTruthy();
