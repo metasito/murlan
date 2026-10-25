@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
 import { act, render } from '@testing-library/react-native';
 import { startRound, type GameState } from '@/lib/game/gameEngine';
-import { OFFLINE_BOT_DELAY_MS } from '@/lib/timeline/offlineBotDelay';
+import { BOT_THINK_MS } from '@/lib/game/turnSchedule';
 import { playRoundOut } from '../../support/moves.ts';
 import { settle } from './feedback';
 
@@ -15,7 +15,7 @@ export function botRound(): GameState[] {
 export async function playBotRound(table: (s: GameState) => ReactElement, done: () => boolean = () => false) {
   const [dealt, ...moves] = botRound();
   const r = await render(table(dealt));
-  await settle(OFFLINE_BOT_DELAY_MS);
+  await settle(BOT_THINK_MS);
   for (const s of moves) {
     if (done()) break;
     await act(async () => r.rerender(table(s)));

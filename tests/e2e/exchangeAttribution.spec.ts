@@ -32,9 +32,10 @@ interface Frame {
 const save = (winner: number, loser: number, holding: string[][]) =>
   exchangeSave({ seats: 3, names: NAMES, winner, loser, cardFromLoser: "2_spades", holding });
 
-async function open(page: Page, baseURL: string, seed: OfflineSave) {
+/** `botGives`: the winner on move is a bot, and the hold on bots would keep it from giving back. */
+async function open(page: Page, baseURL: string, seed: OfflineSave, botGives = false) {
   await installVirtualClock(page, 1259);
-  await resumeOnVirtualClock(page, baseURL, seed);
+  await resumeOnVirtualClock(page, baseURL, seed, undefined, { holdTurn: !botGives });
 }
 
 const table = (page: Page) =>
@@ -173,7 +174,7 @@ test("the winner watches the loser's card rest on the pile, then gives its own",
 });
 
 test("the loser's card lifts out of its hand, and the winner's comes back to it", async ({ page, baseURL }) => {
-  await open(page, baseURL!, save(1, 0, [["5_hearts", "K_spades"], ["2_spades", "6_diamonds", "K_diamonds"], ["7_clubs", "8_clubs"]]));
+  await open(page, baseURL!, save(1, 0, [["5_hearts", "K_spades"], ["2_spades", "6_diamonds", "K_diamonds"], ["7_clubs", "8_clubs"]]), true);
   await table(page);
   const frames: Frame[] = [];
   await run(page, X.beat + 2 * (LEG.end + X.read) + X.giveWait + SLACK, frames);
@@ -186,7 +187,7 @@ test("the loser's card lifts out of its hand, and the winner's comes back to it"
 });
 
 test("a seat outside the announced reads both legs off the pile and the lit seats", async ({ page, baseURL }) => {
-  await open(page, baseURL!, save(1, 2, [["5_hearts", "K_spades"], ["2_spades", "6_diamonds", "K_diamonds"], ["7_clubs", "8_clubs"]]));
+  await open(page, baseURL!, save(1, 2, [["5_hearts", "K_spades"], ["2_spades", "6_diamonds", "K_diamonds"], ["7_clubs", "8_clubs"]]), true);
   await table(page);
   const frames: Frame[] = [];
   await run(page, X.beat + 2 * (LEG.end + X.read) + X.giveWait + SLACK, frames);

@@ -116,6 +116,8 @@ jobs:
     timeout-minutes: 25
     env:
       FC_RUNS: "3000"
+      # A whole match per run, three times over: about 0.4s a run against engineInvariants' two rounds.
+      SAVE_REPLAY_FC_RUNS: "500"
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -155,6 +157,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: FC_SEED="$MURLAN_MATCH_SOAK_START" node --test tests/model/differential.property.test.ts
 
+      - name: Search save, restore and replay from today's band
+        if: ${{ !cancelled() }}
+        run: FC_SEED="$MURLAN_MATCH_SOAK_START" FC_RUNS="$SAVE_REPLAY_FC_RUNS" node --test tests/engine/saveRestoreReplay.property.test.ts
+
       - name: Report the failure to the tracker
         if: failure()
         env:
@@ -170,6 +176,7 @@ jobs:
             echo "MURLAN_MATCH_SOAK_START=$MURLAN_MATCH_SOAK_START MURLAN_MATCH_SOAK_SEEDS=$MURLAN_MATCH_SOAK_SEEDS MURLAN_MATCH_SOAK_SEEDS_3P=$MURLAN_MATCH_SOAK_SEEDS_3P MURLAN_MATCH_SOAK_SEEDS_4P=$MURLAN_MATCH_SOAK_SEEDS_4P node --test tests/engine/matchTerminates.test.ts"
             echo "FC_SEED=$MURLAN_MATCH_SOAK_START FC_RUNS=$FC_RUNS node --test tests/engine/engineInvariants.property.test.ts"
             echo "FC_SEED=$MURLAN_MATCH_SOAK_START FC_RUNS=$FC_RUNS node --test tests/model/differential.property.test.ts"
+            echo "FC_SEED=$MURLAN_MATCH_SOAK_START FC_RUNS=$SAVE_REPLAY_FC_RUNS node --test tests/engine/saveRestoreReplay.property.test.ts"
             echo '```'
             echo "The run's log names which step failed; an invariant failure also prints its shrunk counterexample."
           } > offline-soak-failure.md

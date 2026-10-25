@@ -69,7 +69,7 @@ function ceremonyRunning(phase: Extract<ExchangePhase, { kind: "settled" }>, now
 }
 
 /** How long a giveback's ceremony runs: the window above, and the wait before the next seat moves. */
-export function settledCeremonyMs(): number {
+function settledCeremonyMs(): number {
   return exchangeAnnounceMs(false);
 }
 
