@@ -88,7 +88,7 @@ export function useTableExchange(input: {
     [exchangeIsMine, sortedHand, exchange]
   );
   const giveableIds = useMemo(() => giveable?.map((c) => c.id), [giveable]);
-  const notes = exchangeNotes({ shown: shownExchange, stages, live: exchange, giveable, players, viewerSeat, spectating, t });
+  const notes = exchangeNotes({ shown: shownExchange, stages, live: exchange, players, viewerSeat, spectating, t });
 
   return {
     exchange,

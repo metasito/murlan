@@ -90,13 +90,14 @@ const gameStateSchema = z
           winnerIdx: seat,
           loserIdx: seat,
           cardFromLoser: card,
-          cardToLoser: card,
+          cardToLoser: card.optional(),
           settledAt: z.number().optional(),
         }),
       ])
       .optional(),
     playedRanks: playedRanksSchema,
     lastMove,
+    dealtAt: z.number().optional(),
   })
   .superRefine((state, ctx) => {
     const id = repeatedCard(state);

@@ -79,7 +79,7 @@ Before a round whose table has a complete finishing order to take it from, the p
 _Avoid_: swap (that is any exchange of two things), trade (that is a cost weighed against a gain)
 
 **Giveback**:
-The card the first seat returns in an exchange: ranked 3 to 10, never the card just received.
+The card the first seat returns in an exchange: ranked 3 to 10, never the card just received. A first seat holding none gives nothing, and the exchange is one-way.
 _Avoid_: return card
 
 **Two-Joker exception**:

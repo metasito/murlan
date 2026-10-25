@@ -6,6 +6,7 @@
 //
 // The oracle is *agreement*, not a fixture: no expected value is written down
 // anywhere, so the soak can catch a defect nobody thought to look for.
+import type { SeatAction } from "./soak.ts";
 
 /** One seat's view of the table, as that client last received it. */
 export interface SeatView {
@@ -17,11 +18,15 @@ export interface SeatView {
   handCounts: number[];
   /** This client's own cards. Only the viewer's hand is ever sent in full. */
   ownHand: string[];
+  /** `lastMove.seq`: the round's moves counted from the deal's 0. */
+  seq: number;
 }
 
 export interface Violation {
   kind: string;
   detail: string;
+  /** The open issue this is already filed as. Still a violation: the run fails on it. */
+  known?: string;
 }
 
 const NO_VIOLATIONS: Violation[] = [];
@@ -155,6 +160,160 @@ export function checkTotalNeverGrows(
     ];
   }
   return NO_VIOLATIONS;
+}
+
+/** A run with chaos on that injected nothing tested none of the faults it reports agreement over. */
+export function injectionViolations({ chaos, injected }: { chaos: number; injected: number }): Violation[] {
+  if (chaos <= 0 || injected > 0) return NO_VIOLATIONS;
+  return [{ kind: "no-faults-injected", detail: `chaos was ${chaos} and no fault was injected: nothing adversarial was tested` }];
+}
+
+/**
+ * One arming can lose to the round ending before its seat is on move again, so a single
+ * unreached stale fault is the round's doing; two in a run is the fault not being reached.
+ */
+const STALE_UNREACHED_FLOOR = 2;
+
+/** A stale play is injected only on its seat's own turn; a run that never got there tested no stale cards. */
+export function staleReachViolations({ armed, injected }: { armed: number; injected: number }): Violation[] {
+  if (injected > 0 || armed < STALE_UNREACHED_FLOOR) return NO_VIOLATIONS;
+  return [{ kind: "stale-never-reached", detail: `a stale play was armed ${armed} times and its seat was never on move again` }];
+}
+
+/** How the server answered one intent; `null` is no answer at all. */
+export interface IntentAck {
+  ok: boolean;
+  code?: string;
+}
+
+const sorted = (ids: string[]) => [...ids].sort().join(",");
+
+function sameView(a: SeatView, b: SeatView): boolean {
+  return (
+    a.currentTurnIndex === b.currentTurnIndex &&
+    a.roundOver === b.roundOver &&
+    a.seq === b.seq &&
+    a.handCounts.join(",") === b.handCounts.join(",") &&
+    sorted(a.ownHand) === sorted(b.ownHand)
+  );
+}
+
+const describeView = (v: SeatView) =>
+  `turn ${v.currentTurnIndex}, seq ${v.seq}, over ${v.roundOver}, counts [${v.handCounts}], hand [${v.ownHand.join(" ")}]`;
+
+/** Every seat that had a view still has it, field for field. */
+export function checkUnchanged(fault: string, before: SeatView[], after: SeatView[]): Violation[] {
+  const now = new Map(after.map((v) => [v.seat, v]));
+  return before.flatMap((was) => {
+    const is = now.get(was.seat);
+    if (is && sameView(was, is)) return [];
+    return [{
+      kind: "fault-changed-view",
+      detail: `after ${fault}, seat ${was.seat} went from ${describeView(was)} to ${is ? describeView(is) : "no view"}`,
+    }];
+  });
+}
+
+/** A fault the table must turn down: answered, refused (with `code`, when given), and nothing moved. */
+export function checkRefused(
+  fault: string,
+  ack: IntentAck | null,
+  before: SeatView[],
+  after: SeatView[],
+  code?: string
+): Violation[] {
+  const found: Violation[] = [];
+  if (!ack) found.push({ kind: "fault-unanswered", detail: `${fault} was never answered` });
+  else if (ack.ok) found.push({ kind: "fault-accepted", detail: `${fault} was accepted` });
+  else if (code !== undefined && ack.code !== code) {
+    found.push({ kind: "fault-wrong-refusal", detail: `${fault} was refused with ${ack.code}, not ${code}` });
+  }
+  return [...found, ...checkUnchanged(fault, before, after)];
+}
+
+/**
+ * `move` landed exactly once: every view after is its view before with that one
+ * move applied — the counter up by one, the mover's cards gone, and, for a
+ * giveback, the one card arriving in exactly one other hand.
+ */
+export function checkLandedOnce(
+  fault: string,
+  before: SeatView[],
+  after: SeatView[],
+  move: SeatAction
+): Violation[] {
+  const moved = move.kind === "play" ? move.cardIds : move.kind === "exchange" ? [move.cardId] : [];
+  const now = new Map(after.map((v) => [v.seat, v]));
+  const found: Violation[] = [];
+  for (const was of before) {
+    const is = now.get(was.seat);
+    if (!is) {
+      found.push({ kind: "move-not-landed-once", detail: `after ${fault}, seat ${was.seat} has no view` });
+      continue;
+    }
+    if (is.seq !== was.seq + 1) {
+      found.push({
+        kind: "move-not-landed-once",
+        detail: `after ${fault}, seat ${was.seat} saw the move counter go ${was.seq} -> ${is.seq}, not up by one`,
+      });
+      continue;
+    }
+    const delta = is.handCounts.map((n, i) => n - (was.handCounts[i] ?? 0));
+    const rose = delta.flatMap((d, i) => (i !== move.seat && d > 0 ? [i] : []));
+    const receiver = move.kind === "exchange" && rose.length === 1 ? rose[0] : -1;
+    const expected = delta.map((_, i) => (i === move.seat ? -moved.length : i === receiver ? 1 : 0));
+    const countsRight = delta.join(",") === expected.join(",") && (move.kind !== "exchange" || receiver >= 0);
+    const expectedHand =
+      was.seat === move.seat
+        ? was.ownHand.filter((id) => !moved.includes(id))
+        : was.seat === receiver
+          ? [...was.ownHand, ...moved]
+          : was.ownHand;
+    if (!countsRight || sorted(is.ownHand) !== sorted(expectedHand)) {
+      found.push({
+        kind: "move-landed-wrong",
+        detail:
+          `after ${fault}, ${move.kind} by seat ${move.seat} [${moved.join(" ")}] took seat ${was.seat} ` +
+          `from ${describeView(was)} to ${describeView(is)}`,
+      });
+    }
+  }
+  return found;
+}
+
+/** An intent sent again later, inside the server's memory of it: answered as it was, and nothing moves. */
+export function checkRepeatAnswered(
+  fault: string,
+  original: IntentAck | null,
+  again: IntentAck | null,
+  before: SeatView[],
+  after: SeatView[]
+): Violation[] {
+  const found: Violation[] = [];
+  if (!again) found.push({ kind: "fault-unanswered", detail: `${fault} was never answered` });
+  else if (!original || original.ok !== again.ok || original.code !== again.code) {
+    found.push({ kind: "duplicate-ack-differs", detail: `${fault} was answered ${JSON.stringify(again)}, the original ${JSON.stringify(original)}` });
+  }
+  return [...found, ...checkUnchanged(fault, before, after)];
+}
+
+/** The same intent sent twice at once: one answer for both, and one move on the table. */
+export function checkDuplicate(
+  first: IntentAck | null,
+  second: IntentAck | null,
+  before: SeatView[],
+  after: SeatView[],
+  move: SeatAction
+): Violation[] {
+  const fault = `a duplicated ${move.kind} by seat ${move.seat}`;
+  const found: Violation[] = [];
+  if (!first || !second) {
+    found.push({ kind: "fault-unanswered", detail: `${fault}: an answer never came (${JSON.stringify([first, second])})` });
+  } else if (first.ok !== second.ok || first.code !== second.code) {
+    found.push({ kind: "duplicate-ack-differs", detail: `${fault} was answered ${JSON.stringify(first)}, then ${JSON.stringify(second)}` });
+  }
+  const landed = first?.ok ? checkLandedOnce(fault, before, after, move) : checkUnchanged(fault, before, after);
+  return [...found, ...landed];
 }
 
 export function checkAll(

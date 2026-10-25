@@ -22,7 +22,7 @@ import { t } from '@/lib/i18n';
 import { Motion } from '@/lib/theme';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
 import { setMotion } from './harness/env';
-import { BOT_MOVE_DELAY_MS } from '@/server/game/gameTimers';
+import { BOT_THINK_MS } from '@/lib/game/turnSchedule';
 import { aThreePlayed } from '../support/game';
 
 const METRICS = {
@@ -83,7 +83,7 @@ beforeEach(() => setMotion('on'));
 
 describe('the pass that closes a trick', () => {
   it("is held longer than a bot takes to lead, so a bot winner's lead lands inside the hold", () => {
-    expect(BOT_MOVE_DELAY_MS).toBeLessThan(TRICK_WINNER_MS);
+    expect(BOT_THINK_MS).toBeLessThan(TRICK_WINNER_MS);
   });
 
   beforeEach(async () => {
@@ -216,7 +216,7 @@ describe('the pass that closes a trick', () => {
       const r = await render(table(LED));
       await act(async () => r.rerender(table(CLOSED)));
       await act(async () => {
-        jest.advanceTimersByTime(BOT_MOVE_DELAY_MS);
+        jest.advanceTimersByTime(BOT_THINK_MS);
         r.rerender(
           table(state({ lastPlayedCombination: single(ACE), lastPlayedBy: 1, lastMove: { seq: 3, kind: 'play', seat: 1 } }))
         );

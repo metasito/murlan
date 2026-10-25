@@ -1,14 +1,8 @@
 /** Where docs/GAME-RULES.md states no rule; each id is an entry in tests/model/disagreements.json. */
-export type SilenceId =
-  | "thirteen-card-straight-top"
-  | "last-place-highest-card-tied"
-  | "giveback-received-is-the-only-3-to-10"
-  | "giveback-lowest-card-tied"
-  | "giveback-lowest-card-is-the-received";
+export type SilenceId = never;
 export interface Silent {
   silent: SilenceId;
 }
-const silent = (id: SilenceId): Silent => ({ silent: id });
 export const isSilent = (value: unknown): value is Silent => typeof value === "object" && value !== null && "silent" in value;
 
 export type Suit = "clubs" | "diamonds" | "hearts" | "spades";
@@ -19,7 +13,7 @@ export interface ModelCard {
   rank: Rank;
 }
 
-/** docs/GAME-RULES.md §2: the 2-player opening tie's order, ♣ < ♦ < ♥ < ♠. */
+/** docs/GAME-RULES.md § Decisions "Suit tiebreaks": its two exceptions' order, ♣ < ♦ < ♥ < ♠. */
 const SUIT_ORDER: Suit[] = ["clubs", "diamonds", "hearts", "spades"];
 const STRENGTH_ORDER: Rank[] = ["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2", "joker_bw", "joker_colored"];
 const ORDINARY: Rank[] = STRENGTH_ORDER.slice(0, 13);
@@ -41,9 +35,9 @@ export interface Combo {
   strength: number | Silent;
 }
 
-/** docs/GAME-RULES.md §6: the 2 is low only, the Ace either end. */
-function sequencePositions(rank: Rank): number[] {
-  if (rank === "A") return [1, 14];
+/** docs/GAME-RULES.md §6 and § Decisions "13-card straight": the 2 is low only, the Ace either end unless the 2 sits above it. */
+function sequencePositions(rank: Rank, withTwo: boolean): number[] {
+  if (rank === "A") return withTwo ? [1] : [1, 14];
   if (rank === "2") return [2];
   return [ORDINARY.indexOf(rank) + 3];
 }
@@ -53,8 +47,9 @@ function straightTops(cards: ModelCard[]): number[] {
   if (cards.length < 5 || cards.length > 13 || cards.some(isJoker)) return [];
   if (new Set(cards.map((c) => c.rank)).size !== cards.length) return [];
   const tops = new Set<number>();
+  const withTwo = cards.some((c) => c.rank === "2");
   const readings = cards.reduce<number[][]>(
-    (acc, card) => acc.flatMap((reading) => sequencePositions(card.rank).map((p) => [...reading, p])),
+    (acc, card) => acc.flatMap((reading) => sequencePositions(card.rank, withTwo).map((p) => [...reading, p])),
     [[]]
   );
   for (const reading of readings) {
@@ -77,7 +72,7 @@ export function classify(cards: ModelCard[]): Combo | null {
   const tops = straightTops(cards);
   if (tops.length === 0) return null;
   const royal = cards.every((c) => c.suit === cards[0].suit);
-  return { kind: royal ? "royal" : "straight", size, strength: tops.length === 1 ? tops[0] : silent("thirteen-card-straight-top") };
+  return { kind: royal ? "royal" : "straight", size, strength: tops[0] };
 }
 
 function higher(candidate: Combo, toBeat: Combo): boolean | Silent {
@@ -209,26 +204,17 @@ export function step(round: Round, move: Move): Step | Silent {
 
 const GIVEBACK_RANKS: Rank[] = ["3", "4", "5", "6", "7", "8", "9", "10"];
 
-/** docs/GAME-RULES.md §10 and § Decisions "What the winner may hand back"; `hand` already holds `receivedId`. */
-export function givebackOptions(hand: ModelCard[], receivedId: string): string[] | Silent {
-  const inRange = hand.filter((c) => GIVEBACK_RANKS.includes(c.rank));
-  const offered = inRange.filter((c) => c.id !== receivedId);
-  if (offered.length > 0) return offered.map((c) => c.id).sort();
-  if (inRange.length > 0) return silent("giveback-received-is-the-only-3-to-10");
-  const lowest = Math.min(...hand.map(strength));
-  const lowestCards = hand.filter((c) => strength(c) === lowest);
-  if (lowestCards.length !== 1) return silent("giveback-lowest-card-tied");
-  if (lowestCards[0].id === receivedId) return silent("giveback-lowest-card-is-the-received");
-  return [lowestCards[0].id];
+/** docs/GAME-RULES.md §10 and § Decisions "What the winner may hand back"; `hand` already holds `receivedId`, and empty is nothing to give. */
+export function givebackOptions(hand: ModelCard[], receivedId: string): string[] {
+  return hand.filter((c) => GIVEBACK_RANKS.includes(c.rank) && c.id !== receivedId).map((c) => c.id).sort();
 }
 
 export type Exchange = { kind: "shown"; leader: "first" } | { kind: "swap"; fromLast: string; leader: "last" };
 
-/** docs/GAME-RULES.md §10 and its two-Joker exception: what the last-place hand owes, and who leads. */
-export function exchange(lastHand: ModelCard[]): Exchange | Silent {
+/** docs/GAME-RULES.md §10, its two-Joker exception and § Decisions "Suit tiebreaks": what the last-place hand owes, and who leads. */
+export function exchange(lastHand: ModelCard[]): Exchange {
   if (lastHand.some((c) => c.id === "joker_bw") && lastHand.some((c) => c.id === "joker_colored")) return { kind: "shown", leader: "first" };
   const top = Math.max(...lastHand.map(strength));
-  const highest = lastHand.filter((c) => strength(c) === top);
-  if (highest.length !== 1) return silent("last-place-highest-card-tied");
+  const highest = lastHand.filter((c) => strength(c) === top).sort((a, b) => SUIT_ORDER.indexOf(a.suit!) - SUIT_ORDER.indexOf(b.suit!));
   return { kind: "swap", fromLast: highest[0].id, leader: "last" };
 }

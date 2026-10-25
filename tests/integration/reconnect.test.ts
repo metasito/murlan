@@ -411,7 +411,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       // Stop the room's clock before reading the row back. The read imports
       // the database module for the first time, which takes several AFK
       // windows at 400ms — long enough for the round to auto-pass its way into
-      // vacating a seat, and a vacated seat plays at BOT_MOVE_DELAY_MS. What
+      // vacating a seat, and a vacated seat plays at botMoveDelayMs(). What
       // gets rehydrated below is then a round that is already over, and the
       // table is disposed before the assertions can look at it.
       clearRoomTimers(room.roomId);
