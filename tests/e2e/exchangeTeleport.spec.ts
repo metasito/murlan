@@ -3,6 +3,7 @@
 import { test, expect } from "./fixtures";
 import { exchangeSave, resumeSaved } from "./helpers/offlineSeed";
 import { tap } from "./helpers/press";
+import { paintedFrames, type EachPaint } from "./helpers/virtualClock";
 import { Motion } from "../../lib/tokens";
 import { LEG } from "../../lib/timeline/exchangeTimeline";
 
@@ -23,6 +24,8 @@ const midExchangeSave = () =>
     cardFromLoser: "2_spades",
     holding: [["5_hearts", "K_spades", "2_spades"], ["J_hearts", "Q_diamonds"]],
   });
+
+test.beforeEach(({ page }) => paintedFrames(page));
 
 test("the exchanged cards fly through the pile, never jumping, face up from the lift to the tuck", async ({ page, baseURL }) => {
   test.setTimeout(120_000);
@@ -45,10 +48,11 @@ test("the exchanged cards fly through the pile, never jumping, face up from the 
         const back = el.querySelector('[data-testid="card-box-back"]');
         out.push({ leg, t: performance.now() - t0, x: r.x + r.width / 2, y: r.y + r.height / 2, back: back ? shown(back, el) : 0 });
       }
-      if (performance.now() - t0 < sampleMs) requestAnimationFrame(frame);
-      else (window as unknown as { __tracked: boolean }).__tracked = true;
+      if (performance.now() - t0 < sampleMs) return;
+      (window as unknown as { __tracked: boolean }).__tracked = true;
+      return false;
     };
-    requestAnimationFrame(frame);
+    (window as unknown as { murlanEachPaint: EachPaint }).murlanEachPaint(frame);
   }, { legs: LEGS, sampleMs: SAMPLE_MS });
 
   await expect(page.getByTestId("exchange-prompt")).toBeVisible({ timeout: 15_000 });
