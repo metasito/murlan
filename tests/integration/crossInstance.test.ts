@@ -411,7 +411,7 @@ describe("broadcasts cross server instances", {
 
     const reply = await bSocket
       .timeout(20_000)
-      .emitWithAck("game:pass", { seq: 0 }) as { ok: boolean; code?: string };
+      .emitWithAck("game:pass", { turn: "0" }) as { ok: boolean; code?: string };
     assert.notEqual(reply.code, "INVALID_PAYLOAD", "the pass never reached a handler");
     assert.notEqual(
       reply.code,

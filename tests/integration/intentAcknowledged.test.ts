@@ -26,7 +26,10 @@ import { db } from "../../server/store/db.ts";
 import { activeGames as activeGamesTable } from "../../shared/schema.ts";
 import { eq } from "drizzle-orm";
 import { restartUnder } from "../helpers/liveGame.ts";
-import { intentSeq } from "../../lib/game/moves.ts";
+import { turnOf } from "../../lib/game/moves.ts";
+
+/** The token a move at the round's `seq`-th move names, asked of its owner rather than spelled here. */
+const turnAt = (seq: number) => turnOf({ lastMove: { seq, kind: "pass", seat: 0, closedTrick: false } });
 
 interface RoomState {
   code: string;
@@ -121,17 +124,16 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
 
     const reply = await ackOf(host.socket, "game:play", {
       cardIds: [seat.hand[0]?.id ?? "no-such-card"],
-      seq: intentSeq(state),
+      turn: state.turn,
     });
     assert.notEqual(reply, null, "a play that is never acknowledged is a play the client cannot retry");
   });
 
   /**
-   * The reason a retry is safe to add. The replay names the `seq` the first
-   * play moved the table past, so it is refused before its cards are looked
-   * for — and they have left the hand besides. This
-   * is asserted rather than assumed, because `CLAUDE.md` makes a card appearing
-   * twice a worse defect than the one the retry exists to fix.
+   * The reason a retry is safe to add. The replay names the turn the first play
+   * moved the table past, so it is refused as stale. This is asserted rather
+   * than assumed, because `CLAUDE.md` makes a card appearing twice a worse
+   * defect than the one the retry exists to fix.
    */
   test("a play sent twice is played once", async () => {
     const { c: host, s: state } = await dealtPair("twice");
@@ -156,10 +158,10 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
       host.socket.on("game:state", onState);
     });
 
-    const first = await ackOf(host.socket, "game:play", { cardIds: [lead.id], seq: 0 });
-    const second = await ackOf(host.socket, "game:play", { cardIds: [lead.id], seq: 0 });
-    assert.notEqual(first, null);
-    assert.notEqual(second, null, "the duplicate is answered too, not left hanging");
+    const first = await ackOf(host.socket, "game:play", { cardIds: [lead.id], turn: state.turn });
+    const second = await ackOf(host.socket, "game:play", { cardIds: [lead.id], turn: state.turn });
+    assert.deepEqual(first, { ok: true });
+    assert.deepEqual(second, { ok: false, code: "NOT_YOUR_TURN" }, "the duplicate is answered as stale, not left hanging");
 
     const finalState = await settled;
     assert.ok(finalState, "the table reported the round back");
@@ -177,20 +179,37 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
     );
   });
 
+  /** The defence behind the stale check: a play named against the current turn still finds its cards gone. */
+  test("a play replayed under the current turn is refused because its cards have left the hand", async () => {
+    const { c: leader, s: state, waiting, roomId } = await dealtPair("cardsgone");
+    const lead = state.players[state.viewerSeatIndex]?.hand.find((c) => c.id === state.openingCard?.id);
+    assert.ok(lead);
+    assert.deepEqual(await ackOf(leader.socket, "game:play", { cardIds: [lead.id], turn: state.turn }), { ok: true });
+    assert.deepEqual(await ackOf(waiting.socket, "game:pass", { turn: turnAt(1) }), { ok: true });
+
+    const current = await stateOf(leader, roomId);
+    assert.equal(current.currentTurnIndex, current.viewerSeatIndex, "the trick closed back to the leader");
+    const replay = (await ackOf(leader.socket, "game:play", { cardIds: [lead.id], turn: current.turn })) as IntentReply;
+    assert.equal(replay.code, "INVALID_CARD", "the turn guard let it through, and the hand refused it");
+    const after = await stateOf(leader, roomId);
+    assert.equal(after.turn, current.turn, "nothing moved");
+    assert.equal(after.players[after.viewerSeatIndex]?.hand.length, current.players[current.viewerSeatIndex]?.hand.length);
+  });
+
   test("a pass retried under one intentId is answered as the pass that landed", async () => {
     const { c: leader, s: state, waiting } = await dealtPair("passretry");
     const lead = state.players[state.viewerSeatIndex]?.hand.find((c) => c.id === state.openingCard?.id);
     assert.ok(lead);
-    assert.deepEqual(await ackOf(leader.socket, "game:play", { cardIds: [lead.id], seq: 0 }), { ok: true });
+    assert.deepEqual(await ackOf(leader.socket, "game:play", { cardIds: [lead.id], turn: state.turn }), { ok: true });
 
-    const retry = { intentId: "pass-retry-1", seq: 1 };
+    const retry = { intentId: "pass-retry-1", turn: turnAt(1) };
     assert.deepEqual(await ackOf(waiting.socket, "game:pass", retry), { ok: true });
     assert.deepEqual(
       await ackOf(waiting.socket, "game:pass", retry),
       { ok: true },
       "the retry is the same intent, not a second pass out of turn"
     );
-    const fresh = (await ackOf(waiting.socket, "game:pass", { intentId: "pass-retry-2", seq: 2 })) as IntentReply;
+    const fresh = (await ackOf(waiting.socket, "game:pass", { intentId: "pass-retry-2", turn: turnAt(2) })) as IntentReply;
     assert.equal(fresh.code, "NOT_YOUR_TURN", "a new intent is judged on its own");
   });
 
@@ -216,10 +235,10 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
     const lead = hand.find((c) => c.id === state.openingCard?.id);
     const next = hand.find((c) => c.id !== lead?.id);
     assert.ok(lead && next);
-    assert.deepEqual(await ackOf(leader.socket, "game:play", { cardIds: [lead.id], seq: 0 }), { ok: true });
-    const pass = { intentId: "restart-pass", seq: 1 };
+    assert.deepEqual(await ackOf(leader.socket, "game:play", { cardIds: [lead.id], turn: state.turn }), { ok: true });
+    const pass = { intentId: "restart-pass", turn: turnAt(1) };
     assert.deepEqual(await ackOf(waiting.socket, "game:pass", pass), { ok: true });
-    assert.deepEqual(await ackOf(leader.socket, "game:play", { cardIds: [next.id], seq: 2 }), { ok: true });
+    assert.deepEqual(await ackOf(leader.socket, "game:play", { cardIds: [next.id], turn: turnAt(2) }), { ok: true });
 
     await persistedAt(roomId, 3);
     assert.equal(restartUnder(roomId), true);
@@ -230,31 +249,31 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
     assert.deepEqual(
       await ackOf(waiting.socket, "game:pass", pass),
       { ok: false, code: "NOT_YOUR_TURN" },
-      "the retry was made against seq 1, and the table is at seq 3"
+      "the retry was made against the second move's turn, and the table is past the fourth"
     );
     const after = await stateOf(waiting, roomId);
     assert.equal(after.lastMove.seq, 3, "nothing moved");
     assert.equal(after.currentTurnIndex, after.viewerSeatIndex, "the seat still holds the turn it never chose to pass");
   });
 
-  test("a play made against an earlier seq is refused, though its cards are still held", async () => {
+  test("a play made against an earlier turn is refused, though its cards are still held", async () => {
     const { c: leader, s: state, waiting, roomId } = await dealtPair("staleplay");
     const hand = state.players[state.viewerSeatIndex]?.hand ?? [];
     const lead = hand.find((c) => c.id === state.openingCard?.id);
     const next = hand.find((c) => c.id !== lead?.id);
     assert.ok(lead && next);
-    assert.deepEqual(await ackOf(leader.socket, "game:play", { cardIds: [lead.id], seq: 0 }), { ok: true });
-    assert.deepEqual(await ackOf(waiting.socket, "game:pass", { seq: 1 }), { ok: true });
+    assert.deepEqual(await ackOf(leader.socket, "game:play", { cardIds: [lead.id], turn: state.turn }), { ok: true });
+    assert.deepEqual(await ackOf(waiting.socket, "game:pass", { turn: turnAt(1) }), { ok: true });
 
     assert.deepEqual(
-      await ackOf(leader.socket, "game:play", { cardIds: [next.id], seq: 0 }),
+      await ackOf(leader.socket, "game:play", { cardIds: [next.id], turn: state.turn }),
       { ok: false, code: "NOT_YOUR_TURN" },
       "the leader is on move, but not on the move this play was made against"
     );
     const held = await stateOf(leader, roomId);
     assert.equal(held.lastMove.seq, 2);
     assert.ok(held.players[held.viewerSeatIndex]?.hand.some((c) => c.id === next.id), "the card never left the hand");
-    assert.deepEqual(await ackOf(leader.socket, "game:play", { cardIds: [next.id], seq: 2 }), { ok: true });
+    assert.deepEqual(await ackOf(leader.socket, "game:play", { cardIds: [next.id], turn: held.turn }), { ok: true });
   });
 
   test("two intents from one socket land in the order they were sent", async () => {
@@ -304,7 +323,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
 
   test("the server answers a pass", async () => {
     const { host, state } = await table("pass");
-    assert.notEqual(await ackOf(host.socket, "game:pass", { seq: intentSeq(state) }), null);
+    assert.notEqual(await ackOf(host.socket, "game:pass", { turn: state.turn }), null);
   });
 
   /**
@@ -316,7 +335,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
     const { host, state } = await table("refuse");
     const reply = (await ackOf(host.socket, "game:play", {
       cardIds: ["definitely-not-a-card"],
-      seq: intentSeq(state),
+      turn: state.turn,
     })) as IntentReply | null;
     assert.notEqual(reply, null, "a rejected intent is still acknowledged");
     assert.equal(reply?.ok, false, "and the answer says it was refused");
@@ -332,7 +351,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
    */
   test("an intent the server silently drops is not answered ok", async () => {
     const c = await player("noroom");
-    const reply = (await ackOf(c.socket, "game:play", { cardIds: ["x"], seq: 0 })) as IntentReply | null;
+    const reply = (await ackOf(c.socket, "game:play", { cardIds: ["x"], turn: turnAt(0) })) as IntentReply | null;
     assert.notEqual(reply, null, "it is still answered");
     assert.equal(reply?.ok, false, "a play that reached no table did not happen");
     assert.equal(reply?.code, "NOT_AT_A_TABLE");
@@ -386,7 +405,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
 
   test("a pass out of turn is refused rather than reported as done", async () => {
     const { waiting } = await dealtPair("outofturn");
-    const reply = (await ackOf(waiting.socket, "game:pass", { seq: 0 })) as IntentReply | null;
+    const reply = (await ackOf(waiting.socket, "game:pass", { turn: turnAt(0) })) as IntentReply | null;
     assert.equal(reply?.ok, false, "it is not this seat's turn");
     assert.equal(reply?.code, "NOT_YOUR_TURN");
   });

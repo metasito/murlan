@@ -12,16 +12,16 @@ export function moveSince(seen: LastMove | null | undefined, next: LastMove): La
   return same ? null : next;
 }
 
-/** Changes on every move, so a timer armed for one turn restarts on the next. */
+/**
+ * Changes on every move, so a timer armed for one turn restarts on the next. Also the token a move
+ * intent echoes from the wire state: opaque to the client, so its shape can change without a
+ * protocol raise.
+ */
 export function turnOf(state: Pick<GameState, "lastMove">): string {
   return String(state.lastMove.seq);
 }
 
-/** What a move intent names as the state it was made against; one made against any other is stale. */
-export function intentSeq(state: Pick<GameState, "lastMove">): number {
-  return state.lastMove.seq;
-}
-
-export function isStaleIntent(state: Pick<GameState, "lastMove">, seq: number): boolean {
-  return seq !== intentSeq(state);
+/** A move intent made against any turn but the table's current one. */
+export function isStaleTurn(state: Pick<GameState, "lastMove">, turn: string): boolean {
+  return turn !== turnOf(state);
 }

@@ -12,7 +12,7 @@ import { db, openDatabase } from "../../server/store/db.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { actingSeat, startRound, type GameState } from "../../lib/game/gameEngine.ts";
 import { chooseMove } from "../../lib/game/autoMove.ts";
-import { intentSeq } from "../../lib/game/moves.ts";
+import { turnOf } from "../../lib/game/moves.ts";
 
 openDatabase();
 
@@ -49,9 +49,9 @@ function seatedTable(t: { mock: typeof import("node:test").mock }, gameState: Ga
     const state = activeGames.get(ROOM)!.gameState;
     const seat = actingSeat(state);
     const chosen = chooseMove(state, seat, "floor")!;
-    const seq = intentSeq(state);
+    const turn = turnOf(state);
     const [event, body] =
-      chosen.kind === "play" ? ["game:play", { cardIds: chosen.cardIds, seq }] : chosen.kind === "pass" ? ["game:pass", { seq }] : ["game:exchange_give_card", { cardId: chosen.cardId, seq }];
+      chosen.kind === "play" ? ["game:play", { cardIds: chosen.cardIds, turn }] : chosen.kind === "pass" ? ["game:pass", { turn }] : ["game:exchange_give_card", { cardId: chosen.cardId, turn }];
     const reply = await new Promise((resolve) => sockets[seat].get(event as string)!(body, resolve));
     assert.deepEqual(reply, { ok: true });
   }

@@ -7,7 +7,6 @@ import { eq } from "drizzle-orm";
 import { logger } from "../../server/shared/logger.ts";
 import { payload } from "../../server/shared/payload.ts";
 import { createDeck, getAllValidPlays } from "../../lib/game/gameEngine.ts";
-import { intentSeq } from "../../lib/game/moves.ts";
 import type { ServerPayload } from "../../shared/protocol.ts";
 import {
   startTestServer,
@@ -193,18 +192,18 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     assert.ok(handBefore.length > 0, "the exchange winner's own hand must be visible to them");
 
     const playRejected = waitFor<{ code: string }>(winner!.socket, "game:error");
-    winner!.socket.emit("game:play", { cardIds: [handBefore[0].id], seq: intentSeq(winnerState) });
+    winner!.socket.emit("game:play", { cardIds: [handBefore[0].id], turn: winnerState.turn });
     const playErr = await playRejected;
     assert.equal(playErr.code, "EXCHANGE_PENDING");
 
     const passRejected = waitFor<{ code: string }>(winner!.socket, "game:error");
-    winner!.socket.emit("game:pass", { seq: intentSeq(winnerState) });
+    winner!.socket.emit("game:pass", { turn: winnerState.turn });
     const passErr = await passRejected;
     assert.equal(passErr.code, "EXCHANGE_PENDING");
 
     // Heads-up, the loser can name a card the winner holds; only the seat check refuses it.
     const loser = [alice, bob].find((c) => c !== winner)!;
-    const stolen = await refusal(loser, "game:exchange_give_card", { cardId: handBefore[0].id, seq: intentSeq(winnerState) });
+    const stolen = await refusal(loser, "game:exchange_give_card", { cardId: handBefore[0].id, turn: winnerState.turn });
     assert.equal(stolen.code, "NOT_YOUR_EXCHANGE");
 
     // The rejection must not just fail to reply — re-fetch the authoritative
@@ -714,7 +713,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     const held = new Set(before.players[before.viewerSeatIndex].hand.map((c) => c.id));
     assert.ok(before.openingCard && !held.has(before.openingCard.id));
 
-    idle.socket.emit("game:play", { cardIds: [before.openingCard.id], seq: intentSeq(before) });
+    idle.socket.emit("game:play", { cardIds: [before.openingCard.id], turn: before.turn });
 
     const after = await authoritativeState(idle, room.roomId);
     assert.equal(after.currentTurnIndex, before.currentTurnIndex);
@@ -743,7 +742,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     // `player.hand.filter(...)` would otherwise turn a forged two-card play
     // into a legal single and let it through as if it had been asked for.
     const rejected = waitFor<{ code: string }>(onTurn.socket, "game:error");
-    onTurn.socket.emit("game:play", { cardIds: [before.openingCard.id, foreign.id], seq: intentSeq(before) });
+    onTurn.socket.emit("game:play", { cardIds: [before.openingCard.id, foreign.id], turn: before.turn });
     assert.equal((await rejected).code, "INVALID_CARD");
 
     const after = await authoritativeState(onTurn, room.roomId);
@@ -774,7 +773,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     assert.ok(other, "the seat on turn holds more than the start card");
 
     const rejected = waitFor<ServerPayload>(onTurn.socket, "game:error");
-    onTurn.socket.emit("game:play", { cardIds: [other.id], seq: intentSeq(before) });
+    onTurn.socket.emit("game:play", { cardIds: [other.id], turn: before.turn });
     const told = await rejected;
     assert.equal(told.code, "INVALID_MOVE");
     assert.equal(told.params?.refusal, "needsStartCard");
@@ -823,13 +822,13 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     const offRank = hand.find((c) => !c.isJoker && c.rank !== start.rank);
     assert.ok(offRank, "a fourteen-card hand holds a second rank");
 
-    const seq = intentSeq(before);
-    assert.equal((await refusal(lead, "game:pass", { seq })).code, "CANNOT_PASS");
+    const { turn } = before;
+    assert.equal((await refusal(lead, "game:pass", { turn })).code, "CANNOT_PASS");
     const mixedTold = waitFor<ServerPayload>(lead.socket, "game:error");
-    const mixed = await refusal(lead, "game:play", { cardIds: [start.id, offRank.id], seq });
+    const mixed = await refusal(lead, "game:play", { cardIds: [start.id, offRank.id], turn });
     assert.equal(mixed.code, "INVALID_MOVE");
     assert.equal((await mixedTold).params?.refusal, "notACombination");
-    const unowed = await refusal(lead, "game:exchange_give_card", { cardId: hand[0].id, seq });
+    const unowed = await refusal(lead, "game:exchange_give_card", { cardId: hand[0].id, turn });
     assert.equal(unowed.code, "NO_EXCHANGE");
     assert.equal((await refusal(lead, "room:spectate", { code: room.code })).code, "ALREADY_IN_ROOM");
 
@@ -837,7 +836,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     assert.equal(unmoved.currentTurnIndex, before.currentTurnIndex);
     assert.notEqual(unmoved.openingCard, null);
 
-    assert.equal((await refusal(lead, "game:play", { cardIds: [start.id], seq })).ok, true);
+    assert.equal((await refusal(lead, "game:play", { cardIds: [start.id], turn })).ok, true);
     const otherBefore = states[1 - leadIdx]!;
     const otherHand = otherBefore.players[otherBefore.viewerSeatIndex].hand;
     const wrongShape = getAllValidPlays(otherHand, { toBeat: null, mustInclude: null }).find(
@@ -845,7 +844,8 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     );
     assert.ok(wrongShape, "a fourteen-card hand holds a pair or a run");
     const unbeatenTold = waitFor<ServerPayload>(other.socket, "game:error");
-    const unbeaten = await refusal(other, "game:play", { cardIds: wrongShape.cards.map((c) => c.id), seq: seq + 1 });
+    const { turn: led } = await authoritativeState(other, room.roomId);
+    const unbeaten = await refusal(other, "game:play", { cardIds: wrongShape.cards.map((c) => c.id), turn: led });
     assert.equal(unbeaten.code, "INVALID_MOVE");
     assert.equal((await unbeatenTold).params?.refusal, "wrongType");
 

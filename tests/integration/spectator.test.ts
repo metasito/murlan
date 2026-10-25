@@ -17,8 +17,6 @@ import {
 } from "../helpers/testServer.ts";
 import { connectAs, waitFor } from "../helpers/client.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
-import type { LastMove } from "../../lib/game/gameEngine.ts";
-import { intentSeq } from "../../lib/game/moves.ts";
 
 // Comfortably longer than any window a test below waits in, so an AFK
 // auto-pass can never advance the table by itself — that would make "a
@@ -45,7 +43,7 @@ interface SanitizedState {
   viewerSeatIndex: number | null;
   currentTurnIndex: number;
   openingCard: { id: string } | null;
-  lastMove: LastMove;
+  turn: string;
 }
 interface RoomState {
   code: string;
@@ -105,7 +103,7 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.ok(idx >= 0, "neither client holds the seat on turn");
     const start = states[idx].openingCard;
     assert.ok(start, "the opening round must name a start card");
-    seats[idx].socket.emit("game:play", { cardIds: [start!.id], seq: intentSeq(states[idx]) });
+    seats[idx].socket.emit("game:play", { cardIds: [start!.id], turn: states[idx].turn });
   }
 
   test("a seated player still receives their own hand", async () => {
@@ -162,8 +160,8 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     const before = await joined;
 
     // Including the genuinely legal opening card, played from the wrong socket.
-    watcher.socket.emit("game:play", { cardIds: [aliceState.openingCard!.id], seq: intentSeq(before) });
-    watcher.socket.emit("game:pass", { seq: intentSeq(before) });
+    watcher.socket.emit("game:play", { cardIds: [aliceState.openingCard!.id], turn: before.turn });
+    watcher.socket.emit("game:pass", { turn: before.turn });
     await new Promise((r) => setTimeout(r, 250));
 
     const check = waitFor<SanitizedState>(watcher.socket, "game:state", 4000);

@@ -17,7 +17,6 @@ import { startTestServer, type TestServer } from "../helpers/testServer.ts";
 import { reconnectWith, DEADLINE_SCALE } from "../helpers/client.ts";
 import { redealExactly, forgetActiveGame } from "../helpers/liveGame.ts";
 import { createDeck } from "../../lib/game/gameEngine.ts";
-import { intentSeq } from "../../lib/game/moves.ts";
 import { checkAll, type SeatView, type Violation } from "./invariants.ts";
 import { Seat, openTable, seatSocket, settle, type SoakLogEntry } from "./soak.ts";
 
@@ -160,10 +159,10 @@ export async function replaySoakLog(
       const before = seat.version;
       seat.clearRefusal();
       if (!seat.state) throw new Error(`${seat.username} holds no state to replay a move against`);
-      const seq = intentSeq(seat.state);
-      if (entry.kind === "play") seatSocket(seat).emit("game:play", { cardIds: entry.cardIds, seq });
-      else if (entry.kind === "pass") seatSocket(seat).emit("game:pass", { seq });
-      else seatSocket(seat).emit("game:exchange_give_card", { cardId: entry.cardId, seq });
+      const { turn } = seat.state;
+      if (entry.kind === "play") seatSocket(seat).emit("game:play", { cardIds: entry.cardIds, turn });
+      else if (entry.kind === "pass") seatSocket(seat).emit("game:pass", { turn });
+      else seatSocket(seat).emit("game:exchange_give_card", { cardId: entry.cardId, turn });
 
       if (await waitForOwnBroadcast(seat, before)) {
         applied += 1;

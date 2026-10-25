@@ -98,7 +98,7 @@ describe('an intent the server never acknowledges', () => {
     jest.useFakeTimers();
 
     let outcome: IntentOutcome | undefined;
-    void send(seen.socket, 'game:pass', { seq: 0 }).then((o) => (outcome = o));
+    void send(seen.socket, 'game:pass', { turn: 't' }).then((o) => (outcome = o));
     for (let attempt = 0; attempt < 3; attempt++) {
       await act(async () => jest.advanceTimersByTime(INTENT_ACK_TIMEOUT_MS));
     }

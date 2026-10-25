@@ -11,6 +11,7 @@ import { __resetRateLimits } from "../../server/socket/socketSafety.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { buildCombination, type GameState } from "../../lib/game/gameEngine.ts";
 import { card as c, seat, state as makeState } from "../support/game.ts";
+import { turnOf } from "../../lib/game/moves.ts";
 
 const ROOM = "move-routing-room";
 const SOCKET_ID = "move-routing-socket";
@@ -63,7 +64,7 @@ async function replyTo(state: GameState, event: string, body?: unknown) {
   return { reply, sent };
 }
 
-test("a move naming no seq is refused before it reaches the table, for each of the three events", async () => {
+test("a move naming no turn is refused before it reaches the table, for each of the three events", async () => {
   const exchange = table({
     lastPlayedCombination: null,
     exchangePhase: { kind: "open", winnerIdx: 1, loserIdx: 2, cardFromLoser: c("J", "diamonds") },
@@ -81,7 +82,7 @@ test("a move naming no seq is refused before it reaches the table, for each of t
 });
 
 test("game:play delivers a play of exactly the cards named, for the sender's seat", async () => {
-  const next = await deliver(table({}), "game:play", { cardIds: ["J_diamonds"], seq: 0 });
+  const next = await deliver(table({}), "game:play", { cardIds: ["J_diamonds"], turn: turnOf(table({})) });
   assert.equal(next.lastPlayedBy, 1);
   assert.deepEqual(next.lastPlayedCombination?.cards.map((x) => x.id), ["J_diamonds"]);
   assert.deepEqual(next.players[1].hand.map((x) => x.id), ["4_clubs"]);
@@ -89,7 +90,7 @@ test("game:play delivers a play of exactly the cards named, for the sender's sea
 });
 
 test("game:pass delivers a pass for the sender's seat", async () => {
-  const next = await deliver(table({}), "game:pass", { seq: 0 });
+  const next = await deliver(table({}), "game:pass", { turn: turnOf(table({})) });
   assert.equal(next.passCount, 1);
   assert.equal(next.lastPlayedBy, 2);
   assert.deepEqual(next.players[1].hand.map((x) => x.id), ["4_clubs", "J_diamonds"]);
@@ -101,7 +102,7 @@ test("game:exchange_give_card delivers a giveback of the card named, from the se
     lastPlayedCombination: null,
     exchangePhase: { kind: "open", winnerIdx: 1, loserIdx: 2, cardFromLoser: c("J", "diamonds") },
   });
-  const next = await deliver(state, "game:exchange_give_card", { cardId: "4_clubs", seq: 0 });
+  const next = await deliver(state, "game:exchange_give_card", { cardId: "4_clubs", turn: turnOf(state) });
   assert.equal(next.exchangePhase?.kind, "settled");
   assert.equal(next.exchangePhase.cardToLoser.id, "4_clubs");
   assert.deepEqual(next.players[1].hand.map((x) => x.id), ["J_diamonds"]);

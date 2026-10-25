@@ -8,7 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
 import { aThreePlayed, state } from '../support/game';
 import { renderApp } from './harness/renderApp';
-import { wire } from './harness/wire';
+import { room, wire } from './harness/wire';
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
@@ -98,14 +98,32 @@ describe('the online table selection', () => {
     await r.unmount();
   });
 
-  it('sends a play under the seq of the state it was made against', async () => {
+  it('sends a play under the turn token of the state it was made against, as the server wrote it', async () => {
     const r = await mount(screenUnderTest());
-    await serverSends(r, stateWith([KING, NINE], { lastMove: { seq: 4, kind: 'pass', seat: 1, closedTrick: true } }));
+    await r.socket().deliver('game:state', wire(stateWith([KING, NINE]), 0, { turn: 'opaque-7' }), () => {});
     await tap(KING);
     await act(async () => {
       fireEvent.press(screen.getByTestId('btn-gioca'));
     });
-    expect(r.socket().sentAs('game:play').map((p) => [p.cardIds, p.seq])).toEqual([[[KING.id], 4]]);
+    expect(r.socket().sentAs('game:play').map((p) => [p.cardIds, p.turn])).toEqual([[[KING.id], 'opaque-7']]);
+
+    await r.unmount();
+  });
+
+  it('asks for the table again when its own play is refused as out of turn', async () => {
+    const r = await mount(screenUnderTest());
+    await r.socket().deliver('room:state', room({ status: 'in_progress' }));
+    r.socket().reset();
+    await tap(KING);
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('btn-gioca'));
+    });
+    const [ack] = r.socket().acks.filter((a) => a.event === 'game:play');
+    expect(r.socket().sentAs('game:rejoin')).toEqual([]);
+    await act(async () => {
+      ack.answer({ ok: false, code: 'NOT_YOUR_TURN' });
+    });
+    expect(r.socket().sentAs('game:rejoin')).toHaveLength(1);
 
     await r.unmount();
   });

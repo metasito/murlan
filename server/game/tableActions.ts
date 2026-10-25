@@ -25,7 +25,7 @@ interface TableActionBase {
 
 export type TableAction =
   /** The only kind that carries a game move; the socket's three move events each build one. */
-  | (TableActionBase & { kind: "move"; move: Move; seq: number })
+  | (TableActionBase & { kind: "move"; move: Move; turn: string })
   | (TableActionBase & { kind: "reaction"; emoji: string })
   | (TableActionBase & { kind: "rematchVote" })
   /** A vote to end the match outright, once a seat has been vacated — or its withdrawal. */

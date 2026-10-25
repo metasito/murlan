@@ -175,7 +175,7 @@ describe("onEvent leaves every refusal in the log", () => {
     const socket = fakeSocket();
     onEvent(socket as any, "game:pass", GamePassSchema, async () => ({ ok: false, code: "NOT_YOUR_TURN" }));
 
-    assert.deepEqual(await socket.send("game:pass", { seq: 0 }),{ ok: false, code: "NOT_YOUR_TURN" });
+    assert.deepEqual(await socket.send("game:pass", { turn: "0" }), { ok: false, code: "NOT_YOUR_TURN" });
     assert.equal(lines.filter((l) => l.fields.code === "NOT_YOUR_TURN").length, 1);
     assert.deepEqual(socket.emitted, []);
   });

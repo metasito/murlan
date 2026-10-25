@@ -35,6 +35,8 @@ export type WireGameState = Omit<ViewedGameState, "players"> & {
   viewerSeatIndex: number | null;
   turnDeadlineMs?: number;
   turnSecondsRemaining: number;
+  /** Opaque to the client: a move intent echoes it as `turn`, and the server refuses one that names any other. */
+  turn: string;
 };
 
 export interface WireRoomState {
@@ -169,6 +171,7 @@ export const gameStateSchema = z
     // and a stricter wire would refuse a state over a tally a newer server reshaped.
     playedRanks: z.array(z.number()),
     openingCard: card.nullable(),
+    turn: z.string(),
   })
   .passthrough();
 

@@ -12,6 +12,7 @@ import { onlineTable } from "../helpers/onlineTable.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { createDeck, startRound, type GameState } from "../../lib/game/gameEngine.ts";
 import type { WireGameState } from "../../shared/protocol.ts";
+import { turnOf } from "../../lib/game/moves.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 
 const ROOM = "publish-order-room";
@@ -69,7 +70,7 @@ test("a play serves every viewer, then persists", async (t) => {
     roomId: ROOM,
     userId: "ana",
     move: { kind: "play", cardIds: [state.openingCard!.id] },
-    seq: 0,
+    turn: turnOf(state),
   });
   assert.deepEqual(outcome, { ok: true });
   await settle();
@@ -88,7 +89,7 @@ test("the state that closes an exchange shows every viewer the ceremony", async 
   const give = state.players[0].hand.find((c) => c.id !== phase.cardFromLoser.id)!;
   useAnaTable(t, { ...state, currentTurnIndex: 0 });
   const { rt, journal } = recordingRuntime({ persist: "real" });
-  assert.deepEqual(await applyOrForward(rt, { kind: "move", roomId: ROOM, userId: "ana", move: { kind: "giveback", cardId: give.id }, seq: 0 }), {
+  assert.deepEqual(await applyOrForward(rt, { kind: "move", roomId: ROOM, userId: "ana", move: { kind: "giveback", cardId: give.id }, turn: turnOf(state) }), {
     ok: true,
   });
   await settle();
