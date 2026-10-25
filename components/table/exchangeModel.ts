@@ -5,7 +5,7 @@
 import type { Card, Player } from "@/lib/game/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 import type { TFn } from "@/lib/i18n";
-import { getCardDisplayRank, getSuitSymbol, givebackIsFallback } from "../../lib/game/gameEngine.ts";
+import { getCardDisplayRank, getSuitSymbol } from "../../lib/game/gameEngine.ts";
 import { restPoint, type LegPoints, type LegStage } from "../../lib/timeline/exchangeTimeline.ts";
 import { handCountOf, type ViewedGameState } from "../../shared/protocol.ts";
 import { fanPoint } from "../fanGeometry.ts";
@@ -213,14 +213,12 @@ export function exchangeNotes(input: {
   shown: ExchangeAnnounceData | null;
   stages: ExchangeStages;
   live: ExchangeView;
-  /** The winner's legal gives, only while their choice is open. */
-  giveable: Card[] | undefined;
   players: readonly { name: string }[];
   viewerSeat: number;
   spectating: boolean;
   t: TFn;
 }): { chip: string | null; pileNote: PileNote | null } {
-  const { shown, stages, live, giveable, players, viewerSeat, spectating, t } = input;
+  const { shown, stages, live, players, viewerSeat, spectating, t } = input;
   if (!shown) return { chip: null, pileNote: null };
   const name = (seat: number) => players[seat]?.name ?? "";
   const giveNote = (card: Card, from: number, to: number): PileNote => {
@@ -248,9 +246,7 @@ export function exchangeNotes(input: {
   const chip = !(live.open && stages.ready)
     ? t("exchange.chipTitle")
     : live.viewerIsWinner
-      ? giveable && givebackIsFallback(giveable)
-        ? t("exchange.noValidCards")
-        : t("exchange.chipGive", { name: loserName })
+      ? t("exchange.chipGive", { name: loserName })
       : live.viewerIsLoser
         ? t("exchange.waitingForYou", { winner: winnerName })
         : t("exchange.watching", { winner: winnerName, loser: loserName });
