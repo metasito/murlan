@@ -20,3 +20,17 @@ test("output that is not an audit report fails rather than passing unseen", () =
   assert.equal(run(() => "npm ERR! network", () => {}), 1);
   assert.equal(fixableSevere({}), null);
 });
+
+test("ci.yml's lint job runs the audit gate", async () => {
+  const { readFileSync } = await import("node:fs");
+  const ci = readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const lint = ci.slice(ci.indexOf("\n  lint:\n"), ci.indexOf("\n  android-build:"));
+  assert.match(lint, /run: node tools\/ci\/audit-gate\.mjs/);
+});
+
+test("a dependent flagged only through a package with no non-major fix does not fail", () => {
+  const major = { name: "expo", isSemVerMajor: true };
+  const via = [{ source: 1, name: "forge" }];
+  assert.equal(run(() => report({ forge: { ...vuln("high", major), via }, dep: { ...vuln("high", true), via: ["forge"] } }), () => {}), 0);
+  assert.equal(run(() => report({ forge: { ...vuln("high", true), via }, dep: { ...vuln("high", true), via: ["forge"] } }), () => {}), 1);
+});
