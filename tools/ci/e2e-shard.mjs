@@ -36,7 +36,7 @@ export const SHARD_NOISE = 1.32;
 /** Not the documented 20: run 37792764075 ran 25 jobs at once with none queued. */
 export const MAX_CONCURRENT_JOBS = 25;
 /** What that leaves beside every job ci.yml starts with the shards; `e2eShardSplit.test.ts` counts them. */
-export const MAX_SHARDS = 17;
+export const MAX_SHARDS = 16;
 
 /**
  * What Playwright runs from `dir` on a pull request: a recursive walk kept to `prSpec`, as paths

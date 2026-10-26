@@ -28,10 +28,10 @@ const ciJobs = Object.entries(loadWorkflow("ci.yml").jobs);
 // Left out: the device compiles, which start only on a native change or the weekly schedule — runs
 // their own 9–29 min already put far past the target (#1408), where two queued jobs cost nothing.
 const deviceCompile = (job: Job) => /\bnative\b/.test(job.if ?? "");
-// A job that needs the shards' own job starts only once every shard has finished.
-const afterShards = (job: Job) => needsOf(job).includes("browser");
+// Only a job that needs nothing but `scope` starts with the shards; any other waits for a job that holds a slot.
+const startsWithShards = (job: Job) => needsOf(job).every((need) => need === "scope");
 const besideShards = ciJobs
-  .filter(([id, job]) => id !== "scope" && id !== "browser" && !afterShards(job) && !deviceCompile(job))
+  .filter(([id, job]) => id !== "scope" && id !== "browser" && startsWithShards(job) && !deviceCompile(job))
   .reduce((n, [, job]) => {
     const shard = job.strategy?.matrix?.shard;
     return n + (Array.isArray(shard) ? shard.length : 1);
