@@ -1,6 +1,6 @@
 // The server imports this: relative `.ts` imports only (tests/tooling/libGameBoundary.test.ts).
 import type { Gate } from "../game/turnSchedule.ts";
-import { Motion, Reading } from "../tokens.ts";
+import { Hold, Motion, Reading } from "../tokens.ts";
 import { dealEndMs } from "./dealTimeline.ts";
 import { exchangeAnnounceMs, exchangeGiveDelayMs } from "./exchangeTimeline.ts";
 
@@ -13,6 +13,8 @@ export function gateMs(gates: readonly Gate[], counts: readonly number[], twoJok
     deal: dealt,
     receive: exchangeGiveDelayMs(counts) - dealt,
     ceremony: exchangeAnnounceMs(twoJokers),
+    // The whole ceremony: the receive, its reading, and a beat for the pills to say there is nothing to give back.
+    oneWay: exchangeGiveDelayMs(counts) - dealt + Hold.reveal,
     opening: OPENING_NOTICE_MS,
   };
   return gates.reduce((ms, gate) => ms + span[gate], 0);

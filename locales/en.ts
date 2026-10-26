@@ -300,6 +300,9 @@ export const en = {
   // ----------------------------------------------------------------- exchange.*
   // The turn chip's, while the trade runs and then while the winner chooses.
   "exchange.chipTitle": "Exchange",
+  // The turn chip once the received card is read and the winner holds nothing from 3 to 10 to give back; `name` is the winner; the viewer winner reads the second-person form.
+  "exchange.chipOneWay": "{{name}} can't give back",
+  "exchange.chipOneWayYou": "You can't give back",
   "exchange.chipGive": "Choose a card from 3 to 10 for {{name}}",
   // Murlan's 3-to-10 rule is this game's own; every other game in the family
   // lets the winner give any card. The glow says which cards; this says why.
@@ -311,10 +314,12 @@ export const en = {
   "exchange.confirmA11yWaiting": "Give a card to {{name}}. Choose one of the highlighted cards first.",
   "exchange.cardA11yHint": "Chooses this card to give",
   "exchange.cardA11yNotGiveable": "Cannot be given — only a 3 to a 10 may be given",
-  // Under the pile while a traded card rests there face up; `card` is its short name, "2♥".
+  // On the last-played pill while a traded card rests on the pile face up; `card` is its short name, "2♥".
   "exchange.pileGives": "{{from}} gives {{card}} to {{to}}",
   "exchange.pileYouGive": "You give {{card}} to {{to}}",
   "exchange.pileGivesYou": "{{from}} gives you {{card}}",
+  // The last-played pill beside it, which names no one: the chip does.
+  "exchange.pillNothing": "Nothing from 3–10",
 
   // ----------------------------------------------------------------- cards.*
   "cards.rankAce": "Ace",
@@ -352,6 +357,8 @@ export const en = {
   "gameShared.emptyHand": "Hand empty!",
   "gameShared.startReasonCard": "{{name}} starts — holds the {{rank}}{{suit}}",
   "gameShared.startReasonCardSub": "(the 3♠ was not dealt)",
+  "gameShared.startReasonOneWaySub": "{{name}} had nothing from 3 to 10 to give back",
+  "gameShared.startReasonOneWaySubYou": "You had nothing from 3 to 10 to give back",
   "gameShared.startReasonLostRound": "{{name}} starts — lost the round",
   "gameShared.startReasonWonNoExchange": "{{name}} starts — won (no exchange)",
   "gameShared.startReasonDismiss": "Tap to continue",
@@ -664,7 +671,7 @@ export const en = {
   "rules.faq.q9": "What game modes exist?",
   "rules.faq.a9": "Murlan supports 4 formats:\n\n• 1 vs 1 — two players, whoever finishes their cards first wins\n• Trio — three players, free-for-all\n• 4 Free — four players, free-for-all\n• 2 vs 2 — four players split into two pairs seated opposite each other: Player 1&3 vs Player 2&4. The hand is played out to the end: it doesn't end when a player, or even a whole pair, runs out of cards, but only when a single player still holds cards. The two partners' placement points are added together: the pair with the higher total wins, and equal totals are a draw.\n\nOnline mode offers all 4 formats. Offline, you choose the number of players and the mode yourself.",
   "rules.faq.q10": "How does the card exchange work?",
-  "rules.faq.a10": "After every hand (once everyone has finished their cards), an exchange takes place:\n\n1. The loser (last place) automatically gives their strongest card to the winner (first place).\n2. The winner chooses a card ranked 3 to 10 to give back to the loser — never the card just received. Holding none, they give nothing back.\n3. The loser then opens the next round.\n\nTwo-Joker exception: if the loser holds both Jokers (red and black), the exchange does NOT happen. The winner opens the next round themselves.",
+  "rules.faq.a10": "After every hand (once everyone has finished their cards), an exchange takes place:\n\n1. The loser (last place) automatically gives their strongest card to the winner (first place).\n2. The winner chooses a card ranked 3 to 10 to give back to the loser — never the card just received. Holding none, they give nothing back and the exchange is one-way.\n3. The loser then opens the next round.\n\nTwo-Joker exception: if the loser holds both Jokers (red and black), the exchange does NOT happen. The winner opens the next round themselves.",
   "rules.faq.q11": "What are the Jokers?",
   "rules.faq.a11": "The Jokers are the strongest cards in the deck in normal combinations:\n• Red Joker ★: the strongest of all\n• Black Joker ☆: second strongest\n\nWarning: Jokers can ONLY be played as a single card — never in a pair, triple or straight. A Joker played as a single can be beaten by a Bomb!",
   "rules.faq.q12": "What's a Bomb?",

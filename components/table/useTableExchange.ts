@@ -13,7 +13,7 @@ import {
   readExchangeSeats,
   type ExchangeStages,
   type ExchangeView,
-  type PileNote,
+  type PillNote,
 } from "./exchangeModel";
 
 export interface TableExchange {
@@ -33,7 +33,8 @@ export interface TableExchange {
   exchangeLoserName: string;
   choiceOpen: boolean;
   exchangeChip: string | null;
-  pileNote: PileNote | null;
+  /** What the last-played pill says while a traded card rests, or the winner has nothing to give back. */
+  pillNote: PillNote | null;
 }
 
 /** The exchange as the table shows it: what flies, each leg's stage, the seats it marks, the choice and its words. */
@@ -104,6 +105,6 @@ export function useTableExchange(input: {
     exchangeLoserName: exchange.loser?.name ?? "",
     choiceOpen: exchange.open && stages.ready,
     exchangeChip: notes.chip,
-    pileNote: notes.pileNote,
+    pillNote: notes.pillNote,
   };
 }

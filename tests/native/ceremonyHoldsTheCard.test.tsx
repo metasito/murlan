@@ -76,6 +76,7 @@ const announce = (twoJokers = false) => ({
   winnerIdx: WINNER_SEAT,
   loserIdx: LOSER_SEAT,
   twoJokers,
+  oneWay: false,
   cardGiven: TO_LOSER,
   cardReceived: FROM_LOSER,
 });

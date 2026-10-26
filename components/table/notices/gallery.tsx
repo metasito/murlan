@@ -8,7 +8,7 @@ import { EmptyHandLine, WaitingLine } from "./tableLines";
 import { HudComboPill, OfflinePill, TurnChip } from "./hud";
 import { EndMatchVote, LeftTable, RoundVote } from "./netNotes";
 import { WhoStartsCard } from "./panels";
-import { ComboMark, PileLabelMark, TrickWinnerMark } from "./pileNotices";
+import { ComboMark, TrickWinnerMark } from "./pileNotices";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./seatMarks";
 
 const underDisc = (scale: number) => {
@@ -43,6 +43,11 @@ export const NOTICE_GALLERY = {
   hudCombo: [
     { name: "table clear", tone: "neutral", render: (scale) => <HudComboPill scale={scale} play={null} /> },
     { name: "a pair", tone: "neutral", render: (scale) => <HudComboPill scale={scale} play={{ name: "Besnik", combo: "Coppia" }} /> },
+    {
+      name: "an exchange's card resting on the pile",
+      tone: "lit",
+      render: (scale) => <HudComboPill scale={scale} play={null} note={{ text: "Luan dà 2♥ a Ana", testID: "exchange-pill-note" }} />,
+    },
   ],
   turn: [
     { name: "a bot on move", tone: "neutral", render: (scale) => <TurnChip {...turn(scale, false, 30)} /> },
@@ -119,13 +124,6 @@ export const NOTICE_GALLERY = {
     { name: "a bomb, the same mark", tone: "lit", render: (scale) => <ComboMark scale={scale} label="Bomba ×4" /> },
   ],
   trickWinner: [{ name: "a seat took the round", tone: "lit", render: (scale) => <TrickWinnerMark scale={scale} name="Besnik" /> }],
-  pileLabel: [
-    {
-      name: "the exchange's card on the pile",
-      tone: "lit",
-      render: (scale) => <PileLabelMark scale={scale} testID="exchange-pile-label" text="Luan dà 2♥ a Ana" />,
-    },
-  ],
   passed: [{ name: "a seat passed", tone: "neutral", render: underDisc }],
   reconnecting: [
     { name: "a seat reconnecting", tone: "neutral", render: (scale) => <ReconnectingMark seconds={25} resetKey="gallery" scale={scale} /> },

@@ -59,7 +59,12 @@ async function show(answer: { status?: number; body?: unknown }) {
   route('GET', HISTORY, answer);
   await setWindow({ width: 800, height: 600 });
   const view = await renderApp(<HistoryScreen />, { user: { id: 'u1', username: 'Ana' } });
-  await waitFor(() => expect(queryClient.getQueryState([HISTORY])?.fetchStatus).toBe('idle'));
+  // Idle alone also matches a query mounted but not yet fetching, which still shows the spinner.
+  await waitFor(() => {
+    const state = queryClient.getQueryState([HISTORY]);
+    expect(state?.status).not.toBe('pending');
+    expect(state?.fetchStatus).toBe('idle');
+  });
   return view;
 }
 const rounds = (history: unknown[]) => show({ body: history });

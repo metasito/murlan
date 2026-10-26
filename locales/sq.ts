@@ -307,6 +307,8 @@ export const sq: Record<keyof typeof en, string> = {
 
   // ----------------------------------------------------------------- exchange.*
   "exchange.chipTitle": "Shkëmbim",
+  "exchange.chipOneWay": "{{name}} s'ka ç'të kthejë",
+  "exchange.chipOneWayYou": "S'ke ç'të kthesh",
   "exchange.chipGive": "Zgjidh një letër nga 3 në 10 për {{name}}",
   "exchange.watching": "{{winner}} po zgjedh një letër për {{loser}}",
   "exchange.waitingForYou": "{{winner}} po zgjedh një letër për ty",
@@ -318,6 +320,7 @@ export const sq: Record<keyof typeof en, string> = {
   "exchange.pileGives": "{{from}} i jep {{card}} {{to}}",
   "exchange.pileYouGive": "Ti i jep {{card}} {{to}}",
   "exchange.pileGivesYou": "{{from}} të jep {{card}}",
+  "exchange.pillNothing": "Asnjë letër 3–10",
 
   // ----------------------------------------------------------------- cards.*
   "cards.rankAce": "Asi",
@@ -355,6 +358,8 @@ export const sq: Record<keyof typeof en, string> = {
   "gameShared.emptyHand": "Letrat mbaruan!",
   "gameShared.startReasonCard": "{{name}} fillon — ka {{rank}}{{suit}}",
   "gameShared.startReasonCardSub": "(3♠ nuk u nda)",
+  "gameShared.startReasonOneWaySub": "{{name}} nuk kishte letër nga 3 në 10 për ta kthyer",
+  "gameShared.startReasonOneWaySubYou": "Ti nuk kishe letër nga 3 në 10 për ta kthyer",
   "gameShared.startReasonLostRound": "{{name}} fillon — humbi raundin",
   "gameShared.startReasonWonNoExchange": "{{name}} fillon — fitoi (pa shkëmbim)",
   "gameShared.startReasonDismiss": "Prek për të vazhduar",
@@ -667,7 +672,7 @@ export const sq: Record<keyof typeof en, string> = {
   "rules.faq.q9": "Cilat modalitete loje ekzistojnë?",
   "rules.faq.a9": "Murlani mbështet 4 formate:\n\n• 1 kundër 1 — dy lojtarë, fiton kush mbaron letrat i pari\n• Trio — tre lojtarë, të gjithë kundër të gjithëve\n• 4 të Lirë — katër lojtarë, të gjithë kundër të gjithëve\n• 2 kundër 2 — katër lojtarë të ndarë në dy çifte, ulur përballë njëri-tjetrit: Lojtari 1&3 kundër Lojtarit 2&4. Manchja luhet deri në fund: nuk mbyllet kur një lojtar, apo edhe një çift i tërë, mbetet pa letra, por vetëm kur një lojtar i vetëm ka ende letra në dorë. Pikët e vendosjes së dy shokëve mblidhen: fiton çifti me totalin më të lartë, dhe me totale të barabarta është barazim.\n\nNë modalitetin Online gjen të gjitha 4 formatet. Në offline zgjedh vetë sa lojtarë dhe cilin modalitet.",
   "rules.faq.q10": "Si funksionon shkëmbimi i letrave?",
-  "rules.faq.a10": "Pas çdo dore (kur të gjithë kanë mbaruar letrat), ndodh një shkëmbim:\n\n1. Humbësi (i klasifikuari i fundit) i jep automatikisht letrën e tij më të fortë fituesit (i klasifikuari i parë).\n2. Fituesi zgjedh një letër nga 3 deri në 10 për t'ia kthyer humbësit — kurrë letrën që sapo mori. Nëse nuk ka asnjë, nuk kthen asgjë.\n3. Pastaj humbësi fillon raundin tjetër.\n\nPërjashtimi i dy xholave: nëse humbësi ka në dorë të dy xholat (i ziu dhe i kuqi), shkëmbimi NUK ndodh. Fituesi fillon vetë raundin tjetër.",
+  "rules.faq.a10": "Pas çdo dore (kur të gjithë kanë mbaruar letrat), ndodh një shkëmbim:\n\n1. Humbësi (i klasifikuari i fundit) i jep automatikisht letrën e tij më të fortë fituesit (i klasifikuari i parë).\n2. Fituesi zgjedh një letër nga 3 deri në 10 për t'ia kthyer humbësit — kurrë letrën që sapo mori. Nëse nuk ka asnjë, nuk kthen asgjë dhe shkëmbimi është me një drejtim.\n3. Pastaj humbësi fillon raundin tjetër.\n\nPërjashtimi i dy xholave: nëse humbësi ka në dorë të dy xholat (i ziu dhe i kuqi), shkëmbimi NUK ndodh. Fituesi fillon vetë raundin tjetër.",
   "rules.faq.q11": "Çfarë janë xholat?",
   "rules.faq.a11": "Xholat janë letrat më të forta të mazhit në kombinimet normale:\n• Xholi i kuq ★: më i forti absolutisht\n• Xholi i zi ☆: i dyti për forcë\n\nKujdes: xholat mund të luhen VETËM si letër e vetme — kurrë në çift, tresh ose shkallë. Një xhol i luajtur si letër e vetme mund të mundet nga një Bombë!",
   "rules.faq.q12": "Çfarë është një Bombë?",

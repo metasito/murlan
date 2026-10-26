@@ -69,7 +69,7 @@ const table = (open: boolean) => (
       onExchangeReady={onReady}
       exchangeAnnouncement={{
         visible: !open,
-        data: { winnerName: 'Ana', loserName: 'Bea', winnerIdx: 0, loserIdx: 1, twoJokers: false, cardGiven: TO_LOSER, cardReceived: undefined },
+        data: { winnerName: 'Ana', loserName: 'Bea', winnerIdx: 0, loserIdx: 1, twoJokers: false, oneWay: false, cardGiven: TO_LOSER, cardReceived: undefined },
         onDismiss: noop,
       }}
     />

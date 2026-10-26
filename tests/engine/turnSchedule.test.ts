@@ -18,6 +18,22 @@ function exchangeDealt(loserHoldsBothJokers: boolean): GameState {
   return startRound(SEATS, "free_for_all", { opening: { kind: "exchange", winnerSeat: 0, loserSeat: 3 }, dealt: hands });
 }
 
+/** Seat 0 wins holding only Jokers-free J to A, so once seat 3's 2♣ is taken it has nothing from 3 to 10 to give back. */
+function oneWayDealt(): GameState {
+  const deck = createDeck();
+  const face = deck.filter((c) => ["J", "Q", "K", "A"].includes(c.rank));
+  const twos = deck.filter((c) => c.rank === "2");
+  const jokers = deck.filter((c) => c.isJoker);
+  const low = deck.filter((c) => !face.includes(c) && !twos.includes(c) && !c.isJoker);
+  const hands = [
+    face.slice(0, 14),
+    [...jokers, ...face.slice(14), ...low.slice(9, 19)],
+    low.slice(19),
+    [...twos, ...low.slice(0, 9)],
+  ];
+  return startRound(SEATS, "free_for_all", { opening: { kind: "exchange", winnerSeat: 0, loserSeat: 3 }, dealt: hands });
+}
+
 function played(): GameState {
   const s = dealt();
   const seat = (s.currentTurnIndex + 1) % SEATS.length;
@@ -69,6 +85,7 @@ const ROWS: Row[] = [
   ...row("giveback, the opener leads", gaveBack, "lead", ["ceremony"], ["opening"], false),
   ...row("deal into an open exchange, the winner gives", () => exchangeDealt(false), "give", ["deal", "receive"], [], false),
   ...row("deal holding both Jokers", () => exchangeDealt(true), "lead", ["deal", "ceremony"], ["opening"], false),
+  ...row("deal into a one-way exchange, the loser leads", oneWayDealt, "lead", ["deal", "oneWay"], ["opening"], false),
 ];
 
 for (const r of ROWS) {
@@ -87,6 +104,12 @@ for (const r of ROWS) {
 test("every lastMove kind has a row", () => {
   const kinds = new Set(ROWS.map((r) => r.state().lastMove.kind));
   assert.deepEqual([...kinds].sort(), ["deal", "giveback", "pass", "play"]);
+});
+
+test("a winner with nothing from 3 to 10 is the exchange the deal settles", () => {
+  const phase = oneWayDealt().exchangePhase;
+  assert.equal(phase?.kind, "settled");
+  assert.equal(phase?.kind === "settled" && phase.cardToLoser, undefined);
 });
 
 test("both Jokers is the round that holds no exchange to give", () => {

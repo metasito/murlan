@@ -27,6 +27,7 @@ import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine
 import type { OwnLink } from '@/lib/ownLink';
 import { setMotion } from './harness/env';
 import { aThreePlayed } from '../support/game';
+import { exchangeAnnouncementOf } from '@/lib/game/sharedGameFlow';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -343,6 +344,51 @@ describe("a seat's turn clock", () => {
   ])('has exactly one ring, or none, in %s', async (_name, make, timer, link, expected) => {
     await renderSettled(table(make(), timer, link));
     expect(clocks()).toBe(expected);
+  });
+
+  // The one-way deal settles the exchange: the loser leads, but the table is still telling why.
+  describe('through the one-way ceremony', () => {
+    const ONE_WAY = (loser: Player): GameState =>
+      state({
+        players: [0, 1, 2, 3].map((i) => (i === 1 ? loser : seat(i))),
+        currentTurnIndex: 1,
+        startReason: { type: 'lost_round', playerIdx: 1 },
+        exchangePhase: { kind: 'settled', winnerIdx: 0, loserIdx: 1, cardFromLoser: KING },
+      });
+    const told = (s: GameState, timer: TurnTimerConfig) =>
+      render(
+        <SafeAreaProvider initialMetrics={METRICS}>
+          <GameTable
+            gameState={s}
+            viewerSeat={0}
+            onPlay={noop}
+            onPass={noop}
+            onQuit={noop}
+            onExchangeGive={noop}
+            turnTimer={timer}
+            exchangeAnnouncement={{ visible: true, data: exchangeAnnouncementOf(null, s), onDismiss: noop }}
+          />
+        </SafeAreaProvider>
+      );
+    const settled = async (s: GameState, timer: TurnTimerConfig) => {
+      await told(s, timer);
+      await act(async () => {
+        jest.runOnlyPendingTimers();
+      });
+    };
+
+    it.each<[string, TurnTimerConfig]>([
+      ['online', ONLINE_TIMER],
+      ['offline', OFFLINE_TIMER],
+    ])('draws no ring for a bot loser, %s: the server arms no deadline for it', async (_table, timer) => {
+      await settled(ONE_WAY({ ...seat(1), type: 'bot' }), timer);
+      expect(clocks()).toBe(0);
+    });
+
+    it('draws no ring for a human loser offline, where a lead has no deadline', async () => {
+      await settled(ONE_WAY(seat(1)), OFFLINE_TIMER);
+      expect(clocks()).toBe(0);
+    });
   });
 
   it("counts the viewer's own chip down while they choose the card to give online, and not offline", async () => {

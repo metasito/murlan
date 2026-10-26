@@ -5,6 +5,7 @@ import { A11yStatus, a11yGroup, a11yHidden } from "@/lib/a11y";
 import { TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 import { event, silence } from "@/lib/device/feedback";
+import type { PillNote } from "../exchangeModel";
 import { urgentThresholdSeconds, CLOCK_RUNNING_OUT_SECONDS } from "@/components/turnTimerUi";
 import { NoticeDot, NoticeKey, NoticeText, TableNotice } from "../TableNotice";
 import { noticeBox } from "../noticeModel";
@@ -37,11 +38,22 @@ export function OfflinePill({ scale, shown = true }: { scale: number; shown?: bo
   );
 }
 
-export function HudComboPill({ scale, play }: { scale: number; play: { name: string; combo: string } | null }) {
+/** The last play, or, while an exchange runs, the exchange's note in its place: the pill lights to carry it. */
+export function HudComboPill({
+  scale,
+  play,
+  note = null,
+}: {
+  scale: number;
+  play: { name: string; combo: string } | null;
+  note?: PillNote | null;
+}) {
   const { t } = useTranslation();
   return (
-    <TableNotice kind="hudCombo" tone="neutral" scale={scale}>
-      {play === null ? (
+    <TableNotice kind="hudCombo" tone={note ? "lit" : "neutral"} scale={scale}>
+      {note ? (
+        <NoticeText testID={note.testID}>{note.text}</NoticeText>
+      ) : play === null ? (
         <NoticeText>{t("gameShared.emptyTable")}</NoticeText>
       ) : (
         <>

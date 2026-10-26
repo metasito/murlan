@@ -25,7 +25,7 @@ import {
   type Card,
   type StartReason,
 } from "@/lib/game/gameEngine";
-import type { ExchangeAnnounceData, ExchangeHold } from "@/lib/game/sharedGameFlow";
+import { isOneWay, type ExchangeAnnounceData, type ExchangeHold } from "@/lib/game/sharedGameFlow";
 import {
   handVisibleH,
   actionBtnSize,
@@ -425,7 +425,7 @@ export function GameTable({
     exchangeLoserName,
     choiceOpen,
     exchangeChip,
-    pileNote,
+    pillNote,
   } = useTableExchange({
     gameState,
     viewerSeat,
@@ -539,7 +539,8 @@ export function GameTable({
     reduceMotion,
   });
   // What the table shows, and what Gioca follows; `canPass` and the clock keep the true turn.
-  const turnShown = isMyTurn && !deal.dealing;
+  // The one-way exchange's loser is on move from the deal, but leads once the pills have told why.
+  const turnShown = isMyTurn && !deal.dealing && shownExchange?.oneWay !== true;
   useEffect(() => {
     onDealing?.(deal.dealing);
   }, [onDealing, deal.dealing]);
@@ -854,7 +855,7 @@ export function GameTable({
         ? t("gameShared.you")
         : (players[top.playedBy]?.name ?? "");
 
-  const topBarA11yLabel = topBarLabel(onTop, playedByViewer, lastPlayName, t);
+  const topBarA11yLabel = pillNote?.text ?? topBarLabel(onTop, playedByViewer, lastPlayName, t);
 
   const onMoveSeat = !shownExchange && shown === null ? shownTurnIndex : null;
   const turn = turnPresentation({
@@ -885,6 +886,11 @@ export function GameTable({
       ? { type: "start_card", card: gameState.openingCard, playerIdx: gameState.currentTurnIndex }
       : undefined);
   const startGated = holdingForStart && !!startReason;
+  const oneWayPhase = isOneWay(gameState.exchangePhase) ? gameState.exchangePhase : null;
+  const nothingBack =
+    oneWayPhase && whoStarts?.type === "lost_round"
+      ? { name: players[oneWayPhase.winnerIdx]?.name ?? "", isViewer: viewerOwnsSeat(oneWayPhase.winnerIdx, viewerSeat, spectating) }
+      : undefined;
 
   useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
   const seatTable: SeatTable = {
@@ -955,7 +961,7 @@ export function GameTable({
         >
           {/* The chip draws the words the group's label already says. */}
           <View {...a11yHidden()}>
-            <HudComboPill scale={scale} play={comboLabel === null ? null : { name: lastPlayName, combo: comboLabel }} />
+            <HudComboPill scale={scale} play={comboLabel === null ? null : { name: lastPlayName, combo: comboLabel }} note={pillNote} />
           </View>
         </Animated.View>
 
@@ -1061,6 +1067,7 @@ export function GameTable({
             reason={whoStarts}
             starterName={players[whoStarts.playerIdx]?.name ?? ""}
             starterIsViewer={viewerOwnsSeat(whoStarts.playerIdx, viewerSeat, spectating)}
+            nothingBack={nothingBack}
             gated={startGated}
             veiled={veil.sheet}
             onDone={() => setOpeningSpent(true)}
@@ -1180,7 +1187,6 @@ export function GameTable({
                   trickWinner={trickWinnerTag === null ? null : players[trickWinnerTag.seat]?.name ?? ""}
                   roomW={frame.fieldRoomW}
                   scale={scale}
-                  note={pileNote}
                   hidden={startCardDue}
                   opacity={roundEnding.pileOpacity}
                   lit={closedByWinners}
