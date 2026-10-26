@@ -231,3 +231,96 @@ test("provisionalLeft counts the rounds a record still needs, and is undefined o
   assert.equal(provisionalLeft({ rounds: PROVISIONAL_ROUNDS }), undefined);
   assert.equal(provisionalLeft({ rounds: PROVISIONAL_ROUNDS + 7 }), undefined);
 });
+
+// docs/GAME-RULES.md has no ladder section; the K tiers are rating.ts's own convention.
+// At equal ratings a duel's winner takes K/2, so the delta names the K in force.
+test("a record's K steps down at exactly 2x the provisional gate and at 30 rounds", () => {
+  const winnerGain = (rounds: number) =>
+    ratingDeltas([seat("w", 1, START_RATING, rounds), seat("l", 2, START_RATING, rounds)]).get("w");
+  assert.equal(winnerGain(PROVISIONAL_ROUNDS * 2 - 1), 20, "still new on round 9: K 40");
+  assert.equal(winnerGain(PROVISIONAL_ROUNDS * 2), 12, "settling on round 10: K 24");
+  assert.equal(winnerGain(29), 12, "K 24 through round 29");
+  assert.equal(winnerGain(30), 8, "established from round 30: K 16");
+});
+
+// Elo's logistic curve: a 400-point gap is 10:1 odds, so 10/11 against 1/11.
+test("a 400-point gap is ten to one, and the stronger side is the one expected to win", () => {
+  assert.ok(Math.abs(expectedScore(1400, 1000) - 10 / 11) < 1e-12);
+  assert.ok(Math.abs(expectedScore(1000, 1400) - 1 / 11) < 1e-12);
+  // 200 points: 1 / (1 + 10^-0.5)
+  assert.ok(Math.abs(expectedScore(1200, 1000) - 0.7597469266) < 1e-9);
+});
+
+test("humans are renumbered by finishing place whatever order the results arrive in", () => {
+  const rated = ratedFinishers([
+    { userId: "u3", placement: 4 },
+    { userId: "bot:2", placement: 2 },
+    { userId: "u2", placement: 3 },
+    { userId: "u1", placement: 1 },
+  ]);
+  assert.deepEqual(rated, [
+    { userId: "u1", placement: 1 },
+    { userId: "u2", placement: 2 },
+    { userId: "u3", placement: 3 },
+  ]);
+  const reversed = ratedFinishers([
+    { userId: "u2", placement: 3 },
+    { userId: "u1", placement: 1 },
+  ]);
+  assert.deepEqual(reversed, [
+    { userId: "u1", placement: 1 },
+    { userId: "u2", placement: 2 },
+  ]);
+});
+
+test("a bot seat moves no human's rating", () => {
+  const withBot = ratedFinishers([
+    { userId: "u1", placement: 1 },
+    { userId: "bot:1", placement: 2 },
+    { userId: "u2", placement: 3 },
+  ]);
+  const alone = ratedFinishers([
+    { userId: "u1", placement: 1 },
+    { userId: "u2", placement: 2 },
+  ]);
+  assert.deepEqual(withBot, alone);
+});
+
+// Mixed K does not sum to zero: the exact total is the rounded sum of the exact deltas.
+// "b" (1200, K 40) beats "a" (1000, K 16): exact +9.610 and -3.844, total +5.766, which rounds
+// to 6. Floors give 9 and -4 (total 5), so one point is owed, to the larger remainder (.610).
+test("a mixed-K table pays out the rounded exact total, the spare point to the largest remainder", () => {
+  const deltas = ratingDeltas([seat("a", 2, 1000, 30), seat("b", 1, 1200, 0)]);
+  assert.equal(deltas.get("b"), 10);
+  assert.equal(deltas.get("a"), -4);
+  assert.equal(sum(deltas), 6);
+});
+
+// 1100 vs 1100 vs 800, all K 24, placed 1-2-3: the two equal-rated seats' exact deltas are
+// +10.416 and -5.584, the same remainder (.416), and one spare point is owed. It goes to the
+// lower id, whichever seat that is.
+test("a tie on the remainder goes to the lower user id, not to the better place", () => {
+  const table = (first: string, second: string) =>
+    ratingDeltas([
+      seat(first, 1, 1100, 12),
+      seat(second, 2, 1100, 12),
+      seat("z", 3, 800, 12),
+    ]);
+  const lowerWon = table("a", "b");
+  assert.equal(lowerWon.get("a"), 11);
+  assert.equal(lowerWon.get("b"), -6);
+  assert.equal(lowerWon.get("z"), -5);
+  const lowerLost = table("b", "a");
+  assert.equal(lowerLost.get("b"), 10);
+  assert.equal(lowerLost.get("a"), -5);
+  assert.equal(lowerLost.get("z"), -5);
+  assert.equal(sum(lowerWon), 0);
+  assert.equal(sum(lowerLost), 0);
+});
+
+test("only a key that is exactly YYYY-MM names a season", () => {
+  const t = (key: string) => `T(${key})`;
+  for (const odd of ["2026-08-16", "2026-08-16T10:00:00.000Z", "x2026-08", "12026-08", "2026-081", " 2026-08"]) {
+    assert.equal(formatSeason(odd, t as never), odd, odd);
+  }
+});
