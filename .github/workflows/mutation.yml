@@ -32,7 +32,8 @@ jobs:
     name: Mutate ${{ matrix.mutate }}
     needs: shards
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # tableLifecycle's uncuttable 117-mutant block took 84 min with the integration suites on a loaded 4-core machine.
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
