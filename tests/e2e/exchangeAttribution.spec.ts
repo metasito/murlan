@@ -12,6 +12,7 @@ import { expectNoteFits, NEIGHBOUR_IDS, readPillFacts, type PillFacts } from "./
 
 const X = Motion.exchange;
 const FRAME = 16;
+const NO_FACTS: PillFacts = { note: null, pill: null, truncated: false, neighbours: {} };
 const WINDOW = { width: 1280, height: 720 };
 const NAMES = ["Ana", "Luan", "Gent"];
 const TO_WINNER = "exchange-flier-to-winner";
@@ -54,8 +55,7 @@ async function frame(page: Page): Promise<Frame> {
     c.port1.onmessage = () => r();
     c.port2.postMessage(0);
   }));
-  const facts = await page.evaluate(readPillFacts, NEIGHBOUR_IDS);
-  return page.evaluate(({ fliers, hand, seatLit, facts }) => {
+  const f: Omit<Frame, "facts"> = await page.evaluate(({ fliers, hand, seatLit }) => {
     const seen = (el: Element | null) => {
       let k = el ? 1 : 0;
       for (let n = el; n; n = n.parentElement) k *= Number(getComputedStyle(n).opacity);
@@ -87,9 +87,10 @@ async function frame(page: Page): Promise<Frame> {
       glow: [...document.querySelectorAll('[data-testid="hand-received-highlight"]')].some((el) => seen(el) > 0),
       hand: [...document.querySelectorAll(hand)].map((el) => el.getAttribute("aria-label") ?? ""),
       dealt: document.querySelectorAll('[data-testid="dealt-back"]').length,
-      facts,
     };
-  }, { fliers: FLIERS, hand: HAND_CARDS, seatLit: SEAT_LIT, facts });
+  }, { fliers: FLIERS, hand: HAND_CARDS, seatLit: SEAT_LIT });
+  /** Only a frame with the note drawn is ever held to where it sits, so only that one pays the second read. */
+  return { ...f, facts: f.label ? await page.evaluate(readPillFacts, NEIGHBOUR_IDS) : NO_FACTS };
 }
 
 async function run(page: Page, ms: number, frames: Frame[]) {
