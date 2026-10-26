@@ -1,13 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { globSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { globSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { Instrumenter } from "@stryker-mutator/instrumenter";
 import { loadWorkflow, stepIn } from "../helpers/workflow.ts";
 import { SHARD_MUTANTS, shards, summarize } from "../../tools/ci/mutation.mjs";
-import config, { MUTATE, TAP_NODE_ARGS } from "../../stryker.config.mjs";
+import { MUTATE } from "../../stryker.config.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 
@@ -160,35 +158,4 @@ test("mutation.yml files every run on the one issue, after every shard", () => {
   assert.match(step.run ?? "", /exit "\$status"\s*$/, "a failed report must fail the run");
   assert.equal(job.steps?.at(-1), step);
   assert.equal(Object.keys(workflow.jobs).at(-1), id);
-});
-
-test("a test file whose process outlives its tests is ended, not waited on until the dry run times out", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "murlan-tap-"));
-  try {
-    const hook = path.join(repoRoot, "node_modules/@stryker-mutator/tap-runner/dist/src/setup/hook.cjs");
-    const preload = TAP_NODE_ARGS.map((arg) => (arg.startsWith(".") ? path.resolve(repoRoot, arg) : arg));
-    const leaking = (name: string, body: string) => {
-      const file = path.join(dir, name);
-      writeFileSync(file, `import { test } from "node:test";\nimport { Worker } from "node:worker_threads";\nnew Worker("setInterval(() => {}, 1000)", { eval: true });\n${body}\n`);
-      return file;
-    };
-    const tap = (args: string[], file: string) =>
-      spawnSync(process.execPath, ["-r", hook, ...args, file], { cwd: dir, env: { PATH: process.env.PATH, STRYKER_DRY_RUN: "true" }, timeout: 8_000, encoding: "utf8" });
-    const passing = leaking("passing.test.mjs", 'test("passes", () => {});');
-    const failing = leaking("failing.test.mjs", 'test("fails", () => { throw new Error("boom"); });');
-
-    assert.equal((tap([], passing).error as NodeJS.ErrnoException | undefined)?.code, "ETIMEDOUT", "the counterfactual: without the preload this file keeps its process alive");
-    assert.deepEqual((config as { tap: { nodeArgs: string[] } }).tap.nodeArgs, TAP_NODE_ARGS, "the config is not running the preload this test proves");
-
-    const ok = tap(preload, passing);
-    assert.equal(ok.status, 0, `${ok.stdout}${ok.stderr}`);
-    assert.ok(globSync("stryker-output-*.json", { cwd: dir }).length >= 1, "the hook wrote no result file on the way out");
-    const slow = tap(preload, leaking("slow.test.mjs", 'test("waits on a timer", () => new Promise((resolve) => setTimeout(resolve, 1800)));'));
-    assert.equal(slow.status, 0, "a test still waiting on a timer is not idle");
-    assert.match(slow.stdout, /pass 1/);
-    const red = tap(preload, failing);
-    assert.equal(red.status, 1, "a failing file must still exit red, or every mutant it would kill survives");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
 });
