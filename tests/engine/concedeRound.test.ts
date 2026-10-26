@@ -23,6 +23,13 @@ describe("concedeRound", () => {
     assert.equal(after.roundOver, true);
   });
 
+  test("seats holding the same number of cards are placed in seat order", () => {
+    const tied = makeState({
+      players: [0, 1, 2, 3, 4].map((i) => seat(i, [c("4", "hearts"), c("5", "hearts")])),
+    });
+    assert.deepEqual(concedeRound(tied).finishingOrder, ["p0", "p1", "p2", "p3", "p4"]);
+  });
+
   test("with no winner seat, every seat still holding cards is placed by fewest cards", () => {
     assert.deepEqual(concedeRound(before()).finishingOrder, ["p1", "p2", "p3", "p0"]);
   });
