@@ -37,6 +37,27 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.shards.outputs.matrix) }}
+    # Integration tests in EXTRA_TESTS (stryker.config.mjs) skip without a database, which would leave
+    # replays.ts and the table glue unmeasured.
+    services:
+      postgres:
+        image: mirror.gcr.io/library/postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: murlan_test
+        ports:
+          - 5432:5432
+        # The job must not start testing before Postgres accepts connections.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/murlan_test
+      SESSION_SECRET: ci-test-secret-not-used-in-production
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/install
