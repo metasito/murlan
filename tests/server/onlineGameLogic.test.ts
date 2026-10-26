@@ -79,6 +79,12 @@ describe("botSeatKey and botSeatIndex", () => {
     assert.equal(botSeatIndex("bot:x"), null);
     assert.equal(botSeatIndex("bot:1.5"), null);
   });
+
+  test("only a key botSeatKey could have made names a seat", () => {
+    for (const key of ["bot:", "5", "u5", "bot:-1", "bot: 2", "bot:2 ", "bot:0x2", "bot:1e1"]) {
+      assert.equal(botSeatIndex(key), null, key);
+    }
+  });
 });
 
 describe("scoreKeyForSeat", () => {
