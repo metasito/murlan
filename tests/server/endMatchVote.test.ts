@@ -157,6 +157,56 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
     }
   });
 
+  test("every vote, a withdrawal included, tells the room who wants to end it out of the seated humans", async () => {
+    const { rt, emitted } = stubIo();
+    const game = baseGame({
+      gameState: midRoundOneVacated(),
+      playerMap: { 0: "alice", 2: "carl", 3: "dee" },
+      vacatedSeats: new Map([[1, { userId: "drita", username: "Drita" }]]),
+    });
+    activeGames.set(ROOM, game);
+
+    try {
+      await vote(rt, "alice");
+      await vote(rt, "carl");
+      await vote(rt, "alice", false);
+      const states = emitted.filter((e) => e.event === "game:end_match_vote_state");
+      assert.deepEqual(
+        states.map((e) => [e.to, e.payload]),
+        [
+          [{ room: ROOM }, { votes: ["alice"], total: 3 }],
+          [{ room: ROOM }, { votes: ["alice", "carl"], total: 3 }],
+          [{ room: ROOM }, { votes: ["carl"], total: 3 }],
+        ]
+      );
+    } finally {
+      activeGames.delete(ROOM);
+    }
+  });
+
+  test("the agreement is announced to the room as an info notice", async () => {
+    const { rt, emitted } = stubIo();
+    const game = baseGame({
+      gameState: midRoundOneVacated(),
+      playerMap: { 0: "alice", 2: "carl" },
+      vacatedSeats: new Map([[1, { userId: "drita", username: "Drita" }]]),
+    });
+    activeGames.set(ROOM, game);
+
+    try {
+      await vote(rt, "alice");
+      await vote(rt, "carl");
+      const notice = emitted.find(
+        (e) => e.event === "game:notification" && (e.payload as { code: string }).code === "MATCH_ENDED_BY_AGREEMENT"
+      );
+      assert.deepEqual(notice?.to, { room: ROOM });
+      assert.equal((notice?.payload as { type: string }).type, "info");
+    } finally {
+      clearRoomTimers(ROOM);
+      activeGames.delete(ROOM);
+    }
+  });
+
   test("a repeat vote from the same seat does not double-count toward unanimity", async () => {
     const { rt, emitted } = stubIo();
     const game = baseGame({
