@@ -59,3 +59,23 @@ describe("disposing a room", () => {
     assert.equal(activeGames.has(ROOM), false);
   });
 });
+
+describe("disposing a room's table", () => {
+  test("a room with nothing in memory is disposed without a fault", () => {
+    activeGames.delete(ROOM);
+    assert.doesNotThrow(() => disposeGame(recordingRuntime().rt, ROOM, false));
+  });
+
+  test("deletes the row by default, and keeps it when the room is being handed to another instance", () => {
+    const { rt, writes } = recordingRuntime();
+    seatOneUser();
+    disposeGame(rt, ROOM);
+    assert.equal(writes("discardGame").length, 1, "the row of a table that ended was left behind");
+    assert.equal(activeGames.has(ROOM), false);
+
+    seatOneUser();
+    disposeGame(rt, ROOM, false);
+    assert.equal(writes("discardGame").length, 1, "the row was deleted under the instance that now owns the room");
+    assert.equal(activeGames.has(ROOM), false);
+  });
+});

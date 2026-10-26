@@ -29,6 +29,7 @@ test("a tick that lands while the last sweep runs starts nothing", async (t) => 
     });
   };
   startSweeper({} as TableRuntime, resumeOrphans);
+  startSweeper({} as TableRuntime, resumeOrphans);
 
   t.mock.timers.tick(sweepIntervalMs());
   t.mock.timers.tick(sweepIntervalMs());
