@@ -29,8 +29,10 @@ export const EXIT_GRACE_MS = 15_000;
 /** Below this a slow but healthy exit would be killed. */
 export const MIN_EXIT_GRACE_MS = 1_000;
 
-/** What the grace keeps clear below the idle limit: a tick, and the `ps` read of a kill at its slowest. */
-/** @param {Record<string, string | undefined>} env */
+/**
+ * What the grace keeps clear below the idle limit: a tick, and the `ps` read of a kill at its slowest.
+ * @param {Record<string, string | undefined>} env
+ */
 export const exitGraceMarginMs = (env = process.env) => Math.max(1_000, EXIT_TICK_MS + tableTimeoutMs(env));
 
 export const EXIT_GRACE_MARGIN_MS = exitGraceMarginMs({});
