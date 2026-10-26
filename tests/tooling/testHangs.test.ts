@@ -6,9 +6,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { deadlineMs, EXIT_MARKERS_ENV, FILE_DEADLINE_MS } from "../helpers/fileDeadline.mjs";
-import { EXIT_GRACE_MARGIN_MS, EXIT_GRACE_MS, exitGraceMs, MIN_EXIT_GRACE_MS, RUN_IDLE_MS, runIdleMs } from "../helpers/filesRunReporter.mjs";
+import { EXIT_GRACE_MARGIN_MS, EXIT_GRACE_MS, exitGraceMarginMs, exitGraceMs, MIN_EXIT_GRACE_MS, RUN_IDLE_MS, runIdleMs } from "../helpers/filesRunReporter.mjs";
 import { EXIT_TICK_MS, exitGuard } from "../helpers/exitGuard.mjs";
-import { TABLE_TIMEOUT_MS } from "../../scripts/lib/proc.mjs";
+import { MIN_TABLE_TIMEOUT_MS, TABLE_TIMEOUT_MS, tableTimeoutMs } from "../../scripts/lib/proc.mjs";
 import { posixWorld, windowsWorld } from "../helpers/processWorlds.ts";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 import { blankCommentsAndStrings, sourcesUnder } from "../helpers/sourceScan.ts";
@@ -34,16 +34,20 @@ describe("a test file that never finishes fails npm test by name", () => {
     try {
       for (const [name, body] of Object.entries(PLANTED)) writeFileSync(path.join(dir, name), body);
       const env = { ...process.env };
-      env.MURLAN_TEST_FILE_DEADLINE_MS = "2000";
+      env.MURLAN_TEST_FILE_DEADLINE_MS = "1000";
       delete env.NODE_TEST_CONTEXT;
       const files = Object.keys(PLANTED).map((f) => path.join(dir, f));
+      const started = Date.now();
       const run = await new Promise<{ code: unknown; out: string }>((resolve) =>
         execFile(process.execPath, [...args, ...files], { cwd: repoRoot, env, timeout: 60_000 }, (err, stdout, stderr) =>
           resolve({ code: err ? err.code : 0, out: stdout + stderr })
         )
       );
       assert.equal(run.code, 1, run.out);
-      for (const name of Object.keys(PLANTED)) assert.ok(run.out.includes(`${name}: still running after 2s`), run.out);
+      // A hang that survives its deadline is still ended by --test-timeout, which also exits 1.
+      const testTimeout = Number(/--test-timeout=(\d+)/.exec(script)?.[1]);
+      assert.ok(testTimeout > 0 && Date.now() - started < testTimeout / 2, `not killed by its own deadline\n${run.out}`);
+      for (const name of Object.keys(PLANTED)) assert.ok(run.out.includes(`${name}: still running after 1s`), run.out);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -83,10 +87,10 @@ describe("a test file that hangs on its way out fails npm test by name", () => {
   test("a file whose exit stops past its own deadline's reach is killed after the grace, and named", { skip: process.platform === "win32" && "no SIGSTOP" }, async () => {
     const { dir, glob } = planted({ "hangsOnExit.test.mjs": hangsOnExit, "exits.test.mjs": passes });
     try {
-      const env = { ...quiet(), MURLAN_TEST_FILE_DEADLINE_MS: "2000", MURLAN_TEST_RUN_IDLE_MS: "15000", MURLAN_TEST_EXIT_GRACE_MS: "2000" };
+      const env = { ...quiet(), MURLAN_TEST_FILE_DEADLINE_MS: "2000", MURLAN_TEST_RUN_IDLE_MS: "15000", MURLAN_TEST_EXIT_GRACE_MS: "1000" };
       const { code, out } = await run([...script.split(" ").slice(1, -1), glob], env);
       assert.equal(code, 1, out);
-      assert.match(out, /hangsOnExit\.test\.mjs: hung after its tests finished, killed 2s into its exit/);
+      assert.match(out, /hangsOnExit\.test\.mjs: hung after its tests finished, killed 1s into its exit/);
       assert.doesNotMatch(out, /exits\.test\.mjs: hung/);
       assert.doesNotMatch(out, /still running after|nothing reported for/);
     } finally {
@@ -120,8 +124,20 @@ describe("a test file that hangs on its way out fails npm test by name", () => {
     }
   });
 
+  test("the ps timeout can be shortened and never lengthened or switched off", () => {
+    assert.equal(tableTimeoutMs({ MURLAN_TEST_TABLE_TIMEOUT_MS: "2000" }), 2000);
+    for (const tiny of ["1", String(MIN_TABLE_TIMEOUT_MS - 1)]) {
+      assert.equal(tableTimeoutMs({ MURLAN_TEST_TABLE_TIMEOUT_MS: tiny }), MIN_TABLE_TIMEOUT_MS, tiny);
+    }
+    for (const asked of [String(TABLE_TIMEOUT_MS * 10), "0", "-1", "off", undefined]) {
+      assert.equal(tableTimeoutMs({ MURLAN_TEST_TABLE_TIMEOUT_MS: asked }), TABLE_TIMEOUT_MS);
+    }
+  });
+
   test("the exit grace keeps a tick and a stalled ps clear of the run's idle limit, never under its floor, and can only be shortened", () => {
     assert.ok(EXIT_GRACE_MARGIN_MS >= Math.max(1000, EXIT_TICK_MS + TABLE_TIMEOUT_MS));
+    assert.equal(exitGraceMarginMs({}), EXIT_GRACE_MARGIN_MS);
+    assert.equal(exitGraceMarginMs({ MURLAN_TEST_TABLE_TIMEOUT_MS: "2000" }), Math.max(1000, EXIT_TICK_MS + 2000));
     const room = MIN_EXIT_GRACE_MS + EXIT_GRACE_MARGIN_MS;
     const settings = [
       {},
@@ -487,7 +503,7 @@ describe("a test file that passed always exits", () => {
   });
 });
 
-describe("a run that stops hearing from its files fails by name", () => {
+describe("a run that stops hearing from its files fails by name", { concurrency: true }, () => {
   const reporter = pathToFileURL(path.join(repoRoot, "tests", "helpers", "filesRunReporter.mjs")).href;
   const file = JSON.stringify(path.join(tmpdir(), "fake.test.ts"));
   const dequeued = `{ type: "test:dequeue", data: { nesting: 0, name: ${file}, file: ${file} } }`;
@@ -551,10 +567,15 @@ describe("a run that stops hearing from its files fails by name", () => {
         `const markers = process.env.${EXIT_MARKERS_ENV};\nfs.mkdirSync(markers, { recursive: true });\n` +
         `fs.writeFileSync(markers + "/" + pid, JSON.stringify({ file: "hung.test.ts", identity: identityOf(pid), at: Date.now() }));\n` +
         `yield ${dequeued};\nawait new Promise(() => {});`;
-      // A 1 s grace, then a read stalled for the whole ps timeout: the idle limit falls seconds after
-      // that read gives up and seconds before the next one would.
-      const idle = String(EXIT_GRACE_MARGIN_MS + 4_000);
-      const env = { PATH: `${dir}${path.delimiter}${process.env.PATH}`, MURLAN_TEST_EXIT_GRACE_MS: String(MIN_EXIT_GRACE_MS) };
+      // A 1 s grace, then a read stalled for the whole ps timeout: the idle limit falls between the
+      // second read's start (at most a tick past the grace and one ps timeout) and its own give-up.
+      const psMs = 3_000;
+      const idle = String(MIN_EXIT_GRACE_MS + psMs + 1_750);
+      const env = {
+        PATH: `${dir}${path.delimiter}${process.env.PATH}`,
+        MURLAN_TEST_EXIT_GRACE_MS: String(MIN_EXIT_GRACE_MS),
+        MURLAN_TEST_TABLE_TIMEOUT_MS: String(psMs),
+      };
       const run = await drive(hung, "", idle, env);
       assert.match(run.out, /nothing reported for/, run.out);
       const calls = readFileSync(log, "utf8").split("\n").filter(Boolean);
@@ -565,8 +586,8 @@ describe("a run that stops hearing from its files fails by name", () => {
   });
 
   test("a run that keeps reporting, and then ends, is never killed", async () => {
-    const steady = `for (let i = 0; i < 15; i++) { yield ${dequeued}; await new Promise((r) => setTimeout(r, 200)); }`;
-    const run = await drive(steady, "await new Promise((r) => setTimeout(r, 2500));", "1000");
+    const steady = `for (let i = 0; i < 8; i++) { yield ${dequeued}; await new Promise((r) => setTimeout(r, 200)); }`;
+    const run = await drive(steady, "await new Promise((r) => setTimeout(r, 1500));", "1000");
     assert.equal(run.signal, null, run.out);
     assert.doesNotMatch(run.out, /nothing reported/);
   });

@@ -1,7 +1,7 @@
 import { mkdirSync, readdirSync, rmSync, writeSync } from "node:fs";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
-import { TABLE_TIMEOUT_MS } from "../../scripts/lib/proc.mjs";
+import { tableTimeoutMs } from "../../scripts/lib/proc.mjs";
 import { EXIT_TICK_MS } from "./exitGuard.mjs";
 import { EXIT_MARKERS_ENV, exitMarkers, FILE_DEADLINE_MS } from "./fileDeadline.mjs";
 
@@ -29,8 +29,13 @@ export const EXIT_GRACE_MS = 15_000;
 /** Below this a slow but healthy exit would be killed. */
 export const MIN_EXIT_GRACE_MS = 1_000;
 
-/** What the grace keeps clear below the idle limit: a tick, and the `ps` read of a kill at its slowest. */
-export const EXIT_GRACE_MARGIN_MS = Math.max(1_000, EXIT_TICK_MS + TABLE_TIMEOUT_MS);
+/**
+ * What the grace keeps clear below the idle limit: a tick, and the `ps` read of a kill at its slowest.
+ * @param {Record<string, string | undefined>} env
+ */
+export const exitGraceMarginMs = (env = process.env) => Math.max(1_000, EXIT_TICK_MS + tableTimeoutMs(env));
+
+export const EXIT_GRACE_MARGIN_MS = exitGraceMarginMs({});
 
 /**
  * Only ever shortens the grace, and keeps it inside the run's idle limit, so a file stuck in its
@@ -42,8 +47,8 @@ export const EXIT_GRACE_MARGIN_MS = Math.max(1_000, EXIT_TICK_MS + TABLE_TIMEOUT
 export function exitGraceMs(env = process.env) {
   const asked = Number(env.MURLAN_TEST_EXIT_GRACE_MS);
   const wanted = asked > 0 ? Math.min(asked, EXIT_GRACE_MS) : EXIT_GRACE_MS;
-  const grace = Math.max(MIN_EXIT_GRACE_MS, Math.min(wanted, runIdleMs(env) - EXIT_GRACE_MARGIN_MS));
-  return grace + EXIT_GRACE_MARGIN_MS <= runIdleMs(env) ? grace : undefined;
+  const grace = Math.max(MIN_EXIT_GRACE_MS, Math.min(wanted, runIdleMs(env) - exitGraceMarginMs(env)));
+  return grace + exitGraceMarginMs(env) <= runIdleMs(env) ? grace : undefined;
 }
 
 // At load: the runner spawns its files before this reporter hears its first event.

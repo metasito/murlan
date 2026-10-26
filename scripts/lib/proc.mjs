@@ -29,6 +29,19 @@ const gone = (err) => err?.code === "ESRCH";
 /** A stalled `ps` would otherwise stall whatever waits on it, a watchdog included. */
 export const TABLE_TIMEOUT_MS = 10_000;
 
+/** Below this a healthy `ps` times out, and `readTable` throws for every caller that ends a tree. */
+export const MIN_TABLE_TIMEOUT_MS = 500;
+
+/**
+ * Only ever shortens the timeout, so no setting of it lets a stalled `ps` wait forever, and never
+ * below the floor.
+ * @param {Record<string, string | undefined>} env
+ */
+export function tableTimeoutMs(env = process.env) {
+  const asked = Number(env.MURLAN_TEST_TABLE_TIMEOUT_MS);
+  return asked > 0 ? Math.max(MIN_TABLE_TIMEOUT_MS, Math.min(asked, TABLE_TIMEOUT_MS)) : TABLE_TIMEOUT_MS;
+}
+
 /** The helpers over injected platform and process primitives; the module's exports are its defaults. */
 export function procFor({
   platform = process.platform,
@@ -70,7 +83,7 @@ export function procFor({
   function readTable() {
     let out;
     try {
-      out = execFileSync("ps", ["-A", "-o", "pid=,ppid=,lstart="], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: TABLE_TIMEOUT_MS });
+      out = execFileSync("ps", ["-A", "-o", "pid=,ppid=,lstart="], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: tableTimeoutMs() });
     } catch (err) {
       throw new Error(`cannot read the process table, so no tree can be ended: ${err.message}`);
     }
