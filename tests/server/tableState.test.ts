@@ -186,6 +186,17 @@ describe("a new table", () => {
     assert.equal(game.roundsPlayed, 0);
     assert.equal(game.matchOver, false);
     assert.deepEqual(game.moveLog, []);
+    assert.equal(game.dealFirstSeat, 0, "a fresh match deals from seat 0");
+  });
+
+  test("deals each roster entry as the player they are", () => {
+    const { players } = newTable(room, roster).gameState;
+    assert.deepEqual(
+      players.map((p) => [p.name, p.type]),
+      [["Alice", "human"], ["Bob", "human"], ["Bot", "bot"]]
+    );
+    assert.equal(players[2].personality, "besnik");
+    assert.equal(players[0].personality, undefined);
   });
 
   test("carries the previous match's scores, target and length, and the format asked for wins", () => {
@@ -239,6 +250,29 @@ describe("a new match at a standing table", () => {
   test("deals the 3♠ opening when the winner left the table", () => {
     const dan = { seatIndex: 2, userId: "dan", username: "Dan", isBot: false };
     const { gameState } = newTable(room, reseated([seated[0], seated[2], dan]), finished());
+    assert.equal(gameState.exchangePhase, undefined);
+    assert.equal(gameState.startReason?.type, "start_card");
+  });
+
+  test("deals the 3♠ opening when the loser left the table", () => {
+    const dan = { seatIndex: 2, userId: "dan", username: "Dan", isBot: false };
+    const { gameState } = newTable(room, reseated([seated[1], seated[2], dan]), finished());
+    assert.equal(gameState.startReason?.type, "start_card");
+  });
+
+  test("deals the 3♠ opening when the last round was not played out to the last seat", () => {
+    const previous = finished();
+    previous.gameState.finishingOrder = ["player_1", "player_2"];
+    const { gameState } = newTable(room, reseated([seated[1], seated[0], seated[2]]), previous);
+    assert.equal(gameState.exchangePhase, undefined);
+    assert.equal(gameState.startReason?.type, "start_card");
+  });
+
+  test("deals the 3♠ opening when a finisher's seat is held by no one the table knows", () => {
+    const base = finished();
+    base.gameState.finishingOrder = ["player_0", "player_1", "player_2"];
+    const previous = { ...base, playerMap: { 1: "bob", 2: "carl" } };
+    const { gameState } = newTable(room, reseated([seated[0], seated[1], seated[2]]), previous);
     assert.equal(gameState.exchangePhase, undefined);
     assert.equal(gameState.startReason?.type, "start_card");
   });

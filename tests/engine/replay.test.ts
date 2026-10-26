@@ -7,6 +7,7 @@ import {
   replayMoments,
   nextMoment,
   bombsPlayedBy,
+  isReadableReplay,
 } from "../../lib/game/replay.ts";
 import { buildCombination } from "../../lib/game/gameEngine.ts";
 import { card as c } from "../support/game.ts";
@@ -185,4 +186,129 @@ test("a player who did not sit at this table threw nothing", () => {
 
 test("a round with no bombs counts none", () => {
   assert.equal(bombsPlayedBy(REPLAY, "u1"), 0);
+});
+
+// ─── Edges of the fold ───────────────────────────────────────────────────────
+
+const royal = () =>
+  buildCombination(
+    (["3", "4", "5", "6", "7"] as const).map((rank) => c(rank, "hearts"))
+  )!;
+
+test("the opening position has no trick and nobody holding it", () => {
+  const state = replayStateAt(REPLAY, -1);
+  assert.equal(state.lastPlayedBy, -1);
+  assert.equal(state.lastPlayedCombination, null);
+});
+
+test("a round is finished at its last move even when the log is one move long", () => {
+  const one = withMoves([{ seat: 0, combo: single("3", "spades"), handCounts: [0, 3] }]);
+  const state = replayStateAt(one, 0);
+  assert.equal(state.roundOver, true);
+  assert.deepEqual(state.finishingOrder, ["player_0", "player_1"]);
+});
+
+test("mid-round nobody has finished", () => {
+  const state = replayStateAt(REPLAY, 1);
+  assert.equal(state.roundOver, false);
+  assert.deepEqual(state.finishingOrder, []);
+});
+
+test("every seat is drawn as a person, bot or not", () => {
+  assert.deepEqual(
+    replayStateAt(REPLAY, 0).players.map((p) => p.type),
+    ["human", "human"]
+  );
+});
+
+// A stored row is not typed: a log that opens on a pass must still render.
+test("a log that opens on a pass closes no trick", () => {
+  const passFirst = withMoves([{ seat: 0, combo: null, handCounts: [3, 0] }]);
+  assert.deepEqual(handCounts(passFirst, -1), [3, 0]);
+  const state = replayStateAt(passFirst, 0);
+  assert.equal(state.lastMove?.kind, "pass");
+  assert.equal((state.lastMove as { closedTrick?: boolean }).closedTrick, false);
+});
+
+test("a royal straight is a moment, named royal", () => {
+  const replay = withMoves([
+    { seat: 0, combo: single("3", "spades"), handCounts: [7, 3] },
+    { seat: 1, combo: royal(), handCounts: [7, 0] },
+  ]);
+  assert.deepEqual(replayMoments(replay), [{ index: 1, kind: "royal" }]);
+  const mid = withMoves([
+    { seat: 0, combo: royal(), handCounts: [2, 3] },
+    { seat: 1, combo: single("5", "hearts"), handCounts: [2, 2] },
+  ]);
+  assert.deepEqual(replayMoments(mid), [
+    { index: 0, kind: "royal" },
+    { index: 1, kind: "end" },
+  ]);
+});
+
+test("a one-move round has its end as a moment", () => {
+  const one = withMoves([{ seat: 0, combo: single("3", "spades"), handCounts: [0, 3] }]);
+  assert.deepEqual(replayMoments(one), [{ index: 0, kind: "end" }]);
+});
+
+test("an earlier bomb does not stop the last move being a moment, and a final bomb is not doubled", () => {
+  const earlier = withMoves([
+    { seat: 0, combo: bomb("7"), handCounts: [2, 3] },
+    { seat: 1, combo: single("5", "hearts"), handCounts: [2, 2] },
+  ]);
+  assert.deepEqual(replayMoments(earlier), [
+    { index: 0, kind: "bomb" },
+    { index: 1, kind: "end" },
+  ]);
+  const both = withMoves([
+    { seat: 0, combo: bomb("7"), handCounts: [2, 3] },
+    { seat: 1, combo: bomb("9"), handCounts: [2, 0] },
+  ]);
+  assert.deepEqual(replayMoments(both), [
+    { index: 0, kind: "bomb" },
+    { index: 1, kind: "bomb" },
+  ]);
+});
+
+// ─── A stored row is not typed ───────────────────────────────────────────────
+
+test("a well-formed replay is readable, seat 0 included, and so is an empty log", () => {
+  assert.equal(isReadableReplay(REPLAY), true);
+  assert.equal(isReadableReplay(withMoves([])), true);
+});
+
+test("a replay without a seat list or a move list is unreadable, not a throw", () => {
+  assert.equal(isReadableReplay({ ...REPLAY, seats: "x", moves: [] } as never), false);
+  assert.equal(isReadableReplay({ ...REPLAY, moves: "x" } as never), false);
+  assert.equal(isReadableReplay({ ...REPLAY, moves: undefined } as never), false);
+});
+
+test("a move must carry one hand count per seat", () => {
+  const bad = (move: unknown) => isReadableReplay(withMoves([move as never]));
+  assert.equal(bad({ seat: 0, combo: null }), false, "no counts");
+  assert.equal(bad(null), false, "a null move");
+  assert.equal(bad({ seat: 0, combo: null, handCounts: [1] }), false, "too few");
+  assert.equal(bad({ seat: 0, combo: null, handCounts: [1, 1, 1] }), false, "too many");
+  assert.equal(bad({ seat: 0, combo: null, handCounts: "ab" }), false, "not a list");
+  assert.equal(bad({ seat: 0, combo: null, handCounts: [1, 1] }), true);
+});
+
+test("a move must name a seat that sits at the table", () => {
+  const at = (seat: unknown) =>
+    isReadableReplay(withMoves([{ seat, combo: null, handCounts: [1, 1] } as never]));
+  assert.equal(at(0), true);
+  assert.equal(at(1), true);
+  assert.equal(at(2), false, "one past the last seat");
+  assert.equal(at(-1), false);
+  assert.equal(at(0.5), false);
+  assert.equal(at("1"), false);
+  assert.equal(at(undefined), false);
+});
+
+test("one bad move among good ones makes the replay unreadable", () => {
+  const good = { seat: 0, combo: null, handCounts: [1, 1] };
+  assert.equal(
+    isReadableReplay(withMoves([good, { seat: 5, combo: null, handCounts: [1, 1] }, good])),
+    false
+  );
 });

@@ -452,3 +452,41 @@ export function coversNothing(tag: string): boolean {
     /^<(?:Pressable|Touchable\w*)\b/.test(tag) || /\bon(?:Press|LongPress|Click)\s*=/.test(tag);
   return childless && !interactive;
 }
+
+/**
+ * The source with every string and comment blanked out, offsets unchanged. The
+ * brace and paren walks in logRedactionScan.test.ts run on this rather than the source: a `}` inside a
+ * message would otherwise close the fields early and hide every field after it
+ * from the rules — green on the very defect they are written for. Comments go
+ * for the same reason and one more, an apostrophe in prose, which reads as a
+ * string that runs to the next one and swallows whole files.
+ */
+export function blankStrings(src: string): string {
+  const out = [...src];
+  let state: "" | '"' | "'" | "`" | "//" | "/*" = "";
+  let escaped = false;
+  for (let i = 0; i < src.length; i += 1) {
+    const ch = src[i]!;
+    const blank = () => {
+      if (ch !== "\n") out[i] = " ";
+    };
+    if (state === "//") {
+      if (ch === "\n") state = "";
+      else blank();
+    } else if (state === "/*") {
+      if (ch === "/" && src[i - 1] === "*") state = "";
+      blank();
+    } else if (state) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === state) state = "";
+      if (state) blank();
+    } else if (ch === "/" && (src[i + 1] === "/" || src[i + 1] === "*")) {
+      state = src[i + 1] === "/" ? "//" : "/*";
+      blank();
+    } else if (ch === '"' || ch === "'" || ch === "`") {
+      state = ch;
+    }
+  }
+  return out.join("");
+}

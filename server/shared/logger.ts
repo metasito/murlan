@@ -8,7 +8,7 @@ import pino from "pino";
 // A room code is the sole credential for `room:join` and `room:spectate`, so
 // the `payload` a refused socket event carries (`server/socket/socketSafety.ts`) is
 // the same kind of hazard: anyone reading the log, or the vendor shipping it,
-// could join a private table. `tests/server/logRedaction.test.ts` fails if a socket
+// could join a private table. `tests/server/logRedactionScan.test.ts` fails if a socket
 // schema grows another code-shaped field without a path here.
 export const REDACT_PATHS = [
   "req.headers.cookie",
@@ -63,9 +63,11 @@ function tapErrors(line: string): string {
  *
  * `destination` and `transport` are mutually exclusive as far as pino is
  * concerned, so the pretty-printer only applies when nothing else already
- * claimed the output.
+ * claimed the output. It is a worker thread that can outlive a bare `node`
+ * process, so it runs only where a person reads it: a terminal, or LOG_PRETTY=1.
  */
 export function createLogger(destination?: pino.DestinationStream) {
+  const pretty = process.env.LOG_PRETTY === "1" || process.stdout.isTTY;
   return pino(
     {
       level: process.env.NODE_ENV === "production" ? "info" : "debug",
@@ -76,7 +78,7 @@ export function createLogger(destination?: pino.DestinationStream) {
       },
       serializers: { err: stripParams },
       transport:
-        !destination && process.env.NODE_ENV !== "production"
+        !destination && process.env.NODE_ENV !== "production" && pretty
           ? { target: "pino-pretty", options: { colorize: true } }
           : undefined,
     },

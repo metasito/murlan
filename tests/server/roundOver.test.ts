@@ -8,7 +8,14 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
-import { handleRoundOver } from "../../server/game/roundOver.ts";
+import {
+  handleRoundOver,
+  voidAbandonedMatch,
+  endMatchByAgreement,
+  rollMatchForward,
+} from "../../server/game/roundOver.ts";
+import { arm, pending, clearRoomTimers } from "../../server/game/gameTimers.ts";
+import { firstTargetFor } from "../../lib/game/gameEngine.ts";
 import { logger } from "../../server/shared/logger.ts";
 import type { RoundOverWriters } from "../../server/game/roundOver.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
@@ -426,5 +433,186 @@ describe("handleRoundOver — the ladder and history chain", () => {
 
     assert.deepEqual(finished, ["round 1", "round 2"]);
     assert.equal(s.of("recordRatedResult").length, 2);
+  });
+});
+
+/** Arms what a live table holds: both seats' AFK clocks, the bot's turn and both seats' disconnect graces. */
+function armLiveTable() {
+  arm("afk", `${ROOM}:u_alice`, 600_000, () => {});
+  arm("afk", `${ROOM}:u_bob`, 600_000, () => {});
+  arm("bot", ROOM, 600_000, () => {});
+  arm("disconnect", "u_alice", 600_000, () => {});
+  arm("disconnect", "u_bob", 600_000, () => {});
+}
+
+function liveTimers() {
+  return {
+    afk: pending("afk", `${ROOM}:u_alice`) || pending("afk", `${ROOM}:u_bob`),
+    bot: pending("bot", ROOM),
+    disconnect: pending("disconnect", "u_alice") || pending("disconnect", "u_bob"),
+  };
+}
+
+describe("handleRoundOver — what a finished round stops and starts", () => {
+  test("turn clocks and disconnect graces are cancelled, and the next-round vote gets its deadline", async () => {
+    const s = stubServer();
+    armLiveTable();
+    try {
+      await handleRoundOver(s.rt, ROOM, makeGame());
+
+      assert.deepEqual(liveTimers(), { afk: false, bot: false, disconnect: false });
+      assert.equal(pending("voteDeadline", ROOM), true, "an unfinished match waits on a vote that expires");
+    } finally {
+      clearRoomTimers(ROOM);
+    }
+  });
+
+  test("a round that ends the match offers no next-round vote and arms no deadline", async () => {
+    const s = stubServer();
+    try {
+      await handleRoundOver(s.rt, ROOM, makeGame({ matchLength: "single" }));
+
+      assert.deepEqual(
+        s.emitted.map((e) => e.event),
+        ["game:round_over"]
+      );
+      assert.equal(pending("voteDeadline", ROOM), false);
+    } finally {
+      clearRoomTimers(ROOM);
+    }
+  });
+
+  test("a rating preview that fails costs the panel its number, not the round", async (t) => {
+    t.mock.method(logger, "warn", () => undefined);
+    const s = stubServer({ previewRatedDeltas: new Error("ratings down") });
+    const game = makeGame();
+
+    await handleRoundOver(s.rt, ROOM, game);
+    await game.resultWrites;
+    clearRoomTimers(ROOM);
+
+    const payload = s.emitted[0].payload as Record<string, unknown>;
+    assert.deepEqual(payload.ratingDeltas, {});
+    assert.deepEqual(payload.ratingsAfter, {});
+    assert.equal(payload.recorded, true, "the round is still recorded");
+    assert.equal(s.of("recordGameResult").length, 1);
+  });
+
+  test("a rated write that fails still lets history record the round, with no deltas", async (t) => {
+    t.mock.method(logger, "error", () => undefined);
+    const s = stubServer({ recordRatedResult: new Error("ladder down") });
+    const game = makeGame();
+
+    await handleRoundOver(s.rt, ROOM, game);
+    await game.resultWrites;
+    clearRoomTimers(ROOM);
+
+    const history = s.of("recordGameResult");
+    assert.equal(history.length, 1, "history is written although the ladder was not");
+    assert.equal((history[0].args[3] as Map<string, number>).size, 0);
+  });
+});
+
+describe("closing a match without scoring", () => {
+  const closedPayload = (voided: boolean) => ({
+    finishingOrder: [],
+    scores: [],
+    matchTarget: 21,
+    matchLength: "match",
+    roundsPlayed: 2,
+    matchOver: true,
+    matchWinnerIds: [],
+    matchContinues: false,
+    isDraw: false,
+    ratingDeltas: {},
+    ratingsAfter: {},
+    recorded: false,
+    voided,
+  });
+  const midMatch = () =>
+    makeGame({
+      roundsPlayed: 2,
+      cumulativeScores: { u_alice: 5, u_bob: 3 },
+      gameState: finishedState({ roundOver: false, finishingOrder: [] }),
+    });
+
+  test("an abandoned match is voided: told to the table, scored for nobody, kept as voided", async () => {
+    const s = stubServer();
+    const game = midMatch();
+    armLiveTable();
+    try {
+      await voidAbandonedMatch(s.rt, ROOM, game);
+
+      assert.deepEqual(s.emitted.map((e) => e.event), ["game:round_over"]);
+      assert.deepEqual(s.emitted[0].payload, closedPayload(true));
+      assert.equal(game.lastRoundOverPayload, s.emitted[0].payload, "a rejoin is handed the same payload");
+      assert.equal(game.matchOver, true);
+      assert.equal(game.endedByVote, undefined, "a void is not an agreement");
+      assert.equal(game.gameState.roundOver, true);
+      assert.equal(game.roundsPlayed, 2, "the round in progress is not counted");
+      assert.deepEqual(game.cumulativeScores, { u_alice: 5, u_bob: 3 });
+      assert.deepEqual(liveTimers(), { afk: false, bot: false, disconnect: false });
+      assert.deepEqual(s.names(), ["updateRoomStatus", "persistGameState"]);
+      assert.deepEqual(s.of("updateRoomStatus")[0].args, [ROOM, "finished"]);
+      assert.equal(s.of("persistGameState")[0].args[1], game);
+    } finally {
+      clearRoomTimers(ROOM);
+    }
+  });
+
+  test("a match ended by agreement says so, and nothing in progress is scored", async () => {
+    const s = stubServer();
+    const game = midMatch();
+    armLiveTable();
+    try {
+      await endMatchByAgreement(s.rt, ROOM, game);
+
+      assert.deepEqual(s.emitted[0].payload, closedPayload(false));
+      assert.equal(game.endedByVote, true);
+      assert.equal(game.matchOver, true);
+      assert.equal(game.roundsPlayed, 2);
+      assert.deepEqual(liveTimers(), { afk: false, bot: false, disconnect: false });
+      assert.deepEqual(s.names(), ["updateRoomStatus", "persistGameState"]);
+    } finally {
+      clearRoomTimers(ROOM);
+    }
+  });
+
+  test("a failing room-status write does not stop the row being written", async (t) => {
+    t.mock.method(logger, "warn", () => undefined);
+    const s = stubServer({ updateRoomStatus: new Error("no rooms row") });
+
+    await endMatchByAgreement(s.rt, ROOM, midMatch());
+
+    assert.equal(s.of("persistGameState").length, 1);
+  });
+});
+
+describe("rollMatchForward", () => {
+  test("a finished match starts over from nothing at the opening target", () => {
+    const game = makeGame({
+      matchOver: true,
+      matchTarget: 51,
+      roundsPlayed: 4,
+      cumulativeScores: { u_alice: 52, u_bob: 10 },
+    });
+
+    rollMatchForward(game);
+
+    assert.equal(game.matchOver, false);
+    assert.equal(game.roundsPlayed, 0);
+    assert.deepEqual(game.cumulativeScores, {});
+    assert.equal(game.matchTarget, firstTargetFor(2));
+  });
+
+  test("an unfinished match carries on untouched", () => {
+    const game = makeGame({ matchOver: false, matchTarget: 51, roundsPlayed: 4, cumulativeScores: { u_alice: 20 } });
+
+    rollMatchForward(game);
+
+    assert.equal(game.matchOver, false);
+    assert.equal(game.roundsPlayed, 4);
+    assert.deepEqual(game.cumulativeScores, { u_alice: 20 });
+    assert.equal(game.matchTarget, 51);
   });
 });

@@ -21,6 +21,24 @@ const CONTINUED = "**Survivors, continued:**";
  */
 export const SHARD_MUTANTS = 150;
 
+/**
+ * The files whose tests are database-backed (EXTRA_TESTS in stryker.config.mjs): every mutant reruns the
+ * integration files covering it, each booting a server, so a mutant costs several times a unit-tested one.
+ * They get shards of SLOW_SHARD_MUTANTS, never a place in the run less measured.
+ */
+export const DATABASE_BACKED = [
+  "server/game/replays.ts",
+  "server/game/stats.ts",
+  "server/game/tableHandlers.ts",
+  "server/game/tableLifecycle.ts",
+  "server/game/tableRouter.ts",
+  "server/game/userNames.ts",
+];
+export const SLOW_SHARD_MUTANTS = 40;
+
+/** The most mutants one shard of `file` holds. */
+export const budgetOf = (file) => (DATABASE_BACKED.includes(file) ? SLOW_SHARD_MUTANTS : SHARD_MUTANTS);
+
 const SILENT = { debug() {}, info() {}, warn() {}, error() {}, trace() {}, fatal() {}, isDebugEnabled: () => false, isTraceEnabled: () => false };
 
 /** Line ranges of `lines` holding at most `budget` mutants each, cut only where no mutant spans the cut. */
@@ -54,7 +72,7 @@ function rangesOf(lines, spans, budget) {
  * Every mutated file's lines, cut into ranges by the mutants Stryker places in them. A file with no
  * mutant gets no shard: it would report nothing every week.
  */
-export async function shards(root = repoRoot, budget = SHARD_MUTANTS) {
+export async function shards(root = repoRoot, budget = undefined) {
   const { Instrumenter } = await import("@stryker-mutator/instrumenter");
   const files = MUTATE.flatMap((pattern) => globSync(pattern, { cwd: root }))
     .map((file) => file.split(path.sep).join("/"))
@@ -65,7 +83,7 @@ export async function shards(root = repoRoot, budget = SHARD_MUTANTS) {
     const spans = mutants.filter((m) => m.fileName === file).map((m) => [m.location.start.line + 1, m.location.end.line + 1]);
     if (spans.length === 0) return [];
     const slug = file.replace(/[^\w.-]/g, "-");
-    return rangesOf(content.split("\n").length, spans, budget).map(({ start, end, mutants: count }, i) => ({
+    return rangesOf(content.split("\n").length, spans, budget ?? budgetOf(file)).map(({ start, end, mutants: count }, i) => ({
       file,
       start,
       end,
