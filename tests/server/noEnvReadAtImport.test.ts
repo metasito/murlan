@@ -9,11 +9,11 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 /**
  * Two servers in one process each read their own env when they boot; a read
  * made while a module loads is settled by whoever imported it first.
- * `NODE_ENV` in `createLogger` is the one setting left: it picks pino's level
- * and transport, fixed when the instance every module imports is built. Named
- * by line, so another read, even of the same variable, fails.
+ * `NODE_ENV` and `LOG_PRETTY` in `createLogger` are the settings left: they pick
+ * pino's level and transport, fixed when the instance every module imports is
+ * built. Named by line, so another read, even of the same variable, fails.
  */
-const KNOWN = ["NODE_ENV @ server/shared/logger.ts:71", "NODE_ENV @ server/shared/logger.ts:79"];
+const KNOWN = ["LOG_PRETTY @ server/shared/logger.ts:70", "NODE_ENV @ server/shared/logger.ts:73", "NODE_ENV @ server/shared/logger.ts:81"];
 
 const reads = new Set<string>();
 const env = process.env;
