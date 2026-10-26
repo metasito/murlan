@@ -6,6 +6,8 @@ import {
   createDeck,
   dealCards,
   dealFirstSeatFor,
+  sortHand,
+  START_CARD,
   startRound,
   type Card,
   type Player,
@@ -315,5 +317,79 @@ describe("who opens a round (defect 4)", () => {
 describe("the rules screen's undealt count", () => {
   test("the heads-up deal leaves 26 cards face down", () => {
     assert.equal(dealCards(2).excluded.length, createDeck().length - 2 * 14);
+  });
+});
+
+describe("sortHand", () => {
+  test("orders by rank, then clubs, diamonds, hearts, spades, with the jokers last", () => {
+    const hand = [
+      j("colored"), c("5", "spades"), c("A", "clubs"), c("5", "clubs"), j("bw"),
+      c("5", "hearts"), c("3", "hearts"), c("5", "diamonds"), c("3", "spades"),
+    ];
+    assert.deepEqual(ids(sortHand(hand)), [
+      "3_hearts", "3_spades", "5_clubs", "5_diamonds", "5_hearts", "5_spades", "A_clubs", "joker_bw", "joker_colored",
+    ]);
+  });
+
+  test("does not reorder the hand it is handed", () => {
+    const hand = [c("K", "spades"), c("4", "clubs")];
+    sortHand(hand);
+    assert.deepEqual(ids(hand), ["K_spades", "4_clubs"]);
+  });
+});
+
+describe("a deal that holds no 3♠", () => {
+  test("the lowest card opens, the lower suit winning a tie (clubs, diamonds, hearts, spades)", () => {
+    const cases = [
+      { suits: ["hearts", "diamonds"], opener: 1 },
+      { suits: ["diamonds", "clubs"], opener: 1 },
+      { suits: ["clubs", "hearts"], opener: 0 },
+      { suits: ["hearts", "clubs"], opener: 1 },
+    ] as const;
+    for (const { suits, opener } of cases) {
+      const players = suits.map((suit, i) => makePlayer(i, [c("3", suit), c("9", i === 0 ? "spades" : "clubs")]));
+      const { playerIdx, opening } = openerOf(players);
+      assert.equal(playerIdx, opener);
+      assert.equal(opening.id, `3_${suits[opener]}`);
+    }
+  });
+
+  test("with every hand empty, the 3♠ itself is named", () => {
+    const { playerIdx, opening } = openerOf([makePlayer(0, []), makePlayer(1, [])]);
+    assert.equal(playerIdx, 0);
+    assert.deepEqual(opening, c("3", "spades"));
+    assert.deepEqual(START_CARD, createDeck().find((card) => card.id === "3_spades"));
+  });
+});
+
+describe("the shuffle is unbiased", () => {
+  const source = (first: number) => {
+    let calls = 0;
+    return {
+      getRandomValues(array: Uint32Array) {
+        array[0] = calls++ === 0 ? first : 0;
+        return array;
+      },
+    };
+  };
+
+  test("a draw from the uneven tail of the 32-bit range is thrown away, not folded in", () => {
+    assert.deepEqual(ids(dealCards(1, 0, source(0xffffffff)).hands[0]), ids(dealCards(1, 0, source(0)).hands[0]));
+  });
+});
+
+describe("a deal on a device without crypto", () => {
+  test("still deals the whole deck, differently each time", () => {
+    const crypto = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+    Object.defineProperty(globalThis, "crypto", { value: undefined, configurable: true });
+    try {
+      const first = dealCards(3).hands.flat();
+      const second = dealCards(3).hands.flat();
+      assert.equal(new Set(ids(first)).size, 54);
+      assert.notDeepEqual(ids(first), ids(second));
+    } finally {
+      if (crypto) Object.defineProperty(globalThis, "crypto", crypto);
+      else delete (globalThis as { crypto?: unknown }).crypto;
+    }
   });
 });

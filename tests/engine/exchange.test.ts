@@ -24,6 +24,12 @@ describe("getValidGivebackCards (defect 7)", () => {
     assert.deepEqual(ids(getValidGivebackCards(hand)), ids([c("3", "spades"), c("10", "hearts")]));
   });
 
+  test("every rank from 3 to 10 is on offer and nothing above it", () => {
+    const ranks = ["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2"] as const;
+    const hand = ranks.map((rank) => c(rank, "hearts"));
+    assert.deepEqual(ids(getValidGivebackCards(hand)), ids(hand.slice(0, 8)));
+  });
+
   test("a hand with no 3-10 card has nothing to give", () => {
     const hand = [c("K", "clubs"), c("J", "hearts"), c("A", "spades"), j("colored")];
     assert.deepEqual(getValidGivebackCards(hand), []);
@@ -52,6 +58,13 @@ describe("processExchangeChoice", () => {
     assert.equal(next.exchangePhase?.kind, "settled");
     assert.equal(next.currentTurnIndex, 1, "the loser leads the new round");
     assert.equal(next.lastPlayedBy, 1);
+  });
+
+  test("hands over the card named, not the first in the hand", () => {
+    const state = buildState([c("4", "hearts"), c("5", "clubs"), c("K", "spades")], [c("9", "clubs")]);
+    const next = givenBack(state, "5_clubs");
+    assert.deepEqual(next.players[0].hand.map((card) => card.id), ["4_hearts", "K_spades"]);
+    assert.ok(next.players[1].hand.some((card) => card.id === "5_clubs"));
   });
 
   // Online the loser's hand is sanitized out of every other view, so the phase
@@ -173,6 +186,11 @@ describe("exchangeIsSatisfiable", () => {
     assert.equal(exchangeIsSatisfiable(open([c("K", "hearts")])), false);
     assert.equal(exchangeIsSatisfiable(open([])), false);
     assert.equal(exchangeIsSatisfiable(open([c("A", "spades")])), false);
+  });
+
+  test("an open exchange naming a winner who is not at the table cannot be satisfied", () => {
+    const state = open([c("4", "hearts")]);
+    assert.equal(exchangeIsSatisfiable({ ...state, exchangePhase: { ...state.exchangePhase!, winnerIdx: 7 } as typeof state.exchangePhase }), false);
   });
 
   test("a closed exchange, or none, has nothing to satisfy", () => {
@@ -332,5 +350,11 @@ describe("the opening after a round", () => {
 
   test("a round left part-ranked opens with the 3♠", () => {
     assert.deepEqual(openingAfter(finished(["player_2"])), { kind: "startCard" });
+    assert.deepEqual(openingAfter(finished(["player_2", "player_0"])), { kind: "startCard" });
+  });
+
+  test("a table whose winner is also its loser has no one to exchange with", () => {
+    const alone = makeState({ players: [makePlayer(0, [], { id: "player_0" })], roundOver: true, finishingOrder: ["player_0"] });
+    assert.deepEqual(openingAfter(alone), { kind: "startCard" });
   });
 });
