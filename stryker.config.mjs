@@ -52,11 +52,19 @@ export const testFiles = TEST_DIRS.flatMap((dir) =>
   .filter((file) => !SCANS.includes(file))
   .sort();
 
+/**
+ * Stryker runs each test file as a bare `node`, which `npm test`'s --test-force-exit would end but this
+ * does not: the pino-pretty worker the server tests start sometimes keeps the process alive after the last
+ * test passed, and the 20-minute dry run then times out. Isolation cannot be switched off instead, since
+ * tests/server/bootFailure.test.ts needs the process to itself.
+ */
+export const TAP_NODE_ARGS = ["--import", "./tools/ci/mutationExit.mjs"];
+
 export const MUTATE = ["lib/game/**/*.ts", "server/game/**/*.ts"];
 
 export default {
   testRunner: "tap",
-  tap: { testFiles },
+  tap: { testFiles, nodeArgs: TAP_NODE_ARGS },
   mutate: MUTATE,
   coverageAnalysis: "perTest",
   // Scoped to what is mutated: the default reaches public/index.html, where Stryker's Babel 8 meets
