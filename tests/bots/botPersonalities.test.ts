@@ -7,7 +7,9 @@ import assert from "node:assert/strict";
 import {
   BOT_PERSONALITIES,
   DEFAULT_BOT_PERSONALITY,
+  botBlurbKey,
   botSeatNames,
+  difficultyLabelKey,
   getBotPersonality,
   isBotPersonalityId,
 } from "../../lib/game/botPersonalities.ts";
@@ -301,5 +303,13 @@ test("the personalities rules.faq.a17 singles out are still the hard ones", () =
     ["Gent"],
     "rules.faq.a17 names the hard-tier personalities that keep premium cards for defence; " +
       "update that sentence in en.ts, it.ts and sq.ts to match the current hard tier"
+  );
+});
+
+test("each personality has its own blurb and each tier its own label", () => {
+  assert.deepEqual(BOT_PERSONALITIES.map((p) => botBlurbKey(p.id)), ["bot.luanBlurb", "bot.besnikBlurb", "bot.gentBlurb"]);
+  assert.deepEqual(
+    BOT_PERSONALITIES.map((p) => difficultyLabelKey(p.difficulty)),
+    ["bot.difficultyEasy", "bot.difficultyNormal", "bot.difficultyHard"]
   );
 });

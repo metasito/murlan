@@ -17,6 +17,6 @@ export function isBotSeatKey(key: string): boolean {
 
 /** The seat the key names, or null if it names no seat. */
 export function botSeatIndex(key: string): number | null {
-  const seat = Number(key.slice("bot:".length));
-  return Number.isInteger(seat) ? seat : null;
+  const digits = /^bot:(\d+)$/.exec(key)?.[1];
+  return digits === undefined ? null : Number(digits);
 }
