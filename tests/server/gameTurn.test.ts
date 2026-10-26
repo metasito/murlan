@@ -4,7 +4,7 @@ import { test, describe, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
-import { fakeClock, type FakeClock } from "../helpers/fakeClock.ts";
+import { fakeClock } from "../helpers/fakeClock.ts";
 import { armTurn, armTurnIfIdle, heldRoundFor, vacateSeat } from "../../server/game/gameTurn.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
 import { arm, clearRoomTimers, deadline, pending, seatKey } from "../../server/game/gameTimers.ts";
