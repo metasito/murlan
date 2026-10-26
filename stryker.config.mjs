@@ -16,6 +16,7 @@ export const SCANS = [
   "tests/engine/dealScan.test.ts",
   "tests/engine/matchStateScan.test.ts",
   "tests/engine/sharedGameFlowScan.test.ts",
+  "tests/integration/gameplayScan.test.ts",
   "tests/server/activeGameStoreScan.test.ts",
   "tests/server/dbPush.test.ts",
   "tests/server/dbTlsScan.test.ts",
@@ -47,8 +48,30 @@ export const SCANS = [
 /**
  * Behaviour tests of mutated code that live outside TEST_DIRS, named one by one: the dirs they sit in
  * hold mostly scans. tests/tooling/mutationScans.test.ts proves each exists and does not scan.
+ * The tests/integration files cover server/game's replays.ts, stats.ts, userNames.ts and the table glue (tableRouter,
+ * tableLifecycle, tableHandlers); they need DATABASE_URL, which .github/workflows/mutation.yml provides.
  */
-export const EXTRA_TESTS = ["tests/ui-rules/scorePillStandings.test.ts"];
+export const EXTRA_TESTS = [
+  "tests/ui-rules/scorePillStandings.test.ts",
+  "tests/integration/abandonmentRecord.test.ts",
+  "tests/integration/accountDeletionMidRound.test.ts",
+  "tests/integration/gameplay.test.ts",
+  "tests/integration/intentAcknowledged.test.ts",
+  "tests/integration/ladderAndReplay.test.ts",
+  "tests/integration/lobbyGrace.test.ts",
+  "tests/integration/openingGraceTimesOut.test.ts",
+  "tests/integration/reconnect.test.ts",
+  "tests/integration/rematch.test.ts",
+  "tests/integration/replayIdentity.test.ts",
+  "tests/integration/roomLifecycleRaces.test.ts",
+  "tests/integration/sessionReplaced.test.ts",
+  "tests/integration/spectator.test.ts",
+  "tests/integration/stateRedelivered.test.ts",
+  "tests/integration/stats.test.ts",
+  "tests/integration/takeoverSerialised.test.ts",
+  "tests/integration/teamsOnline.test.ts",
+  "tests/integration/turnDeadline.test.ts",
+];
 
 export const testFiles = [
   ...TEST_DIRS.flatMap((dir) =>
