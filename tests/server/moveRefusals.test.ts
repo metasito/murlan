@@ -52,6 +52,11 @@ const exchangeOpen = (over: Partial<GameState> = {}): GameState =>
     ...over,
   });
 
+/** The table holds `last`, and seat 0, on move, holds `hand`. */
+const against = (last: ReturnType<typeof c>[], hand: ReturnType<typeof c>[]) =>
+  midTrick({ players: [seat(0, hand), seat(1, [c("4", "clubs")])], lastPlayedCombination: buildCombination(last) });
+const hearts = (...ranks: Parameters<typeof c>[0][]) => ranks.map((r) => c(r, "hearts"));
+
 const opening = midTrick({
   lastPlayedCombination: null,
   openingCard: c("5", "spades"),
@@ -85,6 +90,37 @@ const CASES: Case[] = [
   { name: "an opening play without the start card", state: opening, send: play("9_clubs"), code: "INVALID_MOVE", told: { refusal: "needsStartCard" } },
   { name: "a play too low to beat the table", state: midTrick(), send: play("5_spades"), code: "INVALID_MOVE", told: { refusal: "tooLow" } },
   { name: "a play of the wrong shape", state: midTrick(), send: play("5_spades", "5_hearts"), code: "INVALID_MOVE", told: { refusal: "wrongType" } },
+  {
+    name: "a play by an unseated user while another seat is on move and could play it",
+    state: midTrick({ currentTurnIndex: 1 }),
+    user: "u9",
+    send: { event: "game:play", body: { cardIds: ["J_diamonds"], turn: turnOf(midTrick({ currentTurnIndex: 1 })) } },
+    code: "NOT_YOUR_TURN",
+  },
+  {
+    name: "a play onto a royal straight",
+    state: against(hearts("5", "6", "7", "8", "9"), [c("9", "clubs")]),
+    send: play("9_clubs"),
+    code: "INVALID_MOVE",
+    told: { refusal: "royalUnbeatable" },
+  },
+  {
+    name: "a play onto a bomb",
+    state: against([c("7", "spades"), c("7", "hearts"), c("7", "clubs"), c("7", "diamonds")], [c("K", "clubs")]),
+    send: play("K_clubs"),
+    code: "INVALID_MOVE",
+    told: { refusal: "bombOnly" },
+  },
+  {
+    name: "a straight of another length",
+    state: against(
+      [c("5", "spades"), c("6", "hearts"), c("7", "clubs"), c("8", "diamonds"), c("9", "spades")],
+      [c("6", "spades"), c("7", "hearts"), c("8", "clubs"), c("9", "diamonds"), c("10", "spades"), c("J", "clubs")]
+    ),
+    send: play("6_spades", "7_hearts", "8_clubs", "9_diamonds", "10_spades", "J_clubs"),
+    code: "INVALID_MOVE",
+    told: { refusal: "wrongLength" },
+  },
   { name: "a pass after the round is over", state: midTrick({ roundOver: true }), send: pass, code: "NO_LIVE_GAME" },
   { name: "a pass while the exchange is open", state: exchangeOpen(), send: pass, code: "EXCHANGE_PENDING", told: {} },
   { name: "a pass off turn", state: midTrick({ currentTurnIndex: 1 }), send: pass, code: "NOT_YOUR_TURN" },

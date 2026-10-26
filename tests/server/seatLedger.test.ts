@@ -125,4 +125,30 @@ describe("seat ledger", () => {
     castEndMatchVote(game, "u-alice", false);
     assert.equal(game.endMatchVotes.size, 0);
   });
+
+  test("vacating a seat nobody holds changes nothing and is no abandonment", () => {
+    const game = table();
+    castEndMatchVote(game, "u-alice", true);
+
+    assert.deepEqual(vacate(game, 2, { midHand: true }), { abandoned: false });
+
+    assert.deepEqual(game.playerMap, { 0: "u-alice", 1: "u-drita" });
+    assert.equal(game.vacatedSeats.size, 0);
+    assert.equal(game.releasedSeats.size, 0);
+    assert.equal(game.abandonedSeats.size, 0);
+    assert.equal(game.weakSeats.size, 0);
+    assert.deepEqual([...game.endMatchVotes], ["u-alice"], "no roster change, so the tally stands");
+  });
+
+  test("a seat the engine state has no player for is still vacated and reclaimed", () => {
+    const game = table({ playerMap: { 0: "u-alice", 1: "u-drita", 5: "u-ghost" } });
+
+    assert.deepEqual(vacate(game, 5, { midHand: true }), { abandoned: true });
+    assert.equal(game.playerMap[5], undefined);
+    assert.equal(game.abandonedSeats.get(5), "u-ghost");
+
+    assert.equal(reclaim(game, "u-ghost"), 5);
+    assert.equal(game.playerMap[5], "u-ghost");
+    assert.equal(game.vacatedSeats.has(5), false);
+  });
 });

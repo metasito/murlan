@@ -2,20 +2,22 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { recordingRuntime, type JournalEntry } from "../helpers/recordingRuntime.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
-import { commitMove } from "../../server/game/tableMoves.ts";
+import { commitMove, moveAction } from "../../server/game/tableMoves.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
 import { botMoveDelayMs, clearRoomTimers, pending } from "../../server/game/gameTimers.ts";
 import { applyMove, createDeck, startRound, type GameState, type Move } from "../../lib/game/gameEngine.ts";
+import { card as c, seat, state as dealtState } from "../support/game.ts";
+import { turnOf } from "../../lib/game/moves.ts";
 import { exchangeAnnounceMs } from "../../lib/timeline/exchangeTimeline.ts";
 
 const ROOM = "commit-move-room";
 const SEATS = [0, 1, 2, 3].map((i) => ({ name: `B${i}`, type: "bot" as const, id: `player_${i}` }));
 
-function table(gameState: GameState): OnlineGameState {
+function table(gameState: GameState, playerMap: Record<number, string> = {}): OnlineGameState {
   const game: OnlineGameState = {
     roomId: ROOM,
     joinCode: "AAAAAA",
-    playerMap: {},
+    playerMap,
     rematchVotes: new Set(),
     cumulativeScores: {},
     maxPlayers: 4,
@@ -148,6 +150,75 @@ test("an exchange logs no replay move, persists, and holds the next seat for the
     const give = state.players[phase.winnerIdx].hand.find((c) => c.id !== phase.cardFromLoser.id)!;
     commitMove(rt, game, applied(state, { kind: "giveback", cardId: give.id }));
     await assertCommitted(t, game, persists, 0, exchangeAnnounceMs(false) + botMoveDelayMs());
+  } finally {
+    clearRoomTimers(ROOM);
+    activeGames.delete(ROOM);
+  }
+});
+
+/** Seat 0 on move with `hand`, leading a trick on a table of two. */
+function leading(hand: ReturnType<typeof c>[]): GameState {
+  return dealtState({
+    players: [seat(0, hand), seat(1, [c("4", "clubs")])],
+    currentTurnIndex: 0,
+    lastPlayedCombination: null,
+  });
+}
+
+test("a bomb is flagged for its seat, and an ordinary play is not", async (t) => {
+  useMemoryTableStores(t);
+  const { rt } = recordingRuntime({ persist: "real" });
+  try {
+    const bomb = leading([c("7", "spades"), c("7", "hearts"), c("7", "clubs"), c("7", "diamonds"), c("9", "clubs")]);
+    const bombed = table(bomb);
+    commitMove(rt, bombed, applied(bomb, { kind: "play", cardIds: ["7_spades", "7_hearts", "7_clubs", "7_diamonds"] }));
+    assert.deepEqual(bombed.roundFlags, { 0: { bomb: true, joker: false } });
+
+    const single = leading([c("9", "clubs"), c("K", "clubs")]);
+    const plain = table(single);
+    commitMove(rt, plain, applied(single, { kind: "play", cardIds: ["9_clubs"] }));
+    assert.deepEqual(plain.roundFlags, { 0: { bomb: false, joker: false } });
+  } finally {
+    clearRoomTimers(ROOM);
+    activeGames.delete(ROOM);
+  }
+});
+
+test("a pass is logged for replay as a pass: no cards, by its seat", async (t) => {
+  useMemoryTableStores(t);
+  const { rt } = recordingRuntime({ persist: "real" });
+  try {
+    const state = opened();
+    const game = table(state);
+    const passing = state.currentTurnIndex;
+    commitMove(rt, game, applied(state, { kind: "pass" }));
+    assert.equal(game.moveLog?.length, 1);
+    assert.equal(game.moveLog![0].combo, null);
+    assert.equal(game.moveLog![0].seat, passing);
+  } finally {
+    clearRoomTimers(ROOM);
+    activeGames.delete(ROOM);
+  }
+});
+
+test("a move that ends the round is acknowledged ok once the round has been handed over", async (t) => {
+  useMemoryTableStores(t);
+  const { rt } = recordingRuntime({ persist: "real" });
+  try {
+    const state = leading([c("9", "clubs")]);
+    const game = table(state, { 0: "u0", 1: "u1" });
+    const outcome = await moveAction(rt, game, {
+      kind: "move",
+      id: "intent-1",
+      roomId: ROOM,
+      userId: "u0",
+      move: { kind: "play", cardIds: ["9_clubs"] },
+      turn: turnOf(state),
+    });
+    assert.deepEqual(outcome, { ok: true });
+    assert.equal(game.gameState.roundOver, true);
+    assert.equal(game.lastRoundOverPayload?.matchOver, false);
+    assert.deepEqual(game.lastRoundOverPayload?.finishingOrder, ["p0", "p1"]);
   } finally {
     clearRoomTimers(ROOM);
     activeGames.delete(ROOM);
