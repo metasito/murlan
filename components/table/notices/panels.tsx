@@ -13,13 +13,24 @@ const PANEL_Z = Layer.hint + 1;
 const NAME = "\u0000";
 
 type TFunction = ReturnType<typeof useTranslation>["t"];
-type WhoStarts = { reason: StartReason; starterName: string; starterIsViewer: boolean };
+type WhoStarts = {
+  reason: StartReason;
+  starterName: string;
+  starterIsViewer: boolean;
+  /** The exchange was one-way: this seat, the winner, had nothing from 3 to 10 to give back. */
+  nothingBack?: { name: string; isViewer: boolean };
+};
 
-function whoStartsWords(t: TFunction, { reason, starterName, starterIsViewer }: WhoStarts) {
+function whoStartsWords(t: TFunction, { reason, starterName, starterIsViewer, nothingBack }: WhoStarts) {
   const card = reason.type === "start_card" ? reason.card : undefined;
   const rank = card ? getCardDisplayRank(card.rank) : "";
   const suit = card ? getSuitSymbol(card.suit) : "";
-  const sub = card && !(card.rank === "3" && card.suit === "spades") ? t("gameShared.startReasonCardSub") : "";
+  const sub =
+    card && !(card.rank === "3" && card.suit === "spades")
+      ? t("gameShared.startReasonCardSub")
+      : nothingBack
+        ? t(nothingBack.isViewer ? "gameShared.startReasonOneWaySubYou" : "gameShared.startReasonOneWaySub", { name: nothingBack.name })
+        : "";
   const main =
     card && starterIsViewer
       ? t("gameTable.startCardBannerSelf", { rank, suit })

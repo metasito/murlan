@@ -92,7 +92,11 @@ export function markExchangeSettled(phase: ExchangePhase | undefined, now: numbe
  * secret to withhold: `docs/GAME-RULES.md` §10.1 makes it compulsory and automatic —
  * the loser's single highest card — so any seat derives it from the rules alone,
  * and #602 needs it on the felt for every seat. It stops being sent once the
- * phase closes, when there is nothing left to read it for.
+ * giveback closes the phase, when there is nothing left to read it for.
+ *
+ * A settled phase with no `cardToLoser` is a one-way exchange, settled at the deal: the card taken
+ * is sent on to every seat, for as long as the round stands, because a table that joins it late is
+ * told by it why the loser leads.
  *
  * `cardToLoser` is the opposite: a card the winner *chose* out of their own
  * hand, which no rule determines, so while the phase is open sending it would
@@ -118,8 +122,9 @@ export function visibleExchangePhase(
       return { kind: "open", winnerIdx, loserIdx, cardFromLoser: phase.cardFromLoser };
     case "settled": {
       const isParticipant = viewerSeatIndex === winnerIdx || viewerSeatIndex === loserIdx;
-      const { cardToLoser } = phase;
-      return cardToLoser && (isParticipant || ceremonyRunning(phase, now))
+      const { cardToLoser, cardFromLoser } = phase;
+      if (!cardToLoser) return { kind: "settled", winnerIdx, loserIdx, cardFromLoser };
+      return isParticipant || ceremonyRunning(phase, now)
         ? { kind: "settled", winnerIdx, loserIdx, cardToLoser }
         : { kind: "settled", winnerIdx, loserIdx };
     }

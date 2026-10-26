@@ -25,6 +25,7 @@ test("names come from the seats, and both cards ride along", () => {
       winnerIdx: 2,
       loserIdx: 0,
       twoJokers: false,
+      oneWay: false,
       cardGiven: ACE,
       cardReceived: THREE,
     }
@@ -68,6 +69,9 @@ const jokers: WireExchangePhase = { kind: "twoJokers", ...SEATS };
 const announced = (cards: { given?: Card; received?: Card } = {}) =>
   buildExchangeAnnounce(PLAYERS, { kind: "settled", ...SEATS }, cards);
 const jokersAnnounced = buildExchangeAnnounce(PLAYERS, jokers);
+/** What the deal settles when the winner holds no card from 3 to 10: online it carries the taken card and no give. */
+const oneWayPhase: WireExchangePhase = { kind: "settled", ...SEATS, cardFromLoser: THREE };
+const oneWayAnnounced = { ...announced({ received: THREE }), oneWay: true };
 const same = state(jokers, DEAL);
 
 // Online's closing state withholds `cardFromLoser`; offline's keeps it. The received card is read from `prev` in both.
@@ -85,6 +89,14 @@ const rows: [string, ViewedGameState | null, ViewedGameState, ReturnType<typeof 
   ["a two-joker round over, re-sent", state(jokers, OUT, true), state(jokers, OUT, true), null],
   ["a two-joker round over, seen first", null, state(jokers, OUT, true), jokersAnnounced],
   ["a two-joker deal after a round that ended on no move", state(settled(), DEAL, true), state(jokers, DEAL), jokersAnnounced],
+  ["a one-way deal seen first", null, state(oneWayPhase, DEAL), oneWayAnnounced],
+  ["a one-way deal after a round over", state(open, OUT, true), state(oneWayPhase, DEAL), oneWayAnnounced],
+  ["a one-way deal after a round that ended on no move", state(settled(), DEAL, true), state(oneWayPhase, DEAL), oneWayAnnounced],
+  ["a one-way deal re-sent", state(oneWayPhase, DEAL), state(oneWayPhase, DEAL), null],
+  ["a one-way round, a move later", state(oneWayPhase, DEAL), state(oneWayPhase, PLAY), null],
+  ["a one-way round seen first once it has a play in it", null, state(oneWayPhase, PLAY), null],
+  ["the offline two-way give is not a one-way deal", state(open, DEAL), state(settledOffline, GIVE), announced({ received: THREE, given: ACE })],
+  ["a closed two-way phase, shown to a bystander without the give, at a deal's move", null, state(settled(), DEAL), null],
 ];
 
 for (const [name, prev, next, expected] of rows) {

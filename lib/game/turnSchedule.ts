@@ -1,9 +1,10 @@
 import { actingSeat, openingIsPending, type GameState } from "./gameEngine.ts";
+import { isOneWay } from "./sharedGameFlow.ts";
 
 export type TableKind = "online" | "offline";
 
 /** What the table shows before the seat on move may act, in the order it shows them. */
-export const GATES = ["deal", "receive", "ceremony", "opening"] as const;
+export const GATES = ["deal", "receive", "ceremony", "oneWay", "opening"] as const;
 export type Gate = (typeof GATES)[number];
 
 export type TurnAction = "give" | "lead" | "follow";
@@ -52,6 +53,7 @@ function tableGates(state: GameState): readonly Gate[] {
     case "deal":
       if (state.exchangePhase?.kind === "open") return ["deal", "receive"];
       if (state.exchangePhase?.kind === "twoJokers") return ["deal", "ceremony"];
+      if (isOneWay(state.exchangePhase)) return ["deal", "oneWay"];
       return ["deal"];
     case "giveback":
       return ["ceremony"];

@@ -41,6 +41,7 @@ const PAST: Record<Gate, (seen: GatesSeen) => boolean> = {
   deal: (seen) => !seen.dealing,
   receive: (seen) => seen.received,
   ceremony: (seen) => !seen.announcing,
+  oneWay: (seen) => !seen.announcing,
   // A human's own client holds the opening notice; a bot's slot never carries it.
   opening: () => true,
 };

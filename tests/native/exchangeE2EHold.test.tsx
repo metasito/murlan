@@ -60,7 +60,7 @@ const tableWith = (holdMsOverride: ExchangeHold | undefined, onDismiss: () => vo
           loserName: 'Bea',
           winnerIdx: 0,
           loserIdx: 1,
-          twoJokers: false,
+          twoJokers: false, oneWay: false,
           cardGiven: CARD_GIVEN,
           cardReceived: CARD_RECEIVED,
         },

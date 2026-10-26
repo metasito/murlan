@@ -34,6 +34,15 @@ afterEach(() => {
   setMotionPreference('system');
 });
 
+/** A mark another clock times: shown on the frame it mounts. */
+const stillPill = () => {
+  const { TableNotice, NoticeText } = require('@/components/table/TableNotice') as typeof import('@/components/table/TableNotice');
+  return (
+    <TableNotice kind="hudCombo" tone="neutral" scale={1} still>
+      <NoticeText>combo</NoticeText>
+    </TableNotice>
+  );
+};
 const advance = (ms: number) => act(async () => void jest.advanceTimersByTime(ms));
 const rows = <K extends DiagRow['k']>(k: K) => mockRows.filter((r): r is Extract<DiagRow, { k: K }> => r.k === k);
 const FRAME = 17;
@@ -43,7 +52,7 @@ describe('a diagnostics build times every notice in UI frames', () => {
     for (const [fixture, want] of [
       [gallery.hudCombo[0], [['hudCombo', 'pill', 'enter', 160]]],
       [gallery.passFloat[0], [['passFloat', 'float', 'enter', 100], ['passFloat', 'float', 'exit', 100]]],
-      [gallery.pileLabel[0], [['pileLabel', 'chip', 'still', 0]]],
+      [{ render: () => stillPill() }, [['hudCombo', 'pill', 'still', 0]]],
     ] as const) {
       mockRows.length = 0;
       const view = await render(fixture.render(1));
@@ -126,7 +135,7 @@ describe('a diagnostics build times every notice in UI frames', () => {
     expect(rows('notice').map((r) => r.phase)).toEqual(['enter', 'exit']);
 
     mockRows.length = 0;
-    const still = await render(gallery.pileLabel[0].render(1));
+    const still = await render(stillPill());
     await advance(2000);
     await still.unmount();
     expect(rows('notice').map((r) => r.phase)).toEqual(['still']);
