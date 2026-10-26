@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { blankComments } from "../helpers/sourceScan.ts";
-import { SCANS, TEST_DIRS, testFiles } from "../../stryker.config.mjs";
+import { EXTRA_TESTS, SCANS, TEST_DIRS, testFiles } from "../../stryker.config.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 
@@ -62,4 +62,34 @@ test("the run keeps every behaviour test and no scan", () => {
   assert.ok(testFiles.length >= 100, `the run holds only ${testFiles.length} test files`);
   assert.deepEqual(testFiles.filter((file) => SCANS.includes(file)), []);
   assert.ok(testFiles.includes("tests/engine/moves.test.ts"));
+});
+
+test("every extra test outside the run's directories exists and does not scan", () => {
+  assert.ok(EXTRA_TESTS.length >= 1, "no extra test is listed");
+  for (const file of EXTRA_TESTS) {
+    assert.ok(existsSync(path.join(repoRoot, file)), `${file} is listed but gone`);
+    assert.ok(!TEST_DIRS.some((dir) => file.startsWith(`${dir}/`)), `${file} is already under a directory the run reads`);
+    assert.ok(!scans(read(file)), `${file} scans: its kills are false kills, and it belongs in neither list`);
+    assert.ok(!SCANS.includes(file), `${file} is listed as both an extra test and a scan`);
+    assert.ok(testFiles.includes(file), `${file} is listed but the run does not include it`);
+  }
+});
+
+test("a scan planted in an extra test is caught", () => {
+  const planted = `${read(EXTRA_TESTS[0])}\nconst src = readFileSync(path.join(root, "lib", "game", "scorePill.ts"), "utf8");`;
+  assert.equal(scans(planted), true);
+});
+
+test("a file split into behaviour and scan keeps its behaviour in the run and its scan out", () => {
+  const split = [
+    "tests/bots/botFill", "tests/bots/botPersonalities", "tests/bots/botSearchTimeout", "tests/engine/deal",
+    "tests/engine/matchState", "tests/engine/sharedGameFlow", "tests/server/dbTls", "tests/server/exchangeVisibility",
+    "tests/server/logRedaction", "tests/server/seatAllocation", "tests/server/tableOwnership", "tests/server/testOnlyEnv",
+  ];
+  for (const name of split) {
+    assert.ok(testFiles.includes(`${name}.test.ts`), `${name}.test.ts is a behaviour file: it belongs in the run`);
+    assert.ok(SCANS.includes(`${name}Scan.test.ts`), `${name}Scan.test.ts holds the scan and must stay out of the run`);
+    assert.ok(scans(read(`${name}Scan.test.ts`)), `${name}Scan.test.ts no longer scans`);
+    assert.ok(!scans(read(`${name}.test.ts`)), `${name}.test.ts scans again`);
+  }
 });

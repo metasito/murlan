@@ -97,4 +97,8 @@ jobs:
           node tools/ci/mutation.mjs report shards mutation-report.md "$RUN_URL" || status=$?
           [ -s mutation-report.md ] || echo "The mutation report itself failed. [Run]($RUN_URL)" > mutation-report.md
           bash tools/ci/report-to-tracker.sh "Mutation testing: surviving mutants" mutation-report.md mutation
+          for part in mutation-report.part-*.md; do
+            [ -e "$part" ] || continue
+            bash tools/ci/report-to-tracker.sh "Mutation testing: surviving mutants" "$part" mutation
+          done
           exit "$status"
