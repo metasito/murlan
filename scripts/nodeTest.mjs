@@ -22,5 +22,7 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   }
   // Before the files: node reads a flag after its glob as one more pattern and runs everything.
   const sharding = shard === undefined ? [] : [`--test-shard=${shard}`];
+  // A test that runs `npm test` itself would otherwise run only its own slice of what it planted.
+  delete process.env.MURLAN_TEST_SHARD;
   relay(process.execPath, [...NO_BACKGROUND_JIT, "--import", blockingStdout, ...sharding, ...process.argv.slice(2)]);
 }

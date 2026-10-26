@@ -104,6 +104,21 @@ describe("npm test splits through MURLAN_TEST_SHARD", () => {
     }
   });
 
+  test("a file in a shard runs its own npm test whole", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "shards-"));
+    try {
+      writeFileSync(
+        path.join(dir, "a.test.mjs"),
+        'import test from "node:test";\nimport assert from "node:assert";\ntest("x", () => assert.equal(process.env.MURLAN_TEST_SHARD, undefined));\n'
+      );
+      const result = run("1/1", dir);
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      assert.deepEqual(parseShardLog(result.stderr).ran, [path.relative(repoRoot, path.join(dir, "a.test.mjs")).split(path.sep).join("/")]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("a malformed shard fails the run instead of running everything", () => {
     for (const bad of ["1", "0/2", "a/b", "1/2/3"]) {
       const result = run(bad, repoRoot);
