@@ -47,3 +47,31 @@ test("a sweep disposes a finished table nobody is connected to, and keeps one so
   await sweepFinishedTables(rt);
   assert.equal(activeGames.has(ROOM), false);
 });
+
+test("a sweep with no finished table asks nobody, and disposes only the finished one among several", async () => {
+  let asked = 0;
+  const { rt, cluster } = recordingRuntime({
+    presence: {
+      connectedUserIds: async () => {
+        asked++;
+        return new Set(cluster.online);
+      },
+    },
+  });
+  const OTHER = "sweep-presence-other-room";
+  activeGames.set(
+    OTHER,
+    onlineTable({ roomId: OTHER, playerMap: { 0: "cami" }, gameState: startRound(SEATS, "free_for_all") })
+  );
+
+  await sweepFinishedTables(rt);
+  assert.equal(asked, 0, "the cluster was asked about a sweep with nothing to dispose");
+  assert.equal(activeGames.has(OTHER), true);
+
+  finishedTable();
+  await sweepFinishedTables(rt);
+  assert.equal(asked, 1);
+  assert.equal(activeGames.has(ROOM), false);
+  assert.equal(activeGames.has(OTHER), true, "a table still in play was swept because nobody was connected");
+  activeGames.delete(OTHER);
+});
