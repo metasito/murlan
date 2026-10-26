@@ -432,7 +432,7 @@ describe("the table's refusals and lines", () => {
     });
     expect(edge('notice-rejectFloat')).toBe(NoticePalette.float.bad.edge);
     expect(within(screen.getByTestId('notice-rejectFloat', hidden)).getByText(t('gameTable.playA11ySpokenTooLow'), hidden)).toBeTruthy();
-    expect(said(t('gameTable.playA11ySpokenTooLow'))).toBe(1);
+    await waitFor(() => expect(said(t('gameTable.playA11ySpokenTooLow'))).toBe(1));
     await r.unmount();
   });
 
