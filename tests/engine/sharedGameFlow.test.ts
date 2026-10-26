@@ -7,7 +7,6 @@
 // `undefined`, because the banner renders the name either way.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { buildExchangeAnnounce, exchangeAnnouncementOf } from "../../lib/game/sharedGameFlow.ts";
 import type { Card, LastMove } from "../../lib/game/gameEngine.ts";
 import type { ViewedGameState, WireExchangePhase } from "../../shared/protocol.ts";
@@ -104,24 +103,3 @@ for (const [name, prev, next, expected] of rows) {
     assert.deepEqual(exchangeAnnouncementOf(prev, next), expected);
   });
 }
-
-/**
- * The point of the shared form: a change to the ceremony is one change.
- * Source-read, because what is being pinned is that the providers do not hold
- * their own — which is a property of the files, not of a render.
- */
-test("neither provider keeps its own ceremony", () => {
-  const root = new URL("../..", import.meta.url);
-  for (const file of ["context/GameContext.tsx", "context/OnlineGameContext.tsx"]) {
-    const source = readFileSync(new URL(file, root), "utf8");
-    assert.ok(
-      source.includes("useExchangeAnnouncement("),
-      `${file} does not drive the ceremony from context/useExchangeAnnouncement.ts`
-    );
-    assert.equal(
-      /useState[^\n]*\bexchangeAnnounc|setExchangeAnnouncing/i.test(source),
-      false,
-      `${file} holds the announcement again; the clock that ends it is now in two places`
-    );
-  }
-});

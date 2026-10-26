@@ -10,17 +10,17 @@ export const TEST_DIRS = ["tests/engine", "tests/bots", "tests/server"];
  * failed the dry run" — tests/tooling/mutationScans.test.ts proves every entry scans.
  */
 export const SCANS = [
-  "tests/bots/botFill.test.ts",
-  "tests/bots/botPersonalities.test.ts",
-  "tests/bots/botSearchTimeout.test.ts",
-  "tests/engine/deal.test.ts",
-  "tests/engine/matchState.test.ts",
-  "tests/engine/sharedGameFlow.test.ts",
+  "tests/bots/botFillScan.test.ts",
+  "tests/bots/botPersonalitiesScan.test.ts",
+  "tests/bots/botSearchTimeoutScan.test.ts",
+  "tests/engine/dealScan.test.ts",
+  "tests/engine/matchStateScan.test.ts",
+  "tests/engine/sharedGameFlowScan.test.ts",
   "tests/server/activeGameStoreScan.test.ts",
   "tests/server/dbPush.test.ts",
   "tests/server/dbTls.test.ts",
   "tests/server/deployRuntime.test.ts",
-  "tests/server/exchangeVisibility.test.ts",
+  "tests/server/exchangeVisibilityScan.test.ts",
   "tests/server/historyBound.test.ts",
   "tests/server/layering.test.ts",
   "tests/server/logRedaction.test.ts",
@@ -31,24 +31,33 @@ export const SCANS = [
   "tests/server/rateLimiterFactory.test.ts",
   "tests/server/rejoinFailure.test.ts",
   "tests/server/retentionOffWritePath.test.ts",
-  "tests/server/seatAllocation.test.ts",
+  "tests/server/seatAllocationScan.test.ts",
   "tests/server/seating.test.ts",
   "tests/server/serverLoadable.test.ts",
   "tests/server/sessionRevocation.test.ts",
   "tests/server/socketErrorLogging.test.ts",
   "tests/server/socketEvents.test.ts",
   "tests/server/storedShapeVersions.test.ts",
-  "tests/server/tableOwnership.test.ts",
+  "tests/server/tableOwnershipScan.test.ts",
   "tests/server/tableRuntimeScan.test.ts",
-  "tests/server/testOnlyEnv.test.ts",
+  "tests/server/testOnlyEnvScan.test.ts",
   "tests/server/usernameRule.test.ts",
 ];
 
-export const testFiles = TEST_DIRS.flatMap((dir) =>
-  readdirSync(path.join(import.meta.dirname, dir))
-    .filter((name) => name.endsWith(".test.ts"))
-    .map((name) => `${dir}/${name}`),
-)
+/**
+ * Behaviour tests of mutated code that live outside TEST_DIRS, named one by one: the dirs they sit in
+ * hold mostly scans. tests/tooling/mutationScans.test.ts proves each exists and does not scan.
+ */
+export const EXTRA_TESTS = ["tests/ui-rules/scorePillStandings.test.ts"];
+
+export const testFiles = [
+  ...TEST_DIRS.flatMap((dir) =>
+    readdirSync(path.join(import.meta.dirname, dir))
+      .filter((name) => name.endsWith(".test.ts"))
+      .map((name) => `${dir}/${name}`),
+  ),
+  ...EXTRA_TESTS,
+]
   .filter((file) => !SCANS.includes(file))
   .sort();
 

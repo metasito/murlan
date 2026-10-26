@@ -13,6 +13,7 @@ const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 const DETECTED = ["Killed", "Timeout"];
 const UNDETECTED = ["Survived", "NoCoverage"];
 const COMMENT_LIMIT = 60000;
+const CONTINUED = "**Survivors, continued:**";
 
 /**
  * The most mutants one shard holds. A shard must fit its hour cold: GitHub evicts a cache untouched for
@@ -75,6 +76,9 @@ export async function shards(root = repoRoot, budget = SHARD_MUTANTS) {
   });
 }
 
+/** The file holding comment `n` (2 and up) of the report written to `out`: `mutation-report.md` → `mutation-report.part-0002.md`. */
+export const continuationOf = (out, n) => out.replace(/(\.md)?$/, `.part-${String(n).padStart(4, "0")}$1`);
+
 const oneLine = (text) => {
   const flat = text.replace(/\s+/g, " ").trim();
   return flat.length > 80 ? `${flat.slice(0, 79)}…` : flat;
@@ -85,7 +89,7 @@ const code = (text) => (text.includes("`") ? `\`\` ${text} \`\`` : `\`${text}\``
  * @typedef {{ mutatorName: string, replacement?: string, status: string, location: { start: { line: number } } }} Mutant
  * @param {{ slug: string, report: { files: Record<string, { mutants: Mutant[] }> } }[]} reports every shard's Stryker JSON report
  * @param {{ slug: string, mutate: string }[]} expected every shard the run started
- * @returns {{ markdown: string, ok: boolean }}
+ * @returns {{ markdown: string, parts: string[], ok: boolean }} `parts` is the report cut into comments of at most COMMENT_LIMIT, none of the survivors dropped; `markdown` is the first
  */
 export function summarize(reports, expected, runUrl = "") {
   const reported = new Set(reports.map((r) => r.slug));
@@ -130,16 +134,18 @@ export function summarize(reports, expected, runUrl = "") {
     "",
     "**Survivors** — a line whose behaviour no test asserts:",
   ].join("\n");
-  const listed = [];
+  const parts = [head];
   let length = head.length;
   for (const line of survivors) {
-    if (length + line.length + 1 > COMMENT_LIMIT) break;
-    listed.push(line);
+    if (length + line.length + 1 > COMMENT_LIMIT && length > CONTINUED.length) {
+      parts.push(CONTINUED);
+      length = CONTINUED.length;
+    }
+    parts[parts.length - 1] += `\n${line}`;
     length += line.length + 1;
   }
-  const cut = survivors.length - listed.length;
-  const tail = cut ? [`- …and ${cut} more: every shard's \`mutation.json\` is in the run's artifacts.`] : survivors.length ? [] : ["- none"];
-  return { markdown: [head, ...listed, ...tail, ""].join("\n"), ok: errors.length === 0 };
+  if (survivors.length === 0) parts[0] += "\n- none";
+  return { markdown: `${parts[0]}\n`, parts: parts.map((part) => `${part}\n`), ok: errors.length === 0 };
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
@@ -156,8 +162,9 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
       slug: name.replace(/^mutation-/, ""),
       report: JSON.parse(readFileSync(path.join(dir, name, "mutation.json"), "utf8")),
     }));
-    const { markdown, ok } = summarize(reports, expected, runUrl);
-    writeFileSync(out, markdown);
+    const { parts, ok } = summarize(reports, expected, runUrl);
+    writeFileSync(out, parts[0]);
+    parts.slice(1).forEach((part, i) => writeFileSync(continuationOf(out, i + 2), part));
     process.exitCode = ok ? 0 : 1;
   } else {
     throw new Error("usage: mutation.mjs shards | report <dir> <out.md> [run url]");

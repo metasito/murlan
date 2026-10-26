@@ -4,7 +4,7 @@ import { globSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { Instrumenter } from "@stryker-mutator/instrumenter";
 import { loadWorkflow, stepIn } from "../helpers/workflow.ts";
-import { SHARD_MUTANTS, shards, summarize } from "../../tools/ci/mutation.mjs";
+import { SHARD_MUTANTS, continuationOf, shards, summarize } from "../../tools/ci/mutation.mjs";
 import { MUTATE } from "../../stryker.config.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
@@ -131,6 +131,26 @@ test("a replacement holding backticks and newlines stays one code span", () => {
   assert.match(markdown, /StringLiteral → `` `a` \+ b ``$/m);
 });
 
+test("an oversize survivor list is split into comments, and no survivor is dropped", () => {
+  const survivors = Array.from({ length: 2500 }, (_, i) => mutant("Survived", i + 1, `value${i + 1} ${"x".repeat(60)}`));
+  const { parts, markdown, ok } = summarize([reportOf("a", movesFile, [mutant("Killed", 9999), ...survivors])], [shard(movesFile, 1, 9999, "a")]);
+  assert.equal(ok, true);
+  assert.ok(parts.length > 1, "the planted list must overflow one comment");
+  assert.equal(markdown, parts[0]);
+  for (const part of parts) assert.ok(part.length <= 60000, `a comment of ${part.length} characters`);
+  const text = parts.join("\n");
+  assert.doesNotMatch(text, /…and \d+ more/);
+  for (let line = 1; line <= 2500; line++) assert.ok(text.includes(`\`${movesFile}:${line}\` `), `survivor at line ${line} was dropped`);
+  assert.equal(text.match(/^- `lib\/game\/moves\.ts:/gm)?.length, 2500);
+});
+
+test("a report that fits is one comment, and continuation files are named in order", () => {
+  const { parts } = summarize([reportOf("a", movesFile, [mutant("Killed", 4), mutant("Survived", 5)])], [shard(movesFile, 1, 19, "a")]);
+  assert.equal(parts.length, 1);
+  assert.equal(continuationOf("mutation-report.md", 2), "mutation-report.part-0002.md");
+  assert.ok(continuationOf("r.md", 2) < continuationOf("r.md", 10));
+});
+
 test("mutation.yml runs weekly or on demand, never on a push or a pull request", () => {
   const on = loadWorkflow("mutation.yml").on as Record<string, unknown>;
   assert.deepEqual(Object.keys(on).sort(), ["schedule", "workflow_dispatch"]);
@@ -155,6 +175,7 @@ test("mutation.yml files every run on the one issue, after every shard", () => {
   assert.deepEqual(job.needs, ["shards", "mutate"]);
   assert.equal(job.permissions?.issues, "write");
   assert.match(step.run ?? "", /bash tools\/ci\/report-to-tracker\.sh "Mutation testing: surviving mutants" mutation-report\.md mutation\n/);
+  assert.match(step.run ?? "", /for part in mutation-report\.part-\*\.md; do[\s\S]*report-to-tracker\.sh "Mutation testing: surviving mutants" "\$part" mutation[\s\S]*done\n/, "the continuation comments must be filed too");
   assert.match(step.run ?? "", /exit "\$status"\s*$/, "a failed report must fail the run");
   assert.equal(job.steps?.at(-1), step);
   assert.equal(Object.keys(workflow.jobs).at(-1), id);
