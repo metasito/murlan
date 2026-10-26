@@ -15,5 +15,12 @@ export const NO_BACKGROUND_JIT = ["--no-concurrent-recompilation", "--no-concurr
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   hermeticEvidenceKey(process.env, tmpdir());
   const blockingStdout = new URL("./lib/blockingStdout.mjs", import.meta.url).href;
-  relay(process.execPath, [...NO_BACKGROUND_JIT, "--import", blockingStdout, ...process.argv.slice(2)]);
+  const shard = process.env.MURLAN_TEST_SHARD;
+  if (shard !== undefined && !/^[1-9]\d*\/[1-9]\d*$/.test(shard)) {
+    console.error(`MURLAN_TEST_SHARD must be <index>/<total>, not "${shard}"`);
+    process.exit(1);
+  }
+  // Before the files: node reads a flag after its glob as one more pattern and runs everything.
+  const sharding = shard === undefined ? [] : [`--test-shard=${shard}`];
+  relay(process.execPath, [...NO_BACKGROUND_JIT, "--import", blockingStdout, ...sharding, ...process.argv.slice(2)]);
 }

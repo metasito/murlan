@@ -39,6 +39,11 @@ decide which of these you run by hand and which you leave to CI. A unit test liv
 exercises: `tests/engine/`, `tests/bots/`, `tests/server/`, `tests/ui-rules/`, `tests/tooling/` —
 none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
 
+CI runs that command as two halves (`MURLAN_TEST_SHARD=1/2`, `scripts/nodeTest.mjs` turning it into
+`--test-shard`), because one job was the run's longest. A half cannot see the other's files, so
+`verify-complete` runs `tools/ci/nodeShards.mjs` over both logs: every file loaded once, the integration
+files and the restore test ran a test. Locally, `npm test` is still the whole suite.
+
 ## Local ports
 
 | Port | For | Owner |

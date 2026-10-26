@@ -231,18 +231,20 @@ jobs:
             exit 1
           fi
 
-  # The three checks that need the Postgres service, and only those: jest and
-  # eslint are their own jobs so this one's ~150s of tests stops standing in
-  # front of their ~90s. Nothing here is gated on them, and nothing there is
-  # gated on this, so one run still reports every failure rather than stopping
-  # at the first — which is what the folded job's `if: !cancelled()` bought.
+  # The Node suite, in halves: it was the run's longest job at ~5 min, past every browser and native
+  # shard. The typecheck is the `lint` job's. Each half proves its own skips; that together they
+  # ran every file once is `verify-complete`'s, which no half can see.
   verify:
-    name: Typecheck and tests
+    name: Node tests ${{ matrix.shard }}/${{ strategy.job-total }}
     needs: scope
     if: needs.scope.outputs.app == 'true' || needs.scope.outputs.scans == 'true'
     # Pinned: the restore test installs postgresql-client-16 from the distro, and ubuntu-latest moved to 26.04, which does not package it.
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
 
     # Without a database the integration suites skip themselves (by design, so
     # `npm test` works for a contributor with no Postgres). That is exactly the
@@ -283,6 +285,8 @@ jobs:
 
       - name: Test
         shell: bash
+        env:
+          MURLAN_TEST_SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
         run: |
           set -o pipefail
           npm test 2>&1 | tee test-output.txt
@@ -302,18 +306,51 @@ jobs:
             echo "This is the only test proving a dump actually restores; see the 'Install postgresql-client' step above."
             exit 1
           fi
-          # A narrowed glob loads no integration file and prints no skip, so the files that ran are counted.
-          expected=$(ls tests/integration/*.test.ts | wc -l)
-          ran=$(grep -oE "^test files run in tests/integration: [0-9]+" test-output.txt | grep -oE "[0-9]+$" || echo 0)
-          if [ "$expected" -lt 40 ]; then
-            echo "::error::Only $expected integration files found on disk — the suite moved, and this count no longer sees it."
-            exit 1
-          fi
-          if [ "$ran" -lt "$expected" ]; then
-            echo "::error::npm test ran $ran of the $expected files in tests/integration."
-            exit 1
-          fi
-          echo "Integration suites ran against Postgres: $ran files."
+
+      # The log is what `verify-complete` judges, so it is kept even when this half's assertions fail.
+      - name: Keep this half's log
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: node-test-log-${{ matrix.shard }}
+          path: test-output.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  # Every test file ran in exactly one half, the integration files and the backup restore test ran
+  # a test, and no half was dropped from the matrix: the count `Assert the integration suites
+  # actually ran` made when one job ran everything.
+  verify-complete:
+    name: Node tests ran every file
+    needs: verify
+    if: needs.verify.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: |
+            tests
+            tools/ci
+            scripts/lib
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .node-version
+      - name: Collect every half's log
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for wait in 5 10 20 0; do
+            rm -rf "$RUNNER_TEMP/logs"
+            gh run download "$GITHUB_RUN_ID" --pattern 'node-test-log-*' --dir "$RUNNER_TEMP/logs" && break
+            [ "$wait" -gt 0 ] || exit 1
+            sleep "$wait"
+          done
+      - name: The halves together ran every test file once
+        run: node tools/ci/nodeShards.mjs package.json "$RUNNER_TEMP"/logs/*/test-output.txt
 
   # React Native's own renderer, with Platform.OS set to ios and android — the
   # one thing the Playwright suite structurally cannot do. It rode in `verify`
@@ -999,7 +1036,7 @@ jobs:
   # runs whatever its needs concluded, and it needs every other job (tests/tooling/ciGate.test.ts).
   ci-gate:
     name: CI gate
-    needs: [scope, secrets, verify, native, harness, harness-windows, lint, android-build, ios-build, browser, browser-report, build, timing-budget]
+    needs: [scope, secrets, verify, verify-complete, native, harness, harness-windows, lint, android-build, ios-build, browser, browser-report, build, timing-budget]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

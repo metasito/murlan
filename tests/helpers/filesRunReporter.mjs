@@ -2,6 +2,7 @@ import { mkdirSync, readdirSync, rmSync, writeSync } from "node:fs";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { tableTimeoutMs } from "../../scripts/lib/proc.mjs";
+import { IDLE_LINE, RAN_LINE, SHARD_LINE, shardOf } from "../../tools/ci/nodeShards.mjs";
 import { EXIT_TICK_MS } from "./exitGuard.mjs";
 import { EXIT_MARKERS_ENV, exitMarkers, FILE_DEADLINE_MS } from "./fileDeadline.mjs";
 
@@ -62,7 +63,8 @@ const isFile = (data) => data?.nesting === 0 && path.resolve(data.name ?? "") ==
  * node reports for a file that declared no test at all.
  *
  * It also fails the run when a `*.test.ts` under a root the run touched never loaded: a narrowed
- * glob drops whole directories and still exits 0.
+ * glob drops whole directories and still exits 0. A `--test-shard` run loads only its slice, so it
+ * names each file instead and leaves that check to tools/ci/nodeShards.mjs over all the slices.
  */
 export default async function* filesRun(source) {
   const loaded = new Set();
@@ -114,6 +116,20 @@ export default async function* filesRun(source) {
     perDir.set(dir, (perDir.get(dir) ?? 0) + 1);
   }
   for (const [dir, count] of [...perDir].sort()) yield `test files run in ${dir}: ${count}\n`;
+
+  const shard = shardOf(process.execArgv);
+  if (shard) {
+    const rel = (f) => path.relative(process.cwd(), f).split(path.sep).join("/");
+    yield `${SHARD_LINE}${shard.index}/${shard.total}\n`;
+    const ranRel = new Set([...ran].map(rel));
+    for (const f of [...ranRel].sort()) yield `${RAN_LINE}${f}\n`;
+    for (const f of [...new Set([...loaded].map(rel))].filter((f) => !ranRel.has(f)).sort()) yield `${IDLE_LINE}${f}\n`;
+    if (loaded.size === 0) {
+      yield `test file never loaded: (no test file loaded at all)\n`;
+      process.exitCode = 1;
+    }
+    return;
+  }
 
   const missing = unloaded([...loaded]);
   if (loaded.size === 0) missing.push("(no test file loaded at all)");
