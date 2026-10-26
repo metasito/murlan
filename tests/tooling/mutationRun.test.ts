@@ -4,7 +4,7 @@ import { globSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { Instrumenter } from "@stryker-mutator/instrumenter";
 import { loadWorkflow, stepIn } from "../helpers/workflow.ts";
-import { SHARD_MUTANTS, continuationOf, shards, summarize } from "../../tools/ci/mutation.mjs";
+import { DATABASE_BACKED, SHARD_MUTANTS, SLOW_SHARD_MUTANTS, budgetOf, continuationOf, shards, summarize } from "../../tools/ci/mutation.mjs";
 import { MUTATE } from "../../stryker.config.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
@@ -54,6 +54,19 @@ test("each file's shards cover its every line once, in order", () => {
   assert.ok(all.every((s) => /^[\w.-]+$/.test(s.slug)), "a slug is not a valid artifact or cache name");
 });
 
+test("a file whose tests need the database is cut into smaller shards than the rest", () => {
+  assert.ok(SLOW_SHARD_MUTANTS < SHARD_MUTANTS);
+  assert.equal(budgetOf("server/game/tableRouter.ts"), SLOW_SHARD_MUTANTS);
+  assert.equal(budgetOf(movesFile), SHARD_MUTANTS);
+  for (const file of DATABASE_BACKED) {
+    const own = all.filter((s) => s.file === file);
+    assert.ok(own.length > 0, `${file} is listed as database-backed but is not mutated`);
+  }
+  const router = all.filter((s) => s.file === "server/game/tableRouter.ts");
+  assert.ok(router.length >= 2, "tableRouter.ts is one shard: the database-backed budget is not applied");
+  assert.ok(Math.max(...router.map((s) => s.mutants)) <= SLOW_SHARD_MUTANTS * 2);
+});
+
 test("every mutant Stryker places lands in exactly one shard, and a shard outgrows the budget only where no cut can split it", async () => {
   const files = MUTATE.flatMap((pattern) => globSync(pattern, { cwd: repoRoot })).sort();
   let total = 0;
@@ -70,10 +83,10 @@ test("every mutant Stryker places lands in exactly one shard, and a shard outgro
       const n = await placed(file, r);
       assert.equal(n, r.mutants, `${r.mutate} holds ${n} mutants, not the ${r.mutants} it was sized by`);
       assert.ok(n > 0, `${r.mutate} holds no mutant`);
-      if (n > SHARD_MUTANTS) {
+      if (n > budgetOf(file)) {
         for (let cut = r.start; cut < r.end; cut++) {
           const [head, tail] = [await placed(file, { start: r.start, end: cut }), await placed(file, { start: cut + 1, end: r.end })];
-          assert.ok(head === 0 || tail === 0 || head + tail < n,`${r.mutate} holds ${n} mutants, over the ${SHARD_MUTANTS} a cold shard can test in its hour, yet cuts after line ${cut}`);
+          assert.ok(head === 0 || tail === 0 || head + tail < n,`${r.mutate} holds ${n} mutants, over the ${budgetOf(file)} a cold shard can test in its hour, yet cuts after line ${cut}`);
         }
       }
       inRanges += n;

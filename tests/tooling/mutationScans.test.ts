@@ -83,7 +83,7 @@ test("a scan planted in an extra test is caught", () => {
 test("a file split into behaviour and scan keeps its behaviour in the run and its scan out", () => {
   const split = [
     "tests/bots/botFill", "tests/bots/botPersonalities", "tests/bots/botSearchTimeout", "tests/engine/deal",
-    "tests/engine/matchState", "tests/engine/sharedGameFlow", "tests/server/dbTls", "tests/server/exchangeVisibility",
+    "tests/engine/matchState", "tests/engine/sharedGameFlow", "tests/integration/gameplay", "tests/server/dbTls", "tests/server/exchangeVisibility",
     "tests/server/logRedaction", "tests/server/seatAllocation", "tests/server/tableOwnership", "tests/server/testOnlyEnv",
   ];
   for (const name of split) {
