@@ -16,6 +16,7 @@ import {
   aggregateTeamScores,
   buildCombination,
   foldRound,
+  modeFits,
   type GameMode,
   type MatchLength,
   type SeatScoring,
@@ -250,11 +251,50 @@ describe("teams: folding a round into the match", () => {
       assert.deepEqual(result.winners, ["u1"], "only the partner still there is named");
     });
 
+    test("a key frozen on a vacated seat is never named, even when another seat is scoring under it", () => {
+      const reseated: SeatScoring[] = online.map((seat) => (seat.engineId === "p3" ? { ...seat, frozenKey: "u1" } : seat));
+      const result = foldRound(
+        { finishingOrder: ["p1", "p0", "p2", "p3"], playerCount: 4, gameMode: "teams", length: "match" },
+        { cumulative: { u0: 9, u2: 8, u1: 18 }, target: 21 },
+        reseated
+      );
+      assert.equal(result.over, true);
+      assert.deepEqual(result.winners, []);
+    });
+
     test("short of the target, the pair plays on", () => {
       const result = foldOnline(["p1", "p0", "p2", "p3"], { u0: 9, u2: 8, u1: 12, u3: 4 });
       // Team B: u1 on 12 + 3, plus u3's frozen 4 = 19.
       assert.equal(result.over, false);
       assert.deepEqual(result.winners, []);
     });
+  });
+});
+
+describe("modeFits", () => {
+  test("only a teams match is held to four seats", () => {
+    assert.equal(modeFits("free_for_all", 3), true);
+    assert.equal(modeFits("free_for_all", 4), true);
+    assert.equal(modeFits("teams", 4), true);
+    assert.equal(modeFits("teams", 3), false);
+  });
+});
+
+describe("a teams match whose seats carry no team scores as individuals", () => {
+  const seats: SeatScoring[] = ["a", "b", "c", "d"].map((id) => ({ engineId: id, key: id, crownable: true }));
+  const fold = (length: MatchLength, cumulative: Record<string, number>) =>
+    foldRound({ finishingOrder: ["a", "b", "c", "d"], playerCount: 4, gameMode: "teams", length }, { cumulative, target: 21 }, seats);
+
+  test("a seat crossing the target alone wins the match", () => {
+    const result = fold("match", { a: 19 });
+    assert.equal(result.over, true);
+    assert.deepEqual(result.winners, ["a"]);
+  });
+
+  test("a single round is taken by the seat that finished first", () => {
+    const result = fold("single", {});
+    assert.equal(result.over, true);
+    assert.deepEqual(result.winners, ["a"]);
+    assert.equal(result.isDraw, false);
   });
 });

@@ -6,6 +6,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
+  actingSeat,
   applyMove,
   buildCombination,
   type Card,
@@ -111,5 +112,20 @@ describe("a pass names its refusal", () => {
 
   test("answering a combination", () => {
     assert.equal(pass(table([c("4", "diamonds")])).ok, true);
+  });
+});
+
+describe("while an exchange is open", () => {
+  const open = (pile: Card[] | null) => table(pile, { exchangePhase: openExchange });
+
+  test("the exchange is named before whose turn it is, for a play and for a pass", () => {
+    assert.deepEqual(applyMove(open(null), 1, { kind: "play", cardIds: ["4_clubs"] }), { ok: false, code: "exchangeOpen" });
+    assert.deepEqual(applyMove(open([c("4", "diamonds")]), 1, { kind: "pass" }), { ok: false, code: "exchangeOpen" });
+  });
+
+  test("the winner is the seat to act, wherever the turn marker sits", () => {
+    const state = table(null, { exchangePhase: openExchange, currentTurnIndex: 1 });
+    assert.equal(actingSeat(state), openExchange.winnerIdx);
+    assert.equal(actingSeat({ ...state, exchangePhase: undefined }), 1);
   });
 });

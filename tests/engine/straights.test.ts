@@ -236,3 +236,22 @@ describe("enumeration completeness", () => {
     );
   });
 });
+
+describe("the straights a hand can lead", () => {
+  test("the opening can be a plain straight through the 3♠ when another suit's card can stand in for one of the rest", () => {
+    const hand = [
+      c("3", "spades"), c("3", "hearts"), c("4", "spades"), c("5", "spades"),
+      c("5", "hearts"), c("6", "spades"), c("7", "spades"),
+    ];
+    const opening = getAllValidPlays(hand, { toBeat: null, mustInclude: c("3", "spades") });
+    const plain = opening.filter((p) => p.type === "straight" && p.cards.length === 5);
+    assert.equal(plain.length, 1);
+    assert.ok(plain[0].cards.some((card) => card.id === "3_spades"));
+  });
+
+  test("the thirteen-card straight, ace to king, can be led", () => {
+    const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"] as const;
+    const hand = ranks.map((rank, i) => c(rank, i % 2 ? "clubs" : "hearts"));
+    assert.equal(straightsOf(hand, 13).length, 1);
+  });
+});

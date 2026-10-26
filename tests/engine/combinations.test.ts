@@ -2,7 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { card as c, joker as j } from "../support/game.ts";
 import { beats } from "../support/moves.ts";
-import { buildCombination, cardStrength, getRankStrength, type Card } from "../../lib/game/gameEngine.ts";
+import { buildCombination, cardStrength, getCardDisplayRank, getRankStrength, getSuitSymbol, type Card } from "../../lib/game/gameEngine.ts";
 
 /** The shape `cards` form, or null: what a play of them would be taken as. */
 const typeOf = (cards: Card[]) => buildCombination(cards)?.type ?? null;
@@ -207,5 +207,21 @@ describe("beat hierarchy", () => {
   test("normal plays cannot answer a bomb or a royal straight", () => {
     assert.equal(beats(pair8, bomb5), false);
     assert.equal(beats(straight5, royalLow), false);
+  });
+});
+
+describe("how a card is written", () => {
+  test("both jokers read JKR and every other rank reads as itself", () => {
+    assert.equal(getCardDisplayRank("joker_colored"), "JKR");
+    assert.equal(getCardDisplayRank("joker_bw"), "JKR");
+    assert.deepEqual((["3", "10", "J", "A", "2"] as const).map(getCardDisplayRank), ["3", "10", "J", "A", "2"]);
+  });
+
+  test("each suit has its symbol and a joker's missing suit reads as nothing", () => {
+    assert.deepEqual(
+      (["hearts", "diamonds", "clubs", "spades"] as const).map(getSuitSymbol),
+      ["♥", "♦", "♣", "♠"]
+    );
+    assert.equal(getSuitSymbol(null), "");
   });
 });

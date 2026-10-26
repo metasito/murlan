@@ -1,8 +1,13 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
+import { aThreePlayed, card as c, seat as makePlayer, state as makeState } from "../support/game.ts";
 import {
+  applyMove,
   buildCombination,
+  dealFirstSeatFor,
+  emptyRankTally,
+  openingIsPending,
+  roundUnplayed,
   startRound,
   type Card,
 } from "../../lib/game/gameEngine.ts";
@@ -330,4 +335,80 @@ describe("a 3-player game", () => {
       [...state.players].sort((x, y) => x.finishPosition! - y.finishPosition!).map((p) => p.id)
     );
   }
+});
+
+describe("the turn goes to the next seat still holding cards", () => {
+  const table = () =>
+    makeState({
+      players: [
+        makePlayer(0, [c("J", "spades")]),
+        makePlayer(1, [c("9", "spades")]),
+        makePlayer(2, [], { finishPosition: 1 }),
+        makePlayer(3, [...pair("7"), c("K", "spades")]),
+      ],
+      currentTurnIndex: 3,
+      lastPlayedBy: 3,
+      finishingOrder: ["p2"],
+    });
+
+  test("after a play, a seat that has gone out is stepped over", () => {
+    assert.equal(played(table(), combo(pair("7"))).currentTurnIndex, 1);
+  });
+
+  test("after a pass, a seat that has gone out is stepped over", () => {
+    const state = { ...table(), currentTurnIndex: 3, lastPlayedBy: 0, lastPlayedCombination: combo(pair("5")) };
+    const next = passed({ ...state, players: state.players.map((p) => (p.id === "p3" ? { ...p, hand: [c("A", "spades")] } : p)) });
+    assert.equal(next.currentTurnIndex, 1);
+  });
+
+  test("a pass with nobody left holding cards still returns", () => {
+    const state = makeState({
+      players: [0, 1, 2, 3].map((i) => makePlayer(i, [])),
+      currentTurnIndex: 0,
+      lastPlayedBy: 1,
+      lastPlayedCombination: combo(pair("5")),
+    });
+    assert.equal(applyMove(state, 0, { kind: "pass" }).ok, true);
+  });
+});
+
+describe("roundUnplayed", () => {
+  test("is true for a round nobody has played into", () => {
+    assert.equal(roundUnplayed(makeState()), true);
+  });
+
+  test("is false once a card has been played, and for a finished round", () => {
+    const state = makeState({
+      players: [makePlayer(0, [c("7", "hearts"), c("K", "spades")]), makePlayer(1, [c("9", "spades")])],
+      currentTurnIndex: 0,
+    });
+    assert.equal(roundUnplayed(state), true);
+    const next = played(state, combo([c("7", "hearts")]));
+    assert.equal(roundUnplayed(next), false);
+    assert.equal(roundUnplayed({ ...makeState(), roundOver: true }), false);
+  });
+});
+
+describe("dealFirstSeatFor with no seats", () => {
+  test("names seat 0 rather than no seat", () => {
+    assert.equal(dealFirstSeatFor(false, 3, 0), 0);
+  });
+});
+
+describe("openingIsPending", () => {
+  const dealt = { currentTurnIndex: 2, roundOver: false, startReason: { playerIdx: 2 }, playedRanks: emptyRankTally() };
+
+  test("is true while the opener is on move and nothing has been played", () => {
+    assert.equal(openingIsPending(dealt), true);
+  });
+
+  test("is false once any card has been played, though the opener is on move again", () => {
+    assert.equal(openingIsPending({ ...dealt, playedRanks: aThreePlayed() }), false);
+  });
+
+  test("is false when another seat is on move, for a finished round, and for a state with no recorded opening", () => {
+    assert.equal(openingIsPending({ ...dealt, currentTurnIndex: 1 }), false);
+    assert.equal(openingIsPending({ ...dealt, roundOver: true }), false);
+    assert.equal(openingIsPending({ ...dealt, startReason: undefined }), false);
+  });
 });
