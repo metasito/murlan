@@ -6,9 +6,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { deadlineMs, EXIT_MARKERS_ENV, FILE_DEADLINE_MS } from "../helpers/fileDeadline.mjs";
-import { EXIT_GRACE_MARGIN_MS, EXIT_GRACE_MS, exitGraceMs, MIN_EXIT_GRACE_MS, RUN_IDLE_MS, runIdleMs } from "../helpers/filesRunReporter.mjs";
+import { EXIT_GRACE_MARGIN_MS, EXIT_GRACE_MS, exitGraceMarginMs, exitGraceMs, MIN_EXIT_GRACE_MS, RUN_IDLE_MS, runIdleMs } from "../helpers/filesRunReporter.mjs";
 import { EXIT_TICK_MS, exitGuard } from "../helpers/exitGuard.mjs";
-import { TABLE_TIMEOUT_MS, tableTimeoutMs } from "../../scripts/lib/proc.mjs";
+import { MIN_TABLE_TIMEOUT_MS, TABLE_TIMEOUT_MS, tableTimeoutMs } from "../../scripts/lib/proc.mjs";
 import { posixWorld, windowsWorld } from "../helpers/processWorlds.ts";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 import { blankCommentsAndStrings, sourcesUnder } from "../helpers/sourceScan.ts";
@@ -126,6 +126,9 @@ describe("a test file that hangs on its way out fails npm test by name", () => {
 
   test("the ps timeout can be shortened and never lengthened or switched off", () => {
     assert.equal(tableTimeoutMs({ MURLAN_TEST_TABLE_TIMEOUT_MS: "2000" }), 2000);
+    for (const tiny of ["1", String(MIN_TABLE_TIMEOUT_MS - 1)]) {
+      assert.equal(tableTimeoutMs({ MURLAN_TEST_TABLE_TIMEOUT_MS: tiny }), MIN_TABLE_TIMEOUT_MS, tiny);
+    }
     for (const asked of [String(TABLE_TIMEOUT_MS * 10), "0", "-1", "off", undefined]) {
       assert.equal(tableTimeoutMs({ MURLAN_TEST_TABLE_TIMEOUT_MS: asked }), TABLE_TIMEOUT_MS);
     }
@@ -133,6 +136,8 @@ describe("a test file that hangs on its way out fails npm test by name", () => {
 
   test("the exit grace keeps a tick and a stalled ps clear of the run's idle limit, never under its floor, and can only be shortened", () => {
     assert.ok(EXIT_GRACE_MARGIN_MS >= Math.max(1000, EXIT_TICK_MS + TABLE_TIMEOUT_MS));
+    assert.equal(exitGraceMarginMs({}), EXIT_GRACE_MARGIN_MS);
+    assert.equal(exitGraceMarginMs({ MURLAN_TEST_TABLE_TIMEOUT_MS: "2000" }), Math.max(1000, EXIT_TICK_MS + 2000));
     const room = MIN_EXIT_GRACE_MS + EXIT_GRACE_MARGIN_MS;
     const settings = [
       {},
