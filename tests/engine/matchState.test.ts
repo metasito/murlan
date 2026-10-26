@@ -379,7 +379,7 @@ describe("the offline table (matchFlow)", () => {
     const table = startTable(seats, "free_for_all", "match");
     const mid = playRoundOut(table.state)[3];
     assert.equal(mid.roundOver, false);
-    assert.equal(advance(table, mid).match, table.match, "a live round scores nothing");
+    assert.equal(advance(table, mid).match, table.match, "a live round adds no placement points");
 
     const end = finished(table);
     const ended = advance(table, end);
