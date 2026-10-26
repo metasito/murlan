@@ -6,7 +6,7 @@ import {
   buildSeatRoster,
 } from "../../server/game/onlineGameLogic.ts";
 import { readPersistedPlayerMap } from "../../shared/persistedEnvelope.ts";
-import { isBotSeatKey } from "../../lib/game/botSeat.ts";
+import { botSeatIndex, botSeatKey, isBotSeatKey } from "../../lib/game/botSeat.ts";
 import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/game/gameEngine.ts";
 
 describe("readPersistedPlayerMap (seat resolution on rejoin)", () => {
@@ -66,6 +66,24 @@ describe("isBotSeatKey (bot-seat exclusion from match scoring)", () => {
     // scoreKeyForSeat only ever produces `bot:<seat>` as a prefix, but this
     // pins the exact matching rule (startsWith, not includes).
     assert.equal(isBotSeatKey("robot:99"), false);
+  });
+});
+
+describe("botSeatKey and botSeatIndex", () => {
+  test("a key names the seat it was made for", () => {
+    assert.equal(botSeatKey(3), "bot:3");
+    for (const seat of [0, 1, 3]) assert.equal(botSeatIndex(botSeatKey(seat)), seat);
+  });
+
+  test("a key whose suffix is not a whole number names no seat", () => {
+    assert.equal(botSeatIndex("bot:x"), null);
+    assert.equal(botSeatIndex("bot:1.5"), null);
+  });
+
+  test("only a key botSeatKey could have made names a seat", () => {
+    for (const key of ["bot:", "5", "u5", "bot:-1", "bot: 2", "bot:2 ", "bot:0x2", "bot:1e1"]) {
+      assert.equal(botSeatIndex(key), null, key);
+    }
   });
 });
 
