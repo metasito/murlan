@@ -31,9 +31,11 @@ afterEach(() => {
 /** Each seat's own socket, plus the `name`s of every event the table recorded. */
 function seatedTable(t: { mock: typeof import("node:test").mock }, gameState: GameState) {
   const recorded: string[] = [];
+  const contexts: unknown[] = [];
   t.mock.method(db(), "insert", () => ({
-    values: async (row: { name: string }) => {
+    values: async (row: { name: string; context: unknown }) => {
       recorded.push(row.name);
+      if (row.name === "game.firstMoveMade") contexts.push(row.context);
     },
   }));
   const { rt } = recordingRuntime();
@@ -56,7 +58,7 @@ function seatedTable(t: { mock: typeof import("node:test").mock }, gameState: Ga
     assert.deepEqual(reply, { ok: true });
   }
   const firstMoves = () => recorded.filter((name) => name === "game.firstMoveMade").length;
-  return { move, firstMoves };
+  return { move, firstMoves, contexts };
 }
 
 test("the match's opening play records game.firstMoveMade, and no later move does", async (t) => {
@@ -66,6 +68,7 @@ test("the match's opening play records game.firstMoveMade, and no later move doe
   assert.equal(activeGames.get(ROOM)!.gameState.openingCard, null);
   await new Promise((r) => setImmediate(r));
   assert.equal(table.firstMoves(), 1);
+  assert.deepEqual(table.contexts, [{ playerCount: 3, gameMode: "free_for_all" }], "the step says how big a table it was");
   for (let i = 0; i < 8; i++) await table.move();
   await new Promise((r) => setImmediate(r));
   assert.equal(table.firstMoves(), 1);
