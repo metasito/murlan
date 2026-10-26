@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getAnimatedStyle } from 'react-native-reanimated';
 import { activate } from './tapHelpers';
@@ -479,11 +479,11 @@ describe("the table's refusals and lines", () => {
   it('an error arrives as the toast float in the bad tone, and the same error again floats again', async () => {
     const r = await render(at(STATE, nope(1)));
     expect(edge('notice-errorToast')).toBe(NoticePalette.float.bad.edge);
-    expect(said('Nope')).toBe(1);
+    await waitFor(() => expect(said('Nope')).toBe(1));
     await r.rerender(at(STATE, null));
     expect(said('Nope')).toBe(0);
     await r.rerender(at(STATE, nope(2)));
-    expect(said('Nope')).toBe(1);
+    await waitFor(() => expect(said('Nope')).toBe(1));
     expect(screen.getAllByTestId('notice-errorToast', hidden)).toHaveLength(1);
     await r.unmount();
   });
