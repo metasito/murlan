@@ -11,7 +11,7 @@ import React, {
 } from "react";
 import { router } from "expo-router";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/query-client";
+import { api, hasServer } from "@/lib/query-client";
 import { markStale, queryKey, stale, useApi, type Answer, type ApiKey, type ListRead, type Row } from "@/lib/queries";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -266,7 +266,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
   }
 
   useEffect(() => {
-    if (!userId) {
+    if (!userId || !hasServer()) {
       if (retryTimerRef.current) {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
