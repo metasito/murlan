@@ -1,7 +1,7 @@
 Pod::Spec.new do |s|
   s.name = 'MurlanDiagnostics'
   s.version = '1.0.0'
-  s.summary = 'Host time, memory, audio onsets and motion for the Murlan bench'
+  s.summary = 'Host time, memory, thermal state, CPU, audio onsets and motion for the Murlan bench'
   s.homepage = 'https://github.com/metasito/murlan'
   s.license = 'UNLICENSED'
   s.author = 'Murlan'
@@ -11,5 +11,5 @@ Pod::Spec.new do |s|
   s.static_framework = true
   s.dependency 'ExpoModulesCore'
   s.source_files = '*.swift'
-  s.frameworks = 'ReplayKit', 'CoreMotion', 'AVFAudio'
+  s.frameworks = 'ReplayKit', 'CoreMotion', 'AVFAudio', 'Metal', 'UIKit'
 end

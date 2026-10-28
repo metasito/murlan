@@ -374,9 +374,58 @@ function noticeGallery(rows) {
   };
 }
 
+// `sys` rows come once a second from the phone; cpuMs is cumulative, so a rate needs two of them.
+function systemSummary(rows) {
+  const sys = rows.filter((r) => r.k === "sys").sort((a, b) => a.t - b.t);
+  if (sys.length === 0) return null;
+  const cpu = sys.slice(1).flatMap((r, i) => {
+    const dt = r.t - sys[i].t;
+    return dt > 0 && r.cpuMs >= 0 && sys[i].cpuMs >= 0 ? [((r.cpuMs - sys[i].cpuMs) / dt) * 100] : [];
+  });
+  return {
+    samples: sys.length,
+    maxFps: Math.max(...sys.map((r) => r.maxFps)),
+    maxThermal: Math.max(...sys.map((r) => r.thermal)),
+    thermalAtEnd: sys.at(-1).thermal,
+    lowPower: sys.some((r) => r.lowPower),
+    charging: sys.some((r) => r.charging),
+    batteryDropPct: sys[0].battery >= 0 && sys.at(-1).battery >= 0 ? +((sys[0].battery - sys.at(-1).battery) * 100).toFixed(1) : null,
+    cpuPctP50: median(cpu),
+    cpuPctP90: p90(cpu),
+    gpuMbMax: Math.max(...sys.map((r) => r.gpuMb)),
+  };
+}
+
+// The refusal floor is the display's own ceiling, so a 60 Hz phone is judged against 60.
+const SUSTAINED_FLOOR = 0.85;
+// First window to worst window: the 120 → 82 Hz sag the felt pairs showed is a 32 % drop.
+const SUSTAINED_SAG = 0.1;
+// ProcessInfo.ThermalState: 2 is serious, where iOS starts to cap the frame rate for heat.
+const THERMAL_SERIOUS = 2;
+
+function sustained(rows) {
+  const marks = rows.filter((r) => r.k === "window").sort((a, b) => a.t - b.t);
+  const all = marks.map((w, i) => {
+    const own = rows.filter((r) => r.t >= w.t && r.t < (marks[i + 1]?.t ?? Infinity));
+    const frames = own.filter((r) => r.k === "frame" && r.dt > 0).map((r) => r.dt).sort((a, b) => a - b);
+    return { i: w.i, hz: medianHz(own), p95: frames.length ? frames[Math.ceil(frames.length * 0.95) - 1] : NaN, ...burstStalls(own), sys: systemSummary(own) };
+  });
+  const sys = systemSummary(rows);
+  const hz = all.map((w) => w.hz);
+  const sag = all.length && hz[0] > 0 ? (hz[0] - Math.min(...hz)) / hz[0] : NaN;
+  const floor = sys ? sys.maxFps * SUSTAINED_FLOOR : NaN;
+  const brief = all.map(({ i, hz, p95, stalls, sys }) => ({ i, hz, p95, stalls, thermal: sys?.maxThermal ?? null, cpuPctP50: sys?.cpuPctP50 ?? null }));
+  return {
+    pass:
+      all.length >= 2 && sys !== null && all.every((w) => w.frames > 0 && w.jsTicks > 0 && w.stalls === 0 && w.hz >= floor) &&
+      sag <= SUSTAINED_SAG && sys.maxThermal < THERMAL_SERIOUS,
+    metrics: { windows: all.length, sag, floor, medianHz: medianHz(rows), perWindow: brief },
+  };
+}
+
 export const GATES = {
   pulseCost, idle, tapBurst, scheduledOnset, hapticOnset, musicSwitch, smoke, soak, landingSync, seatAnchors, lampVariants,
-  throwStalls, restCost, feltOpaque, noticeGallery,
+  throwStalls, restCost, feltOpaque, noticeGallery, sustained,
 };
 
 function bracket(rows, scenario) {
@@ -401,9 +450,11 @@ export function verdict(rows, scenario, gates = GATES) {
   if (!part) return null;
   const v = gate(part.rows);
   const dropped = rows.filter((r) => r.k === "batch" && r.session === part.session).reduce((n, r) => n + (r.dropped ?? 0), 0);
+  const sys = systemSummary(part.rows);
+  const seen = sys ? { ...v, metrics: { ...v.metrics, sys } } : v;
   const judged = part.error
-    ? { pass: false, metrics: { ...v.metrics, error: part.error } }
-    : dropped > 0 ? { pass: false, metrics: { ...v.metrics, dropped } } : v;
+    ? { pass: false, metrics: { ...seen.metrics, error: part.error } }
+    : dropped > 0 ? { pass: false, metrics: { ...seen.metrics, dropped } } : seen;
   const reason = unrun(rows.findLast((r) => r.k === "build" && r.session === part.session));
   return reason ? { pass: null, metrics: { ...judged.metrics, unrun: reason } } : judged;
 }

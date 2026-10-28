@@ -197,6 +197,9 @@ state, hold landscape, and ask for it verbatim: *"send one landscape screenshot 
   | Rest | `medianHz` and `burstStalls` per `half`, frozen and swaying both reported | every swaying half ≥ 115 Hz, 0 stalls; four pairs, every half framed | `restCost`: a quiet table, `lampFreeze` 1 and 0, four pairs of 30 s halves |
   | Felt | Per pair, stalls and the p95 frame interval of each half | four pairs recorded; `outcome` `keep` when the opaque half has no more stalls in any pair and the lower p95 in ≥ 3 of 4, else `drop` | `feltOpaque`: a quiet table, `feltOpaque` on and off, four pairs of 20 s halves |
   | Notices | Each shape's p90 entrance from `notice` rows, timed in UI frames; the `net` dot's median `blink` period; `burstStalls` over every showing | each entrance no shorter than 160 ms (pill, panel, D2) or 100 ms (mark, float, Q1) and over it by no more than its finishing frame's own interval plus 1 ms, at the p90; 900 ms within one frame (the median interval, at most 1/60 s); under reduced motion no blink and the dot at 1 in every 100 ms sample, at least 10 a showing; 0 stalls; every showing entered | `noticeGallery`: every `NOTICE_GALLERY` fixture for 2 s over a bot-played table, five rounds, then one under reduced motion |
+  | Sustained | Per 30 s window of a bot-played table: `medianHz`, `burstStalls`, the thermal state, process CPU % and GPU memory from the `sys` rows | every window ≥ 0.85 × the display's own `maxFps` with 0 stalls; first-to-worst window drop ≤ 10 %; thermal never reaches serious (2); a phone that sent no `sys` row fails | `sustained`: `minutes` (default 8) of bots playing, frames recorded for the whole run |
+
+  Every scenario's verdict also carries a `sys` summary (thermal max and at the end, Low Power Mode, CPU % p50/p90, GPU memory) from the once-a-second `sys` rows `probe.sampleSystem()` writes beside the drain, printed beside the gate's numbers. It is context, not a gate: GPU time itself is not readable in-app (Skia owns the Metal queue), so the shader's cost is judged by `sustained` and `restCost` moving, or by Instruments on a Mac.
 
   The 150 ms window is shorter than the 167 ms between taps, so a silent tap cannot borrow the
   next tap's onset. G3 reads the mic because the app track is stamped before the output path, so
@@ -212,7 +215,7 @@ state, hold landscape, and ask for it verbatim: *"send one landscape screenshot 
   does (`tests/native/frameProbe.test.tsx`, `tests/native/framedScenarios.test.tsx`). The iOS build keeps the worklets frame-rate governor
   on, as these gates measured it; `tests/tooling/workletsGovernor.test.ts` fails a build that
   turns it off.
-- Running them (about 57 minutes of the phone, untouched): an agent runs
+- Running them (about 66 minutes of the phone, untouched): an agent runs
   `npm run ios:device -- --ref <branch> --gates`, which writes the PC's LAN address into the
   IPA's `EXConstants.bundle/app.config` before signing, so the bench build opens the bench on a
   plain icon tap (`lib/diagnostics/BenchAutostart.tsx`); the `murlan://bench?host=…` link is an

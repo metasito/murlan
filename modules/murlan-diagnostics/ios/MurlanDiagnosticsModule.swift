@@ -1,8 +1,10 @@
 import AVFAudio
 import CoreMotion
 import ExpoModulesCore
+import Metal
 import QuartzCore
 import ReplayKit
+import UIKit
 
 public final class MurlanDiagnosticsModule: Module {
   private static let maxRows = 20_000
@@ -29,6 +31,24 @@ public final class MurlanDiagnosticsModule: Module {
         }
       }
       return kr == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : -1
+    }
+
+    Function("systemState") { () -> [String: Any] in
+      let info = ProcessInfo.processInfo
+      let screen = { () -> (Int, Float, Bool) in
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        return (UIScreen.main.maximumFramesPerSecond, UIDevice.current.batteryLevel, UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full)
+      }
+      let (maxFps, battery, charging) = Thread.isMainThread ? screen() : DispatchQueue.main.sync(execute: screen)
+      return [
+        "battery": Double(battery),
+        "charging": charging,
+        "thermal": info.thermalState.rawValue,
+        "lowPower": info.isLowPowerModeEnabled,
+        "maxFps": maxFps,
+        "cpuMs": Self.cpuMs(),
+        "gpuMb": Double(MTLCreateSystemDefaultDevice()?.currentAllocatedSize ?? 0) / 1_048_576,
+      ]
     }
 
     Function("inputLatencyMs") { () -> Double in AVAudioSession.sharedInstance().inputLatency * 1000 }
@@ -88,6 +108,27 @@ public final class MurlanDiagnosticsModule: Module {
         return out
       }
     }
+  }
+
+  /// CPU time this process has used, every thread it has ever run, in ms; -1 when the kernel refuses.
+  private static func cpuMs() -> Double {
+    var live = task_thread_times_info_data_t()
+    var liveCount = mach_msg_type_number_t(MemoryLayout<task_thread_times_info_data_t>.size / MemoryLayout<natural_t>.size)
+    let a = withUnsafeMutablePointer(to: &live) {
+      $0.withMemoryRebound(to: integer_t.self, capacity: Int(liveCount)) {
+        task_info(mach_task_self_, task_flavor_t(TASK_THREAD_TIMES_INFO), $0, &liveCount)
+      }
+    }
+    var gone = mach_task_basic_info()
+    var goneCount = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size / MemoryLayout<natural_t>.size)
+    let b = withUnsafeMutablePointer(to: &gone) {
+      $0.withMemoryRebound(to: integer_t.self, capacity: Int(goneCount)) {
+        task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &goneCount)
+      }
+    }
+    guard a == KERN_SUCCESS, b == KERN_SUCCESS else { return -1 }
+    func ms(_ t: time_value_t) -> Double { Double(t.seconds) * 1000 + Double(t.microseconds) / 1000 }
+    return ms(live.user_time) + ms(live.system_time) + ms(gone.user_time) + ms(gone.system_time)
   }
 
   /// On `queue`.

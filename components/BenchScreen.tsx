@@ -129,7 +129,10 @@ export function BenchScreen() {
         }
         setRefused(null);
         recorder.postTo(host);
-        drain.current = setInterval(() => probe.drain(), 1000);
+        drain.current = setInterval(() => {
+          probe.drain();
+          probe.sampleSystem();
+        }, 1000);
         const key = `${benchBuild().scriptURL}|${only?.join(",") ?? "all"}`;
         const progress = fresh ? freshProgress(key) : await loadProgress(key);
         if (progress.finished) {
