@@ -132,7 +132,13 @@ export function reportablePlatform(): "ios" | "android" | "web" | undefined {
  * Returns whether it sent, which is the only way a test can tell "deduplicated"
  * from "silently broken".
  */
+/** Set by the diagnostics bench so a crash that unmounts it still reaches the collector. */
+export const crashSink: { current: ((error: unknown, componentStack?: string) => void) | null } = { current: null };
+
 export function reportError(error: unknown, componentStack?: string): boolean {
+  try {
+    crashSink.current?.(error, componentStack);
+  } catch {}
   if (reporting) return false;
   reporting = true;
   try {

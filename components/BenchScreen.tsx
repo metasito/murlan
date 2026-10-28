@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useKeepAwake } from "expo-keep-awake";
 import { GameTable } from "@/components/GameTable";
@@ -12,6 +12,7 @@ import { feltOnly, legibilityRing } from "@/components/table/legibilityRing";
 import { benchHandles, diag } from "@/lib/diagnostics";
 import { LAMP_SIDES, annulusLuminance, type LampSide } from "@/lib/diagnostics/lampLegibility";
 import { benchTargetHost } from "@/lib/diagnostics/benchLaunch";
+import { MAX_STARTS, freshProgress, loadProgress, saveProgress } from "@/lib/diagnostics/benchProgress";
 import { recorder } from "@/lib/diagnostics/recorder";
 import { benchScenarios, type BenchContext, type NoticeShot } from "@/lib/diagnostics/bench";
 import { benchBuild } from "@/lib/diagnostics/build";
@@ -51,8 +52,9 @@ function GalleryStage({ bind }: { bind: (show: (shot: NoticeShot | null) => void
 let benchRunning = false;
 
 /** Outside the component: the React Compiler bails out on a `try` holding a conditional or a `finally`. */
-async function latched(stop: () => void, body: () => Promise<void>) {
-  if (benchRunning) return;
+async function latched(stop: () => void, wanted: () => boolean, body: () => Promise<void>) {
+  while (benchRunning && wanted()) await new Promise((r) => setTimeout(r, 500));
+  if (benchRunning || !wanted()) return;
   benchRunning = true;
   try {
     await body();
@@ -61,6 +63,19 @@ async function latched(stop: () => void, body: () => Promise<void>) {
   } finally {
     stop();
     benchRunning = false;
+  }
+}
+
+const away = () => AppState.currentState === "background" || AppState.currentState === "inactive";
+
+/** Resolves once the app is in front again and has stayed there a second, or at once when the screen is gone. */
+async function foreground(alive: { current: boolean }) {
+  while (alive.current) {
+    if (!away()) {
+      await new Promise((r) => setTimeout(r, 1000));
+      if (!away()) return;
+    }
+    await new Promise((r) => setTimeout(r, 500));
   }
 }
 
@@ -77,6 +92,8 @@ export function BenchScreen() {
   const [results, setResults] = useState<Record<string, string>>({});
   const shown = useRef<() => void>(() => {});
   const autoRan = useRef(false);
+  const alive = useRef(true);
+  const interrupted = useRef(false);
   const stopJs = useRef<(() => void) | null>(null);
   const drain = useRef<ReturnType<typeof setInterval> | null>(null);
   const showNotice = useRef<(shot: NoticeShot | null) => void>(() => {});
@@ -89,10 +106,20 @@ export function BenchScreen() {
     drain.current = null;
   }, []);
   useEffect(() => stopDrain, [stopDrain]);
+  useEffect(() => {
+    alive.current = true;
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s === "background" || s === "inactive") interrupted.current = true;
+    });
+    return () => {
+      alive.current = false;
+      sub.remove();
+    };
+  }, []);
 
   const run = useCallback(
-    (only?: string[]) =>
-      latched(stopDrain, async () => {
+    (only?: string[], fresh = false) =>
+      latched(stopDrain, () => alive.current, async () => {
         const host = benchTargetHost(params.host, process.env.EXPO_PUBLIC_DOMAIN);
         if (host === null) {
           const shown = String(params.host ?? process.env.EXPO_PUBLIC_DOMAIN);
@@ -102,8 +129,15 @@ export function BenchScreen() {
         }
         setRefused(null);
         recorder.postTo(host);
-        const capturing = params.capture !== "0" && probe.canCapture() && (await probe.startCapture(true).catch(captureFailed("start")));
         drain.current = setInterval(() => probe.drain(), 1000);
+        const key = `${benchBuild().scriptURL}|${only?.join(",") ?? "all"}`;
+        const progress = fresh ? freshProgress(key) : await loadProgress(key);
+        if (progress.finished) {
+          setResults(progress.results);
+          diag({ k: "resume", t: performance.now(), done: progress.done, next: null });
+          return;
+        }
+        const capturing = params.capture !== "0" && probe.canCapture() && (await probe.startCapture(true).catch(captureFailed("start")));
         diag({ k: "build", t: performance.now(), ...benchBuild() });
         const ctx: BenchContext = {
           params,
@@ -126,13 +160,42 @@ export function BenchScreen() {
         const queued = benchScenarios().filter(([name]) => !only || only.includes(name));
         const names = queued.map(([name]) => name);
         diag({ k: "run", t: performance.now(), phase: "start", names });
+        setResults(progress.results);
+        diag({ k: "resume", t: performance.now(), done: progress.done, next: names.find((n) => !progress.done.includes(n)) ?? null });
+        const finish = (name: string, error: string | null) => {
+          progress.done.push(name);
+          progress.results[name] = error ?? "done";
+          setResults({ ...progress.results });
+          return saveProgress(progress);
+        };
         for (const [name, scenario] of queued) {
-          diag({ k: "scenario", t: performance.now(), name, phase: "start" });
-          diag({ k: "latency", t: performance.now(), outputMs: probe.outputLatencyMs(), ioMs: probe.ioBufferMs(), inputMs: probe.inputLatencyMs() });
-          const error = await scenario(ctx).then(() => null, (e: unknown) => String(e));
-          diag({ k: "scenario", t: performance.now(), name, phase: "end", error });
-          setResults((r) => ({ ...r, [name]: error ?? "done" }));
+          // A start is counted before the scenario runs, so a kill mid-scenario still counts against it.
+          while (alive.current && !progress.done.includes(name)) {
+            progress.starts[name] = (progress.starts[name] ?? 0) + 1;
+            await saveProgress(progress);
+            if (progress.starts[name] > MAX_STARTS) {
+              diag({ k: "scenario", t: performance.now(), name, phase: "start" });
+              const error = `abandoned: started ${MAX_STARTS} times without finishing`;
+              diag({ k: "scenario", t: performance.now(), name, phase: "end", error });
+              await finish(name, error);
+              break;
+            }
+            diag({ k: "scenario", t: performance.now(), name, phase: "start" });
+            diag({ k: "latency", t: performance.now(), outputMs: probe.outputLatencyMs(), ioMs: probe.ioBufferMs(), inputMs: probe.inputLatencyMs() });
+            interrupted.current = away();
+            const error = await scenario(ctx).then(() => null, (e: unknown) => String(e));
+            const cut = interrupted.current || !alive.current;
+            diag({ k: "scenario", t: performance.now(), name, phase: "end", error: cut ? `interrupted: ${error ?? "left the screen"}` : error });
+            if (!cut) await finish(name, error);
+            else await foreground(alive);
+          }
         }
+        if (!alive.current) {
+          if (capturing) await probe.stopCapture().catch(captureFailed("stop"));
+          return;
+        }
+        progress.finished = true;
+        await saveProgress(progress);
         stopDrain();
         probe.drain();
         if (capturing) await probe.stopCapture().catch(captureFailed("stop"));
@@ -164,7 +227,7 @@ export function BenchScreen() {
         />
       ) : (
         <ScrollView contentContainerStyle={styles.page}>
-          <Pressable accessibilityRole="button" onPress={() => void run()} style={styles.button}>
+          <Pressable accessibilityRole="button" onPress={() => void run(undefined, true)} style={styles.button}>
             <Text style={styles.text}>{COPY.runAll}</Text>
           </Pressable>
           {refused !== null ? (
