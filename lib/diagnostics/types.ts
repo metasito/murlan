@@ -9,6 +9,8 @@ export interface DiagRows {
   trigger: { name: string };
   dropped: { name: string };
   refused: { host: string };
+  crash: { message: string; stack?: string; componentStack?: string };
+  resume: { done: string[]; next: string | null };
   capture: { phase: "start" | "stop"; error: string };
   play: { id: string; at: number; bus: string; dropped: boolean; lead: number };
   haptic: { kind: string; at: number };

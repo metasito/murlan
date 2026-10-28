@@ -10,6 +10,7 @@ export const OFFLINE_SAVE_KEY = "@murlan_offline_game";
 export const TUTORIAL_SEEN_KEY = "@murlan_tutorial_seen";
 export const TUTORIAL_PROGRESS_KEY = "@murlan_tutorial_progress";
 export const PENDING_CRASH_REPORTS_KEY = "@murlan_pending_crash_reports";
+export const BENCH_PROGRESS_KEY = "@murlan_bench_progress";
 export const E2E_SUSPEND_BOT_KEY = "@murlan_e2e_suspend_ai";
 export const E2E_REAL_EXCHANGE_KEY = "@murlan_e2e_real_exchange";
 
@@ -24,6 +25,7 @@ export const DEVICE_KEYS = [
   TUTORIAL_SEEN_KEY,
   TUTORIAL_PROGRESS_KEY,
   PENDING_CRASH_REPORTS_KEY,
+  BENCH_PROGRESS_KEY,
   E2E_SUSPEND_BOT_KEY,
   E2E_REAL_EXCHANGE_KEY,
 ];
