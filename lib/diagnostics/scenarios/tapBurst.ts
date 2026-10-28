@@ -27,4 +27,4 @@ registerFramedScenario("tapBurst", async (ctx) => {
   setSoundVolume(1);
   setHapticsEnabled(true);
   await ctx.showTable(null);
-});
+}, { capture: true });

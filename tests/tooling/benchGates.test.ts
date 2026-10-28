@@ -4,9 +4,9 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { crc32, inflateRawSync } from "node:zlib";
-import { gateTable, waitForRunEnd } from "../../scripts/bench-gates.mjs";
+import { doneScenarios, gateTable, waitForRunEnd } from "../../scripts/bench-gates.mjs";
 import { GATES } from "../../scripts/diagnostics-verdict.mjs";
-import { patchBenchHost, withBenchHost } from "../../scripts/ios-device.mjs";
+import { benchUrl, patchBenchHost, withBenchHost } from "../../scripts/ios-device.mjs";
 import { benchLaunchHref, benchTargetHost } from "../../lib/diagnostics/benchLaunch.ts";
 
 const RELEASE = { k: "build", t: 0, dev: false, scriptURL: "file:///var/x/murlan.app/main.jsbundle" };
@@ -192,4 +192,28 @@ test("a second bench run's postTo keeps the rows the first run has not posted ye
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+test("a resumed run carries what the log shows finished into the app's launch link and the PC's url", () => {
+  const skip = ["pulseCost", "tapBurst"];
+  assert.equal(benchLaunchHref({ benchHost: "192.168.1.23", benchSkip: skip }), "/bench?host=192.168.1.23&scenario=all&skip=pulseCost,tapBurst");
+  assert.equal(benchLaunchHref({ benchHost: "192.168.1.23", benchSkip: ["../x", 4, "a b"] }), "/bench?host=192.168.1.23&scenario=all");
+  assert.equal(benchUrl("10.0.0.7", skip), "murlan://bench?host=10.0.0.7&scenario=all&skip=pulseCost,tapBurst");
+  assert.equal(benchUrl("10.0.0.7"), "murlan://bench?host=10.0.0.7&scenario=all");
+  assert.deepEqual(JSON.parse(withBenchHost("{}", "10.0.0.7", skip)).extra, { benchHost: "10.0.0.7", benchSkip: skip });
+  assert.equal("benchSkip" in JSON.parse(withBenchHost("{}", "10.0.0.7")).extra, false);
+});
+
+test("doneScenarios names what finished cleanly on a Release bundle: not an error, an interruption, a Debug run, an unfinished start, or a later failed attempt", () => {
+  const release = { k: "build", dev: false, scriptURL: "file:///private/var/Murlan.app/main.jsbundle" };
+  const start = (session: string, name: string) => ({ session, k: "scenario", phase: "start", name });
+  const end = (session: string, name: string, error: string | null = null) => ({ session, k: "scenario", phase: "end", name, error });
+  const run = (session: string, name: string, error: string | null = null) => [start(session, name), end(session, name, error)];
+  const rows = [
+    { session: "a", ...release }, ...run("a", "idle"), ...run("a", "tapBurst", "Error: boom"), ...run("a", "soak", "interrupted: left the screen"),
+    start("a", "restCost"),
+    { session: "d", ...release, dev: true }, ...run("d", "pulseCost"),
+    { session: "b", ...release }, ...run("b", "feltOpaque"), ...run("b", "idle", "Error: later failure"),
+  ];
+  assert.deepEqual(doneScenarios(rows).sort(), ["feltOpaque"]);
 });

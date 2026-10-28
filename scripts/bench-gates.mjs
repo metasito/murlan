@@ -24,12 +24,25 @@ export async function waitForRunEnd(read, { pollMs = 5000, timeoutMs }) {
   }
 }
 
+const num = (v) => (typeof v === "number" ? +v.toFixed(2) : v);
+
+/** What an earlier run finished on a Release bundle with no error and no lost data, judged on each scenario's latest attempt. */
+export function doneScenarios(rows) {
+  const names = new Set(rows.filter((r) => r.k === "scenario" && r.phase === "start").map((r) => r.name));
+  return [...names].filter((name) => verdict(rows, name, { [name]: () => ({ pass: true, metrics: {} }) })?.pass === true);
+}
+
 function keyNumbers(metrics) {
-  return Object.entries(metrics)
+  const { sys } = metrics;
+  const own = Object.entries(metrics)
     .filter(([, v]) => v === null || typeof v !== "object")
-    .map(([k, v]) => `${k}=${typeof v === "number" ? +v.toFixed(2) : v}`)
+    .map(([k, v]) => `${k}=${num(v)}`)
     .join(" ")
     .slice(0, 140);
+  const device = sys
+    ? ` thermal=${sys.maxThermal}/${sys.thermalAtEnd} cpu%=${num(sys.cpuPctP50)}/${num(sys.cpuPctP90)} gpuMb=${num(sys.gpuMbMax)} lowPower=${sys.lowPower} charging=${sys.charging} batteryDropPct=${num(sys.batteryDropPct)}`
+    : "";
+  return own + device;
 }
 
 /** @param {Record<string, (rows: any[]) => { pass: boolean | null; metrics: Record<string, any> }>} [gates] */

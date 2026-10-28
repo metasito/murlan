@@ -67,17 +67,19 @@ export function flingerVerdict(startText, endText) {
   return { pass: growth !== null && growth <= 60, metrics: { start, end, growth } };
 }
 
+// A NaN breaks Array.sort's ordering and makes a median finite garbage, so non-finite values are dropped first.
+const ordered = (xs) => xs.filter(Number.isFinite).sort((a, b) => a - b);
 const median = (xs) => {
-  const s = [...xs].sort((a, b) => a - b);
+  const s = ordered(xs);
   return s.length ? s[Math.floor(s.length / 2)] : NaN;
 };
 const p90 = (xs) => {
-  const s = [...xs].sort((a, b) => a - b);
+  const s = ordered(xs);
   return s.length ? s[Math.ceil(s.length * 0.9) - 1] : NaN;
 };
 
 const midMedian = (xs) => {
-  const s = [...xs].sort((a, b) => a - b);
+  const s = ordered(xs);
   const m = s.length / 2;
   return s.length === 0 ? NaN : s.length % 2 ? s[Math.floor(m)] : (s[m - 1] + s[m]) / 2;
 };
@@ -91,6 +93,35 @@ export function medianHz(rows) {
     perSecond.get(s).push(1000 / r.dt);
   }
   return midMedian([...perSecond.values()].map(midMedian));
+}
+
+const framesOf = (rows) => rows.filter((r) => r.k === "frame" && r.dt > 0);
+
+/** Frames per second as presented: n over the time they took. A median of per-second medians snaps to the display rate however many frames missed it. */
+export function meanHz(rows) {
+  const f = framesOf(rows);
+  const ms = f.reduce((sum, r) => sum + r.dt, 0);
+  return f.length && ms > 0 ? (f.length * 1000) / ms : NaN;
+}
+
+// A hitch is a frame that missed its refresh while its neighbours made theirs. The worklets governor steps the rate down on purpose, and a whole stretch at 12.5 or 25 ms is a lower rate, not a hitch.
+const HITCH_RATIO = 1.6;
+const HITCH_NEIGHBOURS = 4;
+const HITCH_CALM_MS = 11;
+const HITCH_MIN_MS = 12;
+
+export function hitches(rows) {
+  const dts = framesOf(rows).map((r) => r.dt);
+  let count = 0;
+  for (let i = 0; i < dts.length; i++) {
+    if (dts[i] < HITCH_MIN_MS) continue;
+    const near = [];
+    for (let j = Math.max(0, i - HITCH_NEIGHBOURS); j <= Math.min(dts.length - 1, i + HITCH_NEIGHBOURS); j++) if (j !== i) near.push(dts[j]);
+    const m = median(near);
+    if (m < HITCH_CALM_MS && dts[i] >= HITCH_RATIO * m) count++;
+  }
+  const seconds = dts.reduce((sum, d) => sum + d, 0) / 1000;
+  return { count, perSecond: seconds > 0 ? count / seconds : NaN };
 }
 
 const times = (rows, k, name) => rows.filter((r) => r.k === k && (name === undefined || r.name === name)).map((r) => r.t);
@@ -214,9 +245,13 @@ function musicSwitch(rows) {
   return { pass: switches.length === 40 && levels.length >= 1900 && level > -40 && gaps === 0 && deaths === 0, metrics };
 }
 
+// The scenario sleeps 5 s; a frame loop that ran for less than 4 s of it has measured nothing.
+const IDLE_MIN_MS = 4000;
+
 function idle(rows) {
-  const frames = rows.filter((r) => r.k === "frame").length;
-  return { pass: frames > 0, metrics: { frames } };
+  const f = framesOf(rows);
+  const coveredMs = f.reduce((sum, r) => sum + r.dt, 0);
+  return { pass: coveredMs >= IDLE_MIN_MS, metrics: { frames: f.length, coveredMs, hz: meanHz(rows) } };
 }
 
 function landingSync(rows) {
@@ -276,18 +311,21 @@ function lampVariants(rows) {
   };
 }
 
+// The window a throw is judged over: its landing, the bomb's aftermath and the lamp's swing to the next seat (scenarios/threadLoad.ts).
+const THROW_WINDOW_MS = 1200;
+
 function throwStalls(rows) {
   const throws = times(rows, "throw");
   const spans = rows.filter((r) => r.k === "frame" || r.k === "jsLag");
-  const windows = throws.map((t) => spans.filter((r) => r.t >= t && r.t - r.dt <= t + 600));
+  const windows = throws.map((t) => spans.filter((r) => r.t >= t && r.t - r.dt <= t + THROW_WINDOW_MS));
   const stalls = windows.reduce((n, w) => n + burstStalls(w).stalls, 0);
   const covered = (w, t) =>
-    w.filter((r) => r.k === "frame").reduce((ms, r) => ms + Math.max(0, Math.min(r.t, t + 600) - Math.max(r.t - r.dt, t)), 0);
-  const framed = throws.length ? windows.filter((w, i) => covered(w, throws[i]) >= 480).length / throws.length : 0;
+    w.filter((r) => r.k === "frame").reduce((ms, r) => ms + Math.max(0, Math.min(r.t, t + THROW_WINDOW_MS) - Math.max(r.t - r.dt, t)), 0);
+  const framed = throws.length ? windows.filter((w, i) => covered(w, throws[i]) >= THROW_WINDOW_MS * 0.8).length / throws.length : 0;
   const { jsTicks } = burstStalls(rows);
   return {
     pass: throws.length >= 10 && framed === 1 && jsTicks > 0 && stalls === 0,
-    metrics: { throws: throws.length, stalls, framed, jsTicks, medianHz: medianHz(rows) },
+    metrics: { throws: throws.length, stalls, framed, jsTicks, medianHz: medianHz(rows), hitchesPerSecond: hitches(rows).perSecond },
   };
 }
 
@@ -296,29 +334,43 @@ function halves(rows) {
   return marks.map((h, i) => {
     const own = rows.filter((r) => r.t >= h.t && r.t < (marks[i + 1]?.t ?? Infinity));
     const p95 = own.filter((r) => r.k === "frame" && r.dt > 0).map((r) => r.dt).sort((a, b) => a - b);
-    return { name: h.name, pair: h.pair, hz: medianHz(own), p95: p95.length ? p95[Math.ceil(p95.length * 0.95) - 1] : NaN, ...burstStalls(own) };
+    return { name: h.name, pair: h.pair, hz: medianHz(own), rate: meanHz(own), hitches: hitches(own).perSecond, p95: p95.length ? p95[Math.ceil(p95.length * 0.95) - 1] : NaN, ...burstStalls(own) };
   });
 }
+
+// A swaying lamp must hold 115 of a 120 Hz display (0.95 of the ceiling) with its slow tail inside 1.5 frames.
+const REST_FLOOR = 0.95;
+const REST_TAIL = 1.5;
+const LEGACY_CEILING = 120;
 
 function restCost(rows) {
   const all = halves(rows);
   const frozen = all.filter((h) => h.name === "frozen");
   const swaying = all.filter((h) => h.name === "swaying");
+  const ceiling = systemSummary(rows)?.maxFps || LEGACY_CEILING;
   const brief = (hs) => hs.map(({ hz, stalls }) => ({ hz, stalls }));
+  const held = (h) => h.frames > 0 && h.rate >= ceiling * REST_FLOOR && h.p95 <= (REST_TAIL * 1000) / ceiling && h.stalls === 0;
   return {
-    pass:
-      frozen.length === 4 && swaying.length === 4 && frozen.every((h) => h.frames > 0) &&
-      swaying.every((h) => h.frames > 0 && h.hz >= 115 && h.stalls === 0),
-    metrics: { medianHz: medianHz(rows), frozen: brief(frozen), swaying: brief(swaying) },
+    pass: frozen.length === 4 && swaying.length === 4 && frozen.every((h) => h.frames > 0) && swaying.every(held),
+    metrics: {
+      medianHz: medianHz(rows), ceiling, frozen: brief(frozen), swaying: brief(swaying),
+      rate: { frozen: frozen.map((h) => h.rate), swaying: swaying.map((h) => h.rate) },
+      p95: { frozen: frozen.map((h) => h.p95), swaying: swaying.map((h) => h.p95) },
+      hitchesPerSecond: { frozen: frozen.map((h) => h.hitches), swaying: swaying.map((h) => h.hitches) },
+    },
   };
 }
+
+// Two halves count as a pair only if the display held about one rate through both (a governor step between them is not the felt's doing), and a win needs a margin past rounding.
+const PAIR_RATE_TOLERANCE = 0.15;
+const WIN_MARGIN_MS = 0.5;
 
 function feltOpaque(rows) {
   const all = halves(rows);
   const pairs = [0, 1, 2, 3].map((p) => ["on", "off"].map((name) => all.find((h) => h.name === name && h.pair === p && h.frames > 0)));
-  const whole = pairs.filter(([on, off]) => on && off);
+  const whole = pairs.filter(([on, off]) => on && off && Math.abs(on.rate - off.rate) <= PAIR_RATE_TOLERANCE * Math.max(on.rate, off.rate));
   const recorded = whole.length;
-  const wins = whole.filter(([on, off]) => on.p95 < off.p95).length;
+  const wins = whole.filter(([on, off]) => on.p95 + WIN_MARGIN_MS <= off.p95).length;
   const noWorse = whole.every(([on, off]) => on.stalls <= off.stalls);
   const outcome = recorded === 4 ? (noWorse && wins >= 3 ? "keep" : "drop") : null;
   const brief = (i) => pairs.map((pair) => (pair[i] ? { hz: pair[i].hz, p95: pair[i].p95, stalls: pair[i].stalls } : null));
@@ -344,7 +396,7 @@ function noticeGallery(rows) {
   const unseen = shows.filter((s, i) =>
     !notices.some((n) => n.src === "gallery" && n.kind === s.kind && (n.phase === "enter" || n.phase === "still") && n.t >= s.t && n.t < (shows[i + 1]?.t ?? Infinity))
   ).length;
-  const frameMs = Math.min(1000 / medianHz(rows), 1000 / 60);
+  const frameMs = Math.min(1000 / meanHz(rows), 1000 / 60);
   const enter = Object.fromEntries(
     Object.entries(NOTICE_ENTER_MS).map(([shape, ms]) => {
       const entrances = notices.filter((n) => n.src === "gallery" && n.phase === "enter" && n.shape === shape);
@@ -374,18 +426,112 @@ function noticeGallery(rows) {
   };
 }
 
+// `sys` rows come once a second from the phone; cpuMs is cumulative, so a rate needs two of them.
+function systemSummary(rows) {
+  const sys = rows.filter((r) => r.k === "sys").sort((a, b) => a.t - b.t);
+  if (sys.length === 0) return null;
+  const cpu = sys.slice(1).flatMap((r, i) => {
+    const dt = r.t - sys[i].t;
+    return dt > 0 && r.cpuMs >= 0 && sys[i].cpuMs >= 0 ? [((r.cpuMs - sys[i].cpuMs) / dt) * 100] : [];
+  });
+  const battery = sys.filter((r) => r.battery >= 0).map((r) => r.battery);
+  return {
+    samples: sys.length,
+    maxFps: Math.max(...sys.map((r) => r.maxFps)),
+    maxThermal: Math.max(...sys.map((r) => r.thermal)),
+    thermalAtEnd: sys.at(-1).thermal,
+    lowPower: sys.some((r) => r.lowPower),
+    charging: sys.some((r) => r.charging),
+    batteryDropPct: battery.length ? +((battery[0] - battery.at(-1)) * 100).toFixed(1) : null,
+    cpuPctP50: median(cpu),
+    cpuPctP90: p90(cpu),
+    gpuMbMax: Math.max(...sys.map((r) => r.gpuMb)),
+  };
+}
+
+// The refusal floor is the display's own ceiling, so a 60 Hz phone is judged against 60.
+const SUSTAINED_FLOOR = 0.85;
+const SUSTAINED_SAG = 0.1;
+// ProcessInfo.ThermalState: 2 is serious, where iOS starts to cap the frame rate for heat.
+const THERMAL_SERIOUS = 2;
+
+function windowsOf(rows) {
+  const marks = rows.filter((r) => r.k === "window").sort((a, b) => a.t - b.t);
+  return marks.map((w, i) => {
+    const own = rows.filter((r) => r.t >= w.t && r.t < (marks[i + 1]?.t ?? Infinity));
+    const frames = own.filter((r) => r.k === "frame" && r.dt > 0).map((r) => r.dt).sort((a, b) => a - b);
+    return { i: w.i, hz: meanHz(own), hitches: hitches(own).perSecond, p95: frames.length ? frames[Math.ceil(frames.length * 0.95) - 1] : NaN, ...burstStalls(own), sys: systemSummary(own) };
+  });
+}
+
+// The deal is ten fresh mounts: each must show frames, no stall, and the rate the display can give; its slow tail and hitches are reported for the first device run to set a bound on.
+const DEALS = 10;
+
+function dealBurst(rows) {
+  const all = windowsOf(rows);
+  const sys = systemSummary(rows);
+  const floor = sys ? sys.maxFps * SUSTAINED_FLOOR : NaN;
+  const capped = sys?.lowPower ?? true;
+  return {
+    pass: all.length === DEALS && sys !== null && all.every((w) => w.frames > 0 && w.jsTicks > 0 && w.stalls === 0 && w.hz >= floor) && !capped,
+    metrics: {
+      deals: all.length, floor, capped, hz: meanHz(rows),
+      worstP95: Math.max(...all.map((w) => w.p95)), hitchesPerSecond: hitches(rows).perSecond,
+      perDeal: all.map(({ i, hz, p95, stalls, hitches }) => ({ i, hz, p95, stalls, hitches })),
+    },
+  };
+}
+
+function sustained(rows) {
+  const all = windowsOf(rows);
+  const sys = systemSummary(rows);
+  const hz = all.map((w) => w.hz);
+  const sag = all.length && hz[0] > 0 ? (hz[0] - Math.min(...hz)) / hz[0] : NaN;
+  const floor = sys ? sys.maxFps * SUSTAINED_FLOOR : NaN;
+  const capped = sys?.lowPower ?? true;
+  const brief = all.map(({ i, hz, p95, stalls, hitches, sys }) => ({ i, hz, p95, stalls, hitches, thermal: sys?.maxThermal ?? null, cpuPctP50: sys?.cpuPctP50 ?? null }));
+  return {
+    pass:
+      all.length >= 2 && sys !== null && all.every((w) => w.frames > 0 && w.jsTicks > 0 && w.stalls === 0 && w.hz >= floor) &&
+      sag <= SUSTAINED_SAG && sys.maxThermal < THERMAL_SERIOUS && !capped,
+    metrics: { windows: all.length, sag, floor, capped, hz: meanHz(rows), perWindow: brief },
+  };
+}
+
 export const GATES = {
   pulseCost, idle, tapBurst, scheduledOnset, hapticOnset, musicSwitch, smoke, soak, landingSync, seatAnchors, lampVariants,
-  throwStalls, restCost, feltOpaque, noticeGallery,
+  throwStalls, restCost, feltOpaque, noticeGallery, sustained, dealBurst,
 };
 
-function bracket(rows, scenario) {
+// The phone numbers each POST (`seq`) in the order it sent them; the PC file holds them in the order they arrived. A session's rows are put back in send order, rows of one batch keeping their own.
+function inSendOrder(rows) {
+  if (!rows.some((r) => Number.isFinite(r.seq))) return rows;
+  // A POST whose answer was lost is sent again and lands twice: the second copy of a batch is dropped.
+  const seen = new Set();
+  let copy = false;
+  const once = rows.filter((r) => {
+    if (r.k === "batch") copy = seen.has(r.seq) || (seen.add(r.seq), false);
+    return !copy;
+  });
+  return once.map((r, i) => [r, i]).sort(([a, i], [b, j]) => (a.session === b.session ? (a.seq ?? 0) - (b.seq ?? 0) : 0) || i - j).map(([r]) => r);
+}
+
+function bracket(all, scenario) {
+  const start0 = all.findLastIndex((r) => r.k === "scenario" && r.name === scenario && r.phase === "start");
+  if (start0 === -1) return null;
+  const session = all[start0].session;
+  const rows = inSendOrder(all.filter((r) => r.session === session));
   const start = rows.findLastIndex((r) => r.k === "scenario" && r.name === scenario && r.phase === "start");
-  if (start === -1) return null;
-  const session = rows[start].session;
   const end = rows.findIndex((r, i) => i > start && r.k === "scenario" && r.name === scenario && r.phase === "end");
   if (end === -1) return null;
-  return { rows: rows.slice(start, end + 1).filter((r) => r.session === session), session, error: rows[end].error ?? null };
+  const first = rows[start].seq;
+  const last = rows[end].seq;
+  const numbered = Number.isFinite(first) && Number.isFinite(last);
+  const batches = rows.filter((r) => r.k === "batch" && (!numbered || (r.seq >= first && r.seq <= last)));
+  const seen = new Set(batches.map((r) => r.seq));
+  const lost = numbered ? Array.from({ length: last - first + 1 }, (_, i) => first + i).filter((q) => !seen.has(q)) : [];
+  const dropped = batches.reduce((n, r) => n + (r.dropped ?? 0), 0);
+  return { rows: rows.slice(start, end + 1), session, error: rows[end].error ?? null, lost, dropped };
 }
 
 function unrun(build) {
@@ -400,10 +546,14 @@ export function verdict(rows, scenario, gates = GATES) {
   const part = gate && bracket(rows, scenario);
   if (!part) return null;
   const v = gate(part.rows);
-  const dropped = rows.filter((r) => r.k === "batch" && r.session === part.session).reduce((n, r) => n + (r.dropped ?? 0), 0);
+  const sys = systemSummary(part.rows);
+  const seen = sys ? { ...v, metrics: { ...v.metrics, sys } } : v;
   const judged = part.error
-    ? { pass: false, metrics: { ...v.metrics, error: part.error } }
-    : dropped > 0 ? { pass: false, metrics: { ...v.metrics, dropped } } : v;
+    ? { pass: false, metrics: { ...seen.metrics, error: part.error } }
+    : part.dropped > 0 ? { pass: false, metrics: { ...seen.metrics, dropped: part.dropped } }
+    : part.rows.some((r) => r.k === "nativeDropped" || r.k === "captureStopped")
+      ? { pass: false, metrics: { ...seen.metrics, nativeDropped: part.rows.filter((r) => r.k === "nativeDropped").reduce((n, r) => n + r.n, 0), captureStopped: part.rows.filter((r) => r.k === "captureStopped").map((r) => r.error) } }
+    : part.lost.length > 0 ? { pass: false, metrics: { ...seen.metrics, lostBatches: part.lost } } : seen;
   const reason = unrun(rows.findLast((r) => r.k === "build" && r.session === part.session));
   return reason ? { pass: null, metrics: { ...judged.metrics, unrun: reason } } : judged;
 }

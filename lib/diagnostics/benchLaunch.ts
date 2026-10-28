@@ -7,7 +7,11 @@ export function benchTargetHost(param: string | undefined, domain: string | unde
   return isBenchHost(host) ? host : null;
 }
 
+const SCENARIO_NAME = /^[A-Za-z][A-Za-z0-9]*$/;
+
 export function benchLaunchHref(extra: unknown): Href | null {
-  const host = (extra as { benchHost?: unknown } | null | undefined)?.benchHost;
-  return isBenchHost(host) ? (`/bench?host=${host}&scenario=all` as Href) : null;
+  const { benchHost: host, benchSkip } = (extra ?? {}) as { benchHost?: unknown; benchSkip?: unknown };
+  if (!isBenchHost(host)) return null;
+  const skip = Array.isArray(benchSkip) ? benchSkip.filter((n): n is string => typeof n === "string" && SCENARIO_NAME.test(n)) : [];
+  return `/bench?host=${host}&scenario=all${skip.length ? `&skip=${skip.join(",")}` : ""}` as Href;
 }

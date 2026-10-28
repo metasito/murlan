@@ -6,7 +6,7 @@ import http from "node:http";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
 import { createCollector } from "../../scripts/diagnostics-collector.mjs";
-import { burstStalls, flingerUnderruns, flingerVerdict, verdict } from "../../scripts/diagnostics-verdict.mjs";
+import { burstStalls, flingerUnderruns, flingerVerdict, hitches, meanHz, verdict } from "../../scripts/diagnostics-verdict.mjs";
 
 const RELEASE = { k: "build", t: 0, dev: false, scriptURL: "file:///var/containers/Bundle/Application/X/murlan.app/main.jsbundle" };
 
@@ -85,9 +85,12 @@ test("the collector answers 507 once the file would pass its cap", async () => {
   assert.equal(existsSync(file), false);
 });
 
+const FIVE_SECONDS = Array.from({ length: 313 }, (_, i) => ({ k: "frame", t: i * 16, dt: 16 }));
+
 test("a verdict reads its own scenario's bracket in the newest session only", () => {
-  const rows = [...bracket("old", "idle", [{ k: "frame", t: 1, dt: 16 }]), ...bracket("new", "idle", [])];
-  assert.deepEqual(verdict(rows, "idle"), { pass: false, metrics: { frames: 0 } });
+  const rows = [...bracket("old", "idle", FIVE_SECONDS), ...bracket("new", "idle", [])];
+  assert.equal(verdict(rows, "idle")?.pass, false);
+  assert.equal(verdict(rows, "idle")?.metrics.frames, 0);
 });
 
 test("no bracket, an unfinished bracket, or an unknown scenario is no verdict", () => {
@@ -97,21 +100,21 @@ test("no bracket, an unfinished bracket, or an unknown scenario is no verdict", 
 });
 
 test("a scenario that threw, or rows the phone dropped, fail whatever the gate said", () => {
-  const frame = { k: "frame", t: 1, dt: 16 };
-  assert.equal(verdict(bracket("s", "idle", [frame]), "idle")?.pass, true);
-  assert.equal(verdict(bracket("s", "idle", [frame], "Error: boom"), "idle")?.pass, false);
-  const dropped = [{ session: "s", k: "batch", n: 1, dropped: 3 }, ...bracket("s", "idle", [frame])];
-  assert.deepEqual(verdict(dropped, "idle"), { pass: false, metrics: { frames: 1, dropped: 3 } });
+  assert.equal(verdict(bracket("s", "idle", FIVE_SECONDS), "idle")?.pass, true);
+  assert.equal(verdict(bracket("s", "idle", FIVE_SECONDS, "Error: boom"), "idle")?.pass, false);
+  const dropped = [{ session: "s", k: "batch", n: 1, dropped: 3 }, ...bracket("s", "idle", FIVE_SECONDS)];
+  assert.equal(verdict(dropped, "idle")?.pass, false);
+  assert.equal(verdict(dropped, "idle")?.metrics.dropped, 3);
 });
 
 test("a verdict stands only on a Release build with an embedded bundle; anything else is unrun, with its metrics", () => {
-  const on = (build: object | null) => verdict(bracket("s", "idle", [{ k: "frame", t: 1, dt: 16 }], null, build), "idle");
-  assert.deepEqual(on(RELEASE), { pass: true, metrics: { frames: 1 } });
+  const on = (build: object | null) => verdict(bracket("s", "idle", FIVE_SECONDS, null, build), "idle");
+  assert.equal(on(RELEASE)?.pass, true);
   assert.equal(on({ ...RELEASE, scriptURL: "assets://index.android.bundle" })?.pass, true);
   for (const build of [null, { ...RELEASE, dev: true }, { ...RELEASE, scriptURL: "http://192.168.1.5:8081/index.bundle?platform=ios" }, { ...RELEASE, scriptURL: null }]) {
     const v = on(build);
     assert.equal(v?.pass, null);
-    assert.equal(v?.metrics.frames, 1);
+    assert.equal(v?.metrics.frames, 313);
     assert.equal(typeof v?.metrics.unrun, "string");
   }
 });
@@ -364,4 +367,155 @@ test("musicSwitch passes steady music, and fails a 300 ms gap, a 2 s death, or m
   assert.equal(verdict(rows((t) => (t >= 30000 && t < 30300 ? -60 : -25)), "musicSwitch")?.pass, false);
   assert.equal(verdict(rows((t) => (t >= 30000 && t < 32100 ? -60 : -25)), "musicSwitch")?.metrics.deaths, 1);
   assert.equal(verdict(rows(() => -45), "musicSwitch")?.pass, false);
+});
+
+type Sustained = { lowPower?: boolean; windows?: number; hz?: (i: number) => number; thermal?: (i: number) => number; maxFps?: number; noSys?: boolean; stallIn?: number };
+
+function sustained(o: Sustained = {}): object[] {
+  const rows: object[] = [];
+  let cpuMs = 0;
+  for (let i = 0; i < (o.windows ?? 4); i++) {
+    const t0 = i * 30000;
+    const hz = o.hz?.(i) ?? 120;
+    rows.push({ k: "window", t: t0, i });
+    for (let f = t0; f < t0 + 29800; f += 1000 / hz) rows.push({ k: "frame", t: f, dt: 1000 / hz });
+    if (i === o.stallIn) rows.push({ k: "jsLag", t: t0 + 5000, dt: 60 });
+    rows.push({ k: "jsTicks", t: t0 + 29900, n: 3500 });
+    if (o.noSys) continue;
+    for (let s = 0; s < 30; s++) {
+      cpuMs += 250;
+      rows.push({ k: "sys", t: t0 + s * 1000, thermal: o.thermal?.(i) ?? 0, battery: 0.9, charging: false, lowPower: o.lowPower ?? false, maxFps: o.maxFps ?? 120, cpuMs, gpuMb: 40 + i });
+    }
+  }
+  return run("sustained", rows);
+}
+
+test("sustained passes a table that holds the display's rate for every window and stays cool", () => {
+  const v = verdict(sustained(), "sustained");
+  assert.equal(v?.pass, true, JSON.stringify(v?.metrics));
+  assert.equal(v?.metrics.sys.maxThermal, 0);
+  assert.equal(Math.round(v?.metrics.sys.cpuPctP50), 25);
+  assert.equal(v?.metrics.sys.gpuMbMax, 43);
+});
+
+test("sustained fails the sag the felt pairs showed: 120 Hz in the first window and 82 Hz after", () => {
+  const v = verdict(sustained({ hz: (i) => (i === 0 ? 120 : 82) }), "sustained");
+  assert.equal(v?.pass, false);
+  assert.ok(v!.metrics.sag > 0.3, JSON.stringify(v?.metrics));
+});
+
+test("sustained judges against the display's own ceiling: 60 Hz all the way passes on a 60 Hz phone, and 80 Hz fails on a 120 Hz one", () => {
+  assert.equal(verdict(sustained({ hz: () => 60, maxFps: 60 }), "sustained")?.pass, true);
+  assert.equal(verdict(sustained({ hz: () => 80 }), "sustained")?.pass, false);
+});
+
+test("sustained fails a serious thermal state, a stall in any window, too few windows, and a phone that reported no system state", () => {
+  assert.equal(verdict(sustained({ thermal: (i) => (i === 3 ? 2 : 0) }), "sustained")?.pass, false);
+  assert.equal(verdict(sustained({ stallIn: 2 }), "sustained")?.pass, false);
+  assert.equal(verdict(sustained({ windows: 1 }), "sustained")?.pass, false);
+  assert.equal(verdict(sustained({ noSys: true }), "sustained")?.pass, false);
+});
+
+test("every scenario's verdict carries the system summary its window recorded, and none when the phone sent none", () => {
+  const sys = [{ k: "sys", t: 0, battery: 0.8, charging: false, thermal: 1, lowPower: true, maxFps: 120, cpuMs: 0, gpuMb: 10 }, { k: "sys", t: 1000, battery: 0.79, charging: false, thermal: 2, lowPower: true, maxFps: 120, cpuMs: 500, gpuMb: 12 }];
+  const v = verdict(run("idle", [...sys, { k: "frame", t: 10, dt: 8.3 }]), "idle");
+  assert.deepEqual(v?.metrics.sys, { samples: 2, maxFps: 120, maxThermal: 2, thermalAtEnd: 2, lowPower: true, charging: false, batteryDropPct: 1, cpuPctP50: 50, cpuPctP90: 50, gpuMbMax: 12 });
+  assert.equal(verdict(run("idle", [{ k: "frame", t: 10, dt: 8.3 }]), "idle")?.metrics.sys, undefined);
+});
+
+test("sustained refuses a run under Low Power Mode, which caps a 120 Hz phone to 60 and lowers the ceiling the floor is read from", () => {
+  const v = verdict(sustained({ lowPower: true, maxFps: 60, hz: () => 60 }), "sustained");
+  assert.equal(v?.pass, false);
+  assert.equal(v?.metrics.capped, true);
+});
+
+test("meanHz is frames over the time they took: one late frame in six reads 100 Hz where the median of medians says 120", () => {
+  const frames = Array.from({ length: 600 }, (_, i) => ({ k: "frame", t: i, dt: i % 6 === 0 ? 25 : 8.33 }));
+  assert.ok(meanHz(frames) < 100, String(meanHz(frames)));
+  assert.ok(Number.isNaN(meanHz([])));
+});
+
+test("hitches counts a frame that missed its refresh between steady neighbours, and not a stretch at a lower rate", () => {
+  const steady = (n: number, dt: number) => Array.from({ length: n }, () => ({ k: "frame", dt }));
+  const one = [...steady(20, 8.33), { k: "frame", dt: 25 }, ...steady(20, 8.33)];
+  assert.equal(hitches(one).count, 1);
+  assert.equal(hitches(steady(60, 12.5)).count, 0);
+  assert.equal(hitches([...steady(20, 12.5), { k: "frame", dt: 50 }, ...steady(20, 12.5)]).count, 0);
+});
+
+test("a rest run whose lamp makes one frame in six late fails, though every second's median frame is on time", () => {
+  const half = (name: string, pair: number, t0: number, late: boolean) => [
+    { k: "half", t: t0, name, pair },
+    ...Array.from({ length: 1800 }, (_, i) => ({ k: "frame", t: t0 + 1 + i * 8.33, dt: late && i % 6 === 0 ? 25 : 8.33 })),
+    { k: "jsTicks", t: t0 + 1, n: 100 },
+  ];
+  const rows = (late: boolean) => run("restCost", [0, 1, 2, 3].flatMap((p) => [...half("frozen", p, p * 40000, false), ...half("swaying", p, p * 40000 + 20000, late)]));
+  assert.equal(verdict(rows(false), "restCost")?.pass, true);
+  assert.equal(verdict(rows(true), "restCost")?.pass, false);
+});
+
+test("a batch the PC never received fails the scenario it fell in, and batches that arrive out of order are put back before the bracket is cut", () => {
+  const at = (seq: number, rows: object[]) => [{ session: "s", seq, k: "batch", n: rows.length, dropped: 0 }, ...rows.map((r) => ({ session: "s", seq, ...r }))];
+  const send = (skip?: number, swap = false) => {
+    const batches = [
+      at(0, [RELEASE, { k: "scenario", t: 0, name: "idle", phase: "start" }]),
+      at(1, FIVE_SECONDS.slice(0, 100)),
+      at(2, FIVE_SECONDS.slice(100, 200)),
+      at(3, FIVE_SECONDS.slice(200)),
+      at(4, [{ k: "scenario", t: 5000, name: "idle", phase: "end", error: null }]),
+    ].filter((_, i) => i !== skip);
+    return (swap ? [batches[0], batches[4], batches[3], batches[1], batches[2]] : batches).flat();
+  };
+  assert.equal(verdict(send(), "idle")?.pass, true);
+  assert.equal(verdict(send(undefined, true), "idle")?.pass, true);
+  const lost = verdict(send(2), "idle");
+  assert.equal(lost?.pass, false);
+  assert.deepEqual(lost?.metrics.lostBatches, [2]);
+});
+
+test("a median ignores a value that is not a number instead of letting the sort order garbage", () => {
+  const plays = [10, NaN, 30, 20, NaN].map((lead) => ({ k: "play", t: 0, id: "x", at: 0, bus: "b", dropped: false, lead }));
+  const rows = run("landingSync", [...plays, { k: "trigger", t: 10, name: "flightContact" }]);
+  assert.equal(Number.isNaN(verdict(rows, "landingSync")?.metrics.lead as number), false);
+});
+
+test("a batch the phone sent twice because the first answer was lost counts once", () => {
+  const at = (seq: number, rows: object[]) => [{ session: "s", seq, k: "batch", n: rows.length, dropped: 0 }, ...rows.map((r) => ({ session: "s", seq, ...r }))];
+  const first = at(0, [RELEASE, { k: "scenario", t: 0, name: "idle", phase: "start" }]);
+  const frames = at(1, FIVE_SECONDS);
+  const end = at(2, [{ k: "scenario", t: 5000, name: "idle", phase: "end", error: null }]);
+  const v = verdict([...first, ...frames, ...frames, ...end], "idle");
+  assert.equal(v?.metrics.frames, 313);
+  assert.equal(v?.pass, true);
+});
+
+test("rows the phone's native buffer gave up, or a capture that ended under the run, fail the scenario instead of reading as silence", () => {
+  const base = FIVE_SECONDS;
+  assert.equal(verdict(bracket("s", "idle", [...base, { k: "nativeDropped", t: 10, n: 2000 }]), "idle")?.metrics.nativeDropped, 2000);
+  assert.equal(verdict(bracket("s", "idle", [...base, { k: "nativeDropped", t: 10, n: 2000 }]), "idle")?.pass, false);
+  const stopped = verdict(bracket("s", "idle", [...base, { k: "captureStopped", t: 10, error: "interrupted" }]), "idle");
+  assert.equal(stopped?.pass, false);
+  assert.deepEqual(stopped?.metrics.captureStopped, ["interrupted"]);
+});
+
+function deals(o: { n?: number; hz?: number; stallIn?: number; noSys?: boolean } = {}): object[] {
+  const rows: object[] = [];
+  for (let i = 0; i < (o.n ?? 10); i++) {
+    const t0 = i * 2000;
+    rows.push({ k: "window", t: t0, i });
+    for (let f = t0; f < t0 + 1300; f += 1000 / (o.hz ?? 120)) rows.push({ k: "frame", t: f, dt: 1000 / (o.hz ?? 120) });
+    if (i === o.stallIn) rows.push({ k: "jsLag", t: t0 + 400, dt: 60 });
+    rows.push({ k: "jsTicks", t: t0 + 1300, n: 150 });
+    if (!o.noSys) rows.push({ k: "sys", t: t0 + 1, battery: 0.9, charging: false, thermal: 0, lowPower: false, maxFps: 120, cpuMs: i * 100, gpuMb: 40 });
+  }
+  return run("dealBurst", rows);
+}
+
+test("dealBurst passes ten fresh mounts at the display's rate, and fails a missing deal, a stall in one, a slow rate or no system state", () => {
+  const v = verdict(deals(), "dealBurst");
+  assert.equal(v?.pass, true, JSON.stringify(v?.metrics));
+  assert.equal(verdict(deals({ n: 9 }), "dealBurst")?.pass, false);
+  assert.equal(verdict(deals({ stallIn: 3 }), "dealBurst")?.pass, false);
+  assert.equal(verdict(deals({ hz: 80 }), "dealBurst")?.pass, false);
+  assert.equal(verdict(deals({ noSys: true }), "dealBurst")?.pass, false);
 });

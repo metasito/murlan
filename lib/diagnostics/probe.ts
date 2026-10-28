@@ -13,6 +13,10 @@ export const probe = {
   stopCapture: (): Promise<boolean> => native?.stopCapture?.() ?? Promise.resolve(false),
   startMotion: (): boolean => native?.startMotion?.() ?? false,
   stopMotion: (): void => native?.stopMotion?.(),
+  sampleSystem(): void {
+    const s = native?.systemState?.();
+    if (s) diag({ k: "sys", t: performance.now(), ...s });
+  },
   drain(): void {
     const rows = native?.drain?.() ?? [];
     if (!native || rows.length === 0) return;

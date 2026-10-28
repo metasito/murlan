@@ -23,7 +23,6 @@ registerBenchScenario("soak", (ctx) => soak(ctx, Number(ctx.params.minutes ?? "3
 
 async function soak(ctx: BenchContext, minutes: number): Promise<void> {
   await startFeedback();
-  await probe.stopCapture().catch(() => false);
   setSoundVolume(1);
   setMusicVolume(1);
   const t0 = performance.now();

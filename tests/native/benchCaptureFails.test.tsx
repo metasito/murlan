@@ -15,7 +15,7 @@ it('a capture that fails to stop is recorded, not swallowed', async () => {
   process.env.EXPO_PUBLIC_DIAGNOSTICS = '1';
   const bench = require('@/lib/diagnostics/bench') as typeof import('@/lib/diagnostics/bench');
   const { probe } = require('@/lib/diagnostics/probe') as typeof import('@/lib/diagnostics/probe');
-  bench.registerBenchScenario('quick', async () => {});
+  bench.registerBenchScenario('quick', async () => {}, { capture: true });
   jest.spyOn(probe, 'canCapture').mockReturnValue(true);
   jest.spyOn(probe, 'startCapture').mockResolvedValue(true);
   jest.spyOn(probe, 'stopCapture').mockRejectedValue(new Error('E_CAPTURE: recording interrupted'));
