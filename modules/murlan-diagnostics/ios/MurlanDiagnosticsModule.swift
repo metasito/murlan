@@ -15,6 +15,7 @@ public final class MurlanDiagnosticsModule: Module {
   private var shakes = ShakeDetector()
   private var capture = 0
   private var motionRun = 0
+  private var display = (maxFps: 0, battery: Float(-1), charging: false)
   private let motion = CMMotionManager()
 
   public func definition() -> ModuleDefinition {
@@ -35,11 +36,14 @@ public final class MurlanDiagnosticsModule: Module {
 
     Function("systemState") { () -> [String: Any] in
       let info = ProcessInfo.processInfo
-      let screen = { () -> (Int, Float, Bool) in
+      // UIKit answers on the main thread; a call from here must not wait for it, so it reads the last answer and asks for the next.
+      DispatchQueue.main.async {
         UIDevice.current.isBatteryMonitoringEnabled = true
-        return (UIScreen.main.maximumFramesPerSecond, UIDevice.current.batteryLevel, UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full)
+        let state = UIDevice.current.batteryState
+        let now = (maxFps: UIScreen.main.maximumFramesPerSecond, battery: UIDevice.current.batteryLevel, charging: state == .charging || state == .full)
+        self.queue.async { self.display = now }
       }
-      let (maxFps, battery, charging) = Thread.isMainThread ? screen() : DispatchQueue.main.sync(execute: screen)
+      let (maxFps, battery, charging) = self.queue.sync { self.display }
       return [
         "battery": Double(battery),
         "charging": charging,

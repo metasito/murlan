@@ -13,7 +13,6 @@ export const probe = {
   stopCapture: (): Promise<boolean> => native?.stopCapture?.() ?? Promise.resolve(false),
   startMotion: (): boolean => native?.startMotion?.() ?? false,
   stopMotion: (): void => native?.stopMotion?.(),
-  /** One `sys` row: thermal state, Low Power Mode, the display's ceiling, cumulative CPU and GPU memory. */
   sampleSystem(): void {
     const s = native?.systemState?.();
     if (s) diag({ k: "sys", t: performance.now(), ...s });

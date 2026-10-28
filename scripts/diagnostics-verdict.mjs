@@ -382,6 +382,7 @@ function systemSummary(rows) {
     const dt = r.t - sys[i].t;
     return dt > 0 && r.cpuMs >= 0 && sys[i].cpuMs >= 0 ? [((r.cpuMs - sys[i].cpuMs) / dt) * 100] : [];
   });
+  const battery = sys.filter((r) => r.battery >= 0).map((r) => r.battery);
   return {
     samples: sys.length,
     maxFps: Math.max(...sys.map((r) => r.maxFps)),
@@ -389,7 +390,7 @@ function systemSummary(rows) {
     thermalAtEnd: sys.at(-1).thermal,
     lowPower: sys.some((r) => r.lowPower),
     charging: sys.some((r) => r.charging),
-    batteryDropPct: sys[0].battery >= 0 && sys.at(-1).battery >= 0 ? +((sys[0].battery - sys.at(-1).battery) * 100).toFixed(1) : null,
+    batteryDropPct: battery.length ? +((battery[0] - battery.at(-1)) * 100).toFixed(1) : null,
     cpuPctP50: median(cpu),
     cpuPctP90: p90(cpu),
     gpuMbMax: Math.max(...sys.map((r) => r.gpuMb)),
@@ -398,7 +399,6 @@ function systemSummary(rows) {
 
 // The refusal floor is the display's own ceiling, so a 60 Hz phone is judged against 60.
 const SUSTAINED_FLOOR = 0.85;
-// First window to worst window: the 120 → 82 Hz sag the felt pairs showed is a 32 % drop.
 const SUSTAINED_SAG = 0.1;
 // ProcessInfo.ThermalState: 2 is serious, where iOS starts to cap the frame rate for heat.
 const THERMAL_SERIOUS = 2;
@@ -414,12 +414,13 @@ function sustained(rows) {
   const hz = all.map((w) => w.hz);
   const sag = all.length && hz[0] > 0 ? (hz[0] - Math.min(...hz)) / hz[0] : NaN;
   const floor = sys ? sys.maxFps * SUSTAINED_FLOOR : NaN;
+  const capped = sys?.lowPower ?? true;
   const brief = all.map(({ i, hz, p95, stalls, sys }) => ({ i, hz, p95, stalls, thermal: sys?.maxThermal ?? null, cpuPctP50: sys?.cpuPctP50 ?? null }));
   return {
     pass:
       all.length >= 2 && sys !== null && all.every((w) => w.frames > 0 && w.jsTicks > 0 && w.stalls === 0 && w.hz >= floor) &&
-      sag <= SUSTAINED_SAG && sys.maxThermal < THERMAL_SERIOUS,
-    metrics: { windows: all.length, sag, floor, medianHz: medianHz(rows), perWindow: brief },
+      sag <= SUSTAINED_SAG && sys.maxThermal < THERMAL_SERIOUS && !capped,
+    metrics: { windows: all.length, sag, floor, capped, medianHz: medianHz(rows), perWindow: brief },
   };
 }
 

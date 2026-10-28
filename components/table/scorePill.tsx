@@ -412,7 +412,7 @@ function StandingRowView({
   });
   const fillStyle = useAnimatedStyle(() => {
     const counted = before + (after - before) * roundRowCount(ending.value, order, steps);
-    return { transform: [{ scaleX: Math.min(counted, target) / target }] };
+    return { transform: [{ translateX: -(1 - Math.min(counted, target) / target) * PX.bar * u }] };
   });
   const text = tableFontSize(FontSize.xs, u);
   return (
@@ -520,8 +520,8 @@ const styles = StyleSheet.create({
   discText: { fontFamily: "Rajdhani_700Bold", color: Colors.text },
   name: { flex: 1, fontFamily: "Rajdhani_600SemiBold", color: Colors.textSecondary, textTransform: "uppercase" },
   nameMine: { color: Colors.goldLit },
-  bar: { backgroundColor: Colors.track },
-  barFill: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, overflow: "hidden", transformOrigin: "left" },
+  bar: { backgroundColor: Colors.track, overflow: "hidden" },
+  barFill: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, overflow: "hidden" },
   glow: { borderWidth: 1, borderColor: Colors.goldLit },
   tick: { position: "absolute", right: -1, width: 1, backgroundColor: Colors.goldStrong },
   gain: { fontFamily: "Rajdhani_700Bold", color: Colors.goldLit, textAlign: "right" },

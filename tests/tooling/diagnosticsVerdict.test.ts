@@ -366,7 +366,7 @@ test("musicSwitch passes steady music, and fails a 300 ms gap, a 2 s death, or m
   assert.equal(verdict(rows(() => -45), "musicSwitch")?.pass, false);
 });
 
-type Sustained = { windows?: number; hz?: (i: number) => number; thermal?: (i: number) => number; maxFps?: number; noSys?: boolean; stallIn?: number };
+type Sustained = { lowPower?: boolean; windows?: number; hz?: (i: number) => number; thermal?: (i: number) => number; maxFps?: number; noSys?: boolean; stallIn?: number };
 
 function sustained(o: Sustained = {}): object[] {
   const rows: object[] = [];
@@ -381,7 +381,7 @@ function sustained(o: Sustained = {}): object[] {
     if (o.noSys) continue;
     for (let s = 0; s < 30; s++) {
       cpuMs += 250;
-      rows.push({ k: "sys", t: t0 + s * 1000, thermal: o.thermal?.(i) ?? 0, battery: 0.9, charging: false, lowPower: false, maxFps: o.maxFps ?? 120, cpuMs, gpuMb: 40 + i });
+      rows.push({ k: "sys", t: t0 + s * 1000, thermal: o.thermal?.(i) ?? 0, battery: 0.9, charging: false, lowPower: o.lowPower ?? false, maxFps: o.maxFps ?? 120, cpuMs, gpuMb: 40 + i });
     }
   }
   return run("sustained", rows);
@@ -418,4 +418,10 @@ test("every scenario's verdict carries the system summary its window recorded, a
   const v = verdict(run("idle", [...sys, { k: "frame", t: 10, dt: 8.3 }]), "idle");
   assert.deepEqual(v?.metrics.sys, { samples: 2, maxFps: 120, maxThermal: 2, thermalAtEnd: 2, lowPower: true, charging: false, batteryDropPct: 1, cpuPctP50: 50, cpuPctP90: 50, gpuMbMax: 12 });
   assert.equal(verdict(run("idle", [{ k: "frame", t: 10, dt: 8.3 }]), "idle")?.metrics.sys, undefined);
+});
+
+test("sustained refuses a run under Low Power Mode, which caps a 120 Hz phone to 60 and lowers the ceiling the floor is read from", () => {
+  const v = verdict(sustained({ lowPower: true, maxFps: 60, hz: () => 60 }), "sustained");
+  assert.equal(v?.pass, false);
+  assert.equal(v?.metrics.capped, true);
 });
