@@ -202,8 +202,7 @@ export function ScorePill({
     const box = scorePillBox(shownOpen.value, boardProgress.value, anchor);
     const hit = scorePillHitBox(shownOpen.value, boardProgress.value, anchor, TOUCH_TARGET_MIN);
     return {
-      left: box.x - hit.x + BOARD_ACTIONS_AT.x * u,
-      top: box.y - hit.y + BOARD_ACTIONS_AT.y * u,
+      transform: [{ translateX: box.x - hit.x + BOARD_ACTIONS_AT.x * u }, { translateY: box.y - hit.y + BOARD_ACTIONS_AT.y * u }],
       opacity: matchActions(clock.value),
     };
   });
@@ -413,7 +412,7 @@ function StandingRowView({
   });
   const fillStyle = useAnimatedStyle(() => {
     const counted = before + (after - before) * roundRowCount(ending.value, order, steps);
-    return { width: `${(Math.min(counted, target) / target) * 100}%` };
+    return { transform: [{ scaleX: Math.min(counted, target) / target }] };
   });
   const text = tableFontSize(FontSize.xs, u);
   return (
@@ -517,12 +516,12 @@ const styles = StyleSheet.create({
   placeWon: { color: Colors.goldLit },
   disc: { alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: Colors.goldBorder },
   discWon: { borderColor: Colors.goldLit },
-  actions: { position: "absolute" },
+  actions: { position: "absolute", left: 0, top: 0 },
   discText: { fontFamily: "Rajdhani_700Bold", color: Colors.text },
   name: { flex: 1, fontFamily: "Rajdhani_600SemiBold", color: Colors.textSecondary, textTransform: "uppercase" },
   nameMine: { color: Colors.goldLit },
   bar: { backgroundColor: Colors.track },
-  barFill: { position: "absolute", left: 0, top: 0, bottom: 0, overflow: "hidden" },
+  barFill: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, overflow: "hidden", transformOrigin: "left" },
   glow: { borderWidth: 1, borderColor: Colors.goldLit },
   tick: { position: "absolute", right: -1, width: 1, backgroundColor: Colors.goldStrong },
   gain: { fontFamily: "Rajdhani_700Bold", color: Colors.goldLit, textAlign: "right" },
