@@ -14,6 +14,7 @@ import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/query-client";
 import { markStale, queryKey, stale, useApi, type Answer, type ApiKey, type ListRead, type Row } from "@/lib/queries";
 import { useAuth } from "@/context/AuthContext";
+import { DIAGNOSTICS } from "@/lib/diagnostics";
 import {
   connectSocket,
   disconnectSocket,
@@ -105,6 +106,9 @@ const NO_PROVIDER = Symbol("no SocketProvider");
 const ConnectionContext = createContext<Socket | null | typeof NO_PROVIDER>(NO_PROVIDER);
 const PresenceContext = createContext<Presence | null>(null);
 const InvitesContext = createContext<Invites | null>(null);
+
+/** The bench build is compiled without a server address, so a stored session must not open a socket. */
+const NO_SERVER = DIAGNOSTICS && !process.env.EXPO_PUBLIC_DOMAIN;
 
 export function useSocketConnection(): Socket | null {
   const socket = useContext(ConnectionContext);
@@ -266,7 +270,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
   }
 
   useEffect(() => {
-    if (!userId) {
+    if (!userId || NO_SERVER) {
       if (retryTimerRef.current) {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;

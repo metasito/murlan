@@ -9,7 +9,7 @@ export function getApiUrl(): string {
 
   if (!host) {
     // Web build served from the same origin — use the current origin for relative API calls
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && window.location) {
       return window.location.origin;
     }
     throw new Error("EXPO_PUBLIC_DOMAIN is not set");
