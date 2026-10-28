@@ -39,7 +39,7 @@ describe("under the app's reduced motion, an animation that answers it plays its
   });
 
   it("the trick winner's tag keeps its fade out rather than vanishing", async () => {
-    const view = await render(underReducedRoot(pileOf({ comboLabel: null, trickWinner: "Ana" })));
+    const view = await render(underReducedRoot(pileOf({ trickWinner: "Ana" })));
     let host: TestInstance | null = screen.getByTestId("notice-trickWinner");
     while (host && !host.props.exiting) host = host.parent;
     expect(host).not.toBeNull();

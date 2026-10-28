@@ -6,14 +6,13 @@
 // they draw at rest.
 import { describe, it, expect, jest, beforeEach, afterEach } from "@jest/globals";
 import React from "react";
-import { act, render, screen, within } from "@testing-library/react-native";
+import { act, render, screen } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { getAnimatedStyle } from "react-native-reanimated";
 import { GameTable } from "@/components/GameTable";
 import type { Card, Combination, GameState, Player } from "@/lib/game/gameEngine";
 import { setMotion } from "./harness/env";
-import { Motion } from "@/lib/theme";
 import { aThreePlayed } from "../support/game";
 
 const METRICS = {
@@ -92,30 +91,6 @@ describe("reduced motion holds the lamp's flare at exactly zero (#765)", () => {
 
     expect(flare).toBe(0);
     expect(flash).toBe(0);
-
-    await r.unmount();
-  });
-
-  // The flare/wave/spark are the whole of what a bomb "says" once — with the
-  // burst held dark (above), that channel is silent for the rest of the
-  // round. The combo chip on the pile is what has to carry the news instead,
-  // and it is not itself gated on the preference: it is `current`'s own label,
-  // drawn every time there is a combination to draw.
-  it("the bomb still names itself on the pile — the label, not just the flare, survives reduced motion", async () => {
-    const r = await render(table(inPlay(BOMB_PLAY), false));
-
-    for (let f = 0; f < 6; f++) {
-      await act(async () => {
-        jest.advanceTimersByTime(16);
-      });
-    }
-
-    await act(async () => {
-      jest.advanceTimersByTime(Motion.mark.enter);
-    });
-    const mark = within(screen.getByTestId("pile-area")).getByTestId("notice-combo", { includeHiddenElements: true });
-    within(mark).getByText(/bomb/i, { includeHiddenElements: true });
-    expect((getAnimatedStyle(mark) as { opacity?: number }).opacity).toBe(1);
 
     await r.unmount();
   });

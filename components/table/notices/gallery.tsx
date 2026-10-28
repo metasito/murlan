@@ -8,7 +8,7 @@ import { EmptyHandLine, WaitingLine } from "./tableLines";
 import { HudComboPill, OfflinePill, TurnChip } from "./hud";
 import { EndMatchVote, LeftTable, RoundVote } from "./netNotes";
 import { WhoStartsCard } from "./panels";
-import { ComboMark, TrickWinnerMark } from "./pileNotices";
+import { TrickWinnerMark } from "./pileNotices";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./seatMarks";
 
 const underDisc = (scale: number) => {
@@ -118,10 +118,6 @@ export const NOTICE_GALLERY = {
         <WhoStartsCard gated scale={scale} starterName="Gent" starterIsViewer={false} reason={{ type: "lost_round", playerIdx: 3 }} />
       ),
     },
-  ],
-  combo: [
-    { name: "a pair", tone: "lit", render: (scale) => <ComboMark scale={scale} label="Coppia" /> },
-    { name: "a bomb, the same mark", tone: "lit", render: (scale) => <ComboMark scale={scale} label="Bomba ×4" /> },
   ],
   trickWinner: [{ name: "a seat took the round", tone: "lit", render: (scale) => <TrickWinnerMark scale={scale} name="Besnik" /> }],
   passed: [{ name: "a seat passed", tone: "neutral", render: underDisc }],

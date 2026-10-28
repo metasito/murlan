@@ -36,7 +36,6 @@ test("a bot's thrown cards come to rest where the pile then draws them", async (
   await page.evaluate(() => (globalThis as unknown as { murlanBotMove: () => void }).murlanBotMove());
   await page.locator('[data-testid="flying-cards"]').waitFor({ state: "attached", timeout: 15_000 });
   await page.locator('[data-testid="flying-cards"]').waitFor({ state: "detached", timeout: 15_000 });
-  await page.getByTestId("combo-chip").waitFor({ state: "visible", timeout: 5_000 });
   await settled(page, 1_500, '[data-testid="pile-area"]');
 
   const { flight, pile } = await page.evaluate(() => ({

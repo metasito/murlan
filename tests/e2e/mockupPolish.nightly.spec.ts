@@ -79,62 +79,6 @@ test("turn, lit: the glow is a static shadow", async ({ browser, baseURL }) => {
   expect(glows, "the glow at 0, 130, 370, 610 and 890 ms").toEqual(glows.map(() => first.glow));
 });
 
-const COMBO_MARK = '[data-testid="combo-chip"] [data-testid="notice-combo"]';
-/** #1259 Q3: a mark's text renders at the table's floor of 10, over the mockup's 9. */
-const MARK_TEXT = 10;
-const SUBPIXEL = 0.25;
-const padOf = (page: Page, selector: string) => page.evaluate((s) => parseFloat(getComputedStyle(document.querySelector(s)!).paddingLeft), selector);
-
-/** The text run's cap band (baseline less the font's own "H" ascent) against the plate's inside edges. */
-const capBand = (page: Page, selector: string) =>
-  page.evaluate((s) => {
-    const plate = document.querySelector(s)!;
-    const run = [...plate.querySelectorAll<HTMLElement>("*")].find((n) =>
-      [...n.childNodes].some((c) => c.nodeType === Node.TEXT_NODE && c.textContent!.trim() !== "")
-    )!;
-    const probe = document.createElement("span");
-    probe.style.cssText = "display:inline-block;width:0;height:0;vertical-align:baseline";
-    run.appendChild(probe);
-    const baseline = probe.getBoundingClientRect().top;
-    probe.remove();
-    const font = getComputedStyle(run);
-    const ctx = document.createElement("canvas").getContext("2d")!;
-    ctx.font = `${font.fontWeight} ${font.fontSize} ${font.fontFamily}`;
-    const r = plate.getBoundingClientRect();
-    const edge = getComputedStyle(plate);
-    return {
-      capTop: baseline - ctx.measureText("H").actualBoundingBoxAscent,
-      baseline,
-      top: r.top + parseFloat(edge.borderTopWidth),
-      bottom: r.bottom - parseFloat(edge.borderBottomWidth),
-    };
-  }, selector);
-
-for (const phone of STAGES) {
-  test(`combination mark: the pair on the pile is named by the mockup's .cchip — ${phone.name}`, async ({ browser, baseURL }) => {
-    test.setTimeout(120_000);
-    const mockup = await mockupAt(browser, "rest", 1000);
-    const app = await appAt(browser, baseURL!, LIT_WITH_COUNT, phone);
-    await expect(app.page.locator(COMBO_MARK), "the combination mark").toBeVisible({ timeout: 30_000 });
-    const want = await shown(mockup, "#cchip");
-    const got = await shown(app, COMBO_MARK);
-    const [wantPad, gotPad, band] = await Promise.all([padOf(mockup.page, "#cchip"), padOf(app.page, COMBO_MARK), capBand(app.page, COMBO_MARK)]);
-    await Promise.all([mockup.close(), app.close()]);
-
-    const k = cardScale(Math.min(phone.width, phone.height)) / cardScale(402);
-    expect.soft(got.fill, "the fill").toBe(want.fill);
-    expect.soft(got.edge, "the edge").toBe(want.edge);
-    expect.soft(got.ink, "the ink").toBe(want.ink);
-    expect.soft(got.glow, "a mark casts no glow").toBe(want.glow);
-    expect.soft(got.fontSize, "the text, at the floor").toBe(MARK_TEXT);
-    expect.soft(Math.abs(got.box.h - want.box.h * k), `the height, ${got.box.h} against the mockup's ${want.box.h} × ${k}`).toBeLessThanOrEqual(HALF_PT);
-    expect.soft(Math.abs(got.radius - want.radius * k), `the radius, ${got.radius} against the mockup's ${want.radius} × ${k}`).toBeLessThanOrEqual(HALF_PT);
-    expect.soft(Math.abs(gotPad - wantPad * k), `the padding, ${gotPad} against the mockup's ${wantPad} × ${k}`).toBeLessThanOrEqual(HALF_PT);
-    expect.soft(band.capTop, `the caps' top ${band.capTop} under the plate's top ${band.top}`).toBeGreaterThanOrEqual(band.top - SUBPIXEL);
-    expect.soft(band.baseline, `the baseline ${band.baseline} over the plate's bottom ${band.bottom}`).toBeLessThanOrEqual(band.bottom + SUBPIXEL);
-  });
-}
-
 /** The lobby's cap on a seat's name (`app/lobby.tsx`): an exchange between two bots names both. */
 const LONGEST = ["Konstantinos", "Maximilianus"];
 const SMALLEST = STAGES[STAGES.length - 1];
