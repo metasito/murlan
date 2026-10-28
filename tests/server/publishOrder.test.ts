@@ -5,6 +5,11 @@
 import { test, afterEach, mock, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { recordingRuntime, type JournalEntry } from "../helpers/recordingRuntime.ts";
+import { publishState, tableWriters } from "../../server/game/gamePersistence.ts";
+import { installClock } from "../../server/http/clock.ts";
+import { fakeClock } from "../helpers/fakeClock.ts";
+import type { TableStore } from "../../server/game/tableRuntime.ts";
+import { state as aState } from "../support/game.ts";
 import { applyOrForward } from "../../server/game/tableRouter.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
@@ -149,4 +154,162 @@ test("a row write still in flight lands before the last leaver's delete", async 
     ["write", "remove"],
     "the delete landed under a write still in flight, which resurrects the row"
   );
+});
+
+/** A store whose row writes and deletes each wait for the test to let them land, recording their order. */
+function gatedStore() {
+  const landed: string[] = [];
+  const gates: (() => void)[] = [];
+  const gated = (label: (arg: unknown) => string) => (_roomId: string, arg?: unknown) =>
+    new Promise<void>((resolve, reject) => {
+      const tag = label(arg);
+      gates.push(() => {
+        if (tag.startsWith("fail")) reject(new Error("connection terminated"));
+        else resolve();
+      });
+      landed.push(tag);
+    });
+  const store = {
+    games: {
+      write: gated((row) => `round${(row as { match: { roundsPlayed: number } }).match.roundsPlayed}`),
+      remove: gated(() => "remove"),
+    },
+    rooms: { updateRoomStatus: async () => {} },
+  } as unknown as TableStore;
+  return { store, started: landed, land: (i: number) => gates[i]() };
+}
+
+function tableAtRound(roundsPlayed: number) {
+  const game = onlineTable({ roomId: ROOM, gameState: startRound(SEATS, "free_for_all"), roundsPlayed });
+  activeGames.set(ROOM, game);
+  return game;
+}
+
+function playRound(game: OnlineGameState, roundsPlayed: number) {
+  (game as { roundsPlayed: number }).roundsPlayed = roundsPlayed;
+}
+
+const flush = async () => {
+  for (let i = 0; i < 20; i++) await settle();
+};
+
+test("row writes land one at a time in the order they were made, however many are waiting", async () => {
+  const { store, started, land } = gatedStore();
+  const writers = tableWriters(store);
+  const game = tableAtRound(1);
+  const first = writers.persistGameState(ROOM, game);
+  playRound(game, 2);
+  void writers.persistGameState(ROOM, game);
+  playRound(game, 3);
+  void writers.persistGameState(ROOM, game);
+  await flush();
+  assert.deepEqual(started, ["round1"], "a second write started before the first landed");
+
+  land(0);
+  await first;
+  await flush();
+  playRound(game, 4);
+  void writers.persistGameState(ROOM, game);
+  await flush();
+  assert.deepEqual(started, ["round1", "round2"], "a write overtook one still waiting ahead of it");
+
+  land(1);
+  await flush();
+  land(2);
+  await flush();
+  land(3);
+  await flush();
+  assert.deepEqual(started, ["round1", "round2", "round3", "round4"]);
+});
+
+test("a row write whose table was disposed while it waited is never made", async () => {
+  const { store, started, land } = gatedStore();
+  const writers = tableWriters(store);
+  const game = tableAtRound(1);
+  void writers.persistGameState(ROOM, game);
+  playRound(game, 2);
+  const second = writers.persistGameState(ROOM, game);
+  await flush();
+
+  activeGames.delete(ROOM);
+  land(0);
+  await second;
+  assert.deepEqual(started, ["round1"], "a disposed table's row was written back");
+});
+
+test("a row write for a table since replaced under the same room is never made", async () => {
+  const { store, started, land } = gatedStore();
+  const writers = tableWriters(store);
+  const game = tableAtRound(1);
+  void writers.persistGameState(ROOM, game);
+  const second = writers.persistGameState(ROOM, game);
+  await flush();
+
+  tableAtRound(7);
+  land(0);
+  await second;
+  assert.deepEqual(started, ["round1"], "a stale game overwrote the row of the one that replaced it");
+});
+
+test("a row write or delete that fails does not reject, and the writes behind it still land", async () => {
+  const { store, started, land } = gatedStore();
+  const failing = {
+    ...store,
+    games: {
+      ...store.games,
+      remove: () => Promise.reject(new Error("connection terminated")),
+    },
+  } as unknown as TableStore;
+  const writers = tableWriters(failing);
+  const game = tableAtRound(1);
+
+  await writers.discardGame(ROOM);
+  const next = writers.persistGameState(ROOM, game);
+  await flush();
+  assert.deepEqual(started, ["round1"], "a failed delete stopped the writes behind it");
+  land(0);
+  await next;
+});
+
+test("a row write that fails does not reject, and the next one lands", async () => {
+  const rows: number[] = [];
+  let failNext = true;
+  const store = {
+    games: {
+      write: async (_roomId: string, row: { match: { roundsPlayed: number } }) => {
+        if (failNext) {
+          failNext = false;
+          throw new Error("connection terminated");
+        }
+        rows.push(row.match.roundsPlayed);
+      },
+      remove: async () => {},
+    },
+    rooms: { updateRoomStatus: async () => {} },
+  } as unknown as TableStore;
+  const writers = tableWriters(store);
+  const game = tableAtRound(1);
+
+  await writers.persistGameState(ROOM, game);
+  playRound(game, 2);
+  await writers.persistGameState(ROOM, game);
+  assert.deepEqual(rows, [2]);
+});
+
+test("a deal is stamped with the time it was served, a play is not stamped, and a stamp already there is kept", (t) => {
+  const clock = fakeClock(5_000_000);
+  t.after(installClock(clock));
+  const { rt } = recordingRuntime();
+
+  const dealt = onlineTable({ roomId: ROOM, gameState: aState({ lastMove: { seq: 0, kind: "deal" } }) });
+  void publishState(rt, dealt);
+  assert.equal(dealt.gameState.dealtAt, 5_000_000);
+
+  clock.advance(1_000);
+  void publishState(rt, dealt);
+  assert.equal(dealt.gameState.dealtAt, 5_000_000, "a later publish moved the time the deal was served");
+
+  const played = onlineTable({ roomId: ROOM, gameState: aState({ lastMove: { seq: 3, kind: "play", seat: 1 } }) });
+  void publishState(rt, played);
+  assert.equal(played.gameState.dealtAt, undefined, "a play was stamped as a deal");
 });
