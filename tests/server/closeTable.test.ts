@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
-import { closeTable } from "../../server/game/gamePersistence.ts";
+import { closeTable, safeTimer } from "../../server/game/gamePersistence.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { logger } from "../../server/shared/logger.ts";
 import { startRound } from "../../lib/game/gameEngine.ts";
@@ -56,4 +56,27 @@ test("a failed status write is logged and still lets the row go", async (t) => {
   assert.equal(warned.mock.callCount(), 1);
   assert.ok(journal.some((e) => e.kind === "store" && e.name === "remove"), "the row outlived a failed status write");
   assert.equal(journal.some((e) => e.kind === "send"), false, "a table closed with no notice announced something");
+});
+
+test("a timer body that throws closes its table with the server-error notice, and one that does not leaves it be", async (t) => {
+  ROOM = "close-table-safe-timer";
+  useMemoryTableStores(t, { rows: [[ROOM, {}]] });
+  t.mock.method(logger, "error", () => undefined);
+  const { rt, events } = recordingRuntime({ persist: "real" });
+  liveTable();
+
+  let ran = false;
+  safeTimer(rt, "calm", ROOM, () => {
+    ran = true;
+  });
+  assert.equal(ran, true);
+  assert.equal(activeGames.has(ROOM), true, "a timer that finished cleanly closed the table");
+  assert.deepEqual(events("game:notification"), []);
+
+  safeTimer(rt, "broken", ROOM, () => {
+    throw new Error("boom");
+  });
+  assert.equal(activeGames.has(ROOM), false, "a throwing timer left a table nothing will re-arm");
+  assert.equal(events("game:notification").length, 1);
+  assert.match(JSON.stringify(events("game:notification")[0]), /GAME_INTERRUPTED_SERVER_ERROR/);
 });

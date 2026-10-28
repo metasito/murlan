@@ -6,7 +6,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { sanitizeStateForPlayer } from "../../server/game/gamePersistence.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
-import { aThreePlayed } from "../support/game.ts";
+import { aThreePlayed, card, seat, state as aState } from "../support/game.ts";
 
 function player(id: string, name: string): Player {
   return { id, name, hand: [], type: id === "p1" ? "bot" : "human" };
@@ -50,5 +50,31 @@ describe("sanitizeStateForPlayer carries `vacated` as a boolean, never a message
   test("no vacatedSeats map at all (offline-shaped call) still answers false, not undefined", () => {
     const sanitized = sanitizeStateForPlayer(state(), "alice", { 0: "alice", 1: "bob" });
     assert.equal(sanitized.players[0]!.vacated, false);
+  });
+});
+
+describe("sanitizeStateForPlayer shows each viewer only the hand they hold", () => {
+  const table = () =>
+    aState({
+      players: [
+        seat(0, [card("3", "spades"), card("K", "hearts")]),
+        seat(1, [card("4", "clubs")]),
+        seat(2, [card("5", "clubs"), card("6", "clubs"), card("7", "clubs")]),
+      ],
+    });
+  const seated = { 0: "ana", 1: "besi", 2: "cami" };
+
+  test("a seated viewer sees their own cards and only a count of everyone else's", () => {
+    const sent = sanitizeStateForPlayer(table(), "besi", seated);
+    assert.deepEqual(sent.players.map((p) => p.hand.map((c) => c.id)), [[], ["4_clubs"], []]);
+    assert.deepEqual(sent.players.map((p) => p.handCount), [2, 1, 3]);
+    assert.equal(sent.viewerSeatIndex, 1);
+  });
+
+  test("a spectator sees no hand at all, and no seat of their own", () => {
+    const sent = sanitizeStateForPlayer(table(), "sam", seated);
+    assert.deepEqual(sent.players.map((p) => p.hand), [[], [], []]);
+    assert.deepEqual(sent.players.map((p) => p.handCount), [2, 1, 3]);
+    assert.equal(sent.viewerSeatIndex, null);
   });
 });
