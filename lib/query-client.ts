@@ -4,14 +4,16 @@ import type { BodyOf, ParamsOf, QueryOf, ResOf, Route } from "@/shared/http";
 import { ApiError, parseServerPayload } from "./apiError";
 import type { Answer, ApiKey, Read } from "./queries";
 
+/** Native has a `window` without a `location`, so only the web build can fall back to its own origin. */
+export function hasServer(): boolean {
+  return Boolean(process.env.EXPO_PUBLIC_DOMAIN) || typeof window?.location?.origin === "string";
+}
+
 export function getApiUrl(): string {
   const host = process.env.EXPO_PUBLIC_DOMAIN;
 
   if (!host) {
-    // Web build served from the same origin — use the current origin for relative API calls
-    if (typeof window !== "undefined") {
-      return window.location.origin;
-    }
+    if (typeof window?.location?.origin === "string") return window.location.origin;
     throw new Error("EXPO_PUBLIC_DOMAIN is not set");
   }
 
