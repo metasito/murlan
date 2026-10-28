@@ -864,6 +864,4 @@ const pileStyles = StyleSheet.create({
     justifyContent: "center",
     position: "relative",
   },
-  // Out of the flow and hung off the centre: in it, the chip's arrival would lift the cards the
-  // flight has just set down.
 });
