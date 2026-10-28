@@ -311,14 +311,17 @@ function lampVariants(rows) {
   };
 }
 
+// The window a throw is judged over: its landing, the bomb's aftermath and the lamp's swing to the next seat (scenarios/threadLoad.ts).
+const THROW_WINDOW_MS = 1200;
+
 function throwStalls(rows) {
   const throws = times(rows, "throw");
   const spans = rows.filter((r) => r.k === "frame" || r.k === "jsLag");
-  const windows = throws.map((t) => spans.filter((r) => r.t >= t && r.t - r.dt <= t + 600));
+  const windows = throws.map((t) => spans.filter((r) => r.t >= t && r.t - r.dt <= t + THROW_WINDOW_MS));
   const stalls = windows.reduce((n, w) => n + burstStalls(w).stalls, 0);
   const covered = (w, t) =>
-    w.filter((r) => r.k === "frame").reduce((ms, r) => ms + Math.max(0, Math.min(r.t, t + 600) - Math.max(r.t - r.dt, t)), 0);
-  const framed = throws.length ? windows.filter((w, i) => covered(w, throws[i]) >= 480).length / throws.length : 0;
+    w.filter((r) => r.k === "frame").reduce((ms, r) => ms + Math.max(0, Math.min(r.t, t + THROW_WINDOW_MS) - Math.max(r.t - r.dt, t)), 0);
+  const framed = throws.length ? windows.filter((w, i) => covered(w, throws[i]) >= THROW_WINDOW_MS * 0.8).length / throws.length : 0;
   const { jsTicks } = burstStalls(rows);
   return {
     pass: throws.length >= 10 && framed === 1 && jsTicks > 0 && stalls === 0,
@@ -452,13 +455,35 @@ const SUSTAINED_SAG = 0.1;
 // ProcessInfo.ThermalState: 2 is serious, where iOS starts to cap the frame rate for heat.
 const THERMAL_SERIOUS = 2;
 
-function sustained(rows) {
+function windowsOf(rows) {
   const marks = rows.filter((r) => r.k === "window").sort((a, b) => a.t - b.t);
-  const all = marks.map((w, i) => {
+  return marks.map((w, i) => {
     const own = rows.filter((r) => r.t >= w.t && r.t < (marks[i + 1]?.t ?? Infinity));
     const frames = own.filter((r) => r.k === "frame" && r.dt > 0).map((r) => r.dt).sort((a, b) => a - b);
     return { i: w.i, hz: meanHz(own), hitches: hitches(own).perSecond, p95: frames.length ? frames[Math.ceil(frames.length * 0.95) - 1] : NaN, ...burstStalls(own), sys: systemSummary(own) };
   });
+}
+
+// The deal is ten fresh mounts: each must show frames, no stall, and the rate the display can give; its slow tail and hitches are reported for the first device run to set a bound on.
+const DEALS = 10;
+
+function dealBurst(rows) {
+  const all = windowsOf(rows);
+  const sys = systemSummary(rows);
+  const floor = sys ? sys.maxFps * SUSTAINED_FLOOR : NaN;
+  const capped = sys?.lowPower ?? true;
+  return {
+    pass: all.length === DEALS && sys !== null && all.every((w) => w.frames > 0 && w.jsTicks > 0 && w.stalls === 0 && w.hz >= floor) && !capped,
+    metrics: {
+      deals: all.length, floor, capped, hz: meanHz(rows),
+      worstP95: Math.max(...all.map((w) => w.p95)), hitchesPerSecond: hitches(rows).perSecond,
+      perDeal: all.map(({ i, hz, p95, stalls, hitches }) => ({ i, hz, p95, stalls, hitches })),
+    },
+  };
+}
+
+function sustained(rows) {
+  const all = windowsOf(rows);
   const sys = systemSummary(rows);
   const hz = all.map((w) => w.hz);
   const sag = all.length && hz[0] > 0 ? (hz[0] - Math.min(...hz)) / hz[0] : NaN;
@@ -475,13 +500,20 @@ function sustained(rows) {
 
 export const GATES = {
   pulseCost, idle, tapBurst, scheduledOnset, hapticOnset, musicSwitch, smoke, soak, landingSync, seatAnchors, lampVariants,
-  throwStalls, restCost, feltOpaque, noticeGallery, sustained,
+  throwStalls, restCost, feltOpaque, noticeGallery, sustained, dealBurst,
 };
 
 // The phone numbers each POST (`seq`) in the order it sent them; the PC file holds them in the order they arrived. A session's rows are put back in send order, rows of one batch keeping their own.
 function inSendOrder(rows) {
   if (!rows.some((r) => Number.isFinite(r.seq))) return rows;
-  return rows.map((r, i) => [r, i]).sort(([a, i], [b, j]) => (a.session === b.session ? (a.seq ?? 0) - (b.seq ?? 0) : 0) || i - j).map(([r]) => r);
+  // A POST whose answer was lost is sent again and lands twice: the second copy of a batch is dropped.
+  const seen = new Set();
+  let copy = false;
+  const once = rows.filter((r) => {
+    if (r.k === "batch") copy = seen.has(r.seq) || (seen.add(r.seq), false);
+    return !copy;
+  });
+  return once.map((r, i) => [r, i]).sort(([a, i], [b, j]) => (a.session === b.session ? (a.seq ?? 0) - (b.seq ?? 0) : 0) || i - j).map(([r]) => r);
 }
 
 function bracket(all, scenario) {
@@ -519,6 +551,8 @@ export function verdict(rows, scenario, gates = GATES) {
   const judged = part.error
     ? { pass: false, metrics: { ...seen.metrics, error: part.error } }
     : part.dropped > 0 ? { pass: false, metrics: { ...seen.metrics, dropped: part.dropped } }
+    : part.rows.some((r) => r.k === "nativeDropped" || r.k === "captureStopped")
+      ? { pass: false, metrics: { ...seen.metrics, nativeDropped: part.rows.filter((r) => r.k === "nativeDropped").reduce((n, r) => n + r.n, 0), captureStopped: part.rows.filter((r) => r.k === "captureStopped").map((r) => r.error) } }
     : part.lost.length > 0 ? { pass: false, metrics: { ...seen.metrics, lostBatches: part.lost } } : seen;
   const reason = unrun(rows.findLast((r) => r.k === "build" && r.session === part.session));
   return reason ? { pass: null, metrics: { ...judged.metrics, unrun: reason } } : judged;

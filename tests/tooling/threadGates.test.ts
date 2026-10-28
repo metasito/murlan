@@ -26,12 +26,12 @@ interface ThrowOpts {
 
 function throwRows({ throws = 10, unframed = [], late = [], lateBy = 400, stall, ticks = 80 }: ThrowOpts = {}): Row[] {
   return Array.from({ length: throws }, (_, i) => {
-    const t = 1000 + i * 1000;
-    let own: Row[] = unframed.includes(i) ? [] : frames(late.includes(i) ? t + lateBy : t, t + 700, 8);
+    const t = 1000 + i * 2000;
+    let own: Row[] = unframed.includes(i) ? [] : frames(late.includes(i) ? t + lateBy : t, t + 1300, 8);
     const dt = stall?.dt ?? 40;
     if (stall?.throw === i && stall.k === "frame") own = at(own, t + stall.at, dt);
     if (stall?.throw === i && stall.k === "jsLag") own.push({ k: "jsLag", t: t + stall.at, dt });
-    return [{ k: "throw", t }, ...own, { k: "jsTicks", t: t + 701, n: ticks }];
+    return [{ k: "throw", t }, ...own, { k: "jsTicks", t: t + 1301, n: ticks }];
   }).flat();
 }
 
@@ -87,8 +87,8 @@ test("a UI stall straddling the throw fails", () => {
   assert.equal(r.pass, false);
 });
 
-test("a stall starting 624 ms after its throw is outside the throw's 600 ms", () => {
-  const r = GATES.throwStalls(throwRows({ stall: { throw: 4, at: 664, k: "frame" } }));
+test("a stall starting 1224 ms after its throw is outside the throw's 1200 ms", () => {
+  const r = GATES.throwStalls(throwRows({ stall: { throw: 4, at: 1264, k: "frame" } }));
   assert.equal(r.metrics.stalls, 0);
   assert.equal(r.pass, true);
 });

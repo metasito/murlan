@@ -5,7 +5,7 @@ struct OnsetDetector {
   let source: String
   let levels: Bool
   init(source: String, levels: Bool) { self.source = source; self.levels = levels }
-  private var average = 1e-9
+  private var average = -1.0
   private var lastOnset = -Double.infinity
   private var levelSum = 0.0
   private var levelCount = 0
@@ -25,6 +25,7 @@ struct OnsetDetector {
       var power = 0.0
       for s in samples[i..<(i + window)] { power += Double(s * s) }
       power /= Double(window)
+      if average < 0 { average = power }
       let t = t0 + Double(i) / rate * 1000
       let db = 10 * log10(power + 1e-12)
       if db > 10 * log10(average + 1e-12) + 12, db > -45, t - lastOnset > 50 {
@@ -72,18 +73,26 @@ struct OnsetDetector {
     } else {
       return []
     }
+    withExtendedLifetime(block) {}
     return out
   }
 }
 
 struct ShakeDetector {
-  private var mean = 1.0
+  private var mean = (x: 0.0, y: 0.0, z: 0.0)
+  private var seeded = false
   private var last = -Double.infinity
 
+  /// Each axis is held to its own slow mean: a buzz across gravity moves the magnitude by almost nothing, but moves its own axis in full.
   mutating func feed(t: Double, x: Double, y: Double, z: Double) -> [[String: Any]] {
-    let g = (x * x + y * y + z * z).squareRoot()
-    let deviation = abs(g - mean)
-    mean += (g - mean) / 20
+    guard seeded else {
+      mean = (x, y, z)
+      seeded = true
+      return []
+    }
+    let dx = x - mean.x, dy = y - mean.y, dz = z - mean.z
+    mean = (mean.x + dx / 20, mean.y + dy / 20, mean.z + dz / 20)
+    let deviation = (dx * dx + dy * dy + dz * dz).squareRoot()
     guard deviation > 0.02, t - last > 100 else { return [] }
     last = t
     return [["k": "shake", "host": t, "g": deviation]]

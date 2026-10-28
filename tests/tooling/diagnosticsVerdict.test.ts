@@ -478,3 +478,44 @@ test("a median ignores a value that is not a number instead of letting the sort 
   const rows = run("landingSync", [...plays, { k: "trigger", t: 10, name: "flightContact" }]);
   assert.equal(Number.isNaN(verdict(rows, "landingSync")?.metrics.lead as number), false);
 });
+
+test("a batch the phone sent twice because the first answer was lost counts once", () => {
+  const at = (seq: number, rows: object[]) => [{ session: "s", seq, k: "batch", n: rows.length, dropped: 0 }, ...rows.map((r) => ({ session: "s", seq, ...r }))];
+  const first = at(0, [RELEASE, { k: "scenario", t: 0, name: "idle", phase: "start" }]);
+  const frames = at(1, FIVE_SECONDS);
+  const end = at(2, [{ k: "scenario", t: 5000, name: "idle", phase: "end", error: null }]);
+  const v = verdict([...first, ...frames, ...frames, ...end], "idle");
+  assert.equal(v?.metrics.frames, 313);
+  assert.equal(v?.pass, true);
+});
+
+test("rows the phone's native buffer gave up, or a capture that ended under the run, fail the scenario instead of reading as silence", () => {
+  const base = FIVE_SECONDS;
+  assert.equal(verdict(bracket("s", "idle", [...base, { k: "nativeDropped", t: 10, n: 2000 }]), "idle")?.metrics.nativeDropped, 2000);
+  assert.equal(verdict(bracket("s", "idle", [...base, { k: "nativeDropped", t: 10, n: 2000 }]), "idle")?.pass, false);
+  const stopped = verdict(bracket("s", "idle", [...base, { k: "captureStopped", t: 10, error: "interrupted" }]), "idle");
+  assert.equal(stopped?.pass, false);
+  assert.deepEqual(stopped?.metrics.captureStopped, ["interrupted"]);
+});
+
+function deals(o: { n?: number; hz?: number; stallIn?: number; noSys?: boolean } = {}): object[] {
+  const rows: object[] = [];
+  for (let i = 0; i < (o.n ?? 10); i++) {
+    const t0 = i * 2000;
+    rows.push({ k: "window", t: t0, i });
+    for (let f = t0; f < t0 + 1300; f += 1000 / (o.hz ?? 120)) rows.push({ k: "frame", t: f, dt: 1000 / (o.hz ?? 120) });
+    if (i === o.stallIn) rows.push({ k: "jsLag", t: t0 + 400, dt: 60 });
+    rows.push({ k: "jsTicks", t: t0 + 1300, n: 150 });
+    if (!o.noSys) rows.push({ k: "sys", t: t0 + 1, battery: 0.9, charging: false, thermal: 0, lowPower: false, maxFps: 120, cpuMs: i * 100, gpuMb: 40 });
+  }
+  return run("dealBurst", rows);
+}
+
+test("dealBurst passes ten fresh mounts at the display's rate, and fails a missing deal, a stall in one, a slow rate or no system state", () => {
+  const v = verdict(deals(), "dealBurst");
+  assert.equal(v?.pass, true, JSON.stringify(v?.metrics));
+  assert.equal(verdict(deals({ n: 9 }), "dealBurst")?.pass, false);
+  assert.equal(verdict(deals({ stallIn: 3 }), "dealBurst")?.pass, false);
+  assert.equal(verdict(deals({ hz: 80 }), "dealBurst")?.pass, false);
+  assert.equal(verdict(deals({ noSys: true }), "dealBurst")?.pass, false);
+});

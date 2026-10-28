@@ -53,7 +53,7 @@ describe('the thread-load scenarios drive and record', () => {
     delete diagnostics.benchHandles.feltOpaque;
   });
 
-  it('throwStalls records one throw per card play of one bot round, never a pass, each with 700 ms of frames', async () => {
+  it('throwStalls records one throw per card play of one bot round, never a pass, each with 1300 ms of frames', async () => {
     await scenarios.get('throwStalls')!(table);
     const plays = shown.slice(1).filter((s, i) => cardsInHand(s) < cardsInHand(shown[i])).length;
     const passes = shown.slice(1).filter((s, i) => cardsInHand(s) === cardsInHand(shown[i])).length;
@@ -61,9 +61,9 @@ describe('the thread-load scenarios drive and record', () => {
     expect(passes).toBeGreaterThan(0);
     expect(throws).toBe(plays);
     const toggles = log.filter((l) => l.startsWith('frames'));
-    expect(toggles).toEqual([...Array.from({ length: throws }, () => ['frames true', 'frames false']).flat(), 'frames false']);
-    expect(log.filter((l) => l === 'sleep 700')).toHaveLength(throws);
-    expect(untils).toEqual(mockRows.flatMap((r) => (r.k === 'throw' ? [r.t + 600] : [])));
+    expect(toggles).toEqual([...Array.from({ length: throws }, () => ['frames true', 'frames false']).flat(), 'frames false', 'frames false']);
+    expect(log.filter((l) => l === 'sleep 1300')).toHaveLength(throws);
+    expect(untils).toEqual(mockRows.flatMap((r) => (r.k === 'throw' ? [r.t + 1200] : [])));
     expect(log.at(-1)).toBe('arm false');
   });
 
@@ -115,7 +115,7 @@ describe('the thread-load scenarios drive and record', () => {
     let steps = 0;
     const failing: BenchContext = {
       ...table,
-      sleep: (ms) => (ms === 700 ? new Promise<void>((r) => pending.push(r)) : Promise.resolve()),
+      sleep: (ms) => (ms === 1300 ? new Promise<void>((r) => pending.push(r)) : Promise.resolve()),
       showTable: async (state) => {
         if (state && ++steps === 3) throw new Error('boom');
         log.push(state ? 'table' : 'no table');
@@ -140,6 +140,6 @@ describe('the thread-load scenarios drive and record', () => {
     };
     await expect(scenarios.get('throwStalls')!(failing)).rejects.toThrow('boom');
     expect(log.filter((l) => l.startsWith('frames')).at(-1)).toBe('frames false');
-    expect(log.slice(-2)).toEqual(['no table', 'arm false']);
+    expect(log.slice(-3)).toEqual(['no table', 'frames false', 'arm false']);
   });
 });

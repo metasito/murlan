@@ -2,9 +2,10 @@ import { registerFramedScenario, type BenchContext } from "../bench";
 import { benchTable, botTable, driveBots } from "../benchTable";
 import { benchHandles, diag, type BenchHandles, type DiagRows } from "../index";
 
-const STEP_MS = 900;
-const THROW_WINDOW_MS = 600;
-const THROW_FRAMES_MS = 700;
+// A real bot thinks 1200 ms before it plays; a window reaches the landing scale, the bomb aftermath and the lamp's swing to the next seat.
+const STEP_MS = 1400;
+const THROW_WINDOW_MS = 1200;
+const THROW_FRAMES_MS = 1300;
 const SETTLE_MS = 4000;
 const SWITCH_MS = 1000;
 const FLUSH_MS = 200;

@@ -8,12 +8,16 @@ export type { DiagRow, DiagRows } from "./types";
 
 export const DIAGNOSTICS = process.env.EXPO_PUBLIC_DIAGNOSTICS === "1";
 
-const recorder: { push(row: DiagRow): void } | null =
+const recorder: { push(row: DiagRow): void; hold?(on: boolean): void } | null =
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- a static import would ship the recorder
   process.env.EXPO_PUBLIC_DIAGNOSTICS === "1" ? require("./recorder").recorder : null;
 
 export function diag(row: DiagRow): void {
   recorder?.push(row);
+}
+
+export function holdRecorder(on: boolean): void {
+  recorder?.hold?.(on);
 }
 
 export function jsFromWall(): (wall: number) => number {

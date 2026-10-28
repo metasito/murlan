@@ -4,10 +4,9 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { crc32, inflateRawSync } from "node:zlib";
-import { gateTable, waitForRunEnd } from "../../scripts/bench-gates.mjs";
+import { doneScenarios, gateTable, waitForRunEnd } from "../../scripts/bench-gates.mjs";
 import { GATES } from "../../scripts/diagnostics-verdict.mjs";
 import { benchUrl, patchBenchHost, withBenchHost } from "../../scripts/ios-device.mjs";
-import { doneScenarios } from "../../scripts/bench-gates.mjs";
 import { benchLaunchHref, benchTargetHost } from "../../lib/diagnostics/benchLaunch.ts";
 
 const RELEASE = { k: "build", t: 0, dev: false, scriptURL: "file:///var/x/murlan.app/main.jsbundle" };

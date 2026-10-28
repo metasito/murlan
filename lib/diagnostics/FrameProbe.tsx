@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { makeMutable, useFrameCallback, type FrameInfo } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import { diag, jsFromWall } from "./index";
+import { diag, holdRecorder, jsFromWall } from "./index";
 
 const recording = makeMutable(false);
 const closeAtWall = makeMutable(Infinity);
@@ -61,7 +61,9 @@ export function armFrames(on: boolean): Promise<void> {
 export function recordFrames(on: boolean, until = Infinity): void {
   if (on) {
     if (!armed) throw new Error("frames recorded with the frame loop unarmed: register the scenario with registerFramedScenario");
+    if (!open) samples.set([]);
     open = { at: performance.now(), until };
+    holdRecorder(true);
     closeAtWall.value = until - (performance.now() - Date.now());
     recording.value = true;
     sync();
@@ -76,9 +78,11 @@ export function recordFrames(on: boolean, until = Infinity): void {
   samples.set([]);
   const toJs = jsFromWall();
   for (let i = 0; i < a.length; i += 2) diag({ k: "frame", t: toJs(a[i]), dt: a[i + 1] });
-  if (!waiting) return;
-  const t = performance.now();
-  diag({ k: "frame", t, dt: t - (a.length ? toJs(a[a.length - 2]) : openedAt) });
+  if (waiting) {
+    const t = performance.now();
+    diag({ k: "frame", t, dt: t - (a.length ? toJs(a[a.length - 2]) : openedAt) });
+  }
+  holdRecorder(false);
 }
 
 export function FrameProbe() {

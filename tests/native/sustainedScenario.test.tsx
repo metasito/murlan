@@ -30,6 +30,6 @@ it('sustained marks one window per 30 s of the minutes asked, frames each, over 
   expect(mockRows.flatMap((r) => (r.k === 'window' ? [r.i] : []))).toEqual([0, 1, 2]);
   expect(log.filter((l) => l === 'frames true')).toHaveLength(3);
   expect(log).toContain('table');
-  expect(log.at(-2)).toBe('no table');
+  expect(log.at(-3)).toBe('no table');
   expect(log.at(-1)).toBe('arm false');
 });

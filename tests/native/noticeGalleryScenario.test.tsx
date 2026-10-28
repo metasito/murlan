@@ -44,6 +44,6 @@ it('noticeGallery shows every fixture five times and once more under reduced mot
   expect(mockRows.flatMap((r) => (r.k === 'shown' ? [r.reduced] : []))).toEqual([...Array(15).fill(false), true, true, true]);
   expect(motion.getMotionPreference()).toBe('off');
   expect(tables).toBeGreaterThan(1);
-  expect(log.at(-2)).toBe('no table');
+  expect(log.at(-3)).toBe('no table');
   expect(log.at(-1)).toBe('arm false');
 });

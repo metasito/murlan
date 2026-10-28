@@ -23,6 +23,8 @@ export interface DiagRows {
   footprint: { mb: number };
   sys: { battery: number; charging: boolean; thermal: number; lowPower: boolean; maxFps: number; cpuMs: number; gpuMb: number };
   window: { i: number };
+  nativeDropped: { n: number };
+  captureStopped: { error: string };
   onset: { db: number; source: "app" | "mic" };
   level: { db: number };
   shake: { g: number };
