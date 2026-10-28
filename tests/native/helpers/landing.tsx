@@ -104,7 +104,7 @@ export function flightOf(key: string, cards: Card[], from: CardFrom[], reduced =
 export function pileOf({ plays = [], ...props }: Partial<PileLayerProps> & { plays?: TrickPlay[] }) {
   return (
     <PileLayer trick={{ plays, swept: null }} flights={[]} signal={makeMutable(NO_LANDING)} onFlightEnd={noop} onSweepEnd={noop}
-      comboLabel={null} trickWinner={null} roomW={400} scale={1} {...props} />
+      trickWinner={null} roomW={400} scale={1} {...props} />
   );
 }
 
