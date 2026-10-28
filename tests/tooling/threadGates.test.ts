@@ -54,7 +54,7 @@ test("medianHz averages the two middles of an even count, within a second and ac
 test("throwStalls passes ten throws at 125 Hz with no stall, and reports medianHz", () => {
   const r = GATES.throwStalls(throwRows());
   assert.equal(r.pass, true);
-  assert.deepEqual(r.metrics, { throws: 10, stalls: 0, framed: 1, jsTicks: 800, medianHz: 125 });
+  assert.deepEqual(r.metrics, { throws: 10, stalls: 0, framed: 1, jsTicks: 800, medianHz: 125, hitchesPerSecond: 0 });
 });
 
 test("throwStalls fails one UI stall 300 ms after a throw", () => {
