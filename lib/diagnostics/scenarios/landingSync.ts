@@ -11,4 +11,4 @@ registerBenchScenario("landingSync", async (ctx) => {
     });
   }
   await ctx.sleep(500);
-});
+}, { capture: true });

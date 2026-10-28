@@ -14,7 +14,7 @@ import { LAMP_SIDES, annulusLuminance, type LampSide } from "@/lib/diagnostics/l
 import { benchTargetHost } from "@/lib/diagnostics/benchLaunch";
 import { MAX_STARTS, freshProgress, loadProgress, saveProgress } from "@/lib/diagnostics/benchProgress";
 import { recorder } from "@/lib/diagnostics/recorder";
-import { benchScenarios, type BenchContext, type NoticeShot } from "@/lib/diagnostics/bench";
+import { benchScenarios, needsCapture, type BenchContext, type NoticeShot } from "@/lib/diagnostics/bench";
 import { benchBuild } from "@/lib/diagnostics/build";
 import { FrameProbe, armFrames, recordFrames } from "@/lib/diagnostics/FrameProbe";
 import { startJsLag } from "@/lib/diagnostics/jsLag";
@@ -79,6 +79,8 @@ async function foreground(alive: { current: boolean }) {
   }
 }
 
+const CAPTURE_START_MS = 5000;
+
 const captureFailed = (phase: "start" | "stop") => (e: unknown) => {
   diag({ k: "capture", t: performance.now(), phase, error: String(e) });
   return false;
@@ -113,6 +115,7 @@ export function BenchScreen() {
     });
     return () => {
       alive.current = false;
+      shown.current();
       sub.remove();
     };
   }, []);
@@ -135,12 +138,37 @@ export function BenchScreen() {
         }, 1000);
         const key = `${benchBuild().scriptURL}|${only?.join(",") ?? "all"}`;
         const progress = fresh ? freshProgress(key) : await loadProgress(key);
+        const known = new Set(benchScenarios().map(([n]) => n));
+        for (const n of (params.skip ?? "").split(",")) {
+          if (known.has(n) && !progress.done.includes(n)) {
+            progress.done.push(n);
+            progress.results[n] = "done in an earlier run";
+          }
+        }
         if (progress.finished) {
           setResults(progress.results);
           diag({ k: "resume", t: performance.now(), done: progress.done, next: null });
           return;
         }
-        const capturing = params.capture !== "0" && probe.canCapture() && (await probe.startCapture(true).catch(captureFailed("start")));
+        let capturing = false;
+        let attempted = false;
+        const setCapture = async (want: boolean) => {
+          if (!want) {
+            capturing = false;
+            if (!attempted) return;
+            attempted = false;
+            await probe.stopCapture().catch(captureFailed("stop"));
+            return;
+          }
+          if (capturing || params.capture === "0" || !probe.canCapture()) return;
+          attempted = true;
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const silent = new Promise<boolean>((r) => {
+            timer = setTimeout(() => r(captureFailed("start")(new Error(`no answer in ${CAPTURE_START_MS} ms`))), CAPTURE_START_MS);
+          });
+          capturing = await Promise.race([probe.startCapture(true).catch(captureFailed("start")), silent]);
+          clearTimeout(timer);
+        };
         diag({ k: "build", t: performance.now(), ...benchBuild() });
         const ctx: BenchContext = {
           params,
@@ -186,22 +214,28 @@ export function BenchScreen() {
             diag({ k: "scenario", t: performance.now(), name, phase: "start" });
             diag({ k: "latency", t: performance.now(), outputMs: probe.outputLatencyMs(), ioMs: probe.ioBufferMs(), inputMs: probe.inputLatencyMs() });
             interrupted.current = away();
+            await setCapture(needsCapture(name));
             const error = await scenario(ctx).then(() => null, (e: unknown) => String(e));
             const cut = interrupted.current || !alive.current;
             diag({ k: "scenario", t: performance.now(), name, phase: "end", error: cut ? `interrupted: ${error ?? "left the screen"}` : error });
             if (!cut) await finish(name, error);
-            else await foreground(alive);
+            else {
+              capturing = false;
+              progress.starts[name] -= 1;
+              await saveProgress(progress);
+              await foreground(alive);
+            }
           }
         }
         if (!alive.current) {
-          if (capturing) await probe.stopCapture().catch(captureFailed("stop"));
+          await setCapture(false);
           return;
         }
         progress.finished = true;
         await saveProgress(progress);
         stopDrain();
         probe.drain();
-        if (capturing) await probe.stopCapture().catch(captureFailed("stop"));
+        await setCapture(false);
         diag({ k: "run", t: performance.now(), phase: "end", names });
       }),
     [params, stopDrain]

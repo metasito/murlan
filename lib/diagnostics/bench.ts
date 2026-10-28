@@ -20,25 +20,38 @@ export interface BenchContext {
 export type NoticeShot = { kind: string; fixture: number };
 
 type Scenario = (ctx: BenchContext) => Promise<void>;
-const scenarios = new Map<string, Scenario>();
 
-export function registerBenchScenario(name: string, run: Scenario): void {
-  scenarios.set(name, run);
+export interface ScenarioOptions {
+  /** Screen capture is where the audio-onset rows come from, and it costs frames: only a scenario that reads those rows has it on. */
+  capture?: boolean;
+}
+
+const scenarios = new Map<string, { run: Scenario; capture: boolean }>();
+
+export function registerBenchScenario(name: string, run: Scenario, options: ScenarioOptions = {}): void {
+  scenarios.set(name, { run, capture: options.capture ?? false });
 }
 
 /** The frame loop runs for the whole scenario, so each window's first frame has an interval. */
-export function registerFramedScenario(name: string, run: Scenario): void {
-  registerBenchScenario(name, async (ctx) => {
-    const running = ctx.armFrames(true);
-    try {
-      await running;
-      await run(ctx);
-    } finally {
-      ctx.armFrames(false);
-    }
-  });
+export function registerFramedScenario(name: string, run: Scenario, options?: ScenarioOptions): void {
+  registerBenchScenario(
+    name,
+    async (ctx) => {
+      const running = ctx.armFrames(true);
+      try {
+        await running;
+        await run(ctx);
+      } finally {
+        ctx.frames(false);
+        ctx.armFrames(false);
+      }
+    },
+    options
+  );
 }
 
 export function benchScenarios(): [string, Scenario][] {
-  return [...scenarios.entries()];
+  return [...scenarios.entries()].map(([name, { run }]) => [name, run]);
 }
+
+export const needsCapture = (name: string): boolean => scenarios.get(name)?.capture ?? false;

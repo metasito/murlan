@@ -3,7 +3,7 @@ import { BENCH_PROGRESS_KEY } from "@/lib/storageKeys";
 
 /** A scenario that was started this many times without finishing is recorded as failed, so a deterministic crash cannot loop. */
 export const MAX_STARTS = 3;
-const STALE_MS = 3 * 3600_000;
+const STALE_MS = 7 * 24 * 3600_000;
 
 export interface BenchProgress {
   /** The install and the scenario list: a reinstall or another list starts fresh. */
@@ -12,7 +12,7 @@ export interface BenchProgress {
   starts: Record<string, number>;
   results: Record<string, string>;
   finished: boolean;
-  /** Last save: a run older than STALE_MS is not resumed, so a rerun on the same install starts fresh. */
+  /** Last save: a run older than a week is not resumed, so a rerun on the same install starts fresh. */
   at: number;
 }
 

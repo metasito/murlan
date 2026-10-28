@@ -8,6 +8,7 @@
  * Flags: `--ref <branch>` builds from another branch, `--reinstall` forces a fresh install,
  * `--login` signs in to the Apple ID again, `--diagnostics` serves the diagnostics build and its collector (verdicts unrun), `--bench` installs the Release bench build that gates read,
  * `--gates` (implies `--bench`) waits for the run a plain icon tap starts and writes its verdict table to diagnostics/.
+ * `--resume <diagnostics/….ndjson>` continues an earlier run: the scenarios that file shows finished cleanly on a Release bundle are skipped, and its rows keep going into the same file, so one verdict covers both days.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -20,7 +21,7 @@ import readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { PLAY_PORT } from "../tools/ci/e2ePortRange.mjs";
 import { COLLECTOR_PORT } from "./diagnostics-collector.mjs";
-import { gateTable, readRows, waitForRunEnd } from "./bench-gates.mjs";
+import { doneScenarios, gateTable, readRows, waitForRunEnd } from "./bench-gates.mjs";
 import { rewriteZipText } from "./lib/zipEntry.mjs";
 import { killTree, runBin, startBin } from "./lib/proc.mjs";
 
@@ -193,21 +194,21 @@ export function artifactFor(bench) {
     : { workflow: "ios-device.yml", name: "murlan-ios-dev", ipa: "murlan-dev.ipa" };
 }
 
-export function withBenchHost(configJson, ip) {
+export function withBenchHost(configJson, ip, skip = []) {
   const config = JSON.parse(configJson);
-  return JSON.stringify({ ...config, extra: { ...config.extra, benchHost: ip } });
+  return JSON.stringify({ ...config, extra: { ...config.extra, benchHost: ip, ...(skip.length ? { benchSkip: skip } : {}) } });
 }
 
 /** expo-constants serves this file as `Constants.expoConfig`; the app reads `extra.benchHost` at launch (lib/diagnostics/benchLaunch.ts). */
-export function patchBenchHost(ipa, ip) {
-  const { zip, edited } = rewriteZipText(readFileSync(ipa), (name) => /^Payload\/[^/]+\.app\/EXConstants\.bundle\/app\.config$/.test(name), (text) => withBenchHost(text, ip));
+export function patchBenchHost(ipa, ip, skip = []) {
+  const { zip, edited } = rewriteZipText(readFileSync(ipa), (name) => /^Payload\/[^/]+\.app\/EXConstants\.bundle\/app\.config$/.test(name), (text) => withBenchHost(text, ip, skip));
   if (edited.length !== 1) fail(`${ipa} has ${edited.length} EXConstants.bundle/app.config entries to carry the PC's address, not 1.`);
   writeFileSync(`${ipa}.part`, zip);
   renameSync(`${ipa}.part`, ipa);
 }
 
-export function benchUrl(ip) {
-  return `murlan://bench?host=${ip}&scenario=all`;
+export function benchUrl(ip, skip = []) {
+  return `murlan://bench?host=${ip}&scenario=all${skip.length ? `&skip=${skip.join(",")}` : ""}`;
 }
 
 async function latestBuild(home, ref, bench) {
@@ -339,17 +340,19 @@ export function metroEnv(env, ip, diagnostics) {
 
 const RUN_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 
-async function benchServe(ip, gates) {
+async function benchServe(ip, gates, resumeFile, skip) {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const file = path.join(ROOT, "diagnostics", `${stamp}.ndjson`);
+  const file = resumeFile ?? path.join(ROOT, "diagnostics", `${stamp}.ndjson`);
+  const earlier = resumeFile ? readRows(file).length : 0;
   if (await portOpen(COLLECTOR_PORT)) fail(`Port ${COLLECTOR_PORT} is taken (a leftover collector?); stop it and rerun.`);
   const collector = spawn(process.execPath, [path.join(ROOT, "scripts", "diagnostics-collector.mjs"), file], { cwd: ROOT, stdio: "inherit" });
   process.on("exit", () => stopChild(collector));
   if (gates) collector.on("exit", (code) => fail(`The diagnostics collector exited (${code}); no rows can land.`));
-  console.log(`• Bench build installed. Tap the Murlan icon on the iPhone (or open ${benchUrl(ip)}, not both) and leave it face up.`);
+  console.log(`• Bench build installed. Tap the Murlan icon on the iPhone (or open ${benchUrl(ip, skip)}, not both) and leave it face up.`);
+  if (skip.length) console.log(`• Resuming ${path.basename(file)}: skipping ${skip.join(", ")}.`);
   if (!gates) return;
   console.log("• Waiting for the run to finish (about an hour)…");
-  const { names, timedOut } = await waitForRunEnd(() => readRows(file), { timeoutMs: RUN_TIMEOUT_MS });
+  const { names, timedOut } = await waitForRunEnd(() => readRows(file).slice(earlier), { timeoutMs: RUN_TIMEOUT_MS });
   const { pass, markdown } = gateTable(readRows(file), names, timedOut);
   const head = !timedOut
     ? ""
@@ -422,19 +425,24 @@ async function main() {
 
   const gates = args.includes("--gates");
   const bench = gates || args.includes("--bench");
+  const resumeAt = args.indexOf("--resume");
+  const resumeFile = resumeAt === -1 ? undefined : path.resolve(args[resumeAt + 1] ?? "");
+  if (resumeFile && !existsSync(resumeFile)) fail(`--resume needs an existing diagnostics file; ${resumeFile} is not one.`);
+  if (resumeFile && !bench) fail("--resume continues a bench run: add --gates or --bench.");
+  const skip = resumeFile ? doneScenarios(readRows(resumeFile)) : [];
   const ip = lanAddress(os.networkInterfaces());
   if (bench && !ip) fail("No Wi-Fi/LAN address on this PC; the phone must share a network with it.");
   const [plumesign, build] = await Promise.all([ensurePlumesign(home), latestBuild(home, ref, bench)]);
   const statePath = path.join(home, "state.json");
   const state = existsSync(statePath) ? JSON.parse(readFileSync(statePath, "utf8")) : null;
-  if (bench) build.fingerprint += `@${ip}`;
+  if (bench) build.fingerprint += `@${ip}${skip.length ? `+skip:${skip.join(",")}` : ""}`;
   if (args.includes("--reinstall") || args.includes("--login") || needsInstall(state, { fingerprint: build.fingerprint, now: Date.now() })) {
-    if (bench) patchBenchHost(build.ipa, ip);
+    if (bench) patchBenchHost(build.ipa, ip, skip);
     await install(home, plumesign, build, args.includes("--login"));
   } else {
     console.log(`• The installed build is current (signed ${((Date.now() - state.installedAt) / 86400000).toFixed(1)} days ago).`);
   }
-  if (bench) await benchServe(ip, gates);
+  if (bench) await benchServe(ip, gates, resumeFile, skip);
   else await serve(home, args.includes("--diagnostics"));
 }
 

@@ -11,4 +11,4 @@ registerBenchScenario("scheduledOnset", async (ctx) => {
     await ctx.sleep(1000);
   }
   await ctx.sleep(500);
-});
+}, { capture: true });

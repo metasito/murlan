@@ -26,6 +26,18 @@ export async function waitForRunEnd(read, { pollMs = 5000, timeoutMs }) {
 
 const num = (v) => (typeof v === "number" ? +v.toFixed(2) : v);
 
+/** What an earlier run finished cleanly on a Release bundle, so a later run can start after it. */
+export function doneScenarios(rows) {
+  const release = new Set(
+    rows.filter((r) => r.k === "build" && !r.dev && r.scriptURL && !/^https?:/i.test(r.scriptURL)).map((r) => r.session)
+  );
+  const done = new Set();
+  for (const r of rows) {
+    if (r.k === "scenario" && r.phase === "end" && release.has(r.session) && !r.error) done.add(r.name);
+  }
+  return [...done];
+}
+
 function keyNumbers(metrics) {
   const { sys } = metrics;
   const own = Object.entries(metrics)

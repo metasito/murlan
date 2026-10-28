@@ -12,4 +12,4 @@ registerBenchScenario("musicSwitch", async (ctx) => {
     backgroundMusic(TRACKS[i % TRACKS.length]);
     await ctx.sleep(3000);
   }
-});
+}, { capture: true });
