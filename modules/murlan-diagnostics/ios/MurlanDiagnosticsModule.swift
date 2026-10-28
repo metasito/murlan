@@ -90,10 +90,14 @@ public final class MurlanDiagnosticsModule: Module {
         })
       }
       // A capture left running by an aborted run would refuse the new one.
-      if recorder.isRecording { recorder.stopCapture { _ in begin() } } else { begin() }
+      if recorder.isRecording {
+        self.queue.sync { self.capture += 1 }
+        recorder.stopCapture { _ in DispatchQueue.main.async(execute: begin) }
+      } else { begin() }
     }.runOnQueue(.main)
 
     AsyncFunction("stopCapture") { (promise: Promise) in
+      self.queue.sync { self.capture += 1 }
       RPScreenRecorder.shared().stopCapture { error in
         if let error { promise.reject("E_CAPTURE", error.localizedDescription) } else { promise.resolve(true) }
       }

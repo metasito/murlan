@@ -28,15 +28,23 @@ function seal(): void {
 async function send(): Promise<void> {
   if (sending || !target || pending.length === 0) return;
   sending = true;
-  const abort = new AbortController();
-  const timer = setTimeout(() => abort.abort(), POST_TIMEOUT_MS);
   try {
-    const res = await fetch(target, { method: "POST", headers: { "content-type": "application/json" }, body: pending[0].body, signal: abort.signal });
-    if (res.ok) pending.shift();
-  } catch {
-    // The batch stays at the head and goes again on the next tick.
+    // One request at a time, in order, until the backlog is empty or a window opens.
+    while (target && pending.length > 0 && heldAt === null) {
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), POST_TIMEOUT_MS);
+      try {
+        const res = await fetch(target, { method: "POST", headers: { "content-type": "application/json" }, body: pending[0].body, signal: abort.signal });
+        if (!res.ok) break;
+        pending.shift();
+      } catch {
+        // The batch stays at the head and goes again on the next tick.
+        break;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
   } finally {
-    clearTimeout(timer);
     sending = false;
   }
 }

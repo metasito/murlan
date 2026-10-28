@@ -147,6 +147,7 @@ export function BenchScreen() {
         if (progress.finished) {
           setResults(progress.results);
           diag({ k: "resume", t: performance.now(), done: progress.done, next: null });
+          diag({ k: "run", t: performance.now(), phase: "end", names: [] });
           return;
         }
         let capturing = false;
@@ -165,8 +166,10 @@ export function BenchScreen() {
           const silent = new Promise<boolean>((r) => {
             timer = setTimeout(() => r(captureFailed("start")(new Error(`no answer in 5 s`))), 5000);
           });
-          capturing = await Promise.race([probe.startCapture(true).catch(captureFailed("start")), silent]);
+          const started = probe.startCapture(true).catch(captureFailed("start"));
+          capturing = await Promise.race([started, silent]);
           clearTimeout(timer);
+          if (!capturing) void started.then((late) => late && probe.stopCapture().catch(captureFailed("stop")));
         };
         diag({ k: "build", t: performance.now(), ...benchBuild() });
         const ctx: BenchContext = {
@@ -192,6 +195,7 @@ export function BenchScreen() {
         diag({ k: "run", t: performance.now(), phase: "start", names });
         setResults(progress.results);
         diag({ k: "resume", t: performance.now(), done: progress.done, next: names.find((n) => !progress.done.includes(n)) ?? null });
+        const cuts: Record<string, number> = {};
         const finish = (name: string, error: string | null) => {
           progress.done.push(name);
           progress.results[name] = error ?? "done";
@@ -212,15 +216,15 @@ export function BenchScreen() {
             }
             diag({ k: "scenario", t: performance.now(), name, phase: "start" });
             diag({ k: "latency", t: performance.now(), outputMs: probe.outputLatencyMs(), ioMs: probe.ioBufferMs(), inputMs: probe.inputLatencyMs() });
-            interrupted.current = away();
             await setCapture(needsCapture(name));
+            interrupted.current = away();
             const error = await scenario(ctx).then(() => null, (e: unknown) => String(e));
             const cut = interrupted.current || !alive.current;
             diag({ k: "scenario", t: performance.now(), name, phase: "end", error: cut ? `interrupted: ${error ?? "left the screen"}` : error });
             if (!cut) await finish(name, error);
             else {
               capturing = false;
-              progress.starts[name] -= 1;
+              if ((cuts[name] = (cuts[name] ?? 0) + 1) <= MAX_STARTS) progress.starts[name] -= 1;
               await saveProgress(progress);
               await foreground(alive);
             }

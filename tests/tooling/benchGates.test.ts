@@ -204,14 +204,16 @@ test("a resumed run carries what the log shows finished into the app's launch li
   assert.equal("benchSkip" in JSON.parse(withBenchHost("{}", "10.0.0.7")).extra, false);
 });
 
-test("doneScenarios names what finished cleanly on a Release bundle: not an error, an interruption, a Debug run, or an unfinished start", () => {
+test("doneScenarios names what finished cleanly on a Release bundle: not an error, an interruption, a Debug run, an unfinished start, or a later failed attempt", () => {
   const release = { k: "build", dev: false, scriptURL: "file:///private/var/Murlan.app/main.jsbundle" };
+  const start = (session: string, name: string) => ({ session, k: "scenario", phase: "start", name });
   const end = (session: string, name: string, error: string | null = null) => ({ session, k: "scenario", phase: "end", name, error });
+  const run = (session: string, name: string, error: string | null = null) => [start(session, name), end(session, name, error)];
   const rows = [
-    { session: "a", ...release }, end("a", "idle"), end("a", "tapBurst", "Error: boom"), end("a", "soak", "interrupted: left the screen"),
-    { session: "a", k: "scenario", phase: "start", name: "restCost" },
-    { session: "d", ...release, dev: true }, end("d", "pulseCost"),
-    { session: "b", ...release }, end("b", "feltOpaque"),
+    { session: "a", ...release }, ...run("a", "idle"), ...run("a", "tapBurst", "Error: boom"), ...run("a", "soak", "interrupted: left the screen"),
+    start("a", "restCost"),
+    { session: "d", ...release, dev: true }, ...run("d", "pulseCost"),
+    { session: "b", ...release }, ...run("b", "feltOpaque"), ...run("b", "idle", "Error: later failure"),
   ];
-  assert.deepEqual(doneScenarios(rows).sort(), ["feltOpaque", "idle"]);
+  assert.deepEqual(doneScenarios(rows).sort(), ["feltOpaque"]);
 });
