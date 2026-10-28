@@ -22,7 +22,7 @@ import { straightTopRankChar } from "./straightTopRank.ts";
 import { PLAY_SPOKEN_KEYS, playRefusalLabel } from "../../lib/table/playRefusal.ts";
 import type { TableA11yStrings } from "@/components/tableA11y";
 
-/** The combination chip's text: its kind, and how many cards once there are more than two. */
+/** The HUD pill's combination text: its kind, and how many cards once there are more than two. */
 export function comboLabel(combo: Combination | null, t: TFn): string | null {
   if (!combo) return null;
   const label = comboName(combo.type, t);
@@ -31,7 +31,7 @@ export function comboLabel(combo: Combination | null, t: TFn): string | null {
 }
 
 /**
- * Spoken form of a played combination — richer than comboLabel's chip text,
+ * Spoken form of a played combination — richer than comboLabel's pill text,
  * which a sighted player pairs with the cards they can see: "pair of 8s", not
  * "Pair". For a straight only the top card is named, since that is what decides
  * whether a reply beats it.

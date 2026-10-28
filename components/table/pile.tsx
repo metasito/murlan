@@ -16,14 +16,12 @@ import Animated, {
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { CardView, FallbackGlow } from "@/components/CardView";
-import { Beaten, BombFx, CardGlow, Colors, RoundMoment, Motion, motionMs, Shadow, Spacing, Layer } from "@/lib/theme";
+import { Beaten, BombFx, CardGlow, Colors, RoundMoment, Motion, motionMs, Shadow, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useOwnedValue } from "@/lib/motion";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { DIAGNOSTICS, diag } from "@/lib/diagnostics";
 import { readFlightFromDom } from "./flightTrace";
-import { useTranslation } from "@/lib/i18n";
-import { comboLabel as comboText } from "./spokenLabels";
 import type { Card, Combination, LastMove } from "@/lib/game/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
 import { seatDirection } from "@/components/seatLayout";
@@ -34,7 +32,7 @@ import { readThrownPlay } from "@/components/table/throws";
 import type { Seating, TableLayout } from "@/components/tableLayout";
 import { clearTrick, NO_TRICK, playOnto, roleOf, sweepEnded, sweepTrick, topPlay, type PlayRole, type Trick, type TrickPlay } from "./trick";
 import { flightPose, pileSlots, type CardFrom } from "@/components/flightPose";
-import { ComboMark, TrickWinnerMark } from "./notices/pileNotices";
+import { TrickWinnerMark } from "./notices/pileNotices";
 import { noticeTiming } from "./noticeModel";
 import { a11yHidden } from "@/lib/a11y";
 import { landingPulsesFor } from "@/lib/device/moments";
@@ -377,8 +375,6 @@ export interface PileLayerProps {
   onFlightClock?: (key: string, clock: FlightClock) => void;
   /** The sweep's fade has ended: the swept trick leaves the felt. */
   onSweepEnd: () => void;
-  /** The combination the chip names, which may run ahead of the cards landing. */
-  comboLabel: Combination | null;
   trickWinner: string | null;
   /** The width share the field's arc may take — see FIELD_WIDTH_SHARE. */
   roomW: number;
@@ -394,11 +390,10 @@ export interface PileLayerProps {
 
 /**
  * Every play of the trick and the swept trick, each one group of views from
- * the throw to the end of its sweep, with the pile's chip and winner tag.
+ * the throw to the end of its sweep, with the winner tag.
  */
 export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
-  const { trick, flights, signal, bombClock, comboLabel, trickWinner, roomW, scale = 1, hidden = false, lit = false } = props;
-  const { t } = useTranslation();
+  const { trick, flights, signal, bombClock, trickWinner, roomW, scale = 1, hidden = false, lit = false } = props;
   const cardScale = scale * FIELD_SCALE;
   const reduceMotion = usePrefersReducedMotion();
   const opaque = useSharedValue(1);
@@ -490,7 +485,6 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
 
   const top = topPlay(trick.plays);
   const stack = top ? fieldSlots(top.combo.cards, cardScale, roomW) : null;
-  const label = comboText(comboLabel, t);
 
   // A plain view with no z-index of its own, so each group's `zIndex` reaches the moments beside it.
   return (
@@ -526,19 +520,6 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
           />
         ))}
       </View>
-
-      {hidden ? null : comboLabel && label !== null && (
-        <View
-          style={[
-            pileStyles.comboLabel,
-            { marginTop: fieldSlots(comboLabel.cards, cardScale, roomW).h / 2 + Spacing.snug },
-          ]}
-        >
-          <View testID="combo-chip">
-            <ComboMark label={label} scale={scale} />
-          </View>
-        </View>
-      )}
     </Animated.View>
   );
 });
@@ -883,7 +864,4 @@ const pileStyles = StyleSheet.create({
     justifyContent: "center",
     position: "relative",
   },
-  // Out of the flow and hung off the centre: in it, the chip's arrival would lift the cards the
-  // flight has just set down.
-  comboLabel: { position: "absolute", top: "50%", left: 0, right: 0, alignItems: "center" },
 });

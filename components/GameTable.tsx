@@ -1183,7 +1183,6 @@ export function GameTable({
                   onFlightEnd={onFlightDone}
                   onFlightClock={onFlightClock}
                   onSweepEnd={endSweep}
-                  comboLabel={timeline.inFlight ? null : onTop}
                   trickWinner={trickWinnerTag === null ? null : players[trickWinnerTag.seat]?.name ?? ""}
                   roomW={frame.fieldRoomW}
                   scale={scale}
