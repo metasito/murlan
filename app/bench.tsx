@@ -14,12 +14,12 @@ export default Bench;
  * The bench keeps running without its screen, so a render crash here must not strand the phone on the
  * generic fallback: it shows the error, reports it to the collector, and mounts the screen again.
  */
-let retries = 0;
+const crashes = { retries: 0 };
 
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
   useEffect(() => {
     reportError(error);
-    const id = retries++ < 10 ? setTimeout(() => void retry(), 3000) : undefined;
+    const id = (crashes.retries += 1) <= 10 ? setTimeout(() => void retry(), 3000) : undefined;
     return () => clearTimeout(id);
   }, [error, retry]);
   return (
