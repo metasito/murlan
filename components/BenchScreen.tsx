@@ -79,7 +79,6 @@ async function foreground(alive: { current: boolean }) {
   }
 }
 
-const CAPTURE_START_MS = 5000;
 
 const captureFailed = (phase: "start" | "stop") => (e: unknown) => {
   diag({ k: "capture", t: performance.now(), phase, error: String(e) });
@@ -164,7 +163,7 @@ export function BenchScreen() {
           attempted = true;
           let timer: ReturnType<typeof setTimeout> | undefined;
           const silent = new Promise<boolean>((r) => {
-            timer = setTimeout(() => r(captureFailed("start")(new Error(`no answer in ${CAPTURE_START_MS} ms`))), CAPTURE_START_MS);
+            timer = setTimeout(() => r(captureFailed("start")(new Error(`no answer in 5 s`))), 5000);
           });
           capturing = await Promise.race([probe.startCapture(true).catch(captureFailed("start")), silent]);
           clearTimeout(timer);
