@@ -410,6 +410,7 @@ describe("a file that names a merge is not a script that runs one", () => {
     "node m.js merges.md",
     "node -e \"require('child_process').execSync('gh pr merge 5') // a test\" merges.md",
     "bash --rcfile m.sh -ic true",
+    "bash -i --rcfile m.sh -c true",
     "bash --init-file=m.sh -i",
     "BASH_ENV=m.sh bash -c true",
     "ENV=m.sh sh -c true",
