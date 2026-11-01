@@ -53,3 +53,6 @@ Verify against source before changing any.
   watch that replaces a half-open link (`tests/integration/redisBlackhole.test.ts`). Losing Redis
   stops cross-instance traffic only; a table on one instance plays on
   (`tests/integration/redisDegraded.test.ts`).
+- **Every transaction goes through `transaction()` (`server/store/db.ts`), never drizzle's own.**
+  Drizzle's leaves a client whose `BEGIN` failed checked out for good, so two such failures wedged
+  a two-slot pool (`tests/server/transactionScan.test.ts`).

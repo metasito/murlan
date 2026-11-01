@@ -1,6 +1,6 @@
 import { now } from "../http/clock.ts";
 import { eq, and, asc, inArray, sql } from "drizzle-orm";
-import { db, type Database } from "./db.ts";
+import { db, transaction, type Database, type Tx } from "./db.ts";
 import { users, rooms, roomPlayers, gameInvites, activeGames } from "../../shared/schema.ts";
 import type { User, Room, RoomPlayer, RoomVisibility } from "../../shared/schema.ts";
 import { heldSeats, renumbering, seatForClaim, settleRelease, startRefusal } from "../game/seatAllocation.ts";
@@ -13,7 +13,6 @@ export type SeatClaim =
   | { ok: false; reason: "no_room" | "not_waiting" | "full" | "held" | "not_public" | "empty" };
 
 type SeatedUser = RoomPlayer & { user: User };
-type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 export type StartClose =
   | { ok: true; room: Room; roster: SeatedUser[] }
@@ -94,7 +93,7 @@ export const roomStore = {
   ): Promise<Room> {
     for (let attempt = 0; attempt < 10; attempt++) {
       try {
-        return await db().transaction(async (tx) => {
+        return await transaction(async (tx) => {
           const [room] = await tx.insert(rooms).values({
             code: generateRoomCode(),
             hostUserId,
@@ -167,7 +166,7 @@ export const roomStore = {
     userId: string,
     opts: { liveMatch: boolean; renumber: boolean; admits: (roster: SeatedUser[]) => boolean }
   ): Promise<StartClose> {
-    return db().transaction(async (tx): Promise<StartClose> => {
+    return transaction(async (tx): Promise<StartClose> => {
       const room = await lockRoom(tx, roomId);
       if (!room) return { ok: false, reason: "no_room" };
       const refused = startRefusal(room, userId, opts.liveMatch);
@@ -198,7 +197,7 @@ export const roomStore = {
     roomId: string,
     userId: string
   ): Promise<{ room: Room; remaining: SeatedUser[]; emptied: boolean; wasHost: boolean } | null> {
-    return db().transaction(async (tx) => {
+    return transaction(async (tx) => {
       const room = await lockRoom(tx, roomId);
       if (!room) return null;
       await tx
@@ -219,7 +218,7 @@ export const roomStore = {
    * they held it.
    */
   async restoreSeat(roomId: string, userId: string, seatIndex: number, host: boolean) {
-    await db().transaction(async (tx) => {
+    await transaction(async (tx) => {
       if (!(await lockRoom(tx, roomId))) return;
       await upsertSeatRow(tx, roomId, userId, seatIndex);
       if (host) await tx.update(rooms).set({ hostUserId: userId }).where(eq(rooms.id, roomId));
@@ -232,7 +231,7 @@ export const roomStore = {
    * mapping on the next rematch.
    */
   async upsertRoomPlayer(roomId: string, userId: string, seatIndex: number) {
-    await db().transaction((tx) => upsertSeatRow(tx, roomId, userId, seatIndex));
+    await transaction((tx) => upsertSeatRow(tx, roomId, userId, seatIndex));
   },
 
   /**
@@ -247,7 +246,7 @@ export const roomStore = {
     holdMs: number,
     opts: { requirePublic?: boolean; requireOccupied?: boolean } = {}
   ): Promise<SeatClaim> {
-    return db().transaction(async (tx): Promise<SeatClaim> => {
+    return transaction(async (tx): Promise<SeatClaim> => {
       const room = await lockRoom(tx, roomId);
       if (!room) return { ok: false, reason: "no_room" };
       if (room.status !== "waiting") return { ok: false, reason: "not_waiting" };

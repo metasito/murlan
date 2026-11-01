@@ -34,6 +34,7 @@ describe("a half-open Redis link", { skip: hasDatabase() ? false : skipMessage()
   let ports: number[];
 
   before(async () => {
+    // Creates the schema the child-process servers are then pointed at.
     const admin = new pg.Pool({ connectionString: baseUrl });
     await admin.query(`CREATE SCHEMA "${schema}"`);
     await admin.end();
@@ -69,8 +70,6 @@ describe("a half-open Redis link", { skip: hasDatabase() ? false : skipMessage()
       `A to replace all ${live} stalled connections`,
       REPLACED_WITHIN_MS
     );
-    const replacedMs = Date.now() - started;
-    assert.ok(replacedMs < REPLACED_WITHIN_MS, `A took ${replacedMs} ms to replace its connections`);
 
     const created = waitFor(onB, "room:state");
     onB.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });

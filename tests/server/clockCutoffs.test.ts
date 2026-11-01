@@ -5,7 +5,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { getTableName, type SQL } from "drizzle-orm";
-import { db, openDatabase } from "../../server/store/db.ts";
+import { db, openDatabase, pool } from "../../server/store/db.ts";
 import { installClock } from "../../server/http/clock.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { adminSnapshot } from "../../server/http/admin.ts";
@@ -45,19 +45,24 @@ function emptyChain(): unknown {
 describe("a cutoff reads the clock its column was written on", () => {
   test("a room is stamped from the installed clock, the clock its stale-room sweep reads", async (t) => {
     const clock = ahead(t);
-    let values: Record<string, unknown> | undefined;
-    const tx = {
-      insert: (table: unknown) => ({
-        values: (v: Record<string, unknown>) => {
-          if (table === rooms) values = v;
-          return { returning: async () => [{ id: "r", ...v }] };
-        },
-      }),
+    const inserts: { text: string; values: unknown[] }[] = [];
+    const client = {
+      query: async (q: string | { text: string }, values: unknown[] = []) => {
+        if (typeof q !== "string" && q.text.startsWith(`insert into "${getTableName(rooms)}"`)) {
+          inserts.push({ text: q.text, values });
+        }
+        return { rows: [], rowCount: 0, fields: [] };
+      },
+      release: () => {},
     };
-    t.mock.method(db(), "transaction", (run: (t: typeof tx) => unknown) => run(tx));
-    await roomStore.createRoom("host", { gameMode: "teams", maxPlayers: 4 });
-    assert.ok(values?.createdAt instanceof Date, "created_at is left to Postgres' defaultNow()");
-    assert.ok(near(values.createdAt, clock.now(), 1_000));
+    t.mock.method(pool(), "connect", async () => client);
+    await assert.rejects(roomStore.createRoom("host", { gameMode: "teams", maxPlayers: 4 }), /insert returned no row/);
+    const [insert] = inserts;
+    assert.ok(insert, "createRoom wrote no room");
+    assert.ok(
+      insert.values.some((v) => near(v, clock.now(), 1_000)),
+      `created_at is left to Postgres' defaultNow(): ${JSON.stringify(insert.values)}`
+    );
   });
 
   test("the replay sweep judges server-written finished_at on the installed clock", async (t) => {

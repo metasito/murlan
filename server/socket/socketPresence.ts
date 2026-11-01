@@ -118,7 +118,7 @@ const pendingDisconnects = new Set<Promise<void>>();
 /**
  * Resolves once every disconnect handler already started has finished, or at
  * `timeoutMs`. `io.close()` starts them and waits for none, and a seat lost at a
- * table another instance owns is forwarded over the adapter pool.
+ * table another instance owns is forwarded over the cluster adapter.
  */
 export async function settleDisconnects(timeoutMs: number): Promise<void> {
   let timer: NodeJS.Timeout | undefined;
@@ -230,11 +230,10 @@ export function registerDisconnect({ rt, socket, userId }: HandlerContext) {
  * association across before closing it — and has closed it by the time this
  * runs, so it is no longer in the room.
  *
- * Not gated on there being more than one instance, though the adapter would
- * answer that for free: it answers from the heartbeat's view of its peers, and
- * a second instance is invisible for the first few seconds of its life —
- * exactly when a player is most likely to be handed to it. One `pg_notify` per
- * connection is far below the queries this handler already runs.
+ * Not gated on there being more than one instance: the adapter's count of its
+ * peers can lag a second instance's first moments, exactly when a player is
+ * most likely to be handed to it. One Redis publish per connection is far below
+ * the queries this handler already runs.
  */
 export function evictRemoteSessions(io: SocketServer, userId: string, keep: Socket) {
   const eviction: Eviction = { userId, keepSocketId: keep.id, connectedAt: keep.handshake.issued };
@@ -275,7 +274,7 @@ export function registerSessionEviction(io: SocketServer) {
  * association has to move with the account or nothing releases the seat.
  *
  * The client stops reconnecting on this code (`context/SocketContext.tsx`):
- * socket.io retries forever, so two tabs would evict each other indefinitely.
+ * it retries every other close, so two tabs would evict each other indefinitely.
  */
 export function evictReplacedSession(
   io: SocketServer,

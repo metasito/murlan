@@ -1,8 +1,8 @@
 import { now } from "./clock.ts";
 import { randomBytes, randomInt, createHash } from "node:crypto";
 import { and, eq, gt, inArray, isNull, sql } from "drizzle-orm";
-import { db, type Database } from "../store/db.ts";
-import { lockUsers, type Tx } from "../store/userLock.ts";
+import { db, transaction, type Database, type Tx } from "../store/db.ts";
+import { lockUsers } from "../store/userLock.ts";
 import { userStore, uniqueViolation } from "../store/userStore.ts";
 import { authTokens } from "../../shared/schema.ts";
 import type { AuthTokenPurpose } from "../../shared/schema.ts";
@@ -127,7 +127,7 @@ export async function replaceEmailVerifyCode(params: {
   for (let attempt = 0; ; attempt++) {
     const code = randomInt(0, 1_000_000).toString().padStart(6, "0");
     try {
-      await db().transaction(async (tx) => {
+      await transaction(async (tx) => {
         await lockUsers(tx, [userId]);
         const replaced = await tx
           .delete(authTokens)

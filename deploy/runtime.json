@@ -4,6 +4,6 @@
   "redis": 7,
   "sigtermGraceMs": 10000,
   "proxyHops": 1,
-  "pgConnectionsPerInstance": 11,
+  "pgConnectionsPerInstance": 15,
   "maxClusterMessagesPerSecond": 1000
 }

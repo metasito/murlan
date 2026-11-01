@@ -11,11 +11,13 @@
  * `drizzle.config.ts` excludes it from push, and `server/http/session.ts` runs
  * connect-pg-simple with `createTableIfMissing: false`.
  */
-import type { Pool } from "pg";
+import type { Client, Pool } from "pg";
 import { Column, is, SQL, StringChunk } from "drizzle-orm";
 import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 import * as schema from "../../shared/schema.ts";
 import { logger } from "../shared/logger.ts";
+import { createClient } from "./pool.ts";
+import { now } from "../http/clock.ts";
 
 function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
@@ -251,14 +253,12 @@ function inDependencyOrder<T extends { cfg: TableConfig }>(configs: T[]): T[] {
  * from: `shared/schema.ts` deliberately does not describe it, so drizzle-kit
  * never gains the right to drop or recreate it.
  */
-const SESSION_TABLE_STATEMENTS = [
-  `CREATE TABLE IF NOT EXISTS "session" (
+const SESSION_TABLE = `CREATE TABLE IF NOT EXISTS "session" (
   "sid" varchar NOT NULL COLLATE "default" PRIMARY KEY,
   "sess" json NOT NULL,
   "expire" timestamp(6) NOT NULL
-);`,
-  `CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");`,
-];
+);`;
+const SESSION_INDEX = { name: "IDX_session_expire", on: `"session" ("expire")` };
 
 /**
  * The unique indexes whose duplicates boot may clear for itself.
@@ -270,6 +270,13 @@ const SESSION_TABLE_STATEMENTS = [
  * on their own belongs here; `users` never does.
  */
 const DEDUPE_ON_BOOT = new Set(["friends_accepted_uq", "friends_pending_pair_uq"]);
+
+/**
+ * Tables boot drops because what they hold must not outlive the code that wrote them. The one
+ * exception to "additive only", and named here one at a time: `socket_io_attachments` was the
+ * Postgres socket adapter's spill table, and its rows carry live session cookies and tickets.
+ */
+export const RETIRED_TABLES = ["socket_io_attachments"] as const;
 
 /**
  * Deletes what its index is about to reject, all but one row of each group.
@@ -306,20 +313,28 @@ function dedupeForIndex(
 export type SchemaCatalog = {
   /** `table.column` */
   columns: ReadonlySet<string>;
+  /** Valid indexes only. */
   indexes: ReadonlySet<string>;
+  /** Indexes a failed `CREATE INDEX CONCURRENTLY` left behind (`pg_index.indisvalid` false). */
+  invalidIndexes?: ReadonlySet<string>;
 };
 
 const EMPTY_CATALOG: SchemaCatalog = { columns: new Set(), indexes: new Set() };
+
+function createIndex(unique: boolean, name: string, on: string): string {
+  return `CREATE ${unique ? "UNIQUE " : ""}INDEX CONCURRENTLY IF NOT EXISTS ${quoteIdent(name)} ON ${on};`;
+}
 
 /**
  * Every statement needed to bring an empty or partially-populated database up
  * to `shared/schema.ts`, in application order: enum types, then tables, then
  * columns added to tables that already existed, then indexes (which may target
- * one of those new columns), then the session table.
+ * one of those new columns).
  *
  * `existing` drops the `ADD COLUMN`s and `CREATE INDEX`es (with an index's
  * dedupe) the database already has: each `ADD COLUMN IF NOT EXISTS` takes
- * ACCESS EXCLUSIVE on its table even when it adds nothing.
+ * ACCESS EXCLUSIVE on its table even when it adds nothing. An index it lists as
+ * invalid is dropped first, since `IF NOT EXISTS` would keep it as it is.
  *
  * Deliberately narrow: it understands only the schema features
  * `shared/schema.ts` uses today, and throws a descriptive error naming itself
@@ -352,6 +367,14 @@ export function schemaStatements(existing: SchemaCatalog = EMPTY_CATALOG): strin
   const addColumnStatements: string[] = [];
   const indexStatements: string[] = [];
   const declaredDedupes = new Set<string>();
+  const ensureIndex = (name: string, create: string, dedupe?: string) => {
+    if (existing.indexes.has(name)) return;
+    if (existing.invalidIndexes?.has(name)) {
+      indexStatements.push(`DROP INDEX CONCURRENTLY IF EXISTS ${quoteIdent(name)};`);
+    }
+    if (dedupe) indexStatements.push(dedupe);
+    indexStatements.push(create);
+  };
 
   for (const { cfg } of inDependencyOrder(configs)) {
     const fkByColumn = foreignKeysByColumn(cfg);
@@ -373,7 +396,6 @@ export function schemaStatements(existing: SchemaCatalog = EMPTY_CATALOG): strin
     }
 
     for (const idx of cfg.indexes) {
-      const kind = idx.config.unique ? "CREATE UNIQUE INDEX" : "CREATE INDEX";
       const indexName = idx.config.name;
       if (!indexName) {
         throw new Error(
@@ -400,17 +422,21 @@ export function schemaStatements(existing: SchemaCatalog = EMPTY_CATALOG): strin
       const predicate = idx.config.where
         ? renderSqlExpression(idx.config.where, `index "${indexName}"'s WHERE clause`, cfg.name)
         : undefined;
-      if (DEDUPE_ON_BOOT.has(indexName)) declaredDedupes.add(indexName);
-      if (existing.indexes.has(indexName)) continue;
-      if (DEDUPE_ON_BOOT.has(indexName)) {
-        indexStatements.push(dedupeForIndex(cfg, cols, predicate));
-      }
-      indexStatements.push(
-        `${kind} IF NOT EXISTS ${quoteIdent(indexName)} ON ${quoteIdent(cfg.name)}` +
-          `${using} (${cols.join(", ")})${predicate ? ` WHERE ${predicate}` : ""};`
+      const dedupe = DEDUPE_ON_BOOT.has(indexName);
+      if (dedupe) declaredDedupes.add(indexName);
+      ensureIndex(
+        indexName,
+        createIndex(
+          Boolean(idx.config.unique),
+          indexName,
+          `${quoteIdent(cfg.name)}${using} (${cols.join(", ")})${predicate ? ` WHERE ${predicate}` : ""}`
+        ),
+        dedupe ? dedupeForIndex(cfg, cols, predicate) : undefined
       );
     }
   }
+  tableStatements.push(SESSION_TABLE);
+  ensureIndex(SESSION_INDEX.name, createIndex(false, SESSION_INDEX.name, SESSION_INDEX.on));
 
   // A name nobody declares emits nothing at all, and the index it was written
   // for is the one that fails at boot.
@@ -423,12 +449,22 @@ export function schemaStatements(existing: SchemaCatalog = EMPTY_CATALOG): strin
     }
   }
 
+  const declared = new Set(configs.map(({ cfg }) => cfg.name));
+  for (const table of RETIRED_TABLES) {
+    if (declared.has(table)) {
+      throw new Error(
+        `schemaStatements: RETIRED_TABLES names "${table}", which shared/schema.ts still ` +
+          `declares — update server/store/schemaDdl.ts.`
+      );
+    }
+  }
+
   return [
     ...enumStatements,
     ...tableStatements,
     ...addColumnStatements,
     ...indexStatements,
-    ...SESSION_TABLE_STATEMENTS,
+    ...RETIRED_TABLES.map((table) => `DROP TABLE IF EXISTS ${quoteIdent(table)};`),
   ];
 }
 
@@ -480,35 +516,107 @@ export async function assertRenamesApplied(pool: Pick<Pool, "query">): Promise<v
   }
 }
 
-async function readCatalog(pool: Pick<Pool, "query">): Promise<SchemaCatalog> {
-  const { rows } = await pool.query<{ kind: "column" | "index"; name: string }>(
+async function readCatalog(db: Pick<Pool, "query">): Promise<SchemaCatalog> {
+  const { rows } = await db.query<{ kind: "column" | "index" | "invalid_index"; name: string }>(
     `SELECT 'column' AS kind, table_name || '.' || column_name AS name
        FROM information_schema.columns WHERE table_schema = current_schema()
      UNION ALL
-     SELECT 'index', indexname FROM pg_indexes WHERE schemaname = current_schema()`
+     SELECT CASE WHEN i.indisvalid THEN 'index' ELSE 'invalid_index' END, c.relname
+       FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+      WHERE c.relnamespace = current_schema()::regnamespace`
   );
   const columns = new Set<string>();
   const indexes = new Set<string>();
-  for (const row of rows) (row.kind === "column" ? columns : indexes).add(row.name);
-  return { columns, indexes };
+  const invalidIndexes = new Set<string>();
+  const into = { column: columns, index: indexes, invalid_index: invalidIndexes };
+  for (const row of rows) into[row.kind].add(row.name);
+  return { columns, indexes, invalidIndexes };
+}
+
+/** The two-key form, which keeps it out of the one-key space room ownership locks in. */
+const SCHEMA_LOCK_CLASS = 0x6d75726c;
+const SCHEMA_LOCK_POLL_MS = 100;
+const SCHEMA_LOCK_LOG_EVERY_MS = 30_000;
+
+/**
+ * Polled with `pg_try_advisory_lock` rather than waited on with `pg_advisory_lock`: a backend
+ * blocked inside a statement holds a snapshot, and `CREATE INDEX CONCURRENTLY` in the holder
+ * waits for every older snapshot, so the waiter and the holder would deadlock.
+ */
+async function lockSchema(db: Pick<Pool, "query">): Promise<void> {
+  const started = now();
+  let loggedAt = -Infinity;
+  for (;;) {
+    const { rows } = await db.query<{ locked: boolean }>(
+      "SELECT pg_try_advisory_lock($1, hashtext(current_schema())) AS locked",
+      [SCHEMA_LOCK_CLASS]
+    );
+    if (rows[0]?.locked) return;
+    const waitedMs = now() - started;
+    if (waitedMs - loggedAt >= SCHEMA_LOCK_LOG_EVERY_MS) {
+      logger.info({ waitedMs }, "Waiting for another instance to finish ensuring the schema");
+      loggedAt = waitedMs;
+    }
+    await new Promise((resolve) => setTimeout(resolve, SCHEMA_LOCK_POLL_MS));
+  }
 }
 
 /**
- * Brings the connected database up to `shared/schema.ts`. Every statement it
- * emits is idempotent and additive, but running it is not unconditionally
- * safe: it throws against a database that still holds a column
+ * A concurrent build waits out every transaction in the database holding an older snapshot, a
+ * lock wait `lock_timeout` would cancel, leaving the index INVALID. Its SHARE UPDATE EXCLUSIVE
+ * queues no reader or writer, so it waits without one; the 3 s stays on what takes ACCESS
+ * EXCLUSIVE.
+ */
+const CONCURRENT_INDEX = /^(?:CREATE (?:UNIQUE )?|DROP )INDEX CONCURRENTLY /;
+
+/**
+ * Brings the connected database up to `shared/schema.ts`, holding the schema lock for the
+ * whole run. Every statement it emits is idempotent and additive, but running it is not
+ * unconditionally safe: it throws against a database that still holds a column
  * `shared/schema.ts` has renamed, which only `npm run db:push` can carry out.
  *
- * Not wrapped in a transaction: Postgres restricts `ALTER TYPE ... ADD VALUE`
- * inside one, and a half-applied additive schema is recoverable next boot. A
- * failure is rethrown so the server refuses to start on a schema it knows is
- * wrong.
+ * Not wrapped in a transaction: Postgres restricts `ALTER TYPE ... ADD VALUE` inside one,
+ * `CREATE INDEX CONCURRENTLY` cannot run in one, and a half-applied additive schema is
+ * recoverable next boot. A failure is rethrown so the server refuses to start on a schema it
+ * knows is wrong.
  */
-export async function ensureSchema(pool: Pool): Promise<void> {
-  await assertRenamesApplied(pool);
-  const statements = schemaStatements(await readCatalog(pool));
+export async function applySchema(db: Pick<Pool, "query">): Promise<void> {
+  await lockSchema(db);
+  await assertRenamesApplied(db);
+  const statements = schemaStatements(await readCatalog(db));
+  let waitingOutSnapshots = false;
   for (const statement of statements) {
-    await pool.query(statement);
+    const concurrent = CONCURRENT_INDEX.test(statement);
+    if (concurrent !== waitingOutSnapshots) {
+      await db.query(concurrent ? "SET lock_timeout = 0" : "RESET lock_timeout");
+      waitingOutSnapshots = concurrent;
+    }
+    await db.query(statement);
   }
   logger.info({ statements: statements.length }, "Database schema ensured");
+}
+
+/** A connected `murlan-ddl` client: no statement or client-side query timeout, a 3 s lock timeout. */
+export async function openDdlClient(): Promise<Client> {
+  const client = createClient("ddl", (err) => logger.error({ err }, "Schema connection failed"));
+  try {
+    await client.connect();
+    // pg leaves a zero timeout out of the startup packet, so a role's or database's own
+    // statement_timeout would otherwise apply to an index build.
+    await client.query("SET statement_timeout = 0");
+  } catch (err) {
+    await client.end().catch(() => {});
+    throw err;
+  }
+  return client;
+}
+
+/** `applySchema` on a client of its own, never the app pool, ended with the run. */
+export async function ensureSchema(): Promise<void> {
+  const client = await openDdlClient();
+  try {
+    await applySchema(client);
+  } finally {
+    await client.end().catch((err: unknown) => logger.warn({ err }, "Could not close the schema connection"));
+  }
 }

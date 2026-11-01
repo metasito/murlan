@@ -1,8 +1,7 @@
 // tests/native/sessionReplaced.test.tsx — what the client does when the server
 // says the account moved.
 //
-// lib/socket.ts sets reconnectionAttempts: Infinity, so a socket the server
-// closes is retried within the second. On SESSION_REPLACED that retry would
+// SocketProvider retries every socket the server closes within seconds. On SESSION_REPLACED that retry would
 // evict whichever session just took the account, which would evict this one
 // back, for as long as both are open. Stopping the reconnection is the whole
 // point of the code, and a terminal state the player can act on is what
@@ -43,10 +42,12 @@ describe('SESSION_REPLACED', () => {
     const view = await mount();
 
     await fireSocketError(REPLACED);
-    expect(lastSocket().io.reconnection).toHaveBeenCalledWith(false);
     expect(lastSocket().disconnect).toHaveBeenCalledTimes(1);
 
+    // The close that follows on the wire, and a failure of any attempt still out.
     await act(async () => {
+      lastSocket().drop('io server disconnect');
+      lastSocket().refuse(new Error('websocket error'));
       jest.advanceTimersByTime(60_000);
     });
     expect(lastSocket().connect).not.toHaveBeenCalled();
@@ -78,7 +79,6 @@ describe('SESSION_REPLACED', () => {
       fireEvent.press(view.getByLabelText(locale['sessionReplaced.reconnect']));
     });
 
-    expect(lastSocket().io.reconnection).toHaveBeenLastCalledWith(true);
     expect(lastSocket().connect).toHaveBeenCalledTimes(1);
     expect(view.queryByText(locale['sessionReplaced.title'])).toBeNull();
 

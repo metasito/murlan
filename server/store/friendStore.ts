@@ -1,6 +1,6 @@
 import { now } from "../http/clock.ts";
 import { eq, and, or, sql, desc, inArray } from "drizzle-orm";
-import { db, type Database } from "./db.ts";
+import { db, transaction, type Database } from "./db.ts";
 import { uniqueViolation } from "./userStore.ts";
 import { users, rooms, roomPlayers, friends, gameInvites } from "../../shared/schema.ts";
 import type { User, Friend } from "../../shared/schema.ts";
@@ -86,7 +86,7 @@ export const friendStore = {
     // the caller's own terms if it is still there, succeeding if it is not.
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        return await db().transaction(async (tx): Promise<AddFriendResult> => {
+        return await transaction(async (tx): Promise<AddFriendResult> => {
           if (await this.areFriends(userId, friendUserId, tx)) {
             return { ok: false, reason: "already_friends" };
           }
@@ -128,7 +128,7 @@ export const friendStore = {
     // leaves a request nobody can ever answer.
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        return await db().transaction(async (tx) => {
+        return await transaction(async (tx) => {
           const [f] = await tx
             .update(friends)
             .set({ status: "accepted" })
@@ -302,7 +302,7 @@ export const friendStore = {
 
   /** Returns the rooms whose invites between the pair were withdrawn with it. */
   async removeFriend(userId: string, friendUserId: string): Promise<string[]> {
-    return db().transaction(async (tx) => {
+    return transaction(async (tx) => {
       await tx.delete(friends).where(
         or(
           and(eq(friends.userId, userId), eq(friends.friendUserId, friendUserId)),

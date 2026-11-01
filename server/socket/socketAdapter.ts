@@ -1,7 +1,20 @@
 import { createAdapter } from "@socket.io/redis-streams-adapter";
+import { MessageType, type ClusterMessage } from "socket.io-adapter";
 import { BLOCK_MS, openRedis, redisKey, streamMaxLen, type RedisClient } from "../store/redis.ts";
 
 type Packet = unknown[];
+
+const HEARTBEAT_MS = 3_000;
+/** How long a peer counts as alive after it was last heard, as the old heartbeat adapter's timeout. */
+const PEER_GRACE_MS = 10_000;
+const HEARTBEAT = "murlan:adapter-heartbeat";
+const LEAVING = "murlan:adapter-leaving";
+
+interface AdapterLinks {
+  client: RedisClient;
+  /** Every connection is up and the subscriber has subscribed, so a peer's reply can reach us. */
+  ready(): boolean;
+}
 
 /**
  * The client the adapter is handed. Its read loop and subscriber are `duplicate()`s, which would
@@ -12,21 +25,37 @@ type Packet = unknown[];
  * The adapter disconnects them when `io.close()` closes it, but shutdown forwards its departing
  * players' actions after that, and their acks arrive on the subscriber; `closeRedis` ends them.
  */
-function adapterClient(): RedisClient {
+function adapterLinks(): AdapterLinks {
   const publisher = openRedis("adapter", { offlineQueue: false });
-  return Object.assign(Object.create(publisher) as RedisClient, {
+  const copies: RedisClient[] = [];
+  let subscribed = false;
+  const client = Object.assign(Object.create(publisher) as RedisClient, {
     publish: (channel: string, payload: Buffer) => publisher.publish(channel, payload).catch(() => 0),
     duplicate: () => {
       const copy = openRedis("adapter", { connect: false });
+      copies.push(copy);
       const { connect, subscribe, xRead } = { connect: copy.connect.bind(copy), subscribe: copy.subscribe.bind(copy), xRead: copy.xRead.bind(copy) };
       return Object.assign(copy, {
         connect: () => connect().catch(() => copy),
         disconnect: () => Promise.resolve(),
-        subscribe: (...args: Parameters<typeof subscribe>) => subscribe(...args).catch(() => {}),
+        subscribe: (...args: Parameters<typeof subscribe>) =>
+          subscribe(...args).then(
+            () => {
+              subscribed = true;
+            },
+            () => {}
+          ),
         xRead: (...args: Parameters<typeof xRead>) => (copy.isOpen ? xRead(...args) : new Promise<never>(() => {})),
       });
     },
   });
+  return { client, ready: () => subscribed && publisher.isReady && copies.every((c) => c.isReady) };
+}
+
+/** What the adapter is built with, exported so a test reads the values it actually gets. */
+export function adapterOptions() {
+  const stream = redisKey("socket.io");
+  return { streamName: stream, channelPrefix: stream, maxLen: streamMaxLen(), blockTimeInMs: BLOCK_MS };
 }
 
 /**
@@ -37,32 +66,71 @@ function adapterClient(): RedisClient {
  * are never told about each other.
  */
 export function createSocketAdapter() {
-  const stream = redisKey("socket.io");
-  const make = createAdapter(adapterClient(), {
-    streamName: stream,
-    channelPrefix: stream,
-    maxLen: streamMaxLen(),
-    blockTimeInMs: BLOCK_MS,
-  });
+  const links = adapterLinks();
+  const make = createAdapter(links.client, adapterOptions());
   // Socket.io constructs it with `new`, which an arrow function refuses.
   return function (nsp: unknown) {
     const adapter = make(nsp);
-    const count = adapter.serverCount.bind(adapter);
+    const cluster = adapter as unknown as { uid: string; onMessage(message: ClusterMessage, offset?: string): void };
+    const subscribers = adapter.serverCount.bind(adapter);
     const serverSideEmit = adapter.serverSideEmit.bind(adapter);
-    // Socket.io leaves this promise unhandled. A broadcast's ack waits only on the instances it
-    // can reach, and presence answers from this one alone.
-    adapter.serverCount = () => count().catch(() => 1);
-    // A request whose peers cannot be counted reaches the ack as an error, never as "no peer
-    // owns it": the caller must not take over a table another instance may still hold.
-    adapter.serverSideEmit = async (packet: Packet) => {
+    const fetchSockets = adapter.fetchSockets.bind(adapter);
+    const onMessage = cluster.onMessage.bind(adapter);
+    const close = adapter.close.bind(adapter);
+    const heard = new Map<string, number>();
+
+    /**
+     * The peers a request must hear from. The subscriber count alone comes up short whenever a
+     * peer's subscriber is between subscriptions, and short reads as "nobody else holds this
+     * table"; so a peer heard within the grace still counts, and an instance not itself
+     * subscribed cannot count at all.
+     */
+    async function peers(): Promise<number> {
+      if (!links.ready()) throw new Error("this instance is not subscribed to the cluster");
+      const count = await subscribers();
+      const now = performance.now();
+      for (const [uid, at] of heard) if (now - at > PEER_GRACE_MS) heard.delete(uid);
+      return Math.max(count - 1, heard.size);
+    }
+
+    // The adapter reads the count once, synchronously, at the start of the request this pins it for.
+    let pinned: number | null = null;
+    const withPeers = <T>(n: number, request: () => T): T => {
+      pinned = n + 1;
+      try {
+        return request();
+      } finally {
+        pinned = null;
+      }
+    };
+    // Socket.io leaves this promise unhandled, and a broadcast's ack waits only on the instances
+    // it can reach.
+    adapter.serverCount = () => (pinned !== null ? Promise.resolve(pinned) : peers().then((n) => n + 1, () => 1));
+    // A request whose peers cannot be counted fails, never answering "no peer owns it": the
+    // caller must not release a seat or take over a table another instance may still hold.
+    adapter.serverSideEmit = (packet: Packet) => {
       const ack = packet.at(-1);
       if (typeof ack !== "function") return serverSideEmit(packet);
-      try {
-        await count();
-      } catch (err) {
-        return ack(err, []);
-      }
-      return serverSideEmit(packet);
+      return peers().then(
+        (n) => withPeers(n, () => serverSideEmit(packet)),
+        (err: unknown) => ack(err, [])
+      );
+    };
+    adapter.fetchSockets = (opts: Parameters<typeof fetchSockets>[0]) =>
+      opts.flags?.local ? fetchSockets(opts) : peers().then((n) => withPeers(n, () => fetchSockets(opts)));
+    cluster.onMessage = (message: ClusterMessage, offset?: string) => {
+      if (message.uid !== cluster.uid) heard.set(message.uid, performance.now());
+      const event = message.type === MessageType.SERVER_SIDE_EMIT ? (message.data.packet as Packet)[0] : undefined;
+      if (event === LEAVING) heard.delete(message.uid);
+      if (event === HEARTBEAT || event === LEAVING) return;
+      return onMessage(message, offset);
+    };
+    const beat = setInterval(() => void serverSideEmit([HEARTBEAT]), HEARTBEAT_MS);
+    (beat as unknown as { unref?: () => void }).unref?.();
+    adapter.close = () => {
+      clearInterval(beat);
+      void serverSideEmit([LEAVING]);
+      return close();
     };
     return adapter;
   };
