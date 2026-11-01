@@ -100,9 +100,12 @@ export function adminDb(): Database {
   return open.admin.db;
 }
 
+/** The admin pool holds only reads, which no shutdown needs to wait for. */
+const ADMIN_DRAIN_MS = 250;
+
 /**
- * Waits up to `drainMs` for the app and admin pools to go quiet, then ends them; `ended` settles
- * once both have. An app pool still busy past `drainMs` is logged and ended anyway, and
+ * Waits up to `drainMs` for the app pool to go quiet, and briefly for the admin pool, then ends
+ * them; `ended` settles once both have. An app pool still busy past `drainMs` is logged and ended anyway, and
  * its `ended` may never settle — `pool.end()` waits on every checked-out client
  * — so a caller with a deadline bounds the wait itself.
  *
@@ -117,10 +120,13 @@ export async function closeDatabase({ drainMs }: { drainMs?: number } = {}): Pro
   }
   if (!open) return { ended: Promise.resolve() };
   const { app: { pool: closing }, admin: { pool: closingAdmin } } = open;
-  const [drained] = await Promise.all([
+  const [drained, adminDrained] = await Promise.all([
     drainPool(closing, { timeoutMs: drainMs }),
-    drainPool(closingAdmin, { timeoutMs: drainMs }),
+    drainPool(closingAdmin, { timeoutMs: Math.min(drainMs ?? ADMIN_DRAIN_MS, ADMIN_DRAIN_MS) }),
   ]);
+  if (!adminDrained) {
+    logger.warn({ busy: closingAdmin.totalCount - closingAdmin.idleCount }, "Admin reads still running at shutdown are being abandoned");
+  }
   if (!drained) {
     // While still open: the error recorder writes this line through db().
     logger.error(
