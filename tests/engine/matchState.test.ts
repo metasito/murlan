@@ -44,6 +44,16 @@ describe("celebratesViewer", () => {
     assert.equal(celebratesViewer(TABLE, [undefined, "player_9"], "player_0", false), false);
     assert.equal(celebratesViewer(TABLE, ["player_0"], undefined, false), false);
   });
+
+  test("celebrates nobody for a viewer whose id names no seat", () => {
+    assert.equal(celebratesViewer(TABLE, ["player_0"], "player_9", true), false);
+  });
+
+  test("in team mode, a table without teams celebrates the winning seat alone", () => {
+    const solo = TABLE.map(({ id }) => ({ id }));
+    assert.equal(celebratesViewer(solo, ["player_0"], "player_1", true), false);
+    assert.equal(celebratesViewer(solo, ["player_0"], "player_0", true), true);
+  });
 });
 
 // GAME-RULES.md §11: first-and-fourth (3+0) pays the same total as second-and-
@@ -89,6 +99,10 @@ describe("isDrawnRound", () => {
   test("a partial score set — some seats not scored yet — is not a draw", () => {
     const placementPoints = { player_0: 3, player_1: 2 };
     assert.equal(isDrawnRound(TEAMS_TABLE, placementPoints), false);
+  });
+
+  test("a partial score set that happens to total level is not a draw", () => {
+    assert.equal(isDrawnRound(TEAMS_TABLE, { player_0: 2, player_1: 2 }), false);
   });
 });
 
@@ -154,6 +168,14 @@ describe("roundOutcomeFor", () => {
   // none.
   test("is pending in team mode when the round has a finish order but no scores yet", () => {
     assert.equal(roundOutcomeFor(TEAMS_TABLE, drawnFinishingOrder, {}, "player_0", true), "pending");
+  });
+
+  test("is pending in team mode while only some of the round's seats are scored", () => {
+    assert.equal(roundOutcomeFor(TEAMS_TABLE, drawnFinishingOrder, { player_0: 3 }, "player_0", true), "pending");
+  });
+
+  test("a fresh round with no finish order is neutral, whatever scores the last round left behind", () => {
+    assert.equal(roundOutcomeFor(TEAMS_TABLE, [], drawnScores, "player_0", true), "neutral");
   });
 
   // Free-for-all never reads placementPoints at all — an absent score set must

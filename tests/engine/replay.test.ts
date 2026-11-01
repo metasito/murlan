@@ -230,6 +230,23 @@ test("a log that opens on a pass closes no trick", () => {
   assert.equal((state.lastMove as { closedTrick?: boolean }).closedTrick, false);
 });
 
+test("a trick led by a seat that went out on it closes only once every seat still in has passed", () => {
+  const replay: ReplayDto = {
+    ...REPLAY,
+    seats: [...REPLAY.seats, { seatIndex: 2, userId: "u3", name: "Cim" }],
+    finishingOrder: ["player_0", "player_2", "player_1"],
+    moves: [
+      { seat: 0, combo: single("A", "spades"), handCounts: [0, 3, 3] },
+      { seat: 2, combo: null, handCounts: [0, 3, 3] },
+      { seat: 1, combo: null, handCounts: [0, 3, 3] },
+    ],
+  };
+  const afterOnePass = replayStateAt(replay, 1);
+  assert.deepEqual(afterOnePass.lastPlayedCombination?.cards.map((x) => x.id), ["A_spades"]);
+  assert.equal((afterOnePass.lastMove as { closedTrick?: boolean }).closedTrick, false);
+  assert.equal(replayStateAt(replay, 2).lastPlayedCombination, null);
+});
+
 test("a royal straight is a moment, named royal", () => {
   const replay = withMoves([
     { seat: 0, combo: single("3", "spades"), handCounts: [7, 3] },

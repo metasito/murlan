@@ -134,6 +134,26 @@ describe("scorePillStandings, teams", () => {
   });
 });
 
+test("a seat missing from the finishing order counts its gain in after every seat that finished", () => {
+  const s = scorePillStandings({
+    players: four,
+    teams: false,
+    scores: { player_0: 2, player_1: 3 },
+    placementPoints: { player_0: 2, player_1: 3 },
+    finishingOrder: ["player_1", "player_0"],
+    viewerId: "player_0",
+  });
+  assert.deepEqual(
+    s.rows.map((r) => [r.key, r.order]),
+    [
+      ["player_1", 0],
+      ["player_0", 1],
+      ["player_2", 2],
+      ["player_3", 3],
+    ]
+  );
+});
+
 test("a spectator sees the standings and no row of their own", () => {
   const s = scorePillStandings({ players: four, teams: false, scores: {}, placementPoints: {}, finishingOrder: [], viewerId: undefined });
   assert.equal(s.mine, null);
