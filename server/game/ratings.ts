@@ -1,6 +1,6 @@
 import { now } from "../http/clock.ts";
 import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
-import { db, type Database } from "../store/db.ts";
+import { db, transaction, type Database, type Tx } from "../store/db.ts";
 import { userRatings, users } from "../../shared/schema.ts";
 import { lockUsers } from "../store/userLock.ts";
 import {
@@ -24,7 +24,7 @@ export interface RatedPreview extends RatingAfter {
 }
 
 /** Either the pool or an open transaction — currentRows only ever reads. */
-type Reader = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
+type Reader = Database | Tx;
 
 type SeasonRow = { rating: number; rounds: number };
 
@@ -160,7 +160,7 @@ export async function recordRatedResult(
 ): Promise<Map<string, number>> {
   const season = seasonKey(finishedAt);
 
-  return db().transaction(async (tx) => {
+  return transaction(async (tx) => {
     // Resolved inside the transaction and under every seat's row lock, not
     // taken from the preview: the absolute values written below are only
     // right if no other round's write lands between this read and them.

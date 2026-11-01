@@ -8,8 +8,9 @@ import type { TableRuntime } from "./game/tableRuntime.ts";
 import { createRequestLogger } from "./http/logger.ts";
 import { logger } from "./shared/logger.ts";
 import { createSessionMiddleware } from "./http/session.ts";
-import { openDatabase, pool } from "./store/db.ts";
+import { openDatabase, pool, watchConnectionBudget } from "./store/db.ts";
 import { setupSocket } from "./socket/socket.ts";
+import { ownershipConnected } from "./game/gameOwnership.ts";
 import { socketAdapterPoolStats } from "./socket/socketAdapter.ts";
 import { errorHandler } from "./http/errorHandler.ts";
 import { installServerErrorRecorder } from "./http/serverErrors.ts";
@@ -226,7 +227,8 @@ export async function createApp(): Promise<CreatedApp> {
 
   // Before the session middleware, which reads `session` on the very first
   // request that carries a cookie — and before any route touches a table.
-  await ensureSchema(pool());
+  await ensureSchema();
+  await watchConnectionBudget(ownershipConnected);
   checkMailConfigOnBoot();
 
   // The only paths that carry the session, beside the socket handshake below:
