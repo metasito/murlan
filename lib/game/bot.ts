@@ -372,10 +372,7 @@ export function botChoosePlay(view: BotView, rng: () => number = Math.random): C
       return withPersonality(near3.sort((a, b) => b.cards.length - a.cards.length)[0]);
 
     const candidates = conservative.length > 0 ? conservative : normal.length > 0 ? normal : bombs;
-    if (candidates.length > 0)
-      return withPersonality(candidates.sort((a, b) => scorePlayForDump(b) - scorePlayForDump(a))[0]);
-
-    return withPersonality([...leadPlays].sort((a, b) => scorePlayForDump(b) - scorePlayForDump(a))[0]);
+    return withPersonality(candidates.sort((a, b) => scorePlayForDump(b) - scorePlayForDump(a))[0]);
   }
 
   if (myCards <= 4 && normal.length > 0) {
