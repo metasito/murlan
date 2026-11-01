@@ -565,7 +565,7 @@ export function pushedPr(branch, ticket, declared = null, since = 0, tracker = g
   // far enough for a branch pushed minutes ago.
   // The head ref is the only thing that makes a pull request this ticket's, and it is checked on
   // every path including the declared one. `declared` is a number a model wrote, and what it
-  // reaches is `gh pr merge`.
+  // reaches is the supervisor's merge.
   const mine = (pr) =>
     branch ? pr?.headRefName === branch : new RegExp(`^agent/${ticket}-`).test(pr?.headRefName ?? "");
   const stale = (pr) =>

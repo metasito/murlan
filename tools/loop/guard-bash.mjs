@@ -14,7 +14,6 @@
  * Exit 0 allows. Exit 2 blocks and returns the message on stderr to the agent.
  */
 import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { apiMethod, fetchesThread, untrustedRead } from "./brief.mjs";
@@ -377,38 +376,119 @@ const MERGE_CALL = [
 ];
 const spellsMerge = (text) => MERGE_CALL.some((re) => re.test(text));
 
-const requireHere = createRequire(import.meta.url);
-const isJsDoc = (ts, node) => node.kind >= ts.SyntaxKind.FirstJSDocNode && node.kind <= ts.SyntaxKind.LastJSDocNode;
+const REGEX_AFTER = /^(return|typeof|instanceof|in|of|new|delete|void|throw|case|do|else|yield|await)$/;
+const WORD = /[\p{ID_Continue}$]/u;
+const LINE_END = /[\n\r\u2028\u2029]/;
 
 /**
- * Script code with its comments blanked, by TypeScript's parser: a regex or string spelling `//` or
- * `/*` is no comment, which no pattern can tell. Code it cannot parse cleanly is judged as written.
+ * The comments of JavaScript or TypeScript code as `start:end` keys, or null when one never closes.
+ * A `/` after `)`, `}`, `++` or `--` may open a regex or divide; `regexAfterClose` picks the reading.
+ */
+function commentsOf(code, regexAfterClose) {
+  const found = new Set();
+  const braces = [];
+  const n = code.length;
+  let prev = "";
+  let i = 0;
+  const lineEnd = (j) => {
+    while (j < n && !LINE_END.test(code[j])) j++;
+    return j;
+  };
+  const template = (j) => {
+    for (; j < n; j++) {
+      if (code[j] === "\\") j++;
+      else if (code[j] === "`") return { at: j + 1, open: false };
+      else if (code[j] === "$" && code[j + 1] === "{") return { at: j + 2, open: true };
+    }
+    return null;
+  };
+  const regexEnd = (j) => {
+    let inClass = false;
+    for (j += 1; j < n && !LINE_END.test(code[j]); j++) {
+      if (code[j] === "\\") j++;
+      else if (code[j] === "[") inClass = true;
+      else if (code[j] === "]") inClass = false;
+      else if (code[j] === "/" && !inClass) {
+        for (j += 1; j < n && WORD.test(code[j]); j++);
+        return j;
+      }
+    }
+    return null;
+  };
+  const regexAllowed = () => prev === "" || prev === "punct" || (prev === "close" && regexAfterClose) || REGEX_AFTER.test(prev);
+  const afterTemplate = (t) => {
+    if (t === null) return false;
+    i = t.at;
+    if (t.open) braces.push("template");
+    prev = t.open ? "punct" : "value";
+    return true;
+  };
+  if (code.startsWith("#!")) i = lineEnd(0);
+  while (i < n) {
+    const ch = code[i];
+    const next = code[i + 1];
+    if (/\s/.test(ch)) {
+      i++;
+    } else if (ch === "/" && next === "/") {
+      const end = lineEnd(i);
+      found.add(`${i}:${end}`);
+      i = end;
+    } else if (ch === "/" && next === "*") {
+      const close = code.indexOf("*/", i + 2);
+      if (close < 0) return null;
+      found.add(`${i}:${close + 2}`);
+      i = close + 2;
+    } else if (ch === "'" || ch === '"') {
+      for (i += 1; i < n && code[i] !== ch && !LINE_END.test(code[i]); i++) if (code[i] === "\\") i++;
+      i++;
+      prev = "value";
+    } else if (ch === "`") {
+      if (!afterTemplate(template(i + 1))) return null;
+    } else if (ch === "/" && regexAllowed() && regexEnd(i) !== null) {
+      i = regexEnd(i);
+      prev = "value";
+    } else if (ch === "{") {
+      braces.push("brace");
+      i++;
+      prev = "punct";
+    } else if (ch === "}" && braces.pop() === "template") {
+      if (!afterTemplate(template(i + 1))) return null;
+    } else if (ch === "}" || ch === ")" || ((ch === "+" || ch === "-") && next === ch)) {
+      i += ch === "}" || ch === ")" ? 1 : 2;
+      prev = "close";
+    } else if (ch === "]") {
+      i++;
+      prev = "value";
+    } else if (WORD.test(ch)) {
+      const start = i;
+      while (i < n && WORD.test(code[i])) i++;
+      const word = code.slice(start, i);
+      prev = code[start - 1] !== "." && REGEX_AFTER.test(word) ? word : "value";
+    } else {
+      i++;
+      prev = "punct";
+    }
+  }
+  return found;
+}
+
+/**
+ * Script code with its comments blanked. A regex or string spelling `//` or `/*` is no comment, so
+ * code is lexed, twice: only what both readings of an ambiguous `/` call a comment is blanked, and
+ * code with a comment that never closes is judged as written.
  */
 function withoutComments(code) {
   if (!spellsMerge(code)) return code;
-  let ts;
-  try {
-    ts = requireHere("typescript");
-  } catch {
-    return code;
+  const division = commentsOf(code, false);
+  const regex = commentsOf(code, true);
+  if (division === null || regex === null) return code;
+  let out = code;
+  for (const key of division) {
+    if (!regex.has(key)) continue;
+    const [start, end] = key.split(":").map(Number);
+    out = out.slice(0, start) + out.slice(start, end).replace(/[^\n\r\u2028\u2029]/g, " ") + out.slice(end);
   }
-  const file = ts.createSourceFile("script.ts", code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  if (file.parseDiagnostics?.length !== 0) return code;
-  const ranges = [];
-  const visit = (node) => {
-    if (isJsDoc(ts, node)) return;
-    ranges.push(...(ts.getLeadingCommentRanges(code, node.pos) ?? []), ...(ts.getTrailingCommentRanges(code, node.end) ?? []));
-    for (const child of node.getChildren(file)) visit(child);
-  };
-  visit(file);
-  let out = "";
-  let at = 0;
-  for (const { pos, end } of ranges.sort((a, b) => a.pos - b.pos)) {
-    if (pos < at) continue;
-    out += code.slice(at, pos) + code.slice(pos, end).replace(/[^\n]/g, " ");
-    at = end;
-  }
-  return out + code.slice(at);
+  return out;
 }
 
 /** `-EncodedCommand` as PowerShell takes it: after `-`, `--` or `/`, `ec` or a prefix of the name. Its body is base64 no rule reads. */
