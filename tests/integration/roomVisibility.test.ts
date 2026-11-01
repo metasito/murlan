@@ -100,14 +100,14 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     // process left a waiting public room unfindable while its row still said
     // "waiting". Discovery has to be a query, not a register.
     const opener = await player("db_public");
-    const opened = await quickmatch(opener);
+    const opened = await quickmatch(opener, 3);
+    assert.equal(opened.players.length, 1, "the opener joined a room another case left: nothing here is still waiting");
 
     const host = await player("db_private");
     const made = waitFor(host.socket, "room:state");
-    host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
+    host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 3 });
     const privateRoom = await made;
-    const open = await roomStore.findWaitingPublicRooms();
-    const ids = open.map((c) => c.room.id);
+    const ids = await roomStore.findQuickMatchCandidates({ userId: "nobody", gameMode: "free_for_all", maxPlayers: 3 });
 
     assert.ok(ids.includes(opened.roomId), "a public room still waiting must be in the query's answer");
     assert.ok(!ids.includes(privateRoom.roomId), "a private room must never be in it");
@@ -135,9 +135,9 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
 
     host.socket.emit("room:start");
     await waitFor(host.socket, "game:started");
-    const open = await roomStore.findWaitingPublicRooms();
+    const open = await roomStore.findQuickMatchCandidates({ userId: "nobody", gameMode: "free_for_all", maxPlayers: 2 });
     assert.ok(
-      !open.some((c) => c.room.id === room.roomId),
+      !open.includes(room.roomId),
       "a room whose round has been dealt must not still be on quick-match's list"
     );
   });
@@ -175,11 +175,9 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
    * not about which of several waiting rooms another case left behind first.
    */
   async function onlyPublicRoom(roomId: string) {
-    for (const rival of await roomStore.findWaitingPublicRooms()) {
-      if (rival.room.id !== roomId) {
-        await roomStore.updateRoomVisibility(rival.room.id, "private");
-      }
-    }
+    await db().execute(
+      sql`UPDATE rooms SET visibility = 'private' WHERE visibility = 'public' AND status = 'waiting' AND id <> ${roomId}`
+    );
   }
 
   test("a host opens a private room to matchmaking and a stranger is seated into it", async () => {

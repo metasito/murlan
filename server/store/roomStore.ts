@@ -54,11 +54,7 @@ async function seatedUsers(tx: Tx | Database, roomId: string): Promise<SeatedUse
   return rows.map((r) => ({ ...r.room_players, user: r.users }));
 }
 
-export interface JoinableRoom {
-  room: Room;
-  playerCount: number;
-  containsUser: boolean;
-}
+const QUICK_MATCH_CANDIDATES = 20;
 
 function generateRoomCode(): string {
   // Cryptographically random and always exactly 6 characters — a live room
@@ -321,36 +317,43 @@ export const roomStore = {
   },
 
   /**
-   * Every public room still waiting for players, newest last so the fullest
-   * room fills first rather than four arrivals opening four rooms. Its seat
-   * count comes back in the same round trip, so matchmaking never waits on an
-   * N+1 query.
+   * The rooms quick match may seat this player in, oldest first so the
+   * fullest room fills before four arrivals open four rooms. An empty room is
+   * not one: its row outlived the write that should have closed it, and its
+   * host is gone.
    *
-   * Takes no candidate list on purpose. The register that used to supply one
-   * lived in this process's memory and only quick-match ever wrote to it, so a
-   * restart or a second process made a waiting room permanently unfindable
-   * while its row still said "waiting".
+   * A plain read: `claimRoomSeat` locks and re-checks each candidate, so one
+   * that changed since is a refused claim, not a wrong seat.
    */
-  async findWaitingPublicRooms(userId?: string): Promise<JoinableRoom[]> {
+  async findQuickMatchCandidates(want: {
+    userId: string;
+    gameMode: Room["gameMode"];
+    maxPlayers: number;
+  }): Promise<string[]> {
+    const seated = db()
+      .select({ count: sql<number>`count(*)` })
+      .from(roomPlayers)
+      .where(eq(roomPlayers.roomId, rooms.id));
+    const callerSeated = db()
+      .select({ one: sql`1` })
+      .from(roomPlayers)
+      .where(and(eq(roomPlayers.roomId, rooms.id), eq(roomPlayers.userId, want.userId)));
     const rows = await db()
-      .select({
-        room: rooms,
-        playerCount: sql<number>`count(${roomPlayers.id})`,
-        containsUser: userId
-          ? sql<boolean>`coalesce(bool_or(${roomPlayers.userId} = ${userId}), false)`
-          : sql<boolean>`false`,
-      })
+      .select({ id: rooms.id })
       .from(rooms)
-      .leftJoin(roomPlayers, eq(roomPlayers.roomId, rooms.id))
-      .where(and(eq(rooms.visibility, "public"), eq(rooms.status, "waiting")))
-      .groupBy(rooms.id)
-      .orderBy(rooms.createdAt);
-
-    return rows.map((r) => ({
-      room: r.room,
-      playerCount: Number(r.playerCount),
-      containsUser: !!r.containsUser,
-    }));
+      .where(
+        and(
+          eq(rooms.visibility, "public"),
+          eq(rooms.status, "waiting"),
+          eq(rooms.gameMode, want.gameMode),
+          eq(rooms.maxPlayers, want.maxPlayers),
+          sql`(${seated}) between 1 and ${rooms.maxPlayers} - 1`,
+          sql`not exists (${callerSeated})`
+        )
+      )
+      .orderBy(rooms.createdAt, rooms.id)
+      .limit(QUICK_MATCH_CANDIDATES);
+    return rows.map((r) => r.id);
   },
 
   /** `room_players` has no cascade, so its rows go before the rooms they name. Returns how many rooms went. */

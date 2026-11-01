@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { pool } from "../../server/store/db.ts";
 import { friendStore } from "../../server/store/friendStore.ts";
+import { roomStore } from "../../server/store/roomStore.ts";
 
 describe("store reads select only what their callers use", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -79,5 +80,66 @@ describe("store reads select only what their callers use", { skip: hasDatabase()
         `${name}'s request columns`
       );
     }
+  });
+
+  test("quick match reads at most 20 rooms of the asked shape, oldest first, none the caller sits in", async () => {
+    const caller = await user("rp_qm_caller");
+    const seaters = await Promise.all([0, 1, 2, 3].map((i) => user(`rp_qm_seat${i}`)));
+    const shapes = [
+      ["free_for_all", 2],
+      ["free_for_all", 3],
+      ["free_for_all", 4],
+      ["teams", 4],
+      ["free_for_all", 4],
+      ["free_for_all", 4],
+    ] as const;
+    type Fixture = { id: string; mode: string; max: number; seats: number; callerSeated: boolean; age: number; open: boolean };
+    let widest = 0;
+    const fixtures: Fixture[] = [];
+    for (let i = 0; i < 170; i++) {
+      const [mode, max] = shapes[i % shapes.length]!;
+      const seats = Math.floor(i / shapes.length) % (max + 1);
+      const fixture = {
+        mode,
+        max,
+        seats,
+        callerSeated: seats > 0 && i % 7 === 0,
+        age: (i * 37) % 170,
+        visibility: i < 150 || i % 4 === 0 ? "public" : "private",
+        status: i < 150 || i % 4 === 2 ? "waiting" : "in_progress",
+      };
+      const [room] = await server.query<{ id: string }>(
+        `INSERT INTO rooms (code, host_user_id, status, game_mode, max_players, visibility, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, timestamp '2026-01-01' + make_interval(secs => $7))
+         RETURNING id`,
+        [`Q${String(i).padStart(5, "0")}`, seaters[0], fixture.status, mode, max, fixture.visibility, 170 - fixture.age]
+      );
+      for (let seat = 0; seat < seats; seat++) {
+        const who = fixture.callerSeated && seat === 0 ? caller : seaters[seat];
+        await server.query("INSERT INTO room_players (room_id, user_id, seat_index) VALUES ($1, $2, $3)", [
+          room!.id,
+          who,
+          seat,
+        ]);
+      }
+      fixtures.push({ ...fixture, id: room!.id, open: fixture.visibility === "public" && fixture.status === "waiting" });
+    }
+    assert.equal(fixtures.filter((f) => f.open).length, 150, "the fixture is not 150 waiting public rooms");
+
+    for (const [gameMode, maxPlayers] of shapes) {
+      const { sql, result } = await sqlOf(() =>
+        roomStore.findQuickMatchCandidates({ userId: caller, gameMode, maxPlayers })
+      );
+      const expected = fixtures
+        .filter((f) => f.open && f.mode === gameMode && f.max === maxPlayers)
+        .filter((f) => f.seats > 0 && f.seats < f.max && !f.callerSeated)
+        .sort((a, b) => b.age - a.age)
+        .map((f) => f.id);
+      assert.ok(expected.length > 0, `the fixture has no ${gameMode}/${maxPlayers} room to find`);
+      assert.deepEqual(result, expected.slice(0, 20), `${gameMode}/${maxPlayers}`);
+      assert.match(sql, /\blimit\b/i, "the candidate read is unbounded");
+      widest = Math.max(widest, expected.length);
+    }
+    assert.ok(widest > 20, "no shape has more than 20 candidates: the limit is not exercised");
   });
 });

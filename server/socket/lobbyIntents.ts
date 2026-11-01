@@ -31,7 +31,7 @@ export interface LobbyPort {
     | "getRoomById"
     | "claimRoomSeat"
     | "updateRoomVisibility"
-    | "findWaitingPublicRooms"
+    | "findQuickMatchCandidates"
   >;
   watching: Map<string, string>;
   /** `server/socket/seating.ts` `seatSocket`, the only way a socket takes a seat. */
@@ -201,20 +201,8 @@ export async function quickmatchIntent(
   const teams = teamsSizeRefusal(gameMode, maxPlayers);
   if (teams) return teams;
 
-  for (const candidate of await port.store.findWaitingPublicRooms(port.userId)) {
-    if (candidate.containsUser) continue;
-    // Nobody in it means nobody is coming: the row outlived the write that
-    // should have closed it, and seating someone alone in it would strand
-    // them in a lobby with a host who already left.
-    if (candidate.playerCount === 0) continue;
-    if (
-      candidate.room.maxPlayers !== maxPlayers ||
-      candidate.room.gameMode !== gameMode ||
-      candidate.playerCount >= candidate.room.maxPlayers
-    )
-      continue;
-
-    const claim = await port.store.claimRoomSeat(candidate.room.id, port.userId, port.seatHoldMs(), {
+  for (const roomId of await port.store.findQuickMatchCandidates({ userId: port.userId, gameMode, maxPlayers })) {
+    const claim = await port.store.claimRoomSeat(roomId, port.userId, port.seatHoldMs(), {
       requirePublic: true,
       requireOccupied: true,
     });
