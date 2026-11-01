@@ -20,6 +20,7 @@ const notClient: Record<string, string> = {
   tests: "never bundled",
   scripts: "build and CI scripts",
   tools: "build and CI scripts",
+  docs: "research scripts, never bundled",
   "drizzle.config.ts": "the schema tool's config",
   node_modules: "installed packages",
   dist: "build output",
