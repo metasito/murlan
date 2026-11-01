@@ -283,14 +283,9 @@ describe("the bash guard allows correct usage", () => {
 describe("a file that names a merge is not a script that runs one", () => {
   const QUOTES = 'assert.match(check("gh pr merge 5"), /not yours to merge/);\n';
   const READS = [
-    "/**",
-    " * Arming stays `gh pr merge`: only GraphQL can arm.",
-    " */",
-    "// what a declared number reaches is `gh pr merge`.",
     "export const view = (p) => ({ state: p.merged_at ? 'MERGED' : p.state, mergeStateStatus: p.mergeable_state, autoMergeRequest: p.auto_merge });",
     "export const side = (git) => git('merge', 'side', '-m', 'merge_method=merge');",
     "export const update = (gh, pulls, n) => gh(['api', '-X', 'PUT', `${pulls}/${n}/update-branch`]);",
-    "/* mergePullRequest( is GraphQL's and pulls/5/merge is REST's */",
     "",
   ].join("\n");
   const EXEC = "require('child_process').execSync";
@@ -319,11 +314,15 @@ describe("a file that names a merge is not a script that runs one", () => {
     "decoy-jsdoc.mjs": `/** see // here */ ${EXEC}('gh pr merge 5');\n`,
     "decoy.ts": `// gh pr merge stays the loop's\nconst n: number = 5;\n${EXEC}(\`gh pr merge \${n}\`);\n`,
     "decoy-division.mjs": `if (ok) /\\/\\//.test(url); ${EXEC}('gh pr merge 5');\n`,
-    "decoy-block.mjs": `function f() {}\n/\\/\\*/.test(x); ${EXEC}('gh pr merge 5'); /* */\n`,
-    "decoy-unclosed.mjs": `${EXEC}('gh pr merge 5'); /* never closed\n`,
-    "regex-comment.mjs": "const re = /x\\/y[/]/g; // gh pr merge stays the loop's\nexport default re;\n",
-    "template-comment.mjs": "const s = `a${ \"}\" + `${'`'}` }b`; /* gh pr merge */ export default s;\n",
-    "string-comment.mjs": "const u = 'https://x/*'; // gh pr merge\nconst v = \"*/\"; export { u, v };\n",
+    "decoy-default.mjs": `export default /[//]/; ${EXEC}('gh pr merge 5');\n`,
+    "decoy-extends.mjs": `class A extends /[//]/.constructor {} ${EXEC}('gh pr merge 5');\n`,
+    "decoy-of.mjs": `const of = 4; const r = of / 2, a = '/', b = '//'; ${EXEC}('gh pr merge 5');\n`,
+    "decoy-yield.js": `var yield = 4, r = yield / 2, b = '/ //'; ${EXEC}('gh pr merge 5');\n`,
+    "decoy-number.mjs": `const half = 1./2, s = 'a / http://x'; ${EXEC}('gh pr merge 5');\n`,
+    "decoy-html.cjs": `<!-- \`\nconst s = \` // \`; ${EXEC}('gh pr merge 5');\n`,
+    "decoy-lands.mjs": "import { ghMerges } from './tools/loop/merges.mjs';\nghMerges().merge(5, 'abc');\n",
+    "decoy-lands-dynamic.mjs": "const m = await import(`../loop/merges.mjs`);\nm.ghMerges().arm(5, 'abc');\n",
+    "decoy-lands-cjs.cjs": "require('./merges.mjs').ghMerges().disarm(5);\n",
   };
   const files = {
     ...repo,
@@ -356,12 +355,14 @@ describe("a file that names a merge is not a script that runs one", () => {
     "node edit.mjs < merges.md",
     "node -e \"require('fs').readFileSync(process.argv[1])\" merges.md",
     "node -p 1 merges.md",
-    "node -e \"/* never gh pr merge here */ require('fs').writeFileSync('a.txt', 'b')\"",
     "bash edit.sh merges.md",
     "pwsh -File edit.ps1 merges.md",
-    "node regex-comment.mjs",
-    "node template-comment.mjs",
-    "node string-comment.mjs",
+    "bash --rcfile edit.sh -ic true",
+    "BASH_ENV=edit.sh bash -c true",
+    "npx tsx edit.mjs merges.md",
+    "bun run edit.mjs merges.md",
+    "deno run edit.mjs merges.md",
+    "node -pe 1 merges.md",
   ]) {
     test(`allows: ${JSON.stringify(cmd)}`, () => assert.equal(at(cmd), null));
   }
@@ -408,6 +409,21 @@ describe("a file that names a merge is not a script that runs one", () => {
     "pwsh m.ps1 merges.md",
     "node m.js merges.md",
     "node -e \"require('child_process').execSync('gh pr merge 5') // a test\" merges.md",
+    "bash --rcfile m.sh -ic true",
+    "bash --init-file=m.sh -i",
+    "BASH_ENV=m.sh bash -c true",
+    "ENV=m.sh sh -c true",
+    "npx tsx m.js",
+    "tsx m.js",
+    "bun m.js",
+    "bun run m.js",
+    "deno run m.js",
+    "deno run --allow-run m.js",
+    "node -pe \"require('child_process').execSync('gh pr merge 5')\"",
+    "node -ep \"require('child_process').execSync('gh pr merge 5')\"",
+    "bun -e \"require('child_process').execSync('gh pr merge 5')\"",
+    "node -e \"import('./tools/loop/merges.mjs').then((m) => m.ghMerges().merge(5, 'abc'))\"",
+    "node -p \"require('./tools/loop/merges.mjs')\"",
     ...Object.keys(FILES).filter((f) => f.startsWith("decoy")).map((f) => `node ${f} read 5`),
   ]) {
     test(`refuses: ${JSON.stringify(cmd)}`, () => assert.match(String(at(cmd)), MERGE));
@@ -428,8 +444,39 @@ describe("the tracker's recipes run, and the supervisor's merges do not", () => 
     });
   }
 
-  test("the module that arms and merges is refused when run", () => {
-    assert.match(String(check("node tools/loop/merges.mjs", real, false, reading)), MERGE);
+  test("the module that arms and merges is refused when a session imports it", () => {
+    for (const cmd of [
+      "node -e \"import('./tools/loop/merges.mjs').then((m) => m.ghMerges().merge(5, 'abc'))\"",
+      "node --input-type=module -e \"import { ghMerges } from './tools/loop/merges.mjs'; ghMerges().arm(5, 'abc')\"",
+      "node tools/loop/merges.mjs",
+    ]) {
+      assert.match(String(check(cmd, real, false, reading)), MERGE, cmd);
+      assert.match(String(check(cmd, real, true, reading)), MERGE, cmd);
+    }
+  });
+
+  // A comment is judged as code, so a script a doc tells a session to run must not spell a merge even there.
+  const RUN = [".claude/commands/queue.md", ".claude/commands/audit.md", "docs/agents/issue-tracker.md", "docs/agents/RULES.md", "docs/agents/checks.md", "CLAUDE.md"];
+  const scripts = [...new Set(RUN.flatMap((d) => [...readFileSync(join(ROOT, d), "utf8").matchAll(/\bnode ((?:tools|scripts)\/[\w./-]+\.(?:mjs|js|ts))/g)].map((m) => m[1])))];
+  test("the docs still name the scripts a session runs", () => assert.ok(scripts.includes("tools/loop/tracker.mjs") && scripts.length >= 8, scripts.join(" ")));
+  for (const script of scripts) {
+    test(`a script a doc runs spells no merge, comments included: ${script}`, () => {
+      assert.ok(existsSync(join(ROOT, script)), script);
+      assert.equal(check(`node ${script}`, real, false, reading), null);
+    });
+  }
+
+  test("a script of many flags, or a long path, is judged at once", () => {
+    const dir = mkdtempSync(join(tmpdir(), "guard-long-"));
+    try {
+      writeFileSync(join(dir, "long.mjs"), `console.log("gh ${"--paginate ".repeat(200)}x", "pulls${"/pulls".repeat(20000)}");\n`);
+      const start = Date.now();
+      const result = spawnSync(process.execPath, [SCRIPT], { cwd: dir, input: JSON.stringify({ tool_name: "Bash", cwd: dir, tool_input: { command: "node long.mjs" } }), encoding: "utf8", timeout: 10_000 });
+      assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+      assert.ok(Date.now() - start < 3000, `${Date.now() - start} ms`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("the hook, fed the payload Claude Code sends, allows a tracker read and refuses a merge", () => {
@@ -443,7 +490,7 @@ describe("the tracker's recipes run, and the supervisor's merges do not", () => 
     assert.match(merge.stderr, MERGE);
   });
 
-  test("with no package installed, as the Windows harness runs it, the hook still tells a comment from a call", () => {
+  test("with no package installed, as the Windows harness runs it, the hook still judges a script", () => {
     const dir = mkdtempSync(join(tmpdir(), "guard-no-packages-"));
     try {
       writeFileSync(
@@ -454,7 +501,7 @@ describe("the tracker's recipes run, and the supervisor's merges do not", () => 
           "  return next(specifier, context);\n" +
           "} });\n",
       );
-      writeFileSync(join(dir, "reads.mjs"), "// arming stays `gh pr merge`\nexport const ok = 1;\n");
+      writeFileSync(join(dir, "reads.mjs"), "export const view = (p) => ({ state: p.merged_at ? 'MERGED' : p.state, mergeStateStatus: p.mergeable_state });\n");
       writeFileSync(join(dir, "m.mjs"), "// harmless\nrequire('child_process').execSync('gh pr merge 5');\n");
       const hook = (command: string) =>
         spawnSync(process.execPath, ["--import", pathToFileURL(join(dir, "no-packages.mjs")).href, SCRIPT], {
