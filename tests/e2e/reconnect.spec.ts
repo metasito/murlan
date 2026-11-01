@@ -62,7 +62,17 @@ test("online — a dropped connection says so, and the table comes back", async 
     errors.push(`pageerror: ${err.message}`);
   });
 
+  // Routed from the first document: the route is installed by an init script,
+  // and engine.io-client keeps the WebSocket it found when it loaded.
+  const held: WebSocketRoute[] = [];
+  let holding = false;
+  let pressed = false;
+
   try {
+    await page.routeWebSocket(/socket\.io/, (ws) => {
+      if (holding) held.push(ws);
+      if (!holding || pressed) ws.connectToServer();
+    });
     await openApp(page, baseURL!);
     await registerNewAccount(page, uniqueUsername("e2erec"));
     await goToOnlineLobby(page);
@@ -131,21 +141,16 @@ test("online — a dropped connection says so, and the table comes back", async 
     // attempt starts no other until it fails, and a socket left unconnected here
     // fails only at socket.io's 20 s `timeout`, so the press waits for the app's
     // attempt to be held: what reaches the server after the press is Riprova's.
-    const opened: WebSocketRoute[] = [];
-    let pressed = false;
-    await page.routeWebSocket(/socket\.io/, (ws) => {
-      opened.push(ws);
-      if (pressed) ws.connectToServer();
-    });
+    holding = true;
     await setDeviceOffline(context, page, false);
     networkDown = false;
 
     // Back inside the server's grace window, so the seat was never vacated: the
     // table says so, lets go of the grey and is the same table.
-    await expect.poll(() => opened.length, { message: "the app's own attempt, held", timeout: 10_000 }).toBe(1);
+    await expect.poll(() => held.length, { message: "the app's own attempt, held", timeout: 10_000 }).toBe(1);
     pressed = true;
     await retry.click();
-    await expect.poll(() => opened.length, "Riprova opens a socket of its own").toBe(2);
+    await expect.poll(() => held.length, "Riprova opens a socket of its own").toBe(2);
     await expect(page.getByTestId("notice-turn").getByText(BACK)).toBeVisible({ timeout: 30_000 });
     const back = await plateAndDot(app, page, TURN);
     const backMockup = await mockupAt(browser, "reconnect", 3600);
