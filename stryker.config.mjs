@@ -48,8 +48,8 @@ export const SCANS = [
 /**
  * Behaviour tests of mutated code that live outside TEST_DIRS, named one by one: the dirs they sit in
  * hold mostly scans. tests/tooling/mutationScans.test.ts proves each exists and does not scan.
- * The tests/integration files cover server/game's replays.ts, stats.ts, ratings.ts, retention.ts, userNames.ts and the table glue (tableRouter,
- * tableLifecycle, tableHandlers); they need DATABASE_URL, which .github/workflows/mutation.yml provides.
+ * The tests/integration files boot the server and so reach server/game, some of it (the Postgres-only stores)
+ * nowhere else; they need DATABASE_URL, which .github/workflows/mutation.yml provides.
  */
 export const EXTRA_TESTS = [
   "tests/ui-rules/scorePillStandings.test.ts",

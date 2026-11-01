@@ -24,8 +24,8 @@ export const SHARD_MUTANTS = 150;
 /**
  * Where the database-backed tests reach (EXTRA_TESTS in stryker.config.mjs): each integration file boots the
  * server, which runs every module under it, so a surviving mutant there reruns several server boots and
- * costs several times a unit-tested one. A directory, not a list of files: the list went stale as soon as
- * those tests reached a file it did not name, and that file's shard ran past its timeout.
+ * costs several times a unit-tested one. A directory, not a list of files: the tests reach files no list
+ * would be kept in step with.
  */
 export const DATABASE_BACKED_DIR = "server/game/";
 export const SLOW_SHARD_MUTANTS = 40;

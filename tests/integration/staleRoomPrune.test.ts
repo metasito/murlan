@@ -4,7 +4,9 @@ import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { pruneStaleRooms, STALE_ROOM_MAX_AGE_MS as maxAgeMs } from "../../server/game/retention.ts";
-import { activeGames as liveGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
+import { activeGames as liveGames } from "../../server/game/gameRoom.ts";
+import { startRound } from "../../lib/game/gameEngine.ts";
+import { onlineTable } from "../helpers/onlineTable.ts";
 
 describe("stale-room prune", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -61,7 +63,8 @@ describe("stale-room prune", { skip: hasDatabase() ? false : skipMessage() }, ()
   test("an old room this instance is playing in is kept, though no row says so", async () => {
     const live = await seedRoom("LIVERM", maxAgeMs * 2);
     const dead = await seedRoom("GONERM", maxAgeMs * 2);
-    liveGames.set(live, {} as OnlineGameState);
+    const seats = ["Ana", "Ben"].map((name, i) => ({ name, type: "human" as const, id: `player_${i}` }));
+    liveGames.set(live, onlineTable({ roomId: live, gameState: startRound(seats, "free_for_all") }));
     try {
       assert.equal(await pruneStaleRooms(), 1);
     } finally {

@@ -57,12 +57,11 @@ test("each file's shards cover its every line once, in order", () => {
 test("every file the database-backed tests reach is cut into smaller shards than the rest", () => {
   assert.ok(SLOW_SHARD_MUTANTS < SHARD_MUTANTS);
   assert.equal(budgetOf(movesFile), SHARD_MUTANTS);
-  for (const file of ["server/game/tableRouter.ts", "server/game/gameTurn.ts", "server/game/gameTimers.ts"]) {
-    assert.equal(budgetOf(file), SLOW_SHARD_MUTANTS, `${file} gets the unit-tested budget`);
-    const own = all.filter((s) => s.file === file);
-    assert.ok(own.length >= 2, `${file} is one shard: the database-backed budget is not applied`);
-  }
-  assert.ok(all.some((s) => s.file.startsWith(DATABASE_BACKED_DIR)), `nothing under ${DATABASE_BACKED_DIR} is mutated`);
+  const slow = [...new Set(all.map((s) => s.file))].filter((file) => file.startsWith(DATABASE_BACKED_DIR));
+  assert.ok(slow.includes("server/game/gameTurn.ts"), `${DATABASE_BACKED_DIR} holds none of the files it was made for`);
+  for (const file of slow) assert.equal(budgetOf(file), SLOW_SHARD_MUTANTS, `${file} is cut to the unit-tested budget`);
+  const turn = all.filter((s) => s.file === "server/game/gameTurn.ts");
+  assert.ok(turn.length >= 2, "gameTurn.ts is one shard: the database-backed budget is not applied");
 });
 
 test("every mutant Stryker places lands in exactly one shard, and a shard outgrows the budget only where no cut can split it", async () => {

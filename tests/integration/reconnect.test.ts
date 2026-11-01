@@ -19,6 +19,7 @@ import {
 } from "../helpers/table.ts";
 import { driveRound, roundOverOf } from "../helpers/gameDriver.ts";
 import { db } from "../../server/store/db.ts";
+import { trackEvent } from "../../server/shared/events.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { activeGames as activeGamesTable } from "../../shared/schema.ts";
@@ -642,6 +643,12 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       ]);
       back.emit("game:rejoin", { roomId: room.roomId });
       assert.equal(await answered, "rejoined");
+      // trackEvent writes in the background: a marker sent after the drop's handling is seen first.
+      const joins = async () =>
+        (await server.query("SELECT 1 FROM events WHERE name = 'room.joined' AND user_id = $1", [bob.user.id])).length;
+      const before = await joins();
+      trackEvent("room.joined", bob.user.id);
+      await eventually(async () => (await joins()) > before, "the marker event written");
       assert.deepEqual(await abandonments(bob.user.id), [], "a drop between hands was recorded as abandoning one");
     } finally {
       await closeTable(table);
