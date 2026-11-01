@@ -13,7 +13,7 @@ import { closeRedis, keyspace } from "../../server/store/redis.ts";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 import { routeSources } from "../helpers/routeSources.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
-import { scopedDatabaseUrl } from "../helpers/testServer.ts";
+import { hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SERVER_DIR = path.join(REPO_ROOT, "server");
@@ -97,7 +97,7 @@ test("every route limiter names its counts with a literal no other limiter uses"
   }
 });
 
-describe("every route limiter counts in Redis", { skip: process.env.REDIS_URL ? false : "REDIS_URL not set — skipping the shared-store check" }, () => {
+describe("every route limiter counts in Redis", { skip: hasDatabase() ? false : skipMessage() }, () => {
   async function sharedCounts(name: string): Promise<number[]> {
     const redis = createClient({ url: process.env.REDIS_URL });
     redis.on("error", () => {});

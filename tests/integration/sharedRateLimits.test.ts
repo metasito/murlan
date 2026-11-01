@@ -14,12 +14,12 @@ import { routeLimiter } from "../../server/http/rateLimit.ts";
 import { closeRedis, keyspace, redisReady } from "../../server/store/redis.ts";
 import { eventually } from "../helpers/client.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
-import { scopedDatabaseUrl } from "../helpers/testServer.ts";
+import { hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
 import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
 
 const realRedis = process.env.REDIS_URL;
 
-describe("shared HTTP rate limits", { skip: realRedis ? false : "REDIS_URL not set — skipping integration tests (unit tests still run)" }, () => {
+describe("shared HTTP rate limits", { skip: hasDatabase() ? false : skipMessage() }, () => {
   const scoped = scopedDatabaseUrl(process.env.DATABASE_URL ?? "postgres://unused/murlan", `srl_${Date.now()}_${Math.floor(Math.random() * 1e6)}`);
   const env = { DATABASE_URL: process.env.DATABASE_URL, REDIS_URL: realRedis };
   const servers: { close(): Promise<void> }[] = [];
