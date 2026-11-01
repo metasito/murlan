@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { register } from "../helpers/client.ts";
 import { START_RATING, seasonKey, seedRating } from "../../lib/game/rating.ts";
+import { pool } from "../../server/store/db.ts";
+import { skewedClock } from "../helpers/fakeClock.ts";
 
 type Account = Awaited<ReturnType<typeof register>>;
 type Row = { rank: number; userId: string; username: string; rating: number; rounds: number };
@@ -15,6 +17,7 @@ describe("the friends ladder ranks the viewer among accepted friends only", { sk
   let pendingIn: Account;
   let pendingOut: Account;
   let stranger: Account;
+  const clock = skewedClock();
 
   const call = (who: Account, method: string, path: string, body?: unknown) =>
     fetch(`${server.url}${path}`, {
@@ -48,7 +51,7 @@ describe("the friends ladder ranks the viewer among accepted friends only", { sk
   };
 
   before(async () => {
-    server = await startTestServer();
+    server = await startTestServer({ clock });
     viewer = await register(server, "fl_viewer");
     asked = await register(server, "fl_asked");
     asker = await register(server, "fl_asker");
@@ -100,5 +103,35 @@ describe("the friends ladder ranks the viewer among accepted friends only", { sk
     const rows = (await res.json()) as Row[];
     assert.ok(rows.some((r) => r.userId === stranger.user.id), "the global ladder lost a listed player");
     assert.ok(!rows.some((r) => r.userId === viewer.user.id), "the global ladder listed a provisional player");
+  });
+
+  test("the global ladder is read once per 30 s and says a client may keep it that long", async (t) => {
+    const p = pool();
+    const real = p.query.bind(p) as (...args: unknown[]) => Promise<unknown>;
+    const patched = p as unknown as { query: (...args: unknown[]) => Promise<unknown> };
+    let ladderReads = 0;
+    patched.query = (...args: unknown[]) => {
+      const q = args[0] as string | { text: string };
+      if (/"user_ratings"/.test(typeof q === "string" ? q : q.text)) ladderReads += 1;
+      return real(...args);
+    };
+    t.after(() => {
+      patched.query = real;
+    });
+    const global = async () => {
+      const res = await call(viewer, "GET", "/api/ratings/leaderboard");
+      assert.equal(res.status, 200);
+      assert.equal(res.headers.get("cache-control"), "private, max-age=30");
+      return (await res.json()) as Row[];
+    };
+
+    clock.skip(31_000);
+    const first = await global();
+    assert.equal(ladderReads, 1, "the route never reached the ladder query: the count is not looking");
+    assert.deepEqual(await global(), first);
+    assert.equal(ladderReads, 1, "a second read inside 30 s ran the query again");
+    clock.skip(31_000);
+    await global();
+    assert.equal(ladderReads, 2, "a read 31 s later was served from the memo");
   });
 });

@@ -219,6 +219,33 @@ export async function getLeaderboard(asOf: Date): Promise<LeaderboardEntryDto[]>
   return rows.map((r, i) => ({ ...r, rank: i + 1 }));
 }
 
+/** How long one instance serves a ladder it read, and a client may keep it. */
+export const LEADERBOARD_MAX_AGE_S = 30;
+
+type LoadLeaderboard = (asOf: Date) => Promise<LeaderboardEntryDto[]>;
+
+/**
+ * `load`, answered from the last read of the same season while it is younger
+ * than `LEADERBOARD_MAX_AGE_S`. A read in flight is shared; a failed one is
+ * forgotten, so the next caller asks again rather than inheriting the error.
+ */
+export function leaderboardMemo(load: LoadLeaderboard): LoadLeaderboard {
+  let last: { season: string; at: number; rows: Promise<LeaderboardEntryDto[]> } | null = null;
+  return (asOf) => {
+    const season = seasonKey(asOf);
+    if (last && last.season === season && now() - last.at < LEADERBOARD_MAX_AGE_S * 1000) return last.rows;
+    const entry = { season, at: now(), rows: load(asOf) };
+    last = entry;
+    entry.rows.catch(() => {
+      if (last === entry) last = null;
+    });
+    return entry.rows;
+  };
+}
+
+/** The public ladder as `/api/ratings/leaderboard` serves it. */
+export const cachedLeaderboard = leaderboardMemo(getLeaderboard);
+
 /**
  * This season's standing for a fixed set of players, the viewer among them.
  * Unlike the public ladder it lists provisional and unplayed records, each on
