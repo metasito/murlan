@@ -97,6 +97,11 @@ interface Invites {
 
 const askWhoIsOnline = (socket: Socket) => socket.emit("friend:get_online_list");
 
+// A retry the socket effect's cleanup cancelled, owed to whichever run takes the
+// socket up next: lib/socket.ts outlives this effect and keeps the socket, and
+// a dropped one with no retry pending would otherwise stay down.
+const retriesOwed = new WeakSet<Socket>();
+
 const NO_HIDDEN_INVITES: ReadonlySet<string> = new Set();
 // One empty list, not `= []`: a fresh default every render would wake every invites reader.
 const NO_INVITE_ROWS: GameInviteDto[] = [];
@@ -476,6 +481,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
     socket.on("socket:error", onSocketError);
 
     if (socket.connected) askWhoIsOnline(socket);
+    if (retriesOwed.delete(socket) && !socket.connected) retryLater();
 
     return () => {
       bound = false;
@@ -484,6 +490,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
       if (retryTimerRef.current) {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
+        retriesOwed.add(socket);
       }
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);

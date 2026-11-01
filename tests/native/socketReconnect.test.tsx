@@ -7,8 +7,9 @@
 // foreground or the network changing retries a dropped socket at once.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
-import { AppState, Text } from 'react-native';
-import { act } from '@testing-library/react-native';
+import { AppState, Platform, Text } from 'react-native';
+import { act, waitFor } from '@testing-library/react-native';
+import { router } from 'expo-router';
 
 import { reconnectDelayMs } from '@/lib/reconnectDelay';
 import { renderApp } from './harness/renderApp';
@@ -16,7 +17,8 @@ import { netInfoListeners } from './mocks/netInfo';
 import { lastSocket } from './mocks/socketIo';
 
 const random = () => 0.123;
-const mount = () => renderApp(<Text>child</Text>, { user: { id: 'u1', username: 'Ana' }, random });
+const mountAs = (id: string) => renderApp(<Text>child</Text>, { user: { id, username: 'Ana' }, random });
+const mount = () => mountAs('u1');
 
 // What identifies this handler's timers among the renderer's and react-query's.
 const FIRST_RETRY_MS = reconnectDelayMs(0, random);
@@ -112,6 +114,19 @@ describe('a disconnect', () => {
     });
   }
 
+  it('left pending when the provider went away is taken up by the next one', async () => {
+    const first = await connected();
+    await act(async () => lastSocket().drop('transport close'));
+    await unmount(first);
+    await advance(60_000);
+    expect(lastSocket().connect).not.toHaveBeenCalled();
+
+    const second = await mount();
+    await advance(FIRST_RETRY_MS);
+    expect(lastSocket().connect).toHaveBeenCalledTimes(1);
+    await unmount(second);
+  });
+
   it('the client asked for is not retried', async () => {
     const view = await connected();
 
@@ -158,4 +173,22 @@ describe('the device telling the app to try now', () => {
       await unmount(view);
     });
   }
+});
+
+describe('on web, a handshake refused as unauthenticated', () => {
+  it('halts the socket and sends the player to sign in', async () => {
+    const os = jest.replaceProperty(Platform, 'OS', 'web');
+    const replace = jest.spyOn(router, 'replace').mockImplementation(() => {});
+    const view = await mountAs('web-u1');
+    const socket = lastSocket();
+
+    await act(async () => socket.refuse(new Error('Not authenticated')));
+    expect(socket.disconnect).toHaveBeenCalled();
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/auth'));
+
+    await advance(60_000);
+    expect(socket.connect).not.toHaveBeenCalled();
+    await unmount(view);
+    os.restore();
+  });
 });
