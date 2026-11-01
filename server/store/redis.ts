@@ -123,7 +123,9 @@ function watchForHalfOpen(client: RedisClient, use: RedisUse): void {
 export function openRedis(use: RedisUse, { url = process.env.REDIS_URL, offlineQueue = true, connect = true }: OpenOptions = {}): RedisClient {
   if (!url) throw new Error("REDIS_URL is not set");
   const client = newClient(use, url, offlineQueue);
-  client.on("error", (err: unknown) => noteDown(use, err));
+  client.on("error", (err: unknown) => {
+    if (client.isOpen) noteDown(use, err);
+  });
   client.on("ready", () => {
     client._maintenanceUpdate({});
     noteAnswered(client);

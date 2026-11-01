@@ -8,6 +8,9 @@ type Packet = unknown[];
  * otherwise bypass `openRedis` and so its error listener and half-open detection. The adapter
  * leaves several of these promises unhandled, so each one that can reject is settled here; and a
  * closed reader never answers, because the adapter's read loop retries a rejection at once.
+ *
+ * The adapter disconnects them when `io.close()` closes it, but shutdown forwards its departing
+ * players' actions after that, and their acks arrive on the subscriber; `closeRedis` ends them.
  */
 function adapterClient(): RedisClient {
   const publisher = openRedis("adapter", { offlineQueue: false });
@@ -18,6 +21,7 @@ function adapterClient(): RedisClient {
       const { connect, subscribe, xRead } = { connect: copy.connect.bind(copy), subscribe: copy.subscribe.bind(copy), xRead: copy.xRead.bind(copy) };
       return Object.assign(copy, {
         connect: () => connect().catch(() => copy),
+        disconnect: () => Promise.resolve(),
         subscribe: (...args: Parameters<typeof subscribe>) => subscribe(...args).catch(() => {}),
         xRead: (...args: Parameters<typeof xRead>) => (copy.isOpen ? xRead(...args) : new Promise<never>(() => {})),
       });
