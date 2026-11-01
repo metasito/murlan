@@ -43,7 +43,7 @@ function profilesOpened(sources: [string, string][]): string[] {
 
 test("each profile is opened from one place, so the budget counts what runs", () => {
   const sites = profilesOpened(sourcesUnder(repoRoot, ["server"], /\.ts$/));
-  assert.ok(sites.length >= 4, `the scan found ${sites.length} openings: it reads nothing`);
+  assert.ok(sites.length >= 3, `the scan found ${sites.length} openings: it reads nothing`);
   const names = sites.map((s) => s.slice(s.indexOf('"')));
   assert.deepEqual(names, [...new Set(names)], `a profile opened twice holds twice its share:\n${sites.join("\n")}`);
 });

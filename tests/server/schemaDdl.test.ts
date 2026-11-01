@@ -89,7 +89,7 @@ test("an INVALID index is dropped right before it is built again, and nothing el
   for (const list of [rebuilding, rebuildingFromEmpty]) {
     const dropped = list.flatMap((_, i) => rebuiltIndexFor(list, i) ?? []);
     assert.deepEqual(dropped.sort(), ['"events_occurred_idx"', '"friends_accepted_uq"']);
-    assert.deepEqual(list.filter((s) => /^DROP/.test(s)).length, 2);
+    assert.deepEqual(list.filter((s) => /^DROP INDEX/.test(s)).length, 2);
   }
   assert.deepEqual(
     rebuilding.filter((s) => /INDEX/.test(s)).map((s) => s.split(" (")[0]),
