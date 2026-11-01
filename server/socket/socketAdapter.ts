@@ -5,6 +5,7 @@ import { BLOCK_MS, openRedis, redisKey, streamMaxLen, type RedisClient } from ".
 type Packet = unknown[];
 
 const HEARTBEAT_MS = 3_000;
+const FIRST_BEAT_POLL_MS = 100;
 /** How long a peer counts as alive after it was last heard, as the old heartbeat adapter's timeout. */
 const PEER_GRACE_MS = 10_000;
 const HEARTBEAT = "murlan:adapter-heartbeat";
@@ -67,30 +68,49 @@ export function adapterOptions() {
  */
 export function createSocketAdapter() {
   const links = adapterLinks();
-  const make = createAdapter(links.client, adapterOptions());
+  const options = adapterOptions();
+  const make = createAdapter(links.client, options);
   // Socket.io constructs it with `new`, which an arrow function refuses.
-  return function (nsp: unknown) {
+  return function (nsp: { name: string }) {
     const adapter = make(nsp);
     const cluster = adapter as unknown as { uid: string; onMessage(message: ClusterMessage, offset?: string): void };
-    const subscribers = adapter.serverCount.bind(adapter);
     const serverSideEmit = adapter.serverSideEmit.bind(adapter);
     const fetchSockets = adapter.fetchSockets.bind(adapter);
     const onMessage = cluster.onMessage.bind(adapter);
     const close = adapter.close.bind(adapter);
+    // Each adapter subscribes to a private channel named for its uid, which is how a peer that is
+    // subscribed but not yet heard is still known.
+    const privateChannels = `${options.channelPrefix}#${nsp.name}#`;
+    const pattern = `${privateChannels.replace(/[*?[\]\\]/g, (c) => `\\${c}`)}*#`;
     const heard = new Map<string, number>();
+    const noticed = new Map<string, number>();
 
     /**
-     * The peers a request must hear from. The subscriber count alone comes up short whenever a
-     * peer's subscriber is between subscriptions, and short reads as "nobody else holds this
-     * table"; so a peer heard within the grace still counts, and an instance not itself
-     * subscribed cannot count at all.
+     * The peers a request must hear from: every peer heard within the grace, together with every
+     * peer subscribed now that has not gone silent. Neither alone will do. A peer between
+     * subscriptions is heard but not subscribed, and short reads as "nobody else holds this
+     * table"; one just booted is subscribed but not heard; and a stream backlog read after a
+     * reconnect is not hearing anyone, so only live pub/sub traffic counts. A subscription
+     * outliving its silent owner, as a partitioned host's does, stops counting after the grace.
+     * An instance not itself subscribed cannot count at all.
      */
     async function peers(): Promise<number> {
       if (!links.ready()) throw new Error("this instance is not subscribed to the cluster");
-      const count = await subscribers();
+      const channels = (await links.client.sendCommand(["PUBSUB", "CHANNELS", pattern])) as string[];
       const now = performance.now();
-      for (const [uid, at] of heard) if (now - at > PEER_GRACE_MS) heard.delete(uid);
-      return Math.max(count - 1, heard.size);
+      const subscribed = new Set(channels.map((c) => String(c).slice(privateChannels.length, -1)));
+      subscribed.delete(cluster.uid);
+      for (const uid of subscribed) if (!noticed.has(uid)) noticed.set(uid, now);
+      let count = 0;
+      for (const [uid, since] of noticed) {
+        const at = heard.get(uid);
+        if ((at !== undefined && now - at < PEER_GRACE_MS) || (subscribed.has(uid) && now - since < PEER_GRACE_MS)) count += 1;
+        else if (!subscribed.has(uid)) {
+          noticed.delete(uid);
+          heard.delete(uid);
+        }
+      }
+      return count;
     }
 
     // The adapter reads the count once, synchronously, at the start of the request this pins it for.
@@ -117,18 +137,34 @@ export function createSocketAdapter() {
       );
     };
     adapter.fetchSockets = (opts: Parameters<typeof fetchSockets>[0]) =>
-      opts.flags?.local ? fetchSockets(opts) : peers().then((n) => withPeers(n, () => fetchSockets(opts)));
+      opts.flags?.local
+        ? withPeers(0, () => fetchSockets(opts))
+        : peers().then((n) => withPeers(n, () => fetchSockets(opts)));
     cluster.onMessage = (message: ClusterMessage, offset?: string) => {
-      if (message.uid !== cluster.uid) heard.set(message.uid, performance.now());
+      if (offset === undefined && message.uid !== cluster.uid) {
+        const now = performance.now();
+        heard.set(message.uid, now);
+        if (!noticed.has(message.uid)) noticed.set(message.uid, now);
+      }
       const event = message.type === MessageType.SERVER_SIDE_EMIT ? (message.data.packet as Packet)[0] : undefined;
-      if (event === LEAVING) heard.delete(message.uid);
+      if (event === LEAVING) {
+        heard.delete(message.uid);
+        noticed.set(message.uid, -Infinity);
+      }
       if (event === HEARTBEAT || event === LEAVING) return;
       return onMessage(message, offset);
     };
-    const beat = setInterval(() => void serverSideEmit([HEARTBEAT]), HEARTBEAT_MS);
-    (beat as unknown as { unref?: () => void }).unref?.();
+    const beatNow = () => void serverSideEmit([HEARTBEAT]);
+    const beat = setInterval(beatNow, HEARTBEAT_MS);
+    const firstBeat = setInterval(() => {
+      if (!links.ready()) return;
+      clearInterval(firstBeat);
+      beatNow();
+    }, FIRST_BEAT_POLL_MS);
+    for (const timer of [beat, firstBeat]) (timer as unknown as { unref?: () => void }).unref?.();
     adapter.close = () => {
       clearInterval(beat);
+      clearInterval(firstBeat);
       void serverSideEmit([LEAVING]);
       return close();
     };
