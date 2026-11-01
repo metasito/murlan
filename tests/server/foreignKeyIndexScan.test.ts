@@ -13,7 +13,8 @@ function leadingColumns(cfg: TableConfig): Set<string> {
   const leads = new Set<string>();
   for (const col of cfg.columns) if (col.primary || col.isUnique) leads.add(col.name);
   for (const pk of cfg.primaryKeys) if (pk.columns[0]) leads.add(pk.columns[0].name);
-  for (const idx of cfg.indexes) {
+  // A partial index cannot serve the cascade's lookup, which carries no predicate.
+  for (const idx of cfg.indexes.filter((i) => !i.config.where)) {
     const first = idx.config.columns[0];
     if (first && !is(first, SQL)) leads.add((first as { name: string }).name);
   }
@@ -39,8 +40,13 @@ test("the scan names a planted unindexed foreign key, and refuses to read nothin
   const planted = pgTable("planted", {
     userId: varchar("user_id").references(() => schema.users.id),
     roomId: varchar("room_id").references(() => schema.rooms.id),
-  }, (t) => [index("planted_room_lower_idx").on(sql`lower(${t.roomId})`), index("planted_pair_idx").on(t.userId, t.roomId)]);
-  assert.deepEqual(unindexedForeignKeys([...declared, planted]), ["planted.room_id"]);
+    inviterId: varchar("inviter_id").references(() => schema.users.id),
+  }, (t) => [
+    index("planted_room_lower_idx").on(sql`lower(${t.roomId})`),
+    index("planted_pair_idx").on(t.userId, t.roomId),
+    index("planted_inviter_partial_idx").on(t.inviterId).where(sql`${t.userId} is not null`),
+  ]);
+  assert.deepEqual(unindexedForeignKeys([...declared, planted]), ["planted.room_id", "planted.inviter_id"]);
   assert.throws(() => unindexedForeignKeys([]), /inspected nothing/);
   assert.throws(() => unindexedForeignKeys([schema.activeGames]), /inspected nothing/);
 });
