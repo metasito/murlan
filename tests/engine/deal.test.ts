@@ -420,17 +420,19 @@ describe("the shuffle is unbiased", () => {
 });
 
 describe("a deal on a device without crypto", () => {
-  test("still deals the whole deck, differently each time", () => {
-    const crypto = Object.getOwnPropertyDescriptor(globalThis, "crypto");
-    Object.defineProperty(globalThis, "crypto", { value: undefined, configurable: true });
-    try {
-      const first = dealCards(3).hands.flat();
-      const second = dealCards(3).hands.flat();
-      assert.equal(new Set(ids(first)).size, 54);
-      assert.notDeepEqual(ids(first), ids(second));
-    } finally {
-      if (crypto) Object.defineProperty(globalThis, "crypto", crypto);
-      else delete (globalThis as { crypto?: unknown }).crypto;
-    }
-  });
+  for (const [device, value] of [["no crypto at all", undefined], ["a crypto without getRandomValues", {}]] as const) {
+    test(`with ${device}, still deals the whole deck, differently each time`, () => {
+      const crypto = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+      Object.defineProperty(globalThis, "crypto", { value, configurable: true });
+      try {
+        const first = dealCards(3).hands.flat();
+        const second = dealCards(3).hands.flat();
+        assert.equal(new Set(ids(first)).size, 54);
+        assert.notDeepEqual(ids(first), ids(second));
+      } finally {
+        if (crypto) Object.defineProperty(globalThis, "crypto", crypto);
+        else delete (globalThis as { crypto?: unknown }).crypto;
+      }
+    });
+  }
 });
