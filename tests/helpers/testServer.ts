@@ -22,7 +22,7 @@ import { installClock, type Clock } from "../../server/http/clock.ts";
 process.env.MURLAN_PG_POOL_MAX ??= "4";
 
 /**
- * `/api/auth/register` allows 100 per process in production, which is still
+ * `/api/auth/register` allows 100 per IP in production, which is still
  * only about thirty-five tables — a suite reaches it and every later
  * registration comes back 429 with nothing tying it to the cap.
  */

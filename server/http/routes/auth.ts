@@ -45,7 +45,8 @@ import { payload } from "../../shared/payload.ts";
  * without tripping. What actually bounds one account's login attempts is
  * loginUsernameLimiter below.
  */
-const authLimiter = routeLimiter({
+export const authLimiter = routeLimiter({
+  name: "auth",
   windowMs: 15 * 60 * 1000,
   defaultMax: 100,
   envVar: "MURLAN_AUTH_RATE_LIMIT",
@@ -63,11 +64,8 @@ const LOGIN_LIMIT_DECOY_HASH = bcrypt.hashSync("murlan-rate-limit-timing-decoy",
  * userStore.getUserByUsername looks up by, so case doesn't fork one account
  * into two budgets.
  *
- * The count lives in this process's memory: the real ceiling is the limit
- * times the instances serving, and a deploy resets it. Accepted (#1651, D7):
- * every guess still pays a bcrypt compare and the per-IP limiter, and a
- * shared store would add a write per attempt plus a fail-open-or-closed
- * choice during a database outage.
+ * The count is the cluster's, not this instance's, and outlives a deploy:
+ * see routeLimiter's store.
  *
  * skipSuccessfulRequests: a correct login must never spend down the budget a
  * wrong one does — otherwise a user who logs in from several devices a day
@@ -82,7 +80,8 @@ const LOGIN_LIMIT_DECOY_HASH = bcrypt.hashSync("murlan-rate-limit-timing-decoy",
  * account's real guesses. Paying a decoy bcrypt.compare closes that gap; see
  * #41's PR description for the measurement.
  */
-const loginUsernameLimiter = routeLimiter({
+export const loginUsernameLimiter = routeLimiter({
+  name: "loginUsername",
   windowMs: 15 * 60 * 1000,
   defaultMax: 10,
   envVar: "MURLAN_LOGIN_USERNAME_RATE_LIMIT",
@@ -102,7 +101,8 @@ const loginUsernameLimiter = routeLimiter({
  * whatever address the caller submitted, so a nonexistent address is
  * throttled on the identical schedule a real one is.
  */
-const passwordResetRequestLimiter = routeLimiter({
+export const passwordResetRequestLimiter = routeLimiter({
+  name: "passwordResetRequest",
   windowMs: 15 * 60 * 1000,
   defaultMax: 5,
   envVar: "MURLAN_PASSWORD_RESET_REQUEST_RATE_LIMIT",
@@ -118,7 +118,8 @@ const passwordResetRequestLimiter = routeLimiter({
  * loginUsernameLimiter's per-account precision, which this route has no
  * username to key on.
  */
-const resetPasswordLimiter = routeLimiter({
+export const resetPasswordLimiter = routeLimiter({
+  name: "resetPassword",
   windowMs: 60 * 1000,
   defaultMax: 20,
   envVar: "MURLAN_RESET_PASSWORD_RATE_LIMIT",
@@ -138,7 +139,8 @@ const resetPasswordLimiter = routeLimiter({
  * guesses. This route is already authenticated as the account it is
  * guessing at, so there is no oracle to close.
  */
-const changePasswordLimiter = routeLimiter({
+export const changePasswordLimiter = routeLimiter({
+  name: "changePassword",
   windowMs: 15 * 60 * 1000,
   defaultMax: 10,
   envVar: "MURLAN_CHANGE_PASSWORD_RATE_LIMIT",
@@ -155,7 +157,8 @@ const changePasswordLimiter = routeLimiter({
  * itself an oracle: a nonexistent address is throttled on the identical
  * schedule a real one is.
  */
-const registerEmailLimiter = routeLimiter({
+export const registerEmailLimiter = routeLimiter({
+  name: "registerEmail",
   windowMs: 15 * 60 * 1000,
   defaultMax: 5,
   envVar: "MURLAN_REGISTER_EMAIL_RATE_LIMIT",
@@ -174,7 +177,8 @@ const registerEmailLimiter = routeLimiter({
  * verified victim's, so the amplification now scales with how many accounts
  * an attacker holds rather than being capped at one mail, period.
  */
-const addEmailLimiter = routeLimiter({
+export const addEmailLimiter = routeLimiter({
+  name: "addEmail",
   windowMs: 15 * 60 * 1000,
   defaultMax: 5,
   envVar: "MURLAN_ADD_EMAIL_RATE_LIMIT",
@@ -188,7 +192,8 @@ const addEmailLimiter = routeLimiter({
  * but keyed on the account rather than an address: the route takes no
  * address in its body, only the one already on the caller's own row.
  */
-const resendVerificationLimiter = routeLimiter({
+export const resendVerificationLimiter = routeLimiter({
+  name: "resendVerification",
   windowMs: 15 * 60 * 1000,
   defaultMax: 5,
   envVar: "MURLAN_RESEND_VERIFICATION_RATE_LIMIT",
@@ -198,7 +203,8 @@ const resendVerificationLimiter = routeLimiter({
 
 // One ticket per socket connection attempt, including every reconnect, so this
 // has to tolerate a flapping mobile connection while still being bounded.
-const ticketLimiter = routeLimiter({
+export const ticketLimiter = routeLimiter({
+  name: "ticket",
   windowMs: 60 * 1000,
   defaultMax: 60,
   envVar: "MURLAN_TICKET_RATE_LIMIT",

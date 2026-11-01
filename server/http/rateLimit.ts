@@ -1,8 +1,19 @@
 // The one place a rate limiter is built — pinned by
 // tests/server/rateLimiterFactory.test.ts, which fails on any other caller of
 // rateLimit() under server/.
-import { rateLimit, type RateLimitExceededEventHandler } from "express-rate-limit";
+import {
+  MemoryStore,
+  rateLimit,
+  type ClientRateLimitInfo,
+  type IncrementResponse,
+  type Options,
+  type RateLimitExceededEventHandler,
+  type Store,
+} from "express-rate-limit";
+import { RedisStore, type RedisReply } from "rate-limit-redis";
+import { Counter } from "prom-client";
 import type { Request, RequestHandler } from "express";
+import { openRedis, redisKey, type RedisClient } from "../store/redis.ts";
 import { testOnlyEnv } from "./testOnlyEnv.ts";
 
 /**
@@ -26,6 +37,8 @@ const KEY_GENERATORS: Record<Exclude<LimiterKey, "ip">, (req: Request) => string
 };
 
 type LimiterSpec = {
+  /** Its counts' name in Redis: the same on every instance, and no other limiter's. */
+  name: string;
   windowMs: number;
   /** Used when `envVar` is unset, or holds anything but a positive integer. */
   defaultMax: number;
@@ -49,7 +62,108 @@ export function maxFrom(envVar: string | undefined, defaultMax: number): number 
   return Number.isInteger(parsed) && parsed > 0 ? parsed : defaultMax;
 }
 
+const fallbacks = new Counter({
+  name: "limiter_fallbacks_total",
+  help: "Requests a rate limiter counted in this instance's memory because Redis did not answer",
+  labelNames: ["limiter"],
+});
+
+/** How long a request waits on Redis for its count; past it, this instance counts it. */
+const SHARED_COUNT_DEADLINE_MS = 1_000;
+
+let limitsConnection: RedisClient | null = null;
+const hasConnected = new WeakSet<RedisClient>();
+
+async function sendLimitCommand(args: string[]): Promise<RedisReply> {
+  if (!limitsConnection?.isOpen) {
+    const opened = openRedis("limits");
+    opened.once("ready", () => hasConnected.add(opened));
+    limitsConnection = opened;
+  }
+  // Only a first connect is waited out: a command sent while reconnecting would sit in the
+  // offline queue for its whole timeout, and every limited request with it.
+  if (hasConnected.has(limitsConnection) && !limitsConnection.isReady) throw new Error("Redis is reconnecting");
+  return limitsConnection.sendCommand(args);
+}
+
+function withinDeadline<T>(work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("Redis did not answer the rate limiter in time")), SHARED_COUNT_DEADLINE_MS);
+  });
+  return Promise.race([work, late]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Counts in Redis, so a limit holds across instances and through a deploy. While Redis cannot
+ * answer, counts in this limiter's own memory instead: the limit still holds on this instance,
+ * and the caller never sees the outage as a 500 or as a pass. Counts taken in memory stay there.
+ */
+class SharedStore implements Store {
+  readonly localKeys = false;
+  readonly prefix: string;
+  readonly #name: string;
+  readonly #memory = new MemoryStore();
+  readonly #redis = new RedisStore({ sendCommand: (...args: string[]) => sendLimitCommand(args), prefix: "" });
+  #options: Options | undefined;
+  #scriptsLoaded: Promise<void> | null = null;
+
+  constructor(name: string) {
+    this.#name = name;
+    this.prefix = `${name}:`;
+  }
+
+  init(options: Options): void {
+    this.#options = options;
+    this.#memory.init(options);
+  }
+
+  // The keyspace is read per call, not at build: a test server scopes DATABASE_URL after the
+  // routes, and their limiters, were imported.
+  async #shared<T>(key: string, op: (sharedKey: string) => Promise<T>): Promise<T> {
+    this.#scriptsLoaded ??= this.#redis.init(this.#options!);
+    try {
+      return await withinDeadline(this.#scriptsLoaded.then(() => op(redisKey(`limit:${this.#name}:${key}`))));
+    } catch (err) {
+      this.#scriptsLoaded = null;
+      throw err;
+    }
+  }
+
+  async increment(key: string): Promise<IncrementResponse> {
+    try {
+      return await this.#shared(key, (k) => this.#redis.increment(k));
+    } catch {
+      fallbacks.inc({ limiter: this.#name });
+      return this.#memory.increment(key);
+    }
+  }
+
+  async decrement(key: string): Promise<void> {
+    if (await this.#memory.get(key)) return this.#memory.decrement(key);
+    await this.#shared(key, (k) => this.#redis.decrement(k)).catch(() => {});
+  }
+
+  async get(key: string): Promise<ClientRateLimitInfo | undefined> {
+    try {
+      return await this.#shared(key, (k) => this.#redis.get(k));
+    } catch {
+      return this.#memory.get(key);
+    }
+  }
+
+  async resetKey(key: string): Promise<void> {
+    await this.#memory.resetKey(key);
+    await this.#shared(key, (k) => this.#redis.resetKey(k)).catch(() => {});
+  }
+
+  shutdown(): void {
+    this.#memory.shutdown();
+  }
+}
+
 export function routeLimiter({
+  name,
   windowMs,
   defaultMax,
   envVar,
@@ -61,6 +175,7 @@ export function routeLimiter({
   return rateLimit({
     windowMs,
     limit: () => maxFrom(envVar, defaultMax),
+    store: new SharedStore(name),
     standardHeaders: true,
     legacyHeaders: false,
     ...(keyBy === "ip" ? {} : { keyGenerator: KEY_GENERATORS[keyBy] }),
