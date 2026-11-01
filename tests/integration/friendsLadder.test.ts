@@ -105,7 +105,7 @@ describe("the friends ladder ranks the viewer among accepted friends only", { sk
     assert.ok(!rows.some((r) => r.userId === viewer.user.id), "the global ladder listed a provisional player");
   });
 
-  test("the global ladder is read once per 30 s and says a client may keep it that long", async (t) => {
+  test("the global ladder is read once per 30 s and a client keeps it no longer than the memo", async (t) => {
     const p = pool();
     const real = p.query.bind(p) as (...args: unknown[]) => Promise<unknown>;
     const patched = p as unknown as { query: (...args: unknown[]) => Promise<unknown> };
@@ -121,16 +121,21 @@ describe("the friends ladder ranks the viewer among accepted friends only", { sk
     const global = async () => {
       const res = await call(viewer, "GET", "/api/ratings/leaderboard");
       assert.equal(res.status, 200);
-      assert.equal(res.headers.get("cache-control"), "private, max-age=30");
-      return (await res.json()) as Row[];
+      const maxAge = /^private, max-age=(\d+)$/.exec(res.headers.get("cache-control") ?? "");
+      assert.ok(maxAge, `no private max-age: ${res.headers.get("cache-control")}`);
+      return { rows: (await res.json()) as Row[], maxAge: Number(maxAge[1]) };
     };
 
     clock.skip(31_000);
     const first = await global();
     assert.equal(ladderReads, 1, "the route never reached the ladder query: the count is not looking");
-    assert.deepEqual(await global(), first);
+    assert.ok(first.maxAge > 20 && first.maxAge <= 30, `a fresh read said max-age=${first.maxAge}`);
+    clock.skip(10_000);
+    const second = await global();
+    assert.deepEqual(second.rows, first.rows);
     assert.equal(ladderReads, 1, "a second read inside 30 s ran the query again");
-    clock.skip(31_000);
+    assert.ok(second.maxAge <= 20, `a 10 s old entry still said max-age=${second.maxAge}`);
+    clock.skip(21_000);
     await global();
     assert.equal(ladderReads, 2, "a read 31 s later was served from the memo");
   });
