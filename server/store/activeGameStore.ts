@@ -39,7 +39,7 @@ export const activeGameStore = {
     return found;
   },
 
-  /** Rows `unpackPersistedState` would read the version of and a deal still in play. */
+  /** Every table at a version `unpackPersistedState` accepts whose deal is still in play: what the orphan sweep may wake. */
   listResumable(): Promise<ResumableRow[]> {
     return db()
       .select({ roomId: activeGames.roomId, userIds: seatedUserIds })
