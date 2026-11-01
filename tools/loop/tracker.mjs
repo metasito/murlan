@@ -1,7 +1,7 @@
 /**
  * GitHub, for the loop: every issue and pull request it reads or moves, and who it trusts, behind
  * one interface — `ghTracker` over `gh api`, `fakeTracker` in memory. The label set is
- * `docs/agents/issue-tracker.md`'s. Merging is `merges.mjs`'s.
+ * `docs/agents/issue-tracker.md`'s. Merging is the supervisor's, composed in `settle.mjs`.
  *
  * REST only: `gh issue` and `gh pr` go through GraphQL, which a Claude Code cloud session is refused.
  */
