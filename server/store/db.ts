@@ -67,7 +67,7 @@ export async function watchConnectionBudget(): Promise<void> {
     );
   if (budgetCheck) clearInterval(budgetCheck);
   budgetCheck = setInterval(() => void check(), BUDGET_CHECK_MS);
-  budgetCheck.unref();
+  (budgetCheck as unknown as { unref?: () => void }).unref?.();
   await check();
 }
 
