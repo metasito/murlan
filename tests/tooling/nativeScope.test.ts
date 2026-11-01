@@ -30,7 +30,7 @@ test("an unreadable package.json runs them", () => {
 });
 
 const AUDIO = "patches/react-native-audio-api+0.13.6.patch";
-const ADAPTER = "patches/@socket.io+postgres-adapter+0.5.0.patch";
+const ADAPTER = "patches/@stryker-mutator+tap-runner+10.0.0.patch";
 const repoPatch = (f: string) => readFileSync(path.join(repoRoot, f), "utf8");
 
 test("a patch counts as native by the paths its own diff touches", () => {

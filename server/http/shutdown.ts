@@ -4,7 +4,8 @@ import runtime from "../../deploy/runtime.json" with { type: "json" };
 import { logger } from "../shared/logger.ts";
 import { closeDatabase, QUERY_TIMEOUT_MS } from "../store/db.ts";
 import { beginShutdown } from "../game/gameRoom.ts";
-import { socketAdapterPool, socketAdapterReady } from "../socket/socketAdapter.ts";
+import { closeRedis } from "../store/redis.ts";
+import { stopInbox } from "../store/instanceInbox.ts";
 import { closeOwnership } from "../game/gameOwnership.ts";
 import type { TableRuntime } from "../game/tableRuntime.ts";
 import { settleDisconnects } from "../socket/socketPresence.ts";
@@ -31,11 +32,9 @@ const DISCONNECT_SETTLE_MS = 1_500;
  * is bounded by its entry, so their sum is the longest a shutdown can take.
  */
 export const SHUTDOWN_BUDGET = {
-  adapterReady: 750,
   ioClose: 500,
   settleDisconnects: DISCONNECT_SETTLE_MS,
   stopTables: 250,
-  adapterPoolEnd: 250,
   drain: DRAIN_TIMEOUT_MS,
   poolEnd: 200,
   closeOwnership: 250,
@@ -100,12 +99,7 @@ export async function shutdown(
 
   try {
     beginShutdown();
-    // A SIGTERM arriving moments after boot would otherwise close the adapter
-    // while it is still taking out its subscription, stranding that client so
-    // the pool below never finishes closing.
-    await socketAdapterReady(SHUTDOWN_BUDGET.adapterReady);
-    // Closes the adapter too, which releases the client parked on `LISTEN` and
-    // stops its cleanup timer — so the pool below has nothing checked out.
+    // Closes the adapter too, which ends its read loop before Redis goes below.
     await within(
       SHUTDOWN_BUDGET.ioClose,
       (async () => {
@@ -118,13 +112,8 @@ export async function shutdown(
     );
     await settleDisconnects(SHUTDOWN_BUDGET.settleDisconnects);
     await within(SHUTDOWN_BUDGET.stopTables, tables.stopTables());
-    const adapterPool = socketAdapterPool();
-    if (adapterPool) {
-      await within(
-        SHUTDOWN_BUDGET.adapterPoolEnd,
-        adapterPool.end().catch((err) => logger.error({ err }, "Socket adapter pool close failed"))
-      );
-    }
+    stopInbox();
+    closeRedis();
     // Disconnecting the sockets above starts writes — updateLastSeen, the
     // lobby teardown — that only the drain inside closeDatabase waits for.
     const { ended } = await closeDatabase({ drainMs: SHUTDOWN_BUDGET.drain });

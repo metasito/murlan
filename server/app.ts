@@ -10,7 +10,6 @@ import { logger } from "./shared/logger.ts";
 import { createSessionMiddleware } from "./http/session.ts";
 import { openDatabase, pool } from "./store/db.ts";
 import { setupSocket } from "./socket/socket.ts";
-import { socketAdapterPoolStats } from "./socket/socketAdapter.ts";
 import { errorHandler } from "./http/errorHandler.ts";
 import { installServerErrorRecorder } from "./http/serverErrors.ts";
 import { mountApi } from "./http/routes/index.ts";
@@ -241,7 +240,6 @@ export async function createApp(): Promise<CreatedApp> {
         status: "ok",
         db: "connected",
         uptime: Math.floor(process.uptime()),
-        adapterPool: socketAdapterPoolStats(),
       });
     } catch (err) {
       logger.error({ err }, "Health check DB failure");

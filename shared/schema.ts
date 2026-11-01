@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, boolean, pgEnum, jsonb, index, uniqueIndex, primaryKey, bigserial, customType } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, boolean, pgEnum, jsonb, index, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
 import type { LastMove } from "../lib/game/gameEngine.ts";
 import type { PersistedEnvelope } from "./persistedEnvelope.ts";
 import type { ReplayMove, ReplaySeat } from "../lib/game/replay.ts";
@@ -402,35 +402,6 @@ export const authTokens = pgTable(
     uniqueIndex("auth_tokens_token_hash_uq").on(t.tokenHash),
     index("auth_tokens_user_id_idx").on(t.userId, t.purpose),
     index("auth_tokens_expires_idx").on(t.expiresAt),
-  ]
-);
-
-const bytea = customType<{ data: Buffer; driverData: Buffer }>({
-  dataType: () => "bytea",
-});
-
-/**
- * `@socket.io/postgres-adapter`'s spill table. `pg_notify` caps a payload at
- * 8000 bytes, so anything larger — a sanitized game state is routinely larger —
- * is written here and the notification carries only the row id.
- *
- * Declared here, and created by `server/store/schemaDdl.ts` like every other table,
- * rather than letting the adapter issue its own `CREATE TABLE`: a second
- * creator is how a table comes to exist on one database and not another.
- * Nothing in this app reads or writes it — the adapter owns the rows, on its
- * own pool, and prunes them on a timer.
- */
-export const socketIoAttachments = pgTable(
-  "socket_io_attachments",
-  {
-    id: bigserial("id", { mode: "bigint" }).primaryKey(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    payload: bytea("payload").notNull(),
-  },
-  (t) => [
-    // The adapter's own cleanup runs `DELETE ... WHERE created_at < now() - …`
-    // on every instance every 30s. Without this it is a sequential scan.
-    index("socket_io_attachments_created_at_idx").on(t.createdAt),
   ]
 );
 

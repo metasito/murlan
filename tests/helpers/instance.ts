@@ -1,8 +1,21 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import net from "node:net";
 
 export interface Instance {
   port: number;
   child: ChildProcess;
+}
+
+/**
+ * `n` distinct ports nothing holds now. The server listens with `reusePort`, so a fixed port
+ * another checkout's suite also uses splits this suite's requests between two servers.
+ */
+export async function freePorts(n: number): Promise<number[]> {
+  const probes = Array.from({ length: n }, () => net.createServer());
+  await Promise.all(probes.map((p) => new Promise<void>((resolve) => p.listen(0, "127.0.0.1", resolve))));
+  const ports = probes.map((p) => (p.address() as net.AddressInfo).port);
+  await Promise.all(probes.map((p) => new Promise<void>((resolve) => p.close(() => resolve()))));
+  return ports;
 }
 
 /** A real server process on `port`, against `databaseUrl`; killed if it never comes up. */
@@ -39,7 +52,7 @@ export async function boot(
         if (line.includes(String(port)) || line.includes("listening")) {
           clearTimeout(giveUp);
           // The port is logged from the listen callback; the socket server is
-          // attached by then, but the adapter's LISTEN is still in flight.
+          // attached by then, but the adapter's first read from Redis is still in flight.
           setTimeout(resolve, 600);
         }
       };

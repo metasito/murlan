@@ -136,7 +136,7 @@ describe("static asset compression and caching", { skip: hasDatabase() ? false :
 
   test("the public health body names neither the build nor the environment", async () => {
     const body = (await (await fetch(`${server.url}/health`)).json()) as Record<string, unknown>;
-    assert.deepEqual(Object.keys(body).sort(), ["adapterPool", "db", "status", "uptime"]);
+    assert.deepEqual(Object.keys(body).sort(), ["db", "status", "uptime"]);
     const version = await fetch(`${server.url}/api/admin/version`);
     assert.equal(version.status, 404, "the version route answered a signed-out caller");
   });
@@ -146,16 +146,6 @@ describe("static asset compression and caching", { skip: hasDatabase() ? false :
     const expected = createHash("sha256").update(FIXTURE_INLINE_SCRIPT, "utf8").digest("base64");
     const csp = (await fetch(`${server.url}/`)).headers.get("content-security-policy")!;
     assert.ok(csp.includes(`'sha256-${expected}'`), csp);
-  });
-
-  test("health reports contention on the socket adapter's pool", async () => {
-    const body = (await (await fetch(`${server.url}/health`)).json()) as {
-      adapterPool: Record<string, number> | null;
-    };
-    assert.ok(body.adapterPool, "no adapterPool in /health");
-    for (const key of ["total", "idle", "waiting", "waits", "longestWaitMs"]) {
-      assert.equal(typeof body.adapterPool[key], "number", key);
-    }
   });
 
   test("an unhashed asset under dist/ is not cached — its URL outlives its bytes", async () => {

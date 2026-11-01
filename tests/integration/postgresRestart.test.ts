@@ -5,11 +5,11 @@ import assert from "node:assert/strict";
 import pg from "pg";
 import { connectSocket as connectTo, eventually, waitFor, type TestSocket } from "../helpers/client.ts";
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
-import { boot, type Instance } from "../helpers/instance.ts";
-import { listenPattern } from "../../server/socket/socketAdapter.ts";
+import { dropKeyspace } from "../helpers/redisKeys.ts";
+import { boot, freePorts, type Instance } from "../helpers/instance.ts";
 import { FORCED_EXIT_MS } from "../../server/http/shutdown.ts";
 
-const PORTS = [5591, 5592] as const;
+const PORTS = await freePorts(2);
 
 async function register(port: number, username: string): Promise<string> {
   const res = await fetch(`http://127.0.0.1:${port}/api/auth/register`, {
@@ -61,7 +61,6 @@ describe("the server survives its Postgres backends being terminated", {
   const watched: Watched[] = [];
   const sockets: TestSocket[] = [];
   let admin: pg.Pool;
-  let subscribed: number[] = [];
   let owner: number[] = [];
   let killed: number[] = [];
 
@@ -69,12 +68,6 @@ describe("the server survives its Postgres backends being terminated", {
     const { rows } = await admin.query<{ pid: number }>(sql, [schema, ...params]);
     return rows.map((r) => r.pid).sort();
   }
-
-  const listenPids = () =>
-    pids(
-      `SELECT pid FROM pg_stat_activity WHERE application_name = $1 AND query LIKE $2 ESCAPE '\\'`,
-      [listenPattern(scoped)]
-    );
 
   const lockPids = () =>
     pids(
@@ -111,10 +104,7 @@ describe("the server survives its Postgres backends being terminated", {
     admin = new pg.Pool({ connectionString: baseUrl });
     await admin.query(`CREATE SCHEMA "${schema}"`);
     for (const port of PORTS) {
-      const instance = await boot(port, scoped, {
-        MURLAN_SOCKET_ADAPTER_POOL_MAX: "2",
-        MURLAN_AFK_TIMEOUT_MS: "600000",
-      });
+      const instance = await boot(port, scoped, { MURLAN_AFK_TIMEOUT_MS: "600000" });
       watched.push(watch(instance));
     }
   });
@@ -123,11 +113,8 @@ describe("the server survives its Postgres backends being terminated", {
     for (const s of sockets) s.close();
     for (const w of watched) w.instance.child.kill("SIGKILL");
     await admin?.end();
+    await dropKeyspace(scoped);
     await dropSchema(baseUrl, schema);
-  });
-
-  test("both instances subscribe", async () => {
-    subscribed = await awaitPids("instances subscribed", listenPids, PORTS.length, [], 10_000);
   });
 
   test("a game dealt across the instances claims its room", { timeout: 90_000 }, async () => {
@@ -145,45 +132,25 @@ describe("the server survives its Postgres backends being terminated", {
     owner = await awaitPids("room locks held", lockPids, 1, [], 5_000);
   });
 
-  test("terminating every backend kills neither instance, and both subscribe again", async () => {
+  test("terminating every backend kills neither instance", async () => {
     const { rows } = await admin.query<{ pid: number; ok: boolean }>(
       "SELECT pid, pg_terminate_backend(pid) AS ok FROM pg_stat_activity WHERE application_name = $1",
       [schema]
     );
     killed = rows.filter((r) => r.ok).map((r) => r.pid);
-    for (const pid of [...subscribed, ...owner]) {
+    for (const pid of owner) {
       assert.ok(killed.includes(pid), `backend ${pid} was not terminated`);
     }
     assert.ok(
-      killed.length >= 2 * PORTS.length + 1,
-      `only ${killed.length} backends terminated: each instance's LISTEN and app-pool client, and the lock holder, should be among them`
+      killed.length >= PORTS.length + 1,
+      `only ${killed.length} backends terminated: each instance's app-pool client, and the lock holder, should be among them`
     );
-    await awaitPids("instances subscribed again", listenPids, PORTS.length, killed, 10_000);
     await new Promise((r) => setTimeout(r, 500));
     watched.forEach(assertAlive);
   });
 
   test("the ownership connection comes back and takes its room's lock again", async () => {
     await awaitPids("room locks taken again", lockPids, 1, killed, 10_000);
-  });
-
-  test("each instance holds exactly one adapter client checked out", async () => {
-    for (const port of PORTS) {
-      let checkedOut = -1;
-      await eventually(async () => {
-        const res = await fetch(`http://127.0.0.1:${port}/health`);
-        const body = (await res.json()) as { db: string; adapterPool: { total: number; idle: number } };
-        assert.equal(res.status, 200, `/health on ${port}: ${JSON.stringify(body)}`);
-        assert.equal(body.db, "connected");
-        checkedOut = body.adapterPool.total - body.adapterPool.idle;
-        return checkedOut === 1;
-      }, `instance ${port} to release the dead LISTEN client, leaving one adapter client checked out`);
-      assert.equal(
-        checkedOut,
-        1,
-        `instance ${port} holds ${checkedOut} adapter clients checked out — the dead LISTEN client was never released`
-      );
-    }
   });
 
   test("a room made after the restart still reaches the other instance", { timeout: 60_000 }, async () => {

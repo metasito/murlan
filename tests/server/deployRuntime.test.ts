@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { resolvePoolMax } from "../../server/store/db.ts";
-import { DEFAULT_POOL_MAX as SOCKET_ADAPTER_POOL_MAX } from "../../server/socket/socketAdapter.ts";
+import { CLUSTER_GAP_SECONDS, streamMaxLen } from "../../server/store/redis.ts";
 import { PLATFORM_GRACE_MS } from "../../server/http/shutdown.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
@@ -33,9 +33,16 @@ test("one instance's connections fit the manifest's ceiling", () => {
   assert.equal(ownership.match(/\bcreateClient\(/g)?.length, 1, "game ownership holds one Client");
   assert.doesNotMatch(ownership, /\bcreatePool\(/);
 
-  const total = resolvePoolMax(undefined) + SOCKET_ADAPTER_POOL_MAX + 1;
+  const total = resolvePoolMax(undefined) + 1;
   assert.ok(
     total <= manifest.pgConnectionsPerInstance,
     `the pools hold ${total} connections; the host allows ${manifest.pgConnectionsPerInstance}`
   );
+});
+
+test("the cluster streams hold two minutes of the manifest's design peak", () => {
+  assert.equal(manifest.maxClusterMessagesPerSecond, 1000);
+  assert.equal(CLUSTER_GAP_SECONDS, 120);
+  assert.equal(streamMaxLen(), 120_000);
+  assert.equal(streamMaxLen(7), 840);
 });

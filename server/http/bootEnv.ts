@@ -1,4 +1,4 @@
-const REQUIRED_ENV = ["SESSION_SECRET", "DATABASE_URL"];
+const REQUIRED_ENV = ["SESSION_SECRET", "DATABASE_URL", "REDIS_URL"];
 const REQUIRED_IN_PRODUCTION = ["PUBLIC_HOST"];
 
 export function checkBootEnv(env: Record<string, string | undefined> = process.env): void {

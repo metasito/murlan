@@ -8,7 +8,7 @@ import { DEADLINE_SCALE } from "../helpers/client.ts";
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 
 describe("checkBootEnv", () => {
-  const base = { SESSION_SECRET: "s", DATABASE_URL: "postgres://u:p@db/x?sslmode=require" };
+  const base = { SESSION_SECRET: "s", DATABASE_URL: "postgres://u:p@db/x?sslmode=require", REDIS_URL: "redis://r:6379/0" };
   const production = { ...base, NODE_ENV: "production", PUBLIC_HOST: "murlan.example.app" };
 
   test("a complete production environment boots", () => {
@@ -41,6 +41,7 @@ describe("checkBootEnv", () => {
   test("the secrets are required everywhere, PORT nowhere", () => {
     assert.throws(() => checkBootEnv({ ...base, SESSION_SECRET: undefined }), /SESSION_SECRET/);
     assert.throws(() => checkBootEnv({ ...base, DATABASE_URL: undefined }), /DATABASE_URL/);
+    assert.throws(() => checkBootEnv({ ...base, REDIS_URL: undefined }), /REDIS_URL/);
     assert.doesNotThrow(() => checkBootEnv({ ...base, PORT: undefined }));
   });
 
