@@ -6,7 +6,7 @@
 // notification can beat.
 import { now } from "../http/clock.ts";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { db } from "../store/db.ts";
+import { db, transaction } from "../store/db.ts";
 import { lockUsers } from "../store/userLock.ts";
 import { pushTokens } from "../../shared/schema.ts";
 import type { Locale } from "../../shared/i18n.ts";
@@ -50,7 +50,7 @@ export async function savePushToken(
   platform: string,
   locale: Locale
 ): Promise<void> {
-  await db().transaction(async (tx) => {
+  await transaction(async (tx) => {
     await lockUsers(tx, [userId]);
     await tx
       .insert(pushTokens)

@@ -1,5 +1,5 @@
-// P3c: ensureSchema runs on the app pool, so every DDL statement carries statement_timeout and
-// query_timeout of 5 s (server/store/db.ts). Two ways a missing index can take longer than that:
+// P3c: ensureSchema ran on the app pool, so every DDL statement carried statement_timeout and
+// query_timeout of 5 s (server/store/db.ts); it now opens its own DDL client with neither. Two ways a missing index can take longer than that:
 //   lock  an open write transaction on the table (CREATE INDEX needs SHARE, which waits for it)
 //   big   the table holds <rows> rows, so the build itself runs past 5 s
 // Usage: p3c-ddl-under-statement-timeout.ts lock | big <rows>
@@ -9,9 +9,7 @@ import { directUrl, log } from "./proxy.ts";
 const mode = process.argv[2] ?? "lock";
 process.env.DATABASE_URL = directUrl;
 process.env.LOG_LEVEL = "silent";
-const { createPool } = await import("../../../../../../server/store/pool.ts");
 const { ensureSchema } = await import("../../../../../../server/store/schemaDdl.ts");
-const appPoolConfig = { max: 10, connectionTimeoutMillis: 5_000, idleTimeoutMillis: 30_000, statement_timeout: 5_000, query_timeout: 5_000 };
 
 const other = new pg.Client({ connectionString: directUrl });
 await other.connect();
@@ -35,10 +33,9 @@ if (mode === "lock") {
   await other.query(`DROP INDEX "probe_session_expire"`);
 }
 
-const pool = createPool("boot", appPoolConfig);
 const t = Date.now();
 try {
-  await ensureSchema(pool);
+  await ensureSchema();
   log(`ensureSchema: ok after ${Date.now() - t}ms`);
 } catch (e) {
   const err = e as { code?: string; message: string };
@@ -48,5 +45,4 @@ if (mode === "lock") await other.query("ROLLBACK");
 const idx = await other.query(`select indexname from pg_indexes where indexname='IDX_session_expire'`);
 log(`IDX_session_expire present afterwards: ${idx.rowCount === 1}`);
 await other.query(`TRUNCATE "session"`);
-await pool.end();
 await other.end();

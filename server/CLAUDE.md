@@ -50,3 +50,6 @@ Verify against source before changing any.
   (`tests/server/pgConnections.test.ts`, `tests/integration/postgresRestart.test.ts`). The
   adapter's lost `LISTEN` clients are handed back by
   `patches/@socket.io+postgres-adapter+0.5.0.patch` (`tests/server/postgresAdapterPatch.test.ts`).
+- **Every transaction goes through `transaction()` (`server/store/db.ts`), never drizzle's own.**
+  Drizzle's leaves a client whose `BEGIN` failed checked out for good, so two such failures wedged
+  a two-slot pool (`tests/server/transactionScan.test.ts`).

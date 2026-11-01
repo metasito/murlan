@@ -123,19 +123,20 @@ the only place that creates or tears down a socket. Nothing else is allowed to c
 1. The client calls `POST /api/auth/socket-ticket` (behind `requireAuth`, so it needs a
    live session cookie) and receives a short-lived, single-use HMAC-signed ticket —
    `node:crypto` only, no new dependency.
-2. `lib/socket.ts` fetches a fresh ticket immediately before every `io()` connect
-   (including every reconnect, since tickets are single-use) and passes it as
-   `auth: { ticket }`.
+2. On native, `lib/socket.ts` fetches a fresh ticket immediately before every connection
+   attempt (including every reconnect, since tickets are single-use) and passes it as
+   `auth: { ticket }`. Web mints none: its upgrade carries the session cookie, which the
+   handshake reads first.
 3. The server's connection middleware accepts only a valid session or a valid unconsumed
    ticket — the two paths server/CLAUDE.md's ticket-auth rule allows. Rejected connections get
    `next(new Error("Not authenticated"))`, or `AUTH_UNAVAILABLE` when the check itself failed.
 
 **Single session per account:** a second connection for the same user evicts the first
 rather than the two coexisting. The older socket receives `SESSION_REPLACED` over the
-`socket:error` path and disconnects itself — `lib/socket.ts` would otherwise retry forever
-and evict the new connection right back. The evicted tab renders a terminal "opened
-elsewhere" state with a manual reconnect action; it does not go silently dead, and it does
-not reconnect on its own.
+`socket:error` path and disconnects itself — `SocketProvider`'s retry loop
+(`context/SocketContext.tsx`) would otherwise reconnect it and evict the new connection
+right back. The evicted tab renders a terminal "opened elsewhere" state with a manual
+reconnect action; it does not go silently dead, and it does not reconnect on its own.
 
 **Table ownership and forwarding (`server/game/gameOwnership.ts`, `server/game/tableRouter.ts`):** a live
 game lives in one process's `activeGames` map, and more than one process may be running. A room

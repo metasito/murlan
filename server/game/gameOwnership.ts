@@ -28,9 +28,6 @@ export function ownershipKey(roomId: string): string {
   return createHash("sha1").update(roomId).digest().readBigInt64BE(0).toString();
 }
 
-/** Bounds a query on this connection, so a half-open socket fails rather than hangs. */
-const OWNERSHIP_QUERY_TIMEOUT_MS = 5_000;
-
 /**
  * How often the connection is proved alive.
  *
@@ -81,16 +78,10 @@ function connect(): Promise<Client | null> {
   if (client) return Promise.resolve(client);
   if (connecting) return connecting;
   connecting = (async () => {
-    const next = createClient(
-      {
-        query_timeout: OWNERSHIP_QUERY_TIMEOUT_MS,
-        statement_timeout: OWNERSHIP_QUERY_TIMEOUT_MS,
-      },
-      (err) => {
-        logger.error({ err }, "Game ownership connection failed — every claimed room is now unowned");
-        drop(next);
-      }
-    );
+    const next = createClient("ownership", (err) => {
+      logger.error({ err }, "Game ownership connection failed — every claimed room is now unowned");
+      drop(next);
+    });
     try {
       await next.connect();
       // How fast a table can be taken over from an instance that vanished
@@ -231,6 +222,11 @@ export function releaseRoomAfter(roomId: string, settled: Promise<unknown>): Pro
     });
   releasing.set(roomId, released);
   return released;
+}
+
+/** Whether this process's ownership session is open, and so visible in `pg_stat_activity`. */
+export function ownershipConnected(): boolean {
+  return client !== null;
 }
 
 /** Whether this process currently claims the room. */

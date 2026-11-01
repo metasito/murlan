@@ -1,5 +1,5 @@
-const RETRY_BASE_MS = 2000;
-const RETRY_MAX_MS = 30_000;
+const RETRY_BASE_MS = 1000;
+const RETRY_MAX_MS = 5000;
 
 /**
  * Full jitter: a server restart drops every client at once, and a fixed
