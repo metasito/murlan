@@ -14,6 +14,7 @@
  * Exit 0 allows. Exit 2 blocks and returns the message on stderr to the agent.
  */
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { apiMethod, fetchesThread, untrustedRead } from "./brief.mjs";
@@ -365,7 +366,50 @@ function namesCheckCache(runnable, raw, vars) {
 }
 
 const POWERSHELL = /^(pwsh|powershell)$/;
-const MERGE_TEXT = [/\bgh\s+pr\s+merge\b/, /\bpulls\/[^\s"'/]+\/merge\b/, /\bmergePullRequest\s*\(/, /\benablePullRequestAutoMerge\s*\(/];
+/** A merge as code makes one: gh's command line or argv, the REST endpoint or an Octokit call to it, either GraphQL mutation. */
+const MERGE_CALL = [
+  /\bgh(?:\s+--?[\w-]+(?:=\S*|\s+(?!pr\b)[^\s-]\S*)?)*\s+pr\s+merge\b/,
+  /(["'`])pr\1\s*,\s*(["'`])merge\2/,
+  /\bpulls\b[^\s"'`]*\/merge\b/,
+  /\bpulls\.merge\s*\(/,
+  /\bmergePullRequest\s*\(/,
+  /\benablePullRequestAutoMerge\s*\(/,
+];
+const spellsMerge = (text) => MERGE_CALL.some((re) => re.test(text));
+
+const requireHere = createRequire(import.meta.url);
+const isJsDoc = (ts, node) => node.kind >= ts.SyntaxKind.FirstJSDocNode && node.kind <= ts.SyntaxKind.LastJSDocNode;
+
+/**
+ * Script code with its comments blanked, by TypeScript's parser: a regex or string spelling `//` or
+ * `/*` is no comment, which no pattern can tell. Code it cannot parse cleanly is judged as written.
+ */
+function withoutComments(code) {
+  if (!spellsMerge(code)) return code;
+  let ts;
+  try {
+    ts = requireHere("typescript");
+  } catch {
+    return code;
+  }
+  const file = ts.createSourceFile("script.ts", code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  if (file.parseDiagnostics?.length !== 0) return code;
+  const ranges = [];
+  const visit = (node) => {
+    if (isJsDoc(ts, node)) return;
+    ranges.push(...(ts.getLeadingCommentRanges(code, node.pos) ?? []), ...(ts.getTrailingCommentRanges(code, node.end) ?? []));
+    for (const child of node.getChildren(file)) visit(child);
+  };
+  visit(file);
+  let out = "";
+  let at = 0;
+  for (const { pos, end } of ranges.sort((a, b) => a.pos - b.pos)) {
+    if (pos < at) continue;
+    out += code.slice(at, pos) + code.slice(pos, end).replace(/[^\n]/g, " ");
+    at = end;
+  }
+  return out + code.slice(at);
+}
 
 /** `-EncodedCommand` as PowerShell takes it: after `-`, `--` or `/`, `ec` or a prefix of the name. Its body is base64 no rule reads. */
 const isEncodedFlag = (a) => {
@@ -433,35 +477,78 @@ function nodeTests(c) {
   return false;
 }
 
+const NODE_INLINE = /^(-e|--eval|-p|--print)(=.*)?$/s;
+const SHELL_TAKES_A_VALUE = /^([-+][oO]|--rcfile|--init-file)$/;
+const SHELL_INLINE = /^-[A-Za-z]*c[A-Za-z]*$/;
+const PWSH_TAKES_A_VALUE = /^(?:--?|\/)(ex|ep|executionpolicy|wd|workingdirectory|config|configurationname|settingsfile|of|outputformat|if|inputformat|w|windowstyle|v|version)$/i;
+const PWSH_INLINE = /^(?:--?|\/)(c|com|comm|comma|comman|command)$/i;
+const NOTHING = /$^/;
+const isFileFlag = (a) => /^(?:--?|\/)f[a-z]*$/i.test(a) && "file".startsWith(a.replace(/^(?:--?|\/)/, "").toLowerCase());
+
 /**
- * Every word a runner might take as a script: any operand (an option's value too), a `-File` value, a
- * redirected input. Under `node --test` the operands are test files, which quote commands as data; the
- * modules it loads are still read.
+ * The words a runner may run as its program, or null when the line hands it code inline: the first
+ * operand, and the one after it too when an option it is not known to take no value from came first.
+ * Every word after the program is that program's argument.
+ */
+function programOf(args, takesValue, inline) {
+  const out = [];
+  let maybeValue = false;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (inline.test(a)) return null;
+    if (a === "--") return [...out, ...args.slice(i + 1, i + 2)];
+    if (/^[-+]/.test(a)) {
+      if (takesValue.test(a)) i += 1;
+      else maybeValue = !a.includes("=");
+      continue;
+    }
+    out.push(a);
+    if (!maybeValue) return out;
+    maybeValue = false;
+  }
+  return out;
+}
+
+/**
+ * Every word a runner may take as its script: its program, a `-File` value, the modules node loads,
+ * and a redirected input when it names no program. Under `node --test` the operands are test files,
+ * which quote commands as data; the modules it loads are still read.
  */
 function scriptsOf(c, nodeOptions) {
   if (!SCRIPT_RUNNER.test(c.cmd) && !POWERSHELL.test(c.cmd)) return [];
   const input = c.input ?? [];
   const loads = NODE.test(c.cmd) ? valuesOf([...nodeOptions, ...c.args], NODE_LOADS) : [];
   if (nodeTests(c)) return [...loads, ...input].filter(Boolean);
-  const file = POWERSHELL.test(c.cmd) ? c.args.flatMap((a, i) => (/^(?:--?|\/)f[a-z]*$/i.test(a) && "file".startsWith(a.replace(/^(?:--?|\/)/, "").toLowerCase()) ? [c.args[i + 1] ?? ""] : [])) : [];
-  return [...file, ...loads, ...c.args.filter((a) => !/^[-+]/.test(a)), ...input].filter(Boolean);
+  const file = POWERSHELL.test(c.cmd) ? c.args.flatMap((a, i) => (isFileFlag(a) ? [c.args[i + 1] ?? ""] : [])) : [];
+  const [takesValue, inline] = NODE.test(c.cmd)
+    ? [NODE_TAKES_A_VALUE, NODE_INLINE]
+    : POWERSHELL.test(c.cmd)
+      ? [PWSH_TAKES_A_VALUE, PWSH_INLINE]
+      : /^(source|\.)$/.test(c.cmd)
+        ? [NOTHING, NOTHING]
+        : [SHELL_TAKES_A_VALUE, SHELL_INLINE];
+  const program = file.length ? file : programOf(c.args, takesValue, inline);
+  return [...loads, ...(program ?? []), ...(program?.length === 0 ? input : [])].filter(Boolean);
 }
 
-/** A shell that reads its program from standard input: nothing to run, `-s`, or `-`. */
-const readsProgram = (c) => (/^(bash|sh|zsh|dash|ksh|node|nodejs)$/.test(c.cmd) || POWERSHELL.test(c.cmd)) && (!c.args.some((a) => !/^-/.test(a)) || c.args.includes("-s") || c.args.includes("-"));
+/** A shell that reads its program from standard input: nothing to run, `-s`, or `-`. Node handed code inline, or tests, reads none. */
+const readsProgram = (c) =>
+  (/^(bash|sh|zsh|dash|ksh|node|nodejs)$/.test(c.cmd) || POWERSHELL.test(c.cmd)) &&
+  !(NODE.test(c.cmd) && c.args.some((a) => NODE_INLINE.test(a) || a === "--test")) &&
+  (!c.args.some((a) => !/^-/.test(a)) || c.args.includes("-s") || c.args.includes("-"));
 
 /**
  * One level: whether a script the line runs spells a merge. A script that exists and cannot be read, one
  * the same line writes, and a program piped into a shell that spells a merge are all refused.
  */
 function runsMergingScript(lexed, raw, repo) {
-  const spells = (text) => MERGE_TEXT.some((re) => re.test(text));
+  const spellsCode = (text) => spellsMerge(withoutComments(text));
   const parsed = lexed.map(throughNpx);
   const piped = parsed.some(readsProgram);
-  if (piped && spells(raw)) return true;
+  if (piped && spellsMerge(raw)) return true;
   const nodeOptions = nodeOptionsOf(parsed, raw);
   const code = parsed.filter((c) => NODE.test(c.cmd)).flatMap((c) => valuesOf([...nodeOptions, ...c.args], NODE_CODE));
-  if (code.some((v) => spells(v) || spells(codeIn(v)))) return true;
+  if (code.some((v) => spellsCode(v) || spellsCode(codeIn(v)))) return true;
   // A `cd` earlier on the line moves where a relative script is found.
   let moved = "";
   return parsed.some((c) => {
@@ -470,6 +557,7 @@ function runsMergingScript(lexed, raw, repo) {
       if (to) moved = isAbsolute(toNative(to)) ? toNative(to) : join(moved, toNative(to));
       return false;
     }
+    const judge = NODE.test(c.cmd) ? spellsCode : spellsMerge;
     return [...scriptsOf(c, nodeOptions), ...(piped ? c.args.filter((a) => !a.startsWith("-")) : [])].some((script) => {
       let text;
       try {
@@ -480,7 +568,7 @@ function runsMergingScript(lexed, raw, repo) {
         const bare = (w) => w.replace(/^\.[\\/]/, "");
         return parsed.some((o) => o !== c && (o.redirected.some((w) => bare(w) === bare(script)) || o.args.some((w) => bare(w) === bare(script))));
       }
-      return spells(text);
+      return judge(text);
     });
   });
 }
@@ -664,7 +752,7 @@ const RULES = [
       "Push, open the pull request, and exit — that is the whole of phase E.\n" +
       "Blocked on a predecessor's change? Say so on the issue and park; do not merge it yourself.\n" +
       "Merging by hand is the owner's: ask them to run it, or run the loop.\n" +
-      "The same goes for `pwsh -EncodedCommand` (also -e, -ec), whose body no rule can read, and for a script run by `-File`, bash, sh or node whose text merges.",
+      "The same goes for `pwsh -EncodedCommand` (also -e, -ec), whose body no rule can read, and for a script run by `-File`, bash, sh or node whose code makes one of these calls; a node script's comments, and the files it is handed as arguments, do not count.",
   },
   {
     test: (c) => c.piped && runsPlaywright(c),

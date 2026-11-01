@@ -161,12 +161,12 @@ describe("no git or gh outside cli.mjs", () => {
 
 /**
  * A gh argv — an array opening on one of gh's own commands, on one line or across several — is built
- * in these files and no other loop module: the tracker for issues, pull requests and runs, and
- * ciVerdict.ts for the one read REST has no form of: a run's failed-step log, whose argv a CI-RED
- * also prints for the fix session to run.
+ * in these files and no other loop module: the tracker for issues, pull requests and runs, merges.mjs
+ * for the supervisor's merges, and ciVerdict.ts for the one read REST has no form of: a run's
+ * failed-step log, whose argv a CI-RED also prints for the fix session to run.
  */
-describe("no gh argv outside the tracker and ciVerdict", () => {
-  const ALLOWED = new Set(["cli.mjs", "tracker.mjs", "ciVerdict.ts"]);
+describe("no gh argv outside the tracker, the merges and ciVerdict", () => {
+  const ALLOWED = new Set(["cli.mjs", "tracker.mjs", "merges.mjs", "ciVerdict.ts"]);
   const GH_ARGV = /\[\s*["'`](?:issue|pr|api|repo|release|workflow|search|secret|gist)["'`]\s*,|\[\s*["'`]run["'`]\s*,\s*["'`](?:view|list|rerun|watch|download|cancel|delete)["'`]/;
   const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, (c) => c.replace(/[^\n]/g, " "));
   const files = readdirSync(LOOP).filter((f) => /\.(mjs|ts)$/.test(f) && !ALLOWED.has(f));
