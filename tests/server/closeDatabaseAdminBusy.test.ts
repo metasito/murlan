@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import { adminPool, closeDatabase, openDatabase } from "../../server/store/db.ts";
 import { logger } from "../../server/shared/logger.ts";
 
-test("a busy admin pool neither holds the shutdown's drain nor goes unreported", async (t) => {
+// The drain window outlasts the test's own timeout, so a close that waits on the admin pool for it fails here.
+test("a busy admin pool neither holds the shutdown's drain nor goes unreported", { timeout: 20_000 }, async (t) => {
   openDatabase();
   t.mock.getter(adminPool(), "totalCount", () => 1);
   t.mock.getter(adminPool(), "idleCount", () => 0);
@@ -12,9 +13,7 @@ test("a busy admin pool neither holds the shutdown's drain nor goes unreported",
   const warned: string[] = [];
   t.mock.method(logger, "warn", (_obj: unknown, msg: string) => void warned.push(msg));
 
-  const started = Date.now();
-  const { ended } = await closeDatabase({ drainMs: 3_000 });
+  const { ended } = await closeDatabase({ drainMs: 10 * 60_000 });
   await ended;
-  assert.ok(Date.now() - started < 1_500, `the shutdown waited ${Date.now() - started} ms on admin reads`);
   assert.ok(warned.some((m) => /admin/i.test(m)), `the abandoned admin reads were not logged: ${JSON.stringify(warned)}`);
 });

@@ -7,7 +7,7 @@ import pg from "pg";
 import { PgDialect } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
-import { register } from "../helpers/client.ts";
+import { eventually, register } from "../helpers/client.ts";
 import { saveReplay } from "../../server/game/replays.ts";
 import { deleteUser } from "../../server/http/deleteAccount.ts";
 import { db, pool } from "../../server/store/db.ts";
@@ -45,14 +45,6 @@ function indexesUsed(plan: unknown): string[] {
     ...(typeof node["Index Name"] === "string" ? [node["Index Name"]] : []),
     ...Object.values(node).flatMap(indexesUsed),
   ];
-}
-
-async function until(what: string, check: () => Promise<boolean>, ms = 5_000): Promise<void> {
-  const deadline = Date.now() + ms;
-  while (!(await check())) {
-    if (Date.now() > deadline) assert.fail(`timed out waiting for ${what}`);
-    await new Promise((r) => setTimeout(r, 25));
-  }
 }
 
 const seat = (seatIndex: number, userId: string | null, name: string, vacatedBy: string | null = null): ReplaySeat => ({
@@ -185,7 +177,7 @@ describe("account deletion at any size", { skip: hasDatabase() ? false : skipMes
     await deleteUser(user.id);
     assert.deepEqual(insideTransaction(seen).filter((s) => /server_errors/.test(s.text)).map((s) => s.text), []);
 
-    await until("the purge", async () => (await named()) === 0);
+    await eventually(async () => (await named()) === 0, "the purge");
     const purge = seen.filter((s) => /^DELETE FROM "server_errors" WHERE ctid IN \(SELECT ctid FROM "server_errors" WHERE .* LIMIT \$\d+\)$/s.test(s.text));
     assert.equal(purge.length, 1, seen.map((s) => s.text).join("\n"));
     assert.ok(seen.indexOf(purge[0]!) > seen.findIndex((s) => s.text === "COMMIT"));
@@ -197,10 +189,11 @@ describe("account deletion at any size", { skip: hasDatabase() ? false : skipMes
     await server.query(`INSERT INTO server_errors (level, message, context) VALUES (50, 'm', jsonb_build_object('roomHost', $1::text))`, [user.id]);
     const dialect = new PgDialect();
     const execute = db().execute.bind(db());
-    let refused = 0;
+    let refused!: () => void;
+    const attempted = new Promise<void>((resolve) => (refused = resolve));
     t.mock.method(db(), "execute", (q: SQL) => {
       if (/server_errors/.test(dialect.sqlToQuery(q).sql)) {
-        refused += 1;
+        refused();
         return Promise.reject(new Error("purge refused by the test"));
       }
       return execute(q);
@@ -209,9 +202,10 @@ describe("account deletion at any size", { skip: hasDatabase() ? false : skipMes
     const res = await fetch(`${server.url}/api/users/me`, { method: "DELETE", headers: { cookie } });
     assert.equal(res.status, 200, await res.text());
     assert.deepEqual(await server.query(`SELECT 1 FROM users WHERE id = $1`, [user.id]), []);
-    await until("the purge to be attempted", async () => refused > 0);
-    await until("the failure to be logged", async () =>
-      (await server.query(`SELECT 1 FROM server_errors WHERE context::text LIKE '%purge refused by the test%'`)).length > 0
+    await attempted;
+    await eventually(
+      async () => (await server.query(`SELECT 1 FROM server_errors WHERE context::text LIKE '%purge refused by the test%'`)).length > 0,
+      "the failure to be logged"
     );
   });
 });
