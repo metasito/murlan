@@ -6,6 +6,7 @@ import pg from "pg";
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
 import { ensureSchema, openDdlClient, schemaStatements } from "../../server/store/schemaDdl.ts";
 import { DatabaseNotOpenError, pool } from "../../server/store/db.ts";
+import { eventually } from "../helpers/client.ts";
 
 const baseUrl = process.env.DATABASE_URL ?? "";
 
@@ -82,6 +83,62 @@ test("an index a failed concurrent build left INVALID is dropped and rebuilt at 
     assert.match(rows[0].indexdef, /^CREATE INDEX .* \(occurred_at\)$/);
   });
 });
+
+const leftovers = {
+  "a missing index": async (sql: pg.Client) => {
+    await sql.query(`DROP INDEX "IDX_session_expire"`);
+    return "IDX_session_expire";
+  },
+  "an INVALID index": async (sql: pg.Client) => {
+    await sql.query(`DROP INDEX "events_occurred_idx"`);
+    await sql.query(`INSERT INTO "events" ("name") VALUES ('dup'), ('dup')`);
+    await sql.query(`CREATE UNIQUE INDEX CONCURRENTLY "events_occurred_idx" ON "events" ("name")`).catch(() => {});
+    assert.deepEqual(await invalidIndexes(sql), ["events_occurred_idx"], "the fixture left no INVALID index");
+    return "events_occurred_idx";
+  },
+};
+
+for (const [leftover, make] of Object.entries(leftovers)) {
+  test(`boot waits out a reader's old snapshot to build ${leftover}, rather than failing on lock_timeout`, async (t) => {
+    if (!hasDatabase()) return t.skip(skipMessage());
+    await inFreshSchema(async (sql) => {
+      await ensureSchema();
+      const index = await make(sql);
+      const { rows: [{ schema }] } = await sql.query<{ schema: string }>("SELECT current_schema() AS schema");
+      const reader = new pg.Client({ connectionString: process.env.DATABASE_URL });
+      await reader.connect();
+      try {
+        await reader.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+        await reader.query(`SELECT count(*) FROM "users"`);
+
+        const boot = ensureSchema().then(() => "booted", (err: unknown) => `boot failed: ${String(err)}`);
+        const waitedPastLockTimeout = eventually(
+          async () =>
+            (
+              await sql.query(
+                `SELECT 1 FROM pg_stat_activity WHERE application_name = $1 AND query LIKE '%INDEX CONCURRENTLY%'
+                    AND wait_event_type = 'Lock' AND now() - query_start > interval '3500 ms'`,
+                [schema]
+              )
+            ).rowCount,
+          "the index build to be waiting on the reader past the 3 s lock_timeout",
+          10_000
+        ).then(() => "waiting");
+        assert.equal(await Promise.race([boot, waitedPastLockTimeout]), "waiting");
+        await reader.query("ROLLBACK");
+        assert.equal(await boot, "booted");
+      } finally {
+        await reader.end();
+      }
+      assert.deepEqual(await invalidIndexes(sql), []);
+      const { rowCount } = await sql.query(
+        "SELECT 1 FROM pg_indexes WHERE schemaname = current_schema() AND indexname = $1",
+        [index]
+      );
+      assert.equal(rowCount, 1);
+    });
+  });
+}
 
 test("the boot DDL runs on a connection of its own, with no statement or query timeout", async (t) => {
   if (!hasDatabase()) return t.skip(skipMessage());

@@ -450,3 +450,23 @@ test("the schema lock is polled, and held before the first look at the catalog",
   assert.ok(locks.every((s) => /pg_try_advisory_lock\(/.test(s)), locks.join("\n"));
   assert.deepEqual(ran.slice(0, 3), locks);
 });
+
+test("a concurrent index build waits without lock_timeout, and nothing else does", async () => {
+  let lockTimeout = "3s";
+  const ranUnder = new Map<string, string>();
+  const fresh = {
+    query: async (sql: string) => {
+      if (/pg_try_advisory_lock/.test(sql)) return { rows: [{ locked: true }] };
+      if (sql === "SET lock_timeout = 0") lockTimeout = "0";
+      else if (sql === "RESET lock_timeout") lockTimeout = "3s";
+      else ranUnder.set(sql, lockTimeout);
+      return { rows: [] };
+    },
+  } as unknown as Pool;
+  await applySchema(fresh);
+  const ddl = statements.filter((s) => !/^DELETE /.test(s));
+  const concurrent = ddl.filter((s) => /INDEX CONCURRENTLY/.test(s));
+  assert.ok(concurrent.length > 10 && ddl.length > concurrent.length, "the fake ran nothing to judge");
+  assert.deepEqual(concurrent.filter((s) => ranUnder.get(s) !== "0"), []);
+  assert.deepEqual(ddl.filter((s) => !concurrent.includes(s) && ranUnder.get(s) !== "3s"), []);
+});

@@ -17,6 +17,7 @@ import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 import * as schema from "../../shared/schema.ts";
 import { logger } from "../shared/logger.ts";
 import { createClient } from "./pool.ts";
+import { now } from "../http/clock.ts";
 
 function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
@@ -522,6 +523,7 @@ async function readCatalog(db: Pick<Pool, "query">): Promise<SchemaCatalog> {
 /** The two-key form, which keeps it out of the one-key space room ownership locks in. */
 const SCHEMA_LOCK_CLASS = 0x6d75726c;
 const SCHEMA_LOCK_POLL_MS = 100;
+const SCHEMA_LOCK_LOG_EVERY_MS = 30_000;
 
 /**
  * Polled with `pg_try_advisory_lock` rather than waited on with `pg_advisory_lock`: a backend
@@ -529,16 +531,30 @@ const SCHEMA_LOCK_POLL_MS = 100;
  * waits for every older snapshot, so the waiter and the holder would deadlock.
  */
 async function lockSchema(db: Pick<Pool, "query">): Promise<void> {
-  for (let waited = false; ; waited = true) {
+  const started = now();
+  let loggedAt = -Infinity;
+  for (;;) {
     const { rows } = await db.query<{ locked: boolean }>(
       "SELECT pg_try_advisory_lock($1, hashtext(current_schema())) AS locked",
       [SCHEMA_LOCK_CLASS]
     );
     if (rows[0]?.locked) return;
-    if (!waited) logger.info("Waiting for another instance to finish ensuring the schema");
+    const waitedMs = now() - started;
+    if (waitedMs - loggedAt >= SCHEMA_LOCK_LOG_EVERY_MS) {
+      logger.info({ waitedMs }, "Waiting for another instance to finish ensuring the schema");
+      loggedAt = waitedMs;
+    }
     await new Promise((resolve) => setTimeout(resolve, SCHEMA_LOCK_POLL_MS));
   }
 }
+
+/**
+ * A concurrent build waits out every transaction in the database holding an older snapshot, a
+ * lock wait `lock_timeout` would cancel, leaving the index INVALID. Its SHARE UPDATE EXCLUSIVE
+ * queues no reader or writer, so it waits without one; the 3 s stays on what takes ACCESS
+ * EXCLUSIVE.
+ */
+const CONCURRENT_INDEX = /^(?:CREATE (?:UNIQUE )?|DROP )INDEX CONCURRENTLY /;
 
 /**
  * Brings the connected database up to `shared/schema.ts`, holding the schema lock for the
@@ -555,7 +571,13 @@ export async function applySchema(db: Pick<Pool, "query">): Promise<void> {
   await lockSchema(db);
   await assertRenamesApplied(db);
   const statements = schemaStatements(await readCatalog(db));
+  let waitingOutSnapshots = false;
   for (const statement of statements) {
+    const concurrent = CONCURRENT_INDEX.test(statement);
+    if (concurrent !== waitingOutSnapshots) {
+      await db.query(concurrent ? "SET lock_timeout = 0" : "RESET lock_timeout");
+      waitingOutSnapshots = concurrent;
+    }
     await db.query(statement);
   }
   logger.info({ statements: statements.length }, "Database schema ensured");
