@@ -275,7 +275,7 @@ export function registerSessionEviction(io: SocketServer) {
  * association has to move with the account or nothing releases the seat.
  *
  * The client stops reconnecting on this code (`context/SocketContext.tsx`):
- * socket.io retries forever, so two tabs would evict each other indefinitely.
+ * it retries every other close, so two tabs would evict each other indefinitely.
  */
 export function evictReplacedSession(
   io: SocketServer,
