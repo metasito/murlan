@@ -34,11 +34,12 @@ export async function isUserOnline(userId: string): Promise<boolean> {
 
 /**
  * Every account with a socket anywhere in the cluster, in one round trip — a
- * friends list filtered with `isUserOnline` would ask once per friend. Empty
- * when the cluster did not answer: a friend shown offline is the smaller wrong.
+ * friends list filtered with `isUserOnline` would ask once per friend. Only this
+ * instance's own when the cluster did not answer: a friend elsewhere shown
+ * offline is the smaller wrong.
  */
 export async function onlineUserIds(): Promise<Set<string>> {
-  return (await _rt?.presence.connectedUserIds()) ?? new Set();
+  return (await _rt?.presence.connectedUserIds()) ?? new Set(userSocketMap.keys());
 }
 
 /**
@@ -49,21 +50,49 @@ export async function onlineUserIds(): Promise<Set<string>> {
  * Call only after the write that revoked the credential has committed. Never
  * throws: that write has already happened, and a caller cannot undo it.
  */
-export async function revokeAccountSockets(
-  userId: string,
-  { onlySid, exceptSid }: { onlySid?: string; exceptSid?: string } = {}
-): Promise<void> {
-  if (!_rt) return;
+export async function revokeAccountSockets(userId: string, which: Revoked = {}): Promise<void> {
+  const rt = _rt;
+  if (!rt) return;
+  // This instance's own first: they need no cluster, and an outage must not leave them live.
   try {
-    for (const socket of await _rt.transport.in(userRoom(userId)).fetchSockets()) {
-      const sid = socket.data?.sid as string | undefined;
-      if (onlySid !== undefined && sid !== onlySid) continue;
-      if (exceptSid !== undefined && sid === exceptSid) continue;
-      socket.emit("socket:error", payload("SESSION_REVOKED"));
-      socket.disconnect(true);
-    }
+    cut(await rt.transport.local.in(userRoom(userId)).fetchSockets(), which);
   } catch (err) {
-    logger.error({ err, userId }, "Failed to revoke an account's sockets");
+    logger.error({ err, userId }, "Failed to revoke an account's sockets on this instance");
+  }
+  await revokeAcrossCluster(rt, userId, which, 0);
+}
+
+interface Revoked {
+  onlySid?: string;
+  exceptSid?: string;
+}
+
+/** After a failed cluster pass, the instance's peers are asked again at these delays. */
+const REVOKE_RETRY_MS = [2_000, 10_000];
+
+async function revokeAcrossCluster(rt: TableRuntime, userId: string, which: Revoked, attempt: number): Promise<void> {
+  try {
+    cut(await rt.transport.in(userRoom(userId)).fetchSockets(), which);
+  } catch (err) {
+    const delay = REVOKE_RETRY_MS[attempt];
+    if (delay === undefined) {
+      logger.error({ err, userId }, "Failed to revoke an account's sockets on the other instances");
+      return;
+    }
+    const retry = setTimeout(() => void revokeAcrossCluster(rt, userId, which, attempt + 1), delay);
+    (retry as unknown as { unref?: () => void }).unref?.();
+  }
+}
+
+type FoundSockets = Awaited<ReturnType<ReturnType<TableRuntime["transport"]["in"]>["fetchSockets"]>>;
+
+function cut(sockets: FoundSockets, { onlySid, exceptSid }: Revoked): void {
+  for (const socket of sockets) {
+    const sid = socket.data?.sid as string | undefined;
+    if (onlySid !== undefined && sid !== onlySid) continue;
+    if (exceptSid !== undefined && sid === exceptSid) continue;
+    socket.emit("socket:error", payload("SESSION_REVOKED"));
+    socket.disconnect(true);
   }
 }
 
