@@ -6,6 +6,8 @@ import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../h
 import { pool } from "../../server/store/db.ts";
 import { friendStore } from "../../server/store/friendStore.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
+import { activeGameStore } from "../../server/store/activeGameStore.ts";
+import { GAME_SCHEMA_VERSION, OLDEST_GAME_SCHEMA_VERSION } from "../../shared/persistedEnvelope.ts";
 
 describe("store reads select only what their callers use", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -141,5 +143,45 @@ describe("store reads select only what their callers use", { skip: hasDatabase()
       widest = Math.max(widest, expected.length);
     }
     assert.ok(widest > 20, "no shape has more than 20 candidates: the limit is not exercised");
+  });
+
+  test("the orphan sweep reads seat ids, never an envelope, and only of rows it could resume", async () => {
+    const envelope = (schemaVersion: unknown, roundOver: unknown, playerMap: unknown) => ({
+      schemaVersion,
+      joinCode: "AAAAAA",
+      gameState: { roundOver, hands: [[{ id: "c1", suit: "hearts", rank: 3 }]] },
+      match: { playerMap, scores: {} },
+    });
+    const rows: [string, unknown][] = [
+      ["live", envelope(GAME_SCHEMA_VERSION, false, { 2: "cara", 0: "ana", 1: "besi" })],
+      ["oldest", envelope(OLDEST_GAME_SCHEMA_VERSION, false, { 0: "dren" })],
+      ["seatless", envelope(GAME_SCHEMA_VERSION, false, {})],
+      ["odd-seats", envelope(GAME_SCHEMA_VERSION, false, { 0: 7, x: "nobody", 1: "edi" })],
+      ["map-not-object", envelope(GAME_SCHEMA_VERSION, false, ["ana"])],
+      ["between-rounds", envelope(GAME_SCHEMA_VERSION, true, { 0: "ana" })],
+      ["too-old", envelope(OLDEST_GAME_SCHEMA_VERSION - 1, false, { 0: "ana" })],
+      ["too-new", envelope(GAME_SCHEMA_VERSION + 1, false, { 0: "ana" })],
+      ["version-as-text", envelope(String(GAME_SCHEMA_VERSION), false, { 0: "ana" })],
+      ["not-an-envelope", ["ana"]],
+    ];
+    for (const [roomId, state] of rows) {
+      await server.query("INSERT INTO active_games (room_id, game_state) VALUES ($1, $2::jsonb)", [
+        roomId,
+        JSON.stringify(state),
+      ]);
+    }
+
+    const { sql, result } = await sqlOf(() => activeGameStore.listResumable());
+    assert.doesNotMatch(sql, /"game_state"\s*(,|from\b)/i, `the sweep's read projects whole envelopes: ${sql}`);
+    assert.deepEqual(
+      [...result].sort((a, b) => (a.roomId < b.roomId ? -1 : 1)),
+      [
+        { roomId: "live", userIds: ["ana", "besi", "cara"] },
+        { roomId: "map-not-object", userIds: [] },
+        { roomId: "odd-seats", userIds: ["edi"] },
+        { roomId: "oldest", userIds: ["dren"] },
+        { roomId: "seatless", userIds: [] },
+      ]
+    );
   });
 });
