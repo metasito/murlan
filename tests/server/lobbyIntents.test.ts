@@ -21,12 +21,6 @@ const ROOM = {
   hostUserId: "u1",
 };
 
-interface Candidate {
-  room: typeof ROOM;
-  playerCount: number;
-  containsUser: boolean;
-}
-
 function fakePort(opts: {
   room?: Partial<typeof ROOM> | null;
   claim?: SeatClaim;
@@ -34,7 +28,7 @@ function fakePort(opts: {
   admit?: { ok: boolean; code?: string };
   watching?: [string, string][];
   seated?: string[];
-  waiting?: Candidate[];
+  waiting?: string[];
   announceThrows?: boolean;
 }) {
   const calls: string[] = [];
@@ -68,7 +62,13 @@ function fakePort(opts: {
       updateRoomVisibility: async (id: string, visibility: string) => {
         calls.push(`updateRoomVisibility ${id} ${visibility}`);
       },
-      findWaitingPublicRooms: async () => opts.waiting ?? [],
+      findQuickMatchCandidates: async function* (want: Record<string, unknown>) {
+        calls.push(`findQuickMatchCandidates ${want.userId} ${want.gameMode} ${want.maxPlayers}`);
+        for (const id of opts.waiting ?? []) {
+          calls.push(`candidate ${id}`);
+          yield id;
+        }
+      },
     },
     sendState: (s: { roomId: string }) => calls.push(`sendState ${s.roomId}`),
     broadcastState: (id: string) => calls.push(`broadcastState ${id}`),
@@ -259,33 +259,23 @@ describe("room:setVisibility", () => {
 });
 
 describe("room:quickmatch", () => {
-  const candidate = (id: string, over: Partial<Candidate> = {}): Candidate => ({
-    room: { ...ROOM, id },
-    playerCount: 1,
-    containsUser: false,
-    ...over,
-  });
-
   test("a teams match not sized four is refused before any room is looked at", async () => {
-    const { port, calls } = fakePort({ waiting: [candidate("r1")] });
+    const { port, calls } = fakePort({ waiting: ["r1"] });
     assert.deepEqual(await quickmatchIntent(port, { gameMode: "teams", maxPlayers: 3 }), told("TEAMS_REQUIRE_FOUR"));
     assert.deepEqual(calls, []);
   });
 
   test("a matching room is claimed through the same tail as a join", async () => {
     const { port, calls } = fakePort({
-      waiting: [
-        candidate("mine", { containsUser: true }),
-        candidate("empty", { playerCount: 0 }),
-        candidate("small", { room: { ...ROOM, id: "small", maxPlayers: 2 } }),
-        candidate("lost"),
-        candidate("r1"),
-      ],
+      waiting: ["lost", "r1", "later"],
       claims: { lost: { ok: false, reason: "full" } },
     });
     assert.deepEqual(await quickmatchIntent(port, { gameMode: "free_for_all", maxPlayers: 4 }), { ok: true });
     assert.deepEqual(calls, [
+      "findQuickMatchCandidates u1 free_for_all 4",
+      "candidate lost",
       "claimRoomSeat lost u1",
+      "candidate r1",
       "claimRoomSeat r1 u1",
       "seat r1",
       "broadcastState r1",
@@ -293,10 +283,13 @@ describe("room:quickmatch", () => {
     ]);
   });
 
-  test("with nothing to join, a public matchmade room is created", async () => {
-    const { port, calls } = fakePort({});
+  test("with no candidate claimed, a public matchmade room is created", async () => {
+    const { port, calls } = fakePort({ waiting: ["lost"], claims: { lost: { ok: false, reason: "full" } } });
     assert.deepEqual(await quickmatchIntent(port, { gameMode: "free_for_all", maxPlayers: 4 }), { ok: true });
     assert.deepEqual(calls, [
+      "findQuickMatchCandidates u1 free_for_all 4",
+      "candidate lost",
+      "claimRoomSeat lost u1",
       "createRoom u1 free_for_all 4 public true",
       "seat room-1",
       "sendState room-1",

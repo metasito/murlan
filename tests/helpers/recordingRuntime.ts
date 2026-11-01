@@ -94,7 +94,7 @@ export function recordingRuntime(options: RecordingOptions = {}) {
   const landed = (name: string, args: unknown[]) => journal.push({ kind: "store", name, args });
   const games: typeof activeGameStore = {
     load: (roomId) => activeGameStore.load(roomId),
-    list: () => activeGameStore.list(),
+    listResumable: () => activeGameStore.listResumable(),
     write: async (roomId, state) => {
       await activeGameStore.write(roomId, state);
       landed("write", [roomId]);
