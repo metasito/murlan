@@ -98,6 +98,9 @@ interface Moment {
 /** Departs from the mockup: its cards cast no shadow on the cards beneath them. */
 const NO_CAST_ON_CARDS = `document.head.insertAdjacentHTML("beforeend", "<style>.card{box-shadow:0 1.5px 0 #D6D0BC !important}</style>");`;
 
+/** Departs from the mockup: a bot draws no ring (`turnPresentation`, components/turnTimerUi.ts). Every opponent seat's: only for a table of bots. */
+const NO_RING_FOR_A_BOT = `document.head.insertAdjacentHTML("beforeend", "<style>.seat .ring{opacity:0 !important}</style>");`;
+
 const STILL_LIGHT = `const swaying = lampStep;
   lampStep = (dt) => { swaying(dt); lamp.lx = lamp.x; };`;
 
@@ -374,7 +377,8 @@ const MOMENTS: Moment[] = [
     checkpoints: TRICK_CHECKPOINTS,
     stripAt: glance(6800, TRICK_CHECKPOINTS),
     // The mockup hands off anticlockwise; GAME-RULES.md plays clockwise, so its lamp takes the left seat next.
-    mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });
+    mockupScript: `${NO_RING_FOR_A_BOT}
+      Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });
       window.__paritySeats = { luan: "left", besnik: "top", gent: "right" };
       const hand = handoff;
       handoff = (a, b) => { window.__parityOnsets.push("moment:handoff"); hand(a, b); };
