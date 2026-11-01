@@ -241,8 +241,20 @@ export async function allLimited<const T extends readonly (() => Promise<unknown
   return results as Results<T>;
 }
 
-/** Every panel on the page, gathered on the admin pool, `adminQueryLimit` at a time. */
-export async function adminSnapshot(provisionalRounds: number): Promise<AdminSnapshot> {
+let previousSnapshot: Promise<unknown> = Promise.resolve();
+
+/**
+ * Every panel on the page, gathered on the admin pool `adminQueryLimit` at a time. One snapshot
+ * after another: each fills the whole pool, so a second beside it would queue past the pool's
+ * connect timeout.
+ */
+export function adminSnapshot(provisionalRounds: number): Promise<AdminSnapshot> {
+  const snapshot = previousSnapshot.then(() => gatherSnapshot(provisionalRounds));
+  previousSnapshot = snapshot.catch(() => {});
+  return snapshot;
+}
+
+async function gatherSnapshot(provisionalRounds: number): Promise<AdminSnapshot> {
   const database = adminDb();
   const [
     signupRows,

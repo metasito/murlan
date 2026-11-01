@@ -13,14 +13,14 @@ describe("the admin page's pool", { skip: hasDatabase() ? false : skipMessage() 
   before(async () => { server = await startTestServer(); });
   after(async () => { if (server) await server.stop(); });
 
-  test("the snapshot resolves with every app connection taken, two queries at a time", async () => {
+  test("two snapshots at once resolve with every app connection taken, asking no more of the admin pool than it holds", async () => {
     const admin = adminPool();
     let running = 0;
     let peak = 0;
-    let queued = 0;
+    let demand = 0;
     const acquired = () => {
       peak = Math.max(peak, ++running);
-      queued = Math.max(queued, admin.waitingCount);
+      demand = Math.max(demand, running + admin.waitingCount);
     };
     const released = () => running--;
     admin.on("acquire", acquired);
@@ -31,11 +31,10 @@ describe("the admin page's pool", { skip: hasDatabase() ? false : skipMessage() 
       for (let i = 0; i < pool().options.max!; i++) held.push(await pool().connect());
       assert.equal(pool().idleCount, 0);
 
-      const snapshot = await adminSnapshot(10);
-      assert.equal(typeof snapshot.totalUsers, "number");
-      assert.equal(profileMax("admin"), 2);
-      assert.ok(peak >= 1 && peak <= 2, `${peak} admin queries ran at once`);
-      assert.equal(queued, 0, "a snapshot query waited on the admin pool");
+      const snapshots = await Promise.all([adminSnapshot(10), adminSnapshot(10)]);
+      for (const snapshot of snapshots) assert.equal(typeof snapshot.totalUsers, "number");
+      assert.ok(peak >= 1 && peak <= profileMax("admin"), `${peak} admin queries ran at once`);
+      assert.ok(demand <= profileMax("admin"), `${demand} snapshot queries asked the admin pool for a connection at once`);
     } finally {
       for (const client of held) client.release();
       admin.off("acquire", acquired);
