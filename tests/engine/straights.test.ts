@@ -249,6 +249,19 @@ describe("the straights a hand can lead", () => {
     assert.ok(plain[0].cards.some((card) => card.id === "3_spades"));
   });
 
+  test("a royal with a spare card of another suit can also be led as a plain straight", () => {
+    const hand = [
+      c("3", "hearts"), c("3", "spades"), c("4", "spades"), c("5", "spades"),
+      c("6", "spades"), c("7", "spades"),
+    ];
+    assert.deepEqual(
+      straightsOf(hand).map((p) => `${p.type}:${p.cards.length}:${p.strength}`).sort(),
+      ["royal_straight:5:7", "straight:5:7"]
+    );
+    const plain = straightsOf(hand).find((p) => p.type === "straight")!;
+    assert.ok(plain.cards.some((card) => card.id === "3_hearts"));
+  });
+
   test("the thirteen-card straight, ace to king, can be led", () => {
     const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"] as const;
     const hand = ranks.map((rank, i) => c(rank, i % 2 ? "clubs" : "hearts"));
