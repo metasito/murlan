@@ -4,7 +4,7 @@ import { globSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { Instrumenter } from "@stryker-mutator/instrumenter";
 import { loadWorkflow, stepIn } from "../helpers/workflow.ts";
-import { DATABASE_BACKED, SHARD_MUTANTS, SLOW_SHARD_MUTANTS, budgetOf, continuationOf, shards, summarize } from "../../tools/ci/mutation.mjs";
+import { DATABASE_BACKED_DIR, SHARD_MUTANTS, SLOW_SHARD_MUTANTS, budgetOf, continuationOf, shards, summarize } from "../../tools/ci/mutation.mjs";
 import { MUTATE } from "../../stryker.config.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
@@ -54,17 +54,15 @@ test("each file's shards cover its every line once, in order", () => {
   assert.ok(all.every((s) => /^[\w.-]+$/.test(s.slug)), "a slug is not a valid artifact or cache name");
 });
 
-test("a file whose tests need the database is cut into smaller shards than the rest", () => {
+test("every file the database-backed tests reach is cut into smaller shards than the rest", () => {
   assert.ok(SLOW_SHARD_MUTANTS < SHARD_MUTANTS);
-  assert.equal(budgetOf("server/game/tableRouter.ts"), SLOW_SHARD_MUTANTS);
   assert.equal(budgetOf(movesFile), SHARD_MUTANTS);
-  for (const file of DATABASE_BACKED) {
+  for (const file of ["server/game/tableRouter.ts", "server/game/gameTurn.ts", "server/game/gameTimers.ts"]) {
+    assert.equal(budgetOf(file), SLOW_SHARD_MUTANTS, `${file} gets the unit-tested budget`);
     const own = all.filter((s) => s.file === file);
-    assert.ok(own.length > 0, `${file} is listed as database-backed but is not mutated`);
+    assert.ok(own.length >= 2, `${file} is one shard: the database-backed budget is not applied`);
   }
-  const router = all.filter((s) => s.file === "server/game/tableRouter.ts");
-  assert.ok(router.length >= 2, "tableRouter.ts is one shard: the database-backed budget is not applied");
-  assert.ok(Math.max(...router.map((s) => s.mutants)) <= SLOW_SHARD_MUTANTS * 2);
+  assert.ok(all.some((s) => s.file.startsWith(DATABASE_BACKED_DIR)), `nothing under ${DATABASE_BACKED_DIR} is mutated`);
 });
 
 test("every mutant Stryker places lands in exactly one shard, and a shard outgrows the budget only where no cut can split it", async () => {

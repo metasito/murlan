@@ -22,22 +22,16 @@ const CONTINUED = "**Survivors, continued:**";
 export const SHARD_MUTANTS = 150;
 
 /**
- * The files whose tests are database-backed (EXTRA_TESTS in stryker.config.mjs): every mutant reruns the
- * integration files covering it, each booting a server, so a mutant costs several times a unit-tested one.
- * They get shards of SLOW_SHARD_MUTANTS, never a place in the run less measured.
+ * Where the database-backed tests reach (EXTRA_TESTS in stryker.config.mjs): each integration file boots the
+ * server, which runs every module under it, so a surviving mutant there reruns several server boots and
+ * costs several times a unit-tested one. A directory, not a list of files: the list went stale as soon as
+ * those tests reached a file it did not name, and that file's shard ran past its timeout.
  */
-export const DATABASE_BACKED = [
-  "server/game/replays.ts",
-  "server/game/stats.ts",
-  "server/game/tableHandlers.ts",
-  "server/game/tableLifecycle.ts",
-  "server/game/tableRouter.ts",
-  "server/game/userNames.ts",
-];
+export const DATABASE_BACKED_DIR = "server/game/";
 export const SLOW_SHARD_MUTANTS = 40;
 
 /** The most mutants one shard of `file` holds. */
-export const budgetOf = (file) => (DATABASE_BACKED.includes(file) ? SLOW_SHARD_MUTANTS : SHARD_MUTANTS);
+export const budgetOf = (file) => (file.startsWith(DATABASE_BACKED_DIR) ? SLOW_SHARD_MUTANTS : SHARD_MUTANTS);
 
 const SILENT = { debug() {}, info() {}, warn() {}, error() {}, trace() {}, fatal() {}, isDebugEnabled: () => false, isTraceEnabled: () => false };
 
