@@ -79,6 +79,14 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     for (const leave of leaves) if (leave.status === "rejected") unansweredLeaves.push(String(leave.reason));
   }
 
+  async function abandonments(userId: string) {
+    const rows = await server.query<{ context: unknown }>(
+      "SELECT context FROM events WHERE name = 'game.abandoned' AND user_id = $1",
+      [userId]
+    );
+    return rows.map((r) => r.context);
+  }
+
   // ── Test 1 ──────────────────────────────────────────────────────────────
 
   /**
@@ -106,6 +114,8 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     const dropped = waitFor(alice.socket, "game:player_disconnected", 5_000);
     bob.socket.disconnect();
     await dropped;
+    await eventually(async () => (await abandonments(bob.user.id)).length > 0, "a drop mid-hand was not recorded", 5_000);
+    assert.deepEqual(await abandonments(bob.user.id), [{ playerCount: 2, gameMode: "free_for_all" }]);
 
     const announced = waitFor(
       alice.socket,
@@ -632,6 +642,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       ]);
       back.emit("game:rejoin", { roomId: room.roomId });
       assert.equal(await answered, "rejoined");
+      assert.deepEqual(await abandonments(bob.user.id), [], "a drop between hands was recorded as abandoning one");
     } finally {
       await closeTable(table);
     }

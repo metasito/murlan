@@ -93,6 +93,21 @@ describe("the host starting a match", () => {
     assert.ok(events.includes("game:state"));
   });
 
+  test("by hand calls off the lobby's auto-start, even one that comes due while the deal is going out", async (t) => {
+    const clock = fakeClock();
+    t.after(installClock(clock));
+    const { rt } = useSetup(t, { rooms: [roomRow()], seats: [seatRows(["ana", 0], ["besi", 1])] });
+    let autoStarted = false;
+    arm("autoStart", ROOM, 5_000, () => (autoStarted = true));
+    t.mock.method(rt.transport, "serverSideEmit", (_event: string, _userId: string, ack: () => void) => {
+      clock.advance(5_000);
+      ack();
+      return true;
+    });
+    assert.deepEqual(await startMatchAction(rt, start()), { ok: true });
+    assert.equal(autoStarted, false);
+  });
+
   test("tells whoever held an invite that it is no longer good", async (t) => {
     const { rt, sent, cleared } = useSetup(t, { rooms: [roomRow()], seats: [seatRows(["ana", 0])] });
     cleared.mock.mockImplementation(async () => ["guest"]);

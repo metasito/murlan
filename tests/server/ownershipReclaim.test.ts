@@ -16,6 +16,7 @@ import {
 import { eventually } from "../helpers/client.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 
 test("a lock query that throws once does not give the room up", async (t) => {
   const clients: EventEmitter[] = [];
@@ -487,4 +488,21 @@ test("a reclaim that finds every room still held does not come back for them", a
   await settle();
   assert.equal(pg.sent(/pg_try_advisory_lock/).length, locks, "a settled reclaim asked again");
   assert.deepEqual(lost, []);
+});
+
+test("a table runtime that loses its room drops the table from memory and leaves its row to the new owner", async (t) => {
+  const pg = fakePostgres(t);
+  const { writes } = recordingRuntime();
+  t.after(() => closeOwnership());
+  activeGames.set("own-runtime-lost", onlineTable({ roomId: "own-runtime-lost" }));
+  t.after(() => activeGames.delete("own-runtime-lost"));
+
+  await claimRoom("own-runtime-lost");
+  pg.lockAnswer = () => false;
+  pg.clients[0].emit("error", new Error("Connection terminated unexpectedly"));
+  await settle();
+
+  assert.equal(ownsRoom("own-runtime-lost"), false);
+  assert.equal(activeGames.has("own-runtime-lost"), false, "the table kept playing a room claimed elsewhere");
+  assert.deepEqual(writes("discardGame"), [], "the new owner's row was deleted");
 });
