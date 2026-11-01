@@ -68,15 +68,15 @@ test("headroom goes negative when the instances seen need more connections than 
   const need = instances * connectionsPerInstance() + 10;
   const seen = { [applicationName("ownership")]: instances, [applicationName("app")]: 12 };
 
-  assert.equal(await checkConnectionBudget(fakeDatabase(need - 1, seen)), -1);
+  assert.equal(await checkConnectionBudget(fakeDatabase(need - 1, seen), true), -1);
   assert.equal(pgConnectionHeadroom(), -1);
-  assert.equal(await checkConnectionBudget(fakeDatabase(need + 5, seen)), 5);
+  assert.equal(await checkConnectionBudget(fakeDatabase(need + 5, seen), true), 5);
   assert.equal(pgConnectionHeadroom(), 5);
 });
 
-test("an instance whose ownership client has not connected yet still counts itself", async () => {
-  assert.equal(
-    await checkConnectionBudget(fakeDatabase(100, {})),
-    100 - 10 - connectionsPerInstance()
-  );
+test("an instance whose ownership client has not connected yet counts itself beside the others", async () => {
+  const perInstance = connectionsPerInstance();
+  const others = { [applicationName("ownership")]: 3 };
+  assert.equal(await checkConnectionBudget(fakeDatabase(75, others), false), 75 - 10 - 4 * perInstance);
+  assert.equal(await checkConnectionBudget(fakeDatabase(100, {}), false), 100 - 10 - perInstance);
 });

@@ -224,6 +224,11 @@ export function releaseRoomAfter(roomId: string, settled: Promise<unknown>): Pro
   return released;
 }
 
+/** Whether this process's ownership session is open, and so visible in `pg_stat_activity`. */
+export function ownershipConnected(): boolean {
+  return client !== null;
+}
+
 /** Whether this process currently claims the room. */
 export function ownsRoom(roomId: string): boolean {
   return held.has(roomId);

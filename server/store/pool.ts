@@ -196,8 +196,15 @@ export function pgConnectionHeadroom(): number | undefined {
   return headroom;
 }
 
-/** Reads the server's limit and who holds connections now, and records the headroom. */
-export async function checkConnectionBudget(db: Pick<Pool, "query">): Promise<number> {
+/**
+ * Reads the server's limit and who holds connections now, and records the headroom. Instances
+ * are counted by their one ownership session each, so `ownershipConnected` says whether this
+ * process's is among them yet: it connects on the first claim, not at boot.
+ */
+export async function checkConnectionBudget(
+  db: Pick<Pool, "query">,
+  ownershipConnected: boolean
+): Promise<number> {
   const limit = await db.query<{ max_connections: string }>("SHOW max_connections");
   const held = await db.query<{ name: string; sessions: number }>(
     `SELECT application_name AS name, count(*)::int AS sessions FROM pg_stat_activity
@@ -205,8 +212,7 @@ export async function checkConnectionBudget(db: Pick<Pool, "query">): Promise<nu
   );
   const maxConnections = Number(limit.rows[0]?.max_connections);
   const sessions = Object.fromEntries(held.rows.map((r) => [r.name, r.sessions]));
-  // One ownership client per instance, and this instance counts before its own has connected.
-  const instances = Math.max(1, sessions[applicationName("ownership")] ?? 0);
+  const instances = (sessions[applicationName("ownership")] ?? 0) + (ownershipConnected ? 0 : 1);
   const perInstance = connectionsPerInstance();
   headroom = maxConnections - RESERVED_CONNECTIONS - instances * perInstance;
   if (headroom < 0) {
