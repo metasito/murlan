@@ -1,0 +1,271 @@
+Reproductions of server-side audit claims (REPORT.md findings 2, 3, 5, 6, 13, P2, P5, P6, ordering)
+Run 2026-11-01 on this machine: Windows 11, Node 24.13.1, Postgres 16 on localhost:55432, database
+murlan_repro_srv (own database; schema from sim/ensure-schema.ts). Two real server processes are
+booted by sim/repro/srv/instance.ts (server/index.ts plus an IPC hook that calls the app's own
+shutdown(), because child.kill("SIGTERM") on Windows is a hard TerminateProcess). Scripts:
+sim/repro/srv/*.ts, run from that folder with
+  node --experimental-strip-types --no-warnings <script>.ts
+Primary instrument for cross-instance work: a passive LISTEN on "socket.io#/" in the driver (lib.ts
+NotifyTap), which sees every adapter message, and fetches + msgpack-decodes every
+socket_io_attachments row the moment its NOTIFY arrives (the adapter deletes rows after 30-60 s).
+Secrets are redacted in everything below; the repo is public.
+
+==========================================================================================
+2a. Connect sweeps the cluster: O(N) per connect, O(N^2) for a herd            REPRODUCED
+==========================================================================================
+Script: exp2-connect.ts. A=srvA:5581, B=srvB:5582, same DATABASE_URL. N web sockets parked on B
+(cookie on the upgrade + ticket in auth, as lib/socket.ts does on the web), then 5 probe clients
+connect to A one at a time, each emitting friend:get_online_list on connect as SocketContext does.
+Per connect on A (average of 5):
+
+N_on_B | NOTIFYs | FETCH_SOCKETS | replies | reply NOTIFY bytes | attachment INSERTs | attachment bytes | sockets in replies
+     0 |   5     |      2        |    2    |        196         |        0           |          0       |        0
+    10 |   5     |      2        |    2    |        108         |        2           |     18,392       |       20
+    50 |   5     |      2        |    2    |        110         |        2           |     91,408       |      100
+   100 |   5     |      2        |    2    |        110         |        2           |    182,668       |      200
+by type at N=100: SERVER_SIDE_EMIT 1 (session eviction), FETCH_SOCKETS 2, FETCH_SOCKETS_RESPONSE 2
+
+- Two sweeps per connect, confirmed: announcePresence's onlineUserIds() and the client's
+  friend:get_online_list each publish one FETCH_SOCKETS and get one reply per peer.
+- Message count is constant (5); the payload is linear in the peer's socket count: about 913 bytes
+  per remote socket per sweep. Above about 8 remote sockets the reply exceeds the adapter's 8000-byte
+  threshold and becomes an INSERT into socket_io_attachments plus a SELECT on the receiver.
+- Herd, K clients connecting at once, alternating A/B (each sees the other half):
+    K=10: 20 FETCH_SOCKETS, 20 replies, 97 sockets carried, 0 attachments (all inline, 102 kB of NOTIFY)
+    K=25: 50 FETCH_SOCKETS, 50 replies, 609 sockets carried, 49 attachment INSERTs, 560 kB
+  Sockets carried ~ K^2 (97 ~ 10^2, 609 ~ 25^2): quadratic, as claimed.
+- Baseline, one instance (B killed, A drops it after the 10 s heartbeat timeout): one connect =
+  1 NOTIFY (the eviction serverSideEmit), 0 FETCH_SOCKETS. With a single instance the sweeps never
+  leave the process; the O(N) cost is in-memory only. The claim's cost is real only with >1 instance.
+- Latency of the online list stayed 28-68 ms at N=100 on localhost.
+
+==========================================================================================
+2b. SECURITY: swept handshakes put live credentials in the database            REPRODUCED
+==========================================================================================
+Same run. Fields of each swept socket in a FETCH_SOCKETS_RESPONSE (decoded attachment):
+  socket:            id, handshake, rooms, data
+  handshake:         headers, time, address, xdomain, secure, issued, url, query, auth
+  handshake.headers: cookie, sec-websocket-version, sec-websocket-key, connection, upgrade,
+                     sec-websocket-extensions, host
+  handshake.auth:    ticket, protocolVersion
+  socket.data:       sid (raw express-session id), userId
+Redacted sample:
+  {"headers":{"cookie":"connect.sid=s%3A<REDACTED>", ... ,"host":"127.0.0.1:5582"},
+   "auth":{"ticket":"<REDACTED>","protocolVersion":15},
+   "data":{"sid":"<REDACTED>","userId":"4d879dac-..."}}
+socket_io_attachments rows (latest 3): each ~91 kB, every one contains the strings 'connect.sid'
+and 'ticket' (checked with position() in SQL, no values read).
+Below the 8000-byte threshold the same JSON travels inline as the NOTIFY payload (K=10 herd above:
+102 kB of NOTIFY with no attachment); with log_statement=all a NOTIFY's payload is logged as the
+pg_notify parameter, so the same fields would reach pg.log (inferred from the adapter path; the
+parameter values themselves were not read).
+Exposure (inferred, not tested): the cookie is a 30-day session cookie
+(server/http/session.ts SESSION_MAX_AGE_MS) and the ticket is single-use with a 60 s TTL
+(server/socket/ticket.ts). On the web the handshake authenticates with the cookie and
+server/socket/socket.ts:142-143 never redeems the ticket, so that minted ticket stays unspent for
+its TTL. Anyone able to read socket_io_attachments, pg.log, or a NOTIFY listener on the database
+sees both for every swept socket. (The swept socket's userId is in cleartext, confirmed above.)
+
+==========================================================================================
+6. Reconnect herd: no first-attempt jitter worth the name; tickets per IP     REPRODUCED
+==========================================================================================
+Script: exp6-herd.ts (pure computation, using the installed socket.io-client Backoff with
+lib/socket.ts's options {delay 1000, max 5000, randomizationFactor default 0.5} and the app's own
+lib/reconnectDelay.ts). 1,000 clients.
+A) Rolling deploy (another instance already up), first attempt per client, each mints a ticket:
+     0- 250 ms:    0      1500-1750:   0
+   250- 500 ms:    0      1750-2000:   0
+   500- 750 ms:  180      2000-2250:   0
+   750-1000 ms:  308      2250-2500:   0
+  1000-1250 ms:  220      2500-2750:   0
+  1250-1500 ms:  292      2750-3000:   0
+  All 1,000 between 551 and 1499 ms. It is also a comb: backo2 uses one Math.random() for both the
+  sign and the size of the deviation, so attempts fall only in ten 50 ms strips (550-600, 650-700,
+  ..., 1450-1500) with 50 ms gaps: ~100 clients per 50 ms tooth.
+B) Single instance down 2 s: first wave as above (all fail), second wave 1.5-3.5 s; all 1,000
+   tickets minted between 2.0 and 7.0 s. Down 5 s: tickets between 5.0 and 10.0 s.
+Tickets per IP vs ticketLimiter (60/min, per IP, per instance, MemoryStore; the
+MURLAN_TICKET_RATE_LIMIT override is ignored in production by testOnlyEnv):
+    60 clients behind one IP: 60 requests in < 1 s -> 0 refused
+   100 clients behind one IP: 100 requests in < 1 s -> 40 refused (429)
+  1000 clients behind one IP: 1000 requests in < 1 s -> 940 refused
+What a 429 costs depends on the client (read from lib/socket.ts, SocketContext.tsx, socket.ts):
+  web: fetchSocketTicket returns null, the handshake goes without a ticket and the cookie on the
+       upgrade authenticates anyway - no lockout, only a wasted request;
+  native (ticket only): "Not authenticated", socket.active=false, SocketContext retries with
+       reconnectDelayMs (full jitter, 2 s base, 30 s cap) and each retry is another 429 until the
+       window resets. Simulated: 100 natives on one IP -> 310 refused requests, 60 connected by 10 s,
+       64 by 61 s, last at 85 s; 300 natives -> 3,229 refused, last at 267 s.
+The report's "0.5-1.5 s" window is exact (551-1499 ms).
+
+==========================================================================================
+3. Session SELECT + touch UPDATE on every cookie-bearing request, static included  REPRODUCED
+==========================================================================================
+Script: exp3-13-statements.ts. One instance, log_statement=all set on murlan_repro_srv only (reset
+afterwards); the shared pg.log is read past a byte offset and filtered to the instance's backend
+PIDs (log_line_prefix has no database name; log_connections cannot be set per database). A serves
+a stub web build (MURLAN_WEB_DIST -> sim/repro/srv/stub-dist) so both static mounts of
+configureWebBuild are exercised. 10 requests per row:
+  /assets image, cookie            200  session SELECT 10  touch UPDATE 10
+  /assets image, no cookie         200  session SELECT  0  touch UPDATE  0   (control)
+  dist hashed bundle, cookie       200  session SELECT 10  touch UPDATE 10
+  dist hashed bundle, no cookie    200  session SELECT  0  touch UPDATE  0   (the 1 statement is a heartbeat pg_notify)
+  GET /api/auth/me, cookie         200  session SELECT 10  touch UPDATE 10  (+10 users SELECT)
+Shapes: SELECT sess FROM "session" WHERE sid = $1 AND expire >= to_timestamp($2)
+        UPDATE "session" SET expire = to_timestamp($1) WHERE sid = $2 RETURNING sid
+Exactly one SELECT and one UPDATE per static file, the same as an API call.
+(Side note for finding 9: the users read on /api/auth/me selects "password" among its columns.)
+
+==========================================================================================
+13. Telemetry and friend notices                                               REPRODUCED
+==========================================================================================
+Same script, single instance. One socket session = connect, friend:get_online_list, disconnect.
+Friends were inserted directly as accepted rows (the friend-add route allows 10/min per IP with no
+override). All friends offline:
+  friends= 0: events INSERTs 2, pg_notify  1
+  friends= 5: events INSERTs 2, pg_notify 11
+  friends=20: events INSERTs 2, pg_notify 41
+- trackEvent: exactly 2 INSERTs per socket session (lobby.entered on connect, socket.closed on
+  disconnect), one statement each.
+- Friend status: 2 pg_notify per friend per session (online on connect, offline 400 ms after the
+  disconnect) plus 1 for the session-eviction serverSideEmit. They are published although every
+  friend is offline and although there is only one instance: the room broadcast always goes
+  through the adapter.
+
+==========================================================================================
+5. Round-ending move waits on the database; results are not durable            REPRODUCED
+==========================================================================================
+Script: exp5-roundover.ts. One killable child server, two human clients play round 1 of a 2-seat
+free_for_all (recordable: human majority, two rated finishers), following game:state with the
+engine's own getAllValidPlays. The round-ending move is the play that empties a hand; its ack is
+the handleRoundOver promise.
+Ack latency (localhost, so absolute numbers are small):
+  ctl0: ordinary move ack median 2.3 ms (n=27), round-ending move ack 10.5 ms
+  ctl1: ordinary move ack median 2.4 ms (n=28), round-ending move ack 41.0 ms
+  The round-ending move's ack is consistently 4-17x an ordinary move's: it awaits the rating
+  preview, the room-status write and the second envelope write before answering, as the code shows.
+Durability (kill -9 the child at a delay after the first game:round_over; rows then counted):
+  kill +0 ms:   user_stats 0, user_ratings 0, round_history 0, round_replays 1   (results LOST)
+  kill +0 ms:   user_stats 0, user_ratings 0, round_history 0, round_replays 1   (results LOST)
+  kill +50 ms:  user_stats 2, user_ratings 2, round_history 2, round_replays 1   (survived)
+  kill +200 ms: user_stats 2, user_ratings 2, round_history 2, round_replays 1   (survived)
+  Positive control (no kill, 2.5 s wait): all rows present every time.
+A crash within tens of ms of round_over loses user_stats, user_ratings and round_history with
+nothing to retry them. Extra, matching the code's own warning: at +0 ms the faster saveReplay had
+already committed while the per-seat stats chain had not, leaving a round_replays row with no
+round_history row - a replay "openable from nowhere" (roundOver.ts:219-221).
+
+==========================================================================================
+P2. Half-open adapter LISTEN connection is never detected                      REPRODUCED
+==========================================================================================
+Script: exp-p2.ts. A Node TCP proxy (lib.ts PgProxy) sits between instance A's pg pools and
+Postgres; A's DATABASE_URL points at 127.0.0.1:<proxy>. B connects to Postgres directly. A's adapter
+LISTEN backend is found by SELECT client_port FROM pg_stat_activity WHERE application_name='srvA'
+AND query LIKE 'LISTEN%', matched to the proxy pair whose upstream localPort equals it, and that
+one pair is stalled: bytes stop flowing both ways, the socket stays open (destroyed=false).
+  control, before the stall: X on A hears friend:status when a friend connects on B -> yes
+  after the stall:
+    X on A hears the friend-online status from B within 15 s      -> NO (A is deaf)
+    bytes Postgres sent that A never received, queued on the pair  -> 6877 B
+    A GET /health                                                  -> 200, db connected,
+       adapterPool {total 4, idle 3, waiting 0}  (the LISTEN client is checked out, never errors)
+    srvA LISTEN backends                                           -> still 1 (a reconnect = 2)
+    proxy pairs that ever carried a LISTEN                         -> 1 (no reconnect attempted)
+    A's log mentions an adapter error / "not reaching other instances" -> no
+    B's friend:online_list latency                                -> 5008 ms (the adapter's 5 s
+       FETCH_SOCKETS timeout: B still counts A as a peer and waits it out every sweep)
+A is deaf to the cluster, nothing on A notices, and /health is green throughout. That keepalive
+*would* have prevented it is inferred, not shown: the stall proves only the deafness and the
+silence around it.
+
+==========================================================================================
+P6. Router reads a deaf owner's silence; waits out its full budget             REPRODUCED
+     (and the report attaches the 15 s wait to the wrong scenario)
+==========================================================================================
+Same run (deaf A still holding the room's advisory lock). A client on B routes a game:rejoin for the
+room A owns:
+  B's game:rejoin for A's room -> {ok:false, code:"TABLE_UNREACHABLE"} after 15831 ms
+This is the router's full budget: B still has A in its nodesMap, so askOtherInstances waits the 5 s
+ack timeout, A (deaf) never answers, err is set, the answer is read as undefined (not null), B tries
+claimRoom, A holds the lock, RETRY, x3 attempts ~= 3x5 s + back-off ~= 15.8 s.
+Client budgets are shorter, so the player gives up first: sendIntent 4 s x 3 ~= 12 s, useRejoin
+2 s x 3 = 6 s.
+CORRECTION to the report: the "serverSideEmit answers with nobody -> router reads unowned" wording
+describes the *graceful* path, but that path does NOT produce the 15 s wait (see P5 below): on a
+graceful shutdown A publishes ADAPTER_CLOSE, B drops A as a peer and expects zero replies, so the
+answer is null and returns at once. The 15 s wait needs a peer that is still counted but silent --
+i.e. the deaf P2 instance, not a deploy. Also, code-accurate: a timeout (undefined) is NOT read as
+"no owner"; only null (zero peers expected) is, and only for forward actions (tableRouter.ts:247).
+
+==========================================================================================
+P5. A graceful deploy releases the table lock as its last step                 REPRODUCED
+     (window is small on a quiet table; recovery was fast)
+==========================================================================================
+Script: exp-deploy.ts. A owns a started table; A is shut down over IPC (the app's own
+shutdown("SIGTERM"), since child.kill on Windows is a hard TerminateProcess). A 25 ms poll of
+pg_locks (advisory, by application_name) tracks the room lock; a reconnected client rejoins on B.
+Timeline (relative to boot):
+  11.22s shutdown sent        11.24s ADAPTER_CLOSE on the tap, io.close start+done, stopTables done
+  11.39s srvA advisory lock RELEASED    11.41s A exit    11.43s srvB lock HELD
+  x's game:rejoin on B: attempt 0 returned {ok:true} after 202 ms; recovered on B.
+- Structurally the claim holds: the lock is released only in closeOwnership, the last shutdown step,
+  i.e. after io.close() has already stopped delivery (released 11.39s vs io.close 11.24s).
+- But on a quiet table the window is ~150 ms and the router's own 3 retries absorb it: B's first
+  rejoin returned ok in 202 ms, never TABLE_UNREACHABLE. The report's "shown as a server error
+  after three 2 s retries" and the 15 s figure are a loaded/deaf-peer case (P6 above), not this one.
+  Under real drain load (settleDisconnects 1.5 s, the write drain up to ~6 s) the window grows to
+  seconds, since closeOwnership waits behind all of it; that larger window was not staged here.
+- P6 lobby-vs-disconnect grace sub-claim (seat released under the 20 s lobby grace, not the 60 s
+  in-game grace, during a peer's shutdown): NOT isolated. It needs a seat held on B at A's table and
+  a disconnect timed inside A's sub-second graceful window; cross-instance seating plus that timing
+  was not reproducible here. Left as read-from-code.
+
+==========================================================================================
+Ordering: client applies game:state with no sequence check                    REPRODUCED
+     (report's "no sequence field" is wrong; "no sequence check" is right)
+==========================================================================================
+Script: exp-ordering.ts. Code trace plus a transport-level demonstration (labelled).
+- game:state DOES carry a sequence: sanitizeStateForPlayer sets turn = String(lastMove.seq). So the
+  report's wording "without a sequence check" is right, but "carries any version/sequence field at
+  all" being answered no would be WRONG -- it carries turn and lastMove.seq.
+- The client never compares it: OnlineGameContext onGameState (~448-478) assigns
+  gameStateRef.current = state unconditionally; the only seq there is an unrelated error counter.
+- Mechanism (demonstrated): each state is one pg_notify on one of the adapter's publisher
+  connections; pg_notify delivers on COMMIT and commit order across connections is not call order.
+  Two pg connections stood in for two publishers: c1 sent seq=10 in a held transaction, c2 sent and
+  committed seq=11 first; the LISTEN subscriber received "11 then 10". A remote recipient can thus
+  get N+1 before N, and with no client-side check it applies 11 then is rewound to 10. (Local
+  recipients are served in call order.) Live game-path reorder not staged; this is the carrier
+  mechanism only, as labelled.
+
+==========================================================================================
+SUMMARY
+==========================================================================================
+claim | verdict        | one-line evidence
+2a    | REPRODUCED     | 2 cross-instance FETCH_SOCKETS sweeps per connect; payload linear in peer sockets (~913 B each), herd carries ~K^2 sockets; single instance 0 sweeps
+2b    | REPRODUCED     | swept handshakes carry headers.cookie, auth.ticket, data.sid + userId; written to socket_io_attachments (~91 kB) and, when inline, to NOTIFY payloads
+3     | REPRODUCED     | every cookie-bearing request logs SELECT sess + UPDATE session SET expire, static /assets and dist bundle included; 0 for the same request with no cookie
+5     | REPRODUCED     | round-ending move ack 4-17x an ordinary move's; kill +0 ms after round_over loses user_stats/ratings/round_history (replay orphaned); +50 ms survives
+6     | REPRODUCED     | 1,000 reconnects land 551-1499 ms in ten 50 ms teeth (one random draw, not full jitter); >60 clients per IP hit the 60/min ticketLimiter; natives then loop
+13    | REPRODUCED     | 2 events INSERTs per socket session (lobby.entered, socket.closed); friend status = 2 pg_notify per friend per session even all-offline, single instance
+P2    | REPRODUCED     | stalling A's LISTEN pair: A deaf (B's emit never arrives, 6.9 kB queued), /health 200, no reconnect, no adapter-error log, B's sweep waits 5 s
+P5    | REPRODUCED     | advisory lock released only in closeOwnership (last step), after io.close; but on a quiet table the window is ~150 ms and recovery was 202 ms
+P6    | REPRODUCED*    | deaf owner: B's rejoin waits 15831 ms -> TABLE_UNREACHABLE (vs client 6-12 s budgets). *Report wrongly attaches this to a graceful deploy; it needs a deaf peer
+Ord   | REPRODUCED     | game:state carries turn/lastMove.seq but client never checks it; two publisher connections delivered seq 11 before seq 10
+
+Notes on claims found partly WRONG (detail in each section above):
+- 2a: the per-connect message COUNT is constant (2 sweeps); only the payload BYTES grow with N. The
+  O(N) / O(N^2) cost is bytes and attachment rows, not round trips, and only with >1 instance.
+- 5: the replay is NOT always lost with the stats -- at a +0 ms crash the faster saveReplay had
+  committed while the per-seat stats had not, leaving an orphaned round_replays row.
+- P6: the report's "serverSideEmit answers with nobody -> unowned -> 20 s lobby grace, up to 15 s
+  router wait" conflates two scenarios. The 15 s wait is the DEAF-peer case (P2), not a graceful
+  deploy; on a graceful deploy ADAPTER_CLOSE makes B expect zero peers and the ask returns at once.
+  Also a timeout (undefined) is not read as "no owner" -- only null (zero peers) is, forward only.
+- Ordering: "no version/sequence field" would be wrong; the field exists (turn/lastMove.seq), it is
+  just never checked.
+
+Reproduce: Postgres 16 on localhost:55432; create murlan_repro_srv and run sim/ensure-schema.ts
+against it; then from sim/repro/srv/ run each exp*.ts with
+  node --experimental-strip-types --no-warnings <script>.ts
+exp3-13 sets log_statement='all' on murlan_repro_srv and resets it on exit.

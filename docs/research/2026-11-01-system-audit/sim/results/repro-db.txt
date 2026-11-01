@@ -1,0 +1,351 @@
+Reproductions of the audit's database findings (2026-11-01)
+============================================================
+Postgres 16.15 on localhost:55432, own database murlan_repro_db (UTF8, template0), schema from
+server/store/schemaDdl.ts via sim/ensure-schema.ts. node 24.13.1, drizzle-orm 0.45.2, pg 8.23.0,
+pg-pool 3.14.0 (resolved from the parent checkout's node_modules). Scripts: sim/repro/db/.
+Half-open connections are simulated with sim/repro/db/proxy.ts, an in-process TCP proxy that stops
+forwarding bytes on chosen connections while keeping both sockets open.
+Run every script as:  node --experimental-strip-types --no-warnings <script> [args]
+Timestamps are ms since script start.
+Guard hook: two Bash commands were blocked by tools/loop/guard-bash.mjs with its `gh pr merge`
+message, though neither merged anything: (1) a loop running two backgrounded (`&`) subshells of
+sim/ensure-schema.ts plus psql DROP/CREATE, (2) a psql `\d session` joined with two node runs.
+Not worked around: the separate-process race was rewritten as p3b-boot-processes.ts (node's
+child_process), and the other commands were run one per call.
+
+------------------------------------------------------------------------------------------------
+P1. drizzle transaction() leaks a pool client when BEGIN fails; error path releases without err
+------------------------------------------------------------------------------------------------
+Source (node_modules/drizzle-orm/node-postgres/session.js:180-195): `await this.client.connect()`
+and `await tx.execute(begin)` run before the try; finally calls `session.client.release()` with no
+argument. Call sites: `grep -rn "\.transaction(" server --include=*.ts | grep -v test` = 17
+(roomStore 6, friendStore 3, userStore 2, ratings, retention, stats, authTokens, deleteAccount,
+push 1 each).
+
+A. BEGIN rejects on a healthy client (deterministic code-path proof; no production caller passes
+   a transaction config, so this proves the path, not the trigger)
+   cmd: p1-drizzle-transaction-leak.ts A   (real openDatabase(), MURLAN_PG_POOL_MAX=2)
+     581ms warm: total=2 idle=2 waiting=0
+     585ms transaction #1 with BEGIN that fails: REJECTED after 4ms: Failed query: begin isolation level bogus level | cause: syntax error at or near "bogus"
+     585ms after #1: total=2 idle=1 waiting=0
+     587ms after #2: total=2 idle=0 waiting=0
+    5601ms a plain query afterwards (pool.query): REJECTED after 5014ms: timeout exceeded when trying to connect
+    5694ms server side, the two leaked backends: [{"pid":54492,"state":"idle",...,"q":"begin isolation level bogus level"},{"pid":49100,"state":"idle",...}]
+   No 'release' event for either transaction. Two failed BEGINs wedge a two-slot pool for good.
+
+B. BEGIN times out on a half-open client (network partition shape)
+   cmd: p1-drizzle-transaction-leak.ts B
+     572ms blackholed 2 pooled connections (half-open)
+    5575ms transaction #1 (BEGIN on a half-open client): REJECTED after 5003ms: Failed query: begin | cause: Query read timeout
+    5575ms after #1: total=2 idle=1 waiting=0
+   10586ms after #2: total=2 idle=0 waiting=0
+   15595ms a plain query, new connections forward fine: REJECTED after 5009ms: timeout exceeded when trying to connect
+   50601ms after 35 s: total=2 idle=0 waiting=0
+   55617ms a plain query after 35 s: REJECTED after 5015ms: timeout exceeded when trying to connect
+   Postgres is reachable for new connections the whole time; the pool never opens one, because
+   both slots are checked out by transactions that already returned. Nothing reclaims them.
+
+E. Production-shaped trigger: an idle pooled client's backend is terminated (admin kill,
+   failover) and a transaction starts straight after. 20 trials, fresh max-1 pool each; odd
+   trials wait for pg_terminate_backend's own reply before starting the transaction.
+   cmd: p1e-terminate-race.ts
+     trial 0: Failed query: begin | total=1 idle=0
+     ... (13 of 20 trials the same, odd and even alike)
+     trial 6: Failed query: rollback | total=0 idle=0
+     E result over 20 trials: {"committed":1,"beginFailedLeaked":13,"beginFailedOther":6}
+   pg-pool's idle error listener had not yet run when drizzle checked the client out, so BEGIN
+   went to a dead connection and the client was never released (13/20). The window is the few ms
+   between the backend dying and Node reading the FATAL/RST, so in production it needs a
+   transaction to start inside that window; at 17 call sites under load that is plausible on a
+   failover but not on every one.
+   Aside: on the first attempt this script used a bare pg.Pool without a per-client 'error'
+   listener, and the leaked client's later ECONNRESET crashed the process ("Unhandled 'error'
+   event"). The app's createPool (server/store/pool.ts) attaches that listener, so the app logs
+   instead of crashing; the leak is the same.
+
+C. Second half of the claim: a broken client goes back to the pool. Half-open after BEGIN:
+   cmd: p1-drizzle-transaction-leak.ts C
+     623ms blackholed 2 connections
+   10634ms pool 'release' event #3, err passed: none
+   10634ms transaction ...: REJECTED after 10015ms: Failed query: rollback | cause: Query read timeout
+   10634ms after the transaction: total=2 idle=2 waiting=0
+   15648ms pool 'release' event #4, err passed: Query read timeout
+   15650ms plain query #1: REJECTED after 5016ms: Query read timeout
+   15651ms pool 'remove' event (client discarded)
+   The half-open client was released with no error and counted idle again. Cost: the next
+   pool.query on it waits 5 s and fails; pool.query itself releases with the error, so pg-pool
+   drops it then. Also visible: the caller sees the rollback's timeout, the body's own error is
+   lost, and the transaction took 10 s (body 5 s + rollback 5 s), not 5 s.
+
+D. Same, but the backend is terminated (socket really dead):
+   cmd: p1-drizzle-transaction-leak.ts D
+     908ms pool 'release' event #3, err passed: none
+     908ms pool 'remove' event (client discarded)
+     908ms after the transaction: total=1 idle=1 waiting=0
+     910ms plain query: ok after 2ms
+   pg-pool drops a client whose socket errored even when release() gets no error
+   (pg-pool/index.js:392 checks `!client._queryable || client._ending`). So "a broken client
+   returns to the pool" is true only for a half-open/timed-out client (C), not a dead one (D).
+
+C2. What the half-open client from C does when the next checkout is a transaction, not a
+   pool.query (one warm client only, so nothing else is blackholed):
+   cmd: p1-drizzle-transaction-leak.ts C2
+       386ms warm: total=1 idle=1 waiting=0
+     10418ms pool 'release' event #2, err passed: none
+     10418ms transaction #1, connection goes half-open after BEGIN: REJECTED after 10032ms: Failed query: rollback | cause: Query read timeout
+     10418ms after #1 (the half-open client is back, idle): total=1 idle=1 waiting=0
+     15420ms transaction #2 checks it out: REJECTED after 5002ms: Failed query: begin | cause: Query read timeout
+     15420ms after #2: total=1 idle=0 waiting=0
+     50436ms after 35 s: total=1 idle=0 waiting=0
+     50488ms a plain query (a second, healthy client can still be opened): ok after 51ms
+   The two halves compound: the returned client's next BEGIN queues behind the timed-out
+   rollback still active on it, fails, and B's permanent leak follows. Which happens (C's
+   one-query cost or C2's lost slot) depends on whether a pool.query or a transaction checks
+   it out first, within idleTimeoutMillis (30 s) after which pg-pool would reap it unused.
+
+VERDICT P1: REPRODUCED for the leak (A, B, C2, E: permanent, survives idle timeout, wedges the
+pool). PARTLY REPRODUCED for "broken client returns": half-open clients come back (C) and can
+then leak a slot (C2); dead sockets are discarded by pg-pool (D). The report's trigger "a stale
+idle client after a failover" holds for a hard, half-open failover (B); for a failover that
+resets the sockets it is the narrow race of E.
+
+------------------------------------------------------------------------------------------------
+P3. ensureSchema takes no lock (concurrent boots race); DDL runs under the 5 s timeouts
+------------------------------------------------------------------------------------------------
+a. In one process, N pools configured exactly like db.ts's app pool, real ensureSchema on each,
+   fresh empty database per rep (DROP ... WITH (FORCE) + CREATE).
+   cmd: p3-ensure-schema-race.ts 2 10
+     rep 1: 1/2 boots ok in 423ms
+       boot 1: 23505 pg_type_typname_nsp_index :: duplicate key value violates unique constraint "pg_type_typname_nsp_index"
+     ... every rep the same
+     2 concurrent boots x 10 reps: 10 reps had a failed boot
+       10 x 23505 pg_type_typname_nsp_index
+   cmd: p3-ensure-schema-race.ts 4 5
+     4 concurrent boots x 5 reps: 5 reps had a failed boot
+       13 x 23505 pg_type_typname_nsp_index :: duplicate key value ...
+        2 x 42710  :: type "auth_tokens" already exists
+     (exactly one boot of four survives each rep)
+b. Separate processes, each running sim/ensure-schema.ts (real createPool + ensureSchema):
+   cmd: p3b-boot-processes.ts 5
+     rep 1: exits 0,1 duplicate key value violates unique constraint "pg_type_typname_nsp_index"
+     ... 5/5 reps one process exits 1
+     one more boot on the raced database: exit 0
+   server/index.ts turns this into `logger.fatal("Server failed to start")` + exit(1). The
+   winner leaves a complete schema, so a restart succeeds: the cost is a crash-restart of every
+   instance but one, on an empty database or whenever a release adds a table/type and several
+   instances boot it at once. Not a corruption.
+c. DDL under the app pool's timeouts (statement_timeout and query_timeout both 5000):
+   cmd: p3c-ddl-under-statement-timeout.ts lock   (IDX_session_expire dropped; another session
+        holds an open INSERT transaction on "session")
+       679ms another session holds an open write transaction on "session"; IDX_session_expire dropped
+      5828ms ensureSchema: FAILED after 5149ms:  Query read timeout
+      5838ms IDX_session_expire present afterwards: false
+   cmd: p3c-ddl-under-statement-timeout.ts big 2000000
+     session: 2000000 rows, 307 MB; the same index built with no timeout in 1309ms
+     ensureSchema: ok after 1469ms
+   cmd: p3c-ddl-under-statement-timeout.ts big 10000000
+     session: 10000000 rows, 1536 MB; the same index built with no timeout in 11512ms
+     ensureSchema: FAILED after 5279ms:  Query read timeout
+     IDX_session_expire present afterwards: false
+   The client-side query_timeout fires first, so the error is pg's "Query read timeout", not
+   Postgres' 57014. Index builds run about 1.5 M rows/s here, so a new index on a table past
+   ~7 M rows (or any index whose table has a long-running writer) stops boot, and every retry
+   fails the same way. CREATE INDEX is not CONCURRENTLY (grep finds none), so no INVALID index is
+   left behind; the build simply never completes. The "session" table here is a vehicle: its
+   rows expire, so in production the realistic ones are "events" (telemetry, one row per event)
+   or "round_history" (capped at 50 rows per player, so ~7 M rows at ~140 k players).
+VERDICT P3: REPRODUCED (race: 15/15 reps, in-process and across processes; timeout: both a held
+lock and a 10 M-row table fail boot at ~5 s).
+
+------------------------------------------------------------------------------------------------
+P4. Ownership reclaim conflicts with its own still-alive session and disposes every table
+------------------------------------------------------------------------------------------------
+Real server/game/gameOwnership.ts, DATABASE_URL through the proxy, onRoomLost recorded (in
+production it is disposeGame(rt, roomId, false), server/game/tableRuntime.ts:94).
+
+Run 1, flow dies but the app's FIN still reaches Postgres (this output is from the first
+proxy.ts, which always closed upstream; `reclaim-fin` reproduces it with the current one and
+gave the same result on rerun: 0/3 lost, old pid gone, locks on the new pid):
+   cmd: p4-ownership-self-conflict.ts reclaim-fin
+       390ms advisory locks: [{"pid":28592,"state":"idle","n":3}]
+       390ms made 1 connection(s) half-open
+     {"level":50,...,"message":"Query read timeout",...,"msg":"Game ownership connection stopped answering"}
+     24397ms backends now: [{"pid":38896,...}]          <- old backend gone
+     24399ms advisory locks now: [{"pid":38896,"state":"idle","n":3}]
+     24399ms ownsRoom: room-a=true room-b=true room-c=true; onRoomLost called for 0/3
+   drop() calls dead.end() before reclaim(); the Terminate/FIN reached Postgres and the old
+   backend exited before the new connection's pg_try_advisory_lock. No self-conflict.
+
+Run 2, the old flow is lost and stays lost (FIN dropped too) while new connections work: the
+shape of a NAT/conntrack/load-balancer entry expiring, or a proxy losing one upstream:
+   cmd: p4-ownership-self-conflict.ts reclaim   (proxy.ts keeps the upstream of a dead link)
+       318ms advisory locks: [{"pid":52020,"state":"idle","n":3}]
+       318ms made 1 connection(s) half-open; Postgres still sees its backend alive
+     {"level":50,...,"message":"Query read timeout",...,"msg":"Game ownership connection stopped answering"}
+     {"level":40,...,"roomId":"room-a","msg":"Room claimed elsewhere while this instance was disconnected — dropping it"}
+     20437ms onRoomLost(room-a) -> production disposes this table
+     20439ms onRoomLost(room-b) -> ...
+     20440ms onRoomLost(room-c) -> ...
+     24338ms advisory locks now: [{"pid":52020,"state":"idle","n":3}]   <- this process's OLD session
+     24338ms ownsRoom: room-a=false room-b=false room-c=false; onRoomLost called for 3/3
+     24339ms can this process claim room-a again on its new connection? false
+     29350ms after 5 s more, onRoomLost total 3 (no retry for "elsewhere")
+   Every table disposed ~20 s after the flow died (15 s heartbeat + 5 s query timeout), each
+   "claimed elsewhere" by nobody but the process's own orphaned backend. Worse than the claim
+   says: the orphan keeps the locks, so no instance (this one included) can take the rooms
+   until Postgres reaps that backend. Bound: the ownership session sets server keepalives
+   20 s idle + 3 x 5 s, so on a really dead flow Postgres reaps it ~35 s after the last packet
+   it received (the previous heartbeat, ~15 s before reclaim). Through this local proxy the
+   server-side TCP stays healthy, so the orphan was never reaped here.
+
+Connect timeout:
+   cmd: p4-ownership-self-conflict.ts connect   (proxy accepts TCP, forwards nothing)
+      5245ms 5 s: claimRoom settled: none, both still pending
+     30247ms 30 s: claimRoom settled: none, both still pending
+     30247ms proxy saw 1 connection attempt(s) (one shared connect: every claim waits on it)
+   createClient() is given no connectionTimeoutMillis (gameOwnership.ts:84-88; pg's default
+   connect_timeout is 0, node_modules/pg/lib/defaults.js:78). query_timeout does not cover
+   connect. Every claimRoom in the process queues behind the one hung connect. (Against a
+   dropped SYN the OS connect timeout would end it eventually: ~21 s on Windows, ~2 min on Linux.)
+
+VERDICT P4: REPRODUCED, conditionally. Not on a clean timeout where the FIN gets through (run 1);
+yes when the old flow is lost while new connections succeed (run 2): 3/3 tables disposed and the
+locks stranded on the orphaned session. No connect timeout: REPRODUCED (claims pending at 30 s).
+
+------------------------------------------------------------------------------------------------
+P7. /health runs SELECT 1 on the app pool, so saturation answers 503
+------------------------------------------------------------------------------------------------
+The probe is exactly the handler's `await pool().query("SELECT 1")` on the real openDatabase()
+pool (max 10, connect timeout 5 s); a rejection is the handler's 503 branch.
+   cmd: p7-health-under-saturation.ts held      (10 clients checked out and held)
+       1037ms checked out 10: total=10 idle=0
+       6040ms health: 503 after 5003ms (timeout exceeded when trying to connect)
+       6042ms the 10 held clients each answer a query in 2ms total
+   cmd: p7-health-under-saturation.ts busy      (10 x pg_sleep(4) running)
+       2293ms 10 x pg_sleep(4) running: total=10 idle=0
+       6095ms health: 200 after 3801ms
+   cmd: p7-health-under-saturation.ts backlog   (60 x pg_sleep(1) queued at once)
+        791ms 60 x pg_sleep(1) submitted: total=10 waiting=50
+       5727ms health: 200 after 4936ms
+       5909ms the 60 app queries after 5220ms: {"ok":50,"timeout exceeded when trying to connect":10}
+Reading: /health waits in the same FIFO as every app query and gives up on the same 5 s connect
+timeout. Held clients (Postgres and the clients fine) -> 503 at 5.0 s. Busy -> 200 but only after
+3.8 s, which any probe with a timeout under 4 s reads as down. Backlog -> health squeaked through
+at 4.9 s while 10 of 60 real queries had already failed. So health goes 503 at the same moment the
+instance itself starts failing DB requests: an accurate readiness signal, a wrong liveness one.
+No host probe consumes /health yet (deploy/ has only runtime.json; .github/workflows/health.yml
+polls production on a schedule), so the "restarted under load" harm needs a host that restarts
+on it.
+
+VERDICT P7: REPRODUCED (503 with a saturated pool and a healthy database; slow 200 under load).
+
+------------------------------------------------------------------------------------------------
+P8. Pool hygiene: no application_name, no idle-in-transaction timeout, no keep-alive, no lifetime
+------------------------------------------------------------------------------------------------
+   cmd: p8-pool-hygiene.ts   (real openDatabase(), createSocketAdapter(), gameOwnership claimRoom)
+     app pool: session {"application_name":"","idle_in_tx_timeout":"0","statement_timeout":"5s","ka_idle":"-1","ka_interval":"-1","ka_count":"10"}
+     app pool: client {"keepAlive":false,"keepAliveInitialDelayMillis":0,"application_name":null} pool {max:10, idleTimeoutMillis:30000, maxLifetimeSeconds:0}
+     adapter pool: session {"application_name":"","idle_in_tx_timeout":"0","statement_timeout":"0","ka_idle":"-1",...}
+     adapter pool: client {"keepAlive":false,...,"application_name":null} pool {max:4, idleTimeoutMillis:0, maxLifetimeSeconds:0}
+     ownership client: pg_stat_activity {"pid":47100,"application_name":""}
+     every app session in pg_stat_activity: 4 sessions, all application_name "<empty>"
+     positive control (keepAlive, application_name, lifetime set): session {"application_name":"control",...}
+     positive control ...: client {"keepAlive":true,"keepAliveInitialDelayMillis":10000,"application_name":"control"} pool {max:1, idleTimeoutMillis:10000, maxLifetimeSeconds:1800}
+     server defaults: idle_in_transaction_session_timeout 0, idle_session_timeout 0,
+       tcp_keepalives_idle/interval -1 (what this Windows build reports; not interpretable
+       from here), count 10
+   The keepAlive fields are read from client.connection (pg/lib/connection.js:24-25); the
+   control pool proves the probe prints true when they are set. Source agrees:
+   `grep -rn "keepAlive\|application_name\|maxLifetime\|idle_in_transaction" server --include=*.ts | grep -v test`
+   finds nothing.
+   No pool sets application_name (sessions are indistinguishable in pg_stat_activity),
+   idle_in_transaction_session_timeout is 0 (off) on every session, neither pool turns on
+   client keepAlive nor sets server keepalives, and maxLifetimeSeconds is 0. The adapter pool
+   also has no statement_timeout. Only the ownership client SETs server keepalives
+   (gameOwnership.ts:103-106; its session settings are not readable from another session).
+
+VERDICT P8: REPRODUCED.
+
+------------------------------------------------------------------------------------------------
+Adapter threshold: inline NOTIFY unless > 8000 bytes; Postgres refuses >= 8000
+------------------------------------------------------------------------------------------------
+Source: node_modules/@socket.io/postgres-adapter/dist/adapter.js:20 (and node-cluster.js:17)
+default `payloadThreshold: 8000`; dist/util.js publish(): `if (Buffer.byteLength(payload) >
+this.opts.payloadThreshold) return this.publishWithAttachment(message)`. The repo's patch
+(patches/@socket.io+postgres-adapter+0.5.0.patch, hunks at util.js 55, 84, 147) does not touch
+publish or the threshold, and server/socket/socketAdapter.ts:165-175 passes no payloadThreshold.
+Postgres: NOTIFY_PAYLOAD_MAX_LENGTH = BLCKSZ - NAMEDATALEN - 128 = 8000, rejected when >= it.
+   cmd: psql ... -c "select octet_length(repeat('x',7999)), pg_notify('repro', repeat('x',7999))"
+     7999 |            (ok)
+   cmd: psql ... -c "select pg_notify('repro', repeat('x',8000))"
+     ERROR:  payload string too long
+   cmd: adapter-threshold.ts   (real socket.io Server + real createSocketAdapter(), io.emit of a
+        string sized so the adapter's JSON payload is the target size; envelope overhead 137 B)
+     payload 7999 B: pg_notify 7999 B -> ok
+     {"level":50,...,"message":"payload string too long",...,"code":"22023",...,"routine":"Async_Notify"},"msg":"Socket.IO Postgres adapter error — broadcasts may not be reaching other instances"}
+     payload 8000 B: pg_notify 8000 B -> ERROR payload string too long
+     payload 8001 B: attachment insert 7961 B -> ok; pg_notify 54 B -> ok
+A real emit lands there whenever JSON.stringify of the adapter message is exactly 8000 UTF-8
+bytes: nothing prevents it, the window is one byte wide, and the broadcast is lost to every
+other instance (only an error log line on the sender). With typical game payloads of a few kB
+it is rare, not impossible.
+
+VERDICT adapter threshold: REPRODUCED (an 8000-byte broadcast is dropped; 7999 and 8001 go through).
+
+------------------------------------------------------------------------------------------------
+Finding 9. Friend lists select whole users rows, password hash and email included
+------------------------------------------------------------------------------------------------
+   cmd: f9-f11-reads.ts   (real friendStore on the real pool; pool.query wrapped to capture SQL;
+        three seeded users with fake bcrypt-shaped hashes, one accepted + one pending friendship)
+     getFriends SQL: select "friends"."id", "friends"."user_id", "friends"."friend_user_id", "friends"."status", "friends"."created_at", "users"."id", "users"."username", "users"."password", "users"."friend_code", "users"."created_at", "users"."last_seen", "users"."tutorial_seen_at", "users"."is_admin", "users"."email", "users"."email_verified_at" from "friends" inner join "users" on "friends"."friend_user_id" = "users"."id" where ("friends"."user_id" = $1 and "friends"."status" = $2)
+     getFriends row.friend keys: id, username, password, friendCode, createdAt, lastSeen, tutorialSeenAt, isAdmin, email, emailVerifiedAt
+     getFriends row.friend.password = $2b$10$abcde..., email = bob@example.com
+     getPendingFriendRequests SQL: (same column list) ... on "friends"."user_id" = "users"."id" where ("friends"."friend_user_id" = $1 and "friends"."status" = $2)
+     getPendingFriendRequests row.requester keys: id, username, password, friendCode, ... email, emailVerifiedAt
+   Selected, not sent: every caller narrows before anything leaves the process —
+   routes/friends.ts maps through friendRow/friendRequestRow (server/store/friendRows.ts: id,
+   username, lastSeen / id, username, createdAt); socketPresence.ts and routes/profile.ts use only
+   .friend.id / .friendUserId. The exposure is in-process (heap, any future careless spread or
+   log of the row), plus the bytes. getFriends runs on every socket connect and every offline
+   notice.
+
+VERDICT 9: REPRODUCED (as stated: the hash and email are read; they are not sent to clients).
+
+------------------------------------------------------------------------------------------------
+Finding 11. Orphan sweep reads every active_games envelope
+------------------------------------------------------------------------------------------------
+Path: socket.ts:211 startSweeper(rt, resumeOrphanedTables) every sweepIntervalMs()
+(gameTimers.ts:121, MURLAN_SWEEP_INTERVAL_MS, default 5 min) -> tableLifecycle.ts:217
+rt.store.games.list() -> activeGameStore.list().
+   cmd: f9-f11-reads.ts   (1,000 synthetic envelopes shaped like PersistedEnvelope: four 13-card
+        hands, match, seats; sized to the report's measured 3.2 kB text / 1.5 kB stored)
+     active_games: {"n":1000,"avg_text":3345,"text_bytes":3345369,"stored_bytes":1403300,"table_size":"1688 kB"}
+     activeGameStore.list() SQL: select "room_id", "game_state" from "active_games"
+     returned 1000 rows in 29ms; JSON of the result 2985263 bytes in the Node heap
+     plan: Seq Scan on active_games (actual time=0.009..0.196 rows=1000) | Buffers: shared hit=200 | Execution Time: 0.232 ms
+   No WHERE, and the two projected columns include the whole envelope (nothing projected
+   inside it): per sweep per instance ~1.4 MB detoasted from 200 pages, ~3.3 MB sent as jsonb
+   text, ~3 MB of objects in the heap. The read happens on every sweep, before the `online`
+   check. In Node, rows this instance already holds are skipped by activeGames.has() before
+   unpackPersistedState; every other row is zod-parsed before its roundOver / online filter.
+   Parse cost not measured (the envelopes are synthetic and would not parse). Server side is
+   trivial (0.2 ms); the read is ~30 ms per 1,000 tables every 5 minutes. Correct as Low.
+
+VERDICT 11: REPRODUCED (whole table, whole column, every sweep; cheap at 1,000 tables).
+
+================================================================================================
+Summary
+================================================================================================
+| Claim | Verdict | Evidence |
+| --- | --- | --- |
+| P1 leak on failed BEGIN | REPRODUCED | max-2 app pool: 2 failed BEGINs -> total=2 idle=0 forever; next query "timeout exceeded when trying to connect" at 5 s, still so after 35 s; an admin kill of an idle backend leaked the client in 13/20 trials |
+| P1 broken client returned | PARTLY | half-open client released with no err and counted idle; next pool.query costs 5 s then drops it, next transaction leaks it for good (C2); a dead socket is dropped by pg-pool's _queryable check |
+| P3 boot DDL race | REPRODUCED | 2 boots: 10/10 reps one fails 23505 pg_type_typname_nsp_index; 4 boots: 3 of 4 fail every rep; separate processes 5/5 exit 1; a later boot succeeds |
+| P3 DDL under 5 s timeout | REPRODUCED | CREATE INDEX on 10 M-row table (11.5 s untimed) -> ensureSchema "Query read timeout" at 5.3 s; same with a held writer at 5.1 s |
+| P4 self-conflict on reclaim | REPRODUCED, conditionally | old flow lost, new flows fine: 3/3 rooms onRoomLost at 20.4 s, locks held by the process's own old pid; with the FIN delivered (run 1) 0/3 |
+| P4 no connect timeout | REPRODUCED | claimRoom x2 still pending at 30 s against a non-answering server |
+| P7 /health under saturation | REPRODUCED | 10 held clients -> 503 at 5003 ms while each held client answers in ms; busy pool -> 200 after 3.8 s |
+| P8 pool hygiene | REPRODUCED | live sessions: application_name "", idle_in_transaction_session_timeout 0, keepAlive false, maxLifetimeSeconds 0, adapter statement_timeout 0 |
+| Adapter threshold | REPRODUCED | `> 8000` in dist/util.js; pg_notify 7999 ok, 8000 "payload string too long"; a real io.emit at 8000 B dropped, 8001 B via attachment |
+| Finding 9 | REPRODUCED | SQL selects users.password and users.email; returned row has both; callers narrow before sending |
+| Finding 11 | REPRODUCED | `select "room_id", "game_state" from "active_games"`, no WHERE: 1,000 envelopes = 1.4 MB stored, 3.3 MB as text, 3.0 MB in heap, 29 ms |

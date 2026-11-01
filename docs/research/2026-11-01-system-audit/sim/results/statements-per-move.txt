@@ -1,0 +1,13 @@
+One table of four, 19.8 s, 417 moves, log_statement=all on Postgres 16, production pool sizes.
+Counts by statement shape (literals stripped), top of the list:
+
+   2153 SELECT pg_notify($1, $2)                      -> 5.2 per move
+    425 insert into "active_games" ... on conflict    -> 1.0 per move (whole envelope)
+     38 begin / commit (round-end and seat transactions)
+     24 SELECT id FROM users WHERE id in (...) FOR NO KEY UPDATE
+     20 insert into user_stats / user_ratings / round_history (per seat, per round)
+     20 delete from round_history (prune to 50, per seat, per round)
+     16 insert into events
+      8 session SELECT + touch UPDATE + upsert
+
+load.sh totals for the same run: 10.76 commits per move (every pg_notify is its own transaction).
