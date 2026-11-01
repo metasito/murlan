@@ -5,7 +5,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { check, gitAt, implementRoute } from "../guard-bash.mjs";
 import { readIssue, TRUSTED_SELECT } from "../tracker.mjs";
 
@@ -318,7 +318,12 @@ describe("a file that names a merge is not a script that runs one", () => {
     "decoy-template.mjs": `${EXEC}(\`//usr/bin/gh pr merge 5\`);\n`,
     "decoy-jsdoc.mjs": `/** see // here */ ${EXEC}('gh pr merge 5');\n`,
     "decoy.ts": `// gh pr merge stays the loop's\nconst n: number = 5;\n${EXEC}(\`gh pr merge \${n}\`);\n`,
-    "broken.mjs": "// gh pr merge 5\nconst = ;\n",
+    "decoy-division.mjs": `if (ok) /\\/\\//.test(url); ${EXEC}('gh pr merge 5');\n`,
+    "decoy-block.mjs": `function f() {}\n/\\/\\*/.test(x); ${EXEC}('gh pr merge 5'); /* */\n`,
+    "decoy-unclosed.mjs": `${EXEC}('gh pr merge 5'); /* never closed\n`,
+    "regex-comment.mjs": "const re = /x\\/y[/]/g; // gh pr merge stays the loop's\nexport default re;\n",
+    "template-comment.mjs": "const s = `a${ \"}\" + `${'`'}` }b`; /* gh pr merge */ export default s;\n",
+    "string-comment.mjs": "const u = 'https://x/*'; // gh pr merge\nconst v = \"*/\"; export { u, v };\n",
   };
   const files = {
     ...repo,
@@ -354,6 +359,9 @@ describe("a file that names a merge is not a script that runs one", () => {
     "node -e \"/* never gh pr merge here */ require('fs').writeFileSync('a.txt', 'b')\"",
     "bash edit.sh merges.md",
     "pwsh -File edit.ps1 merges.md",
+    "node regex-comment.mjs",
+    "node template-comment.mjs",
+    "node string-comment.mjs",
   ]) {
     test(`allows: ${JSON.stringify(cmd)}`, () => assert.equal(at(cmd), null));
   }
@@ -400,7 +408,7 @@ describe("a file that names a merge is not a script that runs one", () => {
     "pwsh m.ps1 merges.md",
     "node m.js merges.md",
     "node -e \"require('child_process').execSync('gh pr merge 5') // a test\" merges.md",
-    ...Object.keys(FILES).filter((f) => /^(decoy|broken)/.test(f)).map((f) => `node ${f} read 5`),
+    ...Object.keys(FILES).filter((f) => f.startsWith("decoy")).map((f) => `node ${f} read 5`),
   ]) {
     test(`refuses: ${JSON.stringify(cmd)}`, () => assert.match(String(at(cmd)), MERGE));
   }
@@ -433,6 +441,35 @@ describe("the tracker's recipes run, and the supervisor's merges do not", () => 
     const merge = hook("gh pr merge 5");
     assert.equal(merge.status, 2);
     assert.match(merge.stderr, MERGE);
+  });
+
+  test("with no package installed, as the Windows harness runs it, the hook still tells a comment from a call", () => {
+    const dir = mkdtempSync(join(tmpdir(), "guard-no-packages-"));
+    try {
+      writeFileSync(
+        join(dir, "no-packages.mjs"),
+        'import { registerHooks } from "node:module";\n' +
+          "registerHooks({ resolve: (specifier, context, next) => {\n" +
+          '  if (!/^(node:|\\.|\\/|file:|[A-Za-z]:)/.test(specifier)) throw new Error(`no package installed: ${specifier}`);\n' +
+          "  return next(specifier, context);\n" +
+          "} });\n",
+      );
+      writeFileSync(join(dir, "reads.mjs"), "// arming stays `gh pr merge`\nexport const ok = 1;\n");
+      writeFileSync(join(dir, "m.mjs"), "// harmless\nrequire('child_process').execSync('gh pr merge 5');\n");
+      const hook = (command: string) =>
+        spawnSync(process.execPath, ["--import", pathToFileURL(join(dir, "no-packages.mjs")).href, SCRIPT], {
+          cwd: dir,
+          input: JSON.stringify({ tool_name: "Bash", cwd: dir, tool_input: { command } }),
+          encoding: "utf8",
+        });
+      const reads = hook("node reads.mjs read 5");
+      assert.equal(reads.status, 0, reads.stderr);
+      const m = hook("node m.mjs");
+      assert.equal(m.status, 2, m.stderr);
+      assert.match(m.stderr, MERGE);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
