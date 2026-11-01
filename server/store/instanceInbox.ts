@@ -29,6 +29,11 @@ const RETRY_MS = 250;
 
 const inboxKey = (id: string) => redisKey(`inbox:${id}`);
 
+/** How each send trims its inbox, exported so a test reads the value it actually gets. */
+export function inboxTrim() {
+  return { strategy: "MAXLEN", strategyModifier: "~", threshold: streamMaxLen() } as const;
+}
+
 /**
  * One instance's addressed stream, `inbox:<instanceId>`. Each message is read once and in
  * order: the reader resumes from the last entry it handed over, across any reconnect, for as
@@ -86,11 +91,12 @@ export function openInbox({
   return {
     async send(to, message) {
       const key = inboxKey(to);
-      await writer
-        .multi()
-        .xAdd(key, "*", { m: JSON.stringify(message) }, { TRIM: { strategy: "MAXLEN", strategyModifier: "~", threshold: streamMaxLen() } })
-        .expire(key, CLUSTER_GAP_SECONDS)
-        .exec();
+      // Two commands, not a MULTI: node-redis queues a MULTI while offline whatever the client's
+      // offline queue is set to.
+      await Promise.all([
+        writer.xAdd(key, "*", { m: JSON.stringify(message) }, { TRIM: inboxTrim() }),
+        writer.expire(key, CLUSTER_GAP_SECONDS),
+      ]);
     },
     on(kind, handler) {
       handlers.set(kind, handler);

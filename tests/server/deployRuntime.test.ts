@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { resolvePoolMax } from "../../server/store/db.ts";
 import { CLUSTER_GAP_SECONDS, streamMaxLen } from "../../server/store/redis.ts";
+import { adapterOptions } from "../../server/socket/socketAdapter.ts";
+import { inboxTrim } from "../../server/store/instanceInbox.ts";
 import { PLATFORM_GRACE_MS } from "../../server/http/shutdown.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
@@ -45,4 +47,7 @@ test("the cluster streams hold two minutes of the manifest's design peak", () =>
   assert.equal(CLUSTER_GAP_SECONDS, 120);
   assert.equal(streamMaxLen(), 120_000);
   assert.equal(streamMaxLen(7), 840);
+  assert.equal(adapterOptions().maxLen, 120_000, "the adapter's stream, which defaults to 10,000 without it");
+  assert.equal(inboxTrim().threshold, 120_000, "each inbox");
+  assert.equal(inboxTrim().strategy, "MAXLEN");
 });

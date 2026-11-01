@@ -4,12 +4,13 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { ClientOfflineError } from "redis";
 import { eventually } from "../helpers/client.ts";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
 import { openInbox, type Inbox, type InstanceMessage } from "../../server/store/instanceInbox.ts";
-import { closeRedis } from "../../server/store/redis.ts";
+import { closeRedis, redisReady } from "../../server/store/redis.ts";
 
 describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() }, () => {
   const baseUrl = process.env.DATABASE_URL!;
@@ -29,6 +30,7 @@ describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() },
     receiver.on("probe", (m: InstanceMessage) => {
       received.push(m.n as number);
     });
+    await redisReady();
   });
 
   after(async () => {
@@ -63,9 +65,7 @@ describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() },
     try {
       proxy.refuse(true);
       await new Promise((r) => setTimeout(r, 100));
-      const started = Date.now();
-      await assert.rejects(offline.send(b, { kind: "probe", n: -1 }));
-      assert.ok(Date.now() - started < 500, "the send waited for Redis to come back");
+      await assert.rejects(offline.send(b, { kind: "probe", n: -1 }), ClientOfflineError, "the send was queued for Redis to come back");
     } finally {
       proxy.refuse(false);
       offline.close();
