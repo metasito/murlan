@@ -9,6 +9,7 @@ import { stopInbox } from "../store/instanceInbox.ts";
 import { closeOwnership } from "../game/gameOwnership.ts";
 import type { TableRuntime } from "../game/tableRuntime.ts";
 import { settleDisconnects } from "../socket/socketPresence.ts";
+import { within } from "../shared/within.ts";
 
 /**
  * How long the host waits between SIGTERM and SIGKILL. The whole sequence
@@ -47,19 +48,6 @@ const SHUTDOWN_STEPS_MS = Object.values(SHUTDOWN_BUDGET).reduce((sum, ms) => sum
  * exit(0) first, and strictly inside PLATFORM_GRACE_MS, so it can fire at all.
  */
 export const FORCED_EXIT_MS = SHUTDOWN_STEPS_MS + 250;
-
-/** Settles with `work`, or with nothing once `ms` has passed. */
-export async function within<T>(ms: number, work: Promise<T>): Promise<T | undefined> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<undefined>((resolve) => {
-    timer = setTimeout(() => resolve(undefined), ms);
-  });
-  try {
-    return await Promise.race([work, late]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 export interface ShutdownDeps {
   io: Pick<SocketIOServer, "close">;
