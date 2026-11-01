@@ -1,6 +1,6 @@
 import { now } from "../http/clock.ts";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { db } from "../store/db.ts";
+import { db, transaction } from "../store/db.ts";
 import { lockUsers } from "../store/userLock.ts";
 import { logger } from "../shared/logger.ts";
 import { userStats, roundHistory, userAchievements } from "../../shared/schema.ts";
@@ -59,8 +59,7 @@ export async function recordGameResult(
     // mid-round still holds its seat in `results`, and its insert violates a
     // foreign key. Sharing a transaction would roll that failure back over
     // every other player's stats, history and achievements for the round.
-    await db()
-      .transaction(async (tx) => {
+    await transaction(async (tx) => {
         const { userId, placement, playerCount, playedBomb, matchWon, abandoned } = result;
         const won = placement === 1;
         await lockUsers(tx, [userId]);

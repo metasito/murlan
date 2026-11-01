@@ -32,6 +32,7 @@ export const SCANS = [
   "tests/server/rateLimiterFactory.test.ts",
   "tests/server/rejoinFailure.test.ts",
   "tests/server/retentionOffWritePath.test.ts",
+  "tests/server/schemaIndexScan.test.ts",
   "tests/server/seatAllocationScan.test.ts",
   "tests/server/seating.test.ts",
   "tests/server/serverLoadable.test.ts",
@@ -42,6 +43,7 @@ export const SCANS = [
   "tests/server/tableOwnershipScan.test.ts",
   "tests/server/tableRuntimeScan.test.ts",
   "tests/server/testOnlyEnvScan.test.ts",
+  "tests/server/transactionScan.test.ts",
   "tests/server/usernameRule.test.ts",
 ];
 

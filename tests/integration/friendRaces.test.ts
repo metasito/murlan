@@ -232,7 +232,7 @@ describe("simultaneous friend requests", {
       `${bob.user.id}->${alice.user.id}`,
     ].sort();
 
-    await ensureSchema(pool());
+    await ensureSchema();
     assert.deepEqual(
       await accepted(),
       bothWays,
@@ -248,7 +248,7 @@ describe("simultaneous friend requests", {
 
     // The second boot is the one that proves nothing here is a migration.
     const survivors = await pending();
-    await ensureSchema(pool());
+    await ensureSchema();
     assert.deepEqual(await accepted(), bothWays);
     assert.deepEqual(await pending(), survivors);
   });

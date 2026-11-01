@@ -1,23 +1,219 @@
-import { Client, Pool, type ClientConfig, type PoolConfig } from "pg";
+import { Client, Pool, type ClientConfig, type PoolClient, type PoolConfig } from "pg";
 import { logger } from "../shared/logger.ts";
 
-export function createPool(name: string, config: Omit<PoolConfig, "connectionString">): Pool {
-  const pool = new Pool({ ...config, connectionString: process.env.DATABASE_URL });
+/**
+ * Upper bound on a single query on the app pool, server-side and client-side.
+ *
+ * `server/http/shutdown.ts` derives its entire budget from this: a client stuck on a
+ * query is only returned to the pool when the query gives up, so this is the
+ * longest a shutdown can be made to wait for one, and it has to leave room for
+ * the rest of the sequence inside the platform's SIGTERM grace.
+ */
+export const QUERY_TIMEOUT_MS = 5_000;
+
+type Settings = Omit<ClientConfig, "connectionString" | "application_name">;
+
+type Profile =
+  | { kind: "pool"; max: number; settings: Settings & Omit<PoolConfig, "connectionString" | "application_name" | "max"> }
+  | { kind: "client"; settings: Settings };
+
+/**
+ * Every use this server makes of Postgres, and how its connections are configured. A profile's
+ * key is its `application_name` in `pg_stat_activity` (`murlan-<key>`), and a pool's `max` is
+ * its share of `deploy/runtime.json`'s `pgConnectionsPerInstance` (`connectionsPerInstance`).
+ */
+const PROFILES = {
+  app: {
+    kind: "pool",
+    max: 10,
+    settings: {
+      connectionTimeoutMillis: 5_000,
+      idleTimeoutMillis: 30_000,
+      statement_timeout: QUERY_TIMEOUT_MS,
+      query_timeout: QUERY_TIMEOUT_MS,
+    },
+  },
+  adapter: {
+    kind: "pool",
+    max: 4,
+    // Never reap an idle client. The `LISTEN` client is checked out rather than
+    // idle, so a timeout would not collect it today — but a pool that closes
+    // connections underneath a subscription is one library change away from
+    // dropping every broadcast in silence.
+    settings: { connectionTimeoutMillis: 5_000, idleTimeoutMillis: 0 },
+  },
+  // Bounded, so a half-open socket fails the heartbeat rather than hanging it.
+  ownership: { kind: "client", settings: { query_timeout: 5_000, statement_timeout: 5_000 } },
+  admin: {
+    kind: "pool",
+    max: 2,
+    settings: {
+      connectionTimeoutMillis: 5_000,
+      idleTimeoutMillis: 30_000,
+      statement_timeout: 30_000,
+      query_timeout: 30_000,
+    },
+  },
+  ddl: {
+    kind: "client",
+    settings: { connectionTimeoutMillis: 5_000, query_timeout: 0, statement_timeout: 0, lock_timeout: 3_000 },
+  },
+  health: {
+    kind: "pool",
+    max: 1,
+    settings: {
+      connectionTimeoutMillis: 2_000,
+      idleTimeoutMillis: 30_000,
+      statement_timeout: 2_000,
+      query_timeout: 2_000,
+    },
+  },
+} as const satisfies Record<string, Profile>;
+
+type ProfileName = keyof typeof PROFILES;
+type ProfileOf<K extends Profile["kind"]> = {
+  [N in ProfileName]: (typeof PROFILES)[N]["kind"] extends K ? N : never;
+}[ProfileName];
+export type PoolProfile = ProfileOf<"pool">;
+export type ClientProfile = ProfileOf<"client">;
+
+const EVERY_CONNECTION = {
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10_000,
+  idle_in_transaction_session_timeout: 10_000,
+} as const satisfies Settings;
+
+const POOL_LIFETIME_SECONDS = 1_800;
+
+export function applicationName(profile: ProfileName): string {
+  return `murlan-${profile}`;
+}
+
+/** A pool's deployed size: what `connectionsPerInstance` counts it as. */
+export function profileMax(profile: PoolProfile): number {
+  return PROFILES[profile].max;
+}
+
+export function connectionsPerInstance(): number {
+  return Object.values(PROFILES).reduce((sum, p: Profile) => sum + (p.kind === "pool" ? p.max : 1), 0);
+}
+
+export function createPool(
+  profile: PoolProfile,
+  overrides: Omit<PoolConfig, "connectionString" | "application_name"> = {}
+): Pool {
+  const { max, settings } = PROFILES[profile];
+  const pool = new Pool({
+    ...EVERY_CONNECTION,
+    maxLifetimeSeconds: POOL_LIFETIME_SECONDS,
+    max,
+    ...settings,
+    ...overrides,
+    application_name: applicationName(profile),
+    connectionString: process.env.DATABASE_URL,
+  });
   // Every client error is logged below; this only absorbs pg-pool's re-emit for an idle one.
   pool.on("error", () => {});
   // pg-pool listens on a client only while it is idle: a backend dying under a checked-out one
   // (a transaction between statements, the socket adapter's LISTEN) emits with nobody listening.
   pool.on("connect", (client) => {
-    client.on("error", (err) => logger.error({ err, pool: name }, "Postgres client error"));
+    client.on("error", (err) => logger.error({ err, pool: applicationName(profile) }, "Postgres client error"));
   });
   return pool;
 }
 
-export function createClient(
-  config: Omit<ClientConfig, "connectionString">,
-  onError: (err: Error) => void
-): Client {
-  const client = new Client({ ...config, connectionString: process.env.DATABASE_URL });
+export function createClient(profile: ClientProfile, onError: (err: Error) => void): Client {
+  const client = new Client({
+    ...EVERY_CONNECTION,
+    ...PROFILES[profile].settings,
+    application_name: applicationName(profile),
+    connectionString: process.env.DATABASE_URL,
+  });
   client.on("error", onError);
   return client;
+}
+
+function appendCause(err: unknown, cause: unknown): unknown {
+  if (!(err instanceof Error)) return new Error(String(err), { cause });
+  const seen = new Set<Error>();
+  let last = err;
+  while (last.cause instanceof Error && !seen.has(last.cause)) {
+    seen.add(last);
+    last = last.cause;
+  }
+  if (last.cause === undefined) last.cause = cause;
+  return err;
+}
+
+/**
+ * Runs `body` in a transaction on a client of its own. A client that failed to begin, commit
+ * or roll back is released with that error, so `pool` destroys it rather than handing it to
+ * the next caller. When the rollback fails too, the body's error is still the one thrown, with
+ * the rollback's at the end of its `cause` chain.
+ */
+export async function inTransaction<T>(pool: Pool, body: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+  } catch (err) {
+    client.release(err as Error);
+    throw err;
+  }
+  let result: T;
+  try {
+    result = await body(client);
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackErr) {
+      client.release(rollbackErr as Error);
+      throw appendCause(err, rollbackErr);
+    }
+    client.release();
+    throw err;
+  }
+  try {
+    await client.query("COMMIT");
+  } catch (err) {
+    client.release(err as Error);
+    throw err;
+  }
+  client.release();
+  return result;
+}
+
+/** Connections Postgres keeps for superusers and operators, outside every instance's share. */
+const RESERVED_CONNECTIONS = 10;
+
+let headroom: number | undefined;
+
+/**
+ * Connections left once every instance seen holds its full share, as of the last
+ * `checkConnectionBudget`; below zero, the instances running can exhaust `max_connections`.
+ * Undefined until a check has run.
+ */
+export function pgConnectionHeadroom(): number | undefined {
+  return headroom;
+}
+
+/** Reads the server's limit and who holds connections now, and records the headroom. */
+export async function checkConnectionBudget(db: Pick<Pool, "query">): Promise<number> {
+  const limit = await db.query<{ max_connections: string }>("SHOW max_connections");
+  const held = await db.query<{ name: string; sessions: number }>(
+    `SELECT application_name AS name, count(*)::int AS sessions FROM pg_stat_activity
+      WHERE application_name LIKE 'murlan-%' GROUP BY application_name`
+  );
+  const maxConnections = Number(limit.rows[0]?.max_connections);
+  const sessions = Object.fromEntries(held.rows.map((r) => [r.name, r.sessions]));
+  // One ownership client per instance, and this instance counts before its own has connected.
+  const instances = Math.max(1, sessions[applicationName("ownership")] ?? 0);
+  const perInstance = connectionsPerInstance();
+  headroom = maxConnections - RESERVED_CONNECTIONS - instances * perInstance;
+  if (headroom < 0) {
+    logger.error(
+      { maxConnections, reserved: RESERVED_CONNECTIONS, instances, perInstance, headroom, sessions },
+      "The instances running can hold more Postgres connections than the server allows"
+    );
+  }
+  return headroom;
 }

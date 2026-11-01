@@ -16,8 +16,7 @@ import assert from "node:assert/strict";
 import pg from "pg";
 import * as schemaModule from "../../shared/schema.ts";
 import { hasDatabase, skipMessage, startTestServer } from "../helpers/testServer.ts";
-import { ensureSchema } from "../../server/store/schemaDdl.ts";
-import { pool } from "../../server/store/db.ts";
+import { applySchema, ensureSchema, openDdlClient } from "../../server/store/schemaDdl.ts";
 import { is } from "drizzle-orm";
 import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 
@@ -130,16 +129,21 @@ test("a fresh database is usable on the first boot", async (t) => {
     await t.test("re-running the bootstrap changes nothing", async () => {
       // What every restart does: the same statements against tables,
       // indexes and enum types that already exist.
-      await ensureSchema(pool());
+      await ensureSchema();
       const ran: string[] = [];
-      const watched = {
-        query: (text: string, ...rest: unknown[]) => {
-          ran.push(text);
-          return (pool().query as (...a: unknown[]) => unknown)(text, ...rest);
-        },
-      } as unknown as ReturnType<typeof pool>;
-      await ensureSchema(watched);
+      const ddl = await openDdlClient();
+      try {
+        await applySchema({
+          query: (text: string, ...rest: unknown[]) => {
+            ran.push(text);
+            return (ddl.query as (...a: unknown[]) => unknown)(text, ...rest);
+          },
+        } as unknown as Parameters<typeof applySchema>[0]);
+      } finally {
+        await ddl.end();
+      }
       assert.deepEqual(ran.filter((s) => /ADD COLUMN/.test(s)), [], "a booted database takes no ACCESS EXCLUSIVE per column");
+      assert.deepEqual(ran.filter((s) => /INDEX/.test(s)), [], "a booted database builds no index again");
 
       const me = await fetch(`${server.url}/api/auth/me`, { headers: { cookie } });
       assert.equal(me.status, 200, await me.text());
