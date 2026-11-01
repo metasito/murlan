@@ -229,8 +229,11 @@ export async function createApp(): Promise<CreatedApp> {
   await ensureSchema(pool());
   checkMailConfigOnBoot();
 
+  // The only paths that carry the session, beside the socket handshake below:
+  // a static file, /health and the SPA shell never ask who is signed in, and
+  // each read of the session is a query.
   const sessionMiddleware = createSessionMiddleware();
-  app.use(sessionMiddleware);
+  app.use(["/api", "/admin"], sessionMiddleware);
 
   app.get("/health", async (_req, res) => {
     try {
