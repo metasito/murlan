@@ -3,7 +3,7 @@
 // lead straight into the hand it knows can beat it (#907).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { botChoosePlay, knownOpponentExchangeCard } from "../../lib/game/bot.ts";
+import { botChoosePlay, knownOpponentExchangeCard, losesLeadToExchangeCard } from "../../lib/game/bot.ts";
 import { buildCombination, getRankStrength, RANK_SLOTS } from "../../lib/game/gameEngine.ts";
 import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
 import { card as c, seat as makePlayer, state as makeState, viewOf } from "../support/game.ts";
@@ -40,6 +40,18 @@ describe("knownOpponentExchangeCard", () => {
 
   test("no exchange this round means no known card", () => {
     assert.equal(knownOpponentExchangeCard(undefined, 1), undefined);
+  });
+});
+
+describe("losesLeadToExchangeCard", () => {
+  test("a single lower than the known card loses to it, an equal one does not", () => {
+    assert.equal(losesLeadToExchangeCard(buildCombination([c("5", "clubs")])!, c("K", "hearts")), true);
+    assert.equal(losesLeadToExchangeCard(buildCombination([c("K", "clubs")])!, c("K", "hearts")), false);
+  });
+
+  test("a pair cannot lose to one card", () => {
+    const pair = buildCombination([c("5", "clubs"), c("5", "hearts")])!;
+    assert.equal(losesLeadToExchangeCard(pair, c("K", "hearts")), false);
   });
 });
 
