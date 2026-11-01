@@ -12,6 +12,7 @@ import { connectRateLimits, routeLimiter } from "../../server/http/rateLimit.ts"
 import { closeRedis, keyspace, redisReady } from "../../server/store/redis.ts";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 import { routeSources } from "../helpers/routeSources.ts";
+import { LIMITERS } from "../helpers/routeLimiters.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
 
@@ -23,6 +24,7 @@ const SERVER_DIR = path.join(REPO_ROOT, "server");
 const realDatabaseUrl = process.env.DATABASE_URL;
 const scoped = scopedDatabaseUrl(realDatabaseUrl ?? "postgres://unused/murlan", `rlf_${Date.now()}_${Math.floor(Math.random() * 1e6)}`);
 process.env.DATABASE_URL = scoped;
+process.env.SESSION_SECRET ??= "rate-limiter-factory-test-secret";
 after(async () => {
   closeRedis();
   await dropKeyspace(scoped);
@@ -78,9 +80,13 @@ function limiterDeclarations(): LimiterDeclaration[] {
 test("every limiter in the route area files is built by the factory", () => {
   const declared = limiterDeclarations();
 
-  // RULES §6: a scan that finds nothing passes. A floor, not an equality — a
-  // fourteenth limiter built the right way must not have to edit this test.
-  assert.ok(declared.length >= 13, `only ${declared.length} limiters found — the scan has stopped seeing them`);
+  // RULES §49: a limiter moved where the scan cannot see it would drop out of every check below,
+  // so the scan must find exactly the limiters the routes name.
+  assert.deepEqual(
+    declared.map((d) => d.variable).sort(),
+    [...new Set(Object.values(LIMITERS).flat())].sort(),
+    "the scan and the routes disagree on which limiters exist"
+  );
 
   const byHand = declared.filter((d) => d.callee !== "routeLimiter");
   assert.deepEqual(byHand, [], `these bypass routeLimiter: ${byHand.map((d) => `${d.variable} = ${d.callee}()`).join(", ")}`);
@@ -97,22 +103,26 @@ test("every route limiter names its counts with a literal no other limiter uses"
   }
 });
 
-describe("every route limiter counts in Redis", { skip: hasDatabase() ? false : skipMessage() }, () => {
+test("a second limiter under a name already taken is refused when it is built", () => {
+  const name = freshName();
+  routeLimiter({ name, windowMs: 60_000, defaultMax: 1, message: {} });
+  assert.throws(() => routeLimiter({ name, windowMs: 60_000, defaultMax: 1, message: {} }), /already/);
+});
+
+describe("every route limiter counts in Redis, under a key that names nobody", { skip: hasDatabase() ? false : skipMessage() }, () => {
   before(async () => {
     connectRateLimits();
     assert.ok(await redisReady(), "the limiters' Redis connection never came up");
   });
 
-  async function sharedCounts(name: string): Promise<number[]> {
+  async function shared(name: string): Promise<{ keys: string[]; counts: number[] }> {
     const redis = createClient({ url: process.env.REDIS_URL });
     redis.on("error", () => {});
     await redis.connect();
     try {
-      const counts: number[] = [];
-      for await (const batch of redis.scanIterator({ MATCH: `${keyspace(scoped)}:limit:${name}:*` })) {
-        for (const key of batch) counts.push(Number(await redis.get(key)));
-      }
-      return counts;
+      const keys: string[] = [];
+      for await (const batch of redis.scanIterator({ MATCH: `${keyspace(scoped)}:limit:${name}:*` })) keys.push(...batch);
+      return { keys, counts: await Promise.all(keys.map(async (k) => Number(await redis.get(k)))) };
     } finally {
       redis.destroy();
     }
@@ -125,7 +135,7 @@ describe("every route limiter counts in Redis", { skip: hasDatabase() ? false : 
       const app = express();
       app.use(express.json());
       app.use((req, _res, next) => {
-        (req as { session?: unknown }).session = { userId: `u-${variable}` };
+        (req as { session?: unknown }).session = { userId: `uid-${variable}` };
         next();
       });
       // Refused, so a limiter skipping successful requests still keeps its count.
@@ -137,10 +147,14 @@ describe("every route limiter counts in Redis", { skip: hasDatabase() ? false : 
         const res = await fetch(url, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ email: `${variable}@example.test`, username: `u-${variable}` }),
+          body: JSON.stringify({ email: `${variable}@example.test`, username: `user-${variable}` }),
         });
         assert.equal(res.status, 400);
-        assert.deepEqual(await sharedCounts(name!), [1], `${variable} did not count in Redis`);
+        const { keys, counts } = await shared(name!);
+        assert.deepEqual(counts, [1], `${variable} did not count in Redis`);
+        for (const plain of [`${variable}@example.test`.toLowerCase(), `user-${variable}`.toLowerCase(), `uid-${variable}`, "127.0.0", "::ffff"]) {
+          assert.ok(!keys.some((k) => k.toLowerCase().includes(plain.toLowerCase())), `${variable} wrote "${plain}" into Redis: ${keys.join(", ")}`);
+        }
       } finally {
         await close();
       }
