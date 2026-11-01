@@ -3,11 +3,21 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
+import { connectAs, waitFor } from "../helpers/client.ts";
 import { pool } from "../../server/store/db.ts";
 import { friendStore } from "../../server/store/friendStore.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { GAME_SCHEMA_VERSION, OLDEST_GAME_SCHEMA_VERSION } from "../../shared/persistedEnvelope.ts";
+
+async function collect(ids: AsyncIterable<string>, max = Infinity): Promise<string[]> {
+  const out: string[] = [];
+  for await (const id of ids) {
+    out.push(id);
+    if (out.length >= max) break;
+  }
+  return out;
+}
 
 describe("store reads select only what their callers use", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -129,9 +139,8 @@ describe("store reads select only what their callers use", { skip: hasDatabase()
     assert.equal(fixtures.filter((f) => f.open).length, 150, "the fixture is not 150 waiting public rooms");
 
     for (const [gameMode, maxPlayers] of shapes) {
-      const { sql, result } = await sqlOf(() =>
-        roomStore.findQuickMatchCandidates({ userId: caller, gameMode, maxPlayers })
-      );
+      const want = { userId: caller, gameMode, maxPlayers };
+      const { sql, result } = await sqlOf(() => collect(roomStore.findQuickMatchCandidates(want), 20));
       const expected = fixtures
         .filter((f) => f.open && f.mode === gameMode && f.max === maxPlayers)
         .filter((f) => f.seats > 0 && f.seats < f.max && !f.callerSeated)
@@ -140,9 +149,50 @@ describe("store reads select only what their callers use", { skip: hasDatabase()
       assert.ok(expected.length > 0, `the fixture has no ${gameMode}/${maxPlayers} room to find`);
       assert.deepEqual(result, expected.slice(0, 20), `${gameMode}/${maxPlayers}`);
       assert.match(sql, /\blimit\b/i, "the candidate read is unbounded");
+      assert.equal(sql.split(" ;; ").length, 1, "the first page read more than one page");
+      assert.deepEqual(await collect(roomStore.findQuickMatchCandidates(want)), expected, `${gameMode}/${maxPlayers}, paged`);
       widest = Math.max(widest, expected.length);
     }
     assert.ok(widest > 20, "no shape has more than 20 candidates: the limit is not exercised");
+  });
+
+  test("quick match pages past a full page of rooms whose free seats are all held", async (t) => {
+    await server.query("UPDATE rooms SET visibility = 'private' WHERE visibility = 'public' AND status = 'waiting'");
+    const [north, east, invitedA, invitedB, waiting] = await Promise.all(
+      ["rp_held_n", "rp_held_e", "rp_held_ia", "rp_held_ib", "rp_open_host"].map(user)
+    );
+    const room = async (code: string, ageS: number) => {
+      const [row] = await server.query<{ id: string }>(
+        `INSERT INTO rooms (code, host_user_id, status, game_mode, max_players, visibility, created_at)
+         VALUES ($1, $2, 'waiting', 'teams', 4, 'public', now() - make_interval(secs => $3))
+         RETURNING id`,
+        [code, north, ageS]
+      );
+      return row!.id;
+    };
+    for (let i = 0; i < 20; i++) {
+      const id = await room(`H${String(i).padStart(5, "0")}`, 600 - i);
+      await server.query(
+        "INSERT INTO room_players (room_id, user_id, seat_index) VALUES ($1, $2, 0), ($1, $3, 1)",
+        [id, north, east]
+      );
+      await server.query(
+        "INSERT INTO game_invites (room_id, inviter_id, invitee_id) VALUES ($1, $2, $4), ($1, $3, $5)",
+        [id, north, east, invitedA, invitedB]
+      );
+    }
+    const open = await room("OPEN01", 60);
+    await server.query("INSERT INTO room_players (room_id, user_id, seat_index) VALUES ($1, $2, 0)", [open, waiting]);
+
+    const arrival = await connectAs(server, `rp_arrival_${Date.now().toString(36)}`);
+    t.after(() => arrival.socket.close());
+    const landed = waitFor(arrival.socket, "room:state");
+    arrival.socket.emit("room:quickmatch", { maxPlayers: 4, gameMode: "teams" });
+    assert.equal((await landed).roomId, open, "quick match gave up behind 20 held rooms and opened its own");
+    const seats = await server.query<{ room_id: string }>("SELECT room_id FROM room_players WHERE user_id = $1", [
+      arrival.user.id,
+    ]);
+    assert.deepEqual(seats.map((r) => r.room_id), [open], "a held seat was given away");
   });
 
   test("the orphan sweep reads seat ids, never an envelope, and only of rows it could resume", async () => {

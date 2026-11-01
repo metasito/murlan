@@ -161,13 +161,15 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     const room = await opened;
     const real = roomStore.findQuickMatchCandidates;
     let meddled = 0;
-    roomStore.findQuickMatchCandidates = async function (want) {
-      const found = (await real.call(this, want)).filter((id) => id === room.roomId);
-      if (want.userId === stranger!.user.id && found.length > 0) {
-        meddled += 1;
-        await meddle(room.roomId, host!.user.id);
+    roomStore.findQuickMatchCandidates = async function* (want) {
+      for await (const id of real.call(this, want)) {
+        if (id !== room.roomId) continue;
+        if (want.userId === stranger!.user.id) {
+          meddled += 1;
+          await meddle(room.roomId, host!.user.id);
+        }
+        yield id;
       }
-      return found;
     };
     try {
       const landed = waitFor(stranger!.socket, "room:state");

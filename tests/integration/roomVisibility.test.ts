@@ -107,7 +107,10 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     const made = waitFor(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 3 });
     const privateRoom = await made;
-    const ids = await roomStore.findQuickMatchCandidates({ userId: "nobody", gameMode: "free_for_all", maxPlayers: 3 });
+    const ids: string[] = [];
+    for await (const id of roomStore.findQuickMatchCandidates({ userId: "nobody", gameMode: "free_for_all", maxPlayers: 3 })) {
+      ids.push(id);
+    }
 
     assert.ok(ids.includes(opened.roomId), "a public room still waiting must be in the query's answer");
     assert.ok(!ids.includes(privateRoom.roomId), "a private room must never be in it");
@@ -135,7 +138,10 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
 
     host.socket.emit("room:start");
     await waitFor(host.socket, "game:started");
-    const open = await roomStore.findQuickMatchCandidates({ userId: "nobody", gameMode: "free_for_all", maxPlayers: 2 });
+    const open: string[] = [];
+    for await (const id of roomStore.findQuickMatchCandidates({ userId: "nobody", gameMode: "free_for_all", maxPlayers: 2 })) {
+      open.push(id);
+    }
     assert.ok(
       !open.includes(room.roomId),
       "a room whose round has been dealt must not still be on quick-match's list"

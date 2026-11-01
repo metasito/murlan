@@ -62,9 +62,12 @@ function fakePort(opts: {
       updateRoomVisibility: async (id: string, visibility: string) => {
         calls.push(`updateRoomVisibility ${id} ${visibility}`);
       },
-      findQuickMatchCandidates: async (want: Record<string, unknown>) => {
+      findQuickMatchCandidates: async function* (want: Record<string, unknown>) {
         calls.push(`findQuickMatchCandidates ${want.userId} ${want.gameMode} ${want.maxPlayers}`);
-        return opts.waiting ?? [];
+        for (const id of opts.waiting ?? []) {
+          calls.push(`candidate ${id}`);
+          yield id;
+        }
       },
     },
     sendState: (s: { roomId: string }) => calls.push(`sendState ${s.roomId}`),
@@ -270,7 +273,9 @@ describe("room:quickmatch", () => {
     assert.deepEqual(await quickmatchIntent(port, { gameMode: "free_for_all", maxPlayers: 4 }), { ok: true });
     assert.deepEqual(calls, [
       "findQuickMatchCandidates u1 free_for_all 4",
+      "candidate lost",
       "claimRoomSeat lost u1",
+      "candidate r1",
       "claimRoomSeat r1 u1",
       "seat r1",
       "broadcastState r1",
@@ -283,6 +288,7 @@ describe("room:quickmatch", () => {
     assert.deepEqual(await quickmatchIntent(port, { gameMode: "free_for_all", maxPlayers: 4 }), { ok: true });
     assert.deepEqual(calls, [
       "findQuickMatchCandidates u1 free_for_all 4",
+      "candidate lost",
       "claimRoomSeat lost u1",
       "createRoom u1 free_for_all 4 public true",
       "seat room-1",

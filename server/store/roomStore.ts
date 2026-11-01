@@ -54,7 +54,7 @@ async function seatedUsers(tx: Tx | Database, roomId: string): Promise<SeatedUse
   return rows.map((r) => ({ ...r.room_players, user: r.users }));
 }
 
-const QUICK_MATCH_CANDIDATES = 20;
+const QUICK_MATCH_PAGE = 20;
 
 function generateRoomCode(): string {
   // Cryptographically random and always exactly 6 characters — a live room
@@ -323,13 +323,15 @@ export const roomStore = {
    * host is gone.
    *
    * A plain read: `claimRoomSeat` locks and re-checks each candidate, so one
-   * that changed since is a refused claim, not a wrong seat.
+   * that changed since is a refused claim, not a wrong seat. Read a page at a
+   * time, the next only once the caller has missed every room of the last:
+   * seat holds are `claimRoomSeat`'s to judge, so a page can be all refusals.
    */
-  async findQuickMatchCandidates(want: {
+  async *findQuickMatchCandidates(want: {
     userId: string;
     gameMode: Room["gameMode"];
     maxPlayers: number;
-  }): Promise<string[]> {
+  }): AsyncGenerator<string> {
     const seated = db()
       .select({ count: sql<number>`count(*)` })
       .from(roomPlayers)
@@ -338,22 +340,29 @@ export const roomStore = {
       .select({ one: sql`1` })
       .from(roomPlayers)
       .where(and(eq(roomPlayers.roomId, rooms.id), eq(roomPlayers.userId, want.userId)));
-    const rows = await db()
-      .select({ id: rooms.id })
-      .from(rooms)
-      .where(
-        and(
-          eq(rooms.visibility, "public"),
-          eq(rooms.status, "waiting"),
-          eq(rooms.gameMode, want.gameMode),
-          eq(rooms.maxPlayers, want.maxPlayers),
-          sql`(${seated}) between 1 and ${rooms.maxPlayers} - 1`,
-          sql`not exists (${callerSeated})`
+    const age = sql`coalesce(${rooms.createdAt}, 'infinity'::timestamp)`;
+    let after: { age: string; id: string } | undefined;
+    for (;;) {
+      const page = await db()
+        .select({ id: rooms.id, age: sql<string>`${age}::text` })
+        .from(rooms)
+        .where(
+          and(
+            eq(rooms.visibility, "public"),
+            eq(rooms.status, "waiting"),
+            eq(rooms.gameMode, want.gameMode),
+            eq(rooms.maxPlayers, want.maxPlayers),
+            sql`(${seated}) between 1 and ${rooms.maxPlayers} - 1`,
+            sql`not exists (${callerSeated})`,
+            after && sql`(${age}, ${rooms.id}) > (${after.age}::timestamp, ${after.id})`
+          )
         )
-      )
-      .orderBy(rooms.createdAt, rooms.id)
-      .limit(QUICK_MATCH_CANDIDATES);
-    return rows.map((r) => r.id);
+        .orderBy(age, rooms.id)
+        .limit(QUICK_MATCH_PAGE);
+      for (const row of page) yield row.id;
+      if (page.length < QUICK_MATCH_PAGE) return;
+      after = page[page.length - 1];
+    }
   },
 
   /** `room_players` has no cascade, so its rows go before the rooms they name. Returns how many rooms went. */

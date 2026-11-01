@@ -201,7 +201,7 @@ export async function quickmatchIntent(
   const teams = teamsSizeRefusal(gameMode, maxPlayers);
   if (teams) return teams;
 
-  for (const roomId of await port.store.findQuickMatchCandidates({ userId: port.userId, gameMode, maxPlayers })) {
+  for await (const roomId of port.store.findQuickMatchCandidates({ userId: port.userId, gameMode, maxPlayers })) {
     const claim = await port.store.claimRoomSeat(roomId, port.userId, port.seatHoldMs(), {
       requirePublic: true,
       requireOccupied: true,
