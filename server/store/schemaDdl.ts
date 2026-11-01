@@ -272,6 +272,13 @@ const SESSION_TABLE_STATEMENTS = [
 const DEDUPE_ON_BOOT = new Set(["friends_accepted_uq", "friends_pending_pair_uq"]);
 
 /**
+ * Tables boot drops because what they hold must not outlive the code that wrote them. The one
+ * exception to "additive only", and named here one at a time: `socket_io_attachments` was the
+ * Postgres socket adapter's spill table, and its rows carry live session cookies and tickets.
+ */
+export const RETIRED_TABLES = ["socket_io_attachments"] as const;
+
+/**
  * Deletes what its index is about to reject, all but one row of each group.
  *
  * The key and the filter are that index's own, rendered once and used by both,
@@ -423,12 +430,23 @@ export function schemaStatements(existing: SchemaCatalog = EMPTY_CATALOG): strin
     }
   }
 
+  const declared = new Set(configs.map(({ cfg }) => cfg.name));
+  for (const table of RETIRED_TABLES) {
+    if (declared.has(table)) {
+      throw new Error(
+        `schemaStatements: RETIRED_TABLES names "${table}", which shared/schema.ts still ` +
+          `declares — update server/store/schemaDdl.ts.`
+      );
+    }
+  }
+
   return [
     ...enumStatements,
     ...tableStatements,
     ...addColumnStatements,
     ...indexStatements,
     ...SESSION_TABLE_STATEMENTS,
+    ...RETIRED_TABLES.map((table) => `DROP TABLE IF EXISTS ${quoteIdent(table)};`),
   ];
 }
 
