@@ -1,6 +1,6 @@
 # 0003. Cloud Run already runs the app on multiple instances
 
-**Status:** Accepted
+**Status:** Accepted; adapter clause superseded by 0014
 **Date:** 2026-09-10
 
 ## Context
