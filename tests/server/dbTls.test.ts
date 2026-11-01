@@ -9,7 +9,7 @@ const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 
 describe("checkBootEnv", () => {
   const base = { SESSION_SECRET: "s", DATABASE_URL: "postgres://u:p@db/x?sslmode=require", REDIS_URL: "redis://r:6379/0" };
-  const production = { ...base, NODE_ENV: "production", PUBLIC_HOST: "murlan.example.app" };
+  const production = { ...base, NODE_ENV: "production", PUBLIC_HOST: "murlan.example.app", METRICS_TOKEN: "m" };
 
   test("a complete production environment boots", () => {
     assert.doesNotThrow(() => checkBootEnv(production));
@@ -43,7 +43,12 @@ describe("checkBootEnv", () => {
     assert.throws(() => checkBootEnv({ ...production, PUBLIC_HOST: undefined }), /PUBLIC_HOST/);
   });
 
-  test("development needs neither sslmode nor PUBLIC_HOST", () => {
+  test("production refuses a missing METRICS_TOKEN", () => {
+    assert.throws(() => checkBootEnv({ ...production, METRICS_TOKEN: undefined }), /METRICS_TOKEN/);
+    assert.throws(() => checkBootEnv({ ...production, METRICS_TOKEN: "" }), /METRICS_TOKEN/);
+  });
+
+  test("development needs neither sslmode, PUBLIC_HOST nor METRICS_TOKEN", () => {
     assert.doesNotThrow(() =>
       checkBootEnv({ ...base, NODE_ENV: "development", DATABASE_URL: "postgres://u:p@db/x" })
     );

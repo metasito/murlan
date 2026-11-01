@@ -357,9 +357,11 @@ describe("what a completed request leaves in the log", () => {
     assert.equal(line.res.statusCode, 200);
   });
 
-  test("a health check still writes nothing", async () => {
-    assert.equal(await requestLine("/health"), null);
-  });
+  for (const path of ["/health", "/health/live", "/health/ready", "/health/ready?from=host", "/metrics"]) {
+    test(`a probe of ${path} still writes nothing`, async () => {
+      assert.equal(await requestLine(path), null);
+    });
+  }
 
   test("the helper can tell a written line from none at all", async () => {
     // The floor under the assertion above: `/health` is the one test that

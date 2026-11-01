@@ -44,12 +44,18 @@ export class DatabaseNotOpenError extends Error {
   }
 }
 
-let open: { pool: Pool; db: Database } | null = null;
+let open: { pool: Pool; db: Database; health: Pool } | null = null;
 
 export function openDatabase(): void {
   if (open) throw new Error("The database is already open: closeDatabase() the first one");
   const appPool = createPool("app", { max: resolvePoolMax(process.env.MURLAN_PG_POOL_MAX) });
-  open = { pool: appPool, db: drizzle(appPool, { schema }) };
+  open = { pool: appPool, db: drizzle(appPool, { schema }), health: createPool("health") };
+}
+
+/** One `SELECT 1` on the health pool, which no request shares: it answers while the app pool is full. */
+export async function pingDatabase(): Promise<void> {
+  if (!open) throw new DatabaseNotOpenError();
+  await open.health.query("SELECT 1");
 }
 
 export function transaction<T>(body: (tx: Tx) => Promise<T>): Promise<T> {
@@ -98,6 +104,7 @@ export async function closeDatabase({ drainMs }: { drainMs?: number } = {}): Pro
   }
   if (!open) return { ended: Promise.resolve() };
   const closing = open.pool;
+  const health = open.health.end().catch((err) => logger.error({ err }, "Health pool close failed"));
   if (!(await drainPool(closing, { timeoutMs: drainMs }))) {
     // While still open: the error recorder writes this line through db().
     logger.error(
@@ -106,5 +113,6 @@ export async function closeDatabase({ drainMs }: { drainMs?: number } = {}): Pro
     );
   }
   open = null;
-  return { ended: closing.end().catch((err) => logger.error({ err }, "Pool close failed")) };
+  const app = closing.end().catch((err) => logger.error({ err }, "Pool close failed"));
+  return { ended: Promise.all([app, health]).then(() => {}) };
 }

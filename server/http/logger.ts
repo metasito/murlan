@@ -3,6 +3,7 @@ import type pino from "pino";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { ANSWERED_BY_SHELL, unmatchedKind } from "./staticPaths.ts";
 import { logger } from "../shared/logger.ts";
+import { PROBE_PATHS } from "./health.ts";
 
 
 // pino-http's defaults emit the whole header bag and the socket's peer address.
@@ -72,6 +73,6 @@ export function createRequestLogger(target: pino.Logger = logger) {
       ...line,
       req,
     }),
-    autoLogging: { ignore: (req: IncomingMessage) => req.url === "/health" },
+    autoLogging: { ignore: (req: IncomingMessage) => PROBE_PATHS.includes((req.url ?? "").split("?")[0] ?? "") },
   });
 }
