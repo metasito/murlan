@@ -1,0 +1,4 @@
+clients=1 notify_tps=2807.764605 select1_tps=21776.691967
+clients=3 notify_tps=3425.550530 select1_tps=54378.147670
+clients=8 notify_tps=3490.853086 select1_tps=104942.573942
+clients=16 notify_tps=3421.765422 select1_tps=179564.083249

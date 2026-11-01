@@ -1,0 +1,8 @@
+== 32 tables
+soak: 32 tables, 13083 moves in 65s = 201.4 moves/sec; broadcast p50 29.1ms, p99 70.6ms, 225 unanswered, 257 refusals (257x game:error RATE_LIMITED)
+db: commits=51599 inserted=4902 updated=15380 deleted=1699 returned=275053 fetched=70870 moves=13083
+per move: 3.94 commits, 0.37 inserts, 1.18 updates
+== 96 tables
+soak: 96 tables, 24514 moves in 60.6s = 404.3 moves/sec; broadcast p50 46.4ms, p99 268.4ms, 0 unanswered, 15052 refusals (15052x game:error RATE_LIMITED)
+db: commits=72735 inserted=8514 updated=29276 deleted=2065 returned=943017 fetched=222710 moves=24514
+per move: 2.97 commits, 0.35 inserts, 1.19 updates

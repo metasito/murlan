@@ -1,0 +1,274 @@
+Controllo tempo attivato.
+SET
+Tempo: 0.432 ms
+== E1 replays list, user in few replays (listReplaysForUser)
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=91.35..91.40 rows=20 width=38) (actual time=0.398..0.401 rows=16 loops=1)
+   Buffers: shared hit=12
+   ->  Sort  (cost=91.35..91.40 rows=20 width=38) (actual time=0.397..0.398 rows=16 loops=1)
+         Sort Key: finished_at DESC
+         Sort Method: quicksort  Memory: 26kB
+         Buffers: shared hit=12
+         ->  Bitmap Heap Scan on round_replays  (cost=12.94..90.91 rows=20 width=38) (actual time=0.331..0.374 rows=16 loops=1)
+               Recheck Cond: (player_ids @> '["u777"]'::jsonb)
+               Heap Blocks: exact=5
+               Buffers: shared hit=9
+               ->  Bitmap Index Scan on round_replays_player_ids_idx  (cost=0.00..12.93 rows=20 width=0) (actual time=0.310..0.310 rows=16 loops=1)
+                     Index Cond: (player_ids @> '["u777"]'::jsonb)
+                     Buffers: shared hit=4
+ Planning:
+   Buffers: shared hit=131
+ Planning Time: 3.916 ms
+ Execution Time: 0.449 ms
+(17 righe)
+
+Tempo: 11.521 ms
+== E2 replays list, user in no replay
+                                                                    QUERY PLAN                                                                     
+---------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=91.35..91.40 rows=20 width=38) (actual time=0.048..0.049 rows=0 loops=1)
+   Buffers: shared hit=4
+   ->  Sort  (cost=91.35..91.40 rows=20 width=38) (actual time=0.046..0.047 rows=0 loops=1)
+         Sort Key: finished_at DESC
+         Sort Method: quicksort  Memory: 25kB
+         Buffers: shared hit=4
+         ->  Bitmap Heap Scan on round_replays  (cost=12.94..90.91 rows=20 width=38) (actual time=0.040..0.041 rows=0 loops=1)
+               Recheck Cond: (player_ids @> '["u-none"]'::jsonb)
+               Buffers: shared hit=4
+               ->  Bitmap Index Scan on round_replays_player_ids_idx  (cost=0.00..12.93 rows=20 width=0) (actual time=0.037..0.037 rows=0 loops=1)
+                     Index Cond: (player_ids @> '["u-none"]'::jsonb)
+                     Buffers: shared hit=4
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.253 ms
+ Execution Time: 0.083 ms
+(16 righe)
+
+Tempo: 0.978 ms
+== E3 account delete: replays by player or vacated seat
+                                                         QUERY PLAN                                                         
+----------------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1000.00..15586.00 rows=20 width=57) (actual time=8.271..118.878 rows=16 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   Buffers: shared hit=13018 read=316
+   ->  Parallel Seq Scan on round_replays  (cost=0.00..14584.00 rows=8 width=57) (actual time=3.679..41.007 rows=5 loops=3)
+         Filter: ((player_ids @> '["u777"]'::jsonb) OR (seats @> '[{"vacatedBy": "u777"}]'::jsonb))
+         Rows Removed by Filter: 66661
+         Buffers: shared hit=13018 read=316
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.099 ms
+ Execution Time: 118.904 ms
+(12 righe)
+
+Tempo: 119.329 ms
+== E4 account delete: cascade into events, round_history (FK triggers)
+BEGIN
+Tempo: 0.181 ms
+DELETE 14
+Tempo: 14.275 ms
+DELETE 8
+Tempo: 6.646 ms
+UPDATE 2
+Tempo: 12.346 ms
+                                                       QUERY PLAN                                                       
+------------------------------------------------------------------------------------------------------------------------
+ Delete on users  (cost=0.29..8.31 rows=0 width=0) (actual time=0.151..0.152 rows=0 loops=1)
+   Buffers: shared hit=34 dirtied=2
+   ->  Index Scan using users_pkey on users  (cost=0.29..8.31 rows=1 width=6) (actual time=0.015..0.016 rows=1 loops=1)
+         Index Cond: ((id)::text = 'u777'::text)
+         Buffers: shared hit=3
+ Planning:
+   Buffers: shared hit=84 read=1
+ Planning Time: 4.873 ms
+ Trigger for constraint auth_tokens_user_id_fkey: time=4.823 calls=1
+ Trigger for constraint bug_reports_user_id_fkey: time=2.039 calls=1
+ Trigger for constraint client_errors_user_id_fkey: time=3.237 calls=1
+ Trigger for constraint events_user_id_fkey: time=212.151 calls=1
+ Trigger for constraint friends_user_id_fkey: time=0.763 calls=1
+ Trigger for constraint friends_friend_user_id_fkey: time=0.314 calls=1
+ Trigger for constraint rooms_host_user_id_fkey: time=0.201 calls=1
+ Trigger for constraint game_invites_inviter_id_fkey: time=4.630 calls=1
+ Trigger for constraint game_invites_invitee_id_fkey: time=0.068 calls=1
+ Trigger for constraint push_tokens_user_id_fkey: time=2.007 calls=1
+ Trigger for constraint room_players_user_id_fkey: time=0.282 calls=1
+ Trigger for constraint round_history_user_id_fkey: time=40.831 calls=1
+ Trigger for constraint user_achievements_user_id_fkey: time=2.228 calls=1
+ Trigger for constraint user_ratings_user_id_fkey: time=2.483 calls=1
+ Trigger for constraint user_stats_user_id_fkey: time=2.259 calls=1
+ Execution Time: 278.521 ms
+(24 righe)
+
+Tempo: 284.036 ms
+ROLLBACK
+Tempo: 5.541 ms
+== E5 round_history prune after each recorded round (heavy user)
+BEGIN
+Tempo: 0.120 ms
+                                                                                             QUERY PLAN                                                                                             
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Delete on round_history  (cost=1648.30..30669.80 rows=0 width=0) (actual time=2652.309..2652.312 rows=0 loops=1)
+   Buffers: shared hit=78619 read=24346 dirtied=24069
+   ->  Bitmap Heap Scan on round_history  (cost=1648.30..30669.80 rows=28133 width=6) (actual time=57.379..829.303 rows=54329 loops=1)
+         Recheck Cond: ((user_id)::text = 'u1'::text)
+         Filter: (NOT (hashed SubPlan 1))
+         Rows Removed by Filter: 50
+         Heap Blocks: exact=24253
+         Buffers: shared hit=245 read=24346 dirtied=24
+         ->  Bitmap Index Scan on round_history_user_idx  (cost=0.00..1534.43 rows=56267 width=0) (actual time=49.103..49.103 rows=54379 loops=1)
+               Index Cond: ((user_id)::text = 'u1'::text)
+               Buffers: shared hit=1 read=282
+         SubPlan 1
+           ->  Limit  (cost=2.75..106.72 rows=50 width=16) (actual time=4.042..5.168 rows=50 loops=1)
+                 Buffers: shared hit=29 read=26
+                 ->  Incremental Sort  (cost=2.75..117004.19 rows=56267 width=16) (actual time=4.041..5.163 rows=50 loops=1)
+                       Sort Key: round_history_1.finished_at DESC, round_history_1.id DESC
+                       Presorted Key: round_history_1.finished_at
+                       Full-sort Groups: 2  Sort Method: quicksort  Average Memory: 26kB  Peak Memory: 26kB
+                       Buffers: shared hit=29 read=26
+                       ->  Index Scan Backward using round_history_user_idx on round_history round_history_1  (cost=0.43..114702.47 rows=56267 width=16) (actual time=0.512..4.832 rows=51 loops=1)
+                             Index Cond: ((user_id)::text = 'u1'::text)
+                             Buffers: shared hit=23 read=26
+ Planning:
+   Buffers: shared hit=11
+ Planning Time: 0.289 ms
+ Execution Time: 2652.514 ms
+(26 righe)
+
+Tempo: 2653.477 ms (00:02.653)
+ROLLBACK
+Tempo: 0.210 ms
+== E6 admin: active players over 7 days
+                                                                            QUERY PLAN                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=55676.09..55676.10 rows=1 width=8) (actual time=2367.149..2367.151 rows=1 loops=1)
+   Buffers: shared hit=86440 read=9521 written=4458
+   ->  Index Only Scan using round_history_user_idx on round_history  (cost=0.43..55418.56 rows=103013 width=5) (actual time=4.061..2347.005 rows=100700 loops=1)
+         Index Cond: (finished_at >= (now() - '7 days'::interval))
+         Heap Fetches: 86877
+         Buffers: shared hit=86440 read=9521 written=4458
+ Planning:
+   Buffers: shared hit=14 read=1
+ Planning Time: 0.363 ms
+ Execution Time: 2367.198 ms
+(10 righe)
+
+Tempo: 2373.180 ms (00:02.373)
+== E7 admin funnel over 30 days of events
+                                                                         QUERY PLAN                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=45303.60..45303.61 rows=5 width=30) (actual time=489.283..489.285 rows=5 loops=1)
+   Sort Key: (count(*)) DESC
+   Sort Method: quicksort  Memory: 25kB
+   Buffers: shared hit=6 read=2048 dirtied=4 written=1784, temp read=668 written=671
+   ->  GroupAggregate  (cost=43560.79..45303.54 rows=5 width=30) (actual time=439.099..489.250 rows=5 loops=1)
+         Group Key: name
+         Buffers: shared hit=3 read=2048 dirtied=4 written=1784, temp read=668 written=671
+         ->  Sort  (cost=43560.79..43996.47 rows=174270 width=20) (actual time=427.017..465.893 rows=173000 loops=1)
+               Sort Key: name, user_id
+               Sort Method: external merge  Disk: 5344kB
+               Buffers: shared hit=3 read=2048 dirtied=4 written=1784, temp read=668 written=671
+               ->  Bitmap Heap Scan on events  (cost=3071.02..24812.75 rows=174270 width=20) (actual time=80.255..182.267 rows=173000 loops=1)
+                     Recheck Cond: (occurred_at >= (now() - '30 days'::interval))
+                     Heap Blocks: exact=1621
+                     Buffers: shared hit=3 read=2048 dirtied=4 written=1784
+                     ->  Bitmap Index Scan on events_occurred_idx  (cost=0.00..3027.46 rows=174270 width=0) (actual time=80.037..80.038 rows=173000 loops=1)
+                           Index Cond: (occurred_at >= (now() - '30 days'::interval))
+                           Buffers: shared hit=3 read=427 written=321
+ Planning:
+   Buffers: shared hit=19
+ Planning Time: 0.318 ms
+ Execution Time: 522.722 ms
+(22 righe)
+
+Tempo: 524.491 ms
+== E8 quick match candidate rooms
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=2993.24..2993.63 rows=156 width=53) (actual time=4.464..4.471 rows=150 loops=1)
+   Sort Key: r.created_at
+   Sort Method: quicksort  Memory: 39kB
+   Buffers: shared hit=1031 read=25
+   ->  HashAggregate  (cost=2986.00..2987.56 rows=156 width=53) (actual time=4.370..4.407 rows=150 loops=1)
+         Group Key: r.id
+         Batches: 1  Memory Usage: 64kB
+         Buffers: shared hit=1031 read=25
+         ->  Nested Loop Left Join  (cost=0.71..2979.76 rows=624 width=59) (actual time=1.005..4.137 rows=600 loops=1)
+               Buffers: shared hit=1031 read=25
+               ->  Index Scan using rooms_status_idx on rooms r  (cost=0.29..119.28 rows=156 width=44) (actual time=0.337..0.672 rows=150 loops=1)
+                     Index Cond: (status = 'waiting'::room_status)
+                     Filter: (visibility = 'public'::room_visibility)
+                     Rows Removed by Filter: 150
+                     Buffers: shared hit=1 read=5
+               ->  Index Scan using room_players_room_id_idx on room_players rp  (cost=0.42..18.30 rows=4 width=21) (actual time=0.012..0.022 rows=4 loops=150)
+                     Index Cond: ((room_id)::text = (r.id)::text)
+                     Buffers: shared hit=1030 read=20
+ Planning:
+   Buffers: shared hit=68 read=12
+ Planning Time: 4.393 ms
+ Execution Time: 4.565 ms
+(22 righe)
+
+Tempo: 20.967 ms
+== E9 global leaderboard
+                                                                                  QUERY PLAN                                                                                  
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=17.62..39.49 rows=50 width=33) (actual time=24.730..53.333 rows=50 loops=1)
+   Buffers: shared hit=141 read=207 written=199
+   ->  Incremental Sort  (cost=17.62..21061.55 rows=48117 width=33) (actual time=24.729..53.327 rows=50 loops=1)
+         Sort Key: ur.rating DESC, ur.updated_at
+         Presorted Key: ur.rating
+         Full-sort Groups: 2  Sort Methods: top-N heapsort, quicksort  Average Memory: 27kB  Peak Memory: 27kB
+         Buffers: shared hit=141 read=207 written=199
+         ->  Nested Loop  (cost=0.59..19154.87 rows=48117 width=33) (actual time=1.088..53.153 rows=85 loops=1)
+               Buffers: shared hit=135 read=207 written=199
+               ->  Index Scan Backward using user_ratings_season_idx on user_ratings ur  (cost=0.29..3858.76 rows=48117 width=22) (actual time=0.770..22.552 rows=85 loops=1)
+                     Index Cond: (season = '2026-11'::text)
+                     Filter: (rounds >= 10)
+                     Buffers: shared read=87 written=81
+               ->  Memoize  (cost=0.30..0.39 rows=1 width=17) (actual time=0.358..0.358 rows=1 loops=85)
+                     Cache Key: ur.user_id
+                     Cache Mode: logical
+                     Hits: 0  Misses: 85  Evictions: 0  Overflows: 0  Memory Usage: 11kB
+                     Buffers: shared hit=135 read=120 written=118
+                     ->  Index Scan using users_pkey on users u  (cost=0.29..0.38 rows=1 width=17) (actual time=0.353..0.353 rows=1 loops=85)
+                           Index Cond: ((id)::text = (ur.user_id)::text)
+                           Buffers: shared hit=135 read=120 written=118
+ Planning:
+   Buffers: shared hit=35 read=9
+ Planning Time: 1.893 ms
+ Execution Time: 54.124 ms
+(25 righe)
+
+Tempo: 57.295 ms
+== E10 profile history (heavy user)
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.43..102.35 rows=50 width=72) (actual time=0.059..0.134 rows=50 loops=1)
+   Buffers: shared hit=46 read=2 written=2
+   ->  Index Scan Backward using round_history_user_idx on round_history  (cost=0.43..114702.47 rows=56267 width=72) (actual time=0.058..0.130 rows=50 loops=1)
+         Index Cond: ((user_id)::text = 'u1'::text)
+         Buffers: shared hit=46 read=2 written=2
+ Planning:
+   Buffers: shared hit=21
+ Planning Time: 0.198 ms
+ Execution Time: 0.151 ms
+(9 righe)
+
+Tempo: 0.746 ms
+== E11 session rows of one user (password change, account delete)
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Seq Scan on session  (cost=0.00..2530.00 rows=500 width=6) (actual time=0.395..49.848 rows=2 loops=1)
+   Filter: ((sess ->> 'userId'::text) = 'u777'::text)
+   Rows Removed by Filter: 99998
+   Buffers: shared hit=1030
+ Planning:
+   Buffers: shared hit=31
+ Planning Time: 2.312 ms
+ Execution Time: 49.864 ms
+(8 righe)
+
+Tempo: 55.717 ms
