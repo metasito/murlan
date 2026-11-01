@@ -24,6 +24,7 @@ describe("Redis stopped mid-game", { skip: hasDatabase() ? false : skipMessage()
   let socket: TestSocket | undefined;
 
   before(async () => {
+    // Creates the schema the child-process server is then pointed at.
     const admin = new pg.Pool({ connectionString: baseUrl });
     await admin.query(`CREATE SCHEMA "${schema}"`);
     await admin.end();
