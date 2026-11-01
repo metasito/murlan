@@ -98,7 +98,7 @@ interface Moment {
 /** Departs from the mockup: its cards cast no shadow on the cards beneath them. */
 const NO_CAST_ON_CARDS = `document.head.insertAdjacentHTML("beforeend", "<style>.card{box-shadow:0 1.5px 0 #D6D0BC !important}</style>");`;
 
-/** Departs from the mockup: a bot is under no deadline, so its seat draws no ring (docs/GAME-RULES.md § Decisions, "The turn clock"). */
+/** Departs from the mockup: a bot draws no ring (`turnPresentation`, components/turnTimerUi.ts). Every opponent seat's: only for a table of bots. */
 const NO_RING_FOR_A_BOT = `document.head.insertAdjacentHTML("beforeend", "<style>.seat .ring{opacity:0 !important}</style>");`;
 
 const STILL_LIGHT = `const swaying = lampStep;
