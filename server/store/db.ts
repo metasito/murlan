@@ -44,12 +44,20 @@ export class DatabaseNotOpenError extends Error {
   }
 }
 
-let open: { pool: Pool; db: Database } | null = null;
+type Opened = { pool: Pool; db: Database };
+
+let open: { app: Opened; admin: Opened } | null = null;
+
+function opened(pool: Pool): Opened {
+  return { pool, db: drizzle(pool, { schema }) };
+}
 
 export function openDatabase(): void {
   if (open) throw new Error("The database is already open: closeDatabase() the first one");
-  const appPool = createPool("app", { max: resolvePoolMax(process.env.MURLAN_PG_POOL_MAX) });
-  open = { pool: appPool, db: drizzle(appPool, { schema }) };
+  open = {
+    app: opened(createPool("app", { max: resolvePoolMax(process.env.MURLAN_PG_POOL_MAX) })),
+    admin: opened(createPool("admin")),
+  };
 }
 
 export function transaction<T>(body: (tx: Tx) => Promise<T>): Promise<T> {
@@ -73,17 +81,28 @@ export async function watchConnectionBudget(): Promise<void> {
 
 export function pool(): Pool {
   if (!open) throw new DatabaseNotOpenError();
-  return open.pool;
+  return open.app.pool;
 }
 
 export function db(): Database {
   if (!open) throw new DatabaseNotOpenError();
-  return open.db;
+  return open.app.db;
+}
+
+/** The operator's reads, on a pool of their own so they can never take a connection from a table. */
+export function adminPool(): Pool {
+  if (!open) throw new DatabaseNotOpenError();
+  return open.admin.pool;
+}
+
+export function adminDb(): Database {
+  if (!open) throw new DatabaseNotOpenError();
+  return open.admin.db;
 }
 
 /**
- * Waits up to `drainMs` for the pool to go quiet, then ends it; `ended` settles
- * once it has. A pool still busy past `drainMs` is logged and ended anyway, and
+ * Waits up to `drainMs` for the app and admin pools to go quiet, then ends them; `ended` settles
+ * once both have. An app pool still busy past `drainMs` is logged and ended anyway, and
  * its `ended` may never settle — `pool.end()` waits on every checked-out client
  * — so a caller with a deadline bounds the wait itself.
  *
@@ -97,8 +116,12 @@ export async function closeDatabase({ drainMs }: { drainMs?: number } = {}): Pro
     budgetCheck = null;
   }
   if (!open) return { ended: Promise.resolve() };
-  const closing = open.pool;
-  if (!(await drainPool(closing, { timeoutMs: drainMs }))) {
+  const { app: { pool: closing }, admin: { pool: closingAdmin } } = open;
+  const [drained] = await Promise.all([
+    drainPool(closing, { timeoutMs: drainMs }),
+    drainPool(closingAdmin, { timeoutMs: drainMs }),
+  ]);
+  if (!drained) {
     // While still open: the error recorder writes this line through db().
     logger.error(
       { busy: closing.totalCount - closing.idleCount, waiting: closing.waitingCount },
@@ -106,5 +129,6 @@ export async function closeDatabase({ drainMs }: { drainMs?: number } = {}): Pro
     );
   }
   open = null;
-  return { ended: closing.end().catch((err) => logger.error({ err }, "Pool close failed")) };
+  const end = (p: Pool) => p.end().catch((err) => logger.error({ err, pool: p.options.application_name }, "Pool close failed"));
+  return { ended: Promise.all([end(closing), end(closingAdmin)]).then(() => {}) };
 }

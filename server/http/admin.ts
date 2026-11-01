@@ -10,7 +10,8 @@
 // gets slower the more the game is used is a dashboard that stops being opened.
 import { now } from "./clock.ts";
 import { sql } from "drizzle-orm";
-import { db, pool } from "../store/db.ts";
+import { adminDb, type Database } from "../store/db.ts";
+import { profileMax } from "../store/pool.ts";
 import { activeGameStore } from "../store/activeGameStore.ts";
 import { ABANDONED_GAME_MAX_AGE_MS } from "../game/retention.ts";
 import { funnel, type FunnelStep } from "../shared/events.ts";
@@ -63,8 +64,8 @@ export interface AdminSnapshot {
 }
 
 /** 1. Signups over time — users.created_at, one row per day in the window. */
-async function signups(): Promise<DayCount[]> {
-  const rows = await db().execute<{ day: string; n: number }>(sql`
+async function signups(database: Database): Promise<DayCount[]> {
+  const rows = await database.execute<{ day: string; n: number }>(sql`
     SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
            count(*)::int AS n
     FROM users
@@ -77,8 +78,8 @@ async function signups(): Promise<DayCount[]> {
 }
 
 /** 2. Played today / this week — distinct players with a finished match. */
-async function activePlayers(days: number): Promise<number> {
-  const rows = await db().execute<{ n: number }>(sql`
+async function activePlayers(database: Database, days: number): Promise<number> {
+  const rows = await database.execute<{ n: number }>(sql`
     SELECT count(DISTINCT user_id)::int AS n
     FROM round_history
     WHERE finished_at >= ${serverNow()} - make_interval(days => ${days})
@@ -90,8 +91,8 @@ async function activePlayers(days: number): Promise<number> {
  * 3. Retention cohorts — of the players who joined in a given week, how many
  * ever finished a match. Bounded to the recent weeks, not the whole history.
  */
-async function retention(): Promise<{ cohort: string; joined: number; played: number }[]> {
-  const rows = await db().execute<{ cohort: string; joined: number; played: number }>(sql`
+async function retention(database: Database): Promise<{ cohort: string; joined: number; played: number }[]> {
+  const rows = await database.execute<{ cohort: string; joined: number; played: number }>(sql`
     SELECT to_char(date_trunc('week', u.created_at), 'YYYY-MM-DD') AS cohort,
            count(*)::int AS joined,
            count(*) FILTER (WHERE EXISTS (
@@ -107,8 +108,8 @@ async function retention(): Promise<{ cohort: string; joined: number; played: nu
 }
 
 /** 4. Around but not playing — seen this week, no finished match this week. */
-async function aroundNotPlaying(): Promise<number> {
-  const rows = await db().execute<{ n: number }>(sql`
+async function aroundNotPlaying(database: Database): Promise<number> {
+  const rows = await database.execute<{ n: number }>(sql`
     SELECT count(*)::int AS n
     FROM users u
     WHERE u.last_seen >= ${serverNow()} - make_interval(days => 7)
@@ -125,8 +126,8 @@ async function aroundNotPlaying(): Promise<number> {
  * 5. Ladder health — the rating spread for the current season, in buckets.
  * `user_ratings_season_idx` on (season, rating) covers this.
  */
-async function ratingSpread(): Promise<{ bucket: string; n: number }[]> {
-  const rows = await db().execute<{ bucket: string; n: number }>(sql`
+async function ratingSpread(database: Database): Promise<{ bucket: string; n: number }[]> {
+  const rows = await database.execute<{ bucket: string; n: number }>(sql`
     SELECT (floor(rating / 100) * 100)::int || '–' || ((floor(rating / 100) * 100) + 99)::int AS bucket,
            count(*)::int AS n
     FROM user_ratings
@@ -139,8 +140,8 @@ async function ratingSpread(): Promise<{ bucket: string; n: number }[]> {
 }
 
 /** provisionalLeft (lib/game/rating.ts) in SQL: counts the records it is defined for. */
-async function provisionalPlayers(provisionalRounds: number): Promise<number> {
-  const rows = await db().execute<{ n: number }>(sql`
+async function provisionalPlayers(database: Database, provisionalRounds: number): Promise<number> {
+  const rows = await database.execute<{ n: number }>(sql`
     SELECT count(*)::int AS n
     FROM user_ratings
     WHERE season = ${seasonKey(new Date(now()))} AND rounds < ${provisionalRounds}
@@ -149,8 +150,8 @@ async function provisionalPlayers(provisionalRounds: number): Promise<number> {
 }
 
 /** 6. Match balance — how tables of each size actually play out. */
-async function matchBalance(): Promise<{ playerCount: number; matches: number; averagePoints: number }[]> {
-  const rows = await db().execute<{ playerCount: number; matches: number; averagePoints: number }>(sql`
+async function matchBalance(database: Database): Promise<{ playerCount: number; matches: number; averagePoints: number }[]> {
+  const rows = await database.execute<{ playerCount: number; matches: number; averagePoints: number }>(sql`
     SELECT player_count AS "playerCount",
            count(*)::int AS matches,
            round(avg(points)::numeric, 1)::float8 AS "averagePoints"
@@ -163,8 +164,8 @@ async function matchBalance(): Promise<{ playerCount: number; matches: number; a
   return rows.rows;
 }
 
-async function placements(): Promise<{ placement: number; n: number }[]> {
-  const rows = await db().execute<{ placement: number; n: number }>(sql`
+async function placements(database: Database): Promise<{ placement: number; n: number }[]> {
+  const rows = await database.execute<{ placement: number; n: number }>(sql`
     SELECT placement, count(*)::int AS n
     FROM round_history
     WHERE finished_at >= ${serverNow()} - make_interval(days => ${WINDOW_DAYS})
@@ -176,8 +177,8 @@ async function placements(): Promise<{ placement: number; n: number }[]> {
 }
 
 /** 7. Started but never finished — rooms by status, and games left mid-round. */
-async function unfinished(): Promise<{ status: string; n: number }[]> {
-  const rows = await db().execute<{ status: string; n: number }>(sql`
+async function unfinished(database: Database): Promise<{ status: string; n: number }[]> {
+  const rows = await database.execute<{ status: string; n: number }>(sql`
     SELECT status::text AS status, count(*)::int AS n
     FROM rooms
     GROUP BY 1
@@ -188,13 +189,13 @@ async function unfinished(): Promise<{ status: string; n: number }[]> {
 }
 
 
-async function totalUsers(): Promise<number> {
-  const rows = await db().execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM users`);
+async function totalUsers(database: Database): Promise<number> {
+  const rows = await database.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM users`);
   return rows.rows[0]?.n ?? 0;
 }
 
-async function crashesThisWeek(): Promise<number> {
-  const rows = await db().execute<{ n: number }>(sql`
+async function crashesThisWeek(database: Database): Promise<number> {
+  const rows = await database.execute<{ n: number }>(sql`
     SELECT count(*)::int AS n
     FROM client_errors
     WHERE occurred_at >= now() - make_interval(days => 7)
@@ -216,9 +217,9 @@ async function forDisplay(groups: ClientErrorGroup[]): Promise<AdminSnapshot["cr
   );
 }
 
-/** At most two-fifths of the pool, at least one: the rest stays with the tables. */
-export function adminQueryLimit(poolMax: number): number {
-  return Math.max(1, Math.floor((poolMax * 2) / 5));
+/** The admin pool's size, so the page's queries never wait on a connection of their own pool. */
+export function adminQueryLimit(): number {
+  return profileMax("admin");
 }
 
 type Results<T extends readonly (() => Promise<unknown>)[]> = { -readonly [K in keyof T]: Awaited<ReturnType<T[K]>> };
@@ -240,8 +241,9 @@ export async function allLimited<const T extends readonly (() => Promise<unknown
   return results as Results<T>;
 }
 
-/** Every panel on the page, gathered concurrently up to `adminQueryLimit` of the app pool. */
+/** Every panel on the page, gathered on the admin pool, `adminQueryLimit` at a time. */
 export async function adminSnapshot(provisionalRounds: number): Promise<AdminSnapshot> {
+  const database = adminDb();
   const [
     signupRows,
     users,
@@ -261,25 +263,25 @@ export async function adminSnapshot(provisionalRounds: number): Promise<AdminSna
     bugReportRows,
     serverWeek,
     serverGroupRows,
-  ] = await allLimited(adminQueryLimit(pool().options.max), [
-    () => signups(),
-    () => totalUsers(),
-    () => activePlayers(1),
-    () => activePlayers(7),
-    () => retention(),
-    () => aroundNotPlaying(),
-    () => ratingSpread(),
-    () => provisionalPlayers(provisionalRounds),
-    () => matchBalance(),
-    () => placements(),
-    () => unfinished(),
-    () => activeGameStore.countUntouchedSince(new Date(now() - ABANDONED_GAME_MAX_AGE_MS)),
-    () => crashesThisWeek(),
-    () => recentClientErrorGroups(ROW_LIMIT),
-    () => funnel(WINDOW_DAYS),
-    () => recentBugReports(ROW_LIMIT),
-    () => serverErrorsThisWeek(),
-    () => recentServerErrorGroups(ROW_LIMIT),
+  ] = await allLimited(adminQueryLimit(), [
+    () => signups(database),
+    () => totalUsers(database),
+    () => activePlayers(database, 1),
+    () => activePlayers(database, 7),
+    () => retention(database),
+    () => aroundNotPlaying(database),
+    () => ratingSpread(database),
+    () => provisionalPlayers(database, provisionalRounds),
+    () => matchBalance(database),
+    () => placements(database),
+    () => unfinished(database),
+    () => activeGameStore.countUntouchedSince(database, new Date(now() - ABANDONED_GAME_MAX_AGE_MS)),
+    () => crashesThisWeek(database),
+    () => recentClientErrorGroups(database, ROW_LIMIT),
+    () => funnel(database, WINDOW_DAYS),
+    () => recentBugReports(database, ROW_LIMIT),
+    () => serverErrorsThisWeek(database),
+    () => recentServerErrorGroups(database, ROW_LIMIT),
   ]);
 
   return {
