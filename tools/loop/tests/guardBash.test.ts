@@ -320,9 +320,9 @@ describe("a file that names a merge is not a script that runs one", () => {
     "decoy-yield.js": `var yield = 4, r = yield / 2, b = '/ //'; ${EXEC}('gh pr merge 5');\n`,
     "decoy-number.mjs": `const half = 1./2, s = 'a / http://x'; ${EXEC}('gh pr merge 5');\n`,
     "decoy-html.cjs": `<!-- \`\nconst s = \` // \`; ${EXEC}('gh pr merge 5');\n`,
-    "decoy-lands.mjs": "import { ghMerges } from './tools/loop/merges.mjs';\nghMerges().merge(5, 'abc');\n",
+    "decoy-lands.mjs": "import { ghMerges } from \"./tools/loop/merges.mjs\";\nghMerges().merge(5, 'abc');\n",
     "decoy-lands-dynamic.mjs": "const m = await import(`../loop/merges.mjs`);\nm.ghMerges().arm(5, 'abc');\n",
-    "decoy-lands-cjs.cjs": "require('./merges.mjs').ghMerges().disarm(5);\n",
+    "decoy-lands-cjs.cjs": "require(\"./merges.mjs\").ghMerges().disarm(5);\n",
   };
   const files = {
     ...repo,
@@ -423,8 +423,8 @@ describe("a file that names a merge is not a script that runs one", () => {
     "node -pe \"require('child_process').execSync('gh pr merge 5')\"",
     "node -ep \"require('child_process').execSync('gh pr merge 5')\"",
     "bun -e \"require('child_process').execSync('gh pr merge 5')\"",
-    "node -e \"import('./tools/loop/merges.mjs').then((m) => m.ghMerges().merge(5, 'abc'))\"",
-    "node -p \"require('./tools/loop/merges.mjs')\"",
+    "node -e \"import(process.cwd() + '/tools/loop/merges.mjs').then((m) => m.ghMerges().merge(5, 'abc'))\"",
+    "node -p \"require(process.cwd() + '/tools/loop/merges.mjs')\"",
     ...Object.keys(FILES).filter((f) => f.startsWith("decoy")).map((f) => `node ${f} read 5`),
   ]) {
     test(`refuses: ${JSON.stringify(cmd)}`, () => assert.match(String(at(cmd)), MERGE));
@@ -447,9 +447,8 @@ describe("the tracker's recipes run, and the supervisor's merges do not", () => 
 
   test("the module that arms and merges is refused when a session imports it", () => {
     for (const cmd of [
-      "node -e \"import('./tools/loop/merges.mjs').then((m) => m.ghMerges().merge(5, 'abc'))\"",
-      "node --input-type=module -e \"import { ghMerges } from './tools/loop/merges.mjs'; ghMerges().arm(5, 'abc')\"",
-      "node tools/loop/merges.mjs",
+      "node -e \"import(process.cwd() + '/tools/loop/merges.mjs').then((m) => m.ghMerges().merge(5, 'abc'))\"",
+      "node --input-type=module -e \"import { ghMerges } from 'file:///repo/tools/loop/merges.mjs'; ghMerges().arm(5, 'abc')\"",
     ]) {
       assert.match(String(check(cmd, real, false, reading)), MERGE, cmd);
       assert.match(String(check(cmd, real, true, reading)), MERGE, cmd);
