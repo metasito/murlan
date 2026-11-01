@@ -1,0 +1,13 @@
+diff --git a/node_modules/@stryker-mutator/tap-runner/dist/src/tap-test-runner.js b/node_modules/@stryker-mutator/tap-runner/dist/src/tap-test-runner.js
+index 6fed7b8..eef0e8b 100644
+--- a/node_modules/@stryker-mutator/tap-runner/dist/src/tap-test-runner.js
++++ b/node_modules/@stryker-mutator/tap-runner/dist/src/tap-test-runner.js
+@@ -141,7 +141,7 @@ export class TapTestRunner {
+             return {
+                 ...generic,
+                 status: TestStatus.Failed,
+-                failureMessage: failedTests.map((f) => `${f.fullname}: ${f.name}`).join(', ') ??
++                failureMessage: failedTests.map((f) => `${f.fullname}: ${f.name}${f.diag?.error ? ` — ${f.diag.error}` : ''}`).join(', ') ??
+                     'Unknown issue',
+             };
+         }

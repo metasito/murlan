@@ -73,6 +73,33 @@ describe("a client's retry of an action", () => {
     assert.equal(reactions(sent), 2, "still remembered past the minute");
   });
 
+  test("is still answered from the record at exactly the minute, though another action lands then", async (t) => {
+    const clock = fakeClock();
+    t.after(installClock(clock));
+    const { rt, sent } = recordingRuntime();
+    hold();
+    await applyOrForward(rt, reaction("ana", "i1"));
+    clock.advance(60_000);
+    await applyOrForward(rt, reaction("besi", "i2"));
+    await applyOrForward(rt, reaction("ana", "i1"));
+    assert.equal(reactions(sent), 2);
+  });
+
+  test("applied again after the minute is remembered afresh, not evicted as the oldest", async (t) => {
+    const clock = fakeClock();
+    t.after(installClock(clock));
+    const { rt, sent } = recordingRuntime();
+    hold();
+    await applyOrForward(rt, reaction("ana", "i1"));
+    await applyOrForward(rt, reaction("besi", "i1"));
+    clock.advance(60_001);
+    await applyOrForward(rt, reaction("ana", "i1"));
+    for (let i = 0; i < 1_999; i++) await applyOrForward(rt, reaction("besi", `fill-${i}`));
+    const before = reactions(sent);
+    await applyOrForward(rt, reaction("ana", "i1"));
+    assert.equal(reactions(sent), before);
+  });
+
   test("whose first attempt failed is applied afresh, not answered with the failure", async () => {
     const { rt, sent } = recordingRuntime();
     const game = hold({ gameState: undefined as never });

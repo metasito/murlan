@@ -77,7 +77,7 @@ describe("isBotSeatKey (bot-seat exclusion from match scoring)", () => {
 describe("botSeatKey and botSeatIndex", () => {
   test("a key names the seat it was made for", () => {
     assert.equal(botSeatKey(3), "bot:3");
-    for (const seat of [0, 1, 3]) assert.equal(botSeatIndex(botSeatKey(seat)), seat);
+    for (const seat of [0, 1, 3, 12]) assert.equal(botSeatIndex(botSeatKey(seat)), seat);
   });
 
   test("a key whose suffix is not a whole number names no seat", () => {
@@ -86,7 +86,7 @@ describe("botSeatKey and botSeatIndex", () => {
   });
 
   test("only a key botSeatKey could have made names a seat", () => {
-    for (const key of ["bot:", "5", "u5", "bot:-1", "bot: 2", "bot:2 ", "bot:0x2", "bot:1e1"]) {
+    for (const key of ["bot:", "5", "u5", "bot:-1", "bot: 2", "bot:2 ", "bot:0x2", "bot:1e1", "robot:2"]) {
       assert.equal(botSeatIndex(key), null, key);
     }
   });

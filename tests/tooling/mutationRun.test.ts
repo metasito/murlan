@@ -4,7 +4,7 @@ import { globSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { Instrumenter } from "@stryker-mutator/instrumenter";
 import { loadWorkflow, stepIn } from "../helpers/workflow.ts";
-import { DATABASE_BACKED, SHARD_MUTANTS, SLOW_SHARD_MUTANTS, budgetOf, continuationOf, shards, summarize } from "../../tools/ci/mutation.mjs";
+import { DATABASE_BACKED_DIR, SHARD_MUTANTS, SLOW_SHARD_MUTANTS, budgetOf, continuationOf, shards, summarize } from "../../tools/ci/mutation.mjs";
 import { MUTATE } from "../../stryker.config.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
@@ -54,17 +54,14 @@ test("each file's shards cover its every line once, in order", () => {
   assert.ok(all.every((s) => /^[\w.-]+$/.test(s.slug)), "a slug is not a valid artifact or cache name");
 });
 
-test("a file whose tests need the database is cut into smaller shards than the rest", () => {
+test("every file the database-backed tests reach is cut into smaller shards than the rest", () => {
   assert.ok(SLOW_SHARD_MUTANTS < SHARD_MUTANTS);
-  assert.equal(budgetOf("server/game/tableRouter.ts"), SLOW_SHARD_MUTANTS);
   assert.equal(budgetOf(movesFile), SHARD_MUTANTS);
-  for (const file of DATABASE_BACKED) {
-    const own = all.filter((s) => s.file === file);
-    assert.ok(own.length > 0, `${file} is listed as database-backed but is not mutated`);
-  }
-  const router = all.filter((s) => s.file === "server/game/tableRouter.ts");
-  assert.ok(router.length >= 2, "tableRouter.ts is one shard: the database-backed budget is not applied");
-  assert.ok(Math.max(...router.map((s) => s.mutants)) <= SLOW_SHARD_MUTANTS * 2);
+  const slow = [...new Set(all.map((s) => s.file))].filter((file) => file.startsWith(DATABASE_BACKED_DIR));
+  assert.ok(slow.includes("server/game/gameTurn.ts"), `${DATABASE_BACKED_DIR} holds none of the files it was made for`);
+  for (const file of slow) assert.equal(budgetOf(file), SLOW_SHARD_MUTANTS, `${file} is cut to the unit-tested budget`);
+  const turn = all.filter((s) => s.file === "server/game/gameTurn.ts");
+  assert.ok(turn.length >= 2, "gameTurn.ts is one shard: the database-backed budget is not applied");
 });
 
 test("every mutant Stryker places lands in exactly one shard, and a shard outgrows the budget only where no cut can split it", async () => {

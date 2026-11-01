@@ -376,20 +376,63 @@ describe("the shuffle is unbiased", () => {
   test("a draw from the uneven tail of the 32-bit range is thrown away, not folded in", () => {
     assert.deepEqual(ids(dealCards(1, 0, source(0xffffffff)).hands[0]), ids(dealCards(1, 0, source(0)).hands[0]));
   });
-});
 
-describe("a deal on a device without crypto", () => {
-  test("still deals the whole deck, differently each time", () => {
+  test("the tail starts at the last whole multiple of the 54 places the first card can go", () => {
+    const thenOnes = (first: number) => {
+      let calls = 0;
+      return {
+        getRandomValues(array: Uint32Array) {
+          array[0] = calls++ === 0 ? first : 1;
+          return array;
+        },
+      };
+    };
+    const tailStart = 2 ** 32 - (2 ** 32 % 54);
+    const redrawn = ids(dealCards(1, 0, thenOnes(1)).hands[0]);
+    assert.deepEqual(ids(dealCards(1, 0, thenOnes(tailStart)).hands[0]), redrawn);
+    assert.notDeepEqual(ids(dealCards(1, 0, thenOnes(tailStart - 1)).hands[0]), redrawn);
+  });
+
+  const topEveryDraw = () => {
+    let place = createDeck().length;
+    return {
+      getRandomValues(array: Uint32Array) {
+        array[0] = --place;
+        return array;
+      },
+    };
+  };
+
+  test("a card may stay where it lies, so every ordering is reachable", () => {
+    assert.deepEqual(ids(dealCards(1, 0, topEveryDraw()).hands[0]), ids(createDeck()));
+  });
+
+  test("the default deal draws from the platform's crypto source", () => {
     const crypto = Object.getOwnPropertyDescriptor(globalThis, "crypto");
-    Object.defineProperty(globalThis, "crypto", { value: undefined, configurable: true });
+    Object.defineProperty(globalThis, "crypto", { value: topEveryDraw(), configurable: true });
     try {
-      const first = dealCards(3).hands.flat();
-      const second = dealCards(3).hands.flat();
-      assert.equal(new Set(ids(first)).size, 54);
-      assert.notDeepEqual(ids(first), ids(second));
+      assert.deepEqual(ids(dealCards(1).hands[0]), ids(createDeck()));
     } finally {
       if (crypto) Object.defineProperty(globalThis, "crypto", crypto);
       else delete (globalThis as { crypto?: unknown }).crypto;
     }
   });
+});
+
+describe("a deal on a device without crypto", () => {
+  for (const [device, value] of [["no crypto at all", undefined], ["a crypto without getRandomValues", {}]] as const) {
+    test(`with ${device}, still deals the whole deck, differently each time`, () => {
+      const crypto = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+      Object.defineProperty(globalThis, "crypto", { value, configurable: true });
+      try {
+        const first = dealCards(3).hands.flat();
+        const second = dealCards(3).hands.flat();
+        assert.equal(new Set(ids(first)).size, 54);
+        assert.notDeepEqual(ids(first), ids(second));
+      } finally {
+        if (crypto) Object.defineProperty(globalThis, "crypto", crypto);
+        else delete (globalThis as { crypto?: unknown }).crypto;
+      }
+    });
+  }
 });

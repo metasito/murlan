@@ -5,7 +5,7 @@ import { logger } from "../shared/logger.ts";
 import { activeGames, isShuttingDown } from "./gameRoom.ts";
 import { stopSpectatingEverywhere } from "../socket/seating.ts";
 import { armVoteDeadline } from "./roundOver.ts";
-import { clearRoomTimers, clearLobbyGrace, usersInLobbyGrace } from "./gameTimers.ts";
+import { clearRoomTimers, usersInLobbyGrace } from "./gameTimers.ts";
 import { buildSeatRoster, seatOfUser } from "./onlineGameLogic.ts";
 import { unpackPersistedState } from "../../shared/persistedEnvelope.ts";
 import { fromEnvelope, newTable } from "./tableState.ts";
@@ -136,7 +136,6 @@ export async function startMatchAction(
   if (absent.size > 0) {
     const seated = await rt.store.rooms.getRoomPlayers(room.id);
     for (const p of seated.filter((p) => absent.has(p.userId))) {
-      clearLobbyGrace(roomId, p.userId);
       await handleSeatRelease(rt, roomId, p.userId, { source: "disconnect" });
     }
   }

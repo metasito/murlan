@@ -153,6 +153,58 @@ describe("a seat held for an invited friend", () => {
     );
   });
 
+  test("goes to the friend invited first when two compete for the inviter's side", () => {
+    const held = heldSeats({
+      ...base,
+      room: teamsRoom,
+      seated: seats(["host", 0], ["stranger", 1]),
+      invites: [invite("host", "second", 0), invite("host", "first", 60_000)],
+    });
+    assert.deepEqual(
+      held.map((h) => [h.inviteeId, h.seatIndex]),
+      [
+        ["first", 2],
+        ["second", 3],
+      ]
+    );
+  });
+
+  test("is one seat for a friend two players invited", () => {
+    const held = heldSeats({
+      ...base,
+      room: teamsRoom,
+      seated: seats(["host", 0], ["guest", 1]),
+      invites: [invite("host", "friend"), invite("guest", "friend")],
+    });
+    assert.deepEqual(held.map((h) => [h.inviteeId, h.seatIndex]), [["friend", 2]]);
+  });
+
+  test("is held for no more friends than there are free seats", () => {
+    const held = heldSeats({
+      ...base,
+      room: teamsRoom,
+      seated: seats(["host", 0]),
+      invites: [invite("host", "a"), invite("host", "b"), invite("host", "c"), invite("host", "d")],
+    });
+    assert.deepEqual(
+      held.map((h) => h.seatIndex).sort(),
+      [1, 2, 3],
+      "the fourth friend has no seat to be held"
+    );
+  });
+
+  test("is not held for an invite with no creation time", () => {
+    assert.deepEqual(
+      heldSeats({
+        ...base,
+        room: teamsRoom,
+        seated: seats(["host", 0]),
+        invites: [{ inviterId: "host", inviteeId: "friend", createdAt: null }],
+      }),
+      []
+    );
+  });
+
   test("is not taken out of a free-for-all lobby, which has no sides", () => {
     assert.deepEqual(
       heldSeats({
@@ -269,6 +321,13 @@ describe("what a released seat does to its room", () => {
       wasHost: true,
       set: { hostUserId: "b" },
     });
+  });
+
+  test("a guest leaving a full lobby leaves the host holding it", () => {
+    assert.deepEqual(
+      settleRelease({ status: "waiting", hostUserId: "a" }, "d", [seat("a", 0), seat("b", 1), seat("c", 2)]),
+      { emptied: false, wasHost: false, set: null }
+    );
   });
 
   test("a guest leaving changes nothing about who holds the room", () => {

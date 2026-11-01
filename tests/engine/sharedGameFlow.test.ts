@@ -96,6 +96,11 @@ const rows: [string, ViewedGameState | null, ViewedGameState, ReturnType<typeof 
   ["a one-way round seen first once it has a play in it", null, state(oneWayPhase, PLAY), null],
   ["the offline two-way give is not a one-way deal", state(open, DEAL), state(settledOffline, GIVE), announced({ received: THREE, given: ACE })],
   ["a closed two-way phase, shown to a bystander without the give, at a deal's move", null, state(settled(), DEAL), null],
+  ["a two-joker deal after a round whose end was never seen", state(jokers, PLAY), state(jokers, DEAL), jokersAnnounced],
+  ["a one-way deal after a round whose end was never seen", state(open, PLAY), state(oneWayPhase, DEAL), oneWayAnnounced],
+  ["a closed phase after a state with no phase", state(undefined, DEAL), state(settled(ACE), GIVE), null],
+  ["a closed phase reached by a play, its give never seen", state(open, DEAL), state(settled(ACE), PLAY), null],
+  ["a closed phase re-sent", state(settled(ACE), GIVE), state(settled(ACE), GIVE), null],
 ];
 
 for (const [name, prev, next, expected] of rows) {

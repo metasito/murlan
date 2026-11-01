@@ -56,6 +56,11 @@ test("opponentsOf counts every other seat in free-for-all", () => {
   assert.deepEqual(opponentsOf(state, 0).handCounts, [1, 2, 1]);
 });
 
+test("opponentsOf never reports an empty count list, which Math.min would read as Infinity", () => {
+  const state = makeState({ players: [makePlayer(0, BOMB_HAND)] });
+  assert.deepEqual(opponentsOf(state, 0).handCounts, [0]);
+});
+
 test("opponentsOf reports a partner-held top play only in teams", () => {
   const hands = [BOMB_HAND, [c("3", "clubs")], [c("5", "hearts")], [c("7", "spades")]];
   assert.equal(opponentsOf(table(hands, { lastPlayedBy: 2 }), 0).partnerHoldsTop, true);

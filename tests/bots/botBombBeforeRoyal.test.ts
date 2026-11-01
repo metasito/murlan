@@ -23,3 +23,18 @@ for (const personality of BOT_PERSONALITIES) {
     });
   }
 }
+
+test("the hard tier's emergency answer is its lowest royal straight, whichever is found first", () => {
+  // Two 5s make the mixed 3-7 a plain straight, so the spade 9-K royal is enumerated before the heart 3-7 one.
+  const royals = [
+    c("3", "hearts"), c("4", "hearts"), c("5", "hearts"), c("6", "hearts"), c("7", "hearts"), c("5", "diamonds"),
+    c("9", "spades"), c("10", "spades"), c("J", "spades"), c("Q", "spades"), c("K", "spades"),
+  ];
+  const player = seat(0, royals, { type: "bot", personality: "gent" });
+  const top = buildCombination([c("2", "hearts")])!;
+
+  const choice = botChoosePlay(viewOf(player, { toBeat: top, opponentHandCounts: [1, 6, 6] }), () => 0.99);
+
+  assert.equal(choice?.type, "royal_straight");
+  assert.deepEqual(choice!.cards.map((x) => x.rank).sort(), ["3", "4", "5", "6", "7"]);
+});
