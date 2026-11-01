@@ -36,6 +36,7 @@ const ids = (play: Combination | null | undefined) => (play ? cardKey(play.cards
 const SINGLE_K = combo(c("K", "hearts"));
 const SINGLE_10 = combo(c("10", "clubs"));
 const SINGLE_6 = combo(c("6", "hearts"));
+const SINGLE_3 = combo(c("3", "hearts"));
 
 test("no legal play passes", () => {
   assert.equal(botChoosePlay(view("gent", [c("3", "clubs"), c("4", "clubs")], { toBeat: SINGLE_K })), null);
@@ -118,17 +119,17 @@ describe("hard tier: emergency bomb", () => {
   const twoBombs = [
     c("9", "hearts"), c("9", "diamonds"), c("9", "clubs"), c("9", "spades"),
     c("5", "hearts"), c("5", "diamonds"), c("5", "clubs"), c("5", "spades"),
-    c("7", "clubs"),
+    c("4", "clubs"),
   ];
 
   test("an opponent on 1 card draws the lowest bomb over a plain answer", () => {
-    const choice = botChoosePlay(view("gent", twoBombs, { toBeat: SINGLE_6, opponentHandCounts: [13, 1] }), PASSIVE);
+    const choice = botChoosePlay(view("gent", twoBombs, { toBeat: SINGLE_3, opponentHandCounts: [13, 1] }), PASSIVE);
     assert.equal(ids(choice), "5_clubs,5_diamonds,5_hearts,5_spades");
   });
 
   test("an opponent on 2 cards gets the plain answer", () => {
-    const choice = botChoosePlay(view("gent", twoBombs, { toBeat: SINGLE_6, opponentHandCounts: [2, 13] }), PASSIVE);
-    assert.equal(ids(choice), "7_clubs");
+    const choice = botChoosePlay(view("gent", twoBombs, { toBeat: SINGLE_3, opponentHandCounts: [2, 13] }), PASSIVE);
+    assert.equal(ids(choice), "4_clubs");
   });
 
   test("on a lead the emergency does not apply", () => {
@@ -167,6 +168,14 @@ describe("hard tier: leading", () => {
     ];
     const choice = botChoosePlay(view("gent", hand, { knownOpponentCard: c("K", "spades") }), KEEP);
     assert.equal(ids(choice), "2_clubs,2_diamonds,2_hearts");
+  });
+  test("with only a royal straight safe to lead, it leads the royal", () => {
+    const hand = [
+      c("3", "hearts"), c("4", "hearts"), c("5", "hearts"), c("6", "hearts"), c("7", "hearts"),
+      c("9", "clubs"), c("10", "clubs"), c("J", "diamonds"), c("Q", "spades"),
+    ];
+    const choice = botChoosePlay(view("gent", hand, { knownOpponentCard: c("K", "spades") }), KEEP);
+    assert.equal(ids(choice), "3_hearts,4_hearts,5_hearts,6_hearts,7_hearts");
   });
 });
 
