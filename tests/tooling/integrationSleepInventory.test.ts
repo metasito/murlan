@@ -17,6 +17,10 @@ const INVENTORY: Record<string, { n: number; why: string }> = {
     n: 2,
     why: "nothingArrives' window, since absence has no event to await; and eventually's poll cadence, for state that pushes nothing",
   },
+  "tests/integration/clusterCount.test.ts": {
+    n: 2,
+    why: "the asks are spread across a real 1.5 s outage and the seconds after it: real time is the subject",
+  },
   "tests/integration/disposeTombstone.test.ts": {
     n: 1,
     why: "the window after dispose in which the room must stay unclaimable while its row's delete is held",
