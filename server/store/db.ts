@@ -68,9 +68,9 @@ const BUDGET_CHECK_MS = 60_000;
 let budgetCheck: ReturnType<typeof setInterval> | null = null;
 
 /** Checks the connection budget now and then each minute, until `closeDatabase`. */
-export async function watchConnectionBudget(): Promise<void> {
+export async function watchConnectionBudget(ownershipConnected: () => boolean): Promise<void> {
   const check = () =>
-    checkConnectionBudget(pool()).catch((err: unknown) =>
+    checkConnectionBudget(pool(), ownershipConnected()).catch((err: unknown) =>
       logger.warn({ err }, "Could not check the Postgres connection budget")
     );
   if (budgetCheck) clearInterval(budgetCheck);

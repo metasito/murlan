@@ -28,6 +28,17 @@ describe("checkBootEnv", () => {
     );
   });
 
+  test("an application_name in the URL is warned about, since it replaces every pool's own name", () => {
+    const warned: string[] = [];
+    const named = "postgres://u:p@db/x?sslmode=require&application_name=murlan";
+    checkBootEnv({ ...production, DATABASE_URL: named }, (msg) => warned.push(msg));
+    assert.equal(warned.length, 1);
+    assert.match(warned[0], /application_name/);
+    checkBootEnv(production, (msg) => warned.push(msg));
+    checkBootEnv({ ...base, NODE_ENV: "development", DATABASE_URL: named }, (msg) => warned.push(msg));
+    assert.equal(warned.length, 1, "only production's own URL is warned about");
+  });
+
   test("production refuses a missing PUBLIC_HOST", () => {
     assert.throws(() => checkBootEnv({ ...production, PUBLIC_HOST: undefined }), /PUBLIC_HOST/);
   });
