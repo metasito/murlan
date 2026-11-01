@@ -4,6 +4,7 @@ import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { pruneStaleRooms, STALE_ROOM_MAX_AGE_MS as maxAgeMs } from "../../server/game/retention.ts";
+import { activeGames as liveGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
 
 describe("stale-room prune", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -55,5 +56,36 @@ describe("stale-room prune", { skip: hasDatabase() ? false : skipMessage() }, ()
 
     assert.equal(await exists("rooms", "id", dead), false);
     assert.equal(await exists("active_games", "room_id", dead), false);
+  });
+
+  test("an old room this instance is playing in is kept, though no row says so", async () => {
+    const live = await seedRoom("LIVERM", maxAgeMs * 2);
+    const dead = await seedRoom("GONERM", maxAgeMs * 2);
+    liveGames.set(live, {} as OnlineGameState);
+    try {
+      assert.equal(await pruneStaleRooms(), 1);
+    } finally {
+      liveGames.delete(live);
+    }
+
+    assert.equal(await exists("rooms", "id", live), true);
+    assert.equal(await exists("rooms", "id", dead), false);
+    await server.query("DELETE FROM rooms WHERE id = $1", [live]);
+  });
+
+  test("a backlog past one call's cap is taken a capped call at a time", async () => {
+    const backlog = 10_600;
+    await server.query(
+      `INSERT INTO rooms (code, status, game_mode, max_players, created_at)
+       SELECT 'B' || lpad(g::text, 5, '0'), 'finished', 'free_for_all', 4, now() - make_interval(secs => $1)
+       FROM generate_series(1, $2) AS g`,
+      [(maxAgeMs * 2) / 1000, backlog]
+    );
+    const left = async () => Number((await server.query("SELECT count(*) AS n FROM rooms WHERE code LIKE 'B%'"))[0]!.n);
+
+    assert.equal(await pruneStaleRooms(), 10_000, "twenty batches of 500, then the cap");
+    assert.equal(await left(), backlog - 10_000);
+    assert.equal(await pruneStaleRooms(), backlog - 10_000);
+    assert.equal(await left(), 0);
   });
 });
