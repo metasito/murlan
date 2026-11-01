@@ -3,8 +3,7 @@
 //   held     all 10 clients are checked out and held (transactions waiting between statements)
 //   busy     10 queries of pg_sleep(4) are running
 //   backlog  60 queries of pg_sleep(1) are queued at once (6 s of work per slot)
-import { log } from "./proxy.ts";
-import { directUrl } from "./proxy.ts";
+import { directUrl, log } from "./proxy.ts";
 
 const mode = process.argv[2] ?? "held";
 process.env.DATABASE_URL = directUrl;

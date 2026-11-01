@@ -5,7 +5,6 @@ import {
   bootInstance, connect, NotifyTap, out, q, register, resetData, sleep, waitForPeers,
   type Client, type Instance,
 } from "./lib.ts";
-import { getAllValidPlays, tableDemand, type Move } from "../../../../../../lib/game/gameEngine.ts";
 import type { WireGameState, WireRoomState } from "../../../../../../shared/protocol.ts";
 import { ownershipKey } from "../../../../../../server/game/gameOwnership.ts";
 

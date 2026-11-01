@@ -2,7 +2,7 @@
 // many sockets the *other* instance already holds; a herd; and what the swept handshakes carry.
 // Run: node --experimental-strip-types --no-warnings exp2-connect.ts
 import {
-  bootInstance, connect, killInstance, NotifyTap, once, out, q, redact, register, resetData,
+  bootInstance, connect, killInstance, NotifyTap, out, q, redact, register, resetData,
   sleep, summarise, waitForPeers, MSG, ticket, type Client, type Instance, type Tapped,
 } from "./lib.ts";
 import { io as ioClient } from "socket.io-client";
@@ -72,7 +72,7 @@ try {
   log("N_on_B | notifies | FETCH_SOCKETS | responses | resp notify bytes | attachment INSERTs | attachment bytes | sockets carried in replies");
   const levels = [0, 10, 50, 100];
   let held = 0;
-  const rows: Record<number, ReturnType<typeof perConnect>[]> = {};
+  const rows: Record<number, Awaited<ReturnType<typeof probeConnect>>[]> = {};
   for (const n of levels) {
     while (held < n) sockets.push(await connect(B.url, bUsers[held++]!.cookie, "web"));
     await sleep(2_000);
