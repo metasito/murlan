@@ -5,7 +5,11 @@ const REQUIRED_IN_PRODUCTION = ["PUBLIC_HOST"];
 
 export function checkBootEnv(
   env: Record<string, string | undefined> = process.env,
-  warn: (message: string) => void = (message) => logger.warn(message)
+  warnUrlNamesSessions: () => void = () =>
+    logger.warn(
+      "The database URL sets application_name, which replaces every pool's murlan-<use> name: " +
+        "the connection budget can no longer count instances, and pg_stat_activity names no use"
+    )
 ): void {
   const production = env.NODE_ENV === "production";
   for (const key of [...REQUIRED_ENV, ...(production ? REQUIRED_IN_PRODUCTION : [])]) {
@@ -18,10 +22,5 @@ export function checkBootEnv(
   if (!params.has("sslmode")) {
     throw new Error("DATABASE_URL must carry an sslmode in production (sslmode=disable to opt out)");
   }
-  if (params.has("application_name")) {
-    warn(
-      "The database URL sets application_name, which replaces every pool's murlan-<use> name: " +
-        "the connection budget can no longer count instances, and pg_stat_activity names no use"
-    );
-  }
+  if (params.has("application_name")) warnUrlNamesSessions();
 }
