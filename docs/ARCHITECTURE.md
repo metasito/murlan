@@ -154,7 +154,7 @@ process holding it.
 
 The forwarding instance does **not** re-broadcast. Broadcasts happen inside the owner's own
 handler (`publishState`, `rt.out.room(roomId).emit(…)`) and reach every socket at that table
-whichever instance holds each one, because the Socket.io Postgres adapter carries `io.to()`
+whichever instance holds each one, because the Socket.io Redis streams adapter (`server/socket/socketAdapter.ts`) carries `io.to()`
 across instances the same way it carries the forwarded action.
 
 **Bot-filled matches:** `room:start` with `fillWithBots` needs only one seated human. The

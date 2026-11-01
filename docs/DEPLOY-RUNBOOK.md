@@ -101,6 +101,7 @@ The server refuses to boot without these (`server/http/bootEnv.ts`):
 
 - `DATABASE_URL` — in production it must carry an `sslmode` (`?sslmode=require`;
   `sslmode=disable` is an explicit opt-out)
+- `REDIS_URL` — Redis 7 (`deploy/runtime.json`); `rediss://` for TLS
 - `SESSION_SECRET` — also used to sign socket auth tickets
 - `PUBLIC_HOST` — production only: the bare hostname the app is served from. Browsers on
   `https://$PUBLIC_HOST` and on each origin in the optional comma-separated `ALLOWED_ORIGINS`
