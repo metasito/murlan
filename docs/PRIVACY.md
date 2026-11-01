@@ -72,8 +72,9 @@ written at all, only one of four fixed words of our own saying which part of the
 asked for, so that a missing file and a stranger probing us do not read the same. A request line
 names nobody, and there is nothing in it to look up, export or delete.
 Your IP address still reaches the server, because a network connection cannot be made without
-one, and our rate limiter counts recent requests against it in memory to stop abuse — but it is
-never written down.
+one, and our rate limiter keeps a count of recent requests against it, shared between our
+servers, to stop abuse. The count is deleted when its window ends, and the address is never
+written to a log.
 
 Other lines in the same log do name an account: any game message the server refuses, and actions
 on your account such as signing in or changing your password. Those carry your account number,
