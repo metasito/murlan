@@ -23,6 +23,9 @@ export function createSessionMiddleware() {
       pool: pool(),
       tableName: "session",
       createTableIfMissing: false,
+      // `rolling` is off, so the cookie expires SESSION_MAX_AGE_MS after
+      // issue whatever the row says: a touch would only buy a write per read.
+      disableTouch: true,
     }),
     secret: process.env.SESSION_SECRET!,
     resave: false,

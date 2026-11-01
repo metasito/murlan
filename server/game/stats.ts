@@ -1,6 +1,6 @@
 import { now } from "../http/clock.ts";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { db } from "../store/db.ts";
+import { db, transaction } from "../store/db.ts";
 import { lockUsers } from "../store/userLock.ts";
 import { logger } from "../shared/logger.ts";
 import { userStats, roundHistory, userAchievements } from "../../shared/schema.ts";
@@ -59,97 +59,95 @@ export async function recordGameResult(
     // mid-round still holds its seat in `results`, and its insert violates a
     // foreign key. Sharing a transaction would roll that failure back over
     // every other player's stats, history and achievements for the round.
-    await db()
-      .transaction(async (tx) => {
-        const { userId, placement, playerCount, playedBomb, matchWon, abandoned } = result;
-        const won = placement === 1;
-        await lockUsers(tx, [userId]);
+    await transaction(async (tx) => {
+      const { userId, placement, playerCount, playedBomb, matchWon, abandoned } = result;
+      const won = placement === 1;
+      await lockUsers(tx, [userId]);
 
-        // Single atomic UPSERT: in the UPDATE branch, referencing
-        // userStats.currentStreak/bestStreak reads the existing row being
-        // updated (standard Postgres upsert semantics), so this needs no
-        // separate SELECT and has no read-then-write race.
-        await tx
-          .insert(userStats)
-          .values({
-            userId,
-            roundsPlayed: 1,
-            roundsWon: won ? 1 : 0,
-            matchesWon: matchWon ? 1 : 0,
-            currentStreak: won ? 1 : 0,
-            bestStreak: won ? 1 : 0,
-            bombsPlayed: playedBomb ? 1 : 0,
-            updatedAt: new Date(now()),
-          })
-          .onConflictDoUpdate({
-            target: userStats.userId,
-            set: {
-              roundsPlayed: sql`${userStats.roundsPlayed} + 1`,
-              roundsWon: sql`${userStats.roundsWon} + ${won ? 1 : 0}`,
-              matchesWon: sql`${userStats.matchesWon} + ${matchWon ? 1 : 0}`,
-              currentStreak: won ? sql`${userStats.currentStreak} + 1` : sql`0`,
-              bestStreak: won
-                ? sql`GREATEST(${userStats.bestStreak}, ${userStats.currentStreak} + 1)`
-                : sql`${userStats.bestStreak}`,
-              bombsPlayed: sql`${userStats.bombsPlayed} + ${playedBomb ? 1 : 0}`,
-              updatedAt: new Date(now()),
-            },
-          });
-
-        // Every other participant in this round (human or bot) — honest data
-        // straight from the batch, not a fabricated field. Bot ids are stored
-        // as-is; resolving them to a display label is a read-side concern.
-        const opponents = results
-          .filter((r) => r.userId !== userId)
-          .map((r) => r.userId);
-
-        await tx.insert(roundHistory).values({
+      // Single atomic UPSERT: in the UPDATE branch, referencing
+      // userStats.currentStreak/bestStreak reads the existing row being
+      // updated (standard Postgres upsert semantics), so this needs no
+      // separate SELECT and has no read-then-write race.
+      await tx
+        .insert(userStats)
+        .values({
           userId,
-          finishedAt,
-          gameMode,
-          placement,
-          playerCount,
-          points: placementPoints(placement - 1, playerCount),
-          opponents,
-          ratingDelta: ratingDeltas.get(userId) ?? null,
-          abandoned: abandoned ?? false,
+          roundsPlayed: 1,
+          roundsWon: won ? 1 : 0,
+          matchesWon: matchWon ? 1 : 0,
+          currentStreak: won ? 1 : 0,
+          bestStreak: won ? 1 : 0,
+          bombsPlayed: playedBomb ? 1 : 0,
+          updatedAt: new Date(now()),
+        })
+        .onConflictDoUpdate({
+          target: userStats.userId,
+          set: {
+            roundsPlayed: sql`${userStats.roundsPlayed} + 1`,
+            roundsWon: sql`${userStats.roundsWon} + ${won ? 1 : 0}`,
+            matchesWon: sql`${userStats.matchesWon} + ${matchWon ? 1 : 0}`,
+            currentStreak: won ? sql`${userStats.currentStreak} + 1` : sql`0`,
+            bestStreak: won
+              ? sql`GREATEST(${userStats.bestStreak}, ${userStats.currentStreak} + 1)`
+              : sql`${userStats.bestStreak}`,
+            bombsPlayed: sql`${userStats.bombsPlayed} + ${playedBomb ? 1 : 0}`,
+            updatedAt: new Date(now()),
+          },
         });
 
-        // Prune in the same transaction as the insert above, so the table
-        // cannot grow without bound. One statement under the row lock, so no
-        // other round's row can commit between choosing what to keep and
-        // deleting the rest.
-        await tx
-          .delete(roundHistory)
-          .where(
-            and(
-              eq(roundHistory.userId, userId),
-              sql`${roundHistory.id} NOT IN (
-                SELECT ${roundHistory.id} FROM ${roundHistory}
-                WHERE ${roundHistory.userId} = ${userId}
-                ORDER BY ${roundHistory.finishedAt} DESC, ${roundHistory.id} DESC
-                LIMIT ${MAX_HISTORY_ROWS_PER_USER}
-              )`
-            )
-          );
+      // Every other participant in this round (human or bot) — honest data
+      // straight from the batch, not a fabricated field. Bot ids are stored
+      // as-is; resolving them to a display label is a read-side concern.
+      const opponents = results
+        .filter((r) => r.userId !== userId)
+        .map((r) => r.userId);
 
-        const earnedIds = evaluateAchievements(result);
-        if (earnedIds.length > 0) {
-          // Composite primary key (userId, achievementId) makes this
-          // idempotent by construction — no read-then-write race to check
-          // "already unlocked" first.
-          await tx
-            .insert(userAchievements)
-            .values(earnedIds.map((achievementId) => ({ userId, achievementId })))
-            .onConflictDoNothing();
-        }
-      })
-      .catch((err) =>
-        logger.error(
-          { err, userId: result.userId },
-          "Failed to record one seat's result — the rest of the table still gets theirs"
-        )
-      );
+      await tx.insert(roundHistory).values({
+        userId,
+        finishedAt,
+        gameMode,
+        placement,
+        playerCount,
+        points: placementPoints(placement - 1, playerCount),
+        opponents,
+        ratingDelta: ratingDeltas.get(userId) ?? null,
+        abandoned: abandoned ?? false,
+      });
+
+      // Prune in the same transaction as the insert above, so the table
+      // cannot grow without bound. One statement under the row lock, so no
+      // other round's row can commit between choosing what to keep and
+      // deleting the rest.
+      await tx
+        .delete(roundHistory)
+        .where(
+          and(
+            eq(roundHistory.userId, userId),
+            sql`${roundHistory.id} NOT IN (
+              SELECT ${roundHistory.id} FROM ${roundHistory}
+              WHERE ${roundHistory.userId} = ${userId}
+              ORDER BY ${roundHistory.finishedAt} DESC, ${roundHistory.id} DESC
+              LIMIT ${MAX_HISTORY_ROWS_PER_USER}
+            )`
+          )
+        );
+
+      const earnedIds = evaluateAchievements(result);
+      if (earnedIds.length > 0) {
+        // Composite primary key (userId, achievementId) makes this
+        // idempotent by construction — no read-then-write race to check
+        // "already unlocked" first.
+        await tx
+          .insert(userAchievements)
+          .values(earnedIds.map((achievementId) => ({ userId, achievementId })))
+          .onConflictDoNothing();
+      }
+    }).catch((err) =>
+      logger.error(
+        { err, userId: result.userId },
+        "Failed to record one seat's result — the rest of the table still gets theirs"
+      )
+    );
   }
 }
 

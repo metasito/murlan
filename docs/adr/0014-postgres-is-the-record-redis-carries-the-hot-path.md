@@ -50,7 +50,8 @@ Each decision, and why:
    locked rows, writes stats, ratings, round history, replay, achievements and room status with
    multi-row statements, and clears that entry by a fenced update that rolls back on zero rows.
    `round_over` is emitted after the commit with the committed deltas; the move is acked on apply,
-   before any database work. A transient error retries from the envelope with capped backoff; the
+   before any database work. A transient error retries from the envelope with capped backoff; any
+   other error is logged with its payload and counted. Either way the results stay pending, the
    table deals on meanwhile, and restore and the orphan sweep finish pending results before
    anything else. *Why:* the round is durable the moment it is final, and the cleared marker is
    the proof of application, so a retry after an unknown commit applies nothing twice.
