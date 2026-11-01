@@ -1,16 +1,16 @@
 /**
- * Local end-to-end stack: an empty Postgres in Docker for the server to use.
+ * Local end-to-end stack: an empty Postgres and a Redis in Docker for the server to use.
  *
  * Usage:
- *   node scripts/dev-stack.mjs up     start Postgres
- *   node scripts/dev-stack.mjs down   stop and remove the container
+ *   node scripts/dev-stack.mjs up     start Postgres and Redis
+ *   node scripts/dev-stack.mjs down   stop and remove the containers
  *   node scripts/dev-stack.mjs env    print the env vars for the server
  *
  * It creates no tables. `server/store/schemaDdl.ts` is the single owner of that, and
  * it runs on every server start against whatever database it is pointed at.
  *
- * The container is disposable and named distinctly so it can never be confused
- * with a real database.
+ * The containers are disposable and named distinctly so they can never be
+ * confused with a real database.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -28,6 +28,12 @@ const NAME = "murlan-dev-pg";
 // mirror of the Docker Official Images serves the same digest with neither. Every workflow's
 // Postgres service repeats this (tests/tooling/postgresImage.test.ts).
 const IMAGE = "mirror.gcr.io/library/postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea";
+const REDIS_NAME = "murlan-dev-redis";
+// The same mirror, for the same reasons; every workflow's Redis service repeats this
+// (tests/tooling/redisImage.test.ts).
+const REDIS_IMAGE = "mirror.gcr.io/library/redis:7-alpine@sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f";
+const REDIS_BASE_PORT = 46379;
+const redisUrlFor = (port) => `redis://127.0.0.1:${port}/0`;
 // Below 49152: Windows carves its dynamic port reservations (Hyper-V, WSL) out of 49152-65535 only.
 const DEFAULT_PORT = 45432;
 const requested = process.env.MURLAN_DEV_PG_PORT;
@@ -50,8 +56,8 @@ function docker(args) {
   return r;
 }
 
-function isRunning() {
-  return docker(["ps", "-q", "-f", `name=^${NAME}$`]).stdout.trim().length > 0;
+function isRunning(name = NAME) {
+  return docker(["ps", "-q", "-f", `name=^${name}$`]).stdout.trim().length > 0;
 }
 
 /**
@@ -65,12 +71,12 @@ function isRunning() {
  * container, which would destroy a database another suite is connected to over
  * a transient daemon hiccup.
  */
-function publishedPort() {
-  if (!isRunning()) return null;
-  const r = docker(["port", NAME, "5432"]);
+function publishedPort(name = NAME, containerPort = "5432") {
+  if (!isRunning(name)) return null;
+  const r = docker(["port", name, containerPort]);
   const port = r.status === 0 ? hostPortOf(r.stdout) : null;
   if (port === null) {
-    throw new Error(`${NAME} is running but docker could not say where: ${r.stderr || r.stdout}`);
+    throw new Error(`${name} is running but docker could not say where: ${r.stderr || r.stdout}`);
   }
   return port;
 }
@@ -140,6 +146,59 @@ function reachableOn(port) {
   return false;
 }
 
+/** Redis, not merely something, answers `PING` on the host port. */
+function redisAnswers(port, timeoutMs = 2000) {
+  const r = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      `const net=require('net');
+       const c=net.connect(${port},'127.0.0.1');
+       c.setTimeout(${timeoutMs});
+       const bail=()=>{c.destroy();process.exit(1)};
+       c.on('error',bail); c.on('timeout',bail); c.on('close',bail);
+       c.on('connect',()=>c.write('PING\\r\\n'));
+       c.on('data',(d)=>{process.exit(String(d).startsWith('+PONG')?0:1)});`,
+    ],
+    { encoding: "utf8" }
+  );
+  return r.status === 0;
+}
+
+function redisReachableOn(port) {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    if (redisAnswers(port)) return true;
+    sleepSync(500);
+  }
+  return false;
+}
+
+function startRedis() {
+  const running = publishedPort(REDIS_NAME, "6379");
+  if (running !== null) {
+    if (!redisReachableOn(running)) throw new Error(`${REDIS_NAME} is running on ${running} but Redis does not answer there`);
+    return running;
+  }
+  docker(["rm", "-f", REDIS_NAME]);
+  pullImage({
+    present: () => docker(["image", "inspect", REDIS_IMAGE]).status === 0,
+    pull: () => docker(["pull", "-q", REDIS_IMAGE]),
+    sleep: sleepSync,
+  });
+  return startOnFreePort({
+    start: REDIS_BASE_PORT,
+    canBind,
+    discard: () => docker(["rm", "-f", REDIS_NAME]),
+    verify: redisReachableOn,
+    run: (p) => {
+      const r = docker(["run", "-d", "--name", REDIS_NAME, "-p", `127.0.0.1:${p}:6379`, REDIS_IMAGE]);
+      if (r.status !== 0) docker(["rm", "-f", REDIS_NAME]);
+      return { status: r.status, stderr: r.stderr };
+    },
+  });
+}
+
 const cmd = process.argv[2] ?? "up";
 
 try {
@@ -148,13 +207,19 @@ try {
     if (port === null) {
       throw new Error(`${NAME} is not running — start it with \`node scripts/dev-stack.mjs up\``);
     }
+    const redisPort = publishedPort(REDIS_NAME, "6379");
+    if (redisPort === null) {
+      throw new Error(`${REDIS_NAME} is not running — start it with \`node scripts/dev-stack.mjs up\``);
+    }
     console.log(`DATABASE_URL=${urlFor(port)}`);
+    console.log(`REDIS_URL=${redisUrlFor(redisPort)}`);
     console.log("SESSION_SECRET=local-dev-secret");
     process.exit(0);
   }
 
   if (cmd === "down") {
     docker(["rm", "-f", NAME]);
+    docker(["rm", "-f", REDIS_NAME]);
     console.log("stopped");
     process.exit(0);
   }
@@ -210,7 +275,7 @@ try {
     throw new Error(`${NAME} is running on ${port} but Postgres does not answer there`);
   }
 
-  console.log(`ready on ${urlFor(port)}`);
+  console.log(`ready on ${urlFor(port)} and ${redisUrlFor(startRedis())}`);
 } catch (e) {
   console.error(e.message);
   process.exit(1);
