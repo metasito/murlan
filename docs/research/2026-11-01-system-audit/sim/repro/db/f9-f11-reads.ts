@@ -64,7 +64,7 @@ captured.length = 0;
 const t = Date.now();
 const rows = await activeGameStore.listResumable();
 const ms = Date.now() - t;
-log(`activeGameStore.list() SQL: ${captured.join(" ;; ")}`);
+log(`activeGameStore.listResumable() SQL: ${captured.join(" ;; ")}`);
 log(`returned ${rows.length} rows in ${ms}ms; JSON of the result ${Buffer.byteLength(JSON.stringify(rows))} bytes in the Node heap`);
 const plan = (await admin.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) select "room_id", "game_state" from "active_games"`)).rows.map((r) => r["QUERY PLAN"]);
 log(`plan: ${plan.join(" | ")}`);

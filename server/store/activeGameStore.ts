@@ -24,7 +24,8 @@ const row = { roomId: activeGames.roomId, gameState: activeGames.gameState };
 
 const version = sql`${activeGames.gameState}->'schemaVersion'`;
 const playerMap = sql`${activeGames.gameState}->'match'->'playerMap'`;
-// `readPersistedPlayerMap` in SQL: string ids under seat-number keys, in seat order.
+// String ids in seat order. Narrower than `readPersistedPlayerMap`, which takes any key `Number()`
+// reads as a seat: only digit keys, the one kind `packPersistedState`'s integer seats serialize to.
 const seatedUserIds = sql<string[]>`array(
   select seat.value #>> '{}'
   from jsonb_each(case when jsonb_typeof(${playerMap}) = 'object' then ${playerMap} else '{}'::jsonb end) seat
