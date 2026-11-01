@@ -68,21 +68,18 @@ const fallbacks = new Counter({
   labelNames: ["limiter"],
 });
 
-/** How long a request waits on Redis for its count; past it, this instance counts it. */
-const SHARED_COUNT_DEADLINE_MS = 1_000;
+/** How long a request waits on Redis for the cluster's count before going on with its own. */
+const SHARED_COUNT_DEADLINE_MS = 500;
 
 let limitsConnection: RedisClient | null = null;
-const hasConnected = new WeakSet<RedisClient>();
 
-async function sendLimitCommand(args: string[]): Promise<RedisReply> {
-  if (!limitsConnection?.isOpen) {
-    const opened = openRedis("limits");
-    opened.once("ready", () => hasConnected.add(opened));
-    limitsConnection = opened;
-  }
-  // Only a first connect is waited out: a command sent while reconnecting would sit in the
-  // offline queue for its whole timeout, and every limited request with it.
-  if (hasConnected.has(limitsConnection) && !limitsConnection.isReady) throw new Error("Redis is reconnecting");
+/** Opens the connection every limiter counts over, at boot; `closeRedis` ends it. */
+export function connectRateLimits(): void {
+  if (!limitsConnection?.isOpen) limitsConnection = openRedis("limits", { offlineQueue: false });
+}
+
+function sendLimitCommand(args: string[]): Promise<RedisReply> {
+  if (!limitsConnection) return Promise.reject(new Error("the rate-limit connection was never opened"));
   return limitsConnection.sendCommand(args);
 }
 
@@ -95,9 +92,11 @@ function withinDeadline<T>(work: Promise<T>): Promise<T> {
 }
 
 /**
- * Counts in Redis, so a limit holds across instances and through a deploy. While Redis cannot
- * answer, counts in this limiter's own memory instead: the limit still holds on this instance,
- * and the caller never sees the outage as a 500 or as a pass. Counts taken in memory stay there.
+ * Counts every request twice: in Redis, the cluster's count, which holds across instances and
+ * through a deploy; and in this limiter's own memory, this instance's count. A request is judged
+ * by the larger. While Redis cannot answer, the local count alone judges, so an outage leaves
+ * each limit exactly as strict as a per-instance limiter, never looser, and a caller never sees
+ * it as a 500.
  */
 class SharedStore implements Store {
   readonly localKeys = false;
@@ -131,30 +130,31 @@ class SharedStore implements Store {
   }
 
   async increment(key: string): Promise<IncrementResponse> {
-    try {
-      return await this.#shared(key, (k) => this.#redis.increment(k));
-    } catch {
-      fallbacks.inc({ limiter: this.#name });
-      return this.#memory.increment(key);
-    }
+    const [local, shared] = await Promise.all([
+      this.#memory.increment(key),
+      this.#shared(key, (k) => this.#redis.increment(k)).catch(() => {
+        fallbacks.inc({ limiter: this.#name });
+        return undefined;
+      }),
+    ]);
+    return shared && shared.totalHits >= local.totalHits ? shared : local;
   }
 
   async decrement(key: string): Promise<void> {
-    if (await this.#memory.get(key)) return this.#memory.decrement(key);
-    await this.#shared(key, (k) => this.#redis.decrement(k)).catch(() => {});
+    await Promise.all([this.#memory.decrement(key), this.#shared(key, (k) => this.#redis.decrement(k)).catch(() => {})]);
   }
 
   async get(key: string): Promise<ClientRateLimitInfo | undefined> {
-    try {
-      return await this.#shared(key, (k) => this.#redis.get(k));
-    } catch {
-      return this.#memory.get(key);
-    }
+    const [local, shared] = await Promise.all([
+      this.#memory.get(key),
+      this.#shared(key, (k) => this.#redis.get(k)).catch(() => undefined),
+    ]);
+    if (!shared || !local) return shared ?? local;
+    return shared.totalHits >= local.totalHits ? shared : local;
   }
 
   async resetKey(key: string): Promise<void> {
-    await this.#memory.resetKey(key);
-    await this.#shared(key, (k) => this.#redis.resetKey(k)).catch(() => {});
+    await Promise.all([this.#memory.resetKey(key), this.#shared(key, (k) => this.#redis.resetKey(k)).catch(() => {})]);
   }
 
   shutdown(): void {

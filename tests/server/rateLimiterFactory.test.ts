@@ -1,5 +1,5 @@
 // #953: server/http/rateLimit.ts is the only place a rate limiter may be built.
-import { after, describe, test } from "node:test";
+import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -8,8 +8,8 @@ import ts from "typescript";
 import express from "express";
 import type { AddressInfo } from "node:net";
 import { createClient } from "redis";
-import { routeLimiter } from "../../server/http/rateLimit.ts";
-import { closeRedis, keyspace } from "../../server/store/redis.ts";
+import { connectRateLimits, routeLimiter } from "../../server/http/rateLimit.ts";
+import { closeRedis, keyspace, redisReady } from "../../server/store/redis.ts";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 import { routeSources } from "../helpers/routeSources.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
@@ -98,6 +98,11 @@ test("every route limiter names its counts with a literal no other limiter uses"
 });
 
 describe("every route limiter counts in Redis", { skip: hasDatabase() ? false : skipMessage() }, () => {
+  before(async () => {
+    connectRateLimits();
+    assert.ok(await redisReady(), "the limiters' Redis connection never came up");
+  });
+
   async function sharedCounts(name: string): Promise<number[]> {
     const redis = createClient({ url: process.env.REDIS_URL });
     redis.on("error", () => {});
