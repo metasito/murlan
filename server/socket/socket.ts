@@ -7,6 +7,7 @@ import {
   type ClientToServerEvents,
   type ServerToClientEvents,
 } from "../../shared/protocol.ts";
+import { NOT_AUTHENTICATED } from "../../shared/handshake.ts";
 import type { IncomingMessage, Server as HttpServer } from "node:http";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import type { Session, SessionData } from "express-session";
@@ -143,7 +144,7 @@ export function setupSocket(httpServer: HttpServer, sessionMiddleware: RequestHa
       const ticket = sessionUserId ? null : verifySocketTicket(socket.handshake.auth?.ticket);
       const claimedUserId = sessionUserId ?? ticket?.userId;
 
-      if (!claimedUserId) return next(new Error("Not authenticated"));
+      if (!claimedUserId) return next(new Error(NOT_AUTHENTICATED));
       socket.data.sid = sessionUserId ? req.sessionID : ticket?.sid;
 
       // The session or the ticket has already proved this id, so the budget is
@@ -163,10 +164,10 @@ export function setupSocket(httpServer: HttpServer, sessionMiddleware: RequestHa
       }
 
       if (ticket && !(await redeemSocketTicket(ticket))) {
-        return next(new Error("Not authenticated"));
+        return next(new Error(NOT_AUTHENTICATED));
       }
       const user = await userStore.getUser(claimedUserId);
-      if (!user) return next(new Error("Not authenticated"));
+      if (!user) return next(new Error(NOT_AUTHENTICATED));
       return next();
     } catch (err) {
       logger.error({ err }, "Socket handshake failed");
