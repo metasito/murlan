@@ -64,8 +64,8 @@ const LOGIN_LIMIT_DECOY_HASH = bcrypt.hashSync("murlan-rate-limit-timing-decoy",
  * userStore.getUserByUsername looks up by, so case doesn't fork one account
  * into two budgets.
  *
- * The count is the cluster's, not this instance's, and outlives a deploy:
- * see routeLimiter's store.
+ * Judged by the larger of the cluster's count and this instance's, so it
+ * holds across instances and through a deploy: see routeLimiter's store.
  *
  * skipSuccessfulRequests: a correct login must never spend down the budget a
  * wrong one does — otherwise a user who logs in from several devices a day

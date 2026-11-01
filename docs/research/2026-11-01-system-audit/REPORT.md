@@ -176,7 +176,8 @@ Pool and lifecycle findings follow in their own section.
 
 - **8. Rate limits per instance** (`server/http/rateLimit.ts`, memory store): with N instances the
   login brute-force limit becomes N×, and every deploy resets it. Fixed by D16 (#1887): every HTTP
-  limiter counts in Redis, cluster-wide, and in its own memory only while Redis cannot answer.
+  limiter counts each request in Redis, cluster-wide, and in its own memory, and judges it by the
+  larger count; while Redis cannot answer, the memory count alone judges.
 - **9. Over-fetch** (`server/store/friendStore.ts:25-43`): friend lists select whole `users` rows,
   password hash and email included, on every connect, then use three fields.
 - **10. Quick match** (`server/store/roomStore.ts:334-354`): every public waiting room, no `LIMIT`,

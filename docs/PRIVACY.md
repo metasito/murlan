@@ -72,9 +72,10 @@ written at all, only one of four fixed words of our own saying which part of the
 asked for, so that a missing file and a stranger probing us do not read the same. A request line
 names nobody, and there is nothing in it to look up, export or delete.
 Your IP address still reaches the server, because a network connection cannot be made without
-one, and our rate limiter keeps a count of recent requests against it, shared between our
-servers, to stop abuse. The count is deleted when its window ends, and the address is never
-written to a log.
+one, and our rate limiter counts recent requests to stop abuse. It counts against your IP address,
+and for some actions against the email address or username you submitted or your account, in a
+store our servers share. The count is kept under a keyed hash of that value, never the value
+itself, and is deleted when its window ends. The address is never written to a log.
 
 Other lines in the same log do name an account: any game message the server refuses, and actions
 on your account such as signing in or changing your password. Those carry your account number,
@@ -133,6 +134,7 @@ a copy of your data.
 | Oversized game messages in transit | Seconds, then discarded automatically |
 | Replays | 14 days after the round |
 | Crash reports, server error records, bug reports, usage events | 90 days |
+| Rate-limit counts | Until the window they count ends, 24 hours at most. Held under a keyed hash of your IP address, email address, username or account, never the value itself |
 | Email confirmation and password-reset codes | Until they expire, minutes after being sent |
 | Database backups | 14 days after each is made, except that the newest is always kept; deleted accounts included until then |
 | Push token | Until you sign out, register a sixth device (we keep your five most recent), give the device to someone who signs in on it, delete your account, or a later notification finds the device gone |
