@@ -33,7 +33,7 @@ captured.length = 0;
 const fr = await friendStore.getFriends("u1");
 log(`getFriends SQL: ${captured.join(" ;; ")}`);
 log(`getFriends row.friend keys: ${Object.keys(fr[0]!.friend).join(", ")}`);
-log(`getFriends row.friend.password = ${fr[0]!.friend.password.slice(0, 12)}..., email = ${fr[0]!.friend.email}`);
+log(`getFriends row.friend carries password: ${"password" in fr[0]!.friend}, email: ${"email" in fr[0]!.friend}`);
 captured.length = 0;
 const pend = await friendStore.getPendingFriendRequests("u1");
 log(`getPendingFriendRequests SQL: ${captured.join(" ;; ")}`);

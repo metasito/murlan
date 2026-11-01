@@ -1,5 +1,5 @@
 import { now } from "../http/clock.ts";
-import { eq, and, or, sql, desc, inArray } from "drizzle-orm";
+import { eq, and, or, sql, desc, inArray, getTableColumns } from "drizzle-orm";
 import { db, type Database } from "./db.ts";
 import { uniqueViolation } from "./userStore.ts";
 import { users, rooms, roomPlayers, friends, gameInvites } from "../../shared/schema.ts";
@@ -10,6 +10,11 @@ type Executor = Pick<Database, "select">;
 
 /** Why a friend request cannot exist, in the terms the route answers in. */
 export type AddFriendRefusal = "already_friends" | "already_sent" | "incoming_pending";
+
+/** The far side of a friend row: everything any caller reads of that account. */
+export type FriendUser = Pick<User, "id" | "username" | "lastSeen">;
+
+const friendUser = { id: users.id, username: users.username, lastSeen: users.lastSeen };
 
 export type AddFriendResult =
   | { ok: true; request: Friend | undefined }
@@ -22,24 +27,20 @@ export type AddFriendResult =
  * is sealed against exactly that.
  */
 export const friendStore = {
-  async getFriends(userId: string): Promise<(Friend & { friend: User })[]> {
-    const rows = await db()
-      .select()
+  async getFriends(userId: string): Promise<(Friend & { friend: FriendUser })[]> {
+    return db()
+      .select({ ...getTableColumns(friends), friend: friendUser })
       .from(friends)
       .innerJoin(users, eq(friends.friendUserId, users.id))
       .where(and(eq(friends.userId, userId), eq(friends.status, "accepted")));
-
-    return rows.map((r) => ({ ...r.friends, friend: r.users }));
   },
 
-  async getPendingFriendRequests(userId: string): Promise<(Friend & { requester: User })[]> {
-    const rows = await db()
-      .select()
+  async getPendingFriendRequests(userId: string): Promise<(Friend & { requester: FriendUser })[]> {
+    return db()
+      .select({ ...getTableColumns(friends), requester: friendUser })
       .from(friends)
       .innerJoin(users, eq(friends.userId, users.id))
       .where(and(eq(friends.friendUserId, userId), eq(friends.status, "pending")));
-
-    return rows.map((r) => ({ ...r.friends, requester: r.users }));
   },
 
   /**
@@ -337,13 +338,12 @@ export const friendStore = {
     return deleted.length > 0;
   },
 
-  async getSentFriendRequests(userId: string): Promise<(Friend & { recipient: User })[]> {
-    const rows = await db()
-      .select()
+  async getSentFriendRequests(userId: string): Promise<(Friend & { recipient: FriendUser })[]> {
+    return db()
+      .select({ ...getTableColumns(friends), recipient: friendUser })
       .from(friends)
       .innerJoin(users, eq(friends.friendUserId, users.id))
       .where(and(eq(friends.userId, userId), eq(friends.status, "pending")));
-    return rows.map((r) => ({ ...r.friends, recipient: r.users }));
   },
 
   /** Only the sender may cancel their own pending request. */
