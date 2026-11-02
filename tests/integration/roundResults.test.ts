@@ -301,7 +301,11 @@ describe("a finished round's results", { skip: hasDatabase() ? false : skipMessa
       const query = t.mock.method(pg.Client.prototype, "query");
       try {
         assert.equal((await commitRoundResults(activeGameStore, roomId, epoch, entry, { markFinished: true })).kind, "committed");
-        return query.mock.callCount();
+        const text = (args: unknown[]) => String((args[0] as { text?: string })?.text ?? args[0]).trim().toLowerCase();
+        // Background queries on other connections (the ownership heartbeat) land in the same window.
+        const begins = query.mock.calls.filter((c) => text(c.arguments) === "begin");
+        assert.equal(begins.length, 1, "one transaction in the window");
+        return query.mock.calls.filter((c) => c.this === begins[0]!.this).length;
       } finally {
         query.mock.restore();
         await activeGameStore.remove(roomId, epoch);
