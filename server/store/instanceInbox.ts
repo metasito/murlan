@@ -21,16 +21,25 @@ export type InstanceHandler = (message: InstanceMessage) => void | Promise<void>
 export interface Inbox {
   /** Rejects at once while Redis is unreachable: there is nobody to hand the message to. */
   send(to: string, message: InstanceMessage): Promise<void>;
+  /** Only to an inbox its instance still keeps: false, and nothing written, for one that is gone. Rejects like `send`. */
+  offer(to: string, message: InstanceMessage): Promise<boolean>;
   on(kind: string, handler: InstanceHandler): void;
   close(): void;
 }
 
 const READ_COUNT = 100;
 const RETRY_MS = 250;
+/** How often an instance renews its own inbox, well inside the expiry each renewal sets. */
+const KEEPALIVE_MS = 3_000;
+const BOOT: InstanceMessage = { kind: "boot" };
 
 const inboxKey = (id: string) => redisKey(`inbox:${id}`);
 
 const SEND = `redis.call("XADD", KEYS[1], ARGV[1], ARGV[2], ARGV[3], "*", "m", ARGV[5])
+redis.call("EXPIRE", KEYS[1], ARGV[4])
+return 1`;
+
+const OFFER = `if not redis.call("XADD", KEYS[1], "NOMKSTREAM", ARGV[1], ARGV[2], ARGV[3], "*", "m", ARGV[5]) then return 0 end
 redis.call("EXPIRE", KEYS[1], ARGV[4])
 return 1`;
 
@@ -42,7 +51,8 @@ export function inboxTrim() {
 /**
  * One instance's addressed stream, `inbox:<instanceId>`. Each message is read once and in
  * order: the reader resumes from the last entry it handed over, across any reconnect, for as
- * long as the stream still holds it.
+ * long as the stream still holds it. The instance keeps its stream in being from its open to its
+ * close, so the stream existing is what `offer` reads as the instance being there.
  */
 export function openInbox({
   id = thisInstance,
@@ -94,25 +104,44 @@ export function openInbox({
 
   void read(reader);
 
+  // One script, not a MULTI: node-redis queues a MULTI while offline whatever the client's
+  // offline queue is set to. Not two commands either: an entry added whose expiry failed
+  // would hold no TTL, and the send would reject although delivered.
+  function write(script: string, to: string, message: InstanceMessage): Promise<unknown> {
+    const { strategy, strategyModifier, threshold } = inboxTrim();
+    return writer.eval(script, {
+      keys: [inboxKey(to)],
+      arguments: [strategy, strategyModifier, String(threshold), String(CLUSTER_GAP_SECONDS), JSON.stringify(message)],
+    });
+  }
+
+  const own = inboxKey(id);
+  const keep = async () => {
+    if ((await writer.pExpire(own, CLUSTER_GAP_SECONDS * 1_000)) === 0) await write(SEND, id, BOOT);
+  };
+  writer.on("ready", () => void keep().catch((err: unknown) => logger.warn({ err }, "Could not open this instance's inbox")));
+  const keeping = setInterval(() => void keep().catch(() => {}), KEEPALIVE_MS);
+  (keeping as unknown as { unref?: () => void }).unref?.();
+
   return {
     async send(to, message) {
-      const key = inboxKey(to);
-      // One script, not a MULTI: node-redis queues a MULTI while offline whatever the client's
-      // offline queue is set to. Not two commands either: an entry added whose expiry failed
-      // would hold no TTL, and the send would reject although delivered.
-      const { strategy, strategyModifier, threshold } = inboxTrim();
       clusterMessages.inc({ channel: "inbox" });
-      await writer.eval(SEND, {
-        keys: [key],
-        arguments: [strategy, strategyModifier, String(threshold), String(CLUSTER_GAP_SECONDS), JSON.stringify(message)],
-      });
+      await write(SEND, to, message);
+    },
+    async offer(to, message) {
+      clusterMessages.inc({ channel: "inbox" });
+      return Number(await write(OFFER, to, message)) === 1;
     },
     on(kind, handler) {
       handlers.set(kind, handler);
     },
     close() {
-      writer.destroy();
+      clearInterval(keeping);
       reader.destroy();
+      void writer
+        .del(own)
+        .catch(() => {})
+        .finally(() => writer.destroy());
     },
   };
 }
@@ -128,6 +157,11 @@ export function startInbox(): void {
 export function sendToInstance(to: string, message: InstanceMessage): Promise<void> {
   if (!inbox) return Promise.reject(new Error("the instance inbox is not open"));
   return inbox.send(to, message);
+}
+
+export function offerToInstance(to: string, message: InstanceMessage): Promise<boolean> {
+  if (!inbox) return Promise.reject(new Error("the instance inbox is not open"));
+  return inbox.offer(to, message);
 }
 
 export function onInstanceMessage(kind: string, handler: InstanceHandler): void {

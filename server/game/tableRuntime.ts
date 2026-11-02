@@ -12,6 +12,7 @@ import { applyOrForward, registerTableRouting } from "./tableRouter.ts";
 import { reopenOwnership } from "./gameOwnership.ts";
 import { disposeGame, stopTables } from "./gamePersistence.ts";
 import { expireVoteDeadline } from "./tableVotes.ts";
+import { handOffTables, registerHandOff } from "./tableHandOff.ts";
 
 type OutEvent = Exclude<keyof ServerToClientEvents, "game:state">;
 
@@ -53,6 +54,10 @@ export interface Peers {
    * takes the message and nobody reads it.
    */
   send(to: string, message: InstanceMessage): Promise<void>;
+  /** `send` to an instance whose inbox is still kept; false for one that is gone. Rejects while the store is down. */
+  offer(to: string, message: InstanceMessage): Promise<boolean>;
+  /** The other instances alive now; rejects when that cannot be read. */
+  live(): Promise<string[]>;
   /** A handler that awaits holds up every later message to this instance. */
   on(kind: string, handler: InstanceHandler): void;
   /** The instance a table's owner record names, null with none; rejects when it cannot be read. */
@@ -97,7 +102,9 @@ export interface TableRuntime extends Omit<TablePorts, "store"> {
   store: TableReads;
   /** Runs a table action wherever the table is. */
   route(draft: TableActionDraft): Promise<Outcome>;
-  /** See `gamePersistence.ts` `stopTables`; the shutdown's one table step. */
+  /** See `tableHandOff.ts`; the shutdown's first table step. */
+  handOffTables(budgetMs: number): Promise<void>;
+  /** See `gamePersistence.ts` `stopTables`; the shutdown's last table step. */
   stopTables(): Promise<void>;
   /** What the next-round vote deadline does when it runs out. */
   expireVoteDeadline(roomId: string): Promise<void>;
@@ -111,10 +118,12 @@ export function createTableRuntime(ports: TablePorts): TableRuntime {
   const rt: TableRuntime = {
     ...ports,
     route: (draft) => applyOrForward(rt, draft),
+    handOffTables: (budgetMs) => handOffTables(rt, budgetMs),
     stopTables,
     expireVoteDeadline: (roomId) => expireVoteDeadline(rt, roomId),
   };
   registerTableRouting(rt);
+  registerHandOff(rt);
   reopenOwnership({ onRoomLost: (roomId) => disposeGame(rt, roomId, false), rows: ports.store.games });
   return rt;
 }

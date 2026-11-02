@@ -9,7 +9,7 @@ import type { FriendRequestAccepted, FriendRequestIncoming } from "./http.ts";
 import type * as Inbound from "./socketSchemas.ts";
 import type { TranslationParams } from "./i18n.ts";
 
-export const PROTOCOL_VERSION = 17;
+export const PROTOCOL_VERSION = 19;
 export const MIN_PROTOCOL_VERSION = 14;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */
@@ -121,6 +121,8 @@ export interface ServerToClientEvents {
   "game:error": (error: ServerPayload) => void;
   "room:error": (error: ServerPayload) => void;
   "socket:error": (error: ServerPayload) => void;
+  /** This instance is shutting down: the first reconnect waits at least `reconnectAfterMs`. */
+  "server:draining": (notice: { reconnectAfterMs: number }) => void;
   "friend:error": (error: ServerPayload) => void;
   "friend:online_list": (list: OnlineList) => void;
   "friend:invite": (invite: { from: string; roomCode: string }) => void;

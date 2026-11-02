@@ -7,7 +7,7 @@ import { now } from "../http/clock.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { TableRuntime, TableStore, TableWriters } from "./tableRuntime.ts";
 import type { AppliedResults } from "./roundOver.ts";
-import { ownerEpochOf, ownsRoom, releaseRoomAfter, unclaimedRooms, writeAsOwner } from "./gameOwnership.ts";
+import { ownerEpochOf, ownsRoom, releaseForHandOff, releaseRoomAfter, unclaimedRooms, writeAsOwner } from "./gameOwnership.ts";
 import { allRoomWritesLanded, queueBarrier, queueSnapshot, roomWritesLanded } from "./roomWriteChain.ts";
 import {
   sweepIntervalMs,
@@ -76,6 +76,17 @@ export function disposeGame(rt: TableRuntime, roomId: string, deleteRow = true) 
   activeGames.delete(roomId);
   const discarded = deleteRow ? rt.writers.discardGame(roomId) : undefined;
   void releaseRoomAfter(roomId, Promise.all([discarded, roomWritesLanded(roomId)]));
+}
+
+/**
+ * Frees a table whose last write has landed for a peer's claim (`releaseForHandOff`), and only
+ * then takes it out of memory: null keeps both the game and its claim here. The claim is gone
+ * before the lock is, so nothing here writes the row the peer is about to enter.
+ */
+export async function releaseToPeer(roomId: string): ReturnType<typeof releaseForHandOff> {
+  const release = await releaseForHandOff(roomId);
+  if (release) activeGames.delete(roomId);
+  return release;
 }
 
 /**

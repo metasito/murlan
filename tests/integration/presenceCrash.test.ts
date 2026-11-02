@@ -79,7 +79,7 @@ describe("an instance killed outright", { skip: hasDatabase() ? false : skipMess
     });
     await new Promise((resolve) => setTimeout(resolve, 4_000));
     monitor.destroy();
-    const perUser = writes.filter((w) => !/:instance:|:instances"|:social-epoch"/.test(w));
+    const perUser = writes.filter((w) => !/:instance:|:instances"|:social-epoch"/.test(w) && !/^"pexpire" "[^"]*:inbox:/i.test(w));
     assert.deepEqual(perUser, [], "an online player cost a periodic write");
     assert.ok(writes.length > 0, "the monitor saw not even the heartbeat, so it saw nothing");
   });

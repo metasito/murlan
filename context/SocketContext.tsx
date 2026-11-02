@@ -30,7 +30,7 @@ import { useNotification } from "@/context/NotificationContext";
 import { SessionReplacedNotice } from "@/components/SessionReplacedNotice";
 import { t, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
-import { reconnectDelayMs } from "@/lib/reconnectDelay";
+import { DRAINING_SPREAD_MS, reconnectWaitMs } from "@/lib/reconnectDelay";
 import { sendInvite, undelivered } from "@/lib/sendIntent";
 import type { FriendRequestAccepted, FriendRequestIncoming, GameInviteDto } from "@/shared/http";
 import type { Socket as UntypedSocket } from "socket.io-client";
@@ -198,6 +198,8 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
   // Consecutive failed attempts, for the backoff below. Reset on every
   // successful connect.
   const retryAttemptRef = useRef(0);
+  // When a draining server said this socket may come back (`server:draining`); 0 once it has.
+  const drainingUntilRef = useRef(0);
   // The socket nothing may reconnect until the player asks: its session moved
   // or died. Keyed by socket, so the next account's starts free.
   const haltedSocketRef = useRef<Socket | null>(null);
@@ -315,7 +317,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
     const retryLater = () => {
       if (haltedSocketRef.current === socket) return;
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-      const delay = reconnectDelayMs(retryAttemptRef.current++, randomRef.current);
+      const delay = reconnectWaitMs(retryAttemptRef.current++, drainingUntilRef.current - Date.now(), randomRef.current);
       retryTimerRef.current = setTimeout(() => {
         retryTimerRef.current = null;
         if (!socket.connected) socket.connect();
@@ -323,7 +325,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
     };
     // A pending retry is what a dropped socket looks like between attempts.
     const retryNow = () => {
-      if (!retryTimerRef.current) return;
+      if (!retryTimerRef.current || drainingUntilRef.current > Date.now()) return;
       clearTimeout(retryTimerRef.current);
       retryTimerRef.current = null;
       socket.connect();
@@ -348,6 +350,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
     const onConnect = () => {
       setSessionReplaced(null);
       retryAttemptRef.current = 0;
+      drainingUntilRef.current = 0;
       stopWaitingForList();
       listOverdue = setTimeout(() => {
         listOverdue = null;
@@ -359,6 +362,10 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
       stopWaitingForList();
       reportSocketClose(reason);
       if (reason !== "io client disconnect") retryLater();
+    };
+
+    const onDraining = ({ reconnectAfterMs }: { reconnectAfterMs: number }) => {
+      drainingUntilRef.current = Date.now() + Math.min(Math.max(0, reconnectAfterMs), DRAINING_SPREAD_MS);
     };
 
     const onConnectError = (err: Error) => {
@@ -496,6 +503,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("connect_error", onConnectError);
+    socket.on("server:draining", onDraining);
     socket.on("friend:online_list", onOnlineList);
     socket.on("friend:status", onFriendStatus);
     socket.on("friend:request_incoming", onRequestIncoming);
@@ -522,6 +530,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
       socket.off("connect_error", onConnectError);
+      socket.off("server:draining", onDraining);
       socket.off("friend:online_list", onOnlineList);
       socket.off("friend:status", onFriendStatus);
       socket.off("friend:request_incoming", onRequestIncoming);
