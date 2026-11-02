@@ -16,7 +16,7 @@ import { eventually } from "../helpers/client.ts";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
-import { createSocketAdapter, speaksInbox, type OlderPeers } from "../../server/socket/socketAdapter.ts";
+import { createSocketAdapter, heardFrom } from "../../server/socket/socketAdapter.ts";
 import { randomUUID } from "node:crypto";
 import { installClock, realClock } from "../../server/http/clock.ts";
 import { openPresenceStore, type PresenceStore } from "../../server/store/presence.ts";
@@ -169,30 +169,15 @@ describe("the cluster's count of its peers", { skip: hasDatabase() ? false : ski
     });
   });
 
-  describe("a peer on a revision that keeps no presence liveness", () => {
-    const c = cluster("count_older");
+  describe("a peer's heartbeat", () => {
+    const c = cluster("count_named");
     after(() => c.stop());
 
-    test("is heard as one by its heartbeat, and this revision's peers are not", { timeout: 30_000 }, async () => {
+    test("names its instance", { timeout: 30_000 }, async () => {
       const a = c.boot("a");
-      const b = c.boot("b");
-      const hears = () => (a.of("/").adapter as unknown as OlderPeers).hearsOlderPeers();
-      // b has answered, so its first beat, carrying this revision's marker, has gone out.
+      c.boot("b");
       await c.answering(a);
-      assert.equal(hears(), false, "a peer on this revision was taken for an older one");
-      b.serverSideEmit("murlan:adapter-heartbeat");
-      await eventually(() => hears(), "an older revision's heartbeat to be heard");
-    });
-
-    test("this revision's heartbeat names its instance for inbox routing and still reads as keeping liveness", { timeout: 30_000 }, async () => {
-      const c2 = cluster("count_current");
-      after(() => c2.stop());
-      const a = c2.boot("a");
-      c2.boot("b");
-      const hears = () => (a.of("/").adapter as unknown as OlderPeers).hearsOlderPeers();
-      await c2.answering(a);
-      await eventually(() => speaksInbox(instanceId), "a current peer's heartbeat to name it");
-      assert.equal(hears(), false, "a current peer was taken for an older one");
+      await eventually(() => heardFrom(instanceId), "a peer's heartbeat to name it");
     });
   });
 

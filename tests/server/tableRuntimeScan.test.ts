@@ -61,7 +61,6 @@ const rules = {
       socket("socketOutbox.ts"),
       socket("delivery.ts"),
       socket("seating.ts"),
-      socket("peers.ts"),
       socket("socketRegistry.ts"),
       socket("socketPresence.ts"),
     ]).concat(presenceOutsideEviction(s)),

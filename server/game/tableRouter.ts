@@ -14,7 +14,7 @@ import { randomUUID } from "node:crypto";
 import type { TableRuntime } from "./tableRuntime.ts";
 import { logger } from "../shared/logger.ts";
 import { activeGames, isShuttingDown } from "./gameRoom.ts";
-import { claimRoom, lockHolder, ownsRoom, releaseRoom, type LockHolder } from "./gameOwnership.ts";
+import { claimRoom, lockHolder, ownsRoom, releaseRoom } from "./gameOwnership.ts";
 import type { Outcome } from "../shared/refusal.ts";
 import type { TableAction, TableActionDraft, TakeoverMode } from "./tableActions.ts";
 import { TAKEOVER } from "./tableActions.ts";
@@ -23,8 +23,6 @@ import { rehydrateGame } from "./tableLifecycle.ts";
 
 export const TABLE_ASK = "table-ask";
 export const TABLE_ANSWER = "table-answer";
-/** What a revision before inbox routing emits and answers (ADR 0014, decision 9). */
-export const LEGACY_TABLE_EVENT = "murlan:table";
 
 /**
  * What an instance answers for a room it does not hold. Distinct from every
@@ -131,7 +129,6 @@ const waiting = new Map<string, (outcome: Outcome | undefined) => void>();
  * moment they are all acting at once.
  */
 export function registerTableRouting(rt: TableRuntime): void {
-  rt.peers.legacy.answer(LEGACY_TABLE_EVENT, (action) => answerAsOwner(rt, action as TableAction));
   rt.peers.on(TABLE_ASK, ({ from, ask, action }) => {
     if (typeof from !== "string" || typeof ask !== "string" || !action) return;
     const tableAction = action as TableAction;
@@ -151,13 +148,13 @@ export function registerTableRouting(rt: TableRuntime): void {
 }
 
 /**
- * The owner's answer; `unowned` when no instance asked holds the room; `silent` when nothing came
- * back in time; `unanswered` when that was an owner still connected, whose lock reading free proves
- * nothing; `gone` when the ask could not be handed over at all.
+ * The owner's answer; `unowned` when no record names another instance or the one named does not
+ * hold the room; `silent` when nothing came back in time; `unanswered` when that was an owner still
+ * connected, whose lock reading free proves nothing; `gone` when the ask could not be handed over.
  */
 type Asked = Outcome | "unowned" | "silent" | "unanswered" | "gone";
 
-/** An owner running a revision without a `default` for this kind answers with nothing; it answered, and applied nothing. */
+/** An owner whose handlers have no `default` for this kind answers with nothing; it answered, and applied nothing. */
 const fromOwner = (outcome: Outcome | undefined): Asked =>
   outcome === undefined ? UNKNOWN_ACTION : outcome.code === NOT_MINE ? "unowned" : outcome;
 
@@ -174,11 +171,17 @@ async function within(asking: Promise<Asked>, silence: "silent" | "unanswered" =
 }
 
 /**
- * Waited out whole, and its silence never read as unowned while the owner is still subscribed: a
- * live owner whose ownership connection dropped holds the table with its lock free, and answers
- * once it has the lock back. A killed one loses its subscription at once.
+ * Asks the owner the record names. Its silence is read as unowned only once it is neither heard
+ * within the grace nor subscribed: a live owner whose ownership connection dropped holds the table
+ * with its lock free, and answers once it has the lock back. A killed one loses its subscription
+ * at once; one that died without a FIN keeps it for minutes, but stops being heard.
  */
-async function askInbox(rt: TableRuntime, owner: string, action: TableAction): Promise<Asked> {
+async function askOwner(rt: TableRuntime, action: TableAction): Promise<Asked> {
+  const owner = await rt.peers.ownerOf(action.roomId).catch((err: unknown) => {
+    logger.warn({ err, roomId: action.roomId }, "Could not read a table's owner record");
+    return null;
+  });
+  if (!owner || owner === rt.peers.self) return "unowned";
   const ask = randomUUID();
   const answered = new Promise<Outcome | undefined>((resolve) => waiting.set(ask, resolve));
   let asked: Asked;
@@ -198,44 +201,12 @@ async function askInbox(rt: TableRuntime, owner: string, action: TableAction): P
     waiting.delete(ask);
   }
   if (asked !== "unanswered") return asked;
+  if (!rt.peers.heard(owner)) return "silent";
   const subscribed = await rt.peers.stillSubscribed(owner).catch((err: unknown) => {
     logger.warn({ err, owner }, "Could not read whether a table's owner is still connected");
     return true;
   });
   return subscribed ? "unanswered" : "silent";
-}
-
-/** Every instance, for a table held by one on a revision before inbox routing (ADR 0014, decision 9). */
-function askEveryone(rt: TableRuntime, action: TableAction): Promise<Asked> {
-  return within(
-    rt.peers.legacy.ask(LEGACY_TABLE_EVENT, action).then(({ err, replies }) => {
-      const owner = replies.findIndex((r) => (r as Outcome | undefined)?.code !== NOT_MINE);
-      if (owner !== -1) return fromOwner(replies[owner] as Outcome | undefined);
-      // Some instance did not answer in time: reading that as "no owner" is how a slow owner's
-      // table gets taken over underneath it.
-      return err ? "silent" : "unowned";
-    })
-  );
-}
-
-/** The instance the owner record names, through its inbox when it reads one, else every instance. */
-async function askOwner(rt: TableRuntime, action: TableAction): Promise<Asked> {
-  const owner = await rt.peers.ownerOf(action.roomId).catch((err: unknown) => {
-    logger.warn({ err, roomId: action.roomId }, "Could not read a table's owner record");
-    return null;
-  });
-  if (!owner || owner === rt.peers.self) return "unowned";
-  return rt.peers.speaksInbox(owner) ? askInbox(rt, owner, action) : askEveryone(rt, action);
-}
-
-/**
- * Who holds the room's lock once the owner record's instance did not answer for it. Held with no
- * instance asked owning it: the holder may be on a revision that answers only the legacy emit.
- */
-async function askHolder(rt: TableRuntime, action: TableAction, asked: Asked): Promise<{ asked: Asked; holder: LockHolder }> {
-  const holder = await lockHolder(action.roomId);
-  if (holder !== "elsewhere" || asked !== "unowned") return { asked, holder };
-  return { asked: await askEveryone(rt, action), holder };
 }
 
 /**
@@ -302,13 +273,12 @@ async function askClaimAndApply(
   mode: TakeoverMode
 ): Promise<Outcome | typeof RETRY> {
   const { roomId } = action;
-  const named = await askOwner(rt, action);
-  if (typeof named === "object") return named;
+  const asked = await askOwner(rt, action);
+  if (typeof asked === "object") return asked;
 
   // Nobody answered for it, or the one named does not hold it: the lock is the authority on
   // whether anyone does. An ask that could not even be handed over is not tried again.
-  const { asked, holder } = await askHolder(rt, action, named);
-  if (typeof asked === "object") return asked;
+  const holder = await lockHolder(roomId);
   if (holder === "elsewhere" || holder === "unreachable") return asked === "gone" ? UNREACHABLE : RETRY;
   if (holder === "free" && asked === "unanswered") return RETRY;
   // Reviving a stranded round to give one seat to a bot would set the whole table playing itself
@@ -348,11 +318,10 @@ export async function applyOrForward(
   // closing and the next process restores every table from `active_games`. It
   // still asks, because a table held elsewhere must hear that its player left.
   if (!activeGames.has(roomId) && isShuttingDown()) {
-    const named = await askOwner(rt, action);
-    if (typeof named === "object") return named;
-    if (named === "gone") return UNREACHABLE;
-    const { asked, holder } = await askHolder(rt, action, named);
+    const asked = await askOwner(rt, action);
     if (typeof asked === "object") return asked;
+    if (asked === "gone") return UNREACHABLE;
+    const holder = await lockHolder(roomId);
     if (holder === "free" && asked === "unanswered") return UNREACHABLE;
     return holder === "elsewhere" || holder === "unreachable" ? UNREACHABLE : UNOWNED;
   }

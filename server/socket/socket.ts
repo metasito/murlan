@@ -121,15 +121,15 @@ export function setupSocket(httpServer: HttpServer, sessionMiddleware: RequestHa
   startInbox();
   openTableOwners();
   // Before the first connection: a table action forwarded from another
-  // instance arrives in this instance's inbox or on `io`, not on a socket, and
-  // one that lands before the runtime's listener exists is answered by nobody.
+  // instance arrives in this instance's inbox, not on a socket, and one that
+  // lands before the runtime's listener exists is answered by nobody.
   const store = { games: activeGameStore, rooms: roomStore };
   const rt = createTableRuntime({
     out: deliveryOutbox(io),
     presence: storePresence(),
     writers: tableWriters(store),
     transport: io,
-    peers: instancePeers(io),
+    peers: instancePeers(),
     store,
   });
   bindSocketRuntime(rt);

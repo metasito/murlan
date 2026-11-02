@@ -10,7 +10,7 @@ import { installClock } from "../../server/http/clock.ts";
 import type { TableActionDraft } from "../../server/game/tableActions.ts";
 import { fakeClock } from "../helpers/fakeClock.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
-import { forwardedTo, legacyOwner, ownedElsewhere, recordingRuntime } from "../helpers/recordingRuntime.ts";
+import { forwardedTo, ownedElsewhere, recordingRuntime } from "../helpers/recordingRuntime.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 
 const ROOM = "table-router-room";
@@ -248,7 +248,6 @@ describe("an action for a table another instance owns", () => {
     const { rt } = recordingRuntime({
       peers: {
         ownerOf: async () => "owner-instance",
-        speaksInbox: () => true,
         send: async () => {
           sends++;
           throw new Error("that instance is gone");
@@ -262,16 +261,14 @@ describe("an action for a table another instance owns", () => {
     assert.equal(lock.taken, 0);
   });
 
-  test("whose owner record names an instance no longer heard does not wait on its inbox", async (t) => {
+  test("whose owner was last heard past the grace is taken over though its subscription outlives it", async (t) => {
     const lock = scriptLock(t, "free");
-    const sent: unknown[] = [];
-    const { rt } = recordingRuntime({
-      peers: { ownerOf: async () => "gone-instance", send: async (to) => void sent.push(to) },
-    });
+    const { peers, asks } = ownedElsewhere(() => "silent");
+    const { rt } = recordingRuntime({ peers: { ...peers, heard: () => false, stillSubscribed: async () => true } });
     const { value, ms } = await onFrozenClock(t, () => applyOrForward(rt, { kind: "seatLost", roomId: ROOM, userId: "ana" } as TableActionDraft));
     assert.deepEqual(value, { ok: false, code: "NO_LIVE_GAME" });
-    assert.equal(ms, 0);
-    assert.deepEqual(sent, []);
+    assert.equal(asks.length, 1, "an owner no longer heard was not asked through its inbox");
+    assert.equal(ms, 1_500);
     assert.equal(lock.taken, 0);
   });
 
@@ -327,45 +324,6 @@ describe("an action for a table another instance owns", () => {
     assert.equal(asks.length, 2);
     assert.equal(ms, 1_500 + 120 + 1_500, "not two tries of 1.5 s, 120 ms apart");
     assert.ok(ms < 3_500);
-  });
-});
-
-describe("an action for a table an instance on an older revision owns", () => {
-  test("is asked over the legacy emit, and nothing is left in that instance's inbox", async (t) => {
-    const lock = scriptLock(t, "elsewhere");
-    const { peers, emitted, sent } = legacyOwner(() => ({ ok: false, code: "NOT_SEATED" }));
-    const { rt } = recordingRuntime({ peers });
-    assert.deepEqual(await applyOrForward(rt, reaction("ana", "i3")), { ok: false, code: "NOT_SEATED" });
-    assert.deepEqual(emitted, [
-      { event: "murlan:table", payload: { kind: "reaction", roomId: ROOM, userId: "ana", emoji: "👍", id: "ana:i3" } },
-    ]);
-    assert.deepEqual(sent, []);
-    assert.equal(lock.probed, 0);
-  });
-
-  test("with no owner record but its lock held is asked over the legacy emit", async (t) => {
-    scriptLock(t, "elsewhere");
-    const { peers } = legacyOwner(() => ({ ok: true }));
-    const { rt } = recordingRuntime({ peers: { ...peers, ownerOf: async () => null } });
-    assert.deepEqual(await applyOrForward(rt, reaction("ana")), { ok: true });
-  });
-
-  test("that does not answer the legacy emit inside a try is answered unreachable", async (t) => {
-    scriptLock(t, "elsewhere");
-    const { peers } = legacyOwner(() => "silent");
-    const { rt } = recordingRuntime({ peers });
-    const { value, ms } = await onFrozenClock(t, () => applyOrForward(rt, { ...reaction("ana"), kind: "rejoin" } as TableActionDraft));
-    assert.deepEqual(value, { ok: false, code: "TABLE_UNREACHABLE" });
-    assert.ok(ms < 3_500);
-  });
-
-  test("forwarding to this instance over the legacy emit is answered here as the owner", async () => {
-    const { askLegacy, sent } = forwardedTo();
-    const wire = { id: "w9", kind: "reaction", roomId: ROOM, userId: "ana", emoji: "👍" };
-    assert.deepEqual(await askLegacy("murlan:table", wire), { ok: false, code: "NOT_THIS_INSTANCE" });
-    hold();
-    assert.deepEqual(await askLegacy("murlan:table", wire), { ok: true });
-    assert.equal(reactions(sent), 1);
   });
 });
 

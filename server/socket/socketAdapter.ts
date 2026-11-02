@@ -15,41 +15,12 @@ const FIRST_BEAT_POLL_MS = 100;
 const PEER_GRACE_MS = 10_000;
 const HEARTBEAT = "murlan:adapter-heartbeat";
 const LEAVING = "murlan:adapter-leaving";
-/** #1894's heartbeat carried this alone in place of the instance's name. */
-const KEEPS_LIVENESS = "liveness";
-
-/**
- * What a heartbeat says of its sender: whether it keeps presence liveness (#1894 on), and the
- * instance it names, which only a revision with inbox routing (#1895 on) sends. A revision before
- * #1894 sends neither. Until no such revision runs (ADR 0014, decision 9).
- */
-export function readHeartbeat(packet: Packet): { liveness: boolean; instance: string | null } {
-  const [, named, marks] = packet;
-  const marked = typeof marks === "object" && marks !== null && (marks as { liveness?: unknown }).liveness === true;
-  if (named === KEEPS_LIVENESS) return { liveness: true, instance: null };
-  return { liveness: marked, instance: marked && typeof named === "string" ? named : null };
-}
-
-/** What the adapter answers, on top of Socket.IO's, for `socketRegistry.ts`'s revocation. */
-export interface OlderPeers {
-  /**
-   * Whether a peer on a revision that keeps no presence liveness was heard within the grace: one
-   * that cannot handle what replaced its messages. Until no such revision runs (ADR 0014, decision 9).
-   */
-  hearsOlderPeers(): boolean;
-}
-
-/**
- * Instances whose heartbeat named them, with the adapter uid it came from. A revision before
- * inbox routing (#1895) beats without its name, so it is never here (ADR 0014, decision 9).
- */
+/** Instances by the name their heartbeat carries, with the adapter uid it came from. */
 export class RoutingPeers {
   private readonly named = new Map<string, { uid: string; at: number }>();
 
   heard(uid: string, packet: Packet, at: number): void {
-    if (packet[0] !== HEARTBEAT) return;
-    const { instance } = readHeartbeat(packet);
-    if (instance) this.named.set(instance, { uid, at });
+    if (packet[0] === HEARTBEAT && typeof packet[1] === "string") this.named.set(packet[1], { uid, at });
   }
 
   left(packet: Packet): void {
@@ -57,32 +28,28 @@ export class RoutingPeers {
   }
 
   /** Named within the grace. */
-  speaksInbox(instance: string, at: number): boolean {
+  heardFrom(instance: string, at: number): boolean {
     const peer = this.named.get(instance);
     if (peer && at - peer.at < PEER_GRACE_MS) return true;
     this.named.delete(instance);
     return false;
   }
 
-  /** Forgets every instance whose uid is not among `uids`, the adapter uids subscribed now. */
-  prune(uids: ReadonlySet<string>): void {
-    for (const [name, { uid }] of this.named) if (!uids.has(uid)) this.named.delete(name);
-  }
-
+  /** Whether `instance`'s uid is among `uids`, the adapter uids subscribed now; forgets every instance whose is not. */
   subscribed(instance: string, uids: ReadonlySet<string>): boolean {
-    this.prune(uids);
+    for (const [name, { uid }] of this.named) if (!uids.has(uid)) this.named.delete(name);
     return this.named.has(instance);
   }
 }
 
-export const heartbeatPacket = (): Packet => [HEARTBEAT, instanceId, { liveness: true }];
+export const heartbeatPacket = (): Packet => [HEARTBEAT, instanceId];
 
 const routing = new RoutingPeers();
 let subscribedUids: (() => Promise<Set<string>>) | null = null;
 
-/** Whether `instance` was heard within the grace, on a revision that answers a table ask in its inbox. */
-export function speaksInbox(instance: string): boolean {
-  return routing.speaksInbox(instance, now());
+/** Whether `instance`'s heartbeat was heard within the grace. */
+export function heardFrom(instance: string): boolean {
+  return routing.heardFrom(instance, now());
 }
 
 /**
@@ -197,10 +164,9 @@ export function createSocketAdapter(liveness: Liveness = { livePeers, leave: lea
     subscribedUids = subscribedNow;
 
     /**
-     * The peers a request must hear from, the larger of two counts until no revision without
-     * presence liveness runs (ADR 0014, decision 9): `instances` reads short after Redis lost its
-     * data, while a sweep races a peer's return, and for a peer too old to keep liveness at all.
-     * Either count failing fails the request. An instance not itself subscribed cannot count at all.
+     * The peers a request must hear from, the larger of two counts: `instances` reads short after
+     * Redis lost its data, and while a sweep races a peer's return. Either count failing fails the
+     * request. An instance not itself subscribed cannot count at all.
      */
     async function peers(): Promise<number> {
       if (!links.ready()) throw new Error("this instance is not subscribed to the cluster");
@@ -218,7 +184,6 @@ export function createSocketAdapter(liveness: Liveness = { livePeers, leave: lea
      */
     async function subscribedPeers(): Promise<number> {
       const subscribed = await subscribedNow();
-      routing.prune(subscribed);
       const at = now();
       for (const uid of subscribed) if (!noticed.has(uid)) noticed.set(uid, at);
       let count = 0;
@@ -260,16 +225,11 @@ export function createSocketAdapter(liveness: Liveness = { livePeers, leave: lea
       if (offset !== undefined) noteStreamRead("adapter", offset);
       const packet = message.type === MessageType.SERVER_SIDE_EMIT ? (message.data.packet as Packet) : [];
       const event = packet[0];
-      if (event === HEARTBEAT && offset === undefined && message.uid !== cluster.uid) {
-        if (readHeartbeat(packet).liveness) older.delete(message.uid);
-        else older.set(message.uid, now());
-      }
       if (event === LEAVING) {
         left.add(message.uid);
         heard.delete(message.uid);
         noticed.delete(message.uid);
         routing.left(packet);
-        older.delete(message.uid);
       } else if (offset === undefined && message.uid !== cluster.uid && !left.has(message.uid)) {
         const at = now();
         heard.set(message.uid, at);
@@ -279,9 +239,6 @@ export function createSocketAdapter(liveness: Liveness = { livePeers, leave: lea
       if (event === HEARTBEAT || event === LEAVING) return;
       return onMessage(message, offset);
     };
-    const older = new Map<string, number>();
-    const answers: OlderPeers = { hearsOlderPeers: () => [...older.values()].some((at) => now() - at < PEER_GRACE_MS) };
-    Object.assign(adapter, answers);
     const beatNow = () => void serverSideEmit(heartbeatPacket());
     const beat = setInterval(beatNow, HEARTBEAT_MS);
     const firstBeat = setInterval(() => {

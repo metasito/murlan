@@ -159,15 +159,14 @@ takes the locks again, so the process never loses a room to its own half-dead se
    `registerTableRouting` handler applies it and sends the outcome back to the asker's inbox, or
    answers `NOT_THIS_INSTANCE` when it does not hold the room. No other instance reads either
    message. A try waits 1.5 s, and there are two, 120 ms apart, so the whole wait stays under the
-   client's 4 s per try. An owner whose adapter heartbeat has not named it lately (a revision
-   before this routing, or one gone) is asked over the legacy `murlan:table` emit instead
-   (ADR-0014 decision 9).
+   client's 4 s per try.
 3. With no owner record, no answer, or `NOT_THIS_INSTANCE`, it reads `pg_locks` for the room's
-   lock: held by another session that no instance asked owns, it asks over the legacy emit; still
-   unanswered, `TABLE_UNREACHABLE`; free is `NO_LIVE_GAME` for a `forward`
+   lock: held by another session is `TABLE_UNREACHABLE`; free is `NO_LIVE_GAME` for a `forward`
    kind, and otherwise this process claims the lock, rehydrates the game from Postgres and
-   becomes the owner. A lock that reads free while the owner the record names is still heard is
-   not unowned: that owner may be between a dropped ownership connection and its reclaim. An
+   becomes the owner. A lock that reads free while the owner the record names is still heard
+   (its heartbeat within the grace) and still subscribed is not unowned: that owner may be
+   between a dropped ownership connection and its reclaim. A killed owner loses its subscription
+   at once, and one that died without a FIN stops being heard. An
    ask that could not be handed over at all (Redis down) is not tried again.
 
 The owner remembers each applied intent for 120 s, up to 50,000 of them, so a re-sent intent is

@@ -195,7 +195,6 @@ describe("the host starting a match", () => {
     const asked: unknown[] = [];
     const { rt } = useSetup(t, { rooms: [roomRow()], seats: [seatRows(["ana", 0], ["besi", 1])] });
     t.mock.method(rt.peers, "instanceOf", async (userId: string) => `${userId}-instance`);
-    t.mock.method(rt.peers, "speaksInbox", () => true);
     t.mock.method(rt.peers, "send", async (to: string, message: unknown) => void asked.push([to, message]));
     assert.deepEqual(await startMatchAction(rt, start()), { ok: true });
     assert.deepEqual(asked, [

@@ -59,21 +59,10 @@ export interface Peers {
   ownerOf(roomId: string): Promise<string | null>;
   /** The instance an account's presence entry names, null while offline; rejects when it cannot be read. */
   instanceOf(userId: string): Promise<string | null>;
-  /** Heard lately, on a revision that reads `send`'s messages for this. False for one gone, or older. */
-  speaksInbox(instance: string): boolean;
+  /** Whether that instance's heartbeat was heard within the grace. */
+  heard(instance: string): boolean;
   /** Whether that instance is connected to the cluster now; rejects when that cannot be read. */
   stillSubscribed(instance: string): Promise<boolean>;
-  legacy: LegacyPeers;
-}
-
-/**
- * The carrier a revision before inbox routing (#1895) speaks: an acknowledged emit every instance
- * hears. Kept until no deployed revision predates it (ADR 0014, decision 9).
- */
-export interface LegacyPeers {
-  /** Every instance's reply; `err` when one did not answer in time. Never rejects. */
-  ask(event: string, payload: unknown): Promise<{ err: unknown; replies: unknown[] }>;
-  answer(event: string, handler: (payload: unknown) => Promise<unknown>): void;
 }
 
 /** The only path a table's row and room-status writes take (`gamePersistence.ts` `tableWriters`). */
