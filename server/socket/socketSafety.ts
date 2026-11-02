@@ -156,7 +156,7 @@ function intentIdOf(raw: unknown): { ok: true; intentId?: string } | { ok: false
 export function onEvent<E extends keyof InboundSchemas>(
   socket: Socket,
   event: E,
-  schema: InboundSchemas[E],
+  schema: z.ZodType<z.infer<InboundSchemas[E]>> & InboundSchemas[E],
   handler: (payload: z.infer<InboundSchemas[E]>, context: EventContext) => Outcome | Promise<Outcome>,
   options: EventOptions = {}
 ): void {
