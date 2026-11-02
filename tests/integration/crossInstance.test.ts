@@ -434,14 +434,15 @@ describe("broadcasts cross server instances", {
 
     const offlineId = await userIdOf(offlineCookie);
     assert.equal(await withRedis((redis, key) => redis.exists(key(`presence:${offlineId}`))), 0, "the friend has a presence entry");
-    const instancesBefore = await withRedis((redis, key) => redis.keys(key("inbox:*")));
-    const lengths = async () => Promise.all(instancesBefore.map((k) => withRedis((redis) => redis.xLen(k))));
+    // Every stream a message for another instance can go on: each inbox, and the adapter's.
+    const streams = await withRedis(async (redis, key) => [...(await redis.keys(key("inbox:*"))), key("socket.io")]);
+    const lengths = async () => Promise.all(streams.map((k) => withRedis((redis) => redis.xLen(k))));
     const before = await lengths();
 
     const notifier = await connectSocket(PORTS[0], notifierCookie);
     sockets.push(notifier);
     await settled(notifier);
-    assert.deepEqual(await lengths(), before, "telling an offline friend put a message on an inbox");
+    assert.deepEqual(await lengths(), before, "telling an offline friend put a message on the cluster");
   });
 
   test("the table outlives the instance that owned it", async () => {

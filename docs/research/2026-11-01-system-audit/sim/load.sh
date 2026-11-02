@@ -42,14 +42,18 @@ IFS='|' read -r c0 i0 u0 d0 r0 f0 <<<"$before"
 IFS='|' read -r c1 i1 u1 d1 r1 f1 <<<"$after"
 statements=$(tail -c +"$logged_from" "$log" | grep -c "statement: " || true)
 notifies=$(tail -c +"$logged_from" "$log" | grep -ci "pg_notify" || true)
-cluster=$(echo "$out" | sed -n 's/.*; \([0-9]*\) cluster messages.*/\1/p' | tail -1)
+cluster=$(echo "$out" | sed -n 's/.*; \([0-9][0-9]*\) cluster messages.*/\1/p' | tail -1)
+if [ -z "$cluster" ]; then
+  echo "load.sh: the soak reported no cluster message count, so it was not counted" >&2
+  exit 1
+fi
 echo "db: commits=$((c1 - c0)) inserted=$((i1 - i0)) updated=$((u1 - u0)) deleted=$((d1 - d0)) returned=$((r1 - r0)) fetched=$((f1 - f0)) moves=${moves:-?}"
-echo "log: $statements statements, $notifies pg_notify; cluster: ${cluster:-?} messages"
+echo "log: $statements statements, $notifies pg_notify; cluster: $cluster messages"
 if [ "$statements" -eq 0 ]; then
   echo "load.sh: the log holds no statement of the run, so pg_notify was not counted" >&2
   exit 1
 fi
 if [ -n "${moves:-}" ] && [ "$moves" -gt 0 ]; then
-  awk -v c=$((c1 - c0)) -v i=$((i1 - i0)) -v u=$((u1 - u0)) -v n="$notifies" -v x="${cluster:-0}" -v m="$moves" \
+  awk -v c=$((c1 - c0)) -v i=$((i1 - i0)) -v u=$((u1 - u0)) -v n="$notifies" -v x="$cluster" -v m="$moves" \
     'BEGIN { printf "per move: %.2f commits, %.2f inserts, %.2f updates, %.2f pg_notify, %.2f cluster messages\n", c / m, i / m, u / m, n / m, x / m }'
 fi
