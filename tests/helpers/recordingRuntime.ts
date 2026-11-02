@@ -103,7 +103,7 @@ export function recordingRuntime(options: RecordingOptions = {}) {
       await activeGameStore.remove(roomId);
       landed("remove", [roomId]);
     },
-    countUntouchedSince: (cutoff) => activeGameStore.countUntouchedSince(cutoff),
+    countUntouchedSince: (database, cutoff) => activeGameStore.countUntouchedSince(database, cutoff),
   };
   const store: TableStore = { games, rooms: roomStore, ...options.store };
 

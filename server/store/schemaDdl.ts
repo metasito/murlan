@@ -268,7 +268,11 @@ const SESSION_TABLE = `CREATE TABLE IF NOT EXISTS "session" (
   "sess" json NOT NULL,
   "expire" timestamp(6) NOT NULL
 );`;
-const SESSION_INDEX = { name: "IDX_session_expire", on: `"session" ("expire")` };
+const SESSION_INDEXES = [
+  { name: "IDX_session_expire", on: `"session" ("expire")` },
+  // Written as every by-account session query writes it (`sess->>'userId'`), or the planner cannot match it.
+  { name: "session_user_id_idx", on: `"session" ((sess->>'userId'))` },
+];
 
 /**
  * The unique indexes whose duplicates boot may clear for itself.
@@ -439,7 +443,7 @@ export function schemaStatements(existing: SchemaCatalog = EMPTY_CATALOG): strin
     }
   }
   tableStatements.push(SESSION_TABLE);
-  ensureIndex(SESSION_INDEX.name, createIndex(false, SESSION_INDEX.name, SESSION_INDEX.on));
+  for (const { name, on } of SESSION_INDEXES) ensureIndex(name, createIndex(false, name, on));
 
   // A name nobody declares emits nothing at all, and the index it was written
   // for is the one that fails at boot.

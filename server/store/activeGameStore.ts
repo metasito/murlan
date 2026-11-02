@@ -1,5 +1,5 @@
 import { and, count, eq, lt, sql } from "drizzle-orm";
-import { db } from "./db.ts";
+import { db, type Database } from "./db.ts";
 import { activeGames } from "../../shared/schema.ts";
 import { now } from "../http/clock.ts";
 import type { roomStore } from "./roomStore.ts";
@@ -68,8 +68,8 @@ export const activeGameStore = {
     await db().delete(activeGames).where(eq(activeGames.roomId, roomId));
   },
 
-  async countUntouchedSince(cutoff: Date): Promise<number> {
-    const [found] = await db().select({ n: count() }).from(activeGames).where(lt(activeGames.updatedAt, cutoff));
+  async countUntouchedSince(database: Database, cutoff: Date): Promise<number> {
+    const [found] = await database.select({ n: count() }).from(activeGames).where(lt(activeGames.updatedAt, cutoff));
     return found?.n ?? 0;
   },
 };

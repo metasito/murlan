@@ -9,7 +9,7 @@
 // is telemetry the player can forge or block, and CLAUDE.md's server-authority
 // rule is about what gets recorded as much as about who wins a round.
 import { desc, sql } from "drizzle-orm";
-import { db } from "../store/db.ts";
+import { db, type Database } from "../store/db.ts";
 import { events } from "../../shared/schema.ts";
 import { logger } from "./logger.ts";
 import type { EventContext, EventName } from "../../shared/events.ts";
@@ -61,8 +61,8 @@ export interface FunnelStep {
  * Both matter: one player rejoining twenty rooms is not twenty players getting
  * seated. Bounded by the window and covered by events_name_occurred_idx.
  */
-export async function funnel(days = FUNNEL_WINDOW_DAYS): Promise<FunnelStep[]> {
-  const rows = await db()
+export async function funnel(database: Database, days = FUNNEL_WINDOW_DAYS): Promise<FunnelStep[]> {
+  const rows = await database
     .select({
       name: events.name,
       events: sql<number>`count(*)::int`,

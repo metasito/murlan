@@ -322,10 +322,12 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
     const res = await fetch(`${server.url}/api/users/me`, { method: "DELETE", headers: { cookie } });
     assert.equal(res.status, 200, await res.text());
 
-    const named = await server.query(
-      `SELECT message FROM "${server.schema}".server_errors WHERE context::text LIKE $1`,
-      [`%${user.id}%`]
+    // The purge runs after the deletion commits, without the response waiting on it.
+    await eventually(
+      async () =>
+        (await server.query(`SELECT 1 FROM "${server.schema}".server_errors WHERE context::text LIKE $1`, [`%${user.id}%`]))
+          .length === 0,
+      "no server_errors row to name the deleted account"
     );
-    assert.equal(named.length, 0, "a server_errors row still names the deleted account");
   });
 });
