@@ -30,6 +30,7 @@ export async function dealRound(rt: TableRuntime, game: OnlineGameState, nextSta
   // Cleared here anyway so the table does not hold a finished round's payload
   // in memory for the whole of the next one.
   game.lastRoundOverPayload = undefined;
+  game.roundOverDue = undefined;
   rollMatchForward(game);
 
   // Not awaited: a join already requires `waiting`, so nothing here depends on

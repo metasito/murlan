@@ -1,8 +1,9 @@
 // The stored `active_games.game_state` envelope, shared so `shared/schema.ts` can type the column
 // without importing the server.
 import { z } from "zod";
-import type { GameState, LastMove } from "../lib/game/gameEngine.ts";
-import { MAX_REPLAY_MOVES, type ReplayMove } from "../lib/game/replay.ts";
+import type { GameMode, GameState, LastMove } from "../lib/game/gameEngine.ts";
+import { MAX_REPLAY_MOVES, type ReplayMove, type ReplaySeat } from "../lib/game/replay.ts";
+import { roundOverSchema, type RoundOverPayload } from "./protocol.ts";
 import {
   combination,
   gameModeSchema,
@@ -97,7 +98,7 @@ function readPersistedSeats(stored: unknown): PersistedSeats {
  * `OLDEST_GAME_SCHEMA_VERSION` on are restored, each held to the current parse.
  * Held to the stored shape by tests/server/storedShapeVersions.test.ts.
  */
-export const GAME_SCHEMA_VERSION = 11;
+export const GAME_SCHEMA_VERSION = 12;
 
 /**
  * The oldest row still restored. Raise it to GAME_SCHEMA_VERSION when a bump changes what a
@@ -182,9 +183,44 @@ export interface PersistedEnvelope {
   /** The round's replay so far; null when it will produce none. */
   moveLog: ReplayMove[] | null;
   replayOpening: LastMove | null;
+  /** Oldest first; the row is never discarded while one is here. */
+  pendingResults: PendingResult[];
 }
 
 export type PersistedReplay = Pick<PersistedEnvelope, "moveLog" | "replayOpening">;
+
+const gameResult = z.object({
+  userId: z.string(),
+  placement: z.number().int().positive(),
+  playerCount: z.number().int().positive(),
+  playedBomb: z.boolean(),
+  playedJoker: z.boolean(),
+  matchWon: z.boolean(),
+  opponentsFinished: z.number().int().nonnegative(),
+  abandoned: z.boolean().optional(),
+});
+
+/** `lib/achievements.ts`'s `GameResult`, as a row stores it. */
+export type StoredGameResult = z.infer<typeof gameResult>;
+
+/** `game:round_over` as the round decided it, before the results commit names the ratings. */
+export type RoundOutcome = Omit<RoundOverPayload, "ratingDeltas" | "ratingsAfter">;
+
+/**
+ * A finished round whose results have not committed yet (ADR 0014, decision 1). `round` is the
+ * entry's identity and equals `finishedAt`, in epoch ms: `roundsPlayed` restarts each match.
+ */
+export interface PendingResult {
+  round: number;
+  finishedAt: number;
+  gameMode: GameMode;
+  results: StoredGameResult[];
+  outcome: RoundOutcome;
+  seats: ReplaySeat[];
+  opening: LastMove | null;
+  /** Null when the round writes no replay. */
+  moveLog: ReplayMove[] | null;
+}
 
 export function packPersistedState(
   gameState: GameState,
@@ -193,17 +229,57 @@ export function packPersistedState(
   joinCode: string,
   match: PersistedMatch,
   seats: PersistedSeats,
-  replay: PersistedReplay = { moveLog: null, replayOpening: null }
+  replay: PersistedReplay = { moveLog: null, replayOpening: null },
+  pendingResults: PendingResult[] = []
 ): PersistedEnvelope {
-  return { schemaVersion: GAME_SCHEMA_VERSION, gameState, roundFlags, dealFirstSeat, joinCode, match, seats, ...replay };
+  return {
+    schemaVersion: GAME_SCHEMA_VERSION,
+    gameState,
+    roundFlags,
+    dealFirstSeat,
+    joinCode,
+    match,
+    seats,
+    ...replay,
+    pendingResults,
+  };
 }
 
 export type PersistedRestore =
-  | ({ ok: true } & Omit<PersistedEnvelope, "schemaVersion">)
+  | ({ ok: true; unreadablePendingResults: number } & Omit<PersistedEnvelope, "schemaVersion">)
   | { ok: false; reason: string; newer?: true };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const replayMove = z.object({ seat, combo: combination.nullable(), handCounts: z.array(z.number().int().nonnegative()) });
+
+const pendingResult = z.object({
+  round: z.number().int().positive(),
+  finishedAt: z.number().int().positive(),
+  gameMode: gameModeSchema,
+  results: z.array(gameResult),
+  outcome: roundOverSchema.omit({ ratingDeltas: true, ratingsAfter: true }).strip(),
+  seats: z.array(
+    z.object({
+      seatIndex: seat,
+      userId: z.string().nullable(),
+      vacatedBy: z.string().nullable().optional(),
+      name: z.string(),
+    })
+  ),
+  opening: lastMove.nullable(),
+  moveLog: z.array(replayMove).nullable(),
+}) satisfies z.ZodType<PendingResult>;
+
+/** Entry by entry, like `readPersistedSeats`: one that does not parse cannot be applied, and must not cost the table. */
+function readPendingResults(stored: unknown): PendingResult[] {
+  if (!Array.isArray(stored)) return [];
+  return stored.flatMap((entry) => {
+    const parsed = pendingResult.safeParse(entry);
+    return parsed.success ? [parsed.data] : [];
+  });
 }
 
 const roundFlag = z.boolean({
@@ -236,12 +312,9 @@ export const persistedEnvelopeSchema = z.object({
   // dispose every live table that lacks it.
   seats: z.unknown().transform(readPersistedSeats),
   // A log that does not parse costs the round its replay, never the table.
-  moveLog: z
-    .array(z.object({ seat, combo: combination.nullable(), handCounts: z.array(z.number().int().nonnegative()) }))
-    .max(MAX_REPLAY_MOVES)
-    .nullable()
-    .catch(null),
+  moveLog: z.array(replayMove).max(MAX_REPLAY_MOVES).nullable().catch(null),
   replayOpening: lastMove.nullable().catch(null),
+  pendingResults: z.unknown().transform(readPendingResults),
 });
 
 /**
@@ -268,5 +341,7 @@ export function unpackPersistedState(persisted: unknown): PersistedRestore {
   }
   const gameState = parseGameState(parsed.data.gameState, storedShapeAt(version, SHAPES_SINCE));
   if (!gameState.ok) return { ok: false, reason: gameState.reason };
-  return { ok: true, ...parsed.data, gameState: gameState.state };
+  const stored = persisted.pendingResults;
+  const unreadablePendingResults = Array.isArray(stored) ? stored.length - parsed.data.pendingResults.length : 0;
+  return { ok: true, ...parsed.data, gameState: gameState.state, unreadablePendingResults };
 }

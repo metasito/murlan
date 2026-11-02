@@ -13,7 +13,7 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { register } from "../helpers/client.ts";
-import { recordGameResult } from "../../server/game/stats.ts";
+import { recordRound as commitRound } from "../helpers/recordRound.ts";
 
 describe("the abandonment record", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -40,7 +40,7 @@ describe("the abandonment record", { skip: hasDatabase() ? false : skipMessage()
       opponentsFinished: 0,
       abandoned,
     };
-    await recordGameResult([result], gameMode, finishedAt);
+    await commitRound([result], gameMode, finishedAt);
   }
 
   test("an abandoned round is recorded as such on its own row", async () => {
