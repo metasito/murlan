@@ -21,7 +21,7 @@ Phone unplugged from heat sources, charging, Low Power off, rested until `therma
 
 ## A. Fixes, each with a before-and-after bench run on the phone
 
-1. **Audio and haptics off the JS thread.** tapBurst: 58 of 60 plays missing, 19 UI stalls. hapticOnset: 26 of 30 missing, p90 99 ms. Replace the expo-audio and haptics path with a native engine, per the September research. Gates: tapBurst, hapticOnset, landingSync.
+1. **Why the capture hears so few onsets.** The app already plays through `react-native-audio-api` and `react-native-turbo-haptics` (`lib/device/audioEngine.ts`, `tests/tooling/audioLibraries.test.ts`), so there is no engine to replace. tapBurst recorded 60 plays and "missing" counts taps with no captured onset within 150 ms (58 of 60); with sound and haptics off it stalls 17 times against 19 on, so the stalls are not the audio's. hapticOnset matched 4 of 30, landingSync 21 of 70. First settle whether the engine is silent or the ReplayKit capture misses it: play a known tone through the bench with the capture on and count onsets. Gates: tapBurst, hapticOnset, landingSync.
 2. **Onset scheduling.** scheduledOnset: output error 0.69 ms, app error 94 to 108 ms. The sound is scheduled late, not played late. One clock, per `tests/ui-rules/oneClock.test.ts`. Gate: scheduledOnset.
 3. **UI-thread cost on throws.** throwStalls: 103 stalls over 42 throws, median 55 Hz. Profile first (`measure-the-mechanism-before-blaming-it`), fix second. Gates: throwStalls, plus whatever B hands over.
 
