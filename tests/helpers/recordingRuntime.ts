@@ -98,8 +98,8 @@ export function recordingRuntime(options: RecordingOptions = {}) {
     claim: (roomId) => activeGameStore.claim(roomId),
     epochOf: (roomId) => activeGameStore.epochOf(roomId),
     listResumable: () => activeGameStore.listResumable(),
-    write: async (roomId, state, epoch) => {
-      const changed = await activeGameStore.write(roomId, state, epoch);
+    write: async (roomId, state, epoch, adding) => {
+      const changed = await activeGameStore.write(roomId, state, epoch, adding);
       landed("write", [roomId]);
       return changed;
     },

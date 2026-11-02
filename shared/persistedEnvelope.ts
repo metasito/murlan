@@ -246,7 +246,7 @@ export function packPersistedState(
 }
 
 export type PersistedRestore =
-  | ({ ok: true } & Omit<PersistedEnvelope, "schemaVersion">)
+  | ({ ok: true; unreadablePendingResults: number } & Omit<PersistedEnvelope, "schemaVersion">)
   | { ok: false; reason: string; newer?: true };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -341,5 +341,7 @@ export function unpackPersistedState(persisted: unknown): PersistedRestore {
   }
   const gameState = parseGameState(parsed.data.gameState, storedShapeAt(version, SHAPES_SINCE));
   if (!gameState.ok) return { ok: false, reason: gameState.reason };
-  return { ok: true, ...parsed.data, gameState: gameState.state };
+  const stored = persisted.pendingResults;
+  const unreadablePendingResults = Array.isArray(stored) ? stored.length - parsed.data.pendingResults.length : 0;
+  return { ok: true, ...parsed.data, gameState: gameState.state, unreadablePendingResults };
 }

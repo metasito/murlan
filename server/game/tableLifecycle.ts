@@ -4,7 +4,7 @@ import { OK, refuse, type Outcome, type Refusal } from "../shared/refusal.ts";
 import { logger } from "../shared/logger.ts";
 import { activeGames, isShuttingDown } from "./gameRoom.ts";
 import { stopSpectatingEverywhere } from "../socket/seating.ts";
-import { armVoteDeadline, settleRoundResults } from "./roundOver.ts";
+import { armVoteDeadline, noteUnreadableResults, settleRoundResults } from "./roundOver.ts";
 import { clearRoomTimers, usersInLobbyGrace } from "./gameTimers.ts";
 import { buildSeatRoster, seatOfUser } from "./onlineGameLogic.ts";
 import { fromEnvelope, newTable } from "./tableState.ts";
@@ -62,6 +62,7 @@ export async function rehydrateGame(
   }
 
   const { game } = restored;
+  noteUnreadableResults(roomId, restored.unreadablePendingResults);
   const { playerMap } = game;
   if (
     forUserId !== null &&
@@ -250,7 +251,9 @@ async function settleOrphanedResults(rt: TableRuntime, roomId: string): Promise<
       const entry = await enterTable(roomId);
       if (!entry.held || !entry.row) return;
       const restored = fromEnvelope(entry.row);
-      if (!restored.ok || restored.game.pendingResults.length === 0) return;
+      if (!restored.ok) return;
+      noteUnreadableResults(roomId, restored.unreadablePendingResults);
+      if (restored.game.pendingResults.length === 0) return;
       const { failure } = await rt.writers.applyPendingResults(roomId, restored.game);
       if (failure !== undefined) {
         logger.error({ err: failure, roomId, entry: restored.game.pendingResults[0] }, "An ownerless table's results failed to commit");

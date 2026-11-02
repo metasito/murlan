@@ -133,6 +133,7 @@ describe("a table's round trip through active_games", () => {
     const back = fromEnvelope(row);
     assert.ok(back.ok, back.ok ? "" : back.reason);
     assert.deepEqual(back.game.pendingResults, [PENDING]);
+    assert.equal(back.unreadablePendingResults, 1, "the restore says it dropped one, so its caller can report it");
   });
 
   test("a round restored mid-way keeps its move log and what it opened on, so it still finishes with its replay", () => {

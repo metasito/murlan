@@ -50,16 +50,29 @@ export function useMemoryTableStores(t: TestContext, seed: MemoryTableSeed = {})
   t.mock.method(activeGameStore, "epochOf", async (roomId: string) => (rows.has(roomId) ? epochs.get(roomId) : undefined));
   t.mock.method(activeGameStore, "listResumable", async () =>
     [...rows].flatMap(([roomId, stored]) => {
-      const row = stored as { schemaVersion?: unknown; gameState?: { roundOver?: unknown }; match?: { playerMap?: unknown } };
+      const row = stored as {
+        schemaVersion?: unknown;
+        gameState?: { roundOver?: unknown };
+        match?: { playerMap?: unknown };
+        pendingResults?: unknown[];
+      };
       const version = row?.schemaVersion;
       const supported = typeof version === "number" && version >= OLDEST_GAME_SCHEMA_VERSION && version <= GAME_SCHEMA_VERSION;
-      return supported && row.gameState?.roundOver !== true
-        ? [{ roomId, userIds: Object.values(readPersistedPlayerMap(row.match?.playerMap)) }]
+      const roundOver = row?.gameState?.roundOver === true;
+      const pending = (row?.pendingResults?.length ?? 0) > 0;
+      return supported && (!roundOver || pending)
+        ? [{ roomId, userIds: Object.values(readPersistedPlayerMap(row.match?.playerMap)), roundOver, pending }]
         : [];
     })
   );
-  t.mock.method(activeGameStore, "write", async (roomId: string, gameState: unknown, epoch: number) => {
+  t.mock.method(activeGameStore, "write", async (roomId: string, gameState: object, epoch: number, adding?: { round: number }) => {
     if (rows.has(roomId) && !at(roomId, epoch)) return false;
+    if (rows.has(roomId)) {
+      // As the store does: the row keeps its own pending rounds, and `adding` appends one.
+      const kept = ((rows.get(roomId) as { pendingResults?: { round: number }[] }).pendingResults ?? []).slice();
+      if (adding && !kept.some((e) => e.round === adding.round)) kept.push(adding);
+      gameState = { ...gameState, pendingResults: kept };
+    }
     rows.set(roomId, gameState);
     epochs.set(roomId, epoch);
     return true;

@@ -200,6 +200,20 @@ export function roundResultsPendingAgeSeconds(): number {
   return oldest === Infinity ? 0 : Math.max(0, (now() - oldest) / 1000);
 }
 
+let unreadableRounds = 0;
+
+/** Rounds a restore found in a row and could not read, so cannot commit; the row keeps them. */
+export function noteUnreadableResults(roomId: string, count: number): void {
+  if (count === 0) return;
+  unreadableRounds += count;
+  logger.error({ roomId, count }, "A table's row holds pending results that do not parse — they cannot be committed");
+}
+
+/** Pending rounds found unreadable in a row, since the process started. */
+export function roundResultsUnreadableCount(): number {
+  return unreadableRounds;
+}
+
 /** Commits that failed for a reason a retry cannot fix, since the process started. */
 export function roundResultsFailureCount(): number {
   return failedCommits;

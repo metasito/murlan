@@ -17,6 +17,10 @@ import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { resumeOrphanedTables } from "../../server/game/tableLifecycle.ts";
 import { installClock, realClock } from "../../server/http/clock.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
+import { newTable } from "../../server/game/tableState.ts";
+import { transaction } from "../../server/store/db.ts";
+import { roomStore } from "../../server/store/roomStore.ts";
+import type { PendingResult } from "../../shared/persistedEnvelope.ts";
 import type { GameResult } from "../../lib/achievements.ts";
 import type { RoundOverWriters } from "../../server/game/roundOver.ts";
 
@@ -102,6 +106,99 @@ describe("a finished round's results", { skip: hasDatabase() ? false : skipMessa
     } finally {
       await releaseRoom(game.roomId);
     }
+  });
+
+  /** A whole table for two of `ids`, claimed and entered with no row yet, as `startMatch` leaves one. */
+  async function liveTable(ids: string[]): Promise<OnlineGameState> {
+    const roomId = `results-live-${++rooms}`;
+    const game = newTable(
+      { id: roomId, code: "ABCDEF", gameMode: "free_for_all", maxPlayers: 2 },
+      ids.map((userId, seatIndex) => ({ seatIndex, userId, username: `p${seatIndex}`, isBot: false }))
+    );
+    assert.equal(await claimRoom(roomId), true);
+    assert.equal((await enterTable(roomId)).held, true);
+    return game;
+  }
+
+  const roundOf = (ids: string[], finishedAt: number): PendingResult =>
+    pendingEntry([seat(ids[0]!, 1), seat(ids[1]!, 2)], "free_for_all", new Date(finishedAt), {
+      seats: ids.map((userId, seatIndex) => ({ seatIndex, userId, vacatedBy: null, name: `p${seatIndex}` })),
+      moves: [A_MOVE],
+    });
+
+  const rowRounds = async (roomId: string) =>
+    (
+      await server.query<{ rounds: number[] | null }>(
+        "SELECT (SELECT array_agg((e->>'round')::bigint) FROM jsonb_array_elements(game_state->'pendingResults') e) AS rounds FROM active_games WHERE room_id = $1",
+        [roomId]
+      )
+    )[0]?.rounds?.map(Number) ?? [];
+
+  test("a snapshot taken after a commit whose answer was lost does not hand the retry the round again", async () => {
+    const ids = await users(2, "lostsnap");
+    const game = await liveTable(ids);
+    activeGames.set(game.roomId, game);
+    try {
+      const entry = roundOf(ids, Date.now());
+      game.pendingResults.push(entry);
+      await server.rt.writers.persistFinalState(game.roomId, game);
+      await server.rt.writers.applyPendingResults(game.roomId, game);
+      assert.deepEqual(await recorded(ids), { stats: 2, history: 2, ratings: 2, replays: 1 });
+
+      // The commit landed and its answer did not: memory still holds the round, and the table plays on.
+      game.pendingResults.push(entry);
+      game.landedResults.add(entry.round);
+      await server.rt.writers.persistGameState(game.roomId, game);
+      assert.deepEqual(await rowRounds(game.roomId), [], "a snapshot wrote memory's pending rounds into the row");
+
+      const retry = await server.rt.writers.applyPendingResults(game.roomId, game);
+      assert.deepEqual(retry.applied, [{ entry, ratings: null }]);
+      assert.deepEqual(await recorded(ids), { stats: 2, history: 2, ratings: 2, replays: 1 }, "the retry applied the round again");
+    } finally {
+      activeGames.delete(game.roomId);
+      await releaseRoom(game.roomId);
+    }
+  });
+
+  test("the next round's final write, queued while the last round's commit runs, never writes the committed one back", async () => {
+    const ids = await users(2, "queuedfinal");
+    const game = await liveTable(ids);
+    const lock = await holdRowLock("SELECT id FROM users WHERE id = ANY($1) FOR NO KEY UPDATE", [ids]);
+    try {
+      const older = roundOf(ids, Date.now());
+      game.pendingResults.push(older);
+      await server.rt.writers.persistFinalState(game.roomId, game);
+      const committing = server.rt.writers.applyPendingResults(game.roomId, game);
+      await lock.waitForBlocked(1);
+
+      const newer = roundOf(ids, older.round + 1);
+      game.pendingResults.push(newer);
+      const finalWrite = server.rt.writers.persistFinalState(game.roomId, game);
+      await lock.release();
+      await committing;
+      await finalWrite;
+
+      // The commit's own pass goes on to the newer round; whichever lands it, neither is left owed.
+      await server.rt.writers.applyPendingResults(game.roomId, game);
+      assert.deepEqual(await rowRounds(game.roomId), [], "the committed round was written back");
+      assert.deepEqual(await recorded(ids), { stats: 4, history: 4, ratings: 4, replays: 2 }, "each round once");
+      assert.deepEqual(game.pendingResults, []);
+    } finally {
+      await lock.release();
+      await releaseRoom(game.roomId);
+    }
+  });
+
+  test("purging a room keeps a table row that still owes its round's results", async () => {
+    const ids = await users(2, "purged");
+    const roomId = `results-purged-${++rooms}`;
+    const settled = `results-purged-settled-${rooms}`;
+    await pendingRow(roomId, [roundOf(ids, Date.now())]);
+    await pendingRow(settled, []);
+    await transaction((tx) => roomStore.purgeRooms(tx, [roomId, settled]));
+    assert.equal(await activeGameStore.epochOf(roomId) !== undefined, true, "the owed round went with the room");
+    assert.equal(await activeGameStore.epochOf(settled), undefined, "a settled row goes with its room");
+    await server.query("DELETE FROM active_games WHERE room_id = $1", [roomId]);
   });
 
   test("an account deleted mid-round is skipped, and every other seat commits with it", async () => {

@@ -118,16 +118,17 @@ export function tableWriters(store: TableStore): TableWriters {
       });
     },
     persistFinalState(roomId, game) {
-      // Packed now, and written even once the table is disposed: it is the only copy of the round's results.
-      const gameState = toEnvelope(game);
+      const entry = game.pendingResults.at(-1);
+      // Packed when it runs, and written even once the table is disposed: it is the only copy of the round's results.
       return queueBarrier(roomId, async () => {
-        const wrote = await writeAsOwner(roomId, (epoch) => store.games.write(roomId, gameState, epoch)).catch(
+        if (!entry || !game.pendingResults.includes(entry)) return;
+        const wrote = await writeAsOwner(roomId, (epoch) => store.games.write(roomId, toEnvelope(game), epoch, entry)).catch(
           (err: unknown) => {
             logger.error({ err, roomId }, "Failed to persist a finished round");
             return false;
           }
         );
-        if (wrote) for (const entry of gameState.pendingResults) game.landedResults.add(entry.round);
+        if (wrote) game.landedResults.add(entry.round);
       });
     },
     applyPendingResults: (roomId, game) => queueBarrier(roomId, () => applyPending(store, roomId, game)),
@@ -157,7 +158,7 @@ async function applyPending(store: TableStore, roomId: string, game: OnlineGameS
       };
       const owned = await writeAsOwner(roomId, async (epoch) => {
         if (!game.landedResults.has(current.round)) {
-          if (!(await store.games.write(roomId, toEnvelope(game), epoch))) return false;
+          if (!(await store.games.write(roomId, toEnvelope(game), epoch, current))) return false;
           game.landedResults.add(current.round);
         }
         const markFinished = live().gameState.roundOver && game.pendingResults.at(-1) === current;

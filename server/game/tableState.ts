@@ -179,7 +179,7 @@ export function toEnvelope(game: OnlineGameState): PersistedEnvelope {
 }
 
 export type TableRestore =
-  | { ok: true; game: OnlineGameState }
+  | { ok: true; game: OnlineGameState; unreadablePendingResults: number }
   | { ok: false; reason: string; newer?: true };
 
 /**
@@ -196,6 +196,7 @@ export function fromEnvelope(row: { roomId: string; gameState: unknown }): Table
   const vacatedSeats = new Map(restored.seats.vacatedSeats);
   return {
     ok: true,
+    unreadablePendingResults: restored.unreadablePendingResults,
     game: {
       roomId: row.roomId,
       joinCode: restored.joinCode,

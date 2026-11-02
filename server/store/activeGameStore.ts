@@ -6,6 +6,7 @@ import type { roomStore } from "./roomStore.ts";
 import {
   GAME_SCHEMA_VERSION,
   OLDEST_GAME_SCHEMA_VERSION,
+  type PendingResult,
   type PersistedEnvelope,
 } from "../../shared/persistedEnvelope.ts";
 
@@ -103,15 +104,25 @@ export const activeGameStore = {
    * Writes the row at `epoch`, inserting it when there is none: a table whose row an exempt
    * writer deleted under it (an account deletion purging the host's rooms) plays on. False when
    * the row carries another epoch, which stays as it was.
+   *
+   * An existing row keeps its own pending results, whatever `gameState` carries: memory can still
+   * hold a round whose commit landed unheard, and writing it back would apply it twice. `adding`
+   * appends one finished round, unless the row holds it already; only the commit's fenced clear
+   * removes one.
    */
-  async write(roomId: string, gameState: PersistedEnvelope, epoch: number): Promise<boolean> {
+  async write(roomId: string, gameState: PersistedEnvelope, epoch: number, adding?: PendingResult): Promise<boolean> {
     const updatedAt = new Date(now());
+    const kept = sql`coalesce(${pending}, '[]'::jsonb)`;
+    const pendingAfter = adding
+      ? sql`case when ${kept} @> jsonb_build_array(jsonb_build_object('round', ${adding.round}::bigint))
+          then ${kept} else ${kept} || jsonb_build_array(${JSON.stringify(adding)}::jsonb) end`
+      : kept;
     const changed = await db()
       .insert(activeGames)
       .values({ roomId, gameState, updatedAt, ownerEpoch: epoch })
       .onConflictDoUpdate({
         target: activeGames.roomId,
-        set: { gameState, updatedAt },
+        set: { gameState: sql`jsonb_set(excluded.game_state, '{pendingResults}', ${pendingAfter})`, updatedAt },
         setWhere: eq(activeGames.ownerEpoch, epoch),
       })
       .returning({ roomId: activeGames.roomId });
