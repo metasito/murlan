@@ -27,7 +27,7 @@ export const RegisterSchema = z.object({
   // #34: required at signup. Bounded to RFC 5321's own limit, ahead of the
   // format check, so a pathological value is rejected on size before regex
   // backtracking ever sees it.
-  email: z.string().trim().min(3).max(254).email(),
+  email: z.string().trim().min(3).max(254).pipe(z.email()),
   locale: z.string().max(16).optional(),
 });
 

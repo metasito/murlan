@@ -99,7 +99,7 @@
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "source-map": "^0.8.0",
-    "zod": "^3.24.2"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -135,6 +135,11 @@
     "tsx": "^4.20.6",
     "typescript": "~6.0.3",
     "yaml": "^2.9.0"
+  },
+  "overrides": {
+    "@expo/cli": {
+      "zod": "$zod"
+    }
   },
   "private": true
 }
