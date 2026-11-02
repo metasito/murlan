@@ -4,6 +4,7 @@
     "strict": true,
     // Tests import .ts specifiers directly (Node strips types natively).
     "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
     "noEmit": true,
     "incremental": true,
     "paths": {

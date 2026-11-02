@@ -19,12 +19,8 @@ test("the engines floor is the manifest's Node major", () => {
   assert.equal(Number(floor.slice(2)), manifest.node);
 });
 
-test("CI's build job runs the manifest's Node", () => {
-  const ci = read(".github", "workflows", "ci.yml");
-  const job = ci.slice(ci.indexOf("\n  build:\n"));
-  const version = job.match(/node-version:\s*"?(\d+)"?/);
-  assert.ok(version, "the build job sets no node-version");
-  assert.equal(Number(version[1]), manifest.node);
+test(".node-version is the manifest's Node major, so CI and dev run production's", () => {
+  assert.equal(Number(read(".node-version").trim()), manifest.node);
 });
 
 test("the shutdown budget is sized to the manifest's SIGTERM grace", () => {

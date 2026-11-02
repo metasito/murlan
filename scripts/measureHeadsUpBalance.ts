@@ -10,7 +10,7 @@
 // knobs both, reproducible from one seed, per `botChoosePlay`'s own
 // injectable `rng`.
 //
-// Run: node --experimental-strip-types scripts/measureHeadsUpBalance.ts
+// Run: node scripts/measureHeadsUpBalance.ts
 // Flags (all optional, see `parseArgs`): --seed --dealN --matchN2p
 // --matchN4p --personalityN
 import { pathToFileURL } from "node:url";

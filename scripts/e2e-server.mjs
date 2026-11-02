@@ -100,4 +100,4 @@ process.env.SESSION_SECRET = PLAY ? randomBytes(32).toString("hex") : "e2e-test-
 process.env.PORT = PORT;
 process.env.MURLAN_WEB_DIST = DIST;
 
-await run("npx", ["tsx", path.join(ROOT, "server", "index.ts")]);
+await run(process.execPath, [path.join(ROOT, "server", "index.ts")]);

@@ -52,10 +52,12 @@ export class FakeSocket {
   readonly subscriptions = new Map<string, { on: number; off: number }>();
   private readonly unanswered = new Set<() => void>();
 
-  constructor(
-    readonly uri: string,
-    readonly options: { auth?: AuthCallback; autoConnect?: boolean } & Record<string, unknown>
-  ) {
+  readonly uri: string;
+  readonly options: { auth?: AuthCallback; autoConnect?: boolean } & Record<string, unknown>;
+
+  constructor(uri: string, options: { auth?: AuthCallback; autoConnect?: boolean } & Record<string, unknown>) {
+    this.uri = uri;
+    this.options = options;
     if (options.autoConnect !== false) this.attempt();
   }
 
