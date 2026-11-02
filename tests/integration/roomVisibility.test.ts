@@ -132,12 +132,15 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     host.socket.emit("room:quickmatch", { maxPlayers: 2, gameMode: "free_for_all" });
     const room = await made;
 
+    // Listening from here: a full quick-match room starts itself, and its game:started can reach
+    // the host in the same read as the room:state awaited below.
+    const started = waitFor(host.socket, "game:started", 15_000);
     const seated = waitFor(host.socket, "room:state");
     mate.socket.emit("room:join", { code: room.code });
     await seated;
 
     host.socket.emit("room:start");
-    await waitFor(host.socket, "game:started");
+    await started;
     const open: string[] = [];
     for await (const id of roomStore.findQuickMatchCandidates({ userId: "nobody", gameMode: "free_for_all", maxPlayers: 2 })) {
       open.push(id);
