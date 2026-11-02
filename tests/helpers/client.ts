@@ -94,6 +94,15 @@ export type Opened = { ok: true; socket: TestSocket } | { ok: false; err: string
 
 /** The `turn` of the latest `game:state` each socket was sent: what `sendMove` names its move against. */
 const latestTurn = new WeakMap<TestSocket, string>();
+const withholding = new WeakSet<TestSocket>();
+
+/**
+ * Every socket answers `game:state` at once, as the app does: the server holds a socket's next
+ * state until it answers the last. A suite about an unanswered state answers for itself instead.
+ */
+export function withholdStateAcks(socket: TestSocket): void {
+  withholding.add(socket);
+}
 
 /** The one handshake: resolves either way, and a refused socket is already closed. */
 export function openSocket(at: TestServer | string, how: SocketCredentials = {}): Promise<Opened> {
@@ -107,7 +116,10 @@ export function openSocket(at: TestServer | string, how: SocketCredentials = {})
     transports: ["websocket"],
     reconnection: false,
   });
-  socket.on("game:state", (state) => latestTurn.set(socket, state.turn));
+  socket.on("game:state", (state, ack?: () => void) => {
+    latestTurn.set(socket, state.turn);
+    if (!withholding.has(socket)) ack?.();
+  });
   return new Promise((resolve) => {
     socket.once("connect", () => resolve({ ok: true, socket }));
     socket.once("connect_error", (e) => {

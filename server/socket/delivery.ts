@@ -60,43 +60,47 @@ export function deliveryOutbox(io: SocketServer, options: DeliveryOptions = {}):
       return typeof userId === "string" ? [userId] : [];
     });
 
-  // ── At most one state outstanding per recipient and table, and one queued behind it ──
+  // ── At most one state outstanding per socket and table, and one queued behind it ──
+  // Per socket, not per account: a reconnect's new socket must not wait out the old one's ack.
   const slots = new Map<string, { queued: Pending | null }>();
 
   function offer(userId: string, pending: Pending): void {
-    const key = `${userId}\n${pending.state.roomId}`;
-    const slot = slots.get(key);
-    if (slot) {
-      slot.queued = pending;
-      return;
-    }
-    const fresh = { queued: null };
-    slots.set(key, fresh);
-    emitState(userId, key, fresh, pending);
-  }
-
-  function emitState(userId: string, key: string, slot: { queued: Pending | null }, pending: Pending): void {
     const sockets = socketsOf(userId);
-    if (sockets.length === 0) {
-      slots.delete(key);
-      return;
-    }
-    let waiting = sockets.length;
-    let acked = false;
-    const settle = () => {
-      if (!acked) stateAcksMissed.inc();
-      const next = slot.queued;
-      slot.queued = null;
-      if (next) return emitState(userId, key, slot, next);
-      slots.delete(key);
-      if (!acked && !pending.retry) pending.missed();
+    let missed = false;
+    const once: Pending = {
+      ...pending,
+      missed: () => {
+        if (missed) return;
+        missed = true;
+        pending.missed();
+      },
     };
     for (const socket of sockets) {
-      socket.timeout(stateAckTimeoutMs()).emit("game:state", pending.state, (err: unknown) => {
-        if (!err) acked = true;
-        if (--waiting === 0) settle();
-      });
+      const key = `${socket.id}\n${pending.state.roomId}`;
+      const slot = slots.get(key);
+      if (slot) {
+        slot.queued = once;
+        continue;
+      }
+      const fresh = { queued: null };
+      slots.set(key, fresh);
+      emitState(socket, key, fresh, once);
     }
+  }
+
+  function emitState(socket: GameSocket, key: string, slot: { queued: Pending | null }, pending: Pending): void {
+    if (!socket.connected) {
+      slots.delete(key);
+      return;
+    }
+    socket.timeout(stateAckTimeoutMs()).emit("game:state", pending.state, (err: unknown) => {
+      if (err) stateAcksMissed.inc();
+      const next = slot.queued;
+      slot.queued = null;
+      if (next) return emitState(socket, key, slot, next);
+      slots.delete(key);
+      if (err && !pending.retry) pending.missed();
+    });
   }
 
   // ── Everything for other instances leaves in one message per instance per tick, in call order ──

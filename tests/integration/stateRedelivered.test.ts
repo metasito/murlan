@@ -15,7 +15,7 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, eventually, nothingArrives, settled, waitFor, type TestSocket } from "../helpers/client.ts";
+import { connectAs, eventually, nothingArrives, settled, waitFor, withholdStateAcks, type TestSocket } from "../helpers/client.ts";
 import type { WireGameState } from "../../shared/protocol.ts";
 import { stateAckTimeoutMs } from "../../server/game/gameTimers.ts";
 
@@ -63,6 +63,7 @@ describe("a state broadcast is delivered", { skip: hasDatabase() ? false : skipM
   /** Counts deliveries, answering the server or staying silent as asked. */
   function countStates(socket: TestSocket, { ack }: { ack: boolean }) {
     const seen: WireGameState[] = [];
+    withholdStateAcks(socket);
     socket.on("game:state", (state: WireGameState, reply?: () => void) => {
       seen.push(state);
       if (ack) reply?.();

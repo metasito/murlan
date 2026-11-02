@@ -61,10 +61,10 @@ function cluster() {
     return {
       out,
       emitted,
-      connect(userId: string) {
-        const id = `${name}:${userId}`;
+      connect(userId: string, id = `${name}:${userId}`) {
         sockets.set(id, {
           id,
+          connected: true,
           data: { userId },
           timeout: () => ({
             emit: (_event: string, state: OrderedGameState, ack: Ack) => {
@@ -77,6 +77,12 @@ function cluster() {
         return id;
       },
       joinRoom: (room: string, userId: string) => join(room, `${name}:${userId}`),
+      /** The socket leaves this instance, as a closed connection does. */
+      drop(id: string) {
+        (sockets.get(id) as { connected: boolean }).connected = false;
+        sockets.delete(id);
+        for (const members of rooms.values()) members.delete(id);
+      },
       /** What `userId`'s socket here was sent, in order, with each one's ack. */
       states: (userId: string) => states.get(userId) ?? [],
     };
@@ -104,6 +110,17 @@ test("50 states to one slow socket leave one outstanding and one queued, and the
   a.states("ana")[1].ack(null);
   await ticks();
   assert.equal(a.states("ana").length, 2, "a state was sent after the queue emptied");
+});
+
+test("a reconnected socket is sent the table at once, not after the old socket's unanswered state", async () => {
+  const { instance } = cluster();
+  const a = instance("a");
+  const old = a.connect("ana", "old");
+  a.out.state("ana", () => stateOf(1));
+  a.drop(old);
+  a.connect("ana", "new");
+  a.out.state("ana", () => stateOf(2));
+  assert.deepEqual(a.states("ana").map((s) => s.state.seq), [1, 2]);
 });
 
 test("a local state that goes unacknowledged is re-derived once, and counted", async () => {
