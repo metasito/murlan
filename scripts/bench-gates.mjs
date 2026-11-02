@@ -24,6 +24,12 @@ export async function waitForRunEnd(read, { pollMs = 5000, timeoutMs }) {
   }
 }
 
+/** The rows up to the first run-end after `from`: a run the phone starts after it (a stray tap on its button) is not part of this verdict. */
+export function untilRunEnd(rows, from = 0) {
+  const end = rows.findIndex((r, i) => i >= from && r.k === "run" && r.phase === "end");
+  return end < 0 ? rows : rows.slice(0, end + 1);
+}
+
 const num = (v) => (typeof v === "number" ? +v.toFixed(2) : v);
 
 /** What an earlier run finished on a Release bundle with no error and no lost data, judged on each scenario's latest attempt. */
@@ -51,7 +57,8 @@ export function gateTable(rows, names, timedOut = false, gates = GATES) {
   let pass = names.length > 0 && !timedOut;
   for (const name of new Set([...Object.keys(gates), ...names])) {
     const v = verdict(rows, name, gates);
-    const result = !v ? "missing" : v.pass === true ? "pass" : v.pass === null ? "unrun" : "fail";
+    const throttled = (v?.metrics.sys?.maxThermal ?? 0) >= 2;
+    const result = !v ? "missing" : v.pass === true ? "pass" : v.pass === null ? "unrun" : throttled ? "fail (throttled: rerun cool)" : "fail";
     if (result !== "pass") pass = false;
     lines.push(`| ${name} | ${result} | ${v ? keyNumbers(v.metrics) : ""} |`);
   }
