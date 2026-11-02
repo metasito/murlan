@@ -23,7 +23,9 @@ Treat multi-instance as the current reality, not a future one. The fix already s
 `server/game/gameOwnership.ts` (Postgres advisory lock, one owner per room) plus
 `@socket.io/postgres-adapter` (`server/socket/socketAdapter.ts`) carrying broadcasts and forwarded
 actions (`server/game/tableRouter.ts`) across instances (commit `13b09ac`). ADR-0014 replaced that
-adapter with Redis (`@socket.io/redis-streams-adapter`, #1885); the multi-instance premise stands. This is load-bearing
+adapter with Redis (`@socket.io/redis-streams-adapter`, #1885) and moved every HTTP rate limit's
+count there (`server/http/rateLimit.ts`, #1887), so a limit is the cluster's, not one instance's;
+the multi-instance premise stands. This is load-bearing
 production infrastructure, not speculative scaffolding — do not remove or simplify it on the
 assumption the app is single-instance.
 
@@ -31,5 +33,6 @@ assumption the app is single-instance.
 
 A future architecture review that reads ADR-0001's "no horizontal scaling" line in isolation
 will misread `gameOwnership.ts`/`tableRouter.ts`/`socketAdapter.ts` as a hypothetical seam
-with only one adapter. It has two, both real. Any change to how rooms are owned or how state
-broadcasts must account for concurrent instances as a given, not a contingency.
+with only one adapter. It has two, both real. Any change to how rooms are owned, how state
+broadcasts or how a request is limited must account for concurrent instances as a given, not a
+contingency.

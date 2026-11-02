@@ -22,7 +22,8 @@ import { payload } from "../../shared/payload.ts";
  * a column is the last resort. A player-visible "you can change this again in N days" would need
  * one, and that is its own ticket.
  */
-const renameLimiter = routeLimiter({
+export const renameLimiter = routeLimiter({
+  name: "rename",
   windowMs: 24 * 60 * 60 * 1000,
   defaultMax: 5,
   envVar: "MURLAN_RENAME_RATE_LIMIT",
@@ -38,7 +39,8 @@ const renameLimiter = routeLimiter({
 // Keyed by account, not by address: the endpoint requires a session, so the
 // account is the thing worth limiting, and an IP key would make one player on
 // a shared network throttle everyone else behind it.
-const pushLimiter = routeLimiter({
+export const pushLimiter = routeLimiter({
+  name: "push",
   windowMs: 60 * 1000,
   defaultMax: 10,
   keyBy: "session",

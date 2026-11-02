@@ -8,7 +8,8 @@ import { recordBugReport } from "../bugReports.ts";
 import { logger } from "../../shared/logger.ts";
 import { payload } from "../../shared/payload.ts";
 
-const errorReportLimiter = routeLimiter({
+export const errorReportLimiter = routeLimiter({
+  name: "errorReport",
   windowMs: 60 * 1000,
   defaultMax: 5,
   // Keyed by account, like the limiter above. The default key is the IP, and
@@ -22,7 +23,8 @@ const errorReportLimiter = routeLimiter({
 
 // Its own budget: a crash loop spending errorReportLimiter must not refuse the
 // report the player then sends about it.
-const bugReportLimiter = routeLimiter({
+export const bugReportLimiter = routeLimiter({
+  name: "bugReport",
   windowMs: 60 * 1000,
   defaultMax: 5,
   keyBy: "session",
