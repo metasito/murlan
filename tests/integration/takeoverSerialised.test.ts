@@ -52,18 +52,19 @@ const table = (roomId: string) =>
  * players are online, so a restore arms no grace and sends nothing of its own:
  * each applied `resume` is then exactly one `game:turn_deadline`.
  */
+const realClaim = activeGameStore.claim;
+activeGameStore.claim = async (roomId) => {
+  restores += 1;
+  // A restore is a database read; returning in the same tick would close
+  // the window this test exists to enter.
+  await sleep(RESTORE_MS);
+  return { epoch: restores, row: { roomId, gameState: JSON.parse(JSON.stringify(toEnvelope(table(roomId)))) } };
+};
+after(() => {
+  activeGameStore.claim = realClaim;
+});
 const { rt: takeover, sent, cluster } = recordingRuntime({
   store: {
-    games: {
-      ...activeGameStore,
-      load: async (roomId) => {
-        restores += 1;
-        // A restore is a database read; returning in the same tick would close
-        // the window this test exists to enter.
-        await sleep(RESTORE_MS);
-        return { roomId, gameState: JSON.parse(JSON.stringify(toEnvelope(table(roomId)))) };
-      },
-    },
     rooms: { ...roomStore, getRoomById: async () => undefined as never },
   },
 });

@@ -6,10 +6,12 @@ import { closeDatabase, QUERY_TIMEOUT_MS } from "../store/db.ts";
 import { beginShutdown } from "../game/gameRoom.ts";
 import { closeRedis } from "../store/redis.ts";
 import { stopInbox } from "../store/instanceInbox.ts";
+import { closeTableOwners } from "../store/tableOwners.ts";
 import { cancelRevocationRetries } from "../socket/socketRegistry.ts";
-import { closeOwnership } from "../game/gameOwnership.ts";
+import { closeOwnership, forgetOwnerRecords } from "../game/gameOwnership.ts";
 import type { TableRuntime } from "../game/tableRuntime.ts";
 import { settleDisconnects } from "../socket/socketPresence.ts";
+import { flushTelemetry } from "../shared/telemetryBatch.ts";
 import { within } from "../shared/within.ts";
 import { stopHealth } from "./health.ts";
 
@@ -38,6 +40,8 @@ export const SHUTDOWN_BUDGET = {
   ioClose: 500,
   settleDisconnects: DISCONNECT_SETTLE_MS,
   stopTables: 250,
+  flushTelemetry: 200,
+  ownerRecords: 250,
   drain: DRAIN_TIMEOUT_MS,
   poolEnd: 200,
   closeOwnership: 250,
@@ -102,9 +106,12 @@ export async function shutdown(
     );
     await settleDisconnects(SHUTDOWN_BUDGET.settleDisconnects);
     await within(SHUTDOWN_BUDGET.stopTables, tables.stopTables());
+    await within(SHUTDOWN_BUDGET.flushTelemetry, flushTelemetry());
     cancelRevocationRetries();
     stopHealth();
     stopInbox();
+    await within(SHUTDOWN_BUDGET.ownerRecords, forgetOwnerRecords());
+    closeTableOwners();
     closeRedis();
     // Disconnecting the sockets above starts writes — updateLastSeen, the
     // lobby teardown — that only the drain inside closeDatabase waits for.

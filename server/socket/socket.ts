@@ -18,6 +18,7 @@ import { redeemSocketTicket, verifySocketTicket } from "./ticket.ts";
 import { isAllowedOrigin } from "../http/cors.ts";
 import { createSocketAdapter } from "./socketAdapter.ts";
 import { startInbox } from "../store/instanceInbox.ts";
+import { openTableOwners } from "../store/tableOwners.ts";
 import { registerRoomHandlers } from "./socketRooms.ts";
 import { registerGameplayHandlers } from "./socketGameplay.ts";
 import {
@@ -111,6 +112,7 @@ export function setupSocket(httpServer: HttpServer, sessionMiddleware: RequestHa
   });
   io.adapter(createSocketAdapter());
   startInbox();
+  openTableOwners();
   // Before the first connection: a table action forwarded from another
   // instance arrives on `io`, not on a socket, and one that lands before the
   // runtime's listener exists is answered by nobody.

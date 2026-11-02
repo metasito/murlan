@@ -1,7 +1,7 @@
 import { now } from "../http/clock.ts";
 import { eq, and, asc, inArray, sql } from "drizzle-orm";
 import { db, transaction, type Database, type Tx } from "./db.ts";
-import { users, rooms, roomPlayers, gameInvites, activeGames } from "../../shared/schema.ts";
+import { users, rooms, roomPlayers, gameInvites, activeGames, activeGameSettled } from "../../shared/schema.ts";
 import type { User, Room, RoomPlayer, RoomVisibility } from "../../shared/schema.ts";
 import { heldSeats, renumbering, seatForClaim, settleRelease, startRefusal } from "../game/seatAllocation.ts";
 import type { SeatHold, SeatInvite, SeatedPlayer, SeatingRoom } from "../game/seatAllocation.ts";
@@ -364,11 +364,14 @@ export const roomStore = {
     }
   },
 
-  /** `room_players` has no cascade, so its rows go before the rooms they name. Returns how many rooms went. */
+  /**
+   * `room_players` has no cascade, so its rows go before the rooms they name. A table row still
+   * holding unapplied results stays, for its commit. Returns how many rooms went.
+   */
   async purgeRooms(tx: Tx | Database, ids: string[]): Promise<number> {
     if (ids.length === 0) return 0;
     await tx.delete(roomPlayers).where(inArray(roomPlayers.roomId, ids));
-    await tx.delete(activeGames).where(inArray(activeGames.roomId, ids));
+    await tx.delete(activeGames).where(and(inArray(activeGames.roomId, ids), activeGameSettled));
     const gone = await tx.delete(rooms).where(inArray(rooms.id, ids)).returning({ id: rooms.id });
     return gone.length;
   },

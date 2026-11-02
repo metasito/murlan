@@ -6,11 +6,13 @@ import type { TableRuntime } from "../../server/game/tableRuntime.ts";
 import { createApp } from "../../server/app.ts";
 import { closeDatabase, db as appDb, pool as appPool, type Database } from "../../server/store/db.ts";
 import { closeRedis, redisReady } from "../../server/store/redis.ts";
+import { closeTableOwners } from "../../server/store/tableOwners.ts";
 import { stopInbox } from "../../server/store/instanceInbox.ts";
 import { cancelRevocationRetries } from "../../server/socket/socketRegistry.ts";
 import { stopHealth } from "../../server/http/health.ts";
 import { dropKeyspace } from "./redisKeys.ts";
 import { closeOwnership } from "../../server/game/gameOwnership.ts";
+import { flushTelemetry } from "../../server/shared/telemetryBatch.ts";
 import { installClock, type Clock } from "../../server/http/clock.ts";
 
 /**
@@ -225,11 +227,13 @@ export async function startTestServer(
           await closed;
           // After the http server: closeDatabase drains the fire-and-forget
           // writes still landing from the requests and disconnects above.
+          await flushTelemetry();
           await (await closeDatabase()).ended;
           await ioClosed;
           cancelRevocationRetries();
           stopHealth();
           stopInbox();
+          closeTableOwners();
           closeRedis();
           // The room-ownership client is a second connection, held open for
           // the life of the process exactly as the pool is.
@@ -256,6 +260,7 @@ export async function startTestServer(
     cancelRevocationRetries();
     stopHealth();
     stopInbox();
+    closeTableOwners();
     closeRedis();
     restoreClock();
     process.env.DATABASE_URL = baseUrl;

@@ -195,20 +195,25 @@ describe("store reads select only what their callers use", { skip: hasDatabase()
     assert.deepEqual(seats.map((r) => r.room_id), [open], "a held seat was given away");
   });
 
-  test("the orphan sweep reads seat ids, never an envelope, and only of rows it could resume", async () => {
-    const envelope = (schemaVersion: unknown, roundOver: unknown, playerMap: unknown) => ({
+  test("the orphan sweep reads seat ids, never an envelope, and only of rows it could resume or owes a commit", async () => {
+    const envelope = (schemaVersion: unknown, roundOver: unknown, playerMap: unknown, pendingResults?: unknown[]) => ({
       schemaVersion,
       joinCode: "AAAAAA",
       gameState: { roundOver, hands: [[{ id: "c1", suit: "hearts", rank: 3 }]] },
       match: { playerMap, scores: {} },
+      ...(pendingResults ? { pendingResults } : {}),
     });
     const rows: [string, unknown][] = [
       ["live", envelope(GAME_SCHEMA_VERSION, false, { 2: "cara", 0: "ana", 1: "besi" })],
       ["oldest", envelope(OLDEST_GAME_SCHEMA_VERSION, false, { 0: "dren" })],
+      ["with-move-log", envelope(11, false, { 0: "fana" })],
       ["seatless", envelope(GAME_SCHEMA_VERSION, false, {})],
       ["odd-seats", envelope(GAME_SCHEMA_VERSION, false, { 0: 7, x: "nobody", 1: "edi" })],
       ["map-not-object", envelope(GAME_SCHEMA_VERSION, false, ["ana"])],
       ["between-rounds", envelope(GAME_SCHEMA_VERSION, true, { 0: "ana" })],
+      ["between-rounds-settled", envelope(GAME_SCHEMA_VERSION, true, { 0: "ana" }, [])],
+      ["between-rounds-owed", envelope(GAME_SCHEMA_VERSION, true, { 0: "gent" }, [{ round: 1 }])],
+      ["live-owed", envelope(GAME_SCHEMA_VERSION, false, { 0: "hana" }, [{ round: 1 }])],
       ["too-old", envelope(OLDEST_GAME_SCHEMA_VERSION - 1, false, { 0: "ana" })],
       ["too-new", envelope(GAME_SCHEMA_VERSION + 1, false, { 0: "ana" })],
       ["version-as-text", envelope(String(GAME_SCHEMA_VERSION), false, { 0: "ana" })],
@@ -226,11 +231,14 @@ describe("store reads select only what their callers use", { skip: hasDatabase()
     assert.deepEqual(
       [...result].sort((a, b) => (a.roomId < b.roomId ? -1 : 1)),
       [
-        { roomId: "live", userIds: ["ana", "besi", "cara"] },
-        { roomId: "map-not-object", userIds: [] },
-        { roomId: "odd-seats", userIds: ["edi"] },
-        { roomId: "oldest", userIds: ["dren"] },
-        { roomId: "seatless", userIds: [] },
+        { roomId: "between-rounds-owed", userIds: ["gent"], roundOver: true, pending: true },
+        { roomId: "live", userIds: ["ana", "besi", "cara"], roundOver: false, pending: false },
+        { roomId: "live-owed", userIds: ["hana"], roundOver: false, pending: true },
+        { roomId: "map-not-object", userIds: [], roundOver: false, pending: false },
+        { roomId: "odd-seats", userIds: ["edi"], roundOver: false, pending: false },
+        { roomId: "oldest", userIds: ["dren"], roundOver: false, pending: false },
+        { roomId: "seatless", userIds: [], roundOver: false, pending: false },
+        { roomId: "with-move-log", userIds: ["fana"], roundOver: false, pending: false },
       ]
     );
   });

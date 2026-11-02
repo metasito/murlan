@@ -4,7 +4,7 @@ import { OK, refuse, type Outcome, type Refusal } from "../shared/refusal.ts";
 import { logger } from "../shared/logger.ts";
 import { activeGames, isShuttingDown } from "./gameRoom.ts";
 import { stopSpectatingEverywhere } from "../socket/seating.ts";
-import { armVoteDeadline } from "./roundOver.ts";
+import { armVoteDeadline, noteUnreadableResults, settleRoundResults } from "./roundOver.ts";
 import { clearRoomTimers, usersInLobbyGrace } from "./gameTimers.ts";
 import { buildSeatRoster, seatOfUser } from "./onlineGameLogic.ts";
 import { fromEnvelope, newTable } from "./tableState.ts";
@@ -15,6 +15,8 @@ import type { RehydrateOutcome } from "./tableRouter.ts";
 import { everySeatedVoted } from "./tableVotes.ts";
 import { castRematchVote, clearRematchVotes } from "./matchLedger.ts";
 import { armSeatGrace } from "./tableHandlers.ts";
+import { claimRoom, enterTable, ownsRoom, releaseRoom } from "./gameOwnership.ts";
+import { inFlight } from "./tableRouter.ts";
 
 /**
  * Puts a persisted game back in memory, for an instance that has just claimed
@@ -38,7 +40,9 @@ export async function rehydrateGame(
   roomId: string,
   forUserId: string | null
 ): Promise<RehydrateOutcome> {
-  const row = await rt.store.games.load(roomId);
+  const entry = await enterTable(roomId);
+  if (!entry.held) return "lost";
+  const { row } = entry;
   if (!row) return "missing";
 
   const restored = fromEnvelope(row);
@@ -58,6 +62,7 @@ export async function rehydrateGame(
   }
 
   const { game } = restored;
+  noteUnreadableResults(roomId, restored.unreadablePendingResults);
   const { playerMap } = game;
   if (
     forUserId !== null &&
@@ -65,6 +70,11 @@ export async function rehydrateGame(
     ![...game.vacatedSeats.values()].some((who) => who.userId === forUserId)
   ) {
     return "not_seated";
+  }
+  if (game.pendingResults.length > 0) {
+    // The round the table stands on announces itself once its results commit.
+    if (game.gameState.roundOver) game.roundOverDue = game.pendingResults.at(-1)?.round;
+    await settleRoundResults(rt, game);
   }
   activeGames.set(roomId, game);
   logger.info({ roomId }, "Took over a table from active_games");
@@ -214,12 +224,48 @@ export async function startMatchAction(
 export async function resumeOrphanedTables(rt: TableRuntime): Promise<void> {
   if (isShuttingDown()) return;
   const rows = await rt.store.games.listResumable();
+  for (const row of rows) {
+    if (!row.pending || activeGames.has(row.roomId) || ownsRoom(row.roomId) || inFlight.has(row.roomId)) continue;
+    if (isShuttingDown()) return;
+    await settleOrphanedResults(rt, row.roomId);
+  }
   const online = await rt.presence.connectedUserIds();
   if (!online) return;
   for (const row of rows) {
-    if (activeGames.has(row.roomId) || isShuttingDown()) continue;
+    if (row.roundOver || activeGames.has(row.roomId) || isShuttingDown()) continue;
     const userId = row.userIds.find((id) => online.has(id));
     if (userId === undefined) continue;
     await rt.route({ kind: "resume", roomId: row.roomId, userId });
+  }
+}
+
+/**
+ * Commits a held-by-nobody table's pending rounds with no player present: claimed like any
+ * owner (the lock, then a fresh epoch), applied under that epoch, and handed back. Registered in
+ * `inFlight` so a takeover on this instance waits for it rather than restoring under it.
+ */
+async function settleOrphanedResults(rt: TableRuntime, roomId: string): Promise<void> {
+  const span = (async () => {
+    if (!(await claimRoom(roomId))) return;
+    try {
+      const entry = await enterTable(roomId);
+      if (!entry.held || !entry.row) return;
+      const restored = fromEnvelope(entry.row);
+      if (!restored.ok) return;
+      noteUnreadableResults(roomId, restored.unreadablePendingResults);
+      if (restored.game.pendingResults.length === 0) return;
+      const { failure } = await rt.writers.applyPendingResults(roomId, restored.game);
+      if (failure !== undefined) {
+        logger.error({ err: failure, roomId, entry: restored.game.pendingResults[0] }, "An ownerless table's results failed to commit");
+      }
+    } finally {
+      if (!activeGames.has(roomId)) await releaseRoom(roomId);
+    }
+  })();
+  inFlight.set(roomId, span);
+  try {
+    await span.catch((err: unknown) => logger.error({ err, roomId }, "Settling an ownerless table's results failed"));
+  } finally {
+    if (inFlight.get(roomId) === span) inFlight.delete(roomId);
   }
 }

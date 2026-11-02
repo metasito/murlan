@@ -10,7 +10,7 @@ import { aThreePlayed } from "../support/game.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { disposeGame } from "../../server/game/gamePersistence.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
-import { claimRoom, ownershipKey } from "../../server/game/gameOwnership.ts";
+import { claimRoom, enterTable, ownershipKey } from "../../server/game/gameOwnership.ts";
 import { eventually } from "../helpers/client.ts";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -51,6 +51,8 @@ function liveGame(roomId: string): OnlineGameState {
     dealFirstSeat: 0,
     spectators: new Set(),
     moveLog: null,
+    pendingResults: [],
+    landedResults: new Set(),
   };
 }
 
@@ -86,6 +88,7 @@ describe("a disposed table", { skip: hasDatabase() ? false : skipMessage() }, ()
 
     const game = liveGame(roomId);
     assert.equal(await claimRoom(roomId), true);
+    assert.equal((await enterTable(roomId)).held, true);
     activeGames.set(roomId, game);
     await persistGameState(roomId, game);
     assert.equal(await rowExists(), true);

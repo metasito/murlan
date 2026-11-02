@@ -9,6 +9,7 @@ import { setUpRoom, type Client } from "../helpers/table.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { seatHoldMs } from "../../server/game/gameTimers.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
+import { roomWritesLanded } from "../../server/game/roomWriteChain.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 
 describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }, () => {
@@ -285,16 +286,17 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     await Promise.all(dealt);
     const { persistGameState } = server.rt.writers;
     const game = activeGames.get(room.roomId)!;
+    await roomWritesLanded(room.roomId);
     const real = activeGameStore.write;
     let open!: () => void;
     const gate = new Promise<void>((r) => (open = r));
     let held = 0;
-    activeGameStore.write = async function (roomId, state) {
+    activeGameStore.write = async function (roomId, state, epoch, adding) {
       if (roomId === room.roomId && state.match.roundsPlayed === 101) {
         held += 1;
         await gate;
       }
-      return real.call(this, roomId, state);
+      return real.call(this, roomId, state, epoch, adding);
     };
     try {
       Object.assign(game, { roundsPlayed: 101 });

@@ -114,7 +114,7 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
     );
     assert.equal(before.length, 1, "the fixture row was never inserted");
 
-    // recordClientError is a bare insert (#895) — only sweepRetention() prunes.
+    // recordClientError only queues a row — only sweepRetention() prunes.
     const res = await fetch(`${server.url}/api/client-errors`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie: playerCookie },

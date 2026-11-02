@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, boolean, pgEnum, jsonb, index, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, pgSequence, text, varchar, timestamp, integer, bigint, boolean, pgEnum, jsonb, index, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
 import type { LastMove } from "../lib/game/gameEngine.ts";
 import type { PersistedEnvelope } from "./persistedEnvelope.ts";
 import type { ReplayMove, ReplaySeat } from "../lib/game/replay.ts";
@@ -167,7 +167,16 @@ export const activeGames = pgTable("active_games", {
   roomId:     text("room_id").primaryKey(),
   gameState:  jsonb("game_state").$type<PersistedEnvelope>().notNull(),
   updatedAt:  timestamp("updated_at").defaultNow().notNull(),
+  // Which claim owns the row; see `server/game/gameOwnership.ts` `enterTable`.
+  ownerEpoch: bigint("owner_epoch", { mode: "number" }).notNull().default(0),
 });
+
+/** A row with no unapplied round: one with any is never deleted, as its results exist nowhere else. */
+export const activeGameSettled = sql`coalesce(${activeGames.gameState}->'pendingResults', '[]'::jsonb) = '[]'::jsonb`;
+
+// Every claim's epoch, so none is ever handed out twice: not after a row is deleted and made
+// again, and not to two claims of a room that has no row.
+export const ownerEpochs = pgSequence("active_games_owner_epoch_seq");
 
 export const userStats = pgTable("user_stats", {
   userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),

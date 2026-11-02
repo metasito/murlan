@@ -171,6 +171,12 @@ test("boot drops the retired socket adapter's spill table, and only tables the s
   }
 });
 
+test("the owner epochs come from one sequence the bootstrap creates before any table", () => {
+  const created = statements.findIndex((s) => s === 'CREATE SEQUENCE IF NOT EXISTS "active_games_owner_epoch_seq" AS bigint;');
+  assert.ok(created !== -1, "no statement creates the owner epoch sequence");
+  assert.ok(created < statements.findIndex((s) => /^CREATE TABLE/.test(s)));
+});
+
 test("columns are added before the indexes that may target them", () => {
   const lastAddColumn = statements.findLastIndex((s) => /ADD COLUMN/i.test(s));
   const firstIndex = statements.findIndex((s) => /CREATE (UNIQUE )?INDEX/i.test(s));

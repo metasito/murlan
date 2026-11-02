@@ -18,13 +18,12 @@ import type { GameMode, MatchLength, Opening } from "../../lib/game/gameEngine.t
 
 /** The fields no envelope carries, each with the value a table starts it on. */
 const MEMORY_ONLY_START = {
-  resultWrites: () => undefined,
+  landedResults: () => new Set<number>(),
+  roundOverDue: () => undefined,
   rematchVotes: () => new Set<string>(),
   endMatchVotes: () => new Set<string>(),
   turnDeadlineMs: () => undefined,
   spectators: () => new Set<string>(),
-  moveLog: () => null,
-  replayOpening: () => undefined,
   lastRoundOverPayload: () => undefined,
 } satisfies { [K in keyof OnlineGameState]?: () => OnlineGameState[K] };
 
@@ -56,14 +55,17 @@ const PERSISTED_FIELDS: { [K in Exclude<keyof OnlineGameState, MemoryOnlyField>]
   vacatedSeats: true,
   weakSeats: true,
   dealFirstSeat: true,
+  moveLog: true,
+  replayOpening: true,
+  pendingResults: true,
 };
 
 export const PERSISTED = Object.keys(PERSISTED_FIELDS) as Exclude<keyof OnlineGameState, MemoryOnlyField>[];
 
-export function freshMemory(moveLog: OnlineGameState["moveLog"]): MemoryOnly {
+export function freshMemory(): MemoryOnly {
   const memory: Record<string, unknown> = {};
   for (const field of MEMORY_ONLY) {
-    const value = field === "moveLog" ? moveLog : MEMORY_ONLY_START[field]();
+    const value = MEMORY_ONLY_START[field]();
     if (value !== undefined) memory[field] = value;
   }
   return memory as MemoryOnly;
@@ -145,7 +147,12 @@ export function newTable(
     // Reached only when a match is genuinely starting fresh (no `previous`,
     // or `previous.matchOver`), so `matchOver` is unconditionally `true`.
     dealFirstSeat: dealFirstSeatFor(true, 0, roster.length),
-    ...freshMemory([]),
+    moveLog: [],
+    ...freshMemory(),
+    // The same collections, not copies: a commit still in flight for the last match removes its
+    // entry from these, and a copy would write it back.
+    pendingResults: previous?.pendingResults ?? [],
+    landedResults: previous?.landedResults ?? new Set(),
   };
 }
 
@@ -165,11 +172,14 @@ export function toEnvelope(game: OnlineGameState): PersistedEnvelope {
     releasedSeats: [...game.releasedSeats],
     weakSeats: [...game.weakSeats],
     abandonedSeats: [...game.abandonedSeats],
-  });
+  }, {
+    moveLog: game.moveLog && [...game.moveLog],
+    replayOpening: game.replayOpening ?? null,
+  }, [...game.pendingResults]);
 }
 
 export type TableRestore =
-  | { ok: true; game: OnlineGameState }
+  | { ok: true; game: OnlineGameState; unreadablePendingResults: number }
   | { ok: false; reason: string; newer?: true };
 
 /**
@@ -186,6 +196,7 @@ export function fromEnvelope(row: { roomId: string; gameState: unknown }): Table
   const vacatedSeats = new Map(restored.seats.vacatedSeats);
   return {
     ok: true,
+    unreadablePendingResults: restored.unreadablePendingResults,
     game: {
       roomId: row.roomId,
       joinCode: restored.joinCode,
@@ -205,8 +216,11 @@ export function fromEnvelope(row: { roomId: string; gameState: unknown }): Table
       vacatedSeats,
       weakSeats: new Set(restored.seats.weakSeats),
       dealFirstSeat: restored.dealFirstSeat,
-      // A round restored after a restart produces no replay; the next one starts a fresh log.
-      ...freshMemory(null),
+      moveLog: restored.moveLog,
+      ...(restored.replayOpening ? { replayOpening: restored.replayOpening } : {}),
+      pendingResults: restored.pendingResults,
+      ...freshMemory(),
+      landedResults: new Set(restored.pendingResults.map((r) => r.round)),
     },
   };
 }

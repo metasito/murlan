@@ -24,7 +24,9 @@ export function onlineTable(
     vacatedSeats: new Map(),
     weakSeats: new Set(),
     dealFirstSeat: 0,
-    ...freshMemory(null),
+    moveLog: null,
+    pendingResults: [],
+    ...freshMemory(),
     ...overrides,
   } as OnlineGameState;
 }

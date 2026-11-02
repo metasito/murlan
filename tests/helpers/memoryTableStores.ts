@@ -17,6 +17,10 @@ export interface MemoryTableStores {
   rooms: Map<string, Room>;
   seats: Map<string, Seat[]>;
   rows: Map<string, unknown>;
+  /** Each row's `owner_epoch`; a seeded row starts at 0, as one written before epochs did. */
+  epochs: Map<string, number>;
+  /** The epoch sequence: `last` is the epoch the latest claim took. */
+  sequence: { last: number };
 }
 
 export interface MemoryTableSeed {
@@ -31,24 +35,56 @@ export function useMemoryTableStores(t: TestContext, seed: MemoryTableSeed = {})
   const rows = new Map(seed.rows ?? []);
   const seated = (roomId: string) => [...(seats.get(roomId) ?? [])].sort((a, b) => a.seatIndex - b.seatIndex);
 
+  const epochs = new Map<string, number>([...rows.keys()].map((roomId) => [roomId, 0]));
+  const sequence = { last: 0 };
+  const at = (roomId: string, epoch: number) => rows.has(roomId) && epochs.get(roomId) === epoch;
   t.mock.method(activeGameStore, "load", async (roomId: string) =>
     rows.has(roomId) ? { roomId, gameState: rows.get(roomId) } : undefined
   );
+  t.mock.method(activeGameStore, "claim", async (roomId: string) => {
+    const epoch = ++sequence.last;
+    if (!rows.has(roomId)) return { epoch, row: undefined };
+    epochs.set(roomId, epoch);
+    return { epoch, row: { roomId, gameState: rows.get(roomId) } };
+  });
+  t.mock.method(activeGameStore, "epochOf", async (roomId: string) => (rows.has(roomId) ? epochs.get(roomId) : undefined));
   t.mock.method(activeGameStore, "listResumable", async () =>
     [...rows].flatMap(([roomId, stored]) => {
-      const row = stored as { schemaVersion?: unknown; gameState?: { roundOver?: unknown }; match?: { playerMap?: unknown } };
+      const row = stored as {
+        schemaVersion?: unknown;
+        gameState?: { roundOver?: unknown };
+        match?: { playerMap?: unknown };
+        pendingResults?: unknown[];
+      };
       const version = row?.schemaVersion;
       const supported = typeof version === "number" && version >= OLDEST_GAME_SCHEMA_VERSION && version <= GAME_SCHEMA_VERSION;
-      return supported && row.gameState?.roundOver !== true
-        ? [{ roomId, userIds: Object.values(readPersistedPlayerMap(row.match?.playerMap)) }]
+      const roundOver = row?.gameState?.roundOver === true;
+      const pending = (row?.pendingResults?.length ?? 0) > 0;
+      return supported && (!roundOver || pending)
+        ? [{ roomId, userIds: Object.values(readPersistedPlayerMap(row.match?.playerMap)), roundOver, pending }]
         : [];
     })
   );
-  t.mock.method(activeGameStore, "write", async (roomId: string, gameState: unknown) => {
+  t.mock.method(activeGameStore, "write", async (roomId: string, gameState: object, epoch: number, adding?: { round: number }) => {
+    if (rows.has(roomId) && !at(roomId, epoch)) return false;
+    if (rows.has(roomId)) {
+      // As the store does: the row keeps its own pending rounds, and `adding` appends one.
+      const kept = ((rows.get(roomId) as { pendingResults?: { round: number }[] }).pendingResults ?? []).slice();
+      if (adding && !kept.some((e) => e.round === adding.round)) kept.push(adding);
+      gameState = { ...gameState, pendingResults: kept };
+    } else {
+      gameState = { ...gameState, pendingResults: adding ? [adding] : [] };
+    }
     rows.set(roomId, gameState);
+    epochs.set(roomId, epoch);
+    return true;
   });
-  t.mock.method(activeGameStore, "remove", async (roomId: string) => {
+  t.mock.method(activeGameStore, "remove", async (roomId: string, epoch: number) => {
+    if (!rows.has(roomId)) return true;
+    if (!at(roomId, epoch)) return false;
     rows.delete(roomId);
+    epochs.delete(roomId);
+    return true;
   });
 
   const port: TableRoomPort = {
@@ -98,5 +134,5 @@ export function useMemoryTableStores(t: TestContext, seed: MemoryTableSeed = {})
     t.mock.method(roomStore, name, port[name]);
   }
 
-  return { rooms, seats, rows };
+  return { rooms, seats, rows, epochs, sequence };
 }

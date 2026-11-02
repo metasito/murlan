@@ -6,6 +6,7 @@ import pg from "pg";
 import { dropSchema, hasDatabase, skipMessage } from "../helpers/testServer.ts";
 import { closeDatabase, openDatabase, pool } from "../../server/store/db.ts";
 import { claimRoom, closeOwnership, ownershipKey, reopenOwnership } from "../../server/game/gameOwnership.ts";
+import { activeGameStore } from "../../server/store/activeGameStore.ts";
 
 test("each pool and client names its use, and the app pool bounds an idle transaction", async (t) => {
   if (!hasDatabase()) return t.skip(skipMessage());
@@ -18,7 +19,7 @@ test("each pool and client names its use, and the app pool bounds an idle transa
   process.env.DATABASE_URL = `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}options=-c%20search_path%3D${schema}`;
   try {
     openDatabase();
-    reopenOwnership({ onRoomLost: () => {} });
+    reopenOwnership({ onRoomLost: () => {}, rows: activeGameStore });
     const room = `pg-sessions-${schema}`;
     assert.equal(await claimRoom(room), true);
 

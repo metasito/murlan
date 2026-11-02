@@ -12,8 +12,9 @@ const mode = process.argv[2] ?? "reclaim";
 const proxy = await startProxy(PG_PORT, { finThroughDead: mode === "reclaim-fin" });
 process.env.DATABASE_URL = viaProxy(proxy.port);
 const own = await import("../../../../../../server/game/gameOwnership.ts");
+const { activeGameStore } = await import("../../../../../../server/store/activeGameStore.ts");
 const lost: string[] = [];
-own.reopenOwnership({ onRoomLost: (roomId) => { lost.push(roomId); log(`onRoomLost(${roomId}) -> production disposes this table`); } });
+own.reopenOwnership({ rows: activeGameStore, onRoomLost: (roomId) => { lost.push(roomId); log(`onRoomLost(${roomId}) -> production disposes this table`); } });
 const admin = new pg.Client({ connectionString: directUrl });
 await admin.connect();
 const locks = async () =>

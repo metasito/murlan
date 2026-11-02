@@ -4,12 +4,21 @@
 import type { GameState, LastMove, MatchLength } from "../../lib/game/gameEngine.ts";
 import type { ReplayMove } from "../../lib/game/replay.ts";
 import type { RoundOverPayload } from "../../shared/protocol.ts";
+import type { PendingResult } from "../../shared/persistedEnvelope.ts";
 import { deadline, secondsUntil } from "./gameTimers.ts";
 
 export interface OnlineGameState {
   gameState: GameState;
-  /** The last finished round's stats and ladder writes; never rejects. */
-  resultWrites?: Promise<void>;
+  /**
+   * Finished rounds whose results have not committed, oldest first, as the envelope carries them.
+   * One array for the table's life: a new match at the table keeps it, and entries leave it only
+   * once their commit has landed (`server/game/roundResults.ts`).
+   */
+  readonly pendingResults: PendingResult[];
+  /** The rounds of `pendingResults` known to be in the row: only those may be read as applied when the row lacks them. */
+  readonly landedResults: Set<number>;
+  /** The round whose `game:round_over` waits on its results commit. */
+  roundOverDue?: number;
   /** engine seat index -> userId. A missing seat is a vacated (bot) seat. */
   readonly playerMap: Readonly<Record<number, string>>;
   roomId: string;
@@ -125,12 +134,10 @@ export interface OnlineGameState {
    */
   spectators: Set<string>;
   /**
-   * This round's move log, written once to `round_replays` at game over.
-   *
-   * Memory only, unlike roundFlags: the envelope is rewritten after every move,
-   * and carrying a few hundred combinations through each would buy nothing.
-   * `null` means this round cannot produce a replay — rehydrated after a
-   * restart, or past MAX_REPLAY_MOVES — and none will be written.
+   * This round's move log, written once to `round_replays` at game over, and
+   * carried in the envelope so a round restored mid-way still gets its replay.
+   * `null` means this round cannot produce a replay — restored from a row that
+   * held none, or past MAX_REPLAY_MOVES — and none will be written.
    */
   moveLog: ReplayMove[] | null;
   /** What the log's first move followed, the deal or the giveback: stored beside the log, not in it. */

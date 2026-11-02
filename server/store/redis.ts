@@ -4,7 +4,7 @@ import runtime from "../../deploy/runtime.json" with { type: "json" };
 import { logger } from "../shared/logger.ts";
 import { redisReconnects } from "../shared/metrics.ts";
 
-export type RedisUse = "adapter" | "inbox" | "presence" | "limits" | "health";
+export type RedisUse = "adapter" | "inbox" | "presence" | "limits" | "owners" | "health";
 export type RedisClient = ReturnType<typeof newClient>;
 
 export const instanceId = randomUUID();

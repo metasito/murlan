@@ -1,11 +1,11 @@
 // Tables that stopped answering: a deal, a vote or a grace that never came.
 import { test, describe, afterEach, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { rehydrateGame } from "../../server/game/tableLifecycle.ts";
 import { applyOrForward } from "../../server/game/tableRouter.ts";
 import { handleRoundOver } from "../../server/game/roundOver.ts";
 import type { Presence, TableRuntime, TableWriters } from "../../server/game/tableRuntime.ts";
 import { recordingRuntime, stubTransport } from "../helpers/recordingRuntime.ts";
+import { rehydrateClaimed } from "../helpers/heldRoom.ts";
 import { socketPresence } from "../../server/socket/socketOutbox.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import {
@@ -102,7 +102,7 @@ describe("a table restored after a restart", () => {
     const row = finishedRow();
     useMemoryTableStores(t, { rooms: [[ROOM, room]], rows: [[ROOM, row]] });
 
-    assert.equal(await rehydrateGame(rt, ROOM, "ana"), "restored");
+    assert.equal(await rehydrateClaimed(t, rt, ROOM, "ana"), "restored");
     assert.equal(activeGames.get(ROOM)!.lastRoundOverPayload, undefined, "nothing persisted the game:over");
     await applyOrForward(rt, { kind: "rejoin", roomId: ROOM, userId: "ana" });
 
@@ -123,7 +123,7 @@ describe("a table restored after a restart", () => {
     t.mock.method(roomStore, "updateRoomStatus", async () => {});
     t.mock.method(roomStore, "releaseSeat", async () => null);
 
-    assert.equal(await rehydrateGame(rt, ROOM, "ana"), "restored");
+    assert.equal(await rehydrateClaimed(t, rt, ROOM, "ana"), "restored");
     const game = activeGames.get(ROOM)!;
     assert.equal(game.gameState.roundOver, true);
 
@@ -287,7 +287,7 @@ describe("between hands, online elsewhere is not back at this table", () => {
     const row = finishedRow();
     useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
-    assert.equal(await rehydrateGame(rt, ROOM, "ana"), "restored");
+    assert.equal(await rehydrateClaimed(t, rt, ROOM, "ana"), "restored");
     assert.deepEqual(usersInLobbyGrace(ROOM), ["besi"]);
   });
 });
@@ -299,7 +299,7 @@ describe("a restore with one player present and one away", () => {
     const row = finishedRow();
     useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
-    assert.equal(await rehydrateGame(rt, ROOM, null), "restored");
+    assert.equal(await rehydrateClaimed(t, rt, ROOM, null), "restored");
     assert.deepEqual(usersInLobbyGrace(ROOM), ["besi"]);
   });
 
@@ -311,7 +311,7 @@ describe("a restore with one player present and one away", () => {
     const row = packPersistedState(state, {}, 0, "AAAAAA", unpackedMatch(), noSeats);
     useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
-    assert.equal(await rehydrateGame(rt, ROOM, null), "restored");
+    assert.equal(await rehydrateClaimed(t, rt, ROOM, null), "restored");
     assert.ok(pending("disconnect", "besi"));
     assert.ok(!pending("disconnect", "ana"), "ana is online and was given 60 s to come back anyway");
   });
@@ -329,7 +329,7 @@ describe("a restore whose presence sweep fails", () => {
     const row = finishedRow();
     useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
-    assert.equal(await rehydrateGame(rt, ROOM, "ana"), "restored");
+    assert.equal(await rehydrateClaimed(t, rt, ROOM, "ana"), "restored");
     assert.deepEqual(usersInLobbyGrace(ROOM), [], "a grace whose expiry releases a player seated elsewhere");
   });
 });
@@ -552,7 +552,7 @@ describe("the next-round vote deadline", () => {
     const row = finishedRow();
     useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
-    assert.equal(await rehydrateGame(rt, ROOM, "ana"), "restored");
+    assert.equal(await rehydrateClaimed(t, rt, ROOM, "ana"), "restored");
 
     assert.equal(deadline("voteDeadline", ROOM), clock.now() + 30_000);
   });
@@ -568,7 +568,7 @@ describe("the next-round vote deadline", () => {
     const row = packPersistedState(state, {}, 0, "AAAAAA", unpackedMatch(), noSeats);
     useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
-    assert.equal(await rehydrateGame(rt, ROOM, null), "restored");
+    assert.equal(await rehydrateClaimed(t, rt, ROOM, null), "restored");
     assert.ok(!pending("voteDeadline", ROOM));
   });
 });

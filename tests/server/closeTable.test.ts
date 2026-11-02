@@ -3,6 +3,7 @@
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
+import { heldRoom } from "../helpers/heldRoom.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { closeTable, safeTimer } from "../../server/game/gamePersistence.ts";
@@ -25,6 +26,7 @@ test("announced, then marked finished, then the row deleted — and gone from me
   ROOM = "close-table-hung";
   useMemoryTableStores(t, { rows: [[ROOM, {}]] });
   const { rt, journal } = recordingRuntime({ persist: "real", writers: { updateRoomStatus: () => new Promise(() => {}) } });
+  await heldRoom(t, ROOM);
   liveTable();
 
   closeTable(rt, ROOM, "GAME_INTERRUPTED_EMPTY_SEAT");
@@ -48,6 +50,7 @@ test("a failed status write is logged and still lets the row go", async (t) => {
       },
     },
   });
+  await heldRoom(t, ROOM);
   liveTable();
 
   closeTable(rt, ROOM, null);
@@ -63,6 +66,7 @@ test("a timer body that throws closes its table with the server-error notice, an
   useMemoryTableStores(t, { rows: [[ROOM, {}]] });
   t.mock.method(logger, "error", () => undefined);
   const { rt, events } = recordingRuntime({ persist: "real" });
+  await heldRoom(t, ROOM);
   liveTable();
 
   let ran = false;

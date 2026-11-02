@@ -42,8 +42,9 @@ export interface RecordingOptions {
   transport?: Record<string, unknown>;
   store?: Partial<TableStore>;
   /**
-   * "real" runs the production row and status writers (`tableWriters`) over
-   * the store, so its ordering is under test; the stats writers stay fakes.
+   * "real" runs the production row, status and results writers (`tableWriters`) over
+   * the store, so its ordering is under test. A
+   * `writers.updateRoomStatus` given with it stands in for the store's, behind the real writer.
    */
   persist?: "real";
 }
@@ -94,18 +95,25 @@ export function recordingRuntime(options: RecordingOptions = {}) {
   const landed = (name: string, args: unknown[]) => journal.push({ kind: "store", name, args });
   const games: typeof activeGameStore = {
     load: (roomId) => activeGameStore.load(roomId),
+    claim: (roomId) => activeGameStore.claim(roomId),
+    epochOf: (roomId) => activeGameStore.epochOf(roomId),
     listResumable: () => activeGameStore.listResumable(),
-    write: async (roomId, state) => {
-      await activeGameStore.write(roomId, state);
+    write: async (roomId, state, epoch, adding) => {
+      const changed = await activeGameStore.write(roomId, state, epoch, adding);
       landed("write", [roomId]);
+      return changed;
     },
-    remove: async (roomId) => {
-      await activeGameStore.remove(roomId);
+    remove: async (roomId, epoch) => {
+      const changed = await activeGameStore.remove(roomId, epoch);
       landed("remove", [roomId]);
+      return changed;
     },
     countUntouchedSince: (database, cutoff) => activeGameStore.countUntouchedSince(database, cutoff),
+    clearPendingResult: (tx, roomId, epoch, round) => activeGameStore.clearPendingResult(tx, roomId, epoch, round),
   };
-  const store: TableStore = { games, rooms: roomStore, ...options.store };
+  const statusFake = options.persist === "real" ? options.writers?.updateRoomStatus : undefined;
+  const rooms = statusFake ? { ...roomStore, updateRoomStatus: statusFake } : roomStore;
+  const store: TableStore = { games, rooms, ...options.store };
 
   const record =
     <A extends unknown[], R>(name: string, answer: (...args: A) => R) =>
@@ -113,17 +121,25 @@ export function recordingRuntime(options: RecordingOptions = {}) {
       journal.push({ kind: "write", name, args });
       return answer(...args);
     };
-  const real = options.persist === "real" ? tableWriters(store) : null;
+  const production = tableWriters(store);
+  const real = options.persist === "real" ? production : null;
   const pick = <K extends keyof TableWriters>(name: K, fake: TableWriters[K]): TableWriters[K] =>
     record(name, (options.writers?.[name] ?? fake) as (...args: unknown[]) => unknown) as TableWriters[K];
   const writers: TableWriters = {
-    updateRoomStatus: pick("updateRoomStatus", real?.updateRoomStatus ?? (async () => {})),
+    updateRoomStatus: real
+      ? record("updateRoomStatus", real.updateRoomStatus)
+      : pick("updateRoomStatus", async () => {}),
     persistGameState: pick("persistGameState", real?.persistGameState ?? (async () => {})),
-    discardGame: pick("discardGame", real?.discardGame ?? ((roomId) => store.games.remove(roomId))),
-    recordGameResult: pick("recordGameResult", async () => {}),
-    recordRatedResult: pick("recordRatedResult", async () => new Map()),
-    previewRatedDeltas: pick("previewRatedDeltas", async () => new Map()),
-    saveReplay: pick("saveReplay", async () => {}),
+    discardGame: pick("discardGame", real?.discardGame ?? production.discardGame),
+    persistFinalState: pick("persistFinalState", real?.persistFinalState ?? (async () => {})),
+    applyPendingResults: pick(
+      "applyPendingResults",
+      real?.applyPendingResults ??
+        (async (_roomId, game) => ({
+          applied: game.pendingResults.splice(0).map((entry) => ({ entry, ratings: { ratingDeltas: {}, ratingsAfter: {} } })),
+          held: true,
+        }))
+    ),
   };
 
   const rt = createTableRuntime({

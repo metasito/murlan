@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { recordingRuntime, type JournalEntry } from "../helpers/recordingRuntime.ts";
+import { heldRoom } from "../helpers/heldRoom.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { commitMove, moveAction } from "../../server/game/tableMoves.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
@@ -35,6 +36,8 @@ function table(gameState: GameState, playerMap: Record<number, string> = {}): On
     dealFirstSeat: 0,
     spectators: new Set(),
     moveLog: [],
+    pendingResults: [],
+    landedResults: new Set(),
     gameState,
   };
   activeGames.set(ROOM, game);
@@ -84,6 +87,7 @@ for (const kind of ["play", "pass"] as const) {
   test(`a ${kind} is logged once, persisted and re-armed at the ordinary bot delay`, async (t) => {
     useMemoryTableStores(t);
     const { rt, journal } = recordingRuntime({ persist: "real" });
+    await heldRoom(t, ROOM);
     const persists = () => rowsWritten(journal);
     t.mock.timers.enable({ apis: ["setTimeout"] });
     try {
@@ -109,6 +113,7 @@ for (const kind of ["play", "pass"] as const) {
 test("a play that ends the round is logged, persisted, and handed to round over instead of arming a seat", async (t) => {
   useMemoryTableStores(t);
   const { rt, journal } = recordingRuntime({ persist: "real" });
+  await heldRoom(t, ROOM);
   try {
     const dealt = startRound(SEATS.slice(0, 2), "free_for_all");
     const state = structuredClone(dealt);
@@ -135,6 +140,7 @@ test("a play that ends the round is logged, persisted, and handed to round over 
 test("an exchange logs no replay move, persists, and holds the next seat for the ceremony", async (t) => {
   useMemoryTableStores(t);
   const { rt, journal } = recordingRuntime({ persist: "real" });
+  await heldRoom(t, ROOM);
   const persists = () => rowsWritten(journal);
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   try {
@@ -168,6 +174,7 @@ function leading(hand: ReturnType<typeof c>[]): GameState {
 test("a bomb is flagged for its seat, and an ordinary play is not", async (t) => {
   useMemoryTableStores(t);
   const { rt } = recordingRuntime({ persist: "real" });
+  await heldRoom(t, ROOM);
   try {
     const bomb = leading([c("7", "spades"), c("7", "hearts"), c("7", "clubs"), c("7", "diamonds"), c("9", "clubs")]);
     const bombed = table(bomb);
@@ -187,6 +194,7 @@ test("a bomb is flagged for its seat, and an ordinary play is not", async (t) =>
 test("a pass is logged for replay as a pass: no cards, by its seat", async (t) => {
   useMemoryTableStores(t);
   const { rt } = recordingRuntime({ persist: "real" });
+  await heldRoom(t, ROOM);
   try {
     const state = opened();
     const game = table(state);
@@ -201,13 +209,25 @@ test("a pass is logged for replay as a pass: no cards, by its seat", async (t) =
   }
 });
 
-test("a move that ends the round is acknowledged ok once the round has been handed over", async (t) => {
+test("the move that ends a round is acked on apply, with the database stalled, and game:round_over follows the commit", async (t) => {
   useMemoryTableStores(t);
-  const { rt } = recordingRuntime({ persist: "real" });
+  let land!: () => void;
+  const stalled = new Promise<void>((resolve) => (land = resolve));
+  const ratings = { ratingDeltas: { u0: 9, u1: -9 }, ratingsAfter: {} };
+  const { rt, events } = recordingRuntime({
+    writers: {
+      persistFinalState: () => new Promise(() => {}),
+      applyPendingResults: async (_roomId, game) => {
+        await stalled;
+        return { applied: game.pendingResults.splice(0).map((entry) => ({ entry, ratings })), held: true };
+      },
+    },
+  });
+  await heldRoom(t, ROOM);
   try {
     const state = leading([c("9", "clubs")]);
     const game = table(state, { 0: "u0", 1: "u1" });
-    const outcome = await moveAction(rt, game, {
+    const outcome = moveAction(rt, game, {
       kind: "move",
       id: "intent-1",
       roomId: ROOM,
@@ -215,10 +235,17 @@ test("a move that ends the round is acknowledged ok once the round has been hand
       move: { kind: "play", cardIds: ["9_clubs"] },
       turn: turnOf(state),
     });
-    assert.deepEqual(outcome, { ok: true });
+    assert.deepEqual(outcome, { ok: true }, "the ack is the apply's, not a promise on the database");
     assert.equal(game.gameState.roundOver, true);
-    assert.equal(game.lastRoundOverPayload?.matchOver, false);
-    assert.deepEqual(game.lastRoundOverPayload?.finishingOrder, ["p0", "p1"]);
+    await writesSettle();
+    assert.deepEqual(events("game:round_over"), [], "nothing is announced before the commit");
+
+    land();
+    await writesSettle();
+    const [over] = events("game:round_over") as { ratingDeltas: unknown; finishingOrder: string[] }[];
+    assert.deepEqual(over?.ratingDeltas, ratings.ratingDeltas, "announced with the committed ratings");
+    assert.deepEqual(over?.finishingOrder, ["p0", "p1"]);
+    assert.equal(game.lastRoundOverPayload, over);
   } finally {
     clearRoomTimers(ROOM);
     activeGames.delete(ROOM);

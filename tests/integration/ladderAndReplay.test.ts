@@ -1,7 +1,7 @@
 // tests/integration/ladderAndReplay.test.ts — what the game-over path writes
 // for the ranked ladder and for match replay.
 //
-// Both writes are fire-and-forget from `handleRoundOver`, both go to tables that
+// Both are written by the round's results commit (`roundResults.ts`), both go to tables that
 // were added after the app shipped, and neither had ever executed before this
 // suite existed: the unit tests cover the arithmetic, and nothing covered the
 // SQL. The two properties that actually matter here are things a unit test
@@ -24,7 +24,8 @@ import type { ReplayMove, ReplaySeat } from "../../lib/game/replay.ts";
 import type { RoundOverPayload } from "../../shared/protocol.ts";
 import { pool } from "../../server/store/db.ts";
 import { listReplaysForUser } from "../../server/game/replays.ts";
-import { recordRatedResult } from "../../server/game/ratings.ts";
+import { recordRound } from "../helpers/recordRound.ts";
+import type { GameResult } from "../../lib/achievements.ts";
 
 // Same convention as the other integration suites: an exchange phase left to
 // the AFK path must not stall the run.
@@ -416,8 +417,13 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
     const { user: ann } = await register(server, "ladder_race_ann");
     const { user: ben } = await register(server, "ladder_race_ben");
     const now = new Date();
-    const hand = (winner: string, loser: string) =>
-      recordRatedResult([{ userId: winner, placement: 1 }, { userId: loser, placement: 2 }], "free_for_all", now);
+    const seat = (userId: string, placement: number): GameResult => ({
+      userId, placement, playerCount: 2, playedBomb: false, playedJoker: false, matchWon: false, opponentsFinished: 0,
+    });
+    const hand = async (winner: string, loser: string) => {
+      const commit = await recordRound([seat(winner, 1), seat(loser, 2)], "free_for_all", now);
+      return commit.kind === "committed" ? commit.ratings.ratingDeltas : {};
+    };
 
     const committed = await whileUserLocked([ann.id, ben.id], () => [hand(ann.id, ben.id), hand(ben.id, ann.id)]);
 
@@ -428,7 +434,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
     for (const id of [ann.id, ben.id]) {
       const row = rows.find((r) => r.user_id === id);
       assert.equal(row?.rounds, 2, "both hands are counted");
-      const summed = committed.reduce((sum, deltas) => sum + (deltas.get(id) ?? 0), 0);
+      const summed = committed.reduce((sum, deltas) => sum + (deltas[id] ?? 0), 0);
       assert.equal(row?.rating, START_RATING + summed, "neither round's delta was overwritten");
     }
   });

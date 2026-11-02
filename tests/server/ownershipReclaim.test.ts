@@ -7,16 +7,22 @@ import { Client } from "pg";
 import {
   claimRoom,
   closeOwnership,
+  enterTable,
+  forgetOwnerRecords,
+  recordsToRenew,
   ownsRoom,
   releaseRoom,
   releaseRoomAfter,
   reopenOwnership,
   unclaimedRooms,
 } from "../../server/game/gameOwnership.ts";
+import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { eventually } from "../helpers/client.ts";
+import { logger } from "../../server/shared/logger.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
+import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 
 test("a lock query that throws once does not give the room up", async (t) => {
   const clients: EventEmitter[] = [];
@@ -36,7 +42,7 @@ test("a lock query that throws once does not give the room up", async (t) => {
     return { rows: [{ locked: true }] };
   });
   const lost: string[] = [];
-  reopenOwnership({ onRoomLost: (roomId) => lost.push(roomId) });
+  reopenOwnership({ onRoomLost: (roomId) => lost.push(roomId), rows: activeGameStore });
   t.after(() => closeOwnership());
 
   assert.equal(await claimRoom("reclaim-room"), true);
@@ -59,7 +65,7 @@ test("a release while the room's delete is pending does not unlock it early", as
     if (/pg_try_advisory_lock/.test(sql)) return { rows: [{ locked: true }] };
     return { rows: [] };
   });
-  reopenOwnership({ onRoomLost: () => {} });
+  reopenOwnership({ onRoomLost: () => {}, rows: activeGameStore });
   t.after(() => closeOwnership());
 
   assert.equal(await claimRoom("dying-room"), true);
@@ -84,7 +90,7 @@ test("an earlier pending release does not unlock under a later one", async (t) =
     if (/pg_try_advisory_lock/.test(sql)) return { rows: [{ locked: true }] };
     return { rows: [] };
   });
-  reopenOwnership({ onRoomLost: () => {} });
+  reopenOwnership({ onRoomLost: () => {}, rows: activeGameStore });
   t.after(() => closeOwnership());
 
   assert.equal(await claimRoom("twice-dying-room"), true);
@@ -116,7 +122,7 @@ test("a close cancels the reclaim still waiting to retry, so it does not reach i
 
   await closeOwnership();
   pg.refuseConnect = false;
-  reopenOwnership({ onRoomLost: () => {} });
+  reopenOwnership({ onRoomLost: () => {}, rows: activeGameStore });
   assert.equal(await claimRoom("own-after-close"), true);
   const locks = pg.sent(/pg_try_advisory_lock/).length;
 
@@ -144,6 +150,9 @@ function fakePostgres(t: import("node:test").TestContext) {
     gateConnect: null as Promise<void> | null,
     lockAnswer: (_roomKey: unknown): boolean => true,
     fail: null as RegExp | null,
+    /** Whether a backend named by pid is still in `pg_stat_activity`; none are, unless set. */
+    alive: (_pid: unknown): boolean => false,
+    terminate: (): void => {},
     sent: (re: RegExp) => queries.filter((q) => re.test(q.sql)),
   };
   t.mock.method(Client.prototype, "connect", async function (this: Wire) {
@@ -160,7 +169,10 @@ function fakePostgres(t: import("node:test").TestContext) {
   t.mock.method(Client.prototype, "query", async function (this: Wire, sql: string, params?: unknown[]) {
     queries.push({ sql, params, client: this });
     if (pg.fail?.test(sql)) throw new Error("query failed");
+    if (/pg_terminate_backend/.test(sql)) pg.terminate();
     if (/pg_try_advisory_lock/.test(sql)) return { rows: [{ locked: pg.lockAnswer(params?.[0]) }] };
+    if (/pg_backend_pid/.test(sql)) return { rows: [{ pid: 100 + clients.indexOf(this), started: `start-${clients.indexOf(this)}` }] };
+    if (/^SELECT pid FROM pg_stat_activity/.test(sql)) return { rows: pg.alive(params?.[0]) ? [{ pid: params?.[0] }] : [] };
     return { rows: [] };
   });
   return pg;
@@ -172,7 +184,7 @@ async function settle() {
 }
 
 function openOwnership(t: import("node:test").TestContext, lost: string[] = []) {
-  reopenOwnership({ onRoomLost: (roomId) => lost.push(roomId) });
+  reopenOwnership({ onRoomLost: (roomId) => lost.push(roomId), rows: activeGameStore });
   t.after(() => closeOwnership());
   return lost;
 }
@@ -300,7 +312,7 @@ test("a close ends the connection once, stops the heartbeat, and a reopened owne
 
   assert.equal(await claimRoom("own-close"), false, "a closed ownership granted a claim");
 
-  reopenOwnership({ onRoomLost: () => {} });
+  reopenOwnership({ onRoomLost: () => {}, rows: activeGameStore });
   assert.equal(await claimRoom("own-close"), true);
   assert.equal(pg.connects, 2);
 });
@@ -505,4 +517,161 @@ test("a table runtime that loses its room drops the table from memory and leaves
   assert.equal(ownsRoom("own-runtime-lost"), false);
   assert.equal(activeGames.has("own-runtime-lost"), false, "the table kept playing a room claimed elsewhere");
   assert.deepEqual(writes("discardGame"), [], "the new owner's row was deleted");
+});
+
+test("a reconnect ends the session it replaced before it asks for any lock", async (t) => {
+  const pg = fakePostgres(t);
+  const lost = openOwnership(t);
+
+  assert.equal(await claimRoom("own-replaced"), true);
+  pg.clients[0].emit("error", new Error("Connection terminated unexpectedly"));
+  await eventually(() => pg.sent(/pg_try_advisory_lock/).length >= 2, "the reclaim asking for the lock");
+
+  const onNew = pg.queries.filter((q) => q.client === pg.clients[1]).map((q) => q.sql);
+  const ended = pg.queries.find((q) => q.client === pg.clients[1] && /pg_terminate_backend/.test(q.sql));
+  assert.deepEqual(ended?.params, [100, "start-0"], "the replaced session was not the one ended");
+  assert.ok(
+    onNew.findIndex((sql) => /pg_terminate_backend/.test(sql)) < onNew.findIndex((sql) => /pg_try_advisory_lock/.test(sql)),
+    "the lock was asked for while the replaced session could still hold it"
+  );
+  assert.deepEqual(lost, []);
+  assert.equal(ownsRoom("own-replaced"), true);
+});
+
+test("a lock refused while the replaced session lingers is asked again, and given up once that session is gone", async (t) => {
+  const pg = fakePostgres(t);
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const lost = openOwnership(t);
+  assert.equal(await claimRoom("own-lingering"), true);
+  let lingering = true;
+  pg.alive = () => lingering;
+  pg.lockAnswer = () => false;
+
+  pg.clients[0].emit("error", new Error("Connection terminated unexpectedly"));
+  for (let i = 0; i < 40; i++) {
+    t.mock.timers.tick(100);
+    await settle();
+  }
+  assert.ok(pg.sent(/pg_try_advisory_lock/).length >= 2, "the reclaim never asked for the lock");
+  assert.deepEqual(lost, [], "a lock the replaced session may hold was read as held elsewhere");
+  assert.equal(ownsRoom("own-lingering"), true);
+
+  lingering = false;
+  for (let i = 0; i < 40 && lost.length === 0; i++) {
+    t.mock.timers.tick(100);
+    await settle();
+  }
+  assert.deepEqual(lost, ["own-lingering"]);
+});
+
+test("a reclaim that finds the row at another claim's epoch gives the room up once; one at its own keeps it", async (t) => {
+  const { epochs } = useMemoryTableStores(t, { rows: [["own-moved", {}], ["own-stayed", {}]] });
+  const pg = fakePostgres(t);
+  const lost = openOwnership(t);
+  for (const room of ["own-moved", "own-stayed"]) {
+    assert.equal(await claimRoom(room), true);
+    assert.equal((await enterTable(room)).held, true);
+  }
+  const stayedAt = epochs.get("own-stayed");
+  epochs.set("own-moved", 99);
+
+  pg.clients[0].emit("error", new Error("Connection terminated unexpectedly"));
+  await eventually(() => pg.sent(/pg_try_advisory_lock/).length >= 4, "the reclaim asking for both locks");
+  await settle();
+
+  assert.deepEqual(lost, ["own-moved"]);
+  assert.equal(ownsRoom("own-moved"), false);
+  assert.equal(ownsRoom("own-stayed"), true);
+  assert.equal(
+    pg.sent(/pg_advisory_unlock/).filter((q) => q.client === pg.clients[1]).length,
+    1,
+    "the lock retaken for a room that moved was kept"
+  );
+  assert.equal(epochs.get("own-stayed"), stayedAt, "a reclaim moved an epoch");
+});
+
+test("reclaims that overlap on one session ask for each lock once", async (t) => {
+  const pg = fakePostgres(t);
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  openOwnership(t);
+  assert.equal(await claimRoom("own-overlap"), true);
+
+  pg.fail = /pg_try_advisory_lock/;
+  pg.clients[0].emit("error", new Error("Connection terminated unexpectedly"));
+  await settle();
+  pg.fail = null;
+
+  let lingering = true;
+  pg.alive = () => lingering;
+  pg.clients[1].emit("error", new Error("Connection terminated unexpectedly"));
+  await settle();
+  t.mock.timers.tick(1_000);
+  await settle();
+  lingering = false;
+  for (let i = 0; i < 40; i++) {
+    t.mock.timers.tick(100);
+    await settle();
+  }
+
+  const onThird = pg.sent(/pg_try_advisory_lock/).filter((q) => q.client === pg.clients[2]);
+  assert.equal(onThird.length, 1, "two reclaims took one lock twice on one session, so one unlock cannot free it");
+  assert.equal(ownsRoom("own-overlap"), true);
+});
+
+test("a connection that cannot name its own backend still connects", async (t) => {
+  const pg = fakePostgres(t);
+  pg.fail = /pg_backend_pid/;
+  openOwnership(t);
+
+  assert.equal(await claimRoom("own-nameless"), true);
+  assert.equal(pg.connects, 1);
+  assert.equal(pg.clients[0].ended, 0);
+});
+
+test("a server that refuses to end the dropped session is reported once, as such", async (t) => {
+  const pg = fakePostgres(t);
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const errors = t.mock.method(logger, "error", () => undefined);
+  const lost = openOwnership(t);
+  assert.equal(await claimRoom("own-unterminable"), true);
+  pg.alive = () => true;
+  pg.lockAnswer = () => false;
+  pg.terminate = () => {
+    throw Object.assign(new Error("permission denied to terminate process"), { code: "42501" });
+  };
+
+  pg.clients[0].emit("error", new Error("Connection terminated unexpectedly"));
+  for (let i = 0; i < 100; i++) {
+    t.mock.timers.tick(100);
+    await settle();
+  }
+
+  assert.ok(pg.sent(/pg_terminate_backend/).length >= 2, "the reclaim never asked twice");
+  const refusals = errors.mock.calls.filter((c) => /not allowed to end/.test(String(c.arguments[1])));
+  assert.equal(refusals.length, 1, "the refusal was not reported, or reported on every attempt");
+  assert.deepEqual(lost, []);
+});
+
+test("a heartbeat renews only records of rooms locked on its own session, and none once they are forgotten", async (t) => {
+  useMemoryTableStores(t, { rows: [["own-renewed", {}]] });
+  const pg = fakePostgres(t);
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  openOwnership(t);
+  assert.equal(await claimRoom("own-renewed"), true);
+  assert.equal((await enterTable("own-renewed")).held, true);
+  assert.deepEqual(recordsToRenew(pg.clients[0] as unknown as Client).map(([room]) => room), ["own-renewed"]);
+
+  pg.fail = /pg_try_advisory_lock/;
+  pg.clients[0].emit("error", new Error("Connection terminated unexpectedly"));
+  await settle();
+  assert.equal(ownsRoom("own-renewed"), true);
+  assert.deepEqual(recordsToRenew(pg.clients[1] as unknown as Client), [], "a claim not yet retaken was renewed");
+
+  pg.fail = null;
+  t.mock.timers.tick(1_000);
+  await settle();
+  assert.deepEqual(recordsToRenew(pg.clients[1] as unknown as Client).map(([room]) => room), ["own-renewed"]);
+
+  await forgetOwnerRecords();
+  assert.deepEqual(recordsToRenew(pg.clients[1] as unknown as Client), [], "a forgotten record would be put back");
 });

@@ -39,7 +39,7 @@ test("a parameter merely ending in search_path is not mistaken for one", () => {
 });
 
 test("every connection is named for its use, pings every 5 s and keeps TCP alive", () => {
-  for (const use of ["adapter", "inbox", "presence", "limits"] as const) {
+  for (const use of ["adapter", "inbox", "presence", "limits", "owners"] as const) {
     const o = redisOptions(use, "redis://h:6379/0");
     assert.equal(o.name, `murlan-${use}`);
     assert.equal(o.pingInterval, 5_000);
