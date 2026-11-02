@@ -972,7 +972,7 @@ jobs:
           node server_dist/index.mjs &
           server_pid=$!
           for _ in $(seq 1 30); do
-            if curl -fsS "http://127.0.0.1:$PORT/health" -o health.json && grep -q '"redis":"connected"' health.json; then break; fi
+            if curl -fsS "http://127.0.0.1:$PORT/health" -o health.json && grep -q '"db":"connected"' health.json && grep -q '"redis":"connected"' health.json; then break; fi
             sleep 1
           done
           curl -fsS "http://127.0.0.1:$PORT/health/live" -o live.json || true

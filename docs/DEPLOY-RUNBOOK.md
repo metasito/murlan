@@ -157,8 +157,9 @@ account and prints it once.
 ## Health and metrics
 
 `server/http/health.ts` answers four paths. None reads the session or uses the app's Postgres
-pool, none writes a request-log line, and each answers within 1.5 s whatever Postgres and Redis
-are doing.
+pool, none writes a request-log line, and none waits on Postgres or Redis: `/health` and
+`/health/ready` answer at once from the last background probe, each probe bounded by
+`PROBE_DEADLINE_MS` in that file.
 
 | Path | 200 when | For |
 | --- | --- | --- |
@@ -167,22 +168,28 @@ are doing.
 | `GET /health` | the same as `/health/ready`, with the same body | `.github/workflows/health.yml`, CI's boot step and § Before a destructive schema change, until the host probe is switched |
 | `GET /metrics` | the request carries `Authorization: Bearer $METRICS_TOKEN`; 401 with no body otherwise | a Prometheus scraper |
 
-The ready body is `{status, db, redis, uptime}`, plus a `reason` (`booting`, `draining` or
+The ready body is `{status, db, redis, probedMsAgo, uptime}`, plus a `reason` (`booting`, `draining` or
 `event_loop_lag`) on a 503. `db` (a `SELECT 1` on the health pool) and `redis` (a `PING` on a
-connection of its own) are each `connected` or `down`, each probe under its own deadline, and
-**never change the status code**: both are shared by every instance, so a blip failing them would take the whole
+connection of its own) are each `connected` or `down` as of the probe `probedMsAgo` milliseconds
+ago, and **never change the status code**: both are shared by every instance, so a blip failing them would take the whole
 fleet out of rotation at once.
 
 **The host-probe switch.** When #1107 picks the host, point its liveness probe at
 `/health/live` and its readiness probe at `/health/ready`, and change `scripts/probe-health.mjs`
 to `/health/ready`. Only then may `/health` go, with every reader in the table above moved first.
+Give the readiness probe a failure threshold of several consecutive failures rather than one, and
+use a load balancer that keeps routing to every instance when all of them are unready at once
+(fail open), so a cause every instance shares cannot empty the pool. The event-loop gate already
+waits out a short burst before going unready, and a short recovery before coming back
+(`lagGate` in `server/http/health.ts`). `scripts/probe-health.mjs` passes only a 200 whose body
+says `status` ok and both links `connected`.
 
 **Alerts** attach to `/metrics`, on the host's scraper, once #1107 picks one:
 
 - `round_results_pending_age_seconds` above 60 (D17 in
   `docs/research/2026-11-01-system-audit/TICKETS.md`): a finished round's result has not landed.
 - `event_loop_lag_p99_seconds`, `pg_pool_waiting`, `pg_connection_headroom` below 0, and
-  `redis_reconnects_total` and `redis_stream_lag_seconds` climbing, read beside the instances'
+  `redis_reconnects_total`, `redis_stream_lag_seconds` and `redis_stream_read_age_seconds` climbing, read beside the instances'
   readiness.
 
 Each feature registers its own metric on prom-client's default registry, which `/metrics` serves.
