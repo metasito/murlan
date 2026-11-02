@@ -11,6 +11,7 @@ import pg from "pg";
 import { createClient } from "redis";
 import { register } from "prom-client";
 import { connectRateLimits, routeLimiter } from "../../server/http/rateLimit.ts";
+import { installClock, realClock } from "../../server/http/clock.ts";
 import { closeRedis, keyspace, redisReady } from "../../server/store/redis.ts";
 import { eventually } from "../helpers/client.ts";
 import { boot, freePorts, stopInstance, type Instance } from "../helpers/instance.ts";
@@ -239,5 +240,60 @@ describe("a limit while Redis fails", { skip: hasDatabase() ? false : skipMessag
     // As above: the next request lands after the take-back.
     assert.equal(await send("ana", { "x-outcome": "refused" }), 400);
     assert.deepEqual(await sharedCounts(name), [2], "a request counted only here was taken off the cluster's count");
+  });
+
+  test("a stalled event loop is not a slow Redis: the reply already in hand counts, and no limiter stops asking Redis", async () => {
+    const stalled = freshName();
+    const other = freshName();
+    const app = express();
+    // Runs after the limiter below has written its command and before its reply can be read, and
+    // outlasts the limiter's deadline. The first request, unstalled, loads the limiter's scripts.
+    const stall: express.RequestHandler = (req, _res, next) => {
+      if (req.headers["x-stall"]) setImmediate(() => {
+        const until = performance.now() + 150;
+        while (performance.now() < until);
+      });
+      next();
+    };
+    app.get("/stalled", stall, routeLimiter({ name: stalled, windowMs: 60_000, defaultMax: 100, message: {} }), (_req, res) => {
+      res.json({});
+    });
+    app.get("/other", routeLimiter({ name: other, windowMs: 60_000, defaultMax: 100, message: {} }), (_req, res) => {
+      res.json({});
+    });
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise((resolve) => server.once("listening", resolve));
+    servers.push({ close: () => new Promise<void>((resolve) => server.close(() => resolve())) });
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+    assert.equal((await fetch(`${base}/stalled`)).status, 200);
+    const fallbacksBefore = await fallbacks();
+    assert.equal((await fetch(`${base}/stalled`, { headers: { "x-stall": "1" } })).status, 200);
+    for (let i = 0; i < 5; i++) assert.equal((await fetch(`${base}/other`)).status, 200);
+    assert.deepEqual(await sharedCounts(stalled), [2], "the stall dropped a count Redis had already answered");
+    assert.deepEqual(await sharedCounts(other), [5], "one stall stopped every limiter asking Redis");
+    assert.equal(await fallbacks(), fallbacksBefore);
+  });
+
+  test("a fake clock dated ahead leaves no limiter skipping Redis once it is gone", { timeout: 60_000 }, async () => {
+    assert.ok(await redisReady(), "the limiters' Redis connection never came back");
+    const send = await instance(freshName(), 1_000);
+    const restore = installClock({ ...realClock, now: () => realClock.now() + 86_400_000 });
+    try {
+      proxy.blackholeExisting();
+      for (let i = 0; i < 5; i++) assert.equal(await send(), 200);
+    } finally {
+      restore();
+    }
+    const resumed = freshName();
+    const fresh = await instance(resumed, 1_000);
+    await eventually(
+      async () => {
+        assert.equal(await fresh(), 200);
+        return (await sharedCounts(resumed)).length > 0;
+      },
+      "counting to resume on Redis",
+      20_000,
+    );
   });
 });

@@ -1,6 +1,7 @@
 // #953: server/http/rateLimit.ts is the only place a rate limiter may be built.
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -155,6 +156,11 @@ describe("every route limiter counts in Redis, under a key that names nobody", {
         for (const plain of [`${variable}@example.test`.toLowerCase(), `user-${variable}`.toLowerCase(), `uid-${variable}`, "127.0.0", "::ffff"]) {
           assert.ok(!keys.some((k) => k.toLowerCase().includes(plain.toLowerCase())), `${variable} wrote "${plain}" into Redis: ${keys.join(", ")}`);
         }
+        // Signed with the session secret itself, a key would be a ticket signature over a string
+        // the caller chose (server/socket/ticket.ts).
+        const values = [`${variable}@example.test`.toLowerCase(), `user-${variable}`.toLowerCase(), `uid-${variable}`];
+        const signatures = values.map((v) => createHmac("sha256", process.env.SESSION_SECRET!).update(v).digest("base64url"));
+        assert.ok(!keys.some((k) => signatures.some((sig) => k.endsWith(sig))), `${variable} names its caller by a session-secret signature`);
       } finally {
         await close();
       }

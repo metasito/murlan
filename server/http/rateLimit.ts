@@ -15,7 +15,6 @@ import { RedisStore, type RedisReply } from "rate-limit-redis";
 import { Counter } from "prom-client";
 import type { Request, RequestHandler } from "express";
 import { openRedis, redisKey, type RedisClient } from "../store/redis.ts";
-import { now } from "./clock.ts";
 import { testOnlyEnv } from "./testOnlyEnv.ts";
 
 /**
@@ -76,10 +75,15 @@ const fallbacks = new Counter({
  * local count always judges too.
  */
 const SHARED_COUNT_DEADLINE_MS = 100;
-/** After a miss, how long every limiter counts locally without asking Redis. */
+/** How many times a deadline that fired late, behind a stalled event loop, is given again. */
+const MAX_REARMS = 2;
+/** After this many misses in a row, every limiter counts locally without asking Redis for a while. */
+const MISSES_BEFORE_PAUSE = 3;
 const SHARED_COUNT_PAUSE_MS = 1_000;
 
 let limitsConnection: RedisClient | null = null;
+let missesInARow = 0;
+// Monotonic, not the installable clock: a test's fake clock dated ahead would pause Redis for good.
 let pausedUntil = 0;
 
 /** Opens the connection every limiter counts over, at boot; `closeRedis` ends it. */
@@ -93,27 +97,54 @@ function sendLimitCommand(args: string[]): Promise<RedisReply> {
 }
 
 function withinDeadline<T>(work: () => Promise<T>): Promise<T> {
-  if (!limitsConnection?.isReady || now() < pausedUntil) {
+  if (!limitsConnection?.isReady || performance.now() < pausedUntil) {
     return Promise.reject(new Error("Redis is not answering the rate limiters"));
   }
+  let settled = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const answered = work().then(
+    (value) => {
+      settled = true;
+      missesInARow = 0;
+      return value;
+    },
+    (err: unknown) => {
+      settled = true;
+      throw err;
+    },
+  );
   const late = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      pausedUntil = now() + SHARED_COUNT_PAUSE_MS;
-      reject(new Error("Redis did not answer the rate limiter in time"));
-    }, SHARED_COUNT_DEADLINE_MS);
+    let rearms = 0;
+    const arm = () => {
+      const armedAt = performance.now();
+      timer = setTimeout(() => {
+        // A timer firing late means the event loop stalled, not that Redis was slow: the stall may
+        // have held the command unsent (node-redis writes on setImmediate) or its reply unread.
+        if (performance.now() - armedAt > SHARED_COUNT_DEADLINE_MS * 1.25 && rearms++ < MAX_REARMS) return arm();
+        // One turn of the loop, so a reply already in the socket counts.
+        setImmediate(() => {
+          if (settled) return;
+          if (++missesInARow >= MISSES_BEFORE_PAUSE) pausedUntil = performance.now() + SHARED_COUNT_PAUSE_MS;
+          reject(new Error("Redis did not answer the rate limiter in time"));
+        });
+      }, SHARED_COUNT_DEADLINE_MS);
+    };
+    arm();
   });
-  return Promise.race([work(), late]).finally(() => clearTimeout(timer));
+  return Promise.race([answered, late]).finally(() => clearTimeout(timer));
 }
 
 /**
  * Names a caller in Redis by a keyed hash, never by the IP, email, username or account id itself.
- * The secret is read per call: two servers in one process each boot with their own env.
+ * The key is derived from the session secret rather than the secret itself, which signs socket
+ * tickets: a key name must never be a ticket signature over a string the caller chose. The secret
+ * is read per call: two servers in one process each boot with their own env.
  */
 function sharedKey(limiter: string, key: string): string {
   const secret = process.env.SESSION_SECRET;
   if (!secret) throw new Error("SESSION_SECRET is not set");
-  return redisKey(`limit:${limiter}:${createHmac("sha256", secret).update(key).digest("base64url")}`);
+  const hashKey = createHmac("sha256", secret).update("murlan:rate-limit").digest();
+  return redisKey(`limit:${limiter}:${createHmac("sha256", hashKey).update(key).digest("base64url")}`);
 }
 
 // rate-limit-redis's own decrement is a bare DECR, which recreates an expired or flushed key at -1
@@ -215,9 +246,13 @@ class SharedStore implements Store {
 /** Every limiter built, by name, with its window. */
 const windows = new Map<string, number>();
 
-/** The longest any count is kept, in Redis or in memory. */
-export function longestLimiterWindowMs(): number {
-  return Math.max(0, ...windows.values());
+/**
+ * The longest any count is kept: in Redis, its window, after which the key expires; in memory,
+ * twice that, since a MemoryStore sweeps a window's keys only once the next window ends too.
+ */
+export function limiterRetentionMs(): { shared: number; local: number } {
+  const longest = Math.max(0, ...windows.values());
+  return { shared: longest, local: 2 * longest };
 }
 
 export function routeLimiter({
