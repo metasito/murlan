@@ -29,6 +29,8 @@ const NAME = "murlan-dev-pg";
 // Postgres service repeats this (tests/tooling/postgresImage.test.ts).
 const IMAGE = "mirror.gcr.io/library/postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea";
 const VALKEY_NAME = "murlan-dev-valkey";
+// The Redis 7 container this stack ran before Valkey; left running it holds REDIS_BASE_PORT.
+const RETIRED_NAMES = ["murlan-dev-redis"];
 // The same mirror, for the same reasons; every workflow's Valkey service repeats this
 // (tests/tooling/redisImage.test.ts).
 const VALKEY_IMAGE = "mirror.gcr.io/valkey/valkey:9.1.3-alpine@sha256:bf09d58e96d6b4524a15396b65b242bbe18beebbcc15a04d8ee75ddac62fae0b";
@@ -175,6 +177,7 @@ function redisReachableOn(port) {
 }
 
 function startRedis() {
+  for (const name of RETIRED_NAMES) docker(["rm", "-f", name]);
   const running = publishedPort(VALKEY_NAME, "6379");
   if (running !== null) {
     if (!redisReachableOn(running)) throw new Error(`${VALKEY_NAME} is running on ${running} but Redis does not answer there`);
@@ -219,7 +222,7 @@ try {
 
   if (cmd === "down") {
     docker(["rm", "-f", NAME]);
-    docker(["rm", "-f", VALKEY_NAME]);
+    for (const name of [VALKEY_NAME, ...RETIRED_NAMES]) docker(["rm", "-f", name]);
     console.log("stopped");
     process.exit(0);
   }

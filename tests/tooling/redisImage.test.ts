@@ -9,7 +9,10 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const read = (file: string) => readFileSync(path.join(repoRoot, file), "utf8");
 
 /** Any key-value image, Redis's or Valkey's, so a Redis left behind is a mismatch rather than unseen. */
-const STORE_REF = /(?:[\w.-]+\/)*(?:redis|valkey):\d[\w.-]*(?:@sha256:[0-9a-f]{64})?/g;
+const STORE_REFS = [
+  /(?:[\w.-]+\/)*(?:redis|valkey):[A-Za-z0-9][\w.-]*(?:@sha256:[0-9a-f]{64})?/g,
+  /(?<=\bimage:\s*["']?|\bdocker (?:pull|run)\b[^\n]*\s)(?:[\w.-]+\/)*(?:redis|valkey)(?:@sha256:[0-9a-f]{64})?(?=["']?\s*$|\s)/gm,
+];
 const SERVICE = /\n      valkey:\n        image: [^\n]+\n(?:        [^\n]*\n)*?          --health-cmd "valkey-cli ping"\n/g;
 const WHERE = [
   [".github/workflows/ci.yml", 2, "the Valkey services of verify and build"],
@@ -20,7 +23,8 @@ const WHERE = [
 
 type Ref = { file: string; ref: string };
 
-const refsIn = (file: string, src: string): Ref[] => [...src.matchAll(STORE_REF)].map(([ref]) => ({ file, ref }));
+const refsIn = (file: string, src: string): Ref[] =>
+  STORE_REFS.flatMap((pattern) => [...src.matchAll(pattern)].map(([ref]) => ({ file, ref })));
 
 /** Every way the refs fall short of one pinned image at the manifest's major. */
 function problems(refs: Ref[], image: string | undefined, major: number): string[] {
@@ -59,6 +63,24 @@ test("the image check fails on a Redis left behind, on another major, and on fin
   assert.notDeepEqual(problems([], image, major), []);
   assert.notDeepEqual(problems(refs, undefined, major), []);
   assert.notDeepEqual(problems(refs, image?.replace(/@sha256:.*/, ""), major), []);
+});
+
+test("a ref is seen at any tag or none, and nothing that only names Redis is taken for one", () => {
+  for (const planted of [
+    "        image: valkey/valkey:latest\n",
+    "        image: redis:alpine\n",
+    "        image: redis\n",
+    '        image: "mirror.gcr.io/valkey/valkey"\n',
+    "      - run: docker pull redis\n",
+    "      - run: docker run --rm -p 6379:6379 valkey/valkey -q\n",
+  ]) {
+    assert.equal(refsIn("w.yml", planted).length, 1, `missed or doubled: ${planted.trim()}`);
+  }
+  assert.deepEqual(
+    refsIn("w.yml", '      REDIS_URL: redis://localhost:6379/0\n          --health-cmd "valkey-cli ping"\n      valkey:\n'),
+    []
+  );
+  assert.deepEqual(refsIn("d.mjs", 'docker(["run", "-d", "--name", "murlan-dev-redis", "-p", p]);'), []);
 });
 
 test("every workflow's Valkey service waits for a PING before the job starts", () => {
