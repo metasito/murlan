@@ -6,7 +6,7 @@ import { createClient } from "redis";
 import { eventually } from "../helpers/client.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
-import { startProxy, targetOf, viaProxy } from "../helpers/tcpProxy.ts";
+import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
 import {
   closePresence,
   forgetPresence,
@@ -16,7 +16,7 @@ import {
   presenceKey,
   recordPresence,
 } from "../../server/store/presence.ts";
-import { closeRedis, instanceId, keyspace, redisReady } from "../../server/store/redis.ts";
+import { closeRedis, instanceId, keyspace } from "../../server/store/redis.ts";
 
 const redisUrl = process.env.REDIS_URL;
 const baseUrl = process.env.DATABASE_URL;
@@ -35,24 +35,20 @@ after(async () => {
 
 const admin = createClient({ url: redisUrl });
 admin.on("error", () => {});
-const db = redisUrl ? Number(new URL(redisUrl).pathname.slice(1) || 0) : 0;
-const presenceLinks = async () =>
-  ((await admin.sendCommand(["CLIENT", "LIST"])) as string)
-    .split("\n")
-    .filter((line) => line.includes("name=murlan-presence") && line.includes(` db=${db} `))
-    .map((line) => /id=(\d+)/.exec(line)![1]!);
-/** Links that are not this process's: other suites on the same database. */
-let others = new Set<string>();
+/** This process's presence links alone run through it, so cutting them touches no other suite's. */
+let proxy: Proxy | undefined;
+const reachable = () => instancesOf(["probe"]).then(() => true, () => false);
 
 before(async () => {
   if (skip) return;
   await admin.connect();
-  others = new Set(await presenceLinks());
-  openPresence(redisUrl);
-  await eventually(() => instancesOf(["probe"]).then(() => true, () => false), "the presence link up");
+  proxy = await startProxy(targetOf(redisUrl!, 6379));
+  openPresence(viaProxy(redisUrl!, proxy));
+  await eventually(reachable, "the presence link up");
 });
-after(() => {
+after(async () => {
   if (admin.isOpen) admin.destroy();
+  await proxy?.close();
 });
 
 /** Redis's own clock in microseconds, offset by `deltaMicros`: the clock every entry is stamped from. */
@@ -67,16 +63,12 @@ async function elsewhere(userId: string, instance: string, socket: string, at: b
   await admin.set(presenceKey(userId), `${instance}|${socket}|${at}`);
 }
 
-/** Cuts this process's presence links and resolves once they are back and have run their reconnect. */
+/** Cuts this process's presence links and resolves once they are back. */
 async function reconnectPresence(): Promise<void> {
-  const ours = (await presenceLinks()).filter((id) => !others.has(id));
-  assert.ok(ours.length > 0, "this process's presence links were not found");
-  for (const id of ours) {
-    others.add(id);
-    await admin.sendCommand(["CLIENT", "KILL", "ID", id]);
-  }
-  await eventually(async () => (await presenceLinks()).filter((id) => !others.has(id)).length >= ours.length, "the presence links reconnected");
-  await eventually(() => instancesOf(["probe"]).then(() => true, () => false), "the presence link ready");
+  proxy!.refuse(true);
+  await eventually(async () => !(await reachable()), "the presence link down");
+  proxy!.refuse(false);
+  await eventually(reachable, "the presence link back");
 }
 
 test("a reconnected presence link fills a missing entry and leaves a newer one alone", { skip }, async () => {
@@ -129,24 +121,25 @@ test("a connection always takes the entry, whatever any instance's own clock say
 });
 
 test("a connect Redis refused is filled with this instance's newest stamp, behind a newer connection elsewhere", { skip }, async () => {
-  const proxy = await startProxy(targetOf(redisUrl!, 6379));
+  const link = await startProxy(targetOf(redisUrl!, 6379));
+  const store = openPresenceStore({ id: "refused", ns, url: viaProxy(redisUrl!, link), heartbeat: false });
   try {
-    const store = openPresenceStore({ id: "refused", ns, url: viaProxy(redisUrl!, proxy), heartbeat: false });
-    await redisReady();
-    await store.beat();
-    proxy.refuse(true);
+    await eventually(() => store.beat().then(() => true, () => false), "a first beat, which takes a stamp");
+    link.refuse(true);
     await eventually(() => store.locate(["probe"]).then(() => false, () => true), "the link down");
     store.record("cat", "s-refused");
     store.record("dov", "s-refused-2");
     // Meanwhile the first account connects elsewhere, later than any stamp this instance holds.
     await elsewhere("cat", "newer", "s-newer", await redisMicros(1_000_000n));
-    proxy.refuse(false);
-    await eventually(() => store.beat().then(() => true, () => false), "a beat to land");
-
+    link.refuse(false);
+    // Driven as the heartbeat would: a beat whose fill met a link still reconnecting fills on the next.
+    await eventually(async () => {
+      await store.beat().catch(() => {});
+      return (await admin.get(presenceKey("dov")))?.split("|")[0] === "refused";
+    }, "a beat to fill in the refused connect", 15_000);
     assert.equal((await admin.get(presenceKey("cat")))?.split("|")[0], "newer", "a refused connect's fill took a newer connection's entry");
-    await eventually(async () => (await admin.get(presenceKey("dov")))?.split("|")[0] === "refused", "the refused connect filled in");
-    store.close();
   } finally {
-    await proxy.close();
+    store.close();
+    await link.close();
   }
 });

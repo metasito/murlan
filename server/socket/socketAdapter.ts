@@ -15,6 +15,16 @@ const FIRST_BEAT_POLL_MS = 100;
 const PEER_GRACE_MS = 10_000;
 const HEARTBEAT = "murlan:adapter-heartbeat";
 const LEAVING = "murlan:adapter-leaving";
+/** Rides this revision's heartbeat; an older one's carries nothing, which is how it is told apart. */
+const KEEPS_LIVENESS = "liveness";
+
+/**
+ * Whether a peer on a revision that keeps no presence liveness was heard within the grace: one
+ * that cannot handle what replaced its messages. Until no such revision runs (ADR 0014, decision 9).
+ */
+export function hearsOlderPeers(io: { of(nsp: string): { adapter: unknown } }): boolean {
+  return (io.of("/").adapter as { hearsOlderPeers?: () => boolean }).hearsOlderPeers?.() ?? false;
+}
 
 interface AdapterLinks {
   client: RedisClient;
@@ -71,15 +81,6 @@ export function adapterOptions() {
  * called it — the room row is shared, so two players land in the same room and
  * are never told about each other.
  */
-/**
- * Whether the last count heard a peer that keeps no presence liveness: an instance on an older
- * revision, during a rolling deploy. Until no such revision runs (ADR 0014, decision 9).
- */
-let unlistedPeers = false;
-export function peersWithoutLiveness(): boolean {
-  return unlistedPeers;
-}
-
 export function createSocketAdapter(liveness: Liveness = { livePeers, leave: leavePresence }) {
   const links = adapterLinks();
   const options = adapterOptions();
@@ -125,7 +126,6 @@ export function createSocketAdapter(liveness: Liveness = { livePeers, leave: lea
     async function peers(): Promise<number> {
       if (!links.ready()) throw new Error("this instance is not subscribed to the cluster");
       const [heardOf, listed] = await Promise.all([subscribedPeers(), liveness.livePeers()]);
-      unlistedPeers = heardOf > listed;
       return Math.max(heardOf, listed);
     }
 
@@ -182,10 +182,15 @@ export function createSocketAdapter(liveness: Liveness = { livePeers, leave: lea
     cluster.onMessage = (message: ClusterMessage, offset?: string) => {
       if (offset !== undefined) noteStreamRead("adapter", offset);
       const event = message.type === MessageType.SERVER_SIDE_EMIT ? (message.data.packet as Packet)[0] : undefined;
+      if (event === HEARTBEAT && offset === undefined && message.uid !== cluster.uid && message.type === MessageType.SERVER_SIDE_EMIT) {
+        if ((message.data.packet as Packet)[1] === KEEPS_LIVENESS) older.delete(message.uid);
+        else older.set(message.uid, now());
+      }
       if (event === LEAVING) {
         left.add(message.uid);
         heard.delete(message.uid);
         noticed.delete(message.uid);
+        older.delete(message.uid);
       } else if (offset === undefined && message.uid !== cluster.uid && !left.has(message.uid)) {
         const at = now();
         heard.set(message.uid, at);
@@ -194,7 +199,11 @@ export function createSocketAdapter(liveness: Liveness = { livePeers, leave: lea
       if (event === HEARTBEAT || event === LEAVING) return;
       return onMessage(message, offset);
     };
-    const beatNow = () => void serverSideEmit([HEARTBEAT]);
+    const older = new Map<string, number>();
+    Object.assign(adapter, {
+      hearsOlderPeers: () => [...older.values()].some((at) => now() - at < PEER_GRACE_MS),
+    });
+    const beatNow = () => void serverSideEmit([HEARTBEAT, KEEPS_LIVENESS]);
     const beat = setInterval(beatNow, HEARTBEAT_MS);
     const firstBeat = setInterval(() => {
       if (!links.ready()) return;

@@ -61,6 +61,8 @@ describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, 
     await Promise.all([x.beat(), y.beat()]);
     x.record("ana", "sock-a");
     x.seat("sock-a", "room-1");
+    // Each connect is its own write, so the replacement's must be the later one.
+    await eventually(async () => (await x.locate(["ana"])).get("ana")?.socket === "sock-a", "the first connection's entry");
     y.record("ana", "sock-b");
     y.seat("sock-b", "room-1");
     await eventually(async () => (await x.locate(["ana"])).get("ana")?.socket === "sock-b", "the replacement's entry");
@@ -213,32 +215,44 @@ describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, 
 
   test("a clear whose link reconnects between its WATCH and its EXEC is tried again, not dropped", async () => {
     const c = cluster();
+    const link = await startProxy(targetOf(redisUrl, 6379));
     let cut = false;
-    const ids = async () =>
-      ((await probe.sendCommand(["CLIENT", "LIST"])) as string)
-        .split("\n")
-        .filter((line) => line.includes("name=murlan-presence"))
-        .map((line) => /id=(\d+)/.exec(line)![1]!);
-    const before = new Set(await ids());
     const x = openPresenceStore({
       ns: c.ns,
+      url: viaProxy(redisUrl, link),
       heartbeat: false,
-      beforeExec: async () => {
+      hooks: { beforeExec: async () => {
         if (cut) return;
         cut = true;
-        // This store's two links are the newest; killing both takes the guarded one with it.
-        for (const id of (await ids()).filter((i) => !before.has(i))) await probe.sendCommand(["CLIENT", "KILL", "ID", id]);
-        await eventually(async () => (await ids()).filter((i) => !before.has(i)).length >= 2, "the links to reconnect");
-      },
+        link.refuse(true);
+        await eventually(() => x.locate(["probe"]).then(() => false, () => true), "the cut link to go down");
+        link.refuse(false);
+        // Both of the store's links, its guarded one included, named to Redis again: past their handshake.
+        await eventually(async () => {
+          const ports = link.links.filter((l) => !l.dead).map((l) => l.server.localPort);
+          const named = ((await probe.sendCommand(["CLIENT", "LIST"])) as string)
+            .split("\n")
+            .filter((line) => line.includes("name=murlan-presence") && ports.some((p) => line.includes(`addr=127.0.0.1:${p} `)));
+          return ports.length >= 2 && named.length >= 2;
+        }, "both cut links to come back");
+        await eventually(() => x.locate(["probe"]).then(() => true, () => false), "the cut link to answer");
+      } },
     });
     opened.push(x);
-    await redisReady();
-    await x.beat();
-    x.record("hal", "s-hal");
-    await eventually(async () => (await probe.exists(c.key("online:hal"))) === 1, "the entry");
-    x.forget("hal", "s-hal");
-    await eventually(async () => (await probe.exists(c.key("online:hal"))) === 0, "the clear to land after its link came back", 10_000);
-    assert.equal(cut, true, "the link was never cut between WATCH and EXEC");
+    try {
+      await eventually(() => x.beat().then(() => true, () => false), "a first beat");
+      x.record("hal", "s-hal");
+      await eventually(async () => (await probe.exists(c.key("online:hal"))) === 1, "the entry");
+      x.forget("hal", "s-hal");
+      // Driven as the heartbeat would: a clear the cut failed outright is retried there, and one read as done never is.
+      await eventually(async () => {
+        await x.beat().catch(() => {});
+        return (await probe.exists(c.key("online:hal"))) === 0;
+      }, "the clear the cut interrupted to land", 15_000);
+      assert.equal(cut, true, "the link was never cut between WATCH and EXEC");
+    } finally {
+      await link.close();
+    }
   });
 
   test("an instance whose players a peer swept during its lapse says they are back", async () => {
@@ -288,5 +302,59 @@ describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, 
     } finally {
       await proxy.close();
     }
+  });
+
+  test("a refill whose socket went during its awaits writes nothing", async () => {
+    const c = cluster();
+    const link = await startProxy(targetOf(redisUrl, 6379));
+    let x: PresenceStore | undefined;
+    x = openPresenceStore({
+      ns: c.ns,
+      url: viaProxy(redisUrl, link),
+      heartbeat: false,
+      hooks: { beforeRefill: async (userId) => void (userId === "lea" && x?.forget("lea", "s-lea")) },
+    });
+    opened.push(x);
+    try {
+      await eventually(() => x.beat().then(() => true, () => false), "a first beat");
+      link.refuse(true);
+      await eventually(() => x.locate(["probe"]).then(() => false, () => true), "the link down");
+      x.record("lea", "s-lea");
+      link.refuse(false);
+      await eventually(async () => {
+        await x.beat().catch(() => {});
+        return x.locate(["probe"]).then(() => true, () => false);
+      }, "the link back and a beat landed");
+      await x.beat();
+      assert.equal(await probe.exists(c.key("online:lea")), 0, "a socket that went was put back online");
+    } finally {
+      await link.close();
+    }
+  });
+
+  test("a sweep that fails part-way still reports the accounts it already cleared", async () => {
+    const c = cluster();
+    const users = Array.from({ length: 150 }, (_, i) => `w${i}`);
+    const dead = c.open();
+    let batches = 0;
+    const a = openPresenceStore({
+      ns: c.ns,
+      heartbeat: false,
+      hooks: { beforeExec: async (keys) => {
+        if (keys.length > 1 && keys[0] === c.key(`instance:${dead.id}`) && ++batches === 2) throw new Error("the link went before the second batch");
+      } },
+    });
+    opened.push(a);
+    await redisReady();
+    await Promise.all([a.beat(), dead.beat()]);
+    for (const u of users) dead.record(u, `s-${u}`);
+    await eventually(async () => (await a.locate(users)).size === users.length, "the dead instance's entries");
+    const reported: string[] = [];
+    a.onLost((ids) => reported.push(...ids));
+    dead.close();
+    await probe.del(c.key(`instance:${dead.id}`));
+    await assert.rejects(a.beat());
+    assert.equal(reported.length, 100, "the first batch's accounts were cleared and their friends never told");
+    assert.equal(await probe.exists(reported.map((u) => c.key(`online:${u}`))), 0);
   });
 });

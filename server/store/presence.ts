@@ -70,14 +70,14 @@ export function openPresenceStore({
   url,
   ns = currentKeyspace(),
   heartbeat = true,
-  beforeExec = async () => {},
+  hooks = {},
 }: {
   id?: string;
   url?: string;
   ns?: string;
   heartbeat?: boolean;
-  /** Runs between a guarded transaction's read and its EXEC: where a test cuts the link. */
-  beforeExec?: () => Promise<void>;
+  /** Where a test makes a race happen: between a guarded read and its EXEC, and before a refill's guarded write. */
+  hooks?: { beforeExec?: (keys: string[]) => Promise<void>; beforeRefill?: (userId: string) => Promise<void> };
 } = {}): PresenceStore {
   const key = {
     // Not `presence:`, which an instance on #1893's hash format still writes during a rolling deploy.
@@ -127,7 +127,7 @@ export function openPresenceStore({
             await guarded.unwatch();
             return null;
           }
-          await beforeExec();
+          await hooks.beforeExec?.(keys);
           await tx.exec();
           return planned;
         } catch (err) {
@@ -171,7 +171,10 @@ export function openPresenceStore({
     if (mine.get(userId) !== held) return;
     const ours = held.at ?? (newestStamp > 0n ? newestStamp : await stampNow());
     await list(userId);
+    await hooks.beforeRefill?.(userId);
     await guard([key.presence(userId)], ([current], tx) => {
+      // Again here: the socket may have gone during the awaits above, and a clear is queued behind this.
+      if (mine.get(userId) !== held) return null;
       const entry = parse(current);
       if (entry && entry.at >= ours) return null;
       tx.set(key.presence(userId), format(id, held.socketId, ours));
@@ -261,7 +264,6 @@ export function openPresenceStore({
    */
   async function sweep(dead: string): Promise<void> {
     const users = await client.sMembers(key.users(dead));
-    const claimed: string[] = [];
     for (let i = 0; i < users.length; i += SWEEP_BATCH) {
       const batch = users.slice(i, i + SWEEP_BATCH);
       const took = await guard([key.instance(dead), ...batch.map(key.presence)], ([liveness, ...values], tx) => {
@@ -275,14 +277,14 @@ export function openPresenceStore({
         });
         return ids.length > 0 ? ids : null;
       });
-      if (took) claimed.push(...took);
+      // Told per batch: a later batch failing must not cost these their friends' notice.
+      if (took) lost(took);
     }
     await guard([key.instance(dead)], ([liveness], tx) => {
       if (liveness !== null) return null;
       tx.del(key.users(dead)).sRem(key.instances, dead);
       return true;
     });
-    if (claimed.length > 0) lost(claimed);
   }
 
   function markEpoch(): Promise<unknown> {
