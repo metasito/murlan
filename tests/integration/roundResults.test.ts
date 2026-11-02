@@ -5,7 +5,7 @@ import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
-import { eventually, register, waitFor, waitForWhere } from "../helpers/client.ts";
+import { eventually, register, waitFor, waitForPendingCode, waitForWhere } from "../helpers/client.ts";
 import { makeClients, setUpRoom } from "../helpers/table.ts";
 import { driveRound } from "../helpers/gameDriver.ts";
 import { pendingEntry, pendingRow, recordRound } from "../helpers/recordRound.ts";
@@ -50,6 +50,16 @@ describe("a finished round's results", { skip: hasDatabase() ? false : skipMessa
   after(async () => {
     await server.stop();
   });
+
+  /**
+   * Takes the seats' row locks once registration's background code mint has landed: the mint
+   * takes the same lock (`server/http/authTokens.ts`), and one still in flight would queue
+   * behind it and read as the commit waiting.
+   */
+  async function lockSeats(ids: string[]) {
+    await Promise.all(ids.map(waitForPendingCode));
+    return holdRowLock("SELECT id FROM users WHERE id = ANY($1) FOR NO KEY UPDATE", [ids]);
+  }
 
   async function users(n: number, tag: string): Promise<string[]> {
     const ids: string[] = [];
@@ -200,7 +210,7 @@ describe("a finished round's results", { skip: hasDatabase() ? false : skipMessa
   test("the next round's final write, queued while the last round's commit runs, never writes the committed one back", async () => {
     const ids = await users(2, "queuedfinal");
     const game = await liveTable(ids);
-    const lock = await holdRowLock("SELECT id FROM users WHERE id = ANY($1) FOR NO KEY UPDATE", [ids]);
+    const lock = await lockSeats(ids);
     try {
       const older = roundOf(ids, Date.now());
       game.pendingResults.push(older);
@@ -354,7 +364,7 @@ describe("a finished round's results", { skip: hasDatabase() ? false : skipMessa
     const clients = await makeClients(server, ["snapshot_a", "snapshot_b"]);
     const room = await setUpRoom(clients, 2);
     const ids = clients.map((c) => c.user.id);
-    const lock = await holdRowLock("SELECT id FROM users WHERE id = ANY($1) FOR NO KEY UPDATE", [ids]);
+    const lock = await lockSeats(ids);
     try {
       const over = driveRound(clients, () => clients[0]!.socket.emit("room:start"), { onExchange: "giveback", ms: 60_000 });
       over.catch(() => {});
