@@ -8,7 +8,8 @@ import { payload } from "../shared/payload.ts";
 import { now } from "../http/clock.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { TableRuntime, TableStore, TableWriters } from "./tableRuntime.ts";
-import { releaseRoom, releaseRoomAfter, unclaimedRooms, writeAsOwner } from "./gameOwnership.ts";
+import { ownsRoom, releaseRoomAfter, unclaimedRooms, writeAsOwner } from "./gameOwnership.ts";
+import { allRoomWritesLanded, queueBarrier, queueSnapshot, roomWritesLanded } from "./roomWriteChain.ts";
 import {
   sweepIntervalMs,
   clearRoomTimers,
@@ -63,17 +64,19 @@ export function sanitizeStateForPlayer(
   };
 }
 
-/** Drops every in-memory trace of a room. */
+/**
+ * Drops every in-memory trace of a room. The room is handed back only once its writes have
+ * landed: a claim landing first restores the table from a row this process is still writing, or
+ * has yet to delete.
+ */
 export function disposeGame(rt: TableRuntime, roomId: string, deleteRow = true) {
   const game = activeGames.get(roomId);
   if (game) clearRoomDisconnectTimers(game);
   clearRoomTimers(roomId);
   clearRoomLobbyGraces(roomId);
   activeGames.delete(roomId);
-  // Handed back only once the row is gone: a claim landing between the two
-  // restores the table this has just ended.
-  if (deleteRow) void releaseRoomAfter(roomId, rt.writers.discardGame(roomId));
-  else void releaseRoom(roomId);
+  const discarded = deleteRow ? rt.writers.discardGame(roomId) : undefined;
+  void releaseRoomAfter(roomId, Promise.all([discarded, roomWritesLanded(roomId)]));
 }
 
 /**
@@ -88,41 +91,26 @@ export async function stopTables(): Promise<void> {
     clearRoomTimers(roomId);
     clearRoomLobbyGraces(roomId);
   }
-  await Promise.all(roomWriteTails.values());
-}
-
-const roomWriteTails = new Map<string, Promise<unknown>>();
-
-/**
- * Runs `write` after every earlier write for this room's table. Only
- * the instance that owns a table writes its row, so an in-process order is
- * the whole order; without it a slow earlier snapshot can land last.
- * `write` must not reject.
- */
-function inRoomOrder(roomId: string, write: () => Promise<unknown>): Promise<unknown> {
-  const tail = (roomWriteTails.get(roomId) ?? Promise.resolve()).then(write);
-  roomWriteTails.set(roomId, tail);
-  void tail.finally(() => {
-    if (roomWriteTails.get(roomId) === tail) roomWriteTails.delete(roomId);
-  });
-  return tail;
+  await allRoomWritesLanded();
 }
 
 /**
  * The table's writers over `store`: the only code that writes a table's
  * `active_games` row or its room's status, beside the claim's epoch move
- * (`enterTable`). Row writes land in the order they were made, each under the
- * claim's epoch, and none of them rejects.
+ * (`enterTable`). They land in the order they were made (`roomWriteChain.ts`), each row
+ * write under the claim's epoch; none of them writes for a table this process lost.
  */
 export function tableWriters(store: TableStore): TableWriters {
   return {
-    updateRoomStatus: (roomId, status) => store.rooms.updateRoomStatus(roomId, status),
-    // Returned so a caller about to delete the same row can order itself after it.
+    updateRoomStatus: (roomId, status) =>
+      queueBarrier(roomId, async () => {
+        if (ownsRoom(roomId)) await store.rooms.updateRoomStatus(roomId, status);
+      }),
     persistGameState(roomId, game) {
       // Stamped so a restart can tell a row it still restores from one too old to
       // (see OLDEST_GAME_SCHEMA_VERSION) rather than restoring a corrupt round silently.
       const gameState = toEnvelope(game);
-      return inRoomOrder(roomId, async () => {
+      return queueSnapshot(roomId, async () => {
         // Judged when the write runs, not when it was queued: a table disposed in
         // between has had its row deleted, or handed to another instance.
         if (activeGames.get(roomId) !== game) return;
@@ -132,7 +120,7 @@ export function tableWriters(store: TableStore): TableWriters {
       });
     },
     discardGame: (roomId) =>
-      inRoomOrder(roomId, () =>
+      queueBarrier(roomId, () =>
         writeAsOwner(roomId, (epoch) => store.games.remove(roomId, epoch)).catch((err: unknown) =>
           logger.error({ err, roomId }, "Failed to delete persisted game")
         )
@@ -201,16 +189,13 @@ export type CloseNotice = "GAME_INTERRUPTED_SERVER_ERROR" | "GAME_INTERRUPTED_EM
 
 /**
  * The one "close the table": announced, marked finished, disposed, all in this
- * tick — a table waiting on the database would go on taking moves. The status
- * write is queued with the room's row writes, ahead of the row delete, so
- * `stopTables` waits for both.
+ * tick — a table waiting on the database would go on taking moves.
  */
 export function closeTable(rt: TableRuntime, roomId: string, notice: CloseNotice | null): void {
   if (notice) rt.out.room(roomId).emit("game:notification", { type: "abandoned", ...payload(notice) });
-  const marked = rt.writers
+  void rt.writers
     .updateRoomStatus(roomId, "finished")
     .catch((err: unknown) => logger.warn({ err, roomId, notice }, "Failed to set rooms.status = finished closing a table"));
-  void inRoomOrder(roomId, () => marked);
   disposeGame(rt, roomId);
 }
 

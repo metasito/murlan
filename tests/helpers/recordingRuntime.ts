@@ -43,7 +43,8 @@ export interface RecordingOptions {
   store?: Partial<TableStore>;
   /**
    * "real" runs the production row and status writers (`tableWriters`) over
-   * the store, so its ordering is under test; the stats writers stay fakes.
+   * the store, so its ordering is under test; the stats writers stay fakes. A
+   * `writers.updateRoomStatus` given with it stands in for the store's, behind the real writer.
    */
   persist?: "real";
 }
@@ -109,7 +110,9 @@ export function recordingRuntime(options: RecordingOptions = {}) {
     },
     countUntouchedSince: (cutoff) => activeGameStore.countUntouchedSince(cutoff),
   };
-  const store: TableStore = { games, rooms: roomStore, ...options.store };
+  const statusFake = options.persist === "real" ? options.writers?.updateRoomStatus : undefined;
+  const rooms = statusFake ? { ...roomStore, updateRoomStatus: statusFake } : roomStore;
+  const store: TableStore = { games, rooms, ...options.store };
 
   const record =
     <A extends unknown[], R>(name: string, answer: (...args: A) => R) =>
@@ -122,7 +125,9 @@ export function recordingRuntime(options: RecordingOptions = {}) {
   const pick = <K extends keyof TableWriters>(name: K, fake: TableWriters[K]): TableWriters[K] =>
     record(name, (options.writers?.[name] ?? fake) as (...args: unknown[]) => unknown) as TableWriters[K];
   const writers: TableWriters = {
-    updateRoomStatus: pick("updateRoomStatus", real?.updateRoomStatus ?? (async () => {})),
+    updateRoomStatus: real
+      ? record("updateRoomStatus", real.updateRoomStatus)
+      : pick("updateRoomStatus", async () => {}),
     persistGameState: pick("persistGameState", real?.persistGameState ?? (async () => {})),
     discardGame: pick("discardGame", real?.discardGame ?? production.discardGame),
     recordGameResult: pick("recordGameResult", async () => {}),
