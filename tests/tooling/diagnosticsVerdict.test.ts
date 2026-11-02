@@ -252,6 +252,22 @@ test("scheduledOnset judges the mic: passes a 10 ms bias, fails a 30 ms one, fai
   assert.equal(verdict(rows(10, 39), "scheduledOnset")?.pass, false);
 });
 
+test("captureProbe passes 20 heard sounds, and tells a capture that missed them from an engine that played none", () => {
+  const rows = (plays: number, appHeard: number) =>
+    run("captureProbe", Array.from({ length: 20 }, (_, i) => {
+      const at = 1000 + i * 1500;
+      return [
+        { k: "trigger", t: at, name: "probe" },
+        ...(i < plays ? [{ k: "play", t: at - 300, id: "turn", at, bus: "sfx", dropped: false, lead: 10 }] : []),
+        ...(i < appHeard ? [onset(at + 5, "app")] : []),
+      ];
+    }).flat());
+  assert.equal(verdict(rows(20, 20), "captureProbe")?.pass, true);
+  const missed = verdict(rows(20, 2), "captureProbe");
+  assert.deepEqual([missed?.pass, missed?.metrics.plays, missed?.metrics.appHeard], [false, 20, 2]);
+  assert.equal(verdict(rows(0, 0), "captureProbe")?.metrics.plays, 0);
+});
+
 test("pulseCost passes a 5 ms cold fire and 0.3 ms warm ones, and fails a slow cold, a slow warm p90 or a short run", () => {
   const rows = (cold: number, warm: number, n = 20) =>
     run("pulseCost", [{ k: "pulseCost", t: 1, ms: cold, cold: true }, ...Array.from({ length: n }, (_, i) => ({ k: "pulseCost", t: 2 + i, ms: warm, cold: false }))]);

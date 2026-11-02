@@ -3,6 +3,7 @@ import "./idle";
 import "./tapBurst";
 import "./scheduledOnset";
 import "./hapticOnset";
+import "./captureProbe";
 import "./musicSwitch";
 import "./soak";
 import "./landingSync";

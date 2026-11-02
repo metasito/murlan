@@ -215,6 +215,16 @@ function scheduledOnset(rows) {
   return { pass: triggers.length === 40 && errors.length === 40 && p90(errors.map(Math.abs)) <= 25, metrics };
 }
 
+/** 20 plain sounds, 1.5 s apart, with the capture on: tells a capture that misses sounds from an engine that plays none (the plays and each track's onsets are counted apart). */
+function captureProbe(rows) {
+  const triggers = times(rows, "trigger", "probe");
+  const heard = (source) => matchOnsets(triggers.map((t) => t - 100), onsetsOf(rows, source), 600).filter((m) => m !== null).length;
+  const plays = rows.filter((r) => r.k === "play" && !r.dropped).length;
+  const appHeard = heard("app");
+  const metrics = { probes: triggers.length, plays, appHeard, micHeard: heard("mic"), appOnsets: onsetsOf(rows, "app").length, micOnsets: onsetsOf(rows, "mic").length };
+  return { pass: triggers.length === 20 && plays >= 20 && appHeard === 20, metrics };
+}
+
 function pulseCost(rows) {
   const costs = rows.filter((r) => r.k === "pulseCost");
   const cold = costs.find((r) => r.cold)?.ms ?? NaN;
@@ -509,7 +519,7 @@ function sustained(rows) {
 }
 
 export const GATES = {
-  pulseCost, idle, tapBurst, scheduledOnset, hapticOnset, musicSwitch, smoke, soak, landingSync, seatAnchors, lampVariants,
+  pulseCost, idle, tapBurst, scheduledOnset, hapticOnset, captureProbe, musicSwitch, smoke, soak, landingSync, seatAnchors, lampVariants,
   throwStalls, restCost, feltOpaque, noticeGallery, sustained, dealBurst,
 };
 

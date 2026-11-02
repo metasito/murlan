@@ -204,7 +204,7 @@ state, hold landscape, and ask for it verbatim: *"send one landscape screenshot 
 
   A **hitch** is a frame at least 1.6× its neighbours' median (neighbours under 11 ms, frame at least 12 ms), so a governor rate step is not one; every gate reports hitches per second, none gates on them until a device run sets a number. A verdict also fails on a lost batch (`lostBatches`), a native-side drop (`nativeDropped`) or a failed capture (`captureStopped`).
 
-  **Resuming:** `npm run ios:device -- --gates --resume <ndjson>` appends to that log and skips every scenario with an `end` row and no error from a Release bundle (`doneScenarios`); the phone's own progress file also lasts seven days. Audio capture runs only for the scenarios marked `capture: true` (`tapBurst`, `scheduledOnset`, `musicSwitch`, `landingSync`), so the rest run without ReplayKit's cost.
+  **Resuming:** `npm run ios:device -- --gates --resume <ndjson>` appends to that log and skips every scenario with an `end` row and no error from a Release bundle (`doneScenarios`); the phone's own progress file also lasts seven days. Audio capture runs only for the scenarios marked `capture: true` (`tapBurst`, `scheduledOnset`, `captureProbe`, `musicSwitch`, `landingSync`), so the rest run without ReplayKit's cost.
 
   The 150 ms window is shorter than the 167 ms between taps, so a silent tap cannot borrow the
   next tap's onset. G3 reads the mic because the app track is stamped before the output path, so
