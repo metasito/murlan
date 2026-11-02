@@ -96,6 +96,7 @@ export function commitMove(rt: TableRuntime, game: OnlineGameState, applied: Aut
     serveState(rt, game);
     return handleRoundOver(rt, game.roomId, game);
   }
+  // Armed first, so the state carries the deadline it sets; the state is then the turn's only announcement.
+  armTurn(rt, game.roomId, false);
   void publishState(rt, game);
-  armTurn(rt, game.roomId);
 }

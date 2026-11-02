@@ -38,6 +38,7 @@ function table(gameState: GameState, playerMap: Record<number, string> = {}): On
     moveLog: [],
     pendingResults: [],
     landedResults: new Set(),
+    seq: 0,
     gameState,
   };
   activeGames.set(ROOM, game);
@@ -246,6 +247,30 @@ test("the move that ends a round is acked on apply, with the database stalled, a
     assert.deepEqual(over?.ratingDeltas, ratings.ratingDeltas, "announced with the committed ratings");
     assert.deepEqual(over?.finishingOrder, ["p0", "p1"]);
     assert.equal(game.lastRoundOverPayload, over);
+  } finally {
+    clearRoomTimers(ROOM);
+    activeGames.delete(ROOM);
+  }
+});
+
+test("the state a move sends carries the deadline its arming set, and no separate deadline follows", async (t) => {
+  useMemoryTableStores(t);
+  const { rt, events } = recordingRuntime({ persist: "real" });
+  await heldRoom(t, ROOM);
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  try {
+    const state = leading([c("9", "clubs"), c("K", "clubs")]);
+    const game = table(state, { 0: "ana", 1: "besi" });
+    commitMove(rt, game, applied(state, { kind: "play", cardIds: ["9_clubs"] }));
+
+    assert.ok(game.turnDeadlineMs !== undefined, "the human now on move was not put on the clock");
+    const sent = events("game:state") as { turnDeadlineMs?: number }[];
+    assert.deepEqual(
+      sent.map((s) => s.turnDeadlineMs),
+      [game.turnDeadlineMs, game.turnDeadlineMs],
+      "a seat was sent the deadline of the turn before"
+    );
+    assert.deepEqual(events("game:turn_deadline"), [], "the deadline was announced twice");
   } finally {
     clearRoomTimers(ROOM);
     activeGames.delete(ROOM);
