@@ -36,7 +36,7 @@ env:
   # self-test must run the exact same binary, or a version bump to one and not
   # the other leaves the self-test attesting to a scanner that isn't the one
   # guarding the repo.
-  GITLEAKS_IMAGE: "ghcr.io/gitleaks/gitleaks:v8.30.1"
+  GITLEAKS_IMAGE: "ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
 
 jobs:
   # Two reasons the suite below can be skipped, both settled here: the commit is
@@ -61,7 +61,7 @@ jobs:
       shard-count: ${{ steps.plan.outputs.shard-count }}
       timings: ${{ steps.plan.outputs.timings }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The check diffs against the base commit.
           fetch-depth: 0
@@ -112,8 +112,9 @@ jobs:
       # Every shard must split the suite from the same numbers, so they are settled once, here.
       # Only a run whose every browser shard passed uploads `e2e-timings` (browser-report), so
       # none of these is a red run's.
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
+          package-manager-cache: false
           node-version-file: .node-version
       - id: plan
         shell: bash
@@ -158,7 +159,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -281,7 +282,7 @@ jobs:
       SESSION_SECRET: ci-test-secret-not-used-in-production
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/install
 
       # tests/server/backupDb.test.ts restores a real dump — needs the same client
@@ -342,27 +343,27 @@ jobs:
       matrix:
         shard: [1, 2]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/install
       # babel-jest keys a transform by the file and the babel config, never by the presets' and plugins'
       # own code (the React Compiler, worklets), so this key must cover everything that changes that code,
       # and no restore-keys: a cache built under another dependency set would serve its old compiler output.
       # A cold cache spends ~30 s per worker re-transforming the table's module graph.
       - id: jest-cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/jest-cache
           key: native-jest-${{ matrix.shard }}-${{ hashFiles('package-lock.json', 'patches/**', 'babel.config.js', 'jest.config.js') }}
       - run: npm run test:native -- --shard=${{ matrix.shard }}/${{ strategy.job-total }} --cacheDirectory="$RUNNER_TEMP/jest-cache"
       # Read by the loop's land gate (tools/loop/ciVerdict.ts): a step's warning annotations stop at ten.
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: over-budget-native-${{ matrix.shard }}
           path: ${{ runner.temp }}/over-budget.json
           if-no-files-found: error
           retention-days: 30
       - if: ${{ !cancelled() && steps.jest-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/jest-cache
           key: ${{ steps.jest-cache.outputs.cache-primary-key }}
@@ -379,7 +380,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: ./.github/actions/install
@@ -416,9 +417,10 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
+          package-manager-cache: false
           node-version-file: .node-version
       - name: Identify the runner to git
         run: |
@@ -442,7 +444,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: ./.github/actions/install
@@ -477,7 +479,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/install
       # --no-install: `npm ci` above already installed, and letting prebuild run
       # its own install would resolve outside the lockfile.
@@ -495,11 +497,13 @@ jobs:
       # After prebuild, not before: android/ is gitignored and generated by it,
       # so cache:gradle has nothing to key on (**/*.gradle*) any earlier.
       # Expo SDK 54 ships AGP 8, which refuses anything below JDK 17.
-      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: "17"
           cache: gradle
+          # The runner's tool cache already holds Temurin 17; caching the JDK only adds a save and a restore.
+          cache-jdk: false
       - name: Compile a release, JS bundled
         working-directory: android
         run: ./gradlew assembleRelease -PreactNativeArchitectures=x86_64 -x lintVitalRelease --no-daemon
@@ -539,7 +543,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/install
       - name: Each Skia Metal layer follows its own opaque
         run: |
@@ -565,7 +569,7 @@ jobs:
       # Keyed on package-lock.json, not Podfile.lock: the latter is only written
       # by `pod install` below, so hashing it here would always see a cache miss
       # (first run) or, worse, a stale hit that never invalidates.
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ios/Pods
           key: ${{ runner.os }}-pods-${{ hashFiles('package-lock.json') }}
@@ -643,7 +647,7 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.scope.outputs.shards) }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/install
       - name: The split the scope job settled
         env:
@@ -651,7 +655,7 @@ jobs:
         run: printf '%s' "$TIMINGS" > tests/e2e/timings.json
       # Keyed on the dependencies alone, so it is written once and never grows: node_modules is
       # most of the bundle's 2078 modules, and metro.config.js keys each entry on its inputs.
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: /tmp/metro-cache
           key: metro-${{ hashFiles('package-lock.json', 'patches/**', 'metro.config.js', 'babel.config.js') }}
@@ -667,7 +671,7 @@ jobs:
       - name: Playwright version
         id: pw
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-shell-${{ steps.pw.outputs.version }}
@@ -687,7 +691,7 @@ jobs:
         timeout-minutes: 20
         run: npm run test:e2e -- $(node tools/ci/e2e-shard.mjs ${{ matrix.shard }} ${{ strategy.job-total }})
       # Read by the loop's land gate (tools/loop/ciVerdict.ts): a step's warning annotations stop at ten.
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: over-budget-browser-${{ matrix.shard }}
           path: ${{ runner.temp }}/over-budget.json
@@ -702,7 +706,7 @@ jobs:
       # from.
       - name: Keep this shard's report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: blob-report-${{ matrix.shard }}
           path: tests/e2e/blob-report/
@@ -718,7 +722,7 @@ jobs:
       # and the step above is what asserts the suite ran at all.
       - name: Keep the raw Playwright output when the suite goes red
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-test-results-${{ matrix.shard }}
           path: tests/e2e/test-results/
@@ -743,16 +747,17 @@ jobs:
       contents: write
       actions: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
+          package-manager-cache: false
           node-version-file: .node-version
       # This job's own scripts import only `node:` modules; the one package it runs is Playwright's
       # CLI, pinned to the lockfile's version because a blob report is read by the version that wrote it.
       - name: Playwright's CLI
         run: echo "PW=@playwright/test@$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")" >> "$GITHUB_ENV"
       - id: pw-cli
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/pw
           key: playwright-cli-${{ env.PW }}
@@ -795,7 +800,7 @@ jobs:
       # The report is screenshots, videos and trace zips, which deflate barely shrinks.
       - name: Keep the Playwright report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-report
           path: playwright-report/
@@ -816,7 +821,7 @@ jobs:
       # so balance follows the suite without a commit per merge. A red shard is not a measurement.
       - name: Keep the timings for the next run
         if: ${{ needs.browser.result == 'success' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-timings
           path: tests/e2e/timings.json
@@ -910,7 +915,7 @@ jobs:
       SESSION_SECRET: ci-test-secret-not-used-in-production
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # This job boots the real artefact against a real database, so its Node must be
       # production's: `esbuild --target` lowers syntax and knows nothing about APIs.
       # `.node-version` is production's (tests/server/deployRuntime.test.ts).
@@ -978,13 +983,14 @@ jobs:
       pull-requests: read
       actions: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             tools/ci
             scripts/lib
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
+          package-manager-cache: false
           node-version-file: .node-version
       # Which step fails is the verdict's: this one is infrastructure (exit 2), the next a finding.
       # The name is budget-gate.mjs's UNREAD_STEP (tests/tooling/ciGate.test.ts).
@@ -1012,7 +1018,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             tools/ci
