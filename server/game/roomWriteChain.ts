@@ -21,8 +21,7 @@ function entry(kind: Entry["kind"], write: () => Promise<void>): Entry {
 }
 
 async function drain(roomId: string, queue: Entry[]): Promise<void> {
-  while (queue.length > 0) {
-    const next = queue[0];
+  for (let next = queue[0]; next; next = queue[0]) {
     next.started = true;
     await next.write().catch(() => {});
     queue.shift();
