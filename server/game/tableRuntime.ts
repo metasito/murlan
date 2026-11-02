@@ -56,7 +56,7 @@ export interface TableStore {
 
 /** What a table reads, and the seat rows it keeps; every other write is `writers`'. */
 export interface TableReads {
-  games: Pick<typeof activeGameStore, "load" | "list">;
+  games: Pick<typeof activeGameStore, "list">;
   rooms: Omit<TableRoomPort, "updateRoomStatus">;
 }
 
@@ -91,6 +91,6 @@ export function createTableRuntime(ports: TablePorts): TableRuntime {
     expireVoteDeadline: (roomId) => expireVoteDeadline(rt, roomId),
   };
   registerTableRouting(rt);
-  reopenOwnership({ onRoomLost: (roomId) => disposeGame(rt, roomId, false) });
+  reopenOwnership({ onRoomLost: (roomId) => disposeGame(rt, roomId, false), rows: ports.store.games });
   return rt;
 }

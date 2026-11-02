@@ -94,14 +94,18 @@ export function recordingRuntime(options: RecordingOptions = {}) {
   const landed = (name: string, args: unknown[]) => journal.push({ kind: "store", name, args });
   const games: typeof activeGameStore = {
     load: (roomId) => activeGameStore.load(roomId),
+    claim: (roomId) => activeGameStore.claim(roomId),
+    epochOf: (roomId) => activeGameStore.epochOf(roomId),
     list: () => activeGameStore.list(),
-    write: async (roomId, state) => {
-      await activeGameStore.write(roomId, state);
+    write: async (roomId, state, fence) => {
+      const changed = await activeGameStore.write(roomId, state, fence);
       landed("write", [roomId]);
+      return changed;
     },
-    remove: async (roomId) => {
-      await activeGameStore.remove(roomId);
+    remove: async (roomId, epoch) => {
+      const changed = await activeGameStore.remove(roomId, epoch);
       landed("remove", [roomId]);
+      return changed;
     },
     countUntouchedSince: (cutoff) => activeGameStore.countUntouchedSince(cutoff),
   };
@@ -113,13 +117,14 @@ export function recordingRuntime(options: RecordingOptions = {}) {
       journal.push({ kind: "write", name, args });
       return answer(...args);
     };
-  const real = options.persist === "real" ? tableWriters(store) : null;
+  const production = tableWriters(store);
+  const real = options.persist === "real" ? production : null;
   const pick = <K extends keyof TableWriters>(name: K, fake: TableWriters[K]): TableWriters[K] =>
     record(name, (options.writers?.[name] ?? fake) as (...args: unknown[]) => unknown) as TableWriters[K];
   const writers: TableWriters = {
     updateRoomStatus: pick("updateRoomStatus", real?.updateRoomStatus ?? (async () => {})),
     persistGameState: pick("persistGameState", real?.persistGameState ?? (async () => {})),
-    discardGame: pick("discardGame", real?.discardGame ?? ((roomId) => store.games.remove(roomId))),
+    discardGame: pick("discardGame", real?.discardGame ?? production.discardGame),
     recordGameResult: pick("recordGameResult", async () => {}),
     recordRatedResult: pick("recordRatedResult", async () => new Map()),
     previewRatedDeltas: pick("previewRatedDeltas", async () => new Map()),

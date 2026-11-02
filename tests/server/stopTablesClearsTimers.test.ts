@@ -8,6 +8,9 @@ import { activeGames } from "../../server/game/gameRoom.ts";
 import { tableWriters, stopTables } from "../../server/game/gamePersistence.ts";
 import type { TableStore } from "../../server/game/tableRuntime.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
+import { heldRoom } from "../helpers/heldRoom.ts";
+import { reopenOwnership } from "../../server/game/gameOwnership.ts";
+import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { startRound } from "../../lib/game/gameEngine.ts";
 
 const ROOM = "stop-tables-room";
@@ -29,6 +32,8 @@ test("stopping the tables waits for the row writes already queued, and leaves no
     playerMap: { 0: SEATED },
     gameState: startRound(SEATS, "free_for_all"),
   });
+  reopenOwnership({ onRoomLost: () => {}, rows: activeGameStore });
+  await heldRoom(t, ROOM);
   activeGames.set(ROOM, game);
   t.after(() => {
     activeGames.delete(ROOM);
@@ -36,7 +41,7 @@ test("stopping the tables waits for the row writes already queued, and leaves no
   });
   let landWrite!: () => void;
   const store = {
-    games: { write: () => new Promise<void>((resolve) => (landWrite = resolve)), remove: async () => {} },
+    games: { write: () => new Promise<boolean>((resolve) => (landWrite = () => resolve(true))), remove: async () => true },
     rooms: { updateRoomStatus: async () => {} },
   } as unknown as TableStore;
   void tableWriters(store).persistGameState(ROOM, game);

@@ -33,8 +33,9 @@ const PROFILES = {
       query_timeout: QUERY_TIMEOUT_MS,
     },
   },
-  // Bounded, so a half-open socket fails the heartbeat rather than hanging it.
-  ownership: { kind: "client", settings: { query_timeout: 5_000, statement_timeout: 5_000 } },
+  // Bounded, so a half-open socket fails the heartbeat rather than hanging it, and a server that
+  // accepts and never answers fails the connect every claim waits on.
+  ownership: { kind: "client", settings: { connectionTimeoutMillis: 3_000, query_timeout: 5_000, statement_timeout: 5_000 } },
   admin: {
     kind: "pool",
     max: 2,

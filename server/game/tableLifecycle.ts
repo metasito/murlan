@@ -16,6 +16,7 @@ import type { RehydrateOutcome } from "./tableRouter.ts";
 import { everySeatedVoted } from "./tableVotes.ts";
 import { castRematchVote, clearRematchVotes } from "./matchLedger.ts";
 import { armSeatGrace } from "./tableHandlers.ts";
+import { enterTable } from "./gameOwnership.ts";
 
 /**
  * Puts a persisted game back in memory, for an instance that has just claimed
@@ -39,7 +40,9 @@ export async function rehydrateGame(
   roomId: string,
   forUserId: string | null
 ): Promise<RehydrateOutcome> {
-  const row = await rt.store.games.load(roomId);
+  const entry = await enterTable(roomId);
+  if (!entry.held) return "lost";
+  const { row } = entry;
   if (!row) return "missing";
 
   const restored = fromEnvelope(row);

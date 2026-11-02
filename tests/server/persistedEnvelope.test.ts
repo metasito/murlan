@@ -4,6 +4,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
+import { rehydrateClaimed } from "../helpers/heldRoom.ts";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import {
   GAME_SCHEMA_VERSION,
@@ -21,7 +22,6 @@ import { actingSeat, applyMove } from "../../lib/game/gameEngine.ts";
 import { chooseMove } from "../../lib/game/autoMove.ts";
 import { visibleExchangePhase } from "../../server/game/onlineGameLogic.ts";
 import { card, seat, state } from "../support/game.ts";
-import { rehydrateGame } from "../../server/game/tableLifecycle.ts";
 
 const gameState = state({ currentTurnIndex: 2, gameMode: "teams" });
 const flags: RoundFlags = { 0: { bomb: true, joker: false }, 3: { bomb: false, joker: true } };
@@ -242,9 +242,9 @@ describe("rows the restore path refuses", () => {
       ],
     });
 
-    assert.equal(await rehydrateGame(recordingRuntime().rt, newer, null), "newer");
+    assert.equal(await rehydrateClaimed(t, recordingRuntime().rt, newer, null), "newer");
     assert.ok(rows.has(newer), "a newer revision's live row was deleted");
-    assert.equal(await rehydrateGame(recordingRuntime().rt, older, null), "unrestorable");
+    assert.equal(await rehydrateClaimed(t, recordingRuntime().rt, older, null), "unrestorable");
     assert.ok(!rows.has(older), "the older row was not deleted, so the check above proves nothing");
   });
 

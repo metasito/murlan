@@ -1,7 +1,7 @@
 // How a table enters memory: the host's start, a restore from active_games, and the sweep for orphans.
 import { test, describe, afterEach, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { startMatchAction, rehydrateGame, resumeOrphanedTables } from "../../server/game/tableLifecycle.ts";
+import { startMatchAction, resumeOrphanedTables } from "../../server/game/tableLifecycle.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { arm, clearAllTimersForUser, clearRoomTimers, pending, seatKey, usersInLobbyGrace } from "../../server/game/gameTimers.ts";
 import { installClock } from "../../server/http/clock.ts";
@@ -14,6 +14,7 @@ import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 import { fakeClock } from "../helpers/fakeClock.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
+import { rehydrateClaimed } from "../helpers/heldRoom.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { aThreePlayed } from "../support/game.ts";
@@ -341,7 +342,7 @@ describe("restoring a table from active_games", () => {
 
   test("says nothing was there when no row is", async (t) => {
     useMemoryTableStores(t);
-    assert.equal(await rehydrateGame(recordingRuntime().rt, ROOM, "ana"), "missing");
+    assert.equal(await rehydrateClaimed(t, recordingRuntime().rt, ROOM, "ana"), "missing");
     assert.equal(activeGames.has(ROOM), false);
   });
 
@@ -350,18 +351,18 @@ describe("restoring a table from active_games", () => {
       rows: [[ROOM, row(midRound(), match({ playerMap: { 0: "ana", 2: "carl" } }), seats([[1, { userId: "besi", username: "Besi" }]]))]],
     });
     const { rt } = recordingRuntime({ presence: { tablePresence: async () => null } });
-    assert.equal(await rehydrateGame(rt, ROOM, "besi"), "restored");
+    assert.equal(await rehydrateClaimed(t, rt, ROOM, "besi"), "restored");
     assert.equal(activeGames.get(ROOM)?.roomId, ROOM);
     activeGames.delete(ROOM);
-    assert.equal(await rehydrateGame(rt, ROOM, "ana"), "restored");
+    assert.equal(await rehydrateClaimed(t, rt, ROOM, "ana"), "restored");
     activeGames.delete(ROOM);
-    assert.equal(await rehydrateGame(rt, ROOM, null), "restored");
+    assert.equal(await rehydrateClaimed(t, rt, ROOM, null), "restored");
   });
 
   test("keeps it out of memory for an account that never sat there", async (t) => {
     useMemoryTableStores(t, { rows: [[ROOM, row(midRound())]] });
     const { rt } = recordingRuntime();
-    assert.equal(await rehydrateGame(rt, ROOM, "stranger"), "not_seated");
+    assert.equal(await rehydrateClaimed(t, rt, ROOM, "stranger"), "not_seated");
     assert.equal(activeGames.has(ROOM), false);
   });
 
@@ -369,7 +370,7 @@ describe("restoring a table from active_games", () => {
     useMemoryTableStores(t, {
       rows: [[ROOM, row(midRound(), match({ playerMap: { 0: "ana", 2: "carl" } }), seats([[1, { userId: "besi", username: "Besi" }]]))]],
     });
-    assert.equal(await rehydrateGame(recordingRuntime().rt, ROOM, "stranger"), "not_seated");
+    assert.equal(await rehydrateClaimed(t, recordingRuntime().rt, ROOM, "stranger"), "not_seated");
     assert.equal(activeGames.has(ROOM), false);
   });
 
@@ -382,9 +383,9 @@ describe("restoring a table from active_games", () => {
     });
     const { rt } = recordingRuntime({ presence: { tablePresence: async () => null } });
     t.after(() => clearRoomTimers("done-room"));
-    await rehydrateGame(rt, ROOM, "ana");
+    await rehydrateClaimed(t, rt, ROOM, "ana");
     assert.equal(pending("voteDeadline", ROOM), true);
-    await rehydrateGame(rt, "done-room", "ana");
+    await rehydrateClaimed(t, rt, "done-room", "ana");
     activeGames.delete("done-room");
     assert.equal(pending("voteDeadline", "done-room"), false);
   });
@@ -394,7 +395,7 @@ describe("restoring a table from active_games", () => {
     useMemoryTableStores(t, { rows: [[ROOM, row(midRound())]] });
     const { rt, sent, cluster } = recordingRuntime();
     cluster.online.add("besi");
-    assert.equal(await rehydrateGame(rt, ROOM, "ana"), "restored");
+    assert.equal(await rehydrateClaimed(t, rt, ROOM, "ana"), "restored");
 
     const held = sent.filter((e) => e.event === "game:player_disconnected").map((e) => (e.payload as { userId: string }).userId);
     assert.deepEqual(held, ["carl"], "ana is acting, besi is online");
@@ -410,7 +411,7 @@ describe("restoring a table from active_games", () => {
     cluster.online.add("besi");
     cluster.online.add("carl");
     cluster.atTable.set("carl", new Set([ROOM]));
-    await rehydrateGame(rt, ROOM, "ana");
+    await rehydrateClaimed(t, rt, ROOM, "ana");
     assert.deepEqual(usersInLobbyGrace(ROOM), ["besi"]);
   });
 
@@ -418,7 +419,7 @@ describe("restoring a table from active_games", () => {
     useMemoryTableStores(t, { rows: [[ROOM, row(midRound())]] });
     const { rt, cluster, sent } = recordingRuntime();
     cluster.down = true;
-    assert.equal(await rehydrateGame(rt, ROOM, "ana"), "restored");
+    assert.equal(await rehydrateClaimed(t, rt, ROOM, "ana"), "restored");
     assert.deepEqual(sent, []);
     assert.equal(pending("disconnect", "besi"), false);
   });
@@ -426,7 +427,7 @@ describe("restoring a table from active_games", () => {
   test("a row that cannot be restored is deleted, and the claim on it is left alone", async (t) => {
     const { rows } = useMemoryTableStores(t, { rows: [[ROOM, { ...row(midRound()), schemaVersion: 1 }]] });
     const { rt } = recordingRuntime();
-    assert.equal(await rehydrateGame(rt, ROOM, "ana"), "unrestorable");
+    assert.equal(await rehydrateClaimed(t, rt, ROOM, "ana"), "unrestorable");
     assert.equal(rows.has(ROOM), false);
   });
 

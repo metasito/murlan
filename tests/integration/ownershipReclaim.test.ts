@@ -13,6 +13,7 @@ import {
   ownsRoom,
   reopenOwnership,
 } from "../../server/game/gameOwnership.ts";
+import { activeGameStore } from "../../server/store/activeGameStore.ts";
 
 test("rooms outlast a stretch of refused connections and are locked again", {
   skip: hasDatabase() ? false : skipMessage(),
@@ -63,7 +64,7 @@ test("rooms outlast a stretch of refused connections and are locked again", {
     return rowCount === 1;
   };
   const lost: string[] = [];
-  reopenOwnership({ onRoomLost: (roomId) => lost.push(roomId) });
+  reopenOwnership({ onRoomLost: (roomId) => lost.push(roomId), rows: activeGameStore });
 
   assert.equal(await claimRoom(room), true);
   assert.equal(await lockHeld(), true, "the lock query does not see the claim, so it proves nothing below");

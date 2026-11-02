@@ -3,7 +3,7 @@ import { createClient } from "redis";
 import runtime from "../../deploy/runtime.json" with { type: "json" };
 import { logger } from "../shared/logger.ts";
 
-export type RedisUse = "adapter" | "inbox" | "presence" | "limits";
+export type RedisUse = "adapter" | "inbox" | "presence" | "limits" | "owners";
 export type RedisClient = ReturnType<typeof newClient>;
 
 export const instanceId = randomUUID();

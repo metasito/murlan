@@ -1,7 +1,7 @@
 // Map-backed twins of `activeGameStore` and the `TableRoomPort` methods, so a
 // table test needs neither Postgres nor a mock of drizzle's internals.
 import type { TestContext } from "node:test";
-import { activeGameStore, type TableRoomPort } from "../../server/store/activeGameStore.ts";
+import { activeGameStore, type OwnerFence, type TableRoomPort } from "../../server/store/activeGameStore.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { renumbering, settleRelease, startRefusal } from "../../server/game/seatAllocation.ts";
 import type { Room } from "../../shared/schema.ts";
@@ -12,6 +12,8 @@ export interface MemoryTableStores {
   rooms: Map<string, Room>;
   seats: Map<string, Seat[]>;
   rows: Map<string, unknown>;
+  /** Each row's `owner_epoch`; a seeded row starts at 0, as one written before epochs did. */
+  epochs: Map<string, number>;
 }
 
 export interface MemoryTableSeed {
@@ -26,17 +28,32 @@ export function useMemoryTableStores(t: TestContext, seed: MemoryTableSeed = {})
   const rows = new Map(seed.rows ?? []);
   const seated = (roomId: string) => [...(seats.get(roomId) ?? [])].sort((a, b) => a.seatIndex - b.seatIndex);
 
+  const epochs = new Map<string, number>([...rows.keys()].map((roomId) => [roomId, 0]));
+  const at = (roomId: string, epoch: number) => rows.has(roomId) && epochs.get(roomId) === epoch;
   t.mock.method(activeGameStore, "load", async (roomId: string) =>
     rows.has(roomId) ? { roomId, gameState: rows.get(roomId) } : undefined
   );
+  t.mock.method(activeGameStore, "claim", async (roomId: string) => {
+    if (!rows.has(roomId)) return undefined;
+    const ownerEpoch = (epochs.get(roomId) ?? 0) + 1;
+    epochs.set(roomId, ownerEpoch);
+    return { roomId, gameState: rows.get(roomId), ownerEpoch };
+  });
+  t.mock.method(activeGameStore, "epochOf", async (roomId: string) => (rows.has(roomId) ? epochs.get(roomId) : undefined));
   t.mock.method(activeGameStore, "list", async () =>
     [...rows].map(([roomId, gameState]) => ({ roomId, gameState }))
   );
-  t.mock.method(activeGameStore, "write", async (roomId: string, gameState: unknown) => {
+  t.mock.method(activeGameStore, "write", async (roomId: string, gameState: unknown, fence: OwnerFence) => {
+    if (fence.rowExists ? !at(roomId, fence.epoch) : rows.has(roomId) && !at(roomId, fence.epoch)) return false;
     rows.set(roomId, gameState);
+    epochs.set(roomId, fence.epoch);
+    return true;
   });
-  t.mock.method(activeGameStore, "remove", async (roomId: string) => {
+  t.mock.method(activeGameStore, "remove", async (roomId: string, epoch: number) => {
+    if (!at(roomId, epoch)) return false;
     rows.delete(roomId);
+    epochs.delete(roomId);
+    return true;
   });
 
   const port: TableRoomPort = {
@@ -86,5 +103,5 @@ export function useMemoryTableStores(t: TestContext, seed: MemoryTableSeed = {})
     t.mock.method(roomStore, name, port[name]);
   }
 
-  return { rooms, seats, rows };
+  return { rooms, seats, rows, epochs };
 }

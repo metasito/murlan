@@ -287,12 +287,12 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     let open!: () => void;
     const gate = new Promise<void>((r) => (open = r));
     let held = 0;
-    activeGameStore.write = async function (roomId, state) {
+    activeGameStore.write = async function (roomId, state, fence) {
       if (roomId === room.roomId && state.match.roundsPlayed === 101) {
         held += 1;
         await gate;
       }
-      return real.call(this, roomId, state);
+      return real.call(this, roomId, state, fence);
     };
     try {
       Object.assign(game, { roundsPlayed: 101 });

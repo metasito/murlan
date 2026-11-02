@@ -10,11 +10,21 @@
 // way to end up with two owners while believing there is one. Postgres drops a
 // session lock when the connection dies, so a crashed owner releases its rooms
 // with nothing to tune and no timer to get wrong.
+//
+// The lock cannot stop a write the previous owner already has in flight, so the
+// row carries an epoch each claim moves on (`enterTable`), and every row write
+// is made under it (`writeAsOwner`).
 import type { Client } from "pg";
 import { createClient } from "../store/pool.ts";
 import { createHash } from "node:crypto";
 import { logger } from "../shared/logger.ts";
+import { clearTableOwner, recordTableOwner } from "../store/tableOwners.ts";
 import { activeGames } from "./gameRoom.ts";
+import type { TableStore } from "./tableRuntime.ts";
+
+type OwnedRows = Pick<TableStore["games"], "claim" | "load" | "epochOf">;
+type ActiveGameRow = NonNullable<Awaited<ReturnType<OwnedRows["load"]>>>;
+type OwnerFence = Parameters<TableStore["games"]["write"]>[2];
 
 /**
  * The advisory-lock key for a room, as `pg_try_advisory_lock` takes it.
@@ -43,8 +53,34 @@ const OWNERSHIP_HEARTBEAT_MS = 15_000;
 /** How soon a reclaim that could not reach Postgres, as during its restart, tries again. */
 const OWNERSHIP_RECLAIM_RETRY_MS = 1_000;
 
+/** How long a reconnected client waits for the session it replaced to leave Postgres. */
+const PREDECESSOR_WAIT_MS = 3_000;
+const PREDECESSOR_POLL_MS = 100;
+
+interface Hold {
+  /** The session the lock was granted on; a reclaim asks again only on a newer one. */
+  lockedOn: Client | null;
+  /** Set by `enterTable`; until then the room has no row of its own to write. */
+  fence: OwnerFence | null;
+  entering: Promise<ActiveGameRow | undefined> | null;
+}
+
 /** Rooms this process holds the lock for. */
-const held = new Set<string>();
+const held = new Map<string, Hold>();
+
+/** Exact, and the same text in every session whatever its `TimeZone` or `DateStyle`. */
+const STARTED = "extract(epoch FROM backend_start)::text";
+
+/** A backend as `pg_stat_activity` names it: a pid alone may since belong to another session. */
+interface Backend {
+  pid: number;
+  started: string;
+}
+
+let backend: Backend | null = null;
+/** Sessions this process dropped and has not yet seen leave Postgres; their locks are still its own. */
+const predecessors: Backend[] = [];
+let retiring: Promise<boolean> | null = null;
 
 /** Rooms whose lock is kept until what it guards has settled; see `releaseRoomAfter`. */
 const releasing = new Map<string, Promise<void>>();
@@ -61,10 +97,13 @@ let closed = false;
  * or the lock would depend on the table it is protecting.
  */
 let onRoomLost: (roomId: string) => void = () => {};
+let rows: OwnedRows | null = null;
 
 function drop(dead: Client): void {
   if (client !== dead) return;
   client = null;
+  if (backend) predecessors.push(backend);
+  backend = null;
   if (heartbeat) {
     clearInterval(heartbeat);
     heartbeat = null;
@@ -98,6 +137,9 @@ function connect(): Promise<Client | null> {
         .catch((err: unknown) =>
           logger.warn({ err }, "Could not shorten the ownership connection's keepalives")
         );
+      const self = await next.query<Backend>(
+        `SELECT pid, ${STARTED} AS started FROM pg_stat_activity WHERE pid = pg_backend_pid()`
+      );
       if (closed) {
         // A `closeOwnership` that landed while this connect was in flight has
         // already looked at `client` and found nothing. Installing it now would
@@ -107,6 +149,7 @@ function connect(): Promise<Client | null> {
         return null;
       }
       client = next;
+      backend = self.rows[0] ?? null;
       heartbeat = setInterval(() => {
         void next.query("SELECT 1").catch((err: unknown) => {
           logger.error({ err }, "Game ownership connection stopped answering");
@@ -117,7 +160,9 @@ function connect(): Promise<Client | null> {
       return next;
     } catch (err) {
       logger.error({ err }, "Could not connect the game ownership client");
-      await next.end().catch(() => {});
+      // Not awaited: a client whose flow died after connecting waits for the server's reply to
+      // its goodbye until TCP gives up, and every claim waits on this connect.
+      void next.end().catch(() => {});
       return null;
     } finally {
       connecting = null;
@@ -132,25 +177,91 @@ function connect(): Promise<Client | null> {
  */
 type LockAnswer = "taken" | "elsewhere" | "unreachable";
 
+/**
+ * Whether every session this process dropped has left Postgres, terminating any still there.
+ * Until one has, a lock it held reads as held elsewhere when it is this process's own.
+ */
+function retirePredecessors(c: Client): Promise<boolean> {
+  if (predecessors.length === 0) return Promise.resolve(true);
+  retiring ??= (async () => {
+    const alive = (b: Backend) =>
+      c
+        .query(`SELECT pid FROM pg_stat_activity WHERE pid = $1 AND ${STARTED} = $2`, [b.pid, b.started])
+        .then(({ rows }) => rows.length > 0);
+    try {
+      for (const b of predecessors) {
+        await c.query(
+          `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid = $1 AND ${STARTED} = $2`,
+          [b.pid, b.started]
+        );
+      }
+      for (let polls = PREDECESSOR_WAIT_MS / PREDECESSOR_POLL_MS; ; polls--) {
+        const remaining: Backend[] = [];
+        for (const b of predecessors) if (await alive(b)) remaining.push(b);
+        predecessors.splice(0, predecessors.length, ...remaining);
+        if (remaining.length === 0) return true;
+        if (polls === 0) {
+          logger.warn({ pids: remaining.map((b) => b.pid) }, "A dropped ownership session is still alive");
+          return false;
+        }
+        await new Promise((resolve) => setTimeout(resolve, PREDECESSOR_POLL_MS));
+      }
+    } catch (err) {
+      logger.error({ err }, "Could not end a dropped ownership session");
+      return false;
+    } finally {
+      retiring = null;
+    }
+  })();
+  return retiring;
+}
+
 /** Asks Postgres for the lock, whatever this process already believes. */
-async function takeLock(roomId: string): Promise<LockAnswer> {
+async function takeLock(roomId: string): Promise<{ answer: LockAnswer; on: Client | null }> {
   const c = await connect();
-  if (!c) return "unreachable";
+  if (!c) return { answer: "unreachable", on: null };
+  const alone = await retirePredecessors(c);
   try {
     const { rows } = await c.query<{ locked: boolean }>(
       "SELECT pg_try_advisory_lock($1::bigint) AS locked",
       [ownershipKey(roomId)]
     );
-    return rows[0]?.locked === true ? "taken" : "elsewhere";
+    if (rows[0]?.locked === true) return { answer: "taken", on: c };
+    return { answer: alone ? "elsewhere" : "unreachable", on: null };
   } catch (err) {
     logger.error({ err, roomId }, "Could not claim a room");
-    return "unreachable";
+    return { answer: "unreachable", on: null };
   }
 }
 
 /**
+ * Gives up a room this process can no longer prove it owns, and hands it to `onRoomLost`.
+ * `unlock` when this session may still hold the lock: the row moved, but the lock did not.
+ */
+function loseRoom(roomId: string, hold: Hold, unlock: boolean): void {
+  if (held.get(roomId) !== hold) return;
+  held.delete(roomId);
+  if (hold.fence) clearTableOwner(roomId, hold.fence.epoch);
+  const c = client;
+  if (unlock && c && hold.lockedOn === c) {
+    void c
+      .query("SELECT pg_advisory_unlock($1::bigint)", [ownershipKey(roomId)])
+      .catch((err: unknown) => logger.warn({ err, roomId }, "Could not release a lost room"));
+  }
+  onRoomLost(roomId);
+}
+
+/** Whether the row still carries this claim's epoch; a missing row is left to the next write's fence. */
+async function rowStillMine(roomId: string, fence: OwnerFence): Promise<boolean> {
+  if (!rows) throw new Error("ownership was never opened");
+  const epoch = await rows.epochOf(roomId);
+  return epoch === undefined || epoch === fence.epoch;
+}
+
+/**
  * Takes the locks again after the connection came back, and gives up the rooms
- * that were claimed in the meantime.
+ * that were claimed in the meantime: held elsewhere, or entered at a newer epoch.
+ * It moves no epoch: it is the same claim, on a new session.
  *
  * `held` is walked rather than emptied first: a `disposeGame` racing this would
  * find its room already gone from the set, skip the unlock, and leave the room
@@ -158,16 +269,34 @@ async function takeLock(roomId: string): Promise<LockAnswer> {
  */
 async function reclaim(): Promise<void> {
   let unreachable = false;
-  for (const roomId of [...held]) {
-    const answer = await takeLock(roomId);
-    if (answer === "taken") continue;
-    if (answer === "unreachable") {
+  for (const [roomId, hold] of [...held]) {
+    if (held.get(roomId) !== hold) continue;
+    if (!hold.lockedOn || hold.lockedOn !== client) {
+      const { answer, on } = await takeLock(roomId);
+      if (answer === "unreachable") {
+        unreachable = true;
+        continue;
+      }
+      if (answer === "elsewhere") {
+        logger.warn({ roomId }, "Room claimed elsewhere while this instance was disconnected — dropping it");
+        loseRoom(roomId, hold, false);
+        continue;
+      }
+      hold.lockedOn = on;
+    }
+    const fence = hold.fence;
+    if (!fence) continue;
+    let mine: boolean;
+    try {
+      mine = await rowStillMine(roomId, fence);
+    } catch (err) {
+      logger.error({ err, roomId }, "Could not read a reclaimed room's epoch");
       unreachable = true;
       continue;
     }
-    held.delete(roomId);
-    logger.warn({ roomId }, "Room claimed elsewhere while this instance was disconnected — dropping it");
-    onRoomLost(roomId);
+    if (mine) continue;
+    logger.warn({ roomId, epoch: fence.epoch }, "Room entered elsewhere while this instance was disconnected — dropping it");
+    loseRoom(roomId, hold, true);
   }
   if (unreachable && !closed && !reclaimRetry) {
     reclaimRetry = setTimeout(() => {
@@ -188,9 +317,68 @@ async function reclaim(): Promise<void> {
 export async function claimRoom(roomId: string): Promise<boolean> {
   if (releasing.has(roomId)) return false;
   if (held.has(roomId)) return true;
-  if ((await takeLock(roomId)) !== "taken") return false;
-  held.add(roomId);
+  const { answer, on } = await takeLock(roomId);
+  if (answer !== "taken") return false;
+  held.set(roomId, { lockedOn: on, fence: null, entering: null });
   return true;
+}
+
+/**
+ * Makes this claim the owner of the room's row, and reads the row: one statement moves its epoch
+ * on, so a write made under any earlier claim changes nothing from here. A claim enters once; a
+ * room it already entered is read as it stands. With no row, the claim's epoch is 1 and its
+ * first write is the insert. Called where a game enters memory, never by `claimRoom`, so a
+ * claim that only probes ownership moves nothing.
+ */
+export async function enterTable(roomId: string): Promise<{ held: false } | { held: true; row: ActiveGameRow | undefined }> {
+  const hold = held.get(roomId);
+  if (!hold || !rows) return { held: false };
+  if (hold.fence) return { held: true, row: await rows.load(roomId) };
+  const store = rows;
+  hold.entering ??= (async () => {
+    try {
+      const claimed = await store.claim(roomId);
+      if (held.get(roomId) === hold) {
+        hold.fence = { epoch: claimed?.ownerEpoch ?? 1, rowExists: claimed !== undefined };
+        recordTableOwner(roomId, hold.fence.epoch);
+      }
+      return claimed && { roomId, gameState: claimed.gameState };
+    } finally {
+      hold.entering = null;
+    }
+  })();
+  const row = await hold.entering;
+  return held.get(roomId) === hold && hold.fence ? { held: true, row } : { held: false };
+}
+
+/**
+ * Runs a write of the room's row under this claim's epoch: the one way a table's row is written
+ * or deleted. A write that changes nothing the row should have had means another claim owns the
+ * row: the room is given up through `onRoomLost`, and nothing more is written. `leaves` is
+ * whether the row exists once the write lands. False whenever nothing was written.
+ */
+export async function writeAsOwner(
+  roomId: string,
+  leaves: "row" | "no row",
+  write: (fence: OwnerFence) => Promise<boolean>
+): Promise<boolean> {
+  const hold = held.get(roomId);
+  const fence = hold?.fence;
+  if (!hold || !fence) {
+    if (hold) logger.error({ roomId }, "A table write before its claim entered the row — not written");
+    return false;
+  }
+  const changed = await write(fence);
+  if (held.get(roomId) !== hold) return changed;
+  if (changed) {
+    fence.rowExists = leaves === "row";
+    return true;
+  }
+  // Deleting a row this claim never saw finds nothing, and that is no sign of another owner.
+  if (leaves === "no row" && !fence.rowExists) return false;
+  logger.warn({ roomId, epoch: fence.epoch }, "Another claim owns this table's row — giving the table up");
+  loseRoom(roomId, hold, true);
+  return false;
 }
 
 /** Hands a room back, so another instance may take it — unless `releaseRoomAfter` is holding it. */
@@ -200,7 +388,10 @@ export async function releaseRoom(roomId: string): Promise<void> {
 }
 
 async function unlock(roomId: string): Promise<void> {
-  if (!held.delete(roomId)) return;
+  const hold = held.get(roomId);
+  if (!hold) return;
+  held.delete(roomId);
+  if (hold.fence) clearTableOwner(roomId, hold.fence.epoch);
   const c = client;
   if (!c) return;
   await c
@@ -242,6 +433,8 @@ export function ownsRoom(roomId: string): boolean {
 export async function closeOwnership(): Promise<void> {
   closed = true;
   held.clear();
+  predecessors.length = 0;
+  backend = null;
   if (heartbeat) {
     clearInterval(heartbeat);
     heartbeat = null;
@@ -260,9 +453,10 @@ export async function closeOwnership(): Promise<void> {
 }
 
 /** Opens ownership for a table runtime; also what lets one process boot a second app after `closeOwnership`. */
-export function reopenOwnership(handlers: { onRoomLost: (roomId: string) => void }): void {
+export function reopenOwnership(handlers: { onRoomLost: (roomId: string) => void; rows: OwnedRows }): void {
   closed = false;
   onRoomLost = handlers.onRoomLost;
+  rows = handlers.rows;
 }
 
 /**

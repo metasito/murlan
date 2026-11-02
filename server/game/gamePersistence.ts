@@ -8,7 +8,7 @@ import { payload } from "../shared/payload.ts";
 import { now } from "../http/clock.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { TableRuntime, TableStore, TableWriters } from "./tableRuntime.ts";
-import { releaseRoom, releaseRoomAfter, unclaimedRooms } from "./gameOwnership.ts";
+import { releaseRoom, releaseRoomAfter, unclaimedRooms, writeAsOwner } from "./gameOwnership.ts";
 import {
   sweepIntervalMs,
   clearRoomTimers,
@@ -110,8 +110,9 @@ function inRoomOrder(roomId: string, write: () => Promise<unknown>): Promise<unk
 
 /**
  * The table's writers over `store`: the only code that writes a table's
- * `active_games` row or its room's status. Row writes land in the order they
- * were made, and none of them rejects.
+ * `active_games` row or its room's status, beside the claim's epoch move
+ * (`enterTable`). Row writes land in the order they were made, each under the
+ * claim's epoch, and none of them rejects.
  */
 export function tableWriters(store: TableStore): TableWriters {
   return {
@@ -125,16 +126,16 @@ export function tableWriters(store: TableStore): TableWriters {
         // Judged when the write runs, not when it was queued: a table disposed in
         // between has had its row deleted, or handed to another instance.
         if (activeGames.get(roomId) !== game) return;
-        await store.games
-          .write(roomId, gameState)
-          .catch((err: unknown) => logger.error({ err, roomId }, "Failed to persist game state"));
+        await writeAsOwner(roomId, "row", (fence) => store.games.write(roomId, gameState, fence)).catch(
+          (err: unknown) => logger.error({ err, roomId }, "Failed to persist game state")
+        );
       });
     },
     discardGame: (roomId) =>
       inRoomOrder(roomId, () =>
-        store.games
-          .remove(roomId)
-          .catch((err: unknown) => logger.error({ err, roomId }, "Failed to delete persisted game"))
+        writeAsOwner(roomId, "no row", (fence) => store.games.remove(roomId, fence.epoch)).catch((err: unknown) =>
+          logger.error({ err, roomId }, "Failed to delete persisted game")
+        )
       ),
     recordGameResult,
     recordRatedResult,

@@ -166,6 +166,8 @@ export const activeGames = pgTable("active_games", {
   roomId:     text("room_id").primaryKey(),
   gameState:  jsonb("game_state").$type<PersistedEnvelope>().notNull(),
   updatedAt:  timestamp("updated_at").defaultNow().notNull(),
+  // Which claim owns the row; see `server/game/gameOwnership.ts` `enterTable`.
+  ownerEpoch: integer("owner_epoch").notNull().default(0),
 });
 
 export const userStats = pgTable("user_stats", {

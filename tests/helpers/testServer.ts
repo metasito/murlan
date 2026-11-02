@@ -6,6 +6,7 @@ import type { TableRuntime } from "../../server/game/tableRuntime.ts";
 import { createApp } from "../../server/app.ts";
 import { closeDatabase, db as appDb, pool as appPool, type Database } from "../../server/store/db.ts";
 import { closeRedis, redisReady } from "../../server/store/redis.ts";
+import { closeTableOwners } from "../../server/store/tableOwners.ts";
 import { stopInbox } from "../../server/store/instanceInbox.ts";
 import { dropKeyspace } from "./redisKeys.ts";
 import { closeOwnership } from "../../server/game/gameOwnership.ts";
@@ -226,6 +227,7 @@ export async function startTestServer(
           await (await closeDatabase()).ended;
           await ioClosed;
           stopInbox();
+          closeTableOwners();
           closeRedis();
           // The room-ownership client is a second connection, held open for
           // the life of the process exactly as the pool is.
@@ -250,6 +252,7 @@ export async function startTestServer(
     // DATABASE_URL mutation.
     await (await closeDatabase()).ended;
     stopInbox();
+    closeTableOwners();
     closeRedis();
     restoreClock();
     process.env.DATABASE_URL = baseUrl;
