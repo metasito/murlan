@@ -10,37 +10,30 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { ownershipKey } from "../../server/game/gameOwnership.ts";
 import { TAKEOVER } from "../../server/game/tableActions.ts";
-import { recordingRuntime } from "../helpers/recordingRuntime.ts";
+import { forwardedTo, ownedElsewhere, recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
-import { TABLE_ACTION_EVENT, applyOrForward } from "../../server/game/tableRouter.ts";
+import { applyOrForward } from "../../server/game/tableRouter.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 
 describe("a forwarded action is applied once, however often it is sent", () => {
   // The forward is retried when its answer does not come back inside the
-  // adapter's acknowledgement window, and `CLAUDE.md` is explicit that a card
+  // router's per-try timeout, and `CLAUDE.md` is explicit that a card
   // appears exactly once — a replayed `game:pass` takes a turn twice. #544 asks
   // for the de-duplication in the same change as the retry, not after it.
   // A reaction is the action whose every application is visible: one send each.
   async function responder() {
-    let receive: ((action: unknown, reply: (r: unknown) => void) => void) | undefined;
-    const { sent } = recordingRuntime({
-      transport: {
-        on: (event: string, fn: typeof receive) => {
-          if (event === TABLE_ACTION_EVENT) receive = fn;
-        },
-      },
-    });
-    assert.ok(receive, "the router registered no listener for forwarded actions");
+    const { ask, handlers, sent } = forwardedTo();
+    assert.ok(handlers.has("table-ask"), "the router registered no listener for forwarded actions");
     const counter = {
       get applied() {
         return sent.filter((e) => e.event === "game:reaction").length;
       },
     };
-    return { receive, counter };
+    return { ask, counter };
   }
 
   async function respondTwice(ids: [string, string]): Promise<number> {
-    const { receive, counter } = await responder();
+    const { ask, counter } = await responder();
 
     const roomId = `dedupe-${ids.join("-")}`;
     activeGames.set(
@@ -48,11 +41,7 @@ describe("a forwarded action is applied once, however often it is sent", () => {
       onlineTable({ roomId, playerMap: { 0: "u" }, gameState: { players: [{ name: "U" }] } as never })
     );
     try {
-      for (const id of ids) {
-        await new Promise((resolve) =>
-          receive({ id, kind: "reaction", emoji: "👍", roomId, userId: "u" }, resolve)
-        );
-      }
+      for (const id of ids) await ask({ id, kind: "reaction", emoji: "👍", roomId, userId: "u" });
     } finally {
       activeGames.delete(roomId);
     }
@@ -60,10 +49,8 @@ describe("a forwarded action is applied once, however often it is sent", () => {
   }
 
   test("an instance that does not hold the room disowns it and applies nothing", async () => {
-    const { receive, counter } = await responder();
-    const reply = await new Promise((resolve) =>
-      receive({ id: "stray", kind: "reaction", emoji: "👍", roomId: "held-elsewhere", userId: "u" }, resolve)
-    );
+    const { ask, counter } = await responder();
+    const reply = await ask({ id: "stray", kind: "reaction", emoji: "👍", roomId: "held-elsewhere", userId: "u" });
     assert.deepEqual(reply, { ok: false, code: "NOT_THIS_INSTANCE" });
     assert.equal(counter.applied, 0);
   });
@@ -93,12 +80,7 @@ describe("an action kind the owner does not know", () => {
   });
 
   test("is a refusal, not a missing owner, when an older owner answers with nothing", async () => {
-    const { rt } = recordingRuntime({
-      transport: {
-        serverSideEmit: (_e: string, _a: unknown, ack: (err: unknown, replies: unknown[]) => void) =>
-          ack(null, [{ ok: false, code: "NOT_THIS_INSTANCE" }, undefined]),
-      },
-    });
+    const { rt } = recordingRuntime({ peers: ownedElsewhere(() => undefined).peers });
     assert.deepEqual(await applyOrForward(rt, future("future-elsewhere")), {
       ok: false,
       code: "UNKNOWN_ACTION",

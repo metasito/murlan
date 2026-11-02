@@ -3,7 +3,7 @@
 import { test, describe, beforeEach, afterEach, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { Client } from "pg";
-import { applyOrForward, inFlight, TABLE_ACTION_EVENT } from "../../server/game/tableRouter.ts";
+import { applyOrForward, inFlight } from "../../server/game/tableRouter.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearAllTimersForUser, clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { claimRoom, closeOwnership, ownershipKey, ownsRoom, reopenOwnership } from "../../server/game/gameOwnership.ts";
@@ -13,7 +13,7 @@ import { packPersistedState } from "../../shared/persistedEnvelope.ts";
 import type { TableActionDraft } from "../../server/game/tableActions.ts";
 import type { GameState } from "../../lib/game/gameEngine.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
-import { recordingRuntime } from "../helpers/recordingRuntime.ts";
+import { forwardedTo, ownedElsewhere, recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { aThreePlayed } from "../support/game.ts";
 
@@ -26,6 +26,11 @@ function scriptLock(t: TestContext) {
   t.mock.method(Client.prototype, "connect", async () => {});
   t.mock.method(Client.prototype, "end", async () => {});
   t.mock.method(Client.prototype, "query", async (sql: string, params?: string[]) => {
+    if (/pg_locks/.test(sql)) {
+      const [high, low] = params!.map(BigInt);
+      const key = BigInt.asIntN(64, (high! << 32n) | low!).toString();
+      return { rows: lock.elsewhere.has(key) ? [{ current: false, pid: 7, started: "1" }] : [] };
+    }
     if (/pg_try_advisory_lock/.test(sql)) {
       lock.asked++;
       return { rows: [{ locked: !lock.elsewhere.has(params![0]!) }] };
@@ -192,59 +197,57 @@ describe("a start at a room no instance holds", () => {
 });
 
 describe("a forwarded action nobody answers for", () => {
-  const unanswered = (replies: unknown[], err: unknown) => ({
-    serverSideEmit: (_e: string, _a: unknown, ack: (e: unknown, r: unknown[]) => void) => {
-      ack(err, replies);
-      return true;
-    },
-  });
   const reaction: TableActionDraft = { kind: "reaction", roomId: ROOM, userId: "ana", emoji: "👍" };
 
-  test("with every instance answering that none holds it asks Postgres for nothing", async (t) => {
+  test("with an owner that disowns it and the lock free finds no game, and takes no lock", async (t) => {
     const lock = scriptLock(t);
-    const { rt } = recordingRuntime({ transport: unanswered([{ ok: false, code: "NOT_THIS_INSTANCE" }], null) });
+    const { rt } = recordingRuntime({ peers: ownedElsewhere(() => ({ ok: false, code: "NOT_THIS_INSTANCE" })).peers });
     assert.deepEqual(await applyOrForward(rt, reaction), { ok: false, code: "NO_LIVE_GAME" });
     assert.equal(lock.asked, 0);
   });
 
-  test("with an instance that did not answer takes the lock, and gives it straight back: nothing is revived", async (t) => {
-    const lock = scriptLock(t);
-    const { rt } = recordingRuntime({ transport: unanswered([], new Error("timeout")) });
-    assert.deepEqual(await applyOrForward(rt, reaction), { ok: false, code: "NO_LIVE_GAME" });
-    assert.equal(lock.asked, 1);
-    assert.deepEqual(lock.unlocked, [keyOf]);
-    assert.equal(ownsRoom(ROOM), false);
-  });
-
-  test("with the room held by an instance that cannot be reached is asked again three times, with growing pauses, then reported unreachable", async (t) => {
+  test("with the room held by an instance that cannot be reached is asked again once, after 120 ms, then reported unreachable", async (t) => {
     const lock = scriptLock(t);
     lock.elsewhere.add(keyOf);
-    let asks = 0;
-    const { rt } = recordingRuntime({
-      transport: {
-        serverSideEmit: (_e: string, _a: unknown, ack: (e: unknown, r: unknown[]) => void) => {
-          asks++;
-          ack(new Error("timeout"), []);
-          return true;
-        },
-      },
-    });
+    const { peers, asks } = ownedElsewhere(() => "silent");
+    const { rt } = recordingRuntime({ peers });
     const pauses: unknown[] = [];
     const real = globalThis.setTimeout;
     t.mock.method(globalThis, "setTimeout", (fn: () => void, ms?: number, ...rest: unknown[]) => {
-      if (ms === 120 || ms === 240 || ms === 360) {
+      if (ms === 120 || ms === 1_500) {
         pauses.push(ms);
         fn();
         return 0 as unknown as NodeJS.Timeout;
       }
       return real(fn, ms, ...rest);
     });
-    assert.deepEqual(await applyOrForward(rt, { ...reaction, kind: "resume" } as TableActionDraft), {
-      ok: false,
-      code: "TABLE_UNREACHABLE",
+    assert.deepEqual(await applyOrForward(rt, resume()), { ok: false, code: "TABLE_UNREACHABLE" });
+    assert.equal(asks.length, 2);
+    assert.deepEqual(pauses, [1_500, 120, 1_500]);
+    assert.equal(lock.asked, 0, "a room held elsewhere was asked for");
+  });
+});
+
+describe("a table whose owner was killed", () => {
+  test("is taken over on the first try, without waiting out the grace its last heartbeat still has", async (t) => {
+    const lock = scriptLock(t);
+    const { rt } = useInstance(t);
+    const owner = ownedElsewhere(() => "silent");
+    Object.assign(rt.peers, owner.peers, { stillSubscribed: async () => false });
+    const pauses: unknown[] = [];
+    const real = globalThis.setTimeout;
+    t.mock.method(globalThis, "setTimeout", (fn: () => void, ms?: number, ...rest: unknown[]) => {
+      if (ms === 120 || ms === 1_500) {
+        pauses.push(ms);
+        fn();
+        return 0 as unknown as NodeJS.Timeout;
+      }
+      return real(fn, ms, ...rest);
     });
-    assert.equal(asks, 3);
-    assert.deepEqual(pauses, [120, 240, 360]);
+    assert.deepEqual(await applyOrForward(rt, resume()), { ok: true });
+    assert.deepEqual(pauses, [1_500], "more than one try, or main's 5 s ack wait");
+    assert.equal(ownsRoom(ROOM), true);
+    assert.equal(lock.asked, 1);
   });
 });
 
@@ -254,21 +257,23 @@ describe("several actions for a room whose holder cannot be reached", () => {
     lock.elsewhere.add(keyOf);
     let outstanding = 0;
     let widest = 0;
+    const owner = ownedElsewhere(() => {
+      widest = Math.max(widest, ++outstanding);
+      return { ok: false, code: "NOT_THIS_INSTANCE" };
+    });
     const { rt } = recordingRuntime({
-      transport: {
-        serverSideEmit: (_e: string, _a: unknown, ack: (e: unknown, r: unknown[]) => void) => {
-          widest = Math.max(widest, ++outstanding);
-          setImmediate(() => {
+      peers: {
+        ...owner.peers,
+        on: (kind, handler) =>
+          owner.peers.on!(kind, (message) => {
             outstanding--;
-            ack(new Error("timeout"), []);
-          });
-          return true;
-        },
+            return handler(message);
+          }),
       },
     });
     const real = globalThis.setTimeout;
     t.mock.method(globalThis, "setTimeout", (fn: () => void, ms?: number, ...rest: unknown[]) =>
-      ms === 120 || ms === 240 || ms === 360 ? (fn(), 0 as unknown as NodeJS.Timeout) : real(fn, ms, ...rest)
+      ms === 120 ? (fn(), 0 as unknown as NodeJS.Timeout) : real(fn, ms, ...rest)
     );
     const results = await Promise.all(["ana", "besi", "ana"].map((userId) => applyOrForward(rt, resume(userId))));
     assert.equal(widest, 1, "two actions asked about the room at once");
@@ -277,18 +282,7 @@ describe("several actions for a room whose holder cannot be reached", () => {
 });
 
 describe("the listener for actions other instances forward, at a room this instance is taking over", () => {
-  function listener() {
-    let receive!: (action: unknown, reply: (r: unknown) => void) => void;
-    const { rt, sent } = recordingRuntime({
-      transport: {
-        on: (event: string, fn: typeof receive) => {
-          if (event === TABLE_ACTION_EVENT) receive = fn;
-        },
-      },
-    });
-    const ask = (action: unknown) => new Promise((resolve) => receive(action, resolve));
-    return { rt, sent, ask };
-  }
+  const listener = () => forwardedTo();
   const wire = { id: "w1", kind: "reaction", roomId: ROOM, userId: "ana", emoji: "👍" };
 
   test("answers once the takeover has put the table in memory", async (t) => {

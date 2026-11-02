@@ -158,7 +158,7 @@ const pendingDisconnects = new Set<Promise<void>>();
 /**
  * Resolves once every disconnect handler already started has finished, or at
  * `timeoutMs`. `io.close()` starts them and waits for none, and a seat lost at a
- * table another instance owns is forwarded over the cluster adapter.
+ * table another instance owns is forwarded to that instance's inbox.
  */
 export async function settleDisconnects(timeoutMs: number): Promise<void> {
   let timer: NodeJS.Timeout | undefined;

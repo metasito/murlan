@@ -47,8 +47,8 @@ function presenceOutsideEviction(sources: Sources): string[] {
 }
 
 const rules = {
-  gameNamesSocketServer: (s: Sources) => hits(s, NAMES_SOCKET_SERVER, [game("tableRuntime.ts"), game("tableRouter.ts")]),
-  gameUsesTransport: (s: Sources) => hits(s, VIA_TRANSPORT, [game("tableRouter.ts")]),
+  gameNamesSocketServer: (s: Sources) => hits(s, NAMES_SOCKET_SERVER, [game("tableRuntime.ts")]),
+  gameUsesTransport: (s: Sources) => hits(s, VIA_TRANSPORT),
   gameAddressesSends: (s: Sources) => hits(s, ADDRESSED_SEND),
   gameImportsStores: (s: Sources) =>
     hits(s, STORE_IMPORT, [game("tableRuntime.ts"), game("retention.ts")]).concat(
@@ -83,7 +83,7 @@ describe("each pattern still sees what it is about", () => {
   const read = (file: string) => [...gameSources(), ...socketSources()].find(([f]) => f === file)![1];
   const floors: [RegExp, string][] = [
     [NAMES_SOCKET_SERVER, game("tableRuntime.ts")],
-    [VIA_TRANSPORT, game("tableRouter.ts")],
+    [VIA_TRANSPORT, socket("seating.ts")],
     [VIA_TRANSPORT, socket("socketPresence.ts")],
     [ADDRESSED_SEND, socket("delivery.ts")],
     [STORE_IMPORT, game("tableRuntime.ts")],
@@ -106,6 +106,7 @@ describe("a planted breach is caught", () => {
   const plants: [keyof typeof rules, string, string][] = [
     ["gameNamesSocketServer", game("plant.ts"), 'import type { SocketServer } from "../socket/socketTypes.ts";'],
     ["gameUsesTransport", game("plant.ts"), "rt.transport.serverSideEmit(EVENT, action);"],
+    ["gameUsesTransport", game("tableRouter.ts"), "rt.transport.serverSideEmit(EVENT, action);"],
     ["gameAddressesSends", game("plant.ts"), 'out.to(userRoom(uid)).timeout(5).emit("game:state", s, ack);'],
     ["gameImportsStores", game("plant.ts"), 'import { roomStore } from "../store/roomStore.ts";'],
     ["gameImportsStores", game("retention.ts"), "await roomStore.getRoomById(id);"],

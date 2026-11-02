@@ -152,19 +152,6 @@ describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, 
     assert.equal(await probe.sIsMember(c.key(`instance-users:${stalled.id}`), "dora"), 1);
   });
 
-  test("an entry in the hash format an older instance still writes is left alone, and costs no error", async () => {
-    const c = cluster();
-    const x = c.open();
-    await redisReady();
-    await x.beat();
-    await probe.hSet(c.key("presence:eli"), { instance: "old-instance", socket: "old-sock" });
-    x.record("eli", "new-sock");
-    await eventually(async () => (await x.locate(["eli"])).get("eli")?.socket === "new-sock", "the new entry");
-    x.forget("eli", "new-sock");
-    await eventually(async () => (await probe.exists(c.key("online:eli"))) === 0, "the new entry to clear");
-    assert.deepEqual(await probe.hGetAll(c.key("presence:eli")), { instance: "old-instance", socket: "old-sock" });
-  });
-
   test("the social version moves with each change, and with the store's lifetime", async () => {
     const c = cluster();
     const x = c.open();
@@ -273,15 +260,6 @@ describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, 
     await stalled.beat();
     assert.deepEqual(back, ["ivo"], "the instance did not say its account is back");
     assert.equal((await a.locate(["ivo"])).has("ivo"), true);
-  });
-
-  test("an account with no entry yet on an older instance's hash is found there", async () => {
-    const c = cluster();
-    const x = c.open();
-    await redisReady();
-    await x.beat();
-    await probe.hSet(c.key("presence:jon"), { instance: "older", socket: "s-old" });
-    assert.deepEqual((await x.locate(["jon"], { tables: true })).get("jon"), { instance: "older", socket: "s-old", table: null });
   });
 
   test("a mark that could not reach Redis is made on the next beat", async () => {

@@ -105,13 +105,15 @@ Each decision, and why:
    its `WATCH`.
 9. **Every wire change bumps `PROTOCOL_VERSION`** (`shared/protocol.ts`), and a handler only old
    bundles use is removed when `MIN_PROTOCOL_VERSION` passes the version that stopped sending it.
-   The same holds between instances during a rolling deploy: #1894 reads #1893's
-   `presence:<userId>` hash when an account has no `online:` entry, counts its peers as the larger
-   of their presence liveness and their adapter subscriptions, and, while it hears a peer that
-   keeps no liveness, also disconnects a revoked account's sockets the way an older instance
-   understands. All three go once no deployed revision predates #1894.
+   Between instances there is no mixed-deploy compatibility: no deployed revision predates
+   #1893, #1894 or #1895, so each speaks only its own protocol. Presence is read from `online:`
+   entries alone, a revocation is the one cluster message, a table action and a stop-spectating
+   call go to an instance's inbox alone, and a heartbeat carries only the sending instance's id.
+   The peer count stays the larger of presence liveness and adapter subscriptions, because
+   liveness reads short after Redis loses its data. Once a server is deployed, a change between
+   instances ships with its own compatibility plan.
    *Why:* app-store builds stay installed long after a release, so "one release later" is not a
-   removal date.
+   removal date for a client handler; a server has no such tail while nothing is deployed.
 10. **Every HTTP rate limit is shared in Redis.** On a store error a limiter falls back to its
     in-memory store and counts it, never failing open and never answering 500. Socket action limits
     stay per process. This supersedes the owner's 2026-10-16 decision (the #1650 design audit's D7)
