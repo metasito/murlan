@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { now } from "../http/clock.ts";
 import { logger } from "../shared/logger.ts";
 import { activeGames, type OnlineGameState } from "./gameRoom.ts";
-import { releaseForHandOff } from "./gameOwnership.ts";
+import { claimRoom, releaseForHandOff } from "./gameOwnership.ts";
 import { clearRoomDisconnectTimers, clearRoomLobbyGraces, clearRoomTimers } from "./gameTimers.ts";
 import { roomWritesLanded } from "./roomWriteChain.ts";
 import type { TableAction } from "./tableActions.ts";
@@ -119,6 +119,9 @@ async function handOff(rt: TableRuntime, roomId: string, game: OnlineGameState, 
   const seated = Object.values(game.playerMap)[0] ?? [...game.vacatedSeats.values()][0]?.userId ?? "";
   const to = await offer(rt, { kind: "resume", roomId, userId: seated, id: randomUUID() }, peers, deadline);
   if (to === null) {
+    // Held again until this process exits, as before the hand-off: a free lock with nobody behind
+    // it reads as no game anywhere, and a seat lost meanwhile would be released as a lobby seat.
+    await claimRoom(roomId);
     await release.forget();
     logger.warn({ roomId }, "No peer claimed a table in time; the next owner restores it");
   }
@@ -142,6 +145,7 @@ export async function handOffTables(rt: TableRuntime, budgetMs: number): Promise
   const deadline = now() + budgetMs;
   await Promise.all(
     games.map(([roomId, game]) => {
+      if (activeGames.get(roomId) !== game) return;
       const handed = handOff(rt, roomId, game, peers, deadline).catch((err: unknown): HandedOff => {
         logger.error({ err, roomId }, "Table hand-off failed");
         return activeGames.get(roomId) === game ? "kept" : { to: null };

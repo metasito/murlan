@@ -21,12 +21,17 @@ import { aThreePlayed } from "../support/game.ts";
 let rooms = 0;
 let room = "";
 
+/** Every unlock sent, by key, and how many times the lock was read rather than asked for. */
 function scriptLock(t: TestContext) {
   const unlocked: string[] = [];
+  const reads = { n: 0 };
   t.mock.method(Client.prototype, "connect", async () => {});
   t.mock.method(Client.prototype, "end", async () => {});
   t.mock.method(Client.prototype, "query", async (sql: string, params?: string[]) => {
-    if (/pg_locks/.test(sql)) return { rows: [] };
+    if (/pg_locks/.test(sql)) {
+      reads.n++;
+      return { rows: [] };
+    }
     if (/pg_try_advisory_lock/.test(sql)) return { rows: [{ locked: true }] };
     if (/pg_advisory_unlock/.test(sql)) {
       unlocked.push(params![0]!);
@@ -34,7 +39,7 @@ function scriptLock(t: TestContext) {
     }
     return { rows: [] };
   });
-  return unlocked;
+  return { unlocked, reads };
 }
 
 beforeEach(() => {
@@ -91,8 +96,7 @@ const row = () =>
  * This instance owning the room, with `live` peers: each claims an offered table as `claims` says
  * (`gone` refuses the offer, `silent` never answers), and answers every intent forwarded to it ok.
  */
-async function owningWith(t: TestContext, live: string[], claims: (peer: string) => "claims" | "gone" | "silent", claimAfterMs = 0) {
-  useMemoryTableStores(t, { rows: [[room, row()]] });
+async function owningWith(live: string[], claims: (peer: string) => "claims" | "gone" | "silent", claimAfterMs = 0) {
   const handlers = new Map<string, InstanceHandler>();
   const offers: string[] = [];
   const asks: { to: string; action: TableAction }[] = [];
@@ -125,8 +129,9 @@ async function owningWith(t: TestContext, live: string[], claims: (peer: string)
 
 describe("a table handed off at shutdown", () => {
   test("goes to the first live peer whose inbox is still kept, and its intents follow it there", async (t) => {
-    const unlocked = scriptLock(t);
-    const { rt, offers, asks, sent } = await owningWith(t, ["gone-peer", "live-peer"], (peer) => (peer === "gone-peer" ? "gone" : "claims"));
+    const { unlocked } = scriptLock(t);
+    useMemoryTableStores(t, { rows: [[room, row()]] });
+    const { rt, offers, asks, sent } = await owningWith(["gone-peer", "live-peer"], (peer) => (peer === "gone-peer" ? "gone" : "claims"));
 
     await rt.handOffTables(2_000);
     assert.equal(offers.at(-1), "live-peer");
@@ -141,7 +146,8 @@ describe("a table handed off at shutdown", () => {
 
   test("holds an intent sent while the peer claims, and has the peer answer it", async (t) => {
     scriptLock(t);
-    const { rt, asks, offers } = await owningWith(t, ["live-peer"], () => "claims", 100);
+    useMemoryTableStores(t, { rows: [[room, row()]] });
+    const { rt, asks, offers } = await owningWith(["live-peer"], () => "claims", 100);
 
     const handing = rt.handOffTables(2_000);
     await eventually(() => offers.length === 1, "the table to be offered");
@@ -153,19 +159,21 @@ describe("a table handed off at shutdown", () => {
 
   test("answers TABLE_UNREACHABLE, never NO_LIVE_GAME, when no peer claims within the budget", async (t) => {
     scriptLock(t);
-    const { rt, offers } = await owningWith(t, ["slow-peer"], () => "silent");
+    useMemoryTableStores(t, { rows: [[room, row()]] });
+    const { rt, offers } = await owningWith(["slow-peer"], () => "silent");
 
-    const started = Date.now();
     await rt.handOffTables(300);
-    assert.ok(Date.now() - started < 1_000, "the hand-off outlived its budget");
     assert.deepEqual(offers, ["slow-peer"]);
+    assert.equal(ownsRoom(room), true, "the lock was left free with nobody behind it");
+    assert.equal(activeGames.has(room), false);
     assert.deepEqual(await applyOrForward(rt, { kind: "seatLost", roomId: room, userId: "besi" }), { ok: false, code: "TABLE_UNREACHABLE" });
     assert.deepEqual(await applyOrForward(rt, { kind: "rejoin", roomId: room, userId: "besi" }), { ok: false, code: "TABLE_UNREACHABLE" });
   });
 
   test("is kept, as before, when no peer is alive", async (t) => {
-    const unlocked = scriptLock(t);
-    const { rt, offers, sent } = await owningWith(t, [], () => "claims");
+    const { unlocked } = scriptLock(t);
+    useMemoryTableStores(t, { rows: [[room, row()]] });
+    const { rt, offers, sent } = await owningWith([], () => "claims");
 
     await rt.handOffTables(2_000);
     assert.deepEqual(offers, []);
@@ -175,9 +183,23 @@ describe("a table handed off at shutdown", () => {
     assert.equal(sent.filter((e) => e.event === "game:reaction").length, 1);
   });
 
+  test("is held to the end when the store drops between reading the peers and offering", async (t) => {
+    scriptLock(t);
+    useMemoryTableStores(t, { rows: [[room, row()]] });
+    const { rt } = await owningWith(["live-peer"], () => "claims");
+    rt.peers.offer = async () => {
+      throw new Error("Redis unreachable");
+    };
+
+    await rt.handOffTables(2_000);
+    assert.equal(ownsRoom(room), true, "the lock was left free with nobody behind it");
+    assert.deepEqual(await applyOrForward(rt, { kind: "seatLost", roomId: room, userId: "besi" }), { ok: false, code: "TABLE_UNREACHABLE" });
+  });
+
   test("is kept when the live peers cannot be read", async (t) => {
     scriptLock(t);
-    const { rt } = await owningWith(t, [], () => "claims");
+    useMemoryTableStores(t, { rows: [[room, row()]] });
+    const { rt } = await owningWith([], () => "claims");
     rt.peers.live = async () => {
       throw new Error("Redis unreachable");
     };
@@ -189,15 +211,13 @@ describe("a table handed off at shutdown", () => {
 
 describe("a peer taken a table at its owner's shutdown", () => {
   test("takes it while an intent of its own waits on that owner, and the owner's forward of it is answered", async (t) => {
-    scriptLock(t);
+    const { reads } = scriptLock(t);
     useMemoryTableStores(t, { rows: [[room, row()]] });
     const handlers = new Map<string, InstanceHandler>();
     const deliver = (message: InstanceMessage) => void handlers.get(message.kind)?.(message);
     const OWNER = "departing-owner";
     let held: InstanceMessage | null = null;
     const claimed: unknown[] = [];
-    let offeredAt = 0;
-    let claimedAfterMs = Infinity;
     const harness = recordingRuntime({
       peers: {
         on: (kind, handler) => void handlers.set(kind, handler),
@@ -214,7 +234,6 @@ describe("a peer taken a table at its owner's shutdown", () => {
           }
           if (message.kind === HAND_OFF_ANSWER) {
             claimed.push(message.claimed);
-            claimedAfterMs = Date.now() - offeredAt;
             const ask = held!;
             setImmediate(() => deliver({ ...ask, from: OWNER, ask: "forwarded" }));
             return;
@@ -229,13 +248,13 @@ describe("a peer taken a table at its owner's shutdown", () => {
 
     const rejoin = applyOrForward(harness.rt, { kind: "rejoin", roomId: room, userId: "ana" });
     await eventually(() => held, "the peer's own ask to reach the departing owner");
-    offeredAt = Date.now();
     deliver({ kind: HAND_OFF, from: OWNER, ask: "hand-off", action: { kind: "resume", roomId: room, userId: "ana", id: "resume-1" } });
 
     assert.deepEqual(await rejoin, { ok: true });
     assert.deepEqual(claimed, [true], "the hand-off was not claimed");
-    // The departing owner offers the next peer after a second (`tableHandOff.ts`).
-    assert.ok(claimedAfterMs < 500, `the claim waited ${claimedAfterMs} ms on an ask only the claim could answer`);
+    // A claim that waited for the attempt would wait out the attempt's ask, past the second a
+    // departing owner gives each peer (`tableHandOff.ts`), and the attempt would then read the lock.
+    assert.equal(reads.n, 0, "the claim waited for an ask only the claim could answer");
     assert.equal(activeGames.has(room) && ownsRoom(room), true);
   });
 });

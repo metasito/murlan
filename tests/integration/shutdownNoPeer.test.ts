@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import pg from "pg";
 import { connectAs, waitFor, type TestSocket } from "../helpers/client.ts";
 import { hasDatabase, skipMessage, startTestServer, type TestServer } from "../helpers/testServer.ts";
-import { FORCED_EXIT_MS, shutdown } from "../../server/http/shutdown.ts";
+import { shutdown } from "../../server/http/shutdown.ts";
 import { ownershipKey } from "../../server/game/gameOwnership.ts";
 
 describe("a shutdown with no live peer", { skip: hasDatabase() ? false : skipMessage() }, () => {
@@ -17,6 +17,7 @@ describe("a shutdown with no live peer", { skip: hasDatabase() ? false : skipMes
 
   before(async () => {
     server = await startTestServer();
+    // The app's pool is what the shutdown ends; this one reads the lock and the row after it.
     observer = new pg.Pool({ connectionString: process.env.DATABASE_URL });
   });
 
@@ -49,13 +50,11 @@ describe("a shutdown with no live peer", { skip: hasDatabase() ? false : skipMes
     });
     const gone = Promise.all(sockets.map((s) => waitFor(s, "disconnect", 15_000)));
     const exits: number[] = [];
-    const started = performance.now();
     await shutdown("SIGTERM", { io: server.io, server: server.httpServer, tables: server.rt, exit: (code) => exits.push(code) });
-    const tookMs = performance.now() - started;
     await gone;
 
+    // The watchdog exits 1 at FORCED_EXIT_MS through the same `exit`; only 0 means every step ran inside its budget.
     assert.deepEqual(exits, [0]);
-    assert.ok(tookMs < FORCED_EXIT_MS, `the shutdown took ${Math.round(tookMs)} ms`);
     for (const events of seen) assert.deepEqual(events, ["server:draining", "disconnect"]);
     const key = BigInt.asUintN(64, BigInt(ownershipKey(roomId)));
     const lock = await observer.query(
