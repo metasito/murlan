@@ -101,7 +101,7 @@ const gameStateSchema = z
   })
   .superRefine((state, ctx) => {
     const id = repeatedCard(state);
-    if (id !== undefined) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `card ${id} more than once` });
+    if (id !== undefined) ctx.addIssue({ code: "custom", message: `card ${id} more than once` });
   })
   .refine((state) => exchangeIsSatisfiable(state), UNSATISFIABLE_EXCHANGE);
 

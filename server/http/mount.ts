@@ -32,7 +32,7 @@ function route(key: Route): { verb: (typeof VERBS)[keyof typeof VERBS]; path: st
 
 /** Throws at mount — so at boot — when the chain and the contract disagree about what is validated. */
 function assertValidated(key: Route, chain: readonly unknown[]): void {
-  const contract = HTTP[key] as { body?: z.ZodTypeAny; query?: z.ZodTypeAny };
+  const contract = HTTP[key] as { body?: z.ZodType; query?: z.ZodType };
   const validators = chain
     .map((layer) => (layer as Partial<Validates>)[VALIDATES])
     .filter((v): v is Validates[typeof VALIDATES] => v !== undefined);

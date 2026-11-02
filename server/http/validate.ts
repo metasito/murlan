@@ -7,9 +7,9 @@ import { RouteParam } from "../../shared/httpSchemas.ts";
 /** Read by server/http/mount.ts, which refuses a contract schema no layer of the chain validates. */
 export const VALIDATES = Symbol("validates");
 
-export type Validates = { [VALIDATES]: { in: "body" | "query"; schema: z.ZodTypeAny } };
+export type Validates = { [VALIDATES]: { in: "body" | "query"; schema: z.ZodType } };
 
-export function validate<S extends z.ZodTypeAny>(
+export function validate<S extends z.ZodType>(
   schema: S
 ): RequestHandler<ParamsDictionary, unknown, z.infer<S>> & Validates {
   const handler: RequestHandler<ParamsDictionary, unknown, z.infer<S>> = (req, res, next) => {
@@ -17,7 +17,7 @@ export function validate<S extends z.ZodTypeAny>(
     if (!result.success) {
       res.status(400).json({
         ...payload("INVALID_PAYLOAD"),
-        details: result.error.flatten().fieldErrors,
+        details: z.flattenError(result.error).fieldErrors,
       });
       return;
     }
@@ -28,7 +28,7 @@ export function validate<S extends z.ZodTypeAny>(
 }
 
 /** A query the schema refuses answers 400 with `refusal`, the route's own code, and no field detail. */
-export function validateQuery<S extends z.ZodTypeAny>(schema: S, refusal: ServerCode): RequestHandler & Validates {
+export function validateQuery<S extends z.ZodType>(schema: S, refusal: ServerCode): RequestHandler & Validates {
   const handler: RequestHandler = (req, res, next) => {
     const result = schema.safeParse(req.query);
     if (!result.success) {
