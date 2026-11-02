@@ -19,7 +19,10 @@ export interface InstanceMessage {
 export type InstanceHandler = (message: InstanceMessage) => void | Promise<void>;
 
 export interface Inbox {
-  /** Rejects at once while Redis is unreachable, or when `to` has no inbox: there is nobody to hand the message to. */
+  /**
+   * Rejects at once while Redis is unreachable, and once `to` has had no inbox for longer than its
+   * reader takes to make one again: there is nobody to hand the message to. In order per `to`.
+   */
   send(to: string, message: InstanceMessage): Promise<void>;
   on(kind: string, handler: InstanceHandler): void;
   /** Removes this instance's stream, so a send to it rejects at once. Never rejects. */
@@ -28,7 +31,9 @@ export interface Inbox {
 
 const READ_COUNT = 100;
 const RETRY_MS = 250;
-const KEEP_ALIVE_MS = 3_000;
+const KEEP_ALIVE_MS = 1_000;
+/** Between tries at an inbox that is missing; together they outlast two keep-alive ticks. */
+const RESEND_DELAYS_MS = [50, 100, 200, 400, 800, 800];
 const INBOX_TTL_MS = CLUSTER_GAP_SECONDS * 1_000;
 const BOOT = JSON.stringify({ kind: "boot" });
 
@@ -62,7 +67,7 @@ export function openInbox({
   // The connection's own listener reports an outage; the next tick or reconnect tries again.
   async function keepAlive(): Promise<void> {
     try {
-      if (!(await writer.pExpire(own, INBOX_TTL_MS))) await create();
+      if (!(await writer.pExpire(own, INBOX_TTL_MS)) && !closed) await create();
     } catch {}
   }
 
@@ -114,11 +119,49 @@ export function openInbox({
 
   void read(reader);
 
+  const tryOnce = async (to: string, payload: string) =>
+    (await writer.xAddNoMkStream(inboxKey(to), "*", { m: payload }, { TRIM: inboxTrim() })) !== null;
+  const gone = (to: string) => new Error(`instance ${to} has no inbox: it is gone`);
+
+  /**
+   * A live instance's inbox is also missing between the store losing its data and the reader
+   * making it again, so a missing one is tried again for a while. Sends to the same instance wait
+   * behind those tries, keeping their order; once it is judged gone, each tries once.
+   */
+  const missing = new Map<string, Promise<boolean>>();
+
+  async function retry(to: string, payload: string): Promise<boolean> {
+    for (const delay of RESEND_DELAYS_MS) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      if (await tryOnce(to, payload)) return true;
+    }
+    return false;
+  }
+
+  async function sendTo(to: string, payload: string): Promise<void> {
+    for (;;) {
+      const ahead = missing.get(to);
+      if (ahead) {
+        if (await ahead.catch(() => false)) continue;
+        if (await tryOnce(to, payload)) return;
+        throw gone(to);
+      }
+      if (await tryOnce(to, payload)) return;
+      if (missing.has(to)) continue;
+      const tries = retry(to, payload);
+      missing.set(to, tries);
+      const delivered = await tries.finally(() => {
+        if (missing.get(to) === tries) missing.delete(to);
+      });
+      if (!delivered) throw gone(to);
+      return;
+    }
+  }
+
   return {
     async send(to, message) {
       clusterMessages.inc({ channel: "inbox" });
-      const entry = await writer.xAddNoMkStream(inboxKey(to), "*", { m: JSON.stringify(message) }, { TRIM: inboxTrim() });
-      if (entry === null) throw new Error(`instance ${to} has no inbox: it is gone`);
+      await sendTo(to, JSON.stringify(message));
     },
     on(kind, handler) {
       handlers.set(kind, handler);

@@ -68,13 +68,13 @@ describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() },
     assert.deepEqual(received, Array.from({ length: 70 }, (_, n) => n));
   });
 
-  test("a send to an instance that never had an inbox rejects at once and makes none", async () => {
+  test("a send to an instance that never had an inbox rejects within seconds and makes none", { timeout: 10_000 }, async () => {
     const gone = randomUUID();
     await assert.rejects(sender.send(gone, { kind: "probe", n: -1 }), /has no inbox/);
     assert.equal(await redis.exists(inboxOf(gone)), 0, "the send made a stream nobody reads");
   });
 
-  test("an inbox closed gracefully is removed, and a send to it then rejects at once and makes none", async () => {
+  test("an inbox closed gracefully is removed, and a send to it then rejects and makes none", async () => {
     const leaving = randomUUID();
     const inbox = openInbox({ id: leaving });
     await opened(leaving);
@@ -106,6 +106,30 @@ describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() },
       await eventually(() => seen.length === 1, "a message to the stream made again");
     } finally {
       await inbox.close();
+    }
+  });
+
+  test("a store that lost every stream still delivers every message sent meanwhile, in order", { timeout: 30_000 }, async () => {
+    const a = randomUUID();
+    const target = randomUUID();
+    const from = openInbox({ id: a });
+    const to = openInbox({ id: target });
+    const seen: number[] = [];
+    to.on("probe", (m: InstanceMessage) => {
+      seen.push(m.n as number);
+    });
+    try {
+      await Promise.all([opened(a), opened(target)]);
+      await redis.del([inboxOf(a), inboxOf(target)]);
+      const lost = Array.from({ length: 20 }, (_, n) => from.send(target, { kind: "probe", n }));
+      const outcomes = await Promise.allSettled(lost);
+      const after = Array.from({ length: 20 }, (_, n) => from.send(target, { kind: "probe", n: n + 20 }));
+      outcomes.push(...(await Promise.allSettled(after)));
+      assert.deepEqual(outcomes.filter((o) => o.status === "rejected").length, 0, "a send to a live instance was refused");
+      await eventually(() => seen.length >= 40, "all 40 messages", 10_000);
+      assert.deepEqual(seen, Array.from({ length: 40 }, (_, n) => n));
+    } finally {
+      await Promise.all([from.close(), to.close()]);
     }
   });
 
