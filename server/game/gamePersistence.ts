@@ -1,7 +1,7 @@
 import { logger } from "../shared/logger.ts";
 import { commitRoundResults } from "./roundResults.ts";
 import { sweepRetention } from "./retention.ts";
-import { activeGames } from "./gameRoom.ts";
+import { activeGames, audienceOf } from "./gameRoom.ts";
 import { payload } from "../shared/payload.ts";
 import { now } from "../http/clock.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
@@ -230,11 +230,10 @@ export function serveState(rt: TableRuntime, game: OnlineGameState): void {
   const at = now();
   markExchangeSettled(game.gameState.exchangePhase, at);
   if (game.gameState.lastMove.kind === "deal") game.gameState.dealtAt ??= at;
-  Object.values(game.playerMap).forEach((uid) => sendGameStateTo(rt, uid, game));
   // Spectators go through the same sanitiser. seatOfUser returns null for
   // a userId that holds no seat, and every hand is blanked on that basis, so a
   // spectator cannot be sent a card without the seated path breaking first.
-  game.spectators.forEach((uid) => sendGameStateTo(rt, uid, game));
+  for (const uid of audienceOf(game)) sendGameStateTo(rt, uid, game);
 }
 
 export type CloseNotice = "GAME_INTERRUPTED_SERVER_ERROR" | "GAME_INTERRUPTED_EMPTY_SEAT";

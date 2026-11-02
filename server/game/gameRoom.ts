@@ -216,10 +216,15 @@ export function openedAfter(socket: { handshake: { issued: number } }, at: numbe
 }
 
 
-/** Who a held table's room emits reach, seats and spectators; null when this process holds no game there. */
+/** Everyone a table's state and room emits reach: its seated humans, then its spectators. */
+export function audienceOf(game: OnlineGameState): string[] {
+  return [...Object.values(game.playerMap), ...game.spectators];
+}
+
+/** `audienceOf` the table this process holds in `roomId`; null when it holds none there. */
 export function heldAudience(roomId: string): string[] | null {
   const game = activeGames.get(roomId);
-  return game ? [...Object.values(game.playerMap), ...game.spectators] : null;
+  return game ? audienceOf(game) : null;
 }
 
 /** Who may vote: the users every vote gate waits on and every `*_vote_state` total counts.
