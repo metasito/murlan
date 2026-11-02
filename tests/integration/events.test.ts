@@ -13,7 +13,8 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { eventually, register } from "../helpers/client.ts";
-import { flushTelemetry } from "../../server/shared/telemetryBatch.ts";
+import { flushTelemetry, telemetryRowsDropped } from "../../server/shared/telemetryBatch.ts";
+import { logger } from "../../server/shared/logger.ts";
 import { EVENT_NAMES } from "../../shared/events.ts";
 import { trackEvent, EVENT_RETENTION_DAYS as retentionDays } from "../../server/shared/events.ts";
 import { sweepRetention } from "../../server/game/retention.ts";
@@ -61,23 +62,47 @@ describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () =>
     assert.equal((await rowsNamed("tutorial.started")).length, 1);
   });
 
-  test("a row for an account that is gone lands with no user, and the rows batched beside it land", async () => {
-    const [{ id: playerId }] = await server.query<{ id: string }>(
-      `SELECT id FROM "${server.schema}".users WHERE username = $1`,
-      ["funnel_player"]
-    );
-    assert.doesNotThrow(() => trackEvent("game.firstMoveMade", "00000000-0000-0000-0000-000000000000"));
-    trackEvent("game.firstMoveMade", playerId);
+  test("rows queued for an account deleted before they are written are not stored; an anonymous one beside them is", async () => {
+    const {
+      user: { id: goneId },
+    } = await register(server, "funnel_gone");
+    const before = telemetryRowsDropped();
+    trackEvent("game.firstMoveMade", goneId);
+    trackEvent("game.firstMoveMade", "00000000-0000-0000-0000-000000000000");
+    trackEvent("game.firstMoveMade", null);
+    await server.query(`DELETE FROM "${server.schema}".users WHERE id = $1`, [goneId]);
     await flushTelemetry();
 
     const rows = await server.query<{ user_id: string | null }>(
-      `SELECT user_id FROM "${server.schema}".events WHERE name = $1 ORDER BY user_id NULLS FIRST`,
+      `SELECT user_id FROM "${server.schema}".events WHERE name = $1`,
       ["game.firstMoveMade"]
     );
-    assert.deepEqual(rows.map((r) => r.user_id), [null, playerId]);
+    assert.deepEqual(rows.map((r) => r.user_id), [null], "a deleted account's row outlived its deletion");
+    assert.ok(telemetryRowsDropped() - before >= 2, "the rows the join dropped were not counted");
 
     const res = await fetch(`${server.url}/api/auth/me`, { headers: { cookie } });
     assert.equal(res.status, 200);
+  });
+
+  test("a batch the database refuses for one row loses that row alone, and never reaches the caller", async (t) => {
+    t.mock.method(logger, "error", () => undefined);
+    await server.query(
+      `ALTER TABLE "${server.schema}".events ADD CONSTRAINT refuse_poison CHECK (context->>'gameMode' IS DISTINCT FROM 'poison')`
+    );
+    t.after(() => server.query(`ALTER TABLE "${server.schema}".events DROP CONSTRAINT refuse_poison`));
+    const before = telemetryRowsDropped();
+
+    assert.doesNotThrow(() => trackEvent("room.joined", null, { gameMode: "kept-before" }));
+    trackEvent("room.joined", null, { gameMode: "poison" });
+    trackEvent("room.joined", null, { gameMode: "kept-after" });
+    await flushTelemetry();
+
+    const modes = await server.query<{ mode: string }>(
+      `SELECT context->>'gameMode' AS mode FROM "${server.schema}".events WHERE name = $1 ORDER BY mode`,
+      ["room.joined"]
+    );
+    assert.deepEqual(modes.map((r) => r.mode), ["kept-after", "kept-before"]);
+    assert.equal(telemetryRowsDropped() - before, 1);
   });
 
   test("retention is off the write path, and the scheduled sweep still works", async () => {

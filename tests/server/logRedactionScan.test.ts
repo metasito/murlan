@@ -158,9 +158,10 @@ describe("what a hand-written line may name", () => {
 
   test("a crash report the database refused does not reach the log either", () => {
     // The tempting exception, and why there is none: a client chooses its own
-    // `message`, and a NUL in it fails this insert every time — so the fallback
-    // would be a way to write arbitrary text into a stream nothing sweeps.
-    const failed = loggerCalls().filter((c) => c.args.includes("Failed to store a client error report"));
+    // `message`, and a row the database refuses would make the fallback a way
+    // to write arbitrary text into a stream nothing sweeps. Reports are written
+    // in batches, and the batch's failure line is the one there is.
+    const failed = loggerCalls().filter((c) => c.args.includes("Failed to write a telemetry batch"));
     assert.equal(failed.length, 1);
     // `report.platform` is the bounded enum, and is not the report.
     for (const field of [/\breport\b(?!\.platform)/, /\buserId\b/, /\bmessage\b/, /\bstack\b/])

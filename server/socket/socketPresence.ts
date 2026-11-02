@@ -20,6 +20,7 @@ import { trackEvent } from "../shared/events.ts";
 import { onEvent } from "./socketSafety.ts";
 import {
   isShuttingDown,
+  openedAfter,
   socketRoomMap,
   userRoom,
   userSocketMap,
@@ -254,9 +255,8 @@ export function evictOlderSessions(io: SocketServer, { userId, keepSocketId, con
   for (const id of [...(io.sockets.adapter.rooms.get(userRoom(userId)) ?? [])]) {
     const socket = io.sockets.sockets.get(id);
     if (!socket || id === keepSocketId) continue;
-    const issued = socket.handshake.issued;
     // Two instances stamping the same millisecond each receive the other's eviction; the id breaks the tie so exactly one closes.
-    if (issued > connectedAt || (issued === connectedAt && id > keepSocketId)) continue;
+    if (openedAfter(socket, connectedAt) || (socket.handshake.issued === connectedAt && id > keepSocketId)) continue;
     socket.emit("socket:error", payload("SESSION_REPLACED"));
     socket.disconnect(true);
   }

@@ -8,6 +8,8 @@ import {
   claimRoom,
   closeOwnership,
   enterTable,
+  forgetOwnerRecords,
+  recordsToRenew,
   ownsRoom,
   releaseRoom,
   releaseRoomAfter,
@@ -648,4 +650,28 @@ test("a server that refuses to end the dropped session is reported once, as such
   const refusals = errors.mock.calls.filter((c) => /not allowed to end/.test(String(c.arguments[1])));
   assert.equal(refusals.length, 1, "the refusal was not reported, or reported on every attempt");
   assert.deepEqual(lost, []);
+});
+
+test("a heartbeat renews only records of rooms locked on its own session, and none once they are forgotten", async (t) => {
+  useMemoryTableStores(t, { rows: [["own-renewed", {}]] });
+  const pg = fakePostgres(t);
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  openOwnership(t);
+  assert.equal(await claimRoom("own-renewed"), true);
+  assert.equal((await enterTable("own-renewed")).held, true);
+  assert.deepEqual(recordsToRenew(pg.clients[0] as unknown as Client).map(([room]) => room), ["own-renewed"]);
+
+  pg.fail = /pg_try_advisory_lock/;
+  pg.clients[0].emit("error", new Error("Connection terminated unexpectedly"));
+  await settle();
+  assert.equal(ownsRoom("own-renewed"), true);
+  assert.deepEqual(recordsToRenew(pg.clients[1] as unknown as Client), [], "a claim not yet retaken was renewed");
+
+  pg.fail = null;
+  t.mock.timers.tick(1_000);
+  await settle();
+  assert.deepEqual(recordsToRenew(pg.clients[1] as unknown as Client).map(([room]) => room), ["own-renewed"]);
+
+  await forgetOwnerRecords();
+  assert.deepEqual(recordsToRenew(pg.clients[1] as unknown as Client), [], "a forgotten record would be put back");
 });

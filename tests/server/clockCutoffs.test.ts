@@ -5,7 +5,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { getTableName, type SQL } from "drizzle-orm";
-import { db, openDatabase, pool } from "../../server/store/db.ts";
+import { adminDb, db, openDatabase, pool } from "../../server/store/db.ts";
 import { installClock } from "../../server/http/clock.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { adminSnapshot } from "../../server/http/admin.ts";
@@ -121,15 +121,16 @@ describe("a cutoff reads the clock its column was written on", () => {
     const clock = ahead(t);
     const seen: string[] = [];
     const paramsOf = new Map<string, unknown[]>();
-    t.mock.method(db(), "execute", async (q: SQL) => {
+    t.mock.method(adminDb(), "execute", async (q: SQL) => {
       const { sql: text, params } = dialect.sqlToQuery(q);
       seen.push(text);
       paramsOf.set(text, params);
       return { rows: [] };
     });
-    t.mock.method(db(), "select", () => emptyChain());
+    t.mock.method(adminDb(), "select", () => emptyChain());
     const staleCutoffs: Date[] = [];
-    t.mock.method(activeGameStore, "countUntouchedSince", async (cutoff: Date) => {
+    t.mock.method(activeGameStore, "countUntouchedSince", async (database: unknown, cutoff: Date) => {
+      assert.equal(database, adminDb());
       staleCutoffs.push(cutoff);
       return 0;
     });

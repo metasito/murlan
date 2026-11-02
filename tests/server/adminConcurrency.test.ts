@@ -1,14 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { allLimited, adminQueryLimit } from "../../server/http/admin.ts";
-import { resolvePoolMax } from "../../server/store/db.ts";
+import { profileMax } from "../../server/store/pool.ts";
 
-test("the admin page leaves most of the pool to the tables", () => {
-  assert.equal(adminQueryLimit(10), 4);
-  assert.equal(adminQueryLimit(1), 1);
-  assert.equal(adminQueryLimit(2), 1);
-  for (const max of [1, 2, 3, 5, 10, 40]) assert.ok(adminQueryLimit(max) <= Math.max(1, max / 2), String(max));
-  assert.ok(adminQueryLimit(resolvePoolMax(undefined)) < resolvePoolMax(undefined));
+test("the admin page runs as many queries at once as its own pool holds, and no more", () => {
+  assert.equal(adminQueryLimit(), profileMax("admin"));
+  assert.ok(adminQueryLimit() >= 1);
 });
 
 test("allLimited never runs more than its limit, and answers in order", async () => {

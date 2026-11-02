@@ -97,7 +97,7 @@ export function recordingRuntime(options: RecordingOptions = {}) {
     load: (roomId) => activeGameStore.load(roomId),
     claim: (roomId) => activeGameStore.claim(roomId),
     epochOf: (roomId) => activeGameStore.epochOf(roomId),
-    list: () => activeGameStore.list(),
+    listResumable: () => activeGameStore.listResumable(),
     write: async (roomId, state, epoch) => {
       const changed = await activeGameStore.write(roomId, state, epoch);
       landed("write", [roomId]);
@@ -108,7 +108,7 @@ export function recordingRuntime(options: RecordingOptions = {}) {
       landed("remove", [roomId]);
       return changed;
     },
-    countUntouchedSince: (cutoff) => activeGameStore.countUntouchedSince(cutoff),
+    countUntouchedSince: (database, cutoff) => activeGameStore.countUntouchedSince(database, cutoff),
     clearPendingResult: (tx, roomId, epoch, round) => activeGameStore.clearPendingResult(tx, roomId, epoch, round),
   };
   const statusFake = options.persist === "real" ? options.writers?.updateRoomStatus : undefined;

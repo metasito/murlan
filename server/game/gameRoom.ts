@@ -205,6 +205,14 @@ export function userRoom(userId: string): string {
   return `user:${userId}`;
 }
 
+/**
+ * Whether a socket connected after `at`, which is on socket.io's handshake clock: real time,
+ * stamped by whichever instance accepted it.
+ */
+export function openedAfter(socket: { handshake: { issued: number } }, at: number): boolean {
+  return socket.handshake.issued > at;
+}
+
 
 /** Who may vote: the users every vote gate waits on and every `*_vote_state` total counts.
  * A bot, and a seat whose player left, can answer nothing and hold no vote. */
