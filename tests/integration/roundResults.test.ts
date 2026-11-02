@@ -51,6 +51,9 @@ describe("a finished round's results", { skip: hasDatabase() ? false : skipMessa
     await server.stop();
   });
 
+  /** The results commit locking both seats (`lockUsers`); a writer locking one seat, as the code mint does, is not it. */
+  const THE_COMMITS_LOCK = /"id" in \(\$1, \$2\) ORDER BY id FOR NO KEY UPDATE/;
+
   /**
    * Takes the seats' row locks once registration's background code mint has landed: the mint
    * takes the same lock (`server/http/authTokens.ts`), and one still in flight would queue
@@ -216,7 +219,7 @@ describe("a finished round's results", { skip: hasDatabase() ? false : skipMessa
       game.pendingResults.push(older);
       await server.rt.writers.persistFinalState(game.roomId, game);
       const committing = server.rt.writers.applyPendingResults(game.roomId, game);
-      await lock.waitForBlocked(1);
+      await lock.waitForBlocked(1, THE_COMMITS_LOCK);
 
       const newer = roundOf(ids, older.round + 1);
       game.pendingResults.push(newer);
@@ -368,7 +371,7 @@ describe("a finished round's results", { skip: hasDatabase() ? false : skipMessa
     try {
       const over = driveRound(clients, () => clients[0]!.socket.emit("room:start"), { onExchange: "giveback", ms: 60_000 });
       over.catch(() => {});
-      await lock.waitForBlocked(1);
+      await lock.waitForBlocked(1, THE_COMMITS_LOCK);
       const game = activeGames.get(room.roomId)!;
       assert.equal(game.pendingResults.length, 1, "the commit is waiting on the seats' locks");
       const snapshot = server.rt.writers.persistGameState(room.roomId, game);
