@@ -41,7 +41,6 @@ export interface DeliveryOptions {
 
 const seatedIn = async (roomId: string) => (await roomStore.getRoomPlayers(roomId)).map((p) => p.userId);
 
-
 export function deliveryOutbox(io: SocketServer, options: DeliveryOptions = {}): TableOutbox {
   const self = options.self ?? instanceId;
   const locate = options.locate ?? instancesOf;
@@ -151,7 +150,7 @@ export function deliveryOutbox(io: SocketServer, options: DeliveryOptions = {}):
           logger.warn({ err, instance }, "Could not hand messages to another instance")
         );
       }
-    });
+    }).catch((err: unknown) => logger.error({ err }, "Messages for other instances failed to leave"));
   }
 
   function emitTo(userIds: Iterable<string>, out: Outgoing): void {
@@ -242,7 +241,8 @@ export function deliveryOutbox(io: SocketServer, options: DeliveryOptions = {}):
         });
     const sent: Promise<void> = (behind ?? Promise.resolve())
       .then(() => audience)
-      .then((users) => emitTo([...users, ...membersHere(roomId)], out));
+      .then((users) => emitTo([...users, ...membersHere(roomId)], out))
+      .catch((err: unknown) => logger.error({ err, roomId }, "A room emit failed to leave"));
     roomTails.set(roomId, sent);
     void sent.finally(() => {
       if (roomTails.get(roomId) === sent) roomTails.delete(roomId);
