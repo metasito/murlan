@@ -44,6 +44,8 @@ export function lonePeers(overrides: Partial<Peers> = {}): Peers {
     send: async () => {
       throw new Error("no other instance");
     },
+    offer: async () => false,
+    live: async () => [],
     on: () => {},
     ownerOf: async () => null,
     instanceOf: async () => null,

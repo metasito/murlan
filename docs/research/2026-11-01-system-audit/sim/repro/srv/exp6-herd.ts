@@ -3,7 +3,8 @@
 // own loop — not a restated formula. Pure computation; no server.
 import { createRequire } from "node:module";
 import path from "node:path";
-import { reconnectDelayMs } from "../../../../../../lib/reconnectDelay.ts";
+import { reconnectDelayMs, reconnectWaitMs } from "../../../../../../lib/reconnectDelay.ts";
+import { drainingReconnectAfterMs } from "../../../../../../server/http/shutdown.ts";
 import { out } from "./lib.ts";
 
 const require = createRequire(import.meta.url);
@@ -61,6 +62,20 @@ for (const DOWN of [2000, 5000]) {
   tickets.sort((a, b) => a - b);
   log(`tickets minted once it is back: all ${N} between ${tickets[0]} and ${tickets.at(-1)} ms (${((tickets.at(-1)! - tickets[0]!) / 1000).toFixed(2)} s)`);
 }
+
+// Scenario D (#1896): the app's own loop (socket.io's reconnection off since #1884), first attempt
+// per client, without and with the draining server's notice, which the first attempt waits out.
+function spread(label: string, times: number[]) {
+  times.sort((a, b) => a - b);
+  const strips = new Map<number, number>();
+  for (const t of times) strips.set(Math.floor(t / 50), (strips.get(Math.floor(t / 50)) ?? 0) + 1);
+  const peak = Math.max(...strips.values());
+  log(`${label}: ${times[0]}-${times.at(-1)} ms, busiest 50 ms strip ${peak} clients, ${strips.size} strips hold any`);
+  for (const r of buckets(times, 1000, 11_000)) log(r);
+}
+log("\n## D: first reconnect per client, the app's own loop (lib/reconnectDelay.ts)");
+spread("without a notice", Array.from({ length: N }, () => reconnectDelayMs(0)));
+spread("after server:draining", Array.from({ length: N }, () => reconnectWaitMs(0, drainingReconnectAfterMs())));
 
 // Tickets per IP against the limiter, for clients sharing one address.
 log("\n## tickets per IP in the first minute vs the 60/minute ticketLimiter (scenario A, one attempt each)");

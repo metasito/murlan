@@ -44,6 +44,8 @@ export interface PresenceStore {
   locate(userIds: readonly string[], opts?: { tables?: boolean }): Promise<Map<string, Located>>;
   /** How many other instances are alive. Rejects while Redis is unreachable. */
   livePeers(): Promise<number>;
+  /** The other instances alive now. Rejects while Redis is unreachable. */
+  liveInstances(): Promise<string[]>;
   /** Refreshes this instance's liveness, then clears up after every instance that has none. */
   beat(): Promise<void>;
   /** Called with the accounts this instance found on a dead instance and cleared; each exactly once cluster-wide. */
@@ -235,6 +237,11 @@ export function openPresenceStore({
     return live;
   }
 
+  async function liveInstances(): Promise<string[]> {
+    const members = await client.sMembers(key.instances);
+    return [...(await liveAmong(members))].filter((m) => m !== id);
+  }
+
   async function locate(userIds: readonly string[], { tables = false } = {}): Promise<Map<string, Located>> {
     const where = new Map<string, Located>();
     if (userIds.length === 0) return where;
@@ -398,9 +405,9 @@ export function openPresenceStore({
       return epoch ? `${epoch}.${count ?? 0}` : null;
     },
     async livePeers() {
-      const members = await client.sMembers(key.instances);
-      return [...(await liveAmong(members))].filter((m) => m !== id).length;
+      return (await liveInstances()).length;
     },
+    liveInstances,
     beat,
     onLost(handler) {
       lost = handler;
@@ -489,6 +496,10 @@ export async function instancesOf(userIds: readonly string[]): Promise<Map<strin
 
 export function livePeers(): Promise<number> {
   return opened().livePeers();
+}
+
+export function liveInstances(): Promise<string[]> {
+  return opened().liveInstances();
 }
 
 export function bumpSocial(userIds: readonly string[]): void {

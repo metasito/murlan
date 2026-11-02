@@ -50,6 +50,7 @@ test("server/game reaches socket/ and http/ only through these edges", () => {
     "roundOver.ts -> http/clock.ts",
     "roundResults.ts -> http/clock.ts",
     "stats.ts -> http/clock.ts",
+    "tableHandOff.ts -> http/clock.ts",
     "tableHandlers.ts -> socket/socketTable.ts",
     "tableLifecycle.ts -> socket/seating.ts",
     "tableLifecycle.ts -> socket/socketTable.ts",
