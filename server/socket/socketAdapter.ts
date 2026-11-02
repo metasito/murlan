@@ -1,5 +1,6 @@
 import { createAdapter } from "@socket.io/redis-streams-adapter";
 import { MessageType, type ClusterMessage } from "socket.io-adapter";
+import { now } from "../http/clock.ts";
 import { BLOCK_MS, openRedis, redisKey, streamMaxLen, type RedisClient } from "../store/redis.ts";
 
 type Packet = unknown[];
@@ -84,6 +85,8 @@ export function createSocketAdapter() {
     const pattern = `${privateChannels.replace(/[*?[\]\\]/g, (c) => `\\${c}`)}*#`;
     const heard = new Map<string, number>();
     const noticed = new Map<string, number>();
+    // A peer that said it is leaving is not waited on again, whatever arrives from it after.
+    const left = new Set<string>();
 
     /**
      * The peers a request must hear from: every peer heard within the grace, together with every
@@ -97,14 +100,15 @@ export function createSocketAdapter() {
     async function peers(): Promise<number> {
       if (!links.ready()) throw new Error("this instance is not subscribed to the cluster");
       const channels = (await links.client.sendCommand(["PUBSUB", "CHANNELS", pattern])) as string[];
-      const now = performance.now();
+      const at = now();
       const subscribed = new Set(channels.map((c) => String(c).slice(privateChannels.length, -1)));
       subscribed.delete(cluster.uid);
-      for (const uid of subscribed) if (!noticed.has(uid)) noticed.set(uid, now);
+      for (const uid of left) subscribed.delete(uid);
+      for (const uid of subscribed) if (!noticed.has(uid)) noticed.set(uid, at);
       let count = 0;
       for (const [uid, since] of noticed) {
-        const at = heard.get(uid);
-        if ((at !== undefined && now - at < PEER_GRACE_MS) || (subscribed.has(uid) && now - since < PEER_GRACE_MS)) count += 1;
+        const last = heard.get(uid);
+        if ((last !== undefined && at - last < PEER_GRACE_MS) || (subscribed.has(uid) && at - since < PEER_GRACE_MS)) count += 1;
         else if (!subscribed.has(uid)) {
           noticed.delete(uid);
           heard.delete(uid);
@@ -141,15 +145,15 @@ export function createSocketAdapter() {
         ? withPeers(0, () => fetchSockets(opts))
         : peers().then((n) => withPeers(n, () => fetchSockets(opts)));
     cluster.onMessage = (message: ClusterMessage, offset?: string) => {
-      if (offset === undefined && message.uid !== cluster.uid) {
-        const now = performance.now();
-        heard.set(message.uid, now);
-        if (!noticed.has(message.uid)) noticed.set(message.uid, now);
-      }
       const event = message.type === MessageType.SERVER_SIDE_EMIT ? (message.data.packet as Packet)[0] : undefined;
       if (event === LEAVING) {
+        left.add(message.uid);
         heard.delete(message.uid);
-        noticed.set(message.uid, -Infinity);
+        noticed.delete(message.uid);
+      } else if (offset === undefined && message.uid !== cluster.uid && !left.has(message.uid)) {
+        const at = now();
+        heard.set(message.uid, at);
+        if (!noticed.has(message.uid)) noticed.set(message.uid, at);
       }
       if (event === HEARTBEAT || event === LEAVING) return;
       return onMessage(message, offset);

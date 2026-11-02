@@ -18,8 +18,8 @@ const INVENTORY: Record<string, { n: number; why: string }> = {
     why: "nothingArrives' window, since absence has no event to await; and eventually's poll cadence, for state that pushes nothing",
   },
   "tests/integration/clusterCount.test.ts": {
-    n: 11,
-    why: "outages, a peer's death and a fresh boot are staged in real time against the adapter's real heartbeat and 10 s grace: real time is the subject",
+    n: 2,
+    why: "the asks are spread across a real 1.5 s outage and the seconds after it: real time is the subject",
   },
   "tests/integration/disposeTombstone.test.ts": {
     n: 1,
