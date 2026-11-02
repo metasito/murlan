@@ -6,6 +6,7 @@ import { createClient } from "redis";
 import { eventually } from "../helpers/client.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
+import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
 import { closePresence, forgetPresence, instancesOf, openPresence, presenceKey, recordPresence } from "../../server/store/presence.ts";
 import { closeRedis, instanceId } from "../../server/store/redis.ts";
 
@@ -25,24 +26,20 @@ after(async () => {
 
 const admin = createClient({ url: redisUrl });
 admin.on("error", () => {});
-const db = redisUrl ? Number(new URL(redisUrl).pathname.slice(1) || 0) : 0;
-const presenceLinks = async () =>
-  ((await admin.sendCommand(["CLIENT", "LIST"])) as string)
-    .split("\n")
-    .filter((line) => line.includes("name=murlan-presence") && line.includes(` db=${db} `))
-    .map((line) => /id=(\d+)/.exec(line)![1]);
-/** Links that are not this process's: other suites on the same database. */
-let others = new Set<string>();
+/** This process's presence link alone runs through it, so cutting it touches no other suite's. */
+let proxy: Proxy | undefined;
+const reachable = () => instancesOf(["probe"]).then(() => true, () => false);
 
 before(async () => {
   if (skip) return;
   await admin.connect();
-  others = new Set(await presenceLinks());
-  openPresence(redisUrl);
-  await eventually(() => instancesOf(["probe"]).then(() => true, () => false), "the presence link up");
+  proxy = await startProxy(targetOf(redisUrl!, 6379));
+  openPresence(viaProxy(redisUrl!, proxy));
+  await eventually(reachable, "the presence link up");
 });
-after(() => {
+after(async () => {
   if (admin.isOpen) admin.destroy();
+  await proxy?.close();
 });
 
 /** Redis's own clock in microseconds, offset by `deltaMicros`: the clock every entry is stamped from. */
@@ -53,12 +50,10 @@ async function redisMicros(deltaMicros = 0n): Promise<string> {
 
 /** Cuts this process's presence link and resolves once it is back and has run its reconnect. */
 async function reconnectPresence(): Promise<void> {
-  const [killed] = (await presenceLinks()).filter((id) => !others.has(id));
-  assert.ok(killed, "this process's presence link was not found");
-  others.add(killed);
-  await admin.sendCommand(["CLIENT", "KILL", "ID", killed]);
-  await eventually(async () => (await presenceLinks()).some((id) => !others.has(id)), "the presence link reconnected");
-  await eventually(() => instancesOf(["probe"]).then(() => true, () => false), "the presence link ready");
+  proxy!.refuse(true);
+  await eventually(async () => !(await reachable()), "the presence link down");
+  proxy!.refuse(false);
+  await eventually(reachable, "the presence link back");
 }
 
 test("a reconnected presence link fills a missing entry and leaves a newer one alone", { skip }, async () => {

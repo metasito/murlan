@@ -8,7 +8,9 @@ import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
 import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
 import {
+  HEAL_CHUNK,
   PRESENCE_HEAL_MS,
+  healChunks,
   closePresence,
   forgetPresence,
   instancesOf,
@@ -68,6 +70,36 @@ test("a connect refused while Redis was away is in presence within one heal inte
       2 * PRESENCE_HEAL_MS
     ).catch(() => null);
     assert.equal(healed, instanceId, "the account stayed connected here with no entry pointing at it");
+  } finally {
+    admin.destroy();
+  }
+});
+
+test("a heal is sent in pieces of at most HEAL_CHUNK entries, every entry in one of them", () => {
+  const entries = Array.from({ length: 2 * HEAL_CHUNK + 1 }, (_, i) => i);
+  const chunks = healChunks(entries);
+  assert.deepEqual(chunks.map((c) => c.length), [HEAL_CHUNK, HEAL_CHUNK, 1]);
+  assert.deepEqual(chunks.flat(), entries, "a piece dropped or reordered an entry");
+  assert.deepEqual(healChunks([]), [[]], "a heal with nothing to fill still reads the clock");
+});
+
+test("more entries than one piece holds all come back", { skip }, async () => {
+  const admin = createClient({ url: redisUrl });
+  admin.on("error", () => {});
+  await admin.connect();
+  try {
+    await eventually(reachable, "the presence link up");
+    const users = Array.from({ length: HEAL_CHUNK + 200 }, (_, i) => `many${i}`);
+    for (const userId of users) recordPresence(userId, `s-${userId}`);
+    await eventually(async () => (await instancesOf(users)).size === users.length, "every entry written");
+    await admin.del(users.map(presenceKey));
+
+    const back = await eventually(
+      async () => ((await instancesOf(users)).size === users.length ? true : null),
+      "every entry healed",
+      2 * PRESENCE_HEAL_MS
+    ).catch(() => false);
+    assert.equal(back, true, `only ${(await instancesOf(users)).size} of ${users.length} entries came back`);
   } finally {
     admin.destroy();
   }

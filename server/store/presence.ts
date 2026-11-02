@@ -49,17 +49,29 @@ function noteStamp(at: string): void {
   if (BigInt(at) > BigInt(newestStamp)) newestStamp = at;
 }
 
+/** Entries per heal script: one script holds Redis for its whole run, so a big instance's heal is sent in pieces. */
+export const HEAL_CHUNK = 500;
+
+/** `entries` in script-sized pieces, in order. */
+export function healChunks<T>(entries: readonly T[]): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < entries.length; i += HEAL_CHUNK) chunks.push(entries.slice(i, i + HEAL_CHUNK));
+  return chunks.length > 0 ? chunks : [[]];
+}
+
+/** Sent back to back from one snapshot in one tick, so a clear queued after any piece still runs after it. */
 function heal(): void {
   const c = client;
   if (!c?.isReady) return;
-  const held = [...mine];
-  void c
-    .eval(HEAL, {
-      keys: held.map(([userId]) => presenceKey(userId)),
-      arguments: [instanceId, ...held.map(([, { socketId }]) => socketId)],
-    })
-    .then((at) => noteStamp(String(at)))
-    .catch((err: unknown) => logger.warn({ err }, "Could not put this instance's presence entries back"));
+  for (const held of healChunks([...mine])) {
+    void c
+      .eval(HEAL, {
+        keys: held.map(([userId]) => presenceKey(userId)),
+        arguments: [instanceId, ...held.map(([, { socketId }]) => socketId)],
+      })
+      .then((at) => noteStamp(String(at)))
+      .catch((err: unknown) => logger.warn({ err }, "Could not put this instance's presence entries back"));
+  }
 }
 
 export function presenceKey(userId: string): string {
