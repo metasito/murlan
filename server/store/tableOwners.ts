@@ -2,6 +2,8 @@ import { logger } from "../shared/logger.ts";
 import { instanceId, openRedis, redisKey, type RedisClient } from "./redis.ts";
 
 let client: RedisClient | null = null;
+/** The refreshes in flight per record, each flagged by a clear of that record sent while it runs. */
+const refreshing = new Map<string, Set<{ cleared: boolean }>>();
 
 export function tableOwnerKey(roomId: string): string {
   return redisKey(`table-owner:${roomId}`);
@@ -42,8 +44,8 @@ export function recordTableOwner(roomId: string, epoch: number, ttlMs: number): 
 
 /**
  * Extends the record while it still names this claim, and puts back one the store lost; never a
- * later owner's. Two commands because `IFEQ` and `NX` exclude each other; `NX` cannot overwrite
- * an owner that lands between them. Never rejects.
+ * later owner's, nor one this claim cleared meanwhile. Two commands because `IFEQ` and `NX`
+ * exclude each other; `NX` cannot overwrite an owner that lands between them. Never rejects.
  */
 export async function refreshTableOwner(roomId: string, epoch: number, ttlMs: number): Promise<void> {
   const c = client;
@@ -51,17 +53,25 @@ export async function refreshTableOwner(roomId: string, epoch: number, ttlMs: nu
   const key = tableOwnerKey(roomId);
   const value = tableOwnerValue(epoch);
   const expiration = { type: "PX", value: ttlMs } as const;
+  const record = `${key}\n${value}`;
+  const run = { cleared: false };
+  const runs = refreshing.get(record) ?? new Set();
+  refreshing.set(record, runs.add(run));
   try {
-    if ((await c.set(key, value, { expiration, condition: "IFEQ", matchValue: value })) === null) {
+    if ((await c.set(key, value, { expiration, condition: "IFEQ", matchValue: value })) === null && !run.cleared) {
       await c.set(key, value, { expiration, condition: "NX" });
     }
   } catch (err) {
     logger.warn({ err, roomId }, "Could not refresh a table's owner");
+  } finally {
+    runs.delete(run);
+    if (runs.size === 0 && refreshing.get(record) === runs) refreshing.delete(record);
   }
 }
 
 /** Clears the record only while it still names this claim: a later owner's stays. Never rejects. */
 export async function clearTableOwner(roomId: string, epoch: number): Promise<void> {
+  for (const run of refreshing.get(`${tableOwnerKey(roomId)}\n${tableOwnerValue(epoch)}`) ?? []) run.cleared = true;
   // node-redis types Redis's DELEX, not Valkey's DELIFEQ.
   await client
     ?.sendCommand(["DELIFEQ", tableOwnerKey(roomId), tableOwnerValue(epoch)])

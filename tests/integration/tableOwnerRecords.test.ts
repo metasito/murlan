@@ -77,4 +77,12 @@ describe("a table's owner record", { skip: hasDatabase() ? false : skipMessage()
     const ttl = await redis.pTTL(tableOwnerKey(roomId));
     assert.ok(ttl > 500_000 && ttl <= 600_000, `the record put back lives ${ttl} ms`);
   });
+
+  test("a clear sent while a refresh is putting back a lost record leaves no record", async () => {
+    const roomId = newRoom();
+    const refreshed = refreshTableOwner(roomId, 6, 600_000);
+    await clearTableOwner(roomId, 6);
+    await refreshed;
+    assert.equal(await redis.exists(tableOwnerKey(roomId)), 0, "a released table's record came back for a whole TTL");
+  });
 });
