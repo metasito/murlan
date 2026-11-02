@@ -1,7 +1,6 @@
 # 0015. Every runtime and service on its latest usable stable release
 
-**Status:** Proposed. It becomes Accepted when the owner merges it, and the tickets on map #1898
-that carry it out are promoted.
+**Status:** Accepted; decisions 1 (Postgres 18) and 2 (Valkey 8.1) superseded by ADR-0016
 **Date:** 2026-11-02
 
 ## Context

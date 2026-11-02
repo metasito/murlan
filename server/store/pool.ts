@@ -11,6 +11,12 @@ import { logger } from "../shared/logger.ts";
  */
 export const QUERY_TIMEOUT_MS = 5_000;
 
+/** How long a query on the app pool may wait for a connection before it gives up. */
+const APP_CONNECT_TIMEOUT_MS = 5_000;
+
+/** The longest a query on the app pool can take before it settles: the wait for a connection, then the query. */
+export const APP_QUERY_BOUND_MS = APP_CONNECT_TIMEOUT_MS + QUERY_TIMEOUT_MS;
+
 type Settings = Omit<ClientConfig, "connectionString" | "application_name">;
 
 type Profile =
@@ -27,7 +33,7 @@ const PROFILES = {
     kind: "pool",
     max: 10,
     settings: {
-      connectionTimeoutMillis: 5_000,
+      connectionTimeoutMillis: APP_CONNECT_TIMEOUT_MS,
       idleTimeoutMillis: 30_000,
       statement_timeout: QUERY_TIMEOUT_MS,
       query_timeout: QUERY_TIMEOUT_MS,
