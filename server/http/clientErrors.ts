@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
-import { telemetryBatch } from "../shared/telemetryBatch.ts";
+import { telemetryBatch, telemetryJson, telemetryText } from "../shared/telemetryBatch.ts";
 import { now } from "./clock.ts";
 import { ERROR_GROUP_WINDOW_DAYS } from "./serverErrors.ts";
 
@@ -81,7 +81,8 @@ const queueClientError = telemetryBatch<ClientErrorRow>({
     FROM unnest(
       $1::text[], $2::timestamptz[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::jsonb[], $9::text[]
     ) AS t(user_id, occurred_at, app_version, platform, screen, message, stack, context, fingerprint)
-    LEFT JOIN users u ON u.id = t.user_id`,
+    LEFT JOIN users u ON u.id = t.user_id
+    WHERE t.user_id IS NULL OR u.id IS NOT NULL`,
   columns: (rows) => [
     rows.map((r) => r.userId),
     rows.map((r) => r.occurredAt),
@@ -95,13 +96,11 @@ const queueClientError = telemetryBatch<ClientErrorRow>({
   ],
 });
 
-/** Postgres refuses a NUL in text and jsonb, and one such report would fail its whole batch. */
-const withoutNul = (text: string) => text.replaceAll("\0", "");
-const optional = (text: string | undefined) => (text === undefined ? null : withoutNul(text));
+const optional = (text: string | undefined) => (text === undefined ? null : telemetryText(text));
 
 /** Queues one report. Retention is server/game/retention.ts's job, on a schedule. */
 export function recordClientError(input: ClientErrorInput): void {
-  const message = withoutNul(input.message);
+  const message = telemetryText(input.message);
   const stack = optional(input.stack);
   queueClientError({
     userId: input.userId,
@@ -111,9 +110,7 @@ export function recordClientError(input: ClientErrorInput): void {
     screen: optional(input.screen),
     message,
     stack,
-    context: JSON.stringify(input.context ?? {}, (_key, value: unknown) =>
-      typeof value === "string" ? withoutNul(value) : value
-    ),
+    context: telemetryJson(input.context ?? {}),
     fingerprint: computeFingerprint(message, stack ?? undefined),
   });
 }

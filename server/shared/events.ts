@@ -12,7 +12,7 @@ import { desc, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { events } from "../../shared/schema.ts";
 import { now } from "../http/clock.ts";
-import { telemetryBatch } from "./telemetryBatch.ts";
+import { telemetryBatch, telemetryJson } from "./telemetryBatch.ts";
 import type { EventContext, EventName } from "../../shared/events.ts";
 
 /** Matched to client_errors, so the two age out together. */
@@ -34,12 +34,13 @@ const queueEvent = telemetryBatch<EventRow>({
   insert: `INSERT INTO events (user_id, occurred_at, name, context)
     SELECT u.id, t.occurred_at, t.name, t.context
     FROM unnest($1::text[], $2::timestamptz[], $3::text[], $4::jsonb[]) AS t(user_id, occurred_at, name, context)
-    LEFT JOIN users u ON u.id = t.user_id`,
+    LEFT JOIN users u ON u.id = t.user_id
+    WHERE t.user_id IS NULL OR u.id IS NOT NULL`,
   columns: (rows) => [
     rows.map((r) => r.userId),
     rows.map((r) => r.occurredAt),
     rows.map((r) => r.name),
-    rows.map((r) => JSON.stringify(r.context)),
+    rows.map((r) => telemetryJson(r.context)),
   ],
 });
 

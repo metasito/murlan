@@ -24,7 +24,8 @@ function captured(t: TestContext, answer: (call: Call) => Promise<unknown> = asy
   t.mock.method(pool(), "query", (sql: string, values: unknown[][]) => {
     const call = { sql, values };
     calls.push(call);
-    return answer(call);
+    // pg's answer to an INSERT: every row written unless the answer says otherwise.
+    return answer(call).then((result) => ({ rowCount: rowsIn(call), ...(result as object) }));
   });
   return calls;
 }
@@ -42,7 +43,7 @@ test("250 events are written as one statement of 200 and one of the rest within 
 
   for (let i = 0; i < 250; i++) trackEvent("lobby.entered", `user-${i}`);
   await ticks();
-  assert.equal(calls.length >= 1, true, "200 queued rows waited for the timer");
+  assert.deepEqual(calls.map(rowsIn), [200], "200 queued rows waited for the timer, or the rest did not");
   t.mock.timers.tick(1_000);
   await ticks();
 
@@ -50,6 +51,7 @@ test("250 events are written as one statement of 200 and one of the rest within 
   for (const call of calls) {
     assert.match(call.sql, /\bunnest\s*\(/i);
     assert.match(call.sql, /LEFT JOIN\s+users\b/i);
+    assert.match(call.sql, /WHERE\s+t\.user_id\s+IS\s+NULL\s+OR\s+u\.id\s+IS\s+NOT\s+NULL/i);
   }
 });
 
@@ -145,4 +147,64 @@ test("client errors batch the same way, fingerprinted and stamped when reported"
   assert.equal(text.includes("\\u0000"), false, "a NUL reached the batch, and fails every row in it");
   const fingerprints = calls[0].values.find((column) => column.every((v) => typeof v === "string" && /^[0-9a-f]{64}$/.test(v)));
   assert.ok(fingerprints, "no fingerprint column");
+});
+
+const wellFormed = (call: Call) => call.values.flat().every((v) => typeof v !== "string" || v.isWellFormed());
+
+test("a lone surrogate, which jsonb refuses for the whole batch, is made well-formed in every column", async (t) => {
+  const calls = captured(t);
+
+  recordClientError({
+    userId: "u1",
+    message: "cut \ud800",
+    stack: "at f \udc00",
+    screen: "/game\ud800",
+    appVersion: "1\ud800",
+    context: { componentStack: "at A \ud83d" },
+  });
+  trackEvent("socket.closed", "u2", { reason: "transport close\ud800" as never });
+  await flushTelemetry();
+
+  assert.equal(calls.length, 2);
+  for (const call of calls) assert.ok(wellFormed(call), `a lone surrogate reached ${call.sql.slice(0, 30)}`);
+});
+
+test("a batch one row breaks is written row by row, so only that row is lost", async (t) => {
+  t.mock.method(logger, "error", () => undefined);
+  const calls = captured(t, async (call) => {
+    if (userIds(call).includes("bad")) throw Object.assign(new Error("invalid input syntax"), { code: "22P02" });
+    return { rows: [], rowCount: rowsIn(call) };
+  });
+  const before = telemetryRowsDropped();
+
+  for (const id of ["a", "bad", "c"]) trackEvent("lobby.entered", id);
+  await flushTelemetry();
+
+  assert.deepEqual(calls.map(userIds), [["a", "bad", "c"], ["a"], ["bad"], ["c"]]);
+  assert.equal(telemetryRowsDropped() - before, 1);
+});
+
+test("a batch the database could not take at all is not retried row by row", async (t) => {
+  t.mock.method(logger, "error", () => undefined);
+  const calls = captured(t, async () => {
+    throw new Error("connection terminated");
+  });
+  const before = telemetryRowsDropped();
+
+  for (const id of ["a", "b", "c"]) trackEvent("lobby.entered", id);
+  await flushTelemetry();
+
+  assert.equal(calls.length, 1, "an outage was multiplied into a statement per row");
+  assert.equal(telemetryRowsDropped() - before, 3);
+});
+
+test("rows the join drops, for an account deleted since they were queued, are counted as dropped", async (t) => {
+  captured(t, async () => ({ rows: [], rowCount: 1 }));
+  const before = telemetryRowsDropped();
+
+  trackEvent("socket.closed", "deleted", { reason: "server namespace disconnect" });
+  trackEvent("lobby.entered", null);
+  await flushTelemetry();
+
+  assert.equal(telemetryRowsDropped() - before, 1);
 });

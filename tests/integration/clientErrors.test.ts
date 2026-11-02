@@ -63,6 +63,22 @@ describe("client crash reports", { skip: hasDatabase() ? false : skipMessage() }
     assert.equal(res.status, 204, await res.text());
   });
 
+  test("a report cut through a surrogate pair is stored, and the reports batched with it are too", async () => {
+    const { cookie: own } = await register(server, "crash_surrogate");
+    const before = [{ message: "batched before a cut stack" }, { message: "cut \ud800", componentStack: "at A \ud83d" }];
+    for (const body of [...before, { message: "batched after a cut stack" }]) {
+      assert.equal((await postAs(own, body)).status, 204);
+    }
+
+    const rows = await stored<{ message: string; context: { componentStack?: string } }>(
+      `SELECT message, context FROM "${server.schema}".client_errors WHERE message LIKE 'batched %' OR message LIKE 'cut %' ORDER BY message`,
+      [],
+      3
+    );
+    assert.deepEqual(rows.map((r) => r.message), ["batched after a cut stack", "batched before a cut stack", "cut \ufffd"]);
+    assert.equal(rows[2]!.context.componentStack, "at A \ufffd");
+  });
+
   test("an unauthenticated report is refused", async () => {
     // Otherwise anyone on the internet can write arbitrary text into the table.
     const res = await post({ message: "injected" }, false);
