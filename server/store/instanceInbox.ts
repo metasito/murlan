@@ -19,20 +19,20 @@ export interface InstanceMessage {
 export type InstanceHandler = (message: InstanceMessage) => void | Promise<void>;
 
 export interface Inbox {
-  /** Rejects at once while Redis is unreachable: there is nobody to hand the message to. */
+  /** Rejects at once while Redis is unreachable, or when `to` has no inbox: there is nobody to hand the message to. */
   send(to: string, message: InstanceMessage): Promise<void>;
   on(kind: string, handler: InstanceHandler): void;
-  close(): void;
+  /** Removes this instance's stream, so a send to it rejects at once. Never rejects. */
+  close(): Promise<void>;
 }
 
 const READ_COUNT = 100;
 const RETRY_MS = 250;
+const KEEP_ALIVE_MS = 3_000;
+const INBOX_TTL_MS = CLUSTER_GAP_SECONDS * 1_000;
+const BOOT = JSON.stringify({ kind: "boot" });
 
 const inboxKey = (id: string) => redisKey(`inbox:${id}`);
-
-const SEND = `redis.call("XADD", KEYS[1], ARGV[1], ARGV[2], ARGV[3], "*", "m", ARGV[5])
-redis.call("EXPIRE", KEYS[1], ARGV[4])
-return 1`;
 
 /** How each send trims its inbox, exported so a test reads the value it actually gets. */
 export function inboxTrim() {
@@ -42,7 +42,8 @@ export function inboxTrim() {
 /**
  * One instance's addressed stream, `inbox:<instanceId>`. Each message is read once and in
  * order: the reader resumes from the last entry it handed over, across any reconnect, for as
- * long as the stream still holds it.
+ * long as the stream still holds it. The stream is its reader's: made at connect, kept alive while
+ * it runs, gone once it stops; a sender never makes one.
  */
 export function openInbox({
   id = thisInstance,
@@ -51,6 +52,25 @@ export function openInbox({
 }: { id?: string; url?: string; handlers?: Map<string, InstanceHandler> } = {}): Inbox {
   const writer = openRedis("inbox", { url, offlineQueue: false });
   const reader = openRedis("inbox", { url });
+  const own = inboxKey(id);
+  let closed = false;
+
+  // Pipelined in one write, so the stream is never left without its expiry.
+  const create = () =>
+    Promise.all([writer.xAdd(own, "*", { m: BOOT }, { TRIM: inboxTrim() }), writer.pExpire(own, INBOX_TTL_MS)]);
+
+  // The connection's own listener reports an outage; the next tick or reconnect tries again.
+  async function keepAlive(): Promise<void> {
+    try {
+      if (!(await writer.pExpire(own, INBOX_TTL_MS))) await create();
+    } catch {}
+  }
+
+  writer.on("ready", () => {
+    if (!closed) void create().catch(() => {});
+  });
+  const keeper = setInterval(() => void keepAlive(), KEEP_ALIVE_MS);
+  (keeper as unknown as { unref?: () => void }).unref?.();
 
   async function deliver(raw: string | undefined): Promise<void> {
     let message: InstanceMessage;
@@ -96,23 +116,19 @@ export function openInbox({
 
   return {
     async send(to, message) {
-      const key = inboxKey(to);
-      // One script, not a MULTI: node-redis queues a MULTI while offline whatever the client's
-      // offline queue is set to. Not two commands either: an entry added whose expiry failed
-      // would hold no TTL, and the send would reject although delivered.
-      const { strategy, strategyModifier, threshold } = inboxTrim();
       clusterMessages.inc({ channel: "inbox" });
-      await writer.eval(SEND, {
-        keys: [key],
-        arguments: [strategy, strategyModifier, String(threshold), String(CLUSTER_GAP_SECONDS), JSON.stringify(message)],
-      });
+      const entry = await writer.xAddNoMkStream(inboxKey(to), "*", { m: JSON.stringify(message) }, { TRIM: inboxTrim() });
+      if (entry === null) throw new Error(`instance ${to} has no inbox: it is gone`);
     },
     on(kind, handler) {
       handlers.set(kind, handler);
     },
-    close() {
-      writer.destroy();
+    async close() {
+      closed = true;
+      clearInterval(keeper);
       reader.destroy();
+      await writer.del(own).catch(() => {});
+      writer.destroy();
     },
   };
 }
@@ -134,7 +150,8 @@ export function onInstanceMessage(kind: string, handler: InstanceHandler): void 
   handlers.set(kind, handler);
 }
 
-export function stopInbox(): void {
-  inbox?.close();
+export function stopInbox(): Promise<void> {
+  const closing = inbox?.close() ?? Promise.resolve();
   inbox = null;
+  return closing;
 }

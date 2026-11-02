@@ -110,8 +110,7 @@ export async function shutdown(
     await within(SHUTDOWN_BUDGET.flushTelemetry, flushTelemetry());
     cancelRevocationRetries();
     stopHealth();
-    stopInbox();
-    await within(SHUTDOWN_BUDGET.ownerRecords, forgetOwnerRecords());
+    await within(SHUTDOWN_BUDGET.ownerRecords, Promise.all([stopInbox(), forgetOwnerRecords()]));
     closeTableOwners();
     closePresence();
     closeRedis();

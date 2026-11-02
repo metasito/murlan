@@ -1,16 +1,17 @@
 // tests/integration/instanceInbox.test.ts — one instance's addressed stream, read by another
 // instance's inbox on the real Redis: each message once and in order, and what was sent while the
-// reader's link was down still arrives once it is back.
+// reader's link was down still arrives once it is back. The stream lives exactly as long as its
+// reader: a send never makes one, so a send to an instance that is gone fails at once.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { ClientOfflineError } from "redis";
+import { ClientOfflineError, createClient } from "redis";
 import { eventually } from "../helpers/client.ts";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
 import { openInbox, type Inbox, type InstanceMessage } from "../../server/store/instanceInbox.ts";
-import { closeRedis, redisReady } from "../../server/store/redis.ts";
+import { closeRedis, redisKey, redisReady } from "../../server/store/redis.ts";
 
 describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() }, () => {
   const baseUrl = process.env.DATABASE_URL!;
@@ -21,9 +22,14 @@ describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() },
   let proxy: Proxy;
   let sender: Inbox;
   let receiver: Inbox;
+  let redis: ReturnType<typeof createClient>;
+  const inboxOf = (id: string) => redisKey(`inbox:${id}`);
+  const opened = (id: string) => eventually(async () => (await redis.exists(inboxOf(id))) === 1, `inbox ${id} to exist`);
 
   before(async () => {
     process.env.DATABASE_URL = scoped;
+    redis = createClient({ url: redisUrl });
+    await redis.connect();
     proxy = await startProxy(targetOf(redisUrl, 6379));
     sender = openInbox({ id: randomUUID() });
     receiver = openInbox({ id: b, url: viaProxy(redisUrl, proxy) });
@@ -31,12 +37,14 @@ describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() },
       received.push(m.n as number);
     });
     await redisReady();
+    await opened(b);
   });
 
   after(async () => {
     sender?.close();
     receiver?.close();
     closeRedis();
+    await redis?.quit();
     await proxy?.close();
     await dropKeyspace(scoped);
     process.env.DATABASE_URL = baseUrl;
@@ -60,6 +68,46 @@ describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() },
     assert.deepEqual(received, Array.from({ length: 70 }, (_, n) => n));
   });
 
+  test("a send to an instance that never had an inbox rejects at once and makes none", async () => {
+    const gone = randomUUID();
+    await assert.rejects(sender.send(gone, { kind: "probe", n: -1 }), /has no inbox/);
+    assert.equal(await redis.exists(inboxOf(gone)), 0, "the send made a stream nobody reads");
+  });
+
+  test("an inbox closed gracefully is removed, and a send to it then rejects at once and makes none", async () => {
+    const leaving = randomUUID();
+    const inbox = openInbox({ id: leaving });
+    await opened(leaving);
+    await inbox.close();
+    assert.equal(await redis.exists(inboxOf(leaving)), 0, "the stream outlived its reader's stop");
+    await assert.rejects(sender.send(leaving, { kind: "probe", n: -1 }), /has no inbox/);
+    assert.equal(await redis.exists(inboxOf(leaving)), 0, "the send made the stream again");
+  });
+
+  test("a live inbox with no traffic outlives its stream's expiry, and comes back once the store lost it", { timeout: 20_000 }, async () => {
+    const quiet = randomUUID();
+    const inbox = openInbox({ id: quiet });
+    try {
+      await opened(quiet);
+      const [first] = await redis.xRange(inboxOf(quiet), "-", "+", { COUNT: 1 });
+      await redis.pExpire(inboxOf(quiet), 5_000);
+      await eventually(async () => (await redis.pTTL(inboxOf(quiet))) > 60_000, "the reader to renew its stream", 10_000);
+      const [still] = await redis.xRange(inboxOf(quiet), "-", "+", { COUNT: 1 });
+      assert.equal(still?.id, first.id, "the stream expired under its reader and was made again");
+
+      await redis.del(inboxOf(quiet));
+      await eventually(async () => (await redis.exists(inboxOf(quiet))) === 1, "the reader to make its lost stream again", 10_000);
+      const seen: number[] = [];
+      inbox.on("probe", (m: InstanceMessage) => {
+        seen.push(m.n as number);
+      });
+      await sender.send(quiet, { kind: "probe", n: 1 });
+      await eventually(() => seen.length === 1, "a message to the stream made again");
+    } finally {
+      await inbox.close();
+    }
+  });
+
   test("a message to an unreachable Redis is refused at once, not queued", async () => {
     const offline = openInbox({ id: randomUUID(), url: viaProxy(redisUrl, proxy) });
     try {
@@ -68,7 +116,7 @@ describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() },
       await assert.rejects(offline.send(b, { kind: "probe", n: -1 }), ClientOfflineError, "the send was queued for Redis to come back");
     } finally {
       proxy.refuse(false);
-      offline.close();
+      void offline.close();
     }
   });
 });
