@@ -427,7 +427,7 @@ function codeIn(value) {
 
 /** `npx node …` and `npx --yes node …` run node: the package npx names is the command. */
 function throughNpx(c) {
-  if (c.cmd !== "npx") return c;
+  if (c.cmd !== "npx" && c.cmd !== "bunx") return c;
   let i = 0;
   while (c.args[i]?.startsWith("-")) i += /^(-p|--package|-c|--call)$/.test(c.args[i]) ? 2 : 1;
   return c.args[i] === undefined ? c : { ...c, cmd: c.args[i].replace(/^.*[\\/]/, "").toLowerCase(), args: c.args.slice(i + 1) };
@@ -503,21 +503,39 @@ function scriptsOf(c, nodeOptions) {
   return [...loads, ...(program ?? []), ...(program?.length === 0 ? input : [])].filter(Boolean);
 }
 
-/** The files a shell sources before its program: `--rcfile` and `--init-file`, and BASH_ENV or ENV for it or a shell it runs in. */
-const sourcedBy = (c) =>
+const shellsAround = (c) => c.wrapped.filter((w) => SHELLS.test(w.name)).length + (SHELLS.test(c.cmd) ? 1 : 0);
+
+/**
+ * BASH_ENV and ENV an `export` sets, with where it stands and how many shells it runs inside. A plain
+ * `X=…` statement exports nothing, so no shell it starts sources the file.
+ */
+const exportsOf = (parsed) =>
+  parsed.flatMap((c, at) =>
+    c.cmd === "export" ? c.args.flatMap((a) => /^(?:BASH_ENV|ENV)=(.+)$/s.exec(a)?.slice(1).map((file) => ({ at, depth: shellsAround(c), file })) ?? []) : []
+  );
+
+/**
+ * The files a shell sources before its program: `--rcfile` and `--init-file`, and BASH_ENV or ENV
+ * set on it, on a shell it runs in, or exported earlier on the line outside the shell it runs in.
+ */
+const sourcedBy = (c, at, exported) =>
   [
-    c.scope?.BASH_ENV,
-    c.scope?.ENV,
     ...(SHELLS.test(c.cmd) ? [c.env.BASH_ENV, c.env.ENV, ...valuesOf(c.args, SHELL_RC)] : []),
-    ...c.wrapped.filter((w) => SHELLS.test(w.name)).flatMap((w) => valuesOf(w.flags, SHELL_RC)),
+    ...c.wrapped.filter((w) => SHELLS.test(w.name)).flatMap((w) => [w.env?.BASH_ENV, w.env?.ENV, ...valuesOf(w.flags, SHELL_RC)]),
+    ...exported.filter((e) => e.at < at && shellsAround(c) > e.depth).map((e) => e.file),
   ].filter(Boolean);
 
-/** tsx, bun and `deno run` take a program, loads and inline code as node does. */
+/** tsx, bun and deno take a program, loads and inline code as node does; `deno eval` is node's `-e`. */
 function asNode(c) {
-  if (c.cmd === "tsx" || c.cmd === "bun") return { ...c, cmd: "node", args: c.args[0] === "run" ? c.args.slice(1) : c.args };
+  if (c.cmd === "tsx") return { ...c, cmd: "node", args: c.args[0] === "watch" ? c.args.slice(1) : c.args };
+  if (c.cmd === "bun") return { ...c, cmd: "node", args: c.args[0] === "run" ? c.args.slice(1) : c.args };
   if (c.cmd === "deno" && c.args[0] === "run") return { ...c, cmd: "node", args: c.args.slice(1) };
+  if (c.cmd === "deno" && c.args[0] === "eval") return { ...c, cmd: "node", args: ["-e", c.args.slice(1).find((a) => !a.startsWith("-")) ?? ""] };
   return c;
 }
+
+/** Inline code reaches the supervisor's settle as surely as its merges; a script that imports settle is the loop's own. */
+const spellsInlineMerge = (text) => spellsMerge(text) || /\bsettle\.mjs\b/.test(text);
 
 /** A shell that reads its program from standard input: nothing to run, `-s`, or `-`. Node handed code inline, or tests, reads none. */
 const readsProgram = (c) =>
@@ -535,16 +553,17 @@ function runsMergingScript(lexed, raw, repo) {
   if (piped && spellsMerge(raw)) return true;
   const nodeOptions = nodeOptionsOf(parsed, raw);
   const code = parsed.filter((c) => NODE.test(c.cmd)).flatMap((c) => valuesOf([...nodeOptions, ...c.args], NODE_CODE));
-  if (code.some((v) => spellsMerge(v) || spellsMerge(codeIn(v)))) return true;
+  if (code.some((v) => spellsInlineMerge(v) || spellsInlineMerge(codeIn(v)))) return true;
+  const exported = exportsOf(parsed);
   // A `cd` earlier on the line moves where a relative script is found.
   let moved = "";
-  return parsed.some((c) => {
+  return parsed.some((c, at) => {
     if (MOVES.test(c.cmd)) {
       const to = c.args.find((a) => !a.startsWith("-"));
       if (to) moved = isAbsolute(toNative(to)) ? toNative(to) : join(moved, toNative(to));
       return false;
     }
-    return [...sourcedBy(c), ...scriptsOf(c, nodeOptions), ...(piped ? c.args.filter((a) => !a.startsWith("-")) : [])].some((script) => {
+    return [...sourcedBy(c, at, exported), ...scriptsOf(c, nodeOptions), ...(piped ? c.args.filter((a) => !a.startsWith("-")) : [])].some((script) => {
       let text;
       try {
         const file = isAbsolute(toNative(script)) ? toNative(script) : join(moved, toNative(script));
