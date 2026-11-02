@@ -91,7 +91,7 @@ Invariants to confirm:
 - Effects clean up their timers, listeners, sockets and animations.
 - Server per-room timers and maps that only grow (soak memory).
 - Null game-state paths. Worklet crashes.
-- Builtins newer than Node 22 in server code.
+- Builtins newer than deploy/runtime.json's Node in server code.
 - Health and readiness endpoints. Crash loops on boot.
 - When production breaks, what reaches the owner, and how fast?`,
   },
@@ -261,7 +261,7 @@ Also check:
 Then check:
 - outdated or abandoned dependencies, and duplicate versions;
 - whether patch-package's postinstall step (package.json) still has anything to apply — whether each file in patches/ still applies to the installed version and is still needed;
-- APIs the code uses against server:build --target=node22;
+- APIs the code uses against server:build's --target and deploy/runtime.json's Node;
 - app.json permissions and store readiness;
 - Actions pinning and permissions;
 - licences.`,

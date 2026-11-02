@@ -3,16 +3,16 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "engines": {
-    "node": ">=22"
+    "node": ">=26"
   },
   "scripts": {
     "postinstall": "patch-package",
     "expo:dev": "npx expo start --tunnel",
     "expo:dev:clean": "npx expo start --tunnel --clear",
-    "server:dev": "tsx server/index.ts",
+    "server:dev": "node --watch server/index.ts",
     "expo:web:build": "node scripts/assertNotE2EFast.js && npx expo export --platform web --source-maps && node scripts/moveSourceMaps.mjs",
     "bundle:budget": "node scripts/bundle-budget.mjs",
-    "server:build": "esbuild server/index.ts --platform=node --target=node22 --packages=external --bundle --format=esm --outdir=server_dist --out-extension:.js=.mjs",
+    "server:build": "esbuild server/index.ts --platform=node --target=node26 --packages=external --bundle --format=esm --outdir=server_dist --out-extension:.js=.mjs",
     "server:prod": "node scripts/server-prod.mjs",
     "db:push": "drizzle-kit push",
     "db:backup": "node scripts/backup-db.mjs",
@@ -42,7 +42,7 @@
     "bake:card-art": "node scripts/bake-card-art.mjs",
     "loop:cost": "node tools/loop/loop-cost.mjs",
     "verify": "npm run typecheck && npm run typecheck:strict && npm run test && npm run test:native && npm run lint",
-    "soak": "node --experimental-strip-types tests/soak/soak.ts"
+    "soak": "node tests/soak/soak.ts"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
@@ -115,6 +115,8 @@
     "@types/express": "^5.0.0",
     "@types/express-serve-static-core": "^5.1.3",
     "@types/express-session": "^1.18.2",
+    "@types/node": "^26.4.1",
+    "@types/pg": "^8.23.1",
     "@types/react": "~19.2.4",
     "@typescript-eslint/eslint-plugin": "^8.69.0",
     "@typescript-eslint/parser": "^8.69.0",
@@ -136,7 +138,6 @@
     "patch-package": "^8.0.0",
     "playwright": "^1.62.1",
     "subset-font": "^2.5.0",
-    "tsx": "^4.20.6",
     "typescript": "~6.0.3",
     "typescript7": "npm:typescript@~7.0.2",
     "yaml": "^2.9.0"
