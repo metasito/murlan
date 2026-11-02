@@ -1,5 +1,5 @@
 {
-  "node": 22,
+  "node": 26,
   "postgres": 16,
   "redis": 7,
   "sigtermGraceMs": 10000,
