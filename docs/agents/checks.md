@@ -19,7 +19,7 @@ instead of sitting unguarded in prose.
 | You changed | Run | Catches | Needs | Cost |
 | --- | --- | --- | --- | --- |
 | Pure logic (`lib/`, `*Model.ts`, `tableArc.ts`) | `node --test tests/<file>.test.ts` | the maths, the guards, i18n key parity, colour contrast under CVD | nothing | ~1s |
-| The server, the socket protocol, auth or storage | same command, under `tests/integration/` | routes and handlers end to end, boot-time schema creation | `DATABASE_URL` (dev-stack, below) | ~10s/file |
+| The server, the socket protocol, auth or storage | same command, under `tests/integration/` | routes and handlers end to end, boot-time schema creation | `DATABASE_URL` and `REDIS_URL` (dev-stack, below) | ~10s/file |
 | Whether any test asserts a line of `lib/game/` or `server/game/` | `npx stryker run --mutate <file>` (`stryker.config.mjs`); `.github/workflows/mutation.yml` runs every file weekly in line-range shards of at most `SHARD_MUTANTS` mutants (`tools/ci/mutation.mjs`), and files the survivors under `mutation` | a mutant no node test notices; never a gate | nothing | ~2 min dry run, then per mutant |
 | A component's props or tree | `jest`, once per `Platform.OS` | render, memo, hook order, native-only branches | nothing | ~8s |
 | Anything with **layout** (flex, absolute, transform) | Playwright | which side of the screen it is on | Docker + a built web bundle | ~35s |
@@ -34,7 +34,7 @@ instead of sitting unguarded in prose.
 | The ticket loop (`tools/loop/`) | `node --import ./tools/loop/tests/helpers/clearLoopEnv.mjs --test tools/loop/tests/<file>.test.ts` | the supervisor, the gate, the picker, the workspace tools | a signed-in `gh`, for `deleteBranchOnMerge.test.ts` only | ~40s |
 
 `node --test` over `tests/**/*.test.ts` is one command for both rows above it — `tests/integration/`
-folds in and self-skips without `DATABASE_URL` (below). Rules 1 and 2 in `docs/agents/RULES.md`
+folds in and self-skips without `DATABASE_URL` or `REDIS_URL` (below). Rules 1 and 2 in `docs/agents/RULES.md`
 decide which of these you run by hand and which you leave to CI. A unit test lives beside what it
 exercises: `tests/engine/`, `tests/bots/`, `tests/server/`, `tests/ui-rules/`, `tests/tooling/` —
 none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
@@ -65,11 +65,11 @@ none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
   to completion" machinery every suite needing `handleRoundOver`'s writes rides.
   ```sh
   node scripts/dev-stack.mjs up
-  DATABASE_URL=$(node scripts/dev-stack.mjs env | sed -n 's/^DATABASE_URL=//p')
-  DATABASE_URL="$DATABASE_URL" node --test tests/integration/<file>.test.ts
+  export $(node scripts/dev-stack.mjs env | grep -E '^(DATABASE|REDIS)_URL=')
+  node --test tests/integration/<file>.test.ts
   ```
-  An empty `DATABASE_URL` means every test silently skips. Each server takes its own schema and
-  drops it, so runs don't collide and the container can stay up between runs of one sitting
+  An empty `DATABASE_URL` or `REDIS_URL` means every test silently skips. Each server takes its
+  own schema, and the Redis keyspace named after it, and drops both, so runs don't collide and the container can stay up between runs of one sitting
   (`node scripts/dev-stack.mjs down` when you're done).
 - **Web e2e** plays real matches, offline and online, against the real server, in Italian, and
   rebuilds the bundle first; `E2E_SKIP_BUILD=1` reuses the last one (rule 5). Two

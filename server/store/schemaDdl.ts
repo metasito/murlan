@@ -136,14 +136,6 @@ function foreignKeysByColumn(cfg: TableConfig): Map<string, ForeignKeyRef> {
  * already exists is by definition not that table's primary key, so dropping
  * the clause there is exact rather than approximate.
  */
-/**
- * A serial type *is* its own default — Postgres attaches the sequence when it
- * sees the type. Drizzle still reports `hasDefault` with nothing to render,
- * which is otherwise indistinguishable from a `$defaultFn` that cannot become
- * DDL.
- */
-const SERIAL_TYPES = new Set(["smallserial", "serial", "bigserial"]);
-
 function columnDefinition(
   col: TableConfig["columns"][number],
   cfg: TableConfig,
@@ -153,9 +145,7 @@ function columnDefinition(
   const sqlType = col.getSQLType();
   const parts = [quoteIdent(col.name), sqlType];
   if (col.notNull) parts.push("NOT NULL");
-  const defaultClause = SERIAL_TYPES.has(sqlType)
-    ? undefined
-    : formatDefaultClause(col, cfg.name);
+  const defaultClause = formatDefaultClause(col, cfg.name);
   if (defaultClause) parts.push(defaultClause);
   if (col.primary && includePrimaryKey) parts.push("PRIMARY KEY");
   if (col.isUnique) parts.push("UNIQUE");
@@ -284,6 +274,13 @@ const SESSION_INDEXES = [
  * on their own belongs here; `users` never does.
  */
 const DEDUPE_ON_BOOT = new Set(["friends_accepted_uq", "friends_pending_pair_uq"]);
+
+/**
+ * Tables boot drops because what they hold must not outlive the code that wrote them. The one
+ * exception to "additive only", and named here one at a time: `socket_io_attachments` was the
+ * Postgres socket adapter's spill table, and its rows carry live session cookies and tickets.
+ */
+export const RETIRED_TABLES = ["socket_io_attachments"] as const;
 
 /**
  * Deletes what its index is about to reject, all but one row of each group.
@@ -456,7 +453,23 @@ export function schemaStatements(existing: SchemaCatalog = EMPTY_CATALOG): strin
     }
   }
 
-  return [...enumStatements, ...tableStatements, ...addColumnStatements, ...indexStatements];
+  const declared = new Set(configs.map(({ cfg }) => cfg.name));
+  for (const table of RETIRED_TABLES) {
+    if (declared.has(table)) {
+      throw new Error(
+        `schemaStatements: RETIRED_TABLES names "${table}", which shared/schema.ts still ` +
+          `declares — update server/store/schemaDdl.ts.`
+      );
+    }
+  }
+
+  return [
+    ...enumStatements,
+    ...tableStatements,
+    ...addColumnStatements,
+    ...indexStatements,
+    ...RETIRED_TABLES.map((table) => `DROP TABLE IF EXISTS ${quoteIdent(table)};`),
+  ];
 }
 
 /**

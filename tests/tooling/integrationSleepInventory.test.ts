@@ -17,6 +17,10 @@ const INVENTORY: Record<string, { n: number; why: string }> = {
     n: 2,
     why: "nothingArrives' window, since absence has no event to await; and eventually's poll cadence, for state that pushes nothing",
   },
+  "tests/integration/clusterCount.test.ts": {
+    n: 2,
+    why: "the asks are spread across a real 1.5 s outage and the seconds after it: real time is the subject",
+  },
   "tests/integration/disposeTombstone.test.ts": {
     n: 1,
     why: "the window after dispose in which the room must stay unclaimable while its row's delete is held",
@@ -25,13 +29,17 @@ const INVENTORY: Record<string, { n: number; why: string }> = {
     n: 1,
     why: "a second tutorial.started row is an absence, and the event write is fire-and-forget with nothing to await",
   },
+  "tests/integration/instanceInbox.test.ts": {
+    n: 4,
+    why: "a duplicate delivery, and a delivery over a link that is down, are absences; and the send must meet a link already refused",
+  },
   "tests/integration/ownerLoss.test.ts": {
     n: 2,
     why: "the owner process is killed a beat after its deal persisted; and a disconnect handler slower than the teardown is the scenario",
   },
   "tests/integration/postgresRestart.test.ts": {
     n: 1,
-    why: "both instances are watched staying up after they resubscribe: a crash that follows has no event to await",
+    why: "both instances are watched staying up after their backends are terminated: a crash that follows has no event to await",
   },
   "tests/integration/reconnect.test.ts": {
     n: 2,

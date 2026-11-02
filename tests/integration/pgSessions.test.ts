@@ -3,10 +3,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
-import { Server } from "socket.io";
 import { dropSchema, hasDatabase, skipMessage } from "../helpers/testServer.ts";
 import { closeDatabase, openDatabase, pool } from "../../server/store/db.ts";
-import { createSocketAdapter, socketAdapterPool } from "../../server/socket/socketAdapter.ts";
 import { claimRoom, closeOwnership, ownershipKey, reopenOwnership } from "../../server/game/gameOwnership.ts";
 
 test("each pool and client names its use, and the app pool bounds an idle transaction", async (t) => {
@@ -18,10 +16,8 @@ test("each pool and client names its use, and the app pool bounds an idle transa
   await admin.query(`CREATE SCHEMA "${schema}"`);
   // No application_name in the URL: a URL's own name takes precedence over the profile's.
   process.env.DATABASE_URL = `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}options=-c%20search_path%3D${schema}`;
-  let io: Server | undefined;
   try {
     openDatabase();
-    io = new Server({ adapter: createSocketAdapter() });
     reopenOwnership({ onRoomLost: () => {} });
     const room = `pg-sessions-${schema}`;
     assert.equal(await claimRoom(room), true);
@@ -40,28 +36,23 @@ test("each pool and client names its use, and the app pool bounds an idle transa
     assert.deepEqual(
       {
         app: await nameOf(await backend(pool())),
-        adapter: await nameOf(await backend(socketAdapterPool()!)),
         ownership: await nameOf(owner.rows[0].pid),
       },
-      { app: "murlan-app", adapter: "murlan-adapter", ownership: "murlan-ownership" }
+      { app: "murlan-app", ownership: "murlan-ownership" }
     );
 
     assert.equal(
       (await pool().query("SHOW idle_in_transaction_session_timeout")).rows[0].idle_in_transaction_session_timeout,
       "10s"
     );
-    for (const db of [pool(), socketAdapterPool()!]) {
-      const { keepAlive, keepAliveInitialDelayMillis, maxLifetimeSeconds } = db.options as pg.PoolConfig;
-      assert.deepEqual({ keepAlive, keepAliveInitialDelayMillis, maxLifetimeSeconds }, {
-        keepAlive: true,
-        keepAliveInitialDelayMillis: 10_000,
-        maxLifetimeSeconds: 1_800,
-      });
-    }
+    const { keepAlive, keepAliveInitialDelayMillis, maxLifetimeSeconds } = pool().options as pg.PoolConfig;
+    assert.deepEqual({ keepAlive, keepAliveInitialDelayMillis, maxLifetimeSeconds }, {
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10_000,
+      maxLifetimeSeconds: 1_800,
+    });
   } finally {
     await closeOwnership();
-    await io?.of("/").adapter.close();
-    await socketAdapterPool()?.end();
     await (await closeDatabase()).ended;
     process.env.DATABASE_URL = baseUrl;
     await admin.end();

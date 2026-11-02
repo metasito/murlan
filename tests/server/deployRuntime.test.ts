@@ -4,6 +4,9 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { connectionsPerInstance } from "../../server/store/pool.ts";
 import { blankComments, scanSources, sourcesUnder } from "../helpers/sourceScan.ts";
+import { CLUSTER_GAP_SECONDS, streamMaxLen } from "../../server/store/redis.ts";
+import { adapterOptions } from "../../server/socket/socketAdapter.ts";
+import { inboxTrim } from "../../server/store/instanceInbox.ts";
 import { PLATFORM_GRACE_MS } from "../../server/http/shutdown.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
@@ -40,7 +43,7 @@ function profilesOpened(sources: [string, string][]): string[] {
 
 test("each profile is opened from one place, so the budget counts what runs", () => {
   const sites = profilesOpened(sourcesUnder(repoRoot, ["server"], /\.ts$/));
-  assert.ok(sites.length >= 4, `the scan found ${sites.length} openings: it reads nothing`);
+  assert.ok(sites.length >= 3, `the scan found ${sites.length} openings: it reads nothing`);
   const names = sites.map((s) => s.slice(s.indexOf('"')));
   assert.deepEqual(names, [...new Set(names)], `a profile opened twice holds twice its share:\n${sites.join("\n")}`);
 });
@@ -52,4 +55,14 @@ test("the opening scan sees a pool or a client named by its profile, and not a c
     ["c.ts", '// createPool("admin")\nconst x = createPoolish("health");'],
   ];
   assert.deepEqual(profilesOpened(planted), ['a.ts: createPool("app"', 'b.ts: createClient(\n  "ownership"']);
+});
+
+test("the cluster streams hold two minutes of the manifest's design peak", () => {
+  assert.equal(manifest.maxClusterMessagesPerSecond, 1000);
+  assert.equal(CLUSTER_GAP_SECONDS, 120);
+  assert.equal(streamMaxLen(), 120_000);
+  assert.equal(streamMaxLen(7), 840);
+  assert.equal(adapterOptions().maxLen, 120_000, "the adapter's stream, which defaults to 10,000 without it");
+  assert.equal(inboxTrim().threshold, 120_000, "each inbox");
+  assert.equal(inboxTrim().strategy, "MAXLEN");
 });

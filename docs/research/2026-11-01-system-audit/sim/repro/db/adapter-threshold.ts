@@ -6,7 +6,13 @@ import { Server } from "socket.io";
 import { directUrl, log } from "./proxy.ts";
 
 process.env.DATABASE_URL = directUrl;
-const { createSocketAdapter, socketAdapterPool, socketAdapterReady } = await import("../../../../../../server/socket/socketAdapter.ts");
+// The adapter module as it stood at 5f464ce, which this reproduces; #1885 replaced it.
+type PgAdapterModule = {
+  createSocketAdapter(): Parameters<Server["adapter"]>[0];
+  socketAdapterPool(): import("pg").Pool | null;
+  socketAdapterReady(): Promise<void>;
+};
+const { createSocketAdapter, socketAdapterPool, socketAdapterReady } = (await import("../../../../../../server/socket/socketAdapter.ts")) as unknown as PgAdapterModule;
 const { logger } = await import("../../../../../../server/shared/logger.ts");
 
 const io = new Server();

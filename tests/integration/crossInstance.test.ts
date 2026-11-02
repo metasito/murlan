@@ -22,13 +22,15 @@ import {
   type TestSocket,
 } from "../helpers/client.ts";
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
-import { boot, stopInstance, type Instance } from "../helpers/instance.ts";
+import { dropKeyspace } from "../helpers/redisKeys.ts";
+import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
+import { boot, freePorts, stopInstance, type Instance } from "../helpers/instance.ts";
 import { playRoundOut } from "../helpers/gameDriver.ts";
 import { userStore } from "../../server/store/userStore.ts";
 import { mintAuthToken } from "../../server/http/authTokens.ts";
 import { closeDatabase, openDatabase } from "../../server/store/db.ts";
 
-const PORTS = [5561, 5562] as const;
+const PORTS = await freePorts(2);
 /** Short, so the "was it re-sent?" window below is seconds rather than tens. */
 const ACK_TIMEOUT_MS = 700;
 
@@ -53,6 +55,10 @@ describe("broadcasts cross server instances", {
   const schema = `xinst_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
   const baseUrl = process.env.DATABASE_URL!;
   const scoped = scopedDatabaseUrl(baseUrl, schema);
+  /** Every statement both servers send Postgres, as the bytes that carry it. */
+  const sent = { text: "" };
+  let pgProxy: Proxy;
+  const statementsMatching = (pattern: RegExp) => sent.text.match(pattern)?.length ?? 0;
   const instances: Instance[] = [];
   const sockets: TestSocket[] = [];
   let aCookie = "";
@@ -67,10 +73,15 @@ describe("broadcasts cross server instances", {
     const admin = new pg.Pool({ connectionString: baseUrl });
     await admin.query(`CREATE SCHEMA "${schema}"`);
     await admin.end();
+    pgProxy = await startProxy(targetOf(baseUrl, 5432), {
+      onClientBytes: (chunk) => {
+        sent.text += chunk.toString("latin1");
+      },
+    });
 
     // Sequentially: both run `ensureSchema` against the same empty schema, and
     // `CREATE TYPE` is not idempotent against a concurrent identical one.
-    for (const port of PORTS) instances.push(await boot(port, scoped, {
+    for (const port of PORTS) instances.push(await boot(port, scopedDatabaseUrl(viaProxy(baseUrl, pgProxy), schema), {
       MURLAN_STATE_ACK_TIMEOUT_MS: String(ACK_TIMEOUT_MS),
       // Nothing here plays a round; an AFK auto-move mid-assertion would be
       // state arriving for a reason that is not a re-send.
@@ -90,7 +101,9 @@ describe("broadcasts cross server instances", {
   after(async () => {
     for (const s of sockets) s.close();
     for (const i of instances) i.child.kill("SIGKILL");
+    await pgProxy?.close();
     try {
+      await dropKeyspace(scoped);
       await dropSchema(baseUrl, schema);
     } finally {
       process.env.DATABASE_URL = baseUrl;
@@ -310,8 +323,9 @@ describe("broadcasts cross server instances", {
     // doubles its own traffic and heals nothing. The observable form is a
     // second copy arriving after the ack timeout.
     let received = 0;
-    bSocket.on("game:state", () => {
+    bSocket.on("game:state", (_state, ack?: () => void) => {
       received += 1;
+      ack?.();
     });
 
     const armed = waitForWhere(bSocket, "game:state", (state) => state.turnDeadlineMs !== undefined);
@@ -340,6 +354,11 @@ describe("broadcasts cross server instances", {
     return room;
   }
 
+  test("no server listens on Postgres for its cluster traffic", () => {
+    assert.ok(statementsMatching(/SELECT 1|select/gi) > 0, "the tap saw no statement at all");
+    assert.equal(statementsMatching(/LISTEN\s/gi), 0, "a server parked a LISTEN on Postgres");
+  });
+
   test("a player on the other instance can play the round out", async () => {
     // `room:start` runs on instance 1, so the game lives in instance 1's
     // `activeGames`. Every move the other player makes arrives at instance 2,
@@ -347,12 +366,15 @@ describe("broadcasts cross server instances", {
     // was playable by exactly the half of it that happened to land on the
     // instance that dealt.
     await openTable();
+    sent.text = "";
     const over = await playRoundOut(
       [aSocket, bSocket],
       () => aSocket.emit("room:start"),
       45_000
     );
     assert.ok(over, "the round never finished");
+    assert.ok(statementsMatching(/active_games/g) > 0, "the tap saw none of the round's writes");
+    assert.equal(statementsMatching(/pg_notify/gi), 0, "a played round still sent its messages through Postgres");
   });
 
   test("the table outlives the instance that owned it", async () => {

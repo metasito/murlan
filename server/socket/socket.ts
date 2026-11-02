@@ -17,6 +17,7 @@ import { trackEvent } from "../shared/events.ts";
 import { redeemSocketTicket, verifySocketTicket } from "./ticket.ts";
 import { isAllowedOrigin } from "../http/cors.ts";
 import { createSocketAdapter } from "./socketAdapter.ts";
+import { startInbox } from "../store/instanceInbox.ts";
 import { registerRoomHandlers } from "./socketRooms.ts";
 import { registerGameplayHandlers } from "./socketGameplay.ts";
 import {
@@ -97,9 +98,9 @@ export function setupSocket(httpServer: HttpServer, sessionMiddleware: RequestHa
     allowRequest: (req, callback) => {
       callback(null, isAllowedOrigin(req.headers.origin));
     },
-    // Websocket only. The Postgres adapter's own documentation requires sticky
-    // sessions, because an HTTP long-polling handshake is spread across several
-    // requests that must all reach one instance — and this platform cannot
+    // Websocket only. A cluster adapter requires sticky sessions, because an
+    // HTTP long-polling handshake is spread across several requests that must
+    // all reach one instance — and this platform cannot
     // promise that: Cloud Run's session affinity is documented as best effort,
     // and explicitly "you cannot assume that a client will always reconnect to
     // the same instance, even when session affinity is enabled". Leaving
@@ -109,6 +110,7 @@ export function setupSocket(httpServer: HttpServer, sessionMiddleware: RequestHa
     maxHttpBufferSize: 1e5,
   });
   io.adapter(createSocketAdapter());
+  startInbox();
   // Before the first connection: a table action forwarded from another
   // instance arrives on `io`, not on a socket, and one that lands before the
   // runtime's listener exists is answered by nobody.

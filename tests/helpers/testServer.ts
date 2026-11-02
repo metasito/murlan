@@ -5,7 +5,10 @@ import type { Server as SocketIOServer } from "socket.io";
 import type { TableRuntime } from "../../server/game/tableRuntime.ts";
 import { createApp } from "../../server/app.ts";
 import { closeDatabase, db as appDb, pool as appPool, type Database } from "../../server/store/db.ts";
-import { socketAdapterPool, socketAdapterReady } from "../../server/socket/socketAdapter.ts";
+import { closeRedis, redisReady } from "../../server/store/redis.ts";
+import { stopInbox } from "../../server/store/instanceInbox.ts";
+import { cancelRevocationRetries } from "../../server/socket/socketRegistry.ts";
+import { dropKeyspace } from "./redisKeys.ts";
 import { closeOwnership } from "../../server/game/gameOwnership.ts";
 import { installClock, type Clock } from "../../server/http/clock.ts";
 
@@ -18,13 +21,6 @@ import { installClock, type Clock } from "../../server/http/clock.ts";
  * whichever suite happened to be starting.
  */
 process.env.MURLAN_PG_POOL_MAX ??= "4";
-
-/**
- * The socket adapter's pool is a second one per app, on the same budget
- * argument as above: one client parked on `LISTEN` plus room to publish is all
- * a single-instance test ever needs.
- */
-process.env.MURLAN_SOCKET_ADAPTER_POOL_MAX ??= "2";
 
 /**
  * `/api/auth/register` allows 100 per process in production, which is still
@@ -95,16 +91,19 @@ export const KEEP_ALIVE_MS = 120_000;
 const HEADERS_TIMEOUT_MS = 130_000;
 
 export function hasDatabase(): boolean {
-  return Boolean(process.env.DATABASE_URL);
+  return Boolean(process.env.DATABASE_URL && process.env.REDIS_URL);
 }
 
 /**
- * Integration tests need a real Postgres. Someone checking out the repo
- * without one must still be able to run `npm test`, so integration suites
- * should skip (via this message) rather than fail.
+ * Integration tests need a real Postgres and Redis. Someone checking out the
+ * repo without them must still be able to run `npm test`, so integration
+ * suites should skip (via this message) rather than fail. CI fails a run that
+ * prints it (`.github/workflows/ci.yml`).
  */
 export function skipMessage(): string {
-  return "DATABASE_URL not set — skipping integration tests (unit tests still run)";
+  return process.env.DATABASE_URL
+    ? "REDIS_URL not set — skipping integration tests (unit tests still run)"
+    : "DATABASE_URL not set — skipping integration tests (unit tests still run)";
 }
 
 export interface TestServer {
@@ -196,10 +195,8 @@ export async function startTestServer(
     server.headersTimeout = HEADERS_TIMEOUT_MS;
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const port = (server.address() as { port: number }).port;
-    // Before any test can call stop(): the adapter strands its Postgres client
-    // if it is closed mid-checkout, and a suite that boots and stops without
-    // connecting a socket is entirely inside that window.
-    await socketAdapterReady();
+    // A broadcast published before the adapter's first read is never read.
+    await redisReady();
 
     return {
       url: `http://127.0.0.1:${port}`,
@@ -215,11 +212,7 @@ export async function startTestServer(
       },
       async stop() {
         try {
-          // Held, not fired and forgotten: `close()` is async and awaits the
-          // adapter's own close, which is what releases the Postgres client
-          // parked on `LISTEN`. Ending that pool before this settles waits on
-          // a client that is still checked out, forever. It cannot be awaited
-          // *here* either — it closes the http server too, and that only
+          // Not awaited here: it closes the http server too, and that only
           // finishes once the connections below are dropped.
           const ioClosed = io.close();
           const closed = new Promise<void>((resolve) => server.close(() => resolve()));
@@ -229,17 +222,15 @@ export async function startTestServer(
           // fire-and-forget writes that outlive it are the pool's, below.
           server.closeAllConnections();
           await closed;
-          // After the http server, before the adapter's pool: closeDatabase
-          // drains the fire-and-forget writes still landing from the requests
-          // and disconnects above.
+          // After the http server: closeDatabase drains the fire-and-forget
+          // writes still landing from the requests and disconnects above.
           await (await closeDatabase()).ended;
           await ioClosed;
-          // The socket adapter holds a second pool whose `LISTEN` client is
-          // released by the close started above. Left open it keeps the test
-          // process alive exactly as the app's pool would.
-          await socketAdapterPool()?.end();
-          // The room-ownership client is a third connection, held open for the
-          // life of the process exactly as the two pools are.
+          cancelRevocationRetries();
+          stopInbox();
+          closeRedis();
+          // The room-ownership client is a second connection, held open for
+          // the life of the process exactly as the pool is.
           await closeOwnership();
         } finally {
           // Always run, even if closing the server/pool above threw: a
@@ -247,6 +238,7 @@ export async function startTestServer(
           // DATABASE_URL pointed at the throwaway connection string.
           restoreClock();
           try {
+            await dropKeyspace(scopedUrl);
             await dropSchema(baseUrl, schema);
           } finally {
             process.env.DATABASE_URL = baseUrl;
@@ -259,6 +251,9 @@ export async function startTestServer(
     // this is the only chance to undo the CREATE SCHEMA above and the
     // DATABASE_URL mutation.
     await (await closeDatabase()).ended;
+    cancelRevocationRetries();
+    stopInbox();
+    closeRedis();
     restoreClock();
     process.env.DATABASE_URL = baseUrl;
     try {

@@ -587,7 +587,7 @@ const GUARDS = [
     ignores: [
       { glob: "server/http/clock.ts", reason: "the real clock is the one wall-time read the rest go through" },
       { glob: "server/store/drainPool.ts", reason: "waits on real pool I/O at shutdown; under an installed fake clock the wait would spin forever" },
-      { glob: "server/socket/socketAdapter.ts", reason: "waits on a real Postgres LISTEN subscription; under an installed fake clock the wait would spin forever" },
+      { glob: "server/store/redis.ts", reason: "times real replies on real Redis sockets; under an installed fake clock the half-open watch would trip on a live link or never on a dead one" },
     ],
     plant: { file: "server/game/stats.ts", code: [
       "const at = Date.now();",

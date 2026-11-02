@@ -10,7 +10,6 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 // Production tuning, not a test seam: these are meant to be set on a deployment.
 const PRODUCTION_CONFIG = new Set([
   "MURLAN_PG_POOL_MAX",
-  "MURLAN_SOCKET_ADAPTER_POOL_MAX",
 ]);
 
 function serverEnvReads(): { file: string; name: string }[] {

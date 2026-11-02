@@ -7,12 +7,12 @@ each line.
 ## Production — breaking any of these takes it down
 
 The host is being chosen (#1107; ADR-0006 retired Replit). `deploy/runtime.json` is the contract
-any host must meet — Node and Postgres majors, SIGTERM grace, proxy hops, connections per
-instance — and the server and tests read it.
+any host must meet — Node, Postgres and Redis majors, SIGTERM grace, proxy hops, connections per
+instance, the cluster's design peak — and the server and tests read it.
 
-- **Boot fails fast without its env** (`server/http/bootEnv.ts`): `SESSION_SECRET` and
-  `DATABASE_URL` always; in production also `PUBLIC_HOST`, and a `DATABASE_URL` carrying an
-  `sslmode`. `PORT` defaults to 5000.
+- **Boot fails fast without its env** (`server/http/bootEnv.ts`): `SESSION_SECRET`,
+  `DATABASE_URL` and `REDIS_URL` always; in production also `PUBLIC_HOST`, and a `DATABASE_URL`
+  carrying an `sslmode`. `PORT` defaults to 5000.
 - **Production runs `deploy/runtime.json`'s Node (22), not the repo's.** `server:build`'s
   `--target=node22` lowers *syntax* only, so a newer-Node builtin compiles at exit 0 and throws in
   production. CI's `build` job boots on that Node and is the one that catches it.
@@ -45,11 +45,14 @@ Verify against source before changing any.
 - **A winner is an engine player id (`player_N`)** — the only identity every client can map at
   every moment `game:round_over` can arrive, and the only one surviving a vacated seat.
 - **Every Postgres connection is opened by `server/store/pool.ts`.** `pg-pool` listens on a client
-  only while it is idle, so a backend terminated under a checked-out one (the socket adapter's
-  `LISTEN`, a transaction between statements) was an unhandled `error` that exited the process
-  (`tests/server/pgConnections.test.ts`, `tests/integration/postgresRestart.test.ts`). The
-  adapter's lost `LISTEN` clients are handed back by
-  `patches/@socket.io+postgres-adapter+0.5.0.patch` (`tests/server/postgresAdapterPatch.test.ts`).
+  only while it is idle, so a backend terminated under a checked-out one (a transaction between
+  statements) was an unhandled `error` that exited the process
+  (`tests/server/pgConnections.test.ts`, `tests/integration/postgresRestart.test.ts`).
+- **Every Redis connection is opened by `server/store/redis.ts`** (`tests/server/pgConnections.test.ts`),
+  the socket adapter's `duplicate()`s included: it gives each one its error listener and the
+  watch that replaces a half-open link (`tests/integration/redisBlackhole.test.ts`). Losing Redis
+  stops cross-instance traffic only; a table on one instance plays on
+  (`tests/integration/redisDegraded.test.ts`).
 - **Every transaction goes through `transaction()` (`server/store/db.ts`), never drizzle's own.**
   Drizzle's leaves a client whose `BEGIN` failed checked out for good, so two such failures wedged
   a two-slot pool (`tests/server/transactionScan.test.ts`).

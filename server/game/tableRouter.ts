@@ -7,9 +7,10 @@
 // action travels to the game rather than the game being read where the action
 // arrived.
 //
-// The carrier is the adapter's own `serverSideEmit`, which the Postgres adapter
-// already implements with acknowledgements. No second channel, and it inherits
-// the adapter's delivery rather than inventing one.
+// The carrier is the adapter's own `serverSideEmit` with acknowledgements
+// (`server/socket/socketAdapter.ts`), which fails rather than answer for a peer
+// it cannot be sure it heard. No second channel, and it inherits the adapter's
+// delivery rather than inventing one.
 import { now } from "../http/clock.ts";
 import { randomUUID } from "node:crypto";
 import type { TableRuntime } from "./tableRuntime.ts";

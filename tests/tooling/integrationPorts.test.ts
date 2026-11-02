@@ -6,15 +6,17 @@ import { readFileSync, readdirSync } from "node:fs";
 
 test("every fixed port a test spawns a server on belongs to one file", () => {
   const owners = new Map<number, string[]>();
+  let declarations = 0;
   for (const file of readdirSync("tests/integration").filter((f) => f.endsWith(".ts"))) {
     const source = readFileSync(`tests/integration/${file}`, "utf8");
-    for (const decl of source.matchAll(/const \w*PORTS?\s*=\s*([^;]+);/g)) {
+    for (const decl of source.matchAll(/const (?:\w*PORTS?|\[\w*PORTS?\])\s*=\s*([^;]+);/g)) {
+      declarations += 1;
       for (const port of decl[1].match(/\b\d{4,5}\b/g) ?? []) {
         owners.set(Number(port), [...(owners.get(Number(port)) ?? []), file]);
       }
     }
   }
-  assert.ok(owners.size >= 3, `found only ${owners.size} ports — the scan no longer reads the declarations`);
+  assert.ok(declarations >= 3, `found only ${declarations} port declarations — the scan no longer reads them`);
   const shared = [...owners].filter(([, files]) => files.length > 1);
   assert.deepEqual(shared, []);
 });

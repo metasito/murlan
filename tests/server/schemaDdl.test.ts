@@ -7,9 +7,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Pool } from "pg";
-import { schemaStatements, assertRenamesApplied, applySchema } from "../../server/store/schemaDdl.ts";
+import { schemaStatements, assertRenamesApplied, applySchema, RETIRED_TABLES } from "../../server/store/schemaDdl.ts";
 
 const statements = schemaStatements();
+
+/** The one drop allowed: a listed retired table, by that exact statement and nothing more. */
+const retiredDrops = new Set<string>(RETIRED_TABLES.map((t) => `DROP TABLE IF EXISTS "${t}";`));
 
 /**
  * The one statement shape allowed to delete: the dedupe that clears the way
@@ -86,7 +89,7 @@ test("an INVALID index is dropped right before it is built again, and nothing el
   for (const list of [rebuilding, rebuildingFromEmpty]) {
     const dropped = list.flatMap((_, i) => rebuiltIndexFor(list, i) ?? []);
     assert.deepEqual(dropped.sort(), ['"events_occurred_idx"', '"friends_accepted_uq"']);
-    assert.deepEqual(list.filter((s) => /^DROP/.test(s)).length, 2);
+    assert.deepEqual(list.filter((s) => /^DROP INDEX/.test(s)).length, 2);
   }
   assert.deepEqual(
     rebuilding.filter((s) => /INDEX/.test(s)).map((s) => s.split(" (")[0]),
@@ -110,7 +113,8 @@ test("every statement is idempotent", () => {
       // A dedupe's second run finds nothing, because the index it precedes
       // forbids exactly what it deletes.
       dedupeTableFor(statements, i) !== undefined ||
-      rebuiltIndexFor(statements, i) !== undefined;
+      rebuiltIndexFor(statements, i) !== undefined ||
+      retiredDrops.has(statement);
     assert.ok(
       idempotent,
       `not idempotent, so a second boot would fail:\n${statement}`
@@ -134,6 +138,7 @@ test("no statement can destroy or rewrite existing data", () => {
     for (const pattern of forbidden) {
       if (dedupe && pattern.source.includes("DELETE")) continue;
       if (rebuilt && pattern.source.includes("DROP")) continue;
+      if (retiredDrops.has(statement) && pattern.source.includes("DROP")) continue;
       assert.doesNotMatch(
         statement,
         pattern,
@@ -157,38 +162,13 @@ test("the session table is part of the bootstrap", () => {
   );
 });
 
-test("the socket adapter's spill table is part of the bootstrap", () => {
-  // `@socket.io/postgres-adapter` will happily issue its own CREATE TABLE. It
-  // must not: a second creator is how a table comes to exist on one database
-  // and nowhere else, and the failure that follows is a silently undelivered
-  // broadcast rather than an error.
-  const create = statements.find((s) =>
-    /CREATE TABLE IF NOT EXISTS "socket_io_attachments"/i.test(s)
-  );
-  assert.ok(create, "the adapter's attachment table must be created at boot");
-  // The adapter reads and writes exactly these.
-  assert.match(create, /"payload" bytea/i);
-  assert.match(create, /"created_at" timestamp with time zone/i);
-  assert.ok(
-    statements.some((s) => /socket_io_attachments_created_at_idx/.test(s)),
-    "the adapter deletes by created_at on a timer from every instance, so that " +
-      "column needs an index"
-  );
-});
-
-test("a serial column carries no separate default", () => {
-  // A serial type *is* its own default. Drizzle reports `hasDefault` for one
-  // with nothing to render, which is the same shape as a `$defaultFn` that
-  // cannot become DDL — emitting `DEFAULT undefined` or throwing are both
-  // wrong, and the throw is what a new bigserial column hit.
-  const create = statements.find((s) =>
-    /CREATE TABLE IF NOT EXISTS "socket_io_attachments"/i.test(s)
-  );
-  assert.ok(create);
-  const idLine = create.split("\n").find((l) => l.includes('"id"'));
-  assert.ok(idLine, "the table must declare an id column");
-  assert.match(idLine, /bigserial/i);
-  assert.doesNotMatch(idLine, /DEFAULT/i);
+test("boot drops the retired socket adapter's spill table, and only tables the schema no longer declares", () => {
+  assert.ok(RETIRED_TABLES.includes("socket_io_attachments"), "its rows hold live cookies and tickets");
+  const drops = statements.filter((s) => /\bDROP\s+TABLE\b/i.test(s));
+  assert.deepEqual(drops, [...retiredDrops], "every listed table is dropped, and nothing else is");
+  for (const table of RETIRED_TABLES) {
+    assert.ok(!statements.some((s) => s.includes(`CREATE TABLE IF NOT EXISTS "${table}"`)), `${table} is still created`);
+  }
 });
 
 test("columns are added before the indexes that may target them", () => {
