@@ -1,28 +1,29 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import {
+  actionFiles,
+  pinnedActions,
+  RECORD,
+  remoteActions,
+  repoRoot,
+  runtimeOf,
+  RUNTIMES,
+  USES,
+  workflowFiles,
+} from "../../scripts/refresh-action-runtimes.mjs";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const isYaml = (name: string) => /\.ya?ml$/.test(name);
+const record = (): Record<string, string> => JSON.parse(readFileSync(path.join(repoRoot, RECORD), "utf8"));
 
-function workflowFiles(): string[] {
-  return readdirSync(path.join(repoRoot, ".github/workflows"))
-    .filter(isYaml)
-    .map((name) => `.github/workflows/${name}`);
+function unrecordedOrOff(refs: string[], recorded: Record<string, string>): string[] {
+  const missing = [...new Set(refs)].filter((ref) => !(ref in recorded)).map((ref) => `${ref}: not recorded`);
+  const off = Object.entries(recorded)
+    .filter(([, using]) => !RUNTIMES.has(using))
+    .map(([ref, using]) => `${ref}: runs.using ${using}`);
+  return [...missing, ...off];
 }
 
-function actionFiles(): string[] {
-  const dir = path.join(repoRoot, ".github/actions");
-  return readdirSync(dir).flatMap((action) =>
-    ["action.yml", "action.yaml"]
-      .map((name) => `.github/actions/${action}/${name}`)
-      .filter((file) => existsSync(path.join(repoRoot, file))),
-  );
-}
-
-const USES = /^\s*(?:-\s+)?uses:\s*(.*)$/;
 const PINNED = /^["']?[\w.-]+\/[\w./-]+@[0-9a-f]{40}["']?\s+#\s*v?\d+\.\d+\.\d+\s*$/;
 
 function unpinnedUses(source: string): string[] {
@@ -59,6 +60,24 @@ describe("the checks themselves", () => {
     assert.equal(countUses(source), 2);
   });
 
+  test("read the runtime an action.yml declares", () => {
+    assert.equal(runtimeOf("name: x\nruns:\n  using: 'node20'\n  main: dist/index.js\n"), "node20");
+    assert.equal(runtimeOf("runs:\n\n  main: a.js\n  using: node24\nbranding:\n  icon: x\n"), "node24");
+    assert.equal(runtimeOf("runs:\n  main: a.js\nbranding:\n  using: node24\n"), undefined);
+    assert.equal(runtimeOf("name: x\n"), undefined);
+    assert.deepEqual(remoteActions(`      - uses: "github/codeql-action/init@${"d".repeat(40)}" # v4.39.1\n    - uses: ./x\n`), [
+      `github/codeql-action/init@${"d".repeat(40)}`,
+    ]);
+  });
+
+  test("flag a recorded node20 runtime and an unrecorded pin", () => {
+    const pin = `actions/checkout@${"e".repeat(40)}`;
+    const other = `actions/cache@${"f".repeat(40)}`;
+    assert.deepEqual(unrecordedOrOff([pin], { [pin]: "node20" }), [`${pin}: runs.using node20`]);
+    assert.deepEqual(unrecordedOrOff([pin, other], { [pin]: "node24" }), [`${other}: not recorded`]);
+    assert.deepEqual(unrecordedOrOff([pin], { [pin]: "composite" }), []);
+  });
+
   test("permissions counts only at the top level", () => {
     assert.equal(hasTopLevelPermissions("jobs:\n  a:\n    permissions:\n      contents: read\n"), false);
     assert.equal(hasTopLevelPermissions("on: push\npermissions:\n  contents: read\n"), true);
@@ -80,6 +99,12 @@ describe("every workflow and composite action", () => {
       assert.deepEqual(unpinnedUses(readFileSync(path.join(repoRoot, file), "utf8")), []);
     });
   }
+
+  test("every pinned action runs on a runtime GitHub still ships", () => {
+    const refs = pinnedActions();
+    assert.ok(refs.length >= 10, `found ${refs.length} distinct remote actions`);
+    assert.deepEqual(unrecordedOrOff(refs, record()), [], `run scripts/refresh-action-runtimes.mjs and commit ${RECORD}`);
+  });
 
   for (const file of workflowFiles()) {
     test(`${file} declares top-level permissions`, () => {

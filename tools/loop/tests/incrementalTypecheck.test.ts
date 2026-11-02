@@ -10,8 +10,13 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
-const TSC = require.resolve("typescript/bin/tsc");
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const typecheck = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).scripts.typecheck as string;
+// `typecheck` runs TypeScript 7 and `typecheck:strict` runs 6 (scripts/checkStrictIndexed.mjs); both keep build info.
+const COMPILERS = {
+  typecheck: path.join(ROOT, /^node (\S+) /.exec(typecheck)![1]!),
+  "typecheck:strict": require.resolve("typescript/bin/tsc"),
+};
 
 const options = (file = "tsconfig.json") => {
   const { config } = ts.readConfigFile(path.join(ROOT, file), ts.sys.readFile);
@@ -28,7 +33,7 @@ test("both typecheck configs are incremental, with their build info beside the c
   assert.match(fs.readFileSync(path.join(ROOT, ".gitignore"), "utf8"), /^\*\.tsbuildinfo$/m);
 });
 
-test("a cached build still reports an error a dependency's edit introduces, run after run", () => {
+for (const [script, TSC] of Object.entries(COMPILERS)) test(`${script}: a cached build still reports an error a dependency's edit introduces, run after run`, () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "incremental-"));
   try {
     const { incremental, noEmit } = options();
