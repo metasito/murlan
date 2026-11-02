@@ -56,6 +56,14 @@ describe('game:state order', () => {
     expect(result.current.gameState?.passCount).toBe(1);
   });
 
+  it('keeps a table’s order across a visit to another', async () => {
+    const { result, live } = await mount();
+    await live.deliver('game:state', at(9, 50, 50, 'R1'), () => {});
+    await live.deliver('game:state', at(2, 1, 1, 'R2'), () => {});
+    await live.deliver('game:state', at(9, 49, 49, 'R1'), () => {});
+    expect(result.current.gameState?.passCount).toBe(1);
+  });
+
   it('acknowledges a state it drops, so it is not sent again', async () => {
     const { live } = await mount();
     await live.deliver('game:state', at(3, 11, 11), () => {});

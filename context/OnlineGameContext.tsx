@@ -31,7 +31,7 @@ import { clearReactions, pushReaction } from "@/lib/reactions";
 import { joinCode } from "@/lib/deepLink";
 import { handlesFor } from "@/lib/tableHandles";
 import { useRejoin } from "@/context/useRejoin";
-import { orderOf, supersedes } from "@/context/stateOrder";
+import { orderOf, supersedes } from "@/shared/stateOrder";
 import type { MatchLength } from "@/lib/game/gameEngine";
 import type { MatchVerdict } from "@/lib/game/matchState";
 import {
@@ -44,6 +44,9 @@ import { markStale, stale } from "@/lib/queries";
 import { useOwnLink } from "@/lib/useOwnLink";
 import { gameErrorText } from "@/components/table/spokenLabels";
 import { linkPill, type LinkPill, type OwnLink } from "@/lib/ownLink";
+
+/** How many tables a client remembers the order of: the one it is at and the few it just left. */
+const TABLES_ORDERED = 8;
 
 export type RoomState = WireRoomState;
 
@@ -339,7 +342,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
   const roomRef = useRef<RoomState | null>(null);
   const gameStateRef = useRef<WireGameState | null>(null);
-  const stateOrderRef = useRef<StateOrder | null>(null);
+  /** The last order applied for each table seen lately, so a table returned to keeps its own. */
+  const stateOrderRef = useRef(new Map<string, StateOrder>());
   const reconnectNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The server stamps every game:state with the viewer's seat index
   // (sanitizeStateForPlayer). -1 is an explicit "unknown" — never a real seat.
@@ -359,8 +363,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const resetTable = useCallback(() => {
     rejoin.release();
     roomRef.current = null;
+    const left = gameStateRef.current?.roomId;
+    if (left !== undefined) stateOrderRef.current.delete(left);
     gameStateRef.current = null;
-    stateOrderRef.current = null;
     setRoom(null);
     setGameState(null);
     setMySeatIndex(-1);
@@ -460,8 +465,16 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       if (!parsed.success) return unreadable("game:state", parsed.error);
       const state = parsed.data as unknown as WireGameState;
       const order = orderOf(state);
-      if (!supersedes(order, stateOrderRef.current)) return;
-      stateOrderRef.current = order;
+      const orders = stateOrderRef.current;
+      if (order) {
+        if (!supersedes(order, orders.get(order.roomId) ?? null)) return;
+        orders.delete(order.roomId);
+        orders.set(order.roomId, order);
+        for (const roomId of orders.keys()) {
+          if (orders.size <= TABLES_ORDERED) break;
+          orders.delete(roomId);
+        }
+      }
       rejoin.answered();
       if (typeof state.turnSecondsRemaining === "number") {
         setTurnDeadline({

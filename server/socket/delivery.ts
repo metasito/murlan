@@ -12,6 +12,7 @@ import { instanceId } from "../store/redis.ts";
 import { onInstanceMessage, sendToInstance, type InstanceHandler, type InstanceMessage } from "../store/instanceInbox.ts";
 import { instancesOf } from "../store/presence.ts";
 import { roomStore } from "../store/roomStore.ts";
+import { supersedes } from "../../shared/stateOrder.ts";
 
 const DELIVER = "deliver";
 const STATE_NACK = "state-nack";
@@ -29,6 +30,11 @@ interface Pending {
   state: OrderedGameState;
   retry: boolean;
   missed: () => void;
+}
+
+interface Slot {
+  sent: Pending;
+  queued: Pending | null;
 }
 
 export interface DeliveryOptions {
@@ -61,7 +67,7 @@ export function deliveryOutbox(io: SocketServer, options: DeliveryOptions = {}):
 
   // ── At most one state outstanding per socket and table, and one queued behind it ──
   // Per socket, not per account: a reconnect's new socket must not wait out the old one's ack.
-  const slots = new Map<string, { queued: Pending | null }>();
+  const slots = new Map<string, Slot>();
 
   function offer(userId: string, pending: Pending): void {
     const sockets = socketsOf(userId);
@@ -78,20 +84,22 @@ export function deliveryOutbox(io: SocketServer, options: DeliveryOptions = {}):
       const key = `${socket.id}\n${pending.state.roomId}`;
       const slot = slots.get(key);
       if (slot) {
-        slot.queued = once;
+        // By order, not arrival: an old owner's late state must not displace a new owner's.
+        if (supersedes(once.state, (slot.queued ?? slot.sent).state)) slot.queued = once;
         continue;
       }
-      const fresh = { queued: null };
+      const fresh: Slot = { sent: once, queued: null };
       slots.set(key, fresh);
       emitState(socket, key, fresh, once);
     }
   }
 
-  function emitState(socket: GameSocket, key: string, slot: { queued: Pending | null }, pending: Pending): void {
+  function emitState(socket: GameSocket, key: string, slot: Slot, pending: Pending): void {
     if (!socket.connected) {
       slots.delete(key);
       return;
     }
+    slot.sent = pending;
     socket.timeout(stateAckTimeoutMs()).emit("game:state", pending.state, (err: unknown) => {
       if (err) stateAcksMissed.inc();
       const next = slot.queued;
@@ -226,27 +234,30 @@ export function deliveryOutbox(io: SocketServer, options: DeliveryOptions = {}):
     }
   });
 
-  // ── A room's emits leave in the order they were made, whichever had to read its seats ──
+  // ── A room's emits and states leave in the order they were made, whichever had to read its seats ──
   const roomTails = new Map<string, Promise<void>>();
 
-  function emitToRoom(roomId: string, out: Outgoing): void {
-    const held = heldAudience(roomId);
+  function inRoomOrder<T>(roomId: string, ready: T | Promise<T>, run: (value: T) => void): void {
     const behind = roomTails.get(roomId);
-    if (held && !behind) return emitTo([...held, ...membersHere(roomId)], out);
-    const audience = held
-      ? Promise.resolve(held)
-      : seatsOf(roomId).catch((err: unknown) => {
-          logger.warn({ err, roomId }, "Could not read a room's seats: its emit reaches this instance's members only");
-          return [];
-        });
+    if (!behind && !(ready instanceof Promise)) return run(ready);
     const sent: Promise<void> = (behind ?? Promise.resolve())
-      .then(() => audience)
-      .then((users) => emitTo([...users, ...membersHere(roomId)], out))
-      .catch((err: unknown) => logger.error({ err, roomId }, "A room emit failed to leave"));
+      .then(() => ready)
+      .then(run)
+      .catch((err: unknown) => logger.error({ err, roomId }, "A room's message failed to leave"));
     roomTails.set(roomId, sent);
     void sent.finally(() => {
       if (roomTails.get(roomId) === sent) roomTails.delete(roomId);
     });
+  }
+
+  function emitToRoom(roomId: string, out: Outgoing): void {
+    const audience =
+      heldAudience(roomId) ??
+      seatsOf(roomId).catch((err: unknown) => {
+        logger.warn({ err, roomId }, "Could not read a room's seats: its emit reaches this instance's members only");
+        return [];
+      });
+    inRoomOrder(roomId, audience, (users) => emitTo([...users, ...membersHere(roomId)], out));
   }
 
   const emitter = (deliver: (out: Outgoing) => void): Emitter => ({
@@ -258,7 +269,7 @@ export function deliveryOutbox(io: SocketServer, options: DeliveryOptions = {}):
     user: (userId) => emitter((out) => emitTo([userId], out)),
     state(userId, render) {
       const state = render(false);
-      if (state) sendState(userId, state, false, render);
+      if (state) inRoomOrder(state.roomId, state, (s) => sendState(userId, s, false, render));
     },
   };
 }

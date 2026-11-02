@@ -27,6 +27,8 @@ function cluster() {
     const rooms = new Map<string, Set<string>>();
     const sockets = new Map<string, unknown>();
     const emitted: { userId: string; event: string; args: unknown[] }[] = [];
+    /** Every send to a socket here, `game:state` included, in the order it left. */
+    const sent: string[] = [];
     const states = new Map<string, { state: OrderedGameState; ack: Ack }[]>();
     const join = (room: string, id: string) => rooms.set(room, new Set([...(rooms.get(room) ?? []), id]));
     const io = stubTransport({
@@ -37,6 +39,7 @@ function cluster() {
             for (const target of targets) {
               for (const id of rooms.get(target) ?? []) {
                 emitted.push({ userId: (sockets.get(id) as { data: { userId: string } }).data.userId, event, args });
+                sent.push(event);
               }
             }
           },
@@ -61,6 +64,7 @@ function cluster() {
     return {
       out,
       emitted,
+      sent,
       connect(userId: string, id = `${name}:${userId}`) {
         sockets.set(id, {
           id,
@@ -68,6 +72,7 @@ function cluster() {
           data: { userId },
           timeout: () => ({
             emit: (_event: string, state: OrderedGameState, ack: Ack) => {
+              sent.push("game:state");
               states.set(userId, [...(states.get(userId) ?? []), { state, ack }]);
             },
           }),
@@ -92,8 +97,8 @@ function cluster() {
 
 const ticks = () => new Promise((resolve) => setImmediate(resolve));
 
-function stateOf(seq: number, label = ""): OrderedGameState {
-  return { roomId: ROOM, epoch: 1, seq, label } as unknown as OrderedGameState;
+function stateOf(seq: number, label = "", epoch = 1): OrderedGameState {
+  return { roomId: ROOM, epoch, seq, label } as unknown as OrderedGameState;
 }
 
 const missed = async () => ((await register.getSingleMetric("state_acks_missed_total")?.get())?.values[0]?.value ?? 0);
@@ -110,6 +115,17 @@ test("50 states to one slow socket leave one outstanding and one queued, and the
   a.states("ana")[1].ack(null);
   await ticks();
   assert.equal(a.states("ana").length, 2, "a state was sent after the queue emptied");
+});
+
+test("an old owner's late state never displaces a new owner's in the queue", async () => {
+  const { instance } = cluster();
+  const a = instance("a");
+  a.connect("ana");
+  a.out.state("ana", () => stateOf(40, "", 1));
+  a.out.state("ana", () => stateOf(1, "", 2));
+  a.out.state("ana", () => stateOf(41, "", 1));
+  a.states("ana")[0].ack(null);
+  assert.deepEqual(a.states("ana").map((s) => [s.state.epoch, s.state.seq]), [[1, 40], [2, 1]]);
 });
 
 test("a reconnected socket is sent the table at once, not after the old socket's unanswered state", async () => {
@@ -226,6 +242,24 @@ test("a lobby's emits read its seats and leave in the order they were made", asy
   release(["ana"]);
   await ticks();
   assert.deepEqual(a.emitted.map((e) => (e.args[0] as { first: boolean }).first), [true, false]);
+});
+
+test("a table's first state waits behind the room emits still reading their seats", async () => {
+  let release: (ids: string[]) => void = () => {};
+  const slow = new Promise<string[]>((resolve) => (release = resolve));
+  const { instance } = cluster();
+  const a = instance("a", () => slow);
+  a.connect("ana");
+
+  a.out.room(ROOM).emit("room:state", { status: "waiting" } as never);
+  activeGames.set(ROOM, onlineTable({ roomId: ROOM, playerMap: { 0: "ana" } }));
+  a.out.room(ROOM).emit("room:state", { status: "in_progress" } as never);
+  a.out.state("ana", () => stateOf(1));
+  await ticks();
+  assert.deepEqual(a.sent, [], "the deal overtook the room's own emits");
+  release(["ana"]);
+  await ticks();
+  assert.deepEqual(a.sent, ["room:state", "room:state", "game:state"]);
 });
 
 test("a member of the room on this instance is reached even when the seats cannot be read", async () => {
