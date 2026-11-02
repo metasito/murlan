@@ -13,6 +13,7 @@ import {
 import { createHmac } from "node:crypto";
 import { RedisStore, type RedisReply } from "rate-limit-redis";
 import { Counter } from "prom-client";
+import { defineScript, type CommandParser } from "redis";
 import type { Request, RequestHandler } from "express";
 import { openRedis, redisKey, type RedisClient } from "../store/redis.ts";
 import { testOnlyEnv } from "./testOnlyEnv.ts";
@@ -81,14 +82,14 @@ const MAX_REARMS = 2;
 const MISSES_BEFORE_PAUSE = 3;
 const SHARED_COUNT_PAUSE_MS = 1_000;
 
-let limitsConnection: RedisClient | null = null;
+let limitsConnection: RedisClient<typeof LIMIT_SCRIPTS> | null = null;
 let missesInARow = 0;
 // Monotonic, not the installable clock: a test's fake clock dated ahead would pause Redis for good.
 let pausedUntil = 0;
 
 /** Opens the connection every limiter counts over, at boot; `closeRedis` ends it. */
 export function connectRateLimits(): void {
-  if (!limitsConnection?.isOpen) limitsConnection = openRedis("limits", { offlineQueue: false });
+  if (!limitsConnection?.isOpen) limitsConnection = openRedis("limits", { offlineQueue: false, scripts: LIMIT_SCRIPTS });
 }
 
 function sendLimitCommand(args: string[]): Promise<RedisReply> {
@@ -148,10 +149,18 @@ function sharedKey(limiter: string, key: string): string {
 }
 
 // rate-limit-redis's own decrement is a bare DECR, which recreates an expired or flushed key at -1
-// with no expiry: a caller's hash kept forever.
-const DECREMENT_LIVE_COUNT = `local hits = tonumber(redis.call("GET", KEYS[1]))
+// with no expiry: a caller's hash kept forever. No Valkey 9.1 command decrements only a live key.
+const decrementLiveCount = defineScript({
+  SCRIPT: `local hits = tonumber(redis.call("GET", KEYS[1]))
 if hits and hits > 0 and redis.call("PTTL", KEYS[1]) > 0 then return redis.call("DECR", KEYS[1]) end
-return 0`;
+return 0`,
+  NUMBER_OF_KEYS: 1,
+  parseCommand(parser: CommandParser, key: string) {
+    parser.pushKey(key);
+  },
+  transformReply: (reply: number) => reply,
+});
+const LIMIT_SCRIPTS = { decrementLiveCount };
 
 /**
  * Counts every request twice: in Redis, the cluster's count, which holds across instances and
@@ -217,7 +226,7 @@ class SharedStore implements Store {
   async decrement(key: string): Promise<void> {
     await this.#memory.decrement(key);
     if (((await this.#unshared.get(key))?.totalHits ?? 0) > 0) return this.#unshared.decrement(key);
-    await this.#shared(key, (k) => sendLimitCommand(["EVAL", DECREMENT_LIVE_COUNT, "1", k])).catch(() => {});
+    await this.#shared(key, (k) => limitsConnection!.decrementLiveCount(k)).catch(() => {});
   }
 
   async get(key: string): Promise<ClientRateLimitInfo | undefined> {
