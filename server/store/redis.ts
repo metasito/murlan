@@ -4,7 +4,7 @@ import runtime from "../../deploy/runtime.json" with { type: "json" };
 import { logger } from "../shared/logger.ts";
 import { redisReconnects } from "../shared/metrics.ts";
 
-export { WatchError } from "redis";
+export { defineScript, WatchError, type CommandParser } from "redis";
 
 export type RedisUse = "adapter" | "inbox" | "presence" | "limits" | "owners" | "health";
 type NoScripts = Record<never, never>;

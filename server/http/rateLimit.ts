@@ -13,9 +13,8 @@ import {
 import { createHmac } from "node:crypto";
 import { RedisStore, type RedisReply } from "rate-limit-redis";
 import { Counter } from "prom-client";
-import { defineScript, type CommandParser } from "redis";
 import type { Request, RequestHandler } from "express";
-import { openRedis, redisKey, type RedisClient } from "../store/redis.ts";
+import { defineScript, openRedis, redisKey, type CommandParser, type RedisClient } from "../store/redis.ts";
 import { testOnlyEnv } from "./testOnlyEnv.ts";
 
 /**
