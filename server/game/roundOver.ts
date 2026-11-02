@@ -7,11 +7,10 @@ import { resolveRoundEnd, seatTotal } from "./onlineGameLogic.ts";
 import { closeMatch, applyRoundFold, rollForward } from "./matchLedger.ts";
 import { replaySeatsOf } from "./replayShape.ts";
 import { firstTargetFor } from "../../lib/game/gameEngine.ts";
+import { activeGames } from "./gameRoom.ts";
+import { isTransientDbError, type CommittedRatings } from "./roundResults.ts";
 import type { RoundOverPayload } from "../../shared/protocol.ts";
-import type { GameMode, LastMove } from "../../lib/game/gameEngine.ts";
-import type { GameResult } from "../../lib/achievements.ts";
-import type { ReplayMove, ReplaySeat } from "../../lib/game/replay.ts";
-import type { RatedPreview } from "./ratings.ts";
+import type { PendingResult, RoundOutcome } from "../../shared/persistedEnvelope.ts";
 
 /**
  * The database writes a finished round performs, taken as an argument rather
@@ -27,37 +26,18 @@ export interface RoundOverWriters {
     status: "waiting" | "in_progress" | "finished"
   ) => Promise<void>;
   persistGameState: (roomId: string, game: OnlineGameState) => Promise<unknown>;
-  recordGameResult: (
-    results: GameResult[],
-    gameMode: GameMode,
-    finishedAt: Date,
-    ratingDeltas?: Map<string, number>
-  ) => Promise<void>;
-  /**
-   * What the round is about to do to each seat's rating. Read before
-   * `game:round_over` goes out, because the inputs stop existing once the rated
-   * write lands — see server/game/ratings.ts.
-   */
-  previewRatedDeltas: (
-    seatResults: { userId: string; placement: number }[],
-    gameMode: string,
-    finishedAt: Date
-  ) => Promise<Map<string, RatedPreview>>;
-  /** Resolves to the deltas it committed, empty when it rated nobody. */
-  recordRatedResult: (
-    seatResults: { userId: string; placement: number }[],
-    gameMode: string,
-    finishedAt: Date
-  ) => Promise<Map<string, number>>;
-  saveReplay: (input: {
-    roomId: string;
-    finishedAt: Date;
-    gameMode: GameMode;
-    seats: ReplaySeat[];
-    moves: ReplayMove[];
-    opening: LastMove | null;
-    finishingOrder: string[];
-  }) => Promise<void>;
+  /** The round's final state with its pending results, ahead of every later write for the table. */
+  persistFinalState: (roomId: string, game: OnlineGameState) => Promise<unknown>;
+  /** Commits `game.pendingResults` oldest first, after every write queued before it. Never rejects. */
+  applyPendingResults: (roomId: string, game: OnlineGameState) => Promise<AppliedResults>;
+}
+
+/** `held: false`: this process no longer owns the table, and committed nothing more. */
+export interface AppliedResults {
+  /** `ratings` is null for a round found already applied, whose ratings this process never saw. */
+  applied: { entry: PendingResult; ratings: CommittedRatings | null }[];
+  held: boolean;
+  failure?: unknown;
 }
 
 /** docs/GAME-RULES.md § Decisions, "The next-round vote deadline". The next deal clears it. */
@@ -65,13 +45,14 @@ export function armVoteDeadline(rt: TableRuntime, roomId: string) {
   arm("voteDeadline", roomId, voteDeadlineMs(), () => void rt.expireVoteDeadline(roomId));
 }
 
-export async function handleRoundOver(rt: TableRuntime, roomId: string, game: OnlineGameState) {
-  const { writers } = rt;
-  // Cleared here, synchronously, before anything below can await: the caller
-  // already flipped `state.roundOver` true in this same tick, so a rejoin
-  // reading `game.lastRoundOverPayload` must never be able to observe that
-  // flag alongside the previous round's payload. The real assignment below
-  // runs after a DB round trip; nothing between here and there may add one.
+/**
+ * Resolves a finished round and hands its results to the commit. Never rejects; settles once
+ * `game:round_over` has gone out, or the commit was left to retry.
+ */
+export function handleRoundOver(rt: TableRuntime, roomId: string, game: OnlineGameState): Promise<void> {
+  // Cleared here, synchronously: the caller already flipped `state.roundOver`
+  // true in this same tick, so a rejoin reading `game.lastRoundOverPayload`
+  // must never be able to observe that flag alongside the previous round's payload.
   game.lastRoundOverPayload = undefined;
   const state = game.gameState;
   clearRoomTimers(roomId);
@@ -96,27 +77,7 @@ export async function handleRoundOver(rt: TableRuntime, roomId: string, game: On
   // Before the awaits below, so no rejoin can read the vote without its deadline.
   if (!game.matchOver) armVoteDeadline(rt, roomId);
 
-  // One clock for the preview, the emit and the rated write below: two reads
-  // of the clock can straddle a month boundary, and the season key is
-  // derived from it — the delta shown would then belong to a different season
-  // from the one written.
-  const finishedAt = new Date(now());
-  // Awaited, unlike the writes below, and deliberately: this is a read, and
-  // it is the only moment the delta exists. `user_ratings` keeps only the
-  // current rating, so once the rated write lands nothing can reconstruct what
-  // the round changed. A failure here costs the panel its number, never the
-  // round — hence the empty map rather than a throw.
-  const ratedPreview = result.recordable
-    ? await writers
-        .previewRatedDeltas(result.gameResults, game.gameState.gameMode, finishedAt)
-        .catch((err) => {
-          logger.warn({ err, roomId }, "Could not read the round's rating deltas");
-          return new Map<string, RatedPreview>();
-        })
-    : new Map<string, RatedPreview>();
-  const ratingDeltasByUser = new Map([...ratedPreview].map(([userId, p]) => [userId, p.delta]));
-
-  const over: RoundOverPayload = {
+  const outcome: RoundOutcome = {
     finishingOrder: state.finishingOrder,
     scores: detailed,
     matchTarget: game.matchTarget,
@@ -126,22 +87,9 @@ export async function handleRoundOver(rt: TableRuntime, roomId: string, game: On
     matchWinnerIds: winnerEngineIds,
     matchContinues: true,
     isDraw,
-    // Keyed by user id, and absent for a table that earns no rating — an
-    // offline or teams round, or one without two rated finishers. The client
-    // shows its empty state on absence rather than on a zero, which is a real
-    // outcome.
-    ratingDeltas: Object.fromEntries(ratingDeltasByUser),
-    ratingsAfter: Object.fromEntries(
-      [...ratedPreview].map(([userId, { rating, rounds }]) => [userId, { rating, rounds }])
-    ),
     recorded: result.recordable,
     voided: false,
   };
-  rt.out.room(roomId).emit("game:round_over", over);
-  if (!game.matchOver) rt.out.room(roomId).emit("game:vote_state", voteStateOf(game));
-  // Kept so `announceRejoin` can hand this round's scores to a client that
-  // rejoins after everyone still in the room has already been sent them.
-  game.lastRoundOverPayload = over;
 
   // The one record of how a round resolved. `round_replays` is not a substitute:
   // it is written only for a table with a human seat and a live moveLog, and it
@@ -162,84 +110,119 @@ export async function handleRoundOver(rt: TableRuntime, roomId: string, game: On
     "Hand over"
   );
 
-  await writers
-    .updateRoomStatus(roomId, "finished")
-    .catch((err) =>
-      logger.warn(
-        { err, roomId },
-        "Failed to set rooms.status = finished after the round ended"
-      )
-    );
+  if (!result.recordable) {
+    logger.info({ roomId }, "Bot-majority table — stats, history and achievements not recorded");
+    announce(rt, game, outcome, null);
+    return closeRound(rt, roomId, game, "Failed to set rooms.status = finished after the round ended");
+  }
+
+  // One clock for the whole entry: the season key is derived from it, and the
+  // history row and the replay are paired on it.
+  const finishedAt = Math.max(now(), (game.pendingResults.at(-1)?.round ?? 0) + 1);
+  game.pendingResults.push({
+    round: finishedAt,
+    finishedAt,
+    gameMode: game.gameState.gameMode,
+    results: result.gameResults,
+    outcome,
+    seats: replaySeatsOf(state.players, game.playerMap, game.vacatedSeats),
+    opening: game.replayOpening ?? null,
+    moveLog: game.moveLog && game.moveLog.length > 0 ? [...game.moveLog] : null,
+  });
+  game.roundOverDue = finishedAt;
+  void rt.writers.persistFinalState(roomId, game);
+  return settleRoundResults(rt, game);
+}
+
+/** Per room: the delay before the next retry of a transient failure, and its timer. */
+const retries = new Map<string, { delayMs: number; timer: ReturnType<typeof setTimeout> | null }>();
+const RETRY_FIRST_MS = 500;
+const RETRY_MAX_MS = 5_000;
+let failedCommits = 0;
+
+/**
+ * Commits the table's pending rounds and announces the one the table is waiting on: with the
+ * committed ratings, or, when its commit failed, without them so the table moves on. A transient
+ * failure is retried on a backoff while this process holds the table; any other is logged and
+ * counted, and waits for the next round's commit, a restore or the sweep. Never rejects.
+ */
+export async function settleRoundResults(rt: TableRuntime, game: OnlineGameState): Promise<void> {
+  const { roomId } = game;
+  const { applied, held, failure } = await rt.writers.applyPendingResults(roomId, game);
+  for (const { entry, ratings } of applied) {
+    if (game.roundOverDue === entry.round) announce(rt, game, entry.outcome, ratings);
+  }
+  if (!held) return;
+  if (failure === undefined) {
+    const retry = retries.get(roomId);
+    if (retry?.timer) clearTimeout(retry.timer);
+    retries.delete(roomId);
+    return;
+  }
+
+  const head = game.pendingResults[0];
+  if (isTransientDbError(failure)) {
+    logger.warn({ err: failure, roomId, round: head?.round }, "A finished round's results did not commit — retrying");
+    scheduleRetry(rt, roomId);
+  } else {
+    failedCommits += 1;
+    logger.error({ err: failure, roomId, entry: head }, "A finished round's results failed to commit — left pending");
+  }
+  const due = game.pendingResults.find((e) => e.round === game.roundOverDue);
+  if (due) {
+    announce(rt, game, due.outcome, null);
+    void rt.writers
+      .updateRoomStatus(roomId, "finished")
+      .catch((err: unknown) => logger.warn({ err, roomId }, "Failed to set rooms.status = finished after the round ended"));
+  }
+}
+
+function scheduleRetry(rt: TableRuntime, roomId: string): void {
+  const retry = retries.get(roomId) ?? { delayMs: RETRY_FIRST_MS, timer: null };
+  retries.set(roomId, retry);
+  if (retry.timer) return;
+  const delayMs = retry.delayMs;
+  retry.delayMs = Math.min(delayMs * 2, RETRY_MAX_MS);
+  retry.timer = setTimeout(() => {
+    retry.timer = null;
+    // Whichever game holds the table now: a new match at it carries the same pending rounds.
+    const live = activeGames.get(roomId);
+    if (live && live.pendingResults.length > 0) void settleRoundResults(rt, live);
+    else retries.delete(roomId);
+  }, delayMs);
+  (retry.timer as unknown as { unref?: () => void }).unref?.();
+}
+
+/** How long the oldest round this process holds has waited for its results commit; 0 with none. */
+export function roundResultsPendingAgeSeconds(): number {
+  let oldest = Infinity;
+  for (const game of activeGames.values()) oldest = Math.min(oldest, game.pendingResults[0]?.finishedAt ?? Infinity);
+  return oldest === Infinity ? 0 : Math.max(0, (now() - oldest) / 1000);
+}
+
+/** Commits that failed for a reason a retry cannot fix, since the process started. */
+export function roundResultsFailureCount(): number {
+  return failedCommits;
+}
+
+function announce(rt: TableRuntime, game: OnlineGameState, outcome: RoundOutcome, ratings: CommittedRatings | null): void {
+  game.roundOverDue = undefined;
+  const over: RoundOverPayload = { ...outcome, ratingDeltas: ratings?.ratingDeltas ?? {}, ratingsAfter: ratings?.ratingsAfter ?? {} };
+  rt.out.room(game.roomId).emit("game:round_over", over);
+  if (!outcome.matchOver) rt.out.room(game.roomId).emit("game:vote_state", voteStateOf(game));
+  // Kept so `announceRejoin` can hand this round's scores to a client that
+  // rejoins after everyone still in the room has already been sent them.
+  game.lastRoundOverPayload = over;
+}
+
+/** A round that records nothing: its status and its row, through the chain. */
+async function closeRound(rt: TableRuntime, roomId: string, game: OnlineGameState, failed: string): Promise<void> {
+  await rt.writers.updateRoomStatus(roomId, "finished").catch((err: unknown) => logger.warn({ err, roomId }, failed));
   // The row is kept (not deleted) so a restart between rounds restores the
   // running match instead of silently resetting the scoreboard. Awaited so a
   // caller that disposes the table straight after cannot delete the row
   // before this write lands on it.
-  await writers.persistGameState(roomId, game);
-
-  // ── Stats / history / achievements ────────────────────────────────────────
-  //
-  // Deliberately placed after every broadcast/persist above, not before: the
-  // game-over guarantee is "a stats write must never block or fail the
-  // game", and handleRoundOver is itself async with two call sites that
-  // invoke it as bare `void` (runBotTurn and handleAutoPass). The
-  // shaping itself already happened, purely, in resolveRoundEnd — this block
-  // is only the (fire-and-forget) writes, still guarded so a throw here
-  // cannot reject handleRoundOver's own promise.
-  try {
-    const { gameResults, recordable } = result;
-    if (!recordable) {
-      logger.info(
-        { roomId },
-        "Bot-majority table — stats, history and achievements not recorded"
-      );
-    } else {
-      // Deliberately not awaited: a stats write must never be able to block
-      // or delay whatever runs after handleRoundOver at any of its call sites.
-      // Chained behind the previous round's writes, because the streak upsert
-      // reads whatever the last committed round left.
-      //
-      // The ladder moves on the same gate as stats: a bot-majority table
-      // awards nothing, or a private room of bots would be free rating.
-      // recordRatedResult declines a teams result on its own (placement
-      // belongs to the team, not to either partner). History records what the
-      // ladder committed, not the preview, so a declined write leaves null.
-      const mode = game.gameState.gameMode;
-      game.resultWrites = (game.resultWrites ?? Promise.resolve()).then(async () => {
-        const committed = await writers.recordRatedResult(gameResults, mode, finishedAt).catch((err) => {
-          logger.error({ err, roomId }, "Failed to record rated result");
-          return new Map<string, number>();
-        });
-        if (committed.size < ratingDeltasByUser.size) {
-          logger.warn({ roomId }, "The ladder declined a round its preview rated");
-        }
-        await writers.recordGameResult(gameResults, mode, finishedAt, committed);
-      }).catch((err) => logger.error({ err, roomId }, "Failed to record game results"));
-    }
-
-    // On the same `recordable` gate as the stats above: a replay is reached
-    // through its `round_history` row, so one written without a row is
-    // openable from nowhere.
-    //
-    // Not awaited, and the table is not required to exist: until `db:push` has
-    // run the insert fails, is logged, and the only consequence is an empty
-    // replays list.
-    if (recordable && game.moveLog && game.moveLog.length > 0) {
-      writers.saveReplay({
-        roomId,
-        finishedAt,
-        gameMode: game.gameState.gameMode,
-        seats: replaySeatsOf(state.players, game.playerMap, game.vacatedSeats),
-        moves: game.moveLog,
-        opening: game.replayOpening ?? null,
-        finishingOrder: state.finishingOrder,
-      }).catch((err) => logger.error({ err, roomId }, "Failed to save replay"));
-    }
-  } catch (err) {
-    // Belt-and-braces: even the synchronous work above must not be able to
-    // throw back into handleRoundOver's own promise (see the comment above
-    // this block).
-    logger.error({ err, roomId }, "Failed to schedule stats/ratings/replay writes");
-  }
+  await rt.writers.persistGameState(roomId, game);
 }
 
 /**
@@ -255,7 +238,6 @@ async function closeMatchWithoutScoring(
   game: OnlineGameState,
   voided: boolean
 ): Promise<void> {
-  const { writers } = rt;
   game.lastRoundOverPayload = undefined;
   clearRoomTimers(roomId);
   clearRoomDisconnectTimers(game);
@@ -279,16 +261,7 @@ async function closeMatchWithoutScoring(
   };
   rt.out.room(roomId).emit("game:round_over", over);
   game.lastRoundOverPayload = over;
-
-  await writers
-    .updateRoomStatus(roomId, "finished")
-    .catch((err) =>
-      logger.warn(
-        { err, roomId },
-        "Failed to set rooms.status = finished after the match closed with no further scoring"
-      )
-    );
-  await writers.persistGameState(roomId, game);
+  await closeRound(rt, roomId, game, "Failed to set rooms.status = finished after the match closed with no further scoring");
 }
 
 /**

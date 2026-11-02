@@ -51,6 +51,8 @@ function liveGame(roomId: string): OnlineGameState {
     dealFirstSeat: 0,
     spectators: new Set(),
     moveLog: null,
+    pendingResults: [],
+    landedResults: new Set(),
   };
 }
 

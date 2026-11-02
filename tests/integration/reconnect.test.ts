@@ -754,8 +754,8 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
   /**
    * #808 review: `handleRoundOver` flips no flag itself — its caller sets
    * `gameState.roundOver = true` synchronously, in the same tick it invokes
-   * `handleRoundOver`, which then awaits a real DB round trip
-   * (`previewRatedDeltas`) before broadcasting `game:round_over` and updating
+   * `handleRoundOver`, whose `game:round_over` waits on the round's results
+   * commit (`applyPendingResults`) before it goes out and updates
    * `lastRoundOverPayload`. A rejoin landing inside that window used to read
    * `roundOver: true` next to the *previous* round's payload — #808's own
    * symptom, through a different door. Widens the real window into one this
@@ -764,7 +764,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    */
   test("a rejoin inside handleRoundOver's own write is not handed the previous round's game:over", async () => {
     const writers = server.rt.writers;
-    const realPreview = writers.previewRatedDeltas;
+    const realApply = writers.applyPendingResults;
     const alice = await connectAs(server, "race_alice");
     const bob = await connectAs(server, "race_bob");
     const room = await setUpRoom([alice, bob], 2);
@@ -785,10 +785,10 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       const gate = new Promise<void>((resolve) => {
         releaseGate = resolve;
       });
-      writers.previewRatedDeltas = async (seatResults, gameMode, finishedAt) => {
+      writers.applyPendingResults = async (roomId, game) => {
         gateReached = true;
         await gate;
-        return realPreview(seatResults, gameMode, finishedAt);
+        return realApply(roomId, game);
       };
 
       const hand2OverPromise = driveRound(table, () => {}, { onExchange: "wait" });
@@ -802,7 +802,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       try {
         await eventually(
           () => gateReached,
-          "handleRoundOver never reached the gated rating-delta read — round 2 did not finish",
+          "handleRoundOver never reached the gated results commit — round 2 did not finish",
           10_000
         );
 
@@ -833,7 +833,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
         "the gate must not have swallowed round 2's own game:over"
       );
     } finally {
-      writers.previewRatedDeltas = realPreview;
+      writers.applyPendingResults = realApply;
       await closeTable(table);
     }
   });

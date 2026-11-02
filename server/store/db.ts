@@ -87,8 +87,8 @@ export function db(): Database {
  * its `ended` may never settle — `pool.end()` waits on every checked-out client
  * — so a caller with a deadline bounds the wait itself.
  *
- * The drain comes first because the writes this protects — `handleRoundOver`,
- * `persistGameState`, a disconnect's teardown — are fire-and-forget, and
+ * The drain comes first because the writes this protects — a round's results
+ * commit, `persistGameState`, a disconnect's teardown — are fire-and-forget, and
  * nothing else holds a promise for any of them.
  */
 export async function closeDatabase({ drainMs }: { drainMs?: number } = {}): Promise<{ ended: Promise<void> }> {

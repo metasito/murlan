@@ -1,13 +1,12 @@
 import { logger } from "../shared/logger.ts";
-import { recordGameResult } from "./stats.ts";
-import { previewRatedDeltas, recordRatedResult } from "./ratings.ts";
-import { saveReplay } from "./replays.ts";
+import { commitRoundResults } from "./roundResults.ts";
 import { sweepRetention } from "./retention.ts";
 import { activeGames } from "./gameRoom.ts";
 import { payload } from "../shared/payload.ts";
 import { now } from "../http/clock.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { TableRuntime, TableStore, TableWriters } from "./tableRuntime.ts";
+import type { AppliedResults } from "./roundOver.ts";
 import { ownsRoom, releaseRoomAfter, unclaimedRooms, writeAsOwner } from "./gameOwnership.ts";
 import { allRoomWritesLanded, queueBarrier, queueSnapshot, roomWritesLanded } from "./roomWriteChain.ts";
 import {
@@ -107,29 +106,92 @@ export function tableWriters(store: TableStore): TableWriters {
         if (ownsRoom(roomId)) await store.rooms.updateRoomStatus(roomId, status);
       }),
     persistGameState(roomId, game) {
-      // Stamped so a restart can tell a row it still restores from one too old to
-      // (see OLDEST_GAME_SCHEMA_VERSION) rather than restoring a corrupt round silently.
-      const gameState = toEnvelope(game);
       return queueSnapshot(roomId, async () => {
         // Judged when the write runs, not when it was queued: a table disposed in
         // between has had its row deleted, or handed to another instance.
         if (activeGames.get(roomId) !== game) return;
+        // Packed when it runs too: a round whose results committed meanwhile must not be written back.
+        const gameState = toEnvelope(game);
         await writeAsOwner(roomId, (epoch) => store.games.write(roomId, gameState, epoch)).catch(
           (err: unknown) => logger.error({ err, roomId }, "Failed to persist game state")
         );
       });
     },
+    persistFinalState(roomId, game) {
+      // Packed now, and written even once the table is disposed: it is the only copy of the round's results.
+      const gameState = toEnvelope(game);
+      return queueBarrier(roomId, async () => {
+        const wrote = await writeAsOwner(roomId, (epoch) => store.games.write(roomId, gameState, epoch)).catch(
+          (err: unknown) => {
+            logger.error({ err, roomId }, "Failed to persist a finished round");
+            return false;
+          }
+        );
+        if (wrote) for (const entry of gameState.pendingResults) game.landedResults.add(entry.round);
+      });
+    },
+    applyPendingResults: (roomId, game) => queueBarrier(roomId, () => applyPending(store, roomId, game)),
     discardGame: (roomId) =>
       queueBarrier(roomId, () =>
         writeAsOwner(roomId, (epoch) => store.games.remove(roomId, epoch)).catch((err: unknown) =>
           logger.error({ err, roomId }, "Failed to delete persisted game")
         )
       ),
-    recordGameResult,
-    recordRatedResult,
-    previewRatedDeltas,
-    saveReplay,
   };
+}
+
+/**
+ * Commits the game's pending rounds oldest first, each removed from memory in the same tick its
+ * commit lands, and stops at the first failure. A round is written to the row first unless it is
+ * known to be there: only a round the row held can be read as applied when the row lacks it.
+ */
+async function applyPending(store: TableStore, roomId: string, game: OnlineGameState): Promise<AppliedResults> {
+  const applied: AppliedResults["applied"] = [];
+  const live = () => activeGames.get(roomId) ?? game;
+  try {
+    let rewrote = false;
+    for (let entry = game.pendingResults[0]; entry; entry = game.pendingResults[0]) {
+      const current = entry;
+      const out: { settled?: "committed" | "applied" | "rewrite"; ratings: AppliedResults["applied"][number]["ratings"] } = {
+        ratings: null,
+      };
+      const owned = await writeAsOwner(roomId, async (epoch) => {
+        if (!game.landedResults.has(current.round)) {
+          if (!(await store.games.write(roomId, toEnvelope(game), epoch))) return false;
+          game.landedResults.add(current.round);
+        }
+        const markFinished = live().gameState.roundOver && game.pendingResults.at(-1) === current;
+        const commit = await commitRoundResults(store.games, roomId, epoch, current, { markFinished });
+        if (commit.kind === "committed") {
+          out.settled = "committed";
+          out.ratings = commit.ratings;
+          return true;
+        }
+        const found = await store.games.epochOf(roomId);
+        if (found === epoch) {
+          out.settled = "applied";
+          return true;
+        }
+        if (found === undefined && !rewrote) {
+          out.settled = "rewrite";
+          return true;
+        }
+        return false;
+      });
+      if (!owned) return { applied, held: false };
+      if (out.settled === "rewrite") {
+        rewrote = true;
+        game.landedResults.delete(current.round);
+        continue;
+      }
+      game.pendingResults.splice(game.pendingResults.indexOf(current), 1);
+      game.landedResults.delete(current.round);
+      applied.push({ entry: current, ratings: out.ratings });
+    }
+    return { applied, held: true };
+  } catch (failure) {
+    return { applied, held: true, failure };
+  }
 }
 
 /**
@@ -172,6 +234,12 @@ export function sendGameStateTo(rt: TableRuntime, uid: string, game: OnlineGameS
  * the persist promise is returned so a disposer can order itself after it.
  */
 export function publishState(rt: TableRuntime, game: OnlineGameState): Promise<unknown> {
+  serveState(rt, game);
+  return rt.writers.persistGameState(game.roomId, game);
+}
+
+/** `publishState`'s sends alone, for the move that ends a round: its row write is the round's final write. */
+export function serveState(rt: TableRuntime, game: OnlineGameState): void {
   // Before the first seat is served, so the broadcast that closes an exchange
   // is inside its own ceremony window rather than one tick outside it.
   const at = now();
@@ -182,7 +250,6 @@ export function publishState(rt: TableRuntime, game: OnlineGameState): Promise<u
   // a userId that holds no seat, and every hand is blanked on that basis, so a
   // spectator cannot be sent a card without the seated path breaking first.
   game.spectators.forEach((uid) => sendGameStateTo(rt, uid, game));
-  return rt.writers.persistGameState(game.roomId, game);
 }
 
 export type CloseNotice = "GAME_INTERRUPTED_SERVER_ERROR" | "GAME_INTERRUPTED_EMPTY_SEAT";
@@ -237,6 +304,12 @@ export async function sweepFinishedTables(rt: TableRuntime): Promise<void> {
   for (const [roomId, game] of finished) {
     safeTimer(rt, "sweepFinishedTable", roomId, () => {
       if (!Object.values(game.playerMap).some((uid) => connected.has(uid))) {
+        // Queued ahead of the discard, which keeps the row while a round is still pending in it.
+        if (game.pendingResults.length > 0) {
+          void rt.writers.applyPendingResults(roomId, game).then(({ failure }) => {
+            if (failure !== undefined) logger.error({ err: failure, roomId }, "A swept table's results failed to commit — the row keeps them");
+          });
+        }
         disposeGame(rt, roomId);
       }
     });

@@ -6,7 +6,8 @@ import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { register } from "../helpers/client.ts";
-import { saveReplay, listReplaysForUser } from "../../server/game/replays.ts";
+import { listReplaysForUser } from "../../server/game/replays.ts";
+import { recordRound } from "../helpers/recordRound.ts";
 import { deleteUser } from "../../server/http/deleteAccount.ts";
 
 describe("what a replay seat names", { skip: hasDatabase() ? false : skipMessage() }, () => {
@@ -17,17 +18,13 @@ describe("what a replay seat names", { skip: hasDatabase() ? false : skipMessage
   async function replayWithLeaver(tag: string) {
     const { user: stayer, cookie } = await register(server, `${tag}_stayer`);
     const { user: leaver, cookie: leaverCookie } = await register(server, `${tag}_leaver`);
-    await saveReplay({
+    await recordRound([], "free_for_all", new Date(), {
       roomId: `room-${tag}`,
-      finishedAt: new Date(),
-      gameMode: "free_for_all",
       seats: [
         { seatIndex: 0, userId: stayer.id, vacatedBy: null, name: stayer.username },
         { seatIndex: 1, userId: null, vacatedBy: leaver.id, name: leaver.username },
       ],
-      moves: [],
-      opening: null,
-      finishingOrder: [],
+      moves: [{ seat: 0, combo: null, handCounts: [3, 4] }],
     });
     return { stayer, leaver, cookie, leaverCookie };
   }

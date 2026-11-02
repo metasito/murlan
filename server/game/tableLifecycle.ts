@@ -4,7 +4,7 @@ import { OK, refuse, type Outcome, type Refusal } from "../shared/refusal.ts";
 import { logger } from "../shared/logger.ts";
 import { activeGames, isShuttingDown } from "./gameRoom.ts";
 import { stopSpectatingEverywhere } from "../socket/seating.ts";
-import { armVoteDeadline } from "./roundOver.ts";
+import { armVoteDeadline, settleRoundResults } from "./roundOver.ts";
 import { clearRoomTimers, usersInLobbyGrace } from "./gameTimers.ts";
 import { buildSeatRoster, seatOfUser } from "./onlineGameLogic.ts";
 import { unpackPersistedState } from "../../shared/persistedEnvelope.ts";
@@ -16,7 +16,8 @@ import type { RehydrateOutcome } from "./tableRouter.ts";
 import { everySeatedVoted } from "./tableVotes.ts";
 import { castRematchVote, clearRematchVotes } from "./matchLedger.ts";
 import { armSeatGrace } from "./tableHandlers.ts";
-import { enterTable } from "./gameOwnership.ts";
+import { claimRoom, enterTable, ownsRoom, releaseRoom } from "./gameOwnership.ts";
+import { inFlight } from "./tableRouter.ts";
 
 /**
  * Puts a persisted game back in memory, for an instance that has just claimed
@@ -69,6 +70,11 @@ export async function rehydrateGame(
     ![...game.vacatedSeats.values()].some((who) => who.userId === forUserId)
   ) {
     return "not_seated";
+  }
+  if (game.pendingResults.length > 0) {
+    // The round the table stands on announces itself once its results commit.
+    if (game.gameState.roundOver) game.roundOverDue = game.pendingResults.at(-1)?.round;
+    await settleRoundResults(rt, game);
   }
   activeGames.set(roomId, game);
   logger.info({ roomId }, "Took over a table from active_games");
@@ -218,6 +224,11 @@ export async function startMatchAction(
 export async function resumeOrphanedTables(rt: TableRuntime): Promise<void> {
   if (isShuttingDown()) return;
   const rows = await rt.store.games.list();
+  for (const row of rows) {
+    if (activeGames.has(row.roomId) || ownsRoom(row.roomId) || inFlight.has(row.roomId) || isShuttingDown()) continue;
+    const restored = unpackPersistedState(row.gameState);
+    if (restored.ok && restored.pendingResults.length > 0) await settleOrphanedResults(rt, row.roomId);
+  }
   const online = await rt.presence.connectedUserIds();
   if (!online) return;
   for (const row of rows) {
@@ -227,5 +238,34 @@ export async function resumeOrphanedTables(rt: TableRuntime): Promise<void> {
     const userId = Object.values(restored.match.playerMap).find((id) => online.has(id));
     if (userId === undefined) continue;
     await rt.route({ kind: "resume", roomId: row.roomId, userId });
+  }
+}
+
+/**
+ * Commits a held-by-nobody table's pending rounds with no player present: claimed like any
+ * owner (the lock, then a fresh epoch), applied under that epoch, and handed back. Registered in
+ * `inFlight` so a takeover on this instance waits for it rather than restoring under it.
+ */
+async function settleOrphanedResults(rt: TableRuntime, roomId: string): Promise<void> {
+  const span = (async () => {
+    if (!(await claimRoom(roomId))) return;
+    try {
+      const entry = await enterTable(roomId);
+      if (!entry.held || !entry.row) return;
+      const restored = fromEnvelope(entry.row);
+      if (!restored.ok || restored.game.pendingResults.length === 0) return;
+      const { failure } = await rt.writers.applyPendingResults(roomId, restored.game);
+      if (failure !== undefined) {
+        logger.error({ err: failure, roomId, entry: restored.game.pendingResults[0] }, "An ownerless table's results failed to commit");
+      }
+    } finally {
+      if (!activeGames.has(roomId)) await releaseRoom(roomId);
+    }
+  })();
+  inFlight.set(roomId, span);
+  try {
+    await span.catch((err: unknown) => logger.error({ err, roomId }, "Settling an ownerless table's results failed"));
+  } finally {
+    if (inFlight.get(roomId) === span) inFlight.delete(roomId);
   }
 }

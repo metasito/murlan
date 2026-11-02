@@ -8,11 +8,38 @@ import { firstTargetFor, startRound } from "../../lib/game/gameEngine.ts";
 import type { GameMode, GameState } from "../../lib/game/gameEngine.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { RoundOverPayload } from "../../shared/protocol.ts";
+import type { PendingResult } from "../../shared/persistedEnvelope.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 
 const ROOM = "table-state-room";
 
 /** What jsonb hands back: `undefined` properties gone, everything plain. */
+const PENDING: PendingResult = {
+  round: 1_790_000_000_000,
+  finishedAt: 1_790_000_000_000,
+  gameMode: "free_for_all",
+  results: [
+    { userId: "alice", placement: 1, playerCount: 2, playedBomb: false, playedJoker: true, matchWon: false, opponentsFinished: 0 },
+    { userId: "bob", placement: 2, playerCount: 2, playedBomb: false, playedJoker: false, matchWon: false, opponentsFinished: 0, abandoned: true },
+  ],
+  outcome: {
+    finishingOrder: ["player_0", "player_1"],
+    scores: [],
+    matchTarget: 21,
+    matchLength: "match",
+    roundsPlayed: 2,
+    matchOver: false,
+    matchWinnerIds: [],
+    matchContinues: true,
+    isDraw: false,
+    recorded: true,
+    voided: false,
+  },
+  seats: [{ seatIndex: 0, userId: "alice", vacatedBy: null, name: "Alice" }],
+  opening: null,
+  moveLog: [{ seat: 0, combo: null, handCounts: [1, 2] }],
+};
+
 const viaJson = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 function dealt(mode: GameMode = "free_for_all"): GameState {
@@ -58,7 +85,9 @@ function midMatch(): OnlineGameState {
     replayOpening: { seq: 1, kind: "giveback", seat: 0 },
     turnDeadlineMs: 123,
     lastRoundOverPayload: {} as RoundOverPayload,
-    resultWrites: Promise.resolve(),
+    pendingResults: [PENDING],
+    landedResults: new Set([PENDING.round]),
+    roundOverDue: PENDING.round,
   };
   return table;
 }
@@ -88,7 +117,22 @@ describe("a table's round trip through active_games", () => {
     assert.deepEqual(back.game.spectators, new Set());
     assert.equal(back.game.turnDeadlineMs, undefined);
     assert.equal(back.game.lastRoundOverPayload, undefined);
-    assert.equal(back.game.resultWrites, undefined);
+    assert.equal(back.game.roundOverDue, undefined);
+  });
+
+  test("a round whose results have not committed comes back pending, and known to be in the row", () => {
+    const back = fromEnvelope(persisted(midMatch()));
+    assert.ok(back.ok);
+    assert.deepEqual(back.game.pendingResults, [PENDING]);
+    assert.deepEqual(back.game.landedResults, new Set([PENDING.round]));
+  });
+
+  test("a pending round that does not parse is dropped, and costs the table nothing", () => {
+    const row = persisted(midMatch());
+    (row.gameState as { pendingResults: unknown[] }).pendingResults.push({ round: "soon" });
+    const back = fromEnvelope(row);
+    assert.ok(back.ok, back.ok ? "" : back.reason);
+    assert.deepEqual(back.game.pendingResults, [PENDING]);
   });
 
   test("a round restored mid-way keeps its move log and what it opened on, so it still finishes with its replay", () => {
@@ -143,6 +187,7 @@ describe("a table's round trip through active_games", () => {
       },
       moveLog: game.moveLog,
       replayOpening: game.replayOpening,
+      pendingResults: [PENDING],
     });
   });
 

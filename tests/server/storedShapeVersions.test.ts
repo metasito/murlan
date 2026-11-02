@@ -115,8 +115,8 @@ test("the shape hash moves with the stored document and nothing else", () => {
   );
   assert.deepEqual(
     moved(edit("shared/protocol.ts", "  matchOver: z.boolean(),\n  matchWinnerIds", "  matchOver: z.boolean(),\n  extra: z.number(),\n  matchWinnerIds")),
-    ["wire"],
-    "an extra RoundOverPayload field"
+    ["activeGames", "wire"],
+    "an extra RoundOverPayload field, which a pending round stores"
   );
   assert.deepEqual(
     moved(

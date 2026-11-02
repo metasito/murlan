@@ -1,6 +1,6 @@
 import { and, count, eq, lt, sql } from "drizzle-orm";
-import { db } from "./db.ts";
-import { activeGames, ownerEpochs } from "../../shared/schema.ts";
+import { db, type Tx } from "./db.ts";
+import { activeGames, activeGameSettled, ownerEpochs } from "../../shared/schema.ts";
 import { now } from "../http/clock.ts";
 import type { roomStore } from "./roomStore.ts";
 import type { PersistedEnvelope } from "../../shared/persistedEnvelope.ts";
@@ -20,6 +20,8 @@ const nextEpoch = sql<string>`nextval(${sql.raw(`'${ownerEpochs.seqName}'`)})`;
 
 const row = { roomId: activeGames.roomId, gameState: activeGames.gameState };
 const mine = (roomId: string, epoch: number) => and(eq(activeGames.roomId, roomId), eq(activeGames.ownerEpoch, epoch));
+
+const pending = sql`${activeGames.gameState}->'pendingResults'`;
 
 /** Outside the stores, only `retention.ts` reaches `active_games` past this (`tests/server/activeGameStoreScan.test.ts`). */
 export const activeGameStore = {
@@ -71,11 +73,35 @@ export const activeGameStore = {
     return changed.length > 0;
   },
 
-  /** Deletes the row at `epoch`. False when the row carries another epoch, and stays. */
+  /**
+   * Deletes the row at `epoch` unless it holds unapplied results, which keep it. False when the
+   * row carries another epoch, and stays.
+   */
   async remove(roomId: string, epoch: number): Promise<boolean> {
-    const gone = await db().delete(activeGames).where(mine(roomId, epoch)).returning({ roomId: activeGames.roomId });
+    const gone = await db()
+      .delete(activeGames)
+      .where(and(mine(roomId, epoch), activeGameSettled))
+      .returning({ roomId: activeGames.roomId });
     if (gone.length > 0) return true;
-    return (await activeGameStore.epochOf(roomId)) === undefined;
+    const found = await activeGameStore.epochOf(roomId);
+    return found === undefined || found === epoch;
+  },
+
+  /**
+   * Inside the results transaction: removes `round` from the row's pending results at `epoch`.
+   * False when the row holds no such round at that epoch, which rolls the transaction back.
+   */
+  async clearPendingResult(tx: Tx, roomId: string, epoch: number, round: number): Promise<boolean> {
+    const cleared = await tx
+      .update(activeGames)
+      .set({
+        gameState: sql`jsonb_set(${activeGames.gameState}, '{pendingResults}', coalesce(
+          (select jsonb_agg(e) from jsonb_array_elements(${pending}) e where e->'round' <> to_jsonb(${round}::bigint)),
+          '[]'::jsonb))`,
+      })
+      .where(and(mine(roomId, epoch), sql`${pending} @> jsonb_build_array(jsonb_build_object('round', ${round}::bigint))`))
+      .returning({ roomId: activeGames.roomId });
+    return cleared.length > 0;
   },
 
   async countUntouchedSince(cutoff: Date): Promise<number> {

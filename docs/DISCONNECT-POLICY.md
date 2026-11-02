@@ -89,7 +89,7 @@ And at the round's end (`resolveRoundEnd`, `server/game/onlineGameLogic.ts`):
   exclusion is gone (row D below); what still tells the two apart is `SeatScoring.crownable`,
   built by `seatScoringOf` (`server/game/onlineGameLogic.ts`).
 - The abandoned seat is ordered **behind every seat that played the round out**, so a walkout
-  is genuinely last, and that placement is what `recordRatedResult` rates (`server/game/ratings.ts`).
+  is genuinely last, and that placement is what the results commit rates (`server/game/roundResults.ts`).
 - `gameResults` for that one round is keyed by the **departed userId**, not by `bot:<seat>` —
   which is how the last-place finish reaches their rating and history at all.
 

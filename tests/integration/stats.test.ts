@@ -13,10 +13,10 @@ import { playRoundOut } from "../helpers/gameDriver.ts";
 import { waitForDeal } from "../helpers/table.ts";
 import { whileUserLocked } from "../helpers/userLock.ts";
 import { getRoundHistoryView } from "../../server/http/roundHistoryView.ts";
-import { recordGameResult, getUserAchievements, MAX_HISTORY_ROWS_PER_USER } from "../../server/game/stats.ts";
+import { getUserAchievements, MAX_HISTORY_ROWS_PER_USER } from "../../server/game/stats.ts";
+import { recordRound } from "../helpers/recordRound.ts";
 
 /**
- * recordGameResult is called (fire-and-forget) from the game-over path.
  * Shortened well below production defaults so an active exchange phase
  * resolves quickly via the AFK path instead of stalling this suite — same
  * convention as tests/integration/gameplay.test.ts.
@@ -378,7 +378,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
     }
   });
 
-  test("recordGameResult upserts stats, prunes history to 50 rows, and dedupes achievements", async () => {
+  test("the results commit upserts stats, prunes history to 50 rows, and dedupes achievements", async () => {
     const { user } = await register(server, "stats_prune_user");
 
     const result: GameResult = {
@@ -405,7 +405,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
     // leave which two go entirely to the database's discretion.
     const firstFinishedAt = Date.now() - 52 * 60_000;
     for (let i = 0; i < 52; i++) {
-      await recordGameResult(
+      await recordRound(
         [result, botResult],
         gameMode,
         new Date(firstFinishedAt + i * 60_000)
@@ -458,7 +458,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       opponentsFinished: 0,
     };
     const ends = [new Date(Date.now() + 1_000), new Date(Date.now() + 2_000)];
-    await whileUserLocked([user.id], () => ends.map((end) => recordGameResult([result], "free_for_all", end)));
+    await whileUserLocked([user.id], () => ends.map((end) => recordRound([result], "free_for_all", end)));
 
     const rows = await server.query(
       "SELECT (extract(epoch FROM finished_at) * 1000)::bigint AS ms FROM round_history WHERE user_id = $1",

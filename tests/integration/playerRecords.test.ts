@@ -4,8 +4,9 @@ import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { getRating, getLeaderboard, getCircleLeaderboard } from "../../server/game/ratings.ts";
-import { recordGameResult, getUserStats, getUserAchievements } from "../../server/game/stats.ts";
-import { saveReplay, getReplayForUser } from "../../server/game/replays.ts";
+import { getUserStats, getUserAchievements } from "../../server/game/stats.ts";
+import { getReplayForUser } from "../../server/game/replays.ts";
+import { recordRound } from "../helpers/recordRound.ts";
 import { placementPoints } from "../../lib/game/gameEngine.ts";
 import { PROVISIONAL_ROUNDS, START_RATING, seasonKey, seedRating } from "../../lib/game/rating.ts";
 import type { GameResult } from "../../lib/achievements.ts";
@@ -123,37 +124,49 @@ describe("player records read back", { skip: hasDatabase() ? false : skipMessage
     assert.equal(ladder[0]!.userId, high);
   });
 
-  test("a round is stored with its points, its rating delta and whether it was abandoned", async () => {
+  test("a round is stored with its points, the rating delta it committed and whether it was abandoned", async () => {
     const delta = await user("history_delta");
-    const unrated = await user("history_unrated");
+    const other = await user("history_other");
 
-    await recordGameResult(
-      [result(delta), result(unrated, { placement: 3 }), result("bot:2", { placement: 1 })],
+    const commit = await recordRound(
+      [result(delta), result(other, { placement: 3 }), result("bot:2", { placement: 1 })],
       "free_for_all",
-      new Date(now()),
-      new Map([[delta, 17]])
+      new Date(now())
     );
+    assert.equal(commit.kind, "committed");
+    const committed = commit.kind === "committed" ? commit.ratings.ratingDeltas : {};
+    assert.ok(committed[delta]! > 0, "the better-placed human gains");
 
     const rows = await server.query<{ user_id: string; points: number; rating_delta: number | null; abandoned: boolean }>(
       `SELECT user_id, points, rating_delta, abandoned FROM round_history WHERE user_id = ANY($1) ORDER BY points DESC`,
-      [[delta, unrated]]
+      [[delta, other]]
     );
     assert.deepEqual(
       rows.map((r) => ({ ...r, points: Number(r.points) })),
       [
-        { user_id: delta, points: placementPoints(1, 4), rating_delta: 17, abandoned: false },
-        { user_id: unrated, points: placementPoints(2, 4), rating_delta: null, abandoned: false },
+        { user_id: delta, points: placementPoints(1, 4), rating_delta: committed[delta], abandoned: false },
+        { user_id: other, points: placementPoints(2, 4), rating_delta: committed[other], abandoned: false },
       ]
     );
+  });
+
+  test("a round the ladder does not rate stores a null rating delta", async () => {
+    const teammate = await user("history_teams");
+    await recordRound([result(teammate, { placement: 1 }), result(await user("history_teams_b"))], "teams", new Date(now()));
+    const rows = await server.query<{ rating_delta: number | null }>(
+      "SELECT rating_delta FROM round_history WHERE user_id = $1",
+      [teammate]
+    );
+    assert.deepEqual(rows, [{ rating_delta: null }]);
   });
 
   test("stats read back the player's own row, played today, and zeroes for a player who never finished", async () => {
     const played = await user("stats_played");
     const other = await user("stats_other");
     const never = await user("stats_never");
-    await recordGameResult([result(other, { placement: 2 })], "free_for_all", new Date(now()));
-    await recordGameResult([result(other, { placement: 2 })], "free_for_all", new Date(now()));
-    await recordGameResult([result(played, { placement: 1 })], "free_for_all", new Date(now()));
+    await recordRound([result(other, { placement: 2 })], "free_for_all", new Date(now()));
+    await recordRound([result(other, { placement: 2 })], "free_for_all", new Date(now() + 1));
+    await recordRound([result(played, { placement: 1 })], "free_for_all", new Date(now()));
 
     const mine = await getUserStats(played);
     assert.equal(mine.userId, played);
@@ -177,7 +190,7 @@ describe("player records read back", { skip: hasDatabase() ? false : skipMessage
 
   test("an unlocked achievement says when it was unlocked", async () => {
     const winner = await user("achiever");
-    await recordGameResult([result(winner, { placement: 1 })], "free_for_all", new Date(now()));
+    await recordRound([result(winner, { placement: 1 })], "free_for_all", new Date(now()));
 
     const firstWin = (await getUserAchievements(winner)).find((a) => a.id === "first_win")!;
     assert.equal(firstWin.unlocked, true);
@@ -185,17 +198,13 @@ describe("player records read back", { skip: hasDatabase() ? false : skipMessage
   });
 
   test("an all-bot table stores no replay", async () => {
-    await saveReplay({
+    await recordRound([], "free_for_all", new Date(now()), {
       roomId: "room-all-bots",
-      finishedAt: new Date(now()),
-      gameMode: "free_for_all",
       seats: [
         { seatIndex: 0, userId: null, vacatedBy: null, name: "Bot 1" },
         { seatIndex: 1, userId: null, vacatedBy: null, name: "Bot 2" },
       ],
-      moves: [],
-      opening: null,
-      finishingOrder: [],
+      moves: [{ seat: 0, combo: null, handCounts: [3, 4] }],
     });
 
     assert.deepEqual(await server.query("SELECT 1 FROM round_replays WHERE room_id = 'room-all-bots'"), []);
@@ -204,16 +213,13 @@ describe("player records read back", { skip: hasDatabase() ? false : skipMessage
   test("a replay read back names its seats as they are called now", async () => {
     const player = await user("replay_before");
     const finishedAt = new Date(now());
-    await saveReplay({
+    await recordRound([], "free_for_all", finishedAt, {
       roomId: "room-replay-read",
-      finishedAt,
-      gameMode: "free_for_all",
       seats: [
         { seatIndex: 0, userId: player, vacatedBy: null, name: "replay_before" },
         { seatIndex: 1, userId: null, vacatedBy: null, name: "Bot 2" },
       ],
       moves: [{ seat: 1, combo: null, handCounts: [3, 4] }],
-      opening: null,
       finishingOrder: ["player_0", "player_1"],
     });
     const [{ id }] = await server.query<{ id: string }>(

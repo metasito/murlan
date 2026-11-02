@@ -210,15 +210,13 @@ const roundOverFields = z.object({
   matchContinues: z.boolean(),
   isDraw: z.boolean(),
   /**
-   * By user id, and empty for a round that earns no rating. The server reads
-   * this before it writes the ladder, because the inputs stop existing once
-   * that write lands (server/game/ratings.ts).
+   * By user id, and empty for a round that earns no rating, or whose results
+   * commit failed: the deltas the commit wrote (server/game/roundResults.ts).
    */
   ratingDeltas: z.record(z.number()),
   /**
-   * Each rated seat's standing once this round is written, keyed as
-   * `ratingDeltas`. Sent rather than fetched: the ladder write lands after
-   * `game:round_over`, so `GET ratings/me` read on it can still be the old rating.
+   * Each rated seat's standing as the round's commit left it, keyed as
+   * `ratingDeltas`.
    */
   ratingsAfter: z.record(ratingAfter),
   /**
