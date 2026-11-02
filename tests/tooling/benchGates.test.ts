@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { crc32, inflateRawSync } from "node:zlib";
-import { doneScenarios, gateTable, waitForRunEnd } from "../../scripts/bench-gates.mjs";
+import { doneScenarios, gateTable, untilRunEnd, waitForRunEnd } from "../../scripts/bench-gates.mjs";
 import { GATES } from "../../scripts/diagnostics-verdict.mjs";
 import { benchUrl, patchBenchHost, withBenchHost } from "../../scripts/ios-device.mjs";
 import { benchLaunchHref, benchTargetHost } from "../../lib/diagnostics/benchLaunch.ts";
@@ -46,6 +46,18 @@ test("an unrun verdict, from a dev build, fails the table", () => {
   const { pass, markdown } = gateTable([{ session: "s", ...RELEASE, dev: true }, ...ran("g")], ["g"], false, PASSING);
   assert.equal(pass, false);
   assert.match(markdown, /\| g \| unrun \|/);
+});
+
+test("rows after the run's end, from a run the phone started again, stay out of the verdict", () => {
+  const rows = [{ session: "s", ...RELEASE }, ...ran("g"), { k: "run", phase: "end", names: ["g"] }, { k: "scenario", name: "g", phase: "start" }];
+  assert.equal(gateTable(untilRunEnd(rows), ["g"], false, PASSING).pass, true);
+  assert.equal(gateTable(rows, ["g"], false, { g: (r: any[]) => ({ pass: r.at(-1).phase === "end", metrics: {} }) }).pass, false);
+  assert.equal(untilRunEnd([{ k: "run", phase: "end" }, ...rows], 1).length, rows.length);
+});
+
+test("a failing gate on a throttled phone says so", () => {
+  const hot = { g: () => ({ pass: false, metrics: { sys: { maxThermal: 2 } } }) };
+  assert.match(gateTable(passingRun, ["g"], false, hot).markdown, /\| g \| fail \(throttled/);
 });
 
 test("a run that timed out fails the table, every gate passing or not", () => {

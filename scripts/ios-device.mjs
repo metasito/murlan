@@ -21,7 +21,7 @@ import readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { PLAY_PORT } from "../tools/ci/e2ePortRange.mjs";
 import { COLLECTOR_PORT } from "./diagnostics-collector.mjs";
-import { doneScenarios, gateTable, readRows, waitForRunEnd } from "./bench-gates.mjs";
+import { doneScenarios, gateTable, readRows, untilRunEnd, waitForRunEnd } from "./bench-gates.mjs";
 import { rewriteZipText } from "./lib/zipEntry.mjs";
 import { killTree, runBin, startBin } from "./lib/proc.mjs";
 
@@ -353,7 +353,7 @@ async function benchServe(ip, gates, resumeFile, skip) {
   if (!gates) return;
   console.log("• Waiting for the run to finish (pauses and interruptions are fine; Ctrl-C and rerun with --resume any time)…");
   const { names, timedOut } = await waitForRunEnd(() => readRows(file).slice(earlier), { timeoutMs: RUN_TIMEOUT_MS });
-  const { pass, markdown } = gateTable(readRows(file), names, timedOut);
+  const { pass, markdown } = gateTable(untilRunEnd(readRows(file), earlier), names, timedOut);
   const head = !timedOut
     ? ""
     : names.length === 0
