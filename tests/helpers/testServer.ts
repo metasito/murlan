@@ -9,6 +9,7 @@ import { closeRedis, redisReady } from "../../server/store/redis.ts";
 import { closeTableOwners } from "../../server/store/tableOwners.ts";
 import { stopInbox } from "../../server/store/instanceInbox.ts";
 import { cancelRevocationRetries } from "../../server/socket/socketRegistry.ts";
+import { stopHealth } from "../../server/http/health.ts";
 import { dropKeyspace } from "./redisKeys.ts";
 import { closeOwnership } from "../../server/game/gameOwnership.ts";
 import { flushTelemetry } from "../../server/shared/telemetryBatch.ts";
@@ -230,6 +231,7 @@ export async function startTestServer(
           await (await closeDatabase()).ended;
           await ioClosed;
           cancelRevocationRetries();
+          stopHealth();
           stopInbox();
           closeTableOwners();
           closeRedis();
@@ -256,6 +258,7 @@ export async function startTestServer(
     // DATABASE_URL mutation.
     await (await closeDatabase()).ended;
     cancelRevocationRetries();
+    stopHealth();
     stopInbox();
     closeTableOwners();
     closeRedis();

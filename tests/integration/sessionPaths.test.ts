@@ -66,6 +66,8 @@ describe("the session is read where it is used, and never touched", { skip: hasD
     ["an /assets file", ASSET],
     ["a hashed bundle", `/${HASHED_BUNDLE}`],
     ["/health", "/health"],
+    ["/health/live", "/health/live"],
+    ["/health/ready", "/health/ready"],
     ["a client-side route the SPA shell answers", "/lobby"],
   ] as const) {
     test(`${label} with a cookie reads no session row and touches none`, async () => {

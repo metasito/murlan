@@ -2,6 +2,7 @@ import { createAdapter } from "@socket.io/redis-streams-adapter";
 import { MessageType, type ClusterMessage } from "socket.io-adapter";
 import { now } from "../http/clock.ts";
 import { BLOCK_MS, openRedis, redisKey, streamMaxLen, type RedisClient } from "../store/redis.ts";
+import { noteStreamRead } from "../shared/metrics.ts";
 
 type Packet = unknown[];
 
@@ -145,6 +146,7 @@ export function createSocketAdapter() {
         ? withPeers(0, () => fetchSockets(opts))
         : peers().then((n) => withPeers(n, () => fetchSockets(opts)));
     cluster.onMessage = (message: ClusterMessage, offset?: string) => {
+      if (offset !== undefined) noteStreamRead("adapter", offset);
       const event = message.type === MessageType.SERVER_SIDE_EMIT ? (message.data.packet as Packet)[0] : undefined;
       if (event === LEAVING) {
         left.add(message.uid);

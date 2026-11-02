@@ -956,13 +956,15 @@ jobs:
         run: npx expo export --platform web --output-dir dist-diag && node scripts/e2eBuildMark.mjs --present dist-diag --mark diagnostics
 
       # The bundle esbuild produces is otherwise first executed by a production
-      # deploy. /health answers only once the pool has reached Postgres.
+      # deploy. /health answers only once the server has booted, and its body
+      # says whether Postgres answers it.
       - name: The built server boots and reaches the database
         shell: bash
         env:
           PORT: "5050"
           NODE_ENV: production
           PUBLIC_HOST: example.invalid
+          METRICS_TOKEN: ci-metrics-token-not-used-in-production
           DATABASE_URL: ${{ env.DATABASE_URL }}?sslmode=disable
         run: |
           test -f dist/index.html
@@ -970,12 +972,17 @@ jobs:
           node server_dist/index.mjs &
           server_pid=$!
           for _ in $(seq 1 30); do
-            if curl -fsS "http://127.0.0.1:$PORT/health" -o health.json; then break; fi
+            if curl -fsS "http://127.0.0.1:$PORT/health" -o health.json && grep -q '"db":"connected"' health.json && grep -q '"redis":"connected"' health.json; then break; fi
             sleep 1
           done
+          curl -fsS "http://127.0.0.1:$PORT/health/live" -o live.json || true
+          curl -fsS -H "Authorization: Bearer $METRICS_TOKEN" "http://127.0.0.1:$PORT/metrics" -o metrics.txt || true
           kill "$server_pid" || true
-          cat health.json
+          cat health.json live.json
           grep -q '"db":"connected"' health.json
+          grep -q '"redis":"connected"' health.json
+          grep -q '"status":"ok"' live.json
+          grep -q '^pg_connection_headroom ' metrics.txt
 
   # RULES.md 46's land gate, in CI where no session can argue it away: a pull request that adds or
   # changes a test file over its time budget does not pass `CI gate`.

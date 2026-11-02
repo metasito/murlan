@@ -74,8 +74,9 @@ cat /tmp/boot.log
 kill %1
 ```
 
-Expected: `{"status":"ok","db":"connected", ...}` from `/health` (`server/app.ts`), and the
-boot log shows no thrown error.
+Expected: `{"status":"ok","db":"connected","redis":"connected", ...}` from `/health`
+(`server/http/health.ts`), and the boot log shows no thrown error. `/health` answers 200 once the
+server has booted whether or not Postgres answers it, so read `db` in the body, not the status.
 
 ## Rolling back
 
@@ -106,6 +107,8 @@ The server refuses to boot without these (`server/http/bootEnv.ts`):
 - `PUBLIC_HOST` — production only: the bare hostname the app is served from. Browsers on
   `https://$PUBLIC_HOST` and on each origin in the optional comma-separated `ALLOWED_ORIGINS`
   may call the API
+- `METRICS_TOKEN` — production only: the bearer token `/metrics` answers (§ Health and
+  metrics). Elsewhere it is optional, and while it is unset `/metrics` answers 401 to everyone
 
 `PORT` is read when the host assigns one and defaults to 5000; never hardcode it.
 
@@ -150,6 +153,46 @@ paths are in `configureWebBuild()`.
 
 `ALLOW_RESET=1 node scripts/reset-password.mjs <username>` sets a new random password on one
 account and prints it once.
+
+## Health and metrics
+
+`server/http/health.ts` answers four paths. None reads the session or uses the app's Postgres
+pool, none writes a request-log line, and none waits on Postgres or Redis: `/health` and
+`/health/ready` answer at once from the last background probe, each probe bounded by
+`PROBE_DEADLINE_MS` in that file.
+
+| Path | 200 when | For |
+| --- | --- | --- |
+| `GET /health/live` | the process can answer at all | the host's liveness probe: restart on failure |
+| `GET /health/ready` | booted, not draining, and the event loop not lagging (`notReady` in `server/http/health.ts` holds the threshold) | the host's readiness probe: take out of rotation on 503 |
+| `GET /health` | the same as `/health/ready`, with the same body | `.github/workflows/health.yml`, CI's boot step and § Before a destructive schema change, until the host probe is switched |
+| `GET /metrics` | the request carries `Authorization: Bearer $METRICS_TOKEN`; 401 with no body otherwise | a Prometheus scraper |
+
+The ready body is `{status, db, redis, probedMsAgo, uptime}`, plus a `reason` (`booting`, `draining` or
+`event_loop_lag`) on a 503. `db` (a `SELECT 1` on the health pool) and `redis` (a `PING` on a
+connection of its own) are each `connected` or `down` as of the probe `probedMsAgo` milliseconds
+ago, and **never change the status code**: both are shared by every instance, so a blip failing them would take the whole
+fleet out of rotation at once.
+
+**The host-probe switch.** When #1107 picks the host, point its liveness probe at
+`/health/live` and its readiness probe at `/health/ready`, and change `scripts/probe-health.mjs`
+to `/health/ready`. Only then may `/health` go, with every reader in the table above moved first.
+Give the readiness probe a failure threshold of several consecutive failures rather than one, and
+use a load balancer that keeps routing to every instance when all of them are unready at once
+(fail open), so a cause every instance shares cannot empty the pool. The event-loop gate already
+waits out a short burst before going unready, and a short recovery before coming back
+(`lagGate` in `server/http/health.ts`). `scripts/probe-health.mjs` passes only a 200 whose body
+says `status` ok and both links `connected`.
+
+**Alerts** attach to `/metrics`, on the host's scraper, once #1107 picks one:
+
+- `round_results_pending_age_seconds` above 60 (D17 in
+  `docs/research/2026-11-01-system-audit/TICKETS.md`): a finished round's result has not landed.
+- `event_loop_lag_p99_seconds`, `pg_pool_waiting`, `pg_connection_headroom` below 0, and
+  `redis_reconnects_total`, `redis_stream_lag_seconds` and `redis_stream_read_age_seconds` climbing, read beside the instances'
+  readiness.
+
+Each feature registers its own metric on prom-client's default registry, which `/metrics` serves.
 
 ## Backups
 

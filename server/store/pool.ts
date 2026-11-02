@@ -90,6 +90,25 @@ export function connectionsPerInstance(): number {
   return Object.values(PROFILES).reduce((sum, p: Profile) => sum + (p.kind === "pool" ? p.max : 1), 0);
 }
 
+const opened = new Map<Pool, string>();
+
+/** What each pool still open holds and queues, summed by pool name. */
+export function poolMeters(): { pool: string; total: number; idle: number; waiting: number }[] {
+  const meters = new Map<string, { pool: string; total: number; idle: number; waiting: number }>();
+  for (const [pool, name] of opened) {
+    if (pool.ended) {
+      opened.delete(pool);
+      continue;
+    }
+    const meter = meters.get(name) ?? { pool: name, total: 0, idle: 0, waiting: 0 };
+    meter.total += pool.totalCount;
+    meter.idle += pool.idleCount;
+    meter.waiting += pool.waitingCount;
+    meters.set(name, meter);
+  }
+  return [...meters.values()];
+}
+
 export function createPool(
   profile: PoolProfile,
   overrides: Omit<PoolConfig, "connectionString" | "application_name"> = {}
@@ -111,6 +130,7 @@ export function createPool(
   pool.on("connect", (client) => {
     client.on("error", (err) => logger.error({ err, pool: applicationName(profile) }, "Postgres client error"));
   });
+  opened.set(pool, applicationName(profile));
   return pool;
 }
 

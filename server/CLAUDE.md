@@ -11,8 +11,11 @@ any host must meet — Node, Postgres and Redis majors, SIGTERM grace, proxy hop
 instance, the cluster's design peak — and the server and tests read it.
 
 - **Boot fails fast without its env** (`server/http/bootEnv.ts`): `SESSION_SECRET`,
-  `DATABASE_URL` and `REDIS_URL` always; in production also `PUBLIC_HOST`, and a `DATABASE_URL`
-  carrying an `sslmode`. `PORT` defaults to 5000.
+  `DATABASE_URL` and `REDIS_URL` always; in production also `PUBLIC_HOST`, `METRICS_TOKEN`, and a
+  `DATABASE_URL` carrying an `sslmode`. `PORT` defaults to 5000.
+- **Readiness never follows a shared dependency** (`server/http/health.ts`): Postgres and Redis
+  are reported in `/health/ready`'s body and never fail it, or one blip pulls every instance out
+  of rotation at once (`tests/integration/health.test.ts`).
 - **Production runs `deploy/runtime.json`'s Node (22), not the repo's.** `server:build`'s
   `--target=node22` lowers *syntax* only, so a newer-Node builtin compiles at exit 0 and throws in
   production. CI's `build` job boots on that Node and is the one that catches it.
