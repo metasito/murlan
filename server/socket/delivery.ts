@@ -1,9 +1,9 @@
 // server/socket/delivery.ts — the one module that decides who a message reaches and how: a
 // recipient on this instance directly, every other one through the inbox of the instance their
 // presence entry names (ADR 0014, decisions 6 and 7).
-import type { ForwardingServer, GameSocket, SocketServer } from "./socketTypes.ts";
+import type { GameSocket, SocketServer } from "./socketTypes.ts";
 import type { Emitter, TableOutbox } from "../game/tableRuntime.ts";
-import type { OrderedGameState } from "../../shared/protocol.ts";
+import type { OrderedGameState, ServerToClientEvents } from "../../shared/protocol.ts";
 import { logger } from "../shared/logger.ts";
 import { stateAcksMissed } from "../shared/metrics.ts";
 import { heldAudience, userRoom } from "../game/gameRoom.ts";
@@ -18,8 +18,11 @@ const STATE_NACK = "state-nack";
 /** How long an owner can still answer a nack for a state it sent another instance. */
 const NACK_WINDOW_ACKS = 4;
 
+type OutEvent = Parameters<Emitter["emit"]>[0];
+type Outgoing = { [E in OutEvent]: { e: E; a: Parameters<ServerToClientEvents[E]> } }[OutEvent];
+
 type Item =
-  | { t: "emit"; u: string[]; e: string; a: unknown[] }
+  | ({ t: "emit"; u: string[] } & Outgoing)
   | { t: "state"; u: string; s: OrderedGameState; r: boolean };
 
 interface Pending {
@@ -147,17 +150,17 @@ export function deliveryOutbox(io: SocketServer, options: DeliveryOptions = {}):
     });
   }
 
-  function emitTo(userIds: Iterable<string>, event: string, args: unknown[]): void {
+  function emitTo(userIds: Iterable<string>, out: Outgoing): void {
     const here: string[] = [];
     const elsewhere: string[] = [];
     for (const userId of new Set(userIds)) (isLocal(userId) ? here : elsewhere).push(userId);
-    if (here.length > 0) emitHere(here, event, args);
-    if (elsewhere.length > 0) enqueue({ t: "emit", u: elsewhere, e: event, a: args });
+    if (here.length > 0) emitHere(here, out.e, out.a);
+    if (elsewhere.length > 0) enqueue({ t: "emit", u: elsewhere, ...out });
   }
 
-  const forwarding = io as unknown as ForwardingServer;
-  const emitHere = (userIds: string[], event: string, args: unknown[]) =>
-    forwarding.local.to(userIds.map(userRoom)).emit(event, ...args);
+  function emitHere<E extends OutEvent>(userIds: string[], event: E, args: Parameters<ServerToClientEvents[E]>): void {
+    io.local.to(userIds.map(userRoom)).emit(event, ...args);
+  }
 
   // ── A state another instance could not get acknowledged is re-derived here, never re-sent ──
   const renders = new Map<string, { render: (retrying: boolean) => OrderedGameState | null; timer: ReturnType<typeof setTimeout> }>();
@@ -223,10 +226,10 @@ export function deliveryOutbox(io: SocketServer, options: DeliveryOptions = {}):
   // ── A room's emits leave in the order they were made, whichever had to read its seats ──
   const roomTails = new Map<string, Promise<void>>();
 
-  function emitToRoom(roomId: string, event: string, args: unknown[]): void {
+  function emitToRoom(roomId: string, out: Outgoing): void {
     const held = heldAudience(roomId);
     const behind = roomTails.get(roomId);
-    if (held && !behind) return emitTo([...held, ...membersHere(roomId)], event, args);
+    if (held && !behind) return emitTo([...held, ...membersHere(roomId)], out);
     const audience = held
       ? Promise.resolve(held)
       : seatsOf(roomId).catch((err: unknown) => {
@@ -235,20 +238,20 @@ export function deliveryOutbox(io: SocketServer, options: DeliveryOptions = {}):
         });
     const sent: Promise<void> = (behind ?? Promise.resolve())
       .then(() => audience)
-      .then((users) => emitTo([...users, ...membersHere(roomId)], event, args));
+      .then((users) => emitTo([...users, ...membersHere(roomId)], out));
     roomTails.set(roomId, sent);
     void sent.finally(() => {
       if (roomTails.get(roomId) === sent) roomTails.delete(roomId);
     });
   }
 
-  const emitter = (deliver: (event: string, args: unknown[]) => void): Emitter => ({
-    emit: (event, ...args) => deliver(event, args),
+  const emitter = (deliver: (out: Outgoing) => void): Emitter => ({
+    emit: (event, ...args) => deliver({ e: event, a: args } as Outgoing),
   });
 
   return {
-    room: (roomId) => emitter((event, args) => emitToRoom(roomId, event, args)),
-    user: (userId) => emitter((event, args) => emitTo([userId], event, args)),
+    room: (roomId) => emitter((out) => emitToRoom(roomId, out)),
+    user: (userId) => emitter((out) => emitTo([userId], out)),
     state(userId, render) {
       const state = render(false);
       if (state) sendState(userId, state, false, render);

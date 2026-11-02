@@ -64,6 +64,9 @@ function slotOf(game: OnlineGameState): TurnSlot | null {
  * The server's side of `turnSchedule`: called after every state change, so the
  * AFK chain never breaks and a vacant seat is always played. It clears only the
  * turn's own timers; a deal clears the room's others (`dealRound`).
+ *
+ * A caller about to publish the state arms first and passes `announce: false`:
+ * the state then carries the deadline this sets, and is its only announcement.
  */
 export function armTurn(rt: TableRuntime, roomId: string, announce = true) {
   const game = activeGames.get(roomId);
@@ -295,6 +298,6 @@ export async function vacateSeat(rt: TableRuntime, roomId: string, userId: strin
     ...payload("PLAYER_LEFT_BOT_TAKEOVER", { username }),
   });
 
+  armTurn(rt, roomId, false);
   void publishState(rt, game);
-  armTurn(rt, roomId);
 }

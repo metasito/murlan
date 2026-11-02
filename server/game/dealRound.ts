@@ -41,9 +41,9 @@ export async function dealRound(rt: TableRuntime, game: OnlineGameState, nextSta
       logger.warn({ err, roomId: game.roomId }, "Failed to set rooms.status = in_progress at the deal")
     );
 
+  clearRoomTimers(game.roomId);
+  armTurn(rt, game.roomId, false);
   void publishState(rt, game);
   rt.out.room(game.roomId).emit("game:started");
   emitMatchState(rt.out.room(game.roomId), game);
-  clearRoomTimers(game.roomId);
-  armTurn(rt, game.roomId);
 }

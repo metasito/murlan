@@ -4,8 +4,6 @@ import type { TableRuntime } from "../game/tableRuntime.ts";
 
 export type SocketServer = Server<ClientToServerEvents, ServerToClientEvents>;
 export type GameSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
-/** Only for passing on an emit already typed where it was made (`delivery.ts`). */
-export type ForwardingServer = Server;
 
 /** What every per-socket handler family is registered with. */
 export interface HandlerContext {
