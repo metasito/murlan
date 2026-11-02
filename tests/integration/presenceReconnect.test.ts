@@ -5,11 +5,13 @@ import assert from "node:assert/strict";
 import { createClient } from "redis";
 import { eventually } from "../helpers/client.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
+import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
 import { closePresence, forgetPresence, instancesOf, openPresence, presenceKey, recordPresence } from "../../server/store/presence.ts";
 import { closeRedis, instanceId } from "../../server/store/redis.ts";
 
 const redisUrl = process.env.REDIS_URL;
 const baseUrl = process.env.DATABASE_URL;
+const skip = hasDatabase() ? false : skipMessage();
 // Only the keyspace is read from it: no database is opened.
 process.env.DATABASE_URL = `postgres://x@localhost/x?options=-c%20search_path%3Dpresence_${Date.now().toString(36)}`;
 const scoped = process.env.DATABASE_URL;
@@ -21,7 +23,7 @@ after(async () => {
   process.env.DATABASE_URL = baseUrl;
 });
 
-test("a reconnected presence link fills a missing entry and leaves a newer one alone", { skip: redisUrl ? false : "REDIS_URL not set" }, async () => {
+test("a reconnected presence link fills a missing entry and leaves a newer one alone", { skip }, async () => {
   const admin = createClient({ url: redisUrl });
   admin.on("error", () => {});
   await admin.connect();
