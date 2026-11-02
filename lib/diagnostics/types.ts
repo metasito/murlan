@@ -16,6 +16,7 @@ export interface DiagRows {
   haptic: { kind: string; at: number };
   music: { track: string | null; at: number };
   engine: { state: string; audioMs: number; plays: number };
+  soakPause: { resumedAt: number };
   frame: { dt: number };
   jsLag: { dt: number };
   jsTicks: { n: number };

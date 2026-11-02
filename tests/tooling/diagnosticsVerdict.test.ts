@@ -151,6 +151,20 @@ test("the smoke passes a running clock, and fails a clock that stands still as '
   assert.equal(verdict(soakRows({ minutes: 1, mbPerMin: 0, state: "suspended", name: "smoke" }), "smoke")?.pass, false);
 });
 
+test("a soak that left the screen twice passes on its active half-hour; without the pause rows the same data fails", () => {
+  const MIN = 60000;
+  const gaps = [[10 * MIN, 45 * MIN], [20 * MIN, 600 * MIN]];
+  const shift = (t: number) => gaps.reduce((n, [from, len]) => n + (t >= from ? len : 0), 0);
+  const base = soakRows({ minutes: 30, mbPerMin: 0.2 }) as { session: string; k: string; t: number }[];
+  const rows = base.map((r) => ({ ...r, t: r.t + shift(r.t) }));
+  const pauses = gaps.map(([from, len]) => ({ session: "s", k: "soakPause", t: from + shift(from - 1), resumedAt: from + shift(from - 1) + len }));
+  const v = verdict([...rows.slice(0, 2), ...pauses, ...rows.slice(2)], "soak");
+  assert.equal(v?.pass, true);
+  assert.equal(v?.metrics.pauses, 2);
+  assert.ok(Math.abs((v?.metrics.minutes as number) - 30) < 0.01);
+  assert.equal(verdict(rows, "soak")?.pass, false);
+});
+
 const FLINGER = (partial: number, empty: number) =>
   `Output thread 0x7b2c type 0 (MIXER):\n  Normal mixer raw underrun counters: partial=${partial} empty=${empty}\nOutput thread 0x7b40 type 0 (MIXER):\n  Normal mixer raw underrun counters: partial=1 empty=0\n`;
 
