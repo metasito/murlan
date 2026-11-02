@@ -19,6 +19,7 @@ import {
   roundOverSchema,
   gameStateSchema,
   roomStateSchema,
+  type StateOrder,
   type WireGameState,
   type WireRoomState,
   type RatingAfter,
@@ -30,6 +31,7 @@ import { clearReactions, pushReaction } from "@/lib/reactions";
 import { joinCode } from "@/lib/deepLink";
 import { handlesFor } from "@/lib/tableHandles";
 import { useRejoin } from "@/context/useRejoin";
+import { orderOf, supersedes } from "@/context/stateOrder";
 import type { MatchLength } from "@/lib/game/gameEngine";
 import type { MatchVerdict } from "@/lib/game/matchState";
 import {
@@ -337,6 +339,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
   const roomRef = useRef<RoomState | null>(null);
   const gameStateRef = useRef<WireGameState | null>(null);
+  const stateOrderRef = useRef<StateOrder | null>(null);
   const reconnectNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The server stamps every game:state with the viewer's seat index
   // (sanitizeStateForPlayer). -1 is an explicit "unknown" — never a real seat.
@@ -357,6 +360,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     rejoin.release();
     roomRef.current = null;
     gameStateRef.current = null;
+    stateOrderRef.current = null;
     setRoom(null);
     setGameState(null);
     setMySeatIndex(-1);
@@ -455,6 +459,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       const parsed = gameStateSchema.safeParse(raw);
       if (!parsed.success) return unreadable("game:state", parsed.error);
       const state = parsed.data as unknown as WireGameState;
+      const order = orderOf(state);
+      if (!supersedes(order, stateOrderRef.current)) return;
+      stateOrderRef.current = order;
       rejoin.answered();
       if (typeof state.turnSecondsRemaining === "number") {
         setTurnDeadline({

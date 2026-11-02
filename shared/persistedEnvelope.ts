@@ -98,7 +98,7 @@ function readPersistedSeats(stored: unknown): PersistedSeats {
  * `OLDEST_GAME_SCHEMA_VERSION` on are restored, each held to the current parse.
  * Held to the stored shape by tests/server/storedShapeVersions.test.ts.
  */
-export const GAME_SCHEMA_VERSION = 12;
+export const GAME_SCHEMA_VERSION = 13;
 
 /**
  * The oldest row still restored. Raise it to GAME_SCHEMA_VERSION when a bump changes what a
@@ -185,6 +185,8 @@ export interface PersistedEnvelope {
   replayOpening: LastMove | null;
   /** Oldest first; the row is never discarded while one is here. */
   pendingResults: PendingResult[];
+  /** The last `seq` a state of this table was sent under (`StateOrder` in shared/protocol.ts). */
+  seq: number;
 }
 
 export type PersistedReplay = Pick<PersistedEnvelope, "moveLog" | "replayOpening">;
@@ -230,7 +232,8 @@ export function packPersistedState(
   match: PersistedMatch,
   seats: PersistedSeats,
   replay: PersistedReplay = { moveLog: null, replayOpening: null },
-  pendingResults: PendingResult[] = []
+  pendingResults: PendingResult[] = [],
+  seq = 0
 ): PersistedEnvelope {
   return {
     schemaVersion: GAME_SCHEMA_VERSION,
@@ -242,6 +245,7 @@ export function packPersistedState(
     seats,
     ...replay,
     pendingResults,
+    seq,
   };
 }
 
@@ -315,6 +319,8 @@ export const persistedEnvelopeSchema = z.object({
   moveLog: z.array(replayMove).max(MAX_REPLAY_MOVES).nullable().catch(null),
   replayOpening: lastMove.nullable().catch(null),
   pendingResults: z.unknown().transform(readPendingResults),
+  // A row from before the counter restores at 0: its restore moves the epoch, which outranks any seq.
+  seq: z.number().int().nonnegative().catch(0).default(0),
 });
 
 /**

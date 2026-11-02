@@ -462,6 +462,11 @@ export function ownershipConnected(): boolean {
   return client !== null;
 }
 
+/** The epoch this process entered the room's row at; null while it has not. */
+export function ownerEpochOf(roomId: string): number | null {
+  return held.get(roomId)?.epoch ?? null;
+}
+
 /** Whether this process currently claims the room. */
 export function ownsRoom(roomId: string): boolean {
   return held.has(roomId);
