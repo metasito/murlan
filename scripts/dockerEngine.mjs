@@ -14,12 +14,16 @@ export const dockerInfo = (run) => (timeout) => {
 };
 
 /** A registry throttle is per second, not a quota: shards starting together trip it, and a jittered retry gets through. */
+// A throttle, or a registry connection that broke mid-pull (a layer fetch on CI once read
+// "could not fetch content descriptor … not found" and passed on the next attempt).
+const TRANSIENT = /toomanyrequests|rate exceeded|could not fetch content descriptor|httpReadSeeker|ECONNRESET|connection reset|i\/o timeout|TLS handshake timeout|unexpected EOF|\b50[234]\b/i;
+
 export function pullImage({ present, pull, sleep, random = Math.random, delaysMs = [2_000, 5_000, 10_000, 20_000] }) {
   if (present()) return "present";
   for (let attempt = 0; ; attempt++) {
     const r = pull();
     if (r.status === 0) return "pulled";
-    if (!/toomanyrequests|rate exceeded/i.test(r.stderr) || attempt >= delaysMs.length) {
+    if (!TRANSIENT.test(r.stderr) || attempt >= delaysMs.length) {
       throw new Error(r.stderr || "docker pull failed");
     }
     sleep(Math.round(delaysMs[attempt] * (1 + random())));
