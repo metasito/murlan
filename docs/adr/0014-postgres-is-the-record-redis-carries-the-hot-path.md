@@ -1,6 +1,6 @@
 # 0014. Postgres is the record, Redis carries the hot path, a move is an event
 
-**Status:** Accepted
+**Status:** Accepted; Redis 7 superseded by 0015 (Valkey 9)
 **Date:** 2026-11-01
 
 ## Context
