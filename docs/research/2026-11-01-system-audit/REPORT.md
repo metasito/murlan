@@ -175,8 +175,9 @@ Pool and lifecycle findings follow in their own section.
 ### 8–13. Lower impact
 
 - **8. Rate limits per instance** (`server/http/rateLimit.ts`, memory store): with N instances the
-  login brute-force limit becomes N×, and every deploy resets it. A Postgres-backed store for the
-  login, register and reset limiters only.
+  login brute-force limit becomes N×, and every deploy resets it. Fixed by D16 (#1887): every HTTP
+  limiter counts each request in Redis, cluster-wide, and in its own memory, and judges it by the
+  larger count; while Redis cannot answer, the memory count alone judges.
 - **9. Over-fetch** (`server/store/friendStore.ts:25-43`): friend lists select whole `users` rows,
   password hash and email included, on every connect, then use three fields.
 - **10. Quick match** (`server/store/roomStore.ts:334-354`): every public waiting room, no `LIMIT`,
@@ -311,8 +312,8 @@ design first (CLAUDE.md, working agreement).
 | E | Round results | 5, 7 (rollup, admin pool), 12 | yes: the outbox row and its worker |
 | F | Ownership and deploy | P4, P5 | yes: reclaim and lock release order |
 
-Finding 8 (a shared rate-limit store) waits for a second instance: today one instance runs, and
-the cost is a table and a write per login attempt.
+Finding 8 (a shared rate-limit store) was first left to wait for a second instance; D16 fixes it
+now, in Redis rather than a Postgres table.
 
 After the six PRs, `sim/load.sh` and `sim/explain.sql` rerun against the same seed, and this
 report gains an "after" column.
