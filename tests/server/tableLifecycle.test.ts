@@ -100,10 +100,9 @@ describe("the host starting a match", () => {
     const { rt } = useSetup(t, { rooms: [roomRow()], seats: [seatRows(["ana", 0], ["besi", 1])] });
     let autoStarted = false;
     arm("autoStart", ROOM, 5_000, () => (autoStarted = true));
-    t.mock.method(rt.transport, "serverSideEmit", (_event: string, _userId: string, ack: () => void) => {
+    t.mock.method(rt.peers, "instanceOf", async () => {
       clock.advance(5_000);
-      ack();
-      return true;
+      return null;
     });
     assert.deepEqual(await startMatchAction(rt, start()), { ok: true });
     assert.equal(autoStarted, false);
@@ -192,18 +191,15 @@ describe("the host starting a match", () => {
     assert.deepEqual(await startMatchAction(rt, start()), { ok: false, code: "MIN_PLAYERS_REQUIRED" });
   });
 
-  test("calls for every dealt-in player to stop watching, wherever their socket is", async (t) => {
+  test("calls for every dealt-in player to stop watching, at the instance their socket is on", async (t) => {
     const asked: unknown[] = [];
     const { rt } = useSetup(t, { rooms: [roomRow()], seats: [seatRows(["ana", 0], ["besi", 1])] });
-    t.mock.method(rt.transport, "serverSideEmit", (event: string, userId: string, ack: () => void) => {
-      asked.push([event, userId]);
-      ack();
-      return true;
-    });
+    t.mock.method(rt.peers, "instanceOf", async (userId: string) => `${userId}-instance`);
+    t.mock.method(rt.peers, "send", async (to: string, message: unknown) => void asked.push([to, message]));
     assert.deepEqual(await startMatchAction(rt, start()), { ok: true });
     assert.deepEqual(asked, [
-      ["murlan:stop-spectating", "ana"],
-      ["murlan:stop-spectating", "besi"],
+      ["ana-instance", { kind: "stop-spectating", userId: "ana" }],
+      ["besi-instance", { kind: "stop-spectating", userId: "besi" }],
     ]);
   });
 

@@ -154,16 +154,27 @@ takes the locks again, so the process never loses a room to its own half-dead se
 
 `applyOrForward` is the one door in:
 1. If this process has the room in `activeGames`, it applies the action itself.
-2. Otherwise it asks every other instance over `io.serverSideEmit(TABLE_ACTION_EVENT, …)`. Each
-   instance's `registerTableRouting` listener replies `NOT_THIS_INSTANCE` unless it owns the
-   room, in which case it applies the action and acks with the real outcome.
-3. If nobody owns it, this process claims the lock, rehydrates the game from Postgres and
-   becomes the owner.
+2. Otherwise it sends one message to the inbox of the instance `table-owner:<roomId>` names,
+   carrying the action, its id and the asker's `instanceId`; that instance's
+   `registerTableRouting` handler applies it and sends the outcome back to the asker's inbox, or
+   answers `NOT_THIS_INSTANCE` when it does not hold the room. No other instance reads either
+   message. A try waits 1.5 s, and there are two, 120 ms apart, so the whole wait stays under the
+   client's 4 s per try.
+3. With no owner record, no answer, or `NOT_THIS_INSTANCE`, it reads `pg_locks` for the room's
+   lock: held by another session is `TABLE_UNREACHABLE`; free is `NO_LIVE_GAME` for a `forward`
+   kind, and otherwise this process claims the lock, rehydrates the game from Postgres and
+   becomes the owner. A lock that reads free while the owner the record names is still heard
+   (its heartbeat within the grace) and still subscribed is not unowned: that owner may be
+   between a dropped ownership connection and its reclaim. A killed owner loses its subscription
+   at once, and one that died without a FIN stops being heard. An
+   ask that could not be handed over at all (Redis down) is not tried again.
+
+The owner remembers each applied intent for 120 s, up to 50,000 of them, so a re-sent intent is
+answered from that record and never applied twice.
 
 The forwarding instance does **not** re-broadcast. Broadcasts happen inside the owner's own
 handler (`publishState`, `rt.out.room(roomId).emit(…)`) and reach every socket at that table
-whichever instance holds each one, because the Socket.io Redis streams adapter (`server/socket/socketAdapter.ts`) carries `io.to()`
-across instances the same way it carries the forwarded action.
+whichever instance holds each one, through addressed delivery (`server/socket/delivery.ts`).
 
 **Bot-filled matches:** `room:start` with `fillWithBots` needs only one seated human. The
 room screen already offers bot-fill and the match-length picker together, so a solo player

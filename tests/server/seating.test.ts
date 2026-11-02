@@ -1,9 +1,11 @@
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { blankCommentsAndStrings, sourcesUnder } from "../helpers/sourceScan.ts";
-import { stopSpectatingEverywhere } from "../../server/socket/seating.ts";
+import { registerStopSpectating, stopSpectatingEverywhere } from "../../server/socket/seating.ts";
+import { spectatorRoomMap, userRoom } from "../../server/game/gameRoom.ts";
+import type { InstanceHandler } from "../../server/store/instanceInbox.ts";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -15,20 +17,80 @@ test("a socket takes a seat only through seatSocket", () => {
   assert.deepEqual(writers, ["server/socket/seating.ts"]);
 });
 
-test("stopping a player spectating everywhere waits for every other instance", async () => {
-  let ack: (() => void) | undefined;
+test("stopping a player spectating everywhere sends one message, to their instance alone", async () => {
+  const sent: [string, unknown][] = [];
   const { rt } = recordingRuntime({
-    transport: {
-      serverSideEmit: (_event: string, _userId: string, reply: () => void) => {
-        ack = reply;
-      },
+    peers: {
+      instanceOf: async (userId) => (userId === "u1" ? "their-instance" : null),
+      send: async (to, message) => void sent.push([to, message]),
     },
   });
+  await stopSpectatingEverywhere(rt, "u1");
+  assert.deepEqual(sent, [["their-instance", { kind: "stop-spectating", userId: "u1" }]]);
+});
+
+test("stopping a player spectating everywhere sends nothing for an account here or offline", async () => {
+  const sent: unknown[] = [];
+  const { rt } = recordingRuntime({
+    peers: {
+      instanceOf: async (userId) => (userId === "here" ? "this-instance" : null),
+      send: async (to) => void sent.push(to),
+    },
+  });
+  await stopSpectatingEverywhere(rt, "here");
+  await stopSpectatingEverywhere(rt, "offline");
+  assert.deepEqual(sent, []);
+});
+
+/** Whether `stopSpectatingEverywhere` has settled once its pending work has run and `ms` of frozen time passed. */
+async function settledAfter(t: TestContext, stopping: Promise<void>, ms: number): Promise<boolean> {
   let settled = false;
-  const stopped = stopSpectatingEverywhere(rt, "u1").then(() => (settled = true));
-  await new Promise((r) => setImmediate(r));
-  assert.equal(settled, false);
-  ack?.();
-  await stopped;
-  assert.equal(settled, true);
+  void stopping.then(() => (settled = true));
+  const flush = async () => {
+    for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
+  };
+  await flush();
+  if (ms > 0) t.mock.timers.tick(ms);
+  await flush();
+  return settled;
+}
+
+test("stopping a player spectating everywhere waits on no peer's answer", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { rt } = recordingRuntime({
+    peers: { instanceOf: async () => "silent-instance", send: async () => {} },
+  });
+  assert.equal(await settledAfter(t, stopSpectatingEverywhere(rt, "u1"), 0), true);
+});
+
+test("stopping a player spectating everywhere is held up by an unanswered store for one try at most", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { rt } = recordingRuntime({ peers: { instanceOf: () => new Promise(() => {}) } });
+  const stopping = stopSpectatingEverywhere(rt, "u1");
+  assert.equal(await settledAfter(t, stopping, 1_499), false);
+  assert.equal(await settledAfter(t, stopping, 1), true);
+});
+
+test("an instance told an account stopped watching takes its sockets here out of the watched room", async (t) => {
+  const handlers = new Map<string, InstanceHandler>();
+  const left: string[] = [];
+  const socket = { id: "s1", leave: (room: string) => void left.push(room) };
+  const { rt } = recordingRuntime({
+    peers: { on: (kind, handler) => void handlers.set(kind, handler) },
+    transport: {
+      sockets: { adapter: { rooms: new Map([[userRoom("u1"), new Set(["s1"])]]) }, sockets: new Map([["s1", socket]]) },
+    },
+  });
+  const routed: unknown[] = [];
+  t.mock.method(rt, "route", async (draft: unknown) => (routed.push(draft), { ok: true }));
+  registerStopSpectating(rt);
+  spectatorRoomMap.set("s1", "watched-room");
+  try {
+    await handlers.get("stop-spectating")?.({ kind: "stop-spectating", userId: "u1" });
+    assert.equal(spectatorRoomMap.has("s1"), false);
+    assert.deepEqual(left, ["watched-room"]);
+    assert.deepEqual(routed, [{ kind: "unspectate", roomId: "watched-room", userId: "u1" }]);
+  } finally {
+    spectatorRoomMap.delete("s1");
+  }
 });

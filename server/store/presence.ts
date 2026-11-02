@@ -91,9 +91,7 @@ export function openPresenceStore({
   hooks?: { beforeExec?: (keys: string[]) => Promise<void>; beforeRefill?: (userId: string) => Promise<void> };
 } = {}): PresenceStore {
   const key = {
-    // Not `presence:`, which an instance on #1893's hash format still writes during a rolling deploy.
     presence: (userId: string) => `${ns}:online:${userId}`,
-    legacy: (userId: string) => `${ns}:presence:${userId}`,
     table: (socketId: string) => `${ns}:table:${socketId}`,
     instance: (of: string) => `${ns}:instance:${of}`,
     instances: `${ns}:instances`,
@@ -242,26 +240,16 @@ export function openPresenceStore({
     if (userIds.length === 0) return where;
     const entries = (await client.mGet(userIds.map(key.presence))).map(parse);
     const live = await liveAmong([...new Set(entries.flatMap((e) => (e ? [e.instance] : [])))]);
-    const unentered: string[] = [];
     userIds.forEach((userId, i) => {
       const entry = entries[i];
-      if (!entry) return void unentered.push(userId);
-      if (!live.has(entry.instance)) return;
+      if (!entry || !live.has(entry.instance)) return;
       // This instance's own sockets are known here first-hand, an entry whose clear has not landed yet included.
       if (entry.instance === id && mine.get(userId)?.socketId !== entry.socket) return;
       where.set(userId, { instance: entry.instance, socket: entry.socket });
     });
-    if (unentered.length > 0) {
-      // An instance still on #1893's hash writes no liveness: its entry is taken at its word.
-      const legacy = await Promise.all(unentered.map((userId) => client.hmGet(key.legacy(userId), ["instance", "socket"])));
-      unentered.forEach((userId, i) => {
-        const [instance, socket] = legacy[i] ?? [];
-        if (instance && socket && instance !== id) where.set(userId, { instance, socket, table: null });
-      });
-    }
     if (tables && where.size > 0) {
-      const located = [...where.values()].filter((l) => l.table === undefined);
-      const rooms = located.length > 0 ? await client.mGet(located.map((l) => key.table(l.socket))) : [];
+      const located = [...where.values()];
+      const rooms = await client.mGet(located.map((l) => key.table(l.socket)));
       located.forEach((l, i) => (l.table = rooms[i] ?? null));
     }
     return where;

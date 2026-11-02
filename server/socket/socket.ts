@@ -42,6 +42,7 @@ import { roomStore } from "../store/roomStore.ts";
 import { registerStopSpectating } from "./seating.ts";
 import { storePresence } from "./socketOutbox.ts";
 import { deliveryOutbox } from "./delivery.ts";
+import { instancePeers } from "./peers.ts";
 import { forgetPresence, openPresence, recordPresence } from "../store/presence.ts";
 
 /**
@@ -120,14 +121,15 @@ export function setupSocket(httpServer: HttpServer, sessionMiddleware: RequestHa
   startInbox();
   openTableOwners();
   // Before the first connection: a table action forwarded from another
-  // instance arrives on `io`, not on a socket, and one that lands before the
-  // runtime's listener exists is answered by nobody.
+  // instance arrives in this instance's inbox, not on a socket, and one that
+  // lands before the runtime's listener exists is answered by nobody.
   const store = { games: activeGameStore, rooms: roomStore };
   const rt = createTableRuntime({
     out: deliveryOutbox(io),
     presence: storePresence(),
     writers: tableWriters(store),
     transport: io,
+    peers: instancePeers(),
     store,
   });
   bindSocketRuntime(rt);

@@ -17,6 +17,14 @@ export function tableOwnerValue(epoch: number, instance: string = instanceId): s
   return `${instance}:${epoch}`;
 }
 
+/** The instance a table's owner record names; null with no record. Rejects while Redis is unreachable. */
+export async function tableOwnerOf(roomId: string): Promise<string | null> {
+  const c = client;
+  if (!c) throw new Error("table owners are not open");
+  const value = await c.get(tableOwnerKey(roomId));
+  return value ? value.slice(0, value.lastIndexOf(":")) : null;
+}
+
 /** Opened at boot; until then, and after `closeTableOwners`, nothing is recorded. */
 export function openTableOwners(url?: string): void {
   if (client?.isOpen) return;

@@ -2,7 +2,7 @@
 // anything, so the refusal is logged rather than shown (owner decision D8).
 import { test, mock, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { recordingRuntime } from "../helpers/recordingRuntime.ts";
+import { ownedElsewhere, recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { announceIfFilled } from "../../server/socket/socketTable.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { friendStore } from "../../server/store/friendStore.ts";
@@ -28,12 +28,7 @@ test("a refused auto-start is logged with its code and told to nobody", async ()
     mock.method(friendStore, "getRoomInvitees", async () => []);
     const warned: Record<string, unknown>[] = [];
     mock.method(logger, "warn", (fields: Record<string, unknown>) => warned.push(fields));
-    const { rt, sent } = recordingRuntime({
-      transport: {
-        serverSideEmit: (_e: string, _a: unknown, ack: (err: unknown, replies: unknown[]) => void) =>
-          ack(null, [refuse("TEAMS_REQUIRE_FOUR")]),
-      },
-    });
+    const { rt, sent } = recordingRuntime({ peers: ownedElsewhere(() => refuse("TEAMS_REQUIRE_FOUR")).peers });
 
     await announceIfFilled(rt, ROOM, 2);
     clock.advance(autoStartDelayMs());

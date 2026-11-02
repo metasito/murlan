@@ -7,6 +7,7 @@ import type { activeGameStore, TableRoomPort } from "../store/activeGameStore.ts
 import type { Outcome } from "../shared/refusal.ts";
 import type { TableActionDraft } from "./tableActions.ts";
 import type { RoundOverWriters } from "./roundOver.ts";
+import type { InstanceHandler, InstanceMessage } from "../store/instanceInbox.ts";
 import { applyOrForward, registerTableRouting } from "./tableRouter.ts";
 import { reopenOwnership } from "./gameOwnership.ts";
 import { disposeGame, stopTables } from "./gamePersistence.ts";
@@ -44,6 +45,26 @@ export interface Presence {
   onlineAmong(userIds: readonly string[]): Promise<Set<string> | null>;
 }
 
+/** The other instances, one address at a time (`server/store/instanceInbox.ts`). */
+export interface Peers {
+  self: string;
+  /**
+   * Rejects at once while the store is down. Resolves for an instance that is gone: its inbox
+   * takes the message and nobody reads it.
+   */
+  send(to: string, message: InstanceMessage): Promise<void>;
+  /** A handler that awaits holds up every later message to this instance. */
+  on(kind: string, handler: InstanceHandler): void;
+  /** The instance a table's owner record names, null with none; rejects when it cannot be read. */
+  ownerOf(roomId: string): Promise<string | null>;
+  /** The instance an account's presence entry names, null while offline; rejects when it cannot be read. */
+  instanceOf(userId: string): Promise<string | null>;
+  /** Whether that instance's heartbeat was heard within the grace. */
+  heard(instance: string): boolean;
+  /** Whether that instance is connected to the cluster now; rejects when that cannot be read. */
+  stillSubscribed(instance: string): Promise<boolean>;
+}
+
 /** The only path a table's row and room-status writes take (`gamePersistence.ts` `tableWriters`). */
 export interface TableWriters extends RoundOverWriters {
   /** Deletes the room's `active_games` row after every earlier write to it. Never rejects. */
@@ -66,8 +87,9 @@ export interface TablePorts {
   out: TableOutbox;
   presence: Presence;
   writers: TableWriters;
-  /** Socket.IO itself, for the router and `socket/seating.ts` alone. */
+  /** Socket.IO itself, for `socket/seating.ts` alone. */
   transport: SocketServer;
+  peers: Peers;
   store: TableStore;
 }
 
@@ -82,8 +104,8 @@ export interface TableRuntime extends Omit<TablePorts, "store"> {
 }
 
 /**
- * Registers the routing listener on `transport`, so it must run before the
- * first connection: a forwarded action that lands earlier is answered by nobody.
+ * Registers the routing listener on `peers`, so it must run before the first
+ * connection: a forwarded action that lands earlier is answered by nobody.
  */
 export function createTableRuntime(ports: TablePorts): TableRuntime {
   const rt: TableRuntime = {

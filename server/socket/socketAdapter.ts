@@ -1,7 +1,7 @@
 import { createAdapter } from "@socket.io/redis-streams-adapter";
 import { MessageType, type ClusterMessage } from "socket.io-adapter";
 import { now } from "../http/clock.ts";
-import { BLOCK_MS, openRedis, redisKey, streamMaxLen, type RedisClient } from "../store/redis.ts";
+import { BLOCK_MS, instanceId, openRedis, redisKey, streamMaxLen, type RedisClient } from "../store/redis.ts";
 import { clusterMessages, noteStreamRead } from "../shared/metrics.ts";
 import { leavePresence, livePeers, type PresenceStore } from "../store/presence.ts";
 
@@ -15,16 +15,50 @@ const FIRST_BEAT_POLL_MS = 100;
 const PEER_GRACE_MS = 10_000;
 const HEARTBEAT = "murlan:adapter-heartbeat";
 const LEAVING = "murlan:adapter-leaving";
-/** Rides this revision's heartbeat; an older one's carries nothing, which is how it is told apart. */
-const KEEPS_LIVENESS = "liveness";
+/** Instances by the name their heartbeat carries, with the adapter uid it came from. */
+export class RoutingPeers {
+  private readonly named = new Map<string, { uid: string; at: number }>();
 
-/** What the adapter answers, on top of Socket.IO's, for `socketRegistry.ts`'s revocation. */
-export interface OlderPeers {
-  /**
-   * Whether a peer on a revision that keeps no presence liveness was heard within the grace: one
-   * that cannot handle what replaced its messages. Until no such revision runs (ADR 0014, decision 9).
-   */
-  hearsOlderPeers(): boolean;
+  heard(uid: string, packet: Packet, at: number): void {
+    if (packet[0] === HEARTBEAT && typeof packet[1] === "string") this.named.set(packet[1], { uid, at });
+  }
+
+  left(packet: Packet): void {
+    if (typeof packet[1] === "string") this.named.delete(packet[1]);
+  }
+
+  /** Named within the grace. */
+  heardFrom(instance: string, at: number): boolean {
+    const peer = this.named.get(instance);
+    if (peer && at - peer.at < PEER_GRACE_MS) return true;
+    this.named.delete(instance);
+    return false;
+  }
+
+  /** Whether `instance`'s uid is among `uids`, the adapter uids subscribed now; forgets every instance whose is not. */
+  subscribed(instance: string, uids: ReadonlySet<string>): boolean {
+    for (const [name, { uid }] of this.named) if (!uids.has(uid)) this.named.delete(name);
+    return this.named.has(instance);
+  }
+}
+
+export const heartbeatPacket = (): Packet => [HEARTBEAT, instanceId];
+
+const routing = new RoutingPeers();
+let subscribedUids: (() => Promise<Set<string>>) | null = null;
+
+/** Whether `instance`'s heartbeat was heard within the grace. */
+export function heardFrom(instance: string): boolean {
+  return routing.heardFrom(instance, now());
+}
+
+/**
+ * Whether `instance`'s adapter is subscribed now: a killed process loses its subscription at once,
+ * though it is still heard for the grace. Rejects when the subscriptions cannot be read.
+ */
+export async function stillSubscribed(instance: string): Promise<boolean> {
+  if (!subscribedUids) throw new Error("the socket adapter is not running");
+  return routing.subscribed(instance, await subscribedUids());
 }
 
 interface AdapterLinks {
@@ -118,11 +152,21 @@ export function createSocketAdapter(liveness: Liveness = { livePeers, leave: lea
     // A peer that said it is leaving is not waited on again, whatever arrives from it after.
     const left = new Set<string>();
 
+    /** The other adapters' uids subscribed now, but for one that said it is leaving. */
+    async function subscribedNow(): Promise<Set<string>> {
+      if (!links.ready()) throw new Error("this instance is not subscribed to the cluster");
+      const channels = (await links.client.sendCommand(["PUBSUB", "CHANNELS", pattern])) as string[];
+      const subscribed = new Set(channels.map((c) => String(c).slice(privateChannels.length, -1)));
+      subscribed.delete(cluster.uid);
+      for (const uid of left) subscribed.delete(uid);
+      return subscribed;
+    }
+    subscribedUids = subscribedNow;
+
     /**
-     * The peers a request must hear from, the larger of two counts until no revision without
-     * presence liveness runs (ADR 0014, decision 9): `instances` reads short after Redis lost its
-     * data, while a sweep races a peer's return, and for a peer too old to keep liveness at all.
-     * Either count failing fails the request. An instance not itself subscribed cannot count at all.
+     * The peers a request must hear from, the larger of two counts: `instances` reads short after
+     * Redis lost its data, and while a sweep races a peer's return. Either count failing fails the
+     * request. An instance not itself subscribed cannot count at all.
      */
     async function peers(): Promise<number> {
       if (!links.ready()) throw new Error("this instance is not subscribed to the cluster");
@@ -139,11 +183,8 @@ export function createSocketAdapter(liveness: Liveness = { livePeers, leave: lea
      * outliving its silent owner, as a partitioned host's does, stops counting after the grace.
      */
     async function subscribedPeers(): Promise<number> {
-      const channels = (await links.client.sendCommand(["PUBSUB", "CHANNELS", pattern])) as string[];
+      const subscribed = await subscribedNow();
       const at = now();
-      const subscribed = new Set(channels.map((c) => String(c).slice(privateChannels.length, -1)));
-      subscribed.delete(cluster.uid);
-      for (const uid of left) subscribed.delete(uid);
       for (const uid of subscribed) if (!noticed.has(uid)) noticed.set(uid, at);
       let count = 0;
       for (const [uid, since] of noticed) {
@@ -182,28 +223,23 @@ export function createSocketAdapter(liveness: Liveness = { livePeers, leave: lea
     };
     cluster.onMessage = (message: ClusterMessage, offset?: string) => {
       if (offset !== undefined) noteStreamRead("adapter", offset);
-      const event = message.type === MessageType.SERVER_SIDE_EMIT ? (message.data.packet as Packet)[0] : undefined;
-      if (event === HEARTBEAT && offset === undefined && message.uid !== cluster.uid && message.type === MessageType.SERVER_SIDE_EMIT) {
-        if ((message.data.packet as Packet)[1] === KEEPS_LIVENESS) older.delete(message.uid);
-        else older.set(message.uid, now());
-      }
+      const packet = message.type === MessageType.SERVER_SIDE_EMIT ? (message.data.packet as Packet) : [];
+      const event = packet[0];
       if (event === LEAVING) {
         left.add(message.uid);
         heard.delete(message.uid);
         noticed.delete(message.uid);
-        older.delete(message.uid);
+        routing.left(packet);
       } else if (offset === undefined && message.uid !== cluster.uid && !left.has(message.uid)) {
         const at = now();
         heard.set(message.uid, at);
         if (!noticed.has(message.uid)) noticed.set(message.uid, at);
+        routing.heard(message.uid, packet, at);
       }
       if (event === HEARTBEAT || event === LEAVING) return;
       return onMessage(message, offset);
     };
-    const older = new Map<string, number>();
-    const answers: OlderPeers = { hearsOlderPeers: () => [...older.values()].some((at) => now() - at < PEER_GRACE_MS) };
-    Object.assign(adapter, answers);
-    const beatNow = () => void serverSideEmit([HEARTBEAT, KEEPS_LIVENESS]);
+    const beatNow = () => void serverSideEmit(heartbeatPacket());
     const beat = setInterval(beatNow, HEARTBEAT_MS);
     const firstBeat = setInterval(() => {
       if (!links.ready()) return;
@@ -215,7 +251,7 @@ export function createSocketAdapter(liveness: Liveness = { livePeers, leave: lea
       liveness.leave();
       clearInterval(beat);
       clearInterval(firstBeat);
-      void serverSideEmit([LEAVING]);
+      void serverSideEmit([LEAVING, instanceId]);
       return close();
     };
     return adapter;
