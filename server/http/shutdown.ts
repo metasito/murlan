@@ -16,6 +16,7 @@ import { flushTelemetry } from "../shared/telemetryBatch.ts";
 import { within } from "../shared/within.ts";
 import { stopHealth } from "./health.ts";
 import { now } from "./clock.ts";
+import { DRAINING_SPREAD_MS } from "../../lib/reconnectDelay.ts";
 
 /**
  * How long the host waits between SIGTERM and SIGKILL. The whole sequence
@@ -59,9 +60,6 @@ const SHUTDOWN_STEPS_MS = Object.values(SHUTDOWN_BUDGET).reduce((sum, ms) => sum
  * exit(0) first, and strictly inside PLATFORM_GRACE_MS, so it can fire at all.
  */
 export const FORCED_EXIT_MS = SHUTDOWN_STEPS_MS + 250;
-
-/** How far apart a draining instance spreads its sockets' first reconnects. */
-export const DRAINING_SPREAD_MS = 10_000;
 
 /** Uniform over [0, DRAINING_SPREAD_MS), one draw per socket. */
 export function drainingReconnectAfterMs(random: () => number = Math.random): number {

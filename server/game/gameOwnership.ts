@@ -476,32 +476,46 @@ export async function releaseRoom(roomId: string): Promise<void> {
   await unlock(roomId);
 }
 
-async function unlock(roomId: string, record: "clear" | "keep" = "clear"): Promise<boolean> {
+async function unlock(roomId: string): Promise<void> {
   const hold = held.get(roomId);
-  if (!hold) return false;
+  if (!hold) return;
   held.delete(roomId);
-  if (hold.epoch !== null && record === "clear") void clearTableOwner(roomId, hold.epoch);
+  if (hold.epoch !== null) void clearTableOwner(roomId, hold.epoch);
   const c = client;
-  if (!c) return false;
-  return c
-    .query<{ released: boolean }>("SELECT pg_advisory_unlock($1::bigint) AS released", [ownershipKey(roomId)])
-    .then(({ rows }) => rows[0]?.released === true)
-    .catch((err: unknown) => {
-      logger.warn({ err, roomId }, "Could not release a room");
-      return false;
-    });
+  if (!c) return;
+  await c
+    .query("SELECT pg_advisory_unlock($1::bigint)", [ownershipKey(roomId)])
+    .catch((err: unknown) => logger.warn({ err, roomId }, "Could not release a room"));
 }
 
 /**
  * Hands a room back for a peer to claim, keeping its owner record: an instance asking meanwhile
  * still asks this one, which forwards to whichever peer claims, and that claim's record replaces
- * it. `released` is whether the lock is now free for a claim; `forget` clears the record while it
- * still names this claim, for a hand-off nobody took. Null for a room this process has not entered.
+ * it. `forget` clears the record while it still names this claim, for a hand-off nobody took.
+ * Null, with the claim kept, unless the lock is now free: a session that is down or reclaiming
+ * cannot release what it may no longer hold, and a hold given up then is one no reclaim retakes.
  */
-export async function releaseForHandOff(roomId: string): Promise<{ released: boolean; forget: () => Promise<void> } | null> {
-  const epoch = held.get(roomId)?.epoch ?? null;
-  if (releasing.has(roomId) || epoch === null) return null;
-  return { released: await unlock(roomId, "keep"), forget: () => clearTableOwner(roomId, epoch) };
+export async function releaseForHandOff(roomId: string): Promise<{ forget: () => Promise<void> } | null> {
+  const hold = held.get(roomId);
+  const c = client;
+  if (!hold || hold.epoch === null || releasing.has(roomId) || !c || reclaiming || hold.lockedOn !== c) return null;
+  const epoch = hold.epoch;
+  held.delete(roomId);
+  const released = await c
+    .query<{ released: boolean }>("SELECT pg_advisory_unlock($1::bigint) AS released", [ownershipKey(roomId)])
+    .then(({ rows }) => rows[0]?.released === true)
+    .catch((err: unknown) => {
+      logger.warn({ err, roomId }, "Could not release a room to hand it off");
+      return null;
+    });
+  if (released) return { forget: () => clearTableOwner(roomId, epoch) };
+  if (!closed && !held.has(roomId)) {
+    // Not this session's lock after all: the reclaim asks for it again.
+    if (released === false) hold.lockedOn = null;
+    held.set(roomId, hold);
+    void reclaim();
+  }
+  return null;
 }
 
 /**

@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import { Client } from "pg";
 import type { Server as HttpServer } from "node:http";
 import { stubTransport } from "../helpers/recordingRuntime.ts";
-import { DRAINING_SPREAD_MS, drainingReconnectAfterMs, shutdown } from "../../server/http/shutdown.ts";
+import { drainingReconnectAfterMs, shutdown } from "../../server/http/shutdown.ts";
+import { DRAINING_SPREAD_MS } from "../../lib/reconnectDelay.ts";
 import { openDatabase, pool } from "../../server/store/db.ts";
 
 test("every socket is told when to reconnect after the hand-off and before io.close()", { timeout: 10_000 }, async (t) => {

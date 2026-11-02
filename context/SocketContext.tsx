@@ -30,7 +30,7 @@ import { useNotification } from "@/context/NotificationContext";
 import { SessionReplacedNotice } from "@/components/SessionReplacedNotice";
 import { t, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
-import { reconnectWaitMs } from "@/lib/reconnectDelay";
+import { DRAINING_SPREAD_MS, reconnectWaitMs } from "@/lib/reconnectDelay";
 import { sendInvite, undelivered } from "@/lib/sendIntent";
 import type { FriendRequestAccepted, FriendRequestIncoming, GameInviteDto } from "@/shared/http";
 import type { Socket as UntypedSocket } from "socket.io-client";
@@ -365,7 +365,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
     };
 
     const onDraining = ({ reconnectAfterMs }: { reconnectAfterMs: number }) => {
-      drainingUntilRef.current = Date.now() + reconnectAfterMs;
+      drainingUntilRef.current = Date.now() + Math.min(Math.max(0, reconnectAfterMs), DRAINING_SPREAD_MS);
     };
 
     const onConnectError = (err: Error) => {

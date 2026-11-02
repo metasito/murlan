@@ -109,13 +109,13 @@ async function handOff(rt: TableRuntime, roomId: string, game: OnlineGameState, 
   clearRoomLobbyGraces(roomId);
   const landed = Promise.allSettled([...(applying.get(roomId) ?? [])]).then(() => lastWriteLanded(roomId));
   if (!(await by(deadline, landed.then(() => true), false)) || activeGames.get(roomId) !== game) return "kept";
+  const seated = Object.values(game.playerMap)[0] ?? [...game.vacatedSeats.values()][0]?.userId;
+  if (seated === undefined) return "kept";
   const release = await releaseToPeer(roomId);
-  if (!release?.released) {
-    await release?.forget();
-    logger.warn({ roomId }, "Could not release a table to hand it off; the next owner restores it");
-    return { to: null };
+  if (!release) {
+    logger.warn({ roomId }, "Could not release a table to hand it off; it is kept here");
+    return "kept";
   }
-  const seated = Object.values(game.playerMap)[0] ?? [...game.vacatedSeats.values()][0]?.userId ?? "";
   const to = await offer(rt, { kind: "resume", roomId, userId: seated, id: randomUUID() }, peers, deadline);
   if (to === null) {
     // Held again until this process exits, as before the hand-off: a free lock with nobody behind

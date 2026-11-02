@@ -79,12 +79,14 @@ export function disposeGame(rt: TableRuntime, roomId: string, deleteRow = true) 
 }
 
 /**
- * Takes a table whose last write has landed out of memory, before its lock goes, so nothing here
- * writes the row a peer is about to enter; the lock is freed for that peer (`releaseForHandOff`).
+ * Frees a table whose last write has landed for a peer's claim (`releaseForHandOff`), and only
+ * then takes it out of memory: null keeps both the game and its claim here. The claim is gone
+ * before the lock is, so nothing here writes the row the peer is about to enter.
  */
-export function releaseToPeer(roomId: string): ReturnType<typeof releaseForHandOff> {
-  activeGames.delete(roomId);
-  return releaseForHandOff(roomId);
+export async function releaseToPeer(roomId: string): ReturnType<typeof releaseForHandOff> {
+  const release = await releaseForHandOff(roomId);
+  if (release) activeGames.delete(roomId);
+  return release;
 }
 
 /**

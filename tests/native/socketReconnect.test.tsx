@@ -11,7 +11,7 @@ import { AppState, Platform, Text } from 'react-native';
 import { act, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
 
-import { reconnectDelayMs } from '@/lib/reconnectDelay';
+import { DRAINING_SPREAD_MS, reconnectDelayMs } from '@/lib/reconnectDelay';
 import { renderApp } from './harness/renderApp';
 import { netInfoListeners } from './mocks/netInfo';
 import { lastSocket } from './mocks/socketIo';
@@ -187,6 +187,16 @@ describe('a draining server', () => {
     await advance(DRAINING_MS - 1);
     expect(lastSocket().connect).not.toHaveBeenCalled();
     await advance(1);
+    expect(lastSocket().connect).toHaveBeenCalledTimes(1);
+    await unmount(view);
+  });
+
+  it('waits no longer than the spread a server draws from, whatever the notice says', async () => {
+    const view = await connected();
+    await drain(DRAINING_SPREAD_MS * 6);
+    await act(async () => lastSocket().drop('transport close'));
+
+    await advance(DRAINING_SPREAD_MS);
     expect(lastSocket().connect).toHaveBeenCalledTimes(1);
     await unmount(view);
   });

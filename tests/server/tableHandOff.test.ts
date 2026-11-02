@@ -6,13 +6,14 @@ import { Client } from "pg";
 import { applyOrForward, inFlight, TABLE_ANSWER, TABLE_ASK } from "../../server/game/tableRouter.ts";
 import { HAND_OFF, HAND_OFF_ANSWER } from "../../server/game/tableHandOff.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
-import { clearAllTimersForUser, clearRoomTimers } from "../../server/game/gameTimers.ts";
+import { clearAllTimersForUser, clearRoomTimers, pending, usersInLobbyGrace } from "../../server/game/gameTimers.ts";
 import { closeOwnership, ownershipKey, ownsRoom, reopenOwnership } from "../../server/game/gameOwnership.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { packPersistedState } from "../../shared/persistedEnvelope.ts";
 import type { TableAction } from "../../server/game/tableActions.ts";
 import type { GameState } from "../../lib/game/gameEngine.ts";
 import type { InstanceHandler, InstanceMessage } from "../../server/store/instanceInbox.ts";
+import type { Peers } from "../../server/game/tableRuntime.ts";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { eventually } from "../helpers/client.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
@@ -21,25 +22,36 @@ import { aThreePlayed } from "../support/game.ts";
 let rooms = 0;
 let room = "";
 
-/** Every unlock sent, by key, and how many times the lock was read rather than asked for. */
+/**
+ * The lock as Postgres answers it: every unlock sent, by key; how often the lock was read rather
+ * than asked for, and asked for; `elsewhere` while another instance holds it; `down` while the
+ * ownership connection cannot be opened, and each one that was.
+ */
 function scriptLock(t: TestContext) {
   const unlocked: string[] = [];
   const reads = { n: 0 };
-  t.mock.method(Client.prototype, "connect", async () => {});
+  const state = { elsewhere: false, down: false, asked: 0, sessions: [] as Client[] };
+  t.mock.method(Client.prototype, "connect", async function (this: Client) {
+    if (state.down) throw new Error("connect ECONNREFUSED");
+    state.sessions.push(this);
+  });
   t.mock.method(Client.prototype, "end", async () => {});
   t.mock.method(Client.prototype, "query", async (sql: string, params?: string[]) => {
     if (/pg_locks/.test(sql)) {
       reads.n++;
-      return { rows: [] };
+      return { rows: state.elsewhere ? [{ current: false, pid: 7, started: "1" }] : [] };
     }
-    if (/pg_try_advisory_lock/.test(sql)) return { rows: [{ locked: true }] };
+    if (/pg_try_advisory_lock/.test(sql)) {
+      state.asked++;
+      return { rows: [{ locked: !state.elsewhere }] };
+    }
     if (/pg_advisory_unlock/.test(sql)) {
       unlocked.push(params![0]!);
       return { rows: [{ released: true }] };
     }
     return { rows: [] };
   });
-  return { unlocked, reads };
+  return { unlocked, reads, state };
 }
 
 beforeEach(() => {
@@ -96,7 +108,12 @@ const row = () =>
  * This instance owning the room, with `live` peers: each claims an offered table as `claims` says
  * (`gone` refuses the offer, `silent` never answers), and answers every intent forwarded to it ok.
  */
-async function owningWith(live: string[], claims: (peer: string) => "claims" | "gone" | "silent", claimAfterMs = 0) {
+async function owningWith(
+  live: string[],
+  claims: (peer: string) => "claims" | "gone" | "silent",
+  claimAfterMs = 0,
+  peers: Partial<Peers> = {}
+) {
   const handlers = new Map<string, InstanceHandler>();
   const offers: string[] = [];
   const asks: { to: string; action: TableAction }[] = [];
@@ -118,6 +135,7 @@ async function owningWith(live: string[], claims: (peer: string) => "claims" | "
         asks.push({ to, action: message.action as TableAction });
         reply(TABLE_ANSWER, { kind: TABLE_ANSWER, ask: message.ask, outcome: { ok: true } });
       },
+      ...peers,
     },
   });
   harness.cluster.online.add("ana");
@@ -194,6 +212,49 @@ describe("a table handed off at shutdown", () => {
     await rt.handOffTables(2_000);
     assert.equal(ownsRoom(room), true, "the lock was left free with nobody behind it");
     assert.deepEqual(await applyOrForward(rt, { kind: "seatLost", roomId: room, userId: "besi" }), { ok: false, code: "TABLE_UNREACHABLE" });
+  });
+
+  test("is kept, and its lock taken back, when the ownership connection is down", async (t) => {
+    const { unlocked, state } = scriptLock(t);
+    useMemoryTableStores(t, { rows: [[room, row()]] });
+    const { rt, offers, cluster } = await owningWith(["live-peer"], () => "claims");
+    state.down = true;
+    state.sessions.at(-1)!.emit("error", new Error("Connection terminated unexpectedly"));
+    const askedBefore = state.asked;
+
+    await rt.handOffTables(2_000);
+    assert.deepEqual(offers, [], "a table whose lock this instance could not release was offered");
+    assert.deepEqual(unlocked, []);
+    assert.equal(activeGames.has(room) && ownsRoom(room), true, "the table was given up with its lock unreleased");
+
+    state.down = false;
+    await eventually(() => state.asked > askedBefore, "the reclaim to take the lock back", 5_000);
+    assert.equal(ownsRoom(room), true);
+    cluster.online.delete("besi");
+    assert.deepEqual(await applyOrForward(rt, { kind: "seatLost", roomId: room, userId: "besi" }), { ok: true });
+    assert.equal(pending("disconnect", "besi"), true, "the seat lost did not get the in-game grace");
+    assert.deepEqual(usersInLobbyGrace(room), [], "a seat at a live table was held as a lobby seat");
+  });
+
+  test("follows a peer whose claim landed but whose answer was lost", async (t) => {
+    const { state } = scriptLock(t);
+    useMemoryTableStores(t, { rows: [[room, row()]] });
+    let claimed = false;
+    const { rt, asks } = await owningWith(
+      ["deaf-peer"],
+      () => {
+        state.elsewhere = true;
+        claimed = true;
+        return "silent";
+      },
+      0,
+      { ownerOf: async () => (claimed ? "deaf-peer" : null), heard: () => true, stillSubscribed: async () => true }
+    );
+
+    await rt.handOffTables(1_500);
+    assert.equal(ownsRoom(room), false, "this instance took back a lock the peer holds");
+    assert.deepEqual(await applyOrForward(rt, { kind: "rejoin", roomId: room, userId: "besi" }), { ok: true });
+    assert.deepEqual(asks.map((a) => [a.to, a.action.kind]), [["deaf-peer", "rejoin"]]);
   });
 
   test("is kept when the live peers cannot be read", async (t) => {
