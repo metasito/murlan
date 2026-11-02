@@ -8,7 +8,7 @@
 // were on, and what their build is. No game state and no attached crash, both
 // of which carry other players' data and wait on a privacy policy.
 import { sql } from "drizzle-orm";
-import { db } from "../store/db.ts";
+import { db, type Database } from "../store/db.ts";
 import { bugReports } from "../../shared/schema.ts";
 
 /** Matched to `CLIENT_ERROR_RETENTION_DAYS`; both hold personal data. */
@@ -51,9 +51,9 @@ export async function recordBugReport(input: BugReportInput): Promise<void> {
 }
 
 /** Newest first, for /admin. The reporter's name, so a reply is possible by hand. */
-export async function recentBugReports(limit = BUG_REPORT_PAGE): Promise<BugReportRow[]> {
+export async function recentBugReports(database: Database, limit = BUG_REPORT_PAGE): Promise<BugReportRow[]> {
   // `db.execute` hands a timestamp back as text; only drizzle's query builder parses it.
-  const rows = await db().execute<{
+  const rows = await database.execute<{
     id: string;
     created_at: string;
     username: string | null;

@@ -159,15 +159,17 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     const opened = waitFor(host!.socket, "room:state");
     host!.socket.emit("room:quickmatch", { maxPlayers, gameMode: "free_for_all" });
     const room = await opened;
-    const real = roomStore.findWaitingPublicRooms;
+    const real = roomStore.findQuickMatchCandidates;
     let meddled = 0;
-    roomStore.findWaitingPublicRooms = async function (userId?: string) {
-      const found = (await real.call(this, userId)).filter((c) => c.room.id === room.roomId);
-      if (userId === stranger!.user.id && found.length > 0) {
-        meddled += 1;
-        await meddle(room.roomId, host!.user.id);
+    roomStore.findQuickMatchCandidates = async function* (want) {
+      for await (const id of real.call(this, want)) {
+        if (id !== room.roomId) continue;
+        if (want.userId === stranger!.user.id) {
+          meddled += 1;
+          await meddle(room.roomId, host!.user.id);
+        }
+        yield id;
       }
-      return found;
     };
     try {
       const landed = waitFor(stranger!.socket, "room:state");
@@ -176,7 +178,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
       assert.equal(meddled, 1, "the room never changed under the match — the test proved nothing");
       assert.notEqual(state.roomId, room.roomId);
     } finally {
-      roomStore.findWaitingPublicRooms = real;
+      roomStore.findQuickMatchCandidates = real;
     }
   }
 
