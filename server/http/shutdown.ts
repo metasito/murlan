@@ -10,6 +10,7 @@ import { closeTableOwners } from "../store/tableOwners.ts";
 import { closeOwnership } from "../game/gameOwnership.ts";
 import type { TableRuntime } from "../game/tableRuntime.ts";
 import { settleDisconnects } from "../socket/socketPresence.ts";
+import { flushTelemetry } from "../shared/telemetryBatch.ts";
 
 /**
  * How long the host waits between SIGTERM and SIGKILL. The whole sequence
@@ -36,6 +37,7 @@ export const SHUTDOWN_BUDGET = {
   ioClose: 500,
   settleDisconnects: DISCONNECT_SETTLE_MS,
   stopTables: 250,
+  flushTelemetry: 200,
   drain: DRAIN_TIMEOUT_MS,
   poolEnd: 200,
   closeOwnership: 250,
@@ -113,6 +115,7 @@ export async function shutdown(
     );
     await settleDisconnects(SHUTDOWN_BUDGET.settleDisconnects);
     await within(SHUTDOWN_BUDGET.stopTables, tables.stopTables());
+    await within(SHUTDOWN_BUDGET.flushTelemetry, flushTelemetry());
     stopInbox();
     closeTableOwners();
     closeRedis();

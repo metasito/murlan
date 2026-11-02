@@ -6,7 +6,8 @@
 import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
-import { clientErrors } from "../../shared/schema.ts";
+import { telemetryBatch } from "../shared/telemetryBatch.ts";
+import { now } from "./clock.ts";
 import { ERROR_GROUP_WINDOW_DAYS } from "./serverErrors.ts";
 
 /** Matched to bug reports, and to nothing else here keeping personal data. */
@@ -60,17 +61,60 @@ function computeFingerprint(message: string, stack: string | undefined): string 
   return createHash("sha256").update(basis).digest("hex");
 }
 
-/** Writes one report. Retention is server/game/retention.ts's job, on a schedule. */
-export async function recordClientError(input: ClientErrorInput): Promise<void> {
-  await db().insert(clientErrors).values({
+interface ClientErrorRow {
+  userId: string | null;
+  occurredAt: string;
+  appVersion: string | null;
+  platform: string | null;
+  screen: string | null;
+  message: string;
+  stack: string | null;
+  context: string;
+  fingerprint: string;
+}
+
+const queueClientError = telemetryBatch<ClientErrorRow>({
+  table: "client_errors",
+  insert: `INSERT INTO client_errors
+      (user_id, occurred_at, app_version, platform, screen, message, stack, context, fingerprint)
+    SELECT u.id, t.occurred_at, t.app_version, t.platform, t.screen, t.message, t.stack, t.context, t.fingerprint
+    FROM unnest(
+      $1::text[], $2::timestamptz[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::jsonb[], $9::text[]
+    ) AS t(user_id, occurred_at, app_version, platform, screen, message, stack, context, fingerprint)
+    LEFT JOIN users u ON u.id = t.user_id`,
+  columns: (rows) => [
+    rows.map((r) => r.userId),
+    rows.map((r) => r.occurredAt),
+    rows.map((r) => r.appVersion),
+    rows.map((r) => r.platform),
+    rows.map((r) => r.screen),
+    rows.map((r) => r.message),
+    rows.map((r) => r.stack),
+    rows.map((r) => r.context),
+    rows.map((r) => r.fingerprint),
+  ],
+});
+
+/** Postgres refuses a NUL in text and jsonb, and one such report would fail its whole batch. */
+const withoutNul = (text: string) => text.replaceAll("\0", "");
+const optional = (text: string | undefined) => (text === undefined ? null : withoutNul(text));
+
+/** Queues one report. Retention is server/game/retention.ts's job, on a schedule. */
+export function recordClientError(input: ClientErrorInput): void {
+  const message = withoutNul(input.message);
+  const stack = optional(input.stack);
+  queueClientError({
     userId: input.userId,
-    message: input.message,
-    stack: input.stack ?? null,
-    screen: input.screen ?? null,
-    platform: input.platform ?? null,
-    appVersion: input.appVersion ?? null,
-    context: input.context ?? {},
-    fingerprint: computeFingerprint(input.message, input.stack),
+    occurredAt: new Date(now()).toISOString(),
+    appVersion: optional(input.appVersion),
+    platform: optional(input.platform),
+    screen: optional(input.screen),
+    message,
+    stack,
+    context: JSON.stringify(input.context ?? {}, (_key, value: unknown) =>
+      typeof value === "string" ? withoutNul(value) : value
+    ),
+    fingerprint: computeFingerprint(message, stack ?? undefined),
   });
 }
 

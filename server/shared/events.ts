@@ -11,7 +11,8 @@
 import { desc, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { events } from "../../shared/schema.ts";
-import { logger } from "./logger.ts";
+import { now } from "../http/clock.ts";
+import { telemetryBatch } from "./telemetryBatch.ts";
 import type { EventContext, EventName } from "../../shared/events.ts";
 
 /** Matched to client_errors, so the two age out together. */
@@ -20,19 +21,27 @@ export const EVENT_RETENTION_DAYS = 90;
 /** Nothing on the dashboard reads further back than this. */
 export const FUNNEL_WINDOW_DAYS = 30;
 
-/**
- * Records one step. Retention is server/game/retention.ts's job, on a schedule —
- * not this call's.
- *
- * Callers use `trackEvent`, not this. This is what it awaits.
- */
-async function insertEvent(
-  name: EventName,
-  userId: string | null,
-  context: EventContext
-): Promise<void> {
-  await db().insert(events).values({ name, userId, context });
+interface EventRow {
+  name: EventName;
+  userId: string | null;
+  context: EventContext;
+  occurredAt: string;
 }
+
+/** Retention is server/game/retention.ts's job, on a schedule — not this queue's. */
+const queueEvent = telemetryBatch<EventRow>({
+  table: "events",
+  insert: `INSERT INTO events (user_id, occurred_at, name, context)
+    SELECT u.id, t.occurred_at, t.name, t.context
+    FROM unnest($1::text[], $2::timestamptz[], $3::text[], $4::jsonb[]) AS t(user_id, occurred_at, name, context)
+    LEFT JOIN users u ON u.id = t.user_id`,
+  columns: (rows) => [
+    rows.map((r) => r.userId),
+    rows.map((r) => r.occurredAt),
+    rows.map((r) => r.name),
+    rows.map((r) => JSON.stringify(r.context)),
+  ],
+});
 
 /**
  * Fire-and-forget. This table is diagnostic and gameplay does not depend on
@@ -45,9 +54,7 @@ export function trackEvent(
   userId: string | null,
   context: EventContext = {}
 ): void {
-  void insertEvent(name, userId, context).catch((err) =>
-    logger.error({ err, event: name }, "Failed to record a funnel event")
-  );
+  queueEvent({ name, userId, context, occurredAt: new Date(now()).toISOString() });
 }
 
 export interface FunnelStep {

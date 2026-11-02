@@ -3,9 +3,8 @@
 //
 // This table is diagnostic. Nothing in a round depends on it, so a write that
 // fails must cost a log line and nothing else — never a rejected move, never a
-// dropped socket. That is asserted here with an insert that genuinely fails,
-// not with a mock that pretends to.
-import { test, before, after, describe, mock } from "node:test";
+// dropped socket (tests/server/telemetryBatch.test.ts fails a batch).
+import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   startTestServer,
@@ -13,8 +12,8 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { DEADLINE_SCALE, eventually, register } from "../helpers/client.ts";
-import { logger } from "../../server/shared/logger.ts";
+import { eventually, register } from "../helpers/client.ts";
+import { flushTelemetry } from "../../server/shared/telemetryBatch.ts";
 import { EVENT_NAMES } from "../../shared/events.ts";
 import { trackEvent, EVENT_RETENTION_DAYS as retentionDays } from "../../server/shared/events.ts";
 import { sweepRetention } from "../../server/game/retention.ts";
@@ -57,33 +56,26 @@ describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () =>
     // device knows and the account does not. That is not a second player
     // opening the tutorial.
     assert.equal((await seen()).status, 200);
-    await new Promise((r) => setTimeout(r, 300 * DEADLINE_SCALE));
+    await flushTelemetry();
 
     assert.equal((await rowsNamed("tutorial.started")).length, 1);
   });
 
-  test("a write that genuinely fails does not reach the caller", async () => {
-    // No such user, so the foreign key rejects the insert. If trackEvent let
-    // that surface, the move or the socket that emitted it would carry the
-    // failure instead.
-    const logged = mock.method(logger, "error");
-    try {
-      assert.doesNotThrow(() =>
-        trackEvent("game.firstMoveMade", "00000000-0000-0000-0000-000000000000")
-      );
-      await eventually(
-        () => logged.mock.calls.some((c) => c.arguments[1] === "Failed to record a funnel event"),
-        "the refused insert to be logged"
-      );
-    } finally {
-      logged.mock.restore();
-    }
+  test("a row for an account that is gone lands with no user, and the rows batched beside it land", async () => {
+    const [{ id: playerId }] = await server.query<{ id: string }>(
+      `SELECT id FROM "${server.schema}".users WHERE username = $1`,
+      ["funnel_player"]
+    );
+    assert.doesNotThrow(() => trackEvent("game.firstMoveMade", "00000000-0000-0000-0000-000000000000"));
+    trackEvent("game.firstMoveMade", playerId);
+    await flushTelemetry();
 
-    // The row is genuinely absent — the insert really did fail, so this is not
-    // a test of a write that quietly succeeded.
-    assert.equal((await rowsNamed("game.firstMoveMade")).length, 0);
+    const rows = await server.query<{ user_id: string | null }>(
+      `SELECT user_id FROM "${server.schema}".events WHERE name = $1 ORDER BY user_id NULLS FIRST`,
+      ["game.firstMoveMade"]
+    );
+    assert.deepEqual(rows.map((r) => r.user_id), [null, playerId]);
 
-    // And the server is still serving.
     const res = await fetch(`${server.url}/api/auth/me`, { headers: { cookie } });
     assert.equal(res.status, 200);
   });
