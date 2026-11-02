@@ -172,6 +172,17 @@ takes the locks again, so the process never loses a room to its own half-dead se
 The owner remembers each applied intent for 120 s, up to 50,000 of them, so a re-sent intent is
 answered from that record and never applied twice.
 
+**Shutdown hands each table off (`server/game/tableHandOff.ts`, ADR-0014 decision 11):** before a
+socket closes, a process on its way out stops applying the room's intents, lets its last write land,
+releases the lock — keeping its owner record, so askers still reach it — and offers the room to a
+live peer (`instances` with a live key, at random) by `XADD … NOMKSTREAM` to that peer's inbox, which
+each instance keeps from boot to stop; a missing inbox means gone, and the next peer is tried. The
+peer claims, moves the epoch, restores and arms the turn, and answers; every intent held meanwhile,
+and every later one, goes to it. Nobody claiming within the 2 s budget is `TABLE_UNREACHABLE`,
+never `NO_LIVE_GAME`. With no live peer the tables are kept to the end, as the next process restores
+them. Only then does each socket get `server:draining` with a reconnect delay uniform over 0–10 s,
+which the client's first reconnect waits out, and `io.close()` runs.
+
 The forwarding instance does **not** re-broadcast. Broadcasts happen inside the owner's own
 handler (`publishState`, `rt.out.room(roomId).emit(…)`) and reach every socket at that table
 whichever instance holds each one, through addressed delivery (`server/socket/delivery.ts`).

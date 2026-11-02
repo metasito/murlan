@@ -67,9 +67,11 @@ export function queueBarrier<T>(roomId: string, write: () => Promise<T>): Promis
   return next.landed.then(() => settle);
 }
 
-/** Settles once every write queued for the room so far has landed. */
+const NOTHING_QUEUED = Promise.resolve();
+
+/** Settles once every write queued for the room so far has landed; the same promise until another is queued. */
 export function roomWritesLanded(roomId: string): Promise<void> {
-  return queues.get(roomId)?.at(-1)?.landed ?? Promise.resolve();
+  return queues.get(roomId)?.at(-1)?.landed ?? NOTHING_QUEUED;
 }
 
 /** Settles once every write queued for any room so far has landed. */

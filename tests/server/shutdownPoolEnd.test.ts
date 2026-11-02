@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Client } from "pg";
 import type { Server as HttpServer } from "node:http";
-import { recordingRuntime } from "../helpers/recordingRuntime.ts";
+import { recordingRuntime, stubTransport } from "../helpers/recordingRuntime.ts";
 import { shutdown } from "../../server/http/shutdown.ts";
 import { openDatabase, pool } from "../../server/store/db.ts";
 
@@ -15,7 +15,7 @@ test("a pool that drained but never finishes closing still lets the shutdown exi
   t.mock.method(pool(), "end", () => new Promise<void>(() => {}));
   const exits: number[] = [];
   await shutdown("SIGTERM", {
-    io: { close: async () => {} },
+    io: stubTransport({ close: async () => {} }),
     tables: recordingRuntime().rt,
     server: { listening: false } as unknown as HttpServer,
     exit: (code) => exits.push(code),
