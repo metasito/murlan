@@ -78,8 +78,11 @@ describe("Redis unreachable", { skip: hasDatabase() ? false : skipMessage() }, (
     assert.equal((await post(a.cookie, "/api/friends/add", { username: b.user.username })).status, 200);
     const rows = (await (await fetch(`${server.url}/api/friends/requests`, { headers: { cookie: b.cookie } })).json()) as { id: string }[];
     assert.equal((await post(b.cookie, `/api/friends/accept/${rows[0]!.id}`)).status, 200);
+    // Each connect's own push first, so the list read below is the answer to the ask made with Redis gone.
     const onA = await connectSocket(server, { cookie: a.cookie });
+    await waitFor(onA, "friend:online_list");
     const onB = await connectSocket(server, { cookie: b.cookie });
+    await waitFor(onB, "friend:online_list");
     sockets.push(onA, onB);
 
     proxy.refuse(true);

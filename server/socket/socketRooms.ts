@@ -17,7 +17,7 @@ import {
   announceIfFilled,
   announceRoomChanged,
 } from "./socketTable.ts";
-import { seatSocket, stopSpectating } from "./seating.ts";
+import { seatSocket, stopSpectating, unseatSocket } from "./seating.ts";
 import {
   type LobbyPort,
   createRoomIntent,
@@ -102,9 +102,8 @@ export function registerRoomHandlers({ rt, socket, userId }: HandlerContext) {
       "room:leave",
       NoPayloadSchema,
       async () => {
-        const leavingRoomId = socketRoomMap.get(socket.id);
+        const leavingRoomId = unseatSocket(socket.id);
         if (!leavingRoomId) return OK;
-        socketRoomMap.delete(socket.id);
 
         await handleSeatRelease(rt, leavingRoomId, userId, { socket, source: "leave" });
         return OK;

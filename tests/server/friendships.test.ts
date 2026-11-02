@@ -14,17 +14,19 @@ function harness(over: { online?: string[]; store?: Partial<FriendshipDeps["frie
   const sent: Sent[] = [];
   const announced: string[] = [];
   const pushed: [string, unknown][] = [];
+  const bumped: string[][] = [];
   const online = new Set(over.online ?? []);
   const deps: FriendshipDeps = {
     friendStore: {
       addFriend: async () => ({ ok: true, request: { id: "req1", userId: "alice", friendUserId: "bob", status: "pending", createdAt: new Date(0) } as never }),
       acceptFriend: async (id, by) => (id === "req1" && by === "bob" ? { requesterId: "alice" } : null),
-      declineFriendRequest: async (id) => id === "req1",
-      cancelFriendRequest: async (id) => id === "req1",
-      declineGameInvite: async () => "room1",
+      declineFriendRequest: async (id) => (id === "req1" ? "sender" : null),
+      cancelFriendRequest: async (id) => (id === "req1" ? "recipient" : null),
+      declineGameInvite: async () => ({ roomId: "room1", inviterId: "inviter" }),
       removeFriend: async () => ["room1", "room2"],
       areFriends: async () => true,
       recordGameInvite: async () => undefined,
+      counterparts: async () => ["carol", "dan"],
       ...over.store,
     },
     userStore: {
@@ -39,8 +41,9 @@ function harness(over: { online?: string[]; store?: Partial<FriendshipDeps["frie
     isUserOnline: async (id) => online.has(id),
     announceRoomChanged: async (roomId) => void announced.push(roomId),
     notifyUser: (async (id: string, push: unknown) => void pushed.push([id, push])) as FriendshipDeps["notifyUser"],
+    bumpSocial: (ids) => void bumped.push([...ids].sort()),
   };
-  return { friendships: createFriendships(deps), sent, announced, pushed };
+  return { friendships: createFriendships(deps), sent, announced, pushed, bumped };
 }
 
 test("request tells the recipient, with the row", async () => {
@@ -153,4 +156,43 @@ test("a status change reaches each friend named", async () => {
     ["bob", "friend:status", { userId: "alice", online: false, lastSeen: "t" }],
     ["carol", "friend:status", { userId: "alice", online: false, lastSeen: "t" }],
   ]);
+});
+
+test("every friend and invite change marks both accounts' lists as changed, and a refusal marks nothing", async () => {
+  const cases: [string, (f: ReturnType<typeof harness>["friendships"]) => Promise<unknown>, string[]][] = [
+    ["request", (f) => f.request("alice", "Bob"), ["alice", "bob"]],
+    ["accept", (f) => f.accept("req1", "bob"), ["alice", "bob"]],
+    ["decline", (f) => f.declineRequest("req1", "bob"), ["bob", "sender"]],
+    ["cancel", (f) => f.cancelRequest("req1", "alice"), ["alice", "recipient"]],
+    ["remove", (f) => f.remove("alice", "bob"), ["alice", "bob"]],
+    ["invite", (f) => f.invite("alice", "bob", "ABCDEF"), ["alice", "bob"]],
+    ["decline an invite", (f) => f.decline("bob", "ABCDEF"), ["bob", "inviter"]],
+  ];
+  for (const [name, act, both] of cases) {
+    const { friendships, bumped } = harness();
+    await act(friendships);
+    assert.deepEqual(bumped, [both], name);
+  }
+  const refused: [string, (f: ReturnType<typeof harness>["friendships"]) => Promise<unknown>][] = [
+    ["accept", (f) => f.accept("nope", "bob")],
+    ["decline", (f) => f.declineRequest("nope", "bob")],
+    ["cancel", (f) => f.cancelRequest("nope", "alice")],
+    ["request to self", (f) => f.request("alice", "Alice")],
+  ];
+  for (const [name, act] of refused) {
+    const { friendships, bumped } = harness();
+    await act(friendships);
+    assert.deepEqual(bumped, [], name);
+  }
+  const none = harness({ store: { declineGameInvite: async () => null } });
+  await none.friendships.decline("bob", "ABCDEF");
+  assert.deepEqual(none.bumped, [], "a decline with nothing to decline");
+});
+
+test("a renamed or deleted account's counterparts are who is told", async () => {
+  const { friendships, bumped } = harness();
+  friendships.changedFor(await friendships.shownTo("alice"));
+  assert.deepEqual(bumped, [["carol", "dan"]]);
+  const failing = harness({ store: { counterparts: async () => { throw new Error("db down"); } } });
+  assert.deepEqual(await failing.friendships.shownTo("alice"), []);
 });

@@ -9,7 +9,7 @@ import type { FriendRequestAccepted, FriendRequestIncoming } from "./http.ts";
 import type * as Inbound from "./socketSchemas.ts";
 import type { TranslationParams } from "./i18n.ts";
 
-export const PROTOCOL_VERSION = 16;
+export const PROTOCOL_VERSION = 17;
 export const MIN_PROTOCOL_VERSION = 14;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */
@@ -93,6 +93,15 @@ interface VoteState {
   secondsRemaining?: number;
 }
 
+/** A bundle older than 17 reads only `onlineIds`. */
+export interface OnlineList {
+  onlineIds: string[];
+  /** When each friend not online was last seen. */
+  lastSeen?: Record<string, string>;
+  /** Changes whenever the account's friend or invite lists may have; absent when the server cannot tell. */
+  social?: string;
+}
+
 export interface ServerToClientEvents {
   "game:state": (state: WireGameState, ack: () => void) => void;
   "game:round_over": (payload: RoundOverPayload) => void;
@@ -113,7 +122,7 @@ export interface ServerToClientEvents {
   "room:error": (error: ServerPayload) => void;
   "socket:error": (error: ServerPayload) => void;
   "friend:error": (error: ServerPayload) => void;
-  "friend:online_list": (list: { onlineIds: string[] }) => void;
+  "friend:online_list": (list: OnlineList) => void;
   "friend:invite": (invite: { from: string; roomCode: string }) => void;
   "friend:invite_retired": (invite: { roomCode: string }) => void;
   "friend:room_joinable": (invite: { roomCode: string; joinable: boolean }) => void;

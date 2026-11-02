@@ -21,16 +21,17 @@ import { onEvent } from "./socketSafety.ts";
 import {
   isShuttingDown,
   openedAfter,
-  socketRoomMap,
   userRoom,
   userSocketMap,
 } from "../game/gameRoom.ts";
 import { clearDisconnectGrace } from "../game/gameTimers.ts";
 import { heldRoundFor } from "../game/gameTurn.ts";
 import { announceRejoin, armLobbyGrace } from "./socketTable.ts";
-import { seatSocket, stopSpectating } from "./seating.ts";
+import { seatSocket, stopSpectating, unseatSocket } from "./seating.ts";
 import { NoPayloadSchema, FriendInviteSchema } from "../../shared/socketSchemas.ts";
-import { isUserOnline, onlineUserIds } from "./socketRegistry.ts";
+import { isUserOnline, onlineAmong } from "./socketRegistry.ts";
+import { onPresenceLost, onPresenceRestored, socialVersion } from "../store/presence.ts";
+import type { OnlineList } from "../../shared/protocol.ts";
 import { payload } from "../shared/payload.ts";
 import { OK, refuse } from "../shared/refusal.ts";
 
@@ -59,12 +60,7 @@ export function registerFriendHandlers({ socket, userId }: HandlerContext) {
       "friend:get_online_list",
       NoPayloadSchema,
       async () => {
-        const userFriends = await friendStore.getFriends(userId);
-        const online = await onlineUserIds();
-        const onlineIds = userFriends
-          .map((f) => f.friend.id)
-          .filter((id) => online.has(id));
-        socket.emit("friend:online_list", { onlineIds });
+        socket.emit("friend:online_list", await onlineList(userId, await friendStore.getFriends(userId)));
         return OK;
       },
       { limit: 20, windowMs: 60_000 }
@@ -101,17 +97,60 @@ export async function announcePresence({ rt, socket, userId }: HandlerContext) {
       // sent, are the same rows.
       const friends = await friendStore.getFriends(userId);
       await announceOnlineToFriends(userId, friends);
-      const online = await onlineUserIds();
-      const onlineIds = friends
-        .map((f) => f.friend.id)
-        .filter((id) => online.has(id));
-      socket.emit("friend:online_list", { onlineIds });
+      socket.emit("friend:online_list", await onlineList(userId, friends));
     } catch (err) {
       // Swallowing this silently leaves a connected account with no friends
       // list and no way to notice: the client is waiting for a push that is
       // never coming, and only a reconnect asks again.
       logger.warn({ err, userId }, "friend list read failed; this socket gets no online list");
     }
+}
+
+type FriendRows = Awaited<ReturnType<typeof friendStore.getFriends>>;
+
+/**
+ * Which friends are online, when each of the others was last seen, and the account's social
+ * version: what a client that was away needs, so it refetches its lists only when they changed.
+ */
+async function onlineList(userId: string, friends: FriendRows): Promise<OnlineList> {
+  const ids = friends.map((f) => f.friend.id);
+  const [online, social] = await Promise.all([
+    onlineAmong(ids),
+    socialVersion(userId).catch((err: unknown) => {
+      logger.warn({ err, userId }, "Could not read the social version; the client refetches its lists");
+      return null;
+    }),
+  ]);
+  const lastSeen: Record<string, string> = {};
+  for (const { friend } of friends) if (!online.has(friend.id) && friend.lastSeen) lastSeen[friend.id] = friend.lastSeen.toISOString();
+  return { onlineIds: ids.filter((id) => online.has(id)), lastSeen, ...(social !== null && { social }) };
+}
+
+/** The friends of accounts found on a dead instance are told once, by the instance whose sweep cleared them. */
+export function registerLostPresence(): void {
+  onPresenceLost((userIds) => {
+    const lastSeen = new Date(now()).toISOString();
+    for (const userId of userIds) {
+      void userStore
+        .updateLastSeen(userId)
+        .catch((err: unknown) => logger.debug({ err, userId }, "Failed to update users.last_seen for a lost account"))
+        .then(() => friendStore.getFriends(userId))
+        .then((friends) => friendships.tellStatus(userId, friends.map((f) => f.friend.id), { online: false, lastSeen }))
+        .catch((err: unknown) => logger.warn({ err, userId }, "Could not tell a lost account's friends it went offline"));
+    }
+  });
+}
+
+/** A peer that swept this instance during a lapse told these accounts' friends they went offline. */
+export function registerRestoredPresence(): void {
+  onPresenceRestored((userIds) => {
+    for (const userId of userIds) {
+      void friendStore
+        .getFriends(userId)
+        .then((friends) => announceOnlineToFriends(userId, friends))
+        .catch((err: unknown) => logger.warn({ err, userId }, "Could not tell a restored account's friends it is online"));
+    }
+  });
 }
 
 const pendingDisconnects = new Set<Promise<void>>();
@@ -155,8 +194,7 @@ export function registerDisconnect({ rt, socket, userId }: HandlerContext) {
           const lastSeen = new Date(now()).toISOString();
           void emitFriendStatusOffline(userId, lastSeen);
 
-          const currentRoomId = socketRoomMap.get(socket.id);
-          socketRoomMap.delete(socket.id);
+          const currentRoomId = unseatSocket(socket.id);
           // Three paths reach a return without announcing the drop, and from
           // outside a seat that should have been released reads exactly like
           // one that was never held. Which path ran is the whole diagnosis.
@@ -286,11 +324,8 @@ export function evictReplacedSession(
   const replaced = io.sockets.sockets.get(replacedSocketId);
   if (!replaced) return;
 
-  const roomId = socketRoomMap.get(replacedSocketId);
-  if (roomId) {
-    socketRoomMap.delete(replacedSocketId);
-    void seatSocket(rt, replacement, userId, roomId);
-  }
+  const roomId = unseatSocket(replacedSocketId);
+  if (roomId) void seatSocket(rt, replacement, userId, roomId);
 
   replaced.emit("socket:error", payload("SESSION_REPLACED"));
   logger.info(

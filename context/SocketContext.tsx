@@ -24,7 +24,7 @@ import {
   type Socket,
 } from "@/lib/socket";
 import { requireUpdate } from "@/lib/updateRequired";
-import { CLIENT_OUTDATED } from "@/shared/protocol";
+import { CLIENT_OUTDATED, type OnlineList } from "@/shared/protocol";
 import { reportSocketClose } from "@/lib/errorReporting";
 import { useNotification } from "@/context/NotificationContext";
 import { SessionReplacedNotice } from "@/components/SessionReplacedNotice";
@@ -96,6 +96,9 @@ interface Invites {
 }
 
 const askWhoIsOnline = (socket: Socket) => socket.emit("friend:get_online_list");
+
+/** How long after a connect the server's online list may take before the lists are re-read without it. */
+const ONLINE_LIST_OVERDUE_MS = 5_000;
 
 // A retry the socket effect's cleanup cancelled, owed to whichever run takes the
 // socket up next: lib/socket.ts outlives this effect and keeps the socket, and
@@ -200,6 +203,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
   const haltedSocketRef = useRef<Socket | null>(null);
   // Through a ref, not the socket effect's deps: re-running that effect cancels a pending retry.
   const randomRef = useRef(random);
+  const socialSeenRef = useRef<{ userId: string; social: string } | null>(null);
   useEffect(() => {
     randomRef.current = random;
   }, [random]);
@@ -334,19 +338,25 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
       socket.disconnect();
     };
 
+    // A server that failed to read the friends at connect pushes no list: the rows are re-read anyway.
+    let listOverdue: ReturnType<typeof setTimeout> | null = null;
+    const stopWaitingForList = () => {
+      if (listOverdue) clearTimeout(listOverdue);
+      listOverdue = null;
+    };
+
     const onConnect = () => {
       setSessionReplaced(null);
       retryAttemptRef.current = 0;
-      askWhoIsOnline(socket);
-      // Anything that happened while the socket was down was pushed to nobody:
-      // `emitToUser` drops the event when the recipient has no socket, and no
-      // second attempt is ever made. The rows are the truth, so connecting is
-      // where we ask again — otherwise a friend request sent to someone
-      // offline is invisible to them, and neither side can then act on it.
-      markStale(qc, stale.onReconnect);
+      stopWaitingForList();
+      listOverdue = setTimeout(() => {
+        listOverdue = null;
+        markStale(qc, stale.onReconnect);
+      }, ONLINE_LIST_OVERDUE_MS);
     };
 
     const onDisconnect = (reason: UntypedSocket.DisconnectReason) => {
+      stopWaitingForList();
       reportSocketClose(reason);
       if (reason !== "io client disconnect") retryLater();
     };
@@ -362,8 +372,24 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
     });
     const stopNetInfo = NetInfo.addEventListener(retryNow);
 
-    const onOnlineList = ({ onlineIds: ids }: { onlineIds: string[] }) => {
+    // The server pushes this on every connect. Anything that happened while the socket was down
+    // was pushed to nobody, and no second attempt is ever made: the rows are the truth, so a
+    // social version other than the last one seen, or none, is where we ask again — otherwise a
+    // friend request sent to someone offline is invisible to them.
+    const onOnlineList = ({ onlineIds: ids, lastSeen, social }: OnlineList) => {
+      stopWaitingForList();
       setOnlineIds(new Set(ids));
+      if (lastSeen) {
+        qc.setQueryData<Answer<"friends">>(
+          queryKey("friends"),
+          (friends) => friends?.map((f) => (lastSeen[f.id] ? { ...f, lastSeen: lastSeen[f.id]! } : f))
+        );
+      }
+      const seen = socialSeenRef.current;
+      if (social === undefined || seen?.userId !== userId || seen.social !== social) {
+        markStale(qc, stale.onReconnect);
+      }
+      socialSeenRef.current = social === undefined ? null : { userId, social };
     };
 
     const onFriendStatus = ({
@@ -485,6 +511,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
 
     return () => {
       bound = false;
+      stopWaitingForList();
       onAppState.remove();
       stopNetInfo();
       if (retryTimerRef.current) {

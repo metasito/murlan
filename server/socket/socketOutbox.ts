@@ -1,26 +1,21 @@
-// server/socket/socketOutbox.ts — the table runtime's presence port over Socket.IO; its output
-// port is `delivery.ts`.
-import type { SocketServer } from "./socketTypes.ts";
+// server/socket/socketOutbox.ts — the table runtime's presence port over the presence store; its
+// output port is `delivery.ts`.
 import type { Presence } from "../game/tableRuntime.ts";
 import { logger } from "../shared/logger.ts";
-import { socketRoomMap, userRoom, userSocketMap } from "../game/gameRoom.ts";
+import { socketRoomMap, userSocketMap } from "../game/gameRoom.ts";
+import { locate as locateInStore, type Located } from "../store/presence.ts";
 
-/**
- * `adapter.rooms` holds only the sockets this process is serving, so reading it
- * reports a player on another instance as offline. `fetchSockets()` asks the
- * other instances and, when there are none, answers from the local rooms
- * without a round trip. The cluster call rejects if an instance does not answer
- * in time; no caller has anything better to do with that than the answers below.
- */
-export function socketPresence(io: SocketServer): Presence {
+type Locate = (userIds: readonly string[], opts?: { tables?: boolean }) => Promise<Map<string, Located>>;
+
+/** Answers from this instance's own sockets first: a store that cannot answer must not unseat them. */
+export function storePresence(locate: Locate = locateInStore): Presence {
   return {
     async isOnline(userId) {
-      // This instance's own socket needs no cluster to answer, and a failed query must not unseat it.
       if (userSocketMap.has(userId)) return true;
       try {
-        return (await io.in(userRoom(userId)).fetchSockets()).length > 0;
+        return (await locate([userId])).has(userId);
       } catch (err) {
-        logger.warn({ err, userId }, "Cluster presence check failed; treating as offline");
+        logger.warn({ err, userId }, "Presence unreachable; treating as offline");
         return false;
       }
     },
@@ -29,39 +24,36 @@ export function socketPresence(io: SocketServer): Presence {
       const local = userSocketMap.get(userId);
       if (local && socketRoomMap.get(local) === roomId) return true;
       try {
-        return (await io.in(userRoom(userId)).fetchSockets()).some((s) => s.rooms.has(roomId));
+        return (await locate([userId], { tables: true })).get(userId)?.table === roomId;
       } catch (err) {
-        logger.warn({ err, userId, roomId }, "Cluster presence check failed; treating as away");
+        logger.warn({ err, userId, roomId }, "Presence unreachable; treating as away");
         return false;
       }
     },
 
-    async tablePresence(roomId) {
-      const online = new Set<string>();
-      const atTable = new Set<string>();
+    async tablePresence(roomId, userIds) {
       try {
-        for (const s of await io.fetchSockets()) {
-          const userId: unknown = s.data?.userId;
-          if (typeof userId !== "string") continue;
-          online.add(userId);
-          if (s.rooms.has(roomId)) atTable.add(userId);
-        }
+        const where = await locate(userIds, { tables: true });
+        const here = userIds.filter((id) => userSocketMap.has(id));
+        return {
+          online: new Set([...where.keys(), ...here]),
+          atTable: new Set([
+            ...[...where].filter(([, l]) => l.table === roomId).map(([userId]) => userId),
+            ...here.filter((id) => socketRoomMap.get(userSocketMap.get(id)!) === roomId),
+          ]),
+        };
       } catch (err) {
-        logger.warn({ err, roomId }, "Cluster presence sweep failed");
+        logger.warn({ err, roomId }, "Presence unreachable");
         return null;
       }
-      return { online, atTable };
     },
 
-    async connectedUserIds() {
+    async onlineAmong(userIds) {
       try {
-        return new Set(
-          (await io.fetchSockets())
-            .map((s) => s.data?.userId)
-            .filter((id): id is string => typeof id === "string")
-        );
+        const where = await locate(userIds);
+        return new Set([...where.keys(), ...userIds.filter((id) => userSocketMap.has(id))]);
       } catch (err) {
-        logger.warn({ err }, "Cluster presence sweep failed");
+        logger.warn({ err }, "Presence unreachable");
         return null;
       }
     },

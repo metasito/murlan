@@ -99,9 +99,17 @@ Each decision, and why:
    clears a dead one's users and notifies their friends. Every presence question and both table
    sweeps read Redis, never `fetchSockets()`; account revocation is one cluster message. *Why:* a
    connect stops costing a sweep of the whole cluster, and a crashed instance's users go offline
-   within seconds.
+   within seconds. The compare-and-delete is `WATCH`/`MULTI` on a connection of its own until the
+   host runs Valkey 9's `DELIFEQ` (ADR 0015, decision 2): a script would be a second kind of
+   presence write to retire, and node-redis fails an `EXEC` whose connection reconnected after
+   its `WATCH`.
 9. **Every wire change bumps `PROTOCOL_VERSION`** (`shared/protocol.ts`), and a handler only old
    bundles use is removed when `MIN_PROTOCOL_VERSION` passes the version that stopped sending it.
+   The same holds between instances during a rolling deploy: #1894 reads #1893's
+   `presence:<userId>` hash when an account has no `online:` entry, counts its peers as the larger
+   of their presence liveness and their adapter subscriptions, and, while it hears a peer that
+   keeps no liveness, also disconnects a revoked account's sockets the way an older instance
+   understands. All three go once no deployed revision predates #1894.
    *Why:* app-store builds stay installed long after a release, so "one release later" is not a
    removal date.
 10. **Every HTTP rate limit is shared in Redis.** On a store error a limiter falls back to its

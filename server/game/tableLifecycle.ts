@@ -82,7 +82,7 @@ export async function rehydrateGame(
   if (game.gameState.roundOver && !game.matchOver) armVoteDeadline(rt, roomId);
 
   // The graces their disconnects armed died with the process that held them.
-  const presence = await rt.presence.tablePresence(roomId);
+  const presence = await rt.presence.tablePresence(roomId, Object.values(playerMap));
   // A between-hands grace's expiry sees only this process's sockets, so a
   // grace armed on a guess releases players seated through another instance.
   if (!presence) return "restored";
@@ -229,9 +229,11 @@ export async function resumeOrphanedTables(rt: TableRuntime): Promise<void> {
     if (isShuttingDown()) return;
     await settleOrphanedResults(rt, row.roomId);
   }
-  const online = await rt.presence.connectedUserIds();
+  const asleep = rows.filter((row) => !row.roundOver && !activeGames.has(row.roomId));
+  if (asleep.length === 0) return;
+  const online = await rt.presence.onlineAmong([...new Set(asleep.flatMap((row) => row.userIds))]);
   if (!online) return;
-  for (const row of rows) {
+  for (const row of asleep) {
     if (row.roundOver || activeGames.has(row.roomId) || isShuttingDown()) continue;
     const userId = row.userIds.find((id) => online.has(id));
     if (userId === undefined) continue;

@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
 
@@ -73,4 +74,28 @@ export function stopInstance(child: ChildProcess): Promise<void> {
   const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
   child.kill("SIGKILL");
   return exited;
+}
+
+export const at = (port: number) => `http://127.0.0.1:${port}`;
+
+/** An account registered through the instance on `port`, signed in there. */
+export async function accountOn(port: number, username: string): Promise<{ cookie: string; id: string }> {
+  const res = await fetch(`${at(port)}/api/auth/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username, password: "password123", email: `${username}@example.test` }),
+  });
+  assert.equal(res.status, 202, `register ${username}: ${await res.text()}`);
+  const cookie = (res.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join("; ");
+  const me = await fetch(`${at(port)}/api/auth/me`, { headers: { cookie } });
+  return { cookie, id: ((await me.json()) as { id: string }).id };
+}
+
+/** `a` asks, `b` (named `bName`) accepts, through the instance on `port`. */
+export async function befriendOn(port: number, a: { cookie: string }, b: { cookie: string }, bName: string): Promise<void> {
+  const post = (cookie: string, path: string, body?: unknown) =>
+    fetch(`${at(port)}${path}`, { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify(body ?? {}) });
+  assert.equal((await post(a.cookie, "/api/friends/add", { username: bName })).status, 200);
+  const requests = (await (await fetch(`${at(port)}/api/friends/requests`, { headers: { cookie: b.cookie } })).json()) as { id: string }[];
+  assert.equal((await post(b.cookie, `/api/friends/accept/${requests[0]!.id}`)).status, 200);
 }
