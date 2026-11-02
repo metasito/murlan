@@ -5,6 +5,7 @@
 import type { GameSocket as Socket } from "./socketTypes.ts";
 import type { TableRuntime } from "../game/tableRuntime.ts";
 import { socketRoomMap, spectatorRoomMap, userRoom } from "../game/gameRoom.ts";
+import { logger } from "../shared/logger.ts";
 
 export async function stopSpectating(rt: TableRuntime, socket: Socket, userId: string): Promise<void> {
   const roomId = spectatorRoomMap.get(socket.id);
@@ -28,7 +29,9 @@ export async function seatSocket(
   await unspectated;
 }
 
-const STOP_SPECTATING_EVENT = "murlan:stop-spectating";
+const STOP_SPECTATING = "stop-spectating";
+/** As long as a forwarded table action's try (`server/game/tableRouter.ts`). */
+const TELL_WITHIN_MS = 1_500;
 
 function stopLocalSpectating(rt: TableRuntime, userId: string): Promise<unknown> {
   const ids = [...(rt.transport.sockets.adapter.rooms.get(userRoom(userId)) ?? [])];
@@ -40,18 +43,39 @@ function stopLocalSpectating(rt: TableRuntime, userId: string): Promise<unknown>
   );
 }
 
+async function tellTheirInstance(rt: TableRuntime, userId: string): Promise<void> {
+  const at = await rt.peers.instanceOf(userId);
+  if (at && at !== rt.peers.self) await rt.peers.send(at, { kind: STOP_SPECTATING, userId });
+}
+
 /**
  * For a seat taken while the socket was elsewhere: a match starting deals in
  * players whose sockets may live on any instance, and `spectatorRoomMap` is
  * per instance.
+ *
+ * Resolves once the message is in the instance's inbox, not once it is acted on: that inbox is
+ * read in order, so it is acted on before any state of the table this seat was taken at.
  */
 export async function stopSpectatingEverywhere(rt: TableRuntime, userId: string): Promise<void> {
-  const peers = new Promise<void>((resolve) => rt.transport.serverSideEmit(STOP_SPECTATING_EVENT, userId, () => resolve()));
-  await Promise.all([peers, stopLocalSpectating(rt, userId)]);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const told = tellTheirInstance(rt, userId).catch((err: unknown) =>
+    logger.warn({ err, userId }, "Could not tell an account's instance it stopped watching")
+  );
+  const late = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, TELL_WITHIN_MS);
+  });
+  try {
+    await Promise.all([Promise.race([told, late]), stopLocalSpectating(rt, userId)]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function registerStopSpectating(rt: TableRuntime) {
-  rt.transport.on(STOP_SPECTATING_EVENT, (userId: string, reply?: () => void) => {
-    void stopLocalSpectating(rt, userId).finally(() => reply?.());
+  rt.peers.on(STOP_SPECTATING, ({ userId }) => {
+    if (typeof userId !== "string") return;
+    void stopLocalSpectating(rt, userId).catch((err: unknown) =>
+      logger.warn({ err, userId }, "Could not stop an account watching")
+    );
   });
 }

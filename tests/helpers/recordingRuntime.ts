@@ -1,11 +1,15 @@
 // A table runtime that records what it was asked to do, for unit tests: every
 // send with its address, every writer call, and presence a test sets by hand.
 import type { SocketServer } from "../../server/socket/socketTypes.ts";
-import type { Emitter, Presence, TableOutbox, TableStore, TableWriters } from "../../server/game/tableRuntime.ts";
+import type { Emitter, Peers, Presence, TableOutbox, TableStore, TableWriters } from "../../server/game/tableRuntime.ts";
 import { createTableRuntime } from "../../server/game/tableRuntime.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { tableWriters } from "../../server/game/gamePersistence.ts";
+import { TABLE_ANSWER, TABLE_ASK } from "../../server/game/tableRouter.ts";
+import type { TableAction } from "../../server/game/tableActions.ts";
+import type { Outcome } from "../../server/shared/refusal.ts";
+import type { InstanceHandler, InstanceMessage } from "../../server/store/instanceInbox.ts";
 
 export type Address = { room: string } | { user: string };
 /** `payload` is `args[0]`, the one argument every event but `game:state`'s ack carries. */
@@ -17,7 +21,7 @@ export type JournalEntry =
 
 /**
  * Socket.IO as a single instance with nobody connected: every cluster question
- * answers empty, every forward is answered by nobody. The repo's one cast to
+ * answers empty. The repo's one cast to
  * `SocketServer`; `overrides` replace whole members.
  */
 export function stubTransport(overrides: Record<string, unknown> = {}): SocketServer {
@@ -36,10 +40,72 @@ export function stubTransport(overrides: Record<string, unknown> = {}): SocketSe
   } as unknown as SocketServer;
 }
 
+/** The only instance: no record names another, no account is anywhere else, and nobody takes a message. */
+export function lonePeers(overrides: Partial<Peers> = {}): Peers {
+  return {
+    self: "this-instance",
+    send: async () => {
+      throw new Error("no other instance");
+    },
+    on: () => {},
+    ownerOf: async () => null,
+    instanceOf: async () => null,
+    ...overrides,
+  };
+}
+
+/**
+ * `owner` holds every table: each action forwarded to it is recorded and answered with what
+ * `reply` returns, `"silent"` for no answer at all. Every other message is recorded in `sent`.
+ */
+export function ownedElsewhere(reply: (action: TableAction) => Outcome | undefined | "silent", owner = "owner-instance") {
+  const handlers = new Map<string, InstanceHandler>();
+  const asks: { to: string; action: TableAction }[] = [];
+  const sent: { to: string; message: InstanceMessage }[] = [];
+  const peers: Partial<Peers> = {
+    on: (kind, handler) => void handlers.set(kind, handler),
+    ownerOf: async () => owner,
+    send: async (to, message) => {
+      if (message.kind !== TABLE_ASK) return void sent.push({ to, message });
+      const action = message.action as TableAction;
+      asks.push({ to, action });
+      const answer = reply(action);
+      if (answer === "silent") return;
+      setImmediate(() => void handlers.get(TABLE_ANSWER)?.({ kind: TABLE_ANSWER, ask: message.ask, outcome: answer }));
+    },
+  };
+  return { peers, asks, sent };
+}
+
+/** This instance as the owner other instances forward to: `ask` hands it one action and resolves on its answer. */
+export function forwardedTo(options: RecordingOptions = {}) {
+  const handlers = new Map<string, InstanceHandler>();
+  const waiting = new Map<unknown, (outcome: unknown) => void>();
+  const harness = recordingRuntime({
+    ...options,
+    peers: {
+      on: (kind, handler) => void handlers.set(kind, handler),
+      send: async (_to, message) => {
+        if (message.kind === TABLE_ANSWER) waiting.get(message.ask)?.(message.outcome);
+      },
+      ...options.peers,
+    },
+  });
+  let asks = 0;
+  const ask = (action: unknown) =>
+    new Promise<unknown>((resolve) => {
+      const id = `ask-${++asks}`;
+      waiting.set(id, resolve);
+      void handlers.get(TABLE_ASK)?.({ kind: TABLE_ASK, from: "asker-instance", ask: id, action });
+    });
+  return { ...harness, ask, handlers };
+}
+
 export interface RecordingOptions {
   writers?: Partial<TableWriters>;
   presence?: Partial<Presence>;
   transport?: Record<string, unknown>;
+  peers?: Partial<Peers>;
   store?: Partial<TableStore>;
   /**
    * "real" runs the production row, status and results writers (`tableWriters`) over
@@ -147,6 +213,7 @@ export function recordingRuntime(options: RecordingOptions = {}) {
     presence,
     writers,
     transport: stubTransport(options.transport),
+    peers: lonePeers(options.peers),
     store,
   });
 

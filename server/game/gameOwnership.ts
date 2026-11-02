@@ -265,6 +265,34 @@ async function takeLock(roomId: string): Promise<{ answer: LockAnswer; on: Clien
 }
 
 /**
+ * Which session holds the room's lock, read from `pg_locks` without asking for it. `mine` counts a
+ * session this process dropped and Postgres has not yet reaped: `claimRoom` retires it.
+ */
+export type LockHolder = "mine" | "elsewhere" | "free" | "unreachable";
+
+export async function lockHolder(roomId: string): Promise<LockHolder> {
+  const c = await connect();
+  if (!c) return "unreachable";
+  const key = BigInt.asUintN(64, BigInt(ownershipKey(roomId)));
+  try {
+    const { rows } = await c.query<{ current: boolean; pid: number; started: string | null }>(
+      `SELECT l.pid = pg_backend_pid() AS current, l.pid, extract(epoch FROM a.backend_start)::text AS started
+         FROM pg_locks l LEFT JOIN pg_stat_activity a ON a.pid = l.pid
+        WHERE l.locktype = 'advisory' AND l.granted AND l.objsubid = 1
+          AND l.classid = $1::bigint::oid AND l.objid = $2::bigint::oid`,
+      [String(key >> 32n), String(BigInt.asUintN(32, key))]
+    );
+    const holder = rows[0];
+    if (!holder) return "free";
+    if (holder.current || predecessors.some((b) => b.pid === holder.pid && b.started === holder.started)) return "mine";
+    return "elsewhere";
+  } catch (err) {
+    logger.warn({ err, roomId }, "Could not read who holds a room's lock");
+    return "unreachable";
+  }
+}
+
+/**
  * Gives up a room this process can no longer prove it owns, and hands it to `onRoomLost`.
  * `unlock` when this session may still hold the lock: the row moved, but the lock did not.
  */

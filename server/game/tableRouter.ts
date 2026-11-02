@@ -7,23 +7,22 @@
 // action travels to the game rather than the game being read where the action
 // arrived.
 //
-// The carrier is the adapter's own `serverSideEmit` with acknowledgements
-// (`server/socket/socketAdapter.ts`), which fails rather than answer for a peer
-// it cannot be sure it heard. No second channel, and it inherits the adapter's
-// delivery rather than inventing one.
+// The carrier is the owner's inbox: one message to the instance the table's owner record names,
+// one answer back to the asker's (ADR 0014, decision 3).
 import { now } from "../http/clock.ts";
 import { randomUUID } from "node:crypto";
 import type { TableRuntime } from "./tableRuntime.ts";
 import { logger } from "../shared/logger.ts";
 import { activeGames, isShuttingDown } from "./gameRoom.ts";
-import { claimRoom, ownsRoom, releaseRoom } from "./gameOwnership.ts";
+import { claimRoom, lockHolder, ownsRoom, releaseRoom } from "./gameOwnership.ts";
 import type { Outcome } from "../shared/refusal.ts";
 import type { TableAction, TableActionDraft, TakeoverMode } from "./tableActions.ts";
 import { TAKEOVER } from "./tableActions.ts";
 import { applyTableAction } from "./tableHandlers.ts";
 import { rehydrateGame } from "./tableLifecycle.ts";
 
-export const TABLE_ACTION_EVENT = "murlan:table";
+export const TABLE_ASK = "table-ask";
+export const TABLE_ANSWER = "table-answer";
 
 /**
  * What an instance answers for a room it does not hold. Distinct from every
@@ -44,20 +43,22 @@ const UNREACHABLE: Outcome = { ok: false, code: "TABLE_UNREACHABLE" };
 
 export const UNKNOWN_ACTION: Outcome = { ok: false, code: "UNKNOWN_ACTION" };
 
-/** How many times an unanswered forward is tried again before giving up. */
-const ASK_ATTEMPTS = 3;
-const RETRY_BASE_MS = 120;
+/** Every try and the lock probes after them stay under the client's 4 s per try (`lib/sendIntent.ts`). */
+const ASK_TIMEOUT_MS = 1_500;
+const ASK_ATTEMPTS = 2;
+const RETRY_MS = 120;
+/** Past a live owner's answer; an owner that has not answered by then has its lock read. */
+const PROBE_AFTER_MS = 250;
+const NO_ANSWER = Symbol("no answer");
 
 /**
- * How long an applied action's answer is remembered, for a forward that was
- * re-sent because the first answer did not come back in time.
- *
- * Comfortably past the adapter's own five-second acknowledgement window and the
- * retries above. `CLAUDE.md` is explicit that a card appears exactly once, and a
- * replayed `game:pass` would take a turn twice.
+ * How long an applied action's answer is remembered, for an intent re-sent because its answer
+ * did not come back in time: past the client's every try (`lib/sendIntent.ts`). `CLAUDE.md` is
+ * explicit that a card appears exactly once, and a replayed `game:pass` would take a turn twice.
+ * The bound is far past what that window holds at any real rate, so it never cuts the window short.
  */
-const APPLIED_TTL_MS = 60_000;
-const APPLIED_MAX = 2_000;
+const APPLIED_TTL_MS = 120_000;
+const APPLIED_MAX = 50_000;
 
 /**
  * Puts a persisted game back in memory, for the caller named by `forUserId`.
@@ -107,69 +108,99 @@ function applyOnce(rt: TableRuntime, action: TableAction): Promise<Outcome> {
   return remember(action.id, outcome);
 }
 
+/** What this instance answers a forwarded action with, as the owner or as one that is not. */
+async function answerAsOwner(rt: TableRuntime, action: TableAction): Promise<Outcome> {
+  if (!activeGames.has(action.roomId)) {
+    if (!ownsRoom(action.roomId)) return { ok: false, code: NOT_MINE };
+    await inFlight.get(action.roomId)?.catch(() => {});
+    if (!activeGames.has(action.roomId)) return { ok: false, code: NOT_MINE };
+  }
+  return applyOnce(rt, action);
+}
+
+/** Asks waiting on their owner's answer, by ask id. */
+const waiting = new Map<string, (outcome: Outcome | undefined) => void>();
+
 /**
- * Answers table actions other instances forward here.
+ * Answers table actions other instances forward here, and hands their answers to the asks
+ * waiting on them.
  *
- * Always answers, including for rooms this process knows nothing about: the
- * asker sizes its wait by the number of live instances, so an instance that
- * stayed silent would cost every forwarded action the full acknowledgement
- * timeout.
- *
- * A room this instance has claimed but not finished loading answers too, once
- * the takeover it is in the middle of has settled. Answering `NOT_THIS_INSTANCE`
- * there would refuse every other player at the table for the width of one
- * restore — which is exactly the moment they are all acting at once.
+ * Answers a room this process does not hold too: the asker then reads the lock at once rather
+ * than after its timeout. A room this instance has claimed but not finished loading is answered
+ * once the takeover it is in the middle of has settled: answering `NOT_THIS_INSTANCE` there would
+ * refuse every other player at the table for the width of one restore — which is exactly the
+ * moment they are all acting at once.
  */
 export function registerTableRouting(rt: TableRuntime): void {
-  rt.transport.on(TABLE_ACTION_EVENT, (action: TableAction, reply?: (r: Outcome) => void) => {
-    if (typeof reply !== "function") return;
-    void (async () => {
-      if (!activeGames.has(action.roomId)) {
-        if (!ownsRoom(action.roomId)) return reply({ ok: false, code: NOT_MINE });
-        await inFlight.get(action.roomId)?.catch(() => {});
-        if (!activeGames.has(action.roomId)) return reply({ ok: false, code: NOT_MINE });
-      }
-      reply(await applyOnce(rt, action));
-    })().catch((err: unknown) => {
-      logger.error(
-        { err, action: action.kind, roomId: action.roomId },
-        "Forwarded table action threw"
-      );
-      reply({ ok: false, code: "SERVER_ERROR" });
+  rt.peers.on(TABLE_ASK, ({ from, ask, action }) => {
+    if (typeof from !== "string" || typeof ask !== "string" || !action) return;
+    const tableAction = action as TableAction;
+    const answer = (outcome: Outcome) =>
+      rt.peers
+        .send(from, { kind: TABLE_ANSWER, ask, outcome })
+        .catch((err: unknown) => logger.warn({ err, roomId: tableAction.roomId }, "Could not answer a forwarded table action"));
+    // Not awaited: the inbox hands this instance its messages one at a time.
+    void answerAsOwner(rt, tableAction).then(answer, (err: unknown) => {
+      logger.error({ err, action: tableAction.kind, roomId: tableAction.roomId }, "Forwarded table action threw");
+      return answer({ ok: false, code: "SERVER_ERROR" });
     });
+  });
+  rt.peers.on(TABLE_ANSWER, ({ ask, outcome }) => {
+    if (typeof ask === "string") waiting.get(ask)?.(outcome as Outcome | undefined);
   });
 }
 
 /**
- * The owner's answer, `null` when every instance disowned the room, and
- * `undefined` when at least one did not answer at all.
+ * The owner's answer; `unowned` when no record names another instance or the one named does not
+ * hold the room; `silent` when nothing came back in time; `gone` when the ask could not be handed
+ * over at all.
  */
-function askOtherInstances(
-  rt: TableRuntime,
-  action: TableAction
-): Promise<Outcome | null | undefined> {
-  return new Promise((resolve) => {
-    rt.transport.serverSideEmit(
-      TABLE_ACTION_EVENT,
-      action,
-      (err: unknown, replies: Outcome[] = []) => {
-        // An owner running a revision without a `default` for this kind acks
-        // with nothing; it answered, and it did not apply the action.
-        const owner = replies.findIndex((r) => r?.code !== NOT_MINE);
-        if (owner !== -1) return resolve(replies[owner] ?? UNKNOWN_ACTION);
-        // An error means some instance did not answer in time. Reading that as
-        // "no owner" is how a slow owner's table gets taken over underneath it.
-        if (err) {
-          logger.debug(
-            { roomId: action.roomId, action: action.kind },
-            "Not every instance answered a forwarded table action"
-          );
-          return resolve(undefined);
-        }
-        resolve(null);
-      }
-    );
+type Asked = Outcome | "unowned" | "silent" | "gone";
+
+/** Resolves `value` after `ms`, unless `cancel` runs first. */
+function after<T>(ms: number, value: T): { done: Promise<T>; cancel: () => void } {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const done = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(value), ms);
   });
+  return { done, cancel: () => clearTimeout(timer) };
+}
+
+async function askOwner(rt: TableRuntime, action: TableAction): Promise<Asked> {
+  const ask = randomUUID();
+  const expired = after(ASK_TIMEOUT_MS, "silent" as const);
+  const asked = (async (): Promise<Asked> => {
+    const owner = await rt.peers.ownerOf(action.roomId).catch((err: unknown) => {
+      logger.warn({ err, roomId: action.roomId }, "Could not read a table's owner record");
+      return null;
+    });
+    if (!owner || owner === rt.peers.self) return "unowned";
+    const answered = new Promise<Outcome | undefined>((resolve) => waiting.set(ask, resolve));
+    try {
+      await rt.peers.send(owner, { kind: TABLE_ASK, from: rt.peers.self, ask, action });
+    } catch {
+      return "gone";
+    }
+    // A crashed owner's record outlives it by up to three heartbeats, and its inbox takes the ask.
+    const slow = after(PROBE_AFTER_MS, NO_ANSWER);
+    const early = await Promise.race([answered, slow.done]);
+    slow.cancel();
+    if (early === NO_ANSWER) {
+      const holder = await lockHolder(action.roomId);
+      if (holder === "free" || holder === "mine") return "unowned";
+    }
+    const outcome = early === NO_ANSWER ? await answered : early;
+    // An owner running a revision without a `default` for this kind answers with nothing; it
+    // answered, and it did not apply the action.
+    if (outcome === undefined) return UNKNOWN_ACTION;
+    return outcome.code === NOT_MINE ? "unowned" : outcome;
+  })();
+  try {
+    return await Promise.race([asked, expired.done]);
+  } finally {
+    expired.cancel();
+    waiting.delete(ask);
+  }
 }
 
 /**
@@ -236,19 +267,17 @@ async function askClaimAndApply(
   mode: TakeoverMode
 ): Promise<Outcome | typeof RETRY> {
   const { roomId } = action;
-  const answer = await askOtherInstances(rt, action);
-  if (answer) return answer;
+  const asked = await askOwner(rt, action);
+  if (typeof asked === "object") return asked;
 
-  // Every instance answered and none of them holds the room. Nothing to take
-  // over, and no reason to ask Postgres — which matters more than it looks:
-  // with one instance this is every lobby disconnect, every seat release and
-  // every leave, and probing the lock for each cost a round trip apiece.
-  // Reviving a stranded round to give one seat to a bot would set the whole
-  // table playing itself with nobody watching, so `forward` stops here.
-  if (answer === null && mode === "forward") return UNOWNED;
+  // Nobody answered for it, or the one named does not hold it: the lock is the authority on
+  // whether anyone does. An ask that could not even be handed over is not tried again.
+  const holder = await lockHolder(roomId);
+  if (holder === "elsewhere" || holder === "unreachable") return asked === "gone" ? UNREACHABLE : RETRY;
+  // Reviving a stranded round to give one seat to a bot would set the whole table playing itself
+  // with nobody watching, so `forward` stops here.
+  if (holder === "free" && mode === "forward") return UNOWNED;
 
-  // Either nobody owns it or somebody could not answer. The lock is the
-  // authority on which.
   if (!(await claimRoom(roomId))) return RETRY;
   if (mode === "forward") {
     await releaseRoom(roomId);
@@ -282,9 +311,11 @@ export async function applyOrForward(
   // closing and the next process restores every table from `active_games`. It
   // still asks, because a table held elsewhere must hear that its player left.
   if (!activeGames.has(roomId) && isShuttingDown()) {
-    const answer = await askOtherInstances(rt, action);
-    if (answer) return answer;
-    return answer === null ? UNOWNED : UNREACHABLE;
+    const asked = await askOwner(rt, action);
+    if (typeof asked === "object") return asked;
+    if (asked === "gone") return UNREACHABLE;
+    const holder = await lockHolder(roomId);
+    return holder === "elsewhere" || holder === "unreachable" ? UNREACHABLE : UNOWNED;
   }
 
   for (let attempt = 0; attempt < ASK_ATTEMPTS; attempt++) {
@@ -314,7 +345,7 @@ export async function applyOrForward(
     // An instance holds the room: either it is still loading it, or it could
     // not answer in time. Ask again — the action carries an id, so a duplicate
     // that did land is answered from the owner's record, never replayed.
-    await sleep(RETRY_BASE_MS * (attempt + 1));
+    if (attempt + 1 < ASK_ATTEMPTS) await sleep(RETRY_MS);
   }
 
   logger.warn({ roomId, action: action.kind }, "The instance holding this table never answered");
