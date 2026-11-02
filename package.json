@@ -37,7 +37,7 @@
     "test:native:related": "node tools/loop/related-tests.mjs",
     "perf:web": "playwright test --config tests/e2e/playwright.perf.config.ts --reporter=line",
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node node_modules/typescript7/bin/tsc --noEmit",
     "typecheck:strict": "node scripts/checkStrictIndexed.mjs",
     "bake:card-art": "node scripts/bake-card-art.mjs",
     "loop:cost": "node tools/loop/loop-cost.mjs",
@@ -116,12 +116,16 @@
     "@types/express-serve-static-core": "^5.1.3",
     "@types/express-session": "^1.18.2",
     "@types/react": "~19.2.4",
+    "@typescript-eslint/eslint-plugin": "^8.72.1",
     "@typescript-eslint/parser": "^8.72.1",
     "canvaskit-wasm": "^0.41.0",
     "drizzle-kit": "^0.31.11",
     "esbuild": "0.28.2",
-    "eslint": "^9.31.0",
-    "eslint-config-expo": "~57.0.2",
+    "eslint": "^10.14.0",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-expo": "^1.2.1",
+    "eslint-plugin-import-x": "^4.17.1",
+    "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "fast-check": "^4.10.2",
     "fontverter": "^2.0.0",
@@ -134,7 +138,28 @@
     "subset-font": "^2.9.0",
     "tsx": "^4.20.6",
     "typescript": "~6.0.3",
+    "typescript7": "npm:typescript@~7.0.2",
     "yaml": "^2.9.1"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "eslint": {
+      "minimatch": "^11.0.4"
+    },
+    "@eslint/config-array": {
+      "minimatch": "^11.0.4"
+    },
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.4"
+    },
+    "eslint-plugin-import-x": {
+      "minimatch": "^11.0.4"
+    },
+    "eslint-plugin-react": {
+      "eslint": "$eslint"
+    },
+    "eslint-plugin-expo": {
+      "eslint": "$eslint"
+    }
+  }
 }

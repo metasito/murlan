@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: tools/ci
       - name: A schedule, or a dispatch on agent/<n>-… or claude/<n>-…
@@ -54,7 +54,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install dependencies
         uses: ./.github/actions/install
@@ -113,7 +113,7 @@ jobs:
       - name: Pack the app
         run: tar -czf "$RUNNER_TEMP/app.tgz" -C "$(dirname "$APP_BUNDLE")" "$(basename "$APP_BUNDLE")"
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ios-app
           path: ${{ runner.temp }}/app.tgz
@@ -150,7 +150,7 @@ jobs:
             felt: true
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # In the background, as is the Spotlight step below; `Maestro is installed and Spotlight
       # indexing is off` waits for both.
@@ -183,8 +183,9 @@ jobs:
             echo "$status" > "$RUNNER_TEMP/spotlight.status"
           ) > /dev/null 2>&1 &
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
+          package-manager-cache: false
           node-version-file: .node-version
 
       # `macos-latest` ships a fixed set of pre-created simulators rather
@@ -287,7 +288,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node tools/ci/await-artifact.mjs ios-app "Restore the app and bundle its JS"
 
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ios-app
           path: ${{ runner.temp }}/packed
@@ -384,7 +385,7 @@ jobs:
 
       - name: Upload the felt screenshots
         if: ${{ !cancelled() && matrix.felt && steps.install.outcome == 'success' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: felt-ios
           path: ${{ runner.temp }}/felt/
@@ -403,7 +404,7 @@ jobs:
 
       - name: Upload the capture states
         if: ${{ !cancelled() && matrix.felt && steps.install.outcome == 'success' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ios-captures
           path: ${{ runner.temp }}/captures/
@@ -420,7 +421,7 @@ jobs:
 
       - name: Upload crash reports
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: crash-reports-ios-${{ matrix.shard }}
           path: ${{ runner.temp }}/crash-reports/
@@ -430,7 +431,7 @@ jobs:
       # boolean as the string "false", which is truthy, and uploads on every run.
       - name: Upload Maestro debug output
         if: failure() || inputs.force-upload-debug
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: maestro-debug-ios-${{ matrix.shard }}
           path: ~/.maestro/tests/
@@ -453,7 +454,7 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Every shard ran and passed
         env:
