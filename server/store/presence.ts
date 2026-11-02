@@ -2,6 +2,8 @@ import { logger } from "../shared/logger.ts";
 import { instanceId, openRedis, redisKey, type RedisClient } from "./redis.ts";
 
 const CLEAR_IF_MINE = "if redis.call('HGET', KEYS[1], 'socket') == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0";
+const WRITE_IF_MISSING =
+  "if redis.call('EXISTS', KEYS[1]) == 0 then return redis.call('HSET', KEYS[1], 'instance', ARGV[1], 'socket', ARGV[2]) end return 0";
 
 let client: RedisClient | null = null;
 /** This instance's sockets, so an entry Redis lost while it was away is put back. */
@@ -11,18 +13,25 @@ export function presenceKey(userId: string): string {
   return redisKey(`presence:${userId}`);
 }
 
+const writeFailed = (userId: string) => (err: unknown) =>
+  logger.warn({ err, userId }, "Could not record where an account is connected");
+
 function write(userId: string, socketId: string): void {
-  void client
-    ?.hSet(presenceKey(userId), { instance: instanceId, socket: socketId })
-    .catch((err: unknown) => logger.warn({ err, userId }, "Could not record where an account is connected"));
+  void client?.hSet(presenceKey(userId), { instance: instanceId, socket: socketId }).catch(writeFailed(userId));
 }
 
 /** Opened at boot; until then, and after `closePresence`, nothing is recorded and nobody is found. */
 export function openPresence(url?: string): void {
   if (client?.isOpen) return;
   const opened = openRedis("presence", { url, offlineQueue: false });
+  // Only into a missing entry: while this link was down the account may have connected elsewhere,
+  // and that newer entry is the one its messages must follow.
   opened.on("ready", () => {
-    for (const [userId, socketId] of mine) write(userId, socketId);
+    for (const [userId, socketId] of mine) {
+      void opened
+        .eval(WRITE_IF_MISSING, { keys: [presenceKey(userId)], arguments: [instanceId, socketId] })
+        .catch(writeFailed(userId));
+    }
   });
   client = opened;
 }
