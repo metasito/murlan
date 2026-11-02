@@ -15,6 +15,7 @@ import { settleDisconnects } from "../socket/socketPresence.ts";
 import { flushTelemetry } from "../shared/telemetryBatch.ts";
 import { within } from "../shared/within.ts";
 import { stopHealth } from "./health.ts";
+import { now } from "./clock.ts";
 
 /**
  * How long the host waits between SIGTERM and SIGKILL. The whole sequence
@@ -38,6 +39,9 @@ const DISCONNECT_SETTLE_MS = 1_500;
  * is bounded by its entry, so their sum is the longest a shutdown can take.
  */
 export const SHUTDOWN_BUDGET = {
+  /** Every table at once (`tableHandOff.ts`). */
+  handOff: 2_000,
+  drainNotice: 250,
   ioClose: 500,
   settleDisconnects: DISCONNECT_SETTLE_MS,
   stopTables: 250,
@@ -56,10 +60,32 @@ const SHUTDOWN_STEPS_MS = Object.values(SHUTDOWN_BUDGET).reduce((sum, ms) => sum
  */
 export const FORCED_EXIT_MS = SHUTDOWN_STEPS_MS + 250;
 
+/** How far apart a draining instance spreads its sockets' first reconnects. */
+export const DRAINING_SPREAD_MS = 10_000;
+
+/** Uniform over [0, DRAINING_SPREAD_MS), one draw per socket. */
+export function drainingReconnectAfterMs(random: () => number = Math.random): number {
+  return Math.floor(random() * DRAINING_SPREAD_MS);
+}
+
+/**
+ * Tells every socket here when to come back, once the intents it already sent have their answers
+ * (one held by a table's hand-off is answered by the new owner), and waits for the notice to
+ * leave: `io.close()` drops whatever a socket has not yet written.
+ */
+async function drainNotice(io: Pick<SocketIOServer, "sockets">, budgetMs: number): Promise<void> {
+  const deadline = now() + budgetMs;
+  const sockets = [...io.sockets.sockets.values()];
+  await within(budgetMs * 0.8, Promise.allSettled(sockets.map((s) => (s.data as { intentQueue?: Promise<unknown> } | undefined)?.intentQueue)));
+  for (const socket of sockets) socket.emit("server:draining", { reconnectAfterMs: drainingReconnectAfterMs() });
+  const unsent = () => sockets.some((s) => ((s.conn as unknown as { writeBuffer?: unknown[] }).writeBuffer?.length ?? 0) > 0);
+  while (unsent() && now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
+}
+
 export interface ShutdownDeps {
-  io: Pick<SocketIOServer, "close">;
+  io: Pick<SocketIOServer, "close" | "sockets">;
   server: Pick<HttpServer, "listening" | "close">;
-  tables: Pick<TableRuntime, "stopTables">;
+  tables: Pick<TableRuntime, "handOffTables" | "stopTables">;
   /** Defaults to `process.exit`. Injected so a test can observe the code. */
   exit?: (code: number) => void;
 }
@@ -67,8 +93,8 @@ export interface ShutdownDeps {
 let shuttingDown = false;
 
 /**
- * Graceful shutdown for the production run path: disconnect every websocket, stop
- * the http server, close the pool, exit 0.
+ * Graceful shutdown for the production run path: hand every table to a live peer, tell every
+ * websocket when to reconnect, disconnect them, stop the http server, close the pool, exit 0.
  *
  * socket.io 4's `io.close()` does three things — it disconnects every socket,
  * closes the engine, and then calls `close()` on the http server it is
@@ -94,6 +120,8 @@ export async function shutdown(
 
   try {
     beginShutdown();
+    await within(SHUTDOWN_BUDGET.handOff, tables.handOffTables(SHUTDOWN_BUDGET.handOff));
+    await within(SHUTDOWN_BUDGET.drainNotice, drainNotice(io, SHUTDOWN_BUDGET.drainNotice));
     // Closes the adapter too, which ends its read loop before Redis goes below.
     await within(
       SHUTDOWN_BUDGET.ioClose,
