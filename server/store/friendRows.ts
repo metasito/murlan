@@ -6,8 +6,9 @@
 // versions of one request the first time either side changes.
 import type { Friend, User } from "../../shared/schema.ts";
 import type { FriendInfo, FriendRequestInfo } from "../../shared/http.ts";
+import type { FriendUser } from "./friendStore.ts";
 
-export function friendRow(friend: User): FriendInfo {
+export function friendRow(friend: FriendUser): FriendInfo {
   return {
     id: friend.id,
     username: friend.username,
@@ -21,7 +22,7 @@ export function friendRow(friend: User): FriendInfo {
  */
 export function friendRequestRow(
   request: Pick<Friend, "id" | "createdAt">,
-  other: User
+  other: Pick<User, "username">
 ): FriendRequestInfo {
   return {
     id: request.id,
