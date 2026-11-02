@@ -13,7 +13,7 @@ import { settle, ciRedBody, endSettle, onMainLine, overdueAt, rested, runSettle,
 import { LIMITS } from "../limits.mjs";
 import { appendSupervisor, reportEntries, reportEntryLine, streamLog, streamRecorder, supervisorLogPath } from "../loop-logs.mjs";
 import { readLandingState } from "../ciVerdict.ts";
-import { armArgs, disarmArgs } from "../tracker.mjs";
+import { armArgs, disarmArgs } from "../merges.mjs";
 import { readLine } from "../loop-stream.mjs";
 import { ciCall, landingAnswer, restJobs, restRun, restRuns } from "./helpers/restCi.ts";
 
