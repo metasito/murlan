@@ -180,6 +180,12 @@ export function BenchScreen() {
               setTable({ state });
             }),
           sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+          awaitForeground: async () => {
+            if (!interrupted.current) return false;
+            await foreground(alive);
+            interrupted.current = false;
+            return alive.current;
+          },
           frames: (on, until) => {
             recordFrames(on, until);
             stopJs.current?.();

@@ -5,6 +5,8 @@ export interface BenchContext {
   params: Record<string, string | undefined>;
   showTable(state: GameState | null): Promise<void>;
   sleep(ms: number): Promise<void>;
+  /** Null while the app stayed in front; after it left, waits for it to be back and clears the interruption, so a scenario that pauses and goes on is not recorded as cut. */
+  awaitForeground?(): Promise<boolean>;
   /** Opening with `until` (JS time) keeps the window to the first frame that ends past it. */
   frames(on: boolean, until?: number): void;
   /** Arming resolves once the frame loop is running. */
