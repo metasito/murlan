@@ -72,6 +72,8 @@ export function useMemoryTableStores(t: TestContext, seed: MemoryTableSeed = {})
       const kept = ((rows.get(roomId) as { pendingResults?: { round: number }[] }).pendingResults ?? []).slice();
       if (adding && !kept.some((e) => e.round === adding.round)) kept.push(adding);
       gameState = { ...gameState, pendingResults: kept };
+    } else {
+      gameState = { ...gameState, pendingResults: adding ? [adding] : [] };
     }
     rows.set(roomId, gameState);
     epochs.set(roomId, epoch);

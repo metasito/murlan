@@ -144,18 +144,16 @@ export function tableWriters(store: TableStore): TableWriters {
 /**
  * Commits the game's pending rounds oldest first, each removed from memory in the same tick its
  * commit lands, and stops at the first failure. A round is written to the row first unless it is
- * known to be there: only a round the row held can be read as applied when the row lacks it.
+ * known to be there: only a round the row held can be read as applied when the row lacks it, or
+ * when the row is gone.
  */
 async function applyPending(store: TableStore, roomId: string, game: OnlineGameState): Promise<AppliedResults> {
   const applied: AppliedResults["applied"] = [];
   const live = () => activeGames.get(roomId) ?? game;
   try {
-    let rewrote = false;
     for (let entry = game.pendingResults[0]; entry; entry = game.pendingResults[0]) {
       const current = entry;
-      const out: { settled?: "committed" | "applied" | "rewrite"; ratings: AppliedResults["applied"][number]["ratings"] } = {
-        ratings: null,
-      };
+      const out: { ratings: AppliedResults["applied"][number]["ratings"] } = { ratings: null };
       const owned = await writeAsOwner(roomId, async (epoch) => {
         if (!game.landedResults.has(current.round)) {
           if (!(await store.games.write(roomId, toEnvelope(game), epoch, current))) return false;
@@ -164,27 +162,14 @@ async function applyPending(store: TableStore, roomId: string, game: OnlineGameS
         const markFinished = live().gameState.roundOver && game.pendingResults.at(-1) === current;
         const commit = await commitRoundResults(store.games, roomId, epoch, current, { markFinished });
         if (commit.kind === "committed") {
-          out.settled = "committed";
           out.ratings = commit.ratings;
           return true;
         }
+        // No delete takes a row that still holds a round, so a missing row lost it to the commit, as ours does.
         const found = await store.games.epochOf(roomId);
-        if (found === epoch) {
-          out.settled = "applied";
-          return true;
-        }
-        if (found === undefined && !rewrote) {
-          out.settled = "rewrite";
-          return true;
-        }
-        return false;
+        return found === epoch || found === undefined;
       });
       if (!owned) return { applied, held: false };
-      if (out.settled === "rewrite") {
-        rewrote = true;
-        game.landedResults.delete(current.round);
-        continue;
-      }
       game.pendingResults.splice(game.pendingResults.indexOf(current), 1);
       game.landedResults.delete(current.round);
       applied.push({ entry: current, ratings: out.ratings });

@@ -160,6 +160,43 @@ describe("a finished round's results", { skip: hasDatabase() ? false : skipMessa
     }
   });
 
+  /** A round committed, its answer lost, `between` run, and then the retry: the round lands once. */
+  async function lostThenRetried(tag: string, between: (game: OnlineGameState) => Promise<void>) {
+    const ids = await users(2, tag);
+    const game = await liveTable(ids);
+    activeGames.set(game.roomId, game);
+    try {
+      const entry = roundOf(ids, Date.now());
+      game.pendingResults.push(entry);
+      await server.rt.writers.persistFinalState(game.roomId, game);
+      await server.rt.writers.applyPendingResults(game.roomId, game);
+      game.pendingResults.push(entry);
+      game.landedResults.add(entry.round);
+      await between(game);
+      const retry = await server.rt.writers.applyPendingResults(game.roomId, game);
+      assert.equal(retry.failure, undefined);
+      assert.deepEqual(retry.applied, [{ entry, ratings: null }], "found already applied");
+      assert.deepEqual(await recorded(ids), { stats: 2, history: 2, ratings: 2, replays: 1 }, "the retry applied the round again");
+    } finally {
+      activeGames.delete(game.roomId);
+      await releaseRoom(game.roomId);
+    }
+  }
+
+  test("a lost commit answer, then the settled row purged with its room, then the retry: the round lands once", async () => {
+    await lostThenRetried("purgedretry", async (game) => {
+      await transaction((tx) => roomStore.purgeRooms(tx, [game.roomId]));
+    });
+  });
+
+  test("a lost commit answer, then the row purged and a snapshot writing it anew, then the retry: the round lands once", async () => {
+    await lostThenRetried("purgedsnap", async (game) => {
+      await transaction((tx) => roomStore.purgeRooms(tx, [game.roomId]));
+      await server.rt.writers.persistGameState(game.roomId, game);
+      assert.deepEqual(await rowRounds(game.roomId), [], "a fresh row was written with memory's pending rounds");
+    });
+  });
+
   test("the next round's final write, queued while the last round's commit runs, never writes the committed one back", async () => {
     const ids = await users(2, "queuedfinal");
     const game = await liveTable(ids);

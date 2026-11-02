@@ -105,10 +105,10 @@ export const activeGameStore = {
    * writer deleted under it (an account deletion purging the host's rooms) plays on. False when
    * the row carries another epoch, which stays as it was.
    *
-   * An existing row keeps its own pending results, whatever `gameState` carries: memory can still
-   * hold a round whose commit landed unheard, and writing it back would apply it twice. `adding`
-   * appends one finished round, unless the row holds it already; only the commit's fenced clear
-   * removes one.
+   * The row's pending results are its own, whatever `gameState` carries: memory can still hold a
+   * round whose commit landed unheard, and writing it back would apply it twice. An existing row
+   * keeps its list, a new one starts empty, and `adding` appends one finished round unless the row
+   * holds it already; only the commit's fenced clear removes one.
    */
   async write(roomId: string, gameState: PersistedEnvelope, epoch: number, adding?: PendingResult): Promise<boolean> {
     const updatedAt = new Date(now());
@@ -119,7 +119,7 @@ export const activeGameStore = {
       : kept;
     const changed = await db()
       .insert(activeGames)
-      .values({ roomId, gameState, updatedAt, ownerEpoch: epoch })
+      .values({ roomId, gameState: { ...gameState, pendingResults: adding ? [adding] : [] }, updatedAt, ownerEpoch: epoch })
       .onConflictDoUpdate({
         target: activeGames.roomId,
         set: { gameState: sql`jsonb_set(excluded.game_state, '{pendingResults}', ${pendingAfter})`, updatedAt },

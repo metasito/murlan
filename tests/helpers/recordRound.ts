@@ -44,7 +44,9 @@ export function pendingEntry(results: GameResult[], gameMode: GameMode, finished
 /** A row holding only `entries` pending, at a fresh epoch. */
 export async function pendingRow(roomId: string, entries: PendingResult[]): Promise<number> {
   const { epoch } = await activeGameStore.claim(roomId);
-  await activeGameStore.write(roomId, { pendingResults: entries } as unknown as PersistedEnvelope, epoch);
+  const envelope = {} as PersistedEnvelope;
+  await activeGameStore.write(roomId, envelope, epoch);
+  for (const entry of entries) await activeGameStore.write(roomId, envelope, epoch, entry);
   return epoch;
 }
 
