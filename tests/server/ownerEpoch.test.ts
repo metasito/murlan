@@ -33,9 +33,10 @@ test("a claim that only probes moves no epoch; entering moves it once", async (t
 
   const entered = await enterTable(ROOM);
   assert.deepEqual(entered, { held: true, row: { roomId: ROOM, gameState: { probe: true } } });
-  assert.equal(epochs.get(ROOM), 1);
+  const at = epochs.get(ROOM);
+  assert.ok(at! > 0);
   assert.equal((await enterTable(ROOM)).held, true);
-  assert.equal(epochs.get(ROOM), 1, "entering a room already entered moved its epoch again");
+  assert.equal(epochs.get(ROOM), at, "entering a room already entered moved its epoch again");
 });
 
 test("a room this process does not hold is not entered, and its row is not moved", async (t) => {
@@ -45,15 +46,30 @@ test("a room this process does not hold is not entered, and its row is not moved
   assert.equal(epochs.get(ROOM), 0);
 });
 
-test("a claim with no row enters at epoch 1, and its first write inserts the row at 1", async (t) => {
-  const { rows, epochs } = useMemoryTableStores(t);
+test("a claim with no row still takes a fresh epoch, and its first write inserts the row at it", async (t) => {
+  const { rows, epochs, sequence } = useMemoryTableStores(t);
   const { rt } = recordingRuntime({ persist: "real" });
   await claimedRoom(t, ROOM);
   assert.deepEqual(await enterTable(ROOM), { held: true, row: undefined });
 
   await rt.writers.persistGameState(ROOM, table());
   assert.ok(rows.has(ROOM), "the first write of a new table wrote nothing");
-  assert.equal(epochs.get(ROOM), 1);
+  assert.equal(epochs.get(ROOM), sequence.last);
+});
+
+test("a claim with no row cannot write over the row a later claim of that room inserted", async (t) => {
+  const { rows, epochs, sequence } = useMemoryTableStores(t);
+  const { rt } = recordingRuntime({ persist: "real" });
+  await claimedRoom(t, ROOM);
+  await enterTable(ROOM);
+  const game = table();
+  const later = sequence.last + 1;
+  rows.set(ROOM, { theirs: true });
+  epochs.set(ROOM, later);
+
+  await rt.writers.persistGameState(ROOM, game);
+  assert.deepEqual(rows.get(ROOM), { theirs: true }, "the earlier claim wrote over the later one's row");
+  assert.equal(activeGames.has(ROOM), false);
 });
 
 test("a write the row refuses ends the table once, and nothing more is written", async (t) => {
@@ -62,7 +78,7 @@ test("a write the row refuses ends the table once, and nothing more is written",
   await claimedRoom(t, ROOM);
   await enterTable(ROOM);
   const game = table();
-  epochs.set(ROOM, 2);
+  epochs.set(ROOM, 99);
 
   await rt.writers.persistGameState(ROOM, game);
   assert.equal(activeGames.has(ROOM), false, "the table played on after another claim took its row");
@@ -71,7 +87,7 @@ test("a write the row refuses ends the table once, and nothing more is written",
   await rt.writers.persistGameState(ROOM, game);
 
   assert.deepEqual(rows.get(ROOM), { before: true });
-  assert.equal(epochs.get(ROOM), 2);
+  assert.equal(epochs.get(ROOM), 99);
   const landed = journal.filter((e) => e.kind === "store").map((e) => e.name);
   assert.deepEqual(landed, ["write"], "something was written after the table was lost");
 });
@@ -89,7 +105,7 @@ test("deleting a row that is already gone is no loss", async (t) => {
 });
 
 test("a row deleted under a live table, as an account deletion purges the host's rooms, is written again", async (t) => {
-  const { rows, epochs } = useMemoryTableStores(t, { rows: [[ROOM, { before: true }]] });
+  const { rows, epochs, sequence } = useMemoryTableStores(t, { rows: [[ROOM, { before: true }]] });
   const { rt } = recordingRuntime({ persist: "real" });
   await claimedRoom(t, ROOM);
   await enterTable(ROOM);
@@ -100,5 +116,5 @@ test("a row deleted under a live table, as an account deletion purges the host's
   await rt.writers.persistGameState(ROOM, game);
   assert.equal(activeGames.has(ROOM), true, "the table was ended for a row nobody else claimed");
   assert.ok(rows.has(ROOM));
-  assert.equal(epochs.get(ROOM), 1);
+  assert.equal(epochs.get(ROOM), sequence.last);
 });

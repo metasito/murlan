@@ -1,6 +1,6 @@
 import { and, count, eq, lt, sql } from "drizzle-orm";
 import { db } from "./db.ts";
-import { activeGames } from "../../shared/schema.ts";
+import { activeGames, ownerEpochs } from "../../shared/schema.ts";
 import { now } from "../http/clock.ts";
 import type { roomStore } from "./roomStore.ts";
 import type { PersistedEnvelope } from "../../shared/persistedEnvelope.ts";
@@ -10,10 +10,13 @@ export interface ActiveGameRow {
   gameState: unknown;
 }
 
-/** A row as a claim leaves it: the epoch it now carries, and what it held. */
-export interface ClaimedRow extends ActiveGameRow {
-  ownerEpoch: number;
+/** What a claim took: an epoch no other claim has had, and the row it found, if any. */
+export interface Claimed {
+  epoch: number;
+  row: ActiveGameRow | undefined;
 }
+
+const nextEpoch = sql<string>`nextval(${sql.raw(`'${ownerEpochs.seqName}'`)})`;
 
 const row = { roomId: activeGames.roomId, gameState: activeGames.gameState };
 const mine = (roomId: string, epoch: number) => and(eq(activeGames.roomId, roomId), eq(activeGames.ownerEpoch, epoch));
@@ -25,14 +28,16 @@ export const activeGameStore = {
     return found;
   },
 
-  /** Moves the row to the next epoch and reads it, in one statement; undefined when there is no row. */
-  async claim(roomId: string): Promise<ClaimedRow | undefined> {
+  /** Moves the row to a fresh epoch and reads it in one statement; with no row, only takes one. */
+  async claim(roomId: string): Promise<Claimed> {
     const [found] = await db()
       .update(activeGames)
-      .set({ ownerEpoch: sql`${activeGames.ownerEpoch} + 1` })
+      .set({ ownerEpoch: nextEpoch })
       .where(eq(activeGames.roomId, roomId))
       .returning({ ...row, ownerEpoch: activeGames.ownerEpoch });
-    return found;
+    if (found) return { epoch: found.ownerEpoch, row: { roomId: found.roomId, gameState: found.gameState } };
+    const { rows } = await db().execute<{ epoch: string }>(sql`SELECT ${nextEpoch} AS epoch`);
+    return { epoch: Number(rows[0]?.epoch), row: undefined };
   },
 
   async epochOf(roomId: string): Promise<number | undefined> {

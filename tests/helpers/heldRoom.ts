@@ -35,7 +35,7 @@ export async function heldRoom(t: TestContext, roomId: string, { epoch = 1, row 
     t.mock.method(
       activeGameStore,
       "claim",
-      async () => (row ? { roomId, gameState: {}, ownerEpoch: epoch } : undefined),
+      async () => ({ epoch, row: row ? { roomId, gameState: {} } : undefined }),
       { times: 1 }
     );
   }

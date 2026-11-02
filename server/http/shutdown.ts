@@ -7,7 +7,7 @@ import { beginShutdown } from "../game/gameRoom.ts";
 import { closeRedis } from "../store/redis.ts";
 import { stopInbox } from "../store/instanceInbox.ts";
 import { closeTableOwners } from "../store/tableOwners.ts";
-import { closeOwnership } from "../game/gameOwnership.ts";
+import { closeOwnership, forgetOwnerRecords } from "../game/gameOwnership.ts";
 import type { TableRuntime } from "../game/tableRuntime.ts";
 import { settleDisconnects } from "../socket/socketPresence.ts";
 
@@ -36,6 +36,7 @@ export const SHUTDOWN_BUDGET = {
   ioClose: 500,
   settleDisconnects: DISCONNECT_SETTLE_MS,
   stopTables: 250,
+  ownerRecords: 250,
   drain: DRAIN_TIMEOUT_MS,
   poolEnd: 200,
   closeOwnership: 250,
@@ -114,6 +115,7 @@ export async function shutdown(
     await settleDisconnects(SHUTDOWN_BUDGET.settleDisconnects);
     await within(SHUTDOWN_BUDGET.stopTables, tables.stopTables());
     stopInbox();
+    await within(SHUTDOWN_BUDGET.ownerRecords, forgetOwnerRecords());
     closeTableOwners();
     closeRedis();
     // Disconnecting the sockets above starts writes — updateLastSeen, the

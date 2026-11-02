@@ -14,6 +14,8 @@ export interface MemoryTableStores {
   rows: Map<string, unknown>;
   /** Each row's `owner_epoch`; a seeded row starts at 0, as one written before epochs did. */
   epochs: Map<string, number>;
+  /** The epoch sequence: `last` is the epoch the latest claim took. */
+  sequence: { last: number };
 }
 
 export interface MemoryTableSeed {
@@ -29,15 +31,16 @@ export function useMemoryTableStores(t: TestContext, seed: MemoryTableSeed = {})
   const seated = (roomId: string) => [...(seats.get(roomId) ?? [])].sort((a, b) => a.seatIndex - b.seatIndex);
 
   const epochs = new Map<string, number>([...rows.keys()].map((roomId) => [roomId, 0]));
+  const sequence = { last: 0 };
   const at = (roomId: string, epoch: number) => rows.has(roomId) && epochs.get(roomId) === epoch;
   t.mock.method(activeGameStore, "load", async (roomId: string) =>
     rows.has(roomId) ? { roomId, gameState: rows.get(roomId) } : undefined
   );
   t.mock.method(activeGameStore, "claim", async (roomId: string) => {
-    if (!rows.has(roomId)) return undefined;
-    const ownerEpoch = (epochs.get(roomId) ?? 0) + 1;
-    epochs.set(roomId, ownerEpoch);
-    return { roomId, gameState: rows.get(roomId), ownerEpoch };
+    const epoch = ++sequence.last;
+    if (!rows.has(roomId)) return { epoch, row: undefined };
+    epochs.set(roomId, epoch);
+    return { epoch, row: { roomId, gameState: rows.get(roomId) } };
   });
   t.mock.method(activeGameStore, "epochOf", async (roomId: string) => (rows.has(roomId) ? epochs.get(roomId) : undefined));
   t.mock.method(activeGameStore, "list", async () =>
@@ -104,5 +107,5 @@ export function useMemoryTableStores(t: TestContext, seed: MemoryTableSeed = {})
     t.mock.method(roomStore, name, port[name]);
   }
 
-  return { rooms, seats, rows, epochs };
+  return { rooms, seats, rows, epochs, sequence };
 }
