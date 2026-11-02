@@ -29,6 +29,10 @@ const RETRY_MS = 250;
 
 const inboxKey = (id: string) => redisKey(`inbox:${id}`);
 
+const SEND = `redis.call("XADD", KEYS[1], ARGV[1], ARGV[2], ARGV[3], "*", "m", ARGV[5])
+redis.call("EXPIRE", KEYS[1], ARGV[4])
+return 1`;
+
 /** How each send trims its inbox, exported so a test reads the value it actually gets. */
 export function inboxTrim() {
   return { strategy: "MAXLEN", strategyModifier: "~", threshold: streamMaxLen() } as const;
@@ -91,12 +95,14 @@ export function openInbox({
   return {
     async send(to, message) {
       const key = inboxKey(to);
-      // Two commands, not a MULTI: node-redis queues a MULTI while offline whatever the client's
-      // offline queue is set to.
-      await Promise.all([
-        writer.xAdd(key, "*", { m: JSON.stringify(message) }, { TRIM: inboxTrim() }),
-        writer.expire(key, CLUSTER_GAP_SECONDS),
-      ]);
+      // One script, not a MULTI: node-redis queues a MULTI while offline whatever the client's
+      // offline queue is set to. Not two commands either: an entry added whose expiry failed
+      // would hold no TTL, and the send would reject although delivered.
+      const { strategy, strategyModifier, threshold } = inboxTrim();
+      await writer.eval(SEND, {
+        keys: [key],
+        arguments: [strategy, strategyModifier, String(threshold), String(CLUSTER_GAP_SECONDS), JSON.stringify(message)],
+      });
     },
     on(kind, handler) {
       handlers.set(kind, handler);

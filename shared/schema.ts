@@ -154,6 +154,7 @@ export const gameInvites = pgTable(
     // app open and every reconnect.
     index("game_invites_invitee_id_idx").on(t.inviteeId),
     index("game_invites_room_id_idx").on(t.roomId),
+    index("game_invites_inviter_id_idx").on(t.inviterId),
     // Re-inviting the same person to the same room is one invite, so an
     // impatient host and a retried emit are the same event to the database.
     uniqueIndex("game_invites_room_invitee_uq").on(t.roomId, t.inviteeId),
@@ -217,7 +218,12 @@ export const roundHistory = pgTable("round_history", {
    * these directly rather than needing a table of its own.
    */
   abandoned: boolean("abandoned").notNull().default(false),
-}, (t) => [index("round_history_user_idx").on(t.userId, t.finishedAt)]);
+}, (t) => [
+  index("round_history_user_idx").on(t.userId, t.finishedAt),
+  // The admin page's windows over every player. Rows arrive in `finished_at` order, which is
+  // what a BRIN index needs, at a fraction of a b-tree's size on a table this hot.
+  index("round_history_finished_idx").using("brin", t.finishedAt),
+]);
 
 /**
  * What a client crash looked like, kept for CLIENT_ERROR_RETENTION_DAYS so the
@@ -243,6 +249,7 @@ export const clientErrors = pgTable("client_errors", {
 }, (t) => [
   index("client_errors_occurred_idx").on(t.occurredAt),
   index("client_errors_fingerprint_idx").on(t.fingerprint),
+  index("client_errors_user_id_idx").on(t.userId),
 ]);
 
 /** Every server log line at `error` or above, kept SERVER_ERROR_RETENTION_DAYS. */
@@ -279,7 +286,10 @@ export const bugReports = pgTable("bug_reports", {
   platform: text("platform"),
   locale: text("locale"),
   resolved: boolean("resolved").notNull().default(false),
-}, (t) => [index("bug_reports_created_idx").on(t.createdAt)]);
+}, (t) => [
+  index("bug_reports_created_idx").on(t.createdAt),
+  index("bug_reports_user_id_idx").on(t.userId),
+]);
 
 /**
  * Funnel steps, written by the server on the server's clock. Kept for
@@ -298,6 +308,7 @@ export const events = pgTable("events", {
 }, (t) => [
   index("events_name_occurred_idx").on(t.name, t.occurredAt),
   index("events_occurred_idx").on(t.occurredAt),
+  index("events_user_id_idx").on(t.userId),
 ]);
 
 export const userAchievements = pgTable("user_achievements", {
@@ -326,6 +337,8 @@ export const roundReplays = pgTable("round_replays", {
   // Every read of this table filters on `player_ids @> '["<uid>"]'`. Containment
   // is not a btree predicate — only a GIN index can answer it.
   index("round_replays_player_ids_idx").using("gin", t.playerIds),
+  // A seat its owner left names them only in `seats` (`vacatedBy`), which account deletion matches.
+  index("round_replays_seats_idx").using("gin", t.seats),
 ]);
 
 // One row per player per season. `season` is part of the key rather than a
