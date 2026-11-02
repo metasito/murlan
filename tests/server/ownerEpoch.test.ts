@@ -76,7 +76,7 @@ test("a write the row refuses ends the table once, and nothing more is written",
   assert.deepEqual(landed, ["write"], "something was written after the table was lost");
 });
 
-test("deleting a row this claim never wrote is no loss", async (t) => {
+test("deleting a row that is already gone is no loss", async (t) => {
   useMemoryTableStores(t);
   const { rt } = recordingRuntime({ persist: "real" });
   await claimedRoom(t, ROOM);
@@ -86,4 +86,19 @@ test("deleting a row this claim never wrote is no loss", async (t) => {
   await rt.writers.discardGame(ROOM);
   assert.equal(activeGames.has(ROOM), true, "a delete that found no row of this claim's ended the table");
   assert.equal(ownsRoom(ROOM), true);
+});
+
+test("a row deleted under a live table, as an account deletion purges the host's rooms, is written again", async (t) => {
+  const { rows, epochs } = useMemoryTableStores(t, { rows: [[ROOM, { before: true }]] });
+  const { rt } = recordingRuntime({ persist: "real" });
+  await claimedRoom(t, ROOM);
+  await enterTable(ROOM);
+  const game = table();
+  rows.delete(ROOM);
+  epochs.delete(ROOM);
+
+  await rt.writers.persistGameState(ROOM, game);
+  assert.equal(activeGames.has(ROOM), true, "the table was ended for a row nobody else claimed");
+  assert.ok(rows.has(ROOM));
+  assert.equal(epochs.get(ROOM), 1);
 });

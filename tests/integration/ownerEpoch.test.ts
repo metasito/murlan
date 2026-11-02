@@ -65,7 +65,7 @@ describe("the owner epoch", { skip: hasDatabase() ? false : skipMessage() }, () 
     const theirs = await rowOf(roomId);
 
     const envelope = toEnvelope(game);
-    assert.equal(await activeGameStore.write(roomId, envelope, { epoch: 1, rowExists: true }), false);
+    assert.equal(await activeGameStore.write(roomId, envelope, 1), false);
     assert.equal(await activeGameStore.remove(roomId, 1), false);
     assert.deepEqual(await rowOf(roomId), theirs, "an epoch-1 write or delete changed the row");
 
@@ -107,6 +107,20 @@ describe("the owner epoch", { skip: hasDatabase() ? false : skipMessage() }, () 
     } finally {
       await observer.end();
     }
+  });
+
+  test("a row deleted under its holder is written again at the holder's epoch, and only then", async () => {
+    const roomId = newRoom("purged");
+    const envelope = toEnvelope(table(roomId));
+    assert.equal(await activeGameStore.write(roomId, envelope, 3), true);
+    await server.query("DELETE FROM active_games WHERE room_id = $1", [roomId]);
+
+    assert.equal(await activeGameStore.write(roomId, envelope, 3), true);
+    assert.equal((await rowOf(roomId)).owner_epoch, 3);
+    assert.equal(await activeGameStore.write(roomId, envelope, 2), false);
+    assert.equal(await activeGameStore.remove(roomId, 2), false);
+    assert.equal(await activeGameStore.remove(roomId, 3), true);
+    assert.equal(await activeGameStore.remove(roomId, 3), true, "a delete that finds the row gone read as another owner");
   });
 
   test("the owner record names this instance and the claim's epoch, and goes with the release", async () => {

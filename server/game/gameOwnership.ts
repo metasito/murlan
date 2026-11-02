@@ -24,7 +24,6 @@ import type { TableStore } from "./tableRuntime.ts";
 
 type OwnedRows = Pick<TableStore["games"], "claim" | "load" | "epochOf">;
 type ActiveGameRow = NonNullable<Awaited<ReturnType<OwnedRows["load"]>>>;
-type OwnerFence = Parameters<TableStore["games"]["write"]>[2];
 
 /**
  * The advisory-lock key for a room, as `pg_try_advisory_lock` takes it.
@@ -60,8 +59,8 @@ const PREDECESSOR_POLL_MS = 100;
 interface Hold {
   /** The session the lock was granted on; a reclaim asks again only on a newer one. */
   lockedOn: Client | null;
-  /** Set by `enterTable`; until then the room has no row of its own to write. */
-  fence: OwnerFence | null;
+  /** The row's epoch as `enterTable` left it; until then the room has no row of its own to write. */
+  epoch: number | null;
   entering: Promise<ActiveGameRow | undefined> | null;
 }
 
@@ -241,7 +240,7 @@ async function takeLock(roomId: string): Promise<{ answer: LockAnswer; on: Clien
 function loseRoom(roomId: string, hold: Hold, unlock: boolean): void {
   if (held.get(roomId) !== hold) return;
   held.delete(roomId);
-  if (hold.fence) clearTableOwner(roomId, hold.fence.epoch);
+  if (hold.epoch !== null) clearTableOwner(roomId, hold.epoch);
   const c = client;
   if (unlock && c && hold.lockedOn === c) {
     void c
@@ -251,11 +250,11 @@ function loseRoom(roomId: string, hold: Hold, unlock: boolean): void {
   onRoomLost(roomId);
 }
 
-/** Whether the row still carries this claim's epoch; a missing row is left to the next write's fence. */
-async function rowStillMine(roomId: string, fence: OwnerFence): Promise<boolean> {
+/** Whether the row still carries this claim's epoch; a row deleted under the table is no other claim's. */
+async function rowStillMine(roomId: string, epoch: number): Promise<boolean> {
   if (!rows) throw new Error("ownership was never opened");
-  const epoch = await rows.epochOf(roomId);
-  return epoch === undefined || epoch === fence.epoch;
+  const found = await rows.epochOf(roomId);
+  return found === undefined || found === epoch;
 }
 
 /**
@@ -284,18 +283,18 @@ async function reclaim(): Promise<void> {
       }
       hold.lockedOn = on;
     }
-    const fence = hold.fence;
-    if (!fence) continue;
+    const epoch = hold.epoch;
+    if (epoch === null) continue;
     let mine: boolean;
     try {
-      mine = await rowStillMine(roomId, fence);
+      mine = await rowStillMine(roomId, epoch);
     } catch (err) {
       logger.error({ err, roomId }, "Could not read a reclaimed room's epoch");
       unreachable = true;
       continue;
     }
     if (mine) continue;
-    logger.warn({ roomId, epoch: fence.epoch }, "Room entered elsewhere while this instance was disconnected — dropping it");
+    logger.warn({ roomId, epoch }, "Room entered elsewhere while this instance was disconnected — dropping it");
     loseRoom(roomId, hold, true);
   }
   if (unreachable && !closed && !reclaimRetry) {
@@ -319,7 +318,7 @@ export async function claimRoom(roomId: string): Promise<boolean> {
   if (held.has(roomId)) return true;
   const { answer, on } = await takeLock(roomId);
   if (answer !== "taken") return false;
-  held.set(roomId, { lockedOn: on, fence: null, entering: null });
+  held.set(roomId, { lockedOn: on, epoch: null, entering: null });
   return true;
 }
 
@@ -333,14 +332,14 @@ export async function claimRoom(roomId: string): Promise<boolean> {
 export async function enterTable(roomId: string): Promise<{ held: false } | { held: true; row: ActiveGameRow | undefined }> {
   const hold = held.get(roomId);
   if (!hold || !rows) return { held: false };
-  if (hold.fence) return { held: true, row: await rows.load(roomId) };
+  if (hold.epoch !== null) return { held: true, row: await rows.load(roomId) };
   const store = rows;
   hold.entering ??= (async () => {
     try {
       const claimed = await store.claim(roomId);
       if (held.get(roomId) === hold) {
-        hold.fence = { epoch: claimed?.ownerEpoch ?? 1, rowExists: claimed !== undefined };
-        recordTableOwner(roomId, hold.fence.epoch);
+        hold.epoch = claimed?.ownerEpoch ?? 1;
+        recordTableOwner(roomId, hold.epoch);
       }
       return claimed && { roomId, gameState: claimed.gameState };
     } finally {
@@ -348,35 +347,24 @@ export async function enterTable(roomId: string): Promise<{ held: false } | { he
     }
   })();
   const row = await hold.entering;
-  return held.get(roomId) === hold && hold.fence ? { held: true, row } : { held: false };
+  return held.get(roomId) === hold && hold.epoch !== null ? { held: true, row } : { held: false };
 }
 
 /**
  * Runs a write of the room's row under this claim's epoch: the one way a table's row is written
- * or deleted. A write that changes nothing the row should have had means another claim owns the
- * row: the room is given up through `onRoomLost`, and nothing more is written. `leaves` is
- * whether the row exists once the write lands. False whenever nothing was written.
+ * or deleted. `write` answers false when the row carries another epoch: another claim owns the
+ * row, so the room is given up through `onRoomLost` and nothing more is written. False whenever
+ * nothing was written.
  */
-export async function writeAsOwner(
-  roomId: string,
-  leaves: "row" | "no row",
-  write: (fence: OwnerFence) => Promise<boolean>
-): Promise<boolean> {
+export async function writeAsOwner(roomId: string, write: (epoch: number) => Promise<boolean>): Promise<boolean> {
   const hold = held.get(roomId);
-  const fence = hold?.fence;
-  if (!hold || !fence) {
+  if (!hold || hold.epoch === null) {
     if (hold) logger.error({ roomId }, "A table write before its claim entered the row — not written");
     return false;
   }
-  const changed = await write(fence);
-  if (held.get(roomId) !== hold) return changed;
-  if (changed) {
-    fence.rowExists = leaves === "row";
-    return true;
-  }
-  // Deleting a row this claim never saw finds nothing, and that is no sign of another owner.
-  if (leaves === "no row" && !fence.rowExists) return false;
-  logger.warn({ roomId, epoch: fence.epoch }, "Another claim owns this table's row — giving the table up");
+  const epoch = hold.epoch;
+  if (await write(epoch)) return true;
+  logger.warn({ roomId, epoch }, "Another claim owns this table's row — giving the table up");
   loseRoom(roomId, hold, true);
   return false;
 }
@@ -391,7 +379,7 @@ async function unlock(roomId: string): Promise<void> {
   const hold = held.get(roomId);
   if (!hold) return;
   held.delete(roomId);
-  if (hold.fence) clearTableOwner(roomId, hold.fence.epoch);
+  if (hold.epoch !== null) clearTableOwner(roomId, hold.epoch);
   const c = client;
   if (!c) return;
   await c

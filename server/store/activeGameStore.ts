@@ -15,12 +15,6 @@ export interface ClaimedRow extends ActiveGameRow {
   ownerEpoch: number;
 }
 
-/** The claim a write is made under, and whether that claim's row exists. */
-export interface OwnerFence {
-  epoch: number;
-  rowExists: boolean;
-}
-
 const row = { roomId: activeGames.roomId, gameState: activeGames.gameState };
 const mine = (roomId: string, epoch: number) => and(eq(activeGames.roomId, roomId), eq(activeGames.ownerEpoch, epoch));
 
@@ -54,34 +48,29 @@ export const activeGameStore = {
   },
 
   /**
-   * False when no row changed: the row carries another claim's epoch, or a row this claim wrote
-   * is gone. A claim with no row yet inserts one, and takes over a row only at its own epoch, so
-   * an insert whose commit went unanswered can be made again.
+   * Writes the row at `epoch`, inserting it when there is none: a table whose row an exempt
+   * writer deleted under it (an account deletion purging the host's rooms) plays on. False when
+   * the row carries another epoch, which stays as it was.
    */
-  async write(roomId: string, gameState: PersistedEnvelope, fence: OwnerFence): Promise<boolean> {
+  async write(roomId: string, gameState: PersistedEnvelope, epoch: number): Promise<boolean> {
     const updatedAt = new Date(now());
-    const changed = fence.rowExists
-      ? await db()
-          .update(activeGames)
-          .set({ gameState, updatedAt })
-          .where(mine(roomId, fence.epoch))
-          .returning({ roomId: activeGames.roomId })
-      : await db()
-          .insert(activeGames)
-          .values({ roomId, gameState, updatedAt, ownerEpoch: fence.epoch })
-          .onConflictDoUpdate({
-            target: activeGames.roomId,
-            set: { gameState, updatedAt },
-            setWhere: eq(activeGames.ownerEpoch, fence.epoch),
-          })
-          .returning({ roomId: activeGames.roomId });
+    const changed = await db()
+      .insert(activeGames)
+      .values({ roomId, gameState, updatedAt, ownerEpoch: epoch })
+      .onConflictDoUpdate({
+        target: activeGames.roomId,
+        set: { gameState, updatedAt },
+        setWhere: eq(activeGames.ownerEpoch, epoch),
+      })
+      .returning({ roomId: activeGames.roomId });
     return changed.length > 0;
   },
 
-  /** False when no row at `epoch` was there to delete. */
+  /** Deletes the row at `epoch`. False when the row carries another epoch, and stays. */
   async remove(roomId: string, epoch: number): Promise<boolean> {
     const gone = await db().delete(activeGames).where(mine(roomId, epoch)).returning({ roomId: activeGames.roomId });
-    return gone.length > 0;
+    if (gone.length > 0) return true;
+    return (await activeGameStore.epochOf(roomId)) === undefined;
   },
 
   async countUntouchedSince(cutoff: Date): Promise<number> {

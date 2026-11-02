@@ -1,7 +1,7 @@
 // Map-backed twins of `activeGameStore` and the `TableRoomPort` methods, so a
 // table test needs neither Postgres nor a mock of drizzle's internals.
 import type { TestContext } from "node:test";
-import { activeGameStore, type OwnerFence, type TableRoomPort } from "../../server/store/activeGameStore.ts";
+import { activeGameStore, type TableRoomPort } from "../../server/store/activeGameStore.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { renumbering, settleRelease, startRefusal } from "../../server/game/seatAllocation.ts";
 import type { Room } from "../../shared/schema.ts";
@@ -43,13 +43,14 @@ export function useMemoryTableStores(t: TestContext, seed: MemoryTableSeed = {})
   t.mock.method(activeGameStore, "list", async () =>
     [...rows].map(([roomId, gameState]) => ({ roomId, gameState }))
   );
-  t.mock.method(activeGameStore, "write", async (roomId: string, gameState: unknown, fence: OwnerFence) => {
-    if (fence.rowExists ? !at(roomId, fence.epoch) : rows.has(roomId) && !at(roomId, fence.epoch)) return false;
+  t.mock.method(activeGameStore, "write", async (roomId: string, gameState: unknown, epoch: number) => {
+    if (rows.has(roomId) && !at(roomId, epoch)) return false;
     rows.set(roomId, gameState);
-    epochs.set(roomId, fence.epoch);
+    epochs.set(roomId, epoch);
     return true;
   });
   t.mock.method(activeGameStore, "remove", async (roomId: string, epoch: number) => {
+    if (!rows.has(roomId)) return true;
     if (!at(roomId, epoch)) return false;
     rows.delete(roomId);
     epochs.delete(roomId);

@@ -126,14 +126,14 @@ export function tableWriters(store: TableStore): TableWriters {
         // Judged when the write runs, not when it was queued: a table disposed in
         // between has had its row deleted, or handed to another instance.
         if (activeGames.get(roomId) !== game) return;
-        await writeAsOwner(roomId, "row", (fence) => store.games.write(roomId, gameState, fence)).catch(
+        await writeAsOwner(roomId, (epoch) => store.games.write(roomId, gameState, epoch)).catch(
           (err: unknown) => logger.error({ err, roomId }, "Failed to persist game state")
         );
       });
     },
     discardGame: (roomId) =>
       inRoomOrder(roomId, () =>
-        writeAsOwner(roomId, "no row", (fence) => store.games.remove(roomId, fence.epoch)).catch((err: unknown) =>
+        writeAsOwner(roomId, (epoch) => store.games.remove(roomId, epoch)).catch((err: unknown) =>
           logger.error({ err, roomId }, "Failed to delete persisted game")
         )
       ),
