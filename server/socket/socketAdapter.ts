@@ -18,12 +18,13 @@ const LEAVING = "murlan:adapter-leaving";
 /** Rides this revision's heartbeat; an older one's carries nothing, which is how it is told apart. */
 const KEEPS_LIVENESS = "liveness";
 
-/**
- * Whether a peer on a revision that keeps no presence liveness was heard within the grace: one
- * that cannot handle what replaced its messages. Until no such revision runs (ADR 0014, decision 9).
- */
-export function hearsOlderPeers(io: { of(nsp: string): { adapter: unknown } }): boolean {
-  return (io.of("/").adapter as { hearsOlderPeers?: () => boolean }).hearsOlderPeers?.() ?? false;
+/** What the adapter answers, on top of Socket.IO's, for `socketRegistry.ts`'s revocation. */
+export interface OlderPeers {
+  /**
+   * Whether a peer on a revision that keeps no presence liveness was heard within the grace: one
+   * that cannot handle what replaced its messages. Until no such revision runs (ADR 0014, decision 9).
+   */
+  hearsOlderPeers(): boolean;
 }
 
 interface AdapterLinks {
@@ -200,9 +201,8 @@ export function createSocketAdapter(liveness: Liveness = { livePeers, leave: lea
       return onMessage(message, offset);
     };
     const older = new Map<string, number>();
-    Object.assign(adapter, {
-      hearsOlderPeers: () => [...older.values()].some((at) => now() - at < PEER_GRACE_MS),
-    });
+    const answers: OlderPeers = { hearsOlderPeers: () => [...older.values()].some((at) => now() - at < PEER_GRACE_MS) };
+    Object.assign(adapter, answers);
     const beatNow = () => void serverSideEmit([HEARTBEAT, KEEPS_LIVENESS]);
     const beat = setInterval(beatNow, HEARTBEAT_MS);
     const firstBeat = setInterval(() => {

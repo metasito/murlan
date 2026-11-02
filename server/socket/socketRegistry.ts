@@ -10,7 +10,7 @@ import { createHash } from "node:crypto";
 import { logger } from "../shared/logger.ts";
 import { openedAfter, userRoom, userSocketMap } from "../game/gameRoom.ts";
 import { unseatSocket } from "./seating.ts";
-import { hearsOlderPeers } from "./socketAdapter.ts";
+import type { OlderPeers } from "./socketAdapter.ts";
 import { realClock } from "../http/clock.ts";
 import { safeTimer } from "../game/gamePersistence.ts";
 import { announceRoomChanged, handleSeatRelease } from "./socketTable.ts";
@@ -71,7 +71,7 @@ export async function revokeAccountSockets(userId: string, which: Revoked = {}):
   // An instance too old to handle the revocation message cuts every socket the account holds
   // there, which a spared session's client reconnects; this instance's own are left to `cutHere`.
   // Until no such revision runs (ADR 0014, decision 9).
-  if (hearsOlderPeers(rt.transport)) {
+  if ((rt.transport.of("/").adapter as unknown as Partial<OlderPeers>).hearsOlderPeers?.()) {
     const here = [...(rt.transport.sockets.adapter.rooms.get(userRoom(userId)) ?? [])];
     rt.transport.in(userRoom(userId)).except(here).disconnectSockets(true);
   }
