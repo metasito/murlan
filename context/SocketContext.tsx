@@ -97,6 +97,9 @@ interface Invites {
 
 const askWhoIsOnline = (socket: Socket) => socket.emit("friend:get_online_list");
 
+/** How long after a connect the server's online list may take before the lists are re-read without it. */
+const ONLINE_LIST_OVERDUE_MS = 5_000;
+
 // A retry the socket effect's cleanup cancelled, owed to whichever run takes the
 // socket up next: lib/socket.ts outlives this effect and keeps the socket, and
 // a dropped one with no retry pending would otherwise stay down.
@@ -335,12 +338,25 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
       socket.disconnect();
     };
 
+    // A server that failed to read the friends at connect pushes no list: the rows are re-read anyway.
+    let listOverdue: ReturnType<typeof setTimeout> | null = null;
+    const stopWaitingForList = () => {
+      if (listOverdue) clearTimeout(listOverdue);
+      listOverdue = null;
+    };
+
     const onConnect = () => {
       setSessionReplaced(null);
       retryAttemptRef.current = 0;
+      stopWaitingForList();
+      listOverdue = setTimeout(() => {
+        listOverdue = null;
+        markStale(qc, stale.onReconnect);
+      }, ONLINE_LIST_OVERDUE_MS);
     };
 
     const onDisconnect = (reason: UntypedSocket.DisconnectReason) => {
+      stopWaitingForList();
       reportSocketClose(reason);
       if (reason !== "io client disconnect") retryLater();
     };
@@ -361,6 +377,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
     // social version other than the last one seen, or none, is where we ask again — otherwise a
     // friend request sent to someone offline is invisible to them.
     const onOnlineList = ({ onlineIds: ids, lastSeen, social }: OnlineList) => {
+      stopWaitingForList();
       setOnlineIds(new Set(ids));
       if (lastSeen) {
         qc.setQueryData<Answer<"friends">>(
@@ -494,6 +511,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
 
     return () => {
       bound = false;
+      stopWaitingForList();
       onAppState.remove();
       stopNetInfo();
       if (retryTimerRef.current) {

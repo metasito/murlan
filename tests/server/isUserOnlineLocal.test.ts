@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { storePresence } from "../../server/socket/socketOutbox.ts";
-import { userSocketMap } from "../../server/game/gameRoom.ts";
+import { socketRoomMap, userSocketMap } from "../../server/game/gameRoom.ts";
 
 const USER = "online-here";
 
@@ -27,4 +27,16 @@ test("a user with no socket here is online when the store has an entry for them"
 test("a store that does not answer is no one's list of who is connected", async () => {
   assert.equal(await storeThatFails().onlineAmong(["a", "b"]), null);
   assert.equal(await storeThatFails().tablePresence("room", ["a"]), null);
+});
+
+test("an account connected here is online and at its table here before the store has its entry", async (t) => {
+  userSocketMap.set(USER, "local-socket");
+  socketRoomMap.set("local-socket", "room-here");
+  t.after(() => {
+    userSocketMap.delete(USER);
+    socketRoomMap.delete("local-socket");
+  });
+  const presence = storePresence(async () => new Map());
+  assert.deepEqual([...(await presence.onlineAmong([USER, "elsewhere"]))!], [USER]);
+  assert.deepEqual(await presence.tablePresence("room-here", [USER]), { online: new Set([USER]), atTable: new Set([USER]) });
 });

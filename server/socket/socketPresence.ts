@@ -30,7 +30,7 @@ import { announceRejoin, armLobbyGrace } from "./socketTable.ts";
 import { seatSocket, stopSpectating, unseatSocket } from "./seating.ts";
 import { NoPayloadSchema, FriendInviteSchema } from "../../shared/socketSchemas.ts";
 import { isUserOnline, onlineAmong } from "./socketRegistry.ts";
-import { onPresenceLost, socialVersion } from "../store/presence.ts";
+import { onPresenceLost, onPresenceRestored, socialVersion } from "../store/presence.ts";
 import type { OnlineList } from "../../shared/protocol.ts";
 import { payload } from "../shared/payload.ts";
 import { OK, refuse } from "../shared/refusal.ts";
@@ -137,6 +137,18 @@ export function registerLostPresence(): void {
         .then(() => friendStore.getFriends(userId))
         .then((friends) => friendships.tellStatus(userId, friends.map((f) => f.friend.id), { online: false, lastSeen }))
         .catch((err: unknown) => logger.warn({ err, userId }, "Could not tell a lost account's friends it went offline"));
+    }
+  });
+}
+
+/** A peer that swept this instance during a lapse told these accounts' friends they went offline. */
+export function registerRestoredPresence(): void {
+  onPresenceRestored((userIds) => {
+    for (const userId of userIds) {
+      void friendStore
+        .getFriends(userId)
+        .then((friends) => announceOnlineToFriends(userId, friends))
+        .catch((err: unknown) => logger.warn({ err, userId }, "Could not tell a restored account's friends it is online"));
     }
   });
 }

@@ -1,5 +1,6 @@
 import { createAdapter } from "@socket.io/redis-streams-adapter";
-import type { ClusterMessage } from "socket.io-adapter";
+import { MessageType, type ClusterMessage } from "socket.io-adapter";
+import { now } from "../http/clock.ts";
 import { BLOCK_MS, openRedis, redisKey, streamMaxLen, type RedisClient } from "../store/redis.ts";
 import { clusterMessages, noteStreamRead } from "../shared/metrics.ts";
 import { leavePresence, livePeers, type PresenceStore } from "../store/presence.ts";
@@ -7,6 +8,13 @@ import { leavePresence, livePeers, type PresenceStore } from "../store/presence.
 type Liveness = Pick<PresenceStore, "livePeers" | "leave">;
 
 type Packet = unknown[];
+
+const HEARTBEAT_MS = 3_000;
+const FIRST_BEAT_POLL_MS = 100;
+/** How long a peer counts as alive after it was last heard, as the old heartbeat adapter's timeout. */
+const PEER_GRACE_MS = 10_000;
+const HEARTBEAT = "murlan:adapter-heartbeat";
+const LEAVING = "murlan:adapter-leaving";
 
 interface AdapterLinks {
   client: RedisClient;
@@ -63,6 +71,15 @@ export function adapterOptions() {
  * called it — the room row is shared, so two players land in the same room and
  * are never told about each other.
  */
+/**
+ * Whether the last count heard a peer that keeps no presence liveness: an instance on an older
+ * revision, during a rolling deploy. Until no such revision runs (ADR 0014, decision 9).
+ */
+let unlistedPeers = false;
+export function peersWithoutLiveness(): boolean {
+  return unlistedPeers;
+}
+
 export function createSocketAdapter(liveness: Liveness = { livePeers, leave: leavePresence }) {
   const links = adapterLinks();
   const options = adapterOptions();
@@ -71,6 +88,7 @@ export function createSocketAdapter(liveness: Liveness = { livePeers, leave: lea
   return function (nsp: { name: string }) {
     const adapter = make(nsp);
     const cluster = adapter as unknown as {
+      uid: string;
       onMessage(message: ClusterMessage, offset?: string): void;
       doPublish(message: ClusterMessage): Promise<string>;
       doPublishResponse(requesterUid: string, response: unknown): Promise<void>;
@@ -78,7 +96,8 @@ export function createSocketAdapter(liveness: Liveness = { livePeers, leave: lea
     const doPublish = cluster.doPublish.bind(adapter);
     const doPublishResponse = cluster.doPublishResponse.bind(adapter);
     cluster.doPublish = (message) => {
-      clusterMessages.inc({ channel: "adapter" });
+      const event = message.type === MessageType.SERVER_SIDE_EMIT ? (message.data.packet as Packet)[0] : undefined;
+      if (event !== HEARTBEAT) clusterMessages.inc({ channel: "adapter" });
       return doPublish(message);
     };
     cluster.doPublishResponse = (requesterUid, response) => {
@@ -88,16 +107,53 @@ export function createSocketAdapter(liveness: Liveness = { livePeers, leave: lea
     const serverSideEmit = adapter.serverSideEmit.bind(adapter);
     const onMessage = cluster.onMessage.bind(adapter);
     const close = adapter.close.bind(adapter);
+    // Each adapter subscribes to a private channel named for its uid, which is how a peer that is
+    // subscribed but not yet heard is still known.
+    const privateChannels = `${options.channelPrefix}#${nsp.name}#`;
+    const pattern = `${privateChannels.replace(/[*?[\]\\]/g, (c) => `\\${c}`)}*#`;
+    const heard = new Map<string, number>();
+    const noticed = new Map<string, number>();
+    // A peer that said it is leaving is not waited on again, whatever arrives from it after.
+    const left = new Set<string>();
 
     /**
-     * The peers a request must hear from: every other instance whose presence liveness has not
-     * lapsed. A peer that died is waited on until its liveness lapses; one that has not yet
-     * subscribed fails the request by not answering, never answering "nobody else holds this
-     * table". An instance not itself subscribed cannot count at all.
+     * The peers a request must hear from, the larger of two counts until no revision without
+     * presence liveness runs (ADR 0014, decision 9): `instances` reads short after Redis lost its
+     * data, while a sweep races a peer's return, and for a peer too old to keep liveness at all.
+     * Either count failing fails the request. An instance not itself subscribed cannot count at all.
      */
     async function peers(): Promise<number> {
       if (!links.ready()) throw new Error("this instance is not subscribed to the cluster");
-      return liveness.livePeers();
+      const [heardOf, listed] = await Promise.all([subscribedPeers(), liveness.livePeers()]);
+      unlistedPeers = heardOf > listed;
+      return Math.max(heardOf, listed);
+    }
+
+    /**
+     * Peers heard of on the adapter's own channels: every peer heard within the grace, together with every
+     * peer subscribed now that has not gone silent. Neither alone will do. A peer between
+     * subscriptions is heard but not subscribed, and short reads as "nobody else holds this
+     * table"; one just booted is subscribed but not heard; and a stream backlog read after a
+     * reconnect is not hearing anyone, so only live pub/sub traffic counts. A subscription
+     * outliving its silent owner, as a partitioned host's does, stops counting after the grace.
+     */
+    async function subscribedPeers(): Promise<number> {
+      const channels = (await links.client.sendCommand(["PUBSUB", "CHANNELS", pattern])) as string[];
+      const at = now();
+      const subscribed = new Set(channels.map((c) => String(c).slice(privateChannels.length, -1)));
+      subscribed.delete(cluster.uid);
+      for (const uid of left) subscribed.delete(uid);
+      for (const uid of subscribed) if (!noticed.has(uid)) noticed.set(uid, at);
+      let count = 0;
+      for (const [uid, since] of noticed) {
+        const last = heard.get(uid);
+        if ((last !== undefined && at - last < PEER_GRACE_MS) || (subscribed.has(uid) && at - since < PEER_GRACE_MS)) count += 1;
+        else if (!subscribed.has(uid)) {
+          noticed.delete(uid);
+          heard.delete(uid);
+        }
+      }
+      return count;
     }
 
     // The adapter reads the count once, synchronously, at the start of the request this pins it for.
@@ -125,10 +181,32 @@ export function createSocketAdapter(liveness: Liveness = { livePeers, leave: lea
     };
     cluster.onMessage = (message: ClusterMessage, offset?: string) => {
       if (offset !== undefined) noteStreamRead("adapter", offset);
+      const event = message.type === MessageType.SERVER_SIDE_EMIT ? (message.data.packet as Packet)[0] : undefined;
+      if (event === LEAVING) {
+        left.add(message.uid);
+        heard.delete(message.uid);
+        noticed.delete(message.uid);
+      } else if (offset === undefined && message.uid !== cluster.uid && !left.has(message.uid)) {
+        const at = now();
+        heard.set(message.uid, at);
+        if (!noticed.has(message.uid)) noticed.set(message.uid, at);
+      }
+      if (event === HEARTBEAT || event === LEAVING) return;
       return onMessage(message, offset);
     };
+    const beatNow = () => void serverSideEmit([HEARTBEAT]);
+    const beat = setInterval(beatNow, HEARTBEAT_MS);
+    const firstBeat = setInterval(() => {
+      if (!links.ready()) return;
+      clearInterval(firstBeat);
+      beatNow();
+    }, FIRST_BEAT_POLL_MS);
+    for (const timer of [beat, firstBeat]) (timer as unknown as { unref?: () => void }).unref?.();
     adapter.close = () => {
       liveness.leave();
+      clearInterval(beat);
+      clearInterval(firstBeat);
+      void serverSideEmit([LEAVING]);
       return close();
     };
     return adapter;

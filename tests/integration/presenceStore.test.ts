@@ -210,4 +210,83 @@ describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, 
     assert.equal(routed.mock.callCount(), 0, "a table was woken on a store that did not answer");
     proxy.refuse(false);
   });
+
+  test("a clear whose link reconnects between its WATCH and its EXEC is tried again, not dropped", async () => {
+    const c = cluster();
+    let cut = false;
+    const ids = async () =>
+      ((await probe.sendCommand(["CLIENT", "LIST"])) as string)
+        .split("\n")
+        .filter((line) => line.includes("name=murlan-presence"))
+        .map((line) => /id=(\d+)/.exec(line)![1]!);
+    const before = new Set(await ids());
+    const x = openPresenceStore({
+      ns: c.ns,
+      heartbeat: false,
+      beforeExec: async () => {
+        if (cut) return;
+        cut = true;
+        // This store's two links are the newest; killing both takes the guarded one with it.
+        for (const id of (await ids()).filter((i) => !before.has(i))) await probe.sendCommand(["CLIENT", "KILL", "ID", id]);
+        await eventually(async () => (await ids()).filter((i) => !before.has(i)).length >= 2, "the links to reconnect");
+      },
+    });
+    opened.push(x);
+    await redisReady();
+    await x.beat();
+    x.record("hal", "s-hal");
+    await eventually(async () => (await probe.exists(c.key("online:hal"))) === 1, "the entry");
+    x.forget("hal", "s-hal");
+    await eventually(async () => (await probe.exists(c.key("online:hal"))) === 0, "the clear to land after its link came back", 10_000);
+    assert.equal(cut, true, "the link was never cut between WATCH and EXEC");
+  });
+
+  test("an instance whose players a peer swept during its lapse says they are back", async () => {
+    const c = cluster();
+    const [a, stalled] = [c.open(), c.open()];
+    await redisReady();
+    await Promise.all([a.beat(), stalled.beat()]);
+    stalled.record("ivo", "s-ivo");
+    await eventually(async () => (await a.locate(["ivo"])).has("ivo"), "the entry");
+    const lostHere: string[] = [];
+    const back: string[] = [];
+    a.onLost((ids) => lostHere.push(...ids));
+    stalled.onRestored((ids) => back.push(...ids));
+
+    await probe.del(c.key(`instance:${stalled.id}`));
+    await a.beat();
+    assert.deepEqual(lostHere, ["ivo"], "the sweep did not tell anyone the account went");
+    await stalled.beat();
+    assert.deepEqual(back, ["ivo"], "the instance did not say its account is back");
+    assert.equal((await a.locate(["ivo"])).has("ivo"), true);
+  });
+
+  test("an account with no entry yet on an older instance's hash is found there", async () => {
+    const c = cluster();
+    const x = c.open();
+    await redisReady();
+    await x.beat();
+    await probe.hSet(c.key("presence:jon"), { instance: "older", socket: "s-old" });
+    assert.deepEqual((await x.locate(["jon"], { tables: true })).get("jon"), { instance: "older", socket: "s-old", table: null });
+  });
+
+  test("a mark that could not reach Redis is made on the next beat", async () => {
+    const c = cluster();
+    const proxy = await startProxy(targetOf(redisUrl, 6379));
+    try {
+      const x = openPresenceStore({ ns: c.ns, url: viaProxy(redisUrl, proxy), heartbeat: false });
+      opened.push(x);
+      await redisReady();
+      await x.beat();
+      const first = await x.social("kim");
+      proxy.refuse(true);
+      await eventually(() => x.locate(["kim"]).then(() => false, () => true), "reads to fail");
+      x.bumpSocial(["kim"]);
+      proxy.refuse(false);
+      await eventually(() => x.beat().then(() => true, () => false), "a beat to land");
+      assert.notEqual(await x.social("kim"), first, "the mark made while Redis was away was never made");
+    } finally {
+      await proxy.close();
+    }
+  });
 });

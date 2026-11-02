@@ -18,6 +18,7 @@ import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
 import { createSocketAdapter } from "../../server/socket/socketAdapter.ts";
 import { randomUUID } from "node:crypto";
+import { installClock, realClock } from "../../server/http/clock.ts";
 import { openPresenceStore, type PresenceStore } from "../../server/store/presence.ts";
 import { closeRedis, keyspace } from "../../server/store/redis.ts";
 
@@ -86,6 +87,11 @@ function cluster(tag: string) {
       return (await probe.pubSubChannels(`${stream}#/#*#`)).length;
     },
     streamLength: () => probe.xLen(stream),
+    /** Every instance's liveness and the set naming them, as Redis losing its data leaves them. */
+    async forgetLiveness(): Promise<void> {
+      const keys = await probe.keys(`${keyspace(scoped)}:instance*`);
+      if (keys.length > 0) await probe.del(keys);
+    },
     /** Ends the presence liveness of the instance booted as `name`. */
     async lapse(name: string): Promise<void> {
       const keys = await probe.keys(`${keyspace(scoped)}:instance:${name}-*`);
@@ -101,6 +107,9 @@ function cluster(tag: string) {
     },
   };
 }
+
+/** Past the adapter's grace for a peer last heard. */
+const PAST_THE_GRACE_MS = 11_000;
 
 const verdict = ({ replies, err }: Answer) => (replies.length > 0 ? "answered" : err ? "error" : "alone");
 
@@ -160,6 +169,19 @@ describe("the cluster's count of its peers", { skip: hasDatabase() ? false : ski
     });
   });
 
+  describe("a cluster whose presence liveness Redis lost", () => {
+    const c = cluster("count_lost");
+    after(() => c.stop());
+
+    test("is still counted by its subscriptions until the beats put it back", { timeout: 30_000 }, async () => {
+      const a = c.boot("a");
+      c.boot("b");
+      assert.deepEqual((await c.answering(a)).replies, ["b"]);
+      await c.forgetLiveness();
+      assert.deepEqual(verdict(await c.ask(a)), "answered", "a peer whose liveness Redis lost was not waited on");
+    });
+  });
+
   describe("a peer that boots while another's link is down", () => {
     const c = cluster("count_fresh");
     after(() => c.stop());
@@ -186,6 +208,8 @@ describe("the cluster's count of its peers", { skip: hasDatabase() ? false : ski
 
     test("is not waited on once its liveness lapses, whatever it left in the stream", { timeout: 60_000 }, async () => {
       const [mine, theirs] = [await c.link(), await c.link()];
+      let skew = 0;
+      const restoreClock = installClock({ ...realClock, now: () => realClock.now() + skew });
       const a = await withClient(c, "a", mine, "room");
       try {
         const b = c.boot("b", theirs);
@@ -200,7 +224,8 @@ describe("the cluster's count of its peers", { skip: hasDatabase() ? false : ski
         await eventually(async () => (await c.streamLength()) >= 6, "B's broadcasts in the stream");
         theirs.refuse(true);
         await eventually(async () => (await c.subscribed()) === 0, "B's subscription to drop");
-        // As its TTL would, ten seconds on: B can no longer refresh it.
+        // Past the grace for a peer last heard, and past its liveness's TTL, which B can no longer refresh.
+        skew += PAST_THE_GRACE_MS;
         await c.lapse("b");
         mine.refuse(false);
 
@@ -208,6 +233,7 @@ describe("the cluster's count of its peers", { skip: hasDatabase() ? false : ski
         const answer = await c.settled(a.io);
         assert.equal(verdict(answer), "alone", `a dead peer was waited on: ${JSON.stringify(answer)}`);
       } finally {
+        restoreClock();
         await a.close();
       }
     });

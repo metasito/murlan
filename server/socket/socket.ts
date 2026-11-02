@@ -28,6 +28,7 @@ import {
   registerDisconnect,
   registerFriendHandlers,
   registerLostPresence,
+  registerRestoredPresence,
   registerSessionEviction,
 } from "./socketPresence.ts";
 import { bindSocketRuntime, registerRevocation } from "./socketRegistry.ts";
@@ -132,6 +133,7 @@ export function setupSocket(httpServer: HttpServer, sessionMiddleware: RequestHa
   bindSocketRuntime(rt);
   registerRevocation(rt);
   registerLostPresence();
+  registerRestoredPresence();
   registerSessionEviction(io);
   registerStopSpectating(rt);
 

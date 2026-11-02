@@ -2,10 +2,14 @@
 // kept as state in Redis (ADR 0014, decision 8).
 import { randomUUID } from "node:crypto";
 import { logger } from "../shared/logger.ts";
-import { currentKeyspace, instanceId, openRedis, WatchError } from "./redis.ts";
+import { currentKeyspace, instanceId, openRedis, WatchError, type RedisClient } from "./redis.ts";
 
 export const HEARTBEAT_MS = 3_000;
 export const INSTANCE_TTL_MS = 10_000;
+/** Accounts a sweep claims per transaction, so a large dead instance never holds the sweeper past its own TTL. */
+const SWEEP_BATCH = 100;
+/** How often a guarded transaction is tried again after its key moved or its link reconnected. */
+const GUARD_ATTEMPTS = 5;
 
 export interface Located {
   instance: string;
@@ -16,7 +20,7 @@ export interface Located {
 
 export interface PresenceStore {
   readonly id: string;
-  /** The newest socket wins: an account holds one socket (`server/CLAUDE.md`). Never rejects. */
+  /** The newest connection wins: an account holds one socket (`server/CLAUDE.md`). Never rejects. */
   record(userId: string, socketId: string): void;
   /** Only while the entry still names this socket: a replacement's, written since, stays. Never rejects. */
   forget(userId: string, socketId: string): void;
@@ -33,7 +37,9 @@ export interface PresenceStore {
   beat(): Promise<void>;
   /** Called with the accounts this instance found on a dead instance and cleared; each exactly once cluster-wide. */
   onLost(handler: (userIds: string[]) => void): void;
-  /** Marks each account's friend and invite lists as changed. Never rejects. */
+  /** Called with this instance's accounts once it has put back what a sweep, during its lapse, took. */
+  onRestored(handler: (userIds: string[]) => void): void;
+  /** Marks each account's friend and invite lists as changed. Never rejects; a failed mark is retried on the beat. */
   bumpSocial(userIds: readonly string[]): void;
   /** What the account's lists were last marked with; null when that cannot be known. Rejects while Redis is unreachable. */
   social(userId: string): Promise<string | null>;
@@ -44,92 +50,166 @@ export interface PresenceStore {
 
 const SEPARATOR = "|";
 
-function parse(value: string | null | undefined): { instance: string; socket: string } | null {
-  if (!value) return null;
-  const at = value.indexOf(SEPARATOR);
-  return at > 0 ? { instance: value.slice(0, at), socket: value.slice(at + 1) } : null;
+interface Entry {
+  instance: string;
+  socket: string;
+  /** Redis's clock at the connect, in microseconds. */
+  at: bigint;
 }
+
+function parse(value: string | null | undefined): Entry | null {
+  const [instance, socket, at] = value?.split(SEPARATOR) ?? [];
+  if (!instance || !socket || !at || !/^\d+$/.test(at)) return null;
+  return { instance, socket, at: BigInt(at) };
+}
+
+const format = (instance: string, socket: string, at: bigint) => [instance, socket, at].join(SEPARATOR);
 
 export function openPresenceStore({
   id = instanceId,
   url,
   ns = currentKeyspace(),
   heartbeat = true,
-}: { id?: string; url?: string; ns?: string; heartbeat?: boolean } = {}): PresenceStore {
+  beforeExec = async () => {},
+}: {
+  id?: string;
+  url?: string;
+  ns?: string;
+  heartbeat?: boolean;
+  /** Runs between a guarded transaction's read and its EXEC: where a test cuts the link. */
+  beforeExec?: () => Promise<void>;
+} = {}): PresenceStore {
   const key = {
-    // Not `presence:`, which an instance on the hash format still writes during a rolling deploy.
+    // Not `presence:`, which an instance on #1893's hash format still writes during a rolling deploy.
     presence: (userId: string) => `${ns}:online:${userId}`,
+    legacy: (userId: string) => `${ns}:presence:${userId}`,
     table: (socketId: string) => `${ns}:table:${socketId}`,
     instance: (of: string) => `${ns}:instance:${of}`,
     instances: `${ns}:instances`,
     users: (of: string) => `${ns}:instance-users:${of}`,
-    inbox: (of: string) => `${ns}:inbox:${of}`,
     social: (userId: string) => `${ns}:social:${userId}`,
     // A counter Redis lost restarts at 1, so a value is read against the store's lifetime too.
     socialEpoch: `${ns}:social-epoch`,
   };
   const client = openRedis("presence", { url, offlineQueue: false });
-  // WATCH holds for its connection, so compare-and-delete runs on its own, one at a time.
+  // WATCH holds for its connection, so guarded transactions run on their own, one at a time.
   const guarded = openRedis("presence", { url, offlineQueue: false });
   let guardTail: Promise<unknown> = Promise.resolve();
 
-  /** This instance's sockets and seats, so what Redis lost while it was away is put back. */
-  const mine = new Map<string, string>();
+  /** This instance's sockets, each with the stamp Redis gave its connect once it has. */
+  const mine = new Map<string, { socketId: string; at?: bigint; written: Promise<void> }>();
   const seats = new Map<string, string>();
   /** Clears that could not reach Redis, retried on every beat. */
   const unforgotten = new Map<string, string>();
+  /** Marks that could not reach Redis, retried on every beat. */
+  const unbumped = new Set<string>();
+  /** The newest stamp Redis has given this instance; 0 before the first. */
+  let newestStamp = 0n;
   let lost: (userIds: string[]) => void = () => {};
+  let restored: (userIds: string[]) => void = () => {};
   let alive = true;
   const warn = (msg: string) => (err: unknown) => logger.warn({ err }, msg);
 
-  /** True when this call removed `key` holding `expected`: of racing callers, exactly one. */
-  function deleteIfEqual(k: string, expected: string): Promise<boolean> {
+  /**
+   * Reads `keys` under WATCH and runs what `plan` makes of their values as one transaction;
+   * resolves with what `plan` returned, or null when it planned nothing. Another writer moving a
+   * key, or the link reconnecting between WATCH and EXEC, reads the keys again.
+   */
+  function guard<T>(keys: string[], plan: (values: (string | null)[], tx: ReturnType<RedisClient["multi"]>) => T | null): Promise<T | null> {
     const run = guardTail.then(async () => {
-      await guarded.watch(k);
-      if ((await guarded.get(k)) !== expected) {
-        await guarded.unwatch();
-        return false;
-      }
-      try {
-        const [deleted] = await guarded.multi().del(k).exec();
-        return Number(deleted) === 1;
-      } catch (err) {
-        if (err instanceof WatchError) return false;
-        throw err;
+      for (let attempt = 1; ; attempt++) {
+        try {
+          await guarded.watch(keys);
+          const values = await guarded.mGet(keys);
+          const tx = guarded.multi();
+          const planned = plan(values, tx);
+          if (planned === null) {
+            await guarded.unwatch();
+            return null;
+          }
+          await beforeExec();
+          await tx.exec();
+          return planned;
+        } catch (err) {
+          // node-redis keeps a WATCH's epoch across a reconnect until an UNWATCH clears it.
+          await guarded.unwatch().catch(() => {});
+          if (!(err instanceof WatchError) || attempt >= GUARD_ATTEMPTS) throw err;
+        }
       }
     });
     guardTail = run.catch(() => {});
     return run;
   }
 
-  function write(userId: string, socketId: string, { onlyIfMissing = false } = {}): void {
+  async function stampNow(): Promise<bigint> {
+    const [seconds = "0", micros = "0"] = await client.time();
+    const at = BigInt(seconds) * 1_000_000n + BigInt(micros);
+    if (at > newestStamp) newestStamp = at;
+    return at;
+  }
+
+  function list(userId: string): Promise<unknown> {
     // Listed before the entry is written, and unlisted only after it is cleared, so the list
     // covers every entry naming this instance whatever fails in between.
-    void client.sAdd(key.users(id), userId).catch(warn("Could not list an account under this instance"));
-    void client
-      .set(key.presence(userId), `${id}${SEPARATOR}${socketId}`, onlyIfMissing ? { condition: "NX" } : undefined)
-      .catch(warn("Could not record where an account is connected"));
+    return client.sAdd(key.users(id), userId);
+  }
+
+  /** The connect's write: unconditional, the newest connection taking the entry, stamped by Redis's clock. */
+  async function connect(userId: string, held: { socketId: string; at?: bigint }): Promise<void> {
+    await list(userId);
+    const at = await stampNow();
+    await client.set(key.presence(userId), format(id, held.socketId, at));
+    held.at = at;
+  }
+
+  /**
+   * Puts back an entry this instance holds unless Redis holds a newer one. A connect that never
+   * reached Redis follows the newest stamp this instance has been given; with none, it is stamped
+   * now. Stamps survive Redis losing its data, not a failover to a replica whose clock is behind.
+   */
+  async function refill(userId: string, held: { socketId: string; at?: bigint }): Promise<void> {
+    if (mine.get(userId) !== held) return;
+    const ours = held.at ?? (newestStamp > 0n ? newestStamp : await stampNow());
+    await list(userId);
+    await guard([key.presence(userId)], ([current], tx) => {
+      const entry = parse(current);
+      if (entry && entry.at >= ours) return null;
+      tx.set(key.presence(userId), format(id, held.socketId, ours));
+      return true;
+    });
   }
 
   function writeSeat(socketId: string, roomId: string): void {
     void client.set(key.table(socketId), roomId).catch(warn("Could not record the table a socket sits at"));
   }
 
+  /** True when this call removed the entry naming this instance's `socketId`. */
   async function clear(userId: string, socketId: string): Promise<boolean> {
-    const cleared = await deleteIfEqual(key.presence(userId), `${id}${SEPARATOR}${socketId}`);
-    if (cleared && !mine.has(userId)) await client.sRem(key.users(id), userId);
-    return cleared;
+    const cleared = await guard([key.presence(userId)], ([current], tx) => {
+      const entry = parse(current);
+      if (entry?.instance !== id || entry.socket !== socketId) return null;
+      tx.del(key.presence(userId));
+      return true;
+    });
+    // Unlisted only when no entry names this instance for it: cleared, or moved elsewhere.
+    if (!mine.has(userId)) await client.sRem(key.users(id), userId);
+    return cleared === true;
   }
 
   function forget(userId: string, socketId: string): void {
-    if (mine.get(userId) === socketId) mine.delete(userId);
-    void clear(userId, socketId).then(
-      () => unforgotten.delete(userId),
-      (err: unknown) => {
-        if (!mine.has(userId)) unforgotten.set(userId, socketId);
-        logger.warn({ err, userId }, "Could not clear where an account was connected");
-      }
-    );
+    const held = mine.get(userId);
+    const written = held?.socketId === socketId ? held.written : Promise.resolve();
+    if (held?.socketId === socketId) mine.delete(userId);
+    // After its own connect's write, or a late write would put back what this clears.
+    void written
+      .then(() => clear(userId, socketId))
+      .then(
+        () => unforgotten.delete(userId),
+        (err: unknown) => {
+          if (!mine.has(userId)) unforgotten.set(userId, socketId);
+          logger.warn({ err, userId }, "Could not clear where an account was connected");
+        }
+      );
   }
 
   async function liveAmong(ids: readonly string[]): Promise<Set<string>> {
@@ -148,41 +228,79 @@ export function openPresenceStore({
     if (userIds.length === 0) return where;
     const entries = (await client.mGet(userIds.map(key.presence))).map(parse);
     const live = await liveAmong([...new Set(entries.flatMap((e) => (e ? [e.instance] : [])))]);
+    const unentered: string[] = [];
     userIds.forEach((userId, i) => {
       const entry = entries[i];
-      if (!entry || !live.has(entry.instance)) return;
+      if (!entry) return void unentered.push(userId);
+      if (!live.has(entry.instance)) return;
       // This instance's own sockets are known here first-hand, an entry whose clear has not landed yet included.
-      if (entry.instance === id && mine.get(userId) !== entry.socket) return;
-      where.set(userId, entry);
+      if (entry.instance === id && mine.get(userId)?.socketId !== entry.socket) return;
+      where.set(userId, { instance: entry.instance, socket: entry.socket });
     });
+    if (unentered.length > 0) {
+      // An instance still on #1893's hash writes no liveness: its entry is taken at its word.
+      const legacy = await Promise.all(unentered.map((userId) => client.hmGet(key.legacy(userId), ["instance", "socket"])));
+      unentered.forEach((userId, i) => {
+        const [instance, socket] = legacy[i] ?? [];
+        if (instance && socket && instance !== id) where.set(userId, { instance, socket, table: null });
+      });
+    }
     if (tables && where.size > 0) {
-      const located = [...where.values()];
-      const rooms = await client.mGet(located.map((l) => key.table(l.socket)));
+      const located = [...where.values()].filter((l) => l.table === undefined);
+      const rooms = located.length > 0 ? await client.mGet(located.map((l) => key.table(l.socket))) : [];
       located.forEach((l, i) => (l.table = rooms[i] ?? null));
     }
     return where;
   }
 
-  /** Clears a dead instance's entries; the delete that succeeds is what makes this instance the one to report it. */
+  /**
+   * Clears a dead instance's entries, a batch to a transaction; the delete that succeeds is what
+   * makes this instance the one to report it. Its listing and its place in `instances` go only
+   * while it still has no liveness: one that came back keeps both. Its inbox is left to its own
+   * expiry, so one that came back loses nothing queued for it.
+   */
   async function sweep(dead: string): Promise<void> {
     const users = await client.sMembers(key.users(dead));
-    const entries = users.length > 0 ? (await client.mGet(users.map(key.presence))).map(parse) : [];
     const claimed: string[] = [];
-    const sockets: string[] = [];
-    for (const [i, userId] of users.entries()) {
-      const entry = entries[i];
-      if (entry?.instance !== dead) continue;
-      sockets.push(entry.socket);
-      if (await deleteIfEqual(key.presence(userId), `${dead}${SEPARATOR}${entry.socket}`)) claimed.push(userId);
+    for (let i = 0; i < users.length; i += SWEEP_BATCH) {
+      const batch = users.slice(i, i + SWEEP_BATCH);
+      const took = await guard([key.instance(dead), ...batch.map(key.presence)], ([liveness, ...values], tx) => {
+        if (liveness !== null) return null;
+        const ids: string[] = [];
+        values.forEach((value, j) => {
+          const entry = parse(value);
+          if (entry?.instance !== dead) return;
+          tx.del([key.presence(batch[j]!), key.table(entry.socket)]);
+          ids.push(batch[j]!);
+        });
+        return ids.length > 0 ? ids : null;
+      });
+      if (took) claimed.push(...took);
     }
-    if (sockets.length > 0) await client.del(sockets.map(key.table));
-    await client.del([key.users(dead), key.inbox(dead)]);
-    await client.sRem(key.instances, dead);
+    await guard([key.instance(dead)], ([liveness], tx) => {
+      if (liveness !== null) return null;
+      tx.del(key.users(dead)).sRem(key.instances, dead);
+      return true;
+    });
     if (claimed.length > 0) lost(claimed);
   }
 
   function markEpoch(): Promise<unknown> {
     return client.set(key.socialEpoch, randomUUID(), { condition: "NX" });
+  }
+
+  async function bump(userIds: Iterable<string>): Promise<void> {
+    const ids = [...new Set(userIds)];
+    if (ids.length === 0) return;
+    const batch = client.multi();
+    for (const userId of ids) batch.incr(key.social(userId));
+    try {
+      await batch.execAsPipeline();
+      for (const userId of ids) unbumped.delete(userId);
+    } catch (err) {
+      for (const userId of ids) unbumped.add(userId);
+      throw err;
+    }
   }
 
   async function beat(): Promise<void> {
@@ -196,11 +314,20 @@ export function openPresenceStore({
       .execAsPipeline();
     // Lapsed (a stall, a partition, a Redis restart) or swept by a peer that saw it lapse: a sweep
     // can land after the restore, and then its deleted list is what the next beat sees.
-    if (was === null || (Number(listed) === 0 && mine.size > 0)) restore();
+    // So a connect refused meanwhile refills with a stamp no older than this beat.
+    await stampNow();
+    if (was === null || (Number(listed) === 0 && mine.size > 0)) {
+      await restore();
+      // A peer that swept this instance told its friends these accounts went offline.
+      if (mine.size > 0) restored([...mine.keys()]);
+    } else {
+      await heal();
+    }
     for (const [userId, socketId] of [...unforgotten]) {
       if (mine.has(userId)) unforgotten.delete(userId);
-      else if (await clear(userId, socketId).catch(() => null) !== null) unforgotten.delete(userId);
+      else if ((await clear(userId, socketId).catch(() => null)) !== null) unforgotten.delete(userId);
     }
+    if (unbumped.size > 0) await bump(unbumped).catch(warn("Could not mark friend lists as changed"));
     const members = await client.sMembers(key.instances);
     const live = await liveAmong(members);
     for (const member of members) {
@@ -208,16 +335,26 @@ export function openPresenceStore({
     }
   }
 
-  function restore(): void {
-    // Only into a missing entry: while this instance was away the account may have connected
-    // elsewhere, and that newer entry is the one its messages must follow.
-    for (const [userId, socketId] of mine) write(userId, socketId, { onlyIfMissing: true });
+  /** Fills any of this instance's entries Redis no longer holds, and only those. */
+  async function heal(): Promise<void> {
+    const held = [...mine];
+    if (held.length === 0) return;
+    const values = await client.mGet(held.map(([userId]) => key.presence(userId)));
+    await Promise.all(
+      held.flatMap(([userId, h], i) =>
+        values[i] === null ? [refill(userId, h).catch(warn("Could not put back where an account is connected"))] : []
+      )
+    );
+  }
+
+  async function restore(): Promise<void> {
+    await Promise.all([...mine].map(([userId, held]) => refill(userId, held).catch(warn("Could not put back where an account is connected"))));
     for (const [socketId, roomId] of seats) writeSeat(socketId, roomId);
   }
 
   client.on("ready", () => {
     void markEpoch().catch(warn("Could not mark the store's lifetime"));
-    restore();
+    void restore();
     if (heartbeat) void beat().catch(warn("Presence heartbeat failed"));
   });
 
@@ -236,9 +373,10 @@ export function openPresenceStore({
   return {
     id,
     record(userId, socketId) {
-      mine.set(userId, socketId);
+      const held: { socketId: string; at?: bigint; written: Promise<void> } = { socketId, written: Promise.resolve() };
+      held.written = connect(userId, held).catch(warn("Could not record where an account is connected"));
+      mine.set(userId, held);
       unforgotten.delete(userId);
-      write(userId, socketId);
     },
     forget,
     seat(socketId, roomId) {
@@ -251,10 +389,7 @@ export function openPresenceStore({
     },
     locate,
     bumpSocial(userIds) {
-      if (userIds.length === 0) return;
-      const batch = client.multi();
-      for (const userId of new Set(userIds)) batch.incr(key.social(userId));
-      void batch.execAsPipeline().catch(warn("Could not mark friend lists as changed"));
+      void bump(userIds).catch(warn("Could not mark friend lists as changed"));
     },
     async social(userId) {
       const [epoch, count] = await client.mGet([key.socialEpoch, key.social(userId)]);
@@ -267,6 +402,9 @@ export function openPresenceStore({
     beat,
     onLost(handler) {
       lost = handler;
+    },
+    onRestored(handler) {
+      restored = handler;
     },
     leave() {
       alive = false;
@@ -283,12 +421,14 @@ export function openPresenceStore({
 
 let store: PresenceStore | null = null;
 let lostHandler: (userIds: string[]) => void = () => {};
+let restoredHandler: (userIds: string[]) => void = () => {};
 
 /** Opened at boot; until then, and after `closePresence`, nothing is recorded and nobody is found. */
 export function openPresence(url?: string): PresenceStore {
   if (store) return store;
   store = openPresenceStore({ url });
   store.onLost(lostHandler);
+  store.onRestored(restoredHandler);
   return store;
 }
 
@@ -304,6 +444,11 @@ export function leavePresence(): void {
 export function onPresenceLost(handler: (userIds: string[]) => void): void {
   lostHandler = handler;
   store?.onLost(handler);
+}
+
+export function onPresenceRestored(handler: (userIds: string[]) => void): void {
+  restoredHandler = handler;
+  store?.onRestored(handler);
 }
 
 export function recordPresence(userId: string, socketId: string): void {

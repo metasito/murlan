@@ -74,6 +74,22 @@ describe('a reconnect reconciles what arrived while the socket was down', () => 
     for (const key of PENDING_KEYS) expect(invalidated).toContain(key);
   });
 
+  it('re-reads every list when no online list follows a connect', async () => {
+    const { invalidated } = await harness();
+    await connect('e.1');
+    invalidated.length = 0;
+    jest.useFakeTimers();
+    try {
+      await act(async () => lastSocket().drop('transport close'));
+      await act(async () => lastSocket().open());
+      expect(invalidated.filter((k) => PENDING_KEYS.includes(k))).toEqual([]);
+      await act(async () => jest.advanceTimersByTime(5_000));
+      for (const key of PENDING_KEYS) expect(invalidated).toContain(key);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('does not ask who is online on connect: the server pushes it', async () => {
     await harness();
     const before = lastSocket().sent.length;

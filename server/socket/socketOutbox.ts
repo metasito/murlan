@@ -34,9 +34,13 @@ export function storePresence(locate: Locate = locateInStore): Presence {
     async tablePresence(roomId, userIds) {
       try {
         const where = await locate(userIds, { tables: true });
+        const here = userIds.filter((id) => userSocketMap.has(id));
         return {
-          online: new Set(where.keys()),
-          atTable: new Set([...where].filter(([, l]) => l.table === roomId).map(([userId]) => userId)),
+          online: new Set([...where.keys(), ...here]),
+          atTable: new Set([
+            ...[...where].filter(([, l]) => l.table === roomId).map(([userId]) => userId),
+            ...here.filter((id) => socketRoomMap.get(userSocketMap.get(id)!) === roomId),
+          ]),
         };
       } catch (err) {
         logger.warn({ err, roomId }, "Presence unreachable");
@@ -46,7 +50,8 @@ export function storePresence(locate: Locate = locateInStore): Presence {
 
     async onlineAmong(userIds) {
       try {
-        return new Set((await locate(userIds)).keys());
+        const where = await locate(userIds);
+        return new Set([...where.keys(), ...userIds.filter((id) => userSocketMap.has(id))]);
       } catch (err) {
         logger.warn({ err }, "Presence unreachable");
         return null;
