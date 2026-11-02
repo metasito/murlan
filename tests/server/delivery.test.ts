@@ -6,6 +6,7 @@ import { register } from "prom-client";
 import { stubTransport } from "../helpers/recordingRuntime.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { deliveryOutbox } from "../../server/socket/delivery.ts";
+import { APP_QUERY_BOUND_MS } from "../../server/store/pool.ts";
 import { activeGames, userRoom } from "../../server/game/gameRoom.ts";
 import type { InstanceHandler, InstanceMessage } from "../../server/store/instanceInbox.ts";
 import type { OrderedGameState } from "../../shared/protocol.ts";
@@ -260,6 +261,24 @@ test("a table's first state waits behind the room emits still reading their seat
   release(["ana"]);
   await ticks();
   assert.deepEqual(a.sent, ["room:state", "room:state", "game:state"]);
+});
+
+test("a stalled seats read holds the deal's state back only until the app pool would have given up", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { instance } = cluster();
+  const a = instance("a", () => new Promise<string[]>(() => {}));
+  a.connect("ana");
+  a.joinRoom(ROOM, "ana");
+
+  a.out.room(ROOM).emit("room:state", { status: "waiting" } as never);
+  activeGames.set(ROOM, onlineTable({ roomId: ROOM, playerMap: { 0: "ana" } }));
+  a.out.state("ana", () => stateOf(1));
+  t.mock.timers.tick(APP_QUERY_BOUND_MS - 1);
+  await ticks();
+  assert.deepEqual(a.sent, [], "the deal left before the seats read was given up on");
+  t.mock.timers.tick(1);
+  await ticks();
+  assert.deepEqual(a.sent, ["room:state", "game:state"], "a stalled seats read held the table's state back for good");
 });
 
 test("a member of the room on this instance is reached even when the seats cannot be read", async () => {

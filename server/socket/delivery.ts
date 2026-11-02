@@ -12,6 +12,7 @@ import { instanceId } from "../store/redis.ts";
 import { onInstanceMessage, sendToInstance, type InstanceHandler, type InstanceMessage } from "../store/instanceInbox.ts";
 import { instancesOf } from "../store/presence.ts";
 import { roomStore } from "../store/roomStore.ts";
+import { APP_QUERY_BOUND_MS } from "../store/pool.ts";
 import { supersedes } from "../../shared/stateOrder.ts";
 
 const DELIVER = "deliver";
@@ -250,13 +251,22 @@ export function deliveryOutbox(io: SocketServer, options: DeliveryOptions = {}):
     });
   }
 
-  function emitToRoom(roomId: string, out: Outgoing): void {
-    const audience =
-      heldAudience(roomId) ??
-      seatsOf(roomId).catch((err: unknown) => {
+  /** Settles by the time the app pool would have given up, whatever `seatsOf` does: every later message for the room waits on it. */
+  function seatsWithin(roomId: string): Promise<string[]> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("the seats read did not settle")), APP_QUERY_BOUND_MS);
+    });
+    return Promise.race([seatsOf(roomId), late])
+      .catch((err: unknown) => {
         logger.warn({ err, roomId }, "Could not read a room's seats: its emit reaches this instance's members only");
         return [];
-      });
+      })
+      .finally(() => clearTimeout(timer));
+  }
+
+  function emitToRoom(roomId: string, out: Outgoing): void {
+    const audience = heldAudience(roomId) ?? seatsWithin(roomId);
     inRoomOrder(roomId, audience, (users) => emitTo([...users, ...membersHere(roomId)], out));
   }
 

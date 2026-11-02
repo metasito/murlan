@@ -5,7 +5,7 @@ import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
-import { eventually, register, waitFor, waitForWhere } from "../helpers/client.ts";
+import { eventually, register, waitFor, waitForPendingCode, waitForWhere } from "../helpers/client.ts";
 import { makeClients, setUpRoom } from "../helpers/table.ts";
 import { driveRound } from "../helpers/gameDriver.ts";
 import { pendingEntry, pendingRow, recordRound } from "../helpers/recordRound.ts";
@@ -50,6 +50,19 @@ describe("a finished round's results", { skip: hasDatabase() ? false : skipMessa
   after(async () => {
     await server.stop();
   });
+
+  /** The results commit locking both seats (`lockUsers`); a writer locking one seat, as the code mint does, is not it. */
+  const THE_COMMITS_LOCK = /"id" in \(\$1, \$2\) ORDER BY id FOR NO KEY UPDATE/;
+
+  /**
+   * Takes the seats' row locks once registration's background code mint has landed: the mint
+   * takes the same lock (`server/http/authTokens.ts`), and one still in flight would queue
+   * behind it and read as the commit waiting.
+   */
+  async function lockSeats(ids: string[]) {
+    await Promise.all(ids.map(waitForPendingCode));
+    return holdRowLock("SELECT id FROM users WHERE id = ANY($1) FOR NO KEY UPDATE", [ids]);
+  }
 
   async function users(n: number, tag: string): Promise<string[]> {
     const ids: string[] = [];
@@ -200,13 +213,13 @@ describe("a finished round's results", { skip: hasDatabase() ? false : skipMessa
   test("the next round's final write, queued while the last round's commit runs, never writes the committed one back", async () => {
     const ids = await users(2, "queuedfinal");
     const game = await liveTable(ids);
-    const lock = await holdRowLock("SELECT id FROM users WHERE id = ANY($1) FOR NO KEY UPDATE", [ids]);
+    const lock = await lockSeats(ids);
     try {
       const older = roundOf(ids, Date.now());
       game.pendingResults.push(older);
       await server.rt.writers.persistFinalState(game.roomId, game);
       const committing = server.rt.writers.applyPendingResults(game.roomId, game);
-      await lock.waitForBlocked(1);
+      await lock.waitForBlocked(1, THE_COMMITS_LOCK);
 
       const newer = roundOf(ids, older.round + 1);
       game.pendingResults.push(newer);
@@ -354,11 +367,11 @@ describe("a finished round's results", { skip: hasDatabase() ? false : skipMessa
     const clients = await makeClients(server, ["snapshot_a", "snapshot_b"]);
     const room = await setUpRoom(clients, 2);
     const ids = clients.map((c) => c.user.id);
-    const lock = await holdRowLock("SELECT id FROM users WHERE id = ANY($1) FOR NO KEY UPDATE", [ids]);
+    const lock = await lockSeats(ids);
     try {
       const over = driveRound(clients, () => clients[0]!.socket.emit("room:start"), { onExchange: "giveback", ms: 60_000 });
       over.catch(() => {});
-      await lock.waitForBlocked(1);
+      await lock.waitForBlocked(1, THE_COMMITS_LOCK);
       const game = activeGames.get(room.roomId)!;
       assert.equal(game.pendingResults.length, 1, "the commit is waiting on the seats' locks");
       const snapshot = server.rt.writers.persistGameState(room.roomId, game);

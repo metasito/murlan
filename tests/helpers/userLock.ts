@@ -27,23 +27,27 @@ export async function holdRowLock(lockSql: string, params: unknown[]) {
   }
   const { rows } = await side.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
 
-  async function waitForBlocked(n: number) {
-    let queued = 0;
+  /**
+   * Resolves once `n` writers wait on the lock. With `matching`, only waiters whose statement it
+   * matches count: another writer that happens to take the same rows is not the one waited for.
+   */
+  async function waitForBlocked(n: number, matching?: RegExp) {
+    let queued: string[] = [];
     await eventually(async () => {
       // Transitively: a second waiter queues behind the first one's tuple
       // lock, so only the first names the side connection as its blocker.
-      const blocked = await pool.query<{ n: number }>(
+      const blocked = await pool.query<{ query: string }>(
         `WITH RECURSIVE blocked(pid) AS (
            SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))
            UNION
            SELECT a.pid FROM pg_stat_activity a JOIN blocked b ON b.pid = ANY(pg_blocking_pids(a.pid))
-         ) SELECT count(*)::int AS n FROM blocked`,
+         ) SELECT a.query FROM pg_stat_activity a JOIN blocked b ON a.pid = b.pid`,
         [rows[0]!.pid]
       );
-      queued = blocked.rows[0]!.n;
-      return queued >= n;
+      queued = blocked.rows.map((r) => r.query);
+      return queued.filter((q) => !matching || matching.test(q)).length >= n;
     }, `${n} writers queued on the row lock`).catch(() => {
-      throw new Error(`only ${queued} of ${n} writers waited on the row lock`);
+      throw new Error(`only these waited on the row lock, ${n} wanted${matching ? ` matching ${matching}` : ""}: ${JSON.stringify(queued)}`);
     });
   }
 

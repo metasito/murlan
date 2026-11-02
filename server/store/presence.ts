@@ -5,6 +5,17 @@ import { logger } from "../shared/logger.ts";
 import { currentKeyspace, instanceId, openRedis, WatchError, type RedisClient } from "./redis.ts";
 
 export const HEARTBEAT_MS = 3_000;
+/** How often this instance fills its entries Redis lost: every beat. */
+export const PRESENCE_HEAL_MS = HEARTBEAT_MS;
+/** The most entries one heal read asks Redis for, so a large instance never holds Redis for long. */
+export const HEAL_CHUNK = 500;
+
+/** `entries` in pieces of at most HEAL_CHUNK, in order; none still makes one piece. */
+export function healChunks<T>(entries: readonly T[]): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < entries.length; i += HEAL_CHUNK) chunks.push(entries.slice(i, i + HEAL_CHUNK));
+  return chunks.length > 0 ? chunks : [[]];
+}
 export const INSTANCE_TTL_MS = 10_000;
 /** Accounts a sweep claims per transaction, so a large dead instance never holds the sweeper past its own TTL. */
 const SWEEP_BATCH = 100;
@@ -339,14 +350,15 @@ export function openPresenceStore({
 
   /** Fills any of this instance's entries Redis no longer holds, and only those. */
   async function heal(): Promise<void> {
-    const held = [...mine];
-    if (held.length === 0) return;
-    const values = await client.mGet(held.map(([userId]) => key.presence(userId)));
-    await Promise.all(
-      held.flatMap(([userId, h], i) =>
-        values[i] === null ? [refill(userId, h).catch(warn("Could not put back where an account is connected"))] : []
-      )
-    );
+    for (const chunk of healChunks([...mine])) {
+      if (chunk.length === 0) continue;
+      const values = await client.mGet(chunk.map(([userId]) => key.presence(userId)));
+      await Promise.all(
+        chunk.flatMap(([userId, h], i) =>
+          values[i] === null ? [refill(userId, h).catch(warn("Could not put back where an account is connected"))] : []
+        )
+      );
+    }
   }
 
   async function restore(): Promise<void> {
