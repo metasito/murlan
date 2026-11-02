@@ -8,3 +8,8 @@ const RETRY_MAX_MS = 5000;
 export function reconnectDelayMs(attempt: number, random: () => number = Math.random): number {
   return Math.floor(random() * Math.min(RETRY_BASE_MS * 2 ** attempt, RETRY_MAX_MS));
 }
+
+/** A reconnect waits out a draining server's notice too, whichever ends later. */
+export function reconnectWaitMs(attempt: number, drainingForMs: number, random: () => number = Math.random): number {
+  return Math.max(reconnectDelayMs(attempt, random), drainingForMs);
+}

@@ -175,6 +175,64 @@ describe('the device telling the app to try now', () => {
   }
 });
 
+describe('a draining server', () => {
+  const DRAINING_MS = 7_000;
+  const drain = (reconnectAfterMs: number) => act(async () => lastSocket().serverEmit('server:draining', { reconnectAfterMs }));
+
+  it('holds the first reconnect back until its notice runs out', async () => {
+    const view = await connected();
+    await drain(DRAINING_MS);
+    await act(async () => lastSocket().drop('transport close'));
+
+    await advance(DRAINING_MS - 1);
+    expect(lastSocket().connect).not.toHaveBeenCalled();
+    await advance(1);
+    expect(lastSocket().connect).toHaveBeenCalledTimes(1);
+    await unmount(view);
+  });
+
+  it('keeps the jittered delay when that is the later of the two', async () => {
+    const view = await connected();
+    await drain(0);
+    await act(async () => lastSocket().drop('transport close'));
+
+    expect(scheduled(FIRST_RETRY_MS)).toBe(1);
+    await advance(FIRST_RETRY_MS);
+    expect(lastSocket().connect).toHaveBeenCalledTimes(1);
+    await unmount(view);
+  });
+
+  it('is not overridden by the app coming to the foreground', async () => {
+    const view = await connected();
+    await drain(DRAINING_MS);
+    await act(async () => lastSocket().drop('transport close'));
+    const handlers = jest
+      .mocked(AppState.addEventListener)
+      .mock.calls.filter(([event]) => event === 'change')
+      .map(([, handler]) => handler as (state: string) => void);
+    await act(async () => handlers.forEach((handler) => handler('active')));
+
+    expect(lastSocket().connect).not.toHaveBeenCalled();
+    await advance(DRAINING_MS);
+    expect(lastSocket().connect).toHaveBeenCalledTimes(1);
+    await unmount(view);
+  });
+
+  it('holds back only the reconnect after it, not the next drop', async () => {
+    const view = await connected();
+    await drain(DRAINING_MS);
+    await act(async () => lastSocket().drop('transport close'));
+    await advance(DRAINING_MS);
+    await act(async () => lastSocket().open());
+    lastSocket().reset();
+
+    await act(async () => lastSocket().drop('transport close'));
+    await advance(FIRST_RETRY_MS);
+    expect(lastSocket().connect).toHaveBeenCalledTimes(1);
+    await unmount(view);
+  });
+});
+
 describe('on web, a handshake refused as unauthenticated', () => {
   it('halts the socket and sends the player to sign in', async () => {
     const os = jest.replaceProperty(Platform, 'OS', 'web');
