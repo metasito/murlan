@@ -196,12 +196,13 @@ const resendVerificationLimiter = routeLimiter({
   message: payload("RATE_LIMITED"),
 });
 
-// One ticket per socket connection attempt, including every reconnect, so this
+// One ticket per native connection attempt, including every reconnect, so this
 // has to tolerate a flapping mobile connection while still being bounded.
 const ticketLimiter = routeLimiter({
   windowMs: 60 * 1000,
   defaultMax: 60,
   envVar: "MURLAN_TICKET_RATE_LIMIT",
+  keyBy: "session",
   message: payload("RATE_LIMITED"),
 });
 

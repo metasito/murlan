@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { createPool } from "../store/pool.ts";
+import { createPool, profileMax } from "../store/pool.ts";
 import { createAdapter } from "@socket.io/postgres-adapter";
 import { logger } from "../shared/logger.ts";
 
@@ -15,11 +15,9 @@ import { logger } from "../shared/logger.ts";
  * spend one of the application's ten connections on a client that never runs
  * a query.
  */
-export const DEFAULT_POOL_MAX = 4;
-
 function poolMax(): number {
   const parsed = Number(process.env.MURLAN_SOCKET_ADAPTER_POOL_MAX);
-  return Number.isInteger(parsed) && parsed >= 2 ? parsed : DEFAULT_POOL_MAX;
+  return Number.isInteger(parsed) && parsed >= 2 ? parsed : profileMax("adapter");
 }
 
 /**
@@ -149,16 +147,7 @@ export async function socketAdapterReady(timeoutMs = 5_000): Promise<void> {
  * are never told about each other.
  */
 export function createSocketAdapter() {
-  const pool = createPool("socket-adapter", {
-    max: poolMax(),
-    connectionTimeoutMillis: 5_000,
-    // Never reap an idle client. The `LISTEN` client is checked out rather than
-    // idle, so a timeout would not collect it today — but a pool that closes
-    // connections underneath a subscription is one library change away from
-    // dropping every broadcast in silence, and this pool is small enough that
-    // holding its clients open costs nothing.
-    idleTimeoutMillis: 0,
-  });
+  const pool = createPool("adapter", { max: poolMax() });
   adapterPool = pool;
   adapterPoolStats = meterPool(pool);
 
