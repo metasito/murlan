@@ -172,7 +172,7 @@ function normalize(words, depth) {
       return commands(body, depth + 1).map((c) => ({
         ...c,
         scope: { ...scope, ...c.scope },
-        wrapped: [...wrapped, ...c.wrapped],
+        wrapped: [...wrapped, { name: cmd, flags: rest, env }, ...c.wrapped],
         piped: c.piped || words.piped === true,
       }));
     }
