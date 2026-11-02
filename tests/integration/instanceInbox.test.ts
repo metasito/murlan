@@ -84,6 +84,15 @@ describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() },
     assert.equal(await redis.exists(inboxOf(leaving)), 0, "the send made the stream again");
   });
 
+  test("an offer reaches a kept inbox at once, and to one that is gone answers false and writes nothing", async () => {
+    const gone = randomUUID();
+    assert.equal(await sender.offer(gone, { kind: "probe", n: -1 }), false);
+    assert.equal(await redis.exists(inboxOf(gone)), 0, "the offer made a stream nobody reads");
+    const before = received.length;
+    assert.equal(await sender.offer(b, { kind: "probe", n: received.length }), true);
+    await eventually(() => received.length === before + 1, "the offered message");
+  });
+
   test("a live inbox with no traffic outlives its stream's expiry, and comes back once the store lost it", { timeout: 20_000 }, async () => {
     const quiet = randomUUID();
     const inbox = openInbox({ id: quiet });
