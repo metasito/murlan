@@ -10,6 +10,7 @@ import { logger } from "../../shared/logger.ts";
 import { userStore, UsernameTakenError } from "../../store/userStore.ts";
 import { savePushToken } from "../../socket/push.ts";
 import { evictUser } from "../../socket/socketRegistry.ts";
+import { friendships } from "../../socket/friendships.ts";
 import { trackEvent } from "../../shared/events.ts";
 import { payload } from "../../shared/payload.ts";
 
@@ -82,6 +83,7 @@ export function mountAccount(app: Express): void {
     try {
       const user = await userStore.renameUser(userId, username);
       logger.info({ userId, username }, "User renamed");
+      void friendships.shownTo(userId).then(friendships.changedFor);
       res.json(sessionUser(user));
     } catch (err) {
       // The check above and this write are not one transaction, so the name can be claimed in
@@ -104,7 +106,9 @@ export function mountAccount(app: Express): void {
 
   onSignedIn(app, "DELETE /api/users/me", async (req, res, userId) => {
     try {
+      const shownTo = await friendships.shownTo(userId);
       const seatedRoomIds = await deleteUser(userId);
+      friendships.changedFor(shownTo);
       req.session.destroy(() => {});
       // After the delete has committed, never before: the account's live
       // socket outlives its session, and a seat still held by an id no `users`

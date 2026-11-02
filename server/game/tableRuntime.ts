@@ -33,15 +33,16 @@ export interface TableOutbox {
   state(userId: string, render: (retrying: boolean) => OrderedGameState | null): void;
 }
 
-/** All asked of the cluster; none throws. */
+/** Where accounts are connected, asked of the presence store; none throws. */
 export interface Presence {
-  /** False when the cluster fails. */
+  /** False when the store fails, unless the account is connected to this instance. */
   isOnline(userId: string): Promise<boolean>;
-  /** False when the cluster fails. */
+  /** False when the store fails, unless the account is seated there through this instance. */
   isAtTable(userId: string, roomId: string): Promise<boolean>;
-  tablePresence(roomId: string): Promise<{ online: Set<string>; atTable: Set<string> } | null>;
-  /** Null when the cluster did not answer — never read as "nobody": the sweep disposes on it. */
-  connectedUserIds(): Promise<Set<string> | null>;
+  /** Of `userIds`, who is connected and who is seated at `roomId`. Null when the store did not answer. */
+  tablePresence(roomId: string, userIds: readonly string[]): Promise<{ online: Set<string>; atTable: Set<string> } | null>;
+  /** Of `userIds`, who is connected. Null when the store did not answer — never read as "nobody": the sweep disposes on it. */
+  onlineAmong(userIds: readonly string[]): Promise<Set<string> | null>;
 }
 
 /** The other instances, one address at a time (`server/store/instanceInbox.ts`). */

@@ -27,9 +27,11 @@ import {
   evictReplacedSession,
   registerDisconnect,
   registerFriendHandlers,
+  registerLostPresence,
+  registerRestoredPresence,
   registerSessionEviction,
 } from "./socketPresence.ts";
-import { bindSocketRuntime } from "./socketRegistry.ts";
+import { bindSocketRuntime, registerRevocation } from "./socketRegistry.ts";
 import { allowSocketAction, answerUnknownEvents } from "./socketSafety.ts";
 import { userRoom, userSocketMap } from "../game/gameRoom.ts";
 import { startSweeper, tableWriters } from "../game/gamePersistence.ts";
@@ -38,7 +40,7 @@ import { createTableRuntime } from "../game/tableRuntime.ts";
 import { activeGameStore } from "../store/activeGameStore.ts";
 import { roomStore } from "../store/roomStore.ts";
 import { registerStopSpectating } from "./seating.ts";
-import { socketPresence } from "./socketOutbox.ts";
+import { storePresence } from "./socketOutbox.ts";
 import { deliveryOutbox } from "./delivery.ts";
 import { instancePeers } from "./peers.ts";
 import { forgetPresence, openPresence, recordPresence } from "../store/presence.ts";
@@ -113,23 +115,27 @@ export function setupSocket(httpServer: HttpServer, sessionMiddleware: RequestHa
     transports: ["websocket"],
     maxHttpBufferSize: 1e5,
   });
+  // Before the adapter, which counts its peers by their presence liveness.
+  openPresence();
   io.adapter(createSocketAdapter());
   startInbox();
   openTableOwners();
-  openPresence();
   // Before the first connection: a table action forwarded from another
   // instance arrives in this instance's inbox or on `io`, not on a socket, and
   // one that lands before the runtime's listener exists is answered by nobody.
   const store = { games: activeGameStore, rooms: roomStore };
   const rt = createTableRuntime({
     out: deliveryOutbox(io),
-    presence: socketPresence(io),
+    presence: storePresence(),
     writers: tableWriters(store),
     transport: io,
     peers: instancePeers(io),
     store,
   });
   bindSocketRuntime(rt);
+  registerRevocation(rt);
+  registerLostPresence();
+  registerRestoredPresence();
   registerSessionEviction(io);
   registerStopSpectating(rt);
 

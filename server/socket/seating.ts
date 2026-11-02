@@ -6,6 +6,7 @@ import type { GameSocket as Socket } from "./socketTypes.ts";
 import type { TableRuntime } from "../game/tableRuntime.ts";
 import { socketRoomMap, spectatorRoomMap, userRoom } from "../game/gameRoom.ts";
 import { logger } from "../shared/logger.ts";
+import { seatPresence, unseatPresence } from "../store/presence.ts";
 
 export async function stopSpectating(rt: TableRuntime, socket: Socket, userId: string): Promise<void> {
   const roomId = spectatorRoomMap.get(socket.id);
@@ -26,7 +27,16 @@ export async function seatSocket(
   const unspectated = stopSpectating(rt, socket, userId);
   socket.join(roomId);
   socketRoomMap.set(socket.id, roomId);
+  seatPresence(socket.id, roomId);
   await unspectated;
+}
+
+/** The room the socket was seated in, which it no longer is. */
+export function unseatSocket(socketId: string): string | undefined {
+  const roomId = socketRoomMap.get(socketId);
+  socketRoomMap.delete(socketId);
+  unseatPresence(socketId);
+  return roomId;
 }
 
 const STOP_SPECTATING = "stop-spectating";

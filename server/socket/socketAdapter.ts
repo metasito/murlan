@@ -3,6 +3,9 @@ import { MessageType, type ClusterMessage } from "socket.io-adapter";
 import { now } from "../http/clock.ts";
 import { BLOCK_MS, instanceId, openRedis, redisKey, streamMaxLen, type RedisClient } from "../store/redis.ts";
 import { clusterMessages, noteStreamRead } from "../shared/metrics.ts";
+import { leavePresence, livePeers, type PresenceStore } from "../store/presence.ts";
+
+type Liveness = Pick<PresenceStore, "livePeers" | "leave">;
 
 type Packet = unknown[];
 
@@ -12,6 +15,29 @@ const FIRST_BEAT_POLL_MS = 100;
 const PEER_GRACE_MS = 10_000;
 const HEARTBEAT = "murlan:adapter-heartbeat";
 const LEAVING = "murlan:adapter-leaving";
+/** #1894's heartbeat carried this alone in place of the instance's name. */
+const KEEPS_LIVENESS = "liveness";
+
+/**
+ * What a heartbeat says of its sender: whether it keeps presence liveness (#1894 on), and the
+ * instance it names, which only a revision with inbox routing (#1895 on) sends. A revision before
+ * #1894 sends neither. Until no such revision runs (ADR 0014, decision 9).
+ */
+export function readHeartbeat(packet: Packet): { liveness: boolean; instance: string | null } {
+  const [, named, marks] = packet;
+  const marked = typeof marks === "object" && marks !== null && (marks as { liveness?: unknown }).liveness === true;
+  if (named === KEEPS_LIVENESS) return { liveness: true, instance: null };
+  return { liveness: marked, instance: marked && typeof named === "string" ? named : null };
+}
+
+/** What the adapter answers, on top of Socket.IO's, for `socketRegistry.ts`'s revocation. */
+export interface OlderPeers {
+  /**
+   * Whether a peer on a revision that keeps no presence liveness was heard within the grace: one
+   * that cannot handle what replaced its messages. Until no such revision runs (ADR 0014, decision 9).
+   */
+  hearsOlderPeers(): boolean;
+}
 
 /**
  * Instances whose heartbeat named them, with the adapter uid it came from. A revision before
@@ -21,7 +47,9 @@ export class RoutingPeers {
   private readonly named = new Map<string, { uid: string; at: number }>();
 
   heard(uid: string, packet: Packet, at: number): void {
-    if (packet[0] === HEARTBEAT && typeof packet[1] === "string") this.named.set(packet[1], { uid, at });
+    if (packet[0] !== HEARTBEAT) return;
+    const { instance } = readHeartbeat(packet);
+    if (instance) this.named.set(instance, { uid, at });
   }
 
   left(packet: Packet): void {
@@ -47,7 +75,7 @@ export class RoutingPeers {
   }
 }
 
-export const heartbeatPacket = (): Packet => [HEARTBEAT, instanceId];
+export const heartbeatPacket = (): Packet => [HEARTBEAT, instanceId, { liveness: true }];
 
 const routing = new RoutingPeers();
 let subscribedUids: (() => Promise<Set<string>>) | null = null;
@@ -121,7 +149,7 @@ export function adapterOptions() {
  * called it — the room row is shared, so two players land in the same room and
  * are never told about each other.
  */
-export function createSocketAdapter() {
+export function createSocketAdapter(liveness: Liveness = { livePeers, leave: leavePresence }) {
   const links = adapterLinks();
   const options = adapterOptions();
   const make = createAdapter(links.client, options);
@@ -146,7 +174,6 @@ export function createSocketAdapter() {
       return doPublishResponse(requesterUid, response);
     };
     const serverSideEmit = adapter.serverSideEmit.bind(adapter);
-    const fetchSockets = adapter.fetchSockets.bind(adapter);
     const onMessage = cluster.onMessage.bind(adapter);
     const close = adapter.close.bind(adapter);
     // Each adapter subscribes to a private channel named for its uid, which is how a peer that is
@@ -158,16 +185,8 @@ export function createSocketAdapter() {
     // A peer that said it is leaving is not waited on again, whatever arrives from it after.
     const left = new Set<string>();
 
-    /**
-     * The peers a request must hear from: every peer heard within the grace, together with every
-     * peer subscribed now that has not gone silent. Neither alone will do. A peer between
-     * subscriptions is heard but not subscribed, and short reads as "nobody else holds this
-     * table"; one just booted is subscribed but not heard; and a stream backlog read after a
-     * reconnect is not hearing anyone, so only live pub/sub traffic counts. A subscription
-     * outliving its silent owner, as a partitioned host's does, stops counting after the grace.
-     * An instance not itself subscribed cannot count at all.
-     */
-    async function subscribedPeers(): Promise<Set<string>> {
+    /** The other adapters' uids subscribed now, but for one that said it is leaving. */
+    async function subscribedNow(): Promise<Set<string>> {
       if (!links.ready()) throw new Error("this instance is not subscribed to the cluster");
       const channels = (await links.client.sendCommand(["PUBSUB", "CHANNELS", pattern])) as string[];
       const subscribed = new Set(channels.map((c) => String(c).slice(privateChannels.length, -1)));
@@ -175,10 +194,30 @@ export function createSocketAdapter() {
       for (const uid of left) subscribed.delete(uid);
       return subscribed;
     }
-    subscribedUids = subscribedPeers;
+    subscribedUids = subscribedNow;
 
+    /**
+     * The peers a request must hear from, the larger of two counts until no revision without
+     * presence liveness runs (ADR 0014, decision 9): `instances` reads short after Redis lost its
+     * data, while a sweep races a peer's return, and for a peer too old to keep liveness at all.
+     * Either count failing fails the request. An instance not itself subscribed cannot count at all.
+     */
     async function peers(): Promise<number> {
-      const subscribed = await subscribedPeers();
+      if (!links.ready()) throw new Error("this instance is not subscribed to the cluster");
+      const [heardOf, listed] = await Promise.all([subscribedPeers(), liveness.livePeers()]);
+      return Math.max(heardOf, listed);
+    }
+
+    /**
+     * Peers heard of on the adapter's own channels: every peer heard within the grace, together with every
+     * peer subscribed now that has not gone silent. Neither alone will do. A peer between
+     * subscriptions is heard but not subscribed, and short reads as "nobody else holds this
+     * table"; one just booted is subscribed but not heard; and a stream backlog read after a
+     * reconnect is not hearing anyone, so only live pub/sub traffic counts. A subscription
+     * outliving its silent owner, as a partitioned host's does, stops counting after the grace.
+     */
+    async function subscribedPeers(): Promise<number> {
+      const subscribed = await subscribedNow();
       routing.prune(subscribed);
       const at = now();
       for (const uid of subscribed) if (!noticed.has(uid)) noticed.set(uid, at);
@@ -217,19 +256,20 @@ export function createSocketAdapter() {
         (err: unknown) => ack(err, [])
       );
     };
-    adapter.fetchSockets = (opts: Parameters<typeof fetchSockets>[0]) =>
-      opts.flags?.local
-        ? withPeers(0, () => fetchSockets(opts))
-        : peers().then((n) => withPeers(n, () => fetchSockets(opts)));
     cluster.onMessage = (message: ClusterMessage, offset?: string) => {
       if (offset !== undefined) noteStreamRead("adapter", offset);
       const packet = message.type === MessageType.SERVER_SIDE_EMIT ? (message.data.packet as Packet) : [];
       const event = packet[0];
+      if (event === HEARTBEAT && offset === undefined && message.uid !== cluster.uid) {
+        if (readHeartbeat(packet).liveness) older.delete(message.uid);
+        else older.set(message.uid, now());
+      }
       if (event === LEAVING) {
         left.add(message.uid);
         heard.delete(message.uid);
         noticed.delete(message.uid);
         routing.left(packet);
+        older.delete(message.uid);
       } else if (offset === undefined && message.uid !== cluster.uid && !left.has(message.uid)) {
         const at = now();
         heard.set(message.uid, at);
@@ -239,6 +279,9 @@ export function createSocketAdapter() {
       if (event === HEARTBEAT || event === LEAVING) return;
       return onMessage(message, offset);
     };
+    const older = new Map<string, number>();
+    const answers: OlderPeers = { hearsOlderPeers: () => [...older.values()].some((at) => now() - at < PEER_GRACE_MS) };
+    Object.assign(adapter, answers);
     const beatNow = () => void serverSideEmit(heartbeatPacket());
     const beat = setInterval(beatNow, HEARTBEAT_MS);
     const firstBeat = setInterval(() => {
@@ -248,6 +291,7 @@ export function createSocketAdapter() {
     }, FIRST_BEAT_POLL_MS);
     for (const timer of [beat, firstBeat]) (timer as unknown as { unref?: () => void }).unref?.();
     adapter.close = () => {
+      liveness.leave();
       clearInterval(beat);
       clearInterval(firstBeat);
       void serverSideEmit([LEAVING, instanceId]);

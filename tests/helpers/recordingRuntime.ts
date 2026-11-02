@@ -20,15 +20,12 @@ export type JournalEntry =
   | { kind: "store"; name: string; args: unknown[] };
 
 /**
- * Socket.IO as a single instance with nobody connected: every cluster question
- * answers empty. The repo's one cast to
+ * Socket.IO as a single instance with nobody connected. The repo's one cast to
  * `SocketServer`; `overrides` replace whole members.
  */
 export function stubTransport(overrides: Record<string, unknown> = {}): SocketServer {
   return {
     to: () => ({ emit: () => true, timeout: () => ({ emit: () => true }) }),
-    in: () => ({ fetchSockets: async () => [] }),
-    fetchSockets: async () => [],
     on: () => {},
     serverSideEmit: (...args: unknown[]) => {
       const ack = args.at(-1);
@@ -199,14 +196,14 @@ export function recordingRuntime(options: RecordingOptions = {}) {
   const presence: Presence = {
     isOnline: async (userId) => !cluster.down && cluster.online.has(userId),
     isAtTable: async (userId, roomId) => !cluster.down && (cluster.atTable.get(userId)?.has(roomId) ?? false),
-    tablePresence: async (roomId) =>
+    tablePresence: async (roomId, userIds) =>
       cluster.down
         ? null
         : {
-            online: new Set(cluster.online),
-            atTable: new Set([...cluster.atTable].filter(([, rooms]) => rooms.has(roomId)).map(([u]) => u)),
+            online: new Set(userIds.filter((u) => cluster.online.has(u))),
+            atTable: new Set(userIds.filter((u) => cluster.atTable.get(u)?.has(roomId))),
           },
-    connectedUserIds: async () => (cluster.down ? null : new Set(cluster.online)),
+    onlineAmong: async (userIds) => (cluster.down ? null : new Set(userIds.filter((u) => cluster.online.has(u)))),
     ...options.presence,
   };
 
