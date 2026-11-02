@@ -20,7 +20,7 @@ function runChild(source: string): Promise<{ code: number | null; stderr: string
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      ["--experimental-strip-types", "--input-type=module", "--eval", source],
+      ["--input-type=module", "--eval", source],
       { stdio: ["ignore", "ignore", "pipe"] }
     );
     let stderr = "";

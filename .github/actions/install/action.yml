@@ -4,20 +4,12 @@ description: >
   `npm ci` only on a miss. setup-node's own npm cache keeps ~/.npm, so `npm ci`
   still spent ~20 s unpacking it into every job.
 
-inputs:
-  node-version:
-    description: Overrides `.node-version`, for the job that must run production's Node.
-    required: false
-    default: ""
-
 runs:
   using: composite
   steps:
     - id: node
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-      # setup-node reads node-version-file only when node-version is empty.
       with:
-        node-version: ${{ inputs.node-version }}
         node-version-file: .node-version
         package-manager-cache: false
     - id: modules
