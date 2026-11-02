@@ -19,7 +19,7 @@ npm run server:dev   # Express + Socket.io (tsx, no build step)
 EXPO_PUBLIC_DOMAIN=<host:port> npm run expo:dev   # Expo dev server, over a tunnel
 ```
 
-Needs `DATABASE_URL` and `SESSION_SECRET` in the environment — the server fails fast on boot
+Needs `DATABASE_URL`, `REDIS_URL` and `SESSION_SECRET` in the environment — the server fails fast on boot
 without them. `server/CLAUDE.md`'s Production section has the full env contract (what's needed
 only in production, `PORT`'s default).
 

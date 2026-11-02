@@ -264,9 +264,19 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      redis:
+        image: mirror.gcr.io/library/redis:7-alpine@sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/murlan_test
+      REDIS_URL: redis://localhost:6379/0
       # Required by server/index.ts's fail-fast env check. Test-only value.
       SESSION_SECRET: ci-test-secret-not-used-in-production
 
@@ -292,8 +302,8 @@ jobs:
       # and CI would stay green. Fail loudly instead.
       - name: Assert the integration suites actually ran
         run: |
-          if grep -q "DATABASE_URL not set" test-output.txt; then
-            echo "::error::Integration suites skipped — the Postgres service is not reachable."
+          if grep -qE "DATABASE_URL not set|REDIS_URL not set" test-output.txt; then
+            echo "::error::Integration suites skipped — the Postgres or Redis service is not reachable."
             echo "These cover socket auth, hand secrecy, the exchange bypass and seat vacancy."
             exit 1
           fi
@@ -884,9 +894,19 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      redis:
+        image: mirror.gcr.io/library/redis:7-alpine@sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/murlan_test
+      REDIS_URL: redis://localhost:6379/0
       SESSION_SECRET: ci-test-secret-not-used-in-production
 
     steps:

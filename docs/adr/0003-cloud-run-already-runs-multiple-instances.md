@@ -22,7 +22,8 @@ decided it.
 Treat multi-instance as the current reality, not a future one. The fix already shipped:
 `server/game/gameOwnership.ts` (Postgres advisory lock, one owner per room) plus
 `@socket.io/postgres-adapter` (`server/socket/socketAdapter.ts`) carrying broadcasts and forwarded
-actions (`server/game/tableRouter.ts`) across instances (commit `13b09ac`). This is load-bearing
+actions (`server/game/tableRouter.ts`) across instances (commit `13b09ac`). ADR-0014 replaced that
+adapter with Redis (`@socket.io/redis-streams-adapter`, #1885); the multi-instance premise stands. This is load-bearing
 production infrastructure, not speculative scaffolding — do not remove or simplify it on the
 assumption the app is single-instance.
 

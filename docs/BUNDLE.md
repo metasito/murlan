@@ -96,7 +96,7 @@ Total: **7.30 MB** across 83 files.
 
 ## Production dependencies (installed size in `node_modules/`)
 
-Total: **121.31 MB** across 50 declared dependencies.
+Total: **121.61 MB** across 51 declared dependencies.
 
 | Package | Installed size |
 |---|---|
@@ -125,6 +125,7 @@ Total: **121.31 MB** across 50 declared dependencies.
 | pino | 648.0 KB |
 | @react-native-community/netinfo | 504.0 KB |
 | @react-native-async-storage/async-storage | 371.9 KB |
+| redis | 292.8 KB |
 | expo-clipboard | 277.5 KB |
 | expo-splash-screen | 262.0 KB |
 | expo-asset | 252.6 KB |
@@ -146,7 +147,7 @@ Total: **121.31 MB** across 50 declared dependencies.
 | compression | 83.2 KB |
 | expo-system-ui | 82.0 KB |
 | express | 73.7 KB |
-| @socket.io/postgres-adapter | 62.5 KB |
+| @socket.io/redis-streams-adapter | 73.5 KB |
 | react-native-turbo-haptics | 59.4 KB |
 | expo-dev-client | 55.6 KB |
 | connect-pg-simple | 23.8 KB |

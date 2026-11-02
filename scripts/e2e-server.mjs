@@ -1,6 +1,6 @@
 /**
- * Boots the exact stack the E2E suite drives: the disposable Postgres dev
- * stack, a fresh Expo web build, and the real Express server serving both —
+ * Boots the exact stack the E2E suite drives: the disposable Postgres and Redis
+ * dev stack, a fresh Expo web build, and the real Express server serving both —
  * the same static-bundle + API split production runs (server/app.ts
  * `configureWebBuild`), from `dist-e2e/` so a flagged build never sits
  * where a production server looks. Playwright's `webServer` config invokes this
@@ -58,20 +58,21 @@ function run(cmd, args) {
 }
 
 /**
- * Where the dev stack actually put Postgres, asked rather than recomputed.
+ * Where the dev stack actually put Postgres and Redis, asked rather than recomputed.
  *
  * The container moves to another port when something else already holds the
  * default (#580, and the CI shard that died for it), so a URL built here from
  * the same environment `up` started with can name a port nothing is listening
  * on. `dev-stack env` reads it back off the running container.
  */
-function databaseUrl() {
+function stackUrls() {
   const r = spawnSync(process.execPath, [DEV_STACK, "env"], { cwd: ROOT, encoding: "utf8" });
-  const url = (r.stdout ?? "").match(/^DATABASE_URL=(.+)$/m)?.[1]?.trim();
-  if (r.status !== 0 || !url) {
-    throw new Error(`dev-stack env did not report a database: ${r.stderr || r.stdout}`);
+  const read = (name) => (r.stdout ?? "").match(new RegExp(`^${name}=(.+)$`, "m"))?.[1]?.trim();
+  const urls = { DATABASE_URL: read("DATABASE_URL"), REDIS_URL: read("REDIS_URL") };
+  if (r.status !== 0 || !urls.DATABASE_URL || !urls.REDIS_URL) {
+    throw new Error(`dev-stack env did not report a database and a Redis: ${r.stderr || r.stdout}`);
   }
-  return url;
+  return urls;
 }
 
 if (!PLAY) {
@@ -93,7 +94,7 @@ await Promise.all([run(process.execPath, [DEV_STACK, "up"]), build]).catch(stopT
 assertBundleHasRoutes(path.join(ROOT, DIST), path.join(ROOT, "app"));
 assertMark(PLAY ? "--absent" : "--present", [path.join(ROOT, DIST)]);
 
-process.env.DATABASE_URL = databaseUrl();
+Object.assign(process.env, stackUrls());
 // --play listens on the LAN, where a secret published in this repo would let anyone forge a session.
 process.env.SESSION_SECRET = PLAY ? randomBytes(32).toString("hex") : "e2e-test-secret";
 process.env.PORT = PORT;

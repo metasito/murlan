@@ -33,15 +33,6 @@ const PROFILES = {
       query_timeout: QUERY_TIMEOUT_MS,
     },
   },
-  adapter: {
-    kind: "pool",
-    max: 4,
-    // Never reap an idle client. The `LISTEN` client is checked out rather than
-    // idle, so a timeout would not collect it today — but a pool that closes
-    // connections underneath a subscription is one library change away from
-    // dropping every broadcast in silence.
-    settings: { connectionTimeoutMillis: 5_000, idleTimeoutMillis: 0 },
-  },
   // Bounded, so a half-open socket fails the heartbeat rather than hanging it.
   ownership: { kind: "client", settings: { query_timeout: 5_000, statement_timeout: 5_000 } },
   admin: {
@@ -115,7 +106,7 @@ export function createPool(
   // Every client error is logged below; this only absorbs pg-pool's re-emit for an idle one.
   pool.on("error", () => {});
   // pg-pool listens on a client only while it is idle: a backend dying under a checked-out one
-  // (a transaction between statements, the socket adapter's LISTEN) emits with nobody listening.
+  // (a transaction between statements) emits with nobody listening.
   pool.on("connect", (client) => {
     client.on("error", (err) => logger.error({ err, pool: applicationName(profile) }, "Postgres client error"));
   });

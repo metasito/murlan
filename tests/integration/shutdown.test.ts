@@ -32,7 +32,7 @@ describe("graceful shutdown", { skip: hasDatabase() ? false : skipMessage() }, (
 
   after(async () => {
     await observer.end().catch(() => {});
-    // stop() ends the adapter's pool, which shutdown() already ended, so it throws — but
+    // stop() ends the app's pool, which shutdown() already ended, so it throws — but
     // its own `finally` still drops the throwaway schema and restores
     // DATABASE_URL, which is what this hook is here for. If the test body
     // failed before shutdown() ran there is nothing to double-end, so the

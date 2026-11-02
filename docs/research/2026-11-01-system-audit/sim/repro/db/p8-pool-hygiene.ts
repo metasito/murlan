@@ -7,7 +7,9 @@ import { directUrl } from "./proxy.ts";
 process.env.DATABASE_URL = directUrl;
 process.env.LOG_LEVEL = "silent";
 const { openDatabase, pool } = await import("../../../../../../server/store/db.ts");
-const { createSocketAdapter, socketAdapterPool } = await import("../../../../../../server/socket/socketAdapter.ts");
+// The adapter module as it stood at 5f464ce, which this reproduces; #1885 replaced it.
+type PgAdapterModule = { createSocketAdapter(): unknown; socketAdapterPool(): pg.Pool | null };
+const { createSocketAdapter, socketAdapterPool } = (await import("../../../../../../server/socket/socketAdapter.ts")) as unknown as PgAdapterModule;
 const own = await import("../../../../../../server/game/gameOwnership.ts");
 openDatabase();
 createSocketAdapter();

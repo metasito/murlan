@@ -21,10 +21,11 @@ import type { ChildProcess } from "node:child_process";
 import pg from "pg";
 import type { WireGameState, WireRoomState } from "../../shared/protocol.ts";
 import { connectSocket, eventually, nothingArrives, settled, waitFor, type TestSocket } from "../helpers/client.ts";
-import { boot as bootInstance, stopInstance } from "../helpers/instance.ts";
+import { boot as bootInstance, freePorts, stopInstance } from "../helpers/instance.ts";
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
+import { dropKeyspace } from "../helpers/redisKeys.ts";
 
-const PORT = 5571;
+const [PORT] = await freePorts(1);
 const SETTLE_CEILING_MS = 20_000;
 
 interface Client {
@@ -194,6 +195,7 @@ describe(
     after(async () => {
       for (const c of clients) c.socket.close();
       if (server) await stopInstance(server);
+      await dropKeyspace(scoped);
       await dropSchema(baseUrl, schema);
     });
 
@@ -332,6 +334,7 @@ describe(
     after(async () => {
       for (const c of clients) c.socket.close();
       if (server) await stopInstance(server);
+      await dropKeyspace(scoped);
       await dropSchema(baseUrl, schema);
     });
 

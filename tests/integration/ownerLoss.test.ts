@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import pg from "pg";
 import { hasDatabase, skipMessage, startTestServer, type TestServer } from "../helpers/testServer.ts";
 import { connectAs, eventually, waitFor, type TestSocket } from "../helpers/client.ts";
-import { boot, type Instance } from "../helpers/instance.ts";
+import { boot, freePorts, type Instance } from "../helpers/instance.ts";
 import type { Client } from "../helpers/table.ts";
 import type { WireGameState, WireRoomState } from "../../shared/protocol.ts";
 import { shutdown } from "../../server/http/shutdown.ts";
@@ -15,7 +15,7 @@ import { userStore } from "../../server/store/userStore.ts";
  */
 process.env.MURLAN_SWEEP_INTERVAL_MS = "500";
 
-const OWNER_PORT = 5581;
+const [OWNER_PORT] = await freePorts(1);
 const OWNER_BOT_DELAY_MS = 6_000;
 
 describe("a table outlives losing its owner", { skip: hasDatabase() ? false : skipMessage() }, () => {

@@ -20,6 +20,7 @@ import { trackEvent } from "../shared/events.ts";
 import { onEvent } from "./socketSafety.ts";
 import {
   isShuttingDown,
+  openedAfter,
   socketRoomMap,
   userRoom,
   userSocketMap,
@@ -118,7 +119,7 @@ const pendingDisconnects = new Set<Promise<void>>();
 /**
  * Resolves once every disconnect handler already started has finished, or at
  * `timeoutMs`. `io.close()` starts them and waits for none, and a seat lost at a
- * table another instance owns is forwarded over the adapter pool.
+ * table another instance owns is forwarded over the cluster adapter.
  */
 export async function settleDisconnects(timeoutMs: number): Promise<void> {
   let timer: NodeJS.Timeout | undefined;
@@ -230,11 +231,10 @@ export function registerDisconnect({ rt, socket, userId }: HandlerContext) {
  * association across before closing it — and has closed it by the time this
  * runs, so it is no longer in the room.
  *
- * Not gated on there being more than one instance, though the adapter would
- * answer that for free: it answers from the heartbeat's view of its peers, and
- * a second instance is invisible for the first few seconds of its life —
- * exactly when a player is most likely to be handed to it. One `pg_notify` per
- * connection is far below the queries this handler already runs.
+ * Not gated on there being more than one instance: the adapter's count of its
+ * peers can lag a second instance's first moments, exactly when a player is
+ * most likely to be handed to it. One Redis publish per connection is far below
+ * the queries this handler already runs.
  */
 export function evictRemoteSessions(io: SocketServer, userId: string, keep: Socket) {
   const eviction: Eviction = { userId, keepSocketId: keep.id, connectedAt: keep.handshake.issued };
@@ -255,9 +255,8 @@ export function evictOlderSessions(io: SocketServer, { userId, keepSocketId, con
   for (const id of [...(io.sockets.adapter.rooms.get(userRoom(userId)) ?? [])]) {
     const socket = io.sockets.sockets.get(id);
     if (!socket || id === keepSocketId) continue;
-    const issued = socket.handshake.issued;
     // Two instances stamping the same millisecond each receive the other's eviction; the id breaks the tie so exactly one closes.
-    if (issued > connectedAt || (issued === connectedAt && id > keepSocketId)) continue;
+    if (openedAfter(socket, connectedAt) || (socket.handshake.issued === connectedAt && id > keepSocketId)) continue;
     socket.emit("socket:error", payload("SESSION_REPLACED"));
     socket.disconnect(true);
   }

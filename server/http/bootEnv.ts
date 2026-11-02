@@ -1,6 +1,6 @@
 import { logger } from "../shared/logger.ts";
 
-const REQUIRED_ENV = ["SESSION_SECRET", "DATABASE_URL"];
+const REQUIRED_ENV = ["SESSION_SECRET", "DATABASE_URL", "REDIS_URL"];
 const REQUIRED_IN_PRODUCTION = ["PUBLIC_HOST"];
 
 export function checkBootEnv(
