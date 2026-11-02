@@ -10,6 +10,7 @@ import { closeOwnership } from "../game/gameOwnership.ts";
 import type { TableRuntime } from "../game/tableRuntime.ts";
 import { settleDisconnects } from "../socket/socketPresence.ts";
 import { within } from "../shared/within.ts";
+import { stopHealth } from "./health.ts";
 
 /**
  * How long the host waits between SIGTERM and SIGKILL. The whole sequence
@@ -100,6 +101,7 @@ export async function shutdown(
     );
     await settleDisconnects(SHUTDOWN_BUDGET.settleDisconnects);
     await within(SHUTDOWN_BUDGET.stopTables, tables.stopTables());
+    stopHealth();
     stopInbox();
     closeRedis();
     // Disconnecting the sockets above starts writes — updateLastSeen, the

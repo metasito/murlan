@@ -43,6 +43,10 @@ describe("the probes on one instance", { skip: hasDatabase() ? false : skipMessa
   });
 
   test("with every app-pool client held, each probe answers 200 at once and reports both links", async () => {
+    await eventually(async () => {
+      const body = json((await timed(`${server.url}/health/ready`)).text);
+      return body.db === "connected" && body.redis === "connected";
+    }, "the first background probe to see both links");
     const held: PoolClient[] = await Promise.all(Array.from({ length: 10 }, () => pool().connect()));
     try {
       assert.equal(pool().idleCount, 0);
@@ -72,7 +76,7 @@ describe("the probes on one instance", { skip: hasDatabase() ? false : skipMessa
     } finally {
       clearInterval(blocker);
     }
-    await eventually(async () => (await timed(`${server.url}/health/ready`)).status === 200, "readiness once the loop is free", 10_000);
+    await eventually(async () => (await timed(`${server.url}/health/ready`)).status === 200, "readiness once the loop is free", 15_000);
   });
 
   test("/metrics answers only the bearer token, with no body otherwise", async () => {
@@ -155,21 +159,22 @@ describe("the probes with a dependency gone", { skip: hasDatabase() ? false : sk
       return r.status === 200 && json(r.text).redis === "connected" && json(r.text).db === "connected";
     }, "both links up after boot");
 
+    /** Every answer is immediate, and is 200, however long the dependency has been hanging. */
+    const reports = async (path: string, links: [string, string]) => {
+      const r = await timed(`${url}${path}`);
+      assert.equal(r.status, 200, `${path}: ${r.text}`);
+      assert.ok(r.ms < PROBE_BUDGET_MS, `${path} answered in ${Math.round(r.ms)} ms with a dependency hung`);
+      return json(r.text).db === links[0] && json(r.text).redis === links[1];
+    };
+
     redisProxy.blackholeExisting();
     redisProxy.blackholeNew(true);
-    const noRedis = await timed(`${url}/health/ready`);
-    assert.equal(noRedis.status, 200, noRedis.text);
-    assert.deepEqual([json(noRedis.text).db, json(noRedis.text).redis], ["connected", "down"], noRedis.text);
-    assert.ok(noRedis.ms < DEPENDENCY_DOWN_BUDGET_MS, `answered in ${Math.round(noRedis.ms)} ms`);
+    await eventually(() => reports("/health/ready", ["connected", "down"]), "Redis named down", DEPENDENCY_DOWN_BUDGET_MS * 2);
 
     pgProxy.blackholeExisting();
     pgProxy.blackholeNew(true);
-    for (const path of ["/health/ready", "/health"]) {
-      const neither = await timed(`${url}${path}`);
-      assert.equal(neither.status, 200, `${path}: ${neither.text}`);
-      assert.deepEqual([json(neither.text).db, json(neither.text).redis], ["down", "down"], neither.text);
-      assert.ok(neither.ms < DEPENDENCY_DOWN_BUDGET_MS, `${path} answered in ${Math.round(neither.ms)} ms`);
-    }
+    await eventually(() => reports("/health/ready", ["down", "down"]), "Postgres named down too", DEPENDENCY_DOWN_BUDGET_MS * 2);
+    assert.ok(await reports("/health", ["down", "down"]));
 
     const metrics = await timed(`${url}/metrics`, { headers: { authorization: `Bearer ${TOKEN}` } });
     assert.equal(metrics.status, 200, "/metrics waited on a dependency");

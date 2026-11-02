@@ -8,9 +8,12 @@ const SLICES = 5;
 let current: RecordableHistogram | null = null;
 let slices: RecordableHistogram[] = [];
 let startedAt = 0;
+let timers: ReturnType<typeof setInterval>[] = [];
+const sliceListeners = new Set<(p99Ms: number) => void>();
 
-function unref(timer: ReturnType<typeof setInterval>): void {
+function unref(timer: ReturnType<typeof setInterval>): ReturnType<typeof setInterval> {
   (timer as unknown as { unref?: () => void }).unref?.();
+  return timer;
 }
 
 /**
@@ -29,12 +32,26 @@ export function watchEventLoop(): void {
     last = now;
   }, SAMPLE_MS);
   const rotate = setInterval(() => {
-    slices = [...slices, filling].slice(-SLICES);
+    const done = filling;
+    slices = [...slices, done].slice(-SLICES);
     filling = createHistogram();
     current = filling;
+    const p99Ms = done.count === 0 ? 0 : done.percentile(99) / 1e6;
+    for (const listener of sliceListeners) listener(p99Ms);
   }, SLICE_MS);
-  unref(sample);
-  unref(rotate);
+  timers = [unref(sample), unref(rotate)];
+}
+
+export function stopWatchingEventLoop(): void {
+  for (const timer of timers) clearInterval(timer);
+  timers = [];
+  current = null;
+  slices = [];
+}
+
+/** Called with each second's p99 delay, in milliseconds, as that second closes. */
+export function onEventLoopSlice(listener: (p99Ms: number) => void): void {
+  sliceListeners.add(listener);
 }
 
 /** The loop's delay at `percentile` over the last few seconds, in milliseconds; 0 before any sample. */
