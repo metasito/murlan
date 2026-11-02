@@ -130,6 +130,7 @@ describe("the probes with a dependency gone", { skip: hasDatabase() ? false : sk
   let url: string;
 
   before(async () => {
+    // Creates the schema the child-process server is then pointed at.
     const admin = new pg.Pool({ connectionString: baseUrl });
     await admin.query(`CREATE SCHEMA "${schema}"`);
     await admin.end();
