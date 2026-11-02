@@ -132,8 +132,9 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     host.socket.emit("room:quickmatch", { maxPlayers: 2, gameMode: "free_for_all" });
     const room = await made;
 
-    // Before the join: a full quick-match room deals on its own, and the event can land before `seated`.
-    const started = waitFor(host.socket, "game:started");
+    // Listening from here: a full quick-match room starts itself, and its game:started can reach
+    // the host in the same read as the room:state awaited below.
+    const started = waitFor(host.socket, "game:started", 15_000);
     const seated = waitFor(host.socket, "room:state");
     mate.socket.emit("room:join", { code: room.code });
     await seated;

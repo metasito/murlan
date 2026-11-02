@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 import { createClient } from "redis";
 import runtime from "../../deploy/runtime.json" with { type: "json" };
 import { logger } from "../shared/logger.ts";
+import { redisReconnects } from "../shared/metrics.ts";
 
-export type RedisUse = "adapter" | "inbox" | "presence" | "limits" | "owners";
+export type RedisUse = "adapter" | "inbox" | "presence" | "limits" | "owners" | "health";
 export type RedisClient = ReturnType<typeof newClient>;
 
 export const instanceId = randomUUID();
@@ -131,6 +132,7 @@ export function openRedis(use: RedisUse, { url = process.env.REDIS_URL, offlineQ
     noteAnswered(client);
   });
   client.on("ping-interval", () => noteAnswered(client));
+  client.on("reconnecting", () => redisReconnects.inc({ use }));
   clients.set(client, Date.now());
   watchForHalfOpen(client, use);
   if (connect) client.connect().catch(() => {});

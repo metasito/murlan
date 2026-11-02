@@ -26,7 +26,8 @@ const FRIEND_REQUEST_REFUSAL_CODE = {
   FRIEND_REQUEST_INCOMING_PENDING: "FRIEND_REQUEST_INCOMING_PENDING",
 } as const satisfies { [C in FriendRequestRefusal]: C };
 
-const friendLimiter = routeLimiter({
+export const friendLimiter = routeLimiter({
+  name: "friend",
   windowMs: 60 * 1000,
   defaultMax: 10,
   message: payload("RATE_LIMITED"),

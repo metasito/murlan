@@ -46,7 +46,7 @@ export class DatabaseNotOpenError extends Error {
 
 type Opened = { pool: Pool; db: Database };
 
-let open: { app: Opened; admin: Opened } | null = null;
+let open: { app: Opened; admin: Opened; health: Pool } | null = null;
 
 function opened(pool: Pool): Opened {
   return { pool, db: drizzle(pool, { schema }) };
@@ -57,7 +57,14 @@ export function openDatabase(): void {
   open = {
     app: opened(createPool("app", { max: resolvePoolMax(process.env.MURLAN_PG_POOL_MAX) })),
     admin: opened(createPool("admin")),
+    health: createPool("health"),
   };
+}
+
+/** One `SELECT 1` on the health pool, which no request shares: it answers while the app pool is full. */
+export async function pingDatabase(): Promise<void> {
+  if (!open) throw new DatabaseNotOpenError();
+  await open.health.query("SELECT 1");
 }
 
 export function transaction<T>(body: (tx: Tx) => Promise<T>): Promise<T> {
@@ -119,7 +126,8 @@ export async function closeDatabase({ drainMs }: { drainMs?: number } = {}): Pro
     budgetCheck = null;
   }
   if (!open) return { ended: Promise.resolve() };
-  const { app: { pool: closing }, admin: { pool: closingAdmin } } = open;
+  const { app: { pool: closing }, admin: { pool: closingAdmin }, health } = open;
+  const healthEnded = health.end().catch((err) => logger.error({ err }, "Health pool close failed"));
   const [drained, adminDrained] = await Promise.all([
     drainPool(closing, { timeoutMs: drainMs }),
     drainPool(closingAdmin, { timeoutMs: Math.min(drainMs ?? ADMIN_DRAIN_MS, ADMIN_DRAIN_MS) }),
@@ -136,5 +144,5 @@ export async function closeDatabase({ drainMs }: { drainMs?: number } = {}): Pro
   }
   open = null;
   const end = (p: Pool) => p.end().catch((err) => logger.error({ err, pool: p.options.application_name }, "Pool close failed"));
-  return { ended: Promise.all([end(closing), end(closingAdmin)]).then(() => {}) };
+  return { ended: Promise.all([end(closing), end(closingAdmin), healthEnded]).then(() => {}) };
 }

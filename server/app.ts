@@ -8,12 +8,14 @@ import type { TableRuntime } from "./game/tableRuntime.ts";
 import { createRequestLogger } from "./http/logger.ts";
 import { logger } from "./shared/logger.ts";
 import { createSessionMiddleware } from "./http/session.ts";
-import { openDatabase, pool, watchConnectionBudget } from "./store/db.ts";
+import { openDatabase, watchConnectionBudget } from "./store/db.ts";
+import { markBooted, mountHealth } from "./http/health.ts";
 import { setupSocket } from "./socket/socket.ts";
 import { ownershipConnected } from "./game/gameOwnership.ts";
 import { errorHandler } from "./http/errorHandler.ts";
 import { installServerErrorRecorder } from "./http/serverErrors.ts";
 import { mountApi } from "./http/routes/index.ts";
+import { connectRateLimits } from "./http/rateLimit.ts";
 import { ensureSchema } from "./store/schemaDdl.ts";
 import { allowedOrigins, isAllowedOrigin, trustProxySetting } from "./http/cors.ts";
 import { checkMailConfigOnBoot } from "./http/mail.ts";
@@ -195,6 +197,7 @@ export interface CreatedApp {
  */
 export async function createApp(): Promise<CreatedApp> {
   openDatabase();
+  connectRateLimits();
   installServerErrorRecorder();
   const app = express();
 
@@ -231,26 +234,14 @@ export async function createApp(): Promise<CreatedApp> {
   checkMailConfigOnBoot();
 
   // The only paths that carry the session, beside the socket handshake below:
-  // a static file, /health and the SPA shell never ask who is signed in, and
+  // a static file, the probes and the SPA shell never ask who is signed in, and
   // each read of the session is a query.
   const sessionMiddleware = createSessionMiddleware();
   app.use(["/api", "/admin"], sessionMiddleware);
 
-  app.get("/health", async (_req, res) => {
-    try {
-      await pool().query("SELECT 1");
-      // Unauthenticated, and scheduled probes are not the only readers: the
-      // deployed commit and the environment name are `GET /api/admin/version`.
-      res.json({
-        status: "ok",
-        db: "connected",
-        uptime: Math.floor(process.uptime()),
-      });
-    } catch (err) {
-      logger.error({ err }, "Health check DB failure");
-      res.status(503).json({ status: "error", db: "disconnected" });
-    }
-  });
+  // Unauthenticated, and scheduled probes are not the only readers: the
+  // deployed commit and the environment name are `GET /api/admin/version`.
+  mountHealth(app);
 
   configureWebBuild(app);
 
@@ -261,5 +252,6 @@ export async function createApp(): Promise<CreatedApp> {
 
   app.use(errorHandler);
 
+  markBooted();
   return { app, server, io, rt };
 }

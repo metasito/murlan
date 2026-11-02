@@ -16,6 +16,7 @@ import { createRequire } from "node:module";
 import { firstLine, REPO, viaCli } from "./cli.mjs";
 import { ciRedPosted } from "./loop-derive.mjs";
 import { ghTracker, prUrl } from "./tracker.mjs";
+import { ghMerges } from "./merges.mjs";
 import { readLine } from "./loop-stream.mjs";
 import { ciLine, LAND } from "./loop-render.mjs";
 import { DIR, ciLogPath, ciRedNotePath, streamLog, streamVerified } from "./loop-logs.mjs";
@@ -274,10 +275,11 @@ function settlePorts(pending, log, pause, io) {
   const run = io.run ?? viaCli;
   const dir = io.dir ?? DIR;
   const facts = io.facts ? () => ({ ok: true, facts: io.facts() }) : () => streamFacts(pending.ticket, dir);
+  const gh = (args, opts) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS, ...opts });
   const ports = {
     dir,
     run,
-    tracker: io.tracker ?? ghTracker((args, opts) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS, ...opts })),
+    tracker: io.tracker ?? { ...ghTracker(gh), ...ghMerges(gh) },
     stateOf: io.stateOf ?? ((pr) => ts("./ciVerdict.ts").readLandingState(REPO, pr)),
     write: io.write ?? writeFileSync,
     mkdir: io.mkdir ?? mkdirSync,

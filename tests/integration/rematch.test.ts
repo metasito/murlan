@@ -246,12 +246,14 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
 
     // A seat nobody holds abstains rather than blocking: the gate counts the
     // seats in playerMap, and Omar's is no longer one of them.
+    // Listening from before the leave: with Omar's seat gone, Nadia's refused start already counts
+    // as every vote, so the new match can be dealt in the same read as the takeover.
     const takeover = waitFor(nadia.socket, "game:seat_bot_takeover", 5_000);
+    const started = waitFor(nadia.socket, "game:started", 8_000);
+    const dealt = waitForDeal(nadia.socket);
     omar.socket.emit("room:leave");
     await takeover;
 
-    const started = waitFor(nadia.socket, "game:started", 8_000);
-    const dealt = waitForDeal(nadia.socket);
     nadia.socket.emit("room:start", { fillWithBots: true });
     await started;
     const next = await dealt;

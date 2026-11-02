@@ -5,7 +5,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { check, gitAt, implementRoute } from "../guard-bash.mjs";
 import { readIssue, TRUSTED_SELECT } from "../tracker.mjs";
 
@@ -282,6 +282,13 @@ describe("the bash guard allows correct usage", () => {
 
 describe("a file that names a merge is not a script that runs one", () => {
   const QUOTES = 'assert.match(check("gh pr merge 5"), /not yours to merge/);\n';
+  const READS = [
+    "export const view = (p) => ({ state: p.merged_at ? 'MERGED' : p.state, mergeStateStatus: p.mergeable_state, autoMergeRequest: p.auto_merge });",
+    "export const side = (git) => git('merge', 'side', '-m', 'merge_method=merge');",
+    "export const update = (gh, pulls, n) => gh(['api', '-X', 'PUT', `${pulls}/${n}/update-branch`]);",
+    "",
+  ].join("\n");
+  const EXEC = "require('child_process').execSync";
   const FILES: Record<string, string> = {
     "a.test.ts": QUOTES,
     "b.test.ts": QUOTES,
@@ -289,6 +296,33 @@ describe("a file that names a merge is not a script that runs one", () => {
     "helper.mjs": "export const ok = 1;\n",
     "m.js": "require('child_process').execSync('gh pr merge 5 --auto');\n",
     "m.sh": "gh pr merge 5 --auto\n",
+    "m.ps1": "gh pr merge 5 --auto\n",
+    "merges.md": "Never run gh pr merge 5, nor PUT pulls/5/merge: the loop merges.\n",
+    "edit.mjs": "import { readFileSync, writeFileSync } from 'node:fs';\nconst [file] = process.argv.slice(2);\nwriteFileSync(file, readFileSync(file, 'utf8').replace('a', 'b'));\n",
+    "edit.sh": "sed 's/a/b/' \"$1\"\n",
+    "edit.ps1": "Get-Content $args[0]\n",
+    "reads.mjs": READS,
+    "decoy-string.mjs": `${READS}${EXEC}('gh pr merge 5 --merge');\n`,
+    "decoy-repo.mjs": `${READS}${EXEC}('gh --repo o/r pr merge 5');\n`,
+    "decoy-argv.mjs": `${READS}export const arm = (gh, n) => gh(["pr", "merge", String(n), "--auto"]);\n`,
+    "decoy-rest.mjs": `${READS}export const land = (gh, pulls, n) => gh(["api", "-X", "PUT", \`\${pulls}/\${n}/merge\`]);\n`,
+    "decoy-octokit.mjs": `${READS}octokit.rest.pulls.merge({ owner: "o", repo: "r", pull_number: 5 });\n`,
+    "decoy-graphql.mjs": `${READS}${EXEC}("gh api graphql -f query='mutation { enablePullRequestAutoMerge(input: {}) { clientMutationId } }'");\n`,
+    "decoy-regex.mjs": `const url = /https?:\\/\\//; ${EXEC}('gh pr merge 5');\n`,
+    "decoy-sandwich.mjs": `const a = "/*"; ${EXEC}('gh pr merge 5'); const b = "*/";\n`,
+    "decoy-template.mjs": `${EXEC}(\`//usr/bin/gh pr merge 5\`);\n`,
+    "decoy-jsdoc.mjs": `/** see // here */ ${EXEC}('gh pr merge 5');\n`,
+    "decoy.ts": `// gh pr merge stays the loop's\nconst n: number = 5;\n${EXEC}(\`gh pr merge \${n}\`);\n`,
+    "decoy-division.mjs": `if (ok) /\\/\\//.test(url); ${EXEC}('gh pr merge 5');\n`,
+    "decoy-default.mjs": `export default /[//]/; ${EXEC}('gh pr merge 5');\n`,
+    "decoy-extends.mjs": `class A extends /[//]/.constructor {} ${EXEC}('gh pr merge 5');\n`,
+    "decoy-of.mjs": `const of = 4; const r = of / 2, a = '/', b = '//'; ${EXEC}('gh pr merge 5');\n`,
+    "decoy-yield.js": `var yield = 4, r = yield / 2, b = '/ //'; ${EXEC}('gh pr merge 5');\n`,
+    "decoy-number.mjs": `const half = 1./2, s = 'a / http://x'; ${EXEC}('gh pr merge 5');\n`,
+    "decoy-html.cjs": `<!-- \`\nconst s = \` // \`; ${EXEC}('gh pr merge 5');\n`,
+    "decoy-lands.mjs": "import { ghMerges } from \"./tools/loop/merges.mjs\";\nghMerges().merge(5, 'abc');\n",
+    "decoy-lands-dynamic.mjs": "const m = await import(`../loop/merges.mjs`);\nm.ghMerges().arm(5, 'abc');\n",
+    "decoy-lands-cjs.cjs": "require(\"./merges.mjs\").ghMerges().disarm(5);\n",
   };
   const files = {
     ...repo,
@@ -312,6 +346,33 @@ describe("a file that names a merge is not a script that runs one", () => {
     "node --test a.test.ts; git commit -m 'gh pr merge is the loop'\"'\"'s job'",
     "git commit -m 'gh pr merge is the loop'\"'\"'s job' && node --test a.test.ts",
     "bash ./helper.mjs > out.txt",
+    "node reads.mjs read 5",
+    "node reads.mjs create --title x --body-file merges.md --label noticed",
+    "node edit.mjs merges.md",
+    "node edit.mjs m.js",
+    "node --title x edit.mjs merges.md",
+    "node --import ./helper.mjs edit.mjs merges.md",
+    "node edit.mjs < merges.md",
+    "node -e \"require('fs').readFileSync(process.argv[1])\" merges.md",
+    "node -p 1 merges.md",
+    "bash edit.sh merges.md",
+    "pwsh -File edit.ps1 merges.md",
+    "bash --rcfile edit.sh -ic true",
+    "BASH_ENV=edit.sh bash -c true",
+    "npx tsx edit.mjs merges.md",
+    "bun run edit.mjs merges.md",
+    "deno run edit.mjs merges.md",
+    "node -pe 1 merges.md",
+    "export ENV=test; npm run test",
+    "ENV=test npm run test",
+    "bash -c 'ENV=out.txt; echo hi > out.txt'",
+    "bash -c 'BASH_ENV=notes.txt; cat notes.txt'",
+    "BASH_ENV=out.txt; bash -c true",
+    "bash -c 'export BASH_ENV=m.sh'; bash -c true",
+    "bash -c true; export BASH_ENV=m.sh",
+    "npx tsx watch edit.mjs merges.md",
+    "bunx tsx edit.mjs merges.md",
+    "deno eval \"console.log(1)\" merges.md",
   ]) {
     test(`allows: ${JSON.stringify(cmd)}`, () => assert.equal(at(cmd), null));
   }
@@ -352,9 +413,130 @@ describe("a file that names a merge is not a script that runs one", () => {
     "npx -y node m.js",
     "bash {fd}< m.sh",
     "bash 0< m.sh",
+    "cat m.sh | bash",
+    "source m.sh",
+    "pwsh -File m.ps1",
+    "pwsh m.ps1 merges.md",
+    "node m.js merges.md",
+    "node -e \"require('child_process').execSync('gh pr merge 5') // a test\" merges.md",
+    "bash --rcfile m.sh -ic true",
+    "bash -i --rcfile m.sh -c true",
+    "bash --init-file=m.sh -i",
+    "BASH_ENV=m.sh bash -c true",
+    "ENV=m.sh sh -c true",
+    "export BASH_ENV=m.sh; bash -c true",
+    "bash -c 'export BASH_ENV=m.sh; bash -c true'",
+    "export ENV=m.sh && sh -c true",
+    "npx tsx watch m.js",
+    "bunx tsx m.js",
+    "deno eval \"require('child_process').execSync('gh pr merge 5')\"",
+    "deno eval --ext=js \"require('child_process').execSync('gh pr merge 5')\"",
+    "node -e \"import(process.cwd() + '/tools/loop/settle.mjs').then((s) => s.settle())\"",
+    "node -p \"require(process.cwd() + '/tools/loop/settle.mjs')\"",
+    "npx tsx m.js",
+    "tsx m.js",
+    "bun m.js",
+    "bun run m.js",
+    "deno run m.js",
+    "deno run --allow-run m.js",
+    "node -pe \"require('child_process').execSync('gh pr merge 5')\"",
+    "node -ep \"require('child_process').execSync('gh pr merge 5')\"",
+    "bun -e \"require('child_process').execSync('gh pr merge 5')\"",
+    "node -e \"import(process.cwd() + '/tools/loop/merges.mjs').then((m) => m.ghMerges().merge(5, 'abc'))\"",
+    "node -p \"require(process.cwd() + '/tools/loop/merges.mjs')\"",
+    ...Object.keys(FILES).filter((f) => f.startsWith("decoy")).map((f) => `node ${f} read 5`),
   ]) {
     test(`refuses: ${JSON.stringify(cmd)}`, () => assert.match(String(at(cmd)), MERGE));
   }
+});
+
+describe("the tracker's recipes run, and the supervisor's merges do not", () => {
+  const real = gitAt(ROOT);
+  const DOCS = [".claude/commands/queue.md", "docs/agents/issue-tracker.md", "docs/agents/RULES.md", ".claude/commands/audit.md"];
+  const recipes = [...new Set(DOCS.flatMap((d) => [...readFileSync(join(ROOT, d), "utf8").matchAll(/node tools\/loop\/tracker\.mjs [^`\n]*/g)].map((m) => m[0].trim())))];
+  const reading = { implementing: () => false };
+
+  test("the docs still give the recipes", () => assert.ok(recipes.length >= 8, recipes.join("\n")));
+  for (const cmd of recipes) {
+    test(`allows, read from the real file, in the loop and outside it: ${cmd}`, () => {
+      assert.equal(check(cmd, real, false, reading), null);
+      assert.equal(check(cmd, real, true, reading), null);
+    });
+  }
+
+  test("the module that arms and merges is refused when a session imports it", () => {
+    for (const cmd of [
+      "node -e \"import(process.cwd() + '/tools/loop/merges.mjs').then((m) => m.ghMerges().merge(5, 'abc'))\"",
+      "node --input-type=module -e \"import { ghMerges } from 'file:///repo/tools/loop/merges.mjs'; ghMerges().arm(5, 'abc')\"",
+    ]) {
+      assert.match(String(check(cmd, real, false, reading)), MERGE, cmd);
+      assert.match(String(check(cmd, real, true, reading)), MERGE, cmd);
+    }
+  });
+
+  // A comment is judged as code, so a script a doc tells a session to run must not spell a merge even there.
+  const RUN = [".claude/commands/queue.md", ".claude/commands/audit.md", "docs/agents/issue-tracker.md", "docs/agents/RULES.md", "docs/agents/checks.md", "CLAUDE.md"];
+  const scripts = [...new Set(RUN.flatMap((d) => [...readFileSync(join(ROOT, d), "utf8").matchAll(/\bnode ((?:tools|scripts)\/[\w./-]+\.(?:mjs|js|ts))/g)].map((m) => m[1])))];
+  test("the docs still name the scripts a session runs", () => assert.ok(scripts.includes("tools/loop/tracker.mjs") && scripts.length >= 8, scripts.join(" ")));
+  for (const script of scripts) {
+    test(`a script a doc runs spells no merge, comments included: ${script}`, () => {
+      assert.ok(existsSync(join(ROOT, script)), script);
+      assert.equal(check(`node ${script}`, real, false, reading), null);
+    });
+  }
+
+  test("a script of many flags, or a long path, is judged at once", () => {
+    const dir = mkdtempSync(join(tmpdir(), "guard-long-"));
+    try {
+      writeFileSync(join(dir, "long.mjs"), `console.log("gh ${"--paginate ".repeat(200)}x", "pulls${"/pulls".repeat(20000)}");\n`);
+      const start = Date.now();
+      const result = spawnSync(process.execPath, [SCRIPT], { cwd: dir, input: JSON.stringify({ tool_name: "Bash", cwd: dir, tool_input: { command: "node long.mjs" } }), encoding: "utf8", timeout: 10_000 });
+      assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+      assert.ok(Date.now() - start < 3000, `${Date.now() - start} ms`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the hook, fed the payload Claude Code sends, allows a tracker read and refuses a merge", () => {
+    const hook = (command: string) => spawnSync(process.execPath, [SCRIPT], { cwd: ROOT, input: JSON.stringify({ tool_name: "Bash", cwd: ROOT, tool_input: { command } }), encoding: "utf8" });
+    for (const cmd of ["node tools/loop/tracker.mjs read 1651", "node tools/loop/tracker.mjs create --title x --body-file b.md --label noticed"]) {
+      const result = hook(cmd);
+      assert.equal(result.status, 0, `${cmd}: ${result.stderr}`);
+    }
+    const merge = hook("gh pr merge 5");
+    assert.equal(merge.status, 2);
+    assert.match(merge.stderr, MERGE);
+  });
+
+  test("with no package installed, as the Windows harness runs it, the hook still judges a script", () => {
+    const dir = mkdtempSync(join(tmpdir(), "guard-no-packages-"));
+    try {
+      writeFileSync(
+        join(dir, "no-packages.mjs"),
+        'import { registerHooks } from "node:module";\n' +
+          "registerHooks({ resolve: (specifier, context, next) => {\n" +
+          '  if (!/^(node:|\\.|\\/|file:|[A-Za-z]:)/.test(specifier)) throw new Error(`no package installed: ${specifier}`);\n' +
+          "  return next(specifier, context);\n" +
+          "} });\n",
+      );
+      writeFileSync(join(dir, "reads.mjs"), "export const view = (p) => ({ state: p.merged_at ? 'MERGED' : p.state, mergeStateStatus: p.mergeable_state });\n");
+      writeFileSync(join(dir, "m.mjs"), "// harmless\nrequire('child_process').execSync('gh pr merge 5');\n");
+      const hook = (command: string) =>
+        spawnSync(process.execPath, ["--import", pathToFileURL(join(dir, "no-packages.mjs")).href, SCRIPT], {
+          cwd: dir,
+          input: JSON.stringify({ tool_name: "Bash", cwd: dir, tool_input: { command } }),
+          encoding: "utf8",
+        });
+      const reads = hook("node reads.mjs read 5");
+      assert.equal(reads.status, 0, reads.stderr);
+      const m = hook("node m.mjs");
+      assert.equal(m.status, 2, m.stderr);
+      assert.match(m.stderr, MERGE);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("a device run's dispatch is the workflow's own to refuse", () => {
