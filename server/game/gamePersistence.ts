@@ -275,15 +275,15 @@ let sweeper: ReturnType<typeof setInterval> | null = null;
 /**
  * Drops finished tables nobody is still looking at.
  *
- * "Nobody" is asked of the cluster, not of `userSocketMap`: the instance that
+ * "Nobody" is asked of presence, not of `userSocketMap`: the instance that
  * owns a table need not be the one holding its players' sockets, so a local
  * read sees a table full of people as empty and deletes the game out from under
- * their results screen. A cluster that did not answer disposes nothing.
+ * their results screen. A store that did not answer disposes nothing.
  */
 export async function sweepFinishedTables(rt: TableRuntime): Promise<void> {
   const finished = [...activeGames.entries()].filter(([, game]) => game.gameState.roundOver);
   if (finished.length === 0) return;
-  const connected = await rt.presence.connectedUserIds();
+  const connected = await rt.presence.onlineAmong([...new Set(finished.flatMap(([, game]) => Object.values(game.playerMap)))]);
   if (!connected) return;
   for (const [roomId, game] of finished) {
     safeTimer(rt, "sweepFinishedTable", roomId, () => {

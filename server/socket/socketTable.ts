@@ -30,6 +30,7 @@ import { payload } from "../shared/payload.ts";
 import { modeFits, type GameMode } from "../../lib/game/gameEngine.ts";
 import { refuse, type Refusal } from "../shared/refusal.ts";
 import type { ServerToClientEvents, WireRoomState } from "../../shared/protocol.ts";
+import { bumpSocial } from "../store/presence.ts";
 
 /**
  * Async because the seat holds are part of the room, not an extra message:
@@ -257,6 +258,7 @@ function tellInvitees<E extends "friend:invite_retired" | "friend:room_joinable"
   event: E,
   ...payload: Parameters<ServerToClientEvents[E]>
 ): void {
+  bumpSocial(inviteeIds);
   for (const inviteeId of inviteeIds) {
     rt.out.user(inviteeId).emit(event, ...payload);
   }

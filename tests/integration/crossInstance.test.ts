@@ -393,7 +393,8 @@ describe("broadcasts cross server instances", {
     }
   }
   const instanceOf = (userId: string) =>
-    withRedis((redis, key) => redis.hGet(key(`presence:${userId}`), "instance")).then((id) => {
+    withRedis((redis, key) => redis.get(key(`online:${userId}`))).then((entry) => {
+      const id = entry?.split("|")[0];
       assert.ok(id, `${userId} has no presence entry`);
       return id;
     });
@@ -433,7 +434,7 @@ describe("broadcasts cross server instances", {
     assert.equal((await post(PORTS[0], `/api/friends/accept/${requests[0].id}`, offlineCookie)).status, 200);
 
     const offlineId = await userIdOf(offlineCookie);
-    assert.equal(await withRedis((redis, key) => redis.exists(key(`presence:${offlineId}`))), 0, "the friend has a presence entry");
+    assert.equal(await withRedis((redis, key) => redis.exists(key(`online:${offlineId}`))), 0, "the friend has a presence entry");
     // Every stream a message for another instance can go on: each inbox, and the adapter's.
     const streams = await withRedis(async (redis, key) => [...(await redis.keys(key("inbox:*"))), key("socket.io")]);
     const lengths = async () => Promise.all(streams.map((k) => withRedis((redis) => redis.xLen(k))));

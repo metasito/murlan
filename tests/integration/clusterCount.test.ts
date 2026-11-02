@@ -3,8 +3,8 @@
 //
 // "Nobody else holds this table" is what lets a caller release a seat or take a table over, so a
 // count that comes up short while a peer is alive and holding tables is a destructive answer. The
-// count is short whenever a peer's subscriber is not subscribed at that moment: while its Redis
-// link is down, and in the seconds while it resubscribes. A count that is long, a dead peer still
+// count is every peer whose presence liveness has not lapsed (server/store/presence.ts), so a peer
+// whose link is down is still waited on until it lapses. A count that is long, a dead peer still
 // waited on, costs every cross-instance request its full timeout.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
@@ -17,12 +17,12 @@ import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
 import { createSocketAdapter } from "../../server/socket/socketAdapter.ts";
-import { installClock, realClock } from "../../server/http/clock.ts";
-import { closeRedis, keyspace, redisReady } from "../../server/store/redis.ts";
+import { randomUUID } from "node:crypto";
+import { openPresenceStore, type PresenceStore } from "../../server/store/presence.ts";
+import { closeRedis, keyspace } from "../../server/store/redis.ts";
 
-const NOT_SUBSCRIBED = /not subscribed/;
-/** Past the adapter's grace for a peer last heard. */
-const PAST_THE_GRACE_MS = 11_000;
+/** What an instance whose own links are not all back yet answers: it cannot count its peers. */
+const NOT_SUBSCRIBED = /not subscribed|client is offline/;
 
 const baseUrl = process.env.DATABASE_URL ?? "";
 const redisUrl = process.env.REDIS_URL ?? "";
@@ -41,6 +41,7 @@ function cluster(tag: string) {
   const stream = `${keyspace(scoped)}:socket.io`;
   const servers: Server[] = [];
   const proxies: Proxy[] = [];
+  const stores: PresenceStore[] = [];
   const ask = (from: Server): Promise<Answer> =>
     new Promise((resolve) =>
       from.serverSideEmit("probe", (err: Error | null, replies: string[]) =>
@@ -56,7 +57,9 @@ function cluster(tag: string) {
     boot(name: string, through?: Proxy, io = new Server()): Server {
       process.env.DATABASE_URL = scoped;
       process.env.REDIS_URL = through ? viaProxy(redisUrl, through) : redisUrl;
-      io.adapter(createSocketAdapter());
+      const presence = openPresenceStore({ id: `${name}-${randomUUID()}`, ns: keyspace(scoped) });
+      stores.push(presence);
+      io.adapter(createSocketAdapter(presence));
       process.env.DATABASE_URL = baseUrl;
       process.env.REDIS_URL = redisUrl;
       io.on("probe", (reply: (r: string) => void) => reply(name));
@@ -83,9 +86,16 @@ function cluster(tag: string) {
       return (await probe.pubSubChannels(`${stream}#/#*#`)).length;
     },
     streamLength: () => probe.xLen(stream),
+    /** Ends the presence liveness of the instance booted as `name`. */
+    async lapse(name: string): Promise<void> {
+      const keys = await probe.keys(`${keyspace(scoped)}:instance:${name}-*`);
+      assert.equal(keys.length, 1, `no liveness to end for ${name}`);
+      await probe.del(keys);
+    },
     async stop() {
       // None is attached to an http server, so `io.close()` has no engine to close.
       for (const io of servers) await io.of("/").adapter.close();
+      for (const store of stores) store.close();
       for (const proxy of proxies) await proxy.close();
       await dropKeyspace(scoped);
     },
@@ -135,10 +145,8 @@ describe("the cluster's count of its peers", { skip: hasDatabase() ? false : ski
 
       proxy.refuse(true);
       const asked: Promise<Answer>[] = [];
-      const sockets: Promise<unknown>[] = [];
       for (let i = 0; i < 15; i++) {
         asked.push(c.ask(a), c.ask(b));
-        sockets.push(b.fetchSockets().then(() => "alone", () => "error"));
         await sleep(100);
       }
       proxy.refuse(false);
@@ -148,7 +156,6 @@ describe("the cluster's count of its peers", { skip: hasDatabase() ? false : ski
       }
       const verdicts = (await Promise.all(asked)).map(verdict);
       assert.equal(verdicts.filter((v) => v === "alone").length, 0, `told it was alone: ${JSON.stringify(verdicts)}`);
-      assert.deepEqual([...new Set(await Promise.all(sockets))], ["error"], "fetchSockets answered from this instance alone");
       assert.deepEqual((await Promise.all([c.ask(a), c.ask(b)])).map(verdict), ["answered", "answered"]);
     });
   });
@@ -177,10 +184,8 @@ describe("the cluster's count of its peers", { skip: hasDatabase() ? false : ski
     const c = cluster("count_ghost");
     after(() => c.stop());
 
-    test("is not brought back by the broadcasts it left in the stream", { timeout: 60_000 }, async () => {
+    test("is not waited on once its liveness lapses, whatever it left in the stream", { timeout: 60_000 }, async () => {
       const [mine, theirs] = [await c.link(), await c.link()];
-      let skew = 0;
-      const restoreClock = installClock({ ...realClock, now: () => realClock.now() + skew });
       const a = await withClient(c, "a", mine, "room");
       try {
         const b = c.boot("b", theirs);
@@ -195,36 +200,15 @@ describe("the cluster's count of its peers", { skip: hasDatabase() ? false : ski
         await eventually(async () => (await c.streamLength()) >= 6, "B's broadcasts in the stream");
         theirs.refuse(true);
         await eventually(async () => (await c.subscribed()) === 0, "B's subscription to drop");
-        skew += PAST_THE_GRACE_MS;
+        // As its TTL would, ten seconds on: B can no longer refresh it.
+        await c.lapse("b");
         mine.refuse(false);
 
         await eventually(() => a.received.includes(4), "A to read the backlog B left", 15_000);
         const answer = await c.settled(a.io);
         assert.equal(verdict(answer), "alone", `a dead peer was waited on: ${JSON.stringify(answer)}`);
       } finally {
-        restoreClock();
         await a.close();
-      }
-    });
-  });
-
-  describe("an instance whose link is down", () => {
-    const c = cluster("count_local");
-    after(() => c.stop());
-
-    test("still finds its own sockets, while a cluster-wide ask fails", { timeout: 30_000 }, async () => {
-      const link = await c.link();
-      const x = await withClient(c, "x", link, "user:x");
-      try {
-        await redisReady();
-        link.refuse(true);
-        await eventually(
-          () => x.io.in("user:x").fetchSockets().then(() => false, () => true),
-          "a cluster-wide ask to fail"
-        );
-        assert.equal((await x.io.local.in("user:x").fetchSockets()).length, 1, "the local pass lost this instance's socket");
-      } finally {
-        await x.close();
       }
     });
   });

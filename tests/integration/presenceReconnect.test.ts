@@ -7,7 +7,7 @@ import { eventually } from "../helpers/client.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
 import { closePresence, forgetPresence, instancesOf, openPresence, presenceKey, recordPresence } from "../../server/store/presence.ts";
-import { closeRedis, instanceId } from "../../server/store/redis.ts";
+import { closeRedis, instanceId, keyspace } from "../../server/store/redis.ts";
 
 const redisUrl = process.env.REDIS_URL;
 const baseUrl = process.env.DATABASE_URL;
@@ -42,7 +42,8 @@ test("a reconnected presence link fills a missing entry and leaves a newer one a
     await eventually(async () => (await instancesOf(["moved", "lost"])).size === 2, "both entries written");
 
     // While this instance's link is down, the account reconnects elsewhere, and Redis loses the other entry.
-    await admin.hSet(presenceKey("moved"), { instance: "elsewhere", socket: "s2" });
+    await admin.set(presenceKey("moved"), "elsewhere|s2");
+    await admin.set(`${keyspace(scoped)}:instance:elsewhere`, "1", { PX: 60_000 });
     await admin.del(presenceKey("lost"));
     const ours = async () => (await presenceLinks()).filter((id) => !others.has(id));
     const [killed] = await ours();
@@ -60,7 +61,7 @@ test("a reconnected presence link fills a missing entry and leaves a newer one a
 
     forgetPresence("moved", "s1");
     await eventually(async () => (await instancesOf(["lost"])).size === 1, "the clear processed");
-    assert.deepEqual(await admin.hGetAll(presenceKey("moved")), { instance: "elsewhere", socket: "s2" });
+    assert.equal(await admin.get(presenceKey("moved")), "elsewhere|s2");
   } finally {
     admin.destroy();
   }

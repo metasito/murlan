@@ -37,6 +37,14 @@ const INVENTORY: Record<string, { n: number; why: string }> = {
     n: 1,
     why: "both instances are watched staying up after their backends are terminated: a crash that follows has no event to await",
   },
+  "tests/integration/presenceCluster.test.ts": {
+    n: 1,
+    why: "messages between instances not sent are an absence across both servers, with no event to await",
+  },
+  "tests/integration/presenceCrash.test.ts": {
+    n: 1,
+    why: "a window with no periodic write is real time itself",
+  },
   "tests/integration/reconnect.test.ts": {
     n: 2,
     why: "reconnectOnALoop's cadence is the stimulus: two drop-and-return cycles inside one AFK window",

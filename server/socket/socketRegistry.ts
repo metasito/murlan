@@ -6,8 +6,10 @@
 // is the one setter that stays.
 import type { ServerToClientEvents } from "../../shared/protocol.ts";
 import type { TableRuntime } from "../game/tableRuntime.ts";
+import { createHash } from "node:crypto";
 import { logger } from "../shared/logger.ts";
-import { openedAfter, socketRoomMap, userRoom, userSocketMap } from "../game/gameRoom.ts";
+import { openedAfter, userRoom, userSocketMap } from "../game/gameRoom.ts";
+import { unseatSocket } from "./seating.ts";
 import { realClock } from "../http/clock.ts";
 import { safeTimer } from "../game/gamePersistence.ts";
 import { announceRoomChanged, handleSeatRelease } from "./socketTable.ts";
@@ -34,13 +36,13 @@ export async function isUserOnline(userId: string): Promise<boolean> {
 }
 
 /**
- * Every account with a socket anywhere in the cluster, in one round trip — a
- * friends list filtered with `isUserOnline` would ask once per friend. Only this
- * instance's own when the cluster did not answer: a friend elsewhere shown
- * offline is the smaller wrong.
+ * Of `userIds`, every account with a socket anywhere in the cluster, in one round trip. Only this
+ * instance's own when presence did not answer: a friend elsewhere shown offline is the smaller
+ * wrong.
  */
-export async function onlineUserIds(): Promise<Set<string>> {
-  return (await _rt?.presence.connectedUserIds()) ?? new Set(userSocketMap.keys());
+export async function onlineAmong(userIds: readonly string[]): Promise<Set<string>> {
+  const online = await _rt?.presence.onlineAmong(userIds);
+  return online ?? new Set(userIds.filter((id) => userSocketMap.has(id)));
 }
 
 /**
@@ -55,20 +57,41 @@ export async function revokeAccountSockets(userId: string, which: Revoked = {}):
   const rt = _rt;
   if (!rt) return;
   // Real time, not the installed clock: it is compared with socket.io's handshake stamps. Every
-  // pass, retries included, spares a socket opened after it.
-  const revoked = { ...which, at: realClock.now() };
+  // pass, retries included, spares a socket opened after it. A session id is a credential, so
+  // only its digest leaves this instance.
+  const revocation: Revocation = {
+    userId,
+    at: realClock.now(),
+    ...(which.onlySid !== undefined && { only: sidDigest(which.onlySid) }),
+    ...(which.exceptSid !== undefined && { except: sidDigest(which.exceptSid) }),
+  };
   // This instance's own first: they need no cluster, and an outage must not leave them live.
-  try {
-    cut(await rt.transport.local.in(userRoom(userId)).fetchSockets(), revoked);
-  } catch (err) {
-    logger.error({ err, userId }, "Failed to revoke an account's sockets on this instance");
-  }
-  await revokeAcrossCluster(rt, userId, revoked, 0);
+  cutHere(rt, revocation);
+  await revokeAcrossCluster(rt, revocation, 0);
 }
 
 interface Revoked {
   onlySid?: string;
   exceptSid?: string;
+}
+
+interface Revocation {
+  userId: string;
+  at: number;
+  only?: string;
+  except?: string;
+}
+
+const REVOKE_EVENT = "murlan:revoke-sockets";
+
+const sidDigest = (sid: string) => createHash("sha256").update(sid).digest("base64url");
+
+/** Each instance cuts its own sockets; registered before the first connection. */
+export function registerRevocation(rt: TableRuntime): void {
+  rt.transport.on(REVOKE_EVENT, (revocation: Revocation, reply?: () => void) => {
+    cutHere(rt, revocation);
+    reply?.();
+  });
 }
 
 const retries = new Set<ReturnType<typeof setTimeout>>();
@@ -79,40 +102,39 @@ export function cancelRevocationRetries(): void {
   retries.clear();
 }
 
-/** After a failed cluster pass, the instance's peers are asked again at these delays. */
+/** After a cluster pass some instance did not answer, it is sent again at these delays. */
 const REVOKE_RETRY_MS = [2_000, 10_000];
 
-async function revokeAcrossCluster(
-  rt: TableRuntime,
-  userId: string,
-  which: Revoked & { at: number },
-  attempt: number
-): Promise<void> {
-  try {
-    cut(await rt.transport.in(userRoom(userId)).fetchSockets(), which);
-  } catch (err) {
-    const delay = REVOKE_RETRY_MS[attempt];
-    if (delay === undefined) {
-      logger.error({ err, userId }, "Failed to revoke an account's sockets on the other instances");
-      return;
-    }
-    const retry = setTimeout(() => {
-      retries.delete(retry);
-      void revokeAcrossCluster(rt, userId, which, attempt + 1);
-    }, delay);
-    retries.add(retry);
-    (retry as unknown as { unref?: () => void }).unref?.();
-  }
+/** Resolves once the first pass is answered or has failed; a retry runs on its own. */
+function revokeAcrossCluster(rt: TableRuntime, revocation: Revocation, attempt: number): Promise<void> {
+  return new Promise((resolve) => {
+    rt.transport.serverSideEmit(REVOKE_EVENT, revocation, (err: unknown) => {
+      resolve();
+      if (!err) return;
+      const delay = REVOKE_RETRY_MS[attempt];
+      if (delay === undefined) {
+        logger.error({ err, userId: revocation.userId }, "Failed to revoke an account's sockets on the other instances");
+        return;
+      }
+      const retry = setTimeout(() => {
+        retries.delete(retry);
+        void revokeAcrossCluster(rt, revocation, attempt + 1);
+      }, delay);
+      retries.add(retry);
+      (retry as unknown as { unref?: () => void }).unref?.();
+    });
+  });
 }
 
-type FoundSockets = Awaited<ReturnType<ReturnType<TableRuntime["transport"]["in"]>["fetchSockets"]>>;
-
-function cut(sockets: FoundSockets, { onlySid, exceptSid, at }: Revoked & { at: number }): void {
-  for (const socket of sockets) {
-    if (openedAfter(socket, at)) continue;
+function cutHere(rt: TableRuntime, { userId, at, only, except }: Revocation): void {
+  const io = rt.transport;
+  for (const id of [...(io.sockets.adapter.rooms.get(userRoom(userId)) ?? [])]) {
+    const socket = io.sockets.sockets.get(id);
+    if (!socket || openedAfter(socket, at)) continue;
     const sid = socket.data?.sid as string | undefined;
-    if (onlySid !== undefined && sid !== onlySid) continue;
-    if (exceptSid !== undefined && sid === exceptSid) continue;
+    const digest = sid === undefined ? undefined : sidDigest(sid);
+    if (only !== undefined && digest !== only) continue;
+    if (except !== undefined && digest === except) continue;
     socket.emit("socket:error", payload("SESSION_REVOKED"));
     socket.disconnect(true);
   }
@@ -136,8 +158,7 @@ export async function evictUser(userId: string, seatedRoomIds: readonly string[]
   if (socket) {
     // Taken here so the disconnect below cannot release the same seat a second
     // time. Spectator state is left to it, which drops it correctly.
-    const roomId = socketRoomMap.get(socket.id);
-    socketRoomMap.delete(socket.id);
+    const roomId = unseatSocket(socket.id);
     if (roomId) {
       roomIds.add(roomId);
       socket.leave(roomId);

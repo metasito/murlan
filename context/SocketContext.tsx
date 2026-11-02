@@ -24,7 +24,7 @@ import {
   type Socket,
 } from "@/lib/socket";
 import { requireUpdate } from "@/lib/updateRequired";
-import { CLIENT_OUTDATED } from "@/shared/protocol";
+import { CLIENT_OUTDATED, type OnlineList } from "@/shared/protocol";
 import { reportSocketClose } from "@/lib/errorReporting";
 import { useNotification } from "@/context/NotificationContext";
 import { SessionReplacedNotice } from "@/components/SessionReplacedNotice";
@@ -200,6 +200,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
   const haltedSocketRef = useRef<Socket | null>(null);
   // Through a ref, not the socket effect's deps: re-running that effect cancels a pending retry.
   const randomRef = useRef(random);
+  const socialSeenRef = useRef<{ userId: string; social: string } | null>(null);
   useEffect(() => {
     randomRef.current = random;
   }, [random]);
@@ -337,13 +338,6 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
     const onConnect = () => {
       setSessionReplaced(null);
       retryAttemptRef.current = 0;
-      askWhoIsOnline(socket);
-      // Anything that happened while the socket was down was pushed to nobody:
-      // `emitToUser` drops the event when the recipient has no socket, and no
-      // second attempt is ever made. The rows are the truth, so connecting is
-      // where we ask again — otherwise a friend request sent to someone
-      // offline is invisible to them, and neither side can then act on it.
-      markStale(qc, stale.onReconnect);
     };
 
     const onDisconnect = (reason: UntypedSocket.DisconnectReason) => {
@@ -362,8 +356,23 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
     });
     const stopNetInfo = NetInfo.addEventListener(retryNow);
 
-    const onOnlineList = ({ onlineIds: ids }: { onlineIds: string[] }) => {
+    // The server pushes this on every connect. Anything that happened while the socket was down
+    // was pushed to nobody, and no second attempt is ever made: the rows are the truth, so a
+    // social version other than the last one seen, or none, is where we ask again — otherwise a
+    // friend request sent to someone offline is invisible to them.
+    const onOnlineList = ({ onlineIds: ids, lastSeen, social }: OnlineList) => {
       setOnlineIds(new Set(ids));
+      if (lastSeen) {
+        qc.setQueryData<Answer<"friends">>(
+          queryKey("friends"),
+          (friends) => friends?.map((f) => (lastSeen[f.id] ? { ...f, lastSeen: lastSeen[f.id]! } : f))
+        );
+      }
+      const seen = socialSeenRef.current;
+      if (social === undefined || seen?.userId !== userId || seen.social !== social) {
+        markStale(qc, stale.onReconnect);
+      }
+      socialSeenRef.current = social === undefined ? null : { userId, social };
     };
 
     const onFriendStatus = ({

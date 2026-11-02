@@ -400,7 +400,7 @@ describe("a finished round's results", { skip: hasDatabase() ? false : skipMessa
   test("a restart between the final write and the commit: the sweep commits it with nobody online", async () => {
     const { clients, roomId, ids } = await crashBeforeTheCommit("sweep");
     for (const c of clients) c.socket.close();
-    await eventually(async () => (await server.rt.presence.connectedUserIds())?.size === 0, "the players never went offline");
+    await eventually(async () => (await server.rt.presence.onlineAmong(ids))?.size === 0, "the players never went offline");
 
     // As the sweeper's interval does: a pass that finds the table mid-disconnect leaves it to the next.
     await eventually(async () => {

@@ -52,9 +52,9 @@ test("a sweep with no finished table asks nobody, and disposes only the finished
   let asked = 0;
   const { rt, cluster } = recordingRuntime({
     presence: {
-      connectedUserIds: async () => {
+      onlineAmong: async (userIds) => {
         asked++;
-        return new Set(cluster.online);
+        return new Set(userIds.filter((u) => cluster.online.has(u)));
       },
     },
   });

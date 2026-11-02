@@ -27,6 +27,7 @@ export const SCANS = [
   "tests/server/logRedactionScan.test.ts",
   "tests/server/noEnvReadAtImport.test.ts",
   "tests/server/pgConnections.test.ts",
+  "tests/server/presenceScan.test.ts",
   "tests/server/protocolEvents.test.ts",
   "tests/server/protocolVersion.test.ts",
   "tests/server/rateLimiterFactory.test.ts",

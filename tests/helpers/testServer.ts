@@ -8,6 +8,7 @@ import { closeDatabase, db as appDb, pool as appPool, type Database } from "../.
 import { closeRedis, redisReady } from "../../server/store/redis.ts";
 import { closeTableOwners } from "../../server/store/tableOwners.ts";
 import { stopInbox } from "../../server/store/instanceInbox.ts";
+import { closePresence } from "../../server/store/presence.ts";
 import { cancelRevocationRetries } from "../../server/socket/socketRegistry.ts";
 import { stopHealth } from "../../server/http/health.ts";
 import { dropKeyspace } from "./redisKeys.ts";
@@ -234,6 +235,7 @@ export async function startTestServer(
           stopHealth();
           stopInbox();
           closeTableOwners();
+          closePresence();
           closeRedis();
           // The room-ownership client is a second connection, held open for
           // the life of the process exactly as the pool is.
@@ -261,6 +263,7 @@ export async function startTestServer(
     stopHealth();
     stopInbox();
     closeTableOwners();
+    closePresence();
     closeRedis();
     restoreClock();
     process.env.DATABASE_URL = baseUrl;
