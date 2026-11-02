@@ -119,40 +119,23 @@ export type RoundFlags = Record<number, { bomb: boolean; joker: boolean }>;
  * added here and nowhere else.
  */
 export const persistedMatchSchema = z.object({
-  playerMap: z.unknown().transform(readPersistedPlayerMap),
+  playerMap: z.unknown().optional().transform(readPersistedPlayerMap),
   scores: z.record(
-    z
-      .number({
-        required_error: "scores are missing",
-        invalid_type_error: "scores are not all numbers",
-      })
-      .finite("scores are not all numbers"),
-    { required_error: "scores are not all numbers", invalid_type_error: "scores are not all numbers" },
+    z.string(),
+    z.number({ error: (iss) => (iss.input === undefined ? "scores are missing" : "scores are not all numbers") }),
+    { error: "scores are not all numbers" },
   ),
-  gameMode: z.enum(gameModeSchema.options, {
-    errorMap: (_iss, ctx) => ({ message: `game mode ${String(ctx.data)}` }),
-  }),
-  matchLength: z.enum(matchLengthSchema.options, {
-    errorMap: (_iss, ctx) => ({ message: `match length ${String(ctx.data)}` }),
-  }),
-  matchTarget: z
-    .number({ required_error: "match target missing", invalid_type_error: "match target missing" })
-    .int("match target missing")
-    .min(1, "match target missing"),
-  maxPlayers: z
-    .number({ required_error: "max players missing", invalid_type_error: "max players missing" })
-    .int("max players missing")
-    .min(1, "max players missing"),
+  gameMode: z.enum(gameModeSchema.options, { error: (iss) => `game mode ${String(iss.input)}` }),
+  matchLength: z.enum(matchLengthSchema.options, { error: (iss) => `match length ${String(iss.input)}` }),
+  matchTarget: z.number({ error: "match target missing" }).int("match target missing").min(1, "match target missing"),
+  maxPlayers: z.number({ error: "max players missing" }).int("max players missing").min(1, "max players missing"),
   // Defaulted rather than required: a row written before the field existed
   // restores as a match with no rounds behind it, which costs the results
   // board one number and never the round.
   roundsPlayed: z.number().int().min(0).catch(0).default(0),
   endedByVote: z.boolean().catch(false).default(false),
-  matchOver: z.boolean({
-    required_error: "match verdict missing",
-    invalid_type_error: "match verdict missing",
-  }),
-}, { required_error: "no match state", invalid_type_error: "no match state" });
+  matchOver: z.boolean({ error: "match verdict missing" }),
+}, { error: "no match state" });
 
 export type PersistedMatch = z.infer<typeof persistedMatchSchema>;
 
@@ -264,7 +247,7 @@ const pendingResult = z.object({
   finishedAt: z.number().int().positive(),
   gameMode: gameModeSchema,
   results: z.array(gameResult),
-  outcome: roundOverSchema.omit({ ratingDeltas: true, ratingsAfter: true }).strip(),
+  outcome: z.object(roundOverSchema.shape).omit({ ratingDeltas: true, ratingsAfter: true }),
   seats: z.array(
     z.object({
       seatIndex: seat,
@@ -286,10 +269,7 @@ function readPendingResults(stored: unknown): PendingResult[] {
   });
 }
 
-const roundFlag = z.boolean({
-  required_error: "round flags are not all booleans",
-  invalid_type_error: "round flags are not all booleans",
-});
+const roundFlag = z.boolean({ error: "round flags are not all booleans" });
 
 /**
  * The envelope a stored row must parse into. Declared here and nowhere else:
@@ -298,27 +278,21 @@ const roundFlag = z.boolean({
  */
 export const persistedEnvelopeSchema = z.object({
   // Held to `parseGameState` once the rest of the envelope has parsed.
-  gameState: z.unknown(),
-  roundFlags: z.record(z.object({ bomb: roundFlag, joker: roundFlag }, { invalid_type_error: "no round flags" }), {
-    required_error: "no round flags",
-    invalid_type_error: "no round flags",
+  gameState: z.unknown().optional(),
+  roundFlags: z.record(z.string(), z.object({ bomb: roundFlag, joker: roundFlag }, { error: "no round flags" }), {
+    error: "no round flags",
   }),
-  dealFirstSeat: z
-    .number({ required_error: "no deal rotation", invalid_type_error: "no deal rotation" })
-    .int("no deal rotation")
-    .nonnegative("no deal rotation"),
-  joinCode: z
-    .string({ required_error: "no join code", invalid_type_error: "no join code" })
-    .min(1, "no join code"),
+  dealFirstSeat: z.number({ error: "no deal rotation" }).int("no deal rotation").nonnegative("no deal rotation"),
+  joinCode: z.string({ error: "no join code" }).min(1, "no join code"),
   match: persistedMatchSchema,
   // Read through a filter rather than declared required, so a row without the
   // block restores with four empty collections. Refusing it instead would
   // dispose every live table that lacks it.
-  seats: z.unknown().transform(readPersistedSeats),
+  seats: z.unknown().optional().transform(readPersistedSeats),
   // A log that does not parse costs the round its replay, never the table.
   moveLog: z.array(replayMove).max(MAX_REPLAY_MOVES).nullable().catch(null),
   replayOpening: lastMove.nullable().catch(null),
-  pendingResults: z.unknown().transform(readPendingResults),
+  pendingResults: z.unknown().optional().transform(readPendingResults),
   // A row from before the counter restores at 0: its restore moves the epoch, which outranks any seq.
   seq: z.number().int().nonnegative().catch(0).default(0),
 });

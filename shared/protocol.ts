@@ -9,7 +9,7 @@ import type { FriendRequestAccepted, FriendRequestIncoming } from "./http.ts";
 import type * as Inbound from "./socketSchemas.ts";
 import type { TranslationParams } from "./i18n.ts";
 
-export const PROTOCOL_VERSION = 18;
+export const PROTOCOL_VERSION = 19;
 export const MIN_PROTOCOL_VERSION = 14;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */
@@ -184,25 +184,21 @@ export type InboundSchemas = IntentSchemas & {
 
 // Tolerant on purpose: each checks what rendering dereferences and passes the
 // rest through, so a field a newer server adds never refuses a state.
-const card = z.object({ id: z.string() }).passthrough();
+const card = z.looseObject({ id: z.string() });
 
-const wirePlayer = z
-  .object({ id: z.string(), name: z.string(), hand: z.array(card), handCount: z.number() })
-  .passthrough();
+const wirePlayer = z.looseObject({ id: z.string(), name: z.string(), hand: z.array(card), handCount: z.number() });
 
-export const gameStateSchema = z
-  .object({
-    players: z.array(wirePlayer).min(1),
-    currentTurnIndex: z.number(),
-    roundOver: z.boolean(),
-    finishingOrder: z.array(z.string()).default([]),
-    // Looser than parseGameState's tally on purpose: the server already held its state to that,
-    // and a stricter wire would refuse a state over a tally a newer server reshaped.
-    playedRanks: z.array(z.number()),
-    openingCard: card.nullable(),
-    turn: z.string(),
-  })
-  .passthrough();
+export const gameStateSchema = z.looseObject({
+  players: z.array(wirePlayer).min(1),
+  currentTurnIndex: z.number(),
+  roundOver: z.boolean(),
+  finishingOrder: z.array(z.string()).default([]),
+  // Looser than parseGameState's tally on purpose: the server already held its state to that,
+  // and a stricter wire would refuse a state over a tally a newer server reshaped.
+  playedRanks: z.array(z.number()),
+  openingCard: card.nullable(),
+  turn: z.string(),
+});
 
 /** One seat's line on the end-of-round scoreboard, in every identity it is indexed by. */
 const scoreLine = z.object({
@@ -242,12 +238,12 @@ const roundOverFields = z.object({
    * By user id, and empty for a round that earns no rating, or whose results
    * commit failed: the deltas the commit wrote (server/game/roundResults.ts).
    */
-  ratingDeltas: z.record(z.number()),
+  ratingDeltas: z.record(z.string(), z.number()),
   /**
    * Each rated seat's standing as the round's commit left it, keyed as
    * `ratingDeltas`.
    */
-  ratingsAfter: z.record(ratingAfter),
+  ratingsAfter: z.record(z.string(), ratingAfter),
   /**
    * Whether this round wrote a `GET stats/history` row — a bot-majority
    * table writes none. Wider than `ratingDeltas` being empty: a teams round
@@ -263,20 +259,18 @@ const roundOverFields = z.object({
   voided: z.boolean(),
 });
 
-export const roundOverSchema = roundOverFields.passthrough();
+export const roundOverSchema = z.looseObject(roundOverFields.shape);
 
 export type RoundOverPayload = z.infer<typeof roundOverFields>;
 export type ScoreLine = z.infer<typeof scoreLine>;
 export type RatingAfter = z.infer<typeof ratingAfter>;
 
-export const roomStateSchema = z
-  .object({
-    roomId: z.string(),
-    code: z.string(),
-    status: z.enum(["waiting", "in_progress", "finished"]),
-    players: z.array(z.object({ seatIndex: z.number(), userId: z.string(), username: z.string() }).passthrough()),
-  })
-  .passthrough();
+export const roomStateSchema = z.looseObject({
+  roomId: z.string(),
+  code: z.string(),
+  status: z.enum(["waiting", "in_progress", "finished"]),
+  players: z.array(z.looseObject({ seatIndex: z.number(), userId: z.string(), username: z.string() })),
+});
 
 export function handCountOf(player: Player | WirePlayer): number {
   return "handCount" in player ? player.handCount : player.hand.length;

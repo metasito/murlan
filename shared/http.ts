@@ -141,8 +141,8 @@ declare const res: unique symbol;
 
 export interface Endpoint<
   Res,
-  Body extends z.ZodTypeAny | undefined = undefined,
-  Query extends z.ZodTypeAny | undefined = undefined,
+  Body extends z.ZodType | undefined = undefined,
+  Query extends z.ZodType | undefined = undefined,
 > {
   readonly body?: Body;
   readonly query?: Query;
@@ -151,7 +151,7 @@ export interface Endpoint<
 
 const ep =
   <Res>() =>
-  <B extends z.ZodTypeAny | undefined = undefined, Q extends z.ZodTypeAny | undefined = undefined>(
+  <B extends z.ZodType | undefined = undefined, Q extends z.ZodType | undefined = undefined>(
     parts: { body?: B; query?: Q } = {}
   ): Endpoint<Res, B, Q> =>
     parts;
@@ -202,13 +202,13 @@ export const HTTP = {
 
 export type Route = keyof typeof HTTP;
 export type ResOf<K extends Route> = NonNullable<(typeof HTTP)[K][typeof res]>;
-type BodySchema<K extends Route> = (typeof HTTP)[K] extends Endpoint<unknown, infer B, z.ZodTypeAny | undefined> ? B : never;
-type QuerySchema<K extends Route> = (typeof HTTP)[K] extends Endpoint<unknown, z.ZodTypeAny | undefined, infer Q> ? Q : never;
-export type BodyOf<K extends Route> = BodySchema<K> extends z.ZodTypeAny ? z.input<BodySchema<K>> : undefined;
-export type QueryOf<K extends Route> = QuerySchema<K> extends z.ZodTypeAny ? z.input<QuerySchema<K>> : undefined;
+type BodySchema<K extends Route> = (typeof HTTP)[K] extends Endpoint<unknown, infer B, z.ZodType | undefined> ? B : never;
+type QuerySchema<K extends Route> = (typeof HTTP)[K] extends Endpoint<unknown, z.ZodType | undefined, infer Q> ? Q : never;
+export type BodyOf<K extends Route> = BodySchema<K> extends z.ZodType ? z.input<BodySchema<K>> : undefined;
+export type QueryOf<K extends Route> = QuerySchema<K> extends z.ZodType ? z.input<QuerySchema<K>> : undefined;
 /** What the server holds once validate()/validateQuery() have run. */
-export type ParsedBodyOf<K extends Route> = BodySchema<K> extends z.ZodTypeAny ? z.output<BodySchema<K>> : undefined;
-export type ParsedQueryOf<K extends Route> = QuerySchema<K> extends z.ZodTypeAny ? z.output<QuerySchema<K>> : undefined;
+export type ParsedBodyOf<K extends Route> = BodySchema<K> extends z.ZodType ? z.output<BodySchema<K>> : undefined;
+export type ParsedQueryOf<K extends Route> = QuerySchema<K> extends z.ZodType ? z.output<QuerySchema<K>> : undefined;
 export type PathOf<K extends Route> = K extends `${string} ${infer P}` ? P : never;
 export type ParamsOf<K extends Route> = RouteParameters<PathOf<K>>;
 /**

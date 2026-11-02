@@ -14,7 +14,7 @@ const IdSchema = z.string().min(1).max(64);
 
 /** Events that carry no payload still receive `undefined` from socket.io. */
 export const NoPayloadSchema = z
-  .union([z.undefined(), z.null(), z.object({}).passthrough()])
+  .union([z.undefined(), z.null(), z.looseObject({})])
   .transform(() => ({}));
 
 export const RoomCreateSchema = z.object({
@@ -83,7 +83,7 @@ export const RoomStartSchema = z
  * all and must keep voting yes; it simply cannot withdraw until it updates.
  */
 export const GameEndMatchVoteSchema = z
-  .union([z.undefined(), z.null(), z.object({ wants: z.boolean().optional() }).passthrough()])
+  .union([z.undefined(), z.null(), z.looseObject({ wants: z.boolean().optional() })])
   .transform((v) => ({ wants: v?.wants ?? true }));
 
 /** The `turn` of the wire state a move was made against, echoed untouched; the server drops one made against any other. */

@@ -40,7 +40,7 @@ export function encodeOfflineSave(save: Omit<OfflineSave, "version">): string {
   return JSON.stringify({ ...save, version: OFFLINE_SAVE_VERSION });
 }
 
-const points = z.record(z.number().finite());
+const points = z.record(z.string(), z.number());
 
 const matchSchema = z.object({
   length: matchLengthSchema,

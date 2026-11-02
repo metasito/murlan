@@ -14,12 +14,18 @@ const ICON_SUBSETS = {
 };
 config.resolver.assetExts.push("flac");
 
+// zod re-exports every locale it has as `z.locales`, and Metro does not tree-shake, so all of them
+// shipped (about 38 KB gzipped) for the English one zod registers by itself. Nothing reads
+// `z.locales` (tests/tooling/zodLocales.test.ts).
+const ZOD_LOCALES = path.join(path.dirname(require.resolve("zod/package.json")), "v4", "locales", "index.");
+
 const defaultResolve = config.resolver.resolveRequest;
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   const family = Object.keys(ICON_SUBSETS).find((f) => moduleName.endsWith(`/Fonts/${f}.ttf`));
   if (family) return { type: "sourceFile", filePath: ICON_SUBSETS[family] };
-  return (defaultResolve ?? context.resolveRequest)(context, moduleName, platform);
+  const resolved = (defaultResolve ?? context.resolveRequest)(context, moduleName, platform);
+  return resolved.type === "sourceFile" && resolved.filePath.startsWith(ZOD_LOCALES) ? { type: "empty" } : resolved;
 };
 
 // Metro's transform cache is machine-wide, and its key covers neither the project root nor
