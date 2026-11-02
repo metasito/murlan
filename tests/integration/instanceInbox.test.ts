@@ -89,11 +89,12 @@ describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() },
     const inbox = openInbox({ id: quiet });
     try {
       await opened(quiet);
-      const [first] = await redis.xRange(inboxOf(quiet), "-", "+", { COUNT: 1 });
+      const firstId = (await redis.xRange(inboxOf(quiet), "-", "+", { COUNT: 1 }))?.[0]?.id;
+      assert.ok(firstId, "the reader's stream holds no boot entry");
       await redis.pExpire(inboxOf(quiet), 5_000);
       await eventually(async () => (await redis.pTTL(inboxOf(quiet))) > 60_000, "the reader to renew its stream", 10_000);
-      const [still] = await redis.xRange(inboxOf(quiet), "-", "+", { COUNT: 1 });
-      assert.equal(still?.id, first.id, "the stream expired under its reader and was made again");
+      const stillId = (await redis.xRange(inboxOf(quiet), "-", "+", { COUNT: 1 }))?.[0]?.id;
+      assert.equal(stillId, firstId, "the stream expired under its reader and was made again");
 
       await redis.del(inboxOf(quiet));
       await eventually(async () => (await redis.exists(inboxOf(quiet))) === 1, "the reader to make its lost stream again", 10_000);
