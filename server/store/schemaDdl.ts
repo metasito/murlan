@@ -13,7 +13,7 @@
  */
 import type { Client, Pool } from "pg";
 import { Column, is, SQL, StringChunk } from "drizzle-orm";
-import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
+import { getTableConfig, isPgSequence, PgTable } from "drizzle-orm/pg-core";
 import * as schema from "../../shared/schema.ts";
 import { logger } from "../shared/logger.ts";
 import { createClient } from "./pool.ts";
@@ -331,7 +331,7 @@ function createIndex(unique: boolean, name: string, on: string): string {
 
 /**
  * Every statement needed to bring an empty or partially-populated database up
- * to `shared/schema.ts`, in application order: enum types, then tables, then
+ * to `shared/schema.ts`, in application order: enum types and sequences, then tables, then
  * columns added to tables that already existed, then indexes (which may target
  * one of those new columns).
  *
@@ -365,6 +365,17 @@ export function schemaStatements(existing: SchemaCatalog = EMPTY_CATALOG): strin
         `ALTER TYPE ${quoteIdent(name)} ADD VALUE IF NOT EXISTS ${sqlStringLiteral(value)};`
       );
     }
+  }
+
+  const sequenceStatements: string[] = [];
+  for (const seq of Object.values(schema).filter(isPgSequence)) {
+    if (!seq.seqName || seq.schema !== undefined || (seq.seqOptions && Object.keys(seq.seqOptions).length > 0)) {
+      throw new Error(
+        `schemaStatements: sequence "${seq.seqName}" declares a schema or options, which is not ` +
+          `supported — update schemaStatements() in server/store/schemaDdl.ts.`
+      );
+    }
+    sequenceStatements.push(`CREATE SEQUENCE IF NOT EXISTS ${quoteIdent(seq.seqName)} AS bigint;`);
   }
 
   const tableStatements: string[] = [];
@@ -465,6 +476,7 @@ export function schemaStatements(existing: SchemaCatalog = EMPTY_CATALOG): strin
 
   return [
     ...enumStatements,
+    ...sequenceStatements,
     ...tableStatements,
     ...addColumnStatements,
     ...indexStatements,

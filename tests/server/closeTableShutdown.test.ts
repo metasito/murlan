@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
+import { heldRoom } from "../helpers/heldRoom.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { closeTable } from "../../server/game/gamePersistence.ts";
@@ -23,6 +24,7 @@ test("a shutdown waits for a closed table's status write and row delete", async 
       },
     },
   });
+  await heldRoom(t, ROOM);
   activeGames.set(ROOM, onlineTable({ roomId: ROOM, playerMap: { 0: "ana" }, gameState: startRound(SEATS, "free_for_all") }));
 
   closeTable(rt, ROOM, null);

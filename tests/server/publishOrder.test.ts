@@ -15,6 +15,8 @@ import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
+import { heldRoom } from "../helpers/heldRoom.ts";
+import { reopenOwnership } from "../../server/game/gameOwnership.ts";
 import { createDeck, startRound, type GameState } from "../../lib/game/gameEngine.ts";
 import type { WireGameState } from "../../shared/protocol.ts";
 import { turnOf } from "../../lib/game/moves.ts";
@@ -29,6 +31,8 @@ const SEATS = ["Ana", "B1", "B2", "B3"].map((name, i) => ({
 }));
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+reopenOwnership({ onRoomLost: () => {}, rows: activeGameStore });
 
 afterEach(() => {
   clearRoomTimers(ROOM);
@@ -71,6 +75,7 @@ test("a play serves every viewer, then persists", async (t) => {
   const state = startRound(SEATS, "free_for_all");
   useAnaTable(t, state);
   const { rt, journal } = recordingRuntime({ persist: "real" });
+  await heldRoom(t, ROOM);
   const outcome = await applyOrForward(rt, {
     kind: "move",
     roomId: ROOM,
@@ -95,6 +100,7 @@ test("the state that closes an exchange shows every viewer the ceremony", async 
   const give = state.players[0].hand.find((c) => c.id !== phase.cardFromLoser.id)!;
   useAnaTable(t, { ...state, currentTurnIndex: 0 });
   const { rt, journal } = recordingRuntime({ persist: "real" });
+  await heldRoom(t, ROOM);
   assert.deepEqual(await applyOrForward(rt, { kind: "move", roomId: ROOM, userId: "ana", move: { kind: "giveback", cardId: give.id }, turn: turnOf(state) }), {
     ok: true,
   });
@@ -112,6 +118,7 @@ test("a deal serves every viewer, then persists", async (t) => {
   const state = { ...startRound(SEATS, "free_for_all"), roundOver: true, finishingOrder: ["player_0"] };
   useAnaTable(t, state, { roundsPlayed: 1 });
   const { rt, journal } = recordingRuntime({ persist: "real" });
+  await heldRoom(t, ROOM);
   assert.deepEqual(await applyOrForward(rt, { kind: "rematchVote", roomId: ROOM, userId: "ana" }), { ok: true });
   await settle();
   assert.ok(journal.some((e) => e.kind === "send" && e.event === "game:started"), "the vote dealt nothing");
@@ -122,6 +129,7 @@ test("the last player leaving mid-match is written before the table is disposed"
   const state = startRound(SEATS, "free_for_all");
   useAnaTable(t, state, { roundsPlayed: 1 });
   const { rt, journal } = recordingRuntime({ persist: "real" });
+  await heldRoom(t, ROOM);
   await applyOrForward(rt, { kind: "vacate", roomId: ROOM, userId: "ana" });
   await settle();
   await settle();
@@ -143,6 +151,7 @@ test("a row write still in flight lands before the last leaver's delete", async 
     return landWrite(...args);
   });
   const { rt, journal } = recordingRuntime({ persist: "real" });
+  await heldRoom(t, ROOM);
 
   await applyOrForward(rt, { kind: "vacate", roomId: ROOM, userId: "besi" });
   await applyOrForward(rt, { kind: "vacate", roomId: ROOM, userId: "ana" });
@@ -161,11 +170,11 @@ function gatedStore() {
   const landed: string[] = [];
   const gates: (() => void)[] = [];
   const gated = (label: (arg: unknown) => string) => (_roomId: string, arg?: unknown) =>
-    new Promise<void>((resolve, reject) => {
+    new Promise<boolean>((resolve, reject) => {
       const tag = label(arg);
       gates.push(() => {
         if (tag.startsWith("fail")) reject(new Error("connection terminated"));
-        else resolve();
+        else resolve(true);
       });
       landed.push(tag);
     });
@@ -193,7 +202,8 @@ const flush = async () => {
   for (let i = 0; i < 20; i++) await settle();
 };
 
-test("row writes land one at a time in the order they were made, however many are waiting", async () => {
+test("row writes land one at a time in the order they were made, however many are waiting", async (t) => {
+  await heldRoom(t, ROOM);
   const { store, started, land } = gatedStore();
   const writers = tableWriters(store);
   const game = tableAtRound(1);
@@ -222,7 +232,8 @@ test("row writes land one at a time in the order they were made, however many ar
   assert.deepEqual(started, ["round1", "round2", "round3", "round4"]);
 });
 
-test("a row write whose table was disposed while it waited is never made", async () => {
+test("a row write whose table was disposed while it waited is never made", async (t) => {
+  await heldRoom(t, ROOM);
   const { store, started, land } = gatedStore();
   const writers = tableWriters(store);
   const game = tableAtRound(1);
@@ -237,7 +248,8 @@ test("a row write whose table was disposed while it waited is never made", async
   assert.deepEqual(started, ["round1"], "a disposed table's row was written back");
 });
 
-test("a row write for a table since replaced under the same room is never made", async () => {
+test("a row write for a table since replaced under the same room is never made", async (t) => {
+  await heldRoom(t, ROOM);
   const { store, started, land } = gatedStore();
   const writers = tableWriters(store);
   const game = tableAtRound(1);
@@ -251,7 +263,8 @@ test("a row write for a table since replaced under the same room is never made",
   assert.deepEqual(started, ["round1"], "a stale game overwrote the row of the one that replaced it");
 });
 
-test("a row write or delete that fails does not reject, and the writes behind it still land", async () => {
+test("a row write or delete that fails does not reject, and the writes behind it still land", async (t) => {
+  await heldRoom(t, ROOM);
   const { store, started, land } = gatedStore();
   const failing = {
     ...store,
@@ -271,7 +284,8 @@ test("a row write or delete that fails does not reject, and the writes behind it
   await next;
 });
 
-test("a row write that fails does not reject, and the next one lands", async () => {
+test("a row write that fails does not reject, and the next one lands", async (t) => {
+  await heldRoom(t, ROOM);
   const rows: number[] = [];
   let failNext = true;
   const store = {
@@ -282,8 +296,9 @@ test("a row write that fails does not reject, and the next one lands", async () 
           throw new Error("connection terminated");
         }
         rows.push(row.match.roundsPlayed);
+        return true;
       },
-      remove: async () => {},
+      remove: async () => true,
     },
     rooms: { updateRoomStatus: async () => {} },
   } as unknown as TableStore;

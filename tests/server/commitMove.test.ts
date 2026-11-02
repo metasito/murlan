@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { recordingRuntime, type JournalEntry } from "../helpers/recordingRuntime.ts";
+import { heldRoom } from "../helpers/heldRoom.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
 import { commitMove, moveAction } from "../../server/game/tableMoves.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
@@ -84,6 +85,7 @@ for (const kind of ["play", "pass"] as const) {
   test(`a ${kind} is logged once, persisted and re-armed at the ordinary bot delay`, async (t) => {
     useMemoryTableStores(t);
     const { rt, journal } = recordingRuntime({ persist: "real" });
+    await heldRoom(t, ROOM);
     const persists = () => rowsWritten(journal);
     t.mock.timers.enable({ apis: ["setTimeout"] });
     try {
@@ -109,6 +111,7 @@ for (const kind of ["play", "pass"] as const) {
 test("a play that ends the round is logged, persisted, and handed to round over instead of arming a seat", async (t) => {
   useMemoryTableStores(t);
   const { rt, journal } = recordingRuntime({ persist: "real" });
+  await heldRoom(t, ROOM);
   try {
     const dealt = startRound(SEATS.slice(0, 2), "free_for_all");
     const state = structuredClone(dealt);
@@ -135,6 +138,7 @@ test("a play that ends the round is logged, persisted, and handed to round over 
 test("an exchange logs no replay move, persists, and holds the next seat for the ceremony", async (t) => {
   useMemoryTableStores(t);
   const { rt, journal } = recordingRuntime({ persist: "real" });
+  await heldRoom(t, ROOM);
   const persists = () => rowsWritten(journal);
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   try {
@@ -168,6 +172,7 @@ function leading(hand: ReturnType<typeof c>[]): GameState {
 test("a bomb is flagged for its seat, and an ordinary play is not", async (t) => {
   useMemoryTableStores(t);
   const { rt } = recordingRuntime({ persist: "real" });
+  await heldRoom(t, ROOM);
   try {
     const bomb = leading([c("7", "spades"), c("7", "hearts"), c("7", "clubs"), c("7", "diamonds"), c("9", "clubs")]);
     const bombed = table(bomb);
@@ -187,6 +192,7 @@ test("a bomb is flagged for its seat, and an ordinary play is not", async (t) =>
 test("a pass is logged for replay as a pass: no cards, by its seat", async (t) => {
   useMemoryTableStores(t);
   const { rt } = recordingRuntime({ persist: "real" });
+  await heldRoom(t, ROOM);
   try {
     const state = opened();
     const game = table(state);
@@ -204,6 +210,7 @@ test("a pass is logged for replay as a pass: no cards, by its seat", async (t) =
 test("a move that ends the round is acknowledged ok once the round has been handed over", async (t) => {
   useMemoryTableStores(t);
   const { rt } = recordingRuntime({ persist: "real" });
+  await heldRoom(t, ROOM);
   try {
     const state = leading([c("9", "clubs")]);
     const game = table(state, { 0: "u0", 1: "u1" });

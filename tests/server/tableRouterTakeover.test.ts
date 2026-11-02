@@ -7,6 +7,7 @@ import { applyOrForward, inFlight, TABLE_ACTION_EVENT } from "../../server/game/
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearAllTimersForUser, clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { claimRoom, closeOwnership, ownershipKey, ownsRoom, reopenOwnership } from "../../server/game/gameOwnership.ts";
+import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { friendStore } from "../../server/store/friendStore.ts";
 import { packPersistedState } from "../../shared/persistedEnvelope.ts";
 import type { TableActionDraft } from "../../server/game/tableActions.ts";
@@ -35,7 +36,7 @@ function scriptLock(t: TestContext) {
   return lock;
 }
 
-beforeEach(() => reopenOwnership({ onRoomLost: () => {} }));
+beforeEach(() => reopenOwnership({ onRoomLost: () => {}, rows: activeGameStore }));
 
 afterEach(async () => {
   for (const userId of ["ana", "besi"]) clearAllTimersForUser(userId, ROOM);

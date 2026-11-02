@@ -68,7 +68,7 @@ const APPLIED_MAX = 2_000;
  * who holds no seat in the persisted roster must not be able to pull a table
  * into this instance's memory at all.
  */
-export type RehydrateOutcome = "restored" | "missing" | "unrestorable" | "newer" | "not_seated";
+export type RehydrateOutcome = "restored" | "missing" | "unrestorable" | "newer" | "not_seated" | "lost";
 
 /** Every action this process has already applied, by id. */
 const applied = new Map<string, { outcome: Promise<Outcome>; at: number }>();
@@ -201,7 +201,7 @@ async function takeOverAndApply(
 ): Promise<Outcome> {
   const { roomId } = action;
   const restored = await rehydrateGame(rt, roomId, mayCreate ? null : action.userId);
-  if (restored === "newer") {
+  if (restored === "newer" || restored === "lost") {
     await releaseRoom(roomId);
     return UNREACHABLE;
   }

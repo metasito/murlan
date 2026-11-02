@@ -13,7 +13,8 @@ const { createSocketAdapter, socketAdapterPool } = (await import("../../../../..
 const own = await import("../../../../../../server/game/gameOwnership.ts");
 openDatabase();
 createSocketAdapter();
-own.reopenOwnership({ onRoomLost: () => {} });
+const { activeGameStore } = await import("../../../../../../server/store/activeGameStore.ts");
+own.reopenOwnership({ onRoomLost: () => {}, rows: activeGameStore });
 
 const probe = `select pg_backend_pid() pid,
   current_setting('application_name') application_name,
