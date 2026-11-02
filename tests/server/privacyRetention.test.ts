@@ -15,6 +15,8 @@ import { EVENT_RETENTION_DAYS } from "../../server/shared/events.ts";
 import { STALE_ROOM_MAX_AGE_MS, ABANDONED_GAME_MAX_AGE_MS } from "../../server/game/retention.ts";
 import { SESSION_MAX_AGE_MS } from "../../server/http/session.ts";
 import { MAX_DEVICES_PER_USER } from "../../server/socket/push.ts";
+import { limiterRetentionMs } from "../../server/http/rateLimit.ts";
+import "../../server/http/routes/index.ts";
 
 const POLICY = readFileSync("docs/PRIVACY.md", "utf8");
 
@@ -31,6 +33,8 @@ describe("docs/PRIVACY.md states the retention the code enforces", () => {
     ["stale rooms", () => `${hours(STALE_ROOM_MAX_AGE_MS)} hours`],
     ["abandoned games", () => `${hours(ABANDONED_GAME_MAX_AGE_MS)} hours`],
     ["the session cookie", () => `${days(SESSION_MAX_AGE_MS)} days`],
+    ["rate-limit counts shared between servers", () => `in the store our servers share, until its window ends, ${hours(limiterRetentionMs().shared)} hours at most`],
+    ["rate-limit counts in a server's memory", () => `in that server's own memory, for up to twice its window, ${hours(limiterRetentionMs().local)} hours at most`],
   ];
 
   for (const [what, figure] of cases) {

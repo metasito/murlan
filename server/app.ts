@@ -15,6 +15,7 @@ import { ownershipConnected } from "./game/gameOwnership.ts";
 import { errorHandler } from "./http/errorHandler.ts";
 import { installServerErrorRecorder } from "./http/serverErrors.ts";
 import { mountApi } from "./http/routes/index.ts";
+import { connectRateLimits } from "./http/rateLimit.ts";
 import { ensureSchema } from "./store/schemaDdl.ts";
 import { allowedOrigins, isAllowedOrigin, trustProxySetting } from "./http/cors.ts";
 import { checkMailConfigOnBoot } from "./http/mail.ts";
@@ -196,6 +197,7 @@ export interface CreatedApp {
  */
 export async function createApp(): Promise<CreatedApp> {
   openDatabase();
+  connectRateLimits();
   installServerErrorRecorder();
   const app = express();
 
