@@ -1,13 +1,17 @@
 # Every runtime, service and dependency on its latest usable stable release: report
 
 Research for #1911 (child of map #1898), on `main` at `dfd7695`, 2026-11-02. The decisions are
-recorded in [ADR-0015](../../adr/0015-every-runtime-and-service-on-its-latest-usable-stable-release.md);
-this file is the evidence, and the per-product files beside it hold the detail and the sources:
+recorded in [ADR-0015](../../adr/0015-every-runtime-and-service-on-its-latest-usable-stable-release.md),
+whose Postgres 18 and Valkey 8.1 the owner replaced the same day with Postgres 19 and Valkey 9.1
+([ADR-0016](../../adr/0016-postgres-19-and-valkey-9-now.md); `postgres-19.md`, `valkey-9.md`). Where
+this file says 18, 8.1, #1925 or #1926, ADR-0016 governs. This file is the evidence, and the per-product files beside it hold the detail and the sources:
 
 | File | Covers |
 |---|---|
 | [postgres.md](postgres.md) | Postgres 16 → 18: versions, hosts, breaking changes, the 17/18/19 feature survey, the upgrade runbook |
 | [redis.md](redis.md) | Redis 7 → Valkey 8.1: versions, licensing, hosts, compatibility, feature survey, stream sizing, Upstash cost |
+| [postgres-19.md](postgres-19.md) | Postgres 16 → 19, which ADR-0016 chose over 18: version facts, the 17/18/19 features re-judged against the code, breaking changes |
+| [valkey-9.md](valkey-9.md) | Redis 7 → Valkey 9.1, which ADR-0016 chose over 8.1: version facts, the commands that replace our Lua, presence without scripts, clients |
 | [node.md](node.md) | Node 22/24 → 26: the release schedule, breaking changes, built-ins that replace a dependency |
 | [client.md](client.md) | Expo SDK 57 → 58, React Native 0.86 → 0.88, React 19.3, patches, client feature survey |
 | [server-deps.md](server-deps.md) | Server and tooling packages, the majors, removable dependencies, `npm audit` |
