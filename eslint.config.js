@@ -1,5 +1,5 @@
 const { defineConfig } = require('eslint/config');
-const expoConfig = require('eslint-config-expo/flat');
+const baseConfig = require('./eslint.base.cjs');
 const globals = require('globals');
 const { guardBlocks } = require('./eslint.guards.cjs');
 
@@ -71,7 +71,7 @@ const PALETTE_MESSAGE = `${PALETTE_READER} is the one reader of NoticePalette: p
 const PALETTE_LAYERS = restrictTheme(["NoticePalette"], PALETTE_MESSAGE, true);
 
 module.exports = defineConfig([
-  expoConfig,
+  ...baseConfig,
   {
     // Generated output and agent tooling — never app code, never worth linting.
     ignores: [
@@ -141,7 +141,7 @@ module.exports = defineConfig([
     },
   },
   {
-    // `eslint-config-expo` registers `@typescript-eslint` only for TS files, and
+    // eslint.base.cjs registers `@typescript-eslint` only for TS files, and
     // a flat-config block may only name a rule from a plugin registered for the
     // same file — which is why this names .ts/.tsx rather than every file.
     files: ["**/*.{ts,tsx}"],
@@ -157,7 +157,7 @@ module.exports = defineConfig([
   },
   {
     // Everything here runs under Node, not in the app bundle, so it gets
-    // Node's globals instead of the browser set `eslint-config-expo` assumes
+    // Node's globals instead of the browser set eslint.base.cjs assumes
     // for the client.
     files: ["*.config.{js,ts}", "scripts/**", "tools/**", "server/**", "tests/**"],
     languageOptions: { globals: globals.node },
@@ -174,12 +174,12 @@ module.exports = defineConfig([
     // Jest's own two idioms, both of which these rules read as mistakes.
     // `jest.mock()` is hoisted above the imports by babel-plugin-jest-hoist
     // whatever order it is written in, so the imports below it run second
-    // either way and `import/first` is enforcing an order that does not
+    // either way and `import-x/first` is enforcing an order that does not
     // exist. `require()` after `jest.resetModules()` is the only way to get a
     // second, freshly-mocked copy of a module — a static import is bound once.
     files: ["tests/native/**/*.{ts,tsx}"],
     rules: {
-      "import/first": "off",
+      "import-x/first": "off",
       "@typescript-eslint/no-require-imports": "off",
     },
   },
@@ -211,7 +211,7 @@ module.exports = defineConfig([
     },
   },
   {
-    // Expo's allow-list is Metro's default assetExts, which lack the FLAC metro.config.js adds.
+    // eslint.base.cjs allows Metro's default assetExts, which lack the FLAC metro.config.js adds.
     files: ["lib/device/musicTracks.ts"],
     rules: {
       "@typescript-eslint/no-require-imports": ["warn", { allow: ["\\.flac$"] }],

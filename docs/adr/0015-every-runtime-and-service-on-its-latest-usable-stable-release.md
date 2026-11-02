@@ -1,6 +1,6 @@
 # 0015. Every runtime and service on its latest usable stable release
 
-**Status:** Accepted; decisions 1 (Postgres 18) and 2 (Valkey 8.1) superseded by ADR-0016
+**Status:** Accepted; decisions 1 (Postgres 18) and 2 (Valkey 8.1) superseded by ADR-0016; decision 5's TypeScript and ESLint clauses superseded by ADR-0017
 **Date:** 2026-11-02
 
 ## Context
