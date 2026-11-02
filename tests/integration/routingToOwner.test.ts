@@ -14,6 +14,7 @@ import { boot, freePorts, type Instance } from "../helpers/instance.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
 import { keyspace } from "../../server/store/redis.ts";
+import { closePresence, instancesOf, openPresence } from "../../server/store/presence.ts";
 
 const METRICS_TOKEN = "routing-metrics";
 /**
@@ -49,11 +50,18 @@ describe("an intent for a table another instance owns", { skip: hasDatabase() ? 
       redis.destroy();
     }
   }
-  const instanceOf = (userId: string) =>
-    withRedis((redis, key) => redis.hGet(key(`presence:${userId}`), "instance")).then((id) => {
+  /** Through the presence store's own reads, as the servers find an account, keyed to their schema. */
+  async function instanceOf(userId: string): Promise<string> {
+    const prior = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = scoped;
+    try {
+      const id = (await instancesOf([userId])).get(userId);
       assert.ok(id, `${userId} has no presence entry`);
       return id;
-    });
+    } finally {
+      process.env.DATABASE_URL = prior;
+    }
+  }
   const inboxLength = (instance: string) => withRedis((redis, key) => redis.xLen(key(`inbox:${instance}`)));
   async function adapterMessages(port: number): Promise<number> {
     const res = await fetch(`http://127.0.0.1:${port}/metrics`, { headers: { authorization: `Bearer ${METRICS_TOKEN}` } });
@@ -69,6 +77,7 @@ describe("an intent for a table another instance owns", { skip: hasDatabase() ? 
     await admin.query(`CREATE SCHEMA "${schema}"`);
     await admin.end();
     proxy = await startProxy(targetOf(process.env.REDIS_URL!, 6379));
+    openPresence(process.env.REDIS_URL);
     ports = await freePorts(3);
     const env = { MURLAN_AFK_TIMEOUT_MS: "600000", METRICS_TOKEN };
     // Sequentially: each runs `ensureSchema` against the same schema.
@@ -100,6 +109,7 @@ describe("an intent for a table another instance owns", { skip: hasDatabase() ? 
   });
 
   after(async () => {
+    closePresence();
     for (const s of sockets) s.close();
     for (const i of instances) i.child.kill("SIGKILL");
     await proxy?.close();

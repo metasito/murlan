@@ -30,6 +30,8 @@ export async function seatSocket(
 }
 
 const STOP_SPECTATING = "stop-spectating";
+/** What a revision before inbox routing emits and answers (ADR 0014, decision 9). */
+const LEGACY_STOP_SPECTATING = "murlan:stop-spectating";
 /** As long as a forwarded table action's try (`server/game/tableRouter.ts`). */
 const TELL_WITHIN_MS = 1_500;
 
@@ -45,7 +47,9 @@ function stopLocalSpectating(rt: TableRuntime, userId: string): Promise<unknown>
 
 async function tellTheirInstance(rt: TableRuntime, userId: string): Promise<void> {
   const at = await rt.peers.instanceOf(userId);
-  if (at && at !== rt.peers.self) await rt.peers.send(at, { kind: STOP_SPECTATING, userId });
+  if (!at || at === rt.peers.self) return;
+  if (rt.peers.speaksInbox(at)) await rt.peers.send(at, { kind: STOP_SPECTATING, userId });
+  else await rt.peers.legacy.ask(LEGACY_STOP_SPECTATING, userId);
 }
 
 /**
@@ -72,6 +76,9 @@ export async function stopSpectatingEverywhere(rt: TableRuntime, userId: string)
 }
 
 export function registerStopSpectating(rt: TableRuntime) {
+  rt.peers.legacy.answer(LEGACY_STOP_SPECTATING, async (userId) => {
+    if (typeof userId === "string") await stopLocalSpectating(rt, userId);
+  });
   rt.peers.on(STOP_SPECTATING, ({ userId }) => {
     if (typeof userId !== "string") return;
     void stopLocalSpectating(rt, userId).catch((err: unknown) =>

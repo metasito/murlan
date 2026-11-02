@@ -104,6 +104,10 @@ Each decision, and why:
    bundles use is removed when `MIN_PROTOCOL_VERSION` passes the version that stopped sending it.
    *Why:* app-store builds stay installed long after a release, so "one release later" is not a
    removal date.
+   Between instances the same holds for one rolling deploy: a table action and a stop-spectating
+   call go to an instance's inbox only when its adapter heartbeat names it, and otherwise over the
+   legacy `murlan:table` and `murlan:stop-spectating` emits, which every instance still answers.
+   Both legacy emits and their listeners are removed once no deployed revision predates #1895.
 10. **Every HTTP rate limit is shared in Redis.** On a store error a limiter falls back to its
     in-memory store and counts it, never failing open and never answering 500. Socket action limits
     stay per process. This supersedes the owner's 2026-10-16 decision (the #1650 design audit's D7)

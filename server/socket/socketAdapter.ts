@@ -1,7 +1,7 @@
 import { createAdapter } from "@socket.io/redis-streams-adapter";
 import { MessageType, type ClusterMessage } from "socket.io-adapter";
 import { now } from "../http/clock.ts";
-import { BLOCK_MS, openRedis, redisKey, streamMaxLen, type RedisClient } from "../store/redis.ts";
+import { BLOCK_MS, instanceId, openRedis, redisKey, streamMaxLen, type RedisClient } from "../store/redis.ts";
 import { clusterMessages, noteStreamRead } from "../shared/metrics.ts";
 
 type Packet = unknown[];
@@ -12,6 +12,18 @@ const FIRST_BEAT_POLL_MS = 100;
 const PEER_GRACE_MS = 10_000;
 const HEARTBEAT = "murlan:adapter-heartbeat";
 const LEAVING = "murlan:adapter-leaving";
+
+/**
+ * Instances whose heartbeat named them, by when it was last heard. A revision before inbox
+ * routing (#1895) beats without its name, so it is never here (ADR 0014, decision 9).
+ */
+const routingPeers = new Map<string, number>();
+
+/** Whether `instance` was heard within the grace, on a revision that answers a table ask in its inbox. */
+export function speaksInbox(instance: string): boolean {
+  const last = routingPeers.get(instance);
+  return last !== undefined && now() - last < PEER_GRACE_MS;
+}
 
 interface AdapterLinks {
   client: RedisClient;
@@ -164,19 +176,22 @@ export function createSocketAdapter() {
     cluster.onMessage = (message: ClusterMessage, offset?: string) => {
       if (offset !== undefined) noteStreamRead("adapter", offset);
       const event = message.type === MessageType.SERVER_SIDE_EMIT ? (message.data.packet as Packet)[0] : undefined;
+      const named = message.type === MessageType.SERVER_SIDE_EMIT ? (message.data.packet as Packet)[1] : undefined;
       if (event === LEAVING) {
         left.add(message.uid);
         heard.delete(message.uid);
         noticed.delete(message.uid);
+        if (typeof named === "string") routingPeers.delete(named);
       } else if (offset === undefined && message.uid !== cluster.uid && !left.has(message.uid)) {
         const at = now();
         heard.set(message.uid, at);
         if (!noticed.has(message.uid)) noticed.set(message.uid, at);
+        if (event === HEARTBEAT && typeof named === "string") routingPeers.set(named, at);
       }
       if (event === HEARTBEAT || event === LEAVING) return;
       return onMessage(message, offset);
     };
-    const beatNow = () => void serverSideEmit([HEARTBEAT]);
+    const beatNow = () => void serverSideEmit([HEARTBEAT, instanceId]);
     const beat = setInterval(beatNow, HEARTBEAT_MS);
     const firstBeat = setInterval(() => {
       if (!links.ready()) return;
@@ -187,7 +202,7 @@ export function createSocketAdapter() {
     adapter.close = () => {
       clearInterval(beat);
       clearInterval(firstBeat);
-      void serverSideEmit([LEAVING]);
+      void serverSideEmit([LEAVING, instanceId]);
       return close();
     };
     return adapter;

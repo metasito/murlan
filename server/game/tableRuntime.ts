@@ -47,7 +47,10 @@ export interface Presence {
 /** The other instances, one address at a time (`server/store/instanceInbox.ts`). */
 export interface Peers {
   self: string;
-  /** Rejects at once when nobody can be handed the message: the store is down, or that instance is gone. */
+  /**
+   * Rejects at once while the store is down. Resolves for an instance that is gone: its inbox
+   * takes the message and nobody reads it.
+   */
   send(to: string, message: InstanceMessage): Promise<void>;
   /** A handler that awaits holds up every later message to this instance. */
   on(kind: string, handler: InstanceHandler): void;
@@ -55,6 +58,19 @@ export interface Peers {
   ownerOf(roomId: string): Promise<string | null>;
   /** The instance an account's presence entry names, null while offline; rejects when it cannot be read. */
   instanceOf(userId: string): Promise<string | null>;
+  /** Heard lately, on a revision that reads `send`'s messages for this. False for one gone, or older. */
+  speaksInbox(instance: string): boolean;
+  legacy: LegacyPeers;
+}
+
+/**
+ * The carrier a revision before inbox routing (#1895) speaks: an acknowledged emit every instance
+ * hears. Kept until no deployed revision predates it (ADR 0014, decision 9).
+ */
+export interface LegacyPeers {
+  /** Every instance's reply; `err` when one did not answer in time. Never rejects. */
+  ask(event: string, payload: unknown): Promise<{ err: unknown; replies: unknown[] }>;
+  answer(event: string, handler: (payload: unknown) => Promise<unknown>): void;
 }
 
 /** The only path a table's row and room-status writes take (`gamePersistence.ts` `tableWriters`). */

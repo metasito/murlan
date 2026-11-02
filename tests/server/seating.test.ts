@@ -22,6 +22,7 @@ test("stopping a player spectating everywhere sends one message, to their instan
   const { rt } = recordingRuntime({
     peers: {
       instanceOf: async (userId) => (userId === "u1" ? "their-instance" : null),
+      speaksInbox: () => true,
       send: async (to, message) => void sent.push([to, message]),
     },
   });
@@ -58,7 +59,7 @@ async function settledAfter(t: TestContext, stopping: Promise<void>, ms: number)
 test("stopping a player spectating everywhere waits on no peer's answer", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { rt } = recordingRuntime({
-    peers: { instanceOf: async () => "silent-instance", send: async () => {} },
+    peers: { instanceOf: async () => "silent-instance", speaksInbox: () => true, send: async () => {} },
   });
   assert.equal(await settledAfter(t, stopSpectatingEverywhere(rt, "u1"), 0), true);
 });
@@ -92,5 +93,45 @@ test("an instance told an account stopped watching takes its sockets here out of
     assert.deepEqual(routed, [{ kind: "unspectate", roomId: "watched-room", userId: "u1" }]);
   } finally {
     spectatorRoomMap.delete("s1");
+  }
+});
+
+test("stopping a player spectating at an instance on an older revision goes over the legacy emit", async () => {
+  const emitted: unknown[] = [];
+  const sent: unknown[] = [];
+  const { rt } = recordingRuntime({
+    peers: {
+      instanceOf: async () => "old-instance",
+      speaksInbox: () => false,
+      send: async (to) => void sent.push(to),
+      legacy: {
+        ask: async (event, payload) => (emitted.push([event, payload]), { err: null, replies: [] }),
+        answer: () => {},
+      },
+    },
+  });
+  await stopSpectatingEverywhere(rt, "u1");
+  assert.deepEqual(emitted, [["murlan:stop-spectating", "u1"]]);
+  assert.deepEqual(sent, []);
+});
+
+test("an older instance's legacy call to stop an account watching is answered once its sockets here left", async (t) => {
+  const answers = new Map<string, (payload: unknown) => Promise<unknown>>();
+  const left: string[] = [];
+  const socket = { id: "s2", leave: (room: string) => void left.push(room) };
+  const { rt } = recordingRuntime({
+    peers: { legacy: { ask: async () => ({ err: null, replies: [] }), answer: (event, handler) => void answers.set(event, handler) } },
+    transport: {
+      sockets: { adapter: { rooms: new Map([[userRoom("u2"), new Set(["s2"])]]) }, sockets: new Map([["s2", socket]]) },
+    },
+  });
+  t.mock.method(rt, "route", async () => ({ ok: true }));
+  registerStopSpectating(rt);
+  spectatorRoomMap.set("s2", "watched-room");
+  try {
+    await answers.get("murlan:stop-spectating")?.("u2");
+    assert.deepEqual(left, ["watched-room"]);
+  } finally {
+    spectatorRoomMap.delete("s2");
   }
 });

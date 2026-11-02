@@ -17,9 +17,8 @@ import { trackEvent } from "../shared/events.ts";
 import { redeemSocketTicket, verifySocketTicket } from "./ticket.ts";
 import { isAllowedOrigin } from "../http/cors.ts";
 import { createSocketAdapter } from "./socketAdapter.ts";
-import { onInstanceMessage, sendToInstance, startInbox } from "../store/instanceInbox.ts";
-import { instanceId } from "../store/redis.ts";
-import { openTableOwners, tableOwnerOf } from "../store/tableOwners.ts";
+import { startInbox } from "../store/instanceInbox.ts";
+import { openTableOwners } from "../store/tableOwners.ts";
 import { registerRoomHandlers } from "./socketRooms.ts";
 import { registerGameplayHandlers } from "./socketGameplay.ts";
 import {
@@ -41,7 +40,8 @@ import { roomStore } from "../store/roomStore.ts";
 import { registerStopSpectating } from "./seating.ts";
 import { socketPresence } from "./socketOutbox.ts";
 import { deliveryOutbox } from "./delivery.ts";
-import { forgetPresence, instancesOf, openPresence, recordPresence } from "../store/presence.ts";
+import { instancePeers } from "./peers.ts";
+import { forgetPresence, openPresence, recordPresence } from "../store/presence.ts";
 
 /**
  * Handshakes one account may complete per minute. Socket.io answers
@@ -118,21 +118,15 @@ export function setupSocket(httpServer: HttpServer, sessionMiddleware: RequestHa
   openTableOwners();
   openPresence();
   // Before the first connection: a table action forwarded from another
-  // instance arrives in this instance's inbox, not on a socket, and one that
-  // lands before the runtime's listener exists is answered by nobody.
+  // instance arrives in this instance's inbox or on `io`, not on a socket, and
+  // one that lands before the runtime's listener exists is answered by nobody.
   const store = { games: activeGameStore, rooms: roomStore };
   const rt = createTableRuntime({
     out: deliveryOutbox(io),
     presence: socketPresence(io),
     writers: tableWriters(store),
     transport: io,
-    peers: {
-      self: instanceId,
-      send: sendToInstance,
-      on: onInstanceMessage,
-      ownerOf: tableOwnerOf,
-      instanceOf: async (userId) => (await instancesOf([userId])).get(userId) ?? null,
-    },
+    peers: instancePeers(io),
     store,
   });
   bindSocketRuntime(rt);

@@ -50,41 +50,90 @@ export function lonePeers(overrides: Partial<Peers> = {}): Peers {
     on: () => {},
     ownerOf: async () => null,
     instanceOf: async () => null,
+    speaksInbox: () => false,
+    legacy: { ask: async () => ({ err: null, replies: [] }), answer: () => {} },
     ...overrides,
   };
 }
 
 /**
- * `owner` holds every table: each action forwarded to it is recorded and answered with what
- * `reply` returns, `"silent"` for no answer at all. Every other message is recorded in `sent`.
+ * An instance on a revision before inbox routing holds every table: it hears only the legacy emit,
+ * and answers each table action there with what `reply` returns, `"silent"` for no answer.
+ * `emitted` records every legacy emit; `sent` every inbox message, which nobody reads.
  */
-export function ownedElsewhere(reply: (action: TableAction) => Outcome | undefined | "silent", owner = "owner-instance") {
+export function legacyOwner(reply: (action: TableAction) => Outcome | undefined | "silent", owner = "old-instance") {
+  const emitted: { event: string; payload: unknown }[] = [];
+  const sent: { to: string; message: InstanceMessage }[] = [];
+  const peers: Partial<Peers> = {
+    ownerOf: async () => owner,
+    speaksInbox: () => false,
+    send: async (to, message) => void sent.push({ to, message }),
+    legacy: {
+      ask: async (event, payload) => {
+        emitted.push({ event, payload });
+        if (event !== "murlan:table") return { err: null, replies: [] };
+        const answer = reply(payload as TableAction);
+        if (answer === "silent") return new Promise(() => {});
+        return { err: null, replies: [{ ok: false, code: "NOT_THIS_INSTANCE" }, answer] };
+      },
+      answer: () => {},
+    },
+  };
+  return { peers, emitted, sent };
+}
+
+/**
+ * `owner`, heard lately and on this revision, holds every table: each action forwarded to it is
+ * recorded and answered `answerAfterMs` later with what `reply` returns, `"silent"` for no answer
+ * at all. Every other message is recorded in `sent`, every legacy emit in `emitted`.
+ */
+export function ownedElsewhere(
+  reply: (action: TableAction) => Outcome | undefined | "silent",
+  owner = "owner-instance",
+  answerAfterMs = 0
+) {
   const handlers = new Map<string, InstanceHandler>();
   const asks: { to: string; action: TableAction }[] = [];
   const sent: { to: string; message: InstanceMessage }[] = [];
+  const emitted: string[] = [];
   const peers: Partial<Peers> = {
     on: (kind, handler) => void handlers.set(kind, handler),
     ownerOf: async () => owner,
+    speaksInbox: (instance) => instance === owner,
+    legacy: {
+      ask: async (event) => {
+        emitted.push(event);
+        return { err: null, replies: [] };
+      },
+      answer: () => {},
+    },
     send: async (to, message) => {
       if (message.kind !== TABLE_ASK) return void sent.push({ to, message });
       const action = message.action as TableAction;
       asks.push({ to, action });
       const answer = reply(action);
       if (answer === "silent") return;
-      setImmediate(() => void handlers.get(TABLE_ANSWER)?.({ kind: TABLE_ANSWER, ask: message.ask, outcome: answer }));
+      const deliver = () => void handlers.get(TABLE_ANSWER)?.({ kind: TABLE_ANSWER, ask: message.ask, outcome: answer });
+      if (answerAfterMs > 0) setTimeout(deliver, answerAfterMs);
+      else setImmediate(deliver);
     },
   };
-  return { peers, asks, sent };
+  return { peers, asks, sent, emitted };
 }
 
-/** This instance as the owner other instances forward to: `ask` hands it one action and resolves on its answer. */
+/**
+ * This instance as the owner other instances forward to: `ask` hands it one action through its
+ * inbox and resolves on its answer, `askLegacy` as an older revision's emit would.
+ */
 export function forwardedTo(options: RecordingOptions = {}) {
   const handlers = new Map<string, InstanceHandler>();
+  const legacy = new Map<string, (payload: unknown) => Promise<unknown>>();
   const waiting = new Map<unknown, (outcome: unknown) => void>();
   const harness = recordingRuntime({
     ...options,
     peers: {
       on: (kind, handler) => void handlers.set(kind, handler),
+      legacy: { ask: async () => ({ err: null, replies: [] }), answer: (event, handler) => void legacy.set(event, handler) },
       send: async (_to, message) => {
         if (message.kind === TABLE_ANSWER) waiting.get(message.ask)?.(message.outcome);
       },
@@ -98,7 +147,9 @@ export function forwardedTo(options: RecordingOptions = {}) {
       waiting.set(id, resolve);
       void handlers.get(TABLE_ASK)?.({ kind: TABLE_ASK, from: "asker-instance", ask: id, action });
     });
-  return { ...harness, ask, handlers };
+  /** What an instance on a revision before inbox routing would be acked with. */
+  const askLegacy = (event: string, payload: unknown) => legacy.get(event)?.(payload);
+  return { ...harness, ask, askLegacy, handlers };
 }
 
 export interface RecordingOptions {

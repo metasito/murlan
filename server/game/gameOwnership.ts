@@ -16,6 +16,7 @@
 // is made under it (`writeAsOwner`).
 import type { Client } from "pg";
 import { createClient } from "../store/pool.ts";
+import { DatabaseNotOpenError, pool } from "../store/db.ts";
 import { createHash } from "node:crypto";
 import { logger } from "../shared/logger.ts";
 import { clearTableOwner, recordTableOwner, refreshTableOwner } from "../store/tableOwners.ts";
@@ -270,21 +271,39 @@ async function takeLock(roomId: string): Promise<{ answer: LockAnswer; on: Clien
  */
 export type LockHolder = "mine" | "elsewhere" | "free" | "unreachable";
 
-export async function lockHolder(roomId: string): Promise<LockHolder> {
+const HOLDER = `SELECT l.pid, extract(epoch FROM a.backend_start)::text AS started, l.pid = pg_backend_pid() AS current
+   FROM pg_locks l LEFT JOIN pg_stat_activity a ON a.pid = l.pid
+  WHERE l.locktype = 'advisory' AND l.granted AND l.objsubid = 1
+    AND l.database = (SELECT oid FROM pg_database WHERE datname = current_database())
+    AND l.classid = $1::bigint::oid AND l.objid = $2::bigint::oid`;
+
+type HolderRow = { pid: number; started: string | null; current: boolean };
+
+/**
+ * On the app pool, so a herd of probes never queues ahead of the claims on the one ownership
+ * connection; on that connection only while this process cannot name its own backend there.
+ */
+async function readHolder(params: string[]): Promise<HolderRow[] | null> {
+  if (backend) {
+    try {
+      return (await pool().query<HolderRow>(HOLDER, params)).rows;
+    } catch (err) {
+      if (!(err instanceof DatabaseNotOpenError)) throw err;
+    }
+  }
   const c = await connect();
-  if (!c) return "unreachable";
+  return c ? (await c.query<HolderRow>(HOLDER, params)).rows : null;
+}
+
+export async function lockHolder(roomId: string): Promise<LockHolder> {
   const key = BigInt.asUintN(64, BigInt(ownershipKey(roomId)));
   try {
-    const { rows } = await c.query<{ current: boolean; pid: number; started: string | null }>(
-      `SELECT l.pid = pg_backend_pid() AS current, l.pid, extract(epoch FROM a.backend_start)::text AS started
-         FROM pg_locks l LEFT JOIN pg_stat_activity a ON a.pid = l.pid
-        WHERE l.locktype = 'advisory' AND l.granted AND l.objsubid = 1
-          AND l.classid = $1::bigint::oid AND l.objid = $2::bigint::oid`,
-      [String(key >> 32n), String(BigInt.asUintN(32, key))]
-    );
+    const rows = await readHolder([String(key >> 32n), String(BigInt.asUintN(32, key))]);
+    if (!rows) return "unreachable";
     const holder = rows[0];
     if (!holder) return "free";
-    if (holder.current || predecessors.some((b) => b.pid === holder.pid && b.started === holder.started)) return "mine";
+    const ours = (b: Backend | null) => b !== null && b.pid === holder.pid && b.started === holder.started;
+    if (holder.current || ours(backend) || predecessors.some(ours)) return "mine";
     return "elsewhere";
   } catch (err) {
     logger.warn({ err, roomId }, "Could not read who holds a room's lock");
