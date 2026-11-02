@@ -282,10 +282,10 @@ export const friendStore = {
    * the unique index makes (invitee, room) name exactly one row, which also
    * makes a repeated decline a no-op instead of an error.
    *
-   * Returns the room the freed hold belonged to, or null when there was
-   * nothing to decline — the caller's cue for whether the room needs telling.
+   * Returns the room the freed hold belonged to and who sent it, or null when
+   * there was nothing to decline — the caller's cue for whether the room needs telling.
    */
-  async declineGameInvite(inviteeId: string, roomCode: string): Promise<string | null> {
+  async declineGameInvite(inviteeId: string, roomCode: string): Promise<{ roomId: string; inviterId: string } | null> {
     const [row] = await db()
       .delete(gameInvites)
       .where(
@@ -297,8 +297,8 @@ export const friendStore = {
           )
         )
       )
-      .returning({ roomId: gameInvites.roomId });
-    return row?.roomId ?? null;
+      .returning({ roomId: gameInvites.roomId, inviterId: gameInvites.inviterId });
+    return row ?? null;
   },
 
   /** Returns the rooms whose invites between the pair were withdrawn with it. */
@@ -323,8 +323,8 @@ export const friendStore = {
     });
   },
 
-  /** Only the recipient may decline a pending request. */
-  async declineFriendRequest(id: string, recipientId: string): Promise<boolean> {
+  /** Only the recipient may decline a pending request. Returns its sender, or null when there was none. */
+  async declineFriendRequest(id: string, recipientId: string): Promise<string | null> {
     const deleted = await db()
       .delete(friends)
       .where(
@@ -334,8 +334,8 @@ export const friendStore = {
           eq(friends.status, "pending")
         )
       )
-      .returning({ id: friends.id });
-    return deleted.length > 0;
+      .returning({ senderId: friends.userId });
+    return deleted[0]?.senderId ?? null;
   },
 
   async getSentFriendRequests(userId: string): Promise<(Friend & { recipient: FriendUser })[]> {
@@ -346,14 +346,29 @@ export const friendStore = {
       .where(and(eq(friends.userId, userId), eq(friends.status, "pending")));
   },
 
-  /** Only the sender may cancel their own pending request. */
-  async cancelFriendRequest(requestId: string, fromUserId: string): Promise<boolean> {
+  /** Only the sender may cancel their own pending request. Returns its recipient, or null when there was none. */
+  async cancelFriendRequest(requestId: string, fromUserId: string): Promise<string | null> {
     const deleted = await db()
       .delete(friends)
       .where(
         and(eq(friends.id, requestId), eq(friends.userId, fromUserId), eq(friends.status, "pending"))
       )
-      .returning({ id: friends.id });
-    return deleted.length > 0;
+      .returning({ recipientId: friends.friendUserId });
+    return deleted[0]?.recipientId ?? null;
+  },
+
+  /** Everyone whose friend, request or invite lists show this account. */
+  async counterparts(userId: string): Promise<string[]> {
+    const [linked, invited] = await Promise.all([
+      db()
+        .select({ a: friends.userId, b: friends.friendUserId })
+        .from(friends)
+        .where(or(eq(friends.userId, userId), eq(friends.friendUserId, userId))),
+      db()
+        .select({ a: gameInvites.inviterId, b: gameInvites.inviteeId })
+        .from(gameInvites)
+        .where(or(eq(gameInvites.inviterId, userId), eq(gameInvites.inviteeId, userId))),
+    ]);
+    return [...new Set([...linked, ...invited].flatMap(({ a, b }) => [a, b]))].filter((id) => id !== userId);
   },
 };

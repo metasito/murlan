@@ -12,13 +12,12 @@ import {
   PRESENCE_HEAL_MS,
   healChunks,
   closePresence,
-  forgetPresence,
   instancesOf,
   openPresence,
   presenceKey,
   recordPresence,
 } from "../../server/store/presence.ts";
-import { closeRedis, instanceId } from "../../server/store/redis.ts";
+import { closeRedis, instanceId, keyspace } from "../../server/store/redis.ts";
 
 const redisUrl = process.env.REDIS_URL;
 const baseUrl = process.env.DATABASE_URL;
@@ -58,14 +57,18 @@ test("a connect refused while Redis was away is in presence within one heal inte
     recordPresence("ana", "s2");
 
     // The instance it left gets back first and puts its half-open socket back.
-    await admin.hSet(presenceKey("ana"), { instance: "left-behind", socket: "s1", at: t1 });
+    await admin.set(`${keyspace(scoped)}:instance:left-behind`, "1", { PX: 60_000 });
+    await admin.set(presenceKey("ana"), `left-behind|s1|${t1}`);
     proxy.refuse(false);
     await eventually(reachable, "the presence link back");
-    // That socket's ping timeout then clears what it believes is its own entry.
-    forgetPresence("ana", "s1");
+    // That socket's ping timeout then clears what it believes is its own entry, on its own instance.
+    await admin.del(presenceKey("ana"));
 
     const healed = await eventually(
-      async () => ((await admin.hGet(presenceKey("ana"), "socket")) === "s2" ? admin.hGet(presenceKey("ana"), "instance") : null),
+      async () => {
+        const [instance, socket] = (await admin.get(presenceKey("ana")))?.split("|") ?? [];
+        return socket === "s2" ? instance : null;
+      },
       "the entry naming the socket connected here",
       2 * PRESENCE_HEAL_MS
     ).catch(() => null);

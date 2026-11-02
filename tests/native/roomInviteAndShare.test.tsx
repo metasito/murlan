@@ -96,6 +96,7 @@ describe('the invite panel waits for the server', () => {
     route('GET', '/api/friends', unreachable);
     await act(async () => view.socket().drop('transport close'));
     await act(async () => view.socket().open());
+    await view.socket().deliver('friend:online_list', { onlineIds: ['f1'] });
     await queriesSettled();
     expect(view.getByLabelText(INVITE)).toBeTruthy();
     expect(view.getByText(locale['common.refreshFailed'])).toBeTruthy();

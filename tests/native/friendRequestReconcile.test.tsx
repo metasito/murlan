@@ -1,15 +1,12 @@
 // tests/native/friendRequestReconcile.test.tsx — reconnecting re-reads what
-// arrived while you were gone.
+// arrived while you were gone, and only then.
 //
-// `emitToUser` (server/socket/socketRegistry.ts) looks the recipient up in `userSocketMap`
-// and returns silently when they are not connected: no queue, no retry. That
-// emit is the only thing that invalidates the friend-request queries, so a
-// request sent to someone who is offline reaches their database row and
-// nothing else — they cannot accept it because they never see it, and the
-// sender cannot re-send because `hasPendingRequest` already matches the pair.
-//
-// The row is the truth and the client only has to ask again. Connecting is
-// when it must ask: the socket already re-reads the online list there.
+// `emitToUser` (server/socket/socketRegistry.ts) delivers to a connected socket
+// and drops the event otherwise: no queue, no retry. A request sent to someone
+// who is offline reaches their database row and nothing else, so the client
+// must ask again. The server's connect push carries the account's social
+// version (server/store/presence.ts), which moves on every friend or invite
+// change: a version other than the last one seen, or none, is when it asks.
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { Text } from 'react-native';
@@ -20,7 +17,7 @@ import { renderApp } from './harness/renderApp';
 import { lastSocket } from './mocks/socketIo';
 
 /** The queries whose rows can change while the socket is down. */
-const PENDING_KEYS = ['/api/friends/requests', '/api/friends/sent', '/api/friends'];
+const PENDING_KEYS = ['/api/friends/requests', '/api/friends/sent', '/api/friends', '/api/friends/invites'];
 
 async function harness() {
   const invalidated: string[] = [];
@@ -35,35 +32,76 @@ async function harness() {
   return { invalidated };
 }
 
+/** A connect as the server makes it: the socket opens, then the online list is pushed. */
+async function connect(social?: string) {
+  await act(async () => lastSocket().open());
+  await lastSocket().deliver('friend:online_list', { onlineIds: [], ...(social !== undefined && { social }) });
+}
+
+async function reconnect(social?: string) {
+  await act(async () => lastSocket().drop('transport close'));
+  await connect(social);
+}
+
 describe('a reconnect reconciles what arrived while the socket was down', () => {
-  it('re-reads the pending friend requests on connect', async () => {
+  it('re-reads every list on the first connect, when no version has been seen yet', async () => {
     const { invalidated } = await harness();
-
-    await act(async () => lastSocket().open());
-
-    // Named one by one rather than as a set, so a failure says which query
-    // stopped being re-read: a request that arrived while this client was
-    // offline is invisible until it asks, and nobody pushes it a second time.
+    await connect('e.1');
     for (const key of PENDING_KEYS) expect(invalidated).toContain(key);
   });
 
-  // The other half of the same silent drop: being accepted while you are
-  // offline leaves you looking at a friends list that never gained them.
-  it('re-reads the friends list too, since an accept is dropped the same way', async () => {
+  it('re-reads nothing on a reconnect whose version is the one already seen', async () => {
     const { invalidated } = await harness();
-
-    await act(async () => lastSocket().open());
-
-    expect(invalidated).toContain('/api/friends');
+    await connect('e.1');
+    invalidated.length = 0;
+    await reconnect('e.1');
+    expect(invalidated.filter((k) => PENDING_KEYS.includes(k))).toEqual([]);
   });
 
-  // Presence is genuinely ephemeral — that this still happens is what says the
-  // re-read was added beside the existing behaviour rather than in place of it.
-  it('still asks who is online', async () => {
+  it('re-reads every list on a reconnect whose version moved', async () => {
+    const { invalidated } = await harness();
+    await connect('e.1');
+    invalidated.length = 0;
+    await reconnect('e.2');
+    for (const key of PENDING_KEYS) expect(invalidated).toContain(key);
+  });
+
+  it('re-reads every list on a reconnect that carries no version', async () => {
+    const { invalidated } = await harness();
+    await connect('e.1');
+    invalidated.length = 0;
+    await reconnect();
+    for (const key of PENDING_KEYS) expect(invalidated).toContain(key);
+  });
+
+  it('re-reads every list when no online list follows a connect', async () => {
+    const { invalidated } = await harness();
+    await connect('e.1');
+    invalidated.length = 0;
+    jest.useFakeTimers();
+    try {
+      await act(async () => lastSocket().drop('transport close'));
+      await act(async () => lastSocket().open());
+      expect(invalidated.filter((k) => PENDING_KEYS.includes(k))).toEqual([]);
+      await act(async () => jest.advanceTimersByTime(5_000));
+      for (const key of PENDING_KEYS) expect(invalidated).toContain(key);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('does not ask who is online on connect: the server pushes it', async () => {
     await harness();
-
+    const before = lastSocket().sent.length;
     await act(async () => lastSocket().open());
+    expect(lastSocket().sent.slice(before).map((s) => s.event)).not.toContain('friend:get_online_list');
+  });
 
-    expect(lastSocket().sent.map((s) => s.event)).toContain('friend:get_online_list');
+  it('still asks who is online once a friend request is accepted', async () => {
+    await harness();
+    await connect('e.1');
+    const before = lastSocket().sent.length;
+    await lastSocket().deliver('friend:request_accepted', { by: 'Besi' });
+    expect(lastSocket().sent.slice(before).map((s) => s.event)).toContain('friend:get_online_list');
   });
 });

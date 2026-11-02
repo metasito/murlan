@@ -4,6 +4,8 @@ import runtime from "../../deploy/runtime.json" with { type: "json" };
 import { logger } from "../shared/logger.ts";
 import { redisReconnects } from "../shared/metrics.ts";
 
+export { WatchError } from "redis";
+
 export type RedisUse = "adapter" | "inbox" | "presence" | "limits" | "owners" | "health";
 export type RedisClient = ReturnType<typeof newClient>;
 
@@ -41,8 +43,13 @@ export function keyspace(databaseUrl: string | undefined): string {
   return schema ? `murlan#${decodeURIComponent(schema)}` : "murlan";
 }
 
+/** This server's keyspace, as the environment names it now. */
+export function currentKeyspace(): string {
+  return keyspace(process.env.DATABASE_URL);
+}
+
 export function redisKey(name: string): string {
-  return `${keyspace(process.env.DATABASE_URL)}:${name}`;
+  return `${currentKeyspace()}:${name}`;
 }
 
 export function reconnectDelay(retries: number): number {

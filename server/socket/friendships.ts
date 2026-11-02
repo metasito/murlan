@@ -9,6 +9,7 @@ import type { FriendRequestAccepted, FriendRequestIncoming } from "../../shared/
 import { logger } from "../shared/logger.ts";
 import { notifyUser } from "./push.ts";
 import { announceRoom, emitToUser, isUserOnline } from "./socketRegistry.ts";
+import { bumpSocial } from "../store/presence.ts";
 
 export interface FriendshipDeps {
   friendStore: Pick<
@@ -21,6 +22,7 @@ export interface FriendshipDeps {
     | "removeFriend"
     | "areFriends"
     | "recordGameInvite"
+    | "counterparts"
   >;
   userStore: Pick<typeof userStore, "getUser" | "getUserByUsername">;
   roomStore: Pick<typeof roomStore, "getRoomByCode" | "getRoomPlayers">;
@@ -28,6 +30,8 @@ export interface FriendshipDeps {
   isUserOnline: (userId: string) => Promise<boolean>;
   announceRoomChanged: (roomId: string) => Promise<void>;
   notifyUser: typeof notifyUser;
+  /** Marks each account's friend and invite lists as changed (`server/store/presence.ts`). */
+  bumpSocial: (userIds: readonly string[]) => void;
 }
 
 type Refused<C extends string> = { ok: false; code: C };
@@ -69,6 +73,22 @@ export function createFriendships(deps: FriendshipDeps) {
   return {
     tellStatus,
 
+    /**
+     * Who to tell once this account's row changes (a rename) or goes (a deletion, read before
+     * the delete). Never rejects: an empty answer only costs those clients their next refetch.
+     */
+    async shownTo(userId: string): Promise<string[]> {
+      return deps.friendStore.counterparts(userId).catch((err: unknown) => {
+        logger.warn({ err, userId }, "Could not read who lists this account");
+        return [];
+      });
+    },
+
+    /** Their friend and invite lists show an account that changed. */
+    changedFor(userIds: readonly string[]): void {
+      deps.bumpSocial(userIds);
+    },
+
     async request(
       fromId: string,
       username: string
@@ -79,6 +99,7 @@ export function createFriendships(deps: FriendshipDeps) {
 
       const result = await deps.friendStore.addFriend(fromId, friend.id);
       if (!result.ok) return { ok: false, code: ADD_FRIEND_REFUSAL[result.reason] };
+      deps.bumpSocial([fromId, friend.id]);
 
       const sender = await deps.userStore.getUser(fromId);
       // The row travels with the announcement: the recipient's cache holds the
@@ -98,8 +119,9 @@ export function createFriendships(deps: FriendshipDeps) {
       // own request by id (IDOR).
       const result = await deps.friendStore.acceptFriend(id, accepterId);
       if (!result) return notFound;
-      const accepter = await deps.userStore.getUser(accepterId);
       const { requesterId } = result;
+      deps.bumpSocial([requesterId, accepterId]);
+      const accepter = await deps.userStore.getUser(accepterId);
 
       deps.emitToUser(requesterId, "friend:request_accepted", {
         by: accepter?.username ?? "Qualcuno",
@@ -114,25 +136,34 @@ export function createFriendships(deps: FriendshipDeps) {
     async declineRequest(id: string, recipientId: string): Promise<{ ok: true } | typeof notFound> {
       // Only the recipient can decline (IDOR: any user could destroy any
       // pending request by id).
-      return (await deps.friendStore.declineFriendRequest(id, recipientId)) ? { ok: true } : notFound;
+      const senderId = await deps.friendStore.declineFriendRequest(id, recipientId);
+      if (senderId === null) return notFound;
+      deps.bumpSocial([senderId, recipientId]);
+      return { ok: true };
     },
 
     async cancelRequest(id: string, senderId: string): Promise<{ ok: true } | typeof notFound> {
-      return (await deps.friendStore.cancelFriendRequest(id, senderId)) ? { ok: true } : notFound;
+      const recipientId = await deps.friendStore.cancelFriendRequest(id, senderId);
+      if (recipientId === null) return notFound;
+      deps.bumpSocial([senderId, recipientId]);
+      return { ok: true };
     },
 
     /** Declines a game invite, and tells the room whose seat it held. */
     async decline(inviteeId: string, roomCode: string): Promise<{ ok: true }> {
       // Deliberately unguarded: a decline that did not happen must reach the
       // caller as a failure, not as an ok with the invite still standing.
-      const roomId = await deps.friendStore.declineGameInvite(inviteeId, roomCode);
-      if (roomId) await deps.announceRoomChanged(roomId);
+      const declined = await deps.friendStore.declineGameInvite(inviteeId, roomCode);
+      if (!declined) return { ok: true };
+      deps.bumpSocial([inviteeId, declined.inviterId]);
+      await deps.announceRoomChanged(declined.roomId);
       return { ok: true };
     },
 
     /** An invite rides the friendship, so ending one frees the seats the other held. */
     async remove(userId: string, friendUserId: string): Promise<{ ok: true }> {
       const roomIds = await deps.friendStore.removeFriend(userId, friendUserId);
+      deps.bumpSocial([userId, friendUserId]);
       for (const roomId of roomIds) await deps.announceRoomChanged(roomId);
       return { ok: true };
     },
@@ -160,6 +191,7 @@ export function createFriendships(deps: FriendshipDeps) {
       // of saying "look now"; the row is what makes the invite exist, and it
       // is the only one of the three that survives the friend being away.
       await deps.friendStore.recordGameInvite(room.id, fromId, friendUserId);
+      deps.bumpSocial([fromId, friendUserId]);
 
       // The row is what holds the seat, so the room has to be told the moment
       // it exists — otherwise the seat waiting for this friend reads as an
@@ -197,4 +229,5 @@ export const friendships = createFriendships({
   isUserOnline,
   announceRoomChanged: announceRoom,
   notifyUser,
+  bumpSocial,
 });

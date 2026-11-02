@@ -4,9 +4,11 @@ import assert from "node:assert/strict";
 import { applyOrForward } from "../../server/game/tableRouter.ts";
 import { handleRoundOver } from "../../server/game/roundOver.ts";
 import type { Presence, TableRuntime, TableWriters } from "../../server/game/tableRuntime.ts";
-import { recordingRuntime, stubTransport } from "../helpers/recordingRuntime.ts";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { rehydrateClaimed } from "../helpers/heldRoom.ts";
-import { socketPresence } from "../../server/socket/socketOutbox.ts";
+import { storePresence } from "../../server/socket/socketOutbox.ts";
+import type { Located as Entry } from "../../server/store/presence.ts";
+
 import { activeGames } from "../../server/game/gameRoom.ts";
 import {
   clearAllTimersForUser,
@@ -53,14 +55,11 @@ function baseGame(overrides: Partial<OnlineGameState>): OnlineGameState {
   return onlineTable({ roomId: ROOM, maxPlayers: 2, roundsPlayed: 1, ...overrides });
 }
 
-/** The cluster presence asks: whatever `useCluster` last set, and nobody connected otherwise. */
-let cluster: Record<string, unknown> = {};
-const clusterPresence: Presence = {
-  isOnline: (userId) => socketPresence(stubTransport(cluster)).isOnline(userId),
-  isAtTable: (userId, roomId) => socketPresence(stubTransport(cluster)).isAtTable(userId, roomId),
-  tablePresence: (roomId) => socketPresence(stubTransport(cluster)).tablePresence(roomId),
-  connectedUserIds: () => socketPresence(stubTransport(cluster)).connectedUserIds(),
-};
+type Located = (userIds: readonly string[], opts?: { tables?: boolean }) => Promise<Map<string, Entry>>;
+
+/** What the presence store answers: whatever `useCluster` last set, and nobody connected otherwise. */
+let cluster: Located = async () => new Map();
+const clusterPresence: Presence = storePresence((userIds, opts) => cluster(userIds, opts));
 
 function stubIo(writers: Partial<TableWriters> = {}) {
   const { rt, sent } = recordingRuntime({ presence: clusterPresence, writers });
@@ -244,17 +243,15 @@ describe("a new match at a standing bot-filled table", () => {
   });
 });
 
-/** The cluster as `fetchSockets` reports it: each socket's account and the rooms it has joined. */
+/** Presence as the store holds it: each connected account and the room its socket is seated at. */
 function useCluster(t: { after: (fn: () => void) => void }, sockets: { userId: string; rooms: string[] }[]) {
-  const remote = sockets.map((s) => ({
-    data: { userId: s.userId },
-    rooms: new Set([`user:${s.userId}`, ...s.rooms]),
-  }));
-  cluster = {
-    fetchSockets: async () => remote,
-    in: (room: string) => ({ fetchSockets: async () => remote.filter((s) => s.rooms.has(room)) }),
-  };
-  t.after(() => (cluster = {}));
+  cluster = async (userIds) =>
+    new Map(
+      sockets
+        .filter((s) => userIds.includes(s.userId))
+        .map((s) => [s.userId, { instance: "elsewhere", socket: `s-${s.userId}`, table: s.rooms[0] ?? null }])
+    );
+  t.after(() => (cluster = async () => new Map()));
 }
 
 function betweenHands() {
@@ -320,12 +317,10 @@ describe("a restore with one player present and one away", () => {
 describe("a restore whose presence sweep fails", () => {
   test("arms no grace, since the cluster never said who is away", async (t) => {
     const { rt } = stubIo();
-    cluster = {
-      fetchSockets: async () => {
-        throw new Error("timeout reached: only 0 responses received out of 1");
-      },
+    cluster = async () => {
+      throw new Error("Redis unreachable");
     };
-    t.after(() => (cluster = {}));
+    t.after(() => (cluster = async () => new Map()));
     const row = finishedRow();
     useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
@@ -543,12 +538,10 @@ describe("the next-round vote deadline", () => {
     const clock = fakeClock();
     t.after(installClock(clock));
     const { rt } = stubIo();
-    cluster = {
-      fetchSockets: async () => {
-        throw new Error("timeout reached: only 0 responses received out of 1");
-      },
+    cluster = async () => {
+      throw new Error("Redis unreachable");
     };
-    t.after(() => (cluster = {}));
+    t.after(() => (cluster = async () => new Map()));
     const row = finishedRow();
     useMemoryTableStores(t, { rows: [[ROOM, row]] });
 
