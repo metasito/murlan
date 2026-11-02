@@ -24,6 +24,7 @@ const UNUSED = { vars: "all", args: "none", ignoreRestSiblings: true, caughtErro
 
 module.exports = [
   { ignores: ["android/app/build"] },
+  { files: ["**/*.jsx"] },
   {
     plugins: { "import-x": importX, expo, react, "react-hooks": reactHooks },
     languageOptions: {

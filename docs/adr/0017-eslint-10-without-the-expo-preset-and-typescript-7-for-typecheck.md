@@ -68,8 +68,8 @@ The rules the preset enabled that have fired on this repo, from history: `import
 
 ## Consequences
 
-- Both packages ship a `tsc` bin, and npm links 7's as `node_modules/.bin/tsc`. A bare
-  `npx tsc` therefore runs 7, which reports what 6 does. The scripts name their compiler by
+- Both packages ship a `tsc` bin; which one `node_modules/.bin/tsc` links to is npm's choice
+  (6 after `npm ci` here), and either reports the same. The scripts name their compiler by
   path.
 - Expo SDK bumps no longer move the lint rules. A rule the next preset adds is adopted by editing
   `eslint.base.cjs`.
