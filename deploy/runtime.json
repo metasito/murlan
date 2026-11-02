@@ -1,5 +1,5 @@
 {
-  "node": 22,
+  "node": 26,
   "postgres": 16,
   "keyValue": { "engine": "valkey", "major": 9, "maxmemoryPolicy": "noeviction" },
   "sigtermGraceMs": 10000,

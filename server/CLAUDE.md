@@ -17,9 +17,10 @@ and the server and tests read it.
 - **Readiness never follows a shared dependency** (`server/http/health.ts`): Postgres and Redis
   are reported in `/health/ready`'s body and never fail it, or one blip pulls every instance out
   of rotation at once (`tests/integration/health.test.ts`).
-- **Production runs `deploy/runtime.json`'s Node (22), not the repo's.** `server:build`'s
-  `--target=node22` lowers *syntax* only, so a newer-Node builtin compiles at exit 0 and throws in
-  production. CI's `build` job boots on that Node and is the one that catches it.
+- **One Node, `deploy/runtime.json`'s, runs dev, CI and production** (`.node-version` matches it).
+  `server:build`'s `--target` lowers *syntax* only, so a builtin newer than that Node compiles at
+  exit 0 and throws in production. CI's `build` job boots the bundle on it and is the one that
+  catches it.
 - **`server/store/schemaDdl.ts` is the only thing that creates tables**, at boot, from
   `shared/schema.ts`. Keep every statement additive and idempotent. The one exception: a unique
   index named in `DEDUPE_ON_BOOT` is preceded by a delete of the rows it would reject, or

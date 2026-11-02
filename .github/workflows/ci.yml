@@ -916,29 +916,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # This job boots the real artefact against a real database, which is the
-      # production path — so it runs production's Node, not the repo's. The
-      # other two jobs check dev tooling and 24 is right for them.
-      # `esbuild --target=node22` lowers syntax and knows nothing about APIs, so
-      # a Node-24-only builtin compiles at exit 0, passes a Node 24 job, and
-      # throws in production. Running the deploy runtime is what catches that.
+      # This job boots the real artefact against a real database, so its Node must be
+      # production's: `esbuild --target` lowers syntax and knows nothing about APIs.
+      # `.node-version` is production's (tests/server/deployRuntime.test.ts).
       - uses: ./.github/actions/install
-        with:
-          node-version: "22"
-
-      # 22 above is production's (deploy/runtime.json), not a preference. If
-      # production's runtime moves and this does not, the job stops exercising
-      # production — silently, and green.
-      - name: This job's Node is the one production runs
-        shell: bash
-        run: |
-          manifest=$(node -p 'require("./deploy/runtime.json").node')
-          actual=$(node -p 'process.versions.node.split(".")[0]')
-          if [ "$manifest" != "$actual" ]; then
-            echo "::error::deploy/runtime.json deploys on Node $manifest; this job runs Node $actual."
-            exit 1
-          fi
-          echo "Both on Node $actual."
 
       - name: Build the web and server bundles
         run: npm run expo:web:build && npm run server:build

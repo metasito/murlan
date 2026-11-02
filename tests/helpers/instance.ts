@@ -27,7 +27,7 @@ export async function boot(
 ): Promise<Instance> {
   const child = spawn(
     process.execPath,
-    ["--experimental-strip-types", "server/index.ts"],
+    ["server/index.ts"],
     {
       env: {
         ...process.env,

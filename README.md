@@ -15,7 +15,7 @@ other two are translations of it. The game itself is Albanian in origin. The sta
 
 ```sh
 npm install
-npm run server:dev   # Express + Socket.io (tsx, no build step)
+npm run server:dev   # Express + Socket.io (Node's type stripping, no build step)
 EXPO_PUBLIC_DOMAIN=<host:port> npm run expo:dev   # Expo dev server, over a tunnel
 ```
 
