@@ -125,12 +125,10 @@ export interface OnlineGameState {
    */
   spectators: Set<string>;
   /**
-   * This round's move log, written once to `round_replays` at game over.
-   *
-   * Memory only, unlike roundFlags: the envelope is rewritten after every move,
-   * and carrying a few hundred combinations through each would buy nothing.
-   * `null` means this round cannot produce a replay — rehydrated after a
-   * restart, or past MAX_REPLAY_MOVES — and none will be written.
+   * This round's move log, written once to `round_replays` at game over, and
+   * carried in the envelope so a round restored mid-way still gets its replay.
+   * `null` means this round cannot produce a replay — restored from a row that
+   * held none, or past MAX_REPLAY_MOVES — and none will be written.
    */
   moveLog: ReplayMove[] | null;
   /** What the log's first move followed, the deal or the giveback: stored beside the log, not in it. */

@@ -1,8 +1,18 @@
 // The stored `active_games.game_state` envelope, shared so `shared/schema.ts` can type the column
 // without importing the server.
 import { z } from "zod";
-import type { GameState } from "../lib/game/gameEngine.ts";
-import { gameModeSchema, matchLengthSchema, parseGameState, storedShapeAt, type ShapesSince } from "./gameStateSchema.ts";
+import type { GameState, LastMove } from "../lib/game/gameEngine.ts";
+import { MAX_REPLAY_MOVES, type ReplayMove } from "../lib/game/replay.ts";
+import {
+  combination,
+  gameModeSchema,
+  lastMove,
+  matchLengthSchema,
+  parseGameState,
+  seat,
+  storedShapeAt,
+  type ShapesSince,
+} from "./gameStateSchema.ts";
 
 const isSeat = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value >= 0;
@@ -87,7 +97,7 @@ function readPersistedSeats(stored: unknown): PersistedSeats {
  * `OLDEST_GAME_SCHEMA_VERSION` on are restored, each held to the current parse.
  * Held to the stored shape by tests/server/storedShapeVersions.test.ts.
  */
-export const GAME_SCHEMA_VERSION = 10;
+export const GAME_SCHEMA_VERSION = 11;
 
 /**
  * The oldest row still restored. Raise it to GAME_SCHEMA_VERSION when a bump changes what a
@@ -169,7 +179,12 @@ export interface PersistedEnvelope {
   joinCode: string;
   match: PersistedMatch;
   seats: PersistedSeats;
+  /** The round's replay so far; null when it will produce none. */
+  moveLog: ReplayMove[] | null;
+  replayOpening: LastMove | null;
 }
+
+export type PersistedReplay = Pick<PersistedEnvelope, "moveLog" | "replayOpening">;
 
 export function packPersistedState(
   gameState: GameState,
@@ -177,9 +192,10 @@ export function packPersistedState(
   dealFirstSeat: number,
   joinCode: string,
   match: PersistedMatch,
-  seats: PersistedSeats
+  seats: PersistedSeats,
+  replay: PersistedReplay = { moveLog: null, replayOpening: null }
 ): PersistedEnvelope {
-  return { schemaVersion: GAME_SCHEMA_VERSION, gameState, roundFlags, dealFirstSeat, joinCode, match, seats };
+  return { schemaVersion: GAME_SCHEMA_VERSION, gameState, roundFlags, dealFirstSeat, joinCode, match, seats, ...replay };
 }
 
 export type PersistedRestore =
@@ -219,6 +235,13 @@ export const persistedEnvelopeSchema = z.object({
   // block restores with four empty collections. Refusing it instead would
   // dispose every live table that lacks it.
   seats: z.unknown().transform(readPersistedSeats),
+  // A log that does not parse costs the round its replay, never the table.
+  moveLog: z
+    .array(z.object({ seat, combo: combination.nullable(), handCounts: z.array(z.number().int().nonnegative()) }))
+    .max(MAX_REPLAY_MOVES)
+    .nullable()
+    .catch(null),
+  replayOpening: lastMove.nullable().catch(null),
 });
 
 /**
