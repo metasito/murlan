@@ -54,6 +54,24 @@ describe("Redis unreachable", { skip: hasDatabase() ? false : skipMessage() }, (
     }
   });
 
+  test("a revocation retried once Redis is back spares a socket opened after it", { timeout: 60_000 }, async () => {
+    const name = `rc${tag()}`;
+    const { cookie } = await register(server, name);
+    proxy.refuse(true);
+    const changed = await post(cookie, "/api/auth/change-password", {
+      currentPassword: "password123",
+      newPassword: "newpassword456",
+    });
+    assert.equal(changed.status, 200, await changed.text());
+    proxy.refuse(false);
+    const login = await post("", "/api/auth/login", { username: name, password: "newpassword456" });
+    assert.equal(login.status, 200, await login.text());
+    const fresh = await connectSocket(server, { cookie: login.headers.get("set-cookie")! });
+    sockets.push(fresh);
+    // Past the last retry of the cluster pass the change-password failed.
+    assert.equal(await waitForOrNull(fresh, "disconnect", 12_000), null, "a retried revocation cut a socket signed in after it");
+  });
+
   test("a friend connected to this instance is still online", async () => {
     const a = await register(server, `fa${tag()}`);
     const b = await register(server, `fb${tag()}`);

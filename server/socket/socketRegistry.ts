@@ -7,7 +7,8 @@
 import type { ServerToClientEvents } from "../../shared/protocol.ts";
 import type { TableRuntime } from "../game/tableRuntime.ts";
 import { logger } from "../shared/logger.ts";
-import { socketRoomMap, userRoom, userSocketMap } from "../game/gameRoom.ts";
+import { openedAfter, socketRoomMap, userRoom, userSocketMap } from "../game/gameRoom.ts";
+import { realClock } from "../http/clock.ts";
 import { safeTimer } from "../game/gamePersistence.ts";
 import { announceRoomChanged, handleSeatRelease } from "./socketTable.ts";
 import { payload } from "../shared/payload.ts";
@@ -53,13 +54,16 @@ export async function onlineUserIds(): Promise<Set<string>> {
 export async function revokeAccountSockets(userId: string, which: Revoked = {}): Promise<void> {
   const rt = _rt;
   if (!rt) return;
+  // Real time, not the installed clock: it is compared with socket.io's handshake stamps. Every
+  // pass, retries included, spares a socket opened after it.
+  const revoked = { ...which, at: realClock.now() };
   // This instance's own first: they need no cluster, and an outage must not leave them live.
   try {
-    cut(await rt.transport.local.in(userRoom(userId)).fetchSockets(), which);
+    cut(await rt.transport.local.in(userRoom(userId)).fetchSockets(), revoked);
   } catch (err) {
     logger.error({ err, userId }, "Failed to revoke an account's sockets on this instance");
   }
-  await revokeAcrossCluster(rt, userId, which, 0);
+  await revokeAcrossCluster(rt, userId, revoked, 0);
 }
 
 interface Revoked {
@@ -67,10 +71,23 @@ interface Revoked {
   exceptSid?: string;
 }
 
+const retries = new Set<ReturnType<typeof setTimeout>>();
+
+/** Drops the cluster passes still waiting to retry; for shutdown, which ends the links they need. */
+export function cancelRevocationRetries(): void {
+  for (const retry of retries) clearTimeout(retry);
+  retries.clear();
+}
+
 /** After a failed cluster pass, the instance's peers are asked again at these delays. */
 const REVOKE_RETRY_MS = [2_000, 10_000];
 
-async function revokeAcrossCluster(rt: TableRuntime, userId: string, which: Revoked, attempt: number): Promise<void> {
+async function revokeAcrossCluster(
+  rt: TableRuntime,
+  userId: string,
+  which: Revoked & { at: number },
+  attempt: number
+): Promise<void> {
   try {
     cut(await rt.transport.in(userRoom(userId)).fetchSockets(), which);
   } catch (err) {
@@ -79,15 +96,20 @@ async function revokeAcrossCluster(rt: TableRuntime, userId: string, which: Revo
       logger.error({ err, userId }, "Failed to revoke an account's sockets on the other instances");
       return;
     }
-    const retry = setTimeout(() => void revokeAcrossCluster(rt, userId, which, attempt + 1), delay);
+    const retry = setTimeout(() => {
+      retries.delete(retry);
+      void revokeAcrossCluster(rt, userId, which, attempt + 1);
+    }, delay);
+    retries.add(retry);
     (retry as unknown as { unref?: () => void }).unref?.();
   }
 }
 
 type FoundSockets = Awaited<ReturnType<ReturnType<TableRuntime["transport"]["in"]>["fetchSockets"]>>;
 
-function cut(sockets: FoundSockets, { onlySid, exceptSid }: Revoked): void {
+function cut(sockets: FoundSockets, { onlySid, exceptSid, at }: Revoked & { at: number }): void {
   for (const socket of sockets) {
+    if (openedAfter(socket, at)) continue;
     const sid = socket.data?.sid as string | undefined;
     if (onlySid !== undefined && sid !== onlySid) continue;
     if (exceptSid !== undefined && sid === exceptSid) continue;
