@@ -105,12 +105,13 @@ test("a delete is never replaced or overtaken, and nothing queued behind it runs
   stamp(game, 2);
   void rt.writers.persistGameState(ROOM, game);
   const discarded = rt.writers.discardGame(ROOM);
-  stamp(game, 3);
   const after = rt.writers.persistGameState(ROOM, game);
 
   writes.landNext();
   await ticks();
   assert.deepEqual(order, ["write:1", "write:2"], "the delete ran beside the snapshot made before it");
+  // Packed as it runs, so what it writes is the table as the delete leaves it.
+  stamp(game, 3);
   writes.landNext();
   await discarded;
   await ticks();

@@ -1,11 +1,12 @@
 import { and, count, eq, lt, sql } from "drizzle-orm";
-import { db, type Database } from "./db.ts";
-import { activeGames, ownerEpochs } from "../../shared/schema.ts";
+import { db, type Database, type Tx } from "./db.ts";
+import { activeGames, activeGameSettled, ownerEpochs } from "../../shared/schema.ts";
 import { now } from "../http/clock.ts";
 import type { roomStore } from "./roomStore.ts";
 import {
   GAME_SCHEMA_VERSION,
   OLDEST_GAME_SCHEMA_VERSION,
+  type PendingResult,
   type PersistedEnvelope,
 } from "../../shared/persistedEnvelope.ts";
 
@@ -22,15 +23,21 @@ export interface Claimed {
 
 const nextEpoch = sql<string>`nextval(${sql.raw(`'${ownerEpochs.seqName}'`)})`;
 
-/** A persisted table the orphan sweep may wake, and who sits at it in seat order. */
+/** A persisted table the orphan sweep may wake or owes a results commit, and who sits at it in seat order. */
 export interface ResumableRow {
   roomId: string;
   userIds: string[];
+  /** Its deal is over: only its pending results are owed. */
+  roundOver: boolean;
+  /** It holds a round whose results have not committed. */
+  pending: boolean;
 }
 
 const row = { roomId: activeGames.roomId, gameState: activeGames.gameState };
 const mine = (roomId: string, epoch: number) => and(eq(activeGames.roomId, roomId), eq(activeGames.ownerEpoch, epoch));
 
+const pending = sql`${activeGames.gameState}->'pendingResults'`;
+const roundOver = sql`(${activeGames.gameState}->'gameState'->>'roundOver') is not distinct from 'true'`;
 const version = sql`${activeGames.gameState}->'schemaVersion'`;
 const playerMap = sql`${activeGames.gameState}->'match'->'playerMap'`;
 // String ids in seat order. Narrower than `readPersistedPlayerMap`, which takes any key `Number()`
@@ -69,10 +76,18 @@ export const activeGameStore = {
     return found?.ownerEpoch;
   },
 
-  /** Every table at a version `unpackPersistedState` accepts whose deal is still in play: what the orphan sweep may wake. */
+  /**
+   * Every table at a version `unpackPersistedState` accepts whose deal is still in play, or whose
+   * results are still pending: what the orphan sweep may wake or commit.
+   */
   listResumable(): Promise<ResumableRow[]> {
     return db()
-      .select({ roomId: activeGames.roomId, userIds: seatedUserIds })
+      .select({
+        roomId: activeGames.roomId,
+        userIds: seatedUserIds,
+        roundOver: sql<boolean>`${roundOver}`,
+        pending: sql<boolean>`not ${activeGameSettled}`,
+      })
       .from(activeGames)
       .where(
         and(
@@ -80,7 +95,7 @@ export const activeGameStore = {
           sql`case when jsonb_typeof(${version}) = 'number'
             then (${version})::numeric between ${OLDEST_GAME_SCHEMA_VERSION} and ${GAME_SCHEMA_VERSION}
             else false end`,
-          sql`(${activeGames.gameState}->'gameState'->>'roundOver') is distinct from 'true'`
+          sql`(not ${roundOver} or not ${activeGameSettled})`
         )
       );
   },
@@ -89,26 +104,60 @@ export const activeGameStore = {
    * Writes the row at `epoch`, inserting it when there is none: a table whose row an exempt
    * writer deleted under it (an account deletion purging the host's rooms) plays on. False when
    * the row carries another epoch, which stays as it was.
+   *
+   * The row's pending results are its own, whatever `gameState` carries: memory can still hold a
+   * round whose commit landed unheard, and writing it back would apply it twice. An existing row
+   * keeps its list, a new one starts empty, and `adding` appends one finished round unless the row
+   * holds it already; only the commit's fenced clear removes one.
    */
-  async write(roomId: string, gameState: PersistedEnvelope, epoch: number): Promise<boolean> {
+  async write(roomId: string, gameState: PersistedEnvelope, epoch: number, adding?: PendingResult): Promise<boolean> {
     const updatedAt = new Date(now());
+    const kept = sql`coalesce(${pending}, '[]'::jsonb)`;
+    const pendingAfter = adding
+      ? sql`case when ${kept} @> jsonb_build_array(jsonb_build_object('round', ${adding.round}::bigint))
+          then ${kept} else ${kept} || jsonb_build_array(${JSON.stringify(adding)}::jsonb) end`
+      : kept;
     const changed = await db()
       .insert(activeGames)
-      .values({ roomId, gameState, updatedAt, ownerEpoch: epoch })
+      .values({ roomId, gameState: { ...gameState, pendingResults: adding ? [adding] : [] }, updatedAt, ownerEpoch: epoch })
       .onConflictDoUpdate({
         target: activeGames.roomId,
-        set: { gameState, updatedAt },
+        set: { gameState: sql`jsonb_set(excluded.game_state, '{pendingResults}', ${pendingAfter})`, updatedAt },
         setWhere: eq(activeGames.ownerEpoch, epoch),
       })
       .returning({ roomId: activeGames.roomId });
     return changed.length > 0;
   },
 
-  /** Deletes the row at `epoch`. False when the row carries another epoch, and stays. */
+  /**
+   * Deletes the row at `epoch` unless it holds unapplied results, which keep it. False when the
+   * row carries another epoch, and stays.
+   */
   async remove(roomId: string, epoch: number): Promise<boolean> {
-    const gone = await db().delete(activeGames).where(mine(roomId, epoch)).returning({ roomId: activeGames.roomId });
+    const gone = await db()
+      .delete(activeGames)
+      .where(and(mine(roomId, epoch), activeGameSettled))
+      .returning({ roomId: activeGames.roomId });
     if (gone.length > 0) return true;
-    return (await activeGameStore.epochOf(roomId)) === undefined;
+    const found = await activeGameStore.epochOf(roomId);
+    return found === undefined || found === epoch;
+  },
+
+  /**
+   * Inside the results transaction: removes `round` from the row's pending results at `epoch`.
+   * False when the row holds no such round at that epoch, which rolls the transaction back.
+   */
+  async clearPendingResult(tx: Tx, roomId: string, epoch: number, round: number): Promise<boolean> {
+    const cleared = await tx
+      .update(activeGames)
+      .set({
+        gameState: sql`jsonb_set(${activeGames.gameState}, '{pendingResults}', coalesce(
+          (select jsonb_agg(e) from jsonb_array_elements(${pending}) e where e->'round' <> to_jsonb(${round}::bigint)),
+          '[]'::jsonb))`,
+      })
+      .where(and(mine(roomId, epoch), sql`${pending} @> jsonb_build_array(jsonb_build_object('round', ${round}::bigint))`))
+      .returning({ roomId: activeGames.roomId });
+    return cleared.length > 0;
   },
 
   async countUntouchedSince(database: Database, cutoff: Date): Promise<number> {

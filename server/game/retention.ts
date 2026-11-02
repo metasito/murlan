@@ -1,12 +1,13 @@
 // The only home of every age-based delete (tests/server/retentionOffWritePath.test.ts), run by
 // server/game/gamePersistence.ts's startSweeper.
-import { gte, lt, sql, type SQL } from "drizzle-orm";
+import { and, gte, lt, sql, type SQL } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 import { db, transaction } from "../store/db.ts";
 import { roomStore } from "../store/roomStore.ts";
 import { now } from "../http/clock.ts";
 import {
   activeGames,
+  activeGameSettled,
   events,
   clientErrors,
   roundReplays,
@@ -86,13 +87,13 @@ export async function deleteInBatches(
 
 /**
  * Deletes `active_games` rows untouched for longer than
- * `ABANDONED_GAME_MAX_AGE_MS`. Returns how many went, so a caller can tell
+ * `ABANDONED_GAME_MAX_AGE_MS`, except one still holding unapplied results. Returns how many went, so a caller can tell
  * "nothing to do" from "did not run".
  */
 export async function pruneAbandonedGames(): Promise<number> {
   const gone = await deleteInBatches(
     activeGames,
-    lt(activeGames.updatedAt, new Date(now() - ABANDONED_GAME_MAX_AGE_MS))
+    and(lt(activeGames.updatedAt, new Date(now() - ABANDONED_GAME_MAX_AGE_MS)), activeGameSettled)!
   );
   if (gone > 0) logger.info({ count: gone }, "Pruned abandoned games orphaned by a restart");
   return gone;

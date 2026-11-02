@@ -8,7 +8,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { eventually, register } from "../helpers/client.ts";
-import { saveReplay } from "../../server/game/replays.ts";
+import { recordRound } from "../helpers/recordRound.ts";
 import { deleteUser } from "../../server/http/deleteAccount.ts";
 import { db, pool } from "../../server/store/db.ts";
 import type { ReplaySeat } from "../../lib/game/replay.ts";
@@ -60,7 +60,7 @@ describe("account deletion at any size", { skip: hasDatabase() ? false : skipMes
   after(async () => { if (server) await server.stop(); });
 
   async function replay(roomId: string, seats: ReplaySeat[]) {
-    await saveReplay({ roomId, finishedAt: new Date(), gameMode: "free_for_all", seats, moves: [], opening: null, finishingOrder: [] });
+    await recordRound([], "free_for_all", new Date(), { roomId, seats, moves: [{ seat: 0, combo: null, handCounts: [1] }] });
   }
 
   test("every index the deletion and the admin page read exists", async () => {

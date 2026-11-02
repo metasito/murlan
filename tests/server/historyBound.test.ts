@@ -18,6 +18,7 @@ import path from "node:path";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const source = readFileSync(path.join(repoRoot, "server", "game", "stats.ts"), "utf8");
+const commit = readFileSync(path.join(repoRoot, "server", "game", "roundResults.ts"), "utf8");
 
 describe("match history stays bounded", () => {
   test("the bound is declared exactly once", () => {
@@ -35,18 +36,16 @@ describe("match history stays bounded", () => {
     assert.deepEqual(hardcoded, [], `a numeric limit bypasses the shared bound: ${hardcoded}`);
   });
 
-  test("pruning happens in the same transaction as the insert that triggers it", () => {
+  test("pruning happens in the same transaction as the insert that triggers it, to the same bound", () => {
     // A prune outside the transaction can interleave with a concurrent write
     // and delete a row that was just added for another game.
-    const tx = source.slice(source.indexOf("tx.insert(roundHistory)"));
-    const pruneAt = tx.indexOf("delete(roundHistory)");
+    const tx = commit.slice(commit.indexOf("tx.insert(roundHistory)"));
+    const pruneAt = tx.indexOf("DELETE FROM ${roundHistory}");
     assert.ok(pruneAt > 0, "no prune found after the history insert");
-    const txEnd = tx.indexOf("});", pruneAt);
-    assert.ok(txEnd > pruneAt, "the prune appears to fall outside the transaction block");
-    assert.ok(
-      tx.slice(0, pruneAt).includes("tx\n") || tx.slice(0, pruneAt).includes("tx."),
-      "the prune must run on the transaction handle, not the pool"
-    );
+    assert.match(tx.slice(0, pruneAt), /await tx\.execute\(sql`\s*$/, "the prune must run on the transaction handle, not the pool");
+    const prune = tx.slice(pruneAt, tx.indexOf("`);", pruneAt));
+    assert.match(prune, /> \$\{MAX_HISTORY_ROWS_PER_USER\}/, "the prune keeps the shared bound");
+    assert.match(commit, /import \{ MAX_HISTORY_ROWS_PER_USER \} from "\.\/stats\.ts"/);
   });
 
   test("the bound is a sane size for a display list", () => {

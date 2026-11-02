@@ -3,7 +3,7 @@ import { OK, refuse, type Outcome, type Refusal } from "../shared/refusal.ts";
 import { logger } from "../shared/logger.ts";
 import { trackEvent } from "../shared/events.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
-import { publishState } from "./gamePersistence.ts";
+import { publishState, serveState } from "./gamePersistence.ts";
 import { handleRoundOver } from "./roundOver.ts";
 import { armTurn } from "./gameTurn.ts";
 import { appendReplayMove } from "./replayShape.ts";
@@ -66,13 +66,15 @@ export function moveAction(
     });
   }
 
-  return commitMove(rt, game, result)?.then(() => OK) ?? OK;
+  // Acked on apply: the round-ending move's results commit gates `game:round_over`, never the ack.
+  void commitMove(rt, game, result);
+  return OK;
 }
 
 /**
  * The one way a move lands on a live table, whoever chose it: flagged and logged
  * for the replay, sent, persisted, then the next seat armed — or, when it ended
- * the round, the round-over handoff, whose promise is returned.
+ * the round, the round-over handoff, whose promise is returned and never rejects.
  *
  * The flags are the achievements' only record of a bomb or joker played this
  * round — the engine keeps none — so a forced move (most often an AFK-forced
@@ -90,7 +92,10 @@ export function commitMove(rt: TableRuntime, game: OnlineGameState, applied: Aut
     appendReplayMove(game, move.seat, move.kind === "play" ? move.combo : null, prev, next);
   }
   game.gameState = next;
+  if (next.roundOver) {
+    serveState(rt, game);
+    return handleRoundOver(rt, game.roomId, game);
+  }
   void publishState(rt, game);
-  if (next.roundOver) return handleRoundOver(rt, game.roomId, game);
   armTurn(rt, game.roomId);
 }

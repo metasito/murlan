@@ -1,10 +1,9 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { roundReplays } from "../../shared/schema.ts";
-import { replayPlayerIdsOf } from "./replayShape.ts";
 import { namesOf } from "./userNames.ts";
-import type { ReplayDto, ReplayMove, ReplaySeat, ReplaySummary } from "../../lib/game/replay.ts";
-import type { GameMode, LastMove } from "../../lib/game/gameEngine.ts";
+import type { ReplayDto, ReplaySeat, ReplaySummary } from "../../lib/game/replay.ts";
+import type { GameMode } from "../../lib/game/gameEngine.ts";
 
 /** The read is bounded too, so the list never grows with a busy fortnight. */
 const MAX_REPLAYS_LISTED = 20;
@@ -28,32 +27,6 @@ async function withLiveNames(rows: { seats: ReplaySeat[] }[]): Promise<void> {
     const name = live.get(seat.userId ?? seat.vacatedBy ?? "");
     if (name) seat.name = name;
   }
-}
-
-export async function saveReplay(input: {
-  roomId: string;
-  /** The same instant `recordGameResult` writes — see its own note on why. */
-  finishedAt: Date;
-  gameMode: GameMode;
-  seats: ReplaySeat[];
-  moves: ReplayMove[];
-  opening: LastMove | null;
-  finishingOrder: string[];
-}): Promise<void> {
-  const playerIds = replayPlayerIdsOf(input.seats);
-  // An all-bot table produces a replay nobody could ever open.
-  if (playerIds.length === 0) return;
-
-  await db().insert(roundReplays).values({
-    roomId: input.roomId,
-    finishedAt: input.finishedAt,
-    gameMode: input.gameMode,
-    playerIds,
-    seats: input.seats,
-    moves: input.moves,
-    opening: input.opening,
-    finishingOrder: input.finishingOrder,
-  });
 }
 
 export async function listReplaysForUser(userId: string): Promise<ReplaySummary[]> {

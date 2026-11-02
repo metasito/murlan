@@ -171,6 +171,9 @@ export const activeGames = pgTable("active_games", {
   ownerEpoch: bigint("owner_epoch", { mode: "number" }).notNull().default(0),
 });
 
+/** A row with no unapplied round: one with any is never deleted, as its results exist nowhere else. */
+export const activeGameSettled = sql`coalesce(${activeGames.gameState}->'pendingResults', '[]'::jsonb) = '[]'::jsonb`;
+
 // Every claim's epoch, so none is ever handed out twice: not after a row is deleted and made
 // again, and not to two claims of a room that has no row.
 export const ownerEpochs = pgSequence("active_games_owner_epoch_seq");

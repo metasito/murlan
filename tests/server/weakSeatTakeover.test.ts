@@ -24,7 +24,6 @@ import { onlineTable } from "../helpers/onlineTable.ts";
 import { emptyRankTally, sortHand } from "../../lib/game/gameEngine.ts";
 import type { Card, GameState, Player } from "../../lib/game/gameEngine.ts";
 import type { RoundOverWriters } from "../../server/game/roundOver.ts";
-import type { RatedPreview } from "../../server/game/ratings.ts";
 import { aThreePlayed } from "../support/game.ts";
 
 const ROOM = "weak-seat-room";
@@ -194,15 +193,10 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
       reached,
       writers: {
         updateRoomStatus: record("updateRoomStatus"),
-        recordGameResult: record("recordGameResult"),
-        recordRatedResult: async () => {
-          await record("recordRatedResult")();
-          return new Map<string, number>();
-        },
-        saveReplay: record("saveReplay"),
-        previewRatedDeltas: async () => {
-          reached.push("previewRatedDeltas");
-          return new Map<string, RatedPreview>();
+        persistFinalState: record("persistFinalState"),
+        applyPendingResults: async () => {
+          reached.push("applyPendingResults");
+          return { applied: [], held: true };
         },
         // Copied here, not read from `game` after the call: the stub is handed
         // the live table by reference, and what the row must carry is what
