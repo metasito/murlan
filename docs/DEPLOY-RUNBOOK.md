@@ -102,7 +102,12 @@ The server refuses to boot without these (`server/http/bootEnv.ts`):
 
 - `DATABASE_URL` — in production it must carry an `sslmode` (`?sslmode=require`;
   `sslmode=disable` is an explicit opt-out)
-- `REDIS_URL` — Redis 7 (`deploy/runtime.json`); `rediss://` for TLS
+- `REDIS_URL` — Valkey 9.1 or newer with `maxmemory-policy noeviction` (`deploy/runtime.json`'s
+  `keyValue`); `rediss://` for TLS. A host-supplied ACL user must be allowed `DELIFEQ`, `SET … IFEQ`,
+  `XADD`, `INFO` and `EVALSHA`. After provisioning, record the store's `INFO server` and check
+  its `maxmemory_policy` (`INFO memory`) reads `noeviction`: an evicting store drops table owners
+  and inboxes without a sound. The server checks both at every connect and logs an error and
+  counts `store_misconfigured_total` on a mismatch, but still starts
 - `SESSION_SECRET` — also used to sign socket auth tickets
 - `PUBLIC_HOST` — production only: the bare hostname the app is served from. Browsers on
   `https://$PUBLIC_HOST` and on each origin in the optional comma-separated `ALLOWED_ORIGINS`
@@ -188,6 +193,8 @@ says `status` ok and both links `connected`.
 
 - `round_results_pending_age_seconds` above 60 (D17 in
   `docs/research/2026-11-01-system-audit/TICKETS.md`): a finished round's result has not landed.
+- `store_misconfigured_total` above 0, or `store_evicted_keys` above 0: the key-value store is not
+  the one `deploy/runtime.json` names, or it lost state.
 - `event_loop_lag_p99_seconds`, `pg_pool_waiting`, `pg_connection_headroom` below 0, and
   `redis_reconnects_total`, `redis_stream_lag_seconds` and `redis_stream_read_age_seconds` climbing, read beside the instances'
   readiness.
