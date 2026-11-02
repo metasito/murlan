@@ -41,6 +41,17 @@ export const redisReconnects = new Counter({
   labelNames: ["use"],
 });
 
+export const stateAcksMissed = new Counter({
+  name: "state_acks_missed_total",
+  help: "game:state sends a socket did not acknowledge in time",
+});
+
+export const clusterMessages = new Counter({
+  name: "cluster_messages_total",
+  help: "Messages this instance put on Redis for other instances, by channel: the adapter's (bar its heartbeats) or an instance inbox",
+  labelNames: ["channel"],
+});
+
 type Stream = "adapter" | "inbox";
 /** Past this with nothing read, the last lag describes nothing current and is reported as 0. */
 const STREAM_LAG_STALE_MS = 30_000;

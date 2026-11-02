@@ -38,7 +38,9 @@ import { createTableRuntime } from "../game/tableRuntime.ts";
 import { activeGameStore } from "../store/activeGameStore.ts";
 import { roomStore } from "../store/roomStore.ts";
 import { registerStopSpectating } from "./seating.ts";
-import { socketOutbox, socketPresence } from "./socketOutbox.ts";
+import { socketPresence } from "./socketOutbox.ts";
+import { deliveryOutbox } from "./delivery.ts";
+import { forgetPresence, openPresence, recordPresence } from "../store/presence.ts";
 
 /**
  * Handshakes one account may complete per minute. Socket.io answers
@@ -113,12 +115,13 @@ export function setupSocket(httpServer: HttpServer, sessionMiddleware: RequestHa
   io.adapter(createSocketAdapter());
   startInbox();
   openTableOwners();
+  openPresence();
   // Before the first connection: a table action forwarded from another
   // instance arrives on `io`, not on a socket, and one that lands before the
   // runtime's listener exists is answered by nobody.
   const store = { games: activeGameStore, rooms: roomStore };
   const rt = createTableRuntime({
-    out: socketOutbox(io),
+    out: deliveryOutbox(io),
     presence: socketPresence(io),
     writers: tableWriters(store),
     transport: io,
@@ -209,6 +212,8 @@ export function setupSocket(httpServer: HttpServer, sessionMiddleware: RequestHa
     registerGameplayHandlers(ctx);
     registerFriendHandlers(ctx);
     registerDisconnect(ctx);
+    socket.on("disconnect", () => forgetPresence(userId, socket.id));
+    recordPresence(userId, socket.id);
 
     await announcePresence(ctx);
   });

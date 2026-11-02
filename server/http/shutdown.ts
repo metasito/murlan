@@ -7,6 +7,7 @@ import { beginShutdown } from "../game/gameRoom.ts";
 import { closeRedis } from "../store/redis.ts";
 import { stopInbox } from "../store/instanceInbox.ts";
 import { closeTableOwners } from "../store/tableOwners.ts";
+import { closePresence } from "../store/presence.ts";
 import { cancelRevocationRetries } from "../socket/socketRegistry.ts";
 import { closeOwnership, forgetOwnerRecords } from "../game/gameOwnership.ts";
 import type { TableRuntime } from "../game/tableRuntime.ts";
@@ -112,6 +113,7 @@ export async function shutdown(
     stopInbox();
     await within(SHUTDOWN_BUDGET.ownerRecords, forgetOwnerRecords());
     closeTableOwners();
+    closePresence();
     closeRedis();
     // Disconnecting the sockets above starts writes — updateLastSeen, the
     // lobby teardown — that only the drain inside closeDatabase waits for.

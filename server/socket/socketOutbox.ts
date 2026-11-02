@@ -1,30 +1,9 @@
-// server/socket/socketOutbox.ts — the table runtime's output and presence ports
-// over Socket.IO.
+// server/socket/socketOutbox.ts — the table runtime's presence port over Socket.IO; its output
+// port is `delivery.ts`.
 import type { SocketServer } from "./socketTypes.ts";
-import type { Emitter, Presence, TableOutbox } from "../game/tableRuntime.ts";
+import type { Presence } from "../game/tableRuntime.ts";
 import { logger } from "../shared/logger.ts";
 import { socketRoomMap, userRoom, userSocketMap } from "../game/gameRoom.ts";
-import { stateAckTimeoutMs } from "../game/gameTimers.ts";
-
-export function socketOutbox(io: SocketServer): TableOutbox {
-  const to = (room: string): Emitter => io.to(room);
-  return {
-    room: to,
-    user: (userId) => to(userRoom(userId)),
-    state(userId, render) {
-      const send = (retrying: boolean) => {
-        const state = render(retrying);
-        if (!state) return;
-        io.to(userRoom(userId))
-          .timeout(stateAckTimeoutMs())
-          .emit("game:state", state, (err: unknown) => {
-            if (err && !retrying) send(true);
-          });
-      };
-      send(false);
-    },
-  };
-}
 
 /**
  * `adapter.rooms` holds only the sockets this process is serving, so reading it

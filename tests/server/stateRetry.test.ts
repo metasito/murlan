@@ -2,10 +2,9 @@
 // table as it is by then, never replayed from the snapshot that missed.
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { recordingRuntime, stubTransport } from "../helpers/recordingRuntime.ts";
+import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { sendGameStateTo } from "../../server/game/gamePersistence.ts";
-import { socketOutbox } from "../../server/socket/socketOutbox.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { startRound } from "../../lib/game/gameEngine.ts";
 import type { WireGameState } from "../../shared/protocol.ts";
@@ -39,27 +38,4 @@ test("a table that ended before the retry sends nothing more", () => {
   sendGameStateTo(rt, "ana", game);
 
   assert.equal(events("game:state").length, 1);
-});
-
-test("the socket outbox retries an unacknowledged state exactly once", () => {
-  const delivered: unknown[] = [];
-  const renders: boolean[] = [];
-  const io = stubTransport({
-    to: () => ({
-      timeout: () => ({
-        emit: (_event: string, state: unknown, ack: (err: unknown) => void) => {
-          delivered.push(state);
-          ack(new Error("operation has timed out"));
-        },
-      }),
-    }),
-  });
-
-  socketOutbox(io).state("ana", (retrying) => {
-    renders.push(retrying);
-    return { retrying } as unknown as WireGameState;
-  });
-
-  assert.deepEqual(renders, [false, true]);
-  assert.equal(delivered.length, 2);
 });
