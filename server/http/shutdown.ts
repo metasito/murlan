@@ -11,6 +11,7 @@ import { cancelRevocationRetries } from "../socket/socketRegistry.ts";
 import { closeOwnership, forgetOwnerRecords } from "../game/gameOwnership.ts";
 import type { TableRuntime } from "../game/tableRuntime.ts";
 import { settleDisconnects } from "../socket/socketPresence.ts";
+import { flushTelemetry } from "../shared/telemetryBatch.ts";
 import { within } from "../shared/within.ts";
 import { stopHealth } from "./health.ts";
 
@@ -39,6 +40,7 @@ export const SHUTDOWN_BUDGET = {
   ioClose: 500,
   settleDisconnects: DISCONNECT_SETTLE_MS,
   stopTables: 250,
+  flushTelemetry: 200,
   ownerRecords: 250,
   drain: DRAIN_TIMEOUT_MS,
   poolEnd: 200,
@@ -104,6 +106,7 @@ export async function shutdown(
     );
     await settleDisconnects(SHUTDOWN_BUDGET.settleDisconnects);
     await within(SHUTDOWN_BUDGET.stopTables, tables.stopTables());
+    await within(SHUTDOWN_BUDGET.flushTelemetry, flushTelemetry());
     cancelRevocationRetries();
     stopHealth();
     stopInbox();

@@ -50,10 +50,10 @@ export function mountReports(app: Express): void {
       const report = req.body;
       logger.warn({ platform: report.platform }, "Client reported an unhandled error");
       // Also kept as a row, so the owner can read it on /admin later rather
-      // than only in the log stream. Fire-and-forget: a crash report failing
+      // than only in the log stream. Queued, never awaited: a crash report failing
       // to store must not turn into a second failure for a client that is
       // already showing its error screen.
-      void recordClientError({
+      recordClientError({
         userId,
         message: report.message,
         stack: report.stack,
@@ -64,12 +64,7 @@ export function mountReports(app: Express): void {
         platform: report.platform,
         appVersion: report.appVersion,
         context: report.componentStack ? { componentStack: report.componentStack } : {},
-        // Not the report, even here. A client chooses its own `message`, and a
-        // NUL in it makes this insert fail every time — which would be a way
-        // to write arbitrary text into a stream nothing sweeps.
-      }).catch((err) =>
-        logger.error({ err, platform: report.platform }, "Failed to store a client error report")
-      );
+      });
       // Nothing to say back. The client is already showing its error screen and
       // must not depend on this having worked.
       res.status(204).end();

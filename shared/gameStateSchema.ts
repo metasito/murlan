@@ -17,7 +17,7 @@ import {
 
 export const UNSATISFIABLE_EXCHANGE = "an open exchange nobody can give back from";
 
-const seat = z.number().int().nonnegative();
+export const seat = z.number().int().nonnegative();
 
 const card = z.object({
   id: z.string(),
@@ -36,13 +36,13 @@ const player = z.object({
   finishPosition: z.number().int().optional(),
 });
 
-const combination = z.object({
+export const combination = z.object({
   type: z.enum(COMBINATION_TYPES),
   cards: z.array(card),
   strength: z.number(),
 });
 
-const lastMove = z.union([
+export const lastMove = z.union([
   z.object({ seq: z.literal(0), kind: z.literal("deal") }),
   z.object({ seq: z.number().int().nonnegative(), kind: z.literal("play"), seat }),
   z.object({ seq: z.number().int().nonnegative(), kind: z.literal("pass"), seat, closedTrick: z.boolean() }),

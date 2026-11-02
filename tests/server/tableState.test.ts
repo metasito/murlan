@@ -54,7 +54,7 @@ function midMatch(): OnlineGameState {
     rematchVotes: new Set(["alice"]),
     endMatchVotes: new Set(["carl"]),
     spectators: new Set(["zed"]),
-    moveLog: [],
+    moveLog: [{ seat: 1, combo: null, handCounts: [13, 13, 13, 13] }],
     replayOpening: { seq: 1, kind: "giveback", seat: 0 },
     turnDeadlineMs: 123,
     lastRoundOverPayload: {} as RoundOverPayload,
@@ -80,16 +80,40 @@ describe("a table's round trip through active_games", () => {
     assert.deepEqual(withoutMemoryOnly(back.game), withoutMemoryOnly(game));
   });
 
-  test("the memory-only fields come back empty, and a restored round writes no replay", () => {
+  test("the memory-only fields come back empty", () => {
     const back = fromEnvelope(persisted(midMatch()));
     assert.ok(back.ok);
     assert.deepEqual(back.game.rematchVotes, new Set());
     assert.deepEqual(back.game.endMatchVotes, new Set());
     assert.deepEqual(back.game.spectators, new Set());
-    assert.equal(back.game.moveLog, null);
     assert.equal(back.game.turnDeadlineMs, undefined);
     assert.equal(back.game.lastRoundOverPayload, undefined);
     assert.equal(back.game.resultWrites, undefined);
+  });
+
+  test("a round restored mid-way keeps its move log and what it opened on, so it still finishes with its replay", () => {
+    const game = midMatch();
+    const back = fromEnvelope(persisted(game));
+    assert.ok(back.ok);
+    assert.deepEqual(back.game.moveLog, game.moveLog);
+    assert.deepEqual(back.game.replayOpening, game.replayOpening);
+  });
+
+  test("a packed log is a copy: a move made after the snapshot does not reach it", () => {
+    const game = midMatch();
+    const envelope = toEnvelope(game);
+    game.moveLog!.push({ seat: 2, combo: null, handCounts: [13, 13, 13, 13] });
+    assert.equal(envelope.moveLog?.length, 1);
+  });
+
+  test("a row with no log, or a log that does not parse, restores as a round with no replay rather than refused", () => {
+    const { moveLog: _log, replayOpening: _opening, ...older } = persisted(midMatch()).gameState;
+    for (const gameState of [older, { ...older, moveLog: [{ seat: "x" }], replayOpening: { kind: "nope" } }]) {
+      const back = fromEnvelope({ roomId: ROOM, gameState });
+      assert.ok(back.ok, back.ok ? "" : back.reason);
+      assert.equal(back.game.moveLog, null);
+      assert.equal(back.game.replayOpening, undefined);
+    }
   });
 
   test("packs the stored shape at the current schema version", () => {
@@ -117,6 +141,8 @@ describe("a table's round trip through active_games", () => {
         weakSeats: [1],
         abandonedSeats: [[1, "bob"]],
       },
+      moveLog: game.moveLog,
+      replayOpening: game.replayOpening,
     });
   });
 

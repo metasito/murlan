@@ -25,10 +25,6 @@ const INVENTORY: Record<string, { n: number; why: string }> = {
     n: 1,
     why: "the window after dispose in which the room must stay unclaimable while its row's delete is held",
   },
-  "tests/integration/events.test.ts": {
-    n: 1,
-    why: "a second tutorial.started row is an absence, and the event write is fire-and-forget with nothing to await",
-  },
   "tests/integration/instanceInbox.test.ts": {
     n: 4,
     why: "a duplicate delivery, and a delivery over a link that is down, are absences; and the send must meet a link already refused",

@@ -202,14 +202,14 @@ const flush = async () => {
   for (let i = 0; i < 20; i++) await settle();
 };
 
-test("row writes land one at a time in the order they were made, however many are waiting", async (t) => {
+test("row writes land one at a time, and a waiting one gives way to a newer snapshot", async (t) => {
   await heldRoom(t, ROOM);
   const { store, started, land } = gatedStore();
   const writers = tableWriters(store);
   const game = tableAtRound(1);
   const first = writers.persistGameState(ROOM, game);
   playRound(game, 2);
-  void writers.persistGameState(ROOM, game);
+  const replaced = writers.persistGameState(ROOM, game);
   playRound(game, 3);
   void writers.persistGameState(ROOM, game);
   await flush();
@@ -221,15 +221,14 @@ test("row writes land one at a time in the order they were made, however many ar
   playRound(game, 4);
   void writers.persistGameState(ROOM, game);
   await flush();
-  assert.deepEqual(started, ["round1", "round2"], "a write overtook one still waiting ahead of it");
+  assert.deepEqual(started, ["round1", "round3"], "a write overtook one still waiting ahead of it");
 
   land(1);
+  await replaced;
   await flush();
   land(2);
   await flush();
-  land(3);
-  await flush();
-  assert.deepEqual(started, ["round1", "round2", "round3", "round4"]);
+  assert.deepEqual(started, ["round1", "round3", "round4"]);
 });
 
 test("a row write whose table was disposed while it waited is never made", async (t) => {

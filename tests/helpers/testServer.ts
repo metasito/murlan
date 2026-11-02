@@ -12,6 +12,7 @@ import { cancelRevocationRetries } from "../../server/socket/socketRegistry.ts";
 import { stopHealth } from "../../server/http/health.ts";
 import { dropKeyspace } from "./redisKeys.ts";
 import { closeOwnership } from "../../server/game/gameOwnership.ts";
+import { flushTelemetry } from "../../server/shared/telemetryBatch.ts";
 import { installClock, type Clock } from "../../server/http/clock.ts";
 
 /**
@@ -226,6 +227,7 @@ export async function startTestServer(
           await closed;
           // After the http server: closeDatabase drains the fire-and-forget
           // writes still landing from the requests and disconnects above.
+          await flushTelemetry();
           await (await closeDatabase()).ended;
           await ioClosed;
           cancelRevocationRetries();
