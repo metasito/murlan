@@ -8,7 +8,8 @@ import { activeGames, socketRoomMap } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { registerGameplayHandlers } from "../../server/socket/socketGameplay.ts";
 import { __resetRateLimits } from "../../server/socket/socketSafety.ts";
-import { db, openDatabase } from "../../server/store/db.ts";
+import { openDatabase, pool } from "../../server/store/db.ts";
+import { flushTelemetry } from "../../server/shared/telemetryBatch.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { actingSeat, startRound, type GameState } from "../../lib/game/gameEngine.ts";
 import { chooseMove } from "../../lib/game/autoMove.ts";
@@ -32,12 +33,14 @@ afterEach(() => {
 function seatedTable(t: { mock: typeof import("node:test").mock }, gameState: GameState) {
   const recorded: string[] = [];
   const contexts: unknown[] = [];
-  t.mock.method(db(), "insert", () => ({
-    values: async (row: { name: string; context: unknown }) => {
-      recorded.push(row.name);
-      if (row.name === "game.firstMoveMade") contexts.push(row.context);
-    },
-  }));
+  t.mock.method(pool(), "query", async (sql: string, [, , names, context]: string[][]) => {
+    if (!/INSERT INTO events/.test(sql)) return { rows: [], rowCount: 0 };
+    names!.forEach((name, i) => {
+      recorded.push(name);
+      if (name === "game.firstMoveMade") contexts.push(JSON.parse(context![i]!));
+    });
+    return { rows: [], rowCount: names!.length };
+  });
   const { rt } = recordingRuntime();
   activeGames.set(ROOM, onlineTable({ roomId: ROOM, playerMap: USERS, maxPlayers: 3, gameState }));
   const sockets = Object.entries(USERS).map(([, userId]) => {
@@ -57,7 +60,10 @@ function seatedTable(t: { mock: typeof import("node:test").mock }, gameState: Ga
     const reply = await new Promise((resolve) => sockets[seat].get(event as string)!(body, resolve));
     assert.deepEqual(reply, { ok: true });
   }
-  const firstMoves = () => recorded.filter((name) => name === "game.firstMoveMade").length;
+  const firstMoves = async () => {
+    await flushTelemetry();
+    return recorded.filter((name) => name === "game.firstMoveMade").length;
+  };
   return { move, firstMoves, contexts };
 }
 
@@ -67,16 +73,16 @@ test("the match's opening play records game.firstMoveMade, and no later move doe
   await table.move();
   assert.equal(activeGames.get(ROOM)!.gameState.openingCard, null);
   await new Promise((r) => setImmediate(r));
-  assert.equal(table.firstMoves(), 1);
+  assert.equal(await table.firstMoves(), 1);
   assert.deepEqual(table.contexts, [{ playerCount: 3, gameMode: "free_for_all" }], "the step says how big a table it was");
   for (let i = 0; i < 8; i++) await table.move();
   await new Promise((r) => setImmediate(r));
-  assert.equal(table.firstMoves(), 1);
+  assert.equal(await table.firstMoves(), 1);
 });
 
 test("a later round's lead, dealt from an exchange, records nothing", async (t) => {
   const table = seatedTable(t, startRound(SEATS, "free_for_all", { opening: { kind: "exchange", winnerSeat: 0, loserSeat: 2 } }));
   for (let i = 0; i < 6; i++) await table.move();
   await new Promise((r) => setImmediate(r));
-  assert.equal(table.firstMoves(), 0);
+  assert.equal(await table.firstMoves(), 0);
 });
