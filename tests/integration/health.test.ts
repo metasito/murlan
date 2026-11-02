@@ -113,6 +113,18 @@ describe("the probes on one instance", { skip: hasDatabase() ? false : skipMessa
     assert.match(body, /^pg_connection_headroom -?\d+$/m, "the boot check's headroom");
   });
 
+  test("/metrics serves the store's own INFO, and the store is the one deploy/runtime.json names", async () => {
+    const body = await eventually(async () => {
+      const r = await timed(`${server.url}/metrics`, { headers: { authorization: `Bearer ${TOKEN}` } });
+      return /^store_used_memory_bytes \d+$/m.test(r.text) ? r.text : null;
+    }, "the store's first INFO");
+    for (const name of ["store_maxmemory_bytes", "store_evicted_keys", "store_blocked_clients", "store_rejected_connections"]) {
+      assert.match(body, new RegExp(`^${name} \\d+$`, "m"), name);
+    }
+    assert.match(body, /^store_info\{engine="valkey",version="9\.[\d.]+",maxmemory_policy="noeviction"\} 1$/m);
+    assert.doesNotMatch(body, /^store_misconfigured_total\{[^}]*\} [1-9]/m, "the boot check found the store unlike the manifest's");
+  });
+
   // Last: a drain cannot be undone inside a process.
   test("draining, the instance is live and not ready", async () => {
     beginShutdown();

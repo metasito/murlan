@@ -8,7 +8,8 @@ import { openRedis, type RedisClient } from "../store/redis.ts";
 import { isShuttingDown } from "../game/gameRoom.ts";
 import { onEventLoopSlice, stopWatchingEventLoop, watchEventLoop } from "../shared/eventLoop.ts";
 import { within } from "../shared/within.ts";
-import "../shared/metrics.ts";
+import { noteStoreInfo } from "../shared/metrics.ts";
+import { checkStore, parseInfo, STORE_INFO_COMMAND } from "../store/storeInfo.ts";
 
 const LIVE_PATH = "/health/live";
 const READY_PATHS = ["/health", "/health/ready"];
@@ -19,6 +20,7 @@ export const PROBE_PATHS: readonly string[] = [LIVE_PATH, ...READY_PATHS, METRIC
 /** The most one dependency probe may take; a probe still out by then reports `down`. */
 const PROBE_DEADLINE_MS = 1_000;
 const PROBE_INTERVAL_MS = 1_000;
+const STORE_INFO_INTERVAL_MS = 10_000;
 const MAX_EVENT_LOOP_DELAY_MS = 200;
 /** Consecutive one-second slices over the limit before the instance goes unready, and under it before it is ready again. */
 const LAG_SLICES_TO_ENTER = 3;
@@ -49,6 +51,9 @@ onEventLoopSlice((p99Ms) => gate.observe(p99Ms));
 let booted = false;
 let redis: RedisClient | null = null;
 let refresher: ReturnType<typeof setInterval> | null = null;
+let storePoller: ReturnType<typeof setInterval> | null = null;
+/** Cleared at every connect, so a failover to a store set up otherwise is named too. */
+let storeChecked = false;
 const links: { db: Link; redis: Link; at: number | null } = { db: "down", redis: "down", at: null };
 
 /** One probe in flight per dependency, however often it is asked: a hung one never queues another behind it. */
@@ -67,6 +72,15 @@ const probeDatabase = singleFlight(pingDatabase);
 const probeRedis = singleFlight(async () => {
   if (!redis) throw new Error("the health link to Redis is not open");
   return redis.ping();
+});
+
+const pollStore = singleFlight(async () => {
+  const reply = redis ? await within(PROBE_DEADLINE_MS, redis.sendCommand(STORE_INFO_COMMAND).catch(() => null)) : null;
+  if (typeof reply !== "string") return noteStoreInfo(null);
+  const info = parseInfo(reply);
+  noteStoreInfo(info);
+  if (!storeChecked) checkStore(info);
+  storeChecked = true;
 });
 
 async function link(probe: () => Promise<Link>): Promise<Link> {
@@ -131,10 +145,16 @@ export function mountHealth(app: express.Application): void {
   stopHealth();
   watchEventLoop();
   redis = openRedis("health", { offlineQueue: false });
-  redis.on("ready", () => void refreshLinks());
+  redis.on("ready", () => {
+    storeChecked = false;
+    void refreshLinks();
+    void pollStore();
+  });
   void refreshLinks();
   refresher = setInterval(() => void refreshLinks(), PROBE_INTERVAL_MS);
   (refresher as unknown as { unref?: () => void }).unref?.();
+  storePoller = setInterval(() => void pollStore(), STORE_INFO_INTERVAL_MS);
+  (storePoller as unknown as { unref?: () => void }).unref?.();
   app.get(LIVE_PATH, (_req, res) => {
     res.json({ status: "ok" });
   });
@@ -150,6 +170,7 @@ export function markBooted(): void {
 /** Stops the background probes and the loop's sampling; the next `mountHealth` starts both again. */
 export function stopHealth(): void {
   if (refresher) clearInterval(refresher);
-  refresher = null;
+  if (storePoller) clearInterval(storePoller);
+  refresher = storePoller = null;
   stopWatchingEventLoop();
 }
