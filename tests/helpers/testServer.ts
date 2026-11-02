@@ -8,6 +8,7 @@ import { closeDatabase, db as appDb, pool as appPool, type Database } from "../.
 import { closeRedis, redisReady } from "../../server/store/redis.ts";
 import { stopInbox } from "../../server/store/instanceInbox.ts";
 import { cancelRevocationRetries } from "../../server/socket/socketRegistry.ts";
+import { stopHealth } from "../../server/http/health.ts";
 import { dropKeyspace } from "./redisKeys.ts";
 import { closeOwnership } from "../../server/game/gameOwnership.ts";
 import { installClock, type Clock } from "../../server/http/clock.ts";
@@ -227,6 +228,7 @@ export async function startTestServer(
           await (await closeDatabase()).ended;
           await ioClosed;
           cancelRevocationRetries();
+          stopHealth();
           stopInbox();
           closeRedis();
           // The room-ownership client is a second connection, held open for
@@ -252,6 +254,7 @@ export async function startTestServer(
     // DATABASE_URL mutation.
     await (await closeDatabase()).ended;
     cancelRevocationRetries();
+    stopHealth();
     stopInbox();
     closeRedis();
     restoreClock();
