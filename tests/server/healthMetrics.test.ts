@@ -2,7 +2,7 @@
 // lag gate flips only on a sustained run of slow seconds.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { register } from "prom-client";
+import { register } from "@prometheus-io/client";
 import { noteStreamRead } from "../../server/shared/metrics.ts";
 import { installClock, now, realClock } from "../../server/http/clock.ts";
 import { lagGate } from "../../server/http/health.ts";

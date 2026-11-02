@@ -2,7 +2,7 @@
 // one in one inbox message per instance, a state at most one outstanding and one queued.
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { register } from "prom-client";
+import { register } from "@prometheus-io/client";
 import { stubTransport } from "../helpers/recordingRuntime.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { deliveryOutbox } from "../../server/socket/delivery.ts";

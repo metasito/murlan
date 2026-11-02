@@ -2,11 +2,11 @@
 // keyed on it breaks silently when a metrics library changes what it writes.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { register } from "prom-client";
+import { register } from "@prometheus-io/client";
 import { noteStreamRead } from "../../server/shared/metrics.ts";
 import "../../server/http/rateLimit.ts";
 import { createPool } from "../../server/store/pool.ts";
+import recorded from "../fixtures/metricsExposition.json" with { type: "json" };
 
 type Exposed = Record<string, { type: string; help: string; samples: Record<string, string[]> }>;
 
@@ -42,9 +42,8 @@ test("/metrics exposes the recorded names, types and labels", async () => {
     ] as const) {
       (register.getSingleMetric(name) as unknown as { inc(labels: Record<string, string>): void }).inc({ [label]: "x" });
     }
-    const recorded: Exposed = JSON.parse(readFileSync("tests/fixtures/metricsExposition.json", "utf8"));
     assert.equal(register.contentType, "text/plain; version=0.0.4; charset=utf-8");
-    assert.deepEqual(parse(await register.metrics()), recorded);
+    assert.deepEqual(parse(await register.metrics()), recorded satisfies Exposed);
   } finally {
     await pool.end();
   }
