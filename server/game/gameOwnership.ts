@@ -94,6 +94,9 @@ let connecting: Promise<Client | null> | null = null;
 let heartbeat: ReturnType<typeof setInterval> | null = null;
 let reclaimRetry: ReturnType<typeof setTimeout> | null = null;
 let reclaiming: Promise<void> | null = null;
+/** How many times ownership has closed: work begun before a close must not clear state after it. */
+let closures = 0;
+let recordsForgotten = false;
 /** Asked for while a reclaim ran: the session may have changed under the rooms it already passed. */
 let reclaimAgain = false;
 let closed = false;
@@ -164,9 +167,7 @@ function connect(): Promise<Client | null> {
       heartbeat = setInterval(() => {
         void next.query("SELECT 1").then(
           () => {
-            for (const [roomId, hold] of held) {
-              if (hold.epoch !== null) refreshTableOwner(roomId, hold.epoch, OWNER_RECORD_TTL_MS);
-            }
+            for (const [roomId, epoch] of recordsToRenew(next)) refreshTableOwner(roomId, epoch, OWNER_RECORD_TTL_MS);
           },
           (err: unknown) => {
             logger.error({ err }, "Game ownership connection stopped answering");
@@ -201,7 +202,9 @@ type LockAnswer = "taken" | "elsewhere" | "unreachable";
  */
 function retirePredecessors(c: Client): Promise<boolean> {
   if (predecessors.length === 0) return Promise.resolve(true);
-  retiring ??= (async () => {
+  if (retiring) return retiring;
+  const generation = closures;
+  retiring = (async () => {
     const alive = (b: Backend) =>
       c
         .query(`SELECT pid FROM pg_stat_activity WHERE pid = $1 AND ${STARTED} = $2`, [b.pid, b.started])
@@ -237,7 +240,7 @@ function retirePredecessors(c: Client): Promise<boolean> {
       logger.warn({ err }, "Could not end a dropped ownership session");
       return false;
     } finally {
-      retiring = null;
+      if (closures === generation) retiring = null;
     }
   })();
   return retiring;
@@ -299,6 +302,7 @@ function reclaim(): Promise<void> {
     reclaimAgain = true;
     return reclaiming;
   }
+  const generation = closures;
   reclaiming = (async () => {
     try {
       do {
@@ -306,7 +310,7 @@ function reclaim(): Promise<void> {
         await reclaimPass();
       } while (reclaimAgain && !closed);
     } finally {
-      reclaiming = null;
+      if (closures === generation) reclaiming = null;
     }
   })();
   return reclaiming;
@@ -464,10 +468,24 @@ export function ownsRoom(roomId: string): boolean {
 }
 
 /**
+ * The owner records a heartbeat on `session` renews: rooms entered and locked on that session.
+ * A hold still locked on a session it lost may have been taken over, and its record must lapse.
+ * None once `forgetOwnerRecords` has run, so a late beat cannot put back a record it cleared.
+ */
+export function recordsToRenew(session: Client): [roomId: string, epoch: number][] {
+  if (recordsForgotten) return [];
+  return [...held].flatMap(([roomId, hold]) =>
+    hold.epoch !== null && hold.lockedOn === session ? [[roomId, hold.epoch] as [string, number]] : []
+  );
+}
+
+/**
  * Clears the owner record of every table this process holds, for a process on its way out: it
- * runs before Redis closes, which is before the ownership connection does. Never rejects.
+ * runs before Redis closes, which is before the ownership connection does, and the heartbeat
+ * renews none after it. Never rejects.
  */
 export async function forgetOwnerRecords(): Promise<void> {
+  recordsForgotten = true;
   await Promise.all(
     [...held].flatMap(([roomId, hold]) => (hold.epoch === null ? [] : [clearTableOwner(roomId, hold.epoch)]))
   );
@@ -481,6 +499,11 @@ export async function forgetOwnerRecords(): Promise<void> {
 export async function closeOwnership(): Promise<void> {
   closed = true;
   held.clear();
+  // A reclaim still waiting on the old session walks holds that are gone; the next run starts anew.
+  reclaiming = null;
+  retiring = null;
+  reclaimAgain = false;
+  closures++;
   predecessors.length = 0;
   backend = null;
   if (heartbeat) {
@@ -505,6 +528,7 @@ export function reopenOwnership(handlers: { onRoomLost: (roomId: string) => void
   closed = false;
   onRoomLost = handlers.onRoomLost;
   rows = handlers.rows;
+  recordsForgotten = false;
 }
 
 /**
