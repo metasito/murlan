@@ -24,6 +24,8 @@ export interface Inbox {
    * reader takes to make one again: there is nobody to hand the message to. In order per `to`.
    */
   send(to: string, message: InstanceMessage): Promise<void>;
+  /** Only to an inbox its instance still keeps: false, and nothing written, for one that is gone. Rejects like `send`. */
+  offer(to: string, message: InstanceMessage): Promise<boolean>;
   on(kind: string, handler: InstanceHandler): void;
   /** Removes this instance's stream, so a send to it rejects at once. Never rejects. */
   close(): Promise<void>;
@@ -48,7 +50,8 @@ export function inboxTrim() {
  * One instance's addressed stream, `inbox:<instanceId>`. Each message is read once and in
  * order: the reader resumes from the last entry it handed over, across any reconnect, for as
  * long as the stream still holds it. The stream is its reader's: made at connect, kept alive while
- * it runs, gone once it stops; a sender never makes one.
+ * it runs, gone once it stops; a sender never makes one, so the stream existing is what `offer`
+ * reads as the instance being there.
  */
 export function openInbox({
   id = thisInstance,
@@ -163,6 +166,10 @@ export function openInbox({
       clusterMessages.inc({ channel: "inbox" });
       await sendTo(to, JSON.stringify(message));
     },
+    async offer(to, message) {
+      clusterMessages.inc({ channel: "inbox" });
+      return tryOnce(to, JSON.stringify(message));
+    },
     on(kind, handler) {
       handlers.set(kind, handler);
     },
@@ -187,6 +194,11 @@ export function startInbox(): void {
 export function sendToInstance(to: string, message: InstanceMessage): Promise<void> {
   if (!inbox) return Promise.reject(new Error("the instance inbox is not open"));
   return inbox.send(to, message);
+}
+
+export function offerToInstance(to: string, message: InstanceMessage): Promise<boolean> {
+  if (!inbox) return Promise.reject(new Error("the instance inbox is not open"));
+  return inbox.offer(to, message);
 }
 
 export function onInstanceMessage(kind: string, handler: InstanceHandler): void {

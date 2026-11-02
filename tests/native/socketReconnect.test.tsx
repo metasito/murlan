@@ -11,7 +11,7 @@ import { AppState, Platform, Text } from 'react-native';
 import { act, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
 
-import { reconnectDelayMs } from '@/lib/reconnectDelay';
+import { DRAINING_SPREAD_MS, reconnectDelayMs } from '@/lib/reconnectDelay';
 import { renderApp } from './harness/renderApp';
 import { netInfoListeners } from './mocks/netInfo';
 import { lastSocket } from './mocks/socketIo';
@@ -173,6 +173,74 @@ describe('the device telling the app to try now', () => {
       await unmount(view);
     });
   }
+});
+
+describe('a draining server', () => {
+  const DRAINING_MS = 7_000;
+  const drain = (reconnectAfterMs: number) => act(async () => lastSocket().serverEmit('server:draining', { reconnectAfterMs }));
+
+  it('holds the first reconnect back until its notice runs out', async () => {
+    const view = await connected();
+    await drain(DRAINING_MS);
+    await act(async () => lastSocket().drop('transport close'));
+
+    await advance(DRAINING_MS - 1);
+    expect(lastSocket().connect).not.toHaveBeenCalled();
+    await advance(1);
+    expect(lastSocket().connect).toHaveBeenCalledTimes(1);
+    await unmount(view);
+  });
+
+  it('waits no longer than the spread a server draws from, whatever the notice says', async () => {
+    const view = await connected();
+    await drain(DRAINING_SPREAD_MS * 6);
+    await act(async () => lastSocket().drop('transport close'));
+
+    await advance(DRAINING_SPREAD_MS);
+    expect(lastSocket().connect).toHaveBeenCalledTimes(1);
+    await unmount(view);
+  });
+
+  it('keeps the jittered delay when that is the later of the two', async () => {
+    const view = await connected();
+    await drain(0);
+    await act(async () => lastSocket().drop('transport close'));
+
+    expect(scheduled(FIRST_RETRY_MS)).toBe(1);
+    await advance(FIRST_RETRY_MS);
+    expect(lastSocket().connect).toHaveBeenCalledTimes(1);
+    await unmount(view);
+  });
+
+  it('is not overridden by the app coming to the foreground', async () => {
+    const view = await connected();
+    await drain(DRAINING_MS);
+    await act(async () => lastSocket().drop('transport close'));
+    const handlers = jest
+      .mocked(AppState.addEventListener)
+      .mock.calls.filter(([event]) => event === 'change')
+      .map(([, handler]) => handler as (state: string) => void);
+    await act(async () => handlers.forEach((handler) => handler('active')));
+
+    expect(lastSocket().connect).not.toHaveBeenCalled();
+    await advance(DRAINING_MS);
+    expect(lastSocket().connect).toHaveBeenCalledTimes(1);
+    await unmount(view);
+  });
+
+  it('holds back only the reconnect after it, not the next drop', async () => {
+    const view = await connected();
+    await drain(DRAINING_MS);
+    await act(async () => lastSocket().drop('transport close'));
+    await advance(DRAINING_MS);
+    await act(async () => lastSocket().open());
+    lastSocket().reset();
+
+    await act(async () => lastSocket().drop('transport close'));
+    await advance(FIRST_RETRY_MS);
+    expect(lastSocket().connect).toHaveBeenCalledTimes(1);
+    await unmount(view);
+  });
 });
 
 describe('on web, a handshake refused as unauthenticated', () => {

@@ -489,6 +489,36 @@ async function unlock(roomId: string): Promise<void> {
 }
 
 /**
+ * Hands a room back for a peer to claim, keeping its owner record: an instance asking meanwhile
+ * still asks this one, which forwards to whichever peer claims, and that claim's record replaces
+ * it. `forget` clears the record while it still names this claim, for a hand-off nobody took.
+ * Null, with the claim kept, unless the lock is now free: a session that is down or reclaiming
+ * cannot release what it may no longer hold, and a hold given up then is one no reclaim retakes.
+ */
+export async function releaseForHandOff(roomId: string): Promise<{ forget: () => Promise<void> } | null> {
+  const hold = held.get(roomId);
+  const c = client;
+  if (!hold || hold.epoch === null || releasing.has(roomId) || !c || reclaiming || hold.lockedOn !== c) return null;
+  const epoch = hold.epoch;
+  held.delete(roomId);
+  const released = await c
+    .query<{ released: boolean }>("SELECT pg_advisory_unlock($1::bigint) AS released", [ownershipKey(roomId)])
+    .then(({ rows }) => rows[0]?.released === true)
+    .catch((err: unknown) => {
+      logger.warn({ err, roomId }, "Could not release a room to hand it off");
+      return null;
+    });
+  if (released) return { forget: () => clearTableOwner(roomId, epoch) };
+  if (!closed && !held.has(roomId)) {
+    // Not this session's lock after all: the reclaim asks for it again.
+    if (released === false) hold.lockedOn = null;
+    held.set(roomId, hold);
+    void reclaim();
+  }
+  return null;
+}
+
+/**
  * Hands a room back once `settled` has, and refuses every claim on it until then — this
  * process's own too, which the re-entrant lock would otherwise grant at once. For a room whose
  * row is being deleted: a claim landing first restores the table from that row.
@@ -496,7 +526,9 @@ async function unlock(roomId: string): Promise<void> {
 export function releaseRoomAfter(roomId: string, settled: Promise<unknown>): Promise<void> {
   const released: Promise<void> = settled
     .catch(() => {})
-    .then(() => (releasing.get(roomId) === released ? unlock(roomId) : undefined))
+    .then(async () => {
+      if (releasing.get(roomId) === released) await unlock(roomId);
+    })
     .finally(() => {
       if (releasing.get(roomId) === released) releasing.delete(roomId);
     });
