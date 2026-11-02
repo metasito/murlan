@@ -15,11 +15,13 @@ const LeaderboardScreen = require('@/app/(online)/leaderboard').default as React
 const ME = '/api/ratings/me';
 const asked = (path: string) => httpRequests().filter((r) => r.method === 'GET' && r.path === path).length;
 // Idle alone also matches a query mounted but not yet fetching, which still shows the spinner.
-const settled = (path: string) =>
+// A settled query is not yet a rendered screen: the spinner can outlive it by a commit.
+const settled = (view: { queryByLabelText(label: string): unknown }, path: string, loadingLabel: string) =>
   waitFor(() => {
     const state = queryClient.getQueryState([path]);
     expect(state?.status).not.toBe('pending');
     expect(state?.fetchStatus).toBe('idle');
+    expect(view.queryByLabelText(loadingLabel)).toBeNull();
   });
 const show = async () => {
   await setWindow({ width: 390, height: 844 });
@@ -41,7 +43,7 @@ describe("the viewer's own rating", () => {
   it('says it failed, and retries', async () => {
     route('GET', ME, { status: 500 });
     const view = await show();
-    await settled(ME);
+    await settled(view, ME, locale['ladder.meLoadingA11yLabel']);
     const before = asked(ME);
     await fireEvent.press(view.getByLabelText(locale['ladder.meRetryA11yLabel']));
     expect(asked(ME)).toBe(before + 1);
@@ -51,7 +53,7 @@ describe("the viewer's own rating", () => {
   it('keeps a rating it has when a refresh fails', async () => {
     route('GET', ME, { body: { season: '2026-08', rating: 1234, rounds: 30, provisional: false } });
     const view = await show();
-    await settled(ME);
+    await settled(view, ME, locale['ladder.meLoadingA11yLabel']);
     route('GET', ME, { status: 500 });
     await act(() => queryClient.refetchQueries({ queryKey: [ME] }));
     expect(view.getByLabelText(/1234/)).toBeTruthy();
@@ -70,7 +72,7 @@ describe('the ladder rows', () => {
       ],
     });
     const view = await show();
-    await settled('/api/ratings/leaderboard');
+    await settled(view, '/api/ratings/leaderboard', locale['ladder.loadingA11yLabel']);
     expect(view.getByLabelText('2: Ana (you), 1400 points')).toBeTruthy();
     expect(view.getByLabelText('1: Bora, 1500 points')).toBeTruthy();
     await view.unmount();
