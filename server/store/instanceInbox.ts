@@ -1,4 +1,5 @@
 import { logger } from "../shared/logger.ts";
+import { noteStreamRead } from "../shared/metrics.ts";
 import {
   BLOCK_MS,
   CLUSTER_GAP_SECONDS,
@@ -78,6 +79,7 @@ export function openInbox({
         const reply = await reader.xRead({ key: inboxKey(id), id: after }, { BLOCK: BLOCK_MS, COUNT: READ_COUNT });
         for (const { messages } of (reply ?? []) as { messages: { id: string; message: Record<string, string> }[] }[]) {
           for (const entry of messages) {
+            noteStreamRead("inbox", entry.id);
             await deliver(entry.message.m);
             after = entry.id;
           }

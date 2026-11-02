@@ -136,7 +136,7 @@ describe("static asset compression and caching", { skip: hasDatabase() ? false :
 
   test("the public health body names neither the build nor the environment", async () => {
     const body = (await (await fetch(`${server.url}/health`)).json()) as Record<string, unknown>;
-    assert.deepEqual(Object.keys(body).sort(), ["db", "status", "uptime"]);
+    assert.deepEqual(Object.keys(body).sort(), ["db", "probedMsAgo", "redis", "status", "uptime"]);
     const version = await fetch(`${server.url}/api/admin/version`);
     assert.equal(version.status, 404, "the version route answered a signed-out caller");
   });

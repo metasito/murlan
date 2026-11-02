@@ -9,6 +9,9 @@ import { HTTP } from "../../shared/http.ts";
 /** Every route outside the player API, each answered on purpose without the contract. */
 const NON_API = new Set([
   "GET /health",
+  "GET /health/live",
+  "GET /health/ready",
+  "GET /metrics",
   "GET /.well-known/apple-app-site-association",
   "GET /.well-known/assetlinks.json",
   "GET /admin",
