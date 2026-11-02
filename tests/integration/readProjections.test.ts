@@ -205,6 +205,7 @@ describe("store reads select only what their callers use", { skip: hasDatabase()
     const rows: [string, unknown][] = [
       ["live", envelope(GAME_SCHEMA_VERSION, false, { 2: "cara", 0: "ana", 1: "besi" })],
       ["oldest", envelope(OLDEST_GAME_SCHEMA_VERSION, false, { 0: "dren" })],
+      ["with-move-log", envelope(11, false, { 0: "fana" })],
       ["seatless", envelope(GAME_SCHEMA_VERSION, false, {})],
       ["odd-seats", envelope(GAME_SCHEMA_VERSION, false, { 0: 7, x: "nobody", 1: "edi" })],
       ["map-not-object", envelope(GAME_SCHEMA_VERSION, false, ["ana"])],
@@ -231,6 +232,7 @@ describe("store reads select only what their callers use", { skip: hasDatabase()
         { roomId: "odd-seats", userIds: ["edi"] },
         { roomId: "oldest", userIds: ["dren"] },
         { roomId: "seatless", userIds: [] },
+        { roomId: "with-move-log", userIds: ["fana"] },
       ]
     );
   });
