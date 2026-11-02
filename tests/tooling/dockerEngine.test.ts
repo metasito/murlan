@@ -112,6 +112,12 @@ describe("pullImage", () => {
     assert.throws(() => pullImage({ present: () => false, pull: p.pull, sleep: () => {}, delaysMs: [1, 1] }), /Rate exceeded/);
     assert.equal(p.count(), 3);
   });
+  test("a layer fetch that broke mid-pull is retried", () => {
+    const BROKEN = { status: 1, stderr: "failed to copy: httpReadSeeker: failed open: could not fetch content descriptor sha256:a239 (application/vnd.oci.image.layer.v1.tar+gzip) from remote: not found\n" };
+    const p = pulls(BROKEN, { status: 0 });
+    assert.equal(pullImage({ present: () => false, pull: p.pull, sleep: () => {}, delaysMs: [1] }), "pulled");
+    assert.equal(p.count(), 2);
+  });
   test("any other failure is not retried", () => {
     const p = pulls({ status: 1, stderr: "manifest unknown" });
     assert.throws(() => pullImage({ present: () => false, pull: p.pull, sleep: () => {} }), /manifest unknown/);
