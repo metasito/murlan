@@ -64,10 +64,16 @@ function slotOf(game: OnlineGameState): TurnSlot | null {
  * The server's side of `turnSchedule`: called after every state change, so the
  * AFK chain never breaks and a vacant seat is always played. It clears only the
  * turn's own timers; a deal clears the room's others (`dealRound`).
+ *
+ * A caller about to publish the state arms first and passes `announce: false`:
+ * the state then carries the deadline this sets, and is its only announcement.
  */
-export function armTurn(rt: TableRuntime, roomId: string) {
+export function armTurn(rt: TableRuntime, roomId: string, announce = true) {
   const game = activeGames.get(roomId);
   if (!game) return;
+  const told = () => {
+    if (announce) emitTurnDeadline(rt, roomId, game);
+  };
 
   clearTurnTimers(roomId);
   const slot = slotOf(game);
@@ -86,21 +92,21 @@ export function armTurn(rt: TableRuntime, roomId: string) {
     game.turnDeadlineMs = undefined;
     const thinkMs = slot.thinkMs > 0 ? botMoveDelayMs() : 0;
     arm("bot", roomId, gatedMs + thinkMs, () => safeTimer(rt, "botTurn", roomId, () => runBotTurn(rt, roomId)));
-    emitTurnDeadline(rt, roomId, game);
+    told();
     return;
   }
 
   const userId = game.playerMap[slot.seat];
   if (!slot.timed || userId === undefined) {
     game.turnDeadlineMs = undefined;
-    emitTurnDeadline(rt, roomId, game);
+    told();
     return;
   }
   const username = game.gameState.players[slot.seat]?.name ?? "";
   const timeoutMs = gatedMs + afkTimeoutMs();
   game.turnDeadlineMs = now() + timeoutMs;
   startAfkTimer(rt, roomId, userId, username, timeoutMs);
-  emitTurnDeadline(rt, roomId, game);
+  told();
 }
 
 /**
@@ -292,6 +298,6 @@ export async function vacateSeat(rt: TableRuntime, roomId: string, userId: strin
     ...payload("PLAYER_LEFT_BOT_TAKEOVER", { username }),
   });
 
+  armTurn(rt, roomId, false);
   void publishState(rt, game);
-  armTurn(rt, roomId);
 }

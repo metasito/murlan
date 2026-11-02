@@ -96,6 +96,6 @@ export function commitMove(rt: TableRuntime, game: OnlineGameState, applied: Aut
     serveState(rt, game);
     return handleRoundOver(rt, game.roomId, game);
   }
+  armTurn(rt, game.roomId, false);
   void publishState(rt, game);
-  armTurn(rt, game.roomId);
 }

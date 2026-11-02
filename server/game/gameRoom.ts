@@ -150,6 +150,8 @@ export interface OnlineGameState {
    * a restart, like the other memory-only fields above.
    */
   lastRoundOverPayload?: RoundOverPayload;
+  /** The last `seq` a state of this table was sent under; every state built to send takes the next. */
+  seq: number;
 }
 
 export const activeGames = new Map<string, OnlineGameState>();
@@ -213,6 +215,17 @@ export function openedAfter(socket: { handshake: { issued: number } }, at: numbe
   return socket.handshake.issued > at;
 }
 
+
+/** Everyone a table's state and room emits reach: its seated humans, then its spectators. */
+export function audienceOf(game: OnlineGameState): string[] {
+  return [...Object.values(game.playerMap), ...game.spectators];
+}
+
+/** `audienceOf` the table this process holds in `roomId`; null when it holds none there. */
+export function heldAudience(roomId: string): string[] | null {
+  const game = activeGames.get(roomId);
+  return game ? audienceOf(game) : null;
+}
 
 /** Who may vote: the users every vote gate waits on and every `*_vote_state` total counts.
  * A bot, and a seat whose player left, can answer nothing and hold no vote. */

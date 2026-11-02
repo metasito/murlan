@@ -54,11 +54,12 @@ const rules = {
     hits(s, STORE_IMPORT, [game("tableRuntime.ts"), game("retention.ts")]).concat(
       hits(s.filter(([file]) => file === game("retention.ts")), PAST_PURGE)
     ),
-  socketAddressesSends: (s: Sources) => hits(s, ADDRESSED_SEND, [socket("socketOutbox.ts")]),
+  socketAddressesSends: (s: Sources) => hits(s, ADDRESSED_SEND, [socket("delivery.ts")]),
   socketUsesTransport: (s: Sources) =>
     hits(s, VIA_TRANSPORT, [
       socket("socket.ts"),
       socket("socketOutbox.ts"),
+      socket("delivery.ts"),
       socket("seating.ts"),
       socket("socketRegistry.ts"),
       socket("socketPresence.ts"),
@@ -84,7 +85,7 @@ describe("each pattern still sees what it is about", () => {
     [NAMES_SOCKET_SERVER, game("tableRuntime.ts")],
     [VIA_TRANSPORT, game("tableRouter.ts")],
     [VIA_TRANSPORT, socket("socketPresence.ts")],
-    [ADDRESSED_SEND, socket("socketOutbox.ts")],
+    [ADDRESSED_SEND, socket("delivery.ts")],
     [STORE_IMPORT, game("tableRuntime.ts")],
     [STORE_IMPORT, game("retention.ts")],
   ];

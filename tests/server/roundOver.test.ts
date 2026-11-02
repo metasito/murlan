@@ -136,6 +136,7 @@ function makeGame(overrides: Partial<OnlineGameState> = {}): OnlineGameState {
     dealFirstSeat: 0,
     pendingResults: [],
     landedResults: new Set(),
+    seq: 0,
     ...overrides,
   };
 }

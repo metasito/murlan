@@ -2,7 +2,7 @@
 // once by `setupSocket`. The game layer names no Socket.IO type but `transport`
 // here (`tests/server/tableRuntimeScan.test.ts`).
 import type { SocketServer } from "../socket/socketTypes.ts";
-import type { ServerToClientEvents, WireGameState } from "../../shared/protocol.ts";
+import type { ServerToClientEvents, OrderedGameState } from "../../shared/protocol.ts";
 import type { activeGameStore, TableRoomPort } from "../store/activeGameStore.ts";
 import type { Outcome } from "../shared/refusal.ts";
 import type { TableActionDraft } from "./tableActions.ts";
@@ -20,15 +20,16 @@ export interface Emitter {
 
 /** Never throws; a send to a room nobody is in is a no-op. */
 export interface TableOutbox {
-  /** Everyone in the Socket.IO room, on every instance. */
+  /** The table's seats and spectators while this instance holds its game, else the room's seats. */
   room(roomId: string): Emitter;
-  /** The account's user room, never a socket. */
+  /** The account, wherever it is connected. */
   user(userId: string): Emitter;
   /**
    * `game:state` to one account. If the ack does not come, `render(true)` is
-   * called once more and its result sent; `null` sends nothing.
+   * called once more and its result sent; `null` sends nothing. A newer state
+   * for the same table replaces one still waiting to go.
    */
-  state(userId: string, render: (retrying: boolean) => WireGameState | null): void;
+  state(userId: string, render: (retrying: boolean) => OrderedGameState | null): void;
 }
 
 /** All asked of the cluster; none throws. */

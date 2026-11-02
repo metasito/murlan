@@ -53,6 +53,7 @@ function liveGame(roomId: string): OnlineGameState {
     moveLog: null,
     pendingResults: [],
     landedResults: new Set(),
+    seq: 0,
   };
 }
 

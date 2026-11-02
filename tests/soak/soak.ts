@@ -10,6 +10,7 @@
 // Run: npm run soak -- --seats 4 --minutes 2 --seed 12345
 // Throughput: npm run soak -- --tables 8 --minutes 1 (moves/sec and broadcast p99)
 import { setTimeout as sleep } from "node:timers/promises";
+import { register } from "prom-client";
 import { pathToFileURL } from "node:url";
 import { startTestServer, hasDatabase, type TestServer } from "../helpers/testServer.ts";
 import { connectAs, reconnectWith, sendMove, DEADLINE_SCALE, type TestEmits, type TestSocket } from "../helpers/client.ts";
@@ -1005,6 +1006,14 @@ export interface ThroughputResult {
   p99Ms: number;
   unanswered: number;
   refusals: Record<string, number>;
+  /** What the server put on Redis for other instances while the tables played (`cluster_messages_total`). */
+  clusterMessages: number;
+}
+
+async function clusterMessagesSent(): Promise<number> {
+  const metric = await register.getSingleMetric("cluster_messages_total")?.get();
+  if (!metric) throw new Error("soak: cluster_messages_total is not registered");
+  return metric.values.reduce((sum, v) => sum + v.value, 0);
 }
 
 async function playTable(
@@ -1065,10 +1074,12 @@ export async function runThroughput(
     log(`soak: ${opts.tables} tables of ${opts.seats} open, playing for ${opts.minutes} min`);
 
     const latencies: number[] = [];
+    const sentBefore = await clusterMessagesSent();
     const started = performance.now();
     const until = Date.now() + opts.minutes * 60_000;
     const played = await Promise.all(tables.map((t) => playTable(t.seats, rng, until, latencies)));
     const seconds = (performance.now() - started) / 1000;
+    const clusterMessages = (await clusterMessagesSent()) - sentBefore;
 
     const sorted = latencies.sort((a, b) => a - b);
     const at = (q: number) => +(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))] ?? 0).toFixed(1);
@@ -1081,6 +1092,7 @@ export async function runThroughput(
       p50Ms: at(0.5),
       p99Ms: at(0.99),
       unanswered: played.reduce((sum, p) => sum + p.unanswered, 0),
+      clusterMessages,
       refusals: tables.flatMap((t) => t.seats).reduce<Record<string, number>>((all, seat) => {
         for (const [key, count] of seat.refusals) all[key] = (all[key] ?? 0) + count;
         return all;
@@ -1120,7 +1132,8 @@ async function main() {
     const t = await runThroughput({ ...opts, tables: opts.tables });
     console.log(
       `soak: ${t.tables} tables, ${t.moves} moves in ${t.seconds}s = ${t.movesPerSec} moves/sec; ` +
-        `broadcast p50 ${t.p50Ms}ms, p99 ${t.p99Ms}ms, ${t.unanswered} unanswered, ${formatRefusals(t.refusals)}`
+        `broadcast p50 ${t.p50Ms}ms, p99 ${t.p99Ms}ms, ${t.unanswered} unanswered, ${formatRefusals(t.refusals)}; ` +
+        `${t.clusterMessages} cluster messages`
     );
     return;
   }

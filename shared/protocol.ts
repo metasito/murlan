@@ -9,7 +9,7 @@ import type { FriendRequestAccepted, FriendRequestIncoming } from "./http.ts";
 import type * as Inbound from "./socketSchemas.ts";
 import type { TranslationParams } from "./i18n.ts";
 
-export const PROTOCOL_VERSION = 15;
+export const PROTOCOL_VERSION = 16;
 export const MIN_PROTOCOL_VERSION = 14;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */
@@ -30,7 +30,19 @@ export type WireExchangePhase =
 /** A state the table is drawn from: the engine's own offline, or one viewer's online. */
 export type ViewedGameState = Omit<GameState, "exchangePhase"> & { exchangePhase?: WireExchangePhase };
 
-export type WireGameState = Omit<ViewedGameState, "players"> & {
+/**
+ * Where a state stands in its table's order. A client applies a state only above the last one it
+ * applied for that `roomId`: a newer `epoch` (a new owner) always wins, and within one epoch the
+ * higher `seq`.
+ */
+export interface StateOrder {
+  roomId: string;
+  epoch: number;
+  seq: number;
+}
+
+/** One viewer's table, before it takes its place in the order. */
+export type ViewerGameState = Omit<ViewedGameState, "players"> & {
   players: WirePlayer[];
   viewerSeatIndex: number | null;
   turnDeadlineMs?: number;
@@ -38,6 +50,12 @@ export type WireGameState = Omit<ViewedGameState, "players"> & {
   /** Opaque to the client: a move intent echoes it as `turn`, and the server refuses one that names any other. */
   turn: string;
 };
+
+/** As the server sends it. */
+export type OrderedGameState = ViewerGameState & StateOrder;
+
+/** As a client reads it: a server before protocol 16 sends no order, and its states apply as they come. */
+export type WireGameState = ViewerGameState & Partial<StateOrder>;
 
 export interface WireRoomState {
   roomId: string;

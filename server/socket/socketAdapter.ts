@@ -2,7 +2,7 @@ import { createAdapter } from "@socket.io/redis-streams-adapter";
 import { MessageType, type ClusterMessage } from "socket.io-adapter";
 import { now } from "../http/clock.ts";
 import { BLOCK_MS, openRedis, redisKey, streamMaxLen, type RedisClient } from "../store/redis.ts";
-import { noteStreamRead } from "../shared/metrics.ts";
+import { clusterMessages, noteStreamRead } from "../shared/metrics.ts";
 
 type Packet = unknown[];
 
@@ -75,7 +75,23 @@ export function createSocketAdapter() {
   // Socket.io constructs it with `new`, which an arrow function refuses.
   return function (nsp: { name: string }) {
     const adapter = make(nsp);
-    const cluster = adapter as unknown as { uid: string; onMessage(message: ClusterMessage, offset?: string): void };
+    const cluster = adapter as unknown as {
+      uid: string;
+      onMessage(message: ClusterMessage, offset?: string): void;
+      doPublish(message: ClusterMessage): Promise<string>;
+      doPublishResponse(requesterUid: string, response: unknown): Promise<void>;
+    };
+    const doPublish = cluster.doPublish.bind(adapter);
+    const doPublishResponse = cluster.doPublishResponse.bind(adapter);
+    cluster.doPublish = (message) => {
+      const event = message.type === MessageType.SERVER_SIDE_EMIT ? (message.data.packet as Packet)[0] : undefined;
+      if (event !== HEARTBEAT) clusterMessages.inc({ channel: "adapter" });
+      return doPublish(message);
+    };
+    cluster.doPublishResponse = (requesterUid, response) => {
+      clusterMessages.inc({ channel: "adapter" });
+      return doPublishResponse(requesterUid, response);
+    };
     const serverSideEmit = adapter.serverSideEmit.bind(adapter);
     const fetchSockets = adapter.fetchSockets.bind(adapter);
     const onMessage = cluster.onMessage.bind(adapter);

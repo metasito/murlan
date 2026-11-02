@@ -1,0 +1,285 @@
+// server/socket/delivery.ts — the one module that decides who a message reaches and how: a
+// recipient on this instance directly, every other one through the inbox of the instance their
+// presence entry names (ADR 0014, decisions 6 and 7).
+import type { GameSocket, SocketServer } from "./socketTypes.ts";
+import type { Emitter, TableOutbox } from "../game/tableRuntime.ts";
+import type { OrderedGameState, ServerToClientEvents } from "../../shared/protocol.ts";
+import { logger } from "../shared/logger.ts";
+import { stateAcksMissed } from "../shared/metrics.ts";
+import { heldAudience, userRoom } from "../game/gameRoom.ts";
+import { stateAckTimeoutMs } from "../game/gameTimers.ts";
+import { instanceId } from "../store/redis.ts";
+import { onInstanceMessage, sendToInstance, type InstanceHandler, type InstanceMessage } from "../store/instanceInbox.ts";
+import { instancesOf } from "../store/presence.ts";
+import { roomStore } from "../store/roomStore.ts";
+import { APP_QUERY_BOUND_MS } from "../store/pool.ts";
+import { supersedes } from "../../shared/stateOrder.ts";
+
+const DELIVER = "deliver";
+const STATE_NACK = "state-nack";
+/** How long an owner can still answer a nack for a state it sent another instance. */
+const NACK_WINDOW_ACKS = 4;
+
+type OutEvent = Parameters<Emitter["emit"]>[0];
+type Outgoing = { [E in OutEvent]: { e: E; a: Parameters<ServerToClientEvents[E]> } }[OutEvent];
+
+type Item =
+  | ({ t: "emit"; u: string[] } & Outgoing)
+  | { t: "state"; u: string; s: OrderedGameState; r: boolean };
+
+interface Pending {
+  state: OrderedGameState;
+  retry: boolean;
+  missed: () => void;
+}
+
+interface Slot {
+  sent: Pending;
+  queued: Pending | null;
+}
+
+export interface DeliveryOptions {
+  self?: string;
+  locate?: (userIds: readonly string[]) => Promise<Map<string, string>>;
+  send?: (to: string, message: InstanceMessage) => Promise<void>;
+  on?: (kind: string, handler: InstanceHandler) => void;
+  seatsOf?: (roomId: string) => Promise<string[]>;
+}
+
+const seatedIn = async (roomId: string) => (await roomStore.getRoomPlayers(roomId)).map((p) => p.userId);
+
+export function deliveryOutbox(io: SocketServer, options: DeliveryOptions = {}): TableOutbox {
+  const self = options.self ?? instanceId;
+  const locate = options.locate ?? instancesOf;
+  const send = options.send ?? sendToInstance;
+  const on = options.on ?? onInstanceMessage;
+  const seatsOf = options.seatsOf ?? seatedIn;
+  const rooms = io.sockets.adapter.rooms;
+
+  const socketsOf = (userId: string): GameSocket[] =>
+    [...(rooms.get(userRoom(userId)) ?? [])].flatMap((id) => io.sockets.sockets.get(id) ?? []);
+  const isLocal = (userId: string) => (rooms.get(userRoom(userId))?.size ?? 0) > 0;
+  /** This instance's sockets in the Socket.IO room: what a room emit reached before addressing. */
+  const membersHere = (roomId: string) =>
+    [...(rooms.get(roomId) ?? [])].flatMap((id) => {
+      const userId: unknown = io.sockets.sockets.get(id)?.data?.userId;
+      return typeof userId === "string" ? [userId] : [];
+    });
+
+  // ── At most one state outstanding per socket and table, and one queued behind it ──
+  // Per socket, not per account: a reconnect's new socket must not wait out the old one's ack.
+  const slots = new Map<string, Slot>();
+
+  function offer(userId: string, pending: Pending): void {
+    const sockets = socketsOf(userId);
+    let missed = false;
+    const once: Pending = {
+      ...pending,
+      missed: () => {
+        if (missed) return;
+        missed = true;
+        pending.missed();
+      },
+    };
+    for (const socket of sockets) {
+      const key = `${socket.id}\n${pending.state.roomId}`;
+      const slot = slots.get(key);
+      if (slot) {
+        // By order, not arrival: an old owner's late state must not displace a new owner's.
+        if (supersedes(once.state, (slot.queued ?? slot.sent).state)) slot.queued = once;
+        continue;
+      }
+      const fresh: Slot = { sent: once, queued: null };
+      slots.set(key, fresh);
+      emitState(socket, key, fresh, once);
+    }
+  }
+
+  function emitState(socket: GameSocket, key: string, slot: Slot, pending: Pending): void {
+    if (!socket.connected) {
+      slots.delete(key);
+      return;
+    }
+    slot.sent = pending;
+    socket.timeout(stateAckTimeoutMs()).emit("game:state", pending.state, (err: unknown) => {
+      if (err) stateAcksMissed.inc();
+      const next = slot.queued;
+      slot.queued = null;
+      if (next) return emitState(socket, key, slot, next);
+      slots.delete(key);
+      if (err && !pending.retry) pending.missed();
+    });
+  }
+
+  // ── Everything for other instances leaves in one message per instance per tick, in call order ──
+  let batch: Item[] = [];
+  let tail: Promise<void> = Promise.resolve();
+
+  function enqueue(item: Item): void {
+    if (batch.length === 0) queueMicrotask(flush);
+    batch.push(item);
+  }
+
+  function flush(): void {
+    const items = batch;
+    batch = [];
+    const users = [...new Set(items.flatMap((item) => (item.t === "emit" ? item.u : [item.u])))];
+    const located = locate(users).catch((err: unknown) => {
+      logger.warn({ err }, "Presence unreachable: messages for other instances dropped");
+      return null;
+    });
+    tail = tail.then(async () => {
+      const where = await located;
+      if (!where) return;
+      const elsewhere = (userId: string) => {
+        const at = where.get(userId);
+        return at !== undefined && at !== self ? at : undefined;
+      };
+      const per = new Map<string, Item[]>();
+      const add = (to: string, item: Item) => {
+        const list = per.get(to);
+        if (list) list.push(item);
+        else per.set(to, [item]);
+      };
+      for (const item of items) {
+        if (item.t === "state") {
+          const to = elsewhere(item.u);
+          if (to) add(to, item);
+          continue;
+        }
+        const byInstance = new Map<string, string[]>();
+        for (const userId of item.u) {
+          const to = elsewhere(userId);
+          if (to) byInstance.set(to, [...(byInstance.get(to) ?? []), userId]);
+        }
+        for (const [to, u] of byInstance) add(to, { ...item, u });
+      }
+      for (const [instance, list] of per) {
+        void send(instance, { kind: DELIVER, from: self, items: list }).catch((err: unknown) =>
+          logger.warn({ err, instance }, "Could not hand messages to another instance")
+        );
+      }
+    }).catch((err: unknown) => logger.error({ err }, "Messages for other instances failed to leave"));
+  }
+
+  function emitTo(userIds: Iterable<string>, out: Outgoing): void {
+    const here: string[] = [];
+    const elsewhere: string[] = [];
+    for (const userId of new Set(userIds)) (isLocal(userId) ? here : elsewhere).push(userId);
+    if (here.length > 0) emitHere(here, out.e, out.a);
+    if (elsewhere.length > 0) enqueue({ t: "emit", u: elsewhere, ...out });
+  }
+
+  function emitHere<E extends OutEvent>(userIds: string[], event: E, args: Parameters<ServerToClientEvents[E]>): void {
+    io.local.to(userIds.map(userRoom)).emit(event, ...args);
+  }
+
+  // ── A state another instance could not get acknowledged is re-derived here, never re-sent ──
+  const renders = new Map<string, { render: (retrying: boolean) => OrderedGameState | null; timer: ReturnType<typeof setTimeout> }>();
+
+  function remember(userId: string, roomId: string, render: (retrying: boolean) => OrderedGameState | null): void {
+    const key = `${userId}\n${roomId}`;
+    const previous = renders.get(key);
+    if (previous) clearTimeout(previous.timer);
+    const timer = setTimeout(() => {
+      if (renders.get(key)?.timer === timer) renders.delete(key);
+    }, NACK_WINDOW_ACKS * stateAckTimeoutMs());
+    (timer as unknown as { unref?: () => void }).unref?.();
+    renders.set(key, { render, timer });
+  }
+
+  function sendState(userId: string, state: OrderedGameState, retry: boolean, render: (retrying: boolean) => OrderedGameState | null): void {
+    if (isLocal(userId)) {
+      offer(userId, {
+        state,
+        retry,
+        missed: () => {
+          const again = render(true);
+          if (again) sendState(userId, again, true, render);
+        },
+      });
+      return;
+    }
+    if (!retry) remember(userId, state.roomId, render);
+    enqueue({ t: "state", u: userId, s: state, r: retry });
+  }
+
+  on(STATE_NACK, ({ roomId, userId }) => {
+    if (typeof roomId !== "string" || typeof userId !== "string") return;
+    const key = `${userId}\n${roomId}`;
+    const held = renders.get(key);
+    if (!held) return;
+    clearTimeout(held.timer);
+    renders.delete(key);
+    const again = held.render(true);
+    if (again) sendState(userId, again, true, held.render);
+  });
+
+  on(DELIVER, ({ from, items }) => {
+    if (typeof from !== "string" || !Array.isArray(items)) return;
+    for (const item of items as Item[]) {
+      if (item.t === "emit") {
+        const here = item.u.filter(isLocal);
+        if (here.length > 0) emitHere(here, item.e, item.a);
+        continue;
+      }
+      const { u: userId, s: state } = item;
+      offer(userId, {
+        state,
+        retry: item.r,
+        missed: () =>
+          void send(from, { kind: STATE_NACK, roomId: state.roomId, userId }).catch((err: unknown) =>
+            logger.warn({ err, roomId: state.roomId, userId }, "Could not tell a table's owner a state went unacknowledged")
+          ),
+      });
+    }
+  });
+
+  // ── A room's emits and states leave in the order they were made, whichever had to read its seats ──
+  const roomTails = new Map<string, Promise<void>>();
+
+  function inRoomOrder<T>(roomId: string, ready: T | Promise<T>, run: (value: T) => void): void {
+    const behind = roomTails.get(roomId);
+    if (!behind && !(ready instanceof Promise)) return run(ready);
+    const sent: Promise<void> = (behind ?? Promise.resolve())
+      .then(() => ready)
+      .then(run)
+      .catch((err: unknown) => logger.error({ err, roomId }, "A room's message failed to leave"));
+    roomTails.set(roomId, sent);
+    void sent.finally(() => {
+      if (roomTails.get(roomId) === sent) roomTails.delete(roomId);
+    });
+  }
+
+  /** Settles by the time the app pool would have given up, whatever `seatsOf` does: every later message for the room waits on it. */
+  function seatsWithin(roomId: string): Promise<string[]> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("the seats read did not settle")), APP_QUERY_BOUND_MS);
+    });
+    return Promise.race([seatsOf(roomId), late])
+      .catch((err: unknown) => {
+        logger.warn({ err, roomId }, "Could not read a room's seats: its emit reaches this instance's members only");
+        return [];
+      })
+      .finally(() => clearTimeout(timer));
+  }
+
+  function emitToRoom(roomId: string, out: Outgoing): void {
+    const audience = heldAudience(roomId) ?? seatsWithin(roomId);
+    inRoomOrder(roomId, audience, (users) => emitTo([...users, ...membersHere(roomId)], out));
+  }
+
+  const emitter = (deliver: (out: Outgoing) => void): Emitter => ({
+    emit: (event, ...args) => deliver({ e: event, a: args } as Outgoing),
+  });
+
+  return {
+    room: (roomId) => emitter((out) => emitToRoom(roomId, out)),
+    user: (userId) => emitter((out) => emitTo([userId], out)),
+    state(userId, render) {
+      const state = render(false);
+      if (state) inRoomOrder(state.roomId, state, (s) => sendState(userId, s, false, render));
+    },
+  };
+}

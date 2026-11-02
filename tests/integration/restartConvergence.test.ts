@@ -148,9 +148,10 @@ async function quiesced(clients: Client[]): Promise<void> {
  * The part of a client's own view that a restart must not change. Deliberately
  * derived rather than listed: a field added to the wire tomorrow is compared
  * the day it lands, and only the fields that legitimately move — a countdown,
- * a deadline — are named to be dropped.
+ * a deadline, and the state's place in the order, which a new owner moves on — are named to be
+ * dropped.
  */
-const MOVES_ON_ITS_OWN = new Set(["turnDeadlineMs", "turnSecondsRemaining"]);
+const MOVES_ON_ITS_OWN = new Set(["turnDeadlineMs", "turnSecondsRemaining", "epoch", "seq"]);
 
 function held(state: object | null): unknown {
   if (state === null) return null;

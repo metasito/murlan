@@ -43,7 +43,7 @@ describe("turn deadline", { skip: hasDatabase() ? false : skipMessage() }, () =>
     const clients = await makeClients(server, ["deadline_a", "deadline_b"]);
     try {
       await setUpRoom(clients, 2);
-      const armed = waitFor(clients[1].socket, "game:turn_deadline");
+      const armed = waitFor(clients[1].socket, "game:state");
       clients[0].socket.emit("room:start", {});
       const deadline = await armed;
 
@@ -54,7 +54,7 @@ describe("turn deadline", { skip: hasDatabase() ? false : skipMessage() }, () =>
       );
       assert.ok(
         typeof deadline.turnDeadlineMs === "number",
-        "the deadline rides along as the clock's reset key"
+        "the deal's own state carries the deadline, as the clock's reset key"
       );
     } finally {
       await closeTable(clients);
@@ -69,7 +69,7 @@ describe("turn deadline", { skip: hasDatabase() ? false : skipMessage() }, () =>
       const clock = fakeClock(Date.now());
       const restore = installClock(clock);
       try {
-        const armed = waitFor(clients[0].socket, "game:turn_deadline");
+        const armed = waitFor(clients[0].socket, "game:state");
         clients[0].socket.emit("room:start", {});
         await armed;
 

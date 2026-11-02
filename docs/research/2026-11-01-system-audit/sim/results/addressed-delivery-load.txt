@@ -1,0 +1,8 @@
+load.sh 1 1 on agent/1893 (#1893, addressed local-first delivery), 2026-11-02, Postgres 16 and Redis 7 on localhost,
+PGLOG=/var/log/postgresql/postgresql-16-main.log. Before (main at the audit): 5.2 pg_notify and 10.76 commits per move.
+
+soak: 1 tables of 4 open, playing for 1 min
+soak: 1 tables, 437 moves in 60.1s = 7.3 moves/sec; broadcast p50 3.6ms, p99 9.9ms, 10 unanswered, 11 refusals (11x game:error RATE_LIMITED); 0 cluster messages
+db: commits=917 inserted=2191 updated=760 deleted=2108 returned=35651 fetched=31787 moves=437
+log: 316 statements, 0 pg_notify; cluster: 0 messages
+per move: 2.10 commits, 5.01 inserts, 1.74 updates, 0.00 pg_notify, 0.00 cluster messages

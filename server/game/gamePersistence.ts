@@ -1,13 +1,13 @@
 import { logger } from "../shared/logger.ts";
 import { commitRoundResults } from "./roundResults.ts";
 import { sweepRetention } from "./retention.ts";
-import { activeGames } from "./gameRoom.ts";
+import { activeGames, audienceOf } from "./gameRoom.ts";
 import { payload } from "../shared/payload.ts";
 import { now } from "../http/clock.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { TableRuntime, TableStore, TableWriters } from "./tableRuntime.ts";
 import type { AppliedResults } from "./roundOver.ts";
-import { ownsRoom, releaseRoomAfter, unclaimedRooms, writeAsOwner } from "./gameOwnership.ts";
+import { ownerEpochOf, ownsRoom, releaseRoomAfter, unclaimedRooms, writeAsOwner } from "./gameOwnership.ts";
 import { allRoomWritesLanded, queueBarrier, queueSnapshot, roomWritesLanded } from "./roomWriteChain.ts";
 import {
   sweepIntervalMs,
@@ -25,7 +25,7 @@ import {
 import { toEnvelope } from "./tableState.ts";
 import type { GameState, Card } from "../../lib/game/gameEngine.ts";
 import { turnOf } from "../../lib/game/moves.ts";
-import type { WireGameState } from "../../shared/protocol.ts";
+import type { ViewerGameState } from "../../shared/protocol.ts";
 
 export function sanitizeStateForPlayer(
   state: GameState,
@@ -33,7 +33,7 @@ export function sanitizeStateForPlayer(
   playerMap: Readonly<Record<number, string>>,
   turnDeadlineMs?: number,
   vacatedSeats?: ReadonlyMap<number, { userId: string; username: string }>
-): WireGameState {
+): ViewerGameState {
   // The server knows which seat the viewer occupies authoritatively; ship it
   // with every state so the client never has to derive it (e.g. from a lobby
   // `room` object that is null across a cold-start rejoin).
@@ -205,13 +205,12 @@ export function sendGameStateTo(rt: TableRuntime, uid: string, game: OnlineGameS
     // must not go out.
     const live = retrying ? activeGames.get(game.roomId) : game;
     if (!live) return null;
-    return sanitizeStateForPlayer(
-      live.gameState,
-      uid,
-      live.playerMap,
-      live.turnDeadlineMs,
-      live.vacatedSeats
-    );
+    return {
+      ...sanitizeStateForPlayer(live.gameState, uid, live.playerMap, live.turnDeadlineMs, live.vacatedSeats),
+      roomId: live.roomId,
+      epoch: ownerEpochOf(live.roomId) ?? 0,
+      seq: ++live.seq,
+    };
   });
 }
 
@@ -231,11 +230,10 @@ export function serveState(rt: TableRuntime, game: OnlineGameState): void {
   const at = now();
   markExchangeSettled(game.gameState.exchangePhase, at);
   if (game.gameState.lastMove.kind === "deal") game.gameState.dealtAt ??= at;
-  Object.values(game.playerMap).forEach((uid) => sendGameStateTo(rt, uid, game));
   // Spectators go through the same sanitiser. seatOfUser returns null for
   // a userId that holds no seat, and every hand is blanked on that basis, so a
   // spectator cannot be sent a card without the seated path breaking first.
-  game.spectators.forEach((uid) => sendGameStateTo(rt, uid, game));
+  for (const uid of audienceOf(game)) sendGameStateTo(rt, uid, game);
 }
 
 export type CloseNotice = "GAME_INTERRUPTED_SERVER_ERROR" | "GAME_INTERRUPTED_EMPTY_SEAT";

@@ -88,6 +88,7 @@ function midMatch(): OnlineGameState {
     pendingResults: [PENDING],
     landedResults: new Set([PENDING.round]),
     roundOverDue: PENDING.round,
+    seq: 41,
   };
   return table;
 }
@@ -189,6 +190,7 @@ describe("a table's round trip through active_games", () => {
       moveLog: game.moveLog,
       replayOpening: game.replayOpening,
       pendingResults: [PENDING],
+      seq: 41,
     });
   });
 

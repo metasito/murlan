@@ -49,6 +49,7 @@ function exchangeTable(loserHoldsBothJokers = false): OnlineGameState {
     moveLog: null,
     pendingResults: [],
     landedResults: new Set(),
+    seq: 0,
     gameState,
   };
   activeGames.set(ROOM, game);

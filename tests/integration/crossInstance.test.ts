@@ -16,6 +16,7 @@ import {
   intent,
   nothingArrives,
   openSocket,
+  settled,
   waitFor,
   waitForOrNull,
   waitForWhere,
@@ -23,6 +24,8 @@ import {
 } from "../helpers/client.ts";
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
+import { createClient } from "redis";
+import { keyspace } from "../../server/store/redis.ts";
 import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
 import { boot, freePorts, stopInstance, type Instance } from "../helpers/instance.ts";
 import { playRoundOut } from "../helpers/gameDriver.ts";
@@ -375,6 +378,71 @@ describe("broadcasts cross server instances", {
     assert.ok(over, "the round never finished");
     assert.ok(statementsMatching(/active_games/g) > 0, "the tap saw none of the round's writes");
     assert.equal(statementsMatching(/pg_notify/gi), 0, "a played round still sent its messages through Postgres");
+  });
+
+  /** Redis as the two servers see it: where an account is, and how long each instance's inbox is. */
+  const newRedis = () => createClient({ url: process.env.REDIS_URL });
+  async function withRedis<T>(read: (redis: ReturnType<typeof newRedis>, key: (name: string) => string) => Promise<T>): Promise<T> {
+    const redis = newRedis();
+    redis.on("error", () => {});
+    await redis.connect();
+    try {
+      return await read(redis, (name) => `${keyspace(scoped)}:${name}`);
+    } finally {
+      redis.destroy();
+    }
+  }
+  const instanceOf = (userId: string) =>
+    withRedis((redis, key) => redis.hGet(key(`presence:${userId}`), "instance")).then((id) => {
+      assert.ok(id, `${userId} has no presence entry`);
+      return id;
+    });
+  const inboxLength = (instance: string) => withRedis((redis, key) => redis.xLen(key(`inbox:${instance}`)));
+
+  test("one publish reaching both instances puts one message in the other's inbox and none in its own", async () => {
+    await openTable();
+    const dealt = waitFor(bSocket, "game:state", 15_000);
+    aSocket.emit("room:start", {});
+    assert.ok(await dealt, "the game never started");
+    await settled(bSocket);
+    await settled(aSocket);
+
+    const [aInstance, bInstance] = await Promise.all([instanceOf(await userIdOf(aCookie)), instanceOf(await userIdOf(bCookie))]);
+    assert.notEqual(aInstance, bInstance, "the two players are not on two instances");
+    const before = await Promise.all([inboxLength(aInstance), inboxLength(bInstance)]);
+
+    const heardHere = waitFor(aSocket, "game:reaction");
+    const heardThere = waitFor(bSocket, "game:reaction");
+    assert.equal((await intent(aSocket, "game:reaction", { emoji: "👍" })).ok, true, "the reaction was refused");
+    assert.ok(await heardHere, "the player on the owning instance never heard the reaction");
+    assert.ok(await heardThere, "the player on the other instance never heard the reaction");
+
+    const after = await Promise.all([inboxLength(aInstance), inboxLength(bInstance)]);
+    assert.equal(after[1] - before[1], 1, "the other instance was not sent exactly one message");
+    assert.equal(after[0] - before[0], 0, "a recipient on the owning instance was reached through an inbox");
+  });
+
+  test("a friend with no presence entry costs no message", async () => {
+    const tag = Date.now().toString(36);
+    const offlineName = `xo${tag}`;
+    const offlineCookie = await register(PORTS[0], offlineName);
+    const notifierCookie = await register(PORTS[0], `xn${tag}`);
+    assert.equal((await post(PORTS[0], "/api/friends/add", notifierCookie, { username: offlineName })).status, 200);
+    const requests = (await (await fetch(`${at(PORTS[0])}/api/friends/requests`, { headers: { cookie: offlineCookie } })).json()) as { id: string }[];
+    assert.equal(requests.length, 1, "the friend request never landed");
+    assert.equal((await post(PORTS[0], `/api/friends/accept/${requests[0].id}`, offlineCookie)).status, 200);
+
+    const offlineId = await userIdOf(offlineCookie);
+    assert.equal(await withRedis((redis, key) => redis.exists(key(`presence:${offlineId}`))), 0, "the friend has a presence entry");
+    // Every stream a message for another instance can go on: each inbox, and the adapter's.
+    const streams = await withRedis(async (redis, key) => [...(await redis.keys(key("inbox:*"))), key("socket.io")]);
+    const lengths = async () => Promise.all(streams.map((k) => withRedis((redis) => redis.xLen(k))));
+    const before = await lengths();
+
+    const notifier = await connectSocket(PORTS[0], notifierCookie);
+    sockets.push(notifier);
+    await settled(notifier);
+    assert.deepEqual(await lengths(), before, "telling an offline friend put a message on the cluster");
   });
 
   test("the table outlives the instance that owned it", async () => {

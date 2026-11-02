@@ -58,6 +58,7 @@ const PERSISTED_FIELDS: { [K in Exclude<keyof OnlineGameState, MemoryOnlyField>]
   moveLog: true,
   replayOpening: true,
   pendingResults: true,
+  seq: true,
 };
 
 export const PERSISTED = Object.keys(PERSISTED_FIELDS) as Exclude<keyof OnlineGameState, MemoryOnlyField>[];
@@ -153,6 +154,8 @@ export function newTable(
     // entry from these, and a copy would write it back.
     pendingResults: previous?.pendingResults ?? [],
     landedResults: previous?.landedResults ?? new Set(),
+    // Carried: the table keeps its epoch across matches, and a client holding the last match's seq drops anything lower.
+    seq: previous?.seq ?? 0,
   };
 }
 
@@ -175,7 +178,7 @@ export function toEnvelope(game: OnlineGameState): PersistedEnvelope {
   }, {
     moveLog: game.moveLog && [...game.moveLog],
     replayOpening: game.replayOpening ?? null,
-  }, [...game.pendingResults]);
+  }, [...game.pendingResults], game.seq);
 }
 
 export type TableRestore =
@@ -219,6 +222,7 @@ export function fromEnvelope(row: { roomId: string; gameState: unknown }): Table
       moveLog: restored.moveLog,
       ...(restored.replayOpening ? { replayOpening: restored.replayOpening } : {}),
       pendingResults: restored.pendingResults,
+      seq: restored.seq,
       ...freshMemory(),
       landedResults: new Set(restored.pendingResults.map((r) => r.round)),
     },

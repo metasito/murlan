@@ -1,5 +1,5 @@
 import { logger } from "../shared/logger.ts";
-import { noteStreamRead } from "../shared/metrics.ts";
+import { clusterMessages, noteStreamRead } from "../shared/metrics.ts";
 import {
   BLOCK_MS,
   CLUSTER_GAP_SECONDS,
@@ -101,6 +101,7 @@ export function openInbox({
       // offline queue is set to. Not two commands either: an entry added whose expiry failed
       // would hold no TTL, and the send would reject although delivered.
       const { strategy, strategyModifier, threshold } = inboxTrim();
+      clusterMessages.inc({ channel: "inbox" });
       await writer.eval(SEND, {
         keys: [key],
         arguments: [strategy, strategyModifier, String(threshold), String(CLUSTER_GAP_SECONDS), JSON.stringify(message)],

@@ -26,6 +26,7 @@ export function onlineTable(
     dealFirstSeat: 0,
     moveLog: null,
     pendingResults: [],
+    seq: 0,
     ...freshMemory(),
     ...overrides,
   } as OnlineGameState;
