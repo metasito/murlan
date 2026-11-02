@@ -21,7 +21,8 @@ export type InstanceHandler = (message: InstanceMessage) => void | Promise<void>
 export interface Inbox {
   /**
    * Rejects at once while Redis is unreachable, and once `to` has had no inbox for longer than its
-   * reader takes to make one again: there is nobody to hand the message to. In order per `to`.
+   * reader takes to make one again: there is nobody to hand the message to. In order per `to`,
+   * however the stream comes and goes between two sends.
    */
   send(to: string, message: InstanceMessage): Promise<void>;
   /** Only to an inbox its instance still keeps: false, and nothing written, for one that is gone. Rejects like `send`. */
@@ -36,6 +37,8 @@ const RETRY_MS = 250;
 const KEEP_ALIVE_MS = 1_000;
 /** Between tries at an inbox that is missing; together they outlast two keep-alive ticks. */
 const RESEND_DELAYS_MS = [50, 100, 200, 400, 800, 800];
+/** How long a send to an instance found gone tries once instead of again. */
+const GONE_FOR_MS = 10_000;
 const INBOX_TTL_MS = CLUSTER_GAP_SECONDS * 1_000;
 const BOOT = JSON.stringify({ kind: "boot" });
 
@@ -126,49 +129,55 @@ export function openInbox({
     (await writer.xAddNoMkStream(inboxKey(to), "*", { m: payload }, { TRIM: inboxTrim() })) !== null;
   const gone = (to: string) => new Error(`instance ${to} has no inbox: it is gone`);
 
+  /** Instances whose inbox stayed missing through every try, and when that was found. */
+  const judgedGone = new Map<string, number>();
+
   /**
    * A live instance's inbox is also missing between the store losing its data and the reader
-   * making it again, so a missing one is tried again for a while. Sends to the same instance wait
-   * behind those tries, keeping their order; once it is judged gone, each tries once.
+   * making it again, so a missing one is tried again for a while; within `GONE_FOR_MS` of an
+   * instance being judged gone, each send tries once.
    */
-  const missing = new Map<string, Promise<boolean>>();
-
-  async function retry(to: string, payload: string): Promise<boolean> {
+  async function deliverTo(to: string, payload: string): Promise<boolean> {
+    if (await tryOnce(to, payload)) return true;
+    const judged = judgedGone.get(to);
+    if (judged !== undefined && performance.now() - judged < GONE_FOR_MS) return false;
+    judgedGone.delete(to);
     for (const delay of RESEND_DELAYS_MS) {
       await new Promise((resolve) => setTimeout(resolve, delay));
-      if (await tryOnce(to, payload)) return true;
+      if (await tryOnce(to, payload)) {
+        judgedGone.delete(to);
+        return true;
+      }
     }
+    judgedGone.set(to, performance.now());
     return false;
   }
 
-  async function sendTo(to: string, payload: string): Promise<void> {
-    for (;;) {
-      const ahead = missing.get(to);
-      if (ahead) {
-        if (await ahead.catch(() => false)) continue;
-        if (await tryOnce(to, payload)) return;
-        throw gone(to);
-      }
-      if (await tryOnce(to, payload)) return;
-      if (missing.has(to)) continue;
-      const tries = retry(to, payload);
-      missing.set(to, tries);
-      const delivered = await tries.finally(() => {
-        if (missing.get(to) === tries) missing.delete(to);
-      });
-      if (!delivered) throw gone(to);
-      return;
-    }
+  /**
+   * Each write to an instance waits for the one before it to be answered: one found missing is
+   * tried again, and a later one already written would land ahead of it.
+   */
+  const tails = new Map<string, Promise<unknown>>();
+
+  function inTurn<T>(to: string, write: () => Promise<T>): Promise<T> {
+    const mine = (tails.get(to) ?? Promise.resolve()).catch(() => {}).then(write);
+    tails.set(to, mine);
+    void mine.catch(() => {}).finally(() => {
+      if (tails.get(to) === mine) tails.delete(to);
+    });
+    return mine;
   }
 
   return {
     async send(to, message) {
       clusterMessages.inc({ channel: "inbox" });
-      await sendTo(to, JSON.stringify(message));
+      const payload = JSON.stringify(message);
+      if (!(await inTurn(to, () => deliverTo(to, payload)))) throw gone(to);
     },
     async offer(to, message) {
       clusterMessages.inc({ channel: "inbox" });
-      return tryOnce(to, JSON.stringify(message));
+      const payload = JSON.stringify(message);
+      return inTurn(to, () => tryOnce(to, payload));
     },
     on(kind, handler) {
       handlers.set(kind, handler);

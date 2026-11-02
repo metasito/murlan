@@ -142,6 +142,30 @@ describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() },
     }
   });
 
+  test("a send that finds the inbox missing still lands before the next one, when the stream comes back between them", { timeout: 60_000 }, async () => {
+    const target = randomUUID();
+    const to = openInbox({ id: target });
+    const seen: number[] = [];
+    to.on("probe", (m: InstanceMessage) => {
+      seen.push(m.n as number);
+    });
+    try {
+      await opened(target);
+      for (let round = 0; round < 50; round++) {
+        await redis.del(inboxOf(target));
+        const first = sender.send(target, { kind: "probe", n: 2 * round });
+        // An id past every one the reader has seen, as a stream made anew after a loss gets.
+        await redis.xAdd(inboxOf(target), `${Date.now() + 1}-0`, { m: JSON.stringify({ kind: "boot" }) });
+        const second = sender.send(target, { kind: "probe", n: 2 * round + 1 });
+        await Promise.all([first, second]);
+        await eventually(() => seen.length === 2 * round + 2, `round ${round}'s two messages`);
+      }
+      assert.deepEqual(seen, Array.from({ length: 100 }, (_, n) => n), "a later send overtook one that found the inbox missing");
+    } finally {
+      await to.close();
+    }
+  });
+
   test("a message to an unreachable Redis is refused at once, not queued", async () => {
     const offline = openInbox({ id: randomUUID(), url: viaProxy(redisUrl, proxy) });
     try {
