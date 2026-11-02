@@ -60,6 +60,8 @@ export interface Peers {
   instanceOf(userId: string): Promise<string | null>;
   /** Heard lately, on a revision that reads `send`'s messages for this. False for one gone, or older. */
   speaksInbox(instance: string): boolean;
+  /** Whether that instance is connected to the cluster now; rejects when that cannot be read. */
+  stillSubscribed(instance: string): Promise<boolean>;
   legacy: LegacyPeers;
 }
 

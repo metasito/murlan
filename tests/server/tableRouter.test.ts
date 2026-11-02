@@ -284,6 +284,32 @@ describe("an action for a table another instance owns", () => {
     assert.equal(lock.taken, 0);
   });
 
+  test("whose owner is still heard but no longer subscribed, its lock free, is unowned after one try", async (t) => {
+    const lock = scriptLock(t, "free");
+    const { peers, asks } = ownedElsewhere(() => "silent");
+    const { rt } = recordingRuntime({ peers: { ...peers, stillSubscribed: async () => false } });
+    const { value, ms } = await onFrozenClock(t, () => applyOrForward(rt, { kind: "seatLost", roomId: ROOM, userId: "ana" } as TableActionDraft));
+    assert.deepEqual(value, { ok: false, code: "NO_LIVE_GAME" });
+    assert.equal(asks.length, 1);
+    assert.equal(ms, 1_500, "not taken over on the first try");
+    assert.equal(lock.taken, 0);
+  });
+
+  test("whose owner's subscription cannot be read, its lock free, is never read as unowned", async (t) => {
+    scriptLock(t, "free");
+    const { peers } = ownedElsewhere(() => "silent");
+    const { rt } = recordingRuntime({
+      peers: {
+        ...peers,
+        stillSubscribed: async () => {
+          throw new Error("Redis is down");
+        },
+      },
+    });
+    const { value } = await onFrozenClock(t, () => applyOrForward(rt, { kind: "seatLost", roomId: ROOM, userId: "ana" } as TableActionDraft));
+    assert.deepEqual(value, { ok: false, code: "TABLE_UNREACHABLE" });
+  });
+
   test("whose owner is live but slow is waited on although its lock reads free, as in a reclaim", async (t) => {
     const lock = scriptLock(t, "free");
     const { peers } = ownedElsewhere(() => ({ ok: true }), "owner-instance", 600);

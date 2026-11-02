@@ -51,6 +51,7 @@ export function lonePeers(overrides: Partial<Peers> = {}): Peers {
     ownerOf: async () => null,
     instanceOf: async () => null,
     speaksInbox: () => false,
+    stillSubscribed: async () => false,
     legacy: { ask: async () => ({ err: null, replies: [] }), answer: () => {} },
     ...overrides,
   };
@@ -83,7 +84,7 @@ export function legacyOwner(reply: (action: TableAction) => Outcome | undefined 
 }
 
 /**
- * `owner`, heard lately and on this revision, holds every table: each action forwarded to it is
+ * `owner`, heard lately, subscribed and on this revision, holds every table: each action forwarded to it is
  * recorded and answered `answerAfterMs` later with what `reply` returns, `"silent"` for no answer
  * at all. Every other message is recorded in `sent`, every legacy emit in `emitted`.
  */
@@ -100,6 +101,7 @@ export function ownedElsewhere(
     on: (kind, handler) => void handlers.set(kind, handler),
     ownerOf: async () => owner,
     speaksInbox: (instance) => instance === owner,
+    stillSubscribed: async (instance) => instance === owner,
     legacy: {
       ask: async (event) => {
         emitted.push(event);

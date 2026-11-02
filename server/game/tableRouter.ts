@@ -152,7 +152,7 @@ export function registerTableRouting(rt: TableRuntime): void {
 
 /**
  * The owner's answer; `unowned` when no instance asked holds the room; `silent` when nothing came
- * back in time; `unanswered` when that was an owner still heard, whose lock reading free proves
+ * back in time; `unanswered` when that was an owner still connected, whose lock reading free proves
  * nothing; `gone` when the ask could not be handed over at all.
  */
 type Asked = Outcome | "unowned" | "silent" | "unanswered" | "gone";
@@ -174,14 +174,16 @@ async function within(asking: Promise<Asked>, silence: "silent" | "unanswered" =
 }
 
 /**
- * Waited out whole, and its silence never read as unowned: a live owner whose ownership connection
- * dropped still holds the table with its lock free, and answers once it has the lock back.
+ * Waited out whole, and its silence never read as unowned while the owner is still subscribed: a
+ * live owner whose ownership connection dropped holds the table with its lock free, and answers
+ * once it has the lock back. A killed one loses its subscription at once.
  */
 async function askInbox(rt: TableRuntime, owner: string, action: TableAction): Promise<Asked> {
   const ask = randomUUID();
   const answered = new Promise<Outcome | undefined>((resolve) => waiting.set(ask, resolve));
+  let asked: Asked;
   try {
-    return await within(
+    asked = await within(
       (async () => {
         try {
           await rt.peers.send(owner, { kind: TABLE_ASK, from: rt.peers.self, ask, action });
@@ -195,6 +197,12 @@ async function askInbox(rt: TableRuntime, owner: string, action: TableAction): P
   } finally {
     waiting.delete(ask);
   }
+  if (asked !== "unanswered") return asked;
+  const subscribed = await rt.peers.stillSubscribed(owner).catch((err: unknown) => {
+    logger.warn({ err, owner }, "Could not read whether a table's owner is still connected");
+    return true;
+  });
+  return subscribed ? "unanswered" : "silent";
 }
 
 /** Every instance, for a table held by one on a revision before inbox routing (ADR 0014, decision 9). */

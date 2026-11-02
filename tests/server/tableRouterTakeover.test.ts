@@ -228,6 +228,29 @@ describe("a forwarded action nobody answers for", () => {
   });
 });
 
+describe("a table whose owner was killed", () => {
+  test("is taken over on the first try, without waiting out the grace its last heartbeat still has", async (t) => {
+    const lock = scriptLock(t);
+    const { rt } = useInstance(t);
+    const owner = ownedElsewhere(() => "silent");
+    Object.assign(rt.peers, owner.peers, { stillSubscribed: async () => false });
+    const pauses: unknown[] = [];
+    const real = globalThis.setTimeout;
+    t.mock.method(globalThis, "setTimeout", (fn: () => void, ms?: number, ...rest: unknown[]) => {
+      if (ms === 120 || ms === 1_500) {
+        pauses.push(ms);
+        fn();
+        return 0 as unknown as NodeJS.Timeout;
+      }
+      return real(fn, ms, ...rest);
+    });
+    assert.deepEqual(await applyOrForward(rt, resume()), { ok: true });
+    assert.deepEqual(pauses, [1_500], "more than one try, or main's 5 s ack wait");
+    assert.equal(ownsRoom(ROOM), true);
+    assert.equal(lock.asked, 1);
+  });
+});
+
 describe("several actions for a room whose holder cannot be reached", () => {
   test("take turns asking: one question about the room is in flight at a time", async (t) => {
     const lock = scriptLock(t);

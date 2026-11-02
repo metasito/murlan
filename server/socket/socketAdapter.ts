@@ -14,15 +14,56 @@ const HEARTBEAT = "murlan:adapter-heartbeat";
 const LEAVING = "murlan:adapter-leaving";
 
 /**
- * Instances whose heartbeat named them, by when it was last heard. A revision before inbox
- * routing (#1895) beats without its name, so it is never here (ADR 0014, decision 9).
+ * Instances whose heartbeat named them, with the adapter uid it came from. A revision before
+ * inbox routing (#1895) beats without its name, so it is never here (ADR 0014, decision 9).
  */
-const routingPeers = new Map<string, number>();
+export class RoutingPeers {
+  private readonly named = new Map<string, { uid: string; at: number }>();
+
+  heard(uid: string, packet: Packet, at: number): void {
+    if (packet[0] === HEARTBEAT && typeof packet[1] === "string") this.named.set(packet[1], { uid, at });
+  }
+
+  left(packet: Packet): void {
+    if (typeof packet[1] === "string") this.named.delete(packet[1]);
+  }
+
+  /** Named within the grace. */
+  speaksInbox(instance: string, at: number): boolean {
+    const peer = this.named.get(instance);
+    if (peer && at - peer.at < PEER_GRACE_MS) return true;
+    this.named.delete(instance);
+    return false;
+  }
+
+  /** Forgets every instance whose uid is not among `uids`, the adapter uids subscribed now. */
+  prune(uids: ReadonlySet<string>): void {
+    for (const [name, { uid }] of this.named) if (!uids.has(uid)) this.named.delete(name);
+  }
+
+  subscribed(instance: string, uids: ReadonlySet<string>): boolean {
+    this.prune(uids);
+    return this.named.has(instance);
+  }
+}
+
+export const heartbeatPacket = (): Packet => [HEARTBEAT, instanceId];
+
+const routing = new RoutingPeers();
+let subscribedUids: (() => Promise<Set<string>>) | null = null;
 
 /** Whether `instance` was heard within the grace, on a revision that answers a table ask in its inbox. */
 export function speaksInbox(instance: string): boolean {
-  const last = routingPeers.get(instance);
-  return last !== undefined && now() - last < PEER_GRACE_MS;
+  return routing.speaksInbox(instance, now());
+}
+
+/**
+ * Whether `instance`'s adapter is subscribed now: a killed process loses its subscription at once,
+ * though it is still heard for the grace. Rejects when the subscriptions cannot be read.
+ */
+export async function stillSubscribed(instance: string): Promise<boolean> {
+  if (!subscribedUids) throw new Error("the socket adapter is not running");
+  return routing.subscribed(instance, await subscribedUids());
 }
 
 interface AdapterLinks {
@@ -126,13 +167,20 @@ export function createSocketAdapter() {
      * outliving its silent owner, as a partitioned host's does, stops counting after the grace.
      * An instance not itself subscribed cannot count at all.
      */
-    async function peers(): Promise<number> {
+    async function subscribedPeers(): Promise<Set<string>> {
       if (!links.ready()) throw new Error("this instance is not subscribed to the cluster");
       const channels = (await links.client.sendCommand(["PUBSUB", "CHANNELS", pattern])) as string[];
-      const at = now();
       const subscribed = new Set(channels.map((c) => String(c).slice(privateChannels.length, -1)));
       subscribed.delete(cluster.uid);
       for (const uid of left) subscribed.delete(uid);
+      return subscribed;
+    }
+    subscribedUids = subscribedPeers;
+
+    async function peers(): Promise<number> {
+      const subscribed = await subscribedPeers();
+      routing.prune(subscribed);
+      const at = now();
       for (const uid of subscribed) if (!noticed.has(uid)) noticed.set(uid, at);
       let count = 0;
       for (const [uid, since] of noticed) {
@@ -175,23 +223,23 @@ export function createSocketAdapter() {
         : peers().then((n) => withPeers(n, () => fetchSockets(opts)));
     cluster.onMessage = (message: ClusterMessage, offset?: string) => {
       if (offset !== undefined) noteStreamRead("adapter", offset);
-      const event = message.type === MessageType.SERVER_SIDE_EMIT ? (message.data.packet as Packet)[0] : undefined;
-      const named = message.type === MessageType.SERVER_SIDE_EMIT ? (message.data.packet as Packet)[1] : undefined;
+      const packet = message.type === MessageType.SERVER_SIDE_EMIT ? (message.data.packet as Packet) : [];
+      const event = packet[0];
       if (event === LEAVING) {
         left.add(message.uid);
         heard.delete(message.uid);
         noticed.delete(message.uid);
-        if (typeof named === "string") routingPeers.delete(named);
+        routing.left(packet);
       } else if (offset === undefined && message.uid !== cluster.uid && !left.has(message.uid)) {
         const at = now();
         heard.set(message.uid, at);
         if (!noticed.has(message.uid)) noticed.set(message.uid, at);
-        if (event === HEARTBEAT && typeof named === "string") routingPeers.set(named, at);
+        routing.heard(message.uid, packet, at);
       }
       if (event === HEARTBEAT || event === LEAVING) return;
       return onMessage(message, offset);
     };
-    const beatNow = () => void serverSideEmit([HEARTBEAT, instanceId]);
+    const beatNow = () => void serverSideEmit(heartbeatPacket());
     const beat = setInterval(beatNow, HEARTBEAT_MS);
     const firstBeat = setInterval(() => {
       if (!links.ready()) return;

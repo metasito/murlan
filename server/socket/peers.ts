@@ -7,7 +7,7 @@ import { onInstanceMessage, sendToInstance } from "../store/instanceInbox.ts";
 import { instanceId } from "../store/redis.ts";
 import { tableOwnerOf } from "../store/tableOwners.ts";
 import { instancesOf } from "../store/presence.ts";
-import { speaksInbox } from "./socketAdapter.ts";
+import { speaksInbox, stillSubscribed } from "./socketAdapter.ts";
 
 export function instancePeers(io: SocketServer): Peers {
   return {
@@ -17,6 +17,7 @@ export function instancePeers(io: SocketServer): Peers {
     ownerOf: tableOwnerOf,
     instanceOf: async (userId) => (await instancesOf([userId])).get(userId) ?? null,
     speaksInbox,
+    stillSubscribed,
     legacy: {
       ask: (event, payload) =>
         new Promise((resolve) => {
