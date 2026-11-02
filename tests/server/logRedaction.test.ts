@@ -357,7 +357,7 @@ describe("what a completed request leaves in the log", () => {
     assert.equal(line.res.statusCode, 200);
   });
 
-  for (const path of ["/health", "/health/live", "/health/ready", "/health/ready?from=host", "/metrics"]) {
+  for (const path of ["/health", "/health/", "/health/live", "/health/ready", "/health/ready/", "/health/ready?from=host", "/metrics", "/metrics/"]) {
     test(`a probe of ${path} still writes nothing`, async () => {
       assert.equal(await requestLine(path), null);
     });

@@ -73,6 +73,8 @@ export function createRequestLogger(target: pino.Logger = logger) {
       ...line,
       req,
     }),
-    autoLogging: { ignore: (req: IncomingMessage) => PROBE_PATHS.includes((req.url ?? "").split("?")[0] ?? "") },
+    autoLogging: {
+      ignore: (req: IncomingMessage) => PROBE_PATHS.includes((req.url ?? "").split("?")[0]?.replace(/(.)\/+$/, "$1") ?? ""),
+    },
   });
 }
