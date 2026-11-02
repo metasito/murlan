@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { armArgs, disarmArgs, fakeTracker, flagsOf, ghTracker, issueText, runCli, isTrusted, readIssue, TRUSTED_AUTHORS, TRUSTED_SELECT, trustedComments } from "../tracker.mjs";
+import { fakeTracker, flagsOf, ghTracker, issueText, runCli, isTrusted, readIssue, TRUSTED_AUTHORS, TRUSTED_SELECT, trustedComments } from "../tracker.mjs";
+import { armArgs, disarmArgs, ghMerges } from "../merges.mjs";
 
 type Seed = Record<number, { state?: string; labels?: string[]; title?: string }>;
 
@@ -310,8 +311,9 @@ describe("the supervisor's writes", () => {
     t.closeIssue(7, "green again");
     t.rerunFailed(99);
     t.updateBranch(5);
-    t.merge(5, "abc", "m.md");
-    t.merge(5, "abc");
+    const m = ghMerges((args: string[]) => (asked.push(args), ""));
+    m.merge(5, "abc", "m.md");
+    m.merge(5, "abc");
     assert.deepEqual(asked, [
       ["api", "-X", "POST", "repos/metasito/murlan/issues", "-f", "title=CI flake: x", "-F", "body=@f.md", "-f", "labels[]=ready-for-human"],
       ["api", "-X", "POST", "repos/metasito/murlan/issues/7/comments", "-f", "body=green again"],
@@ -321,9 +323,13 @@ describe("the supervisor's writes", () => {
       ["api", "-X", "PUT", "repos/metasito/murlan/pulls/5/merge", "-f", "merge_method=merge", "-f", "sha=abc", "-F", "commit_message=@m.md"],
       ["api", "-X", "PUT", "repos/metasito/murlan/pulls/5/merge", "-f", "merge_method=merge", "-f", "sha=abc"],
     ]);
-    t.arm(5, "abc");
-    t.disarm(5);
+    m.arm(5, "abc");
+    m.disarm(5);
     assert.deepEqual(asked.slice(-2), [armArgs("metasito/murlan", 5, "abc"), disarmArgs("metasito/murlan", 5)]);
+  });
+
+  test("the tracker itself carries no merge, so the CLI every session runs makes none", () => {
+    for (const write of ["arm", "disarm", "merge"]) assert.ok(!(write in ghTracker(() => "")), write);
   });
 
   test("arm pins the head with a merge commit, and never squashes, rebases or forces", () => {
