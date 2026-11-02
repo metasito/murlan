@@ -7,7 +7,7 @@ import { now } from "../http/clock.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { TableRuntime, TableStore, TableWriters } from "./tableRuntime.ts";
 import type { AppliedResults } from "./roundOver.ts";
-import { ownerEpochOf, ownsRoom, releaseRoomAfter, unclaimedRooms, writeAsOwner } from "./gameOwnership.ts";
+import { ownerEpochOf, ownsRoom, releaseForHandOff, releaseRoomAfter, unclaimedRooms, writeAsOwner } from "./gameOwnership.ts";
 import { allRoomWritesLanded, queueBarrier, queueSnapshot, roomWritesLanded } from "./roomWriteChain.ts";
 import {
   sweepIntervalMs,
@@ -76,6 +76,15 @@ export function disposeGame(rt: TableRuntime, roomId: string, deleteRow = true) 
   activeGames.delete(roomId);
   const discarded = deleteRow ? rt.writers.discardGame(roomId) : undefined;
   void releaseRoomAfter(roomId, Promise.all([discarded, roomWritesLanded(roomId)]));
+}
+
+/**
+ * Takes a table whose last write has landed out of memory, before its lock goes, so nothing here
+ * writes the row a peer is about to enter; the lock is freed for that peer (`releaseForHandOff`).
+ */
+export function releaseToPeer(roomId: string): ReturnType<typeof releaseForHandOff> {
+  activeGames.delete(roomId);
+  return releaseForHandOff(roomId);
 }
 
 /**

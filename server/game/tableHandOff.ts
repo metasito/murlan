@@ -5,7 +5,8 @@ import { randomUUID } from "node:crypto";
 import { now } from "../http/clock.ts";
 import { logger } from "../shared/logger.ts";
 import { activeGames, type OnlineGameState } from "./gameRoom.ts";
-import { claimRoom, releaseForHandOff } from "./gameOwnership.ts";
+import { claimRoom } from "./gameOwnership.ts";
+import { releaseToPeer } from "./gamePersistence.ts";
 import { clearRoomDisconnectTimers, clearRoomLobbyGraces, clearRoomTimers } from "./gameTimers.ts";
 import { roomWritesLanded } from "./roomWriteChain.ts";
 import type { TableAction } from "./tableActions.ts";
@@ -108,9 +109,7 @@ async function handOff(rt: TableRuntime, roomId: string, game: OnlineGameState, 
   clearRoomLobbyGraces(roomId);
   const landed = Promise.allSettled([...(applying.get(roomId) ?? [])]).then(() => lastWriteLanded(roomId));
   if (!(await by(deadline, landed.then(() => true), false)) || activeGames.get(roomId) !== game) return "kept";
-  // Out of memory before the lock goes, so nothing here writes the row a peer is about to enter.
-  activeGames.delete(roomId);
-  const release = await releaseForHandOff(roomId);
+  const release = await releaseToPeer(roomId);
   if (!release?.released) {
     await release?.forget();
     logger.warn({ roomId }, "Could not release a table to hand it off; the next owner restores it");
