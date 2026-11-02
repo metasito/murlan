@@ -22,17 +22,27 @@ function fit(points) {
   return (x) => my + slope * (x - mx);
 }
 
+/** The soak's pauses (`soakPause`: the app left the screen at `t`, came back at `resumedAt`) cost no minutes, and each stretch between two is fitted on its own: a suspended audio clock steps across a pause. */
 function soak(rows) {
   const t0 = rows[0].t;
   const t1 = rows.at(-1).t;
-  const minutes = (t1 - t0) / 60000;
-  const memory = rows.filter((r) => r.k === "footprint" && r.t - t0 >= 5 * 60000).map((r) => [(r.t - t0) / 60000, r.mb]);
+  const pauses = rows.filter((r) => r.k === "soakPause");
+  const active = (t) => t - t0 - pauses.reduce((n, p) => n + Math.max(0, Math.min(t, p.resumedAt) - p.t), 0);
+  const segment = (t) => pauses.filter((p) => p.resumedAt <= t).length;
+  const minutes = active(t1) / 60000;
+  const memory = rows.filter((r) => r.k === "footprint" && active(r.t) >= 5 * 60000).map((r) => [active(r.t) / 60000, r.mb]);
   const engine = rows.filter((r) => r.k === "engine");
-  const lag = engine.map((r) => [(r.t - t0) / 60000, r.audioMs - r.t]);
-  const line = lag.length >= 2 ? fit(lag) : () => NaN;
-  const residual = lag.map(([x, y]) => y - line(x));
-  const jumps = engine.slice(1).filter((_, i) => !(Math.abs(residual[i + 1] - residual[i]) <= 20)).map((r) => r.t);
-  const mid = (t0 + t1) / 2;
+  const lag = engine.map((r) => [active(r.t) / 60000, r.audioMs - r.t]);
+  const seg = engine.map((r) => segment(r.t));
+  const residual = lag.map(() => 0);
+  for (const id of new Set(seg)) {
+    const idx = seg.flatMap((g, i) => (g === id ? [i] : []));
+    if (idx.length < 2) continue;
+    const line = fit(idx.map((i) => lag[i]));
+    for (const i of idx) residual[i] = lag[i][1] - line(lag[i][0]);
+  }
+  const jumps = engine.slice(1).filter((_, i) => seg[i + 1] === seg[i] && !(Math.abs(residual[i + 1] - residual[i]) <= 20)).map((r) => active(r.t));
+  const mid = active(t1) / 2;
   const firstHalf = jumps.filter((t) => t < mid).length;
   const secondHalf = jumps.length - firstHalf;
   const notRunning = engine.filter((r) => r.state !== "running").length;
@@ -40,7 +50,7 @@ function soak(rows) {
   const mbPerMin = memory.length >= 10 ? slopePerMinute(memory) : NaN;
   const pass =
     minutes >= 29 && mbPerMin < 1 && secondHalf <= firstHalf && notRunning === 0 && engine.length >= minutes * 5 && plays >= minutes * 45;
-  return { pass, metrics: { minutes, mbPerMin, driftMsPerMin: slopePerMinute(lag), firstHalf, secondHalf, notRunning, plays, samples: engine.length } };
+  return { pass, metrics: { minutes, pauses: pauses.length, mbPerMin, driftMsPerMin: slopePerMinute(lag), firstHalf, secondHalf, notRunning, plays, samples: engine.length } };
 }
 
 function smoke(rows) {

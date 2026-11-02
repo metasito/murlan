@@ -338,7 +338,7 @@ export function metroEnv(env, ip, diagnostics) {
   };
 }
 
-const RUN_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+const RUN_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000;
 
 async function benchServe(ip, gates, resumeFile, skip) {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -351,14 +351,14 @@ async function benchServe(ip, gates, resumeFile, skip) {
   console.log(`• Bench build installed. Tap the Murlan icon on the iPhone (or open ${benchUrl(ip, skip)}, not both) and leave it face up.`);
   if (skip.length) console.log(`• Resuming ${path.basename(file)}: skipping ${skip.join(", ")}.`);
   if (!gates) return;
-  console.log("• Waiting for the run to finish (about an hour)…");
+  console.log("• Waiting for the run to finish (pauses and interruptions are fine; Ctrl-C and rerun with --resume any time)…");
   const { names, timedOut } = await waitForRunEnd(() => readRows(file).slice(earlier), { timeoutMs: RUN_TIMEOUT_MS });
   const { pass, markdown } = gateTable(readRows(file), names, timedOut);
   const head = !timedOut
     ? ""
     : names.length === 0
-      ? "No run reached the collector in 2 h: is the phone on this PC's Wi-Fi, and was the Murlan icon tapped?\n\n"
-      : "The run did not finish within 2 h; unfinished scenarios are missing.\n\n";
+      ? "No run reached the collector in 7 days: is the phone on this PC's Wi-Fi, and was the Murlan icon tapped?\n\n"
+      : "The run did not finish within 7 days; unfinished scenarios are missing.\n\n";
   const out = path.join(ROOT, "diagnostics", `${stamp}.md`);
   writeFileSync(out, `Device bench, ${pass ? "every gate passed" : "NOT every gate passed"} (${path.basename(file)}).\n\n${head}${markdown}\n`);
   console.log(`\n${head}${markdown}\n\n• ${pass ? "Every gate passed." : "Not every gate passed."} To post it: gh issue comment 1259 --body-file ${path.relative(ROOT, out)}`);

@@ -29,9 +29,22 @@ async function soak(ctx: BenchContext, minutes: number): Promise<void> {
   let lastSample = -Infinity;
   let lastRound = t0;
   let minute = -1;
-  for (let i = 0; performance.now() - t0 < minutes * 60000; i++) {
+  let lastTick = t0;
+  let paused = 0;
+  for (let i = 0; performance.now() - t0 - paused < minutes * 60000; i++) {
+    if (await ctx.awaitForeground?.()) {
+      // JS timers stand still while the app is away, so the gap since the last tick is the pause; the audio engine restarts and is not sampled until the next 10 s mark.
+      const back = performance.now();
+      diag({ k: "soakPause", t: lastTick, resumedAt: back });
+      paused += back - lastTick;
+      await startFeedback();
+      lastSample = back;
+      lastRound = Math.max(lastRound, back);
+      minute = -1;
+    }
     const now = performance.now();
-    const m = Math.floor((now - t0) / 60000);
+    lastTick = now;
+    const m = Math.floor((now - t0 - paused) / 60000);
     if (m !== minute) {
       minute = m;
       backgroundMusic(TRACKS[m % TRACKS.length]);
