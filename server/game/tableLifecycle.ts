@@ -7,7 +7,6 @@ import { stopSpectatingEverywhere } from "../socket/seating.ts";
 import { armVoteDeadline } from "./roundOver.ts";
 import { clearRoomTimers, usersInLobbyGrace } from "./gameTimers.ts";
 import { buildSeatRoster, seatOfUser } from "./onlineGameLogic.ts";
-import { unpackPersistedState } from "../../shared/persistedEnvelope.ts";
 import { fromEnvelope, newTable } from "./tableState.ts";
 import { handleSeatRelease, retireRoomInvites, roomStatePayload, teamsSizeRefusal } from "../socket/socketTable.ts";
 import { dealRound } from "./dealRound.ts";
@@ -217,14 +216,12 @@ export async function startMatchAction(
  */
 export async function resumeOrphanedTables(rt: TableRuntime): Promise<void> {
   if (isShuttingDown()) return;
-  const rows = await rt.store.games.list();
+  const rows = await rt.store.games.listResumable();
   const online = await rt.presence.connectedUserIds();
   if (!online) return;
   for (const row of rows) {
     if (activeGames.has(row.roomId) || isShuttingDown()) continue;
-    const restored = unpackPersistedState(row.gameState);
-    if (!restored.ok || restored.gameState.roundOver) continue;
-    const userId = Object.values(restored.match.playerMap).find((id) => online.has(id));
+    const userId = row.userIds.find((id) => online.has(id));
     if (userId === undefined) continue;
     await rt.route({ kind: "resume", roomId: row.roomId, userId });
   }

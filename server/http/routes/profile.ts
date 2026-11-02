@@ -3,7 +3,7 @@ import { onSignedIn } from "../mount.ts";
 import { now } from "../clock.ts";
 import { getRoundHistoryView } from "../roundHistoryView.ts";
 import { getUserAchievements, getUserStats } from "../../game/stats.ts";
-import { getCircleLeaderboard, getLeaderboard, getRating } from "../../game/ratings.ts";
+import { cachedLeaderboard, getCircleLeaderboard, getRating } from "../../game/ratings.ts";
 import { friendStore } from "../../store/friendStore.ts";
 
 export function mountProfile(app: Express): void {
@@ -32,7 +32,9 @@ export function mountProfile(app: Express): void {
   });
 
   onSignedIn(app, "GET /api/ratings/leaderboard", async (_req, res) => {
-    res.json(await getLeaderboard(new Date(now())));
+    const { rows, maxAgeS } = await cachedLeaderboard(new Date(now()));
+    res.set("Cache-Control", `private, max-age=${maxAgeS}`);
+    res.json(rows);
   });
 
   onSignedIn(app, "GET /api/ratings/leaderboard/friends", async (_req, res, viewerId) => {

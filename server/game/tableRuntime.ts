@@ -56,7 +56,7 @@ export interface TableStore {
 
 /** What a table reads, and the seat rows it keeps; every other write is `writers`'. */
 export interface TableReads {
-  games: Pick<typeof activeGameStore, "list">;
+  games: Pick<typeof activeGameStore, "listResumable">;
   rooms: Omit<TableRoomPort, "updateRoomStatus">;
 }
 
