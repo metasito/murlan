@@ -18,7 +18,7 @@ import type { Client } from "pg";
 import { createClient } from "../store/pool.ts";
 import { createHash } from "node:crypto";
 import { logger } from "../shared/logger.ts";
-import { clearTableOwner, recordTableOwner } from "../store/tableOwners.ts";
+import { clearTableOwner, recordTableOwner, refreshTableOwner } from "../store/tableOwners.ts";
 import { activeGames } from "./gameRoom.ts";
 import type { TableStore } from "./tableRuntime.ts";
 
@@ -48,6 +48,9 @@ export function ownershipKey(roomId: string): string {
  * reconcile.
  */
 const OWNERSHIP_HEARTBEAT_MS = 15_000;
+
+/** A table's owner record outlives three missed heartbeats, so a crashed instance's expire. */
+const OWNER_RECORD_TTL_MS = 3 * OWNERSHIP_HEARTBEAT_MS;
 
 /** How soon a reclaim that could not reach Postgres, as during its restart, tries again. */
 const OWNERSHIP_RECLAIM_RETRY_MS = 1_000;
@@ -80,6 +83,8 @@ let backend: Backend | null = null;
 /** Sessions this process dropped and has not yet seen leave Postgres; their locks are still its own. */
 const predecessors: Backend[] = [];
 let retiring: Promise<boolean> | null = null;
+const INSUFFICIENT_PRIVILEGE = "42501";
+let terminateRefusalReported = false;
 
 /** Rooms whose lock is kept until what it guards has settled; see `releaseRoomAfter`. */
 const releasing = new Map<string, Promise<void>>();
@@ -88,6 +93,9 @@ let client: Client | null = null;
 let connecting: Promise<Client | null> | null = null;
 let heartbeat: ReturnType<typeof setInterval> | null = null;
 let reclaimRetry: ReturnType<typeof setTimeout> | null = null;
+let reclaiming: Promise<void> | null = null;
+/** Asked for while a reclaim ran: the session may have changed under the rooms it already passed. */
+let reclaimAgain = false;
 let closed = false;
 
 /**
@@ -136,9 +144,13 @@ function connect(): Promise<Client | null> {
         .catch((err: unknown) =>
           logger.warn({ err }, "Could not shorten the ownership connection's keepalives")
         );
-      const self = await next.query<Backend>(
-        `SELECT pid, ${STARTED} AS started FROM pg_stat_activity WHERE pid = pg_backend_pid()`
-      );
+      // Best effort: without it, a heartbeat failure has no predecessor to end, as before.
+      const self = await next
+        .query<Backend>(`SELECT pid, ${STARTED} AS started FROM pg_stat_activity WHERE pid = pg_backend_pid()`)
+        .catch((err: unknown) => {
+          logger.warn({ err }, "Could not read the ownership connection's own backend");
+          return { rows: [] as Backend[] };
+        });
       if (closed) {
         // A `closeOwnership` that landed while this connect was in flight has
         // already looked at `client` and found nothing. Installing it now would
@@ -150,10 +162,17 @@ function connect(): Promise<Client | null> {
       client = next;
       backend = self.rows[0] ?? null;
       heartbeat = setInterval(() => {
-        void next.query("SELECT 1").catch((err: unknown) => {
-          logger.error({ err }, "Game ownership connection stopped answering");
-          drop(next);
-        });
+        void next.query("SELECT 1").then(
+          () => {
+            for (const [roomId, hold] of held) {
+              if (hold.epoch !== null) refreshTableOwner(roomId, hold.epoch, OWNER_RECORD_TTL_MS);
+            }
+          },
+          (err: unknown) => {
+            logger.error({ err }, "Game ownership connection stopped answering");
+            drop(next);
+          }
+        );
       }, OWNERSHIP_HEARTBEAT_MS);
       (heartbeat as unknown as { unref?: () => void }).unref?.();
       return next;
@@ -189,10 +208,19 @@ function retirePredecessors(c: Client): Promise<boolean> {
         .then(({ rows }) => rows.length > 0);
     try {
       for (const b of predecessors) {
-        await c.query(
-          `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid = $1 AND ${STARTED} = $2`,
-          [b.pid, b.started]
-        );
+        await c
+          .query(`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid = $1 AND ${STARTED} = $2`, [
+            b.pid,
+            b.started,
+          ])
+          .catch((err: unknown) => {
+            if ((err as { code?: unknown }).code !== INSUFFICIENT_PRIVILEGE) throw err;
+            // Waited out all the same: Postgres reaps the session once its keepalives give up.
+            if (!terminateRefusalReported) {
+              terminateRefusalReported = true;
+              logger.error({ err, pid: b.pid }, "The database role is not allowed to end a dropped ownership session");
+            }
+          });
       }
       for (let polls = PREDECESSOR_WAIT_MS / PREDECESSOR_POLL_MS; ; polls--) {
         const remaining: Backend[] = [];
@@ -206,7 +234,7 @@ function retirePredecessors(c: Client): Promise<boolean> {
         await new Promise((resolve) => setTimeout(resolve, PREDECESSOR_POLL_MS));
       }
     } catch (err) {
-      logger.error({ err }, "Could not end a dropped ownership session");
+      logger.warn({ err }, "Could not end a dropped ownership session");
       return false;
     } finally {
       retiring = null;
@@ -240,7 +268,7 @@ async function takeLock(roomId: string): Promise<{ answer: LockAnswer; on: Clien
 function loseRoom(roomId: string, hold: Hold, unlock: boolean): void {
   if (held.get(roomId) !== hold) return;
   held.delete(roomId);
-  if (hold.epoch !== null) clearTableOwner(roomId, hold.epoch);
+  if (hold.epoch !== null) void clearTableOwner(roomId, hold.epoch);
   const c = client;
   if (unlock && c && hold.lockedOn === c) {
     void c
@@ -266,7 +294,29 @@ async function rowStillMine(roomId: string, epoch: number): Promise<boolean> {
  * find its room already gone from the set, skip the unlock, and leave the room
  * claimed for the life of the process with no game behind it.
  */
-async function reclaim(): Promise<void> {
+function reclaim(): Promise<void> {
+  if (reclaiming) {
+    reclaimAgain = true;
+    return reclaiming;
+  }
+  reclaiming = (async () => {
+    try {
+      do {
+        reclaimAgain = false;
+        await reclaimPass();
+      } while (reclaimAgain && !closed);
+    } finally {
+      reclaiming = null;
+    }
+  })();
+  return reclaiming;
+}
+
+/**
+ * One walk of `held`. Never two at once: `pg_try_advisory_lock` is re-entrant, so two passes on
+ * one session would take a lock twice and the one unlock a release sends would not free it.
+ */
+async function reclaimPass(): Promise<void> {
   let unreachable = false;
   for (const [roomId, hold] of [...held]) {
     if (held.get(roomId) !== hold) continue;
@@ -323,11 +373,11 @@ export async function claimRoom(roomId: string): Promise<boolean> {
 }
 
 /**
- * Makes this claim the owner of the room's row, and reads the row: one statement moves its epoch
- * on, so a write made under any earlier claim changes nothing from here. A claim enters once; a
- * room it already entered is read as it stands. With no row, the claim's epoch is 1 and its
- * first write is the insert. Called where a game enters memory, never by `claimRoom`, so a
- * claim that only probes ownership moves nothing.
+ * Makes this claim the owner of the room's row, and reads the row: one statement moves it to an
+ * epoch no claim has had, so a write made under any earlier claim changes nothing from here. With
+ * no row the claim still takes a fresh epoch, and its first write is the insert. A claim enters
+ * once; a room it already entered is read as it stands. Called where a game enters memory, never
+ * by `claimRoom`, so a claim that only probes ownership moves nothing.
  */
 export async function enterTable(roomId: string): Promise<{ held: false } | { held: true; row: ActiveGameRow | undefined }> {
   const hold = held.get(roomId);
@@ -336,12 +386,12 @@ export async function enterTable(roomId: string): Promise<{ held: false } | { he
   const store = rows;
   hold.entering ??= (async () => {
     try {
-      const claimed = await store.claim(roomId);
+      const { epoch, row } = await store.claim(roomId);
       if (held.get(roomId) === hold) {
-        hold.epoch = claimed?.ownerEpoch ?? 1;
-        recordTableOwner(roomId, hold.epoch);
+        hold.epoch = epoch;
+        recordTableOwner(roomId, epoch, OWNER_RECORD_TTL_MS);
       }
-      return claimed && { roomId, gameState: claimed.gameState };
+      return row;
     } finally {
       hold.entering = null;
     }
@@ -379,7 +429,7 @@ async function unlock(roomId: string): Promise<void> {
   const hold = held.get(roomId);
   if (!hold) return;
   held.delete(roomId);
-  if (hold.epoch !== null) clearTableOwner(roomId, hold.epoch);
+  if (hold.epoch !== null) void clearTableOwner(roomId, hold.epoch);
   const c = client;
   if (!c) return;
   await c
@@ -411,6 +461,16 @@ export function ownershipConnected(): boolean {
 /** Whether this process currently claims the room. */
 export function ownsRoom(roomId: string): boolean {
   return held.has(roomId);
+}
+
+/**
+ * Clears the owner record of every table this process holds, for a process on its way out: it
+ * runs before Redis closes, which is before the ownership connection does. Never rejects.
+ */
+export async function forgetOwnerRecords(): Promise<void> {
+  await Promise.all(
+    [...held].flatMap(([roomId, hold]) => (hold.epoch === null ? [] : [clearTableOwner(roomId, hold.epoch)]))
+  );
 }
 
 /**

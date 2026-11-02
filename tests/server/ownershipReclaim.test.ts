@@ -16,6 +16,7 @@ import {
 } from "../../server/game/gameOwnership.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { eventually } from "../helpers/client.ts";
+import { logger } from "../../server/shared/logger.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
@@ -149,6 +150,7 @@ function fakePostgres(t: import("node:test").TestContext) {
     fail: null as RegExp | null,
     /** Whether a backend named by pid is still in `pg_stat_activity`; none are, unless set. */
     alive: (_pid: unknown): boolean => false,
+    terminate: (): void => {},
     sent: (re: RegExp) => queries.filter((q) => re.test(q.sql)),
   };
   t.mock.method(Client.prototype, "connect", async function (this: Wire) {
@@ -165,6 +167,7 @@ function fakePostgres(t: import("node:test").TestContext) {
   t.mock.method(Client.prototype, "query", async function (this: Wire, sql: string, params?: unknown[]) {
     queries.push({ sql, params, client: this });
     if (pg.fail?.test(sql)) throw new Error("query failed");
+    if (/pg_terminate_backend/.test(sql)) pg.terminate();
     if (/pg_try_advisory_lock/.test(sql)) return { rows: [{ locked: pg.lockAnswer(params?.[0]) }] };
     if (/pg_backend_pid/.test(sql)) return { rows: [{ pid: 100 + clients.indexOf(this), started: `start-${clients.indexOf(this)}` }] };
     if (/^SELECT pid FROM pg_stat_activity/.test(sql)) return { rows: pg.alive(params?.[0]) ? [{ pid: params?.[0] }] : [] };
@@ -567,8 +570,8 @@ test("a reclaim that finds the row at another claim's epoch gives the room up on
     assert.equal(await claimRoom(room), true);
     assert.equal((await enterTable(room)).held, true);
   }
-  assert.equal(epochs.get("own-moved"), 1);
-  epochs.set("own-moved", 2);
+  const stayedAt = epochs.get("own-stayed");
+  epochs.set("own-moved", 99);
 
   pg.clients[0].emit("error", new Error("Connection terminated unexpectedly"));
   await eventually(() => pg.sent(/pg_try_advisory_lock/).length >= 4, "the reclaim asking for both locks");
@@ -582,5 +585,67 @@ test("a reclaim that finds the row at another claim's epoch gives the room up on
     1,
     "the lock retaken for a room that moved was kept"
   );
-  assert.equal(epochs.get("own-stayed"), 1, "a reclaim moved an epoch");
+  assert.equal(epochs.get("own-stayed"), stayedAt, "a reclaim moved an epoch");
+});
+
+test("reclaims that overlap on one session ask for each lock once", async (t) => {
+  const pg = fakePostgres(t);
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  openOwnership(t);
+  assert.equal(await claimRoom("own-overlap"), true);
+
+  pg.fail = /pg_try_advisory_lock/;
+  pg.clients[0].emit("error", new Error("Connection terminated unexpectedly"));
+  await settle();
+  pg.fail = null;
+
+  let lingering = true;
+  pg.alive = () => lingering;
+  pg.clients[1].emit("error", new Error("Connection terminated unexpectedly"));
+  await settle();
+  t.mock.timers.tick(1_000);
+  await settle();
+  lingering = false;
+  for (let i = 0; i < 40; i++) {
+    t.mock.timers.tick(100);
+    await settle();
+  }
+
+  const onThird = pg.sent(/pg_try_advisory_lock/).filter((q) => q.client === pg.clients[2]);
+  assert.equal(onThird.length, 1, "two reclaims took one lock twice on one session, so one unlock cannot free it");
+  assert.equal(ownsRoom("own-overlap"), true);
+});
+
+test("a connection that cannot name its own backend still connects", async (t) => {
+  const pg = fakePostgres(t);
+  pg.fail = /pg_backend_pid/;
+  openOwnership(t);
+
+  assert.equal(await claimRoom("own-nameless"), true);
+  assert.equal(pg.connects, 1);
+  assert.equal(pg.clients[0].ended, 0);
+});
+
+test("a server that refuses to end the dropped session is reported once, as such", async (t) => {
+  const pg = fakePostgres(t);
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const errors = t.mock.method(logger, "error", () => undefined);
+  const lost = openOwnership(t);
+  assert.equal(await claimRoom("own-unterminable"), true);
+  pg.alive = () => true;
+  pg.lockAnswer = () => false;
+  pg.terminate = () => {
+    throw Object.assign(new Error("permission denied to terminate process"), { code: "42501" });
+  };
+
+  pg.clients[0].emit("error", new Error("Connection terminated unexpectedly"));
+  for (let i = 0; i < 100; i++) {
+    t.mock.timers.tick(100);
+    await settle();
+  }
+
+  assert.ok(pg.sent(/pg_terminate_backend/).length >= 2, "the reclaim never asked twice");
+  const refusals = errors.mock.calls.filter((c) => /not allowed to end/.test(String(c.arguments[1])));
+  assert.equal(refusals.length, 1, "the refusal was not reported, or reported on every attempt");
+  assert.deepEqual(lost, []);
 });

@@ -58,7 +58,7 @@ activeGameStore.claim = async (roomId) => {
   // A restore is a database read; returning in the same tick would close
   // the window this test exists to enter.
   await sleep(RESTORE_MS);
-  return { roomId, ownerEpoch: 1, gameState: JSON.parse(JSON.stringify(toEnvelope(table(roomId)))) };
+  return { epoch: restores, row: { roomId, gameState: JSON.parse(JSON.stringify(toEnvelope(table(roomId)))) } };
 };
 after(() => {
   activeGameStore.claim = realClaim;

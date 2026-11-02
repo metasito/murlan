@@ -16,6 +16,7 @@ import { toEnvelope } from "../../server/game/tableState.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { instanceId } from "../../server/store/redis.ts";
 import { tableOwnerKey } from "../../server/store/tableOwners.ts";
+import { shutdown } from "../../server/http/shutdown.ts";
 import { startRound } from "../../lib/game/gameEngine.ts";
 
 const SEATS = ["Ana", "Besi"].map((name, i) => ({ name, type: "human" as const, id: `player_${i}` }));
@@ -35,18 +36,19 @@ describe("the owner epoch", { skip: hasDatabase() ? false : skipMessage() }, () 
 
   after(async () => {
     await redis?.quit();
-    await server?.stop();
+    // The last test shuts the app down itself.
+    await server?.stop().catch(() => {});
   });
 
   const rowOf = async (roomId: string) =>
     (
       await server.query<{ owner_epoch: number; game_state: unknown; updated_at: Date }>(
-        "SELECT owner_epoch, game_state, updated_at FROM active_games WHERE room_id = $1",
+        "SELECT owner_epoch::float8 AS owner_epoch, game_state, updated_at FROM active_games WHERE room_id = $1",
         [roomId]
       )
     )[0];
 
-  test("each claim moves the row on once, and a holder left behind writes nothing over it", async () => {
+  test("each claim moves the row to a new epoch, and a holder left behind writes nothing over it", async () => {
     const roomId = newRoom("fence");
     await server.query("INSERT INTO active_games (room_id, game_state) VALUES ($1, $2)", [
       roomId,
@@ -57,17 +59,20 @@ describe("the owner epoch", { skip: hasDatabase() ? false : skipMessage() }, () 
     assert.equal(await claimRoom(roomId), true);
     assert.equal((await rowOf(roomId)).owner_epoch, 0, "the lock alone moved the epoch");
     assert.equal(await rehydrateGame(server.rt, roomId, null), "restored");
-    assert.equal((await rowOf(roomId)).owner_epoch, 1);
+    const mine = (await rowOf(roomId)).owner_epoch;
+    assert.ok(mine > 0, "entering left the row at epoch 0");
     const game = activeGames.get(roomId)!;
 
     // Another instance's claim, as it would run once this one's lock was gone.
-    assert.equal((await activeGameStore.claim(roomId))?.ownerEpoch, 2);
+    const theirEpoch = (await activeGameStore.claim(roomId)).epoch;
+    assert.ok(theirEpoch > mine);
     const theirs = await rowOf(roomId);
+    assert.equal(theirs.owner_epoch, theirEpoch);
 
     const envelope = toEnvelope(game);
-    assert.equal(await activeGameStore.write(roomId, envelope, 1), false);
-    assert.equal(await activeGameStore.remove(roomId, 1), false);
-    assert.deepEqual(await rowOf(roomId), theirs, "an epoch-1 write or delete changed the row");
+    assert.equal(await activeGameStore.write(roomId, envelope, mine), false);
+    assert.equal(await activeGameStore.remove(roomId, mine), false);
+    assert.deepEqual(await rowOf(roomId), theirs, "a write or delete at the old epoch changed the row");
 
     const written: string[] = [];
     const write = activeGameStore.write;
@@ -109,6 +114,37 @@ describe("the owner epoch", { skip: hasDatabase() ? false : skipMessage() }, () 
     }
   });
 
+  test("two claims of a room with no row never share an epoch, so the first cannot write over the second", async () => {
+    const roomId = newRoom("norow");
+    const a = await activeGameStore.claim(roomId);
+    const b = await activeGameStore.claim(roomId);
+    assert.equal(a.row, undefined);
+    assert.equal(b.row, undefined);
+    assert.ok(b.epoch > a.epoch, `claims of a missing row took epochs ${a.epoch} and ${b.epoch}`);
+
+    assert.equal(await activeGameStore.write(roomId, toEnvelope(table(roomId)), b.epoch), true);
+    const theirs = await rowOf(roomId);
+    assert.equal(await activeGameStore.write(roomId, toEnvelope(table(roomId)), a.epoch), false);
+    assert.deepEqual(await rowOf(roomId), theirs, "the earlier claim wrote over the later one's row");
+  });
+
+  test("a row deleted and made again never takes back an epoch a former holder still has", async () => {
+    const roomId = newRoom("remade");
+    const first = await activeGameStore.claim(roomId);
+    assert.equal(await activeGameStore.write(roomId, toEnvelope(table(roomId)), first.epoch), true);
+    const second = await activeGameStore.claim(roomId);
+    assert.ok(second.row, "the second claim did not find the row");
+    assert.equal(await activeGameStore.remove(roomId, second.epoch), true);
+
+    const third = await activeGameStore.claim(roomId);
+    assert.equal(third.row, undefined);
+    assert.ok(third.epoch > second.epoch && second.epoch > first.epoch, `epochs ${first.epoch}, ${second.epoch}, ${third.epoch}`);
+    assert.equal(await activeGameStore.write(roomId, toEnvelope(table(roomId)), third.epoch), true);
+    const theirs = await rowOf(roomId);
+    assert.equal(await activeGameStore.write(roomId, toEnvelope(table(roomId)), first.epoch), false);
+    assert.deepEqual(await rowOf(roomId), theirs, "the first holder's late write landed on the new match");
+  });
+
   test("a row deleted under its holder is written again at the holder's epoch, and only then", async () => {
     const roomId = newRoom("purged");
     const envelope = toEnvelope(table(roomId));
@@ -129,8 +165,8 @@ describe("the owner epoch", { skip: hasDatabase() ? false : skipMessage() }, () 
     assert.equal(await redis.get(tableOwnerKey(roomId)), null, "the lock alone recorded an owner");
     assert.equal(await rehydrateGame(server.rt, roomId, null), "missing");
     await eventually(
-      async () => (await redis.get(tableOwnerKey(roomId))) === `${instanceId}:1`,
-      "the claim recorded as this instance's, at epoch 1"
+      async () => new RegExp(`^${instanceId}:[1-9][0-9]*$`).test((await redis.get(tableOwnerKey(roomId))) ?? ""),
+      "the claim recorded as this instance's, at its epoch"
     );
 
     await releaseRoom(roomId);
@@ -153,5 +189,33 @@ describe("the owner epoch", { skip: hasDatabase() ? false : skipMessage() }, () 
     await releaseRoom(marker);
     await eventually(async () => (await redis.get(tableOwnerKey(marker))) === null, "the later clear to land");
     assert.equal(await redis.get(tableOwnerKey(roomId)), "another-instance:2");
+  });
+
+  test("an owner record expires unless the ownership heartbeat renews it", { timeout: 40_000 }, async () => {
+    const roomId = newRoom("ttl");
+    assert.equal(await claimRoom(roomId), true);
+    await rehydrateGame(server.rt, roomId, null);
+    await eventually(async () => (await redis.get(tableOwnerKey(roomId))) !== null, "the claim recorded");
+    const first = await redis.pTTL(tableOwnerKey(roomId));
+    const recordedAt = Date.now();
+    assert.ok(first > 0 && first <= 45_000, `the record's time to live is ${first} ms`);
+
+    // Renewed: it has more time left than it would have had, untouched, by some seconds.
+    await eventually(
+      async () => (await redis.pTTL(tableOwnerKey(roomId))) > first - (Date.now() - recordedAt) + 5_000,
+      "the heartbeat to renew the record",
+      20_000
+    );
+    await releaseRoom(roomId);
+  });
+
+  test("a shutdown clears the owner record of every table it held", { timeout: 30_000 }, async () => {
+    const roomId = newRoom("shutdown");
+    assert.equal(await claimRoom(roomId), true);
+    await rehydrateGame(server.rt, roomId, null);
+    await eventually(async () => (await redis.get(tableOwnerKey(roomId))) !== null, "the claim recorded");
+
+    await shutdown("SIGTERM", { io: server.io, server: server.httpServer, tables: server.rt, exit: () => {} });
+    assert.equal(await redis.get(tableOwnerKey(roomId)), null, "a clean shutdown left its table's owner record");
   });
 });

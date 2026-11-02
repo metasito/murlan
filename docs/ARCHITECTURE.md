@@ -144,10 +144,11 @@ is owned by whichever process holds a Postgres **advisory session lock** keyed b
 `ownershipKey(roomId)`. There is no lease and no heartbeat expiry, deliberately: a killed process
 drops its Postgres connection and Postgres releases its locks, so ownership cannot outlive the
 process holding it. A lock cannot stop a former owner's write already in flight, so the table's
-`active_games` row carries an `owner_epoch`: the claim that puts the game in memory moves it on
-(`enterTable`), every row write and delete is made under it (`writeAsOwner`), and a write that
+`active_games` row carries an `owner_epoch`: the claim that puts the game in memory moves it to
+an epoch from one sequence, so no two claims ever share one (`enterTable`), every row write and delete is made under it (`writeAsOwner`), and a write that
 changes no row ends the table in that process with nothing more written. The claim also names
-the owner in Redis, `table-owner:<roomId>` = `<instanceId>:<epoch>` (`server/store/tableOwners.ts`).
+the owner in Redis, `table-owner:<roomId>` = `<instanceId>:<epoch>` (`server/store/tableOwners.ts`),
+renewed by the ownership heartbeat so a crashed instance's records expire, and cleared at shutdown.
 When the ownership heartbeat fails, the new connection ends the session it replaced before it
 takes the locks again, so the process never loses a room to its own half-dead session (ADR-0014).
 
