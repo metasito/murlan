@@ -5,7 +5,7 @@
 // — a question a log stream answers badly.
 import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
-import { db } from "../store/db.ts";
+import { db, type Database } from "../store/db.ts";
 import { clientErrors } from "../../shared/schema.ts";
 import { ERROR_GROUP_WINDOW_DAYS } from "./serverErrors.ts";
 
@@ -81,8 +81,8 @@ export async function recordClientError(input: ClientErrorInput): Promise<void> 
  * "unknown" bucket since Postgres treats every NULL as equal; `id` stands in
  * as each of those rows' own group instead, so none are hidden.
  */
-export async function recentClientErrorGroups(limit = CLIENT_ERROR_PAGE): Promise<ClientErrorGroup[]> {
-  const rows = await db().execute<{
+export async function recentClientErrorGroups(database: Database, limit = CLIENT_ERROR_PAGE): Promise<ClientErrorGroup[]> {
+  const rows = await database.execute<{
     fingerprint: string | null;
     message: string;
     count: number;

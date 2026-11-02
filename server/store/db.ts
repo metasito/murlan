@@ -44,12 +44,21 @@ export class DatabaseNotOpenError extends Error {
   }
 }
 
-let open: { pool: Pool; db: Database; health: Pool } | null = null;
+type Opened = { pool: Pool; db: Database };
+
+let open: { app: Opened; admin: Opened; health: Pool } | null = null;
+
+function opened(pool: Pool): Opened {
+  return { pool, db: drizzle(pool, { schema }) };
+}
 
 export function openDatabase(): void {
   if (open) throw new Error("The database is already open: closeDatabase() the first one");
-  const appPool = createPool("app", { max: resolvePoolMax(process.env.MURLAN_PG_POOL_MAX) });
-  open = { pool: appPool, db: drizzle(appPool, { schema }), health: createPool("health") };
+  open = {
+    app: opened(createPool("app", { max: resolvePoolMax(process.env.MURLAN_PG_POOL_MAX) })),
+    admin: opened(createPool("admin")),
+    health: createPool("health"),
+  };
 }
 
 /** One `SELECT 1` on the health pool, which no request shares: it answers while the app pool is full. */
@@ -79,17 +88,31 @@ export async function watchConnectionBudget(ownershipConnected: () => boolean): 
 
 export function pool(): Pool {
   if (!open) throw new DatabaseNotOpenError();
-  return open.pool;
+  return open.app.pool;
 }
 
 export function db(): Database {
   if (!open) throw new DatabaseNotOpenError();
-  return open.db;
+  return open.app.db;
 }
 
+/** The operator's reads, on a pool of their own so they can never take a connection from a table. */
+export function adminPool(): Pool {
+  if (!open) throw new DatabaseNotOpenError();
+  return open.admin.pool;
+}
+
+export function adminDb(): Database {
+  if (!open) throw new DatabaseNotOpenError();
+  return open.admin.db;
+}
+
+/** The admin pool holds only reads, which no shutdown needs to wait for. */
+const ADMIN_DRAIN_MS = 250;
+
 /**
- * Waits up to `drainMs` for the pool to go quiet, then ends it; `ended` settles
- * once it has. A pool still busy past `drainMs` is logged and ended anyway, and
+ * Waits up to `drainMs` for the app pool to go quiet, and briefly for the admin pool, then ends
+ * them; `ended` settles once both have. An app pool still busy past `drainMs` is logged and ended anyway, and
  * its `ended` may never settle — `pool.end()` waits on every checked-out client
  * — so a caller with a deadline bounds the wait itself.
  *
@@ -103,9 +126,16 @@ export async function closeDatabase({ drainMs }: { drainMs?: number } = {}): Pro
     budgetCheck = null;
   }
   if (!open) return { ended: Promise.resolve() };
-  const closing = open.pool;
-  const health = open.health.end().catch((err) => logger.error({ err }, "Health pool close failed"));
-  if (!(await drainPool(closing, { timeoutMs: drainMs }))) {
+  const { app: { pool: closing }, admin: { pool: closingAdmin }, health } = open;
+  const healthEnded = health.end().catch((err) => logger.error({ err }, "Health pool close failed"));
+  const [drained, adminDrained] = await Promise.all([
+    drainPool(closing, { timeoutMs: drainMs }),
+    drainPool(closingAdmin, { timeoutMs: Math.min(drainMs ?? ADMIN_DRAIN_MS, ADMIN_DRAIN_MS) }),
+  ]);
+  if (!adminDrained) {
+    logger.warn({ busy: closingAdmin.totalCount - closingAdmin.idleCount }, "Admin reads still running at shutdown are being abandoned");
+  }
+  if (!drained) {
     // While still open: the error recorder writes this line through db().
     logger.error(
       { busy: closing.totalCount - closing.idleCount, waiting: closing.waitingCount },
@@ -113,6 +143,6 @@ export async function closeDatabase({ drainMs }: { drainMs?: number } = {}): Pro
     );
   }
   open = null;
-  const app = closing.end().catch((err) => logger.error({ err }, "Pool close failed"));
-  return { ended: Promise.all([app, health]).then(() => {}) };
+  const end = (p: Pool) => p.end().catch((err) => logger.error({ err, pool: p.options.application_name }, "Pool close failed"));
+  return { ended: Promise.all([end(closing), end(closingAdmin), healthEnded]).then(() => {}) };
 }

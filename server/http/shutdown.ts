@@ -6,6 +6,7 @@ import { closeDatabase, QUERY_TIMEOUT_MS } from "../store/db.ts";
 import { beginShutdown } from "../game/gameRoom.ts";
 import { closeRedis } from "../store/redis.ts";
 import { stopInbox } from "../store/instanceInbox.ts";
+import { cancelRevocationRetries } from "../socket/socketRegistry.ts";
 import { closeOwnership } from "../game/gameOwnership.ts";
 import type { TableRuntime } from "../game/tableRuntime.ts";
 import { settleDisconnects } from "../socket/socketPresence.ts";
@@ -101,6 +102,7 @@ export async function shutdown(
     );
     await settleDisconnects(SHUTDOWN_BUDGET.settleDisconnects);
     await within(SHUTDOWN_BUDGET.stopTables, tables.stopTables());
+    cancelRevocationRetries();
     stopHealth();
     stopInbox();
     closeRedis();

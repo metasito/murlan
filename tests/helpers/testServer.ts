@@ -7,6 +7,7 @@ import { createApp } from "../../server/app.ts";
 import { closeDatabase, db as appDb, pool as appPool, type Database } from "../../server/store/db.ts";
 import { closeRedis, redisReady } from "../../server/store/redis.ts";
 import { stopInbox } from "../../server/store/instanceInbox.ts";
+import { cancelRevocationRetries } from "../../server/socket/socketRegistry.ts";
 import { stopHealth } from "../../server/http/health.ts";
 import { dropKeyspace } from "./redisKeys.ts";
 import { closeOwnership } from "../../server/game/gameOwnership.ts";
@@ -226,6 +227,7 @@ export async function startTestServer(
           // writes still landing from the requests and disconnects above.
           await (await closeDatabase()).ended;
           await ioClosed;
+          cancelRevocationRetries();
           stopHealth();
           stopInbox();
           closeRedis();
@@ -251,6 +253,7 @@ export async function startTestServer(
     // this is the only chance to undo the CREATE SCHEMA above and the
     // DATABASE_URL mutation.
     await (await closeDatabase()).ended;
+    cancelRevocationRetries();
     stopHealth();
     stopInbox();
     closeRedis();
