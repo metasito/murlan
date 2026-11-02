@@ -2,28 +2,38 @@ import { logger } from "../shared/logger.ts";
 import { instanceId, openRedis, redisKey, type RedisClient } from "./redis.ts";
 
 const CLEAR_IF_MINE = "if redis.call('HGET', KEYS[1], 'socket') == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0";
+/** Redis's own clock in microseconds, so every stamp comes from one clock and no instance's skew counts. */
+const NOW = "local t = redis.call('TIME') local at = t[1] .. string.format('%06d', tonumber(t[2]))";
+
+/** A connection takes the entry outright: the newest connect always wins. Returns its stamp. */
+const CONNECT = `${NOW}
+redis.call('HSET', KEYS[1], 'instance', ARGV[1], 'socket', ARGV[2], 'at', at)
+return at`;
+
 /**
- * Writes `{ instance, socket, at }` unless the entry already names a connection at least as new:
- * the newest connection wins whichever instance reaches Redis first. `at` is the socket's
- * handshake time; an entry with none is older than any.
+ * Puts back an entry this instance holds unless Redis holds a newer one: ARGV[3] is the stamp its
+ * connect was given, or, for a connect that never reached Redis, the newest stamp this instance
+ * has been given, which that connect followed. Stamps survive Redis losing its data, not a
+ * failover to a replica whose clock is behind.
  */
-const WRITE_IF_NEWER = `local at = tonumber(redis.call('HGET', KEYS[1], 'at'))
-if at and at >= tonumber(ARGV[3]) and redis.call('HGET', KEYS[1], 'socket') ~= ARGV[2] then return 0 end
-return redis.call('HSET', KEYS[1], 'instance', ARGV[1], 'socket', ARGV[2], 'at', ARGV[3])`;
+const REFILL = `local held = redis.call('HGET', KEYS[1], 'at')
+if held and tonumber(held) >= tonumber(ARGV[3]) then return 0 end
+${NOW}
+if ARGV[3] ~= '0' then at = ARGV[3] end
+return redis.call('HSET', KEYS[1], 'instance', ARGV[1], 'socket', ARGV[2], 'at', at)`;
 
 let client: RedisClient | null = null;
-/** This instance's sockets and when each connected, so an entry Redis lost while it was away is put back. */
-const mine = new Map<string, { socketId: string; at: number }>();
+/** This instance's sockets, each with the stamp Redis gave its connect once one has. */
+const mine = new Map<string, { socketId: string; at?: string }>();
+/** The newest stamp Redis has given this instance; "0" before the first. */
+let newestStamp = "0";
 
 export function presenceKey(userId: string): string {
   return redisKey(`presence:${userId}`);
 }
 
-function write(userId: string, socketId: string, at: number): void {
-  void client
-    ?.eval(WRITE_IF_NEWER, { keys: [presenceKey(userId)], arguments: [instanceId, socketId, String(at)] })
-    .catch((err: unknown) => logger.warn({ err, userId }, "Could not record where an account is connected"));
-}
+const writeFailed = (userId: string) => (err: unknown) =>
+  logger.warn({ err, userId }, "Could not record where an account is connected");
 
 /** Opened at boot; until then, and after `closePresence`, nothing is recorded and nobody is found. */
 export function openPresence(url?: string): void {
@@ -31,7 +41,11 @@ export function openPresence(url?: string): void {
   const opened = openRedis("presence", { url, offlineQueue: false });
   client = opened;
   opened.on("ready", () => {
-    for (const [userId, { socketId, at }] of mine) write(userId, socketId, at);
+    for (const [userId, { socketId, at }] of mine) {
+      void opened
+        .eval(REFILL, { keys: [presenceKey(userId)], arguments: [instanceId, socketId, at ?? newestStamp] })
+        .catch(writeFailed(userId));
+    }
   });
 }
 
@@ -39,12 +53,20 @@ export function closePresence(): void {
   client?.destroy();
   client = null;
   mine.clear();
+  newestStamp = "0";
 }
 
-/** `connectedAt` is the socket's handshake time, which decides between two connections. Never rejects. */
-export function recordPresence(userId: string, socketId: string, connectedAt: number): void {
-  mine.set(userId, { socketId, at: connectedAt });
-  write(userId, socketId, connectedAt);
+/** The newest socket wins: an account holds one socket (`server/CLAUDE.md`). Never rejects. */
+export function recordPresence(userId: string, socketId: string): void {
+  const held = { socketId } as { socketId: string; at?: string };
+  mine.set(userId, held);
+  void client
+    ?.eval(CONNECT, { keys: [presenceKey(userId)], arguments: [instanceId, socketId] })
+    .then((at) => {
+      held.at = String(at);
+      if (BigInt(held.at) > BigInt(newestStamp)) newestStamp = held.at;
+    })
+    .catch(writeFailed(userId));
 }
 
 /** Only while the entry still names this socket: a replacement's, written since, stays. Never rejects. */

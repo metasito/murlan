@@ -45,6 +45,12 @@ after(() => {
   if (admin.isOpen) admin.destroy();
 });
 
+/** Redis's own clock in microseconds, offset by `deltaMicros`: the clock every entry is stamped from. */
+async function redisMicros(deltaMicros = 0n): Promise<string> {
+  const [seconds, micros] = (await admin.sendCommand(["TIME"])) as [string, string];
+  return String(BigInt(seconds) * 1_000_000n + BigInt(micros) + deltaMicros);
+}
+
 /** Cuts this process's presence link and resolves once it is back and has run its reconnect. */
 async function reconnectPresence(): Promise<void> {
   const [killed] = (await presenceLinks()).filter((id) => !others.has(id));
@@ -56,12 +62,12 @@ async function reconnectPresence(): Promise<void> {
 }
 
 test("a reconnected presence link fills a missing entry and leaves a newer one alone", { skip }, async () => {
-  recordPresence("moved", "s1", 100);
-  recordPresence("lost", "s3", 100);
+  recordPresence("moved", "s1");
+  recordPresence("lost", "s3");
   await eventually(async () => (await instancesOf(["moved", "lost"])).size === 2, "both entries written");
 
   // While this instance's link is down, the account reconnects elsewhere, and Redis loses the other entry.
-  await admin.hSet(presenceKey("moved"), { instance: "elsewhere", socket: "s2", at: "200" });
+  await admin.hSet(presenceKey("moved"), { instance: "elsewhere", socket: "s2", at: await redisMicros() });
   await admin.del(presenceKey("lost"));
   await reconnectPresence();
 
@@ -75,16 +81,28 @@ test("a reconnected presence link fills a missing entry and leaves a newer one a
 });
 
 test("after Redis loses its data, the newest connection wins even when the older one's instance fills first", { skip }, async () => {
-  // The account moved here as s2 while Redis was down, so this instance's own write was refused.
-  recordPresence("ana", "s2", 200);
+  recordPresence("ana", "s2");
   await eventually(async () => (await instancesOf(["ana"])).size === 1, "the entry written");
   await dropKeyspace(scoped, redisUrl);
-  // The instance it left gets back first and fills in its half-open socket, as its reconnect does.
-  await admin.hSet(presenceKey("ana"), { instance: "left-behind", socket: "s1", at: "100" });
+  // The instance it left gets back first and fills in its half-open socket, stamped when it connected.
+  await admin.hSet(presenceKey("ana"), { instance: "left-behind", socket: "s1", at: await redisMicros(-60_000_000n) });
   await reconnectPresence();
 
   assert.equal((await instancesOf(["ana"])).get("ana"), instanceId, "the older connection's fill kept the account's entry");
   // That socket's ping timeout then clears what it believes is its own entry.
   forgetPresence("ana", "s1");
   assert.equal((await instancesOf(["ana"])).get("ana"), instanceId, "the account was left online with no entry");
+});
+
+test("a connection always takes the entry, whatever any instance's own clock says", { skip }, async () => {
+  // The instance it left stamped its socket later than this one's clock reads now.
+  await admin.hSet(presenceKey("skew"), { instance: "ahead", socket: "s1", at: await redisMicros(3_600_000_000n) });
+  recordPresence("skew", "s2");
+  assert.equal(
+    await eventually(async () => (await instancesOf(["skew"])).get("skew") === instanceId, "the connection written").catch(() => false),
+    true,
+    "a newer connection was refused for an older one's stamp"
+  );
+  forgetPresence("skew", "s1");
+  assert.equal((await instancesOf(["skew"])).get("skew"), instanceId, "the account was left online with no entry");
 });

@@ -213,7 +213,7 @@ export function setupSocket(httpServer: HttpServer, sessionMiddleware: RequestHa
     registerFriendHandlers(ctx);
     registerDisconnect(ctx);
     socket.on("disconnect", () => forgetPresence(userId, socket.id));
-    recordPresence(userId, socket.id, socket.handshake.issued);
+    recordPresence(userId, socket.id);
 
     await announcePresence(ctx);
   });
