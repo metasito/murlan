@@ -1,6 +1,6 @@
 import { now } from "../http/clock.ts";
 import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
-import { db, type Database } from "../store/db.ts";
+import { db, transaction, type Database, type Tx } from "../store/db.ts";
 import { userRatings, users } from "../../shared/schema.ts";
 import { lockUsers } from "../store/userLock.ts";
 import {
@@ -24,7 +24,7 @@ export interface RatedPreview extends RatingAfter {
 }
 
 /** Either the pool or an open transaction — currentRows only ever reads. */
-type Reader = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
+type Reader = Database | Tx;
 
 type SeasonRow = { rating: number; rounds: number };
 
@@ -160,7 +160,7 @@ export async function recordRatedResult(
 ): Promise<Map<string, number>> {
   const season = seasonKey(finishedAt);
 
-  return db().transaction(async (tx) => {
+  return transaction(async (tx) => {
     // Resolved inside the transaction and under every seat's row lock, not
     // taken from the preview: the absolute values written below are only
     // right if no other round's write lands between this read and them.
@@ -218,6 +218,45 @@ export async function getLeaderboard(asOf: Date): Promise<LeaderboardEntryDto[]>
 
   return rows.map((r, i) => ({ ...r, rank: i + 1 }));
 }
+
+/** How long one instance serves a ladder it read, and a client may keep it. */
+const LEADERBOARD_MAX_AGE_S = 30;
+
+type LoadLeaderboard = (asOf: Date) => Promise<LeaderboardEntryDto[]>;
+
+/** A ladder, and how many whole seconds a client may keep it before the memo would read it again. */
+export interface ServedLeaderboard {
+  rows: LeaderboardEntryDto[];
+  maxAgeS: number;
+}
+
+/**
+ * `load`, answered from the last read of the same season while it is younger
+ * than `LEADERBOARD_MAX_AGE_S`. A read in flight is shared; a failed one is
+ * forgotten, so the next caller asks again rather than inheriting the error.
+ */
+export function leaderboardMemo(load: LoadLeaderboard): (asOf: Date) => Promise<ServedLeaderboard> {
+  const ttlMs = LEADERBOARD_MAX_AGE_S * 1000;
+  let last: { season: string; at: number; rows: Promise<LeaderboardEntryDto[]> } | null = null;
+  return async (asOf) => {
+    const season = seasonKey(asOf);
+    const age = last ? now() - last.at : -1;
+    let entry = last;
+    if (!entry || entry.season !== season || age < 0 || age >= ttlMs) {
+      const started = { season, at: now(), rows: load(asOf) };
+      started.rows.catch(() => {
+        if (last === started) last = null;
+      });
+      last = entry = started;
+    }
+    const rows = await entry.rows;
+    const left = Math.floor((ttlMs - (now() - entry.at)) / 1000);
+    return { rows, maxAgeS: Math.min(LEADERBOARD_MAX_AGE_S, Math.max(0, left)) };
+  };
+}
+
+/** The public ladder as `/api/ratings/leaderboard` serves it. */
+export const cachedLeaderboard = leaderboardMemo(getLeaderboard);
 
 /**
  * This season's standing for a fixed set of players, the viewer among them.

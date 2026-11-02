@@ -109,13 +109,13 @@ function e2eFiles(): string[] {
 }
 
 test("the walk follows imports through app modules to reach an unparsable package", () => {
-  // `lib/socket.ts` imports no package this scan names; it gets there through `@/lib/query-client`
+  // `lib/queries.ts` imports no package this scan names; it gets there through `./query-client`
   // and `expo/fetch`. Re-point this at another transitive reacher if that stops being true —
   // never at one importing `react-native` itself, which proves only that the regex runs.
-  const chain = unrunnableChain(path.join(repoRoot, "lib", "socket.ts"));
+  const chain = unrunnableChain(path.join(repoRoot, "lib", "queries.ts"));
   assert.ok(
     chain && UNRUNNABLE.test(chain[chain.length - 1]) && chain.length > 2,
-    `walking \`lib/socket.ts\` found ${chain ? `a direct import: ${chain.join(" → ")}` : "nothing"}. ` +
+    `walking \`lib/queries.ts\` found ${chain ? `a direct import: ${chain.join(" → ")}` : "nothing"}. ` +
       "Recursion and resolution are what this scan is, and both are unproven if the only chain " +
       "it can find is one file long"
   );

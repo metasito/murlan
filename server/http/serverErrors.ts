@@ -1,7 +1,7 @@
 // Every server log line at `error` or above, kept long enough to be read on /admin.
 import { now } from "./clock.ts";
 import { sql } from "drizzle-orm";
-import { db, pool } from "../store/db.ts";
+import { db, pool, type Database } from "../store/db.ts";
 import { serverErrors } from "../../shared/schema.ts";
 import { setErrorRecorder } from "../shared/logger.ts";
 
@@ -60,8 +60,8 @@ export type ServerErrorGroup = {
   lastSeen: string;
 };
 
-export async function recentServerErrorGroups(limit: number): Promise<ServerErrorGroup[]> {
-  const rows = await db().execute<ServerErrorGroup>(sql`
+export async function recentServerErrorGroups(database: Database, limit: number): Promise<ServerErrorGroup[]> {
+  const rows = await database.execute<ServerErrorGroup>(sql`
     SELECT message, count(*)::int AS count, max(occurred_at) AS "lastSeen"
     FROM server_errors
     WHERE occurred_at >= now() - make_interval(days => ${ERROR_GROUP_WINDOW_DAYS})
@@ -72,8 +72,8 @@ export async function recentServerErrorGroups(limit: number): Promise<ServerErro
   return rows.rows;
 }
 
-export async function serverErrorsThisWeek(): Promise<number> {
-  const rows = await db().execute<{ n: number }>(sql`
+export async function serverErrorsThisWeek(database: Database): Promise<number> {
+  const rows = await database.execute<{ n: number }>(sql`
     SELECT count(*)::int AS n
     FROM server_errors
     WHERE occurred_at >= now() - make_interval(days => 7)

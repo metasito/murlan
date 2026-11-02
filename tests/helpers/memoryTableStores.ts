@@ -4,6 +4,11 @@ import type { TestContext } from "node:test";
 import { activeGameStore, type TableRoomPort } from "../../server/store/activeGameStore.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { renumbering, settleRelease, startRefusal } from "../../server/game/seatAllocation.ts";
+import {
+  GAME_SCHEMA_VERSION,
+  OLDEST_GAME_SCHEMA_VERSION,
+  readPersistedPlayerMap,
+} from "../../shared/persistedEnvelope.ts";
 import type { Room } from "../../shared/schema.ts";
 
 type Seat = Awaited<ReturnType<TableRoomPort["getRoomPlayers"]>>[number];
@@ -29,8 +34,15 @@ export function useMemoryTableStores(t: TestContext, seed: MemoryTableSeed = {})
   t.mock.method(activeGameStore, "load", async (roomId: string) =>
     rows.has(roomId) ? { roomId, gameState: rows.get(roomId) } : undefined
   );
-  t.mock.method(activeGameStore, "list", async () =>
-    [...rows].map(([roomId, gameState]) => ({ roomId, gameState }))
+  t.mock.method(activeGameStore, "listResumable", async () =>
+    [...rows].flatMap(([roomId, stored]) => {
+      const row = stored as { schemaVersion?: unknown; gameState?: { roundOver?: unknown }; match?: { playerMap?: unknown } };
+      const version = row?.schemaVersion;
+      const supported = typeof version === "number" && version >= OLDEST_GAME_SCHEMA_VERSION && version <= GAME_SCHEMA_VERSION;
+      return supported && row.gameState?.roundOver !== true
+        ? [{ roomId, userIds: Object.values(readPersistedPlayerMap(row.match?.playerMap)) }]
+        : [];
+    })
   );
   t.mock.method(activeGameStore, "write", async (roomId: string, gameState: unknown) => {
     rows.set(roomId, gameState);

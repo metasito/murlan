@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { io, type Socket as UntypedSocket } from "socket.io-client";
 import { getApiUrl, requestOf, type Reply } from "@/lib/query-client";
 import {
@@ -5,13 +6,15 @@ import {
   type ClientToServerEvents,
   type ServerToClientEvents,
 } from "@/shared/protocol";
+import { NOT_AUTHENTICATED } from "@/shared/handshake";
 
 export type Socket = UntypedSocket<ServerToClientEvents, ClientToServerEvents>;
 
 /**
- * `onAuthFailure` fires when the ticket endpoint reports the session is dead
- * (401): a ticket mint can never succeed again until the user signs in, so the
- * owner stops retrying instead.
+ * `onAuthFailure` fires when the session is dead: on native the ticket endpoint
+ * answers 401, on web the cookie-only handshake is refused as unauthenticated.
+ * Neither can succeed again until the user signs in, so the owner stops
+ * retrying instead.
  */
 interface SocketEntry {
   socket: Socket;
@@ -43,7 +46,8 @@ export function peekSocket(userId: string | null | undefined): Socket | null {
 /**
  * Mints a short-lived, single-use handshake ticket from the authenticated REST
  * session. Native clients do not reliably send the session cookie on the
- * websocket upgrade, and the handshake accepts only a session or a ticket.
+ * websocket upgrade, and the handshake accepts only a session or a ticket. Web
+ * never asks: its upgrade carries the cookie, which the handshake reads first.
  *
  * Uses a raw fetch (not api) so a 401 can be told apart from a
  * transient network failure instead of being swallowed identically.
@@ -76,6 +80,7 @@ export function connectSocket(userId: string, { onAuthFailure }: { onAuthFailure
     // Called before every connection attempt, including each reconnect, so a
     // fresh ticket is minted every time (tickets are single-use).
     auth: (cb: (data: Record<string, unknown>) => void) => {
+      if (Platform.OS === "web") return cb({ protocolVersion: PROTOCOL_VERSION });
       const attempt = ++latestAttempt;
       void fetchSocketTicket(() => handlers.onAuthFailure()).then((ticket) => {
         if (attempt !== latestAttempt) return;
@@ -89,11 +94,16 @@ export function connectSocket(userId: string, { onAuthFailure }: { onAuthFailure
     // so polling is not a fallback here, it is an intermittent 400.
     transports: ["websocket"],
     autoConnect: true,
-    reconnection: true,
-    reconnectionAttempts: Infinity,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
+    // `SocketProvider` drives every retry through `lib/reconnectDelay.ts`.
+    // Socket.io's own backoff draws one random number for both the sign and the
+    // size of its jitter, so a dropped crowd comes back in ten 50 ms teeth.
+    reconnection: false,
   });
+  if (Platform.OS === "web") {
+    socket.on("connect_error", (err) => {
+      if (err.message === NOT_AUTHENTICATED) handlers.onAuthFailure();
+    });
+  }
   socketMap.set(userId, { socket, handlers });
   mapListeners.forEach((fn) => fn());
   return socket;

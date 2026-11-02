@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Pool } from "pg";
-import { schemaStatements, assertRenamesApplied, ensureSchema } from "../../server/store/schemaDdl.ts";
+import { schemaStatements, assertRenamesApplied, applySchema } from "../../server/store/schemaDdl.ts";
 
 const statements = schemaStatements();
 
@@ -27,7 +27,7 @@ function dedupeTableFor(list: string[], index: number): string | undefined {
   const statement = list[index] ?? "";
   if (!/^DELETE FROM /.test(statement)) return undefined;
   const guarded =
-    /^CREATE UNIQUE INDEX IF NOT EXISTS "[^"]+" ON ("[^"]+")(?: USING "[^"]+")? \((.*)\)(?: WHERE (.*))?;$/.exec(
+    /^CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "[^"]+" ON ("[^"]+")(?: USING "[^"]+")? \((.*)\)(?: WHERE (.*))?;$/.exec(
       list[index + 1] ?? ""
     );
   if (!guarded) return undefined;
@@ -40,7 +40,7 @@ function dedupeTableFor(list: string[], index: number): string | undefined {
 }
 
 test("a delete is exempt only for the rows its own index rejects", () => {
-  const index = `CREATE UNIQUE INDEX IF NOT EXISTS "friends_accepted_uq" ON "friends" ("user_id", "friend_user_id") WHERE "status" = 'accepted';`;
+  const index = `CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "friends_accepted_uq" ON "friends" ("user_id", "friend_user_id") WHERE "status" = 'accepted';`;
   const dedupe = (key: string, keep: string) =>
     `DELETE FROM "friends" WHERE "ctid" IN (SELECT "ctid" FROM (SELECT "ctid", row_number() ` +
     `OVER (PARTITION BY ${key} ORDER BY "ctid") AS "dup" FROM "friends" ` +
@@ -58,6 +58,48 @@ test("a delete is exempt only for the rows its own index rejects", () => {
   );
 });
 
+/**
+ * The one statement shape allowed to drop: an index the catalog reported INVALID, which
+ * `IF NOT EXISTS` would otherwise keep as it is, rebuilt under the same name right after (past
+ * its dedupe, if it has one).
+ */
+function rebuiltIndexFor(list: string[], index: number): string | undefined {
+  const dropped = /^DROP INDEX CONCURRENTLY IF EXISTS ("[^"]+");$/.exec(list[index] ?? "")?.[1];
+  if (!dropped) return undefined;
+  const rebuilt = list
+    .slice(index + 1, index + 3)
+    .some((s) => new RegExp(`^CREATE (UNIQUE )?INDEX CONCURRENTLY IF NOT EXISTS ${dropped} `).test(s));
+  return rebuilt ? dropped : undefined;
+}
+
+const invalid = new Set(["friends_accepted_uq", "events_occurred_idx"]);
+const booted = catalogOf(statements);
+const rebuilding = schemaStatements({
+  columns: booted.columns,
+  indexes: new Set([...booted.indexes].filter((name) => !invalid.has(name))),
+  invalidIndexes: invalid,
+});
+const rebuildingFromEmpty = schemaStatements({ columns: new Set(), indexes: new Set(), invalidIndexes: invalid });
+
+test("an INVALID index is dropped right before it is built again, and nothing else is", () => {
+  assert.equal(rebuiltIndexFor([`DROP INDEX CONCURRENTLY IF EXISTS "x";`, `CREATE INDEX CONCURRENTLY IF NOT EXISTS "y" ON "t" ("c");`], 0), undefined);
+  for (const list of [rebuilding, rebuildingFromEmpty]) {
+    const dropped = list.flatMap((_, i) => rebuiltIndexFor(list, i) ?? []);
+    assert.deepEqual(dropped.sort(), ['"events_occurred_idx"', '"friends_accepted_uq"']);
+    assert.deepEqual(list.filter((s) => /^DROP/.test(s)).length, 2);
+  }
+  assert.deepEqual(
+    rebuilding.filter((s) => /INDEX/.test(s)).map((s) => s.split(" (")[0]),
+    [
+      `DROP INDEX CONCURRENTLY IF EXISTS "events_occurred_idx";`,
+      `CREATE INDEX CONCURRENTLY IF NOT EXISTS "events_occurred_idx" ON "events"`,
+      `DROP INDEX CONCURRENTLY IF EXISTS "friends_accepted_uq";`,
+      `CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "friends_accepted_uq" ON "friends"`,
+    ]
+  );
+  assert.ok(dedupeTableFor(rebuilding, rebuilding.findIndex((s) => /^CREATE UNIQUE INDEX .*friends_accepted_uq/.test(s)) - 1));
+});
+
 test("every statement is idempotent", () => {
   for (const [i, statement] of statements.entries()) {
     const idempotent =
@@ -67,7 +109,8 @@ test("every statement is idempotent", () => {
       /EXCEPTION WHEN duplicate_object/i.test(statement) ||
       // A dedupe's second run finds nothing, because the index it precedes
       // forbids exactly what it deletes.
-      dedupeTableFor(statements, i) !== undefined;
+      dedupeTableFor(statements, i) !== undefined ||
+      rebuiltIndexFor(statements, i) !== undefined;
     assert.ok(
       idempotent,
       `not idempotent, so a second boot would fail:\n${statement}`
@@ -85,10 +128,12 @@ test("no statement can destroy or rewrite existing data", () => {
     /\bRENAME\b/i,
     /\bALTER\s+COLUMN\b/i,
   ];
-  for (const [i, statement] of statements.entries()) {
-    const dedupe = dedupeTableFor(statements, i);
+  for (const list of [statements, rebuilding, rebuildingFromEmpty]) for (const [i, statement] of list.entries()) {
+    const dedupe = dedupeTableFor(list, i);
+    const rebuilt = rebuiltIndexFor(list, i);
     for (const pattern of forbidden) {
       if (dedupe && pattern.source.includes("DELETE")) continue;
+      if (rebuilt && pattern.source.includes("DROP")) continue;
       assert.doesNotMatch(
         statement,
         pattern,
@@ -330,7 +375,7 @@ test("boot deletes on its own authority only where this list says it may", () =>
   // permission an edit somebody has to come here and make.
   const cleared = statements.flatMap((s, i) =>
     dedupeTableFor(statements, i)
-      ? [/CREATE UNIQUE INDEX IF NOT EXISTS ("[^"]+")/.exec(statements[i + 1])?.[1] ?? statements[i + 1]]
+      ? [/CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ("[^"]+")/.exec(statements[i + 1])?.[1] ?? statements[i + 1]]
       : []
   );
   assert.deepEqual(cleared.sort(), [`"friends_accepted_uq"`, `"friends_pending_pair_uq"`]);
@@ -342,7 +387,7 @@ function catalogOf(list: string[]) {
   for (const s of list) {
     const col = /^ALTER TABLE "([^"]+)" ADD COLUMN IF NOT EXISTS "([^"]+)"/.exec(s);
     if (col) columns.add(`${col[1]}.${col[2]}`);
-    const idx = /^CREATE (?:UNIQUE )?INDEX IF NOT EXISTS "([^"]+)"/.exec(s);
+    const idx = /^CREATE (?:UNIQUE )?INDEX CONCURRENTLY IF NOT EXISTS "([^"]+)"/.exec(s);
     if (idx) indexes.add(idx[1]);
   }
   return { columns, indexes };
@@ -353,7 +398,7 @@ test("what the catalog already holds is not altered again", () => {
   assert.ok(full.columns.size > 0 && full.indexes.size > 0);
   const again = schemaStatements(full);
   assert.deepEqual(again.filter((s) => /ADD COLUMN/.test(s)), []);
-  assert.deepEqual(again.filter((s) => /^CREATE (UNIQUE )?INDEX IF NOT EXISTS "(?!IDX_session)/.test(s)), []);
+  assert.deepEqual(again.filter((s) => /INDEX/.test(s)), []);
   assert.deepEqual(again.filter((s) => /^DELETE /.test(s)), [], "a dedupe runs only before an index it clears the way for");
   assert.ok(again.some((s) => /^CREATE TABLE IF NOT EXISTS/.test(s)), "tables and enums are still ensured");
 
@@ -371,7 +416,8 @@ test("a second boot emits no ADD COLUMN, from one catalog read", async () => {
   const booted = {
     query: async (sql: string) => {
       ran.push(sql);
-      if (/pg_indexes/.test(sql)) {
+      if (/pg_try_advisory_lock/.test(sql)) return { rows: [{ locked: true }] };
+      if (/pg_index\b/.test(sql)) {
         return {
           rows: [
             ...[...full.columns].map((c) => ({ kind: "column", name: c })),
@@ -382,7 +428,45 @@ test("a second boot emits no ADD COLUMN, from one catalog read", async () => {
       return { rows: [] };
     },
   } as unknown as Pool;
-  await ensureSchema(booted);
-  assert.equal(ran.filter((s) => /pg_indexes/.test(s)).length, 1);
+  await applySchema(booted);
+  assert.equal(ran.filter((s) => /pg_index\b/.test(s)).length, 1);
   assert.deepEqual(ran.filter((s) => /ADD COLUMN/.test(s)), []);
+});
+
+test("the schema lock is polled, and held before the first look at the catalog", async () => {
+  const ran: string[] = [];
+  let refusals = 2;
+  const contended = {
+    query: async (sql: string) => {
+      ran.push(sql);
+      if (/advisory_lock/.test(sql)) return { rows: [{ locked: refusals-- <= 0 }] };
+      return { rows: [] };
+    },
+  } as unknown as Pool;
+  await applySchema(contended);
+  const locks = ran.filter((s) => /advisory_lock/.test(s));
+  assert.equal(locks.length, 3, "a refused lock was not asked for again");
+  // A backend blocked in pg_advisory_lock holds a snapshot that CREATE INDEX CONCURRENTLY waits on.
+  assert.ok(locks.every((s) => /pg_try_advisory_lock\(/.test(s)), locks.join("\n"));
+  assert.deepEqual(ran.slice(0, 3), locks);
+});
+
+test("a concurrent index build waits without lock_timeout, and nothing else does", async () => {
+  let lockTimeout = "3s";
+  const ranUnder = new Map<string, string>();
+  const fresh = {
+    query: async (sql: string) => {
+      if (/pg_try_advisory_lock/.test(sql)) return { rows: [{ locked: true }] };
+      if (sql === "SET lock_timeout = 0") lockTimeout = "0";
+      else if (sql === "RESET lock_timeout") lockTimeout = "3s";
+      else ranUnder.set(sql, lockTimeout);
+      return { rows: [] };
+    },
+  } as unknown as Pool;
+  await applySchema(fresh);
+  const ddl = statements.filter((s) => !/^DELETE /.test(s));
+  const concurrent = ddl.filter((s) => /INDEX CONCURRENTLY/.test(s));
+  assert.ok(concurrent.length > 10 && ddl.length > concurrent.length, "the fake ran nothing to judge");
+  assert.deepEqual(concurrent.filter((s) => ranUnder.get(s) !== "0"), []);
+  assert.deepEqual(ddl.filter((s) => !concurrent.includes(s) && ranUnder.get(s) !== "3s"), []);
 });

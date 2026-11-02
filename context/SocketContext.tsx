@@ -9,6 +9,8 @@ import React, {
   useSyncExternalStore,
   ReactNode,
 } from "react";
+import { AppState } from "react-native";
+import NetInfo from "@react-native-community/netinfo";
 import { router } from "expo-router";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api, hasServer } from "@/lib/query-client";
@@ -94,6 +96,11 @@ interface Invites {
 }
 
 const askWhoIsOnline = (socket: Socket) => socket.emit("friend:get_online_list");
+
+// A retry the socket effect's cleanup cancelled, owed to whichever run takes the
+// socket up next: lib/socket.ts outlives this effect and keeps the socket, and
+// a dropped one with no retry pending would otherwise stay down.
+const retriesOwed = new WeakSet<Socket>();
 
 const NO_HIDDEN_INVITES: ReadonlySet<string> = new Set();
 // One empty list, not `= []`: a fresh default every render would wake every invites reader.
@@ -185,9 +192,12 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
   // id has to be tracked here to tear the singleton down on logout.
   const connectedUserIdRef = useRef<string | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Consecutive failed handshake attempts, for the backoff below. Reset on
-  // every successful connect.
+  // Consecutive failed attempts, for the backoff below. Reset on every
+  // successful connect.
   const retryAttemptRef = useRef(0);
+  // The socket nothing may reconnect until the player asks: its session moved
+  // or died. Keyed by socket, so the next account's starts free.
+  const haltedSocketRef = useRef<Socket | null>(null);
   // Through a ref, not the socket effect's deps: re-running that effect cancels a pending retry.
   const randomRef = useRef(random);
   useEffect(() => {
@@ -248,7 +258,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
     setSessionReplaced(null);
     const socket = socketRef.current;
     if (!socket) return;
-    socket.io.reconnection(true);
+    haltedSocketRef.current = null;
     socket.connect();
   }, []);
 
@@ -288,18 +298,41 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
     let bound = true;
     const onAuthFailure = () => {
       if (!bound) return;
-      if (retryTimerRef.current) {
-        clearTimeout(retryTimerRef.current);
-        retryTimerRef.current = null;
-      }
-      retryAttemptRef.current = 0;
-      socket.io.reconnection(false);
-      socket.disconnect();
+      halt();
       void forgetSession().finally(() => router.replace("/auth"));
     };
     const socket = connectSocket(userId, { onAuthFailure });
     socketRef.current = socket;
     connectedUserIdRef.current = userId;
+
+    // socket.io's own reconnection is off (lib/socket.ts), so this is the only
+    // loop: a failed attempt and every disconnect the client did not ask for
+    // come back here.
+    const retryLater = () => {
+      if (haltedSocketRef.current === socket) return;
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      const delay = reconnectDelayMs(retryAttemptRef.current++, randomRef.current);
+      retryTimerRef.current = setTimeout(() => {
+        retryTimerRef.current = null;
+        if (!socket.connected) socket.connect();
+      }, delay);
+    };
+    // A pending retry is what a dropped socket looks like between attempts.
+    const retryNow = () => {
+      if (!retryTimerRef.current) return;
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+      socket.connect();
+    };
+    const halt = () => {
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+      retryAttemptRef.current = 0;
+      haltedSocketRef.current = socket;
+      socket.disconnect();
+    };
 
     const onConnect = () => {
       setSessionReplaced(null);
@@ -313,26 +346,21 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
       markStale(qc, stale.onReconnect);
     };
 
-    const onDisconnect = (reason: UntypedSocket.DisconnectReason) => reportSocketClose(reason);
+    const onDisconnect = (reason: UntypedSocket.DisconnectReason) => {
+      reportSocketClose(reason);
+      if (reason !== "io client disconnect") retryLater();
+    };
 
-    // A handshake rejected by server middleware (expired or already-used
-    // ticket) destroys the socket's subscriptions, so socket.io will not retry
-    // it and `socket.active` is false. This loop owns that case alone, backing
-    // off exponentially (capped, jittered) while the auth callback mints a fresh ticket
-    // per attempt. While `active` is true the library's own reconnection is
-    // still running and owns the retry.
     const onConnectError = (err: Error) => {
       // Retrying cannot help: this bundle is below the server's floor.
       if (err.message === CLIENT_OUTDATED) return requireUpdate();
-      if (socket.active) return;
-      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-      const attempt = retryAttemptRef.current++;
-      const delay = reconnectDelayMs(attempt, randomRef.current);
-      retryTimerRef.current = setTimeout(() => {
-        retryTimerRef.current = null;
-        if (!socket.connected) socket.connect();
-      }, delay);
+      retryLater();
     };
+
+    const onAppState = AppState.addEventListener("change", (state) => {
+      if (state === "active") retryNow();
+    });
+    const stopNetInfo = NetInfo.addEventListener(retryNow);
 
     const onOnlineList = ({ onlineIds: ids }: { onlineIds: string[] }) => {
       setOnlineIds(new Set(ids));
@@ -432,13 +460,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
     };
     const onSocketError = (payload: ServerPayload) => {
       if (payload.code === SESSION_REPLACED) {
-        if (retryTimerRef.current) {
-          clearTimeout(retryTimerRef.current);
-          retryTimerRef.current = null;
-        }
-        retryAttemptRef.current = 0;
-        socket.io.reconnection(false);
-        socket.disconnect();
+        halt();
         setSessionReplaced(payload);
         return;
       }
@@ -459,12 +481,16 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
     socket.on("socket:error", onSocketError);
 
     if (socket.connected) askWhoIsOnline(socket);
+    if (retriesOwed.delete(socket) && !socket.connected) retryLater();
 
     return () => {
       bound = false;
+      onAppState.remove();
+      stopNetInfo();
       if (retryTimerRef.current) {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
+        retriesOwed.add(socket);
       }
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);

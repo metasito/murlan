@@ -2,7 +2,7 @@
 // server/game/gamePersistence.ts's startSweeper.
 import { gte, lt, sql, type SQL } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
-import { db } from "../store/db.ts";
+import { db, transaction } from "../store/db.ts";
 import { roomStore } from "../store/roomStore.ts";
 import { now } from "../http/clock.ts";
 import {
@@ -124,7 +124,7 @@ export async function pruneStaleRooms(): Promise<number> {
     );
     const ids = rows.map((r) => r.id).filter((id) => !liveGames.has(id));
     if (ids.length === 0) break;
-    const gone = await db().transaction((tx) => roomStore.purgeRooms(tx, ids));
+    const gone = await transaction((tx) => roomStore.purgeRooms(tx, ids));
     total += gone;
     if (rows.length < STALE_ROOM_BATCH || gone === 0) break;
   }

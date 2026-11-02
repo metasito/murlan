@@ -1,6 +1,6 @@
 import { now } from "../http/clock.ts";
 import { eq, and, sql, isNull, isNotNull } from "drizzle-orm";
-import { db } from "./db.ts";
+import { db, transaction } from "./db.ts";
 import { pushTokens, users } from "../../shared/schema.ts";
 import type { User, InsertUser } from "../../shared/schema.ts";
 import { randomCode } from "./codes.ts";
@@ -171,7 +171,7 @@ export const userStore = {
    * arrived on survives the clear.
    */
   async changePassword(userId: string, passwordHash: string, keepSid: string): Promise<void> {
-    await db().transaction(async (tx) => {
+    await transaction(async (tx) => {
       await tx.update(users).set({ password: passwordHash }).where(eq(users.id, userId));
       await tx.execute(
         sql`DELETE FROM session WHERE sess->>'userId' = ${userId} AND sid != ${keepSid}`
@@ -187,7 +187,7 @@ export const userStore = {
    * account is cleared.
    */
   async resetPassword(userId: string, passwordHash: string): Promise<void> {
-    await db().transaction(async (tx) => {
+    await transaction(async (tx) => {
       await tx.update(users).set({ password: passwordHash }).where(eq(users.id, userId));
       await tx.execute(sql`DELETE FROM session WHERE sess->>'userId' = ${userId}`);
       await tx.delete(pushTokens).where(eq(pushTokens.userId, userId));
