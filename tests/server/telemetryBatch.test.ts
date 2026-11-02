@@ -184,6 +184,29 @@ test("a batch one row breaks is written row by row, so only that row is lost", a
   assert.equal(telemetryRowsDropped() - before, 1);
 });
 
+test("an outage that starts while a broken batch goes row by row ends it: one statement, one log line", async (t) => {
+  const logged = t.mock.method(logger, "error", () => undefined);
+  let down = false;
+  const calls = captured(t, async (call) => {
+    if (down) throw new Error("connection terminated");
+    if (userIds(call).includes("bad")) {
+      if (rowsIn(call) === 1) down = true;
+      throw Object.assign(new Error("invalid input syntax"), { code: "22P02" });
+    }
+    return { rows: [] };
+  });
+  const before = telemetryRowsDropped();
+
+  for (const id of ["a", "bad", "c", "d"]) trackEvent("lobby.entered", id);
+  await flushTelemetry();
+  trackEvent("lobby.entered", "after");
+  await flushTelemetry();
+
+  assert.deepEqual(calls.map(userIds), [["a", "bad", "c", "d"], ["a"], ["bad"], ["c"], ["after"]]);
+  assert.equal(telemetryRowsDropped() - before, 4, "the bad row, the two the outage reached, and the next batch were not all counted");
+  assert.equal(logged.mock.callCount(), 3, "the outage was logged once per row it reached, not once: the bad row, the outage, the next batch");
+});
+
 test("a batch the database could not take at all is not retried row by row", async (t) => {
   t.mock.method(logger, "error", () => undefined);
   const calls = captured(t, async () => {

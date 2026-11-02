@@ -72,16 +72,29 @@ export function telemetryBatch<Row>(spec: TelemetryTable<Row>): (row: Row) => vo
   let timer: ReturnType<typeof setTimeout> | null = null;
   let flushing: Promise<void> | null = null;
 
+  const lose = (rows: number, err: unknown) => {
+    dropped += rows;
+    logger.error({ err, table: spec.table, rows }, "Failed to write a telemetry batch");
+  };
+
+  /** Row by row after a row broke the batch, until a failure that is not a row's: then the rest are lost at once. */
+  const writeEach = async (rows: Row[]): Promise<void> => {
+    for (const [i, row] of rows.entries()) {
+      try {
+        dropped += 1 - (await insertOnce(spec.insert, spec.columns([row])));
+      } catch (err) {
+        if (!rowAtFault(err)) return lose(rows.length - i, err);
+        lose(1, err);
+      }
+    }
+  };
+
   const write = async (rows: Row[]): Promise<void> => {
     try {
       dropped += rows.length - (await insertOnce(spec.insert, spec.columns(rows)));
     } catch (err) {
-      if (rows.length > 1 && rowAtFault(err)) {
-        for (const row of rows) await write([row]);
-        return;
-      }
-      dropped += rows.length;
-      logger.error({ err, table: spec.table, rows: rows.length }, "Failed to write a telemetry batch");
+      if (rows.length > 1 && rowAtFault(err)) return writeEach(rows);
+      lose(rows.length, err);
     }
   };
 

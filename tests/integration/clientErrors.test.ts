@@ -14,6 +14,9 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { eventually, register } from "../helpers/client.ts";
+import { pool } from "../../server/store/db.ts";
+import { recordClientError } from "../../server/http/clientErrors.ts";
+import { flushTelemetry } from "../../server/shared/telemetryBatch.ts";
 
 describe("client crash reports", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -63,17 +66,21 @@ describe("client crash reports", { skip: hasDatabase() ? false : skipMessage() }
     assert.equal(res.status, 204, await res.text());
   });
 
-  test("a report cut through a surrogate pair is stored, and the reports batched with it are too", async () => {
-    const { cookie: own } = await register(server, "crash_surrogate");
-    const before = [{ message: "batched before a cut stack" }, { message: "cut \ud800", componentStack: "at A \ud83d" }];
-    for (const body of [...before, { message: "batched after a cut stack" }]) {
-      assert.equal((await postAs(own, body)).status, 204);
-    }
+  test("a report cut through a surrogate pair is stored, and the reports batched with it are too", async (t) => {
+    const { user } = await register(server, "crash_surrogate");
+    await flushTelemetry();
+    const query = pool().query.bind(pool());
+    const inserts = t.mock.method(pool(), "query", (...args: Parameters<typeof query>) => query(...args));
+    recordClientError({ userId: user.id, message: "batched before a cut stack" });
+    recordClientError({ userId: user.id, message: "cut \ud800", context: { componentStack: "at A \ud83d" } });
+    recordClientError({ userId: user.id, message: "batched after a cut stack" });
+    await flushTelemetry();
 
-    const rows = await stored<{ message: string; context: { componentStack?: string } }>(
-      `SELECT message, context FROM "${server.schema}".client_errors WHERE message LIKE 'batched %' OR message LIKE 'cut %' ORDER BY message`,
-      [],
-      3
+    const statements = inserts.mock.calls.filter((c) => /INSERT INTO client_errors/.test(String(c.arguments[0])));
+    assert.equal(statements.length, 1, "the three reports did not go as one batch");
+    const rows = await server.query<{ message: string; context: { componentStack?: string } }>(
+      `SELECT message, context FROM "${server.schema}".client_errors WHERE user_id = $1 ORDER BY message`,
+      [user.id]
     );
     assert.deepEqual(rows.map((r) => r.message), ["batched after a cut stack", "batched before a cut stack", "cut \ufffd"]);
     assert.equal(rows[2]!.context.componentStack, "at A \ufffd");
