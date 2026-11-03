@@ -1,5 +1,7 @@
-// P7: /health's probe is `await pool().query("SELECT 1")` on the app pool (server/app.ts:235-250);
-// a rejection answers 503. Run that exact call on the real openDatabase() pool (max 10) while:
+// P7: the audit's /health ran `await pool().query("SELECT 1")` on the app pool, so a full pool
+// answered 503. It now probes on a health pool of its own (server/http/health.ts, D17). The real
+// mountHealth() is served from an express app on the real openDatabase() pools, and asked for
+// /health/ready and /health/live while the app pool (max 10) is saturated:
 //   held     all 10 clients are checked out and held (transactions waiting between statements)
 //   busy     10 queries of pg_sleep(4) are running
 //   backlog  60 queries of pg_sleep(1) are queued at once (6 s of work per slot)
@@ -8,17 +10,28 @@ import { directUrl, log } from "./proxy.ts";
 const mode = process.argv[2] ?? "held";
 process.env.DATABASE_URL = directUrl;
 process.env.LOG_LEVEL = "silent";
+if (!process.env.REDIS_URL) throw new Error("REDIS_URL is required: /health/ready also probes Redis");
+const express = (await import("express")).default;
 const { openDatabase, pool } = await import("../../../../../../server/store/db.ts");
+const { mountHealth, markBooted } = await import("../../../../../../server/http/health.ts");
 openDatabase();
 const p = pool();
-const health = async () => {
+const app = express();
+mountHealth(app);
+markBooted();
+const server = app.listen(0, "127.0.0.1");
+await new Promise((r) => server.once("listening", r));
+const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+const ask = async (path: string) => {
   const s = Date.now();
-  try {
-    await pool().query("SELECT 1");
-    return `200 after ${Date.now() - s}ms`;
-  } catch (e) {
-    return `503 after ${Date.now() - s}ms (${(e as Error).message})`;
-  }
+  const r = await fetch(`${base}${path}`);
+  const body = await r.text();
+  return `${r.status} after ${Date.now() - s}ms ${body.slice(0, 160)}`;
+};
+// The probes refresh each second, so a reading 1.5 s into a state describes that state.
+const health = async () => {
+  await new Promise((r) => setTimeout(r, 1_500));
+  return `ready ${await ask("/health/ready")} | live ${await ask("/health/live")}`;
 };
 log(`idle pool: health ${await health()}`);
 
@@ -53,4 +66,5 @@ if (mode === "backlog") {
   for (const r of results) tally[r] = (tally[r] ?? 0) + 1;
   log(`the 60 app queries after ${Date.now() - s}ms: ${JSON.stringify(tally)}`);
 }
-await p.end();
+server.close();
+process.exit(0);

@@ -1,11 +1,13 @@
 // Claim 6: the reconnect herd after a restart, computed with the installed code itself —
 // socket.io-client's Backoff with lib/socket.ts's options, and lib/reconnectDelay.ts for the app's
-// own loop — not a restated formula. Pure computation; no server.
+// own loop — not a restated formula. Scenarios A and B are socket.io's own backoff, which
+// lib/socket.ts no longer uses (reconnection: false); D is the app's loop. The ticket limiter is
+// then measured on a real instance: one ticket per user, many users behind one address.
 import { createRequire } from "node:module";
 import path from "node:path";
 import { reconnectDelayMs, reconnectWaitMs } from "../../../../../../lib/reconnectDelay.ts";
 import { drainingReconnectAfterMs } from "../../../../../../server/http/shutdown.ts";
-import { out } from "./lib.ts";
+import { bootInstance, killInstance, out, register, resetData } from "./lib.ts";
 
 const require = createRequire(import.meta.url);
 const { Backoff } = require(path.join(path.dirname(require.resolve("socket.io-client")), "contrib/backo2.js")) as {
@@ -15,7 +17,7 @@ const { Backoff } = require(path.join(path.dirname(require.resolve("socket.io-cl
 const OPTS = { min: 1000, max: 5000, jitter: 0.5 };
 const { log, save } = out("exp6.txt");
 const N = 1000;
-const TICKETS_PER_MIN = 60; // ticketLimiter: 60 a minute, per IP, per instance (MemoryStore)
+const TICKETS_PER_MIN = 60; // ticketLimiter: 60 a minute; the audit keyed it per IP, it is now per signed-in session
 
 function buckets(times: number[], width = 250, until = 3000) {
   const rows: string[] = [];
@@ -27,6 +29,7 @@ function buckets(times: number[], width = 250, until = 3000) {
 }
 
 log("# exp6: reconnect herd, 1,000 clients, socket.io-client Backoff {min 1000, max 5000, jitter 0.5}");
+log("(A and B: socket.io's own backoff, as the audit ran it; lib/socket.ts now passes reconnection: false, so they are history)");
 
 // Scenario A: a rolling deploy. Another instance is already up, so every first attempt opens and
 // mints a ticket (lib/socket.ts `auth` runs once the transport opens, before CONNECT).
@@ -78,7 +81,7 @@ spread("without a notice", Array.from({ length: N }, () => reconnectDelayMs(0)))
 spread("after server:draining", Array.from({ length: N }, () => reconnectWaitMs(0, drainingReconnectAfterMs())));
 
 // Tickets per IP against the limiter, for clients sharing one address.
-log("\n## tickets per IP in the first minute vs the 60/minute ticketLimiter (scenario A, one attempt each)");
+log("\n## history, computed: tickets per IP in the first minute against the audit's per-IP 60/minute key (scenario A, one attempt each)");
 for (const perIp of [10, 60, 100, 300, 1000]) {
   const over = Math.max(0, perIp - TICKETS_PER_MIN);
   log(`  ${String(perIp).padStart(4)} clients behind one IP: ${perIp} ticket requests within ~1 s -> ${over} answered 429`);
@@ -87,7 +90,7 @@ for (const perIp of [10, 60, 100, 300, 1000]) {
 // What a 429 does: web (cookie on the upgrade) still authenticates; native (ticket only) is refused
 // "Not authenticated", socket.active goes false, and SocketContext's own loop retries with
 // reconnectDelayMs (full jitter, base 2 s, cap 30 s) — each retry another ticket request.
-log("\n## native clients behind one IP after a 429: SocketContext loop, every retry mints again");
+log("\n## history, computed: native clients behind one IP after a per-IP 429, every retry minting again");
 for (const perIp of [100, 300]) {
   let windowStart = -1;
   let used = 0;
@@ -117,4 +120,33 @@ for (const perIp of [100, 300]) {
 }
 log("web clients: a 429 makes fetchSocketTicket return null, auth sends no ticket, and the cookie on the");
 log("upgrade authenticates anyway (server/socket/socket.ts:142-144) - the limiter costs web nothing but the request.");
+log("\n## measured: the ticket limiter on a real instance, every client behind one address (127.0.0.1)");
+await resetData();
+const inst = await bootInstance("srvA", 5581, { env: { MURLAN_TICKET_RATE_LIMIT: String(TICKETS_PER_MIN) } });
+try {
+  const users: { cookie: string }[] = [];
+  for (let i = 0; i < 120; i++) users.push(await register(inst.url, `t${Date.now().toString(36)}${i}`));
+  const mint = (cookie: string) => fetch(`${inst.url}/api/auth/socket-ticket`, { method: "POST", headers: { cookie } }).then((r) => r.status);
+  const statuses = await Promise.all(users.map((u) => mint(u.cookie)));
+  const refused = statuses.filter((st) => st === 429).length;
+  log(`  ${users.length} signed-in users, one ticket each, within ~1 s: ${refused} answered 429 (the audit's per-IP key refused ${Math.max(0, users.length - TICKETS_PER_MIN)})`);
+  const one = await Promise.all(Array.from({ length: TICKETS_PER_MIN + 10 }, () => mint(users[0]!.cookie)));
+  log(`  positive control, one user minting ${one.length} at once: ${one.filter((st) => st === 429).length} answered 429`);
+  log("\n## measured, finding 8: one limit across two instances (the audit's MemoryStore counted per instance)");
+  const other = await bootInstance("srvB", 5582, { env: { MURLAN_TICKET_RATE_LIMIT: String(TICKETS_PER_MIN) } });
+  try {
+    const u = users[1]!;
+    const mintAt = (url: string) => fetch(`${url}/api/auth/socket-ticket`, { method: "POST", headers: { cookie: u.cookie } }).then((r) => r.status);
+    const statuses: number[] = [];
+    for (let i = 0; i < 40; i++) statuses.push(await mintAt(inst.url));
+    for (let i = 0; i < 40; i++) statuses.push(await mintAt(other.url));
+    log(`  one user, 40 tickets on A then 40 on B, one at a time: ${statuses.filter((st) => st === 429).length} answered 429 (one shared limit of ${TICKETS_PER_MIN}, less the 1 this user already minted, refuses 21; per-instance counts refuse 0)`);
+  } finally {
+    await killInstance(other);
+  }
+} finally {
+  await killInstance(inst);
+}
+log("web clients mint no ticket at all: lib/socket.ts sends only protocolVersion on web, and the cookie on the upgrade authenticates.");
 save();
+process.exit(0);
