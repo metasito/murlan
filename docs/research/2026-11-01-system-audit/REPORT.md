@@ -17,7 +17,7 @@ vCPU): [sim/results/after.txt](sim/results/after.txt) holds each claim with its 
 verdict. Each finding below carries a one-line status; the Measurements table an "after" column.
 Every finding and pool finding is fixed; one row of the plan does not move: four of D17's metrics
 (rounds pending and their age, coalesced writes, telemetry rows dropped) are not exported
-(#<ISSUE-METRICS>).
+(#1944).
 
 ## Verdict
 

@@ -344,7 +344,7 @@ Metrics (D17, #1886): /metrics scraped mid-round (exp5-roundover.ts, ctl0, after
   MISSING  coalesced writes                  D17 (#1891); no metric of that kind is registered
   MISSING  telemetry rows dropped            D17/D19 (#1891); no metric of that kind is registered
 No metric of any name for these four is registered in server/ (grep of new Counter/new Gauge).
-Verdict: NOT FIXED. Issue: #<ISSUE-METRICS>
+Verdict: NOT FIXED. Issue: #1944
 
 =========================================================================================
 SUMMARY: every finding and pool finding of REPORT.md
@@ -374,8 +374,8 @@ P7    | 503 at 5,003 ms with a full pool                | 200 in 3-5 ms from the
 P8    | no name, no idle-in-tx timeout, no keep-alive, no lifetime | all set on every pool                 | FIXED
 Ord   | seq 11 delivered before seq 10, applied         | (epoch, seq) checked; 0 out of order live     | FIXED
 Thr   | an 8000 B broadcast dropped                     | adapter removed; 7,999-200,000 B delivered     | FIXED
-D17   | no metrics                                      | 4 of D17's metrics not registered             | NOT FIXED: #<ISSUE-METRICS>
+D17   | no metrics                                      | 4 of D17's metrics not registered             | NOT FIXED: #1944
 
 Note, outside the audit's rows: the ticket limiter's positive control refused 22, 23 and 33 of 70
 requests sent at once by one user (the limit is 60, so 10 or 11 is right), while 70 sent one at a
-time refused exactly 10. Concurrent requests of one key over-count; it errs toward refusing.
+time refused exactly 10. Concurrent requests of one key over-count; it errs toward refusing. Filed as #1945.
