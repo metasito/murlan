@@ -30,13 +30,33 @@ Same-command rows agree within the run-to-run spread. The native commands that r
 
 ## One stream at its cap (`fill.ts`, 120,000 replayed real entries, 3 runs each)
 
-- Redis 7.4.12: `MEMORY USAGE` 222.2 MiB (1,942 B/entry).
-- Valkey 9.1.3: `MEMORY USAGE` 208.4 MiB (1,821 B/entry).
+- Redis 7.4.12: `MEMORY USAGE` 222.2 MiB (1,942 B/entry); `used_memory` grew 208.5 MiB.
+- Valkey 9.1.3: `MEMORY USAGE` 208.4 MiB (1,821 B/entry); `used_memory` grew 208.5 MiB.
 
-So each capped stream costs ~210 MiB on Valkey: one inbox per instance plus the adapter stream, about
-650 MiB at the design peak for two instances.
+`used_memory` is what `maxmemory` counts, and both engines grow it by the same 208.5 MiB; Redis
+7.4's `MEMORY USAGE` overstates its own stream. The adapter's room stream received no entry in the
+two-instance soak: every game message is addressed through the inboxes. `docs/DEPLOY-RUNBOOK.md`
+§ Key-value store memory turns this into `maxmemory` (1 GiB for two instances at the design peak).
+
+## `active_games` fillfactor 70 against the default (`fillfactor.sh`, Postgres 16.15)
+
+The move write (`activeGameStore.write`'s upsert, epoch fence included) as a pgbench custom script
+over 1,000 rows, with the median envelope from the soak (9,548 B of text, 2,782 B stored), 8
+clients, 60 s a run, 5 runs per setting, interleaved. Raw: `raw/fillfactor.txt`.
+
+| fillfactor | tps median | tps spread | HOT ratio (`n_tup_hot_upd / n_tup_upd`) |
+|---|---|---|---|
+| default (100) | 1,544 | 1,325-2,565 | 0.9982 (0.9963-0.9992) |
+| 70 | 1,581 | 1,252-2,293 | 1.0000 |
+
+**Rejected.** Throughput differs by 2.4%, inside a run-to-run spread of 1,252-2,565 tps; the HOT ratio moves from
+99.8% to 100%. The default already gets nearly every update HOT because the envelope is compressed
+and stored out of line: the heap row is about 150 B, so each page keeps room for its update chain,
+and the per-move cost is the TOAST rewrite, which a heap fillfactor does not touch. The soaked
+table itself read 0.9952 at the default. A first, non-interleaved run showed 70 ahead 1.8x; run
+interleaved under the same load, the gap vanished, so it was the run order (kept, labelled, in the
+raw file). `server/store/schemaDdl.ts` is unchanged.
 
 ## Not measured here (still open on #1921)
 
-The `active_games` fillfactor (`fillfactor.sh` is written but was not run), the `DEPLOY-RUNBOOK.md`
-`maxmemory` entry, and every Postgres 19 comparison (#1913, #1927).
+Every Postgres 19 comparison (#1913, #1927).

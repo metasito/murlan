@@ -159,6 +159,34 @@ paths are in `configureWebBuild()`.
 `ALLOW_RESET=1 node scripts/reset-password.mjs <username>` sets a new random password on one
 account and prints it once.
 
+## Key-value store memory
+
+Size the plan's `maxmemory` to the streams at their cap, with `maxmemory-policy noeviction`: a
+full store then refuses writes (degraded mode) instead of dropping an owner or an inbox unseen.
+
+Every stream is trimmed to `streamMaxLen()` = `maxClusterMessagesPerSecond` × `CLUSTER_GAP_SECONDS`
+= 1,000 × 120 = 120,000 entries (`server/store/redis.ts`), and keeps that many for as long as it
+lives, however slowly they came. Measured on Valkey 9.1.3 with real inbox entries from a
+two-instance soak (`docs/research/2026-11-02-latest-stable/valkey/RESULTS.md`): one stream at its
+cap holds **208.4 MiB** (`used_memory`), about 1,820 B an entry.
+
+```
+maxmemory >= (instances + 2) x 210 MiB + 64 MiB
+```
+
+- `instances`: one inbox per running instance.
+- `+ 1`: the adapter's room stream. The soak wrote nothing to it (delivery is addressed), but any
+  broadcast through the adapter lands there; it is sized as full.
+- `+ 1`: a rolling deploy. A retired instance's inbox outlives it by up to `CLUSTER_GAP_SECONDS`
+  while its replacement's fills; at the design peak that window carries at most one cap's worth.
+- `64 MiB`: presence, table owners and limit counters (small keys, each with a TTL), and client
+  output buffers (a 100-entry `XREAD` of state deliveries is about 330 KB a reader).
+
+At the design peak with two instances that is 4 × 210 + 64 = 904 MiB: set `maxmemory` to
+**1 GiB**. The plan's RAM must sit above `maxmemory` by the allocator's fragmentation
+(`mem_fragmentation_ratio` in `INFO memory`); take a plan of at least 1.25 GiB. Add 210 MiB of
+`maxmemory` per further instance.
+
 ## Health and metrics
 
 `server/http/health.ts` answers four paths. None reads the session or uses the app's Postgres

@@ -11,7 +11,9 @@ import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage, startTestServe
 import { boot, freePorts, type Instance } from "../helpers/instance.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
+import express from "express";
 import { pool } from "../../server/store/db.ts";
+import { mountHealth, stopHealth } from "../../server/http/health.ts";
 import { beginShutdown } from "../../server/game/gameRoom.ts";
 import { sendToInstance } from "../../server/store/instanceInbox.ts";
 import { instanceId } from "../../server/store/redis.ts";
@@ -195,5 +197,32 @@ describe("the probes with a dependency gone", { skip: hasDatabase() ? false : sk
       const r = await timed(`${url}/metrics`, { headers: { authorization: `Bearer ${TOKEN}` } });
       return /^redis_reconnects_total\{use="health"\} [1-9]/m.test(r.text);
     }, "the half-open Redis link to be counted reconnecting", 15_000);
+  });
+});
+
+describe("the probes mounted again", { skip: hasDatabase() ? false : skipMessage() }, () => {
+  const realRedisUrl = process.env.REDIS_URL!;
+  let proxy: Proxy;
+
+  before(async () => {
+    proxy = await startProxy(targetOf(realRedisUrl, 6379));
+    process.env.REDIS_URL = viaProxy(realRedisUrl, proxy);
+  });
+
+  after(async () => {
+    stopHealth();
+    process.env.REDIS_URL = realRedisUrl;
+    await proxy?.close();
+  });
+
+  test("hold one Redis connection, and none once stopped", async () => {
+    const open = () => proxy.links.filter((l) => !l.client.destroyed).length;
+    mountHealth(express());
+    await eventually(() => proxy.links.length === 1, "the first mount's connection");
+    mountHealth(express());
+    await eventually(() => proxy.links.length === 2, "the second mount's connection");
+    await eventually(() => open() === 1, "the first mount's connection to close", 2_000);
+    stopHealth();
+    await eventually(() => open() === 0, "the last connection to close", 2_000);
   });
 });

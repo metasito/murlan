@@ -39,6 +39,8 @@ import {
 } from "./invariants.ts";
 import { rng as dealStream } from "../support/game.ts";
 import { SETTLE_CAP_MS } from "./gateBudget.ts";
+import { sendToInstance } from "../../server/store/instanceInbox.ts";
+import { instanceId } from "../../server/store/redis.ts";
 import type { WireGameState, WireRoomState } from "../../shared/protocol.ts";
 
 /**
@@ -1008,6 +1010,8 @@ export interface ThroughputResult {
   refusals: Record<string, number>;
   /** What the server put on Redis for other instances while the tables played (`cluster_messages_total`). */
   clusterMessages: number;
+  /** Of the one control message sent before the play, how many the count saw: 0 is a blind counter. */
+  clusterControl: number;
 }
 
 async function clusterMessagesSent(): Promise<number> {
@@ -1074,6 +1078,8 @@ export async function runThroughput(
     log(`soak: ${opts.tables} tables of ${opts.seats} open, playing for ${opts.minutes} min`);
 
     const latencies: number[] = [];
+    const controlBefore = await clusterMessagesSent();
+    await sendToInstance(instanceId, { kind: "soak:control" });
     const sentBefore = await clusterMessagesSent();
     const started = performance.now();
     const until = Date.now() + opts.minutes * 60_000;
@@ -1093,6 +1099,7 @@ export async function runThroughput(
       p99Ms: at(0.99),
       unanswered: played.reduce((sum, p) => sum + p.unanswered, 0),
       clusterMessages,
+      clusterControl: sentBefore - controlBefore,
       refusals: tables.flatMap((t) => t.seats).reduce<Record<string, number>>((all, seat) => {
         for (const [key, count] of seat.refusals) all[key] = (all[key] ?? 0) + count;
         return all;
@@ -1133,7 +1140,7 @@ async function main() {
     console.log(
       `soak: ${t.tables} tables, ${t.moves} moves in ${t.seconds}s = ${t.movesPerSec} moves/sec; ` +
         `broadcast p50 ${t.p50Ms}ms, p99 ${t.p99Ms}ms, ${t.unanswered} unanswered, ${formatRefusals(t.refusals)}; ` +
-        `${t.clusterMessages} cluster messages`
+        `${t.clusterMessages} cluster messages, ${t.clusterControl} of 1 control`
     );
     return;
   }
