@@ -541,10 +541,28 @@ jobs:
     needs: scope
     if: ${{ !cancelled() && (github.event_name == 'schedule' || inputs.native || needs.scope.outputs.native == 'true') }}
     runs-on: macos-latest
-    timeout-minutes: 35
+    timeout-minutes: 48
+    env:
+      # The generated Podfile's `ccache_enabled?` reads it and points CC/CXX at React Native's ccache wrappers.
+      USE_CCACHE: "1"
+      CCACHE_DIR: /Users/runner/Library/Caches/ccache
+      CCACHE_MAXSIZE: 3G
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/install
+      - name: Install ccache
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: brew install ccache
+      # The C++ of the third-party pods is nearly all of the compile; a restore-keys hit after a
+      # dependency change still reuses every object whose preprocessed source did not move.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /Users/runner/Library/Caches/ccache
+          key: ${{ runner.os }}-${{ runner.arch }}-ccache-${{ hashFiles('package-lock.json', 'patches/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-ccache-
       - name: Each Skia Metal layer follows its own opaque
         run: |
           lib=node_modules/@shopify/react-native-skia/apple
@@ -576,6 +594,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pods-
       - run: pod install --project-directory=ios
+      - name: The pods compile through ccache
+        run: grep -qF "scripts/xcode/ccache-clang++.sh" ios/Pods/Pods.xcodeproj/project.pbxproj
       - name: Both libraries resolved at their pins
         run: |
           grep -qF "RNAudioAPI (0.13.6)" ios/Podfile.lock
@@ -594,6 +614,7 @@ jobs:
           workspace=$(ls -d ios/*.xcworkspace | head -1)
           scheme=$(basename "$workspace" .xcworkspace)
           echo "Building scheme $scheme"
+          ccache --zero-stats
           xcodebuild \
             -workspace "$workspace" \
             -scheme "$scheme" \
@@ -604,6 +625,7 @@ jobs:
             COMPILER_INDEX_STORE_ENABLE=NO \
             CODE_SIGNING_ALLOWED=NO \
             build
+          ccache --show-stats
       - name: The release declares no background audio, and nothing was downloaded
         run: |
           app=$(ls -d "$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator/"*.app | head -1)
